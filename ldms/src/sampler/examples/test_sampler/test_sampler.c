@@ -81,6 +81,8 @@
 #define LIST_MAX_LENGTH 5
 #define METRIC_ATTR_DELIM ':'
 
+static ovis_log_t mylog;
+
 struct test_sampler_set {
 	char *name;
 	char *producer;
@@ -152,7 +154,6 @@ struct test_sampler_stream {
 };
 LIST_HEAD(test_sampler_stream_list, test_sampler_stream);
 
-static ldmsd_msg_log_f msglog;
 static int num_sets;
 static struct test_sampler_schema_list schema_list;
 static struct test_sampler_set_list set_list;
@@ -392,7 +393,7 @@ static int __metric_init_value_set(union ldms_value *init_value,
 		/* do nothing */
 		break;
 	default:
-		msglog(LDMSD_LERROR, "test_sampler: Unrecognized/not supported "
+		ovis_log(mylog, OVIS_LERROR, "Unrecognized/not supported "
 					"type '%d'\n", type);
 		return EINVAL;
 	}
@@ -448,7 +449,7 @@ static void test_sampler_set_reset(struct test_sampler_set *s)
 	}
 	s->set = ldms_set_new(s->name, s->ts_schema->schema);
 	if (!s->set) {
-		ldmsd_log(LDMSD_LCRITICAL, SAMP ": Failed to create set %s\n", s->name);
+		ovis_log(mylog, OVIS_LERROR, "Failed to create set %s\n", s->name);
 		return;
 	}
 	ldms_set_publish(s->set);
@@ -461,7 +462,7 @@ static struct test_sampler_set *test_sampler_set_create(ldms_set_t set,
 {
 	struct test_sampler_set *ts_set = malloc(sizeof(*ts_set));
 	if (!ts_set) {
-		msglog(LDMSD_LERROR, SAMP ": Out of memory\n");
+		ovis_log(mylog, OVIS_LCRITICAL, "Out of memory\n");
 		return NULL;
 	}
 	ts_set->set = set;
@@ -558,7 +559,7 @@ static int __parse_record_def(char *ptr, struct test_sampler_metric_info *_minfo
 
 	end = strchr(ptr, '}');
 	if (ptr == end) {
-		msglog(LDMSD_LERROR, "test_sampler: add_schema: "
+		ovis_log(mylog, OVIS_LERROR, "add_schema: "
 				"found an empty record definition '{}'\n");
 		return EINVAL;
 	}
@@ -586,8 +587,7 @@ static int __parse_record_def(char *ptr, struct test_sampler_metric_info *_minfo
 			return EINVAL;
 		type = ldms_metric_str_to_type(vtype);
 		if (LDMS_V_NONE == type) {
-			ldmsd_log(LDMSD_LERROR, "test_sampler: "
-				"Invalid record entry type '%s'\n", vtype);
+			ovis_log(mylog, OVIS_LERROR, "Invalid record entry type '%s'\n", vtype);
 			return EINVAL;
 		}
 
@@ -707,7 +707,7 @@ static int __parse_list_str(char *ptr, struct test_sampler_metric_info *_minfo,
 		}
 		if (i == idx) {
 			/* Cannot find the rec_def */
-			msglog(LDMSD_LERROR, "test_sampler: add_schema: "
+			ovis_log(mylog, OVIS_LERROR, "add_schema: "
 					"rec_def '%s' not found.\n",
 					list->rec_type_name);
 			return EINVAL;
@@ -805,7 +805,7 @@ static int config_add_schema(struct attr_value_list *avl)
 
 	char *schema_name = av_value(avl, "schema");
 	if (!schema_name) {
-		msglog(LDMSD_LERROR, "test_sampler: Need schema_name\n");
+		ovis_log(mylog, OVIS_LERROR, "Need schema_name\n");
 		return EINVAL;
 	}
 
@@ -816,7 +816,7 @@ static int config_add_schema(struct attr_value_list *avl)
 
 	ts_schema = test_sampler_schema_find(&schema_list, schema_name);
 	if (ts_schema) {
-		msglog(LDMSD_LERROR, "test_sampler: Schema '%s' already "
+		ovis_log(mylog, OVIS_LERROR, "Schema '%s' already "
 				"exists.\n", schema_name);
 		return EEXIST;
 	}
@@ -827,7 +827,7 @@ static int config_add_schema(struct attr_value_list *avl)
 	metrics = av_value(avl, "metrics");
 	value = av_value(avl, "num_metrics");
 	if (!metrics && !value) {
-		msglog(LDMSD_LERROR, "test_sampler: Either metrics or "
+		ovis_log(mylog, OVIS_LERROR, "Either metrics or "
 				"num_metrics must be given\n");
 		return EINVAL;
 	}
@@ -939,7 +939,7 @@ static int config_add_schema(struct attr_value_list *avl)
 
 	ts_schema = test_sampler_schema_new(schema_name);
 	if (!ts_schema) {
-		msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
+		ovis_log(mylog, OVIS_LERROR, "Out of memory\n");
 		return ENOMEM;
 	}
 
@@ -951,7 +951,7 @@ static int config_add_schema(struct attr_value_list *avl)
 
 	ts_schema->schema = ldms_schema_from_template(schema_name, temp, mid);
 	if (!ts_schema->schema) {
-		msglog(LDMSD_LERROR, "test_sampler: Failed to create a schema\n");
+		ovis_log(mylog, OVIS_LERROR, "Failed to create a schema\n");
 		rc = ENOMEM;
 		goto cleanup;
 	}
@@ -1035,7 +1035,7 @@ static int __init_set(struct test_sampler_set *ts_set)
 				ldms_metric_set(ts_set->set, mid, &v);
 			}
 		} else {
-			msglog(LDMSD_LERROR, "test_sampler: "
+			ovis_log(mylog, OVIS_LERROR, "test_sampler: "
 				"component_id=%lu is given at the action=add_set line "
 				"but the set does not contain the metric 'component_id'\n",
 				ts_set->compid);
@@ -1053,7 +1053,7 @@ static int __init_set(struct test_sampler_set *ts_set)
 				ldms_metric_set(ts_set->set, mid, &v);
 			}
 		} else {
-			msglog(LDMSD_LERROR, "test_sampler: "
+			ovis_log(mylog, OVIS_LERROR, "test_sampler: "
 				"job_id=%lu is given at the action=add_set line "
 				"but the set does not contain the metric 'component_id'\n",
 				ts_set->jobid);
@@ -1073,18 +1073,18 @@ static int config_add_set(struct attr_value_list *avl)
 
 	char *schema_name = av_value(avl, "schema");
 	if (!schema_name) {
-		msglog(LDMSD_LERROR, "test_sampler: Need schema name\n");
+		ovis_log(mylog, OVIS_LERROR, "Need schema name\n");
 		return EINVAL;
 	}
 
 	char *set_name = av_value(avl, "instance");
 	if (!set_name) {
-		msglog(LDMSD_LERROR, "test_sampler: Need set name\n");
+		ovis_log(mylog, OVIS_LERROR, "Need set name\n");
 		return EINVAL;
 	}
 	ts_schema = test_sampler_schema_find(&schema_list, schema_name);
 	if (!ts_schema) {
-		msglog(LDMSD_LERROR, "test_sampler: Schema '%s' does not "
+		ovis_log(mylog, OVIS_LERROR, "Schema '%s' does not "
 				"exist.\n", schema_name);
 		return EINVAL;
 	}
@@ -1094,7 +1094,7 @@ static int config_add_set(struct attr_value_list *avl)
 
 	char *producer = av_value(avl, "producer");
 	if (!producer) {
-		msglog(LDMSD_LERROR, "test_sampler: Need producer name\n");
+		ovis_log(mylog, OVIS_LERROR, "Need producer name\n");
 		return EINVAL;
 	}
 
@@ -1105,7 +1105,7 @@ static int config_add_set(struct attr_value_list *avl)
 
 	set = ldms_set_new(set_name, ts_schema->schema);
 	if (!set) {
-		msglog(LDMSD_LERROR, "test_sampler: Cannot create "
+		ovis_log(mylog, OVIS_LERROR, "Cannot create "
 				"set '%s'\n", set_name);
 		return ENOMEM;
 	}
@@ -1118,7 +1118,7 @@ static int config_add_set(struct attr_value_list *avl)
 
 	ts_set->producer = strdup(producer);
 	if (!ts_set->producer) {
-		msglog(LDMSD_LCRITICAL, "test_sampler: Out of memory\n");
+		ovis_log(mylog, OVIS_LCRITICAL, "Out of memory\n");
 		goto err0;
 	}
 
@@ -1136,7 +1136,7 @@ static int config_add_set(struct attr_value_list *avl)
 	if (jobid) {
 		v.v_u64 = strtoull(jobid, &endptr, 0);
 		if (*endptr != '\0') {
-			msglog(LDMSD_LERROR, "test_sampler: invalid "
+			ovis_log(mylog, OVIS_LERROR, "invalid "
 					"jobid %s\n", jobid);
 			rc = EINVAL;
 			goto err1;
@@ -1176,7 +1176,7 @@ static int config_add_default(struct attr_value_list *avl)
 	if (!sname)
 		sname = strdup(DEFAULT_SCHEMA_NAME);
 	if (strlen(sname) == 0){
-		msglog(LDMSD_LERROR, "test_sampler: schema name invalid.\n");
+		ovis_log(mylog, OVIS_LERROR, "schema name invalid.\n");
 		return EINVAL;
 	}
 
@@ -1318,13 +1318,13 @@ static int config_add_lists(struct attr_value_list *avl)
 
 	schema_name = av_value(avl, "schema");
 	if (!schema_name) {
-		msglog(LDMSD_LERROR, "test_sampler: schema is required.\n");
+		ovis_log(mylog, OVIS_LERROR, "schema is required.\n");
 		rc = EINVAL;
 		goto err;
 	}
 
 	if (strlen(schema_name) == 0) {
-		msglog(LDMSD_LERROR, "test_sampler: schema name invalid.\n");
+		ovis_log(mylog, OVIS_LERROR, "schema name invalid.\n");
 		rc = EINVAL;
 		goto err;
 	}
@@ -1337,7 +1337,7 @@ static int config_add_lists(struct attr_value_list *avl)
 		num_lists = 0;
 		a = strdup(s);
 		if (!a) {
-			msglog(LDMSD_LCRITICAL, "test_sampler: Out of memory\n");
+			ovis_log(mylog, OVIS_LCRITICAL, "Out of memory\n");
 			rc = ENOMEM;
 			goto err;
 		}
@@ -1351,7 +1351,7 @@ static int config_add_lists(struct attr_value_list *avl)
 
 	linfo = calloc(num_lists, sizeof(struct test_sampler_list_info));
 	if (!linfo) {
-		msglog(LDMSD_LCRITICAL, "test_sampler: Out of memory\n");
+		ovis_log(mylog, OVIS_LCRITICAL, "Out of memory\n");
 		rc = ENOMEM;
 		goto err;
 	}
@@ -1361,7 +1361,7 @@ static int config_add_lists(struct attr_value_list *avl)
 		while (a) {
 			linfo[i].type = ldms_metric_str_to_type(a);
 			if (LDMS_V_NONE == linfo[i].type) {
-				msglog(LDMSD_LERROR, "test_sampler: unrecognized value type '%s'\n", a);
+				ovis_log(mylog, OVIS_LERROR, "unrecognized value type '%s'\n", a);
 				rc = EINVAL;
 				goto err;
 			}
@@ -1420,7 +1420,7 @@ static int config_add_lists(struct attr_value_list *avl)
 	/* Create a record definition */
 	rec_def = ldms_record_from_template(RECORD_TYPE, default_rec_contents, rec_content_ids);
 	if (!rec_def) {
-		msglog(LDMSD_LERROR, "test_sampler: schema %s: "
+		ovis_log(mylog, OVIS_LERROR, "schema %s: "
 				"Failed to create the record type.\n",
 				schema_name);
 		rc = errno;
@@ -1430,13 +1430,13 @@ static int config_add_lists(struct attr_value_list *avl)
 	/* +1 for the terminating element */
 	temp = calloc(card + 1, sizeof(struct ldms_metric_template_s));
 	if (!temp) {
-		msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
+		ovis_log(mylog, OVIS_LERROR, "Out of memory\n");
 		rc = ENOMEM;
 		goto err;
 	}
 	mid = malloc((card + 1) * sizeof(int));
 	if (!mid) {
-		msglog(LDMSD_LCRITICAL, "test_sampler: Out of memory\n");
+		ovis_log(mylog, OVIS_LCRITICAL, "Out of memory\n");
 		rc = ENOMEM;
 		goto err;
 	}
@@ -1485,7 +1485,7 @@ static int config_add_lists(struct attr_value_list *avl)
 
 	ts_schema = test_sampler_schema_find(&schema_list, schema_name);
 	if (ts_schema) {
-		msglog(LDMSD_LERROR, "test_sampler: "
+		ovis_log(mylog, OVIS_LERROR, ""
 				"Schema '%s' already exists.\n",
 				schema_name);
 		rc = EEXIST;
@@ -1494,7 +1494,7 @@ static int config_add_lists(struct attr_value_list *avl)
 
 	ts_schema = test_sampler_schema_new(schema_name);
 	if (!ts_schema) {
-		msglog(LDMSD_LERROR, "test_sampler: Our of memory\n");
+		ovis_log(mylog, OVIS_LERROR, "Our of memory\n");
 		rc = ENOMEM;
 		goto err;
 	}
@@ -1502,7 +1502,7 @@ static int config_add_lists(struct attr_value_list *avl)
 
 	ts_schema->schema = ldms_schema_from_template(schema_name, temp, mid);
 	if (!ts_schema->schema) {
-		msglog(LDMSD_LERROR, "test_sampler: failed to create "
+		ovis_log(mylog, OVIS_LERROR, "failed to create "
 					"a schema %s\n", schema_name);
 		rc = EINTR;
 		goto err;
@@ -1510,7 +1510,7 @@ static int config_add_lists(struct attr_value_list *avl)
 
 	minfo = calloc(card + 1, sizeof(struct test_sampler_metric_info));
 	if (!minfo) {
-		msglog(LDMSD_LCRITICAL, "test_sampler: Out of memory\n");
+		ovis_log(mylog, OVIS_LCRITICAL, "Out of memory\n");
 		rc = ENOMEM;
 		goto err;
 	}
@@ -1529,7 +1529,7 @@ static int config_add_lists(struct attr_value_list *avl)
 			minfo[i].info.rec_def.contents = calloc(ARRAY_SIZE(default_rec_contents),
 								sizeof(struct test_sampler_metric_info));
 			if (!minfo[i].info.rec_def.contents) {
-				msglog(LDMSD_LCRITICAL, "test_sampler: Out of memory\n");
+				ovis_log(mylog, OVIS_LCRITICAL, "Out of memory\n");
 				rc = ENOMEM;
 				goto err;
 			}
@@ -1577,13 +1577,13 @@ static int config_add_stream(struct attr_value_list *avl)
 
 	stream_name = av_value(avl, "stream");
 	if (!stream_name) {
-		msglog(LDMSD_LERROR, "test_sampler: 'stream' is required.\n");
+		ovis_log(mylog, OVIS_LERROR, "'stream' is required.\n");
 		return EINVAL;
 	}
 
 	type = av_value(avl, "type"); /* stream type */
 	if (!type) {
-		msglog(LDMSD_LERROR, "test_sampler: 'type' is required.\n");
+		ovis_log(mylog, OVIS_LERROR, "'type' is required.\n");
 		return EINVAL;
 	}
 	if (0 == strcasecmp(type, "json")) {
@@ -1591,14 +1591,14 @@ static int config_add_stream(struct attr_value_list *avl)
 	} else if (0 == strcasecmp(type, "string")) {
 		stype = LDMS_STREAM_STRING;
 	} else {
-		msglog(LDMSD_LERROR, "test_sampler: The 'type' value ('%s') is "
+		ovis_log(mylog, OVIS_LERROR, "The 'type' value ('%s') is "
 							   "invalid.\n", type);
 		return EINVAL;
 	}
 
 	path = av_value(avl, "path");
 	if (!path) {
-		msglog(LDMSD_LERROR, "test_sampler: 'path' is required.\n");
+		ovis_log(mylog, OVIS_LERROR, "'path' is required.\n");
 		return EINVAL;
 	}
 
@@ -1607,7 +1607,7 @@ static int config_add_stream(struct attr_value_list *avl)
 		host = "localhost";
 	port = av_value(avl, "port");
 	if (!port) {
-		msglog(LDMSD_LERROR, "test_sampler: 'port' is required.\n");
+		ovis_log(mylog, OVIS_LERROR, "'port' is required.\n");
 		return EINVAL;
 	}
 	xprt = av_value(avl, "xprt");
@@ -1620,7 +1620,7 @@ static int config_add_stream(struct attr_value_list *avl)
 	ts_stream = __stream_find(&stream_list, stream_name);
 	if (ts_stream) {
 		if (0 != strcmp(path, ts_stream->path)) {
-			msglog(LDMSD_LERROR, "test_sampler: stream '%s' "
+			ovis_log(mylog, OVIS_LERROR, "stream '%s' "
 					"already exists.\n", stream_name);
 			return EINVAL;
 		}
@@ -1635,7 +1635,7 @@ static int config_add_stream(struct attr_value_list *avl)
 		}
 		ts_stream->file = fopen(ts_stream->path, "r");
 		if (!ts_stream->file) {
-			msglog(LDMSD_LERROR, "test_sampler: Cannot open file '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "Cannot open file '%s'\n",
 								ts_stream->path);
 			rc = EINVAL;
 			goto err;
@@ -1645,7 +1645,7 @@ static int config_add_stream(struct attr_value_list *avl)
 
 	c = __stream_client_find(ts_stream, host, port, xprt, auth);
 	if (c) {
-		msglog(LDMSD_LERROR, "test_sampler: stream '%s' the client "
+		ovis_log(mylog, OVIS_LERROR, "stream '%s' the client "
 				"%s:%s:%s already exists.\n", ts_stream->name,
 				c->xprt, c->port, c->host, c->auth_dom->obj.name);
 	} else {
@@ -1663,7 +1663,7 @@ static int config_add_stream(struct attr_value_list *avl)
 			goto enomem;
 		c->auth_dom = ldmsd_auth_find(auth);
 		if (!c->auth_dom) {
-			msglog(LDMSD_LERROR, "test_sampler: Cannot find auth '%s'\n", auth);
+			ovis_log(mylog, OVIS_LERROR, "Cannot find auth '%s'\n", auth);
 			rc = EINVAL;
 			goto err;
 		}
@@ -1683,7 +1683,7 @@ static int config_add_stream(struct attr_value_list *avl)
 	return 0;
 
 enomem:
-	msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
+	ovis_log(mylog, OVIS_LERROR, "Out of memory\n");
 	rc = ENOMEM;
 err:
 	if (c)
@@ -1712,7 +1712,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		} else if (0 == strcmp(action, "add_stream")) {
 			rc = config_add_stream(avl);
 		} else {
-			msglog(LDMSD_LERROR, "test_sampler: Unrecognized "
+			ovis_log(mylog, OVIS_LERROR, "Unrecognized "
 				"action '%s'.\n", action);
 			rc = EINVAL;
 		}
@@ -1912,7 +1912,7 @@ static int sample(struct ldmsd_sampler *self)
 					NULL, 0440,
 					ts_stream->file);
 			if (rc) {
-				msglog(LDMSD_LERROR, "test_sampler: Failed to "
+				ovis_log(mylog, OVIS_LERROR, "Failed to "
 					"publish stream '%s' to %s:%s:%s:%s\n",
 					ts_stream->name, c->xprt, c->port,
 					c->host, c->auth_dom->obj.name);
@@ -1935,6 +1935,8 @@ static void term(struct ldmsd_plugin *self)
 		LIST_REMOVE(ts_stream, entry);
 		__stream_free(ts_stream);
 	}
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -2005,7 +2007,7 @@ static const char *usage(struct ldmsd_plugin *self)
 
 static struct ldmsd_sampler test_sampler_plugin = {
 	.base = {
-		.name = "test_sampler",
+		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
@@ -2015,9 +2017,15 @@ static struct ldmsd_sampler test_sampler_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	LIST_INIT(&schema_list);
 	LIST_INIT(&set_list);
 	LIST_INIT(&stream_list);

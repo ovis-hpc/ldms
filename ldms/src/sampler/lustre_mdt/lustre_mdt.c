@@ -22,9 +22,10 @@
 #define MDT_PATH "/proc/fs/lustre/mdt"
 #define OSD_SEARCH_PATH "/proc/fs/lustre"
 
+ovis_log_t luster_mdt_log;
+
 static struct comp_id_data cid;
 
-ldmsd_msg_log_f log_fn;
 char producer_name[LDMS_PRODUCER_NAME_MAX];
 
 /* red-black tree root for mdts */
@@ -53,7 +54,7 @@ static struct mdt_data *mdt_create(const char *mdt_name, const char *basedir)
         char path_tmp[PATH_MAX]; /* TODO: move large stack allocation to heap */
         char *state;
 
-        log_fn(LDMSD_LDEBUG, SAMP" mdt_create() %s from %s\n",
+        ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" mdt_create() %s from %s\n",
                mdt_name, basedir);
         mdt = calloc(1, sizeof(*mdt));
         if (mdt == NULL)
@@ -77,7 +78,7 @@ static struct mdt_data *mdt_create(const char *mdt_name, const char *basedir)
         if (mdt->fs_name == NULL)
                 goto out6;
         if (strtok_r(mdt->fs_name, "-", &state) == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" unable to parse filesystem name from \"%s\"\n",
+                ovis_log(luster_mdt_log, OVIS_LWARNING, SAMP" unable to parse filesystem name from \"%s\"\n",
                        mdt->fs_name);
                 goto out7;
         }
@@ -107,7 +108,7 @@ out1:
 
 static void mdt_destroy(struct mdt_data *mdt)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" mdt_destroy() %s\n", mdt->name);
+        ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" mdt_destroy() %s\n", mdt->name);
         mdt_general_destroy(mdt->general_metric_set);
         mdt_job_stats_destroy(&mdt->job_stats);
         free(mdt->osd_path);
@@ -152,7 +153,7 @@ static void mdts_refresh()
 
         dir = opendir(MDT_PATH);
         if (dir == NULL) {
-                log_fn(LDMSD_LDEBUG, SAMP" unable to open obdfilter dir %s\n",
+                ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" unable to open obdfilter dir %s\n",
                        MDT_PATH);
                 return;
         }
@@ -206,13 +207,13 @@ static void mdts_sample()
 static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
+        ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" config() called\n");
 	char *ival = av_value(avl, "producer");
 	if (ival) {
 		if (strlen(ival) < sizeof(producer_name)) {
 			strncpy(producer_name, ival, sizeof(producer_name));
 		} else {
-                        log_fn(LDMSD_LERROR, SAMP": config: producer name too long.\n");
+                        ovis_log(luster_mdt_log, OVIS_LERROR, SAMP": config: producer name too long.\n");
                         return EINVAL;
 		}
 	}
@@ -222,16 +223,16 @@ static int config(struct ldmsd_plugin *self,
 
 static int sample(struct ldmsd_sampler *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
+        ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" sample() called\n");
         if (mdt_general_schema_is_initialized() < 0) {
                 if (mdt_general_schema_init(&cid) < 0) {
-                        log_fn(LDMSD_LERROR, SAMP" general schema create failed\n");
+                        ovis_log(luster_mdt_log, OVIS_LERROR, SAMP" general schema create failed\n");
                         return ENOMEM;
                 }
         }
         if (mdt_job_stats_schema_is_initialized() < 0) {
                 if (mdt_job_stats_schema_init() < 0) {
-                        log_fn(LDMSD_LERROR, SAMP" job stats schema create failed\n");
+                        ovis_log(luster_mdt_log, OVIS_LERROR, SAMP" job stats schema create failed\n");
                         return ENOMEM;
                 }
         }
@@ -244,10 +245,12 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
-        mdts_destroy();
-        mdt_general_schema_fini();
-        mdt_job_stats_schema_fini();
+	ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" term() called\n");
+	mdts_destroy();
+	mdt_general_schema_fini();
+	mdt_job_stats_schema_fini();
+	if (luster_mdt_log)
+		ovis_log_destroy(luster_mdt_log);
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -257,7 +260,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" usage() called\n");
+	ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" usage() called\n");
 	return  "config name=" SAMP;
 }
 
@@ -273,10 +276,16 @@ static struct ldmsd_sampler mdt_job_stats_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-        log_fn = pf;
-        log_fn(LDMSD_LDEBUG, SAMP" get_plugin() called ("PACKAGE_STRING")\n");
+	int rc;
+	luster_mdt_log = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!luster_mdt_log) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+				"of '" SAMP "' plugin. Error %d.\n", rc);
+	}
+	ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" get_plugin() called ("PACKAGE_STRING")\n");
         rbt_init(&mdt_tree, string_comparator);
         gethostname(producer_name, sizeof(producer_name));
 

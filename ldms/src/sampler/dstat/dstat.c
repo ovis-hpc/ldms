@@ -97,9 +97,9 @@ struct mm_metrics {
 	uint64_t used_holes;
 };
 
+static ovis_log_t mylog;
 
 static int pidopts = 0; /* pid-opts: bitwise-or of the PID_ flags */
-static ldmsd_msg_log_f msglog;
 static long tick;
 
 static bool get_bool(const char *val, char *name)
@@ -121,7 +121,7 @@ static bool get_bool(const char *val, char *name)
 	case 'N':
 		return false;
 	default:
-		msglog(LDMSD_LERROR, "%s: bad bool value %s for %s\n",
+		ovis_log(mylog, OVIS_LERROR, "bad bool value %s for %s\n",
 			val, name);
 		return false;
 	}
@@ -286,7 +286,7 @@ static int create_metric_set(base_data_t base)
 	if (pidopts & PID_IO) {
 		iorc = parse_proc_pid_io(&io, pids);
 		if (iorc != 0) {
-			msglog(LDMSD_LERROR, SAMP ": unable to read /proc/%s/io (%s)\n",
+			ovis_log(mylog, OVIS_LERROR, "unable to read /proc/%s/io (%s)\n",
 				pids, STRERROR(iorc));
 			return iorc;
 		}
@@ -294,7 +294,7 @@ static int create_metric_set(base_data_t base)
 	if (pidopts & PID_STAT) {
 		statrc = parse_proc_pid_stat(&stat, pids);
 		if (statrc != 0) {
-			msglog(LDMSD_LERROR, SAMP ": unable to read /proc/%s/stat (%s)\n",
+			ovis_log(mylog, OVIS_LERROR, "unable to read /proc/%s/stat (%s)\n",
 				pids, STRERROR(statrc));
 			return statrc;
 		}
@@ -302,7 +302,7 @@ static int create_metric_set(base_data_t base)
 	if (pidopts & PID_STATM) {
 		statmrc = parse_proc_pid_statm(&statm, pids);
 		if (statmrc != 0) {
-			msglog(LDMSD_LERROR, SAMP ": unable to read /proc/%s/statm (%s)\n",
+			ovis_log(mylog, OVIS_LERROR, "unable to read /proc/%s/statm (%s)\n",
 				pids, STRERROR(statmrc));
 			return statmrc;
 		}
@@ -311,7 +311,7 @@ static int create_metric_set(base_data_t base)
 		bool details = ((pidopts & PID_FDTYPES) != 0);
 		fdrc = parse_proc_pid_fd(&fd, pids, details);
 		if (fdrc != 0) {
-			msglog(LDMSD_LERROR, SAMP ": unable to read /proc/%s/fd (%s)\n",
+			ovis_log(mylog, OVIS_LERROR, "unable to read /proc/%s/fd (%s)\n",
 				pids, STRERROR(fdrc));
 			return fdrc;
 		}
@@ -377,7 +377,7 @@ static int create_metric_set(base_data_t base)
 		break; \
 	default: \
 		rc = EINVAL; \
-		msglog(LDMSD_LERROR, SAMP ": sample " n " not correctly defined.\n"); \
+		ovis_log(mylog, OVIS_LERROR, "sample " n " not correctly defined.\n"); \
 	}
 
 
@@ -469,35 +469,35 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
-	msglog(LDMSD_LDEBUG, SAMP ": config started.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "config started.\n");
 
 	rc = ldmsd_plugattr_config_check(dstat_opts, dstat_words, avl, kwl,
 		NULL, SAMP);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": bad config options.\n");
+		ovis_log(mylog, OVIS_LERROR, "bad config options.\n");
 		return EINVAL;
 	}
 
 	char *sbuf = compute_pidopts_schema(kwl, avl);
 	if (!sbuf) {
-		msglog(LDMSD_LERROR, SAMP ": configure out of memory.\n");
+		ovis_log(mylog, OVIS_LERROR, "configure out of memory.\n");
 		rc = EINVAL;
 		goto err;
 	} else {
-		msglog(LDMSD_LDEBUG, SAMP ": configure dstat with schema %s.\n",
+		ovis_log(mylog, OVIS_LDEBUG, "configure dstat with schema %s.\n",
 		sbuf);
 	}
 
 	if (!pidopts) {
-		msglog(LDMSD_LERROR, SAMP ": configured with nothing to do.\n");
+		ovis_log(mylog, OVIS_LERROR, "configured with nothing to do.\n");
 		rc = EINVAL;
 		goto err;
 	}
 
-	base = base_config(avl, SAMP, sbuf, msglog);
+	base = base_config(avl, SAMP, sbuf, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -505,17 +505,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
-	msglog(LDMSD_LDEBUG, SAMP ": config done.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "config done.\n");
 	free(sbuf);
 	return 0;
  err:
 	base_del(base);
 	if (sbuf)
 		free(sbuf);
-	msglog(LDMSD_LDEBUG, SAMP ": config fail.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "config fail.\n");
 	return rc;
 }
 
@@ -528,7 +528,7 @@ static int sample(struct ldmsd_sampler *self)
 {
 	int rc = 0;
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 	PID_DATA;
@@ -578,6 +578,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler dstat_plugin = {
@@ -592,9 +594,15 @@ static struct ldmsd_sampler dstat_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &dstat_plugin.base;
 }

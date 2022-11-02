@@ -54,7 +54,6 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-static ldmsd_msg_log_f msglog;
 static uint64_t delay = 0; /* delay in usec, default is `no delay` */
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -123,8 +122,7 @@ static struct ldmsd_store store_none = {
 	.close = close_store,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
 	return &store_none.base;
 }

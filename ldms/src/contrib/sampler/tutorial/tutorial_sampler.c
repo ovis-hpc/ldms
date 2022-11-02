@@ -78,8 +78,8 @@ struct tutorial_set {
 	int metric_offset;
 };
 
+static ovis_log_t mylog;
 static struct tutorial_set tsets[MAXSETS];
-static ldmsd_msg_log_f msglog;
 static int num_sets = 0;
 
 
@@ -91,11 +91,11 @@ static int create_metric_set(struct tutorial_set* tset)
 	char metric_name[128];
 	const char *s;
 
-	msglog(LDMSD_LINFO, SAMP ": Calling create_metric_set\n");
+	ovis_log(mylog, OVIS_LINFO, "Calling create_metric_set\n");
 
 	schema = base_schema_new(tset->base);
 	if (!schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, tset->base->schema_name, errno);
 		rc = errno;
@@ -108,7 +108,7 @@ static int create_metric_set(struct tutorial_set* tset)
 	// add metrics
 	for (i = 0; i < tset->num_metrics; i++){
 		rc = snprintf(metric_name, 128, "%s%d", "metric", i);
-		msglog(LDMSD_LINFO, SAMP ": adding metric '%s'\n", metric_name);
+		ovis_log(mylog, OVIS_LINFO, "adding metric '%s'\n", metric_name);
 		rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
 		if (rc < 0) {
 			rc = ENOMEM;
@@ -116,10 +116,10 @@ static int create_metric_set(struct tutorial_set* tset)
 		}
 	};
 
-	msglog(LDMSD_LINFO, SAMP ": About to call base_set_new schema\n");
+	ovis_log(mylog, OVIS_LINFO, "About to call base_set_new schema\n");
 	set = base_set_new(tset->base);
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": base_set_new failing\n");
+		ovis_log(mylog, OVIS_LDEBUG, "base_set_new failing\n");
 		rc = errno;
 		goto err;
 	}
@@ -128,19 +128,19 @@ static int create_metric_set(struct tutorial_set* tset)
 
 
 	// TUT: Comment in/out -- what are our full variables? From the set
-	msglog(LDMSD_LINFO, SAMP ": full metrics: (%d in base)\n", tset->metric_offset);
+	ovis_log(mylog, OVIS_LINFO, "full metrics: (%d in base)\n", tset->metric_offset);
 	j = ldms_set_card_get(set);
 	for (i = 0; i < j; i++){
 		s = ldms_metric_name_get(set, i);
-		msglog(LDMSD_LINFO, SAMP ": full metric %d '%s'\n", i, s);
+		ovis_log(mylog, OVIS_LINFO, "full metric %d '%s'\n", i, s);
 	}
 
 
-	msglog(LDMSD_LINFO, SAMP ": Leaving create_metric_set\n");
+	ovis_log(mylog, OVIS_LINFO, "Leaving create_metric_set\n");
 	return 0;
 
  err:
-	msglog(LDMSD_LDEBUG, SAMP ": exiting create_metric_set with error %d\n", rc);
+	ovis_log(mylog, OVIS_LDEBUG, "exiting create_metric_set with error %d\n", rc);
 	return rc;
 }
 
@@ -156,10 +156,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc;
 
 	// TUT: demo of log lines in file
-	msglog(LDMSD_LINFO, SAMP ": Calling config for set %d\n", num_sets);
+	ovis_log(mylog, OVIS_LINFO, "Calling config for set %d\n", num_sets);
 
 	if (num_sets == (MAXSETS-1)){
-		msglog(LDMSD_LERROR, SAMP ": Too many sets.\n");
+		ovis_log(mylog, OVIS_LERROR, "Too many sets.\n");
 		return EINVAL;
 	}
 
@@ -173,7 +173,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 	//producer, component_id, instance, schema etc all in base_config
-	tsets[num_sets].base = base_config(avl, SAMP, SAMP, msglog);
+	tsets[num_sets].base = base_config(avl, SAMP, SAMP, mylog);
 	if (!tsets[num_sets].base) {
 		rc = errno;
 		goto err;
@@ -181,13 +181,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(&(tsets[num_sets]));
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 
 	num_sets++;
 
-	msglog(LDMSD_LINFO, SAMP ": Leaving config\n");
+	ovis_log(mylog, OVIS_LINFO, "Leaving config\n");
 	return 0;
 
 
@@ -209,10 +209,10 @@ static int sample(struct ldmsd_sampler *self)
 
 
 	for (i = 0; i < num_sets; i++){
-		msglog(LDMSD_LINFO, SAMP ": sampling for set %d\n", i);
+		ovis_log(mylog, OVIS_LINFO, "sampling for set %d\n", i);
 
 		if (!tsets[i].set) {
-			msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+			ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 			return EINVAL;
 		}
 
@@ -254,6 +254,8 @@ static void term(struct ldmsd_plugin *self)
 		tsets[i].metric_offset = 0;
 	}
 	num_sets = 0;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler tutorial_sampler_plugin = {
@@ -268,8 +270,12 @@ static struct ldmsd_sampler tutorial_sampler_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	mylog = ovis_log_register("sampler."SAMP, "Messages for the " SAMP " plugin");
+	if (!mylog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the " SAMP " plugin's "
+				"log subsystem. Error %d.\n", errno);
+	}
 	return &tutorial_sampler_plugin.base;
 }

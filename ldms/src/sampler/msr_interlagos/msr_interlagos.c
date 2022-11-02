@@ -264,8 +264,9 @@ static int kw_comparator(const void *a, const void *b)
 	return strcmp(_a->token, _b->token);
 }
 
+static ovis_log_t mylog;
+
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 static char *producer_name = NULL;
 static char *instance_name = NULL;
 static char *schema_name = NULL;
@@ -343,7 +344,7 @@ static int parseConfig(char* fname){
 
 	FILE *fp = fopen(fname, "r");
 	if (!fp){
-		msglog(LDMSD_LERROR, "%s: Cannot open config file <%s>\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Cannot open config file <%s>\n",
 		       __FILE__, fname);
 		return EINVAL;
 	}
@@ -356,7 +357,7 @@ static int parseConfig(char* fname){
 		if (!s)
 			break;
 		if ((strlen(lbuf) > 0)  && (lbuf[0] == '#')){
-			msglog(LDMSD_LWARNING, "Comment in msr config file <%s>. Skipping\n",
+			ovis_log(mylog, OVIS_LWARNING, "Comment in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
@@ -364,18 +365,18 @@ static int parseConfig(char* fname){
 			    name, &w_reg, &event, &umask, &r_reg, &os_user,
 			    &int_core_ena, &int_core_sel, core_flag, temp);
 		if (rc != 10){
-			msglog(LDMSD_LWARNING,
+			ovis_log(mylog, OVIS_LWARNING,
 			       "Bad format in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
-		msglog(LDMSD_LDEBUG, "msr config fields: <%s> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%s> <%s>\n",
+		ovis_log(mylog, OVIS_LDEBUG, "msr config fields: <%s> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%s> <%s>\n",
 		       name, w_reg, event, umask, r_reg, os_user, int_core_ena,
 		       int_core_sel, core_flag, temp);
 
 		if ((strcmp(core_flag, "MSR_DEFAULT") != 0) &&
 		    (strcmp(core_flag, "UNCORE_PER_NUMA") != 0)){
-			msglog(LDMSD_LDEBUG,
+			ovis_log(mylog, OVIS_LDEBUG,
 			       "Bad core_flag in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
@@ -383,7 +384,7 @@ static int parseConfig(char* fname){
 
 		if ((strcmp(temp, "CTR_UNCORE") != 0) &&
 		    (strcmp(temp, "CTR_NUMCORE") != 0)){
-			msglog(LDMSD_LWARNING,
+			ovis_log(mylog, OVIS_LWARNING,
 			       "Bad type in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
@@ -391,7 +392,7 @@ static int parseConfig(char* fname){
 
 		if ((strcmp(temp, "CTR_NUMCORE") == 0) &&
 		    (strcmp(core_flag, "UNCORE_PER_NUMA") == 0)){
-			msglog(LDMSD_LWARNING,
+			ovis_log(mylog, OVIS_LWARNING,
 			       "Core flag type mismatch in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
@@ -423,7 +424,7 @@ static int parseConfig(char* fname){
 			break;
 
 		if ((strlen(lbuf) > 0)  && (lbuf[0] == '#')){
-			msglog(LDMSD_LWARNING, "Comment in msr config file <%s>. Skipping\n",
+			ovis_log(mylog, OVIS_LWARNING, "Comment in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
@@ -454,7 +455,7 @@ static int parseConfig(char* fname){
 		}
 
 		if (i == count){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "Changed number of valid entries from first pass. aborting.\n");
 			free(counter_assignments);
 			free(initnames);
@@ -518,7 +519,7 @@ static int halt(struct attr_value_list *kwl, struct attr_value_list *avl,
 	char* value;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": in wrong state for halting events <%d>\n",
 		       cfgstate);
 		return -1;
@@ -526,7 +527,7 @@ static int halt(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	value = av_value(avl, "metricname");
 	if (!value){
-		msglog(LDMSD_LERROR, SAMP ": no name to halt\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": no name to halt\n");
 		return -1;
 	}
 
@@ -547,7 +548,7 @@ static int halt(struct attr_value_list *kwl, struct attr_value_list *avl,
 	} else {
 		pe = findactivecounter(value);
 		if (pe == NULL){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": cannot find <%s> to halt\n",
 			       value);
 			pthread_mutex_unlock(&cfglock);
@@ -579,7 +580,7 @@ static int cont(struct attr_value_list *kwl, struct attr_value_list *avl,
 	char* value;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": in wrong state for continuing events <%d>\n",
 		       cfgstate);
 		return -1;
@@ -587,7 +588,7 @@ static int cont(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	value = av_value(avl, "metricname");
 	if (!value){
-		msglog(LDMSD_LERROR, SAMP ": no name to continue\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": no name to continue\n");
 		return -1;
 	}
 
@@ -606,7 +607,7 @@ static int cont(struct attr_value_list *kwl, struct attr_value_list *avl,
 	} else {
 		pe = findactivecounter(value);
 		if (pe == NULL){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": cannot find <%s> to continue\n",
 			       value);
 			pthread_mutex_unlock(&cfglock);
@@ -638,7 +639,7 @@ int writeregistercpu(uint64_t x_reg, int cpu, uint64_t val){
 	fd = open(fname, O_WRONLY);
 	if (fd < 0) {
 		int errsv = errno;
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": writeregistercpu cannot open fd=<%d> for cpu %d errno=<%d>",
 		       fd, cpu, errsv);
 		return -1;
@@ -647,7 +648,7 @@ int writeregistercpu(uint64_t x_reg, int cpu, uint64_t val){
 	dat = val;
 	if (pwrite(fd, &dat, sizeof dat, x_reg) != sizeof dat) {
 		int errsv = errno;
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": writeregistercpu cannot pwrite MSR 0x%08" PRIx64
 		       " to 0x%016" PRIx64 " for cpu %d errno=<%d>\n",
 		       x_reg, dat, cpu, errsv);
@@ -670,7 +671,7 @@ int readregistercpu(uint64_t x_reg, int cpu, uint64_t* val){
 	fd = open(fname, O_RDONLY);
 	if (fd < 0) {
 		int errsv = errno;
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": readregistercpu cannot open fd=<%d> for cpu %d errno=<%d>",
 		       fd, cpu, errsv);
 		return -1;
@@ -678,7 +679,7 @@ int readregistercpu(uint64_t x_reg, int cpu, uint64_t* val){
 
 	if (pread(fd, &dat, sizeof dat, x_reg) != sizeof dat) {
 		int errsv = errno;
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": readregistercpu cannot pread MSR 0x%08" PRIx64
 		       " for cpu %d errno=<%d>\n",
 		       x_reg, cpu, errsv);
@@ -778,14 +779,14 @@ static int checkregister( struct active_counter *pe){
 	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
 		rc = readregistercpu(pe->mctr->w_reg, i, &val);
 		if (rc != 0){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": <%s> readregistercpu bad %d\n",
 			       pe->mctr->name, rc);
 			return rc;
 		}
 		//              printf("Comparing %llx to %llx\n", val, pe->wctl);
 		if (val != pe->wctl[i]){
-			msglog(LDMSD_LDEBUG,
+			ovis_log(mylog, OVIS_LDEBUG,
 			       SAMP ": Register changed! read <%llx> want <%llx>\n",
 			       val, pe->wctl[i]);
 			return -1;
@@ -806,7 +807,7 @@ static int readregister(struct active_counter *pe){
 
 	switch (pe->state){
 	case CTR_HALTED:
-		msglog(LDMSD_LDEBUG,
+		ovis_log(mylog, OVIS_LDEBUG,
 		       SAMP ": %s Halted. Register will not be read.\n",
 		       pe->mctr->name);
 		//invalidate the current vals because this is an invalid read. (but this will have already been done as part of the halt)
@@ -817,7 +818,7 @@ static int readregister(struct active_counter *pe){
 		//check all of them first
 		rc = checkregister(pe);
 		if (rc != 0){
-			msglog(LDMSD_LDEBUG,
+			ovis_log(mylog, OVIS_LDEBUG,
 			       SAMP ": Control register for %s has changed. Register will not be read.\n",
 			       pe->mctr->name);
 			//invalidate the current vals because this is an invalid read.
@@ -828,7 +829,7 @@ static int readregister(struct active_counter *pe){
 			//then read all of them
 			rc = readregisterguts(pe); //this invalidates if fails. this is an invalid read. this sets values in the metric set
 			if (rc != 0){
-				msglog(LDMSD_LERROR,
+				ovis_log(mylog, OVIS_LERROR,
 				       SAMP ": Read register failed %s\n",
 				       pe->mctr->name);
 				// we are not ok with this. do not change rc
@@ -836,7 +837,7 @@ static int readregister(struct active_counter *pe){
 		}
 		break;
 	default:
-		msglog(LDMSD_LDEBUG,
+		ovis_log(mylog, OVIS_LDEBUG,
 		       SAMP ": register state <%d>. Wont read\n",
 		       pe->state);
 		rc = 0;
@@ -899,7 +900,7 @@ static int checkreassigncounter(struct active_counter *rpe, int idx){
 			if (rpe->mctr->w_reg == pe->mctr->w_reg){
 				if (strcmp(rpe->mctr->name, pe->mctr->name) == 0){
 					//duplicates are ok
-					msglog(LDMSD_LINFO,
+					ovis_log(mylog, OVIS_LINFO,
 					       SAMP ": Notify - Duplicate assignments! <%s>\n",
 					       rpe->mctr->name);
 				} else {
@@ -934,7 +935,7 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl,
 	char* value;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": in wrong state for rewriting events <%d>\n",
 		       cfgstate);
 		return -1;
@@ -942,7 +943,7 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	value = av_value(avl, "metricname");
 	if (!value){
-		msglog(LDMSD_LERROR, SAMP ": no name to rewrite\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": no name to rewrite\n");
 		return -1;
 	}
 
@@ -951,7 +952,7 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl,
 		TAILQ_FOREACH(pe, &counter_list, entry){
 			s = writeregister(pe);
 			if (s != CTR_OK){
-				msglog(LDMSD_LERROR,
+				ovis_log(mylog, OVIS_LERROR,
 				       SAMP ": cannot rewrite register <%s>\n",
 				       value);
 				//but will continue;
@@ -961,7 +962,7 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl,
 	} else {
 		pe = findactivecounter(value);
 		if (pe == NULL){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": cannot find <%s> to rewrite\n",
 			       value);
 			pthread_mutex_unlock(&cfglock);
@@ -971,7 +972,7 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl,
 		pthread_mutex_lock(&pe->lock);
 		s = writeregister(pe);
 		if (s != CTR_OK){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": cannot rewrite register <%s>\n",
 			       value);
 			//but will continue;
@@ -992,7 +993,7 @@ static struct active_counter* reassigncounter(char* oldname, char* newname) {
 
 	if ((oldname == NULL) || (newname == NULL) ||
 	    (strlen(oldname) == 0) || (strlen(newname) == 0)){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": Invalid args to reassign counter\n");
 		return NULL;
 	}
@@ -1005,7 +1006,7 @@ static struct active_counter* reassigncounter(char* oldname, char* newname) {
 		}
 	}
 	if (idx < 0){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": No counter <%s> to reassign to\n",
 		       newname);
 		return NULL;
@@ -1014,14 +1015,14 @@ static struct active_counter* reassigncounter(char* oldname, char* newname) {
 	pthread_mutex_lock(&cfglock);
 	pe = findactivecounter(oldname);
 	if (pe == NULL){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": Cannot find counter <%s> to replace\n", oldname);
 		pthread_mutex_unlock(&cfglock);
 		return NULL;
 	} else {
 		rc = checkreassigncounter(pe, idx);
 		if (rc != 0){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": Reassignment of <%s> to <%s> invalid\n",
 			       oldname, newname);
 			pthread_mutex_unlock(&cfglock);
@@ -1048,7 +1049,7 @@ static int reassign(struct attr_value_list *kwl, struct attr_value_list *avl,
 	char* nvalue;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": in wrong state for reassigning events <%d>\n",
 		       cfgstate);
 		return -1;
@@ -1056,20 +1057,20 @@ static int reassign(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	ovalue = av_value(avl, "oldmetricname");
 	if (!ovalue){
-		msglog(LDMSD_LERROR, SAMP ": no name to rewrite\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": no name to rewrite\n");
 		return -1;
 	}
 
 	nvalue = av_value(avl, "newmetricname");
 	if (!nvalue){
-		msglog(LDMSD_LERROR, SAMP ": no name to rewrite to\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": no name to rewrite to\n");
 		return -1;
 	}
 
 	pthread_mutex_lock(&cfglock);
 	pe = reassigncounter(ovalue, nvalue);
 	if (pe == NULL){
-		msglog(LDMSD_LERROR, SAMP ": cannot reassign counter\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": cannot reassign counter\n");
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
@@ -1089,7 +1090,7 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	pthread_mutex_lock(&cfglock);
 	if (cfgstate != CFG_DONE_INIT){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": in wrong state for adding events <%d>\n",
 		       cfgstate);
 		pthread_mutex_unlock(&cfglock);
@@ -1098,14 +1099,14 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	//add an event to the list to be parsed
 	if (numinitnames == msr_numoptions){
-		msglog(LDMSD_LERROR, SAMP ": Trying to add too many events\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Trying to add too many events\n");
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
 
 	nam = av_value(avl, "metricname");
 	if ((!nam) || (strlen(nam) == 0)){
-		msglog(LDMSD_LERROR, SAMP ": Invalid event name\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Invalid event name\n");
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
@@ -1118,7 +1119,7 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl,
 		}
 	}
 	if (idx < 0){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": Non-existent event name <%s>\n", nam);
 		pthread_mutex_unlock(&cfglock);
 		return -1;
@@ -1130,7 +1131,7 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl,
 		return ENOMEM;
 	}
 
-	msglog(LDMSD_LDEBUG, SAMP ": Added event name <%s>\n", nam);
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": Added event name <%s>\n", nam);
 
 	numinitnames++;
 	pthread_mutex_unlock(&cfglock);
@@ -1176,11 +1177,11 @@ static int checkcountersinit(){ //this will only be called once, from finalize
 			    counter_assignments[jmatch].w_reg){
 				if (strcmp(initnames[i], initnames[j]) == 0){
 					//this is ok
-					msglog(LDMSD_LINFO,
+					ovis_log(mylog, OVIS_LINFO,
 					       SAMP ": Notify - Duplicate assignments! <%s>\n",
 					       initnames[i]);
 				} else {
-					msglog(LDMSD_LERROR,
+					ovis_log(mylog, OVIS_LERROR,
 					       SAMP ": Cannot have conflicting counter assignments <%s> <%s>\n",
 					       initnames[i], initnames[j]);
 					return -1;
@@ -1199,14 +1200,14 @@ static int list(struct attr_value_list *kwl, struct attr_value_list *avl,
 	struct active_counter* pe;
 
 	//FIXME: write them all out later
-	msglog(LDMSD_LINFO,"%-24s %10x %10x %10xs\n");
-	msglog(LDMSD_LINFO, "Name", "wreg", "wctl[0]", "rreg");
-	msglog(LDMSD_LINFO,"%-24s %10s %10s %10s\n",
+	ovis_log(mylog, OVIS_LINFO,"%-24s %10x %10x %10xs\n");
+	ovis_log(mylog, OVIS_LINFO, "Name", "wreg", "wctl[0]", "rreg");
+	ovis_log(mylog, OVIS_LINFO,"%-24s %10s %10s %10s\n",
 	       "------------------------",
 	       "----------", "----------", "----------");
 	pthread_mutex_lock(&cfglock);
 	TAILQ_FOREACH(pe, &counter_list, entry) {
-		msglog(LDMSD_LINFO,"%-24s %10x %10x %10x\n",
+		ovis_log(mylog, OVIS_LINFO,"%-24s %10x %10x %10x\n",
 		       pe->mctr->name, pe->mctr->w_reg, pe->wctl[0],
 		       pe->mctr->r_reg);
 	}
@@ -1229,25 +1230,25 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	int i;
 
 	if (cfgstate != CFG_PRE){
-		msglog(LDMSD_LERROR, SAMP ": cannot reinit");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": cannot reinit");
 		return -1;
 	}
 
 	if (set) {
-                msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+                ovis_log(mylog, OVIS_LERROR, SAMP ": Set already created.\n");
                 return EINVAL;
         }
 
 	cfile = av_value(avl, "conffile");
 	if (!cfile){
-		msglog(LDMSD_LERROR, SAMP ": no config file");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": no config file");
 		_free_names();
 		rc = EINVAL;
 		return rc;
 	} else {
 		rc = parseConfig(cfile);
 		if (rc != 0){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": error parsing config file. Aborting\n");
 			_free_names();
 			return rc;
@@ -1257,7 +1258,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	//get the actual number of counters = num entries like /dev/cpu/%d
 	numcore = scandir("/dev/cpu", &dlist, dfilter, 0);
 	if (numcore < 1){
-		msglog(LDMSD_LERROR, SAMP ": cannot get numcore\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": cannot get numcore\n");
 		_free_names();
 		return -1;
 	}
@@ -1268,7 +1269,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	pthread_mutex_lock(&cfglock);
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
         if (!base) {
                 rc = errno;
 		_free_names();
@@ -1281,7 +1282,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	if (val){
 		maxcore = atoi(val);
 		if ((maxcore < numcore) || (maxcore > MSR_TOOMANYMAX)){ //some big number. just a safety check.
-			msglog(LDMSD_LERROR, SAMP ": maxcore %d invalid\n",
+			ovis_log(mylog, OVIS_LERROR, SAMP ": maxcore %d invalid\n",
 			       maxcore);
 			_free_names();
 			base_del(base);
@@ -1295,7 +1296,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	if (val){
 		corespernuma = atoi(val);
 		if ((corespernuma < 1) || (corespernuma > MSR_TOOMANYMAX)){ //some big number. just a safety check.
-			msglog(LDMSD_LERROR, SAMP ": corespernuma %d invalid\n",
+			ovis_log(mylog, OVIS_LERROR, SAMP ": corespernuma %d invalid\n",
 			       maxcore);
 			_free_names();
 			base_del(base);
@@ -1303,7 +1304,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 			return -1;
 		}
 	} else {
-		msglog(LDMSD_LERROR, SAMP ": must specify corespernuma\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": must specify corespernuma\n");
 		_free_names();
 		base_del(base);
 		pthread_mutex_unlock(&cfglock);
@@ -1399,15 +1400,15 @@ int assigncounter(struct active_counter* pe, int j){ //includes the write
 		}
 
 		//WRITE COMMAND
-		msglog(LDMSD_LINFO, "WRITECMD: writeregister(0x%llx, %d, 0x%llx)\n",
+		ovis_log(mylog, OVIS_LINFO, "WRITECMD: writeregister(0x%llx, %d, 0x%llx)\n",
 		       w_reg, (pe->mctr->numcore)/(pe->mctr->offset), pe->wctl[0]);
 
 		//CHECK COMMAND
-		msglog(LDMSD_LINFO, "CHECKCMD: readregister(0x%llx, %d)\n",
+		ovis_log(mylog, OVIS_LINFO, "CHECKCMD: readregister(0x%llx, %d)\n",
 		       w_reg, (pe->mctr->numcore)/(pe->mctr->offset));
 
 		//READ COMMAND
-		msglog(LDMSD_LINFO, "READCMD: readregister(0x%llx, %d)\n",
+		ovis_log(mylog, OVIS_LINFO, "READCMD: readregister(0x%llx, %d)\n",
 		       pe->mctr->r_reg, (pe->mctr->numcore)/(pe->mctr->offset));
 	} else {
 		//Calculate a different value for each legit one
@@ -1418,15 +1419,15 @@ int assigncounter(struct active_counter* pe, int j){ //includes the write
 			pe->wctl[i] = temp_wctl;
 
 			//WRITE COMMAND
-			msglog(LDMSD_LINFO, "WRITECMD: writeregister[%d](0x%llx, %d, 0x%llx)\n",
+			ovis_log(mylog, OVIS_LINFO, "WRITECMD: writeregister[%d](0x%llx, %d, 0x%llx)\n",
 			       i, w_reg, (pe->mctr->numcore)/(pe->mctr->offset), pe->wctl[i]);
 		}
 		//CHECK COMMAND
-		msglog(LDMSD_LINFO, "CHECKCMD: readregister(0x%llx, %d)\n",
+		ovis_log(mylog, OVIS_LINFO, "CHECKCMD: readregister(0x%llx, %d)\n",
 		       w_reg, (pe->mctr->numcore)/(pe->mctr->offset));
 
 		//READ COMMAND
-		msglog(LDMSD_LINFO, "READCMD: readregister(0x%llx, %d)\n",
+		ovis_log(mylog, OVIS_LINFO, "READCMD: readregister(0x%llx, %d)\n",
 		       pe->mctr->r_reg, (pe->mctr->numcore)/(pe->mctr->offset));
 	}
 
@@ -1466,7 +1467,7 @@ static int assigncountersinit(){
 			}
 		}
 		if (found == -1){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": Bad init counter name <%s>\n",
 			       initnames[i]);
 			return -1;
@@ -1490,12 +1491,12 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl,
 	int i, j, k;
 
 	pthread_mutex_lock(&cfglock);
-	msglog(LDMSD_LDEBUG, SAMP ": finalizing\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": finalizing\n");
 
 	if (cfgstate != CFG_DONE_INIT){
 		_free_names();
 		pthread_mutex_unlock(&cfglock);
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": in wrong state to finalize <%d>", cfgstate);
 		return -1;
 	}
@@ -1528,7 +1529,7 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	schema = base_schema_new(base);
 	if (!schema) {
-                msglog(LDMSD_LERROR,
+                ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
                        __FILE__, base->schema_name, errno);
                 goto err;
@@ -1593,7 +1594,7 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl,
 	return 0;
 
  err:
-	msglog(LDMSD_LERROR, SAMP ": failed finalize\n");
+	ovis_log(mylog, OVIS_LERROR, SAMP ": failed finalize\n");
 	cfgstate = CFG_FAILED_FINAL;
 	_free_names();
 	if (schema) ldms_schema_delete(schema);
@@ -1643,10 +1644,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		goto err2;
 	return 0;
  err0:
-	msglog(LDMSD_LDEBUG,usage(self));
+	ovis_log(mylog, OVIS_LDEBUG,usage(self));
 	goto err2;
  err1:
-	msglog(LDMSD_LDEBUG,"Invalid configuration keyword '%s'\n", action);
+	ovis_log(mylog, OVIS_LDEBUG,"Invalid configuration keyword '%s'\n", action);
  err2:
 	return 0;
 }
@@ -1689,7 +1690,7 @@ static int sample(struct ldmsd_sampler *self)
 	struct active_counter* pe;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": in wrong state for sampling <%d>\n", cfgstate);
 		return -1;
 	}
@@ -1739,6 +1740,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler msr_interlagos_plugin = {
@@ -1753,9 +1756,15 @@ static struct ldmsd_sampler msr_interlagos_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &msr_interlagos_plugin.base;
 }

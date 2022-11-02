@@ -70,8 +70,7 @@
 #include "ldmsd.h"
 
 int tcoord_to_tid(int row, int col, int *tid);
-int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
-					  char *filename,
+int gem_link_perf_parse_interconnect_file(char *filename,
 					  gemini_tile_t *tile,
 					  double (*max_link_bw)[],
 					  int (*tiles_per_dir)[]);

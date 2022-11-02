@@ -59,7 +59,7 @@
  */
 
 #include "gurt/telemetry_common.h"
-
+#include "ovis_log/ovis_log.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "config.h"
@@ -69,17 +69,7 @@
 #include "../daos.h"
 #include "../rank_target.h"
 
-static void
-test_log(enum ldmsd_loglevel level, const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-}
-
-extern struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf);
+extern struct ldmsd_plugin *get_plugin();
 
 int basic_smoke_test(void)
 {
@@ -87,15 +77,15 @@ int basic_smoke_test(void)
 	struct ldmsd_plugin *plugin = NULL;
 	struct ldmsd_plugin_cfg *cfg = NULL;
 
-	plugin = get_plugin(test_log);
+	plugin = get_plugin();
 	if (!plugin) {
-		log_fn(LDMSD_LERROR, "get_plugin failed\n");
+		ovis_log(NULL, OVIS_LERROR, "get_plugin failed\n");
 		return -1;
 	}
 
 	cfg = malloc(sizeof(*cfg));
 	if (!cfg) {
-		log_fn(LDMSD_LERROR, "malloc failed\n");
+		ovis_log(NULL, OVIS_LERROR, "malloc failed\n");
 		return -1;
 	}
 
@@ -103,7 +93,7 @@ int basic_smoke_test(void)
 
 	rc = cfg->sampler->sample(cfg->sampler);
 	if (rc != 0) {
-		log_fn(LDMSD_LERROR, "sample failed: %d\n", rc);
+		ovis_log(NULL, OVIS_LERROR, "sample failed: %d\n", rc);
 		return -1;
 	}
 
@@ -117,16 +107,14 @@ void main(void)
 {
 	int rc;
 
-	log_fn = test_log;
-
 	if (mm_init(512 * 1024 * 1024, 1024)) {
-		log_fn(LDMSD_LERROR, "mm_init failed\n");
+		ovis_log(NULL, OVIS_LERROR, "mm_init failed\n");
 		return;
 	}
 
 	rc = basic_smoke_test();
 	if (rc != 0) {
-		log_fn(LDMSD_LERROR, "basic_smoke_test failed: %d\n", rc);
+		ovis_log(NULL, OVIS_LERROR, "basic_smoke_test failed: %d\n", rc);
 		return;
 	}
 }

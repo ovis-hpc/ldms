@@ -6,7 +6,7 @@ dist_man1_MANS =
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@ @DAOS_CFLAGS@
 AM_LDFLAGS = @OVIS_LIB_ABS@ @DAOS_LDFLAGS@
-COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll
+COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll -lovis_log
 
 if ENABLE_DAOS_SAMPLER
 libdaos_sampler_la_SOURCES = daos.h daos.c \

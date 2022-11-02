@@ -70,15 +70,18 @@
 #include <wordexp.h>
 #include "general_metrics.h"
 
+/* Defined in cray_sampler_base.c */
+extern ovis_log_t __cray_sampler_log;
+
 FILE* ene_f[NUM_ENERGY_METRICS];
 int* metric_table_energy;
 FILE *cf_f;
 int cf_m;
 int* metric_table_current_freemem;
-int (*sample_metrics_cf_ptr)(ldms_set_t set,ldmsd_msg_log_f msglog);
+int (*sample_metrics_cf_ptr)(ldms_set_t set);
 FILE *v_f;
 int* metric_table_vmstat;
-int (*sample_metrics_vmstat_ptr)(ldms_set_t set,ldmsd_msg_log_f msglog);
+int (*sample_metrics_vmstat_ptr)(ldms_set_t set);
 FILE *l_f;
 int *metric_table_loadavg;
 FILE *pnd_f;
@@ -90,7 +93,7 @@ int* metric_table_kgnilnd;
 /* KGNILND Specific */
 FILE *k_f;
 
-int sample_metrics_vmstat(ldms_set_t set, ldmsd_msg_log_f msglog)
+int sample_metrics_vmstat(ldms_set_t set)
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -117,7 +120,7 @@ int sample_metrics_vmstat(ldms_set_t set, ldmsd_msg_log_f msglog)
 			break;
 		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
 		if (rc != 2) {
-			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
+			ovis_log(__cray_sampler_log, OVIS_LERROR,"ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
 			fclose(v_f);
 			v_f = 0;
@@ -145,7 +148,7 @@ int sample_metrics_vmstat(ldms_set_t set, ldmsd_msg_log_f msglog)
 }
 
 
-int sample_metrics_vmcf(ldms_set_t set, ldmsd_msg_log_f msglog)
+int sample_metrics_vmcf(ldms_set_t set)
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -175,7 +178,7 @@ int sample_metrics_vmcf(ldms_set_t set, ldmsd_msg_log_f msglog)
 			break;
 		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
 		if (rc != 2) {
-			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
+			ovis_log(__cray_sampler_log, OVIS_LERROR,"ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
 			fclose(v_f);
 			v_f = 0;
@@ -247,7 +250,7 @@ static char *replace_space(char *s)
 
 
 
-int sample_metrics_kgnilnd(ldms_set_t set, ldmsd_msg_log_f msglog)
+int sample_metrics_kgnilnd(ldms_set_t set)
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -271,7 +274,7 @@ int sample_metrics_kgnilnd(ldms_set_t set, ldmsd_msg_log_f msglog)
 		 * close it so it will reopen on the next round
 		 * TODO: zero out the values
 		 */
-		msglog(LDMSD_LDEBUG, "css -kgnilnd seek failed\n");
+		ovis_log(__cray_sampler_log, OVIS_LDEBUG, "css -kgnilnd seek failed\n");
 		fclose(k_f);
 		k_f = 0;
 		v.v_u64 = 0;
@@ -300,7 +303,7 @@ int sample_metrics_kgnilnd(ldms_set_t set, ldmsd_msg_log_f msglog)
 		replace_space(s);
 
 		if (sscanf(s, "%s", metric_name) != 1){
-			msglog(LDMSD_LERROR,"ERR: Issue reading metric name from the source"
+			ovis_log(__cray_sampler_log, OVIS_LERROR,"ERR: Issue reading metric name from the source"
 						" file '%s'\n", KGNILND_FILE);
 			rc = EINVAL;
 			return rc;
@@ -324,7 +327,7 @@ int sample_metrics_kgnilnd(ldms_set_t set, ldmsd_msg_log_f msglog)
 
 }
 
-int sample_metrics_current_freemem(ldms_set_t set, ldmsd_msg_log_f msglog)
+int sample_metrics_current_freemem(ldms_set_t set)
 {
 	/* only has 1 val, no label */
 	char lbuf[256];
@@ -356,7 +359,7 @@ int sample_metrics_current_freemem(ldms_set_t set, ldmsd_msg_log_f msglog)
 	if (s) {
 		rc = sscanf(lbuf, "%"PRIu64"\n", &v.v_u64);
 		if (rc != 1) {
-			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
+			ovis_log(__cray_sampler_log, OVIS_LERROR,"ERR: Issue reading the source file '%s'\n",
 							CURRENT_FREEMEM_FILE);
 			fclose(cf_f);
 			cf_f = 0;
@@ -380,7 +383,7 @@ int sample_metrics_current_freemem(ldms_set_t set, ldmsd_msg_log_f msglog)
 }
 
 
-int sample_metrics_energy(ldms_set_t set, ldmsd_msg_log_f msglog)
+int sample_metrics_energy(ldms_set_t set)
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -404,7 +407,7 @@ int sample_metrics_energy(ldms_set_t set, ldmsd_msg_log_f msglog)
 				//Ignore the unit
 				rc = sscanf(lbuf, "%"PRIu64"\n", &v.v_u64);
 				if (rc != 1) {
-					msglog(LDMSD_LERROR,
+					ovis_log(__cray_sampler_log, OVIS_LERROR,
 					       "ERR: Issue reading the source file '%s'\n",
 					       ENERGY_FILES[i]);
 					rc = EINVAL;
@@ -422,13 +425,13 @@ int sample_metrics_energy(ldms_set_t set, ldmsd_msg_log_f msglog)
 
 }
 
-int procnetdev_setup(ldmsd_msg_log_f msglog)
+int procnetdev_setup()
 {
 	/** need tx rx bytes for ipogif0 interface only */
 	procnetdev_valid = 0;
 
 	if (!pnd_f) {
-		msglog(LDMSD_LERROR,"procnetdev: filehandle NULL\n");
+		ovis_log(__cray_sampler_log, OVIS_LERROR,"procnetdev: filehandle NULL\n");
 		return EINVAL;
 	}
 
@@ -448,7 +451,7 @@ int procnetdev_setup(ldmsd_msg_log_f msglog)
 	} while(s);
 
 	if (idx_iface == -1){
-		msglog(LDMSD_LERROR,"procnetdev: cannot find iface <%s>\n", iface);
+		ovis_log(__cray_sampler_log, OVIS_LERROR,"procnetdev: cannot find iface <%s>\n", iface);
 		return EINVAL;
 	}
 
@@ -456,7 +459,7 @@ int procnetdev_setup(ldmsd_msg_log_f msglog)
 	return 0;
 }
 
-int sample_metrics_procnetdev(ldms_set_t set, ldmsd_msg_log_f msglog)
+int sample_metrics_procnetdev(ldms_set_t set)
 {
 
 	if (procnetdev_valid == 0) {
@@ -464,7 +467,7 @@ int sample_metrics_procnetdev(ldms_set_t set, ldmsd_msg_log_f msglog)
 	}
 
 	if (!pnd_f) {
-		msglog(LDMSD_LERROR,"procnetdev: filehandle NULL\n");
+		ovis_log(__cray_sampler_log, OVIS_LERROR,"procnetdev: filehandle NULL\n");
 		return EINVAL;
 	}
 
@@ -502,14 +505,14 @@ int sample_metrics_procnetdev(ldms_set_t set, ldmsd_msg_log_f msglog)
 	} while(s);
 
 	if (!found) {
-		msglog(LDMSD_LERROR,"cray_system_sampler: sample_metrics_procnetdev matched no ifaces\n");
+		ovis_log(__cray_sampler_log, OVIS_LERROR,"cray_system_sampler: sample_metrics_procnetdev matched no ifaces\n");
 		return EINVAL;
 	}
 
 	return 0;
 }
 
-int sample_metrics_loadavg(ldms_set_t set, ldmsd_msg_log_f msglog)
+int sample_metrics_loadavg(ldms_set_t set)
 {
 	/* 0.12 0.98 0.86 1/345 24593. well known: want fields 1, 2, and both of
 	 * 4 in that order.*/
@@ -543,7 +546,7 @@ int sample_metrics_loadavg(ldms_set_t set, ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%f %f %f %d/%d %d\n",
 			    &vf[0], &vf[1], &vf[2], &vi[0], &vi[1], &vi[2]);
 		if (rc != 6) {
-			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'"
+			ovis_log(__cray_sampler_log, OVIS_LERROR,"ERR: Issue reading the source file '%s'"
 					" (rc=%d)\n", LOADAVG_FILE, rc);
 			fclose(l_f);
 			l_f = NULL;

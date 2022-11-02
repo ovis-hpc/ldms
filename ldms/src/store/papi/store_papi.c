@@ -82,8 +82,11 @@
  *
  */
 
+#define STORE "papi"
+
+static ovis_log_t mylog;
 #define LOG_(level, ...) do { \
-	msglog(level, "store_papi: "__VA_ARGS__); \
+	ovis_log(mylog, level, ## __VA_ARGS__); \
 } while(0);
 
 static int schema_cmp(void *a, const void *b)
@@ -128,8 +131,6 @@ static pthread_mutex_t cfg_lock;
 LIST_HEAD(sos_inst_list, sos_instance) inst_list;
 
 static char root_path[PATH_MAX]; /**< store root path */
-
-static ldmsd_msg_log_f msglog;
 
 sos_handle_t create_handle(const char *path, sos_t sos)
 {
@@ -250,7 +251,7 @@ sos_schema_t get_schema(sos_handle_t sh, const char *name)
 	if (!rbn) {
 		sos_schema_ref_t ref = malloc(sizeof *ref);
 		if (!ref) {
-			LOG_(LDMSD_LERROR, "%s[%d]: Memory allocation error.\n",
+			LOG_(OVIS_LERROR, "%s[%d]: Memory allocation error.\n",
 			       __func__, __LINE__);
 			goto out;
 		}
@@ -262,7 +263,7 @@ sos_schema_t get_schema(sos_handle_t sh, const char *name)
 			papi_event_schema.attrs[EVENT_ATTR].name = name;
 			schema = sos_schema_from_template(&papi_event_schema);
 			if (!schema) {
-				LOG_(LDMSD_LERROR,
+				LOG_(OVIS_LERROR,
 				       "%s[%d]: Error %d allocating '%s' schema.\n",
 				       __func__, __LINE__,
 				       errno, name);
@@ -271,7 +272,7 @@ sos_schema_t get_schema(sos_handle_t sh, const char *name)
 			}
 			rc = sos_schema_add(sh->sos, schema);
 			if (rc) {
-				LOG_(LDMSD_LERROR,
+				LOG_(OVIS_LERROR,
 				       "%s[%d]: Error %d adding '%s' schema to container.\n",
 				       __func__, __LINE__,
 				       rc, name);
@@ -301,13 +302,13 @@ sos_handle_t create_container(const char *path)
 
 	rc = sos_container_new(path, 0660);
 	if (rc) {
-		LOG_(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
+		LOG_(OVIS_LERROR, "Error %d creating the container at '%s'\n",
 		       rc, path);
 		goto err_0;
 	}
 	sos = sos_container_open(path, SOS_PERM_RW);
 	if (!sos) {
-		LOG_(LDMSD_LERROR, "Error %d opening the container at '%s'\n",
+		LOG_(OVIS_LERROR, "Error %d opening the container at '%s'\n",
 		       errno, path);
 		goto err_0;
 	}
@@ -319,18 +320,18 @@ sos_handle_t create_container(const char *path)
 	sprintf(part_name, "%d", (unsigned int)t);
 	rc = sos_part_create(sos, part_name, path);
 	if (rc) {
-		LOG_(LDMSD_LERROR, "Error %d creating the partition '%s' in '%s'\n",
+		LOG_(OVIS_LERROR, "Error %d creating the partition '%s' in '%s'\n",
 		       rc, part_name, path);
 		goto err_1;
 	}
 	part = sos_part_find(sos, part_name);
 	if (!part) {
-		LOG_(LDMSD_LERROR, "Newly created partition was not found\n");
+		LOG_(OVIS_LERROR, "Newly created partition was not found\n");
 		goto err_1;
 	}
 	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
 	if (rc) {
-		LOG_(LDMSD_LERROR, "New partition could not be made primary\n");
+		LOG_(OVIS_LERROR, "New partition could not be made primary\n");
 		goto err_2;
 	}
 	sos_part_put(part);
@@ -396,14 +397,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *value;
 	value = av_value(avl, "path");
 	if (!value) {
-		LOG_(LDMSD_LERROR,
+		LOG_(OVIS_LERROR,
 		       "%s[%d]: The 'path' configuraiton option is required.\n",
 		       __func__, __LINE__);
 		return EINVAL;
 	}
 	len = strlen(value);
 	if (len >= PATH_MAX) {
-		LOG_(LDMSD_LERROR,
+		LOG_(OVIS_LERROR,
 		       "%s[%d]: The 'path' is too long.\n",
 		       __func__, __LINE__);
 		return ENAMETOOLONG;
@@ -428,7 +429,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			free(si->path);
 		si->path = malloc(pathlen);
 		if (!si->path) {
-			LOG_(LDMSD_LERROR, "%s[%d]: Memory allocation error.\n",
+			LOG_(OVIS_LERROR, "%s[%d]: Memory allocation error.\n",
 			       __func__, __LINE__);
 			goto err_0;
 		}
@@ -445,6 +446,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 static void term(struct ldmsd_plugin *self)
 {
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -528,7 +531,7 @@ static uint64_t get_by_name(ldms_set_t set, const char *name)
 {
 	int mid = ldms_metric_by_name(set, name);
 	if (mid < 0) {
-		LOG_(LDMSD_LERROR, "%s[%d]: set is missing the '%s' attribute\n",
+		LOG_(OVIS_LERROR, "%s[%d]: set is missing the '%s' attribute\n",
 		       __func__, __LINE__, name);
 		return -1;
 	}
@@ -558,7 +561,7 @@ store(ldmsd_store_handle_t _sh,
 
 	int rank_mid = ldms_metric_by_name(set, "task_ranks");
 	if (rank_mid < 0) {
-		LOG_(LDMSD_LERROR, "%s[%d]: set is missing the 'rank' attribute\n",
+		LOG_(OVIS_LERROR, "%s[%d]: set is missing the 'rank' attribute\n",
 		       __func__, __LINE__);
 		return -1;
 	}
@@ -567,7 +570,7 @@ store(ldmsd_store_handle_t _sh,
 		rc = _open_store(si, set);
 		if (rc) {
 			pthread_mutex_unlock(&si->lock);
-			LOG_(LDMSD_LERROR, "Failed to create store "
+			LOG_(OVIS_LERROR, "Failed to create store "
 			       "for %s.\n", si->container);
 			errno = rc;
 			goto err;
@@ -581,7 +584,7 @@ store(ldmsd_store_handle_t _sh,
 			schema = get_schema(si->sos_handle, ldms_metric_name_get(set, event_mid));
 			obj = sos_obj_new(schema);
 			if (!obj) {
-				LOG_(LDMSD_LERROR, "%s[%d]: Error %d allocating Sos object for '%s'\n",
+				LOG_(OVIS_LERROR, "%s[%d]: Error %d allocating Sos object for '%s'\n",
 				       __func__, __LINE__, errno, sos_schema_name(schema));
 				goto err;
 			}
@@ -661,7 +664,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 
 static struct ldmsd_store store_papi = {
 	.base = {
-		.name = "papi",
+		.name = STORE,
 		.term = term,
 		.config = config,
 		.usage = usage,
@@ -674,9 +677,15 @@ static struct ldmsd_store store_papi = {
 	.close = close_store,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store."STORE, "The log subsystem of " STORE " store plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the "
+				"log subsystem of %s. Error %d", STORE, rc);
+	}
 	return &store_papi.base;
 }
 

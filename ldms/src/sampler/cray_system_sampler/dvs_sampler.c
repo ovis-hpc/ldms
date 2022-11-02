@@ -70,7 +70,8 @@
 #include "ldmsd.h"
 #include "sampler_base.h"
 
-static ldmsd_msg_log_f log_fn;
+static ovis_log_t mylog;
+
 static char *procfile = "/proc/fs/dvs";
 #define SAMP "cray_dvs_sampler"
 static int metric_offset;	/* first non-base metric */
@@ -98,7 +99,7 @@ static int _line2basename(char* s, char* name){
 	cnt = sscanf(s, "%80[^:]:", name);
 
 	if (cnt < 1) {
-		log_fn(LDMSD_LERROR, "invalid dvs stats file format.\n");
+		ovis_log(mylog, OVIS_LERROR, "invalid dvs stats file format.\n");
 		return EINVAL;
 	}
 
@@ -195,7 +196,7 @@ static int create_metric_set(dvs_mount_t dvsm)
 	dvsm->cfg = dup_cfg(cfg_base, dvsm->mnt_pt);
 	schema = base_schema_new(dvsm->cfg);
 	if (!schema) {
-		log_fn(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, cfg_base->schema_name, errno);
 		goto err;
@@ -266,7 +267,7 @@ static int create_metric_set(dvs_mount_t dvsm)
 			keepmetric = 1;
 		for (i = 0; i < num_cfgmetrics; i++){
 			//NOTE: that the following DEBUG is verbose
-			log_fn(LDMSD_LDEBUG,
+			ovis_log(mylog, OVIS_LDEBUG,
 			       SAMP "will be comparing basename '%s' to keepname '%s'.\n",
 			       basename, cfgmetrics[i]);
 			if (strcmp(basename,cfgmetrics[i]) == 0){
@@ -276,11 +277,11 @@ static int create_metric_set(dvs_mount_t dvsm)
 		}
 		dvsm->use_m[line_no++] = keepmetric;
 		if (!keepmetric){
-			log_fn(LDMSD_LDEBUG,
+			ovis_log(mylog, OVIS_LDEBUG,
 			       SAMP "config not including metrics from '%s'.\n", lbuf);
 			continue;
 		}  else {
-			log_fn(LDMSD_LDEBUG,
+			ovis_log(mylog, OVIS_LDEBUG,
 			       SAMP "config WILL include metrics from '%s'.\n", lbuf);
 		}
 
@@ -357,8 +358,7 @@ static const char *usage(struct ldmsd_plugin *self)
 }
 
 static int local_config(struct attr_value_list *avl,
-                        const char *name, const char *def_schema,
-                        ldmsd_msg_log_f log)
+                        const char *name, const char *def_schema)
 {
 	char lbuf[256];
 	char tmpname[256];
@@ -370,14 +370,14 @@ static int local_config(struct attr_value_list *avl,
 
 	value = av_value(avl, "conffile");
 	if (!value){
-		log(LDMSD_LDEBUG, SAMP " no conffile. This is ok.\n");
+		ovis_log(mylog, OVIS_LDEBUG, "no conffile. This is ok.\n");
 		return 0;
 	}
 
 	/* read the file of downselected metrics. One pass to count, second pass to fill */
 	cf = fopen(value, "r");
 	if (!cf){
-		log(LDMSD_LERROR, SAMP " conffile '%s' cannot be opened\n", value);
+		ovis_log(mylog, OVIS_LERROR, "conffile '%s' cannot be opened\n", value);
 		rc = errno;     /* probably EPERM */
 		return rc;
 	}
@@ -405,7 +405,7 @@ static int local_config(struct attr_value_list *avl,
 		rc = sscanf(lbuf," %s", tmpname);
 		if ((strlen(tmpname) > 0) && (tmpname[0] != '#')){
 			cfgmetrics[count] = strdup(tmpname);
-			log(LDMSD_LDEBUG, SAMP ": conffile will be keeping metric '%s'\n", tmpname);
+			ovis_log(mylog, OVIS_LDEBUG, "conffile will be keeping metric '%s'\n", tmpname);
 		}
 		count++;
 	} while(s);
@@ -422,10 +422,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 {
 	int rc;
 
-	cfg_base = base_config(avl, SAMP, SAMP, log_fn);
+	cfg_base = base_config(avl, SAMP, SAMP, mylog);
 	if (!cfg_base)
 		return EINVAL;
-	rc = local_config(avl, SAMP, SAMP, log_fn);
+	rc = local_config(avl, SAMP, SAMP);
 
 	return rc;
 
@@ -518,14 +518,14 @@ int mount_dvs(const char *dir)
  err_3:
 	fclose(dvsm->mount_f);
 	if (!dvsm->stats_f || !dvsm->mount_f)
-		log_fn(LDMSD_LERROR, SAMP ": Error %d opening '%s'\n", errno, path);
+		ovis_log(mylog, OVIS_LERROR, "Error %d opening '%s'\n", errno, path);
  err_2:
 	free(dvsm->dir);
  err_1:
 	free(dvsm);
  err_0:
 	if (rc == ENOMEM)
-		log_fn(LDMSD_LERROR, SAMP ": Memory allocation failure in mount_dvs()\n");
+		ovis_log(mylog, OVIS_LERROR, "Memory allocation failure in mount_dvs()\n");
 	return rc;
 }
 
@@ -610,7 +610,7 @@ static int handle_old_mount(dvs_mount_t dvsm, const char *path)
 					 &clnt_cnt, &clnt_err, &srvr_cnt, &srvr_err,
 					 &last_dur, &max_dur);
 			if (cnt != 7) {
-				log_fn(LDMSD_LERROR, SAMP ": Error parsing '%s' at line %d, expecting 6 values\n",
+				ovis_log(mylog, OVIS_LERROR, "Error parsing '%s' at line %d, expecting 6 values\n",
 				       lbuf, line_no);
 				rc = EINVAL;
 				break;
@@ -628,7 +628,7 @@ static int handle_old_mount(dvs_mount_t dvsm, const char *path)
 				     &clnt_cnt, &clnt_err,
 				     &last_dur, &max_dur);
 			if (cnt != 5) {
-				log_fn(LDMSD_LERROR, SAMP ": Error parsing '%s' at line %d, expecting four values\n",
+				ovis_log(mylog, OVIS_LERROR, "Error parsing '%s' at line %d, expecting four values\n",
 				       lbuf, line_no);
 				rc = EINVAL;
 				break;
@@ -643,7 +643,7 @@ static int handle_old_mount(dvs_mount_t dvsm, const char *path)
 			cnt = sscanf(lbuf, "%127[^:]: %lld %lld",
 				     metric_name, &clnt_cnt, &clnt_err);
 			if (cnt != 3) {
-				log_fn(LDMSD_LERROR, SAMP ": Error parsing '%s' at line %d, expecting 2 values\n",
+				ovis_log(mylog, OVIS_LERROR, "Error parsing '%s' at line %d, expecting 2 values\n",
 				       lbuf, line_no);
 				rc = EINVAL;
 				break;
@@ -654,7 +654,7 @@ static int handle_old_mount(dvs_mount_t dvsm, const char *path)
 		case 4:
 			cnt = sscanf(lbuf, "%127[^:]: %lld", metric_name, &clnt_cnt);
 			if (cnt != 2) {
-				log_fn(LDMSD_LERROR, SAMP ": Error parsing '%s' at line %d, expecting 1 values\n",
+				ovis_log(mylog, OVIS_LERROR, "Error parsing '%s' at line %d, expecting 1 values\n",
 				       lbuf, line_no);
 				rc = EINVAL;
 				break;
@@ -698,7 +698,7 @@ static int handle_mount(const char *fpath, const struct stat *sb, int tflag, str
 static int sample(struct ldmsd_sampler *self)
 {
 	if (nftw("/proc/fs/dvs/mounts", handle_mount, 2, FTW_PHYS) < 0) {
-		log_fn(LDMSD_LERROR, SAMP ": error walking the dvs procfs stats file");
+		ovis_log(mylog, OVIS_LERROR, "error walking the dvs procfs stats file");
 		return EINVAL;
 	}
 	return 0;
@@ -717,6 +717,8 @@ static void term(struct ldmsd_plugin *self)
 	free(cfgmetrics);
 	cfgmetrics = NULL;
 	num_cfgmetrics = 0;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler dvs_plugin = {
@@ -736,9 +738,15 @@ static int mount_comparator(void *a, const void *b)
 	return strcmp(a, b);
 }
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	log_fn = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	rbt_init(&mount_tree, mount_comparator);
 	return &dvs_plugin.base;
 }

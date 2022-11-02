@@ -924,8 +924,7 @@ __attribute__((format(printf, 1, 2)))
 void ldmsd_lall(const char *fmt, ...);
 
 
-typedef void (*ldmsd_msg_log_f)(int level, const char *fmt, ...);
-typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)(ldmsd_msg_log_f pf);
+typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)();
 void ldmsd_log(int level, const char *fmt, ...);
 
 /* ldmsctl command callback function definition */

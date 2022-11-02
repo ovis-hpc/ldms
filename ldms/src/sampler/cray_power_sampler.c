@@ -61,7 +61,7 @@
 #include "timer_base.h"
 #include "sampler_base.h"
 
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 
 typedef enum {
 	CPS_ENERGY,
@@ -135,6 +135,8 @@ static
 void cray_power_sampler_term(struct ldmsd_plugin *self)
 {
 	cray_power_sampler_cleanup((void*)self);
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static
@@ -161,7 +163,7 @@ void cray_power_sampler_timer_cb(tsampler_timer_t t)
 	off = lseek(cps->fd[cps_idx], 0, SEEK_SET);
 	if (off < 0) {
 		/* error */
-		msglog(LDMSD_LDEBUG, "cray_power_sampler: lseek() error, "
+		ovis_log(mylog, OVIS_LDEBUG, "lseek() error, "
 				"errno: %d, cps_idx: %d\n.", errno, cps_idx);
 		return;
 	}
@@ -169,7 +171,7 @@ void cray_power_sampler_timer_cb(tsampler_timer_t t)
 	rc = read(cps->fd[cps_idx], buff, sizeof(buff));
 	if (rc < 0) {
 		/* error */
-		msglog(LDMSD_LDEBUG, "cray_power_sampler: read() error, "
+		ovis_log(mylog, OVIS_LDEBUG, "read() error, "
 				"errno: %d, cps_idx: %d\n.", errno, cps_idx);
 		return;
 	}
@@ -188,7 +190,7 @@ int cray_power_sampler_config(struct ldmsd_plugin *self,
 	struct cray_power_sampler *cps = (void*)self;
 	int i;
 
-	rc = timer_base_config(self, kwl, avl, msglog);
+	rc = timer_base_config(self, kwl, avl, mylog);
 	if (rc) {
 		goto out;
 	}
@@ -241,9 +243,15 @@ cleanup:
 out:
 	return rc;
 }
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler.cray_power_sampler", "The log subsystem of the cray_power_sampler plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'cray_power_sampler' plugin. Error %d\n", rc);
+	}
 	struct cray_power_sampler *cps = calloc(1, sizeof(*cps));
 
 	if (!cps)

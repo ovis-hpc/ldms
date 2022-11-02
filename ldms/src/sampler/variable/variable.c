@@ -66,8 +66,9 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
+static ovis_log_t mylog;
+
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 static char *producer_name;
 static ldms_schema_t schema;
 #define SAMP "variable"
@@ -94,12 +95,12 @@ static int create_metric_set(const char *in, char* sn)
 #define NMSZ 128
 	char metric_name[NMSZ];
 
-	msglog(LDMSD_LDEBUG, SAMP ": creating set at %" PRIu64 "\n", mval);
+	ovis_log(mylog, OVIS_LDEBUG, "creating set at %" PRIu64 "\n", mval);
 	if (sn) {
 		int len = strlen(sn)+12;
 		schema_name = malloc(len);
 		if (!schema_name) {
-			msglog(LDMSD_LERROR, SAMP ": missing schema_name\n");
+			ovis_log(mylog, OVIS_LERROR, "missing schema_name\n");
 			rc = ENOMEM;
 			goto err;
 		}
@@ -107,11 +108,11 @@ static int create_metric_set(const char *in, char* sn)
 	} else {
 		size_t d = strlen(schema_name) - 1;
 		schema_name[d] = (char)(48+ curmets);
-		msglog(LDMSD_LDEBUG, SAMP ": redefined schema name %s %d\n", schema_name, curmets);
+		ovis_log(mylog, OVIS_LDEBUG, "redefined schema name %s %d\n", schema_name, curmets);
 	}
 	schema = ldms_schema_new(schema_name);
 	if (!schema) {
-		msglog(LDMSD_LERROR, SAMP ": schema_new fail\n");
+		ovis_log(mylog, OVIS_LERROR, "schema_new fail\n");
 		rc = ENOMEM;
 		goto err;
 	}
@@ -119,7 +120,7 @@ static int create_metric_set(const char *in, char* sn)
 		int len = strlen(in)+12;
 		instance_name = malloc(len);
 		if (!instance_name) {
-			msglog(LDMSD_LERROR, SAMP ": missing instance_name\n");
+			ovis_log(mylog, OVIS_LERROR, "missing instance_name\n");
 			rc = ENOMEM;
 			goto err;
 		}
@@ -127,12 +128,12 @@ static int create_metric_set(const char *in, char* sn)
 	} else {
 		size_t d = strlen(instance_name) - 1;
 		instance_name[d] = (char)(curmets + 48); /*ascii */
-		msglog(LDMSD_LDEBUG, SAMP ": redefine instance name %s %d\n", instance_name, curmets);
+		ovis_log(mylog, OVIS_LDEBUG, "redefine instance name %s %d\n", instance_name, curmets);
 	}
 
 	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": can't add component_id\n");
+		ovis_log(mylog, OVIS_LERROR, "can't add component_id\n");
 		rc = ENOMEM;
 		goto err;
 	}
@@ -140,10 +141,10 @@ static int create_metric_set(const char *in, char* sn)
 	i = 0;
 	while (i < curmets) {
 		snprintf(metric_name, NMSZ, "%s%d", namebase, i);
-		msglog(LDMSD_LDEBUG, SAMP ": add metric %s\n", metric_name);
+		ovis_log(mylog, OVIS_LDEBUG, "add metric %s\n", metric_name);
 		rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
 		if (rc < 0) {
-			msglog(LDMSD_LERROR, SAMP ": failed metric add %s\n",
+			ovis_log(mylog, OVIS_LERROR, "failed metric add %s\n",
 				metric_name);
 			rc = ENOMEM;
 			goto err;
@@ -154,7 +155,7 @@ static int create_metric_set(const char *in, char* sn)
 	set = ldms_set_new(instance_name, schema);
 	if (!set) {
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP ": can't create set\n");
+		ovis_log(mylog, OVIS_LERROR, "can't create set\n");
 		goto err;
 	}
 
@@ -169,7 +170,7 @@ static int create_metric_set(const char *in, char* sn)
 		ldms_metric_set(set, i + metric_offset, &v);
 		i++;
 	}
-	msglog(LDMSD_LDEBUG, SAMP ": created set at %" PRIu64 "\n", mval);
+	ovis_log(mylog, OVIS_LDEBUG, "created set at %" PRIu64 "\n", mval);
 	rc = ldms_set_publish(set);
 	if (rc) {
 		ldms_set_delete(set);
@@ -207,7 +208,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
+			ovis_log(mylog, OVIS_LERROR, "config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -249,12 +250,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog(LDMSD_LERROR, SAMP ": missing producer.\n");
+		ovis_log(mylog, OVIS_LERROR, "missing producer.\n");
 		return ENOENT;
 	}
 	producer_name = strdup(producer_name);
 	if (!producer_name) {
-		msglog(LDMSD_LERROR, SAMP ": OOM.\n");
+		ovis_log(mylog, OVIS_LERROR, "OOM.\n");
 		return ENOMEM;
 	}
 
@@ -266,7 +267,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog(LDMSD_LERROR, SAMP ": missing instance.\n");
+		ovis_log(mylog, OVIS_LERROR, "missing instance.\n");
 		return ENOENT;
 	}
 
@@ -274,18 +275,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (!sname)
 		sname = default_schema_name;
 	if (strlen(sname) == 0) {
-		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
+		ovis_log(mylog, OVIS_LERROR, "schema name invalid.\n");
 		return EINVAL;
 	}
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
 	rc = create_metric_set(value, sname);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
@@ -303,12 +304,12 @@ static int sample(struct ldmsd_sampler *self)
 	union ldms_value v;
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 	curtick++;
 	if (sameticks == curtick) {
-		msglog(LDMSD_LDEBUG, SAMP ": set needs redefinition\n");
+		ovis_log(mylog, OVIS_LDEBUG, "set needs redefinition\n");
 		curtick = 0;
 		curmets++;
 		if (curmets > maxmets) {
@@ -324,8 +325,7 @@ static int sample(struct ldmsd_sampler *self)
 		schema = NULL;
 		rc = create_metric_set(NULL, NULL);
 		if (rc) {
-			msglog(LDMSD_LERROR, SAMP
-				": failed to recreate a metric set.\n");
+			ovis_log(mylog, OVIS_LERROR, "failed to recreate a metric set.\n");
 			return rc;
 		}
 		ldms_set_producer_name_set(set, producer_name);
@@ -337,7 +337,7 @@ static int sample(struct ldmsd_sampler *self)
 	for (i = 0; i < curmets; i++) {
 		v.v_u64 = mval;
 		mval++;
-		/* msglog(LDMSD_LDEBUG, SAMP ": setting %d of %d\n",
+		/* ovis_log(mylog, OVIS_LDEBUG, "setting %d of %d\n",
 			i + metric_offset, curmets);
 		*/
 		ldms_metric_set(set, i + metric_offset, &v);
@@ -359,6 +359,8 @@ static void term(struct ldmsd_plugin *self)
 	schema = NULL;
 	free(schema_name);
 	free(producer_name);
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler variable_plugin = {
@@ -373,9 +375,15 @@ static struct ldmsd_sampler variable_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &variable_plugin.base;
 }

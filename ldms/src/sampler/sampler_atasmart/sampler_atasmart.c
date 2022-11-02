@@ -96,8 +96,9 @@ struct atatsmart_set_size {
 	int disk_no;
 };
 
+static ovis_log_t mylog;
+
 static ldms_set_t set;
-static ldmsd_msg_log_f msglog;
 static char **disknames;
 static int num_disks;
 #define SAMP "sampler_atasmart"
@@ -140,7 +141,7 @@ void atasmart_get_disk_info(SkDisk *d, const SkSmartAttributeParsedData *a,
 	for (i = 0; i < NFIELD; i++) {
 		rc = get_metric_name(metric_name, fieldname[i], name_base, dname);
 		if (rc) {
-			msglog(LDMSD_LERROR, SAMP ": metric_name '%s_%s#%s' "
+			ovis_log(mylog, OVIS_LERROR, SAMP ": metric_name '%s_%s#%s' "
 					"longer than the max length %d.\n",
 					fieldname[i], name_base,
 				dname, MAX_METRIC_NAME_LEN);
@@ -183,19 +184,19 @@ static int create_metric_set(base_data_t base)
 	int num_skipped_disks = 0;
 	smarts = calloc(1, sizeof(struct ldms_atasmart));
 	if (!smarts) {
-		msglog(LDMSD_LERROR, SAMP ": Failed to create set.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Failed to create set.\n");
 		return ENOMEM;
 	}
 
 	smarts->d = calloc(num_disks, sizeof(SkDisk *));
 	if (!smarts->d) {
-		msglog(LDMSD_LERROR, SAMP ": Failed to create set.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Failed to create set.\n");
 		goto err;
 	}
 
 	smarts->schema = base_schema_new(base);
 	if (!smarts->schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = errno;
@@ -210,7 +211,7 @@ static int create_metric_set(base_data_t base)
 		smarts->curr_disk_no = i;
 		rc = sk_disk_open(disknames[i], &(smarts->d[i]));
 		if (rc) {
-			msglog(LDMSD_LERROR, SAMP ": Create SkDisk '%s' failed. Error %d.\n",
+			ovis_log(mylog, OVIS_LERROR, SAMP ": Create SkDisk '%s' failed. Error %d.\n",
 					disknames[i], rc);
 			free(disknames[i]);
 			disknames[i] = NULL;
@@ -220,7 +221,7 @@ static int create_metric_set(base_data_t base)
 
 		rc = sk_disk_smart_read_data(smarts->d[i]);
 		if (rc) {
-			msglog(LDMSD_LERROR, SAMP ": Read data SkDisk '%s'. "
+			ovis_log(mylog, OVIS_LERROR, SAMP ": Read data SkDisk '%s'. "
 					"Error %d\n", disknames[i], rc);
 			free(disknames[i]);
 			disknames[i] = NULL;
@@ -233,7 +234,7 @@ static int create_metric_set(base_data_t base)
 		rc = sk_disk_smart_parse_attributes(smarts->d[i],
 				atasmart_get_disk_info, (void *) smarts);
 		if (rc) {
-			msglog(LDMSD_LERROR, SAMP ": Get size of SkDisk '%s'. "
+			ovis_log(mylog, OVIS_LERROR, SAMP ": Get size of SkDisk '%s'. "
 					"Error %d\n", disknames[i], rc);
 			free(disknames[i]);
 			disknames[i] = NULL;
@@ -247,7 +248,7 @@ static int create_metric_set(base_data_t base)
 	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP ": Failed to create metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Failed to create metric set.\n");
 		goto err1;
 	}
 
@@ -285,7 +286,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *tmp;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
@@ -296,7 +297,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value) {
 		s = strdup(value);
 		if (!s) {
-			msglog(LDMSD_LERROR, SAMP ": enomem.\n");
+			ovis_log(mylog, OVIS_LERROR, SAMP ": enomem.\n");
 			return ENOMEM;
 		}
 		tmp = strtok(s, ",");
@@ -307,7 +308,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		disknames = calloc(num_disks , sizeof(char *));
 		free(s);
 		if (!disknames) {
-			msglog(LDMSD_LERROR, SAMP ": enomem.\n");
+			ovis_log(mylog, OVIS_LERROR, SAMP ": enomem.\n");
 			return ENOMEM;
 		}
 		tmp = strtok(value, ",");
@@ -326,11 +327,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			i++;
 		}
 	} else {
-		msglog(LDMSD_LERROR, SAMP ": failed to parse the disk names\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to parse the disk names\n");
 		return -1;
 	}
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base){
 		rc = EINVAL;
 		goto err;
@@ -338,7 +339,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(base);
 	if (rc){
-		msglog(LDMSD_LERROR, SAMP ":failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ":failed to create a metric set.\n");
 		goto err;
 	}
 
@@ -418,7 +419,7 @@ static int sample(struct ldmsd_sampler *self)
 	int metric_no;
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
 	base_sample_begin(base);
@@ -430,7 +431,7 @@ static int sample(struct ldmsd_sampler *self)
 			(SkSmartAttributeParseCallback)atasmart_set_metric,
 			(void *) &metric_no);
 		if (ret) {
-			msglog(LDMSD_LDEBUG, "atasmart: Failed to get metric. "
+			ovis_log(mylog, OVIS_LDEBUG, "atasmart: Failed to get metric. "
 					"SkDisk '%s'."
 					" Error %d\n", disknames[i], ret);
 			goto err;
@@ -462,6 +463,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler sampler_atasmart_plugin = {
@@ -476,9 +479,15 @@ static struct ldmsd_sampler sampler_atasmart_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &sampler_atasmart_plugin.base;
 }

@@ -122,11 +122,12 @@ static LIST_HEAD(other_list, met) other_list;
 static gpcd_mmr_list_t *listp = NULL;
 
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 static ldms_schema_t schema;
 static char *default_schema_name = "aries_rtr_mmr";
 static char* rtrid = NULL;
 static base_data_t base;
+
+static ovis_log_t mylog;
 
 static int filterConfig(char* tmpname){
 //return val of 1 means keep this
@@ -162,7 +163,7 @@ static int parseConfig(char* fname){
 
 	mf = fopen(fname, "r");
 	if (!mf){
-		msglog(LDMSD_LERROR, " aries_rtr_mmr: Cannot open file <%s>\n", fname);
+		ovis_log(mylog, OVIS_LERROR, " Cannot open file <%s>\n", fname);
 		return EINVAL;
 	}
 
@@ -174,12 +175,12 @@ static int parseConfig(char* fname){
 			break;
 		rc = sscanf(lbuf," %s", name);
 		if ((rc != 1) || (strlen(name) == 0) || (name[0] == '#')){
-			msglog(LDMSD_LDEBUG, "aries_rtr_mmr: skipping input <%s>\n", lbuf);
+			ovis_log(mylog, OVIS_LDEBUG, "skipping input <%s>\n", lbuf);
 			continue;
 		}
 		rc = filterConfig(name);
 		if (!rc) {
-			msglog(LDMSD_LDEBUG, "aries_rtr_mmr: filtering input <%s>\n", lbuf);
+			ovis_log(mylog, OVIS_LDEBUG, "filtering input <%s>\n", lbuf);
 			continue;
 		}
 		countA++;
@@ -202,7 +203,7 @@ static int parseConfig(char* fname){
 			rc = filterConfig(name);
 			if (!rc)
 				continue;
-			msglog(LDMSD_LDEBUG, "aries_rtr_mmr: config read <%s>\n", lbuf);
+			ovis_log(mylog, OVIS_LDEBUG, "config read <%s>\n", lbuf);
 			rawlist[numraw] = strdup(name);
 			if (numraw == countA)
 				break;
@@ -228,20 +229,20 @@ int addMetricToContext(gpcd_context_t* lctx, char* met)
 	int i;
 
 	if (lctx == NULL){
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: NULL context\n");
+		ovis_log(mylog, OVIS_LERROR, "NULL context\n");
 		return -1;
 	}
 
 	desc = (gpcd_mmr_desc_t *)
 		gpcd_lookup_mmr_byname(met);
 	if (!desc) {
-		msglog(LDMSD_LINFO, "aries_rtr_mmr: Could not lookup <%s>\n", met);
+		ovis_log(mylog, OVIS_LINFO, "Could not lookup <%s>\n", met);
 		return -1;
 	}
 
 	status = gpcd_context_add_mmr(lctx, desc);
 	if (status != 0) {
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: Could not add mmr for <%s>\n", met);
+		ovis_log(mylog, OVIS_LERROR, "Could not add mmr for <%s>\n", met);
                 gpcd_remove_context(lctx); //some other option?
 		return -1;
 	}
@@ -356,7 +357,7 @@ static int create_metric_set(base_data_t base)
 		if (rc == ENOMEM)
 			goto err;
 		else if (rc)
-			msglog(LDMSD_LINFO, "aries_rtr_mmr: cannot add metric <%s>. Skipping\n",
+			ovis_log(mylog, OVIS_LINFO, "cannot add metric <%s>. Skipping\n",
 			       rawlist[i]);
 		free(rawlist[i]);
 	}
@@ -393,11 +394,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 
 	if (set) {
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
-	base = base_config(avl, "aries_rtr_mmr", default_schema_name, msglog);
+	base = base_config(avl, "aries_rtr_mmr", default_schema_name, mylog);
 	if (!base)
 		return EINVAL;
 
@@ -420,17 +421,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (rawf){
 		rc = parseConfig(rawf);
 		if (rc){
-			msglog(LDMSD_LERROR, "aries_rtr_mmr: error parsing <%s>\n", rawf);
+			ovis_log(mylog, OVIS_LERROR, "error parsing <%s>\n", rawf);
 			return EINVAL;
 		}
 	} else {
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: must specify input file\n");
+		ovis_log(mylog, OVIS_LERROR, "must specify input file\n");
 		return EINVAL;
 	}
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		return rc;
 	}
 	return 0;
@@ -444,7 +445,7 @@ static int sample(struct ldmsd_sampler *self){
 	int rc;
 
 	if (!set) {
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: plugin not initialized\n");
+		ovis_log(mylog, OVIS_LERROR, "plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -452,7 +453,7 @@ static int sample(struct ldmsd_sampler *self){
 		if (mvals[i].num_metrics){
 			rc = gpcd_context_read_mmr_vals(mvals[i].ctx);
 			if (rc){
-				msglog(LDMSD_LERROR, "aries_rtr_mmr: Cannot read raw mmr vals\n");
+				ovis_log(mylog, OVIS_LERROR, "Cannot read raw mmr vals\n");
 				return EINVAL;
 			}
 		}
@@ -481,12 +482,12 @@ static int sample(struct ldmsd_sampler *self){
 		}
 
 		if (np == NULL){
-			msglog(LDMSD_LERROR, "aries_rtr_mmr: Name/MetricID list is null\n");
+			ovis_log(mylog, OVIS_LERROR, "Name/MetricID list is null\n");
 			rc = EINVAL;
 			goto out;
 		}
 		if (!listp){
-			msglog(LDMSD_LERROR, "aries_rtr_mmr: Context list is null\n");
+			ovis_log(mylog, OVIS_LERROR, "Context list is null\n");
 			rc = EINVAL;
 			goto out;
 		}
@@ -501,7 +502,7 @@ static int sample(struct ldmsd_sampler *self){
 				break;
 			np = np->entry.le_next;
 			if (np == NULL){
-				msglog(LDMSD_LERROR, "aries_rtr_mmr: No metric id\n");
+				ovis_log(mylog, OVIS_LERROR, "No metric id\n");
 				       goto out;
 			}
 		}
@@ -566,6 +567,8 @@ static void term(struct ldmsd_plugin *self)
 	set = NULL;
 	base_del(base);
 	base = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -587,9 +590,15 @@ static struct ldmsd_sampler aries_rtr_mmr_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler.aries_rtr_mmr", "Message for the aries_rtr_mmr plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of 'aries_rtr_mmr' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &aries_rtr_mmr_plugin.base;
 }

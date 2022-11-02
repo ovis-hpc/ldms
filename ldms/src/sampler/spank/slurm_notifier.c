@@ -85,7 +85,6 @@ else \
 	       (long)getpid(), stepd_event, __func__, __LINE__, ##__VA_ARGS__); \
 } while (0)
 
-
 /*
  * From the spank.h header file
  *

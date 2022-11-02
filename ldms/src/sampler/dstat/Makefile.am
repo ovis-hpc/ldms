@@ -29,7 +29,8 @@ dist_man1_MANS += ldms_dstat_schema_name.man
 ldms_dstat_schema_name_SOURCES = dstat.c
 ldms_dstat_schema_name_CFLAGS = -DMAIN
 ldms_dstat_schema_name_LDADD = \
-	$(top_builddir)/lib/src/ovis_util/libovis_util.la
+	$(top_builddir)/lib/src/ovis_util/libovis_util.la \
+	$(top_builddir)/lib/src/ovis_log/libovis_log.la
 
 check_PROGRAMS += parse_stat_test
 parse_stat_test_SOURCES = parse_stat.c parse_stat.h

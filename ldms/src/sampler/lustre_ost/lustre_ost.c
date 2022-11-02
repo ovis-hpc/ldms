@@ -22,9 +22,9 @@
 #define OBDFILTER_PATH "/proc/fs/lustre/obdfilter"
 #define OSD_SEARCH_PATH "/proc/fs/lustre"
 
+ovis_log_t lustre_ost_log;
 static struct comp_id_data cid;
 
-ldmsd_msg_log_f log_fn;
 char producer_name[LDMS_PRODUCER_NAME_MAX];
 
 /* red-black tree root for osts */
@@ -53,7 +53,7 @@ static struct ost_data *ost_create(const char *ost_name, const char *basedir)
         char path_tmp[PATH_MAX]; /* TODO: move large stack allocation to heap */
         char *state;
 
-        log_fn(LDMSD_LDEBUG, SAMP" ost_create() %s from %s\n",
+        ovis_log(lustre_ost_log, OVIS_LDEBUG, "ost_create() %s from %s\n",
                ost_name, basedir);
         ost = calloc(1, sizeof(*ost));
         if (ost == NULL)
@@ -77,7 +77,7 @@ static struct ost_data *ost_create(const char *ost_name, const char *basedir)
         if (ost->fs_name == NULL)
                 goto out6;
         if (strtok_r(ost->fs_name, "-", &state) == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" unable to parse filesystem name from \"%s\"\n",
+                ovis_log(lustre_ost_log, OVIS_LWARNING, "unable to parse filesystem name from \"%s\"\n",
                        ost->fs_name);
                 goto out7;
         }
@@ -107,7 +107,7 @@ out1:
 
 static void ost_destroy(struct ost_data *ost)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" ost_destroy() %s\n", ost->name);
+        ovis_log(lustre_ost_log, OVIS_LDEBUG, "ost_destroy() %s\n", ost->name);
         ost_general_destroy(ost->general_metric_set);
         ost_job_stats_destroy(&ost->job_stats);
         free(ost->osd_path);
@@ -152,7 +152,7 @@ static void osts_refresh()
 
         dir = opendir(OBDFILTER_PATH);
         if (dir == NULL) {
-                log_fn(LDMSD_LDEBUG, SAMP" unable to open obdfilter dir %s\n",
+                ovis_log(lustre_ost_log, OVIS_LDEBUG, "unable to open obdfilter dir %s\n",
                        OBDFILTER_PATH);
                 return;
         }
@@ -206,13 +206,13 @@ static void osts_sample()
 static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
+        ovis_log(lustre_ost_log, OVIS_LDEBUG, "config() called\n");
 	char *ival = av_value(avl, "producer");
 	if (ival) {
 		if (strlen(ival) < sizeof(producer_name)) {
 			strncpy(producer_name, ival, sizeof(producer_name));
 		} else {
-                        log_fn(LDMSD_LERROR, SAMP": config: producer name too long.\n");
+                        ovis_log(lustre_ost_log, OVIS_LERROR, "config: producer name too long.\n");
                         return EINVAL;
 		}
 	}
@@ -222,16 +222,16 @@ static int config(struct ldmsd_plugin *self,
 
 static int sample(struct ldmsd_sampler *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
+        ovis_log(lustre_ost_log, OVIS_LDEBUG, "sample() called\n");
         if (ost_general_schema_is_initialized() < 0) {
                 if (ost_general_schema_init(&cid) < 0) {
-                        log_fn(LDMSD_LERROR, SAMP" general schema create failed\n");
+                        ovis_log(lustre_ost_log, OVIS_LERROR, "general schema create failed\n");
                         return ENOMEM;
                 }
         }
         if (ost_job_stats_schema_is_initialized() < 0) {
                 if (ost_job_stats_schema_init() < 0) {
-                        log_fn(LDMSD_LERROR, SAMP" job stats schema create failed\n");
+                        ovis_log(lustre_ost_log, OVIS_LERROR, "job stats schema create failed\n");
                         return ENOMEM;
                 }
         }
@@ -244,10 +244,12 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
-        osts_destroy();
-        ost_general_schema_fini();
-        ost_job_stats_schema_fini();
+	ovis_log(lustre_ost_log, OVIS_LDEBUG, "term() called\n");
+	osts_destroy();
+	ost_general_schema_fini();
+	ost_job_stats_schema_fini();
+	if (lustre_ost_log)
+		ovis_log_destroy(lustre_ost_log);
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -257,7 +259,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" usage() called\n");
+        ovis_log(lustre_ost_log, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP;
 }
 
@@ -273,12 +275,18 @@ static struct ldmsd_sampler ost_job_stats_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-        log_fn = pf;
-        log_fn(LDMSD_LDEBUG, SAMP" get_plugin() called ("PACKAGE_STRING")\n");
-        rbt_init(&ost_tree, string_comparator);
-        gethostname(producer_name, sizeof(producer_name));
+	int rc;
+	lustre_ost_log = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!lustre_ost_log) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
+	ovis_log(lustre_ost_log, OVIS_LDEBUG, "get_plugin() called ("PACKAGE_STRING")\n");
+	rbt_init(&ost_tree, string_comparator);
+	gethostname(producer_name, sizeof(producer_name));
 
-        return &ost_job_stats_plugin.base;
+	return &ost_job_stats_plugin.base;
 }

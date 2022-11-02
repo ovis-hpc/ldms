@@ -74,7 +74,10 @@
 struct str_list_head *llite_str_list = NULL;
 struct lustre_metric_src_list lms_list = {0};
 
-int add_metrics_lustre(ldms_schema_t schema, ldmsd_msg_log_f msglog)
+/* Defined in cray_sampler_base.c */
+extern ovis_log_t __cray_sampler_log;
+
+int add_metrics_lustre(ldms_schema_t schema)
 {
 	struct str_list *sl;
 	int i;
@@ -85,7 +88,7 @@ int add_metrics_lustre(ldms_schema_t schema, ldmsd_msg_log_f msglog)
 	static char suffix[128];
 
 	LIST_FOREACH(sl, llite_str_list, link) {
-		msglog(LDMSD_LDEBUG, "cray_system_sampler: should be adding metrics for <%s>\n",
+		ovis_log(__cray_sampler_log, OVIS_LDEBUG, "should be adding metrics for <%s>\n",
 		      sl->str);
 		snprintf(path_tmp, sizeof(path_tmp), "/proc/fs/lustre/llite/%s-*/stats", sl->str);
 		snprintf(suffix, sizeof(suffix), "#llite.%s", sl->str);
@@ -93,7 +96,7 @@ int add_metrics_lustre(ldms_schema_t schema, ldmsd_msg_log_f msglog)
 				"client.lstats.", suffix, &lms_list, LUSTRE_METRICS,
 				LUSTRE_METRICS_LEN);
 		if (rc) {
-			msglog(LDMSD_LDEBUG, "cray_system_sampler/%s: returning error: %d from stats_construct_routine for %s\n",
+			ovis_log(__cray_sampler_log, OVIS_LDEBUG, "%s: returning error: %d from stats_construct_routine for %s\n",
 			       __FILE__, rc, path_tmp);
 			return rc;
 		}
@@ -111,7 +114,7 @@ int handle_llite(const char *llite)
 	return 0;
 }
 
-int sample_metrics_lustre(ldms_set_t set, ldmsd_msg_log_f msglog)
+int sample_metrics_lustre(ldms_set_t set)
 {
 	struct lustre_metric_src *lms;
 	int retrc = 0;

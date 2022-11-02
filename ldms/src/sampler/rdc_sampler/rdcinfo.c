@@ -199,7 +199,7 @@ int rdcinfo_sample(rdcinfo_inst_t inst)
 	clock_gettime(CLOCK_MONOTONIC_RAW, &now);
 	uint64_t tdiff = difftimespec_us(&inst->rdc_start, &now);
 	if ( tdiff < inst->warmup * inst->update_freq) {
-		INST_LOG(inst, LDMSD_LDEBUG," still warming up. %"PRIu64 "\n",
+		INST_LOG(inst, OVIS_LDEBUG," still warming up. %"PRIu64 "\n",
 			tdiff);
 		return 0;
 	}
@@ -225,7 +225,7 @@ int rdcinfo_sample(rdcinfo_inst_t inst)
 					inst->field_info.field_ids[findex],
 					&value);
 			if (result != RDC_ST_OK) {
-				INST_LOG(inst, LDMSD_LWARNING,
+				INST_LOG(inst, OVIS_LWARNING,
 					"Stopping sampler. Fix the configuration to match hardware"
 					" capability or extend warmup. Failed to get (gpu %d: field: %s): %s\n",
 					inst->group_info.entity_ids[gindex],
@@ -235,7 +235,7 @@ int rdcinfo_sample(rdcinfo_inst_t inst)
 				continue;
 			}
 			if (value.type != INTEGER) {
-				INST_LOG(inst, LDMSD_LWARNING,
+				INST_LOG(inst, OVIS_LWARNING,
 					"Stopping sampler. Fix configuration: only integer metrics are allowed."
 					"Not field: %s)\n",
 					field_id_string(inst->field_info.field_ids[findex]));
@@ -315,15 +315,19 @@ static uint32_t rdcinfo_hash(rdcinfo_inst_t inst)
 	return i;
 }
 
-rdcinfo_inst_t rdcinfo_new(ldmsd_msg_log_f log)
+rdcinfo_inst_t rdcinfo_new()
 {
 	rdcinfo_inst_t x = calloc(1, sizeof(*x));
 	if (!x) {
-		log(LDMSD_LERROR, SAMP " : out of memory in rdcinfo_new\n");
+		ovis_log(NULL, OVIS_LERROR, SAMP " : out of memory in rdcinfo_new\n");
 		return NULL;
 	}
 	pthread_mutex_init(&x->lock, NULL);
-	x->msglog = log;
+	x->mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!x->mylog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+				"of '" SAMP "' plugin. Error %d\n", errno);
+	}
 	return x;
 }
 
@@ -332,9 +336,11 @@ void rdcinfo_delete(rdcinfo_inst_t inst)
 	if (!inst)
 		return;
 	if (inst->base) {
-		INST_LOG(inst, LDMSD_LERROR, "rdcinfo_delete called before rdcinfo_reset.\n");
+		INST_LOG(inst, OVIS_LERROR, "rdcinfo_delete called before rdcinfo_reset.\n");
 		return;
 	}
+	if (inst->mylog)
+		ovis_log_destroy(inst->mylog);
 	pthread_mutex_destroy(&inst->lock);
 	free(inst);
 }
@@ -368,18 +374,18 @@ void rdcinfo_reset(rdcinfo_inst_t inst)
 	inst->schema_name = NULL;
 
 	if (inst->rdc_handle) {
-		INST_LOG(inst, LDMSD_LINFO, "shutdown rdc\n");
+		INST_LOG(inst, OVIS_LINFO, "shutdown rdc\n");
 		/* The undo of rdcinfo_init */
 		rdc_status_t result;
 		result = rdc_field_unwatch(inst->rdc_handle, inst->group_id, inst->field_group_id);
 		if (result)
-			INST_LOG(inst, LDMSD_LWARNING, "rdc_field_unwatch failed.\n");
+			INST_LOG(inst, OVIS_LWARNING, "rdc_field_unwatch failed.\n");
 		result = rdc_group_field_destroy(inst->rdc_handle, inst->field_group_id);
 		if (result)
-			INST_LOG(inst, LDMSD_LWARNING, "rdc_group_field_destroy failed.\n");
+			INST_LOG(inst, OVIS_LWARNING, "rdc_group_field_destroy failed.\n");
 		result = rdc_group_gpu_destroy(inst->rdc_handle, inst->group_id);
 		if (result)
-			INST_LOG(inst, LDMSD_LWARNING, "rdc_group_gpu_destroy failed.\n");
+			INST_LOG(inst, OVIS_LWARNING, "rdc_group_gpu_destroy failed.\n");
 		rdc_stop_embedded(inst->rdc_handle);
 		rdc_shutdown();
 		inst->rdc_handle = NULL;
@@ -411,7 +417,7 @@ static int rdcinfo_hardware_init(rdcinfo_inst_t inst)
 	result = rdc_init(0);
 	result = rdc_start_embedded(RDC_OPERATION_MODE_AUTO, &(inst->rdc_handle));
 	if (result != RDC_ST_OK) {
-		INST_LOG(inst, LDMSD_LERROR, "Failed to start rdc in embedded mode: %s.\n",
+		INST_LOG(inst, OVIS_LERROR, "Failed to start rdc in embedded mode: %s.\n",
 			rdc_status_string(result));
 		return result;
 	}
@@ -420,7 +426,7 @@ static int rdcinfo_hardware_init(rdcinfo_inst_t inst)
 	result = rdc_group_gpu_create(inst->rdc_handle, RDC_GROUP_DEFAULT,
 			"rdc_ldms_group", &(inst->group_id));
 	if (result != RDC_ST_OK) {
-		INST_LOG(inst, LDMSD_LERROR, "Failed to create the group: %s.\n",
+		INST_LOG(inst, OVIS_LERROR, "Failed to create the group: %s.\n",
 			rdc_status_string(result));
 		return result;
 	}
@@ -429,7 +435,7 @@ static int rdcinfo_hardware_init(rdcinfo_inst_t inst)
 	result = rdc_group_field_create(inst->rdc_handle, inst->num_fields ,
 			&inst->field_ids[0], "rdc_ldms_field_group", &(inst->field_group_id));
 	if (result != RDC_ST_OK) {
-		INST_LOG(inst, LDMSD_LERROR, "Failed to create the field group: %s.\n",
+		INST_LOG(inst, OVIS_LERROR, "Failed to create the field group: %s.\n",
 			rdc_status_string(result));
 		return result;
 	}
@@ -437,13 +443,13 @@ static int rdcinfo_hardware_init(rdcinfo_inst_t inst)
 	/* Get the group info and field info */
 	result = rdc_group_gpu_get_info(inst->rdc_handle, inst->group_id, &(inst->group_info));
 	if (result != RDC_ST_OK) {
-		INST_LOG(inst, LDMSD_LERROR, "Failed to get gpu group info: %s.\n",
+		INST_LOG(inst, OVIS_LERROR, "Failed to get gpu group info: %s.\n",
 			rdc_status_string(result));
 		return result;
 	}
 	result = rdc_group_field_get_info(inst->rdc_handle, inst->field_group_id, &(inst->field_info));
 	if (result != RDC_ST_OK) {
-		INST_LOG(inst, LDMSD_LERROR,  "Failed to get field group info: %s.\n",
+		INST_LOG(inst, OVIS_LERROR,  "Failed to get field group info: %s.\n",
 			rdc_status_string(result));
 		return result;
 	}
@@ -455,7 +461,7 @@ static int rdcinfo_hardware_init(rdcinfo_inst_t inst)
 			inst->max_keep_age,
 			inst->max_keep_samples);
 	if (result != RDC_ST_OK) {
-		INST_LOG(inst, LDMSD_LERROR,  "Failed to watch the field group: %s.\n",
+		INST_LOG(inst, OVIS_LERROR,  "Failed to watch the field group: %s.\n",
 			rdc_status_string(result));
 		return result;
 	}
@@ -482,7 +488,7 @@ int rdcinfo_config_find_int_value(rdcinfo_inst_t inst, struct attr_value_list *a
 	if (!inst)
 		return EINVAL;
 	if ( !avl || !attribute || !val) {
-		INST_LOG(inst, LDMSD_LERROR, "rdcinfo_config_find_int_value miscalled\n");
+		INST_LOG(inst, OVIS_LERROR, "rdcinfo_config_find_int_value miscalled\n");
 		return EINVAL;
 	}
 	const char *s = av_value(avl, attribute);
@@ -491,19 +497,19 @@ int rdcinfo_config_find_int_value(rdcinfo_inst_t inst, struct attr_value_list *a
 		goto out;
 	}
 	if (!strlen(s)) {
-		INST_LOG(inst, LDMSD_LERROR, "needs %s=something\n", attribute);
+		INST_LOG(inst, OVIS_LERROR, "needs %s=something\n", attribute);
 		return EINVAL;
 	}
 	char *ep;
 	unsigned long u = strtoul(s, &ep, 10);
 	if (*ep != '\0' || ep == s || u == ULONG_MAX || u > UINT32_MAX) {
-		INST_LOG(inst, LDMSD_LERROR, "rdcinfo_config_find_int_value %s got bad value %s\n",
+		INST_LOG(inst, OVIS_LERROR, "rdcinfo_config_find_int_value %s got bad value %s\n",
 			attribute, s);
 		return EINVAL;
 	}
 	*val = u;
 out:
-	INST_LOG(inst, LDMSD_LDEBUG, "rdcinfo_config_find_int_value %s %" PRIu32 "\n",
+	INST_LOG(inst, OVIS_LDEBUG, "rdcinfo_config_find_int_value %s %" PRIu32 "\n",
 		attribute, *val);
 	return 0;
 }
@@ -534,7 +540,7 @@ int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
 	int rc;
 
 	if (inst->rdc_handle) {
-		INST_LOG(inst, LDMSD_LERROR, "rdc already configured.\n");
+		INST_LOG(inst, OVIS_LERROR, "rdc already configured.\n");
 		return EALREADY;
 	}
 
@@ -547,11 +553,11 @@ int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
 		strcpy(inst->schema_name_base, SAMP);
 	} else {
 		if (!strlen(sbase)) {
-			INST_LOG(inst, LDMSD_LERROR, "empty schema= given. Try again\n");
+			INST_LOG(inst, OVIS_LERROR, "empty schema= given. Try again\n");
 			return EINVAL;
 		}
 		if (strlen(sbase) >= MAX_SCHEMA_BASE) {
-			INST_LOG(inst, LDMSD_LERROR, " schema name > %d long: %s\n",
+			INST_LOG(inst, OVIS_LERROR, " schema name > %d long: %s\n",
 				MAX_SCHEMA_BASE, sbase);
 				rc = EINVAL;
 				return rc;
@@ -569,12 +575,12 @@ int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
 		inst->num_fields = num_fields_default;
 	} else {
 		char *tkn, *ptr;
-		INST_LOG(inst, LDMSD_LDEBUG, "metrics=%s.\n", metrics);
+		INST_LOG(inst, OVIS_LDEBUG, "metrics=%s.\n", metrics);
 		for (i = 0; i < num_defs; i++) {
 			if (strcmp(defs[i].name, metrics) == 0) {
 				mt = strdup(defs[i].metrics);
 				if (!mt) {
-					INST_LOG(inst, LDMSD_LERROR, "out of memory parsing metrics=\n");
+					INST_LOG(inst, OVIS_LERROR, "out of memory parsing metrics=\n");
 					return ENOMEM;
 				}
 				break;
@@ -583,7 +589,7 @@ int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
 		if (!mt)
 			mt = strdup(metrics);
 		if (!mt) {
-			INST_LOG(inst, LDMSD_LERROR, "out of memory parsing metrics=\n");
+			INST_LOG(inst, OVIS_LERROR, "out of memory parsing metrics=\n");
 			return ENOMEM;
 		}
 		uint32_t num_fields_max = sizeof(inst->field_ids)/sizeof(inst->field_ids[0]);
@@ -592,15 +598,15 @@ int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
 			rdc_field_t cur_field_id = get_field_id_from_name(tkn);
 			if (cur_field_id != RDC_FI_INVALID) {
 				if (inst->num_fields >= num_fields_max) {
-					INST_LOG(inst, LDMSD_LERROR, "exceeded the max fields allowed %d"
+					INST_LOG(inst, OVIS_LERROR, "exceeded the max fields allowed %d"
 						". Check metrics= parameter.\n", num_fields_max);
 					rc = -1;
 					goto out_metrics;
 				}
-				INST_LOG(inst, LDMSD_LDEBUG, "field %d:%s.\n", cur_field_id, tkn);
+				INST_LOG(inst, OVIS_LDEBUG, "field %d:%s.\n", cur_field_id, tkn);
 				inst->field_ids[inst->num_fields++] = cur_field_id;
 			} else {
-				INST_LOG(inst, LDMSD_LERROR, "Unsupported field %d: %s in metrics=.\n",
+				INST_LOG(inst, OVIS_LERROR, "Unsupported field %d: %s in metrics=.\n",
 					inst->num_fields, tkn);
 				rc = ENOTSUP;
 				goto out_metrics;
@@ -640,7 +646,7 @@ int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
 		goto out_metrics;
 	}
 #ifndef MAIN
-	inst->base = base_config(avl, SAMP, inst->schema_name, inst->msglog);
+	inst->base = base_config(avl, SAMP, inst->schema_name, inst->mylog);
 	if (!inst->base)
 		goto out_metrics;
 	/* override the schema name default behavior */
@@ -674,7 +680,7 @@ int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
 				inst->group_info.entity_ids[i]);
 		ldms_set_t set = base_set_new(inst->base);
 		if (!set) {
-			INST_LOG(inst, LDMSD_LERROR, "failed to make %d-th set for %s\n",
+			INST_LOG(inst, OVIS_LERROR, "failed to make %d-th set for %s\n",
 				i, schema_name);
 			rc = errno;
 			goto loop_err;

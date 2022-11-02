@@ -60,10 +60,11 @@
 #include "ldmsd.h"
 #include "sampler_base.h"
 
+static ovis_log_t mylog;
+
 static const char *metric_name = "null_tick";
 static uint64_t counter = 0;
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 #define SAMP "my_plugin"
 static int metric_offset;
 
@@ -78,7 +79,7 @@ static int create_metric_set(base_data_t base)
 	schema = base_schema_new(base);
 	if (!schema){
 		rc = errno;
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		goto err;
@@ -121,11 +122,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = EINVAL;
 		goto err;
@@ -133,7 +134,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 	return 0;
@@ -153,7 +154,7 @@ static int sample(struct ldmsd_sampler *self)
 	union ldms_value v;
 
 	if (!set) {
-		msglog(LDMSD_LERROR, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LERROR, "plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -187,9 +188,13 @@ static struct ldmsd_sampler clock_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	mylog = ovis_log_register("sampler."SAMP, "Messages for the "SAMP" plugin");
+	if (!mylog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create " SAMP "' s "
+					"log subsystem. Error %d.\n", errno);
+	}
 	set = NULL;
 	return &clock_plugin.base;
 }

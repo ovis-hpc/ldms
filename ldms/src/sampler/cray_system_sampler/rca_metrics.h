@@ -87,9 +87,9 @@ extern nettopo_coord_t nettopo_coord;
 extern int* nettopo_metric_table;
 
 /** setup after add before sampling */
-int nettopo_setup(ldmsd_msg_log_f msglog);
+int nettopo_setup();
 
 /** sample metrics */
-int sample_metrics_nettopo(ldms_set_t set, ldmsd_msg_log_f msglog);
+int sample_metrics_nettopo(ldms_set_t set);
 
 #endif

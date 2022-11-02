@@ -71,7 +71,7 @@
  * application can pass NULL to skip logging.
  */
 #define LDMSD_STR_WRAP(NAME) #NAME
-#define LDMSD_LWRAP(NAME) LDMSD_L ## NAME
+#define OVIS_LWRAP(NAME) LDMSD_L ## NAME
 
 #define LOGLEVELS(WRAP) \
 	WRAP (DEBUG), \
@@ -83,8 +83,8 @@
 	WRAP (LASTLEVEL),
 
 enum ldmsd_loglevel {
-	LDMSD_LNONE = -1,
-	LOGLEVELS(LDMSD_LWRAP)
+	OVIS_LNONE = -1,
+	LOGLEVELS(OVIS_LWRAP)
 };
 
 const char* ldmsd_loglevel_names[] = {
@@ -112,7 +112,7 @@ static void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 		return;
 	}
 	if (log_time_sec == -1) {
-		char * lt = getenv("LDMSD_LOG_TIME_SEC");
+		char * lt = getenv("OVIS_LOG_TIME_SEC");
 		if (lt)
 			log_time_sec = 1;
 		else

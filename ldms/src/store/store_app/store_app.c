@@ -56,11 +56,12 @@
 
 #include "ldmsd.h"
 
-ldmsd_msg_log_f msglog = ldmsd_log;
 int perm = 0660;
 
+static ovis_log_t mylog;
+
 #define LOG(lvl, fmt, ...) \
-		msglog((lvl), "store_app: " fmt, ##__VA_ARGS__)
+		ovis_log(mylog, (lvl), "store_app: " fmt, ##__VA_ARGS__)
 
 typedef struct store_app_cont_s *store_app_cont_t;
 struct store_app_cont_s {
@@ -90,13 +91,13 @@ static sos_t create_container(store_app_cont_t cont)
 
 	rc = sos_container_new(cont->path, perm);
 	if (rc) {
-		LOG(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
+		LOG(OVIS_LERROR, "Error %d creating the container at '%s'\n",
 				  rc, cont->path);
 		goto err_0;
 	}
 	sos = sos_container_open(cont->path, SOS_PERM_RW);
 	if (!sos) {
-		LOG(LDMSD_LERROR, "Error %d opening the container at '%s'\n",
+		LOG(OVIS_LERROR, "Error %d opening the container at '%s'\n",
 				  errno, cont->path);
 		goto err_0;
 	}
@@ -108,19 +109,19 @@ static sos_t create_container(store_app_cont_t cont)
 	sprintf(part_name, "%d", (unsigned int)t);
 	rc = sos_part_create(sos, part_name, cont->path);
 	if (rc) {
-		LOG(LDMSD_LERROR,
+		LOG(OVIS_LERROR,
 		    "Error %d creating the partition '%s' in '%s'\n",
 		    rc, part_name, cont->path);
 		goto err_1;
 	}
 	part = sos_part_find(sos, part_name);
 	if (!part) {
-		LOG(LDMSD_LERROR, "Newly created partition was not found\n");
+		LOG(OVIS_LERROR, "Newly created partition was not found\n");
 		goto err_1;
 	}
 	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
 	if (rc) {
-		LOG(LDMSD_LERROR, "New partition could not be made primary\n");
+		LOG(OVIS_LERROR, "New partition could not be made primary\n");
 		goto err_2;
 	}
 	sos_part_put(part);
@@ -338,7 +339,7 @@ __get_sos_schema(store_app_cont_t cont, const char *name,
 		tmp->attrs[METRIC_ATTR].type = sos_type_map[mtype];
 		schema = sos_schema_from_template(tmp);
 		if (!schema) {
-			LOG(LDMSD_LERROR,
+			LOG(OVIS_LERROR,
 			    "%s[%d]: Error %d allocating '%s' schema.\n",
 			    __func__, __LINE__, errno, name);
 			free(ref);
@@ -346,7 +347,7 @@ __get_sos_schema(store_app_cont_t cont, const char *name,
 		}
 		rc = sos_schema_add(cont->sos, schema);
 		if (rc) {
-			LOG(LDMSD_LERROR,
+			LOG(OVIS_LERROR,
 			    "%s[%d]: Error %d adding '%s' schema to "
 			    "container.\n", __func__, __LINE__, rc, name);
 			free(ref);
@@ -465,7 +466,7 @@ __store_mval(store_app_cont_t cont, struct metric_desc_s *m,
 		return errno;
 	sos_obj = sos_obj_new(sos_schema);
 	if (!sos_obj) {
-		LOG(LDMSD_LERROR,
+		LOG(OVIS_LERROR,
 		    "%s[%d]: Error %d allocating Sos object for '%s'\n",
 		    __func__, __LINE__, errno, m->name);
 		return errno;
@@ -548,7 +549,7 @@ store_app_store(ldmsd_store_handle_t _sh, ldms_set_t set,
 				  job_id, app_id, task_rank);
 		if (rc) {
 			/* give a warning and continue on */
-			LOG(LDMSD_LWARNING,
+			LOG(OVIS_LWARNING,
 			    "storing value failed, rc: %d\n", rc);
 		}
 	}
@@ -582,12 +583,12 @@ store_app_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 	val = av_value(avl, "path");
 	if (!val) {
-		LOG(LDMSD_LERROR, "missing `path` attribute.\n");
+		LOG(OVIS_LERROR, "missing `path` attribute.\n");
 		return EINVAL;
 	}
 	len = snprintf(root_path, sizeof(root_path), "%s", val);
 	if (len >= sizeof(root_path)) {
-		LOG(LDMSD_LERROR, "`path` too long.\n");
+		LOG(OVIS_LERROR, "`path` too long.\n");
 		return ENAMETOOLONG;
 	}
 	val = av_value(avl, "perm");
@@ -597,7 +598,8 @@ store_app_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 static void store_app_term(struct ldmsd_plugin *p)
 {
-	/* no-op */
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static void *store_app_get_ucontext(ldmsd_store_handle_t _sh)
@@ -621,8 +623,14 @@ static struct ldmsd_store store_app = {
 	.close = store_app_close,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store.store_app", "Log subsystem of the 'store_app' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'store_app' plugin. Error %d\n", rc);
+	}
 	return &store_app.base;
 }

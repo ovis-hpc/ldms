@@ -46,6 +46,8 @@
 #ifndef __PAPI_SAMPLER__
 #define __PAPI_SAMPLER__
 
+#include <ovis_log/ovis_log.h>
+
 enum job_state {
 	JOB_PAPI_IDLE,
 	JOB_PAPI_INIT,
@@ -117,7 +119,7 @@ typedef struct job_data {
 } *job_data_t;
 
 extern base_data_t papi_base;
-int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg_log_f msglog);
-int papi_process_config_file(job_data_t job, const char *path, ldmsd_msg_log_f msglog);
+int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ovis_log_t logger);
+int papi_process_config_file(job_data_t job, const char *path, ovis_log_t logger);
 
 #endif

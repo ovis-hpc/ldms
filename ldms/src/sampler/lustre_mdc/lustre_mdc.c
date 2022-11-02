@@ -24,9 +24,9 @@
 #define TIMING_SEARCH_PATH "/sys/kernel/debug/lustre/mdc/"
 #define PERM_CHECK_PATH "/sys/kernel/debug"
 
+ovis_log_t lustre_mdc_log;
 static struct comp_id_data cid;
 
-ldmsd_msg_log_f log_fn;
 char producer_name[LDMS_PRODUCER_NAME_MAX];
 
 /* red-black tree root for mdcs */
@@ -56,7 +56,7 @@ static struct mdc_data *mdc_create(const char *mdc_name, const char *basedir)
 	char path_tmp[PATH_MAX];
 	char *state;
 
-	log_fn(LDMSD_LDEBUG, SAMP" mdc_create() %s from %s\n",
+	ovis_log(lustre_mdc_log, OVIS_LDEBUG, "mdc_create() %s from %s\n",
 	       mdc_name, basedir);
 	mdc = calloc(1, sizeof(*mdc));
 	if (mdc == NULL)
@@ -81,7 +81,7 @@ static struct mdc_data *mdc_create(const char *mdc_name, const char *basedir)
 	if (mdc->fs_name == NULL)
 		goto out6;
 	if (strtok_r(mdc->fs_name, "-", &state) == NULL) {
-		log_fn(LDMSD_LWARNING, SAMP
+		ovis_log(lustre_mdc_log, OVIS_LWARNING, SAMP
 			": unable to parse filesystem name from \"%s\"\n",
 		       mdc->fs_name);
 		goto out7;
@@ -113,7 +113,7 @@ out1:
 
 static void mdc_destroy(struct mdc_data *mdc)
 {
-	log_fn(LDMSD_LDEBUG, SAMP" mdc_destroy() %s\n", mdc->name);
+	ovis_log(lustre_mdc_log, OVIS_LDEBUG, "mdc_destroy() %s\n", mdc->name);
 	mdc_general_destroy(mdc->general_metric_set);
 	free(mdc->timing__stats_path);
 	free(mdc->fs_name);
@@ -159,7 +159,7 @@ static int mdcs_refresh()
 	dir = opendir(MDC_PATH);
 	if (dir == NULL) {
 		if (!dir_once_log) {
-			log_fn(LDMSD_LDEBUG, SAMP" unable to open mdc dir %s\n",
+			ovis_log(lustre_mdc_log, OVIS_LDEBUG, "unable to open mdc dir %s\n",
 			       MDC_PATH); /* expected if lustre all unmounted */
 			dir_once_log = 1;
 		}
@@ -218,13 +218,13 @@ static void mdcs_sample()
 static int config(struct ldmsd_plugin *self,
 		  struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
+	ovis_log(lustre_mdc_log, OVIS_LDEBUG, "config() called\n");
 	char *ival = av_value(avl, "producer");
 	if (ival) {
 		if (strlen(ival) < sizeof(producer_name)) {
 			strncpy(producer_name, ival, sizeof(producer_name));
 		} else {
-			log_fn(LDMSD_LERROR, SAMP": config: producer name too long.\n");
+			ovis_log(lustre_mdc_log, OVIS_LERROR, "config: producer name too long.\n");
 			return EINVAL;
 		}
 	}
@@ -235,19 +235,19 @@ static int config(struct ldmsd_plugin *self,
 	ival = av_value(avl, "mdc_timing");
 	if (ival && ival[0] == '0')
 		mdc_timing = 0;
-	(void)base_auth_parse(avl, &auth, log_fn);
+	(void)base_auth_parse(avl, &auth, lustre_mdc_log);
 	int je = jobid_helper_config(avl);
 	if (je) {
-		log_fn(LDMSD_LERROR, SAMP": job_set name too long\n");
+		ovis_log(lustre_mdc_log, OVIS_LERROR, "job_set name too long\n");
 		return ENAMETOOLONG;
 	}
 	comp_id_helper_config(avl, &cid);
 	if (mdc_timing) {
 		DIR *dchk = opendir(PERM_CHECK_PATH);
 		if (!dchk) {
-			log_fn(LDMSD_LERROR, SAMP": cannot open %s (%s)\n",
+			ovis_log(lustre_mdc_log, OVIS_LERROR, "cannot open %s (%s)\n",
 				PERM_CHECK_PATH, STRERROR(errno));
-			log_fn(LDMSD_LERROR, SAMP": use mdc_timing=0 or "
+			ovis_log(lustre_mdc_log, OVIS_LERROR, "use mdc_timing=0 or "
 				"run ldmsd with more privileges\n");
 			mdc_timing = -1;
 			return EPERM;
@@ -264,7 +264,7 @@ static int sample(struct ldmsd_sampler *self)
 		return EPERM;
 	if (mdc_general_schema_is_initialized() < 0) {
 		if (mdc_general_schema_init(&cid, mdc_timing) < 0) {
-			log_fn(LDMSD_LERROR, SAMP" general schema create failed\n");
+			ovis_log(lustre_mdc_log, OVIS_LERROR, "general schema create failed\n");
 			return ENOMEM;
 		}
 	}
@@ -277,9 +277,11 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
-	log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
+	ovis_log(lustre_mdc_log, OVIS_LDEBUG, "term() called\n");
 	mdcs_destroy();
 	mdc_general_schema_fini();
+	if (lustre_mdc_log)
+		ovis_log_destroy(lustre_mdc_log);
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -289,7 +291,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	log_fn(LDMSD_LDEBUG, SAMP" usage() called\n");
+	ovis_log(lustre_mdc_log, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP;
 }
 
@@ -305,10 +307,16 @@ static struct ldmsd_sampler mdc_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	log_fn = pf;
-	log_fn(LDMSD_LDEBUG, SAMP" get_plugin() called ("PACKAGE_STRING")\n");
+	int rc;
+	lustre_mdc_log = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!lustre_mdc_log) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' pluginl. Error %d\n", rc);
+	}
+	ovis_log(lustre_mdc_log, OVIS_LDEBUG, "get_plugin() called ("PACKAGE_STRING")\n");
 	rbt_init(&mdc_tree, string_comparator);
 	gethostname(producer_name, sizeof(producer_name));
 

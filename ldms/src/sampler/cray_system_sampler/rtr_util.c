@@ -82,8 +82,8 @@
 #include "ldmsd.h"
 #include "ldms.h"
 
-
-
+/* Defined in the plugins */
+extern ovis_log_t mylog;
 
 /**
  * Converts a Gemini tile ID to tile (\c row, \c col) coordinate.
@@ -118,9 +118,8 @@ int tcoord_to_tid(int row, int col, int *tid)
 }
 
 
-static int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind)
+static int get_my_pattern(int *pattern, int* zind)
 {
-	ldmsd_msg_log_f msglog = *msglog_outer;
 	int cabrow;
 	int cabcol;
 	int chassis;
@@ -135,8 +134,7 @@ static int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind
 	 * where e/o will be 0 if even and 1 if odd */
 	fd = fopen("/proc/cray_xt/cname", "r");
 	if (!fd) {
-		if (msglog)
-			msglog(LDMSD_LERROR, "Could not open cnameprocfile\n");
+		ovis_log(mylog, OVIS_LERROR, "Could not open cnameprocfile\n");
 		return ENOENT;
 	}
 	fseek(fd, 0, SEEK_SET);
@@ -202,10 +200,9 @@ static int str_to_linkdir(char *str)
 }
 
 
-static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
+static int tile_to_linkdir(int my_pattern,
 		    int my_z_pattern, char *link_file, gemini_tile_t *tile)
 {
-	ldmsd_msg_log_f msglog = *msglog_outer;
 	char lbuf[64];
 	char type[32];
 	char dir_str[8];
@@ -220,8 +217,7 @@ static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 	// Search linkfile for our pattern, linkdir, and type
 	fd = fopen(link_file, "r");
 	if (!fd) {
-		if (msglog)
-			msglog(LDMSD_LERROR, "Could not open %s for read\n",
+		ovis_log(mylog, OVIS_LERROR, "Could not open %s for read\n",
 					link_file);
 		return ENOENT;
 	}
@@ -233,8 +229,7 @@ static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 		rc = sscanf(lbuf, "%d %s %d %d\n", &file_pattern, dir_str,
 			    &file_tile_type, &file_z_pattern);
 		if (rc < 3){
-			if (msglog)
-				msglog(LDMSD_LERROR, "Failure reading line in "
+			ovis_log(mylog, OVIS_LERROR, "Failure reading line in "
 						"linkfile %s\n", link_file);
 			fclose(fd);
 			return EINVAL;
@@ -259,8 +254,7 @@ static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 	fclose (fd);
 
 	if ( !found ) {
-	       if (msglog)
-		       msglog(LDMSD_LINFO, "rtr_util: Pattern %d not found in "
+	       ovis_log(mylog, OVIS_LINFO, "rtr_util: Pattern %d not found in "
 				       "linkfile %s (this may be ok)\n",
 				       my_pattern, link_file);
 	       tile->type = GEMINI_LINK_TYPE_INVALID;
@@ -270,8 +264,7 @@ static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 
 	tile->dir = str_to_linkdir(dir_str);
 	if (tile->dir ==  GEMINI_LINK_DIR_INVALID) {
-	      if (msglog)
-		     msglog(LDMSD_LERROR, "str_to_linkdir failed on %s",
+		ovis_log(mylog, OVIS_LERROR, "str_to_linkdir failed on %s",
 				     tile->dir);
 	      return EINVAL;
 	}
@@ -302,9 +295,8 @@ static int str_to_linktype(char *str)
 /**
  * Return link bandwidth based on type. This is specified in ldms_gemini.h
  */
-static double tile_to_bw(ldmsd_msg_log_f* msglog_outer, int tile_type)
+static double tile_to_bw(int tile_type)
 {
-	ldmsd_msg_log_f msglog = *msglog_outer;
 	switch (tile_type) {
 	case GEMINI_LINK_TYPE_MEZZANINE:
 		return GEMINI_MEZZANINE_TILE_BW;
@@ -315,8 +307,7 @@ static double tile_to_bw(ldmsd_msg_log_f* msglog_outer, int tile_type)
 	case GEMINI_LINK_TYPE_NIC:
 		return GEMINI_NIC_TILE_BW;
 	default:
-	  if (msglog)
-		msglog(LDMSD_LERROR, "invalid tile type (%d)", tile_type);
+		ovis_log(mylog, OVIS_LERROR, "invalid tile type (%d)", tile_type);
 	}
 
 	return -1.0;
@@ -331,13 +322,11 @@ static double tile_to_bw(ldmsd_msg_log_f* msglog_outer, int tile_type)
  * \returns 0 on success.
  * \returns -1 on failure.
  */
-int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
-					  char *filename,
+int gem_link_perf_parse_interconnect_file(char *filename,
 					  gemini_tile_t *tile,
 					  double (*max_link_bw)[],
 					  int (*tiles_per_dir)[])
 {
-	ldmsd_msg_log_f msglog = *msglog_outer;
 	FILE *fd;
 	int tid;
 	int my_tiles = 0;
@@ -358,7 +347,7 @@ int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 	}
 
 	// Get my pattern
-	rc = get_my_pattern(msglog_outer, &my_pattern, &my_z_pattern);
+	rc = get_my_pattern(&my_pattern, &my_z_pattern);
 	if (rc != 0)
 	  return rc;
 
@@ -374,26 +363,22 @@ int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 			/*  Convert the tile's (row,col) to a linear tile ID */
 			tid = -1;
 			if (tcoord_to_tid(row, col, &tid) != 0) {
-				if (msglog)
-					msglog(LDMSD_LERROR,
+				ovis_log(mylog, OVIS_LERROR,
 						"tcoord_to_tid(%u,%u) failed",
 						row, col);
 				return EINVAL;
 			}
 			if (tid == -1) {
-				if (msglog)
-					msglog(LDMSD_LERROR,
+				ovis_log(mylog, OVIS_LERROR,
 						"tcoord_to_tid failed on row %d,"
 						" column %d", row, col);
 				return EINVAL;
 			}
 			my_tmp_pattern = (my_pattern * 100) + ( row * 10) + col;
-			rc = tile_to_linkdir(msglog_outer,
-					     my_tmp_pattern, my_z_pattern,
+			rc = tile_to_linkdir(my_tmp_pattern, my_z_pattern,
 					     filename, &tile[tid]);
 			if ( rc ) {
-				if (msglog)
-					msglog(LDMSD_LERROR,
+				ovis_log(mylog, OVIS_LERROR,
 						"tile_to_linkdir failed on "
 						"%d, %d, %s, %d",
 						my_tmp_pattern, my_z_pattern,
@@ -402,7 +387,7 @@ int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 			}
 			if (tile[tid].type != GEMINI_LINK_TYPE_INVALID){
 				/* NOTE: some tiles not in the interconnect */
-				lbw = tile_to_bw(msglog_outer, tile[tid].type);
+				lbw = tile_to_bw(tile[tid].type);
 				if (lbw > 0)
 				      (*max_link_bw)[tile[tid].dir] += lbw;
 				(*tiles_per_dir)[tile[tid].dir]++;
@@ -413,8 +398,7 @@ int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 	}
 
 	if (my_tiles != GEMINI_NUM_NET_TILES) {
-		if (msglog)
-			msglog(LDMSD_LERROR, "src (%d,%d,%d) found %d tiles in "
+		ovis_log(mylog, OVIS_LERROR, "src (%d,%d,%d) found %d tiles in "
 			       " interconnect file, expected %d",
 			       my_tiles, GEMINI_NUM_NET_TILES);
 		return EINVAL;

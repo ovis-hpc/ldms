@@ -100,9 +100,9 @@ struct event_group {
 LIST_HEAD(gevent_list, event_group) gevent_list;
 
 static ldms_set_t set;
-static ldmsd_msg_log_f msglog;
 static base_data_t base;
 
+static ovis_log_t mylog;
 
 struct pevent {
 	struct perf_event_attr attr;
@@ -256,13 +256,13 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 	struct pevent *pe;
 
 	if (set) {
-		msglog(LDMSD_LERROR, "perfevent: metric set has already been created.\n");
+		ovis_log(mylog, OVIS_LERROR, "perfevent: metric set has already been created.\n");
 		return EINVAL;
 	}
 
 	pe = calloc(1, sizeof *pe);
 	if (!pe) {
-		msglog(LDMSD_LERROR, "perfevent: failed to allocate perfevent structure.\n");
+		ovis_log(mylog, OVIS_LERROR, "perfevent: failed to allocate perfevent structure.\n");
 		rc = ENOMEM;
 		goto err;
 	}
@@ -289,7 +289,7 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 		kw = bsearch(&key, add_token_tbl, ARRAY_SIZE(add_token_tbl), sizeof(*kw), kw_comparator);
 
 		if (!kw) {
-			msglog(LDMSD_LERROR, "Unrecognized keyword '%s' in configuration string.\n", token);
+			ovis_log(mylog, OVIS_LERROR, "Unrecognized keyword '%s' in configuration string.\n", token);
 			free(pe);
 			return -1;
 		}
@@ -298,12 +298,12 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 			goto err;
 	}
 	if (!pe->name) {
-		msglog(LDMSD_LERROR, "An event name must be specifed.\n");
+		ovis_log(mylog, OVIS_LERROR, "An event name must be specifed.\n");
 		goto err;
 	}
 	if (pe->cpu == -1 && pe->pid == -1) {
-		msglog(LDMSD_LERROR, "Error adding event '%s'\n", pe->name);
-		msglog(LDMSD_LERROR, "\tPID and CPU can not be -1");
+		ovis_log(mylog, OVIS_LERROR, "Error adding event '%s'\n", pe->name);
+		ovis_log(mylog, OVIS_LERROR, "\tPID and CPU can not be -1");
 		goto err;
 	}
 
@@ -318,13 +318,13 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 
 	pe->fd = pe_open(&pe->attr, pe->pid, pe->cpu, group_leader_fd, 0);
 	if (pe->fd < 0) {
-		msglog(LDMSD_LERROR, "Error adding event '%s'\n", pe->name);
-		msglog(LDMSD_LERROR, "\terrno: %d\n", pe->fd);
-		msglog(LDMSD_LERROR, "\ttype: %d\n", pe->attr.type);
-		msglog(LDMSD_LERROR, "\tsize: %d\n", pe->attr.size);
-		msglog(LDMSD_LERROR, "\tconfig: %llx\n", pe->attr.config);
-		msglog(LDMSD_LERROR, "\tpid: %d\n", pe->pid);
-		msglog(LDMSD_LERROR, "\tcpu: %d\n", pe->cpu);
+		ovis_log(mylog, OVIS_LERROR, "Error adding event '%s'\n", pe->name);
+		ovis_log(mylog, OVIS_LERROR, "\terrno: %d\n", pe->fd);
+		ovis_log(mylog, OVIS_LERROR, "\ttype: %d\n", pe->attr.type);
+		ovis_log(mylog, OVIS_LERROR, "\tsize: %d\n", pe->attr.size);
+		ovis_log(mylog, OVIS_LERROR, "\tconfig: %llx\n", pe->attr.config);
+		ovis_log(mylog, OVIS_LERROR, "\tpid: %d\n", pe->pid);
+		ovis_log(mylog, OVIS_LERROR, "\tcpu: %d\n", pe->cpu);
 
 		goto err;
 	}
@@ -332,7 +332,7 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 	if(current_group == NULL){ /* if this is the group group leader */
 		current_group = calloc(1, sizeof *current_group); /* allocate event group */
 		if (!current_group) {
-			msglog(LDMSD_LERROR,"add_event out of memory\n");
+			ovis_log(mylog, OVIS_LERROR,"add_event out of memory\n");
 			goto err;
 		}
 		current_group->pid = pe->pid; /*  set pid for the group */
@@ -377,15 +377,15 @@ static int del_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 static int list(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	struct pevent *pe;
-	msglog(LDMSD_LINFO, "%-24s %8s %8s %8s %8s %16s\n",
+	ovis_log(mylog, OVIS_LINFO, "%-24s %8s %8s %8s %8s %16s\n",
 			"Name", "Pid", "Cpu", "Fd", "Type", "Event");
-	msglog(LDMSD_LINFO, "%-24s %8s %8s %8s %8s %16s\n",
+	ovis_log(mylog, OVIS_LINFO, "%-24s %8s %8s %8s %8s %16s\n",
 			"------------------------",
 			"--------", "--------", "--------",
 			"--------", "----------------");
-	msglog(LDMSD_LINFO, "Name Fd Type Config\n");
+	ovis_log(mylog, OVIS_LINFO, "Name Fd Type Config\n");
 	LIST_FOREACH(pe, &pevent_list, entry) {
-		msglog(LDMSD_LINFO, "%-24s %8d %8d %8d %8d %16llx\n",
+		ovis_log(mylog, OVIS_LINFO, "%-24s %8d %8d %8d %8d %16llx\n",
 				pe->name, pe->pid, pe->cpu,
 				pe->fd, pe->attr.type, pe->attr.config);
 	}
@@ -401,11 +401,11 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	struct pevent *pe;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = ENOMEM;
 		goto err;
@@ -413,7 +413,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = errno;
@@ -424,7 +424,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	LIST_FOREACH(pe, &pevent_list, entry) {
 		rc = ldms_schema_metric_add(schema, pe->name, LDMS_V_U64);
 		if (rc < 0) {
-			msglog(LDMSD_LERROR, SAMP ": failed to add event %s to metric set.\n", pe->name);
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to add event %s to metric set.\n", pe->name);
 			goto err;
 		}
 		pe->metric_index = rc;
@@ -435,7 +435,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		current_group->metric_index[pe->group_index] = pe->metric_index;
 
 
-		msglog(LDMSD_LINFO, SAMP ": event [name: %s, code: 0x%x] has been added.\n", pe->name, pe->attr.config);
+		ovis_log(mylog, OVIS_LINFO, SAMP ": event [name: %s, code: 0x%x] has been added.\n", pe->name, pe->attr.config);
 	}
 
 	return 0;
@@ -476,10 +476,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return 0;
 
 err0:
-	msglog(LDMSD_LERROR, usage(self));
+	ovis_log(mylog, OVIS_LERROR, usage(self));
 	goto err2;
 err1:
-	msglog(LDMSD_LERROR, "perfevent: Invalid configuration keyword '%s'\n", action);
+	ovis_log(mylog, OVIS_LERROR, "perfevent: Invalid configuration keyword '%s'\n", action);
 err2:
 	return 0;
 }
@@ -494,7 +494,7 @@ static int sample(struct ldmsd_sampler *self)
 	int rc;
 
 	if (!set) {
-		msglog(LDMSD_LERROR, SAMP ": plug-in not initialized\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": plug-in not initialized\n");
 		return EINVAL;
 	}
 
@@ -505,13 +505,13 @@ static int sample(struct ldmsd_sampler *self)
 		LIST_FOREACH(eg, &gevent_list, entry) {
 			rc = ioctl(eg->leader, PERF_EVENT_IOC_RESET, 0); /* reset the values to 0 */
 			if(rc == -1){
-				msglog(LDMSD_LERROR, SAMP "Error(%d) in starting %d\n", rc, eg->leader);
+				ovis_log(mylog, OVIS_LERROR, SAMP "Error(%d) in starting %d\n", rc, eg->leader);
 				return rc;
 			}
 
 			rc = ioctl(eg->leader, PERF_EVENT_IOC_ENABLE, 0); /* start counting the values */
 			if(rc == -1){
-				msglog(LDMSD_LERROR, SAMP "Error(%d) in starting %d\n", rc, eg->leader);
+				ovis_log(mylog, OVIS_LERROR, SAMP "Error(%d) in starting %d\n", rc, eg->leader);
 				return rc;
 			}
 		}
@@ -528,7 +528,7 @@ static int sample(struct ldmsd_sampler *self)
 		if (read_result < 0) {
 			free(data);
 			if (!readerrlogged) {
-				msglog(LDMSD_LERROR, "perfevent: read event failed.\n");
+				ovis_log(mylog, OVIS_LERROR, "perfevent: read event failed.\n");
 				readerrlogged = 1;
 			}
 			break;
@@ -577,6 +577,8 @@ static void term(struct ldmsd_plugin *self)
 		ldms_set_delete(set);
 	set = NULL;
 
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler pe_plugin = {
@@ -591,8 +593,14 @@ static struct ldmsd_sampler pe_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	return &pe_plugin.base;
 }

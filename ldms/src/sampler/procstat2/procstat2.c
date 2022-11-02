@@ -135,13 +135,14 @@ static ldms_set_t set = NULL;
 static ldms_set_t intr_set = NULL;
 static ldms_set_t softirq_set = NULL;
 static FILE *mf = 0;
-static ldmsd_msg_log_f msglog;
 #define SAMP "procstat2"
 static int metric_offset;
 static base_data_t base;
 static base_data_t intr_base;
 static base_data_t softirq_base;
 static size_t incr_heap_sz;
+
+static ovis_log_t mylog;
 
 #ifndef ARRAY_LEN
 #define ARRAY_LEN(A) ( sizeof(A) / sizeof(A[0]) )
@@ -215,7 +216,7 @@ static int create_metric_sets()
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open the " SAMP " file "
+		ovis_log(mylog, OVIS_LERROR, "Could not open the " SAMP " file "
 				"'%s'...exiting sampler\n", procfile);
 		rc = ENOENT;
 		goto err;
@@ -223,7 +224,7 @@ static int create_metric_sets()
 
 	core_schema = base_schema_new(base);
 	if (!core_schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = errno;
@@ -233,9 +234,9 @@ static int create_metric_sets()
 	if (collect_intr) {
 		intr_schema = base_schema_new(intr_base);
 		if (!intr_schema) {
-			msglog(LDMSD_LERROR,
-				"%s: The schema '%s' could not be created, errno=%d.\n",
-				SAMP, intr_base->schema_name, errno);
+			ovis_log(mylog, OVIS_LERROR,
+				"The schema '%s' could not be created, errno=%d.\n",
+				intr_base->schema_name, errno);
 			rc = errno;
 			goto err;
 		}
@@ -244,9 +245,9 @@ static int create_metric_sets()
 	if (collect_softirq) {
 		softirq_schema = base_schema_new(softirq_base);
 		if (!softirq_schema) {
-			msglog(LDMSD_LERROR,
-				"%s: The schema '%s' could not be created, errno=%d\n",
-				SAMP, softirq_base->schema_name, errno);
+			ovis_log(mylog, OVIS_LERROR,
+				"The schema '%s' could not be created, errno=%d\n",
+				softirq_base->schema_name, errno);
 		}
 	}
 
@@ -276,8 +277,8 @@ static int create_metric_sets()
 	if (intr_max < 0) {
 		intr_max = nr_irqs;
 	} else if (intr_max < nr_irqs) {
-		msglog(LDMSD_LWARNING,
-		       SAMP ": intr_max(%d) too small (nr_irqs = %d), "
+		ovis_log(mylog, OVIS_LWARNING,
+		       "intr_max(%d) too small (nr_irqs = %d), "
 		            "the data will be truncated\n",
 		       intr_max, nr_irqs);
 	}
@@ -356,7 +357,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
+			ovis_log(mylog, OVIS_LERROR, "config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -386,7 +387,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *val, *end;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
@@ -395,7 +396,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -404,7 +405,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	val = av_value(avl, "interrupt");
 	if (val && (0 == strcasecmp(val, "true"))) {
 		collect_intr = 1;
-		intr_base = base_config(avl, SAMP, SAMP"_intr", msglog);
+		intr_base = base_config(avl, SAMP, SAMP"_intr", mylog);
 		if (!intr_base) {
 			rc = errno;
 			goto err;
@@ -423,7 +424,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	val = av_value(avl, "soft_interrupt");
 	if (val && (0 == strcasecmp(val, "true"))) {
 		collect_softirq = 1;
-		softirq_base = base_config(avl, SAMP, SAMP"_softirq", msglog);
+		softirq_base = base_config(avl, SAMP, SAMP"_softirq", mylog);
 		if (!softirq_base) {
 			rc = errno;
 			goto err;
@@ -443,7 +444,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (val) {
 		intr_max = strtol(val, &end, 10);
 		if (*end) {
-			msglog(LDMSD_LERROR, SAMP ": intr_max must be a decimal number.\n");
+			ovis_log(mylog, OVIS_LERROR, "intr_max must be a decimal number.\n");
 			rc = EINVAL;
 			goto err;
 		}
@@ -451,7 +452,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_sets();
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 
@@ -500,7 +501,7 @@ static ldms_set_t __resize_set(base_data_t b, size_t incr)
 	s = base_set_new_heap(b, heap_sz);
 	if (!s) {
 		rc = errno;
-		ldmsd_log(LDMSD_LCRITICAL, SAMP " : Failed to create set '%s' "
+		ovis_log(mylog, OVIS_LCRITICAL, "Failed to create set '%s' "
 				"with a bigger heap. Error %d.\n",
 				ldms_set_instance_name_get(b->set),
 				rc);
@@ -519,7 +520,7 @@ static int sample(struct ldmsd_sampler *self)
 	size_t heap_sz;
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -539,7 +540,7 @@ begin:
 				sizeof(stat_row_ents[0]), stat_row_cmp);
 		if (!ent) {
 			rc = ENOENT;
-			msglog(LDMSD_LDEBUG, SAMP ": unknown key: %s\n", tok);
+			ovis_log(mylog, OVIS_LDEBUG, "unknown key: %s\n", tok);
 			goto out;
 		}
 		switch (ent->type) {
@@ -692,6 +693,8 @@ static void term(struct ldmsd_plugin *self)
 	if (softirq_set)
 		ldms_set_delete(softirq_set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler procstat2_plugin = {
@@ -706,9 +709,15 @@ static struct ldmsd_sampler procstat2_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &procstat2_plugin.base;
 }

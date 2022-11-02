@@ -100,7 +100,6 @@ typedef struct gs_metric {
 
 TAILQ_HEAD(, gs_metric) gs_list = TAILQ_HEAD_INITIALIZER(gs_list); /**< List of metrics */
 str_map_t gs_map = NULL; /**< gs metric map */
-static ldmsd_msg_log_f msglog; /**< Log function */
 const char *path = "/tmp/metrics"; /**< metric file path */
 static ldms_set_t set;
 static ldms_schema_t schema;
@@ -108,6 +107,9 @@ static char buff[65536];
 static uint64_t comp_id;
 
 int gs_fd = -1; /**< File descriptor to the metric file */
+
+/* Log */
+static ovis_log_t mylog;
 
 
 /* FUNCTIONS */
@@ -197,13 +199,13 @@ void permute_metrics(char *name, enum ldms_value_type type)
 	*v1 = 0;
 	range = strdup(v0+1);
 	if (!range) {
-		msglog(LDMSD_LERROR, "generic_sampler: %s: range strdup: "
+		ovis_log(mylog, OVIS_LERROR, "generic_sampler: %s: range strdup: "
 				"ENOMEM\n", __func__);
 		return;
 	}
 	suffix = strdup(v1+1);
 	if (!suffix) {
-		msglog(LDMSD_LDEBUG, "generic_sampler: %s: suffix strdup: "
+		ovis_log(mylog, OVIS_LDEBUG, "generic_sampler: %s: suffix strdup: "
 				"ENOMEM\n", __func__);
 		return;
 	}
@@ -216,7 +218,7 @@ void permute_metrics(char *name, enum ldms_value_type type)
 			lz = 0;
 			rc = sscanf(tok, "%d%n", &a, &c);
 			if (rc != 1) {
-				msglog(LDMSD_LDEBUG, "generic_sampler: %s: "
+				ovis_log(mylog, OVIS_LDEBUG, "generic_sampler: %s: "
 					"Expecting a number but got: %s\n",
 					__func__, tok);
 				return;
@@ -230,7 +232,7 @@ void permute_metrics(char *name, enum ldms_value_type type)
 		if (*tok == '.') {
 			rc = sscanf(tok, "%*[.]%d%n", &b, &c);
 			if (rc != 1) {
-				msglog(LDMSD_LDEBUG, "generic_sampler: %s: "
+				ovis_log(mylog, OVIS_LDEBUG, "generic_sampler: %s: "
 					"Expecting a number"
 					" after '..', but got: %s\n", __func__,
 					tok);
@@ -274,7 +276,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	value = av_value(avl, "mx");
 	if (!value) {
-		msglog(LDMSD_LERROR, "generic_sampler: No 'mx' is given.\n");
+		ovis_log(mylog, OVIS_LERROR, "generic_sampler: No 'mx' is given.\n");
 		return EINVAL;
 	}
 
@@ -299,7 +301,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			type = LDMS_V_D64;
 			break;
 		default:
-			msglog(LDMSD_LERROR, "generic_sampler config: "
+			ovis_log(mylog, OVIS_LERROR, "generic_sampler config: "
 					"unknown type %c\n", *t);
 			return EINVAL;
 		}
@@ -311,7 +313,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog(LDMSD_LERROR, "generic_sampler config: 'set' is "
+		ovis_log(mylog, OVIS_LERROR, "generic_sampler config: 'set' is "
 				"not specified\n");
 		return EINVAL;
 	}
@@ -332,6 +334,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static int sample(struct ldmsd_sampler *self)
@@ -346,7 +350,7 @@ static int sample(struct ldmsd_sampler *self)
 	if (gs_fd == -1) {
 		gs_fd = open(path, O_RDONLY);
 		if (gs_fd < 0) {
-			msglog(LDMSD_LERROR, "generic_sampler: Cannot open file:"
+			ovis_log(mylog, OVIS_LERROR, "generic_sampler: Cannot open file:"
 					" %s\n", path);
 			rc = ENOENT;
 			goto out;
@@ -354,7 +358,7 @@ static int sample(struct ldmsd_sampler *self)
 	}
 	offset = lseek(gs_fd, 0, SEEK_SET);
 	if (offset < 0) {
-		msglog(LDMSD_LERROR, "generic_sampler: lseek fail, errno: %d\n",
+		ovis_log(mylog, OVIS_LERROR, "generic_sampler: lseek fail, errno: %d\n",
 				errno);
 		close(gs_fd);
 		gs_fd = -1;
@@ -363,7 +367,7 @@ static int sample(struct ldmsd_sampler *self)
 	}
 	sz = read(gs_fd, buff, sizeof(buff) - 1);
 	if (sz < 0) {
-		msglog(LDMSD_LERROR, "generic_sampler: cannot read %s, errno: %d\n", path,
+		ovis_log(mylog, OVIS_LERROR, "generic_sampler: cannot read %s, errno: %d\n", path,
 				errno);
 		close(gs_fd);
 		gs_fd = -1;
@@ -421,12 +425,19 @@ static struct ldmsd_sampler gs_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
+	int rc;
+	mylog = ovis_log_register("sampler.generic_sampler",
+			"The log subsystem of the generic_sampler plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'generic_sampler' plugin. Error %d\n", rc);
+	}
 	if (!gs_map)
 		gs_map = str_map_create(65537);
 	if (!gs_map)
 		return NULL;
-	msglog = pf;
 	return &gs_plugin.base;
 }

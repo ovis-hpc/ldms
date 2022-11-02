@@ -65,8 +65,12 @@
 #include "ldmsd.h"
 #include "slurm_sampler.h"
 
+#define STORE "store_slurm"
+
+static ovis_log_t mylog;
+
 #define LOG_(level, ...) do { \
-	msglog(level, "store_slurm :"__VA_ARGS__); \
+	ovis_log(mylog, level, ## __VA_ARGS__); \
 } while(0);
 
 enum store_slurm_verbosity {
@@ -142,8 +146,6 @@ static pthread_mutex_t cfg_lock;
 LIST_HEAD(sos_inst_list, sos_instance) inst_list;
 
 static char root_path[PATH_MAX]; /**< store root path */
-
-static ldmsd_msg_log_f msglog;
 
 static const char *comp_time_attrs[] = { "component_id", "timestamp" };
 static const char *time_job_attrs[] = { "timestamp", "job_id" };
@@ -323,13 +325,13 @@ sos_handle_t create_container(const char *path)
 
 	rc = sos_container_new(path, 0660);
 	if (rc) {
-		LOG_(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
+		LOG_(OVIS_LERROR, "Error %d creating the container at '%s'\n",
 		       rc, path);
 		goto err_0;
 	}
 	sos = sos_container_open(path, SOS_PERM_RW);
 	if (!sos) {
-		LOG_(LDMSD_LERROR, "Error %d opening the container at '%s'\n",
+		LOG_(OVIS_LERROR, "Error %d opening the container at '%s'\n",
 		       errno, path);
 		goto err_0;
 	}
@@ -341,18 +343,18 @@ sos_handle_t create_container(const char *path)
 	sprintf(part_name, "%d", (unsigned int)t);
 	rc = sos_part_create(sos, part_name, path);
 	if (rc) {
-		LOG_(LDMSD_LERROR, "Error %d creating the partition '%s' in '%s'\n",
+		LOG_(OVIS_LERROR, "Error %d creating the partition '%s' in '%s'\n",
 		       rc, part_name, path);
 		goto err_1;
 	}
 	part = sos_part_find(sos, part_name);
 	if (!part) {
-		LOG_(LDMSD_LERROR, "Newly created partition was not found\n");
+		LOG_(OVIS_LERROR, "Newly created partition was not found\n");
 		goto err_1;
 	}
 	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
 	if (rc) {
-		LOG_(LDMSD_LERROR, "New partition could not be made primary\n");
+		LOG_(OVIS_LERROR, "New partition could not be made primary\n");
 		goto err_2;
 	}
 	sos_part_put(part);
@@ -424,14 +426,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	value = av_value(avl, "path");
 	if (!value) {
-		LOG_(LDMSD_LERROR,
+		LOG_(OVIS_LERROR,
 		       "%s[%d]: The 'path' configuraiton option is required.\n",
 		       __func__, __LINE__);
 		return EINVAL;
 	}
 	len = strlen(value);
 	if (len >= PATH_MAX) {
-		LOG_(LDMSD_LERROR,
+		LOG_(OVIS_LERROR,
 		       "%s[%d]: The 'path' is too long.\n",
 		       __func__, __LINE__);
 		return ENAMETOOLONG;
@@ -456,7 +458,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			free(si->path);
 		si->path = malloc(pathlen);
 		if (!si->path) {
-			LOG_(LDMSD_LERROR, "%s[%d]: Memory allocation error.\n",
+			LOG_(OVIS_LERROR, "%s[%d]: Memory allocation error.\n",
 			       __func__, __LINE__);
 			goto err_0;
 		}
@@ -473,11 +475,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 static void term(struct ldmsd_plugin *self)
 {
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "    config name=store_slurm path=<path>\n"
+	return  "    config name=" STORE " path=<path>\n"
 		"       path The path to primary storage\n";
 }
 
@@ -578,7 +582,7 @@ _open_store(struct sos_instance *si, ldms_set_t set)
 			if (schema)
 				goto out;
 		}
-		LOG_(LDMSD_LERROR, "Error %d adding the schema to the container\n", rc);
+		LOG_(OVIS_LERROR, "Error %d adding the schema to the container\n", rc);
 		goto err_1;
 	}
  out:
@@ -733,7 +737,7 @@ store_summary(struct sos_instance *si, ldms_set_t set, int slot)
 		obj = sos_obj_new(si->sos_schema);
 		if (!obj) {
 			rc = errno;
-			LOG_(LDMSD_LERROR, "%s[%d]: Error %d allocating '%s' object.\n",
+			LOG_(OVIS_LERROR, "%s[%d]: Error %d allocating '%s' object.\n",
 			       __func__, __LINE__, rc, sos_schema_name(si->sos_schema));
 			return rc;
 		}
@@ -807,7 +811,7 @@ store_ranks(struct sos_instance *si, ldms_set_t set, int slot)
 			obj = sos_obj_new(si->sos_schema);
 			if (!obj) {
 				rc = errno;
-				LOG_(LDMSD_LERROR, "%s[%d]: Error %d allocating '%s' object.\n",
+				LOG_(OVIS_LERROR, "%s[%d]: Error %d allocating '%s' object.\n",
 				       __func__, __LINE__, rc, sos_schema_name(si->sos_schema));
 				return rc;
 			}
@@ -849,7 +853,7 @@ store_times(struct sos_instance *si, ldms_set_t set, int slot)
 		obj = sos_obj_new(si->sos_schema);
 		if (!obj) {
 			rc = errno;
-			LOG_(LDMSD_LERROR, "%s[%d]: Error %d allocating '%s' object.\n",
+			LOG_(OVIS_LERROR, "%s[%d]: Error %d allocating '%s' object.\n",
 			       __func__, __LINE__, rc, sos_schema_name(si->sos_schema));
 			return rc;
 		}
@@ -904,7 +908,7 @@ store(ldmsd_store_handle_t _sh,
 		rc = _open_store(si, set);
 		if (rc) {
 			pthread_mutex_unlock(&si->lock);
-			LOG_(LDMSD_LERROR, "Failed to create store "
+			LOG_(OVIS_LERROR, "Failed to create store "
 			       "for %s.\n", si->container);
 			errno = rc;
 			goto err;
@@ -927,7 +931,7 @@ store(ldmsd_store_handle_t _sh,
 		job_id = ldms_metric_array_get_u64(set, JOB_ID_MID(set), slot);
 		state = ldms_metric_array_get_u8(set, JOB_STATE_MID(set), slot);
 		if (state < JOB_RUNNING) {
-			LOG_(LDMSD_LINFO,
+			LOG_(OVIS_LINFO,
 			       "Ignoring job %d in slot %d in state %d\n",
 			       job_id, slot, state);
 			goto skip;
@@ -989,7 +993,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 
 static struct ldmsd_store slurm_store = {
 	.base = {
-		.name = "store_slurm",
+		.name = STORE,
 		.term = term,
 		.config = config,
 		.usage = usage,
@@ -1002,9 +1006,15 @@ static struct ldmsd_store slurm_store = {
 	.close = close_store,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store."STORE, "Log susbsystem of " STORE " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+				"of '" STORE "' plugin. Error %d\n", rc);
+	}
 	return &slurm_store.base;
 }
 

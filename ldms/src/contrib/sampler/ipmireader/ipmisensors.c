@@ -71,7 +71,7 @@
 #define IPMISENSORSCMDWOR "ipmi-sensors -h%s -u%s -p%s --comma-separated-output --no-header-output --session-timeout=500 --retransmission-timeout=250 --quiet-cache --no-sensor-type 2>/dev/null"
 static char cmd[MAXIPMICMDLEN];
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 #define SAMP "ipmisensors"
 static char* defaultusername = "admin";
 static char* defaultpassword = "password";
@@ -108,7 +108,7 @@ static int create_command(char* hostname, char* username, char* password)
 	i = snprintf(cmd, MAXIPMICMDLEN, IPMISENSORSCMDWOR, hostname,
 		     username, password);
 	if ((i <= 0) || (i >= MAXIPMICMDLEN)){
-		msglog(LDMSD_LERROR, SAMP " arguments too long for command length",
+		ovis_log(mylog, OVIS_LERROR, SAMP " arguments too long for command length",
 		       "...exiting sampler\n");
 		return EINVAL;
 	}
@@ -116,14 +116,14 @@ static int create_command(char* hostname, char* username, char* password)
 	//check command works
 	mf = popen(cmd, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not call the " SAMP " cmd "
+		ovis_log(mylog, OVIS_LERROR, "Could not call the " SAMP " cmd "
 				"'%s'...exiting sampler\n", cmd);
 		return ENOENT;
 	}
 	// if it fails the first line will have the wrong format
 	char *s = fgets(lbuf, sizeof(lbuf), mf);
 	if (!s || strchr(lbuf, ',') == NULL){
-		msglog(LDMSD_LERROR, SAMP " bad arguments for command",
+		ovis_log(mylog, OVIS_LERROR, SAMP " bad arguments for command",
 		       "...exiting sampler\n");
 		return EINVAL;
 	}
@@ -146,14 +146,14 @@ static int create_metric_set(base_data_t base)
 
 	mf = popen(cmd, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not call the " SAMP " cmd "
+		ovis_log(mylog, OVIS_LERROR, "Could not call the " SAMP " cmd "
 				"'%s'...exiting sampler\n", cmd);
 		return ENOENT;
 	}
 
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = errno;
@@ -177,7 +177,7 @@ static int create_metric_set(base_data_t base)
 		//first one is a number
 		name = strtok_r(lbuf, ",", &ptr);
 		if (!name) {
-			msglog(LDMSD_LERROR, SAMP ": Data line format problem <%s>.\n",
+			ovis_log(mylog, OVIS_LERROR, "Data line format problem <%s>.\n",
 			       lbuf);
 			rc = EINVAL;
 			goto err;
@@ -186,7 +186,7 @@ static int create_metric_set(base_data_t base)
 		//second one is the name
 		name = strtok_r(NULL, ",", &ptr);
 		if (!name) {
-			msglog(LDMSD_LERROR, SAMP ": Data line format problem <%s>.\n",
+			ovis_log(mylog, OVIS_LERROR, "Data line format problem <%s>.\n",
 			       lbuf);
 			rc = EINVAL;
 			goto err;
@@ -232,7 +232,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
+			ovis_log(mylog, OVIS_LERROR, "config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -255,7 +255,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
@@ -266,7 +266,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	hostname = av_value(avl, "address");
 	if (!hostname){
-		msglog(LDMSD_LERROR, SAMP ": config missing hostname.\n");
+		ovis_log(mylog, OVIS_LERROR, "config missing hostname.\n");
 		rc = EINVAL;
 		goto err;
 	}
@@ -286,7 +286,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto err;
 
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -296,7 +296,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 	return 0;
@@ -321,7 +321,7 @@ static int sample(struct ldmsd_sampler *self)
 	union ldms_value v;
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -331,7 +331,7 @@ static int sample(struct ldmsd_sampler *self)
 	// assume order remains the same
 	mf = popen(cmd, "r");
 	if (mf == NULL){
-		msglog(LDMSD_LERROR, "Could not call the " SAMP " cmd "
+		ovis_log(mylog, OVIS_LERROR, "Could not call the " SAMP " cmd "
 		       "'%s'...not sampling\n", cmd);
 		goto out;
 	}
@@ -343,21 +343,21 @@ static int sample(struct ldmsd_sampler *self)
 
 		junk = strtok_r(lbuf, ",", &ptr);
                 if (!junk) {
-                        msglog(LDMSD_LERROR, SAMP ": Data line format problem <%s>.\n",
+                        ovis_log(mylog, OVIS_LERROR, "Data line format problem <%s>.\n",
                                lbuf);
                         goto out;
 		}
 
 		junk = strtok_r(NULL, ",", &ptr);
 		if (!junk) {
-			msglog(LDMSD_LERROR, SAMP ": Data line format problem <%s>.\n",
+			ovis_log(mylog, OVIS_LERROR, "Data line format problem <%s>.\n",
 			       lbuf);
 			goto out;
 		}
 
 		value = strtok_r(NULL, ",", &ptr);
 		if (!value) {
-			msglog(LDMSD_LERROR, SAMP ": Data line format problem <%s>.\n",
+			ovis_log(mylog, OVIS_LERROR, "Data line format problem <%s>.\n",
 			       lbuf);
 			goto out;
 		}
@@ -388,6 +388,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler ipmisensors_plugin = {
@@ -402,9 +404,13 @@ static struct ldmsd_sampler ipmisensors_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	mylog = ovis_log_register("sampler." SAMP, "Messages for the " SAMP " plugin");
+	if (!mylog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the " SAMP " plugin's "
+				"log subsystem. Error %d.\n", errno);
+	}
 	set = NULL;
 	return &ipmisensors_plugin.base;
 }

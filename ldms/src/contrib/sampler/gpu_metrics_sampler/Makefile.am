@@ -64,7 +64,7 @@ SDLLDFLAGS = $(LDFLAGS0)
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@ $(SDLCFLAGS)
 AM_LDFLAGS = @OVIS_LIB_ABS@ $(SDLLDFLAGS)
-COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
+COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll -lovis_log\
 		@LDFLAGS_GETTIME@
 GMGLIBS = -L. -lgmg -L/usr/lib/x86_64-linux-gnu/ -lze_loader
 

@@ -59,10 +59,9 @@
  */
 
 #include <string.h>
+#include "ovis_log/ovis_log.h"
 
 #define SAMP "daos_sampler"
-
-extern ldmsd_msg_log_f log_fn;
 
 static int string_comparator(void *a, const void *b)
 {
@@ -70,3 +69,4 @@ static int string_comparator(void *a, const void *b)
 }
 
 int get_daos_rank(struct d_tm_context *ctx, uint32_t *rank);
+int dao_log(int level, const char *fmt, ...);

@@ -13,6 +13,4 @@
 
 #define SAMP "lustre_mdc"
 
-extern ldmsd_msg_log_f log_fn;
-
 #endif /* __LUSTRE_MDC_H */

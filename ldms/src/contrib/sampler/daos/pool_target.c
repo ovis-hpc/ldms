@@ -59,6 +59,7 @@
  */
 
 #include "coll/rbt.h"
+#include "ovis_log/ovis_log.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "comp_id_helper.h"
@@ -191,7 +192,7 @@ int pool_target_schema_is_initialized(void)
 
 void pool_target_schema_fini(void)
 {
-	log_fn(LDMSD_LDEBUG, SAMP": pool_target_schema_fini()\n");
+	dao_log(OVIS_LDEBUG, "pool_target_schema_fini()\n");
 	if (pool_target_schema != NULL) {
 		ldms_schema_delete(pool_target_schema);
 		pool_target_schema = NULL;
@@ -210,7 +211,7 @@ int pool_target_schema_init(comp_id_t cid)
 	int		rc, i;
 	char		name[256];
 
-	log_fn(LDMSD_LDEBUG, SAMP": pool_target_schema_init()\n");
+	dao_log(OVIS_LDEBUG, "pool_target_schema_init()\n");
 
 	p_sch = ldms_schema_new(POOL_SCHEMA);
 	if (p_sch == NULL)
@@ -296,7 +297,7 @@ err3:
 err2:
 	ldms_schema_delete(p_sch);
 err1:
-	log_fn(LDMSD_LERROR, SAMP": daos_pool_target schema creation failed\n");
+	dao_log(OVIS_LERROR, "daos_pool_target schema creation failed\n");
 	return -1;
 }
 
@@ -514,7 +515,7 @@ void pools_destroy(void)
 	struct pool_data *pd;
 
 	if (rbt_card(&pool_tree) > 0)
-		log_fn(LDMSD_LDEBUG, SAMP": destroying %lu pool\n", rbt_card(&pool_tree));
+		dao_log(OVIS_LDEBUG, "destroying %lu pool\n", rbt_card(&pool_tree));
 
 	while (!rbt_empty(&pool_tree)) {
 		rbn = rbt_min(&pool_tree);
@@ -547,7 +548,7 @@ void pool_targets_destroy(void)
 	struct pool_target_data *ptd;
 
 	if (rbt_card(&pool_targets) > 0)
-		log_fn(LDMSD_LDEBUG, SAMP": destroying %lu pool targets\n", rbt_card(&pool_targets));
+		dao_log(OVIS_LDEBUG, "destroying %lu pool targets\n", rbt_card(&pool_targets));
 
 	while (!rbt_empty(&pool_targets)) {
 		rbn = rbt_min(&pool_targets);
@@ -582,18 +583,18 @@ void pool_targets_refresh(const char *producer_name,
 
 		ctx = d_tm_open(i);
 		if (!ctx) {
-			log_fn(LDMSD_LDEBUG, SAMP": d_tm_open(%d) failed\n", i);
+			dao_log(OVIS_LDEBUG, "d_tm_open(%d) failed\n", i);
 			continue;
 		}
 
 		rc = get_daos_rank(ctx, &rank);
 		if (rc != 0) {
-			log_fn(LDMSD_LERROR, SAMP": get_daos_rank() for shm %d failed\n", i);
+			dao_log(OVIS_LERROR, "get_daos_rank() for shm %d failed\n", i);
 			continue;
 		}
 
 		get_pools(ctx, &pools, &npools);
-		log_fn(LDMSD_LDEBUG, SAMP": rank %d, ntarget %d, npools %d\n", rank, num_targets, npools);
+		dao_log(OVIS_LDEBUG, "rank %d, ntarget %d, npools %d\n", rank, num_targets, npools);
 		/* iterate through all the pools */
 		for (j = 0; j < npools; j++) {
 			char *pool = pools[j];
@@ -601,7 +602,7 @@ void pool_targets_refresh(const char *producer_name,
 			struct pool_data *pd = NULL;
 
 			if (pool == NULL) {
-				log_fn(LDMSD_LERROR, SAMP": rank %d, idx %d: pool is NULL\n", rank, j);
+				dao_log(OVIS_LERROR, "rank %d, idx %d: pool is NULL\n", rank, j);
 				continue;
 			}
 
@@ -612,15 +613,15 @@ void pool_targets_refresh(const char *producer_name,
 			if (prbn) {
 				pd = container_of(prbn, struct pool_data, pool_node);
 				rbt_del(&pool_tree, &pd->pool_node);
-				//log_fn(LDMSD_LDEBUG, SAMP": found %s\n", pd->pool_node.key);
+				//dao_log(OVIS_LDEBUG, "found %s\n", pd->pool_node.key);
 			} else {
 				pd = pool_create(producer_name, system, p_instance_name, pool, cid, rank);
 				if (pd == NULL) {
-					log_fn(LDMSD_LERROR, SAMP": Failed to create pool %s (%s)\n",
+					dao_log(OVIS_LERROR, "Failed to create pool %s (%s)\n",
 							p_instance_name, strerror(errno));
 					continue;
 				}
-				//log_fn(LDMSD_LDEBUG, SAMP": created %s\n", pd->pool_node.key);
+				//dao_log(OVIS_LDEBUG, "created %s\n", pd->pool_node.key);
 			}
 			rbt_ins(&new_pools, &pd->pool_node);
 
@@ -636,15 +637,15 @@ void pool_targets_refresh(const char *producer_name,
 					ptd = container_of(rbn, struct pool_target_data,
 							   pool_targets_node);
 					rbt_del(&pool_targets, &ptd->pool_targets_node);
-					//log_fn(LDMSD_LDEBUG, SAMP": found %s\n", ptd->pool_targets_node.key);
+					//dao_log(OVIS_LDEBUG, "found %s\n", ptd->pool_targets_node.key);
 				} else {
 					ptd = pool_target_create(producer_name, pt_instance_name, system, pool, cid, rank, target);
 					if (ptd == NULL) {
-						log_fn(LDMSD_LERROR, SAMP": Failed to create pool target %s (%s)\n",
+						dao_log(OVIS_LERROR, "Failed to create pool target %s (%s)\n",
 									pt_instance_name, strerror(errno));
 						continue;
 					}
-					//log_fn(LDMSD_LDEBUG, SAMP": created %s\n", ptd->pool_targets_node.key);
+					//dao_log(OVIS_LDEBUG, "created %s\n", ptd->pool_targets_node.key);
 				}
 
 				rbt_ins(&new_pool_targets, &ptd->pool_targets_node);
@@ -671,7 +672,7 @@ static struct d_tm_node_t *pool_find_metric(struct d_tm_context *ctx, struct poo
 	snprintf(dtm_name_buf, dtm_name_buf_len, "pool/%s/%s", pd->pool, metric);
 	node = d_tm_find_metric(ctx, dtm_name_buf);
 	if (node == NULL) {
-		log_fn(LDMSD_LERROR, SAMP": Failed to find metric %s\n", dtm_name_buf);
+		dao_log(OVIS_LERROR, "Failed to find metric %s\n", dtm_name_buf);
 		return NULL;
 	}
 
@@ -684,7 +685,7 @@ static void pool_set_u64(struct pool_data *pd, const char *metric, uint64_t val)
 
 	index = ldms_metric_by_name(pd->metrics, metric);
 	if (index < 0) {
-		log_fn(LDMSD_LERROR, SAMP": Failed to fetch index for %s\n", metric);
+		dao_log(OVIS_LERROR, "Failed to fetch index for %s\n", metric);
 		return;
 	}
 	ldms_metric_set_u64(pd->metrics, index, val);
@@ -700,7 +701,7 @@ static void pool_sample(struct d_tm_context *ctx, struct pool_data *pd)
 	int			 index;
 	int			 i;
 
-	/*log_fn(LDMSD_LDEBUG, SAMP": sampling pool %s/%d/%s\n",
+	/*dao_log(OVIS_LDEBUG, "sampling pool %s/%d/%s\n",
 	       pd->system, pd->rank, pd->pool);*/
 
 	ldms_transaction_begin(pd->metrics);
@@ -711,7 +712,7 @@ static void pool_sample(struct d_tm_context *ctx, struct pool_data *pd)
 			continue;
 		rc = d_tm_get_gauge(ctx, &cur, NULL, node);
 		if (rc != DER_SUCCESS) {
-			log_fn(LDMSD_LERROR, SAMP": Failed to fetch gauge %s\n", dtm_name);
+			dao_log(OVIS_LERROR, "Failed to fetch gauge %s\n", dtm_name);
 			continue;
 		}
 
@@ -725,7 +726,7 @@ static void pool_sample(struct d_tm_context *ctx, struct pool_data *pd)
 			continue;
 		rc = d_tm_get_counter(ctx, &cur, node);
 		if (rc != DER_SUCCESS) {
-			log_fn(LDMSD_LERROR, SAMP": Failed to fetch counter %s\n", dtm_name);
+			dao_log(OVIS_LERROR, "Failed to fetch counter %s\n", dtm_name);
 			continue;
 		}
 
@@ -743,7 +744,7 @@ static struct d_tm_node_t *pool_target_find_metric(struct d_tm_context *ctx, str
 			ptd->pool, metric, ptd->target);
 	node = d_tm_find_metric(ctx, dtm_name_buf);
 	if (node == NULL) {
-		log_fn(LDMSD_LERROR, SAMP": Failed to find metric %s\n", dtm_name_buf);
+		dao_log(OVIS_LERROR, "Failed to find metric %s\n", dtm_name_buf);
 		return NULL;
 	}
 
@@ -756,7 +757,7 @@ static void pool_target_set_u64(struct pool_target_data *ptd, const char *metric
 
 	index = ldms_metric_by_name(ptd->metrics, metric);
 	if (index < 0) {
-		log_fn(LDMSD_LERROR, SAMP": Failed to fetch index for %s\n", metric);
+		dao_log(OVIS_LERROR, "Failed to fetch index for %s\n", metric);
 		return;
 	}
 	ldms_metric_set_u64(ptd->metrics, index, val);
@@ -771,7 +772,7 @@ static void pool_target_sample(struct d_tm_context *ctx, struct pool_target_data
 	int			 rc;
 	int			 i;
 
-	/*log_fn(LDMSD_LDEBUG, SAMP": sampling pool target %s/%d/%s/%d\n",
+	/*dao_log(OVIS_LDEBUG, "sampling pool target %s/%d/%s/%d\n",
 	       ptd->system, ptd->rank, ptd->pool, ptd->target);*/
 
 	ldms_transaction_begin(ptd->metrics);
@@ -782,7 +783,7 @@ static void pool_target_sample(struct d_tm_context *ctx, struct pool_target_data
 			continue;
 		rc = d_tm_get_gauge(ctx, &cur, NULL, node);
 		if (rc != DER_SUCCESS) {
-			log_fn(LDMSD_LERROR, SAMP": Failed to fetch gauge %s\n", dtm_name);
+			dao_log(OVIS_LERROR, "Failed to fetch gauge %s\n", dtm_name);
 			continue;
 		}
 
@@ -796,7 +797,7 @@ static void pool_target_sample(struct d_tm_context *ctx, struct pool_target_data
 			continue;
 		rc = d_tm_get_counter(ctx, &cur, node);
 		if (rc != DER_SUCCESS) {
-			log_fn(LDMSD_LERROR, SAMP": Failed to fetch counter %s\n", dtm_name);
+			dao_log(OVIS_LERROR, "Failed to fetch counter %s\n", dtm_name);
 			continue;
 		}
 

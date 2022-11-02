@@ -82,7 +82,7 @@ static int config(struct ldmsd_plugin *self,
 	if (inst->base) {
 		/* last config call seen wins */
 		rdcinfo_reset(inst);
-		INST_LOG(inst, LDMSD_LDEBUG, SAMP ": reconfiguring.\n");
+		INST_LOG(inst, OVIS_LDEBUG, SAMP ": reconfiguring.\n");
 	}
 
 	rc = rdcinfo_config(inst, avl);
@@ -107,7 +107,7 @@ static int sample(struct ldmsd_sampler *self)
 	if (rc) {
 		/* must stop the noisy loop inside the rdc library */
 		rdcinfo_reset(inst);
-		INST_LOG(inst, LDMSD_LWARNING, SAMP ": deconfigured.\n");
+		INST_LOG(inst, OVIS_LWARNING, SAMP ": deconfigured.\n");
 	}
 	pthread_mutex_unlock(&inst->lock);
 	return rc;
@@ -122,7 +122,7 @@ static void term() {
 	if (!inst)
 		return;
 	pthread_mutex_lock(&inst->lock);
-	INST_LOG(inst, LDMSD_LDEBUG, SAMP " term() called\n");
+	INST_LOG(inst, OVIS_LDEBUG, SAMP " term() called\n");
 	singleton = NULL;
 	rdcinfo_reset(inst);
 	pthread_mutex_unlock(&inst->lock);
@@ -153,15 +153,15 @@ static struct ldmsd_sampler plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	singleton = rdcinfo_new(pf);
+	singleton = rdcinfo_new();
 	if (!singleton) {
-		pf(LDMSD_LERROR, SAMP ": unable to allocate singleton\n");
+		ovis_log(singleton->mylog, OVIS_LERROR, SAMP ": unable to allocate singleton\n");
 		errno = ENOMEM;
 		return NULL;
 	}
-	pf(LDMSD_LDEBUG, SAMP ": get_plugin called\n");
+	ovis_log(singleton->mylog, OVIS_LDEBUG, SAMP ": get_plugin called\n");
 	return &plugin.base;
 }
 

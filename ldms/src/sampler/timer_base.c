@@ -169,14 +169,14 @@ out:
 }
 
 int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
-		      struct attr_value_list *avl, ldmsd_msg_log_f msglog)
+		      struct attr_value_list *avl, ovis_log_t mylog)
 {
 	struct timer_base *tb;
 	int rc = 0;
 
 	tb = (void*)self;
 
-	tb->msglog = msglog;
+	tb->mylog = mylog;
 
 	pthread_mutex_lock(&tb->mutex);
 	switch (tb->state) {
@@ -190,17 +190,17 @@ int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 
 	if (tb->schema) {
-		tb->msglog(LDMSD_LERROR, "%s: schema existed.\n", tb->base.base.name);
+		ovis_log(tb->mylog, OVIS_LERROR, "%s: schema existed.\n", tb->base.base.name);
 		rc = EEXIST;
 		goto out;
 	}
 
 	if (tb->set) {
-		tb->msglog(LDMSD_LERROR, "%s: set existed.\n", tb->base.base.name);
+		ovis_log(tb->mylog, OVIS_LERROR, "%s: set existed.\n", tb->base.base.name);
 		rc = EEXIST;
 		goto out;
 	}
-	tb->cfg = base_config(avl, tb->base.base.name, tb->base.base.name, tb->msglog);
+	tb->cfg = base_config(avl, tb->base.base.name, tb->base.base.name, mylog);
 	if (!tb->cfg) {
 		rc = errno;
 		goto out;
@@ -228,7 +228,7 @@ int timer_base_create_set(struct timer_base *tb)
 {
 	tb->set = base_set_new(tb->cfg);
 	if (!tb->set) {
-		tb->msglog(LDMSD_LERROR, "%s: ldms_set_new() failed, errno: %d.\n",
+		ovis_log(tb->mylog, OVIS_LERROR, "%s: ldms_set_new() failed, errno: %d.\n",
 				tb->base.base.name, errno);
 		return errno;
 	}
@@ -341,7 +341,7 @@ void timer_base_init(struct timer_base *tb)
 	pthread_mutex_init(&tb->mutex, NULL);
 }
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
 	struct timer_base *tb = calloc(1, sizeof(*tb));
 	if (!tb)

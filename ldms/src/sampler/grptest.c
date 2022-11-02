@@ -74,9 +74,10 @@
 static ldms_set_t grp = NULL;
 static ldms_set_t set[N] = {NULL,};
 static FILE *mf = 0;
-static ldmsd_msg_log_f msglog;
 static base_data_t base;
 int members = 0; /* flags: bit i being 1 means set[i] is in the group */
+
+static ovis_log_t mylog;
 
 #define DEFAULT_PREFIX "localhost"
 const char *prefix = NULL;
@@ -152,7 +153,7 @@ static int config_init(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		       struct attr_value_list *avl)
 {
 	int rc;
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err0;
@@ -163,7 +164,7 @@ static int config_init(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err1;
 	}
 	return 0;
@@ -240,7 +241,7 @@ static int sample(struct ldmsd_sampler *self)
 {
 	int i;
 	if (!grp) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -262,6 +263,8 @@ static void term(struct ldmsd_plugin *self)
 	if (grp)
 		ldms_set_delete(grp);
 	grp = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler meminfo_plugin = {
@@ -276,10 +279,15 @@ static struct ldmsd_sampler meminfo_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
 	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	if (!sc) {
 		sc = ldms_schema_new("set_schema");
 		if (!sc)

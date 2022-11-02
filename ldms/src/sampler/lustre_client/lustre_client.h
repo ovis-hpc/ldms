@@ -12,6 +12,4 @@
 
 #define SAMP "lustre_client"
 
-extern ldmsd_msg_log_f log_fn;
-
 #endif /* __LUSTRE_LLITE_H */

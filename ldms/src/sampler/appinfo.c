@@ -75,9 +75,10 @@
 #include "ldmsd.h"
 #include "sampler_base.h"
 
-static ldms_set_t set = NULL; /* metric set to fill in w/ data */
-static ldmsd_msg_log_f msglog;
 #define SAMP "appinfo"
+static ovis_log_t mylog;
+
+static ldms_set_t set = NULL; /* metric set to fill in w/ data */
 static int metric_offset; /* starting index for non-base metrics */
 static base_data_t base;  /* inherited base sampler data */
 static int jobid_index=1, appid_index=2; /* will lookup for better init */
@@ -114,12 +115,12 @@ static int create_metric_set(base_data_t base, char *metrics_optstr)
 	char lbuf[256];
 	char metric_name[128];
 
-	msglog(LDMSD_LDEBUG, SAMP ": Creating schema.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Creating schema.\n");
 
 	/* Invoke base sampler schema create part */
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 			"%s: The schema '%s' could not be created, errno=%d.\n",
 			__FILE__, base->schema_name, errno);
 		goto err;
@@ -148,7 +149,7 @@ static int create_metric_set(base_data_t base, char *metrics_optstr)
 	if (!metrics_optstr)
 		goto err; /* more error here??? */
 
-	msglog(LDMSD_LDEBUG, SAMP ": Creating config-opt metrics.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Creating config-opt metrics.\n");
 
 	char *mptr, *mstr, *iptr, *mname, *mtype;
 	mstr = strtok_r(metrics_optstr, ",", &mptr);
@@ -199,7 +200,7 @@ static int create_metric_set(base_data_t base, char *metrics_optstr)
 
 	/* TODO SHOULD initialize our own metrics to 0 here???? */
 	/* all good, so return success */
-	msglog(LDMSD_LDEBUG, SAMP ": Done creating schema.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Done creating schema.\n");
 	return 0;
 
  err:
@@ -225,13 +226,13 @@ static int config_check(struct attr_value_list *kwl,
 	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s has "
+			ovis_log(mylog, OVIS_LERROR, "config argument %s has "
 				"been deprecated.\n", deprecated[i]);
 			return EINVAL;
 		}
 	}
 
-	msglog(LDMSD_LDEBUG, SAMP ": Config check done.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Config check done.\n");
 	return 0;
 }
 
@@ -274,10 +275,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	shmem_header = MAP_FAILED;
 	ldmsapp_mutex = SEM_FAILED;
 	shmem_fd = -1;
-	msglog(LDMSD_LDEBUG, SAMP ": Begin configuring.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Begin configuring.\n");
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
@@ -287,7 +288,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 
 	/* Invoke base sampler config, let it do what it needs */
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -295,25 +296,25 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 	metrics_str = av_value(avl,"metrics");
 	if (!metrics_str) {
-		msglog(LDMSD_LERROR, SAMP ": not metrics option given.\n");
+		ovis_log(mylog, OVIS_LERROR, "not metrics option given.\n");
 		goto err;
 	}
 	/* create appinfo metrics beyond base */
 	rc = create_metric_set(base, metrics_str);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 
 	/* Do shared mem stuff after metrics create so that we know the size */
 	/* of the metric set TODO: somehow use this in creating shmem size */
 
-	msglog(LDMSD_LDEBUG, SAMP ": Configuring shared memory.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Configuring shared memory.\n");
 
 	/* create shared memory semaphore, fail if error */
 	ldmsapp_mutex = sem_open(sem_name, O_CREAT, 0666, 1);
 	if (ldmsapp_mutex == SEM_FAILED) {
-		msglog(LDMSD_LERROR, SAMP ": Semaphore open error: %s\n",
+		ovis_log(mylog, OVIS_LERROR, "Semaphore open error: %s\n",
 			STRERROR(errno));
 		goto err;
 	}
@@ -326,7 +327,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	/* open shared memory segment */
 	shmem_fd = shm_open(shmem_name, O_CREAT|O_RDWR, 0666);
 	if (shmem_fd == -1) {
-		msglog(LDMSD_LERROR, SAMP ": Shmem open/create error: %s\n",
+		ovis_log(mylog, OVIS_LERROR, "Shmem open/create error: %s\n",
 			STRERROR(errno));
 		goto err;
 	}
@@ -336,12 +337,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 			MAX_PROCESSES*MAX_METRICS*(sizeof(app_metric_t)+256));
 	/* Get stats (size) of shared memory segment and check */
 	if (fstat(shmem_fd, &shmem_stat) == -1) {
-		msglog(LDMSD_LERROR, SAMP ": Shmem stat error: %s\n",
+		ovis_log(mylog, OVIS_LERROR, "Shmem stat error: %s\n",
 			STRERROR(errno));
 		goto err;
 	}
 	if (shmem_stat.st_size < 256 /* TODO CHECK ACTUAL SIZE */) {
-		msglog(LDMSD_LERROR, SAMP ": Shmem size too small: %u\n",
+		ovis_log(mylog, OVIS_LERROR, "Shmem size too small: %u\n",
 			shmem_stat.st_size);
 		goto err;
 	}
@@ -350,7 +351,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	shmem_header = (shmem_header_t *) mmap(0, shmem_stat.st_size,
 				PROT_READ|PROT_WRITE, MAP_SHARED, shmem_fd, 0);
 	if (shmem_header == MAP_FAILED) {
-		msglog(LDMSD_LERROR, SAMP ": Shmem mmap error: %s\n",
+		ovis_log(mylog, OVIS_LERROR, "Shmem mmap error: %s\n",
 			STRERROR(errno));
 		goto err;
 	}
@@ -361,7 +362,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 	/* BACK to regular config stuff here */
 
-	msglog(LDMSD_LDEBUG, SAMP ": Done configuring.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Done configuring.\n");
 	return 0;
  err:
 	/* cleanup any successful progress that might have happened */
@@ -397,10 +398,10 @@ static int sample(struct ldmsd_sampler *self)
 	char lbuf[256];
 	char metric_name[128];
 	union ldms_value v;
-	msglog(LDMSD_LDEBUG, SAMP ": Begin sample.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Begin sample.\n");
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 	sem_wait(ldmsapp_mutex); /* shared mem control */
@@ -413,7 +414,7 @@ static int sample(struct ldmsd_sampler *self)
 	} while (i != last_process_sampled);
 	if (shmem_header->proc_metadata[i].status != NEEDSAMPLED) {
 		/* no process needs sampled, so skip! */
-		msglog(LDMSD_LDEBUG, SAMP ": No new data to sample.\n");
+		ovis_log(mylog, OVIS_LDEBUG, "No new data to sample.\n");
 		sem_post(ldmsapp_mutex); /* shared mem control */
 		return 0;
 	}
@@ -449,7 +450,7 @@ static int sample(struct ldmsd_sampler *self)
 out:
 	base_sample_end(base);
 	sem_post(ldmsapp_mutex); /* shared mem control */
-	msglog(LDMSD_LDEBUG, SAMP ": End sample.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "End sample.\n");
 	return 0;
 }
 
@@ -458,7 +459,7 @@ out:
  **/
 static void term(struct ldmsd_plugin *self)
 {
-	msglog(LDMSD_LDEBUG, SAMP ": Terminating sampler.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Terminating sampler.\n");
 	if (base)
 		base_del(base);
 	if (set)
@@ -471,7 +472,9 @@ static void term(struct ldmsd_plugin *self)
 	/* probably should unlink them */
 	shm_unlink(shmem_name);
 	sem_unlink(sem_name);
-	msglog(LDMSD_LDEBUG, SAMP ": Done terminating.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Done terminating.\n");
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 /**
@@ -492,9 +495,15 @@ static struct ldmsd_sampler appinfo_plugin = {
 /**
  * LDMS creation hook.
  **/
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &appinfo_plugin.base;
 }
@@ -513,7 +522,7 @@ static int create_shmem_data(ldms_set_t set)
 	app_metric_t *am;
 	void *proc1_data, *tp;
 
-	msglog(LDMSD_LDEBUG, SAMP ": Begin shmem data creation.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Begin shmem data creation.\n");
 	sem_wait(ldmsapp_mutex); /* shared mem control */
 
 	/* make pointer to first process data block in shared mem */
@@ -523,7 +532,7 @@ static int create_shmem_data(ldms_set_t set)
 
 	num_metrics = ldms_set_card_get(set);
 	if (num_metrics > MAX_METRICS) {
-		msglog(LDMSD_LERROR, SAMP
+		ovis_log(mylog, OVIS_LERROR, SAMP
 			": too many metrics (%d), truncating.\n", num_metrics);
 		num_metrics = MAX_METRICS;
 	}
@@ -535,8 +544,8 @@ static int create_shmem_data(ldms_set_t set)
 		mname = ldms_metric_name_get(set,i);
 		mtype = ldms_metric_type_get(set,i);
 		if (!mname || mtype==LDMS_V_NONE) {
-			msglog(LDMSD_LERROR,
-				SAMP ": bad metric def at metric %d!\n", i);
+			ovis_log(mylog, OVIS_LERROR,
+				"bad metric def at metric %d!\n", i);
 			continue;
 		}
 		shmem_header->metric_offset[i] = data_block_size;
@@ -581,7 +590,7 @@ static int create_shmem_data(ldms_set_t set)
 	}
 
 	sem_post(ldmsapp_mutex); /* shared mem control */
-	msglog(LDMSD_LDEBUG, SAMP ": Done shmem data creation.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Done shmem data creation.\n");
 	return tot_size;
 }
 
@@ -632,8 +641,8 @@ static int sample_proc_metric(app_metric_t *metric, int id)
 			ldms_metric_set_s64(set, id, metric->value.v_s64);
 			break;
 		default:
-			msglog(LDMSD_LERROR,
-				SAMP ": Unrecognized or unsupported"
+			ovis_log(mylog, OVIS_LERROR,
+				"Unrecognized or unsupported"
 				" metric type '%d'\n", metric->vtype);
 			return -1;
 	}

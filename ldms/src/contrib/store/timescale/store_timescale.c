@@ -89,7 +89,7 @@ struct timescale_store {
 static long measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
 static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 LIST_HEAD(timescale_store_list, timescale_store) store_list;
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 
 static int set_none_fn(char *line, size_t *line_off, size_t line_len, ldms_set_t s, int i)
 {
@@ -216,25 +216,25 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
         value = av_value(avl, "user");
         if (!value) {
-                msglog(LDMSD_LERROR, "The 'user' keyword is required.\n");
+                ovis_log(mylog, OVIS_LERROR, "The 'user' keyword is required.\n");
                 return EINVAL;
         }
         strncpy(user, value, sizeof(user));
 
         pwfile = av_value(avl, "pwfile");
         if (!pwfile) {
-                msglog(LDMSD_LERROR, "The 'pwfile' keyword is required.\n");
+                ovis_log(mylog, OVIS_LERROR, "The 'pwfile' keyword is required.\n");
                 return EINVAL;
         }
         if (pwfile) {
                 if (!pwfile || pwfile[0] != '/') {
-                        msglog(LDMSD_LERROR, "Invalid password file path! Must start with '/'.\n");
+                        ovis_log(mylog, OVIS_LERROR, "Invalid password file path! Must start with '/'.\n");
                         return EINVAL;
                 }
 
                 FILE *file = fopen(pwfile, "r");
                 if (!file) {
-                        msglog(LDMSD_LERROR, "Unable to open password file!\n");
+                        ovis_log(mylog, OVIS_LERROR, "Unable to open password file!\n");
                         return EINVAL;
                 }
                 char line[600];
@@ -246,14 +246,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
                         if (0 == strncmp(line, "secretword=", 11)) {
                                 s = strtok_r(&line[11], " \t\n", &ptr);
                                 if (!s) {
-                                        msglog(LDMSD_LERROR, "Auth error: the secret word is an empty srting.\n");
+                                        ovis_log(mylog, OVIS_LERROR, "Auth error: the secret word is an empty srting.\n");
                                         return EINVAL;
                                 }
                                 break;
                         }
                 }
                 if (!s) {
-                        msglog(LDMSD_LERROR, "No secret word in the file!\n");
+                        ovis_log(mylog, OVIS_LERROR, "No secret word in the file!\n");
                         return EINVAL;
                 }
                 strncpy(password, strdup(s), sizeof(password));
@@ -263,21 +263,21 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
         value = av_value(avl, "hostaddr");
         if (!value) {
-                msglog(LDMSD_LERROR, "The 'hostaddr' keyword is required.\n");
+                ovis_log(mylog, OVIS_LERROR, "The 'hostaddr' keyword is required.\n");
                 return EINVAL;
         }
         strncpy(hostaddr, value, sizeof(hostaddr));
 
         value = av_value(avl, "port");
         if (!value) {
-                msglog(LDMSD_LERROR, "The 'port' keyword is required.\n");
+                ovis_log(mylog, OVIS_LERROR, "The 'port' keyword is required.\n");
                 return EINVAL;
         }
         strncpy(port, value, sizeof(port));
 
         value = av_value(avl, "dbname");
         if (!value) {
-                msglog(LDMSD_LERROR, "The 'dbname' keyword is required.\n");
+                ovis_log(mylog, OVIS_LERROR, "The 'dbname' keyword is required.\n");
                 return EINVAL;
         }
         strncpy(dbname, value, sizeof(dbname));
@@ -286,7 +286,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
         if (value) {
                 measurement_limit = strtol(value, NULL, 0);
                 if (measurement_limit <= 0) {
-                        msglog(LDMSD_LERROR,
+                        ovis_log(mylog, OVIS_LERROR,
                                 "'%s' is not a valid 'measurement_limit' value\n",
                                 value);
                         measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
@@ -299,6 +299,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 static void term(struct ldmsd_plugin *self)
 {
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -337,7 +339,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 
         is->conn = PQconnectdb(str);
         if (PQstatus(is->conn) == CONNECTION_BAD) {
-                msglog(LDMSD_LERROR, "TimescaleDB connection failed!\n");
+                ovis_log(mylog, OVIS_LERROR, "TimescaleDB connection failed!\n");
                 goto err4;
         }
 
@@ -354,7 +356,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
                 name = x->name;
                 enum ldms_value_type metric_type = x->type;
                 if (metric_type > LDMS_V_CHAR_ARRAY) {
-                        msglog(LDMSD_LERROR,
+                        ovis_log(mylog, OVIS_LERROR,
                                "The metric %s:%s of type %s is not supported by "
                                "TimescaleDB and is being ignored.\n",
                                is->schema,
@@ -387,7 +389,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 
         PGresult *res = PQexec(is->conn, measurement_create);
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-                msglog(LDMSD_LERROR, "Create table error! with sql %s \n", measurement_create);
+                ovis_log(mylog, OVIS_LERROR, "Create table error! with sql %s \n", measurement_create);
                 PQclear(res);
                 goto err4;
         }
@@ -398,7 +400,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
         return is;
 
  err5:
-        msglog(LDMSD_LERROR, "Overflow formatting TimescaleDB measurement data.\n");
+	ovis_log(mylog, OVIS_LERROR, "Overflow formatting TimescaleDB measurement data.\n");
  err4:
         PQfinish(is->conn);
         free(is->schema);
@@ -495,7 +497,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
         for (i = 0; i < metric_count; i++) {
                 metric_type = ldms_metric_type_get(set, metric_arry[i]);
                 if (metric_type > LDMS_V_CHAR_ARRAY) {
-                        msglog(LDMSD_LERROR,
+                        ovis_log(mylog, OVIS_LERROR,
                                "The metric %s:%s of type %s is not supported by "
                                "TimescaleDB and is being ignored.\n",
                                is->schema,
@@ -526,7 +528,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
         FILE *fp;
         char buffer[50];
         fp=popen(command, "r");
-        char *strdate = fgets(buffer, sizeof(buffer), fp);
+	char *strdate = fgets(buffer, sizeof(buffer), fp);
 	if (fp)
 		pclose(fp);
 
@@ -536,20 +538,20 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 
 		PGresult *res = PQexec(is->conn, measurement_insert);
 		if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-			msglog(LDMSD_LERROR, "Insert table error! with sql %s \n", measurement_insert);
+			ovis_log(mylog, OVIS_LERROR, "Insert table error! with sql %s \n", measurement_insert);
 			PQclear(res);
 			PQfinish(is->conn);
 		}
 	} else {
-		msglog(LDMSD_LERROR, "Unable to format date for table insertion!\n");
+		ovis_log(mylog, OVIS_LERROR, "Unable to format date for table insertion!\n");
 	}
         pthread_mutex_unlock(&is->lock);
         return 0;
 err:
         pthread_mutex_unlock(&is->lock);
 
-        msglog(LDMSD_LERROR, "Overflow formatting TimescaleDB measurement data.\n");
-        msglog(LDMSD_LERROR, "SCHEMA: %s \n", is->schema);
+        ovis_log(mylog, OVIS_LERROR, "Overflow formatting TimescaleDB measurement data.\n");
+        ovis_log(mylog, OVIS_LERROR, "SCHEMA: %s \n", is->schema);
         return ENOMEM;
 }
 
@@ -596,9 +598,13 @@ static struct ldmsd_store store_timescale = {
 	.close = close_store,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	mylog = ovis_log_register("store.timescale", "Messages for the timescale store plugin");
+	if (!mylog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the timescale "
+				"store plugin's log subsystem. Error %d.\n", errno);
+	}
 	return &store_timescale.base;
 }
 

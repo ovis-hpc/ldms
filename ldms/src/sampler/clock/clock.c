@@ -63,11 +63,11 @@
 static const char *metric_name = "null_tick";
 static uint64_t counter = 0;
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 #define SAMP "clock"
 static int metric_offset;
 static base_data_t base;
 
+static ovis_log_t mylog;
 
 static int create_metric_set(base_data_t base)
 {
@@ -78,7 +78,7 @@ static int create_metric_set(base_data_t base)
 	schema = base_schema_new(base);
 	if (!schema){
 		rc = errno;
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		goto err;
@@ -125,7 +125,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
+			ovis_log(mylog, OVIS_LERROR, "config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -133,7 +133,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < (sizeof(misplaced)/sizeof(misplaced[0])); i++){
 		value = av_value(avl, misplaced[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s is misplaced.\n",
+			ovis_log(mylog, OVIS_LERROR, "config argument %s is misplaced.\n",
 			       misplaced[i]);
 			return EINVAL;
 		}
@@ -159,17 +159,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base)
 		goto err;
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 	return 0;
@@ -189,7 +189,7 @@ static int sample(struct ldmsd_sampler *self)
 	union ldms_value v;
 
 	if (!set) {
-		msglog(LDMSD_LERROR, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LERROR, "plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -209,6 +209,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler clock_plugin = {
@@ -223,9 +225,15 @@ static struct ldmsd_sampler clock_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &clock_plugin.base;
 }

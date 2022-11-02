@@ -243,8 +243,9 @@ uint8_t rcvbuf[BUFSIZ] = {0};
 
 #define SAMP "sysclassib"
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 static base_data_t base;
+
+static ovis_log_t mylog;
 
 struct timeval tv[2];
 struct timeval *tv_now = &tv[0];
@@ -270,7 +271,7 @@ static int create_metric_set(base_data_t base)
 		return ENOMEM;
 
 	if (!schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = EINVAL;
@@ -280,11 +281,11 @@ static int create_metric_set(base_data_t base)
 
 	LIST_FOREACH(port, &scib_port_list, entry) {
 		if (port->badport) {
-			msglog(LDMSD_LINFO,
+			ovis_log(mylog, OVIS_LINFO,
 				SAMP ": Not monitoring port: %s.%d\n",
 				port->ca, port->portno);
 		} else {
-			msglog(LDMSD_LINFO,
+			ovis_log(mylog, OVIS_LINFO,
 				SAMP ": Monitoring port: %s.%d\n",
 				port->ca, port->portno);
 		}
@@ -396,7 +397,7 @@ int populate_ports(struct scib_port_list *list, char *ports)
 	while (*s) {
 		rc = sscanf(s, "%63[^.].%d%n", ca, &port_no, &n);
 		if (rc != 2) {
-			msglog(LDMSD_LERROR,"sysclassib: Cannot parse ports:%s."
+			ovis_log(mylog, OVIS_LERROR,"sysclassib: Cannot parse ports:%s."
 				"Need list of NAME.NUM, e.g. qib0.1,qib.1\n",s);
 			rc = EINVAL;  /* invalid format */
 			goto err;
@@ -447,7 +448,7 @@ int open_port(struct scib_port *port)
 			mgmt_classes, 3);
 
 	if (!port->srcport) {
-		msglog(LDMSD_LERROR, SAMP ": ERROR: Cannot open CA:%s port:%d,"
+		ovis_log(mylog, OVIS_LERROR, SAMP ": ERROR: Cannot open CA:%s port:%d,"
 				" ERRNO: %d\n", port->ca, port->portno,
 				errno);
 		return errno;
@@ -459,7 +460,7 @@ int open_port(struct scib_port *port)
 	 * open another port just to get LID */
 	rc = umad_get_port(port->ca, port->portno, &uport);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": umad_get_port('%s', %d) "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": umad_get_port('%s', %d) "
 			": %d\n", port->ca, port->portno, rc);
 		return rc;
 	}
@@ -472,7 +473,7 @@ int open_port(struct scib_port *port)
 	p = pma_query_via(rcvbuf, &port->portid, port->portno, 0,
 			CLASS_PORT_INFO, port->srcport);
 	if (!p) {
-		msglog(LDMSD_LERROR, SAMP ": pma_query_via ca: %s port: %d"
+		ovis_log(mylog, OVIS_LERROR, SAMP ": pma_query_via ca: %s port: %d"
 				"  %d\n", port->ca, port->portno, errno);
 		return errno;
 	}
@@ -481,7 +482,7 @@ int open_port(struct scib_port *port)
 			| IB_PM_EXT_WIDTH_NOIETF_SUP);
 
 	if (!port->ext) {
-		msglog(LDMSD_LINFO, SAMP ": WARNING: Extended query not "
+		ovis_log(mylog, OVIS_LINFO, SAMP ": WARNING: Extended query not "
 			"supported for %s:%d, the sampler will reset "
 			"counters every query\n", port->ca, port->portno);
 	}
@@ -517,7 +518,7 @@ int open_ports(struct scib_port_list *list)
 		port->badport = 0;
 		rc = open_port(port);
 		if (rc) {
-			msglog(LDMSD_LINFO,"sysclassib: Error querying %s.%d, errno: %d\n",
+			ovis_log(mylog, OVIS_LINFO,"sysclassib: Error querying %s.%d, errno: %d\n",
 				port->ca, port->portno, rc);
 			port->badport = rc;
 			lastrc = rc;
@@ -555,7 +556,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
@@ -575,17 +576,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = populate_ports(&scib_port_list, ports);
 	if (rc) {
-		msglog(LDMSD_LINFO, SAMP ": Failed to find ports matching %s.\n",ports);
+		ovis_log(mylog, OVIS_LINFO, SAMP ": Failed to find ports matching %s.\n",ports);
 		return rc;
 	}
 
 	rc = open_ports(&scib_port_list);
 	if (rc) {
-		msglog(LDMSD_LINFO, SAMP ": Failed to open ports.\n");
+		ovis_log(mylog, OVIS_LINFO, SAMP ": Failed to open ports.\n");
 		return rc;
 	}
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base){
 		rc = EINVAL;
 		goto err;
@@ -593,7 +594,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err;
 	}
 
@@ -647,7 +648,7 @@ int query_port(struct scib_port *port, double dt)
 			IB_GSI_PORT_COUNTERS, port->srcport);
 	if (!p) {
 		rc = errno;
-		msglog(LDMSD_LDEBUG, SAMP ": Error querying %s.%d, errno: %d\n",
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": Error querying %s.%d, errno: %d\n",
 				port->ca, port->portno, rc);
 		close_port(port);
 		return rc;
@@ -684,7 +685,7 @@ int query_port(struct scib_port *port, double dt)
 			IB_GSI_PORT_COUNTERS_EXT, port->srcport);
 	if (!p) {
 		rc = errno;
-		msglog(LDMSD_LDEBUG, SAMP ": Error extended querying %s.%d, "
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": Error extended querying %s.%d, "
 				"errno: %d\n", port->ca, port->portno, rc);
 		close_port(port);
 		return rc;
@@ -707,7 +708,7 @@ static int sample(struct ldmsd_sampler *self)
 	struct scib_port *port;
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -742,6 +743,8 @@ static void term(struct ldmsd_plugin *self){
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler sysclassib_plugin = {
@@ -756,9 +759,15 @@ static struct ldmsd_sampler sysclassib_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &sysclassib_plugin.base;
 }

@@ -99,7 +99,7 @@ extern int cf_m;
 static char* CURRENT_FREEMEM_METRICS[] = {"current_freemem"};
 #define NUM_CURRENT_FREEMEM_METRICS (sizeof(CURRENT_FREEMEM_METRICS)/sizeof(CURRENT_FREEMEM_METRICS[0]))
 extern int* metric_table_current_freemem;
-extern int (*sample_metrics_cf_ptr)(ldms_set_t set,ldmsd_msg_log_f msglog);
+extern int (*sample_metrics_cf_ptr)(ldms_set_t set);
 
 /* VMSTAT Specific */
 extern FILE *v_f;
@@ -109,7 +109,7 @@ extern int* metric_table_vmstat;
 /* additional vmstat metrics if getting cf from vmstat. Order matters (see calc within) */
 static char* VMCF_METRICS[] = {"nr_free_pages", "nr_file_pages", "nr_slab_reclaimable", "nr_shmem"};
 #define NUM_VMCF_METRICS (sizeof(VMCF_METRICS)/sizeof(VMCF_METRICS[0]))
-extern int (*sample_metrics_vmstat_ptr)(ldms_set_t set,ldmsd_msg_log_f msglog);
+extern int (*sample_metrics_vmstat_ptr)(ldms_set_t set);
 
 
 /* LOADAVG Specific */
@@ -149,15 +149,15 @@ extern int* metric_table_kgnilnd;
 
 
 /** helpers */
-extern int procnetdev_setup(ldmsd_msg_log_f msglog);
+extern int procnetdev_setup();
 
 /** sample */
-int sample_metrics_vmstat(ldms_set_t set, ldmsd_msg_log_f msglog);
-int sample_metrics_vmcf(ldms_set_t set, ldmsd_msg_log_f msglog);
-int sample_metrics_kgnilnd(ldms_set_t set, ldmsd_msg_log_f msglog);
-int sample_metrics_current_freemem(ldms_set_t set, ldmsd_msg_log_f msglog);
-int sample_metrics_energy(ldms_set_t set, ldmsd_msg_log_f msglog);
-int sample_metrics_loadavg(ldms_set_t set, ldmsd_msg_log_f msglog);
-int sample_metrics_procnetdev(ldms_set_t set, ldmsd_msg_log_f msglog);
+int sample_metrics_vmstat(ldms_set_t set);
+int sample_metrics_vmcf(ldms_set_t set);
+int sample_metrics_kgnilnd(ldms_set_t set);
+int sample_metrics_current_freemem(ldms_set_t set);
+int sample_metrics_energy(ldms_set_t set);
+int sample_metrics_loadavg(ldms_set_t set);
+int sample_metrics_procnetdev(ldms_set_t set);
 
 #endif

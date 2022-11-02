@@ -22,7 +22,7 @@
 #define MAX_LINE_LEN 256
 #define MAX_DEVICES 64
 
-static ldmsd_msg_log_f log_fn;
+static ovis_log_t mylog;
 static base_data_t sampler_base;
 static size_t rec_heap_sz;
 
@@ -154,11 +154,11 @@ static void cache_cxil_dev_refresh_all()
                         }
                 }
                 if (missing && cache_cxil_dev[i] != NULL) {
-                        log_fn(LDMSD_LDEBUG, SAMP" refresh_all: removing dev_id %d\n", i);
+                        ovis_log(mylog, OVIS_LDEBUG, "refresh_all: removing dev_id %d\n", i);
                         cxil_close_device(cache_cxil_dev[i]);
                         cache_cxil_dev[i] = NULL;
                 } else if (!missing && cache_cxil_dev[i] == NULL) {
-                        log_fn(LDMSD_LDEBUG, SAMP" refresh_all: opening dev_id %d\n", i);
+                        ovis_log(mylog, OVIS_LDEBUG, "refresh_all: opening dev_id %d\n", i);
                         cxil_open_device(i, &cache_cxil_dev[i]);
                 }
         }
@@ -174,7 +174,7 @@ static int cache_cxil_device_list_get(struct cxil_device_list **dev_list)
         if (current_time >= last_refresh + cache_cxil_device_list_refresh_interval) {
                 struct cxil_device_list *tmp_list;
 
-                log_fn(LDMSD_LDEBUG, SAMP" updating device list cache\n");
+                ovis_log(mylog, OVIS_LDEBUG, "updating device list cache\n");
                 tmp_list = cache_cxil_device_list;
                 cache_cxil_device_list = NULL;
                 cxil_free_device_list(tmp_list);
@@ -212,7 +212,7 @@ static int initialize_ldms_record_metrics(ldms_record_t rec_def) {
                 char const * const_name;
 
                 const_name = c1_cntr_descs[counters.slingshot_index[i]].name;
-                /* log_fn(LDMSD_LDEBUG, SAMP" counter name = %s\n", const_name); */
+		/* ovis_log(mylog, OVIS_LDEBUG, "counter name = %s\n", const_name); */
                 index = ldms_record_metric_add(rec_def, const_name, NULL,
                                                LDMS_V_U64, 0);
                 if (index < 0)
@@ -228,7 +228,7 @@ static int initialize_ldms_structs()
         ldms_record_t rec_def; /* a pointer */
         int rc;
 
-        log_fn(LDMSD_LDEBUG, SAMP" initialize()\n");
+        ovis_log(mylog, OVIS_LDEBUG, "initialize()\n");
 
         /* Create the schema */
         base_schema_new(sampler_base);
@@ -268,7 +268,7 @@ err3:
 err2:
         base_schema_delete(sampler_base);
 err1:
-        log_fn(LDMSD_LERROR, SAMP" initialization failed\n");
+        ovis_log(mylog, OVIS_LERROR, "initialization failed\n");
         return -1;
 }
 
@@ -313,7 +313,7 @@ static int use_counter_group(const char * const counter_group)
         } else if (!strcmp(counter_group, "ext2")) {
                 group = C_CNTR_GROUP_EXT2;
         } else {
-                log_fn(LDMSD_LERROR, SAMP" unrecognized counter group \"%s\"\n",
+                ovis_log(mylog, OVIS_LERROR, "unrecognized counter group \"%s\"\n",
                        counter_group);
                 return -1;
         }
@@ -347,7 +347,7 @@ static int use_counter(const char * const counter_name)
 
         slingshot_index = find_slingshot_index(counter_name);
         if (slingshot_index == -1) {
-                log_fn(LDMSD_LERROR, SAMP" counter not found \"%s\"\n",
+                ovis_log(mylog, OVIS_LERROR, "counter not found \"%s\"\n",
                        counter_name);
                 return -1;
         }
@@ -356,7 +356,7 @@ static int use_counter(const char * const counter_name)
         for (int i; i < counters.num_counters; i++) {
                 if (counters.slingshot_index[i] == slingshot_index) {
                         /* just a warning, not fatal */
-                        log_fn(LDMSD_LWARNING, SAMP" skipping duplicate counter \"%s\"\n",
+                        ovis_log(mylog, OVIS_LWARNING, "skipping duplicate counter \"%s\"\n",
                                counter_name);
                         return 0;
                 }
@@ -380,7 +380,7 @@ static int parse_counters_string(const char * const counters_string)
 
         working_string = strdup(counters_string);
         if (working_string == NULL) {
-                log_fn(LDMSD_LERROR, SAMP" parse_counters_string() strdup failed: %d", errno);
+                ovis_log(mylog, OVIS_LERROR, "parse_counters_string() strdup failed: %d", errno);
                 rc = -1;
                 goto err0;
         }
@@ -426,7 +426,7 @@ static int parse_counters_file(const char * const counters_file)
 
         fp = fopen(counters_file, "r");
         if (fp == NULL) {
-                log_fn(LDMSD_LERROR, SAMP" parse_counters_file() failed fopen of \"%s\": %d\n",
+                ovis_log(mylog, OVIS_LERROR, "parse_counters_file() failed fopen of \"%s\": %d\n",
                        counters_file, errno);
                 return -1;
         }
@@ -468,7 +468,7 @@ static int config(struct ldmsd_plugin *self,
         int rc = 0;
         char *value;
 
-        log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
         sampler_base = base_config(avl, SAMP, "slingshot_metrics", log_fn);
 
@@ -503,7 +503,7 @@ static int config(struct ldmsd_plugin *self,
                 strip_whitespace(&value);
                 val = strtol(value, &end, 10);
                 if (*end != '\0') {
-                        log_fn(LDMSD_LERROR, SAMP" refresh_interval must be a decimal number\n");
+                        ovis_log(mylog, OVIS_LERROR, "refresh_interval must be a decimal number\n");
                         rc = EINVAL;
                         return rc;
                 }
@@ -538,8 +538,8 @@ static void resize_metric_set(int expected_remaining_nics)
 
         base_set_new_heap(sampler_base, new_heap_size);
         if (sampler_base->set == NULL) {
-                ldmsd_log(LDMSD_LERROR,
-                          SAMP" : Failed to resize metric set heap: %d\n", errno);
+                ovis_log(mylog, OVIS_LERROR,
+                          "Failed to resize metric set heap: %d\n", errno);
         }
 }
 
@@ -554,11 +554,11 @@ static int sample(struct ldmsd_sampler *self)
         base_sample_begin(sampler_base);
         rc = cache_cxil_device_list_get(&device_list);
         if (rc != 0) {
-                log_fn(LDMSD_LERROR, SAMP" sample(): cache_cxil_device_list_get() failed: %d\n", rc);
+                ovis_log(mylog, OVIS_LERROR, "sample(): cache_cxil_device_list_get() failed: %d\n", rc);
                 base_sample_end(sampler_base);
                 return -1;
         }
-        log_fn(LDMSD_LDEBUG, SAMP" sample(): # slingshot nics: %u\n", device_list->count);
+        ovis_log(mylog, OVIS_LDEBUG, "sample(): # slingshot nics: %u\n", device_list->count);
 
         list_handle = ldms_metric_get(sampler_base->set, index_store.nic_list);
         ldms_list_purge(sampler_base->set, list_handle);
@@ -575,7 +575,7 @@ static int sample(struct ldmsd_sampler *self)
                 record_instance = ldms_record_alloc(sampler_base->set,
                                                     index_store.nic_record);
                 if (record_instance == NULL) {
-                        log_fn(LDMSD_LDEBUG, SAMP": ldms_record_alloc() failed, resizing metric set\n");
+                        ovis_log(mylog, OVIS_LDEBUG, SAMP": ldms_record_alloc() failed, resizing metric set\n");
                         resize_metric_set(device_list->count - i);
                         break;
                 }
@@ -610,12 +610,13 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
         base_set_delete(sampler_base);
         base_del(sampler_base);
         sampler_base = NULL;
         cache_cxil_device_list_free();
         cache_cxil_dev_close_all();
+        ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -625,14 +626,15 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" usage() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, " usage() called\n");
 	return  "config name=" SAMP " " BASE_CONFIG_SYNOPSIS
                 BASE_CONFIG_DESC
                 ;
 }
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
+	int rc;
         static struct ldmsd_sampler plugin = {
                 .base = {
                         .name = SAMP,
@@ -645,8 +647,13 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
                 .sample = sample,
         };
 
-        log_fn = pf;
-        log_fn(LDMSD_LDEBUG, SAMP" get_plugin() called ("PACKAGE_STRING")\n");
+        mylog = ovis_log_register("sampler.slingshot_metrics", "Messages for the slingshot_metrics sampler plugin");
+        if (!mylog) {
+                rc = errno;
+                ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem of '"
+                                                  SAMP "' plugin. Error %d.\n", rc);
+        }
+        ovis_log(mylog, OVIS_LDEBUG, "get_plugin() called ("PACKAGE_STRING")\n");
 
         return &plugin.base;
 }

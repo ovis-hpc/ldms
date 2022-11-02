@@ -73,8 +73,8 @@
 #include "ldmsd.h"
 #include "jobinfo.h"
 
+static ovis_log_t mylog;
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 static char *producer_name;
 static ldms_schema_t job_schema;
 #define SAMP "jobinfo"
@@ -220,8 +220,8 @@ jobinfo_thread_proc(void *arg)
 		if (wd < 0) {
 			wd = inotify_add_watch(nd, jobinfo_datafile, mask);
 			if (wd < 0) {
-				msglog(LDMSD_LINFO,
-				       SAMP ": the job file %s does not exist, retrying in 60s\n",
+				ovis_log(mylog, OVIS_LINFO,
+				       "the job file %s does not exist, retrying in 60s\n",
 				       jobinfo_datafile);
 				sleep(60);
 				continue;
@@ -230,8 +230,8 @@ jobinfo_thread_proc(void *arg)
 
 		rc = read(nd, &ev, sizeof(ev));
 		if (rc < sizeof(ev) || (ev.mask & (IN_CREATE | IN_DELETE | IN_DELETE_SELF))) {
-			msglog(LDMSD_LINFO,
-			       SAMP ": Error %d reading from the inotify descriptor.\n",
+			ovis_log(mylog, OVIS_LINFO,
+			       "Error %d reading from the inotify descriptor.\n",
 			       errno);
 			/* Watch descriptor no longer valid */
 			inotify_rm_watch(nd, wd);
@@ -329,7 +329,7 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog(LDMSD_LERROR, SAMP ": missing producer.\n");
+		ovis_log(mylog, OVIS_LERROR, "missing producer.\n");
 		return ENOENT;
 	}
 
@@ -347,7 +347,7 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 	if (value) {
 		jobinfo_datafile = strdup(value);
 		if (jobinfo_datafile == NULL) {
-			msglog(LDMSD_LERROR, SAMP ": no memory for file.\n");
+			ovis_log(mylog, OVIS_LERROR, "no memory for file.\n");
 			return ENOMEM;
 		}
 	} else {
@@ -355,7 +355,7 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 	}
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
@@ -369,8 +369,8 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 			/* Try to lookup the user name */
 			struct passwd *pwd = getpwnam(value);
 			if (!pwd) {
-				msglog(LDMSD_LERROR,
-				       SAMP ": The specified user '%s' does not exist\n",
+				ovis_log(mylog, OVIS_LERROR,
+				       "The specified user '%s' does not exist\n",
 				       value);
 				return EINVAL;
 			}
@@ -386,8 +386,8 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 			/* Try to lookup the group name */
 			struct group *grp = getgrnam(value);
 			if (!grp) {
-				msglog(LDMSD_LERROR,
-				       SAMP ": The specified group '%s' does not exist\n",
+				ovis_log(mylog, OVIS_LERROR,
+				       "The specified group '%s' does not exist\n",
 				       value);
 				return EINVAL;
 			}
@@ -400,8 +400,8 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 	value = av_value(avl, "perm");
 	if (value) {
 		if (value[0] != '0') {
-			msglog(LDMSD_LINFO,
-			       SAMP ": Warning, the permission bits '%s' are not specified "
+			ovis_log(mylog, OVIS_LINFO,
+			       "Warning, the permission bits '%s' are not specified "
 			       "as an Octal number.\n",
 			       value);
 		}
@@ -411,13 +411,13 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog(LDMSD_LERROR, SAMP ": missing instance.\n");
+		ovis_log(mylog, OVIS_LERROR, "missing instance.\n");
 		return ENOENT;
 	}
 
 	rc = create_metric_set(value, "jobinfo");
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
@@ -453,6 +453,8 @@ term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler job_plugin = {
@@ -467,9 +469,15 @@ static struct ldmsd_sampler job_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &job_plugin.base;
 }

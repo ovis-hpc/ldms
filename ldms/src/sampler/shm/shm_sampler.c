@@ -124,7 +124,7 @@ static ldms_shm_box_cache_t box_cache;
 #define SHM_TIMEOUT_DEFAULT 10
 #define SAMP "shm_sampler"
 
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 
 static ldms_shm_box_t *boxes = NULL;
 static base_data_t initial_base_config = NULL;
@@ -156,7 +156,7 @@ static int initialize_box_cache(const char* const index_name, int boxlen,
 	if(NULL == box_cache.instance_prefix || NULL == box_cache.schema_prefix
 			|| NULL == box_cache.index_name
 			|| NULL == box_cache.producer_name) {
-		msglog(LDMSD_LERROR, SAMP ": config OOM\n");
+		ovis_log(mylog, OVIS_LERROR, "config OOM\n");
 		rc = ENOMEM;
 		errno = rc;
 		return rc;
@@ -170,14 +170,14 @@ static int initialize_box_cache(const char* const index_name, int boxlen,
 			box_cache.box_len, box_cache.metric_max,
 			box_cache.array_max, box_cache.set_timeout);
 	if(box_cache.index == NULL) {
-		msglog(LDMSD_LERROR, SAMP ": failed to open shm index %s\n",
+		ovis_log(mylog, OVIS_LERROR, "failed to open shm index %s\n",
 				box_cache.index_name);
 		rc = ENOENT;
 		errno = rc;
 		return rc;
 	} else {
-		msglog(LDMSD_LINFO,
-		SAMP ": index (%s) was successfully opened\n",
+		ovis_log(mylog, OVIS_LINFO,
+		"index (%s) was successfully opened\n",
 				box_cache.index_name);
 	}
 	return rc;
@@ -222,7 +222,7 @@ static int initial_setup(const char* const index_name, int boxlen,
 	/* allocate array box[box_len] stubs */
 	boxes = calloc(box_cache.box_len, sizeof(ldms_shm_box_t));
 	if(!boxes) {
-		msglog(LDMSD_LERROR, SAMP ": out of mem %s\n", index_name);
+		ovis_log(mylog, OVIS_LERROR, "out of mem %s\n", index_name);
 		clear_box_cache();
 		rc = ENOMEM;
 		errno = rc;
@@ -262,8 +262,8 @@ static char * build_instance_name(ldms_shm_index_entry_t entry)
 			+ strlen(set_label) + num_delimiter_chars + 1;
 	char* instance_name = calloc(instance_name_len, sizeof(char));
 	if(!instance_name) {
-		msglog(LDMSD_LERROR,
-		SAMP ": failed to allocate memory for instance: %s\n",
+		ovis_log(mylog, OVIS_LERROR,
+		"failed to allocate memory for instance: %s\n",
 				instance_name);
 		errno = ENOMEM;
 		return NULL;
@@ -275,11 +275,11 @@ static char * build_instance_name(ldms_shm_index_entry_t entry)
 
 static int check_for_free_slot()
 {
-	msglog(LDMSD_LDEBUG, SAMP ": checking for free slot\n");
+	ovis_log(mylog, OVIS_LDEBUG, "checking for free slot\n");
 	int rc = 0;
 	if(LIST_EMPTY(&free_box_list)) {
-		msglog(LDMSD_LERROR,
-		SAMP ": no space left in box array for the new entry\n");
+		ovis_log(mylog, OVIS_LERROR,
+		"no space left in box array for the new entry\n");
 		errno = ENOMEM;
 		rc = errno;
 	}
@@ -288,14 +288,14 @@ static int check_for_free_slot()
 
 static int check_for_duplicate_instances(const char* instance_name)
 {
-	msglog(LDMSD_LDEBUG, SAMP ": checking for duplicate instances\n");
+	ovis_log(mylog, OVIS_LDEBUG, "checking for duplicate instances\n");
 	int i, rc = 0;
 	for(i = 0; i < box_cache.box_len; i++) {
 		if(is_active(&boxes[i])
 				&& 0
 						== strcmp(instance_name,
 								boxes[i].base->instance_name)) {
-			msglog(LDMSD_LERROR, SAMP ": duplicate instance: %s\n",
+			ovis_log(mylog, OVIS_LERROR, "duplicate instance: %s\n",
 					instance_name);
 			errno = EEXIST;
 			rc = errno;
@@ -307,7 +307,7 @@ static int check_for_duplicate_instances(const char* instance_name)
 
 static ldms_shm_box_t * allocate_slot_for_box()
 {
-	msglog(LDMSD_LDEBUG, SAMP ": allocating slot for the box\n");
+	ovis_log(mylog, OVIS_LDEBUG, "allocating slot for the box\n");
 	struct box_index *next_free = LIST_FIRST(&free_box_list);
 	ldms_shm_box_t *box = &boxes[next_free->index];
 	box->index_in_slot_list = next_free->index;
@@ -335,7 +335,7 @@ static void clear_box(ldms_shm_box_t *box)
 		return;
 	if(NULL != box->base && box->base->set) {
 		ldms_set_delete(box->base->set);
-		msglog(LDMSD_LDEBUG, "ldms set was deleted in clear_box\n");
+		ovis_log(mylog, OVIS_LDEBUG, "ldms set was deleted in clear_box\n");
 	}
 	if(box->base)
 		base_del(box->base);
@@ -379,14 +379,14 @@ static int create_base_for_box(ldms_shm_box_t *box, const char* schema_name,
 
 static int validate_shm_set(ldms_shm_set_t shm_set, uint64_t shm_set_checksum)
 {
-	msglog(LDMSD_LDEBUG, SAMP ": validating the shm_set\n");
+	ovis_log(mylog, OVIS_LDEBUG, "validating the shm_set\n");
 	int rc = 0, e;
 	// compute its checksum
 	uint64_t checksum = ldms_shm_set_calc_checksum(shm_set);
 	// check checksum against checksum stored in index.
 	if(shm_set_checksum != checksum) {
-		msglog(LDMSD_LERROR,
-				SAMP ": computed checksum %" PRIu64 " for the set, is not equal to the stored checksum %" PRIu64 " in the index!\n",
+		ovis_log(mylog, OVIS_LERROR,
+				"computed checksum %" PRIu64 " for the set, is not equal to the stored checksum %" PRIu64 " in the index!\n",
 				checksum, shm_set_checksum);
 		errno = EINVAL;
 		rc = errno;
@@ -394,8 +394,8 @@ static int validate_shm_set(ldms_shm_set_t shm_set, uint64_t shm_set_checksum)
 	}
 
 	if(shm_set->meta->total_events > box_cache.metric_max) {
-		msglog(LDMSD_LERROR,
-				SAMP ": number of events (%d) are more than the configured maximum (%d)\n",
+		ovis_log(mylog, OVIS_LERROR,
+				"number of events (%d) are more than the configured maximum (%d)\n",
 				shm_set->meta->total_events,
 				box_cache.metric_max);
 		errno = EINVAL;
@@ -406,8 +406,8 @@ static int validate_shm_set(ldms_shm_set_t shm_set, uint64_t shm_set_checksum)
 		ldms_shm_event_desc_t* event = ldms_shm_set_get_event(shm_set,
 				e);
 		if(strlen(event->name) > box_cache.array_max) {
-			msglog(LDMSD_LERROR,
-					SAMP ": length of event name (%s) is more than the configured maximum (%d)\n",
+			ovis_log(mylog, OVIS_LERROR,
+					"length of event name (%s) is more than the configured maximum (%d)\n",
 					event->name, box_cache.array_max);
 			rc = EINVAL;
 			return rc;
@@ -445,8 +445,8 @@ static void handle_ldms_set_delete_issue(ldms_shm_box_t* box)
 
 		char* instance_name = calloc(instance_name_len, sizeof(char));
 		if(!instance_name) {
-			msglog(LDMSD_LERROR,
-					"shm_sampler: failed to allocate memory of size=%d (%d + %d + %d + 1) for instance %s\n",
+			ovis_log(mylog, OVIS_LERROR,
+					"failed to allocate memory of size=%d (%d + %d + %d + 1) for instance %s\n",
 					instance_name_len,
 					strlen(box->base->instance_name),
 					num_delimiter_chars,
@@ -457,8 +457,8 @@ static void handle_ldms_set_delete_issue(ldms_shm_box_t* box)
 		}
 		sprintf(instance_name, "%s_%d", box->base->instance_name,
 				ldms_shm_metric_set_counter++);
-		msglog(LDMSD_LDEBUG,
-				"shm_sampler: Because of the issues with ldms_set_delete, name of the set was changed from %s to %s\n\r",
+		ovis_log(mylog, OVIS_LDEBUG,
+				"Because of the issues with ldms_set_delete, name of the set was changed from %s to %s\n\r",
 				box->base->instance_name, instance_name);
 		free(box->base->instance_name);
 		box->base->instance_name = instance_name;
@@ -470,8 +470,8 @@ static void handle_ldms_set_delete_issue(ldms_shm_box_t* box)
 static int create_metric_set(ldms_shm_box_t *box, ldms_shm_set_t shm_set,
 		uint64_t shm_set_checksum)
 {
-	msglog(LDMSD_LDEBUG,
-			SAMP ": creating metric_set based on the shm_set\n");
+	ovis_log(mylog, OVIS_LDEBUG,
+			"creating metric_set based on the shm_set\n");
 	int rc, e;
 
 	rc = validate_shm_set(shm_set, shm_set_checksum);
@@ -480,7 +480,7 @@ static int create_metric_set(ldms_shm_box_t *box, ldms_shm_set_t shm_set,
 	box->schema_cksum = shm_set_checksum;
 	base_schema_new(box->base);
 	if(!box->base->schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 				"%s: The schema '%s' could not be created, errno=%d.\n",
 				__FILE__, box->base, errno);
 		rc = errno;
@@ -498,7 +498,7 @@ static int create_metric_set(ldms_shm_box_t *box, ldms_shm_set_t shm_set,
 			rc = ldms_schema_metric_array_add(box->base->schema,
 					event->name, LDMS_V_U64_ARRAY,
 					event->num_elements);
-			msglog(LDMSD_LDEBUG,
+			ovis_log(mylog, OVIS_LDEBUG,
 					"event %d (%s) of array type with %d elements has been added to metric set\n\r",
 					e, event->name, event->num_elements);
 		} else {
@@ -506,8 +506,8 @@ static int create_metric_set(ldms_shm_box_t *box, ldms_shm_set_t shm_set,
 					event->name, LDMS_V_U64);
 		}
 		if(rc < 0) {
-			msglog(LDMSD_LERROR,
-			SAMP ": failed to add event %s to metric set (%d).\n",
+			ovis_log(mylog, OVIS_LERROR,
+			"failed to add event %s to metric set (%d).\n",
 					event->name, rc);
 			return rc;
 		} else {
@@ -519,8 +519,8 @@ static int create_metric_set(ldms_shm_box_t *box, ldms_shm_set_t shm_set,
 	if(!box->base->set) {
 		handle_ldms_set_delete_issue(box);
 		if(!box->base->set) {
-			msglog(LDMSD_LERROR,
-			SAMP ": (%d) failed to create metric set %s.\n",
+			ovis_log(mylog, OVIS_LERROR,
+			"(%d) failed to create metric set %s.\n",
 			errno, box->base->instance_name);
 			rc = errno;
 			return rc;
@@ -531,7 +531,7 @@ static int create_metric_set(ldms_shm_box_t *box, ldms_shm_set_t shm_set,
 
 static int add_mbox(ldms_shm_index_entry_t entry)
 {
-	msglog(LDMSD_LDEBUG, SAMP ": creating box from index entry\n");
+	ovis_log(mylog, OVIS_LDEBUG, "creating box from index entry\n");
 	int rc;
 	rc = check_for_free_slot();
 	if(rc)
@@ -552,7 +552,7 @@ static int add_mbox(ldms_shm_index_entry_t entry)
 
 	box->shm_set = ldms_shm_data_open(entry);
 	if(box->shm_set == NULL) {
-		msglog(LDMSD_LERROR, SAMP ": no set found for entry: %s\n",
+		ovis_log(mylog, OVIS_LERROR, "no set found for entry: %s\n",
 				ldms_shm_index_entry_set_label_get(entry));
 		free(instance_name);
 		recover_box_slot(box);
@@ -560,8 +560,8 @@ static int add_mbox(ldms_shm_index_entry_t entry)
 		rc = errno;
 		return rc;
 	} else {
-		msglog(LDMSD_LDEBUG,
-				SAMP ": read data from the entry on index\n");
+		ovis_log(mylog, OVIS_LDEBUG,
+				"read data from the entry on index\n");
 	}
 	box->current = 1;
 
@@ -576,15 +576,15 @@ static int add_mbox(ldms_shm_index_entry_t entry)
 	rc = create_metric_set(box, box->shm_set,
 			ldms_shm_index_entry_get_schema_checksum(entry));
 	if(rc) {
-		msglog(LDMSD_LERROR,
-		SAMP ": failed to create metric set for %s\n", instance_name);
+		ovis_log(mylog, OVIS_LERROR,
+		"failed to create metric set for %s\n", instance_name);
 		free(instance_name);
 		recover_box_slot(box);
 		clear_box(box);
 		errno = rc;
 	} else {
-		msglog(LDMSD_LDEBUG,
-				SAMP ": shm_box for instance %s has been configured successfully!\n\r",
+		ovis_log(mylog, OVIS_LDEBUG,
+				"shm_box for instance %s has been configured successfully!\n\r",
 				instance_name);
 		free(instance_name);
 	}
@@ -617,18 +617,18 @@ static int init_box_from_entry(int instance_index)
 						box_cache.index,
 						instance_index);
 		if(NULL == entry) {
-			msglog(LDMSD_LERROR,
-					SAMP ": could not register as reader for instance %d\n\r",
+			ovis_log(mylog, OVIS_LERROR,
+					"could not register as reader for instance %d\n\r",
 					instance_index);
 			rc = ENOENT;
 		} else {
-			msglog(LDMSD_LDEBUG,
-					SAMP ": registered as the reader for instance_index =%d\n",
+			ovis_log(mylog, OVIS_LDEBUG,
+					"registered as the reader for instance_index =%d\n",
 					instance_index);
 			rc = add_mbox(entry);
 			if(rc) {
-				msglog(LDMSD_LERROR,
-						SAMP ": failed to add box for instance i = %d\n\r",
+				ovis_log(mylog, OVIS_LERROR,
+						"failed to add box for instance i = %d\n\r",
 						instance_index);
 				int num_of_users =
 						ldms_shm_index_entry_deregister_reader(
@@ -637,8 +637,8 @@ static int init_box_from_entry(int instance_index)
 					/* Nobody uses this set. It's time for cleanup */
 					ldms_shm_index_entry_clean_shared_resources(
 							entry);
-					msglog(LDMSD_LERROR,
-							SAMP ": no users were found for the set of instance i = %d\n\r",
+					ovis_log(mylog, OVIS_LERROR,
+							"no users were found for the set of instance i = %d\n\r",
 							instance_index);
 				}
 			}
@@ -671,11 +671,11 @@ static void clear_inactive_boxes()
 
 static int get_updates_from_index()
 {
-	msglog(LDMSD_LDEBUG, SAMP ": getting updates from index\n");
+	ovis_log(mylog, OVIS_LDEBUG, "getting updates from index\n");
 	int rc = 0;
 	if(ldms_shm_index_is_empty(box_cache.index)) {
-		msglog(LDMSD_LINFO,
-		SAMP ": index is empty. nothing to sample! \n\r");
+		ovis_log(mylog, OVIS_LINFO,
+		"index is empty. nothing to sample! \n\r");
 		return rc;
 	}
 	int i, vaild_entry_cnt = 0;
@@ -701,8 +701,8 @@ static int check_for_index_update()
 		ldms_shm_index_unlock();
 		return rc;
 	}
-	msglog(LDMSD_LINFO,
-	SAMP ": index (%s) has been changed since last scan\n",
+	ovis_log(mylog, OVIS_LINFO,
+	"index (%s) has been changed since last scan\n",
 			box_cache.index_name);
 	box_cache.last_gen = gen;
 
@@ -739,8 +739,8 @@ static int scan_index(const char* const index_name, int boxlen, int metric_max,
 	}
 	rc = check_for_index_update();
 	if(rc) {
-		msglog(LDMSD_LERROR,
-		SAMP ": error in check for update\n");
+		ovis_log(mylog, OVIS_LERROR,
+		"error in check for update\n");
 		clear_mboxes(boxes, box_cache.box_len);
 		clear_box_cache();
 		errno = rc;
@@ -754,7 +754,7 @@ static int shm_sampler_config(struct attr_value_list* avl)
 {
 
 	int rc;
-	initial_base_config = base_config(avl, SAMP, SAMP, msglog);
+	initial_base_config = base_config(avl, SAMP, SAMP, mylog);
 	if(!initial_base_config) {
 		rc = errno;
 		base_del(initial_base_config);
@@ -772,7 +772,7 @@ static int shm_sampler_config(struct attr_value_list* avl)
 	if(boxmax) {
 		int blen = atoi(boxmax);
 		if(blen < 1) {
-			msglog(LDMSD_LERROR, "shm_sampler: shm_boxmax bad %s\n",
+			ovis_log(mylog, OVIS_LERROR, "shm_boxmax bad %s\n",
 					boxmax);
 			errno = EINVAL;
 			base_del(initial_base_config);
@@ -786,8 +786,8 @@ static int shm_sampler_config(struct attr_value_list* avl)
 	if(shm_set_timeout_str) {
 		int amax = atoi(shm_set_timeout_str);
 		if(amax < 0) {
-			msglog(LDMSD_LERROR,
-					"shm_sampler: shm_set_timeout bad %s\n",
+			ovis_log(mylog, OVIS_LERROR,
+					"shm_set_timeout bad %s\n",
 					shm_set_timeout_str);
 			errno = EINVAL;
 			base_del(initial_base_config);
@@ -801,8 +801,8 @@ static int shm_sampler_config(struct attr_value_list* avl)
 	if(shm_array_max) {
 		int amax = atoi(shm_array_max);
 		if(amax < 1) {
-			msglog(LDMSD_LERROR,
-					"shm_sampler: shm_array_max bad %s\n",
+			ovis_log(mylog, OVIS_LERROR,
+					"shm_array_max bad %s\n",
 					shm_array_max);
 			errno = EINVAL;
 			base_del(initial_base_config);
@@ -816,8 +816,8 @@ static int shm_sampler_config(struct attr_value_list* avl)
 	if(shm_metric_max) {
 		int amax = atoi(shm_metric_max);
 		if(amax < 1) {
-			msglog(LDMSD_LERROR,
-					"shm_sampler: shm_metric_max bad %s\n",
+			ovis_log(mylog, OVIS_LERROR,
+					"shm_metric_max bad %s\n",
 					shm_metric_max);
 			errno = EINVAL;
 			base_del(initial_base_config);
@@ -831,7 +831,7 @@ static int shm_sampler_config(struct attr_value_list* avl)
 		index_name = INDEX_NAME_DEFAULT;
 
 	if(strlen(index_name) == 0) {
-		msglog(LDMSD_LERROR, "shm_sampler: shm_index invalid.\n");
+		ovis_log(mylog, OVIS_LERROR, "shm_index invalid.\n");
 		errno = EINVAL;
 		base_del(initial_base_config);
 		return EINVAL;
@@ -883,16 +883,16 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	rc = shm_sampler_config(avl);
 
 	if(rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to config shm_sampler\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to config shm_sampler\n");
 		return rc;
 	}
-	msglog(LDMSD_LDEBUG, SAMP ": has been configured successfully!\n");
+	ovis_log(mylog, OVIS_LDEBUG, "has been configured successfully!\n");
 	return 0;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
-	msglog(LDMSD_LINFO, SAMP ": get_set called mistakenly\n");
+	ovis_log(mylog, OVIS_LINFO, "get_set called mistakenly\n");
 	return NULL;
 }
 
@@ -943,11 +943,11 @@ static int sample(struct ldmsd_sampler *self)
 {
 	int rc = 0;
 	if(ldms_shm_index_is_empty(box_cache.index)) {
-		msglog(LDMSD_LINFO, SAMP ": index is empty\n");
+		ovis_log(mylog, OVIS_LINFO, "index is empty\n");
 		return rc;
 	}
 	if(!boxes) {
-		msglog(LDMSD_LERROR, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LERROR, "plugin not initialized\n");
 		rc = EINVAL;
 		errno = rc;
 		return rc;
@@ -955,7 +955,7 @@ static int sample(struct ldmsd_sampler *self)
 	/* update set boxes */
 	rc = scan_index(NULL, 0, 0, 0, 0);
 	if(rc) {
-		msglog(LDMSD_LERROR, SAMP ": error in scan_index\n");
+		ovis_log(mylog, OVIS_LERROR, "error in scan_index\n");
 		errno = rc;
 		return rc;
 	}
@@ -964,7 +964,7 @@ static int sample(struct ldmsd_sampler *self)
 		if(is_active(&boxes[i])) {
 			rc = sample_set(self, &boxes[i]);
 			if(rc) {
-				msglog(LDMSD_LERROR,
+				ovis_log(mylog, OVIS_LERROR,
 						"failed to sample the set %s\n",
 						boxes[i].base->instance_name);
 			}
@@ -1000,8 +1000,9 @@ static void term(struct ldmsd_plugin *self)
 	}
 	ldms_shm_clear_index(box_cache.index);
 	clear_box_cache();
-
-	msglog(LDMSD_LINFO, SAMP " was successfully terminated\n");
+	if (mylog)
+		ovis_log_destroy(mylog);
+	ovis_log(mylog, OVIS_LINFO, SAMP " was successfully terminated\n");
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -1037,8 +1038,14 @@ static struct ldmsd_sampler shm_plugin = {
 		.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	return &shm_plugin.base;
 }

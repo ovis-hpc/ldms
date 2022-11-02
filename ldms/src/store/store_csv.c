@@ -123,19 +123,19 @@ static int rolltype = -1;
 #define ROLL_LIMIT_INTERVAL 60
 
 
-__attribute__(( format(printf, 2, 3) ))
-static ldmsd_msg_log_f msglog;
 static pthread_t rothread;
 static int rothread_used = 0;
 
+static ovis_log_t mylog;
+
 #define ERR_LOG(FMT, ...) do { \
-		msglog(LDMSD_LERROR, PNAME ": " FMT, ## __VA_ARGS__); \
-		assert(0 == "DEBUG"); \
-	} while(0)
+	ovis_log(mylog, OVIS_LERROR, FMT, ## __VA_ARGS__); \
+	assert(0 == "DEBUG"); \
+} while(0)
 
 #define INFO_LOG(FMT, ...) do { \
-		msglog(LDMSD_LINFO, PNAME ": " FMT, ## __VA_ARGS__); \
-	} while(0)
+	ovis_log(mylog, OVIS_LINFO, FMT, ## __VA_ARGS__); \
+} while(0)
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -214,7 +214,7 @@ static char* allocStoreKey(const char* container, const char* schema){
   if ((container == NULL) || (schema == NULL) ||
       (strlen(container) == 0) ||
       (strlen(schema) == 0)){
-    msglog(LDMSD_LERROR, PNAME ": container or schema null or empty. cannot create key\n");
+    ovis_log(mylog, OVIS_LERROR, "container or schema null or empty. cannot create key\n");
     return NULL;
   }
 
@@ -277,7 +277,7 @@ static void roll_cb(void *obj, void *cb_arg)
 		}
 		break;
 	default:
-		msglog(LDMSD_LDEBUG, PNAME ": Error: unexpected rolltype in store(%d)\n",
+		ovis_log(mylog, OVIS_LDEBUG, "Error: unexpected rolltype in store(%d)\n",
 		       rolltype);
 		break;
 	}
@@ -494,14 +494,14 @@ static int config_handle(struct csv_store_handle *s_handle)
 	bool r = false; /* default if not in pa */
 	int cvt = ldmsd_plugattr_bool(pa, "userdata", k, &r);
 	if (cvt == -1) {
-		msglog(LDMSD_LERROR, PNAME ": improper userdata= input.\n");
+		ovis_log(mylog, OVIS_LERROR, "improper userdata= input.\n");
 		return EINVAL;
 	}
 	s_handle->udata = r;
 	r = true;
 	cvt = ldmsd_plugattr_bool(pa, "expand_array", k, &r);
 	if (cvt == -1) {
-		msglog(LDMSD_LERROR, PNAME ": improper expand_array= input.\n");
+		ovis_log(mylog, OVIS_LERROR, "improper expand_array= input.\n");
 		return EINVAL;
 	}
 	s_handle->expand_array = r;
@@ -526,7 +526,7 @@ static int config_handle(struct csv_store_handle *s_handle)
 static int attr_blacklist(const char **bad, const struct attr_value_list *kwl, const struct attr_value_list *avl, const char *context)
 {
 	if (!bad) {
-		msglog(LDMSD_LERROR, PNAME ": attr_blacklist miscalled.\n");
+		ovis_log(mylog, OVIS_LERROR, "attr_blacklist miscalled.\n");
 		return 1;
 	}
 	int badcount = 0;
@@ -536,7 +536,7 @@ static int attr_blacklist(const char **bad, const struct attr_value_list *kwl, c
 			int i = av_idx_of(kwl, *p);
 			if (i != -1) {
 				badcount++;
-				msglog(LDMSD_LERROR, PNAME ": %s %s.\n",
+				ovis_log(mylog, OVIS_LERROR, "%s %s.\n",
 					*p, context);
 			}
 			p++;
@@ -548,7 +548,7 @@ static int attr_blacklist(const char **bad, const struct attr_value_list *kwl, c
 			int i = av_idx_of(avl, *p);
 			if (i != -1) {
 				badcount++;
-				msglog(LDMSD_LERROR, PNAME ": %s %s.\n",
+				ovis_log(mylog, OVIS_LERROR, "%s %s.\n",
 					*p, context);
 			}
 			p++;
@@ -598,19 +598,19 @@ static int update_config(struct attr_value_list *kwl, struct attr_value_list *av
 	struct csv_store_handle *s_handle = NULL;
 	s_handle = idx_find(store_idx, (void *)k, strlen(k));
 	if (s_handle) {
-		msglog(LDMSD_LWARNING, PNAME " updating config on %s not allowed after store is running.\n", k);
+		ovis_log(mylog, OVIS_LWARNING, PNAME " updating config on %s not allowed after store is running.\n", k);
 		/* s_handle *could* consult pa again, but that
 		is up to the implementation of store().
 		Right now it never uses pa after open_store.
 	       	*/
 	} else {
-		msglog(LDMSD_LINFO, PNAME " adding config on %s.\n", k);
+		ovis_log(mylog, OVIS_LINFO, PNAME " adding config on %s.\n", k);
 		int bl = attr_blacklist(update_blacklist, kwl, avl,
 			      	"not allowed in add");
 		if (bl) {
 			char *as = av_to_string(avl, 0);
 			char *ks = av_to_string(kwl, 0);
-			msglog(LDMSD_LINFO, PNAME ": fix config args %s %s\n",
+			ovis_log(mylog, OVIS_LINFO, "fix config args %s %s\n",
 				       	as, ks);
 			free(as);
 			free(ks);
@@ -619,10 +619,10 @@ static int update_config(struct attr_value_list *kwl, struct attr_value_list *av
 		}
 		rc = ldmsd_plugattr_add(pa, avl, kwl, update_blacklist, update_blacklist, dep, KEY_PLUG_ATTR);
 		if (rc == EEXIST) {
-			msglog(LDMSD_LERROR, PNAME
+			ovis_log(mylog, OVIS_LERROR, PNAME
 				" cannot repeat config on %s.\n", k);
 		} else if (rc != 0) {
-			msglog(LDMSD_LINFO, PNAME
+			ovis_log(mylog, OVIS_LINFO, PNAME
 				" config failed (%d) on %s.\n", rc, k);
 		}
 	}
@@ -656,8 +656,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = ldmsd_plugattr_config_check(attributes, keywords, avl, kwl, dep, PG.pname);
 	if (rc != 0) {
-		int warnon = (ovis_log_get_level(NULL) > LDMSD_LWARNING);
-		msglog(LDMSD_LERROR, PNAME " config arguments unexpected.%s\n",
+		int warnon = (ovis_log_get_level(mylog) > OVIS_LWARNING);
+		ovis_log(mylog, OVIS_LERROR, "Config arguments unexpected.%s\n",
 		       	(warnon ? " Enable log level WARNING for details." : ""));
 		return EINVAL;
 	}
@@ -667,31 +667,31 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char* conf = av_value(avl, "opt_file");
 	/* this section changes if strgp name is store handle instance name */
 	if ((cn && !sn) || (sn && !cn)) {
-		msglog(LDMSD_LERROR, PNAME
+		ovis_log(mylog, OVIS_LERROR, PNAME
 			" config arguments schema and container must be used together (for particular container/schema) or not used (to set defaults).\n");
 		if (sn)
-			msglog(LDMSD_LERROR, PNAME ": schema=%s.\n", cn);
+			ovis_log(mylog, OVIS_LERROR, "schema=%s.\n", cn);
 		if (cn)
-			msglog(LDMSD_LERROR, PNAME ": container=%s.\n", cn);
+			ovis_log(mylog, OVIS_LERROR, "container=%s.\n", cn);
 		return EINVAL;
 	}
 	if (cn && conf) {
-		msglog(LDMSD_LERROR, PNAME
+		ovis_log(mylog, OVIS_LERROR, PNAME
 			" config arguments schema and opt_file must not be used together.\n");
 		return EINVAL;
 	}
 	if (cn && !pa) {
-		msglog(LDMSD_LERROR, PNAME
+		ovis_log(mylog, OVIS_LERROR, PNAME
 			"plugin defaults must be configured before specifics for container=%s schema=%s\n",
 			cn, sn);
 		return EINVAL;
 	}
 	if (cn && pa) {
-		msglog(LDMSD_LDEBUG, PNAME ": parsing specific schema option\n");
+		ovis_log(mylog, OVIS_LDEBUG, "parsing specific schema option\n");
 		return update_config(kwl, avl, cn, sn);
 	}
 	if (pa) {
-		msglog(LDMSD_LINFO, PNAME ": config of defaults cannot be repeated.\n");
+		ovis_log(mylog, OVIS_LINFO, "config of defaults cannot be repeated.\n");
 		return EINVAL;
 	}
 
@@ -702,18 +702,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	pa = ldmsd_plugattr_create(conf, PNAME, avl, kwl,
 			init_blacklist, init_blacklist, dep, KEY_PLUG_ATTR);
 	if (!pa) {
-		msglog(LDMSD_LERROR, PNAME ": Reminder: omit 'config name=<>' from lines in opt_file\n");
-		msglog(LDMSD_LERROR, PNAME ": error parsing %s\n", conf);
+		ovis_log(mylog, OVIS_LERROR, "Reminder: omit 'config name=<>' from lines in opt_file\n");
+		ovis_log(mylog, OVIS_LERROR, "error parsing %s\n", conf);
 		rc = EINVAL;
 		goto out;
 	}
 
-	msglog(LDMSD_LDEBUG, PNAME ": parsed %s\n", conf);
+	ovis_log(mylog, OVIS_LDEBUG, "parsed %s\n", conf);
 
 	const char *s = ldmsd_plugattr_value(pa, "path", NULL);
 	rc = 0;
 	if (!s) {
-		msglog(LDMSD_LERROR, PNAME
+		ovis_log(mylog, OVIS_LERROR, PNAME
 			": config requires path=value be provided in opt_file or arguments.\n");
 		ldmsd_plugattr_destroy(pa);
 		pa = NULL;
@@ -722,7 +722,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 	if (rolltype != -1) {
-		msglog(LDMSD_LWARNING, "%s: repeated rollover config is ignored.\n", PNAME);
+		ovis_log(mylog, OVIS_LWARNING, "%s: repeated rollover config is ignored.\n", PNAME);
 		goto out; /* rollover configured exactly once */
 	}
 	int ragain = 0;
@@ -731,14 +731,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	cvt = ldmsd_plugattr_s32(pa, "rollagain", NULL, &ragain);
 	if (!cvt) {
 		if (ragain < 0) {
-			msglog(LDMSD_LERROR, PNAME
+			ovis_log(mylog, OVIS_LERROR, PNAME
 				": bad rollagain= value %d\n", ragain);
 			rc = EINVAL;
 			goto out;
 		}
 	}
 	if (cvt == ENOTSUP) {
-		msglog(LDMSD_LERROR, PNAME ": improper rollagain= input.\n");
+		ovis_log(mylog, OVIS_LERROR, "improper rollagain= input.\n");
 		rc = EINVAL;
 		goto out;
 	}
@@ -746,14 +746,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	cvt = ldmsd_plugattr_s32(pa, "rollover", NULL, &roll);
 	if (!cvt) {
 		if (roll < 0) {
-			msglog(LDMSD_LERROR, PNAME
+			ovis_log(mylog, OVIS_LERROR, PNAME
 				": Error: bad rollover value %d\n", roll);
 			rc = EINVAL;
 			goto out;
 		}
 	}
 	if (cvt == ENOTSUP) {
-		msglog(LDMSD_LERROR, PNAME ": improper rollover= input.\n");
+		ovis_log(mylog, OVIS_LERROR, "improper rollover= input.\n");
 		rc = EINVAL;
 		goto out;
 	}
@@ -762,33 +762,33 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (!cvt) {
 		if (roll < 0) {
 			/* rolltype not valid without rollover also */
-			msglog(LDMSD_LERROR, PNAME
+			ovis_log(mylog, OVIS_LERROR, PNAME
 				": rolltype given without rollover.\n");
 			rc = EINVAL;
 			goto out;
 		}
 		if (rollmethod < MINROLLTYPE || rollmethod > MAXROLLTYPE) {
-			msglog(LDMSD_LERROR, PNAME
+			ovis_log(mylog, OVIS_LERROR, PNAME
 				": rolltype out of range.\n");
 			rc = EINVAL;
 			goto out;
 		}
 		if (rollmethod == 5 && (roll < 0 || ragain < roll || ragain < MIN_ROLL_1)) {
 			ERR_LOG( "rolltype=5 needs rollagain > max(rollover,10)\n");
-			msglog(LDMSD_LERROR, PNAME ": rollagain=%d rollover=%d\n",
+			ovis_log(mylog, OVIS_LERROR, "rollagain=%d rollover=%d\n",
 			       roll, ragain);
 			rc = EINVAL;
 			goto out;
 		}
 	}
 	if (cvt == ENOTSUP) {
-		msglog(LDMSD_LERROR, PNAME ": improper rolltype= input.\n");
+		ovis_log(mylog, OVIS_LERROR, "improper rolltype= input.\n");
 		rc = EINVAL;
 		goto out;
 	}
 	cvt = ldmsd_plugattr_bool(pa, "rollempty", NULL, &rollempty);
 	if (cvt == -1) {
-		msglog(LDMSD_LERROR, PNAME ": expected boole for rollempty= input.\n");
+		ovis_log(mylog, OVIS_LERROR, "expected boole for rollempty= input.\n");
 		rc = EINVAL;
 		goto out;
 	}
@@ -814,6 +814,8 @@ static void term(struct ldmsd_plugin *self)
 	ldmsd_plugattr_destroy(pa);
 	pa = NULL;
 	pthread_mutex_unlock(&cfg_lock);
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -863,14 +865,14 @@ static int print_header_from_row(struct csv_store_handle *s_handle,
 	FILE* fp;
 
 	if (s_handle == NULL){
-		msglog(LDMSD_LERROR, PNAME ": Null store handle. Cannot print header\n");
+		ovis_log(mylog, OVIS_LERROR, "Null store handle. Cannot print header\n");
 		return EINVAL;
 	}
 	s_handle->printheader = DONT_PRINT_HEADER;
 
 	fp = s_handle->headerfile;
 	if (!fp){
-		msglog(LDMSD_LERROR, PNAME ": Cannot print header. No headerfile\n");
+		ovis_log(mylog, OVIS_LERROR, "Cannot print header. No headerfile\n");
 		return EINVAL;
 	}
 	csv_row_format_header(fp, s_handle->headerfilename, CCSHC(s_handle), s_handle->udata,
@@ -891,7 +893,7 @@ static int print_header_from_row(struct csv_store_handle *s_handle,
 		fp = fopen_perm(s_handle->typefilename, "w", LDMSD_DEFAULT_FILE_PERM);
 		if (!fp) {
 			int rc = errno;
-			PG.msglog(LDMSD_LERROR, PNAME ": print_header: %s "
+			ovis_log(mylog, OVIS_LERROR, "print_header: %s "
 				"failed to open types file (%d).\n",
 				s_handle->typefilename, rc);
 		} else {
@@ -921,14 +923,14 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 	char tmp_path[PATH_MAX];
 
 	if (s_handle == NULL){
-		msglog(LDMSD_LERROR, PNAME ": Null store handle. Cannot print header\n");
+		ovis_log(mylog, OVIS_LERROR, "Null store handle. Cannot print header\n");
 		return EINVAL;
 	}
 	s_handle->printheader = DONT_PRINT_HEADER;
 
 	fp = s_handle->headerfile;
 	if (!fp){
-		msglog(LDMSD_LERROR, PNAME ": Cannot print header. No headerfile\n");
+		ovis_log(mylog, OVIS_LERROR, "Cannot print header. No headerfile\n");
 		return EINVAL;
 	}
 	int ec;
@@ -965,7 +967,7 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 		fp = fopen_perm(s_handle->typefilename, "w", LDMSD_DEFAULT_FILE_PERM);
 		if (!fp) {
 			int rc = errno;
-			PG.msglog(LDMSD_LERROR, PNAME ": print_header: %s "
+			ovis_log(mylog, OVIS_LERROR, "print_header: %s "
 				"failed to open types file (%d).\n",
 				s_handle->typefilename, rc);
 		} else {
@@ -1003,7 +1005,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	struct csv_store_handle *s_handle = NULL;
 
 	if (!pa) {
-		msglog(LDMSD_LERROR, PNAME ": config not called. cannot open.\n");
+		ovis_log(mylog, OVIS_LERROR, "config not called. cannot open.\n");
 		return NULL;
 	}
 
@@ -1016,7 +1018,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 static inline void __print_check(struct csv_store_handle *sh, int rc)
 {
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
+		ovis_log(mylog, OVIS_LERROR, "Error %d writing to '%s'\n",
 		       rc, sh->path);
 	} else {
 		sh->byte_count += rc;
@@ -1441,7 +1443,7 @@ store_metric(struct csv_store_handle *sh, const char *wsqt, uint64_t udata,
 		}
 		break;
 	default:
-		msglog(LDMSD_LERROR, PNAME ": Received unrecognized metric value type %d\n", mtype);
+		ovis_log(mylog, OVIS_LERROR, "Received unrecognized metric value type %d\n", mtype);
 		/* print no value */
 		if (sh->udata) {
 			rc = fprintf(sh->file, ",");
@@ -1501,15 +1503,15 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (LDMS_V_LIST == ldms_metric_type_get(set, metric_array[i])) {
 				s_handle->num_lists++;
 				if (s_handle->num_lists > 1) {
-					msglog(LDMSD_LERROR, PNAME
-						": set '%s' contains multiple lists. "
+					ovis_log(mylog, OVIS_LERROR,
+						"Set '%s' contains multiple lists. "
 						"Please store the set using a decomposition.\n",
 						ldms_set_instance_name_get(set));
 					return EINVAL;
 				}
 				if (0 == ldms_list_len(set,
 					ldms_metric_get(set, metric_array[i]))) {
-					msglog(LDMSD_LERROR, PNAME ": set '%s' contains an empty list '%s'.\n",
+					ovis_log(mylog, OVIS_LERROR, "Set '%s' contains an empty list '%s'.\n",
 						ldms_set_instance_name_get(set),
 						ldms_metric_name_get(set, metric_array[i]));
 					/*
@@ -1522,7 +1524,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 		}
 		s_handle->lents = malloc(s_handle->num_lists * sizeof(*s_handle->lents));
 		if (!s_handle->lents) {
-			msglog(LDMSD_LCRITICAL, PNAME ": Out of memory\n");
+			ovis_log(mylog, OVIS_LCRITICAL, "Out of memory\n");
 			return ENOMEM;
 		}
 	} else if (s_handle->num_lists > 1) {
@@ -1539,7 +1541,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 
 	pthread_mutex_lock(&s_handle->lock);
 	if (!s_handle->file){
-		msglog(LDMSD_LERROR, PNAME ": Cannot insert values for <%s>: file is NULL\n",
+		ovis_log(mylog, OVIS_LERROR, "Cannot insert values for <%s>: file is NULL\n",
 		       s_handle->path);
 		pthread_mutex_unlock(&s_handle->lock);
 		/* FIXME: will returning an error stop the store? */
@@ -1554,7 +1556,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 	case FIRST_PRINT_HEADER:
 		rc = print_header_from_store(s_handle, set, metric_array, metric_count);
 		if (rc){
-			msglog(LDMSD_LERROR, PNAME ": %s cannot print header: %d. Not storing\n",
+			ovis_log(mylog, OVIS_LERROR, "%s cannot print header: %d. Not storing\n",
 			       s_handle->store_key, rc);
 			s_handle->printheader = BAD_HEADER;
 			pthread_mutex_unlock(&s_handle->lock);
@@ -1595,7 +1597,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				/* List entry */
 				if (0 == ldms_list_len(set, mval)) {
 					name = ldms_metric_name_get(set, metric_array[i]);
-					msglog(LDMSD_LERROR, PNAME " : set '%s' "
+					ovis_log(mylog, OVIS_LERROR, PNAME " : set '%s' "
 						"containing an empty list '%s', "
 						"which is not supported. \n",
 						ldms_set_instance_name_get(set), name);
@@ -1672,7 +1674,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 {
 	struct csv_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
-		msglog(LDMSD_LERROR, PNAME ": flush error.\n");
+		ovis_log(mylog, OVIS_LERROR, "flush error.\n");
 		return -1;
 	}
 	pthread_mutex_lock(&s_handle->lock);
@@ -1684,7 +1686,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 static void __csv_handle_close(struct csv_store_handle *s_handle)
 {
 	pthread_mutex_lock(&s_handle->lock);
-	msglog(LDMSD_LDEBUG, PNAME ": Closing with path <%s>\n",
+	ovis_log(mylog, OVIS_LDEBUG, "Closing with path <%s>\n",
 	       s_handle->path);
 	fflush(s_handle->file);
 	if (s_handle->path)
@@ -2226,7 +2228,7 @@ store_row(ldmsd_strgp_t strgp, ldms_set_t set, struct csv_store_handle *s_handle
 	case FIRST_PRINT_HEADER:
 		rc = print_header_from_row(s_handle, set, row);
 		if (rc){
-			msglog(LDMSD_LERROR, PNAME ": %s cannot print header: %d. Not storing\n",
+			ovis_log(mylog, OVIS_LERROR, "%s cannot print header: %d. Not storing\n",
 			       s_handle->store_key, rc);
 			s_handle->printheader = BAD_HEADER;
 			/* FIXME: will returning an error stop the store? */
@@ -2329,10 +2331,16 @@ static struct ldmsd_store store_csv = {
 	.commit = commit_rows,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
-	PG.msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store."PNAME, "The log subsystem of '" PNAME "' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+				"of '" PNAME "' plugin. Error %d\n", rc);
+	}
+	PG.mylog = mylog;
 	PG.pname = PNAME;
 	return &store_csv.base;
 }

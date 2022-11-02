@@ -72,23 +72,20 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-
 /* config */
-int hsn_metrics_config(int i, ldmsd_msg_log_f msglog);
+int hsn_metrics_config(int i);
 
 
 /* add metrics */
-int add_metrics_aries_linksmetrics(ldms_schema_t schema,
-				   ldmsd_msg_log_f msglog);
-int add_metrics_aries_nicmetrics(ldms_schema_t schema,
-				 ldmsd_msg_log_f msglog);
+int add_metrics_aries_linksmetrics(ldms_schema_t schema);
+int add_metrics_aries_nicmetrics(ldms_schema_t schema);
 
 /** setup after add before sampling */
-int aries_linksmetrics_setup(ldmsd_msg_log_f msglog);
-int aries_nicmetrics_setup(ldmsd_msg_log_f msglog);
+int aries_linksmetrics_setup();
+int aries_nicmetrics_setup();
 
 /* sampling */
-int sample_metrics_aries_linksmetrics(ldms_set_t set, ldmsd_msg_log_f msglog);
-int sample_metrics_aries_nicmetrics(ldms_set_t set, ldmsd_msg_log_f msglog);
+int sample_metrics_aries_linksmetrics(ldms_set_t set);
+int sample_metrics_aries_nicmetrics(ldms_set_t set);
 
 #endif

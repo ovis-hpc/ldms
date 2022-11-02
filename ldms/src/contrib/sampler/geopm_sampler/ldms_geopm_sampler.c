@@ -79,7 +79,7 @@
 #define SAMP "ldms_geopm_sampler"
 #define GEOPM_METRIC_MAX 4096
 
-static ldmsd_msg_log_f msglog = NULL;
+static ovis_log_t mylog;
 
 /* Global state other than the logging function */
 static ldms_set_t g_set = NULL;
@@ -134,7 +134,7 @@ int ldms_geopm_sampler_convert_sample(enum ldms_geopm_sampler_metric_type_e metr
 			value->v_u64 = geopm_signal_to_field(sample);
 			break;
 		default:
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP": %s:%d: Error converting signal, unknown metric_type: %d\n",
 			       __FILE__, __LINE__, metric_type);
 			rc = EINVAL;
@@ -143,23 +143,18 @@ int ldms_geopm_sampler_convert_sample(enum ldms_geopm_sampler_metric_type_e metr
 	return rc;
 }
 
-void ldms_geopm_sampler_set_log(void (*pf)(int, const char *fms, ...))
-{
-	msglog = pf;
-}
-
 int ldms_geopm_sampler_open_config(const char *config_path, FILE **result)
 {
 	int rc = 0;
 	errno = 0;
 	*result = fopen(config_path, "r");
 	if (*result == NULL) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: Error in opening file '%s' containing list of samples, errno=%d\n",
 		       __FILE__, __LINE__, config_path, errno);
 		rc = ENOENT;
 	} else {
-		msglog(LDMSD_LDEBUG,
+		ovis_log(mylog, OVIS_LDEBUG,
 		       SAMP": Success opening configuration file: '%s'\n",
 		       config_path);
 	}
@@ -216,13 +211,13 @@ int ldms_geopm_sampler_parse_line(FILE *fid,
 		return EOF;
 	}
 	else if (num_scan == ENOMEM) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: Unable to allocate memory while parsing GEOPM Sampler configuration file\n",
 		       __FILE__, __LINE__);
 		return ENOMEM;
 	}
 	else if (num_scan != 3) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: File format error for GEOPM Sampler configuration file\n",
 		       __FILE__, __LINE__);
 		return EINVAL;
@@ -231,7 +226,7 @@ int ldms_geopm_sampler_parse_line(FILE *fid,
 	if (*domain_type < 0) {
 		char err_msg[NAME_MAX];
 		geopm_error_message(*domain_type, err_msg, NAME_MAX);
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: Invalid domain name '%s' provided in GEOPM configuration file\n%s\n",
 		       __FILE__, __LINE__, domain_type_str, err_msg);
 		return EINVAL;
@@ -247,7 +242,7 @@ int ldms_geopm_sampler_parse_line(FILE *fid,
 	if (info_rc != 0) {
 		char err_msg[NAME_MAX];
 		geopm_error_message(info_rc, err_msg, NAME_MAX);
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: Unable to determine signal format\n%s\n",
 		       __FILE__, __LINE__, err_msg);
 		return info_rc;
@@ -257,25 +252,25 @@ int ldms_geopm_sampler_parse_line(FILE *fid,
 	int print_rc = snprintf(metric_name, NAME_MAX, "%s_%s_%d",
 				signal_name, domain_type_str, *domain_idx);
 	if (print_rc >= NAME_MAX || print_rc < 0) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: Unable to create metric name with snprintf() ",
 		       __FILE__, __LINE__);
 		return -1;
 	}
-	msglog(LDMSD_LDEBUG, SAMP": Adding metric: %s\n", metric_name);
+	ovis_log(mylog, OVIS_LDEBUG, SAMP": Adding metric: %s\n", metric_name);
 	return 0;
 }
 
 int ldms_geopm_sampler_parse_check(int parse_rc)
 {
 	if (parse_rc != EOF) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: Unable to parse GEOPM Sampler configuration file\n",
 		       __FILE__, __LINE__);
 		return parse_rc;
 	}
 	if (g_metric_cnt == 0) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: No metrics added after parsing configuration file\n",
 		       __FILE__, __LINE__);
 		return errno ? errno : -1;
@@ -289,7 +284,7 @@ int ldms_geopm_sampler_push_signal(const char *signal_name,
 				   enum ldms_geopm_sampler_metric_type_e metric_type)
 {
 	if (g_metric_cnt >= GEOPM_METRIC_MAX) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: Configuration file contains too many requests\n",
 		       __FILE__, __LINE__);
 		return E2BIG;
@@ -301,7 +296,7 @@ int ldms_geopm_sampler_push_signal(const char *signal_name,
 		rc = EINVAL;
 		char err_msg[NAME_MAX];
 		geopm_error_message(sig_idx, err_msg, NAME_MAX);
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: Failed call to geopm_pio_push_signal(%s, %d, %d)\n%s\n",
 		       __FILE__, __LINE__, signal_name, domain_type,
 		       domain_idx, err_msg);
@@ -321,7 +316,7 @@ int ldms_geopm_sampler_read_batch(void)
 	rc = geopm_pio_read_batch();
 	if (rc != 0) {
 		geopm_error_message(rc, err_msg, NAME_MAX);
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d\n%s ",
 		       __FILE__, __LINE__, err_msg);
 	}
@@ -338,11 +333,11 @@ int ldms_geopm_sampler_sample_batch(void)
 		rc = geopm_pio_sample(g_metric_pio_idx[metric_idx], g_metric + metric_idx);
 		if (rc != 0) {
 			geopm_error_message(rc, err_msg, NAME_MAX);
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP": %s:%d\n%s\n",
 			       __FILE__, __LINE__, err_msg);
 		}
-		msglog(LDMSD_LDEBUG,
+		ovis_log(mylog, OVIS_LDEBUG,
 		       SAMP": metric_%d = %f\n",
 		       g_metric_offset + metric_idx,
 		       g_metric[metric_idx]);
@@ -371,7 +366,7 @@ static int create_metric_set(void)
 	errno = 0;
 	schema = base_schema_new(g_base);
 	if (schema == NULL) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, __LINE__, g_base->schema_name, errno);
 		rc = errno ? errno : -1;
@@ -380,7 +375,7 @@ static int create_metric_set(void)
 
 	/* Location of first metric */
 	g_metric_offset = ldms_schema_metric_count_get(schema);
-	msglog(LDMSD_LDEBUG,
+	ovis_log(mylog, OVIS_LDEBUG,
 	       SAMP": Schema created: starts at offset %d\n",
 	       g_metric_offset);
 
@@ -408,7 +403,7 @@ static int create_metric_set(void)
 		rc = ldms_schema_metric_add(schema, metric_name,
 					    ldms_geopm_sampler_value_type(metric_type));
 		if (rc < 0) {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP": %s:%d: Unable to add metric using ldms_schma_metric_add(), returned: %d.\n",
 			       __FILE__, __LINE__, rc);
 			goto exit;
@@ -422,7 +417,7 @@ static int create_metric_set(void)
 	g_set = base_set_new(g_base);
 	if (g_set == NULL) {
 		rc = errno ? errno : -1;
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: Failed to call base_set_new(), returned NULL: errno: %d.\n",
 		       __FILE__, __LINE__, errno);
 		goto exit;
@@ -441,11 +436,11 @@ exit:
  */
 static int config_check(struct attr_value_list *avl)
 {
-	msglog(LDMSD_LDEBUG, SAMP": config_check() called\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP": config_check() called\n");
 	char *tmp_ptr = av_value(avl, "geopm_request_path");
 	strncpy(g_geopm_request_path, tmp_ptr, NAME_MAX);
 	if (g_geopm_request_path[NAME_MAX - 1] != '\0') {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP": %s:%d: Long file name: '%s'\n",
 		       __FILE__, __LINE__, tmp_ptr);
 		return ENAMETOOLONG;
@@ -467,7 +462,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	 * calls to 'config'
 	 */
 	if (g_set) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": %s:%d: Set already created.\n",
 		       __FILE__, __LINE__);
 		return EINVAL;
@@ -486,11 +481,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	 * This makes call into core LDMS functions for initializing the sampler
 	 */
 	errno = 0;
-	g_base = base_config(avl, SAMP, SAMP, msglog);
-	msglog(LDMSD_LDEBUG, SAMP": Base config() called.\n");
+	g_base = base_config(avl, SAMP, SAMP, mylog);
+	ovis_log(mylog, OVIS_LDEBUG, SAMP": Base config() called.\n");
 	if (g_base == NULL) {
 		rc = errno ? errno : -1;
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": %s:%d: Failed to call base_config(), returned NULL: errno: %d.\n",
 		       __FILE__, __LINE__, errno);
 		goto exit;
@@ -499,7 +494,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	/* Parse GEOPM sampler configuration file and add all metrics */
 	rc = create_metric_set();
 	if (rc) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": %s:%d: Failed to create a metric set.\n",
 		       __FILE__, __LINE__);
 		goto exit;
@@ -525,7 +520,7 @@ static int sample(struct ldmsd_sampler *self)
 	double sample;
 
 	if (g_set == NULL) {
-		msglog(LDMSD_LDEBUG, SAMP": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP": plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -543,7 +538,7 @@ static int sample(struct ldmsd_sampler *self)
 	}
 
 	for (int metric_idx = 0; rc == 0 && metric_idx < g_metric_cnt; metric_idx++) {
-		msglog(LDMSD_LDEBUG, SAMP": metric %d = %f\n",
+		ovis_log(mylog, OVIS_LDEBUG, SAMP": metric %d = %f\n",
 		       g_metric_offset + metric_idx, g_metric[metric_idx]);
 		rc = ldms_geopm_sampler_convert_sample(g_metric_type[metric_idx],
 						       g_metric[metric_idx],
@@ -570,6 +565,8 @@ static void term(struct ldmsd_plugin *self)
 		ldms_geopm_sampler_reset();
 	}
 	g_set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 
@@ -586,9 +583,14 @@ static struct ldmsd_sampler g_geopm_sampler_plugin = {
 };
 
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	ldms_geopm_sampler_set_log(pf);
+	mylog = ovis_log_register("sampler."SAMP, "Messages for the " SAMP " plugin");
+	if (!mylog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the " SAMP " "
+				"plugin's log subsystem. Error %d.\n", errno);
+	}
+	ldms_geopm_sampler_set_log(mylog);
 	g_set = NULL;
 	return &g_geopm_sampler_plugin.base;
 }

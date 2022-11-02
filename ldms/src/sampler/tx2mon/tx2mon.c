@@ -117,13 +117,13 @@
 
 #define SAMP "tx2mon"
 
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
+
 static ldms_set_t set[MAX_CPUS_PER_SOC];
 static ldms_set_t sc;
 
 static base_data_t base;
 static ldms_schema_t schema;
-static ldmsd_msg_log_f msglog;
 static struct tx2mon_sampler tx2mon_s = {0};
 
 static struct tx2mon_sampler *tx2mon = &tx2mon_s;
@@ -310,7 +310,7 @@ static bool get_bool(const char *val, char *name)
 	case 'N':
 		return false;
 	default:
-		msglog(LDMSD_LERROR, "%s: bad bool value %s for %s\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: bad bool value %s for %s\n",
 		       val, name);
 		return false;
 	}
@@ -360,7 +360,7 @@ static int create_metric_set(base_data_t base)
 
 	mcprc = parse_mc_oper_region();
 	if (mcprc != 0) {
-		msglog(LDMSD_LERROR, SAMP ": unable to read the node file for the sample (%s)\n",
+		ovis_log(mylog, OVIS_LERROR, "unable to read the node file for the sample (%s)\n",
 		       pids, STRERROR(mcprc));
 		return mcprc;
 	}
@@ -388,7 +388,7 @@ static int create_metric_set(base_data_t base)
 
 		if (!set[i]) {
 			rc = errno;
-			msglog(LDMSD_LERROR, SAMP ": ldms_set_new failed %d for %s\n",
+			ovis_log(mylog, OVIS_LERROR, "ldms_set_new failed %d for %s\n",
 			       errno, base->instance_name);
 			goto err;
 		}
@@ -397,7 +397,7 @@ static int create_metric_set(base_data_t base)
 		rc = tx2mon_array_conv(&s->m, p, tx2mon->n_core, i, t);\
 		if (rc){ \
 		rc = EINVAL; \
-		msglog(LDMSD_LERROR, SAMP ": sample " n " not correctly defined.\n"); \
+		ovis_log(mylog, OVIS_LERROR, "sample " n " not correctly defined.\n"); \
 		return rc;}\
 
 		META_MCP_LIST(META_MCSAMPLE);
@@ -414,7 +414,7 @@ static int create_metric_set(base_data_t base)
 			ldms_set_delete(base->set);
 			base->set = NULL;
 			errno = rc;
-			base->log(LDMSD_LERROR,"base_set_new: ldms_set_publish failed for %s\n",
+			base->log(OVIS_LERROR,"base_set_new: ldms_set_publish failed for %s\n",
 			          base->instance_name);
 			return EINVAL;
 		}
@@ -425,7 +425,7 @@ static int create_metric_set(base_data_t base)
 
 		rc = tx2mon_set_metrics(i);
 		if (rc) {
-			msglog(LDMSD_LERROR, SAMP ": failed to create metric set.\n");
+			ovis_log(mylog, OVIS_LERROR, "failed to create metric set.\n");
 			rc = EINVAL;
 			return rc;
 		}
@@ -492,18 +492,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		int ue = uname(&un);
 		if (!ue && strcmp(un.machine,"aarch64")) {
 			noop = 1;
-			msglog(LDMSD_LWARNING, SAMP
+			ovis_log(mylog, OVIS_LWARNING, SAMP
 				": tx2mon does nothing except on ThunderX2/aarch64.\n");
 			tx2mon->n_cpu = 0;
 			return 0;
 		}
-		msglog(LDMSD_LERROR, SAMP ": Failed. Check that you loaded tx2mon_kmod module. \n");
+		ovis_log(mylog, OVIS_LERROR, "Failed. Check that you loaded tx2mon_kmod module. \n");
 		return EINVAL;
 	}
 
 	for (i = 0; i < tx2mon->n_cpu; i++) {
 		if (set[i]) {
-			msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+			ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 			return EINVAL;
 		}
 	}
@@ -518,11 +518,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	sbuf = compute_schema_name(pidarray, pidextra, avl, tx2mon->n_core);
 	if (!sbuf) {
-		msglog(LDMSD_LERROR, SAMP ": out of memory computing schema name.\n");
+		ovis_log(mylog, OVIS_LERROR, "out of memory computing schema name.\n");
 		goto err;
 	}
 
-	base = base_config(avl, SAMP, sbuf, msglog);
+	base = base_config(avl, SAMP, sbuf, mylog);
 	if (!base) {
 		goto err;
 	}
@@ -536,11 +536,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create metric set.\n");
 		goto err;
 	}
 
-	msglog(LDMSD_LDEBUG, SAMP ": config done. \n");
+	ovis_log(mylog, OVIS_LDEBUG, "config done. \n");
 
 	free(sbuf);
 	return 0;
@@ -549,7 +549,7 @@ err:
 	rc = EINVAL;
 	base_del(base);
 	free(sbuf);
-	msglog(LDMSD_LDEBUG, SAMP ": config fail.\n");
+	ovis_log(mylog, OVIS_LDEBUG, "config fail.\n");
 	return rc;
 
 }
@@ -586,6 +586,8 @@ static void term(struct ldmsd_plugin *self)
 			ldms_set_delete(set[i]);
 		set[i] = NULL;
 	}
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static int sample(struct ldmsd_sampler *self)
@@ -597,7 +599,7 @@ static int sample(struct ldmsd_sampler *self)
 	int mcprc = -1;
 	for (i = 0; i < tx2mon->n_cpu; i++) {
 		if (!set[i]) {
-			msglog(LDMSD_LERROR, SAMP ": plugin not initialized\n");
+			ovis_log(mylog, OVIS_LERROR, "plugin not initialized\n");
 			return EINVAL;
 		}
 	}
@@ -609,7 +611,7 @@ static int sample(struct ldmsd_sampler *self)
 		if (!mcprc) {
 			rc = tx2mon_set_metrics(i);
 			if (rc) {
-				msglog(LDMSD_LERROR, SAMP ": failed to create metric set.\n");
+				ovis_log(mylog, OVIS_LERROR, "failed to create metric set.\n");
 				rc = EINVAL;
 				return rc;
 			}
@@ -639,9 +641,15 @@ static struct ldmsd_sampler tx2mon_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	int i;
 	for (i = 0; i < MAX_CPUS_PER_SOC; i++)
 		set[i] = NULL;
@@ -685,7 +693,7 @@ static int  tx2mon_get_throttling_events(uint32_t *active, int i, int p, char *t
 		for (pos = p; p <= ncauses; pos++) {
 			ldms_metric_set_u32(set[i], p, 0);
 		}
-		msglog(LDMSD_LDEBUG, SAMP ": Throttling events not supported. \n");
+		ovis_log(mylog, OVIS_LDEBUG, "Throttling events not supported. \n");
 		return rc;
 	}
 
@@ -740,7 +748,7 @@ static int tx2mon_set_metrics (int i)
 	rc = tx2mon_array_conv(&s->m, p, tx2mon->n_core, i, t);\
 	if (rc){ \
 		rc = EINVAL; \
-		msglog(LDMSD_LERROR, SAMP ": sample " n " not correctly defined.\n"); \
+		ovis_log(mylog, OVIS_LERROR, "sample " n " not correctly defined.\n"); \
 		return rc; }\
 
 
@@ -832,14 +840,14 @@ static int parse_socinfo(void)
 
 	path = realpath(TX2MON_SOCINFO_PATH, NULL);
 	if (path == NULL) {
-		msglog(LDMSD_LERROR, SAMP ": cannot resolve path for '%s'.\n",
+		ovis_log(mylog, OVIS_LERROR, "cannot resolve path for '%s'.\n",
 		       TX2MON_SOCINFO_PATH);
 		return EBADF;
 	}
 
 	socinfo = fopen(path, "r");
 	if (!socinfo) {
-		msglog(LDMSD_LERROR, SAMP ": cannot open '%s', %s.\n",
+		ovis_log(mylog, OVIS_LERROR, "cannot open '%s', %s.\n",
 		       path, STRERROR(errno));
 		free(path);
 		return errno;
@@ -851,7 +859,7 @@ static int parse_socinfo(void)
 	*/
 	if (fscanf(socinfo, "%d %d %d", &tx2mon->n_cpu,
 	           &tx2mon->n_core, &tx2mon->n_thread) != 3) {
-		msglog(LDMSD_LERROR, SAMP ": cannot parse '%s'.\n", path);
+		ovis_log(mylog, OVIS_LERROR, "cannot parse '%s'.\n", path);
 		fclose(socinfo);
 		free(path);
 		return EBADF;
@@ -860,17 +868,17 @@ static int parse_socinfo(void)
 	fclose(socinfo);
 	free(path);
 
-	msglog(LDMSD_LINFO, SAMP ": n_cpu: %d, n_core: %d, n_thread: %d.\n",
+	ovis_log(mylog, OVIS_LINFO, "n_cpu: %d, n_core: %d, n_thread: %d.\n",
 	       tx2mon->n_cpu, tx2mon->n_core, tx2mon->n_thread);
 
 	if (TX2MON_MAX_CPU < tx2mon->n_cpu) {
-		msglog(LDMSD_LWARNING, SAMP ": sampler built for max %d CPUs, system reporting %d CPUs, limiting reporting to %d.\n",
+		ovis_log(mylog, OVIS_LWARNING, "sampler built for max %d CPUs, system reporting %d CPUs, limiting reporting to %d.\n",
 		       TX2MON_MAX_CPU, tx2mon->n_cpu, TX2MON_MAX_CPU);
 		tx2mon->n_cpu = TX2MON_MAX_CPU;
 	}
 
 	if (MAX_CPUS_PER_SOC < tx2mon->n_core) {
-		msglog(LDMSD_LWARNING, SAMP ": sampler built for max %d cores, system reporting %d cores, limiting reporting to %d.\n",
+		ovis_log(mylog, OVIS_LWARNING, "sampler built for max %d cores, system reporting %d cores, limiting reporting to %d.\n",
 		       MAX_CPUS_PER_SOC, tx2mon->n_core, MAX_CPUS_PER_SOC);
 		tx2mon->n_core = MAX_CPUS_PER_SOC;
 	}
@@ -905,14 +913,14 @@ static int parse_mc_oper_region()
 		tx2mon->cpu[i].node = i;
 		tx2mon->cpu[i].fd = open(filename, O_RDONLY);
 		if (tx2mon->cpu[i].fd < 0) {
-			msglog(LDMSD_LERROR, SAMP ": Error reading node%i entry.\n", i);
-			msglog(LDMSD_LERROR, SAMP ": Is tx2mon_kmod in the kernel?\n", i);
+			ovis_log(mylog, OVIS_LERROR, "Error reading node%i entry.\n", i);
+			ovis_log(mylog, OVIS_LERROR, "Is tx2mon_kmod in the kernel?\n", i);
 			return errno;
 		}
 		ret = tx2mon_read_node(&tx2mon->cpu[i]);
 
 		if (ret < 0) {
-			msglog(LDMSD_LERROR, SAMP ": Unexpected read error!\n");
+			ovis_log(mylog, OVIS_LERROR, "Unexpected read error!\n");
 			return EINVAL;
 		}
 

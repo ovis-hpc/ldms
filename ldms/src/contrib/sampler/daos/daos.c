@@ -58,6 +58,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <stdarg.h>
+#include "ovis_log/ovis_log.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "config.h"
@@ -73,8 +75,7 @@
 #include "pool_target.h"
 
 static struct comp_id_data cid;
-ldmsd_msg_log_f log_fn;
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 static int engine_count = 2;
 static int target_count = 8;
 char system_name[DAOS_SYS_NAME_MAX+1];
@@ -82,33 +83,42 @@ char producer_name[LDMS_PRODUCER_NAME_MAX];
 
 #define DEFAULT_SYS_NAME "daos_server"
 
+int dao_log(int level, const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	rc = ovis_vlog(mylog, level, fmt, ap);
+	va_end(ap);
+	return rc;
+}
+
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char	*ival;
 	int	 rc;
 
-	log_fn(LDMSD_LDEBUG, SAMP": config() called\n");
+	dao_log(OVIS_LDEBUG, "config() called\n");
 	ival = av_value(avl, "producer");
 	if (ival) {
 		if (strlen(ival) < sizeof(producer_name)) {
 			strncpy(producer_name, ival, sizeof(producer_name));
 		} else {
-			log_fn(LDMSD_LERROR, SAMP": config: producer name too long.\n");
+			dao_log(OVIS_LERROR, "config: producer name too long.\n");
 			return -EINVAL;
 		}
 	}
-	log_fn(LDMSD_LDEBUG, SAMP": producer: %s\n", producer_name);
+	dao_log(OVIS_LDEBUG, "producer: %s\n", producer_name);
 
 	ival = av_value(avl, "system");
 	if (ival) {
 		if (strlen(ival) < sizeof(system_name)) {
 			strncpy(system_name, ival, sizeof(system_name));
 		} else {
-			log_fn(LDMSD_LERROR, SAMP": config: system name too long.\n");
+			dao_log(OVIS_LERROR, "config: system name too long.\n");
 			return -EINVAL;
 		}
 	}
-	log_fn(LDMSD_LDEBUG, SAMP": system: %s\n", system_name);
+	dao_log(OVIS_LDEBUG, "system: %s\n", system_name);
 
 	ival = av_value(avl, "engine_count");
 	if (ival) {
@@ -117,7 +127,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		if (cfg_engine_count > 0)
 			engine_count = cfg_engine_count;
 	}
-	log_fn(LDMSD_LDEBUG, SAMP": engine_count: %d\n", engine_count);
+	dao_log(OVIS_LDEBUG, "engine_count: %d\n", engine_count);
 
 	ival = av_value(avl, "target_count");
 	if (ival) {
@@ -126,11 +136,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		if (cfg_tgt_count > 0)
 			target_count = cfg_tgt_count;
 	}
-	log_fn(LDMSD_LDEBUG, SAMP": target_count: %d\n", target_count);
+	dao_log(OVIS_LDEBUG, "target_count: %d\n", target_count);
 
 	rc = comp_id_helper_config(avl, &cid);
 	if (rc) {
-		log_fn(LDMSD_LERROR, SAMP": config: comp_id_helper_config failed: %d", rc);
+		dao_log(OVIS_LERROR, "config: comp_id_helper_config failed: %d", rc);
 		rc = -rc;
 	}
 
@@ -150,7 +160,7 @@ int get_daos_rank(struct d_tm_context *ctx, uint32_t *rank)
 
 	rc = d_tm_get_gauge(ctx, &val, NULL, node);
 	if (rc < 0) {
-		log_fn(LDMSD_LERROR, SAMP": get_daos_rank: d_tm_get_gauge failed: %d\n", rc);
+		dao_log(OVIS_LERROR, "get_daos_rank: d_tm_get_gauge failed: %d\n", rc);
 		return rc;
 	}
 	*rank = val;
@@ -165,16 +175,16 @@ static int sample(struct ldmsd_sampler *self)
 	int			 i;
 	int			 rc = 0;
 
-	log_fn(LDMSD_LDEBUG, SAMP": sample() called\n");
+	dao_log(OVIS_LDEBUG, "sample() called\n");
 	if (rank_target_schema_is_initialized() < 0) {
 		if (rank_target_schema_init(&cid) < 0) {
-			log_fn(LDMSD_LERROR, SAMP": rank_target_schema_init failed.\n");
+			dao_log(OVIS_LERROR, "rank_target_schema_init failed.\n");
 			return -ENOMEM;
 		}
 	}
 	if (pool_target_schema_is_initialized() < 0) {
 		if (pool_target_schema_init(&cid) < 0) {
-			log_fn(LDMSD_LERROR, SAMP": pool_target_schema_init failed.\n");
+			dao_log(OVIS_LERROR, "pool_target_schema_init failed.\n");
 			return -ENOMEM;
 		}
 	}
@@ -185,13 +195,13 @@ static int sample(struct ldmsd_sampler *self)
 	for (i = 0; i < engine_count; i++) {
 		ctx = d_tm_open(i);
 		if (!ctx) {
-			log_fn(LDMSD_LDEBUG, SAMP": Failed to open tm shm %d\n", i);
+			dao_log(OVIS_LDEBUG, "Failed to open tm shm %d\n", i);
 			continue;
 		}
 
 		rc = get_daos_rank(ctx, &rank);
 		if (rc != 0) {
-			log_fn(LDMSD_LERROR, SAMP": Failed to get rank from tm shm %d: %d\n", i, rc);
+			dao_log(OVIS_LERROR, "Failed to get rank from tm shm %d: %d\n", i, rc);
 			continue;
 		}
 
@@ -206,12 +216,14 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
-	log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
+	dao_log(OVIS_LDEBUG, "term() called\n");
 	rank_targets_destroy();
 	rank_target_schema_fini();
 	pool_targets_destroy();
 	pools_destroy();
 	pool_target_schema_fini();
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -221,7 +233,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	log_fn(LDMSD_LDEBUG, SAMP" usage() called\n");
+	dao_log(OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE;
 }
 
@@ -237,10 +249,14 @@ static struct ldmsd_sampler daos_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	log_fn = pf;
-	log_fn(LDMSD_LDEBUG, SAMP": get_plugin() called ("PACKAGE_STRING")\n");
+	mylog = ovis_log_register("sampler." SAMP, "Messages for the " SAMP " plugin");
+	if (!mylog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the " SAMP
+				"plugin's log subsystem. Error %d.\n", errno);
+	}
+	dao_log(OVIS_LDEBUG, "get_plugin() called ("PACKAGE_STRING")\n");
 	gethostname(producer_name, sizeof(producer_name));
 	strncpy(system_name, DEFAULT_SYS_NAME, sizeof(system_name));
 

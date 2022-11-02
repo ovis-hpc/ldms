@@ -3,6 +3,9 @@
  * ***** BEGIN LICENSE BLOCK *****
  * Version: MIT
  *
+ * Portions created by Nichamon Naksinehaboon Copyright (c) 2023
+ * Sandia National Laboratories and Open Grid Computing. All Rights Reserved.
+ *
  * Portions created by Benjamin Allan are Copyright (c) 2015
  * Sandia National Laboratories and Open Grid Computing. All Rights Reserved.
  *
@@ -54,6 +57,13 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+static ovis_log_t pi_log;
+
+void rabbit_store_pi_log_set(ovis_log_t _pi_log)
+{
+	pi_log = _pi_log;
+}
+
 void lrmq_die(const char *fmt, ...)
 {
   va_list ap;
@@ -63,33 +73,33 @@ void lrmq_die(const char *fmt, ...)
   fprintf(stderr, "\n");
 }
 
-int lrmq_die_on_error(ldmsd_msg_log_f msglog, int x, char const *context)
+int lrmq_die_on_error(int x, char const *context)
 {
   if (x < 0) {
-    msglog(LDMSD_LERROR, "%s: %s\n", context, amqp_error_string2(x));
+    ovis_log(pi_log, OVIS_LERROR, "%s: %s\n", context, amqp_error_string2(x));
   }
   return x;
 }
 
-int lrmq_die_on_amqp_error(ldmsd_msg_log_f msglog, amqp_rpc_reply_t x, char const *context)
+int lrmq_die_on_amqp_error(amqp_rpc_reply_t x, char const *context)
 {
   switch (x.reply_type) {
   case AMQP_RESPONSE_NORMAL:
     return 0;
 
   case AMQP_RESPONSE_NONE:
-    msglog(LDMSD_LERROR, "%s: missing RPC reply type!\n", context);
+    ovis_log(pi_log, OVIS_LERROR, "%s: missing RPC reply type!\n", context);
     break;
 
   case AMQP_RESPONSE_LIBRARY_EXCEPTION:
-    msglog(LDMSD_LERROR, "%s: %s\n", context, amqp_error_string2(x.library_error));
+    ovis_log(pi_log, OVIS_LERROR, "%s: %s\n", context, amqp_error_string2(x.library_error));
     break;
 
   case AMQP_RESPONSE_SERVER_EXCEPTION:
     switch (x.reply.id) {
     case AMQP_CONNECTION_CLOSE_METHOD: {
       amqp_connection_close_t *m = (amqp_connection_close_t *) x.reply.decoded;
-      msglog(LDMSD_LERROR, "%s: server connection error %d, message: %.*s\n",
+      ovis_log(pi_log, OVIS_LERROR, "%s: server connection error %d, message: %.*s\n",
               context,
               m->reply_code,
               (int) m->reply_text.len, (char *) m->reply_text.bytes);
@@ -97,14 +107,14 @@ int lrmq_die_on_amqp_error(ldmsd_msg_log_f msglog, amqp_rpc_reply_t x, char cons
     }
     case AMQP_CHANNEL_CLOSE_METHOD: {
       amqp_channel_close_t *m = (amqp_channel_close_t *) x.reply.decoded;
-      msglog(LDMSD_LERROR, "%s: server channel error %d, message: %.*s\n",
+      ovis_log(pi_log, OVIS_LERROR, "%s: server channel error %d, message: %.*s\n",
               context,
               m->reply_code,
               (int) m->reply_text.len, (char *) m->reply_text.bytes);
       break;
     }
     default:
-      msglog(LDMSD_LERROR, "%s: unknown server error, method id 0x%08X\n", context, x.reply.id);
+      ovis_log(pi_log, OVIS_LERROR, "%s: unknown server error, method id 0x%08X\n", context, x.reply.id);
       break;
     }
     break;
@@ -113,35 +123,35 @@ int lrmq_die_on_amqp_error(ldmsd_msg_log_f msglog, amqp_rpc_reply_t x, char cons
   return -1;
 }
 
-static void dump_row(ldmsd_msg_log_f msglog, long count, int numinrow, int *chs)
+static void dump_row(long count, int numinrow, int *chs)
 {
   int i;
 
-  msglog(LDMSD_LINFO,"%08lX:", count - numinrow);
+  ovis_log(pi_log, OVIS_LINFO,"%08lX:", count - numinrow);
 
   if (numinrow > 0) {
     for (i = 0; i < numinrow; i++) {
       if (i == 8) {
-        msglog(LDMSD_LINFO," :");
+        ovis_log(pi_log, OVIS_LINFO," :");
       }
-      msglog(LDMSD_LINFO," %02X", chs[i]);
+      ovis_log(pi_log, OVIS_LINFO," %02X", chs[i]);
     }
     for (i = numinrow; i < 16; i++) {
       if (i == 8) {
-        msglog(LDMSD_LINFO," :");
+        ovis_log(pi_log, OVIS_LINFO," :");
       }
-      msglog(LDMSD_LINFO,"   ");
+      ovis_log(pi_log, OVIS_LINFO,"   ");
     }
-    msglog(LDMSD_LINFO,"  ");
+    ovis_log(pi_log, OVIS_LINFO,"  ");
     for (i = 0; i < numinrow; i++) {
       if (isprint(chs[i])) {
-        msglog(LDMSD_LINFO,"%c", chs[i]);
+        ovis_log(pi_log, OVIS_LINFO,"%c", chs[i]);
       } else {
-        msglog(LDMSD_LINFO,".");
+        ovis_log(pi_log, OVIS_LINFO,".");
       }
     }
   }
-  msglog(LDMSD_LINFO,"\n");
+  ovis_log(pi_log, OVIS_LINFO,"\n");
 }
 
 static int rows_eq(int *a, int *b)
@@ -156,7 +166,7 @@ static int rows_eq(int *a, int *b)
   return 1;
 }
 
-void lrmq_amqp_dump(ldmsd_msg_log_f msglog, void const *buffer, size_t len)
+void lrmq_amqp_dump(void const *buffer, size_t len)
 {
   unsigned char *buf = (unsigned char *) buffer;
   long count = 0;
@@ -175,11 +185,11 @@ void lrmq_amqp_dump(ldmsd_msg_log_f msglog, void const *buffer, size_t len)
       if (rows_eq(oldchs, chs)) {
         if (!showed_dots) {
           showed_dots = 1;
-          msglog(LDMSD_LINFO,"          .. .. .. .. .. .. .. .. : .. .. .. .. .. .. .. ..\n");
+          ovis_log(pi_log, OVIS_LINFO,"          .. .. .. .. .. .. .. .. : .. .. .. .. .. .. .. ..\n");
         }
       } else {
         showed_dots = 0;
-        dump_row(msglog, count, numinrow, chs);
+        dump_row(count, numinrow, chs);
       }
 
       for (i=0; i<16; i++) {
@@ -193,10 +203,10 @@ void lrmq_amqp_dump(ldmsd_msg_log_f msglog, void const *buffer, size_t len)
     chs[numinrow++] = ch;
   }
 
-  dump_row(msglog, count, numinrow, chs);
+  dump_row(count, numinrow, chs);
 
   if (numinrow != 0) {
-    msglog(LDMSD_LINFO,"%08lX:\n", count);
+    ovis_log(pi_log, OVIS_LINFO,"%08lX:\n", count);
   }
 }
 

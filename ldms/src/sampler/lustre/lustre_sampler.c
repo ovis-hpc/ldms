@@ -60,7 +60,7 @@
 #pragma GCC diagnostic warning "-Wunused-variable"
 #include <assert.h>
 
-static ldmsd_msg_log_f msglog = NULL;
+static ovis_log_t mylog;
 
 uint64_t mount_id = 1;
 struct mount_context {
@@ -83,11 +83,11 @@ static int cmp_context_id(void *a, const void *b)
 struct rbt context_tree = { .comparator = cmp_context_id };
 pthread_mutex_t context_lock = PTHREAD_MUTEX_INITIALIZER;
 
-void lustre_sampler_set_msglog(ldmsd_msg_log_f f)
+void lustre_sampler_set_pilog(ovis_log_t _pilog)
 {
 	/* We want to set this only once */
-	if (!msglog)
-		msglog = f;
+	if (!mylog)
+		mylog = _pilog;
 }
 
 struct lustre_svc_stats* lustre_svc_stats_alloc(const char *path, int mlen)
@@ -274,7 +274,7 @@ static void fixup_context(char *str)
 	if (!rbn) {
 		context = calloc(1, sizeof(*context));
 		if (!context) {
-			msglog(LDMSD_LERROR, "lustre_sampler: out of memory\n");
+			ovis_log(mylog, OVIS_LERROR, "lustre_sampler: out of memory\n");
 			return;
 		}
 		context->mount_id = __sync_fetch_and_add(&mount_id, 1);
@@ -381,11 +381,11 @@ int single_construct_routine(ldms_schema_t schema,
 	LIST_INSERT_HEAD(list, &ls->lms, link);
 	return 0;
 err1:
-	msglog(LDMSD_LERROR, "lustre sample: metric add failed for %s\n", metric_name);
+	ovis_log(mylog, OVIS_LERROR, "lustre sample: metric add failed for %s\n", metric_name);
 	lustre_single_free(ls);
 	return EINVAL;
 err0:
-	msglog(LDMSD_LERROR, "lustre sample: out of memory using %s\n", metric_path);
+	ovis_log(mylog, OVIS_LERROR, "lustre sample: out of memory using %s\n", metric_path);
 	return ENOMEM;
 }
 
@@ -460,7 +460,7 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 			value.v_u64 = count;
 		} else {
 			/* bad format */
-			ldmsd_log(LDMSD_LWARNING, "lustre sample: "
+			ovis_log(mylog, OVIS_LWARNING, "lustre sample: "
 				  "bad line format: %s\n", lbuf);
 			continue;
 		}

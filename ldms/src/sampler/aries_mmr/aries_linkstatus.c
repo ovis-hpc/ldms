@@ -72,8 +72,9 @@
 static char *lsfile;
 static char *lrfile;
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 #define SAMP "aries_linkstatus"
+
+static ovis_log_t mylog;
 
 static base_data_t base;
 static int metric_offset;
@@ -90,7 +91,7 @@ static int create_metric_set(base_data_t base)
 
 	FILE *mf = fopen(lsfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open the " SAMP " file "
+		ovis_log(mylog, OVIS_LERROR, "Could not open the " SAMP " file "
 				"'%s'...exiting sampler\n", lsfile);
 		return ENOENT;
 	}
@@ -99,7 +100,7 @@ static int create_metric_set(base_data_t base)
 
 	mf = fopen(lrfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open the " SAMP " file "
+		ovis_log(mylog, OVIS_LERROR, "Could not open the " SAMP " file "
 		       "'%s'...exiting sampler\n", lrfile);
 		return ENOENT;
 	}
@@ -161,11 +162,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base)
 		return EINVAL;
 
@@ -175,7 +176,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	else
 		lsfile = strdup(fname);
 	if (strlen(lsfile) == 0){
-		msglog(LDMSD_LERROR, SAMP ": file name invalid.\n");
+		ovis_log(mylog, OVIS_LERROR, "file name invalid.\n");
 		goto err;
 	}
 
@@ -185,13 +186,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	else
 		lrfile = strdup(fname);
 	if (strlen(lrfile) == 0){
-		msglog(LDMSD_LERROR, SAMP ": file name invalid.\n");
+		ovis_log(mylog, OVIS_LERROR, "file name invalid.\n");
 		goto err;
 	}
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 	return 0;
@@ -218,7 +219,7 @@ static int sample(struct ldmsd_sampler *self)
 
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -227,7 +228,7 @@ static int sample(struct ldmsd_sampler *self)
 	/* doing this infrequently, so open and close each time */
 	FILE *mf = fopen(lsfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open the " SAMP " file "
+		ovis_log(mylog, OVIS_LERROR, "Could not open the " SAMP " file "
 				"'%s'\n", lsfile);
 		goto err;
 	}
@@ -243,8 +244,8 @@ static int sample(struct ldmsd_sampler *self)
 			    &row, &col, &v.v_u8);
 		if (rc == 3) {
 			if ((row >= NUMROW_TILE) || (col >= NUMCOL_TILE)){
-				msglog(LDMSD_LDEBUG,
-				       SAMP ": bad row col '%s'\n", lbuf);
+				ovis_log(mylog, OVIS_LDEBUG,
+				       "bad row col '%s'\n", lbuf);
 			} else {
 				metric_no = metric_offset+row;
 				ldms_metric_array_set_val(set, metric_no,
@@ -258,7 +259,7 @@ static int sample(struct ldmsd_sampler *self)
 
 	mf = fopen(lrfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open the " SAMP " file "
+		ovis_log(mylog, OVIS_LERROR, "Could not open the " SAMP " file "
 				"'%s'\n", lrfile);
 		goto err;
 	}
@@ -271,8 +272,8 @@ static int sample(struct ldmsd_sampler *self)
 			    &row, &col, &v.v_u8);
 		if (rc == 3) {
 			if ((row >= NUMROW_TILE) || (col >= NUMCOL_TILE)){
-				msglog(LDMSD_LDEBUG,
-				       SAMP ": bad row col '%s'\n", lbuf);
+				ovis_log(mylog, OVIS_LDEBUG,
+				       "bad row col '%s'\n", lbuf);
 			} else {
 				//well known aries layout
 				metric_no = metric_offset+NUMROW_TILE+row;
@@ -308,6 +309,8 @@ static void term(struct ldmsd_plugin *self)
 	set = NULL;
 	base_del(base);
 	base = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler aries_linkstatus_plugin = {
@@ -322,9 +325,15 @@ static struct ldmsd_sampler aries_linkstatus_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &aries_linkstatus_plugin.base;
 }

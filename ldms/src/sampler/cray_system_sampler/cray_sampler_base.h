@@ -127,16 +127,14 @@ typedef enum cray_system_sampler_sources {
 
 extern const char *ns_names[];
 
+void set_cray_sampler_log(ovis_log_t pi_log);
 int set_offns_generic(cray_system_sampler_sources_t i);
 int get_offns_generic(cray_system_sampler_sources_t i);
 int config_generic(struct attr_value_list *kwl,
-		   struct attr_value_list *avl,
-		   ldmsd_msg_log_f msglog);
+		   struct attr_value_list *avl);
 int add_metrics_generic(ldms_schema_t schema,
-		       cray_system_sampler_sources_t source_id,
-		       ldmsd_msg_log_f msglog);
+		       cray_system_sampler_sources_t source_id);
 int sample_metrics_generic(ldms_set_t set,
-			   cray_system_sampler_sources_t source_id,
-			   ldmsd_msg_log_f msglog);
+			   cray_system_sampler_sources_t source_id);
 
 #endif

@@ -16,6 +16,9 @@
 #include "lustre_client_general.h"
 #include "jobid_helper.h"
 
+/* Defined in lustre_client.c */
+extern ovis_log_t lustre_client_log;
+
 static ldms_schema_t llite_general_schema;
 
 #define MAXNAMESIZE 64
@@ -73,10 +76,10 @@ int llite_general_schema_init(comp_id_t cid)
         int rc;
         int i;
 
-        log_fn(LDMSD_LDEBUG, SAMP ": llite_general_schema_init()\n");
+        ovis_log(lustre_client_log, OVIS_LDEBUG, SAMP ": llite_general_schema_init()\n");
         sch = ldms_schema_new("lustre_client");
         if (sch == NULL) {
-		log_fn(LDMSD_LERROR, SAMP ": lustre_llite_general schema new failed"
+		ovis_log(lustre_client_log, OVIS_LERROR, SAMP ": lustre_llite_general schema new failed"
 			" (out of memory)\n");
                 goto err1;
 	}
@@ -115,7 +118,7 @@ int llite_general_schema_init(comp_id_t cid)
 
         return 0;
 err2:
-	log_fn(LDMSD_LERROR, SAMP ": lustre_llite_general schema creation failed to add %s. (%s)\n",
+	ovis_log(lustre_client_log, OVIS_LERROR, SAMP ": lustre_llite_general schema creation failed to add %s. (%s)\n",
 		field, STRERROR(-rc));
         ldms_schema_delete(sch);
 err1:
@@ -124,7 +127,7 @@ err1:
 
 void llite_general_schema_fini()
 {
-        log_fn(LDMSD_LDEBUG, SAMP ": llite_general_schema_fini()\n");
+        ovis_log(lustre_client_log, OVIS_LDEBUG, SAMP ": llite_general_schema_fini()\n");
         if (llite_general_schema != NULL) {
                 ldms_schema_delete(llite_general_schema);
                 llite_general_schema = NULL;
@@ -149,7 +152,7 @@ ldms_set_t llite_general_create(const char *producer_name,
         int index;
         char instance_name[LDMS_PRODUCER_NAME_MAX+64];
 
-        log_fn(LDMSD_LDEBUG, SAMP ": llite_general_create()\n");
+        ovis_log(lustre_client_log, OVIS_LDEBUG, SAMP ": llite_general_create()\n");
         snprintf(instance_name, sizeof(instance_name), "%s/%s",
                  producer_name, llite_name);
         set = ldms_set_new(instance_name, llite_general_schema);
@@ -179,7 +182,7 @@ static int llite_stats_sample(const char *stats_path,
 
         sf = fopen(stats_path, "r");
         if (sf == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP ": file %s not found\n",
+                ovis_log(lustre_client_log, OVIS_LWARNING, SAMP ": file %s not found\n",
                        stats_path);
                 return ENOENT;
         }
@@ -189,13 +192,13 @@ static int llite_stats_sample(const char *stats_path,
            from the file, not any information about when the stats last
            changed */
         if (fgets(buf, sizeof(buf), sf) == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP ": failed on read from %s\n",
+                ovis_log(lustre_client_log, OVIS_LWARNING, SAMP ": failed on read from %s\n",
                        stats_path);
 		ec = ENOMSG;
                 goto out1;
         }
         if (strncmp("snapshot_time", buf, sizeof("snapshot_time")-1) != 0) {
-                log_fn(LDMSD_LWARNING, SAMP ": first line in %s is not \"snapshot_time\": %s\n",
+                ovis_log(lustre_client_log, OVIS_LWARNING, SAMP ": first line in %s is not \"snapshot_time\": %s\n",
                        stats_path, buf);
 		ec = ENOMSG;
                 goto out1;
@@ -213,7 +216,7 @@ static int llite_stats_sample(const char *stats_path,
                 if (rc == 2) {
                         index = ldms_metric_by_name(general_metric_set, str1);
                         if (index == -1) {
-                                log_fn(LDMSD_LWARNING, SAMP ": llite stats metric not found: %s\n",
+                                ovis_log(lustre_client_log, OVIS_LWARNING, SAMP ": llite stats metric not found: %s\n",
                                        str1);
                         } else {
                                 ldms_metric_set_u64(general_metric_set, index, val1);
@@ -224,7 +227,7 @@ static int llite_stats_sample(const char *stats_path,
                         sprintf(str1+base_name_len, ".sum"); /* append ".sum" */
                         index = ldms_metric_by_name(general_metric_set, str1);
                         if (index == -1) {
-                                log_fn(LDMSD_LWARNING, SAMP ": llite stats metric not found: %s\n",
+                                ovis_log(lustre_client_log, OVIS_LWARNING, SAMP ": llite stats metric not found: %s\n",
                                        str1);
                         } else {
                                 ldms_metric_set_u64(general_metric_set, index, val2);
@@ -242,7 +245,7 @@ out1:
 void llite_general_sample(const char *llite_name, const char *stats_path,
                           ldms_set_t general_metric_set)
 {
-        log_fn(LDMSD_LDEBUG, SAMP ": llite_general_sample() %s\n",
+        ovis_log(lustre_client_log, OVIS_LDEBUG, SAMP ": llite_general_sample() %s\n",
                llite_name);
         llite_stats_sample(stats_path, general_metric_set);
 }

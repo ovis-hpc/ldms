@@ -126,14 +126,13 @@ static char *LUSTRE_METRICS[] = {
 /* Lustre specific */
 
 /** add metrics */
-int add_metrics_lustre(ldms_schema_t schema,
-		       ldmsd_msg_log_f msglog);
+int add_metrics_lustre(ldms_schema_t schema);
 
 /** helpers */
 int handle_llite(const char *llite);
 
 
 /** sample */
-int sample_metrics_lustre(ldms_set_t set, ldmsd_msg_log_f msglog);
+int sample_metrics_lustre(ldms_set_t set);
 
 #endif

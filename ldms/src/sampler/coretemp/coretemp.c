@@ -248,7 +248,7 @@ void collect_sensors(void)
 
 static ldms_set_t set;
 #define SAMP "coretemp"
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 static base_data_t base;
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -266,8 +266,8 @@ static int create_metric_set(base_data_t base)
 	/* Create a metric set of the required size */
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR,
-		       SAMP ": The schema '%s' could not be created, errno=%d.\n",
+		ovis_log(mylog, OVIS_LERROR,
+		       "The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = EINVAL;
 		goto err;
@@ -281,8 +281,8 @@ static int create_metric_set(base_data_t base)
 	rc = regcomp(&sensor_re, sensor_str, REG_EXTENDED);
 	rc = nftw("/sys/devices/platform", create_sensors_cb, 16, FTW_PHYS);
 	if (rc) {
-		msglog(LDMSD_LERROR,
-		       SAMP ": Error %d creating the sensor tree.\n", rc);
+		ovis_log(mylog, OVIS_LERROR,
+		       "Error %d creating the sensor tree.\n", rc);
 		goto err;
 
 	}
@@ -312,7 +312,7 @@ static int create_metric_set(base_data_t base)
 
 	set = base_set_new(base);
 	if (!set) {
-		msglog(LDMSD_LERROR, SAMP ": Error %d creating the metric set.\n", errno);
+		ovis_log(mylog, OVIS_LERROR, "Error %d creating the metric set.\n", errno);
 		rc = errno;
 		goto err;
 	}
@@ -348,11 +348,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base){
 		rc = EINVAL;
 		goto err;
@@ -360,7 +360,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 
@@ -378,7 +378,7 @@ static int sample(struct ldmsd_sampler *self)
 	struct rbn *rbn;
 
 	if (!set){
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -418,6 +418,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler coretemp_plugin = {
@@ -432,9 +434,15 @@ static struct ldmsd_sampler coretemp_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &coretemp_plugin.base;
 }

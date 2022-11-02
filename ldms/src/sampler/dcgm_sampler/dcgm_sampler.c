@@ -51,7 +51,8 @@ static struct {
         long interval;
 } conf;
 
-static ldmsd_msg_log_f log_fn;
+static ovis_log_t mylog;
+
 static int dcgm_initialized = 0;
 static char producer_name[LDMS_PRODUCER_NAME_MAX];
 static short standalone = 1;
@@ -109,7 +110,7 @@ static int sample_cb(unsigned int gpu_id, dcgmFieldValue_v1 *values,
                 int ldms_type = translation_table[value->fieldId].ldms_type;
 
                 if (dcgm_to_ldms_type(value->fieldType) != ldms_type) {
-                        log_fn(LDMSD_LERROR, SAMP" data type mismatch, "
+                        ovis_log(mylog, OVIS_LERROR, "data type mismatch, "
                                "field=%d, expected ldms=%d, received dcgm=%d\n",
                                value->fieldId, ldms_type, value->fieldType);
                         continue;
@@ -133,7 +134,7 @@ static int sample_cb(unsigned int gpu_id, dcgmFieldValue_v1 *values,
                         ldms_metric_set_s64(set, ldms_index, value->value.i64);
                         break;
                 default:
-                        log_fn(LDMSD_LERROR, SAMP" unexpected data type, field=%d, received=%d\n",
+                        ovis_log(mylog, OVIS_LERROR, "unexpected data type, field=%d, received=%d\n",
                                value->fieldType, value->fieldType);
                         break;
                 }
@@ -148,7 +149,7 @@ static int dcgm_init()
 
         rc = dcgmInit();
         if (rc != DCGM_ST_OK) {
-                log_fn(LDMSD_LERROR, SAMP" dcgmInit() failed: %s(%d)\n",
+                ovis_log(mylog, OVIS_LERROR, "dcgmInit() failed: %s(%d)\n",
                        errorString(rc), rc);
                 return -1;
         }
@@ -156,14 +157,14 @@ static int dcgm_init()
         if (standalone) {
                 rc = dcgmConnect(host_ip, &dcgm_handle);
                 if (rc != DCGM_ST_OK) {
-                        log_fn(LDMSD_LERROR, SAMP" dcgmConnect() failed: %s(%d)\n",
+                        ovis_log(mylog, OVIS_LERROR, "dcgmConnect() failed: %s(%d)\n",
                                errorString(rc), rc);
                         return -1;
                 }
         } else {
                 rc = dcgmStartEmbedded(DCGM_OPERATION_MODE_AUTO, &dcgm_handle);
                 if (rc != DCGM_ST_OK) {
-                        log_fn(LDMSD_LERROR, SAMP" dcgmStartEmbedded() failed: %s(%d)\n",
+                        ovis_log(mylog, OVIS_LERROR, "dcgmStartEmbedded() failed: %s(%d)\n",
                                errorString(rc), rc);
                         return -1;
                 }
@@ -171,12 +172,12 @@ static int dcgm_init()
 
         rc = dcgmGetAllSupportedDevices(dcgm_handle, gpu_ids, &gpu_ids_count);
         if (rc != DCGM_ST_OK) {
-                log_fn(LDMSD_LERROR, SAMP" dcgmGetAllSupportedDevices() failed: %s(%d)\n",
+                ovis_log(mylog, OVIS_LERROR, "dcgmGetAllSupportedDevices() failed: %s(%d)\n",
                        errorString(rc), rc);
                 return -1;
         }
         if (gpu_ids_count == 0) {
-                log_fn(LDMSD_LERROR, SAMP" no supported gpus found\n");
+                ovis_log(mylog, OVIS_LERROR, "no supported gpus found\n");
                 return -1;
         }
 
@@ -184,7 +185,7 @@ static int dcgm_init()
         rc = dcgmGroupCreate(dcgm_handle, DCGM_GROUP_DEFAULT,
                              (char *)"ldmsd_group", &gpu_group_id);
         if (rc != DCGM_ST_OK){
-                log_fn(LDMSD_LERROR, SAMP" dcgmGroupCreate failed: %s(%d)\n",
+                ovis_log(mylog, OVIS_LERROR, "dcgmGroupCreate failed: %s(%d)\n",
                        errorString(rc), rc);
                 return -1;
         }
@@ -192,7 +193,7 @@ static int dcgm_init()
         rc = dcgmFieldGroupCreate(dcgm_handle, conf.fields_len, conf.fields,
                                    (char *)"ldmsd_fields", &field_group_id);
         if(rc != DCGM_ST_OK){
-                log_fn(LDMSD_LERROR, SAMP" dcgmFieldGroupCreate failed: %s(%d)\n",
+                ovis_log(mylog, OVIS_LERROR, "dcgmFieldGroupCreate failed: %s(%d)\n",
                        errorString(rc), rc);
                 return -1;
         }
@@ -200,7 +201,7 @@ static int dcgm_init()
         rc = dcgmWatchFields(dcgm_handle, gpu_group_id, field_group_id,
                              conf.interval, (double)(conf.interval*3)/1000000, 50);
         if (rc != DCGM_ST_OK){
-                log_fn(LDMSD_LERROR, SAMP" dcgmWatchFields failed: %s(%d)\n",
+                ovis_log(mylog, OVIS_LERROR, "dcgmWatchFields failed: %s(%d)\n",
                        errorString(rc), rc);
                 return -1;
         }
@@ -233,7 +234,7 @@ static ldms_set_t gpu_metric_set_create(int gpu_id)
         ldms_set_t set;
         char instance_name[256];
 
-        log_fn(LDMSD_LDEBUG, SAMP" gpu_metric_set_create() (gpu %d)\n", gpu_id);
+        ovis_log(mylog, OVIS_LDEBUG, "gpu_metric_set_create() (gpu %d)\n", gpu_id);
 
         snprintf(instance_name, sizeof(instance_name), "%s/gpu_%d",
                  producer_name, gpu_id);
@@ -260,7 +261,7 @@ static int gpu_schema_create()
         int rc;
         int i;
 
-        log_fn(LDMSD_LDEBUG, SAMP" gpu_schema_create()\n");
+        ovis_log(mylog, OVIS_LDEBUG, "gpu_schema_create()\n");
         sch = ldms_schema_new(conf.schema_name);
         if (sch == NULL)
                 goto err1;
@@ -291,7 +292,7 @@ static int gpu_schema_create()
 err2:
         ldms_schema_delete(sch);
 err1:
-        log_fn(LDMSD_LERROR, SAMP" schema creation failed.\n");
+        ovis_log(mylog, OVIS_LERROR, "schema creation failed.\n");
         return -1;
 }
 
@@ -335,7 +336,7 @@ static int parse_fields_value(const char *fields_str, unsigned short **fields_ou
 
         tmp_fields = strdup(fields_str);
         if (tmp_fields == NULL) {
-                log_fn(LDMSD_LERROR, SAMP" parse_fields_value() strdup failed: %d", errno);
+                ovis_log(mylog, OVIS_LERROR, "parse_fields_value() strdup failed: %d", errno);
                 return -1;
         }
 
@@ -347,18 +348,18 @@ static int parse_fields_value(const char *fields_str, unsigned short **fields_ou
                         break;
                 new_fields = realloc(fields, sizeof(unsigned short)*(count+1));
                 if (new_fields == NULL) {
-                        log_fn(LDMSD_LERROR, SAMP" parse_fields_value() realloc failed: %d", errno);
+                        ovis_log(mylog, OVIS_LERROR, "parse_fields_value() realloc failed: %d", errno);
                         goto err1;
                 }
                 fields = new_fields;
                 errno = 0;
                 fields[count] = strtol(token, NULL, 10);
                 if (errno != 0) {
-                        log_fn(LDMSD_LERROR, SAMP" parse_fields_value() conversion error: %d\n", errno);
+                        ovis_log(mylog, OVIS_LERROR, "parse_fields_value() conversion error: %d\n", errno);
                         goto err1;
                 }
                 if (fields[count] >= DCGM_FI_MAX_FIELDS) {
-                        log_fn(LDMSD_LERROR, SAMP" parse_fields_value() field values must be less than %d\n",
+                        ovis_log(mylog, OVIS_LERROR, "parse_fields_value() field values must be less than %d\n",
                                DCGM_FI_MAX_FIELDS);
                         goto err1;
                 }
@@ -386,24 +387,24 @@ static int config(struct ldmsd_plugin *self,
         int rc = -1;
         int i;
 
-        log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
         int jc = jobid_helper_config(avl);
         if (jc) {
-		log_fn(LDMSD_LERROR, SAMP": set name for job_set="
+		ovis_log(mylog, OVIS_LERROR, SAMP": set name for job_set="
 			" is too long.\n");
 		rc = jc;
 		goto err0;
 	}
         value = av_value(avl, "interval");
         if (value == NULL) {
-                log_fn(LDMSD_LERROR, SAMP" config() \"interval\" option missing\n");
+                ovis_log(mylog, OVIS_LERROR, "config() \"interval\" option missing\n");
                 goto err0;
         }
         errno = 0;
         conf.interval = strtol(value, NULL, 10);
         if (errno != 0) {
-                log_fn(LDMSD_LERROR, SAMP" config() \"interval\" value conversion error: %d\n", errno);
+                ovis_log(mylog, OVIS_LERROR, "config() \"interval\" value conversion error: %d\n", errno);
                 goto err0;
         }
 
@@ -414,7 +415,7 @@ static int config(struct ldmsd_plugin *self,
                 conf.schema_name = strdup("dcgm");
         }
         if (conf.schema_name == NULL) {
-                log_fn(LDMSD_LERROR, SAMP" config() strdup schema failed: %d", errno);
+                ovis_log(mylog, OVIS_LERROR, "config() strdup schema failed: %d", errno);
                 goto err0;
         }
 
@@ -428,7 +429,7 @@ static int config(struct ldmsd_plugin *self,
                 /* use defaults */
                 conf.fields = malloc(sizeof(default_fields));
                 if (conf.fields == NULL) {
-                        log_fn(LDMSD_LERROR, SAMP" config() malloc of conf.fields failed");
+                        ovis_log(mylog, OVIS_LERROR, "config() malloc of conf.fields failed");
                         goto err1;
                 }
                 memcpy(conf.fields, default_fields, sizeof(default_fields));
@@ -443,7 +444,7 @@ static int config(struct ldmsd_plugin *self,
                 goto err3;
         for (i = 0; i < gpu_ids_count; i++) {
                 if (gpu_ids[i] > DCGM_MAX_NUM_DEVICES) {
-                        log_fn(LDMSD_LERROR, SAMP" gpu id %d is greater than DCGM_MAX_NUM_DEVICES (%d), will require code fix\n");
+                        ovis_log(mylog, OVIS_LERROR, "gpu id %d is greater than DCGM_MAX_NUM_DEVICES (%d), will require code fix\n");
                         goto err4;
                 }
                 gpu_sets[gpu_ids[i]] = gpu_metric_set_create(gpu_ids[i]);
@@ -472,27 +473,29 @@ err0:
 
 static int sample(struct ldmsd_sampler *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, "sample() called\n");
         gpu_sample();
         return 0;
 }
 
 static void term(struct ldmsd_plugin *self)
 {
-        int i;
+	int i;
 
-        free(conf.schema_name);
-        conf.schema_name = NULL;
-        free(conf.fields);
-        conf.fields = NULL;
-        conf.fields_len = 0;
-        conf.interval = 0;
-        for (i = 0; i < gpu_ids_count; i++) {
-                gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
-        }
-        gpu_schema_destroy();
-        dcgm_fini();
-        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
+	free(conf.schema_name);
+	conf.schema_name = NULL;
+	free(conf.fields);
+	conf.fields = NULL;
+	conf.fields_len = 0;
+	conf.interval = 0;
+	for (i = 0; i < gpu_ids_count; i++) {
+		gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
+	}
+	gpu_schema_destroy();
+	dcgm_fini();
+	ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -502,7 +505,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" usage() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP;
 }
 
@@ -518,11 +521,17 @@ static struct ldmsd_sampler nvidia_dcgm_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-        log_fn = pf;
-        log_fn(LDMSD_LDEBUG, SAMP" get_plugin() called ("PACKAGE_STRING")\n");
-        gethostname(producer_name, sizeof(producer_name));
+	int rc;
+	ovis_log(mylog, OVIS_LDEBUG, "get_plugin() called ("PACKAGE_STRING")\n");
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
+	gethostname(producer_name, sizeof(producer_name));
 
-        return &nvidia_dcgm_plugin.base;
+	return &nvidia_dcgm_plugin.base;
 }

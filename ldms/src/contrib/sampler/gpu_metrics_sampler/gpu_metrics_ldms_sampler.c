@@ -61,6 +61,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <pthread.h>
+#include "ovis_log/ovis_log.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "sampler_base.h"
@@ -68,6 +69,7 @@
 #include "gmg_ldms_util.h"
 #include "gather_gpu_metrics_from_one_api.h"
 
+static ovis_log_t __gpu_metrics_log;
 
 static uint32_t g_numberOfDevicesInSchema = 0;
 
@@ -102,13 +104,13 @@ void free_base() {
 ze_driver_handle_t getGpuDriver() {
     ze_result_t res = initializeOneApi();   // only slow the first time it is called for each process
     if (res != ZE_RESULT_SUCCESS) {
-        msglog(LDMSD_LERROR, "!!!initializeOneApi() => 0x%x\n", res);
+        ovis_log(__gpu_metrics_log, OVIS_LERROR, "!!!initializeOneApi() => 0x%x\n", res);
         return NULL;
     }
 
     ze_driver_handle_t hDriver = getDriver();
     if (hDriver == NULL) {
-        msglog(LDMSD_LERROR, "!!!getDriver() => NULL\n");
+        ovis_log(__gpu_metrics_log, OVIS_LERROR, "!!!getDriver() => NULL\n");
         return NULL;
     }
 
@@ -128,14 +130,14 @@ static int create_metric_set_schema_and_set(base_data_t base) {
 
     ze_driver_handle_t hDriver = getGpuDriver();
     if (hDriver == NULL) {
-        msglog(LDMSD_LERROR, "!!!getGpuDriver() => NULL\n");
+        ovis_log(__gpu_metrics_log, OVIS_LERROR, "!!!getGpuDriver() => NULL\n");
         goto err;
     }
 
     uint32_t numDevices = 0;
     ze_device_handle_t *phDevices = enumerateGpuDevices(hDriver, &numDevices);
     if (phDevices == NULL) {
-        msglog(LDMSD_LERROR, "!!!enumerateGpuDevices(&numDevices=%p) => NULL, %d\n", &numDevices, numDevices);
+        ovis_log(__gpu_metrics_log, OVIS_LERROR, "!!!enumerateGpuDevices(&numDevices=%p) => NULL, %d\n", &numDevices, numDevices);
         goto err;
     }
     freeZeDeviceHandle(phDevices);
@@ -146,7 +148,7 @@ static int create_metric_set_schema_and_set(base_data_t base) {
 
     schema = base_schema_new(base);
     if (!schema) {
-        msglog(LDMSD_LERROR,
+        ovis_log(__gpu_metrics_log, OVIS_LERROR,
                "!!!%s: The schema '%s' could not be created, errno=%d.\n",
                __FILE__, base->schema_name, errno);
         rc = errno;
@@ -182,7 +184,7 @@ static int create_metric_set_schema_and_set(base_data_t base) {
 static void printValList(const char *szListName, struct attr_value_list *av_list) {
     size_t listSize = MIN(av_list->count, av_list->size);
     for (size_t i = 0; i < listSize; i++) {
-        msglog(LDMSD_LDEBUG, "%s[%d] = %s:%s\n",
+        ovis_log(__gpu_metrics_log, OVIS_LDEBUG, "%s[%d] = %s:%s\n",
                szListName, i, av_name(av_list, i), av_value_at_idx(av_list, i));
     }
 }
@@ -199,7 +201,7 @@ static int config_check(struct attr_value_list *keyword_list, struct attr_value_
     for (i = 0; i < (sizeof(deprecated) / sizeof(deprecated[0])); i++) {
         value = av_value(attribute_value_list, deprecated[i]);
         if (value) {
-            msglog(LDMSD_LERROR, SAMP ": !!!config argument %s has been deprecated.\n",
+            ovis_log(__gpu_metrics_log, OVIS_LERROR, SAMP ": !!!config argument %s has been deprecated.\n",
                    deprecated[i]);
             return EINVAL;
         }
@@ -232,7 +234,7 @@ static int config(struct ldmsd_plugin *self,
 
     if (getSimulationMode() == true) {
         // Log this ERROR so that it appears in /opt/clmgr/log/ldms_sampler.log
-        msglog(LDMSD_LERROR, "Simulation mode is ON\n");    // no really an error so don't prefix with '!!!'
+        ovis_log(__gpu_metrics_log, OVIS_LERROR, "Simulation mode is ON\n");    // no really an error so don't prefix with '!!!'
     }
 
     printValList("keyword_list", keyword_list);
@@ -241,7 +243,7 @@ static int config(struct ldmsd_plugin *self,
     int rc;
 
     if (set) {
-        msglog(LDMSD_LERROR, SAMP ": !!!Set already created.\n");
+        ovis_log(__gpu_metrics_log, OVIS_LERROR, SAMP ": !!!Set already created.\n");
         return EINVAL;
     }
 
@@ -252,7 +254,7 @@ static int config(struct ldmsd_plugin *self,
 
     // Create an instance from the base "class".  This is effectively calling
     // the base class constructor.
-    base = base_config(attribute_value_list, SAMP, SAMP, msglog);
+    base = base_config(attribute_value_list, SAMP, SAMP, __gpu_metrics_log);
     if (!base) {
         rc = errno;
         goto err;
@@ -262,7 +264,7 @@ static int config(struct ldmsd_plugin *self,
     // is considered well-defined after the metric set schema is defined.
     rc = create_metric_set_schema_and_set(base);
     if (rc) {
-        msglog(LDMSD_LERROR, SAMP ": !!!failed to create a metric set.\n");
+        ovis_log(__gpu_metrics_log, OVIS_LERROR, SAMP ": !!!failed to create a metric set.\n");
         goto err;
     }
 
@@ -290,20 +292,20 @@ static ldms_set_t get_set(struct ldmsd_sampler *self) {
  */
 static int sample(struct ldmsd_sampler *self) {
     if (!set) {
-        msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+        ovis_log(__gpu_metrics_log, OVIS_LDEBUG, SAMP ": plugin not initialized\n");
         return EINVAL;
     }
 
     ze_driver_handle_t hDriver = getGpuDriver();
     if (hDriver == NULL) {
-        msglog(LDMSD_LERROR, "!!!getGpuDriver() => NULL\n");
+        ovis_log(__gpu_metrics_log, OVIS_LERROR, "!!!getGpuDriver() => NULL\n");
         return EINVAL;
     }
 
     uint32_t numDevices = 0;
     ze_device_handle_t *phDevices = enumerateGpuDevices(hDriver, &numDevices);
     if (phDevices == NULL) {
-        msglog(LDMSD_LERROR, "!!!enumerateGpuDevices(&numDevices=%p) => NULL, %d\n", &numDevices, numDevices);
+        ovis_log(__gpu_metrics_log, OVIS_LERROR, "!!!enumerateGpuDevices(&numDevices=%p) => NULL, %d\n", &numDevices, numDevices);
         return EINVAL;
     }
     uint32_t numDevicesToSample = MIN(g_numberOfDevicesInSchema, numDevices);   // cannot sample more than schema size
@@ -314,7 +316,7 @@ static int sample(struct ldmsd_sampler *self) {
     size_t mallocCount = getMallocCount();
     if (mallocCount != 1) {
         // Only allocated memory is the device handler array.
-        msglog(LDMSD_LERROR, SAMP ": !!!mallocCount=%ld != 1\n", mallocCount);
+        ovis_log(__gpu_metrics_log, OVIS_LERROR, SAMP ": !!!mallocCount=%ld != 1\n", mallocCount);
     }
 
     freeZeDeviceHandle(phDevices);
@@ -333,12 +335,14 @@ static void term(struct ldmsd_plugin *self) {
     size_t mallocCount = getMallocCount();
     if (mallocCount) {
         // This following log message is never printed;  maybe term was never called.
-        msglog(LDMSD_LERROR, SAMP ": !!!mallocCount=%ld != 0\n", mallocCount);
+        ovis_log(__gpu_metrics_log, OVIS_LERROR, SAMP ": !!!mallocCount=%ld != 0\n", mallocCount);
     }
 
     free_base();
     free_set();
     free_schema();
+    if (__gpu_metrics_log)
+	    ovis_log_destroy(__gpu_metrics_log);
 }
 
 /**
@@ -362,8 +366,13 @@ static struct ldmsd_sampler gpu_metrics_plugin = {
  * @param pf logging function provided by LDMS.
  * @return plugin instance.
  */
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf) {
-    msglog = pf;
+struct ldmsd_plugin *get_plugin() {
+    __gpu_metrics_log = ovis_log_register("sampler."SAMP, "Messages for the " SAMP " plugin");
+    if (!__gpu_metrics_log) {
+	    ovis_log(NULL, OVIS_LWARN, "Failed to create the " SAMP " plugin's "
+			    "log subsystem. Error %d.\n", errno);
+    }
+    setGmgLoggingFunction(__gpu_metrics_log);
     set = NULL;
     return &gpu_metrics_plugin.base;
 }

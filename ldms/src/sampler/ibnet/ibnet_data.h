@@ -52,6 +52,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include <stdbool.h>
+#include "ovis_log/ovis_log.h"
 #include "dstring.h"
 
 #define SAMP "ibnet"
@@ -62,7 +63,7 @@ struct ibnet_data;
 char *ibnet_data_usage();
 
 /** create sets in inst. */
-struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *avl, struct attr_value_list *kwl);
+struct ibnet_data *ibnet_data_new(ovis_log_t mylog, struct attr_value_list *avl, struct attr_value_list *kwl);
 
 /** update sets in inst. */
 void ibnet_data_sample(struct ibnet_data *inst);

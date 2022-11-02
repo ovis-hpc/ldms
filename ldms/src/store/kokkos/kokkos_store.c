@@ -68,7 +68,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 
 static htbl_t act_table;
 static sos_t sos;
@@ -172,7 +172,7 @@ static sos_visit_action_t add_digest_cb(sos_index_t index,
 
 	digest = sos_obj_attr_data(obj, sha256_digest_attr, NULL);
 	if (!digest) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Error %d getting the data for the sha256 attribute.\n"
 		       "Digest key was not added.\n",
 		       kokkos_store.name, errno);
@@ -182,7 +182,7 @@ static sos_visit_action_t add_digest_cb(sos_index_t index,
 
 	v = sos_array_new(&v_, sha256_string_attr, obj, ctxt->e->value.str_->str_len);
 	if (!v) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Error %d allocating the digest string.\n",
 		       kokkos_store.name, errno);
 		goto err_1;
@@ -377,7 +377,7 @@ static int process_sample_entity(kokkos_context_t k, json_entity_t e, sos_obj_t 
 	int rc = 0;
 
 	if (e->type != JSON_DICT_VALUE) {
-		msglog(LDMSD_LERROR, "%s: The sample entity must be a dictionary, not a %s\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: The sample entity must be a dictionary, not a %s\n",
 		       kokkos_store.name, json_type_name(e->type));
 		return EINVAL;
 	}
@@ -385,7 +385,7 @@ static int process_sample_entity(kokkos_context_t k, json_entity_t e, sos_obj_t 
 	assert(k->kernel_obj == NULL);
 	k->kernel_obj = sos_obj_new(kernel_schema);
 	if (!k->kernel_obj) {
-		msglog(LDMSD_LERROR, "%s: Eror %d creating sample object.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Eror %d creating sample object.\n",
 		       kokkos_store.name, errno);
 		return errno;
 	}
@@ -415,7 +415,7 @@ static int process_sample_entity(kokkos_context_t k, json_entity_t e, sos_obj_t 
 		act = get_act(attr->name->value.str_->str,
 			      attr->name->value.str_->str_len);
 		if (!act) {
-			msglog(LDMSD_LERROR, "%s: '%s' is not a recognized attribute name.\n",
+			ovis_log(mylog, OVIS_LERROR, "%s: '%s' is not a recognized attribute name.\n",
 			       kokkos_store.name, attr->name->value.str_->str);
 			continue;
 		}
@@ -441,7 +441,7 @@ static int process_list_entity(kokkos_context_t p, json_entity_t e, sos_obj_t ob
 {
 	json_entity_t i;
 	if (e->type != JSON_LIST_VALUE) {
-		msglog(LDMSD_LERROR, "%s: The kernel-perf-info entity "
+		ovis_log(mylog, OVIS_LERROR, "%s: The kernel-perf-info entity "
 			  "must be a JSon array, i.e. []. Got a %d.\n",
 			  kokkos_store.name, e->type);
 		return 1;
@@ -459,7 +459,7 @@ static int process_dict_entity(kokkos_context_t k, json_entity_t e, sos_obj_t ob
 	int rc = 0;
 
 	if (e->type != JSON_DICT_VALUE) {
-		msglog(LDMSD_LERROR, "%s: Expected a dictionary object, not a %s.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Expected a dictionary object, not a %s.\n",
 		       kokkos_store.name, json_type_name(e->type));
 		return EINVAL;
 	}
@@ -469,7 +469,7 @@ static int process_dict_entity(kokkos_context_t k, json_entity_t e, sos_obj_t ob
 		act = get_act(attr->name->value.str_->str,
 			      attr->name->value.str_->str_len);
 		if (!act) {
-			msglog(LDMSD_LERROR, "%s: '%s' is not a recognized attribute name.\n",
+			ovis_log(mylog, OVIS_LERROR, "%s: '%s' is not a recognized attribute name.\n",
 			       kokkos_store.name, attr->name->value.str_->str);
 			continue;
 		}
@@ -617,13 +617,13 @@ static int create_container(char *path)
 
 	rc = sos_container_new(path, 0660);
 	if (rc && rc != EEXIST) {
-		msglog(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
+		ovis_log(mylog, OVIS_LERROR, "Error %d creating the container at '%s'\n",
 		       rc, path);
 		goto err_0;
 	}
 	sos = sos_container_open(path, SOS_PERM_RW);
 	if (!sos) {
-		msglog(LDMSD_LERROR, "Error %d opening the container at '%s'\n",
+		ovis_log(mylog, OVIS_LERROR, "Error %d opening the container at '%s'\n",
 		       errno, path);
 		goto err_0;
 	}
@@ -635,18 +635,18 @@ static int create_container(char *path)
 	sprintf(part_name, "%d", (unsigned int)t);
 	rc = sos_part_create(sos, part_name, path);
 	if (rc) {
-		msglog(LDMSD_LERROR, "Error %d creating the partition '%s' in '%s'\n",
+		ovis_log(mylog, OVIS_LERROR, "Error %d creating the partition '%s' in '%s'\n",
 		       rc, part_name, path);
 		goto err_1;
 	}
 	part = sos_part_find(sos, part_name);
 	if (!part) {
-		msglog(LDMSD_LERROR, "Newly created partition was not found\n");
+		ovis_log(mylog, OVIS_LERROR, "Newly created partition was not found\n");
 		goto err_1;
 	}
 	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
 	if (rc) {
-		msglog(LDMSD_LERROR, "New partition could not be made primary\n");
+		ovis_log(mylog, OVIS_LERROR, "New partition could not be made primary\n");
 		goto err_2;
 	}
 	sos_part_put(part);
@@ -670,13 +670,13 @@ static int create_schema(sos_t sos,
 	/* Create and add the App schema */
 	schema = sos_schema_from_template(&kokkos_app_template);
 	if (!schema) {
-		msglog(LDMSD_LERROR, "%s: Error %d creating Kokkos App schema.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d creating Kokkos App schema.\n",
 		       kokkos_store.name, errno);
 		return errno;
 	}
 	rc = sos_schema_add(sos, schema);
 	if (rc) {
-		msglog(LDMSD_LERROR, "%s: Error %d adding Kokkos App schema.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d adding Kokkos App schema.\n",
 		       kokkos_store.name, rc);
 		return rc;
 	}
@@ -685,13 +685,13 @@ static int create_schema(sos_t sos,
 	/* Create and add the Kernel schema */
 	schema = sos_schema_from_template(&kokkos_kernel_template);
 	if (!schema) {
-		msglog(LDMSD_LERROR, "%s: Error %d creating Kokkos Kernel schema.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d creating Kokkos Kernel schema.\n",
 		       kokkos_store.name, errno);
 		return errno;
 	}
 	rc = sos_schema_add(sos, schema);
 	if (rc) {
-		msglog(LDMSD_LERROR, "%s: Error %d adding Kokkos Kernel schema.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d adding Kokkos Kernel schema.\n",
 		       kokkos_store.name, rc);
 		return rc;
 	}
@@ -700,13 +700,13 @@ static int create_schema(sos_t sos,
 	/* Create and add the sha256 schema */
 	schema = sos_schema_from_template(&kokkos_sha256_template);
 	if (!schema) {
-		msglog(LDMSD_LERROR, "%s: Error %d creating SHA256 schema.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d creating SHA256 schema.\n",
 		       kokkos_store.name, errno);
 		return errno;
 	}
 	rc = sos_schema_add(sos, schema);
 	if (rc) {
-		msglog(LDMSD_LERROR, "%s: Error %d adding SHA256 schema.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d adding SHA256 schema.\n",
 		       kokkos_store.name, rc);
 		return rc;
 	}
@@ -832,7 +832,7 @@ static int create_actions(sos_schema_t schema, struct schema_spec *spec)
 		if (metric->attr_name && metric->attr_name[0] != '\0') {
 			attr = sos_schema_attr_by_name(schema, metric->attr_name);
 			if (!attr) {
-				msglog(LDMSD_LERROR,
+				ovis_log(mylog, OVIS_LERROR,
 				       "%s: The attribute '%s' is not present in '%s'.\n",
 				       kokkos_store.name, metric->attr_name, sos_schema_name(schema));
 				return ENOENT;
@@ -874,7 +874,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	value = av_value(avl, "path");
 	if (!value) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: the path to the container (path=) must be specified.\n",
 		       kokkos_store.name);
 		return ENOENT;
@@ -883,7 +883,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		free(root_path);
 	root_path = strdup(value);
 	if (!root_path) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Error allocating %d bytes for the container path.\n",
 		       strlen(value) + 1);
 		return ENOMEM;
@@ -891,7 +891,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = reopen_container(root_path);
 	if (rc) {
-		msglog(LDMSD_LERROR, "%s: Error opening %s.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error opening %s.\n",
 		       kokkos_store.name, root_path);
 		return ENOENT;
 	}
@@ -901,7 +901,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	act_table = htbl_alloc(cmp_json_name, 1123);
 	if (!act_table) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Error allocating the action table.\n",
 		       kokkos_store.name);
 		return ENOENT;
@@ -909,14 +909,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_actions(app_schema, &kokkos_app_spec);
 	if (rc) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Error %d creating Kokkos App actions.\n",
 		       kokkos_store.name, rc);
 		goto err_1;
 	}
 	rc = create_actions(kernel_schema, &kokkos_sample_spec);
 	if (rc) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Error %d creating Kokkos Kernel actions.\n",
 		       kokkos_store.name, rc);
 		goto err_1;
@@ -951,7 +951,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	}
 	rc = process_dict_entity(k, ev->recv.json, NULL, NULL);
 	if (!rc) {
-		msglog(LDMSD_LINFO,
+		ovis_log(mylog, OVIS_LINFO,
 		       "Creating Kokkos App record for %d:%d:%d\n",
 		       k->job_id, k->component_id, k->mpi_rank);
 		sos_obj_index(k->app_obj);
@@ -970,13 +970,13 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	list = json_value_find(entity, "kernel-perf-info");
 	if (!list) {
 		rc = ENOENT;
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "The kernel-perf-info attribute is missing from the stream data\n");
 		goto out;
 	}
 	rc = process_list_entity(k, list, k->kernel_obj, NULL);
 	if (rc) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "Error %d parsing the kernel-perf-info list attribute\n", rc);
 	}
  out:
@@ -989,6 +989,8 @@ static void term(struct ldmsd_plugin *self)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 	if (root_path)
 		free(root_path);
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_plugin kokkos_store = {
@@ -998,8 +1000,14 @@ static struct ldmsd_plugin kokkos_store = {
 	.usage = usage,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store.kokkos_store", "Log subsystem of the 'kokkos_store' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'kokkos_store' plugin. Error %d\n", rc);
+	}
 	return &kokkos_store;
 }
