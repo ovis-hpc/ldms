@@ -69,13 +69,13 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-static ldmsd_msg_log_f msglog __attribute__(( format(printf, 2, 3) ));
+static ovis_log_t mylog;
 
-#define LOG(LVL, FMT, ...) msglog(LVL, "store_kafka: " FMT, ## __VA_ARGS__)
+#define LOG(LVL, FMT, ...) ovis_log(mylog, LVL, "store_kafka: " FMT, ## __VA_ARGS__)
 
-#define LOG_ERROR(FMT, ...) LOG(LDMSD_LERROR, FMT, ## __VA_ARGS__)
-#define LOG_INFO(FMT, ...) LOG(LDMSD_LINFO, FMT, ## __VA_ARGS__)
-#define LOG_WARN(FMT, ...) LOG(LDMSD_LWARNING, FMT, ## __VA_ARGS__)
+#define LOG_ERROR(FMT, ...) LOG(OVIS_LERROR, FMT, ## __VA_ARGS__)
+#define LOG_INFO(FMT, ...) LOG(OVIS_LINFO, FMT, ## __VA_ARGS__)
+#define LOG_WARN(FMT, ...) LOG(OVIS_LWARNING, FMT, ## __VA_ARGS__)
 
 static const char *_help_str =
 "    config name=store_kafka [path=JSON_FILE]\n"
@@ -276,6 +276,8 @@ static void term(struct ldmsd_plugin *self)
 		rd_kafka_conf_destroy(common_rconf);
 		common_rconf = NULL;
 	}
+	if (mylog)
+		ovis_log_destroy(mylog);
 	pthread_mutex_unlock(&sk_lock);
 }
 
@@ -433,8 +435,14 @@ static struct ldmsd_store store_kafka = {
 	.commit = commit_rows,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store.kafka", "Log subsystem of the 'kafka' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'kafka' plugin. Error %d\n", rc);
+	}
 	return &store_kafka.base;
 }

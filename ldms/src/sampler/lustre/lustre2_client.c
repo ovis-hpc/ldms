@@ -86,9 +86,9 @@
 static struct lustre_metric_src_list lms_list = {0};
 
 static ldms_set_t set;
-static ldmsd_msg_log_f msglog;
-
 static base_data_t base;
+
+static ovis_log_t mylog;
 
 static char tmp_path[PATH_MAX];
 
@@ -222,7 +222,7 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 			osc_path = strdup(default_osc_path[i]);
 			lh_osc = construct_client_list(oscs, osc_path);
 			if (!lh_osc) {
-				msglog(LDMSD_LDEBUG, SAMP ": default osc path '%s'" 
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": default osc path '%s'"
 					" not found\n", osc_path);
 				/* Set to NULL, if no path exist */
 				osc_path = NULL;
@@ -231,13 +231,13 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 			break;
 		}
 	} else {
-		msglog(LDMSD_LDEBUG, SAMP ": osc user path used\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": osc user path used\n");
 		lh_osc = construct_client_list(oscs, osc_path);
 	}
 
 
 	if (!lh_osc) {
-		msglog(LDMSD_LERROR, SAMP ": osc user and default paths failed\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": osc user and default paths failed\n");
 		goto err0;
 	}
 	heads[0] = lh_osc;
@@ -249,7 +249,7 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 			mdc_path = strdup(default_mdc_path[i]);
 			lh_mdc = construct_client_list(mdcs, mdc_path);
 			if (!lh_mdc) {
-				msglog(LDMSD_LDEBUG, SAMP ": default mdc path '%s'"
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": default mdc path '%s'"
 					" not found\n", mdc_path);
 				/* Set to NULL, if no path exist */
 				mdc_path = NULL;
@@ -258,12 +258,12 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 			break;
 		}
 	} else {
-		msglog(LDMSD_LDEBUG, SAMP ": mdc user path used\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": mdc user path used\n");
 		lh_mdc = construct_client_list(mdcs, mdc_path);
 	}
 
 	if (!lh_mdc) {
-		msglog(LDMSD_LERROR, SAMP ": mdc user and default paths failed\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": mdc user and default paths failed\n");
 		goto err0;
 	}
 	heads[1] = lh_mdc;
@@ -275,7 +275,7 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 			llite_path = strdup(default_llite_path[i]);
 			lh_llite = construct_client_list(llites, llite_path);
 			if (!lh_llite) {
-				msglog(LDMSD_LDEBUG, SAMP ": default llite path '%s'"
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": default llite path '%s'"
 					" not found\n", llite_path);
 				/* Set to NULL, if no path exist */
 				llite_path = NULL;
@@ -284,19 +284,19 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 			break;
 		}
 	} else {
-		msglog(LDMSD_LDEBUG, SAMP ": llite user path used\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": llite user path used\n");
 		lh_llite = construct_client_list(llites, llite_path);
 	}
 
 	if (!lh_llite) {
-		msglog(LDMSD_LERROR, SAMP ": llite user and default paths failed\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": llite user and default paths failed\n");
 		goto err0;
 	}
 	heads[2] = lh_llite;
 
 	ldms_schema_t schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR, SAMP ": base_schema_new failed\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": base_schema_new failed\n");
 		goto err0;
 	}
 
@@ -315,7 +315,7 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 					"client.", suffix, &lms_list, keys[i],
 					keylen[i]);
 			if (rc) {
-				msglog(LDMSD_LERROR, SAMP
+				ovis_log(mylog, OVIS_LERROR, SAMP
 					 ": stats_construct_routine err for %s\n", tmp_path);
 				goto err1;
 			}
@@ -326,12 +326,12 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP ": base_set_new failed\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": base_set_new failed\n");
 		goto err1;
 	}
 	return 0;
 err1:
-	msglog(LDMSD_LINFO, SAMP ": create_metric_set@err1\n");
+	ovis_log(mylog, OVIS_LINFO, SAMP ": create_metric_set@err1\n");
 	lustre_metric_src_list_free(&lms_list);
 	set = 0;
 err0:
@@ -339,7 +339,7 @@ err0:
 		if (heads[i])
 			free_str_list(heads[i]);
 	}
-	msglog(LDMSD_LINFO, SAMP ": create_metric_set@err0\n");
+	ovis_log(mylog, OVIS_LINFO, SAMP ": create_metric_set@err0\n");
 	return errno;
 }
 
@@ -353,6 +353,8 @@ static void term(struct ldmsd_plugin *self)
 		base_del(base);
 		base = NULL;
 	}
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 /**
@@ -373,11 +375,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *oscs, *mdcs, *llites;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
-	base = base_config(avl, SAMP, "Lustre_Client", msglog);
+	base = base_config(avl, SAMP, "Lustre_Client", mylog);
 	if (!base)
 		return errno;
 
@@ -468,14 +470,20 @@ static struct ldmsd_sampler lustre_client_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
+	int rc;
 	static int init_complete = 0;
 	if (init_complete)
 		goto out;
-	msglog = pf;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
-	lustre_sampler_set_msglog(pf);
+	lustre_sampler_set_pilog(mylog);
 
 	init_complete = 1;
 out:

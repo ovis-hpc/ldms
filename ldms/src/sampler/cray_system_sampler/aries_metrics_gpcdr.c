@@ -100,6 +100,9 @@ typedef struct{
 	char* derivedunit;
 } aries_linksmetrics_info_t;
 
+/* Defined in cray_aries_r_sampler.c */
+extern ovis_log_t cray_aries_log;
+
 /** NOTE: the enum isnt x-refed. Just iterate thru while < ENDLINKS */
 aries_linksmetrics_info_t linksinfo[] = {
 	{TRAFFIC, "/sys/devices/virtual/gni/gpcdr0/metricsets/linktraffic/metrics", NULL, "traffic", "(B)", 1, "SAMPLE_traffic", "(B/s)"},
@@ -154,7 +157,6 @@ static int nicmetrics_valid;
 
 static int hsn_metrics_type = HSN_METRICS_DEFAULT;
 
-
 /** internal calculations */
 static uint64_t __linksmetrics_derived_metric_calc(
 	int i, uint64_t* diff, uint64_t time_delta);
@@ -185,7 +187,7 @@ static int __links_metric_name(int infoidx, int isbase, int tile,
 }
 
 
-int hsn_metrics_config(int i, ldmsd_msg_log_f msglog){
+int hsn_metrics_config(int i){
 	int j;
 
 	/* Check for the existence of the files. NOTE: this is
@@ -193,7 +195,7 @@ int hsn_metrics_config(int i, ldmsd_msg_log_f msglog){
 	for (j = 0; j < ENDLINKS; j++){
 		FILE* junk = fopen(linksinfo[j].fname, "r");
 		if (!junk){
-			msglog(LDMSD_LCRITICAL, "cray_aries_r_sampler: missing gpcdr file <%s>"
+			ovis_log(cray_aries_log, OVIS_LCRITICAL, "cray_aries_r_sampler: missing gpcdr file <%s>"
 			       "Check that 1)gpcdr is running: lsmod | grep gpcdr and "
 			       "2) the gpcdr configuration file "
 			       "(e.g., /etc/opt/cray/gni-gpcdr-utils/gpcdr-init.conf "
@@ -212,7 +214,7 @@ int hsn_metrics_config(int i, ldmsd_msg_log_f msglog){
 
 
 
-int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
+int aries_linksmetrics_setup()
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -259,7 +261,7 @@ int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
 
 		linksinfo[k].lm_f = fopen(linksinfo[k].fname, "r");
 		if (!linksinfo[k].lm_f) {
-			msglog(LDMSD_LERROR,"WARNING: Could not open the source file '%s'\n",
+			ovis_log(cray_aries_log, OVIS_LWARN,"Could not open the source file '%s'\n",
 			       linksinfo[k].fname);
 			return EINVAL;
 		}
@@ -274,7 +276,7 @@ int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
 			    &linksmetrics_prev_time[k], units);
 
 		if (rc != 3) {
-			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
+			ovis_log(cray_aries_log, OVIS_LERROR,"Issue reading the source file '%s'\n",
 			       linksinfo[k].fname);
 			rc = EINVAL;
 			return rc;
@@ -284,7 +286,7 @@ int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
 		} else if (strcmp(units,"seconds") == 0){
 			linksmetrics_time_multiplier[k] = 1;
 		} else {
-			msglog(LDMSD_LERROR,"linksmetrics: wrong gpcdr interface (time units)\n");
+			ovis_log(cray_aries_log, OVIS_LERROR,"linksmetrics: wrong gpcdr interface (time units)\n");
 			rc = EINVAL;
 			return rc;
 		}
@@ -298,7 +300,7 @@ int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
 			rc = sscanf(lbuf, "%[^:]:%d %" PRIu64 " %s\n", metric_name, &dir, &val,
 				    units);
 			if (rc != 4) {
-				msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
+				ovis_log(cray_aries_log, OVIS_LERROR,"Issue reading the source file '%s'\n",
 				       linksinfo[k].fname);
 				rc = EINVAL;
 				return rc;
@@ -314,7 +316,7 @@ int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
 		} while (s);
 
 		if (count != ARIES_NUM_TILES){
-			msglog(LDMSD_LERROR, "ERR: wrong number of metrics in file '%s'\n",
+			ovis_log(cray_aries_log, OVIS_LERROR, "wrong number of metrics in file '%s'\n",
 			       linksinfo[k].fname);
 			rc = EINVAL;
 			return rc;
@@ -331,7 +333,7 @@ int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
 }
 
 
-int aries_nicmetrics_setup(ldmsd_msg_log_f msglog)
+int aries_nicmetrics_setup()
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -346,7 +348,7 @@ int aries_nicmetrics_setup(ldmsd_msg_log_f msglog)
 
 	nm_f = fopen(NICMETRICS_FILE, "r");
 	if (!nm_f) {
-		msglog(LDMSD_LERROR,"WARNING: Could not open the source file '%s'\n",
+		ovis_log(cray_aries_log, OVIS_LWARN,"Could not open the source file '%s'\n",
 		       NICMETRICS_FILE);
 		return EINVAL;
 	}
@@ -379,7 +381,7 @@ int aries_nicmetrics_setup(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n",
 			    metric_name, &nicmetrics_prev_time, units);
 		if (rc != 3) {
-			msglog(LDMSD_LERROR,"ERR: Issue reading source file '%s'\n",
+			ovis_log(cray_aries_log, OVIS_LERROR,"Issue reading source file '%s'\n",
 			       NICMETRICS_FILE);
 			rc = EINVAL;
 			return rc;
@@ -389,7 +391,7 @@ int aries_nicmetrics_setup(ldmsd_msg_log_f msglog)
 		} else if (strcmp(units,"seconds") == 0){
 			nicmetrics_time_multiplier = 1;
 		} else {
-			msglog(LDMSD_LERROR,"nicmetrics: wrong gpcdr interface (time units)\n");
+			ovis_log(cray_aries_log, OVIS_LERROR,"nicmetrics: wrong gpcdr interface (time units)\n");
 			rc = EINVAL;
 			return rc;
 		}
@@ -401,7 +403,7 @@ int aries_nicmetrics_setup(ldmsd_msg_log_f msglog)
 			rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name,
 				    &val, units);
 			if (rc != 3) {
-				msglog(LDMSD_LERROR,"ERR: Issue reading source file '%s'\n",
+				ovis_log(cray_aries_log, OVIS_LERROR,"Issue reading source file '%s'\n",
 				       NICMETRICS_FILE);
 				rc = EINVAL;
 				return rc;
@@ -419,8 +421,7 @@ int aries_nicmetrics_setup(ldmsd_msg_log_f msglog)
 }
 
 
-int add_metrics_aries_linksmetrics(ldms_schema_t schema,
-			     ldmsd_msg_log_f msglog)
+int add_metrics_aries_linksmetrics(ldms_schema_t schema)
 {
 
 	char newname[96];
@@ -460,7 +461,7 @@ int add_metrics_aries_linksmetrics(ldms_schema_t schema,
 				__links_metric_name(i, 1, j, newname);
 				rc = ldms_schema_metric_add(schema, newname, LDMS_V_U64);
 				if (rc < 0){
-					msglog(LDMSD_LERROR, "Failed to add metric <%s>\n",
+					ovis_log(cray_aries_log, OVIS_LERROR, "Failed to add metric <%s>\n",
 					       newname);
 					return ENOMEM;
 				}
@@ -477,7 +478,7 @@ int add_metrics_aries_linksmetrics(ldms_schema_t schema,
 				rc = ldms_schema_metric_add(schema, newname,
 							    LDMS_V_U64);
 				if (rc < 0){
-					msglog(LDMSD_LERROR, "Failed to add metric <%s>\n",
+					ovis_log(cray_aries_log, OVIS_LERROR, "Failed to add metric <%s>\n",
 					       newname);
 					return ENOMEM;
 				}
@@ -489,8 +490,7 @@ int add_metrics_aries_linksmetrics(ldms_schema_t schema,
 }
 
 
-int add_metrics_aries_nicmetrics(ldms_schema_t schema,
-				 ldmsd_msg_log_f msglog)
+int add_metrics_aries_nicmetrics(ldms_schema_t schema)
 {
 	char newname[96];
 	int i, j;
@@ -519,7 +519,7 @@ int add_metrics_aries_nicmetrics(ldms_schema_t schema,
 			rc = ldms_schema_metric_add(schema, nicmetrics_basename[i],
 						    LDMS_V_U64);
 			if (rc < 0){
-				msglog(LDMSD_LERROR, "Failed to add metric <%s>\n",
+				ovis_log(cray_aries_log, OVIS_LERROR, "Failed to add metric <%s>\n",
 				       nicmetrics_basename[i]);
 				return ENOMEM;
 			}
@@ -536,7 +536,7 @@ int add_metrics_aries_nicmetrics(ldms_schema_t schema,
 				nicmetrics_derivedunit);
 			rc = ldms_schema_metric_add(schema, newname, LDMS_V_U64);
 			if (rc < 0){
-				msglog(LDMSD_LERROR, "Failed to add metric <%s>\n",
+				ovis_log(cray_aries_log, OVIS_LERROR, "Failed to add metric <%s>\n",
 				       newname);
 				return ENOMEM;
 			}
@@ -550,7 +550,7 @@ int add_metrics_aries_nicmetrics(ldms_schema_t schema,
 	return rc;
 }
 
-int sample_metrics_aries_linksmetrics(ldms_set_t set, ldmsd_msg_log_f msglog)
+int sample_metrics_aries_linksmetrics(ldms_set_t set)
 {
 	char lbuf[256];
 	char metric_name[64];
@@ -581,14 +581,14 @@ int sample_metrics_aries_linksmetrics(ldms_set_t set, ldmsd_msg_log_f msglog)
 		/* read the timestamp */
 		s = fgets(lbuf, sizeof(lbuf), lm_f);
 		if (!s) {
-			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
+			ovis_log(cray_aries_log, OVIS_LERROR,"Issue reading the source file '%s'\n",
 			       linksinfo[i].fname);
 			return EINVAL;
 		}
 		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &curr_time,
 			    units);
 		if (rc != 3) {
-			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
+			ovis_log(cray_aries_log, OVIS_LERROR,"Issue reading the source file '%s'\n",
 			       linksinfo[i].fname);
 			rc = EINVAL;
 			return rc;
@@ -603,7 +603,7 @@ int sample_metrics_aries_linksmetrics(ldms_set_t set, ldmsd_msg_log_f msglog)
 			rc = sscanf(lbuf, "%[^:]:%d %" PRIu64 " %s\n", metric_name, &dir, &v.v_u64,
 				    units);
 			if (rc != 4) {
-				msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
+				ovis_log(cray_aries_log, OVIS_LERROR,"Issue reading the source file '%s'\n",
 				       linksinfo[i].fname);
 				rc = EINVAL;
 				return rc;
@@ -652,7 +652,7 @@ int sample_metrics_aries_linksmetrics(ldms_set_t set, ldmsd_msg_log_f msglog)
 		}
 
 		if (count != ARIES_NUM_TILES){
-			msglog(LDMSD_LERROR, "linksmetrics: in sample wrong num values for '%s'\n",
+			ovis_log(cray_aries_log, OVIS_LERROR, "linksmetrics: in sample wrong num values for '%s'\n",
 			       linksinfo[i].fname);
 			linksmetrics_valid = 0;
 			return EINVAL;
@@ -667,7 +667,7 @@ int sample_metrics_aries_linksmetrics(ldms_set_t set, ldmsd_msg_log_f msglog)
 }
 
 
-int sample_metrics_aries_nicmetrics(ldms_set_t set, ldmsd_msg_log_f msglog)
+int sample_metrics_aries_nicmetrics(ldms_set_t set)
 {
 	char lbuf[256];
 	char metric_name[64];
@@ -693,7 +693,7 @@ int sample_metrics_aries_nicmetrics(ldms_set_t set, ldmsd_msg_log_f msglog)
 	rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &curr_time,
 		    units);
 	if (rc != 3) {
-		msglog(LDMSD_LERROR,"ERR: Issue reading source file '%s'\n",
+		ovis_log(cray_aries_log, OVIS_LERROR,"Issue reading source file '%s'\n",
 		       NICMETRICS_FILE);
 		rc = EINVAL;
 		return rc;
@@ -709,7 +709,7 @@ int sample_metrics_aries_nicmetrics(ldms_set_t set, ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &v.v_u64,
 			    units);
 		if (rc != 3) {
-			msglog(LDMSD_LERROR,"ERR: Issue reading source file '%s'\n",
+			ovis_log(cray_aries_log, OVIS_LERROR,"Issue reading source file '%s'\n",
 			       NICMETRICS_FILE);
 			rc = EINVAL;
 			return rc;

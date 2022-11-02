@@ -10,6 +10,9 @@
  * ***** BEGIN LICENSE BLOCK *****
  * Version: MIT
  *
+ * Portions created by Nichamon Naksinehaboon Copyright (c) 2023
+ * Sandia National Laboratories and Open Grid Computing. All Rights Reserved.
+ *
  * Portions created by Benjamin Allan are Copyright (c) 2015
  * Sandia National Laboratories and Open Grid Computing. All Rights Reserved.
  *
@@ -48,17 +51,19 @@
 
 #include <ldmsd.h>
 
+/** Set the log subsystem to the caller log subsystem */
+void rabbit_store_pi_log_set(ovis_log_t _pi_log);
+
 /** print to stderr (but not "and exit") */
 extern void lrmq_die(const char *fmt, ...);
 
-/** print to msglog and return x. */
-extern int lrmq_die_on_error(ldmsd_msg_log_f , int x, char const *context);
+/** print usingthe plugin log and return x. */
+extern int lrmq_die_on_error(int x, char const *context);
+/** print using the plugin log and return -1. */
+extern int lrmq_die_on_amqp_error(amqp_rpc_reply_t x, char const *context);
 
-/** print to msglog and return -1. */
-extern int lrmq_die_on_amqp_error(ldmsd_msg_log_f, amqp_rpc_reply_t x, char const *context);
-
-/** print to msglog at info level. */
-extern void lrmq_amqp_dump(ldmsd_msg_log_f, void const *buffer, size_t len);
+/** print using the plugin log at info level. */
+extern void lrmq_amqp_dump(void const *buffer, size_t len);
 
 extern uint64_t lrmq_now_microseconds(void);
 extern void lrmq_microsleep(int usec);

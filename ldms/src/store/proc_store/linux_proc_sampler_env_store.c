@@ -65,6 +65,7 @@
 #include <openssl/sha.h>
 #include <math.h>
 #include <ovis_json/ovis_json.h>
+#include <ovis_log/ovis_log.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "lpss_common.h"
@@ -73,7 +74,7 @@
 #define STREAM "linux_proc_sampler_env"
 #define LISTNAME "data"
 
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 static sos_schema_t app_schema;
 static char *stream;
 static char *root_path;
@@ -156,14 +157,14 @@ static int create_schema(sos_t sos, sos_schema_t *app)
 	/* Create and add the App schema */
 	schema = sos_schema_from_template(&proc_template);
 	if (!schema) {
-		msglog(LDMSD_LERROR, "%s: Error creating data schema %s: %s\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error creating data schema %s: %s\n",
 		       stream_store.name, STREAM, STRERROR(errno));
 		rc = errno;
 		goto err;
 	}
 	rc = sos_schema_add(sos, schema);
 	if (rc) {
-		msglog(LDMSD_LERROR, "%s: Error %s adding stream %s data schema.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %s adding stream %s data schema.\n",
 				stream_store.name, STRERROR(rc), stream);
 		goto err;
 	}
@@ -183,7 +184,7 @@ static sos_t sos;
 static int reopen_container(char *path)
 {
 	int rc = 0;
-	msglog(LDMSD_LDEBUG, "reopen '%s'\n", path);
+	ovis_log(mylog, OVIS_LDEBUG, "reopen '%s'\n", path);
 
 	/* Close the container if it already exists */
 	if (sos)
@@ -197,25 +198,25 @@ static int reopen_container(char *path)
 		if (rc == ENOENT) {
 			int drc = f_mkdir_p(path, container_mode);
 			if (drc != 0 && drc != EEXIST) {
-				msglog(LDMSD_LERROR, "Error creating the directory '%s': %s\n",
+				ovis_log(mylog, OVIS_LERROR, "Error creating the directory '%s': %s\n",
 					path, STRERROR(drc));
 				return drc;
 			}
 			int nrc = sos_container_new(path, container_mode);
 			if (nrc) {
-				msglog(LDMSD_LERROR, "Error creating the container at '%s': %s\n",
+				ovis_log(mylog, OVIS_LERROR, "Error creating the container at '%s': %s\n",
 				       path, STRERROR(nrc));
 				return nrc;
 			}
 			sos = sos_container_open(path, SOS_PERM_RW|SOS_PERM_CREAT, container_mode);
 			if (!sos) {
 				rc = errno;
-				msglog(LDMSD_LERROR, "Error opening the new container at '%s': %s\n",
+				ovis_log(mylog, OVIS_LERROR, "Error opening the new container at '%s': %s\n",
 				       path, STRERROR(rc));
 				return rc;
 			}
 		} else {
-			msglog(LDMSD_LERROR, "Error opening the old container at '%s': %s\n",
+			ovis_log(mylog, OVIS_LERROR, "Error opening the old container at '%s': %s\n",
 			       path, STRERROR(rc));
 			return rc;
 		}
@@ -225,7 +226,7 @@ static int reopen_container(char *path)
 	if (!app_schema) {
 		rc = create_schema(sos, &app_schema);
 		if (rc) {
-			msglog(LDMSD_LERROR, "Error creating schema %s in path %s: %s\n",
+			ovis_log(mylog, OVIS_LERROR, "Error creating schema %s in path %s: %s\n",
 			       proc_template.name, path, STRERROR(rc));
 			goto err;
 		}
@@ -255,7 +256,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value)
 		container_mode = strtol(value, NULL, 0);
 	if (!container_mode) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: ignoring bogus container permission mode of %s, using 0660.\n",
 		       stream_store.name, value);
 	}
@@ -269,7 +270,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	value = av_value(avl, "path");
 	if (!value) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: the path to the container (path=) must be specified.\n",
 		       stream_store.name);
 		return ENOENT;
@@ -279,16 +280,16 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		free(root_path);
 	root_path = strdup(value);
 	if (!root_path) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Error allocating %d bytes for the container path.\n",
 		       strlen(value) + 1);
 		return ENOMEM;
 	}
 
-	msglog(LDMSD_LDEBUG, "config %s %s %o\n", root_path, stream, container_mode);
+	ovis_log(mylog, OVIS_LDEBUG, "config %s %s %o\n", root_path, stream, container_mode);
 	rc = reopen_container(root_path);
 	if (rc) {
-		msglog(LDMSD_LERROR, "%s: Error opening %s.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error opening %s.\n",
 		       stream_store.name, root_path);
 		return ENOENT;
 	}
@@ -301,7 +302,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 	json_entity_t a = json_attr_find(e, name);
 	json_entity_t v;
 	if (!a) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The JSON entity is missing the '%s' attribute.\n",
 		       stream_store.name,
 		       name);
@@ -310,7 +311,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 	v = json_attr_value(a);
 	v_type = json_entity_type(v);
 	if (v_type != expected_type) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The '%s' JSON entity is the wrong type. "
 		       "Expected %d, received %d\n",
 		       stream_store.name,
@@ -336,9 +337,8 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		return 0;
 
 	if (!ev->recv.json) {
-		msglog(LDMSD_LERROR,
-		       "%s: NULL entity received in stream callback.\n",
-		       stream_store.name);
+		ovis_log(mylog, OVIS_LERROR,
+		       "NULL entity received in stream callback.\n");
 		return 0;
 	}
 
@@ -393,7 +393,7 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	for (item = json_item_first(list); item; item = json_item_next(item)) {
 
 		if (json_entity_type(item) != JSON_DICT_VALUE) {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "%s: Items in segment must all be dictionaries.\n",
 			       stream_store.name);
 			rc = EINVAL;
@@ -413,13 +413,13 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		sos_obj_t obj = sos_obj_new(app_schema);
 		if (!obj) {
 			rc = errno;
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "%s: Error %d creating Darshan data object.\n",
 			       stream_store.name, errno);
 			goto err;
 		}
 
-		msglog(LDMSD_LDEBUG, "%s: Got a record from stream (%s)\n",
+		ovis_log(mylog, OVIS_LDEBUG, "%s: Got a record from stream (%s)\n",
 				stream_store.name, stream);
 
 
@@ -442,13 +442,13 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	rc = 0;
  err:
 	if (rc)
-		msglog(LDMSD_LDEBUG, "got bad message: field=%s err=%d\n", field, rc);
+		ovis_log(mylog, OVIS_LDEBUG, "got bad message: field=%s err=%d\n", field, rc);
 	return rc;
 }
 
 static void term(struct ldmsd_plugin *self)
 {
-	msglog(LDMSD_LDEBUG, "term %s\n", self->name);
+	ovis_log(mylog, OVIS_LDEBUG, "term %s\n", self->name);
 	if (sos)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 	free(root_path);
@@ -464,8 +464,15 @@ static struct ldmsd_plugin stream_store = {
 	.usage = usage,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store.linux_proc_sampler_env_store",
+				"log subsystem of 'linux_proc_sampler_env_store' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Faild to create the log subsystem "
+				"of 'linux_proc_sampler_env_store' plugin. Error %d\n", rc);
+	}
 	return &stream_store;
 }

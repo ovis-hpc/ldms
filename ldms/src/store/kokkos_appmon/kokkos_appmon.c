@@ -68,7 +68,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 
 static sos_schema_t app_schema;
 static char path_buff[PATH_MAX];
@@ -165,13 +165,13 @@ static int create_schema(sos_t sos, sos_schema_t *app)
 	/* Create and add the App schema */
 	schema = sos_schema_from_template(&kokkos_appmon_template);
 	if (!schema) {
-		msglog(LDMSD_LERROR, "%s: Error %d creating Kokkos App schema.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d creating Kokkos App schema.\n",
 		       kokkos_store.name, errno);
 		return errno;
 	}
 	rc = sos_schema_add(sos, schema);
 	if (rc) {
-		msglog(LDMSD_LERROR, "%s: Error %d adding Kokkos App schema.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d adding Kokkos App schema.\n",
 		       kokkos_store.name, rc);
 		return rc;
 	}
@@ -229,7 +229,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value)
 		container_mode = strtol(value, NULL, 0);
 	if (!container_mode) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: ignoring container permission mode of %s, using 0660.\n",
 		       kokkos_store.name, value);
 	}
@@ -242,7 +242,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	value = av_value(avl, "path");
 	if (!value) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: the path to the container (path=) must be specified.\n",
 		       kokkos_store.name);
 		rc = ENOENT;
@@ -252,7 +252,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		free(root_path);
 	root_path = strdup(value);
 	if (!root_path) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Error allocating %d bytes for the container path.\n",
 		       strlen(value) + 1);
 		rc = ENOMEM;
@@ -261,7 +261,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = reopen_container(root_path);
 	if (rc) {
-		msglog(LDMSD_LERROR, "%s: Error opening %s.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error opening %s.\n",
 		       kokkos_store.name, root_path);
 	}
  out:
@@ -275,7 +275,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 	json_entity_t a = json_attr_find(e, name);
 	json_entity_t v;
 	if (!a) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The JSON entity is missing the '%s' attribute.\n",
 		       kokkos_store.name,
 		       name);
@@ -284,7 +284,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 	v = json_attr_value(a);
 	v_type = json_entity_type(v);
 	if (v_type != expected_type) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The '%s' JSON entity is the wrong type. "
 		       "Expected %d, received %d\n",
 		       kokkos_store.name,
@@ -308,9 +308,8 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		return 0;
 
 	if (!ev->recv.json) {
-		msglog(LDMSD_LERROR,
-		       "%s: NULL entity received in stream callback.\n",
-		       kokkos_store.name);
+		ovis_log(mylog, OVIS_LERROR,
+		       "NULL entity received in stream callback.\n");
 		return 0;
 	}
 	rc = get_json_value(ev->recv.json, "rank", JSON_INT_VALUE, &v);
@@ -339,7 +338,7 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	for (item = json_item_first(list); item; item = json_item_next(item)) {
 
 		if (json_entity_type(item) != JSON_DICT_VALUE) {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "%s: Items in kokkos-perf-data must all be dictionaries.\n",
 			       kokkos_store.name);
 			rc = EINVAL;
@@ -384,7 +383,7 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		sos_obj_t obj = sos_obj_new(app_schema);
 		if (!obj) {
 			rc = errno;
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "%s: Error %d creating Kokkos App Mon object.\n",
 			       kokkos_store.name, errno);
 			goto out;
@@ -414,6 +413,8 @@ static void term(struct ldmsd_plugin *self)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 	if (root_path)
 		free(root_path);
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_plugin kokkos_store = {
@@ -423,8 +424,15 @@ static struct ldmsd_plugin kokkos_store = {
 	.usage = usage,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store.kokkos_appmon_store",
+				"Log subsystem of the 'kokkos_appmon_store' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'kokkos_appmon_store' plugin. Error %d\n", rc);
+	}
 	return &kokkos_store;
 }

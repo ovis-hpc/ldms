@@ -127,6 +127,8 @@ static int store_count = 0;
 #define dsdone(ds) \
 	dstr_extract(&ds)
 
+static ovis_log_t mylog;
+
 static bool g_extraprops = true; /**< parse value during config */
 static time_t g_metainterval = 0; /** delay between metadata emissions; default no repeat */
 static char *root_path; /**< store root path */
@@ -139,7 +141,6 @@ static char *filter_path; /**< store filter path */
 #endif
 static char *rmq_exchange; /**< store queue */
 amqp_bytes_t rmq_exchange_bytes; /**< store queue in amqp form */
-static ldmsd_msg_log_f msglog;
 #define COMPIDSPACE "                     " /* room for u64/nul */
 #define COMPIDBUFSZ 22
 #define PRODBUFSZ 65
@@ -175,7 +176,7 @@ int log_amqp(const char *msg)
 /* workaround until issue134 is merged. dump this function then in favor of olerr. */
 void rabbit_lerror_tmp(const char *fmt, ...)
 {
-	msglog(LDMSD_LERROR,"%s",fmt);
+	ovis_log(mylog, OVIS_LERROR,"%s",fmt);
 }
 
 
@@ -250,7 +251,7 @@ static void init_props(bool extraprops,
 		return;
 	}
 	if (!type ||  !routingkey_producer) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "rabbitv3: bad init_props(%p, %p, props)\n",
 		       type, routingkey_producer);
 		return;
@@ -292,21 +293,21 @@ void cleanup_amqp()
 		goto out;
 	cleaned = 1;
 	int s;
-	s = lrmq_die_on_amqp_error(msglog,
+	s = lrmq_die_on_amqp_error(
 		amqp_channel_close(conn, 1, AMQP_REPLY_SUCCESS),
 		"Closing channel");
 	if (s) {
-		msglog(LDMSD_LDEBUG,"rabbitv3: skipping connection close.\n");
+		ovis_log(mylog, OVIS_LDEBUG,"rabbitv3: skipping connection close.\n");
 		goto out;
 	}
-	s = lrmq_die_on_amqp_error(msglog,
+	s = lrmq_die_on_amqp_error(
 		amqp_connection_close(conn, AMQP_REPLY_SUCCESS),
 		"Closing connection");
 	if (s) {
-		msglog(LDMSD_LDEBUG,"rabbitv3: skipping connection destroy.\n");
+		ovis_log(mylog, OVIS_LDEBUG,"rabbitv3: skipping connection destroy.\n");
 		goto out;
 	}
-	s = lrmq_die_on_error(msglog, amqp_destroy_connection(conn), "Ending connection");
+	s = lrmq_die_on_error(amqp_destroy_connection(conn), "Ending connection");
 out:
 	pthread_mutex_unlock(&cfg_lock);
 
@@ -350,7 +351,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (mint) {
 		int tmp = atoi(mint);
 		if (mint < 0)  {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 				"rabbitv3: config metainterval=%s invalid.\n",
 				mint);
 			return EINVAL;
@@ -365,18 +366,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	} else {
 		amqp_port = atoi(p);
 		if (amqp_port < 1)  {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 				"rabbitv3: config port=%s invalid.\n",p);
 			return EINVAL;
 		}
 	}
-	msglog(LDMSD_LINFO,"rabbitv3: config host=%s port=%d vhost=%s user=%s metainterval=%d\n",
+	ovis_log(mylog, OVIS_LINFO,"rabbitv3: config host=%s port=%d vhost=%s user=%s metainterval=%d\n",
 	       value, amqp_port, vhvalue, user, g_metainterval);
 
 #ifdef USEFILTER
 	char *fvalue;
 	fvalue = av_value(avl, "filterlist");
-	msglog(LDMSD_LINFO,"rabbitv3: config filterlist=%s\n",
+	ovis_log(mylog, OVIS_LINFO,"rabbitv3: config filterlist=%s\n",
 		fvalue ? fvalue : "<none>");
 #endif
 
@@ -385,11 +386,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	sprintf(password,"guest");
 	pwfile = av_value(avl, "pwfile");
 	if (pwfile) {
-		msglog(LDMSD_LINFO,"rabbitv3: config pwfile=%s\n", pwfile);
+		ovis_log(mylog, OVIS_LINFO,"rabbitv3: config pwfile=%s\n", pwfile);
 		int pwerr = ovis_get_rabbit_secretword(pwfile,password,PWSIZE,
 			rabbit_lerror_tmp);
 		if (pwerr) {
-			msglog(LDMSD_LERROR,"rabbitv3: config pwfile failed\n");
+			ovis_log(mylog, OVIS_LERROR,"rabbitv3: config pwfile failed\n");
 			return EINVAL;
 		}
 	}
@@ -405,7 +406,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (!evalue) {
 		evalue = "amq.topic";
 	}
-	msglog(LDMSD_LINFO,"rabbitv3: root=%s exchange=%s\n", rvalue, evalue);
+	ovis_log(mylog, OVIS_LINFO,"rabbitv3: root=%s exchange=%s\n", rvalue, evalue);
 
 
 	pthread_mutex_lock(&cfg_lock);
@@ -449,7 +450,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		(fvalue && !filter_path) ||
 #endif
 		!host_name) {
-		msglog(LDMSD_LERROR,"rabbitv3: config strdup failed.\n");
+		ovis_log(mylog, OVIS_LERROR,"rabbitv3: config strdup failed.\n");
 		return ENOMEM;
 	}
 
@@ -458,7 +459,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	conn = amqp_new_connection();
 	if (!conn) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 			"rabbitv3: config: amqp_new_connection failed.\n");
 		rc = ENOMEM;
 		goto out;
@@ -466,26 +467,26 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	amqp_socket_t *asocket = NULL;
 	asocket = amqp_tcp_socket_new(conn); /* stores asocket in conn, fyi. */
 	if (!asocket) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 			"rabbitv3: config: amqp_tcp_socket_new failed.\n");
 		rc = ENOMEM;
 		goto err1;
 	}
 	int status = amqp_socket_open(asocket, host_name, amqp_port);
 	if (status) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 			"rabbitv3: config: amqp_socket_open failed. %s\n", amqp_error_string2(status));
 		rc = status;
 		goto err2;
 	}
-	status = lrmq_die_on_amqp_error(msglog, amqp_login(conn,
+	status = lrmq_die_on_amqp_error(amqp_login(conn,
 	                                vhost,
 	                                AMQP_DEFAULT_MAX_CHANNELS,
 	                                AMQP_DEFAULT_FRAME_SIZE, heartbeat,
 	                                AMQP_SASL_METHOD_PLAIN, user, password),
 	                                "Logging in");
 	if (status < 0 ) {
-		msglog(LDMSD_LDEBUG,"amqp_login failed\n");
+		ovis_log(mylog, OVIS_LDEBUG,"amqp_login failed\n");
 		goto err3;
 	}
 
@@ -494,10 +495,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto err4;
 	}
 
-	status = lrmq_die_on_amqp_error(msglog, amqp_get_rpc_reply(conn),
+	status = lrmq_die_on_amqp_error(amqp_get_rpc_reply(conn),
 			"Opening channel");
 	if (status  <0 ) {
-		msglog(LDMSD_LDEBUG,"amqp_get_rpc_reply failed\n");
+		ovis_log(mylog, OVIS_LDEBUG,"amqp_get_rpc_reply failed\n");
 		goto err5;
 	}
 
@@ -527,6 +528,8 @@ static void term(struct ldmsd_plugin *self)
 	/* What contract is this supposed to meet. Shall close(sh) have
 	been called for all existing sh already before this is reached.?
 	*/
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -747,7 +750,7 @@ int write_amqp(struct rabbitv3_metric_store *ms,
 	}
 	message_bytes.len = len;
 
-	int rc = lrmq_die_on_error(msglog, amqp_basic_publish(conn, 1,
+	int rc = lrmq_die_on_error(amqp_basic_publish(conn, 1,
 	                           rmq_exchange_bytes,
 	                           ms->routingkey_bytes,
 	                           0,
@@ -756,7 +759,7 @@ int write_amqp(struct rabbitv3_metric_store *ms,
 	                           message_bytes),
 	                           "Publishing");
 
-	/* msglog(LDMSD_LDEBUG, "%s: %s\n",ms->routingkey, ms->message); */
+	/* ovis_log(mylog, OVIS_LDEBUG, "%s: %s\n",ms->routingkey, ms->message); */
 	return rc;
 }
 
@@ -789,7 +792,7 @@ static int alloc_message(struct rabbitv3_metric_store * ms,
 		size_t s = COMPIDBUFSZ + arr_len * (value_fmtlen[metric_type] +1) + 1;
 		ms->message = calloc(s,1);
 		if (ms->message == NULL) {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "rabbitv3: OOM ms in alloc_message.\n");
 			return 1;
 		}
@@ -810,26 +813,26 @@ static struct rabbitv3_metric_store *new_metric_store(bool extraprops,
 {
 	struct rabbitv3_metric_store * ms = NULL;
 	if (metric_type == LDMS_V_NONE) {
-		msglog(LDMSD_LDEBUG,"rabbitv3: metric type still pending:  %s.\n",metric_name);
+		ovis_log(mylog, OVIS_LDEBUG,"rabbitv3: metric type still pending:  %s.\n",metric_name);
 		return NULL;
 	}
 	ms = calloc(1, sizeof(*ms));
 	if (!ms) {
-		msglog(LDMSD_LERROR,"rabbitv3: OOM ms in open_store .\n");
+		ovis_log(mylog, OVIS_LERROR,"rabbitv3: OOM ms in open_store .\n");
 		goto out;
 	}
 	ms->type = metric_type;
 	ms->array_len = arr_len;
 	ms->compidbuf = calloc(1,COMPIDBUFSZ);
 	if (!ms->compidbuf) {
-		msglog(LDMSD_LERROR,"rabbitv3: open_store: calloc fail.\n");
+		ovis_log(mylog, OVIS_LERROR,"rabbitv3: open_store: calloc fail.\n");
 		goto err1;
 	}
 	ms->compidbuf[0] = 'a';
 	ms->compid_bytes = amqp_cstring_bytes(ms->compidbuf);
 	ms->metric = strdup(metric_name);
 	if (!ms->metric) {
-		msglog(LDMSD_LERROR,"rabbitv3: open_store: strdup fail.\n");
+		ovis_log(mylog, OVIS_LERROR,"rabbitv3: open_store: strdup fail.\n");
 		free(ms->compidbuf);
 		goto err1;
 	}
@@ -856,7 +859,7 @@ static struct rabbitv3_metric_store *new_metric_store(bool extraprops,
 	dscat(ds,PRODSPACE);
 	ms->routingkey = dsdone(ds);
 	if (!ms->routingkey) {
-		msglog(LDMSD_LERROR,"rabbitv3: open_store: alloc fail.\n");
+		ovis_log(mylog, OVIS_LERROR,"rabbitv3: open_store: alloc fail.\n");
 		goto err1;
 	}
 	ms->routingkey_producer = strrchr(ms->routingkey,'.');
@@ -867,8 +870,8 @@ static struct rabbitv3_metric_store *new_metric_store(bool extraprops,
 	if ( strlen(ms->routingkey) > SHORTSTR_MAX) {
 		free(ms->routingkey);
 		ms->routingkey = NULL;
-		msglog(LDMSD_LERROR,"rabbitv3: open_store: amqp routing key too long: %s.\n", ms->routingkey);
-		msglog(LDMSD_LINFO,"rabbitv3: try shorter names for root, container, schema, or metric.\n");
+		ovis_log(mylog, OVIS_LERROR,"rabbitv3: open_store: amqp routing key too long: %s.\n", ms->routingkey);
+		ovis_log(mylog, OVIS_LINFO,"rabbitv3: try shorter names for root, container, schema, or metric.\n");
 		goto err1;
 	}
 
@@ -905,7 +908,7 @@ update_metrics(struct rabbitv3_store_instance *si, ldms_set_t set,
                int *metric_arry, size_t metric_count )
 {
 	if (si->metric_count) {
-		msglog(LDMSD_LINFO,"rabbitv3: unexpected "
+		ovis_log(mylog, OVIS_LINFO,"rabbitv3: unexpected "
 		       "reconfigure to size %d from %d.\n",
 		       metric_count,si->metric_count);
 	}
@@ -945,7 +948,7 @@ update_metrics(struct rabbitv3_store_instance *si, ldms_set_t set,
 			si->metric_names_amqp,
 			si->metric_names_least);
 		if (!ms) {
-			msglog(LDMSD_LERROR,"rabbitv3: update_metrics fail\n");
+			ovis_log(mylog, OVIS_LERROR,"rabbitv3: update_metrics fail\n");
 			return 1;
 		}
 		idx_add(idx, name, strlen(name), ms);
@@ -972,7 +975,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	size_t klen = dstrlen(&ds);
 	char *key = dsdone(ds);
 	if (!key) {
-		msglog(LDMSD_LERROR,"rabbitv3: oom ds\n");
+		ovis_log(mylog, OVIS_LERROR,"rabbitv3: oom ds\n");
 	}
 
 	si = idx_find(store_idx, (void *)key, klen);
@@ -992,7 +995,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		 */
 		si = calloc(1, sizeof(*si));
 		if (!si) {
-			msglog(LDMSD_LERROR,"rabbitv3: oom si\n");
+			ovis_log(mylog, OVIS_LERROR,"rabbitv3: oom si\n");
 			goto out;
 		}
 		si->key = key;
@@ -1001,24 +1004,24 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		si->metric_count = metric_count;
 		si->ms_idx = idx_create();
 		if (!si->ms_idx) {
-			msglog(LDMSD_LERROR,"rabbitv3: oom ms_idx\n");
+			ovis_log(mylog, OVIS_LERROR,"rabbitv3: oom ms_idx\n");
 			goto err1;
 		}
 		si->meta_idx = idx_create();
 		if (!si->meta_idx) {
-			msglog(LDMSD_LERROR,"rabbitv3: oom meta_idx\n");
+			ovis_log(mylog, OVIS_LERROR,"rabbitv3: oom meta_idx\n");
 			goto err2;
 		}
 		si->ucontext = ucontext;
 		si->store = s;
 		si->container = strdup(container);
 		if (!si->container) {
-			msglog(LDMSD_LERROR,"rabbitv3: oom container\n");
+			ovis_log(mylog, OVIS_LERROR,"rabbitv3: oom container\n");
 			goto err3;
 		}
 		si->schema = strdup(schema);
 		if (!si->schema) {
-			msglog(LDMSD_LERROR,"rabbitv3: oom schema\n");
+			ovis_log(mylog, OVIS_LERROR,"rabbitv3: oom schema\n");
 			goto err4;
 		}
 		si->metric_names_amqp = ovis_label_set_create(il_amqp,
@@ -1032,7 +1035,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 			name = x->name;
 			enum ldms_value_type metric_type = x->type;
 			if (metric_type == LDMS_V_NONE) {
-				msglog(LDMSD_LERROR,"rabbitv3: open_store without "
+				ovis_log(mylog, OVIS_LERROR,"rabbitv3: open_store without "
 				"type for %s\n",x->name);
 				continue;
 			}
@@ -1057,7 +1060,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 				si->metric_names_amqp,
 				si->metric_names_least);
 			if (!ms) {
-				msglog(LDMSD_LINFO,"rabbitv3: open_store fails\n");
+				ovis_log(mylog, OVIS_LINFO,"rabbitv3: open_store fails\n");
 				goto err5;
 			}
 			idx_add(idx, name, strlen(name), ms);
@@ -1112,7 +1115,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	si = _sh;
 	if (!conn) {
 		if (!si->conn_errs) {
-			msglog(LDMSD_LDEBUG,
+			ovis_log(mylog, OVIS_LDEBUG,
 			"Store called before successful broker connection. "
 			"%s %s\n",si->container, si->schema);
 			si->conn_errs++;
@@ -1149,7 +1152,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	}
 
 	if (err != 0 || metric_count != si->metric_count) {
-		msglog(LDMSD_LERROR,"rabbitv3: Cannot fix count mismatch: "
+		ovis_log(mylog, OVIS_LERROR,"rabbitv3: Cannot fix count mismatch: "
 		       "%d vs store() with metric_count %zu long. \n",
 		       si->metric_count, metric_count);
 		pthread_mutex_unlock(&cfg_lock);
@@ -1159,7 +1162,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	int compid_index = ldms_metric_by_name(set, LDMSD_COMPID);
 	if (! compid_index ||
 		ldms_metric_type_get(set,compid_index) != LDMS_V_U64) {
-	/* msglog(LDMSD_LDEBUG,"rabbitv3: no u64 component_id found.\n"); */
+	/* ovis_log(mylog, OVIS_LDEBUG,"rabbitv3: no u64 component_id found.\n"); */
 		comp_id = 0;
 	} else {
 		comp_id = ldms_metric_get_u64(set, compid_index);
@@ -1201,7 +1204,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 			}
 			ms = idx_find(idx, name, strlen(name));
 			if (!ms) {
-				msglog(LDMSD_LDEBUG,
+				ovis_log(mylog, OVIS_LDEBUG,
 				       "Error: received unexpected metric %s\n",
 					name);
 				continue;
@@ -1231,7 +1234,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 			if (rc < 0) {
 				last_errno = errno;
 				last_rc = rc;
-				msglog(LDMSD_LDEBUG,"Error %d: %s at %s:%d\n",
+				ovis_log(mylog, OVIS_LDEBUG,"Error %d: %s at %s:%d\n",
 				       last_errno, STRERROR(last_errno),
 					__FILE__, __LINE__);
 				// fixme: probably need to handle close/reopen here if server dies.
@@ -1311,11 +1314,18 @@ static struct ldmsd_store store_rabbitv3 = {
 	.close = close_store,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
-        msglog(LDMSD_LINFO,"Loading support for rabbitmq amqp version%s\n",
-                amqp_version());
+	int rc;
+	mylog = ovis_log_register("store.rabbitv3", "Log subsystem of the 'rabbitv3' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'rabbitv3' plugin. Error %d\n", rc);
+	}
+	ovis_log(mylog, OVIS_LINFO,"Loading support for rabbitmq amqp version%s\n",
+			amqp_version());
+	rabbit_store_pi_log_set(mylog);
 	return &store_rabbitv3.base;
 }
 

@@ -22,7 +22,7 @@
 #define SAMP "variorum_sampler"
 
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 static base_data_t base;
 static int nsockets;
 static const char *SOCKET_METRICS[] = {"power_cpu_watts_socket_", "power_gpu_watts_socket_", "power_mem_watts_socket_"};
@@ -59,7 +59,7 @@ static int create_metric_set(base_data_t base)
 
         schema = base_schema_new(base);
         if (!schema) {
-                msglog(LDMSD_LERROR,
+                ovis_log(mylog, OVIS_LERROR,
                 "%s: The schema '%s' could not be created, errno=%d.\n",
                 __FILE__, base->schema_name, errno);
                 rc = errno;
@@ -125,7 +125,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
         int depth;
 
         if (set) {
-                msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+                ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
                 return EINVAL;
         }
 
@@ -133,7 +133,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
         nsockets = variorum_get_num_sockets();
 
         // prepare the base for metric collection
-        base = base_config(avl, SAMP, SAMP, msglog);
+        base = base_config(avl, SAMP, SAMP, mylog);
         if (!base) {
                 rc = errno;
                 goto err;
@@ -141,7 +141,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
         rc = create_metric_set(base);
         if (rc) {
-                msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+                ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
                 goto err;
         }
 
@@ -157,7 +157,7 @@ static int sample(struct ldmsd_sampler *self)
         int ret, socket;
 
         if (!set) {
-                msglog(LDMSD_LERROR, SAMP ": plugin not initialized\n");
+                ovis_log(mylog, OVIS_LERROR, "plugin not initialized\n");
                 return EINVAL;
         }
 
@@ -166,7 +166,7 @@ static int sample(struct ldmsd_sampler *self)
         // get variorum data
         ret = variorum_get_node_power_json(&result_string);
         if (ret != 0) {
-                msglog(LDMSD_LERROR, SAMP ": unable to obtain JSON object data\n");
+                ovis_log(mylog, OVIS_LERROR, "unable to obtain JSON object data\n");
                 return EINVAL;
         }
 
@@ -242,8 +242,11 @@ static struct ldmsd_sampler variorum_sampler_plugin = {
         .sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-        msglog = pf;
-        return &variorum_sampler_plugin.base;
+	mylog = ovis_log_register("sampler."SAMP, "Messages for the " SAMP " plugin");
+	if (!mylog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the " SAMP " plugin's log subsystem");
+	}
+	return &variorum_sampler_plugin.base;
 }

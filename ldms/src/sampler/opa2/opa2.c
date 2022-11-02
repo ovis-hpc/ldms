@@ -76,7 +76,7 @@ static base_data_t cfg_base;	/* global base for all sets */
 			      easily set brkpnts in gcc and identify stack
 			     in stack dumps/valgrind */
 
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 
 static char local_hca_names[UMAD_MAX_DEVICES][UMAD_CA_NAME_LEN];
 static int mgmt_classes[3] = {IB_SMI_CLASS, IB_SA_CLASS, IB_PERFORMANCE_CLASS};
@@ -159,14 +159,14 @@ static int find_all_connected_hfis()
 	int i, ca_quant,rc=0;
 
 	if (umad_init() < 0) {
-		msglog(LDMSD_LERROR, SAMP ": cannot initialize the UMAD library \n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": cannot initialize the UMAD library \n");
 		errno = ENOTSUP;
 		return errno;
 	}
 
 	ca_quant = umad_get_cas_names(local_hca_names,UMAD_MAX_DEVICES);
 	if (ca_quant < 0) {
-		msglog(LDMSD_LERROR, SAMP ": can't list connected fabric HCA hardware names \n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": can't list connected fabric HCA hardware names \n");
 		errno = ENOTSUP;
 		return errno;
 	}
@@ -175,19 +175,19 @@ static int find_all_connected_hfis()
 	for (i = 0; i < ca_quant; i++) {
 		rc = umad_get_ca(local_hca_names[i], &hca);
 		if (rc != 0) {
-			msglog(LDMSD_LWARNING, SAMP
+			ovis_log(mylog, OVIS_LWARNING, SAMP
 				": can't get local HCA data for %s.\n",
 				local_hca_names[i]);
 			/* but continue on for non-bad cards */
 		} else {
-			msglog(LDMSD_LDEBUG, "HCA connected: %s \n",
+			ovis_log(mylog, OVIS_LDEBUG, "HCA connected: %s \n",
 				hca.ca_name);
 		}
 
 		/* collect hfis in the hca list */
 		if (strncmp(hca.ca_name, "hfi", 3) == 0) {
 			all_hfis[hfi_quant] = hca;
-			msglog(LDMSD_LDEBUG, "Detected hfi: %s with %d ports\n",
+			ovis_log(mylog, OVIS_LDEBUG, "Detected hfi: %s with %d ports\n",
 				hca.ca_name, hca.numports);
 			hfi_quant++;
 		}
@@ -201,7 +201,7 @@ static int create_hfi_port( umad_ca_t *cap, int port_number) {
 		return EINVAL;
 	}
 	if (port_number > cap->numports) {
-		msglog(LDMSD_LERROR, SAMP ": hfi %s has no port %d\n",
+		ovis_log(mylog, OVIS_LERROR, SAMP ": hfi %s has no port %d\n",
 				cap->ca_name, port_number);
 		return EINVAL;
 	}
@@ -237,7 +237,7 @@ static int build_port_list(char *port_list)
 				rc = create_hfi_port(&(all_hfis[i]),
 					port_number);
 				if (rc) {
-					msglog(LDMSD_LERROR, SAMP
+					ovis_log(mylog, OVIS_LERROR, SAMP
 						": create_hfi_port error %s\n",
 						STRERROR(rc));
 
@@ -256,7 +256,7 @@ static int build_port_list(char *port_list)
 		rc = sscanf(pnter, "%" stringify(UMAD_CA_NAME_LEN) "[^.].%d%n",
 			hfi_name, &port_number, &n);
 		if (rc != 2) {
-			msglog(LDMSD_LERROR,SAMP": cannot parse 'ports'. Expected <hfi_name>.<port number>.  Try utility ibstat for valid CAs and ports.\n");
+			ovis_log(mylog, OVIS_LERROR,SAMP": cannot parse 'ports'. Expected <hfi_name>.<port number>.  Try utility ibstat for valid CAs and ports.\n");
 			rc = EINVAL;
 			return rc;
 		}
@@ -271,7 +271,7 @@ static int build_port_list(char *port_list)
 				collected_hfi[i] = true;
 				create_hfi_port(&(all_hfis[i]), port_number);
 				if (rc) {
-					msglog(LDMSD_LERROR, SAMP
+					ovis_log(mylog, OVIS_LERROR, SAMP
 						": create_hfi_port error %s\n",
 						STRERROR(rc));
 
@@ -280,7 +280,7 @@ static int build_port_list(char *port_list)
 			}
 		}
 		if (i == hfi_quant) {
-			msglog(LDMSD_LWARNING, SAMP ": config: unknown hfi %s in %s\n",
+			ovis_log(mylog, OVIS_LWARNING, SAMP ": config: unknown hfi %s in %s\n",
 				hfi_name, port_list);
 		}
 		pnter += n;
@@ -291,12 +291,12 @@ static int build_port_list(char *port_list)
 out: ;
 	struct hfi_port_comb *hpc;
 	LIST_FOREACH(hpc, &hfi_port_list, entry) {
-		msglog(LDMSD_LDEBUG, "%s:%d with LID number: %d\n", hpc->ibd_ca,
+		ovis_log(mylog, OVIS_LDEBUG, "%s:%d with LID number: %d\n", hpc->ibd_ca,
 			hpc->port, hpc->base_lid);
 		hpc->srcport = mad_rpc_open_port(hpc->ibd_ca, hpc->port,
 					mgmt_classes, 3);
 		if (!hpc->srcport) {
-			msglog(LDMSD_LERROR, SAMP ": failed to open %s.%d\n",
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to open %s.%d\n",
 				hpc->ibd_ca, hpc->port);
 			hpc->badport = 1;
 		}
@@ -374,7 +374,7 @@ static int create_schema()
 	schema = base_schema_new(cfg_base);
 
 	if (!schema) {
-		msglog(LDMSD_LERROR, SAMP "create_schema: base failed\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP "create_schema: base failed\n");
 		return errno;
 	}
 
@@ -414,12 +414,12 @@ static int create_metric_set(struct hfi_port_comb *hpc)
 	hpc->cfg = clone_cfg(cfg_base, hpc->ibd_ca, hpc->port);
 	rc = errno;
 	if (!hpc->cfg) {
-		msglog(LDMSD_LERROR, SAMP "create_metric_set: clone failed\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP "create_metric_set: clone failed\n");
 		return rc;
 	}
 	hpc->set = base_set_new(hpc->cfg);
 	if (!hpc->set) {
-		msglog(LDMSD_LERROR, SAMP "create_metric_set: set_new failed\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP "create_metric_set: set_new failed\n");
 		return ENOMEM;
 	}
 
@@ -462,19 +462,19 @@ static int SAPI(config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, 
 {
 	int rc;
 	if (hfi_quant != 0) {
-		msglog(LDMSD_LERROR, SAMP "config: cannot be done twice.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP "config: cannot be done twice.\n");
 		return ENOTSUP;
 	}
-	msglog(LDMSD_LINFO, SAMP "config: started.\n");
+	ovis_log(mylog, OVIS_LINFO, SAMP "config: started.\n");
 
 	rc = find_all_connected_hfis(); /* get umad interface list */
 	if (rc != 0) {
-		msglog(LDMSD_LERROR, SAMP "config: umad failed\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP "config: umad failed\n");
 		return rc;
 	}
 
 
-	cfg_base = base_config(avl, SAMP, SAMP, msglog);
+	cfg_base = base_config(avl, SAMP, SAMP, mylog);
 	if (!cfg_base) {
 		rc = errno;
 		return rc;
@@ -485,7 +485,7 @@ static int SAPI(config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, 
 		ports = "*";
 	}
 
-	msglog(LDMSD_LINFO, SAMP "configured for ports %s \n", ports);
+	ovis_log(mylog, OVIS_LINFO, SAMP "configured for ports %s \n", ports);
 
 	build_port_list(ports);
 	create_schema();
@@ -498,7 +498,7 @@ static int SAPI(config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, 
 		}
 	}
 	init_portid();
-	msglog(LDMSD_LINFO, SAMP "config: ok.\n");
+	ovis_log(mylog, OVIS_LINFO, SAMP "config: ok.\n");
 	return 0;
 }
 
@@ -525,7 +525,7 @@ static int SAPI(sample)(struct ldmsd_sampler *self)
 
 		if (!pma_query_via(hpc->rcv_buf, &portid, hpc->port, 0,
 				IB_GSI_PORT_COUNTERS_EXT, hpc->srcport)) {
-			msglog(LDMSD_LERROR, SAMP ": query error on %s.%d\n",
+			ovis_log(mylog, OVIS_LERROR, SAMP ": query error on %s.%d\n",
 				hpc->ibd_ca, hpc->port);
 		}
 
@@ -545,7 +545,7 @@ static int SAPI(sample)(struct ldmsd_sampler *self)
 static void SAPI(term)(struct ldmsd_plugin *self)
 {
 	struct hfi_port_comb *hpc;
-	msglog(LDMSD_LDEBUG, SAMP ": closing plugin.\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": closing plugin.\n");
 	LIST_FOREACH(hpc, &hfi_port_list, entry) {
 		if (!hpc->badport) {
 			hpc->badport = 1;
@@ -558,6 +558,8 @@ static void SAPI(term)(struct ldmsd_plugin *self)
 		base_del(cfg_base);
 		cfg_base = NULL;
 	}
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler SAPI(plugin) = {
@@ -572,7 +574,13 @@ static struct ldmsd_sampler SAPI(plugin) = {
 	.sample = SAPI(sample),
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf) {
-	msglog = pf;
+struct ldmsd_plugin *get_plugin() {
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	return &SAPI(plugin).base;
 }

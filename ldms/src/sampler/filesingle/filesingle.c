@@ -87,10 +87,11 @@ TAILQ_HEAD(single_list, single) metric_list;
 
 #define SAMP "filesingle"
 static ldms_set_t set;
-static ldmsd_msg_log_f msglog;
 static int metric_offset; /* Location of first metric from user file */
 static int collect_times = 0;
 static base_data_t base;
+
+static ovis_log_t mylog;
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -105,9 +106,9 @@ static void clear_metric_list() {
 
 void errusage(const char *l, int lno)
 {
-	msglog(LDMSD_LERROR, SAMP ": Parsing error in line %d: %s\n", lno, l);
-	msglog(LDMSD_LERROR, SAMP ": Expecting: <name> <path> <type> <default>\n");
-	msglog(LDMSD_LERROR, SAMP ": where type is one of U[8,16,32,64] or S[8,16,32,64] or F32 or F64 or CHAR.\n");
+	ovis_log(mylog, OVIS_LERROR, "Parsing error in line %d: %s\n", lno, l);
+	ovis_log(mylog, OVIS_LERROR, "Expecting: <name> <path> <type> <default>\n");
+	ovis_log(mylog, OVIS_LERROR, "where type is one of U[8,16,32,64] or S[8,16,32,64] or F32 or F64 or CHAR.\n");
 }
 
 /* parse lines of: name source type default */
@@ -118,7 +119,7 @@ int parse_single_conf(const char *conf) {
 	FILE *in = fopen(conf, "r");
 	if (!in) {
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP ": Cannot open %s\n", conf);
+		ovis_log(mylog, OVIS_LERROR, "Cannot open %s\n", conf);
 		return errno;
 	}
 	char *line = NULL;
@@ -165,14 +166,14 @@ int parse_single_conf(const char *conf) {
 		val.v_u64 = 0;
 		rc = ldms_mval_parse_scalar(&val, vt, defstr);
 		if (rc) {
-			msglog(LDMSD_LERROR, SAMP ": %s%d: default %s invalid\n",
+			ovis_log(mylog, OVIS_LERROR, "%s%d: default %s invalid\n",
 				conf, lno, defstr);
 			goto out;
 		}
 		metric = malloc(sizeof(*metric));
 		if (!metric) {
 			rc = ENOMEM;
-			msglog(LDMSD_LERROR, SAMP ": out of memory parsing %s\n",
+			ovis_log(mylog, OVIS_LERROR, "out of memory parsing %s\n",
 				conf);
 			goto out;
 		}
@@ -203,7 +204,7 @@ static int create_metric_set(base_data_t base)
 	schema = base_schema_new(base);
 	if (!schema) {
 		rc = errno;
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		goto err;
@@ -248,7 +249,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
@@ -256,7 +257,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (tidx != -1) {
 		collect_times = 1;
 	}
-	msglog(LDMSD_LINFO, SAMP ": timing = %d\n", collect_times);
+	ovis_log(mylog, OVIS_LINFO, "timing = %d\n", collect_times);
 
 	const char *conf = av_value(avl, "conf");
 	rc = parse_single_conf(conf);
@@ -264,11 +265,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 
 	if (TAILQ_EMPTY(&metric_list)) {
-		msglog(LDMSD_LERROR, SAMP ": Empty set not allowed. (%s)\n", conf);
+		ovis_log(mylog, OVIS_LERROR, "Empty set not allowed. (%s)\n", conf);
 		return EINVAL;
 	}
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = ENOMEM;
 		goto err;
@@ -276,7 +277,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create the metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create the metric set.\n");
 		goto err;
 	}
 
@@ -363,6 +364,8 @@ static void term(struct ldmsd_plugin *self)
 		ldms_set_delete(set);
 	set = NULL;
 	clear_metric_list();
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -388,9 +391,15 @@ static struct ldmsd_sampler filesingle_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	TAILQ_INIT(&metric_list);
 	return &filesingle_plugin.base;

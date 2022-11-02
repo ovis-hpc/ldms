@@ -78,10 +78,11 @@ static ldms_set_t set;
 
 #define SAMP "loadavg"
 static FILE *mf;
-static ldmsd_msg_log_f msglog;
 static int metric_offset;
 static base_data_t base;
 static unsigned force_integer = 0;
+
+static ovis_log_t mylog;
 
 union la_value {
 	double d;
@@ -115,7 +116,7 @@ struct use_met metname[] = {
 static void dump_metrics() {
 	int i;
 	for (i = 0; i < METLEN; i++) {
-		msglog(LDMSD_LDEBUG, SAMP ": %s %d %d\n",
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": %s %d %d\n",
 			metname[i].name, metname[i].collect, metname[i].vtype);
 	}
 }
@@ -129,7 +130,7 @@ static int parse_metrics(const char *s)
 		return 0;
 	char *x = strdup(s);
 	if (!x) {
-		msglog(LDMSD_LERROR, SAMP ": out of memory\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": out of memory\n");
 		return ENOMEM;
 	}
 	for (i = 0; i < METLEN; i++)
@@ -144,7 +145,7 @@ static int parse_metrics(const char *s)
 			}
 		}
 		if (i == METLEN) {
-			msglog(LDMSD_LERROR, SAMP ": unknown metric %s in %s\n", m, s);
+			ovis_log(mylog, OVIS_LERROR, SAMP ": unknown metric %s in %s\n", m, s);
 			rc = EINVAL;
 			goto out;
 		}
@@ -193,7 +194,7 @@ static int create_metric_set(base_data_t base)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, SAMP ": Could not open " PROC_FILE
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Could not open " PROC_FILE
 				" : exiting sampler\n");
 		return ENOENT;
 	}
@@ -216,13 +217,13 @@ static int create_metric_set(base_data_t base)
 			if (force_integer) {
 				rc = ldms_schema_metric_add(schema, metname[i].name, LDMS_V_U64);
 #ifdef LOADAVG_TYPE_DEBUG
-				msglog(LDMSD_LDEBUG, SAMP ": adding metric %s LDMS_V_U64\n",
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": adding metric %s LDMS_V_U64\n",
 					metname[i].name);
 #endif
 			} else {
 				rc = ldms_schema_metric_add(schema, metname[i].name, metname[i].vtype);
 #ifdef LOADAVG_TYPE_DEBUG
-				msglog(LDMSD_LDEBUG, SAMP ": adding metric %s %d\n",
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": adding metric %s %d\n",
 					metname[i].name, (int)metname[i].vtype);
 #endif
 			}
@@ -232,7 +233,7 @@ static int create_metric_set(base_data_t base)
 			}
 #ifdef LOADAVG_TYPE_DEBUG
 		} else {
-			msglog(LDMSD_LDEBUG, SAMP ": skipping metric %s\n",
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": skipping metric %s\n",
 				metname[i].name);
 #endif
 		}
@@ -262,7 +263,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
+			ovis_log(mylog, OVIS_LERROR, SAMP ": config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -294,7 +295,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
@@ -314,11 +315,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 #ifdef LOADAVG_CONFIG_DEBUG
 	dump_metrics();
-	msglog(LDMSD_LDEBUG, SAMP ": force_integer=%d.\n", force_integer);
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": force_integer=%d.\n", force_integer);
 #endif
 	const char *def_schema_name = make_schema_name();
 
-	base = base_config(avl, SAMP, def_schema_name, msglog);
+	base = base_config(avl, SAMP, def_schema_name, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -326,10 +327,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create the metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to create the metric set.\n");
 		goto err;
 	}
-	msglog(LDMSD_LDEBUG, SAMP ": plugin configured.\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": plugin configured.\n");
 	return 0;
  err:
 	base_del(base);
@@ -345,7 +346,7 @@ static int sample(struct ldmsd_sampler *self)
 	char lbuf[256];
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
 	if (!mf) {
@@ -358,7 +359,7 @@ static int sample(struct ldmsd_sampler *self)
 	rc = fseek(mf, 0, SEEK_SET);
 	if (rc) {
 		if (logdisappear) {
-			msglog(LDMSD_LERROR, SAMP ": %s disappeared.\n",
+			ovis_log(mylog, OVIS_LERROR, SAMP ": %s disappeared.\n",
 				procfile);
 			logdisappear = 0;
 		}
@@ -376,7 +377,7 @@ static int sample(struct ldmsd_sampler *self)
 	 */
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	if (!s) {
-		msglog(LDMSD_LERROR, SAMP ": fgets failed.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": fgets failed.\n");
 		rc = ENOENT;
 		goto out;
 	}
@@ -389,7 +390,7 @@ static int sample(struct ldmsd_sampler *self)
 		&metname[3].v.u, &metname[4].v.u, &metname[5].v.u);
 	if (rc < METLEN) {
 		rc = EINVAL;
-		msglog(LDMSD_LERROR, SAMP ": fail " PROC_FILE "\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": fail " PROC_FILE "\n");
 		goto out;
 	}
 	int j = 0;
@@ -410,7 +411,7 @@ static int sample(struct ldmsd_sampler *self)
 					metname[i].v.u);
 				break;
 			default:
-				msglog(LDMSD_LCRITICAL, SAMP ": sample() memory corruption detected.\n");
+				ovis_log(mylog, OVIS_LCRITICAL, SAMP ": sample() memory corruption detected.\n");
 				rc = EINVAL;
 				goto out;
 			}
@@ -437,6 +438,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 
@@ -452,9 +455,15 @@ static struct ldmsd_sampler loadavg_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &loadavg_plugin.base;
 }

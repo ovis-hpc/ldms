@@ -59,8 +59,9 @@
 
 #define SAMP "rdc_sampler"
 #define RDCINFO_INST(dummy) (singleton)
-#define INST_LOG(inst, lvl, fmt, ...) inst->msglog((lvl), SAMP ": " fmt, \
-	##__VA_ARGS__)
+#define INST_LOG(inst, lvl, fmt, ...) do { \
+	ovis_log(inst->mylog, (lvl), fmt, ##__VA_ARGS__); \
+} while (0)
 #define SCHEMA_HAVE_UNITS 0
 #define MAX_SCHEMA_BASE 32
 
@@ -68,7 +69,7 @@
 typedef struct rdcinfo_inst_s *rdcinfo_inst_t;
 
 struct rdcinfo_inst_s {
-	ldmsd_msg_log_f msglog;
+	ovis_log_t mylog;
 	pthread_mutex_t lock;
 	/* everything below here is 'private' and should only be used in rdcinfo.c */
 	base_data_t base;
@@ -99,7 +100,7 @@ struct rdcinfo_inst_s {
 char * rdcinfo_usage();
 
 // create unconfigured instance
-rdcinfo_inst_t rdcinfo_new(ldmsd_msg_log_f log);
+rdcinfo_inst_t rdcinfo_new();
 
 // clear all configuration except log and lock. caller must hold inst->lock if multithreaded.
 void rdcinfo_reset(rdcinfo_inst_t);

@@ -21,6 +21,8 @@
 
 #define _GNU_SOURCE
 
+ovis_log_t lustre_client_log;
+
 /* locations where llite stats might be found */
 static const char * const llite_paths[] = {
         "/proc/fs/lustre/llite",          /* lustre pre-2.12 */
@@ -30,7 +32,6 @@ static const int llite_paths_len = sizeof(llite_paths) / sizeof(llite_paths[0]);
 
 static struct comp_id_data cid;
 
-ldmsd_msg_log_f log_fn;
 char producer_name[LDMS_PRODUCER_NAME_MAX];
 
 /* red-black tree root for llites */
@@ -58,7 +59,7 @@ static struct llite_data *llite_create(const char *llite_name, const char *based
         char path_tmp[PATH_MAX];
         char *state;
 
-        log_fn(LDMSD_LDEBUG, SAMP" llite_create() %s from %s\n",
+        ovis_log(lustre_client_log, OVIS_LDEBUG, " llite_create() %s from %s\n",
                llite_name, basedir);
         llite = calloc(1, sizeof(*llite));
         if (llite == NULL)
@@ -78,7 +79,7 @@ static struct llite_data *llite_create(const char *llite_name, const char *based
         if (llite->fs_name == NULL)
                 goto out5;
         if (strtok_r(llite->fs_name, "-", &state) == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" unable to parse filesystem name from \"%s\"\n",
+                ovis_log(lustre_client_log, OVIS_LWARNING, "unable to parse filesystem name from \"%s\"\n",
                        llite->fs_name);
                 goto out6;
         }
@@ -107,7 +108,7 @@ out1:
 
 static void llite_destroy(struct llite_data *llite)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" llite_destroy() %s\n", llite->name);
+        ovis_log(lustre_client_log, OVIS_LDEBUG, "llite_destroy() %s\n", llite->name);
         llite_general_destroy(llite->general_metric_set);
         free(llite->fs_name);
         free(llite->stats_path);
@@ -145,13 +146,13 @@ static const char *const find_llite_path()
                 if (previously_found_path != llite_paths[i]) {
                         /* just for logging purposes */
                         previously_found_path = llite_paths[i];
-                        log_fn(LDMSD_LDEBUG, SAMP" find_llite_path() found %s\n",
+                        ovis_log(lustre_client_log, OVIS_LDEBUG, "find_llite_path() found %s\n",
                                llite_paths[i]);
                 }
                 return llite_paths[i];
         }
 
-        log_fn(LDMSD_LWARNING, SAMP" no llite directories found\n");
+        ovis_log(lustre_client_log, OVIS_LWARNING, "no llite directories found\n");
         return NULL;
 }
 
@@ -182,7 +183,7 @@ static int llites_refresh()
         dir = opendir(llite_path);
         if (dir == NULL) {
 		if (!dir_once_log) {
-	                log_fn(LDMSD_LDEBUG, SAMP" unable to open llite dir %s\n",
+	                ovis_log(lustre_client_log, OVIS_LDEBUG, "unable to open llite dir %s\n",
 	                       llite_path);
 			dir_once_log = 1;
 		}
@@ -240,26 +241,26 @@ static void llites_sample()
 static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
+        ovis_log(lustre_client_log, OVIS_LDEBUG, "config() called\n");
 	char *ival = av_value(avl, "producer");
 	if (ival) {
 		if (strlen(ival) < sizeof(producer_name)) {
 			strncpy(producer_name, ival, sizeof(producer_name));
 		} else {
-                        log_fn(LDMSD_LERROR, SAMP": config: producer name too long.\n");
+                        ovis_log(lustre_client_log, OVIS_LERROR, SAMP": config: producer name too long.\n");
                         return EINVAL;
 		}
 	}
-	(void)base_auth_parse(avl, &auth, log_fn);
+	(void)base_auth_parse(avl, &auth, lustre_client_log);
 	int jc = jobid_helper_config(avl);
         if (jc) {
-		log_fn(LDMSD_LERROR, SAMP": set name for job_set="
+		ovis_log(lustre_client_log, OVIS_LERROR, SAMP": set name for job_set="
 			" is too long.\n");
 		return jc;
 	}
 	int cc = comp_id_helper_config(avl, &cid);
         if (cc) {
-		log_fn(LDMSD_LERROR, SAMP": value of component_id="
+		ovis_log(lustre_client_log, OVIS_LERROR, SAMP": value of component_id="
 			" is invalid.\n");
 		return cc;
 	}
@@ -268,10 +269,10 @@ static int config(struct ldmsd_plugin *self,
 
 static int sample(struct ldmsd_sampler *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
+        ovis_log(lustre_client_log, OVIS_LDEBUG, "sample() called\n");
         if (llite_general_schema_is_initialized() < 0) {
                 if (llite_general_schema_init(&cid) < 0) {
-                        log_fn(LDMSD_LERROR, SAMP" general schema create failed\n");
+                        ovis_log(lustre_client_log, OVIS_LERROR, "general schema create failed\n");
                         return ENOMEM;
                 }
         }
@@ -284,9 +285,11 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
-        llites_destroy();
-        llite_general_schema_fini();
+	ovis_log(lustre_client_log, OVIS_LDEBUG, "term() called\n");
+	llites_destroy();
+	llite_general_schema_fini();
+	if (lustre_client_log)
+		ovis_log_destroy(lustre_client_log);
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -296,7 +299,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" usage() called\n");
+        ovis_log(lustre_client_log, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP;
 }
 
@@ -312,12 +315,18 @@ static struct ldmsd_sampler llite_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-        log_fn = pf;
-        log_fn(LDMSD_LDEBUG, SAMP" get_plugin() called ("PACKAGE_STRING")\n");
-        rbt_init(&llite_tree, string_comparator);
-        gethostname(producer_name, sizeof(producer_name));
+	int rc;
+	lustre_client_log = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!lustre_client_log) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem of "
+					"'" SAMP "' plugin. Error %d\n", rc);
+	}
+	ovis_log(lustre_client_log, OVIS_LDEBUG, "get_plugin() called ("PACKAGE_STRING")\n");
+	rbt_init(&llite_tree, string_comparator);
+	gethostname(producer_name, sizeof(producer_name));
 
-        return &llite_plugin.base;
+	return &llite_plugin.base;
 }

@@ -74,13 +74,13 @@
 
 static int NCPU = 0;
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 static int metric_offset;
 static base_data_t base;
 static int cumulative = 0;
 static int auto_pause = 1;
 
 static ldms_stream_client_t syspapi_client = NULL;
+static ovis_log_t mylog;
 
 typedef struct syspapi_metric_s {
 	TAILQ_ENTRY(syspapi_metric_s) entry;
@@ -122,7 +122,7 @@ create_metric_set(base_data_t base)
 
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = errno;
@@ -180,7 +180,7 @@ syspapi_metric_init(syspapi_metric_t m, const char *papi_name)
 
 	len = snprintf(m->papi_name, sizeof(m->papi_name), "%s", papi_name);
 	if (len >= sizeof(m->papi_name)) {
-		ldmsd_lerror(SAMP": event name too long: %s\n", papi_name);
+		ovis_log(mylog, OVIS_LERROR, "event name too long: %s\n", papi_name);
 		return ENAMETOOLONG;
 	}
 	m->midx = -1;
@@ -191,25 +191,25 @@ syspapi_metric_init(syspapi_metric_t m, const char *papi_name)
 	/* get the pfm name */
 	rc = PAPI_event_name_to_code((char*)papi_name, &papi_code);
 	if (rc != PAPI_OK) {
-		ldmsd_lerror(SAMP": PAPI_event_name_to_code for %s failed, "
+		ovis_log(mylog, OVIS_LERROR, "PAPI_event_name_to_code for %s failed, "
 				 "error: %d\n", papi_name, rc);
 		return -1;
 	}
 	rc = PAPI_get_event_info(papi_code, &papi_info);
 	if (rc != PAPI_OK) {
-		ldmsd_lerror(SAMP": PAPI_get_event_info for %s failed, "
+		ovis_log(mylog, OVIS_LERROR, "PAPI_get_event_info for %s failed, "
 				 "error: %d\n", papi_name, rc);
 		return -1;
 	}
 	comp_info = PAPI_get_component_info(papi_info.component_index);
 	if (strcmp("perf_event", comp_info->name)) {
-		ldmsd_lerror(SAMP": event %s not supported, "
+		ovis_log(mylog, OVIS_LERROR, "event %s not supported, "
 			"only events in perf_event are supported.\n",
 			m->papi_name);
 		return EINVAL;
 	}
 	if (comp_info->disabled) {
-		ldmsd_lerror(SAMP": cannot initialize event %s, "
+		ovis_log(mylog, OVIS_LERROR, "cannot initialize event %s, "
 			"PAPI component `perf_event` disabled, "
 			"reason: %s\n",
 			m->papi_name, comp_info->disabled_reason);
@@ -218,14 +218,14 @@ syspapi_metric_init(syspapi_metric_t m, const char *papi_name)
 	if (IS_PRESET(papi_code)) {
 		if (strcmp(papi_info.derived, "NOT_DERIVED")) {
 			/* not NOT_DERIVED ==> this is a derived preset */
-			ldmsd_lerror(SAMP": Unsupported PAPI derived "
+			ovis_log(mylog, OVIS_LERROR, "Unsupported PAPI derived "
 					 "event: %s\n", m->papi_name);
 			return ENOTSUP;
 		}
 		switch (papi_info.count) {
 		case 0:
 			/* unavailable */
-			ldmsd_lerror(SAMP": no native event describing "
+			ovis_log(mylog, OVIS_LERROR, "no native event describing "
 				"papi event %s\n", m->papi_name);
 			return ENODATA;
 		case 1:
@@ -234,7 +234,7 @@ syspapi_metric_init(syspapi_metric_t m, const char *papi_name)
 			break;
 		default:
 			/* unsupported */
-			ldmsd_lerror(SAMP": %s not supported: the event "
+			ovis_log(mylog, OVIS_LERROR, "%s not supported: the event "
 				"contains multiple native events.\n",
 				m->papi_name);
 			return ENOTSUP;
@@ -243,7 +243,7 @@ syspapi_metric_init(syspapi_metric_t m, const char *papi_name)
 		pfm_name = papi_info.symbol;
 	} else {
 		/* invalid */
-		ldmsd_lerror(SAMP": %s is neither a PAPI-preset event "
+		ovis_log(mylog, OVIS_LERROR, "%s is neither a PAPI-preset event "
 				"nor a native event.\n", m->papi_name);
 		return EINVAL;
 	}
@@ -258,7 +258,7 @@ syspapi_metric_init(syspapi_metric_t m, const char *papi_name)
 	rc = pfm_get_os_event_encoding(pfm_name, PFM_PLM0|PFM_PLM3,
 				       PFM_OS_PERF_EVENT, &pfm_arg);
 	if (rc) {
-		ldmsd_lerror(SAMP": pfm_get_os_event_encoding for %s failed, "
+		ovis_log(mylog, OVIS_LERROR, "pfm_get_os_event_encoding for %s failed, "
 				 "error: %d\n", m->papi_name, rc);
 	}
 	return rc;
@@ -331,7 +331,7 @@ syspapi_open_error(syspapi_metric_t m, int rc)
 	switch (rc) {
 	case EACCES:
 	case EPERM:
-		ldmsd_lerror(SAMP": perf_event_open() failed (Permission "
+		ovis_log(mylog, OVIS_LERROR, "perf_event_open() failed (Permission "
 			"denied) for %s. Please make sure that ldmsd has "
 			"CAP_SYS_ADMIN or /proc/sys/kernel/perf_event_paranoid "
 			"is permissive (e.g. -1, see "
@@ -339,31 +339,31 @@ syspapi_open_error(syspapi_metric_t m, int rc)
 			"sysctl/kernel.txt for more info).\n", m->papi_name);
 		break;
 	case EBUSY:
-		ldmsd_lerror(SAMP": perf_event_open() failed (EBUSY) for %s, "
+		ovis_log(mylog, OVIS_LERROR, "perf_event_open() failed (EBUSY) for %s, "
 			"another event already has exclusive access to the "
 			"PMU.\n", m->papi_name);
 		break;
 	case EINVAL:
-		ldmsd_lerror(SAMP": perf_event_open() failed (EINVAL) for %s, "
+		ovis_log(mylog, OVIS_LERROR, "perf_event_open() failed (EINVAL) for %s, "
 			"invalid event\n", m->papi_name);
 		break;
 	case EMFILE:
-		ldmsd_lerror(SAMP": perf_event_open() failed (EMFILE) for %s, "
+		ovis_log(mylog, OVIS_LERROR, "perf_event_open() failed (EMFILE) for %s, "
 			"too many open file descriptors.\n", m->papi_name);
 		break;
 	case ENODEV:
 	case ENOENT:
 	case ENOSYS:
 	case EOPNOTSUPP:
-		ldmsd_lerror(SAMP": perf_event_open() failed (%d) for %s, "
+		ovis_log(mylog, OVIS_LERROR, "perf_event_open() failed (%d) for %s, "
 			"event not supported.\n", rc, m->papi_name);
 		break;
 	case ENOSPC:
-		ldmsd_lerror(SAMP": perf_event_open() failed (%d) for %s, "
+		ovis_log(mylog, OVIS_LERROR, "perf_event_open() failed (%d) for %s, "
 			"too many events.\n", rc, m->papi_name);
 		break;
 	default:
-		ldmsd_lerror(SAMP": perf_event_open() failed for %s, "
+		ovis_log(mylog, OVIS_LERROR, "perf_event_open() failed for %s, "
 				 "errno: %d\n", m->papi_name, rc);
 		break;
 	}
@@ -389,7 +389,7 @@ syspapi_open(struct syspapi_metric_list *mlist)
 					return rc;
 				}
 			} else {
-				ldmsd_log(LDMSD_LINFO, SAMP": %s "
+				ovis_log(mylog, OVIS_LINFO, "%s "
 					  "successfully added\n", m->papi_name);
 			}
 		}
@@ -412,7 +412,7 @@ handle_cfg_file(struct ldmsd_plugin *self, const char *cfg_file)
 	fd = open(cfg_file, O_RDONLY);
 	if (fd < 0) {
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP": open failed on %s, "
+		ovis_log(mylog, OVIS_LERROR, "open failed on %s, "
 				"errno: %d\n", cfg_file, errno);
 		goto out;
 	}
@@ -421,7 +421,7 @@ handle_cfg_file(struct ldmsd_plugin *self, const char *cfg_file)
 	buff = malloc(sz);
 	if (!buff) {
 		rc = ENOMEM;
-		msglog(LDMSD_LERROR, SAMP": out of memory\n");
+		ovis_log(mylog, OVIS_LERROR, "out of memory\n");
 		goto out;
 	}
 	off = 0;
@@ -429,13 +429,13 @@ handle_cfg_file(struct ldmsd_plugin *self, const char *cfg_file)
 		rsz = read(fd, buff + off, sz - off);
 		if (rsz < 0) {
 			rc = errno;
-			msglog(LDMSD_LERROR, SAMP": cfg_file read "
+			ovis_log(mylog, OVIS_LERROR, "cfg_file read "
 					"error: %d\n", rc);
 			goto out;
 		}
 		if (rsz == 0) {
 			rc = EIO;
-			msglog(LDMSD_LERROR, SAMP": unexpected EOF.\n");
+			ovis_log(mylog, OVIS_LERROR, "unexpected EOF.\n");
 			goto out;
 		}
 		off += rsz;
@@ -449,7 +449,7 @@ handle_cfg_file(struct ldmsd_plugin *self, const char *cfg_file)
 
 	rc = json_parse_buffer(parser, buff, sz, &json);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP": `%s` JSON parse error.\n",
+		ovis_log(mylog, OVIS_LERROR, "`%s` JSON parse error.\n",
 				cfg_file);
 		goto out;
 	}
@@ -458,7 +458,7 @@ handle_cfg_file(struct ldmsd_plugin *self, const char *cfg_file)
 	if (schema) {
 		schema = json_attr_value(schema);
 		if (json_entity_type(schema) != JSON_STRING_VALUE) {
-			msglog(LDMSD_LERROR, SAMP": cfg_file error, `schema` "
+			ovis_log(mylog, OVIS_LERROR, "cfg_file error, `schema` "
 				"attribute must be a string.\n");
 			rc = EINVAL;
 			goto out;
@@ -467,7 +467,7 @@ handle_cfg_file(struct ldmsd_plugin *self, const char *cfg_file)
 			free(base->schema_name);
 		base->schema_name = strdup(json_value_str(schema)->str);
 		if (!base->schema_name) {
-			msglog(LDMSD_LERROR, SAMP": out of memory.\n");
+			ovis_log(mylog, OVIS_LERROR, "out of memory.\n");
 			rc = ENOMEM;
 			goto out;
 		}
@@ -475,7 +475,7 @@ handle_cfg_file(struct ldmsd_plugin *self, const char *cfg_file)
 
 	events = json_attr_find(json, "events");
 	if (!events) {
-		msglog(LDMSD_LERROR, SAMP": cfg_file parse error: `events` "
+		ovis_log(mylog, OVIS_LERROR, "cfg_file parse error: `events` "
 				"attribute not found.\n");
 		rc = ENOENT;
 		goto out;
@@ -483,7 +483,7 @@ handle_cfg_file(struct ldmsd_plugin *self, const char *cfg_file)
 	events = json_attr_value(events);
 	if (json_entity_type(events) != JSON_LIST_VALUE) {
 		rc = EINVAL;
-		msglog(LDMSD_LERROR, SAMP": cfg_file error: `events` must "
+		ovis_log(mylog, OVIS_LERROR, "cfg_file error: `events` must "
 				"be a list of strings.\n");
 		goto out;
 	}
@@ -492,7 +492,7 @@ handle_cfg_file(struct ldmsd_plugin *self, const char *cfg_file)
 	while (event) {
 		if (json_entity_type(event) != JSON_STRING_VALUE) {
 			rc = EINVAL;
-			msglog(LDMSD_LERROR, SAMP": cfg_file error: "
+			ovis_log(mylog, OVIS_LERROR, "cfg_file error: "
 					"entries in `events` list must be "
 					"strings.\n");
 			goto out;
@@ -527,7 +527,7 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	pthread_mutex_lock(&syspapi_mutex);
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		rc = EINVAL;
 		goto out;
 	}
@@ -536,13 +536,13 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	events = av_value(avl, "events");
 
 	if (!events && !cfg_file) {
-		msglog(LDMSD_LERROR, SAMP": `events` and `cfg_file` "
+		ovis_log(mylog, OVIS_LERROR, "`events` and `cfg_file` "
 					 "not specified\n");
 		rc = EINVAL;
 		goto out;
 	}
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -580,7 +580,7 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 	FLAG_ON(syspapi_flags, SYSPAPI_CONFIGURED);
@@ -611,7 +611,7 @@ sample(struct ldmsd_sampler *self)
 	syspapi_metric_t m;
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -659,6 +659,8 @@ term(struct ldmsd_plugin *self)
 		syspapi_client = NULL;
 	}
 	PAPI_shutdown();
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 /* syspapi_mutex is held */
@@ -742,19 +744,24 @@ static struct ldmsd_sampler syspapi_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
 	int rc;
-	msglog = pf;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	rc = PAPI_library_init(PAPI_VER_CURRENT);
 	if (rc < 0) {
-		ldmsd_lerror(SAMP": Error %d attempting to initialize "
+		ovis_log(mylog, OVIS_LERROR, "Error %d attempting to initialize "
 			     "the PAPI library.\n", rc);
 	}
 	NCPU = sysconf(_SC_NPROCESSORS_CONF);
 	syspapi_client = ldms_stream_subscribe("syspapi_stream", 0, __stream_cb, NULL, "syspapi_sampler");
 	if (!syspapi_client) {
-		ldmsd_lerror(SAMP": failed to subscribe to 'syspapi_stream' "
+		ovis_log(mylog, OVIS_LERROR, "failed to subscribe to 'syspapi_stream' "
 			     "stream, errno: %d\n", errno);
 	}
 	register_task_init_hook(__on_task_init);

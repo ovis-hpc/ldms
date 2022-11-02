@@ -295,9 +295,9 @@ int single_construct_routine(ldms_schema_t schema,
 
 /**
  * Set message log function to \c f.
- * \param f The pointer to logging function.
+ * \param mylog The log subsystem
  */
-void lustre_sampler_set_msglog(ldmsd_msg_log_f f);
+void lustre_sampler_set_pilog(ovis_log_t pilog);
 
 /**
  * \brief Sample the metrics in \c lms.

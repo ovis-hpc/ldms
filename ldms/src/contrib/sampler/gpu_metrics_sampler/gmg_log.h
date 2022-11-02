@@ -56,18 +56,21 @@
 #error "GMGLOG is unavailable in CPP files, since we cannot include ldmsd.h in CPP file.  There will be errors!"
 #endif
 
+#include "ovis_log/ovis_log.h"
 #include "ldmsd.h"  // contains log function prototype; return type of log function is void.
 
-extern ldmsd_msg_log_f msglog;
+ovis_log_t __gmg_log;
 
 /**
- * The following are provided for convenience, since msglog is fully accessible.
+ * The following are provided for convenience.
  */
 // GMGLOG() is only used in gather_gpu_metrics_from_one_api.c and gmg_ldms_util.c.
-#define GMGLOG(LEVEL, FMT, ...) if (msglog) msglog((LEVEL), (FMT), ##__VA_ARGS__)
+#define GMGLOG(LEVEL, FMT, ...) do { \
+	ovis_log(__gmg_log, (LEVEL), (FMT), ##__VA_ARGS__); \
+} while (0)
 
-ldmsd_msg_log_f setGmgLoggingFunction(
-        const ldmsd_msg_log_f fp  // ldmsd_msg_log_f is already a pointer type
+ovis_log_t setGmgLoggingFunction(
+        const ovis_log_t pi_log  // ovis_log_t is already a pointer type
 );
 
 #endif // _GMG_LOG_H_

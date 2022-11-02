@@ -99,9 +99,10 @@ static int termed;
 
 #define SAMP "procnet"
 static FILE *mf = NULL;
-static ldmsd_msg_log_f msglog;
 static int metric_offset;
 static base_data_t base;
+
+static ovis_log_t mylog;
 
 struct kw {
 	char *token;
@@ -146,7 +147,7 @@ static void procnet_reset()
 
 static int add_port(const char *name)
 {
-	msglog(LDMSD_LDEBUG, SAMP ": adding port %s.\n", name);
+	ovis_log(mylog, OVIS_LDEBUG, "adding port %s.\n", name);
 	/* temporarily override default instance name behavior */
 	char *tmp = base->instance_name;
 	size_t len = strlen(tmp);
@@ -161,7 +162,7 @@ static int add_port(const char *name)
 	snprintf(base->instance_name, len + 20, "%s/%s", tmp, name);
 	ldms_set_t set = base_set_new(base);
 	if (!set) {
-		msglog(LDMSD_LERROR, "failed to make %s set for %s\n",
+		ovis_log(mylog, OVIS_LERROR, "failed to make %s set for %s\n",
 			name, SAMP);
 		rc = errno;
 		base->instance_name = tmp;
@@ -187,7 +188,7 @@ static int create_metric_schema(base_data_t base)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open " SAMP " file "
+		ovis_log(mylog, OVIS_LERROR, "Could not open " SAMP " file "
 				"'%s'...exiting\n",
 				procfile);
 		return ENOENT;
@@ -196,7 +197,7 @@ static int create_metric_schema(base_data_t base)
 	/* Create a metric set of the required size */
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = EINVAL;
@@ -208,13 +209,13 @@ static int create_metric_schema(base_data_t base)
 
 	rc = ldms_schema_metric_array_add(schema, "device", LDMS_V_CHAR_ARRAY, sizeof(ports[0].name));
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": out of memory: device\n");
+		ovis_log(mylog, OVIS_LERROR, "out of memory: device\n");
 		rc = ENOMEM;
 		goto err;
 	}
 	rc = ldms_schema_metric_add(schema, "update", LDMS_V_U64);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": out of memory: update\n");
+		ovis_log(mylog, OVIS_LERROR, "out of memory: update\n");
 		rc = ENOMEM;
 		goto err;
 	}
@@ -250,7 +251,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < ARRAY_SIZE(deprecated); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
+			ovis_log(mylog, OVIS_LERROR, "config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -288,7 +289,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	if (configured) {
 		procnet_reset();
-		msglog(LDMSD_LDEBUG, SAMP ": reconfiguring.\n");
+		ovis_log(mylog, OVIS_LDEBUG, "reconfiguring.\n");
 	}
 	n_ignored = 0;
 	ivalue = av_value(avl, "exclude_ports");
@@ -296,25 +297,25 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		ivalue = "";
 	ignorelist = strdup(ivalue);
 	if (!ignorelist) {
-		msglog(LDMSD_LERROR, SAMP ": out of memory\n");
+		ovis_log(mylog, OVIS_LERROR, "out of memory\n");
 		goto err;
 	}
 	pch = strtok_r(ignorelist, ",", &saveptr);
 	while (pch != NULL){
 		if (n_ignored >= (MAXIFACE-1)) {
-			msglog(LDMSD_LERROR, SAMP ": too many devices being ignored: <%s>\n",
+			ovis_log(mylog, OVIS_LERROR, "too many devices being ignored: <%s>\n",
 				pch);
 			goto err;
 		}
 		snprintf(ignore_port[n_ignored], sizeof(ignore_port[0]), "%s", pch);
-		msglog(LDMSD_LDEBUG, SAMP ": ignoring net device <%s>\n", pch);
+		ovis_log(mylog, OVIS_LDEBUG, "ignoring net device <%s>\n", pch);
 		n_ignored++;
 		pch = strtok_r(NULL, ",", &saveptr);
 	}
 	free(ignorelist);
 	ignorelist = NULL;
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = EINVAL;
 		goto err;
@@ -322,7 +323,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_schema(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric schema.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric schema.\n");
 		goto err;
 	}
 	pthread_mutex_unlock(&cfg_lock);
@@ -375,7 +376,7 @@ static int sample(struct ldmsd_sampler *self)
 	pthread_mutex_lock(&cfg_lock);
 
 	if (!configured) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		rc = 0;
 		goto err;
 	}
@@ -383,7 +384,7 @@ static int sample(struct ldmsd_sampler *self)
 	if (!mf)
 		mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, SAMP ": Could not open /proc/net/dev file "
+		ovis_log(mylog, OVIS_LERROR, "Could not open /proc/net/dev file "
 				"'%s'...exiting\n", procfile);
 		rc = ENOENT;
 		goto err;
@@ -416,7 +417,7 @@ static int sample(struct ldmsd_sampler *self)
 				&v[10].v_u64, &v[11].v_u64, &v[12].v_u64,
 				&v[13].v_u64, &v[14].v_u64, &v[15].v_u64);
 		if (rc != 17) {
-			msglog(LDMSD_LINFO, SAMP ": wrong number of "
+			ovis_log(mylog, OVIS_LINFO, "wrong number of "
 					"fields in sscanf. skipping line %s\n", lbuf);
 			continue;
 		}
@@ -445,7 +446,7 @@ static int sample(struct ldmsd_sampler *self)
 		}
 		if (!done && msum) {
 			if (n_ports >= MAXIFACE) {
-				msglog(LDMSD_LERROR, SAMP ": Cannot add %d-th port %s. "
+				ovis_log(mylog, OVIS_LERROR, "Cannot add %d-th port %s. "
 					"Too many ports.\n", MAXIFACE+1, curriface);
 				rc = ENOMEM;
 				goto err;
@@ -475,7 +476,8 @@ static void term(struct ldmsd_plugin *self)
 	procnet_reset();
 	termed = 1;
 	pthread_mutex_unlock(&cfg_lock);
-
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler procnet_plugin = {
@@ -490,9 +492,15 @@ static struct ldmsd_sampler procnet_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	return &procnet_plugin.base;
 }
 

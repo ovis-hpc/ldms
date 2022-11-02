@@ -123,10 +123,9 @@ struct mstruct{
 	gpcd_context_t* ctx;
 };
 
-
+static ovis_log_t mylog;
 
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 static ldms_schema_t schema;
 static uint64_t comp_id;
 #define SAMP "aries_mmr_configurable"
@@ -174,7 +173,7 @@ static int parseConfig(char* fname, int i){
 
 	FILE *fp = fopen(fname, "r");
 	if (!fp){
-		msglog(LDMSD_LERROR, SAMP " Cannot open config file <%s>\n",
+		ovis_log(mylog, OVIS_LERROR,  " Cannot open config file <%s>\n",
 		       fname);
 		return EINVAL;
 	}
@@ -186,7 +185,7 @@ static int parseConfig(char* fname, int i){
 		if (!s)
 			break;
 		if ((strlen(lbuf) > 0)  && (lbuf[0] == '#')){
-			msglog(LDMSD_LWARNING, SAMP " Comment in config file <%s>. Skipping\n",
+			ovis_log(mylog, OVIS_LWARNING, " Comment in config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
@@ -194,11 +193,11 @@ static int parseConfig(char* fname, int i){
 			rc = sscanf(lbuf, "%[^,],%c,%s\n",
 				    name, &typeid, &rest);
 
-			msglog(LDMSD_LDEBUG, SAMP
+			ovis_log(mylog, OVIS_LDEBUG,
 			       " Setfile variable <%s>\n", name);
 
 			if (rc != 3){
-				msglog(LDMSD_LWARNING, SAMP
+				ovis_log(mylog, OVIS_LWARNING,
 				       " Bad format in config file <%s> <rc=%d>. Skipping\n",
 				       lbuf, rc);
 				continue;
@@ -207,11 +206,11 @@ static int parseConfig(char* fname, int i){
 			rc = sscanf(lbuf, "%[^,],%c",
 				    name, &typeid);
 
-			msglog(LDMSD_LDEBUG, SAMP
+			ovis_log(mylog, OVIS_LDEBUG,
 			       " Readfile variable <%s>\n", name);
 
 			if (rc != 2){
-				msglog(LDMSD_LWARNING, SAMP
+				ovis_log(mylog, OVIS_LWARNING,
 				       " Bad format in config file <%s> <rc=%d>. Skipping\n",
 				       lbuf, rc);
 				continue;
@@ -227,7 +226,7 @@ static int parseConfig(char* fname, int i){
 		setvals.counter_list = NULL;
 		// if there is a file, warn if there are no counters (might have commented them out for testing)
 		if (count == 0){
-			msglog(LDMSD_LWARNING, SAMP
+			ovis_log(mylog, OVIS_LWARNING,
 			       " No valid lines for counters in config file <%s>. This is ok.\n",
 			       fname);
 			fclose(fp);
@@ -246,7 +245,7 @@ static int parseConfig(char* fname, int i){
 		readvals.counter_list = NULL;
 		// if there is a file, warn if there are no counters
 		if (count == 0){
-			msglog(LDMSD_LWARNING, SAMP
+			ovis_log(mylog, OVIS_LWARNING,
 			       " No valid lines for counters in config file <%s>. This is ok.\n",
 			       fname);
 			fclose(fp);
@@ -271,13 +270,13 @@ static int parseConfig(char* fname, int i){
 			break;
 
 	if ((strlen(lbuf) > 0)  && (lbuf[0] == '#')){
-			msglog(LDMSD_LWARNING, SAMP " Comment in config file <%s>. Skipping\n",
+			ovis_log(mylog, OVIS_LWARNING, " Comment in config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
 		if (i == 0){ // setfile
 			if (count == setvals.num_counter){
-				msglog(LDMSD_LERROR, SAMP
+				ovis_log(mylog, OVIS_LERROR,
 				       " Changed number of valid entries from first pass. aborting.\n");
 				fclose(fp);
 				return EINVAL;
@@ -285,7 +284,7 @@ static int parseConfig(char* fname, int i){
 			rc = sscanf(lbuf, "%[^,],%c,%s\n",
 				    name, &typeid, &rest);
 			if (rc != 3){
-				msglog(LDMSD_LWARNING, SAMP
+				ovis_log(mylog, OVIS_LWARNING,
 				       " Bad format in config file <%s> <rc=%d>. Skipping\n",
 				       fname, rc);
 				continue;
@@ -300,12 +299,12 @@ static int parseConfig(char* fname, int i){
 			}
 			setvals.counter_list[count].mid = -1;
 			if (setvals.counter_list[count].isHex){
-				msglog(LDMSD_LDEBUG, SAMP
+				ovis_log(mylog, OVIS_LDEBUG,
 				       " Setfile read variable <%s> <0x%lx>\n",
 				       setvals.counter_list[count].name,
 				       setvals.counter_list[count].value);
 			} else {
-				msglog(LDMSD_LDEBUG, SAMP
+				ovis_log(mylog, OVIS_LDEBUG,
 				       " Setfile read variable <%s> <%" PRIu64 ">\n",
 
 				       setvals.counter_list[count].name,
@@ -313,7 +312,7 @@ static int parseConfig(char* fname, int i){
 			}
 		} else { // readfile
 			if (count == readvals.num_counter){
-				msglog(LDMSD_LERROR, SAMP
+				ovis_log(mylog, OVIS_LERROR,
 				       " Changed number of valid entries from first pass. aborting.\n");
 				fclose(fp);
 				return EINVAL;
@@ -321,7 +320,7 @@ static int parseConfig(char* fname, int i){
 			rc = sscanf(lbuf, "%[^,],%c",
 				    name, &typeid);
 			if (rc != 2){
-				msglog(LDMSD_LWARNING, SAMP
+				ovis_log(mylog, OVIS_LWARNING,
 				       " Bad format in config file <%s> <rc=%d>. Skipping\n",
 				       fname, rc);
 				continue;
@@ -334,7 +333,7 @@ static int parseConfig(char* fname, int i){
 				readvals.counter_list[count].isHex = 0;
 			}
 			readvals.counter_list[count].mid = -1;
-			msglog(LDMSD_LDEBUG, SAMP
+			ovis_log(mylog, OVIS_LDEBUG,
 			       " Readfile read variable <%s> <H=%d>\n",
 			       readvals.counter_list[count].name,
 			       readvals.counter_list[count].isHex);
@@ -408,23 +407,23 @@ static int resetCounters(struct attr_value_list *kwl, struct attr_value_list *av
 	if (setvals.num_counter <= 0) return 0;
 
 	if ((cfgstate != CFG_DONE_FINAL) && (cfgstate != CFG_IN_FINAL)){
-		msglog(LDMSD_LERROR,
-		       SAMP ": in wrong state for sampling <%d>\n", cfgstate);
+		ovis_log(mylog, OVIS_LERROR,
+		       "in wrong state for sampling <%d>\n", cfgstate);
 		return -1;
 	}
 
 	//Keeping a context to be able to read them before and after
 	//if debug, also write out the counters before and after
-	if (ldmsd_loglevel_get() == LDMSD_LDEBUG){
+	if (ovis_log_get_level(mylog) == OVIS_LDEBUG) {
 		rc = gpcd_context_read_mmr_vals(setvals.ctx);
 		if (rc){
-			msglog(LDMSD_LERROR, SAMP ": Cannot read set mmr vals\n");
+			ovis_log(mylog, OVIS_LERROR, "Cannot read set mmr vals\n");
 			return EINVAL;
 		}
 
 		listp = setvals.ctx->list;
 		if (!listp){
-			msglog(LDMSD_LERROR, SAMP ": Context list is null\n");
+			ovis_log(mylog, OVIS_LERROR, "Context list is null\n");
 			rc = EINVAL;
 			goto out;
 		}
@@ -432,16 +431,16 @@ static int resetCounters(struct attr_value_list *kwl, struct attr_value_list *av
 		mid = setvals.num_counter - 1;
 		while (listp != NULL){
 			if (mid < 0){
-				msglog(LDMSD_LERROR, SAMP ": bad index value\n");
+				ovis_log(mylog, OVIS_LERROR, "bad index value\n");
 				rc = EINVAL;
 				goto out;
 			}
 			//context is read off in the reverse order
 			if (setvals.counter_list[mid].isHex){
-				msglog(LDMSD_LERROR, SAMP ": Before reset %s is 0x%lx\n",
+				ovis_log(mylog, OVIS_LERROR, "Before reset %s is 0x%lx\n",
 				       setvals.counter_list[mid].name, listp->value);
 			} else {
-				msglog(LDMSD_LERROR, SAMP ": Before reset %s is %" PRIu64 "\n",
+				ovis_log(mylog, OVIS_LERROR, "Before reset %s is %" PRIu64 "\n",
 				       setvals.counter_list[mid].name, listp->value);
 			}
 			listp=listp->next;
@@ -456,12 +455,12 @@ static int resetCounters(struct attr_value_list *kwl, struct attr_value_list *av
 		gpcd_mmr_desc_t* desc = (gpcd_mmr_desc_t *)
 			gpcd_lookup_mmr_byname(met);
 		if (!desc) {
-			msglog(LDMSD_LERROR, SAMP ": Could not lookup (1) <%s>\n", met);
+			ovis_log(mylog, OVIS_LERROR, "Could not lookup (1) <%s>\n", met);
 			//TODO: what to do to clean up? This should not happen.
 			return -1;
 		}
 
-//		msglog(LDMSD_LDEBUG, SAMP ": mmrd->addr %" PRIu64 "\n",
+//		ovis_log(mylog, OVIS_LDEBUG, "mmrd->addr %" PRIu64 "\n",
 //		       (uint64_t*)&desc->addr;
 
 		//if the perms aren't toggled, you will not be able to write.
@@ -473,14 +472,14 @@ static int resetCounters(struct attr_value_list *kwl, struct attr_value_list *av
 			//between the toggle and the write
 			rc = gpcd_disable_perms();
 			if (rc){
-				msglog(LDMSD_LERROR, SAMP ": cannot gpcd_disable_perms. Must be root.\n");
-				msglog(LDMSD_LERROR, SAMP ": cannot write mmr val because of gpcd permissions.\n");
+				ovis_log(mylog, OVIS_LERROR, "cannot gpcd_disable_perms. Must be root.\n");
+				ovis_log(mylog, OVIS_LERROR, "cannot write mmr val because of gpcd permissions.\n");
 				return rc;
 			}
 			rc = gpcd_write_mmr_val(desc, &(setvals.counter_list[i].value),
 						0); //addr is 0, dont need nicaddr
 			if (rc) {
-				msglog(LDMSD_LERROR, SAMP ": cannot write_mmr_val '%s'", met);
+				ovis_log(mylog, OVIS_LERROR, "cannot write_mmr_val '%s'", met);
 				//TODO: Decide if should continue or return with error.
 				return rc;
 			}
@@ -489,16 +488,16 @@ static int resetCounters(struct attr_value_list *kwl, struct attr_value_list *av
 
 
 	//if debug, also write out the counters before and after
-	if (ldmsd_loglevel_get() == LDMSD_LDEBUG){
+	if (ovis_log_get_level(mylog) == OVIS_LDEBUG) {
 		rc = gpcd_context_read_mmr_vals(setvals.ctx);
 		if (rc){
-			msglog(LDMSD_LERROR, SAMP ": Cannot read raw set mmr vals\n");
+			ovis_log(mylog, OVIS_LERROR, "Cannot read raw set mmr vals\n");
 			return EINVAL;
 		}
 
 		listp = setvals.ctx->list;
 		if (!listp){
-			msglog(LDMSD_LERROR, SAMP ": Context list is null\n");
+			ovis_log(mylog, OVIS_LERROR, "Context list is null\n");
 			rc = EINVAL;
 			goto out;
 		}
@@ -506,16 +505,16 @@ static int resetCounters(struct attr_value_list *kwl, struct attr_value_list *av
 		mid = setvals.num_counter - 1;
 		while (listp != NULL){
 			if (mid < 0){
-				msglog(LDMSD_LERROR, SAMP ": bad index value\n");
+				ovis_log(mylog, OVIS_LERROR, "bad index value\n");
 				rc = EINVAL;
 				goto out;
 			}
 			//context is read off in the reverse order
 			if (setvals.counter_list[mid].isHex){
-				msglog(LDMSD_LERROR, SAMP ": After reset %s is 0x%lx\n",
+				ovis_log(mylog, OVIS_LERROR, "After reset %s is 0x%lx\n",
 				       setvals.counter_list[mid].name, listp->value);
 			} else {
-				msglog(LDMSD_LERROR, SAMP ": After reset %s is %" PRIu64 "\n",
+				ovis_log(mylog, OVIS_LERROR, "After reset %s is %" PRIu64 "\n",
 				       setvals.counter_list[mid].name, listp->value);
 			}
 			listp=listp->next;
@@ -528,7 +527,7 @@ static int resetCounters(struct attr_value_list *kwl, struct attr_value_list *av
 
 out:
 	//will only get here in the debug
-	msglog(LDMSD_LDEBUG, SAMP ": Problems debugging the state of the set counters\n");
+	ovis_log(mylog, OVIS_LDEBUG, "Problems debugging the state of the set counters\n");
 	return EINVAL;
 
 }
@@ -541,21 +540,21 @@ static int list(struct attr_value_list *kwl, struct attr_value_list *avl,
 {
 	int i;
 
-	msglog(LDMSD_LINFO,"%-48s %-20s %5s\n", "Name", "default", "R/S");
-	msglog(LDMSD_LINFO,"%-48s %-20s %5s\n",
+	ovis_log(mylog, OVIS_LINFO,"%-48s %-20s %5s\n", "Name", "default", "R/S");
+	ovis_log(mylog, OVIS_LINFO,"%-48s %-20s %5s\n",
 	       "------------------------------------------------",
 	       "--------------------","-----");
 	pthread_mutex_lock(&cfglock);
 	for (i = 0; i < readvals.num_counter; i++){
-		msglog(LDMSD_LINFO,"%-48s %-20s %3s\n",
+		ovis_log(mylog, OVIS_LINFO,"%-48s %-20s %3s\n",
 		       readvals.counter_list[i].name, "N/A", "R");
 	}
 	for (i = 0; i < setvals.num_counter; i++){
 		if (setvals.counter_list[i].isHex){
-			msglog(LDMSD_LINFO,"%-48s 0x%lx %3s\n",
+			ovis_log(mylog, OVIS_LINFO,"%-48s 0x%lx %3s\n",
 			       setvals.counter_list[i].name, setvals.counter_list[i].value, "S");
 		} else {
-			msglog(LDMSD_LINFO,"%-48s %20d %3s\n",
+			ovis_log(mylog, OVIS_LINFO,"%-48s %20d %3s\n",
 			       setvals.counter_list[i].name, setvals.counter_list[i].value, "S");
 		}
 	}
@@ -574,12 +573,12 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	int i;
 
 	if (cfgstate != CFG_PRE){
-		msglog(LDMSD_LERROR, SAMP ": cannot reinit\n");
+		ovis_log(mylog, OVIS_LERROR, "cannot reinit\n");
 		return -1;
 	}
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
@@ -587,12 +586,12 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	cfile = av_value(avl, "setfile");
 	if (!cfile){
-		msglog(LDMSD_LWARNING, SAMP ": NOTE -- no setfile (optional)");
+		ovis_log(mylog, OVIS_LWARNING, "NOTE -- no setfile (optional)");
 	} else {
 		rc = parseConfig(cfile,0);
 		if (rc != 0){
-			msglog(LDMSD_LERROR,
-			       SAMP ": error parsing setfile. Aborting\n");
+			ovis_log(mylog, OVIS_LERROR,
+			       "error parsing setfile. Aborting\n");
 			_free_cfg();
 			pthread_mutex_unlock(&cfglock);
 			return rc;
@@ -601,7 +600,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	cfile = av_value(avl, "readfile");
 	if (!cfile){
-		msglog(LDMSD_LERROR, SAMP ": no readfile");
+		ovis_log(mylog, OVIS_LERROR, "no readfile");
 		_free_cfg();
 		rc = EINVAL;
 		pthread_mutex_unlock(&cfglock);
@@ -609,8 +608,8 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	} else {
 		rc = parseConfig(cfile,1);
 		if (rc != 0){
-			msglog(LDMSD_LERROR,
-			       SAMP ": error parsing readfile. Aborting\n");
+			ovis_log(mylog, OVIS_LERROR,
+			       "error parsing readfile. Aborting\n");
 			_free_cfg();
 			pthread_mutex_unlock(&cfglock);
 			return rc;
@@ -624,7 +623,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 		rtrid = strdup("");
 
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		_free_cfg();
@@ -646,7 +645,7 @@ static int create_metric_set(base_data_t base){
 	/* create the base */
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR, SAMP
+		ovis_log(mylog, OVIS_LERROR,
 		       ": The schema '%s' could not be created, errno=%d.\n",
 			base->schema_name, errno);
 		goto err;
@@ -708,20 +707,20 @@ int addMetricToContext(gpcd_context_t* lctx, char* met)
 	int i;
 
 	if (lctx == NULL){
-		msglog(LDMSD_LERROR, SAMP ": NULL context\n");
+		ovis_log(mylog, OVIS_LERROR, "NULL context\n");
 		return -1;
 	}
 
 	desc = (gpcd_mmr_desc_t *)
 		gpcd_lookup_mmr_byname(met);
 	if (!desc) {
-		msglog(LDMSD_LINFO, SAMP ": Could not lookup (2) <%s>\n", met);
+		ovis_log(mylog, OVIS_LINFO, "Could not lookup (2) <%s>\n", met);
 		return -1;
 	}
 
 	status = gpcd_context_add_mmr(lctx, desc);
 	if (status != 0) {
-		msglog(LDMSD_LERROR, SAMP ": Could not add mmr for <%s>\n", met);
+		ovis_log(mylog, OVIS_LERROR, "Could not add mmr for <%s>\n", met);
 		gpcd_remove_context(lctx); //some other option?
 		return -1;
 	}
@@ -739,13 +738,13 @@ static int create_contexts(){
 
 	setvals.ctx = gpcd_create_context();
 	if (!setvals.ctx){
-		msglog(LDMSD_LERROR, SAMP ": Could not create context\n");
+		ovis_log(mylog, OVIS_LERROR, "Could not create context\n");
 		return EINVAL;
 	}
 
 	readvals.ctx = gpcd_create_context();
 	if (!readvals.ctx){
-		msglog(LDMSD_LERROR, SAMP ": Could not create context\n");
+		ovis_log(mylog, OVIS_LERROR, "Could not create context\n");
 		return EINVAL;
 	}
 
@@ -781,11 +780,11 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl,
 	int i, j, k;
 
 	pthread_mutex_lock(&cfglock);
-	msglog(LDMSD_LDEBUG, SAMP ": finalizing\n");
+	ovis_log(mylog, OVIS_LDEBUG, "finalizing\n");
 
 	if (cfgstate != CFG_DONE_INIT){
-		msglog(LDMSD_LERROR,
-		       SAMP ": in wrong state to finalize <%d>\n", cfgstate);
+		ovis_log(mylog, OVIS_LERROR,
+		       "in wrong state to finalize <%d>\n", cfgstate);
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
@@ -795,20 +794,20 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl,
 	rc = create_contexts();
 	if (rc) {
 		//if couldnt add any of the metrics, then this will have failed
-		msglog(LDMSD_LERROR, SAMP ": failed to create contexts.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create contexts.\n");
 		goto err;
 	}
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 
 	rc = resetCounters(NULL,NULL,NULL);
 	if (rc != 0){
-		msglog(LDMSD_LERROR,
-		       SAMP ": Cannot reset counters in finalize");
+		ovis_log(mylog, OVIS_LERROR,
+		       "Cannot reset counters in finalize");
 		goto err;
 	}
 
@@ -817,7 +816,7 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl,
 	return 0;
 
  err:
-	msglog(LDMSD_LERROR, SAMP ": failed finalize\n");
+	ovis_log(mylog, OVIS_LERROR, "failed finalize\n");
 	cfgstate = CFG_FAILED_FINAL;
 	if (schema) ldms_schema_delete(schema);
 	schema = NULL;
@@ -828,7 +827,7 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl,
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
-	msglog(LDMSD_LDEBUG, SAMP ": resetting state to CFG_PRE\n");
+	ovis_log(mylog, OVIS_LDEBUG, "resetting state to CFG_PRE\n");
 	// let the user configure again
 	cfgstate = CFG_PRE;
 	pthread_mutex_unlock(&cfglock);
@@ -870,10 +869,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		goto err2;
 	return 0;
  err0:
-	msglog(LDMSD_LDEBUG,usage(self));
+	ovis_log(mylog, OVIS_LDEBUG,usage(self));
 	goto err2;
  err1:
-	msglog(LDMSD_LDEBUG, SAMP ": Invalid configuration keyword '%s'\n", action);
+	ovis_log(mylog, OVIS_LDEBUG, "Invalid configuration keyword '%s'\n", action);
  err2:
 	return 0;
 }
@@ -888,13 +887,13 @@ static int sample(struct ldmsd_sampler *self)
 	int rc;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMSD_LERROR,
-		       SAMP ": in wrong state for sampling <%d>\n", cfgstate);
+		ovis_log(mylog, OVIS_LERROR,
+		       "in wrong state for sampling <%d>\n", cfgstate);
 		return -1;
 	}
 
 	if (!set){
-		msglog(LDMSD_LERROR, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LERROR, "plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -902,7 +901,7 @@ static int sample(struct ldmsd_sampler *self)
 	if (readvals.num_counter){
 		rc = gpcd_context_read_mmr_vals(readvals.ctx);
 		if (rc){
-			msglog(LDMSD_LERROR, SAMP ": Cannot read raw mmr vals\n");
+			ovis_log(mylog, OVIS_LERROR, "Cannot read raw mmr vals\n");
 			return EINVAL;
 		}
 
@@ -910,7 +909,7 @@ static int sample(struct ldmsd_sampler *self)
 
 		listp = readvals.ctx->list;
 		if (!listp){
-			msglog(LDMSD_LERROR, SAMP ": Context list is null\n");
+			ovis_log(mylog, OVIS_LERROR, "Context list is null\n");
 			rc = EINVAL;
 			goto out;
 		}
@@ -918,7 +917,7 @@ static int sample(struct ldmsd_sampler *self)
 		mid = readvals.num_counter - 1;
 		while (listp != NULL){
 			if (mid < 0){
-				msglog(LDMSD_LERROR, SAMP ": bad index value\n");
+				ovis_log(mylog, OVIS_LERROR, "bad index value\n");
 				rc = EINVAL;
 				goto out;
 			}
@@ -926,7 +925,7 @@ static int sample(struct ldmsd_sampler *self)
 			if (readvals.counter_list[mid].isHex){
 				rc = snprintf(sval, MSR_MAXLEN-1, "0x%lx", listp->value);
 				if (rc < 0){
-					msglog(LDMSD_LERROR, SAMP ": cannot format hex value for setting variable");
+					ovis_log(mylog, OVIS_LERROR, "cannot format hex value for setting variable");
 					continue;
 				}
 				ldms_metric_array_set_str(set, readvals.counter_list[mid].mid, sval);
@@ -964,6 +963,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler aries_mmr_configurable_plugin = {
@@ -978,9 +979,15 @@ static struct ldmsd_sampler aries_mmr_configurable_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &aries_mmr_configurable_plugin.base;
 }

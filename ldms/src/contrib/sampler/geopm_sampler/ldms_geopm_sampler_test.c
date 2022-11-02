@@ -63,6 +63,7 @@
 #include <stdint.h>
 #include <sys/errno.h>
 #include <geopm_field.h>
+#include "ovis_log/ovis_log.h"
 #include "ldmsd.h"
 
 void ldmsd_set_deregister(const char *inst_name, const char *plugin_name)
@@ -74,17 +75,6 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name)
 int ldmsd_set_register(ldms_set_t set, const char *plugin_name)
 {
 	return 0;
-}
-
-static void test_logger(int ldms_enum, const char *fmt, ...)
-{
-	va_list fmt_args;
-	va_start(fmt_args, fmt);
-	FILE *stream = stdout;
-	if (ldms_enum == LDMSD_LERROR) {
-		stream = stderr;
-	}
-	vfprintf(stream, fmt, fmt_args);
 }
 
 static int check_convert(void)
@@ -201,7 +191,7 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
-	ldms_geopm_sampler_set_log(test_logger);
+	ovis_log_set_mode(OVIS_LOG_M_TS_NONE);
 
 	err = run(argv[1]);
 	if (err == 0) {

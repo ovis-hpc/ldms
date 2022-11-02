@@ -70,7 +70,6 @@
 #include "ldms_jobid.h"
 #include "sampler_base.h"
 
-#ifdef ENABLE_JOBID
 
 /* This sampler relies on the resource manager to
 place notes in JOBID_FILE about the current job, or 0 if the
@@ -100,6 +99,8 @@ static char *default_schema_name = SAMP;
 static const char *JOBID_FILE = DEFAULT_FILE;
 static const char *JOBID_COLNAME = LJI_JOBID_METRIC_NAME;
 
+static ovis_log_t mylog;
+
 const char *lji_metric_names[] = {
 LJI_JOBID_METRIC_NAME,
 LJI_UID_METRIC_NAME,
@@ -112,7 +113,6 @@ static char *procfile = NULL;
 
 static char *metric_name = NULL;
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 static char *producer_name;
 static ldms_schema_t schema;
 static uint64_t compid = 0;
@@ -148,7 +148,7 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 
 	if (!mf) {
 		if (!parse_err_logged) {
-			msglog(LDMSD_LINFO,"Could not open the jobid file '%s'\n", procfile);
+			ovis_log(mylog, OVIS_LINFO,"Could not open the jobid file '%s'\n", procfile);
 			parse_err_logged = 1;
 		}
 		rc = EINVAL;
@@ -157,7 +157,7 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 	rc = fseek(mf, 0, SEEK_END);
 	if (rc) {
 		if (!parse_err_logged) {
-			msglog(LDMSD_LINFO,"Could not seek '%s'\n", file);
+			ovis_log(mylog, OVIS_LINFO,"Could not seek '%s'\n", file);
 			parse_err_logged = 1;
 		}
 		goto err;
@@ -166,7 +166,7 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 	if (flen >= JI_SIZE) {
 		rc = E2BIG;
 		if (!parse_err_logged) {
-			msglog(LDMSD_LINFO,"File %s too big (>%d).\n", file, JI_SIZE);
+			ovis_log(mylog, OVIS_LINFO,"File %s too big (>%d).\n", file, JI_SIZE);
 			parse_err_logged = 1;
 		}
 		goto err;
@@ -194,7 +194,7 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 	kvl = NULL;
 	if (rc) {
 		if (!parse_err_logged) {
-			msglog(LDMSD_LERROR,"Fail tokenizing '%s'\n", file);
+			ovis_log(mylog, OVIS_LERROR,"Fail tokenizing '%s'\n", file);
 			parse_err_logged = 1;
 		}
 		goto err;
@@ -209,7 +209,7 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 		j = strtoull(tmp, &endp, 0);
 		if (endp == tmp || errno) {
 			if (!parse_err_logged) {
-				msglog(LDMSD_LERROR,"Fail parsing JOBID '%s'\n", tmp);
+				ovis_log(mylog, OVIS_LERROR,"Fail parsing JOBID '%s'\n", tmp);
 				parse_err_logged = 1;
 			}
 			rc = EINVAL;
@@ -218,7 +218,7 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 		ji->jobid = j;
 	} else {
 		if (!parse_err_logged) {
-			msglog(LDMSD_LERROR,"JOBID= missing from '%s'\n", file);
+			ovis_log(mylog, OVIS_LERROR,"JOBID= missing from '%s'\n", file);
 			parse_err_logged = 1;
 		}
 		rc = EINVAL;
@@ -234,7 +234,7 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 		j = strtoull(tmp, &endp, 0);
 		if (endp == tmp || errno) {
 			if (!parse_err_logged) {
-				msglog(LDMSD_LINFO,"Fail parsing UID '%s'\n",
+				ovis_log(mylog, OVIS_LINFO,"Fail parsing UID '%s'\n",
 					tmp);
 				parse_err_logged = 1;
 			}
@@ -252,9 +252,9 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 		errno = 0;
 		j = strtoull(tmp, &endp, 0);
 		if (endp == tmp || errno) {
-			msglog(LDMSD_LINFO,"Fail parsing APPID '%s'\n", tmp);
+			ovis_log(mylog, OVIS_LINFO,"Fail parsing APPID '%s'\n", tmp);
 			if (!parse_err_logged) {
-				msglog(LDMSD_LINFO,"Fail parsing APPID '%s'\n",
+				ovis_log(mylog, OVIS_LINFO,"Fail parsing APPID '%s'\n",
 					tmp);
 				parse_err_logged = 1;
 			}
@@ -270,7 +270,7 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 	if (tmp) {
 		if (strlen(tmp) >= LJI_USER_NAME_MAX) {
 			if (!parse_err_logged) {
-				msglog(LDMSD_LINFO,"Username too long '%s'\n",
+				ovis_log(mylog, OVIS_LINFO,"Username too long '%s'\n",
 					tmp);
 				parse_err_logged = 1;
 			}
@@ -283,7 +283,7 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 	}
 
 	if (!rc && recovery) {
-		msglog(LDMSD_LDEBUG, "jobid parse recovered for '%s'\n", file);
+		ovis_log(mylog, OVIS_LDEBUG, "jobid parse recovered for '%s'\n", file);
 		parse_err_logged = 0;
 	}
 	goto out;
@@ -334,13 +334,13 @@ static int create_metric_set(const char *instance_name, char* schema_name,
 	schema = ldms_schema_new(schema_name);
 	if (!schema) {
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP ": ldms_schema_new fail.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": ldms_schema_new fail.\n");
 		goto err;
 	}
 
 	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": ldms_schema_meta_add component_id fail.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": ldms_schema_meta_add component_id fail.\n");
 		goto err;
 	}
 	compid_pos = rc;
@@ -348,7 +348,7 @@ static int create_metric_set(const char *instance_name, char* schema_name,
 	rc = ldms_schema_metric_add(schema, metric_name,
 		LDMS_V_U64);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": ldms_schema_metric_add "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": ldms_schema_metric_add "
 			"%s fail.\n", metric_name);
 		goto err;
 	}
@@ -357,7 +357,7 @@ static int create_metric_set(const char *instance_name, char* schema_name,
 	rc = ldms_schema_metric_add(schema, LJI_UID_METRIC_NAME,
 		LDMS_V_U64);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": ldms_schema_metric_add "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": ldms_schema_metric_add "
 			LJI_UID_METRIC_NAME " fail.\n");
 		goto err;
 	}
@@ -366,7 +366,7 @@ static int create_metric_set(const char *instance_name, char* schema_name,
 	rc = ldms_schema_metric_array_add(schema, LJI_USER_METRIC_NAME,
 		LDMS_V_CHAR_ARRAY, LJI_USER_NAME_MAX);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": ldms_schema_metric_array_add "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": ldms_schema_metric_array_add "
 			LJI_USER_METRIC_NAME " fail.\n");
 		goto err;
 	}
@@ -375,21 +375,21 @@ static int create_metric_set(const char *instance_name, char* schema_name,
 
 	rc = ldms_schema_metric_add(schema, "app_id", LDMS_V_U64);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": ldms_schema_metric_add app_id fail.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": ldms_schema_metric_add app_id fail.\n");
 		goto err;
 	}
 	appid_pos = rc;
 
 	rc = ldms_schema_meta_add(schema, "job_start", LDMS_V_U32);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": ldms_schema_meta_add job_start fail.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": ldms_schema_meta_add job_start fail.\n");
 		goto err;
 	}
 	jstart_pos = rc;
 
 	rc = ldms_schema_meta_add(schema, "job_end", LDMS_V_U32);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": ldms_schema_meta_add job_end fail.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": ldms_schema_meta_add job_end fail.\n");
 		goto err;
 	}
 	jend_pos = rc;
@@ -402,7 +402,7 @@ static int create_metric_set(const char *instance_name, char* schema_name,
 	set = ldms_set_new(instance_name, schema);
 	if (!set) {
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP ": ldms_set_new fail.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": ldms_set_new fail.\n");
 		goto err;
 	}
 	base_auth_set(&auth, set);
@@ -410,7 +410,7 @@ static int create_metric_set(const char *instance_name, char* schema_name,
 
 	rc = ldms_set_publish(set);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": ldms_set_publish fail.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": ldms_set_publish fail.\n");
 		errno = rc;
 		goto err;
 	} else {
@@ -423,7 +423,7 @@ static int create_metric_set(const char *instance_name, char* schema_name,
 	 */
 	(void)parse_jobinfo(procfile, &ji, set);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": first parse_jobinfo fail ignored;"
+		ovis_log(mylog, OVIS_LERROR, SAMP ": first parse_jobinfo fail ignored;"
 			"expect 0/root data values. Queue system silent?\n");
 	}
 	return 0;
@@ -437,7 +437,7 @@ static int create_metric_set(const char *instance_name, char* schema_name,
 		ldms_schema_delete(schema);
 		schema = NULL;
 	}
-	msglog(LDMSD_LDEBUG, SAMP ": rc=%d: %s.\n", rc, STRERROR(-rc));
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": rc=%d: %s.\n", rc, STRERROR(-rc));
 	return -rc;
 }
 
@@ -454,7 +454,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP "config argument %s has been deprecated.\n",
+			ovis_log(mylog, OVIS_LERROR, SAMP "config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -481,7 +481,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
@@ -490,20 +490,20 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
  
-	rc = base_auth_parse(avl, &auth, msglog);
+	rc = base_auth_parse(avl, &auth, mylog);
 	if (rc != 0){
 		return rc;
 	}
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog(LDMSD_LERROR, SAMP ": missing producer.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": missing producer.\n");
 		return ENOENT;
 	}
 
 	iname = av_value(avl, "instance");
 	if (!iname) {
-		msglog(LDMSD_LERROR, SAMP ": missing instance.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": missing instance.\n");
 		return ENOENT;
 	}
 
@@ -511,7 +511,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (!sname)
 		sname = default_schema_name;
 	if (strlen(sname) == 0) {
-		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": schema name invalid.\n");
 		return EINVAL;
 	}
 
@@ -521,7 +521,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		errno = 0;
 		compid = strtoull(value, &endp, 0);
 		if (endp == value || errno) {
-			msglog(LDMSD_LERROR,"Fail parsing component_id '%s'\n",
+			ovis_log(mylog, OVIS_LERROR,"Fail parsing component_id '%s'\n",
 				value);
 			return EINVAL;
 		}
@@ -531,7 +531,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value) {
 		procfile = strdup(value);
 		if (!procfile) {
-			msglog(LDMSD_LERROR,SAMP " no memory\n");
+			ovis_log(mylog, OVIS_LERROR,SAMP " no memory\n");
 			return ENOMEM;
 		}
 	} else {
@@ -539,18 +539,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 	metric_name = (char *)JOBID_COLNAME;
-	msglog(LDMSD_LDEBUG,"Jobid file is '%s'\n", procfile);
+	ovis_log(mylog, OVIS_LDEBUG,"Jobid file is '%s'\n", procfile);
 
 	value = av_value(avl, "set_array_card");
 	int set_array_card = (value)?(strtol(value, NULL, 0)):(1);
 
 	rc = create_metric_set(iname, sname, set_array_card);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to create a metric set.\n");
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
-	msglog(LDMSD_LDEBUG, SAMP ": config() ok.\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": config() ok.\n");
 	return 0;
 }
 
@@ -562,7 +562,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 static int sample(struct ldmsd_sampler *self)
 {
 	if (!set) {
-		msglog(LDMSD_LDEBUG,SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG,SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -640,18 +640,15 @@ static struct ldmsd_sampler jobid_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &jobid_plugin.base;
 }
-#else
-
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
-{
-	pf(LDMSD_LERROR,"jobid plugin not enabled. (configured --disable-jobid)\n");
-	return NULL;
-}
-
-#endif /* ifdef ENABLE_JOBID */

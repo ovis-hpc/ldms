@@ -69,10 +69,11 @@
  *   (flatfile::path) = (root_path)/(container)/(schema)/(metric)
  */
 
+static ovis_log_t mylog;
+
 static idx_t store_idx;
 static char tmp_path[PATH_MAX];
 static char *root_path; /**< store root path */
-static ldmsd_msg_log_f msglog;
 
 #define STRFF "flatfile"
 
@@ -130,6 +131,8 @@ static void term(struct ldmsd_plugin *self)
 	 * TODO: Iterate through all unclosed stores and cleanup resources
 	 * and close any open files.
 	 */
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -222,21 +225,21 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 			/* Create new metric store if not exist. */
 			ms = calloc(1, sizeof(*ms));
 			if (!ms) {
-				msglog(LDMSD_LERROR, STRFF ": Out of memory at %s:%d\n",
+				ovis_log(mylog, OVIS_LERROR, STRFF ": Out of memory at %s:%d\n",
 					__FILE__, __LINE__);
 				goto err4;
 			}
 			sprintf(tmp_path, "%s/%s", si->path, name);
 			ms->path = strdup(tmp_path);
 			if (!ms->path) {
-				msglog(LDMSD_LERROR, STRFF ": Out of memory at %s:%d\n",
+				ovis_log(mylog, OVIS_LERROR, STRFF ": Out of memory at %s:%d\n",
 					__FILE__, __LINE__);
 				goto err4;
 			}
 			ms->file = fopen_perm(ms->path, "a+", LDMSD_DEFAULT_FILE_PERM);
 			if (!ms->file) {
 				int eno = errno;
-				msglog(LDMSD_LERROR, STRFF ": Error opening %s: %d: %s at %s:%d\n",
+				ovis_log(mylog, OVIS_LERROR, STRFF ": Error opening %s: %d: %s at %s:%d\n",
 					ms->path, eno, STRERROR(eno),
 					__FILE__, __LINE__);
 				goto err4;
@@ -303,7 +306,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	prod = ldms_set_producer_name_get(set);
 	compidx = ldms_metric_by_name(set, LDMSD_COMPID);
 	if (compidx < 0){
-		msglog(LDMSD_LERROR, STRFF ": The component_id is missing from the metric set/schema.\n");
+		ovis_log(mylog, OVIS_LERROR, STRFF ": The component_id is missing from the metric set/schema.\n");
 		rc = compidx;
 		goto err;
 	} else {
@@ -381,7 +384,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		if (rc < 0 || rc2 < 0) {
 			last_errno = errno;
 			last_rc = (rc != 0 ? rc : rc2);
-			msglog(LDMSD_LERROR, STRFF ": Error %d: %s at %s:%d\n", last_errno,
+			ovis_log(mylog, OVIS_LERROR, STRFF ": Error %d: %s at %s:%d\n", last_errno,
 					STRERROR(last_errno), __FILE__,
 					__LINE__);
 		}
@@ -408,7 +411,7 @@ static int flush_store(ldmsd_store_handle_t _sh)
 		if (lrc) {
 			rc = lrc;
 			eno = errno;
-			msglog(LDMSD_LERROR, STRFF ": Error %d: %s at %s:%d\n",
+			ovis_log(mylog, OVIS_LERROR, STRFF ": Error %d: %s at %s:%d\n",
 				eno, STRERROR(eno),
 					__FILE__, __LINE__);
 		}
@@ -460,9 +463,15 @@ static struct ldmsd_store store_flatfile = {
 	.flush = flush_store,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store."STRFF, "Log subsystem of the '" STRFF "' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" STRFF "' plugin. Error %d\n", rc);
+	}
 	return &store_flatfile.base;
 }
 

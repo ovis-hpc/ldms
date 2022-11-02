@@ -55,7 +55,8 @@
 #include  "../sampler_base.h"
 #include "papi_sampler.h"
 
-int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg_log_f msglog)
+int papi_process_config_data(job_data_t job, char *buf, size_t buflen,
+						    ovis_log_t logger)
 {
 	json_parser_t p = NULL;
 	json_entity_t e = NULL;
@@ -66,45 +67,45 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg
 
 	p = json_parser_new(0);
 	if (!p) {
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: Parser could not be created.\n");
+		ovis_log(logger, OVIS_LERROR,
+		       "Parser could not be created.\n");
 		rc = ENOMEM;
 		goto out;
 	}
 
 	rc = json_parse_buffer(p, buf, buflen, &e);
 	if (rc) {
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: configuration file syntax error.\n");
+		ovis_log(logger, OVIS_LERROR,
+		       "configuration file syntax error.\n");
 		goto out;
 	}
 
 	schema_attr = json_attr_find(e, "schema");
 	if (!schema_attr) {
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: The configuration file is missing the "
+		ovis_log(logger, OVIS_LERROR,
+		       "The configuration file is missing the "
 		       "'schema' attribute.\n");
 		rc = ENOENT;
 		goto out;
 	}
 	events_attr = json_attr_find(e, "events");
 	if (!events_attr) {
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: The configuration file is missing the "
+		ovis_log(logger, OVIS_LERROR,
+		       "The configuration file is missing the "
 		       "'events' attribute.\n");
 		rc = ENOENT;
 		goto out;
 	}
 	if (JSON_STRING_VALUE != json_entity_type(json_attr_value(schema_attr))) {
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: The 'schema' attribute must be a string.\n");
+		ovis_log(logger, OVIS_LERROR,
+		       "The 'schema' attribute must be a string.\n");
 		rc = EINVAL;
 		goto out;
 	}
 	events_list = json_attr_value(events_attr);
 	if (JSON_LIST_VALUE != json_entity_type(events_list)) {
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: The 'events' attribute must be a list.\n");
+		ovis_log(logger, OVIS_LERROR,
+		       "The 'events' attribute must be a list.\n");
 		rc = EINVAL;
 		goto out;
 	}
@@ -112,8 +113,8 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg
 	json_str_t str = json_value_str(json_attr_value(schema_attr));
 	job->schema_name = strdup(str->str);
 	if (!job->schema_name) {
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: Error duplicating schema name string.\n");
+		ovis_log(logger, OVIS_LERROR,
+		       "Error duplicating schema name string.\n");
 		rc = ENOMEM;
 		goto out;
 	}
@@ -126,34 +127,34 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg
 	for (event_name = json_item_first(events_list); event_name;
 	     event_name = json_item_next(event_name)) {
 		if (JSON_STRING_VALUE != json_entity_type(event_name)) {
-			msglog(LDMSD_LERROR,
-			       "papi_sampler: Event names must be strings.\n");
+			ovis_log(logger, OVIS_LERROR,
+			       "Event names must be strings.\n");
 			goto out;
 		}
 		event_str = json_value_str(event_name)->str;
 		rc = PAPI_event_name_to_code(event_str, &event_code);
 		if (rc) {
-			msglog(LDMSD_LERROR, "papi_sampler: PAPI error '%s' "
+			ovis_log(logger, OVIS_LERROR, "PAPI error '%s' "
 			       "translating event code '%s'\n",
 			       PAPI_strerror(rc), event_str);
 			goto out;
 		}
 		rc = PAPI_query_event(event_code);
 		if (rc != PAPI_OK) {
-			msglog(LDMSD_LERROR, "papi_sampler: PAPI error '%s' "
+			ovis_log(logger, OVIS_LERROR, "PAPI error '%s' "
 			       "query event '%s'\n",
 			       PAPI_strerror(rc), event_str);
 			goto out;
 		}
 		ev = malloc(sizeof *ev);
 		if (!ev) {
-			msglog(LDMSD_LERROR, "papi_sampler[%d]: Memory "
+			ovis_log(logger, OVIS_LERROR, "papi_sampler[%d]: Memory "
 			       "allocation failure.\n", __LINE__);
 			goto out;
 		}
 		rc = PAPI_get_event_info(event_code, &ev->event_info);
 		if (rc != PAPI_OK) {
-			msglog(LDMSD_LERROR, "papi_sampler: PAPI error '%s' "
+			ovis_log(logger, OVIS_LERROR, "PAPI error '%s' "
 			       "getting event info '%s'\n",
 			       PAPI_strerror(rc), event_str);
 			goto out;
@@ -161,7 +162,7 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg
 		ev->event_code = event_code;
 		ev->event_name = strdup(event_str);
 		if (!ev->event_name) {
-			msglog(LDMSD_LERROR, "papi_sampler[%d]: Memory "
+			ovis_log(logger, OVIS_LERROR, "papi_sampler[%d]: Memory "
 			       "allocation failure.\n", __LINE__);
 			goto out;
 		}
@@ -184,7 +185,7 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg
  * \retval 0 - success
  * \retval errno
  */
-int papi_process_config_file(job_data_t job, const char *path, ldmsd_msg_log_f msglog)
+int papi_process_config_file(job_data_t job, const char *path, ovis_log_t logger)
 {
 	struct stat statbuf;
 	char *buf;
@@ -195,16 +196,16 @@ int papi_process_config_file(job_data_t job, const char *path, ldmsd_msg_log_f m
 
 	buf = malloc(statbuf.st_size+2);
 	if (!buf) {
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: configuration file of size %d is too large\n",
+		ovis_log(logger, OVIS_LERROR,
+		       "configuration file of size %d is too large\n",
 		       statbuf.st_size);
 		return ENOMEM;
 	}
 	fp = fopen(path, "r");
 	rc = errno;
 	if (!fp) {
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: Error %d opening configuration file '%s'\n",
+		ovis_log(logger, OVIS_LERROR,
+		       "Error %d opening configuration file '%s'\n",
 		       errno, path);
 		goto out;
 	}
@@ -212,14 +213,14 @@ int papi_process_config_file(job_data_t job, const char *path, ldmsd_msg_log_f m
 	fclose(fp);
 	if (rc <= 0) {
 		rc = errno;
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: Error %d reading configuration file '%s'\n",
+		ovis_log(logger, OVIS_LERROR,
+		       "Error %d reading configuration file '%s'\n",
 		       rc, path);
 		goto out;
 	}
 	buf[rc] = '\0';
 	buf[rc+1] = '\0';
-	rc = papi_process_config_data(job, buf, rc, msglog);
+	rc = papi_process_config_data(job, buf, rc, logger);
  out:
 	free(buf);
 	return rc;

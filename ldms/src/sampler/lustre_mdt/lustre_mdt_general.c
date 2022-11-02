@@ -17,6 +17,9 @@
 
 static ldms_schema_t mdt_general_schema;
 
+/* Defined in lustre_mdt.c */
+extern ovis_log_t lustre_mdt_log;
+
 static char *mdt_md_stats_uint64_t_entries[] = {
         "open",
         "close",
@@ -62,7 +65,7 @@ int mdt_general_schema_init(comp_id_t cid)
         int rc;
         int i;
 
-        log_fn(LDMSD_LDEBUG, SAMP" mdt_general_schema_init()\n");
+        ovis_log(lustre_mdt_log, OVIS_LDEBUG, "mdt_general_schema_init()\n");
         sch = ldms_schema_new("lustre_mdt");
         if (sch == NULL)
                 goto err1;
@@ -98,17 +101,17 @@ int mdt_general_schema_init(comp_id_t cid)
 
         return 0;
 err2:
-	log_fn(LDMSD_LERROR, SAMP ": lustre_mdt_general schema creation failed to add %s. (%s)\n",
+	ovis_log(lustre_mdt_log, OVIS_LERROR, "lustre_mdt_general schema creation failed to add %s. (%s)\n",
 		field, STRERROR(-rc));
         ldms_schema_delete(sch);
 err1:
-        log_fn(LDMSD_LERROR, SAMP" lustre_mdt_general schema creation failed\n");
+        ovis_log(lustre_mdt_log, OVIS_LERROR, "lustre_mdt_general schema creation failed\n");
         return -1;
 }
 
 void mdt_general_schema_fini()
 {
-        log_fn(LDMSD_LDEBUG, SAMP" mdt_general_schema_fini()\n");
+        ovis_log(lustre_mdt_log, OVIS_LDEBUG, "mdt_general_schema_fini()\n");
         if (mdt_general_schema != NULL) {
                 ldms_schema_delete(mdt_general_schema);
                 mdt_general_schema = NULL;
@@ -143,10 +146,10 @@ char *mdt_general_osd_path_find(const char *search_path, const char *mdt_name)
         closedir(dir);
 
         if (osd_path != NULL) {
-                log_fn(LDMSD_LDEBUG, SAMP" for mdt %s found osd path %s\n",
+                ovis_log(lustre_mdt_log, OVIS_LDEBUG, "for mdt %s found osd path %s\n",
                        mdt_name, osd_path);
         } else {
-                log_fn(LDMSD_LWARNING, SAMP" osd for mdt %s not found\n",
+                ovis_log(lustre_mdt_log, OVIS_LWARNING, "osd for mdt %s not found\n",
                        mdt_name);
         }
 
@@ -163,11 +166,11 @@ static uint64_t file_read_uint64_t(const char *dir, const char *file)
         snprintf(filepath, PATH_MAX, "%s/%s", dir, file);
         fp = fopen(filepath, "r");
         if (fp == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" unable to open %s\n", filepath);
+                ovis_log(lustre_mdt_log, OVIS_LWARNING, "unable to open %s\n", filepath);
                 return 0;
         }
         if (fgets(valbuf, sizeof(valbuf), fp) == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" unable to read %s\n", filepath);
+                ovis_log(lustre_mdt_log, OVIS_LWARNING, "unable to read %s\n", filepath);
                 fclose(fp);
                 return 0;
         }
@@ -212,7 +215,7 @@ ldms_set_t mdt_general_create(const char *producer_name,
         int index;
         char instance_name[LDMS_PRODUCER_NAME_MAX+64];
 
-        log_fn(LDMSD_LDEBUG, SAMP" mdt_general_create()\n");
+        ovis_log(lustre_mdt_log, OVIS_LDEBUG, "mdt_general_create()\n");
         snprintf(instance_name, sizeof(instance_name), "%s/%s",
                  producer_name, mdt_name);
         set = ldms_set_new(instance_name, mdt_general_schema);
@@ -236,7 +239,7 @@ static void mdt_md_stats_sample(const char *stats_path,
 
         sf = fopen(stats_path, "r");
         if (sf == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" file %s not found\n",
+                ovis_log(lustre_mdt_log, OVIS_LWARNING, "file %s not found\n",
                        stats_path);
                 return;
         }
@@ -246,12 +249,12 @@ static void mdt_md_stats_sample(const char *stats_path,
            from the file, not any information about when the stats last
            changed */
         if (fgets(buf, sizeof(buf), sf) == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" failed on read from %s\n",
+                ovis_log(lustre_mdt_log, OVIS_LWARNING, "failed on read from %s\n",
                        stats_path);
                 goto out1;
         }
         if (strncmp("snapshot_time", buf, sizeof("snapshot_time")-1) != 0) {
-                log_fn(LDMSD_LWARNING, SAMP" first line in %s is not \"snapshot_time\": %s\n",
+                ovis_log(lustre_mdt_log, OVIS_LWARNING, "first line in %s is not \"snapshot_time\": %s\n",
                        stats_path, buf);
                 goto out1;
         }
@@ -267,7 +270,7 @@ static void mdt_md_stats_sample(const char *stats_path,
                 if (rc == 2) {
                         index = ldms_metric_by_name(general_metric_set, str1);
                         if (index == -1) {
-                                log_fn(LDMSD_LWARNING, SAMP" mdt md_stats metric not found: %s\n",
+                                ovis_log(lustre_mdt_log, OVIS_LWARNING, "mdt md_stats metric not found: %s\n",
                                        str1);
                         } else {
                                 ldms_metric_set_u64(general_metric_set, index, val1);
@@ -277,7 +280,7 @@ static void mdt_md_stats_sample(const char *stats_path,
                         int base_name_len = strlen(str1);
                         index = ldms_metric_by_name(general_metric_set, str1);
                         if (index == -1) {
-                                log_fn(LDMSD_LWARNING, SAMP" mdt md_stats metric not found: %s\n",
+                                ovis_log(lustre_mdt_log, OVIS_LWARNING, "mdt md_stats metric not found: %s\n",
                                        str1);
                         } else {
                                 ldms_metric_set_u64(general_metric_set, index, val1);
@@ -285,7 +288,7 @@ static void mdt_md_stats_sample(const char *stats_path,
                         sprintf(str1+base_name_len, ".sum"); /* append ".sum" */
                         index = ldms_metric_by_name(general_metric_set, str1);
                         if (index == -1) {
-                                log_fn(LDMSD_LWARNING, SAMP" mdt md_stats metric not found: %s\n",
+                                ovis_log(lustre_mdt_log, OVIS_LWARNING, "mdt md_stats metric not found: %s\n",
                                        str1);
                         } else {
                                 ldms_metric_set_u64(general_metric_set, index, val2);
@@ -303,7 +306,7 @@ out1:
 void mdt_general_sample(const char *mdt_name, const char *stats_path,
                         const char *osd_path, ldms_set_t general_metric_set)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" mdt_general_sample() %s\n",
+        ovis_log(lustre_mdt_log, OVIS_LDEBUG, "mdt_general_sample() %s\n",
                mdt_name);
         mdt_md_stats_sample(stats_path, general_metric_set);
         osd_sample(osd_path, general_metric_set);

@@ -6,7 +6,7 @@ EXTRA_DIST =
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
-COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
+COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll -lovis_log \
 		@LDFLAGS_GETTIME@
 
 libvariorum_sampler_la_SOURCES = variorum_sampler.c

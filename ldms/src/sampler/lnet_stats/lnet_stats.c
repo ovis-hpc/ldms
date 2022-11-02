@@ -88,8 +88,9 @@ static const char * default_lnet_state_files[] = {
 		"/proc/sys/lnet/stats",
 };
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 #define SAMP "lnet_stats"
+
+static ovis_log_t mylog;
 
 static int metric_offset;
 static base_data_t base;
@@ -197,7 +198,7 @@ static int get_data()
 
 	if (lnet_state_file == NULL || parse_stats()) {
 		if (!parse_err_cnt) {
-			msglog(LDMSD_LINFO, SAMP ": Could not parse the " SAMP
+			ovis_log(mylog, OVIS_LINFO, SAMP ": Could not parse the " SAMP
 				 " file '%s'\n", lnet_state_file ? lnet_state_file :
 				"/sys/kernel/debug/lnet/stats or /proc/sys/lnet/stats"
 				);
@@ -206,7 +207,7 @@ static int get_data()
 		return ENOENT;
 	}
 	if (parse_err_cnt) {
-		msglog(LDMSD_LDEBUG, SAMP ": parsed file '%s'\n", lnet_state_file);
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": parsed file '%s'\n", lnet_state_file);
 		parse_err_cnt = 0;
 	}
 	return 0;
@@ -219,7 +220,7 @@ static int create_metric_set(base_data_t base)
 
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = errno;
@@ -267,7 +268,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s is obsolete.\n",
+			ovis_log(mylog, OVIS_LERROR, SAMP ": config argument %s is obsolete.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -288,7 +289,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
@@ -300,16 +301,16 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *pvalue = av_value(avl, "file");
 	if (pvalue) {
 		lnet_state_file = strdup(pvalue);
-		msglog(LDMSD_LDEBUG, SAMP ": User-defined lnet_state_file %s.\n", pvalue);
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": User-defined lnet_state_file %s.\n", pvalue);
 	}
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base)
 		return EINVAL;
 
 	rc  = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err;
 	}
 
@@ -359,6 +360,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler lnet_stats_plugin = {
@@ -373,9 +376,15 @@ static struct ldmsd_sampler lnet_stats_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &lnet_stats_plugin.base;
 }

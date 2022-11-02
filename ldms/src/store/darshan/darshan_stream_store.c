@@ -68,7 +68,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 
 static sos_schema_t app_schema;
 static char path_buff[PATH_MAX];
@@ -211,14 +211,14 @@ static int create_schema(sos_t sos, sos_schema_t *app)
 	/* Create and add the App schema */
 	schema = sos_schema_from_template(&darshan_data_template);
 	if (!schema) {
-		msglog(LDMSD_LERROR, "%s: Error %d creating Darshan data schema.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d creating Darshan data schema.\n",
 		       darshan_stream_store.name, errno);
 		rc = errno;
 		goto err;
 	}
 	rc = sos_schema_add(sos, schema);
 	if (rc) {
-		msglog(LDMSD_LERROR, "%s: Error %d adding Darshan data schema.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d adding Darshan data schema.\n",
 				darshan_stream_store.name, rc);
 		goto err;
 	}
@@ -277,7 +277,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value)
 		container_mode = strtol(value, NULL, 0);
 	if (!container_mode) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: ignoring bogus container permission mode of %s, using 0660.\n",
 		       darshan_stream_store.name, value);
 	}
@@ -291,7 +291,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	value = av_value(avl, "path");
 	if (!value) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: the path to the container (path=) must be specified.\n",
 		       darshan_stream_store.name);
 		return ENOENT;
@@ -301,7 +301,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		free(root_path);
 	root_path = strdup(value);
 	if (!root_path) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Error allocating %d bytes for the container path.\n",
 		       strlen(value) + 1);
 		return ENOMEM;
@@ -309,7 +309,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = reopen_container(root_path);
 	if (rc) {
-		msglog(LDMSD_LERROR, "%s: Error opening %s.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error opening %s.\n",
 		       darshan_stream_store.name, root_path);
 		return ENOENT;
 	}
@@ -322,7 +322,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 	json_entity_t a = json_attr_find(e, name);
 	json_entity_t v;
 	if (!a) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The JSON entity is missing the '%s' attribute.\n",
 		       darshan_stream_store.name,
 		       name);
@@ -331,7 +331,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 	v = json_attr_value(a);
 	v_type = json_entity_type(v);
 	if (v_type != expected_type) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The '%s' JSON entity is the wrong type. "
 		       "Expected %d, received %d\n",
 		       darshan_stream_store.name,
@@ -359,9 +359,8 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		return 0;
 
 	if (!ev->recv.json) {
-		msglog(LDMSD_LERROR,
-		       "%s: NULL entity received in stream callback.\n",
-		       darshan_stream_store.name);
+		ovis_log(mylog, OVIS_LERROR,
+		       "NULL entity received in stream callback.\n");
 		return 0;
 	}
 
@@ -441,7 +440,7 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	for (item = json_item_first(list); item; item = json_item_next(item)) {
 
 		if (json_entity_type(item) != JSON_DICT_VALUE) {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "%s: Items in segment must all be dictionaries.\n",
 			       darshan_stream_store.name);
 			rc = EINVAL;
@@ -501,13 +500,13 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		sos_obj_t obj = sos_obj_new(app_schema);
 		if (!obj) {
 			rc = errno;
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "%s: Error %d creating Darshan data object.\n",
 			       darshan_stream_store.name, errno);
 			goto err;
 		}
 
-		msglog(LDMSD_LDEBUG, "%s: Got a record from stream (%s), module_name = %s\n",
+		ovis_log(mylog, OVIS_LDEBUG, "%s: Got a record from stream (%s), module_name = %s\n",
 				darshan_stream_store.name, stream, module_name);
 
 		sos_obj_attr_by_id_set(obj, UID_ID, uid);
@@ -550,6 +549,8 @@ static void term(struct ldmsd_plugin *self)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 	if (root_path)
 		free(root_path);
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_plugin darshan_stream_store = {
@@ -559,8 +560,14 @@ static struct ldmsd_plugin darshan_stream_store = {
 	.usage = usage,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store.darshan_stream_store", "Log subsystem of the 'darshan_stream_store' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'darshan_stream_store' plugin. Error %d\n", rc);
+	}
 	return &darshan_stream_store;
 }

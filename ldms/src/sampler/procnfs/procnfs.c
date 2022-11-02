@@ -116,10 +116,11 @@ static char* varnames[MAXOPTS][21] = {
 
 static int numvars[MAXOPTS] = { 2, 21 };
 
+static ovis_log_t mylog;
+
 static ldms_set_t set;
 #define SAMP "procnfs"
 static FILE *mf;
-static ldmsd_msg_log_f msglog;
 static int metric_offset;
 static base_data_t base;
 
@@ -137,7 +138,7 @@ static int create_metric_set(base_data_t base)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, SAMP ": Could not open " PROC_FILE " file "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Could not open " PROC_FILE " file "
 				"... exiting sampler\n");
 		return ENOENT;
 	}
@@ -145,7 +146,7 @@ static int create_metric_set(base_data_t base)
 	/* Create a metric set of the required size */
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = EINVAL;
@@ -198,7 +199,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
+			ovis_log(mylog, OVIS_LERROR, SAMP ": config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -224,12 +225,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base){
 		rc = EINVAL;
 		goto err;
@@ -237,7 +238,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err;
 	}
 
@@ -265,7 +266,7 @@ static int sample(struct ldmsd_sampler *self)
 	union ldms_value v[VBUFSZ];
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -317,7 +318,7 @@ static int sample(struct ldmsd_sampler *self)
 	if (found != 2) {
 		if (nfs3_warn_once) {
 			nfs3_warn_once = 0;
-			msglog(LDMSD_LERROR, SAMP ": " PROC_FILE " file "
+			ovis_log(mylog, OVIS_LERROR, SAMP ": " PROC_FILE " file "
 				"does not contain nfs3 statistics.\n");
 		}
 	}
@@ -337,6 +338,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 
@@ -352,9 +355,15 @@ static struct ldmsd_sampler procnfs_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &procnfs_plugin.base;
 }

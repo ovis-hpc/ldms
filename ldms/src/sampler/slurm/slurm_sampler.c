@@ -77,9 +77,10 @@
 #include "ldmsd.h"
 #include "slurm_sampler.h"
 
-static ldmsd_msg_log_f msglog;
+#define SAMP "slurm_sampler"
+
+static ovis_log_t mylog;
 static ldms_set_t job_set = NULL;
-static ldmsd_msg_log_f msglog;
 static ldms_schema_t job_schema;
 static char *instance_name;
 static char *schema_name;
@@ -260,7 +261,7 @@ static int create_metric_set(void)
 	int i;
 
 	if (!instance_name) {
-		msglog(LDMSD_LERROR, "slurm_sampler: The sampler has not been configured.\n");
+		ovis_log(mylog, OVIS_LERROR, "The sampler has not been configured.\n");
 		rc = EINVAL;
 		goto err;
 	}
@@ -431,7 +432,7 @@ static int create_metric_set(void)
 		ldms_metric_array_set_s32(job_set, job_slot_list_idx, i, -1);
 	}
 	ldms_set_publish(job_set);
-	ldmsd_set_register(job_set, "slurm_sampler");
+	ldmsd_set_register(job_set, SAMP);
 	return 0;
  err:
 	if (job_schema)
@@ -442,7 +443,7 @@ static int create_metric_set(void)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=slurm_sampler producer=<producer_name> instance=<instance_name>\n"
+	return  "config name=" SAMP " producer=<producer_name> instance=<instance_name>\n"
 		"         [stream=<stream_name>] [component_id=<component_id>] [perm=<permissions>]\n"
                 "         [uid=<user_name>] [gid=<group_name>] [job_count=<job_length>]\n"
                 "         [task_count=<task_length>]\n"
@@ -472,7 +473,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc;
 
 	if (job_set) {
-		msglog(LDMSD_LERROR, "slurm_sampler: Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
@@ -482,19 +483,19 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	else
 		stream = strdup("slurm");
 	if (!stream) {
-		msglog(LDMSD_LERROR, "slurm_sampler: out of memory\n");
+		ovis_log(mylog, OVIS_LERROR, "out of memory\n");
 		return ENOMEM;
 	}
 	ldms_stream_subscribe(stream, 0, slurm_recv_cb, self, "slurm_sampler");
 
 	value = av_value(avl, "producer");
 	if (!value) {
-		msglog(LDMSD_LERROR, "slurm_sampler: missing producer.\n");
+		ovis_log(mylog, OVIS_LERROR, "missing producer.\n");
 		return ENOENT;
 	}
 	producer_name = strdup(value);
 	if (!producer_name) {
-		msglog(LDMSD_LERROR, "slurm_sampler[%d]: memory allocation error.\n", __LINE__);
+		ovis_log(mylog, OVIS_LERROR, "slurm_sampler[%d]: memory allocation error.\n", __LINE__);
 		return ENOMEM;
 	}
 
@@ -514,8 +515,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			/* Try to lookup the user name */
 			struct passwd *pwd = getpwnam(value);
 			if (!pwd) {
-				msglog(LDMSD_LERROR,
-				       "slurm_sampler: The specified user '%s' does not exist\n",
+				ovis_log(mylog, OVIS_LERROR,
+				       "The specified user '%s' does not exist\n",
 				       value);
 				return EINVAL;
 			}
@@ -531,8 +532,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			/* Try to lookup the group name */
 			struct group *grp = getgrnam(value);
 			if (!grp) {
-				msglog(LDMSD_LERROR,
-				       "slurm_sampler: The specified group '%s' does not exist\n",
+				ovis_log(mylog, OVIS_LERROR,
+				       "The specified group '%s' does not exist\n",
 				       value);
 				return EINVAL;
 			}
@@ -545,8 +546,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	value = av_value(avl, "perm");
 	if (value) {
 		if (value[0] != '0') {
-			msglog(LDMSD_LINFO,
-			       "slurm_sampler: Warning, the permission bits '%s' are not specified "
+			ovis_log(mylog, OVIS_LWARN,
+			       "the permission bits '%s' are not specified "
 			       "as an Octal number.\n",
 			       value);
 		}
@@ -556,12 +557,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog(LDMSD_LERROR, "slurm_sampler: missing instance.\n");
+		ovis_log(mylog, OVIS_LERROR, "missing instance.\n");
 		return ENOENT;
 	}
 	instance_name = strdup(value);
 	if (!instance_name) {
-		msglog(LDMSD_LERROR, "slurm_sampler[%d]: memory allocation error.\n", __LINE__);
+		ovis_log(mylog, OVIS_LERROR, "slurm_sampler[%d]: memory allocation error.\n", __LINE__);
 		return ENOMEM;
 	}
 
@@ -573,7 +574,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	for (i = 0; i < job_list_len; i++) {
 		job_data_t job = malloc(sizeof *job);
 		if (!job) {
-			msglog(LDMSD_LERROR, "slurm_sapler[%d]: memory "
+			ovis_log(mylog, OVIS_LCRIT, "slurm_sapler[%d]: memory "
 			       "allocation failure.\n", __LINE__);
 			goto err;
 		}
@@ -599,7 +600,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set();
 	if (rc) {
-		msglog(LDMSD_LERROR, "slurm-sampler: error %d creating "
+		ovis_log(mylog, OVIS_LERROR, "error %d creating "
 		       "the slurm job data metric set\n", rc);
 	}
  err:
@@ -615,7 +616,7 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 
 	attr = json_attr_find(e, "timestamp");
 	if (!attr) {
-		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'timestamp' attribute "
+		ovis_log(mylog, OVIS_LERROR, "Missing 'timestamp' attribute "
 		       "in 'init' event.\n");
 		return;
 	}
@@ -623,7 +624,7 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 
 	data = json_attr_find(e, "data");
 	if (!data) {
-		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'data' attribute "
+		ovis_log(mylog, OVIS_LERROR, "Missing 'data' attribute "
 		       "in 'init' event.\n");
 		return;
 	}
@@ -665,7 +666,7 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 
 	attr = json_attr_find(dict, "total_tasks");
 	if (!attr) {
-		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'total_tasks' attribute "
+		ovis_log(mylog, OVIS_LERROR, "Missing 'total_tasks' attribute "
 		       "in 'init' event.\n");
 		goto out;
 	}
@@ -690,7 +691,7 @@ static void handle_step_init(job_data_t job, json_entity_t e)
 
 	data = json_attr_find(e, "data");
 	if (!data) {
-		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'data' attribute "
+		ovis_log(mylog, OVIS_LERROR, "Missing 'data' attribute "
 		       "in 'init' event.\n");
 		return;
 	}
@@ -764,7 +765,7 @@ static void handle_step_init(job_data_t job, json_entity_t e)
 
 	attr = json_attr_find(dict, "total_tasks");
 	if (!attr) {
-		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'total_tasks' attribute "
+		ovis_log(mylog, OVIS_LERROR, "Missing 'total_tasks' attribute "
 		       "in 'init' event.\n");
 		goto out;
 	}
@@ -783,7 +784,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 
 	data = json_attr_find(e, "data");
 	if (!data) {
-		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'data' attribute "
+		ovis_log(mylog, OVIS_LERROR, "Missing 'data' attribute "
 		       "in 'task_init' event.\n");
 		return;
 	}
@@ -791,7 +792,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 
 	attr = json_attr_find(dict, "task_id");
 	if (!attr) {
-		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'task_id' attribute "
+		ovis_log(mylog, OVIS_LERROR, "Missing 'task_id' attribute "
 		       "in 'task_init' event.\n");
 		return;
 	}
@@ -799,7 +800,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 
 	attr = json_attr_find(dict, "task_pid");
 	if (!attr) {
-		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'task_pid' attribute "
+		ovis_log(mylog, OVIS_LERROR, "Missing 'task_pid' attribute "
 		       "in 'task_init' event.\n");
 		return;
 	}
@@ -809,7 +810,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 
 	attr = json_attr_find(dict, "task_global_id");
 	if (!attr) {
-		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'task_global_id' attribute "
+		ovis_log(mylog, OVIS_LERROR, "Missing 'task_global_id' attribute "
 		       "in 'task_init' event.\n");
 		goto out;
 	}
@@ -865,20 +866,20 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		return 0;
 
 	if (ev->recv.type != LDMS_STREAM_JSON) {
-		msglog(LDMSD_LDEBUG, "slurm_sampler: Unexpected stream type data...ignoring\n");
-		msglog(LDMSD_LDEBUG, "slurm_sampler:" "%s\n", ev->recv.data);
+		ovis_log(mylog, OVIS_LDEBUG, "Unexpected stream type data...ignoring\n");
+		ovis_log(mylog, OVIS_LDEBUG, "%s\n", ev->recv.data);
 		return EINVAL;
 	}
 
 	event = json_attr_find(ev->recv.json, "event");
 	if (!event) {
-		msglog(LDMSD_LERROR, "slurm_sampler: 'event' attribute missing\n");
+		ovis_log(mylog, OVIS_LERROR, "'event' attribute missing\n");
 		goto out_0;
 	}
 
 	attr = json_attr_find(ev->recv.json, "timestamp");
 	if (!attr) {
-		msglog(LDMSD_LERROR, "slurm_sampler: 'timestamp' attribute missing\n");
+		ovis_log(mylog, OVIS_LERROR, "'timestamp' attribute missing\n");
 		goto out_0;
 	}
 	tstamp = json_value_int(json_attr_value(attr));
@@ -886,14 +887,14 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	json_str_t event_name = json_value_str(json_attr_value(event));
 	data = json_attr_find(ev->recv.json, "data");
 	if (!data) {
-		msglog(LDMSD_LERROR, "slurm_sampler: '%s' event is missing "
+		ovis_log(mylog, OVIS_LERROR, "'%s' event is missing "
 		       "the 'data' attribute\n", event_name->str);
 		goto out_0;
 	}
 	dict = json_attr_value(data);
 	attr = json_attr_find(dict, "job_id");
 	if (!attr) {
-		msglog(LDMSD_LERROR, "slurm_sampler: The event is missing the "
+		ovis_log(mylog, OVIS_LERROR, "The event is missing the "
 		       "'job_id' attribute.\n");
 		goto out_0;
 	}
@@ -909,7 +910,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 			uint64_t local_task_count;
 			attr = json_attr_find(dict, "local_tasks");
 			if (!attr) {
-				msglog(LDMSD_LERROR, "slurm_sampler: '%s' event "
+				ovis_log(mylog, OVIS_LERROR, "'%s' event "
 				       "is missing the 'local_tasks'.\n", event_name->str);
 				goto out_1;
 			}
@@ -917,7 +918,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 			local_task_count = json_value_int(json_attr_value(attr));
 			job = alloc_job_data(job_id, local_task_count);
 			if (!job) {
-				msglog(LDMSD_LERROR,
+				ovis_log(mylog, OVIS_LERROR,
 				       "slurm_sampler[%d]: Memory allocation failure.\n",
 				       __LINE__);
 				goto out_1;
@@ -927,7 +928,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	} else if (0 == strncmp(event_name->str, "step_init", 9)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
-			msglog(LDMSD_LERROR, "slurm_sampler: '%s' event "
+			ovis_log(mylog, OVIS_LERROR, "'%s' event "
 			       "was received for job %d with no job_data\n",
 			       event_name->str, job_id);
 			goto out_1;
@@ -936,7 +937,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
-			msglog(LDMSD_LERROR, "slurm_sampler: '%s' event "
+			ovis_log(mylog, OVIS_LERROR, "'%s' event "
 			       "was received for job %d with no job_data\n",
 			       event_name->str, job_id);
 			goto out_1;
@@ -945,7 +946,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	} else if (0 == strncmp(event_name->str, "task_exit", 9)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
-			msglog(LDMSD_LERROR, "slurm_sampler: '%s' event "
+			ovis_log(mylog, OVIS_LERROR, "'%s' event "
 			       "was received for job %d with no job_data\n",
 			       event_name->str, job_id);
 			goto out_1;
@@ -954,7 +955,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	} else if (0 == strncmp(event_name->str, "exit", 4)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
-			msglog(LDMSD_LERROR, "slurm_sampler: '%s' event "
+			ovis_log(mylog, OVIS_LERROR, "'%s' event "
 			       "was received for job %d with no job_data\n",
 			       event_name->str, job_id);
 			goto out_1;
@@ -962,8 +963,8 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		handle_job_exit(job, ev->recv.json);
 		release_job_data(job);
 	} else {
-		msglog(LDMSD_LDEBUG,
-		       "slurm_sampler: ignoring event '%s'\n", event_name->str);
+		ovis_log(mylog, OVIS_LDEBUG,
+		       "ignoring event '%s'\n", event_name->str);
 	}
 	rc = 0;
  out_1:
@@ -978,16 +979,18 @@ static void term(struct ldmsd_plugin *self)
 		ldms_schema_delete(job_schema);
 	job_schema = NULL;
 	if (job_set) {
-		ldmsd_set_deregister(ldms_set_instance_name_get(job_set), "slurm_sampler");
+		ldmsd_set_deregister(ldms_set_instance_name_get(job_set), SAMP);
 		ldms_set_unpublish(job_set);
 		ldms_set_delete(job_set);
 	}
 	job_set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler slurm_sampler = {
 	.base = {
-		.name = "slurm_sampler",
+		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
@@ -997,9 +1000,15 @@ static struct ldmsd_sampler slurm_sampler = {
 	.sample = sample
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	return &slurm_sampler.base;
 }
 

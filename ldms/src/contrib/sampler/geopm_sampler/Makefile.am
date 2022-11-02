@@ -9,7 +9,8 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 		$(top_builddir)/ldms/src/core/libldms.la \
 		@LDFLAGS_GETTIME@ \
 		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
-		$(top_builddir)/lib/src/coll/libcoll.la
+		$(top_builddir)/lib/src/coll/libcoll.la \
+		${top_builddir}/lib/src/ovis_log/libovis_log.la
 
 if ENABLE_GEOPM_SAMPLER
 libldms_geopm_sampler_la_SOURCES = ldms_geopm_sampler.c ldms_geopm_sampler.h
@@ -17,7 +18,8 @@ libldms_geopm_sampler_la_LIBADD = $(COMMON_LIBADD) -lgeopmd
 pkglib_LTLIBRARIES += libldms_geopm_sampler.la
 dist_man7_MANS += Plugin_geopm_sampler.man
 ldms_geopm_sampler_test_SOURCES = ldms_geopm_sampler_test.c ldms_geopm_sampler.h
-ldms_geopm_sampler_test_LDADD = libldms_geopm_sampler.la
+ldms_geopm_sampler_test_LDADD = libldms_geopm_sampler.la \
+				${top_builddir)/lib/src/ovis_log/libovis_log.la
 check_PROGRAMS = ldms_geopm_sampler_test
 TESTS += ldms_geopm_sampler_test.sh \
          ldms_geopm_sampler_test_domain.sh \

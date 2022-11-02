@@ -65,16 +65,17 @@
 #include <sys/syscall.h>
 #include <assert.h>
 #include <coll/rbt.h>
+#include <ovis_log/ovis_log.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
 #define LOG_(level, ...) do { \
-	msglog(level, "stream_dump: "__VA_ARGS__); \
+	ovis_log(mylog, level, __VA_ARGS__); \
 } while(0);
 
-#define ERR_LOG(...) LOG_(LDMSD_LERROR, __VA_ARGS__)
+#define ERR_LOG(...) LOG_(OVIS_LERROR, __VA_ARGS__)
 
-ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 
 static const char *_usage = "\
     config name=stream_dump op=subscribe|close stream=<STREAM>\n\
@@ -328,8 +329,14 @@ static struct ldmsd_store stream_dump = {
 	.commit = __commit,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store.stream_dump", "Log susbsystem of 'stream_dump' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+				"of 'stream_dump' plugin. Error %d\n", rc);
+	}
 	return &stream_dump.base;
 }

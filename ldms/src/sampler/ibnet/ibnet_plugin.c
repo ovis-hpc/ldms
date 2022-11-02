@@ -65,7 +65,7 @@
  * the user can override with the schema= option.
  */
 
-static ldmsd_msg_log_f msg_log;
+static ovis_log_t mylog;
 static pthread_mutex_t only_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ibnet_data *only = NULL;
 static char *usage = NULL;
@@ -79,10 +79,10 @@ static int config_ibnet(struct ldmsd_plugin *self,
 	if (only)
 		ibnet_data_delete(only);
 	else
-		only = ibnet_data_new(msg_log, avl, kwl);
+		only = ibnet_data_new(mylog, avl, kwl);
 
 	if (!only) {
-		msg_log(LDMSD_LDEBUG, SAMP" config() called, error returned %d.\n", errno);
+		ovis_log(mylog, OVIS_LDEBUG, SAMP" config() called, error returned %d.\n", errno);
 		rc = 1;
 	}  else {
 		rc = 0;
@@ -97,7 +97,7 @@ static int sample_ibnet(struct ldmsd_sampler *self)
 	struct ibnet_data *inst = only;
 
 	if (!inst) {
-		msg_log(LDMSD_LERROR, SAMP " not properly configured.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP " not properly configured.\n");
 	} else {
 		ibnet_data_sample(inst);
 	}
@@ -109,13 +109,15 @@ static int sample_ibnet(struct ldmsd_sampler *self)
 static void term_ibnet(struct ldmsd_plugin *self)
 {
 	pthread_mutex_lock(&only_lock);
-	msg_log(LDMSD_LDEBUG, SAMP " term() called\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP " term() called\n");
 	ibnet_data_delete(only);
 	only = NULL;
 	if (usage) {
 		free(usage);
 		usage = NULL;
 	}
+	if (mylog)
+		ovis_log_destroy(mylog);
 	pthread_mutex_unlock(&only_lock);
 }
 
@@ -126,7 +128,7 @@ static ldms_set_t get_set_ibnet(struct ldmsd_sampler *self)
 
 static const char *usage_ibnet(struct ldmsd_plugin *self)
 {
-	msg_log(LDMSD_LDEBUG, SAMP " usage() called\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP " usage() called\n");
 	if (!usage)
 		usage = ibnet_data_usage();
 	return usage;
@@ -144,9 +146,15 @@ static struct ldmsd_sampler ibnet_plugin = {
 	.sample = sample_ibnet,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msg_log = pf;
-	msg_log(LDMSD_LDEBUG, SAMP" get_plugin() called\n");
+	int rc;
+	ovis_log(mylog, OVIS_LDEBUG, SAMP" get_plugin() called\n");
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	return &ibnet_plugin.base;
 }

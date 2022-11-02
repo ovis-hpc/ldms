@@ -62,44 +62,6 @@
 #include "ovis_util/dstring.h"
 
 
-/** parse an option of the form name=bool where bool is
- * lead with tfyn01 or uppercase versions of same or value
- * string is "", so assume user meant name=true and absence of name
- * in options defaults to false.
- */
-int parse_bool2(ldmsd_msg_log_f mlg, struct attr_value_list *avl,
-		const char *name, bool *bval, const char *src)
-{
-	if (!avl || !name || !bval)
-		return EINVAL;
-	const char *val = av_value(avl, name);
-	if (val) {
-		switch (val[0]) {
-		case '1':
-		case 't':
-		case 'T':
-		case 'y':
-		case 'Y':
-		case '\0':
-			*bval = true;
-			break;
-		case '0':
-		case 'f':
-		case 'F':
-		case 'n':
-		case 'N':
-			*bval = false;
-			break;
-		default:
-			if (mlg)
-				mlg(LDMSD_LERROR, "%s: bad %s=%s\n",
-					(src ? src : ""), name, val);
-			return EINVAL;
-		}
-	}
-	return 0;
-}
-
 static char *bad_replacement = "/malloc/failed";
 
 int replace_string(char **strp, const char *val)
@@ -155,7 +117,7 @@ static int validate_env(const char *var, const char *val, struct csv_plugin_stat
 		}
 	}
 	if (rc)
-		cps->msglog(LDMSD_LERROR, "%s: rename_output: unsupported character %c in template use of env(%s): %s\n",
+		ovis_log(cps->mylog, OVIS_LERROR, "%s: rename_output: unsupported character %c in template use of env(%s): %s\n",
 			cps->pname, *b, var, val);
 	return rc;
 }
@@ -166,7 +128,7 @@ int create_outdir(const char *path, struct csv_store_handle_common *s_handle,
 		return EINVAL;
 	}
 	if (!s_handle) {
-		cps->msglog(LDMSD_LERROR,"create_outdir: NULL store handle received.\n");
+		ovis_log(cps->mylog, OVIS_LERROR,"create_outdir: NULL store handle received.\n");
 		return EINVAL;
 	}
 	mode_t mode = (mode_t) s_handle->create_perm;
@@ -185,7 +147,7 @@ int create_outdir(const char *path, struct csv_store_handle_common *s_handle,
 		/* default 750 */
 		mode = S_IXGRP | S_IXUSR | S_IRGRP | S_IRUSR |S_IWUSR;
 	}
-	/* cps->msglog(LDMSD_LDEBUG,"f_mkdir_p %o %s\n", (int)mode, path); */
+	/* ovis_log(cps->mylog, OVIS_LDEBUG,"f_mkdir_p %o %s\n", (int)mode, path); */
 	err = f_mkdir_p(path, mode);
 	if (err) {
 		err = errno;
@@ -193,13 +155,13 @@ int create_outdir(const char *path, struct csv_store_handle_common *s_handle,
 		case EEXIST:
 			break;
 		default:
-			cps->msglog(LDMSD_LERROR,"create_outdir: failed to create directory for %s: %s\n",
+			ovis_log(cps->mylog, OVIS_LERROR,"create_outdir: failed to create directory for %s: %s\n",
 				path, STRERROR(err));
 			return err;
 		}
 	}
 
-	/* cps->msglog(LDMSD_LDEBUG,"create_outdir: f_mkdir+p(%s, %o)\n", path, mode); */
+	/* ovis_log(cps->mylog, OVIS_LDEBUG,"create_outdir: f_mkdir+p(%s, %o)\n", path, mode); */
 	return 0;
 }
 
@@ -210,7 +172,7 @@ void rename_output(const char *name,
 		return;
 	}
 	if (!s_handle) {
-		cps->msglog(LDMSD_LERROR,"rename_output: NULL store handle received.\n");
+		ovis_log(cps->mylog, OVIS_LERROR,"rename_output: NULL store handle received.\n");
 		return;
 	}
 	const char *container = s_handle->container;
@@ -219,7 +181,7 @@ void rename_output(const char *name,
 		return;
 	char *rt = s_handle->rename_template;
 	if (!rt || !name || !ftype || !container || !schema) {
-		cps->msglog(LDMSD_LDEBUG,"Invalid argument in rename_output"
+		ovis_log(cps->mylog, OVIS_LDEBUG,"Invalid argument in rename_output"
 				"(%s, %s, %s, %s, %s, %p, %p)\n",
 				rt ? rt : "missing rename_template ",
 				name ? name : "missing name",
@@ -235,7 +197,7 @@ void rename_output(const char *name,
 		int merr = chmod(name, mode);
 		int rc = errno;
 		if (merr) {
-			cps->msglog(LDMSD_LERROR,"%s: rename_output: unable to chmod(%s,%o): %s.\n",
+			ovis_log(cps->mylog, OVIS_LERROR,"%s: rename_output: unable to chmod(%s,%o): %s.\n",
 				cps->pname, name, s_handle->rename_perm,
 				STRERROR(rc));
 		}
@@ -249,7 +211,7 @@ void rename_output(const char *name,
 		int merr = chown(name, newuid, newgid);
 		int rc = errno;
 		if (merr) {
-			cps->msglog(LDMSD_LERROR,"%s: rename_output: unable to chown(%s, %u, %u): %s.\n",
+			ovis_log(cps->mylog, OVIS_LERROR,"%s: rename_output: unable to chown(%s, %u, %u): %s.\n",
 				cps->pname, name, newuid, newgid, STRERROR(rc));
 		}
 	}
@@ -285,7 +247,7 @@ void rename_output(const char *name,
 				dscat(ds, bname);
 				free(namedup);
 			} else {
-				cps->msglog(LDMSD_LERROR,"%s: rename_output: ENOMEM\n", cps->pname);
+				ovis_log(cps->mylog, OVIS_LERROR,"%s: rename_output: ENOMEM\n", cps->pname);
 				dstr_free(&ds);
 				return;
 			}
@@ -298,7 +260,7 @@ void rename_output(const char *name,
 				dscat(ds, dname);
 				free(namedup);
 			} else {
-				cps->msglog(LDMSD_LERROR,"%s: rename_output: ENOMEM\n", cps->pname);
+				ovis_log(cps->mylog, OVIS_LERROR,"%s: rename_output: ENOMEM\n", cps->pname);
 				dstr_free(&ds);
 				return;
 			}
@@ -307,7 +269,7 @@ void rename_output(const char *name,
 			head = end + 2;
 			char *vend = strchr(head,'}');
 			if (!vend) {
-				cps->msglog(LDMSD_LERROR,
+				ovis_log(cps->mylog, OVIS_LERROR,
 					"%s: rename_output: unterminated %%{ in template at %s\n",
 					cps->pname, head);
 				dstr_free(&ds);
@@ -322,19 +284,19 @@ void rename_output(const char *name,
 				char *val = getenv(var);
 				if (val) {
 					/*
-					cps->msglog(LDMSD_LDEBUG,
+					ovis_log(cps->mylog, OVIS_LDEBUG,
 						"%s: rename_output: getenv(%s) = %s\n", cps->pname, var, val);
 					*/
 					if (validate_env(var, val, cps)) {
 						dstr_free(&ds);
-						cps->msglog(LDMSD_LERROR,
+						ovis_log(cps->mylog, OVIS_LERROR,
 							"%s: rename_output: rename cancelled\n",
 							cps->pname);
 						return;
 					}
 					dscat(ds, val);
 				} else {
-					cps->msglog(LDMSD_LDEBUG,
+					ovis_log(cps->mylog, OVIS_LDEBUG,
 						"%s: rename_output: empty %%{%s}\n",
 						cps->pname, var);
 				}
@@ -344,7 +306,7 @@ void rename_output(const char *name,
 			head = end + 2;
 			char *dot = strrchr(name,'.');
 			if (!dot) {
-				cps->msglog(LDMSD_LERROR,"%s: rename_output: no timestamp\n", cps->pname);
+				ovis_log(cps->mylog, OVIS_LERROR,"%s: rename_output: no timestamp\n", cps->pname);
 				dstr_free(&ds);
 				return;
 			}
@@ -354,7 +316,7 @@ void rename_output(const char *name,
 				num++;
 			}
 			if (*num != '\0') {
-				cps->msglog(LDMSD_LERROR,"%s: rename_output: no timestamp at end\n", cps->pname);
+				ovis_log(cps->mylog, OVIS_LERROR,"%s: rename_output: no timestamp at end\n", cps->pname);
 				dstr_free(&ds);
 				return;
 			}
@@ -371,7 +333,7 @@ void rename_output(const char *name,
 	char *newname = dsdone(ds);
 	dstr_free(&ds);
 	if (!newname) {
-		cps->msglog(LDMSD_LERROR,"%s: rename_output: failed to create new filename for %s\n",
+		ovis_log(cps->mylog, OVIS_LERROR,"%s: rename_output: failed to create new filename for %s\n",
 			cps->pname, name);
 		return;
 	}
@@ -392,7 +354,7 @@ void rename_output(const char *name,
 		/* default 750 */
 		mode = S_IXGRP | S_IXUSR | S_IRGRP | S_IRUSR |S_IWUSR;
 	}
-	/* cps->msglog(LDMSD_LDEBUG,"f_mkdir_p %o %s\n", (int)mode, ndname); */
+	/* ovis_log(cps->mylog, OVIS_LDEBUG,"f_mkdir_p %o %s\n", (int)mode, ndname); */
 	err = f_mkdir_p(ndname, mode);
 	free(namedup);
 	if (err) {
@@ -401,7 +363,7 @@ void rename_output(const char *name,
 		case EEXIST:
 			break;
 		default:
-			cps->msglog(LDMSD_LERROR, "%s: rename_output: failed to create directory for %s: %s\n",
+			ovis_log(cps->mylog, OVIS_LERROR, "%s: rename_output: failed to create directory for %s: %s\n",
 				cps->pname, newname, STRERROR(err));
 			free(newname);
 			return;
@@ -409,12 +371,12 @@ void rename_output(const char *name,
 
 	}
 
-	cps->msglog(LDMSD_LDEBUG, "%s: rename_output: rename(%s, %s)\n",
+	ovis_log(cps->mylog, OVIS_LDEBUG, "%s: rename_output: rename(%s, %s)\n",
 		cps->pname, name, newname);
 	err = rename(name, newname);
 	if (err) {
 		int ec = errno;
-		cps->msglog(LDMSD_LERROR,"%s: rename_output: failed rename(%s, %s): %s\n",
+		ovis_log(cps->mylog, OVIS_LERROR,"%s: rename_output: failed rename(%s, %s): %s\n",
 			    cps->pname, name, newname, STRERROR(ec));
 	}
 	free(newname);
@@ -427,11 +389,11 @@ void ch_output(FILE *f, const char *name,
 		return;
 	}
 	if (!s_handle) {
-		cps->msglog(LDMSD_LERROR,"ch_output: NULL store handle received.\n");
+		ovis_log(cps->mylog, OVIS_LERROR,"ch_output: NULL store handle received.\n");
 		return;
 	}
 	if (!f) {
-		cps->msglog(LDMSD_LERROR,"ch_output: NULL FILE pointer received.\n");
+		ovis_log(cps->mylog, OVIS_LERROR,"ch_output: NULL FILE pointer received.\n");
 		return;
 	}
 	int fd = fileno(f);
@@ -444,7 +406,7 @@ void ch_output(FILE *f, const char *name,
 		int merr = fchmod(fd, mode);
 		int rc = errno;
 		if (merr) {
-			cps->msglog(LDMSD_LERROR,"ch_output: unable to chmod(%s,%o): %s.\n",
+			ovis_log(cps->mylog, OVIS_LERROR,"ch_output: unable to chmod(%s,%o): %s.\n",
 				name, s_handle->create_perm, STRERROR(rc));
 		}
 	}
@@ -457,10 +419,10 @@ void ch_output(FILE *f, const char *name,
 		int merr = fchown(fd, newuid, newgid);
 		int rc = errno;
 		if (merr) {
-			cps->msglog(LDMSD_LERROR,"ch_output: unable to fchown(%d, (%s),%lu, %lu): %s.\n",
+			ovis_log(cps->mylog, OVIS_LERROR,"ch_output: unable to fchown(%d, (%s),%lu, %lu): %s.\n",
 				fd, name, newuid, newgid, STRERROR(rc));
 		}
-		cps->msglog(LDMSD_LDEBUG,"ch_output: fchown(%d, (%s),%lu, %lu): %s.\n",
+		ovis_log(cps->mylog, OVIS_LDEBUG,"ch_output: fchown(%d, (%s),%lu, %lu): %s.\n",
 			fd, name, newuid, newgid, STRERROR(rc));
 	}
 }
@@ -479,7 +441,7 @@ static int config_buffer(const char *bs, const char *bt, int *rbs, int *rbt, con
 	int tempbs;
 	int tempbt;
 	if (!rbs || !rbt) {
-		ldmsd_log(LDMSD_LERROR,
+		ovis_log(PG.mylog, OVIS_LERROR,
 		       "%s: config_buffer: bad arguments\n", __FILE__);
 		return EINVAL;
 	}
@@ -491,7 +453,7 @@ static int config_buffer(const char *bs, const char *bt, int *rbs, int *rbt, con
 	}
 
 	if (!bs && bt){
-		ldmsd_log(LDMSD_LERROR,
+		ovis_log(PG.mylog, OVIS_LERROR,
 		       "%s: Cannot have buffer type without buffer for %s\n",
 		       __FILE__, k);
 		return EINVAL;
@@ -499,14 +461,14 @@ static int config_buffer(const char *bs, const char *bt, int *rbs, int *rbt, con
 
 	tempbs = atoi(bs);
 	if (tempbs < 0){
-		ldmsd_log(LDMSD_LERROR,
+		ovis_log(PG.mylog, OVIS_LERROR,
 		       "%s: Bad val for buffer %d of %s\n",
 		       __FILE__, tempbs, k);
 		return EINVAL;
 	}
 	if ((tempbs == 0) || (tempbs == 1)){
 		if (bt){
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(PG.mylog, OVIS_LERROR,
 			       "%s: Cannot have no/autobuffer with buffer type for %s\n",
 			       __FILE__, k);
 			return EINVAL;
@@ -518,7 +480,7 @@ static int config_buffer(const char *bs, const char *bt, int *rbs, int *rbt, con
 	}
 
 	if (!bt){
-		ldmsd_log(LDMSD_LERROR,
+		ovis_log(PG.mylog, OVIS_LERROR,
 		       "%s: Cannot have buffer size with no buffer type for %s\n",
 		       __FILE__,  k);
 		return EINVAL;
@@ -526,7 +488,7 @@ static int config_buffer(const char *bs, const char *bt, int *rbs, int *rbt, con
 
 	tempbt = atoi(bt);
 	if ((tempbt != 3) && (tempbt != 4)){
-		ldmsd_log(LDMSD_LERROR, "%s: Invalid buffer type %d for %s\n",
+		ovis_log(PG.mylog, OVIS_LERROR, "%s: Invalid buffer type %d for %s\n",
 		       __FILE__, tempbt, k);
 		return EINVAL;
 	}
@@ -562,7 +524,7 @@ int csv_row_format_types_common(int typeformat, FILE* file, const char *fpath,
 
 #define CHECKERR(fprintfresult) \
 	if (fprintfresult < 0) { \
-		cps->msglog(LDMSD_LERROR, "%s: Error %d writing to type header '%s'\n", pn, \
+		ovis_log(cps->mylog, OVIS_LERROR, "%s: Error %d writing to type header '%s'\n", pn, \
 		       fprintfresult, fpath); \
 		goto error; \
 	}
@@ -730,7 +692,7 @@ int csv_format_types_common(int typeformat, FILE* file, const char *fpath, const
 
 #define CHECKERR(fprintfresult) \
 	if (fprintfresult < 0) { \
-		cps->msglog(LDMSD_LERROR, "%s: Error %d writing to type header '%s'\n", pn, \
+		ovis_log(cps->mylog, OVIS_LERROR, "%s: Error %d writing to type header '%s'\n", pn, \
 		       fprintfresult, fpath); \
 		goto error; \
 	}
@@ -790,7 +752,7 @@ int csv_row_format_header(FILE *file, const char *fpath,
 
 #define CHECKERR(fprintfresult) \
 	if (fprintfresult < 0) { \
-		cps->msglog(LDMSD_LERROR, "%s: Error %d writing to header '%s'\n", pn, \
+		ovis_log(cps->mylog, OVIS_LERROR, "%s: Error %d writing to header '%s'\n", pn, \
 		       fprintfresult, fpath); \
 		ec = errno; \
 		goto err; \
@@ -976,7 +938,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 	r = false;
 	cvt = ldmsd_plugattr_bool(pa, "ietfcsv", k, &r);
 	if (cvt == -1) {
-		cps->msglog(LDMSD_LERROR, "%s:%s: ietfcsv cannot be parsed.\n", cps->pname, k);
+		ovis_log(cps->mylog, OVIS_LERROR, "%s:%s: ietfcsv cannot be parsed.\n", cps->pname, k);
 		return EINVAL;
 	}
 	s_handle->ietfcsv = r;
@@ -984,7 +946,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 	r = false;
 	cvt = ldmsd_plugattr_bool(pa, "altheader", k, &r);
 	if (cvt == -1) {
-		cps->msglog(LDMSD_LERROR,"open_store_common altheader= cannot be parsed\n");
+		ovis_log(cps->mylog, OVIS_LERROR,"open_store_common altheader= cannot be parsed\n");
 		return EINVAL;
 	}
 	s_handle->altheader = r;
@@ -992,11 +954,11 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 	uint32_t th = 0;
 	cvt = ldmsd_plugattr_u32(pa, "typeheader", k, &th);
 	if (cvt && cvt != ENOKEY) {
-		cps->msglog(LDMSD_LERROR,"open_store_common typeheader= cannot be parsed\n");
+		ovis_log(cps->mylog, OVIS_LERROR,"open_store_common typeheader= cannot be parsed\n");
 		return EINVAL;
 	}
 	if (th > TH_MAX) {
-		cps->msglog(LDMSD_LERROR,"open_store_common typeheader=%u too large\n", th);
+		ovis_log(cps->mylog, OVIS_LERROR,"open_store_common typeheader=%u too large\n", th);
 		return EINVAL;
 	}
 	s_handle->typeheader = th;
@@ -1004,11 +966,11 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 	uint32_t time_format = 0;
 	cvt = ldmsd_plugattr_u32(pa, "time_format", k, &time_format);
 	if (cvt && cvt != ENOKEY) {
-		cps->msglog(LDMSD_LERROR,"open_store_common time_format= cannot be parsed\n");
+		ovis_log(cps->mylog, OVIS_LERROR,"open_store_common time_format= cannot be parsed\n");
 		return EINVAL;
 	}
 	if (time_format > TF_MAX) {
-		cps->msglog(LDMSD_LERROR,"open_store_common time_format=%u too large\n", time_format);
+		ovis_log(cps->mylog, OVIS_LERROR,"open_store_common time_format=%u too large\n", time_format);
 		return EINVAL;
 	}
 	s_handle->time_format = time_format;
@@ -1025,7 +987,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 		}
 	} else {
 		if (rename_template) {
-			cps->msglog(LDMSD_LERROR, "%s: rename_template "
+			ovis_log(cps->mylog, OVIS_LERROR, "%s: rename_template "
 				"must be specificed correctly. "
 				"got instead %s\n", cps->pname,
 				rename_template ) ;
@@ -1045,7 +1007,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 	if (cvt == ERANGE || cvt ==  ENOTSUP) {
 		rc = cvt;
 		s_handle->rename_uid = (uid_t)-1;
-		cps->msglog(LDMSD_LERROR,
+		ovis_log(cps->mylog, OVIS_LERROR,
 			"%s %s: open_store_common rename_uid= out of range\n",
 			cps->pname, k);
 		return rc;
@@ -1061,7 +1023,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 	if (cvt == ERANGE || cvt ==  ENOTSUP) {
 		rc = cvt;
 		s_handle->rename_gid = (gid_t)-1;
-		cps->msglog(LDMSD_LERROR,
+		ovis_log(cps->mylog, OVIS_LERROR,
 			"%s %s: open_store_common rename_gid= out of range\n",
 			cps->pname, k);
 		return rc;
@@ -1073,7 +1035,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 		if (perm < 1 || perm > 04777) {
 			rc = EINVAL;
 			s_handle->rename_perm = 0;
-			cps->msglog(LDMSD_LERROR,
+			ovis_log(cps->mylog, OVIS_LERROR,
 				"%s %s: open_store_common ignoring bad rename_perm=%s\n",
 				cps->pname, k, rename_pval);
 			return rc;
@@ -1092,7 +1054,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 	if (cvt == ERANGE || cvt ==  ENOTSUP) {
 		rc = cvt;
 		s_handle->create_uid = (uid_t)-1;
-		cps->msglog(LDMSD_LERROR,
+		ovis_log(cps->mylog, OVIS_LERROR,
 			"%s %s: open_store_common create_uid= out of range\n",
 			cps->pname, k);
 		return rc;
@@ -1108,7 +1070,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 	if (cvt == ERANGE || cvt ==  ENOTSUP) {
 		rc = cvt;
 		s_handle->create_gid = (gid_t)-1;
-		cps->msglog(LDMSD_LERROR,
+		ovis_log(cps->mylog, OVIS_LERROR,
 			"%s %s: open_store_common create_gid= out of range\n",
 			cps->pname, k);
 		return rc;
@@ -1120,7 +1082,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 		if (perm < 1 || perm > 04777) {
 			rc = EINVAL;
 			s_handle->create_perm = 0;
-			cps->msglog(LDMSD_LERROR,
+			ovis_log(cps->mylog, OVIS_LERROR,
 				"%s %s: open_store_common ignoring bad create_perm=%s\n",
 				cps->pname, k, create_pval);
 			return rc;
@@ -1145,7 +1107,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 
 void close_store_common(struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps) {
 	if (!s_handle || !cps) {
-		cps->msglog(LDMSD_LERROR,
+		ovis_log(cps->mylog, OVIS_LERROR,
 			"%s: close_store_common with null argument\n",
 			cps->pname);
 		return;
@@ -1165,7 +1127,7 @@ void close_store_common(struct csv_store_handle_common *s_handle, struct csv_plu
 
 void print_csv_plugin_common(struct csv_plugin_static *cps)
 {
-	cps->msglog(LDMSD_LALL, "%s:\n", cps->pname);
+	ovis_log(cps->mylog, OVIS_LALWAYS, "%s:\n", cps->pname);
 }
 
 void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv_plugin_static *p)
@@ -1173,24 +1135,24 @@ void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv
 	if (!p)
 		return;
 	if (!h) {
-		p->msglog(LDMSD_LALL, "csv store handle dump: NULL handle.\n");
+		ovis_log(p->mylog, OVIS_LALWAYS, "csv store handle dump: NULL handle.\n");
 		return;
 	}
-	p->msglog(LDMSD_LALL, "%s handle dump:\n", p->pname);
-	p->msglog(LDMSD_LALL, "%s: filename: %s\n", p->pname, h->filename);
-	p->msglog(LDMSD_LALL, "%s: headerfilename: %s\n", p->pname, h->headerfilename);
-	p->msglog(LDMSD_LALL, "%s: typefilename: %s\n", p->pname, h->typefilename);
-	p->msglog(LDMSD_LALL, "%s: altheader:%s\n", p->pname, h->altheader ?
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s handle dump:\n", p->pname);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: filename: %s\n", p->pname, h->filename);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: headerfilename: %s\n", p->pname, h->headerfilename);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: typefilename: %s\n", p->pname, h->typefilename);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: altheader:%s\n", p->pname, h->altheader ?
 			                "true" : "false");
-	p->msglog(LDMSD_LALL, "%s: typeheader:%d\n", p->pname, h->typeheader);
-	p->msglog(LDMSD_LALL, "%s: time_format:%d\n", p->pname, h->time_format);
-	p->msglog(LDMSD_LALL, "%s: buffertype: %d\n", p->pname, h->buffer_type);
-	p->msglog(LDMSD_LALL, "%s: buffer: %d\n", p->pname, h->buffer_sz);
-	p->msglog(LDMSD_LALL, "%s: rename_template:%s\n", p->pname, h->rename_template);
-	p->msglog(LDMSD_LALL, "%s: rename_uid: %" PRIu32 "\n", p->pname, h->rename_uid);
-	p->msglog(LDMSD_LALL, "%s: rename_gid: %" PRIu32 "\n", p->pname, h->rename_gid);
-	p->msglog(LDMSD_LALL, "%s: rename_perm: %o\n", p->pname, h->rename_perm);
-	p->msglog(LDMSD_LALL, "%s: create_uid: %" PRIu32 "\n", p->pname, h->create_uid);
-	p->msglog(LDMSD_LALL, "%s: create_gid: %" PRIu32 "\n", p->pname, h->create_gid);
-	p->msglog(LDMSD_LALL, "%s: create_perm: %o\n", p->pname, h->create_perm);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: typeheader:%d\n", p->pname, h->typeheader);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: time_format:%d\n", p->pname, h->time_format);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: buffertype: %d\n", p->pname, h->buffer_type);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: buffer: %d\n", p->pname, h->buffer_sz);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: rename_template:%s\n", p->pname, h->rename_template);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: rename_uid: %" PRIu32 "\n", p->pname, h->rename_uid);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: rename_gid: %" PRIu32 "\n", p->pname, h->rename_gid);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: rename_perm: %o\n", p->pname, h->rename_perm);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: create_uid: %" PRIu32 "\n", p->pname, h->create_uid);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: create_gid: %" PRIu32 "\n", p->pname, h->create_gid);
+	ovis_log(p->mylog, OVIS_LALWAYS, "%s: create_perm: %o\n", p->pname, h->create_perm);
 }

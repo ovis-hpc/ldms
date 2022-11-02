@@ -111,6 +111,8 @@ static int store_count = 0;
 #define dsdone(ds) \
 	bdstr_extract(&ds)
 
+static ovis_log_t mylog;
+
 static bool g_extraprops = true; /**< parse value during config */
 static char *routing_key_path; /**< store routing_key path */
 static char *host_name; /**< store hostname */
@@ -120,7 +122,6 @@ static bool doserver = true; /** bypass server calls if false */
 static bool logmsg = false;
 static char *rmq_exchange; /**< store queue */
 amqp_bytes_t rmq_exchange_bytes; /**< store queue in amqp form */
-static ldmsd_msg_log_f msglog;
 #define SHORTSTR_MAX 255 /* from amqp 091 spec */
 
 #define PWSIZE 256
@@ -161,7 +162,7 @@ int log_amqp(const char *msg)
 /* workaround until issue134 is merged. dump this function then in favor of olerr. */
 void rabbit_lerror_tmp(const char *fmt, ...)
 {
-	msglog(LDMSD_LERROR, STOR ": %s",fmt);
+	ovis_log(mylog, OVIS_LERROR, STOR ": %s",fmt);
 }
 
 #define _stringify(_x) #_x
@@ -236,21 +237,21 @@ void cleanup_amqp()
 	if (doserver) {
 		int s;
 		log_amqp(STOR ": stopping ldms amqp");
-		s = lrmq_die_on_amqp_error(msglog,
+		s = lrmq_die_on_amqp_error(
 			amqp_channel_close(as.conn, 1, AMQP_REPLY_SUCCESS),
 			"Closing channel");
 		if (s) {
-			msglog(LDMSD_LDEBUG, STOR ": skipping connection close.\n");
+			ovis_log(mylog, OVIS_LDEBUG, STOR ": skipping connection close.\n");
 			goto out;
 		}
-		s = lrmq_die_on_amqp_error(msglog,
+		s = lrmq_die_on_amqp_error(
 			amqp_connection_close(as.conn, AMQP_REPLY_SUCCESS),
 			"Closing connection");
 		if (s) {
-			msglog(LDMSD_LDEBUG, STOR ": skipping connection destroy.\n");
+			ovis_log(mylog, OVIS_LDEBUG, STOR ": skipping connection destroy.\n");
 			goto out;
 		}
-		s = lrmq_die_on_error(msglog, amqp_destroy_connection(as.conn), "Ending connection");
+		s = lrmq_die_on_error(amqp_destroy_connection(as.conn), "Ending connection");
 	}
 out:
 	pthread_mutex_unlock(&cfg_lock);
@@ -264,7 +265,7 @@ static void reset_connection()
 	as.conn = NULL;
 	as.broker_failed++;
 	as.next_connect = 0;
-	msglog(LDMSD_LINFO, STOR ": reset_connection.\n");
+	ovis_log(mylog, OVIS_LINFO, STOR ": reset_connection.\n");
 }
 /*
  * Try to make connection. (log 1st and every 1000th fail ).
@@ -275,7 +276,7 @@ static int make_connection()
 {
 	const int warn_every = 1000; /* issue only every nth attempt warning */
 	if (as.amqp_port == 0) {
-		msglog(LDMSD_LERROR, STOR ": config must be done before creating a store.\n");
+		ovis_log(mylog, OVIS_LERROR, STOR ": config must be done before creating a store.\n");
 		return EINVAL;
 	}
 	if (as.conn)
@@ -298,36 +299,36 @@ static int make_connection()
 	if (!retry)
 		return EAGAIN;
 	if (as.broker_failed && as.broker_failed % warn_every == 1) {
-		msglog(LDMSD_LINFO, STOR ": connect amqp retry number %d\n",
+		ovis_log(mylog, OVIS_LINFO, STOR ": connect amqp retry number %d\n",
 			as.broker_failed);
 	}
 	int rc;
 	as.conn = amqp_new_connection();
 	if (!as.conn ) {
-		msglog(LDMSD_LERROR, STOR ": amqp_new_connection failed.\n");
+		ovis_log(mylog, OVIS_LERROR, STOR ": amqp_new_connection failed.\n");
 		rc = ENOMEM;
 		as.broker_failed++;
 		goto fail;
 	} else {
-		msglog(LDMSD_LDEBUG, STOR ": amqp_new_connection ok.\n");
+		ovis_log(mylog, OVIS_LDEBUG, STOR ": amqp_new_connection ok.\n");
 	}
 	amqp_socket_t *asocket = NULL;
 	asocket = amqp_tcp_socket_new(as.conn); /* stores asocket in conn, fyi. */
 	if (!asocket) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 			STOR ": config: amqp_tcp_socket_new failed.\n");
 		as.broker_failed++;
 		rc = ENOMEM;
 		goto fail;
 	} else {
-		msglog(LDMSD_LDEBUG, STOR ": amqp_tcp_socket_new ok.\n");
+		ovis_log(mylog, OVIS_LDEBUG, STOR ": amqp_tcp_socket_new ok.\n");
 	}
 	if (doserver) {
 		int status = amqp_socket_open_noblock(asocket, host_name, as.amqp_port, &as.timeout);
 		if (status) {
 			if (!as.broker_failed ||
 				as.broker_failed % warn_every == 1) {
-				msglog(LDMSD_LERROR,
+				ovis_log(mylog, OVIS_LERROR,
 					STOR ": config: amqp_socket_open failed. %s\n",
 					amqp_error_string2(status));
 			}
@@ -335,44 +336,44 @@ static int make_connection()
 			rc = EAGAIN;
 			goto again;
 		}
-		status = lrmq_die_on_amqp_error(msglog, amqp_login(as.conn,
+		status = lrmq_die_on_amqp_error(amqp_login(as.conn,
 				vhost,
 				AMQP_DEFAULT_MAX_CHANNELS,
 				AMQP_DEFAULT_FRAME_SIZE, as.heartbeat,
 				AMQP_SASL_METHOD_PLAIN, as.user, as.pw),
 				"Logging in");
 		if (status < 0 ) {
-			msglog(LDMSD_LDEBUG, STOR ": amqp_login failed\n");
+			ovis_log(mylog, OVIS_LDEBUG, STOR ": amqp_login failed\n");
 			rc = EKEYREJECTED;
 			goto fail;
 		} else {
-			msglog(LDMSD_LDEBUG, STOR ": amqp_login ok\n");
+			ovis_log(mylog, OVIS_LDEBUG, STOR ": amqp_login ok\n");
 		}
 
 		void * vstatus = amqp_channel_open(as.conn, 1);
 		if (!vstatus) {
-			msglog(LDMSD_LDEBUG, STOR ": amqp_channel_open failed\n");
-			status = lrmq_die_on_amqp_error(msglog,
+			ovis_log(mylog, OVIS_LDEBUG, STOR ": amqp_channel_open failed\n");
+			status = lrmq_die_on_amqp_error(
 				amqp_get_rpc_reply(as.conn),
 				"Opening channel");
 			if (status  < 0 ) {
-				msglog(LDMSD_LDEBUG, STOR ": amqp_get_rpc_reply failed\n");
+				ovis_log(mylog, OVIS_LDEBUG, STOR ": amqp_get_rpc_reply failed\n");
 			}
 			rc = ENOMEM;
 			goto fail;
 		}
 		log_amqp(STOR ": started ldms amqp");
 		as.broker_failed = 0;
-		msglog(LDMSD_LINFO, STOR ": started amqp\n");
+		ovis_log(mylog, OVIS_LINFO, STOR ": started amqp\n");
 	} else {
-		msglog(LDMSD_LINFO, STOR ": started fake amqp\n");
+		ovis_log(mylog, OVIS_LINFO, STOR ": started fake amqp\n");
 	}
 
 	as.next_connect = 0;
 	return 0;
 again:
 	if (as.conn) {
-		msglog(LDMSD_LDEBUG, STOR ": destroy conn; try later.\n");
+		ovis_log(mylog, OVIS_LDEBUG, STOR ": destroy conn; try later.\n");
 		amqp_destroy_connection(as.conn);
 		as.conn = NULL;
 	}
@@ -381,7 +382,7 @@ again:
 fail:
 	as.next_connect = TIME_MAX;
 	if (as.conn) {
-		msglog(LDMSD_LDEBUG, STOR ": destroy conn; no retry.\n");
+		ovis_log(mylog, OVIS_LDEBUG, STOR ": destroy conn; no retry.\n");
 		amqp_destroy_connection(as.conn);
 		as.conn = NULL;
 	}
@@ -393,7 +394,7 @@ fail:
  */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	msglog(LDMSD_LDEBUG, STOR ": config start.\n");
+	ovis_log(mylog, OVIS_LDEBUG, STOR ": config start.\n");
 	char *value;
 
 	value = av_value(avl, "logmsg");
@@ -449,12 +450,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	} else {
 		as.amqp_port = atoi(p);
 		if (as.amqp_port < 1)  {
-			msglog(LDMSD_LERROR, STOR ": config port=%s invalid.\n",
+			ovis_log(mylog, OVIS_LERROR, STOR ": config port=%s invalid.\n",
 				p);
 			return EINVAL;
 		}
 	}
-	msglog(LDMSD_LINFO, STOR ": config host=%s port=%d vhost=%s user=%s\n",
+	ovis_log(mylog, OVIS_LINFO, STOR ": config host=%s port=%d vhost=%s user=%s\n",
 	       value, as.amqp_port, vhvalue, user);
 
 	char *rt = av_value(avl, "retry");
@@ -463,7 +464,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	} else {
 		int rts = atoi(rt);
 		if (rts < 1) {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 				STOR ": config retry=%s invalid.\n", rts);
 			return EINVAL;
 		} else {
@@ -477,7 +478,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (rt) {
 		int rts = atoi(rt);
 		if (rts < 1) {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 				STOR ": config timeout=%s invalid.\n", rts);
 			return EINVAL;
 		} else {
@@ -491,7 +492,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (rt) {
 		int rts = atoi(rt);
 		if (rts < 0) {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 				STOR ": config heartbeat=%s invalid.\n", rts);
 			return EINVAL;
 		} else {
@@ -499,17 +500,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		}
 	}
 
-	msglog(LDMSD_LINFO, STOR ": config timeout=%d retry=%d heartbeat=%d\n",
+	ovis_log(mylog, OVIS_LINFO, STOR ": config timeout=%d retry=%d heartbeat=%d\n",
 		(int)(1000*as.timeout.tv_sec + as.timeout.tv_usec/1000),
 		as.retry_sec, as.heartbeat);
 	sprintf(as.pw, "guest");
 	pwfile = av_value(avl, "pwfile");
 	if (pwfile) {
-		msglog(LDMSD_LINFO, STOR ": config pwfile=%s\n", pwfile);
+		ovis_log(mylog, OVIS_LINFO, STOR ": config pwfile=%s\n", pwfile);
 		int pwerr = ovis_get_rabbit_secretword(pwfile,as.pw,PWSIZE,
 			rabbit_lerror_tmp);
 		if (pwerr) {
-			msglog(LDMSD_LERROR, STOR ": config pwfile failed\n");
+			ovis_log(mylog, OVIS_LERROR, STOR ": config pwfile failed\n");
 			return EINVAL;
 		}
 	}
@@ -525,9 +526,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (!evalue) {
 		evalue = "amq.topic";
 	}
-	msglog(LDMSD_LINFO, STOR ": routing_key=%s exchange=%s\n",
+	ovis_log(mylog, OVIS_LINFO, STOR ": routing_key=%s exchange=%s\n",
 		rvalue, evalue);
-	msglog(LDMSD_LINFO, STOR ": logmsg=%d doserver=%d\n",
+	ovis_log(mylog, OVIS_LINFO, STOR ": logmsg=%d doserver=%d\n",
 		logmsg, doserver);
 
 
@@ -558,7 +559,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	if (!routing_key_path || !rmq_exchange ||
 		!host_name) {
-		msglog(LDMSD_LERROR, STOR ": config strdup failed.\n");
+		ovis_log(mylog, OVIS_LERROR, STOR ": config strdup failed.\n");
 		return ENOMEM;
 	}
 
@@ -571,14 +572,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	pthread_mutex_unlock(&cfg_lock);
 	switch (rc) {
 	case EAGAIN:
-		msglog(LDMSD_LERROR, STOR ": config: rabbitmq connection delayed.\n");
-		msglog(LDMSD_LERROR, STOR ": config: Verify config values or start broker.\n");
+		ovis_log(mylog, OVIS_LERROR, STOR ": config: rabbitmq connection delayed.\n");
+		ovis_log(mylog, OVIS_LERROR, STOR ": config: Verify config values or start broker.\n");
 		/* fall through */
 	case 0:
-		msglog(LDMSD_LINFO, STOR ": config done.\n");
+		ovis_log(mylog, OVIS_LINFO, STOR ": config done.\n");
 		return 0;
 	default:
-		msglog(LDMSD_LINFO, STOR ": config failed.\n");
+		ovis_log(mylog, OVIS_LINFO, STOR ": config failed.\n");
 		return rc;
 	}
 }
@@ -588,6 +589,8 @@ static void term(struct ldmsd_plugin *self)
 	/* What contract is this supposed to meet. Shall close(sh) have
 	been called for all existing sh already before this is reached.?
 	*/
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -811,8 +814,8 @@ int write_kw(struct rabbitkw_store_instance *si,
 	const char *stype = ldms_metric_type_to_str(t);
 	if (!name) {
 		if (!si->conflict_warned) {
-			msglog(LDMSD_LERROR, STOR ": write_kw: metric id %d: no name at list index %d.\n", id, arr_idx);
-			msglog(LDMSD_LERROR, STOR ": reconfigure to resolve schema definition conflict for schema=%s and instance=%s.\n",
+			ovis_log(mylog, OVIS_LERROR, STOR ": write_kw: metric id %d: no name at list index %d.\n", id, arr_idx);
+			ovis_log(mylog, OVIS_LERROR, STOR ": reconfigure to resolve schema definition conflict for schema=%s and instance=%s.\n",
 				si->schema, ldms_set_instance_name_get(set));
 			si->conflict_warned = 1;
 		}
@@ -860,7 +863,7 @@ int write_kw(struct rabbitkw_store_instance *si,
 #undef FMT_CASE
 #undef FMT_CASE3
 		default:
-			msglog(LDMSD_LERROR, "%s:%d: unexpected metric type %d\n",
+			ovis_log(mylog, OVIS_LERROR, "%s:%d: unexpected metric type %d\n",
 				__FILE__,__LINE__,(int)t);
 			return EINVAL;
 		}
@@ -890,7 +893,7 @@ int write_kw(struct rabbitkw_store_instance *si,
 #undef FMT_CASE
 #undef FMT_CASE3
 			default:
-				msglog(LDMSD_LERROR,
+				ovis_log(mylog, OVIS_LERROR,
 					"%s:%d: unexpected array type %d\n",
 					__FILE__,__LINE__,(int)t);
 				return EINVAL;
@@ -903,7 +906,7 @@ int write_kw(struct rabbitkw_store_instance *si,
 	}
 	return 0;
 estr:
-	msglog(LDMSD_LERROR, "%s: formatting data failed.\n", __FILE__);
+	ovis_log(mylog, OVIS_LERROR, "%s: formatting data failed.\n", __FILE__);
 	return ENOMEM;
 }
 
@@ -933,7 +936,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	size_t klen = bdstrlen(&ds);
 	char *key = dsdone(ds);
 	if (!key) {
-		msglog(LDMSD_LERROR, STOR ": oom ds\n");
+		ovis_log(mylog, OVIS_LERROR, STOR ": oom ds\n");
 	}
 
 	si = idx_find(store_idx, (void *)key, klen);
@@ -943,7 +946,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		 */
 		si = calloc(1, sizeof(*si));
 		if (!si) {
-			msglog(LDMSD_LERROR, STOR ": oom si\n");
+			ovis_log(mylog, OVIS_LERROR, STOR ": oom si\n");
 			goto out;
 		}
 		si->key = key;
@@ -954,7 +957,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		si->container = strdup(container);
 		si->schema = strdup(schema);
 		if (!si->container || ! si->schema || ! si->routingkey) {
-			msglog(LDMSD_LERROR, STOR ": out of memory\n");
+			ovis_log(mylog, OVIS_LERROR, STOR ": out of memory\n");
 			goto err3;
 		}
 
@@ -987,7 +990,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	struct rabbitkw_store_instance *si;
 	int i, rc = 0;
 	if (!_sh || !set || (metric_count && !metric_arry)) {
-		msglog(LDMSD_LERROR, STOR ": store() null input received\n");
+		ovis_log(mylog, OVIS_LERROR, STOR ": store() null input received\n");
 		return EINVAL;
 	}
 	si = _sh;
@@ -998,7 +1001,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		if (!as.conn) {
 			rc = make_connection();
 			if (rc == EAGAIN) {
-				msglog(LDMSD_LDEBUG, STOR ": try later\n");
+				ovis_log(mylog, OVIS_LDEBUG, STOR ": try later\n");
 				rc = 0;
 				goto skip;
 			}
@@ -1036,7 +1039,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 			case ERANGE:
 				continue;
 			default:
-				msglog(LDMSD_LDEBUG,"Error %d: %s at %s:%d: loop index %d, metric_id %d\n",
+				ovis_log(mylog, OVIS_LDEBUG,"Error %d: %s at %s:%d: loop index %d, metric_id %d\n",
 				       rc, STRERROR(rc),
 					__FILE__, __LINE__, i, metric_id);
 				goto estr;
@@ -1047,20 +1050,20 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	}
 	if (logmsg) {
 		if (message_bytes.len > 4000) {
-			msglog(LDMSD_LDEBUG, "%s: %.4000s <truncated>\n",
+			ovis_log(mylog, OVIS_LDEBUG, "%s: %.4000s <truncated>\n",
 				si->routingkey, message_bytes.bytes);
 		} else {
-			msglog(LDMSD_LDEBUG, "%s: %s\n", si->routingkey,
+			ovis_log(mylog, OVIS_LDEBUG, "%s: %s\n", si->routingkey,
 				message_bytes.bytes);
 		}
-		msglog(LDMSD_LDEBUG, STOR "%s: len=%zu\n", si->routingkey,
+		ovis_log(mylog, OVIS_LDEBUG, STOR "%s: len=%zu\n", si->routingkey,
 			message_bytes.len);
 	}
 
 	if (doserver) {
 		const char *instance = ldms_set_instance_name_get(set);
 		update_props(&(si->props), instance, si);
-		rc = lrmq_die_on_error(msglog, amqp_basic_publish(as.conn, 1,
+		rc = lrmq_die_on_error(amqp_basic_publish(as.conn, 1,
 			rmq_exchange_bytes,
 			amqp_cstring_bytes(si->routingkey),
 			0,
@@ -1082,7 +1085,7 @@ skip:
 	return rc;
 
 estr:
-	msglog(LDMSD_LDEBUG, STOR ": err\n");
+	ovis_log(mylog, OVIS_LDEBUG, STOR ": err\n");
 	pthread_mutex_unlock(&cfg_lock);
 	return ENOMEM;
 
@@ -1129,11 +1132,20 @@ static struct ldmsd_store store_rabbitkw = {
 	.close = close_store,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
-        msglog(LDMSD_LINFO,"Loading support for rabbitmq amqp version%s\n",
-                amqp_version());
+	int rc;
+	mylog = ovis_log_register("store.rabbitkw", "Log subsystem of the 'rabbitkw' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'rabbitkw' plugin. Error %d\n", rc);
+	}
+
+	rabbit_store_pi_log_set(mylog);
+
+	ovis_log(mylog, OVIS_LINFO,"Loading support for rabbitmq amqp version%s\n",
+			amqp_version());
 	return &store_rabbitkw.base;
 }
 

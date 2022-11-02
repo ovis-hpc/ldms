@@ -18,6 +18,8 @@
 #include "lustre_mdc_general.h"
 #include "jobid_helper.h"
 
+/* Defined in lustre_mdc.c */
+extern ovis_log_t lustre_mdc_log;
 static ldms_schema_t mdc_general_schema;
 
 #define MAXNAMESIZE 64
@@ -75,7 +77,7 @@ int mdc_general_schema_init(comp_id_t cid, int mdc_timing)
 	int i;
 	char str1[MAXNAMESIZE+1];
 
-	log_fn(LDMSD_LDEBUG, SAMP" mdc_general_schema_init()\n");
+	ovis_log(lustre_mdc_log, OVIS_LDEBUG, "mdc_general_schema_init()\n");
 	const char *sn;
 	if (mdc_timing > 0)
 		sn = "lustre_mdc_ops_timing";
@@ -148,16 +150,16 @@ timing0:
 	mdc_general_schema = sch;
 	return 0;
 err3:
-	log_fn(LDMSD_LERROR, SAMP ": lustre_mdc_general schema creation failed to add %s. (%s)\n",
+	ovis_log(lustre_mdc_log, OVIS_LERROR, "lustre_mdc_general schema creation failed to add %s. (%s)\n",
 		str1, STRERROR(-rc));
 	goto out;
 err2:
-	log_fn(LDMSD_LERROR, SAMP ": lustre_mdc_general schema creation failed to add %s. (%s)\n",
+	ovis_log(lustre_mdc_log, OVIS_LERROR, "lustre_mdc_general schema creation failed to add %s. (%s)\n",
 		field, STRERROR(-rc));
 out:
 	ldms_schema_delete(sch);
 err1:
-	log_fn(LDMSD_LERROR, SAMP" lustre_mdc_general schema creation failed\n");
+	ovis_log(lustre_mdc_log, OVIS_LERROR, "lustre_mdc_general schema creation failed\n");
 	return -1;
 }
 
@@ -181,7 +183,7 @@ const char *get_mdt_name(const char *mdc_name)
 
 void mdc_general_schema_fini()
 {
-	log_fn(LDMSD_LDEBUG, SAMP" mdc_general_schema_fini()\n");
+	ovis_log(lustre_mdc_log, OVIS_LDEBUG, "mdc_general_schema_fini()\n");
 	if (mdc_general_schema != NULL) {
 		ldms_schema_delete(mdc_general_schema);
 		mdc_general_schema = NULL;
@@ -209,7 +211,7 @@ ldms_set_t mdc_general_create(const char *producer_name,
 	int index;
 	char instance_name[LDMS_PRODUCER_NAME_MAX + MAXNAMESIZE];
 
-	log_fn(LDMSD_LDEBUG, SAMP" mdc_general_create()\n");
+	ovis_log(lustre_mdc_log, OVIS_LDEBUG, "mdc_general_create()\n");
 	snprintf(instance_name, sizeof(instance_name), "%s/%s",
 		 producer_name, mdc_name);
 	set = ldms_set_new(instance_name, mdc_general_schema);
@@ -285,9 +287,9 @@ start:
 					} else {
 						if (!ops_negative_seen) {
 							ops_negative_seen = 1;
-							log_fn(LDMSD_LWARNING, SAMP
+							ovis_log(lustre_mdc_log, OVIS_LWARNING, SAMP
 								": negative value %" PRId64 " in %s.\n", val1, path);
-							log_fn(LDMSD_LWARNING, SAMP
+							ovis_log(lustre_mdc_log, OVIS_LWARNING, SAMP
 								": Enable auto_reset or manage lustre better.\n");
 						}
 					}
@@ -370,11 +372,11 @@ start:
 				} else {
 					if (!timing_negative_seen) {
 						timing_negative_seen = 1;
-						log_fn(LDMSD_LWARNING, SAMP
+						ovis_log(lustre_mdc_log, OVIS_LWARNING, SAMP
 							": Overflowed value in %s.\n", path);
-						log_fn(LDMSD_LWARNING, SAMP
+						ovis_log(lustre_mdc_log, OVIS_LWARNING, SAMP
 							": Enable auto_reset or manage lustre better.\n");
-						log_fn(LDMSD_LWARNING, SAMP
+						ovis_log(lustre_mdc_log, OVIS_LWARNING, SAMP
 							": count %ld valsum %ld valsumsqs %ld\n",
 							valcount, valsum, valsumsqs);
 					}
@@ -417,11 +419,11 @@ void mdc_general_sample(const char *mdc_name, const char *md_stats_path,
 		if (mdc_timing)
 			ec2 = mdc_timing_sample(stats_path, general_metric_set);
 	} else {
-		log_fn(LDMSD_LDEBUG, SAMP": mdc_md_stats_sample %s fail (%s)\n",
+		ovis_log(lustre_mdc_log, OVIS_LDEBUG, SAMP": mdc_md_stats_sample %s fail (%s)\n",
 			md_stats_path, STRERROR(ec1));
 	}
 	if (ec2)
-		log_fn(LDMSD_LDEBUG, SAMP": mdc_timing_sample %s fail (%s)\n",
+		ovis_log(lustre_mdc_log, OVIS_LDEBUG, SAMP": mdc_timing_sample %s fail (%s)\n",
 			stats_path, STRERROR(ec2));
 	ldms_transaction_end(general_metric_set);
 }

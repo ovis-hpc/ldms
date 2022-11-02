@@ -72,6 +72,9 @@
 #include "nvml.h"
 #include "nvidia_metrics.h"
 
+/* Defined in cray_sampler_base.c */
+extern ovis_log_t __cray_sampler_base;
+
 static const char* (*nvmlErrorStringPtr) (nvmlReturn_t);
 static nvmlReturn_t (*nvmlInitPtr) (void);
 static nvmlReturn_t (*nvmlShutdownPtr) (void);
@@ -120,17 +123,16 @@ static int* metric_table_nvidia = NULL;
 static int nvidia_valid = 0;
 
 int config_nvidia(struct attr_value_list* kwl,
-		  struct attr_value_list* avl,
-			 ldmsd_msg_log_f msglog){
+		  struct attr_value_list* avl){
 	char* value = NULL;
 
 	value = av_value(avl, "gpu_devices");
 	if (value){
-		msglog(LDMSD_LDEBUG, "cray_system_sampler configuring for gpudevices <%s>\n",
+		ovis_log(__cray_sampler_base, OVIS_LDEBUG, "cray_system_sampler configuring for gpudevices <%s>\n",
 		       value);
 		gpudevicestr = strdup(value);
 	} else {
-		msglog(LDMSD_LDEBUG, "cray_system_sampler configuring no gpudevices\n");
+		ovis_log(__cray_sampler_base, OVIS_LDEBUG, "cray_system_sampler configuring no gpudevices\n");
 		gpudevicestr = NULL;
 	}
 
@@ -153,8 +155,7 @@ static char *replace_underscore(char *s)
 };
 
 
-int  add_metrics_nvidia(ldms_schema_t schema,
-			ldmsd_msg_log_f msglog){
+int  add_metrics_nvidia(ldms_schema_t schema){
 
 	char name[NVIDIA_MAX_METRIC_NAME_SIZE];
 	size_t m, d;
@@ -167,16 +168,16 @@ int  add_metrics_nvidia(ldms_schema_t schema,
 
 	nvidia_device_count = 0;
 	if (NUM_NVIDIA_METRICS == 0){
-		msglog(LDMSD_LDEBUG, "Adding no nvidia gpu metrics\n");
+		ovis_log(__cray_sampler_base, OVIS_LDEBUG, "Adding no nvidia gpu metrics\n");
 		return 0;
 	}
 
 	if (gpudevicestr == NULL){
 		//its ok to have no devices
-		msglog(LDMSD_LDEBUG, "No nvidia devices specified\n");
+		ovis_log(__cray_sampler_base, OVIS_LDEBUG, "No nvidia devices specified\n");
 		return 0;
 	} else {
-		msglog(LDMSD_LDEBUG, "Device string is <%s>\n", gpudevicestr);
+		ovis_log(__cray_sampler_base, OVIS_LDEBUG, "Device string is <%s>\n", gpudevicestr);
 	}
 
 	//determine the devices...independent of whether they exist or not
@@ -184,11 +185,11 @@ int  add_metrics_nvidia(ldms_schema_t schema,
 	pch = strtok_r(gpudevicestr, ",\n", &saveptr); //NOTE: free?
 	while (pch != NULL){
 		if (count == NVIDIA_MAX_DEVICES){
-			msglog(LDMSD_LERROR, "NVML: Too many devices %d\n", count);
+			ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML: Too many devices %d\n", count);
 			return EINVAL;
 		}
 		if (strlen(pch) == 0){
-			msglog(LDMSD_LERROR, "NVML: Empty device name %d\n", count);
+			ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML: Empty device name %d\n", count);
 			return EINVAL;
 		}
 		snprintf(nvidia_device_names[count], NVML_DEVICE_NAME_BUFFER_SIZE,
@@ -202,15 +203,15 @@ int  add_metrics_nvidia(ldms_schema_t schema,
 	nvidia_device_count = count;
 
 	if (nvidia_device_count == 0){
-		msglog(LDMSD_LDEBUG,"Adding no nvidia gpu metrics\n");
+		ovis_log(__cray_sampler_base, OVIS_LDEBUG,"Adding no nvidia gpu metrics\n");
 		return 0;
 	}
 
-//	msglog(LDMSD_LDEBUG, "nvidia metric table allocating space for %d metrics\n",
+//	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "nvidia metric table allocating space for %d metrics\n",
 //	       (nvidia_device_count*NUM_NVIDIA_METRICS));
 	metric_table_nvidia = calloc((nvidia_device_count*NUM_NVIDIA_METRICS), sizeof(int));
 	if (!metric_table_nvidia){
-		msglog(LDMSD_LDEBUG,"cray_system_sampler: cannot calloc metric_table_nvidia\n");
+		ovis_log(__cray_sampler_base, OVIS_LDEBUG,"cray_system_sampler: cannot calloc metric_table_nvidia\n");
 		return ENOMEM;
 	}
 
@@ -222,7 +223,7 @@ int  add_metrics_nvidia(ldms_schema_t schema,
 				 NVIDIA_METRICS[j]);
 			rc = ldms_schema_metric_add(schema, name, LDMS_V_U64);
 			if (rc < 0){
-				msglog(LDMSD_LERROR, "Failed to add metric <%s>\n", name);
+				ovis_log(__cray_sampler_base, OVIS_LERROR, "Failed to add metric <%s>\n", name);
 				return ENOMEM;
 			}
 			metric_table_nvidia[count] = rc; //this is the num used for the assignment
@@ -306,7 +307,7 @@ static nvmlReturn_t getPState(nvmlDevice_t dev, unsigned int* retx){
 }
 
 
-int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
+int sample_metrics_nvidia(ldms_set_t set){
 	int i, j;
 	int metric_count = 0;
 
@@ -324,7 +325,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 		union ldms_value v1, v2;
 
 		if (nvidia_device[i] == NULL) {
-			msglog(LDMSD_LDEBUG, "Device is null for <%s>\n",
+			ovis_log(__cray_sampler_base, OVIS_LDEBUG, "Device is null for <%s>\n",
 			       nvidia_device_names[i]);
 			continue;
 		}
@@ -333,7 +334,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 		if (nvmlDeviceGetPowerUsagePtr != NULL){
 			rc = (*nvmlDeviceGetPowerUsagePtr)(nvidia_device[i], &ret);
 			if (rc != NVML_SUCCESS){
-				msglog(LDMSD_LDEBUG,
+				ovis_log(__cray_sampler_base, OVIS_LDEBUG,
 				       "ERR: issue getting power usage for device %d\n",
 				       i);
 				v1.v_u64 = 0;
@@ -348,7 +349,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 		if (nvmlDeviceGetPowerManagementLimitPtr != NULL){
 			rc = (*nvmlDeviceGetPowerManagementLimitPtr)(nvidia_device[i], &ret);
 			if (rc != NVML_SUCCESS){
-				msglog(LDMSD_LDEBUG,
+				ovis_log(__cray_sampler_base, OVIS_LDEBUG,
 				       "ERR: issue getting power limit for device %d\n",
 				       i);
 				v1.v_u64 = 0;
@@ -362,7 +363,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 
 		rc = getPState(nvidia_device[i], &ret);
 		if (rc != NVML_SUCCESS){
-			msglog(LDMSD_LDEBUG,
+			ovis_log(__cray_sampler_base, OVIS_LDEBUG,
 			       "ERR: issue getting pstate for device %d\n",
 			       i);
 			v1.v_u64 = 0;
@@ -374,7 +375,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 		if (nvmlDeviceGetTemperaturePtr != NULL){
 			rc = (*nvmlDeviceGetTemperaturePtr)(nvidia_device[i], NVML_TEMPERATURE_GPU, &ret);
 			if (rc != NVML_SUCCESS){
-				msglog(LDMSD_LDEBUG,
+				ovis_log(__cray_sampler_base, OVIS_LDEBUG,
 				       "ERR: issue getting temperature for device %d\n",
 				       i);
 				v1.v_u64 = 0;
@@ -389,7 +390,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 		if (nvmlDeviceGetMemoryInfoPtr != NULL){
 			rc = (*nvmlDeviceGetMemoryInfoPtr)(nvidia_device[i], &meminfo);
 			if (rc !=  NVML_SUCCESS){
-				msglog(LDMSD_LDEBUG,
+				ovis_log(__cray_sampler_base, OVIS_LDEBUG,
 				       "ERR: issue getting memory used for device %d\n",
 				       i);
 				v1.v_u64 = 0;
@@ -409,7 +410,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 								NVML_MEMORY_LOCATION_L1_CACHE,
 								&retl);
 			if (rc !=  NVML_SUCCESS){
-				msglog(LDMSD_LDEBUG,
+				ovis_log(__cray_sampler_base, OVIS_LDEBUG,
 				       "ERR: issue getting aggregate double detailed ECC l1 cache Errors for device %d\n",
 				       i);
 				v1.v_u64 = 0;
@@ -425,7 +426,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 								NVML_MEMORY_LOCATION_L2_CACHE,
 								&retl);
 			if (rc !=  NVML_SUCCESS){
-				msglog(LDMSD_LDEBUG,
+				ovis_log(__cray_sampler_base, OVIS_LDEBUG,
 				       "ERR: issue getting aggregate double detailed ECC l2 cache Errors for device %d\n",
 				       i);
 				v1.v_u64 = 0;
@@ -441,7 +442,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 								NVML_MEMORY_LOCATION_DEVICE_MEMORY,
 								&retl);
 			if (rc !=  NVML_SUCCESS){
-				msglog(LDMSD_LDEBUG,
+				ovis_log(__cray_sampler_base, OVIS_LDEBUG,
 				       "ERR: issue getting aggregate double detailed ECC device memory Errors for device %d\n", i);
 				v1.v_u64 = 0;
 				ldms_metric_set(set, metric_table_nvidia[metric_count++], &v1);
@@ -456,7 +457,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 								NVML_MEMORY_LOCATION_REGISTER_FILE,
 								&retl);
 			if (rc !=  NVML_SUCCESS){
-				msglog(LDMSD_LDEBUG,
+				ovis_log(__cray_sampler_base, OVIS_LDEBUG,
 				       "ERR: issue getting aggregate double detailed ECC register file Errors for device %d\n", i);
 				v1.v_u64 = 0;
 				ldms_metric_set(set, metric_table_nvidia[metric_count++], &v1);
@@ -472,7 +473,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 								NVML_MEMORY_LOCATION_TEXTURE_MEMORY,
 								&retl);
 			if (rc !=  NVML_SUCCESS){
-				msglog(LDMSD_LDEBUG,
+				ovis_log(__cray_sampler_base, OVIS_LDEBUG,
 				       "ERR: issue getting aggregate double detailed ECC texture memory Errors for device %d\n", i);
 				v1.v_u64 = 0;
 				ldms_metric_set(set, metric_table_nvidia[metric_count++], &v1);
@@ -496,7 +497,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 							       NVML_MEMORY_ERROR_TYPE_UNCORRECTED,
 							       NVML_AGGREGATE_ECC,  &teep);
 			if (rc !=  NVML_SUCCESS){
-				msglog(LDMSD_LDEBUG,
+				ovis_log(__cray_sampler_base, OVIS_LDEBUG,
 				       "ERR: issue getting aggregate double ECC total Errors for device %d\n",
 				       i);
 				v2.v_u64 = 0;
@@ -512,7 +513,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 		if (nvmlDeviceGetUtilizationRatesPtr != NULL){
 			rc = (*nvmlDeviceGetUtilizationRatesPtr)(nvidia_device[i], &util);
 			if (rc !=  NVML_SUCCESS){
-				msglog(LDMSD_LDEBUG,
+				ovis_log(__cray_sampler_base, OVIS_LDEBUG,
 				       "ERR: issue getting GPU Utilization Rate for device %d\n",
 				       i);
 				v1.v_u64 = 0;
@@ -530,19 +531,19 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 }
 
 
-static int loadFctns(ldmsd_msg_log_f msglog){
+static int loadFctns(){
 	char library_name[PATH_MAX];
 	void *dl1;
 
 	char *path = getenv("LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH");
 	if (path) {
-		msglog(LDMSD_LDEBUG, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH <%s>\n", path);
+		ovis_log(__cray_sampler_base, OVIS_LDEBUG, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH <%s>\n", path);
 		sprintf(library_name, "%s/libnvidia-ml.so", path);
 	} else {
-		msglog(LDMSD_LERROR, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH undefined\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH undefined\n");
 		path = getenv("LDMSD_PLUGIN_LIBPATH");
 		if (!path) {
-			msglog(LDMSD_LERROR, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH undefined\n");
+			ovis_log(__cray_sampler_base, OVIS_LERROR, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH undefined\n");
 			sprintf(library_name, "libnvidia-ml.so");
 		} else {
 			sprintf(library_name, "%s/libnvidia-ml.so", path);
@@ -552,122 +553,122 @@ static int loadFctns(ldmsd_msg_log_f msglog){
 	dl1 = dlopen(library_name, RTLD_NOW | RTLD_GLOBAL );
 	//dl1 = dlopen(library_name, RTLD_NOW | RTLD_DEEPBIND);
 	if ((dlerror() != NULL) || (!dl1)){
-		msglog(LDMSD_LERROR, "NVML runtime library libnvidia-ml.so not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML runtime library libnvidia-ml.so not found\n");
 		return -1;
 	}
-	msglog(LDMSD_LDEBUG, "NVML runtime library libnvidia-ml.so found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML runtime library libnvidia-ml.so found\n");
 
 	nvmlErrorStringPtr = dlsym(dl1, "nvmlErrorString");
 	if ((dlerror() != NULL) || (!nvmlErrorStringPtr)){
-		msglog(LDMSD_LERROR, "NVML ErrorString not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML ErrorString not found\n");
 		return -1;
 	}
-	msglog(LDMSD_LDEBUG, "NVML ErrorString Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML ErrorString Found\n");
 
 	nvmlInitPtr = dlsym(dl1, "nvmlInit");
 	if ((dlerror() != NULL) || (!nvmlInitPtr)){
-		msglog(LDMSD_LERROR, "NVML init not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML init not found\n");
 		return -1;
 	}
-	msglog(LDMSD_LDEBUG, "NVML init Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML init Found\n");
 
 	nvmlShutdownPtr = dlsym(dl1, "nvmlShutdown");
 	if ((dlerror() != NULL) || (!nvmlShutdownPtr)){
-		msglog(LDMSD_LERROR, "NVML shutdown not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML shutdown not found\n");
 		return -1;
 	}
-	msglog(LDMSD_LDEBUG, "NVML shutdown Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML shutdown Found\n");
 
 	nvmlDeviceGetCountPtr = dlsym(dl1, "nvmlDeviceGetCount");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetCountPtr)){
-		msglog(LDMSD_LERROR, "NVML DeviceGetCountPtr not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML DeviceGetCountPtr not found\n");
 		return -1;
 	}
-	msglog(LDMSD_LDEBUG, "NVML devicegetcount Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML devicegetcount Found\n");
 
 	nvmlDeviceGetHandleByIndexPtr = dlsym(dl1, "nvmlDeviceGetHandleByIndex");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetHandleByIndexPtr)){
-		msglog(LDMSD_LERROR, "NVML DeviceGetHandleByIndexPtr not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML DeviceGetHandleByIndexPtr not found\n");
 		return -1;
 	}
-	msglog(LDMSD_LDEBUG, "NVML devicegethandlebyindex Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML devicegethandlebyindex Found\n");
 
 	nvmlDeviceGetNamePtr = dlsym(dl1, "nvmlDeviceGetName");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetNamePtr)){
-		msglog(LDMSD_LERROR, "NVML DeviceGetNamePtr not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML DeviceGetNamePtr not found\n");
 		return -1;
 	}
-	msglog(LDMSD_LDEBUG, "NVML devicegetname Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML devicegetname Found\n");
 
 	nvmlDeviceGetPciInfoPtr = dlsym(dl1, "nvmlDeviceGetPciInfo");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetPciInfoPtr)){
-		msglog(LDMSD_LERROR, "NVML DeviceGetPciInfo not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML DeviceGetPciInfo not found\n");
 		return -1;
 	}
-	msglog(LDMSD_LDEBUG, "NVML devicegetpciinfo Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML devicegetpciinfo Found\n");
 
 	// these ok to be null
 	nvmlDeviceGetPowerUsagePtr = dlsym(dl1, "nvmlDeviceGetPowerUsage");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetPowerUsagePtr)){
-		msglog(LDMSD_LERROR, "NVML DeviceGetPowerUsage not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML DeviceGetPowerUsage not found\n");
 	}
-	msglog(LDMSD_LDEBUG, "NVML devicegetpowerusage Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML devicegetpowerusage Found\n");
 
 	nvmlDeviceGetPowerManagementLimitPtr = dlsym(dl1, "nvmlDeviceGetPowerManagementLimit");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetPowerManagementLimitPtr)){
-		msglog(LDMSD_LERROR, "NVML DeviceGetPowerManagementLimit not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML DeviceGetPowerManagementLimit not found\n");
 	}
-	msglog(LDMSD_LDEBUG, "NVML devicegetpowermanagementlimit Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML devicegetpowermanagementlimit Found\n");
 
 	nvmlDeviceGetPerformanceStatePtr = dlsym(dl1, "nvmlDeviceGetPerformanceState");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetPerformanceStatePtr)){
-		msglog(LDMSD_LERROR, "NVML DeviceGetPerformanceState not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML DeviceGetPerformanceState not found\n");
 	}
-	msglog(LDMSD_LDEBUG, "NVML devicegetperformancestate Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML devicegetperformancestate Found\n");
 
 	nvmlDeviceGetTemperaturePtr = dlsym(dl1, "nvmlDeviceGetTemperature");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetTemperaturePtr)){
-		msglog(LDMSD_LERROR, "NVML DeviceGetTemperature not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML DeviceGetTemperature not found\n");
 	}
-	msglog(LDMSD_LDEBUG, "NVML devicegettemperature Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML devicegettemperature Found\n");
 
 	nvmlDeviceGetMemoryInfoPtr = dlsym(dl1, "nvmlDeviceGetMemoryInfo");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetMemoryInfoPtr)){
-		msglog(LDMSD_LERROR, "NVML DeviceGetMemoryInfo not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML DeviceGetMemoryInfo not found\n");
 	}
-	msglog(LDMSD_LDEBUG, "NVML devicegetmemoryInfo Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML devicegetmemoryInfo Found\n");
 
 	//NOTE: this will return a non-null value even though the function is deprecated.
 	//it fails when it is tried to be called
 //	nvmlDeviceGetDetailedEccErrorsPtr = dlsym(dl1, "nvmlDeviceGetDetailedEccErrors");
 	nvmlDeviceGetMemoryErrorCounterPtr = dlsym(dl1, "nvmlDeviceGetMemoryErrorCounter");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetMemoryErrorCounterPtr)){
-		msglog(LDMSD_LERROR, "NVML DeviceGetMemoryErrorCounter not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML DeviceGetMemoryErrorCounter not found\n");
 	}
-	msglog(LDMSD_LDEBUG, "NVML devicegetMemoryErrorCounter Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML devicegetMemoryErrorCounter Found\n");
 
 	nvmlDeviceGetTotalEccErrorsPtr = dlsym(dl1, "nvmlDeviceGetTotalEccErrors");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetTotalEccErrorsPtr)){
-		msglog(LDMSD_LERROR, "NVML DeviceGetTotalEccErrors not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML DeviceGetTotalEccErrors not found\n");
 	}
-	msglog(LDMSD_LDEBUG, "NVML devicegetTotalEccErrors Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML devicegetTotalEccErrors Found\n");
 
 	nvmlDeviceGetUtilizationRatesPtr = dlsym(dl1, "nvmlDeviceGetUtilizationRates");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetUtilizationRatesPtr)){
-		msglog(LDMSD_LERROR, "NVML DeviceGetUtilizationRates not found\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML DeviceGetUtilizationRates not found\n");
 	}
-	msglog(LDMSD_LDEBUG, "NVML devicegetUtilizationRates Found\n");
+	ovis_log(__cray_sampler_base, OVIS_LDEBUG, "NVML devicegetUtilizationRates Found\n");
 
 	return 0;
 
 }
 
-int nvidia_shutdown(ldmsd_msg_log_f msglog){
+int nvidia_shutdown(){
 	nvmlReturn_t result;
 
 	result =(*nvmlShutdownPtr)();
 	if (NVML_SUCCESS != result) {
-		msglog(LDMSD_LERROR, "Failed to shutdown NVML: %s\n", (*nvmlErrorStringPtr)(result));
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "Failed to shutdown NVML: %s\n", (*nvmlErrorStringPtr)(result));
 		return -1;
 	}
 
@@ -676,7 +677,7 @@ int nvidia_shutdown(ldmsd_msg_log_f msglog){
 }
 
 
-int nvidia_setup(ldmsd_msg_log_f msglog){
+int nvidia_setup(){
 	nvmlReturn_t result;
 	nvmlDevice_t device;
 	char name[NVML_DEVICE_NAME_BUFFER_SIZE];
@@ -692,23 +693,23 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 		return 0;
 	}
 
-	rc = loadFctns(msglog);
+	rc = loadFctns();
 	if (rc != 0){
-		msglog(LDMSD_LERROR, "NVML loadFctns failed\n");
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML loadFctns failed\n");
 		return EINVAL;
 	}
 
 	//TODO: is there anywhere I can do shutdown? what happens if it isnt?
 	result = (*nvmlInitPtr)();
 	if (result != NVML_SUCCESS){
-		msglog(LDMSD_LERROR, "NVML: Failed to initialize NVML: %s\n",
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML: Failed to initialize NVML: %s\n",
 		       (*nvmlErrorStringPtr)(result));
 		return EINVAL;
 	}
 
 	result = (*nvmlDeviceGetCountPtr)(&count);
 	if (result != NVML_SUCCESS){
-		msglog(LDMSD_LERROR, "NVML: Failed to query device count: %s\n",
+		ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML: Failed to query device count: %s\n",
 		       (*nvmlErrorStringPtr)(result));
 		return EINVAL;
 	}
@@ -718,7 +719,7 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 	for (i = 0; i < count; i++){
 		result = (*nvmlDeviceGetHandleByIndexPtr)(i, &device);
 		if (result != NVML_SUCCESS){
-			msglog(LDMSD_LERROR, "NVML: Failed to get handle of device %d: %s\n",
+			ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML: Failed to get handle of device %d: %s\n",
 			       i, (*nvmlErrorStringPtr)(result));
 			return EINVAL;
 		}
@@ -726,7 +727,7 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 		result = (*nvmlDeviceGetNamePtr)(device, name,
 						 NVML_DEVICE_NAME_BUFFER_SIZE);
 		if (result != NVML_SUCCESS){
-			msglog(LDMSD_LERROR, "NVML: Failed to get name of device %d: %s\n",
+			ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML: Failed to get name of device %d: %s\n",
 			       i, (*nvmlErrorStringPtr)(result));
 			return EINVAL;
 		}
@@ -737,13 +738,13 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 			char *tmpname = strdup(nvidia_device_names[j]);
 			replace_underscore(tmpname);
 			if (strcmp(name, tmpname) == 0){
-				msglog(LDMSD_LDEBUG, "Found matching device for <%s>\n",
+				ovis_log(__cray_sampler_base, OVIS_LDEBUG, "Found matching device for <%s>\n",
 				       tmpname);
 				nvidia_device[j] = device;  //Note: copy works
 				//NOTE: will we need this?
 				result = (*nvmlDeviceGetPciInfoPtr)(nvidia_device[j], &nvidia_pci[j]);
 				if (result != NVML_SUCCESS){
-					msglog(LDMSD_LERROR, "NVML: Failed to get pci info for device %s: %s\n",
+					ovis_log(__cray_sampler_base, OVIS_LERROR, "NVML: Failed to get pci info for device %s: %s\n",
 					       nvidia_device_names[j], (*nvmlErrorStringPtr)(result));
 					if (tmpname){
 						free(tmpname);

@@ -129,8 +129,9 @@ static char iface[MAXIFACE][20];
 
 #define SAMP "procnetdev2"
 static FILE *mf = NULL;
-static ldmsd_msg_log_f msglog;
 static base_data_t base;
+
+static ovis_log_t mylog;
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
@@ -148,7 +149,7 @@ static int create_metric_set(base_data_t base)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open " SAMP " file "
+		ovis_log(mylog, OVIS_LERROR, "Could not open " SAMP " file "
 				"'%s'...exiting\n",
 				procfile);
 		return ENOENT;
@@ -157,7 +158,7 @@ static int create_metric_set(base_data_t base)
 	/* Create a metric set of the required size */
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = EINVAL;
@@ -221,7 +222,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < ARRAY_LEN(deprecated); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
+			ovis_log(mylog, OVIS_LERROR, "config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -254,7 +255,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 	if (base) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
@@ -265,18 +266,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	ifacelist = strdup(ivalue);
 	if (!ifacelist) {
-		msglog(LDMSD_LERROR, SAMP ": out of memory\n");
+		ovis_log(mylog, OVIS_LCRIT, "out of memory\n");
 		goto err;
 	}
 	pch = strtok_r(ifacelist, ",", &saveptr);
 	while (pch != NULL){
 		if (niface >= (MAXIFACE-1)) {
-			msglog(LDMSD_LERROR, SAMP ": too many ifaces: <%s>\n",
+			ovis_log(mylog, OVIS_LERROR, "too many ifaces: <%s>\n",
 				pch);
 			goto err;
 		}
 		snprintf(iface[niface], 20, "%s", pch);
-		msglog(LDMSD_LDEBUG, SAMP ": added iface <%s>\n", iface[niface]);
+		ovis_log(mylog, OVIS_LDEBUG, "added iface <%s>\n", iface[niface]);
 		niface++;
 		pch = strtok_r(NULL, ",", &saveptr);
 	}
@@ -287,7 +288,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto err;
 
  cfg:
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base){
 		rc = EINVAL;
 		goto err;
@@ -295,7 +296,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 
@@ -320,15 +321,15 @@ static int sample(struct ldmsd_sampler *self)
 	ldms_mval_t lh, rec_inst, name_mval;
 	size_t heap_sz;
 
-	if (!base){
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+	if (!base) {
+		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 
 	if (!mf)
 		mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, SAMP ": Could not open /proc/net/dev file "
+		ovis_log(mylog, OVIS_LERROR, "Could not open /proc/net/dev file "
 				"'%s'...exiting\n", procfile);
 		return ENOENT;
 	}
@@ -366,7 +367,7 @@ begin:
 				&v[11].v_u64, &v[12].v_u64, &v[13].v_u64,
 				&v[14].v_u64, &v[15].v_u64, &v[16].v_u64);
 		if (rc != 17){
-			msglog(LDMSD_LINFO, SAMP ": wrong number of "
+			ovis_log(mylog, OVIS_LINFO, "wrong number of "
 					"fields in sscanf\n");
 			continue;
 		}
@@ -406,7 +407,7 @@ resize:
 	base_set_new_heap(base, heap_sz);
 	if (!base->set) {
 		rc = errno;
-		ldmsd_log(LDMSD_LCRITICAL, SAMP " : Failed to create a set with "
+		ovis_log(mylog, OVIS_LCRITICAL, SAMP " : Failed to create a set with "
 						"a bigger heap. Error %d\n", rc);
 		return rc;
 	}
@@ -422,6 +423,8 @@ static void term(struct ldmsd_plugin *self)
 	base_set_delete(base);
 	base_del(base);
 	base = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 
@@ -437,9 +440,15 @@ static struct ldmsd_sampler procnetdev2_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
 	base = NULL;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	return &procnetdev2_plugin.base;
 }

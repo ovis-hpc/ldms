@@ -60,7 +60,7 @@
 #include "ldmsd.h"
 #include "timer_base.h"
 
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 
 struct hfclock {
 	struct timer_base base;
@@ -94,6 +94,8 @@ static
 void hfclock_term(struct ldmsd_plugin *self)
 {
 	hfclock_cleanup((void*)self);
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static
@@ -114,7 +116,7 @@ int hfclock_config(struct ldmsd_plugin *self,
 	uint64_t x;
 	struct hfclock *hf = (void*)self;
 
-	rc = timer_base_config(self, kwl, avl, msglog);
+	rc = timer_base_config(self, kwl, avl, mylog);
 	if (rc)
 		goto out;
 
@@ -163,9 +165,15 @@ out:
 	return rc;
 }
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler.hfclock", "The log subsystem of the hfclock plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'hfclock' plugin. Error %d\n", rc);
+	}
 	struct hfclock *hf = calloc(1, sizeof(*hf));
 
 	if (!hf)

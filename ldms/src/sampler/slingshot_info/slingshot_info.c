@@ -37,8 +37,8 @@
 
 #define DEFAULT_ARRAY_LEN 32
 
-static ldmsd_msg_log_f log_fn;
 static base_data_t sampler_base;
+static ovis_log_t mylog;
 
 static struct {
         int nic_record;
@@ -74,7 +74,7 @@ static int initialize_ldms_structs()
         ldms_record_t rec_def; /* a pointer */
         int rc;
 
-        log_fn(LDMSD_LDEBUG, SAMP" initialize()\n");
+        ovis_log(mylog, OVIS_LDEBUG, "initialize()\n");
 
         /* Create the schema */
         base_schema_new(sampler_base);
@@ -106,7 +106,7 @@ err3:
 err2:
         base_schema_delete(sampler_base);
 err1:
-        log_fn(LDMSD_LERROR, SAMP" initialization failed\n");
+        ovis_log(mylog, OVIS_LERROR, "initialization failed\n");
         return -1;
 }
 
@@ -116,7 +116,7 @@ static int config(struct ldmsd_plugin *self,
         int rc = 0;
         char *value;
 
-        log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
         sampler_base = base_config(avl, SAMP, "slingshot_info", log_fn);
 
@@ -143,8 +143,8 @@ static void resize_metric_set(int expected_remaining_nics)
 
         base_set_new_heap(sampler_base, new_heap_size);
         if (sampler_base->set == NULL) {
-                ldmsd_log(LDMSD_LERROR,
-                          SAMP" : Failed to resize metric set heap: %d\n", errno);
+                ovis_log(mylog, OVIS_LERROR,
+                          "Failed to resize metric set heap: %d\n", errno);
         }
 }
 
@@ -184,7 +184,7 @@ static void set_pcie_speed(ldms_mval_t record_instance, int index, const char *d
                  device_name);
         fp = fopen(path, "r");
         if (fp == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" unable to open \"%s\"\n", path);
+                ovis_log(mylog, OVIS_LWARNING, "unable to open \"%s\"\n", path);
                 return;
         }
         rc = fgets(speed, PATH_MAX, fp);
@@ -198,7 +198,7 @@ static void set_pcie_speed(ldms_mval_t record_instance, int index, const char *d
                  device_name);
         fp = fopen(path, "r");
         if (fp == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" unable to open \"%s\"\n", path);
+                ovis_log(mylog, OVIS_LWARNING, "unable to open \"%s\"\n", path);
                 return;
         }
         rc = fgets(width, PATH_MAX, fp);
@@ -239,7 +239,7 @@ static void set_metric_from_sys(ldms_mval_t record_instance, int index,
         snprintf(path, PATH_MAX, "/sys/class/cxi/%s/%s", device_name, subpath);
         fp = fopen(path, "r");
         if (fp == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" unable to open \"%s\"\n", path);
+                ovis_log(mylog, OVIS_LWARNING, "unable to open \"%s\"\n", path);
                 return;
         }
         rc = fgets(value, PATH_MAX, fp);
@@ -285,7 +285,7 @@ static void get_mac_address(const char *interface, char *mac_address, int len)
         snprintf(path, PATH_MAX, "/sys/class/net/%s/address", interface);
         fp = fopen(path, "r");
         if (fp == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" unable to open \"%s\"\n", path);
+                ovis_log(mylog, OVIS_LWARNING, "unable to open \"%s\"\n", path);
                 return;
         }
         rc = fgets(value, PATH_MAX, fp);
@@ -308,10 +308,10 @@ static int sample(struct ldmsd_sampler *self)
         base_sample_begin(sampler_base);
         rc = cxil_get_device_list(&device_list);
         if (rc != 0) {
-                log_fn(LDMSD_LERROR, SAMP" sample(): cxil_get_device_list() failed: %d\n", rc);
+                ovis_log(mylog, OVIS_LERROR, "sample(): cxil_get_device_list() failed: %d\n", rc);
                 base_sample_end(sampler_base);
         }
-        log_fn(LDMSD_LDEBUG, SAMP" sample(): # slingshot nics: %u\n", device_list->count);
+        ovis_log(mylog, OVIS_LDEBUG, "sample(): # slingshot nics: %u\n", device_list->count);
 
         list_handle = ldms_metric_get(sampler_base->set, index_store.nic_list);
         ldms_list_purge(sampler_base->set, list_handle);
@@ -325,7 +325,7 @@ static int sample(struct ldmsd_sampler *self)
                 record_instance = ldms_record_alloc(sampler_base->set,
                                                     index_store.nic_record);
                 if (record_instance == NULL) {
-                        log_fn(LDMSD_LDEBUG, SAMP": ldms_record_alloc() failed, resizing metric set\n");
+                        ovis_log(mylog, OVIS_LDEBUG, SAMP": ldms_record_alloc() failed, resizing metric set\n");
                         resize_metric_set(device_list->count - i);
                         break;
                 }
@@ -390,7 +390,7 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
         base_set_delete(sampler_base);
         base_del(sampler_base);
         sampler_base = NULL;
@@ -403,14 +403,15 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" usage() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP " " BASE_CONFIG_SYNOPSIS
                 BASE_CONFIG_DESC
                 ;
 }
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
+	int rc;
         static struct ldmsd_sampler plugin = {
                 .base = {
                         .name = SAMP,
@@ -423,8 +424,14 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
                 .sample = sample,
         };
 
-        log_fn = pf;
-        log_fn(LDMSD_LDEBUG, SAMP" get_plugin() called ("PACKAGE_STRING")\n");
+        mylog = ovis_log_register("sampler.slingshot", "Messages for the slingshot sampler plugin");
+        if (!mylog) {
+                rc = errno;
+                ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+                                    "of '" SAMP "' plugin. Error %d.\n", rc);
+        }
+
+        ovis_log(mylog, OVIS_LDEBUG, "get_plugin() called ("PACKAGE_STRING")\n");
 
         return &plugin.base;
 }

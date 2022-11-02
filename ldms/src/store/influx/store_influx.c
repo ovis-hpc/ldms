@@ -59,6 +59,8 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
+static ovis_log_t mylog;
+
 static char host_port[64];	/* hostname:port_no for influxdb */
 struct influx_store {
 	struct ldmsd_store *store;
@@ -80,7 +82,6 @@ struct influx_store {
 static size_t measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
 static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 LIST_HEAD(influx_store_list, influx_store) store_list;
-static ldmsd_msg_log_f msglog;
 
 static int set_none_fn(char *line, size_t *line_off, size_t line_len, ldms_set_t s, int i)
 {
@@ -177,7 +178,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	value = av_value(avl, "host_port");
 	if (!value) {
-		msglog(LDMSD_LERROR, "The 'host_port' keyword is required.\n");
+		ovis_log(mylog, OVIS_LERROR, "The 'host_port' keyword is required.\n");
 		return EINVAL;
 	}
 	strncpy(host_port, value, sizeof(host_port));
@@ -186,7 +187,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value) {
 		measurement_limit = strtol(value, NULL, 0);
 		if (measurement_limit <= 0) {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "'%s' is not a valid 'measurement_limit' value\n",
 			       value);
 			measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
@@ -199,6 +200,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 static void term(struct ldmsd_plugin *self)
 {
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -365,7 +368,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 			continue;
 		metric_type = ldms_metric_type_get(set, metric_arry[i]);
 		if (metric_type > LDMS_V_CHAR_ARRAY) {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "The metric %s:%s of type %s is not supported by "
 			       "InfluxDB and is being ignored.\n",
 			       is->schema,
@@ -403,7 +406,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 err:
 	pthread_mutex_unlock(&is->lock);
 
-	msglog(LDMSD_LERROR, "Overflow formatting InfluxDB measurement data.\n");
+	ovis_log(mylog, OVIS_LERROR, "Overflow formatting InfluxDB measurement data.\n");
 	return ENOMEM;
 }
 
@@ -449,9 +452,15 @@ static struct ldmsd_store store_influx = {
 	.close = close_store,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store.influx", "Log subsystem of the 'influx' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'influx' plugin. Error %d\n", rc);
+	}
 	return &store_influx.base;
 }
 

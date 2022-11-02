@@ -80,9 +80,16 @@
 
 static int offns[NS_NUM] = { 0 };
 
+ovis_log_t __cray_sampler_log;
+
 const char* ns_names[] = {
        CSS_NS(CSS_STRWRAP)
 };
+
+void set_cray_sampler_log(ovis_log_t pi_log)
+{
+	__cray_sampler_log = pi_log;
+}
 
 int set_offns_generic(cray_system_sampler_sources_t i){
 	offns[i] = 1;
@@ -93,8 +100,7 @@ int get_offns_generic(cray_system_sampler_sources_t i){
 }
 
 int config_generic(struct attr_value_list* kwl,
-			  struct attr_value_list* avl,
-			  ldmsd_msg_log_f msglog){
+			  struct attr_value_list* avl){
 	char *value = NULL;
 	int flag;
 	int rc = 0;
@@ -197,7 +203,7 @@ int config_generic(struct attr_value_list* kwl,
 	}
 
 	if (!offns[NS_NVIDIA]){
-		rc = config_nvidia(kwl, avl, msglog);
+		rc = config_nvidia(kwl, avl);
 	}
 #endif
 
@@ -207,8 +213,7 @@ int config_generic(struct attr_value_list* kwl,
 
 static int add_metrics_simple(ldms_schema_t schema, char** metric_names,
 			      int num_metrics, int** metric_table,
-			      char (*fname)[], FILE** g_f,
-			      ldmsd_msg_log_f msglog)
+			      char (*fname)[], FILE** g_f)
 {
 	int i, rc;
 
@@ -218,7 +223,7 @@ static int add_metrics_simple(ldms_schema_t schema, char** metric_names,
 
 	*metric_table = calloc(num_metrics, sizeof(int));
 	if (! (*metric_table)){
-		msglog(LDMSD_LERROR,"cray_system_sampler: cannot calloc metric_table\n");
+		ovis_log(__cray_sampler_log, OVIS_LERROR,"cannot calloc metric_table\n");
 		return ENOMEM;
 	}
 
@@ -226,7 +231,7 @@ static int add_metrics_simple(ldms_schema_t schema, char** metric_names,
 		*g_f = fopen(*fname, "r");
 		if (!(*g_f)) {
 			/* this is not necessarily an error */
-			msglog(LDMSD_LERROR,"WARNING: Could not open the source file '%s'\n",
+			ovis_log(__cray_sampler_log, OVIS_LERROR,"WARNING: Could not open the source file '%s'\n",
 			       *fname);
 		}
 	} else {
@@ -239,7 +244,7 @@ static int add_metrics_simple(ldms_schema_t schema, char** metric_names,
 		rc =  ldms_schema_metric_add(schema, metric_names[i],
 				      LDMS_V_U64);
 		if (rc < 0){
-			msglog(LDMSD_LERROR,"cray_system_sampler: cannot add metric %s\n",
+			ovis_log(__cray_sampler_log, OVIS_LERROR,"cannot add metric %s\n",
 			       metric_names[i]);
 			rc = ENOMEM;
 			return rc;
@@ -252,8 +257,7 @@ static int add_metrics_simple(ldms_schema_t schema, char** metric_names,
 
 
 int add_metrics_generic(ldms_schema_t schema,
-			       cray_system_sampler_sources_t source_id,
-			       ldmsd_msg_log_f msglog)
+			       cray_system_sampler_sources_t source_id)
 {
 	int i;
 	int rc = 0;
@@ -269,14 +273,13 @@ int add_metrics_generic(ldms_schema_t schema,
 					nettopo_meshcoord_metricname,
 					NETTOPODIM,
 					&nettopo_metric_table,
-					NULL, NULL,
-					msglog);
+					NULL, NULL);
 		if (rc != 0)
 			return rc;
-		rc = nettopo_setup(msglog);
+		rc = nettopo_setup();
 		if (rc != 0){
 			/* continue on, but with invalid values */
-			msglog(LDMSD_LERROR, "netopo_setup failed. All nettopo values for this nid will be invalid\n");
+			ovis_log(__cray_sampler_log, OVIS_LERROR, "netopo_setup failed. All nettopo values for this nid will be invalid\n");
 		}
 		return 0;
 		break;
@@ -285,8 +288,7 @@ int add_metrics_generic(ldms_schema_t schema,
 		rc = add_metrics_simple(schema, VMSTAT_METRICS,
 					NUM_VMSTAT_METRICS,
 					&metric_table_vmstat,
-					&VMSTAT_FILE, &v_f,
-					msglog);
+					&VMSTAT_FILE, &v_f);
 		if (rc != 0) {
 			sample_metrics_vmstat_ptr == NULL;
 			return rc;
@@ -306,8 +308,7 @@ int add_metrics_generic(ldms_schema_t schema,
 		rc = add_metrics_simple(schema, LOADAVG_METRICS,
 					  NUM_LOADAVG_METRICS,
 					  &metric_table_loadavg,
-					  &LOADAVG_FILE, &l_f,
-					  msglog);
+					  &LOADAVG_FILE, &l_f);
 		if (rc != 0)
 			return rc;
 		if (l_f != NULL){
@@ -326,8 +327,7 @@ int add_metrics_generic(ldms_schema_t schema,
 		rc = add_metrics_simple(schema, ENERGY_METRICS,
 					NUM_ENERGY_METRICS,
 					&metric_table_energy,
-					NULL, NULL,
-					msglog);
+					NULL, NULL);
 		if (rc != 0)
 			return rc;
 		break;
@@ -337,8 +337,7 @@ int add_metrics_generic(ldms_schema_t schema,
 		rc = add_metrics_simple(schema, CURRENT_FREEMEM_METRICS,
 					NUM_CURRENT_FREEMEM_METRICS,
 					&metric_table_current_freemem,
-					&CURRENT_FREEMEM_FILE, &cf_f,
-					msglog);
+					&CURRENT_FREEMEM_FILE, &cf_f);
 		if (rc != 0)
 			return rc; //This will NOT happen if the file DNE
 		if (cf_f != NULL) {
@@ -357,25 +356,23 @@ int add_metrics_generic(ldms_schema_t schema,
 		rc = add_metrics_simple(schema, PROCNETDEV_METRICS,
 					NUM_PROCNETDEV_METRICS,
 					&metric_table_procnetdev,
-					&PROCNETDEV_FILE, &pnd_f,
-					msglog);
+					&PROCNETDEV_FILE, &pnd_f);
 		if (rc != 0)
 			return rc;
-		rc = procnetdev_setup(msglog);
+		rc = procnetdev_setup();
 		if (rc != 0) /* Warn but OK to continue */
-			msglog(LDMSD_LERROR,"cray_system_sampler: procnetdev invalid\n");
+			ovis_log(__cray_sampler_log, OVIS_LERROR,"procnetdev invalid\n");
 		break;
 	case NS_KGNILND:
 		return add_metrics_simple(schema, KGNILND_METRICS,
 					  NUM_KGNILND_METRICS,
 					  &metric_table_kgnilnd,
-					  &KGNILND_FILE, &k_f,
-					  msglog);
+					  &KGNILND_FILE, &k_f);
 		break;
 	case NS_LUSTRE:
 #ifdef HAVE_LUSTRE
-		lustre_sampler_set_msglog(msglog);
-		return add_metrics_lustre(schema, msglog);
+		lustre_sampler_set_pilog();
+		return add_metrics_lustre(schema);
 #else
 		//default unused
 		return 0;
@@ -383,15 +380,15 @@ int add_metrics_generic(ldms_schema_t schema,
 		break;
 	case NS_NVIDIA:
 #ifdef HAVE_CRAY_NVIDIA
-		rc = add_metrics_nvidia(schema, msglog);
+		rc = add_metrics_nvidia(schema);
 		if (rc != 0) {
-			msglog(LDMSD_LERROR, "Error adding metrics nvidia\n");
+			ovis_log(__cray_sampler_log, OVIS_LERROR, "Error adding metrics nvidia\n");
 			return rc;
 		}
 		// if this fails because cannot load the library will have nvidia_valid = 0
-		rc = nvidia_setup(msglog);
+		rc = nvidia_setup();
 		if (rc != 0) /* Warn but ok to continue...nvidia_valid may be 0 */
-			msglog(LDMSD_LDEBUG, "cray_system_sampler: cray_nvidia invalid\n");
+			ovis_log(__cray_sampler_log, OVIS_LDEBUG, "cray_nvidia invalid\n");
 		return 0;
 #else
 		//default unused
@@ -406,8 +403,7 @@ int add_metrics_generic(ldms_schema_t schema,
 	return 0;
 }
 
-int sample_metrics_generic(ldms_set_t set, cray_system_sampler_sources_t source_id,
-			   ldmsd_msg_log_f msglog)
+int sample_metrics_generic(ldms_set_t set, cray_system_sampler_sources_t source_id)
 {
 	int rc = 0;
 
@@ -423,36 +419,36 @@ int sample_metrics_generic(ldms_set_t set, cray_system_sampler_sources_t source_
 
 	switch (source_id){
 	case NS_NETTOPO:
-		rc = sample_metrics_nettopo(set, msglog);
+		rc = sample_metrics_nettopo(set);
 		break;
 	case NS_VMSTAT:
 		if (sample_metrics_vmstat_ptr != NULL)
-			rc = sample_metrics_vmstat_ptr(set, msglog);
+			rc = sample_metrics_vmstat_ptr(set);
 		else
 			rc = 0;
 		break;
 	case NS_CURRENT_FREEMEM:
 		if (sample_metrics_cf_ptr != NULL)
-			rc = sample_metrics_cf_ptr(set, msglog);
+			rc = sample_metrics_cf_ptr(set);
 		else
 			rc = 0;
 		break;
 	case NS_ENERGY:
-		rc = sample_metrics_energy(set, msglog);
+		rc = sample_metrics_energy(set);
 		//ok if any of these fail
 		break;
 	case NS_LOADAVG:
-		rc = sample_metrics_loadavg(set, msglog);
+		rc = sample_metrics_loadavg(set);
 		break;
 	case NS_KGNILND:
-		rc = sample_metrics_kgnilnd(set, msglog);
+		rc = sample_metrics_kgnilnd(set);
 		break;
 	case NS_PROCNETDEV:
-		rc = sample_metrics_procnetdev(set, msglog);
+		rc = sample_metrics_procnetdev(set);
 		break;
 	case NS_LUSTRE:
 #ifdef HAVE_LUSTRE
-		rc = sample_metrics_lustre(set, msglog);
+		rc = sample_metrics_lustre(set);
 #else
 		//do nothing
 		rc = 0;
@@ -460,7 +456,7 @@ int sample_metrics_generic(ldms_set_t set, cray_system_sampler_sources_t source_
 		break;
 	case NS_NVIDIA:
 #ifdef HAVE_CRAY_NVIDIA
-		rc = sample_metrics_nvidia(set, msglog);
+		rc = sample_metrics_nvidia(set);
 #else
 		//do nothing
 		rc = 0;
@@ -472,7 +468,7 @@ int sample_metrics_generic(ldms_set_t set, cray_system_sampler_sources_t source_
 	}
 
 	if (rc != 0) {
-		msglog(LDMSD_LDEBUG,
+		ovis_log(__cray_sampler_log, OVIS_LDEBUG,
 		       "%s:  NS %s return error code %d in sample_metrics_generic\n",
 		       __FILE__, ns_names[source_id], rc);
 	}

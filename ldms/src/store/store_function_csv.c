@@ -116,7 +116,8 @@ static int rolltype;
 #define MIN_ROLL_BYTES 1024
 /** Interval to check for passing the record or byte count limits */
 #define ROLL_LIMIT_INTERVAL 60
-static ldmsd_msg_log_f msglog;
+
+static ovis_log_t mylog;
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -355,7 +356,7 @@ static char* allocStoreKey(const char* container, const char* schema){
   if ((container == NULL) || (schema == NULL) ||
       (strlen(container) == 0) ||
       (strlen(schema) == 0)){
-    msglog(LDMSD_LERROR, "%s: container or schema null or empty. cannot create key\n",
+    ovis_log(mylog, OVIS_LERROR, "%s: container or schema null or empty. cannot create key\n",
 	   __FILE__);
     return NULL;
   }
@@ -423,7 +424,7 @@ static int handleRollover(){
 					}
 					break;
 				default:
-					msglog(LDMSD_LDEBUG, "%s: Error: unexpected rolltype in store(%d)\n",
+					ovis_log(mylog, OVIS_LDEBUG, "%s: Error: unexpected rolltype in store(%d)\n",
 					       __FILE__, rolltype);
 					break;
 				}
@@ -439,7 +440,7 @@ static int handleRollover(){
 				nfp = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
 				if (!nfp){
 					//we cant open the new file, skip
-					msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
+					ovis_log(mylog, OVIS_LERROR, "%s: Error: cannot open file <%s>\n",
 					       __FILE__, tmp_path);
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
@@ -455,14 +456,14 @@ static int handleRollover(){
 					nhfp = fopen_perm(tmp_headerpath, "w", LDMSD_DEFAULT_FILE_PERM);
 					if (!nhfp){
 						fclose(nfp);
-						msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
+						ovis_log(mylog, OVIS_LERROR, "%s: Error: cannot open file <%s>\n",
 						       __FILE__, tmp_headerpath);
 					}
 				} else {
 					nhfp = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
 					if (!nhfp){
 						fclose(nfp);
-						msglog(LDMSD_LDEBUG, "%s: Error: cannot open file <%s>\n",
+						ovis_log(mylog, OVIS_LDEBUG, "%s: Error: cannot open file <%s>\n",
 						       __FILE__, tmp_path);
 					}
 				}
@@ -540,7 +541,7 @@ static int __checkValidLine(const char* lbuf, const char* schema_name,
 
 //NOTE: checking the existence of the dependent vars is done later
 
-//	msglog(LDMSD_LDEBUG, "read:%d (%d): <%s> <%s> <%s> <%d> <%s> <%lf> <%d>\n",
+//	ovis_log(mylog, OVIS_LDEBUG, "read:%d (%d): <%s> <%s> <%s> <%d> <%s> <%lf> <%d>\n",
 //	       iter++, rcl,
 //	       schema_name, metric_name, function_name, nmet, metric_csv,
 //	       scale, output);
@@ -551,21 +552,21 @@ static int __checkValidLine(const char* lbuf, const char* schema_name,
 	}
 
 	if (rcl != 7) {
-		msglog(LDMSD_LWARNING,"%s: (%d) Bad format in fct config file <%s> rc=%d. Skipping\n",
+		ovis_log(mylog, OVIS_LWARNING,"%s: (%d) Bad format in fct config file <%s> rc=%d. Skipping\n",
 		       __FILE__, iter, lbuf, rcl);
 		return -1;
 	}
 
 	if ((strlen(metric_name) == 0) || (strlen(function_name) == 0) ||
 	    (strlen(metric_csv) == 0)){
-		msglog(LDMSD_LWARNING,"%s: (%d) Bad vals in fct config file <%s>. Skipping\n",
+		ovis_log(mylog, OVIS_LWARNING,"%s: (%d) Bad vals in fct config file <%s>. Skipping\n",
 		       __FILE__, iter, lbuf);
 		return -1;
 	}
 
 	func_t tf = enumFct(function_name);
 	if (tf == FCT_END) {
-		msglog(LDMSD_LWARNING,"%s: (%d) Bad func in fct config file <%s> <%s>. Skipping\n",
+		ovis_log(mylog, OVIS_LWARNING,"%s: (%d) Bad func in fct config file <%s> <%s>. Skipping\n",
 		       __FILE__, iter, lbuf, function_name);
 		return -1;
 	}
@@ -588,7 +589,7 @@ static int __checkValidLine(const char* lbuf, const char* schema_name,
 		break;
 	}
 	if (badvart){
-		msglog(LDMSD_LWARNING,
+		ovis_log(mylog, OVIS_LWARNING,
 		       "%s: (%d) Wrong number of dependent metrics (%d) for func <%s> in config file <%s>. Skipping\n",
 		       __FILE__, iter, nmet, function_name, lbuf);
 		return -1;
@@ -719,7 +720,7 @@ static struct derived_data* createDerivedData(const char* metric_name,
 	pch = strtok_r(temp_i, var_sep, &saveptr_i);
 	while (pch != NULL){
 		if (count == tmpder->nvars){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "%s: Too many input vars for input %s. expected %d on var %d\n",
 			       __FILE__, metric_name, tmpder->nvars, count);
 			goto err;
@@ -763,7 +764,7 @@ static struct derived_data* createDerivedData(const char* metric_name,
 			if (tmpder->fct != RAWTERM){
 				if ((metric_type != LDMS_V_U64) && (metric_type != LDMS_V_U64_ARRAY)){
 					const char* name = ldms_metric_name_get(set, metric_arry[matchidx]);
-					msglog(LDMSD_LERROR,
+					ovis_log(mylog, OVIS_LERROR,
 					       "%s: unsupported type %d for base metric %s\n",
 					       __FILE__, (int)metric_type, name);
 					goto err;
@@ -786,7 +787,7 @@ static struct derived_data* createDerivedData(const char* metric_name,
 		}
 
 		if (tmpder->varidx[count].i == -1){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "%s: Cannot find matching index for <%s>\n",
 			       __FILE__, pch);
 			goto err;
@@ -798,7 +799,7 @@ static struct derived_data* createDerivedData(const char* metric_name,
 	free(x_i);
 	x_i = NULL;
 	if (count != tmpder->nvars){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: inconsistent specification for nvars for metric %s. expecting %d got %d\n",
 		       __FILE__, metric_name, tmpder->nvars, count);
 		goto err;
@@ -806,7 +807,7 @@ static struct derived_data* createDerivedData(const char* metric_name,
 
 	//get the dimensionality of this metric. also check for valid dimensionality of its dependent metrics
 	if (calcDimValidate(tmpder) != 0){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Invalid dimensionality support for metric %s\n",
 		       __FILE__, metric_name);
 		goto err;
@@ -860,7 +861,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 	//TODO: for now will read this in for every option (e.g., different base set for store)
 	//Dont yet have a way to determine which of the handles a certain metric will be associated with
 
-	msglog(LDMSD_LDEBUG, "%s: Function config file(s) is: <%s>\n",
+	ovis_log(mylog, OVIS_LDEBUG, "%s: Function config file(s) is: <%s>\n",
 	       __FILE__, fname_s);
 
 	char* saveptr_o = NULL;
@@ -872,12 +873,12 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 	s_handle->numder = 0;
 
 	while(fname != NULL){
-		msglog(LDMSD_LDEBUG, "%s: Parsing Function config file: <%s>\n",
+		ovis_log(mylog, OVIS_LDEBUG, "%s: Parsing Function config file: <%s>\n",
 		       __FILE__, fname);
 
 		fp = fopen(fname, "r");
 		if (!fp) {
-			msglog(LDMSD_LERROR,"%s: Cannot open config file <%s>\n",
+			ovis_log(mylog, OVIS_LERROR,"%s: Cannot open config file <%s>\n",
 			       __FILE__, fname);
 			free(temp_o);
 			return EINVAL;
@@ -889,7 +890,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 		do {
 			//TODO: TOO many metrics. dynamically alloc
 			if (s_handle->numder == STORE_DERIVED_METRIC_MAX) {
-				msglog(LDMSD_LERROR,"%s: Too many metrics <%s>\n",
+				ovis_log(mylog, OVIS_LERROR,"%s: Too many metrics <%s>\n",
 				       __FILE__, fname);
 				rc = EINVAL;
 				break;
@@ -910,7 +911,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 
 			//only keep this item if the schema matches
 			if (strcmp(s_handle->schema, schema_name) != 0) {
-//				msglog(LDMSD_LDEBUG, "%s: (%d) <%s> rejecting schema <%s>\n",
+//				ovis_log(mylog, OVIS_LDEBUG, "%s: (%d) <%s> rejecting schema <%s>\n",
 //				       __FILE__, iter, s_handle->store_key, schema_name);
 				continue;
 			}
@@ -924,13 +925,13 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 									s_handle->numder,
 									s_handle->der);
 			if (tmpder != NULL){
-//				msglog(LDMSD_LDEBUG, "store fct <%s> accepting metric <%s> schema <%s> (%d)\n",
+//				ovis_log(mylog, OVIS_LDEBUG, "store fct <%s> accepting metric <%s> schema <%s> (%d)\n",
 //				       s_handle->store_key, metric_name, schema_name, iter);
 				tmpder->idx = s_handle->numder;
 				s_handle->der[s_handle->numder] = tmpder;
 				s_handle->numder++;
 			} else {
-				msglog(LDMSD_LDEBUG, "store fct <%s> invalid spec for metric <%s> schema <%s> (%d): rejecting \n",
+				ovis_log(mylog, OVIS_LDEBUG, "store fct <%s> invalid spec for metric <%s> schema <%s> (%d): rejecting \n",
 				       s_handle->store_key, metric_name, schema_name, iter);
 			}
 		} while (s);
@@ -965,7 +966,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < numdep; i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, "store_csv: config argument %s has been deprecated.\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -973,7 +974,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 	value = av_value(avl, "agesec");
 	if (value){
-		msglog(LDMSD_LERROR, "store_csv: config argument agesec has been deprecated in favor of ageusec\n");
+		ovis_log(mylog, OVIS_LERROR, "store_csv: config argument agesec has been deprecated in favor of ageusec\n");
 		return EINVAL;
 	}
 
@@ -996,7 +997,7 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt)
 	}
 
 	if (!bs && bt){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Cannot have buffer type without buffer\n",
 		       __FILE__);
 		return EINVAL;
@@ -1004,14 +1005,14 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt)
 
 	tempbs = atoi(bs);
 	if (tempbs < 0){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Bad val for buffer %d\n",
 		       __FILE__, tempbs);
 		return EINVAL;
 	}
 	if ((tempbs == 0) || (tempbs == 1)){
 		if (bt){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       "%s: Cannot have no/autobuffer with buffer type\n",
 			       __FILE__);
 			return EINVAL;
@@ -1023,7 +1024,7 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt)
 	}
 
 	if (!bt){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Cannot have buffer size with no buffer type\n",
 		       __FILE__);
 		return EINVAL;
@@ -1031,7 +1032,7 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt)
 
 	tempbt = atoi(bt);
 	if ((tempbt != 3) && (tempbt != 4)){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Invalid buffer type %d\n",
 		       __FILE__, tempbt);
 		return EINVAL;
@@ -1071,7 +1072,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = config_check(kwl, avl, arg);
 	if (rc != 0){
-		msglog(LDMSD_LERROR, "store_function failed config_check\n");
+		ovis_log(mylog, OVIS_LERROR, "store_function failed config_check\n");
 		pthread_mutex_unlock(&cfg_lock);
 		return rc;
 	}
@@ -1088,7 +1089,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	value = av_value(avl, "path");
 	if (!value){
-		msglog(LDMSD_LERROR, "store_function missing path\n");
+		ovis_log(mylog, OVIS_LERROR, "store_function missing path\n");
 		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
 	}
@@ -1099,7 +1100,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (rvalue){
 		roll = atoi(rvalue);
 		if (roll < 0){
-			msglog(LDMSD_LERROR, "store_function invalid rollover\n");
+			ovis_log(mylog, OVIS_LERROR, "store_function invalid rollover\n");
 			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
 		}
@@ -1127,7 +1128,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	ivalue = av_value(avl, "ageusec");
 	if (ivalue){
 		if (atoi(ivalue) < 0) {
-			msglog(LDMSD_LERROR, "store_function invalid ageusec\n");
+			ovis_log(mylog, OVIS_LERROR, "store_function invalid ageusec\n");
 			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
 		} else {
@@ -1137,7 +1138,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	dervalue = av_value(avl, "derivedconf");
 	if (!dervalue) {
-		msglog(LDMSD_LERROR, "store_function missing derived conf\n");
+		ovis_log(mylog, OVIS_LERROR, "store_function missing derived conf\n");
 		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
 	}
@@ -1147,7 +1148,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	root_path = strdup(value);
 	if (!root_path) {
-		msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
+		ovis_log(mylog, OVIS_LCRITICAL, "%s: ENOMEM\n", __FILE__);
 		pthread_mutex_unlock(&cfg_lock);
 		return ENOMEM;
 	}
@@ -1177,24 +1178,24 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 static void printStructs(struct function_store_handle *s_handle){
 	int i, j;
 
-	msglog(LDMSD_LDEBUG, "=========================================\n");
+	ovis_log(mylog, OVIS_LDEBUG, "=========================================\n");
 	for (i = 0; i < s_handle->numder; i++){
-		msglog(LDMSD_LDEBUG, "Schema <%s> New metric <%s> idx %d writeout %d\n",
+		ovis_log(mylog, OVIS_LDEBUG, "Schema <%s> New metric <%s> idx %d writeout %d\n",
 		       s_handle->schema,
 		       s_handle->der[i]->name,
 		       s_handle->der[i]->idx,
 		       s_handle->der[i]->writeout);
-		msglog(LDMSD_LDEBUG, "\tfun: %s dim %d scale %g\n",
+		ovis_log(mylog, OVIS_LDEBUG, "\tfun: %s dim %d scale %g\n",
 		       func_def[s_handle->der[i]->fct].name,
 		       s_handle->der[i]->dim,
 		       s_handle->der[i]->scale);
-		msglog(LDMSD_LDEBUG, "\tDepends on vars (type:idx)\n");
+		ovis_log(mylog, OVIS_LDEBUG, "\tDepends on vars (type:idx)\n");
 		for (j = 0; j < s_handle->der[i]->nvars; j++){
-			msglog(LDMSD_LDEBUG, "\t\t%d:%d\n", s_handle->der[i]->varidx[j].typei,
+			ovis_log(mylog, OVIS_LDEBUG, "\t\t%d:%d\n", s_handle->der[i]->varidx[j].typei,
 			       s_handle->der[i]->varidx[j].i);
 		}
 	}
-	msglog(LDMSD_LDEBUG, "=========================================\n");
+	ovis_log(mylog, OVIS_LDEBUG, "=========================================\n");
 }
 
 static void term(struct ldmsd_plugin *self)
@@ -1207,6 +1208,8 @@ static void term(struct ldmsd_plugin *self)
 		free(root_path);
 	if (derivedconf)
 		free(derivedconf);
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -1247,7 +1250,7 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 
 	/* Only called from Store which already has the lock */
 	if (s_handle == NULL){
-		msglog(LDMSD_LERROR, "%s: Null store handle. Cannot print header\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Null store handle. Cannot print header\n",
 			__FILE__);
 		return EINVAL;
 	}
@@ -1255,7 +1258,7 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 
 	FILE* fp = s_handle->headerfile;
 	if (!fp){
-		msglog(LDMSD_LERROR, "%s: Cannot print header for store_function_csv. No headerfile\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Cannot print header for store_function_csv. No headerfile\n",
 			__FILE__);
 		return EINVAL;
 	}
@@ -1263,7 +1266,7 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 	if (s_handle->parseconfig){
 		rc = derivedConfig(derivedconf, s_handle, set, metric_arry, metric_count);
 		if (rc != 0) {
-			msglog(LDMSD_LERROR,"%s: derivedConfig failed for store_function_csv. \n",
+			ovis_log(mylog, OVIS_LERROR,"%s: derivedConfig failed for store_function_csv. \n",
 			       __FILE__);
 			return rc;
 		}
@@ -1314,7 +1317,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	pthread_mutex_lock(&cfg_lock);
 	skey = allocStoreKey(container, schema);
 	if (skey == NULL){
-	  msglog(LDMSD_LERROR, "%s: Cannot open store\n",
+	  ovis_log(mylog, OVIS_LERROR, "%s: Cannot open store\n",
 		 __FILE__);
 	  goto out;
 	}
@@ -1332,7 +1335,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		snprintf(tmp_path, PATH_MAX, "%s/%s", root_path, container);
 		rc = mkdir(tmp_path, 0777);
 		if ((rc != 0) && (errno != EEXIST)){
-			msglog(LDMSD_LERROR, "%s: Error: cannot create dir '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "%s: Error: cannot create dir '%s'\n",
 			       __FILE__, tmp_path);
 			goto out;
 		}
@@ -1410,7 +1413,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		s_handle->file = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
 	}
 	if (!s_handle->file) {
-		msglog(LDMSD_LERROR, "%s: Error %d opening the file %s.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d opening the file %s.\n",
 		       __FILE__, errno, tmp_path);
 		goto err3;
 	}
@@ -1443,7 +1446,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		}
 
 		if (!s_handle->headerfile){
-			msglog(LDMSD_LERROR, "%s: Error: Cannot open headerfile\n",
+			ovis_log(mylog, OVIS_LERROR, "%s: Error: Cannot open headerfile\n",
 			       __FILE__);
 			goto err4;
 		}
@@ -1465,7 +1468,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		}
 		if (!found){
 			if (nstorekeys == (MAX_ROLLOVER_STORE_KEYS-1)){
-				msglog(LDMSD_LERROR, "%s: Error: Exceeded max store keys\n",
+				ovis_log(mylog, OVIS_LERROR, "%s: Error: Exceeded max store keys\n",
 				       __FILE__);
 				goto err4;
 			} else {
@@ -1597,7 +1600,7 @@ static int calcDimValidate(struct derived_data* dd){
 		return 0;
 		break;
 	default:
-		msglog(LDMSD_LERROR, "%s: Error - No code to validate function %s\n"
+		ovis_log(mylog, OVIS_LERROR, "%s: Error - No code to validate function %s\n"
 		       __FILE__, fct);
 		return EINVAL;
 		break;
@@ -1626,7 +1629,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		rc = fprintf(s_handle->file, ",%c",
 			     ldms_metric_get_char(set, metric_array[i]));
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1635,7 +1638,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		rc = fprintf(s_handle->file, ",%hhu",
 			     (uint8_t)((double)(ldms_metric_get_u8(set, metric_array[i])) * scale));
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1644,7 +1647,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		rc = fprintf(s_handle->file, ",%hhd",
 			     (int8_t)((double)(ldms_metric_get_s8(set, metric_array[i])) * scale));
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1653,7 +1656,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		rc = fprintf(s_handle->file, ",%hu",
 			     (uint16_t)((double)(ldms_metric_get_u16(set, metric_array[i])) * scale));
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1662,7 +1665,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		rc = fprintf(s_handle->file, ",%hd",
 			     (int16_t)((double)(ldms_metric_get_s16(set, metric_array[i])) * scale));
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1671,7 +1674,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		rc = fprintf(s_handle->file, ",%" PRIu32,
 			     (uint32_t)((double)(ldms_metric_get_u32(set, metric_array[i])) * scale));
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1680,7 +1683,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		rc = fprintf(s_handle->file, ",%" PRId32,
 			     (int32_t)((double)(ldms_metric_get_s32(set, metric_array[i])) * scale));
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1689,7 +1692,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		rc = fprintf(s_handle->file, ",%"PRIu64,
 			     (uint64_t)((double)(ldms_metric_get_u64(set, metric_array[i])) * scale));
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1698,7 +1701,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		rc = fprintf(s_handle->file, ",%" PRId64,
 			     (int64_t)((double)(ldms_metric_get_s64(set, metric_array[i])) * scale));
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1707,7 +1710,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		rc = fprintf(s_handle->file, ",%f",
 			     (float)(ldms_metric_get_float(set, metric_array[i]) * scale));
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1716,7 +1719,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		rc = fprintf(s_handle->file, ",%lf",
 			     (ldms_metric_get_double(set, metric_array[i]) * scale));
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1726,7 +1729,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		rc = fprintf(s_handle->file, ",%s",
 			     ldms_metric_array_get_str(set, metric_array[i]));
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1736,7 +1739,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 			rc = fprintf(s_handle->file, ",%hhu",
 				     (uint8_t)((double)(ldms_metric_array_get_u8(set, metric_array[i], j)) * scale));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1747,7 +1750,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 			rc = fprintf(s_handle->file, ",%hhd",
 				     (int8_t)((double)(ldms_metric_array_get_s8(set, metric_array[i], j))* scale));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1758,7 +1761,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 			rc = fprintf(s_handle->file, ",%hu",
 				     (uint16_t)((double)(ldms_metric_array_get_u16(set, metric_array[i], j)) * scale));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1769,7 +1772,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 			rc = fprintf(s_handle->file, ",%hd",
 				     (int16_t)((double)(ldms_metric_array_get_s16(set, metric_array[i], j)) * scale));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1780,7 +1783,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 			rc = fprintf(s_handle->file, ",%" PRIu32,
 				     (uint32_t)((double)(ldms_metric_array_get_u32(set, metric_array[i], j)) * scale));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1791,7 +1794,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 			rc = fprintf(s_handle->file, ",%" PRId32,
 				     (int32_t)((double)(ldms_metric_array_get_s32(set, metric_array[i], j)) * scale));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1802,7 +1805,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 			rc = fprintf(s_handle->file, ",%" PRIu64,
 				     (uint64_t)((double)(ldms_metric_array_get_u64(set, metric_array[i], j)) * scale));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1813,7 +1816,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 			rc = fprintf(s_handle->file, ",%" PRId64,
 				     (int64_t)((double)(ldms_metric_array_get_s64(set, metric_array[i], j)) * scale));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1824,7 +1827,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 			rc = fprintf(s_handle->file, ",%f",
 				     (float)(ldms_metric_array_get_float(set, metric_array[i], j) * scale));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1835,7 +1838,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 			rc = fprintf(s_handle->file, ",%lf",
 				     ldms_metric_array_get_double(set, metric_array[i], j) * scale);
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1845,7 +1848,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		//print no value
 		rc = fprintf(s_handle->file, ",");
 		if (rc < 0)
-			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
 		else
 			s_handle->byte_count += rc;
@@ -1855,7 +1858,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	//print the flag -- which is always 0
 	rc = fprintf(s_handle->file, ",0");
 	if (rc < 0)
-		msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+		ovis_log(mylog, OVIS_LERROR, "store_csv: Error %d writing to '%s'\n",
 		       rc, s_handle->path);
 	else
 		s_handle->byte_count += rc;
@@ -1871,7 +1874,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
  * in every logic branch.
  */
 static void token_error(func_t fct, const char *expected, int line) {
-	msglog(LDMSD_LERROR, "%s: unexpected func_t value %d, expected one of: at line %d. Did the function syntax expand?\n",__FILE__, fct, expected, line);
+	ovis_log(mylog, OVIS_LERROR, "%s: unexpected func_t value %d, expected one of: at line %d. Did the function syntax expand?\n",__FILE__, fct, expected, line);
 	exit(1);
 }
 
@@ -1944,10 +1947,10 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 
 	int i, j;
 
-//	msglog(LDMSD_LDEBUG, "before computation: %s oldtime=@%lu dim %d retvalid=%d storevalid=%d flagtime=%d\n",
+//	ovis_log(mylog, OVIS_LDEBUG, "before computation: %s oldtime=@%lu dim %d retvalid=%d storevalid=%d flagtime=%d\n",
 //	       dd->name, prev.tv_sec, dim, *retvalid, *storevalid, flagtime );
 //	for (j = 0; j < dim; j++){
-//		msglog(LDMSD_LDEBUG, "%d: %llu\n", j, retvals[j]);
+//		ovis_log(mylog, OVIS_LDEBUG, "%d: %llu\n", j, retvals[j]);
 //	};
 
 	switch (fct){
@@ -1959,7 +1962,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 			*retvalid = 1;
 			if (vals[0].metric_type == LDMS_V_U64){
 				uint64_t temp = ldms_metric_get_u64(set, metric_arry[vals[0].i]);
-//				msglog(LDMSD_LDEBUG, "getting value 0 %llu for var %d\n", temp, vals[0].i);
+//				ovis_log(mylog, OVIS_LDEBUG, "getting value 0 %llu for var %d\n", temp, vals[0].i);
 				switch(fct){
 				case THRESH_GE:
 					retvals[0] = (temp >= scale ? 1:0);
@@ -1979,7 +1982,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 			} else { //it must be an array
 				for (j = 0; j < dim; j++){
 					uint64_t temp = ldms_metric_array_get_u64(set, metric_arry[vals[0].i], j);
-//					msglog(LDMSD_LDEBUG, "getting value 0(%d) %llu for var %d\n", j, temp, vals[0].i);
+//					ovis_log(mylog, OVIS_LDEBUG, "getting value 0(%d) %llu for var %d\n", j, temp, vals[0].i);
 					switch(fct){
 					case THRESH_GE:
 						retvals[j] = (temp >= scale ? 1:0);
@@ -2003,7 +2006,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 			if (*retvalid){
 				for (j = 0; j < dim; j++) {
 					uint64_t temp = dp->datavals[vals[0].i].returnvals[j];
-//					msglog(LDMSD_LDEBUG, "getting value 0(%d) %llu for var %d\n", j, temp, vals[0].i);
+//					ovis_log(mylog, OVIS_LDEBUG, "getting value 0(%d) %llu for var %d\n", j, temp, vals[0].i);
 					switch(fct){
 					case THRESH_GE:
 						retvals[j] = (temp >= scale ? 1:0);
@@ -2124,11 +2127,11 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 		if (vals[0].typei == BASE) {
 			if (vals[0].metric_type == LDMS_V_U64){
 				temp[0] = ldms_metric_get_u64(set, metric_arry[vals[0].i]);
-//				msglog(LDMSD_LDEBUG, "getting value 0 %llu for var %d\n", temp[0], vals[0].i);
+//				ovis_log(mylog, OVIS_LDEBUG, "getting value 0 %llu for var %d\n", temp[0], vals[0].i);
 			} else { //it must be an array
 				for (j = 0; j < dim; j++) {
 					temp[j] = ldms_metric_array_get_u64(set, metric_arry[vals[0].i], j);
-//					msglog(LDMSD_LDEBUG, "getting value %d %llu for var %d\n", j, temp[j], vals[0].i);
+//					ovis_log(mylog, OVIS_LDEBUG, "getting value %d %llu for var %d\n", j, temp[j], vals[0].i);
 					if (temp[j] < storevals[j])
 						*retvalid = 0;
 				}
@@ -2139,26 +2142,26 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 			tempvalid = *retvalid;
 			for (j = 0; j < dim; j++) {
 				temp[j] = dp->datavals[vals[0].i].returnvals[j];
-//				msglog(LDMSD_LDEBUG, "getting value %d %llu for var %d\n", j, temp[j], vals[0].i);
+//				ovis_log(mylog, OVIS_LDEBUG, "getting value %d %llu for var %d\n", j, temp[j], vals[0].i);
 				if (temp[j] < storevals[j])
 					*retvalid = 0; //return also invalid if negative
 			}
 		}
 
 		if (!*storevalid || flagtime){ //return also invalid if back in time or this store invalid
-//			msglog(LDMSD_LDEBUG, "store is not valid or flag time, so set return invalid\n");
+//			ovis_log(mylog, OVIS_LDEBUG, "store is not valid or flag time, so set return invalid\n");
 			*retvalid = 0;
 		} else {
-//			msglog(LDMSD_LDEBUG, "store is valid and not flag time, so set return valid\n");
+//			ovis_log(mylog, OVIS_LDEBUG, "store is valid and not flag time, so set return valid\n");
 		}
 
 		if (*retvalid){
 			if (fct == DELTA){
-//				msglog(LDMSD_LDEBUG, "ret valid, fctn delta, dim %d, scale %g\n", dim, scale);
+//				ovis_log(mylog, OVIS_LDEBUG, "ret valid, fctn delta, dim %d, scale %g\n", dim, scale);
 				for (j = 0; j < dim; j++){
-//					msglog(LDMSD_LDEBUG, "subtracting %llu - %llu\n", temp[j], storevals[j]);
+//					ovis_log(mylog, OVIS_LDEBUG, "subtracting %llu - %llu\n", temp[j], storevals[j]);
 					retvals[j] = (uint64_t)((double)(temp[j] - storevals[j])*scale);
-//					msglog(LDMSD_LDEBUG, "setting ret[%d]=%llu\n", j, retvals[j]);
+//					ovis_log(mylog, OVIS_LDEBUG, "setting ret[%d]=%llu\n", j, retvals[j]);
 				}
 			} else { //RATE
 				double dt_usec = (double)(diff.tv_sec*1000000+diff.tv_usec);
@@ -2166,17 +2169,17 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 					retvals[j] = (uint64_t)((((double)(temp[j] - storevals[j])*1000000.0)*scale)/dt_usec);
 			}
 		} else {
-//			msglog(LDMSD_LDEBUG, "ret not valid. setting all values to zero\n");
+//			ovis_log(mylog, OVIS_LDEBUG, "ret not valid. setting all values to zero\n");
 			for (j = 0; j < dim; j++)
 				retvals[j] = 0;
 		}
 oom1:
 		if (tempvalid){
-//			msglog(LDMSD_LDEBUG, "new value valid. setting storevals to new values\n");
+//			ovis_log(mylog, OVIS_LDEBUG, "new value valid. setting storevals to new values\n");
 			for (j = 0; j < dim; j++) //dont store the scale, since it will be reapplied next time
 				storevals[j] = temp[j];
 		} else {
-//			msglog(LDMSD_LDEBUG, "new value not valid. setting storevals to 0\n");
+//			ovis_log(mylog, OVIS_LDEBUG, "new value not valid. setting storevals to 0\n");
 			for (j = 0; j < dim; j++)
 				storevals[0] = 0;
 		}
@@ -2317,7 +2320,7 @@ oom1:
 			if (vals[i].typei == BASE) {
 				if (vals[i].metric_type == LDMS_V_U64){
 					uint64_t temp = ldms_metric_get_u64(set, metric_arry[vals[i].i]);
-//					msglog(LDMSD_LDEBUG, "getting value %d %llu for var %d\n", i, temp, vals[i].i);
+//					ovis_log(mylog, OVIS_LDEBUG, "getting value %d %llu for var %d\n", i, temp, vals[i].i);
 					if (i == 0){
 						retvals[0] = temp;
 					} else {
@@ -2352,7 +2355,7 @@ oom1:
 				} else { //it must be an array
 					for (j = 0; j < dim; j++) {
 						uint64_t temp = ldms_metric_array_get_u64(set, metric_arry[vals[i].i], j);
-//						msglog(LDMSD_LDEBUG, "getting value %d(%d) %llu for var %d\n", i, j, temp, vals[i].i);
+//						ovis_log(mylog, OVIS_LDEBUG, "getting value %d(%d) %llu for var %d\n", i, j, temp, vals[i].i);
 						if (i == 0){
 							retvals[j] = temp;
 						} else {
@@ -2389,7 +2392,7 @@ oom1:
 					break;
 				for (j = 0; j < dim; j++){
 					uint64_t temp = dp->datavals[vals[i].i].returnvals[j];
-//					msglog(LDMSD_LDEBUG, "getting value %d(%d) %llu for var %d\n", i, j, temp, vals[i].i);
+//					ovis_log(mylog, OVIS_LDEBUG, "getting value %d(%d) %llu for var %d\n", i, j, temp, vals[i].i);
 					if (i == 0){
 						retvals[j] = temp;
 					} else {
@@ -2422,10 +2425,10 @@ oom1:
 			} //endif
 		} //for i
 		if (*retvalid) {
-//			msglog(LDMSD_LDEBUG, "ret valid, fct SUB/MUL/DIV dim %d, scale %g\n", dim, scale);
+//			ovis_log(mylog, OVIS_LDEBUG, "ret valid, fct SUB/MUL/DIV dim %d, scale %g\n", dim, scale);
 			//already did scale....
 		} else {
-//			msglog(LDMSD_LDEBUG, "ret not valid. setting all values to zero\n");
+//			ovis_log(mylog, OVIS_LDEBUG, "ret not valid. setting all values to zero\n");
 			for (j = 0; j < dim; j++)
 				retvals[j] = 0;
 		}
@@ -2473,13 +2476,13 @@ oom1:
 			temp_scalar = dp->datavals[vals[s_idx].i].returnvals[0];
 			*retvalid = dp->datavals[vals[s_idx].i].returnvalid;
 		}
-//		msglog(LDMSD_LDEBUG, "getting value %d %llu for var %d\n", s_idx, temp_scalar, vals[s_idx].i);
+//		ovis_log(mylog, OVIS_LDEBUG, "getting value %d %llu for var %d\n", s_idx, temp_scalar, vals[s_idx].i);
 
 		if (*retvalid){
 			if (vals[v_idx].typei == BASE) {
 				if (vals[v_idx].metric_type == LDMS_V_U64) {
 					uint64_t temp = ldms_metric_get_u64(set, metric_arry[vals[v_idx].i]);
-//					msglog(LDMSD_LDEBUG, "getting value %d %llu for var %d\n", v_idx, temp, vals[v_idx].i);
+//					ovis_log(mylog, OVIS_LDEBUG, "getting value %d %llu for var %d\n", v_idx, temp, vals[v_idx].i);
 					//do function for retvals[0] here...
 					switch (fct){
 					case SUM_VS:
@@ -2520,7 +2523,7 @@ oom1:
 				} else { // it must be an array
 					for (j = 0; j < dim; j++) {
 						uint64_t temp = ldms_metric_array_get_u64(set, metric_arry[vals[v_idx].i], j);
-//						msglog(LDMSD_LDEBUG, "getting value %d(%d) %llu for var %d\n",
+//						ovis_log(mylog, OVIS_LDEBUG, "getting value %d(%d) %llu for var %d\n",
 //						       v_idx, j, temp, vals[v_idx].i);
 						//do function for retvals[j] here...
 						switch (fct){
@@ -2574,7 +2577,7 @@ oom1:
 				if (*retvalid){
 					for (j = 0; j < dim; j++){
 						uint64_t temp = dp->datavals[vals[v_idx].i].returnvals[j];
-//						msglog(LDMSD_LDEBUG, "getting value %d(%d) %llu for var %d\n",
+//						ovis_log(mylog, OVIS_LDEBUG, "getting value %d(%d) %llu for var %d\n",
 //						       v_idx, j, temp, vals[v_idx].i);
 						//do function for retvals[j] here...
 						switch (fct){
@@ -2627,38 +2630,38 @@ oom1:
 		}
 
 		if (!*retvalid){
-//			msglog(LDMSD_LDEBUG, "ret not valid. setting all values to zero\n");
+//			ovis_log(mylog, OVIS_LDEBUG, "ret not valid. setting all values to zero\n");
 			for (j = 0; j < dim; j++){
 				retvals[j] = 0;
 			}
 		} else {
 			//already did scale....
-//			msglog(LDMSD_LDEBUG, "ret valid, fct SUB/MUL/DIV dim %d, scale %g\n", dim, scale);
+//			ovis_log(mylog, OVIS_LDEBUG, "ret valid, fct SUB/MUL/DIV dim %d, scale %g\n", dim, scale);
 		}
 
 	}
 		break;
 	default:
 		//shouldnt happen
-		msglog(LDMSD_LERROR, "%s: bad function in calculation <%d>\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: bad function in calculation <%d>\n",
 		       __FILE__, fct);
 
 		*storevalid = 0;
 		*retvalid = 0;
 	}
 
-//	msglog(LDMSD_LDEBUG, "after computation: %s currtime=@%lu dim %d retvalid=%d storevalid=%d\n\n",
+//	ovis_log(mylog, OVIS_LDEBUG, "after computation: %s currtime=@%lu dim %d retvalid=%d storevalid=%d\n\n",
 //	       dd->name, curr.tv_sec, dim, *retvalid, *storevalid);
 //	if (storevals)
 //		for (j = 0; j < dim; j++)
-//			msglog(LDMSD_LDEBUG, "%d: ret=%llu store=%llu\n",
+//			ovis_log(mylog, OVIS_LDEBUG, "%d: ret=%llu store=%llu\n",
 //			       j, retvals[j], storevals[j]);
 //	else
 //		for (j = 0; j < dim; j++)
-//			msglog(LDMSD_LDEBUG, "%d: ret=%llu\n",
+//			ovis_log(mylog, OVIS_LDEBUG, "%d: ret=%llu\n",
 //			       j, retvals[j]);
 
-//	msglog(LDMSD_LDEBUG,"Returning %d\n", *retvalid);
+//	ovis_log(mylog, OVIS_LDEBUG,"Returning %d\n", *retvalid);
 
 	return *retvalid;
 
@@ -2672,7 +2675,7 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 	int i, j;
 
 	if (rdp == NULL){
-		msglog(LDMSD_LERROR, "%s: arg to getDatapoint is NULL!\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: arg to getDatapoint is NULL!\n",
 		       __FILE__);
 		return EINVAL;
 	}
@@ -2687,7 +2690,7 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 		//create a container to hold it
 		dp = (struct setdatapoint*)malloc(sizeof(struct setdatapoint));
 		if (!dp) {
-			msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
+			ovis_log(mylog, OVIS_LCRITICAL, "%s: ENOMEM\n", __FILE__);
 			return ENOMEM;
 		}
 		dp->ts = NULL;
@@ -2701,7 +2704,7 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 	if (dp->ts == NULL){ //first time....
 		dp->ts = (struct ldms_timestamp*)malloc(sizeof (struct ldms_timestamp));
 		if (dp->ts == NULL) {
-			msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
+			ovis_log(mylog, OVIS_LCRITICAL, "%s: ENOMEM\n", __FILE__);
 			free(dp);
 			dp = NULL;
 			return ENOMEM;
@@ -2711,7 +2714,7 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 
 		dp->datavals = calloc(numder, sizeof(struct dinfo));
 		if (dp->datavals == NULL) {
-			msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
+			ovis_log(mylog, OVIS_LCRITICAL, "%s: ENOMEM\n", __FILE__);
 			free(dp->ts);
 			free(dp);
 			dp = NULL;
@@ -2749,7 +2752,7 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 
 
 err:
-	msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
+	ovis_log(mylog, OVIS_LCRITICAL, "%s: ENOMEM\n", __FILE__);
 	for (j = 0; j <= i; j++){
 		if (dp->datavals[j].storevals)
 			free(dp->datavals[j].storevals);
@@ -2791,7 +2794,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 
 	pthread_mutex_lock(&s_handle->lock);
 	if (!s_handle->file){
-		msglog(LDMSD_LERROR, "%s: Cannot insert values for <%s>: file is closed\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Cannot insert values for <%s>: file is closed\n",
 		       __FILE__, s_handle->path);
 		pthread_mutex_unlock(&s_handle->lock);
 		return EPERM;
@@ -2804,7 +2807,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	case FIRST_PRINT_HEADER:
 		rc = print_header_from_store(s_handle, set, metric_arry, metric_count);
 		if (rc != 0){
-			msglog(LDMSD_LERROR, "%s: Error in print_header: %d\n", __FILE__, rc);
+			ovis_log(mylog, OVIS_LERROR, "%s: Error in print_header: %d\n", __FILE__, rc);
 			s_handle->printheader = BAD_HEADER;
 			pthread_mutex_unlock(&s_handle->lock);
 			return rc;
@@ -2840,16 +2843,16 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 
 //	if (skip){
 //		//even if skip, still need the vals to do the raw/rate calcs.
-//		msglog(LDMSD_LDEBUG, "Note: firsttime (%lu) -- should be skipping writeout for set <%s>\n",
+//		ovis_log(mylog, OVIS_LDEBUG, "Note: firsttime (%lu) -- should be skipping writeout for set <%s>\n",
 //		       curr.tv_sec, ldms_set_instance_name_get(set));
 //	} else {
-//		msglog(LDMSD_LDEBUG, "Note: After firsttime -- not skipping writeout for set <%s>\n",
+//		ovis_log(mylog, OVIS_LDEBUG, "Note: After firsttime -- not skipping writeout for set <%s>\n",
 //		       ldms_set_instance_name_get(set));
 //	}
 
 	if ((double)prev.tv_sec*1000000+prev.tv_usec >=
 	    (double)curr.tv_sec*1000000+curr.tv_usec){
-		msglog(LDMSD_LDEBUG," %s: Time diff is <= 0 for set %s. Flagging\n",
+		ovis_log(mylog, OVIS_LDEBUG," %s: Time diff is <= 0 for set %s. Flagging\n",
 		       __FILE__, ldms_set_instance_name_get(set));
 		setflagtime = 1;
 	}
@@ -2891,7 +2894,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 
 	for (i = 0; i < s_handle->numder; i++){ //go thru all the vals....only write the writeout vals
 
-//		msglog(LDMSD_LDEBUG, "%s: Schema %s Updating variable %d of %d: %s\n",
+//		ovis_log(mylog, OVIS_LDEBUG, "%s: Schema %s Updating variable %d of %d: %s\n",
 //		       pname, s_handle->schema, i, s_handle->numder, s_handle->der[i]->name);
 
 		if (s_handle->der[i]->fct == RAWTERM) {
@@ -2909,7 +2912,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 				for (j = 0; j < di->dim; j++) {
 					rc = fprintf(s_handle->file, ",%" PRIu64, di->returnvals[j]);
 					if (rc < 0) {
-						msglog(LDMSD_LERROR,"%s: Error %d writing to '%s'\n",
+						ovis_log(mylog, OVIS_LERROR,"%s: Error %d writing to '%s'\n",
 						       __FILE__, rc, s_handle->path);
 						//FIXME: should this exit entirely from this store?
 						break;
@@ -2919,7 +2922,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 				}
 				rc = fprintf(s_handle->file, ",%d", (!di->returnvalid));
 				if (rc < 0)
-					msglog(LDMSD_LERROR,"%s: Error %d writing to '%s'\n",
+					ovis_log(mylog, OVIS_LERROR,"%s: Error %d writing to '%s'\n",
 					       __FILE__, rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
@@ -2966,7 +2969,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 {
 	struct function_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
-		msglog(LDMSD_LERROR,"%s: flush error.\n, __FILE__");
+		ovis_log(mylog, OVIS_LERROR,"%s: flush error.\n, __FILE__");
 		return -1;
 	}
 	pthread_mutex_lock(&s_handle->lock);
@@ -2990,7 +2993,7 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	}
 
 	pthread_mutex_lock(&s_handle->lock);
-	msglog(LDMSD_LDEBUG,"%s: Closing store_csv with path <%s>\n",
+	ovis_log(mylog, OVIS_LDEBUG,"%s: Closing store_csv with path <%s>\n",
 	       __FILE__, s_handle->path);
 	fflush(s_handle->file);
 	s_handle->store = NULL;
@@ -3057,9 +3060,16 @@ static struct ldmsd_store store_function_csv = {
 	.close = close_store,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store.store_function_csv", "The log subsystem of "
+						"'store_function_csv' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+				"of 'store_function_csv' plugin. Error %d\n", rc);
+	}
 	return &store_function_csv.base;
 }
 

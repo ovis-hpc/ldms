@@ -74,7 +74,7 @@
 #define PNAME "store_tutorial"
 #define MAXSCHEMA 5
 
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -108,11 +108,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	pthread_mutex_lock(&cfg_lock);
 	s = av_value(avl, "path");
 	if (!s){
-	   msglog(LDMSD_LDEBUG, PNAME ": missing path in config\n");
+	   ovis_log(mylog, OVIS_LDEBUG, PNAME ": missing path in config\n");
 	   rc = EINVAL;
 	} else {
 	  root_path = strdup(s);
-	  msglog(LDMSD_LDEBUG, PNAME ": setting root_path to '%s'\n", root_path);
+	  ovis_log(mylog, OVIS_LDEBUG, PNAME ": setting root_path to '%s'\n", root_path);
 	}
 
 	pthread_mutex_unlock(&cfg_lock);
@@ -122,7 +122,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 static void term(struct ldmsd_plugin *self)
 {
-	//not implemented
+	if (mylog)
+		ovis_log_destroy(mylog);
 	return;
 }
 
@@ -152,12 +153,12 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 
 	pthread_mutex_lock(&cfg_lock);
 	if (!root_path) {
-	     msglog(LDMSD_LERROR, PNAME ": config not called. cannot open.\n");
+	     ovis_log(mylog, OVIS_LERROR, PNAME ": config not called. cannot open.\n");
 	     return NULL;
 	}
 
 	if (numschema == (MAXSCHEMA-1)){
-	     msglog(LDMSD_LERROR, PNAME ": Exceeded MAXSCHEMA. cannot open.\n");
+	     ovis_log(mylog, OVIS_LERROR, PNAME ": Exceeded MAXSCHEMA. cannot open.\n");
 	     return NULL;
 	}
 
@@ -172,7 +173,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	sprintf(path, "%s/%s/%s", root_path, container, schema);
 	sprintf(dpath, "%s/%s", root_path, container);
 
-	msglog(LDMSD_LDEBUG, PNAME ": schema '%s' will have file path '%s'\n", schema, path);
+	ovis_log(mylog, OVIS_LDEBUG, PNAME ": schema '%s' will have file path '%s'\n", schema, path);
 
 	s_handle = calloc(1, sizeof *s_handle);
 	if (!s_handle)
@@ -188,14 +189,14 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	/* create path if not already there. */
 	rc = mkdir(dpath, 0777);
 	if ((rc != 0) && (errno != EEXIST)) {
-		msglog(LDMSD_LERROR, PNAME ": Failure %d creating directory '%s'\n",
+		ovis_log(mylog, OVIS_LERROR, PNAME ": Failure %d creating directory '%s'\n",
 			 errno, dpath);
 		goto err1;
 	}
 
 	s_handle->file = fopen_perm(s_handle->path, "a+", LDMSD_DEFAULT_FILE_PERM);
 	if (!s_handle->file){
-		msglog(LDMSD_LERROR, PNAME ": Error %d opening the file %s.\n",
+		ovis_log(mylog, OVIS_LERROR, PNAME ": Error %d opening the file %s.\n",
 		       errno, s_handle->path);
 		goto err1;
 	}
@@ -239,7 +240,7 @@ static int store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_array, si
 
 	pthread_mutex_lock(&s_handle->lock);
 	if (!s_handle->file){
-		msglog(LDMSD_LERROR, PNAME ": Cannot insert values for <%s>: file is NULL\n",
+		ovis_log(mylog, OVIS_LERROR, PNAME ": Cannot insert values for <%s>: file is NULL\n",
 		       s_handle->path);
 		pthread_mutex_unlock(&s_handle->lock);
 		return EPERM;
@@ -263,11 +264,11 @@ static int store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_array, si
 			rc = fprintf(s_handle->file, ",%"PRIu64,
 					ldms_metric_get_u64(set, metric_array[i]));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
+				ovis_log(mylog, OVIS_LERROR, PNAME ": Error %d writing to '%s'\n",
 						rc, s_handle->path);
 			break;
 		default:
-		  msglog(LDMSD_LERROR, PNAME ": cannot handle metric type for metric %d\n", i);
+		  ovis_log(mylog, OVIS_LERROR, PNAME ": cannot handle metric type for metric %d\n", i);
 		}
 	}
 	fprintf(s_handle->file,"\n");
@@ -292,7 +293,7 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 
 static struct ldmsd_store store_tutorial = {
 	.base = {
-			.name = "store_tutorial",
+			.name = PNAME,
 			.type = LDMSD_PLUGIN_STORE,
 			.term = term,
 			.config = config,
@@ -305,9 +306,13 @@ static struct ldmsd_store store_tutorial = {
 	.close = close_store,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	mylog = ovis_log_register("store."PNAME, "Messages for the "PNAME" plugin");
+	if (!mylog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the "PNAME
+				" plugin's log subsystem. Error %d.\n", errno);
+	}
 	return &store_tutorial.base;
 }
 

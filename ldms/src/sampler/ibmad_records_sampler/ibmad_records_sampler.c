@@ -53,7 +53,7 @@ static struct {
         time_t refresh_interval;
 } conf;
 
-static ldmsd_msg_log_f log_fn;
+static ovis_log_t mylog;
 static base_data_t sampler_base; /* contains the schema */
 
 /* red-black tree root for infiniband port metrics */
@@ -182,7 +182,7 @@ static int ibmad_initialize()
         int rc;
         int i;
 
-        log_fn(LDMSD_LDEBUG, SAMP" ibmad_initialize()\n");
+        ovis_log(mylog, OVIS_LDEBUG, "ibmad_initialize()\n");
 
         /* Create the schema */
         base_schema_new(sampler_base);
@@ -243,7 +243,7 @@ err3:
 err2:
         base_schema_delete(sampler_base);
 err1:
-        log_fn(LDMSD_LERROR, SAMP" schema creation failed\n");
+        ovis_log(mylog, OVIS_LERROR, "schema creation failed\n");
         return -1;
 }
 
@@ -269,7 +269,7 @@ static int _port_open(struct interface_data *data, unsigned base_lid)
 	/* open source port for sending MAD messages */
 	data->srcport = mad_rpc_open_port(data->ca_name, data->port, mgmt_classes, 3);
 	if (!data->srcport) {
-		log_fn(LDMSD_LERROR, SAMP ": ERROR: Cannot open CA:%s port:%d,"
+		ovis_log(mylog, OVIS_LERROR, SAMP ": ERROR: Cannot open CA:%s port:%d,"
 				" ERRNO: %d\n", data->ca_name, data->port,
 				errno);
 		return errno;
@@ -282,7 +282,7 @@ static int _port_open(struct interface_data *data, unsigned base_lid)
 	p = pma_query_via(rcvbuf, &data->portid, data->port, 0,
 			  CLASS_PORT_INFO, data->srcport);
 	if (!p) {
-		log_fn(LDMSD_LDEBUG, SAMP ": pma_query_via() failed: ca_name=%s port=%d"
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": pma_query_via() failed: ca_name=%s port=%d"
 				"  %d\n", data->ca_name, data->port, errno);
 		mad_rpc_close_port(data->srcport);
 		return -1;
@@ -292,7 +292,7 @@ static int _port_open(struct interface_data *data, unsigned base_lid)
 			| IB_PM_EXT_WIDTH_NOIETF_SUP);
 
 	if (!data->ext) {
-		log_fn(LDMSD_LDEBUG, SAMP ": WARNING: Extended query not "
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": WARNING: Extended query not "
 			"supported for %s:%d, the sampler will reset "
 			"counters every query\n", data->ca_name, data->port);
 	}
@@ -319,7 +319,7 @@ static struct interface_data *interface_create(const char *ca_name,
         struct interface_data *data;
 	int rc;
 
-        log_fn(LDMSD_LDEBUG, SAMP" interface_create() %s, base_lid=%u\n",
+        ovis_log(mylog, OVIS_LDEBUG, "interface_create() %s, base_lid=%u\n",
                ca_name, base_lid);
         data = calloc(1, sizeof(*data));
         if (data == NULL)
@@ -348,7 +348,7 @@ out1:
 
 static void interface_destroy(struct interface_data *data)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" interface_destroy() %s\n", data->ca_name);
+        ovis_log(mylog, OVIS_LDEBUG, "interface_destroy() %s\n", data->ca_name);
         _port_close(data);
         free(data->ca_name);
         free(data);
@@ -455,7 +455,7 @@ static void interfaces_tree_refresh()
 				continue;
 			}
 			if (port->state != PORT_STATE_ACTIVE) {
-                                log_fn(LDMSD_LDEBUG, SAMP" metric_tree_refresh() skipping non-active ca %s port %d\n",
+                                ovis_log(mylog, OVIS_LDEBUG, "metric_tree_refresh() skipping non-active ca %s port %d\n",
                                        port->ca_name, port->portnum);
 				continue;
 			}
@@ -467,7 +467,7 @@ static void interfaces_tree_refresh()
                            not using link_layer "InfiniBand". */
                         if (port->link_layer != NULL &&
                             strncmp(port->link_layer, "InfiniBand", 10) != 0) {
-                                log_fn(LDMSD_LDEBUG, SAMP" metric_tree_refresh() skipping ca %s port %d link_layer \"%s\" (link_layer is not \"InfiniBand\")\n",
+                                ovis_log(mylog, OVIS_LDEBUG, "metric_tree_refresh() skipping ca %s port %d link_layer \"%s\" (link_layer is not \"InfiniBand\")\n",
                                        port->ca_name, port->portnum, port->link_layer);
                                 continue;
                         }
@@ -533,7 +533,7 @@ static int metrics_sample(struct interface_data *data, ldms_mval_t record_instan
 			IB_GSI_PORT_COUNTERS, data->srcport);
 	if (p == NULL) {
 		rc = errno;
-		log_fn(LDMSD_LDEBUG, SAMP ": Error querying %s, errno: %d\n",
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": Error querying %s, errno: %d\n",
 				data->ca_name, rc);
 		return rc;
 	}
@@ -572,7 +572,7 @@ static int metrics_sample(struct interface_data *data, ldms_mval_t record_instan
 			IB_GSI_PORT_COUNTERS_EXT, data->srcport);
 	if (!p) {
 		rc = errno;
-		log_fn(LDMSD_LDEBUG, SAMP ": Error extended querying %s, "
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": Error extended querying %s, "
 				"errno: %d\n", data->ca_name, rc);
 		return rc;
 	}
@@ -595,8 +595,8 @@ static void resize_metric_set()
         base_set_delete(sampler_base);
         base_set_new_heap(sampler_base, previous_heap_size * 2);
         if (sampler_base->set == NULL) {
-                ldmsd_log(LDMSD_LERROR,
-                          SAMP" : Failed to resize metric set heap: %d\n", errno);
+                ovis_log(mylog, OVIS_LERROR,
+                          "Failed to resize metric set heap: %d\n", errno);
         }
 }
 
@@ -627,13 +627,13 @@ static int interfaces_tree_sample()
 
                 record_instance = ldms_record_alloc(sampler_base->set, mindex.record_definition);
                 if (record_instance == NULL) {
-                        log_fn(LDMSD_LWARNING, SAMP": ldms_record_alloc() failed. Continuing with current data.\n");
+                        ovis_log(mylog, OVIS_LWARNING, "ldms_record_alloc() failed. Continuing with current data.\n");
                         resize_metric_set();
                         break; /* continue with the data size we have now */
                 }
                 rc = ldms_list_append_record(sampler_base->set, list_handle, record_instance);
 		if (rc) {
-                        log_fn(LDMSD_LERROR, SAMP": ldms_list_append_record) failed; logic problem. Stopping sampler.\n");
+                        ovis_log(mylog, OVIS_LERROR, "ldms_list_append_record) failed; logic problem. Stopping sampler.\n");
 			rerr = rc; /* report last error seen at end */
 		}
 
@@ -660,14 +660,14 @@ static void reinit_ports()
 static void dump_port_filters()
 {
 	int i;
-	log_fn(LDMSD_LDEBUG, SAMP ": dump_port_filters: filt=%s\n",
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": dump_port_filters: filt=%s\n",
 		(conf.port_filter == PORT_FILTER_NONE ? "NONE" : (
 			conf.port_filter == PORT_FILTER_INCLUDE ?
 				"INCLUDE" : "EXCLUDE")));
 	for (i = 0 ; i < MAX_CA_NAMES; i++) {
 		if (conf.ports[i].ca_name[0] == '\0')
 			break;
-		log_fn(LDMSD_LDEBUG, SAMP ": dpf: %s : 0x%x\n",
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": dpf: %s : 0x%x\n",
 			conf.ports[i].ca_name, conf.ports[i].port_bits);
 	}
 }
@@ -695,13 +695,13 @@ static int parse_port_filters(const char *val)
 			errno = 0;
 			num = strtoul(dot, &end, 10);
 			if (*end != '\0' || errno == ERANGE) {
-				log_fn(LDMSD_LERROR, SAMP": config: "
+				ovis_log(mylog, OVIS_LERROR, SAMP": config: "
 					"%s port invalid: %s.\n",
 					val, dot);
 				return 1;
 			}
 			if (num > 63) {
-				log_fn(LDMSD_LERROR, SAMP": config: "
+				ovis_log(mylog, OVIS_LERROR, SAMP": config: "
 					"%s port > 63: %lu.\n",
 					val, num);
 				return 1;
@@ -715,7 +715,7 @@ static int parse_port_filters(const char *val)
 		}
 		if (k == num_ca) {
 			if (k > MAX_CA_NAMES) {
-				log_fn(LDMSD_LERROR, SAMP": config: "
+				ovis_log(mylog, OVIS_LERROR, SAMP": config: "
 					"too many CA in %s\n", val);
 				return 1;
 			}
@@ -724,10 +724,10 @@ static int parse_port_filters(const char *val)
 			num_ca++;
 		}
 		if (num) {
-			log_fn(LDMSD_LDEBUG, SAMP ": parsed %s port %d\n", pch,
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": parsed %s port %d\n", pch,
 				(int)num);
 		} else {
-			log_fn(LDMSD_LDEBUG, SAMP ": parsed %s all ports\n",
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": parsed %s all ports\n",
 				pch);
 			conf.ports[k].port_bits = UINT64_MAX;
 		}
@@ -765,9 +765,9 @@ static int config(struct ldmsd_plugin *self,
         char *value;
         int rc;
 
-        log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
-        sampler_base = base_config(avl, SAMP, "ibmad", log_fn);
+        sampler_base = base_config(avl, SAMP, "ibmad", mylog);
 
 	value = av_value(avl, "rate");
 	if (value != NULL && value[0] == '0') {
@@ -777,7 +777,7 @@ static int config(struct ldmsd_plugin *self,
 	const char *include = av_value(avl, "include");
 	const char *exclude = av_value(avl, "exclude");
 	if (include && exclude) {
-                log_fn(LDMSD_LERROR, SAMP": config: specify either include or exclude option but not both.\n");
+                ovis_log(mylog, OVIS_LERROR, "config: specify either include or exclude option but not both.\n");
 		rc = -1;
                 goto err;
 	}
@@ -804,7 +804,7 @@ static int config(struct ldmsd_plugin *self,
                 strip_whitespace(&value);
                 val = strtol(value, &end, 10);
                 if (*end != '\0') {
-                        log_fn(LDMSD_LERROR, SAMP" refresh_interval must be a decimal number\n");
+                        ovis_log(mylog, OVIS_LERROR, "refresh_interval must be a decimal number\n");
                         rc = EINVAL;
                         return rc;
                 }
@@ -830,7 +830,7 @@ static int sample(struct ldmsd_sampler *self)
         static time_t last_refresh = 0;
         time_t current_time;
 
-        log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, "sample() called\n");
 
         current_time = time(NULL);
         if (current_time >= last_refresh + conf.refresh_interval) {
@@ -842,7 +842,7 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
         interfaces_tree_destroy();
         base_set_delete(sampler_base);
         base_del(sampler_base);
@@ -856,7 +856,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" usage() called\n");
+        ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP " " BASE_CONFIG_SYNOPSIS
                 BASE_CONFIG_DESC
                 ;
@@ -874,10 +874,16 @@ static struct ldmsd_sampler ibmad_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-        log_fn = pf;
-        log_fn(LDMSD_LDEBUG, SAMP" get_plugin() called ("PACKAGE_STRING")\n");
+	int rc;
+	mylog = ovis_log_register("sampler.ibmad_records", "Messages for ibmad_records sampler plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d.\n", rc);
+	}
+        ovis_log(mylog, OVIS_LDEBUG, "get_plugin() called ("PACKAGE_STRING")\n");
         rbt_init(&interfaces_tree, string_comparator);
 	conf.use_rate_metrics = true;
 

@@ -67,8 +67,9 @@
 
 #define DEFAULT_HWEVENTS "PAPI_TOT_CYC,PAPI_TOT_IIS,PAPI_TOT_INS"
 
+static ovis_log_t mylog;
+
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 static ldms_schema_t schema;
 static char* default_schema_name = "hweventpapi";
 #define SAMP "hweventpapi"
@@ -119,7 +120,7 @@ papi_ctxt_t hwc = NULL;
 struct attr_value_list *av_list_local;
 struct attr_value_list *kw_list_local;
 
-#define ERRLOG(FMT, ...) msglog(LDMSD_LERROR, SAMP FMT, ##__VA_ARGS__)
+#define ERRLOG(FMT, ...) ovis_log(mylog, OVIS_LERROR, SAMP FMT, ##__VA_ARGS__)
 
 pthread_t meta_thread;
 
@@ -141,7 +142,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 
 	rc = PAPI_library_init(PAPI_VER_CURRENT);
 	if (rc != PAPI_VER_CURRENT) {
-		msglog(LDMSD_LERROR, SAMP ": library init error! %d: %s\n", rc,
+		ovis_log(mylog, OVIS_LERROR, SAMP ": library init error! %d: %s\n", rc,
 			PAPI_strerror(rc));
 		rc = ENOENT;
 		goto err;
@@ -153,10 +154,10 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	 * check if the configuration have multiplex option enabled
 	 */
 	if (multiplex) {
-		msglog(LDMSD_LDEBUG, SAMP ": multiplex is %d\n", multiplex);
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": multiplex is %d\n", multiplex);
 		rc = PAPI_multiplex_init();
 		if (rc != PAPI_OK) {
-			msglog(LDMSD_LERROR, SAMP ": failed to initialize "
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to initialize "
 				"multiplexing!\n");
 			rc = ENOENT;
 			goto err;
@@ -165,7 +166,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 
 	rc = PAPI_create_eventset(&papi_event_set);
 	if (rc != PAPI_OK) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create empty event "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to create empty event "
 			"set!\n");
 		rc = ENOENT;
 		goto err;
@@ -178,7 +179,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 		 */
 		rc = PAPI_assign_eventset_component(papi_event_set, 0);
 		if (rc != PAPI_OK) {
-			msglog(LDMSD_LERROR, SAMP ": failed to bind papi to cpu"
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to bind papi to cpu"
 				" component!\n");
 			rc = ENOENT;
 			goto err;
@@ -187,7 +188,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 		/* Convert papi_event_set to a multiplexed event set */
 		rc = PAPI_set_multiplex(papi_event_set);
 		if (rc != PAPI_OK) {
-			msglog(LDMSD_LERROR, SAMP ": failed to convert event "
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to convert event "
 				"set to multiplexed!\n");
 			rc = ENOENT;
 			goto err;
@@ -196,7 +197,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 			"%s: schema '%s' could not be created, errno=%d.\n",
 			__FILE__, base->schema_name, errno);
 		rc = errno;
@@ -210,7 +211,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	rc = ldms_schema_metric_array_add(schema, "Appname", LDMS_V_CHAR_ARRAY,
 		256);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": failed to add application name to"
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to add application name to"
 			" metric set.\n");
 		rc = ENOMEM;
 		goto err;
@@ -218,7 +219,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 
 	rc = ldms_schema_metric_add(schema, "Jobid", LDMS_V_U64);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": failed to add jobid to metric "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to add jobid to metric "
 			"set.\n");
 		rc = ENOMEM;
 		goto err;
@@ -227,7 +228,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	rc = ldms_schema_metric_array_add(schema, "Username", LDMS_V_CHAR_ARRAY,
 		256);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": failed to add username to metric "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to add username to metric "
 			"set.\n");
 		rc = ENOMEM;
 		goto err;
@@ -235,7 +236,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 
 	rc = ldms_schema_metric_add(schema, "NumNodes", LDMS_V_U8);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": failed to add NumNodes to"
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to add NumNodes to"
 			" metric set.\n");
 		rc = ENOMEM;
 		goto err;
@@ -243,7 +244,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 
 	rc = ldms_schema_metric_add(schema, "PPN", LDMS_V_U8);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": failed to add PPn to metric "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to add PPn to metric "
 			"set.\n");
 		rc = ENOMEM;
 		goto err;
@@ -251,7 +252,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 
 	rc = ldms_schema_metric_add(schema, "NumThreads", LDMS_V_U8);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": failed to add NumThreads to metric"
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to add NumThreads to metric"
 			" set.\n");
 		rc = ENOMEM;
 		goto err;
@@ -262,7 +263,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 
 	ldms_schema_metric_array_add(schema, "Pid", LDMS_V_U64_ARRAY, max_pids);
 	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": failed to add PID to metric "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to add PID to metric "
 			"set.\n");
 		rc = ENOMEM;
 		goto err;
@@ -274,7 +275,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	for (pec = 0; events_tmp[pec]; events_tmp[pec] == ',' ? pec++ :
 		*events_tmp++);
 
-	msglog(LDMSD_LDEBUG, SAMP ": user input papi event counts are %d and "
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": user input papi event counts are %d and "
 		"events length are %d\n", pec, strlen(events));
 
 	/* Allocate the memory space from papi events names and codes */
@@ -286,22 +287,22 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 
 		if (PAPI_event_name_to_code(event_name, &event_code) !=
 			PAPI_OK) {
-			msglog(LDMSD_LERROR, SAMP ": failed to get event code "
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to get event code "
 				"of %s\n", event_name);
 			goto next_event;
 		}
 		if (PAPI_query_event(event_code) != PAPI_OK) {
-			msglog(LDMSD_LERROR, SAMP ": failed to query event"
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to query event"
 				" 0x%X\n", event_code);
 			goto next_event;
 		}
 		if (PAPI_get_event_info(event_code, &event_info) != PAPI_OK) {
-			msglog(LDMSD_LERROR, SAMP ": failed to get event info"
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to get event info"
 				" 0x%X\n", event_code);
 			goto next_event;
 		}
 		if (PAPI_add_event(papi_event_set, event_code) != PAPI_OK) {
-			msglog(LDMSD_LERROR, SAMP ": failed to add event 0x%X"
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to add event 0x%X"
 				" to event set\n", event_code);
 			goto next_event;
 		}
@@ -314,13 +315,13 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 		ldms_schema_metric_array_add(schema, event_name,
 			LDMS_V_U64_ARRAY, max_pids);
 		if (rc < 0) {
-			msglog(LDMSD_LERROR, SAMP ": failed to add event %s to"
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to add event %s to"
 				" metric set.\n", event_name);
 			rc = ENOMEM;
 			goto err;
 		}
 
-		msglog(LDMSD_LINFO, SAMP ": event [name: %s, code: 0x%x] "
+		ovis_log(mylog, OVIS_LINFO, SAMP ": event [name: %s, code: 0x%x] "
 			"has been added.\n", event_name, event_code);
 
 next_event:
@@ -329,14 +330,14 @@ next_event:
 
 	event_count = PAPI_num_events(papi_event_set);
 	if (event_count == 0) {
-		msglog(LDMSD_LERROR, SAMP ": no event has been added.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": no event has been added.\n");
 		rc = ENOENT;
 		goto err;
 	}
 
 	papi_event_val = calloc(event_count, sizeof (uint64_t));
 	if (papi_event_val == NULL) {
-		msglog(LDMSD_LERROR, SAMP ": failed to allocate papi event read"
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to allocate papi event read"
 			" buffer.\n");
 		rc = ENOMEM;
 		goto err;
@@ -344,7 +345,7 @@ next_event:
 
 	set = base_set_new(base);
 	if (!set) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create metric set %s.\n",
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to create metric set %s.\n",
 			instance_name);
 		rc = errno;
 		goto err;
@@ -377,7 +378,7 @@ next_event:
 	return 0;
 
 err:
-	msglog(LDMSD_LDEBUG, SAMP ": error in create metric set function\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": error in create metric set function\n");
 
 	if (base)
 		base_del(base);
@@ -402,25 +403,25 @@ static struct sampler_meta * read_sup_file()
 	if (!meta)
 		return NULL;
 
-	msglog(LDMSD_LDEBUG, SAMP ": start reading the file\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": start reading the file\n");
 
-	msglog(LDMSD_LDEBUG, SAMP ": open the file: %s\n", metadata_filename);
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": open the file: %s\n", metadata_filename);
 	file = fopen(metadata_filename, "r");
 	fseek(file, 0, SEEK_SET);
 
 	if ((file != NULL)) { /* APPNAME is set */
 		int token_number = 1;
 		if (getline(&line, &len, file) == -1) {
-			msglog(LDMSD_LDEBUG, SAMP ": no new data written into"
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": no new data written into"
 				" the file\n");
 			goto nextread;
 		}
 
-		msglog(LDMSD_LDEBUG, SAMP ": existing line = %s\n", line);
-		msglog(LDMSD_LDEBUG, SAMP ": oldline = %s\n", oldline);
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": existing line = %s\n", line);
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": oldline = %s\n", oldline);
 		/* Check if the same job line read before */
 		if (strcmp(line, oldline) == 0) {
-			msglog(LDMSD_LDEBUG, SAMP ": same data exist\n");
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": same data exist\n");
 			goto nextread;
 		}
 
@@ -432,7 +433,7 @@ static struct sampler_meta * read_sup_file()
 			switch (token_number) {
 				case 1:
 					meta->conf_line = strdup(record);
-					msglog(LDMSD_LDEBUG, SAMP ": sampler "
+					ovis_log(mylog, OVIS_LDEBUG, SAMP ": sampler "
 						"conf line = %s\n",
 						meta->conf_line);
 					break;
@@ -441,7 +442,7 @@ static struct sampler_meta * read_sup_file()
 						== 0) {
 						goto nextread;
 					}
-					msglog(LDMSD_LDEBUG, SAMP ": sampler "
+					ovis_log(mylog, OVIS_LDEBUG, SAMP ": sampler "
 						"record = %s, interval = %d\n",
 						record, meta->interval);
 					break;
@@ -450,14 +451,14 @@ static struct sampler_meta * read_sup_file()
 			token_number++;
 		}
 
-		msglog(LDMSD_LDEBUG, SAMP ": end reading new data exist\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": end reading new data exist\n");
 		return meta;
 nextread:
-		msglog(LDMSD_LDEBUG, SAMP ": end reading no new data\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": end reading no new data\n");
 		free(meta);
 		return NULL;
 	} else {
-		msglog(LDMSD_LERROR, SAMP ": error opening the "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": error opening the "
 			"file: %d \n", errno);
 		free(meta);
 		return NULL;
@@ -501,12 +502,12 @@ static int string2attr_list_local(char *str, struct attr_value_list **__av_list,
 		strcat(new_str, s2);
 		strcat(new_str, compid);
 	} else {
-		msglog(LDMSD_LERROR, SAMP ": malloc failed!\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": malloc failed!\n");
 		goto err;
 	}
 	tokens += 2;
 
-	msglog(LDMSD_LDEBUG, SAMP ": the configuration string to be tokenized "
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": the configuration string to be tokenized "
 		"is %s -- number of tokens are %d\n", new_str, tokens);
 
 	rc = ENOMEM;
@@ -544,7 +545,7 @@ int deatach_pids()
 	for (c = 0; c < pids_count && papi_event_sets; c++) {
 		rc = PAPI_stop(papi_event_sets[c], values);
 		if (rc != PAPI_OK) {
-			msglog(LDMSD_LERROR, SAMP ": failed to stop process"
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to stop process"
 				" pid= %d. rc= %d\n", apppid[0], rc);
 		}
 		/*
@@ -552,14 +553,14 @@ int deatach_pids()
 		 */
 		rc = PAPI_detach(papi_event_sets[c]);
 		if (rc != PAPI_OK) {
-			msglog(LDMSD_LERROR, SAMP ": failed to de-attach to "
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to de-attach to "
 				"process pid= %d. rc= %d\n", apppid[0], rc);
 		}
 		if (rc != PAPI_ENOEVST && apppid[0] != 0) {
 			PAPI_cleanup_eventset(papi_event_sets[c]);
 			PAPI_destroy_eventset(&papi_event_sets[c]);
 		} else {
-			msglog(LDMSD_LDEBUG, SAMP ": event set does not "
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": event set does not "
 				"exist\n");
 		}
 	}
@@ -578,7 +579,7 @@ int deatach_pids()
 	pids_count = 0;
 	strcpy(appname_str, "");
 
-	msglog(LDMSD_LDEBUG, SAMP ": application is dead de-attach done!\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": application is dead de-attach done!\n");
 
 	return 0;
 }
@@ -595,14 +596,14 @@ static int config_hw(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	char *multiplx = NULL;
 	char *events = NULL;
 
-	msglog(LDMSD_LDEBUG, SAMP ": HW mode configuration\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": HW mode configuration\n");
 
 	if (set) {
 		rc = EEXIST;
 		goto out;
 	}
 
-	base = base_config(avl, SAMP, default_schema_name, msglog);
+	base = base_config(avl, SAMP, default_schema_name, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -748,7 +749,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	char* producername;
 	char *mode;
 
-	msglog(LDMSD_LDEBUG, SAMP ": config start \n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": config start \n");
 
 	schema = NULL;
 
@@ -761,7 +762,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 	producername = av_value(avl, "producer");
 	if (!producername) {
-		msglog(LDMSD_LERROR, SAMP ": missing producer\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": missing producer\n");
 		goto out;
 	}
 
@@ -775,7 +776,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 	filename = av_value(avl, "metafile");
 	if (!filename) {
-		msglog(LDMSD_LERROR, SAMP ": sampler meta file is required\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": sampler meta file is required\n");
 		return ENOENT;
 	}
 
@@ -783,7 +784,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	/* Check to see if we were successful */
 	if (metadata_filename == NULL) {
 		/* We were not so display a message */
-		msglog(LDMSD_LERROR, SAMP ": could not allocate required "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": could not allocate required "
 			"memory for the string file name\n");
 		goto out;
 	}
@@ -792,7 +793,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 	/* checking for error */
 	if (inot_fd < 0) {
-		msglog(LDMSD_LERROR, SAMP ": inotify initialization"
+		ovis_log(mylog, OVIS_LERROR, SAMP ": inotify initialization"
 			" error = %d \n", inot_fd);
 		return ENOENT;
 
@@ -819,9 +820,9 @@ int config_local(struct attr_value_list *kwl,
 	char *pp_n;
 	char *numthreads;
 
-	msglog(LDMSD_LDEBUG, SAMP ": re-configure the sampler\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": re-configure the sampler\n");
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -839,11 +840,11 @@ int config_local(struct attr_value_list *kwl,
 	else
 		multiplex = 0;
 
-	msglog(LDMSD_LDEBUG, SAMP ": maximum PIDs are %d.\n", max_pids);
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": maximum PIDs are %d.\n", max_pids);
 
 	events = av_value(avl, "events");
 	if (!events) {
-		msglog(LDMSD_LERROR, SAMP ": missing papi events.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": missing papi events.\n");
 		goto out;
 	}
 
@@ -855,7 +856,7 @@ int config_local(struct attr_value_list *kwl,
 	 * configuration
 	 *
 	 */
-	msglog(LDMSD_LDEBUG, SAMP ": application name passed to "
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": application name passed to "
 		"the configuration \n");
 
 	/*
@@ -864,18 +865,18 @@ int config_local(struct attr_value_list *kwl,
 	 */
 	appname_str = strdup(av_value(avl, "appname"));
 	if (!appname_str) {
-		msglog(LDMSD_LERROR, SAMP ": application name is "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": application name is "
 			"required\n");
 		goto out;
 	}
 	jobid = strdup(av_value(avl, "jobid"));
 	if (!jobid) {
-		msglog(LDMSD_LERROR, SAMP ": jobid is required\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": jobid is required\n");
 		goto out;
 	}
 	username = strdup(av_value(avl, "username"));
 	if (!username) {
-		msglog(LDMSD_LERROR, SAMP ": username is required\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": username is required\n");
 		goto out;
 	}
 
@@ -901,13 +902,13 @@ int config_local(struct attr_value_list *kwl,
 		num_threads = 0;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": set already created.\n");
 		goto out;
 	}
 
 	rc = create_metric_set(instance_name, schema_name, events);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to create a metric set.\n");
 		goto out;
 	}
 
@@ -948,17 +949,17 @@ static int papi_events(int c)
 	int rc;
 	/* Create an event set for each pid */
 	papi_event_sets[c] = PAPI_NULL;
-	msglog(LDMSD_LDEBUG, SAMP ": application PID[%d] = %d\n", c,
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": application PID[%d] = %d\n", c,
 		apppid[c]);
 	rc = PAPI_create_eventset(&papi_event_sets[c]);
 	if (rc != PAPI_OK) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create empty "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to create empty "
 			"event set number %d error %d!\n", c, rc);
 		return -1;
 	}
 
 	if (multiplex) {
-		msglog(LDMSD_LDEBUG, SAMP ": multiplex in function is %d\n",
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": multiplex in function is %d\n",
 			multiplex);
 		/* Explicitly bind event set to cpu component.
 		 * PAPI documentation states that this must be done after
@@ -967,7 +968,7 @@ static int papi_events(int c)
 		 */
 		rc = PAPI_assign_eventset_component(papi_event_sets[c], 0);
 		if (rc != PAPI_OK) {
-			msglog(LDMSD_LERROR, SAMP ": failed to bind papi to cpu"
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to bind papi to cpu"
 				" component!\n");
 			rc = ENOENT;
 			return -1;
@@ -976,7 +977,7 @@ static int papi_events(int c)
 		/* Convert papi_event_set to a multiplexed event set */
 		rc = PAPI_set_multiplex(papi_event_sets[c]);
 		if (rc != PAPI_OK) {
-			msglog(LDMSD_LERROR, SAMP ": failed to convert event "
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to convert event "
 				"set to multiplexed!\n");
 			rc = ENOENT;
 			return -1;
@@ -988,7 +989,7 @@ static int papi_events(int c)
 	rc = PAPI_add_events(papi_event_sets[c],
 		events_codes, event_count);
 	if (rc != PAPI_OK) {
-		msglog(LDMSD_LERROR, SAMP ": failed to add "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to add "
 			"event to event set error %d\n",
 			rc);
 		return -1;
@@ -1007,22 +1008,22 @@ static int create_event_sets()
 	 * Save the number of pids again because sometimes
 	 * the number in the first read is incorrect
 	 */
-	msglog(LDMSD_LDEBUG, SAMP ": ovis_pgrep(%s)\n", appname_str);
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": ovis_pgrep(%s)\n", appname_str);
 	opa = ovis_pgrep(appname_str);
 	if (!opa || opa->len == 0) {
-		msglog(LDMSD_LERROR, SAMP ": failed "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed "
 			"ovis_pgrep(%s)\n", appname_str);
 		pids_count = 0;
 	} else {
 		/* Get the application PID counts */
 		pids_count = opa->len;
 
-		msglog(LDMSD_LDEBUG, SAMP ": create_event_sets pids_count"
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": create_event_sets pids_count"
 			" = %d\n", pids_count);
 
 		/* Print the PIDs in the log */
 		for (i = 0; i < opa->len; i++) {
-			msglog(LDMSD_LDEBUG, SAMP ": PID[%d] = %d\n", i, opa->ent[i]->pid);
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": PID[%d] = %d\n", i, opa->ent[i]->pid);
 		}
 
 		apppid = (int*) calloc(pids_count, sizeof (int));
@@ -1060,7 +1061,7 @@ static int save_events_data()
 		 */
 		if (PAPI_read(papi_event_sets[c],
 			papi_event_val) != PAPI_OK) {
-			msglog(LDMSD_LERROR, SAMP ": failed to read event "
+			ovis_log(mylog, OVIS_LERROR, SAMP ": failed to read event "
 				"set %d\n", papi_event_sets[c]);
 			return -1;
 		}
@@ -1128,10 +1129,10 @@ static int sample(struct ldmsd_sampler * self)
 
 	/* Check if the file exist */
 	err = stat(metadata_filename, &file_stat);
-	msglog(LDMSD_LDEBUG, SAMP ": start the sample function, check if the "
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": start the sample function, check if the "
 		"file exist (0-yes)? %d\n", err);
 	if (err != 0) {
-		msglog(LDMSD_LDEBUG, SAMP ": file does not exist, create "
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": file does not exist, create "
 			"one\n");
 		/* if not exist create one */
 		file = fopen(metadata_filename, "w+");
@@ -1144,7 +1145,7 @@ static int sample(struct ldmsd_sampler * self)
 		 * exist_before used to add the watch one time
 		 */
 		if (exist_before == 0) {
-			msglog(LDMSD_LDEBUG, SAMP ": add inotify watch to "
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": add inotify watch to "
 				"the file\n");
 			file = fopen(metadata_filename, "w+");
 			inot_wd = inotify_add_watch(inot_fd,
@@ -1154,30 +1155,30 @@ static int sample(struct ldmsd_sampler * self)
 			meta = read_sup_file();
 			exist_before = 1;
 		} else {
-			msglog(LDMSD_LDEBUG, SAMP ": inotify, check if there is"
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": inotify, check if there is"
 				" new data written to the file\n");
 			inot_length = read(inot_fd,
 				inot_buffer, 16);
 			if (inot_length > 0) {
 				/* File changed */
 				/* Read the support file */
-				msglog(LDMSD_LDEBUG, SAMP ": inotify, file was"
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": inotify, file was"
 					" changed!\n");
 				meta = read_sup_file();
 
-				msglog(LDMSD_LDEBUG, SAMP ": remove the old "
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": remove the old "
 					"base, schema, set, and papi stuff\n");
 				/* remove the old configuration */
-				msglog(LDMSD_LDEBUG, SAMP ": free base\n");
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": free base\n");
 				if (base)
 					base_del(base);
 				base = NULL;
-				msglog(LDMSD_LDEBUG, SAMP ": free set\n");
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": free set\n");
 				if (set)
 					ldms_set_delete(set);
 				set = NULL;
 
-				msglog(LDMSD_LDEBUG, SAMP ": free "
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": free "
 					"papi_event_set\n");
 				if (papi_event_set) {
 					PAPI_destroy_eventset(&papi_event_set);
@@ -1185,26 +1186,26 @@ static int sample(struct ldmsd_sampler * self)
 				}
 				papi_event_set = PAPI_NULL;
 
-				msglog(LDMSD_LDEBUG, SAMP ": free "
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": free "
 					"papi_event_val\n");
 				if (papi_event_val) {
 					free(papi_event_val);
 					papi_event_val = NULL;
 				}
-				msglog(LDMSD_LDEBUG, SAMP ": free appid\n");
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": free appid\n");
 				if (apppid) {
 					free(apppid);
 					apppid = NULL;
 				}
 
-				msglog(LDMSD_LDEBUG, SAMP ": free "
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": free "
 					"papi_event_sets\n");
 				if (papi_event_sets) {
 					free(papi_event_sets);
 					papi_event_sets = NULL;
 				}
 
-				msglog(LDMSD_LDEBUG, SAMP ": free "
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": free "
 					"papi_event_codes\n");
 				if (events_codes) {
 					free(events_codes);
@@ -1216,7 +1217,7 @@ static int sample(struct ldmsd_sampler * self)
 				 * set
 				 */
 				if (meta != NULL) {
-					msglog(LDMSD_LDEBUG, SAMP ": new data "
+					ovis_log(mylog, OVIS_LDEBUG, SAMP ": new data "
 						"exist, form the av_list from "
 						"the file content\n");
 
@@ -1224,7 +1225,7 @@ static int sample(struct ldmsd_sampler * self)
 					string2attr_list_local(meta->conf_line,
 						&av_list_local,
 						&kw_list_local);
-					msglog(LDMSD_LDEBUG, SAMP ": run "
+					ovis_log(mylog, OVIS_LDEBUG, SAMP ": run "
 						"config_local to configure the "
 						"sampler\n");
 
@@ -1237,19 +1238,19 @@ static int sample(struct ldmsd_sampler * self)
 	}
 
 	if (!set || schema == NULL) {
-		msglog(LDMSD_LDEBUG, SAMP ": wait for new data in the file to "
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": wait for new data in the file to "
 			"configure the sampler\n");
 		return 0;
 	}
 
-	msglog(LDMSD_LDEBUG, SAMP ": sampler configured successfully, watch "
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": sampler configured successfully, watch "
 		"for application PIDs (count = %d) \n", pids_count);
 
 	if (pids_count == 0) {
-		msglog(LDMSD_LDEBUG, SAMP ": watch for application, no PIDs,"
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": watch for application, no PIDs,"
 			" application not running\n");
 		if (strlen(appname_str) > 1) {
-			msglog(LDMSD_LDEBUG, SAMP ": ovis_pgrep(%s)\n", appname_str);
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": ovis_pgrep(%s)\n", appname_str);
 			pids_count = 0;
 			ovis_pgrep_array_t opa = ovis_pgrep(appname_str);
 			if (opa) {
@@ -1258,36 +1259,36 @@ static int sample(struct ldmsd_sampler * self)
 			}
 
 			if (pids_count >= ppn) {
-				msglog(LDMSD_LDEBUG, SAMP ": create eventsets"
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": create eventsets"
 					" for %d PIDs\n", pids_count);
 				if (create_event_sets() < 0) {
 					goto err1;
 				}
 			} else {
-				msglog(LDMSD_LDEBUG, SAMP ": Waiting for "
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": Waiting for "
 					"application to start\n");
 				pids_count = 0;
 			}
-		} else msglog(LDMSD_LDEBUG, SAMP ": Waiting for the file "
+		} else ovis_log(mylog, OVIS_LDEBUG, SAMP ": Waiting for the file "
 			"to be changed\n");
 	} else { /* When PID exist */
 		/* check if the attach happened before, no need to attach */
 		if (attach == 0) {
-			msglog(LDMSD_LDEBUG, SAMP ": application started, papi"
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": application started, papi"
 				" start attaching now\n");
 			c = 0;
 			/* Attach to all PIDs */
 			while (c < pids_count) {
 				rc = PAPI_attach(papi_event_sets[c], apppid[c]);
 				if (rc != PAPI_OK) {
-					msglog(LDMSD_LERROR, SAMP ": failed to"
+					ovis_log(mylog, OVIS_LERROR, SAMP ": failed to"
 						" attach to process pid = %d"
 						" rc= %d.\n", apppid[c], rc);
 					goto err1;
 				}
 				rc = PAPI_start(papi_event_sets[c]);
 				if (rc != PAPI_OK) {
-					msglog(LDMSD_LERROR, SAMP ": failed to"
+					ovis_log(mylog, OVIS_LERROR, SAMP ": failed to"
 						" start papi event set "
 						"rc= %d\n", rc);
 					goto err1;
@@ -1295,7 +1296,7 @@ static int sample(struct ldmsd_sampler * self)
 				attach = 1;
 				c++;
 			}
-			msglog(LDMSD_LDEBUG, SAMP ": application started, papi"
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": application started, papi"
 				" attach done!\n");
 		} else {
 
@@ -1303,7 +1304,7 @@ static int sample(struct ldmsd_sampler * self)
 			 *  is a life by searching for the process number
 			 * if note exist then De-attach PAPI
 			 */
-			msglog(LDMSD_LDEBUG, SAMP ": papi already attached, "
+			ovis_log(mylog, OVIS_LDEBUG, SAMP ": papi already attached, "
 				"check if the application is alive \n");
 			if (apppid)
 				pid0_exist = kill(apppid[0], 0);
@@ -1311,7 +1312,7 @@ static int sample(struct ldmsd_sampler * self)
 				pid0_exist = ENOENT;
 
 			if (pid0_exist == 0) {
-				msglog(LDMSD_LDEBUG, SAMP ": application is "
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": application is "
 					"alive, read papi events \n");
 				base_sample_begin(base);
 				if (save_events_data() < 0) {
@@ -1320,7 +1321,7 @@ static int sample(struct ldmsd_sampler * self)
 				}
 				base_sample_end(base);
 			} else {
-				msglog(LDMSD_LDEBUG, SAMP ": application is "
+				ovis_log(mylog, OVIS_LDEBUG, SAMP ": application is "
 					"dead, papi de-attach now \n");
 				deatach_pids();
 			}
@@ -1388,6 +1389,8 @@ static void term(struct ldmsd_plugin * self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin * self)
@@ -1423,8 +1426,14 @@ static struct ldmsd_sampler papi_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin * get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin * get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler.spapi", "Message for the spapi plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'spapi' plugin. Error %d\n", rc);
+	}
 	return &papi_plugin.base;
 }

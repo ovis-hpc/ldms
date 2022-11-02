@@ -62,7 +62,10 @@ int* nettopo_metric_table;
 /** These only work for gemini */
 #define RCAHELPER_BIN "/opt/cray/rca/default/bin/rca-helper"
 
-int nettopo_setup(ldmsd_msg_log_f msglog)
+/* Defined in cray_sampler_base.c */
+extern ovis_log_t __cray_sampler_log;
+
+int nettopo_setup()
 {
 	uint16_t nid;
 	FILE* pipe;
@@ -115,7 +118,7 @@ int nettopo_setup(ldmsd_msg_log_f msglog)
 		pclose(pipe);
 
 	pipe = 0;
-	msglog(LDMSD_LERROR,
+	ovis_log(__cray_sampler_log, OVIS_LERROR,
 	       "rca_metrics: rca-helper fail. node and coords will be invalid\n");
 	nid = 0;
 	nettopo_coord.x = 6666;
@@ -125,7 +128,7 @@ int nettopo_setup(ldmsd_msg_log_f msglog)
 	return 0; /* even though it fails */
 }
 
-int sample_metrics_nettopo(ldms_set_t set, ldmsd_msg_log_f msglog)
+int sample_metrics_nettopo(ldms_set_t set)
 {
 
 	union ldms_value v;

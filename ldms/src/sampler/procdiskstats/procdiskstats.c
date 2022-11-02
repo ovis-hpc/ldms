@@ -95,12 +95,12 @@ static char *fieldname[NFIELD] = {
 #define SECT_READ_BYTES_IDX 11
 #define SECT_WRITTEN_BYTES_IDX 12
 
+static ovis_log_t mylog;
+
 static ldms_set_t set;
 static FILE *mf = NULL;
-static ldmsd_msg_log_f msglog;
 static int metric_offset;
 static base_data_t base;
-
 
 static long USER_HZ; /* initialized in get_plugin() */
 static struct timeval _tv[2] = { {0}, {0} };
@@ -151,7 +151,7 @@ static int get_sector_sz(char *device)
 
 	f = fopen(filename, "r");
 	if (!f) {
-		msglog(LDMSD_LERROR, SAMP "Failed to open %s\n", filename);
+		ovis_log(mylog, OVIS_LERROR, SAMP "Failed to open %s\n", filename);
 		return DEFAULT_SECTOR_SZ;
 	}
 
@@ -166,7 +166,7 @@ static int get_sector_sz(char *device)
 		rc = sscanf(filename, "%d", &result);
 
 		if (rc != 1) {
-			msglog(LDMSD_LINFO, SAMP "Failed to get the sector size of %s. "
+			ovis_log(mylog, OVIS_LINFO, SAMP "Failed to get the sector size of %s. "
 					"The size is set to 512.\n", device);
 			result = DEFAULT_SECTOR_SZ;
 		}
@@ -196,7 +196,7 @@ static struct proc_disk_s *add_disk(char *name)
 	disk->name = strdup(name);
 	if (!disk->name) {
 		free(disk);
-		msglog(LDMSD_LERROR,"out of memory\n");
+		ovis_log(mylog, OVIS_LERROR,"out of memory\n");
 		return NULL;
 	}
 	disk->sect_sz = get_sector_sz(disk->name);
@@ -261,7 +261,7 @@ static int config_add_disks(struct attr_value_list *avl, ldms_schema_t schema)
 		     name; name = strtok_r(NULL, ",", &ptr)) {
 			TAILQ_FOREACH(disk, &disk_list, entry) {
 				if (0 == strcmp(name, disk->name)){
-					msglog(LDMSD_LDEBUG, SAMP " will monitor %s\n", name);
+					ovis_log(mylog, OVIS_LDEBUG, SAMP " will monitor %s\n", name);
 					disk->monitored = 1;
 				}
 			}
@@ -270,7 +270,7 @@ static int config_add_disks(struct attr_value_list *avl, ldms_schema_t schema)
 	} else {
 		/* Mark all the disks as monitored */
 		TAILQ_FOREACH(disk, &disk_list, entry) {
-			msglog(LDMSD_LDEBUG, SAMP " will monitor %s\n", disk->name);
+			ovis_log(mylog, OVIS_LDEBUG, SAMP " will monitor %s\n", disk->name);
 			disk->monitored = 1;
 		}
 	}
@@ -286,7 +286,7 @@ static int config_add_disks(struct attr_value_list *avl, ldms_schema_t schema)
 	return rc;
 
 err:
-	msglog(LDMSD_LERROR, SAMP "%s Error %d adding metrics.\n", rc);
+	ovis_log(mylog, OVIS_LERROR, SAMP "%s Error %d adding metrics.\n", rc);
 	return rc;
 }
 
@@ -298,7 +298,7 @@ static int create_metric_set(base_data_t base, struct attr_value_list *avl){
 	schema = base_schema_new(base);
 	if (!schema) {
 		rc = errno;
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 			SAMP ": The schema '%s' could not be created, errno=%d.\n",
 		       base->schema_name, errno);
 		goto err;
@@ -331,12 +331,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = EINVAL;
 		goto err;
@@ -344,7 +344,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(base, avl);
 	if (rc){
-		msglog(LDMSD_LERROR, SAMP ": failed to create "
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to create "
 		       "the metric set.\n");
 		goto err;
 	}
@@ -418,7 +418,7 @@ static int sample(struct ldmsd_sampler *self)
 	struct proc_disk_s *disk;
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP " plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP " plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -486,6 +486,8 @@ static void term(struct ldmsd_plugin *self)
 		TAILQ_REMOVE(&disk_list, disk, entry);
 		free(disk);
 	}
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -506,9 +508,15 @@ static struct ldmsd_sampler procdiskstats_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	USER_HZ = sysconf(_SC_CLK_TCK);
 	return &procdiskstats_plugin.base;

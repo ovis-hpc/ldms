@@ -36,8 +36,6 @@
 #define STORE_AVRO_KAFKA "store_avro_kafka"
 static ovis_log_t aks_log = NULL;
 
-static ldmsd_msg_log_f msglog __attribute__((format(printf, 2, 3)));
-
 #define LOG(_level_, _fmt_, ...) ovis_log(aks_log, _level_, _fmt_, ##__VA_ARGS__)
 
 #define LOG_ERROR(FMT, ...) LOG(OVIS_LERROR, FMT, ##__VA_ARGS__)
@@ -1021,9 +1019,8 @@ static struct ldmsd_store store_kafka = {
     .commit = commit_rows,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
 	return &store_kafka.base;
 }
 

@@ -62,10 +62,11 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
+static ovis_log_t mylog;
+
 static struct rbt amqp_rbt;	/* key is amqp_instance.container name */
-static ldmsd_msg_log_f msglog;
-#define LERR(_fmt_, ...) msglog(LDMSD_LERROR, "store_amqp: " _fmt_, ##__VA_ARGS__)
-#define LINF(_fmt_, ...) msglog(LDMSD_LINFO, "store_amqp: " _fmt_, ##__VA_ARGS__)
+#define LERR(_fmt_, ...) ovis_log(mylog, OVIS_LERROR, "store_amqp: " _fmt_, ##__VA_ARGS__)
+#define LINF(_fmt_, ...) ovis_log(mylog, OVIS_LINFO, "store_amqp: " _fmt_, ##__VA_ARGS__)
 /*
  * NOTE:
  *   <amqp::path> = <root_path>/<container>
@@ -331,7 +332,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	ai->conn = amqp_new_connection();
 	if (!ai->conn) {
 		rc = (errno ? errno : ENOMEM);
-		msglog(LDMSD_LERROR, "%s: Error %d creating the AMQP connection state.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d creating the AMQP connection state.\n",
 		       __FILE__, rc);
 		goto err_1;
 	}
@@ -339,7 +340,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	ai->socket = amqp_tcp_socket_new(ai->conn);
 	if (!ai->socket) {
 		rc = (errno ? errno : ENOMEM);
-		msglog(LDMSD_LERROR, "%s: Error %d creating the AMQP connection state.\n",
+		ovis_log(mylog, OVIS_LERROR, "%s: Error %d creating the AMQP connection state.\n",
 		       __FILE__, rc);
 		goto err_2;
 	}
@@ -351,7 +352,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	rc = amqp_socket_open(ai->socket, ai->host, ai->port);
 	if (rc) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Error %d opening the AMQP socket.\n", __FILE__, rc);
 		goto err_2;
 	}
@@ -917,9 +918,15 @@ static struct ldmsd_store store_amqp = {
 	.close = close_store,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("store.amqp", "Log subsystem of the 'amqp' plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of 'amqp' plugin. Error %d\n", rc);
+	}
 	return &store_amqp.base;
 }
 

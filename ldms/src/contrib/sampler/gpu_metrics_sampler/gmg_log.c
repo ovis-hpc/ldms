@@ -51,16 +51,12 @@
 
 #include "gmg_log.h"
 
+extern ovis_log_t __gmg_log;
 
-static void noopLogFunc(int level, const char *fmt, ...) {
-}
-
-ldmsd_msg_log_f msglog = noopLogFunc;
-
-ldmsd_msg_log_f setGmgLoggingFunction(
-        const ldmsd_msg_log_f fp) {
-    ldmsd_msg_log_f oldPf = msglog;
-    msglog = fp;
-    GMGLOG(LDMSD_LDEBUG, "Updated msglog\n");
+ovis_log_t setGmgLoggingFunction(
+        const ovis_log_t pi_log) {
+    ovis_log_t oldPf = __gmg_log;
+    GMGLOG(OVIS_LDEBUG, "Updated gmg_log\n");
+    __gmg_log = pi_log;
     return oldPf;
 }

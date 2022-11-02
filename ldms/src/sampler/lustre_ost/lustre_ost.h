@@ -12,6 +12,4 @@
 
 #define SAMP "lustre_ost"
 
-extern ldmsd_msg_log_f log_fn;
-
 #endif /* __LUSTRE_OST_H */

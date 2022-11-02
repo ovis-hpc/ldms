@@ -67,12 +67,12 @@
 static char *procfile = PROC_FILE;
 static ldms_set_t set = NULL;
 static FILE *mf = NULL;
-static ldmsd_msg_log_f msglog;
 static int nprocs;
 #define SAMP "procinterrupts"
 static int metric_offset;
 static base_data_t base;
 
+static ovis_log_t mylog;
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
@@ -110,7 +110,7 @@ static int create_metric_set(base_data_t base)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open the " SAMP " file '%s'...exiting\n",
+		ovis_log(mylog, OVIS_LERROR, "Could not open the " SAMP " file '%s'...exiting\n",
 				procfile);
 		return ENOENT;
 	}
@@ -119,7 +119,7 @@ static int create_metric_set(base_data_t base)
 	schema = base_schema_new(base);
 	if (!schema) {
 		rc = errno;
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, rc);
 		goto err;
@@ -136,7 +136,7 @@ static int create_metric_set(base_data_t base)
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	nprocs = getNProcs(lbuf);
 	if (nprocs <= 0) {
-		msglog(LDMSD_LINFO, "Bad number of CPU.\n");
+		ovis_log(mylog, OVIS_LINFO, "Bad number of CPU.\n");
 		fclose(mf);
 		return EINVAL;
 	}
@@ -201,18 +201,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc = 0;
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base)
 		goto err;
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create the metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create the metric set.\n");
 		goto err;
 	}
 	return 0;
@@ -230,7 +230,7 @@ static int sample(struct ldmsd_sampler *self)
 	union ldms_value v;
 
 	if (!set){
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -262,8 +262,8 @@ static int sample(struct ldmsd_sampler *self)
 						ldms_metric_set(set, metric_no, &v);
 						metric_no++;
 					} else {
-						msglog(LDMSD_LERROR, SAMP
-							" bad val <%s>\n",pch);
+						ovis_log(mylog, OVIS_LERROR,
+							"bad val <%s>\n",pch);
 						rc = EINVAL;
 						goto out;
 					}
@@ -290,6 +290,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler procinterrupts_plugin = {
@@ -304,9 +306,15 @@ static struct ldmsd_sampler procinterrupts_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &procinterrupts_plugin.base;
 }

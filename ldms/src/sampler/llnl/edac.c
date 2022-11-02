@@ -105,8 +105,9 @@ int totalCommands;
 char command[MAXSZ][MAXSZ+1];
 char edac_name[MAXSZ][MAXSZ];
 
+static ovis_log_t mylog;
+
 static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;
 #define SAMP "edac"
 static int metric_offset;
 static base_data_t base;
@@ -135,7 +136,7 @@ static int create_metric_set(base_data_t base)
 
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR, SAMP ": schema_new(%s) failed.\n",
+		ovis_log(mylog, OVIS_LERROR, "schema_new(%s) failed.\n",
 			base->schema_name);
 		return errno;
 	}
@@ -155,12 +156,12 @@ static int create_metric_set(base_data_t base)
 	// Check to make sure it's not more than array size
 	if (totalCommands > MAXSZ)
 	{
-		msglog(LDMSD_LERROR, SAMP ": Plugin total registers larger than allowed. Check max_mc*5+max_mc*max_csrow*3 < %d\n", MAXSZ);
-		msglog(LDMSD_LERROR, SAMP ": max_mc %d max_csrow %d\n", max_mc, max_csrow);
+		ovis_log(mylog, OVIS_LERROR, "Plugin total registers larger than allowed. Check max_mc*5+max_mc*max_csrow*3 < %d\n", MAXSZ);
+		ovis_log(mylog, OVIS_LERROR, "max_mc %d max_csrow %d\n", max_mc, max_csrow);
 		return EINVAL;
 	}
 	if (! max_mc) {
-		msglog(LDMSD_LERROR, SAMP ": No registers requested. Check max_mc, max_csrow\n");
+		ovis_log(mylog, OVIS_LERROR, "No registers requested. Check max_mc, max_csrow\n");
 		return EINVAL;
 	}
 
@@ -194,8 +195,11 @@ static int create_metric_set(base_data_t base)
 		myFile = fopen(command[i], "r");
 		if (myFile == NULL)
 		{
-			msglog(LDMSD_LERROR, SAMP ": failed to open file %s during config. Check max_mc and max_csrow (%d, %d) against hardware present.\n",
-				command[i], max_mc, max_csrow);
+			ovis_log(mylog, OVIS_LERROR,
+					"failed to open file %s during config. "
+					"Check max_mc and max_csrow (%d, %d) "
+					"against hardware present.\n",
+					command[i], max_mc, max_csrow);
 			rc = EINVAL;
 			edac_valid=0;
 			return rc;
@@ -214,7 +218,7 @@ static int create_metric_set(base_data_t base)
 	{
 		rc = ldms_schema_metric_add(schema, edac_name[i], LDMS_V_U64);
 		if (rc < 0) {
-			msglog(LDMSD_LERROR, SAMP ": metric_add failed %s\n",
+			ovis_log(mylog, OVIS_LERROR, "metric_add failed %s\n",
 				edac_name[i]);
 			rc = ENOMEM;
 			goto err;
@@ -224,7 +228,7 @@ static int create_metric_set(base_data_t base)
 	set = base_set_new(base);
 	if (!set){
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP ": failed to create set during config.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create set during config.\n");
 		goto err;
 	}
 
@@ -249,7 +253,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
+			ovis_log(mylog, OVIS_LERROR, "config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -257,7 +261,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < (sizeof(misplaced)/sizeof(misplaced[0])); i++){
 		value = av_value(avl, misplaced[i]);
 		if (value){
-			msglog(LDMSD_LERROR, SAMP ": config argument %s is misplaced.\n",
+			ovis_log(mylog, OVIS_LERROR, "config argument %s is misplaced.\n",
 			       misplaced[i]);
 			return EINVAL;
 		}
@@ -268,10 +272,10 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 		closedir(dir);
 	} else {
 		if (ENOENT == errno)
-			msglog(LDMSD_LERROR, SAMP ": edac not enabled? (no %s) found.\n",
+			ovis_log(mylog, OVIS_LERROR, "edac not enabled? (no %s) found.\n",
 				EDAC_ROOT);
 		else
-			msglog(LDMSD_LERROR, SAMP ": edac not reable? (at %s).\n",
+			ovis_log(mylog, OVIS_LERROR, "edac not reable? (at %s).\n",
 				EDAC_ROOT);
 		return EINVAL;
 	}
@@ -296,12 +300,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = config_check(kwl, avl, arg);
 	if (rc != 0){
-		msglog(LDMSD_LERROR, SAMP ": failed config_check.\n");
+		ovis_log(mylog, OVIS_LERROR, "Failed config_check.\n");
 		return rc;
 	}
 
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
@@ -313,7 +317,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			max_mc = (int)tmp;
 		else
 		{
-			msglog(LDMSD_LERROR, SAMP ": Plugin input %s for max_mc not valid.\n",
+			ovis_log(mylog, OVIS_LERROR, "Plugin input %s for max_mc not valid.\n",
 				mvalue);
 			return EINVAL;
 		}
@@ -327,28 +331,28 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			max_csrow = (int)tmp;
 		else
 		{
-			msglog(LDMSD_LERROR, SAMP ": Plugin input %s for max_csrow not valid.\n",
+			ovis_log(mylog, OVIS_LERROR, "Plugin input %s for max_csrow not valid.\n",
 				mvalue);
 			return EINVAL;
 		}
 	}
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
-		msglog(LDMSD_LERROR, SAMP ": failed base_config.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed base_config.\n");
 		rc = EINVAL;
 		goto err;
 	}
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 
 	edac_valid=1;
 
-	msglog(LDMSD_LDEBUG, SAMP ": config max_mc %d max_csrow %d.\n", max_mc, max_csrow);
+	ovis_log(mylog, OVIS_LDEBUG, "config max_mc %d max_csrow %d.\n", max_mc, max_csrow);
 	return 0;
 
 err:
@@ -382,7 +386,7 @@ static int sample(struct ldmsd_sampler *self)
 	rc = 0;
 
 	if (!set) {
-		msglog(LDMSD_LERROR, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LERROR, "plugin not initialized\n");
 		return EINVAL;
 	}
 	base_sample_begin(base);
@@ -397,21 +401,21 @@ static int sample(struct ldmsd_sampler *self)
 		if (myFile == NULL)
 		{
 			rc = errno;
-			msglog(LDMSD_LERROR, SAMP ": failed to open file %s: %s\n",
+			ovis_log(mylog, OVIS_LERROR, "failed to open file %s: %s\n",
 				command[i], STRERROR(rc));
 			goto out;
 		}
 		s = fgets(lineBuffer, LBSZ, myFile);
 		if (!s) {
 			rc = EIO;
-			msglog(LDMSD_LERROR, SAMP ": fgets failed on %s\n",
+			ovis_log(mylog, OVIS_LERROR, "fgets failed on %s\n",
 				command[i]);
 			goto out;
 		}
 		rc = sscanf(lineBuffer, "%" PRIu64, &v.v_u64);
 		if (rc != 1) {
 			rc = errno;
-			msglog(LDMSD_LERROR, SAMP ": read a uint64_t failed from %s: \"%s\": %s\n",
+			ovis_log(mylog, OVIS_LERROR, "read a uint64_t failed from %s: \"%s\": %s\n",
 				command[i], lineBuffer, STRERROR(rc));
 			goto out;
 		} else {
@@ -440,6 +444,8 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	if (mylog)
+		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler edac_plugin = {
@@ -454,9 +460,15 @@ static struct ldmsd_sampler edac_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	msglog = pf;
+	int rc;
+	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	set = NULL;
 	return &edac_plugin.base;
 }

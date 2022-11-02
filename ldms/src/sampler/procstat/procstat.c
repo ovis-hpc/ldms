@@ -121,7 +121,7 @@ struct sampler_data {
 	FILE *mf;	/* /proc/stat file pointer */
 	char *line;
 	size_t line_sz;
-	ldmsd_msg_log_f msglog;
+	ovis_log_t mylog;
 	int warn_col_count;
 	int warn_row_count;
 	int scalar_pos[NUM_MID];
@@ -216,8 +216,8 @@ int measure_cpu(int *cpu_count, int *column_count, char *token, char **saveptr)
 	}
 	if ( (*column_count) > 0 && column < (*column_count)) {
 		rc = 1;
-		g.msglog(LDMSD_LERROR,
-			SAMP ": short read in cpu row %d\n",
+		ovis_log(g.mylog, OVIS_LERROR,
+			"short read in cpu row %d\n",
 			*cpu_count);
 	}
 	*column_count = column;
@@ -237,8 +237,8 @@ int count_cpu( int *cpu_count, int *column_count, char *token, char **saveptr) {
 	long curcpu = -1;
 	if (*cpu_count == g.maxcpu) {
 		if ( g.warn_row_count < 2) {
-			g.msglog(LDMSD_LINFO,
-				SAMP ": unlogged cpu row! user given max: %d\n",
+			ovis_log(g.mylog, OVIS_LINFO,
+				"unlogged cpu row! user given max: %d\n",
 				g.maxcpu);
 			g.warn_row_count++;
 		}
@@ -250,8 +250,8 @@ int count_cpu( int *cpu_count, int *column_count, char *token, char **saveptr) {
 			char *end = NULL;
 			curcpu = strtol(tmp,&end,10);
 			if (end == tmp) {
-				g.msglog(LDMSD_LERROR,
-				SAMP ": extra unnumbered cpu row!\n");
+				ovis_log(g.mylog, OVIS_LERROR,
+				"extra unnumbered cpu row!\n");
 				return EINVAL;
 			}
 		} else {
@@ -272,8 +272,8 @@ int count_cpu( int *cpu_count, int *column_count, char *token, char **saveptr) {
 
 		if (column >= MAX_CPU_METRICS) {
 			if (g.warn_col_count < 3) {
-				g.msglog(LDMSD_LERROR,
-				SAMP ": extra cpu metric found\n");
+				ovis_log(g.mylog, OVIS_LERROR,
+				"extra cpu metric found\n");
 				g.warn_col_count++;
 			}
 			break;
@@ -300,13 +300,13 @@ static int create_metric_set(base_data_t base)
 
 	g.mf = fopen("/proc/stat", "r");
 	if (!g.mf) {
-		g.msglog(LDMSD_LERROR,"Could not open the /proc/stat file.\n");
+		ovis_log(g.mylog, OVIS_LERROR,"Could not open the /proc/stat file.\n");
 		return ENOENT;
 	}
 
 	g.schema = base_schema_new(g.base);
 	if (!g.schema) {
-		g.msglog(LDMSD_LERROR,
+		ovis_log(g.mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       SAMP, base->schema_name, errno);
 		rc = ENOMEM;
@@ -346,14 +346,14 @@ static int create_metric_set(base_data_t base)
 			continue;
 
 #define STAT_UNEXPECTED(S) \
-	g.msglog(LDMSD_LINFO,SAMP ": unexpected %s in /proc/stat names\n",S)
+	ovis_log(g.mylog, OVIS_LINFO,"unexpected %s in /proc/stat names\n",S)
 
 #define STAT_SCALAR(X,Y, POS) \
 if (strcmp(token,X)==0) { \
 	token = strtok_r(NULL, " \t\n", &saveptr); \
 	rc = ldms_schema_metric_add(g.schema, Y, LDMS_V_U64); \
 	if (rc < 0) { \
-		g.msglog(LDMSD_LERROR, SAMP ": add " X " failed (finish).\n"); \
+		ovis_log(g.mylog, OVIS_LERROR, "add " X " failed (finish).\n"); \
 		goto err1; \
 	} \
 	POS = rc; \
@@ -369,7 +369,7 @@ if (strcmp(token,X)==0) { \
 		int errcpu = count_cpu(&cpu_count, \
 			&column_count, NULL, NULL); \
 		if (errcpu) { \
-			g.msglog(LDMSD_LERROR, SAMP ": count_cpu" \
+			ovis_log(g.mylog, OVIS_LERROR, "count_cpu" \
 				" failed (finish).\n"); \
 			rc = errcpu; \
 			goto err1; \
@@ -460,7 +460,7 @@ if (strcmp(token,X)==0) { \
 	g.set = base_set_new(g.base);
 	if (!g.set) {
 		rc = errno;
-		g.msglog(LDMSD_LERROR, SAMP ": ldms_create_set failed.\n");
+		ovis_log(g.mylog, OVIS_LERROR, "ldms_create_set failed.\n");
 		goto err1;
 	}
 
@@ -492,7 +492,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			g.msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
+			ovis_log(g.mylog, OVIS_LERROR, "config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -522,11 +522,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 	if (g.set) {
-		g.msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(g.mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
-	g.base = base_config(avl, SAMP, SAMP, g.msglog);
+	g.base = base_config(avl, SAMP, SAMP, g.mylog);
 	if (!g.base) {
 		rc = errno;
 		goto out;
@@ -536,8 +536,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value) {
 		utmp = strtoull(value, &endp, 0);
 		if (endp == value) {
-			g.msglog(LDMSD_LERROR, SAMP
-				": config: maxcpu value bad: %s\n", value);
+			ovis_log(g.mylog, OVIS_LERROR,
+				"config: maxcpu value bad: %s\n", value);
 			rc = EINVAL;
 			goto out;
 		}
@@ -552,7 +552,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = create_metric_set(g.base);
 	if (rc) {
-		g.msglog(LDMSD_LERROR, SAMP " create_metric_set err %d\n",
+		ovis_log(g.mylog, OVIS_LERROR, "Create_metric_set err %d\n",
 			rc);
 		goto out;
 	}
@@ -592,12 +592,12 @@ static int sample(struct ldmsd_sampler *self)
 	int cpu_count;
 
 	if (!g.set ){
-		g.msglog(LDMSD_LERROR, SAMP ": plugin not initialized\n");
+		ovis_log(g.mylog, OVIS_LERROR, "plugin not initialized\n");
 		return EINVAL;
 	}
 	int err = fseek(g.mf, 0, SEEK_SET);
 	if (err < 0) {
-		g.msglog(LDMSD_LERROR, SAMP ": failure seeking /proc/stat.\n");
+		ovis_log(g.mylog, OVIS_LERROR, "failure seeking /proc/stat.\n");
 		return 0;
 	}
 
@@ -611,7 +611,7 @@ static int sample(struct ldmsd_sampler *self)
 			break;
 
 #define S_STAT_UNEXPECTED(S) \
-	g.msglog(LDMSD_LINFO,SAMP ": unexpected %s in /proc/stat names\n",S)
+	ovis_log(g.mylog, OVIS_LINFO,"unexpected %s in /proc/stat names\n",S)
 
 /* verify name and set value. */
 #define GET_STAT_SCALAR(X, pos) \
@@ -620,13 +620,13 @@ static int sample(struct ldmsd_sampler *self)
 		char *endp = NULL; \
 		uint64_t val = strtoull(token,&endp,10); \
 		if (endp == token) { \
-			g.msglog(LDMSD_LINFO,SAMP ": non-int value " \
+			ovis_log(g.mylog, OVIS_LINFO,"non-int value " \
 			"in line %s in /proc/stat: %s\n", X, token); \
 		} else { \
 			ldms_metric_set_u64(g.set, pos, val); \
 		} \
 	} else { \
-		g.msglog(LDMSD_LERROR,SAMP ": format changed? " \
+		ovis_log(g.mylog, OVIS_LERROR,"format changed? " \
 		"in line %s in /proc/stat: %s\n", X, token); \
 		break; \
 	}
@@ -731,8 +731,8 @@ static int sample(struct ldmsd_sampler *self)
 
 err1:
 	if (rc) {
-		g.msglog(LDMSD_LERROR,
-			SAMP ": incomplete sample call.\n");
+		ovis_log(g.mylog, OVIS_LERROR,
+			"incomplete sample call.\n");
 	}
 	base_sample_end(g.base);
 	return rc;
@@ -761,6 +761,8 @@ static void term(struct ldmsd_plugin *self)
 		fclose(g.mf);
 		g.mf = NULL;
 	}
+	if (g.mylog)
+		ovis_log_destroy(g.mylog);
 }
 
 static struct ldmsd_sampler procstat_plugin = {
@@ -775,8 +777,14 @@ static struct ldmsd_sampler procstat_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin()
 {
-	g.msglog = pf;
+	int rc;
+	g.mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!g.mylog) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+	}
 	return &procstat_plugin.base;
 }

@@ -160,7 +160,7 @@ struct ib_port {
 };
 
 struct ibnet_data {
-	ldmsd_msg_log_f log;
+	ovis_log_t mylog;
 
 	/** schema of counter data */
 	ldms_schema_t port_schema;
@@ -273,7 +273,7 @@ static void dump_cr(struct counter_range *cr, struct ibnet_data *d)
 {
 	size_t i;
 	for (i = 0; i < cr_count; i++)
-		d->log(LDMSD_LDEBUG, SAMP 
+		ovis_log(d->mylog, OVIS_LDEBUG, SAMP
 			" row %zu: enabled %d, lo %d, hi %d, subset '%s',"
 			" id %d, check %u, check2 %u, lo_index %d\n", i,
 			(int)cr[i].enabled, (int)cr[i].lo, (int)cr[i].hi,
@@ -334,9 +334,9 @@ char *ibnet_data_usage() {
 }
 
 /** create instance using config options */
-struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *avl, struct attr_value_list *kwl)
+struct ibnet_data *ibnet_data_new(ovis_log_t mylog, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	if (!log || !avl) {
+	if (!avl) {
 		errno = EINVAL;
 		return NULL;
 	}
@@ -348,7 +348,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 	struct ibnet_data *d = calloc(1, sizeof(*d));
 	if (!d)
 		return NULL;
-	d->log = log;
+	d->mylog = mylog;
 	d->ca_port = 1;
 	d->delta_retry = 600; /* seconds after a query failure before retry */
 	memcpy(d->cr_opt, (void*)cr_default, sizeof(cr_default));
@@ -356,13 +356,13 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 	/* optional debug */
 	if (av_idx_of(kwl, "debug") != -1)
 		d->debug = 1;
-	d->log(LDMSD_LDEBUG, SAMP " debug=%d\n", d->debug);
+	ovis_log(d->mylog, OVIS_LDEBUG, "debug=%d\n", d->debug);
 
 #define LENCHECK(v, n) \
 	const char *v = av_value(avl, n); \
 	if (v && strlen(v) == 0) { \
 		errno = EINVAL; \
-		d->log(LDMSD_LERROR, SAMP " needs " n "=<something>\n" ); \
+		ovis_log(d->mylog, OVIS_LERROR, "needs " n "=<something>\n" ); \
 		goto err; \
 	}
 	/* required */
@@ -384,22 +384,22 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 
 #ifndef MAIN
 
-	(void)base_auth_parse(avl, &d->auth, d->log);
+	(void)base_auth_parse(avl, &d->auth, mylog);
 	if (!srclist || strlen(srclist) == 0) {
 		errno = EINVAL;
-		d->log(LDMSD_LERROR, SAMP " needs source_list=<file> of lid/port to read.\n");
+		ovis_log(d->mylog, OVIS_LERROR, "needs source_list=<file> of lid/port to read.\n");
 		goto err;
 	}
 	d->srclist = strdup(srclist);
 	if (!d->srclist) {
-		d->log(LDMSD_LERROR, SAMP " config out of memory.\n");
+		ovis_log(d->mylog, OVIS_LERROR, "config out of memory.\n");
 		goto err;
 	}
 	if (!cname || strlen(cname) >= UMAD_CA_NAME_LEN) {
 		errno = EINVAL;
-		d->log(LDMSD_LERROR, SAMP " needs port_name of hca/hfi\n");
+		ovis_log(d->mylog, OVIS_LERROR, "needs port_name of hca/hfi\n");
 		if (cname)
-			d->log(LDMSD_LDEBUG, SAMP " got too long %s\n", cname);
+			ovis_log(d->mylog, OVIS_LDEBUG, "got too long %s\n", cname);
 		goto err;
 	} else {
 		strcpy(d->ca_name, cname);
@@ -408,7 +408,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 	if (lidnames) {
 		d->lidnames = strdup(lidnames);
 		if (!d->lidnames) {
-			d->log(LDMSD_LERROR, SAMP " config out of memory.\n");
+			ovis_log(d->mylog, OVIS_LERROR, "config out of memory.\n");
 			goto err;
 		}
 	}
@@ -419,13 +419,13 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 		errno = 0;
 		long j = strtol(millis, &endp, 0);
 		if (endp == millis || errno) {
-			d->log(LDMSD_LERROR, SAMP "Got bad query timeout '%s'\n",
+			ovis_log(d->mylog, OVIS_LERROR, SAMP "Got bad query timeout '%s'\n",
 				millis);
 			rc = EINVAL;
 			goto err;
 		}
 		if (j > INT_MAX) {
-			d->log(LDMSD_LERROR, SAMP "millis too big %s\n",
+			ovis_log(d->mylog, OVIS_LERROR, SAMP "millis too big %s\n",
 				millis);
 			rc = EINVAL;
 			goto err;
@@ -439,13 +439,13 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 		errno = 0;
 		unsigned long int j = strtoul(cnum, &endp, 0);
 		if (endp == cnum || errno) {
-			d->log(LDMSD_LERROR, SAMP "Got bad port_number '%s'\n",
+			ovis_log(d->mylog, OVIS_LERROR, SAMP "Got bad port_number '%s'\n",
 				cnum);
 			rc = EINVAL;
 			goto err;
 		}
 		if (j > INT_MAX) {
-			d->log(LDMSD_LERROR, SAMP "port_number too big %s\n",
+			ovis_log(d->mylog, OVIS_LERROR, SAMP "port_number too big %s\n",
 				cnum);
 			rc = EINVAL;
 			goto err;
@@ -465,7 +465,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 		strcpy(d->schema_name_base, "ibnet");
 	} else {
 		if (strlen(sbase) >= MAX_SCHEMA_BASE) {
-			d->log(LDMSD_LERROR, SAMP " schema name > %d: %s\n",
+			ovis_log(d->mylog, OVIS_LERROR, "schema name > %d: %s\n",
 				MAX_SCHEMA_BASE, sbase);
 			rc = EINVAL;
 			goto err;
@@ -483,7 +483,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 		errno = 0;
 		unsigned int j = strtoul(ctiming, &endp, 4);
 		if (endp == ctiming || errno || j > 3 ) {
-			d->log(LDMSD_LERROR, SAMP "Got bad timing '%s'\n",
+			ovis_log(d->mylog, OVIS_LERROR, SAMP "Got bad timing '%s'\n",
 				ctiming);
 			rc = EINVAL;
 			goto err;
@@ -491,7 +491,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 		d->port_timing = j;
 		if (itiming) {
 			if (strlen(itiming) >= MAX_STR_NAME) {
-				d->log(LDMSD_LERROR, SAMP "'%s'"
+				ovis_log(d->mylog, OVIS_LERROR, SAMP "'%s'"
 					" too long for instance.\n",
 					itiming);
 				rc = EINVAL;
@@ -526,7 +526,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 			errno = 0;
 			unsigned long int j = strtoul(cid, &endp, 0);
 			if (endp == cid || errno) {
-				d->log(LDMSD_LERROR, SAMP " Got bad %s '%s'\n",
+				ovis_log(d->mylog, OVIS_LERROR, "Got bad %s '%s'\n",
 					LDMSD_COMPID, cid);
 				rc = EINVAL;
 				goto err;
@@ -542,9 +542,9 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 		psname[1] = strdup(timing_schema_name);
 #else
 	// create schemas
-	d->log(LDMSD_LDEBUG, SAMP " port schema %s\n", port_schema_name);
+	ovis_log(d->mylog, OVIS_LDEBUG, "port schema %s\n", port_schema_name);
 	if (d->port_timing)
-		d->log(LDMSD_LDEBUG, SAMP " timing schema %s\n", timing_schema_name);
+		ovis_log(d->mylog, OVIS_LDEBUG, "timing schema %s\n", timing_schema_name);
 	rc = ibnet_data_schemas_init(d, port_schema_name,
 		timing_schema_name);
 	if (rc)
@@ -555,7 +555,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 	};
 	d->port = mad_rpc_open_port(d->ca_name, d->ca_port, mgmt_classes, 3);
 	if (!d->port) {
-		d->log(LDMSD_LERROR, SAMP "failed to open port %s:%d\n",
+		ovis_log(d->mylog, OVIS_LERROR, SAMP "failed to open port %s:%d\n",
 			d->ca_name, d->ca_port);
 		goto err;
 	}
@@ -564,7 +564,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 		errno = 0;
 		d->nnmap = open_node_name_map(d->lidnames);
 		if (!d->nnmap ) {
-			d->log(LDMSD_LERROR, SAMP ": failed to read %s\n",
+			ovis_log(d->mylog, OVIS_LERROR, "failed to read %s\n",
 				d->lidnames);
 			if (errno)
 				rc = errno;
@@ -576,7 +576,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 
 	rc = parse_lid_file(d, srclist);
 	if (rc) {
-		d->log(LDMSD_LERROR, SAMP " failed parse_lid_file %s\n", srclist);
+		ovis_log(d->mylog, OVIS_LERROR, "failed parse_lid_file %s\n", srclist);
 		goto err;
 	}
 
@@ -584,7 +584,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 	rc = ibnet_data_sets_init(d, port_schema_name, timing_producer,
 		timing_instance_name, srclist);
 	if (rc) {
-		d->log(LDMSD_LERROR, SAMP " failed ibnet_data_sets_init %s, %s, %s\n",
+		ovis_log(d->mylog, OVIS_LERROR, "failed ibnet_data_sets_init %s, %s, %s\n",
 			port_schema_name, timing_producer, timing_instance_name);
 		goto err;
 	}
@@ -692,7 +692,7 @@ static int ibnet_data_cr_opt_parse(struct ibnet_data *d, const char *conf)
 	size_t sz = 128;
 	char s[sz];
 	if (!f) {
-		d->log(LDMSD_LERROR, SAMP " failed to open %s. %s\n", conf,
+		ovis_log(d->mylog, OVIS_LERROR, "failed to open %s. %s\n", conf,
 			STRERROR(errno));
 		return errno;
 	}
@@ -712,7 +712,7 @@ static int ibnet_data_cr_opt_parse(struct ibnet_data *d, const char *conf)
 		size_t bytes = fread(buf, 1, flen+1, f);
 		buf[flen] = '\0';
 		if (bytes < flen)
-			d->log(LDMSD_LWARNING, SAMP " unexpected short read of %s\n",
+			ovis_log(d->mylog, OVIS_LWARNING, "unexpected short read of %s\n",
 				conf);
 
 		int size = 1;
@@ -725,11 +725,11 @@ static int ibnet_data_cr_opt_parse(struct ibnet_data *d, const char *conf)
 		struct attr_value_list *kwl = av_new(size);
 		rc = tokenize(buf, kwl, avl);
 		if (rc) {
-			d->log(LDMSD_LERROR, SAMP " failed to parse %s.\n", conf);
+			ovis_log(d->mylog, OVIS_LERROR, "failed to parse %s.\n", conf);
 			goto err;
 		}
 		if (av_idx_of(kwl, "#") != -1) {
-			d->log(LDMSD_LWARNING, SAMP " '# ' in conf file %s disables "
+			ovis_log(d->mylog, OVIS_LWARNING, "'# ' in conf file %s disables "
 				"nothing. use #name only.\n", conf);
 		}
 		size_t k;
@@ -738,7 +738,7 @@ static int ibnet_data_cr_opt_parse(struct ibnet_data *d, const char *conf)
 				d->cr_opt[k].enabled =
 					(av_idx_of(kwl, d->cr_opt[k].subset) != -1);
 				if (d->debug)
-					d->log(LDMSD_LDEBUG, SAMP " %s %sin %s\n",
+					ovis_log(d->mylog, OVIS_LDEBUG, "%s %sin %s\n",
 						d->cr_opt[k].subset,
 						(d->cr_opt[k].enabled ? "" : "not "),
 						conf);
@@ -752,7 +752,7 @@ static int ibnet_data_cr_opt_parse(struct ibnet_data *d, const char *conf)
 err:
 	fclose(f);
 	if (rc != 0) {
-		d->log(LDMSD_LERROR, SAMP " failed to open %s. %s\n", conf, s);
+		ovis_log(d->mylog, OVIS_LERROR, "failed to open %s. %s\n", conf, s);
 	}
 	return rc;
 }
@@ -783,8 +783,7 @@ const char * timing_schema)
 
 	if (!d || !port_schema)
 		return EINVAL;
-	if (d->log)
-		d->log(LDMSD_LDEBUG, SAMP " schemas_init(i, %s, %s)\n",
+	ovis_log(d->mylog, OVIS_LDEBUG, "schemas_init(i, %s, %s)\n",
 			port_schema, timing_schema );
 
 	/* set up the port schema. */
@@ -796,7 +795,7 @@ const char * timing_schema)
 		dump_cr(d->cr_opt, d);
 /* metric add log */
 #define MADD(x) if (d->debug) \
-			d->log(LDMSD_LDEBUG, SAMP ": add metric %s\n",x)
+			ovis_log(d->mylog, OVIS_LDEBUG, "add metric %s\n",x)
 
 	// add cluster meta?
 	MADD("remote");
@@ -848,7 +847,7 @@ const char * timing_schema)
 		}
 		if (d->cr_opt[i].enabled == 1|| prev) {
 			if (d->debug) 
-				d->log(LDMSD_LDEBUG, SAMP ": add subset %s\n", d->cr_opt[i].subset);
+				ovis_log(d->mylog, OVIS_LDEBUG, "add subset %s\n", d->cr_opt[i].subset);
 			prev = 1;
 			enum MAD_FIELDS j = d->cr_opt[i].lo;
 			for ( ; j <= d->cr_opt[i].hi; j++) {
@@ -890,10 +889,10 @@ const char * timing_schema)
 	}
 	return 0;
 err1:
-	d->log(LDMSD_LERROR, SAMP " schema creation failed\n");
+	ovis_log(d->mylog, OVIS_LERROR, "schema creation failed\n");
 	return -1;
 err2:
-	d->log(LDMSD_LERROR, SAMP " metric add failed\n");
+	ovis_log(d->mylog, OVIS_LERROR, "metric add failed\n");
 	return -1;
 }
 
@@ -905,7 +904,7 @@ int ibnet_data_sets_init(struct ibnet_data *d, const char *port_schema_name, con
 					d->timing_schema);
 		if (!d->timing_set) {
 			rc = errno;
-			d->log(LDMSD_LERROR, SAMP
+			ovis_log(d->mylog, OVIS_LERROR, SAMP
 				" cannot create timing_set\n");
 			return errno;
 		}
@@ -925,18 +924,18 @@ int ibnet_data_sets_init(struct ibnet_data *d, const char *port_schema_name, con
 		port->set = ldms_set_new(port_instance_name, d->port_schema);
 		if (!port->set) {
 			rc = errno;
-			d->log(LDMSD_LERROR, SAMP ": ldms_set_new %s failed, "
+			ovis_log(d->mylog, OVIS_LERROR, "ldms_set_new %s failed, "
 				"errno: %d, %s\n", port_instance_name, rc,
 				 ovis_errno_abbvr(rc));
 			if (rc == EEXIST) {
-				d->log(LDMSD_LERROR, SAMP ": duplicate entries for %s %d in "
+				ovis_log(d->mylog, OVIS_LERROR, "duplicate entries for %s %d in "
 					"input file %s\n", port->lidname, port->num,
 					fname);
 			}
 			return rc;
 		}
 		if (d->debug)
-			d->log(LDMSD_LDEBUG, SAMP ": ldms_set_new %s\n",
+			ovis_log(d->mylog, OVIS_LDEBUG, "ldms_set_new %s\n",
 				port_instance_name);
 		ldms_set_producer_name_set(port->set, port->lidname);
 		base_auth_set(&d->auth, port->set);
@@ -962,12 +961,12 @@ static int parse_lid_file(struct ibnet_data *d, const char *lidfile)
 {
 
 	if (!d || !lidfile) {
-		d->log(LDMSD_LERROR, SAMP ": parse_lid_file bad args\n");
+		ovis_log(d->mylog, OVIS_LERROR, "parse_lid_file bad args\n");
 		return EINVAL;
 	}
 	FILE *f = fopen(lidfile, "r");
 	if (!f) {
-		d->log(LDMSD_LERROR, SAMP ": cannot read lid file %s\n", lidfile);
+		ovis_log(d->mylog, OVIS_LERROR, "cannot read lid file %s\n", lidfile);
 		return errno;
 	}
 
@@ -975,7 +974,7 @@ static int parse_lid_file(struct ibnet_data *d, const char *lidfile)
 	size_t bsize = 2048;
 	char *buf = malloc(bsize);
 	if (!buf) {
-		d->log(LDMSD_LERROR, SAMP ": out of memory\n");
+		ovis_log(d->mylog, OVIS_LERROR, "out of memory\n");
 		rc = ENOMEM;
 		goto out;
 	}
@@ -991,7 +990,7 @@ static int parse_lid_file(struct ibnet_data *d, const char *lidfile)
 		sr = sscanf(buf, " #%n", &offset);
 		if (sr >= 0 && offset && buf[offset-1] == '#') {
 			if (d->debug)
-				d->log(LDMSD_LDEBUG, SAMP ": %d comment at %d of %s",
+				ovis_log(d->mylog, OVIS_LDEBUG, "%d comment at %d of %s",
 					sr, offset-1, buf);
 			continue;
 		}
@@ -1000,10 +999,10 @@ static int parse_lid_file(struct ibnet_data *d, const char *lidfile)
 		sr = sscanf(buf, " %d %" SCNx64 " %d %n",
 			&lid, &guid, &nports, &offset);
 		if (d->debug)
-			d->log(LDMSD_LDEBUG, SAMP ": %d %d :line %d: %d %"PRIx64 " %d of %s",
+			ovis_log(d->mylog, OVIS_LDEBUG, "%d %d :line %d: %d %"PRIx64 " %d of %s",
 				sr, offset-1, ln, lid, guid, nports, buf);
 		if (sr < 3) {
-			d->log(LDMSD_LERROR, SAMP ": bad line %d: %s. Expected lid,guid(0xhex),nports,\n",
+			ovis_log(d->mylog, OVIS_LERROR, "bad line %d: %s. Expected lid,guid(0xhex),nports,\n",
 				ln, buf);
 			rc = EINVAL;
 			goto out;
@@ -1028,7 +1027,7 @@ static int parse_lid_file(struct ibnet_data *d, const char *lidfile)
 		while (token) {
 			if (strchr(token,'*') != NULL) {
 				if (pcount != 0) {
-					d->log(LDMSD_LERROR, SAMP ": line %d: cannot use * and numbers for ports.\n", ln);
+					ovis_log(d->mylog, OVIS_LERROR, "line %d: cannot use * and numbers for ports.\n", ln);
 					rc = EINVAL;
 					goto out;
 				}
@@ -1039,18 +1038,18 @@ static int parse_lid_file(struct ibnet_data *d, const char *lidfile)
 					pcount++;
 				}
 				if (d->debug)
-					d->log(LDMSD_LDEBUG, SAMP ": ports=*\n");
+					ovis_log(d->mylog, OVIS_LDEBUG, "ports=*\n");
 				break;
 			}
 			port = -1;
 			sr = sscanf(token," %d ", &port);
 			if ( sr == 0 || port < 1) {
-				d->log(LDMSD_LERROR, SAMP ": line %d: port %s bad\n", ln, token);
+				ovis_log(d->mylog, OVIS_LERROR, "line %d: port %s bad\n", ln, token);
 				rc = EINVAL;
 				goto out;
 			}
 			if (pcount >= nports) {
-				d->log(LDMSD_LERROR, SAMP ": line %d: too many port numbers\n", ln);
+				ovis_log(d->mylog, OVIS_LERROR, "line %d: too many port numbers\n", ln);
 				rc = EINVAL;
 				goto out;
 			}
@@ -1059,14 +1058,14 @@ static int parse_lid_file(struct ibnet_data *d, const char *lidfile)
 			token = strtok_r(hptr, ",\t\n", &sptr);
 		}
 		if (pcount < nports) {
-			d->log(LDMSD_LERROR, SAMP ": line %d: not enough port numbers\n", ln);
+			ovis_log(d->mylog, OVIS_LERROR, "line %d: not enough port numbers\n", ln);
 			rc = EINVAL;
 			goto out;
 		}
 
 		rc = add_lid(d, lid, guid, devname, nports, portnum);
 		if (rc) {
-			d->log(LDMSD_LINFO, SAMP
+			ovis_log(d->mylog, OVIS_LINFO, SAMP
 				": add_lid failed for line %d\n",ln);
 			goto out;
 		}
@@ -1189,13 +1188,13 @@ static void port_query(struct ibnet_data *d, struct ib_port *port, struct timeva
 		memset(qr, 0, sizeof(qr));
 		if (!pma_query_via(qr, &port->port_id, port->num, d->timeout/* millis*/,
 			CLASS_PORT_INFO, d->port)) {
-			d->log(LDMSD_LDEBUG, SAMP ": failed get class port info for lid %d port %d\n",
+			ovis_log(d->mylog, OVIS_LDEBUG, "failed get class port info for lid %d port %d\n",
 				port->lid, port->num);
 			return;
 		}
 		memcpy(&(port->cap_mask), qr + 2, sizeof(port->cap_mask));
 		if (!port->cap_mask) {
-			d->log(LDMSD_LWARNING, SAMP ": 0 class port info for lid %d port %d\n",
+			ovis_log(d->mylog, OVIS_LWARNING, "0 class port info for lid %d port %d\n",
 				port->lid, port->num);
 		}
 	}
@@ -1231,7 +1230,7 @@ static void port_query(struct ibnet_data *d, struct ib_port *port, struct timeva
 				port->qerr[g] = errno;
 				if (!port->err_logged[g]) {
 					if (skip_rest < 2) {
-					d->log(LDMSD_LINFO, SAMP ": Error querying subset %s on %s %d, "
+					ovis_log(d->mylog, OVIS_LINFO, "Error querying subset %s on %s %d, "
 						"errno: %d\n", cr->subset, port->remote,
 						port->num, port->qerr[g]);
 					}
@@ -1239,12 +1238,12 @@ static void port_query(struct ibnet_data *d, struct ib_port *port, struct timeva
 				}
 			} else {
 				if (d->debug && false)
-					d->log(LDMSD_LDEBUG, SAMP ": read subset %zu %s %d %s\n",
+					ovis_log(d->mylog, OVIS_LDEBUG, "read subset %zu %s %d %s\n",
 						g, cr->subset, port->lid, port->lidname);
 				port->qerr[g] = 0;
 				if (port->err_logged[g]) {
 					port->err_logged[g] = 0;
-					d->log(LDMSD_LINFO, SAMP ": Cleared query error %s.%d\n",
+					ovis_log(d->mylog, OVIS_LINFO, "Cleared query error %s.%d\n",
 						port->remote, port->num);
 				}
 			}
@@ -1348,7 +1347,7 @@ static const char *compute_schema_suffix(struct ibnet_data *d)
 		if (d->cr_opt[g].enabled == 1) {
 			hash |= 1 << k;
 			if (d->debug)
-				d->log(LDMSD_LDEBUG, SAMP " hash %d %s\n",
+				ovis_log(d->mylog, OVIS_LDEBUG, "hash %d %s\n",
 					k, d->cr_opt[g].subset);
 		}
 		if (d->cr_opt[g].id != GSI_CONT)
@@ -1395,11 +1394,11 @@ static void ibnet_get_schema_name(int argc, char **argv)
 	struct attr_value_list *kwl = av_new(size);
 	rc = tokenize(buf, kwl, avl);
 	if (rc) {
-		fprintf(stderr, SAMP " failed to parse arguments. %s\n", buf);
+		fprintf(stderr, "failed to parse arguments. %s\n", buf);
 		rc = EINVAL;
 		goto out;
 	}
-	struct ibnet_data *d = ibnet_data_new(ldmsd_log, avl, kwl);
+	struct ibnet_data *d = ibnet_data_new(NULL, avl, kwl);
 	if (!d) {
 		fprintf(stderr, "could not create schema from options\n");
 		rc = EINVAL;
@@ -1424,6 +1423,4 @@ int main(int argc, char **argv)
 	ibnet_get_schema_name(argc, argv);
 	return 0;
 }
-
-void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...) { }
 #endif
