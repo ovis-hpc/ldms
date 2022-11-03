@@ -6,14 +6,17 @@
 %bcond_without dcgm
 %bcond_without rdc
 %bcond_without kafka
+%bcond_without slingshot
 %bcond_with genders
 
 %ifarch ppc64le
   %undefine with_slurm
   %undefine with_rdc
+  %undefine with_slingshot
 %endif
 %ifarch aarch64
   %undefine with_rdc
+  %undefine with_slingshot
 %endif
 
 %global tarball_version @VERSION@
@@ -52,6 +55,11 @@ Requires: papi600
 %ifnarch ppc64le
 # MOFED on ppc64le doesn't need the -devel package
 BuildRequires: infiniband-diags-devel
+%endif
+%if %{with slingshot}
+BuildRequires: cray-libcxi-devel
+BuildRequires: cray-cassini-headers-core
+Requires: cray-libcxi
 %endif
 BuildRequires: rdma-core-devel
 BuildRequires: opensm-devel
@@ -117,6 +125,7 @@ export CFLAGS="-g -O2 -fdiagnostics-color=auto %{optflags}"
     %{?with_infiniband:--enable-infiniband}%{!?with_infiniband:--disable-infiniband} \
     %{?with_rdc:--enable-rdc RDC_CFLAGS=-I/opt/rocm-%{rocm_version}/rdc/include RDC_LIBS=-L/opt/rocm-%{rocm_version}/rdc/lib}%{!?with_rdc:--disable-rdc} \
     %{?with_kafka:--enable-kafka}%{!?with_kafka:--disable-kafka} \
+    %{?with_slingshot:--enable-slingshot}%{!?with_slingshot:--disable-slingshot} \
 %if %{with papi}
     --enable-papi \
     --with-libpapi-prefix=/usr/papi600 \
@@ -154,7 +163,6 @@ rm -rf $RPM_BUILD_ROOT
 %if %{with rdc}
 %exclude %{_bindir}/ldms_rdc_schema_name
 %exclude %{_libdir}/*/*rdc_sampler*
-%exclude %{_mandir}/*/*_rdc_*
 %exclude %{_mandir}/*/*_rdc_*
 %endif
 %if %{with genders}
