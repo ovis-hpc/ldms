@@ -83,6 +83,8 @@
 #include "config.h"
 
 extern void cleanup(int x, char *reason);
+/* Defined in ldmsd.c */
+extern ovis_log_t config_log;
 
 pthread_mutex_t host_list_lock = PTHREAD_MUTEX_INITIALIZER;
 LIST_HEAD(host_list_s, hostspec) host_list;
@@ -125,7 +127,7 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 	strncpy(library_path, path, sizeof(library_path) - 1);
 
 	while ((libpath = strtok_r(pathdir, ":", &saveptr)) != NULL) {
-		ldmsd_log(LDMSD_LDEBUG, "Checking for %s in %s\n",
+		ovis_log(config_log, OVIS_LDEBUG, "Checking for %s in %s\n",
 			plugin_name, libpath);
 		pathdir = NULL;
 		snprintf(library_name, sizeof(library_name), "%s/lib%s.so",
@@ -137,7 +139,7 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 		struct stat buf;
 		if (stat(library_name, &buf) == 0) {
 			char *dlerr = dlerror();
-			ldmsd_log(LDMSD_LERROR, "Bad plugin "
+			ovis_log(config_log, OVIS_LERROR, "Bad plugin "
 				"'%s': dlerror %s\n", plugin_name, dlerr);
 			snprintf(errstr, errlen, "Bad plugin"
 				" '%s'. dlerror %s", plugin_name, dlerr);
@@ -147,7 +149,7 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 
 	if (!d) {
 		char *dlerr = dlerror();
-		ldmsd_log(LDMSD_LERROR, "Failed to load the plugin '%s': "
+		ovis_log(config_log, OVIS_LERROR, "Failed to load the plugin '%s': "
 				"dlerror %s\n", plugin_name, dlerr);
 		snprintf(errstr, errlen, "Failed to load the plugin '%s'. "
 				"dlerror %s", plugin_name, dlerr);
@@ -450,13 +452,13 @@ static int log_response_fn(void *_xprt, char *data, size_t data_len)
 	attr = ldmsd_first_attr(req_reply);
 
 	/* We don't dump attributes to the log */
-	ldmsd_log(LDMSD_LDEBUG, "msg_no %d flags %x rec_len %d rsp_err %d\n",
+	ovis_log(config_log, OVIS_LDEBUG, "msg_no %d flags %x rec_len %d rsp_err %d\n",
 		  req_reply->msg_no, req_reply->flags, req_reply->rec_len,
 		  req_reply->rsp_err);
 
 	if (req_reply->rsp_err && (attr->attr_id == LDMSD_ATTR_STRING)) {
 		/* Print the error message to the log */
-		ldmsd_log(LDMSD_LERROR, "msg_no %d: error %d: %s\n",
+		ovis_log(config_log, OVIS_LERROR, "msg_no %d: error %d: %s\n",
 				req_reply->msg_no, req_reply->rsp_err, attr->attr_value);
 	}
 	xprt->rsp_err = req_reply->rsp_err;
@@ -523,7 +525,7 @@ static ldmsd_req_hdr_t __aggregate_records(struct ldmsd_req_array *rec_array)
 	return req;
 oom:
 	errno = ENOMEM;
-	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	ovis_log(config_log, OVIS_LCRITICAL, "Out of memory\n");
 	return NULL;
 }
 
@@ -563,7 +565,7 @@ int __process_config_file(const char *path, int *lno, int trust,
 	line = malloc(LDMSD_CFG_FILE_XPRT_MAX_REC);
 	if (!line) {
 		rc = errno;
-		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+		ovis_log(config_log, OVIS_LERROR, "Out of memory\n");
 		goto cleanup;
 	}
 	line_sz = LDMSD_CFG_FILE_XPRT_MAX_REC;
@@ -571,7 +573,7 @@ int __process_config_file(const char *path, int *lno, int trust,
 	fin = fopen(path, "rt");
 	if (!fin) {
 		rc = errno;
-		ldmsd_log(LDMSD_LERROR, "Failed to open the config file '%s'. %s\n",
+		ovis_log(config_log, OVIS_LERROR, "Failed to open the config file '%s'. %s\n",
 				path, STRERROR(rc));
 		goto cleanup;
 	}
@@ -630,7 +632,7 @@ next_line:
 		char *nline = realloc(line, ((cnt + off)/line_sz + 1) * line_sz);
 		if (!nline) {
 			rc = errno;
-			ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+			ovis_log(config_log, OVIS_LERROR, "Out of memory\n");
 			goto cleanup;
 		}
 		line = nline;
@@ -651,7 +653,7 @@ parse:
 	req_array = ldmsd_parse_config_str(line, msg_no, xprt.max_msg);
 	if (!req_array) {
 		rc = errno;
-		ldmsd_log(LDMSD_LERROR, "Process config file error at line %d "
+		ovis_log(config_log, OVIS_LERROR, "Process config file error at line %d "
 				"(%s). %s\n", lineno, path, STRERROR(rc));
 		goto cleanup;
 	}
@@ -691,7 +693,7 @@ parse:
 		}
 		/* rc == errno */
 		if (rc > 0) {
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(config_log, OVIS_LERROR,
 				  "Configuration error at "
 				  "line %d (%s)\n", lineno, path);
 			goto cleanup;
@@ -705,7 +707,7 @@ parse:
 	if (rc || xprt.rsp_err) {
 		if (!rc)
 			rc = xprt.rsp_err;
-		ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
+		ovis_log(config_log, OVIS_LERROR, "Configuration error at line %d (%s)\n",
 				lineno, path);
 		goto cleanup;
 	}
@@ -740,17 +742,17 @@ int __req_deferred_start_regex(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
 	char *val;
 	attr = ldmsd_req_attr_get_by_id((void*)req, LDMSD_ATTR_REGEX);
 	if (!attr) {
-		ldmsd_log(LDMSD_LERROR, "`regex` attribute is required.\n");
+		ovis_log(NULL, OVIS_LERROR, "`regex` attribute is required.\n");
 		return EINVAL;
 	}
 	val = str_repl_env_vars((char *)attr->attr_value);
 	if (!val) {
-		ldmsd_log(LDMSD_LERROR, "Not enough memory.\n");
+		ovis_log(NULL, OVIS_LERROR, "Not enough memory.\n");
 		return ENOMEM;
 	}
 	rc = regcomp(&regex, val, REG_NOSUB);
 	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "Bad regex: %s\n", val);
+		ovis_log(NULL, OVIS_LERROR, "Bad regex: %s\n", val);
 		free(val);
 		return EBADMSG;
 	}
@@ -773,17 +775,17 @@ int __req_deferred_start(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
 	char *name;
 	attr = ldmsd_req_attr_get_by_id((void*)req, LDMSD_ATTR_NAME);
 	if (!attr) {
-		ldmsd_log(LDMSD_LERROR, "`name` attribute is required.\n");
+		ovis_log(NULL, OVIS_LERROR, "`name` attribute is required.\n");
 		return EINVAL;
 	}
 	name = str_repl_env_vars((char *)attr->attr_value);
 	if (!name) {
-		ldmsd_log(LDMSD_LERROR, "Not enough memory.\n");
+		ovis_log(NULL, OVIS_LERROR, "Not enough memory.\n");
 		return ENOMEM;
 	}
 	obj = ldmsd_cfgobj_find(name, type);
 	if (!obj) {
-		ldmsd_log(LDMSD_LERROR, "Config object not found: %s\n", name);
+		ovis_log(NULL, OVIS_LERROR, "Config object not found: %s\n", name);
 		free(name);
 		return ENOENT;
 	}
@@ -848,7 +850,7 @@ int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t))
 			continue;
 		rc = __ldmsd_prdcr_start((ldmsd_prdcr_t)obj, &sctxt);
 		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(NULL, OVIS_LERROR,
 				  "prdcr_start failed, name: %s, rc: %d\n",
 				  obj->name, rc);
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
@@ -865,7 +867,7 @@ int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t))
 			continue;
 		rc = __ldmsd_updtr_start((ldmsd_updtr_t)obj, &sctxt);
 		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(NULL, OVIS_LERROR,
 				  "updtr_start failed, name: %s, rc: %d\n",
 				  obj->name, rc);
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
@@ -886,7 +888,7 @@ int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t))
 			continue;
 		rc = __ldmsd_strgp_start((ldmsd_strgp_t)obj, &sctxt);
 		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(NULL, OVIS_LERROR,
 				  "strgp_start failed, name: %s, rc: %d\n",
 				  obj->name, rc);
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
@@ -943,20 +945,20 @@ static inline void __log_sent_req(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t req)
 	hdr.rec_len = ntohl(req->rec_len);
 	switch (hdr.type) {
 	case LDMSD_REQ_TYPE_CONFIG_CMD:
-		ldmsd_lall("sending %s msg_no: %d:%lu, flags: %#o, "
+		ovis_log(config_log, OVIS_LDEBUG, "sending %s msg_no: %d:%lu, flags: %#o, "
 			   "rec_len: %u\n",
 			   ldmsd_req_id2str(hdr.req_id),
 			   hdr.msg_no, ldms_xprt_conn_id(xprt->ldms.ldms),
 			   hdr.flags, hdr.rec_len);
 		break;
 	case LDMSD_REQ_TYPE_CONFIG_RESP:
-		ldmsd_lall("sending RESP msg_no: %d, rsp_err: %d, flags: %#o, "
+		ovis_log(config_log, OVIS_LDEBUG, "sending RESP msg_no: %d, rsp_err: %d, flags: %#o, "
 			   "rec_len: %u\n",
 			   hdr.msg_no,
 			   hdr.rsp_err, hdr.flags, hdr.rec_len);
 		break;
 	default:
-		ldmsd_lall("sending BAD REQUEST\n");
+		ovis_log(config_log, OVIS_LDEBUG, "sending BAD REQUEST\n");
 	}
 }
 
@@ -1034,7 +1036,7 @@ int listen_on_ldms_xprt(ldmsd_listen_t listen)
 		snprintf(port_buff, sizeof(port_buff), "%hu", listen->port_no);
 		rc = getaddrinfo(listen->host, port_buff, &ai_hint, &ai);
 		if (rc) {
-			ldmsd_lerror("xprt listen error, getaddrinfo(%s, %s) error: %d\n", listen->host, port_buff, rc);
+			ovis_log(NULL, OVIS_LERROR, "xprt listen error, getaddrinfo(%s, %s) error: %d\n", listen->host, port_buff, rc);
 			return rc;
 		}
 		memcpy(&sin, ai->ai_addr, ai->ai_addrlen);
@@ -1046,12 +1048,12 @@ int listen_on_ldms_xprt(ldmsd_listen_t listen)
 	rc = ldms_xprt_listen(listen->x, (struct sockaddr *)&sin, sizeof(sin),
 			       __listen_connect_cb, NULL);
 	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "Error %d Listening on %s:%d using `%s` transport and "
+		ovis_log(NULL, OVIS_LERROR, "Error %d Listening on %s:%d using `%s` transport and "
 			  "`%s` authentication\n", rc, listen->xprt,
 			  listen->port_no, listen->xprt, listen->auth_name);
 		return rc;
 	}
-	ldmsd_log(LDMSD_LINFO, "Listening on %s:%d using `%s` transport and "
+	ovis_log(NULL, OVIS_LINFO, "Listening on %s:%d using `%s` transport and "
 		  "`%s` authentication\n",
 		  listen->xprt, listen->port_no, listen->xprt,
 		  listen->auth_name);
@@ -1068,13 +1070,13 @@ void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
 	xprt->type = LDMSD_CFG_TYPE_LDMS;
 }
 
-void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix)
+void ldmsd_mm_status(int level, const char *prefix)
 {
 	struct mm_stat s;
 	mm_stats(&s);
 	/* compute bound based on current usage */
 	size_t used = s.size - s.grain*s.largest;
-	ldmsd_log(level, "%s: mm_stat: size=%zu grain=%zu chunks_free=%zu grains_free=%zu grains_largest=%zu grains_smallest=%zu bytes_free=%zu bytes_largest=%zu bytes_smallest=%zu bytes_used+holes=%zu\n",
+	ovis_log(NULL, level, "%s: mm_stat: size=%zu grain=%zu chunks_free=%zu grains_free=%zu grains_largest=%zu grains_smallest=%zu bytes_free=%zu bytes_largest=%zu bytes_smallest=%zu bytes_used+holes=%zu\n",
 	prefix,
 	s.size, s.grain, s.chunks, s.bytes, s.largest, s.smallest,
 	s.grain*s.bytes, s.grain*s.largest, s.grain*s.smallest, used);

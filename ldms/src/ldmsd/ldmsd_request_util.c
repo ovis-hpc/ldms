@@ -81,6 +81,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "include",            LDMSD_INCLUDE_REQ  },
 	{  "listen",             LDMSD_LISTEN_REQ },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ  },
+	{  "log_status",         LDMSD_LOG_STATUS_REQ  },
 	{  "loglevel",           LDMSD_VERBOSE_REQ  },
 	{  "logrotate",          LDMSD_LOGROTATE_REQ  },
 	{  "metric_sets_default_authz", LDMSD_SET_DEFAULT_AUTHZ_REQ  },
@@ -280,6 +281,8 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_RECORD_LEN_ADVICE_REQ : return "RECORD_LEN_ADVICE_REQ";
 	case LDMSD_SET_ROUTE_REQ         : return "SET_ROUTE_REQ";
 	case LDMSD_CMDLINE_OPTIONS_SET_REQ : return "CMDLINE_OPTION_SET_REQ";
+	case LDMSD_SET_SEC_MOD_REQ       : return "SET_SEC_REQ";
+	case LDMSD_LOG_STATUS_REQ        : return "LOG_STATUS_REQ";
 
 	/* failover requests by user */
 	case LDMSD_FAILOVER_CONFIG_REQ        : return "FAILOVER_CONFIG_REQ";
@@ -358,7 +361,7 @@ static int add_attr_from_attr_str(const char *name, const char *value,
 	while (req_sz - req->rec_len < attr_sz) {
 		char *tmp = realloc(buf, req_sz * 2);
 		if (!tmp) {
-			ovis_log(NULL, LDMSD_LCRITICAL, "Out of memory\n", name);
+			ovis_log(NULL, OVIS_LCRITICAL, "Out of memory\n");
 			return ENOMEM;
 		}
 		buf = tmp;
@@ -376,7 +379,7 @@ static int add_attr_from_attr_str(const char *name, const char *value,
 		} else {
 			attr->attr_id = ldmsd_req_attr_str2id(name);
 			if ((int)attr->attr_id < 0) {
-				ovis_log(NULL, LDMSD_LERROR, "Invalid attribute: %s\n", name);
+				ovis_log(NULL, OVIS_LERROR, "Invalid attribute: %s\n", name);
 				return EINVAL;
 			}
 		}

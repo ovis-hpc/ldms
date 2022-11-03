@@ -67,6 +67,9 @@
 #include "ldmsd.h"
 #include "ldmsd_request.h"
 
+/* Defined in ldmsd.c */
+extern ovis_log_t store_log;
+
 typedef enum ldmsd_decomp_type_e ldmsd_decomp_type_t;
 enum ldmsd_decomp_type_e {
 	LDMSD_DECOMP_STATIC,
@@ -106,7 +109,7 @@ static json_str_t __jdict_str(json_entity_t dict, const char *key)
 /* ==== generic decomp ==== */
 /* convenient macro to put error message in both ldmsd log and `reqc` */
 #define DECOMP_ERR(reqc, rc, fmt, ...) do { \
-		ldmsd_lerror("decomposer: " fmt, ##__VA_ARGS__); \
+		ovis_log(store_log, OVIS_LERROR, "decomposer: " fmt, ##__VA_ARGS__); \
 		if (reqc) { \
 			(reqc)->errcode = rc; \
 			linebuf_printf(reqc, "decomposer: " fmt, ##__VA_ARGS__); \

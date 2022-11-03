@@ -64,6 +64,8 @@
 #include "ldmsd.h"
 #include "ldmsd_request.h"
 
+static ovis_log_t mylog;
+
 static ldmsd_decomp_t __decomp_as_is_config(ldmsd_strgp_t strgp,
 			json_entity_t cfg, ldmsd_req_ctxt_t reqc);
 static int __decomp_as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
@@ -81,6 +83,12 @@ struct ldmsd_decomp_s __decomp_as_is = {
 
 ldmsd_decomp_t get()
 {
+	mylog = ovis_log_register("store.decomp.as_is", "Messages for the as_is decomposition");
+	if (!mylog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the as_is "
+					   "decomposition plugin's log subsystem. "
+					   "Error %d.\n", errno);
+	}
 	return &__decomp_as_is;
 }
 
@@ -133,10 +141,10 @@ static json_str_t __jdict_str(json_entity_t dict, const char *key)
 /* ==== generic decomp ==== */
 /* convenient macro to put error message in both ldmsd log and `reqc` */
 #define DECOMP_ERR(reqc, rc, fmt, ...) do { \
-		ldmsd_lerror("decomposer: " fmt, ##__VA_ARGS__); \
+		ovis_log(mylog, OVIS_LERROR, fmt, ##__VA_ARGS__); \
 		if (reqc) { \
 			(reqc)->errcode = rc; \
-			Snprintf(&(reqc)->line_buf, &(reqc)->line_len, "decomposer: " fmt, ##__VA_ARGS__); \
+			Snprintf(&(reqc)->line_buf, &(reqc)->line_len, fmt, ##__VA_ARGS__); \
 		} \
 	} while (0)
 

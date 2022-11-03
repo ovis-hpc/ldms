@@ -62,6 +62,9 @@
 #include "ldms_xprt.h"
 #include "config.h"
 
+/* Defined in ldmsd.c */
+extern ovis_log_t store_log;
+
 void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_strgp_t strgp = (ldmsd_strgp_t)obj;
@@ -181,12 +184,12 @@ static void strgp_decompose(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	int row_count, rc;
 	rc = strgp->decomp->decompose(strgp, prd_set->set, &row_list, &row_count);
 	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "strgp decompose error: %d\n", rc);
+		ovis_log(store_log, OVIS_LERROR, "strgp decompose error: %d\n", rc);
 		return;
 	}
 	rc = strgp->store->commit(strgp, prd_set->set, &row_list, row_count);
 	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "strgp row commit error: %d\n", rc);
+		ovis_log(store_log, OVIS_LERROR, "strgp row commit error: %d\n", rc);
 	}
 	strgp->decomp->release_rows(strgp, &row_list);
 }
@@ -554,7 +557,7 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		 * the schema of the same digest.
 		 */
 		if (0 != ldms_digest_cmp(strgp->digest, ldms_set_digest_get(prd_set->set))) {
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(store_log, OVIS_LERROR,
 				  "strgp '%s' ignores set '%s' because "
 				  "the metric lists are mismatched.\n",
 				  strgp->obj.name, prd_set->inst_name);
@@ -663,7 +666,7 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 				 */
 				if (0 != ldms_digest_cmp(strgp->digest,
 						ldms_set_digest_get(prd_set->set))) {
-					ldmsd_log(LDMSD_LERROR,
+					ovis_log(store_log, OVIS_LERROR,
 						  "strgp '%s' ignores set '%s' because "
 						  "the metric lists are mismatched.\n",
 						  strgp->obj.name, prd_set->inst_name);

@@ -71,6 +71,9 @@
 #define DEFAULT_AUTOSWITCH 1
 #define DEFAULT_TIMEOUT_FACTOR 2
 
+/* Defined in ldmsd.c */
+extern ovis_log_t fo_log;
+
 #define ARRAY_LEN(x) (sizeof(x)/sizeof(*(x)))
 
 /* Use -L 8 or set ldmsd_req_debug |= 8 to enable failover messages */
@@ -868,7 +871,7 @@ int __on_peercfg_resp(ldmsd_req_cmd_t rcmd)
 	ldmsd_req_hdr_t hdr = (void*)rcmd->reqc->req_buf;
 	__failover_lock(f);
 	if (hdr->rsp_err) {
-		ldmsd_lerror("Failover: peer config request remote error: %d\n",
+		ovis_log(fo_log, OVIS_LERROR, "peer config request remote error: %d\n",
 			     hdr->rsp_err);
 		f->conn_state = FAILOVER_CONN_STATE_ERROR;
 		ldms_xprt_close(f->ax);
@@ -876,7 +879,7 @@ int __on_peercfg_resp(ldmsd_req_cmd_t rcmd)
 		/* all peercfg have been received at this point */
 		__F_ON(f, __FAILOVER_PEERCFG_RECEIVED);
 		f->conn_state = FAILOVER_CONN_STATE_CONFIGURED;
-		ldmsd_linfo("Failover: peer config recv success\n");
+		ovis_log(fo_log, OVIS_LINFO, "peer config recv success\n");
 	}
 	__failover_unlock(f);
 	return 0;
@@ -889,7 +892,7 @@ int __failover_request_peercfg(ldmsd_failover_t f)
 	ldmsd_req_cmd_t rcmd;
 	int rc;
 
-	ldmsd_linfo("Failover: requesting peer config\n");
+	ovis_log(fo_log, OVIS_LINFO, "requesting peer config\n");
 
 	rcmd = ldmsd_req_cmd_new(f->ax, LDMSD_FAILOVER_PEERCFG_REQ,
 				 NULL, __on_peercfg_resp, f);
@@ -900,7 +903,7 @@ int __failover_request_peercfg(ldmsd_failover_t f)
 	rc = ldmsd_req_cmd_attr_term(rcmd);
 out:
 	if (rc) {
-		ldmsd_lerror("Failover: peer config request local error: %d\n",
+		ovis_log(fo_log, OVIS_LERROR, "peer config request local error: %d\n",
 			    rc);
 	}
 	return rc;
@@ -936,11 +939,11 @@ int __on_pair_resp(ldmsd_req_cmd_t rcmd)
 			f->conn_state = FAILOVER_CONN_STATE_PAIRING_RETRY;
 			goto out; /* the task will try pairing again */
 		}
-		ldmsd_lerror("Failover pairing error: %d\n", hdr->rsp_err);
+		ovis_log(fo_log, OVIS_LERROR, "Failover pairing error: %d\n", hdr->rsp_err);
 		rc = hdr->rsp_err;
 		goto err;
 	}
-	ldmsd_linfo("Failover pairing success, peer: %s\n", f->peer_name);
+	ovis_log(fo_log, OVIS_LINFO, "Failover pairing success, peer: %s\n", f->peer_name);
 
 	f->conn_state = FAILOVER_CONN_STATE_RESETTING;
 	rc = __failover_reset_and_request_peercfg(f);
@@ -973,7 +976,7 @@ void __failover_pair(ldmsd_failover_t f)
 		return;
 	}
 
-	ldmsd_linfo("Failover pairing with peer: %s\n", f->peer_name);
+	ovis_log(fo_log, OVIS_LINFO, "Failover pairing with peer: %s\n", f->peer_name);
 
 	/* just become connected ... request pairing */
 	myname = ldmsd_myname_get();
@@ -989,7 +992,7 @@ void __failover_pair(ldmsd_failover_t f)
 	/* rcmd will be freed when the reply is received */
 	return;
 err:
-	ldmsd_linfo("Failover pairing error (local), rc: %d\n", rc);
+	ovis_log(fo_log, OVIS_LINFO, "Failover pairing error (local), rc: %d\n", rc);
 	if (rcmd)
 		ldmsd_req_cmd_free(rcmd);
 	f->conn_state = FAILOVER_CONN_STATE_ERROR;
@@ -1250,7 +1253,7 @@ int __peercfg_delete(ldmsd_failover_t f)
 	void *del[] = {ldmsd_strgp_del, ldmsd_updtr_del, ldmsd_prdcr_del};
 	int (*fn)(void*, void*);
 
-	ldmsd_linfo("Failover: deleting peer config\n");
+	ovis_log(fo_log, OVIS_LINFO, "deleting peer config\n");
 
 	/* cfgobjs have all already stopped */
 	for (i = 0; i < 3; i++) {
@@ -1259,7 +1262,7 @@ int __peercfg_delete(ldmsd_failover_t f)
 			ent = STR_RBN(rbn);
 			rc = fn(ent->str, &sctxt);
 			if (rc) {
-				ldmsd_linfo("Failover: peer config deletion "
+				ovis_log(fo_log, OVIS_LINFO, "peer config deletion "
 					    "failed, rc: %d\n", rc);
 				return rc;
 			}
@@ -1268,7 +1271,7 @@ int __peercfg_delete(ldmsd_failover_t f)
 		}
 	}
 
-	ldmsd_linfo("Failover: peer config deleted\n");
+	ovis_log(fo_log, OVIS_LINFO, "peer config deleted\n");
 
 	return 0;
 }
@@ -1288,7 +1291,7 @@ int __peercfg_stop(ldmsd_failover_t f)
 	/* NOTE: Leaving out peer storage policy in the favor of letting our
 	 *       storage policy picks up the data. */
 
-	ldmsd_linfo("Failover: stopping peercfg\n");
+	ovis_log(fo_log, OVIS_LINFO, "stopping peercfg\n");
 	for (i = 0; i < ARRAY_LEN(t); i++) {
 		fn = stop[i];
 		RBT_FOREACH(rbn, t[i]) {
@@ -1304,9 +1307,9 @@ int __peercfg_stop(ldmsd_failover_t f)
 	}
 
 	if (rc) {
-		ldmsd_linfo("Failover: peer config stopping failed: %d\n", rc);
+		ovis_log(fo_log, OVIS_LINFO, "peer config stopping failed: %d\n", rc);
 	} else {
-		ldmsd_linfo("Failover: peer config stopped\n");
+		ovis_log(fo_log, OVIS_LINFO, "peer config stopped\n");
 		f->timeout_ts.tv_sec = INT64_MAX;
 		__F_OFF(f, __FAILOVER_PEERCFG_ACTIVATED);
 	}
@@ -1318,7 +1321,7 @@ static
 int __peercfg_reset(ldmsd_failover_t f)
 {
 	/* f->lock is held */
-	ldmsd_linfo("Failover: resetting peer config\n");
+	ovis_log(fo_log, OVIS_LINFO, "resetting peer config\n");
 	int rc = 0;
 	rc = __peercfg_stop(f);
 	if (rc)
@@ -1510,7 +1513,7 @@ int __peercfg_start(ldmsd_failover_t f)
 	struct ldmsd_sec_ctxt sctxt = __get_sec_ctxt(NULL);
 	int is_activated = 1;
 
-	ldmsd_linfo("Failover: starting peercfg, flags: %#lo\n", f->flags);
+	ovis_log(fo_log, OVIS_LINFO, "starting peercfg, flags: %#lo\n", f->flags);
 
 	RBT_FOREACH(rbn, &f->prdcr_rbt) {
 		srbn = STR_RBN(rbn);
@@ -1518,7 +1521,7 @@ int __peercfg_start(ldmsd_failover_t f)
 			continue;
 		rc = ldmsd_prdcr_start(srbn->str, NULL, &sctxt);
 		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(fo_log, OVIS_LERROR,
 				  "failover: prdcr_start(%s) failed, "
 				  "rc: %d\n", srbn->str, rc);
 			continue;
@@ -1533,7 +1536,7 @@ int __peercfg_start(ldmsd_failover_t f)
 			continue;
 		rc = ldmsd_updtr_start(srbn->str, NULL, NULL, NULL, &sctxt);
 		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(fo_log, OVIS_LERROR,
 				  "failover: updtr_start(%s) failed, "
 				  "rc: %d\n", srbn->str, rc);
 			continue;

@@ -68,6 +68,9 @@ static inline double ts_diff_usec(struct timespec *a, struct timespec *b)
 	return (aa - bb)/1e3; /* make it usec */
 }
 
+/* Defined in ldmsd.c */
+extern ovis_log_t updtr_log;
+
 void ldmsd_updtr___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_updtr_t updtr = (ldmsd_updtr_t)obj;
@@ -252,7 +255,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	__stats(&prd_set->updt_stat, &prd_set->updt_stat.start, &prd_set->updt_stat.end);
 
 	errcode = LDMS_UPD_ERROR(status);
-	ldmsd_log(LDMSD_LDEBUG, "Update complete for Set %s with status %#x\n",
+	ovis_log(updtr_log, OVIS_LDEBUG, "Update complete for Set %s with status %#x\n",
 					prd_set->inst_name, status);
 	if (errcode) {
 		char *op_s;
@@ -260,20 +263,20 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 			op_s = "update";
 		else
 			op_s = "push";
-		ldmsd_log(LDMSD_LINFO, "Set %s: %s completing with "
+		ovis_log(updtr_log, OVIS_LINFO, "Set %s: %s completing with "
 					"bad status %d\n",
 					prd_set->inst_name, op_s,errcode);
 		goto out;
 	}
 
 	if (!ldms_set_is_consistent(set)) {
-		ldmsd_log(LDMSD_LINFO, "Set %s is inconsistent.\n", prd_set->inst_name);
+		ovis_log(updtr_log, OVIS_LINFO, "Set %s is inconsistent.\n", prd_set->inst_name);
 		goto set_ready;
 	}
 
 	gn = ldms_set_data_gn_get(set);
 	if (prd_set->last_gn == gn) {
-		ldmsd_log(LDMSD_LINFO, "Set %s oversampled %"PRIu64" == %"PRIu64".\n",
+		ovis_log(updtr_log, OVIS_LINFO, "Set %s oversampled %"PRIu64" == %"PRIu64".\n",
 			  prd_set->inst_name, prd_set->last_gn, gn);
 		__atomic_fetch_add(&prd_set->oversampled_cnt, 1, __ATOMIC_SEQ_CST);
 		goto set_ready;
@@ -299,11 +302,11 @@ set_ready:
 out:
 	pthread_mutex_unlock(&prd_set->lock);
 	if (0 == errcode && push_it) {
-		ldmsd_log(LDMSD_LDEBUG, "Pushing set %p %s\n",
+		ovis_log(updtr_log, OVIS_LDEBUG, "Pushing set %p %s\n",
 			  prd_set->set, prd_set->inst_name);
 		int rc = ldms_xprt_push(prd_set->set);
 		if (rc) {
-			ldmsd_log(LDMSD_LERROR, "Failed to push set %s\n",
+			ovis_log(updtr_log, OVIS_LERROR, "Failed to push set %s\n",
 						prd_set->inst_name);
 		}
 	}
@@ -353,7 +356,7 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 	ldmsd_updtr_t updtr = task->updtr;
 	struct ldmsd_group_traverse_ctxt ctxt;
 	/* The reference will be put back in update_cb */
-	ldmsd_log(LDMSD_LDEBUG, "Schedule an update for set %s\n",
+	ovis_log(updtr_log, OVIS_LDEBUG, "Schedule an update for set %s\n",
 					prd_set->inst_name);
 	int push_flags = 0;
 	struct str_list_ent_s *ent;
@@ -415,7 +418,7 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 					     updtr_update_cb, prd_set);
 		if (rc) {
 			/* This message does not repeat */
-			ldmsd_log(LDMSD_LERROR, "Register push error %d Set %s\n",
+			ovis_log(updtr_log, OVIS_LERROR, "Register push error %d Set %s\n",
 						rc, prd_set->inst_name);
 		} else {
 			/* Only set the flag if we succeed */
@@ -428,7 +431,7 @@ out:
 		free(ent);
 	}
 	if (rc) {
-		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: %s Set %s\n",
+		ovis_log(updtr_log, OVIS_LINFO, "Synchronous error %d: %s Set %s\n",
 						rc, op_s, prd_set->inst_name);
 		if (!updtr->push_flags)
 			ldmsd_prdcr_set_ref_put(prd_set);
@@ -439,13 +442,13 @@ out:
 static int cancel_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 {
 	int rc;
-	ldmsd_log(LDMSD_LDEBUG, "Cancel push for set %s\n", prd_set->inst_name);
+	ovis_log(updtr_log, OVIS_LDEBUG, "Cancel push for set %s\n", prd_set->inst_name);
 	assert(prd_set->set);
 	if (!(prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG))
 		return 0;
 	rc = ldms_xprt_cancel_push(prd_set->set);
 	if (rc) {
-		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: canceling push for Set %s\n",
+		ovis_log(updtr_log, OVIS_LINFO, "Synchronous error %d: canceling push for Set %s\n",
 			  rc, prd_set->inst_name);
 	}
 	/* Put the push reference */
@@ -470,7 +473,7 @@ static int __setgrp_members_lookup(ldmsd_prdcr_set_t setgrp)
 	 */
 	rc = ldmsd_group_iter(setgrp->set, __grp_iter_cb, &ctxt);
 	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "Error %d: Failed to get the set member "
+		ovis_log(updtr_log, OVIS_LERROR, "Error %d: Failed to get the set member "
 				"list of ssetgroup %s\n", rc, setgrp->inst_name);
 		return rc;
 	}
@@ -496,7 +499,7 @@ static int __setgrp_members_lookup(ldmsd_prdcr_set_t setgrp)
 				 */
 				continue;
 			case LDMSD_PRDCR_SET_STATE_UPDATING:
-				ldmsd_log(LDMSD_LINFO, "%s: %s in an "
+				ovis_log(updtr_log, OVIS_LINFO, "%s: %s in an "
 						"unexpected state (%s)\n",
 						__func__, pset->inst_name,
 						ldmsd_prdcr_set_state_str(pset->state));
@@ -510,7 +513,7 @@ static int __setgrp_members_lookup(ldmsd_prdcr_set_t setgrp)
 						      __ldmsd_prdset_lookup_cb, pset);
 				if (rc) {
 					pset->state = LDMSD_PRDCR_SET_STATE_START;
-					ldmsd_log(LDMSD_LINFO,
+					ovis_log(updtr_log, OVIS_LINFO,
 						"Synchronous error %d "
 						"from ldms_lookup\n", rc);
 					ldmsd_prdcr_set_ref_put(pset);
@@ -541,7 +544,7 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 		assert(NULL == set);
 		status = (status < 0 ? -status : status);
 		if (status == ENOMEM) {
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(updtr_log, OVIS_LERROR,
 				  "prdcr %s: Set memory allocation failure in lookup of "
 				  "set '%s'. Consider changing the -m parameter on the "
 				  "command line to a larger value. The current value is %s\n",
@@ -549,13 +552,13 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 				  prd_set->inst_name,
 				  ldmsd_get_max_mem_sz_str());
 		} else if (status == EEXIST) {
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(updtr_log, OVIS_LERROR,
 				  "prdcr %s: The set '%s' (%p) already exists. "
 				  "It is likely that there are multiple "
 				  "producers providing a set with the same instance name.\n",
 				  prd_set->prdcr->obj.name, prd_set->inst_name, set);
 		} else {
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(updtr_log, OVIS_LERROR,
 				  "prdcr %s: Error %d in lookup callback of set '%s' (%p)\n",
 				  prd_set->prdcr->obj.name,
 				  status, prd_set->inst_name, set);
@@ -580,7 +583,7 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 			goto out;
 	}
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
-	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
+	ovis_log(updtr_log, OVIS_LINFO, "Set %s is ready\n", prd_set->inst_name);
 	ldmsd_strgp_update(prd_set);
 	ready = 1;
 out:
@@ -620,7 +623,7 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 				goto next_prd_set;
 		}
 
-		ldmsd_log(LDMSD_LDEBUG, "updtr_task sched '%ld': set '%s'\n",
+		ovis_log(updtr_log, OVIS_LDEBUG, "updtr_task sched '%ld': set '%s'\n",
 				task->sched.intrvl_us, prd_set->inst_name);
 		updtr_task_set_add(task);
 
@@ -642,7 +645,7 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 			if (rc) {
 				/* If the error is EEXIST, the set is already in the set tree. */
 				if (rc == EEXIST) {
-					ldmsd_log(LDMSD_LERROR, "Prdcr '%s': "
+					ovis_log(updtr_log, OVIS_LERROR, "Prdcr '%s': "
 						"lookup failed synchronously. "
 						"The set '%s' already exists. "
 						"It is likely that there are more "
@@ -651,7 +654,7 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 						prd_set->prdcr->obj.name,
 						prd_set->inst_name);
 				} else {
-					ldmsd_log(LDMSD_LINFO, "Synchronous error "
+					ovis_log(updtr_log, OVIS_LINFO, "Synchronous error "
 							"%d from ldms_lookup\n", rc);
 				}
 				prd_set->state = LDMSD_PRDCR_SET_STATE_START;
@@ -659,12 +662,12 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 			}
 			goto next_prd_set;
 		case LDMSD_PRDCR_SET_STATE_LOOKUP:
-			ldmsd_log(LDMSD_LINFO, "%s: Set %s: "
+			ovis_log(updtr_log, OVIS_LINFO, "%s: Set %s: "
 				"there is an outstanding lookup.\n",
 				__func__, prd_set->inst_name);
 			goto next_prd_set;
 		case LDMSD_PRDCR_SET_STATE_UPDATING:
-			ldmsd_log(LDMSD_LINFO, "%s: Set %s: "
+			ovis_log(updtr_log, OVIS_LINFO, "%s: Set %s: "
 				"there is an outstanding update.\n",
 				__func__, prd_set->inst_name);
 			__atomic_fetch_add(&prd_set->skipped_upd_cnt, 1, __ATOMIC_SEQ_CST);
@@ -875,7 +878,7 @@ static int updtr_tasks_create(ldmsd_updtr_t updtr)
 	char *str;
 	int rc;
 
-	ldmsd_log(LDMSD_LDEBUG, "updtr '%s' getting auto-schedule\n", updtr->obj.name);
+	ovis_log(updtr_log, OVIS_LDEBUG, "updtr '%s' getting auto-schedule\n", updtr->obj.name);
 
 	for (prd_ref = updtr_prdcr_ref_first(updtr); prd_ref;
 			prd_ref = updtr_prdcr_ref_next(prd_ref)) {
@@ -1108,7 +1111,7 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 					- updtr_sched_offset_skew_get();
 
 	if (interval_us < labs(offset_us) * 2) {
-		ldmsd_log(LDMSD_LERROR, "%s: The absolute value of the offset"
+		ovis_log(updtr_log, OVIS_LERROR, "%s: The absolute value of the offset"
 			" value must not be larger than the half of "
 			"the update interval. (i=%ld, o=%ld)\n", "ldmsd_updtr_start",
 			interval_us, offset_us);
