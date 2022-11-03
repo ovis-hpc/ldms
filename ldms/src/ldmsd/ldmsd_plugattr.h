@@ -300,7 +300,7 @@ int ldmsd_plugattr_f64(struct plugattr *pa, const char *at, const char *key, dou
 int ldmsd_plugattr_szt(struct plugattr *pa, const char *at, const char *key, size_t *result);
 
 /* \brief dump pa (or subset indicated by key to log file at the given level. */
-void ldmsd_plugattr_log(enum ldmsd_loglevel lvl, struct plugattr *pa, const char *key);
+void ldmsd_plugattr_log(int lvl, struct plugattr *pa, const char *key);
 
 /** \brief Screen config lists for unexpected keywords and deprecated.
  * \param anames null terminated array of k=v parameter names allowed.

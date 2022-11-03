@@ -94,6 +94,8 @@ struct ldmsd_version {
 /** Get the ldmsd version  */
 void ldmsd_version_get(struct ldmsd_version *v);
 
+#define LDMSD_STR_WRAP(NAME) #NAME
+
 /** Update hint */
 #define LDMSD_SET_INFO_UPDATE_HINT_KEY "updt_hint_us"
 #define LDMSD_UPDT_HINT_OFFSET_NONE LONG_MIN
@@ -850,57 +852,6 @@ struct ldmsd_store {
 	int (*commit)(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int row_count);
 };
 
-#define LDMSD_STR_WRAP(NAME) #NAME
-/**
- * \brief ldmsd log levels
- *
- * The ldmsd log levels, in order of increasing importance, are
- *  - DEBUG
- *  - INFO
- *  - WARNING
- *  - ERROR
- *  - CRITICAL
- *  - ALL
- *
- * ALL is for messages printed to the log file per users requests,
- * e.g, messages printed from the 'info' command.
- */
-enum ldmsd_loglevel {
-	LDMSD_LDEBUG = OVIS_LDEBUG,
-	LDMSD_LINFO = OVIS_LINFO,
-	LDMSD_LWARNING = OVIS_LWARNING,
-	LDMSD_LERROR = OVIS_LERROR,
-	LDMSD_LCRITICAL = OVIS_LCRITICAL,
-	LDMSD_LALL = OVIS_LALWAYS,
-};
-
-void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...);
-int ldmsd_loglevel_set(const char *s);
-
-#define ldmsd_loglevel_get() ovis_log_get_level(NULL)
-
-
-#define ldmsd_str_to_loglevel(_s_) ovis_log_str_to_level(_s_)
-#define ldmsd_loglevel_to_str(_level_) ovis_loglevel_to_str(_level_)
-
-__attribute__((format(printf, 1, 2)))
-void ldmsd_ldebug(const char *fmt, ...);
-__attribute__((format(printf, 1, 2)))
-void ldmsd_linfo(const char *fmt, ...);
-__attribute__((format(printf, 1, 2)))
-void ldmsd_lwarning(const char *fmt, ...);
-__attribute__((format(printf, 1, 2)))
-void ldmsd_lerror(const char *fmt, ...);
-__attribute__((format(printf, 1, 2)))
-void ldmsd_lcritical(const char *fmt, ...);
-__attribute__((format(printf, 1, 2)))
-void ldmsd_lall(const char *fmt, ...);
-
-/** Get syslog int value for a level.
- *  \return LOG_CRIT for invalid inputs, NONE, & ENDLEVEL.
- */
-#define ldmsd_loglevel_to_syslog(_level_) ovis_loglevel_to_syslog(_level_)
-
 /**
  * \brief Get the security context (uid, gid) of the daemon.
  *
@@ -950,6 +901,19 @@ ldmsd_store_close(struct ldmsd_store *store, ldmsd_store_handle_t sh)
 #define LDMSD_LERROR    OVIS_LERROR
 #define LDMSD_LCRITICAL OVIS_LCRIT
 #define LDMSD_LALL      OVIS_LALWAYS
+
+__attribute__((format(printf, 1, 2)))
+void ldmsd_ldebug(const char *fmt, ...);
+__attribute__((format(printf, 1, 2)))
+void ldmsd_linfo(const char *fmt, ...);
+__attribute__((format(printf, 1, 2)))
+void ldmsd_lwarning(const char *fmt, ...);
+__attribute__((format(printf, 1, 2)))
+void ldmsd_lerror(const char *fmt, ...);
+__attribute__((format(printf, 1, 2)))
+void ldmsd_lcritical(const char *fmt, ...);
+__attribute__((format(printf, 1, 2)))
+void ldmsd_lall(const char *fmt, ...);
 
 
 typedef void (*ldmsd_msg_log_f)(int level, const char *fmt, ...);
@@ -1017,10 +981,9 @@ extern ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND + 1];
 #define LEN_ERRSTR 256
 #define LDMSD_ENOMEM_MSG "Memory allocation failure\n"
 
-#define ldmsd_msg_logger ldmsd_log /* ldmsd_msg_logger is deprecated */
 int ldmsd_logrotate();
 int ldmsd_plugins_usage(const char *plugin_name);
-void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix);
+void ldmsd_mm_status(int level, const char *prefix);
 
 char *ldmsd_get_max_mem_sz_str();
 

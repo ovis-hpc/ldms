@@ -65,6 +65,9 @@
 #include "ldmsd_request.h"
 #include "config.h"
 
+/* Defined in ldmsd.c */
+extern ovis_log_t prdcr_log;
+
 static void prdcr_task_cb(ldmsd_task_t task, void *arg);
 
 int prdcr_resolve(const char *hostname, unsigned short port_no,
@@ -129,7 +132,7 @@ static ldmsd_prdcr_set_t prdcr_set_new(const char *inst_name, const char *schema
 
 void __prdcr_set_del(ldmsd_prdcr_set_t set)
 {
-	ldmsd_log(LDMSD_LINFO, "Deleting producer set %s from producer %s\n",
+	ovis_log(prdcr_log, OVIS_LINFO, "Deleting producer set %s from producer %s\n",
 				set->inst_name, set->prdcr->obj.name);
 	if (set->schema_name)
 		free(set->schema_name);
@@ -310,7 +313,7 @@ static void __update_set_info(ldmsd_prdcr_set_t set, ldms_dir_set_t dset)
 		char *s = strdup(hint);
 		char *tok;
 		if (!s) {
-			ldmsd_lerror("%s:%d Memory allocation failure.\n",
+			ovis_log(prdcr_log, OVIS_LERROR, "%s:%d Memory allocation failure.\n",
 				     __func__, __LINE__);
 			return;
 		}
@@ -323,7 +326,7 @@ static void __update_set_info(ldmsd_prdcr_set_t set, ldms_dir_set_t dset)
 
 		/* Sanity check the hints */
 		if (offset_us >= intrvl_us) {
-			ldmsd_lerror("set %s: Invalid hint '%s', ignoring hint\n",
+			ovis_log(prdcr_log, OVIS_LERROR, "set %s: Invalid hint '%s', ignoring hint\n",
 					set->inst_name, hint);
 		} else {
 			if (offset_us != LDMSD_UPDT_HINT_OFFSET_NONE)
@@ -340,7 +343,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 {
 	ldmsd_prdcr_set_t set;
 
-	ldmsd_log(LDMSD_LINFO, "Adding the metric set '%s'\n", dset->inst_name);
+	ovis_log(prdcr_log, OVIS_LINFO, "Adding the metric set '%s'\n", dset->inst_name);
 
 	/* Check to see if it's already there */
 	set = _find_set(prdcr, dset->inst_name);
@@ -348,7 +351,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 		/* See if the ldms set is already there */
 		ldms_set_t xs = ldms_xprt_set_by_name(xprt, dset->inst_name);
 		if (xs) {
-			ldmsd_log(LDMSD_LCRITICAL,
+			ovis_log(prdcr_log, OVIS_LCRITICAL,
 				  "Received dir_add, prdset is missing, "
 				  "but set %s is present...ignoring",
 				  dset->inst_name);
@@ -357,7 +360,8 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 		}
 		set = prdcr_set_new(dset->inst_name, dset->schema_name);
 		if (!set) {
-			ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure in %s "
+			ovis_log(prdcr_log, OVIS_LCRITICAL,
+				 "Memory allocation failure in %s "
 				 "for set_name %s\n",
 				 __FUNCTION__, dset->inst_name);
 			return;
@@ -372,7 +376,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 		 * appears on the upstream ldmsd, we will get a dir_upd and hit
 		 * this path
 		 */
-		ldmsd_log(LDMSD_LINFO, "Received a dir_add update for "
+		ovis_log(prdcr_log, OVIS_LCRITICAL, "Received a dir_add update for "
 			  "'%s', prdcr_set still present with refcount %d, and set "
 			  "%p.\n", dset->inst_name, set->ref_count, set->set);
 		return;
@@ -380,7 +384,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 
 	__update_set_info(set, dset);
 	if (0 != set->updt_hint.intrvl_us) {
-		ldmsd_log(LDMSD_LDEBUG, "producer '%s' add set '%s' to hint tree\n",
+		ovis_log(prdcr_log, OVIS_LDEBUG, "producer '%s' add set '%s' to hint tree\n",
 						prdcr->obj.name, set->inst_name);
 		prdcr_hint_tree_update(prdcr, set,
 				&set->updt_hint, UPDT_HINT_TREE_ADD);
@@ -435,7 +439,7 @@ static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 		set = ldmsd_prdcr_set_find(prdcr, dir->set_data[i].inst_name);
 		if (!set) {
 			/* Received an update, but the set is gone. */
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(prdcr_log, OVIS_LERROR,
 				  "Ignoring 'dir update' for the set, '%s', which "
 				  "is not present in the prdcr_set tree.\n",
 				  dir->set_data[i].inst_name);
@@ -468,7 +472,7 @@ static void prdcr_dir_cb(ldms_t xprt, int status, ldms_dir_t dir, void *arg)
 {
 	ldmsd_prdcr_t prdcr = arg;
 	if (status) {
-		ldmsd_log(LDMSD_LINFO, "Error %d in dir on producer %s host %s.\n",
+		ovis_log(prdcr_log, OVIS_LINFO, "Error %d in dir on producer %s host %s.\n",
 			 status, prdcr->obj.name, prdcr->host_name);
 		return;
 	}
@@ -548,7 +552,7 @@ static void __prdcr_remote_set_delete(ldmsd_prdcr_t prdcr, const char *name)
 		state_str = "DELETING";
 		break;
 	}
-	ldmsd_log(LDMSD_LINFO,
+	ovis_log(prdcr_log, OVIS_LINFO,
 			"Deleting %s in the %s state\n",
 			prdcr_set->inst_name, state_str);
 	pthread_mutex_unlock(&prdcr_set->lock);
@@ -582,7 +586,7 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	ldmsd_xprt_ctxt_t ctxt;
 	ldmsd_prdcr_t prdcr = cb_arg;
 	ldmsd_prdcr_lock(prdcr);
-	ldmsd_log(LDMSD_LINFO, "%s:%d Producer %s (%s %s:%d:%s)"
+	ovis_log(prdcr_log, OVIS_LINFO, "%s:%d Producer %s (%s %s:%d:%s)"
 				" conn_state: %d %s event type: %s\n",
 				__func__, __LINE__,
 				prdcr->obj.name, prdcr->xprt_name,
@@ -601,23 +605,23 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	}
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
-		ldmsd_log(LDMSD_LINFO, "Producer %s is connected (%s %s:%d)\n",
+		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s is connected (%s %s:%d)\n",
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
 		ctxt = malloc(sizeof(*ctxt));
 		if (!ctxt) {
-			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+			ovis_log(prdcr_log, OVIS_LCRITICAL, "Out of memory\n");
 			return;
 		}
 		ctxt->name = strdup(prdcr->obj.name);
 		if (!ctxt->name) {
-			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+			ovis_log(prdcr_log, OVIS_LCRITICAL, "Out of memory\n");
 			return;
 		}
 		ldms_xprt_ctxt_set(x, ctxt, __ldmsd_xprt_ctxt_free);
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
 		if (__prdcr_subscribe(prdcr)) {
-			ldmsd_log(LDMSD_LERROR,
+			ovis_log(prdcr_log, OVIS_LERROR,
 				  "Could not subscribe to stream data on producer %s\n",
 				  prdcr->obj.name);
 		}
@@ -633,18 +637,18 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		__prdcr_remote_set_delete(prdcr, e->set_delete.name);
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
-		ldmsd_log(LDMSD_LERROR, "Producer %s rejected the "
+		ovis_log(prdcr_log, OVIS_LERROR, "Producer %s rejected the "
 				"connection (%s %s:%d)\n", prdcr->obj.name,
 				prdcr->xprt_name, prdcr->host_name,
 				(int)prdcr->port_no);
 		goto reset_prdcr;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
-		ldmsd_log(LDMSD_LINFO, "Producer %s is disconnected (%s %s:%d)\n",
+		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s is disconnected (%s %s:%d)\n",
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
 		goto reset_prdcr;
 	case LDMS_XPRT_EVENT_ERROR:
-		ldmsd_log(LDMSD_LINFO, "Producer %s: connection error to %s %s:%d\n",
+		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s: connection error to %s %s:%d\n",
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
 		goto reset_prdcr;
@@ -681,7 +685,7 @@ reset_prdcr:
 		ldms_xprt_put(prdcr->xprt);
 		prdcr->xprt = NULL;
 	}
-	ldmsd_log(LDMSD_LINFO, "%s:%d Producer (after reset) %s (%s %s:%d)"
+	ovis_log(prdcr_log, OVIS_LINFO, "%s:%d Producer (after reset) %s (%s %s:%d)"
 				" conn_state: %d %s\n",
 				__func__, __LINE__,
 				prdcr->obj.name, prdcr->xprt_name,
@@ -716,7 +720,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 				prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 			}
 		} else {
-			ldmsd_log(LDMSD_LERROR, "%s Error %d: creating endpoint on transport '%s'.\n",
+			ovis_log(prdcr_log, OVIS_LERROR, "%s Error %d: creating endpoint on transport '%s'.\n",
 				 __func__, errno, prdcr->xprt_name);
 			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 		}
@@ -796,7 +800,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	struct ldmsd_prdcr *prdcr;
 	ldmsd_auth_t auth_dom = NULL;
 
-	ldmsd_log(LDMSD_LDEBUG, "ldmsd_prdcr_new(name %s, xprt %s, host %s, port %u, type %u, intv %d\n",
+	ovis_log(prdcr_log, OVIS_LDEBUG, "ldmsd_prdcr_new(name %s, xprt %s, host %s, port %u, type %u, intv %d\n",
 		name, xprt_name, host_name,(unsigned) port_no, (unsigned)type, conn_intrvl_us);
 	prdcr = (struct ldmsd_prdcr *)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_PRDCR,
@@ -820,7 +824,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 
 	if (prdcr_resolve(host_name, port_no, &prdcr->ss, &prdcr->ss_len)) {
 		errno = EAFNOSUPPORT;
-		ldmsd_log(LDMSD_LERROR, "ldmsd_prdcr_new: %s:%u not resolved.\n",
+		ovis_log(prdcr_log, OVIS_LERROR, "ldmsd_prdcr_new: %s:%u not resolved.\n",
 			host_name,(unsigned) port_no);
 		goto out;
 	}
@@ -936,7 +940,7 @@ int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 	ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
 			 LDMSD_TASK_F_IMMEDIATE,
 			 prdcr->conn_intrvl_us, 0);
-	ldmsd_log(LDMSD_LINFO, "Starting producer %s\n", prdcr->obj.name);
+	ovis_log(prdcr_log, OVIS_LINFO, "Starting producer %s\n", prdcr->obj.name);
 out:
 	ldmsd_prdcr_unlock(prdcr);
 	return rc;
@@ -973,7 +977,7 @@ int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out;
 	}
-	ldmsd_log(LDMSD_LINFO, "Stopping producer %s\n", prdcr->obj.name);
+	ovis_log(prdcr_log, OVIS_LINFO, "Stopping producer %s\n", prdcr->obj.name);
 	if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
 		prdcr_reset_sets(prdcr);
 	ldmsd_task_stop(&prdcr->task);

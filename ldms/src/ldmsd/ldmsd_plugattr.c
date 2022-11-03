@@ -54,8 +54,11 @@
 #include <stdarg.h>
 #include "ovis_util/dstring.h"
 
+/* Defined in ldmsd.c */
+extern ovis_log_t config_log;
+
 #ifdef TEST_PLUGATTR
-#define ldmsd_log(e, f, ...) printf(f, ##__VA_ARGS__ )
+#define ovis_log(l, e, f, ...) printf(f, ##__VA_ARGS__ )
 #endif
 
 /* add -DDBG_LPA=1 to CFLAGS to enable logging lots of stuff. */
@@ -189,7 +192,7 @@ static int canonical(char *buf, size_t len)
 	while (nk < NUMKEYS) { \
 		char *k = va_arg(ap, char *); \
 		if (!k) { \
-			ldmsd_log(LDMSD_LERROR, \
+			ovis_log(config_log, OVIS_LERROR, \
 				"ldmsd_plugattr: key list input contains NULL.\n"); \
 			RC = EINVAL; \
 			break; \
@@ -219,7 +222,7 @@ static int attr_deprecated(struct attr_value_list *avl, struct attr_value_list *
 	if (!dep)
 		return 0;
 	if (!context) {
-		ldmsd_log(LDMSD_LERROR, "%s %s: attr_deprecated miscalled.\n", 
+		ovis_log(config_log, OVIS_LERROR, "%s %s: attr_deprecated miscalled.\n",
 			al ? al : "", kl ? kl : "");
 		return 1;
 	}
@@ -242,19 +245,19 @@ static int attr_deprecated(struct attr_value_list *avl, struct attr_value_list *
 				last_name = d->name;
 				if (d->error != 0) {
 					badcount++;
-					ldmsd_log(LDMSD_LERROR,
+					ovis_log(config_log, OVIS_LERROR,
 						"No longer supported '%s=%s' in %s at line with: %s %s\n",
 						d->name, v, context, al, kl);
 					if (d->msg) {
-						ldmsd_log(LDMSD_LERROR, "%s\n",
+						ovis_log(config_log, OVIS_LERROR, "%s\n",
 						d->msg);
 					}
 				} else {
-					ldmsd_log(LDMSD_LWARNING,
+					ovis_log(config_log, OVIS_LWARNING,
 						"deprecated '%s=%s' in %s at line with: %s %s\n",
 						d->name, v, context, al, kl);
 					if (d->msg) {
-						ldmsd_log(LDMSD_LERROR, "%s\n",
+						ovis_log(config_log, OVIS_LERROR, "%s\n",
 						d->msg);
 					}
 				}
@@ -268,18 +271,18 @@ static int attr_deprecated(struct attr_value_list *avl, struct attr_value_list *
 			last_name = d->name;
 			if (d->error != 0) {
 				badcount++;
-				ldmsd_log(LDMSD_LERROR,
+				ovis_log(config_log, OVIS_LERROR,
 					"No longer supported '%s' in %s at line with: %s %s\n",
 					d->name, context, al, kl);
 				if (d->msg) {
-					ldmsd_log(LDMSD_LERROR, "%s\n", d->msg);
+					ovis_log(config_log, OVIS_LERROR, "%s\n", d->msg);
 				}
 			} else {
-				ldmsd_log(LDMSD_LWARNING,
+				ovis_log(config_log, OVIS_LWARNING,
 					"Deprecated '%s' in %s at line with: %s %s\n",
 					d->name, context, al, kl);
 				if (d->msg) {
-					ldmsd_log(LDMSD_LERROR, "%s\n", d->msg);
+					ovis_log(config_log, OVIS_LERROR, "%s\n", d->msg);
 				}
 			}
 			skip_kwl: ;
@@ -295,7 +298,7 @@ static int attr_deprecated(struct attr_value_list *avl, struct attr_value_list *
 static int attr_blacklist(const char **bad, struct attr_value_list *l, const char *context, const char *prefix)
 {
 	if (!bad || !l || !context || !prefix) {
-		ldmsd_log(LDMSD_LERROR, "%s: attr_blacklist miscalled.\n", prefix);
+		ovis_log(config_log, OVIS_LERROR, "%s: attr_blacklist miscalled.\n", prefix);
 		return 1;
 	}
 	int badcount = 0;
@@ -306,10 +309,10 @@ static int attr_blacklist(const char **bad, struct attr_value_list *l, const cha
 			badcount++;
 			char *val = av_value(l, *p);
 			if (val)
-				ldmsd_log(LDMSD_LERROR, "bad '%s=%s' in %s at line with: %s\n",
+				ovis_log(config_log, OVIS_LERROR, "bad '%s=%s' in %s at line with: %s\n",
 					*p, val, context, prefix);
 			else
-				ldmsd_log(LDMSD_LERROR, "bad '%s' in %s at line with: %s\n",
+				ovis_log(config_log, OVIS_LERROR, "bad '%s' in %s at line with: %s\n",
 					*p, context, prefix);
 		}
 		p++;
@@ -322,7 +325,7 @@ static int attr_blacklist(const char **bad, struct attr_value_list *l, const cha
 int ldmsd_plugattr_add(struct plugattr *pa, struct attr_value_list *avl, struct attr_value_list *kwl, const char **avban, const char **kwban, struct pa_deprecated *dep, unsigned numkeys, ...)
 {
 	if (!pa || !numkeys || (!avl && !kwl)) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_add: bad call\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_add: bad call\n");
 		return EINVAL;
 	}
 
@@ -357,20 +360,20 @@ int ldmsd_plugattr_add(struct plugattr *pa, struct attr_value_list *avl, struct 
 	char *key = NULL;
 	VGETKEY(avl, numkeys, key, rc);
 	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_add: key error\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_add: key error\n");
 		return rc;
 	}
 
 	struct list_pair *lp;
 	lp = idx_find(pa->idx, (void *)key, strlen(key));
 	if (lp) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_add: key exist\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_add: key exist\n");
 		return EEXIST;
 	}
 
 	lp = list_pair_create(key, avl, kwl);
 	if (!lp) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_add: lpc failed\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_add: lpc failed\n");
 		return ENOMEM;
 	}
 	rc = idx_add(pa->idx, lp->key, strlen(lp->key), lp);
@@ -378,7 +381,7 @@ int ldmsd_plugattr_add(struct plugattr *pa, struct attr_value_list *avl, struct 
 		list_pair_destroy(lp, NULL);
 #if DBG_LPA
 	else
-		ldmsd_log(LDMSD_LDEBUG, "ldmsd_plugattr_add: %s succeeded\n", lp->key);
+		ovis_log(config_log, OVIS_LDEBUG, "ldmsd_plugattr_add: %s succeeded\n", lp->key);
 #endif
 
 	return rc;
@@ -388,7 +391,7 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 {
 	int rc = 0;
 	if (!plugin_name) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_create: bad call\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_create: bad call\n");
 		errno = EINVAL;
 		return NULL;
 	}
@@ -423,13 +426,13 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 	struct attr_value_list *ikvl = NULL;
 	struct plugattr *pa = calloc(1, sizeof(*pa));
 	if (!pa) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_create: oom pa\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_create: oom pa\n");
 		errno = ENOMEM;
 		return NULL;
 	}
 	pa->idx = idx_create();
 	if (!pa->idx) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_create: oom idx\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_create: oom idx\n");
 		errno = ENOMEM;
 		goto err;
 	}
@@ -438,37 +441,37 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 	pa->overrides.key = strdup(plugin_name);
 	if ( !pa->overrides.key || (avl && !pa->overrides.avl) ||
 		(kwl && !pa->overrides.kvl) ) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_create: oom overrides\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_create: oom overrides\n");
 		errno = ENOMEM;
 		goto err;
 	}
 	if (!filename) {
-		ldmsd_log(LDMSD_LDEBUG, 
+		ovis_log(config_log, OVIS_LDEBUG,
 			"ldmsd_plugattr_create: called without conf file.\n");
 		return pa;
 	}
 
 	pa->fname = strdup(filename);
 	if (!pa->fname) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_create: oom fname\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_create: oom fname\n");
 		errno = ENOMEM;
 		goto err;
 	}
 	FILE *f = fopen(filename, "r");
 	if (!f) {
 		rc = errno;
-		ldmsd_log(LDMSD_LERROR, "Cannot open attrs file %s\n", filename);
+		ovis_log(config_log, OVIS_LERROR, "Cannot open attrs file %s\n", filename);
 		goto fout;
         }
 	rc = fseek(f, 0, SEEK_END);
 	if (rc) {
 		rc = errno;
-		ldmsd_log(LDMSD_LERROR, "Cannot seek attrs file %s\n", filename);
+		ovis_log(config_log, OVIS_LERROR, "Cannot seek attrs file %s\n", filename);
 		goto fout;
         }
 	long len = ftell(f);
 	if (!len) {
-		ldmsd_log(LDMSD_LWARNING, "Empty attrs file %s\n", filename);
+		ovis_log(config_log, OVIS_LWARNING, "Empty attrs file %s\n", filename);
 		goto fout;
 	}
 
@@ -479,14 +482,14 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 	}
 	pa->buf = malloc(len+1);
 	if (!pa->buf) {
-		ldmsd_log(LDMSD_LERROR, "Out of memory reading %s\n", filename);
+		ovis_log(config_log, OVIS_LERROR, "Out of memory reading %s\n", filename);
 		rc = ENOMEM;
 		goto fout;
 	}
 	pa->buf[len] = '\0';
 	size_t nb = fread(pa->buf, sizeof(char), len, f);
 	if (nb != len) {
-		ldmsd_log(LDMSD_LERROR, "Fail reading attrs file %s %zu %ld \n",
+		ovis_log(config_log, OVIS_LERROR, "Fail reading attrs file %s %zu %ld \n",
 			filename, nb, len);
 		rc = EINVAL;
 		goto fout;
@@ -520,13 +523,13 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 		iavl = av_new(size);
 		ikvl = av_new(size);
 		if (!iavl || !ikvl) {
-			ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_create oom1\n");
+			ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_create oom1\n");
 			rc = ENOMEM;
 			goto fout;
 		}
 		rc = tokenize(linestart, ikvl, iavl);
 		if (rc) {
-			ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_create tokenize failed\n");
+			ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_create tokenize failed\n");
 			goto fout;
 		}
 		char *key = NULL;
@@ -543,7 +546,7 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 		}
 		if (!key) {
 			if (rc == EINVAL) {
-				ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_create misused.\n");
+				ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_create misused.\n");
 				goto fout;
 			}	
 			int npos = av_idx_of(ikvl, plugin_name);
@@ -551,7 +554,7 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 				char *as, *ks;
 				as = av_to_string(iavl, 0);
 				ks = av_to_string(ikvl, 0);
-				ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_create: line with neither %s nor match of key found. line contains %s %s\n",
+				ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_create: line with neither %s nor match of key found. line contains %s %s\n",
 					plugin_name, as, ks);
 				free(as);
 				free(ks);
@@ -559,7 +562,7 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 			}
 			key = strdup(plugin_name);
 			if (!key) {
-				ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_create oom2\n");
+				ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_create oom2\n");
 				rc = ENOMEM;
 				goto fout;
 			}
@@ -572,7 +575,7 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 			if (rc)
 				goto fout;
 		} else {
-			ldmsd_log(LDMSD_LDEBUG, "no token ban for kw\n");
+			ovis_log(config_log, OVIS_LDEBUG, "no token ban for kw\n");
 		}
 		if (avban) {
 			char *as = av_to_string(iavl, 0);
@@ -581,7 +584,7 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 			if (rc)
 				goto fout;
 		} else {
-			ldmsd_log(LDMSD_LDEBUG, "no token ban for attr\n");
+			ovis_log(config_log, OVIS_LDEBUG, "no token ban for attr\n");
 		}
 
 		struct list_pair *lp;
@@ -590,13 +593,13 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 		av_free(ikvl);
 		iavl = ikvl = NULL;
 		if (!lp) {
-			ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr: fail lpc\n");
+			ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr: fail lpc\n");
 			rc = ENOMEM;
 			goto fout;
 		}
 		rc = idx_add(pa->idx, lp->key, strlen(lp->key), lp);
 		if (rc == EEXIST) {
-			ldmsd_log(LDMSD_LERROR, "Duplicate key %s in %s\n",
+			ovis_log(config_log, OVIS_LERROR, "Duplicate key %s in %s\n",
 				lp->key, pa->fname);
 			goto fout;
 		}
@@ -643,12 +646,12 @@ const char *ldmsd_plugattr_plugin(struct plugattr *pa)
 const char * ldmsd_plugattr_value(struct plugattr *pa, const char *attr, const char *key)
 {
 	if (!pa || !attr ) {
-		ldmsd_log(LDMSD_LERROR,
+		ovis_log(config_log, OVIS_LERROR,
 			"ldmsd_plugattr_value: bad call(%p,%p).\n", pa, attr);
 		return NULL;
 	}
 #if DBG_LPA
-	ldmsd_log(LDMSD_LDEBUG,"ldmsd_plugattr_value(%p, %s, %s)\n",
+	ovis_log(config_log, OVIS_LDEBUG,"ldmsd_plugattr_value(%p, %s, %s)\n",
 		pa, attr, key  ? key : "NULL");
 #endif
 	const char *c;
@@ -660,7 +663,7 @@ const char * ldmsd_plugattr_value(struct plugattr *pa, const char *attr, const c
 			c = av_value(lp->avl, attr);
 			if (c) {
 #if DBG_LPA
-				ldmsd_log(LDMSD_LDEBUG,
+				ovis_log(config_log, OVIS_LDEBUG,
 					"ldmsd_plugattr_value: %s: %s\n", key, c);
 #endif
 				return c;
@@ -671,7 +674,7 @@ const char * ldmsd_plugattr_value(struct plugattr *pa, const char *attr, const c
 	c = av_value(pa->overrides.avl, attr);
 	if (c) {
 #if DBG_LPA
-		ldmsd_log(LDMSD_LDEBUG,
+		ovis_log(config_log, OVIS_LDEBUG,
 			"ldmsd_plugattr_value: override %s\n", c);
 #endif
 		return c;
@@ -683,7 +686,7 @@ const char * ldmsd_plugattr_value(struct plugattr *pa, const char *attr, const c
 		c = av_value(lp->avl, attr);
 		if (c) {
 #if DBG_LPA
-			ldmsd_log(LDMSD_LDEBUG,
+			ovis_log(config_log, OVIS_LDEBUG,
 				"ldmsd_plugattr_value: %s: %s\n", key, c);
 #endif
 			return c;
@@ -698,7 +701,7 @@ static int fill_multi(struct attr_value_list *avl, const char *attr, int k, int 
 		*valc = 1;
 		*valv = malloc(2*sizeof(char *));
 		if (!*valv) {
-			ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_multivalue: out of mem.\n");
+			ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_multivalue: out of mem.\n");
 			return ENOMEM;
 		}
 		(*valv)[0] = av_value_at_idx(avl, k);
@@ -709,7 +712,7 @@ static int fill_multi(struct attr_value_list *avl, const char *attr, int k, int 
 	*valc = k;
 	*valv = malloc((k + 1)*sizeof(char *));
 	if (!*valv) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_multivalue: out of mem.\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_multivalue: out of mem.\n");
 		return ENOMEM;
 	}
 	int i = 0;
@@ -729,7 +732,7 @@ static int fill_multi(struct attr_value_list *avl, const char *attr, int k, int 
 int ldmsd_plugattr_multivalue(struct plugattr *pa, const char *attr, const char *key, int *valc, char ***valv)
 {
 	if (!pa || !attr || !valc || !valv) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_multivalue: bad call.\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_multivalue: bad call.\n");
 		return EINVAL;
 	}
 	int k;
@@ -763,7 +766,7 @@ int ldmsd_plugattr_multivalue(struct plugattr *pa, const char *attr, const char 
 bool ldmsd_plugattr_kw(struct plugattr *pa, const char *kw, const char *key)
 {
 	if (!pa || !kw) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_kw: bad call.\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_kw: bad call.\n");
 		return NULL;
 	}
 	int pos;
@@ -795,7 +798,7 @@ bool ldmsd_plugattr_kw(struct plugattr *pa, const char *kw, const char *key)
 int ldmsd_plugattr_bool(struct plugattr *pa, const char *attr, const char *key,  bool *result)
 {
 	if (!pa || !attr) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_bool: bad call.\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_bool: bad call.\n");
 		return -1;
 	}
 	const char *val = ldmsd_plugattr_value(pa, attr, key);
@@ -817,7 +820,7 @@ int ldmsd_plugattr_bool(struct plugattr *pa, const char *attr, const char *key, 
 			*result = false;
 			break;
 		default:
-			ldmsd_log(LDMSD_LERROR, "%s: non-boolean %s=%s\n",
+			ovis_log(config_log, OVIS_LERROR, "%s: non-boolean %s=%s\n",
 					key, attr, val);
 			return -1;
 		}
@@ -829,7 +832,7 @@ int ldmsd_plugattr_bool(struct plugattr *pa, const char *attr, const char *key, 
 int ldmsd_plugattr_s32(struct plugattr *pa, const char *at, const char *key, int32_t *result)
 {
 	if (!pa || !at || !result) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_s32: bad call.\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_s32: bad call.\n");
 		return EINVAL;
 	}
 	const char *val = ldmsd_plugattr_value(pa, at, key);
@@ -849,7 +852,7 @@ int ldmsd_plugattr_s32(struct plugattr *pa, const char *at, const char *key, int
 int ldmsd_plugattr_u32(struct plugattr *pa, const char *at, const char *key, uint32_t *result)
 {
 	if (!pa || !at || !result) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_s32: bad call.\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_s32: bad call.\n");
 		return EINVAL;
 	}
 	const char *val = ldmsd_plugattr_value(pa, at, key);
@@ -869,7 +872,7 @@ int ldmsd_plugattr_u32(struct plugattr *pa, const char *at, const char *key, uin
 int ldmsd_plugattr_s64(struct plugattr *pa, const char *at, const char *key, int64_t *result)
 {
 	if (!pa || !at || !result) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_s64: bad call.\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_s64: bad call.\n");
 		return EINVAL;
 	}
 	const char *val = ldmsd_plugattr_value(pa, at, key);
@@ -887,7 +890,7 @@ int ldmsd_plugattr_s64(struct plugattr *pa, const char *at, const char *key, int
 int ldmsd_plugattr_u64(struct plugattr *pa, const char *at, const char *key, uint64_t *result)
 {
 	if (!pa || !at || !result) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_u64: bad call.\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_u64: bad call.\n");
 		return EINVAL;
 	}
 	const char *val = ldmsd_plugattr_value(pa, at, key);
@@ -905,7 +908,7 @@ int ldmsd_plugattr_u64(struct plugattr *pa, const char *at, const char *key, uin
 int ldmsd_plugattr_f64(struct plugattr *pa, const char *at, const char *key, double *result)
 {
 	if (!pa || !at || !result) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_f64: bad call.\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_f64: bad call.\n");
 		return EINVAL;
 	}
 	const char *val = ldmsd_plugattr_value(pa, at, key);
@@ -923,7 +926,7 @@ int ldmsd_plugattr_f64(struct plugattr *pa, const char *at, const char *key, dou
 int ldmsd_plugattr_szt(struct plugattr *pa, const char *at, const char *key, size_t *result)
 {
 	if (!pa || !at || !result) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_szt: bad call.\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_szt: bad call.\n");
 		return EINVAL;
 	}
 	const char *val = ldmsd_plugattr_value(pa, at, key);
@@ -935,7 +938,7 @@ int ldmsd_plugattr_szt(struct plugattr *pa, const char *at, const char *key, siz
 }
 
 struct dump_args {
-	enum ldmsd_loglevel lvl;
+	int lvl;
 	struct list_pair *pilp;
 };
 
@@ -947,16 +950,16 @@ static void dump_lp(void *lp, void *a)
 		return;
 	char *as = av_to_string(p->avl, 0);
 	char *ks = av_to_string(p->kvl, 0);
-	ldmsd_log(da->lvl, "%s: [kw] %s [av] %s\n", p->key, ks, as);
+	ovis_log(NULL, da->lvl, "%s: [kw] %s [av] %s\n", p->key, ks, as);
 	free(as);
 	free(ks);
 }
 
 /* \brief dump pa (or subset indicated by key to log file at the given level. */
-void ldmsd_plugattr_log(enum ldmsd_loglevel lvl, struct plugattr *pa, const char *key)
+void ldmsd_plugattr_log(int lvl, struct plugattr *pa, const char *key)
 {
 	if (!pa) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_log miscalled\n");
+		ovis_log(config_log, OVIS_LERROR, "ldmsd_plugattr_log miscalled\n");
 		return;
 	}
 	struct dump_args da;
@@ -964,8 +967,8 @@ void ldmsd_plugattr_log(enum ldmsd_loglevel lvl, struct plugattr *pa, const char
 	if (!key) {
 		struct list_pair *pilp;
 		pilp = idx_find(pa->idx, pa->overrides.key, strlen(pa->overrides.key));
-		ldmsd_log(lvl, "plugattr: source: %s\n", pa->fname);
-		ldmsd_log(lvl, "plugattr: plugin_name: %s\n", pa->overrides.key);
+		ovis_log(NULL, lvl, "plugattr: source: %s\n", pa->fname);
+		ovis_log(NULL, lvl, "plugattr: plugin_name: %s\n", pa->overrides.key);
 		char *oa = NULL, *ok = NULL;
 		char *pia = NULL, *pik = NULL;
 		if (pa->overrides.avl)
@@ -977,7 +980,7 @@ void ldmsd_plugattr_log(enum ldmsd_loglevel lvl, struct plugattr *pa, const char
 			pik = av_to_string(pilp->kvl, 0);
 		}
 		da.pilp = pilp;
-		ldmsd_log(lvl, "plugattr %s: [kw over] %s [av over] %s :  [kw] %s [av] %s\n",
+		ovis_log(NULL, lvl, "plugattr %s: [kw over] %s [av over] %s :  [kw] %s [av] %s\n",
 			pa->overrides.key, ok, oa, pik, pia);
 		free(oa);
 		free(ok);
@@ -988,7 +991,7 @@ void ldmsd_plugattr_log(enum ldmsd_loglevel lvl, struct plugattr *pa, const char
 		struct list_pair *lp;
 		lp = idx_find(pa->idx, (void *)key, strlen(key));
 		if (!lp) {
-			ldmsd_log(lvl, "plugattr %s: not-defined\n", key);
+			ovis_log(NULL, lvl, "plugattr %s: not-defined\n", key);
 			return;
 		}
 		da.pilp = NULL;
@@ -1016,7 +1019,7 @@ int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct
 		count = 0;
 		while (count < avl->count) {
 			if (pname) {
-				ldmsd_log(LDMSD_LWARNING,
+				ovis_log(config_log, OVIS_LWARNING,
 					"%s: unexpected config attribute %s. "
 					"Check spelling and man page Plugin_%s?\n",
 					pname, av_name(avl, count), pname);
@@ -1040,7 +1043,7 @@ int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct
 			if (!found) {
 				unexpected++;
 				if (pname) {
-					ldmsd_log(LDMSD_LWARNING,
+					ovis_log(config_log, OVIS_LWARNING,
 						"%s: unexpected config attribute %s. Check spelling and man page Plugin_%s?\n",
 						pname, k, pname);
 				}
@@ -1052,7 +1055,7 @@ int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct
 		count = 0;
 		while (count < kvl->count) {
 			if (pname) {
-				ldmsd_log(LDMSD_LWARNING,
+				ovis_log(config_log, OVIS_LWARNING,
 					"%s: unexpected config keyword %s. Check spelling and man page Plugin_%s?\n",
 					pname, av_name(kvl, count), pname);
 			}
@@ -1075,7 +1078,7 @@ int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct
 			if (!found) {
 				unexpected++;
 				if (pname) {
-					ldmsd_log(LDMSD_LWARNING,
+					ovis_log(config_log, OVIS_LWARNING,
 						"%s: unexpected config keyword %s. Check spelling and man page Plugin_%s?\n",
 						pname, k, pname);
 				}
@@ -1097,8 +1100,8 @@ int main(int argc, char **argv)
 		struct plugattr *pa = ldmsd_plugattr_create(argv[i], "store_csv", NULL, NULL, NULL, NULL, NULL, 1, "mykey");
 		printf("parsing %s returned %p\n", argv[i], pa);
 		if (pa) {
-			ldmsd_plugattr_log(LDMSD_LINFO, pa, NULL);
-			ldmsd_plugattr_log(LDMSD_LINFO, pa, "store_csv");
+			ldmsd_plugattr_log(OVIS_LINFO, pa, NULL);
+			ldmsd_plugattr_log(OVIS_LINFO, pa, "store_csv");
 		} else {
 			continue;
 		}

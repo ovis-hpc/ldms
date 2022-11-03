@@ -64,6 +64,8 @@
 #include "ldmsd.h"
 #include "ldmsd_request.h"
 
+static ovis_log_t mylog;
+
 static ldmsd_decomp_t __decomp_static_config(ldmsd_strgp_t strgp,
 			json_entity_t cfg, ldmsd_req_ctxt_t reqc);
 static int __decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
@@ -81,6 +83,11 @@ struct ldmsd_decomp_s __decomp_static = {
 
 ldmsd_decomp_t get()
 {
+	mylog = ovis_log_register("store.decomp.static", "Messages for the static decomposition");
+	if (!mylog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create decomp_static's "
+					   "log subsystem. Error %d.\n", errno);
+	}
 	return &__decomp_static;
 }
 
@@ -303,10 +310,10 @@ static inline int __ldms_vsz(enum ldms_value_type t)
 /* ==== generic decomp ==== */
 /* convenient macro to put error message in both ldmsd log and `reqc` */
 #define DECOMP_ERR(reqc, rc, fmt, ...) do { \
-		ldmsd_lerror("decomposer: " fmt, ##__VA_ARGS__); \
+		ovis_log(mylog, OVIS_LERROR, fmt, ##__VA_ARGS__); \
 		if (reqc) { \
 			(reqc)->errcode = rc; \
-			Snprintf(&(reqc)->line_buf, &(reqc)->line_len, "decomposer: " fmt, ##__VA_ARGS__); \
+			Snprintf(&(reqc)->line_buf, &(reqc)->line_len, fmt, ##__VA_ARGS__); \
 		} \
 	} while (0)
 
@@ -963,7 +970,7 @@ static int __decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			mval = ldms_metric_get(set, mid);
 			mtype = ldms_metric_type_get(set, mid);
 			if (mtype != mid_rbn->col_mids[j].mtype) {
-				ldmsd_lerror("strgp '%s': the metric type (%s) of "
+				ovis_log(mylog, OVIS_LERROR, "strgp '%s': the metric type (%s) of "
 					     "row %d:col %d is different from the type (%s) of "
 					     "LDMS metric '%s'.\n", strgp->obj.name,
 					     ldms_metric_type_to_str(mid_rbn->col_mids[j].mtype),
@@ -1086,7 +1093,7 @@ static int __decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			mcol = &col_mvals[j];
 
 			if (dcol->type != mcol->mtype) {
-				ldmsd_lerror("strgp '%s': row '%d' col[dst] '%s': "
+				ovis_log(mylog, OVIS_LERROR, "strgp '%s': row '%d' col[dst] '%s': "
 					     "the value type (%s) is not "
 					     "compatible with the source metric type (%s). "
 					     "Please check the decomposition configuration.\n",
