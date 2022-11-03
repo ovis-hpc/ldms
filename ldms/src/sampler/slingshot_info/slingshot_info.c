@@ -102,8 +102,10 @@ static int initialize_ldms_structs()
         return 0;
 err3:
         base_del(sampler_base);
+        sampler_base = NULL;
 err2:
         ldms_record_delete(rec_def);
+        rec_def = NULL;
 err1:
         log_fn(LDMSD_LERROR, SAMP" initialization failed\n");
         return -1;
@@ -386,6 +388,10 @@ static int sample(struct ldmsd_sampler *self)
 static void term(struct ldmsd_plugin *self)
 {
         log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
+        base_del(sampler_base);
+        sampler_base = NULL;
+        ldms_record_delete(rec_def);
+        rec_def = NULL;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
