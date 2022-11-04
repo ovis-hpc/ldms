@@ -258,10 +258,8 @@ static int initialize_ldms_structs()
         return 0;
 err3:
         base_del(sampler_base);
-        sampler_base = NULL;
 err2:
         ldms_record_delete(nic_record);
-        nic_record = NULL;
 err1:
         log_fn(LDMSD_LERROR, SAMP" initialization failed\n");
         return -1;
@@ -515,7 +513,6 @@ static int config(struct ldmsd_plugin *self,
         return 0;
 err:
         base_del(sampler_base);
-        sampler_base = NULL;
         return rc;
 }
 
@@ -605,13 +602,9 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
-        base_del(sampler_base);
-        sampler_base = NULL;
-        ldms_record_delete(nic_record);
-        nic_record = NULL;
         cache_cxil_device_list_free();
         cache_cxil_dev_close_all();
+        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
