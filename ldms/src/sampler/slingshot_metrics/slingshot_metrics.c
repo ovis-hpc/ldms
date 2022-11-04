@@ -24,7 +24,7 @@
 
 static ldmsd_msg_log_f log_fn;
 static base_data_t sampler_base;
-static ldms_record_t nic_record; /* a pointer */
+static size_t rec_heap_sz;
 
 static struct {
         int name; /* name of the slingshot interface */
@@ -203,9 +203,9 @@ static void cache_cxil_device_list_free()
         }
 }
 
-static void initialize_ldms_record_metrics() {
-        int i;
+static int initialize_ldms_record_metrics(ldms_record_t rec_def) {
         int index;
+        int i;
 
         for (i = 0; i < counters.num_counters; i++) {
                 int rc;
@@ -213,53 +213,60 @@ static void initialize_ldms_record_metrics() {
 
                 const_name = c1_cntr_descs[counters.slingshot_index[i]].name;
                 /* log_fn(LDMSD_LDEBUG, SAMP" counter name = %s\n", const_name); */
-                index = ldms_record_metric_add(nic_record, const_name, NULL,
+                index = ldms_record_metric_add(rec_def, const_name, NULL,
                                                LDMS_V_U64, 0);
+                if (index < 0)
+                        return index;
                 counters.ldms_index[i] = index;
         }
+
+        return 0;
 }
 
 static int initialize_ldms_structs()
 {
+        ldms_record_t rec_def; /* a pointer */
         int rc;
 
         log_fn(LDMSD_LDEBUG, SAMP" initialize()\n");
 
-        /* Create the per-nic record definition */
-        nic_record = ldms_record_create("slingshot_nic");
-        if (nic_record == NULL)
-                goto err1;
-        rc = ldms_record_metric_add(nic_record, "name", NULL,
-                                    LDMS_V_CHAR_ARRAY, CXIL_DEVNAME_MAX+1);
-        if (rc < 0)
-                goto err2;
-        index_store.name = rc;
-        initialize_ldms_record_metrics();
-
         /* Create the schema */
         base_schema_new(sampler_base);
         if (sampler_base->schema == NULL)
+                goto err1;
+        rec_def = ldms_record_create("slingshot_nic");
+        if (rec_def == NULL)
                 goto err2;
-        rc = ldms_schema_record_add(sampler_base->schema, nic_record);
+        rc = ldms_record_metric_add(rec_def, "name", NULL,
+                                    LDMS_V_CHAR_ARRAY, CXIL_DEVNAME_MAX+1);
+        if (rc < 0)
+                goto err3;
+        index_store.name = rc;
+        rc = initialize_ldms_record_metrics(rec_def);
+        if (rc < 0)
+                goto err3;
+        rec_heap_sz = ldms_record_heap_size_get(rec_def);
+        rc = ldms_schema_record_add(sampler_base->schema, rec_def);
         if (rc < 0)
                 goto err3;
         index_store.nic_record = rc;
         rc = ldms_schema_metric_list_add(sampler_base->schema, "nics", NULL, 1024);
-        if (rc < 0) {
-                goto err3;
-        }
+        if (rc < 0)
+                goto err2;
         index_store.nic_list = rc;
 
         /* Create the metric set */
         base_set_new(sampler_base);
         if (sampler_base->set == NULL)
-                goto err3;
+                goto err2;
 
         return 0;
 err3:
-        base_del(sampler_base);
+        /* We only manually delete rec_def when it hasn't been added to
+           the schema yet */
+        ldms_record_delete(rec_def);
 err2:
-        ldms_record_delete(nic_record);
+        base_schema_delete(sampler_base);
 err1:
         log_fn(LDMSD_LERROR, SAMP" initialization failed\n");
         return -1;
@@ -513,6 +520,7 @@ static int config(struct ldmsd_plugin *self,
         return 0;
 err:
         base_del(sampler_base);
+        sampler_base = NULL;
         return rc;
 }
 
@@ -525,7 +533,7 @@ static void resize_metric_set(int expected_remaining_nics)
         base_set_delete(sampler_base);
 
         new_heap_size = previous_heap_size;
-        new_heap_size += ldms_record_heap_size_get(nic_record) * expected_remaining_nics;
+        new_heap_size += rec_heap_sz * expected_remaining_nics;
         new_heap_size += ldms_list_heap_size_get(LDMS_V_RECORD_ARRAY, expected_remaining_nics, 1);
 
         base_set_new_heap(sampler_base, new_heap_size);
@@ -602,9 +610,12 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
+        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
+        base_set_delete(sampler_base);
+        base_del(sampler_base);
+        sampler_base = NULL;
         cache_cxil_device_list_free();
         cache_cxil_dev_close_all();
-        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
