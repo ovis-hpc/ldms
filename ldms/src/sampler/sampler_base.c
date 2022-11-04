@@ -356,7 +356,7 @@ ldms_set_t base_set_new_heap(base_data_t base, size_t heap_sz)
 
 void base_set_delete(base_data_t base)
 {
-	if (!base->set)
+	if (!base || !base->set)
 		return;
 	ldmsd_set_deregister(base->instance_name, base->pi_name);
 	ldms_set_unpublish(base->set);
