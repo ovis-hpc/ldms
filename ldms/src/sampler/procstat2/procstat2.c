@@ -142,7 +142,7 @@ static size_t incr_heap_sz;
 #define ARRAY_LEN(A) ( sizeof(A) / sizeof(A[0]) )
 #endif
 
-struct ldms_metric_template_s cpu_metrics[] = {
+static struct ldms_metric_template_s cpu_metrics[] = {
 	{       "name",        0,   LDMS_V_CHAR_ARRAY,        "", 8 },
 	{       "user",        0,   LDMS_V_U64, "jiffies", 1 },
 	{       "nice",        0,   LDMS_V_U64, "jiffies", 1 },
@@ -156,10 +156,10 @@ struct ldms_metric_template_s cpu_metrics[] = {
 	{ "guest_nice",        0,   LDMS_V_U64, "jiffies", 1 },
 	{0},
 };
-int cpu_metric_ids[ARRAY_LEN(cpu_metrics)];
+static int cpu_metric_ids[ARRAY_LEN(cpu_metrics)];
 
 /* metric templates for the set schema */
-struct ldms_metric_template_s sch_metrics[] = {
+static struct ldms_metric_template_s sch_metrics[] = {
 	{       "cpu_rec",        0, LDMS_V_RECORD_TYPE,        "", /* set rec_def later */ },
 	{      "cpu_list",        0, LDMS_V_LIST,        "", /* set heap_sz later */ },
 	{     "intr_list",        0, LDMS_V_LIST,        "", /* set heap_sz later */ },
@@ -171,7 +171,7 @@ struct ldms_metric_template_s sch_metrics[] = {
 	{  "softirq_list",        0, LDMS_V_LIST,        "", /* set heap_sz later */ },
 	{0},
 };
-int sch_metric_ids[ARRAY_LEN(sch_metrics)];
+static int sch_metric_ids[ARRAY_LEN(sch_metrics)];
 
 enum stat_row {
 	STAT_CPU = 1, /* so that sch_metric_ids[STAT_XXX] also works */
@@ -185,23 +185,11 @@ enum stat_row {
 };
 
 
-int cpu_rec_mid; /* metric ID to cpu_rec record type */
-int cpu_list_mid; /* metric ID to the cpu_list */
-int intr_list_mid; /* metric ID to intr_list */
-int ctxt_mid;
-int btime_mid;
-int processes_mid;
-int procs_running_mid;
-int procs_blocked_mid;
-int softirq_list_mid;
-
-int nr_softirqs; /* number of softirqs (static) */
-
-int intr_max = -1; /* determine from current intr */
+static int intr_max = -1; /* determine from current intr */
 
 /* big lbuf for (potentially) big "intr" line */
 #define LBUFSZ 65536
-char lbuf[LBUFSZ];
+static char lbuf[LBUFSZ];
 
 static int create_metric_set(base_data_t base)
 {
