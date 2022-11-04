@@ -39,7 +39,6 @@
 
 static ldmsd_msg_log_f log_fn;
 static base_data_t sampler_base;
-static ldms_record_t rec_def; /* a pointer */
 
 static struct {
         int nic_record;
@@ -67,43 +66,45 @@ struct ldms_metric_template_s rec_metrics[] = {
 	{0},
 };
 #define REC_METRICS_LEN (ARRAY_LEN(rec_metrics) - 1)
-int rec_metric_ids[REC_METRICS_LEN];
-size_t rec_heap_sz;
+static int rec_metric_ids[REC_METRICS_LEN];
+static size_t rec_heap_sz;
 
 static int initialize_ldms_structs()
 {
+        ldms_record_t rec_def; /* a pointer */
         int rc;
 
         log_fn(LDMSD_LDEBUG, SAMP" initialize()\n");
 
-        /* Create the per-nic record definition */
-        rec_def = ldms_record_from_template("slingshot", rec_metrics, rec_metric_ids);
-        rec_heap_sz = ldms_record_heap_size_get(rec_def);
-
         /* Create the schema */
         base_schema_new(sampler_base);
         if (sampler_base->schema == NULL)
+                goto err1;
+        rec_def = ldms_record_from_template("slingshot", rec_metrics, rec_metric_ids);
+        if (rec_def == NULL)
                 goto err2;
+        rec_heap_sz = ldms_record_heap_size_get(rec_def);
         rc = ldms_schema_record_add(sampler_base->schema, rec_def);
         if (rc < 0)
                 goto err3;
         index_store.nic_record = rc;
         rc = ldms_schema_metric_list_add(sampler_base->schema, "nics", NULL, 1024);
-        if (rc < 0) {
-                goto err3;
-        }
+        if (rc < 0)
+                goto err2;
         index_store.nic_list = rc;
 
         /* Create the metric set */
         base_set_new(sampler_base);
         if (sampler_base->set == NULL)
-                goto err3;
+                goto err2;
 
         return 0;
 err3:
-        base_del(sampler_base);
-err2:
+        /* We only manually delete ref_def when it hasn't been added to
+           the schema yet */
         ldms_record_delete(rec_def);
+err2:
+        base_schema_delete(sampler_base);
 err1:
         log_fn(LDMSD_LERROR, SAMP" initialization failed\n");
         return -1;
@@ -120,6 +121,10 @@ static int config(struct ldmsd_plugin *self,
         sampler_base = base_config(avl, SAMP, "slingshot_metrics", log_fn);
 
         rc = initialize_ldms_structs();
+        if (rc < 0) {
+                base_del(sampler_base);
+                sampler_base = NULL;
+        }
 
         return rc;
 }
@@ -133,7 +138,7 @@ static void resize_metric_set(int expected_remaining_nics)
         base_set_delete(sampler_base);
 
         new_heap_size = previous_heap_size;
-        new_heap_size += ldms_record_heap_size_get(rec_def) * expected_remaining_nics;
+        new_heap_size += rec_heap_sz * expected_remaining_nics;
         new_heap_size += ldms_list_heap_size_get(LDMS_V_RECORD_ARRAY, expected_remaining_nics, 1);
 
         base_set_new_heap(sampler_base, new_heap_size);
@@ -386,6 +391,9 @@ static int sample(struct ldmsd_sampler *self)
 static void term(struct ldmsd_plugin *self)
 {
         log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
+        base_set_delete(sampler_base);
+        base_del(sampler_base);
+        sampler_base = NULL;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
