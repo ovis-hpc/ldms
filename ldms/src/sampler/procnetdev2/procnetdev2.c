@@ -110,7 +110,7 @@ struct ldms_metric_template_s rec_metrics[] = {
 	{0},
 };
 #define REC_METRICS_LEN (ARRAY_LEN(rec_metrics) - 1)
-int rec_metric_ids[REC_METRICS_LEN];
+static int rec_metric_ids[REC_METRICS_LEN];
 
 /*
  * Metrics/units references:
@@ -119,32 +119,32 @@ int rec_metric_ids[REC_METRICS_LEN];
  */
 
 
-ldms_record_t rec_def;
-int rec_def_idx;
-int netdev_list_mid;
-size_t rec_heap_sz;
+static int rec_def_idx;
+static int netdev_list_mid;
+static size_t rec_heap_sz;
 
-int niface = 0;
+static int niface = 0;
 //max number of interfaces we can include.
 static char iface[MAXIFACE][20];
 
-static ldms_set_t set;
 #define SAMP "procnetdev2"
 static FILE *mf = NULL;
 static ldmsd_msg_log_f msglog;
-static int metric_offset;
 static base_data_t base;
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
-	return set;
+        if (base)
+                return base->set;
+	return NULL;
 }
 
 static int create_metric_set(base_data_t base)
 {
-	int rc;
 	ldms_schema_t schema;
+        ldms_record_t rec_def;
 	size_t heap_sz;
+	int rc;
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
@@ -161,14 +161,13 @@ static int create_metric_set(base_data_t base)
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = EINVAL;
-		goto err;
+		goto err1;
 	}
-
-	/* Location of first metric from proc file */
-	metric_offset = ldms_schema_metric_count_get(schema);
 
 	/* Create netdev record definition */
 	rec_def = ldms_record_from_template("netdev", rec_metrics, rec_metric_ids);
+        if (!rec_def)
+                goto err2;
 	rec_heap_sz = ldms_record_heap_size_get(rec_def);
 	heap_sz = MAXIFACE * ldms_record_heap_size_get(rec_def);
 
@@ -176,26 +175,31 @@ static int create_metric_set(base_data_t base)
 	rec_def_idx = ldms_schema_record_add(schema, rec_def);
 	if (rec_def_idx < 0) {
 		rc = -rec_def_idx;
-		goto err;
+		goto err3;
 	}
 
 	/* Add a list (of records) */
 	netdev_list_mid = ldms_schema_metric_list_add(schema, "netdev_list", NULL, heap_sz);
 	if (netdev_list_mid < 0) {
 		rc = -netdev_list_mid;
-		goto err;
+		goto err2;
 	}
 
-	set = base_set_new(base);
-	if (!set) {
+	base_set_new(base);
+	if (!base->set) {
 		rc = errno;
-		goto err;
+		goto err2;
 	}
 
 	return 0;
-
-err:
-
+err3:
+        /* Only manually delete rec_def when it has not yet been added
+           to the schema */
+        ldms_record_delete(rec_def);
+err2:
+        base_schema_delete(base);
+        base = NULL;
+err1:
 	if (mf)
 		fclose(mf);
 	mf = NULL;
@@ -249,7 +253,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	if (set) {
+	if (base) {
 		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
@@ -316,7 +320,7 @@ static int sample(struct ldmsd_sampler *self)
 	ldms_mval_t lh, rec_inst, name_mval;
 	size_t heap_sz;
 
-	if (!set){
+	if (!base){
 		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
@@ -331,10 +335,10 @@ static int sample(struct ldmsd_sampler *self)
 begin:
 	base_sample_begin(base);
 
-	lh = ldms_metric_get(set, netdev_list_mid);
+	lh = ldms_metric_get(base->set, netdev_list_mid);
 
 	/* reset device data */
-	ldms_list_purge(set, lh);
+	ldms_list_purge(base->set, lh);
 
 	fseek(mf, 0, SEEK_SET); //seek should work if get to EOF
 	s = fgets(lbuf, sizeof(lbuf), mf);
@@ -377,7 +381,7 @@ begin:
 			continue;
 		}
 	rec:
-		rec_inst = ldms_record_alloc(set, rec_def_idx);
+		rec_inst = ldms_record_alloc(base->set, rec_def_idx);
 		if (!rec_inst)
 			goto resize;
 		/* iface name */
@@ -387,7 +391,7 @@ begin:
 		for (i = 1; i < REC_METRICS_LEN; i++) {
 			ldms_record_set_u64(rec_inst, rec_metric_ids[i], v[i].v_u64);
 		}
-		ldms_list_append_record(set, lh, rec_inst);
+		ldms_list_append_record(base->set, lh, rec_inst);
 	} while (s);
 
 	base_sample_end(base);
@@ -399,8 +403,8 @@ resize:
 	 */
 	heap_sz = ldms_set_heap_size_get(base->set) + 2*rec_heap_sz;
 	base_set_delete(base);
-	set = base_set_new_heap(base, heap_sz);
-	if (!set) {
+	base_set_new_heap(base, heap_sz);
+	if (!base->set) {
 		rc = errno;
 		ldmsd_log(LDMSD_LCRITICAL, SAMP " : Failed to create a set with "
 						"a bigger heap. Error %d\n", rc);
@@ -415,11 +419,9 @@ static void term(struct ldmsd_plugin *self)
 	if (mf)
 		fclose(mf);
 	mf = NULL;
-	if (base)
-		base_del(base);
-	if (set)
-		ldms_set_delete(set);
-	set = NULL;
+	base_set_delete(base);
+	base_del(base);
+	base = NULL;
 }
 
 
@@ -438,6 +440,6 @@ static struct ldmsd_sampler procnetdev2_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	set = NULL;
+	base = NULL;
 	return &procnetdev2_plugin.base;
 }
