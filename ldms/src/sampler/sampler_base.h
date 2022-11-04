@@ -122,12 +122,24 @@ typedef struct base_data_s {
 /**
  * \brief Create a sample schema with the standard metrics
  *
- * This function creates a schema that contains the stanard
- * metrics component_id, and job_id
+ * This function creates a schema that contains the standard
+ * metrics component_id, and job_id. A pointer to the schema
+ * will be stored in the schema field of the base_data_t.
+ * base_del() will free the schema, but to free the schema
+ * without losing the configuration information in base_data_t,
+ * use base_schema_delete().
  *
- * \returns The schema or NULL if there is an error
+ * \param base The base data structure
+ *
+ * \returns The schema or NULL if there is an error.
  */
 ldms_schema_t base_schema_new(base_data_t base);
+
+/**
+ * \brief Free the schema inside the base_data_t
+ * \param base The base data structure
+ */
+void base_schema_delete(base_data_t base);
 
 /**
  * \brief Configures job data acquisition for the sampler
@@ -145,6 +157,11 @@ base_data_t base_config(struct attr_value_list *avl,
 
 /**
  * \brief Create and initialize the base entries of the metric set
+ *
+ * A pointer to the set is stored in the "set" field of the
+ * base_data_t, however base_del() does _not_ free the metric set.
+ * Use base_set_delete() to free the metric set.
+ *
  * \param base The base data structure
  */
 ldms_set_t base_set_new(base_data_t base);
