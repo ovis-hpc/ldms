@@ -53,7 +53,6 @@ static struct {
 
 static ldmsd_msg_log_f log_fn;
 static base_data_t sampler_base; /* contains the schema */
-static ldms_record_t ibmad_record; /* a pointer */
 
 /* red-black tree root for infiniband port metrics */
 static struct rbt interfaces_tree;
@@ -174,70 +173,74 @@ static struct {
         int rates[ARRAY_SIZE(all_metric_names)];
 } mindex;
 
-/* Creates the schema, the "ibmad_record", and the metric set */
+/* Creates the schema and the metric set */
 static int ibmad_initialize()
 {
+        ldms_record_t rec_def; /* a pointer */
 	char metric_name[128];
         int rc;
         int i;
 
         log_fn(LDMSD_LDEBUG, SAMP" ibmad_initialize()\n");
 
-        /* Create the record that will be used in the schema's list */
-        ibmad_record = ldms_record_create("ib_nic");
-        if (ibmad_record == NULL)
+        /* Create the schema */
+        base_schema_new(sampler_base);
+        if (sampler_base->schema == NULL)
                 goto err1;
-        rc = ldms_record_metric_add(ibmad_record, "ca_name", NULL, LDMS_V_CHAR_ARRAY, 64);
-        if (rc < 0)
+
+        /* Create the record that will be used in the schema's list */
+        rec_def = ldms_record_create("ib_nic");
+        if (rec_def == NULL)
                 goto err2;
+        rc = ldms_record_metric_add(rec_def, "ca_name", NULL, LDMS_V_CHAR_ARRAY, 64);
+        if (rc < 0)
+                goto err3;
         mindex.ca_name = rc;
-        rc = ldms_record_metric_add(ibmad_record, "port", NULL, LDMS_V_U32, 1);
+        rc = ldms_record_metric_add(rec_def, "port", NULL, LDMS_V_U32, 1);
         if (rc < 0)
-                goto err2;
+                goto err3;
         mindex.port = rc;
 	for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
 		/* add ibmad counter metrics */
 		snprintf(metric_name, 128, "%s",
 			 all_metric_names[i]);
 		mindex.counters[i] =
-			ldms_record_metric_add(ibmad_record, metric_name, NULL, LDMS_V_U64, 1);
+			ldms_record_metric_add(rec_def, metric_name, NULL, LDMS_V_U64, 1);
+                if (mindex.rates[i] < 0)
+                        goto err3;
 
 		if (conf.use_rate_metrics) {
 			/* add ibmad rate metrics */
 			snprintf(metric_name, 128, "%s.rate",
 				 all_metric_names[i]);
 			mindex.rates[i] =
-				ldms_record_metric_add(ibmad_record, metric_name, NULL, LDMS_V_D64, 1);
+				ldms_record_metric_add(rec_def, metric_name, NULL, LDMS_V_D64, 1);
+                        if (mindex.rates[i] < 0)
+                                goto err3;
 		}
 	}
-
-        /* Create the schema */
-        base_schema_new(sampler_base);
-        if (sampler_base->schema == NULL)
-                goto err2;
-        rc = ldms_schema_record_add(sampler_base->schema, ibmad_record);
+        rc = ldms_schema_record_add(sampler_base->schema, rec_def);
         if (rc < 0) {
                 goto err3;
         }
         mindex.record_definition = rc;
         rc = ldms_schema_metric_list_add(sampler_base->schema, "ib_nics", NULL, 1024);
         if (rc < 0) {
-                goto err3;
+                goto err2;
         }
         mindex.record_list = rc;
 
         /* Create the metric set */
         base_set_new(sampler_base);
         if (sampler_base->set == NULL) {
-                goto err3;
+                goto err2;
         }
 
         return 0;
 err3:
-        ldms_schema_delete(sampler_base->schema);
+        ldms_record_delete(rec_def);
 err2:
-        ldms_record_delete(ibmad_record);
-        ibmad_record = NULL;
+        base_schema_delete(sampler_base);
 err1:
         log_fn(LDMSD_LERROR, SAMP" schema creation failed\n");
         return -1;
@@ -718,8 +721,8 @@ static int parse_port_filters(const char *val)
 static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-        int rc;
         char *value;
+        int rc;
 
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
 
@@ -734,7 +737,8 @@ static int config(struct ldmsd_plugin *self,
 	const char *exclude = av_value(avl, "exclude");
 	if (include && exclude) {
                 log_fn(LDMSD_LERROR, SAMP": config: specify either include or exclude option but not both.\n");
-		return 1;
+		rc = -1;
+                goto err;
 	}
 	const char *val = NULL;
 	if (include) {
@@ -748,15 +752,19 @@ static int config(struct ldmsd_plugin *self,
 
         rc = parse_port_filters(val);
         if (rc != 0) {
-                return rc;
+                goto err;
         }
 
         rc = ibmad_initialize();
         if (rc != 0) {
-                return rc;
+                goto err;
         }
 
         return 0;
+err:
+        base_del(sampler_base);
+        sampler_base = NULL;
+        return rc;
 }
 
 static int sample(struct ldmsd_sampler *self)
@@ -775,12 +783,9 @@ static void term(struct ldmsd_plugin *self)
 {
         log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
         interfaces_tree_destroy();
+        base_set_delete(sampler_base);
         base_del(sampler_base);
-        sampler_base->schema = NULL;
-        if (ibmad_record != NULL) {
-                ldms_record_delete(ibmad_record);
-                ibmad_record = NULL;
-        }
+        sampler_base = NULL;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
