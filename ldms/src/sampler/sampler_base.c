@@ -287,6 +287,14 @@ ldms_schema_t base_schema_new(base_data_t base)
 	return NULL;
 }
 
+void base_schema_delete(base_data_t base)
+{
+        if (!base || !base->schema)
+                return;
+        ldms_schema_delete(base->schema);
+        base->schema = NULL;
+}
+
 int __set_init(base_data_t base)
 {
 	int rc;
