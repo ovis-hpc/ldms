@@ -45,6 +45,10 @@ cat << EOF > $LDMSD_RUN/metrics.input
         "^/opt/ness"
     ],
   "metrics" : [
+    "status_real_user",
+    "status_eff_user",
+    "status_real_group",
+    "status_eff_group",
     "stat_pid" ,
     "stat_state",
     "stat_rss",

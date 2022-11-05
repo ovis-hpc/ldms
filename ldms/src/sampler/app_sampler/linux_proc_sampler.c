@@ -60,6 +60,8 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <assert.h>
+#include <grp.h>
+#include <pwd.h>
 #include <sys/sysmacros.h>
 
 #include <coll/rbt.h>
@@ -174,7 +176,15 @@ enum linux_proc_sampler_metric {
 	APP_STATUS_PPID,
 	APP_STATUS_TRACERPID,
 	APP_STATUS_UID,
+	APP_STATUS_RUSERNAME,
+	APP_STATUS_EUSERNAME,
+	APP_STATUS_SUSERNAME,
+	APP_STATUS_FUSERNAME,
 	APP_STATUS_GID,
+	APP_STATUS_RGROUPNAME,
+	APP_STATUS_EGROUPNAME,
+	APP_STATUS_SGROUPNAME,
+	APP_STATUS_FGROUPNAME,
 	APP_STATUS_FDSIZE,
 	APP_STATUS_GROUPS,
 	APP_STATUS_NSTGID,
@@ -251,6 +261,9 @@ struct linux_proc_sampler_metric_info_s {
 #define PROCPID_SZ 64
 /* #define MOUNTINFO_SZ 8192 */
 #define ROOT_SZ 4096
+#define STAT_USR_SZ 256 /* from sysconf */
+#define STAT_GRP_SZ 256
+#define GETPW_SZ 256
 #define STAT_COMM_SZ 4096
 #define WCHAN_SZ 128 /* NOTE: KSYM_NAME_LEN = 128 */
 #define SPECULATION_SZ 64
@@ -261,6 +274,8 @@ struct linux_proc_sampler_metric_info_s {
 #define MEMS_ALLOWED_SZ 128 /* 128 x 64 = 8192 bits max */
 #define CPUS_ALLOWED_LIST_SZ 128 /* length of list string */
 #define MEMS_ALLOWED_LIST_SZ 128 /* length of list string */
+#define UID_UNSET (uid_t)-1
+#define GID_UNSET (gid_t)-1
 
 struct linux_proc_sampler_metric_info_s metric_info[] = {
 	[APP_ALL] = { APP_ALL, "ALL", "", 0, 0, 0 },
@@ -354,8 +369,16 @@ struct linux_proc_sampler_metric_info_s metric_info[] = {
 	[APP_STATUS_PPID] = { APP_STATUS_PPID, "status_ppid", "" , LDMS_V_U64, 0, 0},
 	[APP_STATUS_TRACERPID] =
 		{ APP_STATUS_TRACERPID, "status_tracerpid", "" , LDMS_V_U64, 0, 0},
-	[APP_STATUS_UID] = { APP_STATUS_UID, "status_uid", "", LDMS_V_U64_ARRAY, 4, 0 },
-	[APP_STATUS_GID] = { APP_STATUS_GID, "status_gid", "" , LDMS_V_U64_ARRAY, 4, 0},
+	[APP_STATUS_UID] = { APP_STATUS_UID, "status_uid", "", LDMS_V_U64_ARRAY, 4, 1 },
+	[APP_STATUS_RUSERNAME] = { APP_STATUS_RUSERNAME, "status_real_user", "", LDMS_V_CHAR_ARRAY, STAT_USR_SZ, 1 },
+	[APP_STATUS_EUSERNAME] = { APP_STATUS_EUSERNAME, "status_eff_user", "", LDMS_V_CHAR_ARRAY, STAT_USR_SZ, 1 },
+	[APP_STATUS_SUSERNAME] = { APP_STATUS_SUSERNAME, "status_sav_user", "", LDMS_V_CHAR_ARRAY, STAT_USR_SZ, 1 },
+	[APP_STATUS_FUSERNAME] = { APP_STATUS_FUSERNAME, "status_fs_user", "", LDMS_V_CHAR_ARRAY, STAT_USR_SZ, 1 },
+	[APP_STATUS_GID] = { APP_STATUS_GID, "status_gid", "" , LDMS_V_U64_ARRAY, 4, 1},
+	[APP_STATUS_RGROUPNAME] = { APP_STATUS_RGROUPNAME, "status_real_group", "" , LDMS_V_CHAR_ARRAY, STAT_GRP_SZ, 1},
+	[APP_STATUS_EGROUPNAME] = { APP_STATUS_EGROUPNAME, "status_eff_group", "" , LDMS_V_CHAR_ARRAY, STAT_GRP_SZ, 1},
+	[APP_STATUS_SGROUPNAME] = { APP_STATUS_SGROUPNAME, "status_sav_group", "" , LDMS_V_CHAR_ARRAY, STAT_GRP_SZ, 1},
+	[APP_STATUS_FGROUPNAME] = { APP_STATUS_FGROUPNAME, "status_fs_group", "" , LDMS_V_CHAR_ARRAY, STAT_GRP_SZ, 1},
 	[APP_STATUS_FDSIZE] = { APP_STATUS_FDSIZE, "status_fdsize", "" , LDMS_V_U64, 0, 0},
 	[APP_STATUS_GROUPS] = { APP_STATUS_GROUPS, "status_groups", "", LDMS_V_U64_ARRAY, GROUPS_SZ, 0 },
 	[APP_STATUS_NSTGID] = { APP_STATUS_NSTGID, "status_nstgid", "", LDMS_V_U64_ARRAY, NS_SZ, 0 },
@@ -854,6 +877,10 @@ int __line_sigq(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *line
 static
 int __line_str(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf, linux_proc_sampler_metric_e code);
 static
+int __line_uid(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf, linux_proc_sampler_metric_e code);
+static
+int __line_gid(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf, linux_proc_sampler_metric_e code);
+static
 int __line_bitmap(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf, linux_proc_sampler_metric_e code);
 
 static status_line_handler_t find_status_line_handler(const char *key);
@@ -892,8 +919,8 @@ struct status_line_handler_s status_line_tbl[] = {
 	{ "Pid", APP_STATUS_PID, __line_dec},
 	{ "PPid", APP_STATUS_PPID, __line_dec},
 	{ "TracerPid", APP_STATUS_TRACERPID, __line_dec},
-	{ "Uid", APP_STATUS_UID, __line_dec_array},
-	{ "Gid", APP_STATUS_GID, __line_dec_array},
+	{ "Uid", APP_STATUS_UID, __line_uid},
+	{ "Gid", APP_STATUS_GID, __line_gid},
 	{ "FDSize", APP_STATUS_FDSIZE, __line_dec},
 	{ "Groups", APP_STATUS_GROUPS, __line_dec_array},
 	{ "NStgid", APP_STATUS_NSTGID, __line_dec_array},
@@ -978,7 +1005,10 @@ static int status_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t 
 		}
 		ptr[strlen(ptr)-1] = '\0'; /* eliminate trailing space */
 		if (inst->metric_idx[sh->code] > 0
-				|| sh->code == APP_STATUS_SIG_QUEUED) {
+			|| sh->code == APP_STATUS_SIG_QUEUED
+			|| sh->code == APP_STATUS_UID
+			|| sh->code == APP_STATUS_GID
+			) {
 			sh->fn(inst, set, ptr, sh->code);
 		}
 	}
@@ -1083,6 +1113,141 @@ int __line_str(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *lineb
 	ldms_metric_array_set_char(set, midx, alen-1, '\0'); /* to update data generation number */
 	return 0;
 }
+
+static const char *lps_info_uid[4] = {
+	"0.uid.lps", "1.uid.lps", "2.uid.lps", "3.uid.lps"
+};
+static const char *lps_info_gid[4] = {
+	"0.gid.lps", "1.gid.lps", "2.gid.lps", "3.gid.lps"
+};
+#define GETXXYID_SZ 1024
+static
+int __line_uid(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf,
+		linux_proc_sampler_metric_e code)
+{
+	/* populate `status_uid` and/or `status_*username` if changed. */
+	int n;
+	uint64_t x[4];
+	char w[4][20] = { {'\0'}, {'\0'}, {'\0'}, {'\0'} };
+	n = sscanf(linebuf, "%" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64,
+			 x, x+1, x+2, x+3);
+	if (n != 4)
+		return EINVAL;
+	n = sscanf(linebuf, "%20s %20s %20s %20s", w[0], w[1], w[2], w[3]);
+	if (n != 4)
+		return EINVAL;
+	int k;
+	for (k = 0; k < 4; k++) {
+		int changed = -1;
+		if (inst->metric_idx[APP_STATUS_UID] > 0) {
+			uint64_t oldu = ldms_metric_array_get_u64(set,
+				inst->metric_idx[APP_STATUS_UID], k);
+			if (oldu != x[k]) {
+				ldms_metric_array_set_u64(set,
+					inst->metric_idx[APP_STATUS_UID], k, x[k]);
+				changed = 1;
+			} else {
+				changed = 0;
+			}
+		}
+		if (inst->metric_idx[APP_STATUS_RUSERNAME + k] > 0) {
+			char buf[GETXXYID_SZ];
+			if (changed != 0) {
+				/* got new uid or did not store uid as metric */
+				struct passwd pw;
+				struct passwd *pwp = NULL;
+				if (changed < 0) {
+					/* if cannot cache uid as metric, keep in info */
+					char * oldu;
+					oldu = ldms_set_info_get(set, lps_info_uid[k]);
+					if (!oldu || strcmp(oldu, w[k])) {
+						ldms_set_info_set(set,
+							lps_info_uid[k], w[k]);
+						free(oldu);
+					} else {
+						free(oldu);
+						continue;
+					}
+				}
+				getpwuid_r((uid_t)x[k], &pw, buf, sizeof(buf), &pwp);
+				if (pwp) {
+					ldms_metric_array_set_str(set,
+						inst->metric_idx[APP_STATUS_RUSERNAME + k],
+						pwp->pw_name);
+				} else {
+					ldms_metric_array_set_str(set,
+						inst->metric_idx[APP_STATUS_RUSERNAME + k],
+						"no_user_for_uid");
+				}
+			}
+		}
+	}
+	return 0;
+}
+
+static
+int __line_gid(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf,
+		linux_proc_sampler_metric_e code)
+{
+	/* populate `status_uid` and/or `status_username` if changed. */
+	int n;
+	uint64_t x[4];
+	char w[4][20] = { {'\0'}, {'\0'}, {'\0'}, {'\0'} };
+	n = sscanf(linebuf, "%" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64,
+			 x, x+1, x+2, x+3);
+	if (n != 4)
+		return EINVAL;
+	n = sscanf(linebuf, "%20s %20s %20s %20s", w[0], w[1], w[2], w[3]);
+	if (n != 4)
+		return EINVAL;
+	int k;
+	for (k = 0; k < 4; k++) {
+		int changed = -1;
+		if (inst->metric_idx[APP_STATUS_GID] > 0) {
+			uint64_t oldu = ldms_metric_array_get_u64(set,
+				inst->metric_idx[APP_STATUS_GID], k);
+			if (oldu != x[k]) {
+				ldms_metric_array_set_u64(set,
+					inst->metric_idx[APP_STATUS_GID], k, x[k]);
+				changed = 1;
+			} else {
+				changed = 0;
+			}
+		}
+		if (inst->metric_idx[APP_STATUS_RGROUPNAME + k] > 0) {
+			char buf[GETXXYID_SZ];
+			if (changed != 0) {
+				struct group gr;
+				struct group *grp = NULL;
+				if (changed < 0) {
+					/* if did not store gid as metric, keep in info */
+					char * oldu;
+					oldu = ldms_set_info_get(set, lps_info_gid[k]);
+					if (!oldu || strcmp(oldu, w[k])) {
+						ldms_set_info_set(set,
+							lps_info_gid[k], w[k]);
+						free(oldu);
+					} else {
+						free(oldu);
+						continue;
+					}
+				}
+				getgrgid_r((gid_t)x[k], &gr, buf, sizeof(buf), &grp);
+				if (grp) {
+					ldms_metric_array_set_str(set,
+						inst->metric_idx[APP_STATUS_RGROUPNAME + k],
+						grp->gr_name);
+				} else {
+					ldms_metric_array_set_str(set,
+						inst->metric_idx[APP_STATUS_RGROUPNAME + k],
+						"no_group_for_gid");
+				}
+			}
+		}
+	}
+	return 0;
+}
+
 
 static
 int __line_bitmap(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf,
@@ -2881,8 +3046,6 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 			struct stat statb;
 			memset(&statb, 0, sizeof(statb));
 			if (stat(buf, &statb)) {
-				INST_LOG(inst, LDMSD_LDEBUG, "cannot stat %s: %d %s\n",
-					buf, errno, STRERROR(errno));
 				continue;
 			}
 			fentry_send_state(inst, app_set, &statb, fe, "opened");
@@ -3181,6 +3344,14 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 	ldms_metric_array_set_str(set, inst->exe_idx, exe_string);
 	if (inst->sc_clk_tck)
 		ldms_metric_set_s64(set, inst->sc_clk_tck_idx, inst->sc_clk_tck);
+	if (inst->metric_idx[APP_STATUS_UID] > 0)
+		for (len = 0; len < 4; len++)
+			ldms_metric_array_set_u64(set,
+				inst->metric_idx[APP_STATUS_UID], len, UID_UNSET);
+	if (inst->metric_idx[APP_STATUS_GID] > 0)
+		for (len = 0; len < 4; len++)
+			ldms_metric_array_set_u64(set,
+				inst->metric_idx[APP_STATUS_GID], len, GID_UNSET);
 	app_set->set = set;
 	rbn_init(&app_set->rbn, (void*)&app_set->key);
 
