@@ -286,12 +286,15 @@ endif
 endif
 
 if ENABLE_OPA2
-OPA2_LIBADD = -libmad -libumad -lpthread
+if HAVE_LIBIBMAD
+if HAVE_LIBIBUMAD
+OPA2_LIBADD = $(LTLIBIBMAD) $(LTLIBIBUMAD) -lpthread
 libopa2_la_SOURCES = opa2.c
-OPAINC=/usr/include/infiniband
-libopa2_la_CFLAGS = $(AM_CFLAGS) -I$(OPAINC)
+libopa2_la_CFLAGS = $(AM_CFLAGS) -I/usr/include/infiniband
 libopa2_la_LIBADD = $(AM_LDFLAGS) $(COMMON_LIBADD) $(OPA2_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libopa2.la
+endif
+endif
 endif
 
 if ENABLE_ATASMART
