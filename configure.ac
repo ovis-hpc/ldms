@@ -405,32 +405,31 @@ AS_IF([test "x$enable_papi" != xno],[
 AM_CONDITIONAL([HAVE_LIBPAPI], [test "x$HAVE_LIBPAPI" = xyes])
 AM_CONDITIONAL([HAVE_LIBPFM], [test "x$HAVE_LIBPFM" = xyes])
 
+AC_LIB_HAVE_LINKFLAGS([ibmad], [], [#include <infiniband/mad.h>])
+AM_CONDITIONAL([HAVE_LIBIBMAD], [test "x$HAVE_LIBIBMAD" = xyes])
+
+AC_LIB_HAVE_LINKFLAGS([ibumad], [], [#include <infiniband/umad.h>])
+AM_CONDITIONAL([HAVE_LIBIBUMAD], [test "x$HAVE_LIBIBUMAD" = xyes])
+
+CPPFLAGS_BACKUP=$CPPFLAGS
+CPPFLAGS="$CPPFLAGS -I/usr/include/infiniband"
+AC_CHECK_HEADERS([iba/ib_types.h], [], [])
+CPPFLAGS=$CPPFLAGS_BACKUP
+AM_CONDITIONAL([HAVE_IBA_IB_TYPES_H], [test "x$ac_cv_header_iba_ib_types_h" = xyes])
+
 AC_ARG_ENABLE([infiniband],
 	[AS_HELP_STRING([--enable-infiniband], [require components that depend upon libibmad and libibumad @<:@default=check@:>@])],
 	[],
 	[enable_infiniband="check"])
-AS_IF([test "x$enable_infiniband" != xno],[
-	AC_LIB_HAVE_LINKFLAGS([ibmad], [], [#include <infiniband/mad.h>])
-	AS_IF([test "x$enable_infiniband" != xcheck],[
-		AS_IF([test "x$HAVE_LIBIBMAD" = xno],
-			[AC_MSG_ERROR([libibmad or <infiniband/mad.h> not found])])
-	])
-	AC_LIB_HAVE_LINKFLAGS([ibumad], [], [#include <infiniband/umad.h>])
-	AS_IF([test "x$enable_infiniband" != xcheck],[
-		AS_IF([test "x$HAVE_LIBIBUMAD" = xno],
-			[AC_MSG_ERROR([libibumad or <infiniband/umad.h> not found])])
-	])
-        CPPFLAGS_BACKUP=$CPPFLAGS
-        CPPFLAGS="$CPPFLAGS -I/usr/include/infiniband"
-        AC_CHECK_HEADERS([iba/ib_types.h], [], [
-		AS_IF([test "x$enable_infiniband" != xcheck],
-			[AC_MSG_ERROR([Header <infiniband/iba/ib_types.h> not found ])])
-        ])
-        CPPFLAGS=$CPPFLAGS_BACKUP
+AM_CONDITIONAL([ENABLE_INFINIBAND], [test "xenable_infiniband" != xno])
+AS_IF([test "x$enable_infiniband" = xyes],[
+	AS_IF([test "x$HAVE_LIBIBMAD" = xno],
+		[AC_MSG_ERROR([infiniband required libibmad or <infiniband/mad.h> not found])])
+	AS_IF([test "x$HAVE_LIBIBUMAD" = xno],
+		[AC_MSG_ERROR([infiniband required libibumad or <infiniband/umad.h> not found])])
+	AS_IF([test "x$ac_cv_header_iba_ib_types_h" = xno],
+		[AC_MSG_ERROR([infiniband required <infiniband/iba/ib_types.h> not found ])])
 ])
-AM_CONDITIONAL([HAVE_LIBIBMAD], [test "x$HAVE_LIBIBMAD" = xyes])
-AM_CONDITIONAL([HAVE_LIBIBUMAD], [test "x$HAVE_LIBIBUMAD" = xyes])
-AM_CONDITIONAL([HAVE_IBA_IB_TYPES_H], [test "x$ac_cv_header_iba_ib_types_h" = xyes])
 
 # enable tx2mon by default only when sensible.
 AC_ARG_ENABLE([tx2mon],
@@ -859,11 +858,11 @@ AC_ARG_ENABLE([slingshot],
     [AS_HELP_STRING([--enable-slingshot], [require the slinghost related plugins @<:@default=check@:>@])],
     [],
     [enable_slingshot="check"])
+AM_CONDITIONAL([ENABLE_SLINGSHOT], [test "xenable_slingshot" != xno])
 AS_IF([test "x$enable_slingshot" = xyes],[
     AS_IF([test "x$HAVE_LIBCXI" = xno],
         [AC_MSG_ERROR([libcxi or its headers not found])])
 ])
-AM_CONDITIONAL([ENABLE_SLINGSHOT], [test "xenable_slingshot" != xno])
 
 # define substitutions for configvars and other sed-generated files.
 # note carefully the escapes.
