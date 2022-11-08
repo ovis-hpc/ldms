@@ -61,9 +61,9 @@ import traceback
 import json
 import re
 
-from ldmsd import ldmsd_config, ldmsd_util, ldmsd_request
-from ldmsd.ldmsd_request import LDMSD_Request, LDMSD_Req_Attr
-from ldmsd.ldmsd_request import LDMSD_Req_Attr
+from ldmsd import ldmsd_config, ldmsd_util, ldmsd_communicator
+from ldmsd.ldmsd_communicator import LDMSD_Request, LDMSD_Req_Attr
+from ldmsd.ldmsd_communicator import LDMSD_Req_Attr, Communicator
 import errno
 
 LDMSD_REQ_SOM_F=1
@@ -87,14 +87,15 @@ class LdmsdCmdParser(cmd.Cmd):
         self.msg_no = 1
 
         if host and port:
-            self.ctrl = ldmsd_config.ldmsdInbandConfig(host = host,
-                                                   port = port,
-                                                   xprt = xprt,
-                                                   auth = auth,
-                                                   auth_opt = auth_opt)
+            self.comm = Communicator(xprt,
+                                     host,
+                                     port,
+                                     auth,
+                                     auth_opt)
+            self.comm.connect()
             self.prompt = "{0}:{1}:{2}> ".format(xprt, host, port)
         else:
-            self.ctrl = None
+            self.comm = None
             self.prompt = "(not connected)> "
 
         if infile:
@@ -103,7 +104,7 @@ class LdmsdCmdParser(cmd.Cmd):
             cmd.Cmd.__init__(self)
 
     def __complete_attr_list(self, verb, text):
-        req_opt_attr = self.ctrl.get_cmd_attr_list(verb)
+        req_opt_attr = self.comm.get_cmd_attr_list(verb)
         attr_list = []
         if req_opt_attr['req'] is not None:
             attr_list = req_opt_attr['req']
@@ -120,6 +121,14 @@ class LdmsdCmdParser(cmd.Cmd):
             if tk.endswith("="):
                 return False
         return True
+
+    def __check_command_args(self, verb, args):
+        req_opt_attr = self.comm.get_cmd_attr_list(verb)
+        if set(req_opt_attr['req']) <= set(args):
+            return 0
+        else:
+            print(f'Error: The attributes {req_opt_attr["req"]} are required by {verb}')
+            return 1
 
     def do_shell(self, args):
         """
@@ -140,37 +149,36 @@ class LdmsdCmdParser(cmd.Cmd):
         print(args)
 
     def do_connect(self, args):
-        """
-        Connect to an LDMS daemon
-        Parameters:
-        xprt=     The transport name [sock, rdma, ugni] (default: sock)
-        host=     The hostname of the host (default: localhost)
-        port=     The port number on which the LDMS is listening
-        auth=     The authentication method (default: none)
-
-        Other ATTR=VALUE parameters will be passed to authentication plugin.
-        """
-        if self.ctrl:
-            print("WARN: Already connected, do nothing.")
-            return None
-        kwargs = {
+        if self.state != self.comm.CONNECTED:
+            if self.comm:
+                self.comm.connect()
+            kwargs = {
                 "xprt": "sock",
                 "host": "localhost",
                 "port": None,
                 "auth": "none",
                 "auth_opt": {},
             }
-        r = re.compile(r"\s*(\w+)=(\w+)")
-        for attr, value in r.findall(args):
-            if attr in kwargs:
-                kwargs[attr] = value
+            r = re.compile(r"\s*(\w+)=(\w+)")
+            for attr, value in r.findall(args):
+                if attr in kwargs:
+                    kwargs[attr] = value
+                else:
+                    # treat as auth options
+                    kwargs["auth_opt"][attr] = value
+            self.comm = Communicator(kwargs['xprt'],
+                                     kwargs['host'],
+                                     kwargs['port'],
+                                     kwargs['auth'],
+                                     kwargs['auth_opt'])
+            rc = self.comm.connect()
+            if rc:
+                self.promt = "Error connecting to {1} on port {2} with {0}".format(xprt, host, port)
             else:
-                # treat as auth options
-                kwargs["auth_opt"][attr] = value
-        self.ctrl = ldmsd_config.ldmsdInbandConfig(**kwargs)
-        self.prompt = "{0}:{1}:{2}> ".format(kwargs["xprt"],
-                                             kwargs["host"],
-                                             kwargs["port"])
+                self.prompt = "{0}:{1}:{2}> ".format(xprt, host, port)
+        else:
+            print(f"WARN: Already connected, do nothing.")
+            return None
 
     def complete_connect(self, text, line, begidx, endidx):
         name_list = ["xprt=", "host=", "port=", "auth="]
@@ -187,72 +195,49 @@ class LdmsdCmdParser(cmd.Cmd):
             return ''
         return line
 
-    def handle(self, verb, args):
-        if args and not self.__check_command_syntax(args):
+    def handle_args(self, verb, _args):
+        if _args and not self.__check_command_syntax(_args):
             print("Syntax error, there are attributes for which no value is given.")
+        req_opt_attr = self.comm.get_cmd_attr_list(verb)
 
-        if not self.ctrl:
+        if not self.comm:
             print("Error: no LDMS connection")
             return None
 
-        attr_list = []
-        if args:
+        kwargs = {}
+        if _args is not None:
             attr_s = []
-            attr_str_list = args.split()
-
+            cfg_str = ''
+            attr_str_list = _args.split()
             for attr_str in attr_str_list:
                 name = None
                 value = None
                 try:
-                    [name, value] = attr_str.split("=")
+                    name, value = attr_str.split("=")
+                    if (verb == "config") or (verb == "env") or (verb == 'auth_add'):
+                        if name not in req_opt_attr['req'] and name not in req_opt_attr['opt']:
+                            if len(cfg_str) > 0:
+                                cfg_str += ' '
+                            cfg_str += attr_str
+                            continue
+
+                    kwargs[name] = value
                 except ValueError:
                     # keyword
-                    [name] = attr_str.split("=")
-                except:
-                    raise
-                if (verb == "config" and name != "name") or (verb == "env"):
-                    attr_s.append(attr_str)
-                elif (verb == "auth_add" and name not in ["name", "plugin"]):
-                    attr_s.append(attr_str)
-                else:
-                    try:
-                        attr = LDMSD_Req_Attr(value = value, attr_name = name)
-                    except KeyError:
-                        attr_s.append(attr_str)
-                    except Exception:
-                        raise
-                    else:
-                        attr_list.append(attr)
+                    kwargs[attr_str] = True
 
-            if len(attr_s) > 0:
-                attr_str = " ".join(attr_s)
-                attr = LDMSD_Req_Attr(value = attr_str, attr_id = LDMSD_Req_Attr.STRING)
-                attr_list.append(attr)
+        if len(cfg_str) > 0:
+            kwargs['cfg_str'] = cfg_str
 
-        try:
-            request = LDMSD_Request(command = verb, attrs = attr_list)
-        except KeyError:
-            print("'{0}' is not supported.".format(verb))
+        if not all(key in kwargs.keys() for key in req_opt_attr['req']):
+            print(f'Error: The attribute(s) {set(req_opt_attr["req"]) - kwargs.keys()} are required by {verb}')
             return None
-        except:
-            raise
 
-        try:
-            request.send(self.ctrl)
-            if is_debug:
-                print("Sent request {0}".format(request.message_number_get()))
-        except:
-            print("Failed to send the command. The connection might be disconnected.")
-            print("Please 'quit' the interative session")
-            return {'msg': "", 'errcode': errno.EINTR}
+        for opt in req_opt_attr['opt']:
+            if opt not in kwargs:
+                kwargs[opt] = None
 
-        resp = request.receive(self.ctrl)
-        if is_debug:
-            print("Received the response of request {0}".format(request.message_number_get()))
-            print(resp)
-        if 'errcode' in resp.keys() and resp['errcode'] != 0:
-                print(resp['msg'])
-        return resp
+        return kwargs
 
     def read_none_tty(self, fin):
         for cmd in fin:
@@ -262,26 +247,36 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Parse commands from the specified file as if they were entered
         on the console.
+
+        Parameters:
+        path - path to file
         """
-        script = open(arg, 'r')
-        self.read_none_tty(script)
-        for cmd in script:
-            self.onecmd(cmd)
-        script.close()
+        arg = self.handle_args('source', arg)
+        if arg:
+            script = open(arg['path'], 'r')
+            self.read_none_tty(script)
+            for cmd in script:
+                self.onecmd(cmd)
+            script.close()
 
     def do_script(self, arg):
         """
         Execute the given executable file and submit the resulting configuration to LDMSD
         Example:
             script /path/to/executable
+
+        Parameters:
+        path  - the executable file path
         """
-        exit_code, out, err = ldmsd_util.sh_exec(arg)
-        if exit_code != 0:
-            print("Script exited with code {0} and error: {1}".format(exit_code, err))
-            return
-        cfg = out.split("\n")
-        for cmd in cfg:
-            self.onecmd(cmd)
+        arg = self.handle_args('script', arg)
+        if arg:
+            exit_code, out, err = ldmsd_util.sh_exec(arg['path'])
+            if exit_code != 0:
+                print("Script exited with code {0} and error: {1}".format(exit_code, err))
+                return
+            cfg = out.split("\n")
+            for cmd in cfg:
+                self.onecmd(cmd)
 
     def do_try(self, arg):
         print(self.__complete_attr_list(arg, ""))
@@ -289,9 +284,11 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_usage(self, arg):
         """List the usage of the plugins loaded on the server.
         """
-        resp = self.handle('usage', arg)
-        if resp['errcode'] == 0:
-            print(resp['msg'])
+        arg = self.handle_args('usage', arg)
+        if arg:
+            rc, msg = self.comm.usage(arg['name'])
+            if rc == 0:
+                print(msg)
 
     def complete_usage(self, text, line, begidx, endidx):
         return self.__complete_attr_list('usage', text)
@@ -302,7 +299,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         name=     The plugin name
         """
-        self.handle('load', arg)
+        arg = self.handle_args('load', arg)
+        if arg:
+            rc, msg = self.comm.plugn_load(arg['name'])
+            if rc:
+                print(f'Error {rc} loading plugin {arg["name"]}: {msg}')
 
     def complete_load(self, text, line, begidx, endidx):
         return self.__complete_attr_list('load', text)
@@ -311,8 +312,8 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Exit the connected LDMS daemon
         """
-        resp = self.handle('daemon_exit', arg)
-        if resp['errcode'] == 0:
+        rc, msg = self.comm.daemon_exit()
+        if rc == 0:
             self.do_quit(arg)
             print("Please 'quit' the ldmsd_controller interface")
 
@@ -332,7 +333,18 @@ class LdmsdCmdParser(cmd.Cmd):
         auth=     The authentication method
         [perm=]   The permission to modify the producer in the future.
         """
-        self.handle('prdcr_add', arg)
+        arg = self.handle_args('prdcr_add', arg)
+        if arg:
+            rc, msg = self.comm.prdcr_add(arg['name'],
+                                          arg['type'],
+                                          arg['xprt'],
+                                          arg['host'],
+                                          arg['port'],
+                                          arg['interval'],
+                                          arg['auth'],
+                                          arg['perm'])
+            if rc:
+                print(f'Error adding prdcr {arg["name"]}: {msg}')
 
     def complete_prdcr_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_add', text)
@@ -344,7 +356,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         name=    The Producer name
         """
-        self.handle('prdcr_del', arg)
+        arg = self.handle_args('prdcr_del', arg)
+        if arg:
+            rc, msg = self.comm.prdcr_del(arg['name'])
+            if rc:
+                print(f'Error deleting prdcr {arg["name"]}: {msg}')
 
     def complete_prdcr_del(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_del', text)
@@ -357,7 +373,11 @@ class LdmsdCmdParser(cmd.Cmd):
         [interval=] The connection retry interval in micro-seconds. If this is not
                   specified, the previously configured value will be used.
         """
-        self.handle('prdcr_start', arg)
+        arg = self.handle_args('prdcr_start', arg)
+        if arg:
+            rc, msg = self.comm.prdcr_start(arg['name'], regex=False, reconnect=arg['interval'])
+            if rc:
+                print(f'Error starting {prdcr["name"]}: {msg}')
 
     def complete_prdcr_start(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_start', text)
@@ -370,7 +390,11 @@ class LdmsdCmdParser(cmd.Cmd):
         [interval=]  The connection retry interval in micro-seconds. If this is not
                    specified, the previously configured value will be used.
         """
-        self.handle('prdcr_start_regex', arg)
+        arg = self.handle_args('prdcr_start_regex', arg)
+        if arg:
+            rc, msg = self.comm.prdcr_start(arg['regex'], reconnect=arg['interval'])
+            if rc:
+                print(f'Error starting prdcr(s) with regex {arg["regex"]}: {msg}')
 
     def complete_prdcr_start_regex(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_start_regex', text)
@@ -381,7 +405,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         name=  The producer name
         """
-        self.handle('prdcr_stop', arg)
+        arg = self.handle_args('prdcr_stop', arg)
+        if arg:
+            rc, msg = self.comm.prdcr_stop(arg['name'], regex=False)
+            if rc:
+                print(f'Error stopping prdcr {arg["name"]}: {msg}')
 
     def complete_prdcr_stop(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_stop', text)
@@ -392,7 +420,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         regex=   The regular expression
         """
-        self.handle('prdcr_stop_regex', arg)
+        arg = self.handle_args('prdcr_stop_regex', arg)
+        if arg:
+            rc, msg = self.comm.prdcr_stop(arg['regex'])
+            if rc:
+               print(f'Error stopping prdcr(s) with regex {arg["regex"]}: {msg}')
 
     def complete_prdcr_stop_regex(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_stop_regex', text)
@@ -404,7 +436,11 @@ class LdmsdCmdParser(cmd.Cmd):
         regex=     A regular expression matching producer names
         stream=    The stream name
         """
-        self.handle('prdcr_subscribe', arg)
+        arg = self.handle_args('prdcr_subscribe', arg)
+        if arg:
+            rc, msg = self.comm.prdcr_subscribe(arg['regex'], arg['stream'])
+            if rc:
+                print(f'Error subscribing to stream {arg["stream"]}: {msg}')
 
     def complete_prdcr_subscribe(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_subscribe', text)
@@ -416,7 +452,11 @@ class LdmsdCmdParser(cmd.Cmd):
         regex=     A regular expression matching producer names
         stream=    The stream name
         """
-        self.handle('prdcr_unsubscribe', arg)
+        arg = self.handle_args('prdcr_unsubscribe', arg)
+        if arg:
+            rc, msg = self.comm.prdcr_unsubscribe(arg['regex'], arg['stream'])
+            if rc:
+                print(f'Error unsubscribing from stream {arg["stream"]}: {msg}')
 
     def complete_prdcr_unsubscribe(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_unsubscribe', text)
@@ -455,15 +495,17 @@ class LdmsdCmdParser(cmd.Cmd):
                 return "-"
             return info['count']
 
-        resp = self.handle('prdcr_stream_dir', arg)
-        if resp is None:
+        arg = self.handle_args('prdcr_stream_dir', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.prdcr_stream_dir(arg['regex'])
+        if rc is None:
             raise RuntimeError("no response")
-        if (resp['errcode'] == 0):
-            streams = json.loads(resp['msg'])
+        if (rc == 0):
             print("Name         Producer     mode            bytes/sec    msg/sec      total bytes  msg count   ")
             print("-" * 12, "-" * 12, "-" * 15, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
             # print("--------------- -------------- --------------- ----- ----------------- -----------\n")
-            for sname,s in streams.items():
+            for sname,s in msg.items():
                 print(f"{sname:12}")
                 for name,p in s.items():
                     if sname == "_AGGREGATED_":
@@ -497,7 +539,16 @@ class LdmsdCmdParser(cmd.Cmd):
                            specified, the value is `false`.
         [perm=]     The permission to modify the updater in the future.
         """
-        self.handle('updtr_add', arg)
+        arg = self.handle_args('updtr_add', arg)
+        if arg:
+            rc, msg = self.comm.updtr_add(arg['name'],
+                                          arg['interval'],
+                                          arg['offset'],
+                                          arg['push'],
+                                          arg['auto'],
+                                          arg['perm'])
+            if rc:
+                print(f'Error adding updtr {arg["name"]}: {msg}')
 
     def complete_updtr_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_add', text)
@@ -508,7 +559,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameter:
         name=     The update policy name
         """
-        self.handle('updtr_del', arg)
+        arg = self.handle_args('updtr_del', arg)
+        if arg:
+            rc, msg = self.comm.updtr_del(arg['name'])
+            if rc:
+                print(f'Error removing updater: {msg}')
 
     def complete_updtr_del(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_del', text)
@@ -524,7 +579,11 @@ class LdmsdCmdParser(cmd.Cmd):
                 match=schema, the expression will match the set's
                 schema name.
         """
-        self.handle('updtr_match_add', arg)
+        arg = self.handle_args('updtr_match_add', arg)
+        if arg:
+            rc, msg = self.comm.updtr_match_add(arg['name'], arg['regex'], arg['match'])
+            if rc:
+                print(f'Error adding match condition {arg["match"]} to {arg["name"]}: {msg}')
 
     def complete_updtr_match_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_match_add', text)
@@ -540,7 +599,11 @@ class LdmsdCmdParser(cmd.Cmd):
                 match=schema, the expression will match the set's
                 schema name.
         """
-        self.handle('updtr_match_del', arg)
+        arg = self.handle_args('updtr_match_del', arg)
+        if arg:
+            rc, msg = self.comm.updtr_match_del(arg['name'])
+            if rc:
+                print(f'Error deleting match condition from the updater: {msg}')
 
     def complete_updtr_match_del(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_match_del', text)
@@ -551,15 +614,20 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters are as follows:
         name=  The update policy name. If none, return all updaters
         """
-        resp = self.handle('updtr_match_list', arg)
-        if resp['errcode'] == 0:
-            updaters = json.loads(resp['msg'])
+        arg = self.handle_args('updtr_match_list', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.updtr_match_list(arg['name'])
+        if rc == 0:
+            updaters = json.loads(msg)
             print("     Updater Name        Set Name")
             print("--------------------- ---------------- ")
             for updtr in updaters:
                 print("{0:21}".format(updtr['name']))
                 for set_ in updtr['match_sets']:
                     print("                     {0:16}".format(set_))
+        else:
+            print(f'Error retrieving matched sets: {msg}')
 
     def complete_updtr_match_list(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_match_list', text)
@@ -571,7 +639,11 @@ class LdmsdCmdParser(cmd.Cmd):
         name=   The update policy name
         regex=  A regular expression matching zero or more producers
         """
-        self.handle('updtr_prdcr_add', arg)
+        arg = self.handle_args('updtr_prdcr_add', arg)
+        if arg:
+            rc, msg = self.comm.updtr_prdcr_add(arg['name'], arg['regex'])
+            if rc:
+                print(f'Error adding prdcr {arg["name"]}: {msg}')
 
     def complete_updtr_prdcr_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_prdcr_add', text)
@@ -583,7 +655,11 @@ class LdmsdCmdParser(cmd.Cmd):
         name=    The update policy name
         regex=   A regular expression matching zero or more producers
         """
-        self.handle('updtr_prdcr_del', arg)
+        arg = self.handle_args('updtr_prdcr_del', arg)
+        if arg:
+            rc, msg = self.comm.updtr_prdcr_del(arg['name'], arg['regex'])
+            if rc:
+                print(f'Error deleting prdcr {arg["name"]}: {msg}')
 
     def complete_updtr_prdcr_del(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_prdcr_del', text)
@@ -603,7 +679,11 @@ class LdmsdCmdParser(cmd.Cmd):
                            the updater will schedule the set updates according
                            to the default schedule, i.e., the given interval and offset values.
         """
-        self.handle('updtr_start', arg)
+        arg = self.handle_args('updtr_start', arg)
+        if arg:
+            rc, msg = self.comm.updtr_start(arg['name'], arg['interval'], arg['offset'], arg['auto'])
+            if rc:
+                print(f'Error starting updtr {arg["name"]}: {msg}')
 
     def complete_updtr_start(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_start', text)
@@ -615,7 +695,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Paramaeters:
         name=   The update policy name
         """
-        self.handle('updtr_stop', arg)
+        arg = self.handle_args('updtr_stop', arg)
+        if arg:
+            rc, msg = self.comm.updtr_stop(arg['name'])
+            if rc:
+                print(f'Error stopping updater {arg["name"]}: {msg}')
 
     def complete_updtr_stop(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_stop', text)
@@ -633,7 +717,18 @@ class LdmsdCmdParser(cmd.Cmd):
         [perm=]    The permission to modify the storage policy in the future.
         [decomposition=]   Path to a decomposition configuration file
         """
-        self.handle('strgp_add', arg)
+        arg = self.handle_args('strgp_add', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.strgp_add(arg['name'],
+                                      arg['plugin'],
+                                      arg['container'],
+                                      arg['schema'],
+                                      arg['perm'],
+                                      arg['flush'],
+                                      arg['decomposition'])
+        if rc:
+            print(f'Error adding storage policy {arg["name"]}: {msg}')
 
     def complete_strgp_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_add', text)
@@ -645,7 +740,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         name=   The storage policy name
         """
-        self.handle('strgp_del', arg)
+        arg = self.handle_args('strgp_del', arg)
+        if arg:
+            rc, msg = self.comm.strgp_del(arg['name'])
+            if rc:
+                print(f'Error deleting storage policy {arg["name"]}: {msg}')
 
     def complete_strgp_del(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_del', text)
@@ -658,7 +757,11 @@ class LdmsdCmdParser(cmd.Cmd):
         name=   The storage policy name
         regex=  A regular expression matching metric set producers
         """
-        self.handle('strgp_prdcr_add', arg)
+        arg = self.handle_args('strgp_prdcr_add', arg)
+        if arg:
+            rc, msg = self.comm.strgp_prdcr_add(arg['name'], arg['regex'])
+            if rc:
+                print(f'Error adding producer(s) {arg["regex"]} to storage policy {arg["name"]}: {msg}')
 
     def complete_strgp_prdcr_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_prdcr_add', text)
@@ -670,7 +773,11 @@ class LdmsdCmdParser(cmd.Cmd):
         name=   The storage policy name
         regex=  The regular expression to remove
         """
-        self.handle('strgp_prdcr_del', arg)
+        arg = self.handle_args('strgp_prdcr_del', arg)
+        if arg:
+            rc, msg = self.comm.strgp_prdcr_del
+            if rc:
+                print(f'Error removing producer(s) {arg["regex"]} from storage policy {arg["name"]} match list: {msg}')
 
     def complete_strgp_prdcr_del(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_prdcr_del', text)
@@ -683,7 +790,11 @@ class LdmsdCmdParser(cmd.Cmd):
         name=   The storage policy name
         metric= The metric name
         """
-        self.handle('strgp_metric_add', arg)
+        arg = self.handle_args('strgp_metric_add', arg)
+        if arg:
+            rc, msg = self.comm.strgp_metric_add(arg['name'], arg['metric'])
+            if rc:
+                print(f'Error adding metric {arg["metric"]} to storage policy {arg["name"]}: {msg}')
 
     def complete_strgp_metric_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_metric_add', text)
@@ -695,7 +806,11 @@ class LdmsdCmdParser(cmd.Cmd):
         name=   The storage policy name
         metric= The metric to remove
         """
-        self.handle('strgp_metric_del', arg)
+        arg = self.handle_args('strgp_metric_del', arg)
+        if arg:
+            rc, msg = self.comm.strgp_metric_del(arg['name'], arg['metric'])
+            if rc:
+                print(f'Error deleting metric {arg["metric"]} to storage policy {arg["name"]}: {msg}')
 
     def complete_strgp_set_del(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_metric_del', text)
@@ -705,7 +820,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Start storage policy.
         name=    The storage policy name
         """
-        self.handle('strgp_start', arg)
+        arg = self.handle_args('strgp_start', arg)
+        if arg:
+            rc, msg = self.comm.strgp_start(arg['name'])
+            if rc:
+                print(f'Error starting storage policy {arg["name"]}: {msg}')
 
     def complete_strgp_start(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_start', text)
@@ -717,7 +836,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Paramaeters:
         name=    The storage policy name
         """
-        self.handle('strgp_stop', arg)
+        arg = self.handle_args('strgp_stop', arg)
+        if arg:
+            rc, msg = self.comm.strgp_stop(arg['name'])
+            if rc:
+                print(f'Error stopping storage policy {arg["name"]}: {msg}')
 
     def complete_strgp_stop(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_stop', text)
@@ -727,11 +850,12 @@ class LdmsdCmdParser(cmd.Cmd):
         Report the daemon status
         Parameters: NONE
         """
-        resp = self.handle('daemon_status', arg)
-        if resp['errcode'] == 0:
-            o = json.loads(resp['msg'])
-            print(f"Deamon State: {o['state']}\n")
-            self.display_thread_stats(o['thread_stats'])
+        rc, msg = self.comm.daemon_status()
+        if rc == 0:
+            print(f"Deamon State: {msg['state']}\n")
+            self.display_thread_stats(msg['thread_stats'])
+        else:
+            print(f'Error getting daemon status')
 
     def complete_daemon_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('daemon_status', text)
@@ -742,21 +866,25 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         [name=]        producer name
         """
-        resp = self.handle('prdcr_status', arg)
-        if resp['errcode'] == 0:
-            producers =  json.loads(resp['msg'])
-            print("Name             Host             Port         Transport    State")
-            print("---------------- ---------------- ------------ ------------ ------------")
-            for prdcr in producers:
-                print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
-                                                                  prdcr['host'],
-                                                                  prdcr['port'],
-                                                                  prdcr['transport'],
-                                                                  prdcr['state']))
-                for pset in prdcr['sets']:
-                    print("    {0:16} {1:16} {2}".format(pset['inst_name'],
-                                                         pset['schema_name'],
-                                                         pset['state']))
+        arg = self.handle_args('prdcr_status', arg)
+        if arg:
+            rc, msg = self.comm.prdcr_status(arg['name'])
+            if rc == 0 and msg is not None:
+                producers = msg
+                print("Name             Host             Port         Transport    State")
+                print("---------------- ---------------- ------------ ------------ ------------")
+                for prdcr in producers:
+                    print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
+                                                                      prdcr['host'],
+                                                                      prdcr['port'],
+                                                                      prdcr['transport'],
+                                                                      prdcr['state']))
+                    for pset in prdcr['sets']:
+                        print("    {0:16} {1:16} {2}".format(pset['inst_name'],
+                                                             pset['schema_name'],
+                                                             pset['state']))
+            else:
+                print(f'Error getting prdcr status: {msg}')
 
     def complete_prdcr_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_status', text)
@@ -769,10 +897,13 @@ class LdmsdCmdParser(cmd.Cmd):
         [instance=]        Instance name
         [schema=]          Schema name
         """
-        resp = self.handle('prdcr_set_status', arg)
-        if resp['errcode'] == 0:
+        arg = self.handle_args('prdcr_set_status', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.prdcr_set_status(arg['producer'], arg['instance'], arg['schema'])
+        if rc == 0:
             from datetime import datetime
-            metric_sets = json.loads(resp['msg'])
+            metric_sets = msg
 
             print("Name                 Schema Name      State      Origin           Producer         timestamp                duration (sec)")
             print("-------------------- ---------------- ---------- ---------------- ---------------- ------------------------- ---------------")
@@ -788,6 +919,8 @@ class LdmsdCmdParser(cmd.Cmd):
                                                                                 pset['producer'],
                                                                                 ts_str,
                                                                                 dur))
+        else:
+            print(f'Error reporting the status of prdcr sets: {msg}')
 
     def complete_prdcr_set_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_set_status', text)
@@ -798,25 +931,27 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         [name=]        updater name
         """
-        resp = self.handle('updtr_status', arg)
-        if resp['errcode'] == 0:
-            updaters = json.loads(resp['msg'])
-            print("Name             Interval:Offset  Auto   Mode            State")
-            print("---------------- ---------------- ------ --------------- ------------")
-            for updtr in updaters:
-                if 'auto' in updtr:
-                    auto = updtr['auto']
-                else:
-                    # for backward compatabiliity
-                    auto = updtr['????']
-                interval_s = cvt_intrvl_off_to_str(updtr['interval'], updtr['offset'])
-                print("{0:16} {1:16} {2:6} {3:15} {4}".format(
-                    updtr['name'], interval_s,
-                    auto, updtr['mode'], updtr['state']))
-                for prdcr in updtr['producers']:
-                    print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
-                        prdcr['name'], prdcr['host'], prdcr['port'],
-                        prdcr['transport'], prdcr['state']))
+        arg = self.handle_args('updtr_status', arg)
+        if arg:
+            rc, msg = self.comm.updtr_status(arg['name'])
+            if rc == 0:
+                updaters = msg
+                print("Name             Interval:Offset  Auto   Mode            State")
+                print("---------------- ---------------- ------ --------------- ------------")
+                for updtr in updaters:
+                    if 'auto' in updtr:
+                        auto = updtr['auto']
+                    else:
+                        # for backward compatabiliity
+                        auto = updtr['????']
+                    interval_s = cvt_intrvl_off_to_str(updtr['interval'], updtr['offset'])
+                    print("{0:16} {1:16} {2:6} {3:15} {4}".format(
+                        updtr['name'], interval_s,
+                        auto, updtr['mode'], updtr['state']))
+                    for prdcr in updtr['producers']:
+                        print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
+                            prdcr['name'], prdcr['host'], prdcr['port'],
+                            prdcr['transport'], prdcr['state']))
 
     def complete_updtr_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_status', text)
@@ -827,9 +962,12 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
             [name=]    a storage policy name
         """
-        resp = self.handle('strgp_status', arg)
-        if resp['errcode'] == 0:
-            policies = json.loads(resp['msg'])
+        arg = self.handle_args('strgp_status', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.strgp_status(arg['name'])
+        if rc == 0:
+            policies = msg
             print("Name             Container        Schema           Plugin           flush(sec)       State")
             print("---------------- ---------------- ---------------- ---------------- ------------ ----------------")
             for strgp in policies:
@@ -849,9 +987,12 @@ class LdmsdCmdParser(cmd.Cmd):
         return self.__complete_attr_list('strgp_status', text)
 
     def do_plugn_status(self, arg):
-        resp = self.handle('plugn_status', None)
-        if resp:
-            plugins = json.loads(resp['msg'])
+        arg = self.handle_args('plugn_status', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.plugn_status(arg['name'])
+        if rc == 0:
+            plugins = msg
             print("Name         Type         Interval     Offset       Libpath")
             print("------------ ------------ ------------ ------------ ------------")
             for plugn in plugins:
@@ -866,12 +1007,15 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         [name=]   The plugin name
         """
-        resp = self.handle('plugn_sets', arg)
-        if resp is None:
+        arg = self.handle_args('plugn_sets', arg)
+        if not arg:
             return
-        if 0 != resp['errcode']:
+        rc, msg = self.comm.plugn_sets(arg['name'])
+        if msg is None:
             return
-        plugns = json.loads(resp['msg'])
+        if 0 != rc:
+            return
+        plugns = json.loads(msg)
         for p in plugns:
             print("{0}:".format(p['plugin']))
             for s in p['sets']:
@@ -884,8 +1028,10 @@ class LdmsdCmdParser(cmd.Cmd):
         name=   The stream name
         data=   The data to publish
         """
-        resp = self.handle('publish', arg)
-        print(resp['errcode'])
+        arg = self.handle_args('publish', arg)
+        if arg:
+            rc, msg = self.comm.stream_publish(arg['name'], arg['data'])
+            print(msg)
 
     def do_subscribe(self, arg):
         """
@@ -896,8 +1042,10 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         name=   The stream name
         """
-        resp = self.handle('subscribe', arg)
-        print(resp['errcode'])
+        arg = self.handle_args('subscribe', arg)
+        if arg:
+            rc, msg = self.comm.stream_subscribe(arg['name'])
+            print(rc)
 
     def do_status(self, arg):
         """
@@ -927,7 +1075,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         name=   The plugin name
         """
-        self.handle('term', arg)
+        arg = self.handle_args('term', arg)
+        if arg:
+            rc, msg = self.plugn_term(arg['name'])
+            if rc:
+                print(f'Error terminating plugin {arg["name"]}: {msg}')
 
     def complete_term(self, text, line, begidx, endidx):
         return self.__complete_attr_list('term', text)
@@ -939,7 +1091,11 @@ class LdmsdCmdParser(cmd.Cmd):
         name=   The plugin name
         ...     Plugin specific attr=value tuples
         """
-        self.handle('config', arg)
+        arg = self.handle_args('config', arg)
+        if arg:
+            rc, msg = self.comm.plugn_config(arg['name'], arg['cfg_str'])
+            if rc:
+                print(f'Error configuring {arg["name"]} plugin: {msg}')
 
     def complete_config(self, text, line, begidx, endidx):
         return self.__complete_attr_list('config', text)
@@ -956,7 +1112,11 @@ class LdmsdCmdParser(cmd.Cmd):
                   collection will be synchronous; if the offset is not specified,
                   collection will be asynchronous.
         """
-        self.handle('start', arg)
+        arg = self.handle_args('start', arg)
+        if arg:
+            rc, msg = self.comm.plugn_start(arg['name'], arg['interval'], arg['offset'])
+            if rc:
+                print(f'Error starting {arg["name"]} plugin: {msg}')
 
     def complete_start(self, text, line, begidx, endidx):
         return self.__complete_attr_list('start', text)
@@ -967,7 +1127,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         name=     The plugin name
         """
-        self.handle('stop', arg)
+        arg = self.handle_args('stop', arg)
+        if arg:
+            rc, msg = self.comm.plugn_stop(arg['name'])
+            if rc:
+                print(f'Error stopping {arg["name"]} plugin: {msg}')
 
     def complete_stop(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stop', text)
@@ -981,7 +1145,11 @@ class LdmsdCmdParser(cmd.Cmd):
         metric= The metric name
         udata=  The desired user-data. This is a 64b unsigned integer.
         """
-        self.handle('udata', arg)
+        arg = self.handle_args('udata', arg)
+        if arg:
+            rc, msg = self.comm.set_udata(arg['instance'], arg['metric'], arg['udata'])
+            if rc:
+                print(f'Error setting udata: {msg}')
 
     def complete_udata(self, text, line, begidx, endidx):
         return self.__complete_attr_list('udata', text)
@@ -1000,7 +1168,15 @@ class LdmsdCmdParser(cmd.Cmd):
                             the user data of all matched metrics are set
                             to the base value.
         """
-        self.handle('udata_regex', arg)
+        arg = self.handle_args('udata_regex', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.set_udata_regex(arg['instance'],
+                                            arg['regex'],
+                                            arg['base'],
+                                            arg['incr'])
+        if rc:
+            print(f'Error setting udata with regex {arg["regex"]}: {msg}')
 
     def complete_udata_regex(self, text, line, begidx, endidx):
         return self.__complete_attr_list('udata_regex', text)
@@ -1011,7 +1187,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         level=    Verbosity levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]
         """
-        self.handle('loglevel', arg)
+        arg = self.handle_args('loglevel', arg)
+        if arg:
+            rc, msg = self.comm.loglevel(arg['level'])
+            if rc:
+                print(f'Error changing log level to arg["level"]: {msg}')
 
     def complete_loglevel(self, text, line, begidx, endidx):
         return self.__complete_attr_list('loglevel', text)
@@ -1022,7 +1202,9 @@ class LdmsdCmdParser(cmd.Cmd):
 	the timestamp in seconds, and then open a new file
 	with the name given at the ldmsd command-line.
         """
-        self.handle('logrotate', arg)
+        rc, msg = self.comm.logrotate()
+        if rc:
+            print(f'Error rotating log: {msg}')
 
     def complete_logrotate(self, text, line, begidx, endidx):
         return self.__complete_attr_list('logrotate', text)
@@ -1031,9 +1213,9 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Get the LDMS version the running LDMSD bases on.
         """
-        resp = self.handle('version', arg)
-        if 'errcode' in resp.keys() and resp['errcode'] == 0:
-            print(resp['msg'])
+        rc, msg = self.comm.version()
+        if rc == 0:
+            print(f'{msg}')
 
     def do_include(self, arg):
         """
@@ -1041,7 +1223,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         path=    Path to the configuration file
         """
-        self.handle('include', arg)
+        arg = self.handle_args('include', arg)
+        if arg:
+            rc, msg = self.comm.include_conf(arg['path'])
+            if rc:
+                print(f'{msg}')
 
     def complete_include(self, text, line, begidx, endidx):
         return self.__complete_attr_list('include', text)
@@ -1050,7 +1236,13 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Set ldmsd environment
         """
-        self.handle('env', arg)
+        arg = self.handle_args('env', arg)
+        if not arg:
+            print(f'No environment variables specified')
+            return
+        rc, msg = self.comm.set_env(arg['cfg_str'])
+        if rc:
+            print(f'Error setting environment variables: {msg}')
 
     def do_EOF(self, arg):
         """
@@ -1062,8 +1254,8 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Quit the LDMSD shell
         """
-        if self.ctrl:
-            self.ctrl.close()
+        if self.comm:
+            self.comm.close()
         return True
 
     def do_oneshot(self, arg):
@@ -1073,7 +1265,11 @@ class LdmsdCmdParser(cmd.Cmd):
         name=    Sampler plugin name
         time=    Timestamp since epoch. If 'now' is given, the sampler plugin will sample data right away.
         """
-        self.handle('oneshot', arg)
+        arg = self.handle_args('oneshot', arg)
+        if arg:
+            rc, msg = self.comm.oneshot(arg['name'], arg['time'])
+            if rc:
+                print(f'Error with oneshot sample: {msg}')
 
     def complete_oneshot(self, text, line, begidx, endidx):
         return self.__complete_attr_list('oneshot', text)
@@ -1091,23 +1287,28 @@ class LdmsdCmdParser(cmd.Cmd):
         [path]    String 'XXX:YYY:...:ZZZ' will be returned, where 'XXX', 'YYY' and 'ZZZ'
                   are myhostname of the first producer in the list of each daemon.
         """
-        resp = self.handle('greeting', arg)
+        arg = self.handle_args('greeting', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.greeting(arg['name'], arg['offset'], arg['level'], arg['test'], arg['path'])
         if "level" in arg:
             tbl = bytes(range(0, 256)) # identity mapping tbl
-            for attr in resp['attr_list']:
+            for attr in msg:
                 print(attr.attr_value.translate(tbl, delete=b' \x00').decode())
-        elif resp['msg'] and resp['msg'] != "":
-            print(resp['msg'])
+        elif msg and msg != "":
+            print(msg)
 
     def complete_greeting(self, text, line, begidx, endidx):
         return self.__complete_attr_list('greeting', text)
 
     def do_example(self, arg):
-        resp = self.handle('example', arg)
-        if resp['msg'] == "":
+        # WIP
+        arg = self.handle_args('example', arg)
+        if not arg:
             return
 
-        attr_list = json.loads(resp['msg'])
+        rc, msg = self.comm.example(arg['cfg_str'])
+        attr_list = msg
         print("{0:10} {1:10} {2}".format("ATTR_ID", "VALUE_LENGTH", "VALUE"))
         print("---------- ---------- ----------")
         for attr in attr_list:
@@ -1129,7 +1330,18 @@ class LdmsdCmdParser(cmd.Cmd):
             [peer_name=]        The failover partner name. If not given,
                                 the ldmsd will accept any partner.
         """
-        self.handle('failover_config', arg)
+        arg = self.handle_args('failover_config', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.failover_config(arg['host'],
+                                            arg['xprt'],
+                                            arg['port'],
+                                            arg['auto_switch'],
+                                            arg['interval'],
+                                            arg['timeout_factor'],
+                                            arg['peer_name'])
+        if rc:
+            print(f'Error with failover config: {msg}')
 
     def complete_failover_config(self, text, line, begidx, endidx):
         return self.__complete_attr_list('failover_config', text)
@@ -1141,26 +1353,30 @@ class LdmsdCmdParser(cmd.Cmd):
         objects (prdcr, updtr, and strgp) are not allowed to be altered (start,
         stop, or reconfigure).
         """
-        self.handle('failover_start', arg)
+        rc, msg = self.comm.failover_start()
+        if rc:
+            print(f'Error starting failover service: {msg}')
 
     def complete_failover_start(self, text, line, begidx, endidx):
         return self.__complete_attr_list('failover_start', text)
 
     def do_failover_stop(self, arg):
         """Stop LDMSD failover service."""
-        self.handle('failover_stop', arg)
+        rc, msg = self.comm.failover_stop()
+        if rc:
+            print(f'Error stopping failover service: {msg}')
 
     def complete_failover_stop(self, text, line, begidx, endidx):
         return self.__complete_attr_list('failover_stop', text)
 
     def do_failover_status(self, arg):
         """Get failover status."""
-        resp = self.handle('failover_status', None)
-        if resp['errcode'] != 0:
-            print("Request returned error {0}".format(resp['errcode']))
+        rc, msg = self.comm.failover_status()
+        if rc != 0:
+            print("Request returned error {0}: {1}".format(rc, msg))
             return
 
-        fobj =  json.loads(resp['msg'])
+        fobj =  json.loads(msg)
         # print fobj['attr']
         print('Failover Status:')
         keys = fobj.keys()
@@ -1176,11 +1392,15 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_failover_peercfg_start(self, arg):
         """Manually start peer configuration."""
-        self.handle('failover_peercfg_start', arg)
+        rc, msg = self.comm.failover_peercfg_start()
+        if rc:
+            print(f'Error starting failover peer configuration: {msg}')
 
     def do_failover_peercfg_stop(self, arg):
         """Manually stop peer configuration."""
-        self.handle('failover_peercfg_stop', arg)
+        rc, msg = self.comm.failover_peercfg_stop()
+        if rc:
+            print(f'Error stopping failover peer configuration: {msg}')
 
     def do_setgroup_add(self, arg):
         """Create a new setgroup.
@@ -1192,7 +1412,16 @@ class LdmsdCmdParser(cmd.Cmd):
             [offset=]       The update offset hint (in usec).
             [perm=]         The permission to modify the setgroup in the future.
         """
-        self.handle('setgroup_add', arg)
+        arg = self.handle_args('setgroup_add', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.setgroup_add(arg['name'],
+                                         arg['producer'],
+                                         arg['interval'],
+                                         arg['offset'],
+                                         arg['perm'])
+        if rc:
+            print(f'Error creating new set group {arg["name"]}: {msg}')
 
     def complete_setgroup_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('setgroup_add', text)
@@ -1205,7 +1434,14 @@ class LdmsdCmdParser(cmd.Cmd):
             [interval=]     The update interval hint (in usec).
             [offset=]       The update offset hint (in usec).
         """
-        self.handle('setgroup_mod', arg)
+        arg = self.handle_args('setgroup_mod', arg)
+        if not arg:
+           return
+        rc, msg = self.comm.setgroup_mod(arg['name'],
+                                         arg['interval'],
+                                         arg['offset'])
+        if rc:
+            print(f'Error modifying set group {arg["name"]}: {msg}')
 
     def complete_setgroup_mod(self, text, line, begidx, endidx):
         return self.__complete_attr_list('setgroup_mod', text)
@@ -1216,7 +1452,12 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
             name=    The set group name to delete.
         """
-        self.handle('setgroup_del', arg)
+        arg = self.handle_args('setgroup_del', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.setgroup_del(arg['name'])
+        if rc:
+            print(f'Error deleting set {arg["name"]}: {msg}')
 
     def complete_setgroup_del(self, text, line, begidx, endidx):
         return self.__complete_attr_list('setgroup_del', text)
@@ -1228,7 +1469,11 @@ class LdmsdCmdParser(cmd.Cmd):
             name=     The set group name.
             instance= The comma-separated list of set instances to add.
         """
-        self.handle('setgroup_ins', arg)
+        arg = self.handle_args('setgroup_ins', arg)
+        if arg:
+            rc, msg = self.comm.setgroup_ins(arg['name'], arg['instance'])
+            if rc:
+                print(f'Error inserting sets into group: {msg}')
 
     def complete_setgroup_ins(self, text, line, begidx, endidx):
         return self.__complete_attr_list('setgroup_ins', text)
@@ -1240,8 +1485,11 @@ class LdmsdCmdParser(cmd.Cmd):
             name=     The set group name.
             instance= The comma-separated list of set instances to remove.
         """
-        self.handle('setgroup_rm', arg)
-        pass
+        arg = self.handle_args('setgroup_rm', arg)
+        if arg:
+            rc, msg = self.comm.setgroup_rm(arg['name'], arg['instance'])
+            if rc:
+                print(f'Error removing sets from group: {msg}')
 
     def complete_setgroup_rm(self, text, line, begidx, endidx):
         return self.__complete_attr_list('setgroup_rm', text)
@@ -1262,8 +1510,11 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         instance=   Set instance name
         """
-        resp = self.handle('set_route', arg)
-        attr_list = resp['attr_list']
+        arg = self.handle_args('set_route', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.set_route(arg['instance'])
+        attr_list = msg
         if attr_list is None:
             print("No response back")
 
@@ -1312,12 +1563,11 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Query the daemon's thread utilization statistics
         """
-        resp = self.handle('thread_stats', arg)
-        if resp['msg'] == "":
+        rc, msg = self.comm.thread_stats()
+        if msg == "":
             return
-        if resp['errcode'] != 0:
+        if rc != 0:
             return
-        stats = json.loads(resp['msg'])
         self.display_thread_stats(stats)
 
     def complete_thread_stats(self, text, line, begidx, endidx):
@@ -1347,12 +1597,12 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Query the daemon's producer statistics
         """
-        resp = self.handle('prdcr_stats', arg)
-        if resp['msg'] == "":
+        rc, msg = self.comm.prdcr_stats()
+        if msg == "":
             return
-        if resp['errcode'] != 0:
+        if rc != 0:
             return
-        stats = json.loads(resp['msg'])
+        stats = json.loads(msg)
         self.display_prdcr_stats(stats)
 
     def complete_prdcr_stats(self, text, line, begidx, endidx):
@@ -1381,12 +1631,12 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Query the daemon's set statistics
         """
-        resp = self.handle('set_stats', arg)
-        if resp['msg'] == "":
+        rc, msg = self.comm.set_stats()
+        if msg == "":
             return
-        if resp['errcode'] != 0:
+        if rc != 0:
             return
-        stats = json.loads(resp['msg'])
+        stats = json.loads(msg)
         self.display_set_stats(stats)
 
     def complete_set_stats(self, text, line, begidx, endidx):
@@ -1448,12 +1698,15 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         [reset=]  If true, reset the statistics after returning them
         """
-        resp = self.handle('xprt_stats', arg)
-        if resp['msg'] == "":
+        arg = self.handle_args('xprt_stats', arg)
+        if not arg:
             return
-        if resp['errcode'] != 0:
+        rc, msg = self.comm.xprt_stats(arg['reset'])
+        if msg == "":
             return
-        stats = json.loads(resp['msg'])
+        if rc != 0:
+            return
+        stats = json.loads(msg)
         self.display_xprt_stats(stats)
 
     def complete_xprt_stats(self, text, line, begidx, endidx):
@@ -1465,12 +1718,15 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         [name=]   Updater name
         """
-        resp = self.handle('updtr_task', arg)
-        if resp['msg'] == "":
+        arg = self.handle_args('updtr_task', arg)
+        if not arg:
             return
-        if resp['errcode'] != 0:
+        rc, msg = self.comm.updtr_task(arg['name'])
+        if msg == "":
             return
-        updtrs = json.loads(resp['msg'])
+        if rc != 0:
+            return
+        updtrs = msg
         for updtr in updtrs:
             print("Updater : {0}".format(updtr['name']))
             print("   tasks: <interval_us>:<offset_us>")
@@ -1490,12 +1746,15 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         [name=]   Producer name
         """
-        resp = self.handle('prdcr_hint_tree', arg)
-        if resp['msg'] == "":
+        arg = self.handle_args('prdcr_hint_tree', arg)
+        if not arg:
             return
-        if resp['errcode'] != 0:
+        rc, msg = self.comm.prdcr_hint_tree(arg['name'])
+        if msg == None or msg == '':
             return
-        prdcrs = json.loads(resp['msg'])
+        if rc != 0:
+            return
+        prdcrs = msg
         for prdcr in prdcrs:
             print("prdcr: {0}".format(prdcr['name']))
             hints = prdcr['hints']
@@ -1515,11 +1774,10 @@ class LdmsdCmdParser(cmd.Cmd):
 
         No parameters
         """
-        resp = self.handle('stream_client_dump', None)
-        if not resp:
+        rc, msg = self.comm.stream_client_dump()
+        if not msg:
             raise RuntimeError("no response")
-        obj = json.loads(resp['msg'])
-        print(json.dumps(obj, indent=2))
+        print(json.dumps(msg, indent=2))
 
     def complete_stream_client_dump(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_client_dump', text)
@@ -1568,15 +1826,14 @@ class LdmsdCmdParser(cmd.Cmd):
                 return "-"
             return info["last_ts"]
 
-        resp = self.handle('stream_dir', None)
-        if resp is None:
+        rc, msg = self.comm.stream_dir()
+        if msg is None:
             raise RuntimeError("no response")
-        if (resp['errcode'] == 0):
-            streams = json.loads(resp['msg'])
+        if (rc == 0):
             print("name            mode            bytes/sec    msg/sec      total bytes  msg count    first msg    last msg    ")
             print("-" * 15, "-" * 15, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
             # print("--------------- -------------- --------------- ----- ----------------- -----------\n")
-            for name,s in streams.items():
+            for name,s in msg.items():
                 if name == "_AGGREGATED_":
                     s['mode'] = ""
                 print(f"{name:15} {s['mode']:15} {rate(s['info']):>12} {freq(s['info']):>12} {total_bytes(s['info']):>12} {count(s['info']):>12} {first(s['info']):>12} {last(s['info']):>12}")
@@ -1602,7 +1859,15 @@ class LdmsdCmdParser(cmd.Cmd):
                     the default authentication given the command line (-a and -A)
                     will be used..
         """
-        self.handle('listen', arg)
+        arg = self.handle_args('listen', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.listen(arg['xprt'],
+                                   arg['port'],
+                                   arg['host'],
+                                   arg['auth'])
+        if rc:
+            print(f'Error adding listener {arg["xprt"]} on port {arg["port"]}: {msg}')
 
     def complete_listen(self, text, lien, begidx, endidx):
         return self.__complete_attr_list('listen', text)
@@ -1616,7 +1881,11 @@ class LdmsdCmdParser(cmd.Cmd):
             [gid=]  Group ID number or group name string
             [perm=] Octal number representing the permissions bits
         """
-        self.handle('metric_sets_default_authz', arg)
+        arg = self.handle_args('metric_sets_default_authz', arg)
+        if arg:
+            self.comm.metric_sets_default_authz(arg['uid'], arg['gid'], arg['perm'])
+            if rc:
+                print(f'Error setting default auth values: {msg}')
 
     def complete_metric_sets_default_authz(self, text, line, begidx, endidx):
         return self.__complete_attr_list('metric_sets_default_authz', text)
@@ -1632,7 +1901,11 @@ class LdmsdCmdParser(cmd.Cmd):
                        a plugin name.
             <plugin-specific auth plugin attributes, path=.ldmsauth.conf>
         """
-        self.handle('auth_add', arg)
+        arg = self.handle_args('auth_add', arg)
+        if arg:
+            rc, msg = self.comm.auth_add(arg['name']. arg['plugin'], cfg_str=arg['cfg_str'])
+            if rc:
+                print(f'Error adding authentication domain {arg["name"]}: {msg}')
 
     def complete_auth_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('auth_add', text)
@@ -1751,7 +2024,7 @@ if __name__ == "__main__":
             for arg in args.auth_arg:
                 m = rx.match(arg)
                 if not m:
-                    print("Expceting --auth-arg to be NAME=VALUE")
+                    print("Expecting --auth-arg to be NAME=VALUE")
                     sys.exit(1)
                 (k, v) = m.groups()
                 auth_opt[k] = v
