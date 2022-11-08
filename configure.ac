@@ -317,7 +317,6 @@ OPTION_DEFAULT_ENABLE([tsampler], [ENABLE_TSAMPLER])
 OPTION_DEFAULT_ENABLE([cray_power_sampler], [ENABLE_CRAY_POWER_SAMPLER])
 dnl cray_power_sampler won't build with --disable-tsampler
 
-OPTION_DEFAULT_DISABLE([opa2], [ENABLE_OPA2])
 OPTION_DEFAULT_ENABLE([loadavg], [ENABLE_LOADAVG])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
@@ -449,6 +448,18 @@ AS_IF([test "$enable_ibnet" = xyes],[
 		[AC_MSG_ERROR([ibnet required libosmcomp not found])])
 	AS_IF([test "x$ac_cv_header_complib_cl_nodenamemap_h" = xno],
 		[AC_MSG_ERROR([ibnet required <infiniband/complib/cl_nodenamemap.h> not found ])])
+])
+
+AC_ARG_ENABLE([opa2],
+	[AS_HELP_STRING([--enable-opa2], [require the opa2 plugin @<:@default=check@:>@])],
+	[],
+	[enable_opa2="check"])
+AM_CONDITIONAL([ENABLE_OPA2], [test "xenable_opa2" != xno])
+AS_IF([test "x$enable_opa2" = xyes],[
+	AS_IF([test "x$HAVE_LIBIBMAD" = xno],
+		[AC_MSG_ERROR([opa2 required libibmad or <infiniband/mad.h> not found])])
+	AS_IF([test "x$HAVE_LIBIBUMAD" = xno],
+		[AC_MSG_ERROR([opa2 required libibumad or <infiniband/umad.h> not found])])
 ])
 
 # enable tx2mon by default only when sensible.
