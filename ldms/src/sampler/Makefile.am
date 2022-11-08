@@ -263,16 +263,17 @@ if ENABLE_DSTAT
 SUBDIRS += dstat
 endif
 
+if ENABLE_INFINIBAND
 if HAVE_LIBIBMAD
 if HAVE_LIBIBUMAD
 if HAVE_IBA_IB_TYPES_H
 SUBDIRS += ibmad_sampler
 SUBDIRS += ibmad_records_sampler
 endif
-
 libsysclassib_la_SOURCES = sysclassib.c
 libsysclassib_la_LIBADD = $(COMMON_LIBADD) $(LTLIBIBMAD) $(LTLIBIBUMAD)
 pkglib_LTLIBRARIES += libsysclassib.la
+endif
 endif
 endif
 
