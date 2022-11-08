@@ -8,6 +8,8 @@
 %bcond_without kafka
 %bcond_without slingshot
 %bcond_with genders
+%bcond_without rabbitkw
+%bcond_without ibnet
 
 %ifarch ppc64le
   %undefine with_slurm
@@ -72,6 +74,10 @@ BuildRequires: openssl-devel
 BuildRequires: librdmacm-devel libibverbs-devel
 BuildRequires: libibmad libibmad-devel
 BuildRequires: libibumad libibumad-devel
+%if %{with ibnet}
+Requires: opensm-devel
+BuildRequires: opensm-devel
+%endif
 %if %{with python}
 BuildRequires: python36-devel
 BuildRequires: python3-Cython
@@ -94,6 +100,10 @@ BuildRequires: papi600-devel
 BuildRequires: librdkafka-devel
 Requires: librdkafka
 %endif
+%if %{with rabbitkw}
+Requires: librabbitmq
+BuildRequires: librabbitmq-devel
+%endif
 
 Url: https://github.com/ovis-hpc/ovis
 
@@ -108,6 +118,7 @@ export CFLAGS="-g -O2 -fdiagnostics-color=auto %{optflags}"
 %configure \
     CC=gcc CXX=g++ \
     --disable-static \
+    --enable-nola \
     --enable-munge \
     --enable-ssl \
     --enable-rdma \
@@ -118,14 +129,18 @@ export CFLAGS="-g -O2 -fdiagnostics-color=auto %{optflags}"
     --disable-procdiskstats \
     --disable-generic_sampler \
     --enable-jobid \
+    --enable-ipmireader \
+    --enable-filesingle \
     %{?with_genders:--enable-libgenders --enable-genderssystemd}%{!?with_genders:--disable-libgenders --disable-genderssystemd} \
     %{?with_python:--enable-python}%{!?with_python:--disable-python} \
     %{?with_slurm:--with-slurm}%{!?with_slurm:--without-slurm} \
     %{?with_dcgm:--with-dcgm}%{!?with_dcgm:--without-dcgm} \
-    %{?with_infiniband:--enable-infiniband}%{!?with_infiniband:--disable-infiniband} \
+    %{?with_infiniband:--enable-infiniband --enable-opa2}%{!?with_infiniband:--disable-infiniband --disable-opa2} \
+    %{?with_ibnet:--enable-ibnet}%{!?with_ibnet:--disable-ibnet} \
     %{?with_rdc:--enable-rdc RDC_CFLAGS=-I/opt/rocm-%{rocm_version}/rdc/include RDC_LIBS=-L/opt/rocm-%{rocm_version}/rdc/lib}%{!?with_rdc:--disable-rdc} \
     %{?with_kafka:--enable-kafka}%{!?with_kafka:--disable-kafka} \
     %{?with_slingshot:--enable-slingshot}%{!?with_slingshot:--disable-slingshot} \
+    %{?with_rabbitkw:--enable-rabbitkw}%{!?with_rabbitkw:--disable-rabbitkw} \
 %if %{with papi}
     --enable-papi \
     --with-libpapi-prefix=/usr/papi600 \
