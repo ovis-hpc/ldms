@@ -42,7 +42,15 @@ SUBDIRS += dcgm_sampler
 endif
 
 if ENABLE_IBNET
+if HAVE_LIBIBMAD
+if HAVE_LIBIBUMAD
+if HAVE_LIBOSMCOMP
+if HAVE_COMPLIB_CL_NODENAMEMAP_H
 SUBDIRS += ibnet
+endif
+endif
+endif
+endif
 endif
 
 if ENABLE_RDC
