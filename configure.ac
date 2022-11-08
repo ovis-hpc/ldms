@@ -318,7 +318,6 @@ OPTION_DEFAULT_ENABLE([cray_power_sampler], [ENABLE_CRAY_POWER_SAMPLER])
 dnl cray_power_sampler won't build with --disable-tsampler
 
 OPTION_DEFAULT_DISABLE([opa2], [ENABLE_OPA2])
-OPTION_DEFAULT_DISABLE([ibnet], [ENABLE_IBNET])
 OPTION_DEFAULT_ENABLE([loadavg], [ENABLE_LOADAVG])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
@@ -411,11 +410,16 @@ AM_CONDITIONAL([HAVE_LIBIBMAD], [test "x$HAVE_LIBIBMAD" = xyes])
 AC_LIB_HAVE_LINKFLAGS([ibumad], [], [#include <infiniband/umad.h>])
 AM_CONDITIONAL([HAVE_LIBIBUMAD], [test "x$HAVE_LIBIBUMAD" = xyes])
 
+AC_LIB_HAVE_LINKFLAGS([osmcomp], [], [])
+AM_CONDITIONAL([HAVE_LIBOSMCOMP], [test "x$HAVE_LIBOSMCOMP" = xyes])
+
 CPPFLAGS_BACKUP=$CPPFLAGS
 CPPFLAGS="$CPPFLAGS -I/usr/include/infiniband"
 AC_CHECK_HEADERS([iba/ib_types.h], [], [])
+AC_CHECK_HEADERS([complib/cl_nodenamemap.h], [], [])
 CPPFLAGS=$CPPFLAGS_BACKUP
 AM_CONDITIONAL([HAVE_IBA_IB_TYPES_H], [test "x$ac_cv_header_iba_ib_types_h" = xyes])
+AM_CONDITIONAL([HAVE_COMPLIB_CL_NODENAMEMAP_H], [test "x$ac_cv_header_complib_cl_nodenamemap_h" = xyes])
 
 AC_ARG_ENABLE([infiniband],
 	[AS_HELP_STRING([--enable-infiniband], [require components that depend upon libibmad and libibumad @<:@default=check@:>@])],
@@ -429,6 +433,22 @@ AS_IF([test "x$enable_infiniband" = xyes],[
 		[AC_MSG_ERROR([infiniband required libibumad or <infiniband/umad.h> not found])])
 	AS_IF([test "x$ac_cv_header_iba_ib_types_h" = xno],
 		[AC_MSG_ERROR([infiniband required <infiniband/iba/ib_types.h> not found ])])
+])
+
+AC_ARG_ENABLE([ibnet],
+	[AS_HELP_STRING([--enable-ibnet], [require the ibnet plugin @<:@default=check@:>@])],
+	[],
+	[enable_ibnet="check"])
+AM_CONDITIONAL([ENABLE_IBNET], [test "xenable_ibnet" != xno])
+AS_IF([test "$enable_ibnet" = xyes],[
+	AS_IF([test "x$HAVE_LIBIBMAD" = xno],
+		[AC_MSG_ERROR([ibnet required libibmad or <infiniband/mad.h> not found])])
+	AS_IF([test "x$HAVE_LIBIBUMAD" = xno],
+		[AC_MSG_ERROR([ibnet required libibumad or <infiniband/umad.h> not found])])
+	AS_IF([test "x$HAVE_LIBOSMCOMP" = xno],
+		[AC_MSG_ERROR([ibnet required libosmcomp not found])])
+	AS_IF([test "x$ac_cv_header_complib_cl_nodenamemap_h" = xno],
+		[AC_MSG_ERROR([ibnet required <infiniband/complib/cl_nodenamemap.h> not found ])])
 ])
 
 # enable tx2mon by default only when sensible.

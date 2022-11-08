@@ -16,11 +16,9 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
 		$(top_builddir)/lib/src/coll/libcoll.la
 
-
-
 libibnet_la_SOURCES = ibnet_plugin.c ibnet_data.c ibnet_data.h
-libibnet_la_LIBADD = $(COMMON_LIBADD)
-libibnet_la_LDFLAGS = $(AM_LDFLAGS) -libmad -libumad -losmcomp -pthread
+libibnet_la_LIBADD = $(COMMON_LIBADD) $(LTLIBIBMAD) $(LTLIBIBUMAD) $(LTLIBOSMCOMP)
+libibnet_la_LDFLAGS = $(AM_LDFLAGS) -pthread
 libibnet_la_CFLAGS = $(AM_CFLAGS) -I/usr/include/infiniband
 bin_SCRIPTS += scripts/ldms-ibnet-sampler-gen
 bin_SCRIPTS += scripts/ldms-get-opa-network.sh
