@@ -656,7 +656,7 @@ zes_pwr_handle_t *getPowerDomains(ze_device_handle_t hDevice, uint32_t *pCount) 
         return NULL;
     }
     if (*pCount == 0) {
-        GMGLOG(LDMSD_LERROR, "!!!Could not retrieve power domains: *pCount == 0\n");
+        GMGLOG(LDMSD_LERROR, "*****!!!Could not retrieve power domains: *pCount == 0\n");
         return NULL;
     }
 
