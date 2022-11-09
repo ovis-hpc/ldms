@@ -1,2 +1,0 @@
-There is a bug in the auto-population of config.rpath by some versions of autotools.
-Leaving an empty version of the file here works around the bug while the real macro definition will be pulled into aclocal.m4 from gettext.
