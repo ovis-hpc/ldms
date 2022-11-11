@@ -273,12 +273,12 @@ static int create_metric_set(void)
 	}
 
 	/* component_id */
-	comp_id_idx = ldms_schema_metric_array_add(job_schema, "component_id",
+	comp_id_idx = ldms_schema_metric_array_add(job_schema, "job_comp_id",
 						   LDMS_V_U64_ARRAY, job_list_len);
 	if (comp_id_idx < 0)
 		goto err;
 	/* job_id */
-	job_id_idx = ldms_schema_metric_array_add(job_schema, "job_id",
+	job_id_idx = ldms_schema_metric_array_add(job_schema, "slurm_job_id",
 						  LDMS_V_U64_ARRAY, job_list_len);
 	if (job_id_idx < 0)
 		goto err;
