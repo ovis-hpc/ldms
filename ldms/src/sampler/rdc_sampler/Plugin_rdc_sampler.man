@@ -32,7 +32,7 @@ This MUST be rdc_sampler.
 .TP
 producer=<pname>.
 .br
-The producer string value for the timing set. Default is the result of gethostname().
+The producer string value for the timing set.
 .TP
 instance=<set_prefix>
 .br
