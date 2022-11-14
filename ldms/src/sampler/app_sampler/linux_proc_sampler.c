@@ -2840,7 +2840,7 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 		"\"st_ino\":%ld,"
 		"\"st_mode\":%o,"
 		"\"st_size\":%zu,"
-		"\"mtime\":%ld.%09ld,"
+		"\"mtime\":\"%ld.%09ld\","
 		"\"state\":\"%s\"}]}";
 	static size_t stat_format_sz;
 	if (!stat_format_sz)
