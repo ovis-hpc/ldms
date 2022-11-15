@@ -8,6 +8,7 @@ libapp_sampler_la_SOURCES = app_sampler.c
 libapp_sampler_la_CFLAGS  = @OVIS_INCLUDE_ABS@
 libapp_sampler_la_LIBADD  =  $(COMMON_LIBS)
 libapp_sampler_la_LDFLAGS = @OVIS_LIB_ABS@
+dist_man7_MANS += Plugin_app_sampler.man
 
 pkglib_LTLIBRARIES += liblinux_proc_sampler.la
 

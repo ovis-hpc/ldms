@@ -160,7 +160,15 @@ status_pid,
 status_ppid,
 status_tracerpid,
 status_uid,
+status_real_user,
+status_eff_user,
+status_sav_user,
+status_fs_user,
 status_gid,
+status_real_group,
+status_eff_group,
+status_sav_group,
+status_fs_group,
 status_fdsize,
 status_groups,
 status_nstgid,
@@ -278,9 +286,18 @@ config name=app_sampler cfg_file=cfg\&.json
 .RE
 .PP
 .PP
+.SH NOTES
+
+Some of the optionally collected data might be security sensitive.
+
+The status_uid and status_gid values can alternatively be collected as "status_real_user", "status_eff_user", "status_sav_user", "status_fs_user", "status_real_group", "status_eff_group", "status_sav_group", "status_fs_group". These string values are most efficiently collected if both the string value and the numeric values are collected.
+
 .SH SEE ALSO
 .nh
 .BR ldmsd (8),
 .BR ldms_quickstart (7),
 .BR ldmsd_controller (8),
-.BR ldms_sampler_base (7).
+.BR ldms_sampler_base (7),
+.BR proc(5),
+.BR sysconf(3),
+.BR environ(3).
