@@ -293,6 +293,7 @@ The publication of environment and cmdline (argv) stream data is done once at th
 
 The publication of file information via fd_msg information may be effectively made one-shot-per-process by setting fd_msg=2147483647. This will cause late-loaded plugin library dependencies to be missed, however.
 
-The status_uid and status_gid values can alternatively be collected as "status_real_user", "status_eff_user", "status_sav_user", "status_fs_user", "status_real_group", "status_eff_group", "status_sav_group", "status_fs_group".
+The status_uid and status_gid values can alternatively be collected as "status_real_user", "status_eff_user", "status_sav_user", "status_fs_user", "status_real_group", "status_eff_group", "status_sav_group", "status_fs_group". These string values are most efficiently collected if both the string value and the numeric values are collected.
+
 .SH SEE ALSO
 syscalls(2), ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), proc(5), sysconf(3), environ(3).
