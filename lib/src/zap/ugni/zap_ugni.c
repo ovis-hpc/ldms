@@ -1361,6 +1361,8 @@ static zap_err_t z_ugni_msg_send(struct z_ugni_ep *uep, zap_ugni_msg_t msg,
 	EP_THR_LOCK(uep);
 	wr->state = Z_UGNI_WR_PENDING;
 	TAILQ_INSERT_TAIL(&uep->send_wrq, wr, entry);
+	__atomic_fetch_add(&uep->ep.sq_sz, 1, __ATOMIC_SEQ_CST);
+	__atomic_fetch_add(&uep->ep.thread->stat->sq_sz, 1, __ATOMIC_SEQ_CST);
 	ATOMIC_INC(&z_ugni_stat.active_send, 1);
 	z_ugni_sock_send(uep);
 	EP_THR_UNLOCK(uep);
@@ -3086,6 +3088,9 @@ static void z_ugni_flush(struct z_ugni_ep *uep, struct z_ugni_io_thread *thr)
 	/* Now, go through endpoint's pending wr queue. */
 	while ( (wr = TAILQ_FIRST(&uep->send_wrq)) ) {
 		TAILQ_REMOVE(&uep->send_wrq, wr, entry);
+		__atomic_fetch_sub(&uep->ep.sq_sz, 1, __ATOMIC_SEQ_CST);
+		/* uep->ep.thread->stat->sq_sz has been handled since
+		 * thread_ep_release */
 		if (wr->send_wr->hdr_off)
 			ATOMIC_INC(&z_ugni_stat.active_send, -1);
 		rc = wr_zap_event(wr, &zev);
@@ -3363,6 +3368,9 @@ static void z_ugni_sock_send(z_ugni_ep_t uep)
 	}
 	/* move wr into send completion queue */
 	TAILQ_REMOVE(&uep->send_wrq, wr, entry);
+	__atomic_fetch_sub(&uep->ep.sq_sz, 1, __ATOMIC_SEQ_CST);
+	if (uep->ep.thread)
+		__atomic_fetch_sub(&uep->ep.thread->stat->sq_sz, 1, __ATOMIC_SEQ_CST);
 	TAILQ_INSERT_TAIL(&uep->send_comp_wrq, wr, entry);
 
 	goto next;

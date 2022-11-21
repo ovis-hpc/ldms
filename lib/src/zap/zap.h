@@ -833,6 +833,8 @@ struct zap_thrstat_result_entry {
 	double sample_count;	/*< The number of sample periods */
 	double sample_rate;		/*< Samples per second */
 	double utilization;		/*< The thread utilization */
+	uint64_t n_eps;			/*< Number of endpoints */
+	uint64_t sq_sz;			/*< Send queue size */
 };
 
 struct zap_thrstat_result {

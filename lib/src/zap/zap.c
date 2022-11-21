@@ -854,6 +854,7 @@ zap_err_t zap_io_thread_ep_assign(zap_ep_t ep)
 	pthread_mutex_lock(&t->mutex);
 	LIST_INSERT_HEAD(&t->_ep_list, ep, _entry);
 	t->_n_ep++;
+	t->stat->n_eps = t->_n_ep;
 	pthread_mutex_unlock(&t->mutex);
 	ep->thread = t;
 	zerr = z->io_thread_ep_assign(t, ep);
@@ -862,6 +863,7 @@ zap_err_t zap_io_thread_ep_assign(zap_ep_t ep)
 		pthread_mutex_lock(&t->mutex);
 		LIST_REMOVE(ep, _entry);
 		t->_n_ep--;
+		t->stat->n_eps = t->_n_ep;
 		pthread_mutex_unlock(&t->mutex);
 		goto out;
 	}
@@ -877,8 +879,10 @@ zap_err_t zap_io_thread_ep_release(zap_ep_t ep)
 	pthread_mutex_lock(&t->mutex);
 	LIST_REMOVE(ep, _entry);
 	t->_n_ep--;
+	t->stat->n_eps = t->_n_ep;
 	pthread_mutex_unlock(&t->mutex);
 	zerr = ep->z->io_thread_ep_release(ep->thread, ep);
+	__atomic_fetch_sub(&ep->thread->stat->sq_sz, ep->sq_sz, __ATOMIC_SEQ_CST);
 	ep->thread = NULL;
 	return zerr;
 }
@@ -1082,6 +1086,8 @@ struct zap_thrstat_result *zap_thrstat_get_result()
 		res->entries[i].sample_count = zap_thrstat_get_sample_count(t);
 		res->entries[i].sample_rate = zap_thrstat_get_sample_rate(t);
 		res->entries[i].utilization = zap_thrstat_get_utilization(t);
+		res->entries[i].n_eps = t->n_eps;
+		res->entries[i].sq_sz = t->sq_sz;
 		i += 1;
 	}
 out:
