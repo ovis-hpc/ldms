@@ -183,6 +183,7 @@ struct zap_ep {
 #endif
 	/** (private to libzap) for thread->ep_list */
 	LIST_ENTRY(zap_ep) _entry;
+	uint64_t sq_sz; /* send queue size of the endpoint */
 };
 
 struct zap {
@@ -491,6 +492,8 @@ struct zap_thrstat {
 	uint64_t wait_sum;
 	uint64_t *wait_window;
 	uint64_t *proc_window;
+	uint64_t sq_sz; /* send queue size (in entries) */
+	uint64_t n_eps; /* number of endpoints */
 	LIST_ENTRY(zap_thrstat) entry;
 };
 #define ZAP_THRSTAT_WINDOW 4096	/*< default window size */

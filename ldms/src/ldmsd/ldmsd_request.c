@@ -6377,7 +6377,9 @@ static char * __thread_stats_as_json(size_t *json_sz)
 		__APPEND("   \"name\": \"%s\",\n", res->entries[i].name);
 		__APPEND("   \"sample_count\": %g,\n", res->entries[i].sample_count);
 		__APPEND("   \"sample_rate\": %g,\n", res->entries[i].sample_rate);
-		__APPEND("   \"utilization\": %g\n", res->entries[i].utilization);
+		__APPEND("   \"utilization\": %g,\n", res->entries[i].utilization);
+		__APPEND("   \"sq_sz\": %lu,\n", res->entries[i].sq_sz);
+		__APPEND("   \"n_eps\": %lu\n", res->entries[i].n_eps);
 		if (i < res->count - 1)
 			__APPEND("  },\n");
 		else
