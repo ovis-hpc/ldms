@@ -125,6 +125,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "thread_stats",       LDMSD_THREAD_STATS_REQ  },
 	{  "udata",              LDMSD_SET_UDATA_REQ  },
 	{  "udata_regex",        LDMSD_SET_UDATA_REGEX_REQ  },
+	{  "update_time_stats",  LDMSD_UPDATE_TIME_STATS_REQ  },
 	{  "updtr_add",          LDMSD_UPDTR_ADD_REQ  },
 	{  "updtr_del",          LDMSD_UPDTR_DEL_REQ  },
 	{  "updtr_match_add",    LDMSD_UPDTR_MATCH_ADD_REQ  },

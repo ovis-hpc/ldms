@@ -821,6 +821,76 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_updtr_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_status', text)
 
+    def __update_time_stats(self, updtr):
+        stats = {'min' : float("inf"),
+                 'max' : 0,
+                 'avg' : 0,
+                 'sum' : 0,
+                 'cnt' : 0,
+                 'min_prdcr' : None,
+                 'max_prdcr' : None,
+                 'producers' : {}
+               }
+
+        for p, prdcr in updtr.items():
+            pstats = { 'min' : float("inf"),
+                       'max' : 0,
+                       'sum' : 0,
+                       'avg' : 0,
+                       'cnt' : 0,
+                       'min_prdset' : None,
+                       'max_prdset' : None,
+                       'sets' : {}
+                    }
+            for s, prdset in prdcr.items():
+                pstats['sets'][s] = {'min' : prdset['min'],
+                                     'max' : prdset['max'],
+                                     'avg' : prdset['avg'],
+                                     'cnt' : prdset['cnt']
+                                    }
+                if pstats['min'] > prdset['min']:
+                    pstats['min'] = prdset['min']
+                    pstats['min_prdset'] = s
+                if pstats['max'] < prdset['max']:
+                    pstats['max'] = prdset['max']
+                    pstats['max_prdset'] = s
+                pstats['avg'] = pstats['avg'] * (pstats['cnt']/(pstats['cnt'] + prdset['cnt']))
+                pstats['avg'] += prdset['avg'] * (prdset['cnt']/(pstats['cnt'] + prdset['cnt']))
+                pstats['cnt'] += prdset['cnt']
+            stats['producers'][p] = pstats
+
+            if stats['min'] > pstats['min']:
+                stats['min'] = pstats['min']
+                stats['min_prdcr'] = p
+            if stats['max'] < pstats['max']:
+                stats['max'] = pstats['max']
+                stats['max_prdcr'] = p
+            stats['avg'] = stats['avg'] * (stats['cnt']/(stats['cnt'] + pstats['cnt']))
+            stats['avg'] += pstats['avg'] * (pstats['cnt']/(stats['cnt'] + pstats['cnt']))
+            stats['cnt'] += pstats['cnt']
+        return stats
+
+    def do_update_time_stats(self, arg):
+        """
+        Get the update time statistics of updaters
+
+        Parameters:
+        [name=]        updater name
+        """
+        resp = self.handle('update_time_stats', arg)
+        if resp['errcode'] != 0:
+            return
+
+        j = json.loads(resp['msg'])
+        print("Updater         Min(usec)       Max(usec)       Average(usec)   Count     ")
+        print(f"{'-'*15} {'-'*15} {'-'*15} {'-'*15} {'-'*10}")
+        for n, updtr in j.items():
+            stats = self.__update_time_stats(updtr)
+            print(f"{n:15} {stats['min']:15.4f} {stats['max']:15.4f} {stats['avg']:15.4f} {stats['cnt']:10}")
+
+    def complete_update_time_stats(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('update_time_stats', text)
+
     def do_strgp_status(self, arg):
         """
         Get the status of storage policies
@@ -847,6 +917,25 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_strgp_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_status', text)
+
+    def do_store_time_stats(self, arg):
+        """
+        Get the store time statistics of a storage policy
+        Parameters:
+            [name=]    a storage policy name
+        """
+        resp = self.handle('store_time_stats', arg)
+        if resp['errcode'] != 0:
+            # self.handle() already reported the error.
+            return
+        j = json.loads(resp['msg'])
+        print("strgp           min(usec)       max(usec)      avg(usec)      Count")
+        print(f"{'-'*15} {'-'*15} {'-'*15} {'-'*15} {'-'*10}")
+        for n, strgp in j.items():
+            print(f"{n:15} {strgp['min']:15.4f} {strgp['max']:15.4f} {strgp['avg']:15.4f} {strgp['cnt']:10}")
+
+    def complete_store_time_stats(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('store_time_stats', text)
 
     def do_plugn_status(self, arg):
         resp = self.handle('plugn_status', None)

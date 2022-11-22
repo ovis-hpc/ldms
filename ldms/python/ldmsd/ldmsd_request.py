@@ -300,6 +300,7 @@ class LDMSD_Request(object):
     STRGP_PRDCR_DEL = 0X200 + 6
     STRGP_METRIC_ADD = 0X200 + 7
     STRGP_METRIC_DEL = 0X200 + 8
+    STORE_TIME_STATS = 0x200 + 9
 
     UPDTR_ADD = 0X300
     UPDTR_DEL = 0X300 + 1
@@ -312,6 +313,7 @@ class LDMSD_Request(object):
     UPDTR_MATCH_DEL = 0X300 + 8
     UPDTR_TASK = 0x300 + 9
     UPDTR_MATCH_LIST = 0x300 + 10
+    UPDATE_TIME_STATS = 0x300 + 11
 
     SMPLR_ADD = 0X400
     SMPLR_DEL = 0X400 + 1
@@ -397,6 +399,7 @@ class LDMSD_Request(object):
             'strgp_prdcr_del': {'id': STRGP_PRDCR_DEL},
             'strgp_metric_add': {'id': STRGP_METRIC_ADD},
             'strgp_metric_del': {'id': STRGP_METRIC_DEL},
+            'store_time_stats': {'id': STORE_TIME_STATS},
 
             'updtr_add': {'id': UPDTR_ADD},
             'updtr_del': {'id': UPDTR_DEL},
@@ -409,6 +412,7 @@ class LDMSD_Request(object):
             'updtr_match_del': {'id': UPDTR_MATCH_DEL},
             'updtr_match_list' : {'id' : UPDTR_MATCH_LIST},
             'updtr_task': {'id': UPDTR_TASK},
+            'update_time_stats' : {'id': UPDATE_TIME_STATS},
 
             'start': {'id': PLUGN_START},
             'stop': {'id': PLUGN_STOP},
