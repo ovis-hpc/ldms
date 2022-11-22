@@ -311,6 +311,8 @@ typedef struct ldmsd_prdcr_set {
 	uint8_t updt_sync;
 
 	struct ldmsd_stat updt_stat;
+	int skipped_upd_cnt;
+	int oversampled_cnt;
 
 	int ref_count;
 	struct timespec lookup_complete_ts;

@@ -269,6 +269,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	if (prd_set->last_gn == gn) {
 		ldmsd_log(LDMSD_LINFO, "Set %s oversampled %"PRIu64" == %"PRIu64".\n",
 			  prd_set->inst_name, prd_set->last_gn, gn);
+		__atomic_fetch_add(&prd_set->oversampled_cnt, 1, __ATOMIC_SEQ_CST);
 		goto set_ready;
 	}
 	prd_set->last_gn = gn;
@@ -660,6 +661,7 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 			ldmsd_log(LDMSD_LINFO, "%s: Set %s: "
 				"there is an outstanding update.\n",
 				__func__, prd_set->inst_name);
+			__atomic_fetch_add(&prd_set->skipped_upd_cnt, 1, __ATOMIC_SEQ_CST);
 		case LDMSD_PRDCR_SET_STATE_DELETED:
 		default:
 			goto next_prd_set;

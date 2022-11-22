@@ -795,14 +795,16 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_updtr_status(self, arg):
         """
         Get the statuses of all Updaters.
+
         Parameters:
         [name=]        updater name
+        [Summary]     not show updaters' producers
         """
         resp = self.handle('updtr_status', arg)
         if resp['errcode'] == 0:
             updaters = json.loads(resp['msg'])
-            print("Name             Interval:Offset  Auto   Mode            State")
-            print("---------------- ---------------- ------ --------------- ------------")
+            print("Name             Interval:Offset  Auto   Mode            State        Skipped counter Oversampled counter")
+            print(f"---------------- ---------------- ------ --------------- ------------ {'-'*15} {'-'*19}")
             for updtr in updaters:
                 if 'auto' in updtr:
                     auto = updtr['auto']
@@ -810,13 +812,14 @@ class LdmsdCmdParser(cmd.Cmd):
                     # for backward compatabiliity
                     auto = updtr['????']
                 interval_s = cvt_intrvl_off_to_str(updtr['interval'], updtr['offset'])
-                print("{0:16} {1:16} {2:6} {3:15} {4}".format(
-                    updtr['name'], interval_s,
-                    auto, updtr['mode'], updtr['state']))
-                for prdcr in updtr['producers']:
-                    print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
-                        prdcr['name'], prdcr['host'], prdcr['port'],
-                        prdcr['transport'], prdcr['state']))
+                print(f"{updtr['name']:16} {interval_s:16} {auto:6} {updtr['mode']:15} " \
+                      f"{updtr['state']:10} {updtr['outstanding count']:15} " \
+                      f"{updtr['oversampled count']:19}")
+                if 'summary' not in arg:
+                    for prdcr in updtr['producers']:
+                        print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
+                            prdcr['name'], prdcr['host'], prdcr['port'],
+                            prdcr['transport'], prdcr['state']))
 
     def complete_updtr_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_status', text)

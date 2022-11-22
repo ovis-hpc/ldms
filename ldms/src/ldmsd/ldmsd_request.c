@@ -3892,6 +3892,13 @@ static const char *update_mode(int push_flags)
 	return "Push on Request";
 }
 
+void __updtr_stats(ldmsd_prdcr_set_t prdset, int *skipped_cnt,
+					  int *oversampled_cnt)
+{
+	*skipped_cnt = *skipped_cnt + prdset->skipped_upd_cnt;
+	*oversampled_cnt = *oversampled_cnt + prdset->oversampled_cnt;
+}
+
 int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 							int updtr_cnt)
 {
@@ -3899,7 +3906,12 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 	ldmsd_prdcr_ref_t ref;
 	ldmsd_prdcr_t prdcr;
 	int prdcr_count;
+	ldmsd_prdcr_set_t prdset;
+	ldmsd_name_match_t match = NULL;
 	long default_offset = 0;
+	int skipped_cnt = 0;
+	int oversampled_cnt = 0;
+	const char *str;
 
 	if (updtr_cnt) {
 		rc = linebuf_printf(reqc, ",\n");
@@ -3952,8 +3964,39 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 			       prdcr_state_str(prdcr->conn_state));
 		if (rc)
 			goto out;
+
+		if (LIST_EMPTY(&updtr->match_list)) {
+			prdset = ldmsd_prdcr_set_first(prdcr);
+			while (prdset) {
+				__updtr_stats(prdset, &skipped_cnt,
+						     &oversampled_cnt);
+				prdset = ldmsd_prdcr_set_next(prdset);
+			}
+		} else {
+			LIST_FOREACH(match, &updtr->match_list, entry) {
+				prdset = ldmsd_prdcr_set_first(prdcr);
+				while (prdset) {
+					if (match) {
+						if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
+							str = prdset->inst_name;
+						else
+							str = prdset->schema_name;
+						rc = regexec(&match->regex, str, 0, NULL, 0);
+						if (rc)
+							goto next;
+					}
+					__updtr_stats(prdset, &skipped_cnt,
+							     &oversampled_cnt);
+				next:
+					prdset = ldmsd_prdcr_set_next(prdset);
+				}
+			}
+		}
 	}
-	rc = linebuf_printf(reqc, "]}");
+	rc = linebuf_printf(reqc, "],"
+				  "\"outstanding count\":%d,"
+				  "\"oversampled count\":%d}",
+				  skipped_cnt, oversampled_cnt);
 out:
 	ldmsd_updtr_unlock(updtr);
 	return rc;
