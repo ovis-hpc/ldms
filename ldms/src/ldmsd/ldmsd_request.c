@@ -211,6 +211,7 @@ static int strgp_prdcr_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_metric_add_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_metric_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_status_handler(ldmsd_req_ctxt_t req_ctxt);
+static int store_time_stats_handler(ldmsd_req_ctxt_t reqc);
 static int updtr_add_handler(ldmsd_req_ctxt_t req_ctxt);
 static int updtr_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int updtr_prdcr_add_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -250,6 +251,7 @@ static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
 static int ebusy_handler(ldmsd_req_ctxt_t reqc);
 static int updtr_task_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc);
+static int update_time_stats_handler(ldmsd_req_ctxt_t reqc);
 
 /* these are implemented in ldmsd_failover.c */
 int failover_config_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -370,6 +372,10 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_STRGP_STATUS_REQ, strgp_status_handler,
 		XALL | LDMSD_PERM_FAILOVER_ALLOWED
 	},
+	[LDMSD_STORE_TIME_STATS_REQ] = {
+		LDMSD_STORE_TIME_STATS_REQ, store_time_stats_handler,
+		XALL
+	},
 
 	/* UPDTR */
 	[LDMSD_UPDTR_ADD_REQ] = {
@@ -406,6 +412,10 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_UPDTR_TASK_REQ] = {
 		LDMSD_UPDTR_TASK_REQ, updtr_task_status_handler,
 		XALL | LDMSD_PERM_FAILOVER_ALLOWED
+	},
+	[LDMSD_UPDATE_TIME_STATS_REQ] = {
+		LDMSD_UPDATE_TIME_STATS_REQ, update_time_stats_handler,
+		XALL
 	},
 
 	/* PLUGN */
@@ -5868,9 +5878,9 @@ size_t __set_route_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
 					"\"offset_us\":\"%ld\","
 					"\"sync\":\"%s\","
 					"\"trans_start_sec\":\"%ld\","
-					"\"trans_start_usec\":\"%ld\","
+					"\"trans_start_nsec\":\"%ld\","
 					"\"trans_end_sec\":\"%ld\","
-					"\"trans_end_usec\":\"%ld\""
+					"\"trans_end_nsec\":\"%ld\""
 					"}"
 				"}",
 				ldmsd_myname_get(),
@@ -5880,9 +5890,9 @@ size_t __set_route_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
 				info->offset_us,
 				((info->sync)?"true":"false"),
 				info->start.tv_sec,
-				info->start.tv_usec,
+				info->start.tv_nsec,
 				info->end.tv_sec,
-				info->end.tv_usec);
+				info->end.tv_nsec);
 		if (!is_internal) {
 			cnt += snprintf(&reqc->line_buf[cnt], reqc->line_len - cnt, "]}");
 		}
@@ -5899,9 +5909,9 @@ size_t __set_route_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
 					"\"update_off\":\"%ld\","
 					"\"update_sync\":\"%s\","
 					"\"last_start_sec\":\"%ld\","
-					"\"last_start_usec\":\"%ld\","
+					"\"last_start_nsec\":\"%ld\","
 					"\"last_end_sec\":\"%ld\","
-					"\"last_end_usec\":\"%ld\""
+					"\"last_end_nsec\":\"%ld\""
 					"}"
 				"}",
 				ldmsd_myname_get(),
@@ -5912,9 +5922,9 @@ size_t __set_route_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
 				info->offset_us,
 				((info->sync)?"true":"false"),
 				info->start.tv_sec,
-				info->start.tv_usec,
+				info->start.tv_nsec,
 				info->end.tv_sec,
-				info->end.tv_usec);
+				info->end.tv_nsec);
 	}
 
 	return cnt;
@@ -7520,4 +7530,241 @@ enomem:
 	ldmsd_log(LDMSD_LCRITICAL, "Out of memroy\n");
 	rc = ENOMEM;
 	goto send_reply;
+}
+
+static int
+__prdset_upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
+				ldmsd_prdcr_t prdcr, ldmsd_name_match_t match)
+{
+	int rc;
+	ldmsd_prdcr_set_t prdset;
+	int cnt = 0;
+	const char *str;
+
+	ldmsd_prdcr_lock(prdcr);
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED || prdcr->xprt->disconnected)
+		goto unlock;
+	rc = linebuf_printf(reqc, "\"%s\":{", prdcr->obj.name);
+	if (rc)
+		goto unlock;
+	prdset = ldmsd_prdcr_set_first(prdcr);
+	while (prdset) {
+		if (match) {
+			if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
+				str = prdset->inst_name;
+			else
+				str = prdset->schema_name;
+			rc = regexec(&match->regex, str, 0, NULL, 0);
+			if (rc)
+				goto next_prdset;
+		}
+		pthread_mutex_lock(&prdset->lock);
+		rc = linebuf_printf(reqc, "%s\"%s\":{"
+				"\"min\":%lf,"
+				"\"max\":%lf,"
+				"\"avg\":%lf,"
+				"\"cnt\":%d"
+				"}",
+				(cnt?",":""),
+				prdset->inst_name,
+				prdset->updt_stat.min,
+				prdset->updt_stat.max,
+				prdset->updt_stat.avg,
+				prdset->updt_stat.count);
+		pthread_mutex_unlock(&prdset->lock);
+		if (rc)
+			goto end_quote;
+		cnt++;
+next_prdset:
+		prdset = ldmsd_prdcr_set_next(prdset);
+	}
+end_quote:
+	rc = linebuf_printf(reqc, "}");
+unlock:
+	ldmsd_prdcr_unlock(prdcr);
+	return rc;
+}
+
+extern ldmsd_prdcr_ref_t updtr_prdcr_ref_first(ldmsd_updtr_t updtr);
+extern ldmsd_prdcr_ref_t updtr_prdcr_ref_next(ldmsd_prdcr_ref_t ref);
+static int
+__upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr)
+{
+	int rc;
+	ldmsd_name_match_t match;
+	int cnt = 0;
+
+	rc = linebuf_printf(reqc, "\"%s\":{", updtr->obj.name);
+	if (rc)
+		return rc;
+
+	if (!LIST_EMPTY(&updtr->match_list)) {
+		LIST_FOREACH(match, &updtr->match_list, entry) {
+			ldmsd_prdcr_ref_t ref;
+			for (ref = updtr_prdcr_ref_first(updtr); ref;
+					ref = updtr_prdcr_ref_next(ref)) {
+				if (cnt)
+					rc = linebuf_printf(reqc, ",");
+				if (rc)
+					goto out;
+				rc = __prdset_upd_time_stats_json_obj(reqc, updtr,
+							  ref->prdcr, match);
+				if (rc)
+					goto out;
+				cnt++;
+			}
+		}
+	} else {
+		ldmsd_prdcr_ref_t ref;
+		for (ref = updtr_prdcr_ref_first(updtr); ref;
+				ref = updtr_prdcr_ref_next(ref)) {
+			if (cnt)
+				rc = linebuf_printf(reqc, ",");
+			if (rc)
+				goto out;
+			rc = __prdset_upd_time_stats_json_obj(reqc, updtr,
+						   ref->prdcr, NULL);
+			if (rc)
+				goto out;
+			cnt++;
+		}
+	}
+	rc = linebuf_printf(reqc, "}");
+out:
+	return rc;
+}
+
+static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	ldmsd_updtr_t updtr;
+	char *name;
+	int cnt = 0;
+
+	rc = linebuf_printf(reqc, "{");
+	if (rc)
+		goto err;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (name) {
+		updtr = ldmsd_updtr_find(name);
+		if (!updtr) {
+			/* Not report any status */
+			snprintf(reqc->line_buf, reqc->line_len,
+				"updtr '%s' doesn't exist.", name);
+			reqc->errcode = ENOENT;
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+			return 0;
+		}
+		rc = __upd_time_stats_json_obj(reqc, updtr);
+	} else {
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
+		for (updtr = ldmsd_updtr_first(); updtr;
+				updtr = ldmsd_updtr_next(updtr)) {
+			if (cnt) {
+				rc = linebuf_printf(reqc, ",");
+				if (rc) {
+					ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+					goto err;
+				}
+			}
+			rc = __upd_time_stats_json_obj(reqc, updtr);
+			if (rc) {
+				ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+				goto err;
+			}
+			cnt++;
+		}
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+	}
+	rc = linebuf_printf(reqc, "}");
+	if (rc)
+		goto err;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	goto out;
+err:
+	snprintf(reqc->line_buf, reqc->line_len, "Failed to query the update time stats. Error %d.", rc);
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+out:
+	free(name);
+	return rc;
+}
+
+static int __store_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp)
+{
+	int rc;
+
+	rc = linebuf_printf(reqc, "\"%s\":{\"min\":%lf,"
+					  "\"max\":%lf,"
+					  "\"avg\":%lf,"
+					  "\"cnt\":%d}",
+					  strgp->obj.name,
+					  strgp->stat.min,
+					  strgp->stat.max,
+					  strgp->stat.avg,
+					  strgp->stat.count);
+	return rc;
+}
+
+static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	char *name;
+	ldmsd_strgp_t strgp;
+	int cnt = 0;
+
+	rc = linebuf_printf(reqc, "{");
+	if (rc)
+		goto err;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (name) {
+		strgp = ldmsd_strgp_find(name);
+		if (!strgp) {
+			/* Not report any status */
+			snprintf(reqc->line_buf, reqc->line_len,
+				"strgp '%s' doesn't exist.", name);
+			reqc->errcode = ENOENT;
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+			return 0;
+		}
+		rc = __store_time_stats_json_obj(reqc, strgp);
+	} else {
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
+		for (strgp = ldmsd_strgp_first(); strgp;
+				strgp = ldmsd_strgp_next(strgp)) {
+			if (cnt) {
+				rc = linebuf_printf(reqc, ",");
+				if (rc) {
+					ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+					goto err;
+				}
+			}
+			ldmsd_strgp_lock(strgp);
+			rc = __store_time_stats_json_obj(reqc, strgp);
+			if (rc) {
+				ldmsd_strgp_unlock(strgp);
+				ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+				goto err;
+			}
+			ldmsd_strgp_unlock(strgp);
+			cnt++;
+		}
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+	}
+
+	rc = linebuf_printf(reqc, "}");
+	if (rc)
+		goto err;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	goto out;
+err:
+	snprintf(reqc->line_buf, reqc->line_len, "Failed to query the store "
+						 "time stats. Error %d.", rc);
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+out:
+	free(name);
+	return rc;
 }

@@ -461,13 +461,6 @@ void ldmsd_inband_cfg_mask_rm(mode_t mask)
 	inband_cfg_mask &= ~mask;
 }
 
-#ifdef LDMSD_UPDATE_TIME
-double ldmsd_timeval_diff(struct timeval *start, struct timeval *end)
-{
-	return (end->tv_sec-start->tv_sec)*1000000.0 + (end->tv_usec-start->tv_usec);
-}
-#endif /* LDMSD_UPDATE_TIME */
-
 extern void ldmsd_strgp_close();
 
 static pthread_mutex_t cleanup_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -1175,14 +1168,14 @@ char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type)
 		return "";
 }
 
-void __transaction_end_time_get(struct timeval *start, struct timeval *dur,
-							struct timeval *end__)
+void __transaction_end_time_get(struct timespec *start, struct timespec *dur,
+							struct timespec *end__)
 {
 	end__->tv_sec = start->tv_sec + dur->tv_sec;
-	end__->tv_usec = start->tv_usec + dur->tv_usec;
-	if (end__->tv_usec > 1000000) {
+	end__->tv_nsec = start->tv_nsec + dur->tv_nsec;
+	if (end__->tv_nsec > 1000000000) {
 		end__->tv_sec += 1;
-		end__->tv_usec -= 1000000;
+		end__->tv_nsec -= 1000000000;
 	}
 }
 
@@ -1195,7 +1188,7 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 {
 	ldmsd_set_info_t info;
 	struct ldms_timestamp t;
-	struct timeval dur;
+	struct timespec dur;
 	struct ldmsd_plugin_set_list *plugn_set_list;
 	struct ldmsd_plugin_set *plugn_set = NULL;
 	struct ldmsd_plugin_cfg *pi;
@@ -1242,14 +1235,14 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 
 		t = ldms_transaction_timestamp_get(lset);
 		info->start.tv_sec = (long int)t.sec;
-		info->start.tv_usec = (long int)t.usec;
+		info->start.tv_nsec = (long int)t.usec * 1000;
 		if (!ldms_set_is_consistent(lset)) {
 			info->end.tv_sec = 0;
-			info->end.tv_usec = 0;
+			info->end.tv_nsec = 0;
 		} else {
 			t = ldms_transaction_duration_get(lset);
 			dur.tv_sec = (long int)t.sec;
-			dur.tv_usec = (long int)t.usec;
+			dur.tv_nsec = (long int)t.usec * 1000;
 			__transaction_end_time_get(&info->start,
 					&dur, &info->end);
 		}
@@ -1278,12 +1271,12 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 			info->interval_us = prd_set->updt_interval;
 			info->offset_us = prd_set->updt_offset;
 			info->sync = prd_set->updt_sync;
-			info->start = prd_set->updt_start;
+			info->start = prd_set->updt_stat.start;
 			if (prd_set->state == LDMSD_PRDCR_SET_STATE_UPDATING) {
 				info->end.tv_sec = 0;
-				info->end.tv_usec = 0;
+				info->end.tv_nsec = 0;
 			} else {
-				info->end = prd_set->updt_end;
+				info->end = prd_set->updt_stat.end;
 			}
 			goto out;
 		}

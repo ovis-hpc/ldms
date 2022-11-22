@@ -60,9 +60,6 @@
 #include <pthread.h>
 
 #include <sys/time.h>
-#ifdef LDMSD_UPDATE_TIME
-#include <coll/idx.h>
-#endif /* LDMSD_UPDATE_TIME */
 
 #include <ovis_event/ovis_event.h>
 #include <ovis_util/util.h>
@@ -254,9 +251,6 @@ typedef struct ldmsd_prdcr {
 	 * quick lookup by the logic that handles update schedule.
 	 */
 	struct rbt hint_set_tree;
-#ifdef LDMSD_UPDATE_TIME
-	double sched_update_time;
-#endif /* LDMSD_UPDATE_TIME */
 } *ldmsd_prdcr_t;
 
 struct ldmsd_strgp;
@@ -279,6 +273,16 @@ struct ldmsd_updtr_schedule {
 	long offset_us;
 };
 typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
+
+struct ldmsd_stat {
+	struct timespec start;
+	struct timespec end;
+	double min;
+	double max;
+	double avg;
+	int count;
+};
+
 typedef struct ldmsd_prdcr_set {
 	char *inst_name;
 	char *schema_name;
@@ -302,25 +306,15 @@ typedef struct ldmsd_prdcr_set {
 
 	struct ldmsd_updtr_schedule updt_hint;
 
-	struct timeval updt_start;
-	struct timeval updt_end;
-
 	int updt_interval;
 	int updt_offset;
 	uint8_t updt_sync;
 
-#ifdef LDMSD_UPDATE_TIME
-	struct ldmsd_updt_time *updt_time;
-	double updt_duration;
-#endif /* LDMSD_UPDATE_TIME */
+	struct ldmsd_stat updt_stat;
 
 	int ref_count;
 	struct timespec lookup_complete_ts;
 } *ldmsd_prdcr_set_t;
-
-#ifdef LDMSD_UPDATE_TIME
-double ldmsd_timeval_diff(struct timeval *start, struct timeval *end);
-#endif /* LDMSD_UPDATE_TIME */
 
 typedef struct ldmsd_prdcr_ref {
 	ldmsd_prdcr_t prdcr;
@@ -336,16 +330,6 @@ typedef struct ldmsd_prdcr_ref {
  * sets on each producer will be updated.
  *
  */
-#ifdef LDMSD_UPDATE_TIME
-struct ldmsd_updt_time {
-	struct timeval sched_start;
-	struct timeval update_start;
-	int ref;
-	ldmsd_updtr_ptr updtr;
-	pthread_mutex_t lock;
-};
-#endif /* LDMSD_UPDATE_TIME */
-
 #define LDMSD_UPDTR_F_PUSH		1
 #define LDMSD_UPDTR_F_PUSH_CHANGE	2
 #define LDMSD_UPDTR_OFFSET_INCR_DEFAULT	100000
@@ -401,12 +385,6 @@ typedef struct ldmsd_updtr {
 	struct rbt task_tree;
 	/* Task to cleanup useless tasks from the task tree */
 	struct ldmsd_updtr_task tree_mgmt_task;
-
-#ifdef LDMSD_UPDATE_TIME
-	struct ldmsd_updt_time *curr_updt_time;
-	double duration;
-	double sched_duration;
-#endif /* LDMSD_UPDATE_TIME */
 
 	/*
 	 * For quick search when query for updater that updates a prdcr_set.
@@ -492,6 +470,8 @@ struct ldmsd_strgp {
 
 	/** Regular expression for the schema */
 	regex_t schema_regex;
+
+	struct ldmsd_stat stat;
 };
 
 
@@ -674,8 +654,8 @@ typedef struct ldmsd_set_info {
 	unsigned long interval_us; /* sampling interval or update interval */
 	long offset_us; /* sampling offset or update offset */
 	int sync; /* 1 if synchronous */
-	struct timeval start; /* Latest sampling/update timestamp */
-	struct timeval end; /* latest sampling/update timestamp */
+	struct timespec start; /* Latest sampling/update timestamp */
+	struct timespec end; /* latest sampling/update timestamp */
 	union {
 		struct ldmsd_plugin_cfg *pi;
 		ldmsd_prdcr_set_t prd_set;

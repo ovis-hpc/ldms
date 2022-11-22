@@ -118,6 +118,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'updtr_stop': {'req_attr': ['name']},
                       'udptr_status': {'req_attr': [], 'opt_attr': ['name']},
                       'updtr_task': {'req_attr': ['name'], 'opt_attr': []},
+                      'update_time_stats' : {'req_attr': [], 'opt_attr' : ['name']},
                       ##### Storage Policy #####
                       'strgp_add': {'req_attr': ['name', 'plugin', 'container', 'schema'],
                                     'opt_attr' : [ 'flush', 'decomposition' ] },
@@ -129,6 +130,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'strgp_start': {'req_attr': ['name']},
                       'strgp_stop': {'req_attr': ['name']},
                       'strgp_status': {'req_attr': [], 'opt_attr': ['name']},
+                      'store_time_stats': {'req_attr': [], 'opt_attr':['name']},
                       ##### Plugin #####
                       'plugn_sets': {'req_attr': [], 'opt_attr': []},
                       ##### Streams ###
