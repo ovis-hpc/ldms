@@ -793,6 +793,7 @@ static zap_io_thread_t __zap_least_busy_thread(zap_t z)
 	zap_io_thread_t t = NULL, _t;
 	struct timespec now;
 	double u, min_u = 1.0; /* utilization <= 1.0 */
+	int min_n_eps;
 
 	clock_gettime(CLOCK_REALTIME, &now);
 	pthread_mutex_lock(&z->_io_mutex);
@@ -809,9 +810,22 @@ static zap_io_thread_t __zap_least_busy_thread(zap_t z)
 	} else if (min_u > zap_io_busy) {
 		/* the least busy thread is too busy, create a new thread */
 		_t = __io_thread_create(z);
-		if (_t)
+		if (_t) {
 			t = _t;
-		/* else, use the least busy one */
+		} else {
+			/* all threads are too busy, and we reached max thread
+			 * count. Use the thread with the least number of
+			 * endpoints. */
+			t = LIST_FIRST(&z->_io_threads);
+			min_n_eps = t->_n_ep;
+			LIST_FOREACH(_t, &z->_io_threads, _entry)
+			{
+				if (_t->_n_ep < min_n_eps) {
+					t = _t;
+					min_n_eps = _t->_n_ep;
+				}
+			}
+		}
 	}
 	pthread_mutex_unlock(&z->_io_mutex);
 	return t;
