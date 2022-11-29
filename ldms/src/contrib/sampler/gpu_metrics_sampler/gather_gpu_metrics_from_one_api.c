@@ -628,6 +628,28 @@ double getPerfLevel(ze_device_handle_t hDevice) {
     return originalFactor;
 }
 
+zes_ras_handle_t *getRasError(ze_device_handle_t hDevice, uint32_t *pCount) {
+    ze_result_t res = zesDeviceEnumRasErrorSets(hDevice, pCount, NULL);
+    if (res != ZE_RESULT_SUCCESS) {
+        return NULL;
+    }
+    if (*pCount == 0) {
+        GMGLOG(LDMSD_LERROR, "!!!Could not retrieve ras error sets: *pCount == 0\n");
+        return NULL;
+    }
+    size_t memSize = sizeof(zes_ras_handle_t) * *pCount;
+    zes_ras_handle_t *rasError = GMG_MALLOC(memSize);
+
+    res = zesDeviceEnumRasErrorSets(hDevice, pCount, rasError);
+    if (res != ZE_RESULT_SUCCESS) {
+        GMGLOG(LDMSD_LERROR, "!!!zesDeviceEnumRasErrorSets(hDevice=%p,pCount=%p,rasError=%p) => 0x%x\n",
+               hDevice, pCount, rasError, res);
+        GMG_FREE(rasError);
+        return NULL;
+    }
+    return rasError;
+}
+
 zes_pwr_handle_t *getPowerDomains(ze_device_handle_t hDevice, uint32_t *pCount) {
     ze_result_t res = zesDeviceEnumPowerDomains(hDevice, pCount, NULL);
     if (res != ZE_RESULT_SUCCESS) {
@@ -649,6 +671,232 @@ zes_pwr_handle_t *getPowerDomains(ze_device_handle_t hDevice, uint32_t *pCount) 
         return NULL;
     }
     return phPower;
+}
+
+uint32_t readRasErrorPropAndState(ze_device_handle_t hDevice, zes_ras_properties_t properties, zes_ras_state_t state) {
+    if (g_bIsInSimulationMode) {
+        return 42;
+    }
+    uint32_t count = 0;
+    zes_ras_handle_t *pHandle = getRasError(hDevice, &count);
+    if (pHandle == NULL) {
+        return -99;
+    }
+    GMGLOG(LDMSD_LDEBUG, "ras-error-count = %d\n", count);
+
+    ze_result_t res = zesRasGetProperties(pHandle[0], &properties);
+    if (res != ZE_RESULT_SUCCESS) {
+        GMGLOG(LDMSD_LERROR, "!!!zesRasGetProperties(pHandle[0]=%p,&properties=%p) => 0x%x\n",
+               pHandle[0], &properties, res);
+        return -9999;
+    }
+
+    ze_bool_t clear = 0;
+    res = zesRasGetState(pHandle[0], clear, &state);
+    if (res != ZE_RESULT_SUCCESS) {
+        GMGLOG(LDMSD_LERROR, "!!!zesRasGetState(pHandle[0]=%p,clear=%p,&state=%p) => 0x%x\n",
+               pHandle[0], clear, &state, res);
+        return -9999;
+    }
+    GMGLOG(LDMSD_LDEBUG, "state=%p", &state);
+    GMG_FREE(pHandle);
+    return 0;
+}
+
+uint32_t getRasFatalAcceleratorResetsError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return state.category[ZES_RAS_ERROR_CAT_RESET];
+    }
+    return 0;
+}
+
+uint32_t getRasFatalCachesError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return state.category[ZES_RAS_ERROR_CAT_CACHE_ERRORS];
+    }
+    return 0;
+}
+
+uint32_t getRasFatalPrgmError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return state.category[ZES_RAS_ERROR_CAT_PROGRAMMING_ERRORS];
+    }
+    return 0;
+}
+
+uint32_t getRasFatalDriverError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return state.category[ZES_RAS_ERROR_CAT_DRIVER_ERRORS];
+    }
+    return 0;
+}
+
+uint32_t getRasFatalComputeError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return state.category[ZES_RAS_ERROR_CAT_COMPUTE_ERRORS];
+    }
+    return 0;
+}
+
+uint32_t getRasFatalNonComputeError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return state.category[ZES_RAS_ERROR_CAT_NON_COMPUTE_ERRORS];
+    }
+    return 0;
+}
+
+uint32_t getRasFatalDisplayError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return state.category[ZES_RAS_ERROR_CAT_DISPLAY_ERRORS];
+    }
+    return 0;
+}
+
+uint32_t getRasCorrectableAcceleratorResetsError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return 0;
+    }
+    return state.category[ZES_RAS_ERROR_CAT_RESET];
+}
+
+uint32_t getRasCorrectableCachesError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return 0;
+    }
+    return state.category[ZES_RAS_ERROR_CAT_CACHE_ERRORS];
+}
+
+uint32_t getRasCorrectablePrgmError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return 0;
+    }
+    return state.category[ZES_RAS_ERROR_CAT_PROGRAMMING_ERRORS];
+}
+
+uint32_t getRasCorrectableDriverError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return 0;
+    }
+    return state.category[ZES_RAS_ERROR_CAT_DRIVER_ERRORS];
+}
+
+uint32_t getRasCorrectableComputeError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return 0;
+    }
+    return state.category[ZES_RAS_ERROR_CAT_COMPUTE_ERRORS];
+}
+
+uint32_t getRasCorrectableNonComputeError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return 0;
+    }
+    return state.category[ZES_RAS_ERROR_CAT_NON_COMPUTE_ERRORS];
+}
+
+uint32_t getRasCorrectableDisplayError(ze_device_handle_t hDevice) {
+    zes_ras_properties_t properties;
+    zes_ras_state_t state;
+
+    uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
+    if (error != 0) {
+        return error;
+    }
+    if (properties.type == ZES_RAS_ERROR_TYPE_UNCORRECTABLE) {
+        return 0;
+    }
+    return state.category[ZES_RAS_ERROR_CAT_DISPLAY_ERRORS];
 }
 
 int32_t getPowerUsage(ze_device_handle_t hDevice) {

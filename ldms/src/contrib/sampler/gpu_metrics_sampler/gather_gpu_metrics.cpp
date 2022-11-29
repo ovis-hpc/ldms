@@ -87,6 +87,48 @@ void printGpuMetrics(ze_device_handle_t device, uint32_t devNumber) {
 
     cout << " " << devNumber << "     " << metricNumber++ << "         "
          << getGpuTemp(device) << "          gpu_temp (Celsius)" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasFatalAcceleratorResetsError(device) << "       ue_accelerator_eng_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasFatalCachesError(device) << "       ue_cache_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasFatalPrgmError(device) << "       ue_programming_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasFatalDriverError(device) << "       ue_driver_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasFatalComputeError(device) << "       ue_compute_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasFatalNonComputeError(device) << "       ue_non_compute_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasFatalDisplayError(device) << "       ue_display_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasCorrectableAcceleratorResetsError(device) << "       ce_accelerator_eng_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasCorrectableCachesError(device) << "       ce_cache_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasCorrectablePrgmError(device) << "       ce_programming_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasCorrectableDriverError(device) << "       ce_driver_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasCorrectableComputeError(device) << "       ce_compute_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasCorrectableNonComputeError(device) << "       ce_non_compute_err" << endl;
+
+    cout << " " << devNumber << "     " << metricNumber++ << "         "
+         << getRasCorrectableDisplayError(device) << "       ce_display_err" << endl;
 }
 
 int sampleGpuMetrics(int argc, char *argv[]) {
