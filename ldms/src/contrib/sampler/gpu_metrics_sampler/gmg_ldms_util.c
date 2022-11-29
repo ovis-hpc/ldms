@@ -80,9 +80,9 @@ const metric_t metricsDefinitions[] = {
         {.name = "mem_write_bandwidth (kilobaud)", .type = LDMS_V_D64, .pf = (funcPtr_t) getMemoryWriteBandwidth},
         {.name = "perf_level", .type = LDMS_V_D64, .pf = (funcPtr_t) getPerfLevel},
         {.name = "power_usage (mW)", .type = LDMS_V_S32, .pf = (funcPtr_t) getPowerUsage},
-        {.name = "power_cap (mW)", .type = LDMS_V_S32, .pf = (funcPtr_t) getPowerCap},    // no longer supported
+//        {.name = "power_cap (mW)", .type = LDMS_V_S32, .pf = (funcPtr_t) getPowerCap},    // no longer supported
         {.name = "gpu_temp (Celsius)", .type = LDMS_V_D64, .pf = (funcPtr_t) getGpuTemp},
-        {.name = "pci_max_bandwidth (baud)", .type = LDMS_V_U64, .pf = (funcPtr_t) getPciMaxSpeed}    // currently OneAPI does not support this
+//        {.name = "pci_max_bandwidth (baud)", .type = LDMS_V_U64, .pf = (funcPtr_t) getPciMaxSpeed}    // currently OneAPI does not support this
 };
 
 const size_t c_numMetrics = sizeof(metricsDefinitions) / sizeof(metricsDefinitions[0]);
