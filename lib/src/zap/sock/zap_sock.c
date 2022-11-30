@@ -1256,7 +1256,8 @@ static void sock_write(struct epoll_event *ev)
 	assert(0 == wr->data_len);
 	assert(0 == wr->msg_len);
 	TAILQ_REMOVE(&sep->sq, wr, link);
-	__atomic_fetch_sub(&sep->ep.thread->stat->sq_sz, 1, __ATOMIC_SEQ_CST);
+	if (sep->ep.thread)
+		__atomic_fetch_sub(&sep->ep.thread->stat->sq_sz, 1, __ATOMIC_SEQ_CST);
 	__atomic_fetch_sub(&sep->ep.sq_sz, 1, __ATOMIC_SEQ_CST);
 	if (wr->flags & Z_SOCK_WR_COMPLETION) {
 		/* right now we have only SEND_COMPLETE delivering by WR */
@@ -1487,7 +1488,8 @@ static void __wr_post(struct z_sock_ep *sep, z_sock_send_wr_t wr)
 	struct epoll_event ev = { .events = EPOLLOUT, .data.ptr = sep };
 	TAILQ_INSERT_TAIL(&sep->sq, wr, link);
 	__atomic_fetch_add(&sep->ep.sq_sz, 1, __ATOMIC_SEQ_CST);
-	__atomic_fetch_add(&sep->ep.thread->stat->sq_sz, 1, __ATOMIC_SEQ_CST);
+	if (sep->ep.thread)
+		__atomic_fetch_add(&sep->ep.thread->stat->sq_sz, 1, __ATOMIC_SEQ_CST);
 	sock_write(&ev);
 }
 

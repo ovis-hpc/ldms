@@ -1362,7 +1362,8 @@ static zap_err_t z_ugni_msg_send(struct z_ugni_ep *uep, zap_ugni_msg_t msg,
 	wr->state = Z_UGNI_WR_PENDING;
 	TAILQ_INSERT_TAIL(&uep->send_wrq, wr, entry);
 	__atomic_fetch_add(&uep->ep.sq_sz, 1, __ATOMIC_SEQ_CST);
-	__atomic_fetch_add(&uep->ep.thread->stat->sq_sz, 1, __ATOMIC_SEQ_CST);
+	if (uep->ep.thread)
+		__atomic_fetch_add(&uep->ep.thread->stat->sq_sz, 1, __ATOMIC_SEQ_CST);
 	ATOMIC_INC(&z_ugni_stat.active_send, 1);
 	z_ugni_sock_send(uep);
 	EP_THR_UNLOCK(uep);
