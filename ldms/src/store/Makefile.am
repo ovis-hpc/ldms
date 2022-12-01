@@ -91,6 +91,10 @@ if ENABLE_DARSHAN
 SUBDIRS += darshan
 endif
 
+if ENABLE_PROC
+SUBDIRS += proc_store
+endif
+
 if HAVE_KAFKA
 SUBDIRS += kafka
 endif
