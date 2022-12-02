@@ -1590,7 +1590,7 @@ void fn_rbt_destroy(linux_proc_sampler_inst_t inst, struct rbt *t);
 void app_set_destroy(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *a)
 {
 #ifdef LPDEBUG
-	INST_LOG(inst, LDMSD_LDEBUG, "Removing set %s\n",
+	INST_LOG(inst, LDMSD_LDEBUG, "Deleting set %s\n",
 		ldms_set_instance_name_get(a->set));
 	INST_LOG(inst, LDMSD_LDEBUG,"Uncreating key at %p: %" PRIu64 " , %" PRId64 "\n",
 		&a->key, a->key.start_tick, a->key.os_pid);
@@ -1639,10 +1639,15 @@ static int linux_proc_sampler_sample(struct ldmsd_sampler *pi)
 			rc = inst->fn[i].fn(inst, app_set->key.os_pid, app_set->set);
 			if (rc) {
 #ifdef LPDEBUG
-				INST_LOG(inst, LDMSD_LDEBUG,
-					"Removing set %s. Error %d(%s) from %s\n",
-					ldms_set_instance_name_get(app_set->set),
-					rc, STRERROR(rc), inst->fn[i].fn_name);
+				if (rc != ENOENT) {
+					INST_LOG(inst, LDMSD_LDEBUG,
+						"Removing set %s. Error %d(%s)"
+						" from %s\n",
+						ldms_set_instance_name_get(
+							app_set->set),
+						rc, STRERROR(rc),
+						inst->fn[i].fn_name);
+				}
 #endif
 				LIST_INSERT_HEAD(&del_list, app_set, del);
 				app_set->dead = rc;
@@ -1654,10 +1659,14 @@ static int linux_proc_sampler_sample(struct ldmsd_sampler *pi)
 			(app_set->fd_skip % inst->fd_msg == 0)) {
 			rc = publish_fd_pid(inst, app_set);
 			if (rc) {
-				INST_LOG(inst, LDMSD_LDEBUG, "Removing set %s."
-					" Error %d(%s) from publish_fd_pid\n",
-					ldms_set_instance_name_get(app_set->set),
-					rc, STRERROR(rc));
+				if (rc != ENOENT) {
+					INST_LOG(inst, LDMSD_LDEBUG,
+						"Removing set %s. Error %d(%s)"
+						" from publish_fd_pid\n",
+						ldms_set_instance_name_get(
+							app_set->set),
+						rc, STRERROR(rc));
+				}
 				LIST_INSERT_HEAD(&del_list, app_set, del);
 				app_set->dead = rc;
 				break;
@@ -2219,7 +2228,9 @@ uint64_t get_field_value_u64(linux_proc_sampler_inst_t inst, json_entity_t src, 
 {
 	json_entity_t e = json_value_find(src, name);
 	if (!e) {
-		INST_LOG(inst, LDMSD_LDEBUG, "no json attribute %s found.\n", name);
+#ifdef LPDEBUG
+		INST_LOG(inst, LDMSD_LDEBUG, "no u64 json attribute %s found.\n", name);
+#endif
 		errno = ENOKEY;
 		return 0;
 	}
@@ -2395,17 +2406,22 @@ static void release_proc_strings(char **result, int argc)
 }
 
 /* return 1 if bad (vsub not defined),
- * fill vsub with escaped string.
+ * fill vsub with escaped string computed from v.
+ * if bad character in v, errpos will point near it.
  * json escape chars become \X, bit-8 chars are bad. */
-int string_clean_json(const char *v, char *vsub, size_t vsub_sz)
+int string_clean_json(const char *v, char *vsub, size_t vsub_sz, int *errpos)
 {
 	int i = 0;
 	int j = 0;
-	if (!v || !vsub)
+	*errpos = -1;
+	if (!v || !vsub || !errpos)
 		return 1;
 	while (v[i] != '\0' && j < vsub_sz) {
-		if (v[i] > 126)
+		if (v[i] > 126) {
+			*errpos = i;
+			vsub[j] = '\0';
 			return 1;
+		}
 		switch(v[i]) {
 		case '\\':
 			vsub[j++] = '\\';
@@ -2568,12 +2584,14 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 		if (inst->env_use_regex &&
 			0 == regexec(&(inst->env_regex), k, 0, NULL, 0))
 			continue;
-		int dirty = string_clean_json(v, vsub, vsub_sz);
+		int epos = -1;
+		int dirty = string_clean_json(v, vsub, vsub_sz, &epos);
 		switch (dirty) {
 		case 1:
 			INST_LOG(inst, LDMSD_LWARNING,
-				"cannot send env val of %s for pid %d\n",
-				k, pid);
+				"cannot send env val of %s for pid %d:"
+				" bad char at %d in %s\n",
+				k, pid, epos, v);
 			continue;
 		case 2:
 			INST_LOG(inst, LDMSD_LWARNING,
@@ -2704,10 +2722,13 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 	switch (inst->argv_fmt) {
 	case 1:
 		for (i = 0; i < argc; i++) {
-			int ce = string_clean_json(argv[i], vbuf, vbuf_sz);
+			int epos = -1;
+			int ce = string_clean_json(argv[i], vbuf,vbuf_sz,&epos);
 			if (ce) {
 				INST_LOG(inst, LDMSD_LERROR,
-					"pid %d argv %d cannot be json\n");
+					"pid %d argv %d cannot be json:"
+					" bad char at %d of %s\n",
+					pid, i, epos, argv[i]);
 				rc = EINVAL;
 				goto out;
 			}
@@ -2719,10 +2740,13 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 		break;
 	case 2:
 		for (i = 0; i < argc; i++) {
-			int ce = string_clean_json(argv[i], vbuf, vbuf_sz);
+			int epos = -1;
+			int ce = string_clean_json(argv[i], vbuf,vbuf_sz,&epos);
 			if (ce) {
 				INST_LOG(inst, LDMSD_LERROR,
-					"pid %d argv %d cannot be json\n");
+					"pid %d argv %d cannot be json:"
+					" bad char at %d of %s\n",
+					pid, i, epos, argv[i]);
 				rc = EINVAL;
 				goto out;
 			}
@@ -2898,7 +2922,7 @@ static int fentry_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 		return 0;
 	}
 	if (!fe->name) {
-		INST_LOG(inst, LDMSD_LDEBUG, "null fe>name, pid %d\n", app_set->key.os_pid);
+		INST_LOG(inst, LDMSD_LDEBUG, "null fe>name, pid %d, state %s\n", app_set->key.os_pid, state);
 		return 0;
 	}
 	if (fe->seen) {
@@ -3212,7 +3236,7 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 		parent = get_parent_pid(pid, &is_thread_val);
 	}
 	uint64_t start_tick = get_start_tick(inst, data, pid);
-	if (!start_tick) {
+	if (!start_tick) { /* process disappeared before here */
 		INST_LOG(inst, LDMSD_LDEBUG, "ignoring start-tickless pid %"
 			PRId64 "\n", pid);
 		return 0;
