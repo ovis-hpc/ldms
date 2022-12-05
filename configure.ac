@@ -333,7 +333,7 @@ OPTION_DEFAULT_DISABLE([switchx], [ENABLE_SWITCHX])
 OPTION_WITH([switchx], [SWITCHX],[/usr/local])
 OPTION_DEFAULT_DISABLE([darshan], [ENABLE_DARSHAN])
 OPTION_DEFAULT_DISABLE([kokkos], [ENABLE_KOKKOS])
-OPTION_DEFAULT_DISABLE([proc], [ENABLE_PROC])
+OPTION_DEFAULT_DISABLE([proc-streams], [ENABLE_PROC_STREAMS])
 OPTION_DEFAULT_ENABLE([jobinfo-sampler], [ENABLE_JOBINFO])
 OPTION_DEFAULT_DISABLE([ibm_occ], [ENABLE_IBM_OCC_SAMPLER])
 OPTION_DEFAULT_DISABLE([appinfo], [ENABLE_APPINFO])
@@ -485,8 +485,8 @@ if test -z "$ENABLE_DARSHAN_TRUE"; then
         dnl darshan needs sos (not the storesos).
         CHECK_SOS=1
 fi
-if test -z "$ENABLE_PROC_TRUE"; then
-        dnl proc store needs sos (not the storesos).
+if test -z "$ENABLE_PROC_STREAMS_TRUE"; then
+        dnl linux_proc_sampler stream stores need sos
         CHECK_SOS=1
 fi
 if test -z "$ENABLE_STORE_APP_TRUE"; then
