@@ -91,7 +91,7 @@ if ENABLE_DARSHAN
 SUBDIRS += darshan
 endif
 
-if ENABLE_PROC
+if ENABLE_PROC_STREAMS
 SUBDIRS += proc_store
 endif
 
