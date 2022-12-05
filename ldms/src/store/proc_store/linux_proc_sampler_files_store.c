@@ -114,7 +114,7 @@ static const char *file_job_time_attrs[] = { "file", "job_id", "timestamp", "com
 
 static struct sos_schema_template proc_files_template = {
 	.name = STREAM,
-	.uuid = "3a650cf7-0b83-44dc-accc-e44acaa81232",
+	.uuid = UUID,
 	.attrs = {
 		{ .name = "job_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "component_id", .type = SOS_TYPE_UINT64 },
