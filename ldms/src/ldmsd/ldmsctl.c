@@ -1750,6 +1750,8 @@ static void resp_stream_client_dump(ldmsd_req_hdr_t resp, size_t len,
 
 	json_parser_t parser;
 	json_entity_t json;
+	json_entity_t l, cl, s, c;
+	const char *n, *fn, *ctxt;
 	int rc;
 	parser = json_parser_new(0);
 	if (!parser) {
@@ -1763,7 +1765,27 @@ static void resp_stream_client_dump(ldmsd_req_hdr_t resp, size_t len,
 		return;
 	}
 	json_parser_free(parser);
-	__json_value_print(json, 0);
+	printf("%-15s %-15s %-60s\n", "stream", "context", "cb_fn");
+	printf("--------------- --------------- -----------------------------------------------------------\n");
+	l = json_value_find(json, "streams");
+	for (s = json_item_first(l); s; s = json_item_next(s)) {
+		n = json_value_cstr(json_value_find(s, "name"));
+		if (!n)
+			continue;
+		printf("%-15s\n", n);
+		cl = json_value_find(s, "clients");
+		if (!cl)
+			continue;
+		for (c = json_item_first(cl); c; c = json_item_next(c)) {
+			fn = json_value_cstr(json_value_find(c, "cb_fn"));
+			if (!fn)
+				fn = "";
+			ctxt = json_value_cstr(json_value_find(c, "ctxt"));
+			if (!ctxt)
+				ctxt = "";
+			printf("%-15s %-15s %-60s\n", "", ctxt, fn);
+		}
+	}
 	printf("\n\n");
 
 	json_entity_free(json);
