@@ -1616,7 +1616,12 @@ class LdmsdCmdParser(cmd.Cmd):
         if not resp:
             raise RuntimeError("no response")
         obj = json.loads(resp['msg'])
-        print(json.dumps(obj, indent=2))
+        print(f"{'stream':15} {'ctxt':15} {'cb_fn':70}")
+        print(f"{'-'*15} {'-'*15} {'-'*70}")
+        for s in obj['streams']:
+            print(f"{s['name']:15}", end = None)
+            for c in s['clients']:
+                print(f"{'':15} {c['ctxt']:15} {c['cb_fn']:70}")
 
     def complete_stream_client_dump(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_client_dump', text)
