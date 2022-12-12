@@ -788,40 +788,46 @@ static zap_err_t __io_thread_cancel(zap_io_thread_t t)
 
 static double zap_utilization(zap_thrstat_t in, struct timespec *now);
 
-static zap_io_thread_t __zap_least_busy_thread(zap_t z)
+static zap_io_thread_t __zap_least_busy_thread(zap_t z, zap_ep_t ep)
 {
 	zap_io_thread_t t = NULL, _t;
 	struct timespec now;
-	double u, min_u = 1.0; /* utilization <= 1.0 */
+	int min_ep;
 
 	clock_gettime(CLOCK_REALTIME, &now);
 	pthread_mutex_lock(&z->_io_mutex);
+	/* always try to create a new thread to the max; otherwise,
+	 * use the thread with the least number of endpoints. */
+	t = __io_thread_create(z);
+	if (t)
+		goto out;
+	min_ep = 0x7FFFFFFF;
 	LIST_FOREACH(_t, &z->_io_threads, _entry)
 	{
-		u = zap_utilization(_t->stat, &now);
-		if (u < min_u) {
+		if (_t->_n_ep < min_ep) {
 			t = _t;
-			min_u = u;
+			min_ep = _t->_n_ep;
 		}
 	}
-	if (!t) {
-		t = __io_thread_create(z);
-	} else if (min_u > zap_io_busy) {
-		/* the least busy thread is too busy, create a new thread */
-		_t = __io_thread_create(z);
-		if (_t)
-			t = _t;
-		/* else, use the least busy one */
+ out:
+	if (t) {
+		/* also add ep to the thread before releasing io mutex */
+		pthread_mutex_lock(&t->mutex);
+		LIST_INSERT_HEAD(&t->_ep_list, ep, _entry);
+		t->_n_ep++;
+		t->stat->n_eps = t->_n_ep;
+		pthread_mutex_unlock(&t->mutex);
+		ep->thread = t;
 	}
 	pthread_mutex_unlock(&z->_io_mutex);
 	return t;
 }
 
-static zap_io_thread_t __zap_passive_ep_thread(zap_t z)
+static zap_io_thread_t __zap_passive_ep_thread(zap_t z, zap_ep_t ep)
 {
 	zap_io_thread_t t = z->_passive_ep_thread;
 	if (t)
-		return t;
+		goto out;
 	char name[16];
 	t = z->io_thread_create(z);
 	z->_passive_ep_thread = t;
@@ -830,6 +836,16 @@ static zap_io_thread_t __zap_passive_ep_thread(zap_t z)
 		 * The suffix is shorten due to pthread 16-char name limit. */
 		snprintf(name, sizeof(name), "%s_p", t->stat->name);
 		pthread_setname_np(t->thread, name);
+	}
+ out:
+	if (t) {
+		/* also add ep to the thread before releasing io mutex */
+		pthread_mutex_lock(&t->mutex);
+		LIST_INSERT_HEAD(&t->_ep_list, ep, _entry);
+		t->_n_ep++;
+		t->stat->n_eps = t->_n_ep;
+		pthread_mutex_unlock(&t->mutex);
+		ep->thread = t;
 	}
 	return t;
 }
@@ -842,21 +858,15 @@ zap_err_t zap_io_thread_ep_assign(zap_ep_t ep)
 
 	if (ep->state == ZAP_EP_LISTENING) {
 		/* pasive endpoint */
-		t = __zap_passive_ep_thread(z);
+		t = __zap_passive_ep_thread(z, ep);
 	} else {
-		t = __zap_least_busy_thread(z);
+		t = __zap_least_busy_thread(z, ep);
 	}
 
 	if (!t) {
 		zerr = errno; /* expect zap_err_t in errno */
 		goto out;
 	}
-	pthread_mutex_lock(&t->mutex);
-	LIST_INSERT_HEAD(&t->_ep_list, ep, _entry);
-	t->_n_ep++;
-	t->stat->n_eps = t->_n_ep;
-	pthread_mutex_unlock(&t->mutex);
-	ep->thread = t;
 	zerr = z->io_thread_ep_assign(t, ep);
 	if (zerr) {
 		ep->thread = NULL;
