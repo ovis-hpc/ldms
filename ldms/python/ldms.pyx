@@ -1321,7 +1321,6 @@ cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
     if e.type == EVENT_DISCONNECTED:
         Py_DECREF(x) # taken when CONNECTED
 
-
 # This is the C callback function for passive transports (the listening
 # transport and all transports accepted by it). It calls the Python callback
 # callable if provided. Otherwise, it works internally to provide blocking
@@ -3010,8 +3009,8 @@ cdef class Xprt(object):
         if self.xprt:
             ldms_xprt_put(self.xprt)
 
-    def connect(self, host, port=411, cb=None, cb_arg=None):
-        """X.connect(host, port=411, cb=None, cb_arg=None)
+    def connect(self, host, port=411, cb=None, cb_arg=None, timeout=None):
+        """X.connect(host, port=411, cb=None, cb_arg=None, timeout=None)
 
         Connect to the remote LDMS peer
 
@@ -3020,7 +3019,7 @@ cdef class Xprt(object):
         - port (int): The peer port number.
         - cb (callable): The callback function.
         - cb_arg (object): The application argument to `cb()`.
-
+        - timeout (int): Optional amount of time to wait before timing out connection.
 
         If `cb` is `None`, `connect()` is a blocking function, i.e. it will not
         return until the conenction resolved in either success or failure. In
@@ -3036,7 +3035,11 @@ cdef class Xprt(object):
         - event (XprtEvent): An object describing an event from the transport.
         - arg (object): The `cb_arg` supplied to the `connect()` function.
         """
+        import types
         cdef int rc
+        cdef timespec ts
+        if not isinstance(cb, types.FunctionType) and cb is not None:
+            raise TypeError("Callback argument must be callable")
         self._conn_cb = cb
         self._conn_cb_arg = cb_arg
         rc = ldms_xprt_connect_by_name(self.xprt, BYTES(host), BYTES(port),
@@ -3050,8 +3053,16 @@ cdef class Xprt(object):
         if cb:
             return
         # Else, release the GIL and wait
-        with nogil:
-            sem_wait(&self._conn_sem)
+        if timeout:
+            clock_gettime(CLOCK_REALTIME, &ts)
+            ts.tv_sec += timeout
+            with nogil:
+                rc = sem_timedwait(&self._conn_sem, &ts)
+                if rc:
+                    raise TimeoutError(f"Connection Timeout on host {host} with port no {port}")
+        else:
+            with nogil:
+                    sem_wait(&self._conn_sem)
         if self._conn_rc:
             rc = self._conn_rc
             raise ConnectionError(rc, "Connect error: {}".format(ERRNO_SYM(rc)))
