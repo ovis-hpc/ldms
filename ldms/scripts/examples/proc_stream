@@ -1,0 +1,103 @@
+export plugname=linux_proc_sampler
+export dsname=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 stat=1 auto-schema=1)
+export dstat_schema=$dsname
+export LDMSD_LOG_LEVEL=ERROR
+export LDMSD_LOG_TIME_SEC=1
+export LDMSD_EXTRA="-m 128m"
+
+portbase=61070
+cat << EOF > $LDMSD_RUN/exclude_env
+^COLORTERM
+^DBU.*
+^DESKTOP_SESSION
+^DISPLAY
+^GDM.*
+^GNO.*
+^GUESTFISH.*
+^XDG.*
+^LS_COLORS
+^SESSION_MANAGER
+^SSH.*
+^XAU.*
+^BASH_FUNC_m
+"
+EOF
+ldms-gen-syscall-map > $LDMSD_RUN/syscalls.map
+cat << EOF > $LDMSD_RUN/metrics.input
+{ "stream" : "slurm",
+  "argv_sep":"\t",
+  "syscalls": "${LDMSD_RUN}/syscalls.map",
+  "argv_msg": 1,
+  "env_msg": 1,
+  "env_exclude": "${LDMSD_RUN}/exclude_env",
+  "fd_msg": 1,
+  "fd_exclude": [
+        "^/dev/",
+        "^/run/",
+        "^/var/",
+        "^/etc/",
+        "^/sys/",
+        "^/tmp/",
+        "^/proc/",
+        "^/ram/tmp/",
+        "^/usr/lib",
+        "^/usr/share/",
+        "(deleted)",
+        "^/opt/ness"
+    ],
+  "metrics" : [
+    "stat_pid" ,
+    "stat_state",
+    "stat_rss",
+    "stat_utime",
+    "stat_stime",
+    "io_read_b",
+    "io_write_b",
+    "syscall_name"
+  ]
+}
+EOF
+rm -f $LOGDIR/json*.log
+rm -rf $STOREDIR
+mkdir -p $STOREDIR
+# valgrind -v --tool=drd --log-file=$LOGDIR/vg.netlink.txt ${BUILDDIR}/sbin/ldms-netlink-notifier --port=61071 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
+# uncomment next one to test duplicate handling
+#${BUILDDIR}/sbin/ldms-netlink-notifier --port=61071 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json2.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
+VGARGS="--tool=drd --suppressions=/scratch1/baallan/ovis/ldms/scripts/examples/linux_proc_sampler.drd.supp"
+VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite --time-stamp=yes --keep-debuginfo=yes"
+DAEMONS $(seq 3)
+#vgon
+LDMSD 2
+vgoff
+SLEEP 4
+#vgon
+LDMSD 1
+vgoff
+LDMSD 3
+vgoff
+${BUILDDIR}/sbin/ldms-netlink-notifier --port=61071 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
+SLEEP 2
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -v
+MESSAGE ldms_ls on host 2:
+SLEEP 1
+LDMS_LS 2 -v
+SLEEP 5
+MESSAGE stream_client_dump on sampler daemon 1
+for lc in $(seq 1); do
+	# ldmsd_controller --auth none --port 61061 --cmd stream_client_dump
+	SLEEP 1
+done
+SLEEP 5
+for lc in $(seq 1); do
+	LDMS_LS 1 -v
+	SLEEP 2
+done
+SLEEP 2
+KILL_LDMSD 3 2 1
+file_created $STOREDIR/argv/default/objects.BE
+file_created $STOREDIR/node/$dsname
+rollover_created $STOREDIR/blobs/linux_proc_sampler_argv.DAT
+rollover_created $STOREDIR/blobs/linux_proc_sampler_files.DAT
+rollover_created $STOREDIR/blobs/linux_proc_sampler_env.DAT
+rollover_created $STOREDIR/blobs/slurm.DAT
