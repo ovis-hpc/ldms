@@ -88,7 +88,7 @@ static const char *k_job_component_pid_attrs[] = { "k", "job_id", "component_id"
  *
  * { \"job_id\" : 0,
  *   \"component_id\" : 0,
- *   \"ProducerName\" : \"nid00021\",
+ *   \"producerName\" : \"nid00021\",
  *   \"pid\" : 241011,
  *   \"timestamp\" : \"163000348.3312\",
  *   \"task_rank\" : -1,
@@ -104,13 +104,13 @@ static const char *k_job_component_pid_attrs[] = { "k", "job_id", "component_id"
  *  }
  */
 
-static struct sos_schema_template proc_files_template = {
+static struct sos_schema_template proc_template = {
 	.name = STREAM,
 	.uuid = UUID,
 	.attrs = {
 		{ .name = "job_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "component_id", .type = SOS_TYPE_UINT64 },
-		{ .name = "ProducerName", .type = SOS_TYPE_STRING },
+		{ .name = "producerName", .type = SOS_TYPE_STRING },
 		{ .name = "pid", .type = SOS_TYPE_UINT64 },
 		{ .name = "timestamp", .type = SOS_TYPE_STRING },
 		{ .name = "task_rank", .type = SOS_TYPE_INT64 },
@@ -155,17 +155,17 @@ static int create_schema(sos_t sos, sos_schema_t *app)
 	sos_schema_t schema;
 
 	/* Create and add the App schema */
-	schema = sos_schema_from_template(&proc_files_template);
+	schema = sos_schema_from_template(&proc_template);
 	if (!schema) {
-		msglog(LDMSD_LERROR, "%s: Error %d creating Darshan data schema.\n",
-		       stream_store.name, errno);
+		msglog(LDMSD_LERROR, "%s: Error creating data schema %s: %s\n",
+		       stream_store.name, STREAM, STRERROR(errno));
 		rc = errno;
 		goto err;
 	}
 	rc = sos_schema_add(sos, schema);
 	if (rc) {
-		msglog(LDMSD_LERROR, "%s: Error %d adding Darshan data schema.\n",
-				stream_store.name, rc);
+		msglog(LDMSD_LERROR, "%s: Error %s adding stream %s data schema.\n",
+				stream_store.name, STRERROR(rc), stream);
 		goto err;
 	}
 	*app = schema;
@@ -184,6 +184,7 @@ static sos_t sos;
 static int reopen_container(char *path)
 {
 	int rc = 0;
+	msglog(LDMSD_LDEBUG, "reopen '%s'\n", path);
 
 	/* Close the container if it already exists */
 	if (sos)
@@ -193,15 +194,47 @@ static int reopen_container(char *path)
 	/* Creates the container if it doesn't already exist  */
 	sos = sos_container_open(path, SOS_PERM_RW|SOS_PERM_CREAT, container_mode);
 	if (!sos) {
-		return errno;
+		rc = errno;
+		if (rc == ENOENT) {
+			int drc = f_mkdir_p(path, container_mode);
+			if (drc != 0 && drc != EEXIST) {
+				msglog(LDMSD_LERROR, "Error creating the directory '%s': %s\n",
+					path, STRERROR(drc));
+				return drc;
+			}
+			int nrc = sos_container_new(path, container_mode);
+			if (nrc) {
+				msglog(LDMSD_LERROR, "Error creating the container at '%s': %s\n",
+				       path, STRERROR(nrc));
+				return nrc;
+			}
+			sos = sos_container_open(path, SOS_PERM_RW|SOS_PERM_CREAT, container_mode);
+			if (!sos) {
+				rc = errno;
+				msglog(LDMSD_LERROR, "Error opening the new container at '%s': %s\n",
+				       path, STRERROR(rc));
+				return rc;
+			}
+		} else {
+			msglog(LDMSD_LERROR, "Error opening the old container at '%s': %s\n",
+			       path, STRERROR(rc));
+			return rc;
+		}
 	}
 
-	app_schema = sos_schema_by_name(sos, proc_files_template.name);
+	app_schema = sos_schema_by_name(sos, proc_template.name);
 	if (!app_schema) {
 		rc = create_schema(sos, &app_schema);
-		if (rc)
-			return rc;
+		if (rc) {
+			msglog(LDMSD_LERROR, "Error creating schema %s in path %s: %s\n",
+			       proc_template.name, path, STRERROR(rc));
+			goto err;
 	}
+	}
+	return 0;
+err:
+	sos_container_close(sos, SOS_COMMIT_ASYNC);
+	sos = NULL;
 	return rc;
 }
 
@@ -217,6 +250,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			 ldmsd_stream_type_t stream_type,
 			 const char *msg, size_t msg_len,
 			 json_entity_t entity);
+
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
@@ -255,6 +289,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return ENOMEM;
 	}
 
+	msglog(LDMSD_LDEBUG, "config %s %s %o\n", root_path, stream, container_mode);
 	rc = reopen_container(root_path);
 	if (rc) {
 		msglog(LDMSD_LERROR, "%s: Error opening %s.\n",
@@ -299,7 +334,9 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	int rc, json_k, task_rank;
 	json_entity_t v, list, item;
 	uint64_t job_id, component_id, pid, parent, is_thread;
-	char *producer_name, *timestamp, *exec, *json_v;
+	char *producer_name, *timestamp, *exec;
+	char *json_v;
+	char *field;
 
 	if (!entity) {
 		msglog(LDMSD_LERROR,
@@ -308,52 +345,52 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		return 0;
 	}
 
-	rc = get_json_value(entity, "job_id", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, field="job_id", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	job_id = json_value_int(v);
 
-	rc = get_json_value(entity, "component_id", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, field="component_id", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	component_id = json_value_int(v);
 
-	rc = get_json_value(entity, "ProducerName", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, field="producerName", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	producer_name = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "pid", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, field="pid", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	pid = json_value_int(v);
 
-	rc = get_json_value(entity, "timestamp", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, field="timestamp", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	timestamp = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "task_rank", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, field="task_rank", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	task_rank = json_value_int(v);
 
-	rc = get_json_value(entity, "parent", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, field="parent", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	parent = json_value_int(v);
 
-	rc = get_json_value(entity, "is_thread", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, field="is_thread", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	is_thread = json_value_int(v);
 
-	rc = get_json_value(entity, "exe", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, field="exe", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	exec = json_value_str(v)->str;
 
-	rc = get_json_value(entity, LISTNAME, JSON_LIST_VALUE, &list);
+	rc = get_json_value(entity, field=LISTNAME, JSON_LIST_VALUE, &list);
 	if (rc)
 		goto err;
 	for (item = json_item_first(list); item; item = json_item_next(item)) {
@@ -366,12 +403,12 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			goto err;
 		}
 
-		rc = get_json_value(item, "k", JSON_INT_VALUE, &v);
+		rc = get_json_value(item, field="k", JSON_INT_VALUE, &v);
 		if (rc)
 			goto err;
 		json_k = json_value_int(v);
 
-		rc = get_json_value(item, "v", JSON_STRING_VALUE, &v);
+		rc = get_json_value(item, field="v", JSON_STRING_VALUE, &v);
 		if (rc)
 			goto err;
 		json_v = json_value_str(v)->str;
@@ -385,7 +422,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			goto err;
 		}
 
-		msglog(LDMSD_LDEBUG, "%s: Got a record from stream (%s)",
+		msglog(LDMSD_LDEBUG, "%s: Got a record from stream (%s)\n",
 				stream_store.name, stream);
 
 
@@ -407,11 +444,14 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	}
 	rc = 0;
  err:
+	if (rc)
+		msglog(LDMSD_LDEBUG, "got bad message: field=%s err=%d\n", field, rc);
 	return rc;
 }
 
 static void term(struct ldmsd_plugin *self)
 {
+	msglog(LDMSD_LDEBUG, "term %s\n", self->name);
 	if (sos)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 	free(root_path);
