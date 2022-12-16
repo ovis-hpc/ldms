@@ -704,8 +704,8 @@ uint32_t readRasErrorPropAndState(ze_device_handle_t hDevice, zes_ras_properties
 }
 
 uint32_t getRasFatalAcceleratorResetsError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -718,8 +718,8 @@ uint32_t getRasFatalAcceleratorResetsError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasFatalCachesError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -732,8 +732,8 @@ uint32_t getRasFatalCachesError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasFatalPrgmError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -746,8 +746,8 @@ uint32_t getRasFatalPrgmError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasFatalDriverError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -760,8 +760,8 @@ uint32_t getRasFatalDriverError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasFatalComputeError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -774,8 +774,8 @@ uint32_t getRasFatalComputeError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasFatalNonComputeError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -788,8 +788,8 @@ uint32_t getRasFatalNonComputeError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasFatalDisplayError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -802,8 +802,8 @@ uint32_t getRasFatalDisplayError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasCorrectableAcceleratorResetsError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -816,8 +816,8 @@ uint32_t getRasCorrectableAcceleratorResetsError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasCorrectableCachesError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -830,8 +830,8 @@ uint32_t getRasCorrectableCachesError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasCorrectablePrgmError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -844,8 +844,8 @@ uint32_t getRasCorrectablePrgmError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasCorrectableDriverError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -858,8 +858,8 @@ uint32_t getRasCorrectableDriverError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasCorrectableComputeError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -872,8 +872,8 @@ uint32_t getRasCorrectableComputeError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasCorrectableNonComputeError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
@@ -886,8 +886,8 @@ uint32_t getRasCorrectableNonComputeError(ze_device_handle_t hDevice) {
 }
 
 uint32_t getRasCorrectableDisplayError(ze_device_handle_t hDevice) {
-    zes_ras_properties_t properties;
-    zes_ras_state_t state;
+    zes_ras_properties_t properties = {};
+    zes_ras_state_t state = {};
 
     uint32_t error = readRasErrorPropAndState(hDevice, properties, state);
     if (error != 0) {
