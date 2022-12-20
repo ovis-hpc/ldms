@@ -550,6 +550,8 @@ static void stream_data_close( stream_data_t sd )
 		fclose(sd->offsetfile);
 		sd->offsetfile = NULL;
 	}
+	free(sd->typefile_name);
+	sd->typefile_name = NULL;
 	free(sd->streamfile_name);
 	sd->streamfile_name = NULL;
 	free(sd->offsetfile_name);
