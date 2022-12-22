@@ -127,6 +127,7 @@ char myname[512]; /* name to identify ldmsd */
 char myhostname[80];
 char ldmstype[20];
 int foreground;
+int cfg_cntr = 0;
 pthread_t event_thread = (pthread_t)-1;
 char *logfile;
 int log_truncate = 0;
@@ -434,6 +435,16 @@ const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level)
 	if ((level >= LDMSD_LDEBUG) && (level < LDMSD_LLASTLEVEL))
 		return ldmsd_loglevel_names[level];
 	return "LDMSD_LNONE";
+}
+
+void ldmsd_inc_cfg_cntr()
+{
+	__atomic_fetch_add(&cfg_cntr, 1, __ATOMIC_SEQ_CST);
+}
+
+int ldmsd_cfg_cntr_get()
+{
+	return cfg_cntr;
 }
 
 const char *ldmsd_myname_get()

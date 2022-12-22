@@ -1210,6 +1210,10 @@ extern const char *ldmsd_myhostname_get();
 /* Get the name of this ldmsd */
 const char *ldmsd_myname_get();
 
+/* Increment config counter */
+void ldmsd_inc_cfg_cntr();
+int ldmsd_cfg_cntr_get();
+
 mode_t ldmsd_inband_cfg_mask_get();
 void ldmsd_inband_cfg_mask_set(mode_t mask);
 void ldmsd_inband_cfg_mask_add(mode_t mask);
