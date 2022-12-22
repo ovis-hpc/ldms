@@ -277,6 +277,7 @@ class LDMSD_Req_Attr(object):
 class LDMSD_Request(object):
     EXAMPLE = 1
     GREETING = 2
+    CFG_CNTR = 3
 
     PRDCR_ADD = 0x100
     PRDCR_DEL = 0x100 + 1
@@ -376,6 +377,7 @@ class LDMSD_Request(object):
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
             'greeting': {'id': GREETING},
+            'cfg_cntr': {'id': CFG_CNTR},
 
             'prdcr_add': {'id': PRDCR_ADD},
             'prdcr_del': {'id': PRDCR_DEL},

@@ -191,6 +191,7 @@ struct request_handler_entry {
 };
 
 static int example_handler(ldmsd_req_ctxt_t req_ctxt);
+static int ldmsd_cfg_cntr_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_add_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_start_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -295,22 +296,25 @@ static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc);
 #define XALL 0111
 /* executable for user, and group */
 #define XUG 0110
+/* flag if config request modifies existing configuration */
+#define MOD 010000
 
 static struct request_handler_entry request_handler[] = {
 	[LDMSD_EXAMPLE_REQ] = { LDMSD_EXAMPLE_REQ, example_handler, XALL },
+	[LDMSD_CFG_CNTR_REQ] = { LDMSD_CFG_CNTR_REQ, ldmsd_cfg_cntr_handler, XUG },
 
 	/* PRDCR */
 	[LDMSD_PRDCR_ADD_REQ] = {
-		LDMSD_PRDCR_ADD_REQ, prdcr_add_handler, XUG
+		LDMSD_PRDCR_ADD_REQ, prdcr_add_handler, XUG | MOD
 	},
 	[LDMSD_PRDCR_DEL_REQ] = {
-		LDMSD_PRDCR_DEL_REQ, prdcr_del_handler, XUG
+		LDMSD_PRDCR_DEL_REQ, prdcr_del_handler, XUG | MOD
 	},
 	[LDMSD_PRDCR_START_REQ] = {
-		LDMSD_PRDCR_START_REQ, prdcr_start_handler, XUG
+		LDMSD_PRDCR_START_REQ, prdcr_start_handler, XUG | MOD
 	},
 	[LDMSD_PRDCR_STOP_REQ] = {
-		LDMSD_PRDCR_STOP_REQ, prdcr_stop_handler, XUG
+		LDMSD_PRDCR_STOP_REQ, prdcr_stop_handler, XUG | MOD
 	},
 	[LDMSD_PRDCR_STATUS_REQ] = {
 		LDMSD_PRDCR_STATUS_REQ, prdcr_status_handler,
@@ -321,10 +325,10 @@ static struct request_handler_entry request_handler[] = {
 		XUG | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 	[LDMSD_PRDCR_START_REGEX_REQ] = {
-		LDMSD_PRDCR_START_REGEX_REQ, prdcr_start_regex_handler, XUG
+		LDMSD_PRDCR_START_REGEX_REQ, prdcr_start_regex_handler, XUG | MOD
 	},
 	[LDMSD_PRDCR_STOP_REGEX_REQ] = {
-		LDMSD_PRDCR_STOP_REGEX_REQ, prdcr_stop_regex_handler, XUG
+		LDMSD_PRDCR_STOP_REGEX_REQ, prdcr_stop_regex_handler, XUG | MOD
 	},
 	[LDMSD_PRDCR_HINT_TREE_REQ] = {
 		LDMSD_PRDCR_HINT_TREE_REQ, prdcr_hint_tree_status_handler,
@@ -332,11 +336,11 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_PRDCR_SUBSCRIBE_REQ] = {
 		LDMSD_PRDCR_SUBSCRIBE_REQ, prdcr_subscribe_regex_handler,
-		XUG | LDMSD_PERM_FAILOVER_ALLOWED
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED | MOD
 	},
 	[LDMSD_PRDCR_UNSUBSCRIBE_REQ] = {
 		LDMSD_PRDCR_UNSUBSCRIBE_REQ, prdcr_unsubscribe_regex_handler,
-		XUG | LDMSD_PERM_FAILOVER_ALLOWED
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED | MOD
 	},
 	[LDMSD_PRDCR_STREAM_DIR_REQ] = {
 		LDMSD_PRDCR_STREAM_DIR_REQ, prdcr_stream_dir_handler,
@@ -345,28 +349,28 @@ static struct request_handler_entry request_handler[] = {
 
 	/* STRGP */
 	[LDMSD_STRGP_ADD_REQ] = {
-		LDMSD_STRGP_ADD_REQ, strgp_add_handler, XUG
+		LDMSD_STRGP_ADD_REQ, strgp_add_handler, XUG | MOD
 	},
 	[LDMSD_STRGP_DEL_REQ]  = {
-		LDMSD_STRGP_DEL_REQ, strgp_del_handler, XUG
+		LDMSD_STRGP_DEL_REQ, strgp_del_handler, XUG | MOD
 	},
 	[LDMSD_STRGP_PRDCR_ADD_REQ] = {
-		LDMSD_STRGP_PRDCR_ADD_REQ, strgp_prdcr_add_handler, XUG
+		LDMSD_STRGP_PRDCR_ADD_REQ, strgp_prdcr_add_handler, XUG | MOD
 	},
 	[LDMSD_STRGP_PRDCR_DEL_REQ] = {
-		LDMSD_STRGP_PRDCR_DEL_REQ, strgp_prdcr_del_handler, XUG
+		LDMSD_STRGP_PRDCR_DEL_REQ, strgp_prdcr_del_handler, XUG | MOD
 	},
 	[LDMSD_STRGP_METRIC_ADD_REQ] = {
-		LDMSD_STRGP_METRIC_ADD_REQ, strgp_metric_add_handler, XUG
+		LDMSD_STRGP_METRIC_ADD_REQ, strgp_metric_add_handler, XUG | MOD
 	},
 	[LDMSD_STRGP_METRIC_DEL_REQ] = {
-		LDMSD_STRGP_METRIC_DEL_REQ, strgp_metric_del_handler, XUG
+		LDMSD_STRGP_METRIC_DEL_REQ, strgp_metric_del_handler, XUG | MOD
 	},
 	[LDMSD_STRGP_START_REQ] = {
-		LDMSD_STRGP_START_REQ, strgp_start_handler, XUG
+		LDMSD_STRGP_START_REQ, strgp_start_handler, XUG | MOD
 	},
 	[LDMSD_STRGP_STOP_REQ] = {
-		LDMSD_STRGP_STOP_REQ, strgp_stop_handler, XUG
+		LDMSD_STRGP_STOP_REQ, strgp_stop_handler, XUG | MOD
 	},
 	[LDMSD_STRGP_STATUS_REQ] = {
 		LDMSD_STRGP_STATUS_REQ, strgp_status_handler,
@@ -379,28 +383,28 @@ static struct request_handler_entry request_handler[] = {
 
 	/* UPDTR */
 	[LDMSD_UPDTR_ADD_REQ] = {
-		LDMSD_UPDTR_ADD_REQ, updtr_add_handler, XUG
+		LDMSD_UPDTR_ADD_REQ, updtr_add_handler, XUG | MOD
 	},
 	[LDMSD_UPDTR_DEL_REQ] = {
-		LDMSD_UPDTR_DEL_REQ, updtr_del_handler, XUG
+		LDMSD_UPDTR_DEL_REQ, updtr_del_handler, XUG | MOD
 	},
 	[LDMSD_UPDTR_PRDCR_ADD_REQ] = {
-		LDMSD_UPDTR_PRDCR_ADD_REQ, updtr_prdcr_add_handler, XUG
+		LDMSD_UPDTR_PRDCR_ADD_REQ, updtr_prdcr_add_handler, XUG | MOD
 	},
 	[LDMSD_UPDTR_PRDCR_DEL_REQ] = {
-		LDMSD_UPDTR_PRDCR_DEL_REQ, updtr_prdcr_del_handler, XUG
+		LDMSD_UPDTR_PRDCR_DEL_REQ, updtr_prdcr_del_handler, XUG | MOD
 	},
 	[LDMSD_UPDTR_START_REQ] = {
-		LDMSD_UPDTR_START_REQ, updtr_start_handler, XUG
+		LDMSD_UPDTR_START_REQ, updtr_start_handler, XUG | MOD
 	},
 	[LDMSD_UPDTR_STOP_REQ] = {
-		LDMSD_UPDTR_STOP_REQ, updtr_stop_handler, XUG
+		LDMSD_UPDTR_STOP_REQ, updtr_stop_handler, XUG | MOD
 	},
 	[LDMSD_UPDTR_MATCH_ADD_REQ] = {
-		LDMSD_UPDTR_MATCH_ADD_REQ, updtr_match_add_handler, XUG
+		LDMSD_UPDTR_MATCH_ADD_REQ, updtr_match_add_handler, XUG | MOD
 	},
 	[LDMSD_UPDTR_MATCH_DEL_REQ] = {
-		LDMSD_UPDTR_MATCH_DEL_REQ, updtr_match_del_handler, XUG
+		LDMSD_UPDTR_MATCH_DEL_REQ, updtr_match_del_handler, XUG | MOD
 	},
 	[LDMSD_UPDTR_MATCH_LIST_REQ] = {
 		LDMSD_UPDTR_MATCH_LIST_REQ, updtr_match_list_handler, XUG
@@ -420,23 +424,23 @@ static struct request_handler_entry request_handler[] = {
 
 	/* PLUGN */
 	[LDMSD_PLUGN_START_REQ] = {
-		LDMSD_PLUGN_START_REQ, plugn_start_handler, XUG
+		LDMSD_PLUGN_START_REQ, plugn_start_handler, XUG | MOD
 	},
 	[LDMSD_PLUGN_STOP_REQ] = {
-		LDMSD_PLUGN_STOP_REQ, plugn_stop_handler, XUG
+		LDMSD_PLUGN_STOP_REQ, plugn_stop_handler, XUG | MOD
 	},
 	[LDMSD_PLUGN_STATUS_REQ] = {
 		LDMSD_PLUGN_STATUS_REQ, plugn_status_handler,
 		XALL | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 	[LDMSD_PLUGN_LOAD_REQ] = {
-		LDMSD_PLUGN_LOAD_REQ, plugn_load_handler, XUG
+		LDMSD_PLUGN_LOAD_REQ, plugn_load_handler, XUG | MOD
 	},
 	[LDMSD_PLUGN_TERM_REQ] = {
-		LDMSD_PLUGN_TERM_REQ, plugn_term_handler, XUG
+		LDMSD_PLUGN_TERM_REQ, plugn_term_handler, XUG | MOD
 	},
 	[LDMSD_PLUGN_CONFIG_REQ] = {
-		LDMSD_PLUGN_CONFIG_REQ, plugn_config_handler, XUG
+		LDMSD_PLUGN_CONFIG_REQ, plugn_config_handler, XUG | MOD
 	},
 	[LDMSD_PLUGN_LIST_REQ] = {
 		LDMSD_PLUGN_LIST_REQ, plugn_list_handler, XALL
@@ -447,10 +451,10 @@ static struct request_handler_entry request_handler[] = {
 
 	/* SET */
 	[LDMSD_SET_UDATA_REQ] = {
-		LDMSD_SET_UDATA_REQ, set_udata_handler, XUG
+		LDMSD_SET_UDATA_REQ, set_udata_handler, XUG | MOD
 	},
 	[LDMSD_SET_UDATA_REGEX_REQ] = {
-		LDMSD_SET_UDATA_REGEX_REQ, set_udata_regex_handler, XUG
+		LDMSD_SET_UDATA_REGEX_REQ, set_udata_regex_handler, XUG | MOD
 	},
 
 
@@ -466,19 +470,19 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_VERSION_REQ, version_handler, XALL
 	},
 	[LDMSD_ENV_REQ] = {
-		LDMSD_ENV_REQ, env_handler, XUG
+		LDMSD_ENV_REQ, env_handler, XUG | MOD
 	},
 	[LDMSD_INCLUDE_REQ] = {
-		LDMSD_INCLUDE_REQ, include_handler, XUG
+		LDMSD_INCLUDE_REQ, include_handler, XUG | MOD
 	},
 	[LDMSD_ONESHOT_REQ] = {
-		LDMSD_ONESHOT_REQ, oneshot_handler, XUG
+		LDMSD_ONESHOT_REQ, oneshot_handler, XUG | MOD
 	},
 	[LDMSD_LOGROTATE_REQ] = {
-		LDMSD_LOGROTATE_REQ, logrotate_handler, XUG
+		LDMSD_LOGROTATE_REQ, logrotate_handler, XUG | MOD
 	},
 	[LDMSD_EXIT_DAEMON_REQ] = {
-		LDMSD_EXIT_DAEMON_REQ, exit_daemon_handler, XUG
+		LDMSD_EXIT_DAEMON_REQ, exit_daemon_handler, XUG | MOD
 	},
 	[LDMSD_GREETING_REQ] = {
 		LDMSD_GREETING_REQ, greeting_handler, XUG
@@ -502,33 +506,33 @@ static struct request_handler_entry request_handler[] = {
 	},
 
 	[LDMSD_SET_DEFAULT_AUTHZ_REQ] = {
-		LDMSD_SET_DEFAULT_AUTHZ_REQ, set_default_authz_handler, XUG
+		LDMSD_SET_DEFAULT_AUTHZ_REQ, set_default_authz_handler, XUG | MOD
 	},
 
 	/* FAILOVER user commands */
 	[LDMSD_FAILOVER_CONFIG_REQ] = {
-		LDMSD_FAILOVER_CONFIG_REQ, failover_config_handler, XUG,
+		LDMSD_FAILOVER_CONFIG_REQ, failover_config_handler, XUG | MOD,
 	},
 	[LDMSD_FAILOVER_PEERCFG_STOP_REQ]  = {
 		LDMSD_FAILOVER_PEERCFG_STOP_REQ,
 		failover_peercfg_stop_handler,
-		XUG | LDMSD_PERM_FAILOVER_ALLOWED,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED | MOD,
 	},
 	[LDMSD_FAILOVER_PEERCFG_START_REQ]  = {
 		LDMSD_FAILOVER_PEERCFG_START_REQ,
 		failover_peercfg_start_handler,
-		XUG | LDMSD_PERM_FAILOVER_ALLOWED,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED | MOD,
 	},
 	[LDMSD_FAILOVER_STATUS_REQ]  = {
 		LDMSD_FAILOVER_STATUS_REQ, failover_status_handler,
 		XUG | LDMSD_PERM_FAILOVER_ALLOWED,
 	},
 	[LDMSD_FAILOVER_START_REQ] = {
-		LDMSD_FAILOVER_START_REQ, failover_start_handler, XUG,
+		LDMSD_FAILOVER_START_REQ, failover_start_handler, XUG | MOD,
 	},
 	[LDMSD_FAILOVER_STOP_REQ] = {
 		LDMSD_FAILOVER_STOP_REQ, failover_stop_handler,
-		XUG | LDMSD_PERM_FAILOVER_ALLOWED,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED | MOD,
 	},
 
 	/* FAILOVER internal requests */
@@ -563,36 +567,36 @@ static struct request_handler_entry request_handler[] = {
 
 	/* SETGROUP */
 	[LDMSD_SETGROUP_ADD_REQ] = {
-		LDMSD_SETGROUP_ADD_REQ, setgroup_add_handler, XUG,
+		LDMSD_SETGROUP_ADD_REQ, setgroup_add_handler, XUG | MOD,
 	},
 	[LDMSD_SETGROUP_MOD_REQ] = {
-		LDMSD_SETGROUP_MOD_REQ, setgroup_mod_handler, XUG,
+		LDMSD_SETGROUP_MOD_REQ, setgroup_mod_handler, XUG | MOD,
 	},
 	[LDMSD_SETGROUP_DEL_REQ] = {
-		LDMSD_SETGROUP_DEL_REQ, setgroup_del_handler, XUG,
+		LDMSD_SETGROUP_DEL_REQ, setgroup_del_handler, XUG | MOD,
 	},
 	[LDMSD_SETGROUP_INS_REQ] = {
-		LDMSD_SETGROUP_INS_REQ, setgroup_ins_handler, XUG,
+		LDMSD_SETGROUP_INS_REQ, setgroup_ins_handler, XUG | MOD,
 	},
 	[LDMSD_SETGROUP_RM_REQ] = {
-		LDMSD_SETGROUP_RM_REQ, setgroup_rm_handler, XUG,
+		LDMSD_SETGROUP_RM_REQ, setgroup_rm_handler, XUG | MOD,
 	},
 
 	/* STREAM */
 	[LDMSD_STREAM_PUBLISH_REQ] = {
-		LDMSD_STREAM_PUBLISH_REQ, stream_publish_handler, XALL
+		LDMSD_STREAM_PUBLISH_REQ, stream_publish_handler, XALL | MOD
 	},
 	[LDMSD_STREAM_SUBSCRIBE_REQ] = {
-		LDMSD_STREAM_SUBSCRIBE_REQ, stream_subscribe_handler, XUG
+		LDMSD_STREAM_SUBSCRIBE_REQ, stream_subscribe_handler, XUG | MOD
 	},
 	[LDMSD_STREAM_UNSUBSCRIBE_REQ] = {
-		LDMSD_STREAM_UNSUBSCRIBE_REQ, stream_unsubscribe_handler, XUG
+		LDMSD_STREAM_UNSUBSCRIBE_REQ, stream_unsubscribe_handler, XUG | MOD
 	},
 	[LDMSD_STREAM_CLIENT_DUMP_REQ] = {
 		LDMSD_STREAM_CLIENT_DUMP_REQ, stream_client_dump_handler, XUG
 	},
 	[LDMSD_STREAM_NEW_REQ] = {
-		LDMSD_STREAM_NEW_REQ, stream_new_handler, XUG
+		LDMSD_STREAM_NEW_REQ, stream_new_handler, XUG | MOD
 	},
 	[LDMSD_STREAM_DIR_REQ] = {
 		LDMSD_STREAM_DIR_REQ, stream_dir_handler, XUG
@@ -600,12 +604,12 @@ static struct request_handler_entry request_handler[] = {
 
 	/* LISTEN */
 	[LDMSD_LISTEN_REQ] = {
-		LDMSD_LISTEN_REQ, listen_handler, XUG,
+		LDMSD_LISTEN_REQ, listen_handler, XUG | MOD,
 	},
 
 	/* AUTH */
 	[LDMSD_AUTH_ADD_REQ] = {
-		LDMSD_AUTH_ADD_REQ, auth_add_handler, XUG
+		LDMSD_AUTH_ADD_REQ, auth_add_handler, XUG | MOD
 	},
 	[LDMSD_AUTH_DEL_REQ] = {
 		LDMSD_AUTH_DEL_REQ, auth_del_handler, XUG
@@ -935,7 +939,6 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 				ent->flag & 0111))
 			return eperm_handler(reqc);
 	}
-
 	return request_handler[request->req_id].handler(reqc);
 }
 
@@ -1162,6 +1165,7 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 {
 	struct req_ctxt_key key;
 	ldmsd_req_ctxt_t reqc = NULL;
+	struct request_handler_entry *ent;
 	size_t cnt;
 	int rc = 0;
 	char *oom_errstr = "ldmsd out of memory";
@@ -1254,6 +1258,13 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 	reqc->req_id = ((ldmsd_req_hdr_t)reqc->req_buf)->req_id;
 
 	rc = ldmsd_handle_request(reqc);
+
+	if (!rc && !reqc->errcode) {
+		ent = &request_handler[reqc->req_id];
+		if (ent->flag & MOD)
+			ldmsd_inc_cfg_cntr();
+	}
+
 	if (xprt != reqc->xprt)
 		memcpy(xprt, reqc->xprt, sizeof(*xprt));
 
@@ -5707,6 +5718,18 @@ static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
 					sizeof(attr.discrim), LDMSD_REQ_EOM_F,
 						LDMSD_REQ_TYPE_CONFIG_CMD);
 	}
+	return 0;
+}
+
+static int ldmsd_cfg_cntr_handler(ldmsd_req_ctxt_t reqc)
+{
+	int ldmsd_cfg_cnt;
+	ldmsd_cfg_cnt = ldmsd_cfg_cntr_get();
+	__dlog(DLOG_QUERY, "cfg_cntr\n");
+
+	snprintf(reqc->line_buf, reqc->line_len,
+		"%d", ldmsd_cfg_cnt);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }
 

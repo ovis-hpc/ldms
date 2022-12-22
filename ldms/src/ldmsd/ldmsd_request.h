@@ -73,6 +73,7 @@ extern __attribute__((format(printf, 2, 3))) void __dlog(int match, const char *
 enum ldmsd_request {
 	LDMSD_EXAMPLE_REQ = 0x1,
 	LDMSD_GREETING_REQ = 0x2,
+	LDMSD_CFG_CNTR_REQ = 0x3,
 	LDMSD_PRDCR_ADD_REQ = 0x100,
 	LDMSD_PRDCR_DEL_REQ,
 	LDMSD_PRDCR_START_REQ,
