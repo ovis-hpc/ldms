@@ -458,6 +458,18 @@ static void interfaces_tree_refresh()
                                        port->ca_name, port->portnum);
 				continue;
 			}
+                        /* There are at least two known link_layer types:
+                           InfiniBand, Ethernet. In particular, a RoCE implmentation,
+                           the "Broadcom NetXtreme-C/E RoCE Driver HCA", reports
+                           as having a link_layer of "Ethernet". mdc_rpc_open_port()
+                           will fail for those ports. Thus we skip anything that is
+                           not using link_layer "InfiniBand". */
+                        if (port->link_layer != NULL &&
+                            strncmp(port->link_layer, "InfiniBand", 10) != 0) {
+                                log_fn(LDMSD_LDEBUG, SAMP" metric_tree_refresh() skipping ca %s port %d link_layer \"%s\" (link_layer is not \"InfiniBand\")\n",
+                                       port->ca_name, port->portnum, port->link_layer);
+                                continue;
+                        }
 
 			snprintf(name_and_port, sizeof(name_and_port), "%s.%d",
 				 port->ca_name,
