@@ -440,33 +440,34 @@ static void interfaces_tree_refresh()
 			char name_and_port[UMAD_CA_NAME_LEN+128];
 			struct rbn *rbn;
 			struct interface_data *data;
+                        umad_port_t *port = ca.ports[j];
 
-			if (ca.ports[j] == NULL)
+			if (port == NULL)
 				continue;
 			else
 				cnt++;
 
-			if (!collect_ca_port(ca_names[i], ca.ports[j]->portnum)) {
+			if (!collect_ca_port(ca_names[i], port->portnum)) {
 				continue;
 			}
-			if (ca.ports[j]->state != PORT_STATE_ACTIVE) {
+			if (port->state != PORT_STATE_ACTIVE) {
                                 log_fn(LDMSD_LDEBUG, SAMP" metric_tree_refresh() skipping non-active ca %s port %d\n",
-                                       ca.ports[j]->ca_name, ca.ports[j]->portnum);
+                                       port->ca_name, port->portnum);
 				continue;
 			}
 
 			snprintf(name_and_port, sizeof(name_and_port), "%s.%d",
-				 ca.ports[j]->ca_name,
-				 ca.ports[j]->portnum);
+				 port->ca_name,
+				 port->portnum);
 			rbn = rbt_find(&interfaces_tree, name_and_port);
 			if (rbn) {
 				data = container_of(rbn, struct interface_data,
 						    interface_rbn);
 				rbt_del(&interfaces_tree, &data->interface_rbn);
 			} else {
-				data = interface_create(ca.ports[j]->ca_name,
-							ca.ports[j]->portnum,
-							ca.ports[j]->base_lid);
+				data = interface_create(port->ca_name,
+							port->portnum,
+							port->base_lid);
 			}
 			if (data == NULL)
 				continue;
