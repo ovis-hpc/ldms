@@ -13,6 +13,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <coll/rbt.h>
+#include <ctype.h>
 #include <sys/queue.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -49,6 +50,7 @@ static struct {
 	bool use_rate_metrics;
 	int port_filter;
 	struct port_name ports[MAX_CA_NAMES];
+        time_t refresh_interval;
 } conf;
 
 static ldmsd_msg_log_f log_fn;
@@ -728,6 +730,28 @@ static int parse_port_filters(const char *val)
 	return 0;
 }
 
+/* strip leading and trailing whitespace */
+static void strip_whitespace(char **start)
+{
+        /* strip leading whitespace */
+        while (isspace(**start)) {
+                (*start)++;
+        }
+
+        /* strip trailing whitespace */
+        char * last;
+        last = *start + strlen(*start) - 1;
+        while (last > *start) {
+                if (isspace(last[0])) {
+                        last--;
+                } else {
+                        break;
+                }
+        }
+        last[1] = '\0';
+}
+
+
 static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -764,6 +788,23 @@ static int config(struct ldmsd_plugin *self,
                 return rc;
         }
 
+        value = av_value(avl, "refresh_interval_sec");
+        if (value != NULL) {
+                char *end;
+                long val;
+
+                strip_whitespace(&value);
+                val = strtol(value, &end, 10);
+                if (*end != '\0') {
+                        log_fn(LDMSD_LERROR, SAMP" refresh_interval must be a decimal number\n");
+                        rc = EINVAL;
+                        return rc;
+                }
+                conf.refresh_interval = (time_t)val;
+        } else {
+                conf.refresh_interval = (time_t)600;
+        }
+
         rc = ibmad_initialize();
         if (rc != 0) {
                 return rc;
@@ -774,11 +815,17 @@ static int config(struct ldmsd_plugin *self,
 
 static int sample(struct ldmsd_sampler *self)
 {
+        static time_t last_refresh = 0;
+        time_t current_time;
         int rc;
 
         log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
 
-        interfaces_tree_refresh();
+        current_time = time(NULL);
+        if (current_time >= last_refresh + conf.refresh_interval) {
+                interfaces_tree_refresh();
+                last_refresh = current_time;
+        }
         interfaces_tree_sample();
 
         return 0;

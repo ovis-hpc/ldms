@@ -53,6 +53,14 @@ exclude=PORTLIST
 .br
 Collect all devices and ports discovered and active that are not matched by PORTLIST. See PORTLIST below.
 Cannot be combined with the include option.
+.TP
+refresh_interval_sec=<seconds>
+.br
+(Optional) The sampler caches the list of infiniband devices, and that
+cache is refreshed at the beginning of a sample cycle if the refresh
+interval time has been exceeded. refresh_interval_sec sets
+the minimum number of seconds between refreshes of the device cache.
+The default refresh interval is 600 seconds.
 .RE
 
 .SH PORTLIST
