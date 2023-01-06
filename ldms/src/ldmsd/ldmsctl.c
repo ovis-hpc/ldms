@@ -2160,14 +2160,14 @@ static void resp_set_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
  	return;
 }
 
-static void help_prdcr_stream_dir()
+static void help_prdcr_stream_status()
 {
 	printf( "\nGet stream_dir of the matched producers. The connect LDMSD acts as a proxy.\n\n"
 		"Parameters:\n"
 		"     regex=   A regular expression to matched producer names\n");
 }
 
-static void resp_prdcr_stream_dir(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+static void resp_prdcr_stream_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
 	int rc;
 	json_parser_t parser;
@@ -2193,32 +2193,39 @@ static void resp_prdcr_stream_dir(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp
 		return;
 	}
 
-	json_entity_t stream, p, info, l;
+	json_entity_t stream, p, pub, recv, l;
 	char *sname, *name, *mode;
-	double rate, freq;
-	int tot_bytes, count;
+	double recv_rate, recv_freq, pub_rate, pub_freq;
+	int recv_tot_bytes, recv_count, pub_tot_bytes, pub_count;
 
-	printf("Name            Producer       Mode       Bytes/sec    Msg/sec      Total bytes  Msg count   \n");
-	printf("--------------- ---------- ------------ ----------- ------------ ------------\n");
+	printf("Name            Producer                    Bytes/sec    Msg/sec      Total bytes  Msg count   \n");
+	printf("--------------- --------------------------- ------------ ------------ ------------ ------------\n");
 	for (stream = json_attr_first(json); stream; stream = json_attr_next(stream)) {
 		sname = json_attr_name(stream)->str;
-		printf("%-12s\n", sname);
+		if (0 == strcmp(sname, "_OVERALL_"))
+			continue;
+		printf("%-15s\n", sname);
 		l = json_attr_value(stream);
 		for (p = json_attr_first(l); p; p = json_attr_next(p)) {
-			if (0 == strcmp(sname, "_AGGREGATED_")) {
-				mode = "";
-			} else {
-				mode = (char *)__json_str_find(json_attr_value(p), "mode");
-			}
 			name = json_attr_name(p)->str;
-			info = json_value_find(json_attr_value(p), "info");
-			assert(info);
-			rate = __info_rate(info);
-			freq = __info_freq(info);
-			tot_bytes = __info_tot_bytes(info);
-			count = __info_count(info);
-			printf("            %-12s %-15s %-12lf %-12lf %-12d %-12d\n",
-					    name, mode, rate, freq, tot_bytes, count);
+			mode = (char *)__json_str_find(json_attr_value(p), "mode");
+			printf("%15s %s (%s)\n", "", name, mode);
+			recv = json_value_find(json_attr_value(p), "recv");
+			assert(recv);
+			recv_rate = __info_rate(recv);
+			recv_freq = __info_freq(recv);
+			recv_tot_bytes = __info_tot_bytes(recv);
+			recv_count = __info_count(recv);
+			pub = json_value_find(json_attr_value(p), "pub");
+			assert(pub);
+			pub_rate = __info_rate(pub);
+			pub_freq = __info_freq(pub);
+			pub_tot_bytes = __info_tot_bytes(pub);
+			pub_count = __info_count(pub);
+			printf("%18s %-27s %-12lf %-12lf %-12d %-12d\n",
+					"", "published", pub_rate, pub_freq, pub_tot_bytes, pub_count);
+			printf("%18s %-27s %-12lf %-12lf %-12d %-12d\n",
+					"", "received", recv_rate, recv_freq, recv_tot_bytes, recv_count);
 		}
 	}
 	json_entity_free(json);
@@ -2289,7 +2296,7 @@ static struct command command_tbl[] = {
 	{ "prdcr_status", LDMSD_PRDCR_STATUS_REQ, NULL, help_prdcr_status, resp_prdcr_status },
 	{ "prdcr_stop", LDMSD_PRDCR_STOP_REQ, NULL, help_prdcr_stop, resp_generic },
 	{ "prdcr_stop_regex", LDMSD_PRDCR_STOP_REGEX_REQ, NULL, help_prdcr_stop_regex, resp_generic },
-	{ "prdcr_stream_dir", LDMSD_PRDCR_STREAM_DIR_REQ, NULL, help_prdcr_stream_dir, resp_prdcr_stream_dir },
+	{ "prdcr_stream_status", LDMSD_PRDCR_STREAM_STATUS_REQ, NULL, help_prdcr_stream_status, resp_prdcr_stream_status },
 	{ "prdcr_subscribe", LDMSD_PRDCR_SUBSCRIBE_REQ, NULL, help_prdcr_subscribe_regex, resp_generic },
 	{ "prdcr_unsubscribe", LDMSD_PRDCR_UNSUBSCRIBE_REQ, NULL, help_prdcr_unsubscribe_regex, resp_generic },
 	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit, resp_generic },

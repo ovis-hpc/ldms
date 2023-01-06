@@ -421,9 +421,9 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_prdcr_unsubscribe(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_unsubscribe', text)
 
-    def do_prdcr_stream_dir(self, arg):
+    def do_prdcr_stream_status(self, arg):
         """
-        Get stream_dir of the matched prdcr. The connected LDMSD acts as a proxy.
+        Get stream_status of the matched prdcr. The connected LDMSD acts as a proxy.
         Parameters:
         regex=     A regular expression matching producer names
         """
@@ -455,23 +455,24 @@ class LdmsdCmdParser(cmd.Cmd):
                 return "-"
             return info['count']
 
-        resp = self.handle('prdcr_stream_dir', arg)
+        resp = self.handle('prdcr_stream_status', arg)
         if resp is None:
             raise RuntimeError("no response")
         if (resp['errcode'] == 0):
             streams = json.loads(resp['msg'])
-            print("Name         Producer     mode            bytes/sec    msg/sec      total bytes  msg count   ")
-            print("-" * 12, "-" * 12, "-" * 15, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
-            # print("--------------- -------------- --------------- ----- ----------------- -----------\n")
+            print("Name         Producer                    bytes/sec    msg/sec      total bytes  msg count   ")
+            print("-" * 12, "-" * 27, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
             for sname,s in streams.items():
+                if sname == "_OVERALL_":
+                    continue
                 print(f"{sname:12}")
                 for name,p in s.items():
-                    if sname == "_AGGREGATED_":
-                        p['mode'] = ""
-                    print(f"             {name:12} {p['mode']:15} {rate(p['info']):>12} {freq(p['info']):>12} {total_bytes(p['info']):>12} {count(p['info']):>12}")
+                    print(f"{' ' * 12} {name} ({p['mode']})")
+                    print(f"{' '*12} {'   published':20} {rate(p['pub']):>12} {freq(p['pub']):>12} {total_bytes(p['pub']):>12} {count(p['pub']):>12}")
+                    print(f"{' '*12} {'   received':20} {rate(p['recv']):>12} {freq(p['recv']):>12} {total_bytes(p['recv']):>12} {count(p['recv']):>12}")
 
-    def complete_prdcr_stream_dir(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('prdcr_stream_dir', text)
+    def complete_prdcr_stream_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_stream_status', text)
 
     def do_updtr_add(self, arg):
         """
@@ -1665,7 +1666,7 @@ class LdmsdCmdParser(cmd.Cmd):
                 return "-"
             return info["last_ts"]
 
-        resp = self.handle('stream_dir', None)
+        resp = self.handle('stream_status', None)
         if resp is None:
             raise RuntimeError("no response")
         if (resp['errcode'] == 0):
@@ -1676,8 +1677,10 @@ class LdmsdCmdParser(cmd.Cmd):
             for name,s in streams.items():
                 if name == "_OVERALL_":
                     s['mode'] = ""
+                    print(f"{name}")
+                else:
+                    print(f"{name} ({s['mode']})")
 
-                print(f"{name} ({s['mode']})")
                 print(f"{'   published':<30} {rate(s['pub']):>12} {freq(s['pub']):>12} {total_bytes(s['pub']):>12} {count(s['pub']):>12} {first(s['pub']):>12} {last(s['pub']):>12}")
                 print(f"{'   received':<30} {rate(s['recv']):>12} {freq(s['recv']):>12} {total_bytes(s['recv']):>12} {count(s['recv']):>12} {first(s['recv']):>12} {last(s['recv']):>12}")
                 if 'publishers' not in s.keys() or len(s['publishers']) == 0:
@@ -1686,8 +1689,8 @@ class LdmsdCmdParser(cmd.Cmd):
                 for name,p in s['publishers'].items():
                     print(f"{' '*14} {name:15} {rate(p['info']):>12} {freq(p['info']):>12} {total_bytes(p['info']):>12} {count(p['info']):>12} {first(p['info']):>12} {last(p['info']):>12}")
 
-    def complete_stream_dir(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('stream_dir', text)
+    def complete_stream_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('stream_status', text)
 
     def do_listen(self, arg):
         """
