@@ -98,7 +98,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "prdcr_status",       LDMSD_PRDCR_STATUS_REQ  },
 	{  "prdcr_stop",         LDMSD_PRDCR_STOP_REQ  },
 	{  "prdcr_stop_regex",   LDMSD_PRDCR_STOP_REGEX_REQ  },
-	{  "prdcr_stream_dir",   LDMSD_PRDCR_STREAM_DIR_REQ  },
+	{  "prdcr_stream_status",LDMSD_PRDCR_STREAM_STATUS_REQ  },
 	{  "prdcr_subscribe",    LDMSD_PRDCR_SUBSCRIBE_REQ },
 	{  "prdcr_unsubscribe",  LDMSD_PRDCR_UNSUBSCRIBE_REQ },
 	{  "set_route",          LDMSD_SET_ROUTE_REQ  },
