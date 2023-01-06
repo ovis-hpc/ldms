@@ -170,6 +170,14 @@ uint32_t ldmsd_stream_flags_get(ldmsd_stream_client_t c);
 int ldmsd_stream_subscriber_count(const char *stream_name);
 
 /**
+ * \brief Update the stream's publish statistics
+ *
+ * Applications call the function in the subscribe callback function to republish the stream.
+ * The function updates the stream's publish statistics.
+ */
+int ldmsd_client_stream_pubstats_update(ldmsd_stream_client_t c, size_t data_len);
+
+/**
  * Dump stream clients in JSON.
  *
  * The caller is responsible for freeing the returned string.

@@ -1791,7 +1791,7 @@ static void resp_stream_client_dump(ldmsd_req_hdr_t resp, size_t len,
 	json_entity_free(json);
 }
 
-static void help_stream_dir()
+static void help_stream_status()
 {
 	printf("Dump the stream information\n");
 }
@@ -1840,7 +1840,7 @@ static const char *__json_str_find(json_entity_t d, const char *name)
 	return json_value_str(v)->str;
 }
 
-static void resp_stream_dir(ldmsd_req_hdr_t resp, size_t len,
+static void resp_stream_status(ldmsd_req_hdr_t resp, size_t len,
 				    uint32_t rsp_err)
 {
 	int rc;
@@ -1867,41 +1867,53 @@ static void resp_stream_dir(ldmsd_req_hdr_t resp, size_t len,
 		return;
 	}
 
-	json_entity_t stream, p, info, l;
+	json_entity_t stream, p, pub, recv, l;
 	char *name, *mode;
-	double rate, freq;
-	int tot_bytes, count;
+	double recv_rate, recv_freq, pub_rate, pub_freq;
+	int recv_tot_bytes, recv_count, pub_tot_bytes, pub_count;
 
-	printf("Name            Mode            bytes/sec    msg/sec      total bytes  msg count   \n");
-	printf("--------------- --------------- ------------ ----------- ------------ ------------\n");
+	printf("Name                            bytes/sec    msg/sec      total bytes  msg count   \n");
+	printf("------------------------------- ------------ ----------- ------------ ------------\n");
 	for (stream = json_attr_first(json); stream; stream = json_attr_next(stream)) {
 		name = json_attr_name(stream)->str;
-		if (0 == strcmp(name, "_AGGREGATED_")) {
+		if (0 == strcmp(name, "_OVERALL_")) {
 			mode = "";
+			printf("%s\n", name);
 		} else {
 			mode = (char *)__json_str_find(json_attr_value(stream), "mode");
+			printf("%s (%s)\n", name, mode);
 		}
-		info = json_value_find(json_attr_value(stream), "info");
-		assert(info);
-		rate = __info_rate(info);
-		freq = __info_freq(info);
-		tot_bytes = __info_tot_bytes(info);
-		count = __info_count(info);
+		pub = json_value_find(json_attr_value(stream), "pub");
+		assert(pub);
+		pub_rate = __info_rate(pub);
+		pub_freq = __info_freq(pub);
+		pub_tot_bytes = __info_tot_bytes(pub);
+		pub_count = __info_count(pub);
+		recv = json_value_find(json_attr_value(stream), "recv");
+		assert(recv);
+		recv_rate = __info_rate(recv);
+		recv_freq = __info_freq(recv);
+		recv_tot_bytes = __info_tot_bytes(recv);
+		recv_count = __info_count(recv);
 		l = json_value_find(json_attr_value(stream), "publishers");
-		printf("%-15s %-15s %-12lf %-12lf %-12d %-12d\n", name, mode,
-						rate, freq, tot_bytes, count);
+
+		printf("%-30s  %-12lf %-12lf %-12d %-12d\n", "   published",
+				pub_rate, pub_freq, pub_tot_bytes, pub_count);
+		printf("%-30s  %-12lf %-12lf %-12d %-12d\n", "   received",
+				recv_rate, recv_freq, recv_tot_bytes, recv_count);
 		if (!l || !json_attr_count(l))
 			continue;
+		printf("      publishers\n");
 		for (p = json_attr_first(l); p; p = json_attr_next(p)) {
 			name = json_attr_name(p)->str;
-			info = json_value_find(json_attr_value(p), "info");
-			assert(info);
-			rate = __info_rate(info);
-			freq = __info_freq(info);
-			tot_bytes = __info_tot_bytes(info);
-			count = __info_count(info);
-			printf("%15s %-10s %-12lf %-12lf %-12d %-12d\n", "", name, rate,
-							freq, tot_bytes, count);
+			recv = json_value_find(json_attr_value(p), "info");
+			assert(recv);
+			recv_rate = __info_rate(recv);
+			recv_freq = __info_freq(recv);
+			recv_tot_bytes = __info_tot_bytes(recv);
+			recv_count = __info_count(recv);
+			printf("%9s %-20s  %-12lf %-12lf %-12d %-12d\n", "",
+				name, recv_rate, recv_freq, recv_tot_bytes, recv_count);
 		}
 	}
 	json_entity_free(json);
@@ -2315,7 +2327,7 @@ static struct command command_tbl[] = {
 	{ "start", LDMSD_PLUGN_START_REQ, NULL, help_start, resp_generic },
 	{ "stop", LDMSD_PLUGN_STOP_REQ, NULL, help_stop, resp_generic },
 	{ "stream_client_dump", LDMSD_STREAM_CLIENT_DUMP_REQ, NULL, help_stream_client_dump, resp_stream_client_dump },
-	{ "stream_dir", LDMSD_STREAM_DIR_REQ, NULL, help_stream_dir, resp_stream_dir },
+	{ "stream_status", LDMSD_STREAM_STATUS_REQ, NULL, help_stream_status, resp_stream_status },
 	{ "strgp_add", LDMSD_STRGP_ADD_REQ, NULL, help_strgp_add, resp_generic },
 	{ "strgp_del", LDMSD_STRGP_DEL_REQ, NULL, help_strgp_del, resp_generic },
 	{ "strgp_metric_add", LDMSD_STRGP_METRIC_ADD_REQ, NULL, help_strgp_metric_add, resp_generic },
