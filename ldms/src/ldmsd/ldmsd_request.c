@@ -282,7 +282,7 @@ static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc);
 static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc);
 static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc);
 static int stream_new_handler(ldmsd_req_ctxt_t reqc);
-static int stream_dir_handler(ldmsd_req_ctxt_t reqc);
+static int stream_status_handler(ldmsd_req_ctxt_t reqc);
 
 static int listen_handler(ldmsd_req_ctxt_t reqc);
 
@@ -598,8 +598,8 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_STREAM_NEW_REQ] = {
 		LDMSD_STREAM_NEW_REQ, stream_new_handler, XUG | MOD
 	},
-	[LDMSD_STREAM_DIR_REQ] = {
-		LDMSD_STREAM_DIR_REQ, stream_dir_handler, XUG
+	[LDMSD_STREAM_STATUS_REQ] = {
+		LDMSD_STREAM_STATUS_REQ, stream_status_handler, XUG
 	},
 
 	/* LISTEN */
@@ -2001,7 +2001,7 @@ static int __prdcr_stream_dir(ldmsd_prdcr_t prdcr, ldmsd_req_ctxt_t oreqc,
 	ldmsd_prdcr_lock(prdcr);
 	if (prdcr->conn_state == LDMSD_PRDCR_STATE_CONNECTED) {
 		/* issue stream subscribe request right away if connected */
-		rcmd = ldmsd_req_cmd_new(prdcr->xprt, LDMSD_STREAM_DIR_REQ,
+		rcmd = ldmsd_req_cmd_new(prdcr->xprt, LDMSD_STREAM_STATUS_REQ,
 					 oreqc, __on_stream_dir_resp, ctxt);
 		rc = errno;
 		if (!rcmd)
@@ -6854,6 +6854,10 @@ static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
 	if (rc)
 		goto out;
 	rc = ldmsd_req_cmd_attr_term(rcmd);
+	if (rc)
+		goto out;
+
+	rc = ldmsd_client_stream_pubstats_update(c, data_len);
  out:
 	ldmsd_req_cmd_free(rcmd);
 	return rc;
@@ -7115,7 +7119,7 @@ static int stream_new_handler(ldmsd_req_ctxt_t reqc)
 	return 0;
 }
 
-static int stream_dir_handler(ldmsd_req_ctxt_t reqc)
+static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
 	char *s;

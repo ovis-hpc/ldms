@@ -58,7 +58,8 @@ static int p_cmp(void *tree_key, const void *key)
 
 struct ldmsd_stream_s {
 	const char *s_name;
-	struct ldmsd_stream_info_s s_info;
+	struct ldmsd_stream_info_s s_recv_info;
+	struct ldmsd_stream_info_s s_pub_info;
 	struct rbn s_ent;
 	pthread_mutex_t s_lock;
 	LIST_HEAD(ldmsd_client_list, ldmsd_stream_client_s) s_c_list;
@@ -281,11 +282,11 @@ void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_ty
 			return;
 		pthread_mutex_lock(&s->s_lock);
 	}
-	if (!s->s_info.first_ts)
-		s->s_info.first_ts = now;
-	s->s_info.count += 1;
-	s->s_info.last_ts = now;
-	s->s_info.total_bytes += data_len;
+	if (!s->s_recv_info.first_ts)
+		s->s_recv_info.first_ts = now;
+	s->s_recv_info.count += 1;
+	s->s_recv_info.last_ts = now;
+	s->s_recv_info.total_bytes += data_len;
 
 	LIST_FOREACH(c, &s->s_c_list, c_ent) {
 		if (stream_type == LDMSD_STREAM_JSON
@@ -383,6 +384,18 @@ const char *ldmsd_stream_name(ldmsd_stream_t s)
 const char *ldmsd_stream_client_name(ldmsd_stream_client_t c)
 {
 	return ldmsd_stream_name(c->c_s);
+}
+
+int ldmsd_client_stream_pubstats_update(ldmsd_stream_client_t c, size_t data_len)
+{
+	ldmsd_stream_t s = c->c_s;
+	time_t now = time(NULL);
+	if (!s->s_pub_info.first_ts)
+		s->s_pub_info.first_ts = now;
+	s->s_pub_info.count += 1;
+	s->s_pub_info.last_ts = now;
+	s->s_pub_info.total_bytes += data_len;
+	return 0;
 }
 
 void ldmsd_stream_close(ldmsd_stream_client_t c)
@@ -492,6 +505,27 @@ int ldmsd_stream_publish(ldms_t xprt,
 	a.discrim = 0;
 	rc = stream_send(&ctxt, buf, msg_no, LDMSD_REQ_EOM_F,
 			(char *)&a.discrim, sizeof(a.discrim));
+	if (rc)
+		goto err;
+	rc = 0;
+
+	/* Collect the stream's publishing statistics */
+	ldmsd_stream_t s;
+	time_t now = time(NULL);
+	s = __find_stream(stream_name);
+	if (!s) {
+		s = __new_stream(stream_name);
+		if (!s) {
+			rc = ENOMEM;
+			goto err;
+		}
+		pthread_mutex_lock(&s->s_lock);
+	}
+	if (!s->s_pub_info.first_ts)
+		s->s_pub_info.first_ts = now;
+	s->s_pub_info.count += 1;
+	s->s_pub_info.last_ts = now;
+	s->s_pub_info.total_bytes += data_len;
 
  err:
 	if (buf)
@@ -900,12 +934,20 @@ int __stream_json(struct buf_s *buf, ldmsd_stream_t s)
 	rc = buf_printf(buf, "\"%s\":{", s->s_name);
 	if (rc)
 		return rc;
-	rc = buf_printf(buf, "\"mode\":\"%s\","
-			     "\"info\":",
+	rc = buf_printf(buf, "\"mode\":\"%s\"",
 			     (LIST_EMPTY(&s->s_c_list)?"not subscribed":"subscribed"));
 	if (rc)
 		return rc;
-	rc = __stream_info_json(buf, &s->s_info);
+	rc = buf_printf(buf, ",\"pub\":");
+	if (rc)
+		return rc;
+	rc = __stream_info_json(buf, &s->s_pub_info);
+	if (rc)
+		return rc;
+	rc = buf_printf(buf, ",\"recv\":");
+	if (rc)
+		return rc;
+	rc = __stream_info_json(buf, &s->s_recv_info);
 	if (rc)
 		return rc;
 	rc = buf_printf(buf, ",\"publishers\":{");
@@ -935,7 +977,9 @@ char *ldmsd_stream_dir_dump()
 	struct rbn *rbn;
 	struct buf_s buf = {.sz = 4096};
 	int first = 1;
-	struct ldmsd_stream_info_s tot_info = {0};
+	struct ldmsd_stream_info_s tot_recv = {0};
+	struct ldmsd_stream_info_s tot_pub = {0};
+
 
 	buf.buf = malloc(buf.sz);
 	if (!buf.buf) {
@@ -950,14 +994,22 @@ char *ldmsd_stream_dir_dump()
 	RBT_FOREACH(rbn, &s_tree) {
 		s = container_of(rbn, struct ldmsd_stream_s, s_ent);
 
-		tot_info.total_bytes += s->s_info.total_bytes;
-		tot_info.count += s->s_info.count;
-		if (tot_info.first_ts == 0)
-			tot_info.first_ts = s->s_info.first_ts;
-		else if (tot_info.first_ts > s->s_info.first_ts)
-			tot_info.first_ts = s->s_info.first_ts;
-		if (tot_info.last_ts < s->s_info.last_ts)
-			tot_info.last_ts = s->s_info.last_ts;
+		tot_recv.total_bytes += s->s_recv_info.total_bytes;
+		tot_recv.count += s->s_recv_info.count;
+		tot_pub.total_bytes += s->s_pub_info.total_bytes;
+		tot_pub.count += s->s_pub_info.count;
+		if (tot_recv.first_ts == 0)
+			tot_recv.first_ts = s->s_recv_info.first_ts;
+		else if (tot_recv.first_ts > s->s_recv_info.first_ts)
+			tot_recv.first_ts = s->s_recv_info.first_ts;
+		if (tot_recv.last_ts < s->s_recv_info.last_ts)
+			tot_recv.last_ts = s->s_recv_info.last_ts;
+		if (tot_pub.first_ts == 0)
+			tot_pub.first_ts = s->s_pub_info.first_ts;
+		else if (s->s_pub_info.first_ts && (tot_pub.first_ts > s->s_pub_info.first_ts))
+			tot_pub.first_ts = s->s_pub_info.first_ts;
+		if (tot_pub.last_ts < s->s_pub_info.last_ts)
+			tot_pub.last_ts = s->s_pub_info.last_ts;
 
 		rc = buf_printf(&buf, "%s", ((first)?"":","));
 		if (rc)
@@ -972,11 +1024,17 @@ char *ldmsd_stream_dir_dump()
 	pthread_mutex_unlock(&s_tree_lock);
 
 	if (!first) {
-		rc = buf_printf(&buf, ",\"_AGGREGATED_\":{"
-					   "\"info\":");
+		rc = buf_printf(&buf, ",\"_OVERALL_\":{"
+					   "\"pub\":");
 		if (rc)
 			goto free_buf;
-		rc = __stream_info_json(&buf, &tot_info);
+		rc = __stream_info_json(&buf, &tot_pub);
+		if (rc)
+			goto free_buf;
+		rc = buf_printf(&buf, ",\"recv\":");
+		if (rc)
+			goto free_buf;
+		rc = __stream_info_json(&buf, &tot_recv);
 		if (rc)
 			goto free_buf;
 		rc = buf_printf(&buf, "}");
