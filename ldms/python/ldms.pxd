@@ -205,6 +205,10 @@ cdef extern from "ldms.h" nogil:
         uint32_t sec
         uint32_t usec
 
+    struct ldms_cred:
+        uid_t uid
+        gid_t gid
+
     # --- xprt connection related --- #
     cpdef enum ldms_xprt_event_type:
         EVENT_CONNECTED     "LDMS_XPRT_EVENT_CONNECTED"
@@ -651,6 +655,63 @@ cdef extern from "ldms.h" nogil:
 
     ldms_mval_t ldms_record_array_get_inst(ldms_mval_t rec_array, int idx);
     int ldms_record_array_len(ldms_mval_t rec_array)
+
+    # --- ldms_stream --- #
+    struct ldms_stream_client_s:
+        pass # opaque
+    struct json_entity_s:
+        pass # opaque
+    ctypedef json_entity_s *json_entity_t;
+    ctypedef ldms_stream_client_s *ldms_stream_client_t;
+    cpdef enum ldms_stream_type_e:
+        LDMS_STREAM_STRING
+        LDMS_STREAM_JSON
+    enum ldms_stream_event_type:
+        LDMS_STREAM_EVENT_RECV
+        LDMS_STREAM_EVENT_SUBSCRIBE_STATUS
+        LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS
+    struct ldms_stream_src_u:
+        uint64_t u64;
+        uint32_t addr4;
+        uint8_t  addr[4];
+        uint16_t port;
+        uint16_t reserved;
+    struct ldms_stream_recv_data_s:
+        ldms_stream_client_t client
+        ldms_stream_src_u src
+        uint64_t msg_gn
+        ldms_stream_type_e type
+        uint32_t name_len
+        uint32_t data_len
+        const char *name
+        const char *data
+        json_entity_t json
+        ldms_cred cred
+        uint32_t perm
+    struct ldms_stream_status_data_s:
+        const char *name
+        int is_regex
+        int status
+    struct ldms_stream_event_s:
+        ldms_t r
+        ldms_stream_event_type type
+        ldms_stream_recv_data_s recv
+        ldms_stream_status_data_s status
+    ctypedef ldms_stream_event_s *ldms_stream_event_t
+    ctypedef int (*ldms_stream_event_cb_t)(ldms_stream_event_t ev, void *cb_arg)
+
+    int ldms_stream_publish(ldms_t x, const char *stream_name,
+                            ldms_stream_type_e stream_type,
+                            ldms_cred *cred,
+                            uint32_t perm,
+                            const char *data, size_t data_len)
+    ldms_stream_client_t ldms_stream_subscribe(const char *stream, int is_regex,
+                            ldms_stream_event_cb_t cb_fn, void *cb_arg)
+    void ldms_stream_close(ldms_stream_client_t c)
+    int ldms_stream_remote_subscribe(ldms_t x, const char *stream, int is_regex,
+                            ldms_stream_event_cb_t cb_fn, void *cb_arg)
+    int ldms_stream_remote_unsubscribe(ldms_t x, const char *stream, int is_regex,
+                            ldms_stream_event_cb_t cb_fn, void *cb_arg)
 
 cdef extern from "zap/zap.h" nogil:
     struct zap_thrstat_result_entry:

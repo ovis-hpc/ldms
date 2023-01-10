@@ -112,6 +112,7 @@ struct ldms_rail_ep_s {
 	int idx; /* index in the rail */
 	ldms_rail_t rail;
 	uint64_t send_credit; /* peer's recv limit */
+	struct rbt sbuf_rbt; /* stream message buffer */
 	int remote_is_rail;
 };
 
@@ -153,6 +154,8 @@ struct ldms_rail_s {
 
 	pthread_mutex_t mutex; /* mainly for state */
 
+	struct rbt stream_client_rbt; /* stream clients from the peer */
+
 	ldms_rail_ep_state_t state;
 
 	/* List of contexts of `dir` that requested NOTIFY. These will be freed
@@ -162,6 +165,8 @@ struct ldms_rail_s {
 	/* rbn and rail_id for passive rail */
 	struct rbn rbn;
 	struct ldms_rail_id_s rail_id;
+
+	int max_msg; /* max msg of the underlying zap endpoints */
 
 	int legacy_peer; /* 0 if peer is rail, 1 if peer is legacy LDMS */
 
