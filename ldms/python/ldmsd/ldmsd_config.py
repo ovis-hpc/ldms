@@ -116,7 +116,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'updtr_start': {'req_attr': ['name'],
                                       'opt_attr': ['interval', 'offset', 'auto_interval']},
                       'updtr_stop': {'req_attr': ['name']},
-                      'udptr_status': {'req_attr': [], 'opt_attr': ['name', 'summary']},
+                      'udptr_status': {'req_attr': [], 'opt_attr': ['name', 'summary', 'reset']},
                       'updtr_task': {'req_attr': ['name'], 'opt_attr': []},
                       'update_time_stats' : {'req_attr': [], 'opt_attr' : ['name']},
                       ##### Storage Policy #####

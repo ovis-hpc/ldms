@@ -799,7 +799,13 @@ class LdmsdCmdParser(cmd.Cmd):
 
         Parameters:
         [name=]        updater name
-        [Summary]     not show updaters' producers
+        [summary]      not show updaters' producers
+        [reset=]       'false' for not resetting the counter after it reports the information.
+                       If it isn't given, the counters are not reset.
+
+        Counter descriptions:
+          Skipped      The number of times there exists an outstanding update request when the updater tries to schedule an update request.
+          Oversampled  The number of times the generation number of a set has not changed from the previous update complete.
         """
         resp = self.handle('updtr_status', arg)
         if resp['errcode'] == 0:
