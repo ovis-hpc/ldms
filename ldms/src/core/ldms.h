@@ -975,6 +975,165 @@ int ldms_xprt_rail_send_credit_get(ldms_t x, uint64_t *credits, int n);
 /** \} */
 
 /**
+ * \addtogroup ldms_stream LDMS Stream Functions
+ *
+ * These functions manage and manipulate LDMS Stream.
+ * \{
+ */
+
+typedef enum ldms_stream_type_e {
+	LDMS_STREAM_STRING,
+	LDMS_STREAM_JSON,
+} ldms_stream_type_t;
+
+/**
+ * \brief Publish stream data.
+ *
+ * If \c x is \c NULL, publish to all subscribers. Otherwise, publish directly
+ * to the peer of \c x.
+ *
+ * \param x            NULL for loopback, or a valid rail handle.
+ * \param stream_name  The name of the stream.
+ * \param stream_type  The type of the stream (STRING or JSON).
+ * \param cred         The credential of the publisher. This can be \c NULL, and
+ *                       the \c euid and \c egid are used.
+ * \param perm         The permission on the stream data.
+ * \param data         The data to be published.
+ * \param data_len     The length of the data.
+ *
+ * \retval 0        If there is no error.
+ * \retval EAGAIN   If there is not enough send credit.
+ * \retval ENOSTR   If the the handle not valid for publishing a stream.
+ */
+int ldms_stream_publish(ldms_t x, const char *stream_name,
+                        ldms_stream_type_t stream_type,
+			ldms_cred_t cred,
+			uint32_t perm,
+                        const char *data, size_t data_len);
+
+typedef struct ldms_stream_client_s *ldms_stream_client_t;
+typedef struct json_entity_s *json_entity_t;
+
+#pragma pack(push, 1)
+typedef union ldms_stream_src_u {
+	uint64_t u64; /* access as u64 */
+	struct {
+		union {
+			uint32_t addr4; /* big endian */
+			uint8_t  addr[4]; /* convenient addr byte access */
+		};
+		uint16_t port; /* big endian */
+		uint16_t reserved;
+	};
+} *ldms_stream_src_t;
+#pragma pack(pop)
+
+enum ldms_stream_event_type {
+	LDMS_STREAM_EVENT_RECV, /* stream data received */
+	LDMS_STREAM_EVENT_SUBSCRIBE_STATUS, /* reporting subscription status */
+	LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS, /* reporting unsubscription status */
+};
+
+/* For stream data delivery to the application */
+struct ldms_stream_recv_data_s {
+	ldms_stream_client_t client;
+	union ldms_stream_src_u src;
+	uint64_t msg_gn;
+	ldms_stream_type_t type;
+	uint32_t name_len;
+	uint32_t data_len;
+	const char *name; /* stream name */
+	const char *data; /* stream data */
+	json_entity_t json; /* json entity */
+	struct ldms_cred cred; /* credential */
+	uint32_t perm; /* permission */
+};
+
+/* To report subscrube / unsubscribe return status */
+struct ldms_stream_status_data_s {
+	const char *name; /* name or regex */
+	int is_regex;
+	int status;
+};
+
+typedef struct ldms_stream_event_s {
+	ldms_t r; /* rail */
+	enum ldms_stream_event_type type;
+	union {
+		struct ldms_stream_recv_data_s recv;
+		struct ldms_stream_status_data_s status;
+	};
+} *ldms_stream_event_t;
+
+typedef int (*ldms_stream_event_cb_t)(ldms_stream_event_t ev, void *cb_arg);
+
+/**
+ * \brief Subscribe to a stream.
+ *
+ * Subscribe to the matching streams that go through our process. The callback
+ * function is called when a matching stream data reaches our process. The
+ * `cb_fn` must not be NULL.
+ *
+ * \param stream   The stream name or regular expression.
+ * \param is_regex 1 if `stream` is a regular expression. Otherwise, 0.
+ * \param cb_fn    The callback function for stream data delivery.
+ * \param cb_arg   The application context to the `cb_fn`.
+ *
+ * \retval NULL  If there is an error. In this case `errno` is set to describe
+ *               the error.
+ * \retval ptr   The stream client handle.
+ */
+ldms_stream_client_t
+ldms_stream_subscribe(const char *stream, int is_regex,
+		      ldms_stream_event_cb_t cb_fn, void *cb_arg);
+
+/**
+ * \brief Terminate the stream client.
+ *
+ * If the client `c` is a remote subscriber, an "unsubscribe" request will also
+ * be sent to the remote peer.
+ *
+ * \param c  The subscription handle.
+ */
+void ldms_stream_close(ldms_stream_client_t c);
+
+/**
+ * \brief Request a remote stream subscritpion.
+ *
+ * This function send a remote stream subscription request to the remote peer.
+ * The callback function, if not \c NULL, is called to notify the application
+ * whether or not the remote stream subscription is a success. After a
+ * successful subscription, the remote peer will send the matching stream data
+ * to our process. Please note that the application still need a stream client
+ * (from \c ldms_stream_subscribe()) to process the data.
+ *
+ * \param x        The rail handle.
+ * \param stream   The stream name or regular expression.
+ * \param is_regex 1 if `stream` is a regular expression. Otherwise, 0.
+ * \param cb_fn    The callback function for return status notification (could
+ *                 be \c NULL).
+ * \param cb_arg   The application context to the `cb_fn`.
+ *
+ * \retval 0     If succeeded.
+ * \retval errno If synchronously failed.
+ */
+int ldms_stream_remote_subscribe(ldms_t x, const char *stream, int is_regex,
+		      ldms_stream_event_cb_t cb_fn, void *cb_arg);
+
+/**
+ * \brief Request a remote stream unsubscription.
+ *
+ * This function unsubscribe the previous subscription. The subscription
+ * parameters (\c stream and \c is_regex) must be the same as the previously
+ * given at the subscription time. The \c cb_fn is called to let the application
+ * know about the unsubscription status.
+ */
+int ldms_stream_remote_unsubscribe(ldms_t x, const char *stream, int is_regex,
+		      ldms_stream_event_cb_t cb_fn, void *cb_arg);
+
+/** \} */
+
+/**
  * \addtogroup ldms_query LDMS Query Functions
  *
  * These functions query LDMS peers for published metric sets.

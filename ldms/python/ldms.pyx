@@ -1,5 +1,5 @@
-# Copyright (c) 2020 Open Grid Computing, Inc. All rights reserved.
-# Copyright (c) 2020 NTESS Corporation. All rights reserved.
+# Copyright (c) 2020-2023 Open Grid Computing, Inc. All rights reserved.
+# Copyright (c) 2020-2023 NTESS Corporation. All rights reserved.
 # Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
 # license for use of this work by or on behalf of the U.S. Government.
 # Export of this program may require a license from the United States
@@ -51,6 +51,7 @@ from cpython cimport PyObject, Py_INCREF, Py_DECREF, PyGILState_Ensure, \
 
 from libc.stdint cimport *
 from libc.stdlib cimport calloc, malloc, free, realloc
+from posix.unistd cimport geteuid, getegid
 import datetime as dt
 import struct
 import io
@@ -58,9 +59,13 @@ import os
 import sys
 import copy
 import json
-from queue import Queue
+import threading
+from queue import Queue, Empty
 cimport cython
 cimport ldms
+
+from pwd import getpwnam
+from grp import getgrnam
 
 __doc__ = """Lighweight Distibuted Metric Service (LDMS) for Python
 
@@ -398,6 +403,73 @@ def JSON_OBJ(o):
         return o.decode()
     # otherwise, the object is expected to have `.json_obj()` function
     return o.json_obj()
+
+def stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None):
+    """stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None)
+
+    Publish a stream locally. If the remote peer subscribe to the stream, it
+    will also receive the data.
+
+    Arguments:
+    - name (str): The name of the stream being published.
+    - stream_data (bytes, str, dict):
+            The data being published. If it is `dict` and stream_type is
+            LDMS_STREAM_JSON or None, the stream_data is converted into JSON
+            string representation with `json.dumps(stream_data)`.
+    - stream_type (enum):
+            LDMS_STREAM_JSON or LDMS_STREAM_STRING or None.
+            If the type is `None`, it is inferred from the
+            `type(stream_data)`: LDMS_STREAM_STRING for `str` and `bytes`
+            types, and LDMS_STREAM_JSON for `dict` type. If
+            `type(stream_data)` is something else, TypeError is raised.
+    - perm (int): The file-system-style permission bits (e.g. 0o444).
+    - uid (int or str): Publish as the given uid; None for euid.
+    - gid (int or str): Publish as the given gid; None for egid.
+
+    """
+    cdef int rc
+    cdef ldms_cred cred
+
+    _t = type(stream_data)
+    # stream type
+    if stream_type is None:
+        if _t is dict:
+            # JSON
+            stream_type = ldms.LDMS_STREAM_JSON
+        elif _t in (str, bytes):
+            stream_type = ldms.LDMS_STREAM_STRING
+        else:
+            raise TypeError(f"Cannot infer stream_type from the type of stream_data ({type(stream_data)})")
+    if stream_type == ldms.LDMS_STREAM_JSON and _t is dict:
+        stream_data = json.dumps(stream_data)
+
+    # uid
+    if type(uid) is str:
+        o = getpwnam(uid)
+        cred.uid = o.pw_uid
+    elif type(uid) is int:
+        cred.uid = uid
+    elif uid is None:
+        cred.uid = geteuid()
+    else:
+        raise TypeError(f"Type '{type(uid)}' is not supported for `uid`")
+
+    # gid
+    if type(gid) is str:
+        o = getgrnam(gid)
+        cred.gid = o.gr_gid
+    elif type(gid) is int:
+        cred.gid = gid
+    elif gid is None:
+        cred.gid = getegid()
+    else:
+        raise TypeError(f"Type '{type(gid)}' is not supported for `gid`")
+
+    rc = ldms_stream_publish(NULL, BYTES(name), stream_type, &cred, perm,
+                             BYTES(stream_data), len(stream_data))
+    if rc:
+        raise RuntimeError(f"ldms_stream_publish() failed, rc: {rc}")
+
 
 # ============================ #
 # == metric getter wrappers == #
@@ -3406,6 +3478,297 @@ cdef class Xprt(object):
     @property
     def send_credits(self):
         return self.get_send_credits()
+
+    def stream_publish(self, name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None):
+        """r.stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None)
+
+        Publish a stream directly to the remote peer. The local stream client
+        will not get the stream data.
+
+        Arguments:
+        - name (str): The name of the stream being published.
+        - stream_data (bytes, str, dict):
+                The data being published. If it is `dict` and stream_type is
+                LDMS_STREAM_JSON or None, the stream_data is converted into JSON
+                string representation with `json.dumps(stream_data)`.
+        - stream_type (enum):
+                LDMS_STREAM_JSON or LDMS_STREAM_STRING or None.
+                If the type is `None`, it is inferred from the
+                `type(stream_data)`: LDMS_STREAM_STRING for `str` and `bytes`
+                types, and LDMS_STREAM_JSON for `dict` type. If
+                `type(stream_data)` is something else, TypeError is raised.
+        - perm (int): The file-system-style permission bits (e.g. 0o444).
+        - uid (int or str): Publish as the given uid; None for euid.
+        - gid (int or str): Publish as the given gid; None for egid.
+
+        """
+        cdef int rc
+        cdef ldms_cred cred
+
+        _t = type(stream_data)
+        # stream type
+        if stream_type is None:
+            if _t is dict:
+                # JSON
+                stream_type = ldms.LDMS_STREAM_JSON
+            elif _t in (str, bytes):
+                stream_type = ldms.LDMS_STREAM_STRING
+            else:
+                raise TypeError(f"Cannot infer stream_type from the type of stream_data ({type(stream_data)})")
+        if stream_type == ldms.LDMS_STREAM_JSON and _t is dict:
+            stream_data = json.dumps(stream_data)
+
+        # uid
+        if type(uid) is str:
+            o = getpwnam(uid)
+            cred.uid = o.pw_uid
+        elif type(uid) is int:
+            cred.uid = uid
+        elif uid is None:
+            cred.uid = geteuid()
+        else:
+            raise TypeError(f"Type '{type(uid)}' is not supported for `uid`")
+
+        # gid
+        if type(gid) is str:
+            o = getgrnam(gid)
+            cred.gid = o.gr_gid
+        elif type(gid) is int:
+            cred.gid = gid
+        elif gid is None:
+            cred.gid = getegid()
+        else:
+            raise TypeError(f"Type '{type(gid)}' is not supported for `gid`")
+
+        rc = ldms_stream_publish(self.xprt, BYTES(name), stream_type, &cred, perm,
+                                 BYTES(stream_data), len(stream_data))
+        if rc:
+            raise RuntimeError(f"ldms_stream_publish() failed, rc: {rc}")
+
+    def stream_subscribe(self, match, is_regex, cb=None, cb_arg=None):
+        """r.stream_subscribe(match, is_regex, cb=None, cb_arg=None)
+
+        Send a subscription request to the remote peer. If `cb` is `None`,
+        this function will block and wait for the peer to reply the subscription
+        result. In this case, if the subscription is a success, the function
+        simply returned (no return code); otherwise, a StreamSubscribeError is
+        raised.
+
+        """
+        cdef int rc
+        cdef sem_t sem
+        cdef ldms_stream_event_cb_t _cb
+        cdef _StreamSubCtxt ctxt = _StreamSubCtxt()
+        cdef const char *c_match
+        cdef int c_is_regex
+        cdef bytes tmp
+        ctxt.cb = cb
+        ctxt.cb_arg = cb_arg
+
+        tmp = BYTES(match)
+        c_match = <const char*>tmp
+        c_is_regex = <int>is_regex
+        if cb is None:
+            sem_init(&ctxt.sem, 0, 0)
+            with nogil:
+                rc = ldms_stream_remote_subscribe(self.xprt, c_match, c_is_regex,
+                        __stream_block_cb, <void*>ctxt)
+                if rc:
+                    with gil:
+                        raise StreamSubscribeError(f"ldms_stream_remote_subscribe() error, rc: {rc}")
+                sem_wait(&ctxt.sem)
+            if ctxt.rc:
+                raise StreamSubscribeError(f"stream remote subscription error: {ctxt.rc}")
+        else:
+            Py_INCREF(ctxt)
+            with nogil:
+                rc = ldms_stream_remote_subscribe(self.xprt, c_match, c_is_regex,
+                        __stream_wrap_cb, <void*>ctxt)
+            if rc:
+                raise StreamSubscribeError(f"ldms_stream_remote_subscribe() error, rc: {rc}")
+
+    def stream_unsubscribe(self, match, is_regex, cb=None, cb_arg=None):
+        """Send an unsubscription request to the remote peer"""
+        cdef int rc
+        cdef sem_t sem
+        cdef ldms_stream_event_cb_t _cb
+        cdef _StreamSubCtxt ctxt = _StreamSubCtxt()
+        ctxt.cb = cb
+        ctxt.cb_arg = cb_arg
+
+        if cb is None:
+            sem_init(&ctxt.sem, 0, 0)
+            rc = ldms_stream_remote_unsubscribe(self.xprt, BYTES(match), is_regex,
+                    __stream_block_cb, <void*>ctxt)
+            if rc:
+                raise StreamSubscribeError(f"ldms_stream_remote_subscribe() error, rc: {rc}")
+            sem_wait(&ctxt.sem)
+            if ctxt.rc:
+                raise StreamSubscribeError(f"stream remote subscription error: {ctxt.rc}")
+        else:
+            Py_INCREF(ctxt)
+            rc = ldms_stream_remote_unsubscribe(self.xprt, BYTES(match), is_regex,
+                    __stream_wrap_cb, <void*>ctxt)
+            if rc:
+                raise StreamSubscribeError(f"ldms_stream_remote_subscribe() error, rc: {rc}")
+
+
+cdef class _StreamSubCtxt(object):
+    """For internal use"""
+    cdef object cb
+    cdef object cb_arg
+    cdef sem_t sem
+    cdef int rc
+
+cdef int __stream_block_cb(ldms_stream_event_t ev, void *cb_arg) with gil:
+    cdef _StreamSubCtxt ctxt = <_StreamSubCtxt>cb_arg
+    try:
+        ctxt.rc = ev.status.status
+    except:
+        sem_post(&ctxt.sem)
+        raise
+    sem_post(&ctxt.sem)
+
+cdef int __stream_wrap_cb(ldms_stream_event_t ev, void *cb_arg) with gil:
+    cdef _StreamSubCtxt ctxt = <_StreamSubCtxt>cb_arg
+    py_ev = StreamStatusEvent(ev.status.name, ev.status.is_regex,
+                                             ev.status.status)
+    ctxt.cb(py_ev, ctxt.cb_arg)
+    Py_DECREF(ctxt)
+
+cdef class StreamStatusEvent(object):
+    cdef public str name
+    cdef public int is_regex
+    cdef public int status
+    def __cinit__(self, const char *name, int is_regex, int status):
+        self.name = str(name)
+        self.is_regex = is_regex
+        self.status = status
+
+class StreamSubscribeError(Exception):
+    def __init__(self, rc, text):
+        self.rc = rc
+        self.text = text
+
+    def __str__(self):
+        return f"StreamSubscribeError: {self.rc}, {self.text}"
+
+    def __repr__(self):
+        return f"StreamSubscribeError( {self.rc}, '{self.text}' )"
+
+StreamDataAttrs = [ "raw_data", "data", "src", "name", "is_json", "uid", "gid", "perm", "tid" ]
+
+cdef class StreamData(object):
+    """Stream Data"""
+    cdef public bytes    raw_data # bytes raw data
+    cdef public object   data     # `str` (for STRING) or `dict` (for JSON)
+    cdef public uint64_t src      # stream originator
+    cdef public str      name     # stream name
+    cdef public int      is_json  # data is JSON
+    cdef public int      uid      # uid of the original publisher
+    cdef public int      gid      # gid of the original publisher
+    cdef public int      perm     # the permission of the data
+    cdef public uint64_t tid      # the thread ID creating the StreamData
+    def __init__(self, name=None, src=None, tid=None, uid=None, gid=None,
+                       perm=None, is_json=None, data=None, raw_data=None):
+        self.name = name
+        self.src = src
+        self.tid = tid
+        self.uid = uid
+        self.gid = gid
+        self.perm = perm
+        self.is_json = is_json
+        self.data = data
+        self.raw_data = raw_data
+
+    def __str__(self):
+        return str(self.data)
+
+    def __repr__(self):
+        return f"StreamData('{self.name}', {hex(self.src)}, " \
+               f"{self.tid}, {self.uid}, {self.gid}, {oct(self.perm)}, " \
+               f"{self.is_json}, {repr(self.data)})"
+
+    def __eq__(self, other):
+        if type(other) != StreamData:
+            return False
+        for k in StreamDataAttrs:
+            v0 = getattr(self, k)
+            v1 = getattr(other, k)
+            if v0 != v1:
+                return False
+        return True
+
+    @classmethod
+    def from_ldms_stream_event(cls, Ptr ev_ptr):
+        cdef ldms_stream_event_t ev = <ldms_stream_event_t>ev_ptr.c_ptr
+        assert( ev.type == LDMS_STREAM_EVENT_RECV )
+        raw_data = ev.recv.data[:ev.recv.data_len]
+        if ev.recv.type == LDMS_STREAM_JSON:
+            is_json = True
+            data = json.loads(raw_data.strip(b'\x00').strip())
+        else:
+            is_json = False
+            data = raw_data.decode()
+        name = ev.recv.name.decode()
+        src = ev.recv.src.u64
+        uid = ev.recv.cred.uid
+        gid = ev.recv.cred.gid
+        perm = ev.recv.perm
+        tid = threading.get_native_id()
+        obj = StreamData(name, src, tid, uid, gid, perm, is_json, data, raw_data)
+        return obj
+
+cdef int __stream_client_cb(ldms_stream_event_t ev, void *arg) with gil:
+    cdef StreamClient c = <StreamClient>arg
+    cdef StreamData sdata = StreamData.from_ldms_stream_event(PTR(ev))
+    if c.cb:
+        c.cb(c, sdata, c.cb_arg)
+    else:
+        c.data_q.put(sdata)
+    return 0
+
+
+cdef class StreamClient(object):
+    """StreamClient(match, is_regex, cb=None, cb_arg=None)
+
+    Arguments:
+    - match (str): The name of the stream, or a regular expression
+    - is_regex (int): 1 if `match` is a regular expression;
+                      0 otherwise, and the `match` is treated as an exact match
+                      to the stream name
+    - cb (callable): an optional callback function to deliver the stream data
+                        with the following signature
+                          `def cb(StreamClient client, StreamData data, object cb_arg)`
+    - cb_arg (object):  an optional application callback argument.
+    """
+
+    cdef ldms_stream_client_t c
+    cdef object cb  # optional application callback
+    cdef object cb_arg # optional application callback argument
+    cdef object data_q
+
+    def __init__(self, match, is_regex, cb=None, cb_arg=None):
+        self.data_q = Queue()
+        self.cb = cb
+        self.cb_arg = cb_arg
+        self.c = ldms_stream_subscribe(BYTES(match), is_regex,
+                                       __stream_client_cb, <void*>self)
+        if not self.c:
+            raise RuntimeError(f"ldms_stream_subscribe() error, errno: {errno}")
+
+    def close(self):
+        if not self.c:
+            return
+        ldms_stream_close(self.c)
+        self.c = NULL
+
+    def get_data(self):
+        """Get the stream data (None if no data)"""
+        try:
+            return self.data_q.get_nowait()
+        except Empty as e:
+            return None
 
 
 cdef class ZapThrStat(object):

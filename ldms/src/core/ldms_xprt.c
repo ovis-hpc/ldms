@@ -1617,6 +1617,9 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 
 void __rail_process_send_credit(ldms_t x, struct ldms_request *req);
 
+/* implementation is in ldms_stream.c */
+void __stream_req_recv(ldms_t x, int cmd, struct ldms_request *req);
+
 static
 int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 {
@@ -1659,6 +1662,11 @@ int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 		break;
 	case LDMS_CMD_SEND_CREDIT:
 		__rail_process_send_credit(x, req);
+		break;
+	case LDMS_CMD_STREAM_MSG:
+	case LDMS_CMD_STREAM_SUB:
+	case LDMS_CMD_STREAM_UNSUB:
+		__stream_req_recv(x, cmd, req);
 		break;
 	default:
 		XPRT_LOG(x, OVIS_LERROR, "Unrecognized request %d\n", cmd);
@@ -2058,6 +2066,9 @@ void ldms_event_release(ldms_t t, ldms_notify_event_t e)
 	free(e);
 }
 
+/* implementation is in ldms_stream.c */
+int __stream_reply_recv(ldms_t x, int cmd, struct ldms_reply *reply);
+
 static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 {
 	int cmd = ntohl(reply->hdr.cmd);
@@ -2085,6 +2096,10 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 		break;
 	case LDMS_CMD_SET_DELETE_REPLY:
 		process_set_delete_reply(x, reply, ctxt);
+		break;
+	case LDMS_CMD_STREAM_SUB_REPLY:
+	case LDMS_CMD_STREAM_UNSUB_REPLY:
+		__stream_reply_recv(x, cmd, reply);
 		break;
 	default:
 		XPRT_LOG(x, OVIS_LERROR, "Unrecognized reply %d\n", cmd);

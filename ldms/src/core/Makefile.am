@@ -16,7 +16,8 @@ libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h \
 		     ldms_auth.c ldms_xprt_auth.c \
 		     rrbt.c rrbt.h \
 		     ldms_heap.c ldms_heap.h \
-		     ldms_rail.c ldms_rail.h
+		     ldms_rail.c ldms_rail.h \
+		     ldms_stream.c ldms_stream.h
 libldms_la_LIBADD = -ldl -lpthread $(top_builddir)/lib/src/coll/libcoll.la \
 		    $(top_builddir)/lib/src/ovis_json/libovis_json.la \
 		    $(top_builddir)/lib/src/ovis_ev/libovis_ev.la \

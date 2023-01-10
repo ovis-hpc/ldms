@@ -173,6 +173,9 @@ static void __rail_ref_free(void *arg)
 }
 
 uint64_t rail_gn = 1;
+/* implementation in ldms_stream.c */
+int __stream_buf_cmp(void *tree_key, const void *key);
+int __stream_name_rbn_cmp(void *tree_key, const void *key);
 
 ldms_t ldms_xprt_rail_new(const char *xprt_name,
 			  int n, int64_t recv_limit, int32_t rate_limit,
@@ -209,7 +212,7 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 	r->n_eps = n;
 	r->recv_limit = recv_limit;
 	r->rate_limit = rate_limit;
-	rbt_init(&r->stream_client_rbt, __str_rbn_cmp);
+	rbt_init(&r->stream_client_rbt, __stream_name_rbn_cmp);
 	snprintf(r->name, sizeof(r->name), "%s", xprt_name);
 	snprintf(r->auth_name, sizeof(r->auth_name), "%s", auth_name);
 	if (auth_av_list) {
@@ -224,12 +227,14 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 		r->eps[i].idx = i;
 		r->eps[i].send_credit = __RAIL_UNLIMITED;
 		r->eps[i].remote_is_rail = -1;
+		rbt_init(&r->eps[i].sbuf_rbt, __stream_buf_cmp);
 	}
 
 	r->eps[0].ep = __ldms_xprt_new_with_auth(r->name, r->auth_name, auth_av_list);
 	if (!r->eps[0].ep)
 		goto err_1;
 	ldms_xprt_ctxt_set(r->eps[0].ep, &r->eps[0], NULL);
+	r->max_msg = r->eps[0].ep->max_msg;
 
 	/* The other endpoints will be created later in connect() or
 	 * __rail_zap_handle_conn_req() */
@@ -313,6 +318,26 @@ int __rail_ev_prep(struct ldms_rail_s *r, ldms_xprt_event_t ev)
 		break;
 	}
 	return 0;
+}
+
+/* implementation in ldms_stream.c */
+void __stream_on_rail_disconnected(struct ldms_rail_s *r);
+
+/* return send credit to peer */
+void __rail_ep_credit_return(struct ldms_rail_ep_s *rep, int credit)
+{
+	/* give back send credit */
+	int len = sizeof(struct ldms_request_hdr) +
+		sizeof(struct ldms_send_credit_param);
+	struct ldms_request req = {
+		.hdr = {
+			.cmd = htonl(LDMS_CMD_SEND_CREDIT),
+			.len = htonl(len),
+		},
+		.send_credit = {
+			.send_credit = htonl(credit),
+		}};
+	zap_send(rep->ep->zap_ep, &req, len);
 }
 
 /* rail interposer */
@@ -439,6 +464,7 @@ void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 					  r->connecting_eps == 0 &&
 					  r->connected_eps  == 0;
 		pthread_mutex_unlock(&r->mutex);
+		__stream_on_rail_disconnected(r);
 		break;
 	case LDMS_XPRT_EVENT_RECV:
 	case LDMS_XPRT_EVENT_SET_DELETE:
@@ -468,17 +494,7 @@ void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	if (e->type == LDMS_XPRT_EVENT_RECV && __rail_is_connected((void*)r)
 			&& r->recv_limit != __RAIL_UNLIMITED) {
 		/* give back send credit */
-		int len = sizeof(struct ldms_request_hdr) +
-			  sizeof(struct ldms_send_credit_param);
-		struct ldms_request req = {
-			.hdr = {
-				.cmd = htonl(LDMS_CMD_SEND_CREDIT),
-				.len = htonl(len),
-			},
-			.send_credit = {
-				.send_credit = htonl(e->data_len),
-			}};
-		zap_send(rep->ep->zap_ep, &req, len);
+		__rail_ep_credit_return(rep, e->data_len);
 	}
 
  out:
@@ -877,6 +893,21 @@ uint64_t __credit_release(uint64_t *credit, uint64_t n)
 	if (v0 == __RAIL_UNLIMITED)
 		return v0;
 	return __atomic_add_fetch(credit, n, __ATOMIC_SEQ_CST);
+}
+
+int ldms_xprt_connected(struct ldms_xprt *x);
+
+int __rail_rep_send_raw(struct ldms_rail_ep_s *rep, void *data, int len)
+{
+	ldms_t x = rep->ep;
+	int rc;
+	/* mimicking ldms_xprt_send */
+	pthread_mutex_lock(&x->lock);
+	if (!ldms_xprt_connected(x))
+		return ENOTCONN;
+	rc = zap_send(x->zap_ep, data, len);
+	pthread_mutex_unlock(&x->lock);
+	return rc;
 }
 
 static int __rail_send(ldms_t _r, char *msg_buf, size_t msg_len)
