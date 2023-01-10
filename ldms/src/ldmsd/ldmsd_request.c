@@ -3911,7 +3911,7 @@ void __updtr_stats(ldmsd_prdcr_set_t prdset, int *skipped_cnt,
 }
 
 int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
-							int updtr_cnt)
+						int updtr_cnt, int reset)
 {
 	int rc;
 	ldmsd_prdcr_ref_t ref;
@@ -3981,6 +3981,10 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 			while (prdset) {
 				__updtr_stats(prdset, &skipped_cnt,
 						     &oversampled_cnt);
+				if (reset) {
+					prdset->oversampled_cnt = 0;
+					prdset->skipped_upd_cnt = 0;
+				}
 				prdset = ldmsd_prdcr_set_next(prdset);
 			}
 		} else {
@@ -3998,6 +4002,10 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 					}
 					__updtr_stats(prdset, &skipped_cnt,
 							     &oversampled_cnt);
+					if (reset) {
+						prdset->oversampled_cnt = 0;
+						prdset->skipped_upd_cnt = 0;
+					}
 				next:
 					prdset = ldmsd_prdcr_set_next(prdset);
 				}
@@ -4018,10 +4026,10 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 	int rc;
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
-	char *name;
-	int updtr_cnt;
+	char *name, *reset_s;
+	int updtr_cnt, reset;
 	ldmsd_updtr_t updtr = NULL;
-
+	reset = 0;
 	reqc->errcode = 0;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -4039,9 +4047,16 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 		}
 	}
 
+	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
+	if (reset_s) {
+		if (0 != strcasecmp(reset_s, "false"))
+			reset = 1;
+		free(reset_s);
+	}
+
 	/* Construct the json object of the updater(s) */
 	if (updtr) {
-		rc = __updtr_status_json_obj(reqc, updtr, 0);
+		rc = __updtr_status_json_obj(reqc, updtr, 0, reset);
 		if (rc)
 			goto out;
 	} else {
@@ -4049,7 +4064,7 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 		for (updtr = ldmsd_updtr_first(); updtr;
 				updtr = ldmsd_updtr_next(updtr)) {
-			rc = __updtr_status_json_obj(reqc, updtr, updtr_cnt);
+			rc = __updtr_status_json_obj(reqc, updtr, updtr_cnt, reset);
 			if (rc) {
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 				goto out;
