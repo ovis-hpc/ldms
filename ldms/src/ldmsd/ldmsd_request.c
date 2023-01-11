@@ -6673,7 +6673,15 @@ static char * __set_stats_as_json(size_t *json_sz)
 						rc = regexec(&match->regex, prd_set->inst_name, 0, NULL, 0);
 						if (rc)
 							continue;
-						freq = 1000000 / (double)prd_set->updt_interval;
+						if (updtr->push_flags) {
+							/* Use the update hint to calculate the frequency */
+							long interval_us, offset_us;
+							ldmsd_set_update_hint_get(prd_set->set,
+									&interval_us, &offset_us);
+							freq = 1000000 / (double) interval_us;
+						} else {
+							freq = 1000000 / (double)prd_set->updt_interval;
+						}
 						if (prd_set->set) {
 							data_sz = ldms_set_data_sz_get(prd_set->set);
 							set_load += data_sz * freq;
@@ -6690,7 +6698,15 @@ static char * __set_stats_as_json(size_t *json_sz)
 				ldmsd_prdcr_set_t prd_set;
 				for (prd_set = ldmsd_prdcr_set_first(ref->prdcr); prd_set;
 						prd_set = ldmsd_prdcr_set_next(prd_set)) {
-					freq = 1000000 / (double)prd_set->updt_interval;
+					if (updtr->push_flags) {
+						/* Use the update hint to calculate the frequency */
+						long interval_us, offset_us;
+						ldmsd_set_update_hint_get(prd_set->set,
+								&interval_us, &offset_us);
+						freq = 1000000 / (double) interval_us;
+					} else {
+						freq = 1000000 / (double)prd_set->updt_interval;
+					}
 					if (prd_set->set) {
 						data_sz = ldms_set_data_sz_get(prd_set->set);
 						set_load += data_sz * freq;
