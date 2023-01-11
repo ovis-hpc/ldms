@@ -7958,7 +7958,8 @@ out:
 	return rc;
 }
 
-static int __store_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp)
+static int
+__store_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp, int reset)
 {
 	int rc;
 
@@ -7971,15 +7972,26 @@ static int __store_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strg
 					  strgp->stat.max,
 					  strgp->stat.avg,
 					  strgp->stat.count);
+	if (reset)
+		memset(&strgp->stat, 0, sizeof(strgp->stat));
 	return rc;
 }
 
 static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
-	char *name = NULL;
+	char *name, *reset_s;
+	name = reset_s = NULL;
 	ldmsd_strgp_t strgp;
 	int cnt = 0;
+	int reset = 0;
+
+	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
+	if (reset_s) {
+		if (0 != strcasecmp(reset_s, "false"))
+			reset = 1;
+		free(reset_s);
+	}
 
 	rc = linebuf_printf(reqc, "{");
 	if (rc)
@@ -7996,7 +8008,7 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 			ldmsd_send_req_response(reqc, reqc->line_buf);
 			return 0;
 		}
-		rc = __store_time_stats_json_obj(reqc, strgp);
+		rc = __store_time_stats_json_obj(reqc, strgp, reset);
 	} else {
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
 		for (strgp = ldmsd_strgp_first(); strgp;
@@ -8009,7 +8021,7 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 				}
 			}
 			ldmsd_strgp_lock(strgp);
-			rc = __store_time_stats_json_obj(reqc, strgp);
+			rc = __store_time_stats_json_obj(reqc, strgp, reset);
 			if (rc) {
 				ldmsd_strgp_unlock(strgp);
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
