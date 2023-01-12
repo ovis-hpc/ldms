@@ -8,6 +8,7 @@ EnvironmentFile=-/etc/sysconfig/ldms-netlink-notifier.conf
 # one can ignore root owned processes by including -u 1
 # ExecStart=/usr/sbin/ldms-netlink-notifier -u 1 -x -e exec,clone,exit -r
 # get the path defaults from the code or from the environment file.
+ExecStartPre=-/usr/bin/rm -f /var/run/ldms-netlink-tracked/[0-9]*
 ExecStart=/usr/sbin/ldms-netlink-notifier -x -e exec,clone,exit -r
 
 [Install]

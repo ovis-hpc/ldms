@@ -99,6 +99,17 @@ of expression strings as shown in EXAMPLES.
 fd_msg=N
 .br
 Publish new /proc/pid/fd scan data to the <SCHEMA>_files stream every N-th sample, where if the schema is not specified, the default SCHEMA is linux_proc_sampler. (Default: fd_msg=0; no publication of the file details). A downstream daemon will need to subscribe to linux_proc_sampler_files to receive the published messages and store them. Files that are not opened long enough to be caught in a scan of fds will be missed. Files will be reported as 'opened' the first time seen and as 'closed' when they are no longer seen.  A file both no longer seen and no longer existing will be reported as 'deleted'. Only regular files (not sockets, etc) are reported, and additionally files matching the fd_expressions are ignored. Use a larger N to reduce the scan overhead at the cost of missing short-access files. If a close-reopen of the same file occurs between scans, no corresponding events are generated.
+.TP
+published_pid_dir=<path>
+.br
+Name of the directory where netlink-notifier or other notifier pids of interest may be found.
+This directory is scanned at sampler startup only, so that pids which were the
+subject of events published before the sampler started can be tracked.
+If not specified, the default directory is /var/run/ldms-netlink-tracked.
+Absence of this directory is not a sampler configuration error, as ldmsd may start
+before the notifier process. When starting, the sampler will clean up any stale
+pid references found in this directory.
+Any pid not appearing in this directory is not being tracked.
 .RE
 
 .SH INPUT STREAM FORMAT
@@ -282,6 +293,14 @@ The fd_msg option can have its output filtered by json or a text file, e.g.:
 /usr/lib64/
 /usr/lib/
 .fi
+
+.PP
+The files defined with published_pid_dir appear in (for example)
+.nf
+/var/run/ldms-netlink-tracked/[0-9]*
+.fi
+and each contains the JSON message sent by the publisher.
+Publishers, not ldmsd, populate this directory to allow asynchronous startup.
 
 .SH NOTES
 

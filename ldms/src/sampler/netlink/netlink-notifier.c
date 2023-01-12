@@ -402,6 +402,7 @@ static const int signals[] = {
 };
 
 /* add several structures related to filtering. */
+#define default_track_dir "/var/run/ldms-netlink-tracked"
 #define default_send_log NULL
 #define default_exclude_programs "(nullexe):<unknown>"
 #define default_exclude_dirs "/sbin"
@@ -2336,6 +2337,7 @@ static struct exclude_arg excludes[] = {
 	{"600", VT_SCALAR, 0, "NOTIFIER_LDMS_RECONNECT", NULL, 0, PLINIT},
 	{"1", VT_SCALAR, 0, "NOTIFIER_LDMS_TIMEOUT", NULL, 0, PLINIT},
 	{default_send_log, VT_FILE, 0, "NOTIFIER_SEND_LOG", NULL, 0, PLINIT},
+	{default_track_dir, VT_DIR, 0, "NOTIFIER_TRACK_DIR", NULL, 0, PLINIT},
 };
 static struct exclude_arg *bin_exclude = &excludes[0];
 static struct exclude_arg *dir_exclude = &excludes[1];
@@ -2349,6 +2351,7 @@ static struct exclude_arg *auth_arg = &excludes[8];
 static struct exclude_arg *reconnect_arg = &excludes[9];
 static struct exclude_arg *timeout_arg = &excludes[10];
 static struct exclude_arg *send_log_arg = &excludes[11];
+static struct exclude_arg *track_dir_arg = &excludes[12];
 
 static struct option long_options[] = {
 	{"exclude-programs", optional_argument, 0, 0},
@@ -2363,6 +2366,7 @@ static struct option long_options[] = {
 	{"reconnect", required_argument, 0, 0},
 	{"timeout", required_argument, 0, 0},
 	{"send-log", required_argument, 0, 0},
+	{"track-dir", required_argument, 0, 0},
 	{0, 0, 0, 0}
 };
 
@@ -2718,6 +2722,75 @@ static int get_int(const char *v)
 	return -ERANGE;
 }
 
+/* create a file in pid_dir with name %d of info->pid
+ * and json event.
+ */
+void track_pid_add(struct proc_info *info, const char *pid_dir, jbuf_t json)
+{
+	size_t bsize = 22 + strlen(pid_dir);
+	char fname[bsize];
+	sprintf(fname, "%s/%d", pid_dir, info->pid);
+	FILE *f = fopen(fname,"w");
+	if (!f)
+		return;
+	fwrite(json->buf, 1, json->cursor+1, f);
+	fclose(f);
+}
+
+/* remove a file in pid_dir with name %d of info->pid
+ */
+void track_pid_remove(struct proc_info *info, const char *pid_dir)
+{
+	size_t bsize = 22 + strlen(pid_dir);
+	char fname[bsize];
+	sprintf(fname, "%s/%d", pid_dir, info->pid);
+	unlink(fname);
+}
+
+int forkstat_init_track_dir(forkstat_t *ft, const char *pid_dir)
+{
+	if (!ft || !pid_dir)
+		return EINVAL;
+	DIR *dir = opendir(pid_dir);
+	if (!dir) {
+		mkdir(pid_dir, 0755);
+		DIR *dir = opendir(pid_dir);
+		if (!dir) {
+			PRINTF("Unable to open pid tracking dir %s: %s\n",
+				pid_dir, strerror(errno));
+			return EINVAL;
+		}
+	}
+	closedir(dir);
+	pid_t self = getpid();
+	size_t bsize = 22 + strlen(pid_dir);
+	char fname[bsize];
+	sprintf(fname, "%s/%d", pid_dir, self);
+	FILE *f = fopen(fname,"w");
+	if (!f) {
+		PRINTF("Unable to create pid tracking file %s: %s\n",
+			fname, strerror(errno));
+		return errno;
+	}
+	int rc = 0;
+	size_t fc = fwrite(fname, 1, strlen(fname), f);
+	if (fc < 2 || ferror(f)) {
+		PRINTF("Unable to write to pid tracking file %s: %s\n",
+			fname, strerror(errno));
+		rc = EIO;
+	}
+	fclose(f);
+	unlink(fname);
+	return rc;
+}
+
+void forkstat_finalize_track_dir(forkstat_t *ft, const char *pid_dir)
+{
+/* for the moment, This is a no-op; leave behind
+ * the files, as they are advisory.
+ */
+}
+
 static int forkstat_init_ldms_stream(forkstat_t *ft)
 {
 	(void)ft;
@@ -2730,6 +2803,14 @@ static int forkstat_init_ldms_stream(forkstat_t *ft)
 			timeout_arg->paths[0].n);
 		PRINTF("Impossible slps_create\n");
 		return 1;
+	}
+	if (track_dir_arg->len_paths) {
+		int td = forkstat_init_track_dir(ft, track_dir_arg->paths[0].n);
+		if (td) {
+			PRINTF("Unable to init pid tracking directory %s: %s\n",
+				track_dir_arg->paths[0].n, strerror(td));
+				return 1;
+		}
 	}
 	slps_init();
 	ft->ln = slps_create(stream_arg->paths[0].n, SLPS_NONBLOCKING, llog,
@@ -2756,6 +2837,9 @@ static int forkstat_finalize_ldms_stream(forkstat_t *ft)
 	slps_destroy(ft->ln);
 	ft->ln = NULL;
 	slps_finalize();
+	if (track_dir_arg->len_paths) {
+		forkstat_finalize_track_dir(ft, track_dir_arg->paths[0].n);
+	}
 	return 0;
 }
 
@@ -3278,7 +3362,6 @@ static jbuf_t make_ldms_message(forkstat_t *ft, struct proc_info *info, const ch
 			break;
 		}
 	}
-
 	if (emit_event & EMIT_ADD) {
 		switch (info->rm_type) {
 		case RM_NONE:
@@ -3346,13 +3429,22 @@ static int emit_info(forkstat_t *ft, struct proc_info *info, const char *type, i
 		if (type[0] == 'e') { /* exec, execlong, exit only go to stream*/
 			jbuf_t jb = make_ldms_message(ft, info, type, emit_event, *jbd);
 			if (jb) {
+				if (emit_event & EMIT_ADD &&
+					track_dir_arg->len_paths)
+					track_pid_add(info,
+						track_dir_arg->paths[0].n, jb);
+				if (emit_event & EMIT_EXIT &&
+					track_dir_arg->len_paths)
+					track_pid_remove(info,
+						track_dir_arg->paths[0].n);
 				int rc = send_ldms_message(ft, jb);
 				if (!rc)
 					override_emitted(info, emit_event);
 				else
 					PRINTF("FAILED sending for %d\n", pid);
 			} else {
-				PRINTF("FAILED make_ldms_message for %d event %d\n", pid, emit_event);
+				PRINTF("FAILED make_ldms_message for %d event %d\n",
+					pid, emit_event);
 			}
 			*jbd = jb;
 		}

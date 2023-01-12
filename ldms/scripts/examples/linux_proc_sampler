@@ -44,6 +44,7 @@ cat << EOF > $LDMSD_RUN/metrics.input
         "^/usr/share/",
         "^/opt/ness"
     ],
+  "published_pid_dir" : "${LDMSD_RUN}/ldms-netlink-tracked",
   "metrics" : [
     "status_real_user",
     "status_eff_user",
@@ -61,12 +62,13 @@ cat << EOF > $LDMSD_RUN/metrics.input
 }
 EOF
 rm -f $LOGDIR/json*.log
-# valgrind -v --tool=drd --log-file=$LOGDIR/vg.netlink.txt ${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
-${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
+#valgrind -v --tool=drd --log-file=$LOGDIR/vg.netlink.txt ${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked &
+#valgrind -v --leak-check=full --track-origins=yes --trace-children=yes  --log-file=$LOGDIR/vg.netlink.txt ${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked &
+${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked &
 # uncomment next one to test duplicate handling
 #${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json2.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
 VGARGS="--tool=drd --suppressions=/scratch1/baallan/ovis/ldms/scripts/examples/linux_proc_sampler.drd.supp"
-VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite --time-stamp=yes --keep-debuginfo=yes"
+VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite --time-stamp=yes --keep-debuginfo=yes --malloc-fill=3b"
 #vgon
 LDMSD 1
 vgoff
@@ -75,19 +77,19 @@ LDMSD 3
 vgoff
 SLEEP 2
 MESSAGE ldms_ls on host 1:
-LDMS_LS 1 -v
+#LDMS_LS 1 -v
 MESSAGE ldms_ls on host 2:
 SLEEP 1
 LDMS_LS 2 -v
 SLEEP 5
-MESSAGE stream_client_dump on sampler daemon 1
-for lc in $(seq 1); do
-	ldmsd_controller --auth none --port 61061 --cmd stream_client_dump
-	SLEEP 1
-done
+#MESSAGE stream_client_dump on sampler daemon 1
+#for lc in $(seq 1); do
+#ldmsd_controller --auth none --port 61061 --cmd stream_client_dump
+#	SLEEP 1
+#done
 SLEEP 5
 for lc in $(seq 1); do
-	LDMS_LS 1 -v
+#LDMS_LS 1 -v
 	SLEEP 2
 done
 SLEEP 2
