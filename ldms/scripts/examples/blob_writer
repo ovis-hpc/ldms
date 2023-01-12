@@ -4,7 +4,7 @@ export dstat_schema=$dsname
 portbase=61060
 VGARGS="--trace-children=yes --track-origins=yes --leak-check=full --show-leak-kinds=all"
 # track everything notifier config:
-${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --retry=1 -D 10 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
+${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 10 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
 #vgon
 LDMSD 1 2
 #vgoff
