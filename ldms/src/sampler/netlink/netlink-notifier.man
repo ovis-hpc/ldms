@@ -76,6 +76,11 @@ The 'short' options do not override the exclude entirely options.
 --timeout[=]<val>	 change the default value of timeout.
 	 If repeated, the last value given wins.
 	 The default 1 is used if env NOTIFIER_LDMS_TIMEOUT is not set.
+--track-dir[=]<path>     change the pids published directory.
+	 The default is used if env NOTIFIER_TRACK_DIR is not set.
+	 The path given should be on a RAM-based file system for efficiency,
+	 and it should not contain any files except those created by
+	 this daemon.
 .fi
 
 .SH ENVIRONMENT
@@ -85,6 +90,7 @@ NOTIFIER_EXCLUDE_PROGRAMS="(nullexe):<unknown>"
 NOTIFIER_EXCLUDE_DIRS=/sbin
 NOTIFIER_EXCLUDE_SHORT_PATH=/bin:/usr
 NOTIFIER_EXCLUDE_SHORT_TIME=1
+NOTIFIER_TRACK_DIR=/var/run/ldms-netlink-tracked
 NOTIFIER_LDMS_RECONNECT=600
 NOTIFIER_LDMS_TIMEOUT=1
 NOTIFIER_LDMS_STREAM=slurm
@@ -95,6 +101,23 @@ NOTIFIER_LDMS_AUTH=munge
 .fi
 Omitting (nullexe):<unknown> from NOTIFIER_EXCLUDE_PROGRAMS may cause incomplete output
 related to processes no longer present. In exotic circumstances, this may be desirable anyway.
+
+.SH FILES
+
+Users or other processes may discover which processes are the subject of notifications
+by examining the files in
+
+/NOTIFIER_TRACK_DIR/*
+
+For each pid started event which would be emitted to an LDMS stream, a temporary
+file with the name of the pid is created in NOTIFIER_TRACK_DIR. The file
+will contain the json event attempted. The temporary file will
+be removed when the corresponding pid stopped event is sent.
+These files are not removed when the notifier daemon exits.
+Client applications may validate a file by checking the contents
+against the /proc/$pid/stat content, if it exists.
+Invalid files may be removed by clients or system scripts.
+
 
 .SH NOTES
 .PP

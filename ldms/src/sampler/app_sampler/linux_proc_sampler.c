@@ -62,6 +62,7 @@
 #include <assert.h>
 #include <grp.h>
 #include <pwd.h>
+#include <glob.h>
 #include <sys/sysmacros.h>
 
 #include <coll/rbt.h>
@@ -488,6 +489,7 @@ struct linux_proc_sampler_inst_s {
 	pthread_mutex_t mutex;
 
 	char *stream_name;
+	char *published_pid_dir;
 	char *env_stream;
 	char *argv_stream;
 	char *fd_stream;
@@ -1699,7 +1701,7 @@ linux_proc_sampler config synopsis: \n\
     config name=linux_proc_sampler [COMMON_OPTIONS] [stream=STREAM]\n\
 	    [sc_clk_tck=1] [metrics=METRICS] [cfg_file=FILE] [exe_suffix=1]\n\
             [env_msg=1] [argv_msg=1] [argv_fmt=<1,2>] [env_exclude=EFILE]\n\
-            [fd_msg=N] [fd_exclude=EFILE]\n\
+            [fd_msg=N] [fd_exclude=EFILE] [published_pid_dir=PDIR]\n\
 \n\
 Option descriptions:\n\
     instance_prefix    The prefix for generated instance names. Typically a cluster name\n\
@@ -1721,6 +1723,7 @@ Option descriptions:\n\
     argv_fmt  Select format of argv elements.\n\
     fd_msg=N  Enable /proc/$pid/fd detail reporting every N-th sample\n\
     fd_exclude Name of a file with 1 regular expression per line.\n\
+    published_pid_dir Name of a directory of interesting pids\n\
     cfg_file  The alternative config file in JSON format. The file is\n\
 	      expected to have an object that contains the following \n\
 	      attributes:\n\
@@ -2147,6 +2150,23 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			}
 		}
 	}
+	ent = json_value_find(jdoc, "published_pid_dir");
+	if (ent) {
+		if (ent->type != JSON_STRING_VALUE) {
+			rc = EINVAL;
+			INST_LOG(inst, LDMSD_LERROR,
+				"Error: `published_pid_dir` must be a path.\n");
+			goto out;
+		}
+		inst->published_pid_dir = strdup(json_value_cstr(ent));
+		if (!inst->published_pid_dir) {
+			rc = ENOMEM;
+			INST_LOG(inst, LDMSD_LERROR,
+				"Out of memory while configuring.\n");
+			goto out;
+		}
+	}
+
 	ent = json_value_find(jdoc, "env_msg");
 	if (ent) {
 		if (ent->type != JSON_INT_VALUE) {
@@ -2351,6 +2371,8 @@ static char **get_proc_strings(pid_t pid, const char *n, int *o_count, ssize_t *
 		goto err;
 	*len_max = 0;
 	while ( (read = getdelim(&s, &slen, '\0', f)) != -1) {
+		/* note: there may not be a terminating nul */
+		s[read] = '\0';
 		*bytes += read;
 		if (read > *len_max)
 			*len_max = read;
@@ -2363,12 +2385,12 @@ static char **get_proc_strings(pid_t pid, const char *n, int *o_count, ssize_t *
 			}
 			result = newresult;
 		}
-		result[rlen] = malloc(read);
+		result[rlen] = malloc(read+2);
 		if (!result[rlen]) {
 			errno = ENOMEM;
 			goto err;
 		}
-		strncpy(result[rlen], s, read);
+		strncpy(result[rlen], s, read+1);
 		rlen++;
 	}
 	if (rlen < rcap)
@@ -2499,6 +2521,22 @@ static char *get_buf(linux_proc_sampler_inst_t inst, size_t n)
 	return inst->recycle_buf;
 }
 
+/* common message header */
+static const char id_format[] = "{"
+	"\"producerName\":\"%s\""
+	",\"component_id\":%" PRIu64
+	",\"pid\":%d"
+	",\"job_id\":%" PRIu64
+	",\"timestamp\":\"%s\""
+	",\"task_rank\":%" PRId64
+	",\"parent\":%d"
+	",\"is_thread\":%s"
+	",\"exe\":\"%s\",\"data\":[";
+static size_t id_format_sz = sizeof(id_format);
+
+static const char env_element_format[] = "{\"k\":\"%s\",\"v\":\"%s\"}";
+static size_t env_element_format_sz = sizeof(env_element_format);
+
 /* the env/argv data to be published can disappear under us, so there's
  * no "fail" for these publication. Best-effort only.
  */
@@ -2522,27 +2560,9 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 	}
 	/* maxlensum: prod compid pid jobid time rank parent thread */
 	size_t buf_sz = 64 + 20 + 20 + 20 + 26 + 20 + 20 + 6;
-	const char* id_format =
-		"{"
-		"\"producerName\":\"%s\""
-		",\"component_id\":%" PRIu64
-		",\"pid\":%d"
-		",\"job_id\":%" PRIu64
-		",\"timestamp\":\"%s\""
-		",\"task_rank\":%" PRId64
-		",\"parent\":%d"
-		",\"is_thread\":%s"
-		",\"exe\":\"%s\",\"data\":[";
-	static size_t id_format_sz;
-	if (!id_format_sz)
-		id_format_sz = strlen(id_format);
-	const char *element_format = "{\"k\":\"%s\",\"v\":\"%s\"}";
-	static size_t element_format_sz;
-	if (!element_format_sz)
-		element_format_sz = strlen(element_format);
 	buf_sz += strlen(exe) + 1;
 	/* protocol 1: { idlist, "data":[{"k":"val","v":"val"},...]} */
-	buf_sz += strlen("[]") + argc*(1 + element_format_sz) +
+	buf_sz += strlen("[]") + argc*(1 + env_element_format_sz) +
 		strlen("]}") + id_format_sz; /* json overhead */
 	buf_sz += bytes; /* strings data */
 	char *buf = get_buf(inst, buf_sz);
@@ -2607,7 +2627,8 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 		} else {
 			notfirst = 1;
 		}
-		more = snprintf(buf+off, buf_sz-off, element_format, k, vsub);
+		more = snprintf(buf+off, buf_sz-off,
+				env_element_format, k, vsub);
 		off += more;
 	}
 	more = snprintf(buf+off, buf_sz-off, "]}");
@@ -2657,19 +2678,6 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 	size_t buf_sz = 64 + 20 + 20 + 20 + 26 + 20 + 20 + 6;
 	buf_sz += strlen(exe) + 1;
 	buf_sz += bytes; /* strings, excluding protocol formatting. */
-	const char *id_format = "{"
-		"\"producerName\":\"%s\""
-		",\"component_id\":%" PRIu64
-		",\"pid\":%d"
-		",\"job_id\":%" PRIu64
-		",\"timestamp\":\"%s\""
-		",\"task_rank\":%" PRId64
-		",\"parent\":%d"
-		",\"is_thread\":%s"
-		",\"exe\":\"%s\",\"data\":[";
-	static size_t id_format_sz;
-	if (!id_format_sz)
-		id_format_sz = strlen(id_format);
 	const char *element_format1 = "\"%s\",";
 	static size_t element_format1_sz;
 	if (!element_format1_sz)
@@ -2741,7 +2749,7 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 	case 2:
 		for (i = 0; i < argc; i++) {
 			int epos = -1;
-			int ce = string_clean_json(argv[i], vbuf,vbuf_sz,&epos);
+			int ce = string_clean_json(argv[i], vbuf,vbuf_sz, &epos);
 			if (ce) {
 				INST_LOG(inst, LDMSD_LERROR,
 					"pid %d argv %d cannot be json:"
@@ -2751,7 +2759,7 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 				goto out;
 			}
 			more = snprintf(buf+off, buf_sz-off, element_format2,
-				i, argv[i]);
+				i, vbuf);
 			off += more;
 		}
 		more = snprintf(buf+off-1, buf_sz-off+1, "]}") -1;
@@ -2840,6 +2848,16 @@ static int fentry_mark_seen(struct rbn *r, void *fdata, int i)
 	return 0;
 }
 
+static const char stat_format[] = "%s"
+	"{\"file\":\"%s\","
+	"\"st_dev\":\"[%lx,%lx]\","
+	"\"st_ino\":%ld,"
+	"\"st_mode\":%o,"
+	"\"st_size\":%zu,"
+	"\"mtime\":\"%ld.%09ld\","
+	"\"state\":\"%s\"}]}";
+static size_t stat_format_sz = sizeof(stat_format);
+
 /*
  * send state and stat info to stream.
  */
@@ -2857,18 +2875,6 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 		INST_LOG(inst, LDMSD_LDEBUG, "!app_set, pid %d\n", app_set->key.os_pid);
 		return 0;
 	}
-
-	const char *stat_format= "%s"
-		"{\"file\":\"%s\","
-		"\"st_dev\":\"[%lx,%lx]\","
-		"\"st_ino\":%ld,"
-		"\"st_mode\":%o,"
-		"\"st_size\":%zu,"
-		"\"mtime\":\"%ld.%09ld\","
-		"\"state\":\"%s\"}]}";
-	static size_t stat_format_sz;
-	if (!stat_format_sz)
-		stat_format_sz = strlen(stat_format);
 
 	size_t slen = app_set->fd_ident_sz + stat_format_sz + nlen + 6*20 + 10;
 	size_t ssize;
@@ -2888,7 +2894,8 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 		ssize = snprintf(buf, slen, stat_format,
 			app_set->fd_ident,
 			str,
-			-1, -1, -1, 0, -1, 0, 0, state);
+			(uint64_t)-1, (uint64_t)-1,
+			(long)-1, 0, (size_t)-1, 0L, 0L, state);
 
 	if (inst->recycle_buf_sz < ssize) {
 		INST_LOG(inst, LDMSD_LERROR, "fd buf_sz miscalculated. %zu < %zu\n",
@@ -3133,6 +3140,7 @@ close_check:
 	return erc;
 }
 
+
 /* create identifier string, and then move on to publish_fd_pid */
 static int publish_fd_pid_first(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set, const char *start, const char *exe, bool is_thread, pid_t parent, uint64_t jobid)
 {
@@ -3145,19 +3153,6 @@ static int publish_fd_pid_first(linux_proc_sampler_inst_t inst, struct linux_pro
 	pid_t pid = app_set->key.os_pid;
 	const char *producer = inst->base_data->producer_name;
 
-	const char *id_format = "{"
-		"\"producerName\":\"%s\""
-		",\"component_id\":%" PRIu64
-		",\"pid\":%d"
-		",\"job_id\":%" PRIu64
-		",\"timestamp\":\"%s\""
-		",\"task_rank\":%" PRId64
-		",\"parent\":%d"
-		",\"is_thread\":%s"
-		",\"exe\":\"%s\",\"data\":[";
-	static size_t id_format_sz;
-	if (!id_format_sz)
-		id_format_sz = strlen(id_format);
 	/* numeric field sum: prod compid pid jobid time rank parent thread */
 	size_t buf_sz = 64 + 20 + 20 + 20 + 26 + 20 + 20 + 6;
 	buf_sz += strlen(exe) + 1;
@@ -3187,8 +3182,12 @@ static int publish_fd_pid_first(linux_proc_sampler_inst_t inst, struct linux_pro
 /* END of support functions for collecting/publishing env, fd and cmdline
  * stream messages. */
 
+/* add/update set if process described in data is present.
+ * If given, *pid_bad will be updated to indicate if process
+ * is not trackable for any reason.
+ */
 static
-int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
+int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data, int *pid_bad)
 {
 	/* create a set per task; deduplicate if multiple spank and linux proc sources
 	 * are both active. */
@@ -3217,6 +3216,8 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 	task_pid = get_field(inst, data, JSON_INT_VALUE, "task_pid");
 	parent_pid = get_field(inst, data, JSON_INT_VALUE, "parent_pid");
 	is_thread = get_field(inst, data, JSON_INT_VALUE, "is_thread");
+	if (pid_bad)
+		*pid_bad = 0;
 	if (!job_id && (!os_pid && !task_pid)) {
 		INST_LOG(inst, LDMSD_LINFO, "need job_id or (os_pid & task_pid)\n");
 		goto dump;
@@ -3237,6 +3238,8 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 	}
 	uint64_t start_tick = get_start_tick(inst, data, pid);
 	if (!start_tick) { /* process disappeared before here */
+		if (pid_bad)
+			*pid_bad = 1;
 		INST_LOG(inst, LDMSD_LDEBUG, "ignoring start-tickless pid %"
 			PRId64 "\n", pid);
 		return 0;
@@ -3288,6 +3291,8 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 				start_string,
 				(int64_t)pid, esep, esuffix);
 		if (len >= sizeof(setname)) {
+			if (pid_bad)
+				*pid_bad = 1;
 			INST_LOG(inst, LDMSD_LERROR, "set name too big: %s%s%s/%" PRIu64
 							"/%s/%" PRId64 "%s%s\n",
 				(inst->instance_prefix ? inst->instance_prefix : ""),
@@ -3309,6 +3314,8 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 				start_string,
 				task_rank_val, esep, esuffix);
 		if (len >= sizeof(setname)) {
+			if (pid_bad)
+				*pid_bad = 1;
 			INST_LOG(inst, LDMSD_LERROR, "set name too big: %s%s%s/%" PRIu64
 							"/%s/rank/%" PRId64 "%s%s\n",
 				(inst->instance_prefix ? inst->instance_prefix : ""),
@@ -3441,6 +3448,8 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 				app_set->key.os_pid, STRERROR(rc) );
 #endif
 			app_set->dead = rc;
+			if (pid_bad)
+				*pid_bad = 1;
 		}
 #ifdef LPDEBUG
 else {
@@ -3460,6 +3469,8 @@ else {
 				app_set->key.os_pid, STRERROR(rc) );
 #endif
 			app_set->dead = rc;
+			if (pid_bad)
+				*pid_bad = 1;
 		}
 #ifdef LPDEBUG
 else {
@@ -3475,15 +3486,51 @@ else {
 		app_set->fd_skip++;
 		if (rc) {
 			app_set->dead = rc;
+			if (pid_bad)
+				*pid_bad = 1;
 		}
 	}
 	pthread_mutex_unlock(&inst->mutex);
 	return 0;
 dump:
+	if (pid_bad)
+		*pid_bad = 1;
 	bjb = json_entity_dump(bjb, data);
 	INST_LOG(inst, LDMSD_LDEBUG, "data was: %s\n", bjb->buf);
 	jbuf_free(bjb);
 	return EINVAL;
+}
+
+static void pid_from_file(linux_proc_sampler_inst_t inst, const char *file)
+{
+	FILE *fp = fopen(file, "r");
+	if (!fp)
+		return;
+	json_entity_t entity;
+	json_parser_t parser = json_parser_new(0);
+	if (!parser) {
+		fclose(fp);
+		return;
+	}
+	char buffer[CMDLINE_SZ];
+	int rc = fread(buffer, 1, sizeof(buffer), fp);
+	rc = json_parse_buffer(parser, buffer, rc, &entity);
+	if (rc == 0) {
+		json_entity_t data = json_value_find(entity, "data");
+		if (data) {
+			int pid_bad = 0;
+			__handle_task_init(inst, data, &pid_bad);
+			if (pid_bad)
+				unlink(file);
+		}
+		json_entity_free(entity);
+	} else {
+		INST_LOG(inst, LDMSD_LINFO, "could not parse from %s: %s\n",
+			file, buffer);
+	}
+
+	json_parser_free(parser);
+	fclose(fp);
 }
 
 int __handle_task_exit(linux_proc_sampler_inst_t inst, json_entity_t data)
@@ -3551,7 +3598,7 @@ static int __stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		goto err;
 	}
 	if (0 == strcmp(event_name, "task_init_priv")) {
-		rc = __handle_task_init(inst, data);
+		rc = __handle_task_init(inst, data, NULL);
 		if (rc) {
 			INST_LOG(inst, LDMSD_LERROR,
 				"failed to process task_init: %d: %s\n",
@@ -3720,6 +3767,16 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 				goto err;
 			}
 		}
+		val = av_value(avl, "published_pid_dir");
+		if (val) {
+			inst->published_pid_dir = strdup(val);
+			if (!inst->published_pid_dir) {
+				INST_LOG(inst, LDMSD_LERROR,
+					"Config out of memory for published_pid_dir\n");
+				rc = ENOMEM;
+				goto err;
+			}
+		}
 		val = av_value(avl, "syscalls");
 		if (val) {
 			inst->syscalls = strdup(val);
@@ -3830,6 +3887,29 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 	if (rc)
 		goto err;
 
+	/* scan published_pid_dir if exists */
+	if (inst->published_pid_dir) {
+		size_t g_pat_sz = strlen(inst->published_pid_dir) + 10;
+		char gpat[g_pat_sz];
+		glob_t pglob;
+		memset(&pglob, 0, sizeof(pglob));
+		sprintf(gpat, "%s/[0-9]*", inst->published_pid_dir);
+		int gc = glob(gpat, GLOB_NOSORT, NULL, &pglob);
+		if (gc) {
+			INST_LOG(inst, LDMSD_LINFO, "Read no pids from %s\n",
+				inst->published_pid_dir);
+			goto no_pids;
+		}
+		size_t ig = 0;
+		for ( ; ig < pglob.gl_pathc; ig++) {
+			pid_from_file(inst, pglob.gl_pathv[ig]);
+		}
+		INST_LOG(inst, LDMSD_LINFO,
+			"Checked %d pids from %s\n",
+			pglob.gl_pathc, inst->published_pid_dir);
+		globfree(&pglob);
+no_pids:	;
+	}
 	/* subscribe to the stream */
 	inst->stream = ldmsd_stream_subscribe(inst->stream_name, __stream_cb, inst);
 	if (!inst->stream) {
@@ -3869,6 +3949,8 @@ void linux_proc_sampler_term(struct ldmsd_plugin *pi)
 	inst->instance_prefix = NULL;
 	free(inst->stream_name);
 	inst->stream_name = NULL;
+	free(inst->published_pid_dir);
+	inst->published_pid_dir = NULL;
 	free(inst->argv_sep);
 	inst->argv_sep = NULL;
 	if (inst->base_data)
