@@ -818,7 +818,7 @@ static void __destroy_set(void *v)
 	pthread_mutex_unlock(&__del_tree_lock);
 }
 
-void ldms_set_delete(ldms_set_t s)
+void __ldms_set_delete(ldms_set_t s, int notify)
 {
 	ldms_t x;
 	struct ldms_set *__set;
@@ -853,8 +853,10 @@ void ldms_set_delete(ldms_set_t s)
 	if (x)
 		ldms_xprt_put(x);
 
-	/* Notify downstream transports about the set deletion. */
-	__ldms_dir_del_set(s);
+	if (notify) {
+		/* Notify downstream transports about the set deletion. */
+		__ldms_dir_del_set(s);
+	}
 
 	/* Add the set to the delete tree with the current timestamp */
 	s->del_time = time(NULL);
@@ -865,6 +867,11 @@ void ldms_set_delete(ldms_set_t s)
 
 	/* Drop the creation reference */
 	ref_put(&s->ref, "__record_set");
+}
+
+void ldms_set_delete(ldms_set_t s)
+{
+	__ldms_set_delete(s, 1);
 }
 
 void ldms_set_put(ldms_set_t s)
@@ -3736,7 +3743,6 @@ static void *delete_proc(void *arg)
 	struct ldms_set *set;
 	struct ldms_lookup_peer *lp;
 	struct ldms_push_peer *pp;
-	ldms_name_t name;
 	time_t dur;
 	ldms_t x;
 	struct ldms_context *ctxt;
@@ -3755,13 +3761,7 @@ static void *delete_proc(void *arg)
 		while (rbn) {
 			prev_rbn = rbn_pred(rbn);
 			set = container_of(rbn, struct ldms_set, del_node);
-			name = get_instance_name(set->meta);
 			dur = time(NULL) - set->del_time;
-			fprintf(stderr,
-				"Dangling set %s with reference count %d, "
-				"waiting %jd seconds\n",
-				name->name, set->ref.ref_count, dur);
-			fflush(stderr);
 			if (dur < timeout)
 				break;
 
@@ -3798,11 +3798,6 @@ static void *delete_proc(void *arg)
 				}
 			}
 			pthread_mutex_unlock(&set->lock);
-			fprintf(stderr,
-				"Deleting dangling set %s with reference "
-				"count %d, waited %jd seconds\n",
-				name->name, set->ref.ref_count, dur);
-			ref_dump(&set->ref, __func__, stderr);
 
 			/*
 			 * Since all peers have disconnected, the push and lookup

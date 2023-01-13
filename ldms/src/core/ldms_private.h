@@ -236,5 +236,6 @@ int rbn_ptr_cmp(void *tk, const void *k)
 
 void __ldms_xprt_on_set_del(ldms_t xprt, ldms_set_t set);
 void __ldms_set_on_xprt_term(ldms_set_t set, ldms_t xprt);
+void __ldms_set_delete(ldms_set_t s, int notify);
 
 #endif
