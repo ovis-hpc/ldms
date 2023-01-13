@@ -2383,7 +2383,7 @@ static void __handle_lookup(ldms_t x, struct ldms_context *ctxt,
 		 * it, but that will be dropped when the ctxt is
 		 * freed.
 		 */
-		ldms_set_delete(ctxt->lu_read.s);
+		__ldms_set_delete(ctxt->lu_read.s, 0);
 	} else {
 		ldms_set_publish(ctxt->lu_read.s);
 	}
@@ -2630,6 +2630,10 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	       x->zap_ep, x->active_lookup);
 #endif /* DEBUG */
 	pthread_mutex_unlock(&x->lock);
+
+	/* If there was a lookup error, destroy the local set */
+	if (lset && rc)
+		__ldms_set_delete(lset, 0);
 }
 
 static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
