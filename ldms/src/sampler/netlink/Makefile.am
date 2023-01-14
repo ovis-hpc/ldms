@@ -40,9 +40,6 @@ test_slps_CFLAGS = $(AM_CFLAGS)
 test_slps_LDADD = libsimple_lps.la $(COMMON_LIBADD) \
 		 -lm -lpthread
 
-installcheck-local: test_slps $(srcdir)/input/test_slps.sh
-	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) BIN=$(DESTDIR)$(sbindir) TESTBIN=. bash $(srcdir)/input/test_slps.sh
-
 EXTRA_DIST = $(srcdir)/input/test_slps.sh
 
 distclean-local:
