@@ -1054,7 +1054,7 @@ static zap_err_t z_rdma_close(zap_ep_t ep)
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	pthread_t self = pthread_self();
 
-	if (self != ep->thread->thread) {
+	if (ep->thread && self != ep->thread->thread) {
 		pthread_mutex_lock(&rep->credit_lock);
 		while (!TAILQ_EMPTY(&rep->io_q)) {
 			pthread_cond_wait(&rep->io_q_cond, &rep->credit_lock);

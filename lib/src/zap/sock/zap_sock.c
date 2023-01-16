@@ -273,7 +273,7 @@ static zap_err_t z_sock_close(zap_ep_t ep)
 	pthread_t self = pthread_self();
 
 	pthread_mutex_lock(&sep->ep.lock);
-	if (self != ep->thread->thread) {
+	if (ep->thread && self != ep->thread->thread) {
 		/* If we are NOT in app callback path, we can block-wait sq */
 		while (!TAILQ_EMPTY(&sep->sq)) {
 			pthread_cond_wait(&sep->sq_cond, &sep->ep.lock);
