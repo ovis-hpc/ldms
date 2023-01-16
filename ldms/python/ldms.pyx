@@ -3058,8 +3058,8 @@ cdef class Xprt(object):
             ts.tv_sec += timeout
             with nogil:
                 rc = sem_timedwait(&self._conn_sem, &ts)
-                if rc:
-                    raise TimeoutError(f"Connection Timeout on host {host} with port no {port}")
+            if rc:
+                raise TimeoutError(f"Connection Timeout on host {host} with port no {port}")
         else:
             with nogil:
                     sem_wait(&self._conn_sem)
