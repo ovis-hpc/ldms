@@ -526,6 +526,7 @@ int ldmsd_stream_publish(ldms_t xprt,
 	s->s_pub_info.count += 1;
 	s->s_pub_info.last_ts = now;
 	s->s_pub_info.total_bytes += data_len;
+	pthread_mutex_unlock(&s->s_lock);
 
  err:
 	if (buf)
