@@ -915,7 +915,7 @@ int __publisher_json(struct buf_s *buf, ldmsd_stream_publisher_t p)
 {
 	int rc;
 	rc = buf_printf(buf, "\"%s\":{"
-			      "\"info\":",
+			      "\"recv\":",
 			      p->p_name);
 	if (rc)
 		return rc;
