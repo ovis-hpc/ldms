@@ -1500,6 +1500,13 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 		for (i = 0; i < metric_count; i++) {
 			if (LDMS_V_LIST == ldms_metric_type_get(set, metric_array[i])) {
 				s_handle->num_lists++;
+				if (s_handle->num_lists > 1) {
+					msglog(LDMSD_LERROR, PNAME
+						": set '%s' contains multiple lists. "
+						"Please store the set using a decomposition.\n",
+						ldms_set_instance_name_get(set));
+					return EINVAL;
+				}
 				if (0 == ldms_list_len(set,
 					ldms_metric_get(set, metric_array[i]))) {
 					msglog(LDMSD_LERROR, PNAME ": set '%s' contains an empty list '%s'.\n",
@@ -1518,6 +1525,12 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			msglog(LDMSD_LCRITICAL, PNAME ": Out of memory\n");
 			return ENOMEM;
 		}
+	} else if (s_handle->num_lists > 1) {
+		/*
+		 * The plugin reported the error already.
+		 * Do nothing
+		 */
+		return 0;
 	}
 	for (i = 0; i < s_handle->num_lists; i++) {
 		memset(&s_handle->lents[i], 0, sizeof(struct csv_lent));
