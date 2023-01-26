@@ -121,6 +121,7 @@ struct sos_instance {
 	sos_schema_t sos_schema;
 	int store_flags;
 	enum store_sos_mode {
+		STORE_SOS_M_NOT_SUPPORTED = -1,
 		STORE_SOS_M_BASIC = 0,
 		STORE_SOS_M_LISTS,
 		STORE_SOS_M_LAST
@@ -852,6 +853,15 @@ __sos_mode_set(struct sos_instance *si, ldms_set_t set,
 	 */
 	for (i = 0; i < metric_count; i++) {
 		if (LDMS_V_LIST == ldms_metric_type_get(set, metric_arry[i])) {
+			num_lists++;
+			if (num_lists > 1) {
+				LOG_(LDMSD_LERROR, "'%s' contains multiple lists. "
+						"Please store the set using "
+						"a decomposition.\n",
+						ldms_set_instance_name_get(set));
+				si->mode = STORE_SOS_M_NOT_SUPPORTED;
+				return EINVAL;
+			}
 			if (0 == ldms_list_len(set, ldms_metric_get(set, metric_arry[i]))) {
 				/*
 				 * The list is empty, so we cannot determine
@@ -859,7 +869,6 @@ __sos_mode_set(struct sos_instance *si, ldms_set_t set,
 				 */
 				 return EINTR;
 			}
-			num_lists++;
 		}
 	}
 	 if (num_lists > 0) {
@@ -1323,6 +1332,16 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		return EINVAL;
 
 	pthread_mutex_lock(&si->lock);
+	if (STORE_SOS_M_NOT_SUPPORTED == si->mode) {
+		/*
+		 * An error occurred with this sos instance before, and
+		 * the plugin reported the error already.
+		 * Do nothing.
+		 */
+		pthread_mutex_unlock(&si->lock);
+		return 0;
+	}
+
 	if (!si->sos_handle) {
 		rc = _open_store(si, set, metric_arry, metric_count);
 		if (rc) {
