@@ -126,16 +126,21 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "../sampler_base.h"
-
 #define PROC_FILE "/proc/stat"
 
 static char *procfile = PROC_FILE;
+static int collect_intr = 0;
+static int collect_softirq = 0;
 static ldms_set_t set = NULL;
+static ldms_set_t intr_set = NULL;
+static ldms_set_t softirq_set = NULL;
 static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
 #define SAMP "procstat2"
 static int metric_offset;
 static base_data_t base;
+static base_data_t intr_base;
+static base_data_t softirq_base;
 static size_t incr_heap_sz;
 
 #ifndef ARRAY_LEN
@@ -162,25 +167,25 @@ static int cpu_metric_ids[ARRAY_LEN(cpu_metrics)];
 static struct ldms_metric_template_s sch_metrics[] = {
 	{       "cpu_rec",        0, LDMS_V_RECORD_TYPE,        "", /* set rec_def later */ },
 	{      "cpu_list",        0, LDMS_V_LIST,        "", /* set heap_sz later */ },
-	{     "intr_list",        0, LDMS_V_LIST,        "", /* set heap_sz later */ },
+//	{     "intr_list",        0, LDMS_V_LIST,        "", /* set heap_sz later */ },
 	{          "ctxt",        0, LDMS_V_U64,        "",                       1 },
 	{         "btime",        0, LDMS_V_U64, "seconds",                       1 },
 	{     "processes",        0, LDMS_V_U64,        "",                       1 },
 	{ "procs_running",        0, LDMS_V_U64,        "",                       1 },
 	{ "procs_blocked",        0, LDMS_V_U64,        "",                       1 },
-	{  "softirq_list",        0, LDMS_V_LIST,        "", /* set heap_sz later */ },
+//	{  "softirq_list",        0, LDMS_V_LIST,        "", /* set heap_sz later */ },
 	{0},
 };
 static int sch_metric_ids[ARRAY_LEN(sch_metrics)];
 
 enum stat_row {
 	STAT_CPU = 1, /* so that sch_metric_ids[STAT_XXX] also works */
-	STAT_INTR,
 	STAT_CTXT,
 	STAT_BTIME,
 	STAT_PROCESSES,
 	STAT_PROCS_RUNNING,
 	STAT_PROCS_BLOCKED,
+	STAT_INTR,
 	STAT_SOFTIRQ,
 };
 
@@ -191,9 +196,11 @@ static int intr_max = -1; /* determine from current intr */
 #define LBUFSZ 65536
 static char lbuf[LBUFSZ];
 
-static int create_metric_set(base_data_t base)
+static int create_metric_sets()
 {
-	ldms_schema_t schema = NULL;
+	ldms_schema_t core_schema = NULL;
+	ldms_schema_t intr_schema = NULL;
+	ldms_schema_t softirq_schema = NULL;
 	int rc;
 	char *s;
 	ldms_record_t rec_def;
@@ -214,8 +221,8 @@ static int create_metric_set(base_data_t base)
 		goto err;
 	}
 
-	schema = base_schema_new(base);
-	if (!schema) {
+	core_schema = base_schema_new(base);
+	if (!core_schema) {
 		msglog(LDMSD_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
@@ -223,8 +230,28 @@ static int create_metric_set(base_data_t base)
 		goto err;
 	}
 
+	if (collect_intr) {
+		intr_schema = base_schema_new(intr_base);
+		if (!intr_schema) {
+			msglog(LDMSD_LERROR,
+				"%s: The schema '%s' could not be created, errno=%d.\n",
+				SAMP, intr_base->schema_name, errno);
+			rc = errno;
+			goto err;
+		}
+	}
+
+	if (collect_softirq) {
+		softirq_schema = base_schema_new(softirq_base);
+		if (!softirq_schema) {
+			msglog(LDMSD_LERROR,
+				"%s: The schema '%s' could not be created, errno=%d\n",
+				SAMP, softirq_base->schema_name, errno);
+		}
+	}
+
 	/* Location of first metric from proc/stat file */
-	metric_offset = ldms_schema_metric_count_get(schema);
+	metric_offset = ldms_schema_metric_count_get(core_schema);
 
 	/* Get the number of cpu records in /proc/stat */
 	n_cpu = 0;
@@ -262,19 +289,9 @@ static int create_metric_set(base_data_t base)
 	sz = ldms_record_heap_size_get(rec_def);
 	sch_metrics[1].len = n_cpu * sz;
 
-	/* "intr_list" heap size */
-	sz = ldms_list_heap_size_get(LDMS_V_U64, intr_max, 1);
-	sch_metrics[2].len = sz;
-
-	/* "softirq_list" heap size */
-	sz = ldms_list_heap_size_get(LDMS_V_U64, nr_softirqs, 1);
-	sch_metrics[8].len = sz;
-
 	incr_heap_sz += ldms_record_heap_size_get(rec_def);
-	incr_heap_sz += ldms_list_heap_size_get(LDMS_V_U64, 2, 1);
 
-	rc = ldms_schema_metric_add_template(schema, sch_metrics, sch_metric_ids);
-
+	rc = ldms_schema_metric_add_template(core_schema, sch_metrics, sch_metric_ids);
 	if (rc < 0)
 		goto err;
 
@@ -282,6 +299,27 @@ static int create_metric_set(base_data_t base)
 	if (!set) {
 		rc = errno;
 		goto err;
+	}
+
+	/* interrupt schema & set */
+	if (collect_intr) {
+		sz = ldms_list_heap_size_get(LDMS_V_U64, intr_max, 1);
+		ldms_schema_metric_list_add(intr_schema, "intr_list", "", sz);
+		intr_set = base_set_new(intr_base);
+		if (!intr_set) {
+			rc = errno;
+			goto err;
+		}
+	}
+
+	if (collect_softirq) {
+		sz = ldms_list_heap_size_get(LDMS_V_U64, intr_max, 1);
+		ldms_schema_metric_list_add(softirq_schema, "softirq_list", "", sz);
+		softirq_set = base_set_new(softirq_base);
+		if (!softirq_set) {
+			rc = errno;
+			goto err;
+		}
 	}
 
 	return 0;
@@ -295,6 +333,12 @@ static int create_metric_set(base_data_t base)
 	}
 	if (rc < 0)
 		rc = -rc;
+	if (set)
+		ldms_set_delete(set);
+	if (intr_set)
+		ldms_set_delete(intr_set);
+	if (softirq_set)
+		ldms_set_delete(softirq_set);
 	mf = NULL;
 	return rc;
 }
@@ -324,11 +368,15 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return	"config name=" SAMP " " BASE_CONFIG_SYNOPSIS
+		"       [interrupt=<intr>] [soft_interrupt=<softirq>]\n"
 		"       [intr_max=<int>]\n"
 		BASE_CONFIG_DESC
-		"    intr_max     The maximum number of inerrupt numbers supported in intr_list.\n"
+		"    intr         <true|false> True to create a set to collect interrupt data. The default is false.\n"
+		"    softirq      <true|false> True to create a set to collect soft interrupt data. The default is false.\n"
+		"    intr_max     The maximum number of interrupt numbers supported in interrupt and soft interrupt lists.\n"
 		"                 If not specified, intr_max will be the current number of\n"
-		"                 interrupts in the intr list.\n"
+		"                 interrupts in the intr list. The attribute is ignored if\n"
+		"                 both 'intr' and 'softirq' are false or not given.\n"
 	;
 }
 
@@ -352,6 +400,45 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		rc = errno;
 		goto err;
 	}
+
+	val = av_value(avl, "interrupt");
+	if (val && (0 == strcasecmp(val, "true"))) {
+		collect_intr = 1;
+		intr_base = base_config(avl, SAMP, SAMP"_intr", msglog);
+		if (!intr_base) {
+			rc = errno;
+			goto err;
+		}
+		/* Rename the instance name of the interrupt set */
+		free(intr_base->instance_name);
+		rc = asprintf(&intr_base->instance_name,
+				"%s_intr", base->instance_name);
+		if (rc < 0) {
+			intr_base->instance_name = NULL;
+			rc = ENOMEM;
+			goto err;
+		}
+	}
+
+	val = av_value(avl, "soft_interrupt");
+	if (val && (0 == strcasecmp(val, "true"))) {
+		collect_softirq = 1;
+		softirq_base = base_config(avl, SAMP, SAMP"_softirq", msglog);
+		if (!softirq_base) {
+			rc = errno;
+			goto err;
+		}
+		/* Rename the instance name of the soft interrupt set */
+		free(softirq_base->instance_name);
+		rc = asprintf(&softirq_base->instance_name,
+				"%s_softirq", base->instance_name);
+		if (rc < 0) {
+			softirq_base->instance_name = NULL;
+			rc = ENOMEM;
+			goto err;
+		}
+	}
+
 	val = av_value(avl, "intr_max");
 	if (val) {
 		intr_max = strtol(val, &end, 10);
@@ -362,14 +449,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		}
 	}
 
-	rc = create_metric_set(base);
+	rc = create_metric_sets();
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err;
 	}
+
 	return 0;
  err:
 	base_del(base);
+	base_del(intr_base);
+	base_del(softirq_base);
 	return rc;
 }
 
@@ -401,6 +491,23 @@ int stat_row_cmp(const void *key, const void *_ent)
 	return strncmp(key, ent->prefix, strlen(ent->prefix));
 }
 
+static ldms_set_t __resize_set(base_data_t b, size_t incr)
+{
+	int rc;
+	ldms_set_t s;
+	size_t heap_sz = ldms_set_heap_size_get(b->set) + incr;
+	base_set_delete(b);
+	s = base_set_new_heap(b, heap_sz);
+	if (!s) {
+		rc = errno;
+		ldmsd_log(LDMSD_LCRITICAL, SAMP " : Failed to create set '%s' "
+				"with a bigger heap. Error %d.\n",
+				ldms_set_instance_name_get(b->set),
+				rc);
+	}
+	return s;
+}
+
 static int sample(struct ldmsd_sampler *self)
 {
 	int i, rc;
@@ -408,15 +515,21 @@ static int sample(struct ldmsd_sampler *self)
 	int n;
 	struct stat_row_ent *ent;
 	uint64_t u64, data[16];
-	ldms_mval_t cpu_rec, cpu_list, mval, lh;
+	ldms_mval_t cpu_rec, cpu_list, mval, lh, nxt_mval;
 	size_t heap_sz;
 
 	if (!set) {
 		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
-begin:
+
 	base_sample_begin(base);
+	if (collect_intr)
+		base_sample_begin(intr_base);
+	if (collect_softirq)
+		base_sample_begin(softirq_base);
+
+begin:
 	cpu_list = ldms_metric_get(set, sch_metric_ids[STAT_CPU]);
 	assert(cpu_list >= 0);
 	cpu_rec = ldms_list_first(set, cpu_list, NULL, NULL);
@@ -434,7 +547,12 @@ begin:
 			if (!cpu_rec) {
 				cpu_rec = ldms_record_alloc(set, sch_metric_ids[0]);
 				if (!cpu_rec) {
-					goto resize;
+					set = __resize_set(base, 2 * incr_heap_sz);
+					if (!set) {
+						rc = errno;
+						goto out;
+					}
+					goto begin;
 				}
 				ldms_list_append_record(set, cpu_list, cpu_rec);
 			}
@@ -459,21 +577,42 @@ begin:
 			cpu_rec = ldms_list_next(set, cpu_rec, NULL, NULL);
 			break;
 		case STAT_INTR:
-			lh = ldms_metric_get(set, sch_metric_ids[STAT_INTR]);
-			mval = ldms_list_first(set, lh, NULL, NULL);
+			/* interrupt set */
+			if (!collect_intr) {
+				/* Read the whole interrupt line */
+				while (1 == fscanf(mf, "%"PRIu64, &u64))
+					continue;
+				/* do nothing */
+				break;
+			}
+			lh = ldms_metric_get(intr_set, metric_offset);
+			mval = ldms_list_first(intr_set, lh, NULL, NULL);
 			while (1 == fscanf(mf, "%"PRIu64, &u64)) {
 				if (!mval) {
-					mval = ldms_list_append_item( set, lh, LDMS_V_U64, 1);
-					if (!mval)
-						goto resize;
+					mval = ldms_list_append_item(intr_set, lh, LDMS_V_U64, 1);
+					if (!mval) {
+						heap_sz = ldms_list_heap_size_get(LDMS_V_U64, 2, 1);
+						intr_set = __resize_set(intr_base, heap_sz);
+						if (!intr_set) {
+							rc = errno;
+							goto out;
+						}
+						goto begin;
+					}
 				}
 				mval->v_u64 = htole64(u64);
-				mval = ldms_list_next(set, mval, NULL, NULL);
+				mval = ldms_list_next(intr_set, mval, NULL, NULL);
+			}
+			/* Remove the excess elements */
+			while (mval) {
+				nxt_mval = ldms_list_next(intr_set, mval, NULL, NULL);
+				ldms_list_remove_item(intr_set, lh, mval);
+				mval = nxt_mval;
 			}
 			break;
 		case STAT_SOFTIRQ:
-			lh = ldms_metric_get(set, sch_metric_ids[STAT_SOFTIRQ]);
-			mval = ldms_list_first(set, lh, NULL, NULL);
+			/* soft interrupt set */
+			/* Read the whole soft interrupt line. */
 			n = fscanf(mf,  " %"PRIu64 " %"PRIu64 " %"PRIu64
 					" %"PRIu64 " %"PRIu64 " %"PRIu64
 					" %"PRIu64 " %"PRIu64 " %"PRIu64
@@ -481,18 +620,31 @@ begin:
 				&data[0], &data[1], &data[2], &data[3],
 				&data[4], &data[5], &data[6], &data[7],
 				&data[8], &data[9], &data[10]);
+			if (!collect_softirq) {
+				/* Do nothing */
+				break;
+			}
+			lh = ldms_metric_get(softirq_set, metric_offset);
+			mval = ldms_list_first(softirq_set, lh, NULL, NULL);
 			if (n != 11) {
 				rc = EINVAL;
 				goto out;
 			}
 			for (i = 0; i < n; i++) {
 				if (!mval) {
-					mval = ldms_list_append_item( set, lh, LDMS_V_U64, 1);
-					if (!mval)
-						goto resize;
+					mval = ldms_list_append_item(softirq_set, lh, LDMS_V_U64, 1);
+					if (!mval) {
+						heap_sz = ldms_list_heap_size_get(LDMS_V_U64, 2, 1);
+						softirq_set = __resize_set(softirq_base, heap_sz);
+						if (!softirq_set) {
+							rc = errno;
+							goto out;
+						}
+						goto begin;
+					}
 				}
 				mval->v_u64 = htole64(data[i]);
-				mval = ldms_list_next(set, mval, NULL, NULL);
+				mval = ldms_list_next(softirq_set, mval, NULL, NULL);
 			}
 			break;
 		case STAT_CTXT:
@@ -515,22 +667,11 @@ begin:
 	rc = 0;
  out:
 	base_sample_end(base);
+	if (collect_intr)
+		base_sample_end(intr_base);
+	if (collect_softirq)
+		base_sample_end(softirq_base);
 	return rc;
-resize:
-	/*
-	 * We intend to leave the set in the inconsistent state so that
-	 * the aggregators are aware that some metrics have not been newly sampled.
-	 */
-	heap_sz = ldms_set_heap_size_get(base->set) + 2 * incr_heap_sz;
-	base_set_delete(base);
-	set = base_set_new_heap(base, heap_sz);
-	if (!set) {
-		rc = errno;
-		ldmsd_log(LDMSD_LCRITICAL, SAMP " : Failed to create a set with "
-						"a bigger heap. Error %d.\n", rc);
-		return rc;
-	}
-	goto begin;
 }
 
 static void term(struct ldmsd_plugin *self)
@@ -540,8 +681,16 @@ static void term(struct ldmsd_plugin *self)
 	mf = NULL;
 	if (base)
 		base_del(base);
+	if (intr_base)
+		base_del(intr_base);
+	if (softirq_base)
+		base_del(softirq_base);
 	if (set)
 		ldms_set_delete(set);
+	if (intr_set)
+		ldms_set_delete(intr_set);
+	if (softirq_set)
+		ldms_set_delete(softirq_set);
 	set = NULL;
 }
 
