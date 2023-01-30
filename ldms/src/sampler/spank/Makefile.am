@@ -14,5 +14,5 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 libslurm_notifier_la_SOURCES = slurm_notifier.c
 libslurm_notifier_la_LIBADD = $(COMMON_LIBADD)
 libslurm_notifier_la_CFLAGS = $(SLURM_CFLAGS) -DSYSCONFDIR='"$(sysconfdir)"'
+dist_man7_MANS += Plugin_slurm_notifier.man
 pkglib_LTLIBRARIES += libslurm_notifier.la
-

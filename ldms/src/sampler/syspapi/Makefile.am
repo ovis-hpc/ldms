@@ -15,4 +15,5 @@ libsyspapi_sampler_la_SOURCES = syspapi_sampler.c
 libsyspapi_sampler_la_LIBADD = $(COMMON_LIBADD) $(LTLIBPAPI) $(LTLIBPFM) -lpthread \
 			       ../papi/libpapi_hook.la
 libsyspapi_sampler_la_CFLAGS = $(AM_CFLAGS) -DSYSCONFDIR='"$(sysconfdir)"'
+dist_man7_MANS += Plugin_syspapi_sampler.man
 pkglib_LTLIBRARIES += libsyspapi_sampler.la

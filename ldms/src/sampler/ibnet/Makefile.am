@@ -36,4 +36,3 @@ ldms_ibnet_schema_name_LDADD = $(top_builddir)/ldms/src/ldmsd/libldmsd_plugattr.
                 $(top_builddir)/lib/src/coll/libcoll.la
 ldms_ibnet_schema_name_LDFLAGS = $(AM_LDFLAGS) -lldms -lovis_util  -pthread
 ldms_ibnet_schema_name_CFLAGS = $(AM_CFLAGS) -DMAIN -I/usr/include/infiniband
-

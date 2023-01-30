@@ -8,7 +8,7 @@ AM_LDFLAGS = @OVIS_LIB_ABS@
 COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 		@LDFLAGS_GETTIME@
 
-libprocstat2_la_SOURCES = procstat2.c
-libprocstat2_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libprocstat2.la
-dist_man7_MANS += Plugin_procstat2.man
+libsysclassib_la_SOURCES = sysclassib.c
+libsysclassib_la_LIBADD = $(COMMON_LIBADD) $(LTLIBIBMAD) $(LTLIBIBUMAD)
+pkglib_LTLIBRARIES += libsysclassib.la
+dist_man7_MANS += Plugin_sysclassib.man

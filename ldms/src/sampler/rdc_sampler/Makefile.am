@@ -45,4 +45,3 @@ ldms_rdc_schema_name_LDADD = \
 	$(top_builddir)/ldms/src/core/libldms.la \
 	$(top_builddir)/lib/src/ovis_util/libovis_util.la \
 	$(top_builddir)/lib/src/coll/libcoll.la
-

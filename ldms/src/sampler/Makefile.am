@@ -29,9 +29,7 @@ lib_LTLIBRARIES += libsampler_base.la
 ldmssamplerincludedir = $(includedir)/ldms/sampler
 ldmssamplerinclude_HEADERS = sampler_base.h
 
-if HAVE_NETLINK
 SUBDIRS += netlink
-endif
 SUBDIRS += lustre_client
 SUBDIRS += lustre_mdt
 SUBDIRS += lustre_ost
@@ -106,15 +104,11 @@ SUBDIRS += coretemp
 endif
 
 if ENABLE_CLOCK
-libclock_la_SOURCES = clock.c
-libclock_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libclock.la
+SUBDIRS += clock
 endif
 
 if ENABLE_FPTRANS
-libfptrans_la_SOURCES = fptrans.c
-libfptrans_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libfptrans.la
+SUBDIRS += fptrans
 endif
 
 # always include examples
@@ -157,9 +151,7 @@ SUBDIRS += aries_mmr
 endif
 
 if ENABLE_LNET_STATS
-liblnet_stats_la_SOURCES = lnet_stats.c
-liblnet_stats_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += liblnet_stats.la
+SUBDIRS += lnet_stats
 endif
 
 if ENABLE_TX2MON
@@ -171,9 +163,7 @@ SUBDIRS += meminfo
 endif
 
 if ENABLE_MSR_INTERLAGOS
-libmsr_interlagos_la_SOURCES = msr_interlagos.c
-libmsr_interlagos_la_LIBADD = $(COMMON_LIBADD) -lpthread
-pkglib_LTLIBRARIES += libmsr_interlagos.la
+SUBDIRS += msr_interlagos
 endif
 
 if ENABLE_SWITCHX
@@ -195,9 +185,7 @@ pkglib_LTLIBRARIES += libswitchx.la
 endif
 
 if ENABLE_PERFEVENT
-libperfevent_la_SOURCES = perfevent.c
-libperfevent_la_LIBADD = $(COMMON_LIBADD) -lm
-pkglib_LTLIBRARIES += libperfevent.la
+SUBDIRS += perfevent
 endif
 
 if ENABLE_APPINFO
@@ -232,9 +220,7 @@ endif
 endif
 
 if ENABLE_PROCDISKSTATS
-libprocdiskstats_la_SOURCES = procdiskstats.c
-libprocdiskstats_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libprocdiskstats.la
+SUBDIRS += procdiskstats
 endif
 
 if ENABLE_PROCINTERRUPTS
@@ -242,16 +228,12 @@ SUBDIRS += procinterrupts
 endif
 
 if ENABLE_PROCNETDEV
-libprocnetdev_la_SOURCES = procnetdev.c
-libprocnetdev_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libprocnetdev.la
+SUBDIRS += procnetdev
 SUBDIRS += procnetdev2
 endif
 
 if ENABLE_PROCNFS
-libprocnfs_la_SOURCES = procnfs.c
-libprocnfs_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libprocnfs.la
+SUBDIRS += procnfs
 endif
 
 if ENABLE_FILESINGLE
@@ -277,10 +259,8 @@ if HAVE_LIBIBUMAD
 if HAVE_IBA_IB_TYPES_H
 SUBDIRS += ibmad_sampler
 SUBDIRS += ibmad_records_sampler
+SUBDIRS += sysclassib
 endif
-libsysclassib_la_SOURCES = sysclassib.c
-libsysclassib_la_LIBADD = $(COMMON_LIBADD) $(LTLIBIBMAD) $(LTLIBIBUMAD)
-pkglib_LTLIBRARIES += libsysclassib.la
 endif
 endif
 endif
@@ -288,19 +268,13 @@ endif
 if ENABLE_OPA2
 if HAVE_LIBIBMAD
 if HAVE_LIBIBUMAD
-OPA2_LIBADD = $(LTLIBIBMAD) $(LTLIBIBUMAD) -lpthread
-libopa2_la_SOURCES = opa2.c
-libopa2_la_CFLAGS = $(AM_CFLAGS) -I/usr/include/infiniband
-libopa2_la_LIBADD = $(AM_LDFLAGS) $(COMMON_LIBADD) $(OPA2_LIBADD) $(JOBID_LIBFLAGS)
-pkglib_LTLIBRARIES += libopa2.la
+SUBDIRS += opa2
 endif
 endif
 endif
 
 if ENABLE_ATASMART
-libsampler_atasmart_la_SOURCES = sampler_atasmart.c
-libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart
-pkglib_LTLIBRARIES += libsampler_atasmart.la
+SUBDIRS += sampler_atasmart
 endif
 
 if ENABLE_GENERIC_SAMPLER
