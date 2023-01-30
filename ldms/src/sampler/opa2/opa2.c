@@ -108,7 +108,7 @@ LIST_HEAD(hfi_port_list, hfi_port_comb) hfi_port_list =
 
 /* typedef struct umad_ca {
 	char ca_name[UMAD_CA_NAME_LEN];
- 	unsigned node_type;
+	unsigned node_type;
 	int numports;
 	char fw_ver[20];
 	char ca_type[40];

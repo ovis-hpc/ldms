@@ -27,25 +27,12 @@ ldmsd_failover.man \
 ldmsd_setgroup.man \
 Plugin_cray_system_sampler_variants.man \
 Plugin_cray_dvs_sampler.man \
-Plugin_lnet_stats.man \
-Plugin_fptrans.man \
-Plugin_clock.man \
-Plugin_sysclassib.man \
 Plugin_jobid.man \
-Plugin_msr_interlagos.man \
-Plugin_procnetdev.man \
-Plugin_procnfs.man \
 Plugin_store_csv.man \
 Plugin_store_sos.man \
 Plugin_lustre2_client.man \
-Plugin_opa2.man \
 Plugin_shm_sampler.man \
-Plugin_papi_sampler.man \
-Plugin_slurm_notifier.man \
-Plugin_slurm_sampler.man \
 Plugin_store_papi.man \
-Plugin_store_slurm.man \
-Plugin_syspapi_sampler.man \
 Plugin_store_app.man \
 ldmsd_decomposition.man \
 Plugin_store_kafka.man

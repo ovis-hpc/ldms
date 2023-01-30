@@ -1008,11 +1008,14 @@ ldms/src/store/store_app/Makefile
 ldms/src/contrib/store/Makefile
 ldms/src/contrib/store/tutorial/Makefile
 ldms/src/contrib/store/timescale/Makefile
+ldms/src/sampler/sampler_atasmart/Makefile
+ldms/src/sampler/clock/Makefile
 ldms/src/sampler/dcgm_sampler/Makefile
 ldms/src/sampler/dstat/Makefile
 ldms/src/sampler/hello_stream/Makefile
 ldms/src/sampler/hello_stream/stream_configs/Makefile
 ldms/src/sampler/filesingle/Makefile
+ldms/src/sampler/fptrans/Makefile
 ldms/src/sampler/lustre/Makefile
 ldms/src/sampler/job_info/Makefile
 ldms/src/sampler/job_info_slurm/Makefile
@@ -1021,6 +1024,7 @@ ldms/src/sampler/lustre_client/Makefile
 ldms/src/sampler/lustre_mdt/Makefile
 ldms/src/sampler/lustre_ost/Makefile
 ldms/src/sampler/lustre_mdc/Makefile
+ldms/src/sampler/lnet_stats/Makefile
 ldms/src/sampler/shm/Makefile
 ldms/src/sampler/shm/shm_util/Makefile
 ldms/src/sampler/shm/mpi_profiler/Makefile
@@ -1030,7 +1034,13 @@ ldms/src/sampler/aries_mmr/aries_mmr_set_configs/Makefile
 ldms/src/sampler/ibmad_sampler/Makefile
 ldms/src/sampler/ibmad_records_sampler/Makefile
 ldms/src/sampler/ibnet/Makefile
+ldms/src/sampler/sysclassib/Makefile
+ldms/src/sampler/opa2/Makefile
+ldms/src/sampler/perfevent/Makefile
 ldms/src/sampler/procnet/Makefile
+ldms/src/sampler/procnfs/Makefile
+ldms/src/sampler/procnetdev/Makefile
+ldms/src/sampler/procdiskstats/Makefile
 ldms/src/sampler/rdc_sampler/Makefile
 ldms/src/sampler/slurm/Makefile
 ldms/src/sampler/netlink/Makefile
@@ -1039,6 +1049,7 @@ ldms/src/sampler/papi/Makefile
 ldms/src/sampler/appinfo_lib/Makefile
 ldms/src/sampler/kgnilnd/Makefile
 ldms/src/sampler/tx2mon/Makefile
+ldms/src/sampler/msr_interlagos/Makefile
 ldms/src/sampler/meminfo/Makefile
 ldms/src/contrib/sampler/gpu_metrics_sampler/Makefile
 ldms/src/sampler/procinterrupts/Makefile
