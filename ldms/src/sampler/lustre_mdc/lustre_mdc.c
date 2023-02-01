@@ -228,6 +228,10 @@ static int config(struct ldmsd_plugin *self,
 			return EINVAL;
 		}
 	}
+	ival = av_value(avl, "auto_reset");
+	mdc_auto_reset = 1;
+	if (ival && ival[0] == '0')
+		mdc_auto_reset = 0;
 	ival = av_value(avl, "mdc_timing");
 	if (ival && ival[0] == '0')
 		mdc_timing = 0;
