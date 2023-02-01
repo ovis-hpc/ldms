@@ -7,6 +7,7 @@
  */
 #include <stdio.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <dirent.h>
 #include <string.h>
 #include <unistd.h>
@@ -21,7 +22,7 @@ static ldms_schema_t mdc_general_schema;
 
 #define MAXNAMESIZE 64
 
-static char *mdc_md_stats_uint64_t_entries[] = {
+static char *mdc_md_stats_int64_t_entries[] = {
 	"close",
 	"create",
 	"enqueue",
@@ -65,6 +66,8 @@ int mdc_general_schema_is_initialized()
 		return -1;
 }
 
+int mdc_auto_reset;
+static struct timeval last_reset;
 int mdc_general_schema_init(comp_id_t cid, int mdc_timing)
 {
 	ldms_schema_t sch;
@@ -101,10 +104,14 @@ int mdc_general_schema_init(comp_id_t cid, int mdc_timing)
 	rc = ldms_schema_meta_array_add(sch, field, LDMS_V_CHAR_ARRAY, MAXNAMESIZE);
 	if (rc < 0)
 		goto err2;
+	field = "last_reset";
+	rc = ldms_schema_meta_add(sch, field, LDMS_V_U32);
+	if (rc < 0)
+		goto err2;
 	/* add mdc md_stats entries */
-	for (i = 0; mdc_md_stats_uint64_t_entries[i] != NULL; i++) {
-		field = mdc_md_stats_uint64_t_entries[i];
-		rc = ldms_schema_metric_add(sch, field, LDMS_V_U64);
+	for (i = 0; mdc_md_stats_int64_t_entries[i] != NULL; i++) {
+		field = mdc_md_stats_int64_t_entries[i];
+		rc = ldms_schema_metric_add(sch, field, LDMS_V_S64);
 		if (rc < 0)
 			goto err2;
 	}
@@ -116,23 +123,23 @@ int mdc_general_schema_init(comp_id_t cid, int mdc_timing)
 
 	for (i = 0; md_timing_fields[i] != NULL; i++) {
 		sprintf(str1, "%s__count", md_timing_fields[i]);
-		rc = ldms_schema_metric_add(sch, str1, LDMS_V_U64);
+		rc = ldms_schema_metric_add(sch, str1, LDMS_V_S64);
 		if (rc < 0)
 			goto err3;
 		sprintf(str1, "%s__min", md_timing_fields[i]);
-		rc = ldms_schema_metric_add(sch, str1, LDMS_V_U64);
+		rc = ldms_schema_metric_add(sch, str1, LDMS_V_S64);
 		if (rc < 0)
 			goto err3;
 		sprintf(str1, "%s__max", md_timing_fields[i]);
-		rc = ldms_schema_metric_add(sch, str1, LDMS_V_U64);
+		rc = ldms_schema_metric_add(sch, str1, LDMS_V_S64);
 		if (rc < 0)
 			goto err3;
 		sprintf(str1, "%s__sum", md_timing_fields[i]);
-		rc = ldms_schema_metric_add(sch, str1, LDMS_V_U64);
+		rc = ldms_schema_metric_add(sch, str1, LDMS_V_S64);
 		if (rc < 0)
 			goto err3;
 		sprintf(str1, "%s__sumsqs", md_timing_fields[i]);
-		rc = ldms_schema_metric_add(sch, str1, LDMS_V_U64);
+		rc = ldms_schema_metric_add(sch, str1, LDMS_V_S64);
 		if (rc < 0)
 			goto err3;
 	}
@@ -154,6 +161,24 @@ err1:
 	return -1;
 }
 
+static char *mdt_name = NULL;
+/* get name version without suffix -mdc-xxxxxxxxxxxxxxxx,
+ * or the full name if anything fails.
+ */
+const char *get_mdt_name(const char *mdc_name)
+{
+	free(mdt_name);
+	mdt_name = strdup(mdc_name);
+	if (!mdt_name)
+		return mdc_name;
+	char *d2 = strchr( strchr(mdt_name, '-') + 1, '-');
+	if (!d2)
+		return mdc_name;
+	else
+		*d2 = '\0';
+	return mdt_name;
+}
+
 void mdc_general_schema_fini()
 {
 	log_fn(LDMSD_LDEBUG, SAMP" mdc_general_schema_fini()\n");
@@ -161,6 +186,9 @@ void mdc_general_schema_fini()
 		ldms_schema_delete(mdc_general_schema);
 		mdc_general_schema = NULL;
 	}
+	free(mdt_name);
+	mdt_name = NULL;
+	mdc_auto_reset = 1;
 }
 
 void mdc_general_destroy(ldms_set_t set)
@@ -169,7 +197,6 @@ void mdc_general_destroy(ldms_set_t set)
 	ldms_set_unpublish(set);
 	ldms_set_delete(set);
 }
-
 
 /* must be schema created by mdc_general_schema_create() */
 ldms_set_t mdc_general_create(const char *producer_name,
@@ -195,21 +222,34 @@ ldms_set_t mdc_general_create(const char *producer_name,
 	index = ldms_metric_by_name(set, "fs_name");
 	ldms_metric_array_set_str(set, index, fs_name);
 	index = ldms_metric_by_name(set, "mdc");
-	ldms_metric_array_set_str(set, index, mdc_name);
+	const char *mdt_name = get_mdt_name(mdc_name);
+	ldms_metric_array_set_str(set, index, mdt_name);
 	comp_id_helper_metric_update(set, cid);
 	ldms_set_publish(set);
 	ldmsd_set_register(set, SAMP);
 	return set;
 }
 
+/* warn no more than once about negative counters */
+static int ops_negative_seen = 0;
+
+/* This collects scalars only, and so reset condition is
+ * if any metric overflows to negative.
+ * If a metric overflows and accumulates all the way to positive again
+ * (drop from last positive value but not negative), resetting
+ * doesn't help; reset or no in this case we still have a bogus
+ * interval with a lost chunk of event count or time count.
+ */
 static int mdc_ops_sample(const char *path,
 			   ldms_set_t general_metric_set)
 {
 	FILE *sf;
 	char buf[512];
 	char str1[MAXNAMESIZE+1];
-	int ec = 0;
+	int ec;
 
+start:
+	ec = 0;
 	sf = fopen(path, "r");
 	if (sf == NULL) {
 		return ENOENT;
@@ -229,16 +269,30 @@ static int mdc_ops_sample(const char *path,
 	}
 
 	while (fgets(buf, sizeof(buf), sf)) {
-		uint64_t val1 = 0, val2 = 0, val3 = 0, val4 = 0, val5 = 0;
+		int64_t val1 = 0, val2 = 0, val3 = 0, val4 = 0, val5 = 0;
 		int rc;
 		int index;
 
-		rc = sscanf(buf, "%64s %lu samples [%*[^]]] %lu %lu %lu %lu",
+		rc = sscanf(buf, "%64s %" SCNd64 " samples [%*[^]]] "
+			"%" SCNd64 " %" SCNd64 " %" SCNd64 " %" SCNd64,
 			    str1, &val1, &val2, &val3, &val4, &val5);
 		if (rc == 2) {
 			index = ldms_metric_by_name(general_metric_set, str1);
 			if (index > 1) {
-				ldms_metric_set_u64(general_metric_set, index, val1);
+				if (val1 < 0) {
+					if (mdc_auto_reset) {
+						goto reset;
+					} else {
+						if (!ops_negative_seen) {
+							ops_negative_seen = 1;
+							log_fn(LDMSD_LWARNING, SAMP
+								": negative value %" PRId64 " in %s.\n", val1, path);
+							log_fn(LDMSD_LWARNING, SAMP
+								": Enable auto_reset or manage lustre better.\n");
+						}
+					}
+				}
+				ldms_metric_set_s64(general_metric_set, index, val1);
 			}
 			continue;
 		}
@@ -246,8 +300,27 @@ static int mdc_ops_sample(const char *path,
 out1:
 	fclose(sf);
 	return ec;
+reset:
+	fclose(sf);
+	sf = fopen(path, "w");
+	fwrite("\0", 1, 1, sf);
+	fclose(sf);
+	gettimeofday(&last_reset, NULL);
+	int index = ldms_metric_by_name(general_metric_set, "last_reset");
+	ldms_metric_set_u32(general_metric_set, index, last_reset.tv_sec);
+	goto start;
 }
 
+/* warn no more than once about negative counters */
+static int timing_negative_seen = 0;
+
+/* This collects count, sum and sum-squared so that mean and
+ * standard deviation can be calculated. Also max and min values.
+ * The reset condition is if any of these overflows to negative.
+ * Additionally, the sum-squared value may have rolled over to be
+ * < the sum before the sampler starts, which requires a reset
+ * so that avg and stddev will be correct going forward.
+ */
 static int mdc_timing_sample(const char *path,
 				ldms_set_t general_metric_set)
 {
@@ -255,7 +328,9 @@ static int mdc_timing_sample(const char *path,
 	char buf[512];
 	char str1[MAXNAMESIZE+1];
 	char str2[2*MAXNAMESIZE+1];
-	int ec = 0;
+	int ec;
+start:
+	ec = 0;
 	sf = fopen(path, "r");
 	if (sf == NULL) {
 		return ENOENT;
@@ -274,32 +349,62 @@ static int mdc_timing_sample(const char *path,
 		goto out1;
 	}
 	while (fgets(buf, sizeof(buf), sf)) {
-		uint64_t valmin = 0, valmax = 0, valsum = 0, valsumsqs = 0,
+		int64_t valmin = 0, valmax = 0, valsum = 0, valsumsqs = 0,
 			valcount = 0;
 		int rc;
 		int index;
-
-		rc = sscanf(buf, "%64s %lu samples [%*[^]]] %lu %lu %lu %lu",
-				str1, &valcount, &valmin, &valmax, &valsum,
-				&valsumsqs);
+	/* e.g.: metric 20144288856 samples [usec] 2 502967 245254126325 275563452014813 */
+		rc = sscanf(buf, "%64s %" SCNd64 " samples [%*[^]]]"
+			" %" SCNd64 " %" SCNd64 " %" SCNd64 " %" SCNd64,
+			str1, &valcount, &valmin, &valmax, &valsum,
+			&valsumsqs);
 		if (rc == 6) {
 			sprintf(str2, "%s__count", str1);
 			index = ldms_metric_by_name(general_metric_set, str2);
 			if (index < 1) {
 				continue;
 			}
-			ldms_metric_set_u64(general_metric_set, index, valcount);
-			ldms_metric_set_u64(general_metric_set, index+1, valmin);
-			ldms_metric_set_u64(general_metric_set, index+2, valmax);
-			ldms_metric_set_u64(general_metric_set, index+3, valsum);
-			ldms_metric_set_u64(general_metric_set, index+4, valsumsqs);
+			if (valcount < 0 || valsum < 0 || valsumsqs < 0 || valsumsqs < valsum) {
+				if (mdc_auto_reset) {
+					goto reset;
+				} else {
+					if (!timing_negative_seen) {
+						timing_negative_seen = 1;
+						log_fn(LDMSD_LWARNING, SAMP
+							": Overflowed value in %s.\n", path);
+						log_fn(LDMSD_LWARNING, SAMP
+							": Enable auto_reset or manage lustre better.\n");
+						log_fn(LDMSD_LWARNING, SAMP
+							": count %ld valsum %ld valsumsqs %ld\n",
+							valcount, valsum, valsumsqs);
+					}
+				}
+			}
+			ldms_metric_set_s64(general_metric_set, index, valcount);
+			ldms_metric_set_s64(general_metric_set, index+1, valmin);
+			ldms_metric_set_s64(general_metric_set, index+2, valmax);
+			ldms_metric_set_s64(general_metric_set, index+3, valsum);
+			ldms_metric_set_s64(general_metric_set, index+4, valsumsqs);
 		}
 	}
 out1:
 	fclose(sf);
 	return ec;
+reset:
+	fclose(sf);
+	sf = fopen(path, "w");
+	fwrite("\0", 1, 1, sf);
+	fclose(sf);
+	gettimeofday(&last_reset, NULL);
+	int index = ldms_metric_by_name(general_metric_set, "last_reset");
+	ldms_metric_set_u32(general_metric_set, index, last_reset.tv_sec);
+	goto start;
 }
 
+/*
+ * per lustre/obdclass/lprocfs_counters.c and reset code in
+ * lprocfs_stats_seq_write, the counters are __S64 (signed 64 bit)
+ */
 void mdc_general_sample(const char *mdc_name, const char *md_stats_path,
 			const char *stats_path, ldms_set_t general_metric_set,
 			const int mdc_timing)

@@ -13,6 +13,7 @@
 #include "comp_id_helper.h"
 #include "sampler_base.h"
 
+extern int mdc_auto_reset;
 int mdc_general_schema_is_initialized();
 int mdc_general_schema_init(const comp_id_t cid, int mdc_timing);
 void mdc_general_schema_fini();
