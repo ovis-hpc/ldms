@@ -504,7 +504,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if msg is None:
             raise RuntimeError("no response")
         if (rc == 0):
-            streams = json.loads(msg)
+            streams = fmt_status(msg)
             print("Name         Producer                    bytes/sec    msg/sec      total bytes  msg count   ")
             print("-" * 12, "-" * 27, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
             for sname,s in streams.items():
@@ -777,7 +777,7 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         arg = self.handle_args('strgp_prdcr_del', arg)
         if arg:
-            rc, msg = self.comm.strgp_prdcr_del
+            rc, msg = self.comm.strgp_prdcr_del(arg['name'], arg['regex'])
             if rc:
                 print(f'Error removing producer(s) {arg["regex"]} from storage policy {arg["name"]} match list: {msg}')
 
@@ -872,7 +872,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if arg:
             rc, msg = self.comm.prdcr_status(arg['name'])
             if rc == 0 and msg is not None:
-                producers = msg
+                producers = fmt_status(msg)
                 print("Name             Host             Port         Transport    State")
                 print("---------------- ---------------- ------------ ------------ ------------")
                 for prdcr in producers:
@@ -904,7 +904,7 @@ class LdmsdCmdParser(cmd.Cmd):
             return
         rc, msg = self.comm.prdcr_set_status(arg['producer'], arg['instance'], arg['schema'])
         if rc == 0:
-            metric_sets = msg
+            metric_sets = fmt_status(msg)
 
             print("Name                 Schema Name      State      Origin           Producer         timestamp                duration (sec)")
             print("-------------------- ---------------- ---------- ---------------- ---------------- ------------------------- ---------------")
@@ -943,7 +943,7 @@ class LdmsdCmdParser(cmd.Cmd):
         arg = self.handle_args('updtr_status', arg)
         rc, msg = self.comm.updtr_status(arg['name'], arg['summary'])
         if rc == 0:
-            updaters = msg
+            updaters = fmt_status(msg)
             print("Name             Interval:Offset  Auto   Mode            State        Skipped counter Oversampled counter")
             print(f"---------------- ---------------- ------ --------------- ------------ {'-'*15} {'-'*19}")
             for updtr in updaters:
@@ -1023,10 +1023,11 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         arg = self.handle_args('update_time_stats', arg)
         rc, msg = self.comm.update_time_stats(arg['name'])
-        #if rc != 0:
-        #    return
+        if rc != 0:
+            print(f'Error {rc}: {msg}')
+            return
 
-        j = msg
+        j = fmt_status(msg)
         print("Updater         Min(usec)       Max(usec)       Average(usec)   Count     ")
         print(f"{'-'*15} {'-'*15} {'-'*15} {'-'*15} {'-'*10}")
         if rc !=0:
@@ -1049,7 +1050,7 @@ class LdmsdCmdParser(cmd.Cmd):
             return
         rc, msg = self.comm.strgp_status(arg['name'])
         if rc == 0:
-            policies = msg
+            policies = fmt_status(msg)
             print("Name             Container        Schema           Plugin           flush(sec)       State")
             print("---------------- ---------------- ---------------- ---------------- ------------ ----------------")
             for strgp in policies:
@@ -1079,7 +1080,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if rc != 0:
             # self.handle() already reported the error.
             return
-        j = msg
+        j = fmt_status(msg)
         print("strgp           min(usec)       max(usec)      avg(usec)      Count")
         print(f"{'-'*15} {'-'*15} {'-'*15} {'-'*15} {'-'*10}")
         for n, strgp in j.items():
@@ -1094,7 +1095,7 @@ class LdmsdCmdParser(cmd.Cmd):
             return
         rc, msg = self.comm.plugn_status(arg['name'])
         if rc == 0:
-            plugins = msg
+            plugins = fmt_status(msg)
             print("Name         Type         Interval     Offset       Libpath")
             print("------------ ------------ ------------ ------------ ------------")
             for plugn in plugins:
@@ -1117,7 +1118,7 @@ class LdmsdCmdParser(cmd.Cmd):
             return
         if 0 != rc:
             return
-        plugns = msg
+        plugns = fmt_status(msg)
         for p in plugns:
             print("{0}:".format(p['plugin']))
             for s in p['sets']:
@@ -1708,7 +1709,7 @@ class LdmsdCmdParser(cmd.Cmd):
             return
         if rc != 0:
             return
-        stats = json.loads(msg)
+        stats = fmt_status(msg)
         self.display_prdcr_stats(stats)
 
     def complete_prdcr_stats(self, text, line, begidx, endidx):
@@ -1741,8 +1742,9 @@ class LdmsdCmdParser(cmd.Cmd):
         if msg == "":
             return
         if rc != 0:
+            print(f'Error {rc} {msg}')
             return
-        stats = json.loads(msg)
+        stats = fmt_status(msg)
         self.display_set_stats(stats)
 
     def complete_set_stats(self, text, line, begidx, endidx):
@@ -1811,8 +1813,9 @@ class LdmsdCmdParser(cmd.Cmd):
         if msg == "":
             return
         if rc != 0:
+            print(f'Error: {rc} {msg}')
             return
-        stats = json.loads(msg)
+        stats = fmt_status(msg)
         self.display_xprt_stats(stats)
 
     def complete_xprt_stats(self, text, line, begidx, endidx):
@@ -1832,7 +1835,7 @@ class LdmsdCmdParser(cmd.Cmd):
             return
         if rc != 0:
             return
-        updtrs = msg
+        updtrs = fmt_status(msg)
         for updtr in updtrs:
             print("Updater : {0}".format(updtr['name']))
             print("   tasks: <interval_us>:<offset_us>")
@@ -1860,7 +1863,7 @@ class LdmsdCmdParser(cmd.Cmd):
             return
         if rc != 0:
             return
-        prdcrs = msg
+        prdcrs = fmt_status(msg)
         for prdcr in prdcrs:
             print("prdcr: {0}".format(prdcr['name']))
             hints = prdcr['hints']
@@ -1883,7 +1886,7 @@ class LdmsdCmdParser(cmd.Cmd):
         rc, msg = self.comm.stream_client_dump()
         if not msg:
             raise RuntimeError("no response")
-        obj = msg
+        obj = fmt_status(msg)
         print(f"{'stream':15} {'ctxt':15} {'cb_fn':70}")
         print(f"{'-'*15} {'-'*15} {'-'*70}")
         for s in obj['streams']:
@@ -1942,7 +1945,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if msg is None:
             raise RuntimeError("no response")
         if (rc == 0):
-            streams = msg
+            streams = fmt_status(msg)
             print(f'{"name":30} {"bytes/sec":12} {"msg/sec":12} {"total bytes":12} {"msg count":12} {"first msg":12} {"last msg":12}')
             print("-" * 30, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
             # print("--------------- -------------- --------------- ----- ----------------- -----------\n")

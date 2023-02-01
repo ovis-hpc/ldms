@@ -196,6 +196,9 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       }
 
 def check_offset(interval_us, offset_us=None):
+    """
+    Ensure that offset provided is valid for ldmsd with given interval
+    """
     if offset_us:
         interval_us = int(interval_us)
         offset_us = int(offset_us)
@@ -203,14 +206,22 @@ def check_offset(interval_us, offset_us=None):
             offset_us = interval_us/2
     return offset_us
 
-def fmt_status(resp):
-    status = resp['msg']
-    if resp['errcode'] == 0 and status is not None:
-        status = json.loads(resp['msg'])
-    return status
+def fmt_status(msg):
+    """
+    Format communicator status response string into json object
+    """
+    if msg is not None and msg != '':
+        try:
+            msg = json.loads(msg)
+        except Exception as e:
+            print(f'Error converting {msg} to json object')
+            msg = None
+    else:
+        msg = None
+    return msg
 
 class LDMSDRequestException(Exception):
-    '''Raise when there is an error in the ldmsd request module'''
+    """Raise when there is an error in the ldmsd request module"""
     def __init__(self, message, errcode, *args):
         self.message = message
         self.errcode = errcode
@@ -1109,7 +1120,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
@@ -1300,7 +1311,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
@@ -1314,7 +1325,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
@@ -1400,7 +1411,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp['msg'])
+            return resp['errcode'], resp['msg']
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
@@ -1516,7 +1527,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
@@ -1541,7 +1552,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
@@ -1617,7 +1628,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
@@ -1854,7 +1865,8 @@ class Communicator(object):
             req = LDMSD_Request(command_id=LDMSD_Request.PLUGN_STATUS, attrs=attrs)
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
+
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
@@ -1886,7 +1898,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
@@ -1907,7 +1919,7 @@ class Communicator(object):
             req.send(self)
             resp = req.receive(self)
             err = resp['errcode']
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
@@ -2139,7 +2151,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
@@ -2165,7 +2177,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
@@ -2198,7 +2210,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
@@ -2223,7 +2235,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
@@ -2342,7 +2354,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
@@ -2561,7 +2573,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
@@ -2585,7 +2597,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
@@ -2740,7 +2752,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
@@ -2886,7 +2898,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], fmt_status(resp)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
@@ -2933,7 +2945,7 @@ class Communicator(object):
             resp = req.receive(self)
             err = resp['errcode']
             if err == 0 and resp['msg'] is not None:
-                status = json.loads(resp['msg'])
+                status = resp['msg']
             else:
                 status = None
             return err, status
