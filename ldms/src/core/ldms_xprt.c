@@ -3845,7 +3845,8 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 	struct addrinfo *ai;
 	struct addrinfo hints = {
 		.ai_family = AF_INET,
-		.ai_socktype = SOCK_STREAM
+		.ai_socktype = SOCK_STREAM,
+		.ai_flags = AI_PASSIVE,
 	};
 	if (host) {
 		rc = getaddrinfo(host, port_no, &hints, &ai);
