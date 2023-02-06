@@ -64,7 +64,7 @@ from datetime import datetime
 
 from ldmsd import ldmsd_util
 from ldmsd.ldmsd_communicator import LDMSD_Request, LDMSD_Req_Attr
-from ldmsd.ldmsd_communicator import Communicator
+from ldmsd.ldmsd_communicator import Communicator, fmt_status
 import errno
 
 LDMSD_REQ_SOM_F=1
@@ -956,7 +956,7 @@ class LdmsdCmdParser(cmd.Cmd):
                 print(f"{updtr['name']:16} {interval_s:16} {auto:6} {updtr['mode']:15} " \
                       f"{updtr['state']:10} {updtr['outstanding count']:15} " \
                       f"{updtr['oversampled count']:19}")
-                if 'summary' not in arg:
+                if arg['summary'] is None:
                     for prdcr in updtr['producers']:
                         print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
                             prdcr['name'], prdcr['host'], prdcr['port'],
@@ -1394,7 +1394,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if not arg:
             return
         rc, msg = self.comm.greeting(arg['name'], arg['offset'], arg['level'], arg['test'], arg['path'])
-        if "level" in arg:
+        if arg["level"] is not None:
             tbl = bytes(range(0, 256)) # identity mapping tbl
             for attr in msg:
                 print(attr.attr_value.translate(tbl, delete=b' \x00').decode())
