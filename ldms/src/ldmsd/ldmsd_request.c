@@ -2038,6 +2038,7 @@ int prdcr_stream_status_handler(ldmsd_req_ctxt_t reqc)
 	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!prdcr_regex) {
 		rc = EINVAL;
+		ctxt = NULL;
 		cnt = snprintf(reqc->line_buf, reqc->line_len,
 				"The attribute 'regex' is required by prdcr_stop_regex.");
 		goto send_resp_code;
@@ -7667,8 +7668,10 @@ __prdset_upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 	const char *str;
 
 	ldmsd_prdcr_lock(prdcr);
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED || prdcr->xprt->disconnected)
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED || prdcr->xprt->disconnected) {
+		rc = 0; /* unconnected producers not shown */
 		goto unlock;
+	}
 	rc = linebuf_printf(reqc, "\"%s\":{", prdcr->obj.name);
 	if (rc)
 		goto unlock;
@@ -7763,7 +7766,7 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
 	ldmsd_updtr_t updtr;
-	char *name;
+	char *name = NULL;
 	int cnt = 0;
 
 	rc = linebuf_printf(reqc, "{");
@@ -7835,7 +7838,7 @@ static int __store_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strg
 static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
-	char *name;
+	char *name = NULL;
 	ldmsd_strgp_t strgp;
 	int cnt = 0;
 
