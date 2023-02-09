@@ -58,7 +58,6 @@ static base_data_t sampler_base; /* contains the schema */
 
 /* red-black tree root for infiniband port metrics */
 static struct rbt interfaces_tree;
-static int interfaces_max = 8;
 
 struct interface_data {
         struct rbn interface_rbn;
@@ -601,7 +600,7 @@ static void resize_metric_set()
         }
 }
 
-static void interfaces_tree_sample()
+static int interfaces_tree_sample()
 {
 	static struct timeval tv_prev;
 
@@ -610,7 +609,7 @@ static void interfaces_tree_sample()
 	struct timeval tv_diff;
 	double dt;
         ldms_mval_t list_handle;
-        int rc;
+        int rc, rerr = 0;
 
 	gettimeofday(&tv_now, 0);
 	timersub(&tv_now, &tv_prev, &tv_diff);
@@ -628,11 +627,15 @@ static void interfaces_tree_sample()
 
                 record_instance = ldms_record_alloc(sampler_base->set, mindex.record_definition);
                 if (record_instance == NULL) {
-                        log_fn(LDMSD_LDEBUG, SAMP": ldms_record_alloc() failed, resizing metric set\n");
+                        log_fn(LDMSD_LWARNING, SAMP": ldms_record_alloc() failed. Continuing with current data.\n");
                         resize_metric_set();
-                        break;
+                        break; /* continue with the data size we have now */
                 }
                 rc = ldms_list_append_record(sampler_base->set, list_handle, record_instance);
+		if (rc) {
+                        log_fn(LDMSD_LERROR, SAMP": ldms_list_append_record) failed; logic problem. Stopping sampler.\n");
+			rerr = rc; /* report last error seen at end */
+		}
 
                 data = container_of(rbn, struct interface_data, interface_rbn);
 		metrics_sample(data, record_instance, dt);
@@ -641,6 +644,7 @@ static void interfaces_tree_sample()
         base_sample_end(sampler_base);
 
 	memcpy(&tv_prev, &tv_now, sizeof(tv_prev));
+	return rerr;
 }
 
 static void reinit_ports()
@@ -825,7 +829,6 @@ static int sample(struct ldmsd_sampler *self)
 {
         static time_t last_refresh = 0;
         time_t current_time;
-        int rc;
 
         log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
 
@@ -834,9 +837,7 @@ static int sample(struct ldmsd_sampler *self)
                 interfaces_tree_refresh();
                 last_refresh = current_time;
         }
-        interfaces_tree_sample();
-
-        return 0;
+        return interfaces_tree_sample();
 }
 
 static void term(struct ldmsd_plugin *self)
