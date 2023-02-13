@@ -1962,7 +1962,7 @@ class LdmsdCmdParser(cmd.Cmd):
                     continue
                 print("      Producers")
                 for name,p in s['publishers'].items():
-                    print(f"{' '*14} {name:15} {rate(p['info']):>12} {freq(p['info']):>12} {total_bytes(p['info']):>12} {count(p['info']):>12} {first(p['info']):>12} {last(p['info']):>12}")
+                    print(f"{' '*14} {name:15} {rate(p['recv']):>12} {freq(p['recv']):>12} {total_bytes(p['recv']):>12} {count(p['recv']):>12} {first(p['recv']):>12} {last(p['recv']):>12}")
 
     def complete_stream_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_status', text)

@@ -1857,10 +1857,9 @@ class Communicator(object):
         - data is an error message if status != 0 or
           the object containing the producer status
         """
+        attrs = None
         if name:
-            attrs = [ attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)) ]
-        else:
-            attrs = None
+            attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
         try:
             req = LDMSD_Request(command_id=LDMSD_Request.PLUGN_STATUS, attrs=attrs)
             req.send(self)
@@ -1885,12 +1884,11 @@ class Communicator(object):
         - data is an error message if status != 0 or
           the object containing the sampler set status
         """
+        attrs = None
         if name:
             attrs = [
                 LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)
             ]
-        else:
-            attrs = None
         req = LDMSD_Request(
                 command_id=LDMSD_Request.PLUGN_SETS,
                 attrs=attrs
@@ -2119,7 +2117,7 @@ class Communicator(object):
         - status is an errno from the errno module
         - data is an error message is status !=0 or None
         """
-        req = LDMSD_Request(command_id = LDMSD_Request.PRDCR_SUBSCRIBE,
+        req = LDMSD_Request(command_id = LDMSD_Request.PRDCR_UNSUBSCRIBE,
                 attrs = [
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex),
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream)
@@ -2169,10 +2167,9 @@ class Communicator(object):
         - data is an error message if status != 0 or
           the object containing the producer status
         """
+        attrs = None
         if name:
-            attrs = [ attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)) ]
-        else:
-            attrs = None
+            attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
         req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_STATUS, attrs=attrs)
         try:
             req.send(self)
@@ -2199,11 +2196,11 @@ class Communicator(object):
         """
         attrs = []
         if name:
-            attrs.append(attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)))
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name))
         if instance:
-            attrs.append(attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INSTANCE, value=instance)))
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INSTANCE, value=instance))
         if schema:
-            attrs.append(attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.SCHEMA, value=schema)))
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.SCHEMA, value=schema))
         if len(attrs) == 0:
             attrs = None
         req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_SET_STATUS, attrs=attrs)
@@ -2345,11 +2342,11 @@ class Communicator(object):
         """
         attrs = []
         if name:
-            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_ATTR.NAME, value=name))
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name))
         if summary:
-            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_ATTR.STRING, value=summary))
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STRING, value=summary))
         if reset:
-            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_ATTR.RESET, value=reset))
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RESET, value=reset))
         req = LDMSD_Request(command_id=LDMSD_Request.UPDTR_STATUS, attrs=attrs)
         try:
             req.send(self)
@@ -2744,10 +2741,9 @@ class Communicator(object):
         Parameters:
             [name=]      storage policy name
         """
+        attr_list = None
         if name:
             attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
-        else:
-            attr_list = None
         req = LDMSD_Request(command_id=LDMSD_Request.STRGP_STATUS, attrs=attr_list)
         try:
             req.send(self)
@@ -2877,7 +2873,7 @@ class Communicator(object):
                 command_id=LDMSD_Request.XPRT_STATS,
                 attrs=[
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RESET,
-                                value=str(reset)),
+                                   value=str(reset)),
                 ])
         try:
             req.send(self)
