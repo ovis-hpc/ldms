@@ -7,7 +7,6 @@ check_PROGRAMS =
 libmapinclude_HEADERS =
 libmapincludedir = $(includedir)/coll
 
-if ENABLE_COLL
 libcoll_la_SOURCES = rbt.c rbt.h \
 		     htbl.c htbl.h \
 		     idx.c idx.h idx_priv.h \
@@ -45,5 +44,3 @@ test_label_set_LDADD = libcoll.la
 
 test_idx_SOURCES = idx.c
 test_idx_CFLAGS = -DIDX_TEST
-
-endif
