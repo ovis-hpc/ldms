@@ -10,13 +10,8 @@ do_subst = @LDMS_SUBST_RULE@
 
 SUBDIRS = third
 
-if ENABLE_OVIS_UTIL
 SUBDIRS += ovis_util
-endif
-
-if ENABLE_COLL
 SUBDIRS += coll
-endif
 
 if ENABLE_MMALLOC
 SUBDIRS += mmalloc

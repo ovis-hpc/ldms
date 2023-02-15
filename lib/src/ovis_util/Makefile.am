@@ -2,7 +2,6 @@ lib_LTLIBRARIES =
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 
-if ENABLE_OVIS_UTIL
 libovis_util_la_SOURCES = util.c util.h dstring.h dstring.c olog.c olog.h
 libovis_util_la_LIBADD = -lpthread -lrt
 libovis_utilinclude_HEADERS = util.h dstring.h big_dstring.h os_util.h olog.h
@@ -35,5 +34,3 @@ test_big_dstring_DEPENDENCIES = libovis_util.la
 test_olog_SOURCES= test_olog.c
 test_olog_LDFLAGS = $(LDFLAGS_OVIS_UTIL)
 test_olog_DEPENDENCIES = libovis_util.la
-
-endif
