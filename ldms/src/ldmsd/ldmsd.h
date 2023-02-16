@@ -715,7 +715,6 @@ struct ldmsd_plugin_cfg {
 	char *libpath;
 	unsigned long sample_interval_us;
 	long sample_offset_us;
-	int synchronous;
 	int thread_id;
 	int ref_count;
 	union {

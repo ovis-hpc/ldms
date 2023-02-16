@@ -994,6 +994,10 @@ out:
 int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us)
 {
 	char value[128];
+	/*
+	 * offset_us can be equal to LDMSD_UPDT_HINT_OFFSET_NONE
+	 * if the updater is in the asynchronous mode.
+	 */
 	if (offset_us == LDMSD_UPDT_HINT_OFFSET_NONE)
 		snprintf(value, 127, "%ld:", interval_us);
 	else
@@ -1238,7 +1242,7 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 			pi->ref_count++;
 			info->interval_us = pi->sample_interval_us;
 			info->offset_us = pi->sample_offset_us;
-			info->sync = pi->synchronous;
+			info->sync = 1; /* Sampling is always synchronous. */
 			info->pi = pi;
 		}
 		info->origin_name = strdup(plugn_set->plugin_name);
@@ -1329,7 +1333,7 @@ int __sampler_set_info_add(struct ldmsd_plugin *pi, char *interval, char *offset
 	ldmsd_plugin_set_t set;
 	int rc;
 	long interval_us;
-	long offset_us;
+	long offset_us = 0;
 
 	if (pi->type != LDMSD_PLUGIN_SAMPLER)
 		return EINVAL;
@@ -1338,8 +1342,6 @@ int __sampler_set_info_add(struct ldmsd_plugin *pi, char *interval, char *offset
 	interval_us = strtol(interval, NULL, 0);
 	if (offset)
 		offset_us = strtol(offset, NULL, 0);
-	else
-		offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
 	for (set = ldmsd_plugin_set_first(pi->name); set;
 				set = ldmsd_plugin_set_next(set)) {
 		rc = ldmsd_set_update_hint_set(set->set, interval_us, offset_us);
@@ -1393,19 +1395,12 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 			rc = EDOM;
 			goto out;
 		}
-		pi->synchronous = 1;
-		pi->sample_offset_us = sample_offset;
 	}
+	pi->sample_offset_us = sample_offset;
 	OVIS_EVENT_INIT(&pi->oev);
-	if (pi->synchronous) {
-		pi->oev.param.type = OVIS_EVENT_PERIODIC;
-		pi->oev.param.periodic.period_us = sample_interval;
-		pi->oev.param.periodic.phase_us = sample_offset;
-	} else {
-		pi->oev.param.type = OVIS_EVENT_TIMEOUT;
-		pi->oev.param.timeout.tv_sec = sample_interval / 1000000;
-		pi->oev.param.timeout.tv_usec = sample_interval % 1000000;
-	}
+	pi->oev.param.type = OVIS_EVENT_PERIODIC;
+	pi->oev.param.periodic.period_us = sample_interval;
+	pi->oev.param.periodic.phase_us = sample_offset;
 	pi->oev.param.ctxt = pi;
 	pi->oev.param.cb_fn = plugin_sampler_cb;
 
