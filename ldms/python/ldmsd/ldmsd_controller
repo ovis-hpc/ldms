@@ -854,6 +854,7 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         rc, msg = self.comm.daemon_status()
         if rc == 0:
+            msg = fmt_status(msg)
             print(f"Deamon State: {msg['state']}\n")
             self.display_thread_stats(msg['thread_stats'])
         else:
@@ -1479,10 +1480,10 @@ class LdmsdCmdParser(cmd.Cmd):
             print("Request returned error {0}: {1}".format(rc, msg))
             return
 
-        fobj =  msg
+        fobj = fmt_status(msg)
         # print fobj['attr']
         print('Failover Status:')
-        keys = fobj.keys()
+        keys = list(fobj.keys())
         keys.remove('flags')
         for k in keys:
             print('    %s: %s' % (k, str(fobj[k])))
@@ -1675,6 +1676,7 @@ class LdmsdCmdParser(cmd.Cmd):
             return
         if rc != 0:
             return
+        msg = fmt_status(msg)
         self.display_thread_stats(msg)
 
     def complete_thread_stats(self, text, line, begidx, endidx):
