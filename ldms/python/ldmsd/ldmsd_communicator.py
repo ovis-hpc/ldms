@@ -377,6 +377,8 @@ class LDMSD_Req_Attr(object):
             self.attr_len = 4
             self.discrim = 0
         else:
+            if type(value) is bool:
+                value = str(value)
             self.attr_value = value
             if value is None:
                 self.attr_len = 0
