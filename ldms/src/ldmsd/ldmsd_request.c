@@ -1487,6 +1487,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	} else {
 		type = ldmsd_prdcr_str2type(type_s);
 		if ((int)type < 0) {
+			reqc->errcode = EINVAL;
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 					"The attribute type '%s' is invalid.",
 					type_s);
@@ -1529,7 +1530,14 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!interval_s) {
 		goto einval;
 	} else {
-		 interval_us = strtol(interval_s, NULL, 0);
+		char *ptr;
+		interval_us = strtol(interval_s, &ptr, 0);
+		if ((*interval_s == '\0') || (*ptr != '\0') || (interval_us <= 0)) {
+			reqc->errcode = EINVAL;
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"The interval must be a positive number.");
+			goto send_reply;
+		}
 	}
 
 	auth = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTH);
