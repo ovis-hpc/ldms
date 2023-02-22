@@ -127,7 +127,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'strgp_status': {'req_attr': [], 'opt_attr': ['name']},
                       'store_time_stats': {'req_attr': [], 'opt_attr':['name']},
                       ##### Plugin #####
-                      'plugn_sets': {'req_attr': [], 'opt_attr': []},
+                      'plugn_sets': {'req_attr': [], 'opt_attr': ['name']},
                       'plugn_status': {'req_attr': [], 'opt_attr': ['name']},
                       ##### Streams ###
                       'publish': {'req_attr': ['name'], 'opt_attr': []},
