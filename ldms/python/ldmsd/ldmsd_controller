@@ -1118,8 +1118,12 @@ class LdmsdCmdParser(cmd.Cmd):
         if msg is None:
             return
         if 0 != rc:
+            print(msg)
             return
         plugns = fmt_status(msg)
+        if plugns is None or len(plugns) == 0:
+            print("-- None --")
+            return
         for p in plugns:
             print("{0}:".format(p['plugin']))
             for s in p['sets']:
