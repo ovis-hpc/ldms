@@ -1360,12 +1360,12 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 {
 	char *endptr;
 	int rc = 0;
-	unsigned long sample_interval;
+	long sample_interval;
 	long sample_offset = 0;
 	struct ldmsd_plugin_cfg *pi;
 
-	sample_interval = strtoul(interval, &endptr, 0);
-	if (endptr[0] != '\0')
+	sample_interval = strtol(interval, &endptr, 0);
+	if ((endptr[0] != '\0') || (sample_interval <= 0))
 		return EINVAL;
 
 	pi = ldmsd_get_plugin((char *)plugin_name);
