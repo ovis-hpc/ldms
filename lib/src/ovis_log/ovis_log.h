@@ -96,17 +96,24 @@ typedef struct ovis_log_s {
 /**
  * \brief Initialize the logging system
  *
+ * This funciton should be called by the application main initialization logic.
+ * It should not be called by individual subsystems.
+ *
  * \c ovis_log_init() creates the logging worker, sets the default values, and
  *  configures the logging modes.
  *
- * \c subsys_name is the subsystem name of the default log.
- *  \c level is the value of a log level or the bitwise-or of multiple log levels.
- *  \c modes defines different logging behaviors.
+ * These settings are used when NULL is passed as the log handle to
+ * ovis_log API.
+ *
+ * \c app_name  The application name.
+ * \c level     The default log level or the bitwise-or of multiple log levels.
+ * \c modes     Defines different logging behaviors.
  *
  * Available modes:
- *  OVIS_LOG_M_DT means using the date-time format to print the logging time. (default)
- *  OVIS_LOG_M TS means using the timestamp format to print the logging time.
- *  OVIS_LOG_M_TS_NONE means no logging time.
+ *  OVIS_LOG_M_DT date-time format (%a %b %d %H:%M:%S %Y) is used to format
+ *               message timestamps. (default)
+ *  OVIS_LOG_M TS timestamp (%lu) is used to format message timestamps.
+ *  OVIS_LOG_M_TS_NONE Timestamps are not included in log messages.
  *
  * The \c ovis_log_init() call makes \c ovis_log_open, \c ovis_log_close,
  *  \c ovis_log, and \c ovis_vlog asynchronous.
@@ -121,8 +128,8 @@ typedef struct ovis_log_s {
  * \see ovis_log_open, ovis_log, ovis_log_close
  */
 #define OVIS_LOG_M_DT	0	/* Date-time format */
-#define OVIS_LOG_M_TS	1	/* timestamp in seconds format */
-#define OVIS_LOG_M_TS_NONE 2	/* No messages' time information */
+#define OVIS_LOG_M_TS	1	/* Timestamp in seconds format */
+#define OVIS_LOG_M_TS_NONE 2	/* No message timestamps */
 int ovis_log_init(const char *default_subsys_name, int default_level, int modes);
 
 /**
@@ -208,18 +215,18 @@ int ovis_log_close();
 int ovis_log_rotate(const char *path);
 
 /**
- * \brief Create the log of a subsystem.
+ * \brief Register a substem log
  *
  * \param subsys_name   The subsystem name
- * \param desc		The description of the subsystem
+ * \param desc		A description of the subsystem
  *
  * \return The log handle of the subsystem.
- *         On error, NULL is returned, and errno is set.
+ *         On error, NULL is returned, and errno is se as follows:
  *            EINVAL   Either \c subsys_name or \c desc is NULL.
  *            EEXIST   The log of the subsystem \c subsys_name already exists.
  *            ENOMEM   Memory allocation failure
  */
-ovis_log_t ovis_log_create(const char *subsys_name, const char *desc);
+ovis_log_t ovis_log_register(const char *subsys_name, const char *desc);
 
 /**
  * \brief Destroy the log of a subsystem
