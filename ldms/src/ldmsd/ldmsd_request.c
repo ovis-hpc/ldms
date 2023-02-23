@@ -2506,6 +2506,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 			goto enomem;
 	}
 
+	__atomic_add_fetch(&store->ref_count, 1, __ATOMIC_SEQ_CST); /* Release in strgp_del */
 	strgp->store = store->store;
 	strgp->plugin_name = strdup(plugin);
 	if (!strgp->plugin_name)
