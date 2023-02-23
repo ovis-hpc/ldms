@@ -3306,6 +3306,21 @@ ldms_mval_t ldms_list_first(ldms_set_t s, ldms_mval_t lh, enum ldms_value_type *
 	return (ldms_mval_t)le->v_le.value;
 }
 
+ldms_mval_t ldms_list_last(ldms_set_t s, ldms_mval_t lh, enum ldms_value_type *typ, size_t *count)
+{
+	ldms_mval_t le;
+	if (!lh->v_lh.head)
+		return NULL;
+	if (!s->heap)
+		return NULL;
+	le = ldms_heap_ptr(s->heap, lh->v_lh.tail);
+	if (typ)
+		*typ = le->v_le.type;
+	if (count)
+		*count = le->v_le.count;
+	return (ldms_mval_t)le->v_le.value;
+}
+
 ldms_mval_t ldms_list_next(ldms_set_t s, ldms_mval_t v, enum ldms_value_type *typ, size_t *count)
 {
 	ldms_mval_t le;

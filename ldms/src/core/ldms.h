@@ -2673,12 +2673,29 @@ ldms_mval_t ldms_list_append_item(ldms_set_t s, ldms_mval_t lh, enum ldms_value_
  * \param [in]  lh    The list handle.
  * \param [out] typ   If not NULL, \c *typ value is set to the type of the first entry of the list.
  * \param [out] count If not NULL, \c *count is set to the array length if the
- *                    first entry is an array, or 1 if it is not.
+ *                    entry is an array.
  *
  * \retval mval The metric handle of the first entry, or
  * \retval NULL if the list is empty.
  */
 ldms_mval_t ldms_list_first(ldms_set_t s, ldms_mval_t lh, enum ldms_value_type *typ, size_t *count);
+
+/**
+ * \brief Get the last list entry.
+ *
+ * \c lh must be a list. If \c lh is not a list, the function call results in
+ * a garbage value returned or a segmentation fault.
+ *
+ * \param [in]  s     The ldms set handle.
+ * \param [in]  lh    The list handle.
+ * \param [out] typ   If not NULL, \c *typ value is set to the type of the first entry of the list.
+ * \param [out] count If not NULL, \c *count is set to the array length if the
+ *                    entry is an array.
+ *
+ * \retval mval The metric handle of the first entry, or
+ * \retval NULL if the list is empty.
+ */
+ldms_mval_t ldms_list_last(ldms_set_t s, ldms_mval_t lh, enum ldms_value_type *typ, size_t *count);
 
 /**
  * \brief Get the next list entry.
