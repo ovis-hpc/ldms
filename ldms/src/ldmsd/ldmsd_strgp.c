@@ -792,6 +792,7 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_strgp_t strgp;
+	struct ldmsd_plugin_cfg *pi;
 
 	pthread_mutex_lock(cfgobj_locks[LDMSD_CFGOBJ_STRGP]);
 	strgp = (ldmsd_strgp_t)__cfgobj_find(strgp_name, LDMSD_CFGOBJ_STRGP);
@@ -812,6 +813,9 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out_1;
 	}
+
+	pi = container_of(strgp->store, struct ldmsd_plugin_cfg, store);
+	__atomic_sub_fetch(&pi->ref_count, 1, __ATOMIC_SEQ_CST);
 
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STRGP], &strgp->obj.rbn);
 	ldmsd_strgp_put(strgp); /* tree reference */
