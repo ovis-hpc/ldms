@@ -97,81 +97,91 @@ static void init_job_data(base_data_t base)
 			    base->pi_name, base->job_set_name);
 		}
 		goto err;
-	} else {
-		if (base_missing_warned_set(base)) {
-			base_missing_warned_off(base, BASE_WARN_SET);
+	}
+	if (base_missing_warned_jobid(base))
+		base_missing_warned_off(base, BASE_WARN_JOBID);
+
+	base->app_id_idx = ldms_metric_by_name(base->job_set, "app_id");
+	base->job_id_idx = ldms_metric_by_name(base->job_set, "job_id");
+
+	/* If job_slot_list is present, we know it's the mt-slurm sampler */
+	base->job_slot_list_idx = ldms_metric_by_name(base->job_set, "job_slot_list");
+	base->job_slot_list_tail_idx = ldms_metric_by_name(base->job_set, "job_slot_list_tail");
+
+	/* If job_list is present, we know it's the slurm2 sampler */
+	base->job_list_idx = ldms_metric_by_name(base->job_set, "job_list");
+	if (base->job_list_idx >= 0) {
+		/* This is slurm2, the start and end idx values will refer to
+		 * a list record containing job data.
+		 */
+		enum ldms_value_type typ;
+		ldms_mval_t job_list = ldms_metric_get(base->job_set, base->job_list_idx);
+		ldms_mval_t rec = ldms_list_first(base->job_set, job_list, &typ, NULL);
+		if (rec == NULL || typ != LDMS_V_RECORD_INST) {
+			/* No jobs yet/remaining need to wait until we've got at least one job
+			 * to decode the job record
+			 */
+			goto err;
+		}
+		base->job_id_idx = ldms_record_metric_find(rec, "job_id");
+		base->app_id_idx = ldms_record_metric_find(rec, "app_id");
+		base->job_start_idx = ldms_record_metric_find(rec, "job_start");
+		base->job_end_idx = ldms_record_metric_find(rec, "job_end");
+		goto out;
+	}
+
+	/* All other job sets must have job_start and job_end */
+	base->job_start_idx = ldms_metric_by_name(base->job_set, "job_start");
+	if (base->job_start_idx < 0) {
+		if (!base_missing_warned_start(base)) {
+			base_missing_warned_on(base, BASE_WARN_START);
 			base->log(base->job_log_lvl,
-			    "%s: The missing job data set named, %s, has appeared. Valid job "
-			    "data is now associated with the metric values.\n",
-			    base->pi_name, base->job_set_name);
+				"%s: The specified job_set '%s' is missing "
+				"the 'job_start' attribute and cannot be used.\n",
+				base->pi_name, base->job_set_name);
 		}
-		base->job_id_idx = ldms_metric_by_name(base->job_set, "job_id");
-		if (base->job_id_idx < 0) {
-			if (!base_missing_warned_jobid(base)) {
-				base_missing_warned_on(base, BASE_WARN_JOBID);
-				base->log(base->job_log_lvl,
-				    "%s: The specified job_set '%s' is missing "
-				    "the 'job_id' attribute and cannot be used.\n",
-				    base->pi_name, base->job_set_name);
-			}
-			goto err;
-		} else {
-			if (base_missing_warned_jobid(base)) {
-				base_missing_warned_off(base, BASE_WARN_JOBID);
-				base->log(base->job_log_lvl,
-				    "%s: The specified job_set '%s' now has "
-				    "the 'job_id' attribute and will be used.\n",
-				    base->pi_name, base->job_set_name);
-			}
-		}
-		/* app_id is optional */
-		base->app_id_idx = ldms_metric_by_name(base->job_set, "app_id");
-
-		/* If job_slot_list is present, we know it's the mt-slurm sampler */
-		base->job_slot_list_idx = ldms_metric_by_name(base->job_set, "job_slot_list");
-		base->job_slot_list_tail_idx = ldms_metric_by_name(base->job_set, "job_slot_list_tail");
-
-		base->job_start_idx = ldms_metric_by_name(base->job_set, "job_start");
-		if (base->job_start_idx < 0) {
-			if (!base_missing_warned_start(base)) {
-				base_missing_warned_on(base, BASE_WARN_START);
-				base->log(base->job_log_lvl,
-				    "%s: The specified job_set '%s' is missing "
-				    "the 'job_start' attribute and cannot be used.\n",
-				    base->pi_name, base->job_set_name);
-			}
-			goto err;
-		} else {
-			if (base_missing_warned_start(base)) {
-				base_missing_warned_off(base, BASE_WARN_START);
-				base->log(base->job_log_lvl,
-				    "%s: The specified job_set '%s' now has "
-				    "the 'job_start' attribute and will be used.\n",
-				    base->pi_name, base->job_set_name);
-			}
-		}
-		base->job_end_idx = ldms_metric_by_name(base->job_set, "job_end");
-		if (base->job_end_idx < 0) {
-			if (!base_missing_warned_end(base)) {
-				base_missing_warned_on(base, BASE_WARN_END);
-				base->log(base->job_log_lvl,
-				    "%s: The specified job_set '%s' is missing "
-				    "the 'job_end' attribute and cannot be used.\n",
-				    base->pi_name, base->job_set_name);
-			}
-			goto err;
-		} else {
-			if (base_missing_warned_end(base)) {
-				base_missing_warned_off(base, BASE_WARN_END);
-				base->log(base->job_log_lvl,
-				    "%s: The specified job_set '%s' now has "
-				    "the 'job_end' attribute and will be used.\n",
-				    base->pi_name, base->job_set_name);
-			}
+		goto err;
+	} else {
+		if (base_missing_warned_start(base)) {
+			base_missing_warned_off(base, BASE_WARN_START);
+			base->log(base->job_log_lvl,
+				"%s: The specified job_set '%s' now has "
+				"the 'job_start' attribute and will be used.\n",
+				base->pi_name, base->job_set_name);
 		}
 	}
+	base->job_end_idx = ldms_metric_by_name(base->job_set, "job_end");
+	if (base->job_end_idx < 0) {
+		if (!base_missing_warned_end(base)) {
+			base_missing_warned_on(base, BASE_WARN_END);
+			base->log(base->job_log_lvl,
+				"%s: The specified job_set '%s' is missing "
+				"the 'job_end' attribute and cannot be used.\n",
+				base->pi_name, base->job_set_name);
+		}
+		goto err;
+	}
+	if (base->job_id_idx < 0) {
+		if (!base_missing_warned_start(base)) {
+			base_missing_warned_on(base, BASE_WARN_START);
+			base->log(base->job_log_lvl,
+				"%s: The specified job_set '%s' is missing "
+				"the 'job_id' attribute and cannot be used.\n",
+				base->pi_name, base->job_set_name);
+		}
+		goto err;
+	} else {
+		if (base_missing_warned_start(base)) {
+			base_missing_warned_off(base, BASE_WARN_START);
+			base->log(base->job_log_lvl,
+				"%s: The specified job_set '%s' now has "
+				"the 'job_id' attribute and will be used.\n",
+				base->pi_name, base->job_set_name);
+		}
+	}
+out:
 	return;
- err:
+err:
 	base->job_set = NULL;
 	base->job_id_idx = -1;
 }
@@ -209,9 +219,12 @@ base_data_t base_config(struct attr_value_list *avl,
 	base->producer_name = strdup(value);
 
 	value = av_value(avl, "component_id");
-	if (value)
-		base->component_id = (uint64_t)(atoi(value));
-
+	if (value) {
+		/* Skip non isdigit prefix */
+		while (*value != '\0' && !isdigit(*value)) value++;
+		if (*value != '\0')
+			base->component_id = (uint64_t)(atoi(value));
+	}
 	value = av_value(avl, "instance");
 	if (!value) {
 		log(LDMSD_LERROR,
@@ -384,14 +397,14 @@ void base_sample_begin(base_data_t base)
 
 	ts = ldms_transaction_timestamp_get(base->set);
 
-	if (base->job_slot_list_idx < 0) {
+	if (base->job_slot_list_idx < 0 && base->job_list_idx < 0) {
 		start = ldms_metric_get_u64(base->job_set, base->job_start_idx);
 		end = ldms_metric_get_u64(base->job_set, base->job_end_idx);
 		if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
 			job_id = ldms_metric_get_u64(base->job_set, base->job_id_idx);
 			app_id = ldms_metric_get_u64(base->job_set, base->app_id_idx);
 		}
-	} else {
+	} else if (base->job_slot_list_idx >= 0) {
 		int slot_idx = ldms_metric_get_s32(base->job_set, base->job_slot_list_tail_idx);
 		int slot = ldms_metric_array_get_s32(base->job_set, base->job_slot_list_idx, slot_idx);
 		if (slot < 0) {
@@ -403,6 +416,16 @@ void base_sample_begin(base_data_t base)
 		if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
 			job_id = ldms_metric_array_get_u64(base->job_set, base->job_id_idx, slot);
 			app_id = ldms_metric_array_get_u64(base->job_set, base->app_id_idx, slot);
+		}
+	} else {
+		enum ldms_value_type typ;
+		ldms_mval_t job_list = ldms_metric_get(base->job_set, base->job_list_idx);
+		ldms_mval_t rec = ldms_list_last(base->job_set, job_list, &typ, NULL);
+		start = ldms_record_get_u32(rec, base->job_start_idx);
+		end = ldms_record_get_u32(rec, base->job_end_idx);
+		if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
+			job_id = ldms_record_get_u64(rec, base->job_id_idx);
+			app_id = ldms_record_get_u64(rec, base->app_id_idx);
 		}
 	}
  out:
