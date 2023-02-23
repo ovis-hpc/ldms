@@ -398,7 +398,7 @@ void ovis_log_destroy(ovis_log_t log)
 	__ovis_log_put(log);
 }
 
-ovis_log_t ovis_log_create(const char *subsys_name, const char *desc)
+ovis_log_t ovis_log_register(const char *subsys_name, const char *desc)
 {
 	ovis_log_t log;
 
