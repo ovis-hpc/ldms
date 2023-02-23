@@ -1185,7 +1185,7 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         arg = self.handle_args('term', arg)
         if arg:
-            rc, msg = self.plugn_term(arg['name'])
+            rc, msg = self.comm.plugn_term(arg['name'])
             if rc:
                 print(f'Error terminating plugin {arg["name"]}: {msg}')
 
