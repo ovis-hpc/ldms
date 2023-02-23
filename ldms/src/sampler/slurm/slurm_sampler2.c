@@ -160,7 +160,8 @@ typedef struct job_data {
 	char job_tag[JOB_TAG_STR_LEN];
 	union ldms_value v[JOB_REC_LEN];
 	ldms_mval_t rec_inst;
-	/* List of tasks that has not been assigned the task_pid. */
+	int exited;	/* True if this job is on the deleting list */
+	/* List of tasks that have not been assigned the task_pid. */
 	TAILQ_HEAD(task_list, task_data) task_list;
 	struct rbn rbn;
 	TAILQ_ENTRY(job_data) ent; /* stopped_job_list entry */
@@ -285,27 +286,29 @@ static size_t task_rec_size;
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=slurm_sampler producer=<producer_name> instance=<instance_name>\n"
-		"         [stream=<stream_name>] [component_id=<component_id>] [perm=<permissions>]\n"
-		"         [uid=<user_name>] [gid=<group_name>]\n"
-		"         [job_count=<job_count>] [task_count=<task_count>]"
-		"         [delete_time=<delete_time>]\n"
-		"     producer      A unique name for the host providing the data\n"
-		"     instance      A unique name for the metric set\n"
-		"     stream        A stream name to subscribe the slurm_sampler2 to. Defaults to '" DEFAULT_STREAM_NAME "'\n"
-		"     component_id  A unique number for the component being monitored. Defaults to zero.\n"
-		"     uid           The user-id of the set's owner (defaults to geteuid())\n"
-		"     gid           The group id of the set's owner (defaults to getegid())\n"
-		"     perm          The set's access permissions (defaults to 0777)\n"
-		"     job_count     The estimated maximum number of jobs. The actual number can be larger.\n"
-		"                   Default to 8\n"
-		"     task_count    The estimated maximum number of tasks/job. The actual number can be larger.\n"
-		"                   Default to 8\n"
-		"     delete_time   The data of completed jobs will persist in the set at least 'delete_time' seconds\n"
-		"                   before it gets deleted from the set.\n"
-		"                   0 means to delete any completed jobs when\n"
-		"                   the plugin receives the data of a new job. Default to 5 seconds.\n"
-		"                   -1 means to not delete any jobs. This is for debugging.\n";
+	return \
+	"config name=slurm_sampler producer=<producer_name> instance=<instance_name>\n"
+	"         [stream=<stream_name>] [component_id=<component_id>] [perm=<permissions>]\n"
+	"         [uid=<user_name>] [gid=<group_name>]\n"
+	"         [job_count=<job_count>] [task_count=<task_count>]"
+	"         [delete_time=<delete_time>]\n"
+	"     producer      A unique name for the host providing the data\n"
+	"     instance      A unique name for the metric set\n"
+	"     stream        A stream name to subscribe the slurm_sampler2 to.\n"
+	"                   Defaults to '" DEFAULT_STREAM_NAME "'\n"
+	"     component_id  A unique number for the component being monitored.\n"
+	"                   The default is 0\n"
+	"     uid           The user-id of the set's owner (defaults to geteuid())\n"
+	"     gid           The group id of the set's owner (defaults to getegid())\n"
+	"     perm          The set's access permissions (defaults to 0777)\n"
+	"     delete_time   The data of completed jobs will persist in the \n"
+	"                   set at least 'delete_time' seconds before deletion.\n"
+	"                   Specifying 0 will delete completed jobs when the "
+	"                   data is received for a new. (default 5 seconds).\n"
+	"     job_count     The estimated maximum number of concurrent jobs. The\n"
+	"                   actual number may be larger (defaults to 8)\n"
+	"     task_count    The estimated maximum number of tasks/job. The actual\n"
+	"                   number may be larger (defaults to 8).\n";
 }
 
 static int create_metric_set()
@@ -451,8 +454,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	/* component_id */
 	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = (uint64_t)(atoi(value));
+	comp_id = 0;
+	if (value) {
+		/* Skip non isdigit prefix */
+		while (*value != '\0' && !isdigit(*value)) value++;
+		if (*value != '\0')
+			comp_id = (uint64_t)(atoi(value));
+	}
 
 	/* uid */
 	value = av_value(avl, "uid");
@@ -1033,7 +1041,7 @@ static void handle_task_exit(job_data_t job, json_entity_t e)
 	}
 	task->v[TASK_EXIT_STATUS].v_u64 = json_value_int(av);
 	job->v[JOB_STATE].v_u64 = JOB_STOPPING;
-
+	job->v[TASK_COUNT].v_u64 -= 1;
 	ldms_transaction_begin(set);
 	job_metric_set(job, JOB_STATE);
 	task_metric_set(task, TASK_EXIT_STATUS);
@@ -1115,10 +1123,15 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	} else if (0 == strncmp(event_name->str, "step_init", 9)) {
 		job = job_data_find(job_id);
 		if (!job) {
-			msglog(LDMSD_LERROR, SAMP ": '%s' event was received "
-					    "for job %d with no job_data.\n",
-					    event_name->str, job_id);
-			goto unlock_tree;
+			job = job_data_alloc(job_id);
+			if (!job) {
+				msglog(LDMSD_LCRITICAL,
+					SAMP ": Memory allocation error when "
+					"creating a job data object.\n");
+				rc = ENOMEM;
+				goto unlock_tree;
+			}
+			handle_job_init(job, entity);
 		}
 		handle_step_init(job, entity);
 	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
@@ -1139,6 +1152,11 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			goto unlock_tree;
 		}
 		handle_task_exit(job, entity);
+		if (job->v[TASK_COUNT].v_u64 == 0) {
+			handle_job_exit(job, entity);
+			TAILQ_INSERT_TAIL(&complete_job_list, job, ent);
+			job->exited = 1;
+		}
 	} else if (0 == strncmp(event_name->str, "exit", 4)) {
 		job = job_data_find(job_id);
 		if (!job) {
@@ -1147,15 +1165,18 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 					event_name->str, job_id);
 			goto unlock_tree;
 		}
-		handle_job_exit(job, entity);
-		/*
-		 * Add job to the stopped_job_list.
-		 * It will be cleanup after it has stopped
-		 * for at least CLEANUP_WAIT_TIME.
-		 *
-		 * The cleanup occurs in handle_job_init().
-		 */
-		TAILQ_INSERT_TAIL(&complete_job_list, job, ent);
+		if (!job->exited) {
+			handle_job_exit(job, entity);
+			/*
+			* Add job to the stopped_job_list.
+			* It will be cleanup after it has stopped
+			* for at least CLEANUP_WAIT_TIME.
+			*
+			* The cleanup occurs in handle_job_init().
+			*/
+			TAILQ_INSERT_TAIL(&complete_job_list, job, ent);
+			job->exited = 1;
+		}
 	} else {
 		msglog(LDMSD_LDEBUG, SAMP ": ignoring event '%s'\n",
 						   event_name->str);
