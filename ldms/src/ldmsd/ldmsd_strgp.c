@@ -59,7 +59,6 @@
 #include <ovis_util/util.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldms_xprt.h"
 #include "config.h"
 
 /* Defined in ldmsd.c */

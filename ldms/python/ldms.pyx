@@ -3015,11 +3015,13 @@ cdef class Xprt(object):
     cdef int rail_eps
 
     def __init__(self, name="sock", auth="none", auth_opts=None,
-                       rail_eps = 0, rail_recv_limit = -1,
-                       rail_rate_limit = -1,
+                       rail_eps = 1, rail_recv_limit = ldms.RAIL_UNLIMITED,
+                       rail_rate_limit = ldms.RAIL_UNLIMITED,
                        Ptr xprt_ptr=None):
         cdef attr_value_list *avl = NULL;
         cdef int rc;
+        if rail_eps < 1:
+            raise ValueError("rail_eps must be greater than 0")
         if auth is None:
             auth = "none"
         self.ctxt = None
@@ -3060,12 +3062,9 @@ cdef class Xprt(object):
                     raise OSError(rc, "av_add() error: {}"\
                                   .format(ERRNO_SYM(rc)))
         self.rail_eps = rail_eps
-        if rail_eps > 0:
-            self.xprt = ldms_xprt_rail_new(BYTES(name), rail_eps,
+        self.xprt = ldms_xprt_rail_new(BYTES(name), rail_eps,
                                         rail_recv_limit, rail_rate_limit,
                                         BYTES(auth), avl)
-        else:
-            self.xprt = ldms_xprt_new_with_auth(BYTES(name), BYTES(auth), avl)
         av_free(avl)
         if not self.xprt:
             raise ConnectionError(errno, "Error creating transport, errno: {}"\
@@ -3357,22 +3356,20 @@ cdef class Xprt(object):
     def get_threads(self):
         """Get the threads associated to the endpoint"""
         cdef pthread_t *out
-        cdef pthread_t buff
         cdef int n, rc
-        if self.rail_eps > 0:
-            out = <pthread_t*>calloc(self.rail_eps, sizeof(pthread_t))
-            n = self.rail_eps
-        else:
-            out = &buff
-            n = 1
+        assert(self.rail_eps > 0)
+        out = <pthread_t*>calloc(self.rail_eps, sizeof(pthread_t))
+        if not out:
+            raise RuntimeError(f"calloc() error: {errno}")
+        n = self.rail_eps
         rc = ldms_xprt_get_threads(self.xprt, out, n)
         if rc < 0:
-            if self.rail_eps > 0:
-                free(out)
+            free(out)
             raise RuntimeError(f"ldms_xprt_get_threads() error: {rc}")
         lst = list()
         for i in range(0, n):
             lst.append(int(out[i]))
+        free(out)
         return lst
 
     def set_xprt_free_cb(self, cb = None):
@@ -3391,8 +3388,7 @@ cdef class Xprt(object):
             ldms_xprt_ctxt_set(self.xprt, NULL, NULL)
 
     def get_send_credits(self):
-        if self.rail_eps <= 0:
-            raise RuntimeError("Not a rail")
+        assert(self.rail_eps > 0)
         cdef uint64_t *tmp = <uint64_t*>calloc(self.rail_eps, sizeof(uint64_t))
         cdef int rc, i
         if not tmp:

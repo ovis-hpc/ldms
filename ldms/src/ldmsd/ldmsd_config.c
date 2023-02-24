@@ -78,7 +78,6 @@
 #include <mmalloc/mmalloc.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldms_xprt.h"
 #include "ldmsd_request.h"
 #include "config.h"
 
