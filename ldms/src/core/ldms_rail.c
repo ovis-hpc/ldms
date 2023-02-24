@@ -101,6 +101,7 @@ static void __rail_priority_set(ldms_t _r, int prio);
 static void __rail_cred_get(ldms_t _r, ldms_cred_t lcl, ldms_cred_t rmt);
 static int __rail_update(ldms_t _r, struct ldms_set *set, ldms_update_cb_t cb, void *arg);
 static int __rail_get_threads(ldms_t _r, pthread_t *out, int n);
+zap_ep_t __rail_get_zap_ep(ldms_t x);
 
 static struct ldms_xprt_ops_s __rail_ops = {
 	.connect      = __rail_connect,
@@ -126,6 +127,7 @@ static struct ldms_xprt_ops_s __rail_ops = {
 
 	.update       = __rail_update,
 	.get_threads  = __rail_get_threads,
+	.get_zap_ep   = __rail_get_zap_ep,
 };
 
 static int __rail_id_cmp(void *k, const void *tk)
@@ -1192,4 +1194,12 @@ int ldms_xprt_rail_send_credit_get(ldms_t _r, uint64_t *credits, int n)
 		credits[i] = r->eps[i].send_credit;
 	}
 	return 0;
+}
+
+zap_ep_t __rail_get_zap_ep(ldms_t x)
+{
+	ldms_rail_t r = (void*)x;
+	if (!r->eps[0].ep)
+		return NULL;
+	return r->eps[0].ep->zap_ep;
 }

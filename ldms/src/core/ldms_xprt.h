@@ -392,11 +392,14 @@ struct ldms_xprt_ops_s {
 	int (*update)(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void *arg);
 
 	int (*get_threads)(ldms_t x, pthread_t *out, int n);
+
+	zap_ep_t (*get_zap_ep)(ldms_t x);
 };
 
 struct ldms_xprt {
 	enum ldms_xtype_e xtype;
 	struct ldms_xprt_ops_s ops;
+	int disconnected;
 
 	/* Semaphore and return code for synchronous xprt calls */
 	sem_t sem;
@@ -405,7 +408,6 @@ struct ldms_xprt {
 	char name[LDMS_MAX_TRANSPORT_NAME_LEN];
 	uint32_t ref_count;
 	pthread_mutex_t lock;
-	int disconnected;
 	zap_err_t zerrno;
 	struct ldms_xprt_stats stats;
 

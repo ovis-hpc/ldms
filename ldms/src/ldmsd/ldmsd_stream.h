@@ -3,7 +3,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "ldms_xprt.h"
+#include "ldms.h"
 #include <ovis_json/ovis_json.h>
 
 struct ldmsd_stream_client_s;

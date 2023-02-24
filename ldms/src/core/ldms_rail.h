@@ -128,6 +128,7 @@ typedef struct ldms_rail_dir_ctxt_s {
 struct ldms_rail_s {
 	enum ldms_xtype_e xtype;
 	struct ldms_xprt_ops_s ops;
+	int disconnected;
 
 	/* Semaphore and return code for synchronous xprt calls */
 	sem_t sem;

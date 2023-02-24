@@ -192,6 +192,11 @@ cdef extern from "ovis_util/util.h" nogil:
     int av_add(attr_value_list *avl, const char *name, const char *value)
     void av_free(attr_value_list *avl)
 
+cdef extern from "ldms_rail.h" nogil:
+    cpdef enum :
+        __RAIL_UNLIMITED
+        RAIL_UNLIMITED "__RAIL_UNLIMITED"
+
 cdef extern from "ldms.h" nogil:
     struct ldms_xprt:
         pass

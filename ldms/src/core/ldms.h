@@ -58,6 +58,8 @@
 #include <asm/byteorder.h>
 #include <openssl/sha.h>
 #include <regex.h>
+#include <assert.h>
+#include "zap/zap.h"
 #include "ovis-ldms-config.h"
 #include "ldms_core.h"
 #include "coll/rbt.h"
@@ -918,6 +920,11 @@ size_t ldms_xprt_msg_max(ldms_t x);
  * \retval -ENOMEM if the buffer is to small.
  */
 int ldms_xprt_get_threads(ldms_t x, pthread_t *out, int n);
+
+/**
+ * \brief Return the main underlying zap endpoint associated with the xprt.
+ */
+zap_ep_t ldms_xprt_get_zap_ep(ldms_t x);
 
 /**
  * \brief Check if \c x is a rail.

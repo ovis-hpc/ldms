@@ -68,11 +68,12 @@
 #include <ovis_json/ovis_json.h>
 #include <arpa/inet.h>
 #include "mmalloc.h"
+#include "zap/zap.h"
 #include "ldms.h"
+#include "ldms_xprt.h"
 #include "ldmsd.h"
 #include "ldmsd_request.h"
 #include "ldmsd_stream.h"
-#include "ldms_xprt.h"
 
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 /*
@@ -6519,8 +6520,9 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset)
 
 		ldms_xprt_stats(x, &xs);
 		xprt_count += 1;
-		zap_ep_state_t ep_state =
-			(x->zap_ep ? zap_ep_state(x->zap_ep) : ZAP_EP_CLOSE);
+		zap_ep_t zep;
+		zep = ldms_xprt_get_zap_ep(x);
+		zap_ep_state_t ep_state = (zep ? zap_ep_state(zep) : ZAP_EP_CLOSE);
 		switch (ep_state) {
 		case ZAP_EP_LISTENING:
 			xprt_listen_count += 1;
@@ -6553,7 +6555,6 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset)
 				op_sum[op_e].op_max_xprt = ldms_xprt_get(x);
 			}
 		}
-		assert(x->ref_count > 1);
 		ldms_xprt_put(x);
 	}
 	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
@@ -6591,9 +6592,11 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset)
 		memset(&ss_remote, 0, sizeof(ss_remote));
 		strncpy(ip_str, "0.0.0.0:0", sizeof(ip_str));
 		strncpy(xprt_type, "????", sizeof(xprt_type));
-		if (op->op_min_xprt && op->op_min_xprt->zap_ep) {
+		zap_ep_t zep;
+		zep = (op->op_min_xprt)?ldms_xprt_get_zap_ep(op->op_min_xprt):NULL;
+		if (zep) {
 			socklen = sizeof(ss_local);
-			zerr = zap_get_name(op->op_min_xprt->zap_ep,
+			zerr = zap_get_name(zep,
 					    (struct sockaddr *)&ss_local,
 					    (struct sockaddr *)&ss_remote,
 					    &socklen);
@@ -6609,9 +6612,10 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset)
 		__APPEND("    \"max_us\": %ld,\n", (op->op_count ? op->op_max_us : 0));
 		memset(&ss_remote, 0, sizeof(ss_remote));
 
-		if (op->op_max_xprt && op->op_max_xprt->zap_ep) {
+		zep = (op->op_max_xprt)?ldms_xprt_get_zap_ep(op->op_max_xprt):NULL;
+		if (zep) {
 			socklen = sizeof(ss_local);
-			zerr = zap_get_name(op->op_max_xprt->zap_ep,
+			zerr = zap_get_name(zep,
 					    (struct sockaddr *)&ss_local,
 					    (struct sockaddr *)&ss_remote,
 					    &socklen);
@@ -7025,7 +7029,7 @@ err:
 
 static const char *__xprt_prdcr_name_get(ldms_t x)
 {
-	ldmsd_xprt_ctxt_t ctxt = x->app_ctxt;
+	ldmsd_xprt_ctxt_t ctxt = ldms_xprt_ctxt_get(x);
 	if (!ctxt)
 		return NULL;
 	return ctxt->name;

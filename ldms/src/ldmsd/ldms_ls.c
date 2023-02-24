@@ -70,7 +70,6 @@
 #include <pwd.h>
 #include <grp.h>
 #include "ldms.h"
-#include "ldms_xprt.h"
 #include "config.h"
 
 #define LDMS_LS_MEM_SZ_ENVVAR "LDMS_LS_MEM_SZ"
