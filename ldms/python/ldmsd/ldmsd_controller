@@ -66,6 +66,7 @@ from ldmsd import ldmsd_util
 from ldmsd.ldmsd_communicator import LDMSD_Request, LDMSD_Req_Attr
 from ldmsd.ldmsd_communicator import Communicator, fmt_status
 import errno
+from _ast import Or
 
 LDMSD_REQ_SOM_F=1
 LDMSD_REQ_EOM_F=2
@@ -1404,7 +1405,8 @@ class LdmsdCmdParser(cmd.Cmd):
             for attr in msg:
                 print(attr.attr_value.translate(tbl, delete=b' \x00').decode())
         elif msg and msg != "":
-            print(msg)
+            tbl = bytes(range(0, 256)) # identity mapping tbl
+            print(msg[0].attr_value.translate(tbl, delete=b' \x00').decode())
 
     def complete_greeting(self, text, line, begidx, endidx):
         return self.__complete_attr_list('greeting', text)
