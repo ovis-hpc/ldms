@@ -329,6 +329,7 @@ typedef union ldms_value {
 	int64_t v_s64;
 	float v_f;
 	double v_d;
+	struct ldms_timestamp v_ts;
 	struct ldms_list v_lh;
 	struct ldms_list_entry v_le;
 	struct ldms_record_inst v_rec_inst;
@@ -345,8 +346,7 @@ typedef union ldms_value {
 	int64_t a_s64[OVIS_FLEX_UNION];
 	float a_f[OVIS_FLEX_UNION];
 	double a_d[OVIS_FLEX_UNION];
-
-	struct ldms_timestamp v_ts;
+	struct ldms_timestamp a_ts[OVIS_FLEX_UNION];
 } *ldms_mval_t;
 
 typedef struct ldms_name {
