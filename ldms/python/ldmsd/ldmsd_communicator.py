@@ -983,11 +983,15 @@ class Communicator(object):
         """
         attr_list = []
         if name:
-            attr_list.append(LMDSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name))
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name))
         if offset:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.OFFSET, value=offset))
         if test:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TEST, value=test))
+        if level:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.LEVEL, value=level))
+        if path:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PATH, value=path))
         if len(attr_list) == 0:
             attr_list = None
         req = LDMSD_Request(command_id=LDMSD_Request.GREETING, attrs=attr_list)
