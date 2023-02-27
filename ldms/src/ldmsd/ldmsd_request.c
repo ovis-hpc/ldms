@@ -5712,12 +5712,13 @@ static int __greeting_path_resp_handler(ldmsd_req_cmd_t rcmd)
 	struct ldmsd_req_attr_s my_attr;
 	ldmsd_req_attr_t server_attr;
 	char *path;
+	size_t len;
 	server_attr = ldmsd_first_attr((ldmsd_req_hdr_t)rcmd->reqc->req_buf);
 	my_attr.discrim = 1;
 	my_attr.attr_id = LDMSD_ATTR_STRING;
 	/* +1 for : */
-	my_attr.attr_len = server_attr->attr_len + strlen((char *)rcmd->ctxt) + 1;
-	path = malloc(my_attr.attr_len);
+	len = my_attr.attr_len = server_attr->attr_len + strlen((char *)rcmd->ctxt) + 1;
+	path = calloc(1, len);
 	if (!path) {
 		rcmd->org_reqc->errcode = ENOMEM;
 		ldmsd_send_req_response(rcmd->org_reqc, "Out of memory");
@@ -5725,10 +5726,8 @@ static int __greeting_path_resp_handler(ldmsd_req_cmd_t rcmd)
 	}
 	ldmsd_hton_req_attr(&my_attr);
 	ldmsd_append_reply(rcmd->org_reqc, (char *)&my_attr, sizeof(my_attr), LDMSD_REQ_SOM_F);
-	memcpy(path, server_attr->attr_value, server_attr->attr_len);
-	path[server_attr->attr_len] = ':';
-	strcpy(&path[server_attr->attr_len + 1], rcmd->ctxt);
-	ldmsd_append_reply(rcmd->org_reqc, path, ntohl(my_attr.attr_len), 0);
+	snprintf(path, len, "%s:%s", server_attr->attr_value, (char*)rcmd->ctxt);
+	ldmsd_append_reply(rcmd->org_reqc, path, len, 0);
 	my_attr.discrim = 0;
 	ldmsd_append_reply(rcmd->org_reqc, (char *)&my_attr.discrim,
 				sizeof(my_attr.discrim), LDMSD_REQ_EOM_F);
@@ -5744,32 +5743,36 @@ static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
 	struct ldmsd_req_attr_s attr;
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	prdcr = ldmsd_prdcr_first();
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);;
-	char *myself = strdup(ldmsd_myname_get());
-	if (!myself) {
-		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
-		return ENOMEM;
-	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	char *myself;
+	myself = (char *)ldmsd_myname_get();
+	if (!myself || (myself[0] == '\0'))
+		myself = "ldmsd";
 	if (!prdcr) {
+		linebuf_printf(reqc, "%s", myself);
 		attr.discrim = 1;
 		attr.attr_id = LDMSD_ATTR_STRING;
-		attr.attr_len = strlen(myself);
+		attr.attr_len = reqc->line_off + 1;
 		ldmsd_hton_req_attr(&attr);
 		ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
-		ldmsd_append_reply(reqc, myself, strlen(myself)+1, 0);
-		free(myself);
+		ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off + 1, 0);
 		attr.discrim = 0;
 		ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(attr.discrim), LDMSD_REQ_EOM_F);
 	} else {
 		ldmsd_prdcr_lock(prdcr);
+		char *ctxt = strdup(myself);
+		if (!ctxt) {
+			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+			return ENOMEM;
+		}
 		rcmd = alloc_req_cmd_ctxt(prdcr->xprt, ldms_xprt_msg_max(prdcr->xprt),
 						LDMSD_GREETING_REQ, reqc,
-						__greeting_path_resp_handler, myself);
+						__greeting_path_resp_handler, ctxt);
 		ldmsd_prdcr_unlock(prdcr);
 		if (!rcmd) {
 			reqc->errcode = ENOMEM;
 			ldmsd_send_req_response(reqc, "Out of Memory");
-			free(myself);
+			free(ctxt);
 			return 0;
 		}
 		attr.attr_id = LDMSD_ATTR_PATH;
