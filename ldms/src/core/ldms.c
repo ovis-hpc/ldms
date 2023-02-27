@@ -3176,6 +3176,11 @@ double ldms_mval_get_double(ldms_mval_t mv)
 #endif
 }
 
+struct ldms_timestamp ldms_mval_get_ts(ldms_mval_t mv)
+{
+	return mv->v_ts;
+}
+
 const char *ldms_mval_array_get_str(ldms_mval_t mv)
 {
 	return mv->a_char;
@@ -3244,6 +3249,11 @@ double ldms_mval_array_get_double(ldms_mval_t mv, int idx)
 	uint64_t tmp = __le64_to_cpu(*(uint64_t*)&mv->a_d[idx]);
 	return *(double *)&tmp;
 #endif
+}
+
+struct ldms_timestamp ldms_mval_array_get_ts(ldms_mval_t mv, int idx)
+{
+	return mv->a_ts[idx];
 }
 
 void __list_append(ldms_heap_t heap, ldms_mval_t lh, ldms_mval_t le)

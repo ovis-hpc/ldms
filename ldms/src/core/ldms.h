@@ -2584,7 +2584,7 @@ void ldms_mval_set_s32(ldms_mval_t mv, int32_t v);
 void ldms_mval_set_s64(ldms_mval_t mv, int64_t v);
 void ldms_mval_set_float(ldms_mval_t mv, float v);
 void ldms_mval_set_double(ldms_mval_t mv, double v);
-
+void ldms_mval_set_ts(ldms_mval_t mv, struct ldms_timestamp v);
 void ldms_mval_array_set_str(ldms_mval_t mv, const char *str, size_t count);
 void ldms_mval_array_set_char(ldms_mval_t mv, int idx, char v);
 void ldms_mval_array_set_u8(ldms_mval_t mv, int idx, uint8_t v);
@@ -2597,6 +2597,7 @@ void ldms_mval_array_set_s32(ldms_mval_t mv, int idx, int32_t v);
 void ldms_mval_array_set_s64(ldms_mval_t mv, int idx, int64_t v);
 void ldms_mval_array_set_float(ldms_mval_t mv, int idx, float v);
 void ldms_mval_array_set_double(ldms_mval_t mv, int idx, double v);
+void ldms_mval_array_set_ts(ldms_mval_t mv, int idx, struct ldms_timestamp v);
 
 /**
  * \brief Get the value from a metric value
@@ -2617,7 +2618,7 @@ int32_t ldms_mval_get_s32(ldms_mval_t mv);
 int64_t ldms_mval_get_s64(ldms_mval_t mv);
 float ldms_mval_get_float(ldms_mval_t mv);
 double ldms_mval_get_double(ldms_mval_t mv);
-
+struct ldms_timestamp ldms_mval_get_ts(ldms_mval_t mv);
 const char *ldms_mval_array_get_str(ldms_mval_t mv);
 char ldms_mval_array_get_char(ldms_mval_t mv, int idx);
 uint8_t ldms_mval_array_get_u8(ldms_mval_t mv, int idx);
@@ -2630,7 +2631,7 @@ int32_t ldms_mval_array_get_s32(ldms_mval_t mv, int idx);
 int64_t ldms_mval_array_get_s64(ldms_mval_t mv, int idx);
 float ldms_mval_array_get_float(ldms_mval_t mv, int idx);
 double ldms_mval_array_get_double(ldms_mval_t mv, int idx);
-
+struct ldms_timestamp ldms_mval_array_get_ts(ldms_mval_t mv, int idx);
 
 /**
  * \brief Append a new value to a list
