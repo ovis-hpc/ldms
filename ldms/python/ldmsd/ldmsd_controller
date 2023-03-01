@@ -306,7 +306,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if arg:
             rc, msg = self.comm.plugn_load(arg['name'])
             if rc:
-                print(f'Error {rc} loading plugin {arg["name"]}: {msg}')
+                print(f'Error loading plugin {arg["name"]}: {msg}')
 
     def complete_load(self, text, line, begidx, endidx):
         return self.__complete_attr_list('load', text)
@@ -380,7 +380,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if arg:
             rc, msg = self.comm.prdcr_start(arg['name'], regex=False, reconnect=arg['interval'])
             if rc:
-                print(f'Error starting {prdcr["name"]}: {msg}')
+                print(f'Error starting prdcr {arg["name"]}: {msg}')
 
     def complete_prdcr_start(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_start', text)
