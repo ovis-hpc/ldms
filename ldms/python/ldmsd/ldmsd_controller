@@ -851,13 +851,17 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_daemon_status(self, arg):
         """
         Report the daemon status
-        Parameters: NONE
+        Keyword Parameter:
+        thread_stats - Keyword to return daemon thread status along with
+                       current daemon status
         """
-        rc, msg = self.comm.daemon_status()
+        arg = self.handle_args('daemon_status', arg)
+        rc, msg = self.comm.daemon_status(arg['thread_stats'])
         if rc == 0:
             msg = fmt_status(msg)
             print(f"Deamon State: {msg['state']}\n")
-            self.display_thread_stats(msg['thread_stats'])
+            if arg['thread_stats']:
+                self.display_thread_stats(msg['thread_stats'])
         else:
             print(f'Error getting daemon status')
 
