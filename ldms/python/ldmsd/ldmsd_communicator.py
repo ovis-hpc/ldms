@@ -135,7 +135,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'stream_client_dump': {'req_attr': [], 'opt_attr': []},
                       'stream_status' : {'req_attr': [], 'opt_attr': []},
                       ##### Daemon #####
-                      'daemon_status': {'req_attr': [], 'opt_attr': []},
+                      'daemon_status': {'req_attr': [], 'opt_attr': ['thread_stats']},
                       ##### Misc. #####
                       'greeting': {'req_attr': [], 'opt_attr': ['name', 'offset', 'level', 'test', 'path']},
                       'example': {'req_attr': [], 'opt_attr': []},
@@ -2939,9 +2939,22 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def daemon_status(self):
-        """Query the daemon's status"""
-        req = LDMSD_Request(command_id=LDMSD_Request.DAEMON_STATUS)
+    def daemon_status(self, thread_stats=None):
+        """
+        Query the daemon's status
+        Parameters:
+        - True/False boolean that returns thread statistics in response if True
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's current status. if thread_stats is True, it
+               also returns the daemon's thread statistics
+        """
+        attr_list = None
+        if thread_stats:
+            attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STRING, value='true') ]
+        req = LDMSD_Request(command_id=LDMSD_Request.DAEMON_STATUS,
+                            attrs=attr_list)
         try:
             req.send(self)
             resp = req.receive(self)

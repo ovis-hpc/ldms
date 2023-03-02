@@ -5476,16 +5476,22 @@ out:
 int __daemon_status_json_obj(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
+	char *thread_stats = NULL;
 	char *json_s;
 	size_t json_sz;
 
-	rc = linebuf_printf(reqc, "{\"state\":\"ready\",\n");
+	rc = linebuf_printf(reqc, "{\"state\":\"ready\"");
 	if (rc)
 		return rc;
+	thread_stats = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+	if (!thread_stats) {
+		rc = linebuf_printf(reqc, "}");
+		return rc;
+	}
 	json_s = __thread_stats_as_json(&json_sz);
 	if (!json_s)
 		return ENOMEM;
-	rc = linebuf_printf(reqc, "\"thread_stats\":%s\n", json_s);
+	rc = linebuf_printf(reqc, ",\n\"thread_stats\":%s\n", json_s);
 	free(json_s);
 	if (rc)
 		return rc;
