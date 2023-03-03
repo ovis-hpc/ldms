@@ -85,15 +85,23 @@ def cvt_intrvl_off_to_str(interval_us, offset_us):
 
 class LdmsdCmdParser(cmd.Cmd):
     def __init__(self, host = None, port = None, xprt = None, infile=None,
-                 auth=None, auth_opt=None):
+                 auth=None, auth_opt=None, debug=False):
         self.msg_no = 1
 
         if host and port:
-            self.comm = Communicator(xprt,
-                                     host,
-                                     port,
-                                     auth,
-                                     auth_opt)
+            if debug:
+                self.comm = Communicator(xprt,
+                                         host,
+                                         port,
+                                         auth,
+                                         auth_opt,
+                                         recv_timeout=None)
+            else:
+                self.comm = Communicator(xprt,
+                                         host,
+                                         port,
+                                         auth,
+                                         auth_opt)
             self.comm.connect()
             self.prompt = "{0}:{1}:{2}> ".format(xprt, host, port)
         else:
@@ -2168,7 +2176,8 @@ if __name__ == "__main__":
                                    port = args.port,
                                    xprt = args.xprt,
                                    auth = args.auth,
-                                   auth_opt = auth_opt)
+                                   auth_opt = auth_opt,
+                                   debug = args.debug)
 
         if args.source is not None or args.script is not None or args.cmd is not None:
             if args.source is not None:
