@@ -857,7 +857,7 @@ class Communicator(object):
     CTRL_STATES = [ INIT, CONNECTED, CLOSED ]
     CFG_CNTR = 0
 
-    def __init__(self, xprt, host, port, auth=None, auth_opt=None):
+    def __init__(self, xprt, host, port, auth=None, auth_opt=None, recv_timeout=5):
         """Create a communicator interface with an LDMS Daemon (LDMSD)
 
         Parameters:
@@ -878,6 +878,7 @@ class Communicator(object):
         self.state = self.INIT
         self.auth = auth
         self.auth_opt = auth_opt
+        self.recv_timeout = recv_timeout
         self.ldms = None
         self.ldms = ldms.Xprt(name=self.xprt, auth=auth, auth_opts=auth_opt)
 
@@ -962,7 +963,7 @@ class Communicator(object):
         if self.state != self.CONNECTED:
             raise RuntimeError("Transport is not connected.")
         try:
-            rsp = self.ldms.recv(timeout=5)
+            rsp = self.ldms.recv(timeout=self.recv_timeout)
         except Exception as e:
             self.close()
             raise ConnectionError(str(e))
