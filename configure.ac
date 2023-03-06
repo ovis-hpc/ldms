@@ -278,6 +278,10 @@ OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
 
 OPTION_WITH_CHECK([kafka], [KAFKA], [librdkafka/rdkafka.h],
 		  [rdkafka], [rd_kafka_new] )
+AC_LIB_HAVE_LINKFLAGS([rdkafka], [], [#include <librdkafka/rdkafka.h>])
+AM_CONDITIONAL([HAVE_KAFKA], [test "x$HAVE_LIBRDKAFKA" = xyes])
+OPTION_WITH([libavro], [LIBAVRO])
+OPTION_WITH([libserdes], [LIBSERDES])
 
 dnl Options for sampler
 OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
@@ -1003,6 +1007,7 @@ ldms/src/store/papi/Makefile
 ldms/src/store/slurm/Makefile
 ldms/src/store/influx/Makefile
 ldms/src/store/kafka/Makefile
+ldms/src/store/avro_kafka/Makefile
 ldms/src/store/store_flatfile/Makefile
 ldms/src/store/store_app/Makefile
 ldms/src/contrib/store/Makefile

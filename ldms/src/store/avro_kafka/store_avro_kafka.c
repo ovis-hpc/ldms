@@ -1,0 +1,952 @@
+/* -*- c-basic-offset: 8 -*-
+ * Copyright 2022 Lawrence Livermore National Security, LLC
+ * Copyright 2022 Open Grid Computing, Inc.
+ *
+ * See the top-level COPYING file for details.
+ *
+ * SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
+ */
+#define _GNU_SOURCE
+#include <sys/queue.h>
+#include <ctype.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <linux/limits.h>
+#include <pthread.h>
+#include <errno.h>
+#include <unistd.h>
+#include <grp.h>
+#include <pwd.h>
+#include <sys/syscall.h>
+#include <assert.h>
+#include <librdkafka/rdkafka.h>
+#include <avro.h>
+#include <libserdes/serdes.h>
+#include <libserdes/serdes-avro.h>
+#include <jansson.h>
+#include "ldms.h"
+#include "ldmsd.h"
+#include "ovis_log.h"
+
+#define STORE_AVRO_KAFKA "store_avro_kafka"
+static ovis_log_t aks_log = NULL;
+
+static ldmsd_msg_log_f msglog __attribute__((format(printf, 2, 3)));
+
+#define LOG(_level_, _fmt_, ...) ovis_log(aks_log, _level_, _fmt_, ##__VA_ARGS__)
+
+#define LOG_ERROR(FMT, ...) LOG(OVIS_LERROR, FMT, ##__VA_ARGS__)
+#define LOG_INFO(FMT, ...) LOG(OVIS_LINFO, FMT, ##__VA_ARGS__)
+#define LOG_WARN(FMT, ...) LOG(OVIS_LWARNING, FMT, ##__VA_ARGS__)
+
+typedef struct aks_handle_s
+{
+	rd_kafka_conf_t *rd_conf;   /* The Kafka configuration */
+	rd_kafka_t *rd;		    /* The Kafka handle */
+	serdes_conf_t *serdes_conf; /* The serdes configuration */
+	serdes_t *serdes;	    /* The serdes handle */
+	enum {
+		AKS_ENCODING_JSON = 1,
+		AKS_ENCODING_AVRO = 2
+	} encoding;
+	char *topic_fmt;	   /* Format to use to create topic name from row */
+	char *topic_name;
+} *aks_handle_t;
+
+static const char *_help_str =
+    "   config name=store_avro_kafka [path=JSON_FILE]\n"
+    "       encoding=MODE"
+    "            MODE is one of JSON or AVRO (default)."
+    "       kafka_conf=PATH"
+    "            Path to a file in Apache Kafka format containing key/value\n"
+    "            pairs defining Kafka configuration properties. See\n"
+    "            https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md\n"
+    "            for a list of supported properties. These configuration\n"
+    "            properties will be applied across all connections to\n"
+    "            Kafka brokers. These configuration properties can be\n"
+    "            overriden by a storage policy (strgp) that is using\n"
+    "            this plugin.\n"
+    "       serdes_conf=PATH"
+    "            Path to a file in Apache Kafka format containing key/value\n"
+    "            pairs defining Avro Serdes configuration properties.\n"
+    "\n"
+    "    Using this plugin with a Storage Policy\n"
+    "    ---------------------------------------\n"
+    "    The `container` of the `strgp` that uses `store_avro_kafka` is a CSV list of\n"
+    "    brokers (host or host:port). For example:\n"
+    "\n"
+    "    strgp_add name=kp plugin=store_avro_kafka container=localhost,br1.kf:9898 \\\n"
+    "              decomposition=decomp.json\n"
+    "";
+static const char *usage(struct ldmsd_plugin *self)
+{
+	return _help_str;
+}
+
+static int schema_cmp(void *a, const void *b)
+{
+	return strcmp((char *)a, (char *)b);
+}
+static pthread_mutex_t schema_rbt_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct rbt schema_tree = { .comparator = schema_cmp };
+
+struct schema_entry
+{
+	char *schema_name;
+	serdes_schema_t *serdes_schema;	/* The serdes schema */
+	ldms_schema_t ldms_schema;	/* The LDMS schema */
+	struct rbn rbn;
+};
+
+static serdes_schema_t *
+serdes_schema_find(aks_handle_t sh, char *schema_name,
+		  ldms_schema_t lschema, ldmsd_row_t row)
+{
+	struct rbn *rbn;
+	serdes_schema_t *sschema = NULL;
+	struct schema_entry *entry;
+	char *json_buf = NULL;
+	size_t json_len;
+	char errstr[512];
+	int rc;
+
+	pthread_mutex_lock(&schema_rbt_lock);
+	/* Check if the schema is already cached */
+	rbn = rbt_find(&schema_tree, schema_name);
+	if (rbn) {
+		entry = container_of(rbn, struct schema_entry, rbn);
+		sschema = entry->serdes_schema;
+		goto out;
+	}
+	entry = calloc(1, sizeof(*entry));
+	if (!entry)
+		goto out;
+
+	/* Check if the schema is already present in the registry */
+	sschema = serdes_schema_get(sh->serdes, schema_name, -1,
+				    errstr, sizeof(errstr));
+	if (sschema)
+		/* Yes, cache it */
+		goto cache;
+
+	/* Create a new schema from the row specification and LDMS schema */
+	rc = ldmsd_row_to_json_avro_schema(row, &json_buf, &json_len);
+	if (rc)
+		goto out;
+	sschema =
+	    serdes_schema_add(sh->serdes,
+			      schema_name, -1,
+			      json_buf, json_len,
+			      errstr, sizeof(errstr));
+	if (!sschema) {
+		LOG_ERROR("%s\n", json_buf);
+		LOG_ERROR("Error '%s' creating schema '%s'\n", errstr, schema_name);
+		goto out;
+	}
+cache:
+	entry->serdes_schema = sschema;
+	entry->ldms_schema = lschema;
+	entry->schema_name = strdup(schema_name);
+	rbn_init(&entry->rbn, entry->schema_name);
+	rbt_ins(&schema_tree, &entry->rbn);
+out:
+	pthread_mutex_unlock(&schema_rbt_lock);
+	if (json_buf)
+		free(json_buf);
+	return sschema;
+}
+
+pthread_mutex_t sk_lock = PTHREAD_MUTEX_INITIALIZER;
+static rd_kafka_conf_t *g_rd_conf = NULL;
+static serdes_conf_t *g_serdes_conf = NULL;
+static int g_serdes_encoding = AKS_ENCODING_AVRO;
+static char *g_topic_fmt = NULL;
+
+static char *strip_whitespace(char *s)
+{
+	char *p;
+	while (*s != '\0' && isspace(*s))
+		s++;
+	if (*s == '\0')
+		return s;
+	p = s;
+	while (*p != '\0' && !isspace(*p))
+		p++;
+	if (*p != '\0')
+		*p = '\0';
+	return s;
+}
+
+static int parse_rd_conf_file(char *path, rd_kafka_conf_t *rd_conf)
+{
+	char err_str[512];
+	char line_buf[1024], *line;
+	int rc = 0;
+	rd_kafka_conf_res_t res;
+	FILE *rd_f;
+
+	/* Default broker URL */
+	res = rd_kafka_conf_set(rd_conf, "bootstrap.servers", "localhost:9092",
+				err_str, sizeof(err_str));
+	if (res) {
+		LOG_ERROR("Error '%s' setting the boostrap.servers default value.\n", err_str);
+		return EINVAL;
+	}
+	rd_f = fopen(path, "r");
+	if (!rd_f) {
+		LOG_ERROR("Error %d opening '%s'.\n", errno, path);
+		return errno;
+	}
+	while (NULL != (line = fgets(line_buf, sizeof(line_buf), rd_f))) {
+		char *key, *value;
+		/* Skip leading whitespace */
+		while (*line != '\0' && isspace(*line))
+			line++;
+		if (*line == '\0')
+			/* skip blank line */
+			continue;
+		if (*line == '#')
+			/* skip comment line */
+			continue;
+		/* Tokenize based on '=' */
+		char *saveptr;
+		key = strtok_r(line, "=", &saveptr);
+		if (!key) {
+			LOG_ERROR("Ignoring mal-formed configuration line '%s'\n", line_buf);
+			continue;
+		}
+		value = strtok_r(NULL, "=", &saveptr);
+		if (!value) {
+			LOG_ERROR("Ignoring mal-formed configuration line '%s'\n", line_buf);
+			/* Ignore malformed line ... missing '=' */
+			continue;
+		}
+		/* Strip whitespace from key and value */
+		key = strip_whitespace(key);
+		value = strip_whitespace(value);
+		LOG_INFO("Applying rd_conf key='%s', value='%s'\n", key, value);
+		res = rd_kafka_conf_set(rd_conf, key, value, err_str, sizeof(err_str));
+		if (res) {
+			LOG_ERROR("Ignoring configuration key '%s'\n", err_str);
+			continue;
+		}
+	}
+	return rc;
+}
+
+static int parse_serdes_conf_file(char *path, serdes_conf_t *s_conf)
+{
+	char err_str[512];
+	char line_buf[1024], *line;
+	int rc = 0;
+	serdes_err_t res;
+
+	FILE *rd_f = fopen(path, "r");
+	if (!rd_f) {
+		LOG_ERROR("Error %d opening '%s'.\n", errno, path);
+		return errno;
+	}
+	while (NULL != (line = fgets(line_buf, sizeof(line_buf), rd_f))) {
+		char *key, *value;
+		/* Skip leading whitespace */
+		while (*line != '\0' && isspace(*line))
+			line++;
+		if (*line == '\0')
+			/* skip blank line */
+			continue;
+		if (*line == '#')
+			/* skip comment line */
+			continue;
+		/* Tokenize based on '=' */
+		char *saveptr;
+		key = strtok_r(line, "=", &saveptr);
+		if (!key) {
+			LOG_ERROR("Ignoring mal-formed configuration line '%s'\n", line_buf);
+			continue;
+		}
+		value = strtok_r(NULL, "=", &saveptr);
+		if (!value) {
+			LOG_ERROR("Ignoring mal-formed configuration line '%s'\n", line_buf);
+			/* Ignore malformed line ... missing '=' */
+			continue;
+		}
+		/* Strip whitespace from key and value */
+		key = strip_whitespace(key);
+		value = strip_whitespace(value);
+		LOG_INFO("Applying s_conf key='%s', value='%s'\n", key, value);
+		res = serdes_conf_set(s_conf, key, value, err_str, sizeof(err_str));
+		if (res) {
+			LOG_ERROR("Ignoring serdes configuration key '%s'\n", err_str);
+			continue;
+		}
+	}
+	return rc;
+}
+
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+		  struct attr_value_list *avl)
+{
+	int rc = 0;
+	char *path, *encoding, *topic;
+	char err_str[512];
+
+	pthread_mutex_lock(&sk_lock);
+
+	if (g_rd_conf) {
+		LOG_ERROR("reconfiguration is not supported\n");
+		rc = EINVAL;
+		goto out;
+	}
+
+	if (!aks_log) {
+		/* Log initialization errors are quiet and will result in
+		 * messages going to the application log instead of our subsystem
+		 * specific log */
+		aks_log = ovis_log_register(STORE_AVRO_KAFKA,
+					    "Storage plugin that implements delivery of Avro "
+					    "serialized messages on the Kafka bus.");
+	}
+
+	g_rd_conf = rd_kafka_conf_new();
+	if (!g_rd_conf) {
+		rc = errno;
+		LOG_ERROR("rd_kafka_conf_new() failed %d\n", rc);
+		goto out;
+	}
+
+	g_serdes_conf = serdes_conf_new(err_str, sizeof(err_str),
+			      /* Default URL */
+			      "schema.registry.url", "http://localhost:8081");
+	if (!g_serdes_conf) {
+		rc = EINVAL;
+		LOG_ERROR("serdes_conf_new failed '%s'\n", err_str);
+		goto out;
+	}
+
+	path = av_value(avl, "kafka_conf");
+	if (path) {
+		rc = parse_rd_conf_file(path, g_rd_conf);
+		if (rc) {
+			LOG_ERROR("Error %d parsing the Kafka configuration file '%s'", rc, path);
+		}
+	}
+	path = av_value(avl, "serdes_conf");
+	if (path) {
+		rc = parse_serdes_conf_file(path, g_serdes_conf);
+		if (rc) {
+			LOG_ERROR("Error %d parsing the Kafka configuration file '%s'", rc, path);
+		}
+	}
+	encoding = av_value(avl, "encoding");
+	if (encoding) {
+		if (0 == strcasecmp(encoding, "avro")) {
+			g_serdes_encoding = AKS_ENCODING_AVRO;
+		} else if (0 == strcasecmp(encoding, "json")) {
+			g_serdes_encoding = AKS_ENCODING_JSON;
+		} else {
+			LOG_ERROR("Ignoring unrecognized serialization encoding '%s'\n", encoding);
+		}
+	}
+	topic = av_value(avl, "topic");
+	if (topic) {
+		char *tmp;
+		g_topic_fmt = strdup(topic);
+		/* Strip any enclosing \" */
+		while (*g_topic_fmt != '\0' && *g_topic_fmt == '\"')
+			g_topic_fmt++;
+		tmp = g_topic_fmt;
+		while (*tmp != '\0' && *tmp != '\"')
+			tmp++;
+		if (*tmp == '\"')
+			*tmp = '\0';
+	} else {
+		/* The default is the schema name */
+		topic = strdup("%S");
+	}
+out:
+	pthread_mutex_unlock(&sk_lock);
+	return rc;
+}
+
+static void term(struct ldmsd_plugin *self)
+{
+	pthread_mutex_lock(&sk_lock);
+	if (g_rd_conf)
+	{
+		rd_kafka_conf_destroy(g_rd_conf);
+		g_rd_conf = NULL;
+	}
+	pthread_mutex_unlock(&sk_lock);
+}
+
+static ldmsd_store_handle_t
+open_store(struct ldmsd_store *s, const char *container, const char *schema,
+	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+{
+	errno = ENOSYS;
+	LOG_ERROR("The open_store() interface (non-decomposition strgp) is not supported.\n");
+	return NULL;
+}
+
+static void *get_ucontext(ldmsd_store_handle_t _sh)
+{
+	/* ucontext is for deprecated `open_store()` API */
+	return NULL;
+}
+
+static int flush_store(ldmsd_store_handle_t _sh)
+{
+	/* no-op */
+	return 0;
+}
+
+static int
+store(ldmsd_store_handle_t _sh, ldms_set_t set,
+      int *metric_arry, size_t metric_count)
+{
+	errno = ENOSYS;
+	LOG_ERROR("store_avro_kafka does not support the `store()` "
+		  "interface (non-decomposition strgp)\n");
+	return ENOSYS;
+}
+
+/* protected by strgp->lock */
+static void close_store(ldmsd_store_handle_t _sh)
+{
+	/* This is called when strgp is stopped to clean up resources */
+	aks_handle_t sh = _sh;
+	if (sh->rd) {
+		rd_kafka_destroy(sh->rd);
+	}
+	if (sh->rd_conf) {
+		rd_kafka_conf_destroy(sh->rd_conf);
+	}
+	if (sh->serdes_conf) {
+		serdes_conf_destroy(sh->serdes_conf);
+	}
+	free(sh);
+}
+
+static aks_handle_t __handle_new(ldmsd_strgp_t strgp)
+{
+	char err_str[512];
+	rd_kafka_conf_res_t res;
+
+	aks_handle_t sh = calloc(1, sizeof(*sh));
+	if (!sh) {
+		LOG_ERROR("Memory allocation failure @%s:%d\n", __func__, __LINE__);
+		goto err_0;
+	}
+
+	sh->encoding = g_serdes_encoding;
+	sh->topic_fmt = strdup(g_topic_fmt);
+
+	sh->rd_conf = rd_kafka_conf_dup(g_rd_conf);
+	if (!sh->rd_conf)
+		goto err_1;
+
+	sh->serdes_conf = serdes_conf_copy(g_serdes_conf);
+	if (!sh->serdes_conf) {
+		LOG_ERROR("%s creating serdes configuration\n", err_str);
+		goto err_2;
+	}
+
+	sh->serdes = serdes_new(sh->serdes_conf, err_str, sizeof(err_str));
+	if (!sh->serdes) {
+		LOG_ERROR("%s creating serdes\n", err_str);
+		goto err_3;
+	}
+
+	/* strgp->container is the CSV list of brokers */
+	const char *param = "bootstrap.servers";
+	res = rd_kafka_conf_set(sh->rd_conf, param,
+				strgp->container, err_str, sizeof(err_str));
+	if (res != RD_KAFKA_CONF_OK)
+	{
+		errno = EINVAL;
+		LOG_ERROR("rd_kafka_conf_set() error: %s\n", err_str);
+		goto err_2;
+	}
+
+	sh->rd = rd_kafka_new(RD_KAFKA_PRODUCER, sh->rd_conf, err_str, sizeof(err_str));
+	if (!sh->rd)
+	{
+		LOG_ERROR("rd_kafka_new() error: %s\n", err_str);
+		goto err_2;
+	}
+	sh->rd_conf = NULL; /* rd_kafka_new consumed and freed the conf */
+
+	return sh;
+
+err_3:
+	serdes_conf_destroy(sh->serdes_conf);
+err_2:
+	rd_kafka_conf_destroy(sh->rd_conf);
+err_1:
+	free(sh);
+err_0:
+	return NULL;
+}
+
+static int set_avro_value_from_col(avro_value_t *col_value,
+				   ldmsd_col_t col)
+{
+	int rc;
+	struct ldms_timestamp ts;
+	avro_value_t val;
+	long ms;
+	enum avro_type_t t = avro_value_get_type(col_value);
+	switch (col->type) {
+	case LDMS_V_TIMESTAMP:
+		switch (t) {
+		case AVRO_INT32:
+			/* Assume that this is only the seconds portion of
+			 * the timestamp
+			 */
+			ts = ldms_mval_get_ts(col->mval);
+			rc = avro_value_set_int(col_value, ts.sec);
+			break;
+		case AVRO_INT64:
+			/* This is assumed to be the Avro logical
+			 * type 'timestamp-millis'
+			 */
+			ts = ldms_mval_get_ts(col->mval);
+			ms = ((long)ts.sec * 1000) + (ts.usec / 1000);
+			rc = avro_value_set_long(col_value, ms);
+			break;
+		case AVRO_RECORD:
+			/* Expect sec, usec Avro record definition */
+			ts = ldms_mval_get_ts(col->mval);
+			rc = avro_value_get_by_name(col_value, "sec", &val, NULL);
+			assert(!rc);
+			rc = avro_value_set_int(&val, (long)ts.sec);
+			assert(!rc);
+			rc = avro_value_get_by_name(col_value, "usec", &val, NULL);
+			assert(!rc);
+			rc = avro_value_set_int(&val, (long)ts.usec);
+			assert(!rc);
+			break;
+		default:
+			assert(0 == "Unrecognized Avro type to LDMS_V_TIMESTAMP conversion");
+			break;
+		}
+		break;
+	case LDMS_V_CHAR:
+		rc = avro_value_set_int(col_value,
+				(int)ldms_mval_get_char(col->mval));
+		break;
+	case LDMS_V_U8:
+		rc = avro_value_set_int(col_value,
+				(int)ldms_mval_get_u8(col->mval));
+		break;
+	case LDMS_V_S8:
+		rc = avro_value_set_int(col_value,
+				(int)ldms_mval_get_s8(col->mval));
+		break;
+	case LDMS_V_U16:
+		rc = avro_value_set_int(col_value,
+				(int)ldms_mval_get_u16(col->mval));
+		break;
+	case LDMS_V_S16:
+		rc = avro_value_set_int(col_value,
+				(int)ldms_mval_get_s16(col->mval));
+		break;
+	case LDMS_V_U32:
+		rc = avro_value_set_int(col_value,
+				(int)ldms_mval_get_u32(col->mval));
+		break;
+	case LDMS_V_S32:
+		rc = avro_value_set_int(col_value,
+				(int)ldms_mval_get_s32(col->mval));
+		break;
+	case LDMS_V_U64:
+		rc = avro_value_set_long(col_value,
+				(long)ldms_mval_get_u64(col->mval));
+		break;
+	case LDMS_V_S64:
+		rc = avro_value_set_long(col_value,
+				(long)ldms_mval_get_s64(col->mval));
+		break;
+	case LDMS_V_F32:
+		rc = avro_value_set_float(col_value,
+				ldms_mval_get_float(col->mval));
+		break;
+	case LDMS_V_D64:
+		rc = avro_value_set_double(col_value,
+				ldms_mval_get_double(col->mval));
+		break;
+	case LDMS_V_CHAR_ARRAY:
+	case LDMS_V_U8_ARRAY:
+	case LDMS_V_S8_ARRAY:
+		rc = avro_value_set_string(col_value,
+				ldms_mval_array_get_str(col->mval));
+		break;
+	case LDMS_V_U16_ARRAY:
+	case LDMS_V_S16_ARRAY:
+	case LDMS_V_U32_ARRAY:
+	case LDMS_V_S32_ARRAY:
+	case LDMS_V_U64_ARRAY:
+	case LDMS_V_S64_ARRAY:
+	case LDMS_V_F32_ARRAY:
+	case LDMS_V_D64_ARRAY:
+		assert(0 == "Not yet");
+		break;
+	case LDMS_V_LIST:
+	case LDMS_V_LIST_ENTRY:
+		assert(0 == "Not Yet");
+		break;
+	case LDMS_V_RECORD_TYPE:
+	case LDMS_V_RECORD_INST:
+	case LDMS_V_RECORD_ARRAY:
+	default:
+		assert(0 == "Not yet");
+	}
+	return rc;
+}
+
+static int serialize_row_as_avro(serdes_t *serdes,
+				 serdes_schema_t *serdes_schema,
+				 ldmsd_row_t row, avro_value_t *avro)
+{
+	int rc, i;
+	ldmsd_col_t col;
+	avro_schema_t schema = serdes_schema_avro(serdes_schema);
+        avro_value_iface_t  *class =
+            avro_generic_class_from_schema(schema);
+
+        avro_value_t avro_row, avro_col;
+        avro_generic_value_new(class, &avro_row);
+
+	for (i = 0; i < row->col_count; i++) {
+		col = &row->cols[i];
+		rc = avro_value_get_by_name(&avro_row, col->name,
+					    &avro_col, NULL);
+		if (rc) {
+			LOG_ERROR("Error %d retrieving '%s' "
+				"from '%s' schema\n", rc, col->name, avro_schema_name(schema));
+			continue;
+		}
+		rc = set_avro_value_from_col(&avro_col, col);
+	}
+#ifdef AVRO_KAFKA_DEBUG
+        char *json_buf;
+        avro_value_to_json(&avro_row, 0, &json_buf);
+        fprintf(stderr, "%s\n", json_buf);
+        free(json_buf);
+#endif
+        *avro = avro_row;
+	return 0;
+}
+
+typedef struct str_s {
+	char *buf_ptr;
+	char *cur_ptr;
+	size_t cur_pos;
+	size_t buf_len;
+} *str_t;
+
+static char valid_topic_char(char c)
+{
+	if (isalnum(c))
+		return c;
+	if (c == '.' || c == '_' || c == '-')
+		return c;
+	return '.';
+}
+
+static char *str_cat_c(str_t str, char c)
+{
+	if (str->cur_pos >= str->buf_len) {
+		str->buf_len += 256;
+		str->buf_ptr = realloc(str->buf_ptr, str->buf_len);
+		if (!str->buf_ptr)
+			return NULL;
+		str->cur_ptr = &str->buf_ptr[str->cur_pos];
+	}
+	*str->cur_ptr = valid_topic_char(c);
+	str->cur_ptr++;
+	str->cur_pos++;
+	str->buf_ptr[str->cur_pos] = '\0';
+	return str->buf_ptr;
+}
+
+static char *str_cat_s(str_t str, const char* s)
+{
+	char *p = NULL;
+	while (*s != '\0') {
+		p = str_cat_c(str, *s++);
+	}
+	return p;
+}
+
+static char *str_cat_fmt(str_t str, const char *fmt, ...)
+{
+	va_list ap;
+	char *s, *p;
+	int rc;
+	va_start(ap, fmt);
+	rc = vasprintf(&s, fmt, ap);
+	if (rc < 0) {
+		p = NULL;
+		rc = errno;
+		goto out;
+	}
+	p = str_cat_s(str, s);
+out:
+	va_end(ap);
+	free(s);
+	if (rc)
+		errno = rc;
+	return p;
+}
+
+static char *str_str(str_t str)
+{
+	str->buf_ptr[str->cur_pos] = '\0';
+	return strdup(str->buf_ptr);
+}
+
+static void str_free(str_t str)
+{
+	free(str->buf_ptr);
+	free(str);
+}
+
+static str_t str_new(size_t len)
+{
+	str_t str = calloc(1, sizeof *str);
+	str->buf_len = len;
+	str->buf_ptr = malloc(len);
+	if (!str->buf_ptr)
+		goto err;
+	str->cur_ptr = str->buf_ptr;
+	return str;
+err:
+	if (str)
+		free(str);
+	return NULL;
+}
+
+static char *access_string(int perm)
+{
+#define PERM_BUF_SZ 16
+	static char perm_str[PERM_BUF_SZ];
+	char *s = perm_str;
+	int i;
+	*s = '-';
+	s++;
+	for (i = 6; i >= 0; i -= 3) {
+		uint32_t mask = perm >> i;
+		if (mask & 4)
+			*s = 'r';
+		else
+			*s = '-';
+		s++;
+		if (mask & 2)
+			*s = 'w';
+		else
+			*s = '-';
+		s++;
+		if (mask & 1)
+			*s = 'x';
+		else
+			*s = '-';
+		s++;
+	}
+	*s = '\0';
+	return perm_str;
+}
+
+static char *get_topic_name(aks_handle_t sh, ldms_set_t set, ldmsd_row_t row)
+{
+	char *topic_fmt = sh->topic_fmt;
+	str_t str = str_new(256);
+	char *topic = NULL;
+	struct passwd *pwd;
+	struct group *grp;
+
+	if (!topic_fmt || topic_fmt[0] == '\0') {
+		return strdup(row->schema_name);
+	}
+
+	while (*topic_fmt != '\0') {
+		while (*topic_fmt != '\0' && *topic_fmt != '%')
+			topic = str_cat_c(str, *topic_fmt++);
+		if (*topic_fmt == '\0')
+			break;
+		topic_fmt ++;	/* Skip '%' */
+		switch (*topic_fmt) {
+		case 'S': /* Set schema name */
+			topic = str_cat_s(str, row->schema_name);
+			break;
+		case 'F': /* Format */
+			if (sh->encoding == AKS_ENCODING_JSON)
+				topic = str_cat_s(str, "json");
+			else
+				topic = str_cat_s(str, "avro");
+			break;
+		case 'u': /* user name */
+			pwd = getpwuid(ldms_set_uid_get(set));
+			if (pwd) {
+				topic = str_cat_fmt(str, "%s", pwd->pw_name);
+				break;
+			}
+			/* Fail safe to uid */
+		case 'U': /* UID*/
+			topic = str_cat_fmt(str, "%d", ldms_set_uid_get(set));
+			break;
+		case 'g': /* group name */
+			grp = getgrgid(ldms_set_gid_get(set));
+			if (grp) {
+				topic = str_cat_fmt(str, "%s", grp->gr_name);
+				break;
+			}
+		case 'G': /* GID */
+			topic = str_cat_fmt(str, "%d", ldms_set_gid_get(set));
+			break;
+		case 'a': /* Access mode string */
+			topic = str_cat_fmt(str, "%s", access_string(ldms_set_perm_get(set)));
+			break;
+		case 'A': /* Access mode octal */
+			topic = str_cat_fmt(str, "0%o", ldms_set_perm_get(set));
+			break;
+		case 'I': /* Set instance name */
+			topic = str_cat_s(str, ldms_set_instance_name_get(set));
+			break;
+		case 'P': /* Set producer name */
+			topic = str_cat_s(str, ldms_set_producer_name_get(set));
+			break;
+		default:
+			LOG_ERROR("Illegal format specifier '%c' in topic format\n", *topic_fmt);
+		}
+		topic_fmt ++;
+	}
+	topic = str_str(str);
+	str_free(str);
+	return topic;
+}
+
+/* protected by strgp->lock */
+static int
+commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
+	    int row_count)
+{
+	aks_handle_t sh;
+	rd_kafka_topic_t *rkt;
+	ldmsd_row_t row;
+	avro_value_t avro_row;
+	int rc;
+	char errstr[512];
+
+	sh = strgp->store_handle;
+	if (!sh)
+	{
+		sh = __handle_new(strgp);
+		if (!sh)
+			return errno;
+		strgp->store_handle = sh;
+	}
+
+	TAILQ_FOREACH(row, row_list, entry)
+	{
+		void *ser_buf = NULL;
+		size_t ser_buf_size;
+		int ser_size;
+		serdes_schema_t *serdes_schema;
+
+		char *topic_name = get_topic_name(sh, set, row);
+		LOG_INFO("topic name %s\n", topic_name);
+		rkt = rd_kafka_topic_new(sh->rd, topic_name, NULL);
+		if (!rkt)
+		{
+			LOG_ERROR("rd_kafka_topic_new(\"%s\") failed, "
+				  "errno: %d\n",
+				  row->schema_name, errno);
+			continue;
+		}
+		switch (sh->encoding) {
+		case AKS_ENCODING_AVRO:
+			serdes_schema = serdes_schema_find(sh, (char *)row->schema_name, NULL, row);
+			if (!serdes_schema) {
+				LOG_ERROR("A serdes schema for '%s' could not be "
+					"constructed.\n", row->schema_name);
+				continue;
+			}
+			/* Encode ldmsd_row_s as an Avro value */
+			rc = serialize_row_as_avro(sh->serdes, serdes_schema, row, &avro_row);
+			if (rc) {
+				LOG_ERROR("Failed to format row as Avro value, error: %d\n", rc);
+				continue;
+			}
+			/* Serialize an Avro value into a buffer */
+			if (serdes_schema_serialize_avro(serdes_schema, &avro_row,
+							&ser_buf, &ser_buf_size,
+							errstr, sizeof(errstr))) {
+				LOG_ERROR("Failed to serialize Avro row: '%s'\n", errstr);
+				avro_value_decref(&avro_row);
+				continue;
+			}
+			break;
+		case AKS_ENCODING_JSON:
+			/* Encode row as a JSON text object */
+			rc = ldmsd_row_to_json_object(row, (char **)&ser_buf, &ser_size);
+			if (rc) {
+				LOG_ERROR("Failed to serialize row as JSON object, error: %d", rc);
+				continue;
+			}
+			ser_buf_size = ser_size;
+			break;
+		default:
+			assert(0 == "Invalid/unsupported serialization encoding");
+		}
+
+		/* Publish the Avro serialized buffer */
+		rc = rd_kafka_produce(rkt, RD_KAFKA_PARTITION_UA,
+				      RD_KAFKA_MSG_F_FREE,
+				      ser_buf, ser_buf_size, NULL, 0, NULL);
+		if (rc) {
+			LOG_ERROR("rd_kafka_produce(\"%s\") failed, "
+				  "\"%s\"\n", topic_name,
+				  rd_kafka_err2str(rd_kafka_last_error()));
+		}
+		rd_kafka_topic_destroy(rkt);
+		if (sh->encoding == AKS_ENCODING_AVRO)
+			avro_value_decref(&avro_row);
+		free(topic_name);
+	}
+
+	return 0;
+}
+
+static struct ldmsd_store store_kafka = {
+    .base = {
+	.name = "avro_kafka",
+	.term = term,
+	.config = config,
+	.usage = usage,
+	.type = LDMSD_PLUGIN_STORE,
+    },
+    .open = open_store,
+    .get_context = get_ucontext,
+    .store = store,
+    .flush = flush_store,
+    .close = close_store,
+    .commit = commit_rows,
+};
+
+struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+{
+	msglog = pf;
+	return &store_kafka.base;
+}
+
+static void __attribute__((constructor)) store_avro_kafka_init();
+static void store_avro_kafka_init()
+{
+}

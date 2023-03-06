@@ -1,0 +1,109 @@
+{
+  "type": "flex",
+  "decomposition": {
+    "vmstat": {
+      "type": "static",
+      "rows": [
+        {
+          "schema": "vmstat_tom",
+          "cols": [
+            { "src":"timestamp",    "dst":"timestamp",	"type":"ts"                         },
+            { "src":"producer",     "dst":"producer",	"type":"char_array", "array_len":64 },
+            { "src":"instance",     "dst":"instance",	"type":"char_array", "array_len":64 },
+            { "src":"component_id", "dst":"component_id","type":"u64"                       },
+            { "src":"job_id",       "dst":"job_id", 	"type":"u64"                        },
+            { "src":"nr_active_file", "dst":"nr_active_file", "type":"u64"                  },
+            { "src":"nr_zone_active_anon", "dst":"nr_zone_active_anon", "type":"u64"        },
+            { "src":"nr_free_pages", "dst":"nr_free_pages", "type":"u64"                    }
+          ],
+          "indices": [
+            { "name":"job_comp_time", "cols":["job_id", "component_id", "timestamp"] },
+            { "name":"timestamp", "cols":["timestamp"] }
+          ]
+        }
+      ]
+    },
+    "meminfo": {
+      "type": "static",
+      "rows": [
+        {
+          "schema": "meminfo_tom",
+          "cols": [
+            { "src":"timestamp",    "dst":"timestamp",	"type":"ts"                         },
+            { "src":"producer",     "dst":"producer",	"type":"char_array", "array_len":64 },
+            { "src":"instance",     "dst":"instance",	"type":"char_array", "array_len":64 },
+            { "src":"component_id", "dst":"component_id","type":"u64"                       },
+            { "src":"job_id",       "dst":"job_id", 	"type":"u64"                        },
+            { "src":"MemFree",      "dst":"MemFree",    "type":"u64"                        },
+            { "src":"MemAvailable",    "dst":"MemAvailable",  "type":"u64"                  },
+            { "src":"Active",    "dst":"ActiveMemAvailable",  "type":"u64"                  },
+            { "src":"MemTotal",    "dst":"MemTota",  "type":"u64"                           }
+          ],
+          "indices": [
+            { "name":"job_comp_time", "cols":["job_id", "component_id", "timestamp"] },
+            { "name":"timestamp", "cols":["timestamp"] }
+          ]
+        }
+      ]
+    },
+    "procnetdev2" : {
+      "type" : "static",
+      "rows": [
+        {
+          "schema": "netdev2_tom",
+          "cols": [
+            { "src":"timestamp", "dst":"timestamp","type":"ts" },
+            { "src":"component_id", "dst":"component_id","type":"u64" },
+            { "src":"netdev_list", "rec_member":"name", "dst":"dev_name", "type":"char_array", "array_len": 16 },
+            { "src":"netdev_list", "rec_member":"rx_packets", "dst":"rx_packets", "type" : "u64" },
+            { "src":"netdev_list", "rec_member":"rx_errs", "dst":"rx_err_packets", "type" : "u64" },
+            { "src":"netdev_list", "rec_member":"rx_drop", "dst":"rx_drop_packets", "type" : "u64" },
+            { "src":"netdev_list", "rec_member":"tx_packets", "dst":"tx_packets", "type" : "u64" },
+            { "src":"netdev_list", "rec_member":"tx_errs", "dst":"tx_err_packets", "type" : "u64" },
+            { "src":"netdev_list", "rec_member":"tx_drop", "dst":"tx_drop_packets", "type" : "u64" }
+          ],
+          "indices": [
+            { "name":"time_comp", "cols":["timestamp", "component_id"] }
+          ]
+        }
+      ]
+    },
+    "mt-slurm2" : {
+      "type": "static",
+      "rows": [
+        {
+          "schema": "slurm2_tom",
+          "cols": [
+            { "src":"timestamp", "dst":"timestamp","type":"ts" },
+            { "src":"component_id", "dst":"component_id","type":"u64" },
+            { "src":"job_list", "rec_member" : "job_id", "dst":"job_id","type":"u64" },
+            { "src":"job_list", "rec_member" : "job_name", "dst":"job_name","type":"char_array", "array_len":256 },
+            { "src":"job_list", "rec_member" : "job_tag", "dst":"job_tag","type":"char_array", "array_len":256 },
+            { "src":"job_list", "rec_member" : "user", "dst":"user","type":"char_array", "array_len":64 },
+            { "src":"job_list", "rec_member" : "job_start", "dst":"job_start","type":"u32" },
+            { "src":"job_list", "rec_member" : "job_end", "dst":"job_end","type":"u32" },
+            { "src":"job_list", "rec_member" : "node_count", "dst":"node_count","type":"u32" },
+            { "src":"job_list", "rec_member" : "task_count", "dst":"task_count","type":"u32" }
+          ],
+          "indices": [
+            { "name": "time_comp", "cols": [ "timestamp", "component_id" ] }
+          ]
+        }
+      ]
+    },
+    "the_default": {
+      "type": "as_is",
+      "indices": [
+        { "name": "job_comp_time", "cols": [ "job_id", "component_id", "timestamp" ] },
+        { "name": "time_comp", "cols": [ "timestamp", "component_id" ] }
+      ]
+    }
+  },
+  "digest": {
+    "39E8567D4EB7DA70FEC57FE8964B2CCA044546CA04C6C2F58C596860FEDAE8AF" : "meminfo",
+    "CF9BBA30180E8FF29E993FD8306EC3A618887C26CD3D86D0E6CDF5956B285537" : "vmstat",
+    "5BD07337CF356874EAAE5825B65CEDB4B88E9C8CAD4818EB06C48EF421EDA11D" : "mt-slurm2",
+    "E8B9CC8D83FB4E5B779071E801CA351B69DCB9E9CE2601A0B127A2977F11C62A" : "procnetdev2",
+    "*": "the_default"
+  }
+}
