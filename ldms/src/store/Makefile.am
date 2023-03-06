@@ -97,4 +97,5 @@ endif
 
 if HAVE_KAFKA
 SUBDIRS += kafka
+SUBDIRS += avro_kafka
 endif
