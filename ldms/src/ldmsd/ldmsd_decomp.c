@@ -743,3 +743,151 @@ int ldmsd_row_to_json_object(ldmsd_row_t row, char **str, int *len)
 	strbuf_purge(&h);
 	return rc;
 }
+
+static const char *col_type_str(enum ldms_value_type type)
+{
+	static char *type_str[] = {
+	    [LDMS_V_CHAR] = "string",
+	    [LDMS_V_U8] = "string",
+	    [LDMS_V_S8] = "int",
+	    [LDMS_V_U16] = "int",
+	    [LDMS_V_S16] = "int",
+	    [LDMS_V_U32] = "int",
+	    [LDMS_V_S32] = "int",
+	    [LDMS_V_U64] = "long",
+	    [LDMS_V_S64] = "long",
+	    [LDMS_V_F32] = "float",
+	    [LDMS_V_D64] = "double",
+	    [LDMS_V_CHAR_ARRAY] = "string",
+	    [LDMS_V_U8_ARRAY] = "string",
+	    [LDMS_V_S8_ARRAY] = "string",
+	    [LDMS_V_U16_ARRAY] = "array",
+	    [LDMS_V_S16_ARRAY] = "array",
+	    [LDMS_V_U32_ARRAY] = "array",
+	    [LDMS_V_S32_ARRAY] = "array",
+	    [LDMS_V_U64_ARRAY] = "array",
+	    [LDMS_V_S64_ARRAY] = "array",
+	    [LDMS_V_F32_ARRAY] = "array",
+	    [LDMS_V_D64_ARRAY] = "array",
+	    [LDMS_V_LIST] = "array",
+	    [LDMS_V_LIST_ENTRY] = "null",
+	    [LDMS_V_RECORD_TYPE] = "map",
+	    [LDMS_V_RECORD_INST] = "null",
+	    [LDMS_V_RECORD_ARRAY] = "array",
+#if 0
+	    [LDMS_V_TIMESTAMP] = "record"
+#else
+	    [LDMS_V_TIMESTAMP] = "int"
+#endif
+	};
+	return type_str[type];
+}
+
+int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
+{
+	struct strbuf_tailq_s h = TAILQ_HEAD_INITIALIZER(h);
+	ldmsd_col_t col;
+	int i, rc;
+
+	rc = strbuf_printf(&h, "{");
+	if (rc) goto err_0;
+	rc = strbuf_printf(&h, "\"name\":\"%s\",", row->schema_name);
+	if (rc) goto err_0;
+	rc = strbuf_printf(&h, "\"type\":\"record\",");
+	if (rc) goto err_0;
+	rc = strbuf_printf(&h, "\"fields\":[");
+	if (rc) goto err_0;
+
+	for (i = 0; i < row->col_count; i++) {
+		col = &row->cols[i];
+		if (i) { /* comma */
+			rc = strbuf_printf(&h, ",");
+			if (rc)
+				goto err_0;
+		}
+		switch (col->type) {
+		case LDMS_V_TIMESTAMP:
+#if 0
+			rc = strbuf_printf(&h,
+					   "{\"name\":\"%s\",\"type\":{"
+					   "\"type\":\"record\","
+					   "\"name\":\"timestamp\","
+					   "\"doc\":\"An LDMS timestamp encoded as { seconds, micro-seconds }\","
+					   "\"fields\":["
+					   "{\"name\":\"sec\",\"type\":\"int\"},"
+					   "{\"name\":\"usec\",\"type\":\"int\"}"
+					   "]}}",
+					   col->name);
+			if (rc)
+				goto err_0;
+#else
+			rc = strbuf_printf(&h,
+					   "{\"name\":\"%s\",\"type\":\"long\","
+					   "\"logicalType\":\"timestamp-millis\""
+					   "}",
+					   col->name);
+			if (rc)
+				goto err_0;
+#endif
+			break;
+		case LDMS_V_CHAR:
+		case LDMS_V_U8:
+		case LDMS_V_S8:
+		case LDMS_V_U16:
+		case LDMS_V_S16:
+		case LDMS_V_U32:
+		case LDMS_V_S32:
+		case LDMS_V_U64:
+		case LDMS_V_S64:
+		case LDMS_V_F32:
+		case LDMS_V_D64:
+			rc = strbuf_printf(&h, "{\"name\":\"%s\",\"type\":\"%s\"}",
+					   col->name, col_type_str(col->type));
+			if (rc)
+				goto err_0;
+			break;
+		case LDMS_V_CHAR_ARRAY:
+		case LDMS_V_U8_ARRAY:
+		case LDMS_V_S8_ARRAY:
+			rc = strbuf_printf(&h, "{\"name\":\"%s\",\"type\":\"%s\"}",
+					   col->name, col_type_str(col->type));
+			if (rc)
+				goto err_0;
+			break;
+		case LDMS_V_U16_ARRAY:
+		case LDMS_V_S16_ARRAY:
+		case LDMS_V_U32_ARRAY:
+		case LDMS_V_S32_ARRAY:
+		case LDMS_V_U64_ARRAY:
+		case LDMS_V_S64_ARRAY:
+		case LDMS_V_F32_ARRAY:
+		case LDMS_V_D64_ARRAY:
+			rc = strbuf_printf(&h,
+					   "{\"name\":\"%s\","
+					   "\"type\":\"array\","
+					   "\"items\":\"%s\",\"default\":[]}",
+					   col->name, col_type_str(col->type));
+			if (rc)
+				goto err_0;
+			break;
+		case LDMS_V_LIST:
+		case LDMS_V_LIST_ENTRY:
+		case LDMS_V_RECORD_TYPE:
+		case LDMS_V_RECORD_INST:
+		case LDMS_V_RECORD_ARRAY:
+		default:
+			goto err_0;
+		}
+	}
+	rc = strbuf_printf(&h, "]}");
+	if (rc)
+		goto err_0;
+
+	rc = strbuf_str(&h, str, (int *)len);
+	strbuf_purge(&h);
+	return rc;
+
+ err_0:
+	strbuf_purge(&h);
+	return rc;
+}

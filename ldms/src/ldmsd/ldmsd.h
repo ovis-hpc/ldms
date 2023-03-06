@@ -616,7 +616,10 @@ typedef struct ldmsd_req_ctxt *ldmsd_req_ctxt_t;
 int ldmsd_row_to_json_array(ldmsd_row_t row, char **str, int *len);
 
 /**
- * A utility to convert \c row to JSON object.
+ * Create a JSON text object from an ldmsd_row_t
+ *
+ * The user is responsible for freeing the allocated memory
+ * returned in \c str.
  *
  * The output format is in the form of JSON object as follows
  * \code
@@ -632,6 +635,32 @@ int ldmsd_row_to_json_array(ldmsd_row_t row, char **str, int *len);
  * \retval errno If there is an error.
  */
 int ldmsd_row_to_json_object(ldmsd_row_t row, char **str, int *len);
+
+/**
+ * Create an Avro schema definition from an ldmsd_row_t
+ *
+ * The user is responsible for freeing the allocated memory
+ * returned in \c str.
+ *
+ * The JSON format schema object is defined to be used with
+ * the following API:
+ * \code
+ * int avro_schema_from_json(const char *jsontext,
+ *			     int32_t unused1,
+ *			     avro_schema_t *schema);
+ * \endcode
+ *
+ * See https://avro.apache.org/docs/1.11.1/specification/ for
+ * a detailed specification of this format.
+ *
+ * \param       row The row handle.
+ * \param [out] str The output C string containing JSON object for the \c row.
+ * \param [out] len The strlen() of \c *str.
+ *
+ * \retval 0     If succeded.
+ * \retval errno If there is an error.
+ */
+int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len);
 
 /**
  * Configure strgp decomposer.

@@ -1,0 +1,161 @@
+.TH man 7 "30 Mar 2023" "v4" "LDMSD Plugin avro_kafka_store man page"
+
+.ad l
+.nh
+
+.SH "NAME "
+.PP
+.PP
+avro_kafka_store - LDMSD avro_kafka_store plugin
+.PP
+.SH "SYNOPSIS "
+.SY config
+.BR name=avro_kafka_store
+.BI producer=PRODUCER
+.BI instance=INSTANCE
+.OP \fBtopic=\fITOPIC_FMT
+.OP \fBencoding=\fIJSON
+.OP \fBencoding=\fIAVRO
+.OP \fBkafka_conf=\fIPATH
+.OP \fBserdes_conf=\fIPATH
+.YS
+.PP
+.SH "DESCRIPTION "
+.PP
+\f[CB]avro_kafka_store\fR implements a decomposition capable LDMS metric data
+store. The \f[CB]avro_kafka_store\fR plugin does not implement the
+\f[CB]store\fR function and must only be used with decomposition.
+.PP
+The plugin operates in one of two modes: \fIJSON\fR, and \fIAVRO\fR (the default).
+In \fIJSON\fR mode, each row is encoded as a JSON formatted text string.
+In \fIAVRO\fR mode, each row is associated with an AVRO schema and serialized using
+an AVRO Serdes.
+.PP
+When in \fIAVRO\fR mode, the plugin manages schema in cooperation with an
+Avro Schema Registry. The location of this registry is specified in a configuration
+file or optionally on the \f[CB]config\fR command line.
+.PP
+.SH "CONFIG OPTIONS "
+.PP
+.PP
+.IP "\fBmode \fR" 1c
+A string indicating the encoding mode: "JSON" will encode messages in JSON format, "AVRO" will
+encode messages using a schema and Avro Serdes. The default is "AVRO". The mode values are
+not case sensitive.
+.IP "\fBname \fR" 1c
+Must be avro_kafka_store.
+.IP "\fBkafka_conf \fR" 1c
+A path to a configuration file in Java property format. This configuration file is
+parsed and used to configure the Kafka kafka_conf_t configuration object. The format
+of this file and the supported attributes are available
+here: https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md.
+.IP "\fBserdes_conf \fR" 1c
+A path to a configuration file in Java property format. This configuration file is parsed
+and used to configure the Avro Serdes serdes_conf_t configuration object. The only supported
+option for this file is serdes.schema.url.
+
+.SH "TOPIC NAMES"
+.PP
+The topic name to which messages are published is defined by the \f[BR]topic\fR configuration parameter.
+The parameter specifies a string that is a \fIformat specifier\fR similar to a printf() format
+string. If the \f[BR]topic\fR is not specified, it defaults to "%S" which is the format specifier
+for the set schema name.
+.PP
+The '%' character introduces a \fIformat specifier\fR that will be substituted in the topic format
+string to create the topic name. The format specifiers are as follows:
+.IP "\fB%F \fR" 1c
+The format in which the message is serialized: "json" or "avro".
+.IP "\fB%S \fR" 1c
+The set parameter's \fIschema\fR name.
+.IP "\fB%I \fR" 1c
+The instance name of the set, e.g. "orion-01/meminfo".
+.IP "\fB%P \fR" 1c
+The set parameter's \fIproducer\fR name.
+.IP "\fB%u \fR" 1c
+The user-name string for the owner of the set.
+If the user-name is not known on the system, the user-id is used.
+.IP "\fB%U \fR" 1c
+The user-id (uid_t) for the owner of the set.
+.IP "\fB%g \fR" 1c
+The group-name string for the group of the set.
+If the group-name is not known on the system, the group-id is used.
+.IP "\fB%G \fR" 1c
+The group-id (gid_t) for the group of the set.
+.IP "\fB%a \fR" 1c
+The access/permission bits for the set formatted as a string, e.g. "-rw-rw----".
+.IP "\fB%A \fR" 1c
+The access/permission bits for the set formatted as an octal number, e.g. 0440.
+.PP
+Note that a topic name must only consist of a combination of the characters [a-zA-Z0-9\\._\\-].
+In order to ensure that the format specifier above will not produce invalid topic names, any
+character that results from a format specifier substitution that is not in the valid list will
+be substituted with a '.'.
+.PP
+.SH "STRGP"
+.PP
+The avro_kafka_store is used with a storage policy that specifies avro_kafka_store as the
+plugin parameter.
+.PP
+The \fIschema\fR, \fIinstance\fR, \fIproducer\fR and \fIflush\fR strgp_new parameters
+have no affect on how data is stored. If the \fIcontainer\fR parameter is set to any
+value other than an empty string, it will override the bootstrap.servers Kafka configuration
+parameter in the kafka_conf file if present.
+.PP
+.SH "BUGS "
+.PP
+.PP
+No known bugs\&.
+.PP
+.SH "EXAMPLES "
+.PP
+.PP
+.SS "kafka_conf Example File "
+.PP
+.RS 4
+.nf
+# Lines beginning with '#' are considered comments.
+# Comments and blank lines are ignored.
+
+# Specify the location of the Kafka broker
+bootstrap.server=localhost:9092
+.fi
+.RE
+.PP
+.SS "serdes_conf Example File "
+.PP
+.RS 4
+.nf
+# Specify the location of the Avro Schema registry. This can be overridden
+# on the strgp_add line with the "container" strgp_add option if it is
+# set to anything other than an empty string
+serdes.schema.url=https://localhost:9092
+.fi
+.RE
+.PP
+.SS "Example strg_add command "
+.PP
+.RS 4
+.nf
+strgp_add name=aks plugin=avro_kafka_store container=kafka-broker.int:9092 decomposition=aks-decomp.conf
+strgp_start name=aks
+.fi
+.RE
+.PP
+.SS "Example plugin configuration"
+.PP
+.RS 4
+.nf
+config name=avro_kafka_store encoding=avro kafka_conf=/etc/kakfa.conf serdes_conf=/etc/serdes.conf topic=ldms.%S
+strgp_start name=aks
+.fi
+.RE
+.PP
+.SH NOTES
+.PP
+This man page is a work in progress.
+.SH SEE ALSO
+.nh
+.BR ldmsd (8),
+.BR ldmsd_controller (8),
+.BR ldmsd_decomposition (7),
+.BR ldms_quickstart (7)
