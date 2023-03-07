@@ -1,0 +1,47 @@
+.\" Manpage for Plugin_zfs_leafvdevs
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "19 Apr 2023" "v4" "LDMS Plugin zfs_leafvdevs man page"
+
+.SH NAME
+Plugin_zfs_leafvdevs - man page for the LDMS zfs_leafvdevs plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=zfs_leafvdevs
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms
+daemon) are configured via ldmsd_controller or a configuration file. The
+zfs_leafvdevs plugin uses LDMS_V_LIST and LDMS_V_RECORD to provide zfs leaf
+virtual devices using libzfs.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+The zfs_leafvdevs plugin uses the sampler_base base class. This man page covers
+only the configuration attributes, or those with default values, specific to the
+this plugin; see ldms_sampler_base.man for the attributes of the base class.
+
+.TP
+.BR config
+name=<plugin_name>
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be zfs_leafvdevs.
+.RE
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=zfs_leafvdevs
+config name=zfs_leafvdevs producer=${HOSTNAME} instance=${HOSTNAME}/zfs_leafvdevs
+start name=zfs_leafvdevs interval=1000000 offset=0
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7),
+Plugin_leafvdevs(7)
