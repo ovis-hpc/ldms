@@ -275,6 +275,12 @@ if ENABLE_BLOB_STREAM
 SUBDIRS += blob_stream
 endif
 
+if ENABLE_ZFS
+SUBDIRS += zfs_topvdevs
+SUBDIRS += zfs_leafvdevs
+SUBDIRS += zfs_zpool
+endif
+
 if ENABLE_SLINGSHOT
 if HAVE_LIBCXI
 SUBDIRS += slingshot_metrics

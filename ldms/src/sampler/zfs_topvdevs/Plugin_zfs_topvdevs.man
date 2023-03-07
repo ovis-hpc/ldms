@@ -1,0 +1,47 @@
+.\" Manpage for Plugin_zfs_topvdevs
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "19 Apr 2023" "v4" "LDMS Plugin zfs_topvdevs man page"
+
+.SH NAME
+Plugin_zfs_topvdevs - man page for the LDMS zfs_topvdevs plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=zfs_topvdevs
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms
+daemon) are configured via ldmsd_controller or a configuration file. The
+zfs_topvdevs plugin uses LDMS_V_LIST and LDMS_V_RECORD to provide top level
+zfs virtual devices info using libzfs.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+The zfs_topvdevs plugin uses the sampler_base base class. This man page covers
+only the configuration attributes, or those with default values, specific to the
+this plugin; see ldms_sampler_base.man for the attributes of the base class.
+
+.TP
+.BR config
+name=<plugin_name>
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be zfs_topvdevs.
+.RE
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=procnetdev
+config name=zfs_topvdevs producer=${HOSTNAME} instance=${HOSTNAME}/zfs_topvdevs
+start name=zfs_topvdevs interval=1000000 offset=0
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7),
+Plugin_zfs_topvdevs(7)

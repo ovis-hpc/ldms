@@ -894,6 +894,17 @@ AS_IF([test "x$enable_slingshot" = xyes],[
         [AC_MSG_ERROR([libcxi or its headers not found])])
 ])
 
+AC_ARG_ENABLE([zfs],
+    [AS_HELP_STRING([--enable-zfs], [require the zfs related plugins @<:@default=check@:>@])],
+    [],
+    [enable_zfs="check"])
+AC_SEARCH_LIBS([zpool_vdev_name], [zfs],[HAVE_ZFS=yes])
+AM_CONDITIONAL([ENABLE_ZFS], [test "x$enable_zfs" != xno -a "x$HAVE_ZFS" = xyes])
+AS_IF([test "x$enable_zfs" = xyes],[
+    AS_IF([test "x$HAVE_ZFS" = xno],
+        [AC_MSG_ERROR([libzfs or its headers not found])])
+])
+
 # define substitutions for configvars and other sed-generated files.
 # note carefully the escapes.
 OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
@@ -1054,6 +1065,9 @@ ldms/src/sampler/json/Makefile
 ldms/src/sampler/hweventpapi/Makefile \
 ldms/src/sampler/rapl/Makefile \
 ldms/src/sampler/tsampler/Makefile \
+ldms/src/sampler/zfs_topvdevs/Makefile
+ldms/src/sampler/zfs_leafvdevs/Makefile
+ldms/src/sampler/zfs_zpool/Makefile
 ldms/src/contrib/sampler/Makefile
 ldms/src/contrib/sampler/daos/Makefile
 ldms/src/contrib/sampler/daos/test/Makefile
