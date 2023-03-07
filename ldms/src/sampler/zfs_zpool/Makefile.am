@@ -3,7 +3,7 @@ lib_LTLIBRARIES =
 dist_man7_MANS =
 dist_man1_MANS =
 
-AM_CPPFLAGS = @OVIS_INCLUDE_ABS@ libzfs
+AM_CPPFLAGS = @OVIS_INCLUDE_ABS@ -Ilibzfs
 AM_LDFLAGS = @OVIS_LIB_ABS@
 COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 		@LDFLAGS_GETTIME@
