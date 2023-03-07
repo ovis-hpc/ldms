@@ -907,8 +907,9 @@ AC_ARG_ENABLE([libzfs],
     [enable_libzfs="check"])
 AM_CONDITIONAL([ENABLE_LIBZFS], [test "x$enable_libzfs" != xno])
 AC_SEARCH_LIBS([zpool_vdev_detach], [zfs],[HAVE_LIBZFS=yes])
+AC_CHECK_HEADER([libzfs/libzfs.h],[HAVE_ZFSHEADER=yes])
 AS_IF([test "x$enable_libzfs" = xyes],[
-    AS_IF([test "x$HAVE_LIBZFS" = xno],
+    AS_IF([test "x$HAVE_LIBZFS" = xno || test "x$HAVE_ZFSHEADER" = xno],
         [AC_MSG_ERROR([libzfs or its headers not found])])
 ])
 

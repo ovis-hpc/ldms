@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
-#include "/usr/include/libzfs/libzfs_impl.h"
+#include <libzfs.h>
 
 
 
