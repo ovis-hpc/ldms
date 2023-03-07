@@ -906,6 +906,7 @@ AC_ARG_ENABLE([libzfs],
     [],
     [enable_libzfs="check"])
 AM_CONDITIONAL([ENABLE_LIBZFS], [test "x$enable_libzfs" != xno])
+AM_CONDITIONAL([HAVE_LIBZFS], [test "x$have_libzfs" != xno])
 AC_SEARCH_LIBS([zpool_vdev_detach], [zfs],[HAVE_LIBZFS=yes])
 AS_IF([test "x$enable_libzfs" = xyes],[
     AS_IF([test "x$HAVE_LIBZFS" = xno],
