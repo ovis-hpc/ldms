@@ -158,9 +158,19 @@ typedef struct job_data {
 	char user[JOB_USER_STR_LEN];
 	char job_name[JOB_NAME_STR_LEN];
 	char job_tag[JOB_TAG_STR_LEN];
+	/*
+	 * We cache the metric values in array \c v. When we expand the set heap,
+	 * we use the cached values to initialize the metrics in the new set (with the bigger heap).
+	 */
 	union ldms_value v[JOB_REC_LEN];
 	ldms_mval_t rec_inst;
 	int exited;	/* True if this job is on the deleting list */
+	/*
+	 * \c exited_tasks_count is the number of tasks that have been exited already.
+	 * When exited_tasks_count == v[TASK_COUNT], the plugin calls handle_job_exit().
+	 * This is to handle the jobs started by srun.
+	 */
+	int exited_tasks_count;
 	/* List of tasks that have not been assigned the task_pid. */
 	TAILQ_HEAD(task_list, task_data) task_list;
 	struct rbn rbn;
@@ -1041,7 +1051,7 @@ static void handle_task_exit(job_data_t job, json_entity_t e)
 	}
 	task->v[TASK_EXIT_STATUS].v_u64 = json_value_int(av);
 	job->v[JOB_STATE].v_u64 = JOB_STOPPING;
-	job->v[TASK_COUNT].v_u64 -= 1;
+	job->exited_tasks_count += 1;
 	ldms_transaction_begin(set);
 	job_metric_set(job, JOB_STATE);
 	task_metric_set(task, TASK_EXIT_STATUS);
@@ -1152,7 +1162,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			goto unlock_tree;
 		}
 		handle_task_exit(job, entity);
-		if (job->v[TASK_COUNT].v_u64 == 0) {
+		if (job->exited_tasks_count == job->v[TASK_COUNT].v_u64) {
 			handle_job_exit(job, entity);
 			TAILQ_INSERT_TAIL(&complete_job_list, job, ent);
 			job->exited = 1;
