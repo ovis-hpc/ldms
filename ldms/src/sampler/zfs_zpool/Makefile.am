@@ -9,7 +9,9 @@ COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 		@LDFLAGS_GETTIME@
 
 if ENABLE_PROCNETDEV
-libzfs_zpool_la_SOURCES = zfs_zpool.c
+libzfs_zpool_la_SOURCES = zfs_zpool.c \
+			  zpool_ldms_helper.c
+
 libzfs_zpool_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libzfs_zpool.la
 endif
