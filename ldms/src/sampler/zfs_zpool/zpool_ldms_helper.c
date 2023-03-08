@@ -67,7 +67,7 @@
  * CDDL HEADER END
  */
 
-#include "zpool_ldms.h"
+#include "zpool_zfs.h"
 
 #define	POOL_MEASUREMENT	"zpool_stats"
 #define	SCAN_MEASUREMENT	"zpool_scan_stats"
@@ -447,7 +447,7 @@ print_recursive_stats(stat_printer_f func, nvlist_t *nvroot,
 		    sizeof (vdev_name));
 
 		for (c = 0; c < children; c++) {
-			print_recursive_stats(func, child[c], pool_name, i
+			print_recursive_stats(func, child[c], pool_name,
 					      vdev_name, descend);
 		}
 	}
