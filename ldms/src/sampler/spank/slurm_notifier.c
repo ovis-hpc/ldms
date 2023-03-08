@@ -74,10 +74,15 @@
 static char *stream;
 #define SLURM_NOTIFY_TIMEOUT 5
 static time_t io_timeout = SLURM_NOTIFY_TIMEOUT;
+static int user_debug = 0;
 
 static const char *stepd_event = "";
 #define DEBUG2(FMT, ...) do { \
+if (user_debug) \
 	printf("slurm_notifier: (%ld) [%s] %s:%d " FMT "\n", \
+	       (long)getpid(), stepd_event, __func__, __LINE__, ##__VA_ARGS__); \
+else \
+	slurm_debug2("slurm_notifier: (%ld) [%s] %s:%d " FMT "\n", \
 	       (long)getpid(), stepd_event, __func__, __LINE__, ##__VA_ARGS__); \
 } while (0)
 
@@ -430,6 +435,9 @@ void setup_clients(int argc, char *argv[], struct client_list *cl)
 	int rc;
 
 	for (rc = 0; rc < argc; rc++) {
+		if (0 == strcasecmp(argv[rc], "user_debug")) {
+			user_debug = 1;
+		}
 		if (0 == strncasecmp(argv[rc], "client", 6)) {
 			add_client(cl, get_arg_value(argv[rc]));
 		}
