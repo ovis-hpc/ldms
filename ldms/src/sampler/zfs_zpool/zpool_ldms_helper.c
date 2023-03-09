@@ -70,7 +70,6 @@
 #define _GNU_SOURCE
 #include <stdlib.h>
 #include "zpool_zfs.h"
-#include <libzfs_impl.h>
 
 
 /* Function prototypes */
