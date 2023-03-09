@@ -6,6 +6,8 @@
  */
 
 #define _GNU_SOURCE
+/* Next we include the headers to bring in the zfslib in action */
+#include "zpool_zfs.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -16,8 +18,6 @@
 
 #include <stddef.h>
 
-/* Next we include the headers to bring in the zfslib in action */
-#include "zpool_zfs.h"
 
 #define SAMP "zpools_stats"
 #define MAX_LINE_LEN 256

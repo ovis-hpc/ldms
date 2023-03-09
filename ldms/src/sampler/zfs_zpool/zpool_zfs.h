@@ -1,8 +1,3 @@
-/*
-#define __USE_LARGEFILE64
-#define _LARGEFILE_SOURCE
-#define _LARGEFILE64_SOURCE
-*/
 
 #include <stdlib.h>
 #include <ctype.h>
@@ -14,8 +9,8 @@
 #include <inttypes.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include "/usr/include/mntent.h"
 #include <libzfs.h>
-
 
 
 /* Function prototypes */
