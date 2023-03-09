@@ -1298,7 +1298,7 @@ class Communicator(object):
         req = LDMSD_Request(command_id=LDMSD_Request.SETGROUP_RM,
                             attrs=[
                                 LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
-                                LDMSD_Req_Attr(attr_id=LDMSD_Req.Attr.INSTANCE, value=instance)
+                                LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INSTANCE, value=instance)
                             ])
         try:
             req.send(self)
