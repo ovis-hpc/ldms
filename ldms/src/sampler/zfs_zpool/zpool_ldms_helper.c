@@ -67,13 +67,22 @@
  * CDDL HEADER END
  */
 
+#define _GNU_SOURCE
+#include <stdlib.h>
 #include "zpool_zfs.h"
+#include <libzfs_impl.h>
 
-#define	POOL_MEASUREMENT	"zpool_stats"
-#define	SCAN_MEASUREMENT	"zpool_scan_stats"
-#define	VDEV_MEASUREMENT	"zpool_vdev_stats"
-#define	POOL_LATENCY_MEASUREMENT	"zpool_latency"
-#define	POOL_QUEUE_MEASUREMENT	"zpool_vdev_queue"
+
+/* Function prototypes */
+
+int
+get_stats(zpool_handle_t *zhp, void *data);
+
+#define	POOL_MEASUREMENT	 "zpool_stats"
+#define	SCAN_MEASUREMENT	 "zpool_scan_stats"
+#define	VDEV_MEASUREMENT	 "zpool_vdev_stats"
+#define	POOL_LATENCY_MEASUREMENT "zpool_latency"
+#define	POOL_QUEUE_MEASUREMENT	 "zpool_vdev_queue"
 #define	MIN_LAT_INDEX	10  /* minimum latency index 10 = 1024ns */
 #define	POOL_IO_SIZE_MEASUREMENT	"zpool_io_size"
 #define	MIN_SIZE_INDEX	9  /* minimum size index 9 = 512 bytes */

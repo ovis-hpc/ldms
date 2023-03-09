@@ -4,13 +4,11 @@
  *
  * SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
  */
+
 #define _GNU_SOURCE
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <ctype.h>
-#include <glob.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "config.h"
@@ -158,7 +156,7 @@ static int initialize_ldms_structs()
         rc = ldms_schema_metric_list_add(sampler_base->schema,
                                          VDEV_LIST_SNAME,
                                          NULL,
-                                         vdev_list_sz * vdev_heap_sz);
+                                         vdev_list_len * vdev_heap_sz);
         if (rc < 0)
             goto err2;
 
@@ -292,84 +290,8 @@ static int sample(struct ldmsd_sampler *self)
             base_sample_end(sampler_base);
             goto err1;
         }
-        log_fn(LDMSD_LDEBUG, SAMP" sample(): # slingshot nics: %u\n", device_list->count);
-
-        list_handle = ldms_metric_get(sampler_base->set, index_store.nic_list);
-        ldms_list_purge(sampler_base->set, list_handle);
-        for (i = 0; i < device_list->count; i++) {
-                struct cxil_devinfo *dev_info = &device_list->info[i];
-                ldms_mval_t record_instance;
-                char interface[IFNAMSIZ];
-                char mac_address[DEFAULT_ARRAY_LEN];
-
-                interface[0] = '\0';
-                record_instance = ldms_record_alloc(sampler_base->set,
-                                                    index_store.nic_record);
-                if (record_instance == NULL) {
-                        log_fn(LDMSD_LDEBUG,
-                               SAMP": ldms_record_alloc() failed, resizing metric set\n");
-                        if (resize_metric_set() != 0) {
-                            log_fn(LDMSD_LERROR,
-                                   SAMP" memory reallocation failed: %d\n", rc);
-                            base_sample_end(sampler_base);
-                        }
-                        break;
-                }
-                rc = ldms_list_append_record(sampler_base->set, list_handle,
-                                             record_instance);
-
-                /* name 0 */
-                ldms_record_array_set_str(record_instance, rec_metric_ids[0],
-                                          dev_info->device_name);
-                /* interface 1 */
-                get_interface_name(dev_info->device_name, interface, sizeof(interface));
-                ldms_record_array_set_str(record_instance, rec_metric_ids[1],
-                                          interface);
-                /* fru_description 2 */
-                ldms_record_array_set_str(record_instance, rec_metric_ids[2],
-                                          dev_info->fru_description);
-                /* part_number 3 */
-                set_metric_from_sys(record_instance, rec_metric_ids[3],
-                                    dev_info->device_name, "device/fru/part_number");
-                /* serial_number 4 */
-                set_metric_from_sys(record_instance, rec_metric_ids[4],
-                                    dev_info->device_name, "device/fru/serial_number");
-                /* firmware_version 5 */
-                set_metric_from_sys(record_instance, rec_metric_ids[5],
-                                    dev_info->device_name, "device/uc/qspi_blob_version");
-                /* mac 6 */
-                get_mac_address(interface, mac_address, sizeof(mac_address));
-                ldms_record_array_set_str(record_instance, rec_metric_ids[6],
-                                          mac_address);
-                /* nid 7 */
-                ldms_record_set_u32(record_instance, rec_metric_ids[7], dev_info->nid);
-                /* pid_granule 8 */
-                ldms_record_set_u32(record_instance, rec_metric_ids[8], dev_info->pid_granule);
-                /* pcie_speed 9 */
-                set_pcie_speed(record_instance, rec_metric_ids[9], dev_info->device_name);
-                /* pcie_slot 10 */
-                set_pcie_slot(record_instance, rec_metric_ids[10], dev_info);
-                /* link_layer_retry 11 */
-                set_metric_from_sys(record_instance, rec_metric_ids[11],
-                                    dev_info->device_name, "device/port/link_layer_retry");
-                /* link_loopback 12 */
-                set_metric_from_sys(record_instance, rec_metric_ids[12],
-                                    dev_info->device_name, "device/port/loopback");
-                /* link_media 13 */
-                set_metric_from_sys(record_instance, rec_metric_ids[13],
-                                    dev_info->device_name, "device/port/media");
-                /* link_mtu 14 */
-                ldms_record_set_u32(record_instance, rec_metric_ids[14], dev_info->link_mtu);
-                /* link_speed 15 */
-                set_metric_from_sys(record_instance, rec_metric_ids[15],
-                                    dev_info->device_name, "device/port/speed");
-                /* link_state 16 */
-                set_metric_from_sys(record_instance, rec_metric_ids[16],
-                                    dev_info->device_name, "device/port/link");
-        }
         base_sample_end(sampler_base);
 
-        cxil_free_device_list(device_list);
 err1:
         return rc;
 }
