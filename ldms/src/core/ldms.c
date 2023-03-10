@@ -233,6 +233,54 @@ ldms_set_t ldms_set_by_name(const char *set_name)
 	return set;
 }
 
+struct set_mode {
+	regex_t regex;
+	uid_t uid;
+	gid_t gid;
+	mode_t perm;
+	int flags;
+};
+
+static int __set_sec_mod_cb(struct ldms_set *set, void *args)
+{
+	int rc = 0;
+	struct set_mode *mode = args;
+
+	if (set->flags & LDMS_SET_F_REMOTE) {
+		/*
+		 * The set is aggregated from another daemon.
+		 *
+		 * We don't change the security parameters
+		 * because LDMS will overwrite the information
+		 * next the the set is updated.
+		 */
+		goto out;
+	}
+
+	rc = regexec(&mode->regex, ldms_set_instance_name_get(set), 0, NULL, 0);
+	if (rc) {
+		/* The instance name doesn't match the regex. Skip */
+		rc = 0;
+		goto out;
+	}
+	rc = ldms_set_config_auth(set, mode->uid, mode->gid,
+				  mode->perm, mode->flags);
+out:
+	return rc;
+}
+
+int ldms_set_regex_sec_set(regex_t regex, uid_t uid, gid_t gid,
+			   mode_t perm, int set_flags)
+{
+	int rc;
+	struct set_mode mode = { .uid = uid, .gid = gid, .perm = perm, .flags = set_flags };
+	mode.regex = regex;
+	__ldms_set_tree_lock();
+	rc = __ldms_for_all_sets(__set_sec_mod_cb, &mode);
+	__ldms_set_tree_unlock();
+	return rc;
+}
+
 uint64_t ldms_set_meta_gn_get(ldms_set_t s)
 {
 	return __le64_to_cpu(s->meta->meta_gn);
@@ -1733,11 +1781,17 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 	return ldms_set_create(instance_name, schema, uid, gid, perm, 0);
 }
 
-int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, mode_t perm)
+int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid,
+			 mode_t perm, int flags)
 {
-	set->meta->uid = __cpu_to_le32(uid);
-	set->meta->gid = __cpu_to_le32(gid);
-	set->meta->perm = __cpu_to_le32(perm);
+	if (flags & DEFAULT_AUTHZ_SET_UID)
+		set->meta->uid = __cpu_to_le32(uid);
+	if (flags & DEFAULT_AUTHZ_SET_GID)
+		set->meta->gid = __cpu_to_le32(gid);
+	if (flags & DEFAULT_AUTHZ_SET_PERM)
+		set->meta->perm = __cpu_to_le32(perm);
+	LDMS_GN_INCREMENT(set->meta->meta_gn);
+	set->data->meta_gn = set->meta->meta_gn;
 	return 0;
 }
 
