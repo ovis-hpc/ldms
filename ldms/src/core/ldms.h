@@ -57,6 +57,7 @@
 #include <byteswap.h>
 #include <asm/byteorder.h>
 #include <openssl/sha.h>
+#include <regex.h>
 #include "ovis-ldms-config.h"
 #include "ldms_core.h"
 #include "coll/rbt.h"
@@ -1601,15 +1602,18 @@ extern int ldms_set_deleting_count();
  * If this is not configured, the default values are as following:
  * - \c uid:  \c -1
  * - \c gid:  \c -1
- * - \c perm: \c 0777
+ * - \c perm: \c 0440
  *
- * \param uid  The UID.
- * \param gid  The GID.
+ * \param uid  UID
+ * \param gid  GID
  * \param perm The UNIX mode_t bits (see chmod)
+ * \param flags The bit-wise OR of DEFAULT_AUTHZ_SET_UID, DEFAULT_AUTHZ_SET_GID,
+ *              DEFAULT_AUTHZ_SET_PERM, corresponding to the parameters to be set.
  * \retval errno If failed.
  * \retval 0     If succeeded.
  */
-int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, mode_t perm);
+int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid,
+			 mode_t perm, int flags);
 
 /**
  * \}  (ldms_set_config)
@@ -1833,6 +1837,26 @@ int ldms_set_perm_set(ldms_set_t s, mode_t perm);
 #define DEFAULT_AUTHZ_SET_PERM 0x1
 #define DEFAULT_AUTHZ_SET_ALL (SET_DEFAULT_AUTHZ_UID|SET_DEFAULT_AUTHZ_GID|SET_DEFAULT_AUTHZ_PERM)
 #define DEFAULT_AUTHZ_READONLY 0
+
+/**
+ * \brief Set the security parameters of the LDMS set matched the given regex
+ *
+ * The API changes the UID, GID, and permissions of the sets that their names
+ * are matched the regular expression. However, the API ignores remote sets.
+ * Remote sets are sets that have been aggregated from a remote daemon.
+ *
+ * \param regex     A regular expression handle
+ * \param uid       UID to set if DEFAULT_AUTHZ_SET_UID bit is set in set_flags
+ * \param gid       GID to set if DEFAULT_AUTHZ_SET_GID bit is set in set_flags
+ * \param perm      Permissions to set if DEFAULT_AUTHZ_SET_PERM bit is set in set_flags
+ * \param set_flags
+ *
+ * \retval 0 If succeeded.
+ * \retval errno If failed.
+ */
+int ldms_set_regex_sec_set(regex_t regex, uid_t uid, gid_t gid,
+			   mode_t perm, int set_flags);
+
 /**
  * \brief Atomically set or get one or more default authorization values for LDMS sets.
  *
