@@ -2053,6 +2053,31 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_auth_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('auth_add', text)
 
+    def do_set_sec_mod(self, arg):
+        """
+        Change the security parameters of the set matched the regular expression
+
+        The configuration command does not affect the sets aggregated from another LDMSD.
+        The new security parameter values will only affect new clients or connections.
+        Then, the aggregators that already have access to the sets will not lose access.
+
+        Parameters:
+           regex=     Regular expression string
+           [uid=]     UID
+           [gid=]     GID
+           [perm=]    Permissions
+        """
+        arg = self.handle_args('set_sec_mod', arg)
+        rc, msg = self.comm.set_sec_mod(regex = arg['regex'],
+                                        uid = arg['uid'],
+                                        gid = arg['gid'],
+                                        perm = arg['perm'])
+        if rc:
+            print(f"Error changing sets' security parameters. {msg}")
+
+    def complete_set_sec_mod(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('set_sec_mod', text)
+
     def do_option(self, arg):
         """
         ONLY SUPPORTED IN CONFIGURATION FILES

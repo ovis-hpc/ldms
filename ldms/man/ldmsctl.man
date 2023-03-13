@@ -668,18 +668,7 @@ strgp: list the state of all storage policies.
 The object name of which the status will be reported.
 .RE
 
-.SH MISC COMMAND SYNTAX
-
-.SS Display the list of available commands
-.br
-.BR help
-<command>
-.RS
-.RI [ command]
-.br
-If a command is given, the help of the command will be printed. Otherwise, only
-the available command names are printed.
-.RE
+.SH SET COMMAND SYNTAX
 
 .SS Set the user data value for a metric in a metric set.
 .br
@@ -726,6 +715,57 @@ The base value of user data (uint64)
 Increment value (int). The default is 0. If incr is 0,
 the user data of all matched metrics are set
 to the base value. Optional.
+.RE
+
+.SS Change the security parameters of LDMS sets using regular expression.
+The set security change affects only the new clients or the new connections.
+The clients that already have access to the set will be able to continue to get
+set updates, regardless of their permission.
+
+To apply the new set security to the aggregators, on the first level
+aggregator, users will stop and start the producer from which the set has been
+aggregated. After the connection has been re-established, the first-level
+aggregator can see the set if its permission matches the new set security.
+There are no steps to perform on higher-level aggregators. Given that the
+first-level aggregator has permission to see the set, it will compare the
+second-level aggregator’s permission with the set security after successfully
+looking up the set. The second-level aggregator will be able to look up the set
+if it has permission to do so. The process continues on the higher-level
+aggregators automatically.
+.br
+.BR set_sec_mod
+attr=<value>
+.RS
+.TP
+.BI regex " regex
+.br
+A regular expression to match set instance names
+.TP
+.BI [uid " uid"]
+.br
+An existing user name string or a UID. Optional
+.TP
+.BI [gid " gid"]
+.br
+A GID. Optional
+.TP
+.BI [perm " perm"]
+.br
+An octal number representing the permission bits. Optional
+.RE
+
+.SH MISC COMMAND SYNTAX
+
+.SS Display the list of available commands
+.br
+.BR help
+<command>
+.RS
+.RI [ command]
+.br
+If a command is given, the help of the command will be printed. Otherwise, only
+the available command names are printed.
+.RE
 
 .SS Get the LDMS version the running LDMSD is based on.
 .BR version

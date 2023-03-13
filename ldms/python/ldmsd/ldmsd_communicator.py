@@ -147,6 +147,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'set_stats': {'req_attr':[], 'opt_attr': []},
                       'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth']},
                       'metric_sets_default_authz': {'req_attr':[], 'opt_attr': ['uid', 'gid', 'perm']},
+                      'set_sec_mod' : {'req_attr': ['regex'], 'opt_attr': ['uid', 'gid', 'perm']},
                       ##### Failover. #####
                       'failover_config': {
                                 'req_attr': [
@@ -514,6 +515,7 @@ class LDMSD_Request(object):
     SET_STATS = 0x600 + 15
     LISTEN = 0x600 + 16
     SET_DEFAULT_AUTHZ = 0x600 + 17
+    SET_SEC_MOD = 0x600 + 19
 
     FAILOVER_CONFIG        = 0x700
     FAILOVER_PEERCFG_START = 0x700  +  1
@@ -629,6 +631,7 @@ class LDMSD_Request(object):
             'auth_add'      :  {'id' : AUTH_ADD },
 
             'metric_sets_default_authz' : {'id' : SET_DEFAULT_AUTHZ },
+            'set_sec_mod' : {'id' : SET_SEC_MOD },
     }
 
     TYPE_CONFIG_CMD = 1
@@ -2965,6 +2968,36 @@ class Communicator(object):
             else:
                 status = None
             return err, status
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def set_sec_mod(self, regex, uid = None, gid = None, perm = None):
+        """
+        Change the security parameters of the set matched the regular expression
+        Parameters:
+           Regular expression string
+           UID
+           GID
+           Permissions
+        """
+        attr_list = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.REGEX,
+                                    value = regex)]
+        if uid is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.UID,
+                                            value = uid))
+        if gid is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.GID,
+                                            value = gid))
+        if perm is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.PERM,
+                                            value = perm))
+        req = LDMSD_Request(command_id = LDMSD_Request.SET_SEC_MOD,
+                            attrs = attr_list)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)

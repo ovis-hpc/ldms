@@ -2277,6 +2277,16 @@ static void help_auth()
 		"     <authentication-specific attributes\n");
 }
 
+static void help_set_sec_mod()
+{
+	printf( "\nChange the security parameters of LDMS sets\n\n"
+		"Parameters:\n"
+		"     regex=      Regular Expression\n"
+		"     [uid=]      UID\n"
+		"     [gid=]      GID\n"
+		"     [perm=]     Octal number representing the permission bits\n");
+}
+
 static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
 static int handle_source(struct ldmsctl_ctrl *ctrl, char *path);
 static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
@@ -2324,6 +2334,7 @@ static struct command command_tbl[] = {
 	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit, resp_generic },
 	{ "script", LDMSCTL_SCRIPT, handle_script, help_script, resp_generic },
 	{ "set_route", LDMSD_SET_ROUTE_REQ, NULL, help_set_route, resp_set_route },
+	{ "set_sec_mod", LDMSD_SET_SEC_MOD_REQ, NULL, help_set_sec_mod, resp_generic },
 	{ "set_stats", LDMSD_SET_STATS_REQ, NULL, help_set_stats, resp_set_stats },
 	{ "setgroup_add", LDMSD_SETGROUP_ADD_REQ, NULL, help_setgroup_add, resp_generic },
 	{ "setgroup_del", LDMSD_SETGROUP_DEL_REQ, NULL, help_setgroup_del, resp_generic },
