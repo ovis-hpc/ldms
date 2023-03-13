@@ -278,12 +278,38 @@ OPTION_WITH_OR_BUILD([gpcdlocal],[../gpcd-support],[gpcd],[gpcdlocal.sh], ,[gpcd
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
 
+# This test is only for the older "kafka" store
 OPTION_WITH_CHECK([kafka], [KAFKA], [librdkafka/rdkafka.h],
 		  [rdkafka], [rd_kafka_new] )
+
 AC_LIB_HAVE_LINKFLAGS([rdkafka], [], [#include <librdkafka/rdkafka.h>])
-AM_CONDITIONAL([HAVE_KAFKA], [test "x$HAVE_LIBRDKAFKA" = xyes])
-OPTION_WITH([libavro], [LIBAVRO])
-OPTION_WITH([libserdes], [LIBSERDES])
+AC_LIB_HAVE_LINKFLAGS([avro], [], [#include <avro.h>])
+AC_LIB_HAVE_LINKFLAGS([serdes], [], [#include <unistd.h>
+#include <libserdes/serdes.h>
+#include <libserdes/serdes-avro.h>])
+
+AC_ARG_ENABLE([store-avro-kafka],
+    [AC_HELP_STRING([--enable-store-avro-kafka], [require the build of the avro-kafka-store @<:@default=check@:>@])],
+    [],
+    [enable_store_avro_kafka="check"])
+AS_IF([test "x$enable_store_avro_kafka" != xno],[
+    AS_IF([test "x$HAVE_LIBRDKAFKA" = xno],[
+        AS_IF([test "x$enable_store_avro_kafka" = xyes],
+            [AC_MSG_ERROR([store_avro_kafka requires librdkakfa])],
+            [enable_store_avro_kafka="no"])
+    ])
+    AS_IF([test "x$HAVE_LIBAVRO" = xno],[
+        AS_IF([test "x$enable_store_avro_kafka" = xyes],
+            [AC_MSG_ERROR([store_avro_kafka requires libavro])],
+            [enable_store_avro_kafka="no"])
+    ])
+    AS_IF([test "x$HAVE_LIBSERDES" = xno],[
+        AS_IF([test "x$enable_store_avro_kafka" = xyes],
+            [AC_MSG_ERROR([store_avro_kafka requires libserdes])],
+            [enable_store_avro_kafka="no"])
+    ])
+])
+AM_CONDITIONAL([ENABLE_STORE_AVRO_KAFKA], [test "x$enable_store_avro_kafka" != xno])
 
 dnl Options for sampler
 OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
