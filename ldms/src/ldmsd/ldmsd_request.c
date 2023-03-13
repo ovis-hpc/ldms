@@ -5467,16 +5467,18 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_UID);
 	if (value) {
 		struct passwd *pwd;
+		long _uid;
 
 		pwd = getpwnam(value);
-		uid = strtoul(value, &endptr, 0);
+		_uid = strtol(value, &endptr, 0);
 		if (pwd) {
 			/* Valid username */
 			uid = pwd->pw_uid;
 			set_flags |= DEFAULT_AUTHZ_SET_UID;
-		} else if (*endptr == '\0') {
+		} else if ((*endptr == '\0') && (_uid > 0)) {
 			/* Valid UID */
 			set_flags |= DEFAULT_AUTHZ_SET_UID;
+			uid = _uid;
 		} else {
 			reqc->errcode = EINVAL;
 			(void) snprintf(reqc->line_buf, reqc->line_len,
@@ -5490,16 +5492,18 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_GID);
 	if (value) {
 		struct group *grp;
+		long _gid;
 
 		grp = getgrnam(value);
-		gid = strtoul(value, &endptr, 0);
+		_gid = strtol(value, &endptr, 0);
 		if (grp) {
 			/* Valid group name */
 			gid = grp->gr_gid;
 			set_flags |= DEFAULT_AUTHZ_SET_GID;
-		} else if (*endptr == '\0') {
+		} else if ((*endptr == '\0') && (_gid > 0)) {
 			/* Valid GID */
 			set_flags |= DEFAULT_AUTHZ_SET_GID;
+			gid = _gid;
 		} else {
 			reqc->errcode = EINVAL;
 			(void) snprintf(reqc->line_buf, reqc->line_len,
