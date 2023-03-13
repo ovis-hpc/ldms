@@ -60,6 +60,8 @@ AC_C_FLEXIBLE_ARRAY_MEMBER
 
 OVIS_PKGLIBDIR
 
+AC_LIB_HAVE_LINKFLAGS([jansson], [], [#include <jansson.h>])
+
 dnl change sharedstatedir default
 test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'
 
@@ -367,14 +369,12 @@ AS_IF([test "x$enable_variorum" != xno],[
         AS_IF([test "x$HAVE_LIBVARIORUM" = xno],
             [AC_MSG_ERROR([libvariorum or headers not found])])
     ])
-    AC_LIB_HAVE_LINKFLAGS([jansson], [], [#include <jansson.h>])
     AS_IF([test "x$enable_variorum" != xcheck],[
         AS_IF([test "x$HAVE_LIBJANSSON" = xno],
             [AC_MSG_ERROR([libjansson or headers not found])])
     ])
 ])
-AM_CONDITIONAL([HAVE_LIBVARIORUM], [test "x$HAVE_LIBVARIORUM" = xyes])
-AM_CONDITIONAL([HAVE_LIBJANSSON], [test "x$HAVE_LIBJANSSON" = xyes])
+AM_CONDITIONAL([ENABLE_VARIORUM_SAMPLER], [test "x$enable_variorum" != no -a "x$HAVE_LIBVARIORUM" = xyes -a "x$HAVE_LIBJANSSON" = xyes])
 
 dnl check for libcurl if influx is configured
 OPTION_DEFAULT_DISABLE([influx], [ENABLE_INFLUX])
