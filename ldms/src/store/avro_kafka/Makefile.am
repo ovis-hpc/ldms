@@ -11,11 +11,10 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
 		$(top_builddir)/lib/src/ovis_log/libovis_log.la
 
 libstore_avro_kafka_la_SOURCES = store_avro_kafka.c
-libstore_avro_kafka_la_CFLAGS = $(AM_CFLAGS) @LIBAVRO_INCDIR_FLAG@
+libstore_avro_kafka_la_CFLAGS = $(AM_CFLAGS)
 libstore_avro_kafka_la_LIBADD = $(COMMON_LIBADD) \
-			   -lc @LIBAVRO_LIBDIR_FLAG@ \
-			   -lrdkafka \
-			   -lavro \
-			   -lserdes
+			   $(LTLIBRDKAFKA) \
+			   $(LTLIBAVRO) \
+			   $(LTLIBSERDES)
 
 pkglib_LTLIBRARIES += libstore_avro_kafka.la
