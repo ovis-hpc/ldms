@@ -63,6 +63,7 @@
 #include <getopt.h>
 #include <pwd.h>
 #include <grp.h>
+#include <regex.h>
 #include <ovis_util/util.h>
 #include <ovis_json/ovis_json.h>
 #include <arpa/inet.h>
@@ -253,6 +254,7 @@ static int ebusy_handler(ldmsd_req_ctxt_t reqc);
 static int updtr_task_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc);
 static int update_time_stats_handler(ldmsd_req_ctxt_t reqc);
+static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc);
 
 /* these are implemented in ldmsd_failover.c */
 int failover_config_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -456,7 +458,9 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_SET_UDATA_REGEX_REQ] = {
 		LDMSD_SET_UDATA_REGEX_REQ, set_udata_regex_handler, XUG | MOD
 	},
-
+	[LDMSD_SET_SEC_MOD_REQ] = {
+		LDMSD_SET_SEC_MOD_REQ, set_sec_mod_handler, XUG | MOD
+	},
 
 	/* MISC */
 	[LDMSD_VERBOSE_REQ] = {
@@ -5428,6 +5432,112 @@ out:
 	free(regex);
 	free(inc_s);
 	return 0;
+}
+
+static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	char *value, *regex_s, *endptr;
+	regex_t regex;
+
+	uid_t uid;
+	gid_t gid;
+	mode_t perm;
+	int set_flags = 0;
+	value = regex_s = NULL;
+	uid = gid = perm = 0;
+
+	regex_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
+	if (!regex_s) {
+		reqc->errcode = EINVAL;
+		(void) snprintf(reqc->line_buf, reqc->line_len,
+				"'regex' is required.");
+		goto out;
+	}
+	rc = regcomp(&regex, regex_s, REG_EXTENDED | REG_NOSUB);
+	if (rc) {
+		reqc->errcode = EINVAL;
+		rc = snprintf(reqc->line_buf, reqc->line_len, "The regex string is invalid. ");
+		rc++;
+		(void) regerror(rc, &regex, &reqc->line_buf[rc], reqc->line_len - rc);
+		goto out;
+	}
+
+	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_UID);
+	if (value) {
+		struct passwd *pwd;
+
+		pwd = getpwnam(value);
+		uid = strtoul(value, &endptr, 0);
+		if (pwd) {
+			/* Valid username */
+			uid = pwd->pw_uid;
+			set_flags |= DEFAULT_AUTHZ_SET_UID;
+		} else if (*endptr == '\0') {
+			/* Valid UID */
+			set_flags |= DEFAULT_AUTHZ_SET_UID;
+		} else {
+			reqc->errcode = EINVAL;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"The given uid '%s' is not "
+					"a valid UID or user name.",
+					value);
+			goto free_regex;
+		}
+	}
+
+	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_GID);
+	if (value) {
+		struct group *grp;
+
+		grp = getgrnam(value);
+		gid = strtoul(value, &endptr, 0);
+		if (grp) {
+			/* Valid group name */
+			gid = grp->gr_gid;
+			set_flags |= DEFAULT_AUTHZ_SET_GID;
+		} else if (*endptr == '\0') {
+			/* Valid GID */
+			set_flags |= DEFAULT_AUTHZ_SET_GID;
+		} else {
+			reqc->errcode = EINVAL;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"The given gid '%s' is not "
+					"a valid GID or group name.", value);
+			goto free_regex;
+		}
+	}
+
+	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PERM);
+	if (value) {
+		perm = strtoul(value, &endptr, 8);
+		if (*endptr != '\0') {
+			reqc->errcode = EINVAL;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"String to permission bits conversion failed.");
+			goto free_regex;
+		} else if (perm > 0777) {
+			reqc->errcode = EINVAL;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"Permission value is out of range.");
+			goto free_regex;
+		}
+		set_flags |= DEFAULT_AUTHZ_SET_PERM;
+	}
+
+	rc = ldms_set_regex_sec_set(regex, uid, gid, perm, set_flags);
+	if (rc) {
+		reqc->errcode = rc;
+		(void) snprintf(reqc->line_buf, reqc->line_len,
+				"Failed to set the security parameters.");
+	}
+free_regex:
+	regfree(&regex);
+out:
+	free(regex_s);
+	free(value);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
 }
 
 static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
