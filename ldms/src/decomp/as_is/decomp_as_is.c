@@ -251,6 +251,10 @@ __decomp_as_is_config(ldmsd_strgp_t strgp, json_entity_t jcfg,
 	dcfg->decomp = __decomp_as_is;
 	dcfg->idx_count = n_idx;
 
+        if (!jidxs) {
+                return &dcfg->decomp;
+        }
+
 	/* foreach index */
 	j = 0;
 	TAILQ_FOREACH(jidx, &jidxs->item_list, item_entry) {
