@@ -1012,6 +1012,7 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		ldmsd_recv_msg(x, e->data, e->data_len);
 		break;
 	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+	case LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED:
 		break;
 	default:
 		assert(0);

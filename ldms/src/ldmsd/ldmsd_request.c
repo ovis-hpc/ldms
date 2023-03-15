@@ -73,7 +73,9 @@
 #include "ldms_xprt.h"
 #include "ldmsd.h"
 #include "ldmsd_request.h"
+#if 0
 #include "ldmsd_stream.h"
+#endif
 
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 /*
@@ -1838,6 +1840,10 @@ send_reply:
 
 static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 {
+	/* TODO
+	 * Should reply to the ldmsd_controller after we get the subscription
+	 * result from LDMS Stream.
+	 */
 	char *prdcr_regex;
 	char *stream_name = NULL;
 	size_t cnt = 0;
@@ -7052,7 +7058,7 @@ static const char *__xprt_prdcr_name_get(ldms_t x)
 static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *stream_name;
-	ldmsd_stream_type_t stream_type = LDMSD_STREAM_STRING;
+	ldms_stream_type_t stream_type = LDMS_STREAM_STRING;
 	ldmsd_req_attr_t attr;
 	int cnt;
 	char *p_name;
@@ -7084,15 +7090,14 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 	/* Check for JSon */
 	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_JSON);
 	if (attr) {
-		stream_type = LDMSD_STREAM_JSON;
+		stream_type = LDMS_STREAM_JSON;
 	} else {
 		goto out_0;
 	}
 out_1:
 	p_name = (char *)__xprt_prdcr_name_get(reqc->xprt->ldms.ldms);
-	ldmsd_stream_deliver(stream_name, stream_type,
-			     (char *)attr->attr_value,
-			     attr->attr_len, NULL, p_name);
+	ldms_stream_publish(NULL, stream_name, stream_type, NULL, 0440,
+			    (char*)attr->attr_value, attr->attr_len);
 out_0:
 	free(stream_name);
 	return 0;
@@ -7102,6 +7107,7 @@ err_reply:
 	return 0;
 }
 
+#if 0
 static int __on_republish_resp(ldmsd_req_cmd_t rcmd)
 {
 	ldmsd_req_attr_t attr;
@@ -7149,7 +7155,9 @@ static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
 	ldmsd_req_cmd_free(rcmd);
 	return rc;
 }
+#endif
 
+#if 0
 /* RSE: remote stream entry */
 struct __RSE_key_s {
 	/* xprt ref */
@@ -7238,9 +7246,15 @@ void __RSE_del(__RSE_t ent)
 	/* caller must hold __RSE_rbt_mutex */
 	rbt_del(&__RSE_rbt, &ent->rbn);
 }
+#endif
 
 static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
 {
+	reqc->errcode = ENOTSUP;
+	ldmsd_send_req_response(reqc, "LDMSD_STREAM_SUBSCRIBE_REQ is deprecated.");
+	return 0;
+
+#if 0
 	char *stream_name;
 	int cnt;
 	int len;
@@ -7303,11 +7317,17 @@ send_reply:
 	free(stream_name);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
+#endif
 }
 
 static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc)
 
 {
+	reqc->errcode = ENOTSUP;
+	ldmsd_send_req_response(reqc, "LDMSD_STREAM_UNSUBSCRIBE_REQ is deprecated.");
+	return 0;
+
+#if 0
 	char *stream_name;
 	int cnt;
 	int len;
@@ -7352,10 +7372,15 @@ send_reply:
 	free(stream_name);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
+#endif
 }
 
 static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc)
 {
+	reqc->errcode = ENOTSUP;
+	ldmsd_send_req_response(reqc, "LDMSD_STREAM_CLIENT_DUMP_REQ is deprecated.");
+	return 0;
+#if 0
 	int rc;
 	struct ldmsd_req_attr_s attr;
 	char *json;
@@ -7384,10 +7409,15 @@ static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc)
 	attr.discrim = 0;
 	ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t), LDMSD_REQ_EOM_F);
 	return rc;
+#endif
 }
 
 static int stream_new_handler(ldmsd_req_ctxt_t reqc)
 {
+	reqc->errcode = ENOTSUP;
+	ldmsd_send_req_response(reqc, "LDMSD_STREAM_NEW_REQ is deprecated.");
+	return 0;
+#if 0
 	int rc;
 	char *name;
 
@@ -7404,6 +7434,7 @@ static int stream_new_handler(ldmsd_req_ctxt_t reqc)
 		free(name);
 	}
 	return 0;
+#endif
 }
 
 static int stream_status_handler(ldmsd_req_ctxt_t reqc)
@@ -7556,8 +7587,9 @@ out:
 
 void ldmsd_xprt_term(ldms_t x)
 {
-	__RSE_t ent;
 	struct rbn *rbn;
+#if 0
+	__RSE_t ent;
 	char _buff[sizeof(struct __RSE_key_s) + 256] = {};
 	struct __RSE_key_s *key = (void*)_buff;
 
@@ -7576,6 +7608,7 @@ void ldmsd_xprt_term(ldms_t x)
 		__RSE_free(ent);
 	}
 	__RSE_rbt_unlock();
+#endif
 
 	/* Free outstanding configuration requests */
 	req_ctxt_tree_lock();
