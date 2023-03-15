@@ -250,6 +250,8 @@ __decomp_as_is_config(ldmsd_strgp_t strgp, json_entity_t jcfg,
 	rbt_init(&dcfg->row_cfg_rbt, __row_cfg_cmp);
 	dcfg->decomp = __decomp_as_is;
 	dcfg->idx_count = n_idx;
+	if (!n_idx)
+		goto out;
 
 	/* foreach index */
 	j = 0;
@@ -299,6 +301,7 @@ __decomp_as_is_config(ldmsd_strgp_t strgp, json_entity_t jcfg,
 		j++;
 	}
 	assert(j == jidxs->item_count);
+ out:
 
 	return &dcfg->decomp;
 
