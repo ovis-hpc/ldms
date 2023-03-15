@@ -1013,6 +1013,7 @@ ldms/src/store/kafka/Makefile
 ldms/src/store/avro_kafka/Makefile
 ldms/src/store/store_flatfile/Makefile
 ldms/src/store/store_app/Makefile
+ldms/src/store/stream_dump/Makefile
 ldms/src/contrib/store/Makefile
 ldms/src/contrib/store/tutorial/Makefile
 ldms/src/contrib/store/timescale/Makefile

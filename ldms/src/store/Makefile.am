@@ -102,3 +102,5 @@ endif
 if ENABLE_STORE_AVRO_KAFKA
 SUBDIRS += avro_kafka
 endif
+
+SUBDIRS += stream_dump
