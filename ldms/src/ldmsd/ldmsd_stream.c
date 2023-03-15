@@ -232,25 +232,6 @@ int ldmsd_stream_new_publish(const char *name, ldms_t xprt)
 	return rc;
 }
 
-void ldmsd_stream_publisher_remove(const char *name)
-{
-	ldmsd_stream_t s;
-	struct rbn *rbn;
-	ldmsd_stream_publisher_t p;
-	pthread_mutex_lock(&s_tree_lock);
-	RBT_FOREACH(rbn, &s_tree) {
-		s = container_of(rbn, struct ldmsd_stream_s, s_ent);
-		pthread_mutex_lock(&s->s_lock);
-		p = __find_publisher(s, name);
-		if (p) {
-			rbt_del(&s->s_p_tree, &p->p_ent);
-			__free_publisher(p);
-		}
-		pthread_mutex_unlock(&s->s_lock);
-	}
-	pthread_mutex_unlock(&s_tree_lock);
-}
-
 int ldmsd_stream_subscriber_count(const char *stream_name)
 {
 	int subscriber_count = 0;

@@ -13,7 +13,6 @@
 #include <ovis_util/util.h>
 #include "ldms.h"
 #include "../ldmsd_request.h"
-#include "../ldmsd_stream.h"
 
 static struct option long_opts[] = {
 	{"host",     required_argument, 0,  'h' },
@@ -27,8 +26,6 @@ static struct option long_opts[] = {
 	{"line",     no_argument,	0,  'l' },
 	{"repeat",   required_argument, 0,  'r' },
 	{"interval", required_argument, 0,  'i' },
-	{"new",      no_argument,       0,  'n' },
-	{"new_only", no_argument,       0,  'N' },
 	{0,          0,                 0,  0 }
 };
 
@@ -60,16 +57,12 @@ int main(int argc, char **argv)
 	struct attr_value_list *auth_opt = NULL;
 	const int auth_opt_max = AUTH_OPT_MAX;
 	FILE *file;
-	const char *stream_type = "string";
-	ldmsd_stream_type_t typ = LDMSD_STREAM_STRING;
+	ldms_stream_type_t typ = LDMS_STREAM_STRING;
 	int line_mode = 0;	/* publish each line separately */
 	int repeat = 0;
 	unsigned interval = 0;
-	enum {
-		NEW_FALSE = 0,
-		NEW_TRUE,
-		NEW_ONLY,
-	} stream_new = NEW_FALSE;
+
+	ldms_init(16*1024*1024);
 
 	auth_opt = av_new(auth_opt_max);
 	if (!auth_opt) {
@@ -140,11 +133,9 @@ int main(int argc, char **argv)
 			break;
 		case 't':
 			if (0 == strcmp("json", optarg)) {
-				stream_type = "json";
-				typ = LDMSD_STREAM_JSON;
+				typ = LDMS_STREAM_JSON;
 			} else if (0 == strcmp("string", optarg)) {
-				stream_type = "string";
-				typ = LDMSD_STREAM_STRING;
+				typ = LDMS_STREAM_STRING;
 			} else {
 				printf("The type argument must be 'json' or 'string'\n");
 				usage(argc, argv);
@@ -158,12 +149,6 @@ int main(int argc, char **argv)
 			break;
 		case 'i':
 			interval = (unsigned)atoi(optarg);
-			break;
-		case 'n':
-			stream_new = NEW_TRUE;
-			break;
-		case 'N':
-			stream_new = NEW_ONLY;
 			break;
 		default:
 			usage(argc, argv);
@@ -190,36 +175,25 @@ int main(int argc, char **argv)
 
 	int rc;
 	ldms_t ldms = NULL;
-	if (stream_new || line_mode) {
-		/* Create a transport endpoint */
-		ldms = ldms_xprt_new_with_auth(xprt, auth, NULL);
-		if (!ldms) {
-			rc = errno;
-			printf("Failed to create the LDMS transport endpoint.\n");
-			return rc;
-		}
-		rc = ldms_xprt_connect_by_name(ldms, host, port, NULL, NULL);
-		if (rc){
-			printf("Error %d connecting to peer\n", rc);
-			return rc;
-		}
+
+	/* Create a transport endpoint */
+	ldms = ldms_xprt_new_with_auth(xprt, auth, NULL);
+	if (!ldms) {
+		rc = errno;
+		printf("Failed to create the LDMS transport endpoint.\n");
+		return rc;
 	}
-	if (stream_new) {
-		/* Create and send a STREAM_NEW message */
-		rc = ldmsd_stream_new_publish(stream, ldms);
-		if (rc) {
-			printf("Error %d creating stream and notifying client\n", rc);
-			return rc;
-		}
-		if (NEW_ONLY == stream_new)
-			return 0;
+
+	rc = ldms_xprt_connect_by_name(ldms, host, port, NULL, NULL);
+	if (rc){
+		printf("Error %d connecting to peer\n", rc);
+		return rc;
 	}
 
 	int k;
 	if (!line_mode) {
 		for (k = 0; k < repeat; k++) {
-			rc = ldmsd_stream_publish_file(stream, stream_type, xprt,
-						host, port, auth, auth_opt, file);
+			rc = ldms_stream_publish_file(ldms, stream, typ, NULL, 0440, file);
 			if (repeat == 1 && rc) {
 				printf("Error %d publishing file.\n", rc);
 				return rc;
@@ -228,7 +202,8 @@ int main(int argc, char **argv)
 			if (k)
 				printf("loop: %d returned %d\n", k, rc);
 		}
-		return 0;
+		rc = 0;
+		goto out;
 	}
 
 	for (k = 0; k < repeat; k++) {
@@ -237,12 +212,13 @@ int main(int argc, char **argv)
 		if (k)
 			rewind(file);
 		while (0 != (s = fgets(line_buffer, sizeof(line_buffer)-1, file))) {
-			ldmsd_stream_publish(ldms, stream, typ, s, strlen(s)+1);
+			ldms_stream_publish(ldms, stream, typ, NULL, 0440, s, strlen(s)+1);
 		}
 		if (k)
 			printf("loop: %d finished.\n", k);
 		usleep(interval);
 	}
+ out:
 	ldms_xprt_close(ldms);
 	return rc;
 }
