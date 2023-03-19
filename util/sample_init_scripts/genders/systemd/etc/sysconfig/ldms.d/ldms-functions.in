@@ -634,6 +634,10 @@ start_ldmsd_plugins () {
 	echoq $LDMSD_METRIC_PLUGINS
 	echoq $out
 
+	if test -n "$LDMSD_METRIC_SETS_DEFAULT_AUTHZ";  then
+		echo "metric_sets_default_authz $LDMSD_METRIC_SETS_DEFAULT_AUTHZ" >> $out
+	fi
+
 	producer=$(gender_substitute $host $($NODEATTR $NODEATTRFILE -v $host ldmsd_producer 2>/dev/null))
 	if test -z $producer; then
 		producer=$host
@@ -818,6 +822,7 @@ start_add_hosts () {
 
 generate_aggregator_config () {
 	start_add_hosts $LDMSD_PLUGIN_CONFIG_FILE
+	sed -i -e  's/updtr_add /updtr_add auto_interval=true /' $LDMSD_PLUGIN_CONFIG_FILE
 	return 0
 }
 
