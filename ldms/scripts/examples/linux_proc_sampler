@@ -28,6 +28,7 @@ cat << EOF > $LDMSD_RUN/metrics.input
   "argv_sep":"\t",
   "syscalls": "${LDMSD_RUN}/syscalls.map",
   "argv_msg": 1,
+  "log_send": 1,
   "env_msg": 1,
   "env_exclude": "${LDMSD_RUN}/exclude_env",
   "fd_msg": 1,
@@ -39,10 +40,14 @@ cat << EOF > $LDMSD_RUN/metrics.input
         "^/sys/",
         "^/tmp/",
         "^/proc/",
+        "^/proc$",
         "^/ram/tmp/",
         "^/usr/lib",
         "^/usr/share/",
-        "^/opt/ness"
+        "^/opt/ness",
+        "^/ram/opt/ness",
+        "^/ram/var/",
+	"/.nfs0"
     ],
   "published_pid_dir" : "${LDMSD_RUN}/ldms-netlink-tracked",
   "metrics" : [
@@ -64,7 +69,7 @@ EOF
 rm -f $LOGDIR/json*.log
 #valgrind -v --tool=drd --log-file=$LOGDIR/vg.netlink.txt ${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked &
 #valgrind -v --leak-check=full --track-origins=yes --trace-children=yes  --log-file=$LOGDIR/vg.netlink.txt ${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked &
-${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked &
+${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked -x -e exec,clone,exit &
 # uncomment next one to test duplicate handling
 #${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json2.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
 VGARGS="--tool=drd --suppressions=/scratch1/baallan/ovis/ldms/scripts/examples/linux_proc_sampler.drd.supp"
@@ -92,7 +97,7 @@ for lc in $(seq 1); do
 #LDMS_LS 1 -v
 	SLEEP 2
 done
-SLEEP 2
+SLEEP 20
 KILL_LDMSD 3 2 1
 file_created $STOREDIR/node/$testname
 file_created $STOREDIR/node/$dsname

@@ -64,6 +64,7 @@
 #include <pwd.h>
 #include <glob.h>
 #include <sys/sysmacros.h>
+#include <sys/sysinfo.h>
 
 #include <coll/rbt.h>
 
@@ -77,6 +78,7 @@
 #define SAMP "linux_proc_sampler"
 
 #define DEFAULT_STREAM "slurm"
+#define PID_DIR_DEFAULT "/var/run/ldms-netlink-tracked"
 
 #define INST_LOG(inst, lvl, fmt, ...) \
 		 inst->log((lvl), "%s: " fmt, SAMP, ##__VA_ARGS__)
@@ -2151,6 +2153,7 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 		}
 	}
 	ent = json_value_find(jdoc, "published_pid_dir");
+	inst->published_pid_dir = strdup(PID_DIR_DEFAULT);
 	if (ent) {
 		if (ent->type != JSON_STRING_VALUE) {
 			rc = EINVAL;
@@ -2158,6 +2161,7 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 				"Error: `published_pid_dir` must be a path.\n");
 			goto out;
 		}
+		free(inst->published_pid_dir);
 		inst->published_pid_dir = strdup(json_value_cstr(ent));
 		if (!inst->published_pid_dir) {
 			rc = ENOMEM;
@@ -3533,6 +3537,25 @@ static void pid_from_file(linux_proc_sampler_inst_t inst, const char *file)
 	fclose(fp);
 }
 
+struct pid_search {
+	pid_t pid;
+	struct rbn *rbn;
+};
+/* return 0 if search should continue; 1 if not. */
+int get_rbn_from_pid(struct rbn *rbn, void *key, int level)
+{
+	struct pid_search *ps  = (struct pid_search *)key;
+	if (ps->rbn)
+		return 1;
+	struct linux_proc_sampler_set *app_set;
+	app_set = container_of(rbn, struct linux_proc_sampler_set, rbn);
+	if (app_set->key.os_pid == ps->pid) {
+		ps->rbn = rbn;
+		return 1;
+	}
+	return 0;
+}
+
 int __handle_task_exit(linux_proc_sampler_inst_t inst, json_entity_t data)
 {
 	struct rbn *rbn;
@@ -3549,12 +3572,19 @@ int __handle_task_exit(linux_proc_sampler_inst_t inst, json_entity_t data)
 		pid = (pid_t)json_value_int(os_pid);
 	}
 	uint64_t start_tick = get_start_tick(inst, data, pid);
-	if (!start_tick)
-		return EINVAL;
+	/* lock the tree and find the delete target. If no start_tick available,
+	search on pid only. */
 	struct linux_proc_sampler_set app_set_search;
-	data_set_key(inst, &app_set_search, start_tick, pid);
-	pthread_mutex_lock(&inst->mutex);
-	rbn = rbt_find(&inst->set_rbt, (void*)&app_set_search.key);
+	if (start_tick) {
+		data_set_key(inst, &app_set_search, start_tick, pid);
+		pthread_mutex_lock(&inst->mutex);
+		rbn = rbt_find(&inst->set_rbt, (void*)&app_set_search.key);
+	} else {
+		struct pid_search ps =  { pid, NULL };
+		pthread_mutex_lock(&inst->mutex);
+		(void)rbt_traverse(&inst->set_rbt, get_rbn_from_pid, (void*)&ps);
+		rbn = ps.rbn;
+	}
 	if (!rbn) {
 		pthread_mutex_unlock(&inst->mutex);
 		return 0; /* exit occuring of process we didn't catch the start of. */

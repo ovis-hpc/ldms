@@ -1,3 +1,13 @@
+static int64_t uptime()
+{
+	struct sysinfo s_info;
+	int error = sysinfo(&s_info);
+	if(error != 0)
+	{
+		return -1;
+	}
+	return (int64_t)s_info.uptime;
+}
 
 /*
  * Copyright (C) 2014-2018 Canonical Ltd.
@@ -70,7 +80,7 @@ static const char *get_proc_self_stat_field(const char *buf, const int num)
 static int get_timeval_from_tick(uint64_t starttime, struct timeval * const tv)
 {
 	/* from proc_info_get_timeval convert tick since boot to clock */
-	double uptime_secs = 0, secs = 0;
+	double uptime_secs = (double)uptime(), secs = 0;
 	long jiffies;
 	struct timeval now = {.tv_sec = 0, .tv_usec = 0};
 
