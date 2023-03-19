@@ -299,7 +299,7 @@ static const ev_map_t ev_map[] = {
 #define KERN_TASK_INFO(str)	{ str, sizeof(str) - 1 }
 
 /* keep most globals in a struct for easier debugging. */
-typedef void (*print_f)(const char *fmt, ...);
+typedef int (*print_f)(const char *fmt, ...);
 typedef struct forkstat {
 	bool stop_recv;				/* true if monitor exit wanted */
 	bool sane_procs;			/* true if not inside a container */
@@ -311,12 +311,15 @@ typedef struct forkstat {
 	unsigned opt_uidmin;			/* uids < uidmin omit if uids collected */
 	double opt_duration_min;		/* min seconds a proc must run before being notified about */
 	unsigned opt_trace;			/* print event processing details */
+	unsigned opt_stream;			/* use or skip stream transmissions */
 	FILE *json_log;				/* where to send json debug output, and if to send */
 	struct slps *ln;			/* ldms notification channel */
 	print_f log;
 	print_f print;
 	uint64_t msg_serno;
 	double opt_wake_interval;
+	char *compid_field;			/* compid field formatted, if requested */
+	char *prod_field;			/* ProducerName field formatted, if requested */
 } forkstat_t;
 
 
@@ -402,6 +405,8 @@ static const int signals[] = {
 };
 
 /* add several structures related to filtering. */
+#define default_component_id NULL
+#define default_ProducerName NULL
 #define default_track_dir "/var/run/ldms-netlink-tracked"
 #define default_send_log NULL
 #define default_exclude_programs "(nullexe):<unknown>"
@@ -1876,6 +1881,7 @@ static void *monitor(void *vp)
 {
 	struct monitor_args *arg = vp;
 	forkstat_t *ft = arg->ft;
+	PRINTF("monitor thread started\n");
 	struct nlmsghdr *nlmsghdr;
 	const int pid_size = pid_max_digits();
 	char eibuf[32]; // extra_info output space
@@ -2302,9 +2308,11 @@ static forkstat_t *forkstat_create()
 		return NULL;
 	}
 	/* init nonzero stuff */
+	ft->opt_stream = 1;
 	ft->max_pids = INT_MAX;
 	ft->opt_flags = OPT_CMD_LONG;
 	ft->sane_procs = sane_proc_pid_info();
+	ft->log = ft->print = printf;
 	return ft;
 }
 
@@ -2319,6 +2327,8 @@ static void forkstat_destroy(forkstat_t *ft)
 		fclose(ft->json_log);
 		ft->json_log = NULL;
 	}
+	free(ft->prod_field);
+	free(ft->compid_field);
 	free(ft);
 }
 
@@ -2338,6 +2348,8 @@ static struct exclude_arg excludes[] = {
 	{"1", VT_SCALAR, 0, "NOTIFIER_LDMS_TIMEOUT", NULL, 0, PLINIT},
 	{default_send_log, VT_FILE, 0, "NOTIFIER_SEND_LOG", NULL, 0, PLINIT},
 	{default_track_dir, VT_DIR, 0, "NOTIFIER_TRACK_DIR", NULL, 0, PLINIT},
+	{default_ProducerName, VT_SCALAR, 0, "NOTIFIER_PRODUCERNAME", NULL, 0, PLINIT},
+	{default_component_id, VT_SCALAR, 0, "NOTIFIER_COMPONENT_ID", NULL, 0, PLINIT},
 };
 static struct exclude_arg *bin_exclude = &excludes[0];
 static struct exclude_arg *dir_exclude = &excludes[1];
@@ -2352,6 +2364,8 @@ static struct exclude_arg *reconnect_arg = &excludes[9];
 static struct exclude_arg *timeout_arg = &excludes[10];
 static struct exclude_arg *send_log_arg = &excludes[11];
 static struct exclude_arg *track_dir_arg = &excludes[12];
+static struct exclude_arg *prod_arg = &excludes[13];
+static struct exclude_arg *compid_arg = &excludes[14];
 
 static struct option long_options[] = {
 	{"exclude-programs", optional_argument, 0, 0},
@@ -2367,6 +2381,8 @@ static struct option long_options[] = {
 	{"timeout", required_argument, 0, 0},
 	{"send-log", required_argument, 0, 0},
 	{"track-dir", required_argument, 0, 0},
+	{"ProducerName", required_argument, 0, 0},
+	{"component_id", required_argument, 0, 0},
 	{0, 0, 0, 0}
 };
 
@@ -2420,6 +2436,7 @@ static void show_help(char *const argv[])
 		"-L file\tredirect stdout to a log file\n"
 		"-r\trun with real time FIFO scheduler.\n"
 		"-s\tshow short process name in debugging.\n"
+		"-S\tsuppress ldms stream output.\n"
 		"-t\tshow debugging trace messages.\n"
 		"-u umin\tignore processes with uid < umin\n"
 		"-v <int>\tlog detail level for stream library messages. Higher is quieter.\n"
@@ -2551,11 +2568,11 @@ static int set_uidmin(char *arg, forkstat_t *ft)
 	char *end = NULL;
 	ft->opt_uidmin = strtoul(arg, &end, 10);
 	if (ft->opt_uidmin > INT_MAX) {
-		ft->print("Illegal uid minimum: %s\n", arg);
+		PRINTF("Illegal uid minimum: %s\n", arg);
 		return EINVAL;
 	}
 	if (*end != '\0') {
-		ft->print("-u <integer> needed, not %s\n", optarg);
+		PRINTF("-u <integer> needed, not %s\n", optarg);
 		return EINVAL;
 	}
 	ft->opt_flags |= OPT_UMIN;
@@ -2597,13 +2614,13 @@ static int forkstat_monitor(forkstat_t *ft, struct monitor_args *ma)
 	pthread_attr_t attr;
 	int s = pthread_attr_init(&attr);
 	if (s != 0) {
-		ft->print("forkstat_monitor pthread_attr_init fail\n");
+		PRINTF("forkstat_monitor pthread_attr_init fail\n");
 		return s;
 	}
 	if (ft->opt_flags & OPT_REALTIME) {
 		s = pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
 		if (s != 0) {
-			ft->print("forkstat_monitor pthread_attr_setinheritsched fail\n");
+			PRINTF("forkstat_monitor pthread_attr_setinheritsched fail\n");
 			goto out;
 		}
 		struct sched_param param;
@@ -2621,18 +2638,25 @@ static int forkstat_monitor(forkstat_t *ft, struct monitor_args *ma)
 
 		s = pthread_attr_setschedpolicy(&attr, policy);
 		if (s != 0) {
-			ft->print("forkstat_monitor pthread_attr_setschedpolicy fail\n");
+			PRINTF("forkstat_monitor pthread_attr_setschedpolicy fail\n");
 			goto out;
 		}
 		s = pthread_attr_setschedparam(&attr, &param);
 		if (s != 0) {
-			ft->print("forkstat_monitor pthread_attr_setschedparam fail\n");
+			PRINTF("forkstat_monitor pthread_attr_setschedparam fail\n");
 			goto out;
 		}
 
 	}
 
-	pthread_create(&(ma->tid), &attr, monitor, ma);
+	s = pthread_create(&(ma->tid), &attr, monitor, ma);
+	if (s) {
+		PRINTF("forkstat_monitor pthread_create fail %s\n",
+			strerror(s));
+		if (ft->opt_flags & OPT_REALTIME)
+			PRINTF("forkstat_monitor: try running without -r real time option\n");
+		goto out;
+	}
 	goto done;
 out:
 	close(ma->sock);
@@ -3027,6 +3051,7 @@ static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_in
 		"\"context\":\"*\","
 		"\"data\":"
 			"{"
+			"%s%s"
 			"\"start\":\"%lu.%06lu\","
 			/* format start_tick as string because u64 is out
 			 * of ovis_json signed int range */
@@ -3047,6 +3072,7 @@ static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_in
 #if DEBUG_EMITTER
 		type,
 #endif
+			ft->prod_field, ft->compid_field,
 			info->start.tv_sec, info->start.tv_usec,
 			info->start_tick,
 			info_jobid_str(info),
@@ -3077,6 +3103,7 @@ static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info
 		"\"context\":\"*\","
 		"\"data\":"
 			"{"
+			"%s%s"
 			"\"start\":\"%lu.%06lu\","
 			/* format start_tick as string because u64
 			* is out of ovis_json signed int range */
@@ -3089,6 +3116,7 @@ static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info
 		"}",
 		forkstat_get_serial(ft),
 		time(NULL),
+			ft->prod_field, ft->compid_field,
 			info->start.tv_sec, info->start.tv_usec,
 			info->start_tick,
 			info_jobid_str(info),
@@ -3114,12 +3142,14 @@ static jbuf_t make_process_start_data_lsf(forkstat_t *ft, const struct proc_info
 		"\"context\":\"*\","
 		"\"data\":"
 			"{"
+			"%s%s"
 			"\"start\":\"%lu.%06lu\","
 			"\"job_id\":\"%s\","
 			"\"serial\":%" PRId64 ","
 			"\"os_pid\":%" PRId64 ",",
 		forkstat_get_serial(ft),
 		time(NULL),
+			ft->prod_field, ft->compid_field,
 			info->start.tv_sec, info->start.tv_usec,
 			info_jobid_str(info),
 			info->serno,
@@ -3162,12 +3192,14 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 		"\"context\":\"*\","
 		"\"data\":"
 			"{"
+			"%s%s"
 			"\"start\":\"%lu.%06lu\","
 			"\"job_id\":\"%s\","
 			"\"serial\":%" PRId64 ","
 			"\"os_pid\":%" PRId64 ",",
 		forkstat_get_serial(ft),
 		time(NULL),
+			ft->prod_field, ft->compid_field,
 			info->start.tv_sec, info->start.tv_usec,
 			info_jobid_str(info),
 			info->serno,
@@ -3211,6 +3243,7 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 		"\"context\":\"*\","
 		"\"data\":"
 			"{"
+			"%s%s"
 			"\"job_id\":\"%s\","
 			"\"serial\":%" PRId64 ","
 			"\"os_pid\":%" PRId64 ",",
@@ -3219,14 +3252,16 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 #if DEBUG_EMITTER
 		type,
 #endif
+			ft->prod_field, ft->compid_field,
 			info_jobid_str(info),
 			info->serno,
 			(int64_t)info->pid);
 	size_t i, iend;
 	iend = sizeof(slurm_env_start_default)/sizeof(slurm_env_start_default[0]);
-	for (i = 0 ; i < iend; i++)
+	for (i = 0 ; i < iend; i++) {
 		if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft))
 			goto out_1;
+	}
 	jb = jbuf_append_str(jb,
 			"\"task_id\":" NULL_STEP_ID ","
 			"\"task_global_id\":" NULL_STEP_ID ","
@@ -3259,11 +3294,13 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 		"\"context\":\"*\","
 		"\"data\":"
 			"{"
+			"%s%s"
 			"\"job_id\":\"%s\","
 			"\"serial\":%" PRId64 ","
 			"\"os_pid\":%" PRId64 ",",
 		forkstat_get_serial(ft),
 		time(NULL),
+			ft->prod_field, ft->compid_field,
 			info_jobid_str(info),
 			info->serno,
 			(int64_t)info->pid);
@@ -3460,8 +3497,12 @@ static int send_ldms_message(forkstat_t *ft, jbuf_t jb)
 		fprintf(ft->json_log, "%s", jb->buf);
 	}
 	struct slps_send_result r = LN_NULL_RESULT;
-	if (ft->ln)
-		r = slps_send_event(ft->ln, jb);
+	if (ft->ln) {
+		if (ft->opt_stream)
+			r = slps_send_event(ft->ln, jb);
+		else
+			r.publish_count = 1;
+	}
 	if (ft->json_log) {
 		char *end_msgno, *start_msgno;
 		/* extract number xxx from '{"msgno":xxx', */
@@ -3469,10 +3510,14 @@ static int send_ldms_message(forkstat_t *ft, jbuf_t jb)
 		end_msgno = strchr(jb->buf, ',');
 		if (start_msgno && end_msgno && end_msgno > start_msgno) {
 			ptrdiff_t n = end_msgno - start_msgno;
-			fprintf(ft->json_log, " {\"msgno\"=%.*s,status=\"%d:%s\"}\n",
-				(int)n-1, start_msgno + 1, r.rc, r.publish_count ? "SENT" : "FAIL");
+			fprintf(ft->json_log,
+				" {\"msgno\"=%.*s,status=\"%d:%s\"}\n",
+				(int)n-1, start_msgno + 1, r.rc,
+				r.publish_count ? "SENT" : "FAIL");
 		} else {
-			fprintf(ft->json_log, " {\"msgno\"=\"undefined\", \"status\"=\%d:%s\"}\n", r.rc, r.publish_count ? "SENT" : "FAIL");
+			fprintf(ft->json_log,
+				" {\"msgno\"=\"undefined\", \"status\"=\"%d:%s\"}\n",
+				r.rc, r.publish_count ? "SENT" : "FAIL");
 		}
 	}
 	return 0;
@@ -3499,7 +3544,6 @@ static int forkstat_set_json_log(forkstat_t *ft, const char *fname)
 }
 
 
-// static int opt_trace;
 static forkstat_t *shft;
 
 #define DFLT_SORT_SZ 128
@@ -3604,7 +3648,6 @@ int main(int argc, char * argv[])
 		"-u", "1",
 		"-x",
 		"-e", "exec,clone,exit",
-		"-r",
 		"-i", "0.5",
 		"-q" };
 
@@ -3621,7 +3664,7 @@ int main(int argc, char * argv[])
 	while (1) {
 		// int this_option_optind = optind ? optind : 1;
 		int option_index = 0;
-		c = getopt_long(argc, args, "cdD:e:Eghi:j:L:lm:rstqxXu:v:",
+		c = getopt_long(argc, args, "cdD:e:Eghi:j:L:lm:rsStqxXu:v:",
 				long_options, &option_index);
 		if (c == -1)
 			break;
@@ -3690,6 +3733,9 @@ int main(int argc, char * argv[])
 			*opt_flags &= ~OPT_CMD_LONG;
 			*opt_flags |= OPT_CMD_SHORT;
 			break;
+		case 'S':
+			ft->opt_stream = 0;
+			break;
 		case 't':
 			ft->opt_trace = 1;
 			// opt_trace = 1;
@@ -3741,6 +3787,27 @@ int main(int argc, char * argv[])
 			LIST_INSERT_HEAD(&excludes[c].path_list, elt, entry);
 		}
 		normalize_exclude(&excludes[c]);
+	}
+	if (compid_arg[0].parsed && compid_arg->paths[0].n) {
+		size_t csz = strlen(compid_arg->paths[0].n) + 20;
+		char ctmp[csz];
+		sprintf(ctmp, "\"component_id\":%s,", compid_arg->paths[0].n);
+		ft->compid_field = strdup(ctmp);
+	} else {
+		ft->compid_field = strdup("");
+	}
+	if (prod_arg[0].parsed && prod_arg->paths[0].n) {
+		size_t csz = strlen(prod_arg->paths[0].n) + 20;
+		char ctmp[csz];
+		sprintf(ctmp, "\"ProducerName\":\"%s\",", prod_arg->paths[0].n);
+		ft->prod_field = strdup(ctmp);
+	} else {
+		ft->prod_field = strdup("");
+	}
+	if (!ft->prod_field || !ft->compid_field) {
+		fprintf(stderr, "out of memory.\n");
+		ret = EXIT_FAILURE;
+		goto abort_sock;
 	}
 	if (set_duration_min(duration_exclude->paths[0].n, ft)) {
 		fprintf(stderr, "Bad value %s for %s or %s.\n",
