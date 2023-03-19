@@ -4,12 +4,21 @@ After=syslog.target network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=-/etc/sysconfig/ldms-netlink-notifier.conf
-# one can ignore root owned processes by including -u 1
-# ExecStart=/usr/sbin/ldms-netlink-notifier -u 1 -x -e exec,clone,exit -r
-# get the path defaults from the code or from the environment file.
-ExecStartPre=-/usr/bin/rm -f /var/run/ldms-netlink-tracked/[0-9]*
-ExecStart=/usr/sbin/ldms-netlink-notifier -x -e exec,clone,exit -r
+EnvironmentFile=-/etc/sysconfig/ldms.d/plugins-conf/ldms-netlink-notifier.conf
+
+# Defaults if unspecified: -u 1 -x -e exec,clone,exit -i 0.5 -q
+# may also be overridden by some values in ldms-netlink-notifier.conf.
+# ExecStart=/usr/sbin/ldms-netlink-notifier
+
+# Debugging version : big logs ; do not leave running
+# ExecStart=/usr/sbin/ldms-netlink-notifier -x -e exec,clone,exit -j /var/log/ldms-notify.json -L /var/log/ldms-notify.log -t --ProducerName=%H
+
+# one can ignore root owned processes but not daemons by including -u 1
+# ExecStart=/usr/sbin/ldms-netlink-notifier -x -e exec,clone,exit -u 1 --ProducerName=%H
+
+# get the path defaults from the env vars and ignore daemons
+ExecStart=/usr/sbin/ldms-netlink-notifier -x -e exec,clone,exit -u 1000 --ProducerName=%H
+
 
 [Install]
 WantedBy=multi-user.target

@@ -5,6 +5,9 @@
 .SH NAME
 ldms-netlink-notifier  \- Transmit Linux kernel netlink process life messages to ldmsd streams.
 
+ldms-notify            \- systemd service
+
+
 .SH SYNOPSIS
 ldms-netlink-notifier [OPTION...]
 
@@ -26,8 +29,9 @@ Its messages are mostly compatible with those from the slurm spank based notifie
 -j file	 file to log json messages and transmission status.
 -l	force stdout line buffering.
 -L file	log to file instead of stdout.
--r	run with real time FIFO scheduler.
+-r	run with real time FIFO scheduler (available on some kernels).
 -s	show short process name in debugging.
+-S	suppress stream message publication.
 -t	show debugging trace messages.
 -u umin	ignore processes with uid < umin
 -v lvl  log level for stream library messages. Higher is quieter. Error messages are >= 3.
@@ -80,7 +84,12 @@ The 'short' options do not override the exclude entirely options.
 	 The default is used if env NOTIFIER_TRACK_DIR is not set.
 	 The path given should be on a RAM-based file system for efficiency,
 	 and it should not contain any files except those created by
-	 this daemon.
+	 this daemon. When enabled, track-dir will be populated even if
+	 -S is used to suppress the stream output.
+--component_id=<U64>     set the value of component_id.
+	 If not set, the component_id field is not included in the stream formats produced.
+--ProducerName=<name>    set the value of ProducerName
+	 If not set, the ProducerName field is not included in the stream formats produced.
 .fi
 
 .SH ENVIRONMENT
@@ -116,7 +125,7 @@ be removed when the corresponding pid stopped event is sent.
 These files are not removed when the notifier daemon exits.
 Client applications may validate a file by checking the contents
 against the /proc/$pid/stat content, if it exists.
-Invalid files may be removed by clients or system scripts.
+Invalid files should be removed by clients or system scripts.
 
 
 .SH NOTES
@@ -124,13 +133,17 @@ Invalid files may be removed by clients or system scripts.
 The core of this utility is derived from forkstat(8).
 .PP
 The output of this utility, if used to drive a sampler, usually needs to be consumed on the same node.
-
+.PP
+If not used with a sampler, the --component_id or --ProducerName options are needed
+to add a node identifier to the messages. Normally a process-following sampler that creates sets
+will add the node identifier automatically.
+.PP
 Options are still in development. Several options affect only the trace output.
 .SH EXAMPLES
 .PP
 Run for 30 seconds with screen and json.log test output connecting to the ldmsd from 'ldms-static-test.sh blobwriter' test:
 .nf
-netlink-notifier -t -D 30 -g -u 1 -x  -e exec,clone,exit -r  \\
+netlink-notifier -t -D 30 -g -u 1 -x  -e exec,clone,exit  \\
 	-j json.log --exclude-dir-path=/bin:/sbin:/usr \\
 	--port=61061 --auth=none --reconnect=1"
 .fi
@@ -143,13 +156,13 @@ netlink-notifier
 Run in a systemd .service wrapper, excluding root owned processes.
 .nf
 EnvironmentFile=-/etc/sysconfig/ldms-netlink-notifier.conf
-ExecStart=/usr/sbin/ldms-netlink-notifier -u 1 -x -e exec,clone,exit -r
+ExecStart=/usr/sbin/ldms-netlink-notifier -u 1 -x -e exec,clone,exit
 .fi
 .PP
 Run in a systemd .service wrapper, excluding root owned processes, with debugging files
 .nf
 EnvironmentFile=-/etc/sysconfig/ldms-netlink-notifier.conf
-ExecStart=/usr/sbin/ldms-netlink-notifier -u 1 -x -e exec,clone,exit -r -j /home/user/nl.json -L /home/user/nl.log -t
+ExecStart=/usr/sbin/ldms-netlink-notifier -u 1 -x -e exec,clone,exit -j /home/user/nl.json -L /home/user/nl.log -t --ProducerName=%H
 .fi
 
 
