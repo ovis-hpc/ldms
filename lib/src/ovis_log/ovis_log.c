@@ -290,6 +290,7 @@ int ovis_log_str_to_level(const char *level_s)
 	struct ovis_loglevel_s *l;
 
 	if (!strchr(level_s, ',')) {
+		s = NULL;
 		/*
 		 * A single log level name is given.
 		 */
@@ -660,6 +661,10 @@ static int __log(ovis_log_t log, int level, char *msg,
 		char dtsz[200];
 		if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
 			rc = fprintf(f, "%s:", dtsz);
+		else
+			rc = -EINVAL; /* not expected with gnu libc */
+	} else {
+		rc = 0;
 	}
 	if (rc < 0)
 		return rc;
