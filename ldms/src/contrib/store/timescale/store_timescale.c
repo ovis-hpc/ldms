@@ -1,7 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2012-2018 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2020 HPC Center at Shanghai Jiao Tong University. All rights reserved.
- * 
+ *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
  * General Public License (GPL) Version 2, available from the file
@@ -345,7 +345,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
         cnt_create = snprintf(measurement_create, is->measurement_limit,
                    "CREATE TABLE IF NOT EXISTS %s(",
                    is->schema);
-        off_create = cnt_create;        
+        off_create = cnt_create;
 
         ldmsd_strgp_metric_t x;
         char *name;
@@ -391,7 +391,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
                 PQclear(res);
                 goto err4;
         }
- 
+
         pthread_mutex_lock(&cfg_lock);
         LIST_INSERT_HEAD(&store_list, is, entry);
         pthread_mutex_unlock(&cfg_lock);
@@ -399,8 +399,8 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 
  err5:
         msglog(LDMSD_LERROR, "Overflow formatting TimescaleDB measurement data.\n");
- err4:  
-        PQfinish(is->conn);      
+ err4:
+        PQfinish(is->conn);
         free(is->schema);
  err2:
         free(is->container);
@@ -526,18 +526,23 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
         FILE *fp;
         char buffer[50];
         fp=popen(command, "r");
-        fgets(buffer, sizeof(buffer), fp);
-        pclose(fp);       
+        char *strdate = fgets(buffer, sizeof(buffer), fp);
+	if (fp)
+		pclose(fp);
 
-        cnt_insert = snprintf(&measurement_insert[off_insert], is->measurement_limit - off_insert, ",'%s')", buffer);
-        off_insert += cnt_insert;
+	if (strdate) {
+		cnt_insert = snprintf(&measurement_insert[off_insert], is->measurement_limit - off_insert, ",'%s')", buffer);
+		off_insert += cnt_insert;
 
-        PGresult *res = PQexec(is->conn, measurement_insert);
-        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-                msglog(LDMSD_LERROR, "Insert table error! with sql %s \n", measurement_insert);
-                PQclear(res);
-                PQfinish(is->conn);
-        } 
+		PGresult *res = PQexec(is->conn, measurement_insert);
+		if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+			msglog(LDMSD_LERROR, "Insert table error! with sql %s \n", measurement_insert);
+			PQclear(res);
+			PQfinish(is->conn);
+		}
+	} else {
+		msglog(LDMSD_LERROR, "Unable to format date for table insertion!\n");
+	}
         pthread_mutex_unlock(&is->lock);
         return 0;
 err:
