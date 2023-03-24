@@ -96,7 +96,7 @@ be substituted with a '.'.
 The avro_kafka_store is used with a storage policy that specifies avro_kafka_store as the
 plugin parameter.
 .PP
-The \fIschema\fR, \fIinstance\fR, \fIproducer\fR and \fIflush\fR strgp_new parameters
+The \fIschema\fR, \fIinstance\fR, \fIproducer\fR and \fIflush\fR strgp_add parameters
 have no affect on how data is stored. If the \fIcontainer\fR parameter is set to any
 value other than an empty string, it will override the bootstrap.servers Kafka configuration
 parameter in the kafka_conf file if present.

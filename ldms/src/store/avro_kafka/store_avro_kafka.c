@@ -427,9 +427,6 @@ static void close_store(ldmsd_store_handle_t _sh)
 	if (sh->rd_conf) {
 		rd_kafka_conf_destroy(sh->rd_conf);
 	}
-	if (sh->serdes_conf) {
-		serdes_conf_destroy(sh->serdes_conf);
-	}
 	free(sh);
 }
 
