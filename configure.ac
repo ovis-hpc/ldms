@@ -546,7 +546,6 @@ dnl OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
 # OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc third coll ovis_util zap ovis_ctrl ovis_event ovis_auth],[ovis-auth.sh],[ovis-lib],[ovis_auth])
 dnl OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc third json tada coll ovis_util zap ovis_ctrl ovis_event ovis_auth ],[ovis-auth.sh],[ovis-lib],[ovis_auth])
 dnl substitute values we need from ovis-auth.sh during joint configure
-AC_SUBST(OVIS_AUTH_LIBS)
 
 LDMSD_PLUGIN_LIBPATH=${pkglibdir}
 AC_SUBST(LDMSD_PLUGIN_LIBPATH)
@@ -563,6 +562,9 @@ dnl https://developer.apple.com/library/mac/qa/qa1398/_index.html
 AC_SEARCH_LIBS([clock_gettime],[rt posix4],[LDFLAGS_GETTIME=$LIBS])
 LIBS=""
 AC_SUBST([LDFLAGS_GETTIME])
+
+OVIS_AUTH_LIBS="${AUTH_LIB} ${LDFLAGS_GETTIME} ${OPENSSL_LIBS}"
+AC_SUBST(OVIS_AUTH_LIBS)
 
 dnl Check for libreadline
 AX_LIB_READLINE
