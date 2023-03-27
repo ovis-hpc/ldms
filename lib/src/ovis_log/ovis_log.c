@@ -757,10 +757,13 @@ int ovis_log_init(const char *name, int default_level, int modes)
 	if (!is_level_valid(default_level))
 		return EINVAL;
 
-	if (!is_mode_valid(modes))
-		return EINVAL;
-
-	default_modes = modes;
+	if (modes == 0) {
+		default_modes = OVIS_LOG_M_DEFAULT;
+	} else {
+		if (!is_mode_valid(modes))
+			return EINVAL;
+		default_modes = modes;
+	}
 	if (name) {
 		progname = strdup(name);
 		if (!progname)
