@@ -127,9 +127,16 @@ typedef struct ovis_log_s {
  *
  * \see ovis_log_open, ovis_log, ovis_log_close
  */
-#define OVIS_LOG_M_DT	0	/* Date-time format */
-#define OVIS_LOG_M_TS	1	/* Timestamp in seconds format */
-#define OVIS_LOG_M_TS_NONE 2	/* No message timestamps */
+#define OVIS_LOG_M_DT	1	/* Date-time format */
+#define OVIS_LOG_M_TS	2	/* Timestamp in seconds format */
+#define OVIS_LOG_M_TS_NONE 4	/* No message timestamps */
+/*
+ * Currently, the time format is the only log mode.
+ * Further on, we could extend the default mode to include other mode types
+ * by using the bitwise-or operation.
+ */
+#define OVIS_LOG_M_DEFAULT OVIS_LOG_M_DT
+
 int ovis_log_init(const char *default_subsys_name, int default_level, int modes);
 
 /**
