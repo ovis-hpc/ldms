@@ -1,2 +1,0 @@
-job_set=${host}/jobid ports=qib0.1,mlx4_0.1 schema=gw_sysclassib perm=0644
-

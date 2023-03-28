@@ -1,3 +1,0 @@
-job_set=${host}/jobid ports=hfi1_0.1 perm=0644
-
-

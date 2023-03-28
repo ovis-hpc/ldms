@@ -1,9 +1,0 @@
-This directory is the default home for LDMS authentication secret files (or links to them). An example is provided; the key value in it should always be
-changed before production deployment.
-
-The LDMS_AUTH_FILE configuration variable can point to a file anywhere, however.
-The authentication file must not be group or world readable or writable.
-
-When running multiple ldmsd instances to monitor remote hosts,
-the convention for this directory is to name the secret files
-$LDMSCLUSTER.ldmsauth.conf.

@@ -841,25 +841,9 @@ LIBS=""
 
 
 ## stuff from top
-OPTION_DEFAULT_DISABLE([libgenders], [ENABLE_LIBGENDERS],[  requires C++,boost])
-OPTION_DEFAULT_DISABLE([genderssystemd], [ENABLE_TOSS_SYSTEMD],[  toss systemd init scripts])
 OPTION_DEFAULT_DISABLE([csv_check], [ENABLE_CSV_CHECK],[  requires C++,boost])
 OPTION_EXTRA_BUILD_DIRS([third-plugins], [ENABLE_THIRD_PLUGINS], [THIRD_PLUGINS_DIRS])
 
-if test -z "$ENABLE_LIBGENDERS_TRUE"
-then
-	OPTION_WITH([libgenders], [LIBGENDERS],[/usr])
-	AC_LANG_PUSH([C++])
-	BOOST_REQUIRE( , AC_MSG_ERROR([Genders enabled but boost not found.]))
-	BOOST_STRING_ALGO
-	save_LDFLAGS=$LDFLAGS
-	LDFLAGS=$LIBGENDERS_LIBDIR_FLAG
-	AX_CXX_CHECK_LIB(gendersplusplus,[Gendersplusplus::GendersException], [],
-		AC_MSG_ERROR([libgendersplusplus not found. ]))
-	LDFLAGS=$save_LDFLAGS
-	AC_LANG_POP([C++])
-	LIBS=""
-fi
 if test -z "$ENABLE_CSV_CHECK_TRUE"
 then
 	AC_LANG_PUSH([C++])
@@ -947,23 +931,6 @@ AC_SUBST(configure_input)
 AC_CONFIG_FILES([Makefile
 util/Makefile
 util/relocation/Makefile
-util/sample_init_scripts/Makefile
-util/sample_init_scripts/genders/Makefile
-util/sample_init_scripts/genders/man/Makefile
-util/sample_init_scripts/genders/src/Makefile
-util/sample_init_scripts/genders/systemd/Makefile
-util/sample_init_scripts/genders/systemd/etc/Makefile
-util/sample_init_scripts/genders/systemd/etc/sysconfig/Makefile
-util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/Makefile
-util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/ClusterGenders/Makefile
-util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/ClusterSecrets/Makefile
-util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/plugins-conf/Makefile
-util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/debug/Makefile
-util/sample_init_scripts/genders/systemd/services/Makefile
-util/sample_init_scripts/genders/sysv/Makefile
-util/sample_init_scripts/genders/sysv/etc/Makefile
-util/sample_init_scripts/genders/sysv/etc/init.d/Makefile
-util/sample_init_scripts/genders/examples/Makefile
 lib/Doxyfile
 lib/Makefile
 lib/src/Makefile
@@ -1106,13 +1073,6 @@ ldms/man/Makefile
 AC_CONFIG_FILES([
 	util/relocation/bld_manifest.sh
 	util/relocation/relocate-paths.sh
-	util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/ldmsd
-	util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/ldms-functions
-	util/sample_init_scripts/genders/systemd/ldmsd-pre-systemd
-	util/sample_init_scripts/genders/systemd/ldmsd-wrapper.sh
-	util/sample_init_scripts/genders/sysv/etc/init.d/ldmsd
-	util/sample_init_scripts/genders/sysv/etc/init.d/ldmsd.template
-	util/sample_init_scripts/genders/sysv/ldmsd-pre-sysvinit
 	ldms/scripts/ldms-wrapper
 	ldms/scripts/ldms-static-test.sh
 	ldms/scripts/pll-ldms-static-test.sh

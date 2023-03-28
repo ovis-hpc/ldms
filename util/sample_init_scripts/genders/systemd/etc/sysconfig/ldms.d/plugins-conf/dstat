@@ -1,1 +1,0 @@
-job_set=${host}/jobid perm=0644 io=1 stat=1 statm=1 fdtypes=1 auto-schema=1

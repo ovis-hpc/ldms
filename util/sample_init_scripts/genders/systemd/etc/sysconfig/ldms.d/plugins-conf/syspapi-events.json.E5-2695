@@ -1,9 +1,0 @@
-{
-  "schema": "syspapi-E5-2695",
-  "events": [
-    "INST_RETIRED:ANY_P",
-    "CPU_CLK_THREAD_UNHALTED:THREAD_P",
-    "MEM_LOAD_UOPS_RETIRED:L1_MISS",
-    "MEM_LOAD_UOPS_RETIRED:L2_MISS"
-  ]
-}

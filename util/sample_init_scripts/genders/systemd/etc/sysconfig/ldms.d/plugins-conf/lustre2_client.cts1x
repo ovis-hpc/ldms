@@ -1,1 +1,0 @@
-job_set=${host}/jobid perm=0644 llite=scratch2,scratch3,cls02006 schema=lustre2_client_cts1x_234
