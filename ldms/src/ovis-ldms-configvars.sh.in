@@ -25,3 +25,4 @@ ovis_ldms_exec_prefix=@exec_prefix@
 ovis_ldms_pkglibdir=@pkglibdir@
 ovis_ldms_pythondir=@pythondir@
 ovis_ldms_soslibdir=@soslibdir@
+ovis_ldms_auth_libs="@OVIS_AUTH_LIBS@"

@@ -1,7 +1,0 @@
-#!/bin/bash
-# what's needed to link, without going through install.
-OVIS_AUTH_LIBS="@AUTH_LIB@ @LDFLAGS_GETTIME@ @OPENSSL_LIBS@"
-HAVE_AUTH=@HAVE_AUTH@
-if test $HAVE_AUTH = "0"; then
-	OVIS_AUTH_LIBS=""
-fi

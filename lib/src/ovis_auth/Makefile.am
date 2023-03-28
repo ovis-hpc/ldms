@@ -8,7 +8,3 @@ libovis_authincludedir = $(includedir)/ovis_auth
 libovis_auth_conf = /etc/ld.so.conf.d/libovis_auth.conf
 libovis_auth_la_LIBADD = @LDFLAGS_GETTIME@ @OPENSSL_LIBS@
 lib_LTLIBRARIES += libovis_auth.la
-
-# override pkglib sanity checks
-mypkglibdir = $(pkglibdir)
-mypkglib_SCRIPTS = ovis-auth.sh
