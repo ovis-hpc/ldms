@@ -1,7 +1,0 @@
-#! /bin/bash
-# This is an example of a trivial (vmstat) plugin that could be
-# configure with a text file or no file at all.
-# Arguments are plugin producer host sampleinterval sampleoffset
-# environment variables exported to ldmsd will also be visible here.
-echo config name=$1 producer=$2 instance=$2/$1 component_id=$COMPONENT_ID with_jobid=0
-echo start name=$1 interval=$4 offset=$5

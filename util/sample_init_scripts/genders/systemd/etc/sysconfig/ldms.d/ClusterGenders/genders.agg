@@ -1,9 +1,0 @@
-twain ldmsaggd=localhost
-twain ldmsd_port=412
-twain ldmsd_store_plugins=store_csv
-twain ldmsd_schemas_store_csv=meminfo:procstat:procnetdev
-twain ldmsd_store_csv=path//tmp/twain-store:altheader/1:rolltype/2:rollover/0
-twain ldmsd_dbg=INFO
-twain ldmsd_use_inet_socket=yes,ldmsd_config_port=404
-twain ldmsd_dstat=mmalloc/1
-twain ldmsd_metric_plugins=dstat

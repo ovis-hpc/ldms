@@ -1,5 +1,0 @@
-#! /bin/bash
-# arguments are plugin producer host sampleinterval sampleoffset
-# environment variables exported to ldmsd will also be visible here.
-echo config name=$1 producer=$2 instance=$2/$1 component_id=$COMPONENT_ID aries_rtr_id=$ARIES file=${MMR_CONF_PATH}/metric_set_rtr_${NODENUM}_${ARIES_REDUNDANCY}_${NODETYPE} schema=metric_set_rtr_${NODENUM}_${ARIES_REDUNDANCY}_${NODETYPE}
-echo start name=$1 interval=$4 offset=$5

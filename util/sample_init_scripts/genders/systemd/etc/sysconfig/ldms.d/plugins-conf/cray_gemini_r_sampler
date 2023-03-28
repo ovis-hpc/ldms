@@ -1,1 +1,0 @@
-llite=snx11024 rtrfile=/etc/route_files/processed_interconnect.txt gpu_devices=Tesla_K20X hsn_metrics_type=2
