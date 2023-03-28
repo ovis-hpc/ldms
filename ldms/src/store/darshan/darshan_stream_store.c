@@ -132,6 +132,8 @@ static struct sos_schema_template darshan_data_template = {
 	.name = "darshan_data",
 	.uuid = "3a650cf7-0b83-44dc-accc-e44acaa81740",
 	.attrs = {
+		{ .name = "uid", .type = SOS_TYPE_UINT64 },
+		{ .name = "exe", .type = SOS_TYPE_STRING },
 		{ .name = "job_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "rank", .type = SOS_TYPE_UINT64 },
 		{ .name = "ProducerName", .type = SOS_TYPE_STRING },
@@ -176,6 +178,8 @@ static struct sos_schema_template darshan_data_template = {
 
 
 enum attr_ids {
+       UID_ID,
+       EXE_ID,
        JOB_ID,
        RANK_ID,
        PRODUCERNAME_ID,
@@ -345,7 +349,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 
 
 // Json example
-//{ "job_id":78436,"rank":2,"ProducerName":"nid00046","dset_type":"HDF5","file":"N/A","record_id":3442697474759647253,"module":"POSIX","type":"MOD","max_byte":1191,"switches":1,"flushes":-1,"cnt":5,"op":"reads_segment_4","seg":[{"data_set":"N/A","pt_sel":-1,"irreg_hslab":-1,"reg_hslab":-1,"ndims":-1,"npoints":-1,"off":680,"len":512,"dur":0.00,"timestamp":1638309927.374291}]}
+//{ "uid":22,"exe":"test","job_id":78436,"rank":2,"ProducerName":"nid00046","dset_type":"HDF5","file":"N/A","record_id":3442697474759647253,"module":"POSIX","type":"MOD","max_byte":1191,"switches":1,"flushes":-1,"cnt":5,"op":"reads_segment_4","seg":[{"data_set":"N/A","pt_sel":-1,"irreg_hslab":-1,"reg_hslab":-1,"ndims":-1,"npoints":-1,"off":680,"len":512,"dur":0.00,"timestamp":1638309927.374291}]}
 
 static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			  ldmsd_stream_type_t stream_type,
@@ -354,10 +358,10 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 {
 	int rc;
 	json_entity_t v, list, item;
-	double timestamp;
-	uint64_t record_id, count, rank, offset, length, job_id, duration, max_byte, switches;
-	uint64_t flushes, pt_sel, irreg_hslab, reg_hslab, ndims, npoints;
-	char *module_name, *file_name, *type, *hostname, *operation, *producer_name, *data_set;
+	double timestamp, duration;
+	uint64_t record_id, count, rank, offset, length, job_id, max_byte, switches;
+	uint64_t flushes, pt_sel, irreg_hslab, reg_hslab, ndims, npoints, uid;
+	char *module_name, *file_name, *type, *hostname, *operation, *producer_name, *data_set, *exe;
 
 	if (!entity) {
 		msglog(LDMSD_LERROR,
@@ -365,6 +369,16 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		       darshan_stream_store.name);
 		return 0;
 	}
+
+        rc = get_json_value(entity, "uid", JSON_INT_VALUE, &v);
+        if (rc)
+                goto err;
+	uid = json_value_int(v);
+
+        rc = get_json_value(entity, "exe", JSON_STRING_VALUE, &v);
+        if (rc)
+                goto err;
+        exe = json_value_str(v)->str;
 
 	rc = get_json_value(entity, "job_id", JSON_INT_VALUE, &v);
 	if (rc)
@@ -501,20 +515,22 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		msglog(LDMSD_LDEBUG, "%s: Got a record from stream (%s), module_name = %s\n",
 				darshan_stream_store.name, stream, module_name);
 
+                sos_obj_attr_by_id_set(obj, UID_ID, uid);
+                sos_obj_attr_by_id_set(obj, EXE_ID, strlen(exe),  exe);
 		sos_obj_attr_by_id_set(obj, JOB_ID, job_id);
 		sos_obj_attr_by_id_set(obj, RANK_ID, rank);
-		sos_obj_attr_by_id_set(obj, PRODUCERNAME_ID, strlen(producer_name)+1, producer_name);
-		sos_obj_attr_by_id_set(obj, FILE_ID, strlen(file_name)+1,  file_name);
+		sos_obj_attr_by_id_set(obj, PRODUCERNAME_ID, strlen(producer_name), producer_name);
+		sos_obj_attr_by_id_set(obj, FILE_ID, strlen(file_name),  file_name);
 		sos_obj_attr_by_id_set(obj, RECORD_ID, record_id);
-		sos_obj_attr_by_id_set(obj, MODULE_ID, strlen(module_name)+1, module_name);
-		sos_obj_attr_by_id_set(obj, TYPE_ID, strlen(type)+1, type);
+		sos_obj_attr_by_id_set(obj, MODULE_ID, strlen(module_name), module_name);
+		sos_obj_attr_by_id_set(obj, TYPE_ID, strlen(type), type);
 		sos_obj_attr_by_id_set(obj, MAX_BYTE_ID, max_byte);
 		sos_obj_attr_by_id_set(obj, SWITCHES_ID, switches);
 		sos_obj_attr_by_id_set(obj, FLUSHES_ID, flushes);
 		sos_obj_attr_by_id_set(obj, COUNT_ID, count);
 		sos_obj_attr_by_id_set(obj, RANK_ID, rank);
-		sos_obj_attr_by_id_set(obj, OPERATION_ID, strlen(operation)+1, operation);
-		sos_obj_attr_by_id_set(obj, DATASET_ID, strlen(data_set)+1, data_set);
+		sos_obj_attr_by_id_set(obj, OPERATION_ID, strlen(operation), operation);
+		sos_obj_attr_by_id_set(obj, DATASET_ID, strlen(data_set), data_set);
 		sos_obj_attr_by_id_set(obj, PTSEL_ID, pt_sel);
 		sos_obj_attr_by_id_set(obj, IRREGHSLAB_ID, irreg_hslab);
 		sos_obj_attr_by_id_set(obj, REGHSLAB_ID, reg_hslab);

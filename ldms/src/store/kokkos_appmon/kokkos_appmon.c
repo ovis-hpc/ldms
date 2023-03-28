@@ -396,9 +396,9 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		}
 		sos_obj_attr_by_id_set(obj, TIMESTAMP_ID, timestamp);
 		sos_obj_attr_by_id_set(obj, JOB_ID, job_id);
-		sos_obj_attr_by_id_set(obj, NODE_NAME_ID, strlen(node_name)+1, node_name);
+		sos_obj_attr_by_id_set(obj, NODE_NAME_ID, strlen(node_name), node_name);
 		sos_obj_attr_by_id_set(obj, RANK_ID, rank);
-		sos_obj_attr_by_id_set(obj, NAME_ID, strlen(name)+1, name);
+		sos_obj_attr_by_id_set(obj, NAME_ID, strlen(name), name);
 		sos_obj_attr_by_id_set(obj, TYPE_ID, type);
 		sos_obj_attr_by_id_set(obj, CURRENT_KERNEL_COUNT_ID, current_kernel_count);
 		sos_obj_attr_by_id_set(obj, TOTAL_KERNEL_COUNT_ID, total_kernel_count);
