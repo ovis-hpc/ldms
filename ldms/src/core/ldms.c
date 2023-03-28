@@ -853,17 +853,17 @@ void __ldms_set_delete(ldms_set_t s, int notify)
 	if (x)
 		ldms_xprt_put(x);
 
-	if (notify) {
-		/* Notify downstream transports about the set deletion. */
-		__ldms_dir_del_set(s);
-	}
-
 	/* Add the set to the delete tree with the current timestamp */
 	s->del_time = time(NULL);
 	rbn_init(&s->del_node, &s->del_time);
 	pthread_mutex_lock(&__del_tree_lock);
 	rbt_ins(&__del_tree, &s->del_node);
 	pthread_mutex_unlock(&__del_tree_lock);
+
+	if (notify) {
+		/* Notify downstream transports about the set deletion. */
+		__ldms_dir_del_set(s);
+	}
 
 	/* Drop the creation reference */
 	ref_put(&s->ref, "__record_set");
