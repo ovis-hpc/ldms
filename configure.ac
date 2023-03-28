@@ -542,11 +542,6 @@ dnl munge
 OPTION_DEFAULT_DISABLE([munge], [ENABLE_MUNGE])
 OPTION_WITH([munge], [MUNGE])
 
-dnl OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
-# OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc third coll ovis_util zap ovis_ctrl ovis_event ovis_auth],[ovis-auth.sh],[ovis-lib],[ovis_auth])
-dnl OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc third json tada coll ovis_util zap ovis_ctrl ovis_event ovis_auth ],[ovis-auth.sh],[ovis-lib],[ovis_auth])
-dnl substitute values we need from ovis-auth.sh during joint configure
-
 LDMSD_PLUGIN_LIBPATH=${pkglibdir}
 AC_SUBST(LDMSD_PLUGIN_LIBPATH)
 
@@ -1000,7 +995,6 @@ lib/src/ovis_event/Makefile
 lib/src/ovis_ctrl/Makefile
 lib/src/ovis_util/Makefile
 lib/src/ovis_auth/Makefile
-lib/src/ovis_auth/ovis-auth.sh
 lib/src/ovis_ref/Makefile
 lib/src/ovis_log/Makefile
 lib/src/zap/Makefile
