@@ -348,14 +348,16 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 		/* See if the ldms set is already there */
 		ldms_set_t xs = ldms_xprt_set_by_name(xprt, dset->inst_name);
 		if (xs) {
-			ldmsd_log(LDMSD_LCRITICAL, "Received dir_add, prdset is missing, but set %s is present...ignoring",
+			ldmsd_log(LDMSD_LCRITICAL,
+				  "Received dir_add, prdset is missing, "
+				  "but set %s is present...ignoring",
 				  dset->inst_name);
 			ldms_set_put(xs);
 			return;
 		}
 		set = prdcr_set_new(dset->inst_name, dset->schema_name);
 		if (!set) {
-			ldmsd_log(LDMSD_LERROR, "Memory allocation failure in %s "
+			ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure in %s "
 				 "for set_name %s\n",
 				 __FUNCTION__, dset->inst_name);
 			return;
@@ -364,7 +366,13 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 		ldmsd_prdcr_set_ref_get(set); 	/* set_tree reference */
 		rbt_ins(&prdcr->set_tree, &set->rbn);
 	} else {
-		ldmsd_log(LDMSD_LCRITICAL, "Received a dir_add update for "
+		/* This can happen when the lookup fails with an error,
+		 * e.g. ENOENT, the dir told us the set was there, but when
+		 * we get around to looking it up, it is gone. If the set then
+		 * appears on the upstream ldmsd, we will get a dir_upd and hit
+		 * this path
+		 */
+		ldmsd_log(LDMSD_LINFO, "Received a dir_add update for "
 			  "'%s', prdcr_set still present with refcount %d, and set "
 			  "%p.\n", dset->inst_name, set->ref_count, set->set);
 		return;
