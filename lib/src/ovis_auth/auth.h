@@ -59,6 +59,7 @@
 #define OVIS_AUTH_H_
 
 #include <inttypes.h>
+#include "ovis_log/ovis_log.h"
 
 #define MAX_SECRET_WORD_LEN 512 /*! The maximum length of the secret word */
 #define MIN_SECRET_WORD_LEN 8  /*! The minimum length of the secret word */
@@ -80,7 +81,7 @@ uint64_t ovis_auth_unpack_challenge(struct ovis_auth_challenge *chl);
 
 #define MAX_LINE_LEN (MAX_SECRET_WORD_LEN+16)
 
-char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log);
+char *ovis_auth_get_secretword(const char *path, ovis_log_t log);
 
 int ovis_get_rabbit_secretword(const char *file, char *buf, int buflen,
 	ovis_auth_log_fn_t msglog);

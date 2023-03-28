@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2018 National Technology & Engineering Solutions
+ * Copyright (c) 2018,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2018,2023 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -53,6 +53,7 @@
  */
 
 #include <pwd.h>
+#include "ovis_log/ovis_log.h"
 #include "ovis_util/util.h"
 #include "ovis_auth/auth.h"
 
@@ -61,6 +62,20 @@
 #define ENVCONFNAME "LDMS_AUTH_FILE"
 #define SYSCONFNAME "ldmsauth.conf"
 #define USRCONFNAME ".ldmsauth.conf"
+
+static ovis_log_t aolog = NULL;
+
+#define LOG(_level_, _fmt_, ...) do { \
+	ovis_log(aolog, _level_, _fmt_, ##__VA_ARGS__); \
+} while (0);
+
+#define LOG_OOM() do { \
+	ovis_log(aolog, OVIS_LCRITICAL, "Memory allocation failure.\n"); \
+} while (0);
+
+#define LOG_ERROR(_fmt_, ...) do { \
+	ovis_log(aolog, OVIS_LERROR, _fmt_, ##__VA_ARGS__); \
+} while (0);
 
 static
 ldms_auth_t __auth_ovis_new(ldms_auth_plugin_t plugin,
@@ -103,6 +118,13 @@ struct ldms_auth_ovis {
 
 ldms_auth_plugin_t __ldms_auth_plugin_get()
 {
+	if (!aolog) {
+		aolog = ovis_log_register("auth_ovis", "Messages for ldms_auth_ovis");
+		if (!aolog) {
+			LOG_ERROR("Failed to register %s's log. Error %d\n",
+					__FILE__, errno);
+		}
+	}
 	return &plugin;
 }
 
@@ -116,8 +138,10 @@ ldms_auth_t __auth_ovis_new(ldms_auth_plugin_t plugin,
 	int len;
 
 	a = calloc(1, sizeof(*a));
-	if (!a)
+	if (!a) {
+		LOG_OOM();
 		goto err0;
+	}
 
 	val = av_value(av_list, "conf");
 	if (!val)
@@ -126,6 +150,8 @@ ldms_auth_t __auth_ovis_new(ldms_auth_plugin_t plugin,
 		len = snprintf(a->conf, sizeof(a->conf), "%s", val);
 		if (len >= sizeof(a->conf)) {
 			/* name too long */
+			LOG_ERROR("The file path is too long. "
+				  "It must be at most %d.\n", sizeof(a->conf));
 			errno = ENAMETOOLONG;
 			goto err1;
 		}
@@ -141,6 +167,8 @@ ldms_auth_t __auth_ovis_new(ldms_auth_plugin_t plugin,
 		len = snprintf(a->conf, sizeof(a->conf), "%s/" USRCONFNAME,
 							 pwd->pw_dir);
 		if (len >= sizeof(a->conf)) {
+			LOG_ERROR("The secret word is too long. "
+				  "It must be at most %d.\n", sizeof(a->conf));
 			errno = ENAMETOOLONG;
 			goto err1;
 		}
@@ -152,20 +180,25 @@ ldms_auth_t __auth_ovis_new(ldms_auth_plugin_t plugin,
 	/* try SYSCONFDIR/ldmsauth.conf */
 	len = snprintf(a->conf, sizeof(a->conf), SYSCONFDIR "/" SYSCONFNAME);
 	if (len >= sizeof(a->conf)) {
+		LOG_ERROR("The secret word is too long. "
+			  "It must be at most %d.\n", sizeof(a->conf));
 		errno = ENAMETOOLONG;
 		goto err1;
 	}
 	if (f_file_exists(a->conf))
 		goto load_conf;
 	/* else error */
+	LOG_ERROR("Cannot find any files that contains a secret word.\n");
 	errno = ENOENT;
 	goto err1;
 
 load_conf:
 	/* a->conf should contain the path */
-	a->secret = ovis_auth_get_secretword(a->conf, NULL);
-	if (!a->secret)
+	a->secret = ovis_auth_get_secretword(a->conf, aolog);
+	if (!a->secret) {
+		LOG_ERROR("Failed to read the secret word.\n")
 		goto err1;
+	}
 	return &a->base;
 
 err1:
@@ -186,13 +219,17 @@ ldms_auth_t __auth_ovis_clone(ldms_auth_t auth)
 	a->secret = NULL;
 	if (_a->hash) {
 		a->hash = strdup(_a->hash);
-		if (!a->hash)
+		if (!a->hash) {
+			LOG_OOM();
 			goto err1;
+		}
 	}
 	if (_a->secret) {
 		a->secret = strdup(_a->secret);
-		if (!a->secret)
+		if (!a->secret) {
+			LOG_OOM();
 			goto err1;
+		}
 	}
 
 	return &a->base;
@@ -254,11 +291,15 @@ int __auth_ovis_xprt_begin(ldms_auth_t auth, ldms_t xprt)
 {
 	struct ldms_auth_ovis *a = (void*)auth;
 	struct auth_ovis_msg_challenge msg;
+	int rc;
 	/* prepare challenge and hash */
 	a->challenge = ovis_auth_gen_challenge();
 	a->hash = ovis_auth_encrypt_password(a->challenge, a->secret);
-	if (!a->hash)
-		return errno;
+	if (!a->hash) {
+		rc = errno;
+		LOG_ERROR("Failed to encrypt the password. Error %d\n", rc);
+		return rc;
+	}
 	msg.hdr.type = AUTH_OVIS_CHALLENGE;
 	msg.challenge = htobe64(a->challenge);
 	return ldms_xprt_auth_send(xprt, (void*)&msg, sizeof(msg));
@@ -280,11 +321,15 @@ int __auth_ovis_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 		/* receive a challenge from the other side */
 		challenge = be64toh(msg->chl.challenge);
 		hash = ovis_auth_encrypt_password(challenge, a->secret);
-		if (!hash)
-			return errno;
+		if (!hash) {
+			rc = errno;
+			LOG_ERROR("Failed to encrypt the password. Error %d\n", rc);
+			return rc;
+		}
 		len = strlen(hash);
 		rpl = malloc(sizeof(*rpl) + len + 1);
 		if (!rpl) {
+			LOG_OOM();
 			free(hash);
 			return errno;
 		}
@@ -292,6 +337,9 @@ int __auth_ovis_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 		memcpy(rpl->hash, hash, len + 1);
 		free(hash);
 		rc = ldms_xprt_auth_send(xprt, (void*)rpl, sizeof(*rpl) + len + 1);
+		if (rc) {
+			LOG_ERROR("Failed to send the auth info. Error %d\n", rc);
+		}
 		free( rpl );
 		break;
 	case AUTH_OVIS_REPLY:
