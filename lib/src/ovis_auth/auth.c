@@ -66,18 +66,10 @@
 #include <arpa/inet.h>
 #include "auth.h"
 #include "ovis_util/util.h"
+#include "ovis_log/ovis_log.h"
 
 #define _str(x) #x
 #define str(x) _str(x)
-
-static void default_log(const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	vfprintf(stdout, fmt, ap);
-	fflush(stdout);
-}
 
 uint64_t ovis_auth_gen_challenge()
 {
@@ -120,7 +112,7 @@ uint64_t ovis_auth_unpack_challenge(struct ovis_auth_challenge *chl)
 }
 
 
-char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log)
+char *ovis_auth_get_secretword(const char *path, ovis_log_t log)
 {
 	int ret = 0;
 	char *word, *s, *ptr;
@@ -132,17 +124,16 @@ char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log)
 	 * return NULL
 	 */
 	if (!path || path[0] != '/') {
+		ovis_log(log, OVIS_LERROR, "The secretword file path is not given, "
+				"or the given path is not an absolute path.\n");
 		errno = EINVAL;
 		return NULL;
 	}
 
-	if (!log)
-		log = default_log;
-
 	struct stat pstat;
 	if (stat(path, &pstat)) {
 		ret = errno;
-		log("Auth error: %s while trying to stat %s\n",
+		ovis_log(log, OVIS_LERROR, "%s while trying to stat %s\n",
 			STRERROR(ret), path);
 		goto err;
 	}
@@ -150,11 +141,11 @@ char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log)
 	perm = pstat.st_mode & 0077;
 
 	if (perm) {
-		log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-		log("@     WARNING: UNPROTECTED SECRET WORD FILE!     @\n");
-		log("Permissions %#04o for '%s' are too open.\n", perm, path);
-		log("Your secret word file must NOT accessible by others.\n");
-		log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+		ovis_log(log, OVIS_LERROR, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+		ovis_log(log, OVIS_LERROR, "@     WARNING: UNPROTECTED SECRET WORD FILE!     @\n");
+		ovis_log(log, OVIS_LERROR, "Permissions %#04o for '%s' are too open.\n", perm, path);
+		ovis_log(log, OVIS_LERROR, "Your secret word file must NOT accessible by others.\n");
+		ovis_log(log, OVIS_LERROR, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 		ret = EINVAL;
 		goto err;
 	}
@@ -162,7 +153,7 @@ char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log)
 	FILE *file = fopen(path, "r");
 	if (!file) {
 		ret = errno;
-		log("Auth error(%d): '%m', while trying to open %s\n",
+		ovis_log(log, OVIS_LERROR, "error(%d): '%m', while trying to open %s\n",
 				errno, path);
 		goto err;
 	}
@@ -179,7 +170,7 @@ char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log)
 			 */
 			s = strtok_r(&line[11], "# \t\n", &ptr);
 			if (!s) {
-				log("Auth error: the secret word is an empty "
+				ovis_log(log, OVIS_LERROR, "the secret word is an empty "
 								"string.\n");
 				ret = EINVAL;
 				goto err0;
@@ -196,7 +187,7 @@ char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log)
 
 	if (strlen(s) < MIN_SECRET_WORD_LEN ||
 			strlen(s) > MAX_SECRET_WORD_LEN + 1) {
-		log("Auth error: the secret word must be at least "
+		ovis_log(log, OVIS_LERROR, "the secret word must be at least "
 				"%d characters and at most %d characters.\n",
 				MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
 		ret = EINVAL;
@@ -205,8 +196,8 @@ char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log)
 
 	word = strdup(s);
 	if (!word) {
-		log("Auth error: Out of memory when trying to read the"
-				"shared secret word.\n");
+		ovis_log(log, OVIS_LCRITICAL, "Out of memory when trying to "
+				"read the shared secret word.\n");
 		ret = ENOMEM;
 		goto err0;
 	}
@@ -227,7 +218,7 @@ int ovis_get_rabbit_secretword(const char *file, char *buf, int buflen,
 		return EINVAL;
 	if (!buflen || buflen >= MAX_SECRET_WORD_LEN)
 		return EINVAL;
-	char *sw = ovis_auth_get_secretword(file, msglog);
+	char *sw = ovis_auth_get_secretword(file, NULL);
 	if (!sw) {
 		msglog("Problem reading rabbit pw from %s\n", file);
 		return errno;

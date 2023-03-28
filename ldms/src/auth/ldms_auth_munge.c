@@ -1,5 +1,5 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2018,2023 Open Grid Computing, Inc. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -52,7 +52,22 @@
 #include <munge.h>
 #include <assert.h>
 
+#include "ovis_log/ovis_log.h"
 #include "../core/ldms_auth.h"
+
+static ovis_log_t munge_log = NULL;
+
+#define LOG(_level_, _fmt_, ...) do { \
+	ovis_log(munge_log, _level_, _fmt_, ##__VA_ARGS__); \
+} while (0);
+
+#define LOG_OOM() do { \
+	ovis_log(munge_log, OVIS_LCRITICAL, "Memory allocation failure.\n"); \
+} while (0);
+
+#define LOG_ERROR(_fmt_, ...) do { \
+	ovis_log(munge_log, OVIS_LERROR, _fmt_, ##__VA_ARGS__); \
+} while (0);
 
 static
 ldms_auth_t __auth_munge_new(ldms_auth_plugin_t plugin,
@@ -102,24 +117,33 @@ ldms_auth_t __auth_munge_new(ldms_auth_plugin_t plugin,
 	char *test_cred;
 
 	a = calloc(1, sizeof(*a));
-	if (!a)
+	if (!a) {
+		LOG_OOM();
 		goto err0;
+	}
 
 	mctx = munge_ctx_create();
-	if (!mctx)
+	if (!mctx) {
+		LOG_ERROR("Failed to create MUNGE context.\n");
 		goto err1;
+	}
 
 	munge_sock = av_value(av_list, "socket");
 	if (munge_sock) {
 		merr = munge_ctx_set(mctx, MUNGE_OPT_SOCKET, munge_sock);
-		if (merr != EMUNGE_SUCCESS)
+		if (merr != EMUNGE_SUCCESS) {
+			LOG_ERROR("Failed to set MUNGE context. %s\n",
+				   munge_strerror(merr));
 			goto err2;
+		}
 	}
 
 	/* Test munge connection */
 	merr = munge_encode(&test_cred, mctx, NULL, 0);
-	if (merr != EMUNGE_SUCCESS)
+	if (merr != EMUNGE_SUCCESS) {
+		LOG_ERROR("Failed to encode MUNGE. %s\n", munge_strerror(merr));
 		goto err2;
+	}
 	free(test_cred);
 
 	a->mctx = mctx;
@@ -138,12 +162,15 @@ ldms_auth_t __auth_munge_clone(ldms_auth_t auth)
 {
 	struct ldms_auth_munge *_a = (void*)auth;
 	struct ldms_auth_munge *a = calloc(1, sizeof(*a));
-	if (!a)
+	if (!a) {
+		LOG_OOM();
 		return NULL;
+	}
 	memcpy(a, auth, sizeof(*a));
 	a->local_cred = NULL;
 	a->mctx = munge_ctx_copy(_a->mctx);
 	if (!a->mctx) {
+		LOG_ERROR("Failed to copy the MUNGE context.\n");
 		free(a);
 		return NULL;
 	}
@@ -179,8 +206,10 @@ int __auth_munge_xprt_begin(ldms_auth_t auth, ldms_t xprt)
 	a->sin_len = sizeof(a->lsin);
 	rc = ldms_xprt_sockaddr(xprt, (void*)&a->lsin,
 				(void*)&a->rsin, &a->sin_len);
-	if (rc)
+	if (rc) {
+		LOG_ERROR("Failed to get the socket addresses. Error %d\n", rc);
 		return rc;
+	}
 	/*
 	 * zap_rdma from OVIS-4.3.7 and earlier has a bug that swaps
 	 * local/remote addresses. Since the old peers expect to receive the
@@ -191,12 +220,16 @@ int __auth_munge_xprt_begin(ldms_auth_t auth, ldms_t xprt)
 		munge_encode(&a->local_cred, a->mctx, &a->rsin, a->sin_len):
 		munge_encode(&a->local_cred, a->mctx, &a->lsin, a->sin_len);
 
-	if (merr)
+	if (merr) {
+		LOG_ERROR("munge_encode() failed. %s\n", munge_strerror(merr));
 		return EBADR; /* bad request */
+	}
 	len = strlen(a->local_cred);
 	rc = ldms_xprt_auth_send(xprt, a->local_cred, len + 1);
-	if (rc)
+	if (rc) {
+		LOG_ERROR("Failed to send the authentication info. Error %d\n", rc);
 		return rc;
+	}
 	return 0;
 }
 
@@ -215,10 +248,14 @@ int __auth_munge_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 	if (data[data_len-1] != 0)
 		goto invalid;
 	merr = munge_decode(data, a->mctx, &payload, &len, &uid, &gid);
-	if (merr != EMUNGE_SUCCESS)
+	if (merr != EMUNGE_SUCCESS) {
+		LOG_ERROR("munge_decode() failed. %s\n", munge_strerror(merr));
 		goto invalid;
-	if (len != sizeof(*sin))
+	}
+	if (len != sizeof(*sin)) {
+		LOG_ERROR("Bad payload\n");
 		goto invalid; /* bad payload */
+	}
 
 	/* check if addr match */
 	sin = payload;
@@ -231,8 +268,10 @@ int __auth_munge_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 	cmp = (strncmp(xprt->name, "rdma", 4) == 0)?
 			memcmp(sin, &a->lsin, sizeof(*sin)):
 			memcmp(sin, &a->rsin, sizeof(*sin));
-	if (cmp != 0)
+	if (cmp != 0) {
+		LOG_ERROR("bad address.\n");
 		goto invalid; /* bad addr */
+	}
 	/* verified */
 	xprt->ruid = uid;
 	xprt->rgid = gid;
@@ -255,16 +294,28 @@ int __auth_munge_cred_get(ldms_auth_t auth, ldms_cred_t cred)
 	char *tmp;
 	munge_err_t merr;
 	merr = munge_encode(&tmp, a->mctx, NULL, 0);
-	if (merr)
+	if (merr) {
+		LOG_ERROR("munge_encode() failed. %s\n", munge_strerror(merr));
 		return EBADR;
+	}
 	merr = munge_decode(tmp, a->mctx, NULL, NULL, &cred->uid, &cred->gid);
 	free(tmp);
-	if (merr)
+	if (merr) {
+		LOG_ERROR("munge_decode() failed. %s\n", munge_strerror(merr));
 		return EBADR;
+	}
 	return 0;
 }
 
 ldms_auth_plugin_t __ldms_auth_plugin_get()
 {
+	if (!munge_log) {
+		munge_log = ovis_log_register("auth_munge",
+					      "Messages for ldms_auth_munge");
+		if (!munge_log) {
+			LOG_ERROR("Failed to register auth_munge's log. "
+				  "Error %d\n", errno);
+		}
+	}
 	return &plugin;
 }

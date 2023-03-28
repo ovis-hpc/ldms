@@ -48,7 +48,22 @@
  */
 
 #include <assert.h>
+#include "ovis_log/ovis_log.h"
 #include "../core/ldms_auth.h"
+
+static ovis_log_t nlog = NULL;
+
+#define LOG(_level_, _fmt_, ...) do { \
+	ovis_log(nlog, _level_, _fmt_, ##__VA_ARGS__); \
+} while (0);
+
+#define LOG_ERROR(_fmt_, ...) do { \
+	ovis_log(nlog, OVIS_LERROR, _fmt_, ## __VA_ARGS__); \
+} while (0);
+
+#define LOG_OOM() do { \
+	ovis_log(nlog, OVIS_LCRITICAL, "Memory allocation failure.\n"); \
+} while (0);
 
 static
 ldms_auth_t __auth_new(ldms_auth_plugin_t plugin,
@@ -86,6 +101,12 @@ struct ldms_auth_naive {
 
 ldms_auth_plugin_t __ldms_auth_plugin_get()
 {
+	if (!nlog) {
+		nlog = ovis_log_register("auth_naive", "Messages for auth_naive");
+		if (!nlog) {
+			LOG_ERROR("Failed to register the auth_naive log.\n");
+		}
+	}
 	return &plugin;
 }
 
@@ -95,6 +116,7 @@ ldms_auth_t __auth_new(ldms_auth_plugin_t plugin,
 {
 	struct ldms_auth_naive *a = calloc(1, sizeof(*a));
 	if (!a) {
+		LOG_OOM();
 		errno = ENOMEM;
 		return NULL;
 	}
@@ -116,8 +138,10 @@ static
 ldms_auth_t __auth_clone(ldms_auth_t auth)
 {
 	struct ldms_auth_naive *a = calloc(1, sizeof(*a));
-	if (!a)
+	if (!a) {
+		LOG_OOM();
 		return NULL;
+	}
 	memcpy(a, auth, sizeof(*a));
 	return &a->base;
 }
@@ -158,8 +182,10 @@ int __auth_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 		const char *data, uint32_t data_len)
 {
 	struct naive_cred crd;
-	if (data_len != sizeof(crd))
+	if (data_len != sizeof(crd)) {
+		LOG_ERROR("Received unexpected credential size.\n");
 		return EINVAL;
+	}
 	memcpy(&crd, data, data_len);
 	crd.uid = ntohl(crd.uid);
 	crd.gid = ntohl(crd.gid);

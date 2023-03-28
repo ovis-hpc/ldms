@@ -16,14 +16,16 @@ lib_LTLIBRARIES += libldms_auth_none.la
 
 libldms_auth_naive_la_SOURCES = ldms_auth_naive.c
 libldms_auth_naive_la_LIBADD = ../core/libldms.la \
-			       $(top_builddir)/lib/src/ovis_util/libovis_util.la
+			       $(top_builddir)/lib/src/ovis_util/libovis_util.la \
+			       $(top_builddir)/lib/src/ovis_log/libovis_log.la
 
 lib_LTLIBRARIES += libldms_auth_naive.la
 
 libldms_auth_ovis_la_SOURCES = ldms_auth_ovis.c
 libldms_auth_ovis_la_LIBADD = ../core/libldms.la \
 			      $(top_builddir)/lib/src/ovis_util/libovis_util.la \
-			      $(top_builddir)/lib/src/ovis_auth/libovis_auth.la
+			      $(top_builddir)/lib/src/ovis_auth/libovis_auth.la \
+			      $(top_builddir)/lib/src/ovis_log/libovis_log.la
 lib_LTLIBRARIES += libldms_auth_ovis.la
 
 if ENABLE_MUNGE
@@ -33,6 +35,7 @@ libldms_auth_munge_la_LIBADD = ../core/libldms.la \
 			       $(top_builddir)/lib/src/ovis_util/libovis_util.la \
 			       -lmunge \
 			       @MUNGE_LIB64DIR_FLAG@ \
-			       @MUNGE_LIBDIR_FLAG@
+			       @MUNGE_LIBDIR_FLAG@ \
+			       $(top_builddir)/lib/src/ovis_log/libovis_log.la
 lib_LTLIBRARIES += libldms_auth_munge.la
 endif
