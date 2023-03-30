@@ -70,7 +70,7 @@ The set parameter's \fIschema\fR name.
 .IP "\fB%I \fR" 1c
 The instance name of the set, e.g. "orion-01/meminfo".
 .IP "\fB%P \fR" 1c
-The set parameter's \fIproducer\fR name.
+The set parameter's \fIproducer\fR name, e.g. "orion-01."
 .IP "\fB%u \fR" 1c
 The user-name string for the owner of the set.
 If the user-name is not known on the system, the user-id is used.
@@ -101,11 +101,107 @@ have no affect on how data is stored. If the \fIcontainer\fR parameter is set to
 value other than an empty string, it will override the bootstrap.servers Kafka configuration
 parameter in the kafka_conf file if present.
 .PP
-.SH "BUGS "
+.SH "JSON Mode"
 .PP
+JSON mode encodes messages as self describing text objects. Each message is a JSON dictionary
+based on the following template:
+RS 4
+.nf
+{
+        "<attr-name-1>" : <attr-value-1>,
+        "<attr-name-2>" : <attr-value-2>,
+        ...
+}
+.fi
+.RE
 .PP
-No known bugs\&.
+Each row in the decomposition is encoded as shown. The \fBattr-value\fR types are mapped to either
+quoted strings, floating-point, or integers as defined by the source metric type in the LDMS
+metric set. The mapping is as follows:
+.TS
+tab(@) allbox;
+l l l .
+\fBMetric Type\fR@\fBFormat Specifier\fR@\fBDescription\fR
+LDMS_V_TIMESTAMP@%u.%06u@Floating point number in seconds
+LDMS_V_U8@%hhu@Unsigned integer
+LDMS_V_S8@%hhd@Signed integer
+LDMS_V_U16@%hu@Unsigned integer
+LDMS_V_S16@%hd@Signed integer
+LDMS_V_U32@%u@Unsigned integer
+LDMS_V_S32@%d@Signed integer
+LDMS_V_U64@%lu@Unsigned integer
+LDMS_V_S64@%ld@Signed integer
+LDMS_V_FLOAT@%.9g@Floating point
+LDMS_V_DOUBLE@%.17g@Floating point
+LDMS_V_STRING@"%s"@Double quoted string
+LDMS_V_ARRAY_xxx@[ v0, v1, ... ]@Comma separated value list surrounding by '[]'
+.TE
+.SS "Example JSON Object"
+{"timestamp":1679682808.001751,"component_id":8,"dev_name":"veth1709f8b","rx_packets":0,"rx_err_packets":0,"rx_drop_packets":0,"tx_packets":858,"tx_err_packets":0,"tx_drop_packets":0}
+.fi
+.RE
 .PP
+.SH "Avro Mode"
+.PP
+In Avro mode, LDMS metric set values are first converted to Avro values. The table below
+describes how each LDMS metric set value is represented by an Avro value.
+.PP
+Each row in the decomposition is encoded as a sequence of Avro values. The target
+Avro type is governed by the Avro schema. The mapping is as follows:
+.TS
+tab(@) allbox;
+l l l .
+\fBMetric Type\fR@\fBAvro Type\fR@\fBDescription\fR
+LDMS_V_TIMESTAMP@AVRO_INT32@Seconds portion of timestamp value is stored in the Avro integer
+LDMS_V_TIMESTAMP@AVRO_INT64@tv_secs + 1000 * tv_usecs is stored in Avro long integer
+LDMS_V_TIMESTAMP@AVRO_RECORD@Seconds portion is stored in seconds portion of record, usecs is stored in the micro-seconds portion of the record
+LDMS_V_U8@AVRO_INT32@avro_value_set_int
+LDMS_V_S8@AVRO_INT32@avro_value_set_int
+LDMS_V_U16@AVRO_INT32@avro_value_set_int
+LDMS_V_S16@AVRO_INT32@avro_value_set_int
+LDMS_V_U32@AVRO_INT64@avro_value_set_long
+LDMS_V_S32@AVRO_INT32@avro_value_set_int
+LDMS_V_U64@AVRO_INT64@avro_value_set_long
+LDMS_V_S64@AVRO_INT64@avro_value_set_long
+LDMS_V_FLOAT@AVRO_FLOAT@avro_value_set_float
+LDMS_V_DOUBLE@AVRO_DOUBLE@avro_value_set_double
+LDMS_V_CHAR_ARRAY@AVRO_STRING@avro_value_set_string
+LDMS_V_ARRAY_xxx@AVRO_ARRAY@Comma separated value list or primitive type surrounded by '[]'
+.TE
+.SS "Schema Creation"
+.PP
+Each row in the LDMS metric set presented for storage is used to generate an
+Avro schema definition. The table above shows the Avro types that are used
+to store each LDMS metric type. Note that currently, all LDMS_V_TIMESTAMP values in
+a metric set are stored as the Avro logical type "timestamp-millis" and encoded
+as an Avro long.
+.PP
+Unsigned types are currently encoded as signed types. The case that could cause issues
+is LDMS_V_U64 which when encoded as AVRO_LONG will result in a negative number. One way
+to deal with this is to encode these as AVRO_BYTES[8] and let the consumer perform
+the appropriate cast. This, however, seems identical to simply encoding it as a signed
+long and allow the consumer to cast the signed long to an unsigned long.
+.SS "Schema Registration"
+.PP
+The Avro schema are generated from the row instances presented to the
+commit() storage strategy routine. The \fBschema_name\fR that is contained in the
+row instance is used to search for a serdes schema. This name is first searched for
+in a local RBT and if not found, the Avro Schema Registry is consulted. If the
+schema is not present in the registry, a new Avro schema is constructed per the
+table above, registered with the schema registry and stored in the local cache.
+.PP
+.SS "Encoding"
+.PP
+After the schema is located, constructed, and or registered for the row, the schema
+in conjunction with libserdes is used to binary encode the Avro values for
+each column in the row. Once encoded, the message is submitted to Kafka.
+.SS "Client Side Decoding"
+.PP
+Consumers of topics encoded with libserdes will need to perform the above procedure
+in reverse. The message received via Kafka will have the schema-id present
+in the message header. The client will use this schema-id to query the Schema
+registry for a schema. Once found, the client will construct a serdes from the
+schema definition and use this serdes to decode the message into Avro values.
 .SH "EXAMPLES "
 .PP
 .PP

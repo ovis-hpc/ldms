@@ -752,33 +752,29 @@ static const char *col_type_str(enum ldms_value_type type)
 	    [LDMS_V_S8] = "int",
 	    [LDMS_V_U16] = "int",
 	    [LDMS_V_S16] = "int",
-	    [LDMS_V_U32] = "int",
+	    [LDMS_V_U32] = "long",
 	    [LDMS_V_S32] = "int",
 	    [LDMS_V_U64] = "long",
 	    [LDMS_V_S64] = "long",
 	    [LDMS_V_F32] = "float",
 	    [LDMS_V_D64] = "double",
 	    [LDMS_V_CHAR_ARRAY] = "string",
-	    [LDMS_V_U8_ARRAY] = "string",
-	    [LDMS_V_S8_ARRAY] = "string",
-	    [LDMS_V_U16_ARRAY] = "array",
-	    [LDMS_V_S16_ARRAY] = "array",
-	    [LDMS_V_U32_ARRAY] = "array",
-	    [LDMS_V_S32_ARRAY] = "array",
-	    [LDMS_V_U64_ARRAY] = "array",
-	    [LDMS_V_S64_ARRAY] = "array",
-	    [LDMS_V_F32_ARRAY] = "array",
-	    [LDMS_V_D64_ARRAY] = "array",
-	    [LDMS_V_LIST] = "array",
-	    [LDMS_V_LIST_ENTRY] = "null",
-	    [LDMS_V_RECORD_TYPE] = "map",
-	    [LDMS_V_RECORD_INST] = "null",
-	    [LDMS_V_RECORD_ARRAY] = "array",
-#if 0
-	    [LDMS_V_TIMESTAMP] = "record"
-#else
-	    [LDMS_V_TIMESTAMP] = "int"
-#endif
+	    [LDMS_V_U8_ARRAY] = "int",
+	    [LDMS_V_S8_ARRAY] = "int",
+	    [LDMS_V_U16_ARRAY] = "int",
+	    [LDMS_V_S16_ARRAY] = "int",
+	    [LDMS_V_U32_ARRAY] = "long",
+	    [LDMS_V_S32_ARRAY] = "int",
+	    [LDMS_V_U64_ARRAY] = "long",
+	    [LDMS_V_S64_ARRAY] = "long",
+	    [LDMS_V_F32_ARRAY] = "float",
+	    [LDMS_V_D64_ARRAY] = "double",
+	    [LDMS_V_LIST] = "nosup",
+	    [LDMS_V_LIST_ENTRY] = "nosup",
+	    [LDMS_V_RECORD_TYPE] = "nosup",
+	    [LDMS_V_RECORD_INST] = "nosup",
+	    [LDMS_V_RECORD_ARRAY] = "nosup",
+	    [LDMS_V_TIMESTAMP] = "long"
 	};
 	return type_str[type];
 }
@@ -807,20 +803,6 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 		}
 		switch (col->type) {
 		case LDMS_V_TIMESTAMP:
-#if 0
-			rc = strbuf_printf(&h,
-					   "{\"name\":\"%s\",\"type\":{"
-					   "\"type\":\"record\","
-					   "\"name\":\"timestamp\","
-					   "\"doc\":\"An LDMS timestamp encoded as { seconds, micro-seconds }\","
-					   "\"fields\":["
-					   "{\"name\":\"sec\",\"type\":\"int\"},"
-					   "{\"name\":\"usec\",\"type\":\"int\"}"
-					   "]}}",
-					   col->name);
-			if (rc)
-				goto err_0;
-#else
 			rc = strbuf_printf(&h,
 					   "{\"name\":\"%s\",\"type\":\"long\","
 					   "\"logicalType\":\"timestamp-millis\""
@@ -828,7 +810,6 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 					   col->name);
 			if (rc)
 				goto err_0;
-#endif
 			break;
 		case LDMS_V_CHAR:
 		case LDMS_V_U8:
@@ -841,19 +822,14 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 		case LDMS_V_S64:
 		case LDMS_V_F32:
 		case LDMS_V_D64:
+		case LDMS_V_CHAR_ARRAY:
 			rc = strbuf_printf(&h, "{\"name\":\"%s\",\"type\":\"%s\"}",
 					   col->name, col_type_str(col->type));
 			if (rc)
 				goto err_0;
 			break;
-		case LDMS_V_CHAR_ARRAY:
 		case LDMS_V_U8_ARRAY:
 		case LDMS_V_S8_ARRAY:
-			rc = strbuf_printf(&h, "{\"name\":\"%s\",\"type\":\"%s\"}",
-					   col->name, col_type_str(col->type));
-			if (rc)
-				goto err_0;
-			break;
 		case LDMS_V_U16_ARRAY:
 		case LDMS_V_S16_ARRAY:
 		case LDMS_V_U32_ARRAY:
@@ -864,8 +840,7 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 		case LDMS_V_D64_ARRAY:
 			rc = strbuf_printf(&h,
 					   "{\"name\":\"%s\","
-					   "\"type\":\"array\","
-					   "\"items\":\"%s\",\"default\":[]}",
+					   "\"type\":{ \"type\" : \"array\", \"items\": \"%s\" }}",
 					   col->name, col_type_str(col->type));
 			if (rc)
 				goto err_0;
@@ -876,6 +851,7 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 		case LDMS_V_RECORD_INST:
 		case LDMS_V_RECORD_ARRAY:
 		default:
+			rc = EINVAL;
 			goto err_0;
 		}
 	}

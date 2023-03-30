@@ -494,10 +494,11 @@ err_0:
 static int set_avro_value_from_col(avro_value_t *col_value,
 				   ldmsd_col_t col)
 {
-	int rc;
+	int rc, idx;
 	struct ldms_timestamp ts;
-	avro_value_t val;
+	avro_value_t val, item_val;
 	long ms;
+	size_t item_idx;
 	enum avro_type_t t = avro_value_get_type(col_value);
 	switch (col->type) {
 	case LDMS_V_TIMESTAMP:
@@ -579,30 +580,107 @@ static int set_avro_value_from_col(avro_value_t *col_value,
 				ldms_mval_get_double(col->mval));
 		break;
 	case LDMS_V_CHAR_ARRAY:
-	case LDMS_V_U8_ARRAY:
-	case LDMS_V_S8_ARRAY:
 		rc = avro_value_set_string(col_value,
 				ldms_mval_array_get_str(col->mval));
 		break;
+	case LDMS_V_S8_ARRAY:
+		for (idx = 0; idx < col->array_len; idx++) {
+			rc = avro_value_append(col_value, &item_val, &item_idx);
+			if (rc)
+				break;
+			rc = avro_value_set_int(&item_val,
+					(int)ldms_mval_array_get_s8(col->mval, idx));
+		}
+		break;
+	case LDMS_V_U8_ARRAY:
+		for (idx = 0; idx < col->array_len; idx++) {
+			rc = avro_value_append(col_value, &item_val, &item_idx);
+			if (rc)
+				break;
+			rc = avro_value_set_int(&item_val,
+					(unsigned int)ldms_mval_array_get_u8(col->mval, idx));
+		}
+		break;
 	case LDMS_V_U16_ARRAY:
+		for (idx = 0; idx < col->array_len; idx++) {
+			rc = avro_value_append(col_value, &item_val, &item_idx);
+			if (rc)
+				break;
+			rc = avro_value_set_int(&item_val,
+					(unsigned int)ldms_mval_array_get_u16(col->mval, idx));
+		}
+		break;
 	case LDMS_V_S16_ARRAY:
+		for (idx = 0; idx < col->array_len; idx++) {
+			rc = avro_value_append(col_value, &item_val, &item_idx);
+			if (rc)
+				break;
+			rc = avro_value_set_int(&item_val,
+					(int)ldms_mval_array_get_s16(col->mval, idx));
+		}
+		break;
 	case LDMS_V_U32_ARRAY:
+		for (idx = 0; idx < col->array_len; idx++) {
+			rc = avro_value_append(col_value, &item_val, &item_idx);
+			if (rc)
+				break;
+			rc = avro_value_set_long(&item_val,
+					(long)ldms_mval_array_get_u32(col->mval, idx));
+		}
+		break;
 	case LDMS_V_S32_ARRAY:
+		for (idx = 0; idx < col->array_len; idx++) {
+			rc = avro_value_append(col_value, &item_val, &item_idx);
+			if (rc)
+				break;
+			rc = avro_value_set_int(&item_val,
+					ldms_mval_array_get_s64(col->mval, idx));
+		}
+		break;
 	case LDMS_V_U64_ARRAY:
+		for (idx = 0; idx < col->array_len; idx++) {
+			rc = avro_value_append(col_value, &item_val, &item_idx);
+			if (rc)
+				break;
+			rc = avro_value_set_long(&item_val,
+					(long)ldms_mval_array_get_u64(col->mval, idx));
+		}
+		break;
 	case LDMS_V_S64_ARRAY:
+		for (idx = 0; idx < col->array_len; idx++) {
+			rc = avro_value_append(col_value, &item_val, &item_idx);
+			if (rc)
+				break;
+			rc = avro_value_set_long(&item_val,
+					(long)ldms_mval_array_get_u64(col->mval, idx));
+		}
+		break;
 	case LDMS_V_F32_ARRAY:
+		for (idx = 0; idx < col->array_len; idx++) {
+			rc = avro_value_append(col_value, &item_val, &item_idx);
+			if (rc)
+				break;
+			rc = avro_value_set_float(&item_val,
+					ldms_mval_array_get_float(col->mval, idx));
+		}
+		break;
 	case LDMS_V_D64_ARRAY:
-		assert(0 == "Not yet");
+		for (idx = 0; idx < col->array_len; idx++) {
+			rc = avro_value_append(col_value, &item_val, &item_idx);
+			if (rc)
+				break;
+			rc = avro_value_set_double(&item_val,
+					ldms_mval_array_get_double(col->mval, idx));
+		}
 		break;
 	case LDMS_V_LIST:
 	case LDMS_V_LIST_ENTRY:
-		assert(0 == "Not Yet");
-		break;
 	case LDMS_V_RECORD_TYPE:
 	case LDMS_V_RECORD_INST:
 	case LDMS_V_RECORD_ARRAY:
 	default:
-		assert(0 == "Not yet");
+		rc = ENOTSUP;
+		break;
 	}
 	return rc;
 }

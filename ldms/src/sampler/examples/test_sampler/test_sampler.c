@@ -59,6 +59,7 @@
 #include <time.h>
 #include <pthread.h>
 #include <assert.h>
+#include <ctype.h>
 #include "ldms.h"
 #include "ovis_json/ovis_json.h"
 #include "ldmsd.h"
@@ -1122,6 +1123,8 @@ static int config_add_set(struct attr_value_list *avl)
 	union ldms_value v;
 	char *endptr;
 	if (compid) {
+		/* Skip non isdigit prefix */
+		while (*compid != '\0' && !isdigit(*compid)) compid++;
 		v.v_u64 = strtoull(compid, &endptr, 0);
 		if (*endptr != '\0') {
 			msglog(LDMSD_LERROR, "test_sampler: invalid "
