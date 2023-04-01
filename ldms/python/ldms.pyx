@@ -52,6 +52,7 @@ from cpython cimport PyObject, Py_INCREF, Py_DECREF, PyGILState_Ensure, \
 from libc.stdint cimport *
 from libc.stdlib cimport calloc, malloc, free, realloc
 from posix.unistd cimport geteuid, getegid
+from collections import namedtuple
 import datetime as dt
 import struct
 import io
@@ -265,8 +266,33 @@ cdef extern from *:
         /* no-op */
         #endif
     }
+
+    #define ldms_stream_src_stats_s_from_rbn(r) \
+                container_of((r), struct ldms_stream_src_stats_s, rbn)
+
+    #define __STREAM_CLIENT_PAIR_STATS_TQ_FIRST(tq) TAILQ_FIRST(tq)
+    #define __STREAM_CLIENT_PAIR_STATS_NEXT(ps) TAILQ_NEXT(ps, entry)
+
+    #define __STREAM_STATS_TQ_FIRST(tq) TAILQ_FIRST(tq)
+    #define __STREAM_STATS_NEXT(s) TAILQ_NEXT(s, entry)
+
+    #define __STREAM_CLIENT_STATS_TQ_FIRST(tq) TAILQ_FIRST(tq)
+    #define __STREAM_CLIENT_STATS_NEXT(cs) TAILQ_NEXT(cs, entry)
+
     """
     cdef void __init_threads()
+    cdef ldms_stream_src_stats_s *ldms_stream_src_stats_s_from_rbn(rbn *rbn)
+    cdef ldms_stream_client_pair_stats_s * \
+    __STREAM_CLIENT_PAIR_STATS_TQ_FIRST(ldms_stream_client_pair_stats_tq_s *tq)
+    cdef ldms_stream_client_pair_stats_s * \
+    __STREAM_CLIENT_PAIR_STATS_NEXT(ldms_stream_client_pair_stats_s *ps)
+
+    cdef ldms_stream_stats_s *__STREAM_STATS_TQ_FIRST(ldms_stream_stats_tq_s *tq)
+    cdef ldms_stream_stats_s * __STREAM_STATS_NEXT(ldms_stream_stats_s *s)
+
+    cdef ldms_stream_client_stats_s *__STREAM_CLIENT_STATS_TQ_FIRST(ldms_stream_client_stats_tq_s *tq)
+    cdef ldms_stream_client_stats_s * __STREAM_CLIENT_STATS_NEXT(ldms_stream_client_stats_s *s)
+
 __init_threads()
 
 
@@ -3548,11 +3574,30 @@ cdef class Xprt(object):
     def stream_subscribe(self, match, is_regex, cb=None, cb_arg=None):
         """r.stream_subscribe(match, is_regex, cb=None, cb_arg=None)
 
+        `cb()` signature: `cb(StreamStatusEvent ev, object cb_arg)`
+
         Send a subscription request to the remote peer. If `cb` is `None`,
         this function will block and wait for the peer to reply the subscription
         result. In this case, if the subscription is a success, the function
         simply returned (no return code); otherwise, a StreamSubscribeError is
         raised.
+
+        If the callback function `cb` is given, it will be called when the
+        remote process sends back the stream subscription request results.
+        The callback signature is `cb(StreamStatusEvent ev, object cb_arg)`.
+        - `ev.name` (str) is the stream name or stream matching regex value.
+        - `ev.is_regex` (int) 1 if `ev.name` is a regex; otherwise 0.
+        - `ev.status` (int) is the returned status for the submitted request.
+
+        Arguments:
+        - match (str): the name or the matching regular expression.
+        - is_regex (int): 1 if `match` is a regex; otherwise 0.
+        - cb (callable(StreamStatusEvent, object)):
+                a callback function to report the result of the request.
+        - cb_arg (object): the application-supplied callback argument.
+
+        Returns:
+        None; This method does not return any value.
 
         """
         cdef int rc
@@ -3612,6 +3657,24 @@ cdef class Xprt(object):
             if rc:
                 raise StreamSubscribeError(f"ldms_stream_remote_subscribe() error, rc: {rc}")
 
+    def get_sockaddr(self):
+        """Get the local socket Internet address in ((LOCAL_ADDR, LOCAL_PORT), (REMOTE_ADDR, REMOTE_PORT))"""
+        cdef sockaddr_in lcl, rmt
+        cdef socklen_t slen = sizeof(lcl)
+        cdef int rc
+        rc = ldms_xprt_sockaddr(self.xprt, <sockaddr*>&lcl, <sockaddr*>&rmt, &slen)
+        if rc:
+            raise RuntimeError(f"ldms_xprt_sockaddr() error, rc: {rc}")
+        return ( (lcl.sin_addr.s_addr, lcl.sin_port) ,
+                 (rmt.sin_addr.s_addr, rmt.sin_port) )
+
+    def get_stream_addr(self):
+        """Get (LOCAL, REMOTE) addresses in StreamAddr format"""
+        lcl, rmt = self.get_sockaddr()
+        lcl = StreamAddr.from_addr_port(*lcl)
+        rmt = StreamAddr.from_addr_port(*rmt)
+        return ( lcl, rmt )
+
 
 cdef class _StreamSubCtxt(object):
     """For internal use"""
@@ -3631,17 +3694,17 @@ cdef int __stream_block_cb(ldms_stream_event_t ev, void *cb_arg) with gil:
 
 cdef int __stream_wrap_cb(ldms_stream_event_t ev, void *cb_arg) with gil:
     cdef _StreamSubCtxt ctxt = <_StreamSubCtxt>cb_arg
-    py_ev = StreamStatusEvent(ev.status.name, ev.status.is_regex,
+    py_ev = StreamStatusEvent(ev.status.match, ev.status.is_regex,
                                              ev.status.status)
     ctxt.cb(py_ev, ctxt.cb_arg)
     Py_DECREF(ctxt)
 
 cdef class StreamStatusEvent(object):
-    cdef public str name
+    cdef public str match
     cdef public int is_regex
     cdef public int status
-    def __cinit__(self, const char *name, int is_regex, int status):
-        self.name = str(name)
+    def __cinit__(self, const char *match, int is_regex, int status):
+        self.match = str(match)
         self.is_regex = is_regex
         self.status = status
 
@@ -3728,6 +3791,167 @@ cdef int __stream_client_cb(ldms_stream_event_t ev, void *arg) with gil:
         c.data_q.put(sdata)
     return 0
 
+StreamAddr = namedtuple('StreamAddr', ['addr', 'port'])
+def _from_ptr(cls, Ptr ptr):
+    cdef ldms_stream_addr_u *addr = <ldms_stream_addr_u*>ptr.c_ptr
+    return cls( tuple([addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3]]),
+                be16toh(addr.port) )
+StreamAddr.from_ptr = classmethod(_from_ptr)
+del _from_ptr
+def _from_addr_port(cls, addr, port):
+    """From addr, port in Network byte format"""
+    _b = struct.pack('=LH', addr, port)
+    _u = struct.unpack('>BBBBH', _b)
+    _addr = _u[0:4]
+    _port = _u[4]
+    return cls(_addr, _port)
+StreamAddr.from_addr_port = classmethod(_from_addr_port)
+del _from_addr_port
+StreamAddr.__str__ = lambda s: ".".join(s.addr)+f":{s.port}"
+
+TimeSpec = namedtuple('TimeSpec', [ 'tv_sec', 'tv_nsec' ])
+def _from_ptr(cls, Ptr ptr):
+    cdef timespec *ts = <timespec*>ptr.c_ptr
+    return cls(ts.tv_sec, ts.tv_nsec)
+TimeSpec.from_ptr = classmethod(_from_ptr)
+del _from_ptr
+
+StreamCounters = namedtuple('StreamCounters', [
+        'first_ts', 'last_ts', 'count', 'bytes'
+    ])
+def _from_ptr(cls, Ptr ptr):
+    cdef ldms_stream_counters_s *ctr = <ldms_stream_counters_s *>ptr.c_ptr
+    first_ts = TimeSpec.from_ptr(PTR(&ctr.first_ts))
+    last_ts = TimeSpec.from_ptr(PTR(&ctr.last_ts))
+    return cls(first_ts, last_ts, ctr.count, ctr.bytes)
+StreamCounters.from_ptr = classmethod(_from_ptr)
+del _from_ptr
+
+StreamSrcStats = namedtuple('StreamSrcStats', ['src', 'rx'])
+def _from_ptr(cls, Ptr ptr):
+    cdef ldms_stream_src_stats_s *ss = <ldms_stream_src_stats_s *>ptr.c_ptr
+    src = StreamAddr.from_ptr(PTR(&ss.src))
+    rx = StreamCounters.from_ptr(PTR(&ss.rx))
+    return cls(src, rx)
+StreamSrcStats.from_ptr = classmethod(_from_ptr)
+del _from_ptr
+
+StreamClientPairStats = namedtuple('StreamClientPairStats', [
+        'stream_name', 'client_match', 'client_desc', 'is_regex', 'tx', 'drops'
+    ])
+def _from_ptr(cls, Ptr ptr):
+    cdef ldms_stream_client_pair_stats_s *ps = <ldms_stream_client_pair_stats_s *>ptr.c_ptr
+    tx = StreamCounters.from_ptr(PTR(&ps.tx))
+    drops = StreamCounters.from_ptr(PTR(&ps.drops))
+    return cls(STR(ps.stream_name), STR(ps.client_match), STR(ps.client_desc),
+               ps.is_regex, tx, drops)
+StreamClientPairStats.from_ptr = classmethod(_from_ptr)
+del _from_ptr
+
+StreamStats = namedtuple('StreamStats', ['rx', 'sources', 'clients', 'name'])
+def _from_ptr(cls, Ptr ptr):
+    cdef ldms_stream_stats_s *s = <ldms_stream_stats_s *>ptr.c_ptr
+    cdef ldms_stream_src_stats_s *ss
+    cdef ldms_stream_client_pair_stats_s *ps
+    cdef rbn *rbn
+    rx = StreamCounters.from_ptr(PTR(&s.rx))
+    sources = list()
+    clients = list()
+    rbn = rbt_min(&s.src_stats_rbt)
+    while rbn:
+        ss = ldms_stream_src_stats_s_from_rbn(rbn)
+        obj = StreamSrcStats.from_ptr(PTR(ss))
+        sources.append(obj)
+        rbn = rbn_succ(rbn)
+    ps = __STREAM_CLIENT_PAIR_STATS_TQ_FIRST(&s.pair_tq)
+    while ps:
+        obj = StreamClientPairStats.from_ptr(PTR(ps))
+        clients.append(obj)
+        ps = __STREAM_CLIENT_PAIR_STATS_NEXT(ps)
+    ret = StreamStats(rx, sources, clients, STR(s.name))
+    return ret
+StreamStats.from_ptr = classmethod(_from_ptr)
+del _from_ptr
+
+StreamClientStats = namedtuple('StreamClientStats', [
+        'tx', 'drops', 'streams', 'dest', 'is_regex', 'match', 'desc'
+    ])
+def _from_ptr(cls, Ptr ptr):
+    cdef ldms_stream_client_stats_s *cs = <ldms_stream_client_stats_s*>ptr.c_ptr
+    cdef ldms_stream_client_pair_stats_s *ps
+    tx = StreamCounters.from_ptr(PTR(&cs.tx))
+    drops = StreamCounters.from_ptr(PTR(&cs.drops))
+    dest = StreamAddr.from_ptr(PTR(&cs.dest))
+    ps = __STREAM_CLIENT_PAIR_STATS_TQ_FIRST(&cs.pair_tq)
+    streams = list()
+    while ps:
+        obj = StreamClientPairStats.from_ptr(PTR(ps))
+        streams.append(obj)
+        ps = __STREAM_CLIENT_PAIR_STATS_NEXT(ps)
+    ret = cls(tx, drops, streams, dest, cs.is_regex, STR(cs.match), STR(cs.desc))
+    return ret
+StreamClientStats.from_ptr = classmethod(_from_ptr)
+del _from_ptr
+
+def stream_stats_level_set(lvl):
+    ldms_stream_stats_level_set(lvl)
+
+def stream_stats_level_get():
+    return ldms_stream_stats_level_get()
+
+def stream_stats_get(stream_match=None, is_regex=0):
+    """Get a collection of stats of the streams in this process that match `stream_match`
+
+    stream_match(str) - the stream name or a regular expression
+    is_regex(int) - 1 if `stream_match` is a regular expression; otherwise, 0
+    """
+    cdef const char *m = NULL
+    cdef ldms_stream_stats_tq_s *tq
+    cdef ldms_stream_stats_s *s
+    if stream_match:
+        stream_match = BYTES(stream_match)
+        m = stream_match
+    tq = ldms_stream_stats_tq_get(m, is_regex)
+    ret = list()
+    if not tq:
+        if errno == ENOENT:
+            return ret
+        else:
+            raise RuntimeError(f"ldms_stream_stats_tq_get error: {ERRNO_SYM(errno)}({errno})")
+    try:
+        s = __STREAM_STATS_TQ_FIRST(tq)
+        while s:
+            obj = StreamStats.from_ptr(PTR(s))
+            ret.append(obj)
+            s = __STREAM_STATS_NEXT(s)
+    except:
+        ldms_stream_stats_tq_free(tq)
+        raise
+    ldms_stream_stats_tq_free(tq)
+    return ret
+
+def stream_client_stats_get():
+    """Get a collection of stats of stream clients in this process"""
+    cdef ldms_stream_client_stats_tq_s *tq
+    cdef ldms_stream_client_stats_s *cs
+    tq = ldms_stream_client_stats_tq_get()
+    ret = list()
+    if not tq:
+        if errno == ENOENT:
+            return ret
+        else:
+            raise RuntimeError(f"ldms_stream_client_stats_tq_get error: {ERRNO_SYM(errno)}({errno})")
+    try:
+        cs = __STREAM_CLIENT_STATS_TQ_FIRST(tq)
+        while cs:
+            obj = StreamClientStats.from_ptr(PTR(cs))
+            ret.append(obj)
+            cs = __STREAM_CLIENT_STATS_NEXT(cs)
+    except:
+        ldms_stream_client_stats_tq_free(tq)
+        raise
+    ldms_stream_client_stats_tq_free(tq)
+    return ret
 
 cdef class StreamClient(object):
     """StreamClient(match, is_regex, cb=None, cb_arg=None)
@@ -3741,6 +3965,7 @@ cdef class StreamClient(object):
                         with the following signature
                           `def cb(StreamClient client, StreamData data, object cb_arg)`
     - cb_arg (object):  an optional application callback argument.
+    - desc (str): a short description of the client.
     """
 
     cdef ldms_stream_client_t c
@@ -3748,12 +3973,15 @@ cdef class StreamClient(object):
     cdef object cb_arg # optional application callback argument
     cdef object data_q
 
-    def __init__(self, match, is_regex, cb=None, cb_arg=None):
+    def __init__(self, match, is_regex, cb=None, cb_arg=None, desc=None):
         self.data_q = Queue()
         self.cb = cb
         self.cb_arg = cb_arg
+        if desc is None:
+            desc = ""
         self.c = ldms_stream_subscribe(BYTES(match), is_regex,
-                                       __stream_client_cb, <void*>self)
+                                       __stream_client_cb, <void*>self,
+                                       BYTES(desc))
         if not self.c:
             raise RuntimeError(f"ldms_stream_subscribe() error, errno: {errno}")
 
@@ -3769,6 +3997,23 @@ cdef class StreamClient(object):
             return self.data_q.get_nowait()
         except Empty as e:
             return None
+
+    def stats(self):
+        """Get the client stats"""
+        cdef ldms_stream_client_stats_s *cs;
+        if not self.c:
+            raise RuntimeError("client has been closed")
+        cs = ldms_stream_client_get_stats(self.c)
+        if not cs:
+            raise RuntimeError(f"error: {ERRNO_SYM(errno)}({errno})")
+        try:
+            obj = StreamClientStats.from_ptr(PTR(cs))
+        except:
+            # cleanup before raising the error
+            ldms_stream_client_stats_free(cs)
+            raise
+        ldms_stream_client_stats_free(cs)
+        return obj
 
 
 cdef class ZapThrStat(object):

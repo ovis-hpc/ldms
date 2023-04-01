@@ -175,7 +175,7 @@ static void __rail_ref_free(void *arg)
 uint64_t rail_gn = 1;
 /* implementation in ldms_stream.c */
 int __stream_buf_cmp(void *tree_key, const void *key);
-int __stream_name_rbn_cmp(void *tree_key, const void *key);
+int __str_rbn_cmp(void *tree_key, const void *key);
 
 ldms_t ldms_xprt_rail_new(const char *xprt_name,
 			  int n, int64_t recv_limit, int32_t rate_limit,
@@ -212,7 +212,7 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 	r->n_eps = n;
 	r->recv_limit = recv_limit;
 	r->rate_limit = rate_limit;
-	rbt_init(&r->stream_client_rbt, __stream_name_rbn_cmp);
+	rbt_init(&r->stream_client_rbt, __str_rbn_cmp);
 	snprintf(r->name, sizeof(r->name), "%s", xprt_name);
 	snprintf(r->auth_name, sizeof(r->auth_name), "%s", auth_name);
 	if (auth_av_list) {

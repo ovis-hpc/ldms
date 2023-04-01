@@ -69,7 +69,9 @@ struct ldms_stream_s {
 	pthread_rwlock_t rwlock; /* protects client_tq */
 	TAILQ_HEAD(, ldms_stream_client_entry_s) client_tq;
 	int name_len;
-	char name[OVIS_FLEX]; /* stream name */
+	struct ldms_stream_counters_s rx; /* total rx regardless of src */
+	struct rbt src_stats_rbt; /* tree of statistics by src; the nodes are `struct ldms_stream_src_stats_s` */
+	char name[OVIS_FLEX];
 };
 
 /* stream-client relation */
@@ -83,6 +85,11 @@ struct ldms_stream_client_entry_s {
 
 	/* For stream->client_tq */
 	TAILQ_ENTRY(ldms_stream_client_entry_s) stream_client_entry;
+
+	/* transmission-to-client counters for this stream */
+	struct ldms_stream_counters_s tx;
+	/* client drops counters for this stream */
+	struct ldms_stream_counters_s drops;
 };
 
 struct ldms_stream_client_s {
@@ -92,9 +99,16 @@ struct ldms_stream_client_s {
 
 	struct ldms_stream_client_coll_s *coll;
 
+	/* transmission-to-client counters regradless of stream */
+	struct ldms_stream_counters_s tx;
+	/* drops counters regradless of stream */
+	struct ldms_stream_counters_s drops;
+
 	pthread_rwlock_t rwlock;
 	/* streams that this client subscribed for */
 	TAILQ_HEAD(, ldms_stream_client_entry_s) stream_tq;
+
+	union ldms_stream_addr_u dest;
 
 	ldms_t x;
 	ldms_stream_event_cb_t cb_fn;
@@ -102,7 +116,9 @@ struct ldms_stream_client_s {
 	int is_regex;
 	regex_t regex;
 	struct ref_s ref;
-	int match_len;
+	int desc_len;
+	char *desc; /* a short description at &match[match_len] */
+	int match_len; /* length of c->match[], including '\0' */
 	char match[OVIS_FLEX]; /* exact name match or regex */
 };
 

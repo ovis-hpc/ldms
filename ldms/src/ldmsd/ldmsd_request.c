@@ -286,6 +286,8 @@ static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc);
 static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc);
 static int stream_new_handler(ldmsd_req_ctxt_t reqc);
 static int stream_status_handler(ldmsd_req_ctxt_t reqc);
+static int stream_stats_handler(ldmsd_req_ctxt_t reqc);
+static int stream_client_stats_handler(ldmsd_req_ctxt_t reqc);
 
 static int listen_handler(ldmsd_req_ctxt_t reqc);
 
@@ -608,6 +610,12 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_STREAM_STATUS_REQ] = {
 		LDMSD_STREAM_STATUS_REQ, stream_status_handler, XALL
+	},
+	[LDMSD_STREAM_STATS_REQ] = {
+		LDMSD_STREAM_STATS_REQ, stream_stats_handler, XALL
+	},
+	[LDMSD_STREAM_CLIENT_STATS_REQ] = {
+		LDMSD_STREAM_CLIENT_STATS_REQ, stream_client_stats_handler, XALL
 	},
 
 	/* LISTEN */
@@ -2003,6 +2011,7 @@ out:
 	return rc;
 }
 
+__attribute__((deprecated, unused))
 static int __prdcr_stream_status(ldmsd_prdcr_t prdcr, ldmsd_req_ctxt_t oreqc,
 				struct pstream_status_regex_ctxt *base,
 				struct ldmsd_str_ent *pname)
@@ -2042,6 +2051,10 @@ static int __prdcr_stream_status(ldmsd_prdcr_t prdcr, ldmsd_req_ctxt_t oreqc,
 
 int prdcr_stream_status_handler(ldmsd_req_ctxt_t reqc)
 {
+	reqc->errcode = ENOTSUP;
+	ldmsd_send_req_response(reqc, "LDMSD_PRDCR_STREAM_STATUS_REQ is deprecated.");
+	return 0;
+#if 0
 	int rc;
 	char *prdcr_regex;
 	size_t cnt = 0;
@@ -2139,6 +2152,7 @@ free_ctxt:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(prdcr_regex);
 	return rc;
+#endif
 }
 
 int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdcr_cnt)
@@ -7394,6 +7408,10 @@ static int stream_new_handler(ldmsd_req_ctxt_t reqc)
 
 static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 {
+	reqc->errcode = ENOTSUP;
+	ldmsd_send_req_response(reqc, "LDMSD_STREAM_STATUS_REQ is deprecated.");
+	return 0;
+#if 0
 	int rc;
 	char *s, *reset_s;
 	size_t len;
@@ -7435,6 +7453,102 @@ static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 
 	if (reset)
 		ldmsd_stream_stats_reset_all();
+out:
+	free(s);
+	return rc;
+#endif
+}
+
+/*
+ * command format:
+ *     stream_stats [regex=<REGEX>] [stream=STREAM_NAME]
+ *
+ * If `regex` and `stream` are not given, get stats from all streams. `regex`
+ * precedes `stream`.
+ */
+static int stream_stats_handler(ldmsd_req_ctxt_t reqc)
+{
+	const char *regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
+	const char *stream = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
+	const char *match = NULL;
+	int is_regex = 0;
+	char buff[128];
+	char *s;
+	int rc = 0;
+	size_t len;
+	struct ldmsd_req_attr_s attr;
+
+	if (regex) {
+		match = regex;
+		is_regex = 1;
+	} else if (stream) {
+		match = stream;
+	}
+	s = ldms_stream_stats_str(match, is_regex);
+	if (!s) {
+		reqc->errcode = errno;
+		snprintf(buff, sizeof(buff), "ldms_stream_stats_str() error: %d",
+				errno);
+		ldmsd_send_req_response(reqc, buff);
+		return 0;
+	}
+	attr.discrim = 1;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	attr.attr_len = len = strlen(s) + 1;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		goto out;
+
+	rc = ldmsd_append_reply(reqc, s, strlen(s) + 1, 0);
+	if (rc)
+		goto out;
+
+	attr.discrim = 0;
+	rc = ldmsd_append_reply(reqc, (char *)(&attr.discrim),
+				sizeof(attr.discrim), LDMSD_REQ_EOM_F);
+out:
+	free(s);
+	return rc;
+}
+
+/*
+ * command format:
+ *     stream_client_stats
+ *
+ * This command takes no options.
+ */
+static int stream_client_stats_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *s;
+	char buff[128];
+	int rc = 0;
+	size_t len;
+	struct ldmsd_req_attr_s attr;
+
+	s = ldms_stream_client_stats_str();
+	if (!s) {
+		reqc->errcode = errno;
+		snprintf(buff, sizeof(buff), "ldms_stream_client_stats_str() error: %d",
+				errno);
+		ldmsd_send_req_response(reqc, buff);
+		return 0;
+	}
+	attr.discrim = 1;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	attr.attr_len = len = strlen(s) + 1;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		goto out;
+
+	rc = ldmsd_append_reply(reqc, s, strlen(s) + 1, 0);
+	if (rc)
+		goto out;
+
+	attr.discrim = 0;
+	rc = ldmsd_append_reply(reqc, (char *)(&attr.discrim),
+				sizeof(attr.discrim), LDMSD_REQ_EOM_F);
 out:
 	free(s);
 	return rc;

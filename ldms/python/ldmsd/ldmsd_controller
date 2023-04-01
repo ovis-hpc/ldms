@@ -479,6 +479,9 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         regex=     A regular expression matching producer names
         """
+        print("prdcr_stream_status is deprecated")
+        return
+        # DEPRECATED
         FIRST = "first_ts"
         LAST = "last_ts"
         RATE = "bytes/sec"
@@ -1663,6 +1666,16 @@ class LdmsdCmdParser(cmd.Cmd):
         ts_str = "{0} [{1}]".format(ts_sec, usec)
         return ts_str
 
+    def __floatts2human(self, ts):
+        if ts == 0:
+            return "-EMPTY-"
+        max_ts = float(int.from_bytes(b'\xff'*7+b'\x7f', 'little'))
+        if ts >= max_ts:
+            return "-EMPTY-"
+        sec = int(ts)
+        usec = int(ts % 1.0 * 1000000)
+        return self.__ts2human(sec, usec)
+
     def do_set_route(self, arg):
         """
         Display the route of the set from aggregators to the sampler daemon.
@@ -1976,6 +1989,9 @@ class LdmsdCmdParser(cmd.Cmd):
         [reset=]     If true, reset the statistics of all streams after returning the values.
                      The default is false.
         """
+        print("stream_status is deprecated")
+        return
+        # DEPRECATED
         FIRST = "first_ts"
         LAST = "last_ts"
         RATE = "bytes/sec"
@@ -2043,6 +2059,122 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_stream_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_status', text)
+
+    def do_stream_stats(self, arg):
+        """
+        Print stream stats that match the given `regex` or `stream`.
+
+        Parameters:
+            [regex=]  The regular expression to match the stream name
+            [stream=] The exact stream name
+            [json=1]  Set the output format to JSON
+        """
+        arg = self.handle_args('stream_stats', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.stream_stats(arg['regex'], arg['stream'])
+        if rc:
+            emsg = f"stream_stats error: {rc}, msg: {msg}"
+            print(emsg)
+            if is_debug:
+                raise RuntimeError(emsg)
+        streams = fmt_status(msg)
+        if arg.get('json'):
+            print(json.dumps(streams, indent=1))
+            return
+        # header
+        print(f'{"name":30} {"bytes":12} {"count":12} {"first":26} {"last":26}')
+        print("-" * 30, "-" * 12, "-" * 12, "-" * 26, "-" * 26)
+        for s in streams:
+            name    = s["name"]
+            rx      = s["rx"]
+            sources = s.get("sources", dict())
+            clients = s.get("clients", list())
+            print(f'{name:30} {rx["bytes"]:>12} {rx["count"]:>12} '\
+                  f'{self.__floatts2human(rx["first_ts"]):26} ' \
+                  f'{self.__floatts2human(rx["last_ts"]):26}')
+            first_src = True
+            first_cli = True
+            for addr, rx in sources.items():
+                if first_src:
+                    print(" - sources:")
+                    first_src = False
+                print(f'   - {addr:25} {rx["bytes"]:>12} {rx["count"]:>12} '\
+                      f'{self.__floatts2human(rx["first_ts"]):26} ' \
+                      f'{self.__floatts2human(rx["last_ts"]):26}')
+            for cli in clients:
+                if first_cli:
+                    print(" - clients:")
+                    first_cli = False
+                name = f"[{cli['client_match']}] {cli['client_desc']}"
+                tx = cli['tx']
+                drops = cli['drops']
+                print(f'   - {name+":":25}')
+                print(f'     - {"tx":23} {tx["bytes"]:>12} {tx["count"]:>12} '\
+                      f'{self.__floatts2human(tx["first_ts"]):26} ' \
+                      f'{self.__floatts2human(tx["last_ts"]):26}')
+                print(f'     - {"drops":23} {drops["bytes"]:>12} {drops["count"]:>12} '\
+                      f'{self.__floatts2human(drops["first_ts"]):26} ' \
+                      f'{self.__floatts2human(drops["last_ts"]):26}')
+        if is_debug:
+            pdb.set_trace()
+
+    def complete_stream_stats(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('stream_stats', text)
+
+    def do_stream_client_stats(self, arg):
+        """
+        Print stream stats
+
+        Parameters:
+            [json=1]  Set the output format to JSON
+        """
+        arg = self.handle_args('stream_stats', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.stream_client_stats()
+        if rc:
+            emsg = f"stream_client_stats error: {rc}, msg: {msg}"
+            print(emsg)
+            if is_debug:
+                raise RuntimeError(emsg)
+        clients = fmt_status(msg)
+        if arg.get('json'):
+            print(json.dumps(clients, indent=1))
+            return
+        print(f'{"name":30} {"bytes":12} {"count":12} {"first":26} {"last":26}')
+        print("-" * 30, "-" * 12, "-" * 12, "-" * 26, "-" * 26)
+        for cli in clients:
+            name = f'[{cli["match"]}] {cli["dest"]} {cli["desc"]}'
+            tx = cli['tx']
+            drops = cli['drops']
+            print(f'{name}')
+            print(f' - {"tx":27} {tx["bytes"]:>12} {tx["count"]:>12} '\
+                  f'{self.__floatts2human(tx["first_ts"]):26} ' \
+                  f'{self.__floatts2human(tx["last_ts"]):26}')
+            print(f' - {"drops":27} {drops["bytes"]:>12} {drops["count"]:>12} '\
+                  f'{self.__floatts2human(drops["first_ts"]):26} ' \
+                  f'{self.__floatts2human(drops["last_ts"]):26}')
+            first_stream = True
+            for s in cli['streams']:
+                if first_stream:
+                    print(" - streams:")
+                    first_stream = False
+                name = s['stream_name']
+                tx = s['tx']
+                drops = s['drops']
+                print(f'   - {name+":":25}')
+                print(f'     - {"tx":23} {tx["bytes"]:>12} {tx["count"]:>12} '\
+                      f'{self.__floatts2human(tx["first_ts"]):26} ' \
+                      f'{self.__floatts2human(tx["last_ts"]):26}')
+                print(f'     - {"drops":23} {drops["bytes"]:>12} {drops["count"]:>12} '\
+                      f'{self.__floatts2human(drops["first_ts"]):26} ' \
+                      f'{self.__floatts2human(drops["last_ts"]):26}')
+        if is_debug:
+            pdb.set_trace()
+
+    def complete_stream_client_stats(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('stream_client_stats', text)
 
     def do_listen(self, arg):
         """
@@ -2266,6 +2398,8 @@ if __name__ == "__main__":
         args = parser.parse_args()
 
         is_debug = args.debug
+        if is_debug:
+            import pdb
 
         auth_opt = None
         if args.auth_arg:

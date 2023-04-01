@@ -49,6 +49,23 @@ from libc.string cimport *
 
 from posix.types cimport gid_t, pid_t, off_t, uid_t, mode_t
 
+cdef extern from * nogil:
+    uint16_t be16toh(uint16_t x)
+    uint16_t htobe16(uint16_t x)
+    uint32_t be32toh(uint32_t x)
+    uint32_t htobe32(uint32_t x)
+    uint64_t be64toh(uint64_t x)
+    uint64_t htobe64(uint64_t x)
+
+    struct sockaddr:
+        pass
+    struct in_addr:
+        uint32_t s_addr
+    struct sockaddr_in:
+        uint16_t sin_port
+        in_addr sin_addr
+    ctypedef uint32_t socklen_t
+
 cdef extern from "errno.h" nogil:
     int errno
 
@@ -184,6 +201,14 @@ cdef extern from "time.h" nogil:
     enum:
         CLOCK_REALTIME
 
+cdef extern from "coll/rbt.h" nogil:
+    struct rbt:
+        pass
+    struct rbn:
+        pass
+    rbn *rbt_min(rbt *rbt)
+    rbn *rbn_succ(rbn *rbn)
+
 cdef extern from "ovis_util/util.h" nogil:
     struct attr_value_list:
         pass
@@ -257,6 +282,9 @@ cdef extern from "ldms.h" nogil:
 
     ctypedef void (*app_ctxt_free_fn)(void *ctxt)
     void ldms_xprt_ctxt_set(ldms_t x, void *ctxt, app_ctxt_free_fn fn)
+    int ldms_xprt_sockaddr(ldms_t x, sockaddr *local_sa,
+		           sockaddr *remote_sa,
+		           socklen_t *sa_len)
 
     # --- dir operation related --- #
     struct ldms_key_value_s:
@@ -688,15 +716,15 @@ cdef extern from "ldms.h" nogil:
         json_entity_t json
         ldms_cred cred
         uint32_t perm
-    struct ldms_stream_status_data_s:
-        const char *name
+    struct ldms_stream_return_status_s:
+        const char *match
         int is_regex
         int status
     struct ldms_stream_event_s:
         ldms_t r
         ldms_stream_event_type type
         ldms_stream_recv_data_s recv
-        ldms_stream_status_data_s status
+        ldms_stream_return_status_s status
     ctypedef ldms_stream_event_s *ldms_stream_event_t
     ctypedef int (*ldms_stream_event_cb_t)(ldms_stream_event_t ev, void *cb_arg)
 
@@ -706,12 +734,66 @@ cdef extern from "ldms.h" nogil:
                             uint32_t perm,
                             const char *data, size_t data_len)
     ldms_stream_client_t ldms_stream_subscribe(const char *stream, int is_regex,
-                            ldms_stream_event_cb_t cb_fn, void *cb_arg)
+                            ldms_stream_event_cb_t cb_fn, void *cb_arg,
+                            const char *desc)
     void ldms_stream_close(ldms_stream_client_t c)
     int ldms_stream_remote_subscribe(ldms_t x, const char *stream, int is_regex,
                             ldms_stream_event_cb_t cb_fn, void *cb_arg)
     int ldms_stream_remote_unsubscribe(ldms_t x, const char *stream, int is_regex,
                             ldms_stream_event_cb_t cb_fn, void *cb_arg)
+
+    # -- ldms_stream_stats -- #
+    union ldms_stream_addr_u:
+        uint64_t u64
+        uint8_t  addr[4]
+        uint32_t addr4
+        uint16_t port
+    struct ldms_stream_counters_s:
+        timespec first_ts
+        timespec last_ts
+        uint64_t  count
+        size_t    bytes
+    struct ldms_stream_src_stats_s:
+        uint64_t src
+        ldms_stream_counters_s rx
+    struct ldms_stream_client_pair_stats_s:
+        const char *stream_name
+        const char *client_match
+        const char *client_desc
+        int is_regex
+        ldms_stream_counters_s tx
+        ldms_stream_counters_s drops
+    struct ldms_stream_client_pair_stats_tq_s:
+        pass
+    struct ldms_stream_stats_s:
+        ldms_stream_counters_s rx
+        rbt src_stats_rbt
+        ldms_stream_client_pair_stats_tq_s pair_tq
+        const char *name
+    struct ldms_stream_stats_tq_s:
+        pass
+    struct ldms_stream_client_stats_s:
+        ldms_stream_counters_s tx
+        ldms_stream_counters_s drops
+        ldms_stream_client_pair_stats_tq_s pair_tq
+        ldms_stream_addr_u dest
+        int is_regex
+        const char *match
+        const char *desc
+    struct ldms_stream_client_stats_tq_s:
+        pass
+    int ldms_stream_stats_level_set(int level)
+    int ldms_stream_stats_level_get()
+    ldms_stream_stats_tq_s * ldms_stream_stats_tq_get(const char *match, int is_regex)
+    void ldms_stream_stats_tq_free(ldms_stream_stats_tq_s *tq)
+    char *ldms_stream_stats_tq_to_str(ldms_stream_stats_tq_s *tq)
+    char *ldms_stream_stats_str(char *match, int is_regex)
+    ldms_stream_client_stats_tq_s *ldms_stream_client_stats_tq_get()
+    void ldms_stream_client_stats_tq_free(ldms_stream_client_stats_tq_s *tq)
+    ldms_stream_client_stats_s *ldms_stream_client_get_stats(ldms_stream_client_t cli)
+    void ldms_stream_client_stats_free(ldms_stream_client_stats_s *cs)
+    char *ldms_stream_client_stats_tq_to_str(ldms_stream_client_stats_tq_s *tq)
+    char *ldms_stream_client_stats_str()
 
 cdef extern from "zap/zap.h" nogil:
     struct zap_thrstat_result_entry:
