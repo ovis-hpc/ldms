@@ -1093,6 +1093,9 @@ int delete_thread_init_once()
 	return rc;
 }
 
+/* implementation in ldms_stream.c */
+void __ldms_stream_stats_init();
+
 int ldms_init(size_t max_size)
 {
 	size_t grain = LDMS_GRAIN_MMALLOC;
@@ -1111,6 +1114,7 @@ int ldms_init(size_t max_size)
 	__ldms_config.default_authz_gid = getegid();
 	__ldms_config.default_authz_perm = 0440;
 	pthread_rwlock_init(&__ldms_config.default_authz_lock, NULL);
+	__ldms_stream_stats_init();
 	return delete_thread_init_once();
 }
 

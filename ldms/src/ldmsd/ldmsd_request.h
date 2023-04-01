@@ -178,6 +178,8 @@ enum ldmsd_request {
 	LDMSD_STREAM_CLIENT_DUMP_REQ,	  /* Dump stream client info */
 	LDMSD_STREAM_NEW_REQ,	/* Create a stream */
 	LDMSD_STREAM_STATUS_REQ,	/* Query stream information */
+	LDMSD_STREAM_STATS_REQ,	/* Query stream stats of this process */
+	LDMSD_STREAM_CLIENT_STATS_REQ,	/* Query stream client stats of this process */
 
 	/* Auth */
 	LDMSD_AUTH_ADD_REQ = 0xa00, /* Add auth domain */

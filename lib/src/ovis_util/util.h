@@ -402,4 +402,59 @@ ovis_pgrep_array_t ovis_pgrep(const char *text);
  */
 void ovis_pgrep_free(ovis_pgrep_array_t array);
 
+typedef struct ovis_buff_entry_s {
+	TAILQ_ENTRY(ovis_buff_entry_s) entry;
+	size_t buff_len;
+	size_t avail_len;
+	off_t  off;
+	char buff[OVIS_FLEX];
+} *ovis_buff_entry_t;
+TAILQ_HEAD(ovis_buff_entry_tq_s, ovis_buff_entry_s);
+
+typedef struct ovis_buff_s {
+	struct ovis_buff_entry_tq_s tq;
+	int grain;
+} *ovis_buff_t;
+
+/**
+ * Create a new ovis_buff object.
+ *
+ * \param grain The buffer is allocated in the multiples of grain.
+ */
+ovis_buff_t ovis_buff_new(size_t grain);
+
+/**
+ * Free the buffer object.
+ */
+void ovis_buff_free(ovis_buff_t buff);
+
+/**
+ * Initialize the ovis buffer structure.
+ */
+void ovis_buff_init(struct ovis_buff_s *buff, size_t grain);
+
+/**
+ * Purge the buffer contents, but does not free the \c buff.
+ */
+void ovis_buff_purge(struct ovis_buff_s *buff);
+
+/**
+ * Append \c buff with Formatted print (\c printf()).
+ *
+ * \retval 0      Success.
+ * \retval ENOMEM Cannot allocate more memory.
+ */
+__attribute__((format(printf, 2, 3)))
+int ovis_buff_appendf(ovis_buff_t buff, const char *fmt, ...);
+
+/**
+ * Get a copy of the string value of \c buff.
+ *
+ * \retval str  If succeeded.
+ * \retval NULL If error. \c errno is set to describe the error.
+ *
+ * \remarks The caller is responsible to free the returned string.
+ */
+char *ovis_buff_str(ovis_buff_t buff);
+
 #endif /* OVIS_UTIL_H_ */

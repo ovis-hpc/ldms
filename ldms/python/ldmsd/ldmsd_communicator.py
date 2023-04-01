@@ -135,6 +135,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'subscribe': {'req_attr': ['name'], 'opt_attr': []},
                       'stream_client_dump': {'req_attr': [], 'opt_attr': []},
                       'stream_status' : {'req_attr': [], 'opt_attr': ['reset']},
+                      'stream_stats' : {'req_attr': [], 'opt_attr': ['regex', 'stream', 'json']},
+                      'stream_client_stats' : {'req_attr': [], 'opt_attr': ['json']},
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': ['thread_stats']},
                       ##### Misc. #####
@@ -541,6 +543,8 @@ class LDMSD_Request(object):
     STREAM_CLIENT_DUMP = STREAM_PUBLISH + 3
     STREAM_NEW = STREAM_PUBLISH + 4
     STREAM_STATUS = STREAM_PUBLISH + 5
+    STREAM_STATS = STREAM_PUBLISH + 6
+    STREAM_CLIENT_STATS = STREAM_PUBLISH + 7
 
     AUTH_ADD = 0xa00
 
@@ -629,6 +633,8 @@ class LDMSD_Request(object):
 
             'stream_client_dump'   :  {'id' : STREAM_CLIENT_DUMP },
             'stream_status'    :  {'id' : STREAM_STATUS },
+            'stream_stats'    :  {'id' : STREAM_STATS },
+            'stream_client_stats'    :  {'id' : STREAM_CLIENT_STATS },
 
             'listen'        :  {'id' : LISTEN },
             'auth_add'      :  {'id' : AUTH_ADD },
@@ -1346,6 +1352,43 @@ class Communicator(object):
             reset = False
         req = LDMSD_Request(command_id=LDMSD_Request.STREAM_STATUS,
                             attrs = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.RESET, value=str(reset))])
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
+
+    def stream_stats(self, regex=None, stream=None):
+        """
+        Dump stream stats
+
+        Parameters:
+        regex - The regular expression matching the stream names
+        stream - The exact match of the stearm name
+        """
+        attr_list = []
+        if regex:
+            attr_list.append(LDMSD_Req_Attr(attr_name='regex', value=regex))
+        if stream:
+            attr_list.append(LDMSD_Req_Attr(attr_name='stream', value=stream))
+        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_STATS, attrs = attr_list)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
+
+    def stream_client_stats(self):
+        """
+        Dump stream stats
+
+        Parameters:
+        regex - The regular expression matching the stream names
+        stream - The exact match of the stearm name
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_CLIENT_STATS, attrs = [])
         try:
             req.send(self)
             resp = req.receive(self)

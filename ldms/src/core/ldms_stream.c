@@ -50,14 +50,12 @@
 /*
  * TODO List
  * [x] Spread stream based on src.
- * [.] Stream credentials.
+ * [x] Stream credentials.
  *     [x] drop stream messages based on cred/permission
- *     [ ] send stream messages 'as' someone else
- * [ ] Stream statistics and info
- *     [ ] (from Nichamon's stream status code).
- *     [ ] credit status
- *     [ ] credit statistics?
- *     [ ] drop statistics.
+ *     [x] send stream messages 'as' someone else
+ * [.] Stream statistics and info
+ *     [.] (from Nichamon's stream status code).
+ *     [.] drop statistics.
  * [x] Python interface
  */
 
@@ -77,15 +75,31 @@
 #include "ldms_rail.h"
 #include "ldms_stream.h"
 
+#define __TIMESPEC_MIN ( (struct timespec){0, 0} )
+#define __TIMESPEC_MAX ( (struct timespec){INT64_MAX, 999999999} )
+#define __TIMESPEC_LT(a, b) ( \
+		(a)->tv_sec < (b)->tv_sec || \
+		( (a)->tv_sec == (b)->tv_sec && (a)->tv_nsec < (b)->tv_nsec ) \
+	)
+#define __TIMESPEC_GT(a, b) __TIMESPEC_LT(b, a)
+#define __TIMESPEC_LE(a, b) (!__TIMESPEC_LT(b, a))
+#define __TIMESPEC_GE(a, b) __TIMESPEC_LE(b, a)
+
+static int __stream_stats_level = 1;
+
 /* see implementation in ldms_rail.c */
 int  __credit_acquire(uint64_t *credit, uint64_t n);
 void __credit_release(uint64_t *credit, uint64_t n);
 
-int __stream_name_rbn_cmp(void *tree_key, const void *key);
+int __str_rbn_cmp(void *tree_key, const void *key);
+int __u64_rbn_cmp(void *tree_key, const void *key);
 
 pthread_rwlock_t __stream_rwlock = PTHREAD_RWLOCK_INITIALIZER;
+#define __STREAM_RDLOCK() pthread_rwlock_rdlock(&__stream_rwlock)
+#define __STREAM_WRLOCK() pthread_rwlock_wrlock(&__stream_rwlock)
+#define __STREAM_UNLOCK() pthread_rwlock_unlock(&__stream_rwlock)
 
-static struct rbt __stream_rbt = RBT_INITIALIZER(__stream_name_rbn_cmp);
+static struct rbt __stream_rbt = RBT_INITIALIZER(__str_rbn_cmp);
 
 TAILQ_HEAD(, ldms_stream_client_s) __regex_client_tq = TAILQ_HEAD_INITIALIZER(__regex_client_tq);
 
@@ -227,11 +241,12 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 		return 0; /* remote has no access; do not forward */
 
 	/* passed the access check; forward the data */
-	return __rep_publish(&r->eps[ep_idx], ev->recv.name, ev->recv.type,
+	rc = __rep_publish(&r->eps[ep_idx], ev->recv.name, ev->recv.type,
 			     ev->recv.src.u64, ev->recv.msg_gn,
 			     &ev->recv.cred, ev->recv.perm,
 			     ev->recv.data,
 			     ev->recv.data_len);
+	return rc;
 }
 
 static int
@@ -243,19 +258,21 @@ __stream_get(const char *stream_name, int *is_new)
 {
 	struct ldms_stream_s *s;
 	int name_len = strlen(stream_name) + 1;
-	pthread_rwlock_rdlock(&__stream_rwlock);
+	__STREAM_RDLOCK();
 	s = (void*)rbt_find(&__stream_rbt, stream_name);
-	pthread_rwlock_unlock(&__stream_rwlock);
+	__STREAM_UNLOCK();
 	if (s)
 		goto out_0;
 	/* unlikely */
-	pthread_rwlock_wrlock(&__stream_rwlock);
+	__STREAM_WRLOCK();
 	/* need to find the stream again in the case that the other thread
 	 * won the write race */
 	s = (void*)rbt_find(&__stream_rbt, stream_name);
 	if (s)
 		goto out_1;
 	s = calloc(1, sizeof(*s) + name_len);
+	if (!s)
+		goto out_1;
 	pthread_rwlock_init(&s->rwlock, NULL);
 	rbn_init(&s->rbn, s->name);
 	TAILQ_INIT(&s->client_tq);
@@ -264,6 +281,10 @@ __stream_get(const char *stream_name, int *is_new)
 	rbt_ins(&__stream_rbt, &s->rbn);
 	if (is_new)
 		*is_new = 1;
+
+	rbt_init(&s->src_stats_rbt, __u64_rbn_cmp);
+	s->rx.first_ts = __TIMESPEC_MAX;
+	s->rx.last_ts  = __TIMESPEC_MIN;
 
 	/* We need to go through the _regex_ clients to see if we match
 	 * any. */
@@ -283,7 +304,7 @@ __stream_get(const char *stream_name, int *is_new)
 	 * non-regex clients already create the stream structure and
 	 * register themselves before reaching here. */
  out_1:
-	pthread_rwlock_unlock(&__stream_rwlock);
+	__STREAM_UNLOCK();
  out_0:
 	return s;
 }
@@ -314,6 +335,10 @@ __client_stream_bind(ldms_stream_client_t c, struct ldms_stream_s *s)
 	TAILQ_INSERT_TAIL(&s->client_tq, sce, stream_client_entry);
 	pthread_rwlock_unlock(&s->rwlock);
 	ref_get(&sce->ref, "stream_client_entry");
+
+	LDMS_STREAM_COUNTERS_INIT(&sce->tx);
+	LDMS_STREAM_COUNTERS_INIT(&sce->drops);
+
 	return 0;
 }
 
@@ -338,6 +363,17 @@ __client_stream_unbind(struct ldms_stream_client_entry_s *sce)
 	ref_put(&c->ref, "client_entry");
 }
 
+void  __counters_update(struct ldms_stream_counters_s *ctr,
+			struct timespec *now, size_t bytes)
+{
+	if (__TIMESPEC_LT(now, &ctr->first_ts))
+		ctr->first_ts = *now;
+	if (__TIMESPEC_GT(now, &ctr->last_ts))
+		ctr->last_ts = *now;
+	ctr->bytes += bytes;
+	ctr->count += 1;
+}
+
 /* deliver stream data to all clients */
 /* must NOT hold __stream_mutex */
 static int
@@ -351,6 +387,7 @@ __stream_deliver(uint64_t src, uint64_t msg_gn,
 	struct ldms_stream_s *s;
 	struct ldms_stream_client_entry_s *sce, *next_sce;
 	struct ldms_stream_client_s *c;
+	struct timespec now;
 
 	s = __stream_get(stream_name, NULL);
 	if (!s) {
@@ -374,6 +411,36 @@ __stream_deliver(uint64_t src, uint64_t msg_gn,
 		}
 	};
 	json_entity_t json = NULL;
+
+	/* update stats */
+	if (__stream_stats_level <= 0)
+		goto skip_stats;
+	pthread_rwlock_wrlock(&s->rwlock);
+	clock_gettime(CLOCK_REALTIME, &now);
+	__counters_update(&s->rx, &now, data_len);
+	if (__stream_stats_level > 1) {
+		/* stats by src */
+		struct rbn *rbn = rbt_find(&s->src_stats_rbt, &src);
+		struct ldms_stream_src_stats_s *ss;
+		if (rbn) {
+			ss = container_of(rbn, struct ldms_stream_src_stats_s, rbn);
+		} else {
+			ss = malloc(sizeof(*ss));
+			if (!ss) {
+				/* error in stats shall not break the normal
+				 * operations */
+				pthread_rwlock_unlock(&s->rwlock);
+				goto skip_stats;
+			}
+			ss->src = src;
+			rbn_init(&ss->rbn, &ss->src);
+			ss->rx = LDMS_STREAM_COUNTERS_INITIALIZER;
+			rbt_ins(&s->src_stats_rbt, &ss->rbn);
+		}
+		__counters_update(&ss->rx, &now, data_len);
+	}
+	pthread_rwlock_unlock(&s->rwlock);
+ skip_stats:
 
 	pthread_rwlock_rdlock(&s->rwlock);
 	sce = TAILQ_FIRST(&s->client_tq);
@@ -404,7 +471,18 @@ __stream_deliver(uint64_t src, uint64_t msg_gn,
 		ref_get(&c->ref, "callback");
 		pthread_rwlock_unlock(&s->rwlock);
 		_ev.recv.client = c;
-		c->cb_fn(&_ev, c->cb_arg);
+		rc = c->cb_fn(&_ev, c->cb_arg);
+		if (__stream_stats_level > 0) {
+			pthread_rwlock_wrlock(&c->rwlock);
+			if (rc) {
+				__counters_update( &sce->drops, &now, data_len);
+				__counters_update(&c->drops, &now, data_len);
+			} else {
+				__counters_update(&sce->tx, &now, data_len);
+				__counters_update(&c->tx, &now, data_len);
+			}
+			pthread_rwlock_unlock(&c->rwlock);
+		}
 		ref_put(&c->ref, "callback");
 		pthread_rwlock_rdlock(&s->rwlock);
 	next:
@@ -681,7 +759,7 @@ __client_subscribe(struct ldms_stream_client_s *c)
 	struct ldms_stream_s *s;
 
 	if (c->is_regex) {
-		pthread_rwlock_wrlock(&__stream_rwlock);
+		__STREAM_WRLOCK();
 		TAILQ_INSERT_TAIL(&__regex_client_tq, c, entry);
 		ref_get(&c->ref, "__regex_client_tq");
 		RBT_FOREACH(rbn, &__stream_rbt) {
@@ -693,7 +771,7 @@ __client_subscribe(struct ldms_stream_client_s *c)
 			if (rc)
 				goto err_1;
 		}
-		pthread_rwlock_unlock(&__stream_rwlock);
+		__STREAM_UNLOCK();
 	} else {
 		/* bind client to the stream */
 		s = __stream_get(c->match, NULL);
@@ -716,24 +794,30 @@ __client_subscribe(struct ldms_stream_client_s *c)
 		TAILQ_REMOVE(&__regex_client_tq, c, entry);
 		ref_put(&c->ref, "__regex_client_tq");
 	}
-	pthread_rwlock_unlock(&__stream_rwlock);
+	__STREAM_UNLOCK();
  out:
 	return rc;
 }
 
 static ldms_stream_client_t
 __client_alloc(const char *stream, int is_regex,
-		      ldms_stream_event_cb_t cb_fn, void *cb_arg)
+	       ldms_stream_event_cb_t cb_fn, void *cb_arg,
+	       const char *desc)
 {
 	ldms_stream_client_t c;
 	int rc, slen = strlen(stream) + 1;
-	c = calloc(1, sizeof(*c) + slen);
+	int dlen = (desc?strlen(desc):0) + 1;
+	c = calloc(1, sizeof(*c) + slen + dlen);
 	if (!c)
 		goto out;
 	pthread_rwlock_init(&c->rwlock, NULL);
 	ref_init(&c->ref, "init", __client_ref_free, c);
 	c->match_len = slen;
 	memcpy(c->match, stream, slen);
+	c->desc = &c->match[c->match_len]; /* c->desc next to c->match */
+	c->desc_len = dlen;
+	if (desc)
+		memcpy(c->desc, desc, dlen);
 	rbn_init(&c->rbn, c->match);
 	c->cb_fn = cb_fn;
 	c->cb_arg = cb_arg;
@@ -745,6 +829,10 @@ __client_alloc(const char *stream, int is_regex,
 		if (rc)
 			goto err_0;
 	}
+
+	LDMS_STREAM_COUNTERS_INIT(&c->tx);
+	LDMS_STREAM_COUNTERS_INIT(&c->drops);
+
 	goto out;
  err_0:
 	free(c);
@@ -760,7 +848,8 @@ __client_free(ldms_stream_client_t c)
 
 ldms_stream_client_t
 ldms_stream_subscribe(const char *stream, int is_regex,
-		      ldms_stream_event_cb_t cb_fn, void *cb_arg)
+		      ldms_stream_event_cb_t cb_fn, void *cb_arg,
+		      const char *desc)
 {
 	ldms_stream_client_t c = NULL;
 	int rc;
@@ -770,7 +859,7 @@ ldms_stream_subscribe(const char *stream, int is_regex,
 		goto out;
 	}
 
-	c = __client_alloc(stream, is_regex, cb_fn, cb_arg);
+	c = __client_alloc(stream, is_regex, cb_fn, cb_arg, desc);
 	if (!c)
 		goto out;
 	rc = __client_subscribe(c);
@@ -788,7 +877,7 @@ void ldms_stream_close(ldms_stream_client_t c)
 {
 	struct ldms_stream_client_entry_s *sce;
 
-	pthread_rwlock_wrlock(&__stream_rwlock);
+	__STREAM_WRLOCK();
 	/* unbind from all streams it subscried to */
 	while ((sce = TAILQ_FIRST(&c->stream_tq))) {
 		__client_stream_unbind(sce);
@@ -797,7 +886,7 @@ void ldms_stream_close(ldms_stream_client_t c)
 		TAILQ_REMOVE(&__regex_client_tq, c, entry);
 		ref_put(&c->ref, "__regex_client_tq");
 	}
-	pthread_rwlock_unlock(&__stream_rwlock);
+	__STREAM_UNLOCK();
 	ref_put(&c->ref, "init");
 }
 
@@ -872,9 +961,20 @@ int __stream_buf_cmp(void *tree_key, const void *key)
 	return memcmp(tree_key, key, sizeof(struct __sbuf_key_s));
 }
 
-int __stream_name_rbn_cmp(void *tree_key, const void *key)
+int __str_rbn_cmp(void *tree_key, const void *key)
 {
 	return strcmp(tree_key, key);
+}
+
+int __u64_rbn_cmp(void *tree_key, const void *key)
+{
+	uint64_t a = *(uint64_t*)tree_key;
+	uint64_t b = *(uint64_t*)key;
+	if (a < b)
+		return -1;
+	if (a > b)
+		return 1;
+	return 0;
 }
 
 struct __stream_buf_s {
@@ -994,6 +1094,8 @@ __process_stream_sub(ldms_t x, struct ldms_request *req)
 	int rc;
 	const char *err_msg;
 	int msg_len, reply_len;
+	struct sockaddr_in lsin, rsin;
+	socklen_t sin_len = sizeof(lsin);
 	struct {
 		struct ldms_reply r;
 		char _[512];
@@ -1010,13 +1112,23 @@ __process_stream_sub(ldms_t x, struct ldms_request *req)
 	/* network to host */
 	req->stream_sub.match_len = be32toh(req->stream_sub.match_len);
 	c = __client_alloc(req->stream_sub.match, req->stream_sub.is_regex,
-			   __remote_client_cb, x);
+			   __remote_client_cb, x, "remote_client");
 	if (!c) {
 		pthread_mutex_unlock(&r->mutex);
 		err_msg = "Client allocation failure";
 		rc = errno;
 		goto reply;
 	}
+
+	rc = ldms_xprt_sockaddr(x, (void*)&lsin, (void*)&rsin, &sin_len);
+	if (!rc) {
+		c->dest.addr4    = rsin.sin_addr.s_addr;
+		c->dest.port     = rsin.sin_port;
+		c->dest.reserved = 0;
+	} else {
+		c->dest.u64      = -1;
+	}
+
 	c->x = (ldms_t)rep->rail;
 	rbt_ins(&r->stream_client_rbt, &c->rbn);
 	ref_get(&r->ref, "r->stream_client_rbt");
@@ -1123,7 +1235,7 @@ __process_stream_subunsub_reply(ldms_t x, struct ldms_reply *reply,
 	sev.r = (ldms_t)r;
 	sev.type = sev_type;
 	sev.status.is_regex = ctxt->req->stream_sub.is_regex;
-	sev.status.name = ctxt->req->stream_sub.match;
+	sev.status.match = ctxt->req->stream_sub.match;
 	sev.status.status = be32toh(reply->hdr.rc);
 	ctxt->cb_fn(&sev, ctxt->cb_arg);
  out:
@@ -1161,4 +1273,557 @@ void __stream_on_rail_disconnected(struct ldms_rail_s *r)
 		pthread_mutex_lock(&r->mutex);
 	}
 	pthread_mutex_unlock(&r->mutex);
+}
+
+void __ldms_stream_stats_init()
+{
+	char *var = getenv("LDMS_STREAM_STATS_LEVEL");
+	int lvl = 1;
+	if (var) {
+		lvl = atoi(var);
+	}
+	ldms_stream_stats_level_set(lvl);
+}
+
+int ldms_stream_stats_level_set(int level)
+{
+	__atomic_store_n(&__stream_stats_level, level, __ATOMIC_SEQ_CST);
+	return 0;
+}
+
+int ldms_stream_stats_level_get()
+{
+	return __atomic_load_n(&__stream_stats_level, __ATOMIC_SEQ_CST);
+}
+
+void __src_stats_rbt_purge(struct rbt *rbt)
+{
+	struct rbn *rbn;
+	struct ldms_stream_src_stats_s *sss;
+	while ((rbn = rbt_min(rbt))) {
+		rbt_del(rbt, rbn);
+		sss = container_of(rbn, struct ldms_stream_src_stats_s, rbn);
+		free(sss);
+	}
+}
+
+/* copy entries from t0 into t1 */
+int __src_stats_rbt_copy(struct rbt *t0, struct rbt *t1)
+{
+	struct rbn *rbn;
+	struct ldms_stream_src_stats_s *s0, *s1;
+	int rc;
+	for (rbn = rbt_min(t0); rbn; rbn = rbn_succ(rbn)) {
+		s0 = container_of(rbn, struct ldms_stream_src_stats_s, rbn);
+		s1 = malloc(sizeof(*s1));
+		if (!s1) {
+			rc = ENOMEM;
+			goto err_0;
+		}
+		*s1 = *s0;
+		rbn_init(&s1->rbn, &s1->src);
+		rbt_ins(t1, &s1->rbn);
+	}
+
+	return 0;
+ err_0:
+	__src_stats_rbt_purge(t1);
+	return rc;
+}
+
+void __stream_stats_free(struct ldms_stream_stats_s *ss)
+{
+	struct ldms_stream_client_pair_stats_s *ps;
+	__src_stats_rbt_purge(&ss->src_stats_rbt);
+	while ((ps = TAILQ_FIRST(&ss->pair_tq))) {
+		TAILQ_REMOVE(&ss->pair_tq, ps, entry);
+		free(ps);
+	}
+	free(ss);
+}
+
+struct ldms_stream_stats_s * __stream_get_stats(struct ldms_stream_s *s)
+{
+	/* s->name_len already includes '\0' */
+	struct ldms_stream_stats_s *ss;
+	struct ldms_stream_client_entry_s *sce;
+	struct ldms_stream_client_pair_stats_s *ps;
+	int rc;
+
+	ss = malloc(sizeof(*ss) + s->name_len);
+	if (!ss)
+		goto err_0;
+	ss->name = (char*)&ss[1];
+	memcpy((char*)ss->name, s->name, s->name_len);
+	TAILQ_INIT(&ss->pair_tq);
+	rbt_init(&ss->src_stats_rbt, __u64_rbn_cmp);
+	LDMS_STREAM_COUNTERS_INIT(&ss->rx);
+	ss->rx = s->rx;
+
+	rc = __src_stats_rbt_copy(&s->src_stats_rbt, &ss->src_stats_rbt);
+	if (rc)
+		goto err_1;
+
+	TAILQ_FOREACH(sce, &s->client_tq, stream_client_entry) {
+		/* match_len already includes '\0' */
+		ps = malloc(sizeof(*ps) + sce->client->match_len + sce->client->desc_len);
+		if (!ps)
+			goto err_2;
+		ps->stream_name = ss->name;
+		ps->client_match = (char*)&ps[1];
+		ps->client_desc = ps->client_match + sce->client->match_len;
+		memcpy((char*)ps->client_match, sce->client->match,
+				sce->client->match_len + sce->client->desc_len);
+		ps->is_regex = sce->client->is_regex;
+		ps->tx = sce->tx;
+		ps->drops = sce->drops;
+		TAILQ_INSERT_TAIL(&ss->pair_tq, ps, entry);
+	}
+
+	return ss;
+
+ err_2:
+	while ((ps = TAILQ_FIRST(&ss->pair_tq))) {
+		TAILQ_REMOVE(&ss->pair_tq, ps, entry);
+		free(ps);
+	}
+	__src_stats_rbt_purge(&ss->src_stats_rbt);
+ err_1:
+	free(ss);
+ err_0:
+	return NULL;
+}
+
+struct ldms_stream_stats_tq_s *ldms_stream_stats_tq_get(const char *match, int is_regex)
+{
+	regex_t r = {0};
+	int free_reg = 0;
+	struct rbn *rbn = NULL;
+	struct ldms_stream_s *stream;
+	struct ldms_stream_stats_s *stats;
+	struct ldms_stream_stats_tq_s *tq = NULL;
+	int rc;
+	if (is_regex) {
+		if (!match) {
+			errno = EINVAL;
+			goto out;
+		}
+		rc = regcomp(&r, match, REG_EXTENDED|REG_NOSUB);
+		if (rc) {
+			/* rc is REG_XXX, not errno */
+			errno = EINVAL;
+			goto out;
+		}
+		free_reg = 1;
+	}
+
+	tq = malloc(sizeof(*tq));
+	if (!tq)
+		goto out;
+	TAILQ_INIT(tq);
+	__STREAM_RDLOCK();
+	if (match && !is_regex) {
+		/* single stream matching */
+		rbn = rbt_find(&__stream_rbt, match);
+		if (!rbn)
+			goto done;
+		stream = container_of(rbn, struct ldms_stream_s, rbn);
+		pthread_rwlock_rdlock(&stream->rwlock);
+		stats = __stream_get_stats(stream);
+		pthread_rwlock_unlock(&stream->rwlock);
+		if (!stats)
+			goto err_0;
+		TAILQ_INSERT_TAIL(tq, stats, entry);
+		goto done;
+	}
+	for (rbn = rbt_min(&__stream_rbt); rbn; rbn = rbn_succ(rbn)) {
+		stream = container_of(rbn, struct ldms_stream_s, rbn);
+		if (is_regex) {
+			rc = regexec(&r, stream->name, 0, NULL, 0);
+			if (rc)
+				continue;
+		}
+		pthread_rwlock_rdlock(&stream->rwlock);
+		stats = __stream_get_stats(stream);
+		pthread_rwlock_unlock(&stream->rwlock);
+		if (!stats)
+			goto err_0;
+		TAILQ_INSERT_TAIL(tq, stats, entry);
+	}
+ done:
+	if (TAILQ_EMPTY(tq)) {
+		errno = ENOENT;
+		goto err_0;
+	}
+	__STREAM_UNLOCK();
+	goto out;
+
+ err_0:
+	__STREAM_UNLOCK();
+	ldms_stream_stats_tq_free(tq);
+	tq = NULL;
+	/* let through */
+ out:
+	if (free_reg)
+		regfree(&r);
+	return tq;
+}
+
+void ldms_stream_stats_tq_free(struct ldms_stream_stats_tq_s *tq)
+{
+	struct ldms_stream_stats_s *stats;
+	if (!tq)
+		return;
+	while ((stats = TAILQ_FIRST(tq))) {
+		TAILQ_REMOVE(tq, stats, entry);
+		__stream_stats_free(stats);
+	}
+	free(tq);
+}
+
+int __counters_buff_append(struct ldms_stream_counters_s *ctr,
+			   struct ovis_buff_s *buff)
+{
+	int rc = 0;
+	rc = ovis_buff_appendf(buff, "{") ||
+	     ovis_buff_appendf(buff, "\"bytes\": %lu", ctr->bytes) ||
+	     ovis_buff_appendf(buff, ",\"count\": %lu", ctr->count) ||
+	     ovis_buff_appendf(buff, ",\"first_ts\": %lu.%09lu", ctr->first_ts.tv_sec, ctr->first_ts.tv_nsec) ||
+	     ovis_buff_appendf(buff, ",\"last_ts\": %lu.%09lu", ctr->last_ts.tv_sec, ctr->last_ts.tv_nsec) ||
+	     ovis_buff_appendf(buff, "}");
+	return rc;
+}
+
+int __src_stats_buff_append(struct ldms_stream_src_stats_s *src,
+			      struct ovis_buff_s *buff)
+{
+	return __counters_buff_append(&src->rx, buff);
+}
+
+int __stream_stats_sources_buff_append(struct ldms_stream_stats_s *stats,
+			  struct ovis_buff_s *buff)
+{
+	int rc;
+	struct rbn *rbn;
+	struct ldms_stream_src_stats_s *src;
+	const char *sep = "";
+	union ldms_stream_addr_u addr;
+	rc = ovis_buff_appendf(buff, "{");
+	if (rc)
+		goto out;
+	for (rbn = rbt_min(&stats->src_stats_rbt); rbn; rbn = rbn_succ(rbn)) {
+		src = container_of(rbn, struct ldms_stream_src_stats_s, rbn);
+		addr.u64 = src->src;
+		rc = ovis_buff_appendf(buff, "%s\"%hhu.%hhu.%hhu.%hhu:%hu\":",
+			sep,
+			addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3],
+			addr.port);
+		if (rc)
+			goto out;
+		rc = __src_stats_buff_append(src, buff);
+		sep = ",";
+	}
+	rc = ovis_buff_appendf(buff, "}");
+ out:
+	return rc;
+}
+
+int __client_pair_stats_buff_append(struct ldms_stream_client_pair_stats_s *ent,
+				    struct ovis_buff_s *buff)
+{
+	int rc;
+	rc = ovis_buff_appendf(buff, "{") ||
+	     ovis_buff_appendf(buff, "\"stream_name\":\"%s\"", ent->stream_name) ||
+	     ovis_buff_appendf(buff, ",\"client_match\":\"%s\"", ent->client_match) ||
+	     ovis_buff_appendf(buff, ",\"client_desc\":\"%s\"", ent->client_desc) ||
+	     ovis_buff_appendf(buff, ",\"is_regex\": %d", ent->is_regex) ||
+	     ovis_buff_appendf(buff, ",\"drops\":") ||
+	     __counters_buff_append(&ent->drops, buff) ||
+	     ovis_buff_appendf(buff, ",\"tx\":") ||
+	     __counters_buff_append(&ent->tx, buff) ||
+	     ovis_buff_appendf(buff, "}");
+	return rc;
+}
+
+int __pair_tq_buff_append(struct ldms_stream_client_pair_stats_tq_s *tq,
+			  struct ovis_buff_s *buff)
+{
+	int rc;
+	const char *sep = "";
+	struct ldms_stream_client_pair_stats_s *ent;
+	rc = ovis_buff_appendf(buff, "[");
+	if (rc)
+		goto out;
+	TAILQ_FOREACH(ent, tq, entry) {
+		rc = ovis_buff_appendf(buff, "%s", sep) ||
+		     __client_pair_stats_buff_append(ent, buff);
+		if (rc)
+			goto out;
+		sep = ",";
+	}
+	rc = ovis_buff_appendf(buff, "]");
+ out:
+	return rc;
+}
+
+int __stream_stats_buff_append(struct ldms_stream_stats_s *stats,
+			       struct ovis_buff_s *buff)
+{
+	int rc = 0;
+	rc = ovis_buff_appendf(buff, "{") ||
+	     ovis_buff_appendf(buff, "\"name\":\"%s\"", stats->name) ||
+	     ovis_buff_appendf(buff, ",\"rx\":") ||
+	     __counters_buff_append(&stats->rx, buff) ||
+	     ovis_buff_appendf(buff, ",\"sources\":") ||
+	     __stream_stats_sources_buff_append(stats, buff) ||
+	     ovis_buff_appendf(buff, ",\"clients\":") ||
+	     __pair_tq_buff_append(&stats->pair_tq, buff) ||
+	     ovis_buff_appendf(buff, "}");
+	return rc;
+}
+
+char *ldms_stream_stats_tq_to_str(struct ldms_stream_stats_tq_s *tq)
+{
+	ovis_buff_t buff = ovis_buff_new(4096);
+	struct ldms_stream_stats_s *stats = NULL;
+	char *ret = NULL;
+	const char *sep = "";
+	int rc;
+	if (!buff)
+		return NULL;
+
+	rc = ovis_buff_appendf(buff, "[");
+	if (rc)
+		goto out;
+	TAILQ_FOREACH(stats, tq, entry) {
+		/* "stream_name": { ... } */
+		rc = ovis_buff_appendf(buff, "%s", sep) ||
+		     __stream_stats_buff_append(stats, buff);
+		if (rc)
+			goto out;
+		sep = ",";
+	}
+	rc = ovis_buff_appendf(buff, "]");
+	if (rc)
+		goto out;
+
+	ret = ovis_buff_str(buff);
+	/* let through */
+ out:
+	if (buff)
+		ovis_buff_free(buff);
+	return ret;
+}
+
+char *ldms_stream_stats_str(const char *match, int is_regex)
+{
+	struct ldms_stream_stats_tq_s *tq = NULL;
+	char *ret = NULL;
+
+	tq = ldms_stream_stats_tq_get(match, is_regex);
+	if (!tq) {
+		if (errno == ENOENT) {
+			ret = malloc(3);
+			if (ret)
+				memcpy(ret, "[]", 3);
+			return ret;
+		}
+		return NULL;
+	}
+	ret = ldms_stream_stats_tq_to_str(tq);
+	ldms_stream_stats_tq_free(tq);
+	return ret;
+}
+
+struct ldms_stream_client_stats_s *
+ldms_stream_client_get_stats(ldms_stream_client_t cli)
+{
+	struct ldms_stream_client_stats_s *cs = NULL;
+	struct ldms_stream_client_entry_s *sce;
+	struct ldms_stream_client_pair_stats_s *cps;
+	cs = malloc(sizeof(*cs) + cli->match_len + cli->desc_len); /* included '\0' */
+	if (!cs)
+		goto out;
+	cs->match = (char*)&cs[1];
+	cs->desc = cs->match + cli->match_len;
+	memcpy((char*)cs->match, cli->match, cli->match_len + cli->desc_len);
+	TAILQ_INIT(&cs->pair_tq);
+
+	pthread_rwlock_rdlock(&cli->rwlock);
+	cs->dest = cli->dest;
+	cs->drops = cli->drops;
+	cs->tx = cli->tx;
+	cs->is_regex = cli->is_regex;
+
+	TAILQ_FOREACH(sce, &cli->stream_tq, client_stream_entry) {
+		/* name_len included '\0' */
+		cps = malloc(sizeof(*cps) + sce->stream->name_len);
+		if (!cps)
+			goto err_0;
+		cps->client_match = cs->match;
+		cps->client_desc = cs->desc;
+		cps->stream_name = (char*)&cps[1];
+		memcpy((char*)cps->stream_name, sce->stream->name,
+				sce->stream->name_len);
+		cps->is_regex = sce->client->is_regex;
+		cps->tx = sce->tx;
+		cps->drops = sce->drops;
+		TAILQ_INSERT_TAIL(&cs->pair_tq, cps, entry);
+	}
+
+	pthread_rwlock_unlock(&cli->rwlock);
+	goto out;
+
+ err_0:
+	pthread_rwlock_unlock(&cli->rwlock);
+	ldms_stream_client_stats_free(cs);
+	cs = NULL;
+ out:
+	return cs;
+}
+
+void ldms_stream_client_stats_free(struct ldms_stream_client_stats_s *cs)
+{
+	struct ldms_stream_client_pair_stats_s *cps;
+	if (!cs)
+		return;
+	while ((cps = TAILQ_FIRST(&cs->pair_tq))) {
+		TAILQ_REMOVE(&cs->pair_tq, cps, entry);
+		free(cps);
+	}
+	free(cs);
+}
+
+struct ldms_stream_client_stats_tq_s *ldms_stream_client_stats_tq_get()
+{
+	struct ldms_stream_client_stats_tq_s *tq;
+	struct ldms_stream_client_stats_s *cs;
+	struct rbn *rbn;
+	struct ldms_stream_s *s;
+	ldms_stream_client_t cli;
+	struct ldms_stream_client_entry_s *sce;
+
+	tq = malloc(sizeof(*tq));
+	if (!tq)
+		goto out;
+	TAILQ_INIT(tq);
+
+	__STREAM_RDLOCK();
+
+	/* go through regex clients first */
+	TAILQ_FOREACH(cli, &__regex_client_tq, entry) {
+		cs = ldms_stream_client_get_stats(cli);
+		if (!cs)
+			goto err_0;
+		TAILQ_INSERT_TAIL(tq, cs, entry);
+	}
+
+	/* then go through stream-specific clients */
+	for (rbn = rbt_min(&__stream_rbt); rbn; rbn = rbn_succ(rbn)) {
+		s = container_of(rbn, struct ldms_stream_s, rbn);
+		TAILQ_FOREACH(sce, &s->client_tq, stream_client_entry) {
+			cli = sce->client;
+			if (cli->is_regex)
+				continue; /* already handled above */
+			cs = ldms_stream_client_get_stats(cli);
+			if (!cs)
+				goto err_0;
+			TAILQ_INSERT_TAIL(tq, cs, entry);
+		}
+	}
+
+	if (TAILQ_EMPTY(tq)) {
+		errno = ENOENT;
+		goto err_0;
+	}
+
+	__STREAM_UNLOCK();
+	goto out;
+
+ err_0:
+	__STREAM_UNLOCK();
+	ldms_stream_client_stats_tq_free(tq);
+	tq = NULL;
+ out:
+	return tq;
+}
+
+void ldms_stream_client_stats_tq_free(struct ldms_stream_client_stats_tq_s *tq)
+{
+	struct ldms_stream_client_stats_s *cs;
+	if (!tq)
+		return;
+	while ((cs = TAILQ_FIRST(tq))) {
+		TAILQ_REMOVE(tq, cs, entry);
+		ldms_stream_client_stats_free(cs);
+	}
+	free(tq);
+}
+
+int __client_stats_buff_append(struct ldms_stream_client_stats_s *cs,
+			       ovis_buff_t buff)
+{
+	int rc;
+	rc = ovis_buff_appendf(buff, "{"
+		"\"match\":\"%s\""
+		",\"desc\":\"%s\""
+		",\"dest\":\"%hhu.%hhu.%hhu.%hhu:%hu\"",
+		cs->match,
+		cs->desc,
+		cs->dest.addr[0], cs->dest.addr[1],
+		cs->dest.addr[2], cs->dest.addr[3],
+		cs->dest.port) ||
+	     ovis_buff_appendf(buff, ",\"tx\":") ||
+	     __counters_buff_append(&cs->tx, buff) ||
+	     ovis_buff_appendf(buff, ",\"drops\":") ||
+	     __counters_buff_append(&cs->drops, buff) ||
+	     ovis_buff_appendf(buff, ",\"streams\":") ||
+	     __pair_tq_buff_append(&cs->pair_tq, buff);
+	if (rc)
+		goto out;
+	rc = ovis_buff_appendf(buff, "}");
+ out:
+	return rc;
+}
+
+char *ldms_stream_client_stats_tq_to_str(struct ldms_stream_client_stats_tq_s *tq)
+{
+	struct ldms_stream_client_stats_s *cs;
+	ovis_buff_t buff = ovis_buff_new(4096);
+	char *ret = NULL;
+	const char *sep = "";
+	int rc;
+
+	if (!buff)
+		goto out;
+	rc = ovis_buff_appendf(buff, "[");
+	if (rc)
+		goto out;
+	TAILQ_FOREACH(cs, tq, entry) {
+		rc = ovis_buff_appendf(buff, "%s", sep) ||
+		     __client_stats_buff_append(cs, buff);
+		if (rc)
+			goto out;
+		sep = ",";
+	}
+	rc = ovis_buff_appendf(buff, "]");
+	if (rc)
+		goto out;
+	ret = ovis_buff_str(buff);
+ out:
+	if (buff)
+		ovis_buff_free(buff);
+	return ret;
+}
+
+char *ldms_stream_client_stats_str()
+{
+	struct ldms_stream_client_stats_tq_s *tq;
+	char *ret = NULL;
+	tq = ldms_stream_client_stats_tq_get();
+	if (!tq)
+		return NULL;
+	ret = ldms_stream_client_stats_tq_to_str(tq);
+	ldms_stream_client_stats_tq_free(tq);
+	return ret;
 }

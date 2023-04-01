@@ -59,6 +59,7 @@
 #include <openssl/sha.h>
 #include <regex.h>
 #include <assert.h>
+#include <time.h>
 #include "zap/zap.h"
 #include "ovis-ldms-config.h"
 #include "ldms_core.h"
@@ -1015,7 +1016,7 @@ typedef struct ldms_stream_client_s *ldms_stream_client_t;
 typedef struct json_entity_s *json_entity_t;
 
 #pragma pack(push, 1)
-typedef union ldms_stream_src_u {
+typedef union ldms_stream_addr_u {
 	uint64_t u64; /* access as u64 */
 	struct {
 		union {
@@ -1025,7 +1026,7 @@ typedef union ldms_stream_src_u {
 		uint16_t port; /* big endian */
 		uint16_t reserved;
 	};
-} *ldms_stream_src_t;
+} *ldms_stream_addr_t;
 #pragma pack(pop)
 
 enum ldms_stream_event_type {
@@ -1037,7 +1038,7 @@ enum ldms_stream_event_type {
 /* For stream data delivery to the application */
 struct ldms_stream_recv_data_s {
 	ldms_stream_client_t client;
-	union ldms_stream_src_u src;
+	union ldms_stream_addr_u src;
 	uint64_t msg_gn;
 	ldms_stream_type_t type;
 	uint32_t name_len;
@@ -1050,8 +1051,8 @@ struct ldms_stream_recv_data_s {
 };
 
 /* To report subscrube / unsubscribe return status */
-struct ldms_stream_status_data_s {
-	const char *name; /* name or regex */
+struct ldms_stream_return_status_s {
+	const char *match; /* name or regex */
 	int is_regex;
 	int status;
 };
@@ -1061,7 +1062,7 @@ typedef struct ldms_stream_event_s {
 	enum ldms_stream_event_type type;
 	union {
 		struct ldms_stream_recv_data_s recv;
-		struct ldms_stream_status_data_s status;
+		struct ldms_stream_return_status_s status;
 	};
 } *ldms_stream_event_t;
 
@@ -1078,6 +1079,8 @@ typedef int (*ldms_stream_event_cb_t)(ldms_stream_event_t ev, void *cb_arg);
  * \param is_regex 1 if `stream` is a regular expression. Otherwise, 0.
  * \param cb_fn    The callback function for stream data delivery.
  * \param cb_arg   The application context to the `cb_fn`.
+ * \param desc     An optional short description of the client of this subscription.
+ *                 This could be useful for client stats.
  *
  * \retval NULL  If there is an error. In this case `errno` is set to describe
  *               the error.
@@ -1085,7 +1088,8 @@ typedef int (*ldms_stream_event_cb_t)(ldms_stream_event_t ev, void *cb_arg);
  */
 ldms_stream_client_t
 ldms_stream_subscribe(const char *stream, int is_regex,
-		      ldms_stream_event_cb_t cb_fn, void *cb_arg);
+		      ldms_stream_event_cb_t cb_fn, void *cb_arg,
+		      const char *desc);
 
 /**
  * \brief Terminate the stream client.
@@ -1130,6 +1134,166 @@ int ldms_stream_remote_subscribe(ldms_t x, const char *stream, int is_regex,
  */
 int ldms_stream_remote_unsubscribe(ldms_t x, const char *stream, int is_regex,
 		      ldms_stream_event_cb_t cb_fn, void *cb_arg);
+
+
+struct ldms_stream_counters_s {
+	struct timespec first_ts; /* Timestamp of the first message */
+	struct timespec last_ts;  /* Timestamp of the last message  */
+	uint64_t        count;    /* The number of messages         */
+	size_t          bytes;    /* Total bytes of messages        */
+};
+
+#define LDMS_STREAM_COUNTERS_INITIALIZER ((struct ldms_stream_counters_s){{INT64_MAX, 999999999}, {0, 0}, 0, 0})
+#define LDMS_STREAM_COUNTERS_INIT(p) do { \
+			*(p) = LDMS_STREAM_COUNTERS_INITIALIZER; \
+		} while (0)
+
+/* stream statistics by src */
+struct ldms_stream_src_stats_s {
+	struct rbn rbn; /* key ==> src */
+	uint64_t src;
+	struct ldms_stream_counters_s rx; /* total rx from src */
+};
+
+/* stats of stream-client pair */
+struct ldms_stream_client_pair_stats_s {
+	TAILQ_ENTRY(ldms_stream_client_pair_stats_s) entry;
+
+	const char *stream_name; /* allocated with the structure, don't free */
+	const char *client_match; /* allocated with the structure, don't free */
+	const char *client_desc; /* allocated with the structure, don't free */
+	int is_regex; /* client is a regular expression */
+
+	/* client transmission counters for the stream */
+	struct ldms_stream_counters_s tx;
+	/* client drop counters for the stream */
+	struct ldms_stream_counters_s drops;
+};
+TAILQ_HEAD(ldms_stream_client_pair_stats_tq_s, ldms_stream_client_pair_stats_s);
+
+/* stats of a stream */
+struct ldms_stream_stats_s {
+	TAILQ_ENTRY(ldms_stream_stats_s) entry;
+	struct ldms_stream_counters_s rx; /* total rx regardless of src */
+	struct rbt src_stats_rbt; /* tree of statistics by src; the nodes are `struct ldms_stream_src_stats_s` */
+
+	struct ldms_stream_client_pair_stats_tq_s pair_tq; /* stats by client */
+	const char *name; /* allocated with the structure, don't free it */
+};
+TAILQ_HEAD(ldms_stream_stats_tq_s, ldms_stream_stats_s);
+
+/* stats of a stream client */
+struct ldms_stream_client_stats_s {
+	TAILQ_ENTRY(ldms_stream_client_stats_s) entry;
+	struct ldms_stream_counters_s tx;
+	struct ldms_stream_counters_s drops;
+	struct ldms_stream_client_pair_stats_tq_s pair_tq; /* stats by stream */
+	union ldms_stream_addr_u dest;
+	int is_regex;
+	const char *match; /* the matching string; allocated with the structure */
+	const char *desc; /* the short description; allocated with the structure */
+};
+TAILQ_HEAD(ldms_stream_client_stats_tq_s, ldms_stream_client_stats_s);
+
+/**
+ * Set the stream statistics collection level.
+ *
+ * When `ldms_init()` is called, the `LDMS_STATS_LEVEL` environment variable is
+ * read and \c ldms_stream_stats_level_set()` is called accordingly. If
+ * `LDMS_STATS_LEVEL` is not defined, the default level is 1.
+ *
+ * Levels:
+ * - 0: disabled; no stats collection.
+ * - 1: shallow collection; only collect "cumulative" stats.
+ * - 2: deep collection; collects stream stats by `src`, also collects
+ *      delivery stats by client for the stream. For each client stat, this also
+ *      collects the client rx stats by stream name.
+ *
+ * \param level The level of stats collection.
+ *
+ * \retval 0     If there is no error, or
+ * \retval errno describing an error.
+ */
+int ldms_stream_stats_level_set(int level);
+
+/**
+ * Obtain the current stream stats level.
+ */
+int ldms_stream_stats_level_get();
+
+/**
+ * \brief Get the statuses/statistics of the matching streams in this process.
+ *
+ * \param match    The stream name or a regular expression.
+ * \param is_regex 1 if \c match is a regular expression; otherwise, 0.
+ *
+ * \retval tq   The collection (tailq) of statistics of the matching entries, or
+ * \retval NULL if there is an error. \c errno is also set to describe the error.
+ *
+ * \note The caller is responsible for freeing the \c rbt and the entries in it.
+ *       \c ldms_stream_stats_tq_free() is a helping function for this.
+ */
+struct ldms_stream_stats_tq_s * ldms_stream_stats_tq_get(const char *match, int is_regex);
+
+/**
+ * \brief Free all of the entries in the given \c tq and the \c tq itself.
+ *
+ * \note \c tq must be the one returned from \c ldms_stream_stats_tq_get().
+ */
+void ldms_stream_stats_tq_free(struct ldms_stream_stats_tq_s *tq);
+
+/**
+ * Returns the JSON-formatted text of the stream stats in \c tq.
+ *
+ * \remarks The caller is responsible for freeing the returned string.
+ */
+char *ldms_stream_stats_tq_to_str(struct ldms_stream_stats_tq_s *tq);
+
+/**
+ * \brief Returns a JSON-formatted text describing statuses/statistics of the matching streams in this process.
+ *
+ * \param  match    The stream name or a regular expression.
+ * \param  is_regex 1 if \c match is a regular expression; otherwise, 0.
+ *
+ * \retval str The string describing the stats.
+ *
+ * \note The caller is responsible for freeing the returned string.
+ */
+char *ldms_stream_stats_str(const char *match, int is_regex);
+
+/**
+ * Returns a collection of stats of stream clients.
+ */
+struct ldms_stream_client_stats_tq_s *ldms_stream_client_stats_tq_get();
+
+/**
+ * Free the stats entries in the \c tq and the \c tq itself.
+ */
+void ldms_stream_client_stats_tq_free(struct ldms_stream_client_stats_tq_s *tq);
+
+/**
+ * Get stats from a client.
+ */
+struct ldms_stream_client_stats_s *ldms_stream_client_get_stats(ldms_stream_client_t cli);
+
+/**
+ * Free the stream client stats obtained form \c ldms_stream_client_get_stats().
+ */
+void ldms_stream_client_stats_free(struct ldms_stream_client_stats_s *cs);
+
+/**
+ * Returns the JSON-formatted text of the stream client stats in \c tq.
+ *
+ * \remarks The caller is responsible for freeing the returned string.
+ */
+char *ldms_stream_client_stats_tq_to_str(struct ldms_stream_client_stats_tq_s *tq);
+
+/**
+ * \brief Return a string describing statuses/statistics of stream clients in this process.
+ * \retval str The string describing the stats.
+ * \note The caller is responsible for freeing the returned string.
+ */
+char *ldms_stream_client_stats_str();
 
 /** \} */
 

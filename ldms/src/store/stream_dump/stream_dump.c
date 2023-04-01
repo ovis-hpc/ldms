@@ -164,6 +164,7 @@ static int __op_subscribe(const char *stream, const char *path)
 {
 	struct rbn *rbn;
 	struct __client_s *cli;
+	char desc[8192];
 	int rc;
 	if (!path) {
 		ERR_LOG("'path' is required for op=subscribe\n");
@@ -191,8 +192,9 @@ static int __op_subscribe(const char *stream, const char *path)
 		rc = errno;
 		goto err1;
 	}
+	snprintf(desc, sizeof(desc), "stream_dump, path:%s", path);
 	setbuf(cli->f, NULL); /* do not buffer */
-	cli->c = ldms_stream_subscribe(stream, __is_regex(stream), __stream_cb, cli);
+	cli->c = ldms_stream_subscribe(stream, __is_regex(stream), __stream_cb, cli, desc);
 	if (!cli->c) {
 		ERR_LOG("ldms_stream_subscribe() failed: %d\n", errno);
 		rc = errno;
