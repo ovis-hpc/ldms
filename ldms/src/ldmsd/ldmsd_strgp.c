@@ -814,7 +814,8 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 		goto out_1;
 	}
 
-	pi = container_of(strgp->store, struct ldmsd_plugin_cfg, store);
+	/* Put back the reference taken when linking the plugin to the strgp. */
+	pi = strgp->store->base.pi;
 	__atomic_sub_fetch(&pi->ref_count, 1, __ATOMIC_SEQ_CST);
 
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STRGP], &strgp->obj.rbn);

@@ -726,6 +726,7 @@ struct ldmsd_plugin {
 		LDMSD_PLUGIN_SAMPLER,
 		LDMSD_PLUGIN_STORE
 	} type;
+	struct ldmsd_plugin_cfg *pi;
 	enum ldmsd_plugin_type (*get_type)(struct ldmsd_plugin *self);
 	int (*config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl);
 	void (*term)(struct ldmsd_plugin *self);

@@ -180,6 +180,7 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 	if (!pi->libpath)
 		goto enomem;
 	pi->plugin = lpi;
+	lpi->pi = pi;
 	pi->sample_interval_us = 1000000;
 	pi->sample_offset_us = 0;
 	LIST_INSERT_HEAD(&plugin_list, pi, entry);
