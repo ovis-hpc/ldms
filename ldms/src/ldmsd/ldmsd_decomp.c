@@ -804,9 +804,10 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 		switch (col->type) {
 		case LDMS_V_TIMESTAMP:
 			rc = strbuf_printf(&h,
-					   "{\"name\":\"%s\",\"type\":\"long\","
+					   "{\"name\":\"%s\",\"type\":{"
+					   "\"type\":\"long\","
 					   "\"logicalType\":\"timestamp-millis\""
-					   "}",
+					   "}}",
 					   col->name);
 			if (rc)
 				goto err_0;
