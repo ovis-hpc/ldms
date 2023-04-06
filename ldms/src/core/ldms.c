@@ -3791,9 +3791,14 @@ static void *delete_proc(void *arg)
 				break;
 
 			/*
-			 * Look for a connected push/lookup peer.
+			 * Look for a connected lookup peer.
 			 * If there is a connected peer, we skip the set
 			 * and wait for the SET_DELETE reply from the connected peers.
+			 *
+			 * We don't check the push collection because
+			 * the push collection is always a subset of
+			 * the lookup collection. The application must lookup
+			 * the set before registering for push updates.
 			 *
 			 * This prevents the race between the SET_DELETE timeout
 			 * and the SET_DELETE reply.
@@ -3803,24 +3808,25 @@ static void *delete_proc(void *arg)
 			while (xrbn) {
 				lp = container_of(xrbn, struct ldms_lookup_peer, rbn);
 				if (ldms_xprt_connected(lp->xprt)) {
-					/*
-					 * A push peer is connected... skip the set.
-					 */
-					pthread_mutex_unlock(&set->lock);
-					goto next;
+					x = lp->xprt;
+					pthread_mutex_lock(&x->lock);
+					TAILQ_FOREACH(ctxt, &x->ctxt_list, link) {
+						if ((ctxt->type == LDMS_CONTEXT_SET_DELETE)
+							&& (ctxt->set_delete.s == set)) {
+							/*
+							 * We are waiting for
+							 * the SET_DELETE reply
+							 * from this peer.
+							 * Do not free and skip the set.
+							 */
+							pthread_mutex_unlock(&x->lock);
+							pthread_mutex_unlock(&set->lock);
+							goto next_set;
+						}
+					}
+					pthread_mutex_unlock(&x->lock);
 				}
 				xrbn = rbn_succ(xrbn);
-			}
-			xrbn = rbt_min(&set->push_coll);
-			while (xrbn) {
-				pp = container_of(xrbn, struct ldms_push_peer, rbn);
-				if (ldms_xprt_connected(pp->xprt)) {
-					/*
-					 * A lookup peer is connected ... skip the set.
-					 */
-					pthread_mutex_unlock(&set->lock);
-					goto next;
-				}
 			}
 			pthread_mutex_unlock(&set->lock);
 
@@ -3909,7 +3915,7 @@ static void *delete_proc(void *arg)
 			}
 
 			__destroy_set_no_lock(set);
-		next:
+		next_set:
 			rbn = prev_rbn;
 			fflush(stderr);
 		}
