@@ -623,20 +623,20 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_updtr_match_list(self, arg):
         """
-        Return sets matched to this updater with updtr_match_add.
+        Return the regex match list of updaters
         Parameters are as follows:
-        name=  The update policy name. If none, return all updaters
+        name=  The update policy name. If none, return the list of regular expressions to match set names or set schemas.
         """
         arg = self.handle_args('updtr_match_list', arg)
         rc, msg = self.comm.updtr_match_list(arg['name'])
         if rc == 0:
-            updaters = msg
-            print("     Updater Name        Set Name")
-            print("--------------------- ---------------- ")
+            updaters = fmt_status(msg)
+            print("{0:21} {1:16} {2:15}".format("Updater Name", "Regex", "Selector"))
+            print(f"{'-'*21} {'-'*16} {'-'*15}")
             for updtr in updaters:
-                print("{0:21}".format(updtr['name']))
-                for set_ in updtr['match_sets']:
-                    print("                     {0:16}".format(set_))
+                print(f"{updtr['name']:21}")
+                for m_ in updtr['match']:
+                    print(f"{'':21} {m_['regex']:16} {m_['selector']:15}")
         else:
             print(f'Error retrieving matched sets: {msg}')
 

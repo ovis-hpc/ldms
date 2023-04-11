@@ -530,6 +530,15 @@ The updater name. If none is given, the statuses of all updaters are
 reported.
 .RE
 
+.SS Query the updaters' list of regular expressions to match set names or set schemas
+.BR updtr_match_list
+attr=<value>
+.RS
+.TP
+.BI [name " name"]
+.br
+The Updater name. If none is given, all updaters' regular expression lists will be returned.
+
 .SH STORE COMMAND SYNTAX
 .SS Create a Storage Policy and open/create the storage instance.
 .BR strgp_add
@@ -854,6 +863,26 @@ Example to start an ldmsd and use ldmsd_controller to call a script
 .nf
 > ldmsd -x sock:11111 -l log.txt
 > ldmsd_controller --host localhost --port 11111 --xprt sock --script myscript.sh
+.fi
+
+.SS
+Example of updtr_match_list's report
+.nf
+ldmsd_controller> updtr_add name=meminfo_vmstat interval=1000000 offset=100000
+ldmsd_controller> updtr_match_add name=meminfo_vmstat regex=meminfo match=schema
+ldmsd_controller> updtr_match_add name=meminfo_vmstat regex=vmstat match=schema
+ldmsd_controller>
+ldmsd_controller> updtr_add name=node01_procstat2 interval=2000000 offset=100000
+ldmsd_controller> updtr_match_add name=node01_procstat2 regex=node01/procstat2 match=inst
+ldmsd_controller> updtr_match_list
+Updater Name      Regex              Selector
+----------------- ------------------ --------------
+meminfo_vmstat
+                  vmstat             schema
+                  meminfo            schema
+node01_procstat2
+                  node01/procstat2   inst
+ldmsd_controller>
 .fi
 
 .SH SEE ALSO

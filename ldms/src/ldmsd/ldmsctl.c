@@ -1171,6 +1171,89 @@ static void help_updtr_task()
 	       "      [name=]     The updater policy name\n");
 }
 
+static void resp_updtr_match_list(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON)) {
+		printf("Unrecognized updtr match list format.\n");
+		return;
+	}
+
+	json_parser_t parser;
+	json_entity_t json, updtr;
+	int rc;
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
+		return;
+	}
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		goto out;
+	}
+	json_parser_free(parser);
+
+	if (json->type != JSON_LIST_VALUE) {
+		printf("Unrecognized updtr match list format.\n");
+		goto out;
+	}
+
+	json_entity_t ml, m, v;
+	char *n, *r, *s;
+	printf("Name                Regex            Selector\n");
+	printf("------------------- ---------------- --------------\n");
+	for (updtr = json_item_first(json); updtr; updtr = json_item_next(updtr)) {
+		v = json_value_find(updtr, "name");
+		if (!v) {
+			printf("Unrecognized updtr match list format.\n");
+			goto out;
+		}
+		n = json_value_str(v)->str;
+		printf("%-21s\n", n);
+		ml = json_value_find(updtr, "match");
+		if (!ml) {
+			printf("Unrecognized updtr match list format.\n");
+			goto out;
+		}
+		if (ml->type != JSON_LIST_VALUE) {
+			printf("Unrecognized updtr match list format.\n");
+			goto out;
+		}
+		for (m = json_item_first(ml); m; m = json_item_next(m)) {
+			v = json_value_find(m, "regex");
+			if (!v) {
+				printf("Unrecognized updtr match list format.\n");
+				goto out;
+			}
+			r = json_value_str(v)->str;
+			v = json_value_find(m, "selector");
+			if (!v) {
+				printf("Unrecognized updtr match list format.\n");
+				goto out;
+			}
+			s = json_value_str(v)->str;
+			printf("%21s %-16s %-15s\n", "", r, s);
+		}
+	}
+
+out:
+	return;
+}
+
+static void help_updtr_match_list()
+{
+	printf(	"\bGet the list of regular expressions to match set names or set schemas the updaters will be issuing update requests.\n"
+		"Parameters:\n"
+		"     [name=]     The updater policy name\n");
+}
+
 static void help_strgp_add()
 {
 	printf( "\nCreate a Storage Policy and open/create the storage instance.\n"
@@ -2353,6 +2436,7 @@ static struct command command_tbl[] = {
 	{ "updtr_del", LDMSD_UPDTR_DEL_REQ, NULL, help_updtr_del, resp_generic },
 	{ "updtr_match_add", LDMSD_UPDTR_MATCH_ADD_REQ, NULL, help_updtr_match_add, resp_generic },
 	{ "updtr_match_del", LDMSD_UPDTR_DEL_REQ, NULL, help_updtr_match_del, resp_generic },
+	{ "updtr_match_list", LDMSD_UPDTR_MATCH_LIST_REQ, NULL, help_updtr_match_list, resp_updtr_match_list },
 	{ "updtr_prdcr_add", LDMSD_UPDTR_PRDCR_ADD_REQ, NULL, help_updtr_prdcr_add, resp_generic },
 	{ "updtr_prdcr_del", LDMSD_UPDTR_PRDCR_DEL_REQ, NULL, help_updtr_prdcr_del, resp_generic },
 	{ "updtr_start", LDMSD_UPDTR_START_REQ, NULL, help_updtr_start, resp_generic },
