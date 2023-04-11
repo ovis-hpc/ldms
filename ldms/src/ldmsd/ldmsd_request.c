@@ -3679,7 +3679,7 @@ int __updtr_match_list_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 		default_offset = updtr->default_task.sched.offset_us;
 	rc = linebuf_printf(reqc,
 		"{\"name\":\"%s\","
-		"\"match_sets\":[",
+		"\"match\":[",
 		updtr->obj.name);
 	if (rc)
 		goto out;
@@ -3693,9 +3693,10 @@ int __updtr_match_list_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 				goto out;
 		}
 		set_count++;
-		rc = linebuf_printf(reqc,
-				"\"%s\"",
-				cur_set->regex_str);
+		rc = linebuf_printf(reqc, "{\"regex\":\"%s\","
+					  "\"selector\":\"%s\"}",
+					  cur_set->regex_str,
+					  (cur_set->selector == LDMSD_NAME_MATCH_INST_NAME)?"inst":"schema");
 		if (rc)
 			goto out;
 	}
