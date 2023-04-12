@@ -1827,3 +1827,79 @@ char *ldms_stream_client_stats_str()
 	ldms_stream_client_stats_tq_free(tq);
 	return ret;
 }
+
+int ldms_stream_publish_file(ldms_t x, const char *stream_name,
+                        ldms_stream_type_t stream_type,
+			ldms_cred_t cred, uint32_t perm,
+			FILE *f)
+{
+	int fd;
+	int rc = 0;
+	struct stat st;
+	size_t sz;
+	char *buff = NULL;
+	struct ovis_buff_s *obuff = NULL;
+	char lbuf[4096];
+
+	if (!f) {
+		rc = EINVAL;
+		goto out;
+	}
+
+	fd = fileno(f);
+	rc = fstat(fd, &st);
+	if (rc) {
+		rc = errno;
+		goto out;
+	}
+
+	switch (st.st_mode & S_IFMT) {
+	case S_IFCHR:
+	case S_IFIFO:
+		goto fstream;
+	case S_IFREG:
+		goto regular_file;
+	default:
+		rc = ENOTSUP;
+		goto out;
+	}
+
+ fstream: /* e.g. stdin tty or PIPE */
+	obuff = ovis_buff_new(4096);
+	if (!obuff) {
+		rc = errno;
+		goto out;
+	}
+	while (fgets(lbuf, sizeof(lbuf), f)) {
+		rc = ovis_buff_appendf(obuff, "%s", lbuf);
+		if (rc)
+			goto out;
+	}
+	buff = ovis_buff_str(obuff);
+	sz = strlen(buff) + 1;
+	goto publish;
+
+ regular_file: /* regular file */
+	buff = malloc(st.st_size+1);
+	if (!buff) {
+		rc = errno;
+		goto out;
+	}
+	sz = fread(buff, 1, st.st_size, f);
+	if (sz != st.st_size) {
+		rc = errno;
+		goto out;
+	}
+	buff[st.st_size] = 0; /* '\0' */
+	sz = st.st_size + 1;
+	/* let through */
+ publish:
+	rc = ldms_stream_publish(x, stream_name, stream_type, cred, perm,
+			buff, sz);
+ out:
+	if (obuff)
+		ovis_buff_free(obuff);
+	if (buff)
+		free(buff);
+	return rc;
+}
