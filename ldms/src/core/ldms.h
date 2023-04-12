@@ -1012,6 +1012,27 @@ int ldms_stream_publish(ldms_t x, const char *stream_name,
 			uint32_t perm,
                         const char *data, size_t data_len);
 
+/**
+ * Like \c ldms_stream_publsh(), but publish the content of a file.
+ *
+ * \param x            NULL for loopback, or a valid rail handle.
+ * \param stream_name  The name of the stream.
+ * \param stream_type  The type of the stream (STRING or JSON).
+ * \param cred         The credential of the publisher. This can be \c NULL, and
+ *                       the \c euid and \c egid are used.
+ * \param perm         The permission on the stream data.
+ * \param file         The FILE handle.
+ *
+ * \retval 0        If there is no error.
+ * \retval EAGAIN   If there is not enough send credit.
+ * \retval ENOSTR   If the the handle not valid for publishing a stream.
+ */
+int ldms_stream_publish_file(ldms_t x, const char *stream_name,
+                        ldms_stream_type_t stream_type,
+			ldms_cred_t cred,
+			uint32_t perm,
+			FILE *file);
+
 typedef struct ldms_stream_client_s *ldms_stream_client_t;
 typedef struct json_entity_s *json_entity_t;
 
