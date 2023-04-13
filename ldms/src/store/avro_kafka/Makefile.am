@@ -18,3 +18,5 @@ libstore_avro_kafka_la_LIBADD = $(COMMON_LIBADD) \
 			   $(LTLIBSERDES)
 
 pkglib_LTLIBRARIES += libstore_avro_kafka.la
+
+dist_man7_MANS = Plugin_store_avro_kafka.man
