@@ -224,7 +224,7 @@ bootstrap.server=localhost:9092
 # Specify the location of the Avro Schema registry. This can be overridden
 # on the strgp_add line with the "container" strgp_add option if it is
 # set to anything other than an empty string
-serdes.schema.url=https://localhost:9092
+serdes.schema.url=https://localhost:8081
 .fi
 .RE
 .PP
