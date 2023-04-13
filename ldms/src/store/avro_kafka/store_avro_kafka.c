@@ -460,14 +460,16 @@ static aks_handle_t __handle_new(ldmsd_strgp_t strgp)
 	}
 
 	/* strgp->container is the CSV list of brokers */
-	const char *param = "bootstrap.servers";
-	res = rd_kafka_conf_set(sh->rd_conf, param,
-				strgp->container, err_str, sizeof(err_str));
-	if (res != RD_KAFKA_CONF_OK)
-	{
-		errno = EINVAL;
-		LOG_ERROR("rd_kafka_conf_set() error: %s\n", err_str);
-		goto err_2;
+	if (strgp->container && strgp->container[0] != '\0') {
+		const char *param = "bootstrap.servers";
+		res = rd_kafka_conf_set(sh->rd_conf, param,
+					strgp->container, err_str, sizeof(err_str));
+		if (res != RD_KAFKA_CONF_OK)
+		{
+			errno = EINVAL;
+			LOG_ERROR("rd_kafka_conf_set() error: %s\n", err_str);
+			goto err_2;
+		}
 	}
 
 	sh->rd = rd_kafka_new(RD_KAFKA_PRODUCER, sh->rd_conf, err_str, sizeof(err_str));
@@ -691,16 +693,19 @@ static int serialize_row_as_avro(serdes_t *serdes,
 	int rc, i;
 	ldmsd_col_t col;
 	avro_schema_t schema = serdes_schema_avro(serdes_schema);
-        avro_value_iface_t  *class =
-            avro_generic_class_from_schema(schema);
+	avro_value_iface_t  *class =
+	    avro_generic_class_from_schema(schema);
 
-        avro_value_t avro_row, avro_col;
-        avro_generic_value_new(class, &avro_row);
+	avro_value_t avro_row, avro_col;
+	avro_generic_value_new(class, &avro_row);
 
 	for (i = 0; i < row->col_count; i++) {
+		char *avro_name;
 		col = &row->cols[i];
-		rc = avro_value_get_by_name(&avro_row, col->name,
+		avro_name = ldmsd_avro_name_get(col->name);
+		rc = avro_value_get_by_name(&avro_row, avro_name,
 					    &avro_col, NULL);
+		free(avro_name);
 		if (rc) {
 			LOG_ERROR("Error %d retrieving '%s' "
 				"from '%s' schema\n", rc, col->name, avro_schema_name(schema));
@@ -709,12 +714,12 @@ static int serialize_row_as_avro(serdes_t *serdes,
 		rc = set_avro_value_from_col(&avro_col, col);
 	}
 #ifdef AVRO_KAFKA_DEBUG
-        char *json_buf;
-        avro_value_to_json(&avro_row, 0, &json_buf);
-        fprintf(stderr, "%s\n", json_buf);
-        free(json_buf);
+	char *json_buf;
+	avro_value_to_json(&avro_row, 0, &json_buf);
+	fprintf(stderr, "%s\n", json_buf);
+	free(json_buf);
 #endif
-        *avro = avro_row;
+	*avro = avro_row;
 	return 0;
 }
 

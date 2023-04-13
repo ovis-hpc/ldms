@@ -189,6 +189,15 @@ row instance is used to search for a serdes schema. This name is first searched 
 in a local RBT and if not found, the Avro Schema Registry is consulted. If the
 schema is not present in the registry, a new Avro schema is constructed per the
 table above, registered with the schema registry and stored in the local cache.
+
+Note that Avro schema names must contain only the characters [a-zA-Z0-9\\._\\-],
+any characters in the row schema name that do not come from this set
+will be forced to '.'.
+
+A similar mapping is done for Avro value names, however, because these names
+cannot accept the character '.', all invalid characters are mapped to '_'.
+
+These change are made automatically and no errors are generated.
 .PP
 .SS "Encoding"
 .PP
@@ -233,6 +242,18 @@ serdes.schema.url=https://localhost:8081
 .RS 4
 .nf
 strgp_add name=aks plugin=store_avro_kafka container=kafka-broker.int:9092 decomposition=aks-decomp.conf
+strgp_start name=aks
+.fi
+.RE
+.PP
+.SS "Example strg_add command w/o container "
+.PP
+In this example, the strgp_add parameter, container, is set to be ignored by
+store_avro_kafka. In this case, either the default, localhost:9092, or the value
+specified in the rd_kafka_conf file is used.
+.RS 4
+.nf
+strgp_add name=aks plugin=store_avro_kafka container= decomposition=aks-decomp.conf
 strgp_start name=aks
 .fi
 .RE
