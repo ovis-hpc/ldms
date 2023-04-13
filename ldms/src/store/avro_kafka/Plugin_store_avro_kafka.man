@@ -1,4 +1,4 @@
-.TH man 7 "30 Mar 2023" "v4" "LDMSD Plugin avro_kafka_store man page"
+.TH man 7 "30 Mar 2023" "v4" "LDMSD Plugin store_avro_kafka man page"
 
 .ad l
 .nh
@@ -6,11 +6,11 @@
 .SH "NAME "
 .PP
 .PP
-avro_kafka_store - LDMSD avro_kafka_store plugin
+store_avro_kafka - LDMSD store_avro_kafka plugin
 .PP
 .SH "SYNOPSIS "
 .SY config
-.BR name=avro_kafka_store
+.BR name=store_avro_kafka
 .BI producer=PRODUCER
 .BI instance=INSTANCE
 .OP \fBtopic=\fITOPIC_FMT
@@ -22,8 +22,8 @@ avro_kafka_store - LDMSD avro_kafka_store plugin
 .PP
 .SH "DESCRIPTION "
 .PP
-\f[CB]avro_kafka_store\fR implements a decomposition capable LDMS metric data
-store. The \f[CB]avro_kafka_store\fR plugin does not implement the
+\f[CB]store_avro_kafka\fR implements a decomposition capable LDMS metric data
+store. The \f[CB]store_avro_kafka\fR plugin does not implement the
 \f[CB]store\fR function and must only be used with decomposition.
 .PP
 The plugin operates in one of two modes: \fIJSON\fR, and \fIAVRO\fR (the default).
@@ -43,7 +43,7 @@ A string indicating the encoding mode: "JSON" will encode messages in JSON forma
 encode messages using a schema and Avro Serdes. The default is "AVRO". The mode values are
 not case sensitive.
 .IP "\fBname \fR" 1c
-Must be avro_kafka_store.
+Must be store_avro_kafka.
 .IP "\fBkafka_conf \fR" 1c
 A path to a configuration file in Java property format. This configuration file is
 parsed and used to configure the Kafka kafka_conf_t configuration object. The format
@@ -93,7 +93,7 @@ be substituted with a '.'.
 .PP
 .SH "STRGP"
 .PP
-The avro_kafka_store is used with a storage policy that specifies avro_kafka_store as the
+The store_avro_kafka is used with a storage policy that specifies store_avro_kafka as the
 plugin parameter.
 .PP
 The \fIschema\fR, \fIinstance\fR, \fIproducer\fR and \fIflush\fR strgp_add parameters
@@ -232,7 +232,7 @@ serdes.schema.url=https://localhost:9092
 .PP
 .RS 4
 .nf
-strgp_add name=aks plugin=avro_kafka_store container=kafka-broker.int:9092 decomposition=aks-decomp.conf
+strgp_add name=aks plugin=store_avro_kafka container=kafka-broker.int:9092 decomposition=aks-decomp.conf
 strgp_start name=aks
 .fi
 .RE
@@ -241,7 +241,7 @@ strgp_start name=aks
 .PP
 .RS 4
 .nf
-config name=avro_kafka_store encoding=avro kafka_conf=/etc/kakfa.conf serdes_conf=/etc/serdes.conf topic=ldms.%S
+config name=store_avro_kafka encoding=avro kafka_conf=/etc/kakfa.conf serdes_conf=/etc/serdes.conf topic=ldms.%S
 strgp_start name=aks
 .fi
 .RE
