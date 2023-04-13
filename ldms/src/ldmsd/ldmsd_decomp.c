@@ -57,6 +57,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <ctype.h>
 
 #include <openssl/sha.h>
 
@@ -779,8 +780,30 @@ static const char *col_type_str(enum ldms_value_type type)
 	return type_str[type];
 }
 
+static char get_avro_char(char c)
+{
+	if (isalnum(c))
+		return c;
+	if (c == '_' || c == '-')
+		return c;
+	return '_';
+}
+
+char *ldmsd_avro_name_get(const char *ldms_name)
+{
+	char *avro_name_buf = calloc(1, strlen(ldms_name) + 1);
+	char *avro_name = avro_name_buf;
+	while (*ldms_name != '\0') {
+		*avro_name++ = get_avro_char(*ldms_name++);
+	}
+	if (*avro_name)
+		*avro_name = '\0';
+	return avro_name_buf;
+}
+
 int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 {
+	char *avro_name = NULL;
 	struct strbuf_tailq_s h = TAILQ_HEAD_INITIALIZER(h);
 	ldmsd_col_t col;
 	int i, rc;
@@ -796,6 +819,7 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 
 	for (i = 0; i < row->col_count; i++) {
 		col = &row->cols[i];
+		avro_name = ldmsd_avro_name_get(col->name);
 		if (i) { /* comma */
 			rc = strbuf_printf(&h, ",");
 			if (rc)
@@ -808,7 +832,7 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 					   "\"type\":\"long\","
 					   "\"logicalType\":\"timestamp-millis\""
 					   "}}",
-					   col->name);
+					   avro_name);
 			if (rc)
 				goto err_0;
 			break;
@@ -825,7 +849,7 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 		case LDMS_V_D64:
 		case LDMS_V_CHAR_ARRAY:
 			rc = strbuf_printf(&h, "{\"name\":\"%s\",\"type\":\"%s\"}",
-					   col->name, col_type_str(col->type));
+					   avro_name, col_type_str(col->type));
 			if (rc)
 				goto err_0;
 			break;
@@ -842,7 +866,7 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 			rc = strbuf_printf(&h,
 					   "{\"name\":\"%s\","
 					   "\"type\":{ \"type\" : \"array\", \"items\": \"%s\" }}",
-					   col->name, col_type_str(col->type));
+					   avro_name, col_type_str(col->type));
 			if (rc)
 				goto err_0;
 			break;
@@ -862,9 +886,12 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 
 	rc = strbuf_str(&h, str, (int *)len);
 	strbuf_purge(&h);
+	free(avro_name);
 	return rc;
 
  err_0:
+	if (avro_name)
+		free(avro_name);
 	strbuf_purge(&h);
 	return rc;
 }
