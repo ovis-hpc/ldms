@@ -29,7 +29,6 @@
 #include <avro.h>
 #include <libserdes/serdes.h>
 #include <libserdes/serdes-avro.h>
-#include <jansson.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ovis_log.h"
