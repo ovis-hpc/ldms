@@ -784,7 +784,7 @@ static char get_avro_char(char c)
 {
 	if (isalnum(c))
 		return c;
-	if (c == '_' || c == '-')
+	if (c == '-')
 		return c;
 	return '_';
 }
@@ -796,7 +796,7 @@ char *ldmsd_avro_name_get(const char *ldms_name)
 	while (*ldms_name != '\0') {
 		*avro_name++ = get_avro_char(*ldms_name++);
 	}
-	if (*avro_name)
+	if (avro_name)
 		*avro_name = '\0';
 	return avro_name_buf;
 }
