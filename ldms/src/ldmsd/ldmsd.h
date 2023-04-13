@@ -663,6 +663,20 @@ int ldmsd_row_to_json_object(ldmsd_row_t row, char **str, int *len);
 int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len);
 
 /**
+ * \brief ldmsd_avro_name_get
+ *
+ * Avro names may only contain the characters [A-Za-z0-9\\_\\-]. LDMS metric
+ * names by contrast may characters outside this set. When creating Avro
+ * schema, these LDMS names must be mapped a valid Avro name. The function
+ * returns malloc'd memory that should be freed by the caller when no
+ * long longer needed.
+ *
+ * \param ldms_name The LDMS metric name to be mapped to a valid Avro name
+ * \return char* Pointer to the allocated buffer or NULL if ENOMEM
+ */
+char *ldmsd_avro_name_get(const char *ldms_name);
+
+/**
  * Configure strgp decomposer.
  *
  * The decomposer shall use the \c strgp->decomp generic pointer
