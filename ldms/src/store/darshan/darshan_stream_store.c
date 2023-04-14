@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2021 National Technology & Engineering Solutions
+ * Copyright (c) 2021,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2018,2023 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -67,7 +67,6 @@
 #include <ovis_json/ovis_json.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldmsd_stream.h"
 
 static ldmsd_msg_log_f msglog;
 
@@ -239,7 +238,6 @@ static sos_t sos;
 static int reopen_container(char *path)
 {
 	int rc = 0;
-	sos_schema_t schema;
 
 	/* Close the container if it already exists */
 	if (sos)
@@ -269,14 +267,11 @@ static const char *usage(struct ldmsd_plugin *self)
 		"     mode	The container permission mode for create, (defaults to 0660).\n";
 }
 
-static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
-			 ldmsd_stream_type_t stream_type,
-			 const char *msg, size_t msg_len,
-			 json_entity_t entity);
+static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt);
+
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
-	char *producer_name;
 	int rc;
 	value = av_value(avl, "mode");
 	if (value)
@@ -292,7 +287,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		stream = strdup(value);
 	else
 		stream = strdup("darshanConnector");
-	ldmsd_stream_subscribe(stream, stream_recv_cb, self);
+	ldms_stream_subscribe(stream, 0, stream_recv_cb, self, "darshan_stream_store");
 
 	value = av_value(avl, "path");
 	if (!value) {
@@ -351,96 +346,96 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 // Json example
 //{ "uid":22,"exe":"test","job_id":78436,"rank":2,"ProducerName":"nid00046","dset_type":"HDF5","file":"N/A","record_id":3442697474759647253,"module":"POSIX","type":"MOD","max_byte":1191,"switches":1,"flushes":-1,"cnt":5,"op":"reads_segment_4","seg":[{"data_set":"N/A","pt_sel":-1,"irreg_hslab":-1,"reg_hslab":-1,"ndims":-1,"npoints":-1,"off":680,"len":512,"dur":0.00,"timestamp":1638309927.374291}]}
 
-static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
-			  ldmsd_stream_type_t stream_type,
-			  const char *msg, size_t msg_len,
-			  json_entity_t entity)
+static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 {
 	int rc;
 	json_entity_t v, list, item;
 	double timestamp, duration;
 	uint64_t record_id, count, rank, offset, length, job_id, max_byte, switches;
 	uint64_t flushes, pt_sel, irreg_hslab, reg_hslab, ndims, npoints, uid;
-	char *module_name, *file_name, *type, *hostname, *operation, *producer_name, *data_set, *exe;
+	char *module_name, *file_name, *type, *operation, *producer_name, *data_set, *exe;
 
-	if (!entity) {
+	if (ev->type != LDMS_STREAM_EVENT_RECV)
+		return 0;
+
+	if (!ev->recv.json) {
 		msglog(LDMSD_LERROR,
 		       "%s: NULL entity received in stream callback.\n",
 		       darshan_stream_store.name);
 		return 0;
 	}
 
-        rc = get_json_value(entity, "uid", JSON_INT_VALUE, &v);
-        if (rc)
-                goto err;
+	rc = get_json_value(ev->recv.json, "uid", JSON_INT_VALUE, &v);
+	if (rc)
+		goto err;
 	uid = json_value_int(v);
 
-        rc = get_json_value(entity, "exe", JSON_STRING_VALUE, &v);
-        if (rc)
-                goto err;
-        exe = json_value_str(v)->str;
+	rc = get_json_value(ev->recv.json, "exe", JSON_STRING_VALUE, &v);
+	if (rc)
+		goto err;
+	exe = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "job_id", JSON_INT_VALUE, &v);
+	rc = get_json_value(ev->recv.json, "job_id", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	job_id = json_value_int(v);
 
-	rc = get_json_value(entity, "rank", JSON_INT_VALUE, &v);
+	rc = get_json_value(ev->recv.json, "rank", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	rank = json_value_int(v);
 
-	rc = get_json_value(entity, "ProducerName", JSON_STRING_VALUE, &v);
+	rc = get_json_value(ev->recv.json, "ProducerName", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	producer_name = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "file", JSON_STRING_VALUE, &v);
+	rc = get_json_value(ev->recv.json, "file", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	file_name = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "record_id", JSON_INT_VALUE, &v);
+	rc = get_json_value(ev->recv.json, "record_id", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	record_id = json_value_int(v);
 
-	rc = get_json_value(entity, "module", JSON_STRING_VALUE, &v);
+	rc = get_json_value(ev->recv.json, "module", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	module_name = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "type", JSON_STRING_VALUE, &v);
+	rc = get_json_value(ev->recv.json, "type", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	type = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "max_byte", JSON_INT_VALUE, &v);
+	rc = get_json_value(ev->recv.json, "max_byte", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	max_byte = json_value_int(v);
 
-	rc = get_json_value(entity, "switches", JSON_INT_VALUE, &v);
+	rc = get_json_value(ev->recv.json, "switches", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	switches = json_value_int(v);
 
-	rc = get_json_value(entity, "flushes", JSON_INT_VALUE, &v);
+	rc = get_json_value(ev->recv.json, "flushes", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	flushes = json_value_int(v);
 
-	rc = get_json_value(entity, "cnt", JSON_INT_VALUE, &v);
+	rc = get_json_value(ev->recv.json, "cnt", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	count = json_value_int(v);
 
-	rc = get_json_value(entity, "op", JSON_STRING_VALUE, &v);
+	rc = get_json_value(ev->recv.json, "op", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	operation = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "seg", JSON_LIST_VALUE, &list);
+	rc = get_json_value(ev->recv.json, "seg", JSON_LIST_VALUE, &list);
 	if (rc)
 		goto err;
 	for (item = json_item_first(list); item; item = json_item_next(item)) {
@@ -515,8 +510,8 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		msglog(LDMSD_LDEBUG, "%s: Got a record from stream (%s), module_name = %s\n",
 				darshan_stream_store.name, stream, module_name);
 
-                sos_obj_attr_by_id_set(obj, UID_ID, uid);
-                sos_obj_attr_by_id_set(obj, EXE_ID, strlen(exe),  exe);
+		sos_obj_attr_by_id_set(obj, UID_ID, uid);
+		sos_obj_attr_by_id_set(obj, EXE_ID, strlen(exe),  exe);
 		sos_obj_attr_by_id_set(obj, JOB_ID, job_id);
 		sos_obj_attr_by_id_set(obj, RANK_ID, rank);
 		sos_obj_attr_by_id_set(obj, PRODUCERNAME_ID, strlen(producer_name), producer_name);
