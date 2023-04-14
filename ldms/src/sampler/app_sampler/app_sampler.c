@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2020-2022 National Technology & Engineering Solutions
+ * Copyright (c) 2020-2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2020-2022 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2020-2023 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -64,10 +64,10 @@
 #include <pwd.h>
 
 #include <coll/rbt.h>
+#include "ovis_json/ovis_json.h"
 
 #include "ldmsd.h"
 #include "../sampler_base.h"
-#include "ldmsd_stream.h"
 
 #define SAMP "app_sampler"
 
@@ -443,7 +443,7 @@ struct app_sampler_inst_s {
 	pthread_mutex_t mutex;
 
 	char *stream_name;
-	ldmsd_stream_client_t stream;
+	ldms_stream_client_t stream;
 
 	handler_fn_t fn[16];
 	int n_fn;
@@ -1260,7 +1260,7 @@ app_sampler config synopsis: \n\
                             [metrics=METRICS] [cfg_file=FILE]\n\
 \n\
 Option descriptions:\n\
-    stream    The name of the `ldmsd_stream` to listen for SLURM job events.\n\
+    stream    The name of the `ldms_stream` to listen for SLURM job events.\n\
               (default: slurm).\n\
     metrics   The comma-separated list of metrics to monitor.\n\
               The default is "" (empty), which is equivalent to monitor ALL\n\
@@ -1478,21 +1478,22 @@ int __handle_task_exit(app_sampler_inst_t inst, json_entity_t data)
 	return 0;
 }
 
-int __stream_cb(ldmsd_stream_client_t c, void *ctxt,
-		ldmsd_stream_type_t stream_type,
-		const char *msg, size_t msg_len, json_entity_t entity)
+int __stream_cb(ldms_stream_event_t ev, void *ctxt)
 {
 	app_sampler_inst_t inst = ctxt;
 	json_entity_t event, data;
 	const char *event_name;
 
-	if (stream_type != LDMSD_STREAM_JSON) {
+	if (ev->type != LDMS_STREAM_EVENT_RECV)
+		return 0;
+
+	if (ev->recv.type != LDMS_STREAM_JSON) {
 		INST_LOG(inst, LDMSD_LDEBUG, "Unexpected stream type data...ignoring\n");
-		INST_LOG(inst, LDMSD_LDEBUG, "%s\n", msg);
+		INST_LOG(inst, LDMSD_LDEBUG, "%s\n", ev->recv.data);
 		return EINVAL;
 	}
 
-	event = json_value_find(entity, "event");
+	event = json_value_find(ev->recv.json, "event");
 	if (!event) {
 		INST_LOG(inst, LDMSD_LERROR, "'event' attribute missing\n");
 		goto out_0;
@@ -1502,7 +1503,7 @@ int __stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		goto out_0;
 	}
 	event_name = event->value.str_->str;
-	data = json_value_find(entity, "data");
+	data = json_value_find(ev->recv.json, "data");
 	if (!data) {
 		INST_LOG(inst, LDMSD_LERROR,
 			 "'%s' event is missing the 'data' attribute\n",
@@ -1612,7 +1613,7 @@ app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		goto err;
 
 	/* subscribe to the stream */
-	inst->stream = ldmsd_stream_subscribe(inst->stream_name, __stream_cb, inst);
+	inst->stream = ldms_stream_subscribe(inst->stream_name, 0, __stream_cb, inst, "app_sampler");
 	if (!inst->stream) {
 		INST_LOG(inst, LDMSD_LERROR,
 			 "Error subcribing to stream `%s`: %d",
@@ -1637,7 +1638,7 @@ void app_sampler_term(struct ldmsd_plugin *pi)
 	struct app_sampler_set *app_set;
 
 	if (inst->stream)
-		ldmsd_stream_close(inst->stream);
+		ldms_stream_close(inst->stream);
 	pthread_mutex_lock(&inst->mutex);
 	while ((rbn = rbt_min(&inst->set_rbt))) {
 		rbt_del(&inst->set_rbt, rbn);
