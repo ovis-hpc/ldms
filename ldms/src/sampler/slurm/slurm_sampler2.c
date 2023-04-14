@@ -58,7 +58,6 @@
 #include "ovis_json/ovis_json.h"
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldmsd_stream.h"
 
 #define SAMP "slurm2"
 
@@ -422,10 +421,8 @@ err:
 	return rc;
 }
 
-static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
-			 ldmsd_stream_type_t stream_type,
-			 const char *msg, size_t msg_len,
-			 json_entity_t entity);
+static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt);
+
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
@@ -446,7 +443,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		msglog(LDMSD_LCRITICAL, SAMP "[%d]: memory allocation error.\n", __LINE__);
 		return ENOMEM;
 	}
-	ldmsd_stream_subscribe(stream, slurm_recv_cb, self);
+	ldms_stream_subscribe(stream, 0, slurm_recv_cb, self, "slurm_sampler2");
 
 	/* producer */
 	value = av_value(avl, "producer");
@@ -1080,28 +1077,28 @@ static void handle_job_exit(job_data_t job, json_entity_t e)
 	ldms_transaction_end(set);
 }
 
-static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
-			 ldmsd_stream_type_t stream_type,
-			 const char *msg, size_t msg_len,
-			 json_entity_t entity)
+static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 {
 	int rc = EINVAL;
 	json_entity_t event, dict, av;
 
-	if (stream_type != LDMSD_STREAM_JSON) {
+	if (ev->type != LDMS_STREAM_EVENT_RECV)
+		return 0;
+
+	if (ev->recv.type != LDMS_STREAM_JSON) {
 		msglog(LDMSD_LDEBUG, SAMP ": Unexpected stream type data...ignoring\n");
-		msglog(LDMSD_LDEBUG, SAMP ":" "%s\n", msg);
+		msglog(LDMSD_LDEBUG, SAMP ":" "%s\n", ev->recv.data);
 		return EINVAL;
 	}
 
-	event = json_value_find(entity, "event");
+	event = json_value_find(ev->recv.json, "event");
 	if (!event) {
 		msglog(LDMSD_LERROR, SAMP ": 'event' attribute missing\n");
 		goto err_0;
 	}
 
 	json_str_t event_name = json_value_str(event);
-	dict = json_value_find(entity, "data");
+	dict = json_value_find(ev->recv.json, "data");
 	if (!dict) {
 		msglog(LDMSD_LERROR, SAMP ": '%s' event is missing "
 		       "the 'data' attribute\n", event_name->str);
@@ -1129,7 +1126,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 				goto unlock_tree;
 			}
 		}
-		handle_job_init(job, entity);
+		handle_job_init(job, ev->recv.json);
 	} else if (0 == strncmp(event_name->str, "step_init", 9)) {
 		job = job_data_find(job_id);
 		if (!job) {
@@ -1141,9 +1138,9 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 				rc = ENOMEM;
 				goto unlock_tree;
 			}
-			handle_job_init(job, entity);
+			handle_job_init(job, ev->recv.json);
 		}
-		handle_step_init(job, entity);
+		handle_step_init(job, ev->recv.json);
 	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
 		job = job_data_find(job_id);
 		if (!job) {
@@ -1152,7 +1149,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 					event_name->str, job_id);
 			goto unlock_tree;
 		}
-		handle_task_init(job, entity);
+		handle_task_init(job, ev->recv.json);
 	} else if (0 == strncmp(event_name->str, "task_exit", 9)) {
 		job = job_data_find(job_id);
 		if (!job) {
@@ -1161,9 +1158,9 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 					event_name->str, job_id);
 			goto unlock_tree;
 		}
-		handle_task_exit(job, entity);
+		handle_task_exit(job, ev->recv.json);
 		if (job->exited_tasks_count == job->v[TASK_COUNT].v_u64) {
-			handle_job_exit(job, entity);
+			handle_job_exit(job, ev->recv.json);
 			TAILQ_INSERT_TAIL(&complete_job_list, job, ent);
 			job->exited = 1;
 		}
@@ -1176,7 +1173,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			goto unlock_tree;
 		}
 		if (!job->exited) {
-			handle_job_exit(job, entity);
+			handle_job_exit(job, ev->recv.json);
 			/*
 			* Add job to the stopped_job_list.
 			* It will be cleanup after it has stopped

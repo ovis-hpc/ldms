@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2019 National Technology & Engineering Solutions
+ * Copyright (c) 2019,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2019 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2019,2023 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -75,7 +75,6 @@
 #include <sched.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldmsd_stream.h"
 #include "slurm_sampler.h"
 
 static ldmsd_msg_log_f msglog;
@@ -465,10 +464,8 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
-			 ldmsd_stream_type_t stream_type,
-			 const char *msg, size_t msg_len,
-			 json_entity_t entity);
+static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt);
+
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
@@ -488,7 +485,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		msglog(LDMSD_LERROR, "slurm_sampler: out of memory\n");
 		return ENOMEM;
 	}
-	ldmsd_stream_subscribe(stream, slurm_recv_cb, self);
+	ldms_stream_subscribe(stream, 0, slurm_recv_cb, self, "slurm_sampler");
 
 	value = av_value(avl, "producer");
 	if (!value) {
@@ -858,28 +855,28 @@ static void handle_job_exit(job_data_t job, json_entity_t e)
 	ldms_transaction_end(job_set);
 }
 
-static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
-			 ldmsd_stream_type_t stream_type,
-			 const char *msg, size_t msg_len,
-			 json_entity_t entity)
+static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 {
 	int rc = EINVAL;
 	json_entity_t event, data, dict, attr;
 	uint64_t tstamp;
 
-	if (stream_type != LDMSD_STREAM_JSON) {
+	if (ev->type != LDMS_STREAM_EVENT_RECV)
+		return 0;
+
+	if (ev->recv.type != LDMS_STREAM_JSON) {
 		msglog(LDMSD_LDEBUG, "slurm_sampler: Unexpected stream type data...ignoring\n");
-		msglog(LDMSD_LDEBUG, "slurm_sampler:" "%s\n", msg);
+		msglog(LDMSD_LDEBUG, "slurm_sampler:" "%s\n", ev->recv.data);
 		return EINVAL;
 	}
 
-	event = json_attr_find(entity, "event");
+	event = json_attr_find(ev->recv.json, "event");
 	if (!event) {
 		msglog(LDMSD_LERROR, "slurm_sampler: 'event' attribute missing\n");
 		goto out_0;
 	}
 
-	attr = json_attr_find(entity, "timestamp");
+	attr = json_attr_find(ev->recv.json, "timestamp");
 	if (!attr) {
 		msglog(LDMSD_LERROR, "slurm_sampler: 'timestamp' attribute missing\n");
 		goto out_0;
@@ -887,7 +884,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	tstamp = json_value_int(json_attr_value(attr));
 
 	json_str_t event_name = json_value_str(json_attr_value(event));
-	data = json_attr_find(entity, "data");
+	data = json_attr_find(ev->recv.json, "data");
 	if (!data) {
 		msglog(LDMSD_LERROR, "slurm_sampler: '%s' event is missing "
 		       "the 'data' attribute\n", event_name->str);
@@ -925,7 +922,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 				       __LINE__);
 				goto out_1;
 			}
-			handle_job_init(job, entity);
+			handle_job_init(job, ev->recv.json);
 		}
 	} else if (0 == strncmp(event_name->str, "step_init", 9)) {
 		job = get_job_data(tstamp, job_id);
@@ -935,7 +932,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			       event_name->str, job_id);
 			goto out_1;
 		}
-		handle_step_init(job, entity);
+		handle_step_init(job, ev->recv.json);
 	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
@@ -944,7 +941,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			       event_name->str, job_id);
 			goto out_1;
 		}
-		handle_task_init(job, entity);
+		handle_task_init(job, ev->recv.json);
 	} else if (0 == strncmp(event_name->str, "task_exit", 9)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
@@ -953,7 +950,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			       event_name->str, job_id);
 			goto out_1;
 		}
-		handle_task_exit(job, entity);
+		handle_task_exit(job, ev->recv.json);
 	} else if (0 == strncmp(event_name->str, "exit", 4)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
@@ -962,7 +959,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			       event_name->str, job_id);
 			goto out_1;
 		}
-		handle_job_exit(job, entity);
+		handle_job_exit(job, ev->recv.json);
 		release_job_data(job);
 	} else {
 		msglog(LDMSD_LDEBUG,

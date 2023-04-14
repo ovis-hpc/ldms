@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2019 National Technology & Engineering Solutions
+ * Copyright (c) 2019,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2018,2023 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -69,7 +69,6 @@
 #include "ldms.h"
 #include <ovis_json/ovis_json.h>
 #include <assert.h>
-#include "../ldmsd/ldmsd_stream.h"
 
 static char *stream;
 #define SLURM_NOTIFY_TIMEOUT 5
@@ -543,8 +542,8 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	LIST_INIT(&delete_list);
 	LIST_FOREACH(client, &client_list, entry) {
 		DEBUG2("publishing to %s:%s\n", client->host, client->port);
-		rc = ldmsd_stream_publish(client->ldms, stream,
-					  LDMSD_STREAM_JSON, jb->buf, jb->cursor+1);
+		rc = ldms_stream_publish(client->ldms, stream, LDMS_STREAM_JSON,
+				NULL, 0440, jb->buf, jb->cursor+1);
 		if (rc) {
 			DEBUG2("ERROR %d publishing to %s:%s\n",
 				rc, client->host, client->port);
