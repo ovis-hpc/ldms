@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2020-2022 National Technology & Engineering Solutions
+ * Copyright (c) 2020-2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2020-2022 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2020-2023 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -70,10 +70,10 @@
 
 #include "ldmsd.h"
 #include "../sampler_base.h"
-#include "ldmsd_stream.h"
 #include "mmalloc.h"
 #define DSTRING_USE_SHORT
 #include "ovis_util/dstring.h"
+#include "ovis_json/ovis_json.h"
 
 #define SAMP "linux_proc_sampler"
 
@@ -497,7 +497,7 @@ struct linux_proc_sampler_inst_s {
 	char *fd_stream;
 	char *recycle_buf;
 	size_t recycle_buf_sz;
-	ldmsd_stream_client_t stream;
+	ldms_stream_client_t stream;
 	int log_send;
 	char *argv_sep;
 	char *syscalls; /* file of 'int name' lines with # comments */
@@ -1710,7 +1710,7 @@ Option descriptions:\n\
 		when needed to disambiguate producer names that appear in multiple clusters.\n\
 	      (default: no prefix).\n\
     exe_suffix  Append executable path to set instance names.\n\
-    stream    The name of the `ldmsd_stream` to listen for SLURM job events.\n\
+    stream    The name of the `ldms_stream` to listen for SLURM job events.\n\
 	      (default: slurm).\n\
     sc_clk_tck=1 Include sc_clk_tck, the ticks per second, in the set.\n\
               The default is to exclude sc_clk_tck.\n\
@@ -2652,8 +2652,7 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 			app_set->key.os_pid, argc, off, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldmsd_stream_deliver(inst->env_stream, LDMSD_STREAM_JSON,
-				buf, off, NULL, pname);
+	ldms_stream_publish(NULL, inst->env_stream, LDMS_STREAM_JSON, NULL, 0440, buf, off);
 out:
 	free(vsub);
 	release_proc_strings(envp, argc);
@@ -2793,7 +2792,7 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 			app_set->key.os_pid, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldmsd_stream_deliver(inst->argv_stream, LDMSD_STREAM_JSON, buf, off, NULL, pname);
+	ldms_stream_publish(NULL, inst->argv_stream, LDMS_STREAM_JSON, NULL, 0440, buf, off);
 out:
 	release_proc_strings(argv, argc);
 	free(vbuf);
@@ -2918,8 +2917,7 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 			app_set->key.os_pid, fd, str, state, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldmsd_stream_deliver(inst->fd_stream, LDMSD_STREAM_JSON, buf, ssize,
-			 NULL, pname);
+	ldms_stream_publish(NULL, inst->fd_stream, LDMS_STREAM_JSON, NULL, 0440, buf, ssize);
 	return 0;
 }
 
@@ -3597,29 +3595,30 @@ int __handle_task_exit(linux_proc_sampler_inst_t inst, json_entity_t data)
 	return 0;
 }
 
-static int __stream_cb(ldmsd_stream_client_t c, void *ctxt,
-		ldmsd_stream_type_t stream_type,
-		const char *msg, size_t msg_len, json_entity_t entity)
+static int __stream_cb(ldms_stream_event_t ev, void *ctxt)
 {
 	int rc;
 	linux_proc_sampler_inst_t inst = ctxt;
 	json_entity_t event, data;
 	const char *event_name;
 
-	if (stream_type != LDMSD_STREAM_JSON) {
+	if (ev->type != LDMS_STREAM_EVENT_RECV)
+		return 0;
+
+	if (ev->recv.type != LDMS_STREAM_JSON) {
 		INST_LOG(inst, LDMSD_LDEBUG, "Unexpected stream type data...ignoring\n");
-		INST_LOG(inst, LDMSD_LDEBUG, "%s\n", msg);
+		INST_LOG(inst, LDMSD_LDEBUG, "%s\n", ev->recv.data);
 		rc = EINVAL;
 		goto err;
 	}
 
-	event = get_field(inst, entity, JSON_STRING_VALUE, "event");
+	event = get_field(inst, ev->recv.json, JSON_STRING_VALUE, "event");
 	if (!event) {
 		rc = ENOENT;
 		goto err;
 	}
 	event_name = json_value_cstr(event);
-	data = json_value_find(entity, "data");
+	data = json_value_find(ev->recv.json, "data");
 	if (!data) {
 		INST_LOG(inst, LDMSD_LERROR,
 			 "'%s' event is missing the 'data' attribute\n",
@@ -3941,7 +3940,7 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 no_pids:	;
 	}
 	/* subscribe to the stream */
-	inst->stream = ldmsd_stream_subscribe(inst->stream_name, __stream_cb, inst);
+	inst->stream = ldms_stream_subscribe(inst->stream_name, 0, __stream_cb, inst, "linux_proc_sampler");
 	if (!inst->stream) {
 		INST_LOG(inst, LDMSD_LERROR,
 			 "Error subcribing to stream `%s`: %d\n",
@@ -3967,7 +3966,7 @@ void linux_proc_sampler_term(struct ldmsd_plugin *pi)
 	struct linux_proc_sampler_set *app_set;
 
 	if (inst->stream)
-		ldmsd_stream_close(inst->stream);
+		ldms_stream_close(inst->stream);
 	pthread_mutex_lock(&inst->mutex);
 	while ((rbn = rbt_min(&inst->set_rbt))) {
 		rbt_del(&inst->set_rbt, rbn);
