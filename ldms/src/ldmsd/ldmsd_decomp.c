@@ -748,34 +748,34 @@ int ldmsd_row_to_json_object(ldmsd_row_t row, char **str, int *len)
 static const char *col_type_str(enum ldms_value_type type)
 {
 	static char *type_str[] = {
-	    [LDMS_V_CHAR] = "string",
-	    [LDMS_V_U8] = "string",
-	    [LDMS_V_S8] = "int",
-	    [LDMS_V_U16] = "int",
-	    [LDMS_V_S16] = "int",
-	    [LDMS_V_U32] = "long",
-	    [LDMS_V_S32] = "int",
-	    [LDMS_V_U64] = "long",
-	    [LDMS_V_S64] = "long",
-	    [LDMS_V_F32] = "float",
-	    [LDMS_V_D64] = "double",
-	    [LDMS_V_CHAR_ARRAY] = "string",
-	    [LDMS_V_U8_ARRAY] = "int",
-	    [LDMS_V_S8_ARRAY] = "int",
-	    [LDMS_V_U16_ARRAY] = "int",
-	    [LDMS_V_S16_ARRAY] = "int",
-	    [LDMS_V_U32_ARRAY] = "long",
-	    [LDMS_V_S32_ARRAY] = "int",
-	    [LDMS_V_U64_ARRAY] = "long",
-	    [LDMS_V_S64_ARRAY] = "long",
-	    [LDMS_V_F32_ARRAY] = "float",
-	    [LDMS_V_D64_ARRAY] = "double",
+	    [LDMS_V_CHAR] = "\"string\"",
+	    [LDMS_V_U8] = "\"string\"",
+	    [LDMS_V_S8] = "\"int\"",
+	    [LDMS_V_U16] = "{\"type\":\"int\",\"logicalType\":\"unsigned-short\"}",
+	    [LDMS_V_S16] = "\"int\"",
+	    [LDMS_V_U32] = "{\"type\":\"int\",\"logicalType\":\"unsigned-short\"}",
+	    [LDMS_V_S32] = "\"int\"",
+	    [LDMS_V_U64] = "{\"type\":\"int\",\"logicalType\":\"unsigned-short\"}",
+	    [LDMS_V_S64] = "\"long\"",
+	    [LDMS_V_F32] = "\"float\"",
+	    [LDMS_V_D64] = "\"double\"",
+	    [LDMS_V_CHAR_ARRAY] = "\"string\"",
+	    [LDMS_V_U8_ARRAY] = "{\"type\":\"int\",\"logicalType\":\"unsigned-char\"}",
+	    [LDMS_V_S8_ARRAY] = "\"int\"",
+	    [LDMS_V_U16_ARRAY] = "{\"type\":\"int\",\"logicalType\":\"unsigned-short\"}",
+	    [LDMS_V_S16_ARRAY] = "\"int\"",
+	    [LDMS_V_U32_ARRAY] = "{\"type\":\"int\",\"logicalType\":\"unsigned-int\"}",
+	    [LDMS_V_S32_ARRAY] = "\"int\"",
+	    [LDMS_V_U64_ARRAY] = "{\"type\":\"long\",\"logicalType\":\"unsigned-long\"}",
+	    [LDMS_V_S64_ARRAY] = "\"long\"",
+	    [LDMS_V_F32_ARRAY] = "\"float\"",
+	    [LDMS_V_D64_ARRAY] = "\"double\"",
 	    [LDMS_V_LIST] = "nosup",
 	    [LDMS_V_LIST_ENTRY] = "nosup",
 	    [LDMS_V_RECORD_TYPE] = "nosup",
 	    [LDMS_V_RECORD_INST] = "nosup",
 	    [LDMS_V_RECORD_ARRAY] = "nosup",
-	    [LDMS_V_TIMESTAMP] = "long"
+	    [LDMS_V_TIMESTAMP] = "{\"type\":\"long\",\"logicalType\":\"timestamp-millis\"}"
 	};
 	return type_str[type];
 }
@@ -827,15 +827,6 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 		}
 		switch (col->type) {
 		case LDMS_V_TIMESTAMP:
-			rc = strbuf_printf(&h,
-					   "{\"name\":\"%s\",\"type\":{"
-					   "\"type\":\"long\","
-					   "\"logicalType\":\"timestamp-millis\""
-					   "}}",
-					   avro_name);
-			if (rc)
-				goto err_0;
-			break;
 		case LDMS_V_CHAR:
 		case LDMS_V_U8:
 		case LDMS_V_S8:
@@ -848,7 +839,7 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 		case LDMS_V_F32:
 		case LDMS_V_D64:
 		case LDMS_V_CHAR_ARRAY:
-			rc = strbuf_printf(&h, "{\"name\":\"%s\",\"type\":\"%s\"}",
+			rc = strbuf_printf(&h, "{\"name\":\"%s\",\"type\":%s}",
 					   avro_name, col_type_str(col->type));
 			if (rc)
 				goto err_0;
@@ -865,7 +856,7 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 		case LDMS_V_D64_ARRAY:
 			rc = strbuf_printf(&h,
 					   "{\"name\":\"%s\","
-					   "\"type\":{ \"type\" : \"array\", \"items\": \"%s\" }}",
+					   "\"type\":{ \"type\" : \"array\", \"items\": %s }}",
 					   avro_name, col_type_str(col->type));
 			if (rc)
 				goto err_0;
