@@ -499,6 +499,7 @@ static int set_avro_value_from_col(avro_value_t *col_value,
 	struct ldms_timestamp ts;
 	avro_value_t val, item_val;
 	long ms;
+	char char_str[2];
 	size_t item_idx;
 	enum avro_type_t t = avro_value_get_type(col_value);
 	switch (col->type) {
@@ -537,8 +538,9 @@ static int set_avro_value_from_col(avro_value_t *col_value,
 		}
 		break;
 	case LDMS_V_CHAR:
-		rc = avro_value_set_int(col_value,
-				(int)ldms_mval_get_char(col->mval));
+		char_str[0] = ldms_mval_get_char(col->mval);
+		char_str[1] = '\0';
+		rc = avro_value_set_string(col_value, char_str);
 		break;
 	case LDMS_V_U8:
 		rc = avro_value_set_int(col_value,
