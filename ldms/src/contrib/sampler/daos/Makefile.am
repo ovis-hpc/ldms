@@ -12,7 +12,8 @@ if ENABLE_DAOS_SAMPLER
 libdaos_sampler_la_SOURCES = daos.h daos.c \
 			     rank_target.h rank_target.c \
 			     pool_target.h pool_target.c
-libdaos_sampler_la_LIBADD = $(COMMON_LIBADD) -lgurt
+libdaos_sampler_la_LIBADD = $(COMMON_LIBADD) -lgurt \
+			    $(top_builddir)/ldms/src/sampler/libldms_compid_helper.la
 pkglib_LTLIBRARIES += libdaos_sampler.la
 dist_man7_MANS += Plugin_daos_sampler.man
 endif
