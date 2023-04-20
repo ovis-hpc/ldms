@@ -60,11 +60,14 @@
 
 #include <gurt/telemetry_common.h>
 
+#include "comp_id_helper.h"
+
 int pool_target_schema_is_initialized(void);
-int pool_target_schema_init(void);
+int pool_target_schema_init(comp_id_t cid);
 void pool_target_schema_fini(void);
 
-void pool_targets_refresh(const char *system, int num_engines, int num_targets);
+void pool_targets_refresh(const char *producer_name, const char *system,
+                          const comp_id_t cid, int num_engines, int num_targets);
 void pool_targets_sample(struct d_tm_context *ctx, uint32_t rank);
 void pool_targets_destroy(void);
 void pools_destroy(void);
