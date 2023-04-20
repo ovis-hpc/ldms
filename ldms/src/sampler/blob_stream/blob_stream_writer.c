@@ -62,6 +62,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <unistd.h>
+#include <libgen.h>
 #include <ovis_json/ovis_json.h>
 #include "ldms.h"
 #include "ldmsd.h"
@@ -109,6 +110,7 @@ static void stream_data_open(stream_data_t sd);
 static int debug;
 static int timing;
 static int types;
+static int spool;
 
 char blob_stream_char_to_type(char c)
 {
@@ -312,29 +314,71 @@ static void stream_data_open(stream_data_t sd)
 	}
 }
 
+/* close f, free fname, and rename fname if spool=1 */
+static void fclose_and_spool(FILE* *f, char* *fname)
+{
+	fclose(*f);
+	*f = NULL;
+	if (spool) {
+		int mode = 0750;
+		size_t n = strlen(*fname) + 20;
+
+		char *dbuf = alloca(n);
+		strcpy(dbuf, *fname);
+		char *dirn = dirname(dbuf);
+
+		char *bbuf = alloca(n);
+		strcpy(bbuf, *fname);
+		char *base = basename(bbuf);
+
+		char *rbuf = alloca(n);
+		sprintf(rbuf, "%s/spool", dirn);
+		int err = f_mkdir_p(rbuf, mode);
+		if (err) {
+			switch (err) {
+			case EEXIST:
+				break;
+			default:
+				msglog(LDMSD_LERROR,
+					"create_outdir: failed to create"
+					" directory for %s: %s\n",
+					rbuf, STRERROR(err));
+				goto out;
+			}
+		}
+		sprintf(rbuf, "%s/spool/%s", dirn, base);
+		err = rename(*fname, rbuf);
+		if (err) {
+			msglog(LDMSD_LERROR, PNAME
+				": rename_output: failed rename(%s, %s):"
+				" %s\n", *fname, rbuf, STRERROR(err));
+		} else {
+			msglog(LDMSD_LDEBUG, PNAME
+				": renamed: %s to %s\n",
+				*fname, rbuf);
+		}
+	}
+out:
+	free(*fname);
+	*fname = NULL;
+}
+
+
 static void reset_paths(stream_data_t sd)
 {
 	if (!sd)
 		return;
-	free(sd->offsetfile_name);
-	sd->offsetfile_name = NULL;
-	free(sd->streamfile_name);
-	sd->streamfile_name = NULL;
-	free(sd->timingfile_name);
-	sd->timingfile_name = NULL;
-	free(sd->typefile_name);
-	sd->typefile_name = NULL;
+	if (sd->timingfile) {
+		fclose_and_spool(&sd->timingfile, &sd->timingfile_name);
+	}
 	if (sd->typefile) {
-		fclose(sd->typefile);
-		sd->typefile = NULL;
+		fclose_and_spool(&sd->typefile, &sd->typefile_name);
 	}
 	if (sd->streamfile) {
-		fclose(sd->streamfile);
-		sd->streamfile = NULL;
+		fclose_and_spool(&sd->streamfile, &sd->streamfile_name);
 	}
 	if (sd->offsetfile) {
-		fclose(sd->offsetfile);
-		sd->offsetfile = NULL;
+		fclose_and_spool(&sd->offsetfile, &sd->offsetfile_name);
 	}
 	sd->ws = WS_NEW;
 }
@@ -447,6 +491,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
+	spool = 0;
+	s = av_value(avl, "spool");
+	if (s) {
+		spool = 1;
+	}
+
 	int i, size = avl->count;
 	for (i = 0; i < size; i++) {
 		if (strcmp("stream", av_name(avl, i)) == 0) {
@@ -509,6 +559,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	stream_data_t sd = NULL;
 	LIST_FOREACH(sd, &data_list, entry) {
+		msglog(LDMSD_LINFO, PNAME ": config: %s\n", sd->stream_name);
 		pthread_mutex_lock(&sd->write_lock);
 		if (sd->ws == WS_REOPEN) {
 			reset_paths(sd);
@@ -535,27 +586,17 @@ static void stream_data_close( stream_data_t sd )
 		return;
 	pthread_mutex_lock(&sd->write_lock);
 	if (sd->timingfile) {
-		fclose(sd->timingfile);
-		sd->timingfile = NULL;
+		fclose_and_spool(&sd->timingfile, &sd->timingfile_name);
 	}
 	if (sd->typefile) {
-		fclose(sd->typefile);
-		sd->typefile = NULL;
+		fclose_and_spool(&sd->typefile, &sd->typefile_name);
 	}
 	if (sd->streamfile) {
-		fclose(sd->streamfile);
-		sd->streamfile = NULL;
+		fclose_and_spool(&sd->streamfile, &sd->streamfile_name);
 	}
 	if (sd->offsetfile) {
-		fclose(sd->offsetfile);
-		sd->offsetfile = NULL;
+		fclose_and_spool(&sd->offsetfile, &sd->offsetfile_name);
 	}
-	free(sd->typefile_name);
-	sd->typefile_name = NULL;
-	free(sd->streamfile_name);
-	sd->streamfile_name = NULL;
-	free(sd->offsetfile_name);
-	sd->offsetfile_name = NULL;
 	free(sd->stream_name);
 	sd->stream_name = NULL;
 	ldmsd_stream_close(sd->subscription);
@@ -589,11 +630,16 @@ static void term(struct ldmsd_plugin *self)
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "    config name=blob_stream_writer path=<path> container=<container> stream=<stream> \n"
+                "           timing=1 types=1 debug=1 spool=1\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - path       The path to the root of the csv directory\n"
 		"         - container  The directory under the path\n"
 		"         - stream     The stream name which will also be the file name\n"
 		"                      The stream argument may be repeated.\n"
+		"         - timing=1   Enabling TIMING output file\n"
+		"         - types=1    Enabling TYPES output file\n"
+		"         - spool=1    Roll output to <path>/<container>/spool/\n"
+		"         - debug=1    Enabling certain debug statements.\n"
 		;
 }
 

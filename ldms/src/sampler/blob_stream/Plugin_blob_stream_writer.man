@@ -48,6 +48,11 @@ timing=1
 .br
 Enable writing timestamps to a separate file.
 .RE
+.TP
+spool=1
+.br
+Move closed files to the directory <path>/<container>/spool/.
+.RE
 
 .SH OUTPUT FORMAT
 .PP
