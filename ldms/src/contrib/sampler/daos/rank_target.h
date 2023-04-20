@@ -60,10 +60,14 @@
 
 #include <gurt/telemetry_common.h>
 
+#include "comp_id_helper.h"
+
+
 int rank_target_schema_is_initialized(void);
-int rank_target_schema_init(void);
+int rank_target_schema_init(comp_id_t cid);
 void rank_target_schema_fini(void);
 
-void rank_targets_refresh(const char *system, int num_engines, int num_targets);
+void rank_targets_refresh(const char *producer_name, const char *system,
+                          const comp_id_t cid, int num_engines, int num_targets);
 void rank_targets_sample(struct d_tm_context *ctx, uint32_t rank);
 void rank_targets_destroy(void);

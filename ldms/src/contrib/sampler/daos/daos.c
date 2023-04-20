@@ -62,6 +62,7 @@
 #include "ldmsd.h"
 #include "config.h"
 #include "sampler_base.h"
+#include "comp_id_helper.h"
 
 #include "gurt/telemetry_common.h"
 #include "gurt/telemetry_consumer.h"
@@ -71,6 +72,7 @@
 #include "rank_target.h"
 #include "pool_target.h"
 
+static struct comp_id_data cid;
 ldmsd_msg_log_f log_fn;
 static ldmsd_msg_log_f msglog;
 static int engine_count = 2;
@@ -83,6 +85,7 @@ char producer_name[LDMS_PRODUCER_NAME_MAX];
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char	*ival;
+	int	 rc;
 
 	log_fn(LDMSD_LDEBUG, SAMP": config() called\n");
 	ival = av_value(avl, "producer");
@@ -125,8 +128,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	log_fn(LDMSD_LDEBUG, SAMP": target_count: %d\n", target_count);
 
+	rc = comp_id_helper_config(avl, &cid);
+	if (rc) {
+		log_fn(LDMSD_LERROR, SAMP": config: comp_id_helper_config failed: %d", rc);
+		rc = -rc;
+	}
+
 out:
-	return 0;
+	return rc;
 }
 
 int get_daos_rank(struct d_tm_context *ctx, uint32_t *rank)
@@ -158,20 +167,20 @@ static int sample(struct ldmsd_sampler *self)
 
 	log_fn(LDMSD_LDEBUG, SAMP": sample() called\n");
 	if (rank_target_schema_is_initialized() < 0) {
-		if (rank_target_schema_init() < 0) {
+		if (rank_target_schema_init(&cid) < 0) {
 			log_fn(LDMSD_LERROR, SAMP": rank_target_schema_init failed.\n");
 			return -ENOMEM;
 		}
 	}
 	if (pool_target_schema_is_initialized() < 0) {
-		if (pool_target_schema_init() < 0) {
+		if (pool_target_schema_init(&cid) < 0) {
 			log_fn(LDMSD_LERROR, SAMP": pool_target_schema_init failed.\n");
 			return -ENOMEM;
 		}
 	}
 
-	rank_targets_refresh(system_name, engine_count, target_count);
-	pool_targets_refresh(system_name, engine_count, target_count);
+	rank_targets_refresh(producer_name, system_name, &cid, engine_count, target_count);
+	pool_targets_refresh(producer_name, system_name, &cid, engine_count, target_count);
 
 	for (i = 0; i < engine_count; i++) {
 		ctx = d_tm_open(i);
