@@ -484,10 +484,8 @@ zap_err_t zap_close(zap_ep_t ep)
 zap_err_t zap_send(zap_ep_t ep, void *buf, size_t sz)
 {
 	zap_err_t zerr;
-//	zap_get_ep(ep);
 	ref_get(&ep->ref, "zap_send");
 	zerr = ep->z->send(ep, buf, sz);
-//	zap_put_ep(ep);
 	ref_put(&ep->ref, "zap_send");
 	return zerr;
 }
@@ -507,10 +505,8 @@ zap_err_t zap_write(zap_ep_t ep,
 		    void *context)
 {
 	zap_err_t zerr;
-//	zap_get_ep(ep);
 	ref_get(&ep->ref, "zap_write");
 	zerr = ep->z->write(ep, src_map, src, dst_map, dst, sz, context);
-//	zap_put_ep(ep);
 	ref_put(&ep->ref, "zap_write");
 	return zerr;
 }
@@ -772,12 +768,23 @@ static zap_io_thread_t __zap_least_busy_thread(zap_t z, zap_ep_t ep)
 
 	clock_gettime(CLOCK_REALTIME, &now);
 	pthread_mutex_lock(&z->_io_mutex);
-	/* always try to create a new thread to the max; otherwise,
-	 * use the thread with the least number of endpoints. */
+
+	/* Reap idle threads */
+	LIST_FOREACH(_t, &z->_io_threads, _entry)
+	{
+		if (0 == _t->_n_ep) {
+			t = _t;
+			goto out;
+		}
+	}
+
+	/* Create a new thread to the limit zap_io_max */
 	t = __io_thread_create(z);
 	if (t)
 		goto out;
-	min_ep = 0x7FFFFFFF;
+
+	/* Find the thread with the fewest endpoints */
+	min_ep = INT_MAX;
 	LIST_FOREACH(_t, &z->_io_threads, _entry)
 	{
 		if (_t->_n_ep < min_ep) {
@@ -787,7 +794,7 @@ static zap_io_thread_t __zap_least_busy_thread(zap_t z, zap_ep_t ep)
 	}
  out:
 	if (t) {
-		/* also add ep to the thread before releasing io mutex */
+		/* Add ep to the thread before releasing io mutex */
 		pthread_mutex_lock(&t->mutex);
 		LIST_INSERT_HEAD(&t->_ep_list, ep, _entry);
 		t->_n_ep++;
@@ -976,20 +983,20 @@ zap_utilization(zap_thrstat_t in, struct timespec *now)
 		proc_us = in->proc_sum + zap_timespec_diff_us(&in->wait_end, now);
 		wait_us = in->wait_sum;
 	}
-   	return (double)proc_us / (double)(proc_us + wait_us);
+	return (double)proc_us / (double)(proc_us + wait_us);
 }
 
 static uint64_t zap_accumulate(uint64_t sample_no,
-							uint64_t sample,
-							uint64_t window_size,
-							uint64_t current_sum,
-							uint64_t *window)
+			       uint64_t sample,
+			       uint64_t window_size,
+			       uint64_t current_sum,
+			       uint64_t *window)
 {
 	int win_sample;
 	uint64_t sum;
-    win_sample = sample_no % window_size;
-    sum = current_sum - window[win_sample] + sample;
-    window[win_sample] = sample;
+	win_sample = sample_no % window_size;
+	sum = current_sum - window[win_sample] + sample;
+	window[win_sample] = sample;
 	return sum;
 }
 
@@ -1003,10 +1010,10 @@ void zap_thrstat_wait_start(zap_thrstat_t stats)
 	stats->wait_start = now;
 	proc_us = zap_timespec_diff_us(&stats->wait_end, &now);
 	stats->proc_sum = zap_accumulate(stats->proc_count,
-								proc_us,
-								stats->window_size,
-								stats->proc_sum,
-								stats->proc_window);
+					 proc_us,
+					 stats->window_size,
+					 stats->proc_sum,
+					 stats->proc_window);
 	stats->proc_count += 1;
 }
 
@@ -1018,10 +1025,10 @@ void zap_thrstat_wait_end(zap_thrstat_t stats)
 	clock_gettime(CLOCK_REALTIME, &stats->wait_end);
 	wait_us = zap_timespec_diff_us(&stats->wait_start, &stats->wait_end);
 	stats->wait_sum = zap_accumulate(stats->wait_count,
-								wait_us,
-								stats->window_size,
-								stats->wait_sum,
-								stats->wait_window);
+					 wait_us,
+					 stats->window_size,
+					 stats->wait_sum,
+					 stats->wait_window);
 	stats->wait_count += 1;
 }
 
@@ -1051,7 +1058,7 @@ double zap_thrstat_get_utilization(zap_thrstat_t in)
 		return 0.0;
 
 	clock_gettime(CLOCK_REALTIME, &now);
-   	return zap_utilization(in, &now);
+	return zap_utilization(in, &now);
 }
 
 struct zap_thrstat_result *zap_thrstat_get_result()
@@ -1114,7 +1121,8 @@ static void zap_atfork()
 
 static void zap_init(void)
 {
-	zap_io_max = zap_env_int("ZAP_IO_MAX", get_nprocs());
+	int nprocs = get_nprocs() / 2;
+	zap_io_max = zap_env_int("ZAP_IO_MAX", nprocs ? nprocs : 1);
 	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	if (__atomic_load_n(&zap_initialized, __ATOMIC_SEQ_CST))
 		return;
