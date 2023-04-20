@@ -61,6 +61,7 @@
 #include "coll/rbt.h"
 #include "ldms.h"
 #include "ldmsd.h"
+#include "comp_id_helper.h"
 
 #include "gurt/telemetry_common.h"
 #include "gurt/telemetry_consumer.h"
@@ -69,8 +70,16 @@
 
 #include "daos.h"
 
-#define INSTANCE_NAME_BUF_LEN (DAOS_SYS_NAME_MAX + \
-			       DAOS_PROP_MAX_LABEL_BUF_LEN + 17)
+#define POOL_SCHEMA "daos_pool_rank"
+/* $producer/POOL_SCHEMA/$pool/$rank */
+#define POOL_INSTANCE_BUF_LEN (LDMS_PRODUCER_NAME_MAX + \
+			       DAOS_PROP_MAX_LABEL_BUF_LEN + \
+			       strlen(POOL_SCHEMA) + 14)
+#define POOL_TARGET_SCHEMA "daos_pool_target"
+/* $producer/POOL_TARGET_SCHEMA/$pool/$rank/$target */
+#define POOL_TARGET_INSTANCE_BUF_LEN (LDMS_PRODUCER_NAME_MAX + \
+				      DAOS_PROP_MAX_LABEL_BUF_LEN + \
+				      strlen(POOL_TARGET_SCHEMA) + 25)
 
 static ldms_schema_t pool_schema;
 static ldms_schema_t pool_target_schema;
@@ -194,7 +203,7 @@ void pool_target_schema_fini(void)
 	}
 }
 
-int pool_target_schema_init(void)
+int pool_target_schema_init(comp_id_t cid)
 {
 	ldms_schema_t	p_sch = NULL;
 	ldms_schema_t	pt_sch = NULL;
@@ -203,9 +212,14 @@ int pool_target_schema_init(void)
 
 	log_fn(LDMSD_LDEBUG, SAMP": pool_target_schema_init()\n");
 
-	p_sch = ldms_schema_new("daos_pool");
+	p_sch = ldms_schema_new(POOL_SCHEMA);
 	if (p_sch == NULL)
 		goto err1;
+	rc = comp_id_helper_schema_add(p_sch, cid);
+	if (rc) {
+		rc = -rc;
+		goto err2;
+	}
 	rc = ldms_schema_meta_array_add(p_sch, "system", LDMS_V_CHAR_ARRAY,
 					DAOS_SYS_NAME_MAX + 1);
 	if (rc < 0)
@@ -234,9 +248,14 @@ int pool_target_schema_init(void)
 			goto err2;
 	}
 
-	pt_sch = ldms_schema_new("daos_pool_target");
+	pt_sch = ldms_schema_new(POOL_TARGET_SCHEMA);
 	if (pt_sch == NULL)
 		goto err2;
+	rc = comp_id_helper_schema_add(pt_sch, cid);
+	if (rc) {
+		rc = -rc;
+		goto err3;
+	}
 	rc = ldms_schema_meta_array_add(pt_sch, "system", LDMS_V_CHAR_ARRAY,
 					DAOS_SYS_NAME_MAX + 1);
 	if (rc < 0)
@@ -281,8 +300,12 @@ err1:
 	return -1;
 }
 
-static struct pool_data *pool_create(const char *system, uint32_t rank,
-				     const char *pool, const char *instance_name)
+static struct pool_data *pool_create(const char *producer_name,
+				     const char *system,
+				     const char *instance_name,
+				     const char *pool,
+				     const comp_id_t cid,
+				     uint32_t rank)
 {
 	char			*key = NULL;
 	struct pool_data	*pd = NULL;
@@ -306,7 +329,7 @@ static struct pool_data *pool_create(const char *system, uint32_t rank,
 	}
 	pd->rank = rank;
 
-	key = strndup(instance_name, INSTANCE_NAME_BUF_LEN);
+	key = strndup(instance_name, POOL_INSTANCE_BUF_LEN);
 	if (key == NULL) {
 		errno = ENOMEM;
 		goto err3;
@@ -316,6 +339,7 @@ static struct pool_data *pool_create(const char *system, uint32_t rank,
 	set = ldms_set_new(instance_name, pool_schema);
 	if (set == NULL)
 		goto err4;
+	ldms_set_producer_name_set(set, producer_name);
 	index = ldms_metric_by_name(set, "system");
 	ldms_metric_array_set_str(set, index, system);
 	index = ldms_metric_by_name(set, "rank");
@@ -338,8 +362,13 @@ err1:
 	return NULL;
 }
 
-static struct pool_target_data *pool_target_create(const char *system, uint32_t rank, const char *pool,
-						   uint32_t target, const char *instance_name)
+static struct pool_target_data *pool_target_create(const char *producer_name,
+						   const char *instance_name,
+						   const char *system,
+						   const char *pool,
+						   const comp_id_t cid,
+						   uint32_t rank,
+						   uint32_t target)
 {
 	char			*key = NULL;
 	struct pool_target_data	*ptd = NULL;
@@ -364,7 +393,7 @@ static struct pool_target_data *pool_target_create(const char *system, uint32_t 
 	ptd->rank = rank;
 	ptd->target = target;
 
-	key = strndup(instance_name, INSTANCE_NAME_BUF_LEN);
+	key = strndup(instance_name, POOL_TARGET_INSTANCE_BUF_LEN);
 	if (key == NULL) {
 		errno = ENOMEM;
 		goto err3;
@@ -374,6 +403,7 @@ static struct pool_target_data *pool_target_create(const char *system, uint32_t 
 	set = ldms_set_new(instance_name, pool_target_schema);
 	if (set == NULL)
 		goto err4;
+	ldms_set_producer_name_set(set, producer_name);
 	index = ldms_metric_by_name(set, "system");
 	ldms_metric_array_set_str(set, index, system);
 	index = ldms_metric_by_name(set, "rank");
@@ -527,13 +557,18 @@ void pool_targets_destroy(void)
 	}
 }
 
-void pool_targets_refresh(const char *system, int num_engines, int num_targets)
+void pool_targets_refresh(const char *producer_name,
+			  const char *system,
+			  const comp_id_t cid,
+			  int num_engines,
+			  int num_targets)
 {
 	int			 i;
 	struct rbt		 new_pools;
 	struct rbt		 new_pool_targets;
 	int			 target;
-	char			 instance_name[INSTANCE_NAME_BUF_LEN];
+	char			 p_instance_name[POOL_INSTANCE_BUF_LEN];
+	char			 pt_instance_name[POOL_TARGET_INSTANCE_BUF_LEN];
 
 	rbt_init(&new_pools, string_comparator);
 	rbt_init(&new_pool_targets, string_comparator);
@@ -570,18 +605,19 @@ void pool_targets_refresh(const char *system, int num_engines, int num_targets)
 				continue;
 			}
 
-			snprintf(instance_name, sizeof(instance_name), "%s/%d/%s", system, rank, pool);
+			snprintf(p_instance_name, sizeof(p_instance_name),
+				 "%s/%s/%s/%d", producer_name, POOL_SCHEMA, pool, rank);
 
-			prbn = rbt_find(&pool_tree, instance_name);
+			prbn = rbt_find(&pool_tree, p_instance_name);
 			if (prbn) {
 				pd = container_of(prbn, struct pool_data, pool_node);
 				rbt_del(&pool_tree, &pd->pool_node);
 				//log_fn(LDMSD_LDEBUG, SAMP": found %s\n", pd->pool_node.key);
 			} else {
-				pd = pool_create(system, rank, pool, instance_name);
+				pd = pool_create(producer_name, system, p_instance_name, pool, cid, rank);
 				if (pd == NULL) {
 					log_fn(LDMSD_LERROR, SAMP": Failed to create pool %s (%s)\n",
-							instance_name, strerror(errno));
+							p_instance_name, strerror(errno));
 					continue;
 				}
 				//log_fn(LDMSD_LDEBUG, SAMP": created %s\n", pd->pool_node.key);
@@ -592,20 +628,20 @@ void pool_targets_refresh(const char *system, int num_engines, int num_targets)
 				struct rbn *rbn = NULL;
 				struct pool_target_data *ptd = NULL;
 
-				snprintf(instance_name, sizeof(instance_name),
-					 "%s/%d/%s/%d", system, rank, pool, target);
+				snprintf(pt_instance_name, sizeof(pt_instance_name),
+					 "%s/%s/%s/%d/%d", producer_name, POOL_TARGET_SCHEMA, pool, rank, target);
 
-				rbn = rbt_find(&pool_targets, instance_name);
+				rbn = rbt_find(&pool_targets, pt_instance_name);
 				if (rbn) {
 					ptd = container_of(rbn, struct pool_target_data,
 							   pool_targets_node);
 					rbt_del(&pool_targets, &ptd->pool_targets_node);
 					//log_fn(LDMSD_LDEBUG, SAMP": found %s\n", ptd->pool_targets_node.key);
 				} else {
-					ptd = pool_target_create(system, rank, pool, target, instance_name);
+					ptd = pool_target_create(producer_name, pt_instance_name, system, pool, cid, rank, target);
 					if (ptd == NULL) {
 						log_fn(LDMSD_LERROR, SAMP": Failed to create pool target %s (%s)\n",
-									instance_name, strerror(errno));
+									pt_instance_name, strerror(errno));
 						continue;
 					}
 					//log_fn(LDMSD_LDEBUG, SAMP": created %s\n", ptd->pool_targets_node.key);
