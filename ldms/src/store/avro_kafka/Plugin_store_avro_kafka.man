@@ -123,6 +123,7 @@ tab(@) allbox;
 l l l .
 \fBMetric Type\fR@\fBFormat Specifier\fR@\fBDescription\fR
 LDMS_V_TIMESTAMP@%u.%06u@Floating point number in seconds
+LDMS_V_CHAR@%s@String
 LDMS_V_U8@%hhu@Unsigned integer
 LDMS_V_S8@%hhd@Signed integer
 LDMS_V_U16@%hu@Unsigned integer
@@ -151,21 +152,20 @@ Avro type is governed by the Avro schema. The mapping is as follows:
 .TS
 tab(@) allbox;
 l l l .
-\fBMetric Type\fR@\fBAvro Type\fR@\fBDescription\fR
-LDMS_V_TIMESTAMP@AVRO_INT32@Seconds portion of timestamp value is stored in the Avro integer
-LDMS_V_TIMESTAMP@AVRO_INT64@tv_secs + 1000 * tv_usecs is stored in Avro long integer
-LDMS_V_TIMESTAMP@AVRO_RECORD@Seconds portion is stored in seconds portion of record, usecs is stored in the micro-seconds portion of the record
-LDMS_V_U8@AVRO_INT32@avro_value_set_int
-LDMS_V_S8@AVRO_INT32@avro_value_set_int
-LDMS_V_U16@AVRO_INT32@avro_value_set_int
-LDMS_V_S16@AVRO_INT32@avro_value_set_int
-LDMS_V_U32@AVRO_INT64@avro_value_set_long
-LDMS_V_S32@AVRO_INT32@avro_value_set_int
-LDMS_V_U64@AVRO_INT64@avro_value_set_long
-LDMS_V_S64@AVRO_INT64@avro_value_set_long
-LDMS_V_FLOAT@AVRO_FLOAT@avro_value_set_float
-LDMS_V_DOUBLE@AVRO_DOUBLE@avro_value_set_double
-LDMS_V_CHAR_ARRAY@AVRO_STRING@avro_value_set_string
+\fBMetric Type\fR@\fBAvro Type\fR@\fBLogicalType\fR
+LDMS_V_TIMESTAMP@AVRO_INT64@timestamp-millis
+LDMS_V_CHAR@AVRO_STRING@single-character
+LDMS_V_U8@AVRO_INT32@uint8
+LDMS_V_S8@AVRO_INT32@int8
+LDMS_V_U16@AVRO_INT32@unsigned-short
+LDMS_V_S16@AVRO_INT32@signed-short
+LDMS_V_U32@AVRO_INT64@unsigned-int
+LDMS_V_S32@AVRO_INT32@
+LDMS_V_U64@AVRO_INT64@unsigned-long
+LDMS_V_S64@AVRO_INT64@
+LDMS_V_FLOAT@AVRO_FLOAT@
+LDMS_V_DOUBLE@AVRO_DOUBLE@
+LDMS_V_CHAR_ARRAY@AVRO_STRING@
 LDMS_V_ARRAY_xxx@AVRO_ARRAY@Comma separated value list or primitive type surrounded by '[]'
 .TE
 .SS "Schema Creation"
