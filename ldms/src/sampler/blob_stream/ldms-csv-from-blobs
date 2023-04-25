@@ -1,0 +1,572 @@
+#! /usr/bin/env python3
+# stream blob read/transform tool
+# file format is a tuple of matching files:
+# x.DAT.$date : records are OFFSET size; well formed data is null-byte delimited.
+# x.TYPE.$date : records are chars. types are 's' string, 'j' json, ('b' binary; unsupported by ldms)
+# x.OFFSET.$date : records are little-endian uint64_t
+# x.TIMING.$date : records are pairs of little-endian uint64_t, r[0] = seconds, r[1] microsecond
+#
+
+#
+##### begin UC Irvine portion of code #############################################
+r"""
+Split up a file and yield its pieces based on some line terminator.
+
+Usage looks like:
+    $ /usr/local/cpython-3.6/bin/python3
+    Python 3.6.0 (default, Apr 22 2017, 09:17:19)
+    [GCC 5.4.0 20160609] on linux
+    Type "help", "copyright", "credits" or "license" for more information.
+    >>> import readline0
+    >>> file_ = open('/etc/shells', 'r')
+    >>> for line in readline0.readline0(file_=file_, separator=b'\n'):
+    ...     print(line)
+    ...
+    b'# /etc/shells: valid login shells'
+    b'/bin/sh'
+    b'/bin/dash'
+    b'/bin/bash'
+    b'/bin/rbash'
+    >>>
+
+Of course separator need not be a newline; it defaults to a null byte.
+"""
+
+# This software is the proprietary property of The Regents of the University of California ("The Regents") Copyright (c)
+# 1993-2006 The Regents of the University of California, Irvine campus. All Rights Reserved.
+
+# Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+# disclaimer.
+
+# Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following
+# disclaimer in the documentation and/or other materials provided with the distribution.
+
+# Neither the name of The Regents nor the names of its contributors may be used to endorse or promote products derived
+# from this software without specific prior written permission.
+
+# The end-user understands that the program was developed for research purposes and is advised not to rely exclusively
+# on the program for any reason.
+
+# THE SOFTWARE PROVIDED IS ON AN "AS IS" BASIS, AND THE REGENTS AND CONTRIBUTORS HAVE NO OBLIGATION TO PROVIDE
+# MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS. THE REGENTS AND CONTRIBUTORS SPECIFICALLY DISCLAIM ANY
+# EXPRESS OR IMPLIED WARRANTIES, INCLUDING BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+# PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE TO ANY PARTY FOR
+# DIRECT, INDIRECT, SPECIAL, INCIDENTAL, EXEMPLARY OR CONSEQUENTIAL DAMAGES, INCLUDING BUT NOT LIMITED TO PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES, LOSE OF USE, DATA OR PROFITS, OR BUSINESS INTERRUPTION, HOWEVER CAUSED AND UNDER ANY
+# THEORY OF LIABILITY WHETHER IN CONTRACT, STRICT LIABILITY OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY
+# WAY OUT OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+import os
+import re
+import sys
+import typing
+
+def readline0(file_: typing.Union[typing.BinaryIO, int] = sys.stdin.buffer, separator: bytes = b'\0', blocksize: int = 2 ** 16):
+    # pylint: disable=W1401
+    # W1401: We really do want a null byte
+    """
+    Instantiate Readline0 class and yield what we get back.
+
+    file_ defaults to sys.stdin, separator defaults to a null, and blocksize defaults to 64K.
+    """
+    readline0_obj = Readline0(file_, separator, blocksize)
+    # FIXME: This should become a yield from eventually.
+    for line in readline0_obj.sequence():
+        yield line
+
+
+class Readline0(object):
+    # pylint: disable=R0902
+    # R0902: We really do need lots of instance attributes
+    """Yield a series of blocks, separated by separator."""
+
+    # This class assumes that there will be a null once in a while.  If you feed it with a huge block of data that has
+    # no nulls (line separators), woe betide you.
+    def __init__(self, file_: typing.Union[typing.BinaryIO, int], separator: bytes, blocksize: int) -> None:
+        """Initialize."""
+        self.file_ = file_
+        self.blocksize = blocksize
+
+        self.have_fraction = False
+        self.fraction = b''
+
+        self.separator = separator
+
+        self.fields: typing.List[bytes] = []
+
+        self.yieldno = 0
+
+        self.bang = b'!'
+        self.metapattern = b'([^!]*)!|([^!]+)$'
+        self.buffer_ = b''
+        self.separator = separator
+
+        # bytes objects have a split method, but it doesn't work, at least not in Python 3.1.2.  But the re module
+        # works with bytes, so we use that.
+
+        self.pattern = re.sub(self.bang, self.separator, self.metapattern)
+
+        self.at_eof = False
+
+    @classmethod
+    def handle_field_pairs(
+            cls,
+            field_pairs: typing.List[typing.Tuple[bytes, bytes]],
+    ) -> typing.Tuple[typing.List[bytes], bool, bytes]:
+        """Pick apart the pairs from our regex split and return the correct values."""
+        regular_fields = []
+        have_fraction = False
+        fraction = b''
+
+        for field_pair in field_pairs:
+            if field_pair[0]:
+                if field_pair[1]:
+                    # They're both not zero length - that's an error
+                    raise AssertionError('Both field_pair[0] and field_pair[1] are non-empty')
+                else:
+                    # The first is not zero length, the second is zero length
+                    regular_fields.append(field_pair[0])
+            else:
+                if field_pair[1]:
+                    # the first is zero length, the second is not zero length
+                    if have_fraction:
+                        raise AssertionError('Already have a fraction')
+                    fraction = field_pair[1]
+                    have_fraction = True
+                else:
+                    # they're both zero length - this is legal for !! - yield one or the other but not both
+                    assert field_pair[0] == field_pair[1]
+                    regular_fields.append(field_pair[0])
+
+        return regular_fields, have_fraction, fraction
+
+    def get_fields(self) -> None:
+        """Read a block, chop it up into fields - taking into account any leftover partial field."""
+        if isinstance(self.file_, int):
+            tail_block: bytes = os.read(self.file_, self.blocksize)
+        else:
+            # assume we have a file-like object
+            tail_block = self.file_.read(self.blocksize)
+
+        if tail_block:
+            self.at_eof = False
+        else:
+            self.at_eof = True
+
+        if self.have_fraction:
+            block = self.fraction + tail_block
+            self.fraction = b''
+            self.have_fraction = False
+        else:
+            block = tail_block
+
+        field_pairs = re.findall(self.pattern, block)
+        regular_fields, self.have_fraction, self.fraction = self.handle_field_pairs(field_pairs)
+
+        # we put the fields in reverse order so we can repeatedly pop efficiently
+        regular_fields.reverse()
+
+        self.fields = regular_fields
+
+    def sequence(self) -> typing.Iterator[bytes]:
+        """Generate each field (line) in turn."""
+        while True:
+            if not self.fields:
+                self.get_fields()
+            while self.fields:
+                yield self.fields.pop()
+            if self.at_eof:
+                if self.have_fraction:
+                    yield self.fraction
+                break
+
+############################################################################
+##### end UC Irvine portion of code ########################################
+
+import sys
+import os.path
+import array
+import json
+import binascii
+import csv
+import argparse
+
+class Blob:
+    def __init__(self, index, databytes, timestamp, stype='s'):
+        self.index = index; # record number in input, excluding magic
+        self.data = databytes
+        self.timestamp = timestamp ; # tuple (sec, usec)
+        self.stype = stype
+
+class BlobScanner:
+    def add(self, blob):
+        """ add a Blob to the scanner """
+        raise ValueError("Blob scanner doesn't implement add")
+
+class BlobReader:
+    def __init__(self, path, blobScanner=None):
+        """Parse DAT file named by path and matching aux files.
+Apply blobScanner to each blob.
+
+If blobScanner is not supplied, the entire data file gets loaded into memory
+and the list self.blobs gets populated. This temporarily requires memory
+size at least 2*(the DAT file size).
+
+If blobScanner is supplied, individual blobs are loaded, scanned, and dropped.
+"""
+        if sys.byteorder != 'little':
+            raise ValueError("this script does not work on bigendian platforms")
+        self.filepath_name = path
+        self.filetime = '0'
+        self.filesuff = None
+        self.time_least = 0 ; # least timestamp file entry for any blob
+        self.time_minexp = 0 ; # least time expected based on filename timestamp
+        self.blobs = []
+        try:
+            parts = path.split(".")
+            self.filetime = parts[-1]
+            self.time_minexp = int(self.filetime) - 70 ; # one minuteish margin for long delivery
+            self.filesuff = parts[-2]
+            self.fileprefix = ".".join(parts[0:len(parts)-2]) ; # strip .DAT.$timestamp
+            self.filetiming_name = ".".join([self.fileprefix, "TIMING", self.filetime])
+            self.filestype_name = ".".join([self.fileprefix, "TYPE", self.filetime])
+            self.fileoffset_name = ".".join([self.fileprefix, "OFFSET", self.filetime])
+        except:
+            raise ValueError("bad path for BlobReader: %s. expecting *.DAT.$timestamp format" % path)
+
+        self.datfile = open(self.filepath_name, "rb")
+        self.stypefile = None
+        try:
+            self.stypefile = open(self.filestype_name, "rb")
+        except:
+            pass
+        try:
+            self.timingfile = open(self.filetiming_name, "rb")
+        except:
+            self.timingfile = None
+        try:
+            self.offsetfile = open(self.fileoffset_name, "rb")
+        except:
+            self.offsetfile = None
+        self.stype = None
+        self.timing = None
+        self.offset = None
+        if self.stypefile:
+            self.stype = self.stypefile.read()
+            self.stype_fsize = os.path.getsize(self.filestype_name)
+            #self.stype.fromfile(self.stypefile, self.stype_fsize)
+            magic = str(self.stype[0:7], 'utf-8')
+            if magic != "blobtyp":
+                raise ValueError("non-type data in %s." % self.filestype_name)
+            self.stype = str(self.stype[8:], 'utf-8').strip()
+        if self.timingfile:
+            self.timing = array.array('Q')
+            self.timing_fsize = os.path.getsize(self.filetiming_name)
+            if (self.timing_fsize % 16) != 8:
+                raise ValueError("timing data in %s is not a multiple of 16 bytes + 8." % self.filetiming_name)
+            self.timing.fromfile(self.timingfile, self.timing_fsize//8)
+            magic = self.timing[0] ; # "blobtim" as le binary expected
+            if magic != 0x6d6974626f6c62:
+                raise ValueError("non-timing data in %s %x." % (self.filetiming_name , magic))
+            self.timing.pop(0)
+        if self.offsetfile:
+            self.offset = array.array('Q')
+            self.offset_fsize = os.path.getsize(self.fileoffset_name)
+            if (self.offset_fsize % 8) != 0:
+                raise ValueError("offset data in %s is not a multiple of 8 bytes." % self.fileoffset_name)
+            self.offset.fromfile(self.offsetfile, self.offset_fsize//8)
+            magic = self.offset[0] ; # "bloboff" as le binary expected
+            if magic != 0x66666f626f6c62:
+                raise ValueError("non-offset data in %s." % self.fileoffset_name)
+            self.offset.pop(0)
+        if blobScanner:
+            pass
+        else:
+            if not self.offset:
+                self.blobs = self.datfile.read().split(b'\x00')[1:-1]
+            else:
+                for i in readline0(self.datfile):
+                    self.blobs.append(i.decode('utf-8'))
+                self.blobs.pop(0)
+
+def main(fn, crcfilename, structfilename, out_separator, nested):
+    # we need crc aliases for admin friendliness
+    crcmap = None
+    if crcfilename:
+        with open(crcfilename, "r") as cmap:
+            crcmap = json.load(cmap)
+    # We need to be able to map names, types, or array lengths in various cases
+    # as there is no workable default behavior these.
+    overrides = {}
+
+    if structfilename:
+        with open(structfilename, "r") as smap:
+            struct_map = json.load(smap)
+            if struct_map:
+                for k,v in struct_map.items():
+                    co = 1
+                    inc = True
+                    unroll = False
+                    if "delete" in v:
+                        inc = not v["delete"]
+                    if "unroll" in v:
+                        unroll = v["unroll"]
+                    if inc:
+                        kind = v["kind"]
+                    else:
+                        kind = "DELETED"
+                    if "count" in v:
+                        co = v["count"]
+                    if "alias" in v:
+                        al = v["alias"]
+                    tu = (al, kind, co, inc, unroll)
+                    overrides[k] = tu
+    br = BlobReader(fn)
+    if br.timing:
+        print("total timing: %d " % (len(br.timing)//2))
+        # print("%g %s" % (0, br.timing[0]+1e-6*br.timing[1]))
+        # print("%g %s" % (-1, br.timing[-4]+1e-6*br.timing[-3]))
+    if br.offset:
+        print("total offsets: %d " % len(br.offset))
+        # print("%d %s" % (0, br.offset[0]))
+        # print("%d %s" % (-1, br.offset[-1]))
+    if br.stype:
+        print("total types: %d " % len(br.stype))
+        # print("%d %c" % (0, br.stype[0]))
+        # print("%d %c" % (-1, br.stype[-1]))
+    if len(br.blobs):
+        print("total blobs: %d " % (len(br.blobs)))
+        # print("%d %s" % (0, br.blobs[0]))
+        # print("%d %s" % (-1, br.blobs[-1]))
+    nb = len(br.blobs)
+    if br.timing and len(br.timing)//2 != nb:
+        print("timing data %d not same size as blobs %d" % (len(br.timing)//2, nb))
+    if br.offset and len(br.offset) != nb:
+        print("offset data %d not same size as blobs %d" % (len(br.offset), nb))
+    if br.stype and len(br.stype) != nb:
+        print("type data %d not same size as blobs %d" % (len(br.stype), nb))
+    #!ldms-array-kinds!timestamp,u64,char[]64,u64,u64,u64,u64,u64,u64,u64,u8[]10,u64,s8[]10,u64,u16[]10,u64,s16[]10,u64,u32[]10,u64,s32[]10,u64,u64[]10,u64,s64[]10,u64,f32[]10,u64,d64[]10
+    # simple ldms types are u8, u16, u32, u64, s8, s16, s32, s64, f32, d64
+    # json doesn't know unsigned, so we have to tell it
+    #
+    cf = CSVFilter(br, overrides, out_separator, name_nest=nested)
+    for i in range(0, len(br.blobs)):
+        try:
+            bl = br.blobs[i]
+            if br.stype:
+                t = br.stype[i]
+            else:
+                # halfassed check for json string
+                if bl[0] == '{' and bl[-1] == '}':
+                    t = 'j'
+                else:
+                    t = 's'
+            if br.timing:
+                ts = (br.timing[2*i], br.timing[2*i +1])
+            else:
+                    ts = (int(br.filetime), 0)
+            b = Blob(i, bl, ts, t)
+            cf.add(b,crcmap)
+        except Exception as error:
+            print("Unable to process blob ", str(i), " ", type(error).__name__, "–", error)
+    cf.finish()
+
+class Schema:
+    def __init__(self, header, osep):
+        self.header = header ; # list of tuples (name, type, size), where size has to be computed from all rows seen
+        self.calc_crc(header)
+        self.data = None
+        self.osep = osep
+        self.bad = False
+
+    def calc_crc(self, header):
+        s=[]
+        for p in header:
+            s.append(";".join( (p[0], p[1], str(p[2]))))
+        self.crc32 = binascii.crc32( (",".join(s)).encode('utf-8') )
+
+    def add_row(self, br, dat, crcmap):
+        if self.bad:
+            return
+        if not self.data:
+            oprefix = os.path.basename(br.fileprefix)
+            sc = str(self.crc32)
+            if crcmap and sc in crcmap.keys():
+                sc = crcmap[sc]
+            else:
+                sc = "CRC_" + sc
+            self.typ_name = ".".join([oprefix, sc, "KIND", br.filetime])
+            self.hdr_name = ".".join([oprefix, sc, "HEADER", br.filetime])
+            self.dat_name = ".".join([oprefix, sc, "DAT", br.filetime])
+
+            hdr = open(self.hdr_name, "w")
+            hcsv = csv.writer(hdr, delimiter=self.osep)
+            hdat = []
+            try:
+                for t in self.header:
+                    if self.osep in t[0]:
+                        raise ValueError("Column name contains output delimiter %s: %s" % (self.osep, t[0]))
+                    hdat.append(t[0].strip("."))
+            except Exception as error:
+                print(error)
+                self.bad = True
+            if not self.bad:
+                hcsv.writerow(hdat)
+            hdr.close()
+
+            self.data = open(self.dat_name, "w")
+            self.csv = csv.writer(self.data, delimiter=self.osep)
+        if not self.bad:
+            self.csv.writerow(dat)
+
+    def finish(self):
+        # close data file
+        if self.data:
+            self.data.close()
+        if self.bad:
+            return
+        # emit kind header
+        tdat = []
+        first = True
+        for t in self.header:
+            if first:
+                s = "#!ldms-array-kinds!"
+                first = False
+            else:
+                s = ""
+            if t[1][-1] == ']':
+                tdat.append(s+t[1]+str(t[2]))
+            else:
+                tdat.append(s+t[1])
+        typ = open(self.typ_name, "w")
+        tcsv = csv.writer(typ, delimiter=self.osep)
+        tcsv.writerow(tdat)
+        typ.close()
+
+class CSVFilter(BlobScanner):
+    def __init__(self, breader, type_overrides, out_separator, name_nest=True):
+        self.schemas = dict() ; # map header crc32 to file, name, and type headers
+        self.ctypes = dict() ; # map field names to types for overrides
+        self.breader = breader ; # source file name bits needed
+        self.type_overrides = type_overrides ; # dict of tuples: (alias, kind, count, include, unroll) (str, str, int, bool, bool)
+        self.osep = out_separator
+        self.name_nest = name_nest ; # use dot qualified names instead of local names for output column names
+        self.lead_length = 0 ; # number of hdr elements seen before first list seen
+        self.in_list = False ; # true if iterating list elements
+        self.INCLUDE = 3
+        self.UNROLL = 4
+        self.ignored_elements = 0
+        self.ignored_blobs = 0
+
+    def dump_array_sizes(self):
+        print("Ignored %d elements from %d blobs" % (self.ignored_elements, self.ignored_blobs))
+        colsizes = dict()
+        for crc,s in self.schemas.items():
+            for col in s.header:
+                cn = col[0]
+                if cn in colsizes and colsizes[cn] < col[2]:
+                        colsizes[cn] = col[2]
+                else:
+                  colsizes[cn] = col[2]
+        for col,smax in colsizes.items():
+            if smax > 1:
+                print("array %s maximum %d" % (col, smax))
+
+    def json_to_tuples(self, jd, hdr, dat, prefix=""):
+        """Note that arrays will result in multiple types without overrides"""
+        for (k , v) in jd.items():
+            fullname = (".".join((prefix, k))).strip(".")
+            if self.name_nest:
+                name = fullname
+            else:
+                name = k
+            if fullname in self.type_overrides.keys():
+                if self.type_overrides[fullname][self.INCLUDE]:
+                    hdr.append(self.type_overrides[fullname])
+                    dat.append(str(v))
+                continue
+            if isinstance(v, list) and len(v):
+                if len(v) > 1:
+                    self.ignored_blobs += 1
+                    self.ignored_elements += len(v)-1
+                    # append values from first element of list only; not supporting unrolling to multiple records
+                self.json_to_tuples(v[0], hdr, dat, name)
+                continue
+            if isinstance(v, dict):
+                self.json_to_tuples(v, hdr, dat, name)
+                continue
+            if isinstance(v, str):
+                if self.osep in v:
+                    raise ValueError("String data contains output delimiter %s: %s" % (self.osep, v))
+                hdr.append((name, 'char[]', len(v)))
+                dat.append(str(v))
+                continue
+            if isinstance(v, int):
+                hdr.append((name, 's64', 1))
+                dat.append(str(v))
+                continue
+            if isinstance(v, float):
+                hdr.append((name, 'd64', 1))
+                dat.append(str(v))
+            if isinstance(v, bool):
+                hdr.append((name, 'u8', 1))
+                if v:
+                    dat.append("1")
+                else:
+                    dat.append("0")
+                continue
+            print("instance %s not processed to header/data " % name)
+
+    def get_schema(self, jd):
+        hdr = []
+        dat = []
+        self.json_to_tuples(jd, hdr, dat)
+        return (Schema(hdr, self.osep), dat)
+
+    def add(self, b, crcmap):
+        if b.stype != 'j':
+            print("# non-json (%s) line %s" % (b.stype, b.data))
+            return
+        from collections import OrderedDict
+        jd = json.loads(b.data, object_pairs_hook=OrderedDict)
+        (schema, dat) = self.get_schema(jd)
+        if not schema.crc32 in self.schemas.keys():
+            self.schemas[schema.crc32] = schema
+        self.schemas[schema.crc32].add_row(self.breader, dat, crcmap)
+
+    def finish(self):
+        self.dump_array_sizes()
+        for s in self.schemas.values():
+            s.finish()
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description="Generate LDMS store_csv equivalent files from mixed json blob files")
+    parser.add_argument("--struct-map", default=None, help="JSON file to map names, types, and array sizes from json to csv")
+    parser.add_argument("--crc-map", default=None, help="JSON file to map crc32 values to string schema names")
+    parser.add_argument("--flatten", default="false", help="automatically strip prefixes from nested names")
+    parser.add_argument("--col-sep", default=None, help="column separator for output")
+    parser.add_argument('files', nargs='+')
+    args = parser.parse_args()
+    if args.crc_map and not os.path.isfile(args.crc_map):
+        print("ERROR: Cannot find specified CRC mapping file %s" % args.crc_map)
+        sys.exit(1)
+    if args.struct_map and not os.path.isfile(args.struct_map):
+        print("ERROR: Cannot find specified struct mapping file %s" % args.struct_map)
+        sys.exit(1)
+    nested = True
+    sep = ','
+    if args.col_sep:
+        sep = args.col_sep
+    if len(sep) != 1:
+        print("ERROR: Cannot use multicharacter separator %s" % sep)
+        sys.exit(1)
+    try:
+        if args.flatten == "true":
+            nested = False
+    except:
+        pass
+    for f in args.files:
+        print("Processing " + f)
+        main(f, args.crc_map, args.struct_map, sep, nested)
