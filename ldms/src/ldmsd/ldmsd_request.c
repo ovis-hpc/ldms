@@ -7678,7 +7678,7 @@ enomem:
 
 static int
 __prdset_upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
-				ldmsd_prdcr_t prdcr, ldmsd_name_match_t match)
+				ldmsd_prdcr_t prdcr, ldmsd_name_match_t match, int prd_cnt)
 {
 	int rc;
 	ldmsd_prdcr_set_t prdset;
@@ -7687,8 +7687,13 @@ __prdset_upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 
 	ldmsd_prdcr_lock(prdcr);
 	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED || prdcr->xprt->disconnected) {
-		rc = 0; /* unconnected producers not shown */
+		rc = 107; /* unconnected producers not shown */
 		goto unlock;
+	}
+	if (prd_cnt) {
+		rc = linebuf_printf(reqc, ",");
+		if (rc)
+			goto unlock;
 	}
 	rc = linebuf_printf(reqc, "\"%s\":{", prdcr->obj.name);
 	if (rc)
@@ -7749,30 +7754,24 @@ __upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr)
 			ldmsd_prdcr_ref_t ref;
 			for (ref = updtr_prdcr_ref_first(updtr); ref;
 					ref = updtr_prdcr_ref_next(ref)) {
-				if (cnt)
-					rc = linebuf_printf(reqc, ",");
-				if (rc)
-					goto out;
 				rc = __prdset_upd_time_stats_json_obj(reqc, updtr,
-							  ref->prdcr, match);
-				if (rc)
+							  ref->prdcr, match, cnt);
+				if (rc && rc != 107)
 					goto out;
-				cnt++;
+				else if (!rc)
+					cnt++;
 			}
 		}
 	} else {
 		ldmsd_prdcr_ref_t ref;
 		for (ref = updtr_prdcr_ref_first(updtr); ref;
 				ref = updtr_prdcr_ref_next(ref)) {
-			if (cnt)
-				rc = linebuf_printf(reqc, ",");
-			if (rc)
-				goto out;
 			rc = __prdset_upd_time_stats_json_obj(reqc, updtr,
-						   ref->prdcr, NULL);
-			if (rc)
+						   ref->prdcr, NULL, cnt);
+			if (rc && rc != 107)
 				goto out;
-			cnt++;
+			else if (!rc)
+				cnt++;
 		}
 	}
 	rc = linebuf_printf(reqc, "}");
