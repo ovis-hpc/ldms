@@ -7687,7 +7687,7 @@ __prdset_upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 
 	ldmsd_prdcr_lock(prdcr);
 	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED || prdcr->xprt->disconnected) {
-		rc = 107; /* unconnected producers not shown */
+		rc = ENOTCONN; /* unconnected producers not shown */
 		goto unlock;
 	}
 	if (prd_cnt) {
@@ -7756,7 +7756,7 @@ __upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr)
 					ref = updtr_prdcr_ref_next(ref)) {
 				rc = __prdset_upd_time_stats_json_obj(reqc, updtr,
 							  ref->prdcr, match, cnt);
-				if (rc && rc != 107)
+				if (rc && rc != ENOTCONN)
 					goto out;
 				else if (!rc)
 					cnt++;
@@ -7768,7 +7768,7 @@ __upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr)
 				ref = updtr_prdcr_ref_next(ref)) {
 			rc = __prdset_upd_time_stats_json_obj(reqc, updtr,
 						   ref->prdcr, NULL, cnt);
-			if (rc && rc != 107)
+			if (rc && rc != ENOTCONN)
 				goto out;
 			else if (!rc)
 				cnt++;
