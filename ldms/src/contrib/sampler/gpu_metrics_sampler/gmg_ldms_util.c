@@ -81,7 +81,7 @@ const metric_t metricsDefinitions[] = {
         {.name = "perf_level", .type = LDMS_V_D64, .pf = (funcPtr_t) getPerfLevel},
         {.name = "power_usage (mW)", .type = LDMS_V_S32, .pf = (funcPtr_t) getPowerUsage},
 //        {.name = "power_cap (mW)", .type = LDMS_V_S32, .pf = (funcPtr_t) getPowerCap},    // no longer supported
-        {.name = "gpu_temp (Celsius)", .type = LDMS_V_D64, .pf = (funcPtr_t) getGpuTemp},
+        {.name = "gpu_temp (Celsius)", .type = LDMS_V_D64, .pf = (funcPtr_t) getGpuTemp}
 //        {.name = "pci_max_bandwidth (baud)", .type = LDMS_V_U64, .pf = (funcPtr_t) getPciMaxSpeed}    // currently OneAPI does not support this
 };
 
@@ -92,7 +92,7 @@ const size_t c_numMetrics = sizeof(metricsDefinitions) / sizeof(metricsDefinitio
 */
 
 void constructMetricName(const char *szBaseMetricName, uint8_t deviceId, char *szMetricName) {
-    snprintf(szMetricName, MAX_METRIC_NAME_LENGTH, "gpu%02x.", deviceId);
+    snprintf(szMetricName, MAX_METRIC_NAME_LENGTH, "gpu%02x_", deviceId);
     strncpy(szMetricName + 6, szBaseMetricName, MAX_METRIC_NAME_LENGTH - 6);
     GMGLOG(LDMSD_LDEBUG, "metricName = %s\n", szMetricName);
 }
