@@ -1126,12 +1126,6 @@ static int config_add_set(struct attr_value_list *avl)
 		/* Skip non isdigit prefix */
 		while (*compid != '\0' && !isdigit(*compid)) compid++;
 		v.v_u64 = strtoull(compid, &endptr, 0);
-		if (*endptr != '\0') {
-			msglog(LDMSD_LERROR, "test_sampler: invalid "
-					"component_id %s\n", compid);
-			rc = EINVAL;
-			goto err1;
-		}
 	} else {
 		v.v_u64 = 0;
 	}
