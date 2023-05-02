@@ -1035,7 +1035,6 @@ class Communicator(object):
         """
         Exits the daemon
         """
-        attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
         req = LDMSD_Request(
                 command='daemon_exit'
               )
