@@ -2660,6 +2660,8 @@ class Communicator(object):
             LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.SCHEMA, value=schema),
             LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PERM, value=str(perm)),
         ]
+        if decomp is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.DECOMPOSITION, value = decomp))
         if flush is not None:
             attrs.append(LDMSD_Req_Attr(attr_name='flush', value=flush))
         req = LDMSD_Request(command_id=LDMSD_Request.STRGP_ADD, attrs=attrs)
