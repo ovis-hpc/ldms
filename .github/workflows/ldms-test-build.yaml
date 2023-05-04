@@ -25,7 +25,7 @@ jobs:
         ../configure --prefix=/opt/ovis
         make
         make install
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: sh autogen.sh
     - name: build-ovis
       shell: bash
