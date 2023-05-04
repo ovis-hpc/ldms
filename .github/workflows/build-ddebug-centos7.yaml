@@ -15,7 +15,7 @@ jobs:
     container:
         image: ovishpc/ovis-centos-build:latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: sh autogen.sh
     - run: |
         _CFLAGS_=(

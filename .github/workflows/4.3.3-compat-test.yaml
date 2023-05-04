@@ -35,7 +35,7 @@ jobs:
     container:
         image: ovishpc/ovis-compat-centos7
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: sh autogen.sh
     - name: build and install
       run: |
