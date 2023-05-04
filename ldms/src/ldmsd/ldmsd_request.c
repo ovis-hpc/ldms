@@ -5466,51 +5466,45 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 
 	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_UID);
 	if (value) {
-		struct passwd *pwd;
-		long _uid;
-
-		pwd = getpwnam(value);
-		_uid = strtol(value, &endptr, 0);
-		if (pwd) {
-			/* Valid username */
-			uid = pwd->pw_uid;
-			set_flags |= DEFAULT_AUTHZ_SET_UID;
-		} else if ((*endptr == '\0') && (_uid > 0)) {
-			/* Valid UID */
-			set_flags |= DEFAULT_AUTHZ_SET_UID;
-			uid = _uid;
+		if (isdigit(value[0])) {
+			uid = strtol(value, &endptr, 0);
+			if (uid < 0) {
+				(void) snprintf(reqc->line_buf, reqc->line_len,
+						"The given UID '%s' is invalid.",
+						value);
+				goto free_regex;
+			}
 		} else {
-			reqc->errcode = EINVAL;
-			(void) snprintf(reqc->line_buf, reqc->line_len,
-					"The given uid '%s' is not "
-					"a valid UID or user name.",
-					value);
-			goto free_regex;
+			struct passwd *pwd = getpwnam(value);
+			if (!pwd) {
+				(void)snprintf(reqc->line_buf, reqc->line_len,
+						"Unknown user '%s'", value);
+				goto free_regex;
+			}
+			uid = pwd->pw_uid;
 		}
+		set_flags |= DEFAULT_AUTHZ_SET_UID;
 	}
 
 	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_GID);
 	if (value) {
-		struct group *grp;
-		long _gid;
-
-		grp = getgrnam(value);
-		_gid = strtol(value, &endptr, 0);
-		if (grp) {
-			/* Valid group name */
-			gid = grp->gr_gid;
-			set_flags |= DEFAULT_AUTHZ_SET_GID;
-		} else if ((*endptr == '\0') && (_gid > 0)) {
-			/* Valid GID */
-			set_flags |= DEFAULT_AUTHZ_SET_GID;
-			gid = _gid;
+		if (isdigit(value[0])) {
+			gid = strtol(value, &endptr, 0);
+			if (gid < 0) {
+				(void) snprintf(reqc->line_buf, reqc->line_len,
+						"The given GID '%s' is invalid.",
+						value);
+				goto free_regex;
+			}
 		} else {
-			reqc->errcode = EINVAL;
-			(void) snprintf(reqc->line_buf, reqc->line_len,
-					"The given gid '%s' is not "
-					"a valid GID or group name.", value);
-			goto free_regex;
+			struct group *grp = getgrnam(value);
+			if (!grp) {
+				(void) snprintf(reqc->line_buf, reqc->line_len,
+						"Unknown group '%s'", value);
+			}
+			gid = grp->gr_gid;
 		}
+		set_flags |= DEFAULT_AUTHZ_SET_GID;
 	}
 
 	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PERM);
