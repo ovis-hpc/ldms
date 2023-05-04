@@ -15,8 +15,8 @@ jobs:
         image: ovishpc/ovis-ubuntu-build
 
     steps:
-    - uses: actions/checkout@v2
-    # actions/checkout@v2 breaks annotated tags by converting them into
+    - uses: actions/checkout@v3
+    # actions/checkout breaks annotated tags by converting them into
     # lightweight tags, so we need to force fetch the tag again
     # See: https://github.com/actions/checkout/issues/290
     - name: Repair tag
