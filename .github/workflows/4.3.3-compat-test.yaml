@@ -326,7 +326,7 @@ jobs:
         for V in 4.3.{3..6}; do
           diff -u /test/${V}.enum /test/HEAD-${V}.enum > /test/enum-${V}.diff
         done
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v3
       if: ${{ always() }}
       with:
         path: /test/
