@@ -13,10 +13,13 @@
 #include <limits.h>
 #include "kp_kernel_timer.h"
 #include "kp_kernel_info.h"
+#include "kp_all.hpp"
 
 #include <ldms/ldms.h>
 #include <ldms/ldmsd_stream.h>
 #include <ovis_util/util.h>
+
+using namespace KokkosTools;
 
 static uint64_t uniqID = 0;
 static KernelPerformanceInfo* currentEntry;
@@ -33,6 +36,7 @@ static int slurm_rank;
 static int slurm_job_id;
 static int tool_verbosity;
 static char hostname_kp[HOST_NAME_MAX];
+
 
 void increment_counter(const char* name, KernelExecutionType kType) {
 	std::string nameStr(name);
@@ -81,8 +85,8 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		x->sem_rc = 200;
 		ldms_publish = false;
 
-		fprintf(stderr, "KokkosP: LDMS server has rejected a connection attempt for rank %d, will abort attempts to publish events..\n",
-			slurm_rank);
+		fprintf(stderr, "KokkosP: LDMS server has rejected a connection attempt for rank %d, will abort attempts to publish events. Slurm_ID = %d, Hostname = %s\n",
+			slurm_rank,slurm_job_id,hostname_kp);
 
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
@@ -90,16 +94,16 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		x->sem_rc = 300;
 		ldms_publish = false;
 
-		fprintf(stderr, "KokkosP: LDMS has disconncted from its connection for rank %d, will abort attempts to publish events.\n",
-			slurm_rank);
+		fprintf(stderr, "KokkosP: LDMS has disconncted from its connection for rank %d, will abort attempts to publish events. Slurm_ID = %d, Hostname = %s\n",
+			slurm_rank,slurm_job_id,hostname_kp);
 
 		break;
 	case LDMS_XPRT_EVENT_ERROR:
 		x->sem_rc = 400;
 		ldms_publish = false;
 
-		fprintf(stderr, "KokkosP: LDMS server reports an error for rank %d, will abort attempts to publish events.\n",
-			slurm_rank);
+		fprintf(stderr, "KokkosP: LDMS server reports an error for rank %d, will abort attempts to publish events. Slurm_ID = %d, Hostname = %s\n",
+			slurm_rank,slurm_job_id,hostname_kp);
 		break;
 	case LDMS_XPRT_EVENT_RECV:
 		int server_rc = ldmsd_stream_response(e);
@@ -163,12 +167,13 @@ extern "C" void kokkosp_init_library(const int loadSeq,
 	int rc = sem_timedwait(&ldms->sem, &ts);
 	if (!rc) {
 		if(ldms->sem_rc) {
-			fprintf(stderr, "Error connecting to LDMS return-code: %d\n", ldms->sem_rc);
+			fprintf(stderr, "Error connecting to LDMS return-code: %d. Slurm_ID = %d, Rank = %d, Hostname = %s\n", ldms->sem_rc,slurm_job_id,slurm_rank,hostname_kp);
 			return;
 		}
 	}
 	else {
-		fprintf(stderr, "Error connecting to LDMS return-code: %d\n", ldms_rc);
+                rc=errno;
+		fprintf(stderr, "Error connection timed-out, connect_by_name: %d, %s. Slurm_ID =  %d, Rank = %d, Hostname = %s\n", ldms_rc, STRERROR(rc),slurm_job_id,slurm_rank,hostname_kp);
 		return;
 	}
 
@@ -188,7 +193,6 @@ extern "C" void kokkosp_begin_parallel_for(const char* name, const uint32_t devI
 		fprintf(stderr, "Error: kernel is empty\n");
 		exit(-1);
 	}
-
 	increment_counter(name, PARALLEL_FOR);
 }
 
@@ -201,7 +205,6 @@ extern "C" void kokkosp_begin_parallel_scan(const char* name, const uint32_t dev
 		fprintf(stderr, "Error: kernel is empty\n");
 		exit(-1);
 	}
-
 	increment_counter(name, PARALLEL_SCAN);
 }
 
@@ -214,7 +217,6 @@ extern "C" void kokkosp_begin_parallel_reduce(const char* name, const uint32_t d
 		fprintf(stderr, "Error: kernel is empty\n");
 		exit(-1);
 	}
-
 	increment_counter(name, PARALLEL_REDUCE);
 }
 
