@@ -115,8 +115,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'updtr_task': {'req_attr': ['name'], 'opt_attr': []},
                       'update_time_stats' : {'req_attr': [], 'opt_attr' : ['name']},
                       ##### Storage Policy #####
-                      'strgp_add': {'req_attr': ['name', 'plugin', 'container', 'schema'],
-                                    'opt_attr' : [ 'flush', 'decomposition', 'perm' ] },
+                      'strgp_add': {'req_attr': ['name', 'plugin', 'container'],
+                                    'opt_attr' : ['schema', 'regex', 'flush', 'decomposition', 'perm' ] },
                       'strgp_del': {'req_attr': ['name']},
                       'strgp_prdcr_add': {'req_attr': ['name', 'regex']},
                       'strgp_prdcr_del': {'req_attr': ['name', 'regex']},
@@ -2629,7 +2629,8 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def strgp_add(self, name, plugin, container, schema, perm=0o777, flush=None, decomp=None):
+    def strgp_add(self, name, plugin, container, schema=None,
+                  regex=None, perm=0o777, flush=None, decomp=None):
         """
         Add a Storage Policy that will store metric set data when
         updates complete on a metric set.
@@ -2638,10 +2639,11 @@ class Communicator(object):
         name      - The unique storage policy name.
         plugin    - The name of the storage backend.
         container - The storage backend container name.
-        schema    - The schema name of the metric set to store.
-
 
         Keyword Parameters:
+        schema    - The schema name of the metric set to store. If 'schema' is given, 'regex' is ignored.
+        regex       A regular expression matching set schemas. This must be
+                    used with decomposition. Either 'schema' or 'regex' must be given.
         perm    -   The permission required to modify the storage policy,
                     default perm=0o600
         flush   -   Interval between calls to the storage plugin flush method.
@@ -2656,9 +2658,13 @@ class Communicator(object):
             LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
             LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PLUGIN, value=plugin),
             LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.CONTAINER, value=container),
-            LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.SCHEMA, value=schema),
             LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PERM, value=str(perm)),
         ]
+
+        if schema is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.SCHEMA, value = schema))
+        if regex is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.REGEX, value = regex))
         if decomp is not None:
             attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.DECOMPOSITION, value = decomp))
         if flush is not None:

@@ -722,7 +722,8 @@ class LdmsdCmdParser(cmd.Cmd):
         name=      The unique storage policy name.
         plugin=    The name of the storage backend.
         container= The storage backend container name.
-        schema=    The schema name of the metric set to store.
+        [schema=]  The schema name of the metric set to store. If 'schema' is given, 'regex' is ignored.
+        [regex=]   A regular expression matching set schemas. It must be used with decomposition.
         [flush=]   The interval between calls to the storage plugin flush method.
                    By default, the flush method is not called.
         [perm=]    The permission to modify the storage policy in the future.
@@ -735,6 +736,7 @@ class LdmsdCmdParser(cmd.Cmd):
                                       arg['plugin'],
                                       arg['container'],
                                       arg['schema'],
+                                      arg['regex'],
                                       arg['perm'],
                                       arg['flush'],
                                       arg['decomposition'])
