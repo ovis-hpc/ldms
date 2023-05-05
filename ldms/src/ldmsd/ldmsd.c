@@ -1456,6 +1456,11 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
 			errno = ENOMEM;
 			goto err;
 		}
+		listen->auth_dom_name = strdup(auth_dom->obj.name);
+		if (!listen->auth_dom_name) {
+			errno = ENOMEM;
+			goto err;
+		}
 		if (auth_dom->attrs) {
 			listen->auth_attrs = av_copy(auth_dom->attrs);
 			if (!listen->auth_attrs) {

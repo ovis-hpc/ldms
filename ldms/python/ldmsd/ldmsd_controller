@@ -255,6 +255,19 @@ class LdmsdCmdParser(cmd.Cmd):
         for cmd in fin:
             self.onecmd(cmd)
 
+    def do_dump_cfg(self, arg):
+        """
+        Dump the current running configuration to a file specified in the path
+
+        Parameters:
+        path - path to file
+        """
+        arg = self.handle_args('dump_cfg', arg)
+        if arg:
+            rc, msg = self.comm.dump_cfg(arg['path'])
+            if rc:
+                print(f'Error {rc} printing current configuration: {msg}')
+
     def do_source(self, arg):
         """
         Parse commands from the specified file as if they were entered
