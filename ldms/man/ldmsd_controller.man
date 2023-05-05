@@ -557,9 +557,13 @@ The name of the storage backend.
 .br
 The storage backend container name.
 .TP
-.BI schema " schema"
+.BI [schema " schema"]
 .br
-The schema name of the metric set to store.
+The schema name of the metric set to store. If 'schema' is given, 'regex' is ignored. Either 'schema' or 'regex' must be given.
+.TP
+.BI [regex " regex"]
+.br
+a regular expression matching set schemas. It must be used with decomposition. Either 'schema' or 'regex' must be given.
 .TP
 .BI [perm " permission"]
 .br
