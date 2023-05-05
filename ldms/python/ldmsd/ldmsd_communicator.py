@@ -140,6 +140,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       ##### Misc. #####
                       'greeting': {'req_attr': [], 'opt_attr': ['name', 'offset', 'level', 'test', 'path']},
                       'example': {'req_attr': [], 'opt_attr': []},
+                      'dump_cfg': {'req_attr':[], 'opt_attr': ['path']},
                       'set_info': {'req_attr': ['instance'], 'opt_attr': []},
                       'xprt_stats': {'req_attr':[], 'opt_attr': ['reset']},
                       'thread_stats': {'req_attr':[], 'opt_attr': ['reset']},
@@ -446,6 +447,7 @@ class LDMSD_Request(object):
     EXAMPLE = 1
     GREETING = 2
     CFG_CNTR = 3
+    DUMP_CFG = 4
 
     PRDCR_ADD = 0x100
     PRDCR_DEL = 0x100 + 1
@@ -548,6 +550,7 @@ class LDMSD_Request(object):
             'example': {'id': EXAMPLE},
             'greeting': {'id': GREETING},
             'cfg_cntr': {'id': CFG_CNTR},
+            'dump_cfg': {'id': DUMP_CFG},
 
             'prdcr_add': {'id': PRDCR_ADD},
             'prdcr_del': {'id': PRDCR_DEL},
@@ -935,7 +938,9 @@ class Communicator(object):
 
     def connect(self, timeout=0):
         try:
-            self.ldms.connect(self.host, self.port, timeout=timeout)
+            if not self.ldms:
+                self.ldms = ldms.Xprt(name=self.xprt, auth=self.auth, auth_opts=self.auth_opt)
+            rc = self.ldms.connect(self.host, self.port, timeout=timeout)
         except Exception as e:
             if self.auth is not None:
                 if self.auth_opt is not None:
@@ -948,6 +953,8 @@ class Communicator(object):
             print(f'{e}: connecting to {self.host} on port {self.port} using {self.xprt}{auth_s}')
             self.state = self.CLOSED
             return errno.ENOTCONN
+        if rc:
+            return 1
         self.type = 'inband'
         self.state = self.CONNECTED
         rc, self.CFG_CNTR = self.getCfgCntr()
@@ -1015,6 +1022,29 @@ class Communicator(object):
             req.send(self)
             resp = req.receive(self)
             return resp['errcode'], resp['attr_list']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
+
+    def dump_cfg(self, path=None):
+        """
+        Dumps the currently running configuration of a running ldmsd
+        Parameters:
+        path - The path to write the configuration to
+               defaults to the current users home directory
+        Returns:
+        - status is an errno from the errno module
+        - data is an error message if status is !=0 or None
+        """
+        if path is None:
+            path = os.path.expanduser('~')
+        filename = f'{path}/{self.host}-{self.port}.conf'
+        req = LDMSD_Request(command_id=LDMSD_Request.DUMP_CFG,
+                            attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STRING, value=filename) ]
+              )
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
         except Exception as e:
             return errno.ENOTCONN, str(e)
 

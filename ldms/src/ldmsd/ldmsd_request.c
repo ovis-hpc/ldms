@@ -192,6 +192,7 @@ struct request_handler_entry {
 
 static int example_handler(ldmsd_req_ctxt_t req_ctxt);
 static int ldmsd_cfg_cntr_handler(ldmsd_req_ctxt_t req_ctxt);
+static int dump_cfg_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_add_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_start_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -304,6 +305,7 @@ static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc);
 static struct request_handler_entry request_handler[] = {
 	[LDMSD_EXAMPLE_REQ] = { LDMSD_EXAMPLE_REQ, example_handler, XALL },
 	[LDMSD_CFG_CNTR_REQ] = { LDMSD_CFG_CNTR_REQ, ldmsd_cfg_cntr_handler, XUG },
+	[LDMSD_DUMP_CFG_REQ] = { LDMSD_DUMP_CFG_REQ, dump_cfg_handler, XUG },
 
 	/* PRDCR */
 	[LDMSD_PRDCR_ADD_REQ] = {
@@ -6094,6 +6096,185 @@ out:
 	free(rep_len_str);
 	free(num_rec_str);
 	return 0;
+}
+
+static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
+{
+	FILE *fp;
+	char *filename = NULL;
+        extern struct plugin_list plugin_list;
+        struct ldmsd_plugin_cfg *p;
+        int rc;
+	int i;
+        reqc->errcode = 0;
+	filename = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+	fp = fopen(filename, "w+");
+
+	/* Auth */
+	ldmsd_auth_t auth;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_AUTH);
+	for (auth = (ldmsd_auth_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_AUTH); auth;
+			auth = (ldmsd_auth_t)ldmsd_cfgobj_next(&auth->obj)) {
+		fprintf(fp, "auth_add name=%s plugin=%s", auth->obj.name, auth->plugin);
+		if (auth->attrs) {
+			for (i = 0; i < auth->attrs->count; i++) {
+				struct attr_value *v = &auth->attrs->list[i];
+				fprintf(fp, " %s=%s", v->name, v->value);
+			}
+		}
+		fprintf(fp, "\n");
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_AUTH);
+	/* Listeners */
+	ldmsd_listen_t listen;
+	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN); listen;
+			listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
+		fprintf(fp, "listen xprt=%s port=%d",
+			listen->xprt,
+			listen->port_no);
+		if (listen->host)
+			fprintf(fp, " host=%s", listen->host);
+		if (listen->auth_name) {
+			if (listen->auth_dom_name)
+				fprintf(fp, " auth=%s", listen->auth_dom_name);
+			else
+				fprintf(fp, " auth=DEFAULT");
+		}
+		fprintf(fp, "\n");
+	}
+	/* Producers */
+	ldmsd_prdcr_t prdcr = NULL;
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	for (prdcr = ldmsd_prdcr_first(); prdcr;
+			prdcr = ldmsd_prdcr_next(prdcr)) {
+		ldmsd_prdcr_stream_t s;
+
+		ldmsd_prdcr_lock(prdcr);
+		fprintf(fp, "prdcr_add name=%s host=%s port=%d xprt=%s type=%s interval=%ld auth=%s uid=%d gid=%d\n",
+			prdcr->obj.name, prdcr->host_name,
+			prdcr->port_no, prdcr->xprt_name,
+			ldmsd_prdcr_type2str(prdcr->type),
+			prdcr->conn_intrvl_us,
+			prdcr->conn_auth_name,
+			prdcr->obj.uid, prdcr->obj.gid);
+		if (prdcr->conn_state == LDMSD_PRDCR_STATE_CONNECTED)
+			fprintf(fp, "prdcr_start name=%s\n", prdcr->obj.name);
+		/* Streams */
+		LIST_FOREACH(s, &prdcr->stream_list, entry) {
+			fprintf(fp, "prdcr_subscribe regex=%s stream=%s\n", prdcr->obj.name, s->name);
+		}
+		ldmsd_prdcr_unlock(prdcr);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	/* Plugins */
+        LIST_FOREACH(p, &plugin_list, entry) {
+		fprintf(fp, "load name=%s\n", p->name);
+		fprintf(fp, "config name=%s ", p->name);
+		for (i = 0; i < p->plugin->av_list->count; i++) {
+			struct attr_value *v = &p->plugin->av_list->list[i];
+			if (i > 0)
+				fprintf(fp, " ");
+			fprintf(fp, "%s=%s", v->name, v->value);
+		}
+		fprintf(fp, "\n");
+		if (p->plugin->type == LDMSD_PLUGIN_SAMPLER)
+			fprintf(fp, "start name=%s interval=%ld offset=%ld\n",
+				p->plugin->name,
+				p->sample_interval_us,
+				p->sample_offset_us);
+        }
+	/*  Updaters WIP - push modes */
+	ldmsd_name_match_t match;
+	ldmsd_updtr_t updtr;
+	char *sel_str;
+	char *updtr_mode = NULL;
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
+	for (updtr = ldmsd_updtr_first(); updtr;
+			updtr = ldmsd_updtr_next(updtr)) {
+		/* Initial updater configuration */
+		fprintf(fp, "updtr_add name=%s", updtr->obj.name);
+		if (updtr->is_auto_task)
+			updtr_mode = "auto_interval=true";
+		else if (updtr->push_flags & LDMSD_UPDTR_F_PUSH)
+			updtr_mode = "push=true";
+		else if (updtr->push_flags & LDMSD_UPDTR_F_PUSH_CHANGE)
+			updtr_mode = "push=onchange";
+		if (updtr_mode)
+			fprintf(fp, " %s", updtr_mode);
+		fprintf(fp, " interval=%ld\n", updtr->default_task.task.sched_us);
+		/* Add producers to updater */
+		ldmsd_prdcr_ref_t ref;
+		for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
+				ref = ldmsd_updtr_prdcr_next(ref)) {
+			ldmsd_prdcr_lock(ref->prdcr);
+			if (ref->prdcr->conn_state == LDMSD_PRDCR_STATE_CONNECTED)
+				fprintf(fp, "updtr_prdcr_add name=%s regex=%s\n", updtr->obj.name, ref->prdcr->obj.name);
+			ldmsd_prdcr_unlock(ref->prdcr);
+		}
+		/* Add match sets if there are any */
+		if (!LIST_EMPTY(&updtr->match_list)) {
+			LIST_FOREACH(match, &updtr->match_list, entry) {
+				for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
+						ref = ldmsd_updtr_prdcr_next(ref)) {
+					ldmsd_prdcr_lock(ref->prdcr);
+					ldmsd_prdcr_set_t prd_set;
+					for (prd_set = ldmsd_prdcr_set_first(ref->prdcr); prd_set;
+							prd_set = ldmsd_prdcr_set_next(prd_set)) {
+						if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
+							rc = regexec(&match->regex, prd_set->inst_name, 0, NULL, 0);
+						else
+							rc = regexec(&match->regex, prd_set->schema_name, 0, NULL, 0);
+						if (rc)
+							continue;
+						if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
+							sel_str = "inst";
+						else
+							sel_str = "schema";
+						fprintf(fp, "updtr_match_add name=%s match=%s regex=%s\n",
+							updtr->obj.name, sel_str, match->regex_str);
+					}
+					ldmsd_prdcr_unlock(ref->prdcr);
+				}
+			}
+		}
+		fprintf(fp, "updtr_start name=%s\n", updtr->obj.name);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+	/* Storage Policies */
+	ldmsd_strgp_t strgp;
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
+	for (strgp = ldmsd_strgp_first(); strgp;
+		strgp = ldmsd_strgp_next(strgp)) {
+		fprintf(fp, "strgp_add name=%s "
+			"plugin=%s "
+			"container=%s "
+			"schema=%s "
+			"flush=%ld "
+			"perm=%d ",
+			strgp->obj.name,
+			strgp->plugin_name,
+			strgp->container,
+			strgp->schema,
+			strgp->flush_interval.tv_sec,
+			strgp->obj.perm);
+		/*
+		if (strgp->decomp)
+			fprintf(fp, "decomposition=%s", strgp->decomp);
+		*/
+		fprintf(fp, "\n");
+		if (strgp->state == LDMSD_STRGP_STATE_RUNNING)
+			fprintf(fp, "strgp_start name=%s\n", strgp->obj.name);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+	goto send_reply;
+send_reply:
+	fclose(fp);
+	free(filename);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
 }
 
 static int unimplemented_handler(ldmsd_req_ctxt_t reqc)
