@@ -194,7 +194,8 @@ static int create_metric_set(base_data_t base)
 		myFile = fopen(command[i], "r");
 		if (myFile == NULL)
 		{
-			msglog(LDMSD_LERROR, SAMP ": failed to open file during config.\n");
+			msglog(LDMSD_LERROR, SAMP ": failed to open file %s during config. Check max_mc and max_csrow (%d, %d) against hardware present.\n",
+				command[i], max_mc, max_csrow);
 			rc = EINVAL;
 			edac_valid=0;
 			return rc;
@@ -295,6 +296,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = config_check(kwl, avl, arg);
 	if (rc != 0){
+		msglog(LDMSD_LERROR, SAMP ": failed config_check.\n");
 		return rc;
 	}
 
@@ -333,6 +335,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	base = base_config(avl, SAMP, SAMP, msglog);
 	if (!base) {
+		msglog(LDMSD_LERROR, SAMP ": failed base_config.\n");
 		rc = EINVAL;
 		goto err;
 	}
@@ -345,6 +348,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	edac_valid=1;
 
+	msglog(LDMSD_LDEBUG, SAMP ": config max_mc %d max_csrow %d.\n", max_mc, max_csrow);
 	return 0;
 
 err:
@@ -410,6 +414,8 @@ static int sample(struct ldmsd_sampler *self)
 			msglog(LDMSD_LERROR, SAMP ": read a uint64_t failed from %s: \"%s\": %s\n",
 				command[i], lineBuffer, STRERROR(rc));
 			goto out;
+		} else {
+			rc = 0;
 		}
 		ldms_metric_set(set, metric_no, &v);
 		metric_no++;
