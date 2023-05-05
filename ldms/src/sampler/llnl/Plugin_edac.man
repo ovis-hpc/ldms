@@ -47,27 +47,26 @@ This reports counts for both correctable and uncorrectable errors per mc and per
 
 .SH EXAMPLES
 .PP
+In the shell starting the daemon:
+.nf
+export max_mc=$(ls /sys/devices/system/edac/mc/mc* -d |wc -l)
+export max_csrow=$(ls /sys/devices/system/edac/mc/mc0/csrow* -d |wc -l)
+
 Within ldmsd_controller or a configuration file:
 .nf
 load name=edac
-config name=edac producer=vm1_1 component_id=1 instance=vm1_1/edac max_mc=2 max_csrow=4
+config name=edac producer=vm1_1 component_id=1 instance=vm1_1/edac max_mc=${max_mc} max_csrow=${max_csrow} schema=edac_${max_mc}x${max_csrow}
 start name=edac interval=1000000
 .fi
 
 .SH NOTES
 .PP
 An upper limit on metric set size is enforced. Configuring to collect too many registers will generate an error detailing the compiled size limit. This limit is only adjustable in the source code.
+The edac information is assumed to be rectangular, that is every mc device has the same number of csrow elements within.
+This is known to be untrue on ThunderX2 processors, but the tx2mon plugin is the correct plugin to use instead for tracking memory errors on that architecture.
 .PP
 For more detailed background information,
 see www.kernel.org/doc/Documentation/edac.txt and www.kernel.org/doc/Documentation/ABI/testing/sysfs-devices-edac.
-
-.SH AUTHORS
-Kathleen Shoga <shoga1@llnl.gov> (Lawrence Livermore National Laboratory).
-Ported to LDMS v3 by Benjamin Allan <baallan@sandia.gov>.
-Ported to LDMS v4 by Ann Gentile  <gentile@sandia.gov>.
-
-.SH ACKNOWLEDGMENTS
-This work was created under the auspices of the U.S. Department of Energy by Lawrence Livermore National Laboratory under Contract DE-AC52-07NA27344. Release Number: LLNL-SM-687054.
 
 .SH SEE ALSO
 edac(3), edac-util(8), edac-ctl(8), ldms(7), ldms_sampler_base(7)

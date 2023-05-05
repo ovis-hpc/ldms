@@ -1,5 +1,15 @@
 export plugname=edac
 portbase=61012
+# data comes from /sys/devices/system/edac/mc/mc*/csrow*
+export max_mc=$(ls /sys/devices/system/edac/mc/mc* -d |wc -l)
+export max_csrow=$(ls /sys/devices/system/edac/mc/mc0/csrow* -d |wc -l)
+for mc in $(seq 1 $(($max_mc -1))); do
+	next_csrow=$(ls /sys/devices/system/edac/mc/mc$mc/csrow* -d |wc -l)
+	if test "$next_csrow" != "$max_csrow"; then
+		MESSAGE "Found non-rectangular edac data; sampler is not applicable"
+		exit 1
+	fi
+done
 LDMSD 1
 LDMSD -p prolog.store2 2
 MESSAGE ldms_ls on host 1:
