@@ -206,6 +206,7 @@ typedef struct ldmsd_prdcr {
 	char *xprt_name;	/* Transport name */
 	ldms_t xprt;
 	long conn_intrvl_us;	/* connect interval */
+	char *conn_auth_name;			/* auth domain name */
 	char *conn_auth;			/* auth method for the connection */
 	struct attr_value_list *conn_auth_args;  /* auth options of the connection auth */
 
@@ -735,6 +736,7 @@ int process_config_file(const char *path, int *lineno, int trust);
 struct attr_value_list;
 struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN];
+	struct attr_value_list *av_list;
 	enum ldmsd_plugin_type {
 		LDMSD_PLUGIN_OTHER = 0,
 		LDMSD_PLUGIN_SAMPLER,
@@ -1360,6 +1362,7 @@ typedef struct ldmsd_listen {
 	unsigned short port_no;
 	char *host;
 	char *auth_name;
+	char *auth_dom_name;
 	struct attr_value_list *auth_attrs;
 	ldms_t x;
 } *ldmsd_listen_t;
