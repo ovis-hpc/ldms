@@ -784,7 +784,38 @@ extern void ldmsd_config_cleanup(void);
 extern int ldmsd_config_init(char *name);
 struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name);
 
+/**
+ * \brief ldmsd_set_register
+ *
+ * Register the metric set \c set with the ldmsd and associate the set
+ * with the plugin \c plugin_name. After registration, the plugin_sets
+ * configuration request will report the set as being provided by \c
+ * plugin_name.
+ *
+ * This function is typically called by a plugin after creating a
+ * metric set.
+ *
+ * \param set The set to register for the plugin
+ * \param plugin_name The name of the plugin to associate with the set
+ * \returns 0 on success
+ */
 int ldmsd_set_register(ldms_set_t set, const char *plugin_name);
+
+/**
+ * \brief ldmsd_set_deregister
+ *
+ * Stop associating the metric set \c set with the plugin
+ * \c plugin_name.  After de-registration, the configuration
+ * plugin_sets will no longer report \c set with the plugin
+ * \c plugin_name.
+ *
+ * This function is typically called by a plugin prior to calling
+ * ldms_set_delete.
+ *
+ * \param set The set to de-register for the plugin
+ * \param plugin_name The name of the plugin
+ * \returns 0 on success
+ */
 void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
 
 /**
