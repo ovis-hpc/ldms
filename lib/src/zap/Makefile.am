@@ -4,7 +4,7 @@ if ENABLE_RDMA
 SUBDIRS += rdma
 endif
 
-if ENABLE_FABRIC
+if HAVE_LIBFABRIC
 SUBDIRS += fabric
 endif
 
