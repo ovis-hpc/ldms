@@ -280,6 +280,7 @@ AS_IF([ test "x$check" = "xy" ], [
 $2_LDFLAGS="$$2_LDFLAGS -l$_LIB"
 
 AM_CONDITIONAL([HAVE_$2], [ test x$_HAVE_HDR = xy -a x$_HAVE_LIB = xy ])
+AC_SUBST([HAVE_$2])
 AC_SUBST([$2_CFLAGS], [$$2_CFLAGS])
 AC_SUBST([$2_LDFLAGS], [$$2_LDFLAGS])
 AC_SUBST([$2_LIBDIR], [$$2_LIBDIR])
