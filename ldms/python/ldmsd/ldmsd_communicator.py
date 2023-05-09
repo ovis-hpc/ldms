@@ -149,6 +149,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth']},
                       'metric_sets_default_authz': {'req_attr':[], 'opt_attr': ['uid', 'gid', 'perm']},
                       'set_sec_mod' : {'req_attr': ['regex'], 'opt_attr': ['uid', 'gid', 'perm']},
+                      'log_status' : {'req_attr' : [], 'opt_attr' : ['name']},
                       ##### Failover. #####
                       'failover_config': {
                                 'req_attr': [
@@ -517,6 +518,7 @@ class LDMSD_Request(object):
     LISTEN = 0x600 + 16
     SET_DEFAULT_AUTHZ = 0x600 + 17
     SET_SEC_MOD = 0x600 + 19
+    LOG_STATUS = 0x600 + 20
 
     FAILOVER_CONFIG        = 0x700
     FAILOVER_PEERCFG_START = 0x700  +  1
@@ -633,6 +635,7 @@ class LDMSD_Request(object):
 
             'metric_sets_default_authz' : {'id' : SET_DEFAULT_AUTHZ },
             'set_sec_mod' : {'id' : SET_SEC_MOD },
+            'log_status' : {'id' : LOG_STATUS },
     }
 
     TYPE_CONFIG_CMD = 1
@@ -3010,6 +3013,23 @@ class Communicator(object):
                                             value = perm))
         req = LDMSD_Request(command_id = LDMSD_Request.SET_SEC_MOD,
                             attrs = attr_list)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def log_status(self, name = None):
+        """
+        List the log systems with the log level threashold
+        """
+        if name is not None:
+            attr_list = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.NAME, value = name)]
+        else:
+            attr_list = []
+        req = LDMSD_Request(command_id = LDMSD_Request.LOG_STATUS, attrs = attr_list)
         try:
             req.send(self)
             resp = req.receive(self)
