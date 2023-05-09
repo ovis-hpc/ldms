@@ -448,17 +448,23 @@ struct ovis_log_buf {
 
 static int __buf_append(struct ovis_log_buf *buf, const char *fmt, ...)
 {
-	va_list ap;
+	va_list ap, ap_dup;
 	size_t cnt;
 	va_start(ap, fmt);
-	cnt = vsnprintf(&buf->buf[buf->off], buf->sz - buf->off, fmt, ap);
-	if (cnt >= buf->sz - buf->off) {
-		char *tmp = realloc(&buf->buf, buf->sz * 2);
-		if (!tmp)
-			return ENOMEM;
-		buf->buf = tmp;
-		buf->sz *= 2;
-		cnt = vsnprintf(&buf->buf[buf->off], buf->sz - buf->off, fmt, ap);
+	va_copy(ap_dup, ap);
+	while (1) {
+		cnt = vsnprintf(&buf->buf[buf->off], buf->sz - buf->off, fmt, ap_dup);
+		va_end(ap_dup);
+		if (cnt >= buf->sz - buf->off) {
+			char *tmp = realloc(buf->buf, buf->sz * 2);
+			if (!tmp)
+				return ENOMEM;
+			buf->buf = tmp;
+			buf->sz *= 2;
+			va_copy(ap_dup, ap);
+			continue;
+		}
+		break;
 	}
 	buf->off += cnt;
 	va_end(ap);
@@ -527,7 +533,7 @@ char *ovis_log_list(const char *subsys)
 			goto err;
 		}
 	} else {
-		rc = __buf_append(buf, "{\"name\":\"%s\","
+		rc = __buf_append(buf, "{\"name\":\"%s (default)\","
 				        "\"desc\":\"%s\","
 				        "\"level\":\"%s\"}",
 					default_log.name,
