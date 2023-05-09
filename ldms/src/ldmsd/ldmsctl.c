@@ -2381,6 +2381,87 @@ static void help_set_sec_mod()
 		"     [perm=]     Octal number representing the permission bits\n");
 }
 
+static void help_log_status()
+{
+	printf( "\nReturn the name, log level, and description of loggers\n\n"
+		"Parameters:\n"
+		"     [name=]    A logger name\n");
+}
+
+static int __print_log_status(json_entity_t logger)
+{
+	json_entity_t name, level, desc;
+
+	if (logger->type != JSON_DICT_VALUE) {
+		printf("--- Unrecognized log status format----\n");
+		return EINVAL;
+	}
+
+	name = json_value_find(logger, "name");
+	level = json_value_find(logger, "level");
+	desc = json_value_find(logger, "desc");
+
+	if (!name || !level || !desc) {
+		printf("--- At least one of the 'name', 'level', 'desc' is missing from the response.----\n");
+		return EINVAL;
+	}
+
+	printf("%-20s %-30s %s\n",
+			json_value_str(name)->str,
+			json_value_str(level)->str,
+			json_value_str(desc)->str);
+	return 0;
+}
+
+static void resp_log_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	int rc;
+	json_parser_t parser;
+	json_entity_t loggers, l;
+
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON)) {
+		printf("Receiving an unrecognized response format.\n");
+		return;
+	}
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
+		return;
+	}
+
+	rc = json_parse_buffer(parser, (char *)attr->attr_value, len, &loggers);
+	if (rc) {
+		printf("Syntax error parsing JSON string.\n");
+		json_parser_free(parser);
+		return;
+	}
+	json_parser_free(parser);
+
+	if (loggers->type != JSON_LIST_VALUE) {
+		printf("Unrecognized JSON log status format\n");
+		goto out;
+	}
+
+	printf("Name                 Levels                         Description\n");
+	printf("-------------------- ------------------------------ ------------------------------\n");
+	for (l = json_item_first(loggers); l; l = json_item_next(l)) {
+		__print_log_status(l);
+	}
+	printf("----------------------------------------------------------------------------------\n");
+	printf("The loggers with the Log Level as 'default' use the same "
+	       "log level as the default logger (ldmsd). When the default log "
+	       "level changes, their log levels change accordingly.\n");
+out:
+	json_entity_free(loggers);
+}
+
 static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
 static int handle_source(struct ldmsctl_ctrl *ctrl, char *path);
 static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
@@ -2407,6 +2488,7 @@ static struct command command_tbl[] = {
 	{ "help", LDMSCTL_HELP, handle_help, NULL, NULL },
 	{ "listen", LDMSD_LISTEN_REQ, NULL, help_listen, resp_generic },
 	{ "load", LDMSD_PLUGN_LOAD_REQ, NULL, help_load, resp_generic },
+	{ "log_status", LDMSD_LOG_STATUS_REQ, NULL, help_log_status, resp_log_status },
 	{ "loglevel", LDMSD_VERBOSE_REQ, NULL, help_loglevel, resp_generic },
 	{ "metric_sets_default_authz", LDMSD_SET_DEFAULT_AUTHZ_REQ, NULL,
 			help_metric_sets_default_authz, resp_generic },

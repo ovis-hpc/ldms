@@ -2134,6 +2134,31 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_set_sec_mod(self, text, line, begidx, endidx):
         return self.__complete_attr_list('set_sec_mod', text)
 
+    def do_log_status(self, arg):
+        """
+        Return the list of loggers and their log level thresholds
+
+        If a name is given, only the log level threashold of the matched logger will be returned.
+
+        Parameters:
+           [name=]    A logger name.
+        """
+        arg = self.handle_args('log_status', arg)
+        rc, msg = self.comm.log_status(name = arg['name'])
+        if rc:
+            print(f"Error getting the logger infomation. {msg}")
+        loggers = fmt_status(msg)
+
+        print(f"{'Name':20} {'Log Level':30} Description")
+        print(f"{'-'*20} {'-'*30} {'-'*30}")
+
+        for l in loggers:
+            print(f"{l['name']:20} {l['level']:30} {l['desc']}")
+        print(f"{'-'*(20 + 30 + 30 + 2)}")
+        print("The loggers with the Log Level as 'default' use the same "
+              "log level as the default logger (ldmsd). When the default log "
+              "level changes, their log levels change accordingly.")
+
     def do_option(self, arg):
         """
         ONLY SUPPORTED IN CONFIGURATION FILES

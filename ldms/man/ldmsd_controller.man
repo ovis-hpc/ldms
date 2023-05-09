@@ -731,6 +731,15 @@ A logger name
 A regular expression matching logger names. If neither 'name' or 'regex' is given, the command sets the default log level to the given level. For example, 'regex=xprt.*' will change the transport-related log levels. Use log_status to query the available log infrastructures.
 .RE
 
+.SS Query LDMSD's log information
+.BR log_status
+attr=<value>
+.RS
+.BI [name " value"]
+.br
+A logger name
+.RE
+
 .SS Exit the connected LDMS daemon gracefully
 .BR daemon_exit
 
@@ -995,6 +1004,104 @@ meminfo_vmstat
                   meminfo            schema
 node01_procstat2
                   node01/procstat2   inst
+ldmsd_controller>
+.fi
+
+.SS
+Example of log_status's report
+.nf
+ldmsd_controller> log_status
+Name                 Levels                         Description
+-------------------- ------------------------------ ------------------------------
+ldmsd (default)      ERROR,CRITICAL                 The default log subsystem
+config               default                        Messages for the configuration infrastructure
+failover             default                        Messages for the failover infrastructure
+producer             default                        Messages for the producer infrastructure
+sampler              default                        Messages for the common sampler infrastructure
+store                default                        Messages for the common storage infrastructure
+stream               default                        Messages for the stream infrastructure
+updater              default                        Messages for the updater infrastructure
+xprt.ldms            default                        Messages for ldms
+xprt.zap             default                        Messages for Zap
+xprt.zap.sock        default                        Messages for zap_sock
+----------------------------------------------------------------------------------
+The loggers with the Log Level as 'default' use the same log level as the
+default logger (ldmsd). When the default log level changes, their log levels
+change accordingly.
+
+# Change the log level of the config infrastructure to INFO and above
+ldmsd_controller> loglevel name=config level=INFO
+ldmsd_controller> log_status
+Name                 Log Level                      Description
+-------------------- ------------------------------ ------------------------------
+ldmsd (default)      ERROR,CRITICAL                 The default log subsystem
+config               INFO,WARNING,ERROR,CRITICAL    Messages for the configuration infrastructure
+failover             default                        Messages for the failover infrastructure
+producer             default                        Messages for the producer infrastructure
+sampler              default                        Messages for the common sampler infrastructure
+store                default                        Messages for the common storage infrastructure
+stream               default                        Messages for the stream infrastructure
+updater              default                        Messages for the updater infrastructure
+xprt.ldms            default                        Messages for ldms
+xprt.zap             default                        Messages for Zap
+xprt.zap.sock        default                        Messages for zap_sock
+----------------------------------------------------------------------------------
+The loggers with the Log Level as 'default' use the same log level as the
+default logger (ldmsd). When the default log level changes, their log levels
+change accordingly.
+
+# Change the transport-related log levels to ERROR. That is, only the ERROR messages will be reported.
+ldmsd_controller> loglevel regex=xprt.* level=ERROR,
+ldmsd_controller> log_status
+Name                 Log Level                      Description
+-------------------- ------------------------------ ------------------------------
+ldmsd (default)      ERROR,CRITICAL                 The default log subsystem
+config               INFO,WARNING,ERROR,CRITICAL    Messages for the configuration infrastructure
+failover             default                        Messages for the failover infrastructure
+producer             default                        Messages for the producer infrastructure
+sampler              default                        Messages for the common sampler infrastructure
+store                default                        Messages for the common storage infrastructure
+stream               default                        Messages for the stream infrastructure
+updater              default                        Messages for the updater infrastructure
+xprt.ldms            ERROR,                         Messages for ldms
+xprt.zap             ERROR,                         Messages for Zap
+xprt.zap.sock        ERROR,                         Messages for zap_sock
+----------------------------------------------------------------------------------
+The loggers with the Log Level as 'default' use the same log level as the
+default logger (ldmsd). When the default log level changes, their log levels
+change accordingly.
+
+# Set the log levels of all infrastructures to the default level
+ldmsd_controller> loglevel regex=.* level=default
+ldmsd_controller> log_status
+Name                 Log Level                      Description
+-------------------- ------------------------------ ------------------------------
+ldmsd (default)      ERROR,CRITICAL                 The default log subsystem
+config               default                        Messages for the configuration infrastructure
+failover             default                        Messages for the failover infrastructure
+producer             default                        Messages for the producer infrastructure
+sampler              default                        Messages for the common sampler infrastructure
+store                default                        Messages for the common storage infrastructure
+stream               default                        Messages for the stream infrastructure
+updater              default                        Messages for the updater infrastructure
+xprt.ldms            default                        Messages for ldms
+xprt.zap             default                        Messages for Zap
+xprt.zap.sock        default                        Messages for zap_sock
+----------------------------------------------------------------------------------
+The loggers with the Log Level as 'default' use the same log level as the
+default logger (ldmsd). When the default log level changes, their log levels
+change accordingly.
+
+# Get the information of a specific log infrastructure
+ldmsd_controller> log_status name=config
+Name                 Log Level                      Description
+-------------------- ------------------------------ ------------------------------
+ldmsd (default)      ERROR,CRITICAL                 The default log subsystem
+config               default                        Messages for the configuration infrastructure
+----------------------------------------------------------------------------------
+The loggers with the Log Level as 'default' use the same log level as the
+default logger (ldmsd). When the default log level changes, their log levels
+change accordingly.
 ldmsd_controller>
 .fi
 

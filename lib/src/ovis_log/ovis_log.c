@@ -531,19 +531,29 @@ char *ovis_log_list(const char *subsys)
 		goto err;
 	}
 
+	rc = __buf_append(buf, "{\"name\":\"%s (default)\","
+			        "\"desc\":\"%s\","
+			        "\"level\":\"%s\"}",
+				default_log.name,
+				default_log.desc,
+				ovis_log_level_to_str(default_log.level));
+	if (rc) {
+		errno = rc;
+		goto err;
+	}
+
 	if (l) {
+		rc = __buf_append(buf, ",");
+		if (rc) {
+			errno = rc;
+			goto err;
+		}
 		rc = __get_log_info(l, buf);
 		if (rc) {
 			errno = rc;
 			goto err;
 		}
 	} else {
-		rc = __buf_append(buf, "{\"name\":\"%s (default)\","
-				        "\"desc\":\"%s\","
-				        "\"level\":\"%s\"}",
-					default_log.name,
-					default_log.desc,
-					ovis_log_level_to_str(default_log.level));
 		RBT_FOREACH(rbn, &subsys_tree) {
 			rc = __buf_append(buf, ",");
 			if (rc) {
