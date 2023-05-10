@@ -415,7 +415,18 @@ static void help_loglevel()
 {
 	printf( "\nChange the verbosity level of ldmsd\n\n"
 		"Parameters:\n"
-		"	level=	levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]\n");
+		"	level=	  The valid choices are 'default', 'quiet',\n"
+		"                 or a comma-separated list of DEBUG, INFO, WARN, ERROR, and CRITICAL.\n"
+		"                 It is case insensitive.\n"
+		"                 \n"
+		"                 Note that '<level>,' and '<level>' give different results.\n"
+		"                 '<level>' -- a single level name -- set the log level\n"
+		"                 to the given level and all the more severity levels.\n"
+		"                 In contrast, '<level>,' -- a level name followed by a comma --\n"
+		"                 set the log level to only the given level.\n"
+		"       [name=]   A logger name\n"
+		"       [regex=]  A regular expression matching logger names,\n"
+		"                 e.g., xprt.* to change the transport-related log levels.\n");
 }
 
 static void help_metric_sets_default_authz()

@@ -5562,12 +5562,16 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
 	subsys = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	regex_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 
-	level = ovis_log_str_to_level(level_s);
-	if (level < 0) {
-		reqc->errcode = EINVAL;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The given level %s is invalid.", level_s);
-		goto out;
+	if (0 == strcasecmp(level_s, "default") || (0 == strcasecmp(level_s, "reset"))) {
+		level = OVIS_LDEFAULT;
+	} else {
+		level = ovis_log_str_to_level(level_s);
+		if (level < 0) {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"The given level %s is invalid.", level_s);
+			goto out;
+		}
 	}
 
 	if (regex_s) {
