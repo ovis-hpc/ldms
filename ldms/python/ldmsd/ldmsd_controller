@@ -1306,15 +1306,29 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_loglevel(self, arg):
         """
-        Changing the verbosity level of ldmsd
+        Changing the verbosity level of ldmsd loggers
+
+        If neither 'name' or 'regex' is given, the command will change the default log level.
+
         Parameters:
-        level=    Verbosity levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]
+           level=    The choices are "default", "quiet",
+                     a comma-separated list of DEBUG, INFO, WARN, ERROR, and CRITICAL.
+                    It is case insensitive.
+
+                     Note that "<level>," and "<level>" give different results.
+                     "<level>" -- a single level name -- set the log level
+                     to the given level and all the more severity levels.
+                     In contrast, "<level>," -- a level name followed by a comma --
+                     set the log level to only the given level.
+           [name=]   A logger name
+           [regex=]  A regular expression matching logger names,
+                     e.g., xprt.* to change the transport-related log levels.
         """
         arg = self.handle_args('loglevel', arg)
         if arg:
-            rc, msg = self.comm.loglevel(arg['level'])
+            rc, msg = self.comm.loglevel(arg['level'], arg['name'], arg['regex'])
             if rc:
-                print(f'Error changing log level to arg["level"]: {msg}')
+                print(f'Error changing log level: {msg}')
 
     def complete_loglevel(self, text, line, begidx, endidx):
         return self.__complete_attr_list('loglevel', text)

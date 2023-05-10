@@ -707,13 +707,23 @@ The stream name
 .RE
 
 .SH LDMS DAEMON COMMAND SYNTAX
-.SS Changing the verbosity level of ldmsd
+.SS Changing the log levels of LDMSD infrastructures
 .BR loglevel
 attr=<value>
-.RS
-.BI level " level"
+.TP
+.BI level " string"
 .br
-Verbosity levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]
+A string specifying the log levels to be enabled
+
+The valid string are "default", "quiet", and a comma-separated list of DEBUG, INFO, WARN, ERROR, and CRITICAL. It is case insensitive. "default" means to set the log level to the defaul log level. "quiet" means disable the log messages. We note that "<level>," and "<level>" give different results. "<level>" -- a single level name -- sets the log level to the given level and all the higher severity levels. In contrast, "<level>," -- a level name followed by a comma -- sets the log level to only the given level.
+.TP
+.BI [name " name"]
+.br
+A logger name
+.TP
+.BI [regex " regex"]
+.br
+A regular expression matching logger names. If neither 'name' or 'regex' is given, the command sets the default log level to the given level. For example, 'regex=xprt.*' will change the transport-related log levels. Use log_status to query the available log infrastructures.
 .RE
 
 .SS Exit the connected LDMS daemon gracefully

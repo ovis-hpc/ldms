@@ -76,7 +76,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'udata_regex': {'req_attr': ['instance', 'regex', 'base'],
                                       'opt_attr': ['incr']},
                       'version': {'req_attr': [], 'opt_attr': []},
-                      'loglevel': {'req_attr': ['level'],},
+                      'loglevel': {'req_attr': ['level'],
+                                   'opt_attr': ['name', 'regex']},
                       'include': {'req_attr': ['path'] },
                       'env': {'req_attr': []},
                       'logrotate': {'req_attr': [], 'opt_attr': []},
@@ -1642,19 +1643,27 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def loglevel(self, level):
+    def loglevel(self, level, name = None, regex = None):
         """
         Change the verbosity level of ldmsd
 
         Parameters:
-        level  - Verbosity levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]
+           level  - The valid values are "default", "quiet",
+                    or a string of comma-separated list of DEBUG, INFO, WARN, ERROR, and CRITICAL
+           name -   A logger name
+           regex -  A regular expression match logger names
 
         Returns:
         - status is an errno from the errno module
         - data is an error message if status !=0 or None
         """
+        attr_list = [LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.LEVEL, value=level)]
+        if name is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.NAME, value = name))
+        if regex is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.REGEX, value = regex))
         req = LDMSD_Request(command_id=LDMSD_Request.VERBOSITY_CHANGE,
-                            attrs=[LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.LEVEL, value=level)])
+                            attrs = attr_list)
         try:
             req.send(self)
             resp = req.receive(self)

@@ -158,8 +158,13 @@ int ovis_log_set_level(ovis_log_t mylog, int level)
 	ovis_log_t log = mylog;
 	if (!is_level_valid(level))
 		return EINVAL;
-	if (!mylog && (level == OVIS_LDEFAULT)) {
-		/* Ignore OVIS_LDEFAULT because mylog is the default subsystem already. */
+	if ((!mylog || (mylog == &default_log)) && (level == OVIS_LDEFAULT)) {
+		/*
+		 * The caller is trying to change the log level of
+		 * the default logger to the default log level.
+		 *
+		 * Ignore it!
+		 */
 		return 0;
 	}
 	if (!mylog)
@@ -204,7 +209,7 @@ int ovis_log_set_level_by_regex(const char *regex_s, int level)
 		rc = regexec(&regex, l->name, 0, NULL, 0);
 		if (rc)
 			continue;
-		l->level = level;
+		ovis_log_set_level(l, level);
 		cnt++;
 	}
 	pthread_mutex_unlock(&subsys_tree_lock);
