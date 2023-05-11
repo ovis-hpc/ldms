@@ -69,6 +69,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "daemon",             LDMSD_DAEMON_STATUS_REQ  },
 	{  "daemon_exit",        LDMSD_EXIT_DAEMON_REQ  },
 	{  "daemon_status",      LDMSD_DAEMON_STATUS_REQ  },
+	{  "dump_cfg",           LDMSD_DUMP_CFG_REQ },
 	{  "env",                LDMSD_ENV_REQ  },
 	{  "exit",               LDMSD_EXIT_DAEMON_REQ  },
 	{  "failover_config",    LDMSD_FAILOVER_CONFIG_REQ  },
@@ -215,6 +216,7 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	switch (req_id) {
 	case LDMSD_EXAMPLE_REQ  : return "EXAMPLE_REQ";
 	case LDMSD_GREETING_REQ : return "GREETING_REQ";
+	case LDMSD_DUMP_CFG_REQ : return "DUMP_CFG_REQ";
 
 	case LDMSD_PRDCR_ADD_REQ         : return "PRDCR_ADD_REQ";
 	case LDMSD_PRDCR_DEL_REQ         : return "PRDCR_DEL_REQ";

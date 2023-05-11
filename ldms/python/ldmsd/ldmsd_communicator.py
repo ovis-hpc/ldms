@@ -139,7 +139,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       ##### Misc. #####
                       'greeting': {'req_attr': [], 'opt_attr': ['name', 'offset', 'level', 'test', 'path']},
                       'example': {'req_attr': [], 'opt_attr': []},
-                      'dump_cfg': {'req_attr':[], 'opt_attr': ['path']},
+                      'dump_cfg': {'req_attr':['path'], 'opt_attr': []},
                       'set_info': {'req_attr': ['instance'], 'opt_attr': []},
                       'xprt_stats': {'req_attr':[], 'opt_attr': ['reset']},
                       'thread_stats': {'req_attr':[], 'opt_attr': ['reset']},
@@ -1017,17 +1017,15 @@ class Communicator(object):
         """
         Dumps the currently running configuration of a running ldmsd
         Parameters:
-        path - The path to write the configuration to
-               defaults to the current users home directory
+        path - The path to write the configuration file
         Returns:
         - status is an errno from the errno module
         - data is an error message if status is !=0 or None
         """
-        if path is None:
-            path = os.path.expanduser('~')
-        filename = f'{path}/{self.host}-{self.port}.conf'
+        if path is None or path is True:
+            return errno.EINVAL, "Please specify valid configuration path argument"
         req = LDMSD_Request(command_id=LDMSD_Request.DUMP_CFG,
-                            attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STRING, value=filename) ]
+                            attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PATH, value=path) ]
               )
         try:
             req.send(self)
