@@ -118,7 +118,7 @@ static int config(struct ldmsd_plugin *self,
 
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
 
-        sampler_base = base_config(avl, SAMP, "slingshot_metrics", log_fn);
+        sampler_base = base_config(avl, SAMP, "slingshot_info", log_fn);
 
         rc = initialize_ldms_structs();
         if (rc < 0) {
