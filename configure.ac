@@ -138,22 +138,21 @@ m4_ifndef([PKG_CHECK_MODULES],
       [m4_fatal([pkg.m4 not found. Please install pkg-config (Ubuntu) or pkgconfig (RHEL) package])])
 PKG_PROG_PKG_CONFIG
 
-dnl RDC defaults to no instead of search because amd currently recommends
-dnl multiple non-default path installations (/opt).
+AC_LIB_HAVE_LINKFLAGS([rdc_bootstrap], [], [
+#include <rdc/rdc.h>
+])
+AM_CONDITIONAL([HAVE_LIBRDC_BOOTSTRAP], [test "x$HAVE_LIBRDC_BOOTSTRAP" = xyes])
+
 AC_ARG_ENABLE([rdc],
-	[AS_HELP_STRING([--enable-rdc], [attempt components that depend upon AMD rdc tooling @<:@default=no@:>@ for GPUs. Set RDC_CFLAGS=-I$rdcinclude and RDC_LIBS=-L$rdclibdir])],
+	[AS_HELP_STRING([--enable-rdc], [Include components that depend upon AMD rdc tooling. @<:@default=no@:>@ for GPUs.])],
 	[],
-	[enable_rdc="no"])
-if test "$enable_rdc" != "no"; then
-    PKG_CHECK_MODULES([RDC], [rdc],
-		      [AC_DEFINE([HAVE_RDC],[1],[if AMD rdc module present.])],
-		      AC_MSG_ERROR([pkg-config rdc failed])
-		      )
-    AC_MSG_RESULT([rdc include: $RDC_CFLAGS])
-    AC_MSG_RESULT([rdc lib: $RDC_LIBS])
-    HAVE_RDC=yes
-fi
-AM_CONDITIONAL([ENABLE_RDC], [test "x$HAVE_RDC" = xyes])
+	[enable_rdc="check"])
+AS_IF([test "x$enable_rdc" = xyes],[
+	AS_IF([test "x$HAVE_LIBRDC_BOOTSTRAP" = xno],[
+		AC_MSG_ERROR([librdc_bootstrap or rdc/rdc.h not found])
+	])
+])
+AM_CONDITIONAL([ENABLE_RDC], [test "x$enable_rdc" != xno -a "x$HAVE_LIBRDC_BOOTSTRAP" = xyes])
 
 have_zap=0
 
