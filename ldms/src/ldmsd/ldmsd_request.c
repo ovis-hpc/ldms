@@ -57,6 +57,7 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <netdb.h>
 #include <coll/rbt.h>
 #include <pthread.h>
 #include <unistd.h>
@@ -6148,15 +6149,33 @@ out:
 
 static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 {
-	FILE *fp;
+	FILE *fp = NULL;
 	char *filename = NULL;
         extern struct plugin_list plugin_list;
         struct ldmsd_plugin_cfg *p;
         int rc;
 	int i;
+	char hostname[128], port_no[32];
+	rc = ldms_xprt_names(reqc->xprt->ldms.ldms, hostname, sizeof(hostname), port_no, sizeof(port_no),
+				NULL, 0, NULL, 0, NI_NAMEREQD | NI_NUMERICSERV);
         reqc->errcode = 0;
-	filename = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
-	fp = fopen(filename, "w+");
+	filename = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PATH);
+	if (!filename || strlen(filename) == 0) {
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Invalid path argument. Please specify valid directory path");
+		goto err0;
+	}
+	char fullpath[sizeof(filename)+sizeof(hostname)+sizeof(port_no)];
+	snprintf(fullpath, sizeof(fullpath), "%s/%s-%s.conf", filename, hostname, port_no);
+	fp = fopen(fullpath, "w+");
+	if (!fp) {
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Unable to write configuration file at path %s.", fullpath);
+		goto err0;
+	}
+	fprintf(fp, "# This configuration file assumes ldmsd will be started with\n"
+			"# no command line arguments.\n"
+			"# e.g. ldmsd -c %s\n\n", fullpath);
 
 	/* Auth */
 	ldmsd_auth_t auth;
@@ -6175,6 +6194,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_AUTH);
 	/* Listeners */
 	ldmsd_listen_t listen;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_LISTEN);
 	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN); listen;
 			listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
 		fprintf(fp, "listen xprt=%s port=%d",
@@ -6190,6 +6210,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 		}
 		fprintf(fp, "\n");
 	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_LISTEN);
 	/* Producers */
 	ldmsd_prdcr_t prdcr = NULL;
 
@@ -6204,13 +6225,13 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 			prdcr->port_no, prdcr->xprt_name,
 			ldmsd_prdcr_type2str(prdcr->type),
 			prdcr->conn_intrvl_us,
-			prdcr->conn_auth_name,
+			prdcr->conn_auth_dom_name,
 			prdcr->obj.uid, prdcr->obj.gid);
 		if (prdcr->conn_state == LDMSD_PRDCR_STATE_CONNECTED)
 			fprintf(fp, "prdcr_start name=%s\n", prdcr->obj.name);
 		/* Streams */
 		LIST_FOREACH(s, &prdcr->stream_list, entry) {
-			fprintf(fp, "prdcr_subscribe regex=%s stream=%s\n", prdcr->obj.name, s->name);
+			fprintf(fp, "prdcr_subscribe regex=^%s$ stream=%s\n", prdcr->obj.name, s->name);
 		}
 		ldmsd_prdcr_unlock(prdcr);
 	}
@@ -6225,6 +6246,12 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 				fprintf(fp, " ");
 			fprintf(fp, "%s=%s", v->name, v->value);
 		}
+		for (i = 0; i < p->plugin->kw_list->count; i++) {
+			struct attr_value *k = &p->plugin->kw_list->list[i];
+			if (i > 0)
+				fprintf(fp, " ");
+			fprintf(fp, "%s", k->name);
+		}
 		fprintf(fp, "\n");
 		if (p->plugin->type == LDMSD_PLUGIN_SAMPLER)
 			fprintf(fp, "start name=%s interval=%ld offset=%ld\n",
@@ -6232,7 +6259,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 				p->sample_interval_us,
 				p->sample_offset_us);
         }
-	/*  Updaters WIP - push modes */
+	/*  Updaters */
 	ldmsd_name_match_t match;
 	ldmsd_updtr_t updtr;
 	char *sel_str;
@@ -6241,6 +6268,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 	for (updtr = ldmsd_updtr_first(); updtr;
 			updtr = ldmsd_updtr_next(updtr)) {
+		ldmsd_updtr_lock(updtr);
 		/* Initial updater configuration */
 		fprintf(fp, "updtr_add name=%s", updtr->obj.name);
 		if (updtr->is_auto_task)
@@ -6251,43 +6279,34 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 			updtr_mode = "push=onchange";
 		if (updtr_mode)
 			fprintf(fp, " %s", updtr_mode);
-		fprintf(fp, " interval=%ld\n", updtr->default_task.task.sched_us);
+		fprintf(fp, " interval=%ld", updtr->default_task.task.sched_us);
+		if (updtr->default_task.task_flags & LDMSD_TASK_F_SYNCHRONOUS)
+		    fprintf(fp, " offset=%ld\n", updtr->default_task.task.offset_us);
+		else
+			fprintf(fp, "\n");
 		/* Add producers to updater */
 		ldmsd_prdcr_ref_t ref;
 		for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
 				ref = ldmsd_updtr_prdcr_next(ref)) {
 			ldmsd_prdcr_lock(ref->prdcr);
-			if (ref->prdcr->conn_state == LDMSD_PRDCR_STATE_CONNECTED)
-				fprintf(fp, "updtr_prdcr_add name=%s regex=%s\n", updtr->obj.name, ref->prdcr->obj.name);
+			fprintf(fp, "updtr_prdcr_add name=%s regex=^%s$\n", updtr->obj.name, ref->prdcr->obj.name);
 			ldmsd_prdcr_unlock(ref->prdcr);
 		}
 		/* Add match sets if there are any */
 		if (!LIST_EMPTY(&updtr->match_list)) {
 			LIST_FOREACH(match, &updtr->match_list, entry) {
-				for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
-						ref = ldmsd_updtr_prdcr_next(ref)) {
-					ldmsd_prdcr_lock(ref->prdcr);
-					ldmsd_prdcr_set_t prd_set;
-					for (prd_set = ldmsd_prdcr_set_first(ref->prdcr); prd_set;
-							prd_set = ldmsd_prdcr_set_next(prd_set)) {
-						if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
-							rc = regexec(&match->regex, prd_set->inst_name, 0, NULL, 0);
-						else
-							rc = regexec(&match->regex, prd_set->schema_name, 0, NULL, 0);
-						if (rc)
-							continue;
-						if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
-							sel_str = "inst";
-						else
-							sel_str = "schema";
-						fprintf(fp, "updtr_match_add name=%s match=%s regex=%s\n",
-							updtr->obj.name, sel_str, match->regex_str);
-					}
-					ldmsd_prdcr_unlock(ref->prdcr);
-				}
+				if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
+					sel_str = "inst";
+				else
+					sel_str = "schema";
+				fprintf(fp, "updtr_match_add name=%s match=%s regex=^%s$\n",
+					updtr->obj.name, sel_str, match->regex_str);
 			}
 		}
-		fprintf(fp, "updtr_start name=%s\n", updtr->obj.name);
+		/* Check updater status */
+		if (updtr->state == LDMSD_UPDTR_STATE_RUNNING)
+			fprintf(fp, "updtr_start name=%s\n", updtr->obj.name);
+		ldmsd_updtr_unlock(updtr);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 	/* Storage Policies */
@@ -6301,25 +6320,28 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 			"container=%s "
 			"schema=%s "
 			"flush=%ld "
-			"perm=%d ",
+			"perm=%d",
 			strgp->obj.name,
 			strgp->plugin_name,
 			strgp->container,
 			strgp->schema,
 			strgp->flush_interval.tv_sec,
 			strgp->obj.perm);
-		/*
 		if (strgp->decomp)
-			fprintf(fp, "decomposition=%s", strgp->decomp);
-		*/
+			fprintf(fp, " decomposition=%s", strgp->decomp_name);
 		fprintf(fp, "\n");
 		if (strgp->state == LDMSD_STRGP_STATE_RUNNING)
 			fprintf(fp, "strgp_start name=%s\n", strgp->obj.name);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 	goto send_reply;
+err0:
+	rc = EINVAL;
+	reqc->errcode = EINVAL;
+	goto send_reply;
 send_reply:
-	fclose(fp);
+	if (fp)
+		fclose(fp);
 	free(filename);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
