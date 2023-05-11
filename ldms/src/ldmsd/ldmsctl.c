@@ -429,6 +429,15 @@ static void help_loglevel()
 		"                 e.g., xprt.* to change the transport-related log levels.\n");
 }
 
+static void help_dump_cfg()
+{
+	printf( "\nDump the ldmsd's currently running configuration to path\n\n"
+		"Parameters:\n"
+		"    path=        Path to directory where ldmsd should write the running configuration.\n"
+		"                 LDMSD will write to file matching LDMSD's <hostname>-<port> used in\n"
+		"                 configuration request.\n");
+}
+
 static void help_metric_sets_default_authz()
 {
 	printf( "\nSet the default authorization values for subsequently created metric sets\n\n"
@@ -2476,6 +2485,7 @@ static struct command command_tbl[] = {
 	{ "config", LDMSD_PLUGN_CONFIG_REQ, NULL, help_config, resp_generic },
 	{ "daemon_exit", LDMSD_EXIT_DAEMON_REQ, NULL, help_daemon_exit, resp_daemon_exit },
 	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status, resp_daemon_status },
+	{ "dump_cfg", LDMSD_DUMP_CFG_REQ, NULL, help_dump_cfg, resp_generic },
 	{ "failover_config", LDMSD_FAILOVER_CONFIG_REQ, NULL,
 			     help_failover_config, resp_generic },
 	{ "failover_peercfg_start", LDMSD_FAILOVER_PEERCFG_START_REQ, NULL,
@@ -2489,6 +2499,7 @@ static struct command command_tbl[] = {
 	{ "failover_stop", LDMSD_FAILOVER_STOP_REQ, NULL,
 			     help_failover_stop, resp_generic },
 	{ "greeting", LDMSD_GREETING_REQ, NULL, help_greeting, resp_greeting },
+	{ "help", LDMSCTL_HELP, handle_help, NULL, NULL },
 	{ "help", LDMSCTL_HELP, handle_help, NULL, NULL },
 	{ "listen", LDMSD_LISTEN_REQ, NULL, help_listen, resp_generic },
 	{ "load", LDMSD_PLUGN_LOAD_REQ, NULL, help_load, resp_generic },

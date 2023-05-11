@@ -260,7 +260,9 @@ class LdmsdCmdParser(cmd.Cmd):
         Dump the current running configuration to a file specified in the path
 
         Parameters:
-        path - path to file
+        path - path to valid directory to write LDMSD configuration file.
+               Filename is generated using the hostname and port of the ldmsd
+               that received the configuration request. e.g. <hostname>-<port>.conf
         """
         arg = self.handle_args('dump_cfg', arg)
         if arg:
