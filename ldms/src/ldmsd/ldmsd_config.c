@@ -206,6 +206,7 @@ void destroy_plugin(struct ldmsd_plugin_cfg *p)
 	free(p->libpath);
 	free(p->name);
 	av_free(p->plugin->av_list);
+	av_free(p->plugin->kw_list);
 	LIST_REMOVE(p, entry);
 	dlclose(p->handle);
 	free(p);
@@ -315,16 +316,7 @@ int ldmsd_config_plugin(char *plugin_name,
 	pthread_mutex_lock(&pi->lock);
 	rc = pi->plugin->config(pi->plugin, _kw_list, _av_list);
 	pi->plugin->av_list = av_copy(_av_list);
-	/*
-	int i;
-	pi->plugin->av_list = av_new(_av_list->count);
-	pi->plugin->av_list->count = _av_list->count;
-	for (i = 0; i < _av_list->count; i++) {
-		struct attr_value *v = &_av_list->list[i];
-		pi->plugin->av_list->list[i].name = strdup(v->name);
-		pi->plugin->av_list->list[i].value = strdup(v->value);
-	}
-	*/
+	pi->plugin->kw_list = av_copy(_kw_list);
 	pthread_mutex_unlock(&pi->lock);
 	return rc;
 }

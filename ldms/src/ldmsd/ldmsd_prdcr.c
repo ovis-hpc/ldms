@@ -832,8 +832,8 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		errno = ENOENT;
 		goto out;
 	}
-	prdcr->conn_auth_name = strdup(auth_dom->obj.name);
-	if (!prdcr->conn_auth_name)
+	prdcr->conn_auth_dom_name = strdup(auth_dom->obj.name);
+	if (!prdcr->conn_auth_dom_name)
 		goto out;
 	prdcr->conn_auth = strdup(auth_dom->plugin);
 	if (!prdcr->conn_auth)
