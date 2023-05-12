@@ -435,7 +435,7 @@ AC_ARG_ENABLE([infiniband],
 	[AS_HELP_STRING([--enable-infiniband], [require components that depend upon libibmad and libibumad @<:@default=check@:>@])],
 	[],
 	[enable_infiniband="check"])
-AM_CONDITIONAL([ENABLE_INFINIBAND], [test "xenable_infiniband" != xno])
+AM_CONDITIONAL([ENABLE_INFINIBAND], [test "x$enable_infiniband" != xno])
 AS_IF([test "x$enable_infiniband" = xyes],[
 	AS_IF([test "x$HAVE_LIBIBMAD" = xno],
 		[AC_MSG_ERROR([infiniband required libibmad or <infiniband/mad.h> not found])])
@@ -449,8 +449,9 @@ AC_ARG_ENABLE([ibnet],
 	[AS_HELP_STRING([--enable-ibnet], [require the ibnet plugin @<:@default=check@:>@])],
 	[],
 	[enable_ibnet="check"])
-AM_CONDITIONAL([ENABLE_IBNET], [test "xenable_ibnet" != xno])
+AM_CONDITIONAL([ENABLE_IBNET], [test "x$enable_ibnet" != xno])
 AS_IF([test "$enable_ibnet" = xyes],[
+	AC_MSG_NOTICE([Disable ibnet module NOT requested])
 	AS_IF([test "x$HAVE_LIBIBMAD" = xno],
 		[AC_MSG_ERROR([ibnet required libibmad or <infiniband/mad.h> not found])])
 	AS_IF([test "x$HAVE_LIBIBUMAD" = xno],
@@ -465,7 +466,7 @@ AC_ARG_ENABLE([opa2],
 	[AS_HELP_STRING([--enable-opa2], [require the opa2 plugin @<:@default=check@:>@])],
 	[],
 	[enable_opa2="check"])
-AM_CONDITIONAL([ENABLE_OPA2], [test "xenable_opa2" != xno])
+AM_CONDITIONAL([ENABLE_OPA2], [test "x$enable_opa2" != xno])
 AS_IF([test "x$enable_opa2" = xyes],[
 	AS_IF([test "x$HAVE_LIBIBMAD" = xno],
 		[AC_MSG_ERROR([opa2 required libibmad or <infiniband/mad.h> not found])])
@@ -901,7 +902,7 @@ AC_ARG_ENABLE([slingshot],
     [AS_HELP_STRING([--enable-slingshot], [require the slinghost related plugins @<:@default=check@:>@])],
     [],
     [enable_slingshot="check"])
-AM_CONDITIONAL([ENABLE_SLINGSHOT], [test "xenable_slingshot" != xno])
+AM_CONDITIONAL([ENABLE_SLINGSHOT], [test "x$enable_slingshot" != xno])
 AS_IF([test "x$enable_slingshot" = xyes],[
     AS_IF([test "x$HAVE_LIBCXI" = xno],
         [AC_MSG_ERROR([libcxi or its headers not found])])
