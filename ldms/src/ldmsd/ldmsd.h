@@ -894,38 +894,7 @@ ldmsd_store_close(struct ldmsd_store *store, ldmsd_store_handle_t sh)
 	store->close(sh);
 }
 
-/*
- * The #define ldmsd's log levels are defined here
- * to transition the new LDMSD's plugin interfaces
- * that do not receive a log function handle.
- *
- * The LDMSD log level macro will be removed when
- * we completely remove the logic that passes
- * around a log function handle.
- */
-#define LDMSD_LDEBUG    OVIS_LDEBUG
-#define LDMSD_LINFO     OVIS_LINFO
-#define LDMSD_LWARNING  OVIS_LWARN
-#define LDMSD_LERROR    OVIS_LERROR
-#define LDMSD_LCRITICAL OVIS_LCRIT
-#define LDMSD_LALL      OVIS_LALWAYS
-
-__attribute__((format(printf, 1, 2)))
-void ldmsd_ldebug(const char *fmt, ...);
-__attribute__((format(printf, 1, 2)))
-void ldmsd_linfo(const char *fmt, ...);
-__attribute__((format(printf, 1, 2)))
-void ldmsd_lwarning(const char *fmt, ...);
-__attribute__((format(printf, 1, 2)))
-void ldmsd_lerror(const char *fmt, ...);
-__attribute__((format(printf, 1, 2)))
-void ldmsd_lcritical(const char *fmt, ...);
-__attribute__((format(printf, 1, 2)))
-void ldmsd_lall(const char *fmt, ...);
-
-
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)();
-void ldmsd_log(int level, const char *fmt, ...);
 
 /* ldmsctl command callback function definition */
 typedef int (*ldmsctl_cmd_fn_t)(char *, struct attr_value_list*, struct attr_value_list *);

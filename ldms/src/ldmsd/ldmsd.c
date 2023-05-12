@@ -210,33 +210,6 @@ void ldmsd_version_get(struct ldmsd_version *v)
 	v->flags = LDMSD_VERSION_FLAGS;
 }
 
-void ldmsd_log(int level, const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	(void) ovis_vlog(NULL, level, fmt, ap);
-	va_end(ap);
-}
-
-
-#ifndef LDMSD_LOG_AT
-#define LDMSD_LOG_AT(l, fsuf) \
-void ldmsd_l##fsuf(const char *fmt, ...) \
-{ \
-	va_list ap; \
-	va_start(ap, fmt); \
-	ovis_vlog(NULL, l, fmt, ap); \
-	va_end(ap); \
-}
-#endif /* LDMSD_LOG_AT */
-
-LDMSD_LOG_AT(LDMSD_LDEBUG, debug);
-LDMSD_LOG_AT(LDMSD_LINFO, info);
-LDMSD_LOG_AT(LDMSD_LWARNING, warning);
-LDMSD_LOG_AT(LDMSD_LERROR, error);
-LDMSD_LOG_AT(LDMSD_LCRITICAL, critical);
-LDMSD_LOG_AT(LDMSD_LALL, all);
-
 void ldmsd_inc_cfg_cntr()
 {
 	__atomic_fetch_add(&cfg_cntr, 1, __ATOMIC_SEQ_CST);
