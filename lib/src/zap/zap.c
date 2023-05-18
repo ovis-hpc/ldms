@@ -803,11 +803,21 @@ static zap_io_thread_t __zap_least_busy_thread(zap_t z, zap_ep_t ep, struct zap_
 
 	clock_gettime(CLOCK_REALTIME, &now);
 	pthread_mutex_lock(&z->_io_mutex);
-	/* always try to create a new thread to the max; otherwise,
-	 * use the thread with the least number of endpoints. */
+
+	/* Reap idle threads */
+	LIST_FOREACH(_t, &p->_io_threads, _entry)
+	{
+		if (0 == _t->_n_ep) {
+			t = _t;
+			goto out;
+		}
+	}
+
+	/* Create a new thread to the limit zap_io_max */
 	t = __io_thread_create(z, p);
 	if (t)
 		goto out;
+
 	min_ep = 0x7FFFFFFF;
 	LIST_FOREACH(_t, &p->_io_threads, _entry)
 	{
