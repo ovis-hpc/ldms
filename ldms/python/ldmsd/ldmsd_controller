@@ -66,7 +66,6 @@ from ldmsd import ldmsd_util
 from ldmsd.ldmsd_communicator import LDMSD_Request, LDMSD_Req_Attr
 from ldmsd.ldmsd_communicator import Communicator, fmt_status
 import errno
-from _ast import Or
 
 LDMSD_REQ_SOM_F=1
 LDMSD_REQ_EOM_F=2
@@ -102,7 +101,9 @@ class LdmsdCmdParser(cmd.Cmd):
                                          port,
                                          auth,
                                          auth_opt)
-            self.comm.connect()
+            rc = self.comm.connect()
+            if rc:
+                raise ConnectionError("Please verify the transport, hostname, port, and authentication method.")
             self.prompt = "{0}:{1}:{2}> ".format(xprt, host, port)
         else:
             self.comm = None
@@ -2228,3 +2229,4 @@ if __name__ == "__main__":
             raise
         else:
             print(e)
+            sys.exit(0)
