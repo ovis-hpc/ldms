@@ -931,7 +931,15 @@ class Communicator(object):
                 self.ldms = ldms.Xprt(name=self.xprt, auth=self.auth, auth_opts=self.auth_opt)
             rc = self.ldms.connect(self.host, self.port, timeout=timeout)
         except Exception as e:
-            print(f'Error {e}: connecting to {self.host} on port {self.port}')
+            if self.auth is not None:
+                if self.auth_opt is not None:
+                    s = ' '.join([f"{n}={v}" for n, v in self.auth_opt.items()])
+                    auth_s = f" with auth {self.auth} {s}"
+                else:
+                    auth_s = f" with auth {self.auth}"
+            else:
+                auth_s = ""
+            print(f'{e}: connecting to {self.host} on port {self.port} using {self.xprt}{auth_s}')
             self.state = self.CLOSED
             return errno.ENOTCONN
         if rc:
