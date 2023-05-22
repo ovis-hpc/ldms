@@ -1460,4 +1460,7 @@ void ldmsd_str_list_destroy(struct ldmsd_str_list *list);
 
 __attribute__((format(printf, 3, 4)))
 size_t Snprintf(char **dst, size_t *len, char *fmt, ...);
+
+__attribute__((format(printf, 2, 3)))
+int linebuf_printf(struct ldmsd_req_ctxt *reqc, char *fmt, ...);
 #endif
