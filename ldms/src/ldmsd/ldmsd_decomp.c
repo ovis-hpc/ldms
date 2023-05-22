@@ -105,6 +105,7 @@ static ldmsd_decomp_t decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
 	void *d = NULL;
 	char *dlerr;
+	int rc;
 	struct stat st;
 	decomp_rbn_t drbn;
 	ldmsd_decomp_t (*get)(), dc;
@@ -125,33 +126,48 @@ static ldmsd_decomp_t decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
 		d = dlopen(library_name, RTLD_NOW);
 		if (d)
 			break;
-		if (!stat(library_name, &st))
+		errno = 0;
+		if ((rc = stat(library_name, &st))) {
+			rc = errno;
+			if (rc == ENOENT) {
+				/*
+				 * We will print a not-found log message
+				 * after we search all paths in pathdir.
+				 *
+				 * Check the next path.
+				 */
+			} else {
+				DECOMP_ERR(reqc, rc, "Failed to load %s. %s\n",
+							library_name, strerror(rc));
+			}
 			continue;
-		dlerr = dlerror();
-		errno = ELIBBAD;
-		DECOMP_ERR(reqc, ELIBBAD, "Bad decomposer '%s': dlerror %s\n",
-			   library_name, dlerr);
-		return NULL;
+		} else {
+			dlerr = dlerror();
+			errno = ELIBBAD;
+			DECOMP_ERR(reqc, ELIBBAD, "Failed to load '%s': dlerror %s\n",
+								library_name, dlerr);
+			return NULL;
+		}
 	}
-
 	if (!d) {
-		dlerr = dlerror();
-		errno = ELIBBAD;
-		DECOMP_ERR(reqc, ELIBBAD, "Failed to load decomposer '%s': "
-				"dlerror %s\n", decomp, dlerr);
+		errno = rc;
+		DECOMP_ERR(reqc, rc, "Cannot load the decomposer %s library.\n", decomp);
 		return NULL;
 	}
 
 	get = dlsym(d, "get");
 	if (!get) {
 		errno = ELIBBAD;
-		DECOMP_ERR(reqc, ELIBBAD, "get() not found in %s\n", libpath);
+		DECOMP_ERR(reqc, ELIBBAD, "The library %s is not a valid "
+					"decomposer plugin.\n", libpath);
 		return NULL;
 	}
 
 	dc = get();
 	if (!dc) {
-		DECOMP_ERR(reqc, errno, "%s:get() error: %d\n", libpath, errno);
+		rc = errno;
+		DECOMP_ERR(reqc, rc, "Failed to get a decomposer '%s' object. %s\n",
+							libpath, strerror(rc));
 		return NULL;
 	}
 
