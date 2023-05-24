@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2018 National Technology & Engineering Solutions
+ * Copyright (c) 2015-2018,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2015-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2018,2023 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -60,6 +60,7 @@
 #include <ovis_json/ovis_json.h>
 #include <netdb.h>
 #include "ldms.h"
+#include "ldms_rail.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
@@ -698,9 +699,12 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	switch (prdcr->type) {
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
-		prdcr->xprt = ldms_xprt_new_with_auth(prdcr->xprt_name,
-						      prdcr->conn_auth,
-						      prdcr->conn_auth_args);
+		prdcr->xprt = ldms_xprt_rail_new(prdcr->xprt_name,
+						 prdcr->rail,
+						 __RAIL_UNLIMITED,
+						 __RAIL_UNLIMITED,
+						 prdcr->conn_auth,
+						 prdcr->conn_auth_args);
 		if (prdcr->xprt) {
 			ret  = ldms_xprt_connect(prdcr->xprt,
 						 (struct sockaddr *)&prdcr->ss,
@@ -729,6 +733,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		assert(0);
 	}
 }
+
 static void prdcr_task_cb(ldmsd_task_t task, void *arg)
 {
 	ldmsd_prdcr_t prdcr = arg;
@@ -786,7 +791,7 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type, int conn_intrvl_us,
-		const char *auth, uid_t uid, gid_t gid, int perm)
+		const char *auth, uid_t uid, gid_t gid, int perm, int rail)
 {
 	extern struct rbt *cfgobj_trees[];
 	struct ldmsd_prdcr *prdcr;
@@ -807,6 +812,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
 	rbt_init(&prdcr->set_tree, set_cmp);
 	rbt_init(&prdcr->hint_set_tree, ldmsd_updtr_schedule_cmp);
+	prdcr->rail = rail;
 	prdcr->host_name = strdup(host_name);
 	if (!prdcr->host_name)
 		goto out;
@@ -851,11 +857,11 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us)
+		int conn_intrvl_us, int rail)
 {
 	return ldmsd_prdcr_new_with_auth(name, xprt_name, host_name,
 			port_no, type, conn_intrvl_us,
-			DEFAULT_AUTH, getuid(), getgid(), 0777);
+			DEFAULT_AUTH, getuid(), getgid(), 0777, rail);
 }
 
 extern struct rbt *cfgobj_trees[];

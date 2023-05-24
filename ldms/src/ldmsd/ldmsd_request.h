@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2016-2018 National Technology & Engineering Solutions
+ * Copyright (c) 2016-2018,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2016-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2016-2018,2023 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -227,6 +227,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_AUTH,
 	LDMSD_ATTR_RESET,
 	LDMSD_ATTR_DECOMP,
+	LDMSD_ATTR_RAIL,
 	LDMSD_ATTR_LAST,
 };
 

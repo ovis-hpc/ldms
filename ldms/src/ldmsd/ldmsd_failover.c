@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2018 National Technology & Engineering Solutions
+ * Copyright (c) 2018,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2018,2023 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -64,6 +64,8 @@
 
 #include "ldmsd.h"
 #include "ldmsd_request.h"
+
+#include "ldms_rail.h"
 
 #include "config.h"
 
@@ -440,6 +442,12 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 	/* PERM */
 	snprintf(buff, sizeof(buff), "%#o", p->obj.perm);
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_PERM, buff);
+	if (rc)
+		goto cleanup;
+
+	/* RAIL */
+	snprintf(buff, sizeof(buff), "%u", p->rail);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_RAIL, buff);
 	if (rc)
 		goto cleanup;
 
@@ -2027,10 +2035,13 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	char *perm = __req_attr_gets(req, LDMSD_ATTR_PERM);
 	char *auth = __req_attr_gets(req, LDMSD_ATTR_AUTH);
 	char *stream = __req_attr_gets(req, LDMSD_ATTR_STREAM);
+	char *rail_s = __req_attr_gets(req, LDMSD_ATTR_RAIL);
 
 	uid_t _uid;
 	gid_t _gid;
 	mode_t _perm;
+
+	int rail = 1;
 
 	enum ldmsd_prdcr_type ptype;
 	ldmsd_prdcr_t p;
@@ -2051,6 +2062,9 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	_perm = (perm)?(strtoul(perm, NULL, 0)):(0700);
 	sctxt.crd.uid = _uid;
 	sctxt.crd.gid = _gid;
+
+	if (rail_s)
+		rail = atoi(rail_s);
 
 	p = ldmsd_prdcr_find(name);
 	if (p) {
@@ -2081,7 +2095,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	}
 
 	p = ldmsd_prdcr_new_with_auth(name, xprt, host, atoi(port), ptype,
-			atoi(interval), auth, _uid, _gid, _perm);
+			atoi(interval), auth, _uid, _gid, _perm, rail, -1);
 	if (!p) {
 		rc = errno;
 		str_rbn_free(srbn);

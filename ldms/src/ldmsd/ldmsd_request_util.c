@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2017-2018 National Technology & Engineering Solutions
+ * Copyright (c) 2017-2018,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2017-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2017-2018,2023 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -171,6 +171,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "port",              LDMSD_ATTR_PORT  },
 	{  "producer",          LDMSD_ATTR_PRODUCER  },
 	{  "push",              LDMSD_ATTR_PUSH  },
+	{  "rail",              LDMSD_ATTR_RAIL  },
 	{  "regex",             LDMSD_ATTR_REGEX  },
 	{  "reset",             LDMSD_ATTR_RESET  },
 	{  "schema",            LDMSD_ATTR_SCHEMA  },
