@@ -5457,6 +5457,7 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 
 	regex_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!regex_s) {
+		rc = EINVAL;
 		reqc->errcode = EINVAL;
 		(void) snprintf(reqc->line_buf, reqc->line_len,
 				"'regex' is required.");
