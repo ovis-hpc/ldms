@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010-2018 National Technology & Engineering Solutions
+ * Copyright (c) 2010-2018,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2010-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2018,2023 Open Grid Computing, Inc. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -254,6 +254,8 @@ typedef struct ldmsd_prdcr {
 	 * quick lookup by the logic that handles update schedule.
 	 */
 	struct rbt hint_set_tree;
+
+	int rail; /* the number of xprt in the rail */
 } *ldmsd_prdcr_t;
 
 struct ldmsd_strgp;
@@ -1025,13 +1027,13 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us);
+		int conn_intrvl_us, int rail);
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us,
-		const char *auth, uid_t uid, gid_t gid, int perm);
+		const char *auth, uid_t uid, gid_t gid, int perm, int rail);
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt);
 ldmsd_prdcr_t ldmsd_prdcr_first();
 ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr);

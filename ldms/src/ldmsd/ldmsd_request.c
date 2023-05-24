@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2020 National Technology & Engineering Solutions
+ * Copyright (c) 2015-2020,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2015-2020 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2020,2023 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1479,7 +1479,7 @@ static int example_handler(ldmsd_req_ctxt_t reqc)
 static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_prdcr_t prdcr;
-	char *name, *host, *xprt, *attr_name, *type_s, *port_s, *interval_s;
+	char *name, *host, *xprt, *attr_name, *type_s, *port_s, *interval_s, *rail_s;
 	char *auth;
 	enum ldmsd_prdcr_type type = -1;
 	unsigned short port_no = 0;
@@ -1488,6 +1488,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	uid_t uid;
 	gid_t gid;
 	int perm;
+	int rail = 1;
 	char *perm_s = NULL;
 
 	reqc->errcode = 0;
@@ -1570,8 +1571,19 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (perm_s)
 		perm = strtol(perm_s, NULL, 0);
 
+	rail_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RAIL);
+	if (rail_s) {
+		rail = atoi(rail_s);
+		if (rail <= 0) {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"'rail' attribute must be a positive integer, got '%s'", rail_s);
+			goto send_reply;
+		}
+	}
+
 	prdcr = ldmsd_prdcr_new_with_auth(name, xprt, host, port_no, type,
-					  interval_us, auth, uid, gid, perm);
+					  interval_us, auth, uid, gid, perm, rail);
 	if (!prdcr) {
 		if (errno == EEXIST)
 			goto eexist;
