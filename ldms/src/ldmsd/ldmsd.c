@@ -77,6 +77,7 @@
 #include <coll/str_map.h>
 #include "ovis_ev/ev.h"
 #include "ldms.h"
+#include "ldms_rail.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
@@ -95,7 +96,7 @@
 #define OVIS_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:tL:";
+const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:tL:C:";
 
 struct option long_opts[] = {
 	{ "default_auth_args",     required_argument, 0,  'A' },
@@ -110,6 +111,7 @@ struct option long_opts[] = {
 	{ "kernel_file",           required_argument, 0,  's' },
 	{ "log_level",             required_argument, 0,  'v' },
 	{ "log_config",            required_argument, 0,  'L' },
+	{ "credits",               required_argument, 0,  'C' },
 	{ 0,                       0,                 0,  0 }
 };
 
@@ -169,6 +171,8 @@ ldms_t ldms;
 
 int do_kernel = 0;
 char *setfile = NULL;
+
+int ldmsd_credits = __RAIL_UNLIMITED;
 
 static int set_cmp(void *a, const void *b)
 {
@@ -1511,7 +1515,8 @@ int ldmsd_listen_start(ldmsd_listen_t listen)
 {
 	int rc = 0;
 	assert(NULL == listen->x);
-	listen->x = ldms_xprt_new_with_auth(listen->xprt,
+	listen->x = ldms_xprt_rail_new(listen->xprt, 1, ldmsd_credits,
+						__RAIL_UNLIMITED,
 						ldmsd_auth_name_get(listen),
 						ldmsd_auth_attr_get(listen));
 	if (!listen->x) {
@@ -1912,6 +1917,11 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 						"endpoint: %s\n", errno, value);
 			return ENOMEM;
 		}
+		break;
+	case 'C':
+		if (check_arg("C", value, LO_INT))
+			return EINVAL;
+		ldmsd_credits = atoi(value);
 		break;
 	default:
 		return ENOENT;

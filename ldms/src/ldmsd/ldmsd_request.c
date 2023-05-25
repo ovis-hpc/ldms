@@ -116,6 +116,8 @@ static char * __thread_stats_as_json(size_t *json_sz);
 static char * __xprt_stats_as_json(size_t *json_sz, int reset);
 extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 
+extern int ldmsd_credits; /* defined in ldmsd.c */
+
 struct timeval ldmsd_req_last_time;
 __attribute__((format(printf, 2, 3)))
 void __dlog(int match, const char *fmt, ...)
@@ -1479,7 +1481,7 @@ static int example_handler(ldmsd_req_ctxt_t reqc)
 static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_prdcr_t prdcr;
-	char *name, *host, *xprt, *attr_name, *type_s, *port_s, *interval_s, *rail_s;
+	char *name, *host, *xprt, *attr_name, *type_s, *port_s, *interval_s, *rail_s, *credits_s;
 	char *auth;
 	enum ldmsd_prdcr_type type = -1;
 	unsigned short port_no = 0;
@@ -1488,6 +1490,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	uid_t uid;
 	gid_t gid;
 	int perm;
+	int credits = ldmsd_credits; /* use the global credits setting by default */
 	int rail = 1;
 	char *perm_s = NULL;
 
@@ -1582,8 +1585,19 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		}
 	}
 
+	credits_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_CREDITS);
+	if (credits_s) {
+		credits = atoi(credits_s);
+		if (credits <= -2) {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"'credits' attribute must be greater than -2, got '%s'", credits_s);
+			goto send_reply;
+		}
+	}
+
 	prdcr = ldmsd_prdcr_new_with_auth(name, xprt, host, port_no, type,
-					  interval_us, auth, uid, gid, perm, rail);
+					  interval_us, auth, uid, gid, perm, rail, credits);
 	if (!prdcr) {
 		if (errno == EEXIST)
 			goto eexist;
