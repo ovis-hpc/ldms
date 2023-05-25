@@ -256,6 +256,7 @@ typedef struct ldmsd_prdcr {
 	struct rbt hint_set_tree;
 
 	int rail; /* the number of xprt in the rail */
+	int credits;
 } *ldmsd_prdcr_t;
 
 struct ldmsd_strgp;
@@ -1027,13 +1028,14 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us, int rail);
+		int conn_intrvl_us, int rail, int credits);
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us,
-		const char *auth, uid_t uid, gid_t gid, int perm, int rail);
+		const char *auth, uid_t uid, gid_t gid, int perm, int rail,
+		int credits);
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt);
 ldmsd_prdcr_t ldmsd_prdcr_first();
 ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr);

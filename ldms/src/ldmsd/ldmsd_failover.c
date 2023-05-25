@@ -451,6 +451,12 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 	if (rc)
 		goto cleanup;
 
+	/* CREDITS */
+	snprintf(buff, sizeof(buff), "%d", p->credits);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_CREDITS, buff);
+	if (rc)
+		goto cleanup;
+
 	/* Terminate the message */
 	rc = ldmsd_req_cmd_attr_term(rcmd);
 	if (rc)
@@ -2036,12 +2042,14 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	char *auth = __req_attr_gets(req, LDMSD_ATTR_AUTH);
 	char *stream = __req_attr_gets(req, LDMSD_ATTR_STREAM);
 	char *rail_s = __req_attr_gets(req, LDMSD_ATTR_RAIL);
+	char *credits_s = __req_attr_gets(req, LDMSD_ATTR_CREDITS);
 
 	uid_t _uid;
 	gid_t _gid;
 	mode_t _perm;
 
 	int rail = 1;
+	int credits = __RAIL_UNLIMITED;
 
 	enum ldmsd_prdcr_type ptype;
 	ldmsd_prdcr_t p;
@@ -2065,6 +2073,8 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 
 	if (rail_s)
 		rail = atoi(rail_s);
+	if (credits_s)
+		credits = atoi(credits_s);
 
 	p = ldmsd_prdcr_find(name);
 	if (p) {
@@ -2095,7 +2105,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	}
 
 	p = ldmsd_prdcr_new_with_auth(name, xprt, host, atoi(port), ptype,
-			atoi(interval), auth, _uid, _gid, _perm, rail, -1);
+			atoi(interval), auth, _uid, _gid, _perm, rail, credits);
 	if (!p) {
 		rc = errno;
 		str_rbn_free(srbn);

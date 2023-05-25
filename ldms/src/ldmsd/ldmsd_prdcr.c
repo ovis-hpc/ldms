@@ -701,7 +701,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 		prdcr->xprt = ldms_xprt_rail_new(prdcr->xprt_name,
 						 prdcr->rail,
-						 __RAIL_UNLIMITED,
+						 prdcr->credits,
 						 __RAIL_UNLIMITED,
 						 prdcr->conn_auth,
 						 prdcr->conn_auth_args);
@@ -791,7 +791,8 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type, int conn_intrvl_us,
-		const char *auth, uid_t uid, gid_t gid, int perm, int rail)
+		const char *auth, uid_t uid, gid_t gid, int perm, int rail,
+		int credits)
 {
 	extern struct rbt *cfgobj_trees[];
 	struct ldmsd_prdcr *prdcr;
@@ -813,6 +814,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	rbt_init(&prdcr->set_tree, set_cmp);
 	rbt_init(&prdcr->hint_set_tree, ldmsd_updtr_schedule_cmp);
 	prdcr->rail = rail;
+	prdcr->credits = credits;
 	prdcr->host_name = strdup(host_name);
 	if (!prdcr->host_name)
 		goto out;
@@ -857,11 +859,11 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us, int rail)
+		int conn_intrvl_us, int rail, int credits)
 {
 	return ldmsd_prdcr_new_with_auth(name, xprt_name, host_name,
 			port_no, type, conn_intrvl_us,
-			DEFAULT_AUTH, getuid(), getgid(), 0777, rail);
+			DEFAULT_AUTH, getuid(), getgid(), 0777, rail, credits);
 }
 
 extern struct rbt *cfgobj_trees[];

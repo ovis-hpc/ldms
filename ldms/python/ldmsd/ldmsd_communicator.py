@@ -85,7 +85,9 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       # LDMSD command version 3
                       ###############################
                       ##### Producer Policy #####
-                      'prdcr_add': {'req_attr': ['name', 'type', 'xprt', 'host', 'port', 'interval', 'rail'],
+                      'prdcr_add': {'req_attr': ['name', 'type', 'xprt', 'host',
+                                                 'port', 'interval', 'rail',
+                                                 'credits'],
                                     'opt_attr' : [ 'auth', 'perm' ] },
                       'prdcr_del': {'req_attr': ['name']},
                       'prdcr_start': {'req_attr': ['name'],
@@ -274,7 +276,8 @@ class LDMSD_Req_Attr(object):
     RESET = 36
     DECOMPOSITION = 37
     RAIL = 38
-    LAST = 39
+    CREDITS = 39
+    LAST = 40
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -317,6 +320,7 @@ class LDMSD_Req_Attr(object):
                    'auth': AUTH,
                    'decomposition' : DECOMPOSITION,
                    'rail' : RAIL,
+                   'credits' : CREDITS,
                    'TERMINATING': LAST
         }
 
@@ -358,6 +362,7 @@ class LDMSD_Req_Attr(object):
                    AUTH : 'auth',
                    DECOMPOSITION : 'decomposition',
                    RAIL : 'rail',
+                   CREDITS : 'credits',
                    LAST : 'TERMINATING'
         }
 
