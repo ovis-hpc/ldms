@@ -1054,3 +1054,16 @@ free_buf:
 	errno = rc;
 	return NULL;
 }
+
+void ldmsd_stream_stats_reset_all()
+{
+	struct rbn *rbn;
+	ldmsd_stream_t s;
+	pthread_mutex_lock(&s_tree_lock);
+	RBT_FOREACH(rbn, &s_tree) {
+		s = container_of(rbn, struct ldmsd_stream_s, s_ent);
+		memset(&s->s_recv_info, 0, sizeof(s->s_recv_info));
+		memset(&s->s_pub_info, 0, sizeof(s->s_pub_info));
+	}
+	pthread_mutex_unlock(&s_tree_lock);
+}

@@ -133,7 +133,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'publish': {'req_attr': ['name'], 'opt_attr': []},
                       'subscribe': {'req_attr': ['name'], 'opt_attr': []},
                       'stream_client_dump': {'req_attr': [], 'opt_attr': []},
-                      'stream_status' : {'req_attr': [], 'opt_attr': []},
+                      'stream_status' : {'req_attr': [], 'opt_attr': ['reset']},
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': ['thread_stats']},
                       ##### Misc. #####
@@ -1324,13 +1324,16 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def stream_status(self):
+    def stream_status(self, reset = False):
         """
         Dump stream info
 
         No parameters
         """
-        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_STATUS)
+        if reset is None:
+            reset = False
+        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_STATUS,
+                            attrs = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.RESET, value=str(reset))])
         try:
             req.send(self)
             resp = req.receive(self)

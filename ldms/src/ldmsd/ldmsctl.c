@@ -1877,7 +1877,10 @@ static void resp_stream_client_dump(ldmsd_req_hdr_t resp, size_t len,
 
 static void help_stream_status()
 {
-	printf("Dump the stream information\n");
+	printf( "\nDump the stream information\n\n"
+		"Parameters:\n"
+		"   [reset=]     If true, reset the statistics of all streams after returning the values.\n"
+		"                The default is false.\n");
 }
 
 static double __info_rate(json_entity_t info)
