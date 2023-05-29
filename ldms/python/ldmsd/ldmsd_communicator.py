@@ -113,7 +113,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'updtr_stop': {'req_attr': ['name']},
                       'updtr_status': {'req_attr': [], 'opt_attr': ['name', 'summary', 'reset']},
                       'updtr_task': {'req_attr': ['name'], 'opt_attr': []},
-                      'update_time_stats' : {'req_attr': [], 'opt_attr' : ['name']},
+                      'update_time_stats' : {'req_attr': [], 'opt_attr' : ['name', 'reset']},
                       ##### Storage Policy #####
                       'strgp_add': {'req_attr': ['name', 'plugin', 'container'],
                                     'opt_attr' : ['schema', 'regex', 'flush', 'decomposition', 'perm' ] },
@@ -125,7 +125,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'strgp_start': {'req_attr': ['name']},
                       'strgp_stop': {'req_attr': ['name']},
                       'strgp_status': {'req_attr': [], 'opt_attr': ['name']},
-                      'store_time_stats': {'req_attr': [], 'opt_attr':['name']},
+                      'store_time_stats': {'req_attr': [], 'opt_attr':['name', 'reset']},
                       ##### Plugin #####
                       'plugn_sets': {'req_attr': [], 'opt_attr': ['name']},
                       'plugn_status': {'req_attr': [], 'opt_attr': ['name']},
@@ -1403,7 +1403,7 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def store_time_stats(self, name=None):
+    def store_time_stats(self, name=None, reset = False):
         """
         Return the time statistics of a LDMSD storage policy.
         If no name is specified, return statistics of all storgage policies
@@ -1415,9 +1415,11 @@ class Communicator(object):
         - status is an errno from the errno module
         - data is a json object of storage policy statistics, or an error message
         """
-        attr_list = []
+        if reset is None:
+            reset = False
+        attr_list = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.RESET, value = str(reset))]
         if name:
-            attr_list.append(LDMSD_Req_Attr.NAME, value=name)
+            attr_list.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.NAME, value=name))
         req = LDMSD_Request(command_id=LDMSD_Request.STORE_TIME_STATS,
                             attrs=attr_list)
         try:
@@ -1631,10 +1633,13 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def update_time_stats(self, name=None):
+    def update_time_stats(self, name=None, reset = False):
         attr_list = None
+        if reset is None:
+            reset = False
+        attr_list = [ LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.RESET, value = str(reset))]
         if name:
-            attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name))
         req = LDMSD_Request(command_id=LDMSD_Request.UPDATE_TIME_STATS,
                             attrs=attr_list)
         try:
