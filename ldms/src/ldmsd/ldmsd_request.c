@@ -111,7 +111,7 @@ static int cleanup_requested = 0;
 void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap);
 
 static char * __thread_stats_as_json(size_t *json_sz);
-static char * __xprt_stats_as_json(size_t *json_sz);
+static char * __xprt_stats_as_json(size_t *json_sz, int reset);
 extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 
 struct timeval ldmsd_req_last_time;
@@ -6651,7 +6651,7 @@ struct op_summary {
 	break;							\
 } while(1)
 
-static char *__xprt_stats_as_json(size_t *json_sz)
+static char *__xprt_stats_as_json(size_t *json_sz, int reset)
 {
 	char *buff;
 	char *s;
@@ -6673,13 +6673,10 @@ static char *__xprt_stats_as_json(size_t *json_sz)
 	char ip_str[32];
 	char xprt_type[16];
 	struct ldms_xprt_rate_data rate_data;
-	int reset = 0;
 
 	xprt_type[sizeof(xprt_type)-1] = 0; /* NULL-terminate at the end */
 
 	(void)clock_gettime(CLOCK_REALTIME, &start);
-
-	ldms_xprt_rate_data(&rate_data, reset);
 
 	buff = malloc(sz);
 	if (!buff)
@@ -6739,7 +6736,7 @@ static char *__xprt_stats_as_json(size_t *json_sz)
 				op_sum[op_e].op_total_us / op_sum[op_e].op_count;
 		}
 	}
-
+	ldms_xprt_rate_data(&rate_data, reset);
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	uint64_t compute_time = ldms_timespec_diff_us(&start, &end);
 
@@ -6829,7 +6826,7 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 		free(s);
 	}
 
-	json_s = __xprt_stats_as_json(&json_sz);
+	json_s = __xprt_stats_as_json(&json_sz, reset);
 	if (!json_s)
 		goto err;
 
