@@ -957,7 +957,7 @@ class LdmsdCmdParser(cmd.Cmd):
           Oversampled  The number of times the generation number of a set has not changed from the previous update complete.
         """
         arg = self.handle_args('updtr_status', arg)
-        rc, msg = self.comm.updtr_status(arg['name'], arg['summary'])
+        rc, msg = self.comm.updtr_status(**arg)
         if rc == 0:
             updaters = fmt_status(msg)
             print("Name             Interval:Offset  Auto   Mode            State        Skipped counter Oversampled counter")
