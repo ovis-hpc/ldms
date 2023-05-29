@@ -2902,6 +2902,8 @@ class Communicator(object):
 
     def thread_stats(self, reset=False):
         """Query the daemon's I/O thread utilization data"""
+        if reset is None:
+            reset = False
         req = LDMSD_Request(
                 command_id=LDMSD_Request.THREAD_STATS,
                 attrs=[
