@@ -2091,7 +2091,10 @@ static void resp_xprt_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 
 static void help_thread_stats()
 {
-	printf("\nQuery the daemon's thread utilization statistics\n\n");
+	printf( "\nQuery the daemon's thread utilization statistics\n\n"
+		"Parameter:\n"
+		"[reset=]   If true, reset the statistics after returning the values.\n"
+		"           The default is false.\n");
 }
 
 static void resp_thread_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
