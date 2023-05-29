@@ -528,6 +528,11 @@ attr=<value>
 .br
 The updater name. If none is given, the statuses of all updaters are
 reported.
+.TP
+.BI [reset " value"]
+.br
+If true, reset the updater's counters after returning the values.
+The default is false.
 .RE
 
 .SS Query the updaters' list of regular expressions to match set names or set schemas
