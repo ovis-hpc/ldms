@@ -1964,8 +1964,8 @@ static void resp_stream_status(ldmsd_req_hdr_t resp, size_t len,
 	for (stream = json_attr_first(json); stream; stream = json_attr_next(stream)) {
 		name = json_attr_name(stream)->str;
 		if (0 == strcmp(name, "_OVERALL_")) {
-			mode = "";
-			printf("%s\n", name);
+			/* Skip the _OVERALL_ because it is confusing */
+			continue;
 		} else {
 			mode = (char *)__json_str_find(json_attr_value(stream), "mode");
 			printf("%s (%s)\n", name, mode);
