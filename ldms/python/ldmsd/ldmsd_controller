@@ -1940,7 +1940,9 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Dump the stream information
 
-        No Parameters
+        Parameters:
+        [reset=]     If true, reset the statistics of all streams after returning the values.
+                     The default is false.
         """
         FIRST = "first_ts"
         LAST = "last_ts"
@@ -1980,7 +1982,11 @@ class LdmsdCmdParser(cmd.Cmd):
                 return "-"
             return info["last_ts"]
 
-        rc, msg = self.comm.stream_status()
+        arg = self.handle_args('stream_status', arg)
+        if not arg:
+            return
+
+        rc, msg = self.comm.stream_status(arg['reset'])
         if msg is None:
             raise RuntimeError("no response")
         if (rc == 0):

@@ -7302,9 +7302,16 @@ static int stream_new_handler(ldmsd_req_ctxt_t reqc)
 static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
-	char *s;
+	char *s, *reset_s;
 	size_t len;
 	struct ldmsd_req_attr_s attr;
+	int reset = 0;
+
+	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
+	if (reset_s && (0 != strcasecmp(reset_s, "false"))) {
+		reset = 1;
+		free(reset_s);
+	}
 
 	s = ldmsd_stream_dir_dump();
 	if (!s) {
@@ -7314,6 +7321,7 @@ static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_send_req_response(reqc, reqc->line_buf);
 		return 0;
 	}
+
 	attr.discrim = 1;
 	attr.attr_id = LDMSD_ATTR_JSON;
 	attr.attr_len = len = strlen(s) + 1;
@@ -7329,6 +7337,11 @@ static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 	attr.discrim = 0;
 	rc = ldmsd_append_reply(reqc, (char *)(&attr.discrim),
 				sizeof(attr.discrim), LDMSD_REQ_EOM_F);
+	if (rc)
+		goto out;
+
+	if (reset)
+		ldmsd_stream_stats_reset_all();
 out:
 	free(s);
 	return rc;

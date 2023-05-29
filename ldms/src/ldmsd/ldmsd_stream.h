@@ -198,6 +198,11 @@ char * ldmsd_stream_client_dump();
 char *ldmsd_stream_dir_dump();
 
 /**
+ * \brief Reset the statistics of all streams
+ */
+void ldmsd_stream_stats_reset_all();
+
+/**
  * \brief Remove a publisher from all streams
  *
  * \param p_name   Publisher name
