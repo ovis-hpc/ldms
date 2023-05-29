@@ -1999,8 +1999,8 @@ class LdmsdCmdParser(cmd.Cmd):
             # print("--------------- -------------- --------------- ----- ----------------- -----------\n")
             for name,s in streams.items():
                 if name == "_OVERALL_":
-                    s['mode'] = ""
-                    print(f"{name}")
+                    # Skip the _OVERALL_ because it is confusing.
+                    continue
                 else:
                     print(f"{name} ({s['mode']})")
 
