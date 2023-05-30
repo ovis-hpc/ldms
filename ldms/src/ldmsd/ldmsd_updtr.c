@@ -219,8 +219,14 @@ static void updtr_task_set_reset(ldmsd_updtr_task_t task)
 static inline void
 __stats(struct ldmsd_stat *stat, struct timespec *start, struct timespec *end)
 {
+	if (start->tv_sec == 0) {
+		/*
+		 * The counter and the start time got reset to zero, so
+		 * the stat cannot be calculated this time.
+		 */
+		return;
+	}
 	double dur = ts_diff_usec(end, start);
-
 	stat->count++;
 	if (1 == stat->count) {
 		stat->avg = stat->min = stat->max = dur;
