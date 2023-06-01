@@ -833,6 +833,60 @@ A GID. Optional
 An octal number representing the permission bits. Optional
 .RE
 
+.SH STATISTICS COMMAND SYNTAX
+
+.SS Display the IO thread statistics
+.br
+.BR thread_stats
+attr=<value>
+.RS
+.TP
+.BI [reset " true|false"]
+.br
+If true, reset the thread statistics after returning the values. The default is false.
+.RE
+
+.SS Display the transport operation statistics
+.br
+.BR xprt_stats
+attr=<value>
+.RS
+.TP
+.BI [reset " true|false"]
+.br
+If true, reset the statistics after returning the values. The default is false.
+.RE
+
+.SS Display the statistics of updaters' update time per set
+.br
+.BR update_time_stats
+attr=<value>
+.RS
+.TP
+.BI [reset " true|false"]
+.br
+If true, reset the update time statistics after returning the values. The default is false.
+.TP
+.BI [name " name"]
+.br
+An updater name. Only the statistics of the given updater will be reported and reset if reset is true.
+.RE
+
+.SS Display the statistics of storage policy's store time per set
+.br
+.BR store_time_stats
+attr=<value>
+.RS
+.TP
+.BI [reset " true|false"]
+.br
+If true, reset the store time statistics after returning the values. The default is false.
+.TP
+.BI [name " name"]
+.br
+A storage policy name. Only the statistics of the given storage policy will be reported and reset if reset is true.
+.RE
+
 .SH MISC COMMAND SYNTAX
 
 .SS Display the list of available commands
