@@ -681,6 +681,7 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		if (!ref)
 			break;
 		LIST_INSERT_HEAD(&prd_set->strgp_list, ref, entry);
+		__atomic_fetch_add(&strgp->prdset_cnt, 1, __ATOMIC_SEQ_CST);
 		rc = 0;
 		break;
 	default:

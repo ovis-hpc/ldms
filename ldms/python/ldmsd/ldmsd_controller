@@ -1093,6 +1093,13 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_store_time_stats(self, arg):
         """
         Get the store time statistics of a storage policy
+
+         - Storage Policy is the storage policy name.
+         - Min(usec), Max(usec), Avg(usec) are the minumum, maximum, and average times
+           the storage policy spent to store a set in microseconds.
+         - Count is the number of samples used to calculate the minimum, maximum, and average values.
+         - Number of Sets is the number of sets the storage policy is responsible to store.
+
         Parameters:
             [name=]    a storage policy name
             [reset=]   If 'true', reset the statistics after returning the values.
@@ -1104,10 +1111,10 @@ class LdmsdCmdParser(cmd.Cmd):
             # self.handle() already reported the error.
             return
         j = fmt_status(msg)
-        print("strgp           min(usec)       max(usec)      avg(usec)      Count")
-        print(f"{'-'*15} {'-'*15} {'-'*15} {'-'*15} {'-'*10}")
+        print(f"{'Storage Policy':25} {'Min(usec)':15} {'Max(usec)':15} {'Avg(usec)':15} {'Count':10} Number of Sets")
+        print(f"{'-'*25} {'-'*15} {'-'*15} {'-'*15} {'-'*10} {'-'*15}")
         for n, strgp in j.items():
-            print(f"{n:15} {strgp['min']:15.4f} {strgp['max']:15.4f} {strgp['avg']:15.4f} {strgp['cnt']:10}")
+            print(f"{n:25} {strgp['min']:15.4f} {strgp['max']:15.4f} {strgp['avg']:15.4f} {strgp['cnt']:10} {strgp['num_sets']:15}")
 
     def complete_store_time_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('store_time_stats', text)
