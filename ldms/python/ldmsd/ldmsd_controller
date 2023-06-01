@@ -1037,6 +1037,12 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Get the update time statistics of updaters
 
+        - Updater is the updater name.
+        - Min(usec) is the minimum time the updater spent to update a set.
+        - Max(usec) is the maximum time the updater spent to update a set.
+        - Average(usec) is the average time the updater spent to update a set.
+        - Count is the number of samples used to calculate the minimum, maximum, and average values.
+
         Parameters:
         [name=]        updater name
         [reset=]       If 'true', reset the statistics after returning the values.
