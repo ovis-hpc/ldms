@@ -7976,12 +7976,14 @@ __store_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp, int rese
 	rc = linebuf_printf(reqc, "\"%s\":{\"min\":%lf,"
 					  "\"max\":%lf,"
 					  "\"avg\":%lf,"
-					  "\"cnt\":%d}",
+					  "\"cnt\":%d,"
+					  "\"num_sets\":%d}",
 					  strgp->obj.name,
 					  strgp->stat.min,
 					  strgp->stat.max,
 					  strgp->stat.avg,
-					  strgp->stat.count);
+					  strgp->stat.count,
+					  strgp->prdset_cnt);
 	if (reset)
 		memset(&strgp->stat, 0, sizeof(strgp->stat));
 	return rc;
