@@ -2527,6 +2527,9 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 
 	char regex_err[512] = "";
 	if (regex) {
+		strgp->regex_s = strdup(regex);
+		if (!strgp->regex_s)
+			goto enomem;
 		rc = ldmsd_compile_regex(&strgp->schema_regex, regex, regex_err, sizeof(regex_err));
 		if (rc)
 			goto eregex;
@@ -3022,17 +3025,21 @@ int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
 		       "{\"name\":\"%s\","
 		       "\"container\":\"%s\","
 		       "\"schema\":\"%s\","
+		       "\"regex\":\"%s\","
 		       "\"plugin\":\"%s\","
 		       "\"flush\":\"%ld.%06ld\","
 		       "\"state\":\"%s\","
+		       "\"decomp\":\"%s\","
 		       "\"producers\":[",
 		       strgp->obj.name,
 		       strgp->container,
-		       strgp->schema,
+		       ((strgp->schema)?strgp->schema:"-"),
+		       ((strgp->regex_s)?strgp->regex_s:"-"),
 		       strgp->plugin_name,
 		       strgp->flush_interval.tv_sec,
 		       (strgp->flush_interval.tv_nsec/1000),
-		       ldmsd_strgp_state_str(strgp->state));
+		       ldmsd_strgp_state_str(strgp->state),
+		       ((strgp->decomp_name)?strgp->decomp_name:"-"));
 	if (rc)
 		goto out;
 
