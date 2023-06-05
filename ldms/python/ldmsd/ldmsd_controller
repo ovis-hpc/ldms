@@ -1065,12 +1065,13 @@ class LdmsdCmdParser(cmd.Cmd):
         rc, msg = self.comm.strgp_status(arg['name'])
         if rc == 0:
             policies = fmt_status(msg)
-            print("Name             Container        Schema           Plugin           flush(sec)       State")
-            print("---------------- ---------------- ---------------- ---------------- ------------ ----------------")
+            print(f"{'Name':16} {'Container':16} {'Schema':16} {'Regex':16} {'Plugin':16} {'Flush':16} {'State':10} {'Decomposition':20}")
+            print(f"{'-'*16} {'-'*16} {'-'*16} {'-'*16} {'-'*16} {'-'*16} {'-'*10} {'-'*20}")
             for strgp in policies:
-                print("{0:16} {1:16} {2:16} {3:16} {4:16} {5}".format(
-                    strgp['name'], strgp['container'], strgp['schema'],
-                    strgp['plugin'], strgp['flush'], strgp['state']))
+                print(f"{strgp['name']:16} {strgp['container']:16} "
+                      f"{strgp['schema']:16} {strgp['regex']:16} "
+                      f"{strgp['plugin']:16} {strgp['flush']:16} {strgp['state']:10} "
+                      f"{strgp['decomp']}")
                 print("    producers: ", end='')
                 for prdcr in strgp['producers']:
                     print("{0} ".format(prdcr), end='')

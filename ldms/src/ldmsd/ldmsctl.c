@@ -1331,25 +1331,29 @@ void __print_strgp_status(json_entity_t strgp)
 	if (strgp->type != JSON_DICT_VALUE)
 		goto invalid_result_format;
 
-	json_entity_t name, container, schema, plugin, state, flush;
+	json_entity_t name, container, schema, regex, plugin, state, flush, decomp;
 
 	name = json_value_find(strgp, "name");
 	container = json_value_find(strgp, "container");
 	schema = json_value_find(strgp, "schema");
+	regex = json_value_find(strgp, "regex");
 	plugin = json_value_find(strgp, "plugin");
 	state = json_value_find(strgp, "state");
 	flush = json_value_find(strgp, "flush");
+	decomp = json_value_find(strgp, "decomp");
 
-	if (!name || !container || !schema || !plugin || !state || !flush)
+	if (!name || !container || !plugin || !state || !flush || !regex || !decomp)
 		goto invalid_result_format;
 
-	printf("%-16s %-16s %-16s %-16s %-16s %s\n",
+	printf("%-16s %-16s %-16s %-16s %-16s %-12s %-10s %s\n",
 			json_value_str(name)->str,
 			json_value_str(container)->str,
 			json_value_str(schema)->str,
+			json_value_str(regex)->str,
 			json_value_str(plugin)->str,
 			json_value_str(flush)->str,
-			json_value_str(state)->str);
+			json_value_str(state)->str,
+			json_value_str(decomp)->str);
 
 	json_entity_t prdcrs, metrics;
 	prdcrs = json_value_find(strgp, "producers");
@@ -1416,8 +1420,8 @@ static void resp_strgp_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err
 		printf("Unrecognized producer status format\n");
 		goto out;
 	}
-	printf("Name             Container        Schema           Plugin           Flush(sec)       State\n");
-	printf("---------------- ---------------- ---------------- ---------------- ------------ ------------\n");
+	printf("Name             Container        Schema           Regex            Plugin           Flush(sec)   State      Decomposition\n");
+	printf("---------------- ---------------- ---------------- ---------------- ---------------- ------------ ---------- --------------------- \n");
 
 	for (strgp = json_item_first(json); strgp; strgp = json_item_next(strgp)) {
 		__print_strgp_status(strgp);
@@ -2774,7 +2778,7 @@ int main(int argc, char *argv[])
 	host = port = sockname = xprt = NULL;
 	char *source, *script;
 	source = script = NULL;
-	int rc, is_inband = 1;
+	int is_inband = 1;
 	struct attr_value_list *auth_opt = NULL;
 	const int AUTH_OPT_MAX = 128;
 	ssize_t cnt;
@@ -2916,9 +2920,7 @@ int main(int argc, char *argv[])
 		add_history(linebuf);
 #endif /* HAVE_READLINE_HISTORY */
 
-		rc = __handle_cmd(ctrl, linebuf);
-		if (rc)
-			break;
+		(void) __handle_cmd(ctrl, linebuf);
 	} while (linebuf);
 
 	ctrl->close(ctrl);
