@@ -75,6 +75,7 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 		free(strgp->container);
 	if (strgp->metric_arry)
 		free(strgp->metric_arry);
+	free(strgp->regex_s);
 
 	struct ldmsd_strgp_metric *metric;
 	while (!TAILQ_EMPTY(&strgp->metric_list) ) {
