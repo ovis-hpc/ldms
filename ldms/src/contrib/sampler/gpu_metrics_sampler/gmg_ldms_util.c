@@ -58,8 +58,8 @@ const metric_t metricsDefinitions[] = {
         {.name = "device_name", .type = LDMS_V_CHAR_ARRAY, .pf = (funcPtr_t) getGpuDeviceName, .count = ZE_MAX_DEVICE_NAME},
         {.name = "device_uuid", .type = LDMS_V_U8_ARRAY, .pf = (funcPtr_t) getGpuUuid, .count = ZE_MAX_DEVICE_UUID_SIZE},
         {.name = "serial_number", .type = LDMS_V_CHAR_ARRAY, .pf = (funcPtr_t) getGpuSerialNumber, .count = ZES_STRING_PROPERTY_SIZE},
-        {.name = "gpu_util (%)", .type = LDMS_V_D64, .pf = (funcPtr_t) getGpuUtilization},
-        {.name = "mem_util (%)", .type = LDMS_V_D64, .pf = (funcPtr_t) getMemoryUtilization},
+        {.name = "gpu_util", .type = LDMS_V_D64, .pf = (funcPtr_t) getGpuUtilization},
+        {.name = "mem_util", .type = LDMS_V_D64, .pf = (funcPtr_t) getMemoryUtilization},
         {.name = "mem_vram_used", .type = LDMS_V_U64, .pf = (funcPtr_t) getMemVRAMUsed},
         {.name = "ue_accelerator_eng_err", .type = LDMS_V_S32, .pf = (funcPtr_t) getRasFatalAcceleratorResetsError},
         {.name = "ue_cache_err", .type = LDMS_V_S32, .pf = (funcPtr_t) getRasFatalCachesError},
@@ -75,14 +75,14 @@ const metric_t metricsDefinitions[] = {
         {.name = "ce_compute_err", .type = LDMS_V_S32, .pf = (funcPtr_t) getRasCorrectableComputeError},
         {.name = "ce_non_compute_err", .type = LDMS_V_S32, .pf = (funcPtr_t) getRasCorrectableNonComputeError},
         {.name = "ce_display_err", .type = LDMS_V_S32, .pf = (funcPtr_t) getRasCorrectableDisplayError},
-        {.name = "sys_clock_freq (MHz)", .type = LDMS_V_S32, .pf = (funcPtr_t) getSysClockFreq},
-        {.name = "mem_read_bandwidth (kilobaud)", .type = LDMS_V_D64, .pf = (funcPtr_t) getMemoryReadBandwidth},
-        {.name = "mem_write_bandwidth (kilobaud)", .type = LDMS_V_D64, .pf = (funcPtr_t) getMemoryWriteBandwidth},
+        {.name = "sys_clock_freq", .type = LDMS_V_S32, .pf = (funcPtr_t) getSysClockFreq},
+        {.name = "mem_read_bandwidth", .type = LDMS_V_D64, .pf = (funcPtr_t) getMemoryReadBandwidth},
+        {.name = "mem_write_bandwidth", .type = LDMS_V_D64, .pf = (funcPtr_t) getMemoryWriteBandwidth},
         {.name = "perf_level", .type = LDMS_V_D64, .pf = (funcPtr_t) getPerfLevel},
-        {.name = "power_usage (mW)", .type = LDMS_V_S32, .pf = (funcPtr_t) getPowerUsage},
-//        {.name = "power_cap (mW)", .type = LDMS_V_S32, .pf = (funcPtr_t) getPowerCap},    // no longer supported
-        {.name = "gpu_temp (Celsius)", .type = LDMS_V_D64, .pf = (funcPtr_t) getGpuTemp},
-//        {.name = "pci_max_bandwidth (baud)", .type = LDMS_V_U64, .pf = (funcPtr_t) getPciMaxSpeed}    // currently OneAPI does not support this
+        {.name = "power_usage", .type = LDMS_V_S32, .pf = (funcPtr_t) getPowerUsage},
+//        {.name = "power_cap", .type = LDMS_V_S32, .pf = (funcPtr_t) getPowerCap},    // no longer supported
+        {.name = "gpu_temp", .type = LDMS_V_D64, .pf = (funcPtr_t) getGpuTemp}
+//        {.name = "pci_max_bandwidth", .type = LDMS_V_U64, .pf = (funcPtr_t) getPciMaxSpeed}    // currently OneAPI does not support this
 };
 
 const size_t c_numMetrics = sizeof(metricsDefinitions) / sizeof(metricsDefinitions[0]);
@@ -92,7 +92,7 @@ const size_t c_numMetrics = sizeof(metricsDefinitions) / sizeof(metricsDefinitio
 */
 
 void constructMetricName(const char *szBaseMetricName, uint8_t deviceId, char *szMetricName) {
-    snprintf(szMetricName, MAX_METRIC_NAME_LENGTH, "gpu%02x.", deviceId);
+    snprintf(szMetricName, MAX_METRIC_NAME_LENGTH, "gpu%02x_", deviceId);
     strncpy(szMetricName + 6, szBaseMetricName, MAX_METRIC_NAME_LENGTH - 6);
     GMGLOG(LDMSD_LDEBUG, "metricName = %s\n", szMetricName);
 }
