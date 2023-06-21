@@ -62,31 +62,31 @@ void printGpuMetrics(ze_device_handle_t device, uint32_t devNumber) {
     uint32_t metricNumber = 0;
     cout << fixed << setprecision(2);
     cout << " " << devNumber << "     " << metricNumber++ << "         "
-         << getGpuUtilization(device) << "           gpu_util (%)" << endl;
+         << getGpuUtilization(device) << "           gpu_util" << endl;
 
     cout << " " << devNumber << "     " << metricNumber++ << "         "
-         << getMemoryUtilization(device) << "           mem_util (%)" << endl;
+         << getMemoryUtilization(device) << "           mem_util" << endl;
 
     cout << " " << devNumber << "     " << metricNumber++ << "         "
          << getMemVRAMUsed(device) << "       mem_vram_used" << endl;
 
     cout << " " << devNumber << "     " << metricNumber++ << "         "
-         << getSysClockFreq(device) << "           sys_clock_freq (MHz)" << endl;
+         << getSysClockFreq(device) << "           sys_clock_freq" << endl;
 
     cout << " " << devNumber << "     " << metricNumber++ << "         "
-         << getMemoryReadBandwidth(device) << "          mem_read_bandwidth (kilobaud)" << endl;
+         << getMemoryReadBandwidth(device) << "          mem_read_bandwidth" << endl;
 
     cout << " " << devNumber << "     " << metricNumber++ << "         "
-         << getMemoryWriteBandwidth(device) << "          mem_write_bandwidth (kilobaud)" << endl;
+         << getMemoryWriteBandwidth(device) << "          mem_write_bandwidth" << endl;
 
     cout << " " << devNumber << "     " << metricNumber++ << "         "
          << getPerfLevel(device) << "           perf_level" << endl;
 
     cout << " " << devNumber << "     " << metricNumber++ << "         "
-         << getPowerUsage(device) << "             power_usage (mW)" << endl;
+         << getPowerUsage(device) << "             power_usage" << endl;
 
     cout << " " << devNumber << "     " << metricNumber++ << "         "
-         << getGpuTemp(device) << "          gpu_temp (Celsius)" << endl;
+         << getGpuTemp(device) << "          gpu_temp" << endl;
 
     cout << " " << devNumber << "     " << metricNumber++ << "         "
          << getRasFatalAcceleratorResetsError(device) << "       ue_accelerator_eng_err" << endl;
