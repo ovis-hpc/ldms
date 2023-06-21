@@ -52,7 +52,7 @@
 #include "gmg_log.h"
 
 
-static void noopLogFunc(enum ldmsd_loglevel level, const char *fmt, ...) {
+static void noopLogFunc(int level, const char *fmt, ...) {
 }
 
 ldmsd_msg_log_f msglog = noopLogFunc;
