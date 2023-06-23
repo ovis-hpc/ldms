@@ -261,8 +261,6 @@ enum ldms_value_type {
 	LDMS_V_LAST = LDMS_V_TIMESTAMP
 };
 
-#define LDMS_RECORD_FIELD_INST 255
-
 #define LDMS_RECORD_F_TYPE 1
 #define LDMS_RECORD_F_INST 2
 typedef struct ldms_record_hdr {
@@ -293,21 +291,21 @@ typedef struct ldms_record_hdr {
  */
 typedef struct ldms_record_type {
 	struct ldms_record_hdr hdr;
-	int n; /* number of members */
-	int inst_sz; /* the size of the record instance */
-	int dict[OVIS_FLEX]; /* dict[i] is an offset to mdesc[i] */
+	int n;			/* number of members */
+	int inst_sz;		/* the size of the record instance */
+	int dict[OVIS_FLEX];	/* dict[i] is an offset to mdesc[i] */
 } *ldms_record_type_t;
 
 typedef struct ldms_record_inst {
 	struct ldms_record_hdr hdr;
-	uint32_t set_data_off; /* offset from data section */
-	uint32_t record_type; /* record type reference (set-metric index) */
+	uint32_t set_data_off;	/* offset from data section */
+	uint32_t rec_type;	/* index or record type */
 	char rec_data[OVIS_FLEX_UNION]; /* data of the record */
 } *ldms_record_inst_t;
 
 typedef struct ldms_record_array {
 	int inst_sz;
-	int rec_type; /* reference to rec_type */
+	int rec_type;		/* reference to rec_type */
 	int array_len;
 	char data[OVIS_FLEX];
 } *ldms_record_array_t;
