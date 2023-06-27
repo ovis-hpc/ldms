@@ -1299,7 +1299,7 @@ ldms_schema_t ldms_schema_from_template(const char *name,
 			struct ldms_metric_template_s tmp[],
 			int mid[]);
 
- /**
+/**
  * \brief Write a JSON representation of the schema to a file
  *
  * \param schema The schema handle
@@ -1423,21 +1423,19 @@ int ldms_record_metric_add_template(ldms_record_t rec_def,
 			struct ldms_metric_template_s tmp[], int mid[]);
 
 /**
- * Get the size (bytes) required in the heap for a record instance.
+ * \brief Return the heap memory required by a record type
  *
- * This function is useful for estimating the minimum heap size required to a
- * record instance of the given record type definition. To determine the minimum
- * heap size supporting \c N record instances, simply multiply the returned
- * number with \c N.
+ * This function returns the heap size required by an instance of a
+ * record type.
  *
  * \param rec_def  The handle returned by \c ldms_record_create().
  *
- * \retval bytes The size of the record instance in the heap.
+ * \retval bytes The size of the record type in the heap.
  */
 size_t ldms_record_heap_size_get(ldms_record_t rec_def);
 
 /**
- * Get the size (bytes) of the heap memory storing the record metric values.
+ * \brief Get the size (bytes) of the heap memory storing the record metric values.
  *
  * \param rec_def  The handle returned by \c ldms_record_create().
  *
@@ -1740,6 +1738,7 @@ extern uint32_t ldms_set_card_get(ldms_set_t s);
  * \return The schema digest
  */
 #define LDMS_DIGEST_LENGTH SHA256_DIGEST_LENGTH
+#define LDMS_DIGEST_STR_LENGTH ((2 * LDMS_DIGEST_LENGTH) + 1)
 struct ldms_digest_s {
 	unsigned char digest[LDMS_DIGEST_LENGTH];
 };
@@ -1751,7 +1750,7 @@ extern ldms_digest_t ldms_set_digest_get(ldms_set_t s);
  *
  * \param digest  The digest
  * \param buf     The output buffer
- * \param buf_len The buffer length
+ * \param buf_len The buffer length - must be >= LDMS_DIGEST_STR_LENGTH
  *
  * \retval NULL If there is an error (\c errno describing the error)
  * \retval buf  If succeeded, the output buffer containing formatted digest
