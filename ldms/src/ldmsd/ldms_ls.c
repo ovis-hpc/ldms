@@ -102,6 +102,7 @@ static int done;
 static sem_t conn_sem;
 
 static int schema;
+static int print_decomp;
 
 struct ls_set {
 	struct ldms_dir_set_s *set_data;
@@ -132,7 +133,7 @@ const char *auth_name = "none";
 struct attr_value_list *auth_opt = NULL;
 const int auth_opt_max = 128;
 
-#define FMT "h:p:x:w:m:ESIlvua:A:VP"
+#define FMT "h:p:x:w:m:ESIlvua:A:VPd"
 void usage(char *argv[])
 {
 	printf("%s -h <hostname> -x <transport> [ name ... ]\n"
@@ -144,24 +145,25 @@ void usage(char *argv[])
 	       "                     localhost unless -h is specified in which case it is sock.\n"
 	       "\n    -w <secs>        The time to wait before giving up on the server.\n"
 	       "                     The default is 10 seconds.\n"
-	       "\n    -v             Show detail information about the metric set. Specifying\n"
+	       "\n    -v               Show detail information about the metric set. Specifying\n"
 	       "                     this option multiple times increases the verbosity.\n"
 	       "\n    -E               The <name> arguments are regular expressions.\n"
 	       "\n    -S               The <name>s refers to the schema name.\n"
-	       "\n    -I               The <name>s refer to the instance name (default).\n",
+	       "\n    -I               The <name>s refer to the instance name (default).\n"
+	       "\n    -d               Output a decomposition template for matching schema.\n",
 		argv[0]);
 	printf("\n    -m <memory size> Maximum size of pre-allocated memory for metric sets.\n"
 	       "                     The given size must be less than 1 petabytes.\n"
 	       "                     The default is %s.\n"
 	       "                     For example, 20M or 20mb are 20 megabytes.\n"
-	       "                     - The environment variable %s could be set\n"
+	       "                     The environment variable %s could be set\n"
 	       "                     instead of giving the -m option. If both are given,\n"
 	       "                     this option takes precedence over the environment variable.\n"
 	       "\n    -a <auth>        LDMS Authentication plugin to be used (default: 'none').\n"
 	       "\n    -A <key>=<value> (repeatable) LDMS Authentication plugin parameters.\n"
 	       , LDMS_LS_MAX_MEM_SZ_STR, LDMS_LS_MEM_SZ_ENVVAR);
-	printf("\n    -V           Print LDMS version and exit.\n");
-	printf("\n    -P           Register for push updates.\n");
+	printf("\n    -V               Print LDMS version and exit.\n");
+	printf("\n    -P               Register for push updates.\n");
 	exit(1);
 }
 
@@ -671,6 +673,90 @@ static int is_matched(char *inst_name, char *schema_name)
 static int verbose = 0;
 static int long_format = 0;
 
+void fprint_record(FILE *fp, int indent, const char *lname, ldms_mval_t rval)
+{
+	int i;
+	size_t array_len;
+	enum ldms_value_type type;
+	for (i = 0; i < ldms_record_card(rval); i++) {
+		const char *mname = ldms_record_metric_name_get(rval, i);
+		type = ldms_record_metric_type_get(rval, i, &array_len);
+		fprintf(fp, "%*s{ \"src\" : \"%s\", ", indent, "", lname);
+		fprintf(fp, "\"rec_member\" : \"%s\", ", mname);
+		fprintf(fp, "\"dst\" : \"%s\", ", mname);
+		fprintf(fp, "\"type\" : \"%s\"", ldms_metric_type_to_str(type));
+		if (ldms_type_is_array(type))
+			fprintf(fp, ", \"array_len\" : %zu }", array_len);
+		else
+			fprintf(fp, " }");
+		if (i < ldms_record_card(rval)-1)
+			fprintf(fp, ",\n");
+		else
+			fprintf(fp, "\n");
+	}
+}
+
+void fprint_decomp(FILE *fp, ldms_set_t s)
+{
+	int i;
+	enum ldms_value_type type;
+	fprintf(fp, "     \"%s_decomp\" : {\n", ldms_set_schema_name_get(s));
+	fprintf(fp, "       \"type\" : \"static\",\n");
+	fprintf(fp, "       \"rows\" : [\n");
+	fprintf(fp, "          {\n");
+	fprintf(fp, "            \"schema\" : \"%s\",\n", ldms_set_schema_name_get(s));
+	fprintf(fp, "            \"cols\" : [\n");
+	i = ldms_metric_by_name(s, "timestamp");
+	if (i < 0) {
+		/* Add a transaction timestamp if a metric named 'timestamp' is not present in the schema */
+		fprintf(fp, "              { \"src\" : \"timestamp\", \"dst\" : \"timestamp\", \"type\" : \"ts\" },\n");
+	}
+	for (i = 0; i < ldms_set_card_get(s); i++) {
+		type = ldms_metric_type_get(s, i);
+		if (type == LDMS_V_RECORD_TYPE)
+			continue;
+		if (type == LDMS_V_LIST) {
+			enum ldms_value_type rtype;
+			ldms_mval_t lval = ldms_metric_get(s, i);
+			ldms_mval_t rval = ldms_list_first(s, lval, &rtype, NULL);
+			fprint_record(fp, 14, ldms_metric_name_get(s, i), rval);
+		} else if (ldms_type_is_array(type)) {
+			fprintf(fp, "              { \"src\" : \"%s\", \"dst\" : \"%s\", "
+				"\"type\" : \"%s\", \"array_len\" : %d }",
+				ldms_metric_name_get(s, i), ldms_metric_name_get(s, i),
+				ldms_metric_type_to_str(type),
+				ldms_type_is_array(type) ? ldms_metric_array_get_len(s, i) : 0);
+		} else {
+			fprintf(fp, "              { \"src\" : \"%s\", \"dst\" : \"%s\", "
+				"\"type\" : \"%s\" }",
+				ldms_metric_name_get(s, i), ldms_metric_name_get(s, i),
+				ldms_metric_type_to_str(type));
+		}
+		if (i < ldms_set_card_get(s)-1)
+			fprintf(fp, ",\n");
+		else
+			fprintf(fp, "\n");
+	}
+	fprintf(fp, "            ],\n"); /* terminate cols list */
+	fprintf(fp, "            \"indices\" : [\n");
+	fprintf(fp, "            ]\n");
+	fprintf(fp, "         }\n");   /* terminate row */
+	fprintf(fp, "      ]\n");     /* terminate rows list */
+	fprintf(fp, "    }");	      /* terminate decomposition */
+}
+
+int digest_cmp(void *a, const void *b)
+{
+	return strcmp(a, b);
+}
+
+struct rbt digest_tree = RBT_INITIALIZER( digest_cmp );
+struct digest_entry {
+	char digest_str[LDMS_DIGEST_STR_LENGTH];
+	char *schema_name;
+	struct rbn rbn;
+};
+
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
 	int err;
@@ -690,6 +776,26 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 			ldms_xprt_cancel_push(s);
 			return;
 		}
+	}
+	if (print_decomp) {
+		char digest_str[LDMS_DIGEST_STR_LENGTH];
+		struct digest_entry *de;
+		struct rbn *rbn;
+		ldms_digest_str(ldms_set_digest_get(s), digest_str, sizeof(digest_str));
+		rbn = rbt_find(&digest_tree, digest_str);
+		if (rbn)
+			goto out;
+		if (rbt_card(&digest_tree))
+			fprintf(stdout, ",\n");
+		else
+			fprintf(stdout, "\n");
+		de = malloc(sizeof(*de));
+		strcpy(de->digest_str, digest_str);
+		de->schema_name = strdup(ldms_set_schema_name_get(s));
+		rbn_init(&de->rbn, de->digest_str);
+		rbt_ins(&digest_tree, &de->rbn);
+		fprint_decomp(stdout, s);
+		goto out;
 	}
 	struct ldms_timestamp _ts = ldms_transaction_timestamp_get(s);
 	struct ldms_timestamp const *ts = &_ts;
@@ -716,7 +822,8 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	if ((rc == 0) || (rc & LDMS_UPD_F_PUSH_LAST))
 		ldms_set_delete(s);
  out:
-	printf("\n");
+	if (!print_decomp)
+		printf("\n");
 	if (last) {
 		pthread_mutex_lock(&print_lock);
 		print_done = 1;
@@ -1028,6 +1135,10 @@ int main(int argc, char *argv[])
 		case 'I':
 			schema = 0;
 			break;
+		case 'd':
+			print_decomp = 1;
+			long_format = 1;
+			break;
 		case 'h':
 			free(hostname);
 			hostname = strdup(optarg);
@@ -1333,6 +1444,11 @@ int main(int argc, char *argv[])
 	if (verbose && long_format)
 		printf("\n=======================================================================\n\n");
 
+	if (print_decomp) {
+		fprintf(stdout, "{\n");
+		fprintf(stdout, "  \"type\" : \"flex\",\n");
+		fprintf(stdout, "  \"decomposition\" : {");
+	}
 	/*
 	 * Handle the long format (-l)
 	 */
@@ -1358,6 +1474,25 @@ int main(int argc, char *argv[])
 			pthread_cond_wait(&print_cv, &print_lock);
 		pthread_mutex_unlock(&print_lock);
 		free(lss);
+	}
+	if (print_decomp) {
+		struct digest_entry *de;
+		fprintf(stdout, "\n  },\n"); /* terminate decomposition */
+		fprintf(stdout, "  \"digest\" : {\n");
+		while (!rbt_empty(&digest_tree)) {
+			struct rbn *rbn = rbt_min(&digest_tree);
+			rbt_del(&digest_tree, rbn);
+			de = container_of(rbn, struct digest_entry, rbn);
+			fprintf(stdout, "    \"%s\" : \"%s_decomp\"", de->digest_str, de->schema_name);
+			if (rbt_empty(&digest_tree))
+				fprintf(stdout, "\n");
+			else
+				fprintf(stdout, ",\n");
+			free(de->schema_name);
+			free(de);
+		}
+		fprintf(stdout, "  }\n"); /* terminate digest dictionary */
+		fprintf(stdout, "}\n");	  /* terminate flex decomposition */
 	}
 	done = 1;
 done:
