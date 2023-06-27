@@ -2308,6 +2308,7 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set,
 
 		/* write row */
 		store_row(strgp, set, rbn->s_handle, row);
+		rbn->s_handle->store_count++;
 	}
 	return 0;
 }
