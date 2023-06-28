@@ -98,7 +98,7 @@ static json_str_t __jdict_str(json_entity_t dict, const char *key)
 	json_entity_t val;
 
 	val = __jdict_ent(dict, key);
-	if (val->type != JSON_STRING_VALUE) {
+	if (!val || val->type != JSON_STRING_VALUE) {
 		errno = EINVAL;
 		return NULL;
 	}
