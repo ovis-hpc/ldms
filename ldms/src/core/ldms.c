@@ -66,6 +66,7 @@
 #include <mmalloc/mmalloc.h>
 #include <pthread.h>
 #include <asm/byteorder.h>
+#include <ctype.h>
 #include "ovis_util/os_util.h"
 #include "ldms.h"
 #include "ldms_xprt.h"
@@ -1226,34 +1227,6 @@ static unsigned char hex_int[] = {
 	[255] = 0,
 };
 
-static unsigned char hex_valid[] = {
-	['0'] = 1,
-	['1'] = 1,
-	['2'] = 1,
-	['3'] = 1,
-	['4'] = 1,
-	['5'] = 1,
-	['6'] = 1,
-	['7'] = 1,
-	['8'] = 1,
-	['9'] = 1,
-
-	['A'] = 1,
-	['a'] = 1,
-	['B'] = 1,
-	['b'] = 1,
-	['C'] = 1,
-	['c'] = 1,
-	['D'] = 1,
-	['d'] = 1,
-	['E'] = 1,
-	['e'] = 1,
-	['F'] = 1,
-	['f'] = 1,
-
-	[255] = 0,
-};
-
 int ldms_str_digest(const char *str, ldms_digest_t digest)
 {
 	int len = strlen(str);
@@ -1262,7 +1235,7 @@ int ldms_str_digest(const char *str, ldms_digest_t digest)
 	if (len != 2*sizeof(digest->digest))
 		return EINVAL;
 	for (c = (unsigned char*)str; *c; c += 2) {
-		if (!hex_valid[*c] || !hex_valid[*(c+1)])
+		if (!isxdigit(*c) && !isxdigit(*(c+1)))
 			return EINVAL;
 		*d = (hex_int[*c]<<4) | (hex_int[*(c+1)]);
 		d += 1;
@@ -1350,6 +1323,11 @@ void ldms_schema_delete(ldms_schema_t schema)
 		EVP_MD_CTX_destroy(schema->evp_ctx);
 	}
 	free(schema);
+}
+
+const char *ldms_schema_name_get(ldms_schema_t schema)
+{
+	return schema->name;
 }
 
 int ldms_schema_metric_count_get(ldms_schema_t schema)
@@ -1469,7 +1447,7 @@ int _ldms_set_ref_put(struct ldms_set *set, const char *name,
 
 /* in: name, schema;
  * out: set_array_card, meta_sz, array_data_sz assigned.
- * \return 0 on error, or size of set if allocated from name, schema.
+ * return 0 on error, or size of set if allocated from name, schema.
  * sets errno if error.
  */
 static size_t compute_set_sizes(const char *instance_name, ldms_schema_t schema,
@@ -1563,7 +1541,7 @@ void __init_rec_array(ldms_set_t set, ldms_schema_t schema)
 			for (j = 0; j < ra->mdef.count; j++) {
 				/* init each rec_inst in the array */
 				rec_inst = ldms_ptr_(void, rec_array->data, j*ra->inst_sz);
-				rec_inst->record_type = rec_array->rec_type;
+				rec_inst->rec_type = rec_array->rec_type;
 				rec_inst->set_data_off = __cpu_to_le32(ldms_off_(dh, rec_inst));
 				rec_inst->hdr.flags = LDMS_RECORD_F_INST;
 			}
@@ -1681,6 +1659,9 @@ ldms_set_t ldms_set_create(const char *instance_name,
 
 		/* Build the descriptor */
 		__make_mdesc(vd, md, &value_off);
+		if (vd->vd_type == LDMS_V_RECORD_ARRAY) {
+			value_off += (md->count * md->data_sz);
+		}
 
 		/* Advance to next descriptor */
 		metric_idx++;
@@ -1704,7 +1685,7 @@ ldms_set_t ldms_set_create(const char *instance_name,
 		vd->vd_data_offset = __cpu_to_le32(value_off);
 		if (vd->vd_type != LDMS_V_RECORD_TYPE) {
 			value_off += __ldms_value_size_get(vd->vd_type,
-					__le32_to_cpu(vd->vd_array_count));
+							   __le32_to_cpu(vd->vd_array_count));
 			goto next;
 		}
 		/* Making LDMS_V_RECORD_TYPE */
@@ -3352,7 +3333,8 @@ void __list_append(ldms_heap_t heap, ldms_mval_t lh, ldms_mval_t le)
 	le->v_le.next = 0;
 }
 
-ldms_mval_t ldms_list_append_item(ldms_set_t s, ldms_mval_t lh, enum ldms_value_type typ, size_t count)
+ldms_mval_t ldms_list_append_item(ldms_set_t s, ldms_mval_t lh,
+				  enum ldms_value_type typ, size_t count)
 {
 	ldms_mval_t le;
 	size_t value_sz = __ldms_value_size_get(typ, count);
@@ -4025,7 +4007,7 @@ ldms_mval_t ldms_record_alloc(ldms_set_t set, int metric_id)
 	list_ent->count = __cpu_to_le32(1);
 	rec_inst = (void*)list_ent->value;
 	rec_inst->hdr.flags = __cpu_to_le32(LDMS_RECORD_F_INST);
-	rec_inst->record_type = __cpu_to_le32(metric_id);
+	rec_inst->rec_type = __cpu_to_le32(metric_id);
 	rec_inst->set_data_off = __cpu_to_le32(ldms_off_(set->data, rec_inst));
 	return (void*)rec_inst;
 
@@ -4047,7 +4029,7 @@ __rec_type(struct ldms_record_inst *rec_inst, ldms_mdesc_t *mdesc,
 	struct ldms_data_hdr *data;
 	ldms_mdesc_t vd;
 	struct ldms_record_type *rec_type;
-	int type_idx = __le32_to_cpu(rec_inst->record_type);
+	int type_idx = __le32_to_cpu(rec_inst->rec_type);
 
 	if (!rec_inst)
 		return NULL;
@@ -4096,7 +4078,7 @@ int ldms_record_type_get(ldms_mval_t mval)
 	rec_type = __rec_type(rec_inst, &mdesc, NULL, NULL);
 	if (!rec_type || mdesc->vd_type != LDMS_V_RECORD_TYPE)
 		return -EINVAL;
-	return __le32_to_cpu(rec_inst->record_type);
+	return __le32_to_cpu(rec_inst->rec_type);
 }
 
 int ldms_record_metric_find(ldms_mval_t mval, const char *name)
@@ -4167,13 +4149,13 @@ int ldms_schema_record_array_add(ldms_schema_t s, const char *name,
 	ra_def->mdef.type = LDMS_V_RECORD_ARRAY;
 	ra_def->mdef.flags = LDMS_MDESC_F_DATA;
 	ra_def->mdef.count = array_len;
-	/* this only calculate meta_sz (for name and mdesc) */
+	/* this only calculates meta_sz (for name and mdesc) */
 	__ldms_metric_size_get(name, NULL, LDMS_V_RECORD_ARRAY,
 			ra_def->mdef.count, &ra_def->mdef.meta_sz,
 			&ra_def->mdef.data_sz);
-	/* we need to re-calculate the data_sz as the info provided to the
+	/* We need to re-calculate the data_sz as the info provided to the
 	 * generic size calculation is not enough. */
-	data_sz = sizeof(struct ldms_record_array) + array_len*rec_def->inst_sz;
+	data_sz = sizeof(struct ldms_record_array) + array_len * rec_def->inst_sz;
 	ra_def->mdef.data_sz = roundup(data_sz, 8);
 	ra_def->inst_sz = rec_def->inst_sz;
 	ra_def->rec_type = rec_def->metric_id;
@@ -4232,19 +4214,19 @@ int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
 	mdef = calloc(1, sizeof(*mdef));
 	if (!mdef)
 		return -ENOMEM;
-        if (name != NULL) {
-                mdef->name = strdup(name);
-                if (!mdef->name)
-                        goto err_1;
-        } else {
-                errno = EINVAL;
-                goto err_1;
-        }
-        if (unit != NULL) {
-                mdef->unit = strdup(unit);
-                if (!mdef->unit)
-                        goto err_2;
-        }
+	if (name != NULL) {
+		mdef->name = strdup(name);
+		if (!mdef->name)
+			goto err_1;
+	} else {
+		errno = EINVAL;
+		goto err_1;
+	}
+	if (unit != NULL) {
+		mdef->unit = strdup(unit);
+		if (!mdef->unit)
+			goto err_2;
+	}
 	mdef->type = type;
 	mdef->count = count;
 

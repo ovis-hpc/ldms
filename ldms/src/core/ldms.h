@@ -340,33 +340,31 @@ typedef struct ldms_record *ldms_record_t;
  * \li \b const\ char\ *name=ldms_record_metric_unit_get(rec_inst, i) returns
  *     the unit of the i_th member of the record.
  *
- * To use the record, first the application needs to create a record definition
- * (\c rec_def) with \c ldms_record_create() and add members into the record
- * definition with \c ldms_record_metric_add(). Then, the \c rec_def must be
- * added into the schema with \c ldms_schema_record_add() so that the record
- * definition is stored in the LDMS schema and will be available to the set
- * created with the schema.
+ * To use the record, first the application needs to create a record
+ * definition (\c rec_def) with \c ldms_record_create() and add
+ * members into the record definition with \c ldms_record_metric_add().
+ * Once all record members are added, the \c rec_def must be added to
+ * the schema with \c ldms_schema_record_add().
  *
- * The instances of the record is dynamically created and reside in the heap
- * memory of the set and the peer can reach it through \c list iteration.
- * \c ldms_record_heap_size_get() determines the size of the LDMS heap memory
- * required for a given record. To support the maximum of \c N records, simply
- * multiply the recrod size with \c N and supply it to
- * \c ldms_schema_metric_list_add() when defining a list of the records in the
- * schema so that the schema will know the size of the heap required.
+ * An instance of a record is dynamically created and resides in \c set-heap
+ * memory. \c ldms_record_heap_size_get() returns the size of the record in
+ * the LDMS heap. This is useful when computing the appropriate \c heap-size
+ * value for the \c ldms_set_new_with_heap() function.
  *
  * \c ldms_record_alloc() allocate a new record instance (\c rec_inst).
- * The \c rec_inst must be appended into the list by calling
- * \c ldms_list_append_record() or the peer won't be able to reach it.
- * \c ldms_record_metric_get() returns the metric value pointer that
- * can be used to directly access the metric in the record. The caller must
- * handle data format conversion. \c ldms_record_get_XXX() and
- * \c ldms_record_array_get_XXX() are convenient record metric getters that
- * handle the data format conversion for you. \c ldms_record_set_XXX() and
- * \c ldms_record_array_set_XXX() are the convenient record metric setters that
- * handle data conversion and data generation number increment. If the
- * application decides to manipulate the metric value directly, it must call
- * \c ldms_metric_modify() to increment the data generation number.
+ * A \c rec_inst must be a member of a list, \c ldms_list_append_record()
+ * or an ldms_record_array.
+ *
+ * \c ldms_record_metric_get() returns an ldms_mval_t that can be used
+ * to access the metric in the record. A set of convenience functions
+ * \c ldms_record_get_XXX() and \c ldms_record_array_get_XXX() will
+ * return values from records.
+ *
+ * \c ldms_record_set_XXX() and \c ldms_record_array_set_XXX() are a
+ * set of record metric setters that handle data conversion and data
+ * generation number increment. If the application decides to
+ * manipulate the metric value directly, it must call \c
+ * ldms_metric_modify() to increment the data generation number.
  *
  * Example:
  * \code
@@ -380,29 +378,28 @@ typedef struct ldms_record *ldms_record_t;
  * int i_name = ldms_record_metric_add(rec_def, "name", NULL, LDMS_V_CHAR_ARRAY, 32);
  * int i_ctrs = ldms_record_metric_add(rec_def, "counters", NULL, * LDMS_V_U64_ARRAY, 4);
  *
- * // calculate required heap size to support 16 devices (records)
+ * // Calculate the required heap size to support 16 devices (records)
  * size_t heap_sz = 16 * ldms_record_heap_size_get(rec_def);
  *
- * // create schema
+ * // Create a schema
  * ldms_schema_t schema = ldms_schema_new("my_schema");
  *
- * // add record definition to the schema
+ * // Add a record definition to the schema
  * int rec_def_idx = ldms_schema_record_add(schema, rec_def);
  *
- * // add a list to the schema with the heap_sz calculated from above.
- * // The list will contain the records (max 16 records).
+ * // Add a list to the schema with the heap_sz calculated above.
  * int lh_idx = ldms_schema_metric_list_add(schema, "my_list", NULL, heap_sz);
  *
  * ldms_set_t set = ldms_set_new("my_set", schema);
  *
  * ldms_mval_t new_record(ldms_set_t set, const char *name)
  * {
- *     // allocate new record
+ *     // Allocate a record
  *     ldms_mval_t rec_inst = ldms_record_alloc(set, rec_def_idx);
  *
  *     ldms_mval_t nm = ldms_record_metric_get(rec_inst, i_name);
- *     // set the name
- *     strncpy(nm.a_char, name, strlen(name)+1);
+ *     // Set the name
+ *     strncpy(nm.a_char, name, strlen(name) + 1);
  *     return rec_inst;
  * }
  *
@@ -428,7 +425,7 @@ typedef struct ldms_record *ldms_record_t;
  * ldms_list_append_record(set, lh, rec0);
  * ldms_list_append_record(set, lh, rec1);
  *
- * // iterating through the records in the list and update the counters
+ * // Iterate through the records in the list and update the record contents
  * enum ldms_value_type type;
  * size_t array_len;
  * ldms_mval_t rec;
@@ -1300,6 +1297,14 @@ ldms_schema_t ldms_schema_from_template(const char *name,
 			int mid[]);
 
 /**
+ * \brief Return the schema name
+ *
+ * \param schema The schema handle
+ * \returns The schema name
+ */
+const char *ldms_schema_name_get(ldms_schema_t schema);
+
+/**
  * \brief Write a JSON representation of the schema to a file
  *
  * \param schema The schema handle
@@ -1934,8 +1939,8 @@ uint64_t ldms_set_data_gn_get(ldms_set_t s);
 /**
  * \brief Get the heap generation number.
  *
- * The heap generation number get incremented when \c ldms_heap_alloc() or
- * \c ldms_heap_free() is called.
+ * The heap generation number is incremented when \c ldms_heap_alloc() or
+ * \c ldms_heap_free() are called.
  *
  * \param s	The ldms_set_t handle.
  * \returns	The 64bit heap generation number.
