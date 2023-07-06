@@ -82,8 +82,9 @@ const struct req_str_id req_str_id_table[] = {
 	{  "include",            LDMSD_INCLUDE_REQ  },
 	{  "listen",             LDMSD_LISTEN_REQ },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ  },
+	{  "log_level",          LDMSD_VERBOSE_REQ  },
 	{  "log_status",         LDMSD_LOG_STATUS_REQ  },
-	{  "loglevel",           LDMSD_VERBOSE_REQ  },
+	{  "loglevel",          LDMSD_VERBOSE_REQ  }, /* It is being deprecated. */
 	{  "logrotate",          LDMSD_LOGROTATE_REQ  },
 	{  "metric_sets_default_authz", LDMSD_SET_DEFAULT_AUTHZ_REQ  },
 	{  "oneshot",            LDMSD_ONESHOT_REQ  },

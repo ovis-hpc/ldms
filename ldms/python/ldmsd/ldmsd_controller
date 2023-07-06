@@ -1344,6 +1344,13 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_udata_regex(self, text, line, begidx, endidx):
         return self.__complete_attr_list('udata_regex', text)
 
+    def __log_level(self, arg):
+        arg = self.handle_args('log_level', arg)
+        if arg:
+            rc, msg = self.comm.log_level(arg['level'], arg['name'], arg['regex'])
+            if rc:
+                print(f'Error changing log level: {msg}')
+
     def do_loglevel(self, arg):
         """
         Changing the verbosity level of ldmsd loggers
@@ -1364,14 +1371,36 @@ class LdmsdCmdParser(cmd.Cmd):
            [regex=]  A regular expression matching logger names,
                      e.g., xprt.* to change the transport-related log levels.
         """
-        arg = self.handle_args('loglevel', arg)
-        if arg:
-            rc, msg = self.comm.loglevel(arg['level'], arg['name'], arg['regex'])
-            if rc:
-                print(f'Error changing log level: {msg}')
+        print(f'`loglevel` is being deprecated. Please use `log_level` in the future.')
+        self.__log_level(arg)
 
     def complete_loglevel(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('loglevel', text)
+        return self.__complete_attr_list('log_level', text)
+
+    def do_log_level(self, arg):
+        """
+        Changing the verbosity level of ldmsd loggers
+
+        If neither 'name' or 'regex' is given, the command will change the default log level.
+
+        Parameters:
+           level=    The choices are "default", "quiet",
+                     a comma-separated list of DEBUG, INFO, WARN, ERROR, and CRITICAL.
+                    It is case insensitive.
+
+                     Note that "<level>," and "<level>" give different results.
+                     "<level>" -- a single level name -- set the log level
+                     to the given level and all the more severity levels.
+                     In contrast, "<level>," -- a level name followed by a comma --
+                     set the log level to only the given level.
+           [name=]   A logger name
+           [regex=]  A regular expression matching logger names,
+                     e.g., xprt.* to change the transport-related log levels.
+        """
+        self.__log_level(arg)
+
+    def complete_log_level(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('log_level', text)
 
     def do_logrotate(self, arg):
         """
