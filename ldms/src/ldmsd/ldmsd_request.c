@@ -5660,7 +5660,7 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
 	if (ldmsd_req_attr_keyword_exist_by_id(reqc->req_buf, LDMSD_ATTR_TEST))
 		is_test = 1;
 
-	__dlog(DLOG_CFGOK, "loglevel level=%s%s%s%s%s%s\n", level_s,
+	__dlog(DLOG_CFGOK, "log_level level=%s%s%s%s%s%s\n", level_s,
 		is_test ? " test" : "",
 		subsys ? " name=" : "",
 		subsys ? subsys : NULL,

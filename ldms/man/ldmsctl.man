@@ -649,6 +649,9 @@ The stream name
 .SH LDMS DAEMON COMMAND SYNTAX
 .SS Changing the log levels of LDMSD infrastructures
 .BR loglevel
+attr=<value> (deprecated)
+
+.BR log_level
 attr=<value>
 .TP
 .BI level " string"

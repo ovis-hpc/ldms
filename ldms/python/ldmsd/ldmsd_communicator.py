@@ -76,7 +76,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'udata_regex': {'req_attr': ['instance', 'regex', 'base'],
                                       'opt_attr': ['incr']},
                       'version': {'req_attr': [], 'opt_attr': []},
-                      'loglevel': {'req_attr': ['level'],
+                      'log_level': {'req_attr': ['level'],
                                    'opt_attr': ['name', 'regex']},
                       'include': {'req_attr': ['path'] },
                       'env': {'req_attr': []},
@@ -613,7 +613,7 @@ class LDMSD_Request(object):
 
             'udata': {'id': SET_UDATA},
             'udata_regex': {'id': SET_UDATA_REGEX},
-            'loglevel': {'id': VERBOSITY_CHANGE},
+            'log_level': {'id': VERBOSITY_CHANGE},
             'daemon_status': {'id': DAEMON_STATUS},
             'version': {'id': VERSION},
             'env': {'id': ENV},
@@ -1741,7 +1741,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def loglevel(self, level, name = None, regex = None):
+    def log_level(self, level, name = None, regex = None):
         """
         Change the verbosity level of ldmsd
 

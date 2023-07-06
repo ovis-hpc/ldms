@@ -411,7 +411,7 @@ static void help_oneshot()
 		"                 the second= from now.\n");
 }
 
-static void help_loglevel()
+static void help_log_level()
 {
 	printf( "\nChange the verbosity level of ldmsd\n\n"
 		"Parameters:\n"
@@ -2503,8 +2503,9 @@ static struct command command_tbl[] = {
 	{ "help", LDMSCTL_HELP, handle_help, NULL, NULL },
 	{ "listen", LDMSD_LISTEN_REQ, NULL, help_listen, resp_generic },
 	{ "load", LDMSD_PLUGN_LOAD_REQ, NULL, help_load, resp_generic },
+	{ "log_level", LDMSD_VERBOSE_REQ, NULL, help_log_level, resp_generic },
 	{ "log_status", LDMSD_LOG_STATUS_REQ, NULL, help_log_status, resp_log_status },
-	{ "loglevel", LDMSD_VERBOSE_REQ, NULL, help_loglevel, resp_generic },
+	{ "loglevel", LDMSD_VERBOSE_REQ, NULL, help_log_level, resp_generic }, /* It is being deprecated. */
 	{ "metric_sets_default_authz", LDMSD_SET_DEFAULT_AUTHZ_REQ, NULL,
 			help_metric_sets_default_authz, resp_generic },
 	{ "oneshot", LDMSD_ONESHOT_REQ, NULL, help_oneshot, resp_generic },
@@ -2670,6 +2671,10 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 		printf("Unrecognized command '%s'\n", key.token);
 		free(dummy);
 		return 0;
+	}
+
+	if (0 == strcasecmp("loglevel", key.token)) {
+		printf("`loglevel` is being depreated. Please use `log_level` in the future.\n");
 	}
 
 	if (cmd->action) {
