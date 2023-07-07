@@ -230,7 +230,7 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 		rbt_init(&r->eps[i].sbuf_rbt, __stream_buf_cmp);
 	}
 
-	r->eps[0].ep = __ldms_xprt_new_with_auth(r->name, r->auth_name, auth_av_list);
+	r->eps[0].ep = __ldms_xprt_new_with_auth(r->name, r->auth_name, r->auth_av_list);
 	if (!r->eps[0].ep)
 		goto err_1;
 	ldms_xprt_ctxt_set(r->eps[0].ep, &r->eps[0], NULL);
@@ -566,6 +566,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	if (!rbn) {
 		const char *xprt_name;
 		const char *auth_name;
+		struct attr_value_list *auth_av_list = NULL;
 		int64_t recv_limit;
 		int32_t rate_limit;
 		ldms_event_cb_t cb;
@@ -573,6 +574,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 		if (lr) {
 			xprt_name = lr->name;
 			auth_name = lr->auth_name;
+			auth_av_list = lr->auth_av_list;
 			recv_limit = lr->recv_limit;
 			rate_limit = lr->rate_limit;
 			cb = lr->event_cb;
@@ -586,7 +588,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 			cb_arg = lx->event_cb_arg;
 		}
 		r = (void*)ldms_xprt_rail_new(xprt_name, m->n_eps,
-				recv_limit, rate_limit, auth_name, NULL);
+				recv_limit, rate_limit, auth_name, auth_av_list);
 		if (!r) {
 			snprintf(rej_msg, sizeof(rej_msg), "passive rail create error: %d", errno);
 			pthread_mutex_unlock(&__rail_mutex);
