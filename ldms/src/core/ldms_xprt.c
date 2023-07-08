@@ -2551,6 +2551,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 
 	if (lset) {
 		rc = EEXIST;
+		lset = NULL;	/* So error path won't try to delete it */
 		ref_put(&lset->ref, "__ldms_find_local_set");
 		/* unmap ev->map, it is not used */
 		zap_unmap(ev->map);

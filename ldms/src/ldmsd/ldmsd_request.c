@@ -7067,7 +7067,10 @@ static char * __set_stats_as_json(size_t *json_sz)
 						rc = regexec(&match->regex, prd_set->inst_name, 0, NULL, 0);
 						if (rc)
 							continue;
-						freq = 1000000 / (double)prd_set->updt_interval;
+						if (prd_set->updt_interval)
+							freq = 1000000.0 / (double)prd_set->updt_interval;
+						else
+							freq = 0.0;
 						if (prd_set->set) {
 							data_sz = ldms_set_data_sz_get(prd_set->set);
 							set_load += data_sz * freq;
@@ -7084,7 +7087,10 @@ static char * __set_stats_as_json(size_t *json_sz)
 				ldmsd_prdcr_set_t prd_set;
 				for (prd_set = ldmsd_prdcr_set_first(ref->prdcr); prd_set;
 						prd_set = ldmsd_prdcr_set_next(prd_set)) {
-					freq = 1000000 / (double)prd_set->updt_interval;
+					if (prd_set->updt_interval)
+						freq = 1000000.0 / (double)prd_set->updt_interval;
+					else
+						freq = 0.0;
 					if (prd_set->set) {
 						data_sz = ldms_set_data_sz_get(prd_set->set);
 						set_load += data_sz * freq;
