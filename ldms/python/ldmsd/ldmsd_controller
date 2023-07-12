@@ -359,6 +359,12 @@ class LdmsdCmdParser(cmd.Cmd):
         interval= The connection retry interval (us)
         auth=     The authentication method
         [perm=]   The permission to modify the producer in the future.
+        [rail=]   The number of rail endpooints for the prdcr (default: 1).
+        [credits=] The send credits our ldmsd (the one we are controlling)
+                   advertises to the prdcr (default: value from ldmsd --credits
+                   option). This limits how much outstanding data our ldmsd
+                   holds for the prdcr. The prdcr drops messages when it does
+                   not have enough send credits.
         """
         arg = self.handle_args('prdcr_add', arg)
         if arg:
@@ -369,7 +375,9 @@ class LdmsdCmdParser(cmd.Cmd):
                                           arg['port'],
                                           arg['interval'],
                                           arg['auth'],
-                                          arg['perm'])
+                                          arg['perm'],
+                                          arg['rail'],
+                                          arg['credits'])
             if rc:
                 print(f'Error adding prdcr {arg["name"]}: {msg}')
 

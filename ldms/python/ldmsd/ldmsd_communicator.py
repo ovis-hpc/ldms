@@ -2038,7 +2038,8 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_add(self, name, ptype, xprt, host, port, reconnect, auth=None, perm=None):
+    def prdcr_add(self, name, ptype, xprt, host, port, reconnect, auth=None, perm=None,
+                  rail=None, credits=None):
         """
         Add a producer. A producer is a peer to the LDMSD being configured.
         Once started, the LDSMD will attempt to connect to this peer
@@ -2058,6 +2059,10 @@ class Communicator(object):
         Keyword Parameters:
         perm - The configuration client permission required to
                modify the producer configuration. Default is None.
+        rail - The number of endpoints in a rail. The default is 1.
+        credits - The send credits of our side of the connection (the daemon we
+                  are controlling). The default is the daemon's default
+                  ('-C' ldmsd option).
 
         Returns:
         A tuple of status, data
@@ -2076,6 +2081,10 @@ class Communicator(object):
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.AUTH, value=auth))
         if perm:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PERM, value=str(perm)))
+        if rail:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RAIL, value=str(int(rail))))
+        if credits:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.CREDITS, value=str(int(credits))))
 
         req = LDMSD_Request(
                 command_id=LDMSD_Request.PRDCR_ADD,
