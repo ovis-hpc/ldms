@@ -281,6 +281,17 @@ Instruct \fBldmsd\fR to use \fIAUTH_REF\fR (a name reference to \fBauth\fR
 object created by \fBauth_add\fR command) with the connections to this
 producer. If not given, the default authentication method specified on
 the CLI options (see \fBldmsd\fR(8) option \fB-a\fR) is used.
+.TP
+.BI [rail " NUM"]
+.br
+The number of rail endpooints for the prdcr (default: 1).
+.TP
+.BI [credits " BYTES"]
+.br
+The send credits our ldmsd (the one we are controlling) advertises to the prdcr
+(default: value from ldmsd --credits option). This limits how much outstanding
+data our ldmsd holds for the prdcr. The prdcr drops messages when it does not
+have enough send credits.
 .RE
 
 .SS Delete a producer from the aggregator

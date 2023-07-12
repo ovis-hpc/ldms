@@ -155,6 +155,15 @@ Passing the \fINAME\fR=\fIVALUE\fR option to the LDMS Authentication plugin.
 This command line option can be given multiple times. Please see
 \fBldms_authentication\fR(7) for more information, and consult the plugin manual
 page for plugin-specific options.
+.TP
+.BI "-C, --credits" " BYTES"
+The daemon's advertised send credits (default: -1, unlimited). This number
+limits how much data our daemon holds for each peer. The peers drop messages
+when they don't have enough send credits. The specified credits apply to both
+passive connections (other processes connect to us) and active connections (we
+connect to other processes by 'prdcr_add' command). The active connections can
+override the credits value by specifying the \fIcredits\fR attribute to
+\fBpdrcr_add\fR command (see \fBldmsd_controller\fR(8)).
 
 
 .SS
