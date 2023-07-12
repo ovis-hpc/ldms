@@ -413,6 +413,7 @@ void usage_hint(char *argv[],char *hint)
 	       "                                                  to listen to a specific address.\n");
 	printf("    -a AUTH,      --default_auth AUTH             Transport authentication plugin (default: 'none')\n");
 	printf("    -A KEY=VALUE, --default_auth_args KEY=VALUE   Authentication plugin options (repeatable)\n");
+	printf("    -C BYTES,     --credits BYTES                 The daemon's advertised send credits (default: -1, unlimited).\n");
 	printf("  Kernel Metric Options\n");
 	printf("    -k,           --publish_kernel                Publish kernel metrics.\n");
 	printf("    -s PATH,      --kernel_set_path PATH          Text file containing kernel metric sets to publish.\n"
