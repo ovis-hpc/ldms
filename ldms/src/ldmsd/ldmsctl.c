@@ -463,7 +463,14 @@ static void help_prdcr_add()
 		"     port=     The port number on which the LDMS is listening\n"
 		"     type=     The connection type [active, passive]\n"
 		"     interval= The connection retry interval (us)\n"
-		"     [perm=]   The permission to modify the producer in the future.\n");
+		"     [perm=]   The permission to modify the producer in the future.\n"
+		"     [rail=]   The number of rail endpooints for the prdcr (default: 1).\n"
+		"     [credits=] The send credits our ldmsd (the one we are controlling)\n"
+		"                advertises to the prdcr (default: value from ldmsd --credits\n"
+		"                option). This limits how much outstanding data our ldmsd\n"
+		"                holds for the prdcr. The prdcr drops messages when it does\n"
+		"                not have enough send credits.\n"
+		);
 }
 
 static void help_prdcr_del()
