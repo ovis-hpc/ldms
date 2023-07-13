@@ -10,15 +10,16 @@ ldms_auth_munge \- LDMS authentication using munge
 .SH SYNOPSIS
 .HP
 .I ldms_app
-.BI "-a munge [-A socket=" PATH ]
+.BI "-a munge [-A socket=PATH ]"
 
 
 .SH DESCRIPTION
-\fBldms_auth_munge\fR relies on \fBmunge\fR service (see \fBmunge\fR(7)) to
-authenticate users. Munge daemon (\fBmunged\fR) must be up and running. The
-optional \fBsocket\fR option can be used to specify the path to munged unix
-domain socket in the case that munged wasn't using the default path.
+\fBldms_auth_munge\fR relies on the \fBmunge\fR service (see \fBmunge\fR(7)) to
+authenticate users. The munge daemon (\fBmunged\fR) must be up and running.
 
+The optional \fBsocket\fR option can be used to specify the path to
+the munged unix domain socket in the case that munged wasn't using the
+default path or there are multiple munge domains configured.
 
 .SH SEE ALSO
 \fBmunge\fR(7), \fBmunged\fR(8)

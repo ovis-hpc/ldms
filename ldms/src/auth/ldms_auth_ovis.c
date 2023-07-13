@@ -119,7 +119,7 @@ struct ldms_auth_ovis {
 ldms_auth_plugin_t __ldms_auth_plugin_get()
 {
 	if (!aolog) {
-		aolog = ovis_log_register("auth_ovis", "Messages for ldms_auth_ovis");
+		aolog = ovis_log_register("auth.ovis", "Messages for ldms_auth_ovis");
 		if (!aolog) {
 			LOG_ERROR("Failed to register %s's log. Error %d\n",
 					__FILE__, errno);
