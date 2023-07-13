@@ -102,7 +102,7 @@ struct ldms_auth_naive {
 ldms_auth_plugin_t __ldms_auth_plugin_get()
 {
 	if (!nlog) {
-		nlog = ovis_log_register("auth_naive", "Messages for auth_naive");
+		nlog = ovis_log_register("auth.naive", "Messages for auth_naive");
 		if (!nlog) {
 			LOG_ERROR("Failed to register the auth_naive log.\n");
 		}
