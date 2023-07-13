@@ -153,12 +153,12 @@ jobs:
         echo -n "ldms_ls agg-4 ... "
         D1=$( ./ldms_ls.sh -x sock -p 10002 )
         echo "result: ${D1}"
-        [[ "${D0}" = "ovis-4.3.3/meminfo" ]] || error "unexpected ldms_ls agg-4.3.3 result"
-        [[ "${D1}" = "ovis-4.3.3/meminfo" ]] || error "unexpected ldms_ls agg-4 result"
         # ldms_ls-4.3.3 to agg-4
         echo -n "ldms_ls(4.3.3) agg-4 ... "
         D2=$( ./ldms_ls-4.3.3.sh -x sock -p 10002 )
         echo "result: ${D2}"
+        [[ "${D0}" = "ovis-4.3.3/meminfo" ]] || error "unexpected ldms_ls agg-4.3.3 result"
+        [[ "${D1}" = "ovis-4.3.3/meminfo" ]] || error "unexpected ldms_ls agg-4 result"
         [[ "${D2}" = "ovis-4.3.3/meminfo" ]] || error "unexpected ldms_ls(4.3.3) agg-4 result"
         # ldms_ls-4 to agg-4.3.3 -l
         echo -n "ldms_ls -l agg-4.3.3 ... "

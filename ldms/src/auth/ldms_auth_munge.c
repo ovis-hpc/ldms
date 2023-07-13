@@ -51,6 +51,9 @@
 
 #include <munge.h>
 #include <assert.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "ovis_log/ovis_log.h"
 #include "../core/ldms_auth.h"
@@ -67,6 +70,10 @@ static ovis_log_t munge_log = NULL;
 
 #define LOG_ERROR(_fmt_, ...) do { \
 	ovis_log(munge_log, OVIS_LERROR, _fmt_, ##__VA_ARGS__); \
+} while (0);
+
+#define LOG_INFO(_fmt_, ...) do { \
+	ovis_log(munge_log, OVIS_LINFO, _fmt_, ##__VA_ARGS__); \
 } while (0);
 
 static
@@ -110,7 +117,7 @@ static
 ldms_auth_t __auth_munge_new(ldms_auth_plugin_t plugin,
 		       struct attr_value_list *av_list)
 {
-	const char *munge_sock;
+	const char *value;
 	struct ldms_auth_munge *a;
 	munge_ctx_t mctx;
 	munge_err_t merr;
@@ -128,9 +135,9 @@ ldms_auth_t __auth_munge_new(ldms_auth_plugin_t plugin,
 		goto err1;
 	}
 
-	munge_sock = av_value(av_list, "socket");
-	if (munge_sock) {
-		merr = munge_ctx_set(mctx, MUNGE_OPT_SOCKET, munge_sock);
+	value = av_value(av_list, "socket");
+	if (value) {
+		merr = munge_ctx_set(mctx, MUNGE_OPT_SOCKET, value);
 		if (merr != EMUNGE_SUCCESS) {
 			LOG_ERROR("Failed to set MUNGE context. %s\n",
 				   munge_strerror(merr));
@@ -203,6 +210,7 @@ int __auth_munge_xprt_begin(ldms_auth_t auth, ldms_t xprt)
 	munge_err_t merr;
 	int rc;
 	int len;
+
 	a->sin_len = sizeof(a->lsin);
 	rc = ldms_xprt_sockaddr(xprt, (void*)&a->lsin,
 				(void*)&a->rsin, &a->sin_len);
@@ -219,10 +227,9 @@ int __auth_munge_xprt_begin(ldms_auth_t auth, ldms_t xprt)
 	merr = (strncmp(xprt->name, "rdma", 4) == 0)?
 		munge_encode(&a->local_cred, a->mctx, &a->rsin, a->sin_len):
 		munge_encode(&a->local_cred, a->mctx, &a->lsin, a->sin_len);
-
 	if (merr) {
 		LOG_ERROR("munge_encode() failed. %s\n", munge_strerror(merr));
-		return EBADR; /* bad request */
+		return EBADR;
 	}
 	len = strlen(a->local_cred);
 	rc = ldms_xprt_auth_send(xprt, a->local_cred, len + 1);
@@ -238,52 +245,51 @@ int __auth_munge_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 		const char *data, uint32_t data_len)
 {
 	struct ldms_auth_munge *a = (void*)auth;
-	struct sockaddr_in *sin;
+	struct sockaddr_in *payload_sin;
+	struct sockaddr_in *xprt_sin;
 	void *payload = NULL;
 	uid_t uid;
 	gid_t gid;
+	munge_err_t merr;
 	int len;
 	int cmp;
-	munge_err_t merr;
-	if (data[data_len-1] != 0)
-		goto invalid;
+	int rc = EINVAL;
+
 	merr = munge_decode(data, a->mctx, &payload, &len, &uid, &gid);
 	if (merr != EMUNGE_SUCCESS) {
 		LOG_ERROR("munge_decode() failed. %s\n", munge_strerror(merr));
-		goto invalid;
-	}
-	if (len != sizeof(*sin)) {
-		LOG_ERROR("Bad payload\n");
-		goto invalid; /* bad payload */
+		goto out;
 	}
 
-	/* check if addr match */
-	sin = payload;
+	/* Check the expected peer address (compatability mode) */
+	payload_sin = payload;
 	/*
 	 * zap_rdma from OVIS-4.3.7 and earlier has a bug that swaps
 	 * local/remote addresses. Since the old peers send the swapped
 	 * address, in order to be compatible with them, we have to expect the
 	 * swapped address in the case of rdma transport.
 	 */
-	cmp = (strncmp(xprt->name, "rdma", 4) == 0)?
-			memcmp(sin, &a->lsin, sizeof(*sin)):
-			memcmp(sin, &a->rsin, sizeof(*sin));
+	xprt_sin = (strncmp(xprt->name, "rdma", 4) == 0 ?
+		    (struct sockaddr_in *)&a->lsin :
+		    (struct sockaddr_in *)&a->rsin);
+	cmp = memcmp(payload_sin, xprt_sin, sizeof(*payload_sin));
 	if (cmp != 0) {
-		LOG_ERROR("bad address.\n");
-		goto invalid; /* bad addr */
+		char ipa[16];
+		char ipb[16];
+		strcpy(ipa, inet_ntoa(payload_sin->sin_addr));
+		strcpy(ipb, inet_ntoa(xprt_sin->sin_addr));
+		LOG_INFO("Unexpected authentication message payload "
+			  "'%s' != '%s'.\n", ipa, ipb);
 	}
-	/* verified */
-	xprt->ruid = uid;
-	xprt->rgid = gid;
-
+	rc = 0;
+ out:
+	/* Cache the peer's verified uid and gid in the transport handle. */
+	if (!rc) {
+		xprt->ruid = uid;
+		xprt->rgid = gid;
+	}
 	free(payload);
-	ldms_xprt_auth_end(xprt, 0);
-	return 0;
-
-invalid:
-	if (payload)
-		free(payload);
-	ldms_xprt_auth_end(xprt, EINVAL);
+	ldms_xprt_auth_end(xprt, rc);
 	return 0;
 }
 
@@ -310,7 +316,7 @@ int __auth_munge_cred_get(ldms_auth_t auth, ldms_cred_t cred)
 ldms_auth_plugin_t __ldms_auth_plugin_get()
 {
 	if (!munge_log) {
-		munge_log = ovis_log_register("auth_munge",
+		munge_log = ovis_log_register("auth.munge",
 					      "Messages for ldms_auth_munge");
 		if (!munge_log) {
 			LOG_ERROR("Failed to register auth_munge's log. "
