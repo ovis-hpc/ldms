@@ -355,18 +355,29 @@ class LdmsdCmdParser(cmd.Cmd):
         host=     The hostname of the host
         port=     The port number on which the LDMS is listening
         type=     The connection type [active, passive]
-        interval= The connection retry interval (us)
+        reconnect= The connection retry interval (us)
+        interval= The connection retry interval (us) (Deprecated, please use 'reconnect'.)
         auth=     The authentication method
         [perm=]   The permission to modify the producer in the future.
         """
         arg = self.handle_args('prdcr_add', arg)
-        if arg:
+        if arg is None:
+            return
+        if arg['interval'] is None and arg['reconnect'] is None:
+            print(f"The attribute 'reconnect' is missing.")
+        else:
+            if arg['interval'] is not None:
+                if arg['reconnect'] is not None:
+                    print(f"Both 'interval' and 'reconnect' is given. The 'reconnect' value will be used.")
+                else:
+                    arg['reconnect'] = arg['interval']
+                    print(f"'interval' is being deprecated'. Please, use 'reconnect' in the future.")
             rc, msg = self.comm.prdcr_add(arg['name'],
                                           arg['type'],
                                           arg['xprt'],
                                           arg['host'],
                                           arg['port'],
-                                          arg['interval'],
+                                          arg['reconnect'],
                                           arg['auth'],
                                           arg['perm'])
             if rc:

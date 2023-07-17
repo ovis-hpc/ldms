@@ -212,9 +212,13 @@ The hostname of the host
 .br
 The connection type [active, passive]
 .TP
-.BI interval " interval"
+.BI reconnect " interval"
 .br
 The connection retry interval
+.TP
+.BI interval " interval"
+.br
+The connection retry interval. Deprecated. Please use 'reconnect'.
 .TP
 .BI [perm " permission"]
 .br

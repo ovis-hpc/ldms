@@ -458,8 +458,10 @@ static void help_prdcr_add()
 		"     host=     The hostname of the host\n"
 		"     port=     The port number on which the LDMS is listening\n"
 		"     type=     The connection type [active, passive]\n"
-		"     interval= The connection retry interval (us)\n"
-		"     [perm=]   The permission to modify the producer in the future.\n");
+		"     reconnect= The connection retry interval (us)\n"
+		"     interval= The connection retry interval (us). Deprecated, please use 'reconnect'.\n"
+		"     [perm=]   The permission to modify the producer in the future.\n"
+		);
 }
 
 static void help_prdcr_del()
