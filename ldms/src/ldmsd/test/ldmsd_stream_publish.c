@@ -177,7 +177,7 @@ int main(int argc, char **argv)
 	ldms_t ldms = NULL;
 
 	/* Create a transport endpoint */
-	ldms = ldms_xprt_new_with_auth(xprt, auth, NULL);
+	ldms = ldms_xprt_new_with_auth(xprt, auth, auth_opt);
 	if (!ldms) {
 		rc = errno;
 		printf("Failed to create the LDMS transport endpoint.\n");
