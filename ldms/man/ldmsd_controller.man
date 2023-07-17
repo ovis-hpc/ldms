@@ -267,9 +267,13 @@ The hostname of the host
 .br
 The connection type [active, passive]
 .TP
-.BI interval " interval"
+.BI reconnect " interval"
 .br
 The connection retry interval
+.TP
+.BI interval " interval"
+.br
+The connection retry interval. Deprecated. Please use 'reconnect'.
 .TP
 .BI [perm " permission"]
 .br
@@ -958,9 +962,9 @@ port1=`expr $portbase + 1`
 port2=`expr $portbase + 2`
 port3=`expr $portbase + 3`
 
-echo "prdcr_add name=localhost2 host=localhost type=active xprt=sock port=$port2 interval=20000000"
+echo "prdcr_add name=localhost2 host=localhost type=active xprt=sock port=$port2 reconnect=20000000"
 echo "prdcr_start name=localhost2"
-echo "prdcr_add name=localhost1 host=localhost type=active xprt=sock port=$port1 interval=20000000"
+echo "prdcr_add name=localhost1 host=localhost type=active xprt=sock port=$port1 reconnect=20000000"
 echo "prdcr_start name=localhost1"
 echo "updtr_add name=policy5_h1 interval=2000000 offset=0"
 echo "updtr_prdcr_add name=policy5_h1 regex=localhost1"

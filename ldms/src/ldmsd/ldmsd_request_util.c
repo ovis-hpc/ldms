@@ -175,6 +175,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "producer",          LDMSD_ATTR_PRODUCER  },
 	{  "push",              LDMSD_ATTR_PUSH  },
 	{  "rail",              LDMSD_ATTR_RAIL  },
+	{  "reconnect",         LDMSD_ATTR_RECONNECT  },
 	{  "regex",             LDMSD_ATTR_REGEX  },
 	{  "reset",             LDMSD_ATTR_RESET  },
 	{  "schema",            LDMSD_ATTR_SCHEMA  },
