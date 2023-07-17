@@ -1550,8 +1550,14 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		port_no = (unsigned)ptmp;
 	}
 
-	attr_name = "interval";
-	interval_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
+	attr_name = "reconnect";
+	interval_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RECONNECT);
+	if (!interval_s) {
+		interval_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
+		ovis_log(config_log, OVIS_LWARN, "The 'interval' in prdcr_add is "
+				"being deprecrated. Please use 'reconnect' instead.\n");
+	}
+
 	if (!interval_s) {
 		goto einval;
 	} else {
@@ -1560,7 +1566,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		if ((*interval_s == '\0') || (*ptr != '\0') || (interval_us <= 0)) {
 			reqc->errcode = EINVAL;
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
-					"The interval must be a positive number.");
+					"The 'reconnect' value must be a positive number.");
 			goto send_reply;
 		}
 	}
