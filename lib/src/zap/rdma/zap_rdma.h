@@ -167,7 +167,7 @@ struct z_rdma_conn_data {
 };
 #pragma pack(pop)
 
-#define RDMA_CONN_DATA_MAX (56)
+#define RDMA_CONN_DATA_MAX (196)
 #define ZAP_RDMA_CONN_DATA_MAX (RDMA_CONN_DATA_MAX - sizeof(struct z_rdma_conn_data))
 
 #define RDMA_ACCEPT_DATA_MAX (196)
