@@ -2749,7 +2749,7 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def strgp_add(self, name, plugin, container, schema=None,
-                  regex=None, perm=0o777, flush=None, decomp=None):
+                  regex=None, perm=0o600, flush=None, decomposition=None):
         """
         Add a Storage Policy that will store metric set data when
         updates complete on a metric set.
@@ -2760,14 +2760,14 @@ class Communicator(object):
         container - The storage backend container name.
 
         Keyword Parameters:
-        schema    - The schema name of the metric set to store. If 'schema' is given, 'regex' is ignored.
-        regex       A regular expression matching set schemas. This must be
-                    used with decomposition. Either 'schema' or 'regex' must be given.
-        perm    -   The permission required to modify the storage policy,
-                    default perm=0o600
-        flush   -   Interval between calls to the storage plugin flush method.
-                    By default, the flush method is not called.
-        decomp  -   The path to a decomposition configuration file
+        schema        - The schema name of the metric set to store. If 'schema' is given, 'regex' is ignored.
+        regex         - A regular expression matching set schemas. This must be
+                        used with decomposition. Either 'schema' or 'regex' must be given.
+        perm          - The permission required to modify the storage policy,
+                        default perm=0o600
+        flush         - Interval between calls to the storage plugin flush method.
+                        By default, the flush method is not called.
+        decomposition - The path to a decomposition configuration file
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
@@ -2784,8 +2784,8 @@ class Communicator(object):
             attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.SCHEMA, value = schema))
         if regex is not None:
             attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.REGEX, value = regex))
-        if decomp is not None:
-            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.DECOMPOSITION, value = decomp))
+        if decomposition is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.DECOMPOSITION, value = decomposition))
         if flush is not None:
             attrs.append(LDMSD_Req_Attr(attr_name='flush', value=flush))
         req = LDMSD_Request(command_id=LDMSD_Request.STRGP_ADD, attrs=attrs)
