@@ -86,9 +86,10 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       ###############################
                       ##### Producer Policy #####
                       'prdcr_add': {'req_attr': ['name', 'type', 'xprt', 'host',
-                                                 'port', 'rail',
-                                                 'credits'],
-                                    'opt_attr' : [ 'auth', 'perm', 'interval', 'reconnect' ] },
+                                                 'port'],
+                                    'opt_attr' : [ 'auth', 'perm', 'interval',
+                                                   'reconnect', 'rail',
+                                                   'credits' ] },
                       'prdcr_del': {'req_attr': ['name']},
                       'prdcr_start': {'req_attr': ['name'],
                                       'opt_attr': ['interval']},
