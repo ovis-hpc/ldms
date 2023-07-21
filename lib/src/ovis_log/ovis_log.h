@@ -282,6 +282,7 @@ char *ovis_log_list(const char *subsys);
  *
  * \return 0 on success. On errors, a negative number is returned.
  */
+__attribute__(( format(printf, 3, 4) ))
 int ovis_log(ovis_log_t log, int level, const char *fmt, ...);
 int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap);
 
