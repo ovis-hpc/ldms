@@ -88,10 +88,10 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                                     'opt_attr' : [ 'auth', 'perm', 'interval', 'reconnect' ] },
                       'prdcr_del': {'req_attr': ['name']},
                       'prdcr_start': {'req_attr': ['name'],
-                                      'opt_attr': ['interval']},
+                                      'opt_attr': ['interval', 'reconnect']},
                       'prdcr_stop': {'req_attr': ['name']},
                       'prdcr_start_regex': {'req_attr': ['regex'],
-                                            'opt_attr': ['interval']},
+                                            'opt_attr': ['interval', 'reconnect']},
                       'prdcr_stop_regex': {'req_attr': ['regex']},
                       'prdcr_status': {'req_attr': [], 'opt_attr':['name']},
                       'prdcr_set_status': {'opt_attr': ['producer', 'instance', 'schema']},
@@ -260,7 +260,6 @@ class LDMSD_Req_Attr(object):
     RESET = 36
     DECOMPOSITION = 37
     SUMMARY = 38
-    RECONNECT = 39
     LAST = 40
 
     NAME_ID_MAP = {'name': NAME,
@@ -304,7 +303,7 @@ class LDMSD_Req_Attr(object):
                    'auth': AUTH,
                    'decomposition' : DECOMPOSITION,
                    'summary' : SUMMARY,
-                   'reconnect' : RECONNECT,
+                   'reconnect' : INTERVAL,
                    'TERMINATING': LAST
         }
 
@@ -346,7 +345,6 @@ class LDMSD_Req_Attr(object):
                    AUTH : 'auth',
                    DECOMPOSITION : 'decomposition',
                    SUMMARY : 'summary',
-                   RECONNECT : 'reconnect',
                    LAST : 'TERMINATING'
         }
 
@@ -1985,7 +1983,7 @@ class Communicator(object):
             LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.XPRT, value=xprt),
             LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.HOST, value=host),
             LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.PORT, value=str(port)),
-            LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.RECONNECT, value=str(reconnect))
+            LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.INTERVAL, value=str(reconnect))
         ]
         if auth:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.AUTH, value=auth))

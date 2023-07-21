@@ -697,6 +697,18 @@ parse:
 	if (!off)
 		goto next_line;
 
+	if (ldmsd_is_initialized()) {
+		if ((0 == strncmp(line, "prdcr_add", 9)) ||
+				(0 == strncmp(line, "prdcr_start", 11))) {
+			if (strstr(line, "interval")) {
+				ldmsd_log(LDMSD_LWARNING,
+						"'interval' is begin deprecated. "
+						"Please use 'reconnect' with 'prdcr_add' or 'prdcr_start*' "
+						"in the future.\n");
+			}
+		}
+	}
+
 	req_array = ldmsd_parse_config_str(line, msg_no, xprt.max_msg, ldmsd_log);
 	if (!req_array) {
 		rc = errno;

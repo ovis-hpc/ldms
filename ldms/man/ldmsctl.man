@@ -235,7 +235,7 @@ A unit string is one of the followings:
 .TP
 .BI interval " interval"
 .br
-The connection retry interval. Deprecated. Please use 'reconnect'.
+It is being precated. Please use 'reconnect'.
 .TP
 .BI [perm " permission"]
 .br
@@ -263,7 +263,7 @@ attr=<value>
 .br
 The producer name
 .TP
-.BI [interval " interval"]
+.BI [reconnect " interval"]
 .br
 The connection retry interval, which is a float followed by a unit string.
 If no unit string is given, the default unit is microseconds.
@@ -275,6 +275,10 @@ A unit string is one of the followings:
   h  -- hours
   d  -- days
 If unspecified, the previously configured value will be used. Optional.
+.TP
+.BI [interval " interval"]
+.br
+It is being deprecated. Please use 'reconnect'.
 .RE
 
 .SS Start all producers matching a regular expression
@@ -286,7 +290,7 @@ attr=<value>
 .br
 A regular expression
 .TP
-.BI [interval " interval"]
+.BI [reconnect " interval"]
 .br
 The connection retry interval, which is a float followed by a unit string.
 If no unit string is given, the default unit is microseconds.
@@ -298,6 +302,10 @@ A unit string is one of the followings:
   h  -- hours
   d  -- days
 If unspecified, the previously configured value will be used. Optional.
+.TP
+.BI [interval " interval"]
+.br
+It is being deprecated. Please use 'reconnect'.
 .RE
 
 .SS Stop a producer

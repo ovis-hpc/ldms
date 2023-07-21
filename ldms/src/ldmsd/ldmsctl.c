@@ -477,9 +477,11 @@ static void help_prdcr_start()
 	printf( "\nStart the specified producer.\n\n"
 		"Parameters:\n"
 		"     name=       The name of the producer\n"
-		"     [interval=] The connection retry interval in micro-seconds.\n"
-		"                 If this is not specified, the previously\n"
-		"                 configured value will be used.\n");
+		"     [reconnect=] The connection retry interval in micro-seconds.\n"
+		"                  If this is not specified, the previously\n"
+		"                  configured value will be used.\n"
+		"     [interval=]  The same as 'reconnect'. It is being deprecated. "
+		"                  Please use 'reconnect' in the future.\n");
 }
 
 static void help_prdcr_stop()
@@ -493,10 +495,12 @@ static void help_prdcr_start_regex()
 {
 	printf( "\nStart all producers matching a regular expression.\n\n"
 		"Parameters:\n\n"
-		"     regex=        A regular expression\n"
-		"     [interval=]   The connection retry interval in micro-seconds.\n"
-		"                   If this is not specified, the previously configured\n"
-		"                   value will be used.\n");
+		"     regex=         A regular expression\n"
+		"     [reconnect=]   The connection retry interval in micro-seconds.\n"
+		"                    If this is not specified, the previously configured\n"
+		"                    value will be used.\n"
+		"     [interval=]    The same as 'reconnect'. It is being deprecated. "
+		"                    Please use 'reconnect' in the future.\n");
 }
 
 static void help_prdcr_stop_regex()
@@ -2591,6 +2595,13 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 		printf("Unrecognized command '%s'\n", key.token);
 		free(dummy);
 		return 0;
+	}
+
+	if ((0 == strcmp(key.token, "prdcr_add")) ||
+			(0 == strncmp(key.token, "prdcr_start", 11))) {
+		if (strstr(cmd_str, "interval")) {
+			printf("'interval' is begin deprecated. Please use 'reconnect' in the future.\n");
+		}
 	}
 
 	if (cmd->action) {
