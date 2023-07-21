@@ -1288,6 +1288,8 @@ static void sock_read(z_sock_io_thread_t thr, struct epoll_event *ev)
 	enum sock_msg_type msg_type;
 	struct zap_version ver;
 	int rc;
+	int looping = 1;
+
 	do {
 		rc = __recv_msg(sep);
 		if (rc == EAGAIN)
@@ -1309,6 +1311,8 @@ static void sock_read(z_sock_io_thread_t thr, struct epoll_event *ev)
 				/* return the borrowed thread */
 				struct epoll_event ignore;
 				epoll_ctl(thr->efd, EPOLL_CTL_DEL, sep->sock, &ignore);
+				looping = 0; /* other thread shall process this
+					      * endpoint after app accept it  */
 			}
 			if (msg_type != SOCK_MSG_CONNECT &&
 					msg_type != SOCK_MSG_ACK_ACCEPTED) {
@@ -1368,7 +1372,7 @@ static void sock_read(z_sock_io_thread_t thr, struct epoll_event *ev)
 			process_sep_read_error(sep);
 		}
 		z_sock_buff_reset(&sep->buff);
-	} while (1);
+	} while (looping);
 	return;
 
  protocol_error:
