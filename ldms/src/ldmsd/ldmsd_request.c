@@ -1533,13 +1533,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	attr_name = "reconnect";
-	interval_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RECONNECT);
-	if (!interval_s) {
-		interval_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
-		ldmsd_log(LDMSD_LWARNING, "The 'interval' in prdcr_add is "
-				"being deprecrated. Please use 'reconnect' instead.\n");
-	}
-
+	interval_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
 	if (!interval_s) {
 		goto einval;
 	} else {
@@ -1582,7 +1576,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 			goto enomem;
 	}
 	__dlog(DLOG_CFGOK, "prdcr_add name=%s xprt=%s host=%s port=%u type=%s "
-		"interval=%ld auth=%s uid=%d gid=%d perm=%o\n",
+		"reconnect=%ld auth=%s uid=%d gid=%d perm=%o\n",
 		name, xprt, host, port_no, type_s,
 		interval_us, auth ? auth : "none", (int)uid, (int)gid,
 		(unsigned)perm);
@@ -1697,7 +1691,7 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = ldmsd_prdcr_start(name, interval_str, &sctxt);
 	switch (reqc->errcode) {
 	case 0:
-		__dlog(DLOG_CFGOK, "prdcr_start name=%s interval=%s\n",
+		__dlog(DLOG_CFGOK, "prdcr_start name=%s reconnect=%s\n",
 			name, interval_str);
 		break;
 	case EBUSY:
@@ -1798,7 +1792,6 @@ static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
-
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 
 	reqc->errcode = ldmsd_prdcr_start_regex(prdcr_regex, interval_str,
@@ -1806,7 +1799,7 @@ static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
 	/* on error, reqc->line_buf will be filled */
 	if (reqc->line_buf[0] == '\0' || reqc->line_buf[0] == '0')
 		__dlog(DLOG_CFGOK, "prdcr_start_regex regex=%s%s%s\n",
-			prdcr_regex, interval_str ? " interval=" :"",
+			prdcr_regex, interval_str ? " reconnect=" :"",
 			interval_str ? interval_str : "");
 
 send_reply:
