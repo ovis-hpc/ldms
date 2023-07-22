@@ -1472,7 +1472,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	char *auth;
 	enum ldmsd_prdcr_type type = -1;
 	unsigned short port_no = 0;
-	int interval_us = -1;
+	long interval_us = -1;
 	size_t cnt;
 	uid_t uid;
 	gid_t gid;
@@ -1543,12 +1543,16 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!interval_s) {
 		goto einval;
 	} else {
-		char *ptr;
-		interval_us = strtol(interval_s, &ptr, 0);
-		if ((*interval_s == '\0') || (*ptr != '\0') || (interval_us <= 0)) {
+		reqc->errcode = ovis_time_str2us(interval_s, &interval_us);
+		if (reqc->errcode) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"The given 'reconnect' is invalid.");
+			goto send_reply;
+		}
+		if (interval_us <= 0) {
 			reqc->errcode = EINVAL;
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
-					"The 'reconnect' value must be a positive number.");
+					"The reconnect interval must be a positive number.");
 			goto send_reply;
 		}
 	}
@@ -1578,7 +1582,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 			goto enomem;
 	}
 	__dlog(DLOG_CFGOK, "prdcr_add name=%s xprt=%s host=%s port=%u type=%s "
-		"interval=%d auth=%s uid=%d gid=%d perm=%o\n",
+		"interval=%ld auth=%s uid=%d gid=%d perm=%o\n",
 		name, xprt, host, port_no, type_s,
 		interval_us, auth ? auth : "none", (int)uid, (int)gid,
 		(unsigned)perm);
@@ -1707,6 +1711,14 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 	case EACCES:
 		Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Permission denied.");
+		break;
+	case EINVAL:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The 'reconnect' value (%s) is invalid.", interval_str);
+		break;
+	case -EINVAL:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The 'reconnect' interval must be a positive interval.");
 		break;
 	default:
 		Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -3174,7 +3186,6 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	gid_t gid;
 	int perm;
 	char *perm_s = NULL;
-	char *endptr;
 	int push_flags, is_auto_task;
 	long interval, offset;
 
@@ -3215,11 +3226,10 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 					"an empty string.");
 			goto send_reply;
 		}
-		interval = strtol(interval_str, &endptr, 0);
-		if ('\0' != endptr[0]) {
-			reqc->errcode = EINVAL;
+		reqc->errcode = ovis_time_str2us(interval_str, &interval);
+		if (reqc->errcode) {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The given update interval value (%s) is not a number.",
+				"The given update interval value (%s) is invalid.",
 				interval_str);
 			goto send_reply;
 		} else {
@@ -3244,12 +3254,11 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 					"The given update offset value is an empty string.");
 			goto send_reply;
 		}
-		offset = strtol(offset_str, &endptr, 0);
-		if ('\0' != endptr[0]) {
-			reqc->errcode = EINVAL;
+		reqc->errcode = ovis_time_str2us(offset_str, &offset);
+		if (reqc->errcode) {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 					"The given update offset value (%s) "
-					"is not a number.", offset_str);
+					"is invalid.", offset_str);
 			goto send_reply;
 		}
 		if (interval_str && (interval < labs(offset) * 2)) {
@@ -3807,7 +3816,6 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 	char *updtr_name, *interval_str, *offset_str, *auto_interval;
 	updtr_name = interval_str = offset_str = auto_interval = NULL;
 	size_t cnt = 0;
-	char *endptr;
 	long interval, offset = 0;
 	struct ldmsd_sec_ctxt sctxt;
 
@@ -3831,12 +3839,11 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 					"The given update offset value is an empty string.");
 			goto send_reply;
 		}
-		offset = strtol(offset_str, &endptr, 0);
-		if ('\0' != endptr[0]) {
-			reqc->errcode = EINVAL;
+		reqc->errcode = ovis_time_str2us(offset_str, &offset);
+		if (reqc->errcode) {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 					"The given update offset value (%s) "
-					"is not a number.", offset_str);
+					"is invalid.", offset_str);
 			goto send_reply;
 		}
 	}
@@ -3849,19 +3856,18 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 					"an empty string.");
 			goto send_reply;
 		}
-		interval = strtol(interval_str, &endptr, 0);
-		if ('\0' != endptr[0]) {
-			reqc->errcode = EINVAL;
+		reqc->errcode = ovis_time_str2us(interval_str, &interval);
+		if (reqc->errcode) {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The given update interval value (%s) is not a number.",
+				"The given update interval value (%s) is invalid.",
 				interval_str);
 			goto send_reply;
 		} else {
 			if (0 >= interval) {
 				reqc->errcode = EINVAL;
 				cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-						"The update interval value must "
-						"be larger than 0. (%ld)", interval);
+						"The update interval must "
+						"be a positive interval. (%ld)", interval);
 				goto send_reply;
 			}
 			if (offset_str && interval < labs(offset) * 2) {
@@ -4869,6 +4875,10 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Sampler '%s' is already running.", plugin_name);
 	} else if (reqc->errcode == EDOM) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The given 'offset' (%s) is invalid.", offset);
+	} else if (reqc->errcode == -EDOM) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Sampler parameters interval and offset are "

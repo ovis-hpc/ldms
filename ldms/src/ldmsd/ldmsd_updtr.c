@@ -918,8 +918,8 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 					int push_flags, int is_auto_task,
 					uid_t uid, gid_t gid, int perm)
 {
+	int rc;
 	struct ldmsd_updtr *updtr;
-	char *endptr;
 	long interval_us = UPDTR_TREE_MGMT_TASK_INTRVL, offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
 	updtr = (struct ldmsd_updtr *)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_UPDTR,
@@ -932,16 +932,12 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 	updtr->default_task.is_default = 1;
 	updtr->is_auto_task = is_auto_task;
 	if (interval_str) {
-		interval_us = strtol(interval_str, &endptr, 0);
-		if (('\0' == interval_str[0]) || ('\0' != endptr[0]))
-			goto einval;
-		if (0 >= interval_us)
+		rc = ovis_time_str2us(interval_str, &interval_us);
+		if (rc || (0 >= interval_us))
 			goto einval;
 		if (offset_str) {
-			offset_us = strtol(offset_str, &endptr, 0);
-			if (('\0' == offset_str[0]) || ('\0' != endptr[0]))
-				goto einval;
-			if (interval_us < labs(offset_us) * 2)
+			rc = ovis_time_str2us(offset_str, &offset_us);
+			if (rc || (interval_us < labs(offset_us) * 2))
 				goto einval;
 			/* Make it a hint offset */
 			offset_us -= updtr_sched_offset_skew_get();
@@ -1088,8 +1084,12 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 	interval_us = updtr->default_task.sched.intrvl_us;
 	offset_us = updtr->default_task.hint.offset_us;
 	if (interval_str) {
-		/* A new interval is given. */
-		interval_us = strtol(interval_str, NULL, 0);
+		/* A new interval is given, and its value has been checked by the handler. */
+		rc = ovis_time_str2us(interval_str, &interval_us);
+		if (rc || (interval_us <= 0)) {
+			rc = EINVAL;
+			goto err;
+		}
 		if (!offset_str) {
 			/* An offset isn't given. We assume that
 			 * users want the updater to schedule asynchronously.
@@ -1097,17 +1097,21 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
 		}
 	}
-	if (offset_str)
-		offset_us = strtol(offset_str, NULL, 0)
-					- updtr_sched_offset_skew_get();
-
-	if (interval_us < labs(offset_us) * 2) {
-		ldmsd_log(LDMSD_LERROR, "%s: The absolute value of the offset"
-			" value must not be larger than the half of "
-			"the update interval. (i=%ld, o=%ld)\n", "ldmsd_updtr_start",
-			interval_us, offset_us);
-		rc = EINVAL;
-		goto err;
+	if (offset_str) {
+		rc = ovis_time_str2us(offset_str, &offset_us);
+		if (rc) {
+			rc = EINVAL;
+			goto err;
+		}
+		if (interval_us < labs(offset_us) * 2) {
+			ldmsd_log(LDMSD_LERROR, "%s: The absolute value of the offset"
+				" value must not be larger than the half of "
+				"the update interval. (i=%ld, o=%ld)\n", "ldmsd_updtr_start",
+				interval_us, offset_us);
+			rc = EINVAL;
+			goto err;
+		}
+		offset_us = offset_us - updtr_sched_offset_skew_get();
 	}
 	/* Initialize the default task */
 	updtr_task_init(&updtr->default_task, updtr, 1, interval_us, offset_us);
