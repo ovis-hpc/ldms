@@ -1075,20 +1075,13 @@ void ldmsd_set_info_delete(ldmsd_set_info_t info)
 	free(info);
 }
 
-int __sampler_set_info_add(struct ldmsd_plugin *pi, char *interval, char *offset)
+int __sampler_set_info_add(struct ldmsd_plugin *pi, long interval_us, long offset_us)
 {
 	ldmsd_plugin_set_t set;
 	int rc;
-	long interval_us;
-	long offset_us = 0;
 
 	if (pi->type != LDMSD_PLUGIN_SAMPLER)
 		return EINVAL;
-	if (!interval)
-		return EINVAL;
-	interval_us = strtol(interval, NULL, 0);
-	if (offset)
-		offset_us = strtol(offset, NULL, 0);
 	for (set = ldmsd_plugin_set_first(pi->name); set;
 				set = ldmsd_plugin_set_next(set)) {
 		rc = ldmsd_set_update_hint_set(set->set, interval_us, offset_us);
@@ -1107,15 +1100,14 @@ int __sampler_set_info_add(struct ldmsd_plugin *pi, char *interval, char *offset
  */
 int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 {
-	char *endptr;
 	int rc = 0;
 	long sample_interval;
 	long sample_offset = 0;
 	struct ldmsd_plugin_cfg *pi;
 
-	sample_interval = strtol(interval, &endptr, 0);
-	if ((endptr[0] != '\0') || (sample_interval <= 0))
-		return EINVAL;
+	rc = ovis_time_str2us(interval, &sample_interval);
+	if (rc)
+		return rc;
 
 	pi = ldmsd_get_plugin((char *)plugin_name);
 	if (!pi)
@@ -1131,19 +1123,26 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 		goto out;
 	}
 
-	rc = __sampler_set_info_add(pi->plugin, interval, offset);
-	if (rc)
-		goto out;
 	pi->sample_interval_us = sample_interval;
 	if (offset) {
-		sample_offset = strtol(offset, NULL, 0);
+		rc = ovis_time_str2us(offset, &sample_offset);
+		if (rc) {
+			rc = EDOM;
+			goto out;
+		}
 		if ( !((sample_interval >= 10) &&
 		       (sample_interval >= labs(sample_offset)*2)) ){
-			rc = EDOM;
+			rc = -EDOM;
 			goto out;
 		}
 	}
 	pi->sample_offset_us = sample_offset;
+
+	rc = __sampler_set_info_add(pi->plugin, sample_interval,
+					         sample_offset);
+	if (rc)
+		goto out;
+
 	OVIS_EVENT_INIT(&pi->oev);
 	pi->oev.param.type = OVIS_EVENT_PERIODIC;
 	pi->oev.param.periodic.period_us = sample_interval;

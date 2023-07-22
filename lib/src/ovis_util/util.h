@@ -194,6 +194,28 @@ int av_check_expansion(printf_t log, const char *name, const char *value);
 size_t ovis_get_mem_size(const char *s);
 
 /**
+ * \brief Convert a time-interval string to microseconds
+ *
+ * A time-interval string is an integer followed by a unit string.
+ * A unit string is one of the following:
+ *
+ *   'us'       - microseconds
+ *   'ms'       - milliseconds
+ *   's'        - seconds
+ *   'm'        - minutes
+ *   'h'        - hours
+ *   'd'        - days
+ *
+ * If no unit string is given, the default unit is microseconds.
+ *
+ * \param s  a string to be converted. The valid format is <time><unit>.
+ * \oaram v  a resulting integer in microseconds.
+ *
+ * \return 0 on success. Otherwise, an errno is returned.
+ */
+int ovis_time_str2us(const char *s, long *v);
+
+/**
  * \brief Fork and exec the given command with /bin/sh.
  *
  * This function call will fork and execute the given command with bash. It is

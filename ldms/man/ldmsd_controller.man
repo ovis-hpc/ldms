@@ -166,15 +166,22 @@ The plugin name.
 .TP
 .BI interval " interval"
 .br
-The sample interval in microseconds.
+The sample interval, which is a float followed by a unit string.
+If no unit string is given, the default unit is microseconds.
+A unit string is one of the followings:
+  us -- microseconds
+  ms -- milliseconds
+  s  -- seconds
+  m  -- minutes
+  h  -- hours
+  d  -- days
 .TP
 .BI [offset " offset"]
 .br
-Offset (shift) from the sample mark in microseconds.
+Offset (shift) from the sample mark in the same format as intervals.
 Offset can be positive or negative with magnitude up to 1/2
-the sample interval. If this offset is specified, including 0,
-collection will be synchronous; if the offset is not specified,
-collection will be asynchronous. Optional.
+the sample interval. The default offset is 0. Collection is always synchronous.
+
 .RE
 
 
@@ -269,7 +276,15 @@ The connection type [active, passive]
 .TP
 .BI reconnect " interval"
 .br
-The connection retry interval
+The connection retry interval, which is a float followed by a unit string.
+If no unit string is given, the default unit is microseconds.
+A unit string is one of the followings:
+  us -- microseconds
+  ms -- milliseconds
+  s  -- seconds
+  m  -- minutes
+  h  -- hours
+  d  -- days
 .TP
 .BI interval " interval"
 .br
@@ -321,8 +336,16 @@ The producer name
 .TP
 .BI [interval " interval"]
 .br
-The connection retry interval in microsec. If unspecified,
-the previously configured value will be used. Optional.
+The connection retry interval, which is a float followed by a unit string.
+If no unit string is given, the default unit is microseconds.
+A unit string is one of the followings:
+  us -- microseconds
+  ms -- milliseconds
+  s  -- seconds
+  m  -- minutes
+  h  -- hours
+  d  -- days
+If unspecified, the previously configured value will be used. Optional.
 .RE
 
 .SS Start all producers matching a regular expression
@@ -336,8 +359,16 @@ A regular expression
 .TP
 .BI [interval " interval"]
 .br
-The connection retry interval in microsec. If unspecified,
-the previously configured value will be used. Optional.
+The connection retry interval, which is a float followed by a unit stirng.
+If no unit string is given, the default unit is microseconds.
+A unit string is one of the followings:
+  us -- microseconds
+  ms -- milliseconds
+  s  -- seconds
+  m  -- minutes
+  h  -- hours
+  d  -- days
+If unspecified, the previously configured value will be used. Optional.
 .RE
 
 .SS Stop a producer
@@ -397,7 +428,15 @@ any attributes specified for the metric sets or hosts.
 .TP
 .BI interval " interval"
 .br
-The update/collect interval
+The update/collect interval, which is a float followed by a unit string.
+If no unit string is given, the default unit is microseconds.
+A unit string is one of the followings:
+  us -- microseconds
+  ms -- milliseconds
+  s  -- seconds
+  m  -- minutes
+  h  -- hours
+  d  -- days
 .TP
 .BI [offset " offset"]
 .br
@@ -514,8 +553,16 @@ The update policy name
 .TP
 .BI [interval " interval"]
 .br
-The update interval in micro-seconds. If this is not
-specified, the previously configured value will be used. Optional.
+The update interval, which is a float followed by a unit string.
+If no unit string is given, the default unit is microseconds.
+A unit string is one of the followings:
+  us -- microseconds
+  ms -- milliseconds
+  s  -- seconds
+  m  -- minutes
+  h  -- hours
+  d  -- days
+If this is not specified, the previously configured value will be used. Optional.
 .TP
 .BI [offset " offset"]
 .br

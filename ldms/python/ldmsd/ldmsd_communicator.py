@@ -204,17 +204,6 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'auth_add': {'req_attr': ['name', 'plugin'], 'opt_attr': []},
                       }
 
-def check_offset(interval_us, offset_us=None):
-    """
-    Ensure that offset provided is valid for ldmsd with given interval
-    """
-    if offset_us:
-        interval_us = int(interval_us)
-        offset_us = int(offset_us)
-        if offset_us/interval_us > .5:
-            offset_us = interval_us/2
-    return offset_us
-
 def fmt_status(msg):
     """
     Format communicator status response string into json object
@@ -2027,7 +2016,6 @@ class Communicator(object):
                       LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INTERVAL, value=str(interval_us))
                     ]
         if offset_us != None:
-            offset_us = check_offset(interval_us, offset_us)
             req_attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.OFFSET, value=str(offset_us)))
         req = LDMSD_Request(
                 command_id = LDMSD_Request.PLUGN_START,
@@ -2406,7 +2394,6 @@ class Communicator(object):
         attrs += [
              LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INTERVAL, value=str(interval))
         ]
-        offset = check_offset(interval, offset)
         if offset:
             attrs += [
                 LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.OFFSET, value=str(offset))
@@ -2510,7 +2497,6 @@ class Communicator(object):
             LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
         ]
         if interval:
-            offset = check_offset(interval, offset)
             if auto_interval:
                 return errno.EINVAL, "'auto' is incompatible with 'interval'"
             attrs += [

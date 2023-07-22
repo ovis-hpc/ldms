@@ -597,6 +597,50 @@ size_t ovis_get_mem_size(const char *s)
     }
 }
 
+/*
+ * microseconds:	us
+ * milliseconnds:	ms
+ * seconds:		s
+ * minutes:		m
+ * hours:		h
+ * days:		d
+ */
+int ovis_time_str2us(const char *s, long *v)
+{
+	char *unit;
+	double x;
+
+	x = strtod(s, &unit);
+	if (unit == s)
+		return EINVAL;
+
+	while (unit[0] == ' ')
+		unit++;
+
+	if ((unit[0] == '\0') || (0 == strcmp(unit, "us")) || (0 == strncmp(unit, "micro", 5))) {
+		/* microseconds */
+		*v = (long long)x;
+	} else if ((0 == strcmp(unit, "ms")) || (0 == strncmp(unit, "milli", 5))) {
+		/* milliseconds */
+		*v = x * 1000;
+	} else if (unit[0] == 's') {
+		/* seconds */
+		*v = x * 1000000;
+	} else if (unit[0] == 'm') {
+		/* minutes */
+		*v = x * 1000000 * 60;
+	} else if (unit[0] == 'h') {
+		/* hours */
+		*v = x * 1000000 * 60 * 60;
+	} else if (unit[0] == 'd') {
+		/* days */
+		*v = x * 1000000 * 60 * 60 * 24;
+	} else {
+		return EINVAL;
+	}
+	return 0;
+}
+
 pid_t ovis_execute(const char *command)
 {
 	char *argv[] = {"/bin/sh", "-c", (char*)command, NULL};
