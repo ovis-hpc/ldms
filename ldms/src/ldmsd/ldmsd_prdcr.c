@@ -949,11 +949,18 @@ int ldmsd_prdcr_start(const char *name, const char *interval_str,
 		      ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
+	long reconnect;
 	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(name);
 	if (!prdcr)
 		return ENOENT;
-	if (interval_str)
-		prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
+	if (interval_str) {
+		rc = ovis_time_str2us(interval_str, &reconnect);
+		if (rc)
+			return EINVAL;
+		if (reconnect <= 0)
+			return -EINVAL;
+		prdcr->conn_intrvl_us = reconnect;
+	}
 	rc = __ldmsd_prdcr_start(prdcr, ctxt);
 	ldmsd_prdcr_put(prdcr);
 	return rc;
@@ -1107,6 +1114,20 @@ int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 	regex_t regex;
 	ldmsd_prdcr_t prdcr;
 	int rc;
+	long reconnect;
+
+	if (interval_str) {
+		rc = ovis_time_str2us(interval_str, &reconnect);
+		if (rc) {
+			snprintf(rep_buf, rep_len, "The reconnect interval value "
+					           "(%s) is invalid.", interval_str);
+			return EINVAL;
+		}
+		if (reconnect <= 0) {
+			snprintf(rep_buf, rep_len, "The reconnect interval must be a positive interval.");
+			return EINVAL;
+		}
+	}
 
 	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
 	if (rc)
@@ -1118,12 +1139,12 @@ int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 		if (rc)
 			continue;
 		if (interval_str)
-			prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
+			prdcr->conn_intrvl_us = reconnect;
 		__ldmsd_prdcr_start(prdcr, ctxt);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	regfree(&regex);
-	return 0;
+	return rc;
 }
 
 int ldmsd_prdcr_stop_regex(const char *prdcr_regex, char *rep_buf,
