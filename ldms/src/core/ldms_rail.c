@@ -517,7 +517,7 @@ void __rail_conn_msg_ntoh(struct ldms_rail_conn_msg_s *m)
 	m->idx = ntohl(m->idx);
 	m->n_eps = ntohl(m->n_eps);
 	m->pid = ntohl(m->pid);
-	m->rail_gn = ntohl(m->rail_gn);
+	m->rail_gn = be64toh(m->rail_gn);
 	m->rate_limit = ntohl(m->rate_limit);
 	m->recv_limit = be64toh(m->recv_limit);
 }
