@@ -85,7 +85,7 @@ struct ldms_rail_conn_msg_s {
 	int n_eps; /* number of endpoints */
 	uint32_t idx; /* endpoint index in the rail */
 	int pid;
-	int rail_gn;
+	uint64_t rail_gn;
 
 };
 #pragma pack(pop)
