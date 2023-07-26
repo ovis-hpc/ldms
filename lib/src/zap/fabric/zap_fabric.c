@@ -1496,7 +1496,7 @@ static void process_recv_wc(struct z_fi_ep *rep, struct fi_cq_err_entry *entry)
  out:
 	return;
  err_wrong_dsz:
-	LOG_(rep, "msg type %d has invalid data len %d\n", msg_type, rb->data_len);
+	LOG_(rep, "msg type %d has invalid data len %zd\n", msg_type, rb->data_len);
 	z_fi_close(&rep->ep);
 	return;
 }
