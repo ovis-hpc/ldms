@@ -700,7 +700,7 @@ static int config(struct ldmsd_plugin *self,
 			" is too long.\n");
 		return jc;
 	}
-	base_auth_parse(avl, &auth, log_fn);
+	base_auth_parse(avl, &auth, mylog);
 
         value = av_value(avl, "schema");
         if (value != NULL) {
