@@ -61,6 +61,29 @@ The sampler offset for the jobid plugin should be slightly less than all other p
 
 Other samplers use the jobid plugin as the jobid data source. If the jobid sampler is not loaded, these samplers will report 0 jobid values.
 
+.SH FILE FORMAT
+
+The file consists of key-value pairs, one per line, separated by an equals-sign. The recognized keys are:
+
+.TP
+JOBID
+.BR
+An unsigned integer (up to 64-bit) identifying the job. The number zero is reserved to mean that no job is currently running.
+.TP
+UID
+.BR
+An unsigned integer (up to 64-bit) representing the User ID associated with the job.
+.TP
+APPID
+.BR
+An unsigned integer (up to 64-bit) representing the an application ID for the job.
+.TP
+USER
+.BR
+A string representing the username associated with the job.
+
+Only the JOBID field is required. The other fields are optional, and will default to zero.
+
 .SH EXAMPLES
 .PP
 .nf
@@ -90,8 +113,6 @@ echo UID=$SLURM_UID >> /var/run/ldms.jobinfo
 echo USER=$SLURM_JOB_USER >> /var/run/ldms.jobinfo
 
 .fi
-These slurm files might be found in /etc/nodestate/bin/.
-
 
 .SH SEE ALSO
 ldms(7), ldmsd(8), ldmsd_controller(8)
