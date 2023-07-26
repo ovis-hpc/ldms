@@ -929,7 +929,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event "
-			       "was received for job %d with no job_data\n",
+			       "was received for job %ld with no job_data\n",
 			       event_name->str, job_id);
 			goto out_1;
 		}
@@ -938,7 +938,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event "
-			       "was received for job %d with no job_data\n",
+			       "was received for job %ld with no job_data\n",
 			       event_name->str, job_id);
 			goto out_1;
 		}
@@ -947,7 +947,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event "
-			       "was received for job %d with no job_data\n",
+			       "was received for job %ld with no job_data\n",
 			       event_name->str, job_id);
 			goto out_1;
 		}
@@ -956,7 +956,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event "
-			       "was received for job %d with no job_data\n",
+			       "was received for job %ld with no job_data\n",
 			       event_name->str, job_id);
 			goto out_1;
 		}

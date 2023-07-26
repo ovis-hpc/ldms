@@ -419,10 +419,10 @@ void ch_output(FILE *f, const char *name,
 		int merr = fchown(fd, newuid, newgid);
 		int rc = errno;
 		if (merr) {
-			ovis_log(cps->mylog, OVIS_LERROR,"ch_output: unable to fchown(%d, (%s),%lu, %lu): %s.\n",
+			ovis_log(cps->mylog, OVIS_LERROR,"ch_output: unable to fchown(%d, (%s),%u, %u): %s.\n",
 				fd, name, newuid, newgid, STRERROR(rc));
 		}
-		ovis_log(cps->mylog, OVIS_LDEBUG,"ch_output: fchown(%d, (%s),%lu, %lu): %s.\n",
+		ovis_log(cps->mylog, OVIS_LDEBUG,"ch_output: fchown(%d, (%s),%u, %u): %s.\n",
 			fd, name, newuid, newgid, STRERROR(rc));
 	}
 }

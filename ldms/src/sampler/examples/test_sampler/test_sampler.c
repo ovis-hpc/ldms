@@ -1646,7 +1646,7 @@ static int config_add_stream(struct attr_value_list *avl)
 	c = __stream_client_find(ts_stream, host, port, xprt, auth);
 	if (c) {
 		ovis_log(mylog, OVIS_LERROR, "stream '%s' the client "
-				"%s:%s:%s already exists.\n", ts_stream->name,
+				"%s:%s:%s:%s already exists.\n", ts_stream->name,
 				c->xprt, c->port, c->host, c->auth_dom->obj.name);
 	} else {
 		c = malloc(sizeof(*c));

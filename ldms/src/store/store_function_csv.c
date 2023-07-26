@@ -1600,7 +1600,7 @@ static int calcDimValidate(struct derived_data* dd){
 		return 0;
 		break;
 	default:
-		ovis_log(mylog, OVIS_LERROR, "%s: Error - No code to validate function %s\n"
+		ovis_log(mylog, OVIS_LERROR, "%s: Error - No code to validate function %d\n",
 		       __FILE__, fct);
 		return EINVAL;
 		break;
@@ -1874,7 +1874,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
  * in every logic branch.
  */
 static void token_error(func_t fct, const char *expected, int line) {
-	ovis_log(mylog, OVIS_LERROR, "%s: unexpected func_t value %d, expected one of: at line %d. Did the function syntax expand?\n",__FILE__, fct, expected, line);
+	ovis_log(mylog, OVIS_LERROR, "%s: unexpected func_t value %d, expected one of %s at line %d. Did the function syntax expand?\n",__FILE__, fct, expected, line);
 	exit(1);
 }
 
@@ -2969,7 +2969,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 {
 	struct function_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
-		ovis_log(mylog, OVIS_LERROR,"%s: flush error.\n, __FILE__");
+		ovis_log(mylog, OVIS_LERROR,"%s: flush error.\n", __FILE__);
 		return -1;
 	}
 	pthread_mutex_lock(&s_handle->lock);

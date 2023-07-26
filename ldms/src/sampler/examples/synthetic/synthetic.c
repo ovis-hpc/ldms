@@ -140,7 +140,7 @@ static int create_metric_set(base_data_t base)
 	schema = base_schema_new(base);
 	if (!schema) {
 		ovis_log(mylog, OVIS_LERROR, "The schema '%s' could not be created, errno=%d.\n",
-		       __FILE__, base->schema_name, errno);
+		       base->schema_name, errno);
 		rc = errno;
 		goto err;
 	}
@@ -250,7 +250,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
-	
+
 	uint64_t k;
 	if ( extra_sets > 0) {
 		extras = malloc(sizeof(ldms_set_t)*extra_sets);

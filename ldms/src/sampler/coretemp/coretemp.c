@@ -268,7 +268,7 @@ static int create_metric_set(base_data_t base)
 	if (!schema) {
 		ovis_log(mylog, OVIS_LERROR,
 		       "The schema '%s' could not be created, errno=%d.\n",
-		       __FILE__, base->schema_name, errno);
+		       base->schema_name, errno);
 		rc = EINVAL;
 		goto err;
 	}

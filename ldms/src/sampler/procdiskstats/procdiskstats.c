@@ -286,7 +286,7 @@ static int config_add_disks(struct attr_value_list *avl, ldms_schema_t schema)
 	return rc;
 
 err:
-	ovis_log(mylog, OVIS_LERROR, SAMP "%s Error %d adding metrics.\n", rc);
+	ovis_log(mylog, OVIS_LERROR, SAMP "Error %d adding metrics.\n", rc);
 	return rc;
 }
 

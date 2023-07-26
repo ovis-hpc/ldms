@@ -635,7 +635,7 @@ static void remove_completed_jobs(ldms_mval_t job_list, ldms_mval_t task_list, u
 			}
 		}
 
-		ovis_log(mylog, OVIS_LDEBUG, "Remove job %d\n", job_id_get(job));
+		ovis_log(mylog, OVIS_LDEBUG, "Remove job %ld\n", job_id_get(job));
 		rbt_del(&job_tree, &job->rbn);
 		TAILQ_REMOVE(&complete_job_list, job, ent);
 		if (job->rec_inst)
@@ -735,12 +735,12 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 	uint64_t timestamp;
 	json_entity_t av, dict;
 
-	ovis_log(mylog, OVIS_LDEBUG, "job %d: Received 'init' event\n",
+	ovis_log(mylog, OVIS_LDEBUG, "job %ld: Received 'init' event\n",
 						   job_id_get(job));
 
 	av = json_value_find(e, "timestamp");
 	if (!av) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: Missing 'timestamp' attribute "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Missing 'timestamp' attribute "
 				     "in 'init' event.\n", job_id_get(job));
 		return;
 	}
@@ -748,7 +748,7 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 
 	dict = json_value_find(e, "data");
 	if (!dict) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: Missing 'data' attribute "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Missing 'data' attribute "
 				     "in 'init' event.\n", job_id_get(job));
 		return;
 	}
@@ -773,7 +773,7 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 	/* job_size */
 	av = json_value_find(dict, "total_tasks");
 	if (!av) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: Missing 'total_tasks' attribute "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Missing 'total_tasks' attribute "
 				     "in 'init' event.\n", job_id_get(job));
 	} else {
 		job->v[JOB_SIZE].v_u32 = json_value_int(av);
@@ -782,7 +782,7 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 	/* task count */
 	av = json_value_find(dict, "local_tasks");
 	if (!av) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: Missing 'local_tasks' attribute "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Missing 'local_tasks' attribute "
 				     "in 'init' event.\n", job_id_get(job));
 		return;
 	} else {
@@ -807,7 +807,7 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 		if (ENOMEM == rc) {
 			goto expand_heap;
 		} else {
-			ovis_log(mylog, OVIS_LERROR, "job %d: Failed to create a new "
+			ovis_log(mylog, OVIS_LERROR, "job %ld: Failed to create a new "
 					     "job record. Error %d\n",
 					     job_id_get(job), rc);
 			goto out;
@@ -839,11 +839,11 @@ static void handle_step_init(job_data_t job, json_entity_t e)
 {
 	json_entity_t av, dict;
 
-	ovis_log(mylog, OVIS_LDEBUG, "job %d: Received 'step_init' event\n", job_id_get(job));
+	ovis_log(mylog, OVIS_LDEBUG, "job %ld: Received 'step_init' event\n", job_id_get(job));
 
 	dict = json_value_find(e, "data");
 	if (!dict) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: Missing 'data' attribute in "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Missing 'data' attribute in "
 				     "'step_init' event.\n", job_id_get(job));
 		return;
 	}
@@ -904,14 +904,14 @@ static void handle_step_init(job_data_t job, json_entity_t e)
 	/* task count */
 	av = json_value_find(dict, "total_tasks");
 	if (!av) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: Missing 'total_tasks' attribute "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Missing 'total_tasks' attribute "
 				     "in 'step_init' event.\n", job_id_get(job));
 	} else {
 		job->v[JOB_SIZE].v_u32 = json_value_int(av);
 	}
 
 	if (!job->rec_inst) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: Ignore'step_init' data "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Ignore'step_init' data "
 				     "because no job record in "
 				     "the job list metric.\n",
 				     job_id_get(job));
@@ -921,7 +921,7 @@ static void handle_step_init(job_data_t job, json_entity_t e)
 	/* task count */
 	av = json_value_find(dict, "local_tasks");
 	if (!av) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: task %d: Missing 'local_tasks' "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Missing 'local_tasks' "
 						"attribute in 'step_init' event.\n",
 								  job_id_get(job));
 	} else {
@@ -950,20 +950,20 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 
 	dict = json_value_find(e, "data");
 	if (!dict) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: Missing 'data' attribute in "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Missing 'data' attribute in "
 				    "'task_init_priv' event.\n", job_id_get(job));
 		return;
 	}
 
 	av = json_value_find(dict, "task_pid");
 	if (!av) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: Missing 'task_pid' attribute "
-				     "in 'task_init_priv' event.\n");
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Missing 'task_pid' attribute "
+				     "in 'task_init_priv' event.\n", job_id_get(job));
 		return;
 	}
 	task_pid = json_value_int(av);
 
-	ovis_log(mylog, OVIS_LDEBUG, "job %d: task %d: "
+	ovis_log(mylog, OVIS_LDEBUG, "job %ld: task %ld: "
 			    "Received 'task_init_priv' event\n",
 			    job_id_get(job), task_pid);
 
@@ -977,7 +977,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 	/* task rank */
 	av = json_value_find(dict, "task_global_id");
 	if (!av) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: task %d: Missing "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: task %d: Missing "
 				     "'task_global_id' attribute in "
 				     "'task_init_priv' event.\n",
 				     job_id_get(job), task_pid_get(task));
@@ -1014,31 +1014,31 @@ static void handle_task_exit(job_data_t job, json_entity_t e)
 
 	dict = json_value_find(e, "data");
 	if (!dict) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: Missing 'data' attribute in "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Missing 'data' attribute in "
 				    "'task_exit' event.\n", job_id_get(job));
 		return;
 	}
 
 	av = json_value_find(dict, "task_pid");
 	if (!av) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: Missing 'task_pid' attribute "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Missing 'task_pid' attribute "
 				     "in 'task_exit' event.\n", job_id_get(job));
 		return;
 	}
 	task_pid = json_value_int(av);
-	ovis_log(mylog, OVIS_LDEBUG, "job %d: task %d: Received 'task_exit' event\n",
+	ovis_log(mylog, OVIS_LDEBUG, "job %ld: task %ld: Received 'task_exit' event\n",
 					     job_id_get(job), task_pid);
 
 	task = task_data_find(job, task_pid);
 	if (!task) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: task %d: Cannot find "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: task %ld: Cannot find "
 				     "the task_data in 'task_exit' event.\n", job_id_get(job), task_pid);
 		return;
 	}
 
 	av = json_value_find(dict, "task_exit_status");
 	if (!av) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: task %d: Missing "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: task %d: Missing "
 				     "'task_exit_status' attribute "
 				     "in 'task_exit' event.\n", job_id_get(job),
 				     task_pid_get(task));
@@ -1057,12 +1057,12 @@ static void handle_job_exit(job_data_t job, json_entity_t e)
 {
 	json_entity_t av;
 
-	ovis_log(mylog, OVIS_LDEBUG, "job %d: Received 'job_exit' event.\n",
+	ovis_log(mylog, OVIS_LDEBUG, "job %ld: Received 'job_exit' event.\n",
 							 job_id_get(job));
 
 	av = json_value_find(e, "timestamp");
 	if (!av) {
-		ovis_log(mylog, OVIS_LERROR, "job %d: Missing 'timestamp' "
+		ovis_log(mylog, OVIS_LERROR, "job %ld: Missing 'timestamp' "
 				"attribute in 'job_exit' event.\n", job_id_get(job));
 		return;
 	}
@@ -1138,7 +1138,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 			}
 			handle_job_init(job, ev->recv.json);
 			ovis_log(mylog, OVIS_LERROR, "'%s' event was received "
-					    "for job %d with no job_data.\n",
+					    "for job %ld with no job_data.\n",
 					    event_name->str, job_id);
 			goto unlock_tree;
 		}
@@ -1147,7 +1147,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		job = job_data_find(job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event was received "
-					"for job %d with no job_data.\n",
+					"for job %ld with no job_data.\n",
 					event_name->str, job_id);
 			goto unlock_tree;
 		}
@@ -1156,7 +1156,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		job = job_data_find(job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event was received "
-					"for job %d with no job_data.\n",
+					"for job %ld with no job_data.\n",
 					event_name->str, job_id);
 			goto unlock_tree;
 		}
@@ -1170,7 +1170,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		job = job_data_find(job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event was received "
-					"for job %d with no job_data.\n",
+					"for job %ld with no job_data.\n",
 					event_name->str, job_id);
 			goto unlock_tree;
 		}

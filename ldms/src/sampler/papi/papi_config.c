@@ -197,7 +197,7 @@ int papi_process_config_file(job_data_t job, const char *path, ovis_log_t logger
 	buf = malloc(statbuf.st_size+2);
 	if (!buf) {
 		ovis_log(logger, OVIS_LERROR,
-		       "configuration file of size %d is too large\n",
+		       "configuration file of size %zd is too large\n",
 		       statbuf.st_size);
 		return ENOMEM;
 	}

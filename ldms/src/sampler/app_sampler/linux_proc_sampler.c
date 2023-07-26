@@ -2284,7 +2284,7 @@ uint64_t get_field_value_u64(linux_proc_sampler_inst_t inst, json_entity_t src, 
 		}
 		return (uint64_t)json_value_int(e);
 	case JSON_FLOAT_VALUE:
-		if ( json_value_float(e) < 0 || json_value_float(e) > UINT64_MAX) {
+		if ( json_value_float(e) < 0 || json_value_float(e) > (double)UINT64_MAX) {
 			errno = ERANGE;
 			INST_LOG(inst, OVIS_LDEBUG, "unconvertible to uint64_t: %g from %s.\n",
 				json_value_float(e), name);
@@ -2648,7 +2648,7 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 #endif
 	if (inst->log_send) {
 		INST_LOG(inst, OVIS_LDEBUG,
-			"Sending pid %d env with count %d size %zu %s%s\n",
+			"Sending pid %ld env with count %d size %zu %s%s\n",
 			app_set->key.os_pid, argc, off, pname ? " on" : "",
 			pname ? pname : "");
 	}
@@ -2788,7 +2788,7 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 #endif
 	if (inst->log_send) {
 		INST_LOG(inst, OVIS_LDEBUG,
-			"Sending pid %d argv %s%s%s\n",
+			"Sending pid %ld argv %s%s\n",
 			app_set->key.os_pid, pname ? " on" : "",
 			pname ? pname : "");
 	}
@@ -2866,15 +2866,15 @@ static size_t stat_format_sz = sizeof(stat_format);
 static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set, struct stat *s, const char *str, size_t nlen, const char *state, int fd)
 {
 	if (!inst) {
-		INST_LOG(inst, OVIS_LDEBUG, "!inst, pid %d\n", app_set->key.os_pid);
+		INST_LOG(inst, OVIS_LDEBUG, "!inst, pid %ld\n", app_set->key.os_pid);
 		return 0;
 	}
 	if (!str ) {
-		INST_LOG(inst, OVIS_LDEBUG, "!str, pid %d\n", app_set->key.os_pid);
+		INST_LOG(inst, OVIS_LDEBUG, "!str, pid %ld\n", app_set->key.os_pid);
 		return 0;
 	}
 	if (!app_set) {
-		INST_LOG(inst, OVIS_LDEBUG, "!app_set, pid %d\n", app_set->key.os_pid);
+		INST_LOG(inst, OVIS_LDEBUG, "!app_set, pid %ld\n", app_set->key.os_pid);
 		return 0;
 	}
 
@@ -2912,7 +2912,7 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 #endif
 	if (inst->log_send) {
 		INST_LOG(inst, OVIS_LDEBUG,
-			"Sending pid %d fd %d file %s new state %s%s%s\n",
+			"Sending pid %ld fd %d file %s new state %s%s%s\n",
 			app_set->key.os_pid, fd, str, state, pname ? " on" : "",
 			pname ? pname : "");
 	}
@@ -2926,15 +2926,15 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 static int fentry_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set, struct stat *s, struct fentry *fe, const char *state)
 {
 	if (!fe ) {
-		INST_LOG(inst, OVIS_LDEBUG, "null fe, pid %d\n", app_set->key.os_pid);
+		INST_LOG(inst, OVIS_LDEBUG, "null fe, pid %ld\n", app_set->key.os_pid);
 		return 0;
 	}
 	if (!fe->name) {
-		INST_LOG(inst, OVIS_LDEBUG, "null fe>name, pid %d, state %s\n", app_set->key.os_pid, state);
+		INST_LOG(inst, OVIS_LDEBUG, "null fe>name, pid %ld, state %s\n", app_set->key.os_pid, state);
 		return 0;
 	}
 	if (fe->seen) {
-		INST_LOG(inst, OVIS_LDEBUG, "fe>seen, pid %d\n", app_set->key.os_pid);
+		INST_LOG(inst, OVIS_LDEBUG, "fe>seen, pid %ld\n", app_set->key.os_pid);
 		return 0;
 	}
 	return string_send_state(inst, app_set, s, fe->name, fe->nlen,
@@ -3241,7 +3241,7 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data, int *
 		if (pid_bad)
 			*pid_bad = 1;
 		INST_LOG(inst, OVIS_LDEBUG, "ignoring start-tickless pid %"
-			PRId64 "\n", pid);
+			PRId32 "\n", pid);
 		return 0;
 	}
 	const char *start_string;
@@ -3932,7 +3932,7 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 			pid_from_file(inst, pglob.gl_pathv[ig]);
 		}
 		INST_LOG(inst, OVIS_LINFO,
-			"Checked %d pids from %s\n",
+			"Checked %ld pids from %s\n",
 			pglob.gl_pathc, inst->published_pid_dir);
 		globfree(&pglob);
 no_pids:	;

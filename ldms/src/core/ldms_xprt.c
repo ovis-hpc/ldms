@@ -1386,7 +1386,7 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 		if (rc) {
 			char errstr[512];
 			(void)regerror(rc, &regex, errstr, sizeof(errstr));
-			XPRT_LOG(x, OVIS_LERROR, errstr);
+			XPRT_LOG(x, OVIS_LERROR, "%s", errstr);
 			rc = EINVAL;
 			goto err_0;
 		}
@@ -3766,7 +3766,7 @@ void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_
 					     NULL, 0, NI_NUMERICHOST);
 		XPRT_LOG(x, OVIS_LERROR, "%s:%s:%d Error %d sending "
 				"the LDMS_SET_DELETE message to '%s'\n",
-				__FILE__, __func__, __LINE__, name);
+				__FILE__, __func__, __LINE__, zerr, name);
 		x->zerrno = zerr;
 		__ldms_free_ctxt(x, ctxt);
 	}

@@ -529,7 +529,7 @@ static int _append_singleton(json_entity_t en, jbuf_t jb)
 	default:
 		/* this should not happen */
 		ovis_log(mylog, OVIS_LDEBUG,
-				PNAME, ": cannot process JSON type '%s' "
+				PNAME ": cannot process JSON type '%s' "
 				"as singleton\n", json_type_name(en->type));
 		return -1;
 		break;
@@ -1375,8 +1375,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 					ovis_log(mylog, OVIS_LERROR, PNAME
 						"rolltype=5 needs rollagain"
 						" > max(rollover,10) :"
-						" rollagain='%s' "
-						" rollover='%s'\n",
+						" rollagain='%d' "
+						" rollover='%d'\n",
 						rollover, rollagain);
 					rc = EINVAL;
 					goto err;
