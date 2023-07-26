@@ -118,7 +118,7 @@ static int config(struct ldmsd_plugin *self,
 
         ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
-        sampler_base = base_config(avl, SAMP, "slingshot_info", log_fn);
+        sampler_base = base_config(avl, SAMP, "slingshot_info", mylog);
 
         rc = initialize_ldms_structs();
         if (rc < 0) {
