@@ -133,6 +133,7 @@ static int32_t jend_pos = 0;
 static char ji_buf[JI_SIZE];
 static int set_meta_new = 0;
 static int parse_err_logged = 0;
+
 static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t js) {
 	int rc = 0;
 	ji->appid = ji->jobid = ji->uid = 0;
@@ -222,10 +223,9 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 			parse_err_logged = 1;
 		}
 		rc = EINVAL;
-		goto err;
 		ji->jobid = 0;
+		goto err;
 	}
-
 
 	tmp = av_value(avl, "UID");
 	if (tmp) {
