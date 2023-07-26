@@ -1299,7 +1299,7 @@ static void handle_rendezvous(struct z_rdma_ep *rep,
 
 	zm = calloc(1, Z_RDMA_MAP_SZ);
 	if (!zm) {
-		LOG("%s:%d: Out of memory\n");
+		LOG("%s:%d: Out of memory\n", __FILE__, __LINE__);
 		return;
 	}
 	zm->rkey = sh->rkey;
@@ -1556,7 +1556,7 @@ static int cq_event_handler(struct ibv_cq *cq, int count)
 			if (wc.status != IBV_WC_WR_FLUSH_ERR) {
 				LOG("RDMA: cq_event_handler: endpoint %p, "
 					"WR op %d '%s', wc.status '%s', "
-					"addr %p len %d lkey %p.\n",
+					"addr %#lx len %d lkey %#x.\n",
 					ep,
 					ctxt->op, ibv_op_str(ctxt->op),
 					err_msg[wc.status],
