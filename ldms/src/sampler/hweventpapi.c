@@ -276,7 +276,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 		*events_tmp++);
 
 	ovis_log(mylog, OVIS_LDEBUG, SAMP ": user input papi event counts are %d and "
-		"events length are %d\n", pec, strlen(events));
+		"events length are %ld\n", pec, strlen(events));
 
 	/* Allocate the memory space from papi events names and codes */
 	events_codes = (int*) calloc(pec + 1, sizeof (int));
@@ -443,7 +443,7 @@ static struct sampler_meta * read_sup_file()
 						goto nextread;
 					}
 					ovis_log(mylog, OVIS_LDEBUG, SAMP ": sampler "
-						"record = %s, interval = %d\n",
+						"record = %s, interval = %ld\n",
 						record, meta->interval);
 					break;
 			}
@@ -502,6 +502,7 @@ static int string2attr_list_local(char *str, struct attr_value_list **__av_list,
 		strcat(new_str, s2);
 		strcat(new_str, compid);
 	} else {
+		rc = errno;
 		ovis_log(mylog, OVIS_LERROR, SAMP ": malloc failed!\n");
 		goto err;
 	}
@@ -840,7 +841,7 @@ int config_local(struct attr_value_list *kwl,
 	else
 		multiplex = 0;
 
-	ovis_log(mylog, OVIS_LDEBUG, SAMP ": maximum PIDs are %d.\n", max_pids);
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": maximum PIDs are %ld.\n", max_pids);
 
 	events = av_value(avl, "events");
 	if (!events) {

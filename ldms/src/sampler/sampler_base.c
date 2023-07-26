@@ -458,7 +458,7 @@ int base_auth_parse(struct attr_value_list *avl, struct base_auth *auth,
 			struct passwd *pwd = getpwnam(value);
 			if (!pwd) {
 				ovis_log(mylog, OVIS_LERROR,
-				    "%s: The specified user '%s' does not exist\n",
+				    ": The specified user '%s' does not exist\n",
 				    value);
 				goto einval;
 			}
@@ -475,7 +475,7 @@ int base_auth_parse(struct attr_value_list *avl, struct base_auth *auth,
 			struct group *grp = getgrnam(value);
 			if (!grp) {
 				ovis_log(mylog, OVIS_LERROR,
-				    "%s: The specified group '%s' does not exist\n",
+				    ": The specified group '%s' does not exist\n",
 				    value);
 				goto einval;
 			}

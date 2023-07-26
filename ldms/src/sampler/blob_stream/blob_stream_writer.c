@@ -257,7 +257,7 @@ static void stream_data_open(stream_data_t sd)
 		sd->timingfile = fopen_perm(sd->timingfile_name, "w", 0640);
 		if (!sd->timingfile) {
 			ovis_log(mylog, OVIS_LERROR, "Error '%s' opening the file %s.\n",
-			       STRERROR(errno), sd->offsetfile_name, sd->timingfile_name);
+			       STRERROR(errno), sd->timingfile_name);
 			sd->ws = WS_ERR;
 			return;
 		}
@@ -268,7 +268,7 @@ static void stream_data_open(stream_data_t sd)
 		sd->typefile = fopen_perm(sd->typefile_name, "w", 0640);
 		if (!sd->typefile) {
 			ovis_log(mylog, OVIS_LERROR, "Error '%s' opening the file %s.\n",
-			       STRERROR(errno), sd->offsetfile_name, sd->typefile_name);
+			       STRERROR(errno), sd->typefile_name);
 			sd->ws = WS_ERR;
 			return;
 		}

@@ -181,7 +181,7 @@ static int __op_subscribe(const char *stream, const char *path)
 	}
 	cli = malloc(sizeof(*cli) + strlen(stream) + 1);
 	if (!cli) {
-		ERR_LOG("Not enough memory\n", stream);
+		ERR_LOG("Not enough memory (stream: '%s')\n", stream);
 		rc = ENOMEM;
 		goto err0;
 	}

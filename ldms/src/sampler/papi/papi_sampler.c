@@ -457,7 +457,7 @@ static int handle_step_init(job_data_t job, uint64_t job_id, uint64_t app_id, js
 	attr = json_attr_find(dict, "subscriber_data");
 	if (!attr) {
 		ovis_log(mylog, OVIS_LERROR,
-		       "papi_sampler[%d]: subscriber_data missing from init message, job %d ignored.\n",
+		       "papi_sampler[%d]: subscriber_data missing from init message, job %ld ignored.\n",
 		       __LINE__, job_id);
 		return EINVAL;
 	}
@@ -490,8 +490,8 @@ static int handle_step_init(job_data_t job, uint64_t job_id, uint64_t app_id, js
 	json_entity_t subs_data = json_attr_value(attr);
 	if (json_entity_type(subs_data) != JSON_DICT_VALUE) {
 		ovis_log(mylog, OVIS_LINFO,
-		       "papi_sampler[%d]: subscriber_data is not a dictionary, job %d ignored.\n",
-		       __LINE__);
+		       "papi_sampler[%d]: subscriber_data is not a dictionary, job %ld ignored.\n",
+		       __LINE__, job_id);
 		rc = EINVAL;
 		goto out;
 	}
@@ -535,7 +535,7 @@ static int handle_step_init(job_data_t job, uint64_t job_id, uint64_t app_id, js
 		json_entity_t file_name = json_attr_value(file_attr);
 		if (json_entity_type(file_name) != JSON_STRING_VALUE) {
 			ovis_log(mylog, OVIS_LERROR,
-			       "papi_sampler[%d]: papi_config 'file' attribute "
+			       "papi_sampler[%ld]: papi_config 'file' attribute "
 			       "must be a string, job %d ignored.",
 			       job_id, __LINE__);
 			rc = EINVAL;
@@ -571,7 +571,7 @@ static int handle_step_init(job_data_t job, uint64_t job_id, uint64_t app_id, js
 		if (json_entity_type(config_string) != JSON_STRING_VALUE) {
 			ovis_log(mylog, OVIS_LERROR,
 			       "papi_config 'config' "
-			       "attribute must be a string, job %d ignored.",
+			       "attribute must be a string, job %ld ignored.",
 			       job_id);
 			rc = EINVAL;
 			goto out;
@@ -930,7 +930,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (!stream_client) {
 		ovis_log(mylog, OVIS_LERROR, "papi_sampler[%d]: Error %d attempting "
 		       "subscribe to the '%s' stream.\n",
-		       errno, papi_stream_name);
+		       __LINE__, errno, papi_stream_name);
 	}
 	return errno;
 }

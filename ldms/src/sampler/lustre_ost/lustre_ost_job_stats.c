@@ -266,7 +266,7 @@ void ost_job_stats_sample(const char *producer_name, const char *fs_name,
                         ldms_transaction_begin(job_stats->metric_set);
                         index = ldms_metric_by_name(job_stats->metric_set, "snapshot_time");
                         if (index == -1) {
-                                ovis_log(lustre_ost_log, OVIS_LWARNING, "ost job_stats metric not found: snapshot_time\n",
+                                ovis_log(lustre_ost_log, OVIS_LWARNING, "ost job_stats metric not found: snapshot_time (job id: %s)\n",
                                        str1);
                         } else {
                                 ldms_metric_set_u64(job_stats->metric_set, index, val1);

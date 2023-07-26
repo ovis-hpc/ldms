@@ -74,7 +74,7 @@
 #define DEFAULT_STREAM "slurm"
 
 #define INST_LOG(inst, lvl, fmt, ...) do { \
-	ovis_log(inst->mylog, (lvl), "%s: " fmt, ##__VA_ARGS__); \
+	ovis_log(inst->mylog, (lvl), SAMP ": " fmt, ##__VA_ARGS__); \
 } while (0)
 
 #ifndef ARRAY_LEN

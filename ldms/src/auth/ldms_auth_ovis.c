@@ -151,7 +151,7 @@ ldms_auth_t __auth_ovis_new(ldms_auth_plugin_t plugin,
 		if (len >= sizeof(a->conf)) {
 			/* name too long */
 			LOG_ERROR("The file path is too long. "
-				  "It must be at most %d.\n", sizeof(a->conf));
+				  "It must be at most %zd.\n", sizeof(a->conf));
 			errno = ENAMETOOLONG;
 			goto err1;
 		}
@@ -168,7 +168,7 @@ ldms_auth_t __auth_ovis_new(ldms_auth_plugin_t plugin,
 							 pwd->pw_dir);
 		if (len >= sizeof(a->conf)) {
 			LOG_ERROR("The secret word is too long. "
-				  "It must be at most %d.\n", sizeof(a->conf));
+				  "It must be at most %zd.\n", sizeof(a->conf));
 			errno = ENAMETOOLONG;
 			goto err1;
 		}
@@ -181,7 +181,7 @@ ldms_auth_t __auth_ovis_new(ldms_auth_plugin_t plugin,
 	len = snprintf(a->conf, sizeof(a->conf), SYSCONFDIR "/" SYSCONFNAME);
 	if (len >= sizeof(a->conf)) {
 		LOG_ERROR("The secret word is too long. "
-			  "It must be at most %d.\n", sizeof(a->conf));
+			  "It must be at most %zd.\n", sizeof(a->conf));
 		errno = ENAMETOOLONG;
 		goto err1;
 	}
