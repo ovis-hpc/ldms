@@ -195,9 +195,7 @@ void base_set_delete(base_data_t base);
  * current job id in the metric set. If job data is not
  * configured on the system, no job data is stored in the set.
  *
- * \param jd The job data structure returned by sampler_job_config
- * \param set The metric set containing the job_id_metric
- * \param job_id_metric The job id metric in \c set
+ * \param base The base data structure
  */
 void base_sample_begin(base_data_t base);
 
@@ -236,7 +234,7 @@ int base_auth_parse(struct attr_value_list *avl, struct base_auth *auth, ovis_lo
  * to employ this function directly if your plugin calls base_set_new() to
  * create its metric sets. base_set_new() will call base_auth_set().
  *
- * \param [in] base The base_data_t struct that holds the authentication options
+ * \param [in] auth The struct base_auth that holds the authentication options
  * \param [out] set The metric set that shall have its authentication values set
  */
 void base_auth_set(const struct base_auth *auth, ldms_set_t set);
