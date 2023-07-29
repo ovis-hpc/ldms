@@ -1821,8 +1821,13 @@ char *ldms_stream_client_stats_str()
 	struct ldms_stream_client_stats_tq_s *tq;
 	char *ret = NULL;
 	tq = ldms_stream_client_stats_tq_get();
-	if (!tq)
+	if (!tq) {
+		if (errno == ENOENT) {
+			ret = strdup("[]");
+			return ret;
+		}
 		return NULL;
+	}
 	ret = ldms_stream_client_stats_tq_to_str(tq);
 	ldms_stream_client_stats_tq_free(tq);
 	return ret;
