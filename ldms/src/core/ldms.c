@@ -1905,7 +1905,7 @@ static char *type_names[] = {
 	[LDMS_V_LIST_ENTRY] = "entry",
 	[LDMS_V_RECORD_TYPE] = "record_type",
 	[LDMS_V_RECORD_INST] = "record_inst",
-	[LDMS_V_RECORD_ARRAY] = "record_array",
+	[LDMS_V_RECORD_ARRAY] = "record[]",
 	[LDMS_V_TIMESTAMP] = "timestamp",
 };
 
@@ -2147,7 +2147,8 @@ static struct _ldms_type_name_map {
 	{ "list<>",	LDMS_V_LIST },
 	{ "none",	LDMS_V_NONE },
 	{ "record",	LDMS_V_RECORD_INST },
-	{ "record_array",LDMS_V_RECORD_ARRAY },
+	{ "record[]",  LDMS_V_RECORD_ARRAY },
+	{ "record_array",  LDMS_V_RECORD_ARRAY },
 	{ "record_type",LDMS_V_RECORD_TYPE },
 	{ "s16",	LDMS_V_S16 },
 	{ "s16[]",	LDMS_V_S16_ARRAY },

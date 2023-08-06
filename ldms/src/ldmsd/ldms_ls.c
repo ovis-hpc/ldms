@@ -420,11 +420,13 @@ void list_record_format(ldms_set_t s, ldms_mval_t lh)
 	printf("\n");
 
 	/* Print record values */
+	i = 0;
 	for (lval = ldms_list_first(s, lh, &ltype, &count); lval;
 			lval = ldms_list_next(s, lval, &ltype, &count)) {
+		if (i++)
+			printf("\n");
 		printf("  ");
 		record_format(lval, card, cw);
-		printf("\n");
 	}
 }
 
@@ -450,10 +452,11 @@ void record_array_format(ldms_set_t s, ldms_mval_t rh)
 	printf("\n");
 
 	for (i = 0; i < len; i++) {
+		if (i)
+			printf("\n");
 		rec = ldms_record_array_get_inst(rh, i);
 		printf("  ");
 		record_format(rec, card, width);
-		printf("\n");
 	}
 }
 
@@ -639,7 +642,7 @@ void metric_printer(ldms_set_t s, int i)
 		metunit = NULL;
 	}
 
-	printf("%c %-10s %-42s ",
+	printf("%c %-12s %-42s ",
 	       (ldms_metric_flags_get(s, i) & LDMS_MDESC_F_DATA ? 'D' : 'M'),
 	       ldms_metric_type_to_str(type), metname);
 	if (user_data)

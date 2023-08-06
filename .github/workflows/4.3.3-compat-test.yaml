@@ -162,17 +162,17 @@ jobs:
         [[ "${D2}" = "ovis-4.3.3/meminfo" ]] || error "unexpected ldms_ls(4.3.3) agg-4 result"
         # ldms_ls-4 to agg-4.3.3 -l
         echo -n "ldms_ls -l agg-4.3.3 ... "
-        D0=$( ./ldms_ls.sh -l -x sock -p 10001 | grep MemTotal )
+        D0=$( ./ldms_ls.sh -l -x sock -p 10001 | grep MemTotal | sed 's/\s\+/ /g' )
         echo "${D0}"
         [[ -n "${D0}" ]] || error "cannot get MemTotal from ldms_ls -l"
         # ldms_ls-4 to agg-4 -l
         echo -n "ldms_ls -l agg-4 ... "
-        D1=$( ./ldms_ls.sh -l -x sock -p 10002 | grep MemTotal )
+        D1=$( ./ldms_ls.sh -l -x sock -p 10002 | grep MemTotal | sed 's/\s\+/ /g' )
         echo "${D1}"
         [[ -n "${D1}" ]] || error "cannot get MemTotal from ldms_ls -l"
         # ldms_ls-4.3.3 to agg-4 -l
         echo -n "ldms_ls-4.3.3 -l agg-4 ... "
-        D2=$( ./ldms_ls-4.3.3.sh -l -x sock -p 10002 | grep MemTotal )
+        D2=$( ./ldms_ls-4.3.3.sh -l -x sock -p 10002 | grep MemTotal | sed 's/\s\+/ /g' )
         echo "${D2}"
         [[ -n "${D2}" ]] || error "cannot get MemTotal from ldms_ls -l"
         # check if they're the same
@@ -276,17 +276,17 @@ jobs:
         [[ "${D2}" = "ovis-4.3.3/meminfo" ]] || error "unexpected ldms_ls(4.3.3) agg-4 result"
         # ldms_ls-4 to agg-4.3.3 -l
         echo -n "ldms_ls -l agg-4.3.3 -a munge ... "
-        D0=$( ./ldms_ls.sh -l -x sock -p 10001 -a munge | grep MemTotal )
+        D0=$( ./ldms_ls.sh -l -x sock -p 10001 -a munge | grep MemTotal | sed 's/\s\+/ /g' )
         echo "${D0}"
         [[ -n "${D0}" ]] || error "cannot get MemTotal from ldms_ls -l"
         # ldms_ls-4 to agg-4 -l
         echo -n "ldms_ls -l agg-4 -a munge ... "
-        D1=$( ./ldms_ls.sh -l -x sock -p 10002 -a munge | grep MemTotal )
+        D1=$( ./ldms_ls.sh -l -x sock -p 10002 -a munge | grep MemTotal | sed 's/\s\+/ /g' )
         echo "${D1}"
         [[ -n "${D1}" ]] || error "cannot get MemTotal from ldms_ls -l"
         # ldms_ls-4.3.3 to agg-4 -l
         echo -n "ldms_ls-4.3.3 -l agg-4 -a munge ... "
-        D2=$( ./ldms_ls-4.3.3.sh -l -x sock -p 10002 -a munge | grep MemTotal )
+        D2=$( ./ldms_ls-4.3.3.sh -l -x sock -p 10002 -a munge | grep MemTotal | sed 's/\s\+/ /g' )
         echo "${D2}"
         [[ -n "${D2}" ]] || error "cannot get MemTotal from ldms_ls -l"
         # check if they're the same
