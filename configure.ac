@@ -61,6 +61,7 @@ AC_C_FLEXIBLE_ARRAY_MEMBER
 OVIS_PKGLIBDIR
 
 AC_LIB_HAVE_LINKFLAGS([jansson], [], [#include <jansson.h>])
+AM_CONDITIONAL([HAVE_LIBJANSSON], [test "x$HAVE_LIBJANSSON" = xyes])
 
 dnl change sharedstatedir default
 test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'
@@ -1047,6 +1048,7 @@ ldms/src/sampler/syspapi/Makefile
 ldms/src/sampler/app_sampler/Makefile
 ldms/src/sampler/slingshot_metrics/Makefile
 ldms/src/sampler/slingshot_info/Makefile
+ldms/src/sampler/json/Makefile
 ldms/src/contrib/sampler/Makefile
 ldms/src/contrib/sampler/daos/Makefile
 ldms/src/contrib/sampler/daos/test/Makefile
