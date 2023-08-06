@@ -1237,8 +1237,10 @@ LDMS_VALUE_TYPE_TBL = {
         "double[]" : LDMS_V_D64_ARRAY,
         "d[]"      : LDMS_V_D64_ARRAY,
         "d64[]"    : LDMS_V_D64_ARRAY,
+        "record[]" : LDMS_V_RECORD_ARRAY,
 
         "list"     : LDMS_V_LIST,
+        "list<>"   : LDMS_V_LIST,
 
         "char_array"   : LDMS_V_CHAR_ARRAY,
         "s8_array"     : LDMS_V_S8_ARRAY,
@@ -1263,6 +1265,7 @@ LDMS_VALUE_TYPE_TBL = {
         "double_array" : LDMS_V_D64_ARRAY,
         "d_array"      : LDMS_V_D64_ARRAY,
         "d64_array"    : LDMS_V_D64_ARRAY,
+        "record_array" : LDMS_V_RECORD_ARRAY,
 
         LDMS_V_CHAR : LDMS_V_CHAR,
         LDMS_V_S8   : LDMS_V_S8,
@@ -1314,8 +1317,7 @@ LDMS_VALUE_TYPE_TBL = {
 
         LDMS_V_LIST       : LDMS_V_LIST,
 
-        LDMS_V_RECORD_ARRAY : LDMS_V_RECORD_ARRAY,
-        "record_array"      : LDMS_V_RECORD_ARRAY,
+        LDMS_V_RECORD_ARRAY : LDMS_V_RECORD_ARRAY
     }
 
 cdef ldms_value_type LDMS_VALUE_TYPE(t):
