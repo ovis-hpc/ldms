@@ -13,11 +13,11 @@ store_avro_kafka - LDMSD store_avro_kafka plugin
 .BR name=store_avro_kafka
 .BI producer=PRODUCER
 .BI instance=INSTANCE
-.OP \fBtopic=\fITOPIC_FMT
-.OP \fBencoding=\fIJSON
-.OP \fBencoding=\fIAVRO
-.OP \fBkafka_conf=\fIPATH
-.OP \fBserdes_conf=\fIPATH
+.OP \fBtopic=\fITOPIC_FMT\fR
+.OP \fBencoding=\fIJSON\fR
+.OP \fBencoding=\fIAVRO\fR
+.OP \fBkafka_conf=\fIPATH\fR
+.OP \fBserdes_conf=\fIPATH\fR
 .YS
 .PP
 .SH "DESCRIPTION "
@@ -36,7 +36,6 @@ Avro Schema Registry. The location of this registry is specified in a configurat
 file or optionally on the \f[CB]config\fR command line.
 .PP
 .SH "CONFIG OPTIONS "
-.PP
 .PP
 .IP "\fBmode \fR" 1c
 A string indicating the encoding mode: "JSON" will encode messages in JSON format, "AVRO" will
