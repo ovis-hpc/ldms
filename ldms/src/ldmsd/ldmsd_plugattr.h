@@ -58,19 +58,22 @@
 /** The plugin attribute library provides augmenting a config (a/v, kw) with
  * parsing a/v,kw from a text file. This enables syntax for plugin loading
  * to load instance-specific configs ahead of their use without requiring:
-- multiple calls to config function
-- storage of pre-instantiation config arguments to be coded repeatedly in
-  multiple plugins.
-
-The expected command syntax uses are
-load name=store_csv conf=customizations.store_csv.txt
-	or
-load name=store_csv altheader=1 conf=customizations.store_csv.txt
-where any keys like altheader override what is stored in the text file.
-
-Support for routine option transformations (e.g. to parse numerics or
-handling repeated options) is also provided.
-*/
+ * - multiple calls to config function
+ * - storage of pre-instantiation config arguments to be coded repeatedly in
+ * multiple plugins.
+ *
+ * The expected command syntax uses are
+ * load name=store_csv conf=customizations.store_csv.txt
+ *	or
+ * load name=store_csv altheader=1 conf=customizations.store_csv.txt
+ * where any keys like altheader override what is stored in the text file.
+ *
+ * Support for routine option transformations (e.g. to parse numerics or
+ * handling repeated options) is also provided.
+ *
+ * Currently, the library reports the log messages to the application's
+ * default log.
+ */
 
 struct plugattr;
 
