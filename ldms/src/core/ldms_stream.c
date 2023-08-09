@@ -1016,8 +1016,14 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 		rc = ldms_xprt_sockaddr(x, (void*)&lsa, (void*)&rsa, &slen);
 		if (rc)
 			return;
-		req->stream_part.src_addr = rsa.sin_addr.s_addr;
-		req->stream_part.src_port = rsa.sin_port;
+		/* Exclude 127.0.0.0/8 loopbacks.
+		 * In the case of the loopback, the 'src' stays 0 and the
+		 * next level will resolve the src address.
+		 */
+		if (*((char*)&rsa.sin_addr.s_addr) != 127) {
+			req->stream_part.src_addr = rsa.sin_addr.s_addr;
+			req->stream_part.src_port = rsa.sin_port;
+		}
 	}
 
 	/* stream_part starts with 'src; msg_gn' */
@@ -1517,7 +1523,7 @@ int __stream_stats_sources_buff_append(struct ldms_stream_stats_s *stats,
 		rc = ovis_buff_appendf(buff, "%s\"%hhu.%hhu.%hhu.%hhu:%hu\":",
 			sep,
 			addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3],
-			addr.port);
+			be16toh(addr.port));
 		if (rc)
 			goto out;
 		rc = __src_stats_buff_append(src, buff);
@@ -1772,7 +1778,7 @@ int __client_stats_buff_append(struct ldms_stream_client_stats_s *cs,
 		cs->desc,
 		cs->dest.addr[0], cs->dest.addr[1],
 		cs->dest.addr[2], cs->dest.addr[3],
-		cs->dest.port) ||
+		be16toh(cs->dest.port)) ||
 	     ovis_buff_appendf(buff, ",\"tx\":") ||
 	     __counters_buff_append(&cs->tx, buff) ||
 	     ovis_buff_appendf(buff, ",\"drops\":") ||
