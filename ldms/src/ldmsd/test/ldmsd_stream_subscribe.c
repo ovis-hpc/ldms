@@ -27,18 +27,20 @@ static int daemon_io;
 static int daemon_noroot;
 static int events_raw;
 
+static pthread_mutex_t msglog_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+#define MSGLOG_LOCK() pthread_mutex_lock(&msglog_mutex)
+#define MSGLOG_UNLOCK() pthread_mutex_unlock(&msglog_mutex)
+
 void msglog(const char *fmt, ...)
 {
 	if (quiet)
 		return;
 	va_list ap;
-	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
-	pthread_mutex_lock(&mutex);
 	va_start(ap, fmt);
 	vfprintf(file, fmt, ap);
 	fflush(file);
-	pthread_mutex_unlock(&mutex);
 }
 
 static struct option long_opts[] = {
@@ -165,6 +167,7 @@ static int stream_unsubscribe_status_ev(ldms_stream_event_t ev, void *arg)
 
 static int stream_recv_ev(ldms_stream_event_t ev, void *arg)
 {
+	MSGLOG_LOCK();
 	if (!events_raw) {
 		if (ev->recv.type == LDMS_STREAM_STRING)
 			msglog("EVENT:{\"type\":\"string\",\"size\":%d,\"event\":", ev->recv.data_len);
@@ -175,6 +178,7 @@ static int stream_recv_ev(ldms_stream_event_t ev, void *arg)
 	if (!events_raw)
 		msglog("}");
 	msglog("\n");
+	MSGLOG_UNLOCK();
 	return 0;
 }
 
@@ -188,7 +192,9 @@ static int stream_ev_cb(ldms_stream_event_t ev, void *cb_arg)
 	case LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS:
 		return stream_unsubscribe_status_ev(ev, cb_arg);
 	default:
+		MSGLOG_LOCK();
 		msglog("ERROR: UNSUPPORTED EVENT %d\n", ev->type);
+		MSGLOG_UNLOCK();
 		return EINVAL;
 	}
 }
@@ -418,7 +424,9 @@ static int setup_connection(char *xprt, char *host, char *port, char *auth)
 
 	ldms = ldms_xprt_new_with_auth(xprt, auth, NULL);
 	if (!ldms) {
+		MSGLOG_LOCK();
 		msglog("Error %d creating the '%s' transport\n", errno, xprt);
+		MSGLOG_UNLOCK();
 		rc = errno;
 		goto out;
 	}
@@ -426,8 +434,11 @@ static int setup_connection(char *xprt, char *host, char *port, char *auth)
 	sem_init(&recv_sem, 1, 0);
 
 	rc = ldms_xprt_listen(ldms, ai->ai_addr, ai->ai_addrlen, event_cb, NULL);
-	if (rc)
+	if (rc) {
+		MSGLOG_LOCK();
 		msglog("Error %d listening on the '%s' transport.\n", rc, xprt);
+		MSGLOG_UNLOCK();
+	}
  out:
 	freeaddrinfo(ai);
 	return rc;
