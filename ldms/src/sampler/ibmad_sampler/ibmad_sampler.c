@@ -13,6 +13,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <coll/rbt.h>
+#include <inttypes.h>
 #include <sys/queue.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -617,7 +618,7 @@ static void dump_port_filters()
 	for (i = 0 ; i < MAX_CA_NAMES; i++) {
 		if (conf.ports[i].ca_name[0] == '\0')
 			break;
-		ovis_log(mylog, OVIS_LDEBUG, SAMP ": dpf: %s : 0x%x\n",
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": dpf: %s : 0x%" PRIu64 "\n",
 			conf.ports[i].ca_name, conf.ports[i].port_bits);
 	}
 }
