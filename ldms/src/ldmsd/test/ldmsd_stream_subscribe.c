@@ -165,16 +165,13 @@ static int stream_unsubscribe_status_ev(ldms_stream_event_t ev, void *arg)
 
 static int stream_recv_ev(ldms_stream_event_t ev, void *arg)
 {
-	if (!events_raw) {
-		if (ev->recv.type == LDMS_STREAM_STRING)
-			msglog("EVENT:{\"type\":\"string\",\"size\":%d,\"event\":", ev->recv.data_len);
-		else
-			msglog("EVENT:{\"type\":\"json\",\"size\":%d,\"event\":", ev->recv.data_len);
+	if (events_raw) {
+		msglog("%s\n", ev->recv.data);
+		return 0;
 	}
-	msglog(ev->recv.data);
-	if (!events_raw)
-		msglog("}");
-	msglog("\n");
+	msglog("EVENT:{\"type\":\"%s\",\"size\":%d,\"event\":%s}\n",
+			LDMS_STREAM_STRING ? "string" : "json",
+			ev->recv.data_len, ev->recv.data);
 	return 0;
 }
 
