@@ -2,6 +2,10 @@
 
 # OVIS / LDMS
 
+For more information on installing and using LDMS: https://ovis-hpcreadthedocs.readthedocs.io/en/latest/
+ 
+To join the LDMS Users Group: https://github.com/ovis-hpc/ovis-wiki/wiki/User-Group-Meeting-Notes
+
 OVIS is a modular system for HPC data collection, transport, storage,
 -log message exploration, and visualization as well as analysis.
 
