@@ -178,7 +178,7 @@ int __stream_buf_cmp(void *tree_key, const void *key);
 int __str_rbn_cmp(void *tree_key, const void *key);
 
 ldms_t ldms_xprt_rail_new(const char *xprt_name,
-			  int n, int64_t recv_limit, int32_t rate_limit,
+			  int n, int64_t recv_limit, int64_t rate_limit,
 			  const char *auth_name,
 			  struct attr_value_list *auth_av_list)
 {
@@ -518,7 +518,7 @@ void __rail_conn_msg_ntoh(struct ldms_rail_conn_msg_s *m)
 	m->n_eps = ntohl(m->n_eps);
 	m->pid = ntohl(m->pid);
 	m->rail_gn = be64toh(m->rail_gn);
-	m->rate_limit = ntohl(m->rate_limit);
+	m->rate_limit = be64toh(m->rate_limit);
 	m->recv_limit = be64toh(m->recv_limit);
 }
 
@@ -568,7 +568,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 		const char *auth_name;
 		struct attr_value_list *auth_av_list = NULL;
 		int64_t recv_limit;
-		int32_t rate_limit;
+		int64_t rate_limit;
 		ldms_event_cb_t cb;
 		void *cb_arg;
 		if (lr) {
