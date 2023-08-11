@@ -652,7 +652,7 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
  * \retval NULL If there is an error. \c errno is set to describe the error.
  */
 ldms_t ldms_xprt_rail_new(const char *xprt_name,
-			  int n, int64_t recv_limit, int32_t rate_limit,
+			  int n, int64_t recv_limit, int64_t rate_limit,
 			  const char *auth_name,
 			  struct attr_value_list *auth_av_list);
 

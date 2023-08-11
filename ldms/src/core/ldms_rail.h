@@ -79,7 +79,7 @@ struct ldms_rail_conn_msg_s {
 
 	/* The rail part */
 
-	int32_t rate_limit;  /* send/recv rate limits in bytes/sec */
+	int64_t rate_limit;  /* send/recv rate limits in bytes/sec */
 	int64_t recv_limit; /* receive limits in bytes */
 
 	int n_eps; /* number of endpoints */
@@ -143,7 +143,7 @@ struct ldms_rail_s {
 	struct ref_s ref;
 
 	uint64_t recv_limit; /* 0xffffffffffffffff is unlimited */
-	uint32_t rate_limit; /* 0xffffffff is unlimited */
+	uint64_t rate_limit; /* 0xffffffffffffffff is unlimited */
 	uint64_t send_limit; /* 0xffffffffffffffff is unlimited */
 
 	ldms_event_cb_t event_cb;
