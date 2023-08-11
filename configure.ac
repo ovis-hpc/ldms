@@ -354,8 +354,10 @@ OPTION_DEFAULT_DISABLE([store-app], [ENABLE_STORE_APP])
 OPTION_DEFAULT_DISABLE([test_sampler], [ENABLE_TEST_SAMPLER])
 OPTION_DEFAULT_DISABLE([list_sampler], [ENABLE_LIST_SAMPLER])
 OPTION_DEFAULT_DISABLE([record_sampler], [ENABLE_RECORD_SAMPLER])
-dnl test_sampler will also build with --enable-ldms-test
+dnl test_sampler, list_sampler and record_sampler will also build with --enable-ldms-test
 AM_CONDITIONAL([ENABLE_TEST_SAMPLER_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_TEST_SAMPLER_FALSE" = "x#"])
+AM_CONDITIONAL([ENABLE_LIST_SAMPLER_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_LIST_SAMPLER_FALSE" = "x#"])
+AM_CONDITIONAL([ENABLE_RECORD_SAMPLER_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_RECORD_SAMPLER_FALSE" = "x#"])
 OPTION_DEFAULT_DISABLE([grptest], [ENABLE_GRPTEST])
 dnl grptest will also build with --enable-ldms-test
 AM_CONDITIONAL([ENABLE_GRPTEST_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_GRPTEST_FALSE" = "x#"])
