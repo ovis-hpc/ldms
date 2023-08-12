@@ -453,7 +453,7 @@ static json_setter_t setter_table[] = {
 
 static int get_schema_for_json(char *name, json_entity_t e, ldms_schema_t *sch)
 {
-	int rc = 0;
+	int i, rc = 0;
 	ldms_schema_t schema;
 	struct schema_entry *entry;
 	struct rbn *rbn;
@@ -491,6 +491,33 @@ static int get_schema_for_json(char *name, json_entity_t e, ldms_schema_t *sch)
 	}
 	rbt_init(&entry->attr_tree, str_cmp);
 	rbn_init(&entry->rbn, entry->name);
+
+	/* Add the special JSON stream attributes. These special
+	 * attributes will have metric indices of 0 (uid) and
+	 * 1 (gid)
+	 */
+	const char *stream_meta_attr[] = { "S_uid", "S_gid" };
+	for (i = 0; i < sizeof(stream_meta_attr) / sizeof(stream_meta_attr[0]); i++) {
+		midx = ldms_schema_metric_add(schema, stream_meta_attr[i], LDMS_V_S32);
+		if (midx < 0)
+			goto err_3;
+		ae = calloc(1, sizeof(*ae));
+		if (!ae) {
+			rc = errno;
+			goto err_3;
+		}
+		ae->name = strdup(stream_meta_attr[i]);
+		if (!ae->name) {
+			rc = ENOMEM;
+			free(ae);
+			goto err_3;
+		}
+		ae->type = JSON_INT_VALUE;
+		ae->ridx = -1;
+		ae->midx = midx;
+		rbn_init(&ae->rbn, ae->name);
+		rbt_ins(&entry->attr_tree, &ae->rbn);
+	}
 
 	for (json_attr = json_attr_first(e); json_attr;
 	     json_attr = json_attr_next(json_attr)) {
@@ -552,6 +579,7 @@ static int get_schema_for_json(char *name, json_entity_t e, ldms_schema_t *sch)
 		ae->name = strdup(json_attr_name(json_attr)->str);
 		if (!ae->name) {
 			rc = ENOMEM;
+			free(ae);
 			goto err_3;
 		}
 		ae->type = type;
@@ -774,7 +802,6 @@ static void update_set_data(struct json_cfg_inst *inst,
 		entry = container_of(rbn, struct schema_entry, rbn);
 	}
 
-	ldms_transaction_begin(set);
 	for (json_attr = json_attr_first(entity); json_attr;
 	     json_attr = json_attr_next(json_attr)) {
 
@@ -808,7 +835,6 @@ static void update_set_data(struct json_cfg_inst *inst,
 		if (rc)
 			LERROR("Error %d setting the metric value '%s'\n", rc, ae->name);
 	}
-	ldms_transaction_end(set);
 }
 
 static int json_recv_cb(ldms_stream_event_t ev, void *arg)
@@ -865,7 +891,14 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 		}
 	}
 	free(set_name);
+
+	/* Update the stream meta-data in the set */
+	ldms_transaction_begin(set);
+	ldms_metric_set_s32(set, 0, ev->recv.cred.uid);
+	ldms_metric_set_s32(set, 1, ev->recv.cred.gid);
 	update_set_data(inst, set, entity);
+	ldms_transaction_end(set);
+
 	pthread_mutex_unlock(&inst->lock);
 	return 0;
  err_1:
