@@ -178,6 +178,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "reconnect",         LDMSD_ATTR_INTERVAL  },
 	{  "regex",             LDMSD_ATTR_REGEX  },
 	{  "reset",             LDMSD_ATTR_RESET  },
+	{  "rx_rate",           LDMSD_ATTR_RX_RATE  },
 	{  "schema",            LDMSD_ATTR_SCHEMA  },
 	{  "stream",            LDMSD_ATTR_STREAM  },
 	{  "string",            LDMSD_ATTR_STRING  },
