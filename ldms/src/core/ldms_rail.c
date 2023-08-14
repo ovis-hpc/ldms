@@ -211,7 +211,7 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 	r->xtype = LDMS_XTYPE_ACTIVE_RAIL; /* change to passive in listen() */
 	r->n_eps = n;
 	r->recv_limit = recv_limit;
-	r->rate_limit = rate_limit;
+	r->recv_rate_limit = rate_limit;
 	rbt_init(&r->stream_client_rbt, __str_rbn_cmp);
 	snprintf(r->name, sizeof(r->name), "%s", xprt_name);
 	snprintf(r->auth_name, sizeof(r->auth_name), "%s", auth_name);
@@ -226,6 +226,10 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 		r->eps[i].rail = r;
 		r->eps[i].idx = i;
 		r->eps[i].send_credit = __RAIL_UNLIMITED;
+		r->eps[i].rate_credit.credit = __RAIL_UNLIMITED;
+		r->eps[i].rate_credit.rate   = __RAIL_UNLIMITED;
+		r->eps[i].rate_credit.ts.tv_sec    = 0;
+		r->eps[i].rate_credit.ts.tv_nsec   = 0;
 		r->eps[i].remote_is_rail = -1;
 		rbt_init(&r->eps[i].sbuf_rbt, __stream_buf_cmp);
 	}
@@ -576,7 +580,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 			auth_name = lr->auth_name;
 			auth_av_list = lr->auth_av_list;
 			recv_limit = lr->recv_limit;
-			rate_limit = lr->rate_limit;
+			rate_limit = lr->recv_rate_limit;
 			cb = lr->event_cb;
 			cb_arg = lr->event_cb_arg;
 		} else {
@@ -601,6 +605,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 		r->xtype = LDMS_XTYPE_PASSIVE_RAIL;
 		r->state = LDMS_RAIL_EP_ACCEPTING;
 		r->send_limit = m->recv_limit;
+		r->send_rate_limit = m->rate_limit;
 		r->event_cb = cb;
 		r->event_cb_arg = cb_arg;
 		r->rail_id = rail_id;
@@ -669,6 +674,10 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	r->eps[m->idx].ep = _x;
 	r->eps[m->idx].state = LDMS_RAIL_EP_ACCEPTING;
 	r->eps[m->idx].send_credit = r->send_limit;
+	r->eps[m->idx].rate_credit.credit = r->send_rate_limit;
+	r->eps[m->idx].rate_credit.rate   = r->send_rate_limit;
+	r->eps[m->idx].rate_credit.ts.tv_sec  = 0;
+	r->eps[m->idx].rate_credit.ts.tv_nsec = 0;
 	ldms_xprt_ctxt_set(_x, &r->eps[m->idx], NULL);
 	pthread_mutex_unlock(&r->mutex);
 
@@ -720,7 +729,7 @@ static void __ldms_rail_conn_msg_init(struct ldms_rail_s *r, int idx, struct ldm
 	assert(r->eps[idx].ep);
 	__ldms_xprt_conn_msg_init(r->eps[idx].ep, (void*)m);
 	m->conn_type = htonl(LDMS_CONN_TYPE_RAIL);
-	m->rate_limit = htobe64(r->rate_limit);
+	m->rate_limit = htobe64(r->recv_rate_limit);
 	m->recv_limit = htobe64(r->recv_limit);
 	m->n_eps = htonl(r->n_eps);
 	m->idx = htonl(idx);
@@ -897,6 +906,48 @@ uint64_t __credit_release(uint64_t *credit, uint64_t n)
 	return __atomic_add_fetch(credit, n, __ATOMIC_SEQ_CST);
 }
 
+int __rate_credit_acquire(struct ldms_rail_rate_credit_s *c, uint64_t n)
+{
+	int rc;
+	time_t tv_sec;
+	struct timespec ts;
+	uint64_t v0, v1;
+
+	if (c->rate == __RAIL_UNLIMITED)
+		return 0;
+
+ again:
+	__atomic_load(&c->ts.tv_sec, &tv_sec, __ATOMIC_SEQ_CST);
+	__atomic_load(&c->credit, &v0, __ATOMIC_SEQ_CST);
+	rc = clock_gettime(CLOCK_REALTIME, &ts);
+	if (rc)
+		return errno;
+	if (tv_sec < ts.tv_sec) {
+		/* the second has changed, reset credit */
+		if (0 == __atomic_compare_exchange(
+				&c->credit, &v0, &c->rate,
+				0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+			goto again;
+		/* update ts */
+		if (0 == __atomic_compare_exchange(
+				&c->ts.tv_sec, &tv_sec, &ts.tv_sec,
+				0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+			goto again;
+		/* credit reset; proceed */
+		v0 = c->rate;
+	}
+
+	if (v0 < n)
+		return ENOBUFS;
+	v1 = v0 - n;
+	if (0 == __atomic_compare_exchange(
+			&c->credit, &v0, &v1,
+			0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+		/* The other thread won the credit modification race; try again. */
+		goto again;
+	return 0;
+}
+
 int ldms_xprt_connected(struct ldms_xprt *x);
 
 int __rail_rep_send_raw(struct ldms_rail_ep_s *rep, void *data, int len)
@@ -927,6 +978,11 @@ static int __rail_send(ldms_t _r, char *msg_buf, size_t msg_len)
 	rc = __credit_acquire(&rep->send_credit, msg_len);
 	if (rc)
 		goto out;
+	rc = __rate_credit_acquire(&rep->rate_credit, msg_len);
+	if (rc) {
+		__credit_release(&rep->send_credit, msg_len);
+		goto out;
+	}
 	rc = ldms_xprt_send(rep->ep, msg_buf, msg_len);
 	if (rc) {
 		/* release the acquired credit if send failed */
@@ -1193,11 +1249,20 @@ void __rail_ep_limit(ldms_t x, void *msg, int msg_len)
 	if (conn_msg->conn_type != htonl(LDMS_CONN_TYPE_RAIL))
 		goto unlimited;
 	/* This does not race; during end point setup */
+	rep->rail->send_limit = be64toh(conn_msg->recv_limit);
+	rep->rail->send_rate_limit = be64toh(conn_msg->rate_limit);
+
 	rep->send_credit = be64toh(conn_msg->recv_limit);
+	rep->rate_credit.credit = be64toh(conn_msg->rate_limit);
+	rep->rate_credit.rate   = be64toh(conn_msg->rate_limit);
+	rep->rate_credit.ts.tv_sec  = 0;
+	rep->rate_credit.ts.tv_nsec = 0;
 	rep->remote_is_rail = 1;
 	return;
  unlimited:
 	rep->send_credit = __RAIL_UNLIMITED;
+	rep->rate_credit.credit = __RAIL_UNLIMITED;
+	rep->rate_credit.rate   = __RAIL_UNLIMITED;
 	rep->remote_is_rail = 0;
 }
 

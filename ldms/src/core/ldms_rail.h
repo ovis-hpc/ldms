@@ -104,6 +104,12 @@ typedef enum ldms_rail_ep_state_e {
 
 typedef struct ldms_rail_s *ldms_rail_t;
 
+struct ldms_rail_rate_credit_s {
+	uint64_t credit;    /* the bytes available in the second */
+	uint64_t rate;      /* the byte/sec */
+	struct timespec ts; /* timestamp of the last acquire */
+};
+
 /* a structure that tracks ldms xprt in the rail */
 struct ldms_rail_ep_s {
 	/* track individual ep state to properly handle it */
@@ -114,6 +120,7 @@ struct ldms_rail_ep_s {
 	uint64_t send_credit; /* peer's recv limit */
 	struct rbt sbuf_rbt; /* stream message buffer */
 	int remote_is_rail;
+	struct ldms_rail_rate_credit_s rate_credit; /* rate credit */
 };
 
 #define __RAIL_UNLIMITED (-1)
@@ -142,9 +149,11 @@ struct ldms_rail_s {
 
 	struct ref_s ref;
 
-	uint64_t recv_limit; /* 0xffffffffffffffff is unlimited */
-	uint64_t rate_limit; /* 0xffffffffffffffff is unlimited */
-	uint64_t send_limit; /* 0xffffffffffffffff is unlimited */
+	/* These are informational. The actual credits are in eps[idx]. */
+	uint64_t recv_limit;      /* 0xffffffffffffffff is unlimited */
+	uint64_t recv_rate_limit; /* 0xffffffffffffffff is unlimited */
+	uint64_t send_limit;      /* 0xffffffffffffffff is unlimited */
+	uint64_t send_rate_limit; /* 0xffffffffffffffff is unlimited */
 
 	ldms_event_cb_t event_cb;
 	void *event_cb_arg;
