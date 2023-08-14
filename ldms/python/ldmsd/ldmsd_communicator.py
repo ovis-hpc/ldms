@@ -89,7 +89,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                                                  'port'],
                                     'opt_attr' : [ 'auth', 'perm', 'interval',
                                                    'reconnect', 'rail',
-                                                   'credits' ] },
+                                                   'credits', 'rx_rate' ] },
                       'prdcr_del': {'req_attr': ['name']},
                       'prdcr_start': {'req_attr': ['name'],
                                       'opt_attr': ['interval', 'reconnect']},
@@ -268,7 +268,8 @@ class LDMSD_Req_Attr(object):
     DECOMPOSITION = 37
     RAIL = 38
     CREDITS = 39
-    LAST = 40
+    RX_RATE = 40
+    LAST = 41
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -312,6 +313,7 @@ class LDMSD_Req_Attr(object):
                    'decomposition' : DECOMPOSITION,
                    'rail' : RAIL,
                    'credits' : CREDITS,
+                   'rx_rate' : RX_RATE,
                    'reconnect' : INTERVAL,
                    'TERMINATING': LAST
         }
@@ -355,6 +357,7 @@ class LDMSD_Req_Attr(object):
                    DECOMPOSITION : 'decomposition',
                    RAIL : 'rail',
                    CREDITS : 'credits',
+                   RX_RATE : 'rx_rate',
                    LAST : 'TERMINATING'
         }
 
@@ -2029,7 +2032,7 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def prdcr_add(self, name, ptype, xprt, host, port, reconnect, auth=None, perm=None,
-                  rail=None, credits=None):
+                  rail=None, credits=None, rx_rate=None):
         """
         Add a producer. A producer is a peer to the LDMSD being configured.
         Once started, the LDSMD will attempt to connect to this peer
@@ -2053,6 +2056,8 @@ class Communicator(object):
         credits - The send credits of our side of the connection (the daemon we
                   are controlling). The default is the daemon's default
                   ('-C' ldmsd option).
+        rx_rate - The recv rate (bytes/second) limit for this connection. The
+                  default is -1 (unlimited).
 
         Returns:
         A tuple of status, data
@@ -2075,6 +2080,8 @@ class Communicator(object):
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RAIL, value=str(int(rail))))
         if credits:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.CREDITS, value=str(int(credits))))
+        if rx_rate:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(int(rx_rate))))
 
         req = LDMSD_Request(
                 command_id=LDMSD_Request.PRDCR_ADD,

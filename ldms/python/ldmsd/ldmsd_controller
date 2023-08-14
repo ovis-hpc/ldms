@@ -366,6 +366,8 @@ class LdmsdCmdParser(cmd.Cmd):
                    option). This limits how much outstanding data our ldmsd
                    holds for the prdcr. The prdcr drops messages when it does
                    not have enough send credits.
+        [rx_rate=] The recv rate (bytes/sec) limit for this connection. The
+                   default is -1 (unlimited).
         """
         arg = self.handle_args('prdcr_add', arg)
         if arg is None:
@@ -388,7 +390,8 @@ class LdmsdCmdParser(cmd.Cmd):
                                           arg['auth'],
                                           arg['perm'],
                                           arg['rail'],
-                                          arg['credits'])
+                                          arg['credits'],
+                                          arg['rx_rate'])
             if rc:
                 print(f'Error adding prdcr {arg["name"]}: {msg}')
 

@@ -639,6 +639,11 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
 			       struct attr_value_list *auth_av_list);
 
 /**
+ * Unlimited value for rail 'credits' and 'rate'.
+ */
+#define __RAIL_UNLIMITED (-1)
+
+/**
  * \brief Create a new LDMS Rail handle.
  *
  * \param xprt_name The transport type name string.

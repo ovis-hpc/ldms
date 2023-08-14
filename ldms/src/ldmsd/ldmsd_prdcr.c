@@ -702,7 +702,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		prdcr->xprt = ldms_xprt_rail_new(prdcr->xprt_name,
 						 prdcr->rail,
 						 prdcr->credits,
-						 __RAIL_UNLIMITED,
+						 prdcr->rx_rate,
 						 prdcr->conn_auth,
 						 prdcr->conn_auth_args);
 		if (prdcr->xprt) {
@@ -792,7 +792,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type, int conn_intrvl_us,
 		const char *auth, uid_t uid, gid_t gid, int perm, int rail,
-		int credits)
+		int64_t credits, int64_t rx_rate)
 {
 	extern struct rbt *cfgobj_trees[];
 	struct ldmsd_prdcr *prdcr;
@@ -815,6 +815,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	rbt_init(&prdcr->hint_set_tree, ldmsd_updtr_schedule_cmp);
 	prdcr->rail = rail;
 	prdcr->credits = credits;
+	prdcr->rx_rate = rx_rate;
 	prdcr->host_name = strdup(host_name);
 	if (!prdcr->host_name)
 		goto out;
@@ -862,11 +863,11 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us, int rail, int credits)
+		int conn_intrvl_us, int rail, int64_t credits, int64_t rx_rate)
 {
 	return ldmsd_prdcr_new_with_auth(name, xprt_name, host_name,
 			port_no, type, conn_intrvl_us,
-			DEFAULT_AUTH, getuid(), getgid(), 0777, rail, credits);
+			DEFAULT_AUTH, getuid(), getgid(), 0777, rail, credits, rx_rate);
 }
 
 extern struct rbt *cfgobj_trees[];

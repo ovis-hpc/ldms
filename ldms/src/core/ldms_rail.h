@@ -123,8 +123,6 @@ struct ldms_rail_ep_s {
 	struct ldms_rail_rate_credit_s rate_credit; /* rate credit */
 };
 
-#define __RAIL_UNLIMITED (-1)
-
 typedef struct ldms_rail_dir_ctxt_s {
 	struct ldms_rail_s *r;
 	ldms_dir_cb_t app_cb;
