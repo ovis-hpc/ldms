@@ -90,6 +90,7 @@ static int __stream_stats_level = 1;
 /* see implementation in ldms_rail.c */
 int  __credit_acquire(uint64_t *credit, uint64_t n);
 void __credit_release(uint64_t *credit, uint64_t n);
+int __rate_credit_acquire(struct ldms_rail_rate_credit_s *c, uint64_t n);
 
 int __str_rbn_cmp(void *tree_key, const void *key);
 int __u64_rbn_cmp(void *tree_key, const void *key);
@@ -201,6 +202,11 @@ static int __rep_publish(struct ldms_rail_ep_s *rep, const char *stream_name,
 	rc = __credit_acquire(&rep->send_credit, credit_required);
 	if (rc)
 		return rc;
+	rc = __rate_credit_acquire(&rep->rate_credit, credit_required);
+	if (rc) {
+		__credit_release(&rep->send_credit, credit_required);
+		return rc;
+	}
 
 	/* credit acquired */
 	msg.src = src;
