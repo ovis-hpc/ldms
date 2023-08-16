@@ -311,6 +311,12 @@ The send credits our ldmsd (the one we are controlling) advertises to the prdcr
 (default: value from ldmsd --credits option). This limits how much outstanding
 data our ldmsd holds for the prdcr. The prdcr drops messages when it does not
 have enough send credits.
+.TP
+.BI [rx_rate " BYTES_PER_SEC"]
+.br
+The recv rate (bytes/sec) limit for this connection. The default is -1
+(unlimited).
+
 .RE
 
 .SS Delete a producer from the aggregator
@@ -771,14 +777,23 @@ The stream name
 The data to publish
 .RE
 
-.SS Subscribe to a stream
-.BR subscribe
+.SS Subscribe to a stream on matching producers
+.BR prdcr_subscribe
 attr=<value>
 .RS
 .TP
-.BI name " name"
+.BI regex " PRDCR_REGEX"
 .br
-The stream name
+A regular expression matching PRODUCER names
+.TP
+.BI stream " STREAM_NAME_OR_REGEX"
+.br
+The stream name or regular expression
+.TP
+.BI [rx_rate " BYTES_PER_SECOND"]
+.br
+The recv rate (bytes/sec) limit for the matching streams. The default is -1
+(unlimited).
 .RE
 
 .SH LDMS DAEMON COMMAND SYNTAX
