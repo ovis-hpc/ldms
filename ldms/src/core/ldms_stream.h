@@ -61,6 +61,7 @@
 #include "ovis_ref/ref.h"
 #include "coll/rbt.h"
 #include "ldms.h"
+#include "ldms_rail.h"
 
 /* private structures / functions for LDMS Stream */
 
@@ -116,6 +117,9 @@ struct ldms_stream_client_s {
 	int is_regex;
 	regex_t regex;
 	struct ref_s ref;
+
+	struct ldms_rail_rate_credit_s rate_credit;
+
 	int desc_len;
 	char *desc; /* a short description at &match[match_len] */
 	int match_len; /* length of c->match[], including '\0' */

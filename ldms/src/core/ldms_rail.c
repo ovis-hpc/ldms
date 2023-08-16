@@ -948,6 +948,21 @@ int __rate_credit_acquire(struct ldms_rail_rate_credit_s *c, uint64_t n)
 	return 0;
 }
 
+void __rate_credit_release(struct ldms_rail_rate_credit_s *c, uint64_t n)
+{
+	int rc;
+	struct timespec ts;
+	if (c->rate == __RAIL_UNLIMITED)
+		return;
+	rc = clock_gettime(CLOCK_REALTIME, &ts);
+	if (rc)
+		return ;
+	if (0 == __atomic_compare_exchange( &c->ts.tv_sec, &ts.tv_sec, &ts.tv_sec,
+				0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+		return; /* tv_sec changed, no need to return */
+	__atomic_fetch_add(&c->credit, n, __ATOMIC_SEQ_CST);
+}
+
 int ldms_xprt_connected(struct ldms_xprt *x);
 
 int __rail_rep_send_raw(struct ldms_rail_ep_s *rep, void *data, int len)

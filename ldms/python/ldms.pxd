@@ -738,7 +738,8 @@ cdef extern from "ldms.h" nogil:
                             const char *desc)
     void ldms_stream_close(ldms_stream_client_t c)
     int ldms_stream_remote_subscribe(ldms_t x, const char *stream, int is_regex,
-                            ldms_stream_event_cb_t cb_fn, void *cb_arg)
+                            ldms_stream_event_cb_t cb_fn, void *cb_arg,
+                            int64_t rx_rate)
     int ldms_stream_remote_unsubscribe(ldms_t x, const char *stream, int is_regex,
                             ldms_stream_event_cb_t cb_fn, void *cb_arg)
 

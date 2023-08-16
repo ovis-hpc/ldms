@@ -1900,10 +1900,17 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	 */
 	char *prdcr_regex;
 	char *stream_name = NULL;
+	char *rx_rate_s = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
+	int64_t rx_rate = __RAIL_UNLIMITED;
 
 	reqc->errcode = 0;
+
+	rx_rate_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RX_RATE);
+	if (rx_rate_s) {
+		rx_rate = atol(rx_rate_s);
+	}
 
 	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!prdcr_regex) {
@@ -1925,7 +1932,7 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = ldmsd_prdcr_subscribe_regex(prdcr_regex,
 						    stream_name,
 						    reqc->line_buf,
-						    reqc->line_len, &sctxt);
+						    reqc->line_len, &sctxt, rx_rate);
 	/* on error, reqc->line_buf will be filled */
 	if (reqc->line_buf[0] == '\0' || reqc->line_buf[0] == '0')
 		__dlog(DLOG_CFGOK, "prdcr_subscribe_regex prdcr_regex=%s stream=%s\n",

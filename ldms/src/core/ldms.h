@@ -1140,12 +1140,14 @@ void ldms_stream_close(ldms_stream_client_t c);
  * \param cb_fn    The callback function for return status notification (could
  *                 be \c NULL).
  * \param cb_arg   The application context to the `cb_fn`.
+ * \param rate     The rate limit (bytes/sec). Use `__RAIL_UNLIMITED` for
+ *                 unlimited.
  *
  * \retval 0     If succeeded.
  * \retval errno If synchronously failed.
  */
 int ldms_stream_remote_subscribe(ldms_t x, const char *stream, int is_regex,
-		      ldms_stream_event_cb_t cb_fn, void *cb_arg);
+		      ldms_stream_event_cb_t cb_fn, void *cb_arg, int64_t rate);
 
 /**
  * \brief Request a remote stream unsubscription.

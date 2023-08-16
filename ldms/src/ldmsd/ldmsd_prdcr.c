@@ -502,7 +502,7 @@ static int __on_subs_resp(ldmsd_req_cmd_t rcmd)
 	return 0;
 }
 
-static int __prdcr_stream_subscribe(ldmsd_prdcr_t prdcr, const char *stream);
+static int __prdcr_stream_subscribe(ldmsd_prdcr_t prdcr, const char *stream, int64_t rate);
 
 /* Send subscribe request to peer */
 static int __prdcr_subscribe(ldmsd_prdcr_t prdcr)
@@ -510,7 +510,7 @@ static int __prdcr_subscribe(ldmsd_prdcr_t prdcr)
 	int rc;
 	ldmsd_prdcr_stream_t s;
 	LIST_FOREACH(s, &prdcr->stream_list, entry) {
-		rc = __prdcr_stream_subscribe(prdcr, s->name);
+		rc = __prdcr_stream_subscribe(prdcr, s->name, s->rate);
 		if (rc)
 			goto err_0;
 	}
@@ -1076,16 +1076,16 @@ int __old_ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
 	return rc;
 }
 
-static int __prdcr_stream_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
+static int __prdcr_stream_subscribe(ldmsd_prdcr_t prdcr, const char *stream, int64_t rate)
 {
 	if (ldms_xprt_is_remote_rail(prdcr->xprt))
 		return ldms_stream_remote_subscribe(prdcr->xprt,
 				stream, __is_regex(stream),
-				__remote_subscribe_cb, prdcr);
+				__remote_subscribe_cb, prdcr, rate);
 	return __old_ldmsd_prdcr_subscribe(prdcr, stream);
 }
 
-int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
+int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream, int64_t rate)
 {
 	int rc = 0;
 	ldmsd_prdcr_stream_t s = NULL;
@@ -1103,10 +1103,11 @@ int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
 	s->name = strdup(stream);
 	if (!s->name)
 		goto err_1;
+	s->rate = rate;
 	rc = 0;
 	LIST_INSERT_HEAD(&prdcr->stream_list, s, entry);
 	if (prdcr->conn_state == LDMSD_PRDCR_STATE_CONNECTED) {
-		rc = __prdcr_stream_subscribe(prdcr, stream);
+		rc = __prdcr_stream_subscribe(prdcr, stream, rate);
 	}
 	if (rc)
 		goto err_2;
@@ -1354,7 +1355,7 @@ void ldmsd_prdcr_update(ldmsd_strgp_t strgp)
 
 int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, char *stream_name,
 				char *rep_buf, size_t rep_len,
-				ldmsd_sec_ctxt_t ctxt)
+				ldmsd_sec_ctxt_t ctxt, int64_t rate)
 {
 	regex_t regex;
 	ldmsd_prdcr_t prdcr;
@@ -1368,7 +1369,7 @@ int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, char *stream_name,
 		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
 		if (rc)
 			continue;
-		ldmsd_prdcr_subscribe(prdcr, stream_name);
+		ldmsd_prdcr_subscribe(prdcr, stream_name, rate);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	regfree(&regex);

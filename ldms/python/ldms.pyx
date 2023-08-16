@@ -3573,7 +3573,7 @@ cdef class Xprt(object):
         if rc:
             raise RuntimeError(f"ldms_stream_publish() failed, rc: {rc}")
 
-    def stream_subscribe(self, match, is_regex, cb=None, cb_arg=None):
+    def stream_subscribe(self, match, is_regex, cb=None, cb_arg=None, rx_rate=-1):
         """r.stream_subscribe(match, is_regex, cb=None, cb_arg=None)
 
         `cb()` signature: `cb(StreamStatusEvent ev, object cb_arg)`
@@ -3608,6 +3608,7 @@ cdef class Xprt(object):
         cdef _StreamSubCtxt ctxt = _StreamSubCtxt()
         cdef const char *c_match
         cdef int c_is_regex
+        cdef int64_t c_rx_rate = rx_rate
         cdef bytes tmp
         ctxt.cb = cb
         ctxt.cb_arg = cb_arg
@@ -3619,7 +3620,7 @@ cdef class Xprt(object):
             sem_init(&ctxt.sem, 0, 0)
             with nogil:
                 rc = ldms_stream_remote_subscribe(self.xprt, c_match, c_is_regex,
-                        __stream_block_cb, <void*>ctxt)
+                        __stream_block_cb, <void*>ctxt, c_rx_rate)
                 if rc:
                     with gil:
                         raise StreamSubscribeError(f"ldms_stream_remote_subscribe() error, rc: {rc}")
@@ -3630,7 +3631,7 @@ cdef class Xprt(object):
             Py_INCREF(ctxt)
             with nogil:
                 rc = ldms_stream_remote_subscribe(self.xprt, c_match, c_is_regex,
-                        __stream_wrap_cb, <void*>ctxt)
+                        __stream_wrap_cb, <void*>ctxt, c_rx_rate)
             if rc:
                 raise StreamSubscribeError(f"ldms_stream_remote_subscribe() error, rc: {rc}")
 
@@ -3648,7 +3649,7 @@ cdef class Xprt(object):
             rc = ldms_stream_remote_unsubscribe(self.xprt, BYTES(match), is_regex,
                     __stream_block_cb, <void*>ctxt)
             if rc:
-                raise StreamSubscribeError(f"ldms_stream_remote_subscribe() error, rc: {rc}")
+                raise StreamSubscribeError(f"ldms_stream_remote_unsubscribe() error, rc: {rc}")
             sem_wait(&ctxt.sem)
             if ctxt.rc:
                 raise StreamSubscribeError(f"stream remote subscription error: {ctxt.rc}")
@@ -3657,7 +3658,7 @@ cdef class Xprt(object):
             rc = ldms_stream_remote_unsubscribe(self.xprt, BYTES(match), is_regex,
                     __stream_wrap_cb, <void*>ctxt)
             if rc:
-                raise StreamSubscribeError(f"ldms_stream_remote_subscribe() error, rc: {rc}")
+                raise StreamSubscribeError(f"ldms_stream_remote_unsubscribe() error, rc: {rc}")
 
     def get_sockaddr(self):
         """Get the local socket Internet address in ((LOCAL_ADDR, LOCAL_PORT), (REMOTE_ADDR, REMOTE_PORT))"""

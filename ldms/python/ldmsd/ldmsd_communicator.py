@@ -100,7 +100,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_status': {'req_attr': [], 'opt_attr':['name']},
                       'prdcr_set_status': {'opt_attr': ['producer', 'instance', 'schema']},
                       'prdcr_hint_tree': {'req_attr':['name'], 'opt_attr': []},
-                      'prdcr_subscribe': {'req_attr':['regex', 'stream'], 'opt_attr': []},
+                      'prdcr_subscribe': {'req_attr':['regex', 'stream'],
+                                          'opt_attr': ['rx_rate']},
                       'prdcr_unsubscribe': {'req_attr':['regex', 'stream'], 'opt_attr': []},
                       'prdcr_stream_status' : {'req_attr':['regex'], 'opt_attr':[]},
                       ##### Updater Policy #####
@@ -2200,13 +2201,14 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_subscribe(self, regex, stream):
+    def prdcr_subscribe(self, regex, stream, rx_rate=-1):
         """
         Subscribe to stream data from matching producers
 
         Parameters:
         - A regular expression matching producer names
         - The name of the stream
+        - The recv rate limit
 
         Returns:
         A tuple of status, data
@@ -2216,7 +2218,8 @@ class Communicator(object):
         req = LDMSD_Request(command_id = LDMSD_Request.PRDCR_SUBSCRIBE,
                 attrs = [
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex),
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream)
+                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream),
+                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=rx_rate)
                 ])
         try:
             req.send(self)
