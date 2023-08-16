@@ -61,8 +61,8 @@ to include the uid part. For example, 'lustre-ffff8803245d4000' is the
 actual file in /proc/fs/lustre/llite/, but you can just say llites=lustre to
 include this component into the set.
 .PP
-osc_path, mdc_path, llite_path are optional full path names of stats files 
-if not in default location. The default locations are: 
+osc_path, mdc_path, llite_path are optional full path names of stats files
+if not in default location. The default locations are:
 /sys/kernel/debug/lustre/{osc, mdc, llite}, and /proc/fs/lustre/{osc, mdc, llite} depends on the Lustre version.
 Be aware that /sys/kernel/debug is only readable by privileged users.
 

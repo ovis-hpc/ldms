@@ -25,13 +25,9 @@ ldms_quickstart.man \
 ldms_sampler_base.man \
 ldmsd_failover.man \
 ldmsd_setgroup.man \
-Plugin_cray_system_sampler_variants.man \
-Plugin_cray_dvs_sampler.man \
 Plugin_jobid.man \
 Plugin_store_csv.man \
 Plugin_store_sos.man \
-Plugin_lustre2_client.man \
-Plugin_shm_sampler.man \
 Plugin_store_papi.man \
 Plugin_store_app.man \
 ldmsd_decomposition.man \

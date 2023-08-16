@@ -1,0 +1,71 @@
+.\" Manpage for Plugin_hweventpapi
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "18 Feb 2018" "v4" "LDMS Plugin hweventpapi man page"
+
+.SH NAME
+Plugin_hweventpapi - man page for the LDMS hweventpapi plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=hweventpapi [ <attr>=<value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
+or a configuration file. The hweventpapi plugin provides energy sampling using RAPL via the PAPI interface for sandybridge.
+
+WARNING: This sampler is unsupported.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+The hweventpapi plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
+
+
+.TP
+.BR config
+name=<plugin_name> [schema=<sname>]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be hweventpapi.
+.TP
+schema=<schema>
+.br
+Optional schema name. It is intended that the same sampler on different nodes with different metrics have a
+different schema. If not specified, will default to `hweventpapi`.
+.TP
+metafile=<PATH>
+.br
+The metafile defines what to collect with undocumented "attribute=value" syntax.
+The metafile is watched for changes and automatically reloaded.
+.RE
+
+.SH BUGS
+This man page is incomplete.
+
+.SH NOTES
+.PP
+.IP \[bu]
+This sampler is unsupported.
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=jobinfo
+config name=jobinfo producer=${HOSTNAME} instance=${HOSTNAME}/jobinfo component_id=${COMPONENT_ID} uid=0 gid=0 perm=0700
+load name=hweventpapi
+config name=hweventpapi producer=${HOSTNAME} instance=${HOSTNAME}/hweventpapi job_set=${HOSTNAME}/jobinfo component_id=${COMPONENT_ID} metafile=/tmp/papi.conf uid=0 gid=0 perm=0700
+start name=hweventpapi interval=1000000 offset=0
+.fi
+
+.PP
+Within the metafile configuration:
+.nf
+this needs to be filled in.
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7)
