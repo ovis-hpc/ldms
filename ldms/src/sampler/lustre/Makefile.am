@@ -1,4 +1,5 @@
 pkglib_LTLIBRARIES =
+dist_man7_MANS =
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
@@ -34,3 +35,4 @@ pkglib_LTLIBRARIES += liblustre2_oss.la
 liblustre2_client_la_SOURCES = lustre2_client.c
 liblustre2_client_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += liblustre2_client.la
+dist_man7_MANS += Plugin_lustre2_client.man

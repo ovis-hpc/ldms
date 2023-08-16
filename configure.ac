@@ -1051,6 +1051,9 @@ ldms/src/sampler/app_sampler/Makefile
 ldms/src/sampler/slingshot_metrics/Makefile
 ldms/src/sampler/slingshot_info/Makefile
 ldms/src/sampler/json/Makefile
+ldms/src/sampler/hweventpapi/Makefile \
+ldms/src/sampler/rapl/Makefile \
+ldms/src/sampler/tsampler/Makefile \
 ldms/src/contrib/sampler/Makefile
 ldms/src/contrib/sampler/daos/Makefile
 ldms/src/contrib/sampler/daos/test/Makefile
