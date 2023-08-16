@@ -919,7 +919,7 @@ int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap)
 {
 	ev_t log_ev;
 	char *msg;
-	int rc;
+	int rc = 0;
 	struct timeval tv;
 	struct tm tm;
 	time_t t;
@@ -927,6 +927,11 @@ int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap)
 
 	if (!log)
 		log = &default_log;
+	/*
+	 * Take a log handle reference to prevent it
+	 * being destroyed while in this function.
+	 */
+	(void) __ovis_log_get(log);
 
 	lmask = ((log->level == OVIS_LDEFAULT)?default_log.level:log->level);
 
@@ -937,7 +942,7 @@ int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap)
 	 */
 	if (!(lmask & level)) {
 		/* The given level is disabled. Do nothing. */
-		return 0;
+		goto out;
 	}
 
 	if (default_modes & OVIS_LOG_M_TS) {
@@ -950,19 +955,21 @@ int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap)
 
 	rc = vasprintf(&msg, fmt, ap);
 	if (rc < 0) {
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto out;
 	}
 
 	if (!logger_w) {
 		/* No workers, so directly log to the file. */
 		rc = __log(log, level, msg, &tv, &tm);
 		free(msg);
-		return rc;
+		goto out;
 	}
 
 	log_ev = ev_new(log_type);
 	if (!log_ev) {
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto out;
 	}
 	EV_DATA(log_ev, struct log_data)->msg = msg;
 	EV_DATA(log_ev, struct log_data)->level = level;
@@ -974,7 +981,9 @@ int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap)
 	else
 		EV_DATA(log_ev, struct log_data)->tm = tm;
 	ev_post(NULL, logger_w, log_ev, NULL);
-	return 0;
+out:
+	__ovis_log_put(log); /* Put back the reference taken at the top of the function. */
+	return rc;
 }
 
 int ovis_log(ovis_log_t log, int level, const char *fmt, ...)
