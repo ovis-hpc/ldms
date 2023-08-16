@@ -221,6 +221,7 @@ struct ldms_stream_part_msg_param {
 struct ldms_stream_sub_param {
 	uint32_t is_regex:1;
 	uint32_t match_len:31;
+	int64_t  rate;
 	char match[OVIS_FLEX];
 };
 

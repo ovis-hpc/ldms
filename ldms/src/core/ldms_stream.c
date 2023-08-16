@@ -91,6 +91,7 @@ static int __stream_stats_level = 1;
 int  __credit_acquire(uint64_t *credit, uint64_t n);
 void __credit_release(uint64_t *credit, uint64_t n);
 int __rate_credit_acquire(struct ldms_rail_rate_credit_s *c, uint64_t n);
+void __rate_credit_release(struct ldms_rail_rate_credit_s *c, uint64_t n);
 
 int __str_rbn_cmp(void *tree_key, const void *key);
 int __u64_rbn_cmp(void *tree_key, const void *key);
@@ -237,8 +238,6 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 	if (!XTYPE_IS_RAIL(ev->recv.client->x->xtype))
 		return ENOTSUP;
 	r = (ldms_rail_t)ev->recv.client->x;
-
-	/* TODO think more about how to distribute it ... */
 	ep_idx = ( be32toh(ev->recv.src.addr4) % primer ) % r->n_eps;
 
 	rc = ldms_access_check(r->eps[ep_idx].ep, LDMS_ACCESS_READ,
@@ -246,12 +245,18 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 	if (0 != rc)
 		return 0; /* remote has no access; do not forward */
 
-	/* passed the access check; forward the data */
+	rc = __rate_credit_acquire(&ev->recv.client->rate_credit, ev->recv.data_len);
+	if (rc)
+		goto out;
+
 	rc = __rep_publish(&r->eps[ep_idx], ev->recv.name, ev->recv.type,
 			     ev->recv.src.u64, ev->recv.msg_gn,
 			     &ev->recv.cred, ev->recv.perm,
 			     ev->recv.data,
 			     ev->recv.data_len);
+	if (rc)
+		__rate_credit_release(&ev->recv.client->rate_credit, ev->recv.data_len);
+ out:
 	return rc;
 }
 
@@ -834,6 +839,11 @@ __client_alloc(const char *stream, int is_regex,
 	LDMS_STREAM_COUNTERS_INIT(&c->tx);
 	LDMS_STREAM_COUNTERS_INIT(&c->drops);
 
+	c->rate_credit.credit = __RAIL_UNLIMITED;
+	c->rate_credit.rate   = __RAIL_UNLIMITED;
+	c->rate_credit.ts.tv_sec  = 0;
+	c->rate_credit.ts.tv_nsec = 0;
+
 	goto out;
  err_0:
 	free(c);
@@ -900,7 +910,8 @@ struct __sub_req_ctxt_s {
 static int
 __remote_sub(ldms_t x, enum ldms_request_cmd cmd,
 	     const char *match, int is_regex,
-	     ldms_stream_event_cb_t cb_fn, void *cb_arg)
+	     ldms_stream_event_cb_t cb_fn, void *cb_arg,
+	     int64_t rate)
 {
 	ldms_rail_t r;
 	struct ldms_request *req;
@@ -929,6 +940,7 @@ __remote_sub(ldms_t x, enum ldms_request_cmd cmd,
 	req->hdr.xid = (uint64_t)ctxt;
 	req->stream_sub.is_regex = is_regex; /* 1 bit */
 	req->stream_sub.match_len = htobe32(match_len);
+	req->stream_sub.rate = htobe64(rate);
 	memcpy(req->stream_sub.match, match, match_len);
 
 	zerr = __rail_rep_send_raw(&r->eps[0], req, msg_len);
@@ -941,15 +953,15 @@ __remote_sub(ldms_t x, enum ldms_request_cmd cmd,
 }
 
 int ldms_stream_remote_subscribe(ldms_t x, const char *match, int is_regex,
-		      ldms_stream_event_cb_t cb_fn, void *cb_arg)
+		      ldms_stream_event_cb_t cb_fn, void *cb_arg, int64_t rate)
 {
-	return __remote_sub(x, LDMS_CMD_STREAM_SUB, match, is_regex, cb_fn, cb_arg);
+	return __remote_sub(x, LDMS_CMD_STREAM_SUB, match, is_regex, cb_fn, cb_arg, rate);
 }
 
 int ldms_stream_remote_unsubscribe(ldms_t x, const char *match, int is_regex,
 		      ldms_stream_event_cb_t cb_fn, void *cb_arg)
 {
-	return __remote_sub(x, LDMS_CMD_STREAM_UNSUB, match, is_regex, cb_fn, cb_arg);
+	return __remote_sub(x, LDMS_CMD_STREAM_UNSUB, match, is_regex, cb_fn, cb_arg, -1);
 }
 
 struct __sbuf_key_s {
@@ -1126,6 +1138,9 @@ __process_stream_sub(ldms_t x, struct ldms_request *req)
 		rc = errno;
 		goto reply;
 	}
+
+	c->rate_credit.rate = be64toh(req->stream_sub.rate);
+	c->rate_credit.credit = be64toh(req->stream_sub.rate);
 
 	rc = ldms_xprt_sockaddr(x, (void*)&lsin, (void*)&rsin, &sin_len);
 	if (!rc) {

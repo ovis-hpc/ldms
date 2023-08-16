@@ -191,6 +191,7 @@ typedef struct ldmsd_cfgobj {
 
 typedef struct ldmsd_prdcr_stream_s {
 	const char *name;
+	int64_t rate;
 	LIST_ENTRY(ldmsd_prdcr_stream_s) entry;
 } *ldmsd_prdcr_stream_t;
 
@@ -1067,7 +1068,7 @@ int ldmsd_prdcr_stop_regex(const char *prdcr_regex,
 			char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
 int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, char *stream_name,
 				char *rep_buf, size_t rep_len,
-				ldmsd_sec_ctxt_t ctxt);
+				ldmsd_sec_ctxt_t ctxt, int64_t rate);
 int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex, char *stream_name,
 				char *rep_buf, size_t rep_len,
 				ldmsd_sec_ctxt_t ctxt);

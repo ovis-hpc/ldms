@@ -490,12 +490,15 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Subscribe for stream data from all matching producers
         Parameters:
-        regex=     A regular expression matching producer names
-        stream=    The stream name
+        regex=     A regular expression matching PRODUCER names
+        stream=    The stream name or regular expression
+        [rx_rate=] The recv rate (bytes/sec) limit for the matching streams. The
+                   default is -1 (unlimited).
         """
         arg = self.handle_args('prdcr_subscribe', arg)
         if arg:
-            rc, msg = self.comm.prdcr_subscribe(arg['regex'], arg['stream'])
+            rc, msg = self.comm.prdcr_subscribe(arg['regex'], arg['stream'],
+                                                arg['rx_rate'])
             if rc:
                 print(f'Error subscribing to stream {arg["stream"]}: {msg}')
 

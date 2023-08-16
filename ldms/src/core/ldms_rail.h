@@ -56,6 +56,7 @@
  */
 
 #ifndef __LDMS_RAIL_H__
+#define __LDMS_RAIL_H__
 #include <semaphore.h>
 #include "ovis_ref/ref.h"
 #include "coll/rbt.h"
