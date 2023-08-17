@@ -2,7 +2,7 @@
 
 # OVIS / LDMS
 
-For more information on installing and using LDMS: https://ovis-hpcreadthedocs.readthedocs.io/en/latest/
+For more information on installing and using LDMS: https://ovis-hpc.readthedocs.io/en/latest/
  
 To join the LDMS Users Group: https://github.com/ovis-hpc/ovis-wiki/wiki/Mailing-Lists
 
