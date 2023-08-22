@@ -947,7 +947,7 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 			LOG_ERROR("rd_kafka_topic_new(\"%s\") failed, "
 				  "errno: %d\n",
 				  row->schema_name, errno);
-			continue;
+			goto loop_err_1;
 		}
 		switch (sh->encoding) {
 		case AKS_ENCODING_AVRO:
@@ -955,13 +955,13 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 			if (!serdes_schema) {
 				LOG_ERROR("A serdes schema for '%s' could not be "
 					"constructed.\n", row->schema_name);
-				continue;
+				goto loop_err_2;
 			}
 			/* Encode ldmsd_row_s as an Avro value */
 			rc = serialize_row_as_avro(sh->serdes, serdes_schema, row, &avro_row);
 			if (rc) {
 				LOG_ERROR("Failed to format row as Avro value, error: %d\n", rc);
-				continue;
+				goto loop_err_2;
 			}
 			/* Serialize an Avro value into a buffer */
 			if (serdes_schema_serialize_avro(serdes_schema, &avro_row,
@@ -969,7 +969,7 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 							errstr, sizeof(errstr))) {
 				LOG_ERROR("Failed to serialize Avro row: '%s'\n", errstr);
 				avro_value_decref(&avro_row);
-				continue;
+				goto loop_err_2;
 			}
 			break;
 		case AKS_ENCODING_JSON:
@@ -977,7 +977,7 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 			rc = ldmsd_row_to_json_object(row, (char **)&ser_buf, &ser_size);
 			if (rc) {
 				LOG_ERROR("Failed to serialize row as JSON object, error: %d", rc);
-				continue;
+				goto loop_err_2;
 			}
 			ser_buf_size = ser_size;
 			break;
@@ -994,9 +994,11 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 				  "\"%s\"\n", topic_name,
 				  rd_kafka_err2str(rd_kafka_last_error()));
 		}
-		rd_kafka_topic_destroy(rkt);
 		if (sh->encoding == AKS_ENCODING_AVRO)
 			avro_value_decref(&avro_row);
+        loop_err_2:
+		rd_kafka_topic_destroy(rkt);
+        loop_err_1:
 		free(topic_name);
 	}
 
