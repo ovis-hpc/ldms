@@ -1,6 +1,6 @@
 .\" Plugin_darshan_stream_store
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH main 7 "26 September 2021" "v4" "LDMS Plugin darshan_stream_store"
+.TH man 7 "26 September 2021" "v4" "LDMS Plugin darshan_stream_store"
 
 .SH NAME
 Plugin_darshan_stream_store - LDMS darshan_stream_store plugin
