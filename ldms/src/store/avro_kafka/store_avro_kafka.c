@@ -134,14 +134,17 @@ serdes_schema_find(aks_handle_t sh, char *schema_name,
 
 	/* Create a new schema from the row specification and LDMS schema */
 	rc = ldmsd_row_to_json_avro_schema(row, &json_buf, &json_len);
-	if (rc)
+	if (rc) {
+		free(entry);
 		goto out;
+	}
 	sschema =
 	    serdes_schema_add(sh->serdes,
 			      schema_name, -1,
 			      json_buf, json_len,
 			      errstr, sizeof(errstr));
 	if (!sschema) {
+		free(entry);
 		LOG_ERROR("%s\n", json_buf);
 		LOG_ERROR("Error '%s' creating schema '%s'\n", errstr, schema_name);
 		goto out;
