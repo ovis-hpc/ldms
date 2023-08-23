@@ -109,7 +109,7 @@ struct ldms_stream_client_s {
 	/* streams that this client subscribed for */
 	TAILQ_HEAD(, ldms_stream_client_entry_s) stream_tq;
 
-	union ldms_stream_addr_u dest;
+	struct ldms_addr dest;
 
 	ldms_t x;
 	ldms_stream_event_cb_t cb_fn;
@@ -128,7 +128,7 @@ struct ldms_stream_client_s {
 
 /* the full stream message */
 struct ldms_stream_full_msg_s {
-	uint64_t src;
+	struct ldms_addr src;
 	uint64_t msg_gn;
 	uint32_t msg_len;
 	uint32_t stream_type;

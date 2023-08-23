@@ -58,6 +58,8 @@
 #ifndef __LDMS_RAIL_H__
 #define __LDMS_RAIL_H__
 #include <semaphore.h>
+#include <arpa/inet.h>
+
 #include "ovis_ref/ref.h"
 #include "coll/rbt.h"
 #include "ldms.h"
@@ -197,5 +199,25 @@ struct rail_proc_id_s {
 };
 
 int get_rail_proc_id(struct rail_proc_id_s *out);
+
+/**
+ * Copy sockaddr \c sa address into \c la.
+ *
+ * The sa.sa_family is in host-endian.
+ * The address and port is in little endian.
+ *
+ * \note Only support sockaddr_in and sockaddr_in6.
+ */
+int sockaddr2ldms_addr(struct sockaddr *sa, struct ldms_addr *la);
+
+/**
+ * Wrapper of 'inet_ntop()' for sockaddr.
+ */
+const char *sockaddr_ntop(struct sockaddr *sa, char *buff, size_t sz);
+
+/**
+ * Wrapper of 'inet_ntop()' for ldms_addr.
+ */
+const char *ldms_addr_ntop(struct ldms_addr *addr, char *buff, size_t sz);
 
 #endif /* __LDMS_RAIL_H__ */

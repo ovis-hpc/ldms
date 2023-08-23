@@ -62,6 +62,7 @@
 #include <assert.h>
 
 #include <netdb.h>
+#include <arpa/inet.h>
 
 #include "ldms.h"
 #include "ldms_xprt.h"
@@ -536,13 +537,12 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	static char rej_msg[64] = "Insufficient resources";
 	struct ldms_rail_conn_msg_s msg;
 	int rc;
-	char name[128];
+	char name[128]; /* for debug / error */
 	zap_err_t zerr;
 	struct ldms_xprt *lx = zap_get_ucontext(zep);
 	struct ldms_auth *auth;
-	struct sockaddr_in self_addr, peer_addr;
-	socklen_t addr_len;
-	unsigned char *ip4; /* array of 4 bytes */
+	union ldms_sockaddr  self_addr, peer_addr;
+	socklen_t addr_len = sizeof(self_addr);
 	struct ldms_rail_id_s rail_id;
 	struct ldms_rail_s *r, *lr = NULL;
 	struct ldms_rail_ep_s *rep;
@@ -557,12 +557,22 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 		snprintf(rej_msg, sizeof(rej_msg), "zap_get_name() error: %d", zerr);
 		goto err_0;
 	}
-	ip4 = (void*)&peer_addr.sin_addr.s_addr;
-	snprintf(name, sizeof(name), "%hhd.%hhd.%hhd.%hhd", ip4[0], ip4[1], ip4[2], ip4[3]);
+	switch (peer_addr.sa.sa_family) { /* family is in host-endian */
+	case AF_INET:
+		inet_ntop(peer_addr.sa.sa_family, &peer_addr.sin.sin_addr,
+				name, sizeof(name));
+		break;
+	case AF_INET6:
+		inet_ntop(peer_addr.sa.sa_family, &peer_addr.sin6.sin6_addr,
+				name, sizeof(name));
+		break;
+	default:
+		break;
+	}
 
 	__rail_conn_msg_ntoh(m);
 
-	rail_id.ip4_addr = peer_addr.sin_addr.s_addr;
+	rail_id.ip4_addr = peer_addr.sin.sin_addr.s_addr;
 	rail_id.pid = m->pid;
 	rail_id.rail_gn = m->rail_gn;
 	pthread_mutex_lock(&__rail_mutex);
@@ -1315,4 +1325,67 @@ zap_ep_t __rail_get_zap_ep(ldms_t x)
 	if (!r->eps[0].ep)
 		return NULL;
 	return r->eps[0].ep->zap_ep;
+}
+
+int sockaddr2ldms_addr(struct sockaddr *sa, struct ldms_addr *la)
+{
+	union ldms_sockaddr *lsa = (void*)sa;
+	switch (sa->sa_family) {
+	case AF_INET:
+		la->sa_family = sa->sa_family;
+		la->sin_port = lsa->sin.sin_port;
+		memcpy(&la->addr, &lsa->sin.sin_addr, sizeof(lsa->sin.sin_addr));
+		break;
+	case AF_INET6:
+		la->sa_family = sa->sa_family;
+		la->sin_port = lsa->sin6.sin6_port;
+		memcpy(&la->addr, &lsa->sin6.sin6_addr, sizeof(lsa->sin6.sin6_addr));
+		break;
+	default:
+		return ENOTSUP;
+	}
+	return 0;
+}
+
+const char *sockaddr_ntop(struct sockaddr *sa, char *buff, size_t sz)
+{
+	union ldms_sockaddr *lsa = (void*)sa;
+	char tmp[128];
+	switch (sa->sa_family) {
+	case 0:
+		snprintf(buff, sz, "0.0.0.0:0");
+		break;
+	case AF_INET:
+		inet_ntop(AF_INET, &lsa->sin.sin_addr, tmp, sizeof(tmp));
+		snprintf(buff, sz, "%s:%d", tmp, ntohs(lsa->sin.sin_port));
+		break;
+	case AF_INET6:
+		inet_ntop(AF_INET6, &lsa->sin6.sin6_addr, tmp, sizeof(tmp));
+		snprintf(buff, sz, "[%s]:%d", tmp, ntohs(lsa->sin6.sin6_port));
+		break;
+	default:
+		snprintf(buff, sz, "__UNSUPPORTED__");
+	}
+	return buff;
+}
+
+const char *ldms_addr_ntop(struct ldms_addr *addr, char *buff, size_t sz)
+{
+	char tmp[128];
+	switch (addr->sa_family) {
+	case 0:
+		snprintf(buff, sz, "0.0.0.0:0");
+		break;
+	case AF_INET:
+		inet_ntop(AF_INET, &addr->addr, tmp, sizeof(tmp));
+		snprintf(buff, sz, "%s:%d", tmp, ntohs(addr->sin_port));
+		break;
+	case AF_INET6:
+		inet_ntop(AF_INET6, &addr->addr, tmp, sizeof(tmp));
+		snprintf(buff, sz, "[%s]:%d", tmp, ntohs(addr->sin_port));
+		break;
+	default:
+		snprintf(buff, sz, "__UNSUPPORTED__");
+	}
+	return buff;
 }

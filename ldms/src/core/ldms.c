@@ -60,6 +60,7 @@
 #include <sys/user.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
 #include <limits.h>
 #include <assert.h>
@@ -67,6 +68,7 @@
 #include <pthread.h>
 #include <asm/byteorder.h>
 #include <ctype.h>
+#include <netdb.h>
 #include "ovis_util/os_util.h"
 #include "ldms.h"
 #include "ldms_xprt.h"
@@ -5044,4 +5046,73 @@ ldms_schema_t ldms_schema_from_template(const char *name,
 	if (sch)
 		ldms_schema_delete(sch);
 	return NULL;
+}
+
+static int __getsockaddr(const char *host, const char *port,
+			 const struct addrinfo *hints,
+			 struct sockaddr *sa, socklen_t *sa_len)
+{
+	struct addrinfo *ai;
+	int rc;
+	rc = getaddrinfo(host, port, hints, &ai);
+	switch (rc) {
+	case 0:
+		break;
+	case EAI_ADDRFAMILY:
+		return -EADDRNOTAVAIL;
+	case EAI_AGAIN:
+		return -EAGAIN;
+	case EAI_BADFLAGS:
+		return -EINVAL;
+	case EAI_FAIL:
+		return -EFAULT;
+	case EAI_FAMILY:
+		return -EAFNOSUPPORT;
+	case EAI_MEMORY:
+		return -ENOMEM;
+	case EAI_NODATA:
+		return -ENODATA;
+	case EAI_NONAME:
+		return -ENOENT;
+	case EAI_SERVICE:
+		return -EPROTONOSUPPORT;
+	case EAI_SOCKTYPE:
+		return -EPROTOTYPE;
+	case EAI_SYSTEM:
+		return -errno;
+	default:
+		return -EINVAL;
+	}
+	if (!ai)
+		return -ENOENT;
+	if (ai->ai_addrlen > *sa_len) {
+		rc = -ENOBUFS;
+	} else {
+		*sa_len = ai->ai_addrlen;
+		memcpy(sa, ai->ai_addr, ai->ai_addrlen);
+		rc = 0;
+	}
+	freeaddrinfo(ai);
+	return rc;
+}
+
+int ldms_getsockaddr4(const char *host, const char *port,
+		      struct sockaddr *sa, socklen_t *sa_len)
+{
+	struct addrinfo hints = { .ai_family = AF_INET, .ai_socktype = SOCK_STREAM };
+	return __getsockaddr(host, port, &hints, sa, sa_len);
+}
+
+int ldms_getsockaddr6(const char *host, const char *port,
+		      struct sockaddr *sa, socklen_t *sa_len)
+{
+	struct addrinfo hints = { .ai_family = AF_INET6, .ai_socktype = SOCK_STREAM };
+	return __getsockaddr(host, port, &hints, sa, sa_len);
+}
+
+int ldms_getsockaddr(const char *host, const char *port,
+		      struct sockaddr *sa, socklen_t *sa_len)
+{
+	struct addrinfo hints = { .ai_socktype = SOCK_STREAM };
+	return __getsockaddr(host, port, &hints, sa, sa_len);
 }

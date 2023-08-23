@@ -74,22 +74,11 @@ static void prdcr_task_cb(ldmsd_task_t task, void *arg);
 int prdcr_resolve(const char *hostname, unsigned short port_no,
 		  struct sockaddr_storage *ss, socklen_t *ss_len)
 {
-	struct hostent *h;
+	char port_str[16];
 
-	h = gethostbyname(hostname);
-	if (!h)
-		return -1;
+	snprintf(port_str, sizeof(port_str), "%d", port_no);
 
-	if (h->h_addrtype != AF_INET)
-		return -1;
-
-	memset(ss, 0, sizeof *ss);
-	struct sockaddr_in *sin = (struct sockaddr_in *)ss;
-	sin->sin_addr.s_addr = *(unsigned int *)(h->h_addr_list[0]);
-	sin->sin_family = h->h_addrtype;
-	sin->sin_port = htons(port_no);
-	*ss_len = sizeof(*sin);
-	return 0;
+	return ldms_getsockaddr(hostname, port_str, (struct sockaddr*)ss, ss_len);
 }
 
 void ldmsd_prdcr___del(ldmsd_cfgobj_t obj)
@@ -823,6 +812,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	if (!prdcr->port_no)
 		goto out;
 
+	prdcr->ss_len = sizeof(prdcr->ss);
 	if (prdcr_resolve(host_name, port_no, &prdcr->ss, &prdcr->ss_len)) {
 		errno = EAFNOSUPPORT;
 		ovis_log(prdcr_log, OVIS_LERROR, "ldmsd_prdcr_new: %s:%u not resolved.\n",

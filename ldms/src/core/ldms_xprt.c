@@ -2190,7 +2190,7 @@ int ldms_xprt_names(ldms_t x, char *lcl_name, size_t lcl_name_sz,
 				char *rem_port, size_t rem_port_sz,
 				int flags)
 {
-	struct sockaddr lcl, rmt;
+	struct sockaddr_storage lcl, rmt;
 	socklen_t xlen = sizeof(lcl);
 	int rc;
 
@@ -2205,17 +2205,17 @@ int ldms_xprt_names(ldms_t x, char *lcl_name, size_t lcl_name_sz,
 
 	memset(&rmt, 0, sizeof(rmt));
 	memset(&lcl, 0, sizeof(rmt));
-	rc = ldms_xprt_sockaddr(x, &lcl, &rmt, &xlen);
+	rc = ldms_xprt_sockaddr(x, (void*)&lcl, (void*)&rmt, &xlen);
 	if (rc)
 		return rc;
 
 	if (lcl_name || lcl_port) {
-		(void) getnameinfo(&lcl, xlen, lcl_name, lcl_name_sz,
+		(void) getnameinfo((void*)&lcl, xlen, lcl_name, lcl_name_sz,
 					lcl_port, lcl_port_sz, flags);
 	}
 
 	if (rem_name || rem_port) {
-		(void)getnameinfo(&lcl, xlen, rem_name, rem_name_sz,
+		(void)getnameinfo((void*)&lcl, xlen, rem_name, rem_name_sz,
 					rem_port, rem_port_sz, flags);
 	}
 	return 0;
@@ -4050,7 +4050,6 @@ int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
 {
 	struct addrinfo *ai;
 	struct addrinfo hints = {
-		.ai_family = AF_INET,
 		.ai_socktype = SOCK_STREAM
 	};
 	int rc = getaddrinfo(host, port, &hints, &ai);
@@ -4093,7 +4092,6 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 	struct sockaddr_in sin;
 	struct addrinfo *ai;
 	struct addrinfo hints = {
-		.ai_family = AF_INET,
 		.ai_socktype = SOCK_STREAM,
 		.ai_flags = AI_PASSIVE,
 	};
