@@ -310,7 +310,7 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 {
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
 	int rc;
-	*sa_len = sizeof(struct sockaddr_in);
+	assert(sa_len && *sa_len > 0);
 	rc = getsockname(sep->sock, local_sa, sa_len);
 	if (rc)
 		goto err;
