@@ -66,6 +66,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sys/types.h>
+#include <arpa/inet.h>
 
 #include "ovis_json/ovis_json.h"
 #include "coll/rbt.h"
@@ -95,6 +96,7 @@ void __rate_credit_release(struct ldms_rail_rate_credit_s *c, uint64_t n);
 
 int __str_rbn_cmp(void *tree_key, const void *key);
 int __u64_rbn_cmp(void *tree_key, const void *key);
+int __ldms_addr_rbn_cmp(void *tree_key, const void *key);
 
 pthread_rwlock_t __stream_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 #define __STREAM_RDLOCK() pthread_rwlock_rdlock(&__stream_rwlock)
@@ -115,7 +117,7 @@ int __rail_rep_send_raw(struct ldms_rail_ep_s *rep, void *data, int len);
  * lenX  are `int`.
  */
 static int __part_send(struct ldms_rail_ep_s *rep,
-			uint64_t src, uint64_t msg_gn,
+			struct ldms_addr *src, uint64_t msg_gn,
 			...)
 {
 	size_t zmax = rep->rail->max_msg;
@@ -133,7 +135,7 @@ static int __part_send(struct ldms_rail_ep_s *rep,
 
 	req->hdr.cmd = htobe32(LDMS_CMD_STREAM_MSG);
 	req->hdr.xid = 0;
-	req->stream_part.src = src; /* src is IP4 addr; already big endian */
+	req->stream_part.src = *src; /* src is IP4/6 port+addr; already big endian */
 	req->stream_part.msg_gn = htobe64(msg_gn);
 	req->stream_part.more = 1;
 	req->stream_part.first = 1;
@@ -191,7 +193,7 @@ static int __part_send(struct ldms_rail_ep_s *rep,
 
 static int __rep_publish(struct ldms_rail_ep_s *rep, const char *stream_name,
                         ldms_stream_type_t stream_type,
-			uint64_t src, uint64_t msg_gn,
+			struct ldms_addr *src, uint64_t msg_gn,
 			ldms_cred_t cred, int perm,
 			const char *data, size_t data_len)
 {
@@ -210,14 +212,20 @@ static int __rep_publish(struct ldms_rail_ep_s *rep, const char *stream_name,
 	}
 
 	/* credit acquired */
-	msg.src = src;
+	if (src) {
+		msg.src = *src;
+		msg.src.sa_family = htons(msg.src.sa_family);
+		/* the rest of msg.src are in network endian */
+	} else {
+		bzero(&msg.src, sizeof(msg.src));
+	}
 	msg.msg_gn = htobe64(msg_gn);
 	msg.msg_len = htobe32(name_len + data_len);
 	msg.stream_type = htobe32(stream_type);
 	msg.cred.uid = htobe32(cred->uid);
 	msg.cred.gid = htobe32(cred->gid);
 	msg.perm = htobe32(perm);
-	rc = __part_send(rep, src, msg_gn,
+	rc = __part_send(rep, &msg.src, msg_gn,
 			 &msg, sizeof(msg), /* msg hdr */
 			 stream_name, name_len, /* name */
 			 data, data_len, /* data */
@@ -238,7 +246,20 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 	if (!XTYPE_IS_RAIL(ev->recv.client->x->xtype))
 		return ENOTSUP;
 	r = (ldms_rail_t)ev->recv.client->x;
-	ep_idx = ( be32toh(ev->recv.src.addr4) % primer ) % r->n_eps;
+	switch (ev->recv.src.sa_family) {
+	case 0:
+		ep_idx = 0;
+		break;
+	case AF_INET:
+		ep_idx = ( be32toh(*(int*)&ev->recv.src.addr[0]) % primer ) % r->n_eps;
+		break;
+	case AF_INET6:
+		ep_idx = ( be32toh(*(int*)&ev->recv.src.addr[12]) % primer ) % r->n_eps;
+		break;
+	default:
+		assert(0 == "Unexpected network family");
+		ep_idx = 0;
+	}
 
 	rc = ldms_access_check(r->eps[ep_idx].ep, LDMS_ACCESS_READ,
 			ev->recv.cred.uid, ev->recv.cred.gid, ev->recv.perm);
@@ -250,7 +271,7 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 		goto out;
 
 	rc = __rep_publish(&r->eps[ep_idx], ev->recv.name, ev->recv.type,
-			     ev->recv.src.u64, ev->recv.msg_gn,
+			     &ev->recv.src, ev->recv.msg_gn,
 			     &ev->recv.cred, ev->recv.perm,
 			     ev->recv.data,
 			     ev->recv.data_len);
@@ -293,7 +314,7 @@ __stream_get(const char *stream_name, int *is_new)
 	if (is_new)
 		*is_new = 1;
 
-	rbt_init(&s->src_stats_rbt, __u64_rbn_cmp);
+	rbt_init(&s->src_stats_rbt, __ldms_addr_rbn_cmp);
 	s->rx.first_ts = __TIMESPEC_MAX;
 	s->rx.last_ts  = __TIMESPEC_MIN;
 
@@ -389,7 +410,7 @@ void  __counters_update(struct ldms_stream_counters_s *ctr,
 /* deliver stream data to all clients */
 /* must NOT hold __stream_mutex */
 static int
-__stream_deliver(uint64_t src, uint64_t msg_gn,
+__stream_deliver(struct ldms_addr *src, uint64_t msg_gn,
 		 const char *stream_name, int name_len,
 		 ldms_stream_type_t stream_type,
 		 ldms_cred_t cred, uint32_t perm,
@@ -410,7 +431,7 @@ __stream_deliver(uint64_t src, uint64_t msg_gn,
 	struct ldms_stream_event_s _ev = {
 		.type = LDMS_STREAM_EVENT_RECV,
 		.recv = {
-			.src = {src},
+			.src = {0},
 			.msg_gn = msg_gn,
 			.type = stream_type,
 			.name_len = name_len,
@@ -424,6 +445,9 @@ __stream_deliver(uint64_t src, uint64_t msg_gn,
 	};
 	json_entity_t json = NULL;
 
+	if (src)
+		_ev.recv.src = *src;
+
 	/* update stats */
 	if (__stream_stats_level <= 0)
 		goto skip_stats;
@@ -432,7 +456,7 @@ __stream_deliver(uint64_t src, uint64_t msg_gn,
 	__counters_update(&s->rx, &now, data_len);
 	if (__stream_stats_level > 1) {
 		/* stats by src */
-		struct rbn *rbn = rbt_find(&s->src_stats_rbt, &src);
+		struct rbn *rbn = rbt_find(&s->src_stats_rbt, &_ev.recv.src);
 		struct ldms_stream_src_stats_s *ss;
 		if (rbn) {
 			ss = container_of(rbn, struct ldms_stream_src_stats_s, rbn);
@@ -444,7 +468,7 @@ __stream_deliver(uint64_t src, uint64_t msg_gn,
 				pthread_rwlock_unlock(&s->rwlock);
 				goto skip_stats;
 			}
-			ss->src = src;
+			ss->src = _ev.recv.src;
 			rbn_init(&ss->rbn, &ss->src);
 			ss->rx = LDMS_STREAM_COUNTERS_INITIALIZER;
 			rbt_ins(&s->src_stats_rbt, &ss->rbn);
@@ -965,7 +989,7 @@ int ldms_stream_remote_unsubscribe(ldms_t x, const char *match, int is_regex,
 }
 
 struct __sbuf_key_s {
-	uint64_t src;
+	struct ldms_addr src;
 	uint64_t msg_gn;
 };
 
@@ -988,6 +1012,11 @@ int __u64_rbn_cmp(void *tree_key, const void *key)
 	if (a > b)
 		return 1;
 	return 0;
+}
+
+int __ldms_addr_rbn_cmp(void *tree_key, const void *key)
+{
+	return memcmp(tree_key, key, sizeof(struct ldms_addr));
 }
 
 struct __stream_buf_s {
@@ -1013,8 +1042,8 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 	struct __stream_buf_s *sbuf;
 	struct ldms_stream_full_msg_s *fmsg;
 	int plen, flen;
-	struct sockaddr_in lsa, rsa;
-	socklen_t slen;
+	union ldms_sockaddr lsa, rsa;
+	socklen_t slen = sizeof(lsa);
 	int rc;
 	const char *name;
 	int name_len;
@@ -1024,18 +1053,38 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 	/* src is always big endian */
 	req->stream_part.msg_gn = be64toh(req->stream_part.msg_gn);
 	plen = be32toh(req->hdr.len) - sizeof(req->hdr) - sizeof(req->stream_part);
-	if (req->stream_part.src == 0) {
+	if (req->stream_part.src.sa_family == 0) {
 		/* resolve source */
-		rc = ldms_xprt_sockaddr(x, (void*)&lsa, (void*)&rsa, &slen);
+		rc = ldms_xprt_sockaddr(x, &lsa.sa, &rsa.sa, &slen);
 		if (rc)
 			return;
-		/* Exclude 127.0.0.0/8 loopbacks.
-		 * In the case of the loopback, the 'src' stays 0 and the
-		 * next level will resolve the src address.
-		 */
-		if (*((char*)&rsa.sin_addr.s_addr) != 127) {
-			req->stream_part.src_addr = rsa.sin_addr.s_addr;
-			req->stream_part.src_port = rsa.sin_port;
+		switch (rsa.sa.sa_family) {
+		case AF_INET:
+			/* Exclude 127.0.0.0/8 loopbacks.
+			 * In the case of the loopback, the 'src' stays 0 and the
+			 * next level will resolve the src address.
+			 */
+			if (*((char*)&rsa.sin.sin_addr.s_addr) != 127) {
+				req->stream_part.src.sa_family = htons(AF_INET);
+				memcpy(req->stream_part.src.addr,
+					&rsa.sin.sin_addr,
+					sizeof(rsa.sin.sin_addr));
+				req->stream_part.src.sin_port = rsa.sin.sin_port;
+			}
+			break;
+		case AF_INET6:
+			/* Exclude loopbacks */
+			if (0 != memcmp(&rsa.sin6.sin6_addr, &in6addr_loopback,
+						sizeof(struct in6_addr))) {
+				req->stream_part.src.sa_family = htons(AF_INET6);
+				memcpy(req->stream_part.src.addr,
+				       &rsa.sin6.sin6_addr,
+				       sizeof(struct in6_addr));
+				req->stream_part.src.sin_port = rsa.sin6.sin6_port;
+			}
+			break;
+		default:
+			break;
 		}
 	}
 
@@ -1080,6 +1129,7 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 		goto cleanup;
 	}
 	sbuf->msg->src = req->stream_part.src;
+	sbuf->msg->src.sa_family = ntohs(sbuf->msg->src.sa_family);
 	sbuf->msg->msg_gn = be64toh(sbuf->msg->msg_gn);
 	sbuf->msg->msg_len = be32toh(sbuf->msg->msg_len);
 	sbuf->msg->stream_type = be32toh(sbuf->msg->stream_type);
@@ -1092,7 +1142,7 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 	data = sbuf->msg->msg + name_len;
 	data_len = sbuf->msg->msg_len - name_len;
 
-	__stream_deliver(sbuf->msg->src, sbuf->msg->msg_gn,
+	__stream_deliver(&sbuf->msg->src, sbuf->msg->msg_gn,
 			 name, name_len, sbuf->msg->stream_type,
 			 &sbuf->msg->cred, sbuf->msg->perm,
 			 data, data_len);
@@ -1113,7 +1163,7 @@ __process_stream_sub(ldms_t x, struct ldms_request *req)
 	int rc;
 	const char *err_msg;
 	int msg_len, reply_len;
-	struct sockaddr_in lsin, rsin;
+	union ldms_sockaddr lsin, rsin;
 	socklen_t sin_len = sizeof(lsin);
 	struct {
 		struct ldms_reply r;
@@ -1142,13 +1192,14 @@ __process_stream_sub(ldms_t x, struct ldms_request *req)
 	c->rate_credit.rate = be64toh(req->stream_sub.rate);
 	c->rate_credit.credit = be64toh(req->stream_sub.rate);
 
-	rc = ldms_xprt_sockaddr(x, (void*)&lsin, (void*)&rsin, &sin_len);
+	rc = ldms_xprt_sockaddr(x, &lsin.sa, &rsin.sa, &sin_len);
 	if (!rc) {
-		c->dest.addr4    = rsin.sin_addr.s_addr;
-		c->dest.port     = rsin.sin_port;
-		c->dest.reserved = 0;
+		rc = sockaddr2ldms_addr(&rsin.sa, &c->dest);
+		if (rc) {
+			bzero(&c->dest, sizeof(c->dest));
+		}
 	} else {
-		c->dest.u64      = -1;
+		c->dest.sa_family = 0;
 	}
 
 	c->x = (ldms_t)rep->rail;
@@ -1379,7 +1430,7 @@ struct ldms_stream_stats_s * __stream_get_stats(struct ldms_stream_s *s)
 	ss->name = (char*)&ss[1];
 	memcpy((char*)ss->name, s->name, s->name_len);
 	TAILQ_INIT(&ss->pair_tq);
-	rbt_init(&ss->src_stats_rbt, __u64_rbn_cmp);
+	rbt_init(&ss->src_stats_rbt, __ldms_addr_rbn_cmp);
 	LDMS_STREAM_COUNTERS_INIT(&ss->rx);
 	ss->rx = s->rx;
 
@@ -1529,21 +1580,22 @@ int __stream_stats_sources_buff_append(struct ldms_stream_stats_s *stats,
 	int rc;
 	struct rbn *rbn;
 	struct ldms_stream_src_stats_s *src;
+	struct ldms_addr addr;
+	char addr_buff[128] = "";
 	const char *sep = "";
-	union ldms_stream_addr_u addr;
 	rc = ovis_buff_appendf(buff, "{");
 	if (rc)
 		goto out;
 	for (rbn = rbt_min(&stats->src_stats_rbt); rbn; rbn = rbn_succ(rbn)) {
 		src = container_of(rbn, struct ldms_stream_src_stats_s, rbn);
-		addr.u64 = src->src;
-		rc = ovis_buff_appendf(buff, "%s\"%hhu.%hhu.%hhu.%hhu:%hu\":",
-			sep,
-			addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3],
-			be16toh(addr.port));
+		addr = src->src;
+		ldms_addr_ntop(&addr, addr_buff, sizeof(addr_buff));
+		rc = ovis_buff_appendf(buff, "%s\"%s\":",sep, addr_buff);
 		if (rc)
 			goto out;
 		rc = __src_stats_buff_append(src, buff);
+		if (rc)
+			goto out;
 		sep = ",";
 	}
 	rc = ovis_buff_appendf(buff, "}");
@@ -1791,15 +1843,15 @@ int __client_stats_buff_append(struct ldms_stream_client_stats_s *cs,
 			       ovis_buff_t buff)
 {
 	int rc;
+	char addr_buff[128];
+	ldms_addr_ntop(&cs->dest, addr_buff, sizeof(addr_buff));
 	rc = ovis_buff_appendf(buff, "{"
 		"\"match\":\"%s\""
 		",\"desc\":\"%s\""
-		",\"dest\":\"%hhu.%hhu.%hhu.%hhu:%hu\"",
+		",\"dest\":\"%s\"",
 		cs->match,
 		cs->desc,
-		cs->dest.addr[0], cs->dest.addr[1],
-		cs->dest.addr[2], cs->dest.addr[3],
-		be16toh(cs->dest.port)) ||
+		addr_buff) ||
 	     ovis_buff_appendf(buff, ",\"tx\":") ||
 	     __counters_buff_append(&cs->tx, buff) ||
 	     ovis_buff_appendf(buff, ",\"drops\":") ||

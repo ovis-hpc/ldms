@@ -203,13 +203,7 @@ struct ldms_cancel_push_cmd_param {
 
 /* partial stream message; see ldms_stream.h for a full stream message */
 struct ldms_stream_part_msg_param {
-	union {
-		uint64_t src;
-		struct {
-			uint32_t src_addr;
-			uint32_t src_port;
-		};
-	};
+	struct ldms_addr src;
 	uint64_t msg_gn;
 	uint32_t more:1; /* more partial message */
 	uint32_t first:1; /* first partial message */

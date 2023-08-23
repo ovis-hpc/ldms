@@ -1711,7 +1711,7 @@ static zap_err_t z_sock_listen(zap_ep_t ep, struct sockaddr *sa,
 		goto err_0;
 
 	/* create a socket */
-	sep->sock = socket(AF_INET, SOCK_STREAM, 0);
+	sep->sock = socket(sa->sa_family, SOCK_STREAM, 0);
 	if (sep->sock == -1) {
 		zerr = ZAP_ERR_RESOURCE;
 		goto err_0;

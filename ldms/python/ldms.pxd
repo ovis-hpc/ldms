@@ -57,13 +57,25 @@ cdef extern from * nogil:
     uint64_t be64toh(uint64_t x)
     uint64_t htobe64(uint64_t x)
 
+    enum:
+        AF_INET,
+        AF_INET6,
+
     struct sockaddr:
+        uint16_t sa_family
+        pass
+    struct sockaddr_storage:
         pass
     struct in_addr:
         uint32_t s_addr
     struct sockaddr_in:
         uint16_t sin_port
         in_addr sin_addr
+    struct in6_addr:
+        pass
+    struct sockaddr_in6:
+        uint16_t sin6_port
+        in6_addr sin6_addr
     ctypedef uint32_t socklen_t
 
 cdef extern from "errno.h" nogil:
@@ -698,15 +710,13 @@ cdef extern from "ldms.h" nogil:
         LDMS_STREAM_EVENT_RECV
         LDMS_STREAM_EVENT_SUBSCRIBE_STATUS
         LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS
-    struct ldms_stream_src_u:
-        uint64_t u64;
-        uint32_t addr4;
+    struct ldms_addr:
         uint8_t  addr[4];
-        uint16_t port;
-        uint16_t reserved;
+        uint16_t sin_port;
+        uint16_t sa_family;
     struct ldms_stream_recv_data_s:
         ldms_stream_client_t client
-        ldms_stream_src_u src
+        ldms_addr src
         uint64_t msg_gn
         ldms_stream_type_e type
         uint32_t name_len
@@ -744,18 +754,13 @@ cdef extern from "ldms.h" nogil:
                             ldms_stream_event_cb_t cb_fn, void *cb_arg)
 
     # -- ldms_stream_stats -- #
-    union ldms_stream_addr_u:
-        uint64_t u64
-        uint8_t  addr[4]
-        uint32_t addr4
-        uint16_t port
     struct ldms_stream_counters_s:
         timespec first_ts
         timespec last_ts
         uint64_t  count
         size_t    bytes
     struct ldms_stream_src_stats_s:
-        uint64_t src
+        ldms_addr src
         ldms_stream_counters_s rx
     struct ldms_stream_client_pair_stats_s:
         const char *stream_name
@@ -777,7 +782,7 @@ cdef extern from "ldms.h" nogil:
         ldms_stream_counters_s tx
         ldms_stream_counters_s drops
         ldms_stream_client_pair_stats_tq_s pair_tq
-        ldms_stream_addr_u dest
+        ldms_addr dest
         int is_regex
         const char *match
         const char *desc

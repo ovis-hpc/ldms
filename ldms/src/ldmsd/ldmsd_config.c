@@ -1066,30 +1066,13 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 int listen_on_ldms_xprt(ldmsd_listen_t listen)
 {
 	int rc = 0;
-	struct sockaddr_in sin;
-	struct addrinfo *ai = NULL;
-	struct addrinfo ai_hint = { .ai_family = AF_INET,
-				    .ai_flags = AI_PASSIVE };
 	char port_buff[8];
 
 	assert(listen->x);
 
-	sin.sin_family = AF_INET;
-	if (listen->host) {
-		snprintf(port_buff, sizeof(port_buff), "%hu", listen->port_no);
-		rc = getaddrinfo(listen->host, port_buff, &ai_hint, &ai);
-		if (rc) {
-			ovis_log(NULL, OVIS_LERROR, "xprt listen error, getaddrinfo(%s, %s) error: %d\n", listen->host, port_buff, rc);
-			return rc;
-		}
-		memcpy(&sin, ai->ai_addr, ai->ai_addrlen);
-		freeaddrinfo(ai);
-	} else {
-		sin.sin_addr.s_addr = 0;
-		sin.sin_port = htons(listen->port_no);
-	}
-	rc = ldms_xprt_listen(listen->x, (struct sockaddr *)&sin, sizeof(sin),
-			       __listen_connect_cb, NULL);
+	snprintf(port_buff, sizeof(port_buff), "%hu", listen->port_no);
+	rc = ldms_xprt_listen_by_name(listen->x, listen->host, port_buff,
+					__listen_connect_cb, NULL);
 	if (rc) {
 		ovis_log(NULL, OVIS_LERROR, "Error %d Listening on %s:%d using `%s` transport and "
 			  "`%s` authentication\n", rc, listen->xprt,

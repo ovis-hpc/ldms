@@ -60,6 +60,7 @@ import os
 import sys
 import copy
 import json
+import socket
 import threading
 from queue import Queue, Empty
 cimport cython
@@ -3660,23 +3661,16 @@ cdef class Xprt(object):
             if rc:
                 raise StreamSubscribeError(f"ldms_stream_remote_unsubscribe() error, rc: {rc}")
 
-    def get_sockaddr(self):
+    def get_addr(self):
         """Get the local socket Internet address in ((LOCAL_ADDR, LOCAL_PORT), (REMOTE_ADDR, REMOTE_PORT))"""
-        cdef sockaddr_in lcl, rmt
+        cdef sockaddr_storage lcl, rmt
         cdef socklen_t slen = sizeof(lcl)
         cdef int rc
         rc = ldms_xprt_sockaddr(self.xprt, <sockaddr*>&lcl, <sockaddr*>&rmt, &slen)
         if rc:
             raise RuntimeError(f"ldms_xprt_sockaddr() error, rc: {rc}")
-        return ( (lcl.sin_addr.s_addr, lcl.sin_port) ,
-                 (rmt.sin_addr.s_addr, rmt.sin_port) )
-
-    def get_stream_addr(self):
-        """Get (LOCAL, REMOTE) addresses in StreamAddr format"""
-        lcl, rmt = self.get_sockaddr()
-        lcl = StreamAddr.from_addr_port(*lcl)
-        rmt = StreamAddr.from_addr_port(*rmt)
-        return ( lcl, rmt )
+        return ( LdmsAddr.from_sockaddr(PTR(&lcl)),
+                 LdmsAddr.from_sockaddr(PTR(&rmt)) )
 
 
 cdef class _StreamSubCtxt(object):
@@ -3724,11 +3718,90 @@ class StreamSubscribeError(Exception):
 
 StreamDataAttrs = [ "raw_data", "data", "src", "name", "is_json", "uid", "gid", "perm", "tid" ]
 
+cdef class LdmsAddr(object):
+    cdef public int   family
+    cdef public int   port
+    cdef public bytes addr
+
+    def __init__(self, family = 0, port = 0, addr = b'\x00'*16):
+        self.family = family
+        self.addr = addr
+        self.port = port
+
+    def __repr__(self):
+        return f"LdmsAddr( {self.family}, {self.port}, {self.addr} )"
+
+    def __str__(self):
+        cdef char buff[128]
+        if self.family in [ AF_INET, AF_INET6 ]:
+            addr = socket.inet_ntop(self.family, self.addr)
+        else:
+            addr = "UNSUPPORTED"
+        return f"[{addr}]:{self.port}"
+
+    @classmethod
+    def from_ldms_addr(cls, Ptr addr_ptr):
+        cdef ldms_addr *addr = <ldms_addr*>addr_ptr.c_ptr
+        if addr.sa_family == AF_INET:
+            addr_bytes = addr.addr[:4]
+        elif addr.sa_family == AF_INET6:
+            addr_bytes = addr.addr[:16]
+        elif addr.sa_family == 0:
+            addr_bytes = b'\x00'*16
+        else:
+            raise RuntimeError(f"Unsupported address family: {addr.sa_family}")
+        return LdmsAddr(addr.sa_family, be16toh(addr.sin_port), addr_bytes)
+
+    @classmethod
+    def from_sockaddr(cls, Ptr addr_ptr):
+        cdef sockaddr *sa = <sockaddr*>addr_ptr.c_ptr
+        cdef sockaddr_in *sin = <sockaddr_in*>addr_ptr.c_ptr
+        cdef sockaddr_in6 *sin6 = <sockaddr_in6*>addr_ptr.c_ptr
+        cdef char *addr
+        if sa.sa_family == AF_INET:
+            addr = <char*>&sin.sin_addr
+            return LdmsAddr(AF_INET, be16toh(sin.sin_port), addr[:4])
+        elif sa.sa_family == AF_INET6:
+            addr = <char*>&sin6.sin6_addr
+            return LdmsAddr(AF_INET6, be16toh(sin6.sin6_port), addr[:16])
+        elif sa.sa_family == 0:
+            return LdmsAddr(0, 0, b'\x00'*16)
+        else:
+            raise RuntimeError(f"Unsupported address family: {sa.sa_family}")
+
+    def as_tuple(self):
+        return tuple( self.family, self.port, self.addr )
+
+    def __iter__(self):
+        yield self.family
+        yield self.port
+        yield self.addr
+
+    def __eq__(self, other):
+        for a, b in zip(self, other):
+            if a != b:
+                return False
+        return True
+
+    def __lt__(self, other):
+        for a, b in zip(self, other):
+            if a is None:
+                if b is None:
+                    continue
+                return True
+            if b is None:
+                return False
+            if a < b:
+                return True
+            if a > b:
+                return False
+        return False
+
 cdef class StreamData(object):
     """Stream Data"""
     cdef public bytes    raw_data # bytes raw data
     cdef public object   data     # `str` (for STRING) or `dict` (for JSON)
-    cdef public uint64_t src      # stream originator
+    cdef public LdmsAddr src      # stream originator
     cdef public str      name     # stream name
     cdef public int      is_json  # data is JSON
     cdef public int      uid      # uid of the original publisher
@@ -3751,7 +3824,7 @@ cdef class StreamData(object):
         return str(self.data)
 
     def __repr__(self):
-        return f"StreamData('{self.name}', {hex(self.src)}, " \
+        return f"StreamData('{self.name}', {repr(self.src)}, " \
                f"{self.tid}, {self.uid}, {self.gid}, {oct(self.perm)}, " \
                f"{self.is_json}, {repr(self.data)})"
 
@@ -3777,7 +3850,7 @@ cdef class StreamData(object):
             is_json = False
             data = raw_data.decode()
         name = ev.recv.name.decode()
-        src = ev.recv.src.u64
+        src = LdmsAddr.from_ldms_addr(PTR(&ev.recv.src))
         uid = ev.recv.cred.uid
         gid = ev.recv.cred.gid
         perm = ev.recv.perm
@@ -3793,24 +3866,6 @@ cdef int __stream_client_cb(ldms_stream_event_t ev, void *arg) with gil:
     else:
         c.data_q.put(sdata)
     return 0
-
-StreamAddr = namedtuple('StreamAddr', ['addr', 'port'])
-def _from_ptr(cls, Ptr ptr):
-    cdef ldms_stream_addr_u *addr = <ldms_stream_addr_u*>ptr.c_ptr
-    return cls( tuple([addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3]]),
-                be16toh(addr.port) )
-StreamAddr.from_ptr = classmethod(_from_ptr)
-del _from_ptr
-def _from_addr_port(cls, addr, port):
-    """From addr, port in Network byte format"""
-    _b = struct.pack('=LH', addr, port)
-    _u = struct.unpack('>BBBBH', _b)
-    _addr = _u[0:4]
-    _port = _u[4]
-    return cls(_addr, _port)
-StreamAddr.from_addr_port = classmethod(_from_addr_port)
-del _from_addr_port
-StreamAddr.__str__ = lambda s: ".".join(s.addr)+f":{s.port}"
 
 TimeSpec = namedtuple('TimeSpec', [ 'tv_sec', 'tv_nsec' ])
 def _from_ptr(cls, Ptr ptr):
@@ -3833,7 +3888,7 @@ del _from_ptr
 StreamSrcStats = namedtuple('StreamSrcStats', ['src', 'rx'])
 def _from_ptr(cls, Ptr ptr):
     cdef ldms_stream_src_stats_s *ss = <ldms_stream_src_stats_s *>ptr.c_ptr
-    src = StreamAddr.from_ptr(PTR(&ss.src))
+    src = LdmsAddr.from_ldms_addr(PTR(&ss.src))
     rx = StreamCounters.from_ptr(PTR(&ss.rx))
     return cls(src, rx)
 StreamSrcStats.from_ptr = classmethod(_from_ptr)
@@ -3884,7 +3939,7 @@ def _from_ptr(cls, Ptr ptr):
     cdef ldms_stream_client_pair_stats_s *ps
     tx = StreamCounters.from_ptr(PTR(&cs.tx))
     drops = StreamCounters.from_ptr(PTR(&cs.drops))
-    dest = StreamAddr.from_ptr(PTR(&cs.dest))
+    dest = LdmsAddr.from_ldms_addr(PTR(&cs.dest))
     ps = __STREAM_CLIENT_PAIR_STATS_TQ_FIRST(&cs.pair_tq)
     streams = list()
     while ps:

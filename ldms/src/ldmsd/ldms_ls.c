@@ -1093,10 +1093,10 @@ int is_in_set_list(const char *name)
 int main(int argc, char *argv[])
 {
 	struct ldms_version version;
-	struct sockaddr_in sin;
+	union ldms_sockaddr lsa;
+	socklen_t sa_len = sizeof(lsa);
 	ldms_t ldms;
 	int ret;
-	struct hostent *h;
 	char *hostname = strdup("localhost");
 	unsigned short port_no = LDMS_DEFAULT_PORT;
 	int op;
@@ -1222,18 +1222,22 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	h = gethostbyname(hostname);
-	if (!h) {
-		herror(argv[0]);
+	char port_str[16];
+	snprintf(port_str, sizeof(port_str), "%d", port_no);
+
+	rc = ldms_getsockaddr(hostname, port_str, &lsa.sa, &sa_len);
+	switch (rc) {
+	case 0:
+		break;/* OK */
+	case -ENOENT:
 		printf("%s: %s does not resolve.\n", argv[0], hostname);
 		exit(1);
-	}
-
-	if (h->h_addrtype != AF_INET) {
-		printf("%s: -h %s does not provide an AF_INET address.\n",
-			argv[0], hostname);
-		printf("%s: please give a proper hostname.\n", argv[0]);
+		break;
+	default:
+		printf("%s: Error '%d' in resolving host '%s', port '%d'.\n",
+				argv[0], rc, hostname, port_no);
 		exit(1);
+		break;
 	}
 
 	/* Initialize LDMS */
@@ -1261,13 +1265,25 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	memset(&sin, 0, sizeof sin);
-	sin.sin_addr.s_addr = *(unsigned int *)(h->h_addr_list[0]);
-	sin.sin_family = h->h_addrtype;
-	sin.sin_port = htons(port_no);
 	if (verbose > 1) {
 		printf("Hostname    : %s\n", hostname);
-		printf("IP Address  : %s\n", inet_ntoa(sin.sin_addr));
+		char addr_buff[128];
+		switch (lsa.sa.sa_family) {
+		case AF_INET:
+			inet_ntop(AF_INET, &lsa.sin.sin_addr,
+				  addr_buff, sizeof(addr_buff));
+			printf("IP Address  : %s\n", addr_buff);
+			break;
+		case AF_INET6:
+			inet_ntop(AF_INET6, &lsa.sin6.sin6_addr,
+				  addr_buff, sizeof(addr_buff));
+			printf("IPv6 Address  : %s\n", addr_buff);
+			break;
+		default:
+			printf("Address  : __UNSUPPORTED__ (address family: %d)\n",
+					lsa.sa.sa_family);
+			break;
+		}
 		printf("Port        : %hu\n", port_no);
 		printf("Transport   : %s\n", xprt);
 	}
@@ -1275,8 +1291,7 @@ int main(int argc, char *argv[])
 	free(hostname);
 	xprt = NULL;
 	hostname = NULL;
-	ret  = ldms_xprt_connect(ldms, (struct sockaddr *)&sin, sizeof(sin),
-				 ldms_connect_cb, NULL);
+	ret  = ldms_xprt_connect(ldms, &lsa.sa, sa_len, ldms_connect_cb, NULL);
 	if (ret) {
 		perror("ldms_xprt_connect");
 		exit(2);

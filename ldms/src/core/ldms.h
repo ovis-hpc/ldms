@@ -975,6 +975,48 @@ int ldms_xprt_rail_eps(ldms_t x);
  */
 int ldms_xprt_rail_send_credit_get(ldms_t x, uint64_t *credits, int n);
 
+/* A convenient sockaddr union for IPv4 and IPv6 (for now) */
+union ldms_sockaddr {
+	struct sockaddr     sa;
+	struct sockaddr_in  sin;
+	struct sockaddr_in6 sin6;
+	struct sockaddr_storage storage;
+};
+
+/**
+ * A utility to convert \c host, \c port/service to \c sockaddr.
+ *
+ * \c host could be:
+ * - "IP4_ADDR", e.g. "192.168.0.5"
+ * - "IP6_ADDR", e.g. "::1"
+ * - "HOSTNAME", e.g. "node05"
+ *
+ * \note It is recommended to supply \c sockaddr_storage structure for \c sa.
+ *
+ * \param         host   The host string.
+ * \param         port   The port or service string (see \c getaddrinfo(3)).
+ * \param[out]    sa     The sockaddr output buffer. It is recommended to
+ *                       supply \c sockaddr_storage structure for \c sa.
+ * \param[in,out] sa_len The length of the \c sa buffer. On return, \c sa_len
+ *                       is set to the length of the returned \c sa.
+ *
+ * \retval 0 If there is no error.
+ */
+int ldms_getsockaddr(const char *host, const char *port,
+		     struct sockaddr *sa, socklen_t *sa_len);
+
+/**
+ * Same as \c ldms_getsockaddr(), but only returns AF_INET4 family.
+ */
+int ldms_getsockaddr4(const char *host, const char *port,
+		      struct sockaddr *sa, socklen_t *sa_len);
+
+/**
+ * Same as \c ldms_getsockaddr(), but only returns AF_INET6 family.
+ */
+int ldms_getsockaddr6(const char *host, const char *port,
+		      struct sockaddr *sa, socklen_t *sa_len);
+
 /** \} */
 
 /**
@@ -1038,19 +1080,13 @@ int ldms_stream_publish_file(ldms_t x, const char *stream_name,
 typedef struct ldms_stream_client_s *ldms_stream_client_t;
 typedef struct json_entity_s *json_entity_t;
 
-#pragma pack(push, 1)
-typedef union ldms_stream_addr_u {
-	uint64_t u64; /* access as u64 */
-	struct {
-		union {
-			uint32_t addr4; /* big endian */
-			uint8_t  addr[4]; /* convenient addr byte access */
-		};
-		uint16_t port; /* big endian */
-		uint16_t reserved;
-	};
-} *ldms_stream_addr_t;
-#pragma pack(pop)
+/* currently only support IPv4 and IPv6 */
+struct ldms_addr {
+	sa_family_t sa_family; /* host-endian */
+	in_port_t   sin_port;  /* network-endian */
+	uint8_t     addr[16];  /* addr[0-3] for IPv4,
+				  addr[0-15] for IPv6 */
+};
 
 enum ldms_stream_event_type {
 	LDMS_STREAM_EVENT_RECV, /* stream data received */
@@ -1061,7 +1097,7 @@ enum ldms_stream_event_type {
 /* For stream data delivery to the application */
 struct ldms_stream_recv_data_s {
 	ldms_stream_client_t client;
-	union ldms_stream_addr_u src;
+	struct ldms_addr src;
 	uint64_t msg_gn;
 	ldms_stream_type_t type;
 	uint32_t name_len;
@@ -1176,7 +1212,7 @@ struct ldms_stream_counters_s {
 /* stream statistics by src */
 struct ldms_stream_src_stats_s {
 	struct rbn rbn; /* key ==> src */
-	uint64_t src;
+	struct ldms_addr src;
 	struct ldms_stream_counters_s rx; /* total rx from src */
 };
 
@@ -1213,7 +1249,7 @@ struct ldms_stream_client_stats_s {
 	struct ldms_stream_counters_s tx;
 	struct ldms_stream_counters_s drops;
 	struct ldms_stream_client_pair_stats_tq_s pair_tq; /* stats by stream */
-	union ldms_stream_addr_u dest;
+	struct ldms_addr dest;
 	int is_regex;
 	const char *match; /* the matching string; allocated with the structure */
 	const char *desc; /* the short description; allocated with the structure */
