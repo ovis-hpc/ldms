@@ -58,6 +58,7 @@
 #include <sys/queue.h>
 #include <pthread.h>
 
+#include "ldms_xprt.h"
 #include "ovis_ref/ref.h"
 #include "coll/rbt.h"
 #include "ldms.h"
