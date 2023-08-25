@@ -180,6 +180,8 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 	if (!pi->libpath)
 		goto enomem;
 	pi->plugin = lpi;
+	TAILQ_INIT(&lpi->avl_q);
+	TAILQ_INIT(&lpi->kwl_q);
 	lpi->pi = pi;
 	pi->sample_interval_us = 1000000;
 	pi->sample_offset_us = 0;
@@ -203,10 +205,24 @@ err:
 
 void destroy_plugin(struct ldmsd_plugin_cfg *p)
 {
+	struct avl_q_item *avl;
+	struct avl_q_item *kwl;
 	free(p->libpath);
 	free(p->name);
-	av_free(p->plugin->av_list);
-	av_free(p->plugin->kw_list);
+
+	/*
+	 * Assume that the length of av_list_q and
+	 * the length of kw_list_q are equal.
+	 */
+	while ((avl = TAILQ_FIRST(&p->plugin->avl_q)) &&
+			(kwl = TAILQ_FIRST(&p->plugin->kwl_q))) {
+		TAILQ_REMOVE(&p->plugin->avl_q, avl, entry);
+		TAILQ_REMOVE(&p->plugin->kwl_q, kwl, entry);
+		free(avl->av_list);
+		free(avl);
+		free(kwl->av_list);
+		free(kwl);
+	}
 	LIST_REMOVE(p, entry);
 	dlclose(p->handle);
 	free(p);
@@ -308,6 +324,17 @@ int ldmsd_config_plugin(char *plugin_name,
 {
 	int rc = 0;
 	struct ldmsd_plugin_cfg *pi;
+	struct avl_q_item *avl;
+	struct avl_q_item *kwl;
+
+	avl = calloc(1, sizeof(*avl));
+	kwl = calloc(1, sizeof(*kwl));
+	if (!avl || !kwl)
+		return ENOMEM;
+	avl->av_list = av_copy(_av_list);
+	kwl->av_list = av_copy(_kw_list);
+	if (!avl->av_list || !kwl->av_list)
+		return ENOMEM;
 
 	pi = ldmsd_get_plugin(plugin_name);
 	if (!pi)
@@ -315,8 +342,8 @@ int ldmsd_config_plugin(char *plugin_name,
 
 	pthread_mutex_lock(&pi->lock);
 	rc = pi->plugin->config(pi->plugin, _kw_list, _av_list);
-	pi->plugin->av_list = av_copy(_av_list);
-	pi->plugin->kw_list = av_copy(_kw_list);
+	TAILQ_INSERT_TAIL(&pi->plugin->kwl_q, kwl, entry);
+	TAILQ_INSERT_TAIL(&pi->plugin->avl_q, avl, entry);
 	pthread_mutex_unlock(&pi->lock);
 	return rc;
 }
