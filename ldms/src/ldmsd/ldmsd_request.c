@@ -6156,18 +6156,26 @@ out:
 	return 0;
 }
 
+extern char *logfile;
+extern int log_level_thr;
+extern char *max_mem_sz_str;
+extern char *pidfile;
+extern int banner;
+extern int do_kernel;
+extern char *setfile;
+extern int ev_thread_count;
 static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 {
 	FILE *fp = NULL;
 	char *filename = NULL;
-        extern struct plugin_list plugin_list;
-        struct ldmsd_plugin_cfg *p;
-        int rc;
+	extern struct plugin_list plugin_list;
+	struct ldmsd_plugin_cfg *p;
+	int rc;
 	int i;
 	char hostname[128], port_no[32];
 	rc = ldms_xprt_names(reqc->xprt->ldms.ldms, hostname, sizeof(hostname), port_no, sizeof(port_no),
 				NULL, 0, NULL, 0, NI_NAMEREQD | NI_NUMERICSERV);
-        reqc->errcode = 0;
+	reqc->errcode = 0;
 	filename = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PATH);
 	if (!filename || strlen(filename) == 0) {
 		Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -6185,6 +6193,30 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	fprintf(fp, "# This configuration file assumes ldmsd will be started with\n"
 			"# no command line arguments.\n"
 			"# e.g. ldmsd -c %s\n\n", fullpath);
+
+	/* Miscellaneous, e.g., logfile, log verbosity */
+	fprintf(fp, "option");
+	if (logfile) {
+		fprintf(fp, " -l %s", logfile);
+	}
+	fprintf(fp, " -v %s", ovis_log_level_to_str(log_level_thr));
+	if (max_mem_sz_str)
+		fprintf(fp, " -m %s", max_mem_sz_str);
+	if (pidfile)
+		fprintf(fp, " -r %s", pidfile);
+	if (banner != -1)
+		fprintf(fp, " -B %d", banner);
+	fprintf(fp, " -P %d", ev_thread_count);
+	fprintf(fp, " -C %d", ldmsd_credits);
+	if (do_kernel) {
+		fprintf(fp, " -k");
+		if (setfile)
+			fprintf(fp, " -s %s", setfile);
+	}
+	const char *_name = ldmsd_myname_get();
+	if (_name[0] != '\0')
+		fprintf(fp, " -n %s", _name);
+	fprintf(fp, "\n");
 
 	/* Auth */
 	ldmsd_auth_t auth;
@@ -6246,28 +6278,42 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	/* Plugins */
-        LIST_FOREACH(p, &plugin_list, entry) {
+	struct avl_q_item *avl;
+	struct avl_q_item *kwl;
+	LIST_FOREACH(p, &plugin_list, entry) {
 		fprintf(fp, "load name=%s\n", p->name);
-		fprintf(fp, "config name=%s ", p->name);
-		for (i = 0; i < p->plugin->av_list->count; i++) {
-			struct attr_value *v = &p->plugin->av_list->list[i];
-			if (i > 0)
-				fprintf(fp, " ");
-			fprintf(fp, "%s=%s", v->name, v->value);
+		avl = TAILQ_FIRST(&p->plugin->avl_q);
+		kwl = TAILQ_FIRST(&p->plugin->kwl_q);
+		/* Assume that the lengths of av_list_q and kw_list_q are equal. */
+		while (avl) {
+			fprintf(fp, "config name=%s ", p->name);
+			for (i = 0; i < avl->av_list->count; i++) {
+				struct attr_value *v = &avl->av_list->list[i];
+				if (i > 0)
+					fprintf(fp, " ");
+				fprintf(fp, "%s=%s", v->name, v->value);
+			}
+			for (i = 0; i < kwl->av_list->count; i++) {
+				struct attr_value *k = &kwl->av_list->list[i];
+				if (i > 0)
+					fprintf(fp, " ");
+				fprintf(fp, "%s", k->name);
+			}
+			fprintf(fp, "\n");
+			avl = TAILQ_NEXT(avl, entry);
+			kwl = TAILQ_NEXT(kwl, entry);
 		}
-		for (i = 0; i < p->plugin->kw_list->count; i++) {
-			struct attr_value *k = &p->plugin->kw_list->list[i];
-			if (i > 0)
-				fprintf(fp, " ");
-			fprintf(fp, "%s", k->name);
+
+		if (p->plugin->type == LDMSD_PLUGIN_SAMPLER) {
+			if (p->os) {
+				/* Plugin is running. */
+				fprintf(fp, "start name=%s interval=%ld offset=%ld\n",
+					p->plugin->name,
+					p->sample_interval_us,
+					p->sample_offset_us);
+			}
 		}
-		fprintf(fp, "\n");
-		if (p->plugin->type == LDMSD_PLUGIN_SAMPLER)
-			fprintf(fp, "start name=%s interval=%ld offset=%ld\n",
-				p->plugin->name,
-				p->sample_interval_us,
-				p->sample_offset_us);
-        }
+	}
 	/*  Updaters */
 	ldmsd_name_match_t match;
 	ldmsd_updtr_t updtr;
@@ -6327,18 +6373,25 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 		fprintf(fp, "strgp_add name=%s "
 			"plugin=%s "
 			"container=%s "
-			"schema=%s "
 			"flush=%ld "
 			"perm=%d",
 			strgp->obj.name,
 			strgp->plugin_name,
 			strgp->container,
-			strgp->schema,
 			strgp->flush_interval.tv_sec,
 			strgp->obj.perm);
+		if (strgp->regex_s)
+			fprintf(fp, " regex=%s", strgp->regex_s);
+		else
+			fprintf(fp, " schema=%s", strgp->schema);
 		if (strgp->decomp)
 			fprintf(fp, " decomposition=%s", strgp->decomp_name);
 		fprintf(fp, "\n");
+		LIST_FOREACH(match, &strgp->prdcr_list, entry) {
+			fprintf(fp, "strgp_prdcr_add name=%s regex=%s\n",
+					strgp->obj.name,
+					match->regex_str);
+		}
 		if (strgp->state == LDMSD_STRGP_STATE_RUNNING)
 			fprintf(fp, "strgp_start name=%s\n", strgp->obj.name);
 	}
