@@ -735,10 +735,15 @@ int process_config_file(const char *path, int *lineno, int trust);
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 struct attr_value_list;
+struct avl_q_item {
+	struct attr_value_list *av_list;
+	TAILQ_ENTRY(avl_q_item) entry;
+};
+TAILQ_HEAD(avl_q, avl_q_item);
 struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN];
-	struct attr_value_list *av_list;
-	struct attr_value_list *kw_list;
+	struct avl_q avl_q;
+	struct avl_q kwl_q;
 	enum ldmsd_plugin_type {
 		LDMSD_PLUGIN_OTHER = 0,
 		LDMSD_PLUGIN_SAMPLER,
