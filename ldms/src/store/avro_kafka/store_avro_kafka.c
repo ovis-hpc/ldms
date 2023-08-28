@@ -43,6 +43,7 @@ static ldmsd_msg_log_f msglog __attribute__((format(printf, 2, 3)));
 #define LOG_ERROR(FMT, ...) LOG(OVIS_LERROR, FMT, ##__VA_ARGS__)
 #define LOG_INFO(FMT, ...) LOG(OVIS_LINFO, FMT, ##__VA_ARGS__)
 #define LOG_WARN(FMT, ...) LOG(OVIS_LWARNING, FMT, ##__VA_ARGS__)
+#define LOG_DEBUG(FMT, ...) LOG(OVIS_LDEBUG, FMT, ##__VA_ARGS__)
 
 typedef struct aks_handle_s
 {
@@ -442,6 +443,8 @@ static aks_handle_t __handle_new(ldmsd_strgp_t strgp)
 
 	sh->encoding = g_serdes_encoding;
 	sh->topic_fmt = strdup(g_topic_fmt);
+	if (!sh->topic_fmt)
+		goto err_1;
 
 	sh->rd_conf = rd_kafka_conf_dup(g_rd_conf);
 	if (!sh->rd_conf)
@@ -487,6 +490,7 @@ err_3:
 err_2:
 	rd_kafka_conf_destroy(sh->rd_conf);
 err_1:
+	free(sh->topic_fmt);
 	free(sh);
 err_0:
 	return NULL;
@@ -942,14 +946,18 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 		serdes_schema_t *serdes_schema;
 
 		char *topic_name = get_topic_name(sh, set, row);
-		LOG_INFO("topic name %s\n", topic_name);
+		if (!topic_name) {
+			LOG_ERROR("get_topic_name failed for schema '%s'\n", row->schema_name);
+			continue;
+		}
+		LOG_DEBUG("topic name %s\n", topic_name);
 		rkt = rd_kafka_topic_new(sh->rd, topic_name, NULL);
 		if (!rkt)
 		{
 			LOG_ERROR("rd_kafka_topic_new(\"%s\") failed, "
 				  "errno: %d\n",
-				  row->schema_name, errno);
-			continue;
+				  topic_name, errno);
+			goto skip_row_0;
 		}
 		switch (sh->encoding) {
 		case AKS_ENCODING_AVRO:
@@ -957,21 +965,20 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 			if (!serdes_schema) {
 				LOG_ERROR("A serdes schema for '%s' could not be "
 					"constructed.\n", row->schema_name);
-				continue;
+				goto skip_row_1;
 			}
 			/* Encode ldmsd_row_s as an Avro value */
 			rc = serialize_row_as_avro(sh->serdes, serdes_schema, row, &avro_row);
 			if (rc) {
 				LOG_ERROR("Failed to format row as Avro value, error: %d\n", rc);
-				continue;
+				goto skip_row_1;
 			}
 			/* Serialize an Avro value into a buffer */
 			if (serdes_schema_serialize_avro(serdes_schema, &avro_row,
 							&ser_buf, &ser_buf_size,
 							errstr, sizeof(errstr))) {
 				LOG_ERROR("Failed to serialize Avro row: '%s'\n", errstr);
-				avro_value_decref(&avro_row);
-				continue;
+				goto skip_row_2;
 			}
 			break;
 		case AKS_ENCODING_JSON:
@@ -979,7 +986,7 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 			rc = ldmsd_row_to_json_object(row, (char **)&ser_buf, &ser_size);
 			if (rc) {
 				LOG_ERROR("Failed to serialize row as JSON object, error: %d", rc);
-				continue;
+				goto skip_row_1;
 			}
 			ser_buf_size = ser_size;
 			break;
@@ -995,10 +1002,14 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 			LOG_ERROR("rd_kafka_produce(\"%s\") failed, "
 				  "\"%s\"\n", topic_name,
 				  rd_kafka_err2str(rd_kafka_last_error()));
+			free(ser_buf);
 		}
-		rd_kafka_topic_destroy(rkt);
+	skip_row_2:
 		if (sh->encoding == AKS_ENCODING_AVRO)
 			avro_value_decref(&avro_row);
+	skip_row_1:
+		rd_kafka_topic_destroy(rkt);
+	skip_row_0:
 		free(topic_name);
 	}
 
