@@ -2134,6 +2134,9 @@ out:
 	if (perm)
 		free(perm);
 	free(stream);
+	free(auth);
+	free(rail_s);
+	free(credits_s);
 	/* this req needs no resp */
 	return rc;
 }
@@ -2260,6 +2263,7 @@ out:
 		free(gid);
 	if (perm)
 		free(perm);
+	free(auto_interval);
 	/* this req need no resp */
 	return rc;
 }

@@ -1498,7 +1498,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	char *perm_s = NULL;
 
 	reqc->errcode = 0;
-	name = host = xprt = type_s = port_s = interval_s = auth = NULL;
+	name = host = xprt = type_s = port_s = interval_s = auth = rail_s = credits_s = NULL;
 
 	attr_name = "name";
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -1514,19 +1514,18 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		if ((int)type < 0) {
 			reqc->errcode = EINVAL;
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"The attribute type '%s' is invalid.",
-					type_s);
+				       "The attribute type '%s' is invalid.",
+				       type_s);
 			goto send_reply;
 		}
 		if (type == LDMSD_PRDCR_TYPE_LOCAL) {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"Producer with type 'local' is "
-					"not supported.");
+				       "Producer with type 'local' is "
+				       "not supported.");
 			reqc->errcode = EINVAL;
 			goto send_reply;
 		}
 	}
-
 	attr_name = "xprt";
 	xprt = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_XPRT);
 	if (!xprt)
@@ -1656,6 +1655,8 @@ send_reply:
 	free(xprt);
 	free(perm_s);
 	free(auth);
+	free(rail_s);
+	free(credits_s);
 	return 0;
 }
 
@@ -2275,6 +2276,7 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 					"prdcr '%s' doesn't exist.", name);
 			reqc->errcode = ENOENT;
 			ldmsd_send_req_response(reqc, reqc->line_buf);
+			free(name);
 			return 0;
 		}
 	}
@@ -2419,11 +2421,11 @@ int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc)
 
 	rc = linebuf_printf(reqc, "[");
 	if (rc)
-		return rc;
+		goto out;
 	if (prdcr_name) {
 		prdcr = ldmsd_prdcr_find(prdcr_name);
 		if (!prdcr)
-			goto out;
+			goto close_str;
 	}
 
 	if (prdcr) {
@@ -2441,14 +2443,14 @@ int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc)
 			ldmsd_prdcr_unlock(prdcr);
 			if (rc) {
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-				goto out;
+				goto close_str;
 			}
 		}
 		ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	}
-
-out:
+close_str:
 	rc = linebuf_printf(reqc, "]");
+out:
 	free(prdcr_name);
 	free(setname);
 	free(schema);
@@ -2486,8 +2488,8 @@ int strgp_decomp_init(ldmsd_strgp_t strgp, ldmsd_req_ctxt_t req);
 static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *attr_name, *name, *plugin, *container, *schema, *interval, *regex;
-	char *decomp;
-	name = plugin = container = schema = NULL;
+	char *decomp = NULL;
+	name = plugin = container = schema = interval = regex = NULL;
 	size_t cnt = 0;
 	uid_t uid;
 	gid_t gid;
@@ -2666,7 +2668,10 @@ send_reply:
 	free(plugin);
 	free(container);
 	free(schema);
+	free(regex);
 	free(perm_s);
+	free(interval);
+	free(decomp);
 	return 0;
 }
 
@@ -3164,6 +3169,7 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 				"strgp '%s' doesn't exist.", name);
 			reqc->errcode = ENOENT;
 			ldmsd_send_req_response(reqc, reqc->line_buf);
+			free(name);
 			return 0;
 		}
 	}
@@ -3799,6 +3805,7 @@ static int updtr_match_list_handler(ldmsd_req_ctxt_t reqc)
 				"updtr '%s' does not exist.", name);
 			reqc->errcode = ENOENT;
 			ldmsd_send_req_response(reqc, reqc->line_buf);
+			free(name);
 			return 0;
 		}
 	}
@@ -3962,6 +3969,7 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(auto_interval);
 	free(updtr_name);
 	free(interval_str);
 	free(offset_str);
@@ -4163,6 +4171,7 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 				"updtr '%s' doesn't exist.", name);
 			reqc->errcode = ENOENT;
 			ldmsd_send_req_response(reqc, reqc->line_buf);
+			free(name);
 			return 0;
 		}
 	}
@@ -4302,6 +4311,7 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 			cnt = snprintf(reqc->line_buf, reqc->line_len, "updtr '%s' not found", name);
 			ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, ENOENT,
 							reqc->line_buf, cnt);
+			free(name);
 			return 0;
 		}
 		rc = __updtr_task_tree_json_obj(reqc, updtr);
@@ -4459,6 +4469,7 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
 					"prdcr '%s' not found", name);
 			reqc->errcode = ENOENT;
 			ldmsd_send_req_response(reqc, reqc->line_buf);
+			free(name);
 			return 0;
 		}
 		ldmsd_prdcr_lock(prdcr);
@@ -5165,7 +5176,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	if (!av_list || !kw_list || !attr_copy) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Out of memory");
-		goto err;
+		goto send_reply;
 	}
 
 	reqc->errcode = tokenize(config_attr, kw_list, av_list);
@@ -5175,7 +5186,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Out of memory");
 		reqc->errcode = ENOMEM;
-		goto err;
+		goto send_reply;
 	}
 
 	reqc->errcode = ldmsd_config_plugin(plugin_name, av_list, kw_list);
@@ -5195,12 +5206,6 @@ einval:
 			"The attribute '%s' is required by config.",
 		       	attr_name);
 	goto send_reply;
-err:
-	av_free(kw_list);
-	av_free(av_list);
-	free(attr_copy);
-	kw_list = NULL;
-	av_list = NULL;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(plugin_name);
@@ -5543,6 +5548,7 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 				(void) snprintf(reqc->line_buf, reqc->line_len,
 						"The given UID '%s' is invalid.",
 						value);
+				free(value);
 				goto free_regex;
 			}
 		} else {
@@ -5551,11 +5557,13 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 				reqc->errcode = EINVAL;
 				(void)snprintf(reqc->line_buf, reqc->line_len,
 						"Unknown user '%s'", value);
+				free(value);
 				goto free_regex;
 			}
 			uid = pwd->pw_uid;
 		}
 		set_flags |= DEFAULT_AUTHZ_SET_UID;
+		free(value);
 	}
 
 	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_GID);
@@ -5567,6 +5575,7 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 				(void) snprintf(reqc->line_buf, reqc->line_len,
 						"The given GID '%s' is invalid.",
 						value);
+				free(value);
 				goto free_regex;
 			}
 		} else {
@@ -5575,11 +5584,13 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 				reqc->errcode = EINVAL;
 				(void) snprintf(reqc->line_buf, reqc->line_len,
 						"Unknown group '%s'", value);
+				free(value);
 				goto free_regex;
 			}
 			gid = grp->gr_gid;
 		}
 		set_flags |= DEFAULT_AUTHZ_SET_GID;
+		free(value);
 	}
 
 	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PERM);
@@ -5589,14 +5600,17 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 			reqc->errcode = EINVAL;
 			(void) snprintf(reqc->line_buf, reqc->line_len,
 					"String to permission bits conversion failed.");
+			free(value);
 			goto free_regex;
 		} else if (perm > 0777) {
 			reqc->errcode = EINVAL;
 			(void) snprintf(reqc->line_buf, reqc->line_len,
 					"Permission value is out of range.");
+			free(value);
 			goto free_regex;
 		}
 		set_flags |= DEFAULT_AUTHZ_SET_PERM;
+		free(value);
 	}
 
 	rc = ldms_set_regex_sec_set(regex, uid, gid, perm, set_flags);
@@ -5609,7 +5623,6 @@ free_regex:
 	regfree(&regex);
 out:
 	free(regex_s);
-	free(value);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
 }
@@ -5750,6 +5763,7 @@ int __daemon_status_json_obj(ldmsd_req_ctxt_t reqc)
 		rc = linebuf_printf(reqc, "}");
 		return rc;
 	}
+	free(thread_stats);
 	json_s = __thread_stats_as_json(&json_sz);
 	if (!json_s)
 		return ENOMEM;
@@ -6158,6 +6172,7 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 out:
 	free(rep_len_str);
 	free(num_rec_str);
+	free(str);
 	return 0;
 }
 
@@ -6256,6 +6271,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 		}
 		fprintf(fp, "\n");
 	}
+
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_LISTEN);
 	/* Producers */
 	ldmsd_prdcr_t prdcr = NULL;
@@ -7801,8 +7817,8 @@ out:
  */
 static int stream_stats_handler(ldmsd_req_ctxt_t reqc)
 {
-	const char *regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
-	const char *stream = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
+	char *regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
+	char *stream = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
 	const char *match = NULL;
 	int is_regex = 0;
 	char buff[128];
@@ -7823,7 +7839,8 @@ static int stream_stats_handler(ldmsd_req_ctxt_t reqc)
 		snprintf(buff, sizeof(buff), "ldms_stream_stats_str() error: %d",
 				errno);
 		ldmsd_send_req_response(reqc, buff);
-		return 0;
+		rc = 0;
+		goto out;
 	}
 	attr.discrim = 1;
 	attr.attr_id = LDMSD_ATTR_JSON;
@@ -7841,6 +7858,8 @@ static int stream_stats_handler(ldmsd_req_ctxt_t reqc)
 	rc = ldmsd_append_reply(reqc, (char *)(&attr.discrim),
 				sizeof(attr.discrim), LDMSD_REQ_EOM_F);
 out:
+	free(regex);
+	free(stream);
 	free(s);
 	return rc;
 }
@@ -8445,12 +8464,12 @@ out:
 
 static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 {
-	int rc;
+	int rc = 0;
 	ldmsd_updtr_t updtr;
 	char *name, *reset_s;
-	name = reset_s = NULL;
 	int cnt = 0;
 	int reset = 0;
+	name = reset_s = NULL;
 
 	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
 	if (reset_s) {
@@ -8473,7 +8492,7 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 				"updtr '%s' doesn't exist.", name);
 			reqc->errcode = ENOENT;
 			ldmsd_send_req_response(reqc, reqc->line_buf);
-			return 0;
+			goto err;
 		}
 		rc = __upd_time_stats_json_obj(reqc, updtr, reset);
 	} else {
