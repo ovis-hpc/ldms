@@ -864,6 +864,15 @@ extern int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port
 		ldms_event_cb_t cb, void *cb_arg);
 
 /**
+ * \brief Check if an LDMS transport endpoint is connected.
+ *
+ * \param x     The transport handle
+ *
+ * \retval      0 if the transport endpoint is connected. Otherwise, 1 is returned.
+ */
+extern int ldms_xprt_connected(ldms_t x);
+
+/**
  * \brief Get local and remote sockaddr from the xprt.
  *
  * \retval 0 If success.
