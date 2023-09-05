@@ -112,7 +112,7 @@ int populateMetricSchema(ldms_schema_t schema, uint32_t numDevices) {
         for (size_t i = 0; i < c_numMetrics; i++) {
             char szMetricName[MAX_METRIC_NAME_LENGTH + 1] = {};
             constructMetricName(metricsDefinitions[i].name, deviceId, szMetricName);
-            GMGLOG(OVIS_LDEBUG, "metricsDefinitions[i=%d].name = %s\n", i, metricsDefinitions[i].name);
+            GMGLOG(OVIS_LDEBUG, "metricsDefinitions[i=%ld].name = %s\n", i, metricsDefinitions[i].name);
             GMGLOG(OVIS_LDEBUG, "szMetricName = %s\n", szMetricName);
             if (ldms_type_is_array(metricsDefinitions[i].type)) {
                 rc = ldms_schema_metric_array_add(schema, szMetricName,

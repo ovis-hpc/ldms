@@ -48,6 +48,7 @@
 #include "gmg_log.h"
 #include "gather_gpu_metrics_from_one_api.h"
 #include "gmg_ldms_util.h"
+#include "ovis_log/ovis_log.h"
 #include <string.h>
 #include <time.h>
 #include <stdlib.h>
@@ -694,7 +695,7 @@ uint32_t readRasErrorPropAndState(ze_device_handle_t hDevice, zes_ras_properties
     ze_bool_t clear = 0;
     res = zesRasGetState(pHandle[0], clear, &state);
     if (res != ZE_RESULT_SUCCESS) {
-        GMGLOG(OVIS_LERROR, "!!!zesRasGetState(pHandle[0]=%p,clear=%p,&state=%p) => 0x%x\n",
+        GMGLOG(OVIS_LERROR, "!!!zesRasGetState(pHandle[0]=%p,clear=%d,&state=%p) => 0x%x\n",
                pHandle[0], clear, &state, res);
         return -9999;
     }

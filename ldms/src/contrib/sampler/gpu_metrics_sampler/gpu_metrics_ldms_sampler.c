@@ -184,7 +184,7 @@ static int create_metric_set_schema_and_set(base_data_t base) {
 static void printValList(const char *szListName, struct attr_value_list *av_list) {
     size_t listSize = MIN(av_list->count, av_list->size);
     for (size_t i = 0; i < listSize; i++) {
-        ovis_log(__gpu_metrics_log, OVIS_LDEBUG, "%s[%d] = %s:%s\n",
+        ovis_log(__gpu_metrics_log, OVIS_LDEBUG, "%s[%ld] = %s:%s\n",
                szListName, i, av_name(av_list, i), av_value_at_idx(av_list, i));
     }
 }
