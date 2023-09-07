@@ -493,10 +493,10 @@ static int get_schema_for_json(char *name, json_entity_t e, ldms_schema_t *sch)
 	rbn_init(&entry->rbn, entry->name);
 
 	/* Add the special JSON stream attributes. These special
-	 * attributes will have metric indices of 0 (uid) and
-	 * 1 (gid)
+	 * attributes will have metric indices of 0 (S_uid),
+	 * 1 (S_gid), and 2 (S_perm)
 	 */
-	const char *stream_meta_attr[] = { "S_uid", "S_gid" };
+	const char *stream_meta_attr[] = { "S_uid", "S_gid", "S_perm" };
 	for (i = 0; i < sizeof(stream_meta_attr) / sizeof(stream_meta_attr[0]); i++) {
 		midx = ldms_schema_metric_add(schema, stream_meta_attr[i], LDMS_V_S32);
 		if (midx < 0)
@@ -708,8 +708,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	if (value)
 		inst->heap_sz = strtol(value, NULL, 0);
 
+	/* Set uid, gid, perm to the default values */
+	ldms_set_default_authz(&inst->uid, &inst->gid, &inst->perm, DEFAULT_AUTHZ_READONLY);
 	/* uid */
-	inst->uid = -1;		/* unset */
 	value = av_value(avl, "uid");
 	if (value) {
 		if (isalpha(value[0])) {
@@ -727,7 +728,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 
 	/* gid */
-	inst->gid = -1;		/* unset */
 	value = av_value(avl, "gid");
 	if (value) {
 		if (isalpha(value[0])) {
@@ -745,7 +745,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 
 	/* permission */
-	inst->perm = -1;
 	value = av_value(avl, "perm");
 	if (value) {
 		if (value[0] != '0') {
@@ -878,7 +877,8 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 		      json_value_str(schema_name)->str);
 	ldms_set_t set = ldms_set_by_name(set_name);
 	if (!set) {
-		set = ldms_set_new_with_heap(set_name, schema, inst->heap_sz);
+		set = ldms_set_create(set_name, schema, inst->uid, inst->gid,
+						  inst->perm, inst->heap_sz);
 		if (set) {
 			LINFO("Created the set '%s' with schema '%s'\n",
 			      set_name, ldms_schema_name_get(schema));
@@ -896,6 +896,7 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 	ldms_transaction_begin(set);
 	ldms_metric_set_s32(set, 0, ev->recv.cred.uid);
 	ldms_metric_set_s32(set, 1, ev->recv.cred.gid);
+	ldms_metric_set_s32(set, 2, ev->recv.perm);
 	update_set_data(inst, set, entity);
 	ldms_transaction_end(set);
 
