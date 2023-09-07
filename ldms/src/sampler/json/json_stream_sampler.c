@@ -859,6 +859,13 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 	msg = ev->recv.data;
 	entity = ev->recv.json;
 
+	if ((int32_t)inst->uid < 0)
+		inst->uid = ev->recv.cred.uid;
+	if ((int32_t)inst->gid < 0)
+		inst->gid = ev->recv.cred.gid;
+	if ((int32_t)inst->perm < 0)
+		inst->perm = ev->recv.perm;
+
 	/* Find/create the schema for this JSON object */
 	schema_name = json_value_find(entity, "schema");
 	if (!schema_name || (JSON_STRING_VALUE != json_entity_type(schema_name))) {
@@ -878,7 +885,8 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 		      json_value_str(schema_name)->str);
 	ldms_set_t set = ldms_set_by_name(set_name);
 	if (!set) {
-		set = ldms_set_new_with_heap(set_name, schema, inst->heap_sz);
+		set = ldms_set_create(set_name, schema, inst->uid, inst->gid,
+						  inst->perm, inst->heap_sz);
 		if (set) {
 			LINFO("Created the set '%s' with schema '%s'\n",
 			      set_name, ldms_schema_name_get(schema));
