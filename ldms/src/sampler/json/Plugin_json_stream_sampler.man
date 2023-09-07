@@ -202,6 +202,21 @@ D char[]     schema                                     "dict_list"
 .fi
 .RE
 .PP
+
+.SS "Set Security"
+.PP
+The metric sets' UID, GID, and permission can be configured using the
+configuration attributes uid, gid, and perm consecutively. If one is not given,
+the value of the received stream data will be used at set creation. Once a
+metric set has been created, the UID, GID, and permission will not be changed
+automatically when the stream data's security data gets changed. However, it
+could be modified via an LDMSD configuration command, set_sec_mod. See
+ldmsd_controller's Man Page.
+
+Note that the UID, GID, and permissions values given at the configuration line
+do not affect the S_uid and S_gid metric values. The S_uid and S_gid metric
+values are always the security embeded with the stream data.
+
 .SH "CONFIG OPTIONS"
 
 .TP
