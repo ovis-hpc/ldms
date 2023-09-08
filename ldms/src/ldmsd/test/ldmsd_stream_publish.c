@@ -5,10 +5,14 @@
 #include <sys/stat.h>
 #include <stdarg.h>
 #include <sys/time.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <semaphore.h>
 #include <pthread.h>
+#include <pwd.h>
+#include <ctype.h>
+#include <grp.h>
 #include <ovis_json/ovis_json.h>
 #include <ovis_util/util.h>
 #include "ldms.h"
@@ -26,6 +30,9 @@ static struct option long_opts[] = {
 	{"line",     no_argument,	0,  'l' },
 	{"repeat",   required_argument, 0,  'r' },
 	{"interval", required_argument, 0,  'i' },
+	{"uid",      required_argument, 0,  'U' },
+	{"gid",      required_argument, 0,  'G' },
+	{"perm",     required_argument, 0,  'P' },
 	{0,          0,                 0,  0 }
 };
 
@@ -35,12 +42,13 @@ void usage(int argc, char **argv)
 	printf("usage: %s -x <xprt> -h <host> -p <port> "
 	       "-s <stream-name> -t <stream-type> "
 	       "-f <file> -a <auth> -A <auth-opt> "
+	       "-U <uid> -G <gid> -P <perm> "
 	       "-l -r <count> -i <microsec> -n -N\n",
 	       argv[0]);
 	exit(1);
 }
 
-static const char *short_opts = "h:p:f:s:t:x:a:A:lr:i:nN";
+static const char *short_opts = "h:p:f:s:t:x:a:A:lr:i:nNU:G:P:";
 
 #define AUTH_OPT_MAX 128
 
@@ -61,6 +69,11 @@ int main(int argc, char **argv)
 	int line_mode = 0;	/* publish each line separately */
 	int repeat = 0;
 	unsigned interval = 0;
+	int perm = 0440;
+	struct ldms_cred cred = {
+			.uid = -1,
+			.gid = -1
+	};
 
 	ldms_init(16*1024*1024);
 
@@ -150,6 +163,41 @@ int main(int argc, char **argv)
 		case 'i':
 			interval = (unsigned)atoi(optarg);
 			break;
+		case 'U':
+			if (isalpha(optarg[0])) {
+				struct passwd *pwd = getpwnam(optarg);
+				if (!pwd) {
+					printf("ERROR: the specified user '%s' "
+						"does not exist.\n", optarg);
+					exit(1);
+				}
+				cred.uid = pwd->pw_uid;
+			} else {
+				cred.uid = strtol(optarg, NULL, 0);
+			}
+			break;
+		case 'G':
+			if (isalpha(optarg[0])) {
+				struct group *grp = getgrnam(optarg);
+				if (!grp) {
+					printf("ERROR: the specified group '%s' "
+						  "does not exist.\n", optarg);
+					exit(1);
+				}
+				cred.gid = grp->gr_gid;
+			} else {
+				cred.gid = strtol(optarg, NULL, 0);
+			}
+			break;
+		case 'P':
+			if (optarg[0] != '0') {
+				printf("ERROR: the permission bits '%s' are not "
+						"specified as an Octal number.\n",
+						optarg);
+				exit(1);
+			}
+			perm = strtol(optarg, NULL, 0);
+			break;
 		default:
 			usage(argc, argv);
 		}
@@ -173,6 +221,11 @@ int main(int argc, char **argv)
 	if (!repeat)
 		repeat = 1;
 
+	if ((int)cred.uid < 0)
+		cred.uid = geteuid();
+	if ((int)cred.gid < 0)
+		cred.gid = getegid();
+
 	int rc;
 	ldms_t ldms = NULL;
 
@@ -193,7 +246,7 @@ int main(int argc, char **argv)
 	int k;
 	if (!line_mode) {
 		for (k = 0; k < repeat; k++) {
-			rc = ldms_stream_publish_file(ldms, stream, typ, NULL, 0440, file);
+			rc = ldms_stream_publish_file(ldms, stream, typ, &cred, perm, file);
 			if (repeat == 1 && rc) {
 				printf("Error %d publishing file.\n", rc);
 				return rc;
@@ -212,7 +265,7 @@ int main(int argc, char **argv)
 		if (k)
 			rewind(file);
 		while (0 != (s = fgets(line_buffer, sizeof(line_buffer)-1, file))) {
-			ldms_stream_publish(ldms, stream, typ, NULL, 0440, s, strlen(s)+1);
+			ldms_stream_publish(ldms, stream, typ, &cred, perm, s, strlen(s)+1);
 		}
 		if (k)
 			printf("loop: %d finished.\n", k);
