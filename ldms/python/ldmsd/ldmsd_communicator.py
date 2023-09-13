@@ -2201,7 +2201,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_subscribe(self, regex, stream, rx_rate=-1):
+    def prdcr_subscribe(self, regex, stream, rx_rate='-1'):
         """
         Subscribe to stream data from matching producers
 
@@ -2219,7 +2219,7 @@ class Communicator(object):
                 attrs = [
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex),
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream),
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=rx_rate)
+                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(int(rx_rate)))
                 ])
         try:
             req.send(self)

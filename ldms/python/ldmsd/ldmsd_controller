@@ -360,7 +360,7 @@ class LdmsdCmdParser(cmd.Cmd):
         interval= The connection retry interval (us) (Deprecated, please use 'reconnect'.)
         auth=     The authentication method
         [perm=]   The permission to modify the producer in the future.
-        [rail=]   The number of rail endpooints for the prdcr (default: 1).
+        [rail=]   The number of rail endpoints for the prdcr (default: 1).
         [credits=] The send credits our ldmsd (the one we are controlling)
                    advertises to the prdcr (default: value from ldmsd --credits
                    option). This limits how much outstanding data our ldmsd
