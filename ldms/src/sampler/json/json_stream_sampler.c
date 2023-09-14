@@ -274,8 +274,8 @@ static int make_list(ldms_schema_t schema, json_entity_t parent, json_entity_t l
 		item_size = ldms_record_heap_size_get(record);
 		break;
 	default:
-		LERROR("Invalid item type encountered in list");
-		return EINVAL;
+		LERROR("Invalid item type encountered in list\n");
+		return -EINVAL;
 	}
 	/* Check if there is a max specified for the list to override
 	 * the current length */
@@ -859,17 +859,24 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 	entity = ev->recv.json;
 
 	/* Find/create the schema for this JSON object */
+	if (JSON_DICT_VALUE != json_entity_type(entity)) {
+		rc = EINVAL;
+		LERROR("%s: Ignoring message that is not a JSON dictionary.\n",
+				ev->recv.name);
+		goto err_0;
+	}
+
 	schema_name = json_value_find(entity, "schema");
 	if (!schema_name || (JSON_STRING_VALUE != json_entity_type(schema_name))) {
 		rc = EINVAL;
-		LERROR("Ignoring message with 'schema' attribute that is "
-		       "missing or not a string.\n");
+		LERROR("%s: Ignoring message with 'schema' attribute that is "
+		       "missing or not a string.\n", ev->recv.name);
 		goto err_0;
 	}
 	rc = get_schema_for_json(json_value_str(schema_name)->str, entity, &schema);
 	if (rc) {
-		LERROR("Error %d creating an LDMS schema for the JSON object '%s'\n",
-		       rc, msg);
+		LERROR("%s: Error %d creating an LDMS schema for the JSON object '%s'\n",
+		       ev->recv.name, rc, msg);
 		goto err_0;
 	}
 	char *set_name;
@@ -905,7 +912,7 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
  err_1:
 	free(set_name);
  err_0:
-	pthread_mutex_lock(&inst->lock);
+	pthread_mutex_unlock(&inst->lock);
 	return rc;
 }
 
