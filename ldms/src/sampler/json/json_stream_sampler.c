@@ -117,14 +117,15 @@ static pthread_mutex_t schema_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return \
-	"config name=json_stream_sampler producer=<producer_name> instance=<instance_name>\n"
-	"         heap_sz=<int>\n"
-	"         stream=<stream_name> [component_id=<component_id>] [perm=<permissions>]\n"
+	"config name=json_stream_sampler producer=<producer_name> \n"
+	"         heap_sz=<int> stream=<stream_name>\n"
+	"         [instance=<instance_name>] [component_id=<component_id>] [perm=<permissions>]\n"
 	"         [uid=<user_name>] [gid=<group_name>]\n"
 	"     producer      A unique name for the host providing the data\n"
-	"     instance      A unique name for the metric set\n"
 	"     stream        A stream name to subscribe to.\n"
 	"     heap_sz       The number of bytes to reserve for the set heap.\n"
+	"     instance      A unique name for the metric set. If none is given,"
+	"                   the set instance name will be <producer>_<schema name>.\n"
 	"     component_id  A unique number for the component being monitored.\n"
 	"                   The default is 0\n"
 	"     uid           The user-id of the set's owner (defaults to geteuid())\n"
@@ -655,18 +656,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 	pthread_mutex_init(&inst->lock, NULL);
 
-	/* instance name */
-	value = av_value(avl, "instance");
-	if (!value) {
-		LERROR("The 'instance' configuration parameter is required.\n");
-		rc = EINVAL;
-		goto err_0;
-	}
-	inst->instance_name = strdup(value);
-	if (!inst->instance_name) {
-		rc = ENOMEM;
-		goto err_0;
-	}
 	/* stream name */
 	value = av_value(avl, "stream");
 	if (!value) {
@@ -691,6 +680,16 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	if (!inst->producer_name) {
 		rc = ENOMEM;
 		goto err_0;
+	}
+
+	/* instance name */
+	value = av_value(avl, "instance");
+	if (value) {
+		inst->instance_name = strdup(value);
+		if (!inst->instance_name) {
+			rc = ENOMEM;
+			goto err_0;
+		}
 	}
 
 	/* component_id */
@@ -888,8 +887,18 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 		goto err_0;
 	}
 	char *set_name;
-	rc = asprintf(&set_name, "%s_%s", inst->producer_name,
-		      json_value_str(schema_name)->str);
+	if (inst->instance_name) {
+		set_name = strdup(inst->instance_name);
+	} else {
+		rc = asprintf(&set_name, "%s_%s", inst->producer_name,
+			      json_value_str(schema_name)->str);
+		if (rc < 0)
+			set_name = NULL;
+	}
+	if (!set_name) {
+		LERROR("Memory allocation failure.\n");
+		goto err_0;
+	}
 	ldms_set_t set = ldms_set_by_name(set_name);
 	if (!set) {
 		set = ldms_set_create(set_name, schema, inst->uid, inst->gid,
