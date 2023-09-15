@@ -3009,6 +3009,7 @@ cdef class Set(object):
 
     def json_obj(self):
         """Return dict/list values appropriate for json.dumps()"""
+        cdef const char *tmp
         ret = dict()
         meta_lst = [ 'name', 'schema_name', 'transaction_timestamp',
                      'transaction_duration', 'card', 'data_gn', 'data_sz',
@@ -3017,9 +3018,13 @@ cdef class Set(object):
         for k in meta_lst:
             ret[k] = getattr(self, k)
         data = dict()
+        meta = dict()
         for k, v in self.items():
             data[k] = JSON_OBJ(v)
+            tmp = ldms_metric_type_to_str(self.get_metric_type(k))
+            meta[k] = {'type' : STR(tmp)}
         ret['data'] = data
+        ret['meta'] = meta
         return ret
 
     def json(self, indent=None):
