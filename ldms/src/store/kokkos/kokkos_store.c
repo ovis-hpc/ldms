@@ -157,7 +157,7 @@ static sos_visit_action_t add_digest_cb(sos_index_t index,
 	struct sos_value_s v_, *v;
 	sos_value_data_t digest;
 	sos_obj_t obj;
-	sos_obj_ref_t *ref = (sos_obj_ref_t *)idx_data;
+	sos_obj_ref_t ref;
 	struct visit_cb_ctxt *ctxt = arg;
 
 	if (found) {
@@ -190,7 +190,8 @@ static sos_visit_action_t add_digest_cb(sos_index_t index,
 	sos_value_memcpy(v, ctxt->e->value.str_->str, ctxt->e->value.str_->str_len);
 	sos_value_put(v);
 
-	*ref = sos_obj_ref(obj);
+	ref = sos_obj_ref(obj);
+	*idx_data = ref.idx_data;
 	sos_obj_put(obj);
 	ctxt->rc = 0;
 	return SOS_VISIT_ADD;
