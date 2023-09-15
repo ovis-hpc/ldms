@@ -298,6 +298,8 @@ cdef extern from "ldms.h" nogil:
 		           sockaddr *remote_sa,
 		           socklen_t *sa_len)
 
+    const char *ldms_metric_type_to_str(ldms_value_type t)
+
     # --- dir operation related --- #
     struct ldms_key_value_s:
         char *key
