@@ -16,6 +16,7 @@
 
 #include <stddef.h> /* libcxi.h neglects to include this */
 #include <libcxi/libcxi.h>
+#include <cassini_cntr_desc.h> /* needed at least starting with shs-2.1.0 */
 #define _GNU_SOURCE
 
 #define SAMP "slingshot_metrics"

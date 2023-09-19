@@ -881,6 +881,7 @@ AM_CONDITIONAL([SYSCONFDIR_NOT_ETC], [test "${sysconfdir}" != "/etc"])
 AC_LIB_HAVE_LINKFLAGS([cxi], [], [
 #include <stddef.h> /* libcxi.h fails to include this */
 #include <libcxi/libcxi.h>
+#include <cassini_cntr_desc.h> /* needed at least starting with shs-2.1.0 */
 ])
 AM_CONDITIONAL([HAVE_LIBCXI], [test "x$HAVE_LIBCXI" = xyes])
 
@@ -888,7 +889,7 @@ AC_ARG_ENABLE([slingshot],
     [AS_HELP_STRING([--enable-slingshot], [require the slinghost related plugins @<:@default=check@:>@])],
     [],
     [enable_slingshot="check"])
-AM_CONDITIONAL([ENABLE_SLINGSHOT], [test "x$enable_slingshot" != xno])
+AM_CONDITIONAL([ENABLE_SLINGSHOT], [test "x$enable_slingshot" != xno -a "x$HAVE_LIBCXI" = xyes])
 AS_IF([test "x$enable_slingshot" = xyes],[
     AS_IF([test "x$HAVE_LIBCXI" = xno],
         [AC_MSG_ERROR([libcxi or its headers not found])])
