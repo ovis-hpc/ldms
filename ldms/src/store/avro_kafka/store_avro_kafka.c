@@ -40,10 +40,16 @@ static ldmsd_msg_log_f msglog __attribute__((format(printf, 2, 3)));
 
 #define LOG(_level_, _fmt_, ...) ovis_log(aks_log, _level_, _fmt_, ##__VA_ARGS__)
 
+#if 0
 #define LOG_ERROR(FMT, ...) LOG(OVIS_LERROR, FMT, ##__VA_ARGS__)
-#define LOG_INFO(FMT, ...) LOG(OVIS_LINFO, FMT, ##__VA_ARGS__)
 #define LOG_WARN(FMT, ...) LOG(OVIS_LWARNING, FMT, ##__VA_ARGS__)
+#define LOG_INFO(FMT, ...) LOG(OVIS_LINFO, FMT, ##__VA_ARGS__)
 #define LOG_DEBUG(FMT, ...) LOG(OVIS_LDEBUG, FMT, ##__VA_ARGS__)
+#endif
+#define LOG_ERROR(FMT, ...) msglog(LDMSD_LERROR, FMT, ##__VA_ARGS__)
+#define LOG_WARN(FMT, ...) msglog(LDMSD_LWARNING, FMT, ##__VA_ARGS__)
+#define LOG_INFO(FMT, ...) msglog(LDMSD_LINFO, FMT, ##__VA_ARGS__)
+#define LOG_DEBUG(FMT, ...) msglog(LDMSD_LDEBUG, FMT, ##__VA_ARGS__)
 
 typedef struct aks_handle_s
 {
