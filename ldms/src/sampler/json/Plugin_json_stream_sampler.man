@@ -97,12 +97,16 @@ will result in an LDMS metric with the name "my_string", type
 LDMS_V_BYTE_ARRAY, and length of 4096 being created in the metric set.
 
 .SS "Encoding Arrays"
-Any list present in the top-level dictionary is encoded as a list,
-however, lists present in a 2nd-level dictionary are encoded as
-arrays. This is because LDMS_V_LIST inside an LDMS_V_RECORD is not
-supported. The length of the array is determined by the initial value
-of the array in the record; but can be overridden with the
-\fINAME\fR_max_len attribute as described above for strings.
+Any list present in the top-level dictionary is encoded as a list, however,
+lists present in a 2nd-level dictionary are encoded as arrays. This is because
+LDMS_V_LIST inside an LDMS_V_RECORD is not supported.  The length of the array
+is determined by the initial value of the array in the record; but can be
+overridden with the \fINAME\fR_max_len attribute as described above for
+strings. Lists of strings in a 2nd-level dictionary are treated as a
+JSON-formatted string of a list.  That is, they are encoded as
+LDMS_V_CHAR_ARRAY because LDMS does not support arrays of LDMS_V_CHAR_ARRAY.
+The length of the array is determined by the length of the JSON-formatted
+string of the initial list.
 
 .SS "Encoding Dictionaries"
 The attributes in the top-level JSON dictionary are encoded in the metric
@@ -135,7 +139,7 @@ D char[]     schema                                     "example"
 .RE
 .PP
 Dictionaries inside the top-level dictionary are encoded as
-LDMS_V_RECORD inside a single element LDMS_V_RECORD_ARRAY.  This
+LDMS_V_RECORD inside a single element LDMS_V_RECORD_ARRAY. This
 limitation is because an LDMS_V_RECORD is only allowed inside an
 LDMS_V_LIST or LDMS_V_ARRAY.
 .PP
@@ -202,6 +206,39 @@ D char[]     schema                                     "dict_list"
 .fi
 .RE
 .PP
+
+The JSON below:
+.PP
+.RS 4
+.nf
+{ 'schema'  : 'json_dict',
+  'dict'    : { 'int'         : 10,
+                'float'       : 1.414,
+                'char'        : 'a',
+                'str'         : 'xyz',
+                'array_int'   : [5, 7, 9],
+                'array_float' : [3.14, 1.414, 1.732],
+                'array_str'   : ['foo', 'bar'],
+                'inner_dict'  : { 'This': 'is',
+                                  'a' : 'string'
+                                }
+              }
+}
+.fi
+.RE
+.PP
+results in the following LDMS metric sets.
+.PP
+.RS 4
+.nf
+ovis-5416_lists_inside_a_dict: consistent, last update: Mon Sep 25 16:21:35 2023 -0500 [310003us]
+D s32          S_uid                                      1000
+D s32          S_gid                                      1000
+M record_type  dict_record                                LDMS_V_RECORD_TYPE
+D record[]     dict
+  int_array char       str_array    float                   inner_dict                float_array   str int
+      5,7,9  "a" "["foo","bar"]" 1.414000 "{"This":"is","a":"string"}" 3.140000,1.414000,1.732000 "xyz"  10
+D char[]       schema                                     "json_dict"
 
 .SS "Set Security"
 .PP

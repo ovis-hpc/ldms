@@ -65,7 +65,9 @@
 
 static ovis_log_t __log = NULL;
 #define LOG(_level_, _fmt_, ...) ovis_log(__log, _level_, "[%d] " _fmt_, __LINE__, ##__VA_ARGS__)
+#define LCRITICAL(_fmt_, ...) ovis_log(__log, OVIS_LCRIT, "[%d]" _fmt_, __LINE__, ##__VA_ARGS__)
 #define LERROR(_fmt_, ...) ovis_log(__log, OVIS_LERROR, "[%d] " _fmt_, __LINE__, ##__VA_ARGS__)
+#define LWARN(_fmt_, ...) ovis_log(__log, OVIS_LWARN, "[%d] " _fmt_, __LINE__, ##__VA_ARGS__)
 #define LINFO(_fmt_, ...) ovis_log(__log, OVIS_LINFO, "[%d] " _fmt_, __LINE__, ##__VA_ARGS__)
 #define LDEBUG(_fmt_, ...) ovis_log(__log, OVIS_LDEBUG, "[%d] " _fmt_, __LINE__, ##__VA_ARGS__)
 
@@ -73,6 +75,8 @@ static int str_cmp(void *tree_key, const void *srch_key)
 {
 	return strcmp(tree_key, srch_key);
 }
+
+#define DEFAULT_CHAR_ARRAY_LEN 255
 
 /*
  * Some attributes of the JSON object have special meaning and/or are
@@ -138,6 +142,7 @@ static int make_record_array(ldms_record_t record, json_entity_t list_attr)
 	json_entity_t list;
 	json_entity_t item;
 	size_t list_len;
+	jbuf_t jbuf;
 	int rc;
 
 	list = json_attr_value(list_attr);
@@ -164,9 +169,16 @@ static int make_record_array(ldms_record_t record, json_entity_t list_attr)
 					    LDMS_V_D64_ARRAY, list_len);
 		break;
 	case JSON_STRING_VALUE:
+		jbuf = json_entity_dump(NULL, list);
+		if (!jbuf) {
+			LCRITICAL("Memory allocation failure.\n");
+			rc = ENOMEM;
+			break;
+		}
 		rc = ldms_record_metric_add(record,
 					    json_attr_name(list_attr)->str, NULL,
-					    LDMS_V_CHAR_ARRAY, 255);
+					    LDMS_V_CHAR_ARRAY, jbuf->cursor+1);
+		jbuf_free(jbuf);
 		break;
 	default:
 		LERROR("Invalid list entry type (%d) for encoding as array in record\n",
@@ -304,6 +316,8 @@ static int make_list(ldms_schema_t schema, json_entity_t parent, json_entity_t l
 typedef int (*json_setter_t)(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *);
 static json_setter_t setter_table[];
 
+typedef int (*dict_list_setter_t)(ldms_mval_t rec_inst, int mid, int idx, json_entity_t value, void *);
+
 int JSON_INT_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt)
 {
 	ldms_mval_set_s64(mval, json_value_int(entity));
@@ -396,12 +410,14 @@ int JSON_LIST_VALUE_setter(ldms_set_t set, ldms_mval_t list_mval,
 	return rc;
 }
 
+static int dict_list_set(ldms_mval_t rec_inst, int mid, json_entity_t list, void *ctxt);
 int JSON_DICT_VALUE_setter(ldms_set_t set, ldms_mval_t rec_inst, json_entity_t dict, void *ctxt)
 {
 	json_entity_t attr;
 	ldms_mval_t mval;
 	int rc, idx;
 	jbuf_t jbuf;
+	size_t array_len;
 
 	for (attr = json_attr_first(dict); attr; attr = json_attr_next(attr)) {
 		char *name = json_attr_name(attr)->str;
@@ -421,10 +437,30 @@ int JSON_DICT_VALUE_setter(ldms_set_t set, ldms_mval_t rec_inst, json_entity_t d
 			 * dictionary. LDMS_V_RECORD does not support
 			 * nested records, so set the dictionary
 			 * value to a JSON string */
+			(void) ldms_record_metric_type_get(rec_inst, idx, &array_len);
 			jbuf = json_entity_dump(NULL, value);
-			ldms_mval_array_set_str(mval, jbuf->buf, jbuf->cursor+1);
+			if (array_len <= jbuf->cursor) { /* jbuf->cursor doesn't include '\0'. */
+				LWARN("Dictionary attribute '%s' (%d) is larger "
+					"than the allocated space (%ld). "
+					"The string is chunked.\n",
+					name, jbuf->cursor, array_len);
+				/* Chunk the string */
+				jbuf->buf[array_len] = '\0';
+			} else {
+				 /* Ensure that the string is null-terminated. */
+				jbuf->buf[jbuf->cursor] = '\0';
+			}
+			ldms_record_array_set_str(rec_inst, idx, jbuf->buf);
 			jbuf_free(jbuf);
 			rc = 0;
+			break;
+		case JSON_LIST_VALUE:
+			/*
+			 * Record cannot have lists, so all lists in a dictionary
+			 * is mapped to an array. A list of strings is encoded
+			 * as char[].
+			 */
+			rc = dict_list_set(rec_inst, idx, value, NULL);
 			break;
 		default:
 			rc = setter_table[type](set, mval, value, NULL);
@@ -441,6 +477,7 @@ int JSON_NULL_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entit
 	return 0;
 }
 
+
 static json_setter_t setter_table[] = {
 	[JSON_INT_VALUE] = JSON_INT_VALUE_setter,
 	[JSON_BOOL_VALUE] = JSON_BOOL_VALUE_setter,
@@ -451,6 +488,122 @@ static json_setter_t setter_table[] = {
 	[JSON_DICT_VALUE] = JSON_DICT_VALUE_setter,
 	[JSON_NULL_VALUE] = JSON_NULL_VALUE_setter
 };
+
+static int DICT_LIST_INT_setter(ldms_mval_t rec_inst, int mid, int idx, json_entity_t item, void *ctxt)
+{
+	enum json_value_e jtype;
+	jtype = json_entity_type(item);
+	if (jtype != JSON_INT_VALUE) {
+		LERROR("List '%s' in a dictionary contains '%s' but expected '%s'.\n",
+					ldms_record_metric_name_get(rec_inst, mid),
+					json_type_name(jtype), json_type_name(JSON_INT_VALUE));
+		return EINVAL;
+	}
+
+	ldms_record_array_set_s64(rec_inst, mid, idx, json_value_int(item));
+	return 0;
+}
+
+static int DICT_LIST_BOOL_setter(ldms_mval_t rec_inst, int mid, int idx, json_entity_t item, void *ctxt)
+{
+	enum json_value_e jtype;
+	jtype = json_entity_type(item);
+	if (jtype != JSON_BOOL_VALUE) {
+		LERROR("List '%s' in a dictionary contains '%s' but expected '%s'.\n",
+					ldms_record_metric_name_get(rec_inst, mid),
+					json_type_name(jtype), json_type_name(JSON_BOOL_VALUE));
+		return EINVAL;
+	}
+	ldms_record_array_set_s8(rec_inst, mid, idx, json_value_int(item));
+	return 0;
+}
+
+static int DICT_LIST_FLOAT_setter(ldms_mval_t rec_inst, int mid, int idx, json_entity_t item, void *ctxt)
+{
+	enum json_value_e jtype;
+	jtype = json_entity_type(item);
+	if (jtype != JSON_FLOAT_VALUE) {
+		LERROR("List '%s' in a dictionary contains '%s' but expected '%s'.\n",
+					ldms_record_metric_name_get(rec_inst, mid),
+					json_type_name(jtype), json_type_name(JSON_FLOAT_VALUE));
+		return EINVAL;
+	}
+	ldms_record_array_set_double(rec_inst, mid, idx, json_value_float(item));
+	return 0;
+}
+
+static int DICT_LIST_STRING_setter(ldms_mval_t rec_inst, int mid, int idx, json_entity_t list, void *ctxt)
+{
+	size_t array_len;
+	jbuf_t jbuf;
+
+	(void)ldms_record_metric_type_get(rec_inst, mid, &array_len);
+
+	jbuf = json_entity_dump(NULL, list);
+	if (!jbuf) {
+		LCRITICAL("Memory allocation failure.\n");
+		return ENOMEM;
+	}
+
+	if (array_len <= jbuf->cursor) {
+		LWARN("The JSON-formatted of a list of strings (%d) is larger "
+			"than the allocated space. (%ld) The received data is chunked.\n",
+			jbuf->cursor, array_len);
+		jbuf->buf[array_len] = '\0';
+	}
+
+	ldms_record_array_set_str(rec_inst, mid, jbuf->buf);
+	jbuf_free(jbuf);
+	return 0;
+}
+
+static dict_list_setter_t dl_setter_table[] = {
+	[JSON_INT_VALUE] = DICT_LIST_INT_setter,
+	[JSON_BOOL_VALUE] = DICT_LIST_BOOL_setter,
+	[JSON_FLOAT_VALUE] = DICT_LIST_FLOAT_setter,
+	[JSON_STRING_VALUE] = DICT_LIST_STRING_setter
+};
+
+static int dict_list_set(ldms_mval_t rec_inst, int mid, json_entity_t list, void *ctxt)
+{
+	int idx;
+	int rc = 0;
+	json_entity_t item;
+	enum json_value_e jtype;
+	size_t array_len;
+
+	(void)ldms_record_metric_type_get(rec_inst, mid, &array_len);
+	if (json_list_len(list) > array_len) {
+		LWARN("List '%s' in a dictionary length (%ld) is larger than "
+			"the encoded array length (%ld). The extra items will be ignored.\n",
+					ldms_record_metric_name_get(rec_inst, mid),
+						json_list_len(list), array_len);
+	}
+
+	item = json_item_first(list);
+	jtype = json_entity_type(item);
+	for (idx = 0; idx < array_len && item; idx++ , item = json_item_next(item)) {
+		switch (jtype) {
+		case JSON_INT_VALUE:
+			rc = dl_setter_table[JSON_INT_VALUE](rec_inst, mid, idx, item, ctxt);
+			break;
+		case JSON_BOOL_VALUE:
+			rc = dl_setter_table[JSON_BOOL_VALUE](rec_inst, mid, idx, item, ctxt);
+			break;
+		case JSON_FLOAT_VALUE:
+			rc = dl_setter_table[JSON_FLOAT_VALUE](rec_inst, mid, idx, item, ctxt);
+			break;
+		case JSON_STRING_VALUE:
+			rc = dl_setter_table[JSON_STRING_VALUE](rec_inst, mid, idx, list, ctxt);
+			break;
+		default:
+			LERROR();
+			break;
+		}
+	}
+
+	return rc;
+}
 
 static int get_schema_for_json(char *name, json_entity_t e, ldms_schema_t *sch)
 {
@@ -544,7 +697,7 @@ static int get_schema_for_json(char *name, json_entity_t e, ldms_schema_t *sch)
 		case JSON_STRING_VALUE:
 			midx = ldms_schema_metric_array_add(schema,
 							    json_attr_name(json_attr)->str,
-							    LDMS_V_CHAR_ARRAY, 255);
+							    LDMS_V_CHAR_ARRAY, DEFAULT_CHAR_ARRAY_LEN);
 			break;
 		case JSON_LIST_VALUE:
 			midx = make_list(schema, e, json_attr);
