@@ -399,6 +399,7 @@ int JSON_LIST_VALUE_setter(ldms_set_t set, ldms_mval_t list_mval,
 int JSON_DICT_VALUE_setter(ldms_set_t set, ldms_mval_t rec_inst, json_entity_t dict, void *ctxt)
 {
 	json_entity_t attr;
+	json_entity_t item;
 	ldms_mval_t mval;
 	int rc, idx;
 	jbuf_t jbuf;
@@ -426,6 +427,18 @@ int JSON_DICT_VALUE_setter(ldms_set_t set, ldms_mval_t rec_inst, json_entity_t d
 			jbuf_free(jbuf);
 			rc = 0;
 			break;
+		case JSON_LIST_VALUE:
+			/* TODO: Complete this. */
+			/*
+			 * Record cannot have lists, so all lists in a dictionary
+			 * is mapped to an array.
+			 */
+			item = json_item_first(value);
+			switch (json_entity_type(item)) {
+			case JSON_INT_VALUE:
+				break;
+			}
+			break;
 		default:
 			rc = setter_table[type](set, mval, value, NULL);
 			break;
@@ -441,6 +454,56 @@ int JSON_NULL_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entit
 	return 0;
 }
 
+int dict_list_set(ldms_set_t set, ldms_mval_t mval, json_entity_t list, void *ctxt)
+{
+	/*
+	 * LDMS does not support a list inside a dictionary, so
+	 * the plugin encodes the lists in a dictionary as arrays.
+	 */
+	json_entity_t item;
+	enum json_value_e type;
+	int mid = *(int *)ctxt;
+	int idx;
+	int rc;
+	uint32_t array_len;
+
+	array_len = ldms_metric_array_get_len(set, mid);
+	item = json_item_first(list);
+	type = json_entity_type(item);
+	for (idx = 0; item; item = json_item_next(item), idx++) {
+		if (idx >= array_len) {
+			LERROR("Stream data contains more elements than '%s'. "
+				"The array size is %d. Ignore the extra elements.\n",
+				ldms_metric_name_get(set, mid),
+				array_len);
+			break;
+		}
+		if (type != json_entity_type(item)) {
+			LERROR("Invalid list entry %d type (%d)\n", i, type);
+			rc = EINVAL;
+			goto err;
+		}
+		switch (type) {
+		case JSON_INT_VALUE:
+			rc = ldms_metric_array_set_s64(set, mid, idx, json_value_int(item));
+			break;
+		case JSON_BOOL_VALUE:
+			rc = ldms_metric_array_set_s8(set, mid, idx, json_value_bool(item));
+			break;
+		case JSON_FLOAT_VALUE:
+			rc = ldms_metric_array_set_double(set, mid, idx, json_value_float(item));
+			break;
+		case JSON_STRING_VALUE:
+			rc = ldms_metric_array_set_str(set, mid, json_value_str(item)->str);
+			break;
+		default:
+			LERROR();
+			break;
+		}
+	}
+
+}
+
 static json_setter_t setter_table[] = {
 	[JSON_INT_VALUE] = JSON_INT_VALUE_setter,
 	[JSON_BOOL_VALUE] = JSON_BOOL_VALUE_setter,
@@ -451,6 +514,8 @@ static json_setter_t setter_table[] = {
 	[JSON_DICT_VALUE] = JSON_DICT_VALUE_setter,
 	[JSON_NULL_VALUE] = JSON_NULL_VALUE_setter
 };
+
+
 
 static int get_schema_for_json(char *name, json_entity_t e, ldms_schema_t *sch)
 {
