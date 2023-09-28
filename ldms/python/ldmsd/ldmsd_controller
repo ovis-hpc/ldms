@@ -354,11 +354,19 @@ class LdmsdCmdParser(cmd.Cmd):
         name=     A unique name for this Producer
         xprt=     The transport name [sock, rdma, ugni]
         host=     The hostname of the host
-        port=     The port number on which the LDMS is listening
-        type=     The connection type [active, passive]
+        type=     The connection type [active, passive, bridge]
+                  Active -- A connection is initiated with the peer and
+                           its metric sets will be queried.
+                  Passive - A connect request is expected from the specified producer.
+                            After the connection is established, the peer's metric sets
+                            will be queried
+                  Bridge -- A connection is initiated to the remote peer,
+                            but its metric sets are not queried.
+                            This is the active side of the passive-mode producer.
+        [port=]   The port number on which the peer LDMS is listening. It is not required, if type is PASSIVE.
         reconnect= The connection retry interval (us)
         interval= The connection retry interval (us) (Deprecated, please use 'reconnect'.)
-        auth=     The authentication method
+        [auth=]   The authentication method
         [perm=]   The permission to modify the producer in the future.
         [rail=]   The number of rail endpoints for the prdcr (default: 1).
         [credits=] The send credits our ldmsd (the one we are controlling)
@@ -398,6 +406,48 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_prdcr_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_add', text)
 
+    def do_bridge_add(self, arg):
+        """
+        Add a bridge connection. This is the active side of the passive producer.
+        Parameters:
+                name=     A unique name for this Producer
+                xprt=     The transport name [sock, rdma, ugni]
+                host=     The hostname of the host
+                reconnect= The connection retry interval (us)
+                [auth=]   The authentication method
+                [perm=]   The permission to modify the producer in the future.
+                [rail=]   The number of rail endpoints for the prdcr (default: 1).
+                [credits=] The send credits our ldmsd (the one we are controlling)
+                           advertises to the prdcr (default: value from ldmsd --credits
+                           option). This limits how much outstanding data our ldmsd
+                           holds for the prdcr. The prdcr drops messages when it does
+                           not have enough send credits.
+                [rx_rate=] The recv rate (bytes/sec) limit for this connection. The
+                           default is -1 (unlimited).
+        """
+        arg = self.handle_args('prdcr_add', arg)
+        if arg is None:
+            return
+        if arg['reconnect'] is None:
+            print(f"The attribute 'reconnect' is missing.")
+        else:
+            rc, msg = self.comm.prdcr_add(arg['name'],
+                                          "bridge",
+                                          arg['xprt'],
+                                          arg['host'],
+                                          arg['port'],
+                                          arg['reconnect'],
+                                          arg['auth'],
+                                          arg['perm'],
+                                          arg['rail'],
+                                          arg['credits'],
+                                          arg['rx_rate'])
+            if rc:
+                print(f'Error adding Bridge {arg["name"]}: {msg}')
+
+    def complete_bridge_add(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('bridge_add', text)
+
     def do_prdcr_del(self, arg):
         """
         Delete an LDMS Producer from the Aggregator. The producer
@@ -413,6 +463,17 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_prdcr_del(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_del', text)
+
+    def do_bridge_del(self, arg):
+        """
+        Delete a bridge from the sampler daemon. The bridge connot be in use.
+        Parameters:
+        name =   The bridge name
+        """
+        self.do_prdcr_del(arg)
+
+    def complete_bridge_del(self, text, line, begidx, endidx):
+        return self.complete_prdcr_del(text, line, begidx, endidx)
 
     def do_prdcr_start(self, arg):
         """
@@ -434,6 +495,12 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_prdcr_start(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_start', text)
+
+    def do_bridge_start(self, arg):
+        self.do_prdcr_start(arg)
+
+    def complete_bridge_del(self, text, line, begidx, endidx):
+        return self.complete_prdcr_start(text, line, begidx, endidx)
 
     def do_prdcr_start_regex(self, arg):
         """
@@ -470,6 +537,17 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_prdcr_stop(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_stop', text)
+
+    def do_bridge_stop(self, arg):
+        """
+        Stop the specified Bridge
+        Parameters:
+        name=  The bridge name
+        """
+        self.do_prdcr_stop(arg)
+
+    def complete_bridge_stop(self, text, line, begidx, endidx):
+        return self.complete_prdcr_stop(text, line, begidx, endidx)
 
     def do_prdcr_stop_regex(self, arg):
         """
@@ -941,14 +1019,13 @@ class LdmsdCmdParser(cmd.Cmd):
             rc, msg = self.comm.prdcr_status(arg['name'])
             if rc == 0 and msg is not None:
                 producers = fmt_status(msg)
-                print("Name             Host             Port         Transport    State")
-                print("---------------- ---------------- ------------ ------------ ------------")
+                print("Name             Host             Port         Transport    State        Type")
+                print("---------------- ---------------- ------------ ------------ ------------ ----------")
                 for prdcr in producers:
-                    print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
-                                                                      prdcr['host'],
-                                                                      prdcr['port'],
-                                                                      prdcr['transport'],
-                                                                      prdcr['state']))
+                    if prdcr['type'] == 'bridge':
+                        continue
+                    print(f"{prdcr['name']:16} {prdcr['host']:16} {prdcr['port']:12} {prdcr['transport']:12} " \
+                          f"{prdcr['state']:12} {prdcr['type']:10}")
                     for pset in prdcr['sets']:
                         print("    {0:16} {1:16} {2}".format(pset['inst_name'],
                                                              pset['schema_name'],
@@ -957,6 +1034,30 @@ class LdmsdCmdParser(cmd.Cmd):
                 print(f'Error getting prdcr status: {msg}')
 
     def complete_prdcr_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_status', text)
+
+    def do_bridge_status(self, arg):
+        """
+        Get the statuses of bridge connections
+        Parameters:
+        [name=]        Bridge name
+        """
+        arg = self.handle_args('prdcr_status', arg)
+        if arg:
+            rc, msg = self.comm.prdcr_status(arg['name'])
+            if rc == 0 and msg is not None:
+                producers = fmt_status(msg)
+                print("Name             Host             Port         Transport    State")
+                print("---------------- ---------------- ------------ ------------ ------------")
+                for prdcr in producers:
+                    if prdcr['type'] != 'bridge':
+                        continue
+                    print(f"{prdcr['name']:16} {prdcr['host']:16} {prdcr['port']:12} {prdcr['transport']:12} " \
+                          f"{prdcr['state']:12}")
+            else:
+                print(f'Error getting prdcr status: {msg}')
+
+    def complete_bridge_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_status', text)
 
     def do_prdcr_set_status(self, arg):

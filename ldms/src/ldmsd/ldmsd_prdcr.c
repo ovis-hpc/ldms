@@ -563,28 +563,42 @@ static void __ldmsd_xprt_ctxt_free(void *_ctxt)
 	free(ctxt);
 }
 
-static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+static int __sampler_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 {
-	ldmsd_xprt_ctxt_t ctxt;
-	ldmsd_prdcr_t prdcr = cb_arg;
-	ldmsd_prdcr_lock(prdcr);
-	ovis_log(prdcr_log, OVIS_LINFO, "%s:%d Producer %s (%s %s:%d:%s)"
-				" conn_state: %d %s event type: %s\n",
-				__func__, __LINE__,
-				prdcr->obj.name, prdcr->xprt_name,
-				prdcr->host_name, (int)prdcr->port_no,
-				prdcr->conn_auth,
-				prdcr->conn_state,
-				conn_state_str(prdcr->conn_state),
-				ldms_xprt_event_type_to_str(e->type));
-	switch(e->type) {
-	case LDMS_XPRT_EVENT_DISCONNECTED:
-		x->disconnected = 1;
-		break;
-	default:
-		assert(x->disconnected == 0);
-		break;
+	int is_reset_prdcr = 0;
+	switch (e->type) {
+		case LDMS_XPRT_EVENT_CONNECTED:
+			/* Do nothing */
+			prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
+			break;
+		case LDMS_XPRT_EVENT_DISCONNECTED:
+		case LDMS_XPRT_EVENT_ERROR:
+		case LDMS_XPRT_EVENT_REJECTED:
+			/* reset_prdcr */
+			is_reset_prdcr = 1;
+			break;
+		case LDMS_XPRT_EVENT_RECV:
+		case LDMS_XPRT_EVENT_SEND_COMPLETE:
+			/* Ignore */
+			break;
+		case LDMS_XPRT_EVENT_SET_DELETE:
+			ovis_log(prdcr_log, OVIS_LERROR,
+				 "Received a set_delete event from the aggregator (%s:%s:%d:%s)",
+				 prdcr->xprt_name, prdcr->host_name,
+				 (int)prdcr->port_no, prdcr->conn_auth);
+			break;
+		default:
+			ovis_log(prdcr_log, OVIS_LERROR,
+				 "Received an unexpected transport event %d\n", e->type);
+			assert(0);
 	}
+	return is_reset_prdcr;
+}
+
+static int __agg_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
+{
+	int is_reset_prdcr = 0;
+	ldmsd_xprt_ctxt_t ctxt;
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
 		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s is connected (%s %s:%d)\n",
@@ -593,12 +607,12 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		ctxt = malloc(sizeof(*ctxt));
 		if (!ctxt) {
 			ovis_log(prdcr_log, OVIS_LCRITICAL, "Out of memory\n");
-			return;
+			goto out;
 		}
 		ctxt->name = strdup(prdcr->obj.name);
 		if (!ctxt->name) {
 			ovis_log(prdcr_log, OVIS_LCRITICAL, "Out of memory\n");
-			return;
+			goto out;
 		}
 		ldms_xprt_ctxt_set(x, ctxt, __ldmsd_xprt_ctxt_free);
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
@@ -623,23 +637,68 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 				"connection (%s %s:%d)\n", prdcr->obj.name,
 				prdcr->xprt_name, prdcr->host_name,
 				(int)prdcr->port_no);
-		goto reset_prdcr;
+		is_reset_prdcr = 1;
+		goto out;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s is disconnected (%s %s:%d)\n",
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
-		goto reset_prdcr;
+		is_reset_prdcr = 1;
+		goto out;
 	case LDMS_XPRT_EVENT_ERROR:
 		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s: connection error to %s %s:%d\n",
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
-		goto reset_prdcr;
+		is_reset_prdcr = 1;
+		goto out;
 	case LDMS_XPRT_EVENT_SEND_COMPLETE:
 		/* Ignore */
 		break;
 	default:
 		assert(0);
 	}
+out:
+	return is_reset_prdcr;
+}
+
+static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+{
+	int is_reset_prdcr = 0;
+	ldmsd_prdcr_t prdcr = cb_arg;
+	ldmsd_prdcr_lock(prdcr);
+	ovis_log(prdcr_log, OVIS_LINFO, "%s:%d Producer %s (%s %s:%d:%s)"
+				" conn_state: %d %s event type: %s\n",
+				__func__, __LINE__,
+				prdcr->obj.name, prdcr->xprt_name,
+				prdcr->host_name, (int)prdcr->port_no,
+				prdcr->conn_auth,
+				prdcr->conn_state,
+				conn_state_str(prdcr->conn_state),
+				ldms_xprt_event_type_to_str(e->type));
+	switch(e->type) {
+	case LDMS_XPRT_EVENT_DISCONNECTED:
+		x->disconnected = 1;
+		break;
+	default:
+		assert(x->disconnected == 0);
+		break;
+	}
+
+	switch (prdcr->type) {
+		case LDMSD_PRDCR_TYPE_ACTIVE:
+		case LDMSD_PRDCR_TYPE_PASSIVE:
+			is_reset_prdcr = __agg_routine(x, e, prdcr);
+			break;
+		case LDMSD_PRDCR_TYPE_BRIDGE:
+			is_reset_prdcr = __sampler_routine(x, e, prdcr);
+			break;
+		default:
+			assert(0);
+	}
+
+	if (is_reset_prdcr)
+		goto reset_prdcr;
+
 	ldmsd_prdcr_unlock(prdcr);
 	return;
 
@@ -687,6 +746,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	assert(prdcr->xprt == NULL);
 	switch (prdcr->type) {
 	case LDMSD_PRDCR_TYPE_ACTIVE:
+	case LDMSD_PRDCR_TYPE_BRIDGE:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 		prdcr->xprt = ldms_xprt_rail_new(prdcr->xprt_name,
 						 prdcr->rail,
@@ -714,8 +774,10 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		prdcr->xprt = ldms_xprt_by_remote_sin((struct sockaddr_in *)&prdcr->ss);
 		/* Call connect callback to advance state and update timers*/
 		if (prdcr->xprt) {
+			ldmsd_prdcr_unlock(prdcr);
 			struct ldms_xprt_event conn_ev = {.type = LDMS_XPRT_EVENT_CONNECTED};
 			prdcr_connect_cb(prdcr->xprt, &conn_ev, prdcr);
+			ldmsd_prdcr_lock(prdcr);
 		}
 		break;
 	case LDMSD_PRDCR_TYPE_LOCAL:
@@ -759,6 +821,8 @@ int ldmsd_prdcr_str2type(const char *type)
 		prdcr_type = LDMSD_PRDCR_TYPE_PASSIVE;
 	else if (0 == strcasecmp(type, "local"))
 		prdcr_type = LDMSD_PRDCR_TYPE_LOCAL;
+	else if (0 == strcasecmp(type, "bridge"))
+		prdcr_type = LDMSD_PRDCR_TYPE_BRIDGE;
 	else
 		return -EINVAL;
 	return prdcr_type;
@@ -772,6 +836,8 @@ const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type)
 		return "passive";
 	else if (LDMSD_PRDCR_TYPE_LOCAL == type)
 		return "local";
+	else if (LDMSD_PRDCR_TYPE_BRIDGE == type)
+		return "bridge";
 	else
 		return NULL;
 }
@@ -809,7 +875,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	if (!prdcr->host_name)
 		goto out;
 	prdcr->xprt_name = strdup(xprt_name);
-	if (!prdcr->port_no)
+	if ((type != LDMSD_PRDCR_TYPE_PASSIVE) && (!prdcr->port_no))
 		goto out;
 
 	prdcr->ss_len = sizeof(prdcr->ss);
@@ -1203,6 +1269,7 @@ int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 			prdcr->conn_intrvl_us = reconnect;
 		__ldmsd_prdcr_start(prdcr, ctxt);
 	}
+	rc = 0;
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	regfree(&regex);
 	return rc;
