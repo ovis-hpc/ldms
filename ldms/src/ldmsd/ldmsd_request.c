@@ -358,6 +358,9 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_PRDCR_STREAM_STATUS_REQ, prdcr_stream_status_handler,
 		XUG | LDMSD_PERM_FAILOVER_ALLOWED
 	},
+	[LDMSD_BRIDGE_ADD_REQ] = {
+		LDMSD_BRIDGE_ADD_REQ, prdcr_add_handler, XUG | MOD
+	},
 
 	/* STRGP */
 	[LDMSD_STRGP_ADD_REQ] = {
@@ -1540,15 +1543,25 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 
 	attr_name = "port";
 	port_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
-	if (!port_s) {
-		goto einval;
-	} else {
-		long ptmp = 0;
-		ptmp = strtol(port_s, NULL, 0);
-		if (ptmp < 1 || ptmp > USHRT_MAX) {
+	if (type != LDMSD_PRDCR_TYPE_PASSIVE) {
+		if (!port_s) {
 			goto einval;
+		} else {
+			long ptmp = 0;
+			ptmp = strtol(port_s, NULL, 0);
+			if (ptmp < 1 || ptmp > USHRT_MAX) {
+				goto einval;
+			}
+			port_no = (unsigned)ptmp;
 		}
-		port_no = (unsigned)ptmp;
+	} else {
+		if (port_s) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"Ignore the given port %s because "
+					"prdcr %s's type is passive.",
+					port_s, name);
+		}
+		port_no = -1;
 	}
 
 	attr_name = "reconnect";

@@ -104,6 +104,9 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                                           'opt_attr': ['rx_rate']},
                       'prdcr_unsubscribe': {'req_attr':['regex', 'stream'], 'opt_attr': []},
                       'prdcr_stream_status' : {'req_attr':['regex'], 'opt_attr':[]},
+                      ##### Bridge #####
+                      'bridge_add': {'req_attr': ['name', 'xprt', 'host', 'port', 'reconnect'],
+                                    'opt_attr' : [ 'auth', 'perm', 'rail', 'credits', 'rx_rate' ] },
                       ##### Updater Policy #####
                       'updtr_add': {'req_attr': ['name'],
                                     'opt_attr': ['offset', 'push', 'interval', 'auto_interval', 'perm']},
