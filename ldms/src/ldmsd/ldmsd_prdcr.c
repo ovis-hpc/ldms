@@ -563,9 +563,109 @@ static void __ldmsd_xprt_ctxt_free(void *_ctxt)
 	free(ctxt);
 }
 
+static int __sampler_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
+{
+	int is_reset_prdcr = 0;
+	switch (e->type) {
+		case LDMS_XPRT_EVENT_CONNECTED:
+			/* Do nothing */
+			prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
+			break;
+		case LDMS_XPRT_EVENT_DISCONNECTED:
+		case LDMS_XPRT_EVENT_ERROR:
+		case LDMS_XPRT_EVENT_REJECTED:
+			/* reset_prdcr */
+			is_reset_prdcr = 1;
+			break;
+		case LDMS_XPRT_EVENT_RECV:
+		case LDMS_XPRT_EVENT_SEND_COMPLETE:
+			/* Ignore */
+			break;
+		case LDMS_XPRT_EVENT_SET_DELETE:
+			ovis_log(prdcr_log, OVIS_LERROR,
+				 "Received a set_delete event from the aggregator (%s:%s:%d:%s)",
+				 prdcr->xprt_name, prdcr->host_name,
+				 (int)prdcr->port_no, prdcr->conn_auth);
+			break;
+		default:
+			ovis_log(prdcr_log, OVIS_LERROR,
+				 "Received an unexpected transport event %d\n", e->type);
+			assert(0);
+	}
+	return is_reset_prdcr;
+}
+
+static int __agg_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
+{
+	int rc;
+	int is_reset_prdcr = 0;
+	ldmsd_xprt_ctxt_t ctxt;
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_CONNECTED:
+		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s is connected (%s %s:%d)\n",
+				prdcr->obj.name, prdcr->xprt_name,
+				prdcr->host_name, (int)prdcr->port_no);
+		ctxt = malloc(sizeof(*ctxt));
+		if (!ctxt) {
+			ovis_log(prdcr_log, OVIS_LCRITICAL, "Out of memory\n");
+			goto out;
+		}
+		ctxt->name = strdup(prdcr->obj.name);
+		if (!ctxt->name) {
+			ovis_log(prdcr_log, OVIS_LCRITICAL, "Out of memory\n");
+			goto out;
+		}
+		ldms_xprt_ctxt_set(x, ctxt, __ldmsd_xprt_ctxt_free);
+		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
+		if (__prdcr_subscribe(prdcr)) {
+			ovis_log(prdcr_log, OVIS_LERROR,
+				  "Could not subscribe to stream data on producer %s\n",
+				  prdcr->obj.name);
+		}
+		rc = ldms_xprt_dir(prdcr->xprt, prdcr_dir_cb, prdcr,
+						LDMS_DIR_F_NOTIFY);
+		if (rc)
+			ldms_xprt_close(prdcr->xprt);
+		ldmsd_task_stop(&prdcr->task);
+		break;
+	case LDMS_XPRT_EVENT_RECV:
+		ldmsd_recv_msg(x, e->data, e->data_len);
+		break;
+	case LDMS_XPRT_EVENT_SET_DELETE:
+		__prdcr_remote_set_delete(prdcr, e->set_delete.name);
+		break;
+	case LDMS_XPRT_EVENT_REJECTED:
+		ovis_log(prdcr_log, OVIS_LERROR, "Producer %s rejected the "
+				"connection (%s %s:%d)\n", prdcr->obj.name,
+				prdcr->xprt_name, prdcr->host_name,
+				(int)prdcr->port_no);
+		is_reset_prdcr = 1;
+		goto out;
+	case LDMS_XPRT_EVENT_DISCONNECTED:
+		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s is disconnected (%s %s:%d)\n",
+				prdcr->obj.name, prdcr->xprt_name,
+				prdcr->host_name, (int)prdcr->port_no);
+		is_reset_prdcr = 1;
+		goto out;
+	case LDMS_XPRT_EVENT_ERROR:
+		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s: connection error to %s %s:%d\n",
+				prdcr->obj.name, prdcr->xprt_name,
+				prdcr->host_name, (int)prdcr->port_no);
+		is_reset_prdcr = 1;
+		goto out;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		/* Ignore */
+		break;
+	default:
+		assert(0);
+	}
+out:
+	return is_reset_prdcr;
+}
+
 static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-	ldmsd_xprt_ctxt_t ctxt;
+	int is_reset_prdcr = 0;
 	ldmsd_prdcr_t prdcr = cb_arg;
 	ldmsd_prdcr_lock(prdcr);
 	ovis_log(prdcr_log, OVIS_LINFO, "%s:%d Producer %s (%s %s:%d:%s)"
@@ -585,61 +685,22 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		assert(x->disconnected == 0);
 		break;
 	}
-	switch (e->type) {
-	case LDMS_XPRT_EVENT_CONNECTED:
-		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s is connected (%s %s:%d)\n",
-				prdcr->obj.name, prdcr->xprt_name,
-				prdcr->host_name, (int)prdcr->port_no);
-		ctxt = malloc(sizeof(*ctxt));
-		if (!ctxt) {
-			ovis_log(prdcr_log, OVIS_LCRITICAL, "Out of memory\n");
-			return;
-		}
-		ctxt->name = strdup(prdcr->obj.name);
-		if (!ctxt->name) {
-			ovis_log(prdcr_log, OVIS_LCRITICAL, "Out of memory\n");
-			return;
-		}
-		ldms_xprt_ctxt_set(x, ctxt, __ldmsd_xprt_ctxt_free);
-		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
-		if (__prdcr_subscribe(prdcr)) {
-			ovis_log(prdcr_log, OVIS_LERROR,
-				  "Could not subscribe to stream data on producer %s\n",
-				  prdcr->obj.name);
-		}
-		if (ldms_xprt_dir(prdcr->xprt, prdcr_dir_cb, prdcr,
-				  LDMS_DIR_F_NOTIFY))
-			ldms_xprt_close(prdcr->xprt);
-		ldmsd_task_stop(&prdcr->task);
-		break;
-	case LDMS_XPRT_EVENT_RECV:
-		ldmsd_recv_msg(x, e->data, e->data_len);
-		break;
-	case LDMS_XPRT_EVENT_SET_DELETE:
-		__prdcr_remote_set_delete(prdcr, e->set_delete.name);
-		break;
-	case LDMS_XPRT_EVENT_REJECTED:
-		ovis_log(prdcr_log, OVIS_LERROR, "Producer %s rejected the "
-				"connection (%s %s:%d)\n", prdcr->obj.name,
-				prdcr->xprt_name, prdcr->host_name,
-				(int)prdcr->port_no);
-		goto reset_prdcr;
-	case LDMS_XPRT_EVENT_DISCONNECTED:
-		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s is disconnected (%s %s:%d)\n",
-				prdcr->obj.name, prdcr->xprt_name,
-				prdcr->host_name, (int)prdcr->port_no);
-		goto reset_prdcr;
-	case LDMS_XPRT_EVENT_ERROR:
-		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s: connection error to %s %s:%d\n",
-				prdcr->obj.name, prdcr->xprt_name,
-				prdcr->host_name, (int)prdcr->port_no);
-		goto reset_prdcr;
-	case LDMS_XPRT_EVENT_SEND_COMPLETE:
-		/* Ignore */
-		break;
-	default:
-		assert(0);
+
+	switch (prdcr->type) {
+		case LDMSD_PRDCR_TYPE_ACTIVE:
+		case LDMSD_PRDCR_TYPE_PASSIVE:
+			is_reset_prdcr = __agg_routine(x, e, prdcr);
+			break;
+		case LDMSD_PRDCR_TYPE_BRIDGE:
+			is_reset_prdcr = __sampler_routine(x, e, prdcr);
+			break;
+		default:
+			assert(0);
 	}
+
+	if (is_reset_prdcr)
+		goto reset_prdcr;
+
 	ldmsd_prdcr_unlock(prdcr);
 	return;
 
@@ -663,6 +724,10 @@ reset_prdcr:
 		assert(0 == "BAD STATE");
 	}
 	if (prdcr->xprt) {
+		if (prdcr->type == LDMSD_PRDCR_TYPE_PASSIVE) {
+			/* Put back the ldms_xprt_by_remote_sin() reference. */
+			ldms_xprt_put(prdcr->xprt);
+		}
 		ldmsd_xprt_term(prdcr->xprt);
 		ldms_xprt_put(prdcr->xprt);
 		prdcr->xprt = NULL;
@@ -687,6 +752,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	assert(prdcr->xprt == NULL);
 	switch (prdcr->type) {
 	case LDMSD_PRDCR_TYPE_ACTIVE:
+	case LDMSD_PRDCR_TYPE_BRIDGE:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 		prdcr->xprt = ldms_xprt_rail_new(prdcr->xprt_name,
 						 prdcr->rail,
@@ -714,8 +780,11 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		prdcr->xprt = ldms_xprt_by_remote_sin((struct sockaddr_in *)&prdcr->ss);
 		/* Call connect callback to advance state and update timers*/
 		if (prdcr->xprt) {
+			ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
+			ldmsd_prdcr_unlock(prdcr);
 			struct ldms_xprt_event conn_ev = {.type = LDMS_XPRT_EVENT_CONNECTED};
 			prdcr_connect_cb(prdcr->xprt, &conn_ev, prdcr);
+			ldmsd_prdcr_lock(prdcr);
 		}
 		break;
 	case LDMSD_PRDCR_TYPE_LOCAL:
@@ -759,6 +828,8 @@ int ldmsd_prdcr_str2type(const char *type)
 		prdcr_type = LDMSD_PRDCR_TYPE_PASSIVE;
 	else if (0 == strcasecmp(type, "local"))
 		prdcr_type = LDMSD_PRDCR_TYPE_LOCAL;
+	else if (0 == strcasecmp(type, "bridge"))
+		prdcr_type = LDMSD_PRDCR_TYPE_BRIDGE;
 	else
 		return -EINVAL;
 	return prdcr_type;
@@ -772,6 +843,8 @@ const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type)
 		return "passive";
 	else if (LDMSD_PRDCR_TYPE_LOCAL == type)
 		return "local";
+	else if (LDMSD_PRDCR_TYPE_BRIDGE == type)
+		return "bridge";
 	else
 		return NULL;
 }
@@ -809,7 +882,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	if (!prdcr->host_name)
 		goto out;
 	prdcr->xprt_name = strdup(xprt_name);
-	if (!prdcr->port_no)
+	if ((type != LDMSD_PRDCR_TYPE_PASSIVE) && (!prdcr->port_no))
 		goto out;
 
 	prdcr->ss_len = sizeof(prdcr->ss);
@@ -1203,6 +1276,7 @@ int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 			prdcr->conn_intrvl_us = reconnect;
 		__ldmsd_prdcr_start(prdcr, ctxt);
 	}
+	rc = 0;
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	regfree(&regex);
 	return rc;

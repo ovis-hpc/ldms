@@ -233,7 +233,9 @@ typedef struct ldmsd_prdcr {
 		/** Connection initiated by peer */
 		LDMSD_PRDCR_TYPE_PASSIVE,
 		/** Producer is local to this daemon */
-		LDMSD_PRDCR_TYPE_LOCAL
+		LDMSD_PRDCR_TYPE_LOCAL,
+		/** Connection initiated at this side but the peer will initiate the dir request. */
+		LDMSD_PRDCR_TYPE_BRIDGE,
 	} type;
 
 	struct ldmsd_task task;

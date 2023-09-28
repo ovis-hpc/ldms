@@ -65,6 +65,10 @@ const struct req_str_id req_str_id_table[] = {
 	/* This table need to be sorted by keyword for bsearch() */
 	{  "auth_add",           LDMSD_AUTH_ADD_REQ  },
 	{  "auth_del",           LDMSD_AUTH_DEL_REQ  },
+	{  "bridge_add",         LDMSD_BRIDGE_ADD_REQ },
+	{  "bridge_del",         LDMSD_PRDCR_DEL_REQ },
+	{  "bridge_start",       LDMSD_PRDCR_START_REQ },
+	{  "bridge_stop",        LDMSD_PRDCR_STOP_REQ },
 	{  "config",             LDMSD_PLUGN_CONFIG_REQ  },
 	{  "daemon",             LDMSD_DAEMON_STATUS_REQ  },
 	{  "daemon_exit",        LDMSD_EXIT_DAEMON_REQ  },
@@ -730,6 +734,64 @@ int __ldmsd_parse_cmdline_req(struct ldmsd_parse_ctxt *ctxt)
 			&ctxt->request, &ctxt->request_sz);
 }
 
+int __ldmsd_parse_bridge_add_req(struct ldmsd_parse_ctxt *ctxt)
+{
+	char *av = ctxt->av;
+	size_t len = strlen(av);
+	size_t cnt = 0;
+	char *tmp, *name, *value, *ptr, *dummy;
+	int rc = 0;
+	dummy = NULL;
+	tmp = malloc(len);
+	if (!tmp) {
+		rc = ENOMEM;
+		goto out;
+	}
+	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
+	while (av) {
+		ctxt->av = av;
+		dummy = strdup(av);
+		if (!dummy) {
+			rc = ENOMEM;
+			goto out;
+		}
+		__get_attr_name_value(dummy, &name, &value);
+		if (!name) {
+			/* av is neither attribute value nor keyword */
+			rc = EINVAL;
+			goto out;
+		}
+		rc = add_attr_from_attr_str(name, value,
+					    &ctxt->request,
+					    &ctxt->request_sz);
+		if (rc)
+			goto out;
+		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+		free(dummy);
+		dummy = NULL;
+	}
+	rc = add_attr_from_attr_str("type", "bridge",
+				    &ctxt->request,
+				    &ctxt->request_sz);
+	if (rc)
+		goto out;
+
+	if (cnt) {
+		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
+		/* Add an attribute of type 'STRING' */
+		rc = add_attr_from_attr_str(NULL, tmp,
+					    &ctxt->request,
+					    &ctxt->request_sz);
+	}
+
+out:
+	if (tmp)
+		free(tmp);
+	if (dummy)
+		free(dummy);
+	return rc;
+}
+
 struct ldmsd_req_array *
 ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, size_t xprt_max_msg)
 {
@@ -798,6 +860,9 @@ ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, size_t xprt_max_msg)
 		break;
 	case LDMSD_CMDLINE_OPTIONS_SET_REQ:
 		rc = __ldmsd_parse_cmdline_req(&ctxt);
+		break;
+	case LDMSD_BRIDGE_ADD_REQ:
+		rc = __ldmsd_parse_bridge_add_req(&ctxt);
 		break;
 	default:
 		rc = __ldmsd_parse_generic(&ctxt);
