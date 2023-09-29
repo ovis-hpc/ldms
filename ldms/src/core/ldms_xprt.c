@@ -3128,6 +3128,7 @@ static uint64_t __ldms_xprt_conn_id(ldms_t x);
 static const char *__ldms_xprt_type_name(ldms_t x);
 static void __ldms_xprt_priority_set(ldms_t x, int prio);
 static void __ldms_xprt_cred_get(ldms_t x, ldms_cred_t lcl, ldms_cred_t rmt);
+static void __ldms_xprt_event_cb_set(ldms_t x, ldms_event_cb_t cb, void *cb_arg);
 int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void *arg);
 int __ldms_xprt_get_threads(ldms_t x, pthread_t *out, int n);
 zap_ep_t __ldms_xprt_get_zap_ep(ldms_t x);
@@ -3158,6 +3159,8 @@ static const struct ldms_xprt_ops_s ldms_xprt_ops = {
 
 	.get_threads  = __ldms_xprt_get_threads,
 	.get_zap_ep   = __ldms_xprt_get_zap_ep,
+
+	.event_cb_set = __ldms_xprt_event_cb_set,
 };
 
 void __ldms_xprt_init(struct ldms_xprt *x, const char *name, int is_active)
@@ -3216,6 +3219,18 @@ static void __ldms_xprt_cred_get(ldms_t x, ldms_cred_t lcl, ldms_cred_t rmt)
 void ldms_xprt_cred_get(ldms_t x, ldms_cred_t lcl, ldms_cred_t rmt)
 {
 	x->ops.cred_get(x, lcl, rmt);
+}
+
+static void __ldms_xprt_event_cb_set(ldms_t x, ldms_event_cb_t cb, void *cb_arg)
+{
+	struct ldms_xprt *_x = x;
+	_x->event_cb = cb;
+	_x->event_cb_arg = cb_arg;
+}
+
+void ldms_xprt_event_cb_set(ldms_t x, ldms_event_cb_t cb, void *cb_arg)
+{
+	x->ops.event_cb_set(x, cb, cb_arg);
 }
 
 /*
@@ -4072,7 +4087,7 @@ out:
 static int __ldms_xprt_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 		ldms_event_cb_t cb, void *cb_arg)
 {
-	x->xtype = LDMS_XTYPE_PASSIVE_RAIL;
+	x->xtype = LDMS_XTYPE_PASSIVE_XPRT;
 	x->event_cb = cb;
 	x->event_cb_arg = cb_arg;
 	return zap_listen(x->zap_ep, sa, sa_len);

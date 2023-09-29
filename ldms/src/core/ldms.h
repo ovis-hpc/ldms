@@ -869,6 +869,19 @@ extern int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port
 		ldms_event_cb_t cb, void *cb_arg);
 
 /**
+ * \brief Set the event callback and the callback context
+ *
+ * This is useful when an application wants to change the callback function
+ * after it accepts a connection request.
+ *
+ * \param x   The transport handle
+ * \param cb  The callback function that receives an ldms event.
+ *            If it is NULL, all events, except LDMS_RECV_COMPLETE, will be handled by ldms.
+ * \param cb_arg An argument to be passed to \c cb when it is called.
+ */
+void ldms_xprt_event_cb_set(ldms_t x, ldms_event_cb_t cb, void *cb_arg);
+
+/**
  * \brief Check if an LDMS transport endpoint is connected.
  *
  * \param x     The transport handle
