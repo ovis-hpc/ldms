@@ -431,6 +431,8 @@ struct ldms_xprt_ops_s {
 
 	int (*get_threads)(ldms_t x, pthread_t *out, int n);
 
+	void (*event_cb_set)(ldms_t x, ldms_event_cb_t cb ,void *cb_arg);
+
 	zap_ep_t (*get_zap_ep)(ldms_t x);
 };
 

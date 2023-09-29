@@ -80,6 +80,7 @@ static int __rail_connect(ldms_t _r, struct sockaddr *sa, socklen_t sa_len,
 static int __rail_is_connected(ldms_t _r);
 static int __rail_listen(ldms_t _r, struct sockaddr *sa, socklen_t sa_len,
 	ldms_event_cb_t cb, void *cb_arg);
+static void __rail_event_cb_set(ldms_t _r, ldms_event_cb_t cb, void *cb_arg);
 static int __rail_sockaddr(ldms_t _r, struct sockaddr *local_sa,
 	       struct sockaddr *remote_sa,
 	       socklen_t *sa_len);
@@ -102,6 +103,7 @@ static void __rail_priority_set(ldms_t _r, int prio);
 static void __rail_cred_get(ldms_t _r, ldms_cred_t lcl, ldms_cred_t rmt);
 static int __rail_update(ldms_t _r, struct ldms_set *set, ldms_update_cb_t cb, void *arg);
 static int __rail_get_threads(ldms_t _r, pthread_t *out, int n);
+
 zap_ep_t __rail_get_zap_ep(ldms_t x);
 
 static struct ldms_xprt_ops_s __rail_ops = {
@@ -129,6 +131,8 @@ static struct ldms_xprt_ops_s __rail_ops = {
 	.update       = __rail_update,
 	.get_threads  = __rail_get_threads,
 	.get_zap_ep   = __rail_get_zap_ep,
+
+	.event_cb_set = __rail_event_cb_set,
 };
 
 static int __rail_id_cmp(void *k, const void *tk)
@@ -851,6 +855,13 @@ static int __rail_listen(ldms_t _r, struct sockaddr *sa, socklen_t sa_len,
 		return rc;
 	}
 	return 0;
+}
+
+static void __rail_event_cb_set(ldms_t _r, ldms_event_cb_t cb, void *cb_arg)
+{
+	ldms_rail_t r = (ldms_rail_t)_r;
+	r->event_cb = cb;
+	r->event_cb_arg = cb_arg;
 }
 
 static int __rail_sockaddr(ldms_t _r, struct sockaddr *local_sa,
