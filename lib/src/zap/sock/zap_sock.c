@@ -477,13 +477,33 @@ static void process_sep_msg_connect(struct z_sock_ep *sep)
 		return;
 	}
 
+	/*
+	 * NOTE
+	 * ----
+	 * We copy out data and reset the buffer before calling application
+	 * callback in this case because CONNECT_REQUEST is being processed by
+	 * the listening thread and a new thread is assigned to the endpoint
+	 * when the application accept the endpoint in the callback function.
+	 * If we do not reset the recv buffer, the new thread could race (found
+	 * by Nichamon) and end up process the same message again.
+	 */
+	size_t data_len = ntohl(msg->data_len);
+	void *data = NULL;
+	if (data_len) {
+		data = malloc(data_len);
+		if (!data)
+			return;
+		memcpy(data, msg->data, data_len);
+	}
+
 	struct zap_event ev = {
 		.type = ZAP_EVENT_CONNECT_REQUEST,
-		.data = (void*)msg->data,
-		.data_len = ntohl(msg->data_len),
+		.data = data,
+		.data_len = data_len,
 	};
-
+	z_sock_buff_reset(&sep->buff);
 	sep->ep.cb(&sep->ep, &ev);
+	free(data);
 
 	return;
 }
@@ -1150,6 +1170,10 @@ static void sock_ev_cb(z_sock_io_thread_t thr, struct epoll_event *ev)
 	/* Handle read */
 	if (ev->events & EPOLLIN) {
 		sock_read(thr, ev);
+		if (sep->ep.thread && sep->ep.thread != &thr->zap_io_thread) {
+			/* ep assigned to another thread (by zap_accept) */
+			goto out;
+		}
 	}
 
 	/* Handle disconnect
@@ -1376,13 +1400,26 @@ static void sock_read(z_sock_io_thread_t thr, struct epoll_event *ev)
 		}
 		/* Then call the process function accordingly */
 		DEBUG_LOG_RECV_MSG(sep, sep->buff.data);
-		if (msg_type >= SOCK_MSG_FIRST
-				&& msg_type < SOCK_MSG_TYPE_LAST) {
+		switch (msg_type) {
+		case SOCK_MSG_CONNECT:
+			process_sep_msg_connect(sep);
+			break;
+		case SOCK_MSG_SENDRECV:
+		case SOCK_MSG_RENDEZVOUS:
+		case SOCK_MSG_READ_REQ:
+		case SOCK_MSG_READ_RESP:
+		case SOCK_MSG_WRITE_REQ:
+		case SOCK_MSG_WRITE_RESP:
+		case SOCK_MSG_ACCEPTED:
+		case SOCK_MSG_REJECTED:
+		case SOCK_MSG_ACK_ACCEPTED:
 			process_sep_msg_fns[msg_type](sep);
-		} else {
+			z_sock_buff_reset(&sep->buff);
+			break;
+		default:
 			process_sep_read_error(sep);
+			z_sock_buff_reset(&sep->buff);
 		}
-		z_sock_buff_reset(&sep->buff);
 	} while (looping);
 	return;
 
