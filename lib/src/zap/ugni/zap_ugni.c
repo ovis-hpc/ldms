@@ -1457,13 +1457,22 @@ static void process_uep_msg_connect(struct z_ugni_ep *uep)
 	CONN_LOG("%p sock-recv conn_msg: pe_addr: %#x, inst_id: %#x\n",
 			uep, msg->ep_desc.pe_addr, msg->ep_desc.inst_id);
 
+	void *data = NULL;
+	if (msg->data_len) {
+		data = malloc(msg->data_len);
+		if (!data)
+			return;
+		memcpy(data, msg->data, msg->data_len);
+	}
+
 	struct zap_event ev = {
 		.ep = &uep->ep,
 		.type = ZAP_EVENT_CONNECT_REQUEST,
 		.data_len = msg->data_len,
-		.data = (msg->data_len)?((void*)msg->data):(NULL)
+		.data = data
 	};
 	uep->ep.cb(&uep->ep, &ev);
+	free(data);
 
 	return;
 
