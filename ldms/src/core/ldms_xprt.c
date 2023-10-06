@@ -245,10 +245,14 @@ void ldms_xprt_rate_data(struct ldms_xprt_rate_data *data, int reset)
 	}
 }
 
+/* implemented in ldms_rail.c */
+ldms_t __ldms_xprt_to_rail(ldms_t x);
+
 ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin)
 {
 	struct sockaddr_storage ss_local, ss_remote;
 	socklen_t socklen;
+	ldms_t r;
 
 	ldms_t l, next_l;
 	l = ldms_xprt_first();
@@ -263,14 +267,26 @@ ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin)
 		struct sockaddr_in *s = (struct sockaddr_in *)&ss_remote;
 		if (s->sin_addr.s_addr == sin->sin_addr.s_addr
 		    && ((sin->sin_port == 0xffff) ||
-			(s->sin_port == sin->sin_port)))
-			return l;
+			(s->sin_port == sin->sin_port))) {
+			/* Put the next ref back. */
+			ldms_xprt_put(l);
+			r = __ldms_xprt_to_rail(l);
+			ldms_xprt_get(r);
+			/*
+			 * Put back the app reference taken in
+			 * ldms_xprt_first() or ldms_xprt_next().
+			 *
+			 * The rail hold a reference on the ldms_xprt object already.
+			 */
+			ldms_xprt_put(l);
+			return r;
+		}
 next:
 		next_l = ldms_xprt_next(l);
 		ldms_xprt_put(l);
 		l = next_l;
 	}
-	return 0;
+	return NULL;
 }
 
 /* Must be called with the xprt lock held */
