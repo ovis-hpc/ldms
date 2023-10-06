@@ -1400,3 +1400,13 @@ const char *ldms_addr_ntop(struct ldms_addr *addr, char *buff, size_t sz)
 	}
 	return buff;
 }
+
+ldms_t __ldms_xprt_to_rail(ldms_t x)
+{
+	if (XTYPE_IS_RAIL(x->xtype)) {
+		return x;
+	}
+
+	struct ldms_rail_ep_s *ep = ldms_xprt_ctxt_get(x);
+	return ((ep)?(ldms_t)ep->rail:NULL);
+}
