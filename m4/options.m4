@@ -623,16 +623,33 @@ dnl dnl queries git for version hash and branch info.
 AC_DEFUN([OPTION_GITINFO], [
 
 	export srcdir
+
+	dnl git test
+	if test -d "${srcdir}/.git"; then
+		AC_MSG_NOTICE(['.git' directory presented. Checking git ...])
+		dnl For configure output
+		git rev-parse --git-dir >&AS_MESSAGE_FD 2>&1
+		dnl For configure log
+		git rev-parse --git-dir >&AS_MESSAGE_LOG_FD 2>&1
+		if test 0 -ne $?; then
+			dnl git error
+			AC_MSG_ERROR([git command error])
+		else
+			AC_MSG_RESULT([OK])
+		fi
+	fi
 	TOP_LEVEL="$(cd "$srcdir" && git rev-parse --show-toplevel 2>/dev/null)"
+
 	GITLONG="$(cd "$srcdir" && git rev-parse HEAD 2>/dev/null)"
 	GITDIRTY="$(cd "$srcdir" && git status -uno -s 2>/dev/null)"
 	if test -n "$GITLONG" -a -n "$GITDIRTY"; then
 		GITLONG="${GITLONG}-dirty"
 	fi
 
+	AC_MSG_NOTICE([Determining GIT SHA ...])
 	if test -s "$TOP_LEVEL/m4/Ovis-top.m4" -a -n "$GITLONG"; then
 		dnl Git OK from ovis repo.
-		AC_MSG_RESULT([Using git SHA])
+		AC_MSG_RESULT([Using SHA from the git repository])
 	elif test -s $srcdir/SHA.txt ; then
 		dnl Git not OK, try $srcdir/SHA.txt
 		AC_MSG_NOTICE([Using SHA.txt from $srcdir for version info. ])
@@ -645,8 +662,9 @@ AC_DEFUN([OPTION_GITINFO], [
 		AC_MSG_RESULT([Using tree-top SHA.txt])
 	else
 		GITLONG="NO_GIT_SHA"
-		AC_MSG_RESULT([NO GIT SHA])
+		AC_MSG_WARN([Git SHA cannot be determined. This is not a working git repository and SHA.txt is not present.])
 	fi
+	AC_MSG_NOTICE([GIT SHA: ${GITLONG}])
 
 AC_DEFINE_UNQUOTED([OVIS_GIT_LONG],["$GITLONG"],[Hash of last git commit])
 AC_SUBST([OVIS_GIT_LONG], ["$GITLONG"])
