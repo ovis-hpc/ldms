@@ -257,6 +257,8 @@ ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin)
 	ldms_t l, next_l;
 	l = ldms_xprt_first();
 	while (l) {
+		if (!l->zap_ep)
+			goto next;
 		socklen = sizeof(ss_local);
 		zap_err_t zerr = zap_get_name(l->zap_ep,
 					      (struct sockaddr *)&ss_local,
