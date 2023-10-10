@@ -30,6 +30,7 @@ jobs:
     - name: build-ovis
       shell: bash
       run: |
+        git config --global --add safe.directory ${PWD}
         mkdir -p build
         PREFIX=/opt/ovis
         OPTIONS=(
