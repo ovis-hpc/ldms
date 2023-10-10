@@ -937,7 +937,7 @@ static int __recv_msg(struct z_sock_ep *sep)
 		/* allow big message */
 	} else {
 		if (mlen > SOCKBUF_SZ) {
-			DEBUG_LOG(sep, "%d ep: %p, RECV invalid message length: %u\n",
+			DEBUG_LOG(sep, "%ld ep: %p, RECV invalid message length: %u\n",
 				  GETTID(), sep, mlen);
 			rc = EINVAL;
 			from_line = __LINE__;
