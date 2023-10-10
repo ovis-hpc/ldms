@@ -182,12 +182,16 @@ uint64_t rail_gn = 1;
 int __stream_buf_cmp(void *tree_key, const void *key);
 int __str_rbn_cmp(void *tree_key, const void *key);
 
+/* The implementation is in ldms_xprt.c. */
+zap_t __ldms_zap_get(const char *xprt);
+
 ldms_t ldms_xprt_rail_new(const char *xprt_name,
 			  int n, int64_t recv_limit, int64_t rate_limit,
 			  const char *auth_name,
 			  struct attr_value_list *auth_av_list)
 {
 	ldms_rail_t r;
+	zap_t zap;
 	int i;
 
 	if (n <= 0) {
@@ -239,11 +243,17 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 		rbt_init(&r->eps[i].sbuf_rbt, __stream_buf_cmp);
 	}
 
-	r->eps[0].ep = __ldms_xprt_new_with_auth(r->name, r->auth_name, r->auth_av_list);
-	if (!r->eps[0].ep)
+	zap = __ldms_zap_get(xprt_name);
+	if (!zap) {
 		goto err_1;
-	ldms_xprt_ctxt_set(r->eps[0].ep, &r->eps[0], NULL);
-	r->max_msg = r->eps[0].ep->max_msg;
+	}
+	r->max_msg = zap_max_msg(zap);
+
+//	r->eps[0].ep = __ldms_xprt_new_with_auth(r->name, r->auth_name, r->auth_av_list);
+//	if (!r->eps[0].ep)
+//		goto err_1;
+//	ldms_xprt_ctxt_set(r->eps[0].ep, &r->eps[0], NULL);
+//	r->max_msg = r->eps[0].ep->max_msg;
 
 	/* The other endpoints will be created later in connect() or
 	 * __rail_zap_handle_conn_req() */
@@ -612,9 +622,9 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 			pthread_mutex_unlock(&__rail_mutex);
 			goto err_0;
 		}
-		/* drop the unused first initial endpoint */
-		ldms_xprt_put(r->eps[0].ep);
-		r->eps[0].ep = NULL;
+//		/* drop the unused first initial endpoint */
+//		ldms_xprt_put(r->eps[0].ep);
+//		r->eps[0].ep = NULL;
 
 		r->xtype = LDMS_XTYPE_PASSIVE_RAIL;
 		r->state = LDMS_RAIL_EP_ACCEPTING;
@@ -788,11 +798,7 @@ static int __rail_connect(ldms_t _r, struct sockaddr *sa, socklen_t sa_len,
 
 	for (i = 0; i < r->n_eps; i++) {
 		rep = &r->eps[i];
-		if (i) {
-			x = __ldms_xprt_new_with_auth(r->name, r->auth_name, r->auth_av_list);
-		} else {
-			x = r->eps[i].ep;
-		}
+		x = __ldms_xprt_new_with_auth(r->name, r->auth_name, r->auth_av_list);
 		if (!x) {
 			rc = errno;
 			goto err;
@@ -838,10 +844,14 @@ static int __rail_listen(ldms_t _r, struct sockaddr *sa, socklen_t sa_len,
 	if (r->state != LDMS_RAIL_EP_INIT)
 		return EINVAL;
 	/* 1 listening endpoint */
-	x = r->eps[0].ep;
-	if (!x) {
-		return EINVAL;
+	r->eps[0].ep = __ldms_xprt_new_with_auth(r->name, r->auth_name, r->auth_av_list);
+	if (!r->eps[0].ep) {
+		r->state = LDMS_RAIL_EP_ERROR;
+		rc = errno;
+		return rc;
 	}
+	ldms_xprt_ctxt_set(r->eps[0].ep, &r->eps[0], NULL);
+	x = r->eps[0].ep;
 	r->xtype = LDMS_XTYPE_PASSIVE_RAIL;
 	r->state = LDMS_RAIL_EP_LISTENING;
 	r->event_cb = cb;
@@ -1032,7 +1042,7 @@ static int __rail_send(ldms_t _r, char *msg_buf, size_t msg_len)
 static size_t __rail_msg_max(ldms_t _r)
 {
 	ldms_rail_t r = (ldms_rail_t)_r;
-	return ldms_xprt_msg_max(r->eps[0].ep);
+	return r->max_msg;
 }
 
 /* interposer */
