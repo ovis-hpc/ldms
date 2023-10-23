@@ -322,6 +322,7 @@ typedef struct ldmsd_prdcr_set {
 	uint8_t updt_sync;
 
 	struct ldmsd_stat updt_stat;
+	struct ldmsd_stat store_stat;
 	int skipped_upd_cnt;
 	int oversampled_cnt;
 
