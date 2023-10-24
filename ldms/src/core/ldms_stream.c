@@ -71,10 +71,21 @@
 #include "ovis_json/ovis_json.h"
 #include "coll/rbt.h"
 #include "ovis_ref/ref.h"
+#include "ovis_log/ovis_log.h"
 
 #include "ldms.h"
 #include "ldms_rail.h"
 #include "ldms_stream.h"
+
+static ovis_log_t __ldms_stream_log = NULL; /* see __ldms_stream_init() below */
+
+#define __LOG(LVL, FMT, ...) ovis_log(__ldms_stream_log, LVL, FMT, ##__VA_ARGS__ );
+
+
+#define __DEBUG(FMT, ...) __LOG(OVIS_LDEBUG, FMT, ##__VA_ARGS__)
+#define __INFO(FMT, ...) __LOG(OVIS_LINFO, FMT, ##__VA_ARGS__)
+#define __WARN(FMT, ...) __LOG(OVIS_LWARN, FMT, ##__VA_ARGS__)
+#define __ERROR(FMT, ...) __LOG(OVIS_LERROR, FMT, ##__VA_ARGS__)
 
 #define __TIMESPEC_MIN ( (struct timespec){0, 0} )
 #define __TIMESPEC_MAX ( (struct timespec){INT64_MAX, 999999999} )
@@ -343,6 +354,7 @@ __stream_get(const char *stream_name, int *is_new)
 
 static void __sce_ref_free(void *arg)
 {
+	__DEBUG("sce %p: free\n", arg);
 	free(arg);
 }
 
@@ -371,6 +383,9 @@ __client_stream_bind(ldms_stream_client_t c, struct ldms_stream_s *s)
 	LDMS_STREAM_COUNTERS_INIT(&sce->tx);
 	LDMS_STREAM_COUNTERS_INIT(&sce->drops);
 
+	__DEBUG("sce %p: bind stream '%s' - client '%s' match '%s'\n",
+			sce, s->name, c->desc, c->match);
+
 	return 0;
 }
 
@@ -379,21 +394,27 @@ __client_stream_unbind(struct ldms_stream_client_entry_s *sce)
 {
 	struct ldms_stream_client_s *c;
 	struct ldms_stream_s *s;
+
 	c = sce->client;
 	s = sce->stream;
 
+	if (!c || !s)
+		return; /* no-op */
+
+	/* Unbind the client and stream from the entry.
+	 * The sce list entry is not removed from either list */
+	__DEBUG("sce %p: unbind stream '%s' - client '%s' match '%s'\n",
+			sce, s->name, c->desc, c->match);
+
 	pthread_rwlock_wrlock(&c->rwlock);
-	TAILQ_REMOVE(&c->stream_tq, sce, client_stream_entry);
+	sce->stream = NULL;
 	pthread_rwlock_unlock(&c->rwlock);
-	ref_put(&sce->ref, "client_stream_entry");
 
 	pthread_rwlock_wrlock(&s->rwlock);
 	sce->client = NULL;
-	TAILQ_REMOVE(&s->client_tq, sce, stream_client_entry);
 	pthread_rwlock_unlock(&s->rwlock);
 
 	ref_put(&c->ref, "client_entry");
-	ref_put(&sce->ref, "stream_client_entry");
 }
 
 void  __counters_update(struct ldms_stream_counters_s *ctr,
@@ -416,7 +437,7 @@ __stream_deliver(struct ldms_addr *src, uint64_t msg_gn,
 		 ldms_cred_t cred, uint32_t perm,
 		 const char *data, size_t data_len)
 {
-	int rc = 0;
+	int rc = 0, gc;
 	struct ldms_stream_s *s;
 	struct ldms_stream_client_entry_s *sce, *next_sce;
 	struct ldms_stream_client_s *c;
@@ -478,12 +499,14 @@ __stream_deliver(struct ldms_addr *src, uint64_t msg_gn,
 	pthread_rwlock_unlock(&s->rwlock);
  skip_stats:
 
+	gc = 0;
 	pthread_rwlock_rdlock(&s->rwlock);
-	sce = TAILQ_FIRST(&s->client_tq);
-	while (sce) {
-		next_sce = TAILQ_NEXT(sce, stream_client_entry);
+	TAILQ_FOREACH(sce, &s->client_tq, stream_client_entry) {
 		c = sce->client;
-		assert(c);
+		if (!c) {
+			gc = 1;
+			continue;
+		}
 		if (!json && stream_type == LDMS_STREAM_JSON && !c->x) {
 			/* json object is only required to parse once for
 			 * the local client */
@@ -516,13 +539,27 @@ __stream_deliver(struct ldms_addr *src, uint64_t msg_gn,
 		}
 		ref_put(&c->ref, "callback");
 		pthread_rwlock_rdlock(&s->rwlock);
-		sce = next_sce;
 	}
 
  cleanup:
 	if (json)
 		json_entity_free(json);
 	pthread_rwlock_unlock(&s->rwlock);
+	if (gc) {
+		/* remove unbound sce from s->client_tq */
+		pthread_rwlock_wrlock(&s->rwlock);
+		sce = TAILQ_FIRST(&s->client_tq);
+		while (sce) {
+			next_sce = TAILQ_NEXT(sce, stream_client_entry);
+			if (sce->client)
+				goto next;
+			TAILQ_REMOVE(&s->client_tq, sce, stream_client_entry);
+			ref_put(&sce->ref, "stream_client_entry");
+		next:
+			sce = next_sce;
+		}
+		pthread_rwlock_unlock(&s->rwlock);
+	}
  out:
 	return rc;
 }
@@ -772,7 +809,12 @@ int ldms_stream_publish(ldms_t x, const char *stream_name,
 static void __client_ref_free(void *arg)
 {
 	struct ldms_stream_client_s *c = arg;
-	assert( TAILQ_EMPTY(&c->stream_tq) );
+	struct ldms_stream_client_entry_s *sce;
+	while ((sce = TAILQ_FIRST(&c->stream_tq))) {
+		assert(sce->stream == NULL);
+		TAILQ_REMOVE(&c->stream_tq, sce, client_stream_entry);
+		ref_put(&sce->ref, "client_stream_entry");
+	}
 	if (c->is_regex) {
 		regfree(&c->regex);
 	}
@@ -817,7 +859,7 @@ __client_subscribe(struct ldms_stream_client_s *c)
 
  err_1:
 	/* unbind client from streams */
-	while ((sce = TAILQ_FIRST(&c->stream_tq))) {
+	TAILQ_FOREACH(sce, &c->stream_tq, client_stream_entry) {
 		__client_stream_unbind(sce);
 	}
 	if (c->is_regex) {
@@ -914,7 +956,7 @@ void ldms_stream_close(ldms_stream_client_t c)
 
 	__STREAM_WRLOCK();
 	/* unbind from all streams it subscried to */
-	while ((sce = TAILQ_FIRST(&c->stream_tq))) {
+	TAILQ_FOREACH(sce, &c->stream_tq, client_stream_entry) {
 		__client_stream_unbind(sce);
 	}
 	if (c->is_regex) {
@@ -1986,4 +2028,14 @@ int ldms_stream_publish_file(ldms_t x, const char *stream_name,
 	if (buff)
 		free(buff);
 	return rc;
+}
+
+__attribute__((constructor))
+static void __ldms_stream_init()
+{
+	static int once = 0;
+	if (once)
+		return ;
+	__ldms_stream_log = ovis_log_register("ldms.stream", "LDMS Stream Library");
+	once = 1;
 }
