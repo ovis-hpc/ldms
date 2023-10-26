@@ -1125,6 +1125,7 @@ struct zap_thrstat_result *zap_thrstat_get_result()
 		res->entries[i].n_eps = t->n_eps;
 		res->entries[i].sq_sz = t->sq_sz;
 		res->entries[i].thread_id = t->thread_id;
+		res->entries[i].tid = t->tid;
 		res->entries[i].pool_idx = t->pool_idx;
 		i += 1;
 	}
@@ -1148,6 +1149,11 @@ void zap_thrstat_free_result(struct zap_thrstat_result *res)
 pthread_t zap_ep_thread(zap_ep_t ep)
 {
 	return ep->thread?ep->thread->thread:0;
+}
+
+pid_t zap_ep_thread_id(zap_ep_t ep)
+{
+	return ep->thread?ep->thread->stat->tid:-1;
 }
 
 static int zap_initialized = 0;

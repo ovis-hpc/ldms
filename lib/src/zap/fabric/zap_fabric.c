@@ -48,6 +48,7 @@
  */
 #define _GNU_SOURCE
 #include <sys/errno.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -2557,6 +2558,8 @@ static void *z_fi_io_thread_proc(void *arg)
 	struct z_fi_ep *cq_reps[N_EV], *rep;
 	struct z_fi_ep *cm_reps[N_EV];
 	struct z_fi_epoll_ctxt *ctxt;
+
+	thr->zap_io_thread.stat->tid = syscall(SYS_gettid);
 
 	sigfillset(&sigset);
 	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);

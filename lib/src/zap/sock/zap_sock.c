@@ -63,6 +63,7 @@
 #include <endian.h>
 #include <signal.h>
 #include <sys/syscall.h>
+#include <sys/types.h>
 #include "coll/rbt.h"
 #include "ovis_util/os_util.h"
 #include "ovis_log/ovis_log.h"
@@ -1448,6 +1449,8 @@ static void *io_thread_proc(void *arg)
 	int rc, n, i;
 	sigset_t sigset;
 	struct z_sock_ep *sep;
+
+	thr->zap_io_thread.stat->tid = syscall(SYS_gettid);
 
 	pthread_cleanup_push(io_thread_cleanup, arg);
 
