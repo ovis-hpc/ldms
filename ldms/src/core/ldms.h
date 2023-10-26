@@ -2634,6 +2634,15 @@ extern int ldms_set_info_traverse(ldms_set_t s, ldms_set_info_traverse_cb_fn cb,
 							int flag, void *cb_arg);
 
 /**
+ * \brief Return the thread ID handles the lookup and update complete events of the set
+ *
+ * \param s     The set handle
+ *
+ * \return The thread ID. -1 is returned if the set is not created by lookup.
+ */
+extern pid_t ldms_set_thread_id_get(ldms_set_t s);
+
+/**
  * \brief Add a metric to schema
  *
  * Adds a metric to a metric set schema. The \c name of the metric must be
