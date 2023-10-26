@@ -1291,6 +1291,44 @@ out:
 	return rc;
 }
 
+/* a - b */
+double ts_diff_usec(struct timespec *a, struct timespec *b)
+{
+	double aa = a->tv_sec*1e9 + a->tv_nsec;
+	double bb = b->tv_sec*1e9 + b->tv_nsec;
+	return (aa - bb)/1e3; /* make it usec */
+}
+
+void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct timespec *end)
+{
+	if (start->tv_sec == 0) {
+		/*
+		 * The counter and the start time got reset to zero, so
+		 * the stat cannot be calculated this time.
+		 */
+		return;
+	}
+	double dur = ts_diff_usec(end, start);
+	stat->count++;
+	if (1 == stat->count) {
+		stat->avg = stat->min = stat->max = dur;
+		stat->min_ts.tv_sec = stat->max_ts.tv_sec = end->tv_sec;
+		stat->min_ts.tv_nsec = stat->max_ts.tv_nsec = end->tv_nsec;
+	} else {
+		stat->avg = (stat->avg * ((stat->count - 1.0)/stat->count)) + (dur/stat->count);
+		if (stat->min > dur) {
+			stat->min = dur;
+			stat->min_ts.tv_sec = end->tv_sec;
+			stat->min_ts.tv_nsec = end->tv_nsec;
+		} else if (stat->max < dur) {
+			stat->max = dur;
+			stat->max_ts.tv_sec = end->tv_sec;
+			stat->max_ts.tv_nsec = end->tv_nsec;
+		}
+	}
+}
+
+
 void *event_proc(void *v)
 {
 	ovis_scheduler_t os = v;
