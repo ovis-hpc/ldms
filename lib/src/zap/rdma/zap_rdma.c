@@ -2654,6 +2654,8 @@ static void *z_rdma_io_thread_proc(void *arg)
 	struct z_rdma_epoll_ctxt *ctxt;
 	struct z_rdma_epoll_ctxt *cm_ctxt[16];
 
+	thr->zap_io_thread.stat->tid = syscall(SYS_gettid);
+
 	sigfillset(&sigset);
 	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 	if (rc) {

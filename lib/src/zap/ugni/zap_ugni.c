@@ -3610,6 +3610,8 @@ static void *z_ugni_io_thread_proc(void *arg)
 	struct epoll_event ev[N_EV];
 	int was_not_empty;
 
+	thr->zap_io_thread.stat->tid = syscall(SYS_gettid);
+
 	pthread_cleanup_push(z_ugni_io_thread_cleanup, thr);
 
  loop:

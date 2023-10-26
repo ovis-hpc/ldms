@@ -869,6 +869,7 @@ struct zap_thrstat_result_entry {
 	uint64_t sq_sz;			/*< Send queue size */
 	int pool_idx;			/*< Thread pool index */
 	uint64_t thread_id;		/*< The thread ID (pthread_t) */
+	pid_t tid;			/*< The Linux Thread ID (gettid()) */
 };
 
 struct zap_thrstat_result {
@@ -924,5 +925,15 @@ static inline int64_t zap_timespec_diff_us(struct timespec *start, struct timesp
  * \retval thread_id The thread ID associated to the endpoint
  */
 pthread_t zap_ep_thread(zap_ep_t ep);
+
+/**
+ * Get the Linux Thread ID of the thread associated with the endpoint.
+ *
+ * The returned Thread ID is the value returned by gettid() and
+ * it is the same as the Thread ID reported by the top command.
+ *
+ * \return The Linux thread id
+ */
+pid_t zap_ep_thread_id(zap_ep_t ep);
 
 #endif

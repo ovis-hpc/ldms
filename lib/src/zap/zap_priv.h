@@ -492,6 +492,7 @@ zap_err_t zap_io_thread_ep_release(zap_ep_t ep);
  */
 struct zap_thrstat {
 	char *name;
+	pid_t tid; /* This is the thread ID returned by gettid(). */
 	uint64_t window_size;
 	struct timespec start;
 	struct timespec wait_start;
