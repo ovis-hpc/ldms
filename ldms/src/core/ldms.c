@@ -3694,6 +3694,16 @@ out:
 	return rc;
 }
 
+pid_t ldms_set_thread_id_get(ldms_set_t s)
+{
+	struct ldms_xprt *x;
+
+	if (!s->xprt)
+		return -1;
+	x = (struct ldms_xprt *)s->xprt;
+	return zap_ep_thread_id(x->zap_ep);
+}
+
 void ldms_version_get(struct ldms_version *v)
 {
 	LDMS_VERSION_SET(*v);
