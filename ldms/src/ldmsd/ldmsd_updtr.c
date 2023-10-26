@@ -60,14 +60,6 @@
 #include "ldms_xprt.h"
 #include "config.h"
 
-/* a - b */
-static inline double ts_diff_usec(struct timespec *a, struct timespec *b)
-{
-	double aa = a->tv_sec*1e9 + a->tv_nsec;
-	double bb = b->tv_sec*1e9 + b->tv_nsec;
-	return (aa - bb)/1e3; /* make it usec */
-}
-
 /* Defined in ldmsd.c */
 extern ovis_log_t updtr_log;
 
@@ -219,29 +211,6 @@ static void updtr_task_set_reset(ldmsd_updtr_task_t task)
 	task->set_count = 0;
 }
 
-static inline void
-__stats(struct ldmsd_stat *stat, struct timespec *start, struct timespec *end)
-{
-	if (start->tv_sec == 0) {
-		/*
-		 * The counter and the start time got reset to zero, so
-		 * the stat cannot be calculated this time.
-		 */
-		return;
-	}
-	double dur = ts_diff_usec(end, start);
-	stat->count++;
-	if (1 == stat->count) {
-		stat->avg = stat->min = stat->max = dur;
-	} else {
-		stat->avg = (stat->avg * ((stat->count - 1.0)/stat->count)) + (dur/stat->count);
-		if (stat->min > dur)
-			stat->min = dur;
-		else if (stat->max < dur)
-			stat->max = dur;
-	}
-}
-
 static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 {
 	uint64_t gn, push_it = 0;
@@ -252,7 +221,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 
 	pthread_mutex_lock(&prd_set->lock);
 	clock_gettime(CLOCK_REALTIME, &prd_set->updt_stat.end);
-	__stats(&prd_set->updt_stat, &prd_set->updt_stat.start, &prd_set->updt_stat.end);
+	ldmsd_stat_update(&prd_set->updt_stat, &prd_set->updt_stat.start, &prd_set->updt_stat.end);
 
 	errcode = LDMS_UPD_ERROR(status);
 	ovis_log(updtr_log, OVIS_LDEBUG, "Update complete for Set %s with status %#x\n",
@@ -292,8 +261,8 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 		clock_gettime(CLOCK_REALTIME, &start);
 		strgp->update_fn(strgp, prd_set);
 		clock_gettime(CLOCK_REALTIME, &end);
-		__stats(&strgp->stat, &start, &end);
-		__stats(&prd_set->store_stat, &start, &end);
+		ldmsd_stat_update(&strgp->stat, &start, &end);
+		ldmsd_stat_update(&prd_set->store_stat, &start, &end);
 		ldmsd_strgp_unlock(strgp);
 	}
 set_ready:
@@ -583,6 +552,7 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 		if (__setgrp_members_lookup(prd_set))
 			goto out;
 	}
+	prd_set->zap_thread_id = ldms_set_thread_id_get(set);
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 	ovis_log(updtr_log, OVIS_LINFO, "Set %s is ready\n", prd_set->inst_name);
 	ldmsd_strgp_update(prd_set);
@@ -595,6 +565,8 @@ out:
 	return;
 }
 
+/* Implemented in ldmsd.c */
+extern double ts_diff_usec(struct timespec *a, struct timespec *b);
 static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 				   ldmsd_prdcr_t prdcr, ldmsd_name_match_t match)
 {

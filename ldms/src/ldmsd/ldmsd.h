@@ -289,7 +289,9 @@ struct ldmsd_stat {
 	struct timespec start;
 	struct timespec end;
 	double min;
+	struct timespec min_ts;
 	double max;
+	struct timespec max_ts;
 	double avg;
 	int count;
 };
@@ -325,6 +327,7 @@ typedef struct ldmsd_prdcr_set {
 	struct ldmsd_stat store_stat;
 	int skipped_upd_cnt;
 	int oversampled_cnt;
+	uint64_t zap_thread_id; /* A thread handling the update completion event. */
 
 	int ref_count;
 	struct timespec lookup_complete_ts;
@@ -1423,4 +1426,6 @@ size_t Snprintf(char **dst, size_t *len, char *fmt, ...);
 
 __attribute__((format(printf, 2, 3)))
 int linebuf_printf(struct ldmsd_req_ctxt *reqc, char *fmt, ...);
+
+void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct timespec *end);
 #endif
