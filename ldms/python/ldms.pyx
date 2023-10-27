@@ -3647,24 +3647,34 @@ cdef class Xprt(object):
         cdef sem_t sem
         cdef ldms_stream_event_cb_t _cb
         cdef _StreamSubCtxt ctxt = _StreamSubCtxt()
+        cdef char *c_match
+        cdef int c_is_regex
         ctxt.cb = cb
         ctxt.cb_arg = cb_arg
+        match = BYTES(match)
+        c_match = match
+        c_is_regex = is_regex
 
-        if cb is None:
-            sem_init(&ctxt.sem, 0, 0)
-            rc = ldms_stream_remote_unsubscribe(self.xprt, BYTES(match), is_regex,
-                    __stream_block_cb, <void*>ctxt)
-            if rc:
-                raise StreamSubscribeError(f"ldms_stream_remote_unsubscribe() error, rc: {rc}")
-            sem_wait(&ctxt.sem)
-            if ctxt.rc:
-                raise StreamSubscribeError(f"stream remote subscription error: {ctxt.rc}")
-        else:
-            Py_INCREF(ctxt)
-            rc = ldms_stream_remote_unsubscribe(self.xprt, BYTES(match), is_regex,
-                    __stream_wrap_cb, <void*>ctxt)
-            if rc:
-                raise StreamSubscribeError(f"ldms_stream_remote_unsubscribe() error, rc: {rc}")
+        with nogil:
+            if cb is None:
+                sem_init(&ctxt.sem, 0, 0)
+                rc = ldms_stream_remote_unsubscribe(self.xprt, c_match, c_is_regex,
+                        __stream_block_cb, <void*>ctxt)
+                if rc:
+                    with gil:
+                        raise StreamSubscribeError(f"ldms_stream_remote_unsubscribe() error, rc: {rc}")
+                sem_wait(&ctxt.sem)
+                if ctxt.rc:
+                    with gil:
+                        raise StreamSubscribeError(f"stream remote unsubscription error: {ctxt.rc}")
+            else:
+                with gil:
+                    Py_INCREF(ctxt)
+                rc = ldms_stream_remote_unsubscribe(self.xprt, c_match, c_is_regex,
+                        __stream_wrap_cb, <void*>ctxt)
+                if rc:
+                    with gil:
+                        raise StreamSubscribeError(f"ldms_stream_remote_unsubscribe() error, rc: {rc}")
 
     def get_addr(self):
         """Get the local socket Internet address in ((LOCAL_ADDR, LOCAL_PORT), (REMOTE_ADDR, REMOTE_PORT))"""
