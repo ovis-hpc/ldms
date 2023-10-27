@@ -4141,3 +4141,31 @@ cdef class ZapThrStat(object):
 
     def __repr__(self):
         return str(self)
+
+LOG_LEVEL_MAP = {
+        "LDEFAULT":  LDEFAULT,
+        "LQUIET":    LQUIET,
+        "LDEBUG":    LDEBUG,
+        "LINFO":     LINFO,
+        "LWARN":     LWARN,
+        "LWARNING":  LWARNING,
+        "LERROR":    LERROR,
+        "LCRITICAL": LCRITICAL,
+        "LCRIT":     LCRIT,
+
+        "DEFAULT":  LDEFAULT,
+        "QUIET":    LQUIET,
+        "DEBUG":    LDEBUG,
+        "INFO":     LINFO,
+        "WARN":     LWARN,
+        "WARNING":  LWARNING,
+        "ERROR":    LERROR,
+        "CRITICAL": LCRITICAL,
+        "CRIT":     LCRIT,
+        }
+
+def ovis_log_set_level_by_name(str subsys_name, level):
+    """ovis_log_set_level_by_name(str subsys_name, level)"""
+    if type(level) is str:
+        level = LOG_LEVEL_MAP[level.upper()]
+    ldms.ovis_log_set_level_by_name(BYTES(subsys_name), level)

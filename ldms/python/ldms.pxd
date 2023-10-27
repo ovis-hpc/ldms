@@ -229,6 +229,30 @@ cdef extern from "ovis_util/util.h" nogil:
     int av_add(attr_value_list *avl, const char *name, const char *value)
     void av_free(attr_value_list *avl)
 
+cdef extern from "ovis_log/ovis_log.h" nogil:
+    cpdef enum:
+        OVIS_LDEFAULT
+        OVIS_LQUIET
+        OVIS_LDEBUG
+        OVIS_LINFO
+        OVIS_LWARN
+        OVIS_LWARNING
+        OVIS_LERROR
+        OVIS_LCRITICAL
+        OVIS_LCRIT
+
+        LDEFAULT  "OVIS_LDEFAULT"
+        LQUIET    "OVIS_LQUIET"
+        LDEBUG    "OVIS_LDEBUG"
+        LINFO     "OVIS_LINFO"
+        LWARN     "OVIS_LWARN"
+        LWARNING  "OVIS_LWARNING"
+        LERROR    "OVIS_LERROR"
+        LCRITICAL "OVIS_LCRITICAL"
+        LCRIT     "OVIS_LCRIT"
+
+    int ovis_log_set_level_by_name(const char *subsys_name, int level)
+
 cdef extern from "ldms_rail.h" nogil:
     cpdef enum :
         __RAIL_UNLIMITED
