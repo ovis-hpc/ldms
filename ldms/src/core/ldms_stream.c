@@ -1368,7 +1368,7 @@ void __stream_reply_recv(ldms_t x, int cmd, struct ldms_reply *reply)
 		__process_stream_subunsub_reply(x, reply, LDMS_STREAM_EVENT_SUBSCRIBE_STATUS);
 		break;
 	case LDMS_CMD_STREAM_UNSUB_REPLY:
-		__process_stream_subunsub_reply(x, reply, LDMS_STREAM_EVENT_SUBSCRIBE_STATUS);
+		__process_stream_subunsub_reply(x, reply, LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS);
 		break;
 	default:
 		assert(0 == "Unexpected reply");
