@@ -1841,6 +1841,8 @@ struct ldms_stream_client_stats_tq_s *ldms_stream_client_stats_tq_get()
 		pthread_rwlock_rdlock(&s->rwlock);
 		TAILQ_FOREACH(sce, &s->client_tq, stream_client_entry) {
 			cli = sce->client;
+			if (!cli)
+				continue;
 			if (cli->is_regex)
 				continue; /* already handled above */
 			cs = ldms_stream_client_get_stats(cli);
