@@ -208,7 +208,7 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		return;
 	}
 	strgp_decompose(strgp, prd_set);
-	goto out;
+	return;
 
 	/* store() interface routine */
  store_routine:
@@ -218,7 +218,6 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	}
 	strgp->store->store(strgp->store_handle, prd_set->set,
 			    strgp->metric_arry, strgp->metric_count);
- out:
 	if (strgp->flush_interval.tv_sec || strgp->flush_interval.tv_nsec) {
 		struct timespec expiry;
 		struct timespec now;
