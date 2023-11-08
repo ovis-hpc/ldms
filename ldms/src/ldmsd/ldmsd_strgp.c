@@ -519,17 +519,17 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	int i, idx, rc;
 	const char *name;
 	ldmsd_strgp_metric_t metric;
-	struct ldmsd_plugin_cfg *store;
+	struct ldmsd_plugin *pi;
 	int alloc_digest = 0;
 
 	if (!prd_set->set)
 		return ENOENT;
 
 	if (!strgp->store) {
-		store = ldmsd_get_plugin(strgp->plugin_name);
-		if (!store)
+		pi = ldmsd_get_plugin(strgp->plugin_name);
+		if (!pi)
 			return ENOENT;
-		strgp->store = store->store;
+		strgp->store = container_of(pi, struct ldmsd_store, base);
 	}
 	/* Build metric list from the schema in the producer set */
 	strgp->metric_count = 0;
@@ -611,11 +611,11 @@ int strgp_decomp_init(ldmsd_strgp_t strgp, ldmsd_req_ctxt_t reqc)
 
 	if (!strgp->store) {
 		/* load store */
-		struct ldmsd_plugin_cfg *store;
-		store = ldmsd_get_plugin(strgp->plugin_name);
-		if (!store)
+		struct ldmsd_plugin *pi;
+		pi = ldmsd_get_plugin(strgp->plugin_name);
+		if (!pi)
 			return ENOENT;
-		strgp->store = store->store;
+		strgp->store = container_of(pi, struct ldmsd_store, base);
 	}
 	assert(!strgp->decomp);
 	return ldmsd_decomp_config(strgp, strgp->decomp_name, reqc);
@@ -795,7 +795,7 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_strgp_t strgp;
-	struct ldmsd_plugin_cfg *pi;
+	struct ldmsd_plugin *pi = NULL;
 
 	pthread_mutex_lock(cfgobj_locks[LDMSD_CFGOBJ_STRGP]);
 	strgp = (ldmsd_strgp_t)__cfgobj_find(strgp_name, LDMSD_CFGOBJ_STRGP);
@@ -818,8 +818,7 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 	}
 
 	/* Put back the reference taken when linking the plugin to the strgp. */
-	pi = strgp->store->base.pi;
-	__atomic_sub_fetch(&pi->ref_count, 1, __ATOMIC_SEQ_CST);
+	pi = &strgp->store->base;
 
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STRGP], &strgp->obj.rbn);
 	ldmsd_strgp_put(strgp); /* tree reference */
@@ -835,6 +834,8 @@ out_0:
 	pthread_mutex_unlock(cfgobj_locks[LDMSD_CFGOBJ_STRGP]);
 	if (strgp)
 		ldmsd_strgp_put(strgp); /* `find` reference */
+	if (pi)
+		ldmsd_put_plugin(pi);
 	return rc;
 }
 

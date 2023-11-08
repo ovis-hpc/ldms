@@ -90,35 +90,203 @@ LIST_HEAD(host_list_s, hostspec) host_list;
 pthread_mutex_t sp_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define LDMSD_PLUGIN_LIBPATH_MAX	1024
-struct plugin_list plugin_list;
 
 void ldmsd_cfg_ldms_xprt_cleanup(ldmsd_cfg_xprt_t xprt)
 {
 	/* nothing to do */
 }
 
-struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name)
+struct ldmsd_plugin *ldmsd_get_plugin(const char *inst_name)
 {
-	struct ldmsd_plugin_cfg *p;
-	LIST_FOREACH(p, &plugin_list, entry) {
-		if (0 == strcmp(p->name, name))
-			return p;
-	}
-	return NULL;
+	struct ldmsd_cfgobj *obj = ldmsd_cfgobj_find(inst_name, LDMSD_CFGOBJ_PLUGIN);
+	return (struct ldmsd_plugin*)obj;
 }
 
-struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
+void ldmsd_put_plugin(struct ldmsd_plugin *pi)
+{
+	ldmsd_cfgobj_put(&pi->cfgobj);
+}
+
+void ldmsd_cfgobj_plugin_cleanup(struct ldmsd_cfgobj *obj)
+{
+	struct ldmsd_plugin *pi = container_of(obj, struct ldmsd_plugin, cfgobj);
+	struct avl_q_item *avl;
+	struct avl_q_item *kwl;
+
+	free(pi->cfgobj.name);
+
+	free(pi->libpath);
+	pi->libpath = NULL;
+
+	while ((avl = TAILQ_FIRST(&pi->avl_q))) {
+		TAILQ_REMOVE(&pi->avl_q, avl, entry);
+		free(avl->av_list);
+		free(avl);
+	}
+
+	while ((kwl = TAILQ_FIRST(&pi->kwl_q))) {
+		TAILQ_REMOVE(&pi->kwl_q, kwl, entry);
+		free(kwl->av_list);
+		free(kwl);
+	}
+}
+
+void ldmsd_sampler_cleanup(struct ldmsd_sampler *samp)
+{
+	ldmsd_cfgobj_plugin_cleanup(&samp->base.cfgobj);
+}
+
+void ldmsd_store_cleanup(struct ldmsd_store *store)
+{
+	ldmsd_cfgobj_plugin_cleanup(&store->base.cfgobj);
+}
+
+/*
+ * For old-style plugin that does not initalize cfgobj
+ */
+int ldmsd_plugin_cfgobj_init(struct ldmsd_plugin *pi, const char *inst_name)
+{
+	struct ldmsd_cfgobj *obj = &pi->cfgobj;
+
+	obj->name = strdup(inst_name);
+	if (!obj->name)
+		return ENOMEM;
+
+	obj->gid = getegid();
+	obj->uid = geteuid();
+	obj->perm = 0770;
+
+	pthread_mutex_init(&obj->lock, NULL);
+	obj->ref_count = 1;
+	obj->type = LDMSD_CFGOBJ_PLUGIN;
+
+	obj->__del = ldmsd_cfgobj_plugin_cleanup;
+	return 0;
+}
+
+void ldmsd_plugin_init(struct ldmsd_plugin *pi)
+{
+	/* Initialize only the plugin part, leave the cfgobj alone */
+	TAILQ_INIT(&pi->avl_q);
+	TAILQ_INIT(&pi->kwl_q);
+}
+
+void ldmsd_sampler_init(struct ldmsd_sampler *samp)
+{
+	/* Initialize only the sampler part, leave the plugin alone, except type */
+	samp->base.type = LDMSD_PLUGIN_SAMPLER;
+	samp->os = NULL;
+	samp->thread_id = -1;
+	samp->sample_interval_us = 1000000;
+	samp->sample_offset_us   = 0;
+}
+
+void ldmsd_store_init(struct ldmsd_store *st)
+{
+	st->base.type = LDMSD_PLUGIN_STORE;
+}
+
+struct ldmsd_sampler *ldmsd_sampler_alloc(const char *name, size_t sz,
+		ldmsd_cfgobj_del_fn_t __del,
+		uid_t uid, gid_t gid, int perm)
+{
+	struct ldmsd_sampler *samp = NULL;
+
+	if (sz < sizeof(*samp)) {
+		errno = EINVAL;
+		goto out;
+	}
+
+	samp = (void*)ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_PLUGIN, sz,
+						 __del, uid, gid, perm);
+	if (!samp)
+		goto out;
+
+	ldmsd_plugin_init(&samp->base);
+	ldmsd_sampler_init(samp);
+
+ out:
+	return samp;
+}
+
+struct ldmsd_store *ldmsd_store_alloc(const char *name, size_t sz,
+		ldmsd_cfgobj_del_fn_t __del,
+		uid_t uid, gid_t gid, int perm)
+{
+	struct ldmsd_store *st = NULL;
+
+	if (sz < sizeof(*st)) {
+		errno = EINVAL;
+		goto out;
+	}
+
+	st = (void*)ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_PLUGIN, sz,
+						 __del, uid, gid, perm);
+	if (!st)
+		goto out;
+
+	ldmsd_plugin_init(&st->base);
+	ldmsd_store_init(st);
+
+ out:
+	return st;
+}
+
+/* These are for tracking the single instance plugins, preventing them from
+ * multiple `load` (but load, term, load is OK). */
+static int __plugin1_ent_cmp(void *tree_key, const void *key)
+{
+	return strcmp(tree_key, key);
+}
+static struct rbt __plugin1_rbt = RBT_INITIALIZER(__plugin1_ent_cmp);
+struct plugin1_ent {
+	struct rbn rbn;
+	struct ldmsd_plugin *p;
+};
+static pthread_mutex_t __plugin1_rbt_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+#define PLUGIN1_TREE_LOCK() pthread_mutex_lock(&__plugin1_rbt_mutex)
+#define PLUGIN1_TREE_UNLOCK() pthread_mutex_unlock(&__plugin1_rbt_mutex)
+
+static struct plugin1_ent *__plugin1_find(const char *name)
+{
+	return (void*)rbt_find(&__plugin1_rbt, name);
+}
+
+static struct plugin1_ent *__plugin1_ins(struct ldmsd_plugin *pi)
+{
+	struct plugin1_ent *ent;
+
+	ent = calloc(1, sizeof(*ent));
+	if (!ent)
+		return NULL;
+	ent->p = pi;
+	ldmsd_cfgobj_get(&pi->cfgobj);
+	rbn_init(&ent->rbn, pi->name);
+	rbt_ins(&__plugin1_rbt, &ent->rbn);
+	return ent;
+}
+
+static void __plugin1_del(struct plugin1_ent *ent)
+{
+	rbt_del(&__plugin1_rbt, &ent->rbn);
+	ldmsd_cfgobj_put(&ent->p->cfgobj);
+	free(ent);
+}
+
+struct ldmsd_plugin *new_plugin(const char *inst_name,
+				char *plugin_name,
 				char *errstr, size_t errlen)
 {
 	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
 	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
-	struct ldmsd_plugin *lpi;
-	struct ldmsd_plugin_cfg *pi = NULL;
+	struct ldmsd_plugin *pi = NULL;
 	char *pathdir = library_path;
 	char *libpath;
 	char *saveptr = NULL;
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
 	void *d = NULL;
+	int rc;
 
 	if (!path)
 		path = LDMSD_PLUGIN_LIBPATH_DEFAULT;
@@ -142,7 +310,7 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 				"'%s': dlerror %s\n", plugin_name, dlerr);
 			snprintf(errstr, errlen, "Bad plugin"
 				" '%s'. dlerror %s", plugin_name, dlerr);
-			goto err;
+			goto err_0;
 		}
 	}
 
@@ -152,81 +320,112 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 				"dlerror %s\n", plugin_name, dlerr);
 		snprintf(errstr, errlen, "Failed to load the plugin '%s'. "
 				"dlerror %s", plugin_name, dlerr);
-		goto err;
+		goto err_0;
 	}
 
-	ldmsd_plugin_get_f pget = dlsym(d, "get_plugin");
+	ldmsd_plugin_instance_get_f pi_get;
+	pi_get = dlsym(d, "get_plugin_instance");
+	if (pi_get) {
+		/* Plugin instance */
+		/* TODO uid, gid, perm ... */
+		pi = pi_get(inst_name, geteuid(), getegid(), 0770);
+		if (!pi) {
+			snprintf(errstr, errlen,
+				 "The plugin '%s' (%s) could not be loaded.",
+				 inst_name, plugin_name);
+			goto err_0;
+		}
+		/* The returned `pi` is locked, and it is already in the
+		 * plugin cfgobj tree. */
+		ldmsd_cfgobj_unlock(&pi->cfgobj);
+		goto out;
+	}
+
+	/* else, let through */
+
+	struct plugin1_ent *ent;
+
+	/* Old style plugin */
+	PLUGIN1_TREE_LOCK();
+	/* make sure that the single-instance plugins are not loaded multiple
+	 * times. */
+	ent = __plugin1_find(plugin_name);
+	if (ent) {
+		errno = EEXIST;
+		snprintf(errstr, errlen, "The library, '%s' does not support "
+			 "multiple instances." , plugin_name);
+		goto err_1;
+	}
+
+	ldmsd_plugin_get_f pget;
+	pget = dlsym(d, "get_plugin");
 	if (!pget) {
 		snprintf(errstr, errlen,
 			"The library, '%s',  is missing the get_plugin() "
 			 "function.", plugin_name);
-		goto err;
+		goto err_1;
 	}
-	lpi = pget();
-	if (!lpi) {
+	pi = pget();
+	if (!pi) {
 		snprintf(errstr, errlen, "The plugin '%s' could not be loaded.",
 								plugin_name);
-		goto err;
+		goto err_1;
 	}
-	pi = calloc(1, sizeof *pi);
-	if (!pi)
-		goto enomem;
-	pthread_mutex_init(&pi->lock, NULL);
-	pi->thread_id = -1;
-	pi->handle = d;
-	pi->name = strdup(plugin_name);
-	if (!pi->name)
-		goto enomem;
+	switch (pi->type) {
+	case LDMSD_PLUGIN_SAMPLER:
+		rc = ldmsd_plugin_cfgobj_init(pi, inst_name);
+		if (rc)
+			goto err_1;
+		ldmsd_sampler_init((void*)pi);
+		break;
+	case LDMSD_PLUGIN_STORE:
+		rc = ldmsd_plugin_cfgobj_init(pi, inst_name);
+		if (rc)
+			goto err_1;
+		ldmsd_store_init((void*)pi);
+		break;
+	default:
+		snprintf(errstr, errlen,
+			 "Plugin '%s' (%s) has an unknown type: %d.",
+			 inst_name, plugin_name, pi->type);
+		goto err_1;
+	}
 	pi->libpath = strdup(library_name);
-	if (!pi->libpath)
-		goto enomem;
-	pi->plugin = lpi;
-	TAILQ_INIT(&lpi->avl_q);
-	TAILQ_INIT(&lpi->kwl_q);
-	lpi->pi = pi;
-	pi->sample_interval_us = 1000000;
-	pi->sample_offset_us = 0;
-	LIST_INSERT_HEAD(&plugin_list, pi, entry);
+	if (!pi->libpath) {
+		snprintf(errstr, errlen, "No memory");
+		goto err_1;
+	}
+	TAILQ_INIT(&pi->avl_q);
+	TAILQ_INIT(&pi->kwl_q);
+	ent = __plugin1_ins(pi);
+	if (!ent) {
+		snprintf(errstr, errlen,
+			 "Cannot add plugin '%s', error: %d",
+			 plugin_name, errno);
+		goto err_1;
+	}
+	rc = ldmsd_cfgobj_add(&pi->cfgobj);
+	if (rc) {
+		snprintf(errstr, errlen,
+			 "Cannot add plugin instance '%s' (%s), error: %d",
+			 inst_name, plugin_name, rc);
+		goto err_2;
+	}
+	PLUGIN1_TREE_UNLOCK();
+out:
 	return pi;
-enomem:
-	snprintf(errstr, errlen, "No memory");
-err:
+
+err_2:
+	__plugin1_del(ent);
+err_1:
+	PLUGIN1_TREE_UNLOCK();
+err_0:
 	if (pi) {
-		pthread_mutex_destroy(&pi->lock);
-		if (pi->name)
-			free(pi->name);
-		if (pi->libpath)
-			free(pi->libpath);
-		free(pi);
+		ldmsd_cfgobj_put(&pi->cfgobj);
 	}
 	if (d)
 		dlclose(d);
 	return NULL;
-}
-
-void destroy_plugin(struct ldmsd_plugin_cfg *p)
-{
-	struct avl_q_item *avl;
-	struct avl_q_item *kwl;
-	free(p->libpath);
-	free(p->name);
-
-	/*
-	 * Assume that the length of av_list_q and
-	 * the length of kw_list_q are equal.
-	 */
-	while ((avl = TAILQ_FIRST(&p->plugin->avl_q)) &&
-			(kwl = TAILQ_FIRST(&p->plugin->kwl_q))) {
-		TAILQ_REMOVE(&p->plugin->avl_q, avl, entry);
-		TAILQ_REMOVE(&p->plugin->kwl_q, kwl, entry);
-		free(avl->av_list);
-		free(avl);
-		free(kwl->av_list);
-		free(kwl);
-	}
-	LIST_REMOVE(p, entry);
-	dlclose(p->handle);
-	free(p);
 }
 
 const char *prdcr_state_str(enum ldmsd_prdcr_state state)
@@ -277,15 +476,17 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 /*
  * Load a plugin
  */
-int ldmsd_load_plugin(char *plugin_name, char *errstr, size_t errlen)
+int ldmsd_load_plugin(const char *inst_name, char *plugin_name,
+		      char *errstr, size_t errlen)
 {
-	struct ldmsd_plugin_cfg *pi = ldmsd_get_plugin(plugin_name);
+	struct ldmsd_plugin *pi = ldmsd_get_plugin(inst_name);
 	if (pi) {
-		snprintf(errstr, errlen, "Plugin '%s' already loaded",
-							plugin_name);
+		snprintf(errstr, errlen, "Plugin '%s' (%s) already loaded",
+						inst_name, plugin_name);
+		ldmsd_put_plugin(pi);
 		return EEXIST;
 	}
-	pi = new_plugin(plugin_name, errstr, errlen);
+	pi = new_plugin(inst_name, plugin_name, errstr, errlen);
 	if (!pi)
 		return -1;
 	return 0;
@@ -294,25 +495,25 @@ int ldmsd_load_plugin(char *plugin_name, char *errstr, size_t errlen)
 /*
  * Destroy and unload the plugin
  */
-int ldmsd_term_plugin(char *plugin_name)
+int ldmsd_term_plugin(char *inst_name)
 {
 	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
+	struct ldmsd_plugin *pi;
 
-	pi = ldmsd_get_plugin(plugin_name);
+	pi = ldmsd_get_plugin(inst_name);
 	if (!pi)
 		return ENOENT;
 
-	pthread_mutex_lock(&pi->lock);
-	if (pi->ref_count) {
-		rc = EINVAL;
-		pthread_mutex_unlock(&pi->lock);
+	ldmsd_cfgobj_lock(&pi->cfgobj);
+	if (pi->type == LDMSD_PLUGIN_SAMPLER && LDMSD_SAMPLER(pi)->thread_id >= 0) {
+		rc = EBUSY;
 		goto out;
 	}
-	pi->plugin->term(pi->plugin);
-	pthread_mutex_unlock(&pi->lock);
-	destroy_plugin(pi);
+	pi->term(pi);
+	ldmsd_cfgobj_rm(&pi->cfgobj);
 out:
+	ldmsd_cfgobj_unlock(&pi->cfgobj);
+	ldmsd_put_plugin(pi);
 	return rc;
 }
 
@@ -324,7 +525,7 @@ int ldmsd_config_plugin(char *plugin_name,
 			struct attr_value_list *_kw_list)
 {
 	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
+	struct ldmsd_plugin *pi;
 	struct avl_q_item *avl;
 	struct avl_q_item *kwl;
 
@@ -341,11 +542,12 @@ int ldmsd_config_plugin(char *plugin_name,
 	if (!pi)
 		return ENOENT;
 
-	pthread_mutex_lock(&pi->lock);
-	rc = pi->plugin->config(pi->plugin, _kw_list, _av_list);
-	TAILQ_INSERT_TAIL(&pi->plugin->kwl_q, kwl, entry);
-	TAILQ_INSERT_TAIL(&pi->plugin->avl_q, avl, entry);
-	pthread_mutex_unlock(&pi->lock);
+	ldmsd_cfgobj_lock(&pi->cfgobj);
+	rc = pi->config(pi, _kw_list, _av_list);
+	TAILQ_INSERT_TAIL(&pi->kwl_q, kwl, entry);
+	TAILQ_INSERT_TAIL(&pi->avl_q, avl, entry);
+	ldmsd_cfgobj_unlock(&pi->cfgobj);
+	ldmsd_put_plugin(pi);
 	return rc;
 }
 
@@ -1286,19 +1488,19 @@ static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 			assert(suff != NULL || NULL == "plugin glob match means . will be found always");
 			*suff = '\0';
 			char err_str[LEN_ERRSTR];
-			if (ldmsd_load_plugin(b, err_str, LEN_ERRSTR)) {
+			if (ldmsd_load_plugin(b, b, err_str, LEN_ERRSTR)) {
 				fprintf(stderr, "Unable to load plugin %s: %s\n",
 					b, err_str);
 				goto next;
 			}
-			struct ldmsd_plugin_cfg *pi = ldmsd_get_plugin(b);
+			struct ldmsd_plugin *pi = ldmsd_get_plugin(b);
 			if (!pi) {
 				fprintf(stderr, "Unable to get plugin %s\n",
 					b);
 				goto next;
 			}
 			const char *ptype;
-			switch (pi->plugin->type) {
+			switch (pi->type) {
 			case LDMSD_PLUGIN_OTHER:
 				ptype = "OTHER";
 				break;
@@ -1312,10 +1514,10 @@ static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 				ptype = "BAD plugin";
 				break;
 			}
-			if (matchtype && tmatch != pi->plugin->type)
+			if (matchtype && tmatch != pi->type)
 				goto next;
 			printf("======= %s %s:\n", ptype, b);
-			const char *u = pi->plugin->usage(pi->plugin);
+			const char *u = pi->usage(pi);
 			printf("%s\n", u);
 			printf("=========================\n");
 			rc = ldmsd_term_plugin(b);

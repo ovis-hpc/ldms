@@ -148,11 +148,14 @@ typedef struct ldmsd_sec_ctxt {
 } *ldmsd_sec_ctxt_t;
 
 typedef enum ldmsd_cfgobj_type {
-	LDMSD_CFGOBJ_PRDCR = 1,
+	LDMSD_CFGOBJ_FIRST = 1,
+	LDMSD_CFGOBJ_PRDCR = LDMSD_CFGOBJ_FIRST,
 	LDMSD_CFGOBJ_UPDTR,
 	LDMSD_CFGOBJ_STRGP,
 	LDMSD_CFGOBJ_LISTEN,
 	LDMSD_CFGOBJ_AUTH,
+	LDMSD_CFGOBJ_PLUGIN,
+	LDMSD_CFGOBJ_LAST = LDMSD_CFGOBJ_PLUGIN,
 } ldmsd_cfgobj_type_t;
 
 struct ldmsd_cfgobj;
@@ -178,7 +181,7 @@ typedef void (*ldmsd_cfgobj_del_fn_t)(struct ldmsd_cfgobj *);
 #define LDMSD_PERM_FAILOVER_ALLOWED 04000
 
 typedef struct ldmsd_cfgobj {
-	char *name;		/* Unique producer name */
+	char *name;		/* Unique cfgobj name */
 	uint32_t ref_count;
 	ldmsd_cfgobj_type_t type;
 	ldmsd_cfgobj_del_fn_t __del;
@@ -718,7 +721,7 @@ typedef struct ldmsd_set_info {
 	struct timespec start; /* Latest sampling/update timestamp */
 	struct timespec end; /* latest sampling/update timestamp */
 	union {
-		struct ldmsd_plugin_cfg *pi;
+		struct ldmsd_plugin *pi;
 		ldmsd_prdcr_set_t prd_set;
 	};
 } *ldmsd_set_info_t;
@@ -755,7 +758,8 @@ struct avl_q_item {
 };
 TAILQ_HEAD(avl_q, avl_q_item);
 struct ldmsd_plugin {
-	char name[LDMSD_MAX_PLUGIN_NAME_LEN];
+	struct ldmsd_cfgobj cfgobj;
+	char name[LDMSD_MAX_PLUGIN_NAME_LEN]; /* plugin name (e.g. meminfo) */
 	struct avl_q avl_q;
 	struct avl_q kwl_q;
 	enum ldmsd_plugin_type {
@@ -763,7 +767,9 @@ struct ldmsd_plugin {
 		LDMSD_PLUGIN_SAMPLER,
 		LDMSD_PLUGIN_STORE
 	} type;
-	struct ldmsd_plugin_cfg *pi;
+
+	char *libpath;
+
 	enum ldmsd_plugin_type (*get_type)(struct ldmsd_plugin *self);
 	int (*config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl);
 	void (*term)(struct ldmsd_plugin *self);
@@ -772,30 +778,19 @@ struct ldmsd_plugin {
 
 struct ldmsd_sampler {
 	struct ldmsd_plugin base;
+
+	unsigned long sample_interval_us;
+	long sample_offset_us;
+
+	int thread_id;
+	ovis_scheduler_t os;
+	struct ovis_event_s oev;
+
 	ldms_set_t (*get_set)(struct ldmsd_sampler *self);
 	int (*sample)(struct ldmsd_sampler *self);
 };
+#define LDMSD_SAMPLER(ptr) ((struct ldmsd_sampler *)(ptr))
 
-struct ldmsd_plugin_cfg {
-	void *handle;
-	char *name;
-	char *libpath;
-	unsigned long sample_interval_us;
-	long sample_offset_us;
-	int thread_id;
-	int ref_count;
-	union {
-		struct ldmsd_plugin *plugin;
-		struct ldmsd_sampler *sampler;
-		struct ldmsd_store *store;
-	};
-	struct timeval timeout;
-	pthread_mutex_t lock;
-	ovis_scheduler_t os;
-	struct ovis_event_s oev;
-	LIST_ENTRY(ldmsd_plugin_cfg) entry;
-};
-LIST_HEAD(plugin_list, ldmsd_plugin_cfg);
 
 #define LDMSD_DEFAULT_SAMPLE_INTERVAL 1000000
 /** Metric name for component ids (u64). */
@@ -803,9 +798,20 @@ LIST_HEAD(plugin_list, ldmsd_plugin_cfg);
 /** Metric name for job id number */
 #define LDMSD_JOBID "job_id"
 
-extern void ldmsd_config_cleanup(void);
-extern int ldmsd_config_init(char *name);
-struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name);
+struct ldmsd_plugin *ldmsd_get_plugin(const char *name);
+void ldmsd_put_plugin(struct ldmsd_plugin *pi);
+
+struct ldmsd_sampler *ldmsd_sampler_alloc(const char *name, size_t sz,
+					  ldmsd_cfgobj_del_fn_t __del,
+					  uid_t uid, gid_t gid, int perm);
+
+void ldmsd_sampler_cleanup(struct ldmsd_sampler *samp);
+
+struct ldmsd_store *ldmsd_store_alloc(const char *name, size_t sz,
+				      ldmsd_cfgobj_del_fn_t __del,
+				      uid_t uid, gid_t gid, int perm);
+
+void ldmsd_store_cleanup(struct ldmsd_store *store);
 
 /**
  * \brief ldmsd_set_register
@@ -871,6 +877,7 @@ struct ldmsd_store {
 
 	int (*commit)(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int row_count);
 };
+#define LDMSD_STORE(ptr) ((struct ldmsd_store *)(ptr))
 
 /**
  * \brief Get the security context (uid, gid) of the daemon.
@@ -907,6 +914,8 @@ ldmsd_store_close(struct ldmsd_store *store, ldmsd_store_handle_t sh)
 }
 
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)();
+typedef struct ldmsd_plugin *(*ldmsd_plugin_instance_get_f)
+			     (const char *name, uid_t uid, gid_t gid, int perm);
 
 /* ldmsctl command callback function definition */
 typedef int (*ldmsctl_cmd_fn_t)(char *, struct attr_value_list*, struct attr_value_list *);
@@ -999,6 +1008,8 @@ void ldmsd_cfgobj_del(const char *name, ldmsd_cfgobj_type_t type);
 ldmsd_cfgobj_t ldmsd_cfgobj_first(ldmsd_cfgobj_type_t type);
 ldmsd_cfgobj_t ldmsd_cfgobj_next(ldmsd_cfgobj_t obj);
 int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt);
+int ldmsd_cfgobj_add(ldmsd_cfgobj_t obj);
+void ldmsd_cfgobj_rm(ldmsd_cfgobj_t obj);
 
 #define LDMSD_CFGOBJ_FOREACH(obj, type) \
 	for ((obj) = ldmsd_cfgobj_first(type); (obj);  \
@@ -1233,6 +1244,12 @@ ldmsd_plugin_set_t ldmsd_plugin_set_next(ldmsd_plugin_set_t set);
 
 int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us);
 int ldmsd_set_update_hint_get(ldms_set_t set, long *interva_us, long *offset_us);
+
+static inline const char *
+ldmsd_plugin_inst_name(struct ldmsd_plugin *p)
+{
+	return p->cfgobj.name;
+}
 
 /** Regular expressions */
 int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t errsz);

@@ -84,12 +84,16 @@ pthread_mutex_t listen_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 struct rbt auth_tree = RBT_INITIALIZER(cfgobj_cmp);
 pthread_mutex_t auth_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
+struct rbt plugin_tree = RBT_INITIALIZER(cfgobj_cmp);
+pthread_mutex_t plugin_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+
 pthread_mutex_t *cfgobj_locks[] = {
 	[LDMSD_CFGOBJ_PRDCR] = &prdcr_tree_lock,
 	[LDMSD_CFGOBJ_UPDTR] = &updtr_tree_lock,
 	[LDMSD_CFGOBJ_STRGP] = &strgp_tree_lock,
 	[LDMSD_CFGOBJ_LISTEN] = &listen_tree_lock,
 	[LDMSD_CFGOBJ_AUTH]   = &auth_tree_lock,
+	[LDMSD_CFGOBJ_PLUGIN] = &plugin_tree_lock,
 };
 
 struct rbt *cfgobj_trees[] = {
@@ -98,16 +102,8 @@ struct rbt *cfgobj_trees[] = {
 	[LDMSD_CFGOBJ_STRGP] = &strgp_tree,
 	[LDMSD_CFGOBJ_LISTEN] = &listen_tree,
 	[LDMSD_CFGOBJ_AUTH]   = &auth_tree,
+	[LDMSD_CFGOBJ_PLUGIN] = &plugin_tree,
 };
-
-void ldmsd_cfgobj_init(void)
-{
-	rbt_init(&prdcr_tree, cfgobj_cmp);
-	rbt_init(&updtr_tree, cfgobj_cmp);
-	rbt_init(&strgp_tree, cfgobj_cmp);
-	rbt_init(&listen_tree, cfgobj_cmp);
-	rbt_init(&auth_tree,   cfgobj_cmp);
-}
 
 void ldmsd_cfgobj___del(ldmsd_cfgobj_t obj)
 {
@@ -133,6 +129,33 @@ void ldmsd_cfgobj_lock(ldmsd_cfgobj_t obj)
 void ldmsd_cfgobj_unlock(ldmsd_cfgobj_t obj)
 {
 	pthread_mutex_unlock(&obj->lock);
+}
+
+int ldmsd_cfgobj_add(ldmsd_cfgobj_t obj)
+{
+	int rc = EEXIST;
+	struct rbn *n;
+	if (obj->type < LDMSD_CFGOBJ_FIRST || LDMSD_CFGOBJ_LAST < obj->type)
+		return EINVAL;
+	pthread_mutex_lock(cfgobj_locks[obj->type]);
+	n = rbt_find(cfgobj_trees[obj->type], obj->name);
+	if (n)
+		goto out;
+	rbn_init(&obj->rbn, obj->name);
+	rbt_ins(cfgobj_trees[obj->type], &obj->rbn);
+	rc = 0;
+	ldmsd_cfgobj_get(obj); /* put in `rm` */
+ out:
+	pthread_mutex_unlock(cfgobj_locks[obj->type]);
+	return rc;
+}
+
+void ldmsd_cfgobj_rm(ldmsd_cfgobj_t obj)
+{
+	pthread_mutex_lock(cfgobj_locks[obj->type]);
+	rbt_del(cfgobj_trees[obj->type], &obj->rbn);
+	pthread_mutex_unlock(cfgobj_locks[obj->type]);
+	ldmsd_cfgobj_put(obj); /* from `add` */
 }
 
 ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,

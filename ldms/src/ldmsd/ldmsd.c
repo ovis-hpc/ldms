@@ -538,21 +538,23 @@ int publish_kernel(const char *setfile)
 	return 0;
 }
 
-static void stop_sampler(struct ldmsd_plugin_cfg *pi)
+static void stop_sampler(struct ldmsd_sampler *samp)
 {
-	ovis_scheduler_event_del(pi->os, &pi->oev);
-	release_ovis_scheduler(pi->thread_id);
-	pi->ref_count--;
-	pi->os = NULL;
-	pi->thread_id = -1;
+	ovis_scheduler_event_del(samp->os, &samp->oev);
+	release_ovis_scheduler(samp->thread_id);
+	samp->os = NULL;
+	samp->thread_id = -1;
+	ldmsd_cfgobj_put(&samp->base.cfgobj);
 }
 
 void plugin_sampler_cb(ovis_event_t oev)
 {
-	struct ldmsd_plugin_cfg *pi = oev->param.ctxt;
-	pthread_mutex_lock(&pi->lock);
-	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
-	int rc = pi->sampler->sample(pi->sampler);
+	struct ldmsd_plugin *pi = oev->param.ctxt;
+	struct ldmsd_sampler *samp = (void*)pi;
+	ldmsd_cfgobj_get(&samp->base.cfgobj);
+	ldmsd_cfgobj_lock(&pi->cfgobj);
+	assert(pi->type == LDMSD_PLUGIN_SAMPLER);
+	int rc = samp->sample(samp);
 	if (rc) {
 		/*
 		 * If the sampler reports an error don't reschedule
@@ -561,9 +563,10 @@ void plugin_sampler_cb(ovis_event_t oev)
 		*/
 		ovis_log(sampler_log, OVIS_LERROR, "'%s': failed to sample. Stopping "
 				"the plug-in.\n", pi->name);
-		stop_sampler(pi);
+		stop_sampler(samp);
 	}
-	pthread_mutex_unlock(&pi->lock);
+	ldmsd_cfgobj_unlock(&pi->cfgobj);
+	ldmsd_cfgobj_put(&samp->base.cfgobj);
 }
 
 void ldmsd_set_tree_lock()
@@ -631,7 +634,7 @@ int ldmsd_set_register(ldms_set_t set, const char *plugin_name)
 	struct rbn *rbn;
 	ldmsd_plugin_set_t s;
 	ldmsd_plugin_set_list_t list;
-	struct ldmsd_plugin_cfg *pi;
+	struct ldmsd_plugin *pi;
 	int rc;
 
 	s = malloc(sizeof(*s));
@@ -684,11 +687,13 @@ int ldmsd_set_register(ldms_set_t set, const char *plugin_name)
 		ldmsd_set_deregister(s->inst_name, plugin_name);
 		return EINVAL;
 	}
-	if (pi->plugin->type == LDMSD_PLUGIN_SAMPLER) {
-		if (pi->sample_interval_us) {
+	if (pi->type == LDMSD_PLUGIN_SAMPLER) {
+		struct ldmsd_sampler *samp = LDMSD_SAMPLER(pi);
+		if (samp->sample_interval_us) {
 			/* Add the update hint to the set_info */
 			rc = ldmsd_set_update_hint_set(s->set,
-					pi->sample_interval_us, pi->sample_offset_us);
+					samp->sample_interval_us,
+					samp->sample_offset_us);
 			if (rc) {
 				/* Leave the ldmsd plugin set in the tree, so return 0. */
 				ovis_log(sampler_log, OVIS_LERROR, "Error %d: Failed to add "
@@ -697,6 +702,7 @@ int ldmsd_set_register(ldms_set_t set, const char *plugin_name)
 			}
 		}
 	}
+	ldmsd_put_plugin(pi);
 	return 0;
 free_inst_name:
 	free(s->inst_name);
@@ -953,7 +959,7 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 	struct timespec dur;
 	struct ldmsd_plugin_set_list *plugn_set_list;
 	struct ldmsd_plugin_set *plugn_set = NULL;
-	struct ldmsd_plugin_cfg *pi;
+	struct ldmsd_plugin *pi;
 
 	ldms_set_t lset = ldms_set_by_name(inst_name);
 	if (!lset)
@@ -986,11 +992,10 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 					"an unloaded plugin '%s'\n",
 					inst_name, plugn_set->plugin_name);
 		} else {
-			pi->ref_count++;
-			info->interval_us = pi->sample_interval_us;
-			info->offset_us = pi->sample_offset_us;
+			info->interval_us = LDMSD_SAMPLER(pi)->sample_interval_us;
+			info->offset_us = LDMSD_SAMPLER(pi)->sample_offset_us;
 			info->sync = 1; /* Sampling is always synchronous. */
-			info->pi = pi;
+			info->pi = pi; /* pi ref already taken in ldmsd_get_plugin */
 		}
 		info->origin_name = strdup(plugn_set->plugin_name);
 		info->origin_type = LDMSD_SET_ORIGIN_SAMP_PI;
@@ -1069,7 +1074,7 @@ void ldmsd_set_info_delete(ldmsd_set_info_t info)
 		info->prd_set = NULL;
 	}
 	if (info->pi) {
-		info->pi->ref_count--;
+		ldmsd_cfgobj_put(&info->pi->cfgobj);
 		info->pi = NULL;
 	}
 	free(info);
@@ -1103,7 +1108,8 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 	int rc = 0;
 	long sample_interval;
 	long sample_offset = 0;
-	struct ldmsd_plugin_cfg *pi;
+	struct ldmsd_plugin *pi;
+	struct ldmsd_sampler *samp;
 
 	rc = ovis_time_str2us(interval, &sample_interval);
 	if (rc)
@@ -1113,17 +1119,18 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 	if (!pi)
 		return ENOENT;
 
-	pthread_mutex_lock(&pi->lock);
-	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
-		rc = -EINVAL;
+	ldmsd_cfgobj_lock(&pi->cfgobj);
+	if (pi->type != LDMSD_PLUGIN_SAMPLER) {
+		rc = EINVAL;
 		goto out;
 	}
-	if (pi->thread_id >= 0) {
+	samp = LDMSD_SAMPLER(pi);
+	if (samp->thread_id >= 0) {
 		rc = EBUSY;
 		goto out;
 	}
 
-	pi->sample_interval_us = sample_interval;
+	samp->sample_interval_us = sample_interval;
 	if (offset) {
 		rc = ovis_time_str2us(offset, &sample_offset);
 		if (rc) {
@@ -1136,32 +1143,39 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 			goto out;
 		}
 	}
-	pi->sample_offset_us = sample_offset;
+	samp->sample_offset_us = sample_offset;
 
-	rc = __sampler_set_info_add(pi->plugin, sample_interval,
+	rc = __sampler_set_info_add(pi, sample_interval,
 					         sample_offset);
 	if (rc)
 		goto out;
 
-	OVIS_EVENT_INIT(&pi->oev);
-	pi->oev.param.type = OVIS_EVENT_PERIODIC;
-	pi->oev.param.periodic.period_us = sample_interval;
-	pi->oev.param.periodic.phase_us = sample_offset;
-	pi->oev.param.ctxt = pi;
-	pi->oev.param.cb_fn = plugin_sampler_cb;
+	OVIS_EVENT_INIT(&samp->oev);
+	samp->oev.param.type = OVIS_EVENT_PERIODIC;
+	samp->oev.param.periodic.period_us = sample_interval;
+	samp->oev.param.periodic.phase_us = sample_offset;
+	samp->oev.param.ctxt = pi;
+	samp->oev.param.cb_fn = plugin_sampler_cb;
 
-	pi->ref_count++;
-
-	pi->thread_id = find_least_busy_thread();
-	pi->os = get_ovis_scheduler(pi->thread_id);
-	rc = ovis_scheduler_event_add(pi->os, &pi->oev);
+	samp->thread_id = find_least_busy_thread();
+	samp->os = get_ovis_scheduler(samp->thread_id);
+	rc = ovis_scheduler_event_add(samp->os, &samp->oev);
+	if (0 == rc) {
+		ldmsd_cfgobj_get(&pi->cfgobj);
+		/* this ref will be put down in ldmsd_stop_sampler() */
+	} else {
+		samp->os = NULL;
+		release_ovis_scheduler(samp->thread_id);
+		samp->thread_id = -1;
+	}
 out:
-	pthread_mutex_unlock(&pi->lock);
+	ldmsd_cfgobj_unlock(&pi->cfgobj);
+	ldmsd_put_plugin(pi);
 	return rc;
 }
 
 struct oneshot {
-	struct ldmsd_plugin_cfg *pi;
+	struct ldmsd_plugin *pi;
 	ovis_scheduler_t os;
 	struct ovis_event_s oev;
 };
@@ -1169,22 +1183,25 @@ struct oneshot {
 void oneshot_sample_cb(ovis_event_t ev)
 {
 	struct oneshot *os = ev->param.ctxt;
-	struct ldmsd_plugin_cfg *pi = os->pi;
+	struct ldmsd_plugin *pi = os->pi;
+	struct ldmsd_sampler *samp = LDMSD_SAMPLER(pi);
 	ovis_scheduler_event_del(os->os, ev);
-	pthread_mutex_lock(&pi->lock);
-	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
-	pi->sampler->sample(pi->sampler);
-	pi->ref_count--;
-	release_ovis_scheduler(pi->thread_id);
+	ldmsd_cfgobj_lock(&pi->cfgobj);
+	assert(pi->type == LDMSD_PLUGIN_SAMPLER);
+	samp->sample(samp);
+	release_ovis_scheduler(samp->thread_id);
 	free(os);
-	pthread_mutex_unlock(&pi->lock);
+	ldmsd_cfgobj_unlock(&pi->cfgobj);
+
+	ldmsd_cfgobj_put(&pi->cfgobj);
 }
 
 int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
 					char *errstr, size_t errlen)
 {
 	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
+	struct ldmsd_plugin *pi;
+	struct ldmsd_sampler *samp;
 	time_t now, sched;
 	struct timeval tv;
 
@@ -1226,22 +1243,23 @@ int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
 		free(ossample);
 		return rc;
 	}
-	pthread_mutex_lock(&pi->lock);
-	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
+	samp = LDMSD_SAMPLER(pi);
+	ldmsd_cfgobj_lock(&pi->cfgobj);
+	if (pi->type != LDMSD_PLUGIN_SAMPLER) {
 		rc = EINVAL;
 		snprintf(errstr, errlen,
 				"The specified plugin is not a sampler.");
 		goto err;
 	}
-	pi->ref_count++;
+	ldmsd_cfgobj_get(&pi->cfgobj);
 	ossample->pi = pi;
-	if (pi->thread_id < 0) {
+	if (samp->thread_id < 0) {
 		snprintf(errstr, errlen, "Sampler '%s' not started yet.",
 								plugin_name);
 		rc = EPERM;
 		goto err;
 	}
-	ossample->os = get_ovis_scheduler(pi->thread_id);
+	ossample->os = get_ovis_scheduler(samp->thread_id);
 	OVIS_EVENT_INIT(&ossample->oev);
 	ossample->oev.param.type = OVIS_EVENT_TIMEOUT;
 	ossample->oev.param.ctxt = ossample;
@@ -1256,7 +1274,7 @@ int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
 err:
 	free(ossample);
 out:
-	pthread_mutex_unlock(&pi->lock);
+	ldmsd_cfgobj_unlock(&pi->cfgobj);
 	return rc;
 }
 
@@ -1266,28 +1284,29 @@ out:
 int ldmsd_stop_sampler(char *plugin_name)
 {
 	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
+	struct ldmsd_sampler *samp;
 
-	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi)
+	samp = (struct ldmsd_sampler *)ldmsd_get_plugin(plugin_name);
+	if (!samp)
 		return ENOENT;
-	pthread_mutex_lock(&pi->lock);
+	ldmsd_cfgobj_lock(&samp->base.cfgobj);
 	/* Ensure this is a sampler */
-	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
+	if (samp->base.type != LDMSD_PLUGIN_SAMPLER) {
 		rc = EINVAL;
 		goto out;
 	}
-	if (pi->os) {
-		ovis_scheduler_event_del(pi->os, &pi->oev);
-		pi->os = NULL;
-		release_ovis_scheduler(pi->thread_id);
-		pi->thread_id = -1;
-		pi->ref_count--;
+	if (samp->os) {
+		ovis_scheduler_event_del(samp->os, &samp->oev);
+		samp->os = NULL;
+		release_ovis_scheduler(samp->thread_id);
+		samp->thread_id = -1;
+		ldmsd_cfgobj_put(&samp->base.cfgobj);
 	} else {
-		rc = -EBUSY;
+		rc = EBUSY;
 	}
 out:
-	pthread_mutex_unlock(&pi->lock);
+	ldmsd_cfgobj_unlock(&samp->base.cfgobj);
+	ldmsd_put_plugin(&samp->base);
 	return rc;
 }
 
