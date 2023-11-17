@@ -311,7 +311,7 @@ static bool get_bool(const char *val, char *name)
 		return false;
 	default:
 		msglog(LDMSD_LERROR, "%s: bad bool value %s for %s\n",
-		       val, name);
+		       SAMP, val, name);
 		return false;
 	}
 }
@@ -361,7 +361,7 @@ static int create_metric_set(base_data_t base)
 	mcprc = parse_mc_oper_region();
 	if (mcprc != 0) {
 		msglog(LDMSD_LERROR, SAMP ": unable to read the node file for the sample (%s)\n",
-		       pids, STRERROR(mcprc));
+		       STRERROR(mcprc));
 		return mcprc;
 	}
 
@@ -414,7 +414,7 @@ static int create_metric_set(base_data_t base)
 			ldms_set_delete(base->set);
 			base->set = NULL;
 			errno = rc;
-			base->log(LDMSD_LERROR,"base_set_new: ldms_set_publish failed for %s\n",
+			msglog(LDMSD_LERROR, SAMP ": ldms_set_publish failed for %s\n",
 			          base->instance_name);
 			return EINVAL;
 		}
@@ -905,8 +905,8 @@ static int parse_mc_oper_region()
 		tx2mon->cpu[i].node = i;
 		tx2mon->cpu[i].fd = open(filename, O_RDONLY);
 		if (tx2mon->cpu[i].fd < 0) {
-			msglog(LDMSD_LERROR, SAMP ": Error reading node%i entry.\n", i);
-			msglog(LDMSD_LERROR, SAMP ": Is tx2mon_kmod in the kernel?\n", i);
+			msglog(LDMSD_LERROR, SAMP ": Error reading node%d entry.\n", i);
+			msglog(LDMSD_LERROR, SAMP ": Is tx2mon_kmod in the kernel (node%d)?\n", i);
 			return errno;
 		}
 		ret = tx2mon_read_node(&tx2mon->cpu[i]);
