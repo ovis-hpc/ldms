@@ -246,6 +246,7 @@ OPTION_DEFAULT_DISABLE([yaml], [ENABLE_YAML])
 
 dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
+OPTION_DEFAULT_ENABLE([decomp], [ENABLE_DECOMP])
 OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
 OPTION_DEFAULT_DISABLE([rabbitkw], [ENABLE_RABBITKW])
@@ -371,6 +372,7 @@ OPTION_DEFAULT_DISABLE([test_sampler], [ENABLE_TEST_SAMPLER])
 OPTION_DEFAULT_DISABLE([list_sampler], [ENABLE_LIST_SAMPLER])
 OPTION_DEFAULT_DISABLE([record_sampler], [ENABLE_RECORD_SAMPLER])
 dnl test_sampler will also build with --enable-ldms-test
+OPTION_DEFAULT_ENABLE([json_stream_sampler], [ENABLE_JSON_STREAM_SAMPLER])
 AM_CONDITIONAL([ENABLE_TEST_SAMPLER_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_TEST_SAMPLER_FALSE" = "x#"])
 OPTION_DEFAULT_DISABLE([grptest], [ENABLE_GRPTEST])
 dnl grptest will also build with --enable-ldms-test
@@ -429,6 +431,7 @@ AS_IF([test "x$enable_papi" != xno],[
 ])
 AM_CONDITIONAL([HAVE_LIBPAPI], [test "x$HAVE_LIBPAPI" = xyes])
 AM_CONDITIONAL([HAVE_LIBPFM], [test "x$HAVE_LIBPFM" = xyes])
+AM_CONDITIONAL([ENABLE_PAPI], [test "x$enable_papi" != no -a "x$HAVE_LIBPAPI" = xyes -a "x$HAVE_LIBPFM" = xyes])
 
 AC_LIB_HAVE_LINKFLAGS([ibmad], [], [#include <infiniband/mad.h>])
 AM_CONDITIONAL([HAVE_LIBIBMAD], [test "x$HAVE_LIBIBMAD" = xyes])
@@ -451,7 +454,7 @@ AC_ARG_ENABLE([infiniband],
 	[AS_HELP_STRING([--enable-infiniband], [require components that depend upon libibmad and libibumad @<:@default=check@:>@])],
 	[],
 	[enable_infiniband="check"])
-AM_CONDITIONAL([ENABLE_INFINIBAND], [test "xenable_infiniband" != xno])
+AM_CONDITIONAL([ENABLE_INFINIBAND], [test "x$enable_infiniband" != xno])
 AS_IF([test "x$enable_infiniband" = xyes],[
 	AS_IF([test "x$HAVE_LIBIBMAD" = xno],
 		[AC_MSG_ERROR([infiniband required libibmad or <infiniband/mad.h> not found])])
@@ -465,8 +468,8 @@ AC_ARG_ENABLE([ibnet],
 	[AS_HELP_STRING([--enable-ibnet], [require the ibnet plugin @<:@default=check@:>@])],
 	[],
 	[enable_ibnet="check"])
-AM_CONDITIONAL([ENABLE_IBNET], [test "xenable_ibnet" != xno])
-AS_IF([test "$enable_ibnet" = xyes],[
+AM_CONDITIONAL([ENABLE_IBNET], [test "x$enable_ibnet" != xno])
+AS_IF([test "x$enable_ibnet" = xyes],[
 	AS_IF([test "x$HAVE_LIBIBMAD" = xno],
 		[AC_MSG_ERROR([ibnet required libibmad or <infiniband/mad.h> not found])])
 	AS_IF([test "x$HAVE_LIBIBUMAD" = xno],
@@ -481,7 +484,7 @@ AC_ARG_ENABLE([opa2],
 	[AS_HELP_STRING([--enable-opa2], [require the opa2 plugin @<:@default=check@:>@])],
 	[],
 	[enable_opa2="check"])
-AM_CONDITIONAL([ENABLE_OPA2], [test "xenable_opa2" != xno])
+AM_CONDITIONAL([ENABLE_OPA2], [test "x$enable_opa2" != xno])
 AS_IF([test "x$enable_opa2" = xyes],[
 	AS_IF([test "x$HAVE_LIBIBMAD" = xno],
 		[AC_MSG_ERROR([opa2 required libibmad or <infiniband/mad.h> not found])])
@@ -649,7 +652,7 @@ AC_ARG_WITH([slurm],
 	[with_slurm=check])
 have_slurm=no
 AC_SUBST([SLURM_CFLAGS])
-AS_IF([test "x$with_slurm" != no],[
+AS_IF([test "x$with_slurm" != xno],[
 	save_CFLAGS=$CFLAGS
 	CFLAGS="$CFLAGS $SLURM_CFLAGS"
 	AC_CHECK_HEADER([slurm/spank.h], [have_slurm=yes], [have_slurm=no])
@@ -661,6 +664,8 @@ AS_IF([test "x$with_slurm" != no],[
 			[AC_MSG_WARN([Disabling SLURM support.])])])
 ])
 AM_CONDITIONAL([HAVE_SLURM], [test "x$have_slurm" = xyes])
+
+OPTION_DEFAULT_DISABLE([spank_subscriber], [ENABLE_SPANK_SUBSCRIBER], [Builds sampler that subscribes to spank plugin])
 
 AC_CHECK_HEADER([linux/netlink.h], [have_netlink=yes], [have_netlink=no])
 AM_CONDITIONAL([HAVE_NETLINK], [test "x$have_netlink" = xyes])
@@ -917,7 +922,7 @@ AC_ARG_ENABLE([slingshot],
     [AS_HELP_STRING([--enable-slingshot], [require the slinghost related plugins @<:@default=check@:>@])],
     [],
     [enable_slingshot="check"])
-AM_CONDITIONAL([ENABLE_SLINGSHOT], [test "xenable_slingshot" != xno])
+AM_CONDITIONAL([ENABLE_SLINGSHOT], [test "x$enable_slingshot" != xno])
 AS_IF([test "x$enable_slingshot" = xyes],[
     AS_IF([test "x$HAVE_LIBCXI" = xno],
         [AC_MSG_ERROR([libcxi or its headers not found])])
