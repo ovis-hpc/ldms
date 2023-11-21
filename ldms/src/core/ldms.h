@@ -1730,6 +1730,87 @@ struct ldms_xprt_rate_data {
 	double duration;
 };
 
+enum ldms_thrstat_op_e {
+	LDMS_THRSTAT_OP_OTHER, /* Ignore these operations, e.g., notify */
+	LDMS_THRSTAT_OP_CONNECT_SETUP,
+	LDMS_THRSTAT_OP_DIR_REQ,
+	LDMS_THRSTAT_OP_DIR_REPLY,
+	LDMS_THRSTAT_OP_LOOKUP_REQ,
+	LDMS_THRSTAT_OP_LOOKUP_REPLY,
+	LDMS_THRSTAT_OP_UPDATE_REQ,
+	LDMS_THRSTAT_OP_UPDATE_REPLY,
+	LDMS_THRSTAT_OP_STREAM_MSG,
+	LDMS_THRSTAT_OP_STREAM_CLIENT,
+	LDMS_THRSTAT_OP_PUSH_REQ,
+	LDMS_THRSTAT_OP_PUSH_REPLY,
+	LDMS_THRSTAT_OP_SET_DELETE_REQ,
+	LDMS_THRSTAT_OP_SET_DELETE_REPLY,
+	LDMS_THRSTAT_OP_SEND_MSG,
+	LDMS_THRSTAT_OP_RECV_MSG,
+	LDMS_THRSTAT_OP_AUTH,
+	LDMS_THRSTAT_OP_DISCONNECTED,
+	LDMS_THRSTAT_OP_COUNT
+};
+
+/*
+ * TODO: Revise the comment to explain the intended use of the thr stats structure
+ *
+ * ldms_xprt ensures that the thread statistics reported account for
+ * the time from ldms_xprt receiving an event from Zap until it returns
+ * its Zap callback. The time duration includes the time in its
+ * application callback. Applications are responsible for keeping
+ * track of the time usages by its operations. It may cache the data
+ * in \c app_stats field.
+ */
+
+struct ldms_thrstat_entry {
+	uint64_t total; /* Operation's Aggregated time in micro-seconds */
+	int count;
+};
+
+struct ldms_thrstat {
+	struct timespec last_op_start;
+	struct timespec last_op_end;
+	enum ldms_thrstat_op_e last_op;
+	struct ldms_thrstat_entry ops[LDMS_THRSTAT_OP_COUNT];
+};
+
+struct ldms_thrstat_result_entry {
+	struct zap_thrstat_result_entry *zap_res;
+	uint64_t idle;
+	uint64_t zap_time;
+	uint64_t ops[LDMS_THRSTAT_OP_COUNT];
+	void *app_ctxt;
+};
+
+struct ldms_thrstat_result {
+	int count;
+	struct zap_thrstat_result *_zres;
+	struct ldms_thrstat_result_entry entries[0];
+};
+
+/**
+ * \brief Convert \c enum ldms_thrstat_op_e to a string
+ *
+ * \return A string of the operation name
+ */
+char *ldms_thrstat_op_str(enum ldms_thrstat_op_e e);
+
+/**
+ * \brief Return thread usage information
+ *
+ * Return an ldms_thrstat_result structure or NULL on memory allocation failure.
+ * This result must be freed with the ldms_thrstat_free_result() function.
+ *
+ * \return A pointer to an ldms_thrstat_result structure
+ */
+struct ldms_thrstat_result *ldms_thrstat_result_get();
+
+/**
+ * \brief Free an ldms_thrstat_result returned by \c ldms_thrstat_result_get
+ */
+void ldms_thrstat_result_free(struct ldms_thrstat_result *res);
+
 /**
  * Query daemon telemetry data across transports
  *

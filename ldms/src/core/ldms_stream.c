@@ -525,7 +525,9 @@ __stream_deliver(struct ldms_addr *src, uint64_t msg_gn,
 		ref_get(&c->ref, "callback");
 		pthread_rwlock_unlock(&s->rwlock);
 		_ev.recv.client = c;
+		/* TODO: Start: Get timing for application's stream handling time. */
 		rc = c->cb_fn(&_ev, c->cb_arg);
+		/* TODO: End: Get timing for application's stream handling time. */
 		if (__stream_stats_level > 0) {
 			pthread_rwlock_wrlock(&c->rwlock);
 			if (rc) {

@@ -1638,12 +1638,15 @@ void __rail_process_send_credit(ldms_t x, struct ldms_request *req);
 /* implementation is in ldms_stream.c */
 void __stream_req_recv(ldms_t x, int cmd, struct ldms_request *req);
 
+enum ldms_thrstat_op_e req2thrstat_op_tbl[];
 static
 int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 	int cmd = ntohl(req->hdr.cmd);
+	struct ldms_thrstat *thrstat = zap_thrstat_ctxt_get(x->zap_ep);
 	int rc;
 
+	thrstat->last_op = req2thrstat_op_tbl[cmd];
 	switch (cmd) {
 	case LDMS_CMD_LOOKUP:
 		process_lookup_request(x, req);
@@ -2092,7 +2095,10 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 	int cmd = ntohl(reply->hdr.cmd);
 	uint64_t xid = reply->hdr.xid;
 	struct ldms_context *ctxt;
+	struct ldms_thrstat *thrstat;
 	ctxt = (struct ldms_context *)(unsigned long)xid;
+	thrstat = zap_thrstat_ctxt_get(x->zap_ep);
+	thrstat->last_op = req2thrstat_op_tbl[cmd];
 	switch (cmd) {
 	case LDMS_CMD_PUSH_REPLY:
 		process_push_reply(x, reply, ctxt);
@@ -2469,15 +2475,19 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 {
 	struct ldms_context *ctxt = ev->context;
 	struct ldms_xprt *x = zap_get_ucontext(zep);
+	struct ldms_thrstat *thrstat = zap_thrstat_ctxt_get(x->zap_ep);
 
 	switch (ctxt->type) {
 	case LDMS_CONTEXT_UPDATE:
+		thrstat->last_op = LDMS_THRSTAT_OP_UPDATE_REPLY;
 		__handle_update_data(x, ctxt, ev);
 		break;
 	case LDMS_CONTEXT_UPDATE_META:
+		thrstat->last_op = LDMS_THRSTAT_OP_UPDATE_REPLY;
 		__handle_update_meta(x, ctxt, ev);
 		break;
 	case LDMS_CONTEXT_LOOKUP_READ:
+		thrstat->last_op = LDMS_THRSTAT_OP_LOOKUP_REPLY;
 		__handle_lookup(x, ctxt, ev);
 		break;
 	default:
@@ -2770,16 +2780,20 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 {
 	struct ldms_xprt *x = zap_get_ucontext(zep);
+	struct ldms_thrstat *thrstat;
 
 	if (LDMS_XPRT_AUTH_GUARD(x))
 		return;
 
+	thrstat = zap_thrstat_ctxt_get(x->zap_ep);
 	struct ldms_rendezvous_msg *lm = (typeof(lm))ev->data;
 	switch (ntohl(lm->hdr.cmd)) {
 	case LDMS_XPRT_RENDEZVOUS_LOOKUP:
+		thrstat->last_op = LDMS_THRSTAT_OP_LOOKUP_REPLY;
 		handle_rendezvous_lookup(zep, ev, x, lm);
 		break;
 	case LDMS_XPRT_RENDEZVOUS_PUSH:
+		thrstat->last_op = LDMS_THRSTAT_OP_PUSH_REPLY;
 		handle_rendezvous_push(zep, ev, x, lm);
 		break;
 	default:
@@ -2856,6 +2870,15 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev);
 void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg);
 void __rail_ep_limit(ldms_t x, void *msg, int msg_len);
 
+void __thrstats_reset(void *ctxt)
+{
+	int i;
+	struct ldms_thrstat *thrstat = (struct ldms_thrstat *)ctxt;
+
+	for (i = 0; i < LDMS_THRSTAT_OP_COUNT; i++)
+		thrstat->ops[i].count = thrstat->ops[i].total = 0;
+}
+
 /**
  * ldms-zap event handling function.
  */
@@ -2867,12 +2890,35 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	char rej_msg[128];
 	struct rbt set_coll;
 	struct ldms_xprt *x = zap_get_ucontext(zep);
+	struct ldms_thrstat *thrstat;
+	struct ldms_thrstat_entry *thrstat_e = NULL;
+
 	if (x == NULL)
 		return;
 #ifdef DEBUG
 	XPRT_LOG(x, OVIS_LDEBUG, "ldms_zap_cb: receive %s. %p: ref_count %d\n",
 			zap_event_str(ev->type), x, x->ref_count);
 #endif /* DEBUG */
+
+	errno = 0;
+	thrstat = zap_thrstat_ctxt_get(zep);
+	if (!thrstat) {
+		if ((errno == 0) || (ev->type == ZAP_EVENT_CONNECT_REQUEST)) {
+			thrstat = calloc(1, sizeof(*thrstat));
+			if (!thrstat) {
+				ovis_log(xlog, OVIS_LCRIT,
+						"Memory allocation failure.\n");
+				return;
+			}
+			zap_thrstat_ctxt_set(zep, thrstat, __thrstats_reset);
+		} else {
+			ovis_log(xlog, OVIS_LCRIT, "Cannot retrieve thread stats "
+					"from Zap endpoint. Error %d\n", errno);
+			assert(0);
+			return;
+		}
+	}
+	(void)clock_gettime(CLOCK_REALTIME, &thrstat->last_op_start);
 	switch(ev->type) {
 	case ZAP_EVENT_RECV_COMPLETE:
 		recv_cb(x, ev->data);
@@ -2887,6 +2933,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		handle_zap_rendezvous(zep, ev);
 		break;
 	case ZAP_EVENT_CONNECT_REQUEST:
+		thrstat->last_op = LDMS_THRSTAT_OP_CONNECT_SETUP;
 		__sync_fetch_and_add(&xprt_connect_request_count, 1);
 		if (0 != __ldms_conn_msg_verify(x, ev->data, ev->data_len,
 					   rej_msg, sizeof(rej_msg))) {
@@ -2903,6 +2950,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		}
 		break;
 	case ZAP_EVENT_REJECTED:
+		thrstat->last_op = LDMS_THRSTAT_OP_CONNECT_SETUP;
 		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
 		__sync_fetch_and_add(&xprt_reject_count, 1);
 		event.type = LDMS_XPRT_EVENT_REJECTED;
@@ -2913,6 +2961,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_xprt_put(x);
 		break;
 	case ZAP_EVENT_CONNECTED:
+		thrstat->last_op = LDMS_THRSTAT_OP_CONNECT_SETUP;
 		(void)clock_gettime(CLOCK_REALTIME, &x->stats.connected);
 		__sync_fetch_and_add(&xprt_connect_count, 1);
 		/* actively connected -- expecting conn_msg */
@@ -2930,6 +2979,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_xprt_auth_begin(x);
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
+		thrstat->last_op = LDMS_THRSTAT_OP_DISCONNECTED;
 		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
 		event.type = LDMS_XPRT_EVENT_ERROR;
 		if (x->event_cb)
@@ -2939,6 +2989,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_xprt_put(x);
 		break;
 	case ZAP_EVENT_DISCONNECTED:
+		thrstat->last_op = LDMS_THRSTAT_OP_DISCONNECTED;
 		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
 		__sync_fetch_and_add(&xprt_disconnect_count, 1);
 		/* deliver only if CONNECTED has been delivered. */
@@ -2995,6 +3046,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_xprt_put(x);
 		break;
 	case ZAP_EVENT_SEND_COMPLETE:
+		thrstat->last_op = LDMS_THRSTAT_OP_SEND_MSG;
 		if (x->auth_flag != LDMS_XPRT_AUTH_APPROVED) {
 			/*
 			 * Do not forward the send_complete to applications
@@ -3013,6 +3065,10 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 				"value %d from network\n", (int) ev->type);
 		assert(0 == "network sent bad zap event value to ldms_zap_cb");
 	}
+	(void)clock_gettime(CLOCK_REALTIME, &thrstat->last_op_end);
+	thrstat_e = &thrstat->ops[thrstat->last_op];
+	thrstat_e->total += ldms_timespec_diff_us(&thrstat->last_op_start, &thrstat->last_op_end);
+	thrstat_e->count += 1;
 }
 
 void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
@@ -4234,6 +4290,121 @@ zap_ep_t ldms_xprt_get_zap_ep(ldms_t x)
 int ldms_xprt_get_threads(ldms_t x, pthread_t *out, int n)
 {
 	return x->ops.get_threads(x, out, n);
+}
+
+enum ldms_thrstat_op_e req2thrstat_op_tbl[] = {
+		/*
+		 * TODO: Finish this table
+		 */
+	[LDMS_CMD_DIR]                = LDMS_THRSTAT_OP_DIR_REQ ,
+	[LDMS_CMD_DIR_CANCEL]         = LDMS_THRSTAT_OP_DIR_REQ ,
+	[LDMS_CMD_LOOKUP]             = LDMS_THRSTAT_OP_LOOKUP_REQ ,
+	[LDMS_CMD_REQ_NOTIFY]         = LDMS_THRSTAT_OP_OTHER ,
+	[LDMS_CMD_CANCEL_NOTIFY]      = LDMS_THRSTAT_OP_OTHER ,
+	[LDMS_CMD_SEND_MSG]           = LDMS_THRSTAT_OP_SEND_MSG ,
+	[LDMS_CMD_AUTH_MSG]           = LDMS_THRSTAT_OP_AUTH ,
+	[LDMS_CMD_CANCEL_PUSH]        = LDMS_THRSTAT_OP_OTHER ,
+	[LDMS_CMD_AUTH]               = LDMS_THRSTAT_OP_AUTH ,
+	[LDMS_CMD_SET_DELETE]         = LDMS_THRSTAT_OP_SET_DELETE_REQ ,
+	[LDMS_CMD_SEND_CREDIT]        = LDMS_THRSTAT_OP_OTHER ,
+
+	/* stream requests */
+//	[LDMS_CMD_STREAM_MSG] =, /* for stream messages */
+//	[LDMS_CMD_STREAM_SUB] =, /* stream subscribe request */
+//	[LDMS_CMD_STREAM_UNSUB] =, /* stream subscribe request */
+//
+//	[LDMS_CMD_REPLY = 0x100] =,
+	[LDMS_CMD_DIR_REPLY]          = LDMS_THRSTAT_OP_DIR_REPLY ,
+//	[LDMS_CMD_DIR_CANCEL_REPLY] =,
+	[LDMS_CMD_DIR_UPDATE_REPLY]   = LDMS_THRSTAT_OP_UPDATE_REPLY ,
+	[LDMS_CMD_LOOKUP_REPLY]       = LDMS_THRSTAT_OP_LOOKUP_REPLY ,
+//	[LDMS_CMD_REQ_NOTIFY_REPLY] =,
+	[LDMS_CMD_AUTH_CHALLENGE_REPLY] = LDMS_THRSTAT_OP_AUTH ,
+	[LDMS_CMD_AUTH_APPROVAL_REPLY]  = LDMS_THRSTAT_OP_AUTH ,
+//	[LDMS_CMD_PUSH_REPLY] =,
+	[LDMS_CMD_AUTH_REPLY]           = LDMS_THRSTAT_OP_AUTH ,
+//	[LDMS_CMD_SET_DELETE_REPLY] =,
+//
+//	/* stream replies */
+//	[LDMS_CMD_STREAM_SUB_REPLY] =, /* stream subscribe reply (result) */
+//	[LDMS_CMD_STREAM_UNSUB_REPLY] =, /* stream subscribe reply (result) */
+};
+
+char *ldms_thrstat_op_str_tbl[] = {
+	[LDMS_THRSTAT_OP_OTHER]			= "Other",
+	[LDMS_THRSTAT_OP_CONNECT_SETUP]		= "Connecting",
+	[LDMS_THRSTAT_OP_DIR_REQ]		= "Dir Requests",
+	[LDMS_THRSTAT_OP_DIR_REPLY]		= "Dir Replies",
+	[LDMS_THRSTAT_OP_LOOKUP_REQ]		= "Lookup Requests",
+	[LDMS_THRSTAT_OP_LOOKUP_REPLY]		= "Lookup Replies",
+	[LDMS_THRSTAT_OP_UPDATE_REQ]		= "Update Requests",
+	[LDMS_THRSTAT_OP_UPDATE_REPLY]		= "Update Completes",
+	[LDMS_THRSTAT_OP_STREAM_MSG]		= "Stream Data",
+	[LDMS_THRSTAT_OP_STREAM_CLIENT]		= "Stream Client",
+	[LDMS_THRSTAT_OP_PUSH_REQ]		= "Push Requests",
+	[LDMS_THRSTAT_OP_PUSH_REPLY]		= "Push Replies",
+	[LDMS_THRSTAT_OP_SET_DELETE_REQ]	= "Set Delete Requests",
+	[LDMS_THRSTAT_OP_SET_DELETE_REPLY]	= "Set Delete Replies",
+	[LDMS_THRSTAT_OP_SEND_MSG]		= "Send Messages",
+	[LDMS_THRSTAT_OP_RECV_MSG]		= "Receive Messages",
+	[LDMS_THRSTAT_OP_AUTH]			= "Authentication",
+	[LDMS_THRSTAT_OP_DISCONNECTED]		= "Disconnecting",
+};
+char *ldms_thrstat_op_str(enum ldms_thrstat_op_e e)
+{
+	return ldms_thrstat_op_str_tbl[e];
+}
+
+struct ldms_thrstat_result *ldms_thrstat_result_get()
+{
+	struct ldms_thrstat *lstats;
+	struct zap_thrstat_result *zres;
+	struct ldms_thrstat_result *res;
+	struct timespec now;
+	uint64_t ldms_xprt_time;
+	int i, j;
+
+	(void)clock_gettime(CLOCK_REALTIME, &now);
+
+	zres = zap_thrstat_get_result();
+
+	res = calloc(1, sizeof(*res) +
+		zres->count * sizeof(struct ldms_thrstat_result_entry));
+	if (!res)
+		goto out;
+	res->_zres = zres;
+	res->count = zres->count;
+	for (i = 0; i < zres->count; i++) {
+		res->entries[i].zap_res = &zres->entries[i];
+		res->entries[i].idle = zres->entries[i].idle_time;
+
+		lstats = (struct ldms_thrstat *)zres->entries[i].app_ctxt;
+		if (!lstats)
+			continue;
+		ldms_xprt_time = 0;
+		for (j = 0; j < LDMS_THRSTAT_OP_COUNT; j++) {
+			res->entries[i].ops[j] = lstats->ops[j].total;
+			ldms_xprt_time += lstats->ops[j].total;
+		}
+		res->entries[i].zap_time = zres->entries[i].active_time;
+		if (!zres->entries[i].waiting) {
+			/* The thread is active. */
+			res->entries[i].zap_time += ldms_timespec_diff_us(
+							&zres->entries[i].wait_end,
+									     &now);
+		}
+		res->entries[i].zap_time -= ldms_xprt_time;
+	}
+out:
+	return res;
+}
+
+void ldms_thrstat_result_free(struct ldms_thrstat_result *res)
+{
+	if (!res)
+		return;
+	zap_thrstat_free_result(res->_zres);
+	free(res);
 }
 
 static void __attribute__ ((constructor)) cs_init(void)
