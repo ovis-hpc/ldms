@@ -901,6 +901,41 @@ void zap_thrstat_free_result(struct zap_thrstat_result *result);
 const char *zap_thrstat_get_name(zap_thrstat_t stats);
 
 /**
+ * \brief Set application context of the statistics of a thread corresponding to \c zep
+ *
+ * Applications may track its usage of a Zap thread by creating a context and caching
+ * it in the Zap thread statistics objects.
+ *
+ * Zap will call \c reset_fn() when \c zap_thrstat_reset() or \c zap_thrstat_reset_all()
+ * is called.
+ *
+ * \param zep    a Zap endpoint
+ * \param ctxt   Application context
+ * \param reset_fn  Handle of application's context reset function
+ *
+ * \return 0 on success.
+ *         EBUSY is returned if the endpoint has been assigned to a thread.
+ *         EEXIST is returned if a context has been set already.
+ *
+ * \see zap_thrstat_ctxt_get
+ */
+typedef void (*zap_thrstat_app_reset_fn)(void *ctxt);
+int zap_thrstat_ctxt_set(zap_ep_t zep, void *ctxt, zap_thrstat_app_reset_fn reset_fn);
+/**
+ * \brief Get application context of the statistics of a thread corresponding to \c zep
+ *
+ * \param zep    a Zap endpoint
+ *
+ * \return Application context in the Zap thread corresponding to \c zep.
+ *         NULL returned if Zap cannot retrieve application's context, and
+ *         errno is set. 0 means no application's context has been set.
+ *         EBUSY means no Zap thread has been assigned to the Zap endpoint \c zep.
+ *
+ * \see zap_thrstat_ctxt_set
+ */
+void *zap_thrstat_ctxt_get(zap_ep_t zep);
+
+/**
  * \brief Return the time difference in microseconds
  *
  * Computes the number of microseconds in the interval end - start.

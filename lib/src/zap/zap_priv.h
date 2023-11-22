@@ -535,6 +535,9 @@ struct zap_thrstat {
 
 	int pool_idx;
 	uint64_t thread_id;
+
+	void *app_ctxt; /* Application statistics corresponding to the thread */
+	zap_thrstat_app_reset_fn app_reset_fn;
 };
 #define ZAP_THRSTAT_WINDOW 4096	/*< default window size */
 
