@@ -937,6 +937,7 @@ void zap_thrstat_reset(zap_thrstat_t stats)
 	stats->proc_count = stats->wait_count = 0;
 	memset(stats->wait_window, 0, sizeof(uint64_t) * stats->window_size);
 	memset(stats->proc_window, 0, sizeof(uint64_t) * stats->window_size);
+	stats->app_reset_fn(stats->app_ctxt);
 }
 
 static pthread_mutex_t thrstat_list_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -971,6 +972,8 @@ void zap_thrstat_reset_all()
 		memset(t->wait_window, 0, sizeof(uint64_t) * t->window_size);
 		memset(t->proc_window, 0, sizeof(uint64_t) * t->window_size);
 		i += 1;
+		if (t->app_reset_fn)
+			t->app_reset_fn(t->app_ctxt);
 	}
 	pthread_mutex_unlock(&thrstat_list_lock);
 }
@@ -1150,6 +1153,28 @@ void zap_thrstat_free_result(struct zap_thrstat_result *res)
 			free(res->entries[i].name);
 	}
 	free(res);
+}
+
+int zap_thrstat_ctxt_set(zap_ep_t zep, void *ctxt, zap_thrstat_app_reset_fn reset_fn)
+{
+	zap_thrstat_t thrstat = (zep->thread)?(zep->thread->stat):NULL;
+	if (!thrstat)
+		return EBUSY;
+	if (thrstat->app_ctxt)
+		return EEXIST;
+	thrstat->app_ctxt = ctxt;
+	thrstat->app_reset_fn = reset_fn;
+	return 0;
+}
+
+void *zap_thrstat_ctxt_get(zap_ep_t zep)
+{
+	zap_thrstat_t thrstat = (zep->thread)?(zep->thread->stat):NULL;
+	if (!thrstat) {
+		errno = EBUSY;
+		return NULL;
+	}
+	return thrstat->app_ctxt;
 }
 
 pthread_t zap_ep_thread(zap_ep_t ep)
