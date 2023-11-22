@@ -31,7 +31,6 @@ set_kokkos () {
 }
 
 timeout=1m
-export ZAP_MAX_IO=8
 export ZAP_IO_MAX=8
 $BIN/ldmsd -x sock:10444:localhost -a $LDMS_AUTH -l ./test_slps.daemon.1.log  -r ./test_slps.pid.1 -v DEBUG
 $BIN/ldmsd -x sock:10445:localhost -a $LDMS_AUTH -l ./test_slps.daemon.2.log  -r ./test_slps.pid.2 -v DEBUG
