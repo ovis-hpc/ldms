@@ -3875,7 +3875,12 @@ cdef class StreamData(object):
 
 cdef int __stream_client_cb(ldms_stream_event_t ev, void *arg) with gil:
     cdef StreamClient c = <StreamClient>arg
-    cdef StreamData sdata = StreamData.from_ldms_stream_event(PTR(ev))
+    cdef StreamData sdata
+
+    if ev.type != LDMS_STREAM_EVENT_RECV:
+        return 0
+
+    sdata = StreamData.from_ldms_stream_event(PTR(ev))
     if c.cb:
         c.cb(c, sdata, c.cb_arg)
     else:
