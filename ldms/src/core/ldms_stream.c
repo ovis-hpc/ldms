@@ -120,6 +120,12 @@ TAILQ_HEAD(, ldms_stream_client_s) __regex_client_tq = TAILQ_HEAD_INITIALIZER(__
 
 static uint64_t stream_gn = 0;
 
+static pthread_mutex_t __stream_close_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t __stream_close_cond = PTHREAD_COND_INITIALIZER;
+static pthread_t __stream_close_thread;
+static TAILQ_HEAD(, ldms_stream_client_s)
+	__stream_close_tq = TAILQ_HEAD_INITIALIZER(__stream_close_tq);
+
 int __rail_rep_send_raw(struct ldms_rail_ep_s *rep, void *data, int len);
 
 /*
@@ -253,6 +259,8 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 	ldms_rail_t r;
 	int ep_idx;
 	int rc;
+	if (ev->type == LDMS_STREAM_EVENT_CLOSE)
+		return 0;
 	assert( ev->type == LDMS_STREAM_EVENT_RECV );
 	if (!XTYPE_IS_RAIL(ev->recv.client->x->xtype))
 		return ENOTSUP;
@@ -966,7 +974,12 @@ void ldms_stream_close(ldms_stream_client_t c)
 		ref_put(&c->ref, "__regex_client_tq");
 	}
 	__STREAM_UNLOCK();
-	ref_put(&c->ref, "init");
+
+	/* reuse the c->entry for 'close' event queing */
+	pthread_mutex_lock(&__stream_close_mutex);
+	TAILQ_INSERT_TAIL(&__stream_close_tq, c, entry);
+	pthread_cond_signal(&__stream_close_cond);
+	pthread_mutex_unlock(&__stream_close_mutex);
 }
 
 struct __sub_req_ctxt_s {
@@ -2106,12 +2119,53 @@ int ldms_stream_publish_file(ldms_t x, const char *stream_name,
 	return rc;
 }
 
+static void __ldms_stream_init();
+
+static void *__stream_close_proc(void *arg)
+{
+	struct ldms_stream_client_s *c;
+	struct ldms_stream_event_s ev;
+
+	pthread_atfork(NULL, NULL, __ldms_stream_init); /* re-initialize at fork */
+
+	pthread_mutex_lock(&__stream_close_mutex);
+ loop:
+	c = TAILQ_FIRST(&__stream_close_tq);
+	if (!c) {
+		pthread_cond_wait(&__stream_close_cond, &__stream_close_mutex);
+		goto loop;
+	}
+	TAILQ_REMOVE(&__stream_close_tq, c, entry);
+	pthread_mutex_unlock(&__stream_close_mutex);
+
+	ev.r = c->x;
+	ev.type = LDMS_STREAM_EVENT_CLOSE;
+	ev.close.client = c;
+
+	ref_get(&c->ref, "cb");
+	c->cb_fn(&ev, c->cb_arg);
+	ref_put(&c->ref, "cb");
+
+	ref_put(&c->ref, "init");
+
+	pthread_mutex_lock(&__stream_close_mutex);
+	goto loop;
+
+	return NULL;
+}
+
 __attribute__((constructor))
 static void __ldms_stream_init()
 {
-	static int once = 0;
-	if (once)
-		return ;
-	__ldms_stream_log = ovis_log_register("ldms.stream", "LDMS Stream Library");
-	once = 1;
+	int rc;
+	pthread_mutex_init(&__stream_close_mutex, NULL);
+	pthread_cond_init(&__stream_close_cond, NULL);
+	if (!__ldms_stream_log)
+		__ldms_stream_log = ovis_log_register("ldms.stream", "LDMS Stream Library");
+	rc = pthread_create(&__stream_close_thread, NULL, __stream_close_proc, NULL);
+	if (rc) {
+		__ERROR("cannot create ldms_stream_close thread, rc: %d, errno: %d\n", rc, errno);
+	} else {
+		pthread_setname_np(__stream_close_thread, "ldms_strm_cls");
+	}
 }

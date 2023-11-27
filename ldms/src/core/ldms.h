@@ -1153,6 +1153,9 @@ enum ldms_stream_event_type {
 	LDMS_STREAM_EVENT_RECV, /* stream data received */
 	LDMS_STREAM_EVENT_SUBSCRIBE_STATUS, /* reporting subscription status */
 	LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS, /* reporting unsubscription status */
+	LDMS_STREAM_EVENT_CLOSE, /* reporting stream client close event.
+				  * This is the last event to deliver from a
+				  * client. */
 };
 
 /* For stream data delivery to the application */
@@ -1177,12 +1180,18 @@ struct ldms_stream_return_status_s {
 	int status;
 };
 
+/* For stream close event */
+struct ldms_stream_close_event_s {
+	ldms_stream_client_t client;
+};
+
 typedef struct ldms_stream_event_s {
 	ldms_t r; /* rail */
 	enum ldms_stream_event_type type;
 	union {
 		struct ldms_stream_recv_data_s recv;
 		struct ldms_stream_return_status_s status;
+		struct ldms_stream_close_event_s close;
 	};
 } *ldms_stream_event_t;
 
