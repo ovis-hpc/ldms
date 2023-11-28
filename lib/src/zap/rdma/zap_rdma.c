@@ -499,8 +499,10 @@ static void __rdma_teardown_conn(struct z_rdma_ep *ep)
 static void z_rdma_destroy(zap_ep_t zep)
 {
 	struct z_rdma_ep *rep = (void*)zep;
-	if (zep->thread)
+	if (zep->thread) {
 		zap_io_thread_ep_release(zep);
+		zap_io_thread_ep_remove(zep);
+	}
 	pthread_mutex_lock(&rep->ep.lock);
 	__rdma_teardown_conn(rep);
 	pthread_mutex_unlock(&rep->ep.lock);

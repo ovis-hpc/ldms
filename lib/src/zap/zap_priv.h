@@ -483,8 +483,33 @@ zap_err_t zap_io_thread_ep_assign(zap_ep_t ep, int tpi);
  * The transport shall call this function to release an endpoint from the
  * associated io thread. \c zap.io_thread_ep_release() will also be called as a
  * subsequence.
+ *
+ * Consequently, the endpoint will not be processed by the thread any further.
+ * However, the endpoint still keeps a reference to the thread for further statistics data access.
+ * The endpoint references to the thread is removed when \c zap_io_thread_ep_remove() is called.
+ *
+ * \param ep   A Zap endpoint
+ *
+ * \return ZAP_ERR_OK on success. Otherwise, a Zap error code is returned.
+ *
+ * \see zap_io_thread_ep_remove
  */
 zap_err_t zap_io_thread_ep_release(zap_ep_t ep);
+
+/**
+ * Remove \c ep reference to the zap io thread.
+ *
+ * The function nullifies the endpoint reference to the thread and decrements
+ * the number of endpoints associated to the thread. This results in reducing
+ * the thread's load counter.
+ *
+ * \param ep    A Zap endpoint
+ *
+ * \return ZAP_ERR_OK on success. Otherwise, a Zap error code is returned.
+ *
+ * \see zap_io_thread_ep_release
+ */
+zap_err_t zap_io_thread_ep_remove(zap_ep_t ep);
 
 /*
  * The zap_thrstat structure maintains state for
