@@ -1992,6 +1992,8 @@ static void z_sock_destroy(zap_ep_t ep)
 
 	DEBUG_LOG(sep, "%ld z_sock_destroy(%p)\n", GETTID(), sep);
 
+	zap_io_thread_ep_remove(ep);
+
 	while (!TAILQ_EMPTY(&sep->sq)) {
 		wr = TAILQ_FIRST(&sep->sq);
 		TAILQ_REMOVE(&sep->sq, wr, link);

@@ -910,6 +910,14 @@ zap_err_t zap_io_thread_ep_assign(zap_ep_t ep, int tpi)
 zap_err_t zap_io_thread_ep_release(zap_ep_t ep)
 {
 	zap_err_t zerr;
+	zerr = ep->z->io_thread_ep_release(ep->thread, ep);
+	__atomic_fetch_sub(&ep->thread->stat->sq_sz, ep->sq_sz, __ATOMIC_SEQ_CST);
+	return zerr;
+}
+
+zap_err_t zap_io_thread_ep_remove(zap_ep_t ep)
+{
+	zap_err_t zerr = 0;
 	zap_io_thread_t t = ep->thread;
 
 	pthread_mutex_lock(&t->mutex);
@@ -917,8 +925,6 @@ zap_err_t zap_io_thread_ep_release(zap_ep_t ep)
 	t->_n_ep--;
 	t->stat->n_eps = t->_n_ep;
 	pthread_mutex_unlock(&t->mutex);
-	zerr = ep->z->io_thread_ep_release(ep->thread, ep);
-	__atomic_fetch_sub(&ep->thread->stat->sq_sz, ep->sq_sz, __ATOMIC_SEQ_CST);
 	ep->thread = NULL;
 	return zerr;
 }

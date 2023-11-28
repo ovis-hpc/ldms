@@ -456,6 +456,8 @@ static void z_fi_destroy(zap_ep_t zep)
 
 	DLOG("rep %p has %d ctxts\n", rep, rep->num_ctxts);
 
+	zap_io_thread_ep_remove(zep);
+
 	/* Do this first. */
 	while (!LIST_EMPTY(&rep->ep.map_list)) {
 		map = (zap_map_t)LIST_FIRST(&rep->ep.map_list);
