@@ -870,6 +870,13 @@ struct zap_thrstat_result_entry {
 	int pool_idx;			/*< Thread pool index */
 	uint64_t thread_id;		/*< The thread ID (pthread_t) */
 	pid_t tid;			/*< The Linux Thread ID (gettid()) */
+	uint64_t idle_time;		/*< Total idle time in micro-seconds */
+	uint64_t active_time;		/*< Total active time in micro-seconds */
+	struct timespec start;		/*< The reset timestamp */
+	struct timespec wait_start;	/*< The last timestamp the thread started waiting for events */
+	struct timespec wait_end;	/*< The last timestamp the thread woke up */
+	int waiting;			/*< A non-zero value means the thread is active. */
+	void *app_ctxt;			/*< Pointer to application's context */
 };
 
 struct zap_thrstat_result {
@@ -899,6 +906,13 @@ void zap_thrstat_free_result(struct zap_thrstat_result *result);
  * \returns The name provided to the zap_thrstat_new() function
  */
 const char *zap_thrstat_get_name(zap_thrstat_t stats);
+
+/**
+ * \brief Return the timestamp Zap endpoint's thread went to sleep.
+ *
+ * \return The timestamp the thread went to sleep
+ */
+struct timespec *zap_ep_thrstat_wait_end(zap_ep_t zep);
 
 /**
  * \brief Set application context of the statistics of a thread corresponding to \c zep

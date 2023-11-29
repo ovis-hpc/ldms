@@ -937,7 +937,8 @@ void zap_thrstat_reset(zap_thrstat_t stats)
 	stats->proc_count = stats->wait_count = 0;
 	memset(stats->wait_window, 0, sizeof(uint64_t) * stats->window_size);
 	memset(stats->proc_window, 0, sizeof(uint64_t) * stats->window_size);
-	stats->app_reset_fn(stats->app_ctxt);
+	if (stats->app_reset_fn)
+		stats->app_reset_fn(stats->app_ctxt);
 }
 
 static pthread_mutex_t thrstat_list_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -1066,6 +1067,7 @@ void zap_thrstat_wait_start(zap_thrstat_t stats)
 					 stats->window_size,
 					 stats->proc_sum,
 					 stats->proc_window);
+	stats->proc_tot += proc_us;
 	stats->proc_count += 1;
 }
 
@@ -1081,6 +1083,7 @@ void zap_thrstat_wait_end(zap_thrstat_t stats)
 					 stats->window_size,
 					 stats->wait_sum,
 					 stats->wait_window);
+	stats->wait_tot += wait_us;
 	stats->wait_count += 1;
 }
 
@@ -1136,6 +1139,13 @@ struct zap_thrstat_result *zap_thrstat_get_result()
 		res->entries[i].thread_id = t->thread_id;
 		res->entries[i].tid = t->tid;
 		res->entries[i].pool_idx = t->pool_idx;
+		res->entries[i].idle_time = t->wait_tot;
+		res->entries[i].active_time = t->proc_tot;
+		res->entries[i].app_ctxt = t->app_ctxt;
+		res->entries[i].wait_start = t->wait_start;
+		res->entries[i].wait_end = t->wait_end;
+		res->entries[i].waiting = t->waiting;
+		res->entries[i].start = t->start;
 		i += 1;
 	}
 out:
@@ -1153,6 +1163,13 @@ void zap_thrstat_free_result(struct zap_thrstat_result *res)
 			free(res->entries[i].name);
 	}
 	free(res);
+}
+
+struct timespec *zap_ep_thrstat_wait_end(zap_ep_t zep)
+{
+	if (!zep->thread)
+		return NULL;
+	return &zep->thread->stat->wait_end;
 }
 
 int zap_thrstat_ctxt_set(zap_ep_t zep, void *ctxt, zap_thrstat_app_reset_fn reset_fn)

@@ -531,6 +531,8 @@ struct zap_thrstat {
 	uint64_t *proc_window;
 	uint64_t sq_sz; /* send queue size (in entries) */
 	uint64_t n_eps; /* number of endpoints */
+	uint64_t wait_tot; /* Total idle time since reset in micro-seconds */
+	uint64_t proc_tot; /* Total busy time since reset  in micro-seconds */
 	LIST_ENTRY(zap_thrstat) entry;
 
 	int pool_idx;
