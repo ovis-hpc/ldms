@@ -54,14 +54,40 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
+#include "ovis_ref/ref.h"
 #include "coll/rbt.h"
 #include "ovis_json/ovis_json.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_stream.h"
-#include "ovis_log.h"
+#include "ovis_log/ovis_log.h"
 
 #define SAMP "json_stream"
+
+typedef struct js_entry_s {
+	LIST_ENTRY(js_entry_s) entry;
+	ldms_set_t set;
+} *js_entry_t;
+
+typedef struct json_stream_sampler_s *json_stream_sampler_t;
+struct json_stream_sampler_s {
+	union {
+		struct ldmsd_sampler sampler; /* sampler interface */
+		struct ldmsd_plugin  plugin;  /* plugin interface */
+	};
+	char *stream_name;
+	size_t heap_sz;
+	char *producer_name;
+	char *instance_name;
+	uint64_t comp_id;
+	uid_t uid;
+	gid_t gid;
+	uint32_t perm;
+	ldms_stream_client_t stream_client;
+	LIST_HEAD(, js_entry_s) set_list;
+	pthread_mutex_t lock;
+};
+
 
 static ovis_log_t __log = NULL;
 #define LOG(_level_, _fmt_, ...) ovis_log(__log, _level_, "[%d] " _fmt_, __LINE__, ##__VA_ARGS__)
@@ -774,22 +800,6 @@ static int get_schema_for_json(char *name, json_entity_t e, ldms_schema_t *sch)
 
 static int json_recv_cb(ldms_stream_event_t ev, void *arg);
 
-pthread_mutex_t cfg_tree_lock = PTHREAD_MUTEX_INITIALIZER;
-static struct rbt cfg_tree = RBT_INITIALIZER(str_cmp);
-struct json_cfg_inst {
-	struct ldmsd_plugin *plugin;
-	char *stream_name;
-	size_t heap_sz;
-	char *producer_name;
-	char *instance_name;
-	uint64_t comp_id;
-	uid_t uid;
-	gid_t gid;
-	uint32_t perm;
-	pthread_mutex_t lock;
-	struct rbn rbn;		/* Key is stream_name */
-};
-
 #define DEFAULT_HEAP_SZ 512
 /*
  * instance=FMT	The FMT string is a format specifier for generating
@@ -799,15 +809,22 @@ struct json_cfg_inst {
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
-	struct json_cfg_inst *inst;
 	char *value;
 	int rc;
+	json_stream_sampler_t p = (json_stream_sampler_t)self;
 
-	inst = calloc(1, sizeof(*inst));
-	if (!inst)
-		return ENOMEM;
+	pthread_mutex_lock(&p->lock);
+	if (p->stream_client) {
+		LERROR("The plugin instance '%s' has been configured to process "
+		       "stream '%s'. Use `term name=%s to terminate the plugin "
+		       "and remove all associated sets and stream clients.\n" ,
+				ldmsd_plugin_inst_name(self),
+				p->stream_name,
+				ldmsd_plugin_inst_name(self));
+		pthread_mutex_unlock(&p->lock);
+		return EEXIST;
+	}
 
-	pthread_mutex_init(&inst->lock, NULL);
 
 	/* stream name */
 	value = av_value(avl, "stream");
@@ -816,8 +833,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		LERROR("The 'stream' configuration parameter is required.\n");
 		goto err_0;
 	}
-	inst->stream_name = strdup(value);
-	if (!inst->stream_name) {
+	p->stream_name = strdup(value);
+	if (!p->stream_name) {
 		rc = ENOMEM;
 		goto err_0;
 	}
@@ -829,8 +846,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		rc = EINVAL;
 		goto err_0;
 	}
-	inst->producer_name = strdup(value);
-	if (!inst->producer_name) {
+	p->producer_name = strdup(value);
+	if (!p->producer_name) {
 		rc = ENOMEM;
 		goto err_0;
 	}
@@ -838,8 +855,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	/* instance name */
 	value = av_value(avl, "instance");
 	if (value) {
-		inst->instance_name = strdup(value);
-		if (!inst->instance_name) {
+		p->instance_name = strdup(value);
+		if (!p->instance_name) {
 			rc = ENOMEM;
 			goto err_0;
 		}
@@ -847,21 +864,21 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 	/* component_id */
 	value = av_value(avl, "component_id");
-	inst->comp_id = 0;
+	p->comp_id = 0;
 	if (value) {
 		/* Skip non isdigit prefix */
 		while (*value != '\0' && !isdigit(*value)) value++;
 		if (*value != '\0')
-			inst->comp_id = (uint64_t)(atoi(value));
+			p->comp_id = (uint64_t)(atoi(value));
 	}
 	/* heap_sz */
-	inst->heap_sz = DEFAULT_HEAP_SZ;
+	p->heap_sz = DEFAULT_HEAP_SZ;
 	value = av_value(avl, "heap_sz");
 	if (value)
-		inst->heap_sz = strtol(value, NULL, 0);
+		p->heap_sz = strtol(value, NULL, 0);
 
 	/* Set uid, gid, perm to the default values */
-	ldms_set_default_authz(&inst->uid, &inst->gid, &inst->perm, DEFAULT_AUTHZ_READONLY);
+	ldms_set_default_authz(&p->uid, &p->gid, &p->perm, DEFAULT_AUTHZ_READONLY);
 	/* uid */
 	value = av_value(avl, "uid");
 	if (value) {
@@ -873,9 +890,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 				rc = EINVAL;
 				goto err_0;
 			}
-			inst->uid = pwd->pw_uid;
+			p->uid = pwd->pw_uid;
 		} else {
-			inst->uid = strtol(value, NULL, 0);
+			p->uid = strtol(value, NULL, 0);
 		}
 	}
 
@@ -890,9 +907,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 				rc = EINVAL;
 				goto err_0;
 			}
-			inst->gid = grp->gr_gid;
+			p->gid = grp->gr_gid;
 		} else {
-			inst->gid = strtol(value, NULL, 0);
+			p->gid = strtol(value, NULL, 0);
 		}
 	}
 
@@ -904,35 +921,31 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 			       "as an Octal number.\n",
 			       value);
 		}
-		inst->perm = strtol(value, NULL, 0);
+		p->perm = strtol(value, NULL, 0);
 	}
 
-	rbn_init(&inst->rbn, inst->stream_name);
-	pthread_mutex_lock(&cfg_tree_lock);
-	struct rbn *rbn = rbt_find(&cfg_tree, inst->stream_name);
-	if (rbn) {
-		rc = EBUSY;
-		LERROR("The stream name '%s' has already been registered for "
-		       "this sampler.\n", inst->stream_name);
-		goto err_1;
+	p->stream_client = ldms_stream_subscribe(p->stream_name, 0, json_recv_cb, p, "json_stream_sampler");
+	if (!p->stream_client) {
+		LERROR("Cannot create stream client.\n");
+		rc = errno;
+		goto err_0;
 	}
-	rbt_ins(&cfg_tree, &inst->rbn);
-	pthread_mutex_unlock(&cfg_tree_lock);
-	ldms_stream_subscribe(inst->stream_name, 0, json_recv_cb, inst, "json_stream_sampler");
+	ldmsd_plugin_get(&p->plugin, "subscribe"); /* put in json_recv_cb, CLOSE event */
+	pthread_mutex_unlock(&p->lock);
 	return 0;
- err_1:
-	pthread_mutex_unlock(&cfg_tree_lock);
+
  err_0:
-	if (inst) {
-		free(inst->stream_name);
-		free(inst->producer_name);
-		free(inst->instance_name);
-		free(inst);
-	}
+	free(p->stream_name);
+	p->stream_name = NULL;
+	free(p->producer_name);
+	p->producer_name = NULL;
+	free(p->instance_name);
+	p->instance_name = NULL;
+	pthread_mutex_unlock(&p->lock);
 	return rc;
 }
 
-static void update_set_data(struct json_cfg_inst *inst,
+static void update_set_data(json_stream_sampler_t p,
 			    ldms_set_t set,
 			    json_entity_t entity)
 {
@@ -988,24 +1001,27 @@ static void update_set_data(struct json_cfg_inst *inst,
 	}
 }
 
-static int json_recv_cb(ldms_stream_event_t ev, void *arg)
+static int __stream_close(ldms_stream_event_t ev, json_stream_sampler_t p)
+{
+	ldmsd_plugin_put(&p->plugin, "subscribe"); /* from subscribe */
+	return 0;
+}
+
+static int __stream_recv(ldms_stream_event_t ev, json_stream_sampler_t p)
 {
 	const char *msg;
 	json_entity_t entity;
 	int rc = EINVAL;
 	ldms_schema_t schema;
-	struct json_cfg_inst *inst = arg;
 	json_entity_t schema_name;
 
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
-		return 0;
 	LDEBUG("thread: %lu, stream: '%s', msg: '%s'\n", pthread_self(), ev->recv.name, ev->recv.data);
 	if (ev->recv.type != LDMS_STREAM_JSON) {
 		LERROR("Unexpected stream type data...ignoring\n");
 		return 0;
 	}
 
-	pthread_mutex_lock(&inst->lock);
+	pthread_mutex_lock(&p->lock);
 
 	msg = ev->recv.data;
 	entity = ev->recv.json;
@@ -1032,10 +1048,10 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 		goto err_0;
 	}
 	char *set_name;
-	if (inst->instance_name) {
-		set_name = strdup(inst->instance_name);
+	if (p->instance_name) {
+		set_name = strdup(p->instance_name);
 	} else {
-		rc = asprintf(&set_name, "%s_%s", inst->producer_name,
+		rc = asprintf(&set_name, "%s_%s", p->producer_name,
 			      json_value_str(schema_name)->str);
 		if (rc < 0)
 			set_name = NULL;
@@ -1046,18 +1062,28 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 	}
 	ldms_set_t set = ldms_set_by_name(set_name);
 	if (!set) {
-		set = ldms_set_create(set_name, schema, inst->uid, inst->gid,
-						  inst->perm, inst->heap_sz);
+		js_entry_t ent = calloc(1, sizeof(*ent));
+		if (!ent) {
+			LERROR("Out of memory\n");
+			rc = ENOMEM;
+			goto err_1;
+		}
+		set = ldms_set_create(set_name, schema, p->uid, p->gid,
+						  p->perm, p->heap_sz);
 		if (set) {
 			LINFO("Created the set '%s' with schema '%s'\n",
 			      set_name, ldms_schema_name_get(schema));
+			ldmsd_set_register(set, p->plugin.cfgobj.name);
 			ldms_set_publish(set);
 		} else {
+			free(ent);
 			LERROR("Error %d creating the set '%s' with schema '%s'\n",
 			       errno, set_name, ldms_schema_name_get(schema));
 			rc = errno;
 			goto err_1;
 		}
+		ent->set = set;
+		LIST_INSERT_HEAD(&p->set_list, ent, entry);
 	}
 	free(set_name);
 
@@ -1066,57 +1092,114 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 	ldms_metric_set_s32(set, 0, ev->recv.cred.uid);
 	ldms_metric_set_s32(set, 1, ev->recv.cred.gid);
 	ldms_metric_set_s32(set, 2, ev->recv.perm);
-	update_set_data(inst, set, entity);
+	update_set_data(p, set, entity);
 	ldms_transaction_end(set);
 
-	pthread_mutex_unlock(&inst->lock);
+	pthread_mutex_unlock(&p->lock);
 	return 0;
  err_1:
 	free(set_name);
  err_0:
-	pthread_mutex_unlock(&inst->lock);
+	pthread_mutex_unlock(&p->lock);
 	return rc;
+}
+
+static int json_recv_cb(ldms_stream_event_t ev, void *arg)
+{
+	json_stream_sampler_t p = arg;
+
+	switch (ev->type)  {
+	case LDMS_STREAM_EVENT_CLOSE:
+		return __stream_close(ev, p);
+	case LDMS_STREAM_EVENT_RECV:
+		return __stream_recv(ev, p);
+	default:
+		/* ignore other events */
+		return 0;
+	}
 }
 
 static void term(struct ldmsd_plugin *self)
 {
-	/* TODO: Cleanup ... maybe ... */
+	json_stream_sampler_t p = (json_stream_sampler_t)self;
+	if (p->stream_client) {
+		ldms_stream_close(p->stream_client); /* CLOSE event will clean up `p` */
+	}
 }
 
 static int sample(struct ldmsd_sampler *self)
 {
-	/* no opt */
+	/* no ops */
 	return 0;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
-	/* no opt */
+	/* no ops */
 	return NULL;
 }
 
-static struct ldmsd_sampler json_plugin = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-	},
-	.get_set = get_set,
-	.sample = sample,
-};
-
-struct ldmsd_plugin *get_plugin()
+static void __once()
 {
-	if (!__log) {
-		/* Log initialization errors are quiet and will result in
-		 * messages going to the application log instead of our subsystem
-		 * specific log */
-		__log = ovis_log_register
-			("sampler.json_stream",
-			 "JSON sampler that creates LDMS metric sets from JSON messages."
-			 );
+	static int once = 0;
+	if (once)
+		return;
+	/* Log initialization errors are quiet and will result in
+	 * messages going to the application log instead of our subsystem
+	 * specific log */
+	__log = ovis_log_register("sampler.json_stream",
+		 "JSON sampler that creates LDMS metric sets from JSON messages."
+		 );
+	once = 1;
+}
+
+
+/* This function is called when obj->ref_count reaches 0 */
+void __jss_del(struct ldmsd_cfgobj *obj)
+{
+	json_stream_sampler_t jss = (void*)obj;
+	js_entry_t ent;
+
+	/* clean up resources in ldmsd_sampler structure */
+	ldmsd_sampler_cleanup(&jss->sampler);
+
+	/* strings from `config()` */
+	free(jss->stream_name);
+	free(jss->instance_name);
+	free(jss->producer_name);
+
+	/* free the sets */
+	while ((ent = LIST_FIRST(&jss->set_list))) {
+		LIST_REMOVE(ent, entry);
+		ldmsd_set_deregister(ldms_set_name_get(ent->set), obj->name);
+		ldms_set_delete(ent->set);
+		free(ent);
 	}
-	return &json_plugin.base;
+
+	free(jss);
+}
+
+struct ldmsd_plugin *get_plugin_instance(const char *name,
+					 uid_t uid, gid_t gid, int perm)
+{
+	json_stream_sampler_t jss;
+	__once();
+
+	jss = (void*)ldmsd_sampler_alloc(name, sizeof(*jss), __jss_del, uid, gid, perm);
+	if (!jss)
+		goto out;
+
+	jss->plugin.term   = term;
+	jss->plugin.config = config;
+	jss->plugin.usage  = usage;
+
+	snprintf(jss->plugin.name, sizeof(jss->plugin.name), "json_stream_sampler_s");
+
+	jss->sampler.sample  = sample;
+	jss->sampler.get_set = get_set;
+
+	pthread_mutex_init(&jss->lock, NULL);
+
+ out:
+	return &jss->plugin;
 }
