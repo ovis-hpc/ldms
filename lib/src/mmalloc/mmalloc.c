@@ -60,6 +60,7 @@
 #include <time.h>
 #include <errno.h>
 #include <pthread.h>
+#include <assert.h>
 #include "mmalloc.h"
 #include "../coll/rbt.h"
 #include "ovis-test/test.h"
@@ -103,6 +104,24 @@ static int compare_addr(void *node_key, const void *val_key)
 #define MMR_ROUNDUP(s,r)	((s + (r - 1)) & ~(r - 1))
 
 static mm_region_t mmr;
+
+void mm_validate_access(void *addr, size_t size)
+{
+	struct rbn *rbn;
+	struct mm_prefix *pfx;
+	assert((uint64_t)addr >= (uint64_t)mmr->start);
+	assert(((uint64_t)addr + (uint64_t)size) <
+	       ((uint64_t)mmr->start + (uint64_t)mmr->size));
+	RBT_FOREACH(rbn, &mmr->addr_tree) {
+		pfx = container_of(rbn, struct mm_prefix, addr_node);
+		if ((uint64_t)addr < (uint64_t)pfx) {
+			assert((uint64_t)addr + (uint64_t)size < (uint64_t)pfx);
+		} else {
+			size_t size = pfx->count << mmr->grain_bits;
+			assert((uint64_t)addr > (uint64_t)pfx + (uint64_t)size);
+		}
+	}
+}
 
 void mm_get_info(struct mm_info *mmi)
 {

@@ -681,6 +681,7 @@ void __sock_io_free(struct z_sock_ep *sep, struct z_sock_io *io)
  */
 static void process_sep_msg_read_resp(struct z_sock_ep *sep)
 {
+	void mm_validate_access(void *addr, size_t size);
 	struct z_sock_io *io;
 	struct sock_msg_read_resp *msg;
 	uint32_t data_len;
@@ -709,6 +710,9 @@ static void process_sep_msg_read_resp(struct z_sock_ep *sep)
 					   data_len, 0);
 		switch (rc) {
 		case 0:
+			/* Verify that the dst_ptr is not
+			   reallocated/free in the mmr */
+			mm_validate_access(io->dst_ptr, data_len);
 			memcpy(io->dst_ptr, msg->data, data_len);
 			break;
 		case EACCES:
