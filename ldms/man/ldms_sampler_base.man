@@ -24,7 +24,8 @@ arguments in the sampler_base.
 .TP
 .BR config
 name=<plugin_name> producer=<name> instance=<name> [component_id=<int>] [schema=<name>] \
-	       [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>]
+	       [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>] \
+	[uid=<int>] [gid=<int>] [perm=<octal>]
 
 .br
 configuration line
@@ -70,6 +71,18 @@ The name of the metric containing the Job start time, default is 'job_start'.
 job_end=<name>
 .br
 The name of the metric containing the Job end time, default is 'job_end'.
+.TP
+uid=<int>
+.br
+The UID to be reported with the set.
+.TP
+gid=<int>
+.br
+The GID to be reported with the set.
+.TP
+perm=<octal>
+.br
+The access permissions in UNIX filesystem style, e.g. perm=640 (no leading 0 needed).
 .RE
 
 .SH NOTES
