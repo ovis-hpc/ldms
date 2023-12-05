@@ -261,7 +261,6 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 		clock_gettime(CLOCK_REALTIME, &start);
 		strgp->update_fn(strgp, prd_set);
 		clock_gettime(CLOCK_REALTIME, &end);
-		ldmsd_stat_update(&strgp->stat, &start, &end);
 		ldmsd_stat_update(&prd_set->store_stat, &start, &end);
 		ldmsd_strgp_unlock(strgp);
 	}

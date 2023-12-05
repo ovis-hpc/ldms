@@ -489,7 +489,6 @@ struct ldmsd_strgp {
 	regex_t schema_regex;
 	char *regex_s;
 
-	struct ldmsd_stat stat;
 	int prdset_cnt; /* Number of producer sets strgp stores */
 };
 
