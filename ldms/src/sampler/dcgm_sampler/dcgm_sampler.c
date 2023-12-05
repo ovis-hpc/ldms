@@ -18,8 +18,13 @@
 #include <dcgm_agent.h>
 #include "config.h"
 #include "jobid_helper.h"
+#include "sampler_base.h"
+#include <pthread.h>
 
 #define _GNU_SOURCE
+
+
+static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define SAMP "dcgm_sampler"
 
@@ -67,6 +72,9 @@ static ldms_schema_t gpu_schema;
 /* NOTE: we are assuming here that GPU ids will start at zero and
    not exceed the DCGM_MAX_NUM_DEVICES count in value */
 static ldms_set_t gpu_sets[DCGM_MAX_NUM_DEVICES];
+static int use_base;
+static base_data_t base;
+static int termed;
 
 /* We won't use many of the entries in this array, but DCGM_FI_MAX_FIELDS is
 is only around 1000.  We trade off memory usage to allow quick translation of
@@ -235,14 +243,38 @@ static ldms_set_t gpu_metric_set_create(int gpu_id)
         char instance_name[256];
 
         ovis_log(mylog, OVIS_LDEBUG, "gpu_metric_set_create() (gpu %d)\n", gpu_id);
-
-        snprintf(instance_name, sizeof(instance_name), "%s/gpu_%d",
-                 producer_name, gpu_id);
-        set = ldms_set_new(instance_name, gpu_schema);
-        ldms_set_producer_name_set(set, producer_name);
-        ldms_metric_set_s32(set, gpu_id_metric_index, gpu_id);
-        ldms_set_publish(set);
-        ldmsd_set_register(set, SAMP);
+	if (use_base) {
+		char *tmp = base->instance_name;
+		size_t len = strlen(tmp);
+		base->instance_name = malloc( len + 20);
+		if (!base->instance_name) {
+			base->instance_name = tmp;
+			ovis_log(mylog, OVIS_LERROR, "out of memory\n");
+			return NULL;
+		}
+		/* append gpu_# to user-defined instance name */
+		snprintf(base->instance_name, len + 20, "%s/gpu_%d",  tmp, gpu_id);
+		/* override single set assumed in sampler_base api */
+		set = base_set_new(base);
+		if (!set) {
+			ovis_log(mylog, OVIS_LERROR, "failed to make %s set for %s\n",
+				base->instance_name, SAMP);
+			base->instance_name = tmp;
+			return set;
+		}
+		base_auth_set(&base->auth, set);
+		base->set = NULL;
+		free(base->instance_name);
+		base->instance_name = tmp;
+	} else {
+		snprintf(instance_name, sizeof(instance_name), "%s/gpu_%d",
+			 producer_name, gpu_id);
+		set = ldms_set_new(instance_name, gpu_schema);
+		ldms_set_producer_name_set(set, producer_name);
+		ldms_set_publish(set);
+		ldmsd_set_register(set, SAMP);
+	}
+	ldms_metric_set_s32(set, gpu_id_metric_index, gpu_id);
 
         return set;
 }
@@ -262,12 +294,18 @@ static int gpu_schema_create()
         int i;
 
         ovis_log(mylog, OVIS_LDEBUG, "gpu_schema_create()\n");
-        sch = ldms_schema_new(conf.schema_name);
-        if (sch == NULL)
-                goto err1;
-        rc = jobid_helper_schema_add(sch);
-	if (rc < 0)
-		goto err2;
+	if (!use_base) {
+		sch = ldms_schema_new(conf.schema_name);
+		if (sch == NULL)
+			goto err1;
+		rc = jobid_helper_schema_add(sch);
+		if (rc < 0)
+			goto err2;
+	} else {
+		sch = base_schema_new(base);
+		if (sch == NULL)
+			goto err1;
+	}
         rc = ldms_schema_meta_add(sch, "gpu_id", LDMS_V_S32);
         if (rc < 0)
                 goto err2;
@@ -290,7 +328,10 @@ static int gpu_schema_create()
 
         return 0;
 err2:
-        ldms_schema_delete(sch);
+	if (use_base)
+		base_schema_delete(base);
+	else
+		ldms_schema_delete(sch);
 err1:
         ovis_log(mylog, OVIS_LERROR, "schema creation failed.\n");
         return -1;
@@ -298,7 +339,10 @@ err1:
 
 static void gpu_schema_destroy()
 {
-        ldms_schema_delete(gpu_schema);
+	if (use_base)
+		base_schema_delete(base);
+	else
+		ldms_schema_delete(gpu_schema);
         gpu_schema = NULL;
 }
 
@@ -387,37 +431,57 @@ static int config(struct ldmsd_plugin *self,
         int rc = -1;
         int i;
 
+        pthread_mutex_lock(&cfg_lock);
+	if (termed)
+		termed = 0;
         ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
-
-        int jc = jobid_helper_config(avl);
-        if (jc) {
-		ovis_log(mylog, OVIS_LERROR, SAMP": set name for job_set="
-			" is too long.\n");
-		rc = jc;
-		goto err0;
+	if (dcgm_initialized) {
+		ovis_log(mylog, OVIS_LERROR, "config() called twice. Stop it first.\n");
+		pthread_mutex_unlock(&cfg_lock);
+		return EINVAL;
 	}
-        value = av_value(avl, "interval");
-        if (value == NULL) {
-                ovis_log(mylog, OVIS_LERROR, "config() \"interval\" option missing\n");
-                goto err0;
-        }
-        errno = 0;
-        conf.interval = strtol(value, NULL, 10);
-        if (errno != 0) {
-                ovis_log(mylog, OVIS_LERROR, "config() \"interval\" value conversion error: %d\n", errno);
-                goto err0;
-        }
-
-        value = av_value(avl, "schema");
+        value = av_value(avl, "use_base");
         if (value != NULL) {
-                conf.schema_name = strdup(value);
-        } else {
-                conf.schema_name = strdup("dcgm");
-        }
-        if (conf.schema_name == NULL) {
-                ovis_log(mylog, OVIS_LERROR, "config() strdup schema failed: %d", errno);
-                goto err0;
-        }
+		use_base = 1;
+		ovis_log(mylog, OVIS_LDEBUG, "Using sampler_base\n");
+	} else {
+		ovis_log(mylog, OVIS_LDEBUG, "Ignoring sampler_base\n");
+	}
+
+		value = av_value(avl, "interval");
+		if (value == NULL) {
+		        ovis_log(mylog, OVIS_LERROR, "config() \"interval\" option missing\n");
+		        goto err0;
+		}
+		errno = 0;
+		conf.interval = strtol(value, NULL, 10);
+		if (errno != 0) {
+		        ovis_log(mylog, OVIS_LERROR, "config() \"interval\" value conversion error: %d\n", errno);
+		        goto err0;
+		}
+
+	if (! use_base) {
+		int jc = jobid_helper_config(avl);
+		if (jc) {
+			ovis_log(mylog, OVIS_LERROR, "set name for job_set="
+				" is too long.\n");
+			rc = jc;
+			goto err0;
+		}
+		value = av_value(avl, "schema");
+		if (value != NULL) {
+		        conf.schema_name = strdup(value);
+		} else {
+		        conf.schema_name = strdup("dcgm");
+		}
+		if (conf.schema_name == NULL) {
+		        ovis_log(mylog, OVIS_LERROR, "config() strdup schema failed: %d", errno);
+		        goto err0;
+		}
+	} else {
+		base_config(avl, SAMP, "dcgm", mylog);
+		conf.schema_name = strdup(base->schema_name);
+	}
 
         value = av_value(avl, "fields");
         if (value != NULL) {
@@ -444,19 +508,28 @@ static int config(struct ldmsd_plugin *self,
                 goto err3;
         for (i = 0; i < gpu_ids_count; i++) {
                 if (gpu_ids[i] > DCGM_MAX_NUM_DEVICES) {
-                        ovis_log(mylog, OVIS_LERROR, "gpu id %d is greater than DCGM_MAX_NUM_DEVICES (%d), will require code fix\n");
+                        ovis_log(mylog, OVIS_LERROR,
+				"gpu id %d is greater than DCGM_MAX_NUM_DEVICES (%d), will require code fix\n",
+				i , DCGM_MAX_NUM_DEVICES);
                         goto err4;
                 }
                 gpu_sets[gpu_ids[i]] = gpu_metric_set_create(gpu_ids[i]);
         }
 
+	pthread_mutex_unlock(&cfg_lock);
         return 0;
 
 err4:
         for (i = i-1; i >= 0; i--) {
                 gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
         }
-        gpu_schema_destroy();
+	gpu_schema_destroy();
+	if (use_base) {
+		free(base->instance_name);
+                base->instance_name = NULL;
+                base_del(base);
+                base = NULL;
+	}
 err3:
         dcgm_fini();
 err2:
@@ -468,13 +541,17 @@ err1:
         free(conf.schema_name);
         conf.schema_name = NULL;
 err0:
+	pthread_mutex_unlock(&cfg_lock);
         return rc;
 }
 
 static int sample(struct ldmsd_sampler *self)
 {
-        ovis_log(mylog, OVIS_LDEBUG, "sample() called\n");
-        gpu_sample();
+        ovis_log(mylog, OVIS_LDEBUG, SAMP" sample() called\n");
+        pthread_mutex_lock(&cfg_lock);
+	if (!termed)
+		gpu_sample();
+        pthread_mutex_unlock(&cfg_lock);
         return 0;
 }
 
@@ -482,20 +559,32 @@ static void term(struct ldmsd_plugin *self)
 {
 	int i;
 
+	ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
+	pthread_mutex_lock(&cfg_lock);
+        gpu_schema_destroy();
+	if (use_base) {
+		free(base->instance_name);
+		base->instance_name = NULL;
+		base_del(base);
+		base = NULL;
+	}
 	free(conf.schema_name);
 	conf.schema_name = NULL;
-	free(conf.fields);
-	conf.fields = NULL;
-	conf.fields_len = 0;
-	conf.interval = 0;
-	for (i = 0; i < gpu_ids_count; i++) {
-		gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
-	}
-	gpu_schema_destroy();
-	dcgm_fini();
-	ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
-	if (mylog)
+        free(conf.fields);
+        conf.fields = NULL;
+        conf.fields_len = 0;
+        conf.interval = 0;
+        for (i = 0; i < gpu_ids_count; i++) {
+                gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
+        }
+        dcgm_fini();
+	termed = 1;
+	use_base = 0;
+	if (mylog) {
 		ovis_log_destroy(mylog);
+		mylog = NULL;
+	}
+        pthread_mutex_unlock(&cfg_lock);
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -506,7 +595,34 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 static const char *usage(struct ldmsd_plugin *self)
 {
         ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
-	return  "config name=" SAMP;
+	return "config name=" SAMP
+	" interval=<interval(us)> [fields=<fields>]\n"
+	" [schema=<schema_name>] [job_set=<metric set name>]\n"
+	" [use_base=1\n"
+	"   [[uid=<int>] [gid=<int>] [perm=<octal>] [instance=<name>]\n"
+	"    [producer=<name>] [job_id=<metric name in job_set set>]\n"
+	"   ]\n"
+	" name=<plugin_name>\n"
+	" interval=<interval(us)> DCGM query interval (microsecond)\n"
+	"         must match dcgm_sampler interval for plugin start\n"
+	" fields=<fields>  list of DCGM field_ids\n"
+	" schema=<schema_name> default " SAMP "\n"
+	" job_set=<job metric set name>\n"
+	" If use_base=1 is given, the additional parameters are applied\n"
+	" (see ldms_sampler_base).\n"
+	"    producer     A unique name for the host providing the timing data\n"
+	"                 (default $HOSTNAME)\n"
+	"    instance     A unique name for the timing metric set\n"
+	"                 (default $producer/" SAMP "/gpu_X)\n"
+	"    component_id A unique number for the component being monitoring.\n"
+	"                 (default 0)\n"
+	"    schema       The base name of the port metrics schema.\n"
+	"                 (default " SAMP ".\n"
+	"    uid          The user-id of the set's owner\n"
+	"    gid          The group id of the set's owner\n"
+	"    perm         The set's access permissions\n"
+	" See ldms-dcgm-list-fields for input values to fields\n"
+	;
 }
 
 static struct ldmsd_sampler nvidia_dcgm_plugin = {
