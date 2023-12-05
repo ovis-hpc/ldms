@@ -1,0 +1,15 @@
+export plugname=dcgm
+portbase=61073
+VGARGS="--leak-check=full --track-origins=yes --trace-children=yes"
+JOBDATA $TESTDIR/job.data 1 2
+vgoff
+LDMSD -p prolog.jobid 1 2
+vgoff
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -lv
+SLEEP 1
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -l
+SLEEP 5
+KILL_LDMSD 1 2
+file_created $STOREDIR/node/$testname

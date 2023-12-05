@@ -42,6 +42,7 @@ lustre_mdc
 dstat.job
 many
 conf_csv
+dcgm1
 
 # not yet tested
 rabbitv3
