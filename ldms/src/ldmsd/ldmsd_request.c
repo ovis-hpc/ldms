@@ -7051,15 +7051,74 @@ err:
 	return ENOMEM;
 }
 
+struct store_time_thread {
+	pid_t tid;
+	uint64_t store_time;
+	struct rbn rbn;
+};
+
+int __store_time_thread_cmp(void *tree_key, const void *key)
+{
+	const pid_t a = (pid_t)(uint64_t)tree_key;
+	pid_t b = (pid_t)(uint64_t)key;
+	return a - b;
+}
+
+static int __store_time_thread_tree(struct rbt *tree)
+{
+	ldmsd_prdcr_t prdcr;
+	struct rbn *prdset_rbn, *rbn;
+	ldmsd_prdcr_set_t prdset;
+	struct store_time_thread *ent;
+	pid_t tid;
+	int rc = 0;
+
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		RBT_FOREACH(prdset_rbn, &prdcr->set_tree) {
+			prdset = container_of(prdset_rbn, struct ldmsd_prdcr_set, rbn);
+			if (!prdset->set)
+				continue;
+			tid = ldms_set_thread_id_get(prdset->set);
+			rbn = rbt_find(tree, (void*)(uint64_t)tid);
+			if (!rbn) {
+				ent = calloc(1, sizeof(*ent));
+				if (!ent) {
+					ovis_log(config_log, OVIS_LCRITICAL,
+							"Memory Allocation Failure.");
+					rc = ENOMEM;
+					goto out;
+				}
+				rbn_init(&ent->rbn, (void*)(uint64_t)tid);
+				rbt_ins(tree, &ent->rbn);
+			} else {
+				ent = container_of(rbn, struct store_time_thread, rbn);
+			}
+			ent->store_time += (uint64_t)(prdset->store_stat.avg * prdset->store_stat.count);
+		}
+	}
+out:
+	return rc;
+}
+
 /*
  * Sends a JSON formatted summary of Zap thread statistics as follows:
  *
  * { "count" : <int>,
  *   "entries" : [
- * 		{ "name" : <string>,
+ * 	{ "name" : <string>,
+ * 	  "tid"  : <tid>,
+ * 	  "thread_id" : <Linux Thread ID>,
  *  	  "sample_count" : <float>,
  *  	  "sample_rate" : <float>,
- *        "utilization" : <float>
+ *        "utilization" : <float>,
+ *        "sq_sz" : <send queue size>,
+ *        "n_eps" : <Number of endpoints>,
+ *        "ldms_xprt" :
+ *          { "Idle" : <Idle Time>,
+ *            "Zap" : <Time spent by Zap>,
+ *            <ldms_xprt's operations>,
+ *            "Storing Time> : <Time spent to store metrics>
+ *          }
  *      },
  *      . . .
  *   ]
@@ -7069,15 +7128,27 @@ static char * __thread_stats_as_json(size_t *json_sz)
 {
 	char *buff, *s;
 	size_t sz = __APPEND_SZ;
-	int i;
+	int i, j;
+	int rc;
 	struct timespec start, end;
-	struct zap_thrstat_result *res;
+	struct ldms_thrstat_result *res = NULL;
+	struct zap_thrstat_result_entry *zthr;
+	struct rbt store_time_tree;
+	struct rbn *rbn;
+	struct store_time_thread *stime_ent;
+	s = buff = NULL;
 
 	(void)clock_gettime(CLOCK_REALTIME, &start);
 
-	res = zap_thrstat_get_result();
+	rbt_init(&store_time_tree, __store_time_thread_cmp);
+	rc = __store_time_thread_tree(&store_time_tree);
+	if (rc) {
+		goto __APPEND_ERR;
+	}
+
+	res = ldms_thrstat_result_get();
 	if (!res)
-		return NULL;
+		goto __APPEND_ERR;
 
 	buff = malloc(sz);
 	if (!buff)
@@ -7088,13 +7159,43 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	__APPEND(" \"count\": %d,\n", res->count);
 	__APPEND(" \"entries\": [\n");
 	for (i = 0; i < res->count; i++) {
+		zthr = res->entries[i].zap_res;
 		__APPEND("  {\n");
-		__APPEND("   \"name\": \"%s\",\n", res->entries[i].name);
-		__APPEND("   \"sample_count\": %g,\n", res->entries[i].sample_count);
-		__APPEND("   \"sample_rate\": %g,\n", res->entries[i].sample_rate);
-		__APPEND("   \"utilization\": %g,\n", res->entries[i].utilization);
-		__APPEND("   \"sq_sz\": %lu,\n", res->entries[i].sq_sz);
-		__APPEND("   \"n_eps\": %lu\n", res->entries[i].n_eps);
+		__APPEND("   \"name\": \"%s\",\n", zthr->name);
+		__APPEND("   \"tid\": %d,\n", zthr->tid);
+		__APPEND("   \"thread_id\": \"%p\",\n", (void*)zthr->thread_id);
+		__APPEND("   \"sample_count\": %g,\n", zthr->sample_count);
+		__APPEND("   \"sample_rate\": %g,\n", zthr->sample_rate);
+		__APPEND("   \"utilization\": %g,\n", zthr->utilization);
+		__APPEND("   \"sq_sz\": %lu,\n", zthr->sq_sz);
+		__APPEND("   \"n_eps\": %lu,\n", zthr->n_eps);
+		__APPEND("   \"ldms_xprt\": {\n");
+		__APPEND("     \"Idle\": %ld,\n", res->entries[i].idle);
+		__APPEND("     \"Zap\": %ld,\n", res->entries[i].zap_time);
+		for (j = 0; j < LDMS_THRSTAT_OP_COUNT; j++) {
+			if (j > 0)
+				__APPEND(",\n");
+			if (j == LDMS_THRSTAT_OP_UPDATE_REPLY) {
+				/* Substract the store_time from the total update time */
+				rbn = rbt_find(&store_time_tree, (void*)(uint64_t)zthr->tid);
+				if (rbn) {
+					stime_ent = container_of(rbn, struct store_time_thread, rbn);
+					__APPEND("     \"%s\": %ld,\n", ldms_thrstat_op_str(j),
+						res->entries[i].ops[j] - stime_ent->store_time);
+					__APPEND("     \"Storing Data\": %ld",
+							stime_ent->store_time);
+				} else {
+					__APPEND("     \"%s\": %ld,\n", ldms_thrstat_op_str(j),
+								res->entries[i].ops[j]);
+					__APPEND("     \"Storing Data\": 0");
+				}
+			} else {
+				__APPEND("     \"%s\": %ld", ldms_thrstat_op_str(j),
+							res->entries[i].ops[j]);
+			}
+		}
+		__APPEND("      }");
+		__APPEND("   ");
 		if (i < res->count - 1)
 			__APPEND("  },\n");
 		else
@@ -7107,10 +7208,20 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	__APPEND("}"); /* end */
 
 	*json_sz = s - buff + 1;
-	zap_thrstat_free_result(res);
+	ldms_thrstat_result_free(res);
+	while ((rbn = rbt_min(&store_time_tree))) {
+		rbt_del(&store_time_tree, rbn);
+		stime_ent = container_of(rbn, struct store_time_thread, rbn);
+		free(stime_ent);
+	}
 	return buff;
 __APPEND_ERR:
-	zap_thrstat_free_result(res);
+	ldms_thrstat_result_free(res);
+	while ((rbn = rbt_min(&store_time_tree))) {
+		rbt_del(&store_time_tree, rbn);
+		stime_ent = container_of(rbn, struct store_time_thread, rbn);
+		free(stime_ent);
+	}
 	free(buff);
 	return NULL;
 }
@@ -8689,8 +8800,10 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 			rc = json_attr_add(sets, prdset->inst_name, set_json);
 			if (rc)
 				goto json_error;
-			if (reset)
+			if (reset) {
 				memset(&prdset->store_stat, 0, sizeof(prdset->store_stat));
+				clock_gettime(CLOCK_REALTIME, &prdset->store_stat.start);
+			}
 		}
 	}
 	rc = json_attr_add(strgp_dict, strgp->obj.name, strgp_stats);
