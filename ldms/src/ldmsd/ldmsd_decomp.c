@@ -780,6 +780,41 @@ static const char *col_type_str(enum ldms_value_type type)
 	return type_str[type];
 }
 
+static const char *col_default(enum ldms_value_type type)
+{
+	static char *default_str[] = {
+	    [LDMS_V_CHAR] = "\" \"",
+	    [LDMS_V_U8] = "0",
+	    [LDMS_V_S8] = "0",
+	    [LDMS_V_U16] = "0",
+	    [LDMS_V_S16] = "0",
+	    [LDMS_V_U32] = "0",
+	    [LDMS_V_S32] = "0",
+	    [LDMS_V_U64] = "0",
+	    [LDMS_V_S64] = "0",
+	    [LDMS_V_F32] = "0.0",
+	    [LDMS_V_D64] = "0.0",
+	    [LDMS_V_CHAR_ARRAY] = "\"\"",
+	    [LDMS_V_U8_ARRAY] = "[]",
+	    [LDMS_V_S8_ARRAY] = "[]",
+	    [LDMS_V_U16_ARRAY] = "[]",
+	    [LDMS_V_S16_ARRAY] = "[]",
+	    [LDMS_V_U32_ARRAY] = "[]",
+	    [LDMS_V_S32_ARRAY] = "[]",
+	    [LDMS_V_U64_ARRAY] = "[]",
+	    [LDMS_V_S64_ARRAY] = "[]",
+	    [LDMS_V_F32_ARRAY] = "[]",
+	    [LDMS_V_D64_ARRAY] = "[]",
+	    [LDMS_V_LIST] = "nosup",
+	    [LDMS_V_LIST_ENTRY] = "nosup",
+	    [LDMS_V_RECORD_TYPE] = "nosup",
+	    [LDMS_V_RECORD_INST] = "nosup",
+	    [LDMS_V_RECORD_ARRAY] = "nosup",
+	    [LDMS_V_TIMESTAMP] = "0"
+	};
+	return default_str[type];
+}
+
 static char get_avro_char(char c)
 {
 	if (isalnum(c))
@@ -827,6 +862,12 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 		}
 		switch (col->type) {
 		case LDMS_V_TIMESTAMP:
+			rc = strbuf_printf(&h,
+                                           "{\"name\":\"%s\",\"type\":%s}",
+					   avro_name, col_type_str(col->type));
+			if (rc)
+				goto err_0;
+			break;
 		case LDMS_V_CHAR:
 		case LDMS_V_U8:
 		case LDMS_V_S8:
@@ -839,8 +880,11 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 		case LDMS_V_F32:
 		case LDMS_V_D64:
 		case LDMS_V_CHAR_ARRAY:
-			rc = strbuf_printf(&h, "{\"name\":\"%s\",\"type\":%s}",
-					   avro_name, col_type_str(col->type));
+			rc = strbuf_printf(&h,
+                                           "{\"name\":\"%s\",\"type\":%s,"
+                                           "\"default\":%s}",
+					   avro_name, col_type_str(col->type),
+                                           col_default(col->type));
 			if (rc)
 				goto err_0;
 			break;
@@ -856,8 +900,10 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 		case LDMS_V_D64_ARRAY:
 			rc = strbuf_printf(&h,
 					   "{\"name\":\"%s\","
-					   "\"type\":{ \"type\" : \"array\", \"items\": %s }}",
-					   avro_name, col_type_str(col->type));
+					   "\"type\":{ \"type\" : \"array\", \"items\": %s },"
+                                           "\"default\":%s}",
+					   avro_name, col_type_str(col->type),
+                                           col_default(col->type));
 			if (rc)
 				goto err_0;
 			break;
