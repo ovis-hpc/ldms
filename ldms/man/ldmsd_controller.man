@@ -80,91 +80,131 @@ regular expression characters. Please see \fBregex(7)\fR for more information.
 
 .SH PLUGIN COMMAND SYNTAX
 
-.SS Load a plugin
+.SS Load a plugin instance
 .BR load
-attr=<value>
+.BI name\fR= NAME
+.BI plugin\fR= PLUGIN
 .br
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
-The plugin name
+The name of the plugin instance (user-defined, e.g. p0).
+.br
+.TP
+.BI plugin\fR= PLUGIN
+.br
+The plugin to load (e.g. meminfo, store_sos).
 
 .SS List the usage of the loaded plugins
 .BR usage
 
-.SS unload a plugin
+.SS Unload a plugin instance
 .BR term
-attr=<value>
+.BI name\fR= NAME
 .br
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
-The plugin name
+The name of the plugin instance to terminate.
+.RE
 
-.SS Send a configuration command to the specified plugin.
+.SS Configuring a storage plugin.
+.TP
 .BR config
-attr=<value>
-.RS
-.TP
-.BI name " name"
-.br
-The plugin name
-.TP
-.BR attr=value
-.br
-Plugin specific attr=value tuples
+.BI name\fR= NAME
+.BI path\fR= PATH
+.RB [ ... ]
 
 .RS
-.B Attributes specific for sampler plugins (Some sampler plugins may have additional
-attributes)
 .TP
-.BI producer " producer"
+.BI name\fR= NAME
+.br
+The plugin instance name
+.TP
+.BI path\fR= PATH
+.br
+The path to the storage. Each storage plugin takes \fBpath\fR differently (e.g.
+store_kafka that takes path as path to store_kafka JSON configuration file). So,
+please consult the storage plugin manual.
+.TP
+.RB [ ... ]
+.br
+The storage plugins may have additional parameters. Please consult its
+manual/usage for more information.
+.RE
+
+.SS Configuring a sampler plugin.
+.TP
+.BR config
+.BI name\fR= NAME
+.BI producer\fR= PRODUCER
+.BI instance\fR= INSTANCE
+.RB [ component_id\fR=\fICOMPONENT_ID ]
+.RB [ schema\fR=\fISCHEMA ]
+.RB [ uid\fR=\fIUID ]
+.RB [ gid\fR=\fIGID ]
+.RB [ perm\fR=\fIPERM ]
+.RB [ ... ]
+
+.RS
+.TP
+.BI name\fR= NAME
+.br
+The plugin instance name
+.TP
+.BI producer\fR= PRODUCER
 .br
 A unique name for the host providing the data
 .TP
-.BI instance " instance"
+.BI instance\fR= INSTANCE
 .br
 The set instance name. The name must be unique among all metric sets in all LDMS
 daemons.
 .TP
-.BI [component_id " component_id"]
+.RB [ component_id\fR=\fICOMPONENT_ID ]
 .br
 A unique number for the comopnent being monitored. The default is zero.
 .TP
-.BI [schema " schema"]
+.RB [ schema\fR=\fISCHEMA ]
 .br
 The name of the metric set schema.
 .TP
-.BI [job_set " job_set"]
+.RB [ job_set\fR=\fIJOB_SET ]
 .br
 The set instance name of the set containing the job data. The default is 'job_info'.
 .TP
-.BI [uid " uid"]
+.RB [ uid\fR=\fIUID ]
 .br
 The user id of the set's owner. The default is the returned value of geteuid().
 .TP
-.BI [gid " gid"]
+.RB [ gid\fR=\fIGID ]
 .br
 The group id of the set's owner. The default is the returned value of getegid().
 .TP
-.BI [perm " perm"]
+.RB [ perm\fR=\fIPERM ]
 .br
 The sampler plugin instance access permission. The default is 0440.
-.RE
+.TP
+.RB [ ... ]
+.br
+Some sampler plugin may have additional parameters. Please consult its
+manual/usage for more information.
 .RE
 
 .SS Start a sampler plugin
 .BR start
-attr=<value>
+.BI name\fR= NAME
+.BI interval\fR= INTERVAL
+.RB [ offset\fR=\fIOFFSET ]
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The plugin name.
 .TP
-.BI interval " interval"
+.BI interval\fR= INTERVAL
 .br
 The sample interval, which is a float followed by a unit string.
 If no unit string is given, the default unit is microseconds.
@@ -176,7 +216,7 @@ A unit string is one of the followings:
   h  -- hours
   d  -- days
 .TP
-.BI [offset " offset"]
+.RB [ offset\fR=\fIOFFSET ]
 .br
 Offset (shift) from the sample mark in the same format as intervals.
 Offset can be positive or negative with magnitude up to 1/2
@@ -187,12 +227,12 @@ the sample interval. The default offset is 0. Collection is always synchronous.
 
 .SS Stop a sampler plugin
 .BR stop
-attr=<value>
+.BI name\fR= NAME
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
-The plugin name.
+The plugin instance name to stop.
 .RE
 
 .SH AUTHENTICATION COMMAND SYNTAX
@@ -200,7 +240,7 @@ The plugin name.
 .B auth_add
 \fBname\fR=\fINAME\fR
 \fBplugin\fR=\fIPLUGIN\fR
-[ ... \fIPLUGIN ATTRIBUTES\fR ... ]
+.RB [ ... ]
 .RS
 .TP
 \fBname\fR=\fINAME\fR
@@ -212,7 +252,7 @@ The name of the authentication domain. This is the name referred to by
 .br
 The LDMS Authentication Plugin for this domain.
 .TP
-[ ... \fIPLUGIN ATTRIBUTES\fR ... ]
+.RB [ ... ]
 .br
 Arbitrary plugin attributes. Please consult the manual of the authentication
 plugin for more information.
@@ -223,7 +263,7 @@ plugin for more information.
 .SS  Instruct ldmsd to listen to a port
 .B listen
 \fBport\fR=\fIPORT\fR
-\fBxprt\fR=\fIsock\fR|\fIrdma\fR|\fIugni\fR|\fIfabric\fR
+\fBxprt\fR=\fBsock\fR|\fBrdma\fR|\fBugni\fR|\fBfabric\fR
 [\fBhost\fR=\fIHOST\fR]
 [\fBauth\fR=\fIAUTH_REF\fR]
 .RS
@@ -233,16 +273,16 @@ plugin for more information.
 The port to listen to. Also, please be sure not to use ephemeral port (ports in
 the range of \fB/proc/sys/net/ip4/ip_local_port_range\fR).
 .TP
-\fBxprt\fR=\fIsock\fR|\fIrdma\fR|\fIugni\fR|\fIfabric\fR
+\fBxprt\fR=\fBsock\fR|\fBrdma\fR|\fBugni\fR|\fBfabric\fR
 .br
 The type of the transport.
 .TP
-\fBhost\fR=\fIHOST\fR
+[\fBhost\fR=\fIHOST\fR]
 .br
 An optional hostname or IP address to bind. If not given, listen to all
 addresses (0.0.0.0 or PORT).
 .TP
-\fBauth\fR=\fIAUTH_REF\fR
+[\fBauth\fR=\fIAUTH_REF\fR]
 .br
 Instruct \fBldmsd\fR to use \fIAUTH_REF\fR (a name reference to \fBauth\fR
 object created by \fBauth_add\fR command) to authenticate connections on this
@@ -252,29 +292,39 @@ the CLI options (see \fBldmsd\fR(8) option \fB-a\fR).
 
 .SH PRODUCER COMMAND SYNTAX
 .SS  Add a producer to the aggregator
+.TP 10
 .BR prdcr_add
-attr=<value>
+.BI name\fR= NAME
+.BI xprt\fR= XPRT
+.BI host\fR= HOST
+.BR type = active | passive
+.BI reconnect\fR= INTERVAL
+.RB [ perm\fR=\fIPERMISSION ]
+.RB [ auth\fR=\fIAUTH_REF ]
+.RB [ rail\fR=\fINUM ]
+.RB [ credits\fR=\fIBYTES ]
+.RB [ rx_rate\fR=\fIBYTES_PER_SEC ]
 .br
-.RS
+.RS 8
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The producer name. The producer name must be unique in an aggregator. It is independent of
 any attributes specified for the metric sets or hosts.
 .TP
-.BI xprt " xprt"
+.BI xprt\fR= XPRT
 .br
 The transport name [sock, rdma, ugni]
 .TP
-.BI host " host"
+.BI host\fR= HOST
 .br
 The hostname of the host
 .TP
-.BI type " conn_type"
+.BR type = active | passive
 .br
 The connection type [active, passive]
 .TP
-.BI reconnect " interval"
+.BI reconnect\fR= INTERVAL
 .br
 The connection retry interval, which is a float followed by a unit string.
 If no unit string is given, the default unit is microseconds.
@@ -286,33 +336,33 @@ A unit string is one of the followings:
   h  -- hours
   d  -- days
 .TP
-.BI interval " interval"
+.BI interval\fR= INTERVAL " **DEPRECATED**"
 .br
 It is being deprecated. Please use 'reconnect'.
 .TP
-.BI [perm " permission"]
+.RB [ perm\fR=\fIPERMISSION ]
 .br
 The permission to modify the producer in the future
 .TP
-.BI [auth " AUTH_REF"]
+.RB [ auth\fR=\fIAUTH_REF ]
 .br
 Instruct \fBldmsd\fR to use \fIAUTH_REF\fR (a name reference to \fBauth\fR
 object created by \fBauth_add\fR command) with the connections to this
 producer. If not given, the default authentication method specified on
 the CLI options (see \fBldmsd\fR(8) option \fB-a\fR) is used.
 .TP
-.BI [rail " NUM"]
+.RB [ rail\fR=\fINUM ]
 .br
 The number of rail endpooints for the prdcr (default: 1).
 .TP
-.BI [credits " BYTES"]
+.RB [ credits\fR=\fIBYTES ]
 .br
 The send credits our ldmsd (the one we are controlling) advertises to the prdcr
 (default: value from ldmsd --credits option). This limits how much outstanding
 data our ldmsd holds for the prdcr. The prdcr drops messages when it does not
 have enough send credits.
 .TP
-.BI [rx_rate " BYTES_PER_SEC"]
+.RB [ rx_rate\fR=\fIBYTES_PER_SEC ]
 .br
 The recv rate (bytes/sec) limit for this connection. The default is -1
 (unlimited).
@@ -323,24 +373,24 @@ The recv rate (bytes/sec) limit for this connection. The default is -1
 The producer cannot be in use or running
 .br
 .BR prdcr_del
-attr=<value>
+.BI name\fR= NAME
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The producer name
 .RE
 
 .SS Start a producer
 .BR prdcr_start
-attr=<value>
+.BI name\fR= NAME
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The producer name
 .TP
-.BI [reconnect " interval"]
+.RB [ reconnect\fR=\fIINTERVAL ]
 .br
 The connection retry interval, which is a float followed by a unit string.
 If no unit string is given, the default unit is microseconds.
@@ -353,21 +403,22 @@ A unit string is one of the followings:
   d  -- days
 If unspecified, the previously configured value will be used. Optional.
 .TP
-.BI [interval " interval"]
+.RB [ interval\fR=\fIINTERVAL ] " **DEPRECATED**"
 .br
 It is being deprecated. Please use 'reconnect'.
 .RE
 
 .SS Start all producers matching a regular expression
 .BR prdcr_start_regex
-attr=<value>
+.BI regex\fR= REGEX
+.RB [ reconnect\fR=\fIINTERVAL ]
 .RS
 .TP
-.BI regex " regex"
+.BI regex\fR= REGEX
 .br
 A regular expression
 .TP
-.BI [reconnect " interval"]
+.RB [ reconnect\fR=\fIINTERVAL ]
 .br
 The connection retry interval, which is a float followed by a unit stirng.
 If no unit string is given, the default unit is microseconds.
@@ -380,67 +431,80 @@ A unit string is one of the followings:
   d  -- days
 If unspecified, the previously configured value will be used. Optional.
 .TP
-.BI [interval " interval"]
+.RB [ interval\fR=\fIINTERVAL ] " **DEPRECATED**"
 .br
 It is being deprecated. Please use 'reconnect'.
 .RE
 
 .SS Stop a producer
 .BR prdcr_stop
-attr=<value>
+.BI name\fR= NAME
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The producer name
 .RE
 
 .SS Stop all producers matching a regular expression
 .BR prdcr_stop_regex
-attr=<value>
+.BI regex\fR= REGEX
 .RS
 .TP
-.BI regex " regex"
+.BI regex\fR= REGEX
 .br
 A regular expression
 .RE
 
 .SS Query producer status
 .BR prdcr_status
-attr=<value>
+.RB [ name\fR=\fINAME ]
 .RS
 .TP
-.BI [name " name"]
+.RB [ name\fR=\fINAME ]
 .br
 The producer name. If none is given, the statuses of all producers are
 reported.
 .RE
 
 .SS Subscribe for stream data from all matching producers
-.BR prdcr_subsribe
+.BR prdcr_subscribe
+.BI regex\fR= REGEX
+.BI stream\fR= STREAM
+.RB [ rx_rate\fR=\fIBYTES_PER_SECOND ]
 .RS
 .TP
-.BI regex " regex"
+.BI regex\fR= REGEX
 .br
 The regular expression matching producer name
 .TP
-.BI stream " stream"
+.BI stream\fR= STREAM
 .br
-The stream name
+The stream name, or a regular expression matching a name.
+.TP
+.RB [ rx_rate\fR=\fIBYTES_PER_SECOND ]
+.br
+The recv rate (bytes/sec) limit for the matching streams. The default is -1
+(unlimited).
 .RE
 
 .SH UPDATER COMMAND SYNTAX
 .SS Add an updater process that will periodically sample producer metric sets
 .BR updtr_add
-attr=<value>
+.BI name\fR= NAME
+.BI interval\fR= INTERVAL
+.RB [ offset\fR=\fIOFFSET ]
+.RB [ push\fR=\fIonchange\fR|\fItrue ]
+.RB [ auto_interval\fR=\fItrue\fR|\fIfalse  ]
+.RB [ perm\fR=\fIpermission ]
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The update policy name. The policy name should be unique. It is independent of
 any attributes specified for the metric sets or hosts.
 .TP
-.BI interval " interval"
+.BI interval\fR= INTERVAL
 .br
 The update/collect interval, which is a float followed by a unit string.
 If no unit string is given, the default unit is microseconds.
@@ -452,52 +516,54 @@ A unit string is one of the followings:
   h  -- hours
   d  -- days
 .TP
-.BI [offset " offset"]
+.RB [ offset\fR=\fIOFFSET ]
 .br
 Offset for synchronized aggregation. Optional.
 .TP
-.BI [push " onchange|true" ]
+.RB [ push\fR=\fIonchange\fR|\fItrue ]
 .br
 Push mode: 'onchange' and 'true'. 'onchange' means the Updater will get an
 update whenever the set source ends a transaction or pushes the update. 'true'
 means the Updater will receive an update only when the set source pushes the
 update. If `push` is used, `auto_interval` cannot be `true`.
 .TP
-.BI [auto_interval " true|false "]
+.RB [ auto_interval\fR=\fItrue\fR|\fIfalse  ]
 If true, the updater will schedule set updates according to the update hint. The
 sets with no hints will not be updated. If false, the updater will schedule the
 set updates according to the given interval and offset values. If not specified,
 the value is \fIfalse\fR.
 .TP
-.BI [perm " permission"]
+.RB [ perm\fR=\fIpermission ]
 .br
 The permission to modify the updater in the future
 .RE
 
 .SS Remove an updater from the configuration
 .BR updtr_del
-attr=<value>
+.BI name\fR= NAME
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The update policy name
 .RE
 
 .SS Add a match condition that specifies the sets to update.
 .BR updtr_match_add
-attr=<value>
+.BI name\fR= NAME
+.BI regex\fR= REGEX
+.BR match = inst | schema
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The update policy name
 .TP
-.BI regex " regex"
+.BI regex\fR= REGEX
 .br
 The regular expression
 .TP
-.BI match " match (inst|schema)"
+.BR match = inst | schema
 .br
 The value with which to compare; if match=inst,
 the expression will match the set's instance name, if
@@ -507,18 +573,20 @@ schema name.
 
 .SS Remove a match condition from the Updater.
 .BR updtr_match_del
-attr=<value>
+.BI name\fR= NAME
+.BI regex\fR= REGEX
+.BR match = inst | schema
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The update policy name
 .TP
-.BI regex " regex"
+.BI regex\fR= REGEX
 .br
 The regular expression
 .TP
-.BI match " match (inst|schema)"
+.BR match = inst | schema
 .br
 The value with which to compare; if match=inst,
 the expression will match the set's instance name, if
@@ -530,42 +598,45 @@ schema name.
 This is required before starting the updater.
 
 .BR updtr_prdcr_add
-attr=<value>
+.BI name\fR= NAME
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The update policy name
 .TP
-.BI regex " regex"
+.BI regex\fR= REGEX
 .br
 A regular expression matching zero or more producers
 .RE
 
-.SS Remove matching producers to an updater policy
+.SS Remove matching producers from an updater
 .BR updtr_prdcr_del
-attr=<value>
+.BI name\fR= NAME
+.BI regex\fR= REGEX
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The update policy name
 .TP
-.BI regex " regex"
+.BI regex\fR= REGEX
 .br
 A regular expression matching zero or more producers
 .RE
 
 .SS Start updaters.
 .BR updtr_start
-attr=<value>
+.BI name\fR= NAME
+.RB [ interval\fR=\fIINTERVAL ]
+.RB [ offset\fR=\fIOFFSET ]
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The update policy name
 .TP
-.BI [interval " interval"]
+.RB [ interval\fR=\fIINTERVAL ]
 .br
 The update interval, which is a float followed by a unit string.
 If no unit string is given, the default unit is microseconds.
@@ -578,7 +649,7 @@ A unit string is one of the followings:
   d  -- days
 If this is not specified, the previously configured value will be used. Optional.
 .TP
-.BI [offset " offset"]
+.RB [ offset\fR=\fIOFFSET ]
 .br
 Offset for synchronized aggregation. Optional.
 .RE
@@ -587,25 +658,26 @@ Offset for synchronized aggregation. Optional.
 The Updater must be stopped in order to change it's configuration.
 
 .BR updtr_stop
-attr=<value>
+.BI name\fR= NAME
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The update policy name
 .RE
 
 .SS Query the updater status
 .BR updtr_status
-attr=<value>
+.RB [ name\fR=\fIname ]
+.RB [ reset = true | false ]
 .RS
 .TP
-.BI [name " name"]
+.RB [ name\fR=\fIname ]
 .br
 The updater name. If none is given, the statuses of all updaters are
 reported.
 .TP
-.BI [reset " value"]
+.RB [ reset = true | false ]
 .br
 If true, reset the updater's counters after returning the values.
 The default is false.
@@ -613,40 +685,45 @@ The default is false.
 
 .SS Query the updaters' list of regular expressions to match set names or set schemas
 .BR updtr_match_list
-attr=<value>
+.RB [ name\fR=\fINAME ]
 .RS
 .TP
-.BI [name " name"]
+.RB [ name\fR=\fINAME ]
 .br
 The Updater name. If none is given, all updaters' regular expression lists will be returned.
 
 .SH STORE COMMAND SYNTAX
 .SS Create a Storage Policy and open/create the storage instance.
 .BR strgp_add
-attr=<value>
+.BI name\fR= NAME
+.BI plugin\fR= PLUGIN
+.BI container\fR= CONTAINER
+.RB [ schema\fR=\fISCHEMA ]
+.RB [ regex\fR=\fIREGEX ]
+.RB [ perm\fR=\fIPERMISSION ]
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The unique storage policy name.
 .TP
-.BI plugin " plugin"
+.BI plugin\fR= PLUGIN
 .br
 The name of the storage backend.
 .TP
-.BI container " container"
+.BI container\fR= CONTAINER
 .br
 The storage backend container name.
 .TP
-.BI [schema " schema"]
+.RB [ schema\fR=\fISCHEMA ]
 .br
 The schema name of the metric set to store. If 'schema' is given, 'regex' is ignored. Either 'schema' or 'regex' must be given.
 .TP
-.BI [regex " regex"]
+.RB [ regex\fR=\fIREGEX ]
 .br
 a regular expression matching set schemas. It must be used with decomposition. Either 'schema' or 'regex' must be given.
 .TP
-.BI [perm " permission"]
+.RB [ perm\fR=\fIPERMISSION ]
 .br
 The permission to modify the storage in the future
 .RE
@@ -655,10 +732,10 @@ The permission to modify the storage in the future
 All updaters must be stopped in order for a storage policy to be deleted
 .br
 .BR strgp_del
-attr=<value>
+.BI name\fR= NAME
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The storage policy name
 .RE
@@ -668,14 +745,15 @@ If no producers are added to the storage policy, the storage policy will apply
 on all producers.
 .br
 .BR strgp_prdcr_add
-attr=<value>
+.BI name\fR= NAME
+.BI regex\fR= REGEX
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The storage policy name
 .TP
-.BI regex " name"
+.BI regex\fR= REGEX
 .br
 A regular expression matching metric set producers.
 .RE
@@ -683,13 +761,14 @@ A regular expression matching metric set producers.
 
 .SS Remove a regular expression from the producer match list
 .BR strgp_prdcr_del
-attr=<value>
+.BI name\fR= NAME
+.BI regex\fR= REGEX
 .RS
-.BI name " name"
+.BI name\fR= NAME
 .br
 The storage policy name
 .TP
-.BI regex " regex"
+.BI regex\fR= REGEX
 .br
 The regex of the producer to remove.
 .RE
@@ -697,35 +776,37 @@ The regex of the producer to remove.
 
 .SS Add the name of a metric to store
 .BR strgp_metric_add
-attr=<value>
+.BI name\fR= NAME
+.BI metric\fR= METRIC
 .RS
-.BI name " name"
+.BI name\fR= NAME
 .br
 The storage policy name
 .TP
-.BI metric " metric"
+.BI metric\fR= METRIC
 .br
 The metric name. If the metric list is NULL, all metrics in the metric set will be stored.
 .RE
 
 .SS Remove a metric from the set of stored metrics.
 .BR strgp_metric_del
-attr=<value>
+.BI name\fR= NAME
+.BI metric\fR= METRIC
 .RS
-.BI name " name"
+.BI name\fR= NAME
 .br
 The storage policy name
 .TP
-.BI metric " metric"
+.BI metric\fR= METRIC
 .br
 The metric to remove
 .RE
 
 .SS Start a storage policy.
 .BR strgp_start
-attr=<value>
+.BI name\fR= NAME
 .RS
-.BI name " name"
+.BI name\fR= NAME
 .br
 The storage policy name
 .RE
@@ -735,19 +816,19 @@ The storage policy name
 A storage policy must be stopped in order to change its configuration.
 
 .BR strgp_stop
-attr=<value>
+.BI name\fR= NAME
 .RS
-.BI name " name"
+.BI name\fR= NAME
 .br
 The storage policy name
 .RE
 
 .SS Query the storage policy status
 .BR strgp_status
-attr=<value>
+.RB [ name\fR=\fINAME ]
 .RS
 .TP
-.BI [name " name"]
+.RB [ name\fR=\fINAME ]
 .br
 The storage policy name. If none is given, the statuses of all storage policies
 are reported.
@@ -765,65 +846,48 @@ Please see \fBldmsd_setgroup\fR(7).
 .SH STREAM COMMAND SYNTAX
 .SS Publish data to the named stream
 .BR plublish
-attr=<value>
+.BI name\fR= NAME
+.BI data\fR= DATA
 .RS
 .TP
-.BI name " name"
+.BI name\fR= NAME
 .br
 The stream name
 .TP
-.BI data " data"
+.BI data\fR= DATA
 .br
 The data to publish
 .RE
 
-.SS Subscribe to a stream on matching producers
-.BR prdcr_subscribe
-attr=<value>
-.RS
-.TP
-.BI regex " PRDCR_REGEX"
-.br
-A regular expression matching PRODUCER names
-.TP
-.BI stream " STREAM_NAME_OR_REGEX"
-.br
-The stream name or regular expression
-.TP
-.BI [rx_rate " BYTES_PER_SECOND"]
-.br
-The recv rate (bytes/sec) limit for the matching streams. The default is -1
-(unlimited).
-.RE
-
 .SH LDMS DAEMON COMMAND SYNTAX
 .SS Changing the log levels of LDMSD infrastructures
-.BR loglevel
-attr=<value> (deprecated)
-
-.BR log_level
-attr=<value>
+.TP 19
+.BR loglevel | log_level
+.BI level\fR= STRING
+.RB [ name\fR=\fINAME ]
+.RB [ regex\fR=\fIREGEX ]
+.RS 8
 .TP
-.BI level " string"
+.BI level\fR= STRING
 .br
 A string specifying the log levels to be enabled
 
 The valid string are "default", "quiet", and a comma-separated list of DEBUG, INFO, WARN, ERROR, and CRITICAL. It is case insensitive. "default" means to set the log level to the defaul log level. "quiet" means disable the log messages. We note that "<level>," and "<level>" give different results. "<level>" -- a single level name -- sets the log level to the given level and all the higher severity levels. In contrast, "<level>," -- a level name followed by a comma -- sets the log level to only the given level.
 .TP
-.BI [name " name"]
+.RB [ name\fR=\fINAME ]
 .br
 A logger name
 .TP
-.BI [regex " regex"]
+.RB [ regex\fR=\fIREGEX ]
 .br
 A regular expression matching logger names. If neither 'name' or 'regex' is given, the command sets the default log level to the given level. For example, 'regex=xprt.*' will change the transport-related log levels. Use log_status to query the available log infrastructures.
 .RE
 
 .SS Query LDMSD's log information
 .BR log_status
-attr=<value>
+.RB [ name\fR=\fIVALUE ]
 .RS
-.BI [name " value"]
+.RB [ name\fR=\fIVALUE ]
 .br
 A logger name
 .RE
@@ -837,10 +901,11 @@ A logger name
 
 .SS Tell the daemon to dump it's internal state to the log file.
 .BR status
-<type> [name=<value>]
+.RI [ TYPES ]
+.RB [ name\fR=\fINAME ]
 .RS
-.BI [ type]
-.br
+.TP 9
+.RI [ TYPES ]
 Reports only the specified objects. The choices are prdcr, updtr and strgp.
 .RS
 prdcr: list the state of all producers.
@@ -850,7 +915,7 @@ updtr: list the state of all update policies.
 strgp: list the state of all storage policies.
 .RE
 .TP
-.RI [name " value"]
+.RB [ name\fR=\fINAME ]
 The object name of which the status will be reported.
 .RE
 
@@ -859,18 +924,20 @@ The object name of which the status will be reported.
 .SS Set the user data value for a metric in a metric set.
 .br
 .BR udata
-attr=<value>
+.BI set\fR= SET
+.BI metric\fR= METRIC
+.BI udata\fR= UDATA
 .RS
 .TP
-.BI set " set"
+.BI set\fR= SET
 .br
 The sampler plugin name
 .TP
-.BI metric " metric"
+.BI metric\fR= METRIC
 .br
 The metric name
 .TP
-.BI udata " udata"
+.BI udata\fR= UDATA
 .br
 The desired user-data. This is a 64b unsigned integer.
 .RE
@@ -881,22 +948,25 @@ The base value is incremented by the given 'incr' value and then
 sets to the user data of the consecutive matched metric and so on.
 .br
 .BR udata_regex
-attr=<value>
+.BI set\fR= SET
+.BI regex\fR= REGEX
+.BI base\fR= BASE
+.RB [ incr\fR=\fIINCR ]
 .RS
 .TP
-.BI set " set"
+.BI set\fR= SET
 .br
 The metric set name.
 .TP
-.BI regex " regex"
+.BI regex\fR= REGEX
 .br
 A regular expression to match metric names to be set
 .TP
-.BI base " base"
+.BI base\fR= BASE
 .br
 The base value of user data (uint64)
 .TP
-.BI [incr " incr"]
+.RB [ incr\fR=\fIINCR ]
 .br
 Increment value (int). The default is 0. If incr is 0,
 the user data of all matched metrics are set
@@ -918,24 +988,27 @@ second-level aggregator’s permission with the set security after successfully
 looking up the set. The second-level aggregator will be able to look up the set
 if it has permission to do so. The process continues on the higher-level
 aggregators automatically.
-.br
+.TP 12
 .BR set_sec_mod
-attr=<value>
-.RS
+.BI regex " regex
+.RB [ uid\fR=\fIUID ]
+.RB [ gid\fR=\fIGID ]
+.RB [ perm\fR=\fIPERM ]
+.RS 8
 .TP
 .BI regex " regex
 .br
 A regular expression to match set instance names
 .TP
-.BI [uid " uid"]
+.RB [ uid\fR=\fIUID ]
 .br
 An existing user name string or a UID. Optional
 .TP
-.BI [gid " gid"]
+.RB [ gid\fR=\fIGID ]
 .br
 A GID. Optional
 .TP
-.BI [perm " perm"]
+.RB [ perm\fR=\fIPERM ]
 .br
 An octal number representing the permission bits. Optional
 .RE
@@ -945,10 +1018,10 @@ An octal number representing the permission bits. Optional
 .SS Display the IO thread statistics
 .br
 .BR thread_stats
-attr=<value>
+.RB [ reset\fR=\fITRUE\fR|\fIFALSE ]
 .RS
 .TP
-.BI [reset " true|false"]
+.RB [ reset\fR=\fITRUE\fR|\fIFALSE ]
 .br
 If true, reset the thread statistics after returning the values. The default is false.
 .RE
@@ -956,10 +1029,10 @@ If true, reset the thread statistics after returning the values. The default is 
 .SS Display the transport operation statistics
 .br
 .BR xprt_stats
-attr=<value>
+.RB [ reset\fR=\fITRUE\fR|\fIFALSE ]
 .RS
 .TP
-.BI [reset " true|false"]
+.RB [ reset\fR=\fITRUE\fR|\fIFALSE ]
 .br
 If true, reset the statistics after returning the values. The default is false.
 .RE
@@ -967,14 +1040,14 @@ If true, reset the statistics after returning the values. The default is false.
 .SS Display the statistics of updaters' update time per set
 .br
 .BR update_time_stats
-attr=<value>
+.RB [ reset\fR=\fITRUE\fR|\fIFALSE ]
 .RS
 .TP
-.BI [reset " true|false"]
+.RB [ reset\fR=\fITRUE\fR|\fIFALSE ]
 .br
 If true, reset the update time statistics after returning the values. The default is false.
 .TP
-.BI [name " name"]
+.RB [ name\fR=\fINAME ]
 .br
 An updater name. Only the statistics of the given updater will be reported and reset if reset is true.
 .RE
@@ -982,14 +1055,14 @@ An updater name. Only the statistics of the given updater will be reported and r
 .SS Display the statistics of storage policy's store time per set
 .br
 .BR store_time_stats
-attr=<value>
+.RB [ reset\fR=\fITRUE\fR|\fIFALSE ]
 .RS
 .TP
-.BI [reset " true|false"]
+.RB [ reset\fR=\fITRUE\fR|\fIFALSE ]
 .br
 If true, reset the store time statistics after returning the values. The default is false.
 .TP
-.BI [name " name"]
+.RB [ name\fR=\fINAME ]
 .br
 A storage policy name. Only the statistics of the given storage policy will be reported and reset if reset is true.
 .RE
@@ -999,10 +1072,10 @@ A storage policy name. Only the statistics of the given storage policy will be r
 .SS Display the list of available commands
 .br
 .BR help
-<command>
+.RI [ COMMAND ]
 .RS
-.RI [ command]
-.br
+.TP 10
+.RI [ COMMAND ]
 If a command is given, the help of the command will be printed. Otherwise, only
 the available command names are printed.
 .RE
