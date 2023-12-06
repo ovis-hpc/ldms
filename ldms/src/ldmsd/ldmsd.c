@@ -544,14 +544,14 @@ static void stop_sampler(struct ldmsd_sampler *samp)
 	release_ovis_scheduler(samp->thread_id);
 	samp->os = NULL;
 	samp->thread_id = -1;
-	ldmsd_cfgobj_put(&samp->base.cfgobj);
+	ldmsd_cfgobj_put(&samp->base.cfgobj, "start");
 }
 
 void plugin_sampler_cb(ovis_event_t oev)
 {
 	struct ldmsd_plugin *pi = oev->param.ctxt;
 	struct ldmsd_sampler *samp = (void*)pi;
-	ldmsd_cfgobj_get(&samp->base.cfgobj);
+	ldmsd_cfgobj_get(&samp->base.cfgobj, "cb");
 	ldmsd_cfgobj_lock(&pi->cfgobj);
 	assert(pi->type == LDMSD_PLUGIN_SAMPLER);
 	int rc = samp->sample(samp);
@@ -566,7 +566,7 @@ void plugin_sampler_cb(ovis_event_t oev)
 		stop_sampler(samp);
 	}
 	ldmsd_cfgobj_unlock(&pi->cfgobj);
-	ldmsd_cfgobj_put(&samp->base.cfgobj);
+	ldmsd_cfgobj_put(&samp->base.cfgobj, "cb");
 }
 
 void ldmsd_set_tree_lock()
@@ -995,7 +995,8 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 			info->interval_us = LDMSD_SAMPLER(pi)->sample_interval_us;
 			info->offset_us = LDMSD_SAMPLER(pi)->sample_offset_us;
 			info->sync = 1; /* Sampling is always synchronous. */
-			info->pi = pi; /* pi ref already taken in ldmsd_get_plugin */
+			info->pi = ldmsd_plugin_get(pi, "info");;
+			ldmsd_put_plugin(pi);
 		}
 		info->origin_name = strdup(plugn_set->plugin_name);
 		info->origin_type = LDMSD_SET_ORIGIN_SAMP_PI;
@@ -1074,7 +1075,7 @@ void ldmsd_set_info_delete(ldmsd_set_info_t info)
 		info->prd_set = NULL;
 	}
 	if (info->pi) {
-		ldmsd_cfgobj_put(&info->pi->cfgobj);
+		ldmsd_cfgobj_put(&info->pi->cfgobj, "info");
 		info->pi = NULL;
 	}
 	free(info);
@@ -1161,7 +1162,7 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 	samp->os = get_ovis_scheduler(samp->thread_id);
 	rc = ovis_scheduler_event_add(samp->os, &samp->oev);
 	if (0 == rc) {
-		ldmsd_cfgobj_get(&pi->cfgobj);
+		ldmsd_plugin_get(pi, "start_sampler");
 		/* this ref will be put down in ldmsd_stop_sampler() */
 	} else {
 		samp->os = NULL;
@@ -1193,7 +1194,7 @@ void oneshot_sample_cb(ovis_event_t ev)
 	free(os);
 	ldmsd_cfgobj_unlock(&pi->cfgobj);
 
-	ldmsd_cfgobj_put(&pi->cfgobj);
+	ldmsd_plugin_put(pi, "oneshot");
 }
 
 int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
@@ -1251,8 +1252,8 @@ int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
 				"The specified plugin is not a sampler.");
 		goto err;
 	}
-	ldmsd_cfgobj_get(&pi->cfgobj);
-	ossample->pi = pi;
+
+	ossample->pi = ldmsd_plugin_get(pi, "oneshot");
 	if (samp->thread_id < 0) {
 		snprintf(errstr, errlen, "Sampler '%s' not started yet.",
 								plugin_name);
@@ -1300,7 +1301,7 @@ int ldmsd_stop_sampler(char *plugin_name)
 		samp->os = NULL;
 		release_ovis_scheduler(samp->thread_id);
 		samp->thread_id = -1;
-		ldmsd_cfgobj_put(&samp->base.cfgobj);
+		ldmsd_plugin_put(&samp->base, "start_sampler");
 	} else {
 		rc = EBUSY;
 	}
@@ -1499,15 +1500,15 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
 			}
 		}
 		if (auth_dom)
-			ldmsd_cfgobj_put(&auth_dom->obj);
+			ldmsd_cfgobj_put(&auth_dom->obj, "find");
 	}
 	ldmsd_cfgobj_unlock(&listen->obj);
 	return listen;
 err:
 	if (auth_dom)
-		ldmsd_cfgobj_put(&auth_dom->obj);
+		ldmsd_cfgobj_put(&auth_dom->obj, "find");
 	ldmsd_cfgobj_unlock(&listen->obj);
-	ldmsd_cfgobj_put(&listen->obj);
+	ldmsd_cfgobj_put(&listen->obj, "init");
 	return NULL;
 }
 

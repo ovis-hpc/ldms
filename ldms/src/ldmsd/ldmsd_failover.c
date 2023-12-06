@@ -847,7 +847,7 @@ int __failover_send_cfgobjs(ldmsd_failover_t f, ldms_t x)
 			continue;
 		rc = __failover_send_prdcr(f, x, p);
 		if (rc) {
-			ldmsd_prdcr_put(p);
+			ldmsd_prdcr_put(p, "iter");
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 			goto out;
 		}
@@ -861,7 +861,7 @@ int __failover_send_cfgobjs(ldmsd_failover_t f, ldms_t x)
 			continue;
 		rc = __failover_send_updtr(f, x, u);
 		if (rc) {
-			ldmsd_updtr_put(u);
+			ldmsd_updtr_put(u, "iter");
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 			goto out;
 		}
@@ -874,7 +874,7 @@ int __failover_send_cfgobjs(ldmsd_failover_t f, ldms_t x)
 			continue;
 		rc = __failover_send_strgp(f, x, s);
 		if (rc) {
-			ldmsd_strgp_put(s);
+			ldmsd_strgp_put(s, "iter");
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 			goto out;
 		}
@@ -2094,7 +2094,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 		/* add stream */
 		if (stream)
 			rc = ldmsd_prdcr_subscribe(p, stream);
-		ldmsd_prdcr_put(p);
+		ldmsd_prdcr_put(p, "find");
 		goto out;
 	}
 	/* create */
@@ -2221,7 +2221,7 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 			goto out;
 		}
 		rbt_ins(&f->updtr_rbt, &srbn->rbn);
-		ldmsd_updtr_get(u); /* so that we can `put` without del */
+		ldmsd_updtr_get(u, "find"); /* so that we can `put` without deleting */
 	} else {
 		/* update by parameters */
 		if (interval) {
@@ -2243,7 +2243,7 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 			goto updtr_put;
 		}
 		rc = __ldmsd_updtr_prdcr_add(u, p);
-		ldmsd_prdcr_put(p);
+		ldmsd_prdcr_put(p, "find");
 	}
 	if (match && regex) {
 		/* add matching condition */
@@ -2251,7 +2251,7 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 					   req->line_len, &sctxt);
 	}
 updtr_put:
-	ldmsd_updtr_put(u);
+	ldmsd_updtr_put(u, "find");
 out:
 	__failover_unlock(f);
 	if (name)
@@ -2336,7 +2336,7 @@ int failover_cfgstrgp_handler(ldmsd_req_ctxt_t req)
 			goto out;
 		}
 		rbt_ins(&f->strgp_rbt, &srbn->rbn);
-		ldmsd_strgp_get(s); /* so that we can `put` without del */
+		ldmsd_strgp_get(s, "find"); /* so that we can `put` without del */
 		s->plugin_name = plugin;
 		plugin = NULL; /* give plugin to s */
 		s->schema = schema;
@@ -2361,7 +2361,7 @@ int failover_cfgstrgp_handler(ldmsd_req_ctxt_t req)
 	}
 
 put:
-	ldmsd_strgp_put(s);
+	ldmsd_strgp_put(s, "find");
 out:
 	__failover_unlock(f);
 	if (name)

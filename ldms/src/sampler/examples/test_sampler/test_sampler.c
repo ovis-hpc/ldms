@@ -207,7 +207,8 @@ static void __stream_client_free(struct test_sampler_stream_client *c)
 	if (c->ldms) {
 		ldms_xprt_close(c->ldms);
 	}
-	ldmsd_cfgobj_put(&c->auth_dom->obj);
+	if (c->auth_dom)
+		ldmsd_auth_put(c->auth_dom, "find");
 	free(c);
 }
 

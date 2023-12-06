@@ -104,7 +104,7 @@ ldmsd_auth_new_with_auth(const char *name, const char *plugin,
  err:
 	if (auth) {
 		ldmsd_cfgobj_unlock(&auth->obj);
-		ldmsd_cfgobj_put(&auth->obj);
+		ldmsd_auth_put(auth, "init");
 	}
 	return NULL;
 }
@@ -127,11 +127,11 @@ int ldmsd_auth_del(const char *name, ldmsd_sec_ctxt_t ctxt)
 		goto out;
 	/* remove from the tree */
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_AUTH], &auth->obj.rbn);
-	ldmsd_cfgobj_put(&auth->obj); /* correspond to `new` */
+	ldmsd_auth_put(auth, "cfgobj_tree"); /* correspond to `new` */
  out:
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_AUTH);
 	if (auth) /* put ref back from `find` */
-		ldmsd_cfgobj_put(&auth->obj);
+		ldmsd_auth_put(auth, "find");
 	return rc;
 }
 
@@ -175,6 +175,6 @@ int ldmsd_auth_default_set(const char *plugin, struct attr_value_list *attrs)
 	}
 	rc = 0;
  out:
-	ldmsd_cfgobj_put(&d->obj);
+	ldmsd_auth_put(d, "find");
 	return rc;
 }

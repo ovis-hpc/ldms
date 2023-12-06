@@ -91,6 +91,11 @@ pthread_mutex_t sp_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define LDMSD_PLUGIN_LIBPATH_MAX	1024
 
+/* implementation in ldmsd_cfgobj.c */
+ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
+void __cfgobj_add(ldmsd_cfgobj_t obj);
+void __cfgobj_rm(ldmsd_cfgobj_t obj);
+
 void ldmsd_cfg_ldms_xprt_cleanup(ldmsd_cfg_xprt_t xprt)
 {
 	/* nothing to do */
@@ -104,32 +109,12 @@ struct ldmsd_plugin *ldmsd_get_plugin(const char *inst_name)
 
 void ldmsd_put_plugin(struct ldmsd_plugin *pi)
 {
-	ldmsd_cfgobj_put(&pi->cfgobj);
+	ldmsd_cfgobj_put(&pi->cfgobj, "find");
 }
 
-void ldmsd_cfgobj_plugin_cleanup(struct ldmsd_cfgobj *obj)
-{
-	struct ldmsd_plugin *pi = container_of(obj, struct ldmsd_plugin, cfgobj);
-	struct avl_q_item *avl;
-	struct avl_q_item *kwl;
-
-	free(pi->cfgobj.name);
-
-	free(pi->libpath);
-	pi->libpath = NULL;
-
-	while ((avl = TAILQ_FIRST(&pi->avl_q))) {
-		TAILQ_REMOVE(&pi->avl_q, avl, entry);
-		free(avl->av_list);
-		free(avl);
-	}
-
-	while ((kwl = TAILQ_FIRST(&pi->kwl_q))) {
-		TAILQ_REMOVE(&pi->kwl_q, kwl, entry);
-		free(kwl->av_list);
-		free(kwl);
-	}
-}
+/* implementation in ldmsd_cfgobj.c */
+void ldmsd_cfgobj_plugin_cleanup(struct ldmsd_cfgobj *obj);
+int ldmsd_plugin_cfgobj_init(struct ldmsd_plugin *pi, const char *inst_name);
 
 void ldmsd_sampler_cleanup(struct ldmsd_sampler *samp)
 {
@@ -139,29 +124,6 @@ void ldmsd_sampler_cleanup(struct ldmsd_sampler *samp)
 void ldmsd_store_cleanup(struct ldmsd_store *store)
 {
 	ldmsd_cfgobj_plugin_cleanup(&store->base.cfgobj);
-}
-
-/*
- * For old-style plugin that does not initalize cfgobj
- */
-int ldmsd_plugin_cfgobj_init(struct ldmsd_plugin *pi, const char *inst_name)
-{
-	struct ldmsd_cfgobj *obj = &pi->cfgobj;
-
-	obj->name = strdup(inst_name);
-	if (!obj->name)
-		return ENOMEM;
-
-	obj->gid = getegid();
-	obj->uid = geteuid();
-	obj->perm = 0770;
-
-	pthread_mutex_init(&obj->lock, NULL);
-	obj->ref_count = 1;
-	obj->type = LDMSD_CFGOBJ_PLUGIN;
-
-	obj->__del = ldmsd_cfgobj_plugin_cleanup;
-	return 0;
 }
 
 void ldmsd_plugin_init(struct ldmsd_plugin *pi)
@@ -202,6 +164,7 @@ struct ldmsd_sampler *ldmsd_sampler_alloc(const char *name, size_t sz,
 	if (!samp)
 		goto out;
 
+	samp->base.multi_instance = 1;
 	ldmsd_plugin_init(&samp->base);
 	ldmsd_sampler_init(samp);
 
@@ -225,6 +188,7 @@ struct ldmsd_store *ldmsd_store_alloc(const char *name, size_t sz,
 	if (!st)
 		goto out;
 
+	st->base.multi_instance = 1;
 	ldmsd_plugin_init(&st->base);
 	ldmsd_store_init(st);
 
@@ -238,43 +202,23 @@ static int __plugin1_ent_cmp(void *tree_key, const void *key)
 {
 	return strcmp(tree_key, key);
 }
+
+/* protected by ldmsd_cfg_lock(LDMSD_CFGOBJ_PLUGIN) */
 static struct rbt __plugin1_rbt = RBT_INITIALIZER(__plugin1_ent_cmp);
 struct plugin1_ent {
 	struct rbn rbn;
 	struct ldmsd_plugin *p;
 };
-static pthread_mutex_t __plugin1_rbt_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-#define PLUGIN1_TREE_LOCK() pthread_mutex_lock(&__plugin1_rbt_mutex)
-#define PLUGIN1_TREE_UNLOCK() pthread_mutex_unlock(&__plugin1_rbt_mutex)
-
-static struct plugin1_ent *__plugin1_find(const char *name)
+static ldmsd_plugin_t __plugin1_find(const char *name)
 {
-	return (void*)rbt_find(&__plugin1_rbt, name);
+	struct rbn *rbn = rbt_find(&__plugin1_rbt, name);
+	if (rbn)
+		return container_of(rbn, struct ldmsd_plugin, __plugin1_rbn);
+	return NULL;
 }
 
-static struct plugin1_ent *__plugin1_ins(struct ldmsd_plugin *pi)
-{
-	struct plugin1_ent *ent;
-
-	ent = calloc(1, sizeof(*ent));
-	if (!ent)
-		return NULL;
-	ent->p = pi;
-	ldmsd_cfgobj_get(&pi->cfgobj);
-	rbn_init(&ent->rbn, pi->name);
-	rbt_ins(&__plugin1_rbt, &ent->rbn);
-	return ent;
-}
-
-static void __plugin1_del(struct plugin1_ent *ent)
-{
-	rbt_del(&__plugin1_rbt, &ent->rbn);
-	ldmsd_cfgobj_put(&ent->p->cfgobj);
-	free(ent);
-}
-
-struct ldmsd_plugin *new_plugin(const char *inst_name,
+static struct ldmsd_plugin *__new_plugin(const char *inst_name,
 				char *plugin_name,
 				char *errstr, size_t errlen)
 {
@@ -327,12 +271,13 @@ struct ldmsd_plugin *new_plugin(const char *inst_name,
 	pi_get = dlsym(d, "get_plugin_instance");
 	if (pi_get) {
 		/* Plugin instance */
-		/* TODO uid, gid, perm ... */
+		/* TODO should uid, gid, perm be of xprt? ... */
 		pi = pi_get(inst_name, geteuid(), getegid(), 0770);
 		if (!pi) {
 			snprintf(errstr, errlen,
-				 "The plugin '%s' (%s) could not be loaded.",
-				 inst_name, plugin_name);
+				 "The plugin '%s' (%s) could not be loaded, "
+				 "errno: %d",
+				 inst_name, plugin_name, errno);
 			goto err_0;
 		}
 		/* The returned `pi` is locked, and it is already in the
@@ -343,17 +288,25 @@ struct ldmsd_plugin *new_plugin(const char *inst_name,
 
 	/* else, let through */
 
-	struct plugin1_ent *ent;
-
-	/* Old style plugin */
-	PLUGIN1_TREE_LOCK();
-	/* make sure that the single-instance plugins are not loaded multiple
-	 * times. */
-	ent = __plugin1_find(plugin_name);
-	if (ent) {
+	/* Old style plugin:
+	 *   Make sure that the single-instance plugins are not loaded multiple
+	 *   times. */
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PLUGIN);
+	pi = (void*)__cfgobj_find(inst_name, LDMSD_CFGOBJ_PLUGIN);
+	if (pi) {
+		errno = EEXIST;
+		snprintf(errstr, errlen,
+			 "Plugin instance '%s' already existed" , inst_name);
+		ldmsd_put_plugin(pi);
+		pi = NULL;
+		goto err_1;
+	}
+	pi = __plugin1_find(plugin_name);
+	if (pi) {
 		errno = EEXIST;
 		snprintf(errstr, errlen, "The library, '%s' does not support "
 			 "multiple instances." , plugin_name);
+		pi = NULL;
 		goto err_1;
 	}
 
@@ -397,31 +350,23 @@ struct ldmsd_plugin *new_plugin(const char *inst_name,
 	}
 	TAILQ_INIT(&pi->avl_q);
 	TAILQ_INIT(&pi->kwl_q);
-	ent = __plugin1_ins(pi);
-	if (!ent) {
-		snprintf(errstr, errlen,
-			 "Cannot add plugin '%s', error: %d",
-			 plugin_name, errno);
-		goto err_1;
-	}
-	rc = ldmsd_cfgobj_add(&pi->cfgobj);
-	if (rc) {
-		snprintf(errstr, errlen,
-			 "Cannot add plugin instance '%s' (%s), error: %d",
-			 inst_name, plugin_name, rc);
-		goto err_2;
-	}
-	PLUGIN1_TREE_UNLOCK();
+
+	pi->multi_instance = 0;
+	rbn_init(&pi->__plugin1_rbn, pi->name);
+	rbt_ins(&__plugin1_rbt, &pi->__plugin1_rbn);
+	ldmsd_plugin_get(pi, "__plugin1_rbt");
+
+	__cfgobj_add(&pi->cfgobj);
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PLUGIN);
 out:
 	return pi;
 
-err_2:
-	__plugin1_del(ent);
 err_1:
-	PLUGIN1_TREE_UNLOCK();
+	/* unlock ... */
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PLUGIN);
 err_0:
 	if (pi) {
-		ldmsd_cfgobj_put(&pi->cfgobj);
+		ldmsd_cfgobj_put(&pi->cfgobj, "init");
 	}
 	if (d)
 		dlclose(d);
@@ -479,17 +424,19 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 int ldmsd_load_plugin(const char *inst_name, char *plugin_name,
 		      char *errstr, size_t errlen)
 {
-	struct ldmsd_plugin *pi = ldmsd_get_plugin(inst_name);
+	struct ldmsd_plugin *pi;
+
+	pi = ldmsd_get_plugin(inst_name);
 	if (pi) {
 		snprintf(errstr, errlen, "Plugin '%s' (%s) already loaded",
 						inst_name, plugin_name);
 		ldmsd_put_plugin(pi);
 		return EEXIST;
 	}
-	pi = new_plugin(inst_name, plugin_name, errstr, errlen);
-	if (!pi)
-		return -1;
-	return 0;
+	pi = __new_plugin(inst_name, plugin_name, errstr, errlen);
+	if (pi)
+		return 0;
+	return errno;
 }
 
 /*
@@ -498,22 +445,33 @@ int ldmsd_load_plugin(const char *inst_name, char *plugin_name,
 int ldmsd_term_plugin(char *inst_name)
 {
 	int rc = 0;
-	struct ldmsd_plugin *pi;
+	ldmsd_plugin_t pi;
 
-	pi = ldmsd_get_plugin(inst_name);
-	if (!pi)
-		return ENOENT;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PLUGIN);
+	pi = (ldmsd_plugin_t)__cfgobj_find(inst_name, LDMSD_CFGOBJ_PLUGIN);
+	if (!pi) {
+		rc = ENOENT;
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_PLUGIN);
+		goto out_0;
+	}
 
 	ldmsd_cfgobj_lock(&pi->cfgobj);
 	if (pi->type == LDMSD_PLUGIN_SAMPLER && LDMSD_SAMPLER(pi)->thread_id >= 0) {
 		rc = EBUSY;
 		goto out;
 	}
+	__cfgobj_rm(&pi->cfgobj);
 	pi->term(pi);
-	ldmsd_cfgobj_rm(&pi->cfgobj);
+	ldmsd_plugin_put(pi, "init"); /* correspond to init */
+	if (0 == pi->multi_instance) {
+		rbt_del(&__plugin1_rbt, &pi->__plugin1_rbn);
+		ldmsd_plugin_put(pi, "__plugin1_rbt"); /* correspond to rbt_ins */
+	}
 out:
 	ldmsd_cfgobj_unlock(&pi->cfgobj);
-	ldmsd_put_plugin(pi);
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PLUGIN);
+	ldmsd_put_plugin(pi); /* find */
+out_0:
 	return rc;
 }
 
@@ -1035,7 +993,7 @@ int __req_deferred_start(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
 	}
 	free(name);
 	obj->perm |= LDMSD_PERM_DSTART;
-	ldmsd_cfgobj_put(obj);
+	ldmsd_cfgobj_put(obj, "find");
 	return 0;
 }
 
@@ -1394,7 +1352,6 @@ int ldmsd_plugins_usage(const char *plugname)
 	}
 	return rc;
 }
-
 
 static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 {

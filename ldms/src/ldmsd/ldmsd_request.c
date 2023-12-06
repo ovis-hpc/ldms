@@ -2366,7 +2366,7 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 out:
 	free(name);
 	if (prdcr)
-		ldmsd_prdcr_put(prdcr);
+		ldmsd_prdcr_put(prdcr, "find");
 	return rc;
 }
 
@@ -3205,11 +3205,11 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 			free(name);
 			return 0;
 		}
-	}
-
-	/* Construct the json object of the strgp(s) */
-	if (strgp) {
 		rc = __strgp_status_json_obj(reqc, strgp, 0);
+		ldmsd_strgp_put(strgp, "find");
+		strgp = NULL;
+		if (rc)
+			goto out;
 	} else {
 		strgp_cnt = 0;
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
@@ -3254,7 +3254,6 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 								LDMSD_REQ_EOM_F);
 out:
 	free(name);
-	ldmsd_strgp_put(strgp);
 	return rc;
 }
 
@@ -3841,10 +3840,9 @@ static int updtr_match_list_handler(ldmsd_req_ctxt_t reqc)
 			free(name);
 			return 0;
 		}
-	}
-
-	if (updtr) {
 		rc = __updtr_match_list_json_obj(reqc, updtr, 0);
+		ldmsd_updtr_put(updtr, "find");
+		updtr = NULL;
 		if (rc)
 			goto out;
 	} else {
@@ -3888,8 +3886,6 @@ static int updtr_match_list_handler(ldmsd_req_ctxt_t reqc)
 								LDMSD_REQ_EOM_F);
 out:
 	free(name);
-	if (updtr)
-		ldmsd_updtr_put(updtr);
 	return rc;
 }
 
@@ -4196,6 +4192,12 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	__dlog(DLOG_QUERY, "updtr_status %s%s\n",
 		name ? " name=" : "", name ? name : "");
+	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
+	if (reset_s) {
+		if (0 != strcasecmp(reset_s, "false"))
+			reset = 1;
+		free(reset_s);
+	}
 	if (name) {
 		updtr = ldmsd_updtr_find(name);
 		if (!updtr) {
@@ -4207,18 +4209,9 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 			free(name);
 			return 0;
 		}
-	}
-
-	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
-	if (reset_s) {
-		if (0 != strcasecmp(reset_s, "false"))
-			reset = 1;
-		free(reset_s);
-	}
-
-	/* Construct the json object of the updater(s) */
-	if (updtr) {
 		rc = __updtr_status_json_obj(reqc, updtr, 0, reset);
+		ldmsd_updtr_put(updtr, "find");
+		updtr = NULL;
 		if (rc)
 			goto out;
 	} else {
@@ -4265,8 +4258,6 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 								LDMSD_REQ_EOM_F);
 out:
 	free(name);
-	if (updtr)
-		ldmsd_updtr_put(updtr);
 	return rc;
 }
 
@@ -4348,6 +4339,8 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 			return 0;
 		}
 		rc = __updtr_task_tree_json_obj(reqc, updtr);
+		ldmsd_updtr_put(updtr, "find");
+		updtr = NULL;
 		if (rc)
 			goto err;
 	} else {
@@ -4400,8 +4393,6 @@ err:
 						"internal error", 15);
 out:
 	free(name);
-	if (updtr)
-		ldmsd_updtr_put(updtr);
 	return rc;
 }
 
@@ -4508,6 +4499,8 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_prdcr_lock(prdcr);
 		rc = __prdcr_hint_set_tree_json_obj(reqc, prdcr);
 		ldmsd_prdcr_unlock(prdcr);
+		ldmsd_prdcr_put(prdcr, "find");
+		prdcr = NULL;
 		if (rc)
 			goto intr_err;
 	} else {
@@ -4561,8 +4554,6 @@ intr_err:
 				"interval error", 14);
 out:
 	free(name);
-	if (prdcr)
-		ldmsd_prdcr_put(prdcr);
 	return rc;
 }
 

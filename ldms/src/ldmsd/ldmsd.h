@@ -63,6 +63,7 @@
 
 #include <ovis_event/ovis_event.h>
 #include <ovis_util/util.h>
+#include <ovis_ref/ref.h>
 #include "ovis_log/ovis_log.h"
 #include "ldms.h"
 
@@ -182,7 +183,10 @@ typedef void (*ldmsd_cfgobj_del_fn_t)(struct ldmsd_cfgobj *);
 
 typedef struct ldmsd_cfgobj {
 	char *name;		/* Unique cfgobj name */
+	struct ref_s ref;
+#if 0
 	uint32_t ref_count;
+#endif
 	ldmsd_cfgobj_type_t type;
 	ldmsd_cfgobj_del_fn_t __del;
 	struct rbn rbn;
@@ -768,6 +772,12 @@ struct ldmsd_plugin {
 		LDMSD_PLUGIN_STORE
 	} type;
 
+	int multi_instance:1; /* 0 if this is not a multi-instance plugin */
+	long reserve0:63;
+	long reserve1;
+
+	struct rbn __plugin1_rbn; /* For internal use */
+
 	char *libpath;
 
 	enum ldmsd_plugin_type (*get_type)(struct ldmsd_plugin *self);
@@ -775,6 +785,7 @@ struct ldmsd_plugin {
 	void (*term)(struct ldmsd_plugin *self);
 	const char *(*usage)(struct ldmsd_plugin *self);
 };
+typedef struct ldmsd_plugin *ldmsd_plugin_t;
 
 struct ldmsd_sampler {
 	struct ldmsd_plugin base;
@@ -800,6 +811,9 @@ struct ldmsd_sampler {
 
 struct ldmsd_plugin *ldmsd_get_plugin(const char *name);
 void ldmsd_put_plugin(struct ldmsd_plugin *pi);
+
+#define ldmsd_plugin_get(p, name) ((ldmsd_plugin_t)ldmsd_cfgobj_get(&(p)->cfgobj, name))
+#define ldmsd_plugin_put(p, name) ldmsd_cfgobj_put(&(p)->cfgobj, name)
 
 struct ldmsd_sampler *ldmsd_sampler_alloc(const char *name, size_t sz,
 					  ldmsd_cfgobj_del_fn_t __del,
@@ -1000,8 +1014,12 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 					  uid_t uid,
 					  gid_t gid,
 					  int perm);
-ldmsd_cfgobj_t ldmsd_cfgobj_get(ldmsd_cfgobj_t obj);
-void ldmsd_cfgobj_put(ldmsd_cfgobj_t obj);
+#define ldmsd_cfgobj_get(o, name) ({ \
+		if (o) \
+			ref_get(&(o)->ref, name); \
+		(o); \
+	})
+#define ldmsd_cfgobj_put(obj, ref_name) ref_put(&(obj)->ref, ref_name)
 int ldmsd_cfgobj_refcount(ldmsd_cfgobj_t obj);
 ldmsd_cfgobj_t ldmsd_cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
 void ldmsd_cfgobj_del(const char *name, ldmsd_cfgobj_type_t type);
@@ -1045,13 +1063,8 @@ static inline void ldmsd_prdcr_lock(ldmsd_prdcr_t prdcr) {
 static inline void ldmsd_prdcr_unlock(ldmsd_prdcr_t prdcr) {
 	ldmsd_cfgobj_unlock(&prdcr->obj);
 }
-static inline ldmsd_prdcr_t ldmsd_prdcr_get(ldmsd_prdcr_t prdcr) {
-	ldmsd_cfgobj_get(&prdcr->obj);
-	return prdcr;
-}
-static inline void ldmsd_prdcr_put(ldmsd_prdcr_t prdcr) {
-	ldmsd_cfgobj_put(&prdcr->obj);
-}
+#define ldmsd_prdcr_get(p, name) ((ldmsd_prdcr_t)ldmsd_cfgobj_get(&(p)->obj, name))
+#define ldmsd_prdcr_put(p, name) ldmsd_cfgobj_put(&(p)->obj, name)
 static inline ldmsd_prdcr_t ldmsd_prdcr_find(const char *name)
 {
 	return (ldmsd_prdcr_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_PRDCR);
@@ -1108,13 +1121,8 @@ ldmsd_name_match_t ldmsd_updtr_match_first(ldmsd_updtr_t updtr);
 ldmsd_name_match_t ldmsd_updtr_match_next(ldmsd_name_match_t match);
 ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_first(ldmsd_updtr_t updtr);
 ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_next(ldmsd_prdcr_ref_t ref);
-static inline ldmsd_updtr_t ldmsd_updtr_get(ldmsd_updtr_t updtr) {
-	ldmsd_cfgobj_get(&updtr->obj);
-	return updtr;
-}
-static inline void ldmsd_updtr_put(ldmsd_updtr_t updtr) {
-	ldmsd_cfgobj_put(&updtr->obj);
-}
+#define ldmsd_updtr_get(u, name) ((ldmsd_updtr_t)ldmsd_cfgobj_get(&(u)->obj, name))
+#define ldmsd_updtr_put(u, name) ldmsd_cfgobj_put(&(u)->obj, name)
 static inline void ldmsd_updtr_lock(ldmsd_updtr_t updtr) {
 	ldmsd_cfgobj_lock(&updtr->obj);
 }
@@ -1160,13 +1168,8 @@ ldmsd_name_match_t ldmsd_strgp_prdcr_first(ldmsd_strgp_t strgp);
 ldmsd_name_match_t ldmsd_strgp_prdcr_next(ldmsd_name_match_t match);
 ldmsd_strgp_metric_t ldmsd_strgp_metric_first(ldmsd_strgp_t strgp);
 ldmsd_strgp_metric_t ldmsd_strgp_metric_next(ldmsd_strgp_metric_t metric);
-static inline ldmsd_strgp_t ldmsd_strgp_get(ldmsd_strgp_t strgp) {
-	ldmsd_cfgobj_get(&strgp->obj);
-	return strgp;
-}
-static inline void ldmsd_strgp_put(ldmsd_strgp_t strgp) {
-	ldmsd_cfgobj_put(&strgp->obj);
-}
+#define ldmsd_strgp_get(s, name) ((ldmsd_strgp_t)ldmsd_cfgobj_get(&(s)->obj, name))
+#define ldmsd_strgp_put(s, name) ldmsd_cfgobj_put(&(s)->obj, name)
 static inline void ldmsd_strgp_lock(ldmsd_strgp_t strgp) {
 	ldmsd_cfgobj_lock(&strgp->obj);
 }
@@ -1413,6 +1416,9 @@ ldmsd_auth_new_with_auth(const char *name, const char *plugin,
 int ldmsd_auth_del(const char *name, ldmsd_sec_ctxt_t ctxt);
 ldmsd_auth_t ldmsd_auth_default_get();
 int ldmsd_auth_default_set(const char *plugin, struct attr_value_list *attrs);
+
+#define ldmsd_auth_get(p, name) ((ldmsd_auth_t)ldmsd_cfgobj_get(&(p)->obj, name))
+#define ldmsd_auth_put(p, name) ldmsd_cfgobj_put(&(p)->obj, name)
 
 static inline
 ldmsd_auth_t ldmsd_auth_find(const char *name)
