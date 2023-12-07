@@ -1741,6 +1741,62 @@ char *ldms_stream_stats_tq_to_str(struct ldms_stream_stats_tq_s *tq)
 	return ret;
 }
 
+void ldms_stream_n_client_stats_reset()
+{
+	struct rbn *rbn, *srbn;
+	struct ldms_stream_s *s;
+	struct ldms_stream_client_entry_s *sce;
+	struct ldms_stream_src_stats_s *src;
+	ldms_stream_client_t cli;
+
+	/*
+	 * There is a possibility of racing because the readlock is used.
+	 * However, the reset logic does not change the tree or list's structures.
+	 */
+	__STREAM_RDLOCK();
+
+	/* Reset regex clients first */
+	TAILQ_FOREACH(cli, &__regex_client_tq, entry) {
+		pthread_rwlock_rdlock(&cli->rwlock);
+		LDMS_STREAM_COUNTERS_INIT(&cli->tx);
+		LDMS_STREAM_COUNTERS_INIT(&cli->drops);
+		TAILQ_FOREACH(sce, &cli->stream_tq, client_stream_entry) {
+			LDMS_STREAM_COUNTERS_INIT(&sce->tx);
+			LDMS_STREAM_COUNTERS_INIT(&sce->drops);
+		}
+		pthread_rwlock_unlock(&cli->rwlock);
+	}
+
+	RBT_FOREACH(rbn, &__stream_rbt) {
+		s = container_of(rbn, struct ldms_stream_s, rbn);
+		pthread_rwlock_rdlock(&s->rwlock);
+
+		RBT_FOREACH(srbn, &s->src_stats_rbt) {
+			src = container_of(srbn, struct ldms_stream_src_stats_s, rbn);
+			LDMS_STREAM_COUNTERS_INIT(&src->rx);
+		}
+
+		TAILQ_FOREACH(sce, &s->client_tq, stream_client_entry) {
+			/* reset client's stats */
+			cli = sce->client;
+			if (!cli)
+				continue;
+			if (cli->is_regex)
+				continue; /* Already reset above */
+
+			LDMS_STREAM_COUNTERS_INIT(&sce->tx);
+			LDMS_STREAM_COUNTERS_INIT(&sce->drops);
+			LDMS_STREAM_COUNTERS_INIT(&cli->tx);
+			LDMS_STREAM_COUNTERS_INIT(&cli->drops);
+		}
+		LDMS_STREAM_COUNTERS_INIT(&s->rx);
+		pthread_rwlock_unlock(&s->rwlock);
+	}
+
+	__STREAM_UNLOCK();
+	return;
+}
+
 char *ldms_stream_stats_str(const char *match, int is_regex, int is_reset)
 {
 	struct ldms_stream_stats_tq_s *tq = NULL;

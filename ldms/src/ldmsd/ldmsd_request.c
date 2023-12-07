@@ -262,6 +262,7 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc);
 static int update_time_stats_handler(ldmsd_req_ctxt_t reqc);
 static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc);
 static int log_status_handler(ldmsd_req_ctxt_t reqc);
+static int stats_reset_handler(ldmsd_req_ctxt_t reqc);
 
 /* these are implemented in ldmsd_failover.c */
 int failover_config_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -509,6 +510,9 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_LOG_STATUS_REQ] = {
 		LDMSD_LOG_STATUS_REQ, log_status_handler, XUG
+	},
+	[LDMSD_STATS_RESET_REQ] = {
+		LDMSD_STATS_RESET_REQ, stats_reset_handler, XALL
 	},
 
 	/* Transport Stats Request */
@@ -8924,5 +8928,86 @@ err:
 out:
 	free(name);
 	json_entity_free(strgp_dict);
+	return rc;
+}
+
+static void __prdset_stats_reset(struct timespec *now, int is_update, int is_store)
+{
+	ldmsd_prdcr_t prdcr;
+	ldmsd_prdcr_set_t prdset;
+	struct rbn *rbn;
+
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		ldmsd_prdcr_lock(prdcr);
+		RBT_FOREACH(rbn, &prdcr->set_tree) {
+			prdset = container_of(rbn, struct ldmsd_prdcr_set, rbn);
+			if (is_update) {
+				memset(&prdset->updt_stat, 0, sizeof(struct ldmsd_stat));
+				prdset->updt_stat.start = prdset->store_stat.start = *now;
+				prdset->oversampled_cnt = prdset->skipped_upd_cnt = 0;
+			}
+			if (is_store)
+				memset(&prdset->store_stat, 0, sizeof(struct ldmsd_stat));
+		}
+		ldmsd_prdcr_unlock(prdcr);
+	}
+}
+
+static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
+{
+	struct timespec now;
+	int rc = 0;
+	char *s;
+	char *tmp, *tok, *ptr;
+	int is_update;
+	int is_store;
+	int is_thread;
+	int is_xprt;
+	int is_stream;
+	is_update = is_store = is_thread = is_xprt = is_stream = 0;
+
+	s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+	if (s) {
+		tmp = strdup(s);
+		if (!tmp) {
+			ovis_log(config_log, OVIS_LCRIT, "Memory allocation failure\n");
+			(void) Snprintf(&reqc->line_buf, &reqc->line_len, "Memory allocation failed.");
+			rc = ENOMEM;
+			goto out;
+		}
+
+		tok = strtok_r(tmp, ",", &ptr);
+		while (tok) {
+			if (0 == strcasecmp(tok, "update"))
+				is_update = 1;
+			else if (0 == strcasecmp(tok, "store"))
+				is_store = 1;
+			else if (0 == strcasecmp(tok, "thread"))
+				is_thread = 1;
+			else if (0 == strcasecmp(tok, "xprt"))
+				is_xprt = 1;
+			else if (0 == strcasecmp(tok, "stream"))
+				is_stream = 1;
+			tok = strtok_r(NULL, ",", &ptr);
+		}
+
+	} else {
+		is_update = is_store = is_thread = is_xprt = is_stream = 1;
+	}
+
+	clock_gettime(CLOCK_REALTIME, &now);
+	if (is_thread)
+		zap_thrstat_reset_all();
+
+	if (is_xprt)
+		ldms_xprt_rate_data(NULL, 1);
+
+	__prdset_stats_reset(&now, is_update, is_store);
+
+	if (is_stream)
+		ldms_stream_n_client_stats_reset();
+out:
+	free(s);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
 }

@@ -55,6 +55,7 @@ from ovis_ldms import ldms
 import time
 import json
 import errno
+from pickle import NONE
 
 #:Dictionary contains the cmd_id, required attribute list
 #:and optional attribute list of each ldmsd commands. For example,
@@ -160,6 +161,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'metric_sets_default_authz': {'req_attr':[], 'opt_attr': ['uid', 'gid', 'perm']},
                       'set_sec_mod' : {'req_attr': ['regex'], 'opt_attr': ['uid', 'gid', 'perm']},
                       'log_status' : {'req_attr' : [], 'opt_attr' : ['name']},
+                      'stats_reset' : {'req_attr' : [], 'opt_attr' : ['list']},
                       ##### Failover. #####
                       'failover_config': {
                                 'req_attr': [
@@ -529,6 +531,7 @@ class LDMSD_Request(object):
     SET_DEFAULT_AUTHZ = 0x600 + 17
     SET_SEC_MOD = 0x600 + 19
     LOG_STATUS = 0x600 + 20
+    STATS_RESET = 0x600 + 21
 
     FAILOVER_CONFIG        = 0x700
     FAILOVER_PEERCFG_START = 0x700  +  1
@@ -1766,6 +1769,24 @@ class Communicator(object):
             attr_list.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.REGEX, value = regex))
         req = LDMSD_Request(command_id=LDMSD_Request.VERBOSITY_CHANGE,
                             attrs = attr_list)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def stats_reset(self, s = None):
+        """
+        Reset the statistics counters
+        """
+        if s is not None and len(s) > 0:
+            attr_list = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.STRING, value = s)]
+        else:
+            attr_list = []
+        req = LDMSD_Request(command_id = LDMSD_Request.STATS_RESET, attrs = attr_list)
+
         try:
             req.send(self)
             resp = req.receive(self)
