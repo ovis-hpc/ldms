@@ -2777,6 +2777,26 @@ class LdmsdCmdParser(cmd.Cmd):
               "log level as the default logger (ldmsd). When the default log "
               "level changes, their log levels change accordingly.")
 
+    def complete_stats_reset(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('stats_reset', text)
+
+    def do_stats_reset(self, arg):
+        """
+        Reset the statistics counters
+
+        Parameters:
+           [list=]   A comma-seprated list of statistics to be reset
+              thread - reset the thread statistics.
+              xprt   - reset the transport statistics.
+              update - reset the update time statistics and skipped and over-sampled counters.
+              store  - reset the store time statistics.
+              stream - reset the stream and stream client statistics
+        """
+        arg = self.handle_args('stats_reset', arg)
+        rc, msg = self.comm.stats_reset(s = arg['list'])
+        if rc:
+            print(f"Failed to reset the statistics")
+
     def do_option(self, arg):
         """
         ONLY SUPPORTED IN CONFIGURATION FILES

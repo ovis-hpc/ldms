@@ -1339,7 +1339,8 @@ char *ldms_stream_stats_tq_to_str(struct ldms_stream_stats_tq_s *tq);
  *
  * \param  match    The stream name or a regular expression.
  * \param  is_regex 1 if \c match is a regular expression; otherwise, 0.
- * \param  is_reset 1 means to reset the streams' statistics
+ * \param  is_reset 0 means not to reset the statistics.
+ *                  A non-zero value means to reset the statistics.
  *
  * \retval str The string describing the stats.
  *
@@ -1387,6 +1388,11 @@ char *ldms_stream_client_stats_tq_to_str(struct ldms_stream_client_stats_tq_s *t
  * \param is_reset non-zero means to reset the statistics
  */
 char *ldms_stream_client_stats_str(int is_reset);
+
+/**
+ * \brief Reset the statistics of streams and their clients
+ */
+void ldms_stream_n_client_stats_reset();
 
 /** \} */
 

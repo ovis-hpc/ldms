@@ -220,13 +220,15 @@ void ldms_xprt_rate_data(struct ldms_xprt_rate_data *data, int reset)
 	struct timespec now;
 	double dur_s;
 	(void)clock_gettime(CLOCK_REALTIME, &now);
-	dur_s = ldms_timespec_diff_s(&xprt_start, &now);
-	data->connect_rate_s = (double)xprt_connect_count / dur_s;
-	data->connect_request_rate_s = (double)xprt_connect_request_count / dur_s;
-	data->disconnect_rate_s = (double)xprt_disconnect_count / dur_s;
-	data->reject_rate_s = (double)xprt_reject_count / dur_s;
-	data->auth_fail_rate_s = (double)xprt_auth_fail_count / dur_s;
-	data->duration = dur_s;
+	if (data) {
+		dur_s = ldms_timespec_diff_s(&xprt_start, &now);
+		data->connect_rate_s = (double)xprt_connect_count / dur_s;
+		data->connect_request_rate_s = (double)xprt_connect_request_count / dur_s;
+		data->disconnect_rate_s = (double)xprt_disconnect_count / dur_s;
+		data->reject_rate_s = (double)xprt_reject_count / dur_s;
+		data->auth_fail_rate_s = (double)xprt_auth_fail_count / dur_s;
+		data->duration = dur_s;
+	}
 	if (reset) {
 		struct ldms_xprt *x;
 		pthread_mutex_lock(&xprt_list_lock);
