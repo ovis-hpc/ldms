@@ -17,7 +17,7 @@ The schema is named "dcgm" by default.
 
 .TP
 .BR config
-name=<plugin_name> interval=<interval(us)> [fields=<fields>] [schema=<schema_name>] [job_set=<metric set name>] [use_base=1 [[uid=<int>] [gid=<int>] [perm=<octal>] [instance=<name>] [producer=<name>] [job_id=<metric name in job_set set>]]
+name=<plugin_name> interval=<interval(us)> [fields=<fields>] [schema=<schema_name>] [job_set=<metric set name>] [use_base=1 [uid=<int>] [gid=<int>] [perm=<octal>] [instance=<name>] [producer=<name>] [job_id=<metric name in job_set set>]]
 .br
 configuration line
 .RS
