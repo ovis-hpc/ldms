@@ -7412,7 +7412,7 @@ err:
  *   "compute_time" : <int>
  * }
  */
-static char * __set_stats_as_json(size_t *json_sz)
+static char * __set_stats_as_json(size_t *json_sz, int is_summary)
 {
 	struct timespec start, end;
 	char *buff, *s;
@@ -7426,12 +7426,19 @@ static char * __set_stats_as_json(size_t *json_sz)
 	ldmsd_updtr_t updtr = NULL;
 
 	(void)clock_gettime(CLOCK_REALTIME, &start);
-	mm_stats(&stats);
-
 	buff = malloc(sz);
 	if (!buff)
 		goto __APPEND_ERR;
 	s = buff;
+
+	if (is_summary > 0) {
+		/*
+		 * Only report the active count and deleting count.
+		 */
+		goto do_json;
+	}
+
+	mm_stats(&stats);
 
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 	for (updtr = ldmsd_updtr_first(); updtr;
@@ -7483,13 +7490,19 @@ static char * __set_stats_as_json(size_t *json_sz)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 
+do_json:
 	__APPEND("{");
 	__APPEND(" \"active_count\": %d,\n", ldms_set_count());
 	__APPEND(" \"deleting_count\": %d,\n", ldms_set_deleting_count());
+	if (is_summary == 1) {
+		__APPEND(" \"summary\": \"true\",\n");
+		goto done_json;
+	}
 	__APPEND(" \"mem_total_kb\": %g,\n", (double)stats.size / 1024.0);
 	__APPEND(" \"mem_free_kb\": %g,\n", (double)(stats.bytes * stats.grain) / 1024.0);
 	__APPEND(" \"mem_used_kb\": %g,\n", (double)(stats.size - (stats.bytes * stats.grain)) / 1024.0);
 	__APPEND(" \"set_load\": %g,\n", set_load);
+done_json:
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	uint64_t compute_time = ldms_timespec_diff_us(&start, &end);
 	__APPEND(" \"compute_time\": %ld\n", compute_time);
@@ -7506,11 +7519,18 @@ __APPEND_ERR:
 static int set_stats_handler(ldmsd_req_ctxt_t req)
 {
 	char *json_s;
+	char *value;
+	int is_summary = 0;
 	size_t json_sz;
 	struct ldmsd_req_attr_s attr;
 
 	__dlog(DLOG_QUERY, "set_stats\n");
-	json_s = __set_stats_as_json(&json_sz);
+
+	value = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_SUMMARY);
+	if (0 == strcasecmp(value, "true"))
+		is_summary = 1;
+
+	json_s = __set_stats_as_json(&json_sz, is_summary);
 	if (!json_s)
 		goto err;
 

@@ -2259,6 +2259,7 @@ static void resp_set_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 	int rc;
 	json_parser_t parser;
 	json_entity_t stats, a;
+	int num_attr;
 
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
@@ -2287,16 +2288,27 @@ static void resp_set_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 	else
 		printf("Set Stats - N/A\n");
 
-	printf("%-20s %-16s\n", "Name", "Count");
-	printf("-------------------- ----------------\n");
-
 	char *names[5] = { "active_count", "deleting_count",
 			   "mem_total_kb", "mem_used_kb",
 			   "mem_free_kb"
 	};
+
+	a = json_value_find(stats, "summary");
+	if (a) {
+		/*
+		 * Only report the active and deleting counts
+		 */
+		num_attr = 2;
+	} else {
+		num_attr = 5;
+	}
+	printf("%-20s %-16s\n", "Name", "Count");
+	printf("-------------------- ----------------\n");
+
+
 	int i;
 
-	for (i = 0; i < 5; i ++) {
+	for (i = 0; i < num_attr; i ++) {
 		a = json_attr_find(stats, names[i]);
 		if (a)
 			printf("%-20s %-16ld\n", names[i],

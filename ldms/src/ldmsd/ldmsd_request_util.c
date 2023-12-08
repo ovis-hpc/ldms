@@ -186,6 +186,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "schema",            LDMSD_ATTR_SCHEMA  },
 	{  "stream",            LDMSD_ATTR_STREAM  },
 	{  "string",            LDMSD_ATTR_STRING  },
+	{  "summary",           LDMSD_ATTR_SUMMARY  },
 	{  "test",              LDMSD_ATTR_TEST  },
 	{  "time",              LDMSD_ATTR_TIME  },
 	{  "timeout_factor",    LDMSD_ATTR_TIMEOUT_FACTOR  },
