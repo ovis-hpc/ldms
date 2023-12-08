@@ -1768,13 +1768,16 @@ class LdmsdCmdParser(cmd.Cmd):
         for n in stats:
             if n == 'compute_time':
                 continue
+            if n == 'summary':
+                continue
             print(f"{n:20} {stats[n]:16}")
 
     def do_set_stats(self, arg):
         """
         Query the daemon's set statistics
         """
-        rc, msg = self.comm.set_stats()
+        arg = self.handle_args('set_stats', arg)
+        rc, msg = self.comm.set_stats(**arg)
         if msg == "":
             return
         if rc != 0:

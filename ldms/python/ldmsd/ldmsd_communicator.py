@@ -145,7 +145,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'thread_stats': {'req_attr':[], 'opt_attr': ['reset']},
                       'prdcr_stats': {'req_attr':[], 'opt_attr': []},
                       'set_route' : {'req_attr':['instance'], 'opt_attr':[]},
-                      'set_stats': {'req_attr':[], 'opt_attr': []},
+                      'set_stats': {'req_attr':[], 'opt_attr': ['summary']},
                       'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth']},
                       'metric_sets_default_authz': {'req_attr':[], 'opt_attr': ['uid', 'gid', 'perm']},
                       'set_sec_mod' : {'req_attr': ['regex'], 'opt_attr': ['uid', 'gid', 'perm']},
@@ -270,7 +270,8 @@ class LDMSD_Req_Attr(object):
     AUTH = 35
     RESET = 36
     DECOMPOSITION = 37
-    LAST = 38
+    SUMMARY = 38
+    LAST = 39
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -312,6 +313,7 @@ class LDMSD_Req_Attr(object):
                    'reset': RESET,
                    'auth': AUTH,
                    'decomposition' : DECOMPOSITION,
+                   'summary' : SUMMARY,
                    'TERMINATING': LAST
         }
 
@@ -352,6 +354,7 @@ class LDMSD_Req_Attr(object):
                    RESET : 'reset',
                    AUTH : 'auth',
                    DECOMPOSITION : 'decomposition',
+                   SUMMARY : 'summary',
                    LAST : 'TERMINATING'
         }
 
@@ -2955,7 +2958,7 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def set_stats(self):
+    def set_stats(self, summary = False):
         """
         Query the daemon's set statistics
 
@@ -2964,7 +2967,8 @@ class Communicator(object):
         - status is an errno from the errno module
         - data is the daemon's set statistics, or an error msg if status !=0 or None
         """
-        req = LDMSD_Request(command_id=LDMSD_Request.SET_STATS)
+        attr_list = [ LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.SUMMARY, value = str(summary))]
+        req = LDMSD_Request(command_id=LDMSD_Request.SET_STATS, attrs = attr_list)
         try:
             req.send(self)
             resp = req.receive(self)
