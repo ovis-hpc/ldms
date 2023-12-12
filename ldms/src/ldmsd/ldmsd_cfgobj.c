@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015,2018 National Technology & Engineering Solutions
+ * Copyright (c) 2015,2018,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2015,2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015,2018,2023 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -57,6 +57,29 @@
 #include <errno.h>
 #include <coll/rbt.h>
 #include "ldmsd.h"
+
+static int __cfgobj_ref_debug = 0;
+static ovis_log_t __cfgobj_log;
+
+#define __CFGOBJ_REF_DEBUG(FMT, ...) do {\
+		if (__cfgobj_ref_debug) \
+			ovis_log(__cfgobj_log, OVIS_LDEBUG, FMT, ##__VA_ARGS__); \
+	} while (0)
+
+
+__attribute__((constructor))
+static void __cfgobj_once()
+{
+	const char *v;
+	v = getenv("LDMSD_CFGOBJ_REF_DEBUG");
+	if (!v)
+		return;
+	__cfgobj_ref_debug = atoi(v);
+	if (!__cfgobj_ref_debug)
+		return;
+	__cfgobj_log = ovis_log_register("ldmsd_cfgobj_ref_debug", "cfgobj reference debug log");
+	ovis_log_set_level(__cfgobj_log, OVIS_LDEBUG);
+}
 
 int cfgobj_cmp(void *a, const void *b)
 {
@@ -185,6 +208,7 @@ static void __cfgobj_ref_free(void *arg)
 {
 	ldmsd_cfgobj_t obj = arg;
 	obj->__del(obj);
+	__CFGOBJ_REF_DEBUG("cfgobj ref_free: %p\n", obj);
 }
 
 void ldmsd_cfgobj_plugin_cleanup(struct ldmsd_cfgobj *obj)
@@ -211,6 +235,22 @@ void ldmsd_cfgobj_plugin_cleanup(struct ldmsd_cfgobj *obj)
 	}
 }
 
+static const char *__cfgobj_type_str[] = {
+	[LDMSD_CFGOBJ_PRDCR]  = "prdcr",
+	[LDMSD_CFGOBJ_UPDTR]  = "updtr",
+	[LDMSD_CFGOBJ_STRGP]  = "strgp",
+	[LDMSD_CFGOBJ_LISTEN] = "listen",
+	[LDMSD_CFGOBJ_AUTH]   = "auth",
+	[LDMSD_CFGOBJ_PLUGIN] = "plugin",
+};
+
+const char *ldmsd_cfgobj_type_str(ldmsd_cfgobj_type_t t)
+{
+	if (t < LDMSD_CFGOBJ_FIRST || LDMSD_CFGOBJ_LAST < t)
+		return "UNKNOWN";
+	return __cfgobj_type_str[t];
+}
+
 static int __cfgobj_init(ldmsd_cfgobj_t obj, const char *name,
 			 ldmsd_cfgobj_type_t type, ldmsd_cfgobj_del_fn_t __del,
 			 uid_t uid, gid_t gid, int perm)
@@ -228,6 +268,10 @@ static int __cfgobj_init(ldmsd_cfgobj_t obj, const char *name,
 	obj->type = type;
 
 	obj->__del = __del;
+
+	__CFGOBJ_REF_DEBUG("cfgobj ref_init: %p %s (%s)\n",
+			   obj, ldmsd_cfgobj_type_str(type), name);
+
 	return 0;
 }
 
