@@ -142,7 +142,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'subscribe': {'req_attr': ['name'], 'opt_attr': []},
                       'stream_client_dump': {'req_attr': [], 'opt_attr': []},
                       'stream_status' : {'req_attr': [], 'opt_attr': ['reset']},
-                      'stream_stats' : {'req_attr': [], 'opt_attr': ['regex', 'stream', 'json']},
+                      'stream_stats' : {'req_attr': [], 'opt_attr': ['regex', 'stream', 'json', 'reset']},
                       'stream_client_stats' : {'req_attr': [], 'opt_attr': ['json']},
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': ['thread_stats']},
@@ -1393,19 +1393,22 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def stream_stats(self, regex=None, stream=None):
+    def stream_stats(self, regex=None, stream=None, reset=None):
         """
         Dump stream stats
 
         Parameters:
         regex - The regular expression matching the stream names
         stream - The exact match of the stearm name
+        reset - Reset the statistics
         """
         attr_list = []
         if regex:
             attr_list.append(LDMSD_Req_Attr(attr_name='regex', value=regex))
         if stream:
             attr_list.append(LDMSD_Req_Attr(attr_name='stream', value=stream))
+        if reset:
+            attr_list.append(LDMSD_Req_Attr(attr_name='reset', value=reset))
         req = LDMSD_Request(command_id=LDMSD_Request.STREAM_STATS, attrs = attr_list)
         try:
             req.send(self)

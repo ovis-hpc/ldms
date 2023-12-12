@@ -1425,7 +1425,7 @@ void __src_stats_rbt_purge(struct rbt *rbt)
 }
 
 /* copy entries from t0 into t1 */
-int __src_stats_rbt_copy(struct rbt *t0, struct rbt *t1)
+int __src_stats_rbt_copy(struct rbt *t0, struct rbt *t1, int is_reset)
 {
 	struct rbn *rbn;
 	struct ldms_stream_src_stats_s *s0, *s1;
@@ -1438,6 +1438,8 @@ int __src_stats_rbt_copy(struct rbt *t0, struct rbt *t1)
 			goto err_0;
 		}
 		*s1 = *s0;
+		if (is_reset)
+			LDMS_STREAM_COUNTERS_INIT(&s0->rx);
 		rbn_init(&s1->rbn, &s1->src);
 		rbt_ins(t1, &s1->rbn);
 	}
@@ -1460,7 +1462,7 @@ void __stream_stats_free(struct ldms_stream_stats_s *ss)
 }
 
 /* readlock already taken */
-struct ldms_stream_stats_s * __stream_get_stats(struct ldms_stream_s *s)
+struct ldms_stream_stats_s * __stream_get_stats(struct ldms_stream_s *s, int is_reset)
 {
 	/* s->name_len already includes '\0' */
 	struct ldms_stream_stats_s *ss;
@@ -1478,7 +1480,7 @@ struct ldms_stream_stats_s * __stream_get_stats(struct ldms_stream_s *s)
 	LDMS_STREAM_COUNTERS_INIT(&ss->rx);
 	ss->rx = s->rx;
 
-	rc = __src_stats_rbt_copy(&s->src_stats_rbt, &ss->src_stats_rbt);
+	rc = __src_stats_rbt_copy(&s->src_stats_rbt, &ss->src_stats_rbt, is_reset);
 	if (rc)
 		goto err_1;
 
@@ -1496,7 +1498,11 @@ struct ldms_stream_stats_s * __stream_get_stats(struct ldms_stream_s *s)
 		ps->tx = sce->tx;
 		ps->drops = sce->drops;
 		TAILQ_INSERT_TAIL(&ss->pair_tq, ps, entry);
+		if (is_reset)
+			LDMS_STREAM_COUNTERS_INIT(&sce->tx);
 	}
+	if (is_reset)
+		LDMS_STREAM_COUNTERS_INIT(&s->rx);
 
 	return ss;
 
@@ -1512,7 +1518,8 @@ struct ldms_stream_stats_s * __stream_get_stats(struct ldms_stream_s *s)
 	return NULL;
 }
 
-struct ldms_stream_stats_tq_s *ldms_stream_stats_tq_get(const char *match, int is_regex)
+struct ldms_stream_stats_tq_s *
+ldms_stream_stats_tq_get(const char *match, int is_regex, int is_reset)
 {
 	regex_t r = {0};
 	int free_reg = 0;
@@ -1547,7 +1554,7 @@ struct ldms_stream_stats_tq_s *ldms_stream_stats_tq_get(const char *match, int i
 			goto done;
 		stream = container_of(rbn, struct ldms_stream_s, rbn);
 		pthread_rwlock_rdlock(&stream->rwlock);
-		stats = __stream_get_stats(stream);
+		stats = __stream_get_stats(stream, is_reset);
 		pthread_rwlock_unlock(&stream->rwlock);
 		if (!stats)
 			goto err_0;
@@ -1562,7 +1569,7 @@ struct ldms_stream_stats_tq_s *ldms_stream_stats_tq_get(const char *match, int i
 				continue;
 		}
 		pthread_rwlock_rdlock(&stream->rwlock);
-		stats = __stream_get_stats(stream);
+		stats = __stream_get_stats(stream, is_reset);
 		pthread_rwlock_unlock(&stream->rwlock);
 		if (!stats)
 			goto err_0;
@@ -1734,12 +1741,12 @@ char *ldms_stream_stats_tq_to_str(struct ldms_stream_stats_tq_s *tq)
 	return ret;
 }
 
-char *ldms_stream_stats_str(const char *match, int is_regex)
+char *ldms_stream_stats_str(const char *match, int is_regex, int is_reset)
 {
 	struct ldms_stream_stats_tq_s *tq = NULL;
 	char *ret = NULL;
 
-	tq = ldms_stream_stats_tq_get(match, is_regex);
+	tq = ldms_stream_stats_tq_get(match, is_regex, is_reset);
 	if (!tq) {
 		if (errno == ENOENT) {
 			ret = malloc(3);
