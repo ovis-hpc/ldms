@@ -816,7 +816,7 @@ cdef extern from "ldms.h" nogil:
         pass
     int ldms_stream_stats_level_set(int level)
     int ldms_stream_stats_level_get()
-    ldms_stream_stats_tq_s * ldms_stream_stats_tq_get(const char *match, int is_regex)
+    ldms_stream_stats_tq_s * ldms_stream_stats_tq_get(const char *match, int is_regex, int is_reset)
     void ldms_stream_stats_tq_free(ldms_stream_stats_tq_s *tq)
     char *ldms_stream_stats_tq_to_str(ldms_stream_stats_tq_s *tq)
     char *ldms_stream_stats_str(char *match, int is_regex)

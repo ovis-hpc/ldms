@@ -1309,6 +1309,7 @@ int ldms_stream_stats_level_get();
  *
  * \param match    The stream name or a regular expression.
  * \param is_regex 1 if \c match is a regular expression; otherwise, 0.
+ * \param is_reset 1 means to reset the streams' statistics
  *
  * \retval tq   The collection (tailq) of statistics of the matching entries, or
  * \retval NULL if there is an error. \c errno is also set to describe the error.
@@ -1316,7 +1317,8 @@ int ldms_stream_stats_level_get();
  * \note The caller is responsible for freeing the \c rbt and the entries in it.
  *       \c ldms_stream_stats_tq_free() is a helping function for this.
  */
-struct ldms_stream_stats_tq_s * ldms_stream_stats_tq_get(const char *match, int is_regex);
+struct ldms_stream_stats_tq_s *
+ldms_stream_stats_tq_get(const char *match, int is_regex, int is_reset);
 
 /**
  * \brief Free all of the entries in the given \c tq and the \c tq itself.
@@ -1337,12 +1339,13 @@ char *ldms_stream_stats_tq_to_str(struct ldms_stream_stats_tq_s *tq);
  *
  * \param  match    The stream name or a regular expression.
  * \param  is_regex 1 if \c match is a regular expression; otherwise, 0.
+ * \param  is_reset 1 means to reset the streams' statistics
  *
  * \retval str The string describing the stats.
  *
  * \note The caller is responsible for freeing the returned string.
  */
-char *ldms_stream_stats_str(const char *match, int is_regex);
+char *ldms_stream_stats_str(const char *match, int is_regex, int is_reset);
 
 /**
  * Returns a collection of stats of stream clients.

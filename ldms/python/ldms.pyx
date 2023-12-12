@@ -3972,7 +3972,7 @@ def stream_stats_level_set(lvl):
 def stream_stats_level_get():
     return ldms_stream_stats_level_get()
 
-def stream_stats_get(stream_match=None, is_regex=0):
+def stream_stats_get(stream_match=None, is_regex=0, is_reset=0):
     """Get a collection of stats of the streams in this process that match `stream_match`
 
     stream_match(str) - the stream name or a regular expression
@@ -3984,7 +3984,7 @@ def stream_stats_get(stream_match=None, is_regex=0):
     if stream_match:
         stream_match = BYTES(stream_match)
         m = stream_match
-    tq = ldms_stream_stats_tq_get(m, is_regex)
+    tq = ldms_stream_stats_tq_get(m, is_regex, is_reset)
     ret = list()
     if not tq:
         if errno == ENOENT:

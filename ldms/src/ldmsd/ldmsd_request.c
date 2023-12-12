@@ -7853,11 +7853,13 @@ static int stream_stats_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	char *stream = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
+	char *reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
 	const char *match = NULL;
 	int is_regex = 0;
 	char buff[128];
 	char *s;
 	int rc = 0;
+	int is_reset = 0;
 	size_t len;
 	struct ldmsd_req_attr_s attr;
 
@@ -7867,7 +7869,11 @@ static int stream_stats_handler(ldmsd_req_ctxt_t reqc)
 	} else if (stream) {
 		match = stream;
 	}
-	s = ldms_stream_stats_str(match, is_regex);
+
+	if (reset_s && (0 == strcasecmp(reset_s, "true")))
+		is_reset = 1;
+
+	s = ldms_stream_stats_str(match, is_regex, is_reset);
 	if (!s) {
 		reqc->errcode = errno;
 		snprintf(buff, sizeof(buff), "ldms_stream_stats_str() error: %d",
