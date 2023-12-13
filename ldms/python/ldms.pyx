@@ -4003,11 +4003,11 @@ def stream_stats_get(stream_match=None, is_regex=0, is_reset=0):
     ldms_stream_stats_tq_free(tq)
     return ret
 
-def stream_client_stats_get():
+def stream_client_stats_get(is_reset=0):
     """Get a collection of stats of stream clients in this process"""
     cdef ldms_stream_client_stats_tq_s *tq
     cdef ldms_stream_client_stats_s *cs
-    tq = ldms_stream_client_stats_tq_get()
+    tq = ldms_stream_client_stats_tq_get(is_reset)
     ret = list()
     if not tq:
         if errno == ENOENT:
@@ -4071,12 +4071,12 @@ cdef class StreamClient(object):
         except Empty as e:
             return None
 
-    def stats(self):
+    def stats(self, is_reset=0):
         """Get the client stats"""
         cdef ldms_stream_client_stats_s *cs;
         if not self.c:
             raise RuntimeError("client has been closed")
-        cs = ldms_stream_client_get_stats(self.c)
+        cs = ldms_stream_client_get_stats(self.c, is_reset)
         if not cs:
             raise RuntimeError(f"error: {ERRNO_SYM(errno)}({errno})")
         try:

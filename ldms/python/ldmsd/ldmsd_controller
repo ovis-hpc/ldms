@@ -2617,7 +2617,7 @@ class LdmsdCmdParser(cmd.Cmd):
         arg = self.handle_args('stream_stats', arg)
         if arg is None:
             return
-        rc, msg = self.comm.stream_client_stats()
+        rc, msg = self.comm.stream_client_stats(arg['reset'])
         if rc:
             emsg = f"stream_client_stats error: {rc}, msg: {msg}"
             print(emsg)

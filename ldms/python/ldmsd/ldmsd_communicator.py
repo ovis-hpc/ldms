@@ -143,7 +143,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'stream_client_dump': {'req_attr': [], 'opt_attr': []},
                       'stream_status' : {'req_attr': [], 'opt_attr': ['reset']},
                       'stream_stats' : {'req_attr': [], 'opt_attr': ['regex', 'stream', 'json', 'reset']},
-                      'stream_client_stats' : {'req_attr': [], 'opt_attr': ['json']},
+                      'stream_client_stats' : {'req_attr': [], 'opt_attr': ['json', 'reset']},
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': ['thread_stats']},
                       ##### Misc. #####
@@ -1417,7 +1417,7 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def stream_client_stats(self):
+    def stream_client_stats(self, reset=None):
         """
         Dump stream stats
 
@@ -1425,7 +1425,10 @@ class Communicator(object):
         regex - The regular expression matching the stream names
         stream - The exact match of the stearm name
         """
-        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_CLIENT_STATS, attrs = [])
+        attr_list = []
+        if reset is not None:
+            attr_list = [LDMSD_Req_Attr(attr_name='reset', value=reset)]
+        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_CLIENT_STATS, attrs = attr_list)
         try:
             req.send(self)
             resp = req.receive(self)

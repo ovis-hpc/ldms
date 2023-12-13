@@ -1349,8 +1349,10 @@ char *ldms_stream_stats_str(const char *match, int is_regex, int is_reset);
 
 /**
  * Returns a collection of stats of stream clients.
+ *
+ * \param is_reset   A non-zero value means to reset the statistics
  */
-struct ldms_stream_client_stats_tq_s *ldms_stream_client_stats_tq_get();
+struct ldms_stream_client_stats_tq_s *ldms_stream_client_stats_tq_get(int is_reset);
 
 /**
  * Free the stats entries in the \c tq and the \c tq itself.
@@ -1359,8 +1361,11 @@ void ldms_stream_client_stats_tq_free(struct ldms_stream_client_stats_tq_s *tq);
 
 /**
  * Get stats from a client.
+ *
+ * \param is_reset    A non-zero value means to reset the statistics
  */
-struct ldms_stream_client_stats_s *ldms_stream_client_get_stats(ldms_stream_client_t cli);
+struct ldms_stream_client_stats_s *
+ldms_stream_client_get_stats(ldms_stream_client_t cli, int is_reset);
 
 /**
  * Free the stream client stats obtained form \c ldms_stream_client_get_stats().
@@ -1378,8 +1383,10 @@ char *ldms_stream_client_stats_tq_to_str(struct ldms_stream_client_stats_tq_s *t
  * \brief Return a string describing statuses/statistics of stream clients in this process.
  * \retval str The string describing the stats.
  * \note The caller is responsible for freeing the returned string.
+ *
+ * \param is_reset non-zero means to reset the statistics
  */
-char *ldms_stream_client_stats_str();
+char *ldms_stream_client_stats_str(int is_reset);
 
 /** \} */
 

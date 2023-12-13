@@ -1762,7 +1762,7 @@ char *ldms_stream_stats_str(const char *match, int is_regex, int is_reset)
 }
 
 struct ldms_stream_client_stats_s *
-ldms_stream_client_get_stats(ldms_stream_client_t cli)
+ldms_stream_client_get_stats(ldms_stream_client_t cli, int is_reset)
 {
 	struct ldms_stream_client_stats_s *cs = NULL;
 	struct ldms_stream_client_entry_s *sce;
@@ -1781,6 +1781,11 @@ ldms_stream_client_get_stats(ldms_stream_client_t cli)
 	cs->tx = cli->tx;
 	cs->is_regex = cli->is_regex;
 
+	if (is_reset) {
+		LDMS_STREAM_COUNTERS_INIT(&cli->tx);
+		LDMS_STREAM_COUNTERS_INIT(&cli->drops);
+	}
+
 	TAILQ_FOREACH(sce, &cli->stream_tq, client_stream_entry) {
 		/* name_len included '\0' */
 		cps = malloc(sizeof(*cps) + sce->stream->name_len);
@@ -1794,6 +1799,10 @@ ldms_stream_client_get_stats(ldms_stream_client_t cli)
 		cps->is_regex = sce->client->is_regex;
 		cps->tx = sce->tx;
 		cps->drops = sce->drops;
+		if (is_reset) {
+			LDMS_STREAM_COUNTERS_INIT(&sce->tx);
+			LDMS_STREAM_COUNTERS_INIT(&sce->drops);
+		}
 		TAILQ_INSERT_TAIL(&cs->pair_tq, cps, entry);
 	}
 
@@ -1820,7 +1829,7 @@ void ldms_stream_client_stats_free(struct ldms_stream_client_stats_s *cs)
 	free(cs);
 }
 
-struct ldms_stream_client_stats_tq_s *ldms_stream_client_stats_tq_get()
+struct ldms_stream_client_stats_tq_s *ldms_stream_client_stats_tq_get(int is_reset)
 {
 	struct ldms_stream_client_stats_tq_s *tq;
 	struct ldms_stream_client_stats_s *cs;
@@ -1838,7 +1847,7 @@ struct ldms_stream_client_stats_tq_s *ldms_stream_client_stats_tq_get()
 
 	/* go through regex clients first */
 	TAILQ_FOREACH(cli, &__regex_client_tq, entry) {
-		cs = ldms_stream_client_get_stats(cli);
+		cs = ldms_stream_client_get_stats(cli, is_reset);
 		if (!cs)
 			goto err_0;
 		TAILQ_INSERT_TAIL(tq, cs, entry);
@@ -1854,7 +1863,7 @@ struct ldms_stream_client_stats_tq_s *ldms_stream_client_stats_tq_get()
 				continue;
 			if (cli->is_regex)
 				continue; /* already handled above */
-			cs = ldms_stream_client_get_stats(cli);
+			cs = ldms_stream_client_get_stats(cli, is_reset);
 			if (!cs) {
 				pthread_rwlock_unlock(&s->rwlock);
 				goto err_0;
@@ -1948,11 +1957,11 @@ char *ldms_stream_client_stats_tq_to_str(struct ldms_stream_client_stats_tq_s *t
 	return ret;
 }
 
-char *ldms_stream_client_stats_str()
+char *ldms_stream_client_stats_str(int is_reset)
 {
 	struct ldms_stream_client_stats_tq_s *tq;
 	char *ret = NULL;
-	tq = ldms_stream_client_stats_tq_get();
+	tq = ldms_stream_client_stats_tq_get(is_reset);
 	if (!tq) {
 		if (errno == ENOENT) {
 			ret = strdup("[]");
