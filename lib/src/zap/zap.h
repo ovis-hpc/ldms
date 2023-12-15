@@ -936,4 +936,13 @@ pthread_t zap_ep_thread(zap_ep_t ep);
  */
 pid_t zap_ep_thread_id(zap_ep_t ep);
 
+/**
+ * Get the send queue depth of an endpoint
+ *
+ * \param ep   A Zap endpoint handle
+ *
+ * \return The send queue depth
+ */
+uint64_t zap_ep_sq_sz(zap_ep_t ep);
+
 #endif

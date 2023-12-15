@@ -114,7 +114,7 @@ FILE *ldmsd_req_debug_file = NULL; /* change with -L or
 static int cleanup_requested = 0;
 
 static char * __thread_stats_as_json(size_t *json_sz);
-static char * __xprt_stats_as_json(size_t *json_sz, int reset);
+static char * __xprt_stats_as_json(size_t *json_sz, int reset, int level);
 extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 
 extern int ldmsd_credits; /* defined in ldmsd.c */
@@ -6844,7 +6844,7 @@ struct op_summary {
 	break;							\
 } while(1)
 
-static char *__xprt_stats_as_json(size_t *json_sz, int reset)
+static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 {
 	char *buff;
 	char *s;
@@ -6866,6 +6866,8 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset)
 	char ip_str[32];
 	char xprt_type[16];
 	struct ldms_xprt_rate_data rate_data;
+	int rc, first = 1;
+	char lhostname[128], lport_no[32], rhostname[128], rport_no[32];
 
 	xprt_type[sizeof(xprt_type)-1] = 0; /* NULL-terminate at the end */
 
@@ -6880,15 +6882,33 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset)
 	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++)
 		op_sum[op_e].op_min_us = LLONG_MAX;
 
+	__APPEND("{");
+	__APPEND(" \"level\" : %d,", level);
+	__APPEND(" \"endpoints\":{");
+
 	/* Compute summary statistics across all of the transports */
 	for (x = ldms_xprt_first(); x; x = ldms_xprt_next(x)) {
 		ldms_stats_entry_t op;
-
-		ldms_xprt_stats(x, &xs);
-		xprt_count += 1;
 		zap_ep_t zep;
 		zep = ldms_xprt_get_zap_ep(x);
 		zap_ep_state_t ep_state = (zep ? zap_ep_state(zep) : ZAP_EP_CLOSE);
+
+		if (x->zap_ep && (ZAP_EP_CONNECTED == zap_ep_state(x->zap_ep))) {
+			rc = ldms_xprt_names(x, lhostname, sizeof(lhostname),
+						lport_no, sizeof(lport_no),
+						rhostname, sizeof(rhostname),
+						rport_no, sizeof(rport_no),
+						NI_NAMEREQD | NI_NUMERICSERV);
+
+			__APPEND("  %s\"%s:%s\":{", ((!first)?",":""), rhostname, rport_no);
+			__APPEND("   \"sq_sz\":%ld", zap_ep_sq_sz(zep));
+			__APPEND("  }");
+			first = 0;
+		}
+
+		ldms_xprt_stats(x, &xs);
+		xprt_count += 1;
+
 		switch (ep_state) {
 		case ZAP_EP_LISTENING:
 			xprt_listen_count += 1;
@@ -6923,6 +6943,9 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset)
 		}
 		ldms_xprt_put(x);
 	}
+
+	__APPEND("},");
+
 	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
 		if (op_sum[op_e].op_count) {
 			op_sum[op_e].op_mean_us =
@@ -6933,7 +6956,6 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset)
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	uint64_t compute_time = ldms_timespec_diff_us(&start, &end);
 
-	__APPEND("{");
 	__APPEND(" \"compute_time_us\": %ld,\n", compute_time);
 	__APPEND(" \"connect_rate_s\": %f,\n", rate_data.connect_rate_s);
 	__APPEND(" \"connect_request_rate_s\": %f,\n", rate_data.connect_request_rate_s);
@@ -7012,6 +7034,7 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 	char *s, *json_s;
 	size_t json_sz;
 	int reset = 0;
+	int level = 0;
 	struct ldmsd_req_attr_s attr;
 
 	s = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
@@ -7022,7 +7045,11 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 		free(s);
 	}
 
-	json_s = __xprt_stats_as_json(&json_sz, reset);
+	s = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_LEVEL);
+	if (s)
+		level = atoi(s);
+
+	json_s = __xprt_stats_as_json(&json_sz, reset, level);
 	if (!json_s)
 		goto err;
 
