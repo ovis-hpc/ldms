@@ -1204,6 +1204,11 @@ pid_t zap_ep_thread_id(zap_ep_t ep)
 	return ep->thread?ep->thread->stat->tid:-1;
 }
 
+uint64_t zap_ep_sq_sz(zap_ep_t ep)
+{
+	return ep->sq_sz;
+}
+
 static int zap_initialized = 0;
 
 static void zap_atfork()

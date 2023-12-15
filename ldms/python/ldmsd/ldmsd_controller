@@ -2350,18 +2350,35 @@ class LdmsdCmdParser(cmd.Cmd):
         for op_name in op_stats:
             s = op_stats[op_name]
             print(f"{op_name:12} {s['count']:12} {s['min_us']:12} {s['mean_us']:12} {s['max_us']:12}")
+        print(f"{'-'*40}")
+        print(f"Total send-queue depth: {sum([ e['sq_sz'] for k, e in stats['endpoints'].items()])}")
+
+        if stats['level'] == 0:
+            # Nothing else to do
+            return
+
+        print(f"{'-'*40}")
+        print(f"{'Remote Address':20} {'SQ Depth':10}")
+        print(f"{'-'*20} {'-'*10}")
+        sorted_ep = dict(sorted(stats['endpoints'].items()))
+        for k, x in sorted_ep.items():
+            print(f"{k:20} {x['sq_sz']:10}")
 
     def do_xprt_stats(self, arg):
         """
         Query the daemon's transport telemetry data
 
         Parameters:
-        [reset=]  If true, reset the statistics after returning them
+        [reset=]  If true, reset the statistics after returning them.
+        [sq_depth=] If true, the send-queue depth of each endpoint will be reported.
         """
         arg = self.handle_args('xprt_stats', arg)
         if not arg:
             return
-        rc, msg = self.comm.xprt_stats(arg['reset'])
+        level = 0
+        if arg['sq_depth'] is not None:
+            level = 1
+        rc, msg = self.comm.xprt_stats(reset=arg['reset'], level=level)
         if msg == "":
             return
         if rc != 0:

@@ -151,7 +151,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'example': {'req_attr': [], 'opt_attr': []},
                       'dump_cfg': {'req_attr':['path'], 'opt_attr': []},
                       'set_info': {'req_attr': ['instance'], 'opt_attr': []},
-                      'xprt_stats': {'req_attr':[], 'opt_attr': ['reset']},
+                      'xprt_stats': {'req_attr':[], 'opt_attr': ['reset', 'sq_depth']},
                       'thread_stats': {'req_attr':[], 'opt_attr': ['reset']},
                       'prdcr_stats': {'req_attr':[], 'opt_attr': []},
                       'set_route' : {'req_attr':['instance'], 'opt_attr':[]},
@@ -2999,7 +2999,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def xprt_stats(self, reset=False):
+    def xprt_stats(self, reset=False, level=0):
         """Query the daemon's telemetry data"""
         if reset is None:
             reset = False
@@ -3008,6 +3008,8 @@ class Communicator(object):
                 attrs=[
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RESET,
                                    value=str(reset)),
+                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.LEVEL,
+                                   value=str(level))
                 ])
         try:
             req.send(self)
