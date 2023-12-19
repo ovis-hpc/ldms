@@ -55,6 +55,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <sys/syscall.h>
 
 #define __TIMER_VALID(tv) ((tv)->tv_sec >= 0)
 
@@ -632,6 +633,57 @@ int ovis_event_term_check(ovis_scheduler_t m)
 	return rc;
 }
 
+static uint64_t __timespec_diff_us(struct timespec *start, struct timespec *end)
+{
+	if (start->tv_sec == 0) {
+		/*
+		 * This is the first sample, so ignore it for the difference.
+		 */
+		return 0;
+	}
+
+	uint64_t secs_ns, nsecs;
+	secs_ns = (end->tv_sec - start->tv_sec) * 1000000000;
+	nsecs = end->tv_nsec - start->tv_nsec;
+	return (secs_ns + nsecs) / 1000;
+}
+
+static void __thrstat_reset(ovis_event_thrstat_t stats)
+{
+	memset(&stats->wait_end, 0, sizeof(stats->wait_end));
+	memset(&stats->wait_start, 0, sizeof(stats->wait_start));
+	stats->wait_tot = stats->proc_tot = 0;
+
+	clock_gettime(CLOCK_REALTIME, &stats->start);
+	stats->waiting = 0;
+}
+
+static void __thrstat_wait_start(ovis_event_thrstat_t stats)
+{
+	struct timespec now;
+
+	clock_gettime(CLOCK_REALTIME, &now);
+	stats->wait_start = now;
+	stats->wait_tot += __timespec_diff_us(&stats->wait_end, &now);
+	stats->waiting = 1;
+}
+
+static void __thrstat_wait_end(ovis_event_thrstat_t stats)
+{
+	struct timespec now;
+	clock_gettime(CLOCK_REALTIME, &now);
+	stats->wait_end = now;
+	stats->proc_tot += __timespec_diff_us(&stats->wait_start, &now);
+	stats->waiting = 0;
+}
+
+static void __thrstat_init(ovis_scheduler_t m)
+{
+	m->stats.tid = syscall(SYS_gettid);
+	m->stats.thread_id = (uint64_t)pthread_self();
+	__thrstat_reset(&m->stats);
+}
+
 int ovis_scheduler_loop(ovis_scheduler_t m, int return_on_empty)
 {
 	ovis_event_t ev;
@@ -640,6 +692,7 @@ int ovis_scheduler_loop(ovis_scheduler_t m, int return_on_empty)
 	int rc = 0;
 	int cnt;
 
+	__thrstat_init(m);
 	ovis_scheduler_ref_get(m);
 	pthread_mutex_lock(&m->mutex);
 	switch (m->state) {
@@ -666,7 +719,9 @@ loop:
 	}
 	pthread_mutex_unlock(&m->mutex);
 
+	__thrstat_wait_start(&m->stats);
 	cnt = epoll_wait(m->efd, m->ev, MAX_EPOLL_EVENTS, timeout);
+	__thrstat_wait_end(&m->stats);
 	if (cnt < 0) {
 		if (errno == EINTR)
 			goto loop;
@@ -748,4 +803,52 @@ int ovis_scheduler_epoll_event_mod(ovis_scheduler_t s, ovis_event_t ev,
 		ev->param.epoll_events = epoll_events;
 	}
 	return rc;
+}
+
+void ovis_scheduler_thrstat_free(struct ovis_scheduler_thrstat *res)
+{
+	if (!res)
+		return;
+	free(res->name);
+	free(res);
+}
+
+struct ovis_scheduler_thrstat *
+ovis_scheduler_thrstat_get(ovis_scheduler_t sch, struct timespec *now)
+{
+	struct ovis_scheduler_thrstat *res;
+
+	res = malloc(sizeof(*res));
+	if (!res) {
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	if (sch->stats.name) {
+		res->name = strdup(sch->stats.name);
+		if (!res->name) {
+			goto err;
+		}
+	} else {
+		res->name = NULL;
+	}
+
+	res->tid = sch->stats.tid;
+	res->thread_id = sch->stats.thread_id;
+	res->idle = sch->stats.wait_tot;
+	res->active = sch->stats.proc_tot;
+	if (sch->stats.waiting) {
+		res->idle += __timespec_diff_us(&sch->stats.wait_start, now);
+	} else {
+		res->active += __timespec_diff_us(&sch->stats.wait_end, now);
+	}
+	res->dur = res->idle +
+				res->active;
+	res->idle_pc = res->idle * 100.0 / res->dur;
+	res->active_pc = res->active  * 100.0 / res->dur;
+	res->ev_cnt = sch->evcount;
+	return res;
+err:
+	ovis_scheduler_thrstat_free(res);
+	return NULL;
 }
