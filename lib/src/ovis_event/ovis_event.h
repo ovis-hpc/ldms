@@ -260,6 +260,18 @@ struct ovis_event_s {
 	(ev)->priv.idx = -1; \
 } while(0)
 
+struct ovis_scheduler_thrstat {
+	char *name;
+	pid_t tid;
+	uint64_t thread_id;
+	uint64_t idle; /* Idle time in micro-seconds */
+	uint64_t active; /* Active time in micro-seconds */
+	uint64_t dur; /* Total time in micro-seconds */
+	double idle_pc; /* Percentage of the idle time */
+	double active_pc; /* Percentage of the active time */
+	uint64_t ev_cnt; /* Number of events */
+};
+
 /**
  * Create an OVIS event scheduler.
  *
@@ -363,5 +375,24 @@ int ovis_scheduler_loop(ovis_scheduler_t m, int return_on_empty);
  * Singal the scheduler to terminate the event loop.
  */
 int ovis_scheduler_term(ovis_scheduler_t s);
+
+/**
+ * \brief Return the thread statistics of a scheduler
+ *
+ * The caller must free the returned statistics.
+ *
+ * \param  sch   a handle of an ovis_schedule structure
+ * \param  now   The current time
+ *
+ * \return A pointer to an ovis_scheduler_thrstat structure
+ * \see ovis_scheduler_thrstat_free()
+ */
+struct ovis_scheduler_thrstat *
+ovis_scheduler_thrstat_get(ovis_scheduler_t sch, struct timespec *now);
+
+/**
+ * \brief Free an ovis_scheduler_thrstat returned by ovis_scheduler_thrstat_get
+ */
+void ovis_scheduler_thrstat_free(struct ovis_scheduler_thrstat *res);
 
 #endif

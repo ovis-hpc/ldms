@@ -62,6 +62,18 @@ struct ovis_event_heap {
 	ovis_event_t ev[OVIS_FLEX];
 };
 
+typedef struct ovis_event_thrstat {
+	char *name;
+	pid_t tid;
+	uint64_t thread_id;
+	struct timespec start;
+	struct timespec wait_start;
+	struct timespec wait_end;
+	int waiting;
+	uint64_t wait_tot;
+	uint64_t proc_tot;
+} *ovis_event_thrstat_t;
+
 struct ovis_scheduler_s {
 	int evcount;
 	int refcount;
@@ -77,6 +89,7 @@ struct ovis_scheduler_s {
 		OVIS_EVENT_MANAGER_WAITING,
 		OVIS_EVENT_MANAGER_TERM,
 	} state;
+	struct ovis_event_thrstat stats;
 };
 
 #endif
