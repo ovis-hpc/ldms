@@ -7104,7 +7104,7 @@ out:
  * Sends a JSON formatted summary of Zap thread statistics as follows:
  *
  * { "count" : <int>,
- *   "entries" : [
+ *   "io_threads" : [
  * 	{ "name" : <string>,
  * 	  "tid"  : <tid>,
  * 	  "thread_id" : <Linux Thread ID>,
@@ -7121,9 +7121,20 @@ out:
  *          }
  *      },
  *      . . .
+ *   ],
+ *   "worker_threads" : [
+ *      { "name" : <string>,
+ *        "tid"  : <tid>,
+ *        "thread_id" : <Linux Thread ID>,
+ *        "total_us" : <Total time in micro-seconds>,
+ *        "idle_pc" : <percentage of idle time>,
+ *        "active_pc" : <percentage of active time>
+ *      }
  *   ]
  * }
  */
+extern void ldmsd_worker_thrstat_free(struct ldmsd_worker_thrstat_result *res);
+extern struct ldmsd_worker_thrstat_result *ldmsd_worker_thrstat_get();
 static char * __thread_stats_as_json(size_t *json_sz)
 {
 	char *buff, *s;
@@ -7136,6 +7147,8 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	struct rbt store_time_tree;
 	struct rbn *rbn;
 	struct store_time_thread *stime_ent;
+	struct ldmsd_worker_thrstat_result *wres = NULL;
+	struct ovis_scheduler_thrstat *wthr;
 	s = buff = NULL;
 
 	(void)clock_gettime(CLOCK_REALTIME, &start);
@@ -7150,6 +7163,10 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	if (!res)
 		goto __APPEND_ERR;
 
+	wres = ldmsd_worker_thrstat_get();
+	if (!wres)
+		goto __APPEND_ERR;
+
 	buff = malloc(sz);
 	if (!buff)
 		goto __APPEND_ERR;
@@ -7157,13 +7174,14 @@ static char * __thread_stats_as_json(size_t *json_sz)
 
 	__APPEND("{");
 	__APPEND(" \"count\": %d,\n", res->count);
-	__APPEND(" \"entries\": [\n");
+	__APPEND(" \"io_threads\": [\n");
 	for (i = 0; i < res->count; i++) {
 		zthr = res->entries[i].zap_res;
 		__APPEND("  {\n");
 		__APPEND("   \"name\": \"%s\",\n", zthr->name);
 		__APPEND("   \"tid\": %d,\n", zthr->tid);
 		__APPEND("   \"thread_id\": \"%p\",\n", (void*)zthr->thread_id);
+		__APPEND("   \"type\": \"io_thread\",\n");
 		__APPEND("   \"sample_count\": %g,\n", zthr->sample_count);
 		__APPEND("   \"sample_rate\": %g,\n", zthr->sample_rate);
 		__APPEND("   \"utilization\": %g,\n", zthr->utilization);
@@ -7201,14 +7219,33 @@ static char * __thread_stats_as_json(size_t *json_sz)
 		else
 			__APPEND("  }\n");
 	}
+	__APPEND(" ],\n"); /* end of entries array */
+	__APPEND(" \"worker_threads\": [\n");
+	for (i = 0; i < wres->count; i++) {
+		wthr = wres->entries[i];
+		__APPEND("  {\n");
+		__APPEND("   \"name\": \"%s\",\n", wthr->name);
+		__APPEND("   \"tid\": %d,\n", wthr->tid);
+		__APPEND("   \"thread_id\": \"%p\",\n", (void*)wthr->thread_id);
+		__APPEND("   \"idle_pc\" : %lf,\n", wthr->idle_pc);
+		__APPEND("   \"active_pc\" : %lf,\n", wthr->active_pc);
+		__APPEND("   \"total_us\" : %ld,\n", wthr->dur);
+		__APPEND("   \"ev_cnt\" : %ld\n", wthr->ev_cnt);
+		if (i < wres->count - 1)
+			__APPEND("   },\n");
+		else
+			__APPEND("   }\n");
+	}
+	__APPEND(" ],\n"); /* end of worker threads */
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	uint64_t compute_time = ldms_timespec_diff_us(&start, &end);
-	__APPEND(" ],\n"); /* end of entries array */
+
 	__APPEND(" \"compute_time\": %ld\n", compute_time);
 	__APPEND("}"); /* end */
 
 	*json_sz = s - buff + 1;
 	ldms_thrstat_result_free(res);
+	ldmsd_worker_thrstat_free(wres);
 	while ((rbn = rbt_min(&store_time_tree))) {
 		rbt_del(&store_time_tree, rbn);
 		stime_ent = container_of(rbn, struct store_time_thread, rbn);
@@ -7217,6 +7254,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	return buff;
 __APPEND_ERR:
 	ldms_thrstat_result_free(res);
+	ldmsd_worker_thrstat_free(wres);
 	while ((rbn = rbt_min(&store_time_tree))) {
 		rbt_del(&store_time_tree, rbn);
 		stime_ent = container_of(rbn, struct store_time_thread, rbn);
