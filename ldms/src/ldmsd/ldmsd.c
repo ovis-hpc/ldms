@@ -444,6 +444,46 @@ pthread_t get_thread(int idx)
 	return ev_thread[idx];
 }
 
+void ldmsd_worker_thrstat_free(struct ldmsd_worker_thrstat_result *res)
+{
+	if (!res)
+		return;
+
+	int i;
+	for (i = 0; i < res->count; i++) {
+		ovis_scheduler_thrstat_free(res->entries[i]);
+	}
+	free(res);
+}
+
+struct ldmsd_worker_thrstat_result *ldmsd_worker_thrstat_get()
+{
+	int i;
+	struct ldmsd_worker_thrstat_result *res;
+	struct timespec now;
+
+	clock_gettime(CLOCK_REALTIME, &now);
+	res = malloc(sizeof(*res) +
+			(ev_thread_count * sizeof(struct ovis_scheduler_thrstat *)));
+	if (!res) {
+		ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
+		return NULL;
+	}
+	res->count = 0;
+	for (i = 0; i < ev_thread_count; i++) {
+		res->entries[i] = ovis_scheduler_thrstat_get(ovis_scheduler[i], &now);
+		if (!res->entries[i]) {
+			ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
+			goto err;
+		}
+		res->count++;
+	}
+	return res;
+err:
+	ldmsd_worker_thrstat_free(res);
+	return NULL;
+}
+
 void kpublish(int map_fd, int set_no, int set_size, char *set_name)
 {
 	ldms_set_t map_set;

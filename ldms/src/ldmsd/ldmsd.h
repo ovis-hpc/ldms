@@ -614,6 +614,11 @@ typedef struct ldmsd_row_list_s *ldmsd_row_list_t;
 
 typedef struct ldmsd_req_ctxt *ldmsd_req_ctxt_t;
 
+struct ldmsd_worker_thrstat_result {
+	int count; /* Number of worker threads */
+	struct ovis_scheduler_thrstat *entries[0];
+};
+
 /**
  * A utility to convert \c row to JSON array.
  *
