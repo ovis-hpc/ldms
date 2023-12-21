@@ -1076,14 +1076,14 @@ class LdmsdCmdParser(cmd.Cmd):
         if rc == 0:
             metric_sets = fmt_status(msg)
 
-            print("Name                 Schema Name      State      Origin           Producer         timestamp                duration (sec)")
-            print("-------------------- ---------------- ---------- ---------------- ---------------- ------------------------- ---------------")
+            print(f"{'Name':30} {'Schema Name':16} {'State':10} {'Origin':16} {'Producer':16} {'Timestamp':25} {'Duration(sec)':12}")
+            print(f"{'-'*30} {'-'*16} {'-'*10} {'-'*16} {'-'*16} {'-'*25} {'-'*12}")
             for pset in metric_sets:
                 ts = float(pset['timestamp.sec'])
                 ts_sec = datetime.fromtimestamp(ts).strftime('%m-%d-%y %H:%M:%S')
                 ts_str = "{0} [{1}]".format(ts_sec, pset['timestamp.usec'])
                 dur = pset['duration.sec'] + "." + pset['duration.usec'].zfill(6)
-                print("{0:20} {1:16} {2:10} {3:16} {4:16} {5:25} {6:12}".format(pset['inst_name'],
+                print("{0:30} {1:16} {2:10} {3:16} {4:16} {5:25} {6:>12}".format(pset['inst_name'],
                                                                                 pset['schema_name'],
                                                                                 pset['state'],
                                                                                 pset['origin'],
