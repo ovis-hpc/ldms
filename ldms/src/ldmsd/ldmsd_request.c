@@ -4079,12 +4079,7 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 	ldmsd_prdcr_ref_t ref;
 	ldmsd_prdcr_t prdcr;
 	int prdcr_count;
-	ldmsd_prdcr_set_t prdset;
-	ldmsd_name_match_t match = NULL;
 	long default_offset = 0;
-	int skipped_cnt = 0;
-	int oversampled_cnt = 0;
-	const char *str;
 
 	if (updtr_cnt) {
 		rc = linebuf_printf(reqc, ",\n");
@@ -4137,47 +4132,8 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 			       prdcr_state_str(prdcr->conn_state));
 		if (rc)
 			goto out;
-
-		if (LIST_EMPTY(&updtr->match_list)) {
-			prdset = ldmsd_prdcr_set_first(prdcr);
-			while (prdset) {
-				__updtr_stats(prdset, &skipped_cnt,
-						     &oversampled_cnt);
-				if (reset) {
-					prdset->oversampled_cnt = 0;
-					prdset->skipped_upd_cnt = 0;
-				}
-				prdset = ldmsd_prdcr_set_next(prdset);
-			}
-		} else {
-			LIST_FOREACH(match, &updtr->match_list, entry) {
-				prdset = ldmsd_prdcr_set_first(prdcr);
-				while (prdset) {
-					if (match) {
-						if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
-							str = prdset->inst_name;
-						else
-							str = prdset->schema_name;
-						rc = regexec(&match->regex, str, 0, NULL, 0);
-						if (rc)
-							goto next;
-					}
-					__updtr_stats(prdset, &skipped_cnt,
-							     &oversampled_cnt);
-					if (reset) {
-						prdset->oversampled_cnt = 0;
-						prdset->skipped_upd_cnt = 0;
-					}
-				next:
-					prdset = ldmsd_prdcr_set_next(prdset);
-				}
-			}
-		}
 	}
-	rc = linebuf_printf(reqc, "],"
-				  "\"outstanding count\":%d,"
-				  "\"oversampled count\":%d}",
-				  skipped_cnt, oversampled_cnt);
+	rc = linebuf_printf(reqc, "]}");
 out:
 	ldmsd_updtr_unlock(updtr);
 	return rc;
@@ -8429,14 +8385,18 @@ __prdset_upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 				"\"min\":%lf,"
 				"\"max\":%lf,"
 				"\"avg\":%lf,"
-				"\"cnt\":%d"
+				"\"cnt\":%d,"
+				"\"skipped_cnt\":%d,"
+				"\"oversampled_cnt\":%d"
 				"}",
 				(cnt?",":""),
 				prdset->inst_name,
 				prdset->updt_stat.min,
 				prdset->updt_stat.max,
 				prdset->updt_stat.avg,
-				prdset->updt_stat.count);
+				prdset->updt_stat.count,
+				prdset->skipped_upd_cnt,
+				prdset->oversampled_cnt);
 		if (reset)
 			memset(&prdset->updt_stat, 0, sizeof(prdset->updt_stat));
 		pthread_mutex_unlock(&prdset->lock);

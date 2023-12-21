@@ -1114,8 +1114,8 @@ class LdmsdCmdParser(cmd.Cmd):
         rc, msg = self.comm.updtr_status(**arg)
         if rc == 0:
             updaters = fmt_status(msg)
-            print("Name             Interval:Offset  Auto   Mode            State        Skipped counter Oversampled counter")
-            print(f"---------------- ---------------- ------ --------------- ------------ {'-'*15} {'-'*19}")
+            print("Name             Interval:Offset  Auto   Mode            State")
+            print(f"---------------- ---------------- ------ --------------- ---------------")
             for updtr in updaters:
                 if 'auto' in updtr:
                     auto = updtr['auto']
@@ -1124,8 +1124,7 @@ class LdmsdCmdParser(cmd.Cmd):
                     auto = updtr['????']
                 interval_s = cvt_intrvl_off_to_str(updtr['interval'], updtr['offset'])
                 print(f"{updtr['name']:16} {interval_s:16} {auto:6} {updtr['mode']:15} " \
-                      f"{updtr['state']:10} {updtr['outstanding count']:15} " \
-                      f"{updtr['oversampled count']:19}")
+                      f"{updtr['state']:10}")
                 if arg['summary'] is None:
                     for prdcr in updtr['producers']:
                         print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
@@ -1143,7 +1142,9 @@ class LdmsdCmdParser(cmd.Cmd):
                  'cnt' : 0,
                  'min_prdcr' : None,
                  'max_prdcr' : None,
-                 'producers' : {}
+                 'producers' : {},
+                 'skipped_cnt': 0,
+                 'oversampled_cnt': 0
                }
 
         for p, prdcr in updtr.items():
@@ -1173,6 +1174,9 @@ class LdmsdCmdParser(cmd.Cmd):
                     pstats['avg'] = pstats['avg'] * (pstats['cnt']/(pstats['cnt'] + prdset['cnt']))
                     pstats['avg'] += prdset['avg'] * (prdset['cnt']/(pstats['cnt'] + prdset['cnt']))
                     pstats['cnt'] += prdset['cnt']
+
+                stats['skipped_cnt'] += prdset['skipped_cnt']
+                stats['oversampled_cnt'] += prdset['oversampled_cnt']
             stats['producers'][p] = pstats
 
             if stats['min'] > pstats['min']:
@@ -1209,13 +1213,15 @@ class LdmsdCmdParser(cmd.Cmd):
             return
 
         j = fmt_status(msg)
-        print("Updater         Min(usec)       Max(usec)       Average(usec)   Count     ")
-        print(f"{'-'*15} {'-'*15} {'-'*15} {'-'*15} {'-'*10}")
+        print(f"{'Updater':15} {'Min(usec)':15} {'Max(usec)':15} {'Average(usec)':15} {'Count':10} {'Skipped Count':15} {'Oversampled Count':15}")
+        print(f"{'-'*15} {'-'*15} {'-'*15} {'-'*15} {'-'*10} {'-'*15} {'-'*15}")
         if rc !=0:
             return
         for n, updtr in j.items():
             stats = self.__update_time_stats(updtr)
-            print(f"{n:15} {stats['min']:15.4f} {stats['max']:15.4f} {stats['avg']:15.4f} {stats['cnt']:10}")
+            print(f"{n:15} {stats['min']:15.4f} {stats['max']:15.4f} " \
+                  f"{stats['avg']:15.4f} {stats['cnt']:10} " \
+                  f"{stats['skipped_cnt']:15} {stats['oversampled_cnt']:15}")
 
     def complete_update_time_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('update_time_stats', text)
