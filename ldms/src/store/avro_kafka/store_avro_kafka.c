@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
  * Copyright 2022 Lawrence Livermore National Security, LLC
- * Copyright 2022 Open Grid Computing, Inc.
+ * Copyright 2022-2023 Open Grid Computing, Inc.
  *
  * See the top-level COPYING file for details.
  *
@@ -31,10 +31,27 @@
 #include <libserdes/serdes-avro.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ovis_log.h"
+#include "ovis_log/ovis_log.h"
 
 #define STORE_AVRO_KAFKA "store_avro_kafka"
 static ovis_log_t aks_log = NULL;
+
+static int schema_cmp(void *a, const void *b);
+
+typedef struct store_kafka_s {
+	struct ldmsd_store store;
+
+	/* extensions */
+	pthread_mutex_t schema_rbt_lock;
+	struct rbt schema_tree;
+
+	pthread_mutex_t sk_lock;
+	rd_kafka_conf_t *g_rd_conf;
+	serdes_conf_t *g_serdes_conf;
+	int g_serdes_encoding;
+	char *g_topic_fmt;
+
+} *store_kafka_t;
 
 #define LOG(_level_, _fmt_, ...) ovis_log(aks_log, _level_, _fmt_, ##__VA_ARGS__)
 
@@ -55,6 +72,7 @@ typedef struct aks_handle_s
 	} encoding;
 	char *topic_fmt;	   /* Format to use to create topic name from row */
 	char *topic_name;
+	store_kafka_t sf;
 } *aks_handle_t;
 
 static const char *_help_str =
@@ -91,8 +109,6 @@ static int schema_cmp(void *a, const void *b)
 {
 	return strcmp((char *)a, (char *)b);
 }
-static pthread_mutex_t schema_rbt_lock = PTHREAD_MUTEX_INITIALIZER;
-static struct rbt schema_tree = { .comparator = schema_cmp };
 
 struct schema_entry
 {
@@ -107,6 +123,7 @@ serdes_schema_find(aks_handle_t sh, char *schema_name,
 		  ldms_schema_t lschema, ldmsd_row_t row)
 {
 	struct rbn *rbn;
+	store_kafka_t sf = sh->sf;
 	serdes_schema_t *sschema = NULL;
 	struct schema_entry *entry;
 	char *json_buf = NULL;
@@ -114,9 +131,9 @@ serdes_schema_find(aks_handle_t sh, char *schema_name,
 	char errstr[512];
 	int rc;
 
-	pthread_mutex_lock(&schema_rbt_lock);
+	pthread_mutex_lock(&sf->schema_rbt_lock);
 	/* Check if the schema is already cached */
-	rbn = rbt_find(&schema_tree, schema_name);
+	rbn = rbt_find(&sf->schema_tree, schema_name);
 	if (rbn) {
 		entry = container_of(rbn, struct schema_entry, rbn);
 		sschema = entry->serdes_schema;
@@ -152,19 +169,13 @@ cache:
 	entry->ldms_schema = lschema;
 	entry->schema_name = strdup(schema_name);
 	rbn_init(&entry->rbn, entry->schema_name);
-	rbt_ins(&schema_tree, &entry->rbn);
+	rbt_ins(&sf->schema_tree, &entry->rbn);
 out:
-	pthread_mutex_unlock(&schema_rbt_lock);
+	pthread_mutex_unlock(&sf->schema_rbt_lock);
 	if (json_buf)
 		free(json_buf);
 	return sschema;
 }
-
-pthread_mutex_t sk_lock = PTHREAD_MUTEX_INITIALIZER;
-static rd_kafka_conf_t *g_rd_conf = NULL;
-static serdes_conf_t *g_serdes_conf = NULL;
-static int g_serdes_encoding = AKS_ENCODING_AVRO;
-static char *g_topic_fmt = NULL;
 
 static char *strip_whitespace(char *s)
 {
@@ -291,12 +302,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	int rc = 0;
+	store_kafka_t sk = (void*)self;
 	char *path, *encoding, *topic;
 	char err_str[512];
 
-	pthread_mutex_lock(&sk_lock);
+	pthread_mutex_lock(&sk->sk_lock);
 
-	if (g_rd_conf) {
+	if (sk->g_rd_conf) {
 		LOG_ERROR("reconfiguration is not supported\n");
 		rc = EINVAL;
 		goto out;
@@ -311,17 +323,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 					    "serialized messages on the Kafka bus.");
 	}
 
-	g_rd_conf = rd_kafka_conf_new();
-	if (!g_rd_conf) {
+	sk->g_rd_conf = rd_kafka_conf_new();
+	if (!sk->g_rd_conf) {
 		rc = errno;
 		LOG_ERROR("rd_kafka_conf_new() failed %d\n", rc);
 		goto out;
 	}
 
-	g_serdes_conf = serdes_conf_new(err_str, sizeof(err_str),
+	sk->g_serdes_conf = serdes_conf_new(err_str, sizeof(err_str),
 			      /* Default URL */
 			      "schema.registry.url", "http://localhost:8081");
-	if (!g_serdes_conf) {
+	if (!sk->g_serdes_conf) {
 		rc = EINVAL;
 		LOG_ERROR("serdes_conf_new failed '%s'\n", err_str);
 		goto out;
@@ -329,14 +341,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 	path = av_value(avl, "kafka_conf");
 	if (path) {
-		rc = parse_rd_conf_file(path, g_rd_conf);
+		rc = parse_rd_conf_file(path, sk->g_rd_conf);
 		if (rc) {
 			LOG_ERROR("Error %d parsing the Kafka configuration file '%s'", rc, path);
 		}
 	}
 	path = av_value(avl, "serdes_conf");
 	if (path) {
-		rc = parse_serdes_conf_file(path, g_serdes_conf);
+		rc = parse_serdes_conf_file(path, sk->g_serdes_conf);
 		if (rc) {
 			LOG_ERROR("Error %d parsing the Kafka configuration file '%s'", rc, path);
 		}
@@ -344,9 +356,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	encoding = av_value(avl, "encoding");
 	if (encoding) {
 		if (0 == strcasecmp(encoding, "avro")) {
-			g_serdes_encoding = AKS_ENCODING_AVRO;
+			sk->g_serdes_encoding = AKS_ENCODING_AVRO;
 		} else if (0 == strcasecmp(encoding, "json")) {
-			g_serdes_encoding = AKS_ENCODING_JSON;
+			sk->g_serdes_encoding = AKS_ENCODING_JSON;
 		} else {
 			LOG_ERROR("Ignoring unrecognized serialization encoding '%s'\n", encoding);
 		}
@@ -354,33 +366,34 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	topic = av_value(avl, "topic");
 	if (topic) {
 		char *tmp;
-		g_topic_fmt = strdup(topic);
+		sk->g_topic_fmt = strdup(topic);
 		/* Strip any enclosing \" */
-		while (*g_topic_fmt != '\0' && *g_topic_fmt == '\"')
-			g_topic_fmt++;
-		tmp = g_topic_fmt;
+		while (*sk->g_topic_fmt != '\0' && *sk->g_topic_fmt == '\"')
+			sk->g_topic_fmt++;
+		tmp = sk->g_topic_fmt;
 		while (*tmp != '\0' && *tmp != '\"')
 			tmp++;
 		if (*tmp == '\"')
 			*tmp = '\0';
 	} else {
 		/* The default is the schema name */
-		topic = strdup("%S");
+		sk->g_topic_fmt= strdup("%S");
 	}
 out:
-	pthread_mutex_unlock(&sk_lock);
+	pthread_mutex_unlock(&sk->sk_lock);
 	return rc;
 }
 
 static void term(struct ldmsd_plugin *self)
 {
-	pthread_mutex_lock(&sk_lock);
-	if (g_rd_conf)
+	store_kafka_t sk = (void*)self;
+	pthread_mutex_lock(&sk->sk_lock);
+	if (sk->g_rd_conf)
 	{
-		rd_kafka_conf_destroy(g_rd_conf);
-		g_rd_conf = NULL;
+		rd_kafka_conf_destroy(sk->g_rd_conf);
+		sk->g_rd_conf = NULL;
 	}
-	pthread_mutex_unlock(&sk_lock);
+	pthread_mutex_unlock(&sk->sk_lock);
 }
 
 static ldmsd_store_handle_t
@@ -432,6 +445,7 @@ static aks_handle_t __handle_new(ldmsd_strgp_t strgp)
 {
 	char err_str[512];
 	rd_kafka_conf_res_t res;
+	store_kafka_t sk = (void*)strgp->store;
 
 	aks_handle_t sh = calloc(1, sizeof(*sh));
 	if (!sh) {
@@ -439,16 +453,16 @@ static aks_handle_t __handle_new(ldmsd_strgp_t strgp)
 		goto err_0;
 	}
 
-	sh->encoding = g_serdes_encoding;
-	sh->topic_fmt = strdup(g_topic_fmt);
+	sh->encoding = sk->g_serdes_encoding;
+	sh->topic_fmt = strdup(sk->g_topic_fmt);
 	if (!sh->topic_fmt)
 		goto err_1;
 
-	sh->rd_conf = rd_kafka_conf_dup(g_rd_conf);
+	sh->rd_conf = rd_kafka_conf_dup(sk->g_rd_conf);
 	if (!sh->rd_conf)
 		goto err_1;
 
-	sh->serdes_conf = serdes_conf_copy(g_serdes_conf);
+	sh->serdes_conf = serdes_conf_copy(sk->g_serdes_conf);
 	if (!sh->serdes_conf) {
 		LOG_ERROR("%s creating serdes configuration\n", err_str);
 		goto err_2;
@@ -480,6 +494,8 @@ static aks_handle_t __handle_new(ldmsd_strgp_t strgp)
 		goto err_2;
 	}
 	sh->rd_conf = NULL; /* rd_kafka_new consumed and freed the conf */
+
+	sh->sf = (void*)strgp->store;
 
 	return sh;
 
@@ -1031,25 +1047,44 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 	return 0;
 }
 
-static struct ldmsd_store store_kafka = {
-    .base = {
-	.name = "avro_kafka",
-	.term = term,
-	.config = config,
-	.usage = usage,
-	.type = LDMSD_PLUGIN_STORE,
-    },
-    .open = open_store,
-    .get_context = get_ucontext,
-    .store = store,
-    .flush = flush_store,
-    .close = close_store,
-    .commit = commit_rows,
-};
-
-struct ldmsd_plugin *get_plugin()
+void store_kafka_del(struct ldmsd_cfgobj *obj)
 {
-	return &store_kafka.base;
+	store_kafka_t sf = (void*)obj;
+	ldmsd_store_cleanup(&sf->store);
+	free(sf);
+}
+
+struct ldmsd_plugin *get_plugin_instance(const char *name,
+					 uid_t uid, gid_t gid, int perm)
+{
+	store_kafka_t sf;
+
+	sf = (void*)ldmsd_store_alloc(name, sizeof(*sf), store_kafka_del, uid, gid, perm);
+
+	if (!sf)
+		goto out;
+
+	pthread_mutex_init(&sf->schema_rbt_lock, NULL);
+	pthread_mutex_init(&sf->sk_lock, NULL);
+	rbt_init(&sf->schema_tree, schema_cmp);
+
+	sf->g_serdes_encoding = AKS_ENCODING_AVRO;
+
+	sf->store.base.term   = term;
+	sf->store.base.config = config;
+	sf->store.base.usage  = usage;
+
+	snprintf(sf->store.base.name, sizeof(sf->store.base.name), "store_kafka");
+
+	sf->store.open        = open_store;
+	sf->store.get_context = get_ucontext;
+	sf->store.store       = store;
+	sf->store.flush       = flush_store;
+	sf->store.close       = close_store;
+	sf->store.commit      = commit_rows;
+
+ out:
+	return &sf->store.base;
 }
 
 static void __attribute__((constructor)) store_avro_kafka_init();
