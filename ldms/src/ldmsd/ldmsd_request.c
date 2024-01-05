@@ -303,6 +303,7 @@ static int auth_del_handler(ldmsd_req_ctxt_t reqc);
 
 static int set_default_authz_handler(ldmsd_req_ctxt_t reqc);
 static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc);
+static int default_auth_handler(ldmsd_req_ctxt_t reqc);
 
 /* executable for all */
 #define XALL 0111
@@ -649,6 +650,9 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_CMDLINE_OPTIONS_SET_REQ] = {
 		LDMSD_CMDLINE_OPTIONS_SET_REQ, cmd_line_arg_set_handler, XUG
 	},
+	[LDMSD_DEFAULT_AUTH_REQ] = {
+		LDMSD_DEFAULT_AUTH_REQ, default_auth_handler, XUG
+	},
 };
 
 int is_req_id_priority(enum ldmsd_request req_id)
@@ -660,6 +664,7 @@ int is_req_id_priority(enum ldmsd_request req_id)
 	case LDMSD_AUTH_ADD_REQ:
 	case LDMSD_CMDLINE_OPTIONS_SET_REQ:
 	case LDMSD_INCLUDE_REQ:
+	case LDMSD_DEFAULT_AUTH_REQ:
 		return 1;
 	default:
 		return 0;
@@ -9029,5 +9034,46 @@ static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 out:
 	free(s);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int default_auth_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *plugin_name, *auth_attr;
+	plugin_name = auth_attr = NULL;
+
+	reqc->errcode = 0;
+
+	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PLUGIN);
+	if (!plugin_name) {
+		reqc->errcode = EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "The attribute 'plugin' is missing.");
+		goto send_reply;
+	}
+
+	auth_attr = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+
+	reqc->errcode = ldmsd_process_cmd_line_arg('a', plugin_name);
+	if (reqc->errcode) {
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "Failed to process 'default_auth'.");
+		goto send_reply;
+	}
+
+	if (auth_attr) {
+		reqc->errcode = ldmsd_process_cmd_line_arg('A', auth_attr);
+		if (reqc->errcode) {
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						  "Failed to process the default auth attributes.");
+			goto send_reply;
+		}
+	}
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(plugin_name);
+	free(auth_attr);
 	return rc;
 }

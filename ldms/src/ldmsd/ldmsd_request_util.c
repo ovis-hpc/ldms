@@ -73,6 +73,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "daemon",             LDMSD_DAEMON_STATUS_REQ  },
 	{  "daemon_exit",        LDMSD_EXIT_DAEMON_REQ  },
 	{  "daemon_status",      LDMSD_DAEMON_STATUS_REQ  },
+	{  "default_auth",       LDMSD_DEFAULT_AUTH_REQ  },
 	{  "dump_cfg",           LDMSD_DUMP_CFG_REQ },
 	{  "env",                LDMSD_ENV_REQ  },
 	{  "exit",               LDMSD_EXIT_DAEMON_REQ  },
@@ -793,6 +794,68 @@ out:
 	return rc;
 }
 
+int __ldmsd_parse_default_auth_req(struct ldmsd_parse_ctxt *ctxt)
+{
+	char *av = ctxt->av;
+	size_t len = strlen(av);
+	size_t cnt = 0;
+	char *tmp, *name, *value, *ptr, *dummy;
+	int rc;
+	dummy = NULL;
+	tmp = malloc(len);
+	if (!tmp) {
+		rc = ENOMEM;
+		goto out;
+	}
+	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
+	while (av) {
+		ctxt->av = av;
+		dummy = strdup(av);
+		if (!dummy) {
+			rc = ENOMEM;
+			goto out;
+		}
+		__get_attr_name_value(dummy, &name, &value);
+		if (!name) {
+			/* av is neither attribute value nor keyword */
+			rc = EINVAL;
+			goto out;
+		}
+		if (0 == strncmp(name, "plugin", 4)) {
+			/* Find the name attribute */
+			rc = add_attr_from_attr_str(name, value,
+						    &ctxt->request,
+						    &ctxt->request_sz);
+			if (rc)
+				goto out;
+		} else {
+			/* Construct the other attribute into a ATTR_STRING */
+			if (value) {
+				cnt += snprintf(&tmp[cnt], len - cnt,
+						"%s=%s ", name, value);
+			} else {
+				cnt += snprintf(&tmp[cnt], len - cnt,
+						"%s ", name);
+			}
+		}
+		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+		free(dummy);
+		dummy = NULL;
+	}
+	tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
+	/* Add an attribute of type 'STRING' */
+	rc = add_attr_from_attr_str(NULL, tmp,
+				    &ctxt->request,
+				    &ctxt->request_sz);
+out:
+	if (tmp)
+		free(tmp);
+	if (dummy)
+		free(dummy);
+	return rc;
+}
+
+
 struct ldmsd_req_array *
 ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, size_t xprt_max_msg)
 {
@@ -864,6 +927,9 @@ ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, size_t xprt_max_msg)
 		break;
 	case LDMSD_BRIDGE_ADD_REQ:
 		rc = __ldmsd_parse_bridge_add_req(&ctxt);
+		break;
+	case LDMSD_DEFAULT_AUTH_REQ:
+		rc = __ldmsd_parse_default_auth_req(&ctxt);
 		break;
 	default:
 		rc = __ldmsd_parse_generic(&ctxt);
