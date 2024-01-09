@@ -147,6 +147,7 @@ enum ldmsd_request {
 	LDMSD_LOG_STATUS_REQ,
 	LDMSD_STATS_RESET_REQ,
 	LDMSD_DEFAULT_AUTH_REQ,
+	LDMSD_MEMORY_REQ,
 
 	/* failover requests by user */
 	LDMSD_FAILOVER_CONFIG_REQ = 0x700, /* "failover_config" user command */
@@ -235,6 +236,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_CREDITS,
 	LDMSD_ATTR_RX_RATE,
 	LDMSD_ATTR_SUMMARY,
+	LDMSD_ATTR_SIZE,
 	LDMSD_ATTR_LAST,
 };
 

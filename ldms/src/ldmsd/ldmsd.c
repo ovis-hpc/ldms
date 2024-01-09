@@ -1869,6 +1869,13 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			max_mem_sz_str = strdup(value);
 			if (!max_mem_sz_str)
 				return ENOMEM;
+			max_mem_size = ovis_get_mem_size(max_mem_sz_str);
+			if (!max_mem_size) {
+				ovis_log(NULL, OVIS_LCRITICAL,
+					 "Invalid memory size '%s'\n.",
+					 max_mem_sz_str);
+				return EINVAL;
+			}
 		}
 		break;
 	case 'c':
@@ -2164,7 +2171,6 @@ int main(int argc, char *argv[])
 	if ((max_mem_size = ovis_get_mem_size(max_mem_sz_str)) == 0) {
 		ovis_log(NULL, OVIS_LCRITICAL, "Invalid memory size '%s'. "
 				"See the -m option.\n", max_mem_sz_str);
-		usage(argv);
 	}
 	if (ldms_init(max_mem_size)) {
 		ovis_log(NULL, OVIS_LCRITICAL, "LDMS could not pre-allocate "
