@@ -89,8 +89,9 @@ const struct req_str_id req_str_id_table[] = {
 	{  "load",               LDMSD_PLUGN_LOAD_REQ  },
 	{  "log_level",          LDMSD_VERBOSE_REQ  },
 	{  "log_status",         LDMSD_LOG_STATUS_REQ  },
-	{  "loglevel",          LDMSD_VERBOSE_REQ  }, /* It is being deprecated. */
+	{  "loglevel",           LDMSD_VERBOSE_REQ  }, /* It is being deprecated. */
 	{  "logrotate",          LDMSD_LOGROTATE_REQ  },
+	{  "memory",             LDMSD_MEMORY_REQ  },
 	{  "metric_sets_default_authz", LDMSD_SET_DEFAULT_AUTHZ_REQ  },
 	{  "oneshot",            LDMSD_ONESHOT_REQ  },
 	{  "option",             LDMSD_CMDLINE_OPTIONS_SET_REQ  },
@@ -109,6 +110,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "prdcr_stream_status",LDMSD_PRDCR_STREAM_STATUS_REQ  },
 	{  "prdcr_subscribe",    LDMSD_PRDCR_SUBSCRIBE_REQ },
 	{  "prdcr_unsubscribe",  LDMSD_PRDCR_UNSUBSCRIBE_REQ },
+	{  "set_memory",         LDMSD_MEMORY_REQ },
 	{  "set_route",          LDMSD_SET_ROUTE_REQ  },
 	{  "set_sec_mod",        LDMSD_SET_SEC_MOD_REQ  },
 	{  "set_stats",          LDMSD_SET_STATS_REQ  },
@@ -185,6 +187,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "reset",             LDMSD_ATTR_RESET  },
 	{  "rx_rate",           LDMSD_ATTR_RX_RATE  },
 	{  "schema",            LDMSD_ATTR_SCHEMA  },
+	{  "size",              LDMSD_ATTR_SIZE  },
 	{  "stream",            LDMSD_ATTR_STREAM  },
 	{  "string",            LDMSD_ATTR_STRING  },
 	{  "summary",           LDMSD_ATTR_SUMMARY  },
