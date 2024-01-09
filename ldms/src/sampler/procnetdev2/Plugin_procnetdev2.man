@@ -6,9 +6,15 @@
 Plugin_procnetdev2 - man page for the LDMS procnetdev2 plugin
 
 .SH SYNOPSIS
-Within ldmsd_controller or a configuration file:
+.B load
+.RI name= INST_NAME
+.RB plugin= procnetdev2
 .br
-config name=procnetdev2 [ <attr> = <value> ]
+.B config
+.RI name= INST_NAME
+.RI [ <attr> = <value> ]
+.RI [ifaces= CSV_STR ]
+.RI [excludes= CSV_STR ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms
@@ -18,43 +24,56 @@ from /proc/net/dev.
 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 The procnetdev2 plugin uses the sampler_base base class. This man page covers
-only the configuration attributes, or those with default values, specific to the
+only the configuration attributes, or those with default values, specific to
 this plugin; see ldms_sampler_base.man for the attributes of the base class.
 
 .TP
 .BR config
-name=<plugin_name> [ifaces=<ifs>]
+.RI name= INST_NAME
+.RI [ifaces= CSV_STR ]
+.RI [excludes= CSV_STR ]
 .br
 configuration line
 .RS
 .TP
-name=<plugin_name>
+.RI name= INST_NAME
 .br
-This MUST be procnetdev2.
+The name given at \fBload\fR command.
 .TP
-ifaces=<ifs>
+.RI [ifaces= CSV_STR ]
 .br
-(Optional) A CSV list of interfaces to sample. If not specified, all available
-interfaces in /proc/net/dev will be reported. It is OK to specify non-existing
-interfaces in the ifaces list.
+(Optional) A comma-separated list of interface names (e.g. eth0,eth1) to be
+collected. If NOT specified, all interfaces are included (unluss the `excludes`
+option exclude them).
 .TP
-schema=<schema>
+.RI [excludes= CSV_STR ]
 .br
-Optional schema name. It is intended that the same sampler on different nodes
-with different metrics or ifaces have a different schema. If not specified, will
-default to `procnetdev`.
+(Optional) A comma-separated list of interface names (e.g. lo,eth0) to be
+excluded from the collection.
 .RE
 
-.SH BUGS
-The maximum number of interfaces is limited to 32.
+
+If \fBifaces\fR and \fBexcludes\fR are NOT specified, the sampler collects data
+from all interfaces. If only \fBifaces\fR is specified, the sampler only
+collects data from interfaces in the ifaces list. If only \fBexcludes\fR is
+specified, the sampler collects data from all interfaces EXCEPT those in the
+\fBexcludes\fR option. If both \fBifaces\fR and \fBexcludes\fR are specified,
+the sampler collects data from all interfaces that are in \fBifaces\fR option
+but are NOT in the \fBexcludes\fR option.
 
 .SH EXAMPLES
 .PP
 Within ldmsd_controller or a configuration file:
 .nf
-load name=procnetdev
-config name=procnetdev producer=vm1_1 instance=vm1_1/procnetdev2 ifaces=eth0,eth1
-start name=procnetdev interval=1000000 offset=0
+
+    load name=samp plugin=procnetdev
+    config name=samp producer=vm1_1 instance=vm1_1/procnetdev2 ifaces=eth0,eth1
+    start name=samp interval=1000000 offset=0
+
+    load name=samp2 plugin=procnetdev
+    config name=samp2 producer=vm1_1 instance=vm1_1/nolo excludes=lo
+    start name=samp2 interval=1000000 offset=0
+
 .fi
 
 .SH SEE ALSO
