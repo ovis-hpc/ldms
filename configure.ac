@@ -150,6 +150,8 @@ AC_LIB_HAVE_LINKFLAGS([rdc_bootstrap], [], [
 ])
 AM_CONDITIONAL([HAVE_LIBRDC_BOOTSTRAP], [test "x$HAVE_LIBRDC_BOOTSTRAP" = xyes])
 
+AC_LIB_HAVE_LINKFLAGS([rdc_ras], [], [])
+
 AC_ARG_ENABLE([rdc],
 	[AS_HELP_STRING([--enable-rdc], [Include components that depend upon AMD rdc tooling. @<:@default=no@:>@ for GPUs.])],
 	[],
