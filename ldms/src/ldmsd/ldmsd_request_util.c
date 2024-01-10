@@ -87,6 +87,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "include",            LDMSD_INCLUDE_REQ  },
 	{  "listen",             LDMSD_LISTEN_REQ },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ  },
+	{  "log_file",           LDMSD_LOG_FILE_REQ  },
 	{  "log_level",          LDMSD_VERBOSE_REQ  },
 	{  "log_status",         LDMSD_LOG_STATUS_REQ  },
 	{  "loglevel",           LDMSD_VERBOSE_REQ  }, /* It is being deprecated. */
