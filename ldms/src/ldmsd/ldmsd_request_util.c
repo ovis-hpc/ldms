@@ -111,6 +111,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "prdcr_stream_status",LDMSD_PRDCR_STREAM_STATUS_REQ  },
 	{  "prdcr_subscribe",    LDMSD_PRDCR_SUBSCRIBE_REQ },
 	{  "prdcr_unsubscribe",  LDMSD_PRDCR_UNSUBSCRIBE_REQ },
+	{  "publish_kernel",     LDMSD_PUBLISH_KERNEL_REQ  },
 	{  "set_memory",         LDMSD_MEMORY_REQ },
 	{  "set_route",          LDMSD_SET_ROUTE_REQ  },
 	{  "set_sec_mod",        LDMSD_SET_SEC_MOD_REQ  },

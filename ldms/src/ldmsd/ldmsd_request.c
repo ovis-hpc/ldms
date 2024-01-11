@@ -302,10 +302,13 @@ static int auth_add_handler(ldmsd_req_ctxt_t reqc);
 static int auth_del_handler(ldmsd_req_ctxt_t reqc);
 
 static int set_default_authz_handler(ldmsd_req_ctxt_t reqc);
+
+/* The handler of configuration that needs to the start-up time. */
 static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc);
 static int default_auth_handler(ldmsd_req_ctxt_t reqc);
 static int set_memory_handler(ldmsd_req_ctxt_t reqc);
 static int log_file_handler(ldmsd_req_ctxt_t reqc);
+static int publish_kernel_handler(ldmsd_req_ctxt_t reqc);
 
 /* executable for all */
 #define XALL 0111
@@ -661,6 +664,9 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_LOG_FILE_REQ] = {
 		LDMSD_LOG_FILE_REQ, log_file_handler, XUG
 	},
+	[LDMSD_PUBLISH_KERNEL_REQ] = {
+		LDMSD_PUBLISH_KERNEL_REQ, publish_kernel_handler, XUG
+	},
 };
 
 int is_req_id_priority(enum ldmsd_request req_id)
@@ -675,6 +681,7 @@ int is_req_id_priority(enum ldmsd_request req_id)
 	case LDMSD_DEFAULT_AUTH_REQ:
 	case LDMSD_MEMORY_REQ:
 	case LDMSD_LOG_FILE_REQ:
+	case LDMSD_PUBLISH_KERNEL_REQ:
 		return 1;
 	default:
 		return 0;
@@ -9132,6 +9139,38 @@ static int log_file_handler(ldmsd_req_ctxt_t reqc)
 	if (reqc->errcode) {
 		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 					  "Failed to open the log file '%s'.", path);
+		goto send_reply;
+	}
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(path);
+	return rc;
+}
+
+static int publish_kernel_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *path = NULL;
+
+	path = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PATH);
+	if (path) {
+		/*
+		 * The kernel setfile will be opened later.
+		 * The process will exit if it fails to open the setfile.
+		 * See k_proc().
+		 */
+		reqc->errcode = ldmsd_process_cmd_line_arg('s', path);
+		if (reqc->errcode) {
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						  "Failed to process the kernel set file path '%s'.", path);
+			goto send_reply;
+		}
+	}
+	reqc->errcode = ldmsd_process_cmd_line_arg('k', NULL);
+	if (reqc->errcode) {
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "Failed to config LDMSD to publish the kernel metrics.");
 		goto send_reply;
 	}
 
