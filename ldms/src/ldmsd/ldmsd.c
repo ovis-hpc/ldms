@@ -2077,6 +2077,12 @@ int main(int argc, char *argv[])
 		case 'c':
 			/* Handle below */
 			break;
+		case 'k':
+		case 's':
+			ovis_log(NULL, OVIS_LCRIT,
+				 "The options `-k` and `-s` are obsolete. "
+				 "Please specify `publish_kernel path=<KERNEL_FILE> in a configuration file.\n");
+			cleanup(EINVAL, "Received an obsolete command-line option");
 		default:
 			ret = ldmsd_process_cmd_line_arg(op, optarg);
 			if (ret) {
