@@ -2088,6 +2088,11 @@ int main(int argc, char *argv[])
 				 "The option `-n` is obsolete. "
 				 "Please specify `daemon_name name=<DAEMON_NAME> in a configuration file.\n");
 			cleanup(EINVAL, "Received an obsolete command-line option");
+		case 'P':
+			ovis_log(NULL, OVIS_LCRIT,
+				 "The option `-P` is obsolete. "
+				 "Please specify `worker_threads num=<NUMBER OF THREADS> in a configuration file.\n");
+			cleanup(EINVAL, "Received an obsolete command-line option");
 		default:
 			ret = ldmsd_process_cmd_line_arg(op, optarg);
 			if (ret) {
