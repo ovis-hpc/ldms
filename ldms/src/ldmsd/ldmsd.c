@@ -2083,6 +2083,11 @@ int main(int argc, char *argv[])
 				 "The options `-k` and `-s` are obsolete. "
 				 "Please specify `publish_kernel path=<KERNEL_FILE> in a configuration file.\n");
 			cleanup(EINVAL, "Received an obsolete command-line option");
+		case 'n':
+			ovis_log(NULL, OVIS_LCRIT,
+				 "The option `-n` is obsolete. "
+				 "Please specify `daemon_name name=<DAEMON_NAME> in a configuration file.\n");
+			cleanup(EINVAL, "Received an obsolete command-line option");
 		default:
 			ret = ldmsd_process_cmd_line_arg(op, optarg);
 			if (ret) {
