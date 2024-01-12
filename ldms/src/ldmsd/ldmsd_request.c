@@ -309,6 +309,7 @@ static int default_auth_handler(ldmsd_req_ctxt_t reqc);
 static int set_memory_handler(ldmsd_req_ctxt_t reqc);
 static int log_file_handler(ldmsd_req_ctxt_t reqc);
 static int publish_kernel_handler(ldmsd_req_ctxt_t reqc);
+static int daemon_name_set_handler(ldmsd_req_ctxt_t reqc);
 
 /* executable for all */
 #define XALL 0111
@@ -667,6 +668,9 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_PUBLISH_KERNEL_REQ] = {
 		LDMSD_PUBLISH_KERNEL_REQ, publish_kernel_handler, XUG
 	},
+	[LDMSD_DAEMON_NAME_SET_REQ] = {
+		LDMSD_DAEMON_NAME_SET_REQ, daemon_name_set_handler, XUG
+	},
 };
 
 int is_req_id_priority(enum ldmsd_request req_id)
@@ -682,6 +686,7 @@ int is_req_id_priority(enum ldmsd_request req_id)
 	case LDMSD_MEMORY_REQ:
 	case LDMSD_LOG_FILE_REQ:
 	case LDMSD_PUBLISH_KERNEL_REQ:
+	case LDMSD_DAEMON_NAME_SET_REQ:
 		return 1;
 	default:
 		return 0;
@@ -9177,5 +9182,30 @@ static int publish_kernel_handler(ldmsd_req_ctxt_t reqc)
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(path);
+	return rc;
+}
+
+static int daemon_name_set_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *name = NULL;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		reqc->errcode = EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					 "The attribute 'name' is missing.");
+		goto send_reply;
+	}
+	reqc->errcode = ldmsd_process_cmd_line_arg('n', name);
+	if (reqc->errcode) {
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "Failed to process the `daemon_name` command.");
+		goto send_reply;
+	}
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(name);
 	return rc;
 }
