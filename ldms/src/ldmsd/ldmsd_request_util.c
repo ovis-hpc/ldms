@@ -75,6 +75,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "daemon_name",        LDMSD_DAEMON_NAME_SET_REQ  },
 	{  "daemon_status",      LDMSD_DAEMON_STATUS_REQ  },
 	{  "default_auth",       LDMSD_DEFAULT_AUTH_REQ  },
+	{  "default_credits",    LDMSD_DEFAULT_CREDITS_REQ  },
 	{  "dump_cfg",           LDMSD_DUMP_CFG_REQ },
 	{  "env",                LDMSD_ENV_REQ  },
 	{  "exit",               LDMSD_EXIT_DAEMON_REQ  },

@@ -2093,6 +2093,11 @@ int main(int argc, char *argv[])
 				 "The option `-P` is obsolete. "
 				 "Please specify `worker_threads num=<NUMBER OF THREADS> in a configuration file.\n");
 			cleanup(EINVAL, "Received an obsolete command-line option");
+		case 'C':
+			ovis_log(NULL, OVIS_LCRIT,
+				 "The option `-C` is obsolete. "
+				 "Please specify `default_credits credits=<INTEGER> in a configuration file.\n");
+			cleanup(EINVAL, "Received an obsolete command-line option");
 		default:
 			ret = ldmsd_process_cmd_line_arg(op, optarg);
 			if (ret) {
