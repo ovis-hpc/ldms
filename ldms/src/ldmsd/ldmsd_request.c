@@ -310,6 +310,7 @@ static int set_memory_handler(ldmsd_req_ctxt_t reqc);
 static int log_file_handler(ldmsd_req_ctxt_t reqc);
 static int publish_kernel_handler(ldmsd_req_ctxt_t reqc);
 static int daemon_name_set_handler(ldmsd_req_ctxt_t reqc);
+static int worker_threads_set_handler(ldmsd_req_ctxt_t reqc);
 
 /* executable for all */
 #define XALL 0111
@@ -671,6 +672,9 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_DAEMON_NAME_SET_REQ] = {
 		LDMSD_DAEMON_NAME_SET_REQ, daemon_name_set_handler, XUG
 	},
+	[LDMSD_WORKER_THR_SET_REQ] = {
+		LDMSD_WORKER_THR_SET_REQ, worker_threads_set_handler, XUG
+	},
 };
 
 int is_req_id_priority(enum ldmsd_request req_id)
@@ -687,6 +691,7 @@ int is_req_id_priority(enum ldmsd_request req_id)
 	case LDMSD_LOG_FILE_REQ:
 	case LDMSD_PUBLISH_KERNEL_REQ:
 	case LDMSD_DAEMON_NAME_SET_REQ:
+	case LDMSD_WORKER_THR_SET_REQ:
 		return 1;
 	default:
 		return 0;
@@ -9207,5 +9212,29 @@ static int daemon_name_set_handler(ldmsd_req_ctxt_t reqc)
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(name);
+	return rc;
+}
+
+static int worker_threads_set_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *value = NULL;
+
+	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SIZE);
+	if (!value) {
+		reqc->errcode = EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "The attribute 'num' is missing.");
+		goto send_reply;
+	}
+	reqc->errcode = ldmsd_process_cmd_line_arg('P', value);
+	if (reqc->errcode) {
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "Failed to process the 'worker_threads' command");
+		goto send_reply;
+	}
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(value);
 	return rc;
 }

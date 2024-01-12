@@ -153,6 +153,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "updtr_task",         LDMSD_UPDTR_TASK_REQ  },
 	{  "usage",              LDMSD_PLUGN_LIST_REQ  },
 	{  "version",            LDMSD_VERSION_REQ  },
+	{  "worker_threads",     LDMSD_WORKER_THR_SET_REQ  },
 	{  "xprt_stats",         LDMSD_XPRT_STATS_REQ  },
 };
 
@@ -176,6 +177,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "match",             LDMSD_ATTR_MATCH  },
 	{  "metric",            LDMSD_ATTR_METRIC  },
 	{  "name",              LDMSD_ATTR_NAME  },
+	{  "num",               LDMSD_ATTR_SIZE  },
 	{  "offset",            LDMSD_ATTR_OFFSET  },
 	{  "path",              LDMSD_ATTR_PATH  },
 	{  "peer_name",         LDMSD_ATTR_PEER_NAME },
