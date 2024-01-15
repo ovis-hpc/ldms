@@ -2,7 +2,7 @@ name: Space Check
 
 on:
   pull_request:
-    branches: [ OVIS-4 ]
+    branches: [ 'OVIS-4**' ]
 
 jobs:
   space_check:
