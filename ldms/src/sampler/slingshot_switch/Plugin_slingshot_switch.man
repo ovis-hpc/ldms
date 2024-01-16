@@ -1,0 +1,131 @@
+\" Manpage for Plugin_slingshot_switch
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "17 Nov 2023" "v4" "LDMS Plugin slingshot_switch man page"
+
+.SH NAME
+Plugin_slingshot_switch - man page for the LDMS slingshot_switch plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=slingshot_switch [ <attr> = <value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms
+daemon) are configured via ldmsd_controller or a configuration file. The
+slingshot_switch plugin uses LDMS_V_LIST and LDMS_V_RECORD to provide slingshot
+switch info via the dump_counters command run on the switch.
+
+slingshot_switch and slingshot_switch_1 are the same plugins. There are two copies
+to enable sampling at two different rates.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+The slingshot_switch plugin uses the sampler_base base class. This man page covers
+only the configuration attributes, or those with default values, specific to the
+this plugin; see ldms_sampler_base.man for the attributes of the base class.
+
+.TP
+.BR config
+name=<plugin_name>
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be slingshot_switch (or slingshot_switch_1).
+.TP
+conffile=<conffile>
+.br
+Configuration file. First non-comment line must be "n=XXX" or "p=XXX,YYY,ZZZ".
+p does not support ranges. Then variables or groups are listed one
+per line. Comments lines can be in the file designated by the first line
+being a '#'.
+
+Arguments are those of dump_counters.
+.TP
+schema=<schema>
+.br
+Optional schema name. It is intended that the same sampler on different nodes
+with different metrics have a different schema. If not specified, will
+default to `slingshot_switch` (or `slingshot_switch_1`).
+.RE
+
+.SH BUGS (and future enhancements)
+\[bu] This is still under development.
+
+\[bu] Does not yet support ranges for the ports.
+
+\[bu] Does not check for duplicate ports.
+
+\[bu] Could have more robust handling of errors in the config file.
+
+\[bu] MAX Ports is 70.
+
+\[bu] Possibly can reduce unnecessary allocations in schema_metric_list.
+
+\[bu] DEBUG messages are excessive, while this is in development.
+
+\[bu] Need to check for extra whitespace in variable names.
+
+\[bu] Only checking for the expected number of data output lines. Note that the output has at least one extra line.
+
+
+.SH EXAMPLES
+.PP
+1) Within ldmsd_controller or a configuration file:
+.nf
+load name=slingshot_switch
+config name=slingshot_switch producer=vm1_1 instance=vm1_1/slingshot_switch conffile=/home/confffile.txt
+start name=slingshot_switch interval=1000000 offset=0
+.fi
+or the above with `slingshot_switch_1`.
+
+conffile.txt can look something like:
+.nf
+#This can be a leading comment(s)
+n=65
+# This can be an interspersed comment(s)
+cfrx
+#This is yet another comment(s)
+.fi
+
+.PP
+2) For confile sampler_ss.conf:
+.nf
+env SWITCH=$(hostname)
+env COMPONENT_ID=1
+
+load name=slingshot_switch
+config name=slingshot_switch producer=${SWITCH} component_id=${COMPONENT_ID} instance=${SWITCH}/port_metrics conffile=/rwfs/OVIS_slingshot-4.4.1/etc/ldms/slingshot_ldms_1s.txt
+start name=slingshot_switch interval=1000000
+.fi
+
+with slingshot_ldms_1s.txt:
+.nf
+p=0,1,2,3
+rfc_3635
+.fi
+
+Command line to start ldmsd using the above:
+.nf
+/rwfs/OVIS_slingshot-4.4.1/etc/ldms# ldmsd -x sock:411 -c /rwfs/OVIS_slingshot-4.4.1/etc/ldms/sampler_ss.conf -m 2M -v QUIET
+.fi
+
+Then ldms_ls output:
+.nf
+x3000c0r42b0/port_metrics1: consistent, last update: Fri Nov 17 17:24:08 2023 +0000 [23292us]
+M u64        component_id                               1
+D u64        job_id                                     0
+D u64        app_id                                     0
+M record_type slingshot_port                             LDMS_V_RECORD_TYPE
+D list<>     slingshot_port_list
+  port (x) IfInDiscards (x) IfInErrors (x) IfInUnknownProtos (x) IfOutDiscards (x) IfOutErrors (x) Dot3HCInPauseFrames (x) Dot3HCOutPauseFrames (x) IfHCInOctets (x) IfHCInUcastPkts (x) IfHCInMulticastPkts (x) IfHCInBroadcastPkts (x) IfHCOutOctets (x) IfHCOutUcastPkts (x) IfHCOutMulticastPkts (x) IfHCOutBroadcastPkts (x)
+	 0       3135102637              0            3135102637                 0               0                       0                        0  147205648261491       2495004354147                    2471                       0        1536216301             20234005                        0                        0
+	 1       3135102637              0            3135102637                 0               0                       0                        0  147204949152872       2494992497033                       0                       0         698442077             10279716                        0                        0
+	 2       3135102637              0            3135102637                 0               0                       0                        0  147205081815556       2494994737508                       0                       0         698345785             10272362                        0                        0
+	 3       3135102637              0            3135102637                 0               0                       0                        0  147205460019681       2495001153446                       0                       0         698845184             10277326                        0                        0
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7)
