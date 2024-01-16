@@ -308,3 +308,7 @@ SUBDIRS += slingshot_metrics
 SUBDIRS += slingshot_info
 endif
 endif
+
+if ENABLE_SLINGSHOT_SWITCH
+SUBDIRS += slingshot_switch
+endif
