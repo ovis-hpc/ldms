@@ -925,6 +925,12 @@ AS_IF([test "x$enable_slingshot" = xyes],[
         [AC_MSG_ERROR([libcxi or its headers not found])])
 ])
 
+AC_ARG_ENABLE([slingshot_switch],
+    [AS_HELP_STRING([--enable-slingshot_switch], [require the slinghost on-switch plugins @<:@default=check@:>@])],
+    [],
+    [enable_slingshot_switch="check"])
+AM_CONDITIONAL([ENABLE_SLINGSHOT_SWITCH], [test "x$enable_slingshot_switch" != xno])
+
 # define substitutions for configvars and other sed-generated files.
 # note carefully the escapes.
 OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
@@ -1097,6 +1103,7 @@ ldms/src/sampler/syspapi/Makefile
 ldms/src/sampler/app_sampler/Makefile
 ldms/src/sampler/slingshot_metrics/Makefile
 ldms/src/sampler/slingshot_info/Makefile
+ldms/src/sampler/slingshot_switch/Makefile
 ldms/src/contrib/sampler/Makefile
 ldms/src/contrib/sampler/daos/Makefile
 ldms/src/contrib/sampler/daos/test/Makefile
