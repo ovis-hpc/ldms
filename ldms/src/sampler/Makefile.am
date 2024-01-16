@@ -30,10 +30,13 @@ ldmssamplerincludedir = $(includedir)/ldms/sampler
 ldmssamplerinclude_HEADERS = sampler_base.h
 
 SUBDIRS += netlink
+
+if ENABLE_LUSTRE
 SUBDIRS += lustre_client
 SUBDIRS += lustre_mdt
 SUBDIRS += lustre_ost
 SUBDIRS += lustre_mdc
+endif
 
 if HAVE_DCGM
 SUBDIRS += dcgm_sampler
@@ -131,8 +134,10 @@ SUBDIRS += job_info_slurm
 SUBDIRS += spank
 endif
 
+if ENABLE_SPANK_SUBSCRIBER
 # This slurm sampler does not have a slurm build dependency
 SUBDIRS += slurm
+endif
 
 if ENABLE_LUSTRE
 SUBDIRS += lustre
@@ -200,8 +205,10 @@ if ENABLE_MPI_SAMPLER
 SUBDIRS += shm
 endif
 
+if ENABLE_PAPI
 if HAVE_LIBPAPI
 SUBDIRS += papi
+
 if HAVE_LIBPFM
 SUBDIRS += syspapi
 
@@ -216,6 +223,7 @@ librapl_la_CFLAGS = $(AM_CFLAGS)
 librapl_la_LDFLAGS = $(AM_LDFLAGS) $(PAPI_LDFLAGS)
 librapl_la_LIBADD = $(COMMON_LIBADD) $(LTLIBPAPI) $(LTLIBPFM) -lm
 pkglib_LTLIBRARIES += librapl.la
+endif
 endif
 endif
 
