@@ -910,6 +910,12 @@ AS_IF([test "x$enable_slingshot" = xyes],[
         [AC_MSG_ERROR([libcxi or its headers not found])])
 ])
 
+AC_ARG_ENABLE([slingshot_switch],
+    [AS_HELP_STRING([--enable-slingshot_switch], [require the slinghost on-switch plugins @<:@default=check@:>@])],
+    [],
+    [enable_slingshot_switch="check"])
+AM_CONDITIONAL([ENABLE_SLINGSHOT_SWITCH], [test "x$enable_slingshot_switch" != xno])
+
 AC_ARG_ENABLE([zfs],
     [AS_HELP_STRING([--enable-zfs], [require the zfs related plugins @<:@default=check@:>@])],
     [],
@@ -1079,6 +1085,7 @@ ldms/src/sampler/syspapi/Makefile
 ldms/src/sampler/app_sampler/Makefile
 ldms/src/sampler/slingshot_metrics/Makefile
 ldms/src/sampler/slingshot_info/Makefile
+ldms/src/sampler/slingshot_switch/Makefile
 ldms/src/sampler/json/Makefile
 ldms/src/sampler/hweventpapi/Makefile \
 ldms/src/sampler/rapl/Makefile \
