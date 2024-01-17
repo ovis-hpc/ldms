@@ -1992,7 +1992,8 @@ static void z_sock_destroy(zap_ep_t ep)
 
 	DEBUG_LOG(sep, "%ld z_sock_destroy(%p)\n", GETTID(), sep);
 
-	zap_io_thread_ep_remove(ep);
+	if (ep->thread)
+		zap_io_thread_ep_remove(ep);
 
 	while (!TAILQ_EMPTY(&sep->sq)) {
 		wr = TAILQ_FIRST(&sep->sq);
@@ -2061,14 +2062,14 @@ static zap_err_t z_sock_reject(zap_ep_t ep, char *data, size_t data_len)
 
 	pthread_mutex_lock(&sep->ep.lock);
 	zerr = __sock_send(sep, SOCK_MSG_REJECTED, data, data_len);
-	if (zerr)
-		goto err;
-	pthread_mutex_unlock(&sep->ep.lock);
-	return ZAP_ERR_OK;
-err:
+
+	/* move to error state before we terminate it */
 	sep->ep.state = ZAP_EP_ERROR;
-	shutdown(sep->sock, SHUT_RDWR);
+
 	pthread_mutex_unlock(&sep->ep.lock);
+	ref_put(&ep->ref, "accept/connect"); /* from __z_sock_conn_request() */
+	zap_free(ep);
+	/* The caller never touched ep after reject */
 	return zerr;
 }
 
