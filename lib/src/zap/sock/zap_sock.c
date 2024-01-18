@@ -1999,6 +1999,7 @@ static zap_err_t z_sock_reject(zap_ep_t ep, char *data, size_t data_len)
 	if (zerr)
 		goto err;
 	pthread_mutex_unlock(&sep->ep.lock);
+	zap_free(ep); /* corresponding to zap_new() in __z_sock_conn_request */
 	return ZAP_ERR_OK;
 err:
 	sep->ep.state = ZAP_EP_ERROR;
