@@ -2236,7 +2236,8 @@ static void z_ugni_destroy(zap_ep_t ep)
 	struct z_ugni_ep *uep = (void*)ep;
 	CONN_LOG("destroying endpoint %p\n", uep);
 
-	zap_io_thread_ep_remove(ep);
+	if (ep->thread)
+		zap_io_thread_ep_remove(ep);
 
 	pthread_mutex_lock(&z_ugni_list_mutex);
 	ZUGNI_LIST_REMOVE(uep, link);
@@ -2318,10 +2319,7 @@ static zap_err_t z_ugni_reject(zap_ep_t ep, char *data, size_t data_len)
 	uep->ep.state = ZAP_EP_ERROR;
 	zerr = z_ugni_msg_send(uep, &msg, data, data_len, NULL);
 	EP_UNLOCK(uep);
-	if (zerr)
-		goto err;
-	return ZAP_ERR_OK;
-err:
+	zap_free(ep);
 	return zerr;
 }
 
