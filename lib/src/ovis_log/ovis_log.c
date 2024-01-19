@@ -890,7 +890,9 @@ int ovis_log_open(const char *path)
 
 int ovis_log_flush()
 {
-	return fflush(log_fp);
+	if (log_fp && log_fp != OVIS_LOG_SYSLOG)
+		return fflush(log_fp);
+	return 0;
 }
 
 int ovis_log_close()
