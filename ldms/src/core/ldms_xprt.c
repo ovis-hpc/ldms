@@ -4180,32 +4180,26 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 		ldms_event_cb_t cb, void *cb_arg)
 {
 	int rc;
-	struct sockaddr_in sin;
-	struct addrinfo *ai;
+	struct addrinfo *ai_list, *ai, *aitr;
 	struct addrinfo hints = {
 		.ai_socktype = SOCK_STREAM,
 		.ai_flags = AI_PASSIVE,
 	};
-	if (host) {
-		rc = getaddrinfo(host, port_no, &hints, &ai);
-		if (rc)
-			return EHOSTUNREACH;
-		rc = ldms_xprt_listen(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
-		freeaddrinfo(ai);
-	} else {
-		long ptmp;
-		ptmp = atol(port_no);
-		if (ptmp < 1 || ptmp > USHRT_MAX) {
-			return EINVAL;
+	rc = getaddrinfo(host, port_no, &hints, &ai_list);
+	if (rc)
+		return EHOSTUNREACH;
+	ai = NULL;
+	/* Prefer the first IPv6 address */
+	for (aitr = ai_list; aitr; aitr = aitr->ai_next) {
+		if (aitr->ai_family == AF_INET6) {
+			ai = aitr;
+			break;
 		}
-		unsigned short port = ptmp;
-		memset(&sin, 0, sizeof(sin));
-		sin.sin_family = AF_INET;
-		sin.sin_addr.s_addr = 0;
-		sin.sin_port = htons(port);
-		rc = ldms_xprt_listen(x, (struct sockaddr *)&sin, sizeof(sin),
-								cb, cb_arg);
 	}
+	if (!ai)
+		ai = ai_list;
+	rc = ldms_xprt_listen(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
+	freeaddrinfo(ai);
 	return rc;
 }
 
