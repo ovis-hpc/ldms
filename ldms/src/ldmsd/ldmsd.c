@@ -327,7 +327,7 @@ int log_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 		rc = __logrotate();
 	} else {
 		rc = __log(level, msg, tv, tm);
-		if (0 == ev_pending(logger_w))
+		if (0 == ev_pending(logger_w) && log_fp != LDMSD_LOG_SYSLOG)
 			fflush(log_fp);
 		free(msg);
 	}
