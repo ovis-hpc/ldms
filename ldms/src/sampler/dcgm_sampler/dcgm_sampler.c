@@ -279,9 +279,22 @@ static int gpu_schema_create()
 
                 field_meta = DcgmFieldGetById(conf.fields[i]);
                 ldms_type = dcgm_to_ldms_type(field_meta->fieldType);
-                rc = ldms_schema_metric_add(sch, field_meta->tag, ldms_type);
-                if (rc < 0)
+                if (ldms_type == LDMS_V_NONE) {
+                        log_fn(LDMSD_LERROR, SAMP" DCGM field %d has a DCGM type %d, which is not supported by this sampler\n",
+                               conf.fields[i], field_meta->fieldType);
                         goto err2;
+                }
+                if (ldms_type == LDMS_V_CHAR_ARRAY) {
+                        rc = ldms_schema_metric_array_add(sch, field_meta->tag,
+                                                          ldms_type, field_meta->valueFormat->width+1);
+                } else {
+                        rc = ldms_schema_metric_add(sch, field_meta->tag, ldms_type);
+                }
+                if (rc < 0) {
+                        log_fn(LDMSD_LERROR, SAMP" failed adding ldms metric to set for DCGM field %d, DCGM type %d\n",
+                               conf.fields[i], field_meta->fieldType);
+                        goto err2;
+                }
                 translation_table[conf.fields[i]].ldms_index = rc;
                 translation_table[conf.fields[i]].ldms_type = ldms_type;
         }
