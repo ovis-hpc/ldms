@@ -204,9 +204,46 @@ int __auth_munge_xprt_bind(ldms_auth_t auth, ldms_t xprt)
 }
 
 static
+void __ipv4_ipv6_xlat(struct sockaddr *sa, socklen_t *len)
+{
+	/*
+	 * NOTE
+	 * ----
+	 * ldmsd and ldms_ls version 4.3.x use IPv4 stack. If our process
+	 * listened on IPv6 address (e.g. '::'), the addresses that were
+	 * returned from the `ldms_xprt_sockaddr()` (which called
+	 * `getsockname()`) are AF_INET6 -- in the form of IPv4-mapped IPv6
+	 * addresses ('::ffff:AA:BB:CC:DD', where 'AA.BB.CC.DD' is the IPv4
+	 * address). Then, our process would send the IPv6 address as the
+	 * payload to the 4.3.x process, which consequently broke munge
+	 * authentication in version 4.3.x as it expected IPv4 address.
+	 * So, to maintain compatibility, we have to translate the IPv4-mapped
+	 * IPv6 addresss to IPv4 address before sending it in the payload or
+	 * payload-data comparison.
+	 */
+	static struct  sockaddr_in6 *sin6, s6 = {
+		.sin6_addr = {{{0,0,0,0,0,0,0,0,0,0,0xff,0xff,0,0,0,0}}}
+	};
+	struct sockaddr_in sin = {0};
+	if (sa->sa_family != AF_INET6)
+		return;
+	sin6 = (void*)sa;
+	if (memcmp(&sin6->sin6_addr, &s6.sin6_addr, 12))
+		return;
+	/* this is the IPv4-mapped IPv6 address, convert it to ipv4 */
+	sin.sin_family = AF_INET;
+	sin.sin_port = sin6->sin6_port;
+	memcpy(&sin.sin_addr, &sin6->sin6_addr.__in6_u.__u6_addr32[3], 4);
+	*len = sizeof(sin);
+	memcpy(sa, &sin, sizeof(sin));
+}
+
+static
 int __auth_munge_xprt_begin(ldms_auth_t auth, ldms_t xprt)
 {
 	struct ldms_auth_munge *a = (void*)auth;
+	struct sockaddr_storage so;
+	socklen_t slen;
 	munge_err_t merr;
 	int rc;
 	int len;
@@ -224,9 +261,14 @@ int __auth_munge_xprt_begin(ldms_auth_t auth, ldms_t xprt)
 	 * swapped address, in order to be compatible with them, we have to send
 	 * the swapped address in the case of rdma transport.
 	 */
-	merr = (strncmp(xprt->name, "rdma", 4) == 0)?
-		munge_encode(&a->local_cred, a->mctx, &a->rsin, a->sin_len):
-		munge_encode(&a->local_cred, a->mctx, &a->lsin, a->sin_len);
+	slen = a->sin_len;
+	if (strncmp(xprt->name, "rdma", 4) == 0) {
+		memcpy(&so, &a->rsin, slen);
+	} else {
+		memcpy(&so, &a->lsin, slen);
+	}
+	__ipv4_ipv6_xlat((void*)&so, &slen);
+	merr = munge_encode(&a->local_cred, a->mctx, &so, slen);
 	if (merr) {
 		LOG_ERROR("munge_encode() failed. %s\n", munge_strerror(merr));
 		return EBADR;
@@ -240,13 +282,17 @@ int __auth_munge_xprt_begin(ldms_auth_t auth, ldms_t xprt)
 	return 0;
 }
 
+const char *sockaddr_ntop(struct sockaddr *sa, char *buff, size_t sz);
+
 static
 int __auth_munge_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 		const char *data, uint32_t data_len)
 {
 	struct ldms_auth_munge *a = (void*)auth;
-	struct sockaddr_in *payload_sin;
-	struct sockaddr_in *xprt_sin;
+	struct sockaddr *payload_sin;
+	struct sockaddr *xprt_sin;
+	socklen_t slen;
+	struct sockaddr_storage so;
 	void *payload = NULL;
 	uid_t uid;
 	gid_t gid;
@@ -269,15 +315,19 @@ int __auth_munge_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 	 * address, in order to be compatible with them, we have to expect the
 	 * swapped address in the case of rdma transport.
 	 */
-	xprt_sin = (strncmp(xprt->name, "rdma", 4) == 0 ?
-		    (struct sockaddr_in *)&a->lsin :
-		    (struct sockaddr_in *)&a->rsin);
-	cmp = memcmp(payload_sin, xprt_sin, sizeof(*payload_sin));
-	if (cmp != 0) {
-		char ipa[16];
-		char ipb[16];
-		strcpy(ipa, inet_ntoa(payload_sin->sin_addr));
-		strcpy(ipb, inet_ntoa(xprt_sin->sin_addr));
+	slen = a->sin_len;
+	if (strncmp(xprt->name, "rdma", 4) == 0) {
+		memcpy(&so, &a->lsin, slen);
+	} else {
+		memcpy(&so, &a->rsin, slen);
+	}
+	__ipv4_ipv6_xlat((void*)&so, &slen);
+	xprt_sin = (void*)&so;
+	if (len != slen || (cmp = memcmp(payload_sin, xprt_sin, slen)) != 0) {
+		char ipa[128];
+		char ipb[128];
+		sockaddr_ntop(payload_sin, ipa, sizeof(ipa));
+		sockaddr_ntop(xprt_sin, ipb, sizeof(ipb));
 		LOG_INFO("Unexpected authentication message payload "
 			  "'%s' != '%s'.\n", ipa, ipb);
 	}
