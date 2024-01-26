@@ -90,6 +90,8 @@ The 'short' options do not override the exclude entirely options.
 	 If not set, the component_id field is not included in the stream formats produced.
 --ProducerName=<name>    set the value of ProducerName
 	 If not set, the ProducerName field is not included in the stream formats produced.
+--format=N           change the format of messages to version N.
+         If not set, the highest available format is used. See MESSAGE FORMATS.
 .fi
 
 .SH ENVIRONMENT
@@ -107,6 +109,8 @@ NOTIFIER_LDMS_XPRT=sock
 NOTIFIER_LDMS_HOST=localhost
 NOTIFIER_LDMS_PORT=411
 NOTIFIER_LDMS_AUTH=munge
+NOTIFIER_FORMAT=1
+NOTIFIER_HEARTBEAT=(none)
 .fi
 Omitting (nullexe):<unknown> from NOTIFIER_EXCLUDE_PROGRAMS may cause incomplete output
 related to processes no longer present. In exotic circumstances, this may be desirable anyway.
@@ -127,6 +131,15 @@ Client applications may validate a file by checking the contents
 against the /proc/$pid/stat content, if it exists.
 Invalid files should be removed by clients or system scripts.
 
+.SH MESSAGE FORMATS
+Message formats tuned to SLURM, LSF, and Linux without a batch scheduler
+are published, based on what the notifier detects and the users choice of
+ProducerName and component_id. The version of the tuned formats is specified by number.
+.PP
+Format 0 omits the start time from slurm process end messages (since it is only sometimes known) and omits process duration, which depend on the start time.
+.PP
+Format 1 includes the start time for slurm process or the dummy value 0 when unknown) and includes process duration for all end messages. When the start time is unavailable, duration of -1.0 is published. Merging data from other sources may allow durations flagged as -1 to be computed in some later data cleanup step.
+
 
 .SH NOTES
 .PP
@@ -138,7 +151,13 @@ If not used with a sampler, the --component_id or --ProducerName options are nee
 to add a node identifier to the messages. Normally a process-following sampler that creates sets
 will add the node identifier automatically.
 .PP
+When the daemon is started after a process is started, the process start time and therefore process
+duration may not be available. In message formats which report start time, 0 indicates
+data was unavailable. For processes without completely known time bounds, the duration is reported
+as -1.0.
+.PP
 Options are still in development. Several options affect only the trace output.
+
 .SH EXAMPLES
 .PP
 Run for 30 seconds with screen and json.log test output connecting to the ldmsd from 'ldms-static-test.sh blobwriter' test:
