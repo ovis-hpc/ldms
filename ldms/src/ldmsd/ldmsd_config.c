@@ -329,22 +329,40 @@ int ldmsd_config_plugin(char *plugin_name,
 
 	avl = calloc(1, sizeof(*avl));
 	kwl = calloc(1, sizeof(*kwl));
-	if (!avl || !kwl)
-		return ENOMEM;
+	if (!avl || !kwl) {
+		rc = ENOMEM;
+		goto err;
+	}
 	avl->av_list = av_copy(_av_list);
 	kwl->av_list = av_copy(_kw_list);
-	if (!avl->av_list || !kwl->av_list)
-		return ENOMEM;
+	if (!avl->av_list || !kwl->av_list) {
+		rc = ENOMEM;
+		goto err;
+	}
 
 	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi)
-		return ENOENT;
+	if (!pi) {
+		rc = ENOENT;
+		goto err;
+	}
 
 	pthread_mutex_lock(&pi->lock);
 	rc = pi->plugin->config(pi->plugin, _kw_list, _av_list);
 	TAILQ_INSERT_TAIL(&pi->plugin->kwl_q, kwl, entry);
 	TAILQ_INSERT_TAIL(&pi->plugin->avl_q, avl, entry);
 	pthread_mutex_unlock(&pi->lock);
+	return rc;
+err:
+	if (avl) {
+		if (avl->av_list)
+			av_free(avl->av_list);
+		free(avl);
+	}
+	if (kwl) {
+		if (kwl->av_list)
+			av_free(kwl->av_list);
+		free(kwl);
+	}
 	return rc;
 }
 
