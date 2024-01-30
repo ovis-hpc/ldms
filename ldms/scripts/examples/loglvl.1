@@ -1,0 +1,9 @@
+# set default level warning, overriding startup
+log_level level=WARNING
+load name=${plugname}
+log_level name=sampler.dstat level=INFO
+# show config debug in log
+config name=${plugname} producer=localhost${i} schema=${plugname} instance=localhost${i}/${plugname} component_id=${i}
+start name=${plugname} interval=1000000 offset=0
+# stop logging debug
+log_level name=sampler.dstat level=DEBUG

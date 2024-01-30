@@ -85,13 +85,7 @@
 #define OVIS_LALWAYS	(OVIS_LDEBUG|OVIS_LINFO|OVIS_LWARN|OVIS_LERROR|OVIS_LCRITICAL)
 #define OVIS_ALL_LEVELS	OVIS_LALWAYS
 
-typedef struct ovis_log_s {
-	const char *name;
-	const char *desc;
-	int level;
-	struct rbn rbn;
-	int ref_count;
-} *ovis_log_t;
+typedef struct ovis_log_s *ovis_log_t;
 
 /**
  * \brief Initialize the logging system
@@ -292,6 +286,11 @@ int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap);
  * If \c level is OVIS_LDEFAULT, the subsystem is set to the default level.
  *  If \c subsys_name or \c mylog is NULL, and \c level is OVIS_LDEFAULT,
  *  \c level is ignored and 0 is returned.
+ *
+ * For set_level_by_name if the subsys_name is not yet registered,
+ * it is registered with the description still pending.
+ * A subsequent call to ovis_log_register will succeed
+ * and retain the level set.
  *
  * \param regex_s         A regular expression string to match subsystem names
  * \param subsys_name     The name of the subsystem to set the log level.

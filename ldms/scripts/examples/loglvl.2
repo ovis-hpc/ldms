@@ -1,0 +1,4 @@
+load name=${plugname}
+log_level name=sampler.dstat level=DEBUG
+config name=${plugname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i}
+start name=${plugname} interval=1000000 offset=0
