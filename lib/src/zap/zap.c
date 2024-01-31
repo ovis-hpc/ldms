@@ -635,6 +635,8 @@ zap_err_t zap_unmap(zap_map_t map)
 	int i;
 
 	zerr = ZAP_ERR_OK;
+	if (!map)
+		goto out;
 	assert(map->ref_count);
 	if (__sync_sub_and_fetch(&map->ref_count, 1))
 		return ZAP_ERR_OK;
@@ -646,6 +648,7 @@ zap_err_t zap_unmap(zap_map_t map)
 		zerr = tmp?tmp:zerr; /* remember last error */
 	}
 	free(map);
+ out:
 	return zerr;
 }
 

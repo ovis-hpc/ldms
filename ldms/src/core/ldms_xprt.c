@@ -672,6 +672,11 @@ static void process_set_delete_request(struct ldms_xprt *x, struct ldms_request 
 	set = __ldms_find_local_set(req->set_delete.inst_name);
 	__ldms_set_tree_unlock();
 	if (set) {
+		pthread_mutex_lock(&set->lock);
+		zap_unmap(set->lmap);
+		zap_unmap(set->rmap);
+		set->lmap = set->rmap = NULL;
+		pthread_mutex_unlock(&set->lock);
 		if (set->xprt != x) {
 			assert(set->xprt != x);
 			goto reply_1;
@@ -1553,8 +1558,12 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	if (!ldms_xprt_connected(x))
 		return ENOTCONN;
 
-	if (!s->lmap || !s->rmap)
+	pthread_mutex_lock(&s->lock);
+	if (!s->lmap || !s->rmap) {
+		pthread_mutex_unlock(&s->lock);
 		return EINVAL;
+	}
+	pthread_mutex_unlock(&s->lock);
 
 	if (LDMS_XPRT_AUTH_GUARD(x))
 		return EPERM;
@@ -2551,8 +2560,8 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 
 	if (lset) {
 		rc = EEXIST;
-		lset = NULL;	/* So error path won't try to delete it */
 		ref_put(&lset->ref, "__ldms_find_local_set");
+		lset = NULL;	/* So error path won't try to delete it */
 		/* unmap ev->map, it is not used */
 		zap_unmap(ev->map);
 		goto callback;
