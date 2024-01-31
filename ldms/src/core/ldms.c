@@ -855,8 +855,7 @@ static void __destroy_set_no_lock(void *v)
 	__ldms_set_info_delete(&set->local_info);
 	__ldms_set_info_delete(&set->remote_info);
 	zap_unmap(set->lmap);
-	if (set->rmap)
-		zap_unmap(set->rmap);
+	zap_unmap(set->rmap);
 	free(set);
 }
 
