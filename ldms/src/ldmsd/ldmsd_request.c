@@ -2606,6 +2606,7 @@ send_reply:
 	free(container);
 	free(schema);
 	free(perm_s);
+	free(decomp);
 	return 0;
 }
 
