@@ -411,7 +411,7 @@ get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 	col_count = 1;
 
 	/* create other columns */
-	for (i = 0; i < set_card; i++) {
+	for (i = 1; i < set_card; i++) {
 		mtype = ldms_metric_type_get(set, i);
 		switch (mtype) {
 		case LDMS_V_CHAR:
@@ -547,6 +547,8 @@ get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 	return drow;
 
  err:
+	if (name)
+		free(name);
 	if (drow->cols) {
 		for (i = 0; i < drow->col_count; i++) {
 			free(drow->cols[i].name);
@@ -603,36 +605,15 @@ static int as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	TAILQ_HEAD(, _list_entry) list_cols;
 	int row_more_le;
 	struct ldms_timestamp ts;
-	const char *set_schema;
-	int row_schema_name_len;
 	ldms_mval_t phony;
-	char *row_schema_name = NULL;
 
 	if (!TAILQ_EMPTY(row_list))
 		return EINVAL;
 
 	ts = ldms_transaction_timestamp_get(set);
 
-	set_schema = ldms_set_schema_name_get(set);
-
 	TAILQ_INIT(&list_cols);
 	ldms_digest = ldms_set_digest_get(set);
-
-	/*
-	 * NOTE Create rows from the set as-is, with list entry expansion.
-	 *
-	 * The schema format is "<schema_name>_<short_sha>", where the
-	 * "<short_sha>" is the first 7 characters of the hex string
-	 * representation of the SHA (similar to git short commit ID).
-	 *
-	 */
-	row_schema_name_len = asprintf(&row_schema_name, "%s_%02hhx%02hhx%02hhx%hhx", set_schema,
-			ldms_digest->digest[0],
-			ldms_digest->digest[1],
-			ldms_digest->digest[2],
-			(unsigned char)(ldms_digest->digest[3] >> 4));
-	if (row_schema_name_len < 0)
-		return errno;
 
 	drow = get_row_cfg(dcfg, set);
 	if (!drow)
