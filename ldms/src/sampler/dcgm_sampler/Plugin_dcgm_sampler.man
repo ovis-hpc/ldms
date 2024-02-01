@@ -6,7 +6,7 @@ Plugin_dcgm_sampler - man page for the LDMS dcgm_sampler plugin
 .SH SYNOPSIS
 Within ldmsd_controller or a configuration file:
 .br
-config name=dcgm_sampler [ <attr>=<value> ]
+config name=dcgm_sampler [ <attr>=<value> ] [use_base=<*>]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
@@ -17,7 +17,7 @@ The schema is named "dcgm" by default.
 
 .TP
 .BR config
-name=<plugin_name> interval=<interval(us)> [fields=<fields>] [schema=<schema_name>] [job_set=<metric set name>]
+name=<plugin_name> interval=<interval(us)> [fields=<fields>] [schema=<schema_name>] [job_set=<metric set name>] [use_base=<*> [uid=<int>] [gid=<int>] [perm=<octal>] [instance=<name>] [producer=<name>] [job_id=<metric name in job_set set>]]
 .br
 configuration line
 .RS
@@ -26,16 +26,24 @@ name=<plugin_name>
 .br
 This MUST be dcgm_sampler.
 .TP
+use_base=<*>
+.br
+Any value given enables the sampler_base configuration option processing (see ldms_sampler_base(7)). If not given, the options not
+listed below are ignored.
+.TP
 interval=<interval(us)>
 .br
-The sampling interval.  This MUST be set to the same value that is
-set on the "start" line, otherwise behavior is undetermined.
+The DCGM library sampling interval (dcgmWatchFields() updateFreq). This MUST be set to the same value that is
+set on the dcgm_sampler start line, otherwise behavior is undetermined.
 .TP
 fields=<fields>
 .br
 <fields> is a comma-separated list of integers representing DCGM field
-numebers that the plugin should watch.  By default the plugin will
-watch fields 150,155.
+identifiers that the plugin should watch.  By default the plugin will
+watch fields 150,155. The field identifier meanings are defined in dcgm_fields.h
+and the DCGM Library API Reference Manual and may vary with DCGM release version.
+The plugin usage message provides a table of fields, subject to hardware
+support; see the output of 'ldms-plugins.sh dcgm_sampler'.
 .TP
 schema=<schema_name>
 .br

@@ -18,6 +18,8 @@
 #include <dcgm_agent.h>
 #include "config.h"
 #include "jobid_helper.h"
+#include "sampler_base.h"
+#include "dstring.h"
 
 #define _GNU_SOURCE
 
@@ -66,6 +68,8 @@ static ldms_schema_t gpu_schema;
 /* NOTE: we are assuming here that GPU ids will start at zero and
    not exceed the DCGM_MAX_NUM_DEVICES count in value */
 static ldms_set_t gpu_sets[DCGM_MAX_NUM_DEVICES];
+static base_data_t base;
+static char *field_help;
 
 /* We won't use many of the entries in this array, but DCGM_FI_MAX_FIELDS is
 is only around 1000.  We trade off memory usage to allow quick translation of
@@ -234,14 +238,38 @@ static ldms_set_t gpu_metric_set_create(int gpu_id)
         char instance_name[256];
 
         log_fn(LDMSD_LDEBUG, SAMP" gpu_metric_set_create() (gpu %d)\n", gpu_id);
-
-        snprintf(instance_name, sizeof(instance_name), "%s/gpu_%d",
-                 producer_name, gpu_id);
-        set = ldms_set_new(instance_name, gpu_schema);
-        ldms_set_producer_name_set(set, producer_name);
-        ldms_metric_set_s32(set, gpu_id_metric_index, gpu_id);
-        ldms_set_publish(set);
-        ldmsd_set_register(set, SAMP);
+	if (base) {
+		char *tmp = base->instance_name;
+		size_t len = strlen(tmp);
+		base->instance_name = malloc( len + 20);
+		if (!base->instance_name) {
+			base->instance_name = tmp;
+			log_fn(LDMSD_LERROR, SAMP " out of memory\n");
+			return NULL;
+		}
+		/* append gpu_# to user-defined instance name */
+		snprintf(base->instance_name, len + 20, "%s/gpu_%d",  tmp, gpu_id);
+		/* override single set assumed in sampler_base api */
+		set = base_set_new(base);
+		if (!set) {
+			log_fn(LDMSD_LERROR, "failed to make %s set for %s\n",
+				base->instance_name, SAMP);
+			base->instance_name = tmp;
+			return set;
+		}
+		base_auth_set(&base->auth, set);
+		base->set = NULL;
+		free(base->instance_name);
+		base->instance_name = tmp;
+	} else {
+		snprintf(instance_name, sizeof(instance_name), "%s/gpu_%d",
+			 producer_name, gpu_id);
+		set = ldms_set_new(instance_name, gpu_schema);
+		ldms_set_producer_name_set(set, producer_name);
+		ldms_set_publish(set);
+		ldmsd_set_register(set, SAMP);
+	}
+	ldms_metric_set_s32(set, gpu_id_metric_index, gpu_id);
 
         return set;
 }
@@ -261,14 +289,20 @@ static int gpu_schema_create()
         int i;
 
         log_fn(LDMSD_LDEBUG, SAMP" gpu_schema_create()\n");
-        sch = ldms_schema_new(conf.schema_name);
-        if (sch == NULL)
-                goto err1;
-        rc = jobid_helper_schema_add(sch);
+	if (!base) {
+		sch = ldms_schema_new(conf.schema_name);
+		if (sch == NULL)
+			goto err1;
+		rc = jobid_helper_schema_add(sch);
+		if (rc < 0)
+			goto err2;
+	} else {
+		sch = base_schema_new(base);
+		if (sch == NULL)
+			goto err1;
+	}
+	rc = ldms_schema_meta_add(sch, "gpu_id", LDMS_V_S32);
 	if (rc < 0)
-		goto err2;
-        rc = ldms_schema_meta_add(sch, "gpu_id", LDMS_V_S32);
-        if (rc < 0)
                 goto err2;
         gpu_id_metric_index = rc;
 
@@ -302,7 +336,10 @@ static int gpu_schema_create()
 
         return 0;
 err2:
-        ldms_schema_delete(sch);
+	if (base)
+		base_schema_delete(base);
+	else
+		ldms_schema_delete(sch);
 err1:
         log_fn(LDMSD_LERROR, SAMP" schema creation failed.\n");
         return -1;
@@ -310,7 +347,10 @@ err1:
 
 static void gpu_schema_destroy()
 {
-        ldms_schema_delete(gpu_schema);
+	if (base)
+		base_schema_delete(base);
+	else
+		ldms_schema_delete(gpu_schema);
         gpu_schema = NULL;
 }
 
@@ -388,6 +428,62 @@ err1:
         return -1;
 }
 
+const char *typeString(int ft)
+{
+	switch (ft) {
+	case DCGM_FT_DOUBLE:
+		return "double";
+	case DCGM_FT_INT64:
+		return "int64_t";
+	case DCGM_FT_STRING:
+		return "string";
+	case DCGM_FT_TIMESTAMP:
+		return "timestamp";
+	default:
+		return "unsupported_data_type";
+	}
+}
+
+#define NUSAGE 20480
+static void init_field_help(char *preamble)
+{
+	if (!dcgm_initialized) {
+		dcgmReturn_t rc = dcgmInit();
+		if (rc != DCGM_ST_OK) {
+			return;
+		}
+	}
+
+	dstring_t ds;
+	dstr_init2(&ds, NUSAGE);
+
+	int i;
+	dstrcat(&ds, preamble, DSTRING_ALL);
+	dstrcat(&ds, "field_id\ttag/metric\t\ttype\t(units)\n", DSTRING_ALL);
+        for (i = 0; i < DCGM_FI_MAX_FIELDS; i++) {
+                dcgm_field_meta_p field_meta;
+                field_meta = DcgmFieldGetById(i);
+		if (field_meta) {
+			dstrcat_int(&ds, (int64_t)field_meta->fieldId);
+			dstrcat(&ds, "\t", 1);
+			dstrcat(&ds, field_meta->tag, DSTRING_ALL);
+			dstrcat(&ds, "\t", 1);
+			dstrcat(&ds, typeString(field_meta->fieldType), DSTRING_ALL);
+			dstrcat(&ds, "\t(", 2);
+			dstrcat(&ds, (field_meta->valueFormat ?
+                                        field_meta->valueFormat->unit :
+                                        "no_format"), DSTRING_ALL);
+			dstrcat(&ds, ")\n", 2);
+		}
+        }
+	field_help = dstr_extract(&ds);
+	dstr_free(&ds);
+
+	if (!dcgm_initialized) {
+		dcgmShutdown();
+	}
+}
+
 /**************************************************************************
  * Externally accessed functions
  **************************************************************************/
@@ -400,14 +496,19 @@ static int config(struct ldmsd_plugin *self,
         int i;
 
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
-
-        int jc = jobid_helper_config(avl);
-        if (jc) {
-		log_fn(LDMSD_LERROR, SAMP": set name for job_set="
-			" is too long.\n");
-		rc = jc;
-		goto err0;
+	if (dcgm_initialized) {
+		log_fn(LDMSD_LERROR, SAMP" config() called twice. Stop it first.\n");
+		return EINVAL;
 	}
+	int use_base = 0;
+        value = av_value(avl, "use_base");
+        if (value != NULL) {
+		use_base = 1;
+		log_fn(LDMSD_LDEBUG, SAMP": Using sampler_base\n");
+	} else {
+		log_fn(LDMSD_LDEBUG, SAMP": Ignoring sampler_base\n");
+	}
+
         value = av_value(avl, "interval");
         if (value == NULL) {
                 log_fn(LDMSD_LERROR, SAMP" config() \"interval\" option missing\n");
@@ -420,16 +521,28 @@ static int config(struct ldmsd_plugin *self,
                 goto err0;
         }
 
-        value = av_value(avl, "schema");
-        if (value != NULL) {
-                conf.schema_name = strdup(value);
-        } else {
-                conf.schema_name = strdup("dcgm");
-        }
-        if (conf.schema_name == NULL) {
-                log_fn(LDMSD_LERROR, SAMP" config() strdup schema failed: %d", errno);
-                goto err0;
-        }
+	if (! use_base) {
+		int jc = jobid_helper_config(avl);
+		if (jc) {
+			log_fn(LDMSD_LERROR, SAMP": set name for job_set="
+				" is too long.\n");
+			rc = jc;
+			goto err0;
+		}
+		value = av_value(avl, "schema");
+		if (value != NULL) {
+			conf.schema_name = strdup(value);
+		} else {
+			conf.schema_name = strdup("dcgm");
+		}
+		if (conf.schema_name == NULL) {
+			log_fn(LDMSD_LERROR, SAMP" config() strdup schema failed: %d", errno);
+			goto err0;
+		}
+	} else {
+		base = base_config(avl, SAMP, "dcgm", log_fn);
+		conf.schema_name = strdup(base->schema_name);
+	}
 
         value = av_value(avl, "fields");
         if (value != NULL) {
@@ -456,7 +569,8 @@ static int config(struct ldmsd_plugin *self,
                 goto err3;
         for (i = 0; i < gpu_ids_count; i++) {
                 if (gpu_ids[i] > DCGM_MAX_NUM_DEVICES) {
-                        log_fn(LDMSD_LERROR, SAMP" gpu id %d is greater than DCGM_MAX_NUM_DEVICES (%d), will require code fix\n");
+                        log_fn(LDMSD_LERROR, SAMP" gpu id %d is greater than DCGM_MAX_NUM_DEVICES (%d), will require code fix\n",
+				i , DCGM_MAX_NUM_DEVICES);
                         goto err4;
                 }
                 gpu_sets[gpu_ids[i]] = gpu_metric_set_create(gpu_ids[i]);
@@ -468,7 +582,13 @@ err4:
         for (i = i-1; i >= 0; i--) {
                 gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
         }
-        gpu_schema_destroy();
+	gpu_schema_destroy();
+	if (base) {
+		free(base->instance_name);
+                base->instance_name = NULL;
+                base_del(base);
+                base = NULL;
+	}
 err3:
         dcgm_fini();
 err2:
@@ -494,8 +614,16 @@ static void term(struct ldmsd_plugin *self)
 {
         int i;
 
-        free(conf.schema_name);
-        conf.schema_name = NULL;
+        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
+        gpu_schema_destroy();
+	if (base) {
+		free(base->instance_name);
+		base->instance_name = NULL;
+		base_del(base);
+		base = NULL;
+	}
+	free(conf.schema_name);
+	conf.schema_name = NULL;
         free(conf.fields);
         conf.fields = NULL;
         conf.fields_len = 0;
@@ -503,9 +631,9 @@ static void term(struct ldmsd_plugin *self)
         for (i = 0; i < gpu_ids_count; i++) {
                 gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
         }
-        gpu_schema_destroy();
         dcgm_fini();
-        log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
+	free(field_help);
+	field_help = NULL;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -515,8 +643,38 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" usage() called\n");
-	return  "config name=" SAMP;
+        log_fn(LDMSD_LDEBUG, SAMP " usage() called\n");
+	char *preamble = "config name=" SAMP
+	" interval=<interval(us)> [fields=<fields>]\n"
+	" [schema=<schema_name>] [job_set=<metric set name>]\n"
+	" [use_base=<*>\n"
+	"   [uid=<int>] [gid=<int>] [perm=<octal>] [instance=<name>]\n"
+	"    [producer=<name>] [job_id=<metric name in job_set set>]\n"
+	" ]\n"
+	" name=<plugin_name>\n"
+	" interval=<interval(us)> DCGM query interval (microsecond)\n"
+	"         must match dcgm_sampler interval for plugin start\n"
+	" fields=<fields>  list of DCGM field_ids\n"
+	" schema=<schema_name> default " SAMP "\n"
+	" job_set=<job metric set name>\n"
+	" If use_base=<*> is given, the additional parameters are applied\n"
+	" (see ldms_sampler_base).\n"
+	"    producer     A unique name for the host providing the timing data\n"
+	"                 (default $HOSTNAME)\n"
+	"    instance     A unique name for the timing metric set\n"
+	"                 (default $producer/" SAMP "/gpu_X)\n"
+	"    component_id A unique number for the component being monitoring.\n"
+	"                 (default 0)\n"
+	"    schema       The base name of the port metrics schema.\n"
+	"                 (default " SAMP ".\n"
+	"    uid          The user-id of the set's owner\n"
+	"    gid          The group id of the set's owner\n"
+	"    perm         The set's access permissions\n"
+	" The field numbers are tabulated:\n"
+	" (Not all can be ldms metrics, as indicated by 'unsupported_data_type')\n";
+	if (!field_help)
+		init_field_help(preamble);
+	return field_help ? field_help : preamble;
 }
 
 static struct ldmsd_sampler nvidia_dcgm_plugin = {
