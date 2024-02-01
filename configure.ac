@@ -196,11 +196,11 @@ AM_CONDITIONAL([ENABLE_libibverbs], [test "$HAVE_libibverbs" = "yes"])
 AM_CONDITIONAL([ENABLE_librdmacm], [test "$HAVE_librdmacm" = "yes"])
 
 AC_DEFINE_UNQUOTED([HAVE_ZAP],["$have_zap"],[configured with zap transport (1) or not (0)])
+AX_CHECK_OPENSSL([],[AC_MSG_ERROR([openssl not found, and required by ldms])])
 
 have_auth=0
 if test "$enable_ovis_auth" = "yes"; then
 	have_auth=1
-	AX_CHECK_OPENSSL([],[AC_MSG_ERROR([openssl not found, and required by ovis_auth])])
 	AUTH_LIB="-lovis_auth"
 else
 	AUTH_LIB=""
@@ -211,7 +211,6 @@ AC_DEFINE_UNQUOTED([HAVE_AUTH],[$have_auth],[configured with authentication (1) 
 
 OPTION_DEFAULT_ENABLE([sock], [ENABLE_SOCK])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
-OPTION_DEFAULT_DISABLE([ssl], [ENABLE_SSL])
 OPTION_DEFAULT_DISABLE([zaptest], [ENABLE_ZAPTEST])
 OPTION_DEFAULT_DISABLE([ovis_event_test], [ENABLE_OVIS_EVENT_TEST])
 OPTION_DEFAULT_DISABLE([ovis_ev_test], [ENABLE_OVIS_EV_TEST])
