@@ -910,6 +910,7 @@ AM_CONDITIONAL([SYSCONFDIR_NOT_ETC], [test "${sysconfdir}" != "/etc"])
 AC_LIB_HAVE_LINKFLAGS([cxi], [], [
 #include <stddef.h> /* libcxi.h fails to include this */
 #include <libcxi/libcxi.h>
+const char *c = c1_cntr_descs[0].name;
 ])
 AM_CONDITIONAL([HAVE_LIBCXI], [test "x$HAVE_LIBCXI" = xyes])
 
