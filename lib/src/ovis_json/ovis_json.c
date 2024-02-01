@@ -62,10 +62,10 @@ jbuf_t jbuf_append_va(jbuf_t jb, const char *fmt, va_list _ap)
 	cnt = vsnprintf(&jb->buf[jb->cursor], space, fmt, ap);
 	va_end(ap);
 	if (cnt >= space) {
-		space = jb->buf_len + cnt + JSON_BUF_START_LEN;
+		space = jb->buf_len + cnt + JSON_BUF_START_LEN + sizeof(*jb);
 		jb = realloc(jb, space);
 		if (jb) {
-			jb->buf_len = space;
+			jb->buf_len = space - sizeof(*jb);
 			goto retry;
 		} else {
 			return NULL;
