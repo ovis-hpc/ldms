@@ -1156,7 +1156,7 @@ int ldmsd_plugins_usage(const char *plugname)
 	char *libpath;
 	char *saveptr = NULL;
 
-	if (0 == strcmp(plugname, "all"))
+	if (plugname && 0 == strcmp(plugname, "all"))
 		plugname = NULL;
 
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
