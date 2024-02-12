@@ -19,12 +19,9 @@
 #include "config.h"
 #include "jobid_helper.h"
 #include "sampler_base.h"
-#include <pthread.h>
+#include "dstring.h"
 
 #define _GNU_SOURCE
-
-
-static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define SAMP "dcgm_sampler"
 
@@ -72,9 +69,8 @@ static ldms_schema_t gpu_schema;
 /* NOTE: we are assuming here that GPU ids will start at zero and
    not exceed the DCGM_MAX_NUM_DEVICES count in value */
 static ldms_set_t gpu_sets[DCGM_MAX_NUM_DEVICES];
-static int use_base;
 static base_data_t base;
-static int termed;
+static char *field_help;
 
 /* We won't use many of the entries in this array, but DCGM_FI_MAX_FIELDS is
 is only around 1000.  We trade off memory usage to allow quick translation of
@@ -243,7 +239,7 @@ static ldms_set_t gpu_metric_set_create(int gpu_id)
         char instance_name[256];
 
         ovis_log(mylog, OVIS_LDEBUG, "gpu_metric_set_create() (gpu %d)\n", gpu_id);
-	if (use_base) {
+	if (base) {
 		char *tmp = base->instance_name;
 		size_t len = strlen(tmp);
 		base->instance_name = malloc( len + 20);
@@ -294,7 +290,7 @@ static int gpu_schema_create()
         int i;
 
         ovis_log(mylog, OVIS_LDEBUG, "gpu_schema_create()\n");
-	if (!use_base) {
+	if (!base) {
 		sch = ldms_schema_new(conf.schema_name);
 		if (sch == NULL)
 			goto err1;
@@ -343,7 +339,7 @@ static int gpu_schema_create()
 
         return 0;
 err2:
-	if (use_base)
+	if (base)
 		base_schema_delete(base);
 	else
 		ldms_schema_delete(sch);
@@ -354,7 +350,7 @@ err1:
 
 static void gpu_schema_destroy()
 {
-	if (use_base)
+	if (base)
 		base_schema_delete(base);
 	else
 		ldms_schema_delete(gpu_schema);
@@ -435,6 +431,62 @@ err1:
         return -1;
 }
 
+const char *typeString(int ft)
+{
+	switch (ft) {
+	case DCGM_FT_DOUBLE:
+		return "double";
+	case DCGM_FT_INT64:
+		return "int64_t";
+	case DCGM_FT_STRING:
+		return "string";
+	case DCGM_FT_TIMESTAMP:
+		return "timestamp";
+	default:
+		return "unsupported_data_type";
+	}
+}
+
+#define NUSAGE 20480
+static void init_field_help(char *preamble)
+{
+	if (!dcgm_initialized) {
+		dcgmReturn_t rc = dcgmInit();
+		if (rc != DCGM_ST_OK) {
+			return;
+		}
+	}
+
+	dstring_t ds;
+	dstr_init2(&ds, NUSAGE);
+
+	int i;
+	dstrcat(&ds, preamble, DSTRING_ALL);
+	dstrcat(&ds, "field_id\ttag/metric\t\ttype\t(units)\n", DSTRING_ALL);
+        for (i = 0; i < DCGM_FI_MAX_FIELDS; i++) {
+                dcgm_field_meta_p field_meta;
+                field_meta = DcgmFieldGetById(i);
+		if (field_meta) {
+			dstrcat_int(&ds, (int64_t)field_meta->fieldId);
+			dstrcat(&ds, "\t", 1);
+			dstrcat(&ds, field_meta->tag, DSTRING_ALL);
+			dstrcat(&ds, "\t", 1);
+			dstrcat(&ds, typeString(field_meta->fieldType), DSTRING_ALL);
+			dstrcat(&ds, "\t(", 2);
+			dstrcat(&ds, (field_meta->valueFormat ?
+                                        field_meta->valueFormat->unit :
+                                        "no_format"), DSTRING_ALL);
+			dstrcat(&ds, ")\n", 2);
+		}
+        }
+	field_help = dstr_extract(&ds);
+	dstr_free(&ds);
+
+	if (!dcgm_initialized) {
+		dcgmShutdown();
+	}
+}
+
 /**************************************************************************
  * Externally accessed functions
  **************************************************************************/
@@ -446,15 +498,12 @@ static int config(struct ldmsd_plugin *self,
         int rc = -1;
         int i;
 
-        pthread_mutex_lock(&cfg_lock);
-	if (termed)
-		termed = 0;
         ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 	if (dcgm_initialized) {
 		ovis_log(mylog, OVIS_LERROR, "config() called twice. Stop it first.\n");
-		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
 	}
+	int use_base = 0;
         value = av_value(avl, "use_base");
         if (value != NULL) {
 		use_base = 1;
@@ -463,17 +512,17 @@ static int config(struct ldmsd_plugin *self,
 		ovis_log(mylog, OVIS_LDEBUG, "Ignoring sampler_base\n");
 	}
 
-		value = av_value(avl, "interval");
-		if (value == NULL) {
-		        ovis_log(mylog, OVIS_LERROR, "config() \"interval\" option missing\n");
-		        goto err0;
-		}
-		errno = 0;
-		conf.interval = strtol(value, NULL, 10);
-		if (errno != 0) {
-		        ovis_log(mylog, OVIS_LERROR, "config() \"interval\" value conversion error: %d\n", errno);
-		        goto err0;
-		}
+        value = av_value(avl, "interval");
+        if (value == NULL) {
+                ovis_log(mylog, OVIS_LERROR, "config() \"interval\" option missing\n");
+                goto err0;
+        }
+        errno = 0;
+        conf.interval = strtol(value, NULL, 10);
+        if (errno != 0) {
+                ovis_log(mylog, OVIS_LERROR, "config() \"interval\" value conversion error: %d\n", errno);
+                goto err0;
+        }
 
 	if (! use_base) {
 		int jc = jobid_helper_config(avl);
@@ -494,7 +543,7 @@ static int config(struct ldmsd_plugin *self,
 		        goto err0;
 		}
 	} else {
-		base_config(avl, SAMP, "dcgm", mylog);
+		base = base_config(avl, SAMP, "dcgm", mylog);
 		conf.schema_name = strdup(base->schema_name);
 	}
 
@@ -531,7 +580,6 @@ static int config(struct ldmsd_plugin *self,
                 gpu_sets[gpu_ids[i]] = gpu_metric_set_create(gpu_ids[i]);
         }
 
-	pthread_mutex_unlock(&cfg_lock);
         return 0;
 
 err4:
@@ -539,7 +587,7 @@ err4:
                 gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
         }
 	gpu_schema_destroy();
-	if (use_base) {
+	if (base) {
 		free(base->instance_name);
                 base->instance_name = NULL;
                 base_del(base);
@@ -556,17 +604,13 @@ err1:
         free(conf.schema_name);
         conf.schema_name = NULL;
 err0:
-	pthread_mutex_unlock(&cfg_lock);
         return rc;
 }
 
 static int sample(struct ldmsd_sampler *self)
 {
         ovis_log(mylog, OVIS_LDEBUG, SAMP" sample() called\n");
-        pthread_mutex_lock(&cfg_lock);
-	if (!termed)
-		gpu_sample();
-        pthread_mutex_unlock(&cfg_lock);
+	gpu_sample();
         return 0;
 }
 
@@ -575,9 +619,8 @@ static void term(struct ldmsd_plugin *self)
 	int i;
 
 	ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
-	pthread_mutex_lock(&cfg_lock);
         gpu_schema_destroy();
-	if (use_base) {
+	if (base) {
 		free(base->instance_name);
 		base->instance_name = NULL;
 		base_del(base);
@@ -593,13 +636,13 @@ static void term(struct ldmsd_plugin *self)
                 gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
         }
         dcgm_fini();
-	termed = 1;
-	use_base = 0;
+	free(field_help);
+	field_help = NULL;
 	if (mylog) {
 		ovis_log_destroy(mylog);
 		mylog = NULL;
 	}
-        pthread_mutex_unlock(&cfg_lock);
+
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -610,12 +653,12 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 static const char *usage(struct ldmsd_plugin *self)
 {
         ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
-	return "config name=" SAMP
+	char *preamble = "config name=" SAMP
 	" interval=<interval(us)> [fields=<fields>]\n"
 	" [schema=<schema_name>] [job_set=<metric set name>]\n"
-	" [use_base=1\n"
+	" [use_base=<*>\n"
 	"   [uid=<int>] [gid=<int>] [perm=<octal>] [instance=<name>]\n"
-	"   [producer=<name>] [job_id=<metric name in job_set set>]\n"
+	"    [producer=<name>] [job_id=<metric name in job_set set>]\n"
 	" ]\n"
 	" name=<plugin_name>\n"
 	" interval=<interval(us)> DCGM query interval (microsecond)\n"
@@ -623,7 +666,7 @@ static const char *usage(struct ldmsd_plugin *self)
 	" fields=<fields>  list of DCGM field_ids\n"
 	" schema=<schema_name> default " SAMP "\n"
 	" job_set=<job metric set name>\n"
-	" If use_base=1 is given, the additional parameters are applied\n"
+	" If use_base=<*> is given, the additional parameters are applied\n"
 	" (see ldms_sampler_base).\n"
 	"    producer     A unique name for the host providing the timing data\n"
 	"                 (default $HOSTNAME)\n"
@@ -636,8 +679,11 @@ static const char *usage(struct ldmsd_plugin *self)
 	"    uid          The user-id of the set's owner\n"
 	"    gid          The group id of the set's owner\n"
 	"    perm         The set's access permissions\n"
-	" See ldms-dcgm-list-fields for input values to fields\n"
-	;
+	" The field numbers are tabulated:\n"
+	" (Not all can be ldms metrics, as indicated by 'unsupported_data_type')\n";
+	if (!field_help)
+		init_field_help(preamble);
+	return field_help ? field_help : preamble;
 }
 
 static struct ldmsd_sampler nvidia_dcgm_plugin = {
