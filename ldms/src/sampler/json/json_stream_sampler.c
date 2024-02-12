@@ -379,14 +379,28 @@ int JSON_LIST_VALUE_setter(ldms_set_t set, ldms_mval_t list_mval,
 							  LDMS_V_CHAR_ARRAY, 255);
 			break;
 		case JSON_DICT_VALUE:
+			rec_idx = -1;
 			if (!rec_type_name) {
 				rc = asprintf(&rec_type_name, "%s_record", (char *)ctxt);
-				rec_idx = ldms_metric_by_name(set, rec_type_name);
-				free(rec_type_name);
+				if (rc >= 0) {
+					rec_idx = ldms_metric_by_name(set, rec_type_name);
+					free(rec_type_name);
+					rec_type_name = NULL;
+				} else {
+					LERROR("out of memory");
+					rc = ENOMEM;
+					goto err;
+				}
+			}
+			if (rec_idx < 0) {
+				LERROR("item_not_found");
+				rc = EINVAL;
+				goto err;
 			}
 			item_mval = ldms_record_alloc(set, rec_idx);
 			if (!item_mval) {
 				rc = ENOMEM;
+				LERROR("out of memory");
 				goto err;
 			}
 			rc = ldms_list_append_record(set, list_mval, item_mval);
@@ -993,7 +1007,7 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 	const char *msg;
 	json_entity_t entity;
 	int rc = EINVAL;
-	ldms_schema_t schema;
+	ldms_schema_t schema = NULL;
 	struct json_cfg_inst *inst = arg;
 	json_entity_t schema_name;
 
