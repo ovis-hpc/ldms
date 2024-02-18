@@ -429,7 +429,7 @@ AS_IF([test "x$enable_papi" != xno],[
 ])
 AM_CONDITIONAL([HAVE_LIBPAPI], [test "x$HAVE_LIBPAPI" = xyes])
 AM_CONDITIONAL([HAVE_LIBPFM], [test "x$HAVE_LIBPFM" = xyes])
-AM_CONDITIONAL([ENABLE_PAPI], [test "x$enable_papi" != no -a "x$HAVE_LIBPAPI" = xyes -a "x$HAVE_LIBPFM" = xyes])
+AM_CONDITIONAL([ENABLE_PAPI], [test "x$enable_papi" != xno -a "x$HAVE_LIBPAPI" = xyes -a "x$HAVE_LIBPFM" = xyes])
 
 AC_LIB_HAVE_LINKFLAGS([ibmad], [], [#include <infiniband/mad.h>])
 AM_CONDITIONAL([HAVE_LIBIBMAD], [test "x$HAVE_LIBIBMAD" = xyes])
