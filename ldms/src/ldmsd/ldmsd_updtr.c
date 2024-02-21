@@ -890,13 +890,10 @@ err:
 	return rc;
 }
 
-int prdcr_ref_cmp(void *a, const void *b)
-{
-	return strcmp(a, b);
-}
-
 #define UPDTR_TREE_MGMT_TASK_INTRVL 3600000000
 
+/* The implementation is in ldmsd_prdcr.c */
+extern int prdcr_ref_cmp(void *a, const void *b);
 ldmsd_updtr_t
 ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str,
 					int push_flags, int is_auto_task,
@@ -1337,15 +1334,8 @@ out_1:
 	return rc;
 }
 
-ldmsd_prdcr_ref_t prdcr_ref_new(ldmsd_prdcr_t prdcr)
-{
-	ldmsd_prdcr_ref_t ref = calloc(1, sizeof *ref);
-	if (ref) {
-		ref->prdcr = ldmsd_prdcr_get(prdcr);
-		rbn_init(&ref->rbn, prdcr->obj.name);
-	}
-	return ref;
-}
+/* The implementations are in ldmsd_prdcr.c */
+extern ldmsd_prdcr_ref_t prdcr_ref_new(ldmsd_prdcr_t prdcr);
 
 ldmsd_prdcr_ref_t prdcr_ref_find(ldmsd_updtr_t updtr, const char *name)
 {
@@ -1355,8 +1345,6 @@ ldmsd_prdcr_ref_t prdcr_ref_find(ldmsd_updtr_t updtr, const char *name)
 		return NULL;
 	return container_of(rbn, struct ldmsd_prdcr_ref, rbn);
 }
-
-
 
 ldmsd_prdcr_ref_t prdcr_ref_find_regex(ldmsd_updtr_t updtr, regex_t *regex)
 {
@@ -1380,10 +1368,10 @@ int __ldmsd_updtr_prdcr_add(ldmsd_updtr_t updtr, ldmsd_prdcr_t prdcr)
 	ldmsd_prdcr_ref_t ref;
 
 	ldmsd_updtr_lock(updtr);
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out;
-	}
+//	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
+//		rc = EBUSY;
+//		goto out;
+//	}
 	ref = prdcr_ref_find(updtr, prdcr->obj.name);
 	if (ref) {
 		rc = EEXIST;
@@ -1403,20 +1391,15 @@ out:
 int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt)
 {
-	regex_t regex;
 	ldmsd_updtr_t updtr;
 	ldmsd_prdcr_t prdcr;
+	ldmsd_name_match_t prd_match;
 	int rc;
-
-	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
-	if (rc)
-		return EINVAL;
 
 	updtr = ldmsd_updtr_find(updtr_name);
 	if (!updtr) {
 		sprintf(rep_buf, "%dThe updater specified does not "
 						"exist\n", ENOENT);
-		regfree(&regex);
 		return ENOENT;
 	}
 
@@ -1430,9 +1413,32 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 		rc = EBUSY;
 		goto out_1;
 	}
+
+	prd_match = calloc(1, sizeof(*prd_match));
+	if (!prd_match) {
+		ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
+		rc = ENOMEM;
+		goto unlock;
+	}
+	prd_match->regex_str = strdup(prdcr_regex);
+	if (!prd_match->regex_str) {
+		ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
+		rc = ENOMEM;
+		free(prd_match);
+		goto unlock;
+	}
+
+	rc = ldmsd_compile_regex(&prd_match->regex, prdcr_regex, rep_buf, rep_len);
+	if (rc) {
+		rc = EINVAL;
+		free(prd_match);
+		goto unlock;
+	}
+
+	LIST_INSERT_HEAD(&updtr->prdcr_filter, prd_match, entry);
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		if (regexec(&regex, prdcr->obj.name, 0, NULL, 0))
+		if (regexec(&prd_match->regex, prdcr->obj.name, 0, NULL, 0))
 			continue;
 		/* See if this match is already in the list */
 		ldmsd_prdcr_ref_t ref = prdcr_ref_find(updtr, prdcr->obj.name);
@@ -1451,7 +1457,7 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	sprintf(rep_buf, "0\n");
 out_1:
-	regfree(&regex);
+unlock:
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
 	return rc;

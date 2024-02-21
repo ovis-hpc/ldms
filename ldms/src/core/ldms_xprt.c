@@ -4293,6 +4293,31 @@ int ldms_xprt_sockaddr(ldms_t x, struct sockaddr *local_sa,
 	return x->ops.sockaddr(x, local_sa, remote_sa, sa_len);
 }
 
+/* The implementation is in ldms_rail.c. */
+extern int sockaddr2ldms_addr(struct sockaddr *sa, struct ldms_addr *la);
+int ldms_xprt_addr(ldms_t x, struct ldms_addr *local_addr,
+			    struct ldms_addr *remote_addr)
+{
+	int rc;
+	struct sockaddr_storage local_so, remote_so;
+	socklen_t so_len = sizeof(local_so);
+
+	rc = ldms_xprt_sockaddr(x, (void*)&local_so, (void*)&remote_so, &so_len);
+	if (rc)
+		return rc;
+	if (local_addr) {
+		rc = sockaddr2ldms_addr((void*)&local_so, local_addr);
+		if (rc)
+			return rc;
+	}
+	if (remote_addr) {
+		rc = sockaddr2ldms_addr((void*)&remote_so, remote_addr);
+		if (rc)
+			return rc;
+	}
+	return 0;
+}
+
 int __ldms_xprt_get_threads(ldms_t x, pthread_t *out, int n)
 {
 	if (n < 1)
