@@ -98,6 +98,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "metric_sets_default_authz", LDMSD_SET_DEFAULT_AUTHZ_REQ  },
 	{  "oneshot",            LDMSD_ONESHOT_REQ  },
 	{  "option",             LDMSD_CMDLINE_OPTIONS_SET_REQ  },
+	{  "pid_file",           LDMSD_PID_FILE_REQ  },
 	{  "plugn_sets",         LDMSD_PLUGN_SETS_REQ  },
 	{  "plugn_status",       LDMSD_PLUGN_STATUS_REQ  },
 	{  "prdcr_add",          LDMSD_PRDCR_ADD_REQ  },
