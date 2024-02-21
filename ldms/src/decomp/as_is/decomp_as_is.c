@@ -214,6 +214,7 @@ static void __decomp_as_is_cfg_free(__decomp_as_is_cfg_t dcfg)
 		free(didx->col_idx);
 		free(didx->name);
 	}
+	free(dcfg->idxs);
 	free(dcfg);
 }
 
@@ -588,8 +589,6 @@ __get_row_cfg(__decomp_as_is_cfg_t dcfg, ldms_set_t set)
 	}
 	if (drow->idxs) {
 		for (i = 0; i < drow->idx_count; i++) {
-			if (!drow->idxs[i].col_idx)
-				continue;
 			free(drow->idxs[i].col_idx);
 		}
 		free(drow->idxs);
