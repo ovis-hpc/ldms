@@ -763,6 +763,19 @@ extern const char *ldms_xprt_event_type_to_str(enum ldms_xprt_event_type t);
 typedef void (*ldms_event_cb_t)(ldms_t x, ldms_xprt_event_t e, void *cb_arg);
 
 /**
+ * \brief Set the event callback and the callback context
+ *
+ * This is useful when an application wants to change the callback function
+ * after it accepts a connection request.
+ *
+ * \param x   The transport handle
+ * \param cb  The callback function that receives an ldms event.
+ *            If it is NULL, all events, except LDMS_RECV_COMPLETE, will be handled by ldms.
+ * \param cb_arg An argument to be passed to \c cb when it is called.
+ */
+void ldms_xprt_event_cb_set(ldms_t x, ldms_event_cb_t cb, void *cb_arg);
+
+/**
  * \brief Request a connection to an LDMS host.
  *
  * Connect to the remote peer specified by it's host
@@ -843,6 +856,60 @@ int ldms_xprt_sockaddr(ldms_t x, struct sockaddr *local_sa,
 		       struct sockaddr *remote_sa,
 		       socklen_t *sa_len);
 
+
+/* A convenient sockaddr union for IPv4 and IPv6 (for now) */
+union ldms_sockaddr {
+	struct sockaddr     sa;
+	struct sockaddr_in  sin;
+	struct sockaddr_in6 sin6;
+	struct sockaddr_storage storage;
+};
+
+/* currently only support IPv4 and IPv6 */
+struct ldms_addr {
+	sa_family_t sa_family; /* host-endian */
+	in_port_t   sin_port;  /* network-endian */
+	uint8_t     addr[16];  /* addr[0-3] for IPv4,
+				  addr[0-15] for IPv6 */
+};
+
+/**
+ * \brief Get local and remote address in \c ldms_addr struct from the xprt
+ *
+ * \param x   LDMS Transport pointer
+ * \param local_addr  Local address (re-entrant)
+ * \param remote_addr Remote address (re-entrant)
+ *
+ * \return 0 on success.
+ */
+int ldms_xprt_addr(ldms_t x, struct ldms_addr *local_addr,
+			    struct ldms_addr *remote_addr);
+
+const char *ldms_sockaddr_ntop(struct sockaddr *sa, char *buff, size_t sz);
+
+/**
+ * \brief Convert a CIDR IP address string to \c ldms_addr
+ *
+ * The address is stored in \c addr, and the prefix length is stored in \c prefix_len.
+ *
+ * \param addr   ldms_addr pointer
+ * \param prefix_len   Integer pointer
+ *
+ * \retval 0 if success. Otherwise, an errno is returned.
+ */
+int ldms_cidr2addr(const char *cdir_str, struct ldms_addr *addr, int *prefix_len);
+
+/**
+ * \brief Verify if \c sa is in \net_addr with the prefix \c prefix_len
+ *
+ * \param ip_addr    IP Address
+ * \param net_addr   Network Address
+ * \param prefix_len Prefix length for masking
+ *
+ * \return 1 if the IP address is in the network address. Otherwise, 0 is returned.
+ */
+int ldms_addr_in_network_addr(struct ldms_addr *ip_addr,
+				struct ldms_addr *net_addr, int prefix_len);
 /**
  * \brief Close a connection to an LDMS host.
  *

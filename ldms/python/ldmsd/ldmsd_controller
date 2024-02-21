@@ -937,11 +937,19 @@ class LdmsdCmdParser(cmd.Cmd):
                 print("Name             Host             Port         Transport    State")
                 print("---------------- ---------------- ------------ ------------ ------------")
                 for prdcr in producers:
-                    print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
-                                                                      prdcr['host'],
-                                                                      prdcr['port'],
-                                                                      prdcr['transport'],
-                                                                      prdcr['state']))
+                    port = prdcr['port']
+                    if prdcr['type'] == 'bridge':
+                        continue
+                    pstate = prdcr['state']
+                    if prdcr['type'] == 'advertised':
+                        if prdcr['state'] == 'STANDBY':
+                            # We report STOPPED to tell
+                            # the users that the producer is not running.
+                            pstate = "STOPPED"
+                    print(f"{prdcr['name']:16} {prdcr['host']:16} " \
+                          f"{port:12} " \
+                          f"{prdcr['transport']:12} " \
+                          f"{pstate:12} {prdcr['type']:10}")
                     for pset in prdcr['sets']:
                         print("    {0:16} {1:16} {2}".format(pset['inst_name'],
                                                              pset['schema_name'],
@@ -2129,6 +2137,229 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_set_sec_mod(self, text, line, begidx, endidx):
         return self.__complete_attr_list('set_sec_mod', text)
+
+    def do_advertiser_add(self, arg):
+        """
+        Add an advertiser.
+
+        This is a part of the sampler discovery feature.
+        An advertiser advertises its existense to an aggregator.
+        Parameters:
+                name=       A unique name to be used as producer name on the aggregator
+                xprt=       The transport name [sock, rdma, ugni]
+                host=       The aggregator hostname
+                port=       The aggregator listening port number
+                reconnect=  The connection retry interval
+                [auth=]     The authentication domain of the remote daemon
+                [perm=]     The permission to modify the advertiser in the future
+        """
+        arg = self.handle_args('advertiser_add', arg)
+        if arg is None:
+            return
+        if arg['reconnect'] is None:
+            print(f"The attribute 'reconnect' is missing.")
+        else:
+            rc, msg = self.comm.advertiser_add(arg['name'],
+                                          arg['xprt'],
+                                          arg['host'],
+                                          arg['port'],
+                                          arg['reconnect'],
+                                          arg['auth'],
+                                          arg['perm'])
+            if rc:
+                print(f'Error adding advertiser {arg["name"]}: {msg}')
+
+    def complete_advertiser_add(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('advertiser_add', text)
+
+    def do_advertiser_del(self, arg):
+        """
+        Delete an advertiser from the sampler daemon.
+        Parameters:
+        name =   The advertiser name
+        """
+        arg = self.handle_args('advertiser_del', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.advertiser_del(**arg)
+        if rc:
+            print(f"Error deleting advertiser {arg['name']}: {msg}")
+
+    def complete_advertiser_del(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('advertiser_del', text)
+
+    def do_advertiser_start(self, arg):
+        """
+        Start an advertiser
+        Parameters:
+        name =   The advertiser name
+        """
+        arg = self.handle_args('advertiser_start', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.advertiser_start(**arg)
+        if rc:
+            print(f"Error starting advertiser {arg['name']}: {msg}")
+
+    def complete_advertiser_start(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('advertiser_start', text)
+
+    def do_advertiser_stop(self, arg):
+        """
+        Stop an advertiser
+        Parameters:
+        name =   The advertiser name
+        """
+        arg = self.handle_args('advertiser_stop', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.advertiser_stop(**arg)
+        if rc:
+            print(f"Error stopping advertiser {arg['name']}: {msg}")
+
+    def complete_advertiser_stop(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('advertiser_stop', text)
+
+    def do_advertiser_status(self, arg):
+        """
+        Get the statuses of advertisers
+        Parameters:
+        [name=]        Advertiser name
+        """
+        arg = self.handle_args('prdcr_status', arg)
+        if arg:
+            rc, msg = self.comm.prdcr_status(arg['name'])
+            if rc == 0 and msg is not None:
+                producers = fmt_status(msg)
+                print("Name             Aggregator Host  Aggregator Port Transport    Reconnect(us)  State")
+                print("---------------- ---------------- --------------- ------------ --------------- ------------")
+                for prdcr in producers:
+                    if prdcr['type'] != 'advertiser':
+                        continue
+                    print(f"{prdcr['name']:16} {prdcr['host']:16} {prdcr['port']:<15} " \
+                          f"{prdcr['transport']:12} {prdcr['reconnect_us']:15} " \
+                          f"{prdcr['state']:12}")
+            else:
+                print(f'Error getting advertiser status: {msg}')
+
+    def complete_advertiser_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_status', text)
+
+    def do_prdcr_listen_add(self, arg):
+        """
+        Add a producer listen
+
+        The producer listen must be started by using 'prdcr_listen_start'.
+
+        After the producer listen starts,
+        the aggregator waits for advertisements from samplers and
+        automatically adds and starts a producer if the peer (sampler) hostname
+        matches the regular expression.
+
+        The auto-generated producers can be stopped and restarted by using
+        prdcr_stop and prdcr_start, respectively, as manually added producers.
+
+        Parameters:
+                name=              A unique name of the producer listen
+                [regex=]           A regular expression to match hostnames in advertisements
+                [ip=]              An IP masks to filter advertisements using the source IP
+                [disable_start=]   Tell LDMSD not to start the producers
+
+        """
+        arg = self.handle_args('prdcr_listen_add', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.prdcr_listen_add(**arg)
+        if rc:
+            print(f"Error adding producer listen {arg['name']}: {msg}")
+
+    def complete_prdcr_listen_add(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_listen_add', text)
+
+    def do_prdcr_listen_del(self, arg):
+        """
+        Delete a producer_listen
+
+        The producer listen must not be running.
+
+        Parameters:
+                name=     A unique name of the producer listen
+        """
+        arg = self.handle_args('prdcr_listen_del', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.prdcr_listen_del(**arg)
+        if rc:
+            print(f"Error deleting producer listen {arg['name']}: {msg}")
+
+    def complete_prdcr_listen_del(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_listen_del', text)
+
+    def do_prdcr_listen_start(self, arg):
+        """
+        Start a producer_listen
+
+        The aggregator waits for advertisements from samplers. It matches the
+        hostnames in advertisements with the regular expression. If they match,
+        there are two scenarios; 1) no producer of the same name exists, and 2)
+        a producer of the same name exists. In the former case, the aggregator
+        will create a producer with the given name and start it. In the later
+        case, if the producer is stopped, the aggregator will _not_ start it
+        automatically. The producer can be started using `prdcr_start` or
+        `prdcr_start_regex`.
+
+        Parameters:
+                name=     A unique name of the producer listen
+        """
+        arg = self.handle_args('prdcr_listen_start', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.prdcr_listen_start(**arg)
+        if rc:
+            print(f"Error starting producer listen {arg['name']}: {msg}")
+
+    def complete_prdcr_listen_start(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_listen_start', text)
+
+    def do_prdcr_listen_stop(self, arg):
+        """
+        Stop a running producer_listen
+
+        The aggregator stops matching the hostnames in advertisements with the
+        regular expression. That is, the aggregator will not automatically add
+        any producers that the hostnames matches the regular expression.
+
+        Parameters:
+                name=     A unique name of the producer listen
+        """
+        arg = self.handle_args('prdcr_listen_stop', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.prdcr_listen_stop(**arg)
+        if rc:
+            print(f"Error stopping producer listen {arg['name']}: {msg}")
+
+    def complete_prdcr_listen_stop(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_listen_stop', text)
+
+    def do_prdcr_listen_status(self, arg):
+        """
+        Display the status of all producer listen
+        """
+        arg = self.handle_args('prdcr_listen_status', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.prdcr_listen_status(**arg)
+        if rc == 0 and msg is not None:
+            l = fmt_status(msg)
+            print(f"{'Name':20} {'State':10} {'Regex':15} {'IP Range':30}")
+            print(f"{'-'*20} {'-'*10} {'-'*15} {'-'*30}")
+            for pl in l:
+                print(f"{pl['name']:20} {pl['state']:10} {pl['regex']:15} {pl['IP range']:30}")
+                if len(pl['producers']):
+                    print(f"Producers: {', '.join(p for p in pl['producers'])}")
+        else:
+            print(f'Error getting prdcr_listen status: {msg}')
 
     def do_option(self, arg):
         """

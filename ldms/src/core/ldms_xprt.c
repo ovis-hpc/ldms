@@ -189,6 +189,12 @@ void *ldms_xprt_ctxt_get(ldms_t x)
 	return x->app_ctxt;
 }
 
+void ldms_xprt_event_cb_set(ldms_t x, ldms_event_cb_t cb, void *cb_arg)
+{
+	x->event_cb = cb;
+	x->event_cb_arg = cb_arg;
+}
+
 /* Global Transport Statistics */
 static uint64_t xprt_connect_count;
 static uint64_t xprt_connect_request_count;
@@ -3932,6 +3938,73 @@ int ldms_xprt_sockaddr(ldms_t x, struct sockaddr *local_sa,
 	zerr = zap_get_name(x->zap_ep, (struct sockaddr *)local_sa,
 				(struct sockaddr *)remote_sa, sa_len);
 	return zap_zerr2errno(zerr);
+}
+
+int sockaddr2ldms_addr(struct sockaddr *sa, struct ldms_addr *la)
+{
+	union ldms_sockaddr *lsa = (void*)sa;
+	switch (sa->sa_family) {
+	case AF_INET:
+		la->sa_family = sa->sa_family;
+		la->sin_port = lsa->sin.sin_port;
+		memcpy(&la->addr, &lsa->sin.sin_addr, sizeof(lsa->sin.sin_addr));
+		break;
+	case AF_INET6:
+		la->sa_family = sa->sa_family;
+		la->sin_port = lsa->sin6.sin6_port;
+		memcpy(&la->addr, &lsa->sin6.sin6_addr, sizeof(lsa->sin6.sin6_addr));
+		break;
+	default:
+		return ENOTSUP;
+	}
+	return 0;
+}
+
+int ldms_xprt_addr(ldms_t x, struct ldms_addr *local_addr,
+			    struct ldms_addr *remote_addr)
+{
+	int rc;
+	struct sockaddr_storage local_so, remote_so;
+	socklen_t so_len = sizeof(local_so);
+
+	rc = ldms_xprt_sockaddr(x, (void*)&local_so, (void*)&remote_so, &so_len);
+	if (rc)
+		return rc;
+	if (local_addr) {
+		rc = sockaddr2ldms_addr((void*)&local_so, local_addr);
+		if (rc)
+			return rc;
+	}
+	if (remote_addr) {
+		rc = sockaddr2ldms_addr((void*)&remote_so, remote_addr);
+		if (rc)
+			return rc;
+	}
+	return 0;
+}
+
+int ldms_addr_in_network_addr(struct ldms_addr *ip_addr,
+				struct ldms_addr *net_addr, int prefix_len)
+{
+	if (ip_addr->sa_family != net_addr->sa_family)
+		return 0;
+
+	int i;
+	int masked_bytes = prefix_len/8;
+	int residue_bits = prefix_len % 8;
+
+	for (i = 0; i < masked_bytes; i++) {
+		if (ip_addr->addr[i] != net_addr->addr[i])
+			return 0;
+	}
+
+	if (residue_bits) {
+		uint8_t mask_bits = 0xff << (8 - residue_bits);
+		if ( (ip_addr->addr[i] & mask_bits) != (net_addr->addr[i] & mask_bits))
+			return 0;
+	}
+
+	return 1;
 }
 
 static void __attribute__ ((constructor)) cs_init(void)
