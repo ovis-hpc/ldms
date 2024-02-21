@@ -65,6 +65,7 @@ const struct req_str_id req_str_id_table[] = {
 	/* This table need to be sorted by keyword for bsearch() */
 	{  "auth_add",           LDMSD_AUTH_ADD_REQ  },
 	{  "auth_del",           LDMSD_AUTH_DEL_REQ  },
+	{  "banner",             LDMSD_BANNER_MODE_REQ  },
 	{  "bridge_add",         LDMSD_BRIDGE_ADD_REQ },
 	{  "bridge_del",         LDMSD_PRDCR_DEL_REQ },
 	{  "bridge_start",       LDMSD_PRDCR_START_REQ },
@@ -178,6 +179,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "level",             LDMSD_ATTR_LEVEL  },
 	{  "match",             LDMSD_ATTR_MATCH  },
 	{  "metric",            LDMSD_ATTR_METRIC  },
+	{  "mode",              LDMSD_ATTR_LEVEL  },
 	{  "name",              LDMSD_ATTR_NAME  },
 	{  "num",               LDMSD_ATTR_SIZE  },
 	{  "offset",            LDMSD_ATTR_OFFSET  },

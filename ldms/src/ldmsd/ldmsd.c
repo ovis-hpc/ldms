@@ -2098,6 +2098,11 @@ int main(int argc, char *argv[])
 				 "The option `-C` is obsolete. "
 				 "Please specify `default_credits credits=<INTEGER> in a configuration file.\n");
 			cleanup(EINVAL, "Received an obsolete command-line option");
+		case 'B':
+			ovis_log(NULL, OVIS_LCRIT,
+				"The option `-B` is obsolete. "
+				"Please specify `banner mode=<0|1|2>` in a configuration file.");
+			cleanup(EINVAL, "Received an obsolete command-line option");
 		default:
 			ret = ldmsd_process_cmd_line_arg(op, optarg);
 			if (ret) {
