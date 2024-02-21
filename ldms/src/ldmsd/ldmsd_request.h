@@ -154,6 +154,7 @@ enum ldmsd_request {
 	LDMSD_WORKER_THR_SET_REQ,
 	LDMSD_DEFAULT_CREDITS_REQ,
 	LDMSD_PID_FILE_REQ,
+	LDMSD_BANNER_MODE_REQ,
 
 	/* failover requests by user */
 	LDMSD_FAILOVER_CONFIG_REQ = 0x700, /* "failover_config" user command */

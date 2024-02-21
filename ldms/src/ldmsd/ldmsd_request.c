@@ -313,6 +313,7 @@ static int daemon_name_set_handler(ldmsd_req_ctxt_t reqc);
 static int worker_threads_set_handler(ldmsd_req_ctxt_t reqc);
 static int default_credits_set_handler(ldmsd_req_ctxt_t reqc);
 static int pid_file_handler(ldmsd_req_ctxt_t reqc);
+static int banner_mode_handler(ldmsd_req_ctxt_t reqc);
 
 /* executable for all */
 #define XALL 0111
@@ -683,6 +684,9 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_PID_FILE_REQ] = {
 		LDMSD_PID_FILE_REQ, pid_file_handler, XUG
 	},
+	[LDMSD_BANNER_MODE_REQ] = {
+		LDMSD_BANNER_MODE_REQ, banner_mode_handler, XUG
+	},
 };
 
 int is_req_id_priority(enum ldmsd_request req_id)
@@ -702,6 +706,7 @@ int is_req_id_priority(enum ldmsd_request req_id)
 	case LDMSD_WORKER_THR_SET_REQ:
 	case LDMSD_DEFAULT_CREDITS_REQ:
 	case LDMSD_PID_FILE_REQ:
+	case LDMSD_BANNER_MODE_REQ:
 		return 1;
 	default:
 		return 0;
@@ -9296,5 +9301,28 @@ static int pid_file_handler(ldmsd_req_ctxt_t reqc)
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(path);
+	return rc;
+}
+
+static int banner_mode_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *mode_s = NULL;
+	mode_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_LEVEL);
+	if (!mode_s) {
+		reqc->errcode = EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "The attribute 'mode' is missing.");
+		goto send_reply;
+	}
+	reqc->errcode = ldmsd_process_cmd_line_arg('B', mode_s);
+	if (reqc->errcode) {
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "The given banner mode '%s' is invalid.", mode_s);
+		goto send_reply;
+	}
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(mode_s);
 	return rc;
 }
