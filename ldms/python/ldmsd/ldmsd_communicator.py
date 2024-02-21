@@ -194,7 +194,22 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                                     'opt_attr': ['instance']
                             },
                       ##### Authetication. #####
-                      'auth_add': {'req_attr': ['name', 'plugin'], 'opt_attr': []},
+                      'auth_add': {'req_attr' : ['name', 'plugin'], 'opt_attr': []
+                            },
+                      ##### Sampler Discovery #####
+                      'advertiser_add': {'req_attr': ['name', 'xprt', 'host', 'port', 'reconnect'],
+                                        'opt_attr' : [ 'auth', 'perm' ] },
+                      'advertiser_del': {'req_attr': ['name'], 'opt_attr': []},
+                      'advertiser_start': {'req_attr': ['name'],
+                                        'opt_attr' : ['xprt', 'host', 'port',
+                                                      'auth', 'perm', 'reconnect' ] },
+                      'advertiser_stop': {'req_attr': ['name'], 'opt_attr': []},
+                      'prdcr_listen_add': {'req_attr': ['name'],
+                                           'opt_attr': ['ip', 'regex', 'disable_start']},
+                      'prdcr_listen_del': {'req_attr': ['name'], 'opt_attr': []},
+                      'prdcr_listen_start': {'req_attr': ['name'], 'opt_attr': []},
+                      'prdcr_listen_stop': {'req_attr': ['name'], 'opt_attr': []},
+                      'prdcr_listen_status': {'req_attr': [], 'opt_attr': []},
                       }
 
 def get_cmd_attr_list(cmd_verb):
@@ -278,7 +293,9 @@ class LDMSD_Req_Attr(object):
     RESET = 36
     DECOMPOSITION = 37
     SUMMARY = 38
-    LAST = 40
+    SIZE = 39
+    IP = 40
+    LAST = 41
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -322,6 +339,8 @@ class LDMSD_Req_Attr(object):
                    'decomposition' : DECOMPOSITION,
                    'summary' : SUMMARY,
                    'reconnect' : INTERVAL,
+                   'size' : SIZE,
+                   'IP' : IP,
                    'TERMINATING': LAST
         }
 
@@ -363,6 +382,7 @@ class LDMSD_Req_Attr(object):
                    AUTH : 'auth',
                    DECOMPOSITION : 'decomposition',
                    SUMMARY : 'summary',
+                   IP : 'ip',
                    LAST : 'TERMINATING'
         }
 
@@ -470,6 +490,16 @@ class LDMSD_Request(object):
     PRDCR_SUBSCRIBE = 0x100 + 9
     PRDCR_UNSUBSCRIBE = 0x100 + 10
     PRDCR_STREAM_STATUS = 0x100 + 11
+    ADVERTISER_ADD = 0x100 + 12
+    ADVERTISER_START = 0x100 + 13
+    ADVERTISER_STOP = 0x100 + 14
+    ADVERTISER_DEL = 0x100 + 15
+    PRDCR_LISTEN_ADD = 0x100 + 16
+    PRDCR_LISTEN_DEL = 0x100 + 17
+    PRDCR_LISTEN_START = 0x100 + 18
+    PRDCR_LISTEN_STOP = 0x100 + 19
+    PRDCR_LISTEN_STATUS = 0x100 + 20
+    ADVERTISE = 0x100 + 21
 
     STRGP_ADD = 0x200
     STRGP_DEL = 0x200 + 1
@@ -572,6 +602,16 @@ class LDMSD_Request(object):
             'prdcr_subscribe': {'id': PRDCR_SUBSCRIBE},
             'prdcr_unsubscribe': {'id': PRDCR_UNSUBSCRIBE},
             'prdcr_stream_status' : {'id': PRDCR_STREAM_STATUS},
+
+            'advertiser_add': {'id': ADVERTISER_ADD},
+            'advertiser_start': {'id': ADVERTISER_START},
+            'advertiser_stop': {'id': ADVERTISER_STOP},
+            'advertiser_del': {'id': ADVERTISER_DEL},
+            'prdcr_listen_add': {'id': PRDCR_LISTEN_ADD},
+            'prdcr_listen_start': {'id': PRDCR_LISTEN_START},
+            'prdcr_listen_stop': {'id': PRDCR_LISTEN_STOP},
+            'prdcr_listen_del': {'id': PRDCR_LISTEN_DEL},
+            'prdcr_listen_status': {'id': PRDCR_LISTEN_STATUS},
 
             'strgp_add': {'id': STRGP_ADD},
             'strgp_del': {'id': STRGP_DEL},
@@ -1970,6 +2010,24 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
+    def _prdcr_add_attr_prep(self, **kwargs):
+        attrs = [
+            LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.NAME, value=kwargs['name']),
+            LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.XPRT, value=kwargs['xprt']),
+            LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.HOST, value=kwargs['host']),
+            LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.PORT, value=str(kwargs['port']))
+        ]
+        if 'reconnect' in kwargs.keys() and kwargs['reconnect']:
+            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.INTERVAL, value=str(kwargs['reconnect'])))
+        if 'ptype' in kwargs.keys() and kwargs['ptype']:
+            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.TYPE, value=kwargs['ptype']))
+        if 'auth' in kwargs.keys() and kwargs['auth']:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.AUTH, value=kwargs['auth']))
+        if 'perm' in kwargs.keys() and kwargs['perm']:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PERM, value=str(kwargs['perm'])))
+
+        return attrs
+
     def prdcr_add(self, name, ptype, xprt, host, port, reconnect, auth=None, perm=None):
         """
         Add a producer. A producer is a peer to the LDMSD being configured.
@@ -1996,22 +2054,10 @@ class Communicator(object):
         - status is an errno from the errno module
         - data is an error message if status != 0 or None
         """
-        attrs = [
-            LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.NAME, value=name),
-            LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.TYPE, value=ptype),
-            LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.XPRT, value=xprt),
-            LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.HOST, value=host),
-            LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.PORT, value=str(port)),
-            LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.INTERVAL, value=str(reconnect))
-        ]
-        if auth:
-            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.AUTH, value=auth))
-        if perm:
-            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PERM, value=str(perm)))
-
-        req = LDMSD_Request(
-                command_id=LDMSD_Request.PRDCR_ADD,
-                attrs=attrs)
+        args_d = {'name': name, 'ptype': ptype, 'xprt': xprt, 'host': host, 'port': port,
+                  'reconnect': reconnect, 'auth': auth, 'perm': perm}
+        attrs = self._prdcr_add_attr_prep(**args_d)
+        req = LDMSD_Request( command_id = LDMSD_Request.PRDCR_ADD, attrs = attrs)
         try:
             req.send(self)
             resp = req.receive(self)
@@ -2045,7 +2091,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_start(self, name, regex=True, reconnect=None):
+    def prdcr_start(self, name, regex=True, reconnect=None, **kwargs):
         """
         Start one or more STOPPED producers
 
@@ -2059,6 +2105,9 @@ class Communicator(object):
         reconnect - The reconnect interval in microseconds. If not None, this
                     will override the interval specified when the producer
                     was created. Default is None.
+        kwargs   - Additional keyword argument as in prdcr_add().
+                    It is to support producer creation if it doesn't exist at start.
+                    Currently, only advertiser_start() uses this feature.
 
         Returns:
         A tuple of status, data
@@ -2078,6 +2127,9 @@ class Communicator(object):
         if reconnect:
             attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.INTERVAL,
                                         value = str(reconnect)))
+
+        for key, value in kwargs.items():
+            attrs.append(LDMSD_Req_Attr(attr_name = key, value = value))
 
         req = LDMSD_Request(command_id = cmd_id, attrs = attrs)
         try:
@@ -2277,6 +2329,213 @@ class Communicator(object):
         else:
             attr_list = None
         req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_HINT_TREE, attrs=attr_list)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
+
+    def advertiser_add(self, name, xprt, host, port, reconnect, auth=None, perm=None):
+        """
+        Add an advertiser. An advertiser sends an advertisement to an aggregator
+        add it as a producer. Once started, the LDSMD will attempt to
+        periodically send a connection request until a connection is established.
+
+        An advertiser starts in the STOPPED state. Use the advertiser_start() function
+        to start the advertiser.
+
+        Parameters:
+        - The name to give the advertiser. This name must be unique among all advertisement sent to the aggregator.
+        - The transport type, one of 'sock', 'ugni', 'rdma', or 'fabric'
+        - The aggregator's hostname
+        - The aggregator's listening port number
+        - The reconnect interval in microseconds
+
+        Keyword Parameters:
+        auth - The authentication domain of the remote daemon
+        perm - The configuration client permission required to
+               modify the producer configuration. Default is None.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
+        args_d = {'name': name, 'xprt': xprt, 'host': host, 'port': port,
+                  'reconnect': reconnect, 'auth': auth, 'perm': perm}
+        attrs = self._prdcr_add_attr_prep(**args_d)
+        attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value="advertiser"))
+        req = LDMSD_Request( command_id = LDMSD_Request.ADVERTISER_ADD, attrs = attrs)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def advertiser_start(self, name, xprt=None, host=None, port=None,
+                              reconnect=None, auth=None, perm=None):
+        """
+        Start an advertiser. If the advertiser does not exist, LDMSD will create it.
+        In this case, the values of the required attributes in advertiser_add must be given.
+
+        Parameters:
+        - The name to give the advertiser. This name must be unique among all advertisement sent to the aggregator.
+
+        Keyword Parameters:
+        xprt - The transport type, one of 'sock', 'ugni', 'rdma', or 'fabric'
+        host - The aggregator's hostname
+        port - The aggregator's listening port number
+        reconnect - The reconnect interval in microseconds
+        auth - The authentication demain
+        perm - The configuration client permission required to
+               modify the producer configuration. Default is None.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
+        args_d = {'name': name, 'xprt': xprt, 'host': host, 'port': port,
+                  'reconnect': reconnect, 'auth': auth, 'perm': perm}
+        attrs = self._prdcr_add_attr_prep(**args_d)
+        attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value="advertiser"))
+        req = LDMSD_Request( command_id = LDMSD_Request.ADVERTISER_START, attrs = attrs)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def advertiser_stop(self, name):
+        req = LDMSD_Request(command_id = LDMSD_Request.ADVERTISER_STOP,
+                            attrs = [LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)])
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def advertiser_del(self, name):
+        req = LDMSD_Request(command_id = LDMSD_Request.ADVERTISER_DEL,
+                            attrs = [LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)])
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def prdcr_listen_add(self, name, disable_start=None, regex=None, ip=None):
+        """
+        Tell an aggregator to wait for advertisements from samplers
+
+        The ggregator automatically adds and starts a producer when it receives
+        an advertisement that the peer (sampler) hostname matches the regular expression
+        unless the disable_start parameter is specified.
+
+        Parameters:
+         - Name of the producer listen
+         - Regular expression to match sampler hostnames
+         - IP Range
+
+
+        Return:
+        - status is an errno from the errno module
+        - data is an error message if status !=0 or None
+        """
+        attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
+        if disable_start is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.AUTO_INTERVAL, value=disable_start))
+        if regex is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex))
+        if ip is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.IP, value=ip))
+
+        req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_ADD,
+                            attrs=attr_list)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
+
+    def prdcr_listen_del(self, name):
+        """
+        Delete a producer listen
+
+        Parameter:
+         - Name of the producer listen to be deleted
+
+        Return:
+         - Status is an errno from the errno module
+         - Data is an error message if status != 0 or None
+        """
+        attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)]
+        req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_DEL,
+                            attrs=attr_list)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
+
+    def prdcr_listen_start(self, name):
+        """
+        Start a producer listen
+
+        Parameter:
+         - Name of the producer listen to be started
+
+        Return:
+         - Status is an errno from the errno module
+         - Data is an error message if status != 0 or None
+        """
+        attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)]
+        req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_START,
+                            attrs=attr_list)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
+
+    def prdcr_listen_stop(self, name):
+        """
+        Stop a producer listen
+
+        Parameter:
+         - Name of the producer listen to be stopped
+
+        Return:
+         - Status is an errno from the errno module
+         - Data is an error message if status != 0 or None
+        """
+        attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)]
+        req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_STOP,
+                            attrs=attr_list)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
+
+    def prdcr_listen_status(self):
+        """
+        Get the status of all producer listen
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_STATUS)
         try:
             req.send(self)
             resp = req.receive(self)
