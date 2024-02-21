@@ -88,6 +88,16 @@ enum ldmsd_request {
 	LDMSD_PRDCR_UNSUBSCRIBE_REQ,
 	LDMSD_PRDCR_STREAM_STATUS_REQ,
 	LDMSD_BRIDGE_ADD_REQ,
+	LDMSD_ADVERTISER_ADD_REQ,
+	LDMSD_ADVERTISER_START_REQ,
+	LDMSD_ADVERTISER_STOP_REQ,
+	LDMSD_ADVERTISER_DEL_REQ,
+	LDMSD_PRDCR_LISTEN_ADD_REQ,
+	LDMSD_PRDCR_LISTEN_DEL_REQ,
+	LDMSD_PRDCR_LISTEN_START_REQ,
+	LDMSD_PRDCR_LISTEN_STOP_REQ,
+	LDMSD_PRDCR_LISTEN_STATUS_REQ,
+	LDMSD_ADVERTISE_REQ,
 	LDMSD_STRGP_ADD_REQ = 0x200,
 	LDMSD_STRGP_DEL_REQ,
 	LDMSD_STRGP_START_REQ,
@@ -244,6 +254,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_RX_RATE,
 	LDMSD_ATTR_SUMMARY,
 	LDMSD_ATTR_SIZE,
+	LDMSD_ATTR_IP,
 	LDMSD_ATTR_LAST,
 };
 
@@ -304,6 +315,7 @@ typedef struct ldmsd_cfg_ldms_s {
 } *ldmsd_cfg_ldms_t;
 
 typedef struct ldmsd_cfg_file_s {
+	const char *path; /* Point to the path attribute value, don't free() */
 	uint64_t cfgfile_id;
 } *ldmsd_cfg_file_t;
 
@@ -542,7 +554,13 @@ void ldmsd_ntoh_req_msg(ldmsd_req_hdr_t msg);
  * \param rec_len The record length
  */
 void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec_len);
-int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request);
+/*
+ * \param req_filter is a function that returns zero if we want to process the
+ *                   request, and returns non-zero otherwise.
+ */
+typedef int (*req_filter_fn)(ldmsd_req_ctxt_t, void *);
+int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
+				req_filter_fn req_filter, void *filter_ctxt);
 int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t response);
 int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc, const char *data, size_t data_len, int msg_flags);
 void ldmsd_send_error_reply(ldmsd_cfg_xprt_t xprt, uint32_t msg_no,

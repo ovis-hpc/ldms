@@ -119,6 +119,7 @@ extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 
 extern int ldmsd_credits; /* defined in ldmsd.c */
 
+#define CONFIG_PLAYBACK_ENABLED(_match_) ((_match_) & ldmsd_req_debug)
 struct timeval ldmsd_req_last_time;
 __attribute__((format(printf, 2, 3)))
 void __dlog(int match, const char *fmt, ...)
@@ -314,6 +315,18 @@ static int worker_threads_set_handler(ldmsd_req_ctxt_t reqc);
 static int default_credits_set_handler(ldmsd_req_ctxt_t reqc);
 static int pid_file_handler(ldmsd_req_ctxt_t reqc);
 static int banner_mode_handler(ldmsd_req_ctxt_t reqc);
+
+/* Sampler Advertisement */
+static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc);
+static int prdcr_listen_del_handler(ldmsd_req_ctxt_t reqc);
+static int prdcr_listen_start_handler(ldmsd_req_ctxt_t reqc);
+static int prdcr_listen_stop_handler(ldmsd_req_ctxt_t reqc);
+static int prdcr_listen_status_handler(ldmsd_req_ctxt_t reqc);
+static int advertiser_add_handler(ldmsd_req_ctxt_t reqc);
+static int advertiser_start_handler(ldmsd_req_ctxt_t reqc);
+static int advertiser_stop_handler(ldmsd_req_ctxt_t reqc);
+static int advertiser_del_handler(ldmsd_req_ctxt_t reqc);
+static int advertise_handler(ldmsd_req_ctxt_t reqc);
 
 /* executable for all */
 #define XALL 0111
@@ -686,6 +699,38 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_BANNER_MODE_REQ] = {
 		LDMSD_BANNER_MODE_REQ, banner_mode_handler, XUG
+	},
+
+	/* Sampler Discovery */
+	[LDMSD_ADVERTISER_ADD_REQ] = {
+		LDMSD_ADVERTISER_ADD_REQ, advertiser_add_handler, XUG
+	},
+	[LDMSD_ADVERTISER_START_REQ] = {
+		LDMSD_ADVERTISER_START_REQ, advertiser_start_handler, XUG
+	},
+	[LDMSD_ADVERTISER_STOP_REQ] = {
+		LDMSD_ADVERTISER_STOP_REQ, advertiser_stop_handler, XUG
+	},
+	[LDMSD_ADVERTISER_DEL_REQ] = {
+		LDMSD_ADVERTISER_DEL_REQ, advertiser_del_handler, XUG
+	},
+	[LDMSD_PRDCR_LISTEN_ADD_REQ] = {
+		LDMSD_PRDCR_LISTEN_ADD_REQ, prdcr_listen_add_handler, XUG
+	},
+	[LDMSD_PRDCR_LISTEN_DEL_REQ] = {
+		LDMSD_PRDCR_LISTEN_DEL_REQ, prdcr_listen_del_handler, XUG
+	},
+	[LDMSD_PRDCR_LISTEN_START_REQ] = {
+		LDMSD_PRDCR_LISTEN_START_REQ, prdcr_listen_start_handler, XUG | MOD
+	},
+	[LDMSD_PRDCR_LISTEN_STOP_REQ] = {
+		LDMSD_PRDCR_LISTEN_STOP_REQ, prdcr_listen_stop_handler, XUG | MOD
+	},
+	[LDMSD_PRDCR_LISTEN_STATUS_REQ] = {
+		LDMSD_PRDCR_LISTEN_STATUS_REQ, prdcr_listen_status_handler, XALL
+	},
+	[LDMSD_ADVERTISE_REQ] = {
+		LDMSD_ADVERTISE_REQ, advertise_handler, XUG
 	},
 };
 
@@ -1238,7 +1283,12 @@ void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec
 }
 
 extern void cleanup(int x, char *reason);
-int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
+/*
+ * \param req_filter is a function that returns zero if we want to process the
+ *                   request, and returns non-zero otherwise.
+ */
+int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
+				req_filter_fn req_filter, void *filter_ctxt)
 {
 	struct req_ctxt_key key;
 	ldmsd_req_ctxt_t reqc = NULL;
@@ -1334,6 +1384,23 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->req_buf);
 	reqc->req_id = ((ldmsd_req_hdr_t)reqc->req_buf)->req_id;
 
+	if (req_filter) {
+		rc = req_filter(reqc, filter_ctxt);
+		/* rc = 0, filter OK */
+		if (rc == 0) {
+			__dlog(DLOG_CFGOK, "# deferring line %d (%s)\n",
+				reqc->key.msg_no, reqc->xprt->file.path);
+			goto put_reqc;
+		}
+		/* rc == errno */
+		if (rc > 0) {
+			goto put_reqc;
+		} else {
+			/* rc < 0, filter not applied */
+			rc = 0;
+		}
+	}
+
 	rc = ldmsd_handle_request(reqc);
 
 	if (!rc && !reqc->errcode) {
@@ -1342,6 +1409,7 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 			ldmsd_inc_cfg_cntr();
 	}
 
+put_reqc:
 	if (xprt != reqc->xprt)
 		memcpy(xprt, reqc->xprt, sizeof(*xprt));
 
@@ -1535,9 +1603,9 @@ static int example_handler(ldmsd_req_ctxt_t reqc)
 	return rc;
 }
 
-static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
+ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_name)
 {
-	ldmsd_prdcr_t prdcr;
+	ldmsd_prdcr_t prdcr = NULL;
 	char *name, *host, *xprt, *attr_name, *type_s, *port_s, *interval_s,
 	     *rail_s, *credits_s, *rx_rate_s;
 	char *auth;
@@ -1553,7 +1621,6 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	int rail = 1;
 	char *perm_s = NULL;
 
-	reqc->errcode = 0;
 	name = host = xprt = type_s = port_s = interval_s = auth = rail_s = credits_s = NULL;
 
 	attr_name = "name";
@@ -1572,14 +1639,14 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				       "The attribute type '%s' is invalid.",
 				       type_s);
-			goto send_reply;
+			goto out;
 		}
 		if (type == LDMSD_PRDCR_TYPE_LOCAL) {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				       "Producer with type 'local' is "
-				       "not supported.");
+				       "%s with type 'local' is "
+				       "not supported.", obj_name);
 			reqc->errcode = EINVAL;
-			goto send_reply;
+			goto out;
 		}
 	}
 	attr_name = "xprt";
@@ -1609,8 +1676,8 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		if (port_s) {
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
 					"Ignore the given port %s because "
-					"prdcr %s's type is passive.",
-					port_s, name);
+					"the type of %s %s is passive.",
+					port_s, obj_name, name);
 		}
 		port_no = -1;
 	}
@@ -1624,13 +1691,13 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		if (reqc->errcode) {
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
 					"The given 'reconnect' is invalid.");
-			goto send_reply;
+			goto out;
 		}
 		if (interval_us <= 0) {
 			reqc->errcode = EINVAL;
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
 					"The reconnect interval must be a positive number.");
-			goto send_reply;
+			goto out;
 		}
 	}
 
@@ -1653,7 +1720,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->errcode = EINVAL;
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"'rail' attribute must be a positive integer, got '%s'", rail_s);
-			goto send_reply;
+			goto out;
 		}
 	}
 
@@ -1664,7 +1731,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->errcode = EINVAL;
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"'credits' attribute must be greater than -2, got '%s'", credits_s);
-			goto send_reply;
+			goto out;
 		}
 	}
 
@@ -1675,10 +1742,9 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->errcode = EINVAL;
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"'rx_rate' attribute must be greater than -2, got '%s'", rx_rate_s);
-			goto send_reply;
+			goto out;
 		}
 	}
-
 	prdcr = ldmsd_prdcr_new_with_auth(name, xprt, host, port_no, type,
 					  interval_us, auth, uid, gid, perm,
 					  rail, credits, rx_rate);
@@ -1692,39 +1758,33 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		else
 			goto enomem;
 	}
-	__dlog(DLOG_CFGOK, "prdcr_add name=%s xprt=%s host=%s port=%u type=%s "
-		"reconnect=%ld auth=%s uid=%d gid=%d perm=%o\n",
-		name, xprt, host, port_no, type_s,
-		interval_us, auth ? auth : "none", (int)uid, (int)gid,
-		(unsigned)perm);
 
-	goto send_reply;
+	goto out;
 ebadauth:
 	reqc->errcode = ENOENT;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"Authentication name not found, check the auth_add configuration.");
-	goto send_reply;
+	goto out;
 enomem:
 	reqc->errcode = ENOMEM;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"Memory allocation failed.");
-	goto send_reply;
+	goto out;
 eexist:
 	reqc->errcode = EEXIST;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The prdcr %s already exists.", name);
-	goto send_reply;
+	goto out;
 eafnosupport:
 	reqc->errcode = EAFNOSUPPORT;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"Error resolving hostname '%s'\n", host);
-	goto send_reply;
+	goto out;
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The attribute '%s' is required.", attr_name);
-send_reply:
-	ldmsd_send_req_response(reqc, reqc->line_buf);
+out:
 	free(name);
 	free(type_s);
 	free(port_s);
@@ -1735,10 +1795,28 @@ send_reply:
 	free(auth);
 	free(rail_s);
 	free(credits_s);
+	return prdcr;
+}
+
+static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldmsd_prdcr_t prdcr;
+	prdcr = __prdcr_add_handler(reqc, "prdcr_add", "producer");
+	if (prdcr) {
+		__dlog(DLOG_CFGOK, "prdcr_add name=%s xprt=%s host=%s port=%u type=%s "
+			"reconnect=%ld auth=%s uid=%d gid=%d perm=%o\n",
+			prdcr->obj.name, prdcr->xprt_name, prdcr->host_name,
+			prdcr->port_no, ldmsd_prdcr_type2str(prdcr->type),
+			prdcr->conn_intrvl_us, prdcr->conn_auth_dom_name,
+			(int)prdcr->obj.uid, (int)prdcr->obj.gid,
+			(unsigned)prdcr->obj.perm);
+	}
+
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }
 
-static int prdcr_del_handler(ldmsd_req_ctxt_t reqc)
+static int __prdcr_del_handler(ldmsd_req_ctxt_t reqc, const char *cmd, const char *obj_type)
 {
 	char *name = NULL, *attr_name;
 	size_t cnt = 0;
@@ -1751,9 +1829,9 @@ static int prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The attribute '%s' is required by prdcr_del.",
-			       	attr_name);
-		goto send_reply;
+				"The attribute '%s' is required by %s.",
+							attr_name, cmd);
+		goto out;
 	}
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
@@ -1761,15 +1839,15 @@ static int prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = ldmsd_prdcr_del(name, &sctxt);
 	switch (reqc->errcode) {
 	case 0:
-		__dlog(DLOG_CFGOK, "prdcr_del name=%s\n", name);
+		__dlog(DLOG_CFGOK, "%s name=%s\n", cmd, name);
 		break;
 	case ENOENT:
 		Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The producer specified does not exist.");
+				"The %s specified does not exist.", obj_type);
 		break;
 	case EBUSY:
 		Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The producer is in use.");
+				"The %s is in use.", obj_type);
 		break;
 	case EACCES:
 		Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -1780,14 +1858,19 @@ static int prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 				"Error: %d %s",
 				reqc->errcode, ovis_errno_abbvr(reqc->errcode));
 	}
-
-send_reply:
-	ldmsd_send_req_response(reqc, reqc->line_buf);
+out:
 	free(name);
 	return 0;
 }
 
-static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
+static int prdcr_del_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = __prdcr_del_handler(reqc, "prdcr_del", "producer");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int __prdcr_start_handler(ldmsd_req_ctxt_t reqc, const char *cmd, const char *obj_type)
 {
 	char *name, *interval_str;
 	name = interval_str = NULL;
@@ -1800,8 +1883,8 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The attribute 'name' is required by prdcr_start.");
-		goto send_reply;
+				"The attribute 'name' is required by %s.", cmd);
+		goto out;
 	}
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
@@ -1810,16 +1893,15 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = ldmsd_prdcr_start(name, interval_str, &sctxt);
 	switch (reqc->errcode) {
 	case 0:
-		__dlog(DLOG_CFGOK, "prdcr_start name=%s reconnect=%s\n",
-			name, interval_str);
+		/* do nothing */
 		break;
 	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The producer is already running.");
+				"The %s is already running.", obj_type);
 		break;
 	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The producer specified does not exist.");
+				"The %s specified does not exist.", obj_type);
 		break;
 	case EACCES:
 		Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -1839,14 +1921,34 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 				reqc->errcode, ovis_errno_abbvr(reqc->errcode));
 	}
 
-send_reply:
-	ldmsd_send_req_response(reqc, reqc->line_buf);
+out:
 	free(name);
 	free(interval_str);
 	return 0;
 }
 
-static int prdcr_stop_handler(ldmsd_req_ctxt_t reqc)
+static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = __prdcr_start_handler(reqc, "prdcr_start", "producer");
+	if (CONFIG_PLAYBACK_ENABLED(DLOG_CFGOK)) {
+		if (!rc && !reqc->errcode) {
+			char *name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+			char *interval_us = ldmsd_req_attr_str_value_get_by_id(reqc,
+								LDMSD_ATTR_INTERVAL);
+			if (interval_us) {
+				__dlog(DLOG_CFGOK, "prdcr_start name=%s reconnect=%s\n",
+					name, interval_us);
+				free(interval_us);
+			} else {
+				__dlog(DLOG_CFGOK, "prdcr_start name=%s\n", name);
+			}
+		}
+	}
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
+static int __prdcr_stop_handler(ldmsd_req_ctxt_t reqc, const char *cmd, const char *obj_type)
 {
 	char *name = NULL;
 	size_t cnt = 0;
@@ -1858,8 +1960,8 @@ static int prdcr_stop_handler(ldmsd_req_ctxt_t reqc)
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The attribute 'name' is required by prdcr_stop.");
-		goto send_reply;
+				"The attribute 'name' is required by %s.", cmd);
+		goto out;
 	}
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
@@ -1867,15 +1969,15 @@ static int prdcr_stop_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = ldmsd_prdcr_stop(name, &sctxt);
 	switch (reqc->errcode) {
 	case 0:
-		__dlog(DLOG_CFGOK, "prdcr_stop name=%s\n", name);
+		__dlog(DLOG_CFGOK, "%s name=%s\n", cmd, name);
 		break;
 	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The producer is already stopped.");
+				"The %s is already stopped.", obj_type);
 		break;
 	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The producer specified does not exist.");
+				"The %s specified does not exist.", obj_type);
 		break;
 	case EACCES:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -1887,10 +1989,16 @@ static int prdcr_stop_handler(ldmsd_req_ctxt_t reqc)
 				reqc->errcode, ovis_errno_abbvr(reqc->errcode));
 	}
 
-send_reply:
-	ldmsd_send_req_response(reqc, reqc->line_buf);
+out:
 	free(name);
 	return 0;
+}
+
+static int prdcr_stop_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = __prdcr_stop_handler(reqc, "prdcr_stop", "producer");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
 }
 
 static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
@@ -9324,5 +9432,786 @@ static int banner_mode_handler(ldmsd_req_ctxt_t reqc)
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(mode_s);
+	return rc;
+}
+
+/* Sampler Discovery */
+
+/* *2 for the two hex digits needed for each 16-bit value, * 8 for the 8 groups of values, + 7 for the 7 colons */
+#define MAX_IPV6_STR_LEN (sizeof(uint16_t) * 2 * 8 + 7)
+static int __cidr2addr6(const char *cdir_str, struct ldms_addr *addr, int *prefix_len)
+{
+	int rc;
+	int is_ipv6 = 0;
+	char netaddr_str[MAX_IPV6_STR_LEN];
+	int _prefix_len;
+	struct ldms_addr s6 = {
+		.addr = {0,0,0,0,0,0,0,0,0,0,0xff,0xff,0,0,0,0}
+	};
+	if (strchr(cdir_str, ':') != NULL)
+		is_ipv6 = 1;
+
+	rc = sscanf(cdir_str, "%[^/]/%d", netaddr_str, &_prefix_len);
+	if (rc != 2) {
+		return EINVAL;
+	}
+
+	if (prefix_len)
+		*prefix_len = _prefix_len;
+
+	if (addr) {
+		if (is_ipv6) {
+			rc = inet_pton(AF_INET6, netaddr_str, &addr->addr);
+		} else {
+			rc = inet_pton(AF_INET, netaddr_str, &addr->addr);
+		}
+	}
+
+	if (rc != 1)
+		return rc;
+	if (!is_ipv6) {
+		/* Make the ipv4-mapped ipv6 format */
+		memcpy(&s6.addr[12], &addr->addr, 4);
+		memcpy(&addr->addr, &s6.addr, 16);
+		*prefix_len += 96;
+	}
+	addr->sa_family = AF_INET6;
+	return 0;
+}
+
+
+/* Aggregator */
+/* The implementation is in ldmsd_prdcr.c */
+extern int prdcr_ref_cmp(void *a, const void *b);
+static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *name;
+	char *regex_str;
+	char *cidr_str;
+	char *reconnect_str;
+	char *rail_str;
+	char *credits_str;
+	char *rx_rate_str;
+	char *disabled_start;
+	char *attr_name;
+	ldmsd_prdcr_listen_t pl;
+	long reconnect_us;
+	int rail;
+	uint64_t credits;
+	uint64_t rx_rate;
+
+	name = regex_str = reconnect_str = rail_str = credits_str = NULL;
+	rx_rate_str = cidr_str = disabled_start = NULL;
+
+	attr_name = "name";
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name)
+		goto einval;
+
+	regex_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
+	cidr_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_IP);
+	disabled_start = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTO_INTERVAL);
+
+	attr_name = "reconnect";
+	reconnect_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
+	if (!reconnect_str) {
+		goto einval;
+	} else {
+		reqc->errcode = ovis_time_str2us(reconnect_str, &reconnect_us);
+		if (reqc->errcode) {
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"The given 'reconnect' is invalid.");
+			goto send_reply;
+		}
+		if (reconnect_us <= 0) {
+			reqc->errcode = EINVAL;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"The reconnect interval must be a positive number.");
+			goto send_reply;
+		}
+	}
+
+	rail_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RAIL);
+	if (rail_str) {
+		rail = atoi(rail_str);
+		if (rail <= 0) {
+			reqc->errcode = EINVAL;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"'rail' attribute must be a positive "
+						"integer, got '%s'", rail_str);
+			goto send_reply;
+		}
+	}
+
+	credits_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_CREDITS);
+	if (credits_str) {
+		credits = atol(credits_str);
+		if (credits <= 2) {
+			reqc->errcode = EINVAL;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"'credits' attribute must be greater "
+						"than -2, got '%s'", credits_str);
+			goto send_reply;
+		}
+	}
+
+	rx_rate_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RX_RATE);
+	if (rx_rate_str) {
+		rx_rate = atol(rx_rate_str);
+		if (credits <= -2) {
+			reqc->errcode = EINVAL;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"'rx_rate' attribute must be greater "
+						"than -2, got '%s'", rx_rate_str);
+			goto send_reply;
+		}
+	}
+
+	pl = (ldmsd_prdcr_listen_t)
+		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_PRDCR_LISTEN,
+						sizeof(*pl), NULL, 0, 0, 0);
+	if (!pl)
+		goto enomem;
+	pl->auto_start = 1;
+	if (disabled_start) {
+		if ((0 == strcmp(disabled_start, "1")) ||
+				(0 == strcasecmp(disabled_start, "true"))) {
+			pl->auto_start = 0;
+		}
+	}
+
+	if (regex_str) {
+		pl->hostname_regex_s = strdup(regex_str);
+		if (!pl->hostname_regex_s) {
+			ldmsd_cfgobj_put(&pl->obj);
+			goto enomem;
+		}
+
+		rc = ldmsd_compile_regex(&pl->regex, regex_str, reqc->line_buf, reqc->line_len);
+		if (rc) {
+			reqc->errcode = EINVAL;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"The regular expression string "
+						"'%s' is invalid.", regex_str);
+			ldmsd_cfgobj_put(&pl->obj);
+			goto send_reply;
+		}
+	}
+
+	pl->prdcr_conn_intvl = reconnect_us;
+	if (cidr_str) {
+		pl->cidr_str = strdup(cidr_str);
+		if (!pl->cidr_str) {
+			reqc->errcode = ENOMEM;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						    "Memory allocation failure.");
+			ldmsd_cfgobj_put(&pl->obj);
+			goto send_reply;
+		}
+		rc = __cidr2addr6(cidr_str, &pl->net_addr, &pl->prefix_len);
+		if (rc) {
+			reqc->errcode = EINVAL;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"The given CIDR string '%s' "
+						"is invalid.", cidr_str);
+			ldmsd_cfgobj_put(&pl->obj);
+			goto send_reply;
+		}
+	}
+
+	pl->rails = rail;
+	pl->rate_limits = rx_rate;
+	rbt_init(&pl->prdcr_tree, prdcr_ref_cmp);
+	ldmsd_cfgobj_unlock(&pl->obj);
+
+send_reply:
+	free(name);
+	free(regex_str);
+	free(cidr_str);
+	free(reconnect_str);
+	free(rail_str);
+	free(credits_str);
+	free(rx_rate_str);
+	free(disabled_start);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+enomem:
+	reqc->errcode = ENOMEM;
+	(void)snprintf(reqc->line_buf, reqc->line_len,
+			"Memory allocation failed.");
+	goto send_reply;
+einval:
+	reqc->errcode = EINVAL;
+	(void) snprintf(reqc->line_buf, reqc->line_len,
+			"The attribute '%s' is required.", attr_name);
+	goto send_reply;
+}
+
+/* This is implemented in ldmsd_cfgobj.c */
+extern struct rbt *cfgobj_trees[];
+static int prdcr_listen_del_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *name = NULL;
+	struct ldmsd_sec_ctxt sctxt;
+	ldmsd_prdcr_listen_t pl;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		reqc->errcode = EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					"The attribute 'name' is required,");
+		goto send_reply;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR_LISTEN);
+	for (pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_PRDCR_LISTEN); pl;
+			pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_next(&pl->obj)) {
+		if (0 != strcmp(name, pl->obj.name))
+			continue;
+
+		ldmsd_cfgobj_lock(&pl->obj);
+		rc = ldmsd_cfgobj_access_check(&pl->obj, 0222, &sctxt);
+		if (rc) {
+			ldmsd_cfgobj_unlock(&pl->obj);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR_LISTEN);
+			reqc->errcode = EACCES;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"Permission denied");
+			goto send_reply;
+		}
+
+		if (pl->state != LDMSD_PRDCR_LISTEN_STATE_STOPPED) {
+			ldmsd_cfgobj_unlock(&pl->obj);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR_LISTEN);
+			reqc->errcode = EBUSY;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"The producer listen '%s' is in use.\n",
+						name);
+			goto send_reply;
+		}
+
+		if (ldmsd_cfgobj_refcount(&pl->obj) > 2) {
+			ldmsd_cfgobj_unlock(&pl->obj);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR_LISTEN);
+			reqc->errcode = EBUSY;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"The producer listen '%s' is in use.\n",
+						name);
+			goto send_reply;
+		}
+
+		rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR_LISTEN], &pl->obj.rbn);
+		ldmsd_cfgobj_put(&pl->obj); /* Put back the reference from the tree */
+		ldmsd_cfgobj_unlock(&pl->obj);
+		goto unlock_tree;
+	}
+
+	if (!pl) {
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR_LISTEN);
+		reqc->errcode = ENOENT;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					"The producer listen '%s' does not exist.\n",
+					name);
+		goto send_reply;
+	}
+
+unlock_tree:
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR_LISTEN);
+
+send_reply:
+	if (pl)
+		ldmsd_cfgobj_put(&pl->obj); /* Put back the 'first' or 'next' reference */
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int prdcr_listen_start_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *name = NULL;
+	struct ldmsd_sec_ctxt sctxt;
+	ldmsd_prdcr_listen_t pl;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		reqc->errcode = EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					"The attribute 'name' is required,");
+		goto send_reply;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_PRDCR_LISTEN);
+	if (!pl) {
+		reqc->errcode = ENOENT;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					"The listen_producer '%s' does not exist.",
+					name);
+		goto send_reply;
+	}
+
+	ldmsd_cfgobj_lock(&pl->obj);
+	rc = ldmsd_cfgobj_access_check(&pl->obj, 0222, &sctxt);
+	if (rc) {
+		ldmsd_cfgobj_unlock(&pl->obj);
+		reqc->errcode = EACCES;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					"Permission denied");
+		goto send_reply;
+	}
+
+	pl->obj.perm |= LDMSD_PERM_DSTART;
+	pl->state = LDMSD_PRDCR_LISTEN_STATE_RUNNING;
+	ldmsd_cfgobj_put(&pl->obj); /* Put back the 'find' reference */
+	ldmsd_cfgobj_unlock(&pl->obj);
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int prdcr_listen_stop_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *name = NULL;
+	struct ldmsd_sec_ctxt sctxt;
+	ldmsd_prdcr_listen_t pl;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		reqc->errcode = EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					"The attribute 'name' is required,");
+		goto send_reply;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_PRDCR_LISTEN);
+	if (!pl) {
+		reqc->errcode = ENOENT;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					"The listen_producer '%s' does not exist.",
+					name);
+		goto send_reply;
+	}
+
+	ldmsd_cfgobj_lock(&pl->obj);
+	rc = ldmsd_cfgobj_access_check(&pl->obj, 0222, &sctxt);
+	if (rc) {
+		reqc->errcode = EACCES;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					"Permission denied");
+		goto out;
+	}
+
+	if (pl->state == LDMSD_PRDCR_LISTEN_STATE_STOPPED)
+		goto out; /* already stopped, return as stop succeeds. */
+
+	pl->obj.perm &= ~LDMSD_PERM_DSTART;
+	pl->state = LDMSD_PRDCR_LISTEN_STATE_STOPPED;
+out:
+	ldmsd_cfgobj_put(&pl->obj); /* Put back the 'find' reference */
+	ldmsd_cfgobj_unlock(&pl->obj);
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int prdcr_listen_status_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	int cnt = 0;
+	int prdcr_cnt = 0;
+	ldmsd_prdcr_listen_t pl;
+	ldmsd_prdcr_ref_t pref;
+	struct rbn *rbn;
+	struct ldmsd_req_attr_s attr;
+
+	/*
+	 * TODO: It'll be helpfull to list all producers generated by each prdcr_listen.
+	 */
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR_LISTEN);
+	for (pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_PRDCR_LISTEN); pl;
+			pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_next(&pl->obj)) {
+		if (cnt) {
+			if ((rc = linebuf_printf(reqc, ",")))
+				goto err;
+		}
+		rc = linebuf_printf(reqc,
+				"{\"name\":\"%s\","
+				 "\"state\":\"%s\","
+				 "\"regex\":\"%s\","
+				 "\"IP range\":\"%s\","
+				 "\"reconnect\":\"%ld\","
+				 "\"producers\":[",
+				pl->obj.name,
+				((pl->state==LDMSD_PRDCR_LISTEN_STATE_RUNNING)?("running"):("stopped")),
+				(pl->hostname_regex_s?pl->hostname_regex_s:"-"),
+				(pl->cidr_str?pl->cidr_str:"-"),
+				pl->prdcr_conn_intvl
+				);
+		if (rc)
+			goto err;
+		RBT_FOREACH(rbn, &pl->prdcr_tree) {
+			pref = container_of(rbn, struct ldmsd_prdcr_ref, rbn);
+			if (prdcr_cnt) {
+				if ((rc = linebuf_printf(reqc, ",")))
+					goto err;
+			}
+			if ((rc = linebuf_printf(reqc, "\"%s\"", pref->prdcr->obj.name)))
+				goto err;
+			prdcr_cnt++;
+		}
+		if ((rc = linebuf_printf(reqc, "]}")))
+			goto err;
+		cnt++;
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR_LISTEN);
+	cnt = reqc->line_off + 2; /* +2 for '[' and ']' */
+
+	/* Send the json attribute header */
+	attr.discrim = 1;
+	attr.attr_len = cnt;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		goto out;
+
+	/* Send the json object */
+	rc = ldmsd_append_reply(reqc, "[", 1, 0);
+	if (rc)
+		goto out;
+	if (reqc->line_off) {
+		rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+		if (rc)
+			goto out;
+	}
+	rc = ldmsd_append_reply(reqc, "]", 1, 0);
+	if (rc) {
+		goto out;
+	}
+
+	/* Send the terminating attribute */
+	attr.discrim = 0;
+	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
+			sizeof(uint32_t), LDMSD_REQ_EOM_F);
+out:
+	return rc;
+err:
+	if (pl)
+		ldmsd_cfgobj_put(&pl->obj);
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR_LISTEN);
+	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+				"Error getting the status: Error %d.", rc);
+	reqc->errcode = EIO;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+/* The implementation is in ldmsd_updtr.c */
+extern int __ldmsd_updtr_prdcr_add(ldmsd_updtr_t updtr, ldmsd_prdcr_t prdcr);
+/* The implementations are in ldmsd_prdcr.c */
+extern ldmsd_prdcr_ref_t prdcr_ref_new(ldmsd_prdcr_t prdcr);
+static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t lp, struct ldms_addr *rem_addr)
+{
+	int rc;
+	char *name;
+	char *xprt_s;
+	char *hostname;
+	char *attr_name;
+	ldmsd_prdcr_t prdcr;
+	ldmsd_prdcr_ref_t pl_pref, updtr_pref;
+	struct rbn *rbn;
+	struct ldmsd_sec_ctxt sctxt;
+	uid_t uid;
+	gid_t gid;
+	int is_start;
+	name = xprt_s = hostname = NULL;
+
+	attr_name = "name";
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name)
+		goto einval;
+
+	attr_name = "hostname";
+	hostname = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
+	if (!hostname)
+		goto einval;
+
+	xprt_s = (char *)ldms_xprt_type_name(reqc->xprt->ldms.ldms);
+
+	/* TODO: make sure that it makes sense to use uid, gid from the request context. */
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	uid = sctxt.crd.uid;
+	gid = sctxt.crd.gid;
+
+	prdcr = ldmsd_prdcr_find(name);
+	if (!prdcr) {
+		prdcr = ldmsd_prdcr_new_with_auth(name, xprt_s, hostname, rem_addr->sin_port,
+				LDMSD_PRDCR_TYPE_ADVERTISED, INT_MAX,
+				NULL, uid, gid, 0770,
+				lp->rails, lp->recv_credits, lp->rate_limits);
+		if (!prdcr) {
+			reqc->errcode = ENOMEM;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"Aggregator failed to create "
+						"the producer '%s'", name);
+			rc = ENOMEM;
+			goto out;
+		}
+		is_start = 1;
+	} else {
+		if (prdcr->xprt) {
+			ovis_log(NULL, OVIS_LERROR,
+				"Received a duplicate advertise request of producer '%s'. "
+				"LDMSD ignores the subsequent request.\n", name);
+			rc = EBUSY;
+			goto out;
+		}
+	}
+
+	rbn = rbt_find(&lp->prdcr_tree, name);
+	if (!rbn) {
+		pl_pref = prdcr_ref_new(prdcr);
+		if (!pl_pref) {
+			ovis_log(config_log, OVIS_LCRIT, "Memory allocation failure.\n");
+			reqc->errcode = ENOMEM;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"Aggregator has memory allocation failure.");
+			rc = ENOMEM;
+			goto out;
+		}
+		rbt_ins(&lp->prdcr_tree, &pl_pref->rbn);
+	}
+
+	/* Add the producer to any updaters that the producer matches */
+	ldmsd_updtr_t updtr;
+	ldmsd_name_match_t match;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
+	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
+		updtr_pref = ldmsd_updtr_prdcr_find(updtr, prdcr->obj.name);
+		if (updtr_pref)
+			continue;
+
+		LIST_FOREACH(match, &updtr->prdcr_filter, entry) {
+			if (0 == regexec(&match->regex, prdcr->obj.name, 0, NULL, 0)) {
+				rc = __ldmsd_updtr_prdcr_add(updtr, prdcr);
+				if (rc) {
+					ovis_log(config_log, OVIS_LERROR,
+						"Failed to add the generated producer "
+						"'%s' to updater '%s'. Error %d\n",
+						name, updtr->obj.name, rc);
+					goto err;
+				}
+				break;
+			}
+		}
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+
+	/*
+	 * The producer state will be moved in the prdcr_task_cb() path.
+	 */
+	if (lp->auto_start && is_start) {
+		rc = ldmsd_prdcr_start(name, NULL, &sctxt);
+		if (rc) {
+			ovis_log(config_log, OVIS_LERROR, "Failed to start the "
+					"generated producer '%s'. Error %d.\n",
+					name, rc);
+			goto err;
+		}
+	}
+out:
+	return rc;
+einval:
+	ovis_log(config_log, OVIS_LERROR,
+			"The '%s' attribute is missing from "
+			"an advertise request.\n", attr_name);
+	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+				"The attribute '%s' is missing from "
+				"an advertise request to an aggregator.", attr_name);
+	reqc->errcode = rc = EINVAL;
+	goto out;
+err:
+	reqc->errcode = rc;
+	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+				"Aggregator failed to start the "
+				"generated producer '%s'.", name);
+	goto out;
+}
+
+/*
+ * If the producer listen contains both hostname regex and CIDR IP address range,
+ * the advertiser matches only when its hostname and IP address are matched
+ * the prdcr_listen's hostname regex and IP range.
+ */
+int __is_advertiser_matched(ldmsd_prdcr_listen_t pl, struct ldms_addr *advts_addr,
+						 const char *advts_hostname)
+{
+	int is_host_matched = 1;
+	int is_ip_matched = 1;
+
+	if (pl->hostname_regex_s) {
+		if (0 != regexec(&pl->regex, advts_hostname, 0, NULL, 0))
+			is_host_matched = 0;
+	}
+
+	if (pl->prefix_len) {
+		if (advts_addr->sa_family == AF_INET) {
+			struct ldms_addr s6 = {
+				.addr ={0,0,0,0,0,0,0,0,0,0,0xff,0xff,0,0,0,0}
+			};
+			memcpy(&s6.addr[12], &advts_addr->addr, 4);
+			memcpy(&advts_addr->addr, &s6.addr, 16);
+			advts_addr->sa_family = AF_INET6;
+		}
+		/* A CIDR IP address was given. */
+		if (0 == ldms_addr_in_network_addr(advts_addr, &pl->net_addr, pl->prefix_len))
+			is_ip_matched = 0;
+	}
+
+	if (is_host_matched && is_ip_matched)
+		return 1;
+	else
+		return 0;
+}
+
+static int advertise_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	ldmsd_prdcr_listen_t pl;
+	char *hostname;
+	char *name;
+	hostname = name = NULL;
+	struct ldms_addr rem_addr = {0};
+
+	rc = ldms_xprt_addr(reqc->xprt->ldms.ldms, NULL, &rem_addr);
+	if (rc) {
+		reqc->errcode = rc;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"An error %d occurred on the aggregator "
+						"while processing the advertisement.", rc);
+		goto send_reply;
+	}
+
+	hostname = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
+	if (!hostname) {
+		reqc->errcode = EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"The attribute 'hostname' is required.");
+		goto send_reply;
+	}
+
+	for (pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_PRDCR_LISTEN);
+			pl; pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_next(&pl->obj))
+	{
+		if (pl->state != LDMSD_PRDCR_LISTEN_STATE_RUNNING)
+			continue;
+		if (__is_advertiser_matched(pl, &rem_addr, hostname)) {
+			/* The hostname matches the regular expression. */
+			reqc->errcode = __process_advertisement(reqc, pl, &rem_addr);
+			if (reqc->errcode) {
+				if (reqc->errcode == EBUSY) {
+					snprintf(reqc->line_buf, reqc->line_len,
+						"The client already has a running "
+						"producer with the given name.");
+				} else {
+					snprintf(reqc->line_buf, reqc->line_len,
+						"An error '%d' occurred on the peer.", reqc->errcode);
+				}
+			}
+			ldmsd_cfgobj_put(&pl->obj); /* Put back the 'first' or 'next' reference */
+			goto send_reply;
+		}
+	}
+	/*
+	 * The advertisement doesn't match any listening producers
+	 */
+	reqc->errcode = ENOENT;
+	snprintf(reqc->line_buf, reqc->line_len,
+			"The given hostname '%s' doesn't match "
+			"any `prdcr_listen`'s regex.", hostname);
+	ovis_log(NULL, OVIS_LERROR, "Received a producer advertisement "
+			"with hostname '%s', which isn't matched any listening producers. "
+			"Stop the advertisement, update its configuration, and then restart.\n",
+			hostname);
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int advertiser_add_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldmsd_prdcr_t prdcr;
+	prdcr = __prdcr_add_handler(reqc, "advertiser_add", "advertiser");
+	if (prdcr) {
+		__dlog(DLOG_CFGOK, "advertiser_add name=%s xprt=%s host=%s port=%u "
+			"auth=%s uid=%d gid=%d perm=%o\n",
+			prdcr->obj.name, prdcr->xprt_name, prdcr->host_name,
+			prdcr->port_no, prdcr->conn_auth_dom_name,
+			(int)prdcr->obj.uid, (int)prdcr->obj.gid,
+			(unsigned)prdcr->obj.perm);
+	}
+
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
+static int advertiser_start_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	ldmsd_prdcr_t prdcr;
+	char *name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+
+	prdcr = ldmsd_prdcr_find(name);
+	if (!prdcr) {
+		prdcr = __prdcr_add_handler(reqc, "advertiser_start", "advertiser");
+		if (!prdcr) {
+			/*
+			 * Failed to create the producer.
+			 * The error message was prepared in __prdcr_add_handler()
+			 */
+			goto send_reply;
+		}
+		ldmsd_prdcr_get(prdcr); /* Get a reference to match the find reference */
+	}
+
+	rc = __prdcr_start_handler(reqc, "advertiser_start", "advertiser");
+	if (CONFIG_PLAYBACK_ENABLED(DLOG_CFGOK)) {
+		if (!rc && !reqc->errcode) {
+			__dlog(DLOG_CFGOK, "advertiser_start "
+				"name=%s xprt=%s host=%s port=%u "
+				"reconnect=%ld auth=%s uid=%d gid=%d perm=%o\n",
+				prdcr->obj.name, prdcr->xprt_name, prdcr->host_name,
+				prdcr->port_no, prdcr->conn_intrvl_us, prdcr->conn_auth_dom_name,
+				(int)prdcr->obj.uid, (int)prdcr->obj.gid,
+				(unsigned)prdcr->obj.perm);
+		}
+	}
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int advertiser_stop_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = __prdcr_stop_handler(reqc, "advertiser_stop", "advertiser");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int advertiser_del_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = __prdcr_del_handler(reqc, "advertiser_del", "advertiser");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
 }
