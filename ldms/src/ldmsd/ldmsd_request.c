@@ -2425,7 +2425,7 @@ int strgp_decomp_init(ldmsd_strgp_t strgp, ldmsd_req_ctxt_t req);
 static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *attr_name, *name, *plugin, *container, *schema, *interval, *regex;
-	char *decomp;
+	char *decomp = NULL;
 	name = plugin = container = schema = NULL;
 	size_t cnt = 0;
 	uid_t uid;
