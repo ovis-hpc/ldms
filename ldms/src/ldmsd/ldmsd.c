@@ -135,7 +135,6 @@ char myname[512]; /* name to identify ldmsd */
 		  /* DEFAULT: myhostname:port */
 char myhostname[80];
 char ldmstype[20];
-int foreground;
 int cfg_cntr = 0;
 pthread_t event_thread = (pthread_t)-1;
 char *logfile;
@@ -277,7 +276,7 @@ void cleanup(int x, const char *reason)
 		ldms = NULL;
 	}
 
-	if (!foreground && pidfile) {
+	if (pidfile) {
 		unlink(pidfile);
 		free(pidfile);
 		pidfile = NULL;
@@ -288,10 +287,6 @@ void cleanup(int x, const char *reason)
 			free(bannerfile);
 			bannerfile = NULL;
 		}
-	}
-	if (pidfile) {
-		free(pidfile);
-		pidfile = NULL;
 	}
 
 	ovis_log(NULL, OVIS_LALWAYS, "LDMSD_ cleanup end.\n");
@@ -2047,9 +2042,6 @@ int main(int argc, char *argv[])
 	opterr = 0;
 	while ((op = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
 		switch (op) {
-		case 'F':
-			foreground = 1;
-			break;
 		case 'u':
 			if (check_arg("u", optarg, LO_NAME))
 				return 1;
@@ -2103,6 +2095,10 @@ int main(int argc, char *argv[])
 				"The option `-B` is obsolete. "
 				"Please specify `banner mode=<0|1|2>` in a configuration file.");
 			cleanup(EINVAL, "Received an obsolete command-line option");
+		case 'F':
+			ovis_log(NULL, OVIS_LCRIT,
+				"The option `-F` is obsolete. ");
+			cleanup(EINVAL, "Received an obsolete command-line option");
 		default:
 			ret = ldmsd_process_cmd_line_arg(op, optarg);
 			if (ret) {
@@ -2128,13 +2124,6 @@ int main(int argc, char *argv[])
 			free(plug_name);
 		av_free(auth_opt);
 		exit(0);
-	}
-
-	if (!foreground) {
-		if (daemon(1, 1)) {
-			perror("ldmsd: ");
-			cleanup(8, "daemon failed to start");
-		}
 	}
 
 	/*
@@ -2205,48 +2194,45 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if (!foreground) {
-		/* Create pidfile for daemon that usually goes away on exit. */
-		/* user arg, then env, then default to get pidfile name */
-		if (pidfile) {
-			if( !access( pidfile, F_OK ) ) {
-				ovis_log(NULL, OVIS_LERROR, "Existing pid file named '%s': %s\n",
-					pidfile, "overwritten if writable");
-			}
-			FILE *pfile = fopen_perm(pidfile,"w", LDMSD_DEFAULT_FILE_PERM);
-			if (!pfile) {
-				int piderr = errno;
-				ovis_log(NULL, OVIS_LERROR, "Could not open the pid file named '%s': %s\n",
-					pidfile, STRERROR(piderr));
-				free(pidfile);
-				pidfile = NULL;
-			} else {
-				pid_t mypid = getpid();
-				fprintf(pfile,"%ld\n",(long)mypid);
-				fclose(pfile);
-			}
+	if (pidfile) {
+		if( !access( pidfile, F_OK ) ) {
+			ovis_log(NULL, OVIS_LERROR, "Existing pid file named '%s': %s\n",
+				pidfile, "overwritten if writable");
 		}
-		if (pidfile && banner) {
-			char *suffix = ".version";
-			bannerfile = malloc(strlen(suffix)+strlen(pidfile)+1);
-			if (!bannerfile) {
-				ovis_log(NULL, OVIS_LCRITICAL, "Memory allocation failure.\n");
-				av_free(auth_opt);
-				exit(1);
-			}
-			sprintf(bannerfile, "%s%s", pidfile, suffix);
-			if( !access( bannerfile, F_OK ) ) {
-				ovis_log(NULL, OVIS_LERROR, "Existing banner file named '%s': %s\n",
-					bannerfile, "overwritten if writable");
-			}
-			FILE *bfile = fopen_perm(bannerfile,"w", LDMSD_DEFAULT_FILE_PERM);
-			if (!bfile) {
-				int banerr = errno;
-				ovis_log(NULL, OVIS_LERROR, "Could not open the banner file named '%s': %s\n",
-					bannerfile, STRERROR(banerr));
-				free(bannerfile);
-				bannerfile = NULL;
-			} else {
+		FILE *pfile = fopen_perm(pidfile,"w", LDMSD_DEFAULT_FILE_PERM);
+		if (!pfile) {
+			int piderr = errno;
+			ovis_log(NULL, OVIS_LERROR, "Could not open the pid file named '%s': %s\n",
+				pidfile, STRERROR(piderr));
+			free(pidfile);
+			pidfile = NULL;
+		} else {
+			pid_t mypid = getpid();
+			fprintf(pfile,"%ld\n",(long)mypid);
+			fclose(pfile);
+		}
+	}
+	if (pidfile && banner) {
+		char *suffix = ".version";
+		bannerfile = malloc(strlen(suffix)+strlen(pidfile)+1);
+		if (!bannerfile) {
+			ovis_log(NULL, OVIS_LCRITICAL, "Memory allocation failure.\n");
+			av_free(auth_opt);
+			exit(1);
+		}
+		sprintf(bannerfile, "%s%s", pidfile, suffix);
+		if( !access( bannerfile, F_OK ) ) {
+			ovis_log(NULL, OVIS_LERROR, "Existing banner file named '%s': %s\n",
+				bannerfile, "overwritten if writable");
+		}
+		FILE *bfile = fopen_perm(bannerfile,"w", LDMSD_DEFAULT_FILE_PERM);
+		if (!bfile) {
+			int banerr = errno;
+			ovis_log(NULL, OVIS_LERROR, "Could not open the banner file named '%s': %s\n",
+				bannerfile, STRERROR(banerr));
+			free(bannerfile);
+			bannerfile = NULL;
+		} else {
 
 #define BANNER_PART1_A "Started LDMS Daemon with authentication "
 #define BANNER_PART1_NOA "Started LDMS Daemon without authentication "
@@ -2259,13 +2245,12 @@ int main(int argc, char *argv[])
 	ldms_version.flags, OVIS_GIT_LONG
 
 #if OVIS_LDMS_HAVE_AUTH
-				fprintf(bfile, BANNER_PART1_A
+			fprintf(bfile, BANNER_PART1_A
 #else /* OVIS_LDMS_HAVE_AUTH */
-				fprintf(bfile, BANNER_PART1_NOA
+			fprintf(bfile, BANNER_PART1_NOA
 #endif /* OVIS_LDMS_HAVE_AUTH */
-					BANNER_PART2);
-				fclose(bfile);
-			}
+				BANNER_PART2);
+			fclose(bfile);
 		}
 	}
 
