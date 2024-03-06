@@ -62,7 +62,7 @@ jobs:
         chmod 755 ldmsd-4.3.3.sh
         cat > ldmsd-4.sh << EOF
         . /opt/ovis-4/etc/profile.d/set-ovis-variables.sh
-        ./ldmsd-4 \$@
+        ./ldmsd-4 \$@ &
         EOF
         chmod 755 ldmsd-4.sh
         cat > ldms_ls.sh << EOF
