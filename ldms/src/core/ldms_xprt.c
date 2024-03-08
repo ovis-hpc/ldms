@@ -250,7 +250,39 @@ void ldms_xprt_rate_data(struct ldms_xprt_rate_data *data, int reset)
 /* implemented in ldms_rail.c */
 ldms_t __ldms_xprt_to_rail(ldms_t x);
 
-ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin)
+int __to_ipv6_addr(struct sockaddr *sa, struct sockaddr_in6 *sin6)
+{
+	if (sa->sa_family == AF_INET6) {
+		memcpy(sin6, (struct sockaddr_in6 *)sa, sizeof(*sin6));
+	} else {
+		struct sockaddr_in *sin = (struct sockaddr_in *)sa;
+		sin6->sin6_family = AF_INET6;
+		sin6->sin6_port = sin->sin_port;
+		memset(&sin6->sin6_addr, 0, sizeof(sin6->sin6_addr));
+		sin6->sin6_addr.__in6_u.__u6_addr8[10] = 0xff;
+		sin6->sin6_addr.__in6_u.__u6_addr8[11] = 0xff;
+		memcpy(&sin6->sin6_addr.__in6_u.__u6_addr32[3], &sin->sin_addr, 4);
+	}
+	return 0;
+}
+
+int __is_same_addr(struct sockaddr *a, struct sockaddr *b)
+{
+	struct sockaddr_in6 sin6_a, sin6_b;
+
+	/* Convert to IPv6 for easier comparison */
+	(void)__to_ipv6_addr(a, &sin6_a);
+	(void)__to_ipv6_addr(b, &sin6_b);
+
+	if (!(memcmp(&sin6_a.sin6_addr, &sin6_b.sin6_addr, sizeof(struct in6_addr)))
+		&& ((sin6_a.sin6_port == 0xffff || sin6_b.sin6_port == 0xffff)
+			|| (sin6_a.sin6_port == sin6_b.sin6_port))) {
+		return 1;
+	}
+	return 0;
+}
+
+ldms_t ldms_xprt_by_remote_sin(struct sockaddr *sa)
 {
 	struct sockaddr_storage ss_local, ss_remote;
 	socklen_t socklen;
@@ -268,10 +300,8 @@ ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin)
 					      &socklen);
 		if (zerr)
 			goto next;
-		struct sockaddr_in *s = (struct sockaddr_in *)&ss_remote;
-		if (s->sin_addr.s_addr == sin->sin_addr.s_addr
-		    && ((sin->sin_port == 0xffff) ||
-			(s->sin_port == sin->sin_port))) {
+
+		if (__is_same_addr(sa, (struct sockaddr *)&ss_remote)) {
 			/* Put the next ref back. */
 			ldms_xprt_put(l);
 			r = __ldms_xprt_to_rail(l);
