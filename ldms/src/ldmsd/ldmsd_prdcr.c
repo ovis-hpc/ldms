@@ -76,9 +76,12 @@ int prdcr_resolve(const char *hostname, unsigned short port_no,
 {
 	char port_str[16];
 
-	snprintf(port_str, sizeof(port_str), "%d", port_no);
-
-	return ldms_getsockaddr(hostname, port_str, (struct sockaddr*)ss, ss_len);
+	if (port_no) {
+		snprintf(port_str, sizeof(port_str), "%d", port_no);
+		return ldms_getsockaddr(hostname, port_str, (struct sockaddr*)ss, ss_len);
+	} else {
+		return ldms_getsockaddr(hostname, NULL, (struct sockaddr*)ss, ss_len);
+	}
 }
 
 void ldmsd_prdcr___del(ldmsd_cfgobj_t obj)
@@ -777,7 +780,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		}
 		break;
 	case LDMSD_PRDCR_TYPE_PASSIVE:
-		prdcr->xprt = ldms_xprt_by_remote_sin((struct sockaddr_in *)&prdcr->ss);
+		prdcr->xprt = ldms_xprt_by_remote_sin((struct sockaddr *)&prdcr->ss);
 		/* Call connect callback to advance state and update timers*/
 		if (prdcr->xprt) {
 			ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);

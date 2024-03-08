@@ -495,10 +495,12 @@ int ldms_version_check(const struct ldms_version *v);
 /**
  * \brief Find a transport that matches the specified address.
  *
- * \param sin	Specifies the address that should match the remote peer's ip address.
+ * The function will only compare the address if the port is 65535.
+ *
+ * \param sa	Specifies the address that should match the remote peer's ip address.
  * \returns	The matching transport endpoint or NULL if no match was found.
  */
-ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin);
+ldms_t ldms_xprt_by_remote_sin(struct sockaddr *sa);
 
 /**
  * \brief Get the local and remote names of a transport
