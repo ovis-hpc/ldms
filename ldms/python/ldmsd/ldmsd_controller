@@ -734,22 +734,33 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Create a Storage Policy and open/create the storage instance.
         Parameters:
-        name=      The unique storage policy name.
-        plugin=    The name of the storage backend.
-        container= The storage backend container name.
-        schema=    The schema name of the metric set to store.
-        [flush=]   The interval between calls to the storage plugin flush method.
-                   By default, the flush method is not called.
-        [perm=]    The permission to modify the storage policy in the future.
-        [decomposition=]   Path to a decomposition configuration file
+        name=              The unique storage policy name.
+        plugin=            The name of the storage backend.
+        container=         The storage backend container name.
+        [schema=]          The schema name of the metric set to store. This is a required
+                           argument unless decomposition is specified. May not be used in
+                           conjunction with "regex".
+        [flush=]           The interval between calls to the storage plugin flush method.
+                           By default, the flush method is not called.
+        [perm=]            The permission to modify the storage policy in the future.
+        [decomposition=]   Path to a decomposition configuration file.
+        [regex=]           A regular expression matching the schema set names to apply the
+                           decomposition file to. May not be used in conjunction with "schema".
         """
         arg = self.handle_args('strgp_add', arg)
         if not arg:
             return
+        if arg['schema'] and arg['regex']:
+            print(f'Error: "schema" and "regex" are mutually exclusive arguments.\n'
+                  f'Please specify either "schema" or "regex"')
+        # Check for variation of decomposition syntax
+        if 'decomp' in arg:
+            arg['decomposition'] = arg['decomp']
         rc, msg = self.comm.strgp_add(arg['name'],
                                       arg['plugin'],
                                       arg['container'],
                                       arg['schema'],
+                                      arg['regex'],
                                       arg['perm'],
                                       arg['flush'],
                                       arg['decomposition'])
