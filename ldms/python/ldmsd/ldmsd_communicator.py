@@ -115,8 +115,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'updtr_task': {'req_attr': ['name'], 'opt_attr': []},
                       'update_time_stats' : {'req_attr': [], 'opt_attr' : ['name']},
                       ##### Storage Policy #####
-                      'strgp_add': {'req_attr': ['name', 'plugin', 'container', 'schema'],
-                                    'opt_attr' : [ 'flush', 'decomposition', 'perm' ] },
+                      'strgp_add': {'req_attr': ['name', 'plugin', 'container'],
+                                    'opt_attr' : ['flush', 'decomposition', 'perm', 'regex', 'schema'] },
                       'strgp_del': {'req_attr': ['name']},
                       'strgp_prdcr_add': {'req_attr': ['name', 'regex']},
                       'strgp_prdcr_del': {'req_attr': ['name', 'regex']},
@@ -2660,7 +2660,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def strgp_add(self, name, plugin, container, schema, perm=0o777, flush=None, decomp=None):
+    def strgp_add(self, name, plugin, container, schema=None, perm=0o777, flush=None, decomposition=None, regex=None):
         """
         Add a Storage Policy that will store metric set data when
         updates complete on a metric set.
@@ -2673,11 +2673,11 @@ class Communicator(object):
 
 
         Keyword Parameters:
-        perm    -   The permission required to modify the storage policy,
-                    default perm=0o600
-        flush   -   Interval between calls to the storage plugin flush method.
-                    By default, the flush method is not called.
-        decomp  -   The path to a decomposition configuration file
+        perm           -   The permission required to modify the storage policy,
+                            default perm=0o600
+        flush          -   Interval between calls to the storage plugin flush method.
+                           By default, the flush method is not called.
+        decomposition  -   The path to a decomposition configuration file
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
@@ -2687,11 +2687,20 @@ class Communicator(object):
             LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
             LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PLUGIN, value=plugin),
             LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.CONTAINER, value=container),
-            LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.SCHEMA, value=schema),
             LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PERM, value=str(perm)),
         ]
-        if decomp is not None:
-            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.DECOMPOSITION, value = decomp))
+        if regex and schema:
+            return errno.EINVAL, 'When using decomposition "schema" and "regex" are mutually exclusive arguments'
+        elif not schema and not decomposition:
+            return errno.EINVAL, 'Schema is a required argument when not using decomposition'
+        if decomposition is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.DECOMPOSITION, value = decomposition))
+            if regex:
+                attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex))
+            else:
+                return errno.EINVAL, 'strgp_add requires either a schema name or a regular expression when using decomposition'
+        if schema is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.SCHEMA, value=schema))
         if flush is not None:
             attrs.append(LDMSD_Req_Attr(attr_name='flush', value=flush))
         req = LDMSD_Request(command_id=LDMSD_Request.STRGP_ADD, attrs=attrs)
