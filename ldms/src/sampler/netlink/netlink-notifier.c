@@ -328,6 +328,7 @@ typedef struct forkstat {
 
 
 static char unknown[] = "<unknown>";
+static char no_exe_data[] = "/no-exe-data"; // this is used for json output only when exe is null.
 #ifdef debug_err_lock
 static pthread_mutex_t err_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif
@@ -409,7 +410,7 @@ static const int signals[] = {
 };
 
 /* add several structures related to filtering. */
-#define default_format "1" /* this is also the max format known */
+#define default_format "2" /* this is also the max format known */
 #define default_heartbeat NULL /* none by default*/
 #define default_component_id NULL
 #define default_ProducerName NULL
@@ -3207,6 +3208,41 @@ static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info
 				(int64_t)info->pid,
 				(int)info->pid,
 				info->duration);
+	else if (ft->format == 2)
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"linux_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				/* format start_tick as string because u64
+				* is out of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"task_pid\":%d,"
+				"\"duration\":%.17g"
+				"\"exe\":\"%s\""
+				"}"
+			"}",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info->start_tick,
+				info_jobid_str(info),
+				info->serno,
+				(int64_t)info->pid,
+				(int)info->pid,
+				info->duration,
+				info->exe ? info->exe : no_exe_data
+				);
 	else
 		jb = NULL;
 
@@ -3314,7 +3350,35 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 				info_jobid_str(info),
 				info->serno,
 				(int64_t)info->pid,
-				info->duration);
+				info->duration
+				);
+	else if (ft->format == 2)
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"lsf_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"duration\":%.17g,"
+				"\"exe\":\"%s\",",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info),
+				info->serno,
+				(int64_t)info->pid,
+				info->duration,
+				info->exe ? info->exe : no_exe_data
+				);
 	else
 		jb = NULL;
 	if (!jb)
@@ -3442,6 +3506,33 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 				info->serno,
 				(int64_t)info->pid,
 				info->duration);
+	else if (ft->format == 2)
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"slurm_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"job_id\":\"%s\","
+				"\"start\":\"%lu.%06lu\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"duration\":%.17g,"
+				"\"exe\":\"%s\",",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info_jobid_str(info),
+				info->start.tv_sec, info->start.tv_usec,
+				info->serno,
+				(int64_t)info->pid,
+				info->duration,
+				info->exe ? info->exe : no_exe_data
+				);
 	else
 		jb = NULL;
 	if (!jb)
