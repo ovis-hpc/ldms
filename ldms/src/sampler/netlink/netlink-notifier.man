@@ -86,6 +86,9 @@ The 'short' options do not override the exclude entirely options.
 	 and it should not contain any files except those created by
 	 this daemon. When enabled, track-dir will be populated even if
 	 -S is used to suppress the stream output.
+--purge-track-dir	if track-dir is set, purge any files there
+	 which do not correspond to current processes.
+	 Equivalently, NOTIFIER_PURGE_TRACK_DIR may be set.
 --component_id=<U64>     set the value of component_id.
 	 If not set, the component_id field is not included in the stream formats produced.
 --ProducerName=<name>    set the value of ProducerName
@@ -111,9 +114,11 @@ NOTIFIER_LDMS_PORT=411
 NOTIFIER_LDMS_AUTH=munge
 NOTIFIER_FORMAT=2
 NOTIFIER_HEARTBEAT=(none)
+NOTIFIER_PURGE_TRACK_DIR
 .fi
 Omitting (nullexe):<unknown> from NOTIFIER_EXCLUDE_PROGRAMS may cause incomplete output
 related to processes no longer present. In exotic circumstances, this may be desirable.
+The value of NOTIFIER_PURGE_TRACK_DIR is not used to enable purge, just its presence.
 
 .SH FILES
 
@@ -126,10 +131,12 @@ For each pid started event which would be emitted to an LDMS stream, a temporary
 file with the name of the pid is created in NOTIFIER_TRACK_DIR. The file
 will contain the json event attempted. The temporary file will
 be removed when the corresponding pid stopped event is sent.
-These files are not removed when the notifier daemon exits.
+These files are not removed when the notifier daemon exits, so that
+they will be found after a restart.
 Client applications may validate a file by checking the contents
 against the /proc/$pid/stat content, if it exists.
-Invalid files should be removed by clients or system scripts.
+Invalid files should be removed by clients or system scripts; the purge option
+is provided to optionally do this on start.
 
 .SH MESSAGE FORMATS
 Message formats tuned to SLURM, LSF, and Linux without a batch scheduler
