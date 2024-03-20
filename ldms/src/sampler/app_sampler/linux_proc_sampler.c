@@ -2789,7 +2789,7 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 #endif
 	if (inst->log_send) {
 		INST_LOG(inst, LDMSD_LDEBUG,
-			"Sending pid %d argv %s%s%s\n",
+			"Sending pid %d argv %s%s\n",
 			app_set->key.os_pid, pname ? " on" : "",
 			pname ? pname : "");
 	}
