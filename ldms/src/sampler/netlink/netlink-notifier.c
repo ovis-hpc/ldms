@@ -91,6 +91,7 @@
 #include <math.h>
 #include <stddef.h>
 #include <sys/queue.h>
+#include <glob.h>
 #include "simple_lps.h"
 
 FILE *debug_log;
@@ -415,6 +416,7 @@ static const int signals[] = {
 #define default_component_id NULL
 #define default_ProducerName NULL
 #define default_track_dir "/var/run/ldms-netlink-tracked"
+#define default_purge NULL
 #define default_send_log NULL
 #define default_exclude_programs "(nullexe):<unknown>"
 #define default_exclude_dirs "/sbin"
@@ -557,7 +559,7 @@ static int normalize_exclude(struct exclude_arg *e)
 {
 	if (!e)
 		return EINVAL;
-	int rc;
+	int rc = 0;
 	struct path_elt *pe;
 	int npath;
 	switch (e->valtype) {
@@ -597,6 +599,8 @@ static int normalize_exclude(struct exclude_arg *e)
 		}
 		e->len_paths = npath;
 		qsort(e->paths, e->len_paths, sizeof(e->paths[0]), cmp_str);
+		break;
+	case VT_NONE:
 		break;
 	}
 	return rc;
@@ -2361,6 +2365,7 @@ static struct exclude_arg excludes[] = {
 	{default_component_id, VT_SCALAR, 0, "NOTIFIER_COMPONENT_ID", NULL, 0, PLINIT},
 	{default_format, VT_SCALAR, 0, "NOTIFIER_FORMAT", NULL, 0, PLINIT},
 	{default_heartbeat, VT_SCALAR, 0, "NOTIFIER_HEARTBEAT", NULL, 0, PLINIT},
+	{default_purge, VT_NONE, 0, "NOTIFIER_PURGE_TRACK_DIR", NULL, 0, PLINIT},
 };
 static struct exclude_arg *bin_exclude = &excludes[0];
 static struct exclude_arg *dir_exclude = &excludes[1];
@@ -2379,6 +2384,7 @@ static struct exclude_arg *prod_arg = &excludes[13];
 static struct exclude_arg *compid_arg = &excludes[14];
 static struct exclude_arg *format_arg = &excludes[15];
 static struct exclude_arg *heartbeat_arg = &excludes[16];
+static struct exclude_arg *purge_track_dir_arg = &excludes[17];
 
 static struct option long_options[] = {
 	{"exclude-programs", optional_argument, 0, 0},
@@ -2398,6 +2404,7 @@ static struct option long_options[] = {
 	{"component_id", required_argument, 0, 0},
 	{"format", required_argument, 0, 0},
 	{"heartbeat", required_argument, 0, 0},
+	{"purge-track-dir", no_argument, 0, 0},
 	{0, 0, 0, 0}
 };
 
@@ -2490,6 +2497,11 @@ static void show_help(char *const argv[])
 				excludes[c].defval, excludes[c].env);
 			break;
 		case VT_NONE:
+			PRINTF("--%s\t enables %s.\n"
+			       "\t If not given, the default is used unless\n"
+			       "\t the environment variable %s exists.\n",
+				long_options[c].name, long_options[c].name,
+				excludes[c].env);
 			break;
 		}
 	}
@@ -2733,10 +2745,16 @@ static void forkstat_option_dump(forkstat_t *ft, struct exclude_arg *excludes)
 	printf("\topt_trace = %u\n", ft->opt_trace);
 	size_t k;
 	int c;
+	printf("long opts:\n");
 	for (c = 0; c < nlongopt; c++) {
-		PRINTF("\tcomputed %s:\n", excludes[c].env);
+		printf("--%s\n", long_options[c].name);
+		printf("\tparsed %d:\n", excludes[c].parsed);
+		printf("\tcomputed %s:\n", excludes[c].env);
 		for (k = 0; k < excludes[c].len_paths; k++)
-			PRINTF("\t\telt[%zu]: %s\n", k, excludes[c].paths[k].n);
+			printf("\t\telt[%zu]: %s\n", k, excludes[c].paths[k].n);
+		char *ev = getenv(excludes[c].env);
+		printf("\tenv %s: %s\n", excludes[c].env,
+			ev ? (ev[0] != '\0' ? ev : "<empty-string>") : "<unset>");
 	}
 }
 
@@ -3227,7 +3245,7 @@ static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info
 				"\"serial\":%" PRId64 ","
 				"\"os_pid\":%" PRId64 ","
 				"\"task_pid\":%d,"
-				"\"duration\":%.17g"
+				"\"duration\":%.17g,"
 				"\"exe\":\"%s\""
 				"}"
 			"}",
@@ -3804,6 +3822,41 @@ void heartbeat(forkstat_t *ft, time_t now, jbuf_t *jbd)
 	}
 }
 
+void purge_track_dir(const char *track_dir)
+{
+	if (!track_dir || track_dir[0] != '/')
+		return;
+	PRINTF("Clearing %s\n", track_dir);
+	size_t g_pat_sz = strlen(track_dir) + 10;
+	char gpat[g_pat_sz];
+	glob_t pglob;
+	memset(&pglob, 0, sizeof(pglob));
+	sprintf(gpat, "%s/[0-9]*", track_dir);
+	int gc = glob(gpat, GLOB_NOSORT, NULL, &pglob);
+	if (gc) {
+		PRINTF("Read no pids from %s\n", track_dir);
+		return;
+	}
+	size_t ig = 0;
+	struct proc_info info;
+	struct stat sb;
+	for ( ; ig < pglob.gl_pathc; ig++) {
+		char *pidstr = basename(pglob.gl_pathv[ig]);
+		if (!pidstr)
+			continue;
+		sprintf(gpat, "/proc/%s", pidstr);
+		int rc = stat(gpat, &sb);
+		if (rc) {
+			/* no /proc/$pidstr exists, so remove $track_dir/$pidstr */
+			info.pid = strtol(pidstr, NULL, 10);
+			track_pid_remove(&info, track_dir);
+			PRINTF("Cleared %s%s\n", track_dir, pidstr);
+		}
+	}
+	globfree(&pglob);
+
+}
+
 #define DFLT_SORT_SZ 128
 static void *dump_pids(void *vp)
 {
@@ -4053,7 +4106,7 @@ int main(int argc, char * argv[])
 		ret = EXIT_FAILURE;
 		goto abort_sock;
 	}
-	if (compid_arg[0].parsed && compid_arg->paths[0].n) {
+	if (compid_arg[0].parsed || getenv(compid_arg->env)) {
 		size_t csz = strlen(compid_arg->paths[0].n) + 20;
 		char ctmp[csz];
 		sprintf(ctmp, "\"component_id\":%s,", compid_arg->paths[0].n);
@@ -4061,14 +4114,18 @@ int main(int argc, char * argv[])
 	} else {
 		ft->compid_field = strdup("");
 	}
-	if (heartbeat_arg[0].parsed && heartbeat_arg->paths[0].n &&
-		set_heartbeat(heartbeat_arg->paths[0].n, ft)) { // NPR fixme
+	if ( (heartbeat_arg[0].parsed || getenv(heartbeat_arg->env)) &&
+		set_heartbeat(heartbeat_arg->paths[0].n, ft)) {
 		fprintf(stderr, "Bad value %s for %s.\n",
 			heartbeat_arg->paths[0].n, "heartbeat. need seconds.");
 		ret = EXIT_FAILURE;
 		goto abort_sock;
 	}
-	if (prod_arg[0].parsed && prod_arg->paths[0].n) {
+	if (track_dir_arg->len_paths && (purge_track_dir_arg[0].parsed ||
+		getenv(purge_track_dir_arg->env) != NULL )) {
+		purge_track_dir(track_dir_arg->paths[0].n);
+	}
+	if (prod_arg[0].parsed || getenv(prod_arg->env)) {
 		size_t csz = strlen(prod_arg->paths[0].n) + 20;
 		char ctmp[csz];
 		sprintf(ctmp, "\"ProducerName\":\"%s\",", prod_arg->paths[0].n);
