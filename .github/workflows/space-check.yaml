@@ -2,7 +2,10 @@ name: Space Check
 
 on:
   pull_request:
-    branches: [ OVIS-4 ]
+    branches:
+      - 'OVIS-4'
+      - main
+      - 'b[0-9]+.[0-9]+'
 
 jobs:
   space_check:
