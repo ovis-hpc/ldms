@@ -585,6 +585,16 @@ cdef py_ldms_metric_get_record_type(Set s, int m_idx):
 cdef py_ldms_metric_get_record_array(Set s, int m_idx):
     return RecordArray(s, m_idx)
 
+cdef char * CSTR(object obj):
+    if obj is None:
+        return NULL
+    return obj
+
+cdef bytes CBYTES(const char *s):
+    if s == NULL:
+        return None
+    return bytes(s)
+
 METRIC_GETTER_TBL = {
         LDMS_V_CHAR : py_ldms_metric_get_char,
         LDMS_V_U8   : py_ldms_metric_get_u8,
@@ -1327,6 +1337,8 @@ cdef ldms_value_type LDMS_VALUE_TYPE(t):
 cdef bytes BYTES(o):
     """Convert Python object `s` to `bytes` (c-string compatible)"""
     # a wrapper to solve the annoying bytes vs str in python3
+    if o is None:
+        return None
     if type(o) == bytes:
         return o
     return str(o).encode()
@@ -1731,7 +1743,8 @@ cdef class RecordDef(object):
         t = LDMS_VALUE_TYPE(metric_type)
         if t < LDMS_V_CHAR or LDMS_V_D64_ARRAY < t:
             raise TypeError("{} is not supported in a record".format(metric_type))
-        idx = ldms_record_metric_add(self._rec_def, BYTES(name), BYTES(units),
+        idx = ldms_record_metric_add(self._rec_def, CSTR(BYTES(name)),
+                                     CSTR(BYTES(units)),
                                      t, count)
         if idx < 0:
             raise RuntimeError("ldms_record_metric_add() error: {}" \
@@ -1900,9 +1913,8 @@ cdef class Schema(object):
         NOTE: If metric_type is LDMS_V_LIST, the count is the heap size in bytes.
         """
         cdef int idx
-        cdef char *u = NULL
-        cdef bytes b
         cdef RecordDef _rec_def
+
 
         if type(metric_type) == RecordDef:
             self.add_record(metric_type)
@@ -1914,25 +1926,26 @@ cdef class Schema(object):
             if type(rec_def) != RecordDef:
                 raise TypeError("Expecting RecordRef `rec_def`")
             _rec_def = <RecordDef>rec_def
-            idx = ldms_schema_record_array_add(self._schema, BYTES(name),
-                    _rec_def._rec_def, count)
+            idx = ldms_schema_record_array_add(self._schema,
+                                CSTR(BYTES(name)), _rec_def._rec_def, count)
         elif t == LDMS_V_LIST:
-            if units is not None:
-                b = BYTES(units)
-                u = b
-            idx = ldms_schema_metric_list_add(self._schema, BYTES(name), u, count)
+            idx = ldms_schema_metric_list_add(self._schema,
+                                              CSTR(BYTES(name)),
+                                              CSTR(BYTES(units)), count)
         elif ldms_type_is_array(t):
             if meta:
-                idx = ldms_schema_meta_array_add(self._schema, BYTES(name), t,
-                                                 count)
+                idx = ldms_schema_meta_array_add_with_unit( self._schema,
+                                CSTR(BYTES(name)), CSTR(BYTES(units)), t, count)
             else:
-                idx = ldms_schema_metric_array_add(self._schema, BYTES(name), t,
-                                                   count)
+                idx = ldms_schema_metric_array_add_with_unit(self._schema,
+                                CSTR(BYTES(name)), CSTR(BYTES(units)), t, count)
         else:
             if meta:
-                idx = ldms_schema_meta_add(self._schema, BYTES(name), t)
+                idx = ldms_schema_meta_add_with_unit(self._schema,
+                                CSTR(BYTES(name)), CSTR(BYTES(units)), t)
             else:
-                idx = ldms_schema_metric_add(self._schema, BYTES(name), t)
+                idx = ldms_schema_metric_add_with_unit(self._schema,
+                                CSTR(BYTES(name)), CSTR(BYTES(units)), t)
         if idx < 0:
             # error = -idx
             raise OSError(-idx, "Adding metric to schema failed: {}" \
@@ -2506,20 +2519,20 @@ cdef class RecordInstance(MVal):
         """Get metric name of the i_th member of the record"""
         cdef const char *c_str
         c_str = ldms_record_metric_name_get(self.rec_inst, i)
-        return STR(c_str)
+        return STR(CBYTES(c_str))
 
     def get_metric_unit(self, i):
         """Get metric unit of the i_th member of the record"""
         cdef const char *c_str
         c_str = ldms_record_metric_unit_get(self.rec_inst, i)
-        return STR(c_str)
+        return STR(CBYTES(c_str))
 
     def keys(self):
         """Generator yielding the names of the metrics in the record"""
         cdef const char *c_str
         for i in range(len(self)):
             c_str = ldms_record_metric_name_get(self.rec_inst, i)
-            s = STR(c_str)
+            s = STR(CBYTES(c_str))
             yield s
 
     def items(self):
@@ -3186,15 +3199,15 @@ cdef class Xprt(object):
                 raise TypeError("auth_opts must be a dictionary")
             avl = av_new(len(auth_opts))
             for k, v in auth_opts.items():
-                rc = av_add(avl, BYTES(k), BYTES(v))
+                rc = av_add(avl, CSTR(BYTES(k)), CSTR(BYTES(v)))
                 if rc:
                     av_free(avl)
                     raise OSError(rc, "av_add() error: {}"\
                                   .format(ERRNO_SYM(rc)))
         self.rail_eps = rail_eps
-        self.xprt = ldms_xprt_rail_new(BYTES(name), rail_eps,
+        self.xprt = ldms_xprt_rail_new(CSTR(BYTES(name)), rail_eps,
                                         rail_recv_limit, rail_rate_limit,
-                                        BYTES(auth), avl)
+                                        CSTR(BYTES(auth)), avl)
         av_free(avl)
         if not self.xprt:
             raise ConnectionError(errno, "Error creating transport, errno: {}"\
@@ -4097,7 +4110,7 @@ cdef class StreamClient(object):
             desc = ""
         self.c = ldms_stream_subscribe(BYTES(match), is_regex,
                                        __stream_client_cb, <void*>self,
-                                       BYTES(desc))
+                                       CSTR(BYTES(desc)))
         if not self.c:
             raise RuntimeError(f"ldms_stream_subscribe() error, errno: {errno}")
 
@@ -4211,4 +4224,4 @@ def ovis_log_set_level_by_name(str subsys_name, level):
     """ovis_log_set_level_by_name(str subsys_name, level)"""
     if type(level) is str:
         level = LOG_LEVEL_MAP[level.upper()]
-    ldms.ovis_log_set_level_by_name(BYTES(subsys_name), level)
+    ldms.ovis_log_set_level_by_name(CSTR(BYTES(subsys_name)), level)
