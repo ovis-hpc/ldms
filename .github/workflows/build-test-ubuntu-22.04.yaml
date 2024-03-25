@@ -2,9 +2,15 @@ name: Build Test - Ubuntu-22.04
 
 on:
   push:
-    branches: [ OVIS-4 ]
+    branches:
+      - 'OVIS-4'
+      - main
+      - 'b[0-9]+.[0-9]+'
   pull_request:
-    branches: [ 'OVIS-4**' ]
+    branches:
+      - 'OVIS-4'
+      - main
+      - 'b[0-9]+.[0-9]+'
 
 jobs:
   build:
