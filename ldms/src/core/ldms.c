@@ -4984,8 +4984,6 @@ int ldms_schema_metric_add_template(ldms_schema_t s,
 	for (i=0, ent=tmp; ent->name || ent->rec_def; i++,ent++) {
 		switch (ent->type) {
 		case LDMS_V_RECORD_TYPE:
-			if (ent->flags & LDMS_MDESC_F_META)
-				return -EINVAL;
 			ret = ldms_schema_record_add(s, ent->rec_def);
 			break;
 		case LDMS_V_RECORD_ARRAY:
