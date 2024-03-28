@@ -2002,6 +2002,45 @@ extern void ldms_schema_delete(ldms_schema_t schema);
 extern int ldms_schema_metric_count_get(ldms_schema_t schema);
 
 /**
+ * \brief Populate \c out with information of metric \c mid in \c schema.
+ *
+ * Please note that the pointer members in \c out (e.g. \c out->name) point to
+ * memory that is owned by \c schema. So, please do *NOT* modify or free the
+ * members of \c out. The \c out itself can be freed.
+ *
+ * \param [in]  schema The schema handle.
+ * \param [in]  mid    The metric ID.
+ * \param [out] out    The metric template structure output.
+ *
+ * \retval 0      If succeeded, or
+ * \retval ENOENT if \c mid does not exist.
+ */
+extern int ldms_schema_metric_template_get(ldms_schema_t schema, int mid,
+				struct ldms_metric_template_s *out);
+
+/**
+ * \brief Like \c ldms_schema_metric_template_get(), but in bulk.
+ *
+ * This function copies metric template information from \c schema into \c out
+ * template array up to \c len metrics. The pointers in the template structure
+ * are owned by \c schema, please do not modify or free them. The \c out array,
+ * however, can be freed. Similar to \c snprintf(), this function returns a
+ * number less than or equal to \c len if succeeded, or a number greater than
+ * \c len to indicate the required array length. In the latter case, the
+ * template array \c out contains \c len metric templates.
+ *
+ * \param [in]  schema The schema handle.
+ * \param [in]  len    The length of the \c out array buffer.
+ * \param [out] out    The output template array.
+ *
+ * \retval N<=len If succeeded, or
+ * \retval N>len  if the output array is not long enough
+ *
+ */
+extern int ldms_schema_bulk_template_get(ldms_schema_t schema, int len,
+				struct ldms_metric_template_s out[]);
+
+/**
  * \brief Set the cardinality of the set array created by this schema.
  *
  * \param schema The schema handle.
@@ -2053,6 +2092,18 @@ void ldms_record_delete(ldms_record_t rec_def);
 int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
 			   const char *unit, enum ldms_value_type type,
 			   size_t array_len);
+
+/**
+ * Get the number of metrics in record definition \c rec_def.
+ *
+ * \note \c ldms_record_card() does the same thing on \c mavl (\c record_inst or
+ * \c record_type) from an LDMS set.
+ *
+ * \param rec_def  The record definition handle (from \c ldms_record_alloc()).
+ *
+ * \retval N The number of metrics in the record.
+ */
+int ldms_record_metric_card(ldms_record_t rec_def);
 
 
 /**
@@ -2115,6 +2166,47 @@ size_t ldms_record_heap_size_get(ldms_record_t rec_def);
  * \retval bytes The size of the heap memory
  */
 size_t ldms_record_value_size_get(ldms_record_t rec_def);
+
+/**
+ * \brief Populate \c out with information of metric \c mid in \c record.
+ *
+ * Please note that the pointer members in \c out (e.g. \c out->name) point to
+ * memory that is owned by \c record. So, please do *NOT* modify or free the
+ * members of \c out. The \c out itself can be freed.
+ *
+ * \param [in]  record The record handle.
+ * \param [in]  mid    The metric ID.
+ * \param [out] out    The metric template structure output.
+ *
+ * \retval 0      If succeeded, or
+ * \retval ENOENT if \c mid does not exist.
+ */
+extern int ldms_record_metric_template_get(ldms_record_t record, int mid,
+				struct ldms_metric_template_s *out);
+
+/**
+ * \brief Like \c ldms_record_metric_template_get(), but in bulk.
+ *
+ * This function copies metric template information from \c record into \c out
+ * template array up to \c len metrics. The pointers in the template structure
+ * are owned by \c record, please do not modify or free them. The \c out array,
+ * however, can be freed. Similar to \c snprintf(), this function returns a
+ * number less than or equal to \c len if succeeded, or a number greater than
+ * \c len to indicate the required array length. In the latter case, the
+ * template array \c out contains \c len metric templates.
+ *
+ * \param [in]  record The record handle.
+ * \param [in]  len    The length of the \c out array buffer.
+ * \param [out] out    The output template array.
+ *
+ * \retval N<=len If succeeded, or
+ * \retval N>len  if the output array is not long enough
+ *
+ */
+extern int ldms_record_bulk_template_get(ldms_record_t record, int len,
+				struct ldms_metric_template_s out[]);
+
+extern const char *ldms_record_name_get(ldms_record_t record);
 
 void _ldms_set_ref_get(ldms_set_t s, const char *reason, const char *func, int line);
 int _ldms_set_ref_put(ldms_set_t s, const char *reason, const char *func, int line);
