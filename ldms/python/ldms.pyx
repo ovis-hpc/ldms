@@ -422,6 +422,9 @@ cdef Ptr PTR(void *ptr):
     po.c_ptr = ptr
     return po
 
+def type_is_array(ldms_value_type t):
+    return bool(ldms_type_is_array(t))
+
 def JSON_OBJ(o):
     t = type(o)
     if t in (int, float, str):
@@ -580,7 +583,8 @@ cdef py_ldms_metric_get_list(Set s, int m_idx):
 
 cdef py_ldms_metric_get_record_type(Set s, int m_idx):
     cdef ldms_mval_t lt = ldms_metric_get(s.rbd, m_idx)
-    return RecordType(s, PTR(lt))
+    cdef const char *name = ldms_metric_name_get(s.rbd, m_idx)
+    return RecordType(s, PTR(lt), name = STR(name))
 
 cdef py_ldms_metric_get_record_array(Set s, int m_idx):
     return RecordArray(s, m_idx)
@@ -1664,6 +1668,27 @@ cdef void push_cb(ldms_t _t, ldms_set_t _s, int flags, void *arg) with gil:
         s._push_cb(s, flags, s._push_cb_arg)
 
 
+MetricTemplateBase = namedtuple('MetricTemplateBase',
+                                [ 'name', 'type', 'count', 'flags',
+                                  'units', 'rec_def' ])
+class MetricTemplate(MetricTemplateBase):
+    def __new__(_cls, name, metric_type, count = 1, flags = 0, units = None,
+                 rec_def = None):
+        return super().__new__(_cls, name, ldms_value_type(metric_type), count,
+                               flags, units, rec_def)
+
+    @property
+    def is_meta(self):
+        return bool( self.flags & LDMS_MDESC_F_META )
+
+    @classmethod
+    def from_ptr(cls, Ptr ptr):
+        cdef ldms_metric_template_t t = <ldms_metric_template_t>ptr.c_ptr
+        rec_def = RecordDef.from_ptr(PTR(t.rec_def)) if t.rec_def else None
+        return MetricTemplate(STR(t.name), t.type, t.len, t.flags,
+                              STR(CBYTES(t.unit)), rec_def)
+
+
 cdef class RecordDef(object):
     """Record Definition
 
@@ -1697,12 +1722,14 @@ cdef class RecordDef(object):
     """
     cdef str _name
     cdef list metric_list
+    cdef dict metric_dict
     cdef ldms_record_t _rec_def
 
     def __init__(self, name, metric_list = list()):
         self._name = name
         self._rec_def = ldms_record_create(BYTES(name))
         self.metric_list = list()
+        self.metric_dict = dict()
         self.add_metrics(metric_list)
 
     @property
@@ -1725,7 +1752,10 @@ cdef class RecordDef(object):
         if idx < 0:
             raise RuntimeError("ldms_record_metric_add() error: {}" \
                                .format(ERRNO_SYM(-idx)))
-        self.metric_list.append((name, t, count, units))
+        mt = MetricTemplate(name, ldms_value_type(t), count,
+                                LDMS_MDESC_F_DATA|LDMS_MDESC_F_RECORD, units)
+        self.metric_list.append(mt)
+        self.metric_dict[name] = mt
 
     def add_metrics(self, metrics):
         """Batch-add metrics to the record definition.
@@ -1743,9 +1773,12 @@ cdef class RecordDef(object):
             if type(o) in (list, tuple):
                 self.add_metric(*o)
             elif type(o) == dict:
+                metric_type = o.get("type", o.get("metric_type"))
+                if metric_type is None:
+                    raise KeyError(f"'type' or 'metric_type' not found")
                 self.add_metric(
                             name = o["name"],
-                            metric_type = o["type"],
+                            metric_type = metric_type,
                             count = o.get("count", 1),
                             units = o.get("units"),
                         )
@@ -1759,6 +1792,38 @@ cdef class RecordDef(object):
     def heap_size(self):
         """Determine the size of a record in the LDMS heap"""
         return ldms_record_heap_size_get(self._rec_def)
+
+    @classmethod
+    def from_ptr(cls, Ptr p):
+        cdef int n
+        cdef ldms_record_t r = <ldms_record_t>p.c_ptr
+        cdef ldms_metric_template_s _t[1024]
+        cdef const char *name
+        n = ldms_record_bulk_template_get(r, 1024, _t)
+        assert(n <= 1024)
+        mlist = list( ( _t[i].name, ldms_value_type(_t[i].type),
+                        _t[i].len, STR(CBYTES(_t[i].unit))) \
+                                                        for i in range(0, n) )
+        name = ldms_record_name_get(r)
+        return RecordDef(STR(name), mlist)
+
+    @classmethod
+    def from_rec_type(cls, RecordType rec_type):
+        rec_def = RecordDef(rec_type.name)
+        for mt in rec_type:
+            rec_def.add_metric(name = mt.name, metric_type = mt.type,
+                               count = mt.count, units = mt.units)
+        return rec_def
+
+    def __getitem__(self, key):
+        typ = type(key)
+        if typ == int:
+            return self.metric_list[key]
+        if typ == slice:
+            return self.metric_list[key]
+        if typ == str:
+            return self.metric_dict[key]
+        raise KeyError(f"Unsupported key type '{typ}'")
 
 
 cdef class Schema(object):
@@ -1846,6 +1911,10 @@ cdef class Schema(object):
     cdef ldms_schema_t _schema
     cdef dict rec_defs
 
+    # maintain list of metrics for easy access
+    cdef list metric_list
+    cdef dict metric_dict
+
     def __init__(self, name, array_card=1, metric_list = list()):
         """S.__init__(name, array_card=1, metric_list=list())"""
         self._schema = ldms_schema_new(BYTES(name))
@@ -1853,6 +1922,8 @@ cdef class Schema(object):
             raise OSError(errno, "ldms_schema_new() error: {}" \
                                  .format(ERRNO_SYM(errno)))
         self.rec_defs = dict() # rec_defs[ "name" or id ] = Ptr(ldms_record_t)
+        self.metric_list = list()
+        self.metric_dict = dict()
         if metric_list:
             self.add_metrics(metric_list)
         self.set_array_card(array_card)
@@ -1879,6 +1950,10 @@ cdef class Schema(object):
                                .format(ERRNO_SYM(-_id)))
         self.rec_defs[_id] = rec_def
         self.rec_defs[rec_def.name] = rec_def
+        flags = LDMS_MDESC_F_META|LDMS_MDESC_F_RECORD # recrod type is in metadata part
+        mt = MetricTemplate(rec_def.name, LDMS_V_RECORD_TYPE, 1, flags, None, rec_def)
+        self.metric_list.append(mt)
+        self.metric_dict[rec_def.name] = mt
 
     def add_metric(self, name, metric_type, count=1, meta=False, units=None,
                          rec_def=None):
@@ -1891,13 +1966,14 @@ cdef class Schema(object):
         cdef int idx
         cdef RecordDef _rec_def
 
-
         if type(metric_type) == RecordDef:
             self.add_record(metric_type)
             return
         if type(metric_type) == str:
             metric_type = metric_type.lower()
         t = LDMS_VALUE_TYPE(metric_type)
+        flags = LDMS_MDESC_F_DATA if not meta else LDMS_MDESC_F_META
+        mt = MetricTemplate(name, t, count, flags, units, rec_def)
         if t == LDMS_V_RECORD_ARRAY:
             if type(rec_def) != RecordDef:
                 raise TypeError("Expecting RecordRef `rec_def`")
@@ -1926,6 +2002,8 @@ cdef class Schema(object):
             # error = -idx
             raise OSError(-idx, "Adding metric to schema failed: {}" \
                                 .format(ERRNO_SYM(-idx)))
+        self.metric_list.append(mt)
+        self.metric_dict[name] = mt
 
     @cython.binding(True)
     def add_metrics(self, list mlist):
@@ -1951,6 +2029,18 @@ cdef class Schema(object):
                         )
             elif type(o) == RecordDef:
                 self.add_record(o)
+
+    def __getitem__(self, key):
+        typ = type(key)
+        if typ in (int, slice):
+            return self.metric_list[key]
+        if typ is str:
+            return self.metric_dict[key]
+        if hasattr(key, "__iter__"):
+            return [ self.metric_list[k] for k in key ]
+
+    def get_metric_info(self, key):
+        return self[key]
 
 
 cdef class MetricArray(list):
@@ -2529,9 +2619,9 @@ cdef class RecordInstance(MVal):
             self.set_metric(idx, val)
 
     def get_metric_info(self, key):
-        """Returns (name, type, count, unit) of the metric by `key`
+        """Returns (name, type, count, units) of the metric by `key`
 
-        The `key` can be `str` or `int`.
+        The `key` can be `str`, `int` or list of int.
         """
         cdef size_t count
         cdef int t
@@ -2543,7 +2633,9 @@ cdef class RecordInstance(MVal):
             name = self.get_metric_name(key)
             unit = self.get_metric_unit(key)
             t = ldms_record_metric_type_get(self.rec_inst, key, &count)
-            return (name, ldms_value_type(t), count, unit)
+            return MetricTemplate(name = name, metric_type = t,
+                                  flags = LDMS_MDESC_F_RECORD|LDMS_MDESC_F_DATA,
+                                  count = count, units = unit)
         if hasattr(key, "__iter__"):
             return [ self.get_metric_info(k) for k in key ]
         raise TypeError("Unsupported `key` type; {}".format(type(key)))
@@ -2584,8 +2676,13 @@ cdef class RecordType(MVal):
 
     Record Type is meant to be used internally only.
     """
-    def __init__(self, Set lset, Ptr mval):
+    cdef ldms_mval_t rec_type
+    cdef str _name
+
+    def __init__(self, Set lset, Ptr mval, name):
         super().__init__(lset, mval, LDMS_V_RECORD_TYPE, 1)
+        self.rec_type = <ldms_mval_t>mval.c_ptr
+        self._name = STR(name)
 
     def get(self):
         return self
@@ -2598,6 +2695,81 @@ cdef class RecordType(MVal):
 
     def json_obj(self):
         return "__record_type__"
+
+    @property
+    def name(self):
+        return self._name
+
+    def _metric_by_name(self, name):
+        cdef int idx = ldms_record_metric_find(self.rec_type, BYTES(name))
+        if idx < 0:
+            raise KeyError("'{}' not found in the record".format(name))
+        return idx
+
+    def get_metric_name(self, i):
+        """Get metric name of the i_th member of the record"""
+        cdef const char *c_str
+        c_str = ldms_record_metric_name_get(self.rec_type, i)
+        return STR(CBYTES(c_str))
+
+    def get_metric_unit(self, i):
+        """Get metric unit of the i_th member of the record"""
+        cdef const char *c_str
+        c_str = ldms_record_metric_unit_get(self.rec_type, i)
+        return STR(CBYTES(c_str))
+
+    def get_metric_type(self, key):
+        """Get the type of `rec_type[key]`"""
+        cdef int idx
+        cdef size_t count
+        ktype = type(key)
+        if ktype in (str, bytes):
+            key = self._metric_by_name(key)
+            ktype = int
+        if ktype == int:
+            return ldms_value_type(ldms_record_metric_type_get(self.rec_type, key, &count))
+        if hasattr(key, "__iter__"):
+            return [ self.get_metric_type(k) for k in key ]
+        raise TypeError("Unsupported `key` type; {}".format(type(key)))
+
+    def __iter__(self):
+        for i in range(0, len(self)):
+            yield self[i]
+
+    def __len__(self):
+        return ldms_record_card(self.rec_type)
+
+    def __getitem__(self, key):
+        return self.get_metric_info(key)
+
+    def get_metric_info(self, key):
+        """Returns (name, flag, type, unit, count) of the metric by `key`
+
+        The `key` can be `str`, `int` or list of int.
+        """
+        cdef size_t count
+        cdef int t, _id
+        cdef const char *c_name
+        cdef const char *c_unit
+        ktype = type(key)
+        if ktype in (str, bytes):
+            idx = ldms_record_metric_find(self.rec_type, BYTES(key))
+            ktype = int
+            if idx < 0:
+                raise KeyError(f"Cannot find key '{key}' (error: {-idx}")
+            key = idx
+        if ktype == int:
+            if key < 0: # support Python negative indexing
+                key %= len(self)
+            name = self.get_metric_name(key)
+            unit = self.get_metric_unit(key)
+            t = ldms_record_metric_type_get(self.rec_type, key, &count)
+            return MetricTemplate(name, t, count,
+                                  flags = LDMS_MDESC_F_RECORD|LDMS_MDESC_F_DATA,
+                                  units = unit, rec_def = None)
+        if hasattr(key, "__iter__"):
+            return [ self.get_metric_info(k) for k in key ]
+        raise TypeError("Unsupported `key` type; {}".format(type(key)))
 
 
 cdef class Set(object):
@@ -2950,11 +3122,84 @@ cdef class Set(object):
 
     def get_metric_name(self, key):
         """Get the name of `ldms_set[key]`"""
-        pass
+        cdef const char *c_str
+        cdef int i
+        if type(key) in [str, bytes]:
+            i = self._metric_by_name(key)
+            if i < 0:
+                raise RuntimeError(f"`{key}` metric not found")
+        else:
+            i = int(key)
+        c_str = ldms_metric_name_get(self.rbd, i)
+        return STR(CBYTES(c_str))
 
     def get_metric_unit(self, key):
         """Get the unit of `ldms_set[key]`"""
-        pass
+        cdef const char *c_str
+        cdef int i
+        if type(key) in [str, bytes]:
+            i = self._metric_by_name(key)
+            if i < 0:
+                raise RuntimeError(f"`{key}` metric not found")
+        else:
+            i = int(key)
+        c_str = ldms_metric_unit_get(self.rbd, i)
+        return STR(CBYTES(c_str))
+
+    def _get_rec_type(self, idx):
+        cdef ldms_mval_t mval
+        cdef const char *cname
+        mval = ldms_metric_get(self.rbd, idx)
+        cname = ldms_metric_name_get(self.rbd, idx)
+        name = STR(CBYTES(cname))
+        assert(name != None)
+        return RecordType(self, PTR(mval), name = name)
+
+    def _get_rec_def(self, idx):
+        rec_type = self._get_rec_type(idx)
+        rec_def = RecordDef.from_rec_type(rec_type)
+        return rec_def
+
+    def get_metric_info(self, key):
+        """Returns (name, type, count, unit) of the metric by `key`
+
+        The `key` can be `str` or `int`.
+        """
+        cdef size_t count
+        cdef ldms_value_type t
+        cdef ldms_mval_t mval, mrec, mrectype
+        cdef int rec_type_idx
+        ktype = type(key)
+        if ktype in (str, bytes):
+            key = self._metric_by_name(key)
+            ktype = int
+        if ktype == int:
+            mval = ldms_metric_get(self.rbd, key)
+            name = self.get_metric_name(key)
+            unit = self.get_metric_unit(key)
+            flags = ldms_metric_flags_get(self.rbd, key)
+            t = ldms_metric_type_get(self.rbd, key)
+            if ldms_type_is_array(t):
+                count = ldms_metric_array_get_len(self.rbd, key)
+            elif t == LDMS_V_LIST:
+                count = ldms_list_len(self.rbd, mval)
+            else:
+                count = 1
+            # handling rec_def
+            if t == LDMS_V_RECORD_TYPE:
+                rec_def = self._get_rec_def(key)
+            elif t == LDMS_V_RECORD_ARRAY:
+                mrec = ldms_record_array_get_inst(mval, 0)
+                count = ldms_record_array_len(mval)
+                rec_type_idx = ldms_record_type_get(mrec)
+                rec_def = self._get_rec_def(rec_type_idx)
+            else:
+                rec_def = None
+            return MetricTemplate(name, ldms_value_type(t), count,
+                                  flags = flags, units = unit, rec_def = rec_def)
+        if hasattr(key, "__iter__"):
+            return [ self.get_metric_info(k) for k in key ]
+        raise TypeError("Unsupported `key` type; {}".format(type(key)))
 
     def get_metric(self, int idx):
         """S.get_metric(idx) - equivalent to S[idx]"""

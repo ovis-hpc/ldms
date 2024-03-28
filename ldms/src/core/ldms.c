@@ -1304,6 +1304,63 @@ int ldms_schema_metric_count_get(ldms_schema_t schema)
 	return schema->card;
 }
 
+int ldms_schema_metric_template_get(ldms_schema_t schema, int mid,
+				    struct ldms_metric_template_s *out)
+{
+	int i;
+	ldms_mdef_t mdef;
+	if (mid < 0 || schema->card <= mid)
+		return ENOENT;
+	mdef = STAILQ_FIRST(&schema->metric_list);
+	for (i = 0; i < mid; i++) {
+		mdef = STAILQ_NEXT(mdef, entry);
+	}
+	out->name    = mdef->name;
+	out->flags   = mdef->flags;
+	out->type    = mdef->type;
+	out->unit    = mdef->unit;
+	out->len     = mdef->count;
+	out->rec_def = (mdef->type == LDMS_V_RECORD_TYPE) ?
+				container_of(mdef, struct ldms_record, mdef) :
+				NULL;
+	return 0;
+}
+
+int ldms_schema_bulk_template_get(ldms_schema_t schema, int len,
+				struct ldms_metric_template_s out[])
+{
+	int i = 0, n, _id;
+	ldms_record_t rec_def;
+	struct ldms_record_array_def *rec_array_def;
+	ldms_mdef_t mdef;
+	n = len<schema->card?len:schema->card;
+	mdef = STAILQ_FIRST(&schema->metric_list);
+	for (i = 0; i < n; i++) {
+		out[i].name    = mdef->name;
+		out[i].flags   = mdef->flags;
+		out[i].type    = mdef->type;
+		out[i].unit    = mdef->unit;
+		out[i].len     = mdef->count;
+		switch (mdef->type) {
+		case LDMS_V_RECORD_TYPE:
+			rec_def = container_of(mdef, struct ldms_record, mdef);
+			break;
+		case LDMS_V_RECORD_ARRAY:
+			rec_array_def = container_of(mdef,
+						struct ldms_record_array_def, mdef);
+			_id = rec_array_def->rec_type;
+			assert(_id < i);
+			rec_def = out[_id].rec_def;
+			break;
+		default:
+			rec_def = NULL;
+		}
+		out[i].rec_def = rec_def;
+		mdef = STAILQ_NEXT(mdef, entry);
+	}
+	return schema->card;
+}
+
 int ldms_schema_array_card_set(ldms_schema_t schema, int card)
 {
 	if (card < 0)
@@ -4224,6 +4281,11 @@ int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
 	return -errno;
 }
 
+int ldms_record_metric_card(ldms_record_t rec_def)
+{
+	return rec_def->n;
+}
+
 size_t ldms_record_heap_size_get(ldms_record_t rec_def)
 {
 	size_t sz = rec_def->inst_sz + sizeof(struct ldms_list_entry);
@@ -4234,6 +4296,50 @@ size_t ldms_record_heap_size_get(ldms_record_t rec_def)
 size_t ldms_record_value_size_get(ldms_record_t rec_def)
 {
 	return rec_def->inst_sz - sizeof(struct ldms_record_inst);
+}
+
+int ldms_record_metric_template_get(ldms_record_t record, int mid,
+				struct ldms_metric_template_s *out)
+{
+	int i;
+	ldms_mdef_t mdef;
+	if (mid < 0 || record->n <= mid)
+		return ENOENT;
+	mdef = STAILQ_FIRST(&record->rec_metric_list);
+	for (i = 0; i < mid; i++) {
+		mdef = STAILQ_NEXT(mdef, entry);
+	}
+	out->name    = mdef->name;
+	out->flags   = mdef->flags;
+	out->type    = mdef->type;
+	out->unit    = mdef->unit;
+	out->len     = mdef->count;
+	out->rec_def = NULL;
+	return 0;
+}
+
+int ldms_record_bulk_template_get(ldms_record_t record, int len,
+				struct ldms_metric_template_s out[])
+{
+	int i = 0, n;
+	ldms_mdef_t mdef;
+	n = len<record->n?len:record->n;
+	mdef = STAILQ_FIRST(&record->rec_metric_list);
+	for (i = 0; i < n; i++) {
+		out[i].name    = mdef->name;
+		out[i].flags   = mdef->flags;
+		out[i].type    = mdef->type;
+		out[i].unit    = mdef->unit;
+		out[i].len     = mdef->count;
+		out[i].rec_def = NULL;
+		mdef = STAILQ_NEXT(mdef, entry);
+	}
+	return record->n;
+}
+
+const char *ldms_record_name_get(ldms_record_t record)
+{
+	return record->mdef.name;
 }
 
 int ldms_record_card(ldms_mval_t rec)

@@ -258,6 +258,12 @@ cdef extern from "ldms_rail.h" nogil:
         __RAIL_UNLIMITED
         RAIL_UNLIMITED "__RAIL_UNLIMITED"
 
+cdef extern from "ldms_core.h" nogil:
+    cpdef enum :
+        LDMS_MDESC_F_DATA
+        LDMS_MDESC_F_META
+        LDMS_MDESC_F_RECORD
+
 cdef extern from "ldms.h" nogil:
     struct ldms_xprt:
         pass
@@ -574,10 +580,22 @@ cdef extern from "ldms.h" nogil:
     float ldms_metric_array_get_float(ldms_set_t s, int i, int idx)
     double ldms_metric_array_get_double(ldms_set_t s, int i, int idx)
 
+    struct ldms_record:
+        pass # opaque
+    ctypedef ldms_record *ldms_record_t
+
     # --- set schema --- #
     struct ldms_schema_s:
         pass
     ctypedef ldms_schema_s *ldms_schema_t
+    struct ldms_metric_template_s:
+        const char *name
+        int flags
+        ldms_value_type type
+        const char *unit
+        uint32_t len
+        ldms_record_t rec_def
+    ctypedef ldms_metric_template_s *ldms_metric_template_t
     ldms_schema_t ldms_schema_new(const char *schema_name)
     void ldms_schema_delete(ldms_schema_t schema)
     int ldms_schema_metric_count_get(ldms_schema_t schema)
@@ -586,12 +604,25 @@ cdef extern from "ldms.h" nogil:
                                 const ldms_schema_t schema)
     int ldms_schema_metric_add(ldms_schema_t s, const char *name,
                                ldms_value_type t)
+    int ldms_schema_metric_add_with_unit(ldms_schema_t s, const char *name,
+					    const char *unit, ldms_value_type type);
     int ldms_schema_meta_add(ldms_schema_t s, const char *name,
                              ldms_value_type t)
+    int ldms_schema_meta_add_with_unit(ldms_schema_t s, const char *name,
+					  const char *unit, ldms_value_type t);
     int ldms_schema_metric_array_add(ldms_schema_t s, const char *name,
                                      ldms_value_type t, uint32_t count)
+    int ldms_schema_metric_array_add_with_unit(ldms_schema_t s, const char *name,
+						  const char *unit, ldms_value_type t, uint32_t count);
     int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
                                    ldms_value_type t, uint32_t count)
+    int ldms_schema_meta_array_add_with_unit(ldms_schema_t s, const char *name,
+						const char *unit, ldms_value_type t, uint32_t count);
+
+    int ldms_schema_metric_template_get(ldms_schema_t schema, int mid,
+                                        ldms_metric_template_s *out);
+    int ldms_schema_bulk_template_get(ldms_schema_t schema, int len,
+                                      ldms_metric_template_s out[])
 
     # --- schema hash / digest --- #
     ctypedef unsigned char *ldms_digest_t
@@ -646,9 +677,6 @@ cdef extern from "ldms.h" nogil:
     int ldms_list_purge(ldms_set_t s, ldms_mval_t lh)
 
     # --- record related functions --- #
-    struct ldms_record:
-        pass # opaque
-    ctypedef ldms_record *ldms_record_t
     ldms_record_t ldms_record_create(const char *name)
     int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
 			   const char *unit, ldms_value_type type,
@@ -661,6 +689,7 @@ cdef extern from "ldms.h" nogil:
     # --- record instance functions --- #
     int ldms_list_append_record(ldms_set_t set, ldms_mval_t lh, ldms_mval_t rec_inst)
     ldms_mval_t ldms_record_alloc(ldms_set_t set, int metric_id)
+    int ldms_record_type_get(ldms_mval_t rec_inst)
     int ldms_record_card(ldms_mval_t rec_inst)
     int ldms_record_metric_find(ldms_mval_t rec_inst, const char *name)
     ldms_mval_t ldms_record_metric_get(ldms_mval_t rec_inst, int metric_id)
@@ -668,6 +697,7 @@ cdef extern from "ldms.h" nogil:
     const char *ldms_record_metric_unit_get(ldms_mval_t rec_inst, int metric_id)
     ldms_value_type ldms_record_metric_type_get(ldms_mval_t rec_inst,
                                                      int metric_id, size_t *count)
+    int ldms_metric_flags_get(ldms_set_t s, int i)
     void ldms_record_metric_set(ldms_mval_t rec_inst, int metric_id,
                                 ldms_mval_t val)
     void ldms_record_metric_array_set(ldms_mval_t rec_inst, int metric_id,
@@ -721,6 +751,12 @@ cdef extern from "ldms.h" nogil:
 
     ldms_mval_t ldms_record_array_get_inst(ldms_mval_t rec_array, int idx);
     int ldms_record_array_len(ldms_mval_t rec_array)
+
+    int ldms_record_metric_template_get(ldms_record_t record, int mid,
+                                        ldms_metric_template_s *out)
+    int ldms_record_bulk_template_get(ldms_record_t record, int len,
+                                      ldms_metric_template_s out[])
+    const char * ldms_record_name_get(ldms_record_t record)
 
     # --- ldms_stream --- #
     struct ldms_stream_client_s:
