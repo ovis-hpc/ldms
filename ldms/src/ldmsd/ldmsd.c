@@ -96,7 +96,7 @@
 #define OVIS_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:tL:C:";
+const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:L:C:";
 
 struct option long_opts[] = {
 	{ "default_auth_args",     required_argument, 0,  'A' },
@@ -138,7 +138,6 @@ char ldmstype[20];
 int cfg_cntr = 0;
 pthread_t event_thread = (pthread_t)-1;
 char *logfile;
-int log_truncate = 0;
 char *pidfile;
 char *bannerfile;
 
@@ -344,11 +343,8 @@ void usage_hint(char *argv[],char *hint)
 {
 	printf("%s: [%s]\n", argv[0], short_opts);
 	printf("  General Options\n");
-	printf("    -F                                            Foreground mode, don't daemonize the program [false].\n");
 	printf("    -u name                                       List named plugin if available, and where possible\n");
 	printf("                                                  its usage, then exit. Name all, sampler, and store limit output.\n");
-	printf("    -B MODE,     --banner MODE                    Daemon mode banner file with pidfile [1].\n"
-	       "                                                  modes:0-no banner file, 1-banner auto-deleted, 2-banner left.\n");
 	printf("    -m SIZE,     --set_memory SIZE                Maximum size of pre-allocated memory for metric sets.\n"
 	       "                                                  The given size must be less than 1 petabytes.\n"
 	       "                                                  The default value is %s\n"
@@ -357,9 +353,6 @@ void usage_hint(char *argv[],char *hint)
 	       "                                                  giving the -m option. If both are given, the -m option\n"
 	       "                                                  takes precedence over the environment variable.\n",
 	                                                          LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
-	printf("    -n NAME,     --daemon_name NAME               The name of the daemon. By default, it is \"HOSTNAME:PORT\".\n");
-	printf("                                                  The failover uses the daemon name to verify the buddy name.\n");
-	printf("                                                  The producer name of kernel metric sets is the daemon name.\n");
 	printf("    -r PATH,     --pid_file PATH                  The path to the pid file for daemon mode.\n"
 	       "                                                  [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
 	printf("  Log Verbosity Options\n");
@@ -368,7 +361,6 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -v LEVEL,    --log_level LEVEL                The available verbosity levels, in order of decreasing verbosity,\n"
 	       "                                                  are DEBUG, INFO, ERROR, CRITICAL and QUIET.\n"
 	       "                                                  The default level is ERROR.\n");
-	printf("    -t,          --log_truncate                   Truncate the log file at start if the log file exists.\n");
 	printf("    -L optlog, --log_config optlog                Log config commands; optlog is INT:PATH\n");
 	printf("  Communication Options\n");
 	printf("    -x xprt:port:host\n"
@@ -381,18 +373,9 @@ void usage_hint(char *argv[],char *hint)
 	       "                                                  to listen to a specific address.\n");
 	printf("    -a AUTH,      --default_auth AUTH             Transport authentication plugin (default: 'none')\n");
 	printf("    -A KEY=VALUE, --default_auth_args KEY=VALUE   Authentication plugin options (repeatable)\n");
-	printf("    -C BYTES,     --credits BYTES                 The daemon's advertised send credits (default: -1, unlimited).\n");
-	printf("  Kernel Metric Options\n");
-	printf("    -k,           --publish_kernel                Publish kernel metrics.\n");
-	printf("    -s PATH,      --kernel_set_path PATH          Text file containing kernel metric sets to publish.\n"
-	       "                                                  [" LDMSD_SETFILE "]\n");
-	printf("  Thread Options\n");
-	printf("    -P COUNT,     --worker_threads COUNT          Count of event threads to start.\n");
 	printf("  Configuration Options\n");
 	printf("    -c PATH                                       The path to configuration file (optional, default: <none>).\n");
 	printf("    -V                                            Print LDMS version and exit.\n");
-	printf("  Deprecated options\n");
-	printf("    -H                                            DEPRECATED.\n");
 	if (hint) {
 		printf("\nHINT: %s\n",hint);
 	}
@@ -1787,16 +1770,6 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			logfile = strdup(value);
 			if (!logfile)
 				return ENOMEM;
-			if (log_truncate) {
-				rc = truncate(logfile, 0);
-				if (rc) {
-					rc = errno;
-					ovis_log(NULL, OVIS_LERROR, "Could not truncate "
-						"the log file named '%s'. errno = %d\n",
-						logfile, rc);
-					return rc;
-				}
-			}
 			rc = ovis_log_open(logfile);
 			if (rc) {
 				return rc;
@@ -1940,9 +1913,6 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		} else {
 			snprintf(myname, sizeof(myname), "%s", value);
 		}
-		break;
-	case 't':
-		log_truncate = 1;
 		break;
 	case 'x':
 		if (check_arg("x", value, LO_NAME))
