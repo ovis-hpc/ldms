@@ -73,6 +73,7 @@
 #include <getopt.h>
 #include <sched.h>
 #include <pwd.h>
+#include <sys/inotify.h>
 
 #include <sys/ioctl.h>
 #include <sys/time.h>
@@ -97,6 +98,7 @@
 FILE *debug_log;
 #define DEBUG_EMITTER 0
 /* set 1 to trace which path emits the message by adding emitter field to messages */
+#define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
 
 /* provide thread-safe io macros */
 //#define debug_err_lock 1
@@ -208,6 +210,7 @@ const char *rm_names[] = {
 	/* insert additional here when supported. */
 	NULL
 };
+#define UID_MIN 1000 /* least regular uid value */
 
 /* /proc info cache */
 typedef struct proc_info {
@@ -325,6 +328,9 @@ typedef struct forkstat {
 	unsigned long format;			/* stream formatting version to use */
 	int heartbeat;				/* approximate seconds between heartbeats */
 	time_t lastbeat;			/* time of last beat */
+	char *jobid_variable_name;			/* variable for for jobid */
+	char *jobid_file_name;			/* where to look for jobid variable data */
+	char *host_jobid;			/* jobid from host file; fallback for proc_info jobid */
 } forkstat_t;
 
 
@@ -411,6 +417,7 @@ static const int signals[] = {
 };
 
 /* add several structures related to filtering. */
+#define default_jobid_file NULL
 #define default_format "2" /* this is also the max format known */
 #define default_heartbeat NULL /* none by default*/
 #define default_component_id NULL
@@ -422,6 +429,24 @@ static const int signals[] = {
 #define default_exclude_dirs "/sbin"
 #define default_short_path "/bin:/usr"
 #define default_short_time "1"
+
+/* where we find jobid data if not given.*/
+#define jfsearch "/search"
+const char *jobid_file_names[] = {
+	"/var/run/ldms_jobinfo.data"
+	"/var/run/ldms.slurm.jobinfo",
+	"/var/run/ldms.jobinfo"
+};
+
+/* what the jobid data might be called. */
+const char *jobid_variable_names[] = {
+	"JOBID",
+	"JOB_ID",
+	"LSB_JOBID",
+	"PBS_JOBID",
+	"SLURM_JOBID",
+	"SLURM_JOB_ID",
+};
 
 struct path_name {
 	char *n; /* single file or dir name with trailing / */
@@ -627,6 +652,11 @@ struct monitor_args {
 	pthread_t tid;	/* thread of the monitoring; set in forkstat_monitor.*/
 	forkstat_t *ft; /* data handle of the monitor from forkstat_create. */
 };
+
+/*
+ * thread to check on jobid data file updates.
+ */
+pthread_t jobid_thread;
 
 /* after configuration, init ma and hook forkstat handle to kernel. */
 static int forkstat_connect(forkstat_t *ft, struct monitor_args *ma);
@@ -2366,6 +2396,7 @@ static struct exclude_arg excludes[] = {
 	{default_format, VT_SCALAR, 0, "NOTIFIER_FORMAT", NULL, 0, PLINIT},
 	{default_heartbeat, VT_SCALAR, 0, "NOTIFIER_HEARTBEAT", NULL, 0, PLINIT},
 	{default_purge, VT_NONE, 0, "NOTIFIER_PURGE_TRACK_DIR", NULL, 0, PLINIT},
+	{default_jobid_file, VT_FILE, 0, "NOTIFIER_JOBID_FILE", NULL, 0, PLINIT},
 };
 static struct exclude_arg *bin_exclude = &excludes[0];
 static struct exclude_arg *dir_exclude = &excludes[1];
@@ -2385,6 +2416,7 @@ static struct exclude_arg *compid_arg = &excludes[14];
 static struct exclude_arg *format_arg = &excludes[15];
 static struct exclude_arg *heartbeat_arg = &excludes[16];
 static struct exclude_arg *purge_track_dir_arg = &excludes[17];
+static struct exclude_arg *jobid_file_arg = &excludes[18];
 
 static struct option long_options[] = {
 	{"exclude-programs", optional_argument, 0, 0},
@@ -2405,6 +2437,7 @@ static struct option long_options[] = {
 	{"format", required_argument, 0, 0},
 	{"heartbeat", required_argument, 0, 0},
 	{"purge-track-dir", no_argument, 0, 0},
+	{"jobid-file", required_argument, 0, 0},
 	{0, 0, 0, 0}
 };
 
@@ -2432,7 +2465,7 @@ static struct env_attr lsf_env_start_default[] = {
 	{ "task_pid", "LS_JOBPID", NULL_STEP_ID, 0 }
 };
 
-static int nlongopt = sizeof(excludes)/sizeof(excludes[0]) ;
+static int nlongopt = ARRAY_SIZE(excludes);
 
 /*
  *  show_help()
@@ -2599,6 +2632,194 @@ static int set_format(char *optarg, forkstat_t *ft)
 		return EINVAL;
 	}
 	return 0;
+}
+
+#define JOB_FILES_RETRY 10
+#define JOB_MAX_ENV 512
+static int update_host_jobid(forkstat_t *ft)
+{
+	if (!ft->jobid_variable_name || !ft->jobid_file_name)
+		return 0;
+	FILE *f = fopen(ft->jobid_file_name, "r");
+	if (!f) {
+		free(ft->host_jobid);
+		ft->host_jobid = NULL;
+		return 0;
+	}
+	char *s = NULL;
+	char *p = NULL;
+	char *name = NULL;
+	char *value = NULL;
+	char buf[JOB_MAX_ENV];
+	int rc = 0;
+	while (NULL != (s = fgets(buf, sizeof(buf), f))) {
+		name = strtok_r(s, "=", &p);
+		if (!name || strcmp(name, ft->jobid_variable_name))
+			continue;
+		value = strtok_r(NULL, "=", &p);
+		if (!value) {
+			free(ft->host_jobid);
+			ft->host_jobid = NULL;
+			break;
+		}
+		free(ft->host_jobid);
+		ft->host_jobid = strdup(value);
+		if (!ft->host_jobid) {
+			rc = ENOMEM;
+		}
+		break;
+	}
+	fclose(f);
+	return rc;
+}
+
+/* find variable from list in file. */
+static int set_jobid_variable(forkstat_t *ft)
+{
+	if (ft->jobid_variable_name)
+		return 0;
+	if (!ft->jobid_file_name)
+		return 0;
+	int missing_warned = 0;
+	while (1) {
+		FILE *f = fopen(ft->jobid_file_name, "r");
+		int rc = 0;
+		if (!f) {
+			sleep(JOB_FILES_RETRY);
+			continue;
+		}
+		int k;
+		char *s = NULL;
+		char *p = NULL;
+		char *name = NULL;
+		char buf[JOB_MAX_ENV];
+		while (NULL != (s = fgets(buf, sizeof(buf), f))) {
+			name = strtok_r(s, "=", &p);
+			if (!name)
+				continue;
+			for (k = 0; k < ARRAY_SIZE(jobid_variable_names); k++) {
+				if (! strcmp(name, jobid_variable_names[k])) {
+					ft->jobid_variable_name = strdup(name);
+					if (!ft->jobid_variable_name) {
+						rc = ENOMEM;
+					}
+					fclose(f);
+					return rc;
+				}
+			}
+			if (!missing_warned) {
+				missing_warned = 1;
+				printf("warning: job id file %s"
+				" initially without any job id variable.\n",
+				ft->jobid_file_name);
+			}
+		}
+		fclose(f);
+		sleep(JOB_FILES_RETRY);
+	}
+}
+
+/* set file from option or search loop until file found among expected files.
+ * ft->jobid_file_name will remain NULL if user wants no jobid from /var.
+ * (default is user wants no jobid from /var)
+ */
+static int set_jobid_file(forkstat_t *ft)
+{
+	struct exclude_arg *jfa = jobid_file_arg;
+	if (!jfa->parsed && !getenv(jfa->env))
+		return 0;
+	if (!jfa->paths[0].n)
+		return 0;
+	if (strcmp(jfa->paths[0].n, jfsearch) != 0) {
+		ft->jobid_file_name = strdup(jfa->paths[0].n);
+		if (!ft->jobid_file_name)
+			return ENOMEM;
+		return 0;
+	}
+	while (1) {
+		int i = 0;
+		for (; i < ARRAY_SIZE(jobid_file_names); i++) {
+			FILE *f = fopen(jobid_file_names[i], "r");
+			if (f) {
+				fclose(f);
+				ft->jobid_file_name = strdup(jobid_file_names[i]);
+				if (!ft->jobid_file_name)
+					return ENOMEM;
+				return 0;
+			}
+		}
+		sleep(JOB_FILES_RETRY);
+	}
+}
+/*
+ * Wait for changes to the jobinfo file and update the metrics.
+ */
+void *
+jobid_thread_check(void *arg)
+{
+	forkstat_t *ft = (forkstat_t *)arg;
+	if (!arg )
+		return NULL;
+	int rc;
+	int nd;
+	int wd = -1;
+	struct inotify_event ev;
+	int mask = IN_CLOSE_WRITE | IN_CREATE | IN_DELETE | IN_DELETE_SELF;
+
+	// this loops until file is known if file is expected
+	rc = set_jobid_file(ft);
+	if (rc) {
+		printf("out of memory setting job id input file\n");
+		return NULL;
+	}
+	if (!ft->jobid_file_name)
+		return NULL;
+
+	// get var and value from file
+	rc = set_jobid_variable(ft);
+	if (rc) {
+		printf("out of memory setting job id variable\n");
+		return NULL;
+	}
+	if (!ft->jobid_variable_name)
+		return NULL;
+
+	update_host_jobid(ft);
+	/* watch for changes to value found at
+	 * jobid_file_name:jobid_variable_name
+	 */
+	nd = inotify_init();
+	while (1) {
+		/*
+		 * The file may not exist at the time this daemon is started.
+		 * By the time we get here, it existed for set_jobid_file,
+		 * so we expect it to reappear.
+		 */
+		if (wd < 0 && ft->jobid_file_name != NULL) {
+			wd = inotify_add_watch(nd, ft->jobid_file_name, mask);
+			if (wd < 0) {
+				/* try again later. may be briefly gone */
+				sleep(1);
+				continue;
+			}
+		}
+
+		rc = read(nd, &ev, sizeof(ev));
+		if (rc < sizeof(ev) ||
+			(ev.mask & (IN_CREATE | IN_DELETE | IN_DELETE_SELF))) {
+			printf("Error %d reading from the inotify descriptor.\n",
+			       errno);
+			inotify_rm_watch(nd, wd);
+			wd = -1;
+			continue;
+		}
+		update_host_jobid(ft);
+	}
+
+	inotify_rm_watch(nd, wd);
+	close(nd);
+
+	return NULL;
 }
 
 static int set_duration_min(char *optarg, forkstat_t *ft)
@@ -3080,7 +3301,9 @@ err:
 /* /////////// end of functions to get env var from a pid ///////////////// */
 #include "ovis_json/ovis_json.h"
 
-#define info_jobid_str(info) info->jobid ? info->jobid : "0"
+/* get jobid string from pid environ if present, or if uid > UID_MIN,
+ * get host_jobid */
+#define info_jobid_str(info, ft) info->jobid ? info->jobid : ( (info->uid >= UID_MIN && ft->host_jobid) ? ft->host_jobid : "0")
 
 static int add_env_attr(struct env_attr *a, jbuf_t *jb, const struct proc_info *info, forkstat_t *ft)
 {
@@ -3144,7 +3367,7 @@ static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_in
 			ft->prod_field, ft->compid_field,
 			info->start.tv_sec, info->start.tv_usec,
 			info->start_tick,
-			info_jobid_str(info),
+			info_jobid_str(info, ft),
 			info->serno,
 			(int64_t)info->pid,
 			(int64_t)info->uid,
@@ -3190,7 +3413,7 @@ static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info
 				ft->prod_field, ft->compid_field,
 				info->start.tv_sec, info->start.tv_usec,
 				info->start_tick,
-				info_jobid_str(info),
+				info_jobid_str(info, ft),
 				info->serno,
 				(int64_t)info->pid,
 				(int)info->pid);
@@ -3221,7 +3444,7 @@ static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info
 				ft->prod_field, ft->compid_field,
 				info->start.tv_sec, info->start.tv_usec,
 				info->start_tick,
-				info_jobid_str(info),
+				info_jobid_str(info, ft),
 				info->serno,
 				(int64_t)info->pid,
 				(int)info->pid,
@@ -3254,7 +3477,7 @@ static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info
 				ft->prod_field, ft->compid_field,
 				info->start.tv_sec, info->start.tv_usec,
 				info->start_tick,
-				info_jobid_str(info),
+				info_jobid_str(info, ft),
 				info->serno,
 				(int64_t)info->pid,
 				(int)info->pid,
@@ -3291,13 +3514,13 @@ static jbuf_t make_process_start_data_lsf(forkstat_t *ft, const struct proc_info
 		time(NULL),
 			ft->prod_field, ft->compid_field,
 			info->start.tv_sec, info->start.tv_usec,
-			info_jobid_str(info),
+			info_jobid_str(info, ft),
 			info->serno,
 			(int64_t)info->pid);
 	if (!jb)
 		goto out_1;
 	size_t i, iend;
-	iend = sizeof(lsf_env_start_default)/sizeof(lsf_env_start_default[0]);
+	iend = ARRAY_SIZE(lsf_env_start_default);
 	for (i = 0 ; i < iend; i++)
 		if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft))
 			goto out_1;
@@ -3342,7 +3565,7 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 			time(NULL),
 				ft->prod_field, ft->compid_field,
 				info->start.tv_sec, info->start.tv_usec,
-				info_jobid_str(info),
+				info_jobid_str(info, ft),
 				info->serno,
 				(int64_t)info->pid);
 	else if (ft->format == 1)
@@ -3365,7 +3588,7 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 			time(NULL),
 				ft->prod_field, ft->compid_field,
 				info->start.tv_sec, info->start.tv_usec,
-				info_jobid_str(info),
+				info_jobid_str(info, ft),
 				info->serno,
 				(int64_t)info->pid,
 				info->duration
@@ -3391,7 +3614,7 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 			time(NULL),
 				ft->prod_field, ft->compid_field,
 				info->start.tv_sec, info->start.tv_usec,
-				info_jobid_str(info),
+				info_jobid_str(info, ft),
 				info->serno,
 				(int64_t)info->pid,
 				info->duration,
@@ -3402,7 +3625,7 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 	if (!jb)
 		goto out_1;
 	size_t i, iend;
-	iend = sizeof(lsf_env_start_default)/sizeof(lsf_env_start_default[0]);
+	iend = ARRAY_SIZE(lsf_env_start_default);
 	for (i = 0 ; i < iend; i++)
 		if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft))
 			goto out_1;
@@ -3448,11 +3671,11 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 		type,
 #endif
 			ft->prod_field, ft->compid_field,
-			info_jobid_str(info),
+			info_jobid_str(info, ft),
 			info->serno,
 			(int64_t)info->pid);
 	size_t i, iend;
-	iend = sizeof(slurm_env_start_default)/sizeof(slurm_env_start_default[0]);
+	iend = ARRAY_SIZE(slurm_env_start_default);
 	for (i = 0 ; i < iend; i++) {
 		if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft))
 			goto out_1;
@@ -3497,7 +3720,7 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 			forkstat_get_serial(ft),
 			time(NULL),
 				ft->prod_field, ft->compid_field,
-				info_jobid_str(info),
+				info_jobid_str(info, ft),
 				info->serno,
 				(int64_t)info->pid);
 	else if (ft->format == 1)
@@ -3519,7 +3742,7 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 			forkstat_get_serial(ft),
 			time(NULL),
 				ft->prod_field, ft->compid_field,
-				info_jobid_str(info),
+				info_jobid_str(info, ft),
 				info->start.tv_sec, info->start.tv_usec,
 				info->serno,
 				(int64_t)info->pid,
@@ -3544,7 +3767,7 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 			forkstat_get_serial(ft),
 			time(NULL),
 				ft->prod_field, ft->compid_field,
-				info_jobid_str(info),
+				info_jobid_str(info, ft),
 				info->start.tv_sec, info->start.tv_usec,
 				info->serno,
 				(int64_t)info->pid,
@@ -3556,7 +3779,7 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 	if (!jb)
 		goto out_1;
 	int i, iend;
-	iend = sizeof(slurm_env_end_default)/sizeof(slurm_env_end_default[0]);
+	iend = ARRAY_SIZE(slurm_env_end_default);
 	for (i = 0 ; i < iend; i++)
 		if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft))
 			goto out_1;
@@ -3970,7 +4193,7 @@ int main(int argc, char * argv[])
 	}
 	if (argc < 2) {
 		args = default_args;
-		argc = sizeof(default_args) / sizeof(default_args[0]);
+		argc = ARRAY_SIZE(default_args);
 	}
 
 	while (1) {
@@ -4100,6 +4323,20 @@ int main(int argc, char * argv[])
 		}
 		normalize_exclude(&excludes[c]);
 	}
+	int rc = set_jobid_file(ft);
+	switch (rc) {
+	case ENOENT:
+		fprintf(stderr, "Warning: Found no file for %s with %s.\n",
+			 jobid_file_arg->paths[0].n, "jobid-file");
+		/* this may be resolved later for some daemon startup orders */
+		break;
+	case ENOMEM:
+		fprintf(stderr, "out of memory configuring %s.\n", "jobid-file");
+		ret = EXIT_FAILURE;
+		goto abort_sock;
+	default:
+		break;
+	}
 	if (set_format(format_arg->paths[0].n, ft)) {
 		fprintf(stderr, "Bad value %s for %s (>=0 & <= %s).\n",
 			 format_arg->paths[0].n, "format", format_arg[0].defval);
@@ -4178,6 +4415,9 @@ int main(int argc, char * argv[])
 		forkstat_option_dump(ft, excludes);
 
 /* netlink/ldms threaded region */
+	pthread_t jtid = pthread_create(&jobid_thread, NULL,
+			jobid_thread_check, ft); /* thread for jobid file */
+
 	forkstat_init_ldms_stream(ft);
 	int start_err = forkstat_monitor(ft, &ma); // thread to follow kernel netlink sock
 	if (start_err)
@@ -4199,6 +4439,7 @@ int main(int argc, char * argv[])
 	pthread_join(ma.tid, &res);
 	if (ft->opt_trace)
 		PRINTF("JOIN done w/%p\n", res);
+	pthread_cancel(jtid); /* this will 'fail' if thread already stopped */
 	forkstat_finalize_ldms_stream(ft);
 /* resume unthreaded region */
 	if (ft->opt_trace)
