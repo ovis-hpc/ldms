@@ -855,10 +855,12 @@ int __ldmsd_parse_default_auth_req(struct ldmsd_parse_ctxt *ctxt)
 		dummy = NULL;
 	}
 	tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
-	/* Add an attribute of type 'STRING' */
-	rc = add_attr_from_attr_str(NULL, tmp,
-				    &ctxt->request,
-				    &ctxt->request_sz);
+	if (cnt) {
+		/* Add an attribute of type 'STRING' */
+		rc = add_attr_from_attr_str(NULL, tmp,
+					    &ctxt->request,
+					    &ctxt->request_sz);
+	}
 out:
 	if (tmp)
 		free(tmp);
