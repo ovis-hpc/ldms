@@ -95,6 +95,9 @@ The 'short' options do not override the exclude entirely options.
 	 If not set, the ProducerName field is not included in the stream formats produced.
 --format=N           change the format of messages to version N.
          If not set, the highest available format is used. See MESSAGE FORMATS.
+--jobid_file=FILE	look for job_id numbers in FILE. The default is not to look
+	for a job id file if this option is not given nor NOTIFIER_JOBID_FILE is defined.
+	See JOB ID FILES for details.
 .fi
 
 .SH ENVIRONMENT
@@ -115,6 +118,7 @@ NOTIFIER_LDMS_AUTH=munge
 NOTIFIER_FORMAT=2
 NOTIFIER_HEARTBEAT=(none)
 NOTIFIER_PURGE_TRACK_DIR
+NOTIFIER_JOBID_FILE=(none)
 .fi
 Omitting (nullexe):<unknown> from NOTIFIER_EXCLUDE_PROGRAMS may cause incomplete output
 related to processes no longer present. In exotic circumstances, this may be desirable.
@@ -137,6 +141,14 @@ Client applications may validate a file by checking the contents
 against the /proc/$pid/stat content, if it exists.
 Invalid files should be removed by clients or system scripts; the purge option
 is provided to optionally do this on start.
+
+.SH JOB ID FILES
+The job id file given must contain a list of KEY=VALUE pairs, one per line. Lines starting with # are ignored.
+If the filename given is "/search", a list of default locations is checked
+("/var/run/ldms_jobinfo.data", "/var/run/ldms.slurm.jobinfo", "/var/run/ldms.jobinfo").
+A list of variables in the jobid file is checked for, with the first found being used.
+The variable names checked are:
+"JOBID", "JOB_ID", "LSB_JOBID", "PBS_JOBID", "SLURM_JOBID", "SLURM_JOB_ID".
 
 .SH MESSAGE FORMATS
 Message formats tuned to SLURM, LSF, and Linux without a batch scheduler
