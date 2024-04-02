@@ -178,22 +178,42 @@ static void set_pcie_speed(ldms_mval_t record_instance, int index, const char *d
         char *speed = buf1;
         char *width = buf2;
         FILE *fp;
-        char *rc;
+        char *rc = NULL;
 
-        snprintf(path, PATH_MAX, "/sys/class/cxi/%s/device/current_link_speed",
+        /* First try current_esm_link_speed */
+        snprintf(path, PATH_MAX,
+                 "/sys/class/cxi/%s/device/properties/current_esm_link_speed",
                  device_name);
         fp = fopen(path, "r");
-        if (fp == NULL) {
-                ovis_log(mylog, OVIS_LWARNING, "unable to open \"%s\"\n", path);
-                return;
+        if (fp != NULL) {
+                rc = fgets(speed, PATH_MAX, fp);
+                fclose(fp);
+                if (rc != NULL) {
+                        strip_whitespace(&speed);
+                }
         }
-        rc = fgets(speed, PATH_MAX, fp);
-        fclose(fp);
-        if (rc == NULL) {
-                return;
-        }
-        strip_whitespace(&speed);
 
+        /* Fall back to current_link_speed if needed */
+        if (rc == NULL
+            || strcmp(speed, "Absent") == 0
+            || strcmp(speed, "Disabled") == 0) {
+                snprintf(path, PATH_MAX,
+                         "/sys/class/cxi/%s/device/current_link_speed",
+                         device_name);
+                fp = fopen(path, "r");
+                if (fp == NULL) {
+                        ovis_log(mylog, OVIS_LWARNING, "unable to open \"%s\"\n", path);
+                        return;
+                }
+                rc = fgets(speed, PATH_MAX, fp);
+                fclose(fp);
+                if (rc == NULL) {
+                        return;
+                }
+                strip_whitespace(&speed);
+        }
+
+        /* Next look up pcie width */
         snprintf(path, PATH_MAX, "/sys/class/cxi/%s/device/current_link_width",
                  device_name);
         fp = fopen(path, "r");
