@@ -95,7 +95,7 @@ The 'short' options do not override the exclude entirely options.
 	 If not set, the ProducerName field is not included in the stream formats produced.
 --format=N           change the format of messages to version N.
          If not set, the highest available format is used. See MESSAGE FORMATS.
---jobid_file=FILE	look for job_id numbers in FILE. The default is not to look
+--jobid-file=FILE	look for job_id numbers in FILE. The default is not to look
 	for a job id file if this option is not given nor NOTIFIER_JOBID_FILE is defined.
 	See JOB ID FILES for details.
 .fi
