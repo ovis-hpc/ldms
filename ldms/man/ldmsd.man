@@ -191,7 +191,7 @@ compared to using command-line options
 The log file path
 .RE
 
-\fBlog_lelve\fR sets the log verbosify. The default is ERROR.
+\fBlog_level\fR sets the log verbosify. The default is ERROR.
 .RS
 .IP \fBlevel\fR=\fILEVEL
 The log level ordered from the most to the least severity: CRITICAL, ERROR,
@@ -322,7 +322,7 @@ listen xprt=sock port=411
   log_file path=/opt/ovis/var/ldmsd.log
   log_level level=ERROR
   set_memory size=2GB
-  worker_threads=16
+  worker_threads num=16
   default_auth plugin=munge
   listen xprt=ugni port=411
   # meminfo
