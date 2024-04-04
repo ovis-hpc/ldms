@@ -342,6 +342,7 @@ static pthread_mutex_t err_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t stop_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t serial_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t host_jobid_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define THREADED 1
 #define UNTHREADED 1
@@ -2371,7 +2372,10 @@ static void forkstat_destroy(forkstat_t *ft)
 		ft->json_log = NULL;
 	}
 	free(ft->prod_field);
+	free(ft->host_jobid);
 	free(ft->compid_field);
+	free(ft->jobid_variable_name);
+	free(ft->jobid_file_name);
 	free(ft);
 }
 
@@ -2642,8 +2646,10 @@ static int update_host_jobid(forkstat_t *ft)
 		return 0;
 	FILE *f = fopen(ft->jobid_file_name, "r");
 	if (!f) {
+		pthread_mutex_lock(&host_jobid_lock);
 		free(ft->host_jobid);
 		ft->host_jobid = NULL;
+		pthread_mutex_unlock(&host_jobid_lock);
 		return 0;
 	}
 	char *s = NULL;
@@ -2656,14 +2662,18 @@ static int update_host_jobid(forkstat_t *ft)
 		name = strtok_r(s, "=", &p);
 		if (!name || strcmp(name, ft->jobid_variable_name))
 			continue;
-		value = strtok_r(NULL, "=", &p);
+		value = strtok_r(NULL, " \f\v\r\t\n", &p);
 		if (!value) {
+			pthread_mutex_lock(&host_jobid_lock);
 			free(ft->host_jobid);
 			ft->host_jobid = NULL;
+			pthread_mutex_unlock(&host_jobid_lock);
 			break;
 		}
+		pthread_mutex_lock(&host_jobid_lock);
 		free(ft->host_jobid);
 		ft->host_jobid = strdup(value);
+		pthread_mutex_unlock(&host_jobid_lock);
 		if (!ft->host_jobid) {
 			rc = ENOMEM;
 		}
@@ -2725,6 +2735,8 @@ static int set_jobid_variable(forkstat_t *ft)
  */
 static int set_jobid_file(forkstat_t *ft)
 {
+	if (ft->jobid_file_name)
+		return 0;
 	struct exclude_arg *jfa = jobid_file_arg;
 	if (!jfa->parsed && !getenv(jfa->env))
 		return 0;
@@ -3305,6 +3317,7 @@ err:
  * get host_jobid */
 #define info_jobid_str(info, ft) info->jobid ? info->jobid : ( (info->uid >= UID_MIN && ft->host_jobid) ? ft->host_jobid : "0")
 
+
 static int add_env_attr(struct env_attr *a, jbuf_t *jb, const struct proc_info *info, forkstat_t *ft)
 {
 	const char *s = info_get_var(a->env, info, ft);
@@ -3331,6 +3344,7 @@ static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_in
 	jbuf_t jb = jbd;
 	if (!jb)
 		return NULL;
+	pthread_mutex_lock(&host_jobid_lock);
 	jb = jbuf_append_str(jb,
 		"{"
 		"\"msgno\":%" PRIu64 ","
@@ -3375,6 +3389,7 @@ static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_in
 			(int)info->pid,
 			(int)info->is_thread,
 			info->exe);
+	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 
 }
@@ -3387,6 +3402,7 @@ static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info
 	if (!jb)
 		return NULL;
 
+	pthread_mutex_lock(&host_jobid_lock);
 	if (ft->format == 0)
 		jb = jbuf_append_str(jb,
 			"{"
@@ -3487,6 +3503,7 @@ static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info
 	else
 		jb = NULL;
 
+	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 }
 
@@ -3496,6 +3513,7 @@ static jbuf_t make_process_start_data_lsf(forkstat_t *ft, const struct proc_info
 	jbuf_t jb = jbd;
 	if (!jb)
 		return NULL;
+	pthread_mutex_lock(&host_jobid_lock);
 	jb = jbuf_append_str(jb,
 		"{"
 		"\"msgno\":%" PRIu64 ","
@@ -3537,6 +3555,7 @@ static jbuf_t make_process_start_data_lsf(forkstat_t *ft, const struct proc_info
 			info->exe);
 
  out_1:
+	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 }
 
@@ -3546,6 +3565,7 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 	jbuf_t jb = jbd;
 	if (!jb)
 		return NULL;
+	pthread_mutex_lock(&host_jobid_lock);
 	if (ft->format == 0)
 		jb = jbuf_append_str(jb,
 			"{"
@@ -3636,6 +3656,7 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 			(int64_t)info->uid);
 
  out_1:
+	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 }
 
@@ -3649,6 +3670,7 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 	jbuf_t jb = jbd;
 	if (!jb)
 		return NULL;
+	pthread_mutex_lock(&host_jobid_lock);
 	jb = jbuf_append_str(jb,
 		"{"
 		"\"msgno\":%" PRIu64 ","
@@ -3692,6 +3714,7 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 			(int)info->is_thread,
 			info->exe);
  out_1:
+	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 
 }
@@ -3703,6 +3726,7 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 
 	if (!jb)
 		return NULL;
+	pthread_mutex_lock(&host_jobid_lock);
 	if (ft->format == 0)
 		jb = jbuf_append_str(jb,
 			"{"
@@ -3791,6 +3815,7 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 		"}");
 
  out_1:
+	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 }
 
@@ -4415,11 +4440,12 @@ int main(int argc, char * argv[])
 		forkstat_option_dump(ft, excludes);
 
 /* netlink/ldms threaded region */
-	pthread_t jtid = pthread_create(&jobid_thread, NULL,
-			jobid_thread_check, ft); /* thread for jobid file */
+	/* thread for jobid file */
+	pthread_create(&jobid_thread, NULL, jobid_thread_check, ft);
 
 	forkstat_init_ldms_stream(ft);
-	int start_err = forkstat_monitor(ft, &ma); // thread to follow kernel netlink sock
+	// thread to follow kernel netlink sock
+	int start_err = forkstat_monitor(ft, &ma);
 	if (start_err)
 		goto close_abort;
 	if (ft->opt_trace)
@@ -4439,7 +4465,6 @@ int main(int argc, char * argv[])
 	pthread_join(ma.tid, &res);
 	if (ft->opt_trace)
 		PRINTF("JOIN done w/%p\n", res);
-	pthread_cancel(jtid); /* this will 'fail' if thread already stopped */
 	forkstat_finalize_ldms_stream(ft);
 /* resume unthreaded region */
 	if (ft->opt_trace)
