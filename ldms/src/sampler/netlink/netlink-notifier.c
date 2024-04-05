@@ -2733,7 +2733,9 @@ static int set_jobid_variable(forkstat_t *ft)
  * ft->jobid_file_name will remain NULL if user wants no jobid from /var.
  * (default is user wants no jobid from /var)
  */
-static int set_jobid_file(forkstat_t *ft)
+#define SJF_LOOP 0
+#define SJF_ONCE 1
+static int set_jobid_file(forkstat_t *ft, int once)
 {
 	if (ft->jobid_file_name)
 		return 0;
@@ -2760,6 +2762,8 @@ static int set_jobid_file(forkstat_t *ft)
 				return 0;
 			}
 		}
+		if (once)
+			return 0;
 		sleep(JOB_FILES_RETRY);
 	}
 }
@@ -2779,7 +2783,7 @@ jobid_thread_check(void *arg)
 	int mask = IN_CLOSE_WRITE | IN_CREATE | IN_DELETE | IN_DELETE_SELF;
 
 	// this loops until file is known if file is expected
-	rc = set_jobid_file(ft);
+	rc = set_jobid_file(ft, SJF_LOOP);
 	if (rc) {
 		printf("out of memory setting job id input file\n");
 		return NULL;
@@ -4058,10 +4062,11 @@ void heartbeat(forkstat_t *ft, time_t now, jbuf_t *jbd)
 			"\"schema\":\"ldms-notify-status\","
 			"%s%s"
 			"\"timestamp\":%" PRId64 ","
-			"\"event\":\"heartbeat\",\"data\":{}}",
+			"\"event\":\"heartbeat\",\"data\":{\"host_jobid\":\"%s\"}}",
 				forkstat_get_serial(ft),
 				ft->prod_field, ft->compid_field,
-				(int64_t)ft->lastbeat
+				(int64_t)ft->lastbeat,
+				ft->host_jobid
 			);
 		if (jb) {
 			send_ldms_message(ft, jb);
@@ -4348,7 +4353,7 @@ int main(int argc, char * argv[])
 		}
 		normalize_exclude(&excludes[c]);
 	}
-	int rc = set_jobid_file(ft);
+	int rc = set_jobid_file(ft, SJF_ONCE);
 	switch (rc) {
 	case ENOENT:
 		fprintf(stderr, "Warning: Found no file for %s with %s.\n",
