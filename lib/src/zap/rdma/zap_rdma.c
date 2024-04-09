@@ -2656,7 +2656,7 @@ static void *z_rdma_io_thread_proc(void *arg)
 	struct z_rdma_epoll_ctxt *ctxt;
 	struct z_rdma_epoll_ctxt *cm_ctxt[16];
 
-	thr->zap_io_thread.stat->tid = syscall(SYS_gettid);
+	zap_io_thread_thread_id(&thr->zap_io_thread);
 
 	sigfillset(&sigset);
 	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
@@ -2716,8 +2716,7 @@ zap_io_thread_t z_rdma_io_thread_create(zap_t z)
 	if (!thr)
 		goto err_0;
 
-	rc = zap_io_thread_init(&thr->zap_io_thread, z, "zap_rdma_io",
-				ZAP_ENV_INT(ZAP_THRSTAT_WINDOW));
+	rc = zap_io_thread_init(&thr->zap_io_thread, z, "zap_rdma_io");
 	if (rc)
 		goto err_1;
 

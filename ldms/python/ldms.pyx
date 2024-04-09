@@ -4587,25 +4587,26 @@ cdef class ZapThrStat(object):
     threads, please call `ZapThrStat.get_result()` class method.
     """
     cdef readonly str      name
-    cdef readonly double   sample_count
-    cdef readonly double   sample_rate
     cdef readonly double   utilization
+    cdef readonly int      refresh_us
     cdef readonly int      pool_idx
     cdef readonly uint64_t thread_id
 
     def __cinit__(self, Ptr ptr):
         cdef zap_thrstat_result_entry *e = <zap_thrstat_result_entry*>ptr.c_ptr
-        self.name         = STR(e.name)
-        self.sample_count = e.sample_count
-        self.sample_rate  = e.sample_rate
-        self.utilization  = e.utilization
+        self.name         = STR(e.res.name)
+        self.refresh_us   = e.res.interval_us
         self.pool_idx     = e.pool_idx
-        self.thread_id    = e.thread_id
+        self.thread_id    = e.res.thread_id
+        if e.res.interval_us == 0:
+            self.utilization = -1
+        else:
+            self.utilization = <double>e.res.active_us/<double>e.res.interval_us
 
     @classmethod
-    def get_result(cls):
+    def get_result(cls, uint64_t interval_s=0):
         cdef int i
-        cdef zap_thrstat_result *r = zap_thrstat_get_result()
+        cdef zap_thrstat_result *r = zap_thrstat_get_result(interval_s)
         cdef list lst = list()
         for i in range(0, r.count):
             e = ZapThrStat(PTR(&r.entries[i]))
@@ -4614,19 +4615,17 @@ cdef class ZapThrStat(object):
 
     def as_list(self):
         return (self.name, self.thread_id, self.pool_idx,
-                self.sample_count, self.sample_rate, self.utilization)
+                self.time_dur, self.utilization)
 
     def as_dict(self):
-        keys = [ 'name', 'sample_count', 'sample_rate', 'utilization',
-                 'pool_idx', 'thread_id' ]
+        keys = [ 'name', 'interval_us', 'utilization', 'pool_idx', 'thread_id' ]
         return { k : getattr(self, k) for k in keys }
 
     def __str__(self):
         return f"('{self.name}'" \
                f", {hex(self.thread_id)}" \
                f", {self.pool_idx}" \
-               f", {self.sample_count}" \
-               f", {self.sample_rate}" \
+               f", {self.interval_us}" \
                f", {self.utilization}" \
                f")"
 

@@ -2129,7 +2129,7 @@ int init_once()
 
 	zap_ugni_cq_depth = ZAP_ENV_INT(ZAP_UGNI_CQ_DEPTH);
 
-	ugni_stats = zap_thrstat_new("ugni:cq_proc", ZAP_ENV_INT(ZAP_THRSTAT_WINDOW));
+	ugni_stats = zap_thrstat_new("ugni:cq_proc");
 	rc = ugni_node_state_thread_init();
 	if (rc)
 		return rc;
@@ -3613,7 +3613,7 @@ static void *z_ugni_io_thread_proc(void *arg)
 	struct epoll_event ev[N_EV];
 	int was_not_empty;
 
-	thr->zap_io_thread.stat->tid = syscall(SYS_gettid);
+	zap_io_thread_thread_id(&thr->zap_io_thread);
 
 	pthread_cleanup_push(z_ugni_io_thread_cleanup, thr);
 
@@ -3724,8 +3724,7 @@ zap_io_thread_t z_ugni_io_thread_create(zap_t z)
 	TAILQ_INIT(&thr->stalled_wrq);
 
 	CONN_LOG("zap thread initializing ...\n");
-	rc = zap_io_thread_init(&thr->zap_io_thread, z, "zap_ugni_io",
-			ZAP_ENV_INT(ZAP_THRSTAT_WINDOW));
+	rc = zap_io_thread_init(&thr->zap_io_thread, z, "zap_ugni_io");
 	CONN_LOG("zap thread initialized\n");
 	if (rc)
 		goto err_1;

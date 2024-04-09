@@ -2561,7 +2561,7 @@ static void *z_fi_io_thread_proc(void *arg)
 	struct z_fi_ep *cm_reps[N_EV];
 	struct z_fi_epoll_ctxt *ctxt;
 
-	thr->zap_io_thread.stat->tid = syscall(SYS_gettid);
+	zap_io_thread_thread_id(&thr->zap_io_thread);
 
 	sigfillset(&sigset);
 	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
@@ -2645,7 +2645,7 @@ static zap_io_thread_t z_fi_io_thread_create(zap_t z)
 		LLOG("malloc() failed: %d\n", errno);
 		goto out;
 	}
-	zerr = zap_io_thread_init(&thr->zap_io_thread, z, "z_fi_io", ZAP_ENV_INT(ZAP_THRSTAT_WINDOW));
+	zerr = zap_io_thread_init(&thr->zap_io_thread, z, "z_fi_io");
 	if (zerr) {
 		LLOG("zap_io_thread_init() failed, zerr: %d\n", zerr);
 		goto err1;

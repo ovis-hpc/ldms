@@ -384,6 +384,7 @@ int find_least_busy_thread()
 	struct timespec now;
 	struct ovis_scheduler_thrstats *stat;
 	double best = 100;
+	uint64_t active_pc;
 
 	clock_gettime(CLOCK_REALTIME, &now);
 
@@ -391,11 +392,10 @@ int find_least_busy_thread()
 		stat = ovis_scheduler_thrstats_get(ovis_scheduler[i], &now, 0);
 		if (!stat)
 			continue;
-		if (stat->stats.active_pc < best ||
-				(stat->stats.active_pc == best &&
-				 ev_count[i] < count)) {
+		active_pc = stat->stats.active_tot / stat->stats.dur_tot;
+		if (active_pc < best || (active_pc == best && ev_count[i] < count)) {
 			idx = i;
-			best = stat->stats.active_pc;
+			best = active_pc;
 			count = ev_count[i];
 		}
 		ovis_scheduler_thrstats_free(stat);
@@ -512,6 +512,25 @@ struct ldmsd_worker_thrstat_result *ldmsd_xthrstat_get()
 		free(se);
 	}
 	return NULL;
+}
+
+void ldmsd_worker_thrstats_reset(struct timespec *now)
+{
+	int i;
+
+	for (i = 0; i < ev_thread_count; i++) {
+		ovis_scheduler_thrstats_reset(ovis_scheduler[i], now);
+	}
+}
+
+void ldmsd_xthrstat_reset(struct timespec *now)
+{
+	ldmsd_cfgobj_sampler_t samp;
+	for (samp = ldmsd_sampler_first(); samp; samp = ldmsd_sampler_next(samp)) {
+		if (!samp->os || !samp->use_xthread)
+			continue;
+		ovis_scheduler_thrstats_reset(samp->os, now);
+	}
 }
 
 void kpublish(int map_fd, int set_no, int set_size, char *set_name)
@@ -1274,6 +1293,11 @@ void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct t
 	}
 }
 
+void ldmsd_stat_reset(struct ldmsd_stat *stats, struct timespec *now)
+{
+	memset(stats, 0, sizeof(*stats));
+	stats->start = *now;
+}
 
 void *event_proc(void *v)
 {

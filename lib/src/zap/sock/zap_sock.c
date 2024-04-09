@@ -1450,7 +1450,7 @@ static void *io_thread_proc(void *arg)
 	sigset_t sigset;
 	struct z_sock_ep *sep;
 
-	thr->zap_io_thread.stat->tid = syscall(SYS_gettid);
+	zap_io_thread_thread_id(&thr->zap_io_thread);
 
 	pthread_cleanup_push(io_thread_cleanup, arg);
 
@@ -2264,8 +2264,7 @@ zap_io_thread_t z_sock_io_thread_create(zap_t z)
 	z_sock_io_thread_t thr = calloc(1, sizeof(*thr));
 	if (!thr)
 		goto err0;
-	rc = zap_io_thread_init(&thr->zap_io_thread, z, "zap_sock_io",
-				ZAP_ENV_INT(ZAP_THRSTAT_WINDOW));
+	rc = zap_io_thread_init(&thr->zap_io_thread, z, "zap_sock_io");
 	if (rc)
 		goto err1;
 	thr->efd = epoll_create1(O_CLOEXEC);

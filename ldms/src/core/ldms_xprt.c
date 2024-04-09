@@ -3080,11 +3080,11 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev);
 void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg);
 void __rail_ep_limit(ldms_t x, void *msg, int msg_len);
 
-void __thrstats_reset(void *ctxt)
+void __thrstats_reset(void *ctxt, struct timespec *reset_ts)
 {
 	int i;
 	struct ldms_thrstat *thrstat = (struct ldms_thrstat *)ctxt;
-
+	thrstat->last_op_start = *reset_ts;
 	for (i = 0; i < LDMS_THRSTAT_OP_COUNT; i++)
 		thrstat->ops[i].count = thrstat->ops[i].total = 0;
 }
@@ -4563,48 +4563,49 @@ char *ldms_thrstat_op_str(enum ldms_thrstat_op_e e)
 	return ldms_thrstat_op_str_tbl[e];
 }
 
-struct ldms_thrstat_result *ldms_thrstat_result_get()
+struct ldms_thrstat_result *ldms_thrstat_result_get(uint64_t interval_s)
 {
 	struct ldms_thrstat *lstats;
 	struct zap_thrstat_result *zres;
-	struct ldms_thrstat_result *res;
+	struct ldms_thrstat_result *lres;
+	struct ovis_thrstats_result *res;
 	struct timespec now;
 	uint64_t ldms_xprt_time;
 	int i, j;
 
 	(void)clock_gettime(CLOCK_REALTIME, &now);
 
-	zres = zap_thrstat_get_result();
+	zres = zap_thrstat_get_result(interval_s);
 
-	res = calloc(1, sizeof(*res) +
+	lres = calloc(1, sizeof(*lres) +
 		zres->count * sizeof(struct ldms_thrstat_result_entry));
-	if (!res)
+	if (!lres)
 		goto out;
-	res->_zres = zres;
-	res->count = zres->count;
+	lres->_zres = zres;
+	lres->count = zres->count;
 	for (i = 0; i < zres->count; i++) {
-		res->entries[i].zap_res = &zres->entries[i];
-		res->entries[i].idle = zres->entries[i].idle_time;
+		lres->entries[i].zap_res = &zres->entries[i];
+		res = &zres->entries[i].res;
+		lres->entries[i].idle = res->idle_tot;
 
-		lstats = (struct ldms_thrstat *)zres->entries[i].app_ctxt;
+		lstats = (struct ldms_thrstat *)res->app_ctxt;
 		if (!lstats)
 			continue;
 		ldms_xprt_time = 0;
 		for (j = 0; j < LDMS_THRSTAT_OP_COUNT; j++) {
-			res->entries[i].ops[j] = lstats->ops[j].total;
+			lres->entries[i].ops[j] = lstats->ops[j].total;
 			ldms_xprt_time += lstats->ops[j].total;
 		}
-		res->entries[i].zap_time = zres->entries[i].active_time;
-		if (!zres->entries[i].waiting) {
+		lres->entries[i].zap_time = res->active_tot;
+		if (!res->waiting) {
 			/* The thread is active. */
-			res->entries[i].zap_time += ldms_timespec_diff_us(
-							&zres->entries[i].wait_end,
-									     &now);
+			lres->entries[i].zap_time += ldms_timespec_diff_us(
+							&res->wait_end, &now);
 		}
-		res->entries[i].zap_time -= ldms_xprt_time;
+		lres->entries[i].zap_time -= ldms_xprt_time;
 	}
 out:
-	return res;
+	return lres;
 }
 
 void ldms_thrstat_result_free(struct ldms_thrstat_result *res)

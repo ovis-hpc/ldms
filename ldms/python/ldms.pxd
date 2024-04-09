@@ -257,6 +257,27 @@ cdef extern from "ovis_log/ovis_log.h" nogil:
 
     int ovis_log_set_level_by_name(const char *subsys_name, int level)
 
+cdef extern from "ovis_thrstats/ovis_thrstats.h" nogil:
+    struct timespec:
+        long tv_sec
+        long tv_nsec
+
+    struct ovis_thrstats_result:
+        char *name
+        pid_t tid
+        uint64_t thread_id
+        int waiting
+        timespec start
+        timespec wait_start
+        timespec wait_end
+        uint64_t idle_tot
+        uint64_t active_tot
+        uint64_t dur_tot
+        uint64_t interval_us
+        uint64_t idle_us
+        uint64_t active_us
+        void *app_ctxt
+
 cdef extern from "ldms_rail.h" nogil:
     cpdef enum :
         LDMS_UNLIMITED
@@ -919,28 +940,16 @@ cdef extern from "ldms.h" nogil:
 
 cdef extern from "zap/zap.h" nogil:
     struct zap_thrstat_result_entry:
-        char *name
-        double sample_count
-        double sample_rate
-        double utilization
+        ovis_thrstats_result res
         uint64_t n_eps
         uint64_t sq_sz
         int pool_idx
-        uint64_t thread_id
-        pid_t tid
-        uint64_t idle_time
-        uint64_t active_time
-        timespec start
-        timespec wait_start
-        timespec wait_end
-        int waiting
-        void *app_ctxt
 
     struct zap_thrstat_result:
         int count
         zap_thrstat_result_entry entries[0]
 
-    zap_thrstat_result *zap_thrstat_get_result()
+    zap_thrstat_result *zap_thrstat_get_result(uint64_t interval_s)
 
 cdef extern from "asm/byteorder.h" nogil:
     uint16_t __le16_to_cpu(uint16_t)

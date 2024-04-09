@@ -56,6 +56,7 @@
 #include <errno.h>
 #include "ovis_ref/ref.h"
 #include "ovis-ldms-config.h"
+#include "ovis_thrstats/ovis_thrstats.h"
 #include "zap.h"
 
 #include "config.h"
@@ -436,23 +437,30 @@ int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc)
 zap_err_t zap_event_deliver(zap_event_t ev);
 
 /**
- * Initialize the zap_io_thread structure.
+ * \brief Initialize a ZAP I/O thread
  *
- * \param t The pointer to the \c zap_io_thread structure.
- * \param z The associated zap handle.
- * \param name The name of the thread.
- * \param stat_window The window size of the thread statistics.
+ * \param t The ZAP I/O thread to initialize
+ * \param z The ZAP transport instance
+ * \param name Thread name
  *
- * \retval 0 If OK.
- * \retval errno If error.
+ * \return 0 on success, error code on failure
  */
-int zap_io_thread_init(zap_io_thread_t t, zap_t z,
-		       const char *name, int stat_window);
+int zap_io_thread_init(zap_io_thread_t t, zap_t z, const char *name);
 
 /**
  * Release resources allocated in \c zap_io_thread_init().
  */
 int zap_io_thread_release(zap_io_thread_t t);
+
+/**
+ * \brief Update thread identity information for a ZAP I/O thread
+ *
+ * This function should be called from the I/O thread itself to set
+ * the proper thread identification information (thread ID, Linux thread ID).
+ *
+ * \param t The ZAP I/O thread
+ */
+void zap_io_thread_thread_id(zap_io_thread_t t);
 
 int zap_env_int(char *name, int default_value);
 #define ZAP_ENV_INT(X) zap_env_int(#X, X)
@@ -511,37 +519,30 @@ zap_err_t zap_io_thread_ep_release(zap_ep_t ep);
  */
 zap_err_t zap_io_thread_ep_remove(zap_ep_t ep);
 
-/*
- * The zap_thrstat structure maintains state for
- * the Zap thread utilization tracking functions.
+
+/**
+ * \struct zap_thrstat
+ * \brief Internal structure for thread statistics tracking
+ *
+ * This structure maintains state for the ZAP thread utilization tracking
+ * functions. It uses ovis_thrstats for the core statistics collection.
  */
 struct zap_thrstat {
-	char *name;
-	pid_t tid; /* This is the thread ID returned by gettid(). */
-	uint64_t window_size;
-	struct timespec start;
-	struct timespec wait_start;
-	struct timespec wait_end;
-	int waiting;
-	uint64_t proc_count;
-	uint64_t wait_count;
-	uint64_t proc_sum;
-	uint64_t wait_sum;
-	uint64_t *wait_window;
-	uint64_t *proc_window;
-	uint64_t sq_sz; /* send queue size (in entries) */
-	uint64_t n_eps; /* number of endpoints */
-	uint64_t wait_tot; /* Total idle time since reset in micro-seconds */
-	uint64_t proc_tot; /* Total busy time since reset  in micro-seconds */
+	/** Core thread statistics from ovis_thrstats */
+	struct ovis_thrstats stats;
+
+	/** Linked list entry for the global thread stats list */
 	LIST_ENTRY(zap_thrstat) entry;
 
+	/** Thread pool index (-1 for dedicated threads) */
 	int pool_idx;
-	uint64_t thread_id;
 
-	void *app_ctxt; /* Application statistics corresponding to the thread */
-	zap_thrstat_app_reset_fn app_reset_fn;
+	/** Send queue size (in entries) */
+	uint64_t sq_sz;
+
+	/** Number of endpoints */
+	uint64_t n_eps;
 };
-#define ZAP_THRSTAT_WINDOW 4096	/*< default window size */
 
 /**
  * A structure describing a zap IO thread.
