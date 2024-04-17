@@ -3,7 +3,7 @@
 # OVIS / LDMS
 
 For more information on installing and using LDMS: https://ovis-hpc.readthedocs.io/en/latest/
- 
+
 To join the LDMS Users Group: https://github.com/ovis-hpc/ovis-wiki/wiki/Mailing-Lists
 
 Besides the Users Group, there have been three sub-workgroups: Best Practices,
@@ -35,6 +35,79 @@ minimal jitter during collection. LDMS has been run on 10,000 cores collecting
 over 100,000 metric values per second with less than 0.2% overhead.
 
 # Building the OVIS / LDMS source code
+
+## Pre-built containers
+
+You may avoid building LDMS from scratch by leveraging containerized
+deployments. Here's a collection of LDMS container images available for you to
+pull and run. Each image offers a specific set of functionalities to suit your
+needs. Please refer to the corresponding links for detailed information on each
+image. They are currently built with OVIS-4.3.11.
+
+- [ovishpc/ldms-samp](https://hub.docker.com/r/ovishpc/ldms-samp):
+  a small image for 'sampler' daemons meant to be deployed on compute nodes.
+- [ovishpc/ldms-agg](https://hub.docker.com/r/ovishpc/ldms-agg):
+  an image for 'aggregator' daemons, which also includes various storage plugins.
+- [ovishpc/ldms-storage](https://hub.docker.com/r/ovishpc/ldms-storage):
+  an image that contains storage technologies (e.g. SOS, Kafa).
+- [ovishpc/ldms-web-svc](https://hub.docker.com/r/ovishpc/ldms-web-svc):
+  an image for the back-end (Django) that queries SOS data for a Grafana server.
+- [ovishpc/ldms-grafana](https://hub.docker.com/r/ovishpc/ldms-grafana):
+  a Grafana image with 'DSOS' Grafana plugin that allows Grafana to get data
+  from 'ovishpc/ldms-web-svc'.
+- [ovishpc/ldms-dev](https://hub.docker.com/r/ovishpc/ldms-dev):
+  an image for LDMS code development and binary building.
+
+NOTE: To quickly check the version of `ldmsd` in a container, issue the
+following command:
+```sh
+$ docker run --rm -it ovishpc/ldms-samp ldmsd -V
+```
+
+
+## Obtaining ldms-dev container
+
+You may build OVIS on your barebone computers. In which case, you can skip this
+section. Alternatively, you may get
+[ovishpc/ldms-dev](https://hub.docker.com/r/ovishpc/ldms-dev) docker image from
+docker hub which is an `ubuntu:22.04` container with required development
+libraries. The following commands `pull` the image and `run` a container created
+from it.
+
+```sh
+$ docker pull ovishpc/ldms-dev
+$ docker run -it --name dev --hostname dev ovishpc/ldms-dev /bin/bash
+root@dev $ # Now you're in 'dev' container
+```
+
+Please see [ovishpc/ldms-dev](https://hub.docker.com/r/ovishpc/ldms-dev) for
+more information about the container.
+
+
+### Docker Cheat Sheet
+```sh
+$ docker ps # See contianers that are 'Up'
+$ docker ps -a  # See all containers (regardless of state )
+$ docker stop _NAME_ # Stop '_NAME_' container, this does NOT remove the container
+$ docker kill _NAME_ # Like `stop` but send SIGKILL with no graceful wait
+$ docker start _NAME_ # Start '_NAME_' container back up again
+$ docker rm _NAME_ # Remove the container '_NAME_'
+$ docker create -it --name _NAME_ --hostname _NAME_ _IMAGE_ _COMMAND_ _ARG_
+  # Create a container '_NAME_' without starting it.
+  # -i = interactive
+  # -t = create TTY
+  # --name _NAME_ to set _NAME_ for easy reference
+  # --hostname _NAME_ to set the container hostname to _NAME_ to reduce
+  #            confusion
+  # _IMAGE_ the container image that the new container shall be created from
+  # _COMMAND_ the command to run in the container (e.g. /bin/bash). This is
+  #           equivalent to 'init' process to the container. When this process
+  #           exited, the container stopped
+  # _ARG_ the arguments to _COMMAND_
+$ docker create -it --name _NAME_ --hostname _NAME_ _IMAGE_ _COMMAND_ _ARG_
+  # `create` + `start` in one go
+```
+
 
 ## Obtaining the source code
 
@@ -72,11 +145,14 @@ one the "Code" button. Or use the following command:
 * flex
 * libreadline
 * openssl development library (for OVIS, LDMS Authentication)
-* libmunge (for Munge LDMS Authentication plugin)
-* Python >= 3.6 and Cython >= 0.25 (for the LDMS Python API and ldmsd_controller)
+* libmunge development library (for Munge LDMS Authentication plugin)
+* Python >= 3.6 development library and Cython >= 0.29 (for the LDMS Python API and the LDMSD Interface, ldmsd_controller)
 * doxygen (for the OVIS documentation)
 
 Some LDMS plug-ins have dependencies on additional libraries.
+
+***REMARK*** Missing dependencies (e.g. python3-dev) may NOT break the
+configuration and build but the features requiring them won't be built.
 
 For cray-related LDMS sampler plug-in dependencies, please see the man page of the
 plug-in in `ldms/man/`.
