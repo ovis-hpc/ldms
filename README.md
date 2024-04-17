@@ -72,8 +72,8 @@ one the "Code" button. Or use the following command:
 * flex
 * libreadline
 * openssl development library (for OVIS, LDMS Authentication)
-* libmunge (for Munge LDMS Authentication plugin)
-* Python >= 3.6 and Cython >= 0.25 (for the LDMS Python API and ldmsd_controller)
+* libmunge development library (for Munge LDMS Authentication plugin)
+* Python >= 3.6 development library and Cython >= 0.25 (for the LDMS Python API and the LDMSD Interface, ldmsd_controller)
 * doxygen (for the OVIS documentation)
 
 Some LDMS plug-ins have dependencies on additional libraries.
@@ -98,7 +98,7 @@ One way to obtain those packages is from EPEL (install the epel-release package,
 then "yum update"). The packages from EPEL are:
 
 * python3-devel
-* python36-Cython
+* python3-Cython
 
 ## Compling the code
 
