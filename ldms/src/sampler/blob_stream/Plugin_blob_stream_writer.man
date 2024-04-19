@@ -1,0 +1,151 @@
+.\" Manpage for Plugin_blob_stream_writer
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "15 Jun 2021" "v4" "LDMS Plugin blob_stream_writer man page"
+
+.SH NAME
+Plugin_blob_stream_writer - man page for the LDMS blob_stream_writer plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=blob_stream_writer [ <attr>=<value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or a configuration file. The blob_stream_writer plugin writes out raw stream messages
+and offsets of the messages in separate files. Messages are not appended with '\n' or '\0'.
+Multiple streams may be specified.
+
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+.TP
+.BR config
+name=blob_stream_writer path=<path> container=<container> stream=<stream> debug=1
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be blob_stream_writer.
+.TP
+path=<path>
+.br
+path to the directory of the output files
+.TP
+container=<container>
+.br
+directory of the output file
+.TP
+stream=<stream>
+.br
+stream to which to subscribe. This argument may be repeated. Each stream will be written in a separate file pair.
+.TP
+debug=1
+.br
+Enable logging of messages stored to the log file.
+.TP
+timing=1
+.br
+Enable writing timestamps to a separate file.
+.TP
+spool=1
+.br
+Move closed files to the directory <path>/<container>/spool/.
+.TP
+rolltype=<rolltype>
+.br
+By default, the store does not rollover and the data is written to a continously open filehandle. Rolltype and rollover are used in conjunction to enable the store to manage rollover, including flushing before rollover. The header will be rewritten when a roll occurs. Valid options are:
+.RS
+.TP
+1
+.br
+wake approximately every rollover seconds and roll.
+Rollover is suppressed if no data at all has been written and rollempty=0.
+.TP
+2
+.br
+wake daily at rollover seconds after midnight (>=0) and roll.
+Rollover is suppressed if no data at all has been written and rollempty=0.
+.TP
+3
+.br
+roll after approximately rollover records are written.
+.TP
+4
+roll after approximately rollover bytes are written.
+.TP
+5
+.br
+wake at rollover seconds after midnight (>=0) and roll, then repeat every rollagain (> rollover) seconds during the day. For example "rollagain=3600 rollover=0 rolltype=5" rolls files hourly.
+Rollover is suppressed if no data at all has been written and rollempty=0.
+.RE
+.TP
+rollover=<rollover>
+.br
+Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
+.TP
+rollempty=0
+.br
+Turn off rollover of empty files. Default value is 1 (create extra empty files).
+.RE
+
+.SH OUTPUT FORMAT
+.PP
+There is no requirement that any message must the same format as any other.
+
+The writer writes all messages received to a file pair:
+$path/$container/$stream.OFFSET.$create_time
+$path/$container/$stream.DAT.$create_time
+where OFFSET is the byte offsets into the corresponding .DAT
+of the messages seen on the stream.
+
+Each byte offset is written as a little-endian 64 bit number.
+Data read from .OFFSET should be converted to host order
+with le64toh.
+
+Both DAT and OFFSET files begin with an 8 byte magic number: blobdat\\0 and bloboff\\0, respectively.
+
+Optionally (if timing=1 given) the additional file
+$path/$container/$stream.TIMING.$create_time
+is created containing binary timestamps corresponding to the messages.
+The TIMING file begins with an 8 byte magic number: blobtim\\0.
+Each time is the delivery time to the plugin performing the blob storage.
+Each timestamp is written to the .TIMING file as a binary pair (tv_sec, tv_usec)
+with each value stored as a little-endian 64 bit value which should be
+read and then converted with le64toh.
+
+.SH NOTES
+.PP
+This writer is in development and may be changed at any time.
+.PP
+Cannot support stream=.* as there is no corresponding regex subscription policy
+currently available in the C stream API.
+.PP
+The config operation may called at any time or repeated, though the use of rollover
+policies is recommended instead. Repeated configuration of rollover is silently ignored.
+The start and stop operations will start and stop storage of all streams.
+.PP
+The plugin appears in C code as a sampler plugin, since the storage policy and store
+plugin interfaces are set-oriented and no sets are involved here.
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=blob_stream_writer
+config name=blob_stream_writer path=/writer/streams container=${CLUSTER} stream=foo stream=slurm stream=kokkos
+start name=name=blob_stream_writer
+.fi
+.PP
+Examining offsets in a shell:
+.nf
+od od -A d -t u8 -j 8 -w8 slurm.OFFSET.1624033344 |sed -e 's/[0-9,A-F,a-f]* *//'
+.fi
+Examining timestamps in a shell:
+.nf
+od -A d -j 8 -t u8
+.fi
+
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), le64toh(3), fseek(3), od(1)

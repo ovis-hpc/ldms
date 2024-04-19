@@ -1,0 +1,35 @@
+export plugname=dstat
+export dsname=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 auto-schema=1)
+export dstat_schema=$dsname
+portbase=61060
+# memcheck
+VGARGS="--trace-children=yes --track-origins=yes --leak-check=full --show-leak-kinds=all"
+# drd
+#VGARGS="--trace-children=yes  --tool=drd --trace-mutex=yes"
+# track everything notifier config:
+${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 60 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs -v 1 &
+LDMSD 1
+#vgon
+LDMSD 2
+#vgoff
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -l
+for kt2 in $(seq 5); do
+#MESSAGE "trying rollover via reconfig: $(date +%s)"
+#echo "config name=blob_stream_writer path=${STOREDIR} container=blobs stream=slurm timing=1 types=1 spool=1" | \
+#ldmsctl -p 61062 -a none -x sock -h localhost
+for kt in $(seq 4); do
+	SLEEP 2
+done
+done
+SLEEP 1
+SLEEP 2
+SLEEP 2
+SLEEP 2
+SLEEP 1
+KILL_LDMSD 1 2
+file_created $STOREDIR/blobs/spool/slurm.TIMING.1*
+file_created $STOREDIR/blobs/spool/slurm.DAT.1*
+file_created $STOREDIR/blobs/spool/slurm.OFFSET.1*
