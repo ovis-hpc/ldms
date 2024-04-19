@@ -3317,20 +3317,38 @@ err:
 /* /////////// end of functions to get env var from a pid ///////////////// */
 #include "ovis_json/ovis_json.h"
 
+/* If jobid unset, copy host_jobid into info.
+ */
+void check_info_jobid( struct proc_info *info, forkstat_t *ft) {
+	if (info->jobid)
+		return;
+	if (info->uid >= UID_MIN && ft->host_jobid)
+		info->jobid = strdup(ft->host_jobid);
+}
+
 /* get jobid string from pid environ if present, or if uid > UID_MIN,
- * get host_jobid */
-#define info_jobid_str(info, ft) info->jobid ? info->jobid : ( (info->uid >= UID_MIN && ft->host_jobid) ? ft->host_jobid : "0")
+ * get host_jobid.
+ */
+char *info_jobid_str( const struct proc_info *info, forkstat_t *ft) {
+	if (info->jobid)
+		return info->jobid;
+	if (info->uid >= UID_MIN && ft->host_jobid) {
+		return ft->host_jobid;
+	}
+	return "0";
+}
 
 
-static int add_env_attr(struct env_attr *a, jbuf_t *jb, const struct proc_info *info, forkstat_t *ft)
+/* append attr string to jb; if !last, field is also followed by a comma */
+static int add_env_attr(struct env_attr *a, jbuf_t *jb, const struct proc_info *info, forkstat_t *ft, bool last)
 {
 	const char *s = info_get_var(a->env, info, ft);
 	if (!s)
 		s = a->v_default;
 	if (a->quoted == ATTR_QUOTED) {
-		*jb = jbuf_append_attr(*jb, a->attr, "\"%s\",", s );
+		*jb = jbuf_append_attr(*jb, a->attr, "\"%s\"%s", s , (last ? "" : ","));
 	} else {
-		*jb = jbuf_append_attr(*jb, a->attr, "%s,", s);
+		*jb = jbuf_append_attr(*jb, a->attr, "%s%s", s, (last ? "" : ","));
 	}
 	if (!*jb)
 		return errno;
@@ -3349,6 +3367,7 @@ static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_in
 	if (!jb)
 		return NULL;
 	pthread_mutex_lock(&host_jobid_lock);
+	if (ft->format < 3) {
 	jb = jbuf_append_str(jb,
 		"{"
 		"\"msgno\":%" PRIu64 ","
@@ -3393,6 +3412,54 @@ static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_in
 			(int)info->pid,
 			(int)info->is_thread,
 			info->exe);
+	}
+	if (ft->format == 3) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"linux_task_data\","
+			"\"event\":\"task_init_priv\","
+			"\"timestamp\":%d,"
+#if DEBUG_EMITTER
+			"\"emitter\":\"%s\","
+#endif
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"uid\":%" PRId64 ","
+				"\"gid\":%" PRId64 ","
+				"\"is_thread\":%d,"
+				"\"exe\":\"%s\","
+				/* format start_tick as string because u64 is out
+				 * of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\","
+				"\"task_pid\":%d,"
+				"\"task_global_id\":" NULL_STEP_ID
+				"}"
+			"}",
+			forkstat_get_serial(ft),
+			time(NULL),
+#if DEBUG_EMITTER
+			type,
+#endif
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int64_t)info->uid,
+				(int64_t)info->gid,
+				(int)info->is_thread,
+				info->exe,
+				info->start_tick,
+				(int)info->pid
+				);
+	}
 	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 
@@ -3504,6 +3571,49 @@ static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info
 				info->duration,
 				info->exe ? info->exe : no_exe_data
 				);
+	else if (ft->format == 3) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"linux_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"uid\":%" PRId64 ","
+				"\"gid\":%" PRId64 ","
+				"\"is_thread\":%d,"
+				"\"exe\":\"%s\","
+				"\"duration\":%.17g",
+				/* format start_tick as string because u64 is out
+				 * of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\","
+				"\"task_pid\":%d,"
+				"\"task_global_id\":" NULL_STEP_ID
+				"}"
+			"}",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int64_t)info->uid,
+				(int64_t)info->gid,
+				(int)info->is_thread,
+				info->exe ? info->exe : no_exe_data,
+				info->duration,
+				info->start_tick,
+				(int)info->pid
+				);
+	}
 	else
 		jb = NULL;
 
@@ -3518,6 +3628,7 @@ static jbuf_t make_process_start_data_lsf(forkstat_t *ft, const struct proc_info
 	if (!jb)
 		return NULL;
 	pthread_mutex_lock(&host_jobid_lock);
+	if (ft->format < 3) {
 	jb = jbuf_append_str(jb,
 		"{"
 		"\"msgno\":%" PRIu64 ","
@@ -3544,7 +3655,7 @@ static jbuf_t make_process_start_data_lsf(forkstat_t *ft, const struct proc_info
 	size_t i, iend;
 	iend = ARRAY_SIZE(lsf_env_start_default);
 	for (i = 0 ; i < iend; i++)
-		if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft))
+			if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft, 0))
 			goto out_1;
 	jb = jbuf_append_str(jb,
 			"\"uid\":%" PRId64 ","
@@ -3557,6 +3668,52 @@ static jbuf_t make_process_start_data_lsf(forkstat_t *ft, const struct proc_info
 			(int64_t)info->gid,
 			(int)info->is_thread,
 			info->exe);
+	} else if (ft->format == 3) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"lsf_task_data\","
+			"\"event\":\"task_init_priv\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"uid\":%" PRId64 ","
+				"\"gid\":%" PRId64 ","
+				"\"is_thread\":%d,"
+				"\"exe\":\"%s\","
+				/* format start_tick as string because u64 is out
+				 * of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\",",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int64_t)info->uid,
+				(int64_t)info->gid,
+				(int)info->is_thread,
+				info->exe,
+				info->start_tick
+				);
+		if (!jb)
+			goto out_1;
+		size_t i, iend;
+		iend = ARRAY_SIZE(lsf_env_start_default);
+		for (i = 0 ; i < iend; i++)
+			if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft, (i == (iend-1))))
+				goto out_1;
+		jb = jbuf_append_str(jb,
+				"}"
+			"}");
+	}
 
  out_1:
 	pthread_mutex_unlock(&host_jobid_lock);
@@ -3570,7 +3727,7 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 	if (!jb)
 		return NULL;
 	pthread_mutex_lock(&host_jobid_lock);
-	if (ft->format == 0)
+	if (ft->format == 0) {
 		jb = jbuf_append_str(jb,
 			"{"
 			"\"msgno\":%" PRIu64 ","
@@ -3592,7 +3749,7 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 				info_jobid_str(info, ft),
 				info->serno,
 				(int64_t)info->pid);
-	else if (ft->format == 1)
+	} else if (ft->format == 1) {
 		jb = jbuf_append_str(jb,
 			"{"
 			"\"msgno\":%" PRIu64 ","
@@ -3617,7 +3774,7 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 				(int64_t)info->pid,
 				info->duration
 				);
-	else if (ft->format == 2)
+	} else if (ft->format == 2) {
 		jb = jbuf_append_str(jb,
 			"{"
 			"\"msgno\":%" PRIu64 ","
@@ -3644,20 +3801,71 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 				info->duration,
 				info->exe ? info->exe : no_exe_data
 				);
+	} else if (ft->format == 3) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"linux_task_data\","
+			"\"event\":\"task_init_priv\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"uid\":%" PRId64 ","
+				"\"gid\":%" PRId64 ","
+				"\"is_thread\":%d,"
+				"\"exe\":\"%s\","
+				"\"duration\":%.17g",
+				/* format start_tick as string because u64 is out
+				 * of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\",",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int64_t)info->uid,
+				(int64_t)info->gid,
+				(int)info->is_thread,
+				info->exe ? info->exe : no_exe_data,
+				info->duration,
+				info->start_tick
+				);
+		if (!jb)
+			goto out_1;
+		size_t i, iend;
+		iend = ARRAY_SIZE(lsf_env_start_default);
+		for (i = 0 ; i < iend; i++)
+			if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft, (i == (iend-1))))
+				goto out_1;
+		jb = jbuf_append_str(jb,
+				"}"
+			"}");
+	}
 	else
 		jb = NULL;
 	if (!jb)
 		goto out_1;
+	/* common append env for cases 0-2 */
+	if (ft->format < 3) {
 	size_t i, iend;
 	iend = ARRAY_SIZE(lsf_env_start_default);
 	for (i = 0 ; i < iend; i++)
-		if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft))
+			if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft, 0))
 			goto out_1;
 	jb = jbuf_append_str(jb,
 			"\"uid\":%" PRId64
 			"}"
 		"}",
 			(int64_t)info->uid);
+	}
 
  out_1:
 	pthread_mutex_unlock(&host_jobid_lock);
@@ -3675,6 +3883,7 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 	if (!jb)
 		return NULL;
 	pthread_mutex_lock(&host_jobid_lock);
+	if (ft->format < 3) {
 	jb = jbuf_append_str(jb,
 		"{"
 		"\"msgno\":%" PRIu64 ","
@@ -3703,7 +3912,7 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 	size_t i, iend;
 	iend = ARRAY_SIZE(slurm_env_start_default);
 	for (i = 0 ; i < iend; i++) {
-		if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft))
+			if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft, 0))
 			goto out_1;
 	}
 	jb = jbuf_append_str(jb,
@@ -3717,6 +3926,64 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 		"}",
 			(int)info->is_thread,
 			info->exe);
+	} else if (ft->format == 3) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"slurm_task_data\","
+			"\"event\":\"task_init_priv\","
+			"\"timestamp\":%d,"
+#if DEBUG_EMITTER
+			"\"emitter\":\"%s\","
+#endif
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"uid\":%" PRId64 ","
+				"\"gid\":%" PRId64 ","
+				"\"is_thread\":%d,"
+				"\"exe\":\"%s\","
+				/* format start_tick as string because u64 is out
+				 * of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\","
+				"\"task_pid\":%d,"
+				"\"task_global_id\":" NULL_STEP_ID ","
+				"\"ncpus\":" NULL_STEP_ID ","
+				"\"local_tasks\":" NULL_STEP_ID ",",
+			forkstat_get_serial(ft),
+			time(NULL),
+#if DEBUG_EMITTER
+			type,
+#endif
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int64_t)info->uid,
+				(int64_t)info->gid,
+				(int)info->is_thread,
+				info->exe,
+				info->start_tick,
+				(int)info->pid
+				);
+		if (!jb)
+			goto out_1;
+		size_t i, iend;
+		iend = ARRAY_SIZE(slurm_env_start_default);
+		for (i = 0 ; i < iend; i++) {
+			if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft, (i == (iend-1))))
+				goto out_1;
+		}
+		jb = jbuf_append_str(jb,
+				"}"
+			"}");
+	}
  out_1:
 	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
@@ -3802,14 +4069,71 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 				info->duration,
 				info->exe ? info->exe : no_exe_data
 				);
+	else if  (ft->format == 3) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"slurm_task_data\","
+			"\"event\":\"task_init_priv\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"uid\":%" PRId64 ","
+				"\"gid\":%" PRId64 ","
+				"\"is_thread\":%d,"
+				"\"exe\":\"%s\","
+				"\"duration\":%.17g",
+				/* format start_tick as string because u64 is out
+				 * of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\","
+				"\"task_pid\":%d,"
+				"\"task_global_id\":" NULL_STEP_ID ","
+				"\"ncpus\":" NULL_STEP_ID ","
+				"\"local_tasks\":" NULL_STEP_ID ",",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int64_t)info->uid,
+				(int64_t)info->gid,
+				(int)info->is_thread,
+				info->exe ? info->exe : no_exe_data,
+				info->duration,
+				info->start_tick,
+				(int)info->pid
+				);
+		if (!jb)
+			goto out_1;
+		size_t i, iend;
+		iend = ARRAY_SIZE(slurm_env_start_default);
+		for (i = 0 ; i < iend; i++) { /* deliberately reusing start array here. */
+			if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft, (i == (iend-1))))
+				goto out_1;
+		}
+		jb = jbuf_append_str(jb,
+				"}"
+			"}");
+
+	}
 	else
 		jb = NULL;
 	if (!jb)
 		goto out_1;
+	if (ft->format < 3) {
+		/* common end for formats < 3 */
 	int i, iend;
 	iend = ARRAY_SIZE(slurm_env_end_default);
 	for (i = 0 ; i < iend; i++)
-		if (add_env_attr(&slurm_env_end_default[i], &jb, info, ft))
+			if (add_env_attr(&slurm_env_end_default[i], &jb, info, ft, 0))
 			goto out_1;
 	jb = jbuf_append_str(jb,
 			"\"task_id\":" NULL_STEP_ID ","
@@ -3817,6 +4141,7 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 			"\"task_exit_status\":\"*\""
 			"}"
 		"}");
+	}
 
  out_1:
 	pthread_mutex_unlock(&host_jobid_lock);
@@ -3887,6 +4212,7 @@ static jbuf_t make_ldms_message(forkstat_t *ft, struct proc_info *info, const ch
 			free_env(pidenv);
 		}
 	}
+	check_info_jobid(info, ft);
 
 	if (emit_event & EMIT_EXIT) {
 		switch (info->rm_type) {
