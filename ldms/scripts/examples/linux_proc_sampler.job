@@ -5,13 +5,14 @@ export LDMSD_LOG_LEVEL=ERROR
 export LDMSD_LOG_TIME_SEC=1
 export LDMSD_EXTRA="-m 128m"
 
+tuser=nobody
 function SUSLEEP () {
 	if test "$bypass" = "1"; then
 		echo skipping sleep
 		return 0
 	fi
 	echo -n sleep $1 ...
-	runuser -u $USER sleep $1
+	runuser -p -u $tuser sleep $1
 	echo done
 }
 
@@ -86,9 +87,12 @@ JOBDATA $TESTDIR/job.data 1
 
 drd="valgrind -v --tool=drd --log-file=$LOGDIR/vg.netlink.drd.txt --trace-cond=yes --trace-fork-join=yes"
 memcheck="valgrind -v --leak-check=full --track-origins=yes --trace-children=yes  --log-file=$LOGDIR/vg.netlink.memcheck.txt --keep-debuginfo=yes --malloc-fill=3b"
+memcheck="valgrind -v --leak-check=full --track-origins=yes --trace-children=yes  --log-file=$LOGDIR/vg.netlink.memcheck.txt --malloc-fill=3b"
 #${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked --purge-track-dir &
 
-${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked -x -e exec,clone,exit  -L $LOGDIR/nl.log --heartbeat 1 -v 3 --ProducerName=$(hostname) --purge-track-dir --format 2 --jobid-file=$TESTDIR/job.data.1 &
+echo \
+"${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked -x -e exec,clone,exit  -L $LOGDIR/nl.log --heartbeat 1 -v 1 --ProducerName=$(hostname) --purge-track-dir --format 3 --jobid-file=$TESTDIR/job.data.1 " > ${LDMSD_RUN}/start.netlink
+${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked -x -e exec,clone,exit  -L $LOGDIR/nl.log --heartbeat 1 -v 1 --ProducerName=$(hostname) --purge-track-dir --format 3 --jobid-file=$TESTDIR/job.data.1 &
 
 # uncomment next one to test duplicate handling
 #${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json2.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
@@ -109,14 +113,20 @@ JOBDATA $TESTDIR/job.data 1
 SUSLEEP 1
 LDMS_LS 2 -v
 JOBDATA $TESTDIR/job.data 1
+export LSB_JOBID=12345
 SUSLEEP 5
+unset LSB_JOBID
+export LSB_JOBID
 #MESSAGE stream_client_dump on sampler daemon 1
 #for lc in $(seq 1); do
 #ldmsd_controller --auth none --port 61061 --cmd stream_client_dump
 #	SUSLEEP 1
 #done
 JOBDATA $TESTDIR/job.data 1
+export SLURM_JOB_ID=54321
 SUSLEEP 5
+unset SLURM_JOB_ID
+export SLURM_JOB_ID
 for lc in $(seq 1); do
 #LDMS_LS 1 -v
 	JOBDATA $TESTDIR/job.data 1
