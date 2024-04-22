@@ -419,7 +419,7 @@ static const int signals[] = {
 
 /* add several structures related to filtering. */
 #define default_jobid_file NULL
-#define default_format "2" /* this is also the max format known */
+#define default_format "3" /* this is also the max format known */
 #define default_heartbeat NULL /* none by default*/
 #define default_component_id NULL
 #define default_ProducerName NULL
@@ -1582,6 +1582,7 @@ static void proc_info_unload(forkstat_t *ft)
 			proc_info_t *next = info->next;
 			free_proc_comm(info->cmdline);
 			free(info->exe);
+			info->exe = NULL;
 			info->pid = NULL_PID;
 			info->uid = NULL_UID;
 			info->gid = NULL_GID;
@@ -3330,6 +3331,8 @@ void check_info_jobid( struct proc_info *info, forkstat_t *ft) {
  * get host_jobid.
  */
 char *info_jobid_str( const struct proc_info *info, forkstat_t *ft) {
+	if (!info || !ft)
+		return "-1";
 	if (info->jobid)
 		return info->jobid;
 	if (info->uid >= UID_MIN && ft->host_jobid) {
@@ -3590,7 +3593,7 @@ static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info
 				"\"gid\":%" PRId64 ","
 				"\"is_thread\":%d,"
 				"\"exe\":\"%s\","
-				"\"duration\":%.17g",
+				"\"duration\":%.17g,"
 				/* format start_tick as string because u64 is out
 				 * of ovis_json signed int range */
 				"\"start_tick\":\"%" PRIu64 "\","
@@ -3805,8 +3808,8 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 		jb = jbuf_append_str(jb,
 			"{"
 			"\"msgno\":%" PRIu64 ","
-			"\"schema\":\"linux_task_data\","
-			"\"event\":\"task_init_priv\","
+			"\"schema\":\"lsf_task_data\","
+			"\"event\":\"task_exit\","
 			"\"timestamp\":%d,"
 			"\"context\":\"*\","
 			"\"data\":"
@@ -3820,7 +3823,7 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 				"\"gid\":%" PRId64 ","
 				"\"is_thread\":%d,"
 				"\"exe\":\"%s\","
-				"\"duration\":%.17g",
+				"\"duration\":%.17g,"
 				/* format start_tick as string because u64 is out
 				 * of ovis_json signed int range */
 				"\"start_tick\":\"%" PRIu64 "\",",
@@ -3951,7 +3954,6 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 				/* format start_tick as string because u64 is out
 				 * of ovis_json signed int range */
 				"\"start_tick\":\"%" PRIu64 "\","
-				"\"task_pid\":%d,"
 				"\"task_global_id\":" NULL_STEP_ID ","
 				"\"ncpus\":" NULL_STEP_ID ","
 				"\"local_tasks\":" NULL_STEP_ID ",",
@@ -3969,14 +3971,15 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 				(int64_t)info->gid,
 				(int)info->is_thread,
 				info->exe,
-				info->start_tick,
-				(int)info->pid
+				info->start_tick
 				);
 		if (!jb)
 			goto out_1;
 		size_t i, iend;
 		iend = ARRAY_SIZE(slurm_env_start_default);
 		for (i = 0 ; i < iend; i++) {
+			if (i == 4 || i == 5)
+				continue;
 			if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft, (i == (iend-1))))
 				goto out_1;
 		}
@@ -4074,7 +4077,7 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 			"{"
 			"\"msgno\":%" PRIu64 ","
 			"\"schema\":\"slurm_task_data\","
-			"\"event\":\"task_init_priv\","
+			"\"event\":\"task_exit\","
 			"\"timestamp\":%d,"
 			"\"context\":\"*\","
 			"\"data\":"
@@ -4088,11 +4091,10 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 				"\"gid\":%" PRId64 ","
 				"\"is_thread\":%d,"
 				"\"exe\":\"%s\","
-				"\"duration\":%.17g",
+				"\"duration\":%.17g,"
 				/* format start_tick as string because u64 is out
 				 * of ovis_json signed int range */
 				"\"start_tick\":\"%" PRIu64 "\","
-				"\"task_pid\":%d,"
 				"\"task_global_id\":" NULL_STEP_ID ","
 				"\"ncpus\":" NULL_STEP_ID ","
 				"\"local_tasks\":" NULL_STEP_ID ",",
@@ -4108,14 +4110,15 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 				(int)info->is_thread,
 				info->exe ? info->exe : no_exe_data,
 				info->duration,
-				info->start_tick,
-				(int)info->pid
+				info->start_tick
 				);
 		if (!jb)
 			goto out_1;
 		size_t i, iend;
 		iend = ARRAY_SIZE(slurm_env_start_default);
 		for (i = 0 ; i < iend; i++) { /* deliberately reusing start array here. */
+			if (i == 4 || i == 5)
+				continue;
 			if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft, (i == (iend-1))))
 				goto out_1;
 		}
