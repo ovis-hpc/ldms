@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2021,2023 National Technology & Engineering Solutions
+ * Copyright (c) 2021 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2018,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -57,6 +57,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/time.h>
 #include <time.h>
 #include <pthread.h>
 #include <assert.h>
@@ -67,8 +68,9 @@
 #include <ovis_json/ovis_json.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_stream.h"
 
-static ovis_log_t mylog;
+static ldmsd_msg_log_f msglog;
 
 static sos_schema_t app_schema;
 static char path_buff[PATH_MAX];
@@ -112,8 +114,7 @@ static const char *job_rank_time_attrs[] = { "job_id", "rank", "timestamp" };
  *   \"op\" : \"writes_segment_0\",
  *   \"seg\" :
  *	[
- *	  { \"data_set\" : \"N/A\",
- *	    \"pt_sel\" : -1,
+ *	  { \"pt_sel\" : -1,
  *	    \"irreg_hslab\" : -1,
  *	    \"reg_hslab\" : -1,
  *	    \"ndims\" : -1,
@@ -128,8 +129,8 @@ static const char *job_rank_time_attrs[] = { "job_id", "rank", "timestamp" };
  */
 
 static struct sos_schema_template darshan_data_template = {
-	.name = "darshan_data",
-	.uuid = "3a650cf7-0b83-44dc-accc-e44acaa81740",
+	.name = "darshan_data3",
+	.uuid = "3a650cf7-0b83-44dc-accc-e44acaa81744",
 	.attrs = {
 		{ .name = "uid", .type = SOS_TYPE_UINT64 },
 		{ .name = "exe", .type = SOS_TYPE_STRING },
@@ -145,7 +146,6 @@ static struct sos_schema_template darshan_data_template = {
 		{ .name = "flushes", .type = SOS_TYPE_UINT64 },
 		{ .name = "cnt", .type = SOS_TYPE_UINT64 },
 		{ .name = "op", .type = SOS_TYPE_STRING },
-		{ .name = "data_set", .type = SOS_TYPE_STRING },
 		{ .name = "pt_sel", .type = SOS_TYPE_UINT64 },
 		{ .name = "irreg_hslab", .type = SOS_TYPE_UINT64 },
 		{ .name = "reg_hslab", .type = SOS_TYPE_UINT64 },
@@ -153,7 +153,9 @@ static struct sos_schema_template darshan_data_template = {
 		{ .name = "npoints", .type = SOS_TYPE_UINT64 },
 		{ .name = "off", .type = SOS_TYPE_UINT64 },
 		{ .name = "len", .type = SOS_TYPE_UINT64 },
+		{ .name = "start", .type = SOS_TYPE_DOUBLE },
 		{ .name = "dur", .type = SOS_TYPE_DOUBLE },
+		{ .name = "total", .type = SOS_TYPE_DOUBLE },
 		{ .name = "timestamp", .type = SOS_TYPE_DOUBLE },
 		{ .name = "time_job_rank", .type = SOS_TYPE_JOIN,
 		  .size = 3,
@@ -191,7 +193,6 @@ enum attr_ids {
        FLUSHES_ID,
        COUNT_ID,
        OPERATION_ID,
-       DATASET_ID,
        PTSEL_ID,
        IRREGHSLAB_ID,
        REGHSLAB_ID,
@@ -199,7 +200,9 @@ enum attr_ids {
        NPOINTS_ID,
        OFFSET_ID,
        LENGTH_ID,
+       START_ID,
        DURATION_ID,
+       TOTAL_ID,
        TIMESTAMP_ID,
 };
 
@@ -211,14 +214,14 @@ static int create_schema(sos_t sos, sos_schema_t *app)
 	/* Create and add the App schema */
 	schema = sos_schema_from_template(&darshan_data_template);
 	if (!schema) {
-		ovis_log(mylog, OVIS_LERROR, "%s: Error %d creating Darshan data schema.\n",
+		msglog(LDMSD_LERROR, "%s: Error %d creating Darshan data schema.\n",
 		       darshan_stream_store.name, errno);
 		rc = errno;
 		goto err;
 	}
 	rc = sos_schema_add(sos, schema);
 	if (rc) {
-		ovis_log(mylog, OVIS_LERROR, "%s: Error %d adding Darshan data schema.\n",
+		msglog(LDMSD_LERROR, "%s: Error %d adding Darshan data schema.\n",
 				darshan_stream_store.name, rc);
 		goto err;
 	}
@@ -238,6 +241,7 @@ static sos_t sos;
 static int reopen_container(char *path)
 {
 	int rc = 0;
+	sos_schema_t schema;
 
 	/* Close the container if it already exists */
 	if (sos)
@@ -267,17 +271,20 @@ static const char *usage(struct ldmsd_plugin *self)
 		"     mode	The container permission mode for create, (defaults to 0660).\n";
 }
 
-static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt);
-
+static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
+			 ldmsd_stream_type_t stream_type,
+			 const char *msg, size_t msg_len,
+			 json_entity_t entity);
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
+	char *producer_name;
 	int rc;
 	value = av_value(avl, "mode");
 	if (value)
 		container_mode = strtol(value, NULL, 0);
 	if (!container_mode) {
-		ovis_log(mylog, OVIS_LERROR,
+		msglog(LDMSD_LERROR,
 		       "%s: ignoring bogus container permission mode of %s, using 0660.\n",
 		       darshan_stream_store.name, value);
 	}
@@ -287,11 +294,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		stream = strdup(value);
 	else
 		stream = strdup("darshanConnector");
-	ldms_stream_subscribe(stream, 0, stream_recv_cb, self, "darshan_stream_store");
+	ldmsd_stream_subscribe(stream, stream_recv_cb, self);
 
 	value = av_value(avl, "path");
 	if (!value) {
-		ovis_log(mylog, OVIS_LERROR,
+		msglog(LDMSD_LERROR,
 		       "%s: the path to the container (path=) must be specified.\n",
 		       darshan_stream_store.name);
 		return ENOENT;
@@ -301,7 +308,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		free(root_path);
 	root_path = strdup(value);
 	if (!root_path) {
-		ovis_log(mylog, OVIS_LERROR,
+		msglog(LDMSD_LERROR,
 		       "%s: Error allocating %d bytes for the container path.\n",
 		       strlen(value) + 1);
 		return ENOMEM;
@@ -309,7 +316,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = reopen_container(root_path);
 	if (rc) {
-		ovis_log(mylog, OVIS_LERROR, "%s: Error opening %s.\n",
+		msglog(LDMSD_LERROR, "%s: Error opening %s.\n",
 		       darshan_stream_store.name, root_path);
 		return ENOENT;
 	}
@@ -322,7 +329,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 	json_entity_t a = json_attr_find(e, name);
 	json_entity_t v;
 	if (!a) {
-		ovis_log(mylog, OVIS_LERROR,
+		msglog(LDMSD_LERROR,
 		       "%s: The JSON entity is missing the '%s' attribute.\n",
 		       darshan_stream_store.name,
 		       name);
@@ -331,7 +338,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 	v = json_attr_value(a);
 	v_type = json_entity_type(v);
 	if (v_type != expected_type) {
-		ovis_log(mylog, OVIS_LERROR,
+		msglog(LDMSD_LERROR,
 		       "%s: The '%s' JSON entity is the wrong type. "
 		       "Expected %d, received %d\n",
 		       darshan_stream_store.name,
@@ -344,113 +351,111 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 
 
 // Json example
-//{ "uid":22,"exe":"test","job_id":78436,"rank":2,"ProducerName":"nid00046","dset_type":"HDF5","file":"N/A","record_id":3442697474759647253,"module":"POSIX","type":"MOD","max_byte":1191,"switches":1,"flushes":-1,"cnt":5,"op":"reads_segment_4","seg":[{"data_set":"N/A","pt_sel":-1,"irreg_hslab":-1,"reg_hslab":-1,"ndims":-1,"npoints":-1,"off":680,"len":512,"dur":0.00,"timestamp":1638309927.374291}]}
+// {"schema":"N/A", "uid":99066, "exe":"N/A","job_id":9507660,"rank":0,"ProducerName":"swa61","file":"N/A","record_id":10828342152496851967,"module":"MPIIO","type":"MOD","max_byte":-1,"switches":1,"flushes":-1,"cnt":1,"op":"read","seg":[{"pt_sel":-1,"irreg_hslab":-1,"reg_hslab":-1,"ndims":-1,"npoints":-1,"off":-1,"len":1073741824,"start":25.373728,"dur":4.498358,"total":4.498358,"timestamp":1694458760.521913}]}
 
-static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
+
+static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
+			  ldmsd_stream_type_t stream_type,
+			  const char *msg, size_t msg_len,
+			  json_entity_t entity)
 {
+	sos_obj_t obj = NULL;
 	int rc;
 	json_entity_t v, list, item;
-	double timestamp, duration;
+	double timestamp, duration, start, total;
 	uint64_t record_id, count, rank, offset, length, job_id, max_byte, switches;
 	uint64_t flushes, pt_sel, irreg_hslab, reg_hslab, ndims, npoints, uid;
-	char *module_name, *file_name, *type, *operation, *producer_name, *data_set, *exe;
+	char *module_name, *file_name, *type, *hostname, *operation, *producer_name, *exe;
 
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
-		return 0;
-
-	if (!ev->recv.json) {
-		ovis_log(mylog, OVIS_LERROR,
-		       "NULL entity received in stream callback.\n");
+	if (!entity) {
+		msglog(LDMSD_LERROR,
+		       "%s: NULL entity received in stream callback.\n",
+		       darshan_stream_store.name);
 		return 0;
 	}
 
-	rc = get_json_value(ev->recv.json, "uid", JSON_INT_VALUE, &v);
-	if (rc)
-		goto err;
+	rc = get_json_value(entity, "uid", JSON_INT_VALUE, &v);
+        if (rc)
+                goto err;
 	uid = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, "exe", JSON_STRING_VALUE, &v);
-	if (rc)
-		goto err;
-	exe = json_value_str(v)->str;
+        rc = get_json_value(entity, "exe", JSON_STRING_VALUE, &v);
+        if (rc)
+                goto err;
+        exe = json_value_str(v)->str;
 
-	rc = get_json_value(ev->recv.json, "job_id", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, "job_id", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	job_id = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, "rank", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, "rank", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	rank = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, "ProducerName", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, "ProducerName", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	producer_name = json_value_str(v)->str;
 
-	rc = get_json_value(ev->recv.json, "file", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, "file", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	file_name = json_value_str(v)->str;
 
-	rc = get_json_value(ev->recv.json, "record_id", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, "record_id", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	record_id = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, "module", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, "module", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	module_name = json_value_str(v)->str;
 
-	rc = get_json_value(ev->recv.json, "type", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, "type", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	type = json_value_str(v)->str;
 
-	rc = get_json_value(ev->recv.json, "max_byte", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, "max_byte", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	max_byte = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, "switches", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, "switches", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	switches = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, "flushes", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, "flushes", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	flushes = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, "cnt", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, "cnt", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	count = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, "op", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, "op", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	operation = json_value_str(v)->str;
 
-	rc = get_json_value(ev->recv.json, "seg", JSON_LIST_VALUE, &list);
+	rc = get_json_value(entity, "seg", JSON_LIST_VALUE, &list);
 	if (rc)
 		goto err;
 	for (item = json_item_first(list); item; item = json_item_next(item)) {
 
 		if (json_entity_type(item) != JSON_DICT_VALUE) {
-			ovis_log(mylog, OVIS_LERROR,
+			msglog(LDMSD_LERROR,
 			       "%s: Items in segment must all be dictionaries.\n",
 			       darshan_stream_store.name);
 			rc = EINVAL;
 			goto err;
 		}
-
-		rc = get_json_value(item, "data_set", JSON_STRING_VALUE, &v);
-		if (rc)
-			goto err;
-		data_set = json_value_str(v)->str;
 
 		rc = get_json_value(item, "pt_sel", JSON_INT_VALUE, &v);
 		if (rc)
@@ -487,30 +492,52 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 			goto err;
 		length= json_value_int(v);
 
+		rc = get_json_value(item, "start", JSON_FLOAT_VALUE, &v);
+                if (rc)
+                        goto err;
+                start = json_value_float(v);
+
 		rc = get_json_value(item, "dur", JSON_FLOAT_VALUE, &v);
+                if (rc)
+                        goto err;
+                duration = json_value_float(v);
+
+		rc = get_json_value(item, "total", JSON_FLOAT_VALUE, &v);
 		if (rc)
 			goto err;
-		duration = json_value_float(v);
+		total = json_value_float(v);
 
 		rc = get_json_value(item, "timestamp", JSON_FLOAT_VALUE, &v);
 		if (rc)
 			goto err;
 		timestamp = json_value_float(v);
 
-		sos_obj_t obj = sos_obj_new(app_schema);
-		if (!obj) {
-			rc = errno;
-			ovis_log(mylog, OVIS_LERROR,
-			       "%s: Error %d creating Darshan data object.\n",
-			       darshan_stream_store.name, errno);
+		struct timespec now;
+		clock_gettime(CLOCK_REALTIME, &now);
+                now.tv_sec += 10;
+                if (sos_begin_x_wait(sos, &now)) {
+                        msglog(LDMSD_LERROR,
+			       "Timeout attempting to open a transaction on the container '%s'.\n",
+			       sos_container_path(sos));
+                        rc = ETIMEDOUT;
 			goto err;
 		}
 
-		ovis_log(mylog, OVIS_LDEBUG, "%s: Got a record from stream (%s), module_name = %s\n",
+		obj = sos_obj_new(app_schema);
+		if (!obj) {
+			rc = errno;
+			msglog(LDMSD_LERROR,
+			       "%s: Error %d creating Darshan data object.\n",
+			       darshan_stream_store.name, errno);
+			sos_end_x(sos);
+			goto err;
+		}
+
+		msglog(LDMSD_LDEBUG, "%s: Got a record from stream (%s), module_name = %s\n",
 				darshan_stream_store.name, stream, module_name);
 
 		sos_obj_attr_by_id_set(obj, UID_ID, uid);
-		sos_obj_attr_by_id_set(obj, EXE_ID, strlen(exe),  exe);
+                sos_obj_attr_by_id_set(obj, EXE_ID, strlen(exe),  exe);
 		sos_obj_attr_by_id_set(obj, JOB_ID, job_id);
 		sos_obj_attr_by_id_set(obj, RANK_ID, rank);
 		sos_obj_attr_by_id_set(obj, PRODUCERNAME_ID, strlen(producer_name), producer_name);
@@ -524,7 +551,6 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		sos_obj_attr_by_id_set(obj, COUNT_ID, count);
 		sos_obj_attr_by_id_set(obj, RANK_ID, rank);
 		sos_obj_attr_by_id_set(obj, OPERATION_ID, strlen(operation), operation);
-		sos_obj_attr_by_id_set(obj, DATASET_ID, strlen(data_set), data_set);
 		sos_obj_attr_by_id_set(obj, PTSEL_ID, pt_sel);
 		sos_obj_attr_by_id_set(obj, IRREGHSLAB_ID, irreg_hslab);
 		sos_obj_attr_by_id_set(obj, REGHSLAB_ID, reg_hslab);
@@ -532,14 +558,19 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		sos_obj_attr_by_id_set(obj, NPOINTS_ID, npoints);
 		sos_obj_attr_by_id_set(obj, OFFSET_ID, offset);
 		sos_obj_attr_by_id_set(obj, LENGTH_ID, length);
+		sos_obj_attr_by_id_set(obj, START_ID, start);
 		sos_obj_attr_by_id_set(obj, DURATION_ID, duration);
+		sos_obj_attr_by_id_set(obj, TOTAL_ID, total);
 		sos_obj_attr_by_id_set(obj, TIMESTAMP_ID, timestamp);
 
 		sos_obj_index(obj);
 		sos_obj_put(obj);
 	}
-	rc = 0;
+	sos_end_x(sos);
+	return 0;
  err:
+	if (obj)
+		sos_end_x(sos);
 	return rc;
 }
 
@@ -549,8 +580,6 @@ static void term(struct ldmsd_plugin *self)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 	if (root_path)
 		free(root_path);
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_plugin darshan_stream_store = {
@@ -560,14 +589,8 @@ static struct ldmsd_plugin darshan_stream_store = {
 	.usage = usage,
 };
 
-struct ldmsd_plugin *get_plugin()
+struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
-	int rc;
-	mylog = ovis_log_register("store.darshan_stream_store", "Log subsystem of the 'darshan_stream_store' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'darshan_stream_store' plugin. Error %d\n", rc);
-	}
+	msglog = pf;
 	return &darshan_stream_store;
 }
