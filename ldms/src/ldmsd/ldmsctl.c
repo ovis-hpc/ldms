@@ -475,11 +475,10 @@ static void help_prdcr_add()
 		"     interval= The connection retry interval (us). Deprecated, please use 'reconnect'.\n"
 		"     [perm=]   The permission to modify the producer in the future.\n"
 		"     [rail=]   The number of rail endpooints for the prdcr (default: 1).\n"
-		"     [credits=] The send credits our ldmsd (the one we are controlling)\n"
-		"                advertises to the prdcr (default: value from ldmsd --credits\n"
+		"     [quota=]  The recv quota our ldmsd (the one we are controlling)\n"
+		"                advertises to the prdcr (default: value from ldmsd --quota\n"
 		"                option). This limits how much outstanding data our ldmsd\n"
-		"                holds for the prdcr. The prdcr drops messages when it does\n"
-		"                not have enough send credits.\n"
+		"                holds for the prdcr.\n"
 		);
 }
 

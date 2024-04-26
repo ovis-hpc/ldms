@@ -101,10 +101,10 @@ static ovis_log_t __ldms_stream_log = NULL; /* see __ldms_stream_init() below */
 static int __stream_stats_level = 1;
 
 /* see implementation in ldms_rail.c */
-int  __credit_acquire(uint64_t *credit, uint64_t n);
-void __credit_release(uint64_t *credit, uint64_t n);
-int __rate_credit_acquire(struct ldms_rail_rate_credit_s *c, uint64_t n);
-void __rate_credit_release(struct ldms_rail_rate_credit_s *c, uint64_t n);
+int  __quota_acquire(uint64_t *quota, uint64_t n);
+void __quota_release(uint64_t *quota, uint64_t n);
+int __rate_quota_acquire(struct ldms_rail_rate_quota_s *c, uint64_t n);
+void __rate_quota_release(struct ldms_rail_rate_quota_s *c, uint64_t n);
 
 int __str_rbn_cmp(void *tree_key, const void *key);
 int __u64_rbn_cmp(void *tree_key, const void *key);
@@ -230,19 +230,19 @@ static int __rep_publish(struct ldms_rail_ep_s *rep, const char *stream_name,
 {
 	int rc = 0;
 	int name_len = strlen(stream_name) + 1;
-	int credit_required = name_len + data_len; /* header stuff are not credited */
+	int quota_required = name_len + data_len; /* header stuff are not accounted */
 	struct ldms_stream_full_msg_s msg;
 
-	rc = __credit_acquire(&rep->send_credit, credit_required);
+	rc = __quota_acquire(&rep->send_quota, quota_required);
 	if (rc)
 		return rc;
-	rc = __rate_credit_acquire(&rep->rate_credit, credit_required);
+	rc = __rate_quota_acquire(&rep->rate_quota, quota_required);
 	if (rc) {
-		__credit_release(&rep->send_credit, credit_required);
+		__quota_release(&rep->send_quota, quota_required);
 		return rc;
 	}
 
-	/* credit acquired */
+	/* quota acquired */
 	if (src) {
 		msg.src = *src;
 		msg.src.sa_family = htons(msg.src.sa_family);
@@ -308,7 +308,7 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 	if (0 != rc)
 		return 0; /* remote has no access; do not forward */
 
-	rc = __rate_credit_acquire(&ev->recv.client->rate_credit, ev->recv.data_len);
+	rc = __rate_quota_acquire(&ev->recv.client->rate_quota, ev->recv.data_len);
 	if (rc)
 		goto out;
 
@@ -319,7 +319,7 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 			     ev->recv.data,
 			     ev->recv.data_len);
 	if (rc)
-		__rate_credit_release(&ev->recv.client->rate_credit, ev->recv.data_len);
+		__rate_quota_release(&ev->recv.client->rate_quota, ev->recv.data_len);
  out:
 	return rc;
 }
@@ -947,10 +947,10 @@ __client_alloc(const char *stream, int is_regex,
 	LDMS_STREAM_COUNTERS_INIT(&c->tx);
 	LDMS_STREAM_COUNTERS_INIT(&c->drops);
 
-	c->rate_credit.credit = __RAIL_UNLIMITED;
-	c->rate_credit.rate   = __RAIL_UNLIMITED;
-	c->rate_credit.ts.tv_sec  = 0;
-	c->rate_credit.ts.tv_nsec = 0;
+	c->rate_quota.quota = __RAIL_UNLIMITED;
+	c->rate_quota.rate   = __RAIL_UNLIMITED;
+	c->rate_quota.ts.tv_sec  = 0;
+	c->rate_quota.ts.tv_nsec = 0;
 
 	goto out;
  err_0:
@@ -1120,7 +1120,7 @@ struct __stream_buf_s {
 };
 
 /* implementation in ldms_rail.c */
-void __rail_ep_credit_return(struct ldms_rail_ep_s *rep, int credit);
+void __rail_ep_quota_return(struct ldms_rail_ep_s *rep, int quota);
 
 static void
 __process_stream_msg(ldms_t x, struct ldms_request *req)
@@ -1236,7 +1236,7 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 			 sbuf->msg->stream_type,
 			 &sbuf->msg->cred, sbuf->msg->perm,
 			 data, data_len);
-	__rail_ep_credit_return(rep, name_len + data_len);
+	__rail_ep_quota_return(rep, name_len + data_len);
 
  cleanup:
 	rbt_del(&rep->sbuf_rbt, &sbuf->rbn);
@@ -1279,8 +1279,8 @@ __process_stream_sub(ldms_t x, struct ldms_request *req)
 		goto reply;
 	}
 
-	c->rate_credit.rate = be64toh(req->stream_sub.rate);
-	c->rate_credit.credit = be64toh(req->stream_sub.rate);
+	c->rate_quota.rate = be64toh(req->stream_sub.rate);
+	c->rate_quota.quota = be64toh(req->stream_sub.rate);
 
 	rc = ldms_xprt_sockaddr(x, &lsin.sa, &rsin.sa, &sin_len);
 	if (!rc) {

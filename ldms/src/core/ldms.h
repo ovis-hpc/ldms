@@ -641,7 +641,7 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
 			       struct attr_value_list *auth_av_list);
 
 /**
- * Unlimited value for rail 'credits' and 'rate'.
+ * Unlimited value for rail 'quota' and 'rate'.
  */
 #define __RAIL_UNLIMITED (-1)
 
@@ -728,8 +728,8 @@ enum ldms_xprt_event_type {
 	LDMS_XPRT_EVENT_SET_DELETE,
 	/*! A send request is completed */
 	LDMS_XPRT_EVENT_SEND_COMPLETE,
-	/*! The send credit is deposited.  */
-	LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED,
+	/*! The send quota is deposited.  */
+	LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED,
 	LDMS_XPRT_EVENT_LAST
 };
 
@@ -738,8 +738,8 @@ struct ldms_xprt_set_delete_data {
 	const char *name;	/*! The name of the set */
 };
 
-struct ldms_xprt_credit_event_data {
-	uint64_t credit; /* current credit */
+struct ldms_xprt_quota_event_data {
+	uint64_t quota; /* current quota */
 	int      ep_idx; /* the index of the endpoint in the rail */
 };
 
@@ -756,7 +756,7 @@ typedef struct ldms_xprt_event {
 		 */
 		char *data;
 		struct ldms_xprt_set_delete_data set_delete;
-		struct ldms_xprt_credit_event_data credit;
+		struct ldms_xprt_quota_event_data quota;
 	};
 	size_t data_len;
 } *ldms_xprt_event_t;
@@ -1050,19 +1050,19 @@ int64_t ldms_xprt_recv_limit(ldms_t x);
 int64_t ldms_xprt_recv_rate_limit(ldms_t x);
 
 /**
- * \brief Get the send credit
+ * \brief Get the send quota
  *
  * \param[in]  x       The rail transport handle.
- * \param[out] credits The array to receive the send-credit for each endpoint in
+ * \param[out] quota   The array to receive the send-quota for each endpoint in
  *                     the rail.
- * \param[in]  n       The size of \c credits array. Must be greater than the
+ * \param[in]  n       The size of \c quota array. Must be greater than the
  *                     number of endpoints in the rail.
  *
  * \retval       0 If there is no error.
  * \retval -EINVAL If \c x is not a rail.
  * \retval -ENOMEM If \c n is less than the number of endpoints in the rail.
  */
-int ldms_xprt_rail_send_credit_get(ldms_t x, uint64_t *credits, int n);
+int ldms_xprt_rail_send_quota_get(ldms_t x, uint64_t *quota, int n);
 
 /* A convenient sockaddr union for IPv4 and IPv6 (for now) */
 union ldms_sockaddr {
@@ -1136,7 +1136,7 @@ typedef enum ldms_stream_type_e {
  * \param data_len     The length of the data.
  *
  * \retval 0        If there is no error.
- * \retval EAGAIN   If there is not enough send credit.
+ * \retval EAGAIN   If there is not enough send quota.
  * \retval ENOSTR   If the the handle not valid for publishing a stream.
  */
 int ldms_stream_publish(ldms_t x, const char *stream_name,
@@ -1157,7 +1157,7 @@ int ldms_stream_publish(ldms_t x, const char *stream_name,
  * \param file         The FILE handle.
  *
  * \retval 0        If there is no error.
- * \retval EAGAIN   If there is not enough send credit.
+ * \retval EAGAIN   If there is not enough send quota.
  * \retval ENOSTR   If the the handle not valid for publishing a stream.
  */
 int ldms_stream_publish_file(ldms_t x, const char *stream_name,

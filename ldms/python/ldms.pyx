@@ -1356,16 +1356,16 @@ cdef str STR(o):
         return o.decode()
     return str(o)
 
-cdef class CreditEventData(object):
-    cdef readonly uint64_t credit
+cdef class QuotaEventData(object):
+    cdef readonly uint64_t quota
     cdef readonly int      ep_idx
-    """Data of a credit deposit event"""
-    def __cinit__(self, uint64_t credit, int ep_idx):
-        self.credit = credit
+    """Data of a quota deposit event"""
+    def __cinit__(self, uint64_t quota, int ep_idx):
+        self.quota = quota
         self.ep_idx = ep_idx
 
     def __str__(self):
-        return f"({self.credit}, {self.ep_idx})"
+        return f"({self.quota}, {self.ep_idx})"
 
     def __repr__(self):
         return str(self)
@@ -1398,7 +1398,7 @@ cdef class XprtEvent(object):
               - EVENT_DISCONNECTED
               - EVENT_RECV
               - EVENT_SEND_COMPLETE
-              - EVENT_SEND_CREDIT_DEPOSITED
+              - EVENT_SEND_QUOTA_DEPOSITED
     - `data`: a byte array containing event data
     """
 
@@ -1408,8 +1408,8 @@ cdef class XprtEvent(object):
     cdef readonly bytes data
     """A `bytes` containing event data"""
 
-    cdef readonly CreditEventData credit
-    """Current send credit (for the EVENT_SEND_CREDIT_DEPOSITED"""
+    cdef readonly QuotaEventData quota
+    """Current send quota (for the EVENT_SEND_QUOTA_DEPOSITED"""
 
     cdef readonly SetDeleteEventData set_delete
 
@@ -1422,8 +1422,8 @@ cdef class XprtEvent(object):
         cdef ldms_xprt_event_t e = <ldms_xprt_event_t>ptr.c_ptr
         cdef ldms_set_t cset
         self.type = ldms_xprt_event_type(e.type)
-        if self.type == ldms.LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED:
-            self.credit = CreditEventData(e.credit.credit, e.credit.ep_idx)
+        if self.type == ldms.LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
+            self.quota = QuotaEventData(e.quota.quota, e.quota.ep_idx)
         elif self.type == ldms.LDMS_XPRT_EVENT_SET_DELETE:
             cset = <ldms_set_t>e.set_delete.set
             lset = Set(None, None, set_ptr=PTR(cset)) if cset else None
@@ -1473,7 +1473,7 @@ cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
     elif e.type == EVENT_SEND_COMPLETE:
         # do NOT sem_post()
         return
-    elif e.type == EVENT_SEND_CREDIT_DEPOSITED:
+    elif e.type == EVENT_SEND_QUOTA_DEPOSITED:
         # do NOT sem_post()
         return
     elif e.type == EVENT_SET_DELETE:
@@ -3775,16 +3775,16 @@ cdef class Xprt(object):
         else:
             ldms_xprt_ctxt_set(self.xprt, NULL, NULL)
 
-    def get_send_credits(self):
+    def get_send_quota(self):
         assert(self.rail_eps > 0)
         cdef uint64_t *tmp = <uint64_t*>calloc(self.rail_eps, sizeof(uint64_t))
         cdef int rc, i
         if not tmp:
             raise RuntimeError("Not enough memory")
-        rc = ldms_xprt_rail_send_credit_get(self.xprt, tmp, self.rail_eps)
+        rc = ldms_xprt_rail_send_quota_get(self.xprt, tmp, self.rail_eps)
         if rc:
             free(tmp)
-            raise RuntimeError(f"ldms_xprt_rail_send_credit_get() error: {rc}")
+            raise RuntimeError(f"ldms_xprt_rail_send_quota_get() error: {rc}")
         lst = list()
         for i in range(0, self.rail_eps):
             lst.append(tmp[i])
@@ -3792,8 +3792,8 @@ cdef class Xprt(object):
         return lst
 
     @property
-    def send_credits(self):
-        return self.get_send_credits()
+    def send_quota(self):
+        return self.get_send_quota()
 
     def stream_publish(self, name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None):
         """r.stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None)

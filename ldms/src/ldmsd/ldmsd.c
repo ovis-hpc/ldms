@@ -111,7 +111,7 @@ struct option long_opts[] = {
 	{ "kernel_file",           required_argument, 0,  's' },
 	{ "log_level",             required_argument, 0,  'v' },
 	{ "log_config",            required_argument, 0,  'L' },
-	{ "credits",               required_argument, 0,  'C' },
+	{ "quota",                 required_argument, 0,  'C' },
 	{ 0,                       0,                 0,  0 }
 };
 
@@ -170,7 +170,7 @@ ldms_t ldms;
 int do_kernel = 0;
 char *setfile = NULL;
 
-int ldmsd_credits = __RAIL_UNLIMITED;
+int ldmsd_quota = __RAIL_UNLIMITED;
 
 static int set_cmp(void *a, const void *b)
 {
@@ -1435,7 +1435,7 @@ void ldmsd_listen___del(ldmsd_cfgobj_t obj)
 	ldmsd_cfgobj___del(obj);
 }
 
-ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth, char *credits, char *rx_limit)
+ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth, char *quota, char *rx_limit)
 {
 	char *name;
 	int len;
@@ -1473,13 +1473,13 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth, 
 		}
 	}
 
-	if (credits) {
-		listen->credits = atoi(credits);
+	if (quota) {
+		listen->quota = atoi(quota);
 	} else {
 		/*
-		 * listen->credits will be set to ldmsd_credits (global value) in ldmsd_listen_start().
+		 * listen->quota will be set to ldmsd_quota (global value) in ldmsd_listen_start().
 		 */
-		listen->credits = __RAIL_UNLIMITED;
+		listen->quota = __RAIL_UNLIMITED;
 	}
 
 	if (rx_limit)
@@ -1563,17 +1563,17 @@ int ldmsd_listen_start(ldmsd_listen_t listen)
 {
 	int rc = 0;
 	assert(NULL == listen->x);
-	if (listen->credits == __RAIL_UNLIMITED) {
+	if (listen->quota == __RAIL_UNLIMITED) {
 		/*
-		 * Set listen->credits here to cover the case that
+		 * Set listen->quota here to cover the case that
 		 * the global value is set after ldmsd_listen_new() is called.
 		 * This happens when the cli-option `-x` is used to
 		 * add a listening endpoint.
 		 */
-		listen->credits = ldmsd_credits;
+		listen->quota = ldmsd_quota;
 	}
 	listen->x = ldms_xprt_rail_new(listen->xprt, 1,
-						((listen->credits>0)?listen->credits:ldmsd_credits),
+						((listen->quota>0)?listen->quota:ldmsd_quota),
 						((listen->rx_limit>0)?listen->rx_limit:__RAIL_UNLIMITED),
 						ldmsd_auth_name_get(listen),
 						ldmsd_auth_attr_get(listen));
@@ -1973,7 +1973,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 	case 'C':
 		if (check_arg("C", value, LO_INT))
 			return EINVAL;
-		ldmsd_credits = atoi(value);
+		ldmsd_quota = atoi(value);
 		break;
 	default:
 		return ENOENT;
@@ -2082,7 +2082,7 @@ int main(int argc, char *argv[])
 		case 'C':
 			ovis_log(NULL, OVIS_LCRIT,
 				 "The option `-C` is obsolete. "
-				 "Please specify `default_credits credits=<INTEGER> in a configuration file.\n");
+				 "Please specify `default_quota quota=<INTEGER> in a configuration file.\n");
 			cleanup(EINVAL, "Received an obsolete command-line option");
 		case 'B':
 			ovis_log(NULL, OVIS_LCRIT,

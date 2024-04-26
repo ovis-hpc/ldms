@@ -257,10 +257,10 @@ Authentication domain. The default authentication domain is used if none is
 specified.
 .RE
 
-\fBdefault_credits\fR sets the receiving credit limit in bytes
+\fBdefault_quota\fR sets the receiving quota in bytes
 .RS
-.IP \fBcredits\fR=\fIBYTES
-The credit limit in bytes
+.IP \fBquota\fR=\fIBYTES
+The quota limit in bytes
 .RE
 
 \fBpublish_kernel\fR enables LDMSD to publish kernel metrics and specifies the

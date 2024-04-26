@@ -166,16 +166,16 @@ Name of prdcr_listen to be deleted
 
 \fBprdcr_listen_status\fR report the status of each prdcr_listen object. There is no parameter.
 
-.SH Managing Receive Credits and Rate Limits for Auto-Added Producers
+.SH Managing Receive Quota and Rate Limits for Auto-Added Producers
 
-The receive credits and rate limit control machanisms govern the amount of data
+The receive quota and rate limit control machanisms govern the amount of data
 a producer receives from the data source connected through ldms_xprt. This helps
 prevent data bursts that could overwhelm the LDMS daemon host and network
-resources. To configure receive credits and rate limits, users can create a
+resources. To configure receive quota and rate limits, users can create a
 listening endpoint on the aggregator using the \fBlisten\fR command specifying
-the desired values of the \fBcredits\fR and \fBrx_rate\fR attributes. Moreover,
+the desired values of the \fBquota\fR and \fBrx_rate\fR attributes. Moreover,
 users configure the sampler daemons to advertise to the listening endpoint
-created on the aggregator, including the preferred creceive credits and rate
+created on the aggregator, including the preferred receive quota and rate
 limit values.
 
 .SH EXAMPLE
@@ -270,10 +270,10 @@ Producers: samplerd-1, samplerd-2
 sock:node-3:10001>
 .EE
 
-Next is an example that controls the receive credits and rate limits of the
+Next is an example that controls the receive quota and rate limits of the
 auto-added producers on agg11. Similar to the first example, the aggregator,
 agg11, listens on port 411 and waits for advertisements. Moreover, a listening
-endpoint on port 412 is added with a receive credits value. The aggregator also
+endpoint on port 412 is added with a receive quota value. The aggregator also
 creates producers when an advertisement sent from the host its IP address
 falling into the subnet 192.168.0.0:16.
 
@@ -284,7 +284,7 @@ falling into the subnet 192.168.0.0:16.
 # Create a listening endpoint
 listen xprt=sock port=411
 # Create the listening endpoint for receiving advertisement
-listen xprt=sock port=412 credit=4000
+listen xprt=sock port=412 quota=4000
 # Accept advertisements sent from LDMSD running on hostnames their IP address
 # falling in the range 192.168.0.0:16.
 prdcr_listen_add name=compute ip=192.168.0.0:16

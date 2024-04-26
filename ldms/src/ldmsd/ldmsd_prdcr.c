@@ -686,7 +686,7 @@ static int __sampler_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 				 prdcr->xprt_name, prdcr->host_name,
 				 (int)prdcr->port_no, prdcr->conn_auth);
 			break;
-		case LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED:
+		case LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
 			break;
 		default:
 			ovis_log(prdcr_log, OVIS_LERROR,
@@ -859,7 +859,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 		prdcr->xprt = ldms_xprt_rail_new(prdcr->xprt_name,
 						 prdcr->rail,
-						 prdcr->credits,
+						 prdcr->quota,
 						 prdcr->rx_rate,
 						 prdcr->conn_auth,
 						 prdcr->conn_auth_args);
@@ -992,7 +992,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type, int conn_intrvl_us,
 		const char *auth, uid_t uid, gid_t gid, int perm, int rail,
-		int64_t credits, int64_t rx_rate)
+		int64_t quota, int64_t rx_rate)
 {
 	extern struct rbt *cfgobj_trees[];
 	struct ldmsd_prdcr *prdcr;
@@ -1014,7 +1014,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	rbt_init(&prdcr->set_tree, set_cmp);
 	rbt_init(&prdcr->hint_set_tree, ldmsd_updtr_schedule_cmp);
 	prdcr->rail = rail;
-	prdcr->credits = credits;
+	prdcr->quota = quota;
 	prdcr->rx_rate = rx_rate;
 	prdcr->host_name = strdup(host_name);
 	if (!prdcr->host_name)
@@ -1069,11 +1069,11 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us, int rail, int64_t credits, int64_t rx_rate)
+		int conn_intrvl_us, int rail, int64_t quota, int64_t rx_rate)
 {
 	return ldmsd_prdcr_new_with_auth(name, xprt_name, host_name,
 			port_no, type, conn_intrvl_us,
-			DEFAULT_AUTH, getuid(), getgid(), 0777, rail, credits, rx_rate);
+			DEFAULT_AUTH, getuid(), getgid(), 0777, rail, quota, rx_rate);
 }
 
 extern struct rbt *cfgobj_trees[];

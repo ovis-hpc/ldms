@@ -371,11 +371,10 @@ class LdmsdCmdParser(cmd.Cmd):
         [auth=]   The authentication method
         [perm=]   The permission to modify the producer in the future.
         [rail=]   The number of rail endpoints for the prdcr (default: 1).
-        [credits=] The send credits our ldmsd (the one we are controlling)
-                   advertises to the prdcr (default: value from ldmsd --credits
+        [quota=]  The recv quota our ldmsd (the one we are controlling)
+                   advertises to the prdcr (default: value from ldmsd --quota
                    option). This limits how much outstanding data our ldmsd
-                   holds for the prdcr. The prdcr drops messages when it does
-                   not have enough send credits.
+                   holds for the prdcr.
         [rx_rate=] The recv rate (bytes/sec) limit for this connection. The
                    default is -1 (unlimited).
         """
@@ -400,7 +399,7 @@ class LdmsdCmdParser(cmd.Cmd):
                                           arg['auth'],
                                           arg['perm'],
                                           arg['rail'],
-                                          arg['credits'],
+                                          arg['quota'],
                                           arg['rx_rate'])
             if rc:
                 print(f'Error adding prdcr {arg["name"]}: {msg}')
@@ -420,11 +419,10 @@ class LdmsdCmdParser(cmd.Cmd):
                 [auth=]    The authentication method
                 [perm=]    The permission to modify the producer in the future.
                 [rail=]    The number of rail endpoints for the prdcr (default: 1).
-                [credits=] The send credits our ldmsd (the one we are controlling)
-                           advertises to the prdcr (default: value from ldmsd --credits
+                [quota=]   The recv quota our ldmsd (the one we are controlling)
+                           advertises to the prdcr (default: value from ldmsd --quota
                            option). This limits how much outstanding data our ldmsd
-                           holds for the prdcr. The prdcr drops messages when it does
-                           not have enough send credits.
+                           holds for the prdcr.
                 [rx_rate=] The recv rate (bytes/sec) limit for this connection. The
                            default is -1 (unlimited).
         """
@@ -444,7 +442,7 @@ class LdmsdCmdParser(cmd.Cmd):
                                           arg['auth'],
                                           arg['perm'],
                                           arg['rail'],
-                                          arg['credits'],
+                                          arg['quota'],
                                           arg['rx_rate'])
             if rc:
                 print(f'Error adding Bridge {arg["name"]}: {msg}')
@@ -2684,7 +2682,7 @@ class LdmsdCmdParser(cmd.Cmd):
                     If this is omitted or auth=auth_default is give,
                     the default authentication given the command line (-a and -A)
                     will be used
-            [credits=] Receive credits of the connections established by accepted connection requests
+            [quota=] Receive quota of the connections established by accepted connection requests
             [rx_rate=] Receive rate limit of the connections established by accepted connection requests
         """
         arg = self.handle_args('listen', arg)
@@ -2694,7 +2692,7 @@ class LdmsdCmdParser(cmd.Cmd):
                                    arg['port'],
                                    arg['host'],
                                    arg['auth'],
-                                   arg['credits'],
+                                   arg['quota'],
                                    arg['rx_rate'])
         if rc:
             print(f'Error adding listener {arg["xprt"]} on port {arg["port"]}: {msg}')
@@ -2824,11 +2822,11 @@ class LdmsdCmdParser(cmd.Cmd):
                 [auth=]    The authentication method
                 [perm=]    The permission to modify the producer in the future.
                 [rail=]    The number of rail endpoints for the prdcr (default: 1).
-                [credits=] The send credits our ldmsd (the one we are controlling)
-                           advertises to the prdcr (default: value from ldmsd --credits
+                [quota=] The send quota our ldmsd (the one we are controlling)
+                           advertises to the prdcr (default: value from ldmsd --quota
                            option). This limits how much outstanding data our ldmsd
                            holds for the prdcr. The prdcr drops messages when it does
-                           not have enough send credits.
+                           not have enough send quota.
                 [rx_rate=] The recv rate (bytes/sec) limit for this connection. The
                            default is -1 (unlimited).
         """
@@ -2846,7 +2844,7 @@ class LdmsdCmdParser(cmd.Cmd):
                                           arg['auth'],
                                           arg['perm'],
                                           arg['rail'],
-                                          arg['credits'],
+                                          arg['quota'],
                                           arg['rx_rate'])
             if rc:
                 print(f'Error adding advertiser {arg["name"]}: {msg}')
@@ -2947,11 +2945,11 @@ class LdmsdCmdParser(cmd.Cmd):
                 [disable_start=]  Tell LDMSD not to start the producers
                 [regex=]           A regular expression to match sampler hostnames
                 [rail=]            The number of rail endpoints for the prdcr (default: 1).
-                [credits=]         The send credits our ldmsd (the one we are controlling)
-                                   advertises to the prdcr (default: value from ldmsd --credits
+                [quota=]           The send quota our ldmsd (the one we are controlling)
+                                   advertises to the prdcr (default: value from ldmsd --quota
                                    option). This limits how much outstanding data our ldmsd
                                    holds for the prdcr. The prdcr drops messages when it does
-                                   not have enough send credits.
+                                   not have enough send quota.
                 [rx_rate=]         The recv rate (bytes/sec) limit for this connection. The
                                    default is -1 (unlimited).
         """

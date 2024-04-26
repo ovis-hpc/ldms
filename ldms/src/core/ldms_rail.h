@@ -107,8 +107,8 @@ typedef enum ldms_rail_ep_state_e {
 
 typedef struct ldms_rail_s *ldms_rail_t;
 
-struct ldms_rail_rate_credit_s {
-	uint64_t credit;    /* the bytes available in the second */
+struct ldms_rail_rate_quota_s {
+	uint64_t quota;    /* the bytes available in the second */
 	uint64_t rate;      /* the byte/sec */
 	struct timespec ts; /* timestamp of the last acquire */
 };
@@ -120,10 +120,10 @@ struct ldms_rail_ep_s {
 	ldms_t ep;
 	int idx; /* index in the rail */
 	ldms_rail_t rail;
-	uint64_t send_credit; /* peer's recv limit */
+	uint64_t send_quota; /* peer's recv limit */
 	struct rbt sbuf_rbt; /* stream message buffer */
 	int remote_is_rail;
-	struct ldms_rail_rate_credit_s rate_credit; /* rate credit */
+	struct ldms_rail_rate_quota_s rate_quota; /* rate quota */
 };
 
 typedef struct ldms_rail_dir_ctxt_s {
@@ -150,7 +150,7 @@ struct ldms_rail_s {
 
 	struct ref_s ref;
 
-	/* These are informational. The actual credits are in eps[idx]. */
+	/* These are informational. The actual quotas are in eps[idx]. */
 	uint64_t recv_limit;      /* 0xffffffffffffffff is unlimited */
 	uint64_t recv_rate_limit; /* 0xffffffffffffffff is unlimited */
 	uint64_t send_limit;      /* 0xffffffffffffffff is unlimited */

@@ -451,9 +451,9 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 	if (rc)
 		goto cleanup;
 
-	/* CREDITS */
-	snprintf(buff, sizeof(buff), "%ld", p->credits);
-	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_CREDITS, buff);
+	/* QUOTA */
+	snprintf(buff, sizeof(buff), "%ld", p->quota);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_QUOTA, buff);
 	if (rc)
 		goto cleanup;
 
@@ -2048,7 +2048,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	char *auth = __req_attr_gets(req, LDMSD_ATTR_AUTH);
 	char *stream = __req_attr_gets(req, LDMSD_ATTR_STREAM);
 	char *rail_s = __req_attr_gets(req, LDMSD_ATTR_RAIL);
-	char *credits_s = __req_attr_gets(req, LDMSD_ATTR_CREDITS);
+	char *quota_s = __req_attr_gets(req, LDMSD_ATTR_QUOTA);
 	char *rx_rate_s = __req_attr_gets(req, LDMSD_ATTR_RX_RATE);
 
 	uid_t _uid;
@@ -2056,7 +2056,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	mode_t _perm;
 
 	int rail = 1;
-	int64_t credits = __RAIL_UNLIMITED;
+	int64_t quota = __RAIL_UNLIMITED;
 	int64_t rx_rate = __RAIL_UNLIMITED;
 
 	enum ldmsd_prdcr_type ptype;
@@ -2081,8 +2081,8 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 
 	if (rail_s)
 		rail = atoi(rail_s);
-	if (credits_s)
-		credits = atol(credits_s);
+	if (quota_s)
+		quota = atol(quota_s);
 	if (rx_rate_s)
 		rx_rate = atol(rx_rate_s);
 
@@ -2115,7 +2115,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	}
 
 	p = ldmsd_prdcr_new_with_auth(name, xprt, host, atoi(port), ptype,
-			atoi(interval), auth, _uid, _gid, _perm, rail, credits,
+			atoi(interval), auth, _uid, _gid, _perm, rail, quota,
 			rx_rate);
 	if (!p) {
 		rc = errno;
@@ -2147,7 +2147,7 @@ out:
 	free(stream);
 	free(auth);
 	free(rail_s);
-	free(credits_s);
+	free(quota_s);
 	/* this req needs no resp */
 	return rc;
 }

@@ -301,7 +301,7 @@ typedef struct ldmsd_prdcr {
 	struct rbt hint_set_tree;
 
 	int rail; /* the number of xprt in the rail */
-	int64_t credits;
+	int64_t quota;
 	int64_t rx_rate;
 } *ldmsd_prdcr_t;
 
@@ -1140,14 +1140,14 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us, int rail, int64_t credits, int64_t rx_rate);
+		int conn_intrvl_us, int rail, int64_t quota, int64_t rx_rate);
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us,
 		const char *auth, uid_t uid, gid_t gid, int perm, int rail,
-		int64_t credits, int64_t rx_rate);
+		int64_t quota, int64_t rx_rate);
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt);
 ldmsd_prdcr_t ldmsd_prdcr_first();
 ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr);
@@ -1484,7 +1484,7 @@ typedef struct ldmsd_listen {
 	char *auth_name;
 	char *auth_dom_name;
 	struct attr_value_list *auth_attrs;
-	int credits;
+	int quota;
 	int rx_limit;
 	ldms_t x;
 } *ldmsd_listen_t;
@@ -1501,15 +1501,15 @@ uint8_t ldmsd_is_initialized();
  * \param port   port
  * \param host   hostname
  * \param auth   authentication domain name
- * \param credits    receive credits
+ * \param quota    receive quota
  * \param rx_limit   receive rate limit
  *
- * To use the default receive credits or receive rate limit, provide NULL.
+ * To use the default receive quota or receive rate limit, provide NULL.
  *
  * \return a listen cfgobj
  */
 ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth,
-											    char *credits, char *rx_limit);
+				char *quota, char *rx_limit);
 
 /**
  * LDMSD Authentication Domain Configuration Object

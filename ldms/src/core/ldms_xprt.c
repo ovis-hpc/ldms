@@ -1677,7 +1677,7 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	return rc;
 }
 
-void __rail_process_send_credit(ldms_t x, struct ldms_request *req);
+void __rail_process_send_quota(ldms_t x, struct ldms_request *req);
 
 /* implementation is in ldms_stream.c */
 void __stream_req_recv(ldms_t x, int cmd, struct ldms_request *req);
@@ -1725,8 +1725,8 @@ int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 	case LDMS_CMD_SET_DELETE:
 		process_set_delete_request(x, req);
 		break;
-	case LDMS_CMD_SEND_CREDIT:
-		__rail_process_send_credit(x, req);
+	case LDMS_CMD_SEND_QUOTA:
+		__rail_process_send_quota(x, req);
 		break;
 	case LDMS_CMD_STREAM_MSG:
 	case LDMS_CMD_STREAM_SUB:
@@ -4112,7 +4112,7 @@ static void sync_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		break;
 	case LDMS_XPRT_EVENT_SET_DELETE:
 	case LDMS_XPRT_EVENT_SEND_COMPLETE:
-	case LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED:
+	case LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
 		/* Don't post */
 		return;
 	default:
@@ -4319,7 +4319,7 @@ enum ldms_thrstat_op_e req2thrstat_op_tbl[] = {
 	[LDMS_CMD_CANCEL_PUSH]        = LDMS_THRSTAT_OP_OTHER ,
 	[LDMS_CMD_AUTH]               = LDMS_THRSTAT_OP_AUTH ,
 	[LDMS_CMD_SET_DELETE]         = LDMS_THRSTAT_OP_SET_DELETE_REQ ,
-	[LDMS_CMD_SEND_CREDIT]        = LDMS_THRSTAT_OP_OTHER ,
+	[LDMS_CMD_SEND_QUOTA]         = LDMS_THRSTAT_OP_OTHER ,
 
 	[LDMS_CMD_DIR_REPLY]          = LDMS_THRSTAT_OP_DIR_REPLY ,
 	[LDMS_CMD_DIR_UPDATE_REPLY]   = LDMS_THRSTAT_OP_UPDATE_REPLY ,

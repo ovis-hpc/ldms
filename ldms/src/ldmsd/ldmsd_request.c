@@ -117,7 +117,7 @@ static char * __thread_stats_as_json(size_t *json_sz);
 static char * __xprt_stats_as_json(size_t *json_sz, int reset, int level);
 extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 
-extern int ldmsd_credits; /* defined in ldmsd.c */
+extern int ldmsd_quota; /* defined in ldmsd.c */
 
 #define CONFIG_PLAYBACK_ENABLED(_match_) ((_match_) & ldmsd_req_debug)
 struct timeval ldmsd_req_last_time;
@@ -312,7 +312,7 @@ static int log_file_handler(ldmsd_req_ctxt_t reqc);
 static int publish_kernel_handler(ldmsd_req_ctxt_t reqc);
 static int daemon_name_set_handler(ldmsd_req_ctxt_t reqc);
 static int worker_threads_set_handler(ldmsd_req_ctxt_t reqc);
-static int default_credits_set_handler(ldmsd_req_ctxt_t reqc);
+static int default_quota_set_handler(ldmsd_req_ctxt_t reqc);
 static int pid_file_handler(ldmsd_req_ctxt_t reqc);
 static int banner_mode_handler(ldmsd_req_ctxt_t reqc);
 
@@ -691,8 +691,8 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_WORKER_THR_SET_REQ] = {
 		LDMSD_WORKER_THR_SET_REQ, worker_threads_set_handler, XUG
 	},
-	[LDMSD_DEFAULT_CREDITS_REQ] = {
-		LDMSD_DEFAULT_CREDITS_REQ, default_credits_set_handler, XUG
+	[LDMSD_DEFAULT_QUOTA_REQ] = {
+		LDMSD_DEFAULT_QUOTA_REQ, default_quota_set_handler, XUG
 	},
 	[LDMSD_PID_FILE_REQ] = {
 		LDMSD_PID_FILE_REQ, pid_file_handler, XUG
@@ -749,7 +749,7 @@ int is_req_id_priority(enum ldmsd_request req_id)
 	case LDMSD_PUBLISH_KERNEL_REQ:
 	case LDMSD_DAEMON_NAME_SET_REQ:
 	case LDMSD_WORKER_THR_SET_REQ:
-	case LDMSD_DEFAULT_CREDITS_REQ:
+	case LDMSD_DEFAULT_QUOTA_REQ:
 	case LDMSD_PID_FILE_REQ:
 	case LDMSD_BANNER_MODE_REQ:
 		return 1;
@@ -1607,7 +1607,7 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 {
 	ldmsd_prdcr_t prdcr = NULL;
 	char *name, *host, *xprt, *attr_name, *type_s, *port_s, *interval_s,
-	     *rail_s, *credits_s, *rx_rate_s;
+	     *rail_s, *quota_s, *rx_rate_s;
 	char *auth;
 	enum ldmsd_prdcr_type type = -1;
 	unsigned short port_no = 0;
@@ -1616,12 +1616,12 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 	uid_t uid;
 	gid_t gid;
 	int perm;
-	int64_t credits = ldmsd_credits; /* use the global credits setting by default */
+	int64_t quota = ldmsd_quota; /* use the global quota setting by default */
 	int64_t rx_rate = __RAIL_UNLIMITED;
 	int rail = 1;
 	char *perm_s = NULL;
 
-	name = host = xprt = type_s = port_s = interval_s = auth = rail_s = credits_s = NULL;
+	name = host = xprt = type_s = port_s = interval_s = auth = rail_s = quota_s = NULL;
 
 	attr_name = "name";
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -1724,13 +1724,13 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 		}
 	}
 
-	credits_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_CREDITS);
-	if (credits_s) {
-		credits = atol(credits_s);
-		if (credits <= -2) {
+	quota_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_QUOTA);
+	if (quota_s) {
+		quota = atol(quota_s);
+		if (quota <= -2) {
 			reqc->errcode = EINVAL;
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"'credits' attribute must be greater than -2, got '%s'", credits_s);
+				"'quota' attribute must be greater than -2, got '%s'", quota_s);
 			goto out;
 		}
 	}
@@ -1738,7 +1738,7 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 	rx_rate_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RX_RATE);
 	if (rx_rate_s) {
 		rx_rate = atol(rx_rate_s);
-		if (credits <= -2) {
+		if (quota <= -2) {
 			reqc->errcode = EINVAL;
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"'rx_rate' attribute must be greater than -2, got '%s'", rx_rate_s);
@@ -1747,7 +1747,7 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 	}
 	prdcr = ldmsd_prdcr_new_with_auth(name, xprt, host, port_no, type,
 					  interval_us, auth, uid, gid, perm,
-					  rail, credits, rx_rate);
+					  rail, quota, rx_rate);
 	if (!prdcr) {
 		if (errno == EEXIST)
 			goto eexist;
@@ -1794,7 +1794,7 @@ out:
 	free(perm_s);
 	free(auth);
 	free(rail_s);
-	free(credits_s);
+	free(quota_s);
 	return prdcr;
 }
 
@@ -6392,7 +6392,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	fprintf(fp, "worker_threads num=%d\n", ev_thread_count);
 
 	/* Default credits */
-	fprintf(fp, "default_credits credits=%d\n", ldmsd_credits);
+	fprintf(fp, "default_credits credits=%d\n", ldmsd_quota);
 
 	/* Auth */
 	ldmsd_auth_t auth;
@@ -8334,9 +8334,9 @@ extern int ldmsd_listen_start(ldmsd_listen_t listen);
 static int listen_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_listen_t listen;
-	char *xprt, *port, *host, *auth, *attr_name, *credits, *rx_limit;
+	char *xprt, *port, *host, *auth, *attr_name, *quota, *rx_limit;
 	unsigned short port_no = -1;
-	xprt = port = host = auth = credits = rx_limit = NULL;
+	xprt = port = host = auth = quota = rx_limit = NULL;
 
 	attr_name = "xprt";
 	xprt = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_XPRT);
@@ -8355,10 +8355,10 @@ static int listen_handler(ldmsd_req_ctxt_t reqc)
 	}
 	host =ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
 	auth = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTH);
-	credits = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_CREDITS);
+	quota = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_QUOTA);
 	rx_limit = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RX_RATE);
 
-	listen = ldmsd_listen_new(xprt, port, host, auth, credits, rx_limit);
+	listen = ldmsd_listen_new(xprt, port, host, auth, quota, rx_limit);
 	if (!listen) {
 		if (errno == EEXIST)
 			goto eexist;
@@ -9375,22 +9375,22 @@ send_reply:
 	return rc;
 }
 
-static int default_credits_set_handler(ldmsd_req_ctxt_t reqc)
+static int default_quota_set_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc = 0;
 	char *value = NULL;
 
-	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_CREDITS);
+	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_QUOTA);
 	if (!value) {
 		reqc->errcode = EINVAL;
 		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-					  "The attribute 'credits' is missing.");
+					  "The attribute 'quota' is missing.");
 		goto send_reply;
 	}
 	reqc->errcode = ldmsd_process_cmd_line_arg('C', value);
 	if (reqc->errcode) {
 		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-					  "Failed to process the 'default_credits' command");
+					  "Failed to process the 'default_quota' command");
 		goto send_reply;
 	}
 send_reply:
