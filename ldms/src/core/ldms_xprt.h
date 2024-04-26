@@ -121,7 +121,7 @@ enum ldms_request_cmd {
 	LDMS_CMD_CANCEL_PUSH,
 	LDMS_CMD_AUTH,
 	LDMS_CMD_SET_DELETE,
-	LDMS_CMD_SEND_CREDIT, /* for updaing send credit */
+	LDMS_CMD_SEND_QUOTA, /* for updaing send quota */
 
 	/* stream requests */
 	LDMS_CMD_STREAM_MSG, /* for stream messages */
@@ -169,8 +169,8 @@ struct ldms_send_cmd_param {
 	char msg[OVIS_FLEX];
 };
 
-struct ldms_send_credit_param {
-	uint32_t send_credit;
+struct ldms_send_quota_param {
+	uint32_t send_quota;
 };
 
 struct ldms_lookup_cmd_param {
@@ -229,7 +229,7 @@ struct ldms_request {
 	struct ldms_request_hdr hdr;
 	union {
 		struct ldms_send_cmd_param send;
-		struct ldms_send_credit_param send_credit;
+		struct ldms_send_quota_param send_quota;
 		struct ldms_dir_cmd_param dir;
 		struct ldms_set_delete_cmd_param set_delete;
 		struct ldms_lookup_cmd_param lookup;

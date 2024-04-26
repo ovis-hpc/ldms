@@ -80,7 +80,7 @@ struct req_str_id req_str_id_table[] = {
 	{  "daemon_name",        LDMSD_DAEMON_NAME_SET_REQ  },
 	{  "daemon_status",      LDMSD_DAEMON_STATUS_REQ  },
 	{  "default_auth",       LDMSD_DEFAULT_AUTH_REQ  },
-	{  "default_credits",    LDMSD_DEFAULT_CREDITS_REQ  },
+	{  "default_quota",      LDMSD_DEFAULT_QUOTA_REQ  },
 	{  "dump_cfg",           LDMSD_DUMP_CFG_REQ },
 	{  "env",                LDMSD_ENV_REQ  },
 	{  "exit",               LDMSD_EXIT_DAEMON_REQ  },
@@ -175,7 +175,6 @@ struct req_str_id attr_str_id_table[] = {
 	{  "auto_switch",       LDMSD_ATTR_AUTO_SWITCH  },
 	{  "base",              LDMSD_ATTR_BASE  },
 	{  "container",         LDMSD_ATTR_CONTAINER  },
-	{  "credits",           LDMSD_ATTR_CREDITS  },
 	{  "decomposition",     LDMSD_ATTR_DECOMP  },
 	{  "disable_start",     LDMSD_ATTR_AUTO_INTERVAL  },
 	{  "flush",             LDMSD_ATTR_INTERVAL },
@@ -200,6 +199,7 @@ struct req_str_id attr_str_id_table[] = {
 	{  "port",              LDMSD_ATTR_PORT  },
 	{  "producer",          LDMSD_ATTR_PRODUCER  },
 	{  "push",              LDMSD_ATTR_PUSH  },
+	{  "quota",             LDMSD_ATTR_QUOTA  },
 	{  "rail",              LDMSD_ATTR_RAIL  },
 	{  "reconnect",         LDMSD_ATTR_INTERVAL  },
 	{  "regex",             LDMSD_ATTR_REGEX  },
@@ -623,7 +623,7 @@ int __parse_xprt_endpoint(struct ldmsd_parse_ctxt *ctxt,
 		(0 == strncmp(name, "port", 4)) ||
 		(0 == strncmp(name, "host", 4)) ||
 		(0 == strncmp(name, "auth", 4)) ||
-		(0 == strncmp(name, "credits", 7)) ||
+		(0 == strncmp(name, "quota", 5)) ||
 		(0 == strncmp(name, "rx_rate", 8))) {
 		/* xprt, port, host, auth */
 		rc = add_attr_from_attr_str(name, value,

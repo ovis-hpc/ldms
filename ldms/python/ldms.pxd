@@ -285,7 +285,7 @@ cdef extern from "ldms.h" nogil:
         EVENT_RECV          "LDMS_XPRT_EVENT_RECV"
         EVENT_SET_DELETE    "LDMS_XPRT_EVENT_SET_DELETE"
         EVENT_SEND_COMPLETE "LDMS_XPRT_EVENT_SEND_COMPLETE"
-        EVENT_SEND_CREDIT_DEPOSITED "LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED"
+        EVENT_SEND_QUOTA_DEPOSITED "LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED"
         EVENT_LAST          "LDMS_XPRT_EVENT_LAST"
         LDMS_XPRT_EVENT_CONNECTED
         LDMS_XPRT_EVENT_REJECTED
@@ -294,10 +294,10 @@ cdef extern from "ldms.h" nogil:
         LDMS_XPRT_EVENT_RECV
         LDMS_XPRT_EVENT_SET_DELETE
         LDMS_XPRT_EVENT_SEND_COMPLETE
-        LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED
+        LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED
         LDMS_XPRT_EVENT_LAST
-    cdef struct ldms_xprt_credit_event_data:
-        uint64_t credit
+    cdef struct ldms_xprt_quota_event_data:
+        uint64_t quota
         int      ep_idx
     cdef struct ldms_xprt_set_delete_data:
         void * set
@@ -305,10 +305,10 @@ cdef extern from "ldms.h" nogil:
     cdef struct ldms_xprt_event:
         ldms_xprt_event_type type
         size_t data_len
-        # data, and credit are in union. Cython doesn't care. It just want to
+        # data, and quota are in union. Cython doesn't care. It just want to
         # know the names of the "fields" it can access in C code.
         char *data
-        ldms_xprt_credit_event_data credit
+        ldms_xprt_quota_event_data quota
         ldms_xprt_set_delete_data set_delete
     ctypedef ldms_xprt_event *ldms_xprt_event_t
     ctypedef void (*ldms_event_cb_t)(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
@@ -409,7 +409,7 @@ cdef extern from "ldms.h" nogil:
     int ldms_xprt_is_rail(ldms_t x)
     int ldms_xprt_is_remote_rail(ldms_t x)
     int ldms_xprt_rail_eps(ldms_t x)
-    int ldms_xprt_rail_send_credit_get(ldms_t x, uint64_t *credits, int n)
+    int ldms_xprt_rail_send_quota_get(ldms_t x, uint64_t *quota, int n)
 
     # --- set related --- #
     ldms_set_t ldms_set_by_name(const char *set_name)

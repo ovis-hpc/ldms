@@ -118,7 +118,7 @@ struct ldms_stream_client_s {
 	regex_t regex;
 	struct ref_s ref;
 
-	struct ldms_rail_rate_credit_s rate_credit;
+	struct ldms_rail_rate_quota_s rate_quota;
 
 	int desc_len;
 	char *desc; /* a short description at &match[match_len] */

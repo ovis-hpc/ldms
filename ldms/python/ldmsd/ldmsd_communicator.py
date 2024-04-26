@@ -88,7 +88,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_add': {'req_attr': ['name', 'type', 'xprt', 'host',
                                                  'port', 'reconnect'],
                                     'opt_attr' : [ 'auth', 'perm', 'interval',
-                                                   'rail', 'credits', 'rx_rate' ] },
+                                                   'rail', 'quota', 'rx_rate' ] },
                       'prdcr_del': {'req_attr': ['name']},
                       'prdcr_start': {'req_attr': ['name'],
                                       'opt_attr': ['interval', 'reconnect']},
@@ -105,7 +105,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_stream_status' : {'req_attr':['regex'], 'opt_attr':[]},
                       ##### Bridge #####
                       'bridge_add': {'req_attr': ['name', 'xprt', 'host', 'port', 'reconnect'],
-                                     'opt_attr' : [ 'auth', 'perm', 'rail', 'credits', 'rx_rate' ] },
+                                     'opt_attr' : [ 'auth', 'perm', 'rail', 'quota', 'rx_rate' ] },
                       ##### Updater Policy #####
                       'updtr_add': {'req_attr': ['name'],
                                     'opt_attr': ['offset', 'push', 'interval', 'auto_interval', 'perm']},
@@ -155,7 +155,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_stats': {'req_attr':[], 'opt_attr': []},
                       'set_route' : {'req_attr':['instance'], 'opt_attr':[]},
                       'set_stats': {'req_attr':[], 'opt_attr': ['summary']},
-                      'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth', 'credits', 'rx_rate']},
+                      'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth', 'quota', 'rx_rate']},
                       'metric_sets_default_authz': {'req_attr':[], 'opt_attr': ['uid', 'gid', 'perm']},
                       'set_sec_mod' : {'req_attr': ['regex'], 'opt_attr': ['uid', 'gid', 'perm']},
                       'log_status' : {'req_attr' : [], 'opt_attr' : ['name']},
@@ -210,16 +210,16 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       ##### Sampler Discovery #####
                       'advertiser_add': {'req_attr': ['name', 'xprt', 'host', 'port', 'reconnect'],
                                         'opt_attr' : ['auth', 'perm', 'interval',
-                                                      'rail', 'credits', 'rx_rate' ] },
+                                                      'rail', 'quota', 'rx_rate' ] },
                       'advertiser_del': {'req_attr': ['name'], 'opt_attr': []},
                       'advertiser_start': {'req_attr': ['name'],
                                         'opt_attr' : ['xprt', 'host', 'port',
                                                       'auth', 'perm',
                                                       'reconnect', 'rail',
-                                                      'credits', 'rx_rate' ] },
+                                                      'quota', 'rx_rate' ] },
                       'advertiser_stop': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_add': {'req_attr': ['name', 'reconnect'],
-                                           'opt_attr': ['rail', 'ip', 'credits', 'rx_rate', 'regex', 'disable_start']},
+                                           'opt_attr': ['rail', 'ip', 'quota', 'rx_rate', 'regex', 'disable_start']},
                       'prdcr_listen_del': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_start': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_stop': {'req_attr': ['name'], 'opt_attr': []},
@@ -307,7 +307,7 @@ class LDMSD_Req_Attr(object):
     RESET = 36
     DECOMPOSITION = 37
     RAIL = 38
-    CREDITS = 39
+    QUOTA = 39
     RX_RATE = 40
     SUMMARY = 41
     SIZE = 42
@@ -355,7 +355,7 @@ class LDMSD_Req_Attr(object):
                    'auth': AUTH,
                    'decomposition' : DECOMPOSITION,
                    'rail' : RAIL,
-                   'credits' : CREDITS,
+                   'quota' : QUOTA,
                    'rx_rate' : RX_RATE,
                    'reconnect' : INTERVAL,
                    'summary' : SUMMARY,
@@ -402,7 +402,7 @@ class LDMSD_Req_Attr(object):
                    AUTH : 'auth',
                    DECOMPOSITION : 'decomposition',
                    RAIL : 'rail',
-                   CREDITS : 'credits',
+                   QUOTA : 'quota',
                    RX_RATE : 'rx_rate',
                    SUMMARY : 'summary',
                    IP : 'ip',
@@ -1495,7 +1495,7 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def listen(self, xprt, port, host=None, auth=None, credits=None, rx_limit=None):
+    def listen(self, xprt, port, host=None, auth=None, quota=None, rx_limit=None):
         """
         Add a listening endpoint
 
@@ -1513,8 +1513,8 @@ class Communicator(object):
         ]
         if auth:
             attr_list.append(LDMSD_Req_Attr(attr_name='auth', value=auth))
-        if credits is not None:
-            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.CREDITS, value=credits))
+        if quota is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.QUOTA, value=quota))
         if rx_limit is not None:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=rx_limit))
         req = LDMSD_Request(
@@ -2139,15 +2139,15 @@ class Communicator(object):
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PERM, value=str(kwargs['perm'])))
         if 'rail' in kwargs.keys() and kwargs['rail']:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RAIL, value=str(int(kwargs['rail']))))
-        if 'credit' in kwargs.keys() and kwargs['credits']:
-            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.CREDITS, value=str(int(kwargs['credits']))))
+        if 'quota' in kwargs.keys() and kwargs['quota']:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.QUOTA, value=str(int(kwargs['quota']))))
         if 'rx_rate' in kwargs.keys() and kwargs['rx_rate']:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(int(kwargs['rx_rate']))))
 
         return attrs
 
     def prdcr_add(self, name, ptype, xprt, host, port, reconnect, auth=None, perm=None,
-                  rail=None, credits=None, rx_rate=None):
+                  rail=None, quota=None, rx_rate=None):
         """
         Add a producer. A producer is a peer to the LDMSD being configured.
         Once started, the LDSMD will attempt to connect to this peer
@@ -2168,9 +2168,9 @@ class Communicator(object):
         perm - The configuration client permission required to
                modify the producer configuration. Default is None.
         rail - The number of endpoints in a rail. The default is 1.
-        credits - The send credits of our side of the connection (the daemon we
+        quota - The recv quota of our side of the connection (the daemon we
                   are controlling). The default is the daemon's default
-                  ('-C' ldmsd option).
+                  ('--quota' ldmsd option).
         rx_rate - The recv rate (bytes/second) limit for this connection. The
                   default is -1 (unlimited).
 
@@ -2181,7 +2181,7 @@ class Communicator(object):
         """
         args_d = {'name': name, 'ptype': ptype, 'xprt': xprt, 'host': host, 'port': port,
                   'reconnect': reconnect, 'auth': auth, 'perm': perm,
-                  'rail': rail, 'credits': credits, 'rx_rate': rx_rate}
+                  'rail': rail, 'quota': quota, 'rx_rate': rx_rate}
         attrs = self._prdcr_add_attr_prep(**args_d)
         req = LDMSD_Request( command_id = LDMSD_Request.PRDCR_ADD, attrs = attrs)
         try:
@@ -2465,7 +2465,7 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def advertiser_add(self, name, xprt, host, port, reconnect, auth=None, perm=None,
-                       rail=None, credits=None, rx_rate=None):
+                       rail=None, quota=None, rx_rate=None):
         """
         Add an advertiser. An advertiser sends an advertisement to an aggregator
         add it as a producer. Once started, the LDSMD will attempt to
@@ -2486,7 +2486,7 @@ class Communicator(object):
         perm - The configuration client permission required to
                modify the producer configuration. Default is None.
         rail - The number of endpoints in a rail. The default is 1.
-        credits - The send credits of our side of the connection (the daemon we
+        quota - The send quota of our side of the connection (the daemon we
                   are controlling). The default is the daemon's default
                   ('-C' ldmsd option).
         rx_rate - The recv rate (bytes/second) limit for this connection. The
@@ -2499,7 +2499,7 @@ class Communicator(object):
         """
         args_d = {'name': name, 'xprt': xprt, 'host': host, 'port': port,
                   'reconnect': reconnect, 'auth': auth, 'perm': perm,
-                  'rail': rail, 'credits': credits, 'rx_rate': rx_rate}
+                  'rail': rail, 'quota': quota, 'rx_rate': rx_rate}
         attrs = self._prdcr_add_attr_prep(**args_d)
         attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value="advertiser"))
         req = LDMSD_Request( command_id = LDMSD_Request.ADVERTISER_ADD, attrs = attrs)
@@ -2513,7 +2513,7 @@ class Communicator(object):
 
     def advertiser_start(self, name, xprt=None, host=None, port=None,
                          reconnect=None, auth=None, perm=None,
-                         rail=None, credits=None, rx_rate=None):
+                         rail=None, quota=None, rx_rate=None):
         """
         Start an advertiser. If the advertiser does not exist, LDMSD will create it.
         In this case, the values of the required attributes in advertiser_add must be given.
@@ -2530,7 +2530,7 @@ class Communicator(object):
         perm - The configuration client permission required to
                modify the producer configuration. Default is None.
         rail - The number of endpoints in a rail. The default is 1.
-        credits - The send credits of our side of the connection (the daemon we
+        quota - The send quota of our side of the connection (the daemon we
                   are controlling). The default is the daemon's default
                   ('-C' ldmsd option).
         rx_rate - The recv rate (bytes/second) limit for this connection. The
@@ -2543,7 +2543,7 @@ class Communicator(object):
         """
         args_d = {'name': name, 'xprt': xprt, 'host': host, 'port': port,
                   'reconnect': reconnect, 'auth': auth, 'perm': perm,
-                  'rail': rail, 'credits': credits, 'rx_rate': rx_rate}
+                  'rail': rail, 'quota': quota, 'rx_rate': rx_rate}
         attrs = self._prdcr_add_attr_prep(**args_d)
         attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value="advertiser"))
         req = LDMSD_Request( command_id = LDMSD_Request.ADVERTISER_START, attrs = attrs)
@@ -2577,7 +2577,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_listen_add(self, name, reconnect, disable_start=None, regex=None, ip=None, rail=None, credits=None, rx_rate=None):
+    def prdcr_listen_add(self, name, reconnect, disable_start=None, regex=None, ip=None, rail=None, quota=None, rx_rate=None):
         """
         Tell an aggregator to wait for advertisements from samplers
 
