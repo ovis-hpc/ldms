@@ -572,12 +572,6 @@ void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		ref_put(&r->ref, "__passive_rail_rbt");
 	}
 
-	if (e->type == LDMS_XPRT_EVENT_RECV && __rail_is_connected((void*)r)
-			&& r->recv_limit != __RAIL_UNLIMITED) {
-		/* give back send quota */
-		__rail_ep_quota_return(rep, e->data_len);
-	}
-
  out:
 	ref_put(&r->ref, "rail_cb");
 }
@@ -1081,14 +1075,6 @@ static int __rail_send(ldms_t _r, char *msg_buf, size_t msg_len)
 		goto out;
 	}
 	rep = &r->eps[0];
-	rc = __quota_acquire(&rep->send_quota, msg_len);
-	if (rc)
-		goto out;
-	rc = __rate_quota_acquire(&rep->rate_quota, msg_len);
-	if (rc) {
-		__quota_release(&rep->send_quota, msg_len);
-		goto out;
-	}
 	rc = ldms_xprt_send(rep->ep, msg_buf, msg_len);
 	if (rc) {
 		/* release the acquired quota if send failed */
