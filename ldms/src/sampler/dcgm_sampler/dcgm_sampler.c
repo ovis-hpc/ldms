@@ -174,7 +174,7 @@ static int dcgm_init()
         } else {
                 rc = dcgmStartEmbedded(DCGM_OPERATION_MODE_AUTO, &dcgm_handle);
                 if (rc != DCGM_ST_OK) {
-                        ovis_log(mylog, OVIS_LERROR, "dcgmStartEmbedded() failed: %s(%d)\n",
+                        ovis_log(mylog, OVIS_LERROR, "dcgmStartEmbedded() failed: %s(%d) (NOTE: DCGM's nv-hostengine daemon must be disable to allow embedded mode)\n",
                                errorString(rc), rc);
                         return -1;
                 }
@@ -598,6 +598,12 @@ static int config(ldmsd_plug_handle_t handle,
                 memcpy(conf.fields, default_fields, sizeof(default_fields));
                 conf.fields_len = sizeof(default_fields)/sizeof(default_fields[0]);
         }
+
+        value = av_value(avl, "embedded");
+        if (value != NULL) {
+		standalone = 0;
+		ovis_log(mylog, OVIS_LINFO, "Using dcgm library's embedded mode\n");
+	}
 
         rc = dcgm_init();
         if (rc != 0)
