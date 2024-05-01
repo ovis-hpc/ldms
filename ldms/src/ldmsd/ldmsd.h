@@ -226,6 +226,24 @@ typedef struct ldmsd_prdcr {
 		LDMSD_PRDCR_STATE_CONNECTED,
 		/** Waiting for task join and xprt cleanup */
 		LDMSD_PRDCR_STATE_STOPPING,
+		/** The STANDBY state is valid only for 'GENERATED' producers.
+		 *
+		 *  Producer task has been stopped but there is an outstanding xprt.
+		 *
+		 *  Once the aggregator receives an advertisement notification
+		 *  and verifies that the hostname or IP address matches
+		 *  a listen producer, it creates a generated producer,
+		 *  maps the producer to the request's transport, moves
+		 *  the producer state to STANDBY, and then starts the producer.
+		 *
+		 *  The producer synchronously moves to 'CONNECTED' when it starts.
+		 *
+		 *  prdcr_stop does not tear down the connection.
+		 *  The producer's transport is reset to NULL only when
+		 *  the aggregator receives a 'disconnected' event either initiated by
+		 *  the sampler daemon or the aggregator.
+		 */
+		LDMSD_PRDCR_STATE_STANDBY,
 	} conn_state;
 
 	enum ldmsd_prdcr_type {
@@ -372,7 +390,6 @@ typedef struct ldmsd_prdcr_listen {
 		LDMSD_PRDCR_LISTEN_STATE_RUNNING,
 	} state;
 	const char *hostname_regex_s;
-	uint64_t prdcr_conn_intvl; /* reconnect interval of generated producers */
 	regex_t regex;
 	int rails; /* Rail size */
 	int recv_credits; /* bytes */
