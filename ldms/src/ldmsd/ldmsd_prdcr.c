@@ -589,6 +589,15 @@ static int __advertise_resp_cb(ldmsd_req_cmd_t rcmd)
 			if (prdcr->xprt)
 				ldms_xprt_close(prdcr->xprt);
 			ovis_log(config_log, OVIS_LINFO, "advertise: %s.\n", errmsg);
+		} else if (EAGAIN == resp->rsp_err) {
+			/*
+			 * The aggregator isn't ready to receive the advertisement.
+			 * Retry again at the next interval.
+			 */
+			ovis_log(config_log, OVIS_LINFO, "advertise: The aggregator "
+					"isn't ready to accept an advertisement. Retry again\n");
+			if (prdcr->xprt)
+				ldms_xprt_close(prdcr->xprt);
 		} else {
 			/*
 			 * LDMSD doesn't automatically stop the advertisement to
@@ -740,7 +749,7 @@ out:
 	return is_reset_prdcr;
 }
 
-static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	int is_reset_prdcr = 0;
 	ldmsd_prdcr_t prdcr = cb_arg;
@@ -787,6 +796,7 @@ reset_prdcr:
 	prdcr_reset_sets(prdcr);
 	switch (prdcr->conn_state) {
 	case LDMSD_PRDCR_STATE_STOPPING:
+	case LDMSD_PRDCR_STATE_STANDBY:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
 		break;
 	case LDMSD_PRDCR_STATE_DISCONNECTED:
@@ -803,7 +813,8 @@ reset_prdcr:
 		assert(0 == "BAD STATE");
 	}
 	if (prdcr->xprt) {
-		if (prdcr->type == LDMSD_PRDCR_TYPE_PASSIVE) {
+		if ((prdcr->type == LDMSD_PRDCR_TYPE_PASSIVE) ||
+				(prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED)) {
 			/* Put back the ldms_xprt_by_remote_sin() reference. */
 			ldms_xprt_put(prdcr->xprt);
 		}
@@ -820,9 +831,6 @@ reset_prdcr:
 				conn_state_str(prdcr->conn_state));
 	ldmsd_prdcr_unlock(prdcr);
 }
-
-extern const char *auth_name;
-extern struct attr_value_list *auth_opt;
 
 static void prdcr_connect(ldmsd_prdcr_t prdcr)
 {
@@ -857,17 +865,19 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		}
 		break;
 	case LDMSD_PRDCR_TYPE_PASSIVE:
-	case LDMSD_PRDCR_TYPE_ADVERTISED:
 		assert(prdcr->xprt == NULL);
 		prdcr->xprt = ldms_xprt_by_remote_sin((struct sockaddr *)&prdcr->ss);
-		/*
-		 * The transport endpoint has be assigned in the advertise_notification handler before
-		 * the producer has been started.
-		 *
-		 * Call connect callback to advance state and update timers
-		 */
+		ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
+		/* let through */
+	case LDMSD_PRDCR_TYPE_ADVERTISED:
 		if (prdcr->xprt) {
-			ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
+			/*
+			 * For 'ADVERTISED' producers,
+			 * prdcr->xprt is assigned when the aggregator
+			 * has received the advertisement notification.
+			 *
+			 * Call connect callback to advance state and update timers
+			 */
 			ldmsd_prdcr_unlock(prdcr);
 			struct ldms_xprt_event conn_ev = {.type = LDMS_XPRT_EVENT_CONNECTED};
 			prdcr_connect_cb(prdcr->xprt, &conn_ev, prdcr);
@@ -889,6 +899,7 @@ static void prdcr_task_cb(ldmsd_task_t task, void *arg)
 	case LDMSD_PRDCR_STATE_STOPPING:
 		ldmsd_task_stop(&prdcr->task);
 		break;
+	case LDMSD_PRDCR_STATE_STANDBY:
 	case LDMSD_PRDCR_STATE_DISCONNECTED:
 		prdcr_connect(prdcr);
 		break;
@@ -1108,12 +1119,31 @@ int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
 	if (rc)
 		goto out;
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out;
-	}
 
-	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+	if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED) {
+		if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
+			/* The connect was disconnected. */
+			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+		} else if (prdcr->conn_state == LDMSD_PRDCR_STATE_STANDBY) {
+			/*
+			 * The connection is still connected.
+			 *
+			 * The state will be synchronously moved to CONNECTED
+			 * in prdcr_connect().
+			 *
+			 */
+		} else {
+			rc = EBUSY;
+			goto out;
+		}
+	} else {
+		if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+			rc = EBUSY;
+			goto out;
+		} else {
+			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+		}
+	}
 
 	prdcr->obj.perm |= LDMSD_PERM_DSTART;
 	ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
@@ -1163,6 +1193,17 @@ int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out;
 	}
+
+	if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED) {
+		if (prdcr->conn_state == LDMSD_PRDCR_STATE_STANDBY) {
+			/*
+			 * Already stopped, return 0 so that caller knows stop succeeds.
+			 */
+			rc = 0;
+			goto out;
+		}
+	}
+
 	ovis_log(prdcr_log, OVIS_LINFO, "Stopping producer %s\n", prdcr->obj.name);
 	if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
 		prdcr_reset_sets(prdcr);
