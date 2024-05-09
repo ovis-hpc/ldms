@@ -47,7 +47,6 @@ AC_PATH_PROG(FLEX, flex)
 if test -z "$FLEX"; then
    AC_MSG_ERROR([You need the 'flex' lexer generator to compile LDMS])
 fi
-
 AC_ARG_VAR([BISON], [bison command])
 AC_CHECK_PROG([BISON], [bison -y], [bison -y], [no])
 AS_IF([test "x$BISON" = "xno"], [AC_MSG_ERROR([bison not found])])
