@@ -332,7 +332,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
         is->job_mid = -1;
         is->comp_mid = -1;
 
-        char str[128];
+        char str[256];
         snprintf(str, sizeof(str), "user=%s password=%s hostaddr=%s port=%s dbname=%s", strdup(user), password, strdup(hostaddr), strdup(port), strdup(dbname));
 
         is->conn = PQconnectdb(str);
