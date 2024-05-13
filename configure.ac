@@ -2,7 +2,7 @@ dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.64)
 AC_INIT([ovis-ldms],
-        m4_esyscmd([config/git-version-gen --prefix 'OVIS-' .tarball-version]),
+        m4_esyscmd([config/git-version-gen --prefix 'v' .tarball-version]),
         [ovis-help@sandia.gov])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([m4/Ovis-top.m4])
