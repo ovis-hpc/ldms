@@ -50,6 +50,10 @@ from libc.string cimport *
 from posix.types cimport gid_t, pid_t, off_t, uid_t, mode_t
 
 cdef extern from * nogil:
+    struct ldms_xprt:
+        pass
+    ctypedef ldms_xprt *ldms_t
+
     uint16_t be16toh(uint16_t x)
     uint16_t htobe16(uint16_t x)
     uint32_t be32toh(uint32_t x)
@@ -258,6 +262,9 @@ cdef extern from "ldms_rail.h" nogil:
         __RAIL_UNLIMITED
         RAIL_UNLIMITED "__RAIL_UNLIMITED"
 
+    int ldms_xprt_rail_pending_ret_quota_get(ldms_t x, uint64_t *out, int n)
+    int ldms_xprt_rail_in_eps_stq_get(ldms_t _r, uint64_t *out, int n)
+
 cdef extern from "ldms_core.h" nogil:
     cpdef enum :
         LDMS_MDESC_F_DATA
@@ -265,9 +272,6 @@ cdef extern from "ldms_core.h" nogil:
         LDMS_MDESC_F_RECORD
 
 cdef extern from "ldms.h" nogil:
-    struct ldms_xprt:
-        pass
-    ctypedef ldms_xprt *ldms_t
     struct ldms_timestamp:
         uint32_t sec
         uint32_t usec
@@ -286,6 +290,9 @@ cdef extern from "ldms.h" nogil:
         EVENT_SET_DELETE    "LDMS_XPRT_EVENT_SET_DELETE"
         EVENT_SEND_COMPLETE "LDMS_XPRT_EVENT_SEND_COMPLETE"
         EVENT_SEND_QUOTA_DEPOSITED "LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED"
+        EVENT_QGROUP_ASK    "LDMS_XPRT_EVENT_QGROUP_ASK"
+        EVENT_QGROUP_DONATE "LDMS_XPRT_EVENT_QGROUP_DONATE"
+        EVENT_QGROUP_DONATE_BACK "LDMS_XPRT_EVENT_QGROUP_DONATE_BACK"
         EVENT_LAST          "LDMS_XPRT_EVENT_LAST"
         LDMS_XPRT_EVENT_CONNECTED
         LDMS_XPRT_EVENT_REJECTED
@@ -295,6 +302,10 @@ cdef extern from "ldms.h" nogil:
         LDMS_XPRT_EVENT_SET_DELETE
         LDMS_XPRT_EVENT_SEND_COMPLETE
         LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED
+        LDMS_XPRT_EVENT_QGROUP_ASK
+        LDMS_XPRT_EVENT_QGROUP_DONATE
+        LDMS_XPRT_EVENT_QGROUP_DONATE_BACK
+
         LDMS_XPRT_EVENT_LAST
     cdef struct ldms_xprt_quota_event_data:
         uint64_t quota
@@ -335,6 +346,37 @@ cdef extern from "ldms.h" nogil:
 		           socklen_t *sa_len)
 
     const char *ldms_metric_type_to_str(ldms_value_type t)
+
+    # --- quota group (qgroup) --- #
+    struct ldms_qgroup_s:
+        pass
+    ctypedef ldms_qgroup_s *ldms_qgroup_t
+    ctypedef ldms_qgroup_cfg_s *ldms_qgroup_cfg_t
+    struct ldms_qgroup_cfg_s:
+        uint64_t quota
+        uint64_t ask_mark
+        uint64_t ask_amount
+        uint64_t ask_usec
+        uint64_t reset_usec
+        void *app_ctxt
+
+    int ldms_qgroup_cfg_quota_set(uint64_t quota)
+    int ldms_qgroup_cfg_ask_usec_set(uint64_t usec)
+    int ldms_qgroup_cfg_reset_usec_set(uint64_t usec)
+    int ldms_qgroup_cfg_ask_mark_set(uint64_t ask_mark)
+    int ldms_qgroup_cfg_ask_amount_set(uint64_t ask_amount)
+
+    int ldms_qgroup_cfg_set(ldms_qgroup_cfg_t cfg)
+    ldms_qgroup_cfg_s ldms_qgroup_cfg_get()
+
+    int ldms_qgroup_member_add(const char *xprt_name,
+                               const char *host, const char *port,
+                               const char *auth_name,
+                               attr_value_list *auth_av_list)
+    int ldms_qgroup_start()
+    int ldms_qgroup_stop()
+
+    uint64_t ldms_qgroup_quota_probe()
 
     # --- dir operation related --- #
     struct ldms_key_value_s:

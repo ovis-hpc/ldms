@@ -3795,6 +3795,40 @@ cdef class Xprt(object):
     def send_quota(self):
         return self.get_send_quota()
 
+    @property
+    def pending_ret_quota(self):
+        assert(self.rail_eps > 0)
+        cdef uint64_t *tmp = <uint64_t*>calloc(self.rail_eps, sizeof(uint64_t))
+        cdef int rc, i
+        if not tmp:
+            raise RuntimeError("Not enough memory")
+        rc = ldms_xprt_rail_pending_ret_quota_get(self.xprt, tmp, self.rail_eps)
+        if rc:
+            free(tmp)
+            raise RuntimeError(f"ldms_xprt_rail_pending_ret_quota_get() error: {rc}")
+        lst = list()
+        for i in range(0, self.rail_eps):
+            lst.append(tmp[i])
+        free(tmp)
+        return lst
+
+    @property
+    def in_eps_stq(self):
+        assert(self.rail_eps > 0)
+        cdef uint64_t *tmp = <uint64_t*>calloc(self.rail_eps, sizeof(uint64_t))
+        cdef int rc, i
+        if not tmp:
+            raise RuntimeError("Not enough memory")
+        rc = ldms_xprt_rail_in_eps_stq_get(self.xprt, tmp, self.rail_eps)
+        if rc:
+            free(tmp)
+            raise RuntimeError(f"ldms_xprt_rail_pending_ret_quota_get() error: {rc}")
+        lst = list()
+        for i in range(0, self.rail_eps):
+            lst.append(tmp[i])
+        free(tmp)
+        return lst
+
     def stream_publish(self, name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None):
         """r.stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None)
 
@@ -4442,6 +4476,135 @@ cdef class ZapThrStat(object):
 
     def __repr__(self):
         return str(self)
+
+
+cdef class QGroup(object):
+    """QGroup - collection of methods to interact with the quota group
+
+    Application can use the pre-created object `qgroup` in this module to
+    interact with the LDMS quota group mechanism, e.g.
+    >>> from ovis_ldms import ldms
+    >>> ldms.qgroup.quota = 1000000000
+    >>> ldms.qgroup.ask_mark = 500000
+    >>> ldms.qgroup.ask_usec = 1500000
+    >>> ldms.qgroup.ask_amount = 500000
+    >>> ldms.qgroup.reset_usec = 1500000
+    >>> ldms.qgroup.start()
+    """
+
+    def __init__(self):
+        pass
+
+    def member_add(self, xprt, host, port=411, auth=None, auth_opts=None):
+        """Add a peer into the quota group"""
+        cdef int rc
+        cdef attr_value_list *avl = NULL
+        if auth is None:
+            auth = "none"
+        if auth_opts:
+            if type(auth_opts) != dict:
+                raise TypeError("auth_opts must be a dictionary")
+            avl = av_new(len(auth_opts))
+            for k, v in auth_opts.items():
+                rc = av_add(avl, BYTES(k), BYTES(v))
+                if rc:
+                    av_free(avl)
+                    raise OSError(rc, "av_add() error: {}"\
+                                  .format(ERRNO_SYM(rc)))
+        xprt = BYTES(xprt)
+        port = BYTES(port)
+        host = BYTES(host)
+        auth = BYTES(auth)
+        rc = ldms_qgroup_member_add(xprt, host, port, auth, avl)
+        av_free(avl)
+        if rc:
+            raise RuntimeError(f"ldms_qgroup_member_add() error: {ERRNO_SYM(rc)}")
+
+    @property
+    def cfg_quota(self):
+        cdef ldms_qgroup_cfg_s cfg
+        cfg = ldms_qgroup_cfg_get()
+        return cfg.quota
+
+    @cfg_quota.setter
+    def cfg_quota(self, long q):
+        cdef int rc
+        rc = ldms_qgroup_cfg_quota_set(q)
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    @property
+    def cfg_ask_mark(self):
+        cdef ldms_qgroup_cfg_s cfg
+        cfg = ldms_qgroup_cfg_get()
+        return cfg.ask_mark
+
+    @cfg_ask_mark.setter
+    def cfg_ask_mark(self, long v):
+        cdef int rc
+        rc = ldms_qgroup_cfg_ask_mark_set(v)
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    @property
+    def cfg_ask_amount(self):
+        cdef ldms_qgroup_cfg_s cfg
+        cfg = ldms_qgroup_cfg_get()
+        return cfg.ask_amount
+
+    @cfg_ask_amount.setter
+    def cfg_ask_amount(self, long v):
+        cdef int rc
+        rc = ldms_qgroup_cfg_ask_amount_set(v)
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    @property
+    def cfg_ask_usec(self):
+        cdef ldms_qgroup_cfg_s cfg
+        cfg = ldms_qgroup_cfg_get()
+        return cfg.ask_usec
+
+    @cfg_ask_usec.setter
+    def cfg_ask_usec(self, long v):
+        cdef int rc
+        rc = ldms_qgroup_cfg_ask_usec_set(v)
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    @property
+    def cfg_reset_usec(self):
+        cdef ldms_qgroup_cfg_s cfg
+        cfg = ldms_qgroup_cfg_get()
+        return cfg.reset_usec
+
+    @cfg_reset_usec.setter
+    def cfg_reset_usec(self, long v):
+        cdef int rc
+        rc = ldms_qgroup_cfg_reset_usec_set(v)
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    def start(self):
+        cdef int rc
+        rc = ldms_qgroup_start()
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    def stop(self):
+        cdef int rc
+        rc = ldms_qgroup_stop()
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    @property
+    def quota_probe(self):
+        return ldms_qgroup_quota_probe()
+
+    def __del__(self):
+        pass
+
+qgroup = QGroup()
 
 LOG_LEVEL_MAP = {
         "LDEFAULT":  LDEFAULT,

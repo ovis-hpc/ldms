@@ -67,6 +67,7 @@
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_rail.h"
+#include "ldms_stream.h"
 
 #include "ldms_private.h"
 
@@ -245,6 +246,7 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 		r->eps[i].rate_quota.ts.tv_nsec   = 0;
 		r->eps[i].remote_is_rail = -1;
 		rbt_init(&r->eps[i].sbuf_rbt, __stream_buf_cmp);
+		TAILQ_INIT(&r->eps[i].sbuf_tq);
 	}
 
 	zap = __ldms_zap_get(xprt_name);
@@ -1388,6 +1390,7 @@ void __rail_process_send_quota(ldms_t x, struct ldms_request *req)
 	ev.quota.ep_idx = rep->idx;
 	ev.type = LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED;
 	rep->rail->event_cb((ldms_t)rep->rail, &ev, rep->rail->event_cb_arg);
+	__rep_flush_sbuf_tq(rep);
 }
 
 int ldms_xprt_rail_send_quota_get(ldms_t _r, uint64_t *quotas, int n)
@@ -1403,6 +1406,40 @@ int ldms_xprt_rail_send_quota_get(ldms_t _r, uint64_t *quotas, int n)
 		return -ENOMEM;
 	for (i = 0; i < r->n_eps; i++) {
 		quotas[i] = r->eps[i].send_quota;
+	}
+	return 0;
+}
+
+int ldms_xprt_rail_pending_ret_quota_get(ldms_t _r, uint64_t *out, int n)
+{
+	ldms_rail_t r;
+	int i;
+	if (!_r)
+		return -EINVAL;
+	if (!XTYPE_IS_RAIL(_r->xtype))
+		return -EINVAL;
+	r = (void*)_r;
+	if (n < r->n_eps)
+		return -ENOMEM;
+	for (i = 0; i < r->n_eps; i++) {
+		out[i] = r->eps[i].pending_ret_quota;
+	}
+	return 0;
+}
+
+int ldms_xprt_rail_in_eps_stq_get(ldms_t _r, uint64_t *out, int n)
+{
+	ldms_rail_t r;
+	int i;
+	if (!_r)
+		return -EINVAL;
+	if (!XTYPE_IS_RAIL(_r->xtype))
+		return -EINVAL;
+	r = (void*)_r;
+	if (n < r->n_eps)
+		return -ENOMEM;
+	for (i = 0; i < r->n_eps; i++) {
+		out[i] = r->eps[i].in_eps_stq;
 	}
 	return 0;
 }
@@ -1661,4 +1698,46 @@ void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
 		__ldms_free_ctxt(x, ctxt);
 	}
 	pthread_mutex_unlock(&x->lock);
+}
+
+int __rep_flush_sbuf_tq(struct ldms_rail_ep_s *rep)
+{
+	int rc;
+	struct __pending_sbuf_s *p;
+	while ((p = TAILQ_FIRST(&rep->sbuf_tq))) {
+		rc = __rep_quota_acquire(rep, p->sbuf->msg->msg_len);
+		if (rc)
+			goto out;
+		rc = __rep_publish(rep, p->sbuf->name,
+				p->sbuf->msg->name_hash,
+				p->sbuf->msg->stream_type,
+			     &p->sbuf->msg->src, p->sbuf->msg->msg_gn,
+			     &p->sbuf->msg->cred, p->sbuf->msg->perm,
+			     p->sbuf->data,
+			     p->sbuf->data_len);
+		if (rc) {
+			__quota_release(&rep->send_quota, p->sbuf->msg->msg_len);
+			goto out;
+		}
+		TAILQ_REMOVE(&rep->sbuf_tq, p, entry);
+		ref_put(&p->sbuf->ref, "pending");
+		free(p);
+	}
+	rc = 0;
+ out:
+	return rc;
+}
+
+int __rep_quota_acquire(struct ldms_rail_ep_s *rep, uint64_t q)
+{
+	int rc;
+	rc = __quota_acquire(&rep->send_quota, q);
+	if (rc)
+		return rc;
+	rc = __rate_quota_acquire(&rep->rate_quota, q);
+	if (rc) {
+		__quota_release(&rep->send_quota, q);
+		return rc;
+	}
+	return 0;
 }

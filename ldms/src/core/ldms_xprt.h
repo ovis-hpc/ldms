@@ -128,6 +128,11 @@ enum ldms_request_cmd {
 	LDMS_CMD_STREAM_SUB, /* stream subscribe request */
 	LDMS_CMD_STREAM_UNSUB, /* stream subscribe request */
 
+	/* qgroup messages */
+	LDMS_CMD_QGROUP_ASK,
+	LDMS_CMD_QGROUP_DONATE,
+	LDMS_CMD_QGROUP_DONATE_BACK,
+
 	LDMS_CMD_REPLY = 0x100,
 	LDMS_CMD_DIR_REPLY,
 	LDMS_CMD_DIR_CANCEL_REPLY,
@@ -219,6 +224,16 @@ struct ldms_stream_sub_param {
 	char match[OVIS_FLEX];
 };
 
+struct ldms_qgroup_ask {
+	uint64_t q;
+	uint64_t usec; /* like 'sec' since epoch, but in usec */
+};
+
+struct ldms_qgroup_donate {
+	uint64_t q;
+	uint64_t usec; /* like 'sec' since epoch, but in usec */
+};
+
 struct ldms_request_hdr {
 	uint64_t xid;		/*! Transaction id returned in reply */
 	uint32_t cmd;		/*! The operation being requested  */
@@ -238,6 +253,8 @@ struct ldms_request {
 		struct ldms_cancel_push_cmd_param cancel_push;
 		struct ldms_stream_part_msg_param stream_part;
 		struct ldms_stream_sub_param stream_sub;
+		struct ldms_qgroup_ask qgroup_ask;
+		struct ldms_qgroup_donate  qgroup_donate;
 	};
 };
 
@@ -400,6 +417,12 @@ typedef enum ldms_xtype_e {
 #define XTYPE_IS_PASSIVE(t) ((t) & 0x1)
 #define XTYPE_IS_LEGACY(t) (((t) & (~0x1)) == 0)
 #define XTYPE_IS_RAIL(t) ((t) & 0x2)
+
+#define LDMS_IS_RAIL(x) XTYPE_IS_RAIL((x)->xtype)
+#define LDMS_IS_LEGACY(x) XTYPE_IS_LEGACY((x)->xtype)
+#define LDMS_IS_PASSIVE(x) XTYPE_IS_PASSIVE((x)->xtype)
+
+#define LDMS_RAIL(x) ((ldms_rail_t)(x))
 
 struct ldms_xprt_ops_s {
 	int (*connect)(ldms_t x, struct sockaddr *sa, socklen_t sa_len,

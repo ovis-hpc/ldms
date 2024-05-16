@@ -145,4 +145,34 @@ struct ldms_stream_full_msg_s {
 	 */
 };
 
+struct __sbuf_key_s {
+	struct ldms_addr src;
+	uint64_t msg_gn;
+};
+
+struct __stream_buf_s {
+	struct rbn rbn;
+	struct __sbuf_key_s key;
+	struct ref_s ref;
+	struct ldms_rail_ep_s *rep;
+	size_t full_msg_len;
+	off_t  off;
+	const char *name;
+	const char *data;
+	uint32_t name_len;
+	uint32_t data_len;
+	union {
+		struct ldms_stream_full_msg_s msg[0];
+		char buf[0];
+	};
+};
+
+/* for internal use */
+int __rep_publish(struct ldms_rail_ep_s *rep, const char *stream_name,
+			uint32_t hash,
+                        ldms_stream_type_t stream_type,
+			struct ldms_addr *src, uint64_t msg_gn,
+			ldms_cred_t cred, int perm,
+			const char *data, size_t data_len);
+
 #endif /* __LDMS_STREAM_H__ */

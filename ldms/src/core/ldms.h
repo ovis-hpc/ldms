@@ -730,6 +730,12 @@ enum ldms_xprt_event_type {
 	LDMS_XPRT_EVENT_SEND_COMPLETE,
 	/*! The send quota is deposited.  */
 	LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED,
+	/*! Peer ask us for quota donation. */
+	LDMS_XPRT_EVENT_QGROUP_ASK,
+	/*! Peer donates quota to us. */
+	LDMS_XPRT_EVENT_QGROUP_DONATE,
+	/*! For donating back the unused donated quota. */
+	LDMS_XPRT_EVENT_QGROUP_DONATE_BACK,
 	LDMS_XPRT_EVENT_LAST
 };
 
@@ -1107,6 +1113,219 @@ int ldms_getsockaddr6(const char *host, const char *port,
 		      struct sockaddr *sa, socklen_t *sa_len);
 
 /** \} */
+
+/**
+ * \addtogroup ldms_qgroup LDMS Quota Group (qgroup)
+ *
+ * LDMS Quota Group, or qgroup for short, is a feature in LDMS library that
+ * enables the control of the amount of the stream data going through the
+ * processes participating in the "group". \c qgroup mechanism leverages
+ * \c rail.recv_limit to limit the stream data. Hence, the endpoints in our
+ * process (a member of \c qgroup) has to be created with
+ * \c * ldms_xprt_rail_new() with \c recv_limit. When the peer publishes a
+ * stream data, it has to take quota from the said \c recv_limit. When our
+ * process done processing the stream data (all stream callbacks on the data
+ * have returned), the quota is issued back to the peer. This limits the amount
+ * of buffer in our process. With \c qgruop, before our process returns the
+ * quota, we first consults \c qgroup.quota. The returning quota has to be taken
+ * from \c qgroup.quota. If the \c qgroup.quota is not enough (less than the
+ * required returning quota), the returning quota is held off. If we hold off
+ * enough returning quota, the peer will run out of quota and cannot publish
+ * further stream data. \c qgroup.cfg.quota determines the initial amount of
+ * \c qgroup.quota. When \c qgroup.quota goes below \c qgroup.cfg.ask_mark, the
+ * qgroup mechanism asks members for quota donations (with
+ * \c qgroup.cfg.ask_amount) every \c qgroup.cfg.ask_usec interval. The donation
+ * also takes from \c qgroup.quota. Eventually, all \c qgroup.quota in all
+ * members will run out. The \c qgroup.quota gets reset back to
+ * \c qgroup.cfg.quota every \c qgroup.cfg.reset_usec interval. Roughly, the
+ * amount of data that goes through members of \c qgroup (including us) is:
+ *
+ *   \c N * \c qgroup.cfg.quota over \c qgroup.cfg.reset_usec time interval
+ *
+ * provided that all members use the same parameters.
+ *
+ *
+ * To use qgroup feature, we have to
+ * 1) set qgroup paramters of our process (\c ldms_qgroup_cfg_set()),
+ * 2) add member processes (\c ldms_qgroup_member_add()), and
+ * 3) start the qgroup feature (\c ldms_qgroup_start()).
+ *
+ * The member processes can use \c ldms_qgroup_cfg_set() to set the parameters
+ * at once, or use the following functions to set them individually:
+ * - \c ldms_qgroup_cfg_quota_set()
+ * - \c ldms_qgroup_cfg_ask_usec_set()
+ * - \c ldms_qgroup_cfg_ask_mark_set()
+ * - \c ldms_qgroup_cfg_ask_amount_set()
+ * - \c ldms_qgroup_cfg_reset_usec_set()
+ *
+ * After \c ldms_qgroup_start(), the process has to call \c ldms_qgroup_stop()
+ * before altering the member list or modifying \c qgroup.cfg.
+ *
+ * These functions and types manage and manipulate LDMS Quota Group.
+ * \{
+ */
+
+typedef enum ldms_qgroup_state_e {
+	LDMS_QGROUP_STATE_STOPPED = 0,
+	LDMS_QGROUP_STATE_STOPPING,
+	LDMS_QGROUP_STATE_STARTED,
+	LDMS_QGROUP_STATE_BUSY, /* qgroup is in execution routine */
+	LDMS_QGROUP_STATE_LAST,
+} ldms_qgroup_state_t;
+const char *ldms_qgroup_state_str(ldms_qgroup_state_t state);
+
+typedef enum ldms_qgroup_member_state_e {
+	LDMS_QGROUP_MEMBER_STATE_DISCONNECTED,
+	LDMS_QGROUP_MEMBER_STATE_CONNECTING,
+	LDMS_QGROUP_MEMBER_STATE_CONNECTED,
+	LDMS_QGROUP_MEMBER_STATE_LAST,
+} ldms_qgroup_member_state_t;
+
+typedef struct ldms_qgroup_s *ldms_qgroup_t;
+
+const char *ldms_qgroup_member_state_str(ldms_qgroup_member_state_t state);
+
+typedef struct ldms_qgroup_cfg_s *ldms_qgroup_cfg_t;
+struct ldms_qgroup_cfg_s {
+	uint64_t quota;
+	uint64_t ask_mark;
+	uint64_t ask_amount;
+	uint64_t ask_usec;
+	uint64_t reset_usec;
+};
+
+/**
+ * \brief Set the qgroup config with the provided \c cfg.
+ *
+ * \retval 0 Success
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ */
+int ldms_qgroup_cfg_set(ldms_qgroup_cfg_t cfg);
+
+/**
+ * \brief Retrieve the current qgroup config.
+ *
+ * \retval cfg The `ldms_qgroup_cfg_s` structure.
+ */
+struct ldms_qgroup_cfg_s ldms_qgroup_cfg_get();
+
+/**
+ * \brief Set the `cfg.quota` of the qgroup.
+ *
+ * \retval 0 Success
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ */
+int ldms_qgroup_cfg_quota_set(uint64_t quota);
+
+/**
+ * \brief Set the `cfg.ask_usec` of the qgroup.
+ *
+ * \retval 0 Success
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ */
+int ldms_qgroup_cfg_ask_usec_set(uint64_t usec);
+
+/**
+ * \brief Set the `cfg.reset_usec` of the qgroup.
+ *
+ * \retval 0 Success
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ */
+int ldms_qgroup_cfg_reset_usec_set(uint64_t usec);
+
+/**
+ * \brief Set the `cfg.ask_mark` of the qgroup.
+ *
+ * \retval 0 Success
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ */
+int ldms_qgroup_cfg_ask_mark_set(uint64_t ask_mark);
+
+/**
+ * \brief Set the `cfg.ask_amount` of the qgroup.
+ *
+ * \retval 0 Success
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ */
+int ldms_qgroup_cfg_ask_amount_set(uint64_t ask_amount);
+
+/**
+ * \brief Add a member into the qgroup.
+ *
+ * \param xprt_name The name of the xprt type (e.g. "sock").
+ * \param host The host of the member.
+ * \param port The port of the member. If \c port is \c NULL, "411" is supplied
+ *             as a default.
+ * \param auth_name The name of the authentication type (e.g. "munge"). The
+ *                  default is "none".
+ * \param auth_av_list The list attribute-value options for \c auth_name. The
+ *                     default is \c NULL.
+ *
+ *
+ * \retval 0 Success.
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ * \retval EINVAL Invalid argument (e.g.\c host being \c NULL).
+ * \retval ENAMETOOLONG A parameter value is too long (e.g. \c host is longer
+ *                      than 256 bytes).
+ * \retval EEXIST The peer "host:port" already exist in the member list.
+ * \retval ENOMEM Not enough memory.
+ */
+int ldms_qgroup_member_add(const char *xprt_name,
+			   const char *host, const char *port,
+			   const char *auth_name,
+			   struct attr_value_list *auth_av_list);
+
+/**
+ * \brief Remove a member from the qgroup.
+ *
+ * \param host The host of the member.
+ * \param port The port of the member. If \c port is \c NULL, "411" is supplied
+ *             as a default.
+ *
+ * \retval 0 Success.
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ * \retval ENOENT If the "host:port" member does not exist in the list.
+ */
+int ldms_qgroup_member_del(const char *host, const char *port);
+
+/**
+ * \brief Start the qgroup service.
+ *
+ * \retval 0 Success.
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ * \retval EINVAL If the config is invalid (e.g. \c cfg.quota=0).
+ */
+int ldms_qgroup_start();
+
+/**
+ * \brief Stop the qgroup service.
+ */
+int ldms_qgroup_stop();
+
+/* probe the current quota value */
+uint64_t ldms_qgroup_quota_probe();
+
+typedef struct ldms_qgroup_member_info_s {
+	STAILQ_ENTRY(ldms_qgroup_member_info_s) entry;
+	ldms_qgroup_member_state_t state;
+	char   c_host[256]; /* see rfc1034 */
+	char   c_port[32];  /* port or service name */
+	char   c_xprt[32];  /* the transport type */
+	char   c_auth[32];  /* auth type */
+	struct attr_value_list *c_auth_av_list;
+} *ldms_qgroup_member_info_t;
+
+typedef struct ldms_qgroup_info_s {
+	ldms_qgroup_state_t state;
+	struct ldms_qgroup_cfg_s cfg;
+	uint64_t quota; /* the current quota */
+	STAILQ_HEAD(, ldms_qgroup_member_info_s) member_stq;
+} *ldms_qgroup_info_t;
+
+ldms_qgroup_info_t ldms_qgroup_info_get();
+void ldms_qgroup_info_free(ldms_qgroup_info_t qinfo);
+
+/** \} */ /* ldms_qgroup */
 
 /**
  * \addtogroup ldms_stream LDMS Stream Functions
