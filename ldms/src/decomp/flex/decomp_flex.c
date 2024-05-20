@@ -371,6 +371,7 @@ static int __decomp_flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			return 0;
 		digest_rbn = dcfg->default_digest;
 	}
+	*row_count = 0;
 	for (i = 0; i < digest_rbn->n_decomp; i++) {
 		rcount = 0;
 		decomp_rbn = digest_rbn->decomp_rbn[i];

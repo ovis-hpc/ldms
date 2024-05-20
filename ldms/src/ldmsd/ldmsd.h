@@ -423,8 +423,53 @@ typedef struct ldmsd_strgp_metric {
 	TAILQ_ENTRY(ldmsd_strgp_metric) entry;
 } *ldmsd_strgp_metric_t;
 
+typedef struct ldmsd_row_group_s {
+	ldmsd_strgp_t strgp;
+	int row_key_count;
+	struct rbt row_tree;	/* Tree of ldmsd_row_cache_entry_t */
+	struct rbn rbn;
+} *ldmsd_row_group_t;
+
+typedef struct ldmsd_row_cache_s {
+	ldmsd_strgp_t strgp;
+	int group_key_count;
+	int row_limit;
+	struct rbt group_tree;	/* Tree of ldmsd_row_group_t */
+	pthread_mutex_t lock;
+} *ldmsd_row_cache_t;
+
+typedef struct ldmsd_row_s *ldmsd_row_t;
+typedef struct ldmsd_row_cache_idx_s *ldmsd_row_cache_idx_t;
+typedef struct ldmsd_row_cache_entry_s {
+	ldmsd_row_t row;
+	ldmsd_row_cache_idx_t idx;
+	struct rbn rbn;
+} *ldmsd_row_cache_entry_t;
+
+typedef struct ldmsd_row_cache_key_s {
+	enum ldms_value_type type;
+	union ldms_value val;
+	size_t count;			/* The element count if an array */
+} *ldmsd_row_cache_key_t;
+
+struct ldmsd_row_cache_idx_s {
+	int key_count;
+	ldmsd_row_cache_key_t keys;	/* Array of ldmsd_row_cache_key_t */
+};
+
 typedef struct ldmsd_row_s *ldmsd_row_t;
 typedef struct ldmsd_row_list_s *ldmsd_row_list_t;
+
+ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_count);
+ldmsd_row_cache_idx_t ldmsd_row_cache_idx_create(int key_count, ldmsd_row_cache_key_t keys);
+int ldmsd_row_cache(ldmsd_row_cache_t rcache,
+		ldmsd_row_cache_idx_t group_key,
+		ldmsd_row_cache_idx_t row_key,
+		ldmsd_row_t row);
+ldmsd_row_t ldmsd_row_dup(ldmsd_row_t);
+int ldmsd_row_cache_make_list(ldmsd_row_list_t row_list, int row_count,
+	ldmsd_row_cache_t cache, ldmsd_row_cache_idx_t group_key);
+
 typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set);
 struct ldmsd_strgp {
 	struct ldmsd_cfgobj obj;
@@ -469,13 +514,16 @@ struct ldmsd_strgp {
 
 	/** Decomposer resource handle */
 	struct ldmsd_decomp_s *decomp;
-	char *decomp_name;
+	char *decomp_path;	/* path to decomposition configuration */
 
 	/** Regular expression for the schema */
 	regex_t schema_regex;
 	char *regex_s;
 
 	struct ldmsd_stat stat;
+
+	int row_cache_init;
+	ldmsd_row_cache_t row_cache;
 };
 
 
@@ -548,6 +596,7 @@ typedef enum ldmsd_phony_metric_id {
 	LDMSD_PHONY_METRIC_ID_TIMESTAMP = LDMSD_PHONY_METRIC_ID_FIRST,
 	LDMSD_PHONY_METRIC_ID_PRODUCER,
 	LDMSD_PHONY_METRIC_ID_INSTANCE,
+	LDMSD_PHONY_METRIC_ID_FILL
 } ldmsd_phony_metric_id_t;
 
 __attribute__((unused)) /* compiler hush */
@@ -555,6 +604,14 @@ static int is_phony_metric_id(int metric_id)
 {
 	return metric_id >= LDMSD_PHONY_METRIC_ID_FIRST;
 }
+
+enum ldmsd_decomp_op {
+	 LDMSD_DECOMP_OP_NONE = 0,
+	 LDMSD_DECOMP_OP_DIFF = 1,
+	 LDMSD_DECOMP_OP_MEAN = 2,
+	 LDMSD_DECOMP_OP_MIN = 3,
+	 LDMSD_DECOMP_OP_MAX = 4,
+};
 
 struct ldmsd_col_s {
 	const char *name;          /* The column name */
@@ -581,22 +638,18 @@ typedef struct ldmsd_row_index_s *ldmsd_row_index_t;
 
 struct ldmsd_row_s {
 	TAILQ_ENTRY(ldmsd_row_s) entry;
-	void *schema; /* The storage plugin’s schema handle */
+	void *schema;		 /* The storage plugin’s schema handle */
 	const char *schema_name; /* The name of the schema from the
 				    configuration. */
-	const struct ldms_digest_s *schema_digest; /* row schema digest.
-						       Not to confuse
-						       with LDMS schema digest.
-						       */
+	const struct ldms_digest_s *schema_digest; /* LDMSD metric set digest */
 	int idx_count; /* the number of indices */
 	int col_count; /* The number of columns */
 	ldmsd_row_index_t *indices; /* pointer to array of indices */
+	uint8_t *mvals;	/* Ptr to memory that contains the mvals for each metric */
 	struct ldmsd_col_s cols[OVIS_FLEX];
 };
-typedef struct ldmsd_row_s *ldmsd_row_t;
 
 TAILQ_HEAD(ldmsd_row_list_s, ldmsd_row_s);
-typedef struct ldmsd_row_list_s *ldmsd_row_list_t;
 
 typedef struct ldmsd_req_ctxt *ldmsd_req_ctxt_t;
 

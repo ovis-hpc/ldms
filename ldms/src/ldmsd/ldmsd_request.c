@@ -2549,15 +2549,15 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	strgp->flush_interval = flush_interval;
 
 	if (decomp) {
-		strgp->decomp_name = strdup(decomp);
-		if (!strgp->decomp_name)
+		strgp->decomp_path = strdup(decomp);
+		if (!strgp->decomp_path)
 			goto enomem;
 		/* reqc->errcode, reqc->line_buf will be populated if there is an error */
 		if (strgp_decomp_init(strgp, reqc)) {
 			goto send_reply;
 		}
 	} else {
-		strgp->decomp_name = NULL;
+		strgp->decomp_path = NULL;
 	}
 	if (reqc->line_buf[0] == '\0' || reqc->line_buf[0] == '0')
 		__dlog(DLOG_CFGOK, "strgp_add name=%s plugin=%s container=%s"
@@ -3043,7 +3043,7 @@ int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
 		       strgp->flush_interval.tv_sec,
 		       (strgp->flush_interval.tv_nsec/1000),
 		       ldmsd_strgp_state_str(strgp->state),
-		       ((strgp->decomp_name)?strgp->decomp_name:"-"));
+		       ((strgp->decomp_path)?strgp->decomp_path : "-"));
 	if (rc)
 		goto out;
 
@@ -6248,7 +6248,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 		else
 			fprintf(fp, " schema=%s", strgp->schema);
 		if (strgp->decomp)
-			fprintf(fp, " decomposition=%s", strgp->decomp_name);
+			fprintf(fp, " decomposition=%s", strgp->decomp_path);
 		fprintf(fp, "\n");
 		LIST_FOREACH(match, &strgp->prdcr_list, entry) {
 			fprintf(fp, "strgp_prdcr_add name=%s regex=%s\n",

@@ -1398,12 +1398,20 @@ size_t __ldms_value_size_get(enum ldms_value_type t, uint32_t count)
 	case LDMS_V_RECORD_ARRAY:
 		vsz = sizeof(struct ldms_record_array);
 		break;
+	case LDMS_V_TIMESTAMP:
+		vsz = sizeof(struct ldms_timestamp);
+		break;
 	default:
 		assert(0 == "Unknown type");
 		return 0;
 	}
 	/* Values are aligned on 8b boundary */
 	return roundup(vsz, 8);
+}
+
+size_t ldms_metric_value_size_get(enum ldms_value_type t, uint32_t count)
+{
+	return __ldms_value_size_get(t, count);
 }
 
 void __ldms_metric_size_get(const char *name, const char *unit,
