@@ -95,8 +95,8 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 	}
 	if (strgp->plugin_name)
 		free(strgp->plugin_name);
-	if (strgp->decomp_name)
-		free(strgp->decomp_name);
+	if (strgp->decomp_path)
+		free(strgp->decomp_path);
 	free(strgp->digest);
 	ldmsd_cfgobj___del(obj);
 }
@@ -199,19 +199,16 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 {
 	if (strgp->state != LDMSD_STRGP_STATE_RUNNING)
 		return;
-	if (!strgp->decomp_name)
-		goto store_routine;
 
-	/* decomp() interface routine */
-	if (!strgp->decomp) {
-		strgp->state = LDMSD_STRGP_STATE_STOPPED;
+	if (strgp->decomp_path) {
+		if (!strgp->decomp) {
+			strgp->state = LDMSD_STRGP_STATE_STOPPED;
+			return;
+		}
+		strgp_decompose(strgp, prd_set);
 		return;
 	}
-	strgp_decompose(strgp, prd_set);
-	return;
 
-	/* store() interface routine */
- store_routine:
 	if (!strgp->store_handle) {
 		strgp->state = LDMSD_STRGP_STATE_STOPPED;
 		return;
@@ -618,7 +615,7 @@ int strgp_decomp_init(ldmsd_strgp_t strgp, ldmsd_req_ctxt_t reqc)
 		strgp->store = store->store;
 	}
 	assert(!strgp->decomp);
-	return ldmsd_decomp_config(strgp, strgp->decomp_name, reqc);
+	return ldmsd_decomp_config(strgp, strgp->decomp_path, reqc);
 }
 
 /** Must be called with the producer set lock and the strgp config lock held and in this order*/
@@ -651,7 +648,7 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		rc = EEXIST;
 		if (ref)
 			break;
-		if (strgp->decomp_name) {
+		if (strgp->decomp_path) {
 			if (!strgp->decomp) {
 				rc = strgp_decomp_init(strgp, NULL);
 				if (rc)
