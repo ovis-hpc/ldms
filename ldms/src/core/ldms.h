@@ -2215,6 +2215,7 @@ extern int ldms_schema_metric_add_with_unit(ldms_schema_t s, const char *name,
 extern int ldms_schema_meta_add_with_unit(ldms_schema_t s, const char *name,
 					  const char *unit, enum ldms_value_type t);
 
+size_t ldms_metric_value_size_get(enum ldms_value_type t, uint32_t count);
 
 /**
  * \brief Return the heap bytes required
@@ -2914,6 +2915,7 @@ enum ldms_value_type ldms_record_metric_type_get(ldms_mval_t rec,
  */
 void ldms_record_metric_set(ldms_mval_t rec_inst, int metric_id,
 			    ldms_mval_t val);
+
 
 /**
  * Set value to elements in the array metric in the record instance.
