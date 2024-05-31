@@ -58,14 +58,23 @@
 
 #include <openssl/evp.h>
 
-#include "ovis_json/ovis_json.h"
+#include <jansson.h>
 #include "coll/rbt.h"
 
 #include "ldmsd.h"
 #include "ldmsd_request.h"
 
+/* convenient macro to put error message in both ldmsd log and `reqc` */
+#define THISLOG(reqc, rc, fmt, ...) do { \
+	ldmsd_log(LDMSD_LERROR, fmt, ##__VA_ARGS__); \
+	if (reqc) { \
+		(reqc)->errcode = rc; \
+		Snprintf(&(reqc)->line_buf, &(reqc)->line_len, fmt, ##__VA_ARGS__); \
+	} \
+} while (0)
+
 static ldmsd_decomp_t decomp_static_config(ldmsd_strgp_t strgp,
-			json_entity_t cfg, ldmsd_req_ctxt_t reqc);
+			json_t *cfg, ldmsd_req_ctxt_t reqc);
 static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				     ldmsd_row_list_t row_list, int *row_count);
 static void decomp_static_release_rows(ldmsd_strgp_t strgp,
@@ -84,230 +93,74 @@ ldmsd_decomp_t get()
 	return &decomp_static;
 }
 
-/* ==== JSON helpers ==== */
-
-static json_entity_t __jdict_ent(json_entity_t dict, const char *key)
+static int
+mval_from_json(ldms_mval_t *v, enum ldms_value_type *mtype, int *mlen, json_t *jent)
 {
-	json_entity_t attr;
-	json_entity_t val;
-
-	attr = json_attr_find(dict, key);
-	if (!attr) {
-		errno = ENOKEY;
-		return NULL;
-	}
-	val = json_attr_value(attr);
-	return val;
-}
-
-/* Access dict[key], expecting it to be a list */
-static json_list_t __jdict_list(json_entity_t dict, const char *key)
-{
-	json_entity_t val;
-
-	val = __jdict_ent(dict, key);
-	if (!val)
-		return NULL;
-	if (val->type != JSON_LIST_VALUE) {
-		errno = EINVAL;
-		return NULL;
-	}
-	return val->value.list_;
-}
-
-/* Access dict[key], expecting it to be a str */
-static json_str_t __jdict_str(json_entity_t dict, const char *key)
-{
-	json_entity_t val;
-
-	val = __jdict_ent(dict, key);
-	if (!val)
-		return NULL;
-	if (val->type != JSON_STRING_VALUE) {
-		errno = EINVAL;
-		return NULL;
-	}
-	return val->value.str_;
-}
-
-static enum json_value_e __ldms_json_type(enum ldms_value_type type)
-{
-	switch (type) {
-	case LDMS_V_CHAR: /* maps to json string of 1 character */
-	case LDMS_V_CHAR_ARRAY:
-		return JSON_STRING_VALUE;
-	case LDMS_V_U8:
-	case LDMS_V_S8:
-	case LDMS_V_U8_ARRAY:
-	case LDMS_V_S8_ARRAY:
-	case LDMS_V_U16:
-	case LDMS_V_S16:
-	case LDMS_V_U16_ARRAY:
-	case LDMS_V_S16_ARRAY:
-	case LDMS_V_U32:
-	case LDMS_V_S32:
-	case LDMS_V_U32_ARRAY:
-	case LDMS_V_S32_ARRAY:
-	case LDMS_V_U64:
-	case LDMS_V_S64:
-	case LDMS_V_U64_ARRAY:
-	case LDMS_V_S64_ARRAY:
-		return JSON_INT_VALUE;
-	case LDMS_V_F32:
-	case LDMS_V_F32_ARRAY:
-	case LDMS_V_D64:
-	case LDMS_V_D64_ARRAY:
-		return JSON_FLOAT_VALUE;
-	default:
-		assert(0 == "Not supported");
-		return JSON_NULL_VALUE;
-	}
-}
-
-static int __array_fill_from_json(ldms_mval_t v, enum ldms_value_type type,
-				  json_list_t jlist)
-{
+	json_t *item;
+	json_type type;
+	ldms_mval_t mval = NULL;
 	int i;
-	json_entity_t ent;
-	enum json_value_e jtype;
 
-	jtype = __ldms_json_type(type);
-	i = 0;
-	TAILQ_FOREACH(ent, &jlist->item_list, item_entry) {
-		if (ent->type != jtype)
-			return EINVAL;
+	switch (json_typeof(jent)) {
+	case JSON_REAL:
+		*mtype = LDMS_V_D64;
+		mval = calloc(1, sizeof(mval->v_d));
+		mval->v_d = json_real_value(jent);
+		break;
+	case JSON_STRING:
+		*mtype = LDMS_V_CHAR_ARRAY;
+		*mlen = json_string_length(jent) + 1;
+		mval = malloc(*mlen);
+		if (!mval)
+			goto err;
+		memcpy(mval->a_char, json_string_value(jent), *mlen);
+		break;
+	case JSON_INTEGER:
+		mval = calloc(1, sizeof(mval->v_s64));
+		mval->v_s64 = json_integer_value(jent);
+		break;
+	case JSON_ARRAY:
+		*mlen = json_array_size(jent);
+		item = json_array_get(jent, 0);
+		if (!item)
+			goto err;
+		type = json_typeof(item);
 		switch (type) {
-		case LDMS_V_U8_ARRAY:
-			v->a_u8[i] = (uint8_t)ent->value.int_;
+		case JSON_INTEGER:
+			*mtype = LDMS_V_S64_ARRAY;
+			mval = calloc(*mlen, sizeof(mval->v_s64));
+			if (!mval)
+				goto err;
 			break;
-		case LDMS_V_S8_ARRAY:
-			v->a_s8[i] = (int8_t)ent->value.int_;
+		case JSON_REAL:
+			*mtype = LDMS_V_D64_ARRAY;
+			mval = calloc(*mlen, sizeof(mval->v_d));
+			if (!mval)
+				goto err;
 			break;
-		case LDMS_V_U16_ARRAY:
-			v->a_u16[i] = htole16((uint16_t)ent->value.int_);
-			break;
-		case LDMS_V_S16_ARRAY:
-			v->a_s16[i] = htole16((int16_t)ent->value.int_);
-			break;
-		case LDMS_V_U32_ARRAY:
-			v->a_u32[i] = htole32((uint32_t)ent->value.int_);
-			break;
-		case LDMS_V_S32_ARRAY:
-			v->a_s32[i] = htole32((int32_t)ent->value.int_);
-			break;
-		case LDMS_V_U64_ARRAY:
-			v->a_u64[i] = htole64((uint64_t)ent->value.int_);
-			break;
-		case LDMS_V_S64_ARRAY:
-			v->a_s64[i] = htole64((int64_t)ent->value.int_);
-			break;
-		case LDMS_V_F32_ARRAY:
-			v->a_f[i] = htole32((float)ent->value.double_);
-			break;
-		case LDMS_V_D64_ARRAY:
-			v->a_d[i] = htole64((double)ent->value.double_);
-			break;
+		case JSON_OBJECT:
+		case JSON_ARRAY:
+		case JSON_STRING:
+		case JSON_NULL:
+		case JSON_TRUE:
+		case JSON_FALSE:
 		default:
-			return EINVAL;
+			goto err;
 		}
-		i++;
-	}
-	return 0;
-}
-
-static int __prim_fill_from_json(ldms_mval_t v, enum ldms_value_type type,
-				      json_entity_t jent)
-{
-	enum json_value_e jtype;
-
-	jtype = __ldms_json_type(type);
-	if (jent->type != jtype)
-		return EINVAL;
-	switch (type) {
-	case LDMS_V_U8:
-		v->v_u8 = (uint8_t)jent->value.int_;
-		break;
-	case LDMS_V_S8:
-		v->v_s8 = (int8_t)jent->value.int_;
-		break;
-	case LDMS_V_U16:
-		v->v_u16 = htole16((uint16_t)jent->value.int_);
-		break;
-	case LDMS_V_S16:
-		v->v_s16 = htole16((int16_t)jent->value.int_);
-		break;
-	case LDMS_V_U32:
-		v->v_u32 = htole32((uint32_t)jent->value.int_);
-		break;
-	case LDMS_V_S32:
-		v->v_s32 = htole32((int32_t)jent->value.int_);
-		break;
-	case LDMS_V_U64:
-		v->v_u64 = htole64((uint64_t)jent->value.int_);
-		break;
-	case LDMS_V_S64:
-		v->v_s64 = htole64((int64_t)jent->value.int_);
-		break;
-	case LDMS_V_F32:
-		v->v_f = htole32((float)jent->value.double_);
-		break;
-	case LDMS_V_D64:
-		v->v_d = htole64((double)jent->value.double_);
-		break;
+		json_array_foreach(jent, i, item) {
+			if (type == JSON_INTEGER)
+				ldms_mval_array_set_s64(mval, i, json_integer_value(item));
+			else
+				ldms_mval_array_set_double(mval, i, json_real_value(item));
+		}
 	default:
-		return EINVAL;
+		goto err;
 	}
+	*v = mval;
 	return 0;
+err:
+	return EINVAL;
 }
-
-/* ==== Helpers ==== */
-
-static inline int __ldms_vsz(enum ldms_value_type t)
-{
-	switch (t) {
-	case LDMS_V_CHAR:
-	case LDMS_V_U8:
-	case LDMS_V_S8:
-	case LDMS_V_CHAR_ARRAY:
-	case LDMS_V_U8_ARRAY:
-	case LDMS_V_S8_ARRAY:
-		return sizeof(char);
-	case LDMS_V_U16:
-	case LDMS_V_S16:
-	case LDMS_V_U16_ARRAY:
-	case LDMS_V_S16_ARRAY:
-		return sizeof(int16_t);
-	case LDMS_V_U32:
-	case LDMS_V_S32:
-	case LDMS_V_U32_ARRAY:
-	case LDMS_V_S32_ARRAY:
-		return sizeof(int32_t);
-	case LDMS_V_U64:
-	case LDMS_V_S64:
-	case LDMS_V_U64_ARRAY:
-	case LDMS_V_S64_ARRAY:
-		return sizeof(int64_t);
-	case LDMS_V_F32:
-	case LDMS_V_F32_ARRAY:
-		return sizeof(float);
-	case LDMS_V_D64:
-	case LDMS_V_D64_ARRAY:
-		return sizeof(double);
-	default:
-		assert(0 == "Unsupported type");
-	}
-	return -1;
-}
-
-/* ==== generic decomp ==== */
-/* convenient macro to put error message in both ldmsd log and `reqc` */
-#define DECOMP_ERR(reqc, rc, fmt, ...) do { \
-		ldmsd_lerror("decomposer: " fmt, ##__VA_ARGS__); \
-		if (reqc) { \
-			(reqc)->errcode = rc; \
-			Snprintf(&(reqc)->line_buf, &(reqc)->line_len, "decomposer: " fmt, ##__VA_ARGS__); \
-		} \
-	} while (0)
 
 /* common index config descriptor */
 typedef struct decomp_index_s {
@@ -315,8 +168,6 @@ typedef struct decomp_index_s {
 	int col_count;
 	int *col_idx; /* dst columns composing the index */
 } *decomp_index_t;
-
-/* ==== static decomposition === */
 
 /* describing a src-dst column pair */
 typedef struct decomp_static_col_cfg_s {
@@ -443,7 +294,7 @@ static int init_row_cache(ldmsd_strgp_t strgp, int row_limit)
 	return 1;
 }
 
-static int get_col_no(decomp_static_row_cfg_t cfg_row, char *name)
+static int get_col_no(decomp_static_row_cfg_t cfg_row, const char *name)
 {
 	int i;
 	for (i = 0; i < cfg_row->col_count; i++) {
@@ -453,426 +304,400 @@ static int get_col_no(decomp_static_row_cfg_t cfg_row, char *name)
 	return -1;
 }
 
-static ldmsd_decomp_t
-decomp_static_config(ldmsd_strgp_t strgp, json_entity_t jcfg,
-		     ldmsd_req_ctxt_t reqc)
+static int handle_indices(
+		ldmsd_strgp_t strgp, json_t *jidxs,
+		decomp_static_row_cfg_t cfg_row, int row_no,
+		ldmsd_req_ctxt_t reqc)
 {
-	json_str_t jstr, jsrc, jdst, jrec_member, jname, jtype, jop;
-	json_list_t jrows, jcols, jidxs, jidx_cols, jlist;
-	json_entity_t jrow, jcol, jidx, jfill, jarray_len, jgroup, jent;
-	decomp_static_cfg_t dcfg = NULL;
-	decomp_static_row_cfg_t cfg_row;
-	decomp_static_col_cfg_t cfg_col;
-	decomp_index_t didx;
-	int i, j, k, rc;
 	struct str_int_tbl_s *col_id_tbl = NULL;
 	struct str_int_s key, *tbl_ent;
+	decomp_index_t didx;
+	json_t *jidx, *jidx_cols, *jcol, *jname;
+	int rc, j, k;
 
-	jrows = __jdict_list(jcfg, "rows");
-	if (!jrows) {
-		DECOMP_ERR(reqc, errno, "strgp '%s': The 'rows' attribute is missing, "
-						     "or its value is not a list.\n",
-						     strgp->obj.name);
+	if (!jidxs)
+		return 0;
+
+	if (!json_is_array(jidxs)) {
+		THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+			"the 'indices' value must be an array.\n",
+			strgp->obj.name, row_no);
+		return EINVAL;
+	}
+
+	cfg_row->idx_count = json_array_size(jidxs);
+	cfg_row->idxs = calloc(1, cfg_row->idx_count * sizeof(cfg_row->idxs[0]));
+	if (!cfg_row->idxs)
+		goto enomem;
+	cfg_row->row_sz += cfg_row->idx_count * sizeof(ldmsd_row_index_t);
+	/* prep temporary col-id table */
+	col_id_tbl = calloc(1, sizeof(*col_id_tbl) +
+				(cfg_row->col_count * sizeof(col_id_tbl->ent[0])));
+	if (!col_id_tbl)
+		goto enomem;
+	col_id_tbl->len = cfg_row->col_count;
+	for (j = 0; j < cfg_row->col_count; j++) {
+		col_id_tbl->ent[j].str = cfg_row->cols[j].dst;
+		col_id_tbl->ent[j].i = j;
+	}
+
+	qsort(col_id_tbl->ent, col_id_tbl->len, sizeof(col_id_tbl->ent[0]), str_int_cmp);
+	/* foreach index */
+	json_array_foreach(jidxs, j, jidx) {
+		didx = &cfg_row->idxs[j];
+		if (!json_is_object(jidx)) {
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+				"an index must be a dictionary.\n",
+				strgp->obj.name, row_no);
+			rc = EINVAL;
+			goto err_0;
+		}
+		jname = json_object_get(jidx, "name");
+		if (!jname) {
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': index '%d': "
+				"index['name'] is required.\n",
+				strgp->obj.name, row_no, j);
+			rc = EINVAL;
+			goto err_0;
+		}
+		didx->name = strdup(json_string_value(jname));
+		if (!didx->name)
+			goto enomem;
+		jidx_cols = json_object_get(jidx, "cols");
+		if (!jidx_cols) {
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': index '%d':"
+				"index['cols'] is required.\n",
+				strgp->obj.name, row_no, j);
+			rc = EINVAL;
+			goto err_0;
+		}
+		didx->col_count = json_array_size(jidx_cols);
+		didx->col_idx = calloc(1, didx->col_count * sizeof(didx->col_idx[0]));
+		if (!didx->col_idx)
+			goto enomem;
+		cfg_row->row_sz += sizeof(struct ldmsd_row_index_s) +
+				(didx->col_count * sizeof(ldmsd_col_t));
+		/* resolve col name to col id */
+		json_array_foreach(jidx_cols, k, jcol) {
+			if (!json_is_string(jcol)) {
+				THISLOG(reqc, EINVAL, "strgp '%s': row '%d': index '%d': col '%d': "
+					"index['cols'][x] value must be a string.\n",
+					strgp->obj.name, row_no, j, k);
+				rc = EINVAL;
+				goto err_0;
+			}
+			key.str = json_string_value(jcol);
+			tbl_ent = bsearch(&key, col_id_tbl->ent,
+						col_id_tbl->len,
+						sizeof(col_id_tbl->ent[0]),
+						str_int_cmp);
+			if (!tbl_ent) {
+				THISLOG(reqc, ENOENT, "strgp '%s': row '%d': index '%d': "
+					"column '%s' not found.\n",
+					strgp->obj.name, row_no, j, key.str);
+				rc = ENOENT;
+				goto err_0;
+			}
+			didx->col_idx[k] = tbl_ent->i;
+		}
+	}
+	free(col_id_tbl);
+	return 0;
+enomem:
+	rc = ENOMEM;
+	THISLOG(reqc, ENOMEM, "%s: Insufficent memory.\n", strgp->obj.name);
+err_0:
+	return rc;
+}
+
+static int handle_group(
+		ldmsd_strgp_t strgp, json_t *jgroup,
+		decomp_static_row_cfg_t cfg_row, int row_no,
+		ldmsd_req_ctxt_t reqc)
+{
+	json_t *jidxs, *jidx;
+	json_t *jlimit;
+	int col_no;
+	int rc;
+
+	jlimit  = json_object_get(jgroup, "limit");
+	if (jlimit) {
+		if (json_is_integer(jlimit)) {
+			cfg_row->row_limit = json_integer_value(jlimit);
+		} else if (json_is_string(jlimit)) {
+			cfg_row->row_limit = strtoul(json_string_value(jlimit), NULL, 0);
+		} else {
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+				"group['index'] is a required and must be an array.\n",
+				strgp->obj.name, row_no);
+			return EINVAL;
+		}
+	} else {
+		cfg_row->row_limit = 2;
+	}
+
+	/* Loop through all of the entries in the
+	 * "index" list and set the associated
+	 * column index in the group_cols array
+	 */
+	jidxs = json_object_get(jgroup, "index");
+	if (!jidxs || !json_is_array(jidxs)) {
+		THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+			"group['index'] is a required and must be an array.\n",
+			strgp->obj.name, row_no);
+		return EINVAL;
+	}
+
+	cfg_row->group_count = json_array_size(jidxs);
+	cfg_row->group_cols = calloc(cfg_row->group_count,
+					sizeof(*cfg_row->group_cols));
+	if (!cfg_row->group_cols)
+		goto enomem;
+
+	json_array_foreach(jidxs, col_no, jidx) {
+		if (!json_is_string(jidx)) {
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+				"group['index'] entries must be column "
+				"name strings.\n",
+				strgp->obj.name, row_no);
+			rc = EINVAL;
+			goto err_0;
+		}
+		cfg_row->group_cols[col_no] = get_col_no(cfg_row, json_string_value(jidx));
+		if (cfg_row->group_cols[col_no] < 0) {
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+				"group['index'] the specified column '%s'"
+				"is not present in the column list.\n",
+				strgp->obj.name, row_no, json_string_value(jidx));
+			rc = EINVAL;
+			goto err_0;
+		}
+	}
+
+	jidxs = json_object_get(jgroup, "order");
+	if (!jidxs || !json_is_array(jidxs)) {
+		THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+			"group['order'] is a required and must be an array.\n",
+			strgp->obj.name, row_no);
+		rc = EINVAL;
 		goto err_0;
 	}
-	dcfg = calloc(1, sizeof(*dcfg) + jrows->item_count * sizeof(dcfg->rows[0]));
-	if (!dcfg) {
-		DECOMP_ERR(reqc, errno, "out of memory\n");
-		goto err_0;
+	cfg_row->row_order_count = json_array_size(jidxs);
+	cfg_row->row_order_cols = calloc(cfg_row->row_order_count,
+					sizeof(*cfg_row->row_order_cols));
+	if (!cfg_row->row_order_cols)
+		goto enomem;
+
+	json_array_foreach(jidxs, col_no, jidx) {
+		if (!json_is_string(jidx)) {
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+				"group['order'] entries must be column "
+				"name strings.\n",
+				strgp->obj.name, row_no);
+			rc = EINVAL;
+			goto err_0;
+		}
+		cfg_row->row_order_cols[col_no] =
+				get_col_no(cfg_row, json_string_value(jidx));
+		if (cfg_row->row_order_cols[col_no] < 0) {
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+				"group['order'] the specified column '%s'"
+				"is not present in the column list.\n",
+				strgp->obj.name, row_no, json_string_value(jidx));
+			rc = ENOENT;
+			goto err_0;
+		}
 	}
+
+	rc = init_row_cache(strgp, cfg_row->row_limit);
+	if (rc)
+		goto enomem;
+	return 0;
+enomem:
+	rc = ENOMEM;
+	THISLOG(reqc, ENOMEM, "%s: Insufficient memory.\n", strgp->obj.name);
+err_0:
+	return rc;
+}
+
+static ldmsd_decomp_t
+decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
+		     ldmsd_req_ctxt_t reqc)
+{
+	json_t *jsch, *jsrc, *jdst, *jrec_member;
+	json_t *jrows, *jcols, *jidxs;
+	json_t *jrow, *jcol, *jfill, *jop;
+	decomp_static_row_cfg_t cfg_row;
+	decomp_static_col_cfg_t cfg_col;
+	decomp_static_cfg_t dcfg = NULL;
+	int row_no, col_no, rc;
+
+	jrows = json_object_get(jcfg, "rows");
+	if (!jrows || !json_is_array(jrows)) {
+		THISLOG(reqc, errno,
+			"strgp '%s': The 'rows' attribute is missing, "
+			"or its value is not a list.\n",
+			strgp->obj.name);
+		return NULL;
+	}
+	dcfg = calloc(1, sizeof(*dcfg) + json_array_size(jrows) * sizeof(dcfg->rows[0]));
+	if (!dcfg)
+		goto enomem;
 	dcfg->decomp = decomp_static;
 
 	/* for each row schema */
-	i = 0;
-	TAILQ_FOREACH(jrow, &jrows->item_list, item_entry) {
-		if (jrow->type != JSON_DICT_VALUE) {
-			DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
-					"The list item must be a dictionary.\n",
-					strgp->obj.name, i);
+	json_array_foreach(jrows, row_no, jrow) {
+		if (!json_is_object(jrow)) {
+			THISLOG(reqc, EINVAL,
+				"strgp '%s': row '%d': "
+				"The list item must be a dictionary.\n",
+				strgp->obj.name, row_no);
 			goto err_0;
 		}
 
-		cfg_row = &dcfg->rows[i];
+		cfg_row = &dcfg->rows[row_no];
 		cfg_row->row_sz = sizeof(struct ldmsd_row_s);
 		rbt_init(&cfg_row->mid_rbt, __mid_rbn_cmp);
 
 		/* schema name */
-		jstr = __jdict_str(jrow, "schema");
-		if (!jstr) {
-			DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
-					"row['schema'] attribute is required\n",
-					strgp->obj.name, i);
+		jsch = json_object_get(jrow, "schema");
+		if (!jsch || !json_is_string(jsch)) {
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+				"row['schema'] attribute is required and must be a string\n",
+				strgp->obj.name, row_no);
 			goto err_0;
 		}
-		cfg_row->schema_name = strdup(jstr->str);
+		cfg_row->schema_name = strdup(json_string_value(jsch));
 		if (!cfg_row->schema_name)
-			goto err_enomem;
+			goto enomem;
 
 		/* columns */
-		jcols = __jdict_list(jrow, "cols");
-		if (!jcols) {
-			DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
-					"row['cols'] list is required\n",
-					strgp->obj.name, i);
+		jcols = json_object_get(jrow, "cols");
+		if (!jcols || !json_is_array(jcols)) {
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+				"row['cols'] is required and must be an array.\n",
+				strgp->obj.name, row_no);
 			goto err_0;
 		}
-		cfg_row->col_count = jcols->item_count;
+
+		cfg_row->col_count = json_array_size(jcols);
 		if (!cfg_row->col_count) {
-			DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
-					"row['cols'] list is empty\n",
-					strgp->obj.name, i);
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+				"row['cols'] list is empty\n",
+				strgp->obj.name, row_no);
 			goto err_0;
 		}
 		/* Add a configuration for the 'timestamp' column that goes in every row */
-		cfg_row->cols = calloc(1, (cfg_row->col_count*sizeof(cfg_row->cols[0])));
+		cfg_row->cols = calloc(1, (cfg_row->col_count * sizeof(cfg_row->cols[0])));
 		if (!cfg_row->cols)
-			goto err_enomem;
+			goto enomem;
 		cfg_row->row_sz += cfg_row->col_count * sizeof(struct ldmsd_col_s);
 
 		/* for each column */
-		j = 0;
-		TAILQ_FOREACH(jcol, &jcols->item_list, item_entry) {
-			cfg_col = &cfg_row->cols[j];
-			if (jcol->type != JSON_DICT_VALUE) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col '%d': "
-						"a column must be a dictionary.\n",
-						strgp->obj.name, i, j);
+		json_array_foreach(jcols, col_no, jcol) {
+			if (!json_is_object(jcol)) {
+				THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col '%d': "
+					"a column entry must be a dictionary.\n",
+					strgp->obj.name, row_no, col_no);
 				goto err_0;
 			}
-			jsrc = __jdict_str(jcol, "src");
-			if (!jsrc) {
-				DECOMP_ERR(reqc, EINVAL,
-				"strgp '%s': row '%d': the 'src' attribute "
-				"is required.\n",
-				strgp->obj.name, i);
+			cfg_col = &cfg_row->cols[col_no];
+			jsrc = json_object_get(jcol, "src");
+			if (!jsrc || !json_is_string(jsrc)) {
+				THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col '%d': "
+					"column['src'] is required and must be a string.\n",
+					strgp->obj.name, row_no, col_no);
 				goto err_0;
 			}
-			jfill = __jdict_ent(jcol, "fill");
-			if (!jsrc) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d'--col '%d': "
-						"column['src'] is required\n",
-						strgp->obj.name, i, j);
-				goto err_0;
-			}
-			cfg_col->src = strdup(jsrc->str);
+			cfg_col->src = strdup(json_string_value(jsrc));
 			if (!cfg_col->src)
-				goto err_enomem;
-			jdst = __jdict_str(jcol, "dst");
-			if (!jdst) {
-				cfg_col->dst = strdup(cfg_col->src);
+				goto enomem;
+			jdst = json_object_get(jcol, "dst");
+			if (jdst && json_is_string(jdst)) {
+				cfg_col->dst = strdup(json_string_value(jdst));
 			} else {
 				/* Inherit the destination name from the source */
-				cfg_col->dst = strdup(jdst->str);
+				cfg_col->dst = strdup(cfg_col->src);
 			}
 			if (!cfg_col->dst)
-				goto err_enomem;
-			jrec_member = __jdict_str(jcol, "rec_member");
+				goto enomem;
+
+			jrec_member = json_object_get(jcol, "rec_member");
 			if (jrec_member) {
-				cfg_col->rec_member = strdup(jrec_member->str);
+				if (!json_is_string(jrec_member)) {
+					THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col '%d': "
+						"rec_member must be a string.\n",
+						strgp->obj.name, row_no, col_no);
+					goto err_0;
+				}
+				cfg_col->rec_member = strdup(json_string_value(jrec_member));
 				if (!cfg_col->rec_member)
-					goto err_enomem;
+					goto enomem;
 			}
-			jop = __jdict_str(jcol, "op");
+
+			jop = json_object_get(jcol, "op");
 			if (jop) {
-				if (0 == strcmp(jop->str, "diff")) {
-					cfg_col->op_name = strdup(jop->str);
+				if (0 == strcmp(json_string_value(jop), "diff")) {
+					cfg_col->op_name = strdup(json_string_value(jop));
 					cfg_col->op = LDMSD_DECOMP_OP_DIFF;
 					cfg_row->op_present = 1; /* true */
-				} else if (0 == strcmp(jop->str, "mean")) {
-					cfg_col->op_name = strdup(jop->str);
+				} else if (0 == strcmp(json_string_value(jop), "mean")) {
+					cfg_col->op_name = strdup(json_string_value(jop));
 					cfg_col->op = LDMSD_DECOMP_OP_MEAN;
 					cfg_row->op_present = 1; /* true */
-				} else if (0 == strcmp(jop->str, "min")) {
-					cfg_col->op_name = strdup(jop->str);
+				} else if (0 == strcmp(json_string_value(jop), "min")) {
+					cfg_col->op_name = strdup(json_string_value(jop));
 					cfg_col->op = LDMSD_DECOMP_OP_MIN;
 					cfg_row->op_present = 1; /* true */
-				} else if (0 == strcmp(jop->str, "max")) {
-					cfg_col->op_name = strdup(jop->str);
+				} else if (0 == strcmp(json_string_value(jop), "max")) {
+					cfg_col->op_name = strdup(json_string_value(jop));
 					cfg_col->op = LDMSD_DECOMP_OP_MAX;
 					cfg_row->op_present = 1; /* true */
 				} else {
-					DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d'--col %d : "
-						   "unrecognized functinoal operator '%s'\n",
-						   strgp->obj.name, i, j, jop->str);
+					THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col %d : "
+						"unrecognized functional operator '%s'\n",
+						strgp->obj.name, row_no, col_no, json_string_value(jop));
 					goto err_0;
 				}
 			}
-			jtype = __jdict_str(jcol, "type");
-			if (jtype) {
-				cfg_col->type = ldms_metric_str_to_type(jtype->str);
-				if (cfg_col->type == LDMS_V_NONE) {
-					DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s',"
-							"column['type'] value is an unknown type: %s\n",
-							strgp->obj.name, i, cfg_col->dst, jtype->str);
+			jfill = json_object_get(jcol, "fill");
+			if (jfill) {
+				/* The remaining code handles 'fill' */
+				rc = mval_from_json(&cfg_col->fill, &cfg_col->type,
+						&cfg_col->fill_len, jfill);
+				if (rc) {
+					THISLOG(reqc, EINVAL,
+						"strgp '%s': row '%d': col[dst] '%s',"
+						"'fill' error %d preparing metric value.\n",
+						strgp->obj.name, row_no, cfg_col->dst, rc);
 					goto err_0;
 				}
-			} else {
-				/* Resolved in resolve_metrics */
-				cfg_col->type = LDMS_V_NONE;
 			}
-
-			if (!ldms_type_is_array(cfg_col->type))
-				goto not_array_fill;
-			/* array routine */
-			jarray_len = __jdict_ent(jcol, "array_len");
-			if (jarray_len) {
-				if (jarray_len->type != JSON_INT_VALUE) {
-					DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
-							"column['array_len'] value must be an integer.\n",
-							strgp->obj.name, i, cfg_col->dst);
-					goto err_0;
-				}
-				cfg_col->array_len = jarray_len->value.int_;
-			} else {
-				cfg_col->array_len = 0;
-			}
-
-			/* fill */
-			cfg_col->fill = calloc(cfg_col->array_len, __ldms_vsz(cfg_col->type));
-			if (!cfg_col->fill)
-				goto err_enomem;
-			if (cfg_col->type == LDMS_V_CHAR_ARRAY)
-				goto str_fill;
-			/* array fill */
-			if (!jfill) /* fill values are already 0 */
-				goto next_col;
-			if (jfill->type != JSON_LIST_VALUE) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
-						"'fill' type mismatch: expecting a LIST\n",
-						strgp->obj.name, i, cfg_col->dst);
-				goto err_0;
-			}
-			cfg_col->fill_len = jfill->value.list_->item_count;
-			if (cfg_col->fill_len > cfg_col->array_len) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
-						"'fill' array length too long\n",
-						strgp->obj.name, i, cfg_col->dst);
-				goto err_0;
-			}
-			rc = __array_fill_from_json(cfg_col->fill, cfg_col->type, jfill->value.list_);
-			if (rc) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
-						"'fill' error: type mismatch\n",
-						strgp->obj.name, i, cfg_col->dst);
-				goto err_0;
-			}
-			goto next_col;
-		str_fill:
-			/* str fill routine */
-			if (!jfill) /* fill values are already 0 */
-				goto next_col;
-			if (jfill->type != JSON_STRING_VALUE) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
-						"'fill' type mismatch: expecting a STRING\n",
-						strgp->obj.name, i, cfg_col->dst);
-				goto err_0;
-			}
-			cfg_col->fill_len = jfill->value.str_->str_len + 1;
-			if (cfg_col->fill_len > cfg_col->array_len) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
-						"'fill' array length too long\n",
-						strgp->obj.name, i, cfg_col->dst);
-				goto err_0;
-			}
-			memcpy(cfg_col->fill, jfill->value.str_->str, cfg_col->fill_len);
-			goto next_col;
-		not_array_fill:
-			/* non-array fill routine */
-			cfg_col->fill = &cfg_col->__fill;
-			if (!jfill) /* fill value is already 0 */
-				goto next_col;
-			rc = __prim_fill_from_json(cfg_col->fill, cfg_col->type, jfill);
-			if (rc) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s',"
-						"'fill' error: type mismatch\n",
-						strgp->obj.name, i, cfg_col->dst);
-				goto err_0;
-			}
-		next_col:
-			j++;
 		}
 
 		/* indices */
-		jidxs = __jdict_list(jrow, "indices");
-		if (!jidxs)
-			goto next_row;
-		cfg_row->idx_count = jidxs->item_count;
-		cfg_row->idxs = calloc(1, cfg_row->idx_count*sizeof(cfg_row->idxs[0]));
-		if (!cfg_row->idxs)
-			goto err_enomem;
-		cfg_row->row_sz += cfg_row->idx_count * sizeof(ldmsd_row_index_t);
-		/* prep temporary col-id table */
-		col_id_tbl = calloc(1,  sizeof(*col_id_tbl) +
-					cfg_row->col_count*sizeof(col_id_tbl->ent[0]));
-		if (!col_id_tbl)
-			goto err_enomem;
-		col_id_tbl->len = cfg_row->col_count;
-		for (j = 0; j < cfg_row->col_count; j++) {
-			col_id_tbl->ent[j].str = cfg_row->cols[j].dst;
-			col_id_tbl->ent[j].i = j;
+		jidxs = json_object_get(jrow, "indices");
+		if (jidxs) {
+			rc = handle_indices(strgp, jidxs, cfg_row, row_no, reqc);
+			if (rc)
+				goto err_0;
 		}
-		qsort(col_id_tbl->ent, col_id_tbl->len, sizeof(col_id_tbl->ent[0]), str_int_cmp);
-		/* foreach index */
-		j = 0;
-		TAILQ_FOREACH(jidx, &jidxs->item_list, item_entry) {
-			didx = &cfg_row->idxs[j];
-			if (jidx->type != JSON_DICT_VALUE) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
-						"an index must be a dictionary.\n",
-						strgp->obj.name, i);
-				goto err_0;
-			}
-			jname = __jdict_str(jidx, "name");
-			if (!jname) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': index '%d': "
-						"index['name'] is required.\n",
-						strgp->obj.name, i, j);
-				goto err_0;
-			}
-			didx->name = strdup(jname->str);
-			if (!didx->name)
-				goto err_enomem;
-			jidx_cols = __jdict_list(jidx, "cols");
-			if (!jidx_cols) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': index '%d':"
-						"index['cols'] is required.\n",
-						strgp->obj.name, i, j);
-				goto err_0;
-			}
-			didx->col_count = jidx_cols->item_count;
-			didx->col_idx = calloc(1, didx->col_count*sizeof(didx->col_idx[0]));
-			if (!didx->col_idx)
-				goto err_enomem;
-			cfg_row->row_sz += sizeof(struct ldmsd_row_index_s) +
-					didx->col_count * sizeof(ldmsd_col_t);
-			/* resolve col name to col id */
-			k = 0;
-			TAILQ_FOREACH(jcol, &jidx_cols->item_list, item_entry) {
-				if (jcol->type != JSON_STRING_VALUE) {
-					DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': index '%d': col '%d': "
-							"index['cols'][x] value must be a string.\n",
-							strgp->obj.name, i, j, k);
-					goto err_0;
-				}
-				key.str = jcol->value.str_->str;
-				tbl_ent = bsearch(&key, col_id_tbl->ent,
-						  col_id_tbl->len,
-						  sizeof(col_id_tbl->ent[0]),
-						  str_int_cmp);
-				if (!tbl_ent) {
-					DECOMP_ERR(reqc, ENOENT, "strgp '%s': row '%d': index '%d': "
-							"column '%s' not found.\n",
-							strgp->obj.name, i, j, key.str);
-					goto err_0;
-				}
-				didx->col_idx[k] = tbl_ent->i;
-				k++;
-			}
-			assert(k == jidx_cols->item_count);
-			j++;
-		}
-		assert(j == jidxs->item_count);
 
 		/* group clause */
-		jgroup = __jdict_ent(jrow, "group");
+		json_t *jgroup = json_object_get(jrow, "group");
 		if (jgroup) {
-			jstr = __jdict_str(jgroup, "limit");
-			if (jstr) {
-				cfg_row->row_limit = strtoul(jstr->str, NULL, 0);
-			} else {
-				cfg_row->row_limit = 2;
-			}
-			/* Loop through all of the entries in the
-			   "index" list and set the associated
-			   column index in the group_cols array */
-			jlist = __jdict_list(jgroup, "index");
-			if (!jlist) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
-					   "group['index'] is a required entry.\n",
-					   strgp->obj.name, i);
-				goto err_0;
-			}
-
-			cfg_row->group_count = jlist->item_count;
-			cfg_row->group_cols = calloc(cfg_row->group_count,
-						sizeof(*cfg_row->group_cols));
-			if (!cfg_row->group_cols)
-				goto err_enomem;
-			int col_no = 0;
-			TAILQ_FOREACH(jent, &jlist->item_list, item_entry) {
-				if (jent->type != JSON_STRING_VALUE) {
-					DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
-						   "group['index'] entries must be column "
-						   "name strings.\n",
-						   strgp->obj.name, i);
-					goto err_0;
-				}
-				cfg_row->group_cols[col_no] = get_col_no(cfg_row, jent->value.str_->str);
-				if (cfg_row->group_cols[col_no] < 0) {
-					DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
-						   "group['index'] the specified column '%s'"
-						   "is not present in the column list.\n",
-						   strgp->obj.name, i, jent->value.str_->str);
-					goto err_0;
-				}
-				col_no ++;
-			}
-
-			/* ========== */
-			jlist = __jdict_list(jgroup, "order");
-			if (!jlist) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
-					   "group['order'] is a required entry.\n",
-					   strgp->obj.name, i);
-				goto err_0;
-			}
-			cfg_row->row_order_count = jlist->item_count;
-			cfg_row->row_order_cols = calloc(cfg_row->row_order_count,
-						sizeof(*cfg_row->row_order_cols));
-			if (!cfg_row->row_order_cols)
-				goto err_enomem;
-
-			col_no = 0;
-			TAILQ_FOREACH(jent, &jlist->item_list, item_entry) {
-				if (jent->type != JSON_STRING_VALUE) {
-					DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
-						   "group['order'] entries must be column "
-						   "name strings.\n",
-						   strgp->obj.name, i);
-					goto err_0;
-				}
-				cfg_row->row_order_cols[col_no] =
-						get_col_no(cfg_row, jent->value.str_->str);
-				if (cfg_row->row_order_cols[col_no] < 0) {
-					DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
-						   "group['order'] the specified column '%s'"
-						   "is not present in the column list.\n",
-						   strgp->obj.name, i, jent->value.str_->str);
-					goto err_0;
-				}
-				col_no ++;
-			}
-
-			rc = init_row_cache(strgp, cfg_row->row_limit);
+			rc = handle_group(strgp, jgroup, cfg_row, row_no, reqc);
 			if (rc)
-				goto err_enomem;
+				goto err_0;
 		}
 
-		/* clean up temporary col-id table */
-		free(col_id_tbl);
-		col_id_tbl = NULL;
-	next_row:
 		dcfg->row_count++;
-		i++;
 	}
-	assert(i == jrows->item_count);
 	return &dcfg->decomp;
-
- err_enomem:
-	DECOMP_ERR(reqc, errno, "Not enough memory\n");
- err_0:
+enomem:
+	THISLOG(reqc, errno, "%s: Insufficient memory.\n", strgp->obj.name);
+err_0:
 	decomp_static_cfg_free(dcfg);
-	free(col_id_tbl);
 	return NULL;
 }
 
@@ -891,7 +716,7 @@ static int resolve_metrics(ldmsd_strgp_t strgp,
 
 	evp_ctx = EVP_MD_CTX_create();
 	if (!evp_ctx) {
-		ovis_log(mylog, OVIS_LERROR, "out of memory\n");
+		ldmsd_log(LDMSD_LERROR, "out of memory\n");
 		goto err;
 	}
 	EVP_DigestInit_ex(evp_ctx, EVP_sha256(), NULL);
@@ -941,7 +766,7 @@ static int resolve_metrics(ldmsd_strgp_t strgp,
 			if (cfg_row->cols[col_no].type) {
 				if (ldms_type_is_array(cfg_row->cols[col_no].type)) {
 					if (cfg_row->cols[col_no].array_len < 0) {
-						ovis_log(mylog, OVIS_LERROR,
+						ldmsd_log(LDMSD_LERROR,
 							"strgp '%s': col[dst] '%s' "
 							"array must have a len specified if it "
 							"does not exist in the set.\n",
@@ -959,7 +784,7 @@ static int resolve_metrics(ldmsd_strgp_t strgp,
 				mid_rbn->col_mids[col_no].array_len = mlen;
 				goto next;
 			}
-			ovis_log(mylog, OVIS_LERROR,
+			ldmsd_log(LDMSD_LERROR,
 				"strgp '%s': col[src] '%s' "
 				"does not exist in the set and the 'type' is not "
 				"specified.\n",
@@ -984,7 +809,7 @@ static int resolve_metrics(ldmsd_strgp_t strgp,
 
 		if (mtype > LDMS_V_D64_ARRAY) {
 			/* Invalid type */
-			ovis_log(mylog, OVIS_LERROR,
+			ldmsd_log(LDMSD_LERROR,
 				"strgp '%s': col[src] '%s' "
 				"the metric type %d is not supported.\n",
 				strgp->obj.name, cfg_row->cols[col_no].src,
@@ -1000,7 +825,7 @@ static int resolve_metrics(ldmsd_strgp_t strgp,
 		le = ldms_list_first(set, lh, &mtype, &mlen);
 		if (!le) {
 			/* list empty. can't init yet */
-			ovis_log(mylog, OVIS_LERROR,
+			ldmsd_log(LDMSD_LERROR,
 				"strgp '%s': row '%d': col[dst] '%s' "
 				"LIST is empty, skipping set metric resolution.\n",
 				strgp->obj.name, col_no, cfg_row->cols[col_no].dst
@@ -1011,7 +836,7 @@ static int resolve_metrics(ldmsd_strgp_t strgp,
 		if (mtype == LDMS_V_LIST) {
 			/* LIST of LIST is not supported */
 			/* Invalid type */
-			ovis_log(mylog, OVIS_LERROR,
+			ldmsd_log(LDMSD_LERROR,
 				"strgp '%s': row '%d': col[dst] '%s' "
 				"LIST of LIST is not supported.\n",
 				strgp->obj.name, col_no, cfg_row->cols[col_no].dst
@@ -1041,7 +866,7 @@ static int resolve_metrics(ldmsd_strgp_t strgp,
 		rec_array = ldms_metric_get(set, mid);
 		rec = ldms_record_array_get_inst(rec_array, 0);
 		if (!cfg_row->cols[col_no].rec_member) {
-			ovis_log(mylog, OVIS_LERROR,
+			ldmsd_log(LDMSD_LERROR,
 				"strgp '%s': row '%d': the record array '%s' "
 				"is emptyd.\n",
 				strgp->obj.name, col_no, cfg_row->cols[col_no].src);
@@ -1049,7 +874,7 @@ static int resolve_metrics(ldmsd_strgp_t strgp,
 		}
 		mid = ldms_record_metric_find(rec, cfg_row->cols[col_no].rec_member);
 		if (mid < 0) {
-			ovis_log(mylog, OVIS_LERROR,
+			ldmsd_log(LDMSD_LERROR,
 				"strgp '%s': row '%d': col[dst] '%s' "
 				"Missing record member definition.n",
 				strgp->obj.name, col_no, cfg_row->cols[col_no].dst);
@@ -1077,6 +902,7 @@ next:
 	/* Finalize row schema digest */
 	unsigned int len = LDMS_DIGEST_LENGTH;
 	EVP_DigestFinal(evp_ctx, cfg_row->schema_digest.digest, &len);
+	EVP_MD_CTX_destroy(evp_ctx);
 	return 0;
 err:
 	EVP_MD_CTX_destroy(evp_ctx);
@@ -1708,7 +1534,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			mval = ldms_metric_get(set, mid);
 			mtype = ldms_metric_type_get(set, mid);
 			if (mtype != mid_rbn->col_mids[j].mtype) {
-				ldmsd_lerror("strgp '%s': the metric type (%s) of "
+                                ldmsd_log(LDMSD_LERROR, "strgp '%s': the metric type (%s) of "
 					     "row %d:col %d is different from the type (%s) of "
 					     "LDMS metric '%s'.\n", strgp->obj.name,
 					     ldms_metric_type_to_str(mid_rbn->col_mids[j].mtype),
@@ -1906,19 +1732,20 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 		if (cfg_row->op_present) {
 			ldmsd_row_cache_idx_t group_idx;
 			ldmsd_row_cache_idx_t row_idx;
-			ldmsd_row_cache_key_t keys;
+			ldmsd_row_cache_key_t *keys;
 			ldmsd_row_t dup_row;
 
 			/* Build the group key */
 			keys = calloc(cfg_row->group_count, sizeof(*keys));
-			group_idx = ldmsd_row_cache_idx_create(cfg_row->group_count, keys);
-
-			/* Initialize the metric types in the key values */
 			for (j = 0; j < cfg_row->group_count; j++) {
-				keys[j].type = row->cols[cfg_row->group_cols[j]].type;
-				keys[j].val = *row->cols[cfg_row->group_cols[j]].mval;
-				keys[j].count = row->cols[cfg_row->group_cols[j]].array_len;
+				keys[j] = ldmsd_row_cache_key_create(
+						row->cols[cfg_row->group_cols[j]].type,
+						row->cols[cfg_row->group_cols[j]].array_len);
+				memcpy(keys[j]->mval,
+					row->cols[cfg_row->group_cols[j]].mval,
+					keys[j]->mval_size);
 			}
+			group_idx = ldmsd_row_cache_idx_create(cfg_row->group_count, keys);
 
 			/* Build the row-order key */
 			keys = calloc(cfg_row->row_order_count, sizeof(*keys));
@@ -1926,9 +1753,12 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 
 			/* Initialize the metric types in the key values */
 			for (j = 0; j < cfg_row->row_order_count; j++) {
-				keys[j].type = row->cols[cfg_row->row_order_cols[j]].type;
-				keys[j].val = *row->cols[cfg_row->row_order_cols[j]].mval;
-				keys[j].count = row->cols[cfg_row->row_order_cols[j]].array_len;
+				keys[j] = ldmsd_row_cache_key_create(
+						row->cols[cfg_row->row_order_cols[j]].type,
+						row->cols[cfg_row->row_order_cols[j]].array_len);
+				memcpy(keys[j]->mval,
+					row->cols[cfg_row->row_order_cols[j]].mval,
+					keys[j]->mval_size);
 			}
 
 			/* Cache the current, unmodified row */
@@ -1950,16 +1780,16 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 						strgp->row_cache,
 						group_idx);
 				if (count != cfg_row->group_count)
-					ovis_log(mylog, OVIS_LWARN,
+					ldmsd_log(LDMSD_LWARNING,
 						"strgp '%s': insufficent rows in "
 						"cache to satisfy functional operator '%s' "
 						"on column '%s'.\n",
 						strgp->obj.name, cfg_col->op_name,
 						cfg_col->dst);
-
 				cfg_col = &cfg_row->cols[j];
 				rc = op_table[cfg_col->op](&row_list, dup_row, j);
 			}
+			ldmsd_row_cache_idx_free(group_idx);
 			row = dup_row;
 		}
 		TAILQ_INSERT_TAIL(row_list, row, entry);
@@ -1980,7 +1810,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 }
 
 static void decomp_static_release_rows(ldmsd_strgp_t strgp,
-					 ldmsd_row_list_t row_list)
+					ldmsd_row_list_t row_list)
 {
 	ldmsd_row_t row;
 	while ((row = TAILQ_FIRST(row_list))) {

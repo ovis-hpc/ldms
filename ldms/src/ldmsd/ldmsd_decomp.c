@@ -61,7 +61,7 @@
 
 #include <openssl/sha.h>
 
-#include "ovis_json/ovis_json.h"
+#include <jansson.h>
 #include "coll/rbt.h"
 
 #include "ldmsd.h"
@@ -73,38 +73,7 @@ enum ldmsd_decomp_type_e {
 	LDMSD_DECOMP_AS_IS,
 };
 
-/* ==== JSON helpers ==== */
-
-static json_entity_t __jdict_ent(json_entity_t dict, const char *key)
-{
-	json_entity_t attr;
-	json_entity_t val;
-
-	attr = json_attr_find(dict, key);
-	if (!attr) {
-		errno = ENOKEY;
-		return NULL;
-	}
-	val = json_attr_value(attr);
-	return val;
-}
-
-/* Access dict[key], expecting it to be a str */
-static json_str_t __jdict_str(json_entity_t dict, const char *key)
-{
-	json_entity_t val;
-
-	val = __jdict_ent(dict, key);
-	if (!val || val->type != JSON_STRING_VALUE) {
-		errno = EINVAL;
-		return NULL;
-	}
-	return val->value.str_;
-}
-
-
-/* ==== generic decomp ==== */
-/* convenient macro to put error message in both ldmsd log and `reqc` */
+/* Macro to put error message in both ldmsd log and `reqc` */
 #define DECOMP_ERR(reqc, rc, fmt, ...) do { \
 		ldmsd_lerror("decomposer: " fmt, ##__VA_ARGS__); \
 		if (reqc) { \
@@ -113,20 +82,20 @@ static json_str_t __jdict_str(json_entity_t dict, const char *key)
 		} \
 	} while (0)
 
-int __decomp_rbn_cmp(void *tree_key, const void *key)
+static int decomp_rbn_cmp(void *tree_key, const void *key)
 {
 	return strcmp(tree_key, key);
 }
 
-static struct rbt __decomp_rbt = RBT_INITIALIZER(__decomp_rbn_cmp);
-struct __decomp_rbn_s {
+static struct rbt decomp_rbt = RBT_INITIALIZER(decomp_rbn_cmp);
+struct decomp_rbn_s {
 	struct rbn rbn;
 	char name[256];
 	ldmsd_decomp_t decomp;
 };
-typedef struct __decomp_rbn_s *__decomp_rbn_t;
+typedef struct decomp_rbn_s *decomp_rbn_t;
 
-static ldmsd_decomp_t __decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
+static ldmsd_decomp_t decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
 {
 	char library_name[PATH_MAX];
 	char library_path[PATH_MAX];
@@ -137,10 +106,10 @@ static ldmsd_decomp_t __decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
 	void *d = NULL;
 	char *dlerr;
 	struct stat st;
-	__decomp_rbn_t drbn;
+	decomp_rbn_t drbn;
 	ldmsd_decomp_t (*get)(), dc;
 
-	drbn = (void*)rbt_find(&__decomp_rbt, decomp);
+	drbn = (void*)rbt_find(&decomp_rbt, decomp);
 	if (drbn)
 		return drbn->decomp;
 
@@ -195,7 +164,7 @@ static ldmsd_decomp_t __decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
 	rbn_init(&drbn->rbn, drbn->name);
 	snprintf(drbn->name, sizeof(drbn->name), "%s", decomp);
 	drbn->decomp = dc;
-	rbt_ins(&__decomp_rbt, &drbn->rbn);
+	rbt_ins(&decomp_rbt, &drbn->rbn);
 
 	return dc;
 }
@@ -203,106 +172,87 @@ static ldmsd_decomp_t __decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
 /* Export so that decomp_flex can call, but don't advertise this in ldmsd.h */
 ldmsd_decomp_t ldmsd_decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
 {
-	return __decomp_get(decomp, reqc);
+	return decomp_get(decomp, reqc);
 }
+
+#if JANSSON_VERSION_HEX >= 0x020b00
+const char *err_text[] = {
+	[json_error_unknown] = "unknown error",
+	[json_error_out_of_memory] = "out of memory",
+	[json_error_stack_overflow] = "stack overflow",
+	[json_error_cannot_open_file] = "cannot open file",
+	[json_error_invalid_argument] = "invalid argument",
+	[json_error_invalid_utf8] = "invalid UTF8",
+	[json_error_premature_end_of_input] = "unexpected end of file",
+	[json_error_end_of_input_expected] = "unexpected data at end of object",
+	[json_error_invalid_syntax] = "invalid syntax",
+	[json_error_invalid_format] = "invalid format",
+	[json_error_wrong_type] = "wrong type",
+	[json_error_null_character] = "null character",
+	[json_error_null_value] = "null value",
+	[json_error_null_byte_in_key] = "null byte in key",
+	[json_error_duplicate_key] = "duplicate key",
+	[json_error_numeric_overflow] = "numeric overflow",
+	[json_error_item_not_found] = "item not found",
+	[json_error_index_out_of_range] = "index out of range"
+};
+#endif
 
 /* protected by strgp lock */
 int ldmsd_decomp_config(ldmsd_strgp_t strgp, const char *json_path, ldmsd_req_ctxt_t reqc)
 {
-	json_str_t s;
-	json_entity_t cfg;
-	int fd, rc;
-	off_t off;
-	size_t sz;
-	json_parser_t jp = NULL;
-	char *buff = NULL;
+	int rc;
+	json_t *root, *type;
+	json_error_t jerr;
 	ldmsd_decomp_t decomp_api;
 
 	if (strgp->decomp) {
 		/* already configured */
 		rc = EALREADY;
-		DECOMP_ERR(reqc, EALREADY, "Already configurd\n");
+		DECOMP_ERR(reqc, EALREADY, "Already configured.\n");
 		goto err_0;
 	}
 
-	/* Load JSON from file */
-	fd = open(json_path, O_RDONLY);
-	if (fd < 0) {
-		rc = errno;
-		DECOMP_ERR(reqc, errno, "open error %d, file: %s\n",
-			   errno, json_path);
-		goto err_0;
-	}
-	off = lseek(fd, 0, SEEK_END);
-	if (off == -1) {
-		rc = errno;
-		DECOMP_ERR(reqc, errno, "seek failed, errno: %d\n", errno);
+	root = json_load_file(json_path, 0, &jerr);
+	if (!root) {
+		rc = errno = EINVAL;
+		DECOMP_ERR(reqc, rc,
+			"json parser error: line %d column: %d %s: %s\n",
+			jerr.line, jerr.column,
+			#if JANSSON_VERSION_HEX >= 0x020b00
+			err_text[json_error_code(&jerr)],
+			#else
+			"",
+			#endif
+			jerr.text);
 		goto err_1;
-	}
-	sz = off;
-	buff = malloc(sz + 1);
-	if (!buff) {
-		rc = errno;
-		DECOMP_ERR(reqc, errno, "not enough memory");
-		goto err_1;
-	}
-	off = lseek(fd, 0, SEEK_SET);
-	if (off == -1) {
-		rc = errno;
-		DECOMP_ERR(reqc, errno, "seek failed, errno: %d\n", errno);
-		goto err_2;
-	}
-	jp = json_parser_new(0);
-	if (!jp) {
-		rc = errno;
-		DECOMP_ERR(reqc, errno, "cannot create json parser, error: %d\n", errno);
-		goto err_2;
-	}
-	off = read(fd, buff, sz);
-	if (off != sz) {
-		rc = errno;
-		DECOMP_ERR(reqc, errno, "read failed, error: %d\n", errno);
-		goto err_2;
-	}
-	buff[sz] = '\0';
-	rc = json_parse_buffer(jp, buff, sz, &cfg);
-	if (rc) {
-		DECOMP_ERR(reqc, rc, "json parse error: %d\n", rc);
-		errno = rc;
-		goto err_3;
 	}
 
 	/* Configure decomposer */
-	s = __jdict_str(cfg, "type");
-	if (!s) {
+	type = json_object_get(root, "type");
+	if (!type) {
 		rc = errno = EINVAL;
-		DECOMP_ERR(reqc, EINVAL, "decomposer: 'type' attribute is missing.\n");
-		goto err_4;
+		DECOMP_ERR(reqc, rc,
+			"json parser error: JSON configuration is missing the "
+			"'type' attribute.\n");
+		goto err_1;
 	}
-	decomp_api = __decomp_get(s->str, reqc);
+	decomp_api = decomp_get(json_string_value(type), reqc);
 	if (!decomp_api) {
 		rc = errno;
-		goto err_4;
+		goto err_1;
 	}
-	strgp->decomp = decomp_api->config(strgp, cfg, reqc);
+	strgp->decomp = decomp_api->config(strgp, root, reqc);
 	if (!strgp->decomp) {
 		rc = errno;
-		goto err_4;
+		goto err_1;
 	}
 
 	/* decomp config success! */
 	rc = 0;
-
-	/* let-through, clean-up */
- err_4:
-	json_entity_free(cfg);
- err_3:
-	json_parser_free(jp);
- err_2:
-	free(buff);
- err_1:
-	close(fd);
- err_0:
+err_1:
+	json_decref(root);
+err_0:
 	return rc;
 }
 

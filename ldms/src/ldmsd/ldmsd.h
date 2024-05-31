@@ -60,6 +60,7 @@
 #include <pthread.h>
 
 #include <sys/time.h>
+#include <jansson.h>
 
 #include <ovis_event/ovis_event.h>
 #include <ovis_util/util.h>
@@ -448,20 +449,23 @@ typedef struct ldmsd_row_cache_entry_s {
 
 typedef struct ldmsd_row_cache_key_s {
 	enum ldms_value_type type;
-	union ldms_value val;
 	size_t count;			/* The element count if an array */
+	size_t mval_size;
+	ldms_mval_t mval;
 } *ldmsd_row_cache_key_t;
 
 struct ldmsd_row_cache_idx_s {
 	int key_count;
-	ldmsd_row_cache_key_t keys;	/* Array of ldmsd_row_cache_key_t */
+	ldmsd_row_cache_key_t *keys;	/* Array of ldmsd_row_cache_key_t */
 };
 
 typedef struct ldmsd_row_s *ldmsd_row_t;
 typedef struct ldmsd_row_list_s *ldmsd_row_list_t;
 
 ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_count);
-ldmsd_row_cache_idx_t ldmsd_row_cache_idx_create(int key_count, ldmsd_row_cache_key_t keys);
+ldmsd_row_cache_key_t ldmsd_row_cache_key_create(enum ldms_value_type type, size_t len);
+ldmsd_row_cache_idx_t ldmsd_row_cache_idx_create(int key_count, ldmsd_row_cache_key_t *keys);
+void ldmsd_row_cache_idx_free(ldmsd_row_cache_idx_t idx);
 int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 		ldmsd_row_cache_idx_t group_key,
 		ldmsd_row_cache_idx_t row_key,
@@ -550,7 +554,7 @@ struct ldmsd_decomp_s {
 	 * \retval NULL   If there is an error. In this case, \c errno must also
 	 *                be set to describe the error.
 	 */
-	ldmsd_decomp_t (*config)(ldmsd_strgp_t strgp, json_entity_t jcfg, ldmsd_req_ctxt_t reqc);
+	ldmsd_decomp_t (*config)(ldmsd_strgp_t strgp, json_t *jcfg, ldmsd_req_ctxt_t reqc);
 
 	/**
 	 * Decompose method.

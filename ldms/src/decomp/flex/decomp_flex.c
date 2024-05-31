@@ -67,19 +67,48 @@
 /* Implementation is in ldmsd_decomp.c */
 ldmsd_decomp_t ldmsd_decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc);
 
-static ldmsd_decomp_t __decomp_flex_config(ldmsd_strgp_t strgp,
-			json_entity_t cfg, ldmsd_req_ctxt_t reqc);
-static int __decomp_flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
+#define FLEX_ERR(reqc, rc, fmt, ...) do { \
+	ldmsd_log(LDMSD_LERROR, fmt, ##__VA_ARGS__);	\
+	if (reqc) {						\
+		(reqc)->errcode = rc;				\
+		Snprintf(&(reqc)->line_buf, &(reqc)->line_len, fmt, ##__VA_ARGS__); \
+	}							\
+} while (0)
+
+typedef struct flex_decomp_s {
+	struct rbn rbn;
+	struct ldmsd_decomp_s *decomp_api;
+	struct ldmsd_strgp strgp;
+	char name[OVIS_FLEX]; /* also rbn key */
+} *flex_decomp_t;
+
+typedef struct flex_digest_s {
+	struct rbn rbn;
+	struct ldms_digest_s digest; /* also rbn key */
+	int n_decomp; /* number of decomposers to apply */
+	flex_decomp_t decomp[OVIS_FLEX]; /* refs to the utilized decomposers */
+} *flex_digest_t;
+
+typedef struct flex_cfg_s {
+	struct ldmsd_decomp_s decomp;
+	struct rbt digest_tree;
+	struct rbt decomp_tree;
+	flex_digest_t default_digest;
+} *flex_cfg_t;
+
+static ldmsd_decomp_t flex_config(ldmsd_strgp_t strgp,
+			json_t *cfg, ldmsd_req_ctxt_t reqc);
+static int flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				     ldmsd_row_list_t row_list, int *row_count);
-static void __decomp_flex_release_rows(ldmsd_strgp_t strgp,
+static void flex_release_rows(ldmsd_strgp_t strgp,
 					 ldmsd_row_list_t row_list);
-static void __decomp_flex_release_decomp(ldmsd_strgp_t strgp);
+static void flex_release_decomp(ldmsd_strgp_t strgp);
 
 struct ldmsd_decomp_s __decomp_flex = {
-	.config = __decomp_flex_config,
-	.decompose = __decomp_flex_decompose,
-	.release_rows = __decomp_flex_release_rows,
-	.release_decomp = __decomp_flex_release_decomp,
+	.config = flex_config,
+	.decompose = flex_decompose,
+	.release_rows = flex_release_rows,
+	.release_decomp = flex_release_decomp,
 };
 
 ldmsd_decomp_t get()
@@ -87,81 +116,29 @@ ldmsd_decomp_t get()
 	return &__decomp_flex;
 }
 
-/* ==== JSON helpers ==== */
-
-static json_entity_t __jdict_ent(json_entity_t dict, const char *key)
-{
-	json_entity_t attr;
-	json_entity_t val;
-
-	attr = json_attr_find(dict, key);
-	if (!attr) {
-		errno = ENOKEY;
-		return NULL;
-	}
-	val = json_attr_value(attr);
-	return val;
-}
-
-#define JSTR(P) ((P)->value.str_)
-
-/* ==== generic decomp ==== */
-/* convenient macro to put error message in both ldmsd log and `reqc` */
-#define DECOMP_ERR(reqc, rc, fmt, ...) do { \
-		ldmsd_lerror("decomposer: " fmt, ##__VA_ARGS__); \
-		if (reqc) { \
-			(reqc)->errcode = rc; \
-			Snprintf(&(reqc)->line_buf, &(reqc)->line_len, "decomposer: " fmt, ##__VA_ARGS__); \
-		} \
-	} while (0)
-
-/* ==== flex decomposition === */
-
-typedef struct __decomp_flex_decomp_rbn_s {
-	struct rbn rbn;
-	struct ldmsd_decomp_s *decomp_api;
-	struct ldmsd_strgp strgp;
-	char name[OVIS_FLEX]; /* also rbn key */
-} *__decomp_flex_decomp_rbn_t;
-
-static
-int __decomp_flex_decomp_rbn_s_cmp(void *tree_key, const void *key)
+static int flex_decomp_cmp(void *tree_key, const void *key)
 {
 	return strcmp(tree_key, key);
 }
 
-typedef struct __decomp_flex_digest_rbn_s {
-	struct rbn rbn;
-	struct ldms_digest_s digest; /* also rbn key */
-	int n_decomp; /* number of decomposers to apply */
-	__decomp_flex_decomp_rbn_t decomp_rbn[OVIS_FLEX]; /* refs to the utilized decomposers */
-} *__decomp_flex_digest_rbn_t;
-
 static
-int __decomp_flex_digest_rbn_s_cmp(void *tree_key, const void *key)
+int flex_digest_cmp(void *tree_key, const void *key)
 {
 	return memcmp(tree_key, key, sizeof(struct ldms_digest_s));
 }
 
-typedef struct __decomp_flex_cfg_s {
-	struct ldmsd_decomp_s decomp;
-	struct rbt digest_rbt;
-	struct rbt decomp_rbt;
-	__decomp_flex_digest_rbn_t default_digest;
-} *__decomp_flex_cfg_t;
-
-static void __decomp_flex_cfg_free(__decomp_flex_cfg_t dcfg)
+static void flex_cfg_free(flex_cfg_t dcfg)
 {
 	struct rbn *rbn;
-	__decomp_flex_decomp_rbn_t decomp_rbn;
+	flex_decomp_t decomp_rbn;
 	if (dcfg->default_digest)
 		free(dcfg->default_digest);
-	while ((rbn = rbt_min(&dcfg->digest_rbt))) {
-		rbt_del(&dcfg->digest_rbt, rbn);
+	while ((rbn = rbt_min(&dcfg->digest_tree))) {
+		rbt_del(&dcfg->digest_tree, rbn);
 		free(rbn);
 	}
-	while ((decomp_rbn = (void*)rbt_min(&dcfg->decomp_rbt))) {
-		rbt_del(&dcfg->decomp_rbt, &decomp_rbn->rbn);
+	while ((decomp_rbn = (void*)rbt_min(&dcfg->decomp_tree))) {
+		rbt_del(&dcfg->decomp_tree, &decomp_rbn->rbn);
 		if (decomp_rbn->strgp.decomp)
 			decomp_rbn->decomp_api->release_decomp(&decomp_rbn->strgp);
 		free(decomp_rbn);
@@ -170,202 +147,207 @@ static void __decomp_flex_cfg_free(__decomp_flex_cfg_t dcfg)
 }
 
 static void
-__decomp_flex_release_decomp(ldmsd_strgp_t strgp)
+flex_release_decomp(ldmsd_strgp_t strgp)
 {
 	if (strgp->decomp) {
-		__decomp_flex_cfg_free((void*)strgp->decomp);
+		flex_cfg_free((void*)strgp->decomp);
 		strgp->decomp = NULL;
 	}
 }
 
 static ldmsd_decomp_t
-__decomp_flex_config(ldmsd_strgp_t strgp, json_entity_t jcfg,
+flex_config(ldmsd_strgp_t strgp, json_t *jcfg,
 		      ldmsd_req_ctxt_t reqc)
 {
-	__decomp_flex_cfg_t dcfg = NULL;
+	flex_cfg_t dcfg = NULL;
+	flex_decomp_t decomp;
+	flex_digest_t digest;
+	struct ldmsd_decomp_s *decomp_api;
 	int n_decomp, i;
-	json_entity_t jdecomp, jdigest, jattr, jkey, jval, jtype;
+	const char *key;
+	json_t *jdecomp, *jdigest, *jschema, *jtype;
 
 	/* decomposition */
-	jdecomp = __jdict_ent(jcfg, "decomposition");
+	jdecomp = json_object_get(jcfg, "decomposition");
 	if (!jdecomp) {
-		DECOMP_ERR(reqc, EINVAL, "'decomposition' attribute is missing\n");
+		FLEX_ERR(reqc, EINVAL, "'decomposition' attribute is missing\n");
 		goto err_0;
 	}
-	if (jdecomp->type != JSON_DICT_VALUE) {
-		DECOMP_ERR(reqc, EINVAL, "'decomposition' must be a dictionary\n");
+	if (!json_is_object(jdecomp)) {
+		FLEX_ERR(reqc, EINVAL, "'decomposition' must be a dictionary\n");
 		goto err_0;
 	}
 
 	/* digest */
-	jdigest = __jdict_ent(jcfg, "digest");
+	jdigest = json_object_get(jcfg, "digest");
 	if (!jdigest) {
-		DECOMP_ERR(reqc, EINVAL, "'digest' attribute is missing\n");
+		FLEX_ERR(reqc, EINVAL, "'digest' attribute is missing\n");
 		goto err_0;
 	}
-	if (jdigest->type != JSON_DICT_VALUE) {
-		DECOMP_ERR(reqc, EINVAL, "'digest' must be a dictionary\n");
+	if (!json_is_object(jdigest)) {
+		FLEX_ERR(reqc, EINVAL, "'digest' must be a dictionary\n");
 		goto err_0;
 	}
 
 	dcfg = calloc(1, sizeof(*dcfg));
-	if (!dcfg) {
-		DECOMP_ERR(reqc, ENOMEM, "Not enough memory\n");
-		goto err_0;
-	}
+	if (!dcfg)
+		goto enomem;
 	dcfg->decomp = __decomp_flex;
-	rbt_init(&dcfg->decomp_rbt, __decomp_flex_decomp_rbn_s_cmp);
-	rbt_init(&dcfg->digest_rbt, __decomp_flex_digest_rbn_s_cmp);
+	rbt_init(&dcfg->decomp_tree, flex_decomp_cmp);
+	rbt_init(&dcfg->digest_tree, flex_digest_cmp);
 
-	__decomp_flex_decomp_rbn_t decomp_rbn;
-	struct ldmsd_decomp_s *decomp_api;
-
-	/* processing decompotision */
-	for (jattr = json_attr_first(jdecomp); jattr; jattr = json_attr_next(jattr)) {
-		jkey = jattr->value.attr_->name;
-		assert(jkey->type == JSON_STRING_VALUE);
-		jval = jattr->value.attr_->value;
-		if (jval->type != JSON_DICT_VALUE) {
-			DECOMP_ERR(reqc, EINVAL, "decomposition['%s'] must be "
-					 "a dictionary\n", JSTR(jkey)->str);
+	/* processing decomposition */
+	json_object_foreach(jdecomp, key, jschema) {
+		if (!json_is_object(jschema)) {
+			FLEX_ERR(reqc, EINVAL,
+				"decomposition['%s'] must be "
+				"a dictionary\n", key);
 			goto err_1;
 		}
-		jtype = __jdict_ent(jval, "type");
+		jtype = json_object_get(jschema, "type");
 		if (!jtype) {
-			DECOMP_ERR(reqc, EINVAL, "decomposition['%s'] must "
-					 "specify 'type' attribute\n",
-					 JSTR(jkey)->str);
+			FLEX_ERR(reqc, EINVAL,
+				"decomposition['%s'] must "
+				"decomposition 'type' attribute is required: "
+				"'as_is', or 'static'.\n", key);
 			goto err_1;
 		}
-		if (jtype->type != JSON_STRING_VALUE) {
-			DECOMP_ERR(reqc, EINVAL, "decomposition['%s']['type'] "
-					 "must be a string\n",
-					 JSTR(jkey)->str);
+		if (!json_is_string(jtype)) {
+			FLEX_ERR(reqc, EINVAL,
+				"decomposition['%s']['type'] "
+				"must be a string\n", key);
 			goto err_1;
 		}
-		decomp_api = ldmsd_decomp_get(JSTR(jtype)->str, reqc);
+		decomp_api = ldmsd_decomp_get(json_string_value(jtype), reqc);
 		if (!decomp_api) {
 			/* ldmsd_decomp_get() already populate reqc error */
 			goto err_1;
 		}
-		decomp_rbn = calloc(1, sizeof(*decomp_rbn) +
-					jkey->value.str_->str_len + 1);
-		if (!decomp_rbn) {
-			DECOMP_ERR(reqc, ENOMEM, "Not enough memory\n");
+		decomp = calloc(1, sizeof(*decomp) + strlen(key) + 1);
+		if (!decomp)
+			goto enomem;
+		strcpy(decomp->name, key);
+		(void)asprintf(&decomp->strgp.obj.name, "%s.%s", strgp->obj.name, key);
+		decomp->decomp_api = decomp_api;
+		decomp->strgp.decomp = decomp_api->config(&decomp->strgp, jschema, reqc);
+		if (!decomp->strgp.decomp) {
+			free(decomp);
 			goto err_1;
 		}
-		memcpy(decomp_rbn->name, JSTR(jkey)->str, JSTR(jkey)->str_len);
-		decomp_rbn->decomp_api = decomp_api;
-		decomp_rbn->strgp.decomp = decomp_api->config(&decomp_rbn->strgp, jval, reqc);
-		if (!decomp_rbn->strgp.decomp) {
-			/* reqc error has been populated */
-			free(decomp_rbn);
-			goto err_1;
-		}
-		rbn_init(&decomp_rbn->rbn, decomp_rbn->name);
-		rbt_ins(&dcfg->decomp_rbt, &decomp_rbn->rbn);
+		rbn_init(&decomp->rbn, decomp->name);
+		rbt_ins(&dcfg->decomp_tree, &decomp->rbn);
 	}
 
-	json_entity_t jlist;
-	__decomp_flex_digest_rbn_t digest_rbn;
-
-	/* processing digest */
-	for (jattr = json_attr_first(jdigest); jattr; jattr = json_attr_next(jattr)) {
-		jkey = jattr->value.attr_->name;
-		assert(jkey->type == JSON_STRING_VALUE);
-		jval = jattr->value.attr_->value;
-		jlist = NULL;
-		if (jval->type == JSON_LIST_VALUE) {
-			jlist = jval;
-			jval = TAILQ_FIRST(&jlist->value.list_->item_list);
-			n_decomp = jlist->value.list_->item_count;
-		} else if (jval->type == JSON_STRING_VALUE) {
-			n_decomp = 1;
-		} else {
-			/* invalid value */
-			DECOMP_ERR(reqc, EINVAL, "digest['%s'] value must be"
-					"a string or a list of strings.\n",
-					JSTR(jkey)->str);
-			goto err_1;
-		}
+	/* Process digest */
+	json_object_foreach(jdigest, key, jschema) {
+		/* "01FC.....0102" : [ "schema_a", "schema_b" ],
+		 * "02FC.....0102" : "schema_c",
+		 * "*"             : "the_default"
+		 * ...
+		 */
 		int rc;
-		struct ldms_digest_s digest = {};
-		if (0 == strcmp(JSTR(jkey)->str, "*")) {
-			digest_rbn = dcfg->default_digest;
+		struct ldms_digest_s digest_key = {};
+
+		/* Check for duplicate definition */
+		digest = NULL;
+		if (0 == strcmp(key, "*")) {
+			digest = dcfg->default_digest;
 		} else {
-			rc = ldms_str_digest(JSTR(jkey)->str, &digest);
+			rc = ldms_str_digest(key, &digest_key);
 			if (rc) {
-				DECOMP_ERR(reqc, rc, "Invalid digest '%s'.\n",
-					JSTR(jkey)->str);
+				FLEX_ERR(reqc, rc, "Invalid digest key '%s'.\n", key);
 				goto err_1;
 			}
-			digest_rbn = (void*)rbt_find(&dcfg->digest_rbt, &digest);
+			struct rbn *rbn = rbt_find(&dcfg->digest_tree, &digest_key);
+			if (rbn)
+				digest = container_of(rbn, struct flex_digest_s, rbn);
 		}
-		if (digest_rbn) {
-			DECOMP_ERR(reqc, EINVAL,
-				   "Multiple definition of digest['%s'].\n",
-				   JSTR(jkey)->str);
-			goto err_1;
+		if (digest) {
+			FLEX_ERR(reqc, EINVAL,
+				"Ignoring duplicate definition of "
+				"digest['%s'].\n", key);
+			continue;
 		}
-		digest_rbn = calloc(1, sizeof(*digest_rbn) +
-					n_decomp*sizeof(digest_rbn->decomp_rbn[0]));
-		if (!digest_rbn) {
-			DECOMP_ERR(reqc, ENOMEM, "Not enough memory\n");
-			goto err_1;
-		}
-		memcpy(&digest_rbn->digest, &digest, sizeof(digest));
-		rbn_init(&digest_rbn->rbn, &digest_rbn->digest);
-		digest_rbn->n_decomp = n_decomp;
-		if (0 == strcmp(JSTR(jkey)->str, "*")) {
-			dcfg->default_digest = digest_rbn;
+
+		/* Determine how many decompositions are matched to the digest */
+		if (json_is_string(jschema)) {
+			n_decomp = 1;
+		} else if (json_is_array(jschema)) {
+			n_decomp = json_array_size(jschema);
 		} else {
-			rbt_ins(&dcfg->digest_rbt, &digest_rbn->rbn);
+			FLEX_ERR(reqc, EINVAL,
+				"Invalid value for decomposition attribute "
+				"in 'digest'.\n");
+			goto err_1;
 		}
-		i = 0;
-		while (jval) {
-			if (jval->type != JSON_STRING_VALUE) {
-				DECOMP_ERR(reqc, EINVAL, "digest['%s'] value must be"
-					"a string or a list of strings.\n",
-					JSTR(jkey)->str);
+
+		/* Allocate a new digest */
+		digest = calloc(1, sizeof(*digest) +
+					n_decomp * sizeof(digest->decomp[0]));
+		if (!digest)
+			goto enomem;
+
+		/* Insert digest into tree */
+		memcpy(&digest->digest, &digest_key, sizeof(digest_key));
+		rbn_init(&digest->rbn, &digest->digest);
+		digest->n_decomp = n_decomp;
+		if (0 == strcmp(key, "*")) {
+			dcfg->default_digest = digest;
+		} else {
+			rbt_ins(&dcfg->digest_tree, &digest->rbn);
+		}
+		/* Look up the decomposition for each decomp key */
+		if (n_decomp == 1) {
+			struct rbn *rbn = rbt_find(&dcfg->decomp_tree,
+					json_string_value(jschema));
+			if (!rbn) {
+				FLEX_ERR(reqc, EINVAL,
+					"The specified decomposition "
+					"schema ('%s') was not found.\n",
+					json_string_value(jschema));
 				goto err_1;
 			}
-			decomp_rbn = (void*)rbt_find(&dcfg->decomp_rbt, JSTR(jval)->str);
-			if (!decomp_rbn) {
-				DECOMP_ERR(reqc, ENOENT, "decomposition '%s' is not defined.\n",
-						JSTR(jval)->str);
-				goto err_1;
+			decomp = container_of(rbn, struct flex_decomp_s, rbn);
+			digest->decomp[0] = decomp;
+		} else {
+			json_array_foreach(jschema, i, jdecomp) {
+				struct rbn *rbn = rbt_find(&dcfg->decomp_tree,
+						json_string_value(jdecomp));
+				if (!rbn) {
+					FLEX_ERR(reqc, EINVAL,
+						"The specified decomposition "
+						"schema ('%s') was not found.\n",
+						json_string_value(jdecomp));
+					goto err_1;
+				}
+				decomp = container_of(rbn, struct flex_decomp_s, rbn);
+				digest->decomp[i] = decomp;
 			}
-			digest_rbn->decomp_rbn[i] = decomp_rbn;
-			if (jlist) {
-				jval = TAILQ_NEXT(jval, item_entry);
-			} else {
-				jval = NULL;
-			}
-			i++;
 		}
-		assert(i == n_decomp);
 	}
 
 	return &dcfg->decomp;
- err_1:
-	__decomp_flex_cfg_free(dcfg);
- err_0:
+enomem:
+	FLEX_ERR(reqc, ENOMEM, "Insufficient memory.\n");
+err_1:
+	flex_cfg_free(dcfg);
+err_0:
 	return NULL;
 }
 
-static int __decomp_flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
+static int flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				    ldmsd_row_list_t row_list, int *row_count)
 {
-	__decomp_flex_cfg_t dcfg = (void*)strgp->decomp;
+	flex_cfg_t dcfg = (void*)strgp->decomp;
 	ldms_digest_t digest = ldms_set_digest_get(set);
 	struct ldmsd_row_list_s rlist;
 	int rcount, i, rc;
-	__decomp_flex_digest_rbn_t digest_rbn;
-	__decomp_flex_decomp_rbn_t decomp_rbn;
+	flex_digest_t digest_rbn;
+	flex_decomp_t decomp_rbn;
 
 	TAILQ_INIT(&rlist);
 
-	digest_rbn = (void*)rbt_find(&dcfg->digest_rbt, digest);
+	digest_rbn = (void*)rbt_find(&dcfg->digest_tree, digest);
 	if (!digest_rbn) {
 		if (!dcfg->default_digest)
 			return 0;
@@ -374,7 +356,7 @@ static int __decomp_flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	*row_count = 0;
 	for (i = 0; i < digest_rbn->n_decomp; i++) {
 		rcount = 0;
-		decomp_rbn = digest_rbn->decomp_rbn[i];
+		decomp_rbn = digest_rbn->decomp[i];
 		rc = decomp_rbn->decomp_api->decompose(
 				&decomp_rbn->strgp,
 				set, &rlist, &rcount);
@@ -387,12 +369,12 @@ static int __decomp_flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	return 0;
 
  err_0:
-	__decomp_flex_release_rows(strgp, row_list);
+	flex_release_rows(strgp, row_list);
 	return rc;
 }
 
-static void __decomp_flex_release_rows(ldmsd_strgp_t strgp,
-					 ldmsd_row_list_t row_list)
+static void flex_release_rows(ldmsd_strgp_t strgp,
+				ldmsd_row_list_t row_list)
 {
 	ldmsd_row_t row;
 	while ((row = TAILQ_FIRST(row_list))) {
