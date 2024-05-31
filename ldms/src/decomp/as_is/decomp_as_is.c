@@ -58,100 +58,53 @@
 
 #include <openssl/sha.h>
 
-#include "ovis_json/ovis_json.h"
+#include <jansson.h>
 #include "coll/rbt.h"
 
 #include "ldmsd.h"
 #include "ldmsd_request.h"
 
-static ldmsd_decomp_t __decomp_as_is_config(ldmsd_strgp_t strgp,
-			json_entity_t cfg, ldmsd_req_ctxt_t reqc);
-static int __decomp_as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
-				     ldmsd_row_list_t row_list, int *row_count);
-static void __decomp_as_is_release_rows(ldmsd_strgp_t strgp,
-					 ldmsd_row_list_t row_list);
-static void __decomp_as_is_release_decomp(ldmsd_strgp_t strgp);
+/* Macro to put error message in both ldmsd log and `reqc` */
+#define AS_IS_ERR(reqc, rc, fmt, ...) do { \
+	ldmsd_log(LDMSD_LERROR, fmt, ##__VA_ARGS__); \
+	if (reqc) { \
+		(reqc)->errcode = rc; \
+		Snprintf(&(reqc)->line_buf, &(reqc)->line_len, fmt, ##__VA_ARGS__); \
+	} \
+} while (0)
 
-struct ldmsd_decomp_s __decomp_as_is = {
-	.config = __decomp_as_is_config,
-	.decompose = __decomp_as_is_decompose,
-	.release_rows = __decomp_as_is_release_rows,
-	.release_decomp = __decomp_as_is_release_decomp,
+static ldmsd_decomp_t as_is_config(ldmsd_strgp_t strgp,
+			json_t *cfg, ldmsd_req_ctxt_t reqc);
+static int as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
+				     ldmsd_row_list_t row_list, int *row_count);
+static void as_is_release_rows(ldmsd_strgp_t strgp,
+					 ldmsd_row_list_t row_list);
+static void as_is_release_decomp(ldmsd_strgp_t strgp);
+
+static struct ldmsd_decomp_s decomp_as_is = {
+	.config = as_is_config,
+	.decompose = as_is_decompose,
+	.release_rows = as_is_release_rows,
+	.release_decomp = as_is_release_decomp,
 };
 
 ldmsd_decomp_t get()
 {
-	return &__decomp_as_is;
+	return &decomp_as_is;
 }
-
-/* ==== JSON helpers ==== */
-
-static json_entity_t __jdict_ent(json_entity_t dict, const char *key)
-{
-	json_entity_t attr;
-	json_entity_t val;
-
-	attr = json_attr_find(dict, key);
-	if (!attr) {
-		errno = ENOKEY;
-		return NULL;
-	}
-	val = json_attr_value(attr);
-	return val;
-}
-
-/* Access dict[key], expecting it to be a list */
-static json_list_t __jdict_list(json_entity_t dict, const char *key)
-{
-	json_entity_t val;
-
-	val = __jdict_ent(dict, key);
-	if (!val)
-		return NULL;
-	if (val->type != JSON_LIST_VALUE) {
-		errno = EINVAL;
-		return NULL;
-	}
-	return val->value.list_;
-}
-
-/* Access dict[key], expecting it to be a str */
-static json_str_t __jdict_str(json_entity_t dict, const char *key)
-{
-	json_entity_t val;
-
-	val = __jdict_ent(dict, key);
-	if (!val)
-		return NULL;
-	if (val->type != JSON_STRING_VALUE) {
-		errno = EINVAL;
-		return NULL;
-	}
-	return val->value.str_;
-}
-
-/* ==== generic decomp ==== */
-/* convenient macro to put error message in both ldmsd log and `reqc` */
-#define DECOMP_ERR(reqc, rc, fmt, ...) do { \
-		ldmsd_lerror("decomposer: " fmt, ##__VA_ARGS__); \
-		if (reqc) { \
-			(reqc)->errcode = rc; \
-			Snprintf(&(reqc)->line_buf, &(reqc)->line_len, "decomposer: " fmt, ##__VA_ARGS__); \
-		} \
-	} while (0)
 
 /* common index config descriptor */
-typedef struct __decomp_index_s {
+typedef struct as_is_index_s {
 	char *name;
 	int col_count;
 	char **col_names; /* names of cols for the index */
 	int *col_idx; /* dst columns composing the index */
-} *__decomp_index_t;
+} *as_is_index_t;
 
 /* ==== as-is decomposition === */
 
 /* describing a column */
-typedef struct __decomp_as_is_col_cfg_s {
+typedef struct as_is_col_cfg_s {
 	enum ldms_value_type col_type; /* value type of the column */
 	char *name; /* column name */
 	int set_mid; /* metric ID */
@@ -159,29 +112,29 @@ typedef struct __decomp_as_is_col_cfg_s {
 	int set_mlen; /* array length of set[mid] */
 	int rec_mid; /* record member ID (if metric is a record) */
 	int array_len; /* length of the array, if col_type is array */
-} *__decomp_as_is_col_cfg_t;
+} *as_is_col_cfg_t;
 
-typedef struct __decomp_as_is_row_cfg_s {
+typedef struct as_is_row_cfg_s {
 	struct rbn rbn; /* rbn (inserted to cfg->row_cfg_rbt) */
 	char *schema_name; /* row schema name */
 	int col_count;
 	int idx_count;
-	__decomp_as_is_col_cfg_t cols; /* array of struct */
-	__decomp_index_t idxs; /* array of struct */
+	as_is_col_cfg_t cols; /* array of struct */
+	as_is_index_t idxs; /* array of struct */
 	size_t row_sz;
-} *__decomp_as_is_row_cfg_t;
+} *as_is_row_cfg_t;
 
-int __row_cfg_cmp(void *tree_key, const void *key)
+static int row_cfg_cmp(void *tree_key, const void *key)
 {
 	return strcmp(tree_key, key);
 }
 
-typedef struct __decomp_as_is_cfg_s {
+typedef struct as_is_cfg_s {
 	struct ldmsd_decomp_s decomp;
 	int idx_count;
 	struct rbt row_cfg_rbt;
-	struct __decomp_index_s idxs[OVIS_FLEX];
-} *__decomp_as_is_cfg_t;
+	struct as_is_index_s idxs[OVIS_FLEX];
+} *as_is_cfg_t;
 
 /* str - int pair */
 struct str_int_s {
@@ -200,10 +153,10 @@ int str_int_cmp(const void *a, const void *b)
 	return strcmp(sa->str, sb->str);
 }
 
-static void __decomp_as_is_cfg_free(__decomp_as_is_cfg_t dcfg)
+static void as_is_cfg_free(as_is_cfg_t dcfg)
 {
 	int i, j;
-	__decomp_index_t didx;
+	as_is_index_t didx;
 	for (i = 0; i < dcfg->idx_count; i++) {
 		didx = &dcfg->idxs[i];
 		/* names in idx */
@@ -218,109 +171,115 @@ static void __decomp_as_is_cfg_free(__decomp_as_is_cfg_t dcfg)
 }
 
 static void
-__decomp_as_is_release_decomp(ldmsd_strgp_t strgp)
+as_is_release_decomp(ldmsd_strgp_t strgp)
 {
 	if (strgp->decomp) {
-		__decomp_as_is_cfg_free((void*)strgp->decomp);
+		as_is_cfg_free((void*)strgp->decomp);
 		strgp->decomp = NULL;
 	}
 }
 
-static ldmsd_decomp_t
-__decomp_as_is_config(ldmsd_strgp_t strgp, json_entity_t jcfg,
-		      ldmsd_req_ctxt_t reqc)
+static ldmsd_decomp_t as_is_config(ldmsd_strgp_t strgp, json_t *jcfg,
+					ldmsd_req_ctxt_t reqc)
 {
-	json_str_t jname;
-	json_list_t jidxs, jidx_cols;
-	json_entity_t jidx, jidx_col;
-	__decomp_as_is_cfg_t dcfg = NULL;
-	__decomp_index_t didx;
+	as_is_cfg_t dcfg = NULL;
+	as_is_index_t didx;
 	int j, k, n_idx;
+	json_t *jname, *jidxs, *jidx_cols, *jidx_col, *jidx;
 
 	/* indices */
-	jidxs = __jdict_list(jcfg, "indices");
+	jidxs = json_object_get(jcfg, "indices");
 	if (!jidxs) {
 		n_idx = 0;
 	} else {
-		n_idx = jidxs->item_count;
+		if (!json_is_array(jidxs)) {
+			AS_IS_ERR(reqc, EINVAL,
+				"The 'indices' key must refer to an array.\n");
+			errno = 0;
+			return NULL;
+		}
+		n_idx = json_array_size(jidxs);
 	}
 	dcfg = calloc(1, sizeof(*dcfg) + n_idx * sizeof(dcfg->idxs[0]));
 	if (!dcfg)
 		goto err_enomem;
-	rbt_init(&dcfg->row_cfg_rbt, __row_cfg_cmp);
-	dcfg->decomp = __decomp_as_is;
+	rbt_init(&dcfg->row_cfg_rbt, row_cfg_cmp);
+	dcfg->decomp = decomp_as_is;
 	dcfg->idx_count = n_idx;
 	if (!n_idx)
 		goto out;
 
 	/* foreach index */
-	j = 0;
-	TAILQ_FOREACH(jidx, &jidxs->item_list, item_entry) {
+	json_array_foreach(jidxs, j, jidx) {
 		didx = &dcfg->idxs[j];
-		if (jidx->type != JSON_DICT_VALUE) {
-			DECOMP_ERR(reqc, EINVAL, "strgp '%s': index '%d': "
-					"an index entry must be a dictionary.\n",
-					strgp->obj.name, j);
+		if (!json_is_object(jidx)) {
+			AS_IS_ERR(reqc, EINVAL,
+				"strgp '%s': index '%d': "
+				"an index entry must be a dictionary.\n",
+				strgp->obj.name, j);
 			goto err_0;
 		}
-		jname = __jdict_str(jidx, "name");
+		jname = json_object_get(jidx, "name");
 		if (!jname) {
-			DECOMP_ERR(reqc, EINVAL, "strgp '%s': index '%d': "
-					"index['name'] is required.\n",
-					strgp->obj.name, j);
+			AS_IS_ERR(reqc, EINVAL,
+				"strgp '%s': index '%d': "
+				"index['name'] is required.\n",
+				strgp->obj.name, j);
 			goto err_0;
 		}
-		didx->name = strdup(jname->str);
+		if (!json_is_string(jname)) {
+			AS_IS_ERR(reqc, EINVAL,
+				"strgp '%s': index '%d': "
+				"index['name'] must be a string.\n",
+				strgp->obj.name, j);
+			goto err_0;
+		}
+		didx->name = strdup(json_string_value(jname));
 		if (!didx->name)
 			goto err_enomem;
-		jidx_cols = __jdict_list(jidx, "cols");
-		if (!jidx_cols) {
-			DECOMP_ERR(reqc, EINVAL, "strgp '%s': index '%d': "
-					"index['cols'] is required.\n",
-					strgp->obj.name, j);
+		jidx_cols = json_object_get(jidx, "cols");
+		if (!jidx_cols || !json_is_array(jidx_cols)) {
+			AS_IS_ERR(reqc, EINVAL,
+				"strgp '%s': index '%d': "
+				"index['cols'] is required.\n",
+				strgp->obj.name, j);
 			goto err_0;
 		}
-		didx->col_count = jidx_cols->item_count;
-		didx->col_names = calloc(1, didx->col_count*sizeof(didx->col_names[0]));
+		didx->col_count = json_array_size(jidx_cols);
+		didx->col_names = calloc(1, didx->col_count * sizeof(didx->col_names[0]));
 		if (!didx->col_names)
 			goto err_enomem;
-		k = 0;
-		TAILQ_FOREACH(jidx_col, &jidx_cols->item_list, item_entry) {
-			if (jidx_col->type != JSON_STRING_VALUE) {
-				DECOMP_ERR(reqc, EINVAL, "strgp '%s': index '%d':"
-						"index['cols'][%d] must be a string.\n",
-						strgp->obj.name, j, k);
+		json_array_foreach(jidx_cols, k, jidx_col) {
+			if (!json_is_string(jidx_col)) {
+				AS_IS_ERR(reqc, EINVAL,
+					"strgp '%s': index '%d': "
+					"index['cols'][%d] must be a string.\n",
+					strgp->obj.name, j, k);
 				goto err_0;
 			}
-			didx->col_names[k] = strdup(jidx_col->value.str_->str);
+			didx->col_names[k] = strdup(json_string_value(jidx_col));
 			if (!didx->col_names[k])
 				goto err_enomem;
-			k++;
 		}
-		assert(k == didx->col_count);
-		j++;
-	}
-	assert(j == jidxs->item_count);
+}
  out:
-
 	return &dcfg->decomp;
-
  err_enomem:
-	DECOMP_ERR(reqc, errno, "Not enough memory\n");
+	AS_IS_ERR(reqc, errno, "Not enough memory\n");
  err_0:
 	if (dcfg)
-		__decomp_as_is_cfg_free(dcfg);
+		as_is_cfg_free(dcfg);
 	return NULL;
 }
 
 /* protected by strgp->lock */
-static __decomp_as_is_row_cfg_t
-__get_row_cfg(__decomp_as_is_cfg_t dcfg, ldms_set_t set)
+static as_is_row_cfg_t
+get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 {
 	char *name = NULL;
 	int i, j, k, rec_card, set_card, name_len, col_count;
-	__decomp_as_is_row_cfg_t drow = NULL;
-	__decomp_as_is_col_cfg_t dcol = NULL;
+	as_is_row_cfg_t drow = NULL;
+	as_is_col_cfg_t dcol = NULL;
 	enum ldms_value_type mtype;
 	ldms_mval_t lh, le, rec_array, rec;
 	size_t marray_len, col_array_len;
@@ -545,8 +504,8 @@ __get_row_cfg(__decomp_as_is_cfg_t dcfg, ldms_set_t set)
 
 	/* index */
 	for (i = 0; i < dcfg->idx_count; i++) {
-		__decomp_index_t didx = &dcfg->idxs[i];
-		__decomp_index_t ridx = &drow->idxs[i];
+		as_is_index_t didx = &dcfg->idxs[i];
+		as_is_index_t ridx = &drow->idxs[i];
 		*ridx = *didx;
 		ridx->col_idx = calloc(ridx->col_count, sizeof(ridx->col_idx[0]));
 		if (!ridx->col_idx)
@@ -601,12 +560,12 @@ __get_row_cfg(__decomp_as_is_cfg_t dcfg, ldms_set_t set)
 
 static union ldms_value fill = {0};
 
-static int __decomp_as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
-				    ldmsd_row_list_t row_list, int *row_count)
+static int as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
+				ldmsd_row_list_t row_list, int *row_count)
 {
-	__decomp_as_is_cfg_t dcfg = (void*)strgp->decomp;
-	__decomp_as_is_row_cfg_t drow;
-	__decomp_as_is_col_cfg_t dcol;
+	as_is_cfg_t dcfg = (void*)strgp->decomp;
+	as_is_row_cfg_t drow;
+	as_is_col_cfg_t dcol;
 	ldmsd_row_t row;
 	ldmsd_col_t col;
 	ldmsd_row_index_t idx;
@@ -616,7 +575,7 @@ static int __decomp_as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	int j, k, c, mid, rc, rec_mid;
 	int col_count;
 	struct _col_mval_s {
-		__decomp_as_is_col_cfg_t dcol;
+		as_is_col_cfg_t dcol;
 		union {
 			ldms_mval_t set_mval;
 			ldms_mval_t lh;
@@ -645,7 +604,7 @@ static int __decomp_as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	TAILQ_INIT(&list_cols);
 	ldms_digest = ldms_set_digest_get(set);
 
-	drow = __get_row_cfg(dcfg, set);
+	drow = get_row_cfg(dcfg, set);
 	if (!drow)
 		return errno;
 
@@ -857,11 +816,11 @@ static int __decomp_as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	/* clean up stuff here */
 	if (col_mvals)
 		free(col_mvals);
-	__decomp_as_is_release_rows(strgp, row_list);
+	as_is_release_rows(strgp, row_list);
 	return rc;
 }
 
-static void __decomp_as_is_release_rows(ldmsd_strgp_t strgp,
+static void as_is_release_rows(ldmsd_strgp_t strgp,
 					 ldmsd_row_list_t row_list)
 {
 	ldmsd_row_t row;

@@ -42,86 +42,86 @@ static int tree_comparator(void *a, const void *b)
 	ldmsd_row_cache_idx_t key_b = (ldmsd_row_cache_idx_t)b;
 	ldmsd_row_cache_key_t rowk_a, rowk_b;
 	for (i = 0; i < key_a->key_count; i++) {
-		rowk_a = &key_a->keys[i];
-		rowk_b = &key_b->keys[i];
+		rowk_a = key_a->keys[i];
+		rowk_b = key_b->keys[i];
 		switch (rowk_a->type) {
 		case LDMS_V_TIMESTAMP:
-			if (rowk_a->val.v_ts.sec < rowk_b->val.v_ts.sec)
+			if (rowk_a->mval->v_ts.sec < rowk_b->mval->v_ts.sec)
 				return -1;
-			if (rowk_a->val.v_ts.sec > rowk_b->val.v_ts.sec)
+			if (rowk_a->mval->v_ts.sec > rowk_b->mval->v_ts.sec)
 				return 1;
-			if (rowk_a->val.v_ts.usec < rowk_b->val.v_ts.usec)
+			if (rowk_a->mval->v_ts.usec < rowk_b->mval->v_ts.usec)
 				return -1;
-			if (rowk_a->val.v_ts.usec > rowk_b->val.v_ts.usec)
+			if (rowk_a->mval->v_ts.usec > rowk_b->mval->v_ts.usec)
 				return 1;
 			return 0;
 		case LDMS_V_CHAR_ARRAY:
-			return strncmp(rowk_a->val.a_char, rowk_b->val.a_char,
+			return strncmp(rowk_a->mval->a_char, rowk_b->mval->a_char,
 				       rowk_a->count);
 		case LDMS_V_CHAR:
-			if (rowk_a->val.v_char == rowk_b->val.v_char)
+			if (rowk_a->mval->v_char == rowk_b->mval->v_char)
 				continue;
-			if (rowk_a->val.v_char > rowk_b->val.v_char)
+			if (rowk_a->mval->v_char > rowk_b->mval->v_char)
 				return 1;
 			return -1;
 		case LDMS_V_U8:
-			if (rowk_a->val.v_u8 == rowk_b->val.v_u8)
+			if (rowk_a->mval->v_u8 == rowk_b->mval->v_u8)
 				continue;
-			if (rowk_a->val.v_u8 > rowk_b->val.v_u8)
+			if (rowk_a->mval->v_u8 > rowk_b->mval->v_u8)
 				return 1;
 			return -1;
 		case LDMS_V_S8:
-			if (rowk_a->val.v_s8 == rowk_b->val.v_s8)
+			if (rowk_a->mval->v_s8 == rowk_b->mval->v_s8)
 				continue;
-			if (rowk_a->val.v_s8 > rowk_b->val.v_s8)
+			if (rowk_a->mval->v_s8 > rowk_b->mval->v_s8)
 				return 1;
 			return -1;
 		case LDMS_V_U16:
-			if (rowk_a->val.v_u16 == rowk_b->val.v_u16)
+			if (rowk_a->mval->v_u16 == rowk_b->mval->v_u16)
 				continue;
-			if (rowk_a->val.v_u16 > rowk_b->val.v_u16)
+			if (rowk_a->mval->v_u16 > rowk_b->mval->v_u16)
 				return 1;
 			return -1;
 		case LDMS_V_S16:
-			if (rowk_a->val.v_s16 == rowk_b->val.v_s16)
+			if (rowk_a->mval->v_s16 == rowk_b->mval->v_s16)
 				continue;
-			if (rowk_a->val.v_s16 > rowk_b->val.v_s16)
+			if (rowk_a->mval->v_s16 > rowk_b->mval->v_s16)
 				return 1;
 			return -1;
 		case LDMS_V_U32:
-			if (rowk_a->val.v_u32 == rowk_b->val.v_u32)
+			if (rowk_a->mval->v_u32 == rowk_b->mval->v_u32)
 				continue;
-			if (rowk_a->val.v_u32 > rowk_b->val.v_u32)
+			if (rowk_a->mval->v_u32 > rowk_b->mval->v_u32)
 				return 1;
 			return -1;
 		case LDMS_V_S32:
-			if (rowk_a->val.v_s32 == rowk_b->val.v_s32)
+			if (rowk_a->mval->v_s32 == rowk_b->mval->v_s32)
 				continue;
-			if (rowk_a->val.v_s32 > rowk_b->val.v_s32)
+			if (rowk_a->mval->v_s32 > rowk_b->mval->v_s32)
 				return 1;
 			return -1;
 		case LDMS_V_U64:
-			if (rowk_a->val.v_u64 == rowk_b->val.v_u64)
+			if (rowk_a->mval->v_u64 == rowk_b->mval->v_u64)
 				continue;
-			if (rowk_a->val.v_u64 > rowk_b->val.v_u64)
+			if (rowk_a->mval->v_u64 > rowk_b->mval->v_u64)
 				return 1;
 			return -1;
 		case LDMS_V_S64:
-			if (rowk_a->val.v_s64 == rowk_b->val.v_s64)
+			if (rowk_a->mval->v_s64 == rowk_b->mval->v_s64)
 				continue;
-			if (rowk_a->val.v_s64 > rowk_b->val.v_s64)
+			if (rowk_a->mval->v_s64 > rowk_b->mval->v_s64)
 				return 1;
 			return -1;
 		case LDMS_V_F32:
-			if (rowk_a->val.v_f == rowk_b->val.v_f)
+			if (rowk_a->mval->v_f == rowk_b->mval->v_f)
 				continue;
-			if (rowk_a->val.v_f > rowk_b->val.v_f)
+			if (rowk_a->mval->v_f > rowk_b->mval->v_f)
 				return 1;
 			return -1;
 		case LDMS_V_D64:
-			if (rowk_a->val.v_d == rowk_b->val.v_d)
+			if (rowk_a->mval->v_d == rowk_b->mval->v_d)
 				continue;
-			if (rowk_a->val.v_d > rowk_b->val.v_d)
+			if (rowk_a->mval->v_d > rowk_b->mval->v_d)
 				return 1;
 			return -1;
 		default:
@@ -152,6 +152,28 @@ ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_limit)
 
 	return rcache;
 }
+
+/**
+ * @brief ldmsd_row_cache_key_create
+ *
+ * Returns an ldmsd_row_cache_key of sufficient size to contain
+ * the specified type and array count.
+ *
+ * @param type The ldms value type
+ * @param len The size of the array if type is an array
+ * @return ldmsd_row_cache_key_t
+ */
+ldmsd_row_cache_key_t ldmsd_row_cache_key_create(enum ldms_value_type type, size_t len)
+{
+	size_t size = ldms_metric_value_size_get(type, len);
+	ldmsd_row_cache_key_t key = calloc(1, sizeof(*key) + size);
+	key->count = len;
+	key->type = type;
+	key->mval_size = size;
+	key->mval = (ldms_mval_t)(key+1);
+	return key;
+}
+
 /**
  * \brief ldmsd_row_idx_create
  *
@@ -160,7 +182,7 @@ ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_limit)
  * such that operators such as 'diff' make sense, e.g. ordered by
  * 'job_id', 'component_id', and 'timestamp'.
  */
-ldmsd_row_cache_idx_t ldmsd_row_cache_idx_create(int key_count, ldmsd_row_cache_key_t keys)
+ldmsd_row_cache_idx_t ldmsd_row_cache_idx_create(int key_count, ldmsd_row_cache_key_t *keys)
 {
 	ldmsd_row_cache_idx_t row_idx =	calloc(1, sizeof(*row_idx));
 	if (!row_idx)
@@ -169,6 +191,54 @@ ldmsd_row_cache_idx_t ldmsd_row_cache_idx_create(int key_count, ldmsd_row_cache_
 	row_idx->keys = keys;
  out:
 	return row_idx;
+}
+
+ldmsd_row_cache_idx_t ldmsd_row_cache_idx_dup(ldmsd_row_cache_idx_t idx)
+{
+	int i;
+	ldmsd_row_cache_idx_t dup_idx =	calloc(1, sizeof(*dup_idx));
+	if (!dup_idx)
+		return NULL;
+	dup_idx->key_count = idx->key_count;
+	dup_idx->keys = calloc(idx->key_count, sizeof(*dup_idx->keys));
+	if (!dup_idx->keys)
+		goto err_0;
+	for (i = 0; i < dup_idx->key_count; i++) {
+		dup_idx->keys[i] =
+			calloc(1, idx->keys[i]->mval_size + sizeof(*dup_idx->keys[i]));
+		if (!dup_idx->keys[i])
+			goto err_1;
+		dup_idx->keys[i]->count = idx->keys[i]->count;
+		dup_idx->keys[i]->mval_size = idx->keys[i]->mval_size;
+		dup_idx->keys[i]->mval = (ldms_mval_t)(dup_idx->keys[i] + 1);
+		dup_idx->keys[i]->type = idx->keys[i]->type;
+		memcpy(dup_idx->keys[i]->mval, idx->keys[i]->mval,
+			idx->keys[i]->mval_size);
+	}
+	return dup_idx;
+err_1:
+	while (i >= 0) {
+		free(dup_idx->keys[i]);
+		i -= 1;
+	}
+	free(dup_idx->keys);
+err_0:
+	free(dup_idx);
+	return NULL;
+}
+
+void ldmsd_row_cache_key_free(ldmsd_row_cache_key_t key)
+{
+	free(key);
+}
+
+void ldmsd_row_cache_idx_free(ldmsd_row_cache_idx_t idx)
+{
+	int i;
+	for (i = 0; i < idx->key_count; i++)
+		ldmsd_row_cache_key_free(idx->keys[i]);
+	free(idx->keys);
+	free(idx);
 }
 
 int ldmsd_row_cache(ldmsd_row_cache_t rcache,
@@ -191,24 +261,24 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 	if (!group_rbn) {
 		/* Create a new group and add it to the tree */
 		group = calloc(1, sizeof(*group));
+		group->row_key_count = row_key->key_count;
 		rbt_init(&group->row_tree, tree_comparator);
+		group_key = ldmsd_row_cache_idx_dup(group_key);
 		rbn_init(&group->rbn, group_key);
 		rbt_ins(&rcache->group_tree, &group->rbn);
 		group_rbn = &group->rbn;
 	}
+
 	group = container_of(group_rbn, struct ldmsd_row_group_s, rbn);
 
 	if (rbt_card(&group->row_tree) == rcache->row_limit) {
 		ldmsd_row_cache_entry_t cent;
 		struct rbn *rbn;
 		rbn = rbt_min(&group->row_tree);
-		assert(rbn);
 		cent = container_of(rbn, struct ldmsd_row_cache_entry_s, rbn);
-		assert(rbn);
-		free(cent->idx->keys);
-		free(cent->idx);
-		free(cent->row);
 		rbt_del(&group->row_tree, rbn);
+		ldmsd_row_cache_idx_free(cent->idx);
+		free(cent->row);
 		free(cent);
 	}
 

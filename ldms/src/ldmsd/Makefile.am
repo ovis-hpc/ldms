@@ -46,7 +46,7 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_event.c ldmsd_event.h \
 	ldmsd_decomp.c ldmsd_row_cache.c
 ldmsd_LDADD = ../core/libldms.la libldmsd_request.la libldmsd_stream.la \
-	$(LZAP) $(LMMALLOC) $(LOVIS_UTIL) $(LCOLL) $(LJSON_UTIL) \
+	$(LZAP) $(LMMALLOC) $(LOVIS_UTIL) $(LCOLL) $(LJSON_UTIL) $(LTLIBJANSSON) \
 	$(LOVIS_EVENT) $(LOVIS_EV) -lpthread $(LOVIS_CTRL) -lm -ldl
 ldmsd_CFLAGS = $(AM_CFLAGS)
 ldmsd_LDFLAGS = $(AM_LDFLAGS) -rdynamic -pthread
