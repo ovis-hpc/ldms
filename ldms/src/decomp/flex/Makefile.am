@@ -8,5 +8,5 @@ DECOMP_LIBADD = ../../core/libldms.la \
 		../../ldmsd/libldmsd_request.la
 
 libdecomp_flex_la_SOURCES = decomp_flex.c
-libdecomp_flex_la_LIBADD  = $(DECOMP_LIBADD)
+libdecomp_flex_la_LIBADD  = $(DECOMP_LIBADD) $(LTLIBJANSSON)
 pkglib_LTLIBRARIES += libdecomp_flex.la
