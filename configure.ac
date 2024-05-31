@@ -65,6 +65,8 @@ AC_C_FLEXIBLE_ARRAY_MEMBER
 OVIS_PKGLIBDIR
 
 AC_LIB_HAVE_LINKFLAGS([jansson], [], [#include <jansson.h>])
+AS_IF([test "x$HAVE_LIBJANSSON" = xno],
+	[AC_MSG_ERROR([libjansson or jansson.h not found])])
 AM_CONDITIONAL([HAVE_LIBJANSSON], [test "x$HAVE_LIBJANSSON" = xyes])
 
 dnl change sharedstatedir default
