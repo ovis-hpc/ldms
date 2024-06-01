@@ -830,6 +830,11 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 			rc = handle_group(strgp, jgroup, cfg_row, row_no, reqc);
 			if (rc)
 				goto err_0;
+		} else if (cfg_row->op_present) {
+			THISLOG(reqc, EINVAL,
+				"%s: row: %d, The 'group' clause is required if "
+				"functional operators are in use.\n",
+				strgp->obj.name, row_no);
 		}
 
 		dcfg->row_count++;
