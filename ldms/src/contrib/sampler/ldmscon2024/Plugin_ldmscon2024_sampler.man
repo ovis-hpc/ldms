@@ -1,0 +1,47 @@
+.\" Manpage for Plugin_ldmscon2024_sapmler
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "6 June 2024" "v4" "LDMS Plugin ldmscon2024_sapmler man page"
+
+.SH NAME
+Plugin_ldmscon2024_sapmler - man page for the LDMS ldmscon2024_sapmler plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=ldmscon2024_sapmler [ <attr>=<value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
+or a configuration file. The ldmscon2024_sapmler plugin is a demo sampler prepared for "LDMSCON2024: Focus Group: Sampler Plugin Implementation."
+
+The sampler shows how to use metric templates to create schemas or add metrics to an existing schema.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+The ldmscon2024_sapmler plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
+
+.TP
+.BR config
+name=<plugin_name> <common sampler plugin attributes>
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be ldmscon2024_sapmler.
+.RE
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=ldmscon2024_sapmler
+config name=ldmscon2024_sapmler producer=localhost1 instance=localhost1/test1 component_id=1 job_set=localhost1/jobid
+start name=ldmscon2024_sapmler interval=1000000
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), Plugin_tutorial_sampler(7)

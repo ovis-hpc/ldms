@@ -378,6 +378,7 @@ AM_CONDITIONAL([ENABLE_GRPTEST_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x
 dnl options for contributed samplers
 OPTION_DEFAULT_DISABLE([ipmireader], [ENABLE_IPMIREADER])
 OPTION_DEFAULT_DISABLE([tutorial-sampler],[ENABLE_TUTORIAL_SAMPLER])
+OPTION_DEFAULT_DISABLE([ldmscon2024_sampler], [ENABLE_LDMSCON2024_SAMPLER])
 
 dnl Variorum dependency support
 AC_ARG_ENABLE([variorum],
@@ -1125,6 +1126,7 @@ ldms/src/contrib/sampler/daos/Makefile
 ldms/src/contrib/sampler/daos/test/Makefile
 ldms/src/contrib/sampler/ipmireader/Makefile
 ldms/src/contrib/sampler/tutorial/Makefile
+ldms/src/contrib/sampler/ldmscon2024/Makefile
 ldms/src/contrib/sampler/variorum_sampler/Makefile
 ldms/src/contrib/sampler/geopm_sampler/Makefile
 ldms/src/third-plugins/Makefile
