@@ -1116,6 +1116,7 @@ ldms/src/sampler/app_sampler/Makefile
 ldms/src/sampler/slingshot_metrics/Makefile
 ldms/src/sampler/slingshot_info/Makefile
 ldms/src/sampler/slingshot_switch/Makefile
+ldms/src/sampler/json/Makefile
 ldms/src/sampler/zfs_topvdevs/Makefile
 ldms/src/sampler/zfs_leafvdevs/Makefile
 ldms/src/sampler/zfs_zpool/Makefile
