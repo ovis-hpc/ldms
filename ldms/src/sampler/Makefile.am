@@ -30,6 +30,7 @@ ldmssamplerincludedir = $(includedir)/ldms/sampler
 ldmssamplerinclude_HEADERS = sampler_base.h
 
 SUBDIRS += netlink
+SUBDIRS += json
 
 if ENABLE_LUSTRE
 SUBDIRS += lustre_client

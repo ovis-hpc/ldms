@@ -1,0 +1,312 @@
+.\" Manpage for json_stream_sampler
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "5 Aug 2023" "v4" "LDMSD Plugin JSON Stream Sampler man page"
+
+.SH NAME
+Plugin_json_stream_sampler - man page for the LDMSD json_stream_sampler plugin
+
+.SH SYNOPSIS
+
+Within ldmsd_controller or a configuration file:
+
+.SY config
+.BR name=\fBjson_stream_sampler\fR
+.BI producer=\fIPRODUCER\fR
+.BI instance=\fIINSTANCE\fR
+.OP component_id=\fICOMP_ID\fR
+.OP stream=\fINAME\fR
+.OP uid=\fIUID\fR
+.OP gid=\fIGID\fR
+.OP perm=\fIPERM\fR
+.OP heap_szperm=\fIBYTES\fR
+.YS
+
+.SH DESCRIPTION
+.P
+The \fBjson_stream_store\fR monitors JSON object data presented on a configured
+set of streams. JSON object data is encoded in LDMS Metric Sets; the
+intention of which is to store these metric sets using decomposition
+through a storage plugin.
+.P
+When publishing JSON dictionary data to \fBjson_stream_plugin\fR,
+there are fields in the JSON dictionary that have special
+meaning. These fields are shown in the table below:
+.P
+.TS
+tab(@) box;
+l l l .
+\fBAttribute Name\fR @ \fBData Type\fR @ \fBDescription\fR
+_
+schema @ string @ The name of a Metric Set schema for JSON dictionaries received on this stream.
+\fINAME\fR_max_len @ integer @ For a list or array named \fINAME\fR, this is maximum length of the list or array.
+.TE
+.SS "Schema Management"
+The value of the \fIschema\fR attribute in the top-level JSON
+dictionary is maintained in a tree. The first time the schema name is
+seen, an LDMS Schema is created based on the value of the JSON
+dictionary. Once created, the schema is used to create the metric
+set. Each time a stream message is received, the metric set is
+updated.
+.PP
+The \fIschema\fR attribute is mandatory. If it not present in the
+top-level JSON dictionary, an error is logged and the message is ignored.
+
+.SS "Encoding Types"
+Primitive types are encoded as attributes in the LDMS metric set with
+their associated LDMS type. The table below shows how the JSON
+attributes are mapped to LDMS metric types.
+.TS
+tab(@) box;
+l l l .
+\fBJSON Type\fR @ \fBLDMS Type\fR @ \fBExample JSON Value\fR
+_
+Integer @ LDMS_V_S64 @ 45
+Floating Point @ LDMS_V_D64 @ 3.1415
+String @ LDMS_V_BYTE_ARRAY @ "hello", 'world'
+List @ LDMS_V_LIST @ [ 1, 2, 3 ]
+Dictionary @ LDMS_V_RECORD @ { "attr1" : 1, "attr2" : 2, "attr3" : 3 }
+.TE
+.PP
+The encoding of all JSON types except strings, dictionaries and lists is
+straightfoward. The coding of Strings, Lists and Dictionaries have additional
+limitations as described below.
+
+.SS "Stream Meta-data"
+.PP
+Stream events include the user-id, and group-id of the application
+publishing the stream data. This data is encoded in the metric set
+with the special names \fBS_uid\fR, and \fBS_gid\fR respectively. The
+intention is that this data can stored in rows as configured by the
+user with a decomposition configuration.
+
+.SS "Encoding Strings"
+Strings are encoded as LDMS_V_BYTE_ARRAY. By default, the length of
+the array is 255 unless an attribute with the name \fINAME\fR_max_len
+is present in the dictionary along with the string value, its value is
+used to size the string array.
+.PP
+For example:
+.PP
+.RS 4
+.nf
+{ "my_string" : "this is a string", "my_string_max_len" : 4096 }
+.fi
+.RE
+.PP
+will result in an LDMS metric with the name "my_string", type
+LDMS_V_BYTE_ARRAY, and length of 4096 being created in the metric set.
+
+.SS "Encoding Arrays"
+Any list present in the top-level dictionary is encoded as a list, however,
+lists present in a 2nd-level dictionary are encoded as arrays. This is because
+LDMS_V_LIST inside an LDMS_V_RECORD is not supported.  The length of the array
+is determined by the initial value of the array in the record; but can be
+overridden with the \fINAME\fR_max_len attribute as described above for
+strings. Lists of strings in a 2nd-level dictionary are treated as a
+JSON-formatted string of a list.  That is, they are encoded as
+LDMS_V_CHAR_ARRAY because LDMS does not support arrays of LDMS_V_CHAR_ARRAY.
+The length of the array is determined by the length of the JSON-formatted
+string of the initial list.
+
+.SS "Encoding Dictionaries"
+The attributes in the top-level JSON dictionary are encoded in the metric
+set directly. For example the JSON dictionary:
+.PP
+.RS 4
+.nf
+{
+  "schema" : "example",
+  "component_id", 10001,
+  "job_id" : 2048,
+  "seq" : [ 1, 2, 3 ]
+}
+.fi
+.RE
+.PP
+results in a metric set as follows:
+.fi
+.RS 4
+.nf
+$ ldms_ls -h localhost -p 10411 -a munge -E example -l
+ovs-5416_example: consistent, last update: Sat Aug 05 11:38:26 2023 -0500 [281178us]
+D s32        S_uid                                      1002
+D s32        S_gid                                      1002
+D s64        component_id                               10001
+D s64        job_id                                     2048
+D list<>     seq                                        [1,2,3]
+D char[]     schema                                     "example"
+.fi
+.RE
+.PP
+Dictionaries inside the top-level dictionary are encoded as
+LDMS_V_RECORD inside a single element LDMS_V_RECORD_ARRAY. This
+limitation is because an LDMS_V_RECORD is only allowed inside an
+LDMS_V_LIST or LDMS_V_ARRAY.
+.PP
+The JSON below:
+.RS 4
+.nf
+{
+  "schema" : "dictionary",
+  "a_dict" : { "attr_1" : 1, "attr_2" : 2 },
+  "b_dict" : { "attr_3" : 3, "attr_4" : 4 }
+}
+.fi
+.RE
+.PP
+results in the following LDMS metric set.
+.PP
+.RS 4
+.nf
+ovs-5416_dict: consistent, last update: Sat Aug 05 21:14:38 2023 -0500 [839029us]
+D s32         S_uid                                      1002
+D s32         S_gid                                      1002
+M record_type  a_dict_record                             LDMS_V_RECORD_TYPE
+D record[]     a_dict
+  attr_2 attr_1
+       2      1
+M record_type  b_dict_record                             LDMS_V_RECORD_TYPE
+D record[]     b_dict
+  attr_4 attr_3
+       4      3
+D char[]     schema                                     "dict"
+.fi
+.RE
+.PP
+Lists of JSON dictionaries results in each dictionary being encoded as
+an element in an LDMS_V_LIST. Note that all elements in the list must
+be the same type.
+.PP
+The JSON below:
+.PP
+.RS 4
+.nf
+{ "schema" : "dict_list",
+  "a_dict_list" : [
+    { "attr_1" : 1, "attr_2" : 2 },
+    { "attr_1" : 3, "attr_2" : 4 }
+  ]
+}
+.fi
+.RE
+.PP
+results in the following LDMS metric set.
+.PP
+.RS 4
+.nf
+ovs-5416_dict_list: consistent, last update: Sat Aug 05 21:23:11 2023 -0500 [52659us]
+D s32         S_uid                                      1002
+D s32         S_gid                                      1002
+M record_type a_dict_list_record                         LDMS_V_RECORD_TYPE
+D list<>      a_dict_list
+  attr_2 attr_1
+       2      1
+       4      3
+D char[]     schema                                     "dict_list"
+.fi
+.RE
+.PP
+
+The JSON below:
+.PP
+.RS 4
+.nf
+{ 'schema'  : 'json_dict',
+  'dict'    : { 'int'         : 10,
+                'float'       : 1.414,
+                'char'        : 'a',
+                'str'         : 'xyz',
+                'array_int'   : [5, 7, 9],
+                'array_float' : [3.14, 1.414, 1.732],
+                'array_str'   : ['foo', 'bar'],
+                'inner_dict'  : { 'This': 'is',
+                                  'a' : 'string'
+                                }
+              }
+}
+.fi
+.RE
+.PP
+results in the following LDMS metric sets.
+.PP
+.RS 4
+.nf
+ovis-5416_lists_inside_a_dict: consistent, last update: Mon Sep 25 16:21:35 2023 -0500 [310003us]
+D s32          S_uid                                      1000
+D s32          S_gid                                      1000
+M record_type  dict_record                                LDMS_V_RECORD_TYPE
+D record[]     dict
+  int_array char       str_array    float                   inner_dict                float_array   str int
+      5,7,9  "a" "["foo","bar"]" 1.414000 "{"This":"is","a":"string"}" 3.140000,1.414000,1.732000 "xyz"  10
+D char[]       schema                                     "json_dict"
+
+.SS "Set Security"
+.PP
+The metric sets' UID, GID, and permission can be configured using the
+configuration attributes uid, gid, and perm consecutively. If one is not given,
+the value of the received stream data will be used at set creation. Once a
+metric set has been created, the UID, GID, and permission will not be changed
+automatically when the stream data's security data gets changed. However, it
+could be modified via an LDMSD configuration command, set_sec_mod. See
+ldmsd_controller's Man Page.
+
+Note that the UID, GID, and permissions values given at the configuration line
+do not affect the S_uid and S_gid metric values. The S_uid and S_gid metric
+values are always the security embeded with the stream data.
+
+.SH "CONFIG OPTIONS"
+
+.TP
+.BR name=json_stream_sampler
+This must be json_stream_sampler (the name of the plugin).
+.TP
+.BI producer=\fINAME\fR
+The \fINAME\fR of the data producer (e.g. hostname).
+.TP
+.BI instance=\fINAME\fR
+The \fINAME\fR of the set produced by this plugin. This option is required.
+.TP
+.BI component_id=\fIINT\fR
+An integer identifying the component (default: \fI0\fR).
+.TP
+.BI stream=\fINAME\fR
+The name of the LDMSD stream to register for JSON object data.
+.TP
+.BI uid=\fIUID\fR
+The user-id to assign to the metric set.
+.TP
+.BI gid=\fIGID\fR
+The group-id to assign to the metric set.
+.TP
+.BI perm=\fIOCTAL\fR
+An octal number specifying the read-write permissions for the metric
+set. See open(3).
+.TP
+.BI heap_sz=\fIBYTES\fR
+The number of bytes to reserve for the metric set heap.
+.TP
+
+.SH BUGS
+.PP
+Not all JSON objects can be encoded as metric sets. Support for
+records nested inside other records is accomplished by encoding the
+nested records as strings.
+
+.SH EXAMPLES
+
+Plugin configuration example:
+
+.RS
+.EX
+load name=json_stream_sampler
+config name=json_stream_sampler producer=${HOSTNAME} instance=${HOSTNAME}/slurm \\
+       component_id=2 stream=darshan_data heap_sz=1024
+start name=json_stream_sampler interval=1000000
+.EE
+.RE
+
+.SH SEE ALSO
+.nh
+.BR ldmsd (8),
+.BR ldmsd_controller (8),
+.BR Plugin_store_avro_kakfa (8)
