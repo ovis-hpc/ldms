@@ -869,6 +869,8 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	case LDMSD_PRDCR_TYPE_PASSIVE:
 		assert(prdcr->xprt == NULL);
 		prdcr->xprt = ldms_xprt_by_remote_sin((struct sockaddr *)&prdcr->ss);
+                if (!prdcr->xprt)
+			break;
 		ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
 		/* let through */
 	case LDMSD_PRDCR_TYPE_ADVERTISED:
