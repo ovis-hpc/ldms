@@ -94,7 +94,7 @@ jobs:
         updtr_start name=updtr
         EOF
         cat > agg-4.conf << EOF
-        prdcr_add name=samp type=active host=localhost port=10001 xprt=sock interval=1000000
+        prdcr_add name=samp type=active host=127.0.0.1 port=10001 xprt=sock interval=1000000
         prdcr_start name=samp
         updtr_add name=updtr interval=1000000 offset=200000
         updtr_prdcr_add name=updtr regex=.*
@@ -153,7 +153,7 @@ jobs:
         [[ -n "${LIST_SAMP_4_PID}" ]] || error "list_samp.py is not running"
         # ldms_ls-4 to agg-4.3.3
         echo -n "ldms_ls agg-4.3.3 ... "
-        D0=$( ./ldms_ls.sh -x sock -p 10001 )
+        D0=$( ./ldms_ls.sh -x sock -p 10001 -h 127.0.0.1 )
         echo "result: ${D0}"
         # ldms_ls-4 to agg-4
         echo -n "ldms_ls agg-4 ... "
@@ -168,7 +168,7 @@ jobs:
         [[ "${D2}" = "ovis-4.3.3/meminfo" ]] || error "unexpected ldms_ls(4.3.3) agg-4 result"
         # ldms_ls-4 to agg-4.3.3 -l
         echo -n "ldms_ls -l agg-4.3.3 ... "
-        D0=$( ./ldms_ls.sh -l -x sock -p 10001 | grep MemTotal | sed 's/\s\+/ /g' )
+        D0=$( ./ldms_ls.sh -l -x sock -p 10001 -h 127.0.0.1 | grep MemTotal | sed 's/\s\+/ /g' )
         echo "${D0}"
         [[ -n "${D0}" ]] || error "cannot get MemTotal from ldms_ls -l"
         # ldms_ls-4 to agg-4 -l
@@ -205,7 +205,7 @@ jobs:
         echo "---------------"
         # ldms_ls to agg-4.3.3
         echo -n "ldms_ls ... "
-        D0=$(./ldms_ls.sh -x sock -p 10001)
+        D0=$(./ldms_ls.sh -x sock -p 10001 -h 127.0.0.1)
         [[ -z "${D0}" ]] && echo "dir(agg-4.3.3) is empty (good)" || error "ERROR: dir(agg-4.3.3) is not empty"
         # check aggregators
         ps_check agg-4.3.3 ${AGG_433_PID}
@@ -267,7 +267,7 @@ jobs:
         [[ -n "${AGG_4_PID}" ]] || error "agg-4 is not running"
         # ldms_ls-4 to agg-4.3.3
         echo -n "ldms_ls agg-4.3.3 -a munge ... "
-        D0=$( ./ldms_ls.sh -x sock -p 10001 -a munge )
+        D0=$( ./ldms_ls.sh -x sock -p 10001 -a munge -h 127.0.0.1 )
         echo "result: ${D0}"
         # ldms_ls-4 to agg-4
         echo -n "ldms_ls agg-4 -a munge ... "
@@ -282,7 +282,7 @@ jobs:
         [[ "${D2}" = "ovis-4.3.3/meminfo" ]] || error "unexpected ldms_ls(4.3.3) agg-4 result"
         # ldms_ls-4 to agg-4.3.3 -l
         echo -n "ldms_ls -l agg-4.3.3 -a munge ... "
-        D0=$( ./ldms_ls.sh -l -x sock -p 10001 -a munge | grep MemTotal | sed 's/\s\+/ /g' )
+        D0=$( ./ldms_ls.sh -l -x sock -p 10001 -a munge -h 127.0.0.1 | grep MemTotal | sed 's/\s\+/ /g' )
         echo "${D0}"
         [[ -n "${D0}" ]] || error "cannot get MemTotal from ldms_ls -l"
         # ldms_ls-4 to agg-4 -l
@@ -310,7 +310,7 @@ jobs:
         echo "---------------"
         # ldms_ls to agg-4.3.3
         echo -n "ldms_ls agg-4.3.3 -a munge ... "
-        D0=$(./ldms_ls.sh -x sock -p 10001 -a munge )
+        D0=$(./ldms_ls.sh -x sock -p 10001 -a munge -h 127.0.0.1 )
         [[ -z "${D0}" ]] && echo "dir(agg-4.3.3) is empty (good)" || error "ERROR: dir(agg-4.3.3) is not empty"
         # check aggregators
         ps_check agg-4.3.3 ${AGG_433_PID}
