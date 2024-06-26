@@ -411,13 +411,14 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Add a bridge connection. This is the active side of the passive producer.
         Parameters:
-                name=     A unique name for this Producer
-                xprt=     The transport name [sock, rdma, ugni]
-                host=     The hostname of the host
+                name=      A unique name for this Producer
+                xprt=      The transport name [sock, rdma, ugni]
+                host=      The hostname of the host
+                port=      Port number
                 reconnect= The connection retry interval (us)
-                [auth=]   The authentication method
-                [perm=]   The permission to modify the producer in the future.
-                [rail=]   The number of rail endpoints for the prdcr (default: 1).
+                [auth=]    The authentication method
+                [perm=]    The permission to modify the producer in the future.
+                [rail=]    The number of rail endpoints for the prdcr (default: 1).
                 [credits=] The send credits our ldmsd (the one we are controlling)
                            advertises to the prdcr (default: value from ldmsd --credits
                            option). This limits how much outstanding data our ldmsd
@@ -427,7 +428,7 @@ class LdmsdCmdParser(cmd.Cmd):
                            default is -1 (unlimited).
         """
         arg = f"{arg} type=bridge" # Automatically add the producer type
-        arg = self.handle_args('prdcr_add', arg)
+        arg = self.handle_args('bridge_add', arg)
         if arg is None:
             return
         if arg['reconnect'] is None:
