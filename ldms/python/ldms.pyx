@@ -3209,7 +3209,7 @@ cdef class Xprt(object):
         import types
         cdef int rc
         cdef timespec ts
-        if not isinstance(cb, types.FunctionType) and cb is not None:
+        if cb is not None and not callable(cb):
             raise TypeError("Callback argument must be callable")
         self._conn_cb = cb
         self._conn_cb_arg = cb_arg
