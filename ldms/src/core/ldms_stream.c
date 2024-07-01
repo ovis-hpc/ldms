@@ -271,6 +271,7 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 	ldms_rail_t r;
 	int ep_idx;
 	int rc;
+	uint64_t addr_port;
 	if (ev->type == LDMS_STREAM_EVENT_CLOSE)
 		return 0;
 	assert( ev->type == LDMS_STREAM_EVENT_RECV );
@@ -282,10 +283,14 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 		ep_idx = 0;
 		break;
 	case AF_INET:
-		ep_idx = ( be32toh(*(int*)&ev->recv.src.addr[0]) % primer ) % r->n_eps;
+		addr_port = be32toh(*(int*)&ev->recv.src.addr[0]);
+		addr_port = (addr_port<<16) | be16toh(ev->recv.src.sin_port);
+		ep_idx = ( addr_port % primer ) % r->n_eps;
 		break;
 	case AF_INET6:
-		ep_idx = ( be32toh(*(int*)&ev->recv.src.addr[12]) % primer ) % r->n_eps;
+		addr_port = be32toh(*(int*)&ev->recv.src.addr[12]);
+		addr_port = (addr_port<<16) | be16toh(ev->recv.src.sin_port);
+		ep_idx = ( addr_port % primer ) % r->n_eps;
 		break;
 	default:
 		assert(0 == "Unexpected network family");
