@@ -221,7 +221,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                                                       'credits', 'rx_rate' ] },
                       'advertiser_stop': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_add': {'req_attr': ['name'],
-                                           'opt_attr': ['rail', 'ip', 'credits', 'rx_rate', 'regex', 'disabled_start']},
+                                           'opt_attr': ['ip', 'regex', 'disable_start']},
                       'prdcr_listen_del': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_start': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_stop': {'req_attr': ['name'], 'opt_attr': []},
@@ -2568,7 +2568,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_listen_add(self, name, disabled_start=None, regex=None, ip=None, rail=None, credits=None, rx_rate=None):
+    def prdcr_listen_add(self, name, disable_start=None, regex=None, ip=None):
         """
         Tell an aggregator to wait for advertisements from samplers
 
@@ -2578,27 +2578,19 @@ class Communicator(object):
         Parameters:
          - Name of the producer listen
          - Regular expression to match sampler hostnames
-         - The number of rail
-         - The credits in bytes
-         - The receive rate limit
+         - IP range in the CIDR format
 
         Return:
         - status is an errno from the errno module
         - data is an error message if status !=0 or None
         """
         attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
-        if disabled_start is not None:
-            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.AUTO_INTERVAL, value=disabled_start))
+        if disable_start is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.AUTO_INTERVAL, value=disable_start))
         if regex is not None:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex))
         if ip is not None:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.IP, value=ip))
-        if rail is not None:
-            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RAIL, value=rail))
-        if credits is not None:
-            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.CREDITS, value=credits))
-        if rx_rate is not None:
-            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=rx_rate))
 
         req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_ADD,
                             attrs=attr_list)

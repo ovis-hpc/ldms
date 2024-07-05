@@ -2945,16 +2945,8 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
                 name=     A unique name of the producer listen
                 reconnect= The retry interval to check for connection establishment of producers matched the regular expression.
-                [disabled_start=]  Tell LDMSD not to start the producers
+                [disable_start=]  Tell LDMSD not to start the producers
                 [regex=]    A regular expression to match sampler hostnames
-                [rail=]   The number of rail endpoints for the prdcr (default: 1).
-                [credits=] The send credits our ldmsd (the one we are controlling)
-                           advertises to the prdcr (default: value from ldmsd --credits
-                           option). This limits how much outstanding data our ldmsd
-                           holds for the prdcr. The prdcr drops messages when it does
-                           not have enough send credits.
-                [rx_rate=] The recv rate (bytes/sec) limit for this connection. The
-                           default is -1 (unlimited).
         """
         arg = self.handle_args('prdcr_listen_add', arg)
         if arg is None:
