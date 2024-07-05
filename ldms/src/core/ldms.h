@@ -1030,6 +1030,26 @@ int ldms_xprt_is_remote_rail(ldms_t x);
 int ldms_xprt_rail_eps(ldms_t x);
 
 /**
+ * \brief Get the receive limit of an endpoint
+ *
+ * \param x The transport handle
+ *
+ * \retval Receive limit is retunred.
+ * \retval -EINVAL if \c x is NULL or not a rail
+ */
+int64_t ldms_xprt_recv_limit(ldms_t x);
+
+/**
+ * \brief Get the receive rate limit of an endpoint
+ *
+ * \param x The transport handle
+ *
+ * \retval Receive limit is retunred.
+ * \retval -EINVAL if \c x is NULL or not a rail
+ */
+int64_t ldms_xprt_recv_rate_limit(ldms_t x);
+
+/**
  * \brief Get the send credit
  *
  * \param[in]  x       The rail transport handle.

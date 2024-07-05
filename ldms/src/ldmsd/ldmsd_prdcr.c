@@ -614,7 +614,7 @@ static int __advertise_resp_cb(ldmsd_req_cmd_t rcmd)
 	return 0;
 }
 
-static int __send_advertisement(ldmsd_prdcr_t prdcr)
+static void __send_advertisement(ldmsd_prdcr_t prdcr)
 {
 	int rc;
 	ldmsd_req_cmd_t rcmd;
@@ -625,21 +625,35 @@ static int __send_advertisement(ldmsd_prdcr_t prdcr)
 				__advertise_resp_cb, prdcr);
 	if (!rcmd) {
 		ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
-		return ENOMEM;
+		goto out;
 	}
 
-	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, prdcr->obj.name);
-	if (rc)
-		goto out;
 	rc = gethostname(my_hostname, HOST_NAME_MAX+1);
+	if (rc) {
+		ovis_log(NULL, OVIS_LERROR, "Failed to construct an advertisement. " \
+								"gethostname() returned error %d\n", rc);
+		goto out;
+	}
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, prdcr->obj.name);
+	if (rc) {
+		ovis_log(NULL, OVIS_LERROR, "Failed to construct an advertisement. " \
+															"Error %d\n", rc);
+		goto out;
+	}
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_HOST, my_hostname);
-	if (rc)
+	if (rc) {
+		ovis_log(NULL, OVIS_LERROR, "Failed to construct an advertisement. " \
+															"Error %d\n", rc);
 		goto out;
+	}
 	rc = ldmsd_req_cmd_attr_term(rcmd);
-	if (rc)
+	if (rc) {
+		ovis_log(NULL, OVIS_LERROR, "Failed to send an advertisement. " \
+															"Error %d\n", rc);
 		goto out;
+	}
 out:
-	return rc;
+	return;
 }
 
 static int __sampler_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
@@ -651,7 +665,6 @@ static int __sampler_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 			prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
 			if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISER) {
 				__send_advertisement(prdcr);
-				/* TODO: handle the error */
 			}
 			break;
 		case LDMS_XPRT_EVENT_DISCONNECTED:

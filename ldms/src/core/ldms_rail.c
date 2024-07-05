@@ -1283,6 +1283,26 @@ int ldms_xprt_rail_eps(ldms_t _r)
 	return r->n_eps;
 }
 
+int64_t ldms_xprt_recv_limit(ldms_t _r)
+{
+	ldms_rail_t r = (void*)_r;
+	if (!_r)
+		return -EINVAL;
+	if (!XTYPE_IS_RAIL(_r->xtype))
+		return -EINVAL;
+	return r->recv_limit;
+}
+
+int64_t ldms_xprt_recv_rate_limit(ldms_t _r)
+{
+	ldms_rail_t r = (void*)_r;
+	if (!_r)
+		return -EINVAL;
+	if (!XTYPE_IS_RAIL(_r->xtype))
+		return -EINVAL;
+	return r->recv_rate_limit;
+}
+
 void __rail_ep_limit(ldms_t x, void *msg, int msg_len)
 {
 	/* x is the legacy ldms xprt in the rail, its context is the assocated

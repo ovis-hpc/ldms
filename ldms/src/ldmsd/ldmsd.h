@@ -392,9 +392,6 @@ typedef struct ldmsd_prdcr_listen {
 	} state;
 	const char *hostname_regex_s;
 	regex_t regex;
-	int rails; /* Rail size */
-	int recv_credits; /* bytes */
-	int rate_limits; /* bytes/sec */
 	int auto_start; /* default is 1, i.e., auto start producers */
 
 	/* Network Address & prefix_len from a given CIDR IP address string */

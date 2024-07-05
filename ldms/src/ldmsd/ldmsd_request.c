@@ -9496,18 +9496,11 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	char *regex_str;
 	char *cidr_str;
 	char *reconnect_str;
-	char *rail_str;
-	char *credits_str;
-	char *rx_rate_str;
 	char *disabled_start;
 	char *attr_name;
 	ldmsd_prdcr_listen_t pl;
-	int rail;
-	uint64_t credits;
-	uint64_t rx_rate;
 
-	name = regex_str = reconnect_str = rail_str = credits_str = NULL;
-	rx_rate_str = cidr_str = disabled_start = NULL;
+	name = regex_str = reconnect_str = cidr_str = disabled_start = NULL;
 
 	attr_name = "name";
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -9517,42 +9510,6 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	regex_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	cidr_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_IP);
 	disabled_start = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTO_INTERVAL);
-
-	rail_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RAIL);
-	if (rail_str) {
-		rail = atoi(rail_str);
-		if (rail <= 0) {
-			reqc->errcode = EINVAL;
-			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-						"'rail' attribute must be a positive "
-						"integer, got '%s'", rail_str);
-			goto send_reply;
-		}
-	}
-
-	credits_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_CREDITS);
-	if (credits_str) {
-		credits = atol(credits_str);
-		if (credits <= 2) {
-			reqc->errcode = EINVAL;
-			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-						"'credits' attribute must be greater "
-						"than -2, got '%s'", credits_str);
-			goto send_reply;
-		}
-	}
-
-	rx_rate_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RX_RATE);
-	if (rx_rate_str) {
-		rx_rate = atol(rx_rate_str);
-		if (credits <= -2) {
-			reqc->errcode = EINVAL;
-			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-						"'rx_rate' attribute must be greater "
-						"than -2, got '%s'", rx_rate_str);
-			goto send_reply;
-		}
-	}
 
 	pl = (ldmsd_prdcr_listen_t)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_PRDCR_LISTEN,
@@ -9605,8 +9562,6 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 		}
 	}
 
-	pl->rails = rail;
-	pl->rate_limits = rx_rate;
 	rbt_init(&pl->prdcr_tree, prdcr_ref_cmp);
 	ldmsd_cfgobj_unlock(&pl->obj);
 
@@ -9615,9 +9570,6 @@ send_reply:
 	free(regex_str);
 	free(cidr_str);
 	free(reconnect_str);
-	free(rail_str);
-	free(credits_str);
-	free(rx_rate_str);
 	free(disabled_start);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
@@ -9917,6 +9869,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t l
 	int is_start = 0;
 	struct ldms_xprt_event conn_ev;
 	name = xprt_s = hostname = NULL;
+	ldms_t x = ldms_xprt_get(reqc->xprt->ldms.ldms);
 
 	attr_name = "name";
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -9928,7 +9881,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t l
 	if (!hostname)
 		goto einval;
 
-	xprt_s = (char *)ldms_xprt_type_name(reqc->xprt->ldms.ldms);
+	xprt_s = (char *)ldms_xprt_type_name(x);
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	uid = sctxt.crd.uid;
@@ -9939,7 +9892,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t l
 		prdcr = ldmsd_prdcr_new_with_auth(name, xprt_s, hostname, rem_addr->sin_port,
 				LDMSD_PRDCR_TYPE_ADVERTISED, INT_MAX,
 				NULL, uid, gid, 0770,
-				lp->rails, lp->recv_credits, lp->rate_limits);
+				ldms_xprt_rail_eps(x), ldms_xprt_recv_limit(x), ldms_xprt_recv_rate_limit(x));
 		if (!prdcr) {
 			reqc->errcode = ENOMEM;
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
@@ -10013,7 +9966,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t l
 		rc = EAGAIN;
 		break;
 	case LDMSD_PRDCR_STATE_STOPPED:
-		prdcr->xprt = ldms_xprt_get(reqc->xprt->ldms.ldms);
+		prdcr->xprt = ldms_xprt_get(x);
 		ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
 		prdcr->conn_state = LDMSD_PRDCR_STATE_STANDBY;
 		if (lp->auto_start && is_start) {
@@ -10046,6 +9999,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t l
 	}
 	ldmsd_prdcr_unlock(prdcr);
 out:
+	ldms_xprt_put(x); /* Put back the reference at the beginning of the funciton */
 	return rc;
 einval:
 	ovis_log(config_log, OVIS_LERROR,

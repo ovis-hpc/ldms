@@ -32,7 +32,7 @@ ldmsd_sampler_advertisement - Manual for LDMSD Sampler Advertisement
 
 .IP \fBprdcr_listen_add
 .RI "name=" NAME "
-.RI "[disabled_start=" TURE|FALSE "] [regex=" REGEX "] [ip=" CIDR "] [rail=" SIZE "] [credits=" BYTES "] [rx_rate=" RATE_LIMIT "]"
+.RI "[disable_start=" TURE|FALSE "] [regex=" REGEX "] [ip=" CIDR "]"
 
 .IP \fBprdcr_listen_start
 .RI "name=" NAME
@@ -47,26 +47,32 @@ ldmsd_sampler_advertisement - Manual for LDMSD Sampler Advertisement
 
 .SH DESCRIPTION
 
-LDMSD Sampler Discovery is a capability that enables LDMSD automatically add
-producers that its hostname matches a given regular expression. The feature
-eliminates the need for manual configuration of sampler hostname in the
-aggregator configuration file.
+LDMSD Sampler Discovery is a capability that enables LDMSD to automatically add
+producers whose hostnames match a given regular expression or whose IP
+addresses fall in a given IP range. If neither regular expression nor an IP
+range is given, LDMSD adds a producer whenever it receives an advertisement
+message. The feature eliminates the need for manual configuration of sampler
+hostnames in the aggregator configuration file.
 
 Admins specify the aggregator hostname and the listening port in sampler
 configuration via the \fBadvertiser_add\fR command and start the advertisement
-with the \fBadvertiser_start\fR command. The samplers now advertise their
-hostname to the aggregator. On the aggregator, admins specify a regular
-expression to be matched with sampler hostname via the \fBprdcr_listen_add\fR
-command. The \fBprdcr_listen_start\fR command is used to tell the aggregator to
-automatically add producers corresponding to a sampler of which the hostname
-matches the regular expression.
+with the \fBadvertiser_start\fR command. The sampler now advertises its
+hostname to the aggregator. On the aggregator, admins may specify a regular
+expression to be matched with the sampler hostname or an IP range via the
+\fBprdcr_listen_add\fR command. The \fBprdcr_listen_start\fR command is used to
+tell the aggregator to automatically add producers corresponding to a sampler
+of which the hostname matches the regular expression or the IP address falls in
+the given IP range.
 
-The auto-generated producers is of the ‘advertised’ type. The producer name is
-the same as the name given at the \fBadvertiser_add\fR line in the sampler
-configuration file. LDMSD automatically starts them; however, admins need to
-stop them manually by using the command \fBprdcr_stop\fR or
-\fBprdcr_stop_regex\fR.  They can be restarted by using the command
-\fBprdcr_start\fR or \fBprdcr_start_regex\fR.
+The automatically added producers are of the 'advertised' type. The producer's
+name is the same as the value of the ‘name’ attribute given at the
+\fBadvertiser_add\fR line in the sampler configuration file. LDMSD
+automatically starts the advertised producers. Admins could provide the
+\fBdisable_start\fR attribute at the \fBprdcr_listen_add\fR with the ‘true’
+value to let LDMSD not automatically start the advertised producers. Admins can
+stop an advertised producer using the \fBprdcr_stop\fR or
+\fBprdcr_stop_regex\fR commands. They can be restarted by using the
+\fBprdcr_start\fR or \fBprdcr_start_regex\fR commands.
 
 The description for each command and its parameters are as follows.
 
@@ -89,7 +95,9 @@ d
 The authentication domain to be used to connect to the aggregator
 .RE
 
-\fBadvertiser_start\fR starts an advertisement. If the advertiser does not exist, LDMSD will create the advertiser. In this case, the mandatory attributes for \fBadvertiser_add\fB must be given. The parameters are:
+\fBadvertiser_start\fR starts an advertisement. If the advertiser does not
+exist, LDMSD will create the advertiser. In this case, the mandatory attributes
+for \fBadvertiser_add\fB must be given. The parameters are:
 .RS
 .IP \fBname\fR=\fINAME
 The advertisement name to be started
@@ -130,18 +138,12 @@ Advertisement name
 .RS
 .IP \fBname\fR=\fINAME
 String of the prdcr_listen name.
-.IP \fB[disabled_start\fR=\fITRUE|FALSE\fB]
+.IP \fB[disable_start\fR=\fITRUE|FALSE\fB]
 True to tell LDMSD not to start producers automatically
 .IP \fB[regex\fR=\fIREGEX\fB]
 Regular expression to match with hostnames in sampler advertisements
 .IP \fBip\fR=\fICIDR\fB]
 IP Range in the CIDR format either in IPV4 or IPV6
-.IP \fB[rail\fR=\fIRAIL\fB]
-Number of rails
-.IP \fB[credit\fR=\fICREDIT\fB]
-Receive credits each producer connection accepts in bytes
-.IP \fB[rx_rate\fR=\fIRATE\fB]
-Receive rate limit each producer connection acceipts
 .RE
 
 \fBprdcr_listen_start\fR starts accepting sampler advertisement with matches hostnames. The parameters are:
@@ -164,6 +166,18 @@ Name of prdcr_listen to be deleted
 
 \fBprdcr_listen_status\fR report the status of each prdcr_listen object. There is no parameter.
 
+.SH Managing Receive Credits and Rate Limits for Auto-Added Producers
+
+The receive credits and rate limit control machanisms govern the amount of data
+a producer receives from the data source connected through ldms_xprt. This helps
+prevent data bursts that could overwhelm the LDMS daemon host and network
+resources. To configure receive credits and rate limits, users can create a
+listening endpoint on the aggregator using the \fBlisten\fR command specifying
+the desired values of the \fBcredits\fR and \fBrx_rate\fR attributes. Moreover,
+users configure the sampler daemons to advertise to the listening endpoint
+created on the aggregator, including the preferred creceive credits and rate
+limit values.
+
 .SH EXAMPLE
 
 In this example, there are three LDMS daemons running on \fBnode-1\fR,
@@ -173,13 +187,16 @@ aggregator (\fBagg\fR) runs on \fBnode-3\fR. All LDMSD listen on port 411.
 
 The sampler daemons collect the \fBmeminfo\fR set, and they are configured to
 advertise themselves and connect to the aggregator using sock on host
-\fBnode-3\fR at port 411. The following are the configuration files of the
-\fBsamplerd-1\fR and \fBsamplerd-2\fR.
+\fBnode-3\fR at port 411. They will try to reconnect to the aggregator every 10
+seconds until the connection is established. The following are the configuration
+files of the \fBsamplerd-1\fR and \fBsamplerd-2\fR.
 
 .EX
 .B
 > cat samplerd-1.conf
 .RS 4
+# Create a listening endpoint
+listen xprt=sock port=411
 # Add and start an advertisement
 advertiser_add name=samplerd-1 xprt=sock host=node-3 port=411 reconnect=10s
 advertiser_start name=samplerd-1
@@ -192,6 +209,8 @@ start name=meminfo interval=1s
 .B
 > cat samplerd-2.conf
 .RS 4
+# Create a listening endpoint
+listen xprt=sock port=411
 # Add and start an advertisement using only the advertiser_start command
 advertiser_start name=samplerd-2 host=node-3 port=411 reconnect=10s
 # Load, configure, and start the meminfo plugin
@@ -202,16 +221,15 @@ start name=meminfo interval=1s
 .EE
 
 The aggregator is configured to accept advertisements from the sampler daemons
-that the hostnames match the regular expressions \fBnode0[1-2]\fR. The
-auto-added producers will check for an establish connection with the samplers
-every 10 seconds if the connection becomes disconnected. An updater is added to
-update the sets of all producers on the aggregators every 10 seconds at the 100
-milliseconds offset.
+that the hostnames match the regular expressions \fBnode0[1-2]\fR. The name of
+the auto-added producers is the name of the advertiser on the sampler daemons.
 
 .EX
 .B
 > cat agg.conf
 .RS 4
+# Create a listening endpoint
+listen xprt=sock port=411
 # Accept advertisements sent from LDMSD running on hostnames matched node-[1-2]
 prdcr_listen_add name=computes regex=node-[1-2]
 prdcr_listen_start name=computes
@@ -232,7 +250,7 @@ Welcome to the LDMSD control processor
 sock:node-1:10001> advertiser_status
 Name             Aggregator Host  Aggregator Port Transport    Reconnect (us)         State
 ---------------- ---------------- --------------- ------------ --------------- ------------
-samplerd-1                 node-3           10001         sock        10000000    CONNECTED
+samplerd-1                 node-3             411         sock        10000000    CONNECTED
 sock:node-1:10001>
 .EE
 
@@ -250,6 +268,68 @@ Name                 State      Regex           IP Range
 computes             running    node-[1-2]      -
 Producers: samplerd-1, samplerd-2
 sock:node-3:10001>
+.EE
+
+Next is an example that controls the receive credits and rate limits of the
+auto-added producers on agg11. Similar to the first example, the aggregator,
+agg11, listens on port 411 and waits for advertisements. Moreover, a listening
+endpoint on port 412 is added with a receive credits value. The aggregator also
+creates producers when an advertisement sent from the host its IP address
+falling into the subnet 192.168.0.0:16.
+
+.EX
+.B
+> cat agg11.conf
+.RS 4
+# Create a listening endpoint
+listen xprt=sock port=411
+# Create the listening endpoint for receiving advertisement
+listen xprt=sock port=412 credit=4000
+# Accept advertisements sent from LDMSD running on hostnames their IP address
+# falling in the range 192.168.0.0:16.
+prdcr_listen_add name=compute ip=192.168.0.0:16
+prdcr_listen_start name=compute
+# Add and start an updater
+updtr_add name=all_sets interval=1s offset=100ms
+updtr_prdcr_add name=all_sets regex=.*
+updtr_start name=all
+.RE
+.EE
+
+There are two sampler daemons, which are configured to advertise to port 412 so
+that the auto-added producers adopt the receive credidts of the listening
+endpoint on port 412.
+
+.EX
+.B
+> cat samplerd-3.conf
+.RS 4
+# Create a listening endpoint
+listen xprt=sock port=411
+# Start an advertiser that sends the advertisement to port 412 on the aggregator
+# host
+advertiser_start name=samplerd-3 host=agg11 xprt=sock port=412 reconnect=10s
+# Load, configure, and start the meminfo plugin
+load name=meminfo
+config name=meminfo producer=samplerd-3 instance=samplerd-3/meminfo
+start name=meminfo interval=1s
+.RE
+.EE
+
+.EX
+.B
+> cat samplerd-4.conf
+.RS 4
+# Create a listening endpoint
+listen xprt=sock port=411
+# Start an advertiser that sends the advertisement to port 412 on the aggregator
+# host
+advertiser_start name=samplerd-4 host=agg11 xprt=sock port=412 reconnect=10s
+# Load, configure, and start the meminfo plugin
+load name=meminfo
+config name=meminfo producer=samplerd-4 instance=samplerd-4/meminfo
+start name=meminfo interval=1s
+.RE
 .EE
 
 .SH SEE ALSO
