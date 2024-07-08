@@ -2685,7 +2685,9 @@ class LdmsdCmdParser(cmd.Cmd):
             [auth=] Authenticantion domain.
                     If this is omitted or auth=auth_default is give,
                     the default authentication given the command line (-a and -A)
-                    will be used..
+                    will be used
+            [credits=] Receive credits of the connections established by accepted connection requests
+            [rx_rate=] Receive rate limit of the connections established by accepted connection requests
         """
         arg = self.handle_args('listen', arg)
         if not arg:
@@ -2693,7 +2695,9 @@ class LdmsdCmdParser(cmd.Cmd):
         rc, msg = self.comm.listen(arg['xprt'],
                                    arg['port'],
                                    arg['host'],
-                                   arg['auth'])
+                                   arg['auth'],
+                                   arg['credits'],
+                                   arg['rx_rate'])
         if rc:
             print(f'Error adding listener {arg["xprt"]} on port {arg["port"]}: {msg}')
 

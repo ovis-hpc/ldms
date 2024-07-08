@@ -622,7 +622,9 @@ int __parse_xprt_endpoint(struct ldmsd_parse_ctxt *ctxt,
 	if ((0 == strncmp(name, "xprt", 4)) ||
 		(0 == strncmp(name, "port", 4)) ||
 		(0 == strncmp(name, "host", 4)) ||
-		(0 == strncmp(name, "auth", 4))) {
+		(0 == strncmp(name, "auth", 4)) ||
+		(0 == strncmp(name, "credits", 7)) ||
+		(0 == strncmp(name, "rx_rate", 8))) {
 		/* xprt, port, host, auth */
 		rc = add_attr_from_attr_str(name, value,
 					    &ctxt->request,
