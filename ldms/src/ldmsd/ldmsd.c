@@ -1435,7 +1435,7 @@ void ldmsd_listen___del(ldmsd_cfgobj_t obj)
 	ldmsd_cfgobj___del(obj);
 }
 
-ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
+ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth, char *credits, char *rx_limit)
 {
 	char *name;
 	int len;
@@ -1472,6 +1472,20 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
 			goto err;
 		}
 	}
+
+	if (credits) {
+		listen->credits = atoi(credits);
+	} else {
+		/*
+		 * listen->credits will be set to ldmsd_credits (global value) in ldmsd_listen_start().
+		 */
+		listen->credits = __RAIL_UNLIMITED;
+	}
+
+	if (rx_limit)
+		listen->rx_limit = atoi(rx_limit);
+	else
+		listen->rx_limit = __RAIL_UNLIMITED;
 
 	if (auth) {
 		auth_dom = ldmsd_auth_find(auth);
@@ -1549,8 +1563,18 @@ int ldmsd_listen_start(ldmsd_listen_t listen)
 {
 	int rc = 0;
 	assert(NULL == listen->x);
-	listen->x = ldms_xprt_rail_new(listen->xprt, 1, ldmsd_credits,
-						__RAIL_UNLIMITED,
+	if (listen->credits == __RAIL_UNLIMITED) {
+		/*
+		 * Set listen->credits here to cover the case that
+		 * the global value is set after ldmsd_listen_new() is called.
+		 * This happens when the cli-option `-x` is used to
+		 * add a listening endpoint.
+		 */
+		listen->credits = ldmsd_credits;
+	}
+	listen->x = ldms_xprt_rail_new(listen->xprt, 1,
+						((listen->credits>0)?listen->credits:ldmsd_credits),
+						((listen->rx_limit>0)?listen->rx_limit:__RAIL_UNLIMITED),
 						ldmsd_auth_name_get(listen),
 						ldmsd_auth_attr_get(listen));
 	if (!listen->x) {
@@ -1938,7 +1962,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			_host++;
 		}
 		/* Use the default auth domain */
-		ldmsd_listen_t listen = ldmsd_listen_new(_xprt, _port, _host, NULL);
+		ldmsd_listen_t listen = ldmsd_listen_new(_xprt, _port, _host, NULL, NULL, NULL);
 		free(dup_xtuple);
 		if (!listen) {
 			ovis_log(NULL, OVIS_LERROR, "Error %d: failed to add listening "

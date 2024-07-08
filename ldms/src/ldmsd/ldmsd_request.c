@@ -8327,9 +8327,9 @@ extern int ldmsd_listen_start(ldmsd_listen_t listen);
 static int listen_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_listen_t listen;
-	char *xprt, *port, *host, *auth, *attr_name;
+	char *xprt, *port, *host, *auth, *attr_name, *credits, *rx_limit;
 	unsigned short port_no = -1;
-	xprt = port = host = auth = NULL;
+	xprt = port = host = auth = credits = rx_limit = NULL;
 
 	attr_name = "xprt";
 	xprt = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_XPRT);
@@ -8348,8 +8348,10 @@ static int listen_handler(ldmsd_req_ctxt_t reqc)
 	}
 	host =ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
 	auth = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTH);
+	credits = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_CREDITS);
+	rx_limit = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RX_RATE);
 
-	listen = ldmsd_listen_new(xprt, port, host, auth);
+	listen = ldmsd_listen_new(xprt, port, host, auth, credits, rx_limit);
 	if (!listen) {
 		if (errno == EEXIST)
 			goto eexist;

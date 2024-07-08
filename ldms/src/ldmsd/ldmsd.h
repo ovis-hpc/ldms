@@ -1491,6 +1491,8 @@ typedef struct ldmsd_listen {
 	char *auth_name;
 	char *auth_dom_name;
 	struct attr_value_list *auth_attrs;
+	int credits;
+	int rx_limit;
 	ldms_t x;
 } *ldmsd_listen_t;
 
@@ -1506,10 +1508,15 @@ uint8_t ldmsd_is_initialized();
  * \param port   port
  * \param host   hostname
  * \param auth   authentication domain name
+ * \param credits    receive credits
+ * \param rx_limit   receive rate limit
+ *
+ * To use the default receive credits or receive rate limit, provide NULL.
  *
  * \return a listen cfgobj
  */
-ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth);
+ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth,
+											    char *credits, char *rx_limit);
 
 /**
  * LDMSD Authentication Domain Configuration Object

@@ -673,6 +673,8 @@ static int __sampler_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 				 prdcr->xprt_name, prdcr->host_name,
 				 (int)prdcr->port_no, prdcr->conn_auth);
 			break;
+		case LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED:
+			break;
 		default:
 			ovis_log(prdcr_log, OVIS_LERROR,
 				 "Received an unexpected transport event %d\n", e->type);

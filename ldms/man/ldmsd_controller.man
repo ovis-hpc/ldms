@@ -226,6 +226,8 @@ plugin for more information.
 \fBxprt\fR=\fIsock\fR|\fIrdma\fR|\fIugni\fR|\fIfabric\fR
 [\fBhost\fR=\fIHOST\fR]
 [\fBauth\fR=\fIAUTH_REF\fR]
+[\fBcredits\fR=\fICREDITS\fR]
+[\fBrx_rate\fR=\fIRX_RATE\fR]
 .RS
 .TP
 \fBport\fR=\fIPORT\fR
@@ -248,6 +250,27 @@ Instruct \fBldmsd\fR to use \fIAUTH_REF\fR (a name reference to \fBauth\fR
 object created by \fBauth_add\fR command) to authenticate connections on this
 port. If not given, the port uses the default authentication method specified on
 the CLI options (see \fBldmsd\fR(8) option \fB-a\fR).
+.TP
+.BI [credits " BYTES"]
+.br
+The LDMS daemon we are managing uses receive credits (measured in bytes) to
+control the amount of data received on the connections established by accepting
+requests to this listening endpoint. The \fRcredits\Fb value functions
+similarly to the \fRcredits\fB attribute in the \fRprdcr_add\fB command,
+influencing the amount of data producers created by Sampler Advertisement can
+receive. The default value is determined by the command-line \fR--credit\fB
+option used when starting the LDMS daemon (ldmsd). If neither the
+\fR--credits\fB option nor the \fRcredits\fB attribute is specified, there is
+no limit on receive credits.
+
+.TP
+.BI [rx_rate " BYTES_PER_SEC"]
+.br
+The receive rate limit (in bytes/second) controls the rate of data received on
+the connections established by accepting requests to this listening endpoint.
+Unlike \fRcredits\fB, which controls the total amount of received data, the receive
+rate limit focuses on the data flow per second. If not specified, it is
+unlimited.
 .RE
 
 .SH PRODUCER COMMAND SYNTAX

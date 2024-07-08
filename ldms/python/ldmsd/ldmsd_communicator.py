@@ -156,7 +156,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_stats': {'req_attr':[], 'opt_attr': []},
                       'set_route' : {'req_attr':['instance'], 'opt_attr':[]},
                       'set_stats': {'req_attr':[], 'opt_attr': ['summary']},
-                      'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth']},
+                      'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth', 'credits', 'rx_rate']},
                       'metric_sets_default_authz': {'req_attr':[], 'opt_attr': ['uid', 'gid', 'perm']},
                       'set_sec_mod' : {'req_attr': ['regex'], 'opt_attr': ['uid', 'gid', 'perm']},
                       'log_status' : {'req_attr' : [], 'opt_attr' : ['name']},
@@ -1486,7 +1486,7 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def listen(self, xprt, port, host=None, auth=None):
+    def listen(self, xprt, port, host=None, auth=None, credits=None, rx_limit=None):
         """
         Add a listening endpoint
 
@@ -1504,6 +1504,10 @@ class Communicator(object):
         ]
         if auth:
             attr_list.append(LDMSD_Req_Attr(attr_name='auth', value=auth))
+        if credits is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.CREDITS, value=credits))
+        if rx_limit is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=rx_limit))
         req = LDMSD_Request(
                 command='listen',
                 attrs=attr_list
@@ -1520,7 +1524,7 @@ class Communicator(object):
         """
         attr_list = []
         if uid:
-            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSDS_Req_Attr.UID, value=uid))
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.UID, value=uid))
         if gid:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.GID, value=gid))
         if perm:
