@@ -41,7 +41,7 @@ jobs:
     container:
         image: ovishpc/ovis-compat-centos7
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v1
     - run: sh autogen.sh
     - name: build and install
       run: |
@@ -332,7 +332,3 @@ jobs:
         for V in 4.3.{3..6}; do
           diff -u /test/${V}.enum /test/HEAD-${V}.enum > /test/enum-${V}.diff
         done
-    - uses: actions/upload-artifact@v3
-      if: ${{ always() }}
-      with:
-        path: /test/
