@@ -3785,7 +3785,7 @@ cdef class LdmsAddr(object):
             raise RuntimeError(f"Unsupported address family: {sa.sa_family}")
 
     def as_tuple(self):
-        return tuple( self.family, self.port, self.addr )
+        return ( self.family, self.port, self.addr )
 
     def __iter__(self):
         yield self.family
