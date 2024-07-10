@@ -128,6 +128,18 @@ static TAILQ_HEAD(, ldms_stream_client_s)
 
 int __rail_rep_send_raw(struct ldms_rail_ep_s *rep, void *data, int len);
 
+/* The IPv4 loopback in IPv6 format ::ffff:127.0.0.1 */
+const struct in6_addr in6addr_loopback4 =
+			{ { { 0,0,0,0,0,0,0,0,0,0,255,255,127,0,0,1 } } };
+
+static inline int is_loopback6(struct in6_addr *addr)
+{
+	/* NOTE: `in6addr_loopback` is defined in "netinet/in.h" */
+	const size_t sz = sizeof(struct in6_addr);
+	return 0 == memcmp(addr, &in6addr_loopback, sz) ||
+	       0 == memcmp(addr, &in6addr_loopback4, sz);
+}
+
 /*
  * __part_send(rep, src, msg_gn, data0, len0, data1, len1, ..., NULL)
  * dataX are `const char *`
@@ -1131,8 +1143,7 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 			break;
 		case AF_INET6:
 			/* Exclude loopbacks */
-			if (0 != memcmp(&rsa.sin6.sin6_addr, &in6addr_loopback,
-						sizeof(struct in6_addr))) {
+			if (!is_loopback6(&rsa.sin6.sin6_addr)) {
 				req->stream_part.src.sa_family = htons(AF_INET6);
 				memcpy(req->stream_part.src.addr,
 				       &rsa.sin6.sin6_addr,
