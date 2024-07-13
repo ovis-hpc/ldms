@@ -134,7 +134,7 @@ struct ldms_stream_full_msg_s {
 	uint32_t stream_type;
 	struct ldms_cred cred; /* credential of the originator */
 	uint32_t perm; /* 0777 style permission */
-	uint32_t preserved;
+	uint32_t name_hash;
 	char     msg[OVIS_FLEX];
 	/* `msg` format:
 	 * .----------------------.
