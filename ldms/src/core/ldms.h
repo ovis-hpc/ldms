@@ -1191,6 +1191,7 @@ struct ldms_stream_recv_data_s {
 	json_entity_t json; /* json entity */
 	struct ldms_cred cred; /* credential */
 	uint32_t perm; /* permission */
+	uint32_t name_hash; /* stream name hash */
 };
 
 /* To report subscrube / unsubscribe return status */
