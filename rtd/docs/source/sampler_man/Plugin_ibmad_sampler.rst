@@ -40,31 +40,31 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be ibmad_sampler.
 
    schema=<schema_name>
-      | 
+      |
       | The schema name defaults to "ibmad_sampler", but it can be
         renamed at the user's choice.
 
    rate=0
-      | 
+      |
       | Stop the default inclusion of rate values in the set.
 
    job_set=<metric set name>
-      | 
+      |
       | The name of the metric set that contains the job id information
         (default=job_id)
 
    include=PORTLIST
-      | 
+      |
       | Ignore any devices and ports discovered that are not matched by
         PORTLIST. See PORTLIST below. Cannot be combined with the
         exclude option.
 
    exclude=PORTLIST
-      | 
+      |
       | Collect all devices and ports discovered and active that are not
         matched by PORTLIST. See PORTLIST below. Cannot be combined with
         the include option.

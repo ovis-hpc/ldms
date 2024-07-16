@@ -35,29 +35,29 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be opa2.
 
    producer=<pname>
-      | 
+      |
       | The producer string value.
 
    instance=<set_name>
-      | 
+      |
       | The set_name supplied is ignored, and the name
         $producer/$CA/$port is used.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. Default opa2. The same schema is used for
         all sets.
 
    component_id=<compid>
-      | 
+      |
       | Optional component identifier. Defaults to zero.
 
    ports=<portlist>
-      | 
+      |
       | Port list is a comma separated list of ca_name.portnum or a
         '\*'. The default is '\*', which collects a set for every host
         fabric interface port.

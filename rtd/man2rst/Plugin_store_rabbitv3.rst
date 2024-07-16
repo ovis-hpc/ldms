@@ -40,48 +40,48 @@ and pwfile are shared across all metric sets.
    | These parameters are:
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be store_rabbitv3.
 
    root=<root>
-      | 
+      |
       | The routing key prefix shared by all metric sets will be <root>.
 
    host=<host>
-      | 
+      |
       | The rabbitmq server host. The default is localhost.
 
    port=<port number>
-      | 
+      |
       | The server port on the nearest rabbitmq host. The default is
         5672.
 
    exchange=<exch>
-      | 
+      |
       | The amqp exchange to publish with is <exch>. The default is
         amq.topic.
 
    vhost=<vhost>
-      | 
+      |
       | The virtual host to be used is <vhost>. The default is "/".
 
    user=<user>
-      | 
+      |
       | The amqp username is <user>. The default is "guest".
 
    pwfile=<auth>
-      | 
+      |
       | The file <auth> contains the amqp user password in the format
         'secretword=password. The default password "guest" is assumed if
         no file is specified.
 
    extraprops=<y/n>
-      | 
+      |
       | Turn on (y) or off (n) the use of extra properties with all
         messages.
 
    mint
-      | 
+      |
       | The number of seconds between emission of time and host
         invariant (meta) metrics.
 
@@ -92,15 +92,15 @@ STORE ATTRIBUTE SYNTAX
    | name=<plugin_name> schema=<schema_name> container=<container>
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be store_rabbitv3.
 
    schema=<schema_name>
-      | 
+      |
       | The name of the metric group, independent of the host name.
 
    container=<container>
-      | 
+      |
       | The container will be used in the routing key. The current
         routing key patterns is:
         <root>.<container>.<schema>.<metric_name_amqp>.<producer_name>
@@ -121,16 +121,16 @@ The properties follow the AMQP standard, with LDMS specific
 interpretations:
 
    timestamp
-      | 
+      |
       | The sample collection time in MICROSECONDS UTC. Divide by
         1,000,000 to get seconds UTC.
 
    type
-      | 
+      |
       | The ldms metric data type.
 
    app_id
-      | 
+      |
       | The app_id is the integer component_id, if it has been defined
         by the sampler.
 
@@ -140,36 +140,36 @@ Optional AMQ event contents
 These fields and headers are present if extraprops=y is configured.
 
 content_type
-   | 
+   |
    | <"text/plain"> for all.
 
 reply_to
-   | 
+   |
    | The producer name.
 
 metric
-   | 
+   |
    | The label registered by the sampler plugin, which might be
      anything.
 
 metric_name_amqp
-   | 
+   |
    | The label modified to work as a routing key, not necessarily easily
      read.
 
 metric_name_least
-   | 
+   |
    | The label modified to work as a programming variable name, possibly
      shortened and including a hash suffix. Not expected to be fully
      human-readable in all cases. It will be the same across runs for
      metric sets whose content labels do not vary across runs.
 
 container
-   | 
+   |
    | The container configuration name.
 
 schema
-   | 
+   |
    | The schema configuration name.
 
 PAYLOAD FORMAT

@@ -43,11 +43,11 @@ STORE_TUTORIAL CONFIGURATION ATTRIBUTE SYNTAX
    | ldmsd_controller configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be store_tutorial.
 
    path=<path>
-      | 
+      |
       | This option is required; the config line or the options file
         must supply a default value. The output files will be put into a
         directory whose root is specified by the path argument. This
@@ -68,20 +68,20 @@ output files via identification of the container and schema.
    | ldmsd_controller strgp_add line
 
    plugin=<plugin_name>
-      | 
+      |
       | This MUST be store_tutorial.
 
    name=<policy_name>
-      | 
+      |
       | The policy name for this strgp.
 
    container=<container>
-      | 
+      |
       | The container and the schema determine where the output files
         will be written (see path above).
 
    schema=<schema>
-      | 
+      |
       | The container and the schema determine where the output files
         will be written (see path above). You can have multiples of the
         same sampler, but with different schema (which means they will

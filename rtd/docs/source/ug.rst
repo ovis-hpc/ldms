@@ -1,7 +1,7 @@
 LDMS User's Group
 ==============================
 
-LDMS User's group will meet every other Monday at Noon (Mountain time). 
+LDMS User's group will meet every other Monday at Noon (Mountain time).
 Sign up for meeting announcements using the information below.
 The LDMS Mailing Lists are hosted by LLNL at listserv.llnl.gov. The current available lists are:
 

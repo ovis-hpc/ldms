@@ -58,19 +58,19 @@ OPTIONS
 If the NAME is specified on the command line without -E/-S/-I, only information for that instance = NAME is displayed.
 
 **-E** *NAME*
-   | 
+   |
    | Indicates that the NAME is a regular expression.
 
 **-S** *NAME*
-   | 
+   |
    | Indicates that the NAME is a schema name.
 
 **-I** *NAME*
-   | 
+   |
    | Indicates that the NAME is an instance name. This is the default.
 
 **-h** *HOST*
-   | 
+   |
    | HOST to query. Default is localhost.
 
 **-x** *TRANSPORT*
@@ -95,7 +95,7 @@ If the NAME is specified on the command line without -E/-S/-I, only information 
    plugin manual for the option details.
 
 **-m** *MEMORY_SIZE*
-   | 
+   |
    | MEMORY_SIZE is the size of memory reserved for metric sets. This
      value has precedence over the value of the LDMS_LS_MEM_SZ
      environment variable. The given size must be less than 1 petabytes.

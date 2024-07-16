@@ -46,11 +46,11 @@ configured with the option - \``geopm_request_path=<path-to-file>`\`.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be ldms_geopm_sampler.
 
    geopm_request_path=<path>
-      | 
+      |
       | This parameter points to the absolute path of the ASCII file
         containing the list of signals that the user would like to have
         monitored by the sampler.
@@ -69,7 +69,7 @@ configured with the option - \``geopm_request_path=<path-to-file>`\`.
    than the number of available domains.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics have a different schema.
         If not specified, will default to \`ldms_geopm_sampler\`.

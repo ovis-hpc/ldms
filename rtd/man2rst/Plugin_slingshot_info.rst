@@ -50,7 +50,7 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be slingshot_info.
 
 EXAMPLES

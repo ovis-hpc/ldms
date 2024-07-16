@@ -22,7 +22,7 @@ extensions = [
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3/', None),
     'sphinx': ('https://www.sphinx-doc.org/en/master/', None),
-    
+
     # Link to the "apis" of the "hpc-ovis" project and subprojects
     "ovis-hpc": ("https://ovis-hpc.readthedocs.io/en/latest/", None),
     "sos": ("https://ovis-hpc.readthedocs.io/projects/sos/en/latest/", None),

@@ -46,27 +46,27 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be lustre_client.
 
    job_set=<job metric set name>
-      | 
+      |
       | The name of the metric set that contains the job id information
         (default=job_id)
 
    producer=<alternate host name>
-      | 
+      |
       | The default used for producer (if not provided) is the result of
         gethostname(). The set instance names will be
         $producer/$llite_name.
 
    component_id=<uint64_t>
-      | 
+      |
       | Optional (defaults to 0) number of the host where the sampler is
         running. All sets on a host will have the same value.
 
    perm=<octal number>
-      | 
+      |
       | Set the access permissions for the metric sets. (default 440).
 
 NOTES

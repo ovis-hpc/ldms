@@ -36,16 +36,16 @@ base class.
    name=<plugin_name> [schema=<sname>] [metrics=<mlist>] [force_integer]
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be loadavg.
 
    force_integer
-      | 
+      |
       | If present, this flag forces load metrics to be stored as
         integers of 100*value provided in the proc file.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. If schema is not specified, it will be
         computed. The default name is loadavg if the metrics option is
         not supplied. The default name when metrics is specified is
@@ -54,7 +54,7 @@ base class.
         loadavg prefix becomes loadavgi.
 
    metrics=<mlist>
-      | 
+      |
       | comma separated list of metrics to include. If not given, all
         are included. The complete list is load1min, load5min,
         load15min, runnable, scheduling_entities, newest_pid.

@@ -35,26 +35,26 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be dstat.
 
    producer=<pname>
-      | 
+      |
       | The producer string value.
 
    instance=<set_name>
-      | 
+      |
       | The name of the metric set.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is required by most storage backends
         that the same sampler on different nodes with different metric
         subsets needs to have a unique schema name. Use auto-schema=1
         instead of schema to automatically meet the backend requirement.
 
    auto-schema=<bool>
-      | 
+      |
       | If true, change the schema name to dstat\_$X, where $X will be a
         unique hex value derived from the data selection options. If
         both schema and auto-schema are given, for
@@ -62,36 +62,36 @@ CONFIGURATION ATTRIBUTE SYNTAX
         plugin.
 
    component_id=<comp_id>
-      | 
+      |
       | The component id numerical value.
 
    io=<bool>
-      | 
+      |
       | Include the metrics from /proc/self/io.
 
    stat=<bool>
-      | 
+      |
       | Include the metrics from /proc/self/stat.
 
    tick=<bool>
-      | 
+      |
       | Include the sc_clk_tck from sysconf(3) as a metric.
 
    statm=<bool>
-      | 
+      |
       | Include the metrics from /proc/self/statm.
 
    mmalloc=<bool>
-      | 
+      |
       | Include the mmap memory usage metric from LDMS mmalloc.
 
    fd=<bool>
-      | 
+      |
       | Include the number of open file descriptors found in
         /proc/self/fd.
 
    fdtypes=<bool>
-      | 
+      |
       | Include the number and types of open file descriptors found in
         /proc/self/fd. This option may have high overhead on aggregators
         with many open connections.

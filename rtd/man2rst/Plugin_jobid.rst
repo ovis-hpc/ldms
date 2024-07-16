@@ -38,29 +38,29 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be jobid.
 
    producer=<pname>
-      | 
+      |
       | The producer name value.
 
    instance=<set_name>
-      | 
+      |
       | The name of the metric set.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics have a different schema.
         If not specified, will default to \`vmstat\`.
 
    component_id=<compid>
-      | 
+      |
       | Optional component identifier. Defaults to zero.
 
    with_jobid=<bool>
-      | 
+      |
       | Option to lookup job_id with set or 0 if not. The job_id column
         will always appear, but populated witn zero.
 

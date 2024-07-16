@@ -47,17 +47,17 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be sampler_atasmart.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics have a different schema.
         If not specified, will default to \`sampler_atasmart\`.
 
    disks
-      | 
+      |
       | A comma-separated list of disk names (e.g., /dev/sda,/dev/sda1)
 
 BUGS

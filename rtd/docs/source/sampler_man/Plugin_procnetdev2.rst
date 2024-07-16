@@ -40,17 +40,17 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be procnetdev2.
 
    ifaces=<ifs>
-      | 
+      |
       | (Optional) A CSV list of interfaces to sample. If not specified,
         all available interfaces in /proc/net/dev will be reported. It
         is OK to specify non-existing interfaces in the ifaces list.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics or ifaces have a
         different schema. If not specified, will default to

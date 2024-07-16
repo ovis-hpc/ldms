@@ -16,7 +16,7 @@ for c,s in enumerate(source):
         os.system(f'/usr/local/bin/pandoc -f man -s -t rst --toc {i} -o man2rst/{fname}')
         plugin = fname.replace('.rst','')
         plugin_title = '='*len(plugin)
-        os.system('sed -i -e "0,/man/{s/man/'+plugin+'/}" man2rst/'+fname) 
-        os.system('sed -i -e "s/===/'+plugin_title+'/" man2rst/'+fname) 
-        os.system(f'cp man2rst/{fname} docs/source/{dest[c]}') 
+        os.system('sed -i -e "0,/man/{s/man/'+plugin+'/}" man2rst/'+fname)
+        os.system('sed -i -e "s/===/'+plugin_title+'/" man2rst/'+fname)
+        os.system(f'cp man2rst/{fname} docs/source/{dest[c]}')
 

@@ -288,11 +288,11 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be msr_interlagos
 
    action=<action>
-      | 
+      |
       | Options are initialize, add, finalize, halt, continue, reassign,
         rewrite, and ls:
 
@@ -303,12 +303,12 @@ attributes of the base class.
         should be specified at this point.
 
       corespernuma=<corespernuma>
-         | 
+         |
          | Cores per numa node. Used to determine which and how many
            cores are used in setting counters that report per numa node.
 
       maxcore=<maxcore>
-         | 
+         |
          | Maxcores that will be reported for all core counters and will
            also be used in counters that report per numa node. Must be
            >= actual number of cores. Any additional values will be
@@ -316,7 +316,7 @@ attributes of the base class.
            actual number of cores.
 
       schema=<schema>
-         | 
+         |
          | Schema name. Optional. Defaults to msr_interlagos.
 
    **add**
@@ -325,12 +325,12 @@ attributes of the base class.
         the order the metrics are added
 
       metricname=<name>
-         | 
+         |
          | The name of counter e.g., L3_CACHE_MISSES. Options are listed
            in a separate section of this man page.
 
    **finalize**
-      | 
+      |
       | creates the set after all the adds. No metrics may be added
         after this point.
 
@@ -340,7 +340,7 @@ attributes of the base class.
         for all metrics for this counter.
 
       metricname=<name>
-         | 
+         |
          | The name of counter e.g., L3_CACHE_MISSES. metricname=all
            halts all.
 
@@ -349,7 +349,7 @@ attributes of the base class.
       | continues collection for this counter after a halt.
 
       metricname=<name>
-         | 
+         |
          | The name of counter e.g., L3_CACHE_MISSES. metricname=all
            continues all.
 
@@ -359,7 +359,7 @@ attributes of the base class.
         has been changed for this address external to ldms.
 
       metricname=<name>
-         | 
+         |
          | The name of counter e.g., L3_CACHE_MISSES. metricname=all
            rewrites all counters.
 
@@ -370,16 +370,16 @@ attributes of the base class.
         counter.
 
       oldmetricname=<oldname>
-         | 
+         |
          | The name of counter to be replaced e.g., TOT_CYC
 
       newmetricname=<newname>
-         | 
+         |
          | The name of counter that the previous variable will be
            replaced with e.g., TOT_INS
 
    **ls**
-      | 
+      |
       | writes info about the intended counters to the log file.
 
 BUGS

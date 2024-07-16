@@ -8,12 +8,12 @@ Plugin_avro_kafka_store
    :depth: 3
 ..
 
-NAME 
+NAME
 =========================
 
 avro_kafka_store - LDMSD avro_kafka_store plugin
 
-SYNOPSIS 
+SYNOPSIS
 =============================
 
 **config** **name=avro_kafka_store** **producer=PRODUCER**
@@ -21,7 +21,7 @@ SYNOPSIS
 [ **encoding=\ AVRO** ] [ **kafka_conf=\ PATH** ] [
 **serdes_conf=\ PATH** ]
 
-DESCRIPTION 
+DESCRIPTION
 ================================
 
 **``avro_kafka_store``** implements a decomposition capable LDMS metric
@@ -37,26 +37,26 @@ When in *AVRO* mode, the plugin manages schema in cooperation with an
 Avro Schema Registry. The location of this registry is specified in a
 configuration file or optionally on the **``config``** command line.
 
-CONFIG OPTIONS 
+CONFIG OPTIONS
 ===================================
 
-mode 
+mode
    A string indicating the encoding mode: "JSON" will encode messages in
    JSON format, "AVRO" will encode messages using a schema and Avro
    Serdes. The default is "AVRO". The mode values are not case
    sensitive.
 
-name 
+name
    Must be avro_kafka_store.
 
-kafka_conf 
+kafka_conf
    A path to a configuration file in Java property format. This
    configuration file is parsed and used to configure the Kafka
    kafka_conf_t configuration object. The format of this file and the
    supported attributes are available here:
    https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md.
 
-serdes_conf 
+serdes_conf
    A path to a configuration file in Java property format. This
    configuration file is parsed and used to configure the Avro Serdes
    serdes_conf_t configuration object. The only supported option for
@@ -75,37 +75,37 @@ The '%' character introduces a *format specifier* that will be
 substituted in the topic format string to create the topic name. The
 format specifiers are as follows:
 
-%F 
+%F
    The format in which the message is serialized: "json" or "avro".
 
-%S 
+%S
    The set parameter's *schema* name.
 
-%I 
+%I
    The instance name of the set, e.g. "orion-01/meminfo".
 
-%P 
+%P
    The set parameter's *producer* name, e.g. "orion-01."
 
-%u 
+%u
    The user-name string for the owner of the set. If the user-name is
    not known on the system, the user-id is used.
 
-%U 
+%U
    The user-id (uid_t) for the owner of the set.
 
-%g 
+%g
    The group-name string for the group of the set. If the group-name is
    not known on the system, the group-id is used.
 
-%G 
+%G
    The group-id (gid_t) for the group of the set.
 
-%a 
+%a
    The access/permission bits for the set formatted as a string, e.g.
    "-rw-rw----".
 
-%A 
+%A
    The access/permission bits for the set formatted as an octal number,
    e.g. 0440.
 
@@ -283,10 +283,10 @@ schema-id to query the Schema registry for a schema. Once found, the
 client will construct a serdes from the schema definition and use this
 serdes to decode the message into Avro values.
 
-EXAMPLES 
+EXAMPLES
 =============================
 
-kafka_conf Example File 
+kafka_conf Example File
 ------------------------
 
    ::
@@ -297,7 +297,7 @@ kafka_conf Example File
       # Specify the location of the Kafka broker
       bootstrap.server=localhost:9092
 
-serdes_conf Example File 
+serdes_conf Example File
 -------------------------
 
    ::
@@ -307,7 +307,7 @@ serdes_conf Example File
       # set to anything other than an empty string
       serdes.schema.url=https://localhost:9092
 
-Example strg_add command 
+Example strg_add command
 -------------------------
 
    ::

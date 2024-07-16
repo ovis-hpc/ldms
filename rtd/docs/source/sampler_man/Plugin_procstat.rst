@@ -39,7 +39,7 @@ See ldms_sampler_base(7) for the common sampler options.
    | configuration line
 
    maxcpu=<core count>
-      | 
+      |
       | Values are 0 to N, where 0 logs only totalized data and N
         reserves slots for N cores. If less than N cores are found,
         0-values are reported. If more than N cores are found, they are
@@ -50,7 +50,7 @@ See ldms_sampler_base(7) for the common sampler options.
         anywhere in the cluster.
 
    sc_clk_tck=1
-      | 
+      |
       | Enable optional reporting of sysconf(\_SC_CLK_TCK), the
         scheduler ticks-per-second defined at kernel build time as
         CONFIG_HZ, collected from sysconf(3). Typically HPC systems use

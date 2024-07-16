@@ -36,12 +36,12 @@ OPTIONS
 ======================
 
 --input=<args>
-   | 
+   |
    | Args is a file name or space-separated list of file names to be
      processed. Filenames cannot contain whitespace.
 
 --out-dir=<path>
-   | 
+   |
    | Path is a directory (must pre-exist and should not be the same as
      any directory containing the input) which will be filled with the
      changed files. The original files will are not changed. If an
@@ -49,30 +49,30 @@ OPTIONS
      may be lost or corrupted.
 
 --col-sep=<character>
-   | 
+   |
    | Split columns at this character. The default is comma.
 
---save-maps=<prefix> 
-   | 
+--save-maps=<prefix>
+   |
    | The path prefix for the generated map files. If the resulting map
      filenames coincide with an existing file, the existing file is
      overwritten.
 
 --imap=<file>
-   | 
+   |
    | An integer mapping file to preload. It must contain two columns of
      integers and magic. Normally it is the output of a prior run. See
      MAPS below.
 
 --nmap=<file>
-   | 
+   |
    | A name mapping file to preload. It must contain two columns of
      names and magic. Normally it is the output of a prior run. Each
      real name is replaced with 'n' and a sequential number. See MAPS
      below.
 
 --pmap=<file>
-   | 
+   |
    | A path element mapping file to preload. It must contain two columns
      of path elements and magic. Normally it is the output of a prior
      run. Path elements are unqualified subdirectory names. Each unique
@@ -81,7 +81,7 @@ OPTIONS
      application identities. See MAPS below.
 
 --hmap=<file>
-   | 
+   |
    | A host name mapping file to preload. It must contain columns of
      host elements and magic. It may be host name fragment information
      or the output of a prior run. Any hostname found in the input data
@@ -90,7 +90,7 @@ OPTIONS
      See MAPS below.
 
 --gen-args=<M:H>[,M:H]\*,<header_file_name>
-   | 
+   |
    | Creating the M:C specification needed in a data transformation run
      can be done by first using the argument generation mode. Given a
      file starting with a header line of column names and the list of
@@ -98,11 +98,11 @@ OPTIONS
      M:C arguments needed for the data transformation.
 
 --debug
-   | 
+   |
    | Echo some details of the transformation as it runs.
 
 --seed
-   | 
+   |
    | Supply a seed to the random number generator. No random values are
      used at this time in the processing, however.
 

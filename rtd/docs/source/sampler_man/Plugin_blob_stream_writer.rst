@@ -38,28 +38,28 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be blob_stream_writer.
 
    path=<path>
-      | 
+      |
       | path to the directory of the output files
 
    container=<container>
-      | 
+      |
       | directory of the output file
 
    stream=<stream>
-      | 
+      |
       | stream to which to subscribe. This argument may be repeated.
         Each stream will be written in a separate file pair.
 
    debug=1
-      | 
+      |
       | Enable logging of messages stored to the log file.
 
    timing=1
-      | 
+      |
       | Enable writing timestamps to a separate file.
 
 OUTPUT FORMAT

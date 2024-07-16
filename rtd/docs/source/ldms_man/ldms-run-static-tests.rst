@@ -40,11 +40,11 @@ OPTIONS
 =========================
 
 -l
-   | 
+   |
    | List the enabled plugins.
 
 -h
-   | 
+   |
    | List help message.
 
 LANGUAGE
@@ -60,19 +60,19 @@ Uses the current set environment to run. Environment may need to be
 configured before excuting this test script.
 
 input
-   | 
+   |
    | The name of the input file as specified when ldms-static-test.sh is
      invoked for each enabled plugin.
 
 testname
-   | 
+   |
    | The base name (directories stripped) of the input file name. This
      variable makes it possible to use similar input across many test
      files when the name of the input file is the same as the plugin
      tested.
 
 strict
-   | 
+   |
    | If the variable "strict" is used for KILL_LDMSD
      (ldms-static-test(8)) the script will output "FAIL $testname" and
      return an XFAIL to indicate an expected failure only if the test
@@ -81,7 +81,7 @@ strict
      test.$testname.log under the default output location of test_dir.
 
 file
-   | 
+   |
    | The file "static-test-list" located in ldms/scripts/ defines a list
      of samplers that are expected to fail. If there is a failed test
      and the sampler is listed in this file, then run-static-test.sh
@@ -89,7 +89,7 @@ file
      list to meet their needs.
 
 bypass <1,0>
-   | 
+   |
    | This variable assignment is used to determine an expected failure
      (1) or normal failure (0) of a sampler plugin. This variable is set
      to (1) if the sampler is listed in $file and set to (0) otherwise.
@@ -106,13 +106,13 @@ FILES
 =======================
 
 *$input_file.$i*
-   | 
+   |
    | For each value of i specifed to start an ldmsd, a configuration
      file named $input_file.$i must also exist. This configuration file
      is used when starting the daemon.
 
 *test_dir*
-   | 
+   |
    | Test output directory of ldms-static-test.sh. The default output
      location is \`pwd`/ldmstest/$testname.
 
@@ -120,11 +120,11 @@ GENERATED FILES
 =================================
 
 *$test_dir/test.$testname.log*
-   | 
+   |
    | The log file containing stderr and stdout of ldms-static-test.sh.
 
 *$test_dir/test.$testname.tgz*
-   | 
+   |
    | Location of the compressed file logfile.
 
 SEE ALSO

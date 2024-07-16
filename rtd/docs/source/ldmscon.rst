@@ -4,7 +4,7 @@ The LDMS Users Group Conferences (LDMSCON) serves as a forum for users to share 
 
 About
 **********
-You can find the general information and previous conferences following webpage: 
+You can find the general information and previous conferences following webpage:
 `LDMS Users Group Conference`_.
 
 .. _LDMS Users Group Conference: https://sites.google.com/view/ldmscon
@@ -14,7 +14,7 @@ Please go to the <insert-link> to stay up to date on tutorials, presentations an
 
 LDMSCON2023
 ************
-The following attachment contains the scripts and commands used in the LDMCON2023 Basics powerpoint presentation. 
+The following attachment contains the scripts and commands used in the LDMCON2023 Basics powerpoint presentation.
 
 **Please DOWNLOAD THE FOLLOWING .ZIP FILE to easily follow along with the tutorial.**
 
@@ -31,7 +31,7 @@ Recordings of previous presentations, tutorials and information for LDMSCON2023 
    :width: 200
 
 .. note::
-  
+
   **If the file directory ``ldmscon2023`` is not extracted under ``/root/``** then please keep in mind that **any reference to ``/root/``** in the powerpoint presentation, and following files, **will need to be changed to the absolute path of ``ldmscon2023/``**.
 
    * ``../conf/e3/agg_store_csv.conf``
@@ -41,9 +41,9 @@ Recordings of previous presentations, tutorials and information for LDMSCON2023 
    * ``../scripts/e3/store_csv.txt``
 
 .. note::
-   All files under ``../scripts/e*`` are not used in the tutorial but rather are the commands/steps used for each exercise. They demonstrate LDMS's ability to configure and initialize it's daemons with a single bash script. 
+   All files under ``../scripts/e*`` are not used in the tutorial but rather are the commands/steps used for each exercise. They demonstrate LDMS's ability to configure and initialize it's daemons with a single bash script.
 
-.. note:: 
+.. note::
    These scripts must be ran in a directory that is readable and writable. Otherwise the log/data file generation will not work.
 
 LDMSCON2022

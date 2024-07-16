@@ -43,27 +43,27 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be ipmisensors.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics have a different schema.
         If not specified, will default to \`ipmisensors\`.
 
    address=<address>
-      | 
+      |
       | address of the host to contact. h flag in the ipmi-sensors
         command.
 
    username=<username>
-      | 
+      |
       | username for the query. u flag in the ipmi-sensors command.
         Defaults to 'admin'.
 
    password=<password>
-      | 
+      |
       | password for the query. p flag in the ipmi-sensors command.
         Defaults to 'password'.
 

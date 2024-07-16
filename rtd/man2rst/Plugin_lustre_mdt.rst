@@ -55,17 +55,17 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be lustre_mdt.
 
    producer=<alternate host name>
-      | 
+      |
       | The default used for producer (if not provided) is the result of
         gethostname(). The set instance names will be
         $producer/$mdt_name.
 
    component_id=<uint64_t>
-      | 
+      |
       | Optional (defaults to 0) number of the host where the sampler is
         running. All sets on a host will have the same value.
 

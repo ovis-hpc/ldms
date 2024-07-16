@@ -66,25 +66,25 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | aries_linkstatus
 
    file_send=<send_file_name>
-      | 
+      |
       | Location of the file with the sendlinkstatus metrics, as
         specified in the gpcdr configuration file. In the Cray-provided
         default gpcdr configuration, this will be
         /sys/devices/virtual/gni/gpcdr0/metricsets/linksendstatus/metrics.
 
    file_recv=<recv_file_name>
-      | 
+      |
       | Location of the file with the recvlinkstatus metrics, as
         specified in the gpcdr configuration file. In the Cray-provided
         default gpcdr configuration, this will be
         /sys/devices/virtual/gni/gpcdr0/metricsets/linkrecvstatus/metrics.
 
    schema=<sname>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics have a different schema.
         This will default to aries_linkstatus, if unspecified.

@@ -44,37 +44,37 @@ LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
    configuration line
 
 name=<plugin_name>
-   | 
+   |
    | This MUST be spapi.
 
 producer=<pname>
-   | 
+   |
    | The producer string value.
 
 instance=<set_name>
-   | 
+   |
    | The name of the metric set
 
 schema=<schema>
-   | 
+   |
    | Optional schema name. It is intended that the same sampler on
      different nodes with different metrics have a different schema.
 
 component_id=<compid>
-   | 
+   |
    | Optional component identifier. Defaults to zero.
 
 with_jobid=<bool>
-   | 
+   |
    | Option to collect job id with set or 0 if not.
 
 events=<comma separated list of events>
-   | 
+   |
    | Comma separated list of events. Available events can be determined
      using papi_avail command if papi is installed on system.
 
 pid - The PID for the process being monitored
-   | 
+   |
 
 NOTES
 =============
@@ -91,7 +91,7 @@ EXAMPLES
 ================
 
 The following is a short example that measures 4 events.
-   | 
+   |
    | Total CPU cycles
    | Total CPU instructions
    | Total branch instructions

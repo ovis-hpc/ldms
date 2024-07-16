@@ -34,20 +34,20 @@ specific to the this plugin; see ldms_sampler_base.man for the
 attributes of the base class.
 
 **config**\ name=<plugin_name>\ **[schema=<sname>]**\ ports=<ports>\ **[metrics_type=<mtype>]**
-   | 
+   |
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be sysclassib.
 
    metrics_type=<metrics_type>
-      | 
+      |
       | Values are 0 or 1. 0 = counter data only. 1 = include rate data
         (per second) in addition. Default is 0.
 
    ports=<ports>
-      | 
+      |
       | CSV list of the form CARD1.PORT1,CARD2.PORT2. Default is all
         discovered values.
 

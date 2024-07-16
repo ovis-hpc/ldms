@@ -48,51 +48,51 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be linux_proc_sampler.
 
    instance_prefix=PREFIX
-      | 
+      |
       | Prepend PREFIX to the set instance names. Typically a cluster
         name when needed to disambiguate producer names that appear in
         multiple clusters. (default: no prefix).
 
    exe_suffix=1
-      | 
+      |
       | If present, set instance names are appended with the full path
         of the executable. This is most likely useful for debugging
         configuration of the notifier up-stream using ldms_ls. (default:
         no such suffix)
 
    sc_clk_tck=1
-      | 
+      |
       | If present, include sc_clk_tck in the metric set. sc_clk_tck is
         the ticks per second from sysconf(\_SC_CLK_TCK). (default: not
         included).
 
    stream=STREAM
-      | 
+      |
       | The name of the \`ldmsd_stream\` to listen for SLURM job events.
         (default: slurm).
 
    argv_sep=<char>
-      | 
+      |
       | Replace nul within the cmdline string with char. Special
         specifiers \\b,\\n,\\t,\\v,\\r,\\f are also supported.
 
    syscalls=FILE
-      | 
+      |
       | File mapping syscall integers to symbolic names. Not needed
         unless syscall_name is included in the metrics. See FILES for
         details.
 
    metrics
-      | 
+      |
       | The comma-separated list of metrics to monitor. The default is
         (empty), which is equivalent to monitor ALL metrics.
 
    cfg_file=CFILE
-      | 
+      |
       | The alternative configuration file in JSON format. The file is
         expected to have an object that contains the following
         attributes: { "stream": "STREAM_NAME", "syscalls" : "/file",
@@ -101,7 +101,7 @@ attributes of the base class.
         on the key=value line are ignored.
 
    argv_msg=1
-      | 
+      |
       | Publish the argv items to a stream named <SCHEMA>_argv, where if
         the schema is not specified, the default schema is
         linux_proc_sampler. (Default: argv_msg=0; no publication of
@@ -110,13 +110,13 @@ attributes of the base class.
         store them.
 
    argv_fmt=<1,2>
-      | 
+      |
       | Publish the argv items formatted as (1) a json list of strings
         ['argv0', 'argv1'] or (2) a json list of key/value tuples, e.g.
         [ {"k":0, "v":"argv[0]"}, {"k":1, "v":"argv[1]"}].
 
    env_msg=1
-      | 
+      |
       | Publish the environment items to a stream named <SCHEMA>_env,
         where if the schema is not specified, the default SCHEMA is
         linux_proc_sampler. (Default: env_msg=0; no publication of the
@@ -126,7 +126,7 @@ attributes of the base class.
         messages and store them.
 
    env_exclude=ELIST
-      | 
+      |
       | Exclude the environment items named with regular expressions in
         ELIST. On the configuration key=value line, ELIST must be a file
         name of a file containing a list of regular expressions one per
@@ -137,7 +137,7 @@ attributes of the base class.
         shown in EXAMPLES.
 
    fd_exclude=ELIST
-      | 
+      |
       | Exclude the files named with regular expressions in ELIST. On
         the configuration key=value line, ELIST must be a file name of a
         file containing a list of regular expressions one per line. A
@@ -147,7 +147,7 @@ attributes of the base class.
         array of expression strings as shown in EXAMPLES.
 
    fd_msg=N
-      | 
+      |
       | Publish new /proc/pid/fd scan data to the <SCHEMA>_files stream
         every N-th sample, where if the schema is not specified, the
         default SCHEMA is linux_proc_sampler. (Default: fd_msg=0; no
@@ -165,7 +165,7 @@ attributes of the base class.
         no corresponding events are generated.
 
    published_pid_dir=<path>
-      | 
+      |
       | Name of the directory where netlink-notifier or other notifier
         pids of interest may be found. This directory is scanned at
         sampler startup only, so that pids which were the subject of

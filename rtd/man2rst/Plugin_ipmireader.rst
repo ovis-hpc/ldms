@@ -42,35 +42,35 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be ipmireader.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics have a different schema.
         If not specified, will default to \`ipmireader\`.
 
    address=<address>
-      | 
+      |
       | address of the host to contact. H flag in the ipmitool command.
 
    username=<username>
-      | 
+      |
       | username for the query. U flag in the ipmitool command. Defaults
         to 'admin'.
 
    password=<password>
-      | 
+      |
       | password for the query. P flag in the ipmitool command. Defaults
         to 'password'.
 
    sdrcache=<sdrcache>
-      | 
+      |
       | output for the sdr cache file, to improve performance. Optional.
 
    retry=<sec>
-      | 
+      |
       | interval to retry creating set if initially fails (host down).
         Default 600 sec.
 

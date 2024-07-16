@@ -79,7 +79,7 @@ EXAMPLES
    ldms-ibnet-sampler-gen --lidnames --net cluster-p-netdiscover --samplers x --out x |
        sort -k2 -t, > lid.host.txt
 
-   ldms-ibnet-sampler-gen --net cluster-p-netdiscover --samplers clustre-samplers --sharp 37 --annotate --out sbx 
+   ldms-ibnet-sampler-gen --net cluster-p-netdiscover --samplers clustre-samplers --sharp 37 --annotate --out sbx
 
 ::
 

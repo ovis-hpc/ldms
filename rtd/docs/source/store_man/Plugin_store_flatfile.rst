@@ -40,21 +40,21 @@ output files via identification of the container and schema.
    | ldmsd_controller strgp_add line
 
    plugin=<plugin_name>
-      | 
+      |
       | This MUST be store_flatfile.
 
    name=<policy_name>
-      | 
+      |
       | The policy name for this strgp.
 
    container=<container>
-      | 
+      |
       | The container and the schema determine where the output files
         will be written (see path above). They also are used to match
         any action=custom configuration.node/meminfo.
 
    schema=<schema>
-      | 
+      |
       | The container and schema determines where the output files will
         be written (see path above).
 

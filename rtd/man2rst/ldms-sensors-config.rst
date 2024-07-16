@@ -36,29 +36,29 @@ OPTIONS
 =======================
 
 --sensors=<path>
-   | 
+   |
    | specify an alternate location of the sensors program. The default
      is /usr/bin/sensors, and the PATH variable is not used to search
      for alternatives.
 
 --nodash
-   | 
+   |
    | Replace all - characters in metric names with \_ characters.
 
 --lscpu=<path>
-   | 
+   |
    | specify an alternate location of the lscpu program. The default is
      /usr/bin/lscpu and the PATH variable is not used to search for
      alternatives.
 
 --test-lscpu=<path>
-   | 
+   |
    | Specify the location of a pre-collected strace log of lscpu to use
      instead of lscpu run on the local system. Used for testing or
      remote configuration.
 
 --test-sensors=<path>
-   | 
+   |
    | Specify the location of a pre-collected strace log of sensors to
      use instead of sensors run on the local system. Used for testing or
      remote configuration.

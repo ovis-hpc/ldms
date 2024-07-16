@@ -42,28 +42,28 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be lustre_mdc.
 
    producer=<alternate host name>
-      | 
+      |
       | The default used for producer (if not provided) is the result of
         gethostname(). The set instance names will be
         <producer>/<mdc_name>
 
    component_id=<uint64_t>
-      | 
+      |
       | Optional (defaults to 0) number of the host where the sampler is
         running. All sets on a host will have the same value.
 
    job_set=<job information set name>
-      | 
+      |
       | Optional (defaults to "job_info"). Typically should be set to
         <hostname>/jobid or <hostname>/job_info depending on choice of
         job sampling plugin.
 
    mdc_timing=0
-      | 
+      |
       | Optionally exclude timing data from
         /sys/kernel/debug/lustre/mdc/\*/stats. If given, the sampler may
         be run by unprivileged users. If /sys/kernel/debug/ cannot be
@@ -71,7 +71,7 @@ CONFIGURATION ATTRIBUTE SYNTAX
         mdc_timing=0 is given.
 
    auto_reset=0
-      | 
+      |
       | Turn off the default behavior of resetting the counters when an
         overflow condition is detected. Reset is implemented by writing
         0 to the corresponding /proc or /sys file.

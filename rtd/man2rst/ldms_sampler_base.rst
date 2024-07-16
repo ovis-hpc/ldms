@@ -41,54 +41,54 @@ CONFIGURATION ATTRIBUTE SYNTAX
    [component_id=<int>] [schema=<name>] [job_set=<name> job_id=<name>
    app_id=<name> job_start=<name> job_end=<name>]
 
-| 
+|
 | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This will be the name of the plugin being loaded.
 
    producer=<pname>
-      | 
+      |
       | A unique name for the host providing the data.
 
    instance=<set_name>
-      | 
+      |
       | A unique name for the metric set.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics have a different schema.
         Defaults to the sampler name.
 
    component_id=<compid>
-      | 
+      |
       | Optional unique number for the component being monitored,
         Defaults to zero.
 
    job_set=<name>
-      | 
+      |
       | The instance name of the set containing the job data, default is
         'job_info'.
 
    job_id=<name>
-      | 
+      |
       | The name of the metric containing the Job Id, default is
         'job_id'.
 
    app_id=<name>
-      | 
+      |
       | The name of the metric containing the Application Id, default is
         'app_id'.
 
    job_start=<name>
-      | 
+      |
       | The name of the metric containing the Job start time, default is
         'job_start'.
 
    job_end=<name>
-      | 
+      |
       | The name of the metric containing the Job end time, default is
         'job_end'.
 

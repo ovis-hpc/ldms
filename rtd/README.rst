@@ -33,14 +33,14 @@ Instructions and documentation on how to use ReadTheDocs can be found here:
   > git add <files>
   > git commit -m "add message"
   > git push
-  
-Adding A New File 
+
+Adding A New File
 ******************
 For any new RST files created, please include them in rtd/docs/src/index.rst under their corresponding sections. All RST files not included in index.rst will not populate on the offical webpage (e.g. readthedocs).
 
 Paper Lock
 ************
 This is for claiming any sections you are working on so there is no overlap.
-Please USE paper.lock to indicate if you are editing an existing RST file.  
+Please USE paper.lock to indicate if you are editing an existing RST file.
 
 

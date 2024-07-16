@@ -40,35 +40,35 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be stream_csv_store.
 
    path=<path>
-      | 
+      |
       | path to the directory of the csv output file
 
    container=<container>
-      | 
+      |
       | directory of the csv output file
 
    stream=<stream_a,stream_b>
-      | 
+      |
       | csv list of streams to which to subscribe.
 
    flushtime=<N>
-      | 
+      |
       | Flush any file that has not received data on its stream in the
         last N sec. This is asynchonous to any buffering or rollover
         that is occuring. Min time if enabled = 120 sec. This will occur
         again at this interval if there is still no data received.
 
    buffer=<0/1>
-      | 
+      |
       | Optional buffering of the output. 0 to disable buffering, 1 to
         enable it with autosize (default)
 
    rolltype=<rolltype>
-      | 
+      |
       | By default, the store does not rollover and the data is written
         to a continously open filehandle. Rolltype and rollover are used
         in conjunction to enable the store to manage rollover, including
@@ -76,25 +76,25 @@ CONFIGURATION ATTRIBUTE SYNTAX
         roll occurs. Valid options are:
 
       1
-         | 
+         |
          | wake approximately every rollover seconds and roll. Rollover
            is suppressed if no data at all has been written.
 
       2
-         | 
+         |
          | wake daily at rollover seconds after midnight (>=0) and roll.
            Rollover is suppressed if no data at all has been written.
 
       3
-         | 
+         |
          | roll after approximately rollover records are written.
 
       4
-         | 
+         |
          | roll after approximately rollover bytes are written.
 
       5
-         | 
+         |
          | wake at rollover seconds after midnight (>=0) and roll, then
            repeat every rollagain (> rollover) seconds during the day.
            For example "rollagain=3600 rollover=0 rolltype=5" rolls
@@ -102,7 +102,7 @@ CONFIGURATION ATTRIBUTE SYNTAX
            been written.
 
    rollover=<rollover>
-      | 
+      |
       | Rollover value controls the frequency of rollover (e.g., number
         of bytes, number of records, time interval, seconds after
         midnight). Note that these values are estimates due to the
@@ -166,7 +166,7 @@ Options for timing information are driven by #defines in the code source
 right now.
 
 TIMESTAMP_STORE
-   | 
+   |
    | Set by #define or #undef TIMESTAMP_STORE. This will write out an
      absolute timestamp in the file as the last item in the csv and is
      called 'store_recv_time' in the header. The timestamp is only
@@ -176,7 +176,7 @@ TIMESTAMP_STORE
      and json are timestamped.
 
 STREAM_CSV_DIAGNOSTICS
-   | 
+   |
    | Set by #define or #undef STREAM_CSV_DIAGNOSTICS. This will write
      out diagnostic info to the log when stream_cb is called.
 

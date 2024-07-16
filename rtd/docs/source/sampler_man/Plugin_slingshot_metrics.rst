@@ -48,18 +48,18 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be slingshot_metrics.
 
    counters=<COUNTER NAMES>
-      | 
+      |
       | (Optional) A CSV list of names of slingshot counter names. See
         Section COUTNER NAMES for details. If neither this option nor
         counters_file are specified, a default set of counters will be
         used.
 
    counters_files=<path to counters file>
-      | 
+      |
       | (Optional) A path to a file that contains a list of counter
         names, one per line. See Section COUNTER NAMES for details. A
         line will be consider a comment if the character on the line is
@@ -67,7 +67,7 @@ attributes of the base class.
         default set of counters will be used.
 
    refresh_interval_sec=<seconds>
-      | 
+      |
       | (Optional) The sampler caches the list of slinghost devices, and
         that cache is refreshed at the beginning of a sample cycle if
         the refresh interval time has been exceeded.

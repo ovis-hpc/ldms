@@ -31,45 +31,45 @@ COMMAND LINE SYNTAX
 ====================================
 
 ldmsd_sstream_publish -x <xprt> -h <host> -p <port> -s <stream-name> -a <auth> -A <auth-opt> -t <data-format> -f <file> [-l]
-   | 
+   |
 
    -x <xprt>
-      | 
+      |
       | transport of the ldmsd to which to connect.
 
    -p <port>
-      | 
+      |
       | port of the ldmsd to which to connect.
 
    -a <auth>
-      | 
+      |
       | auth to connect to the ldmsd
 
    -A <auth-opt>
-      | 
+      |
       | auth-opts to connect to the ldmsd
 
    -s <stream-name>
-      | 
+      |
       | Name of the stream (this will be used for subscribing)
 
    -t <data-format>
-      | 
+      |
       | Optional data-format. Either 'string' or 'json'. Default is
         string.
 
    -l
-      | 
+      |
       | Optional line mode. Publishes file one line at a time as
         separate publish calls
 
    -f <file>
-      | 
+      |
       | File that is published. If not specified, input is copied from
         STDIN.
 
    -r N
-      | 
+      |
       | Repeat the publication of the file N times, with a delay
         interval specifed by -i. Repeating is not supported unless the
         input is a file. If the -l option is given, the file and

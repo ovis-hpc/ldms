@@ -50,15 +50,15 @@ EXAMPLES
    flowctlcounters
    vloppackets
    vlopdata
-   vlxmitflowctlerrors	
-   vlxmitcounters	
+   vlxmitflowctlerrors/t
+   vlxmitcounters/t
    swportvlcong
-   rcvcc	
+   rcvcc/t
    slrcvfecn
    slrcvbecn
-   xmitcc	
+   xmitcc/t
    vlxmittimecc
-   smplctl	
+   smplctl/t
 
    yields
 

@@ -1,4 +1,4 @@
-LDMS 
+LDMS
 ======
 
 .. image:: images/ovis-hpc_homepage.png
@@ -41,6 +41,6 @@ To join the LDMS Users Group Mailing List: https://github.com/ovis-hpc/ovis-wiki
    :maxdepth: 2
    :caption: Contributing to LDMS
 
-   contributing/index 
+   contributing/index
 
 

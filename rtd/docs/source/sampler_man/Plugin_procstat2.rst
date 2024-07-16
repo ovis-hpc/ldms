@@ -39,17 +39,17 @@ of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be procstat2.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics have a different schema.
         If not specified, will default to \`procstat2\`.
 
    intr_max=<schema>
-      | 
+      |
       | (Optional). The maximum number of inerrupt numbers supported in
         intr_list. If not specified, intr_max will be the current number
         of interrupts in the intr list.

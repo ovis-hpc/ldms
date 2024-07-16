@@ -102,11 +102,11 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be aries_mmr_configurable
 
    action=<action>
-      | 
+      |
       | Options are initialize, finalize, reset, and ls:
 
    **initialize**
@@ -115,7 +115,7 @@ attributes of the base class.
         should be specified at this point.
 
       setfile=<cfile>
-         | 
+         |
          | Optional configuration file with the counter value assignment
            options.
          | Format: "name,type,default_value" one entry per line.
@@ -133,7 +133,7 @@ attributes of the base class.
       These are printed out in the utility check_mmr_configurable.
 
       readfile=<rfile>
-         | 
+         |
          | Configuration file with the names of the counters to read.
          | Format "name,type" one entry per line.
          | Type is 'H' for Hex or anything else to default to uint64_t.
@@ -149,28 +149,28 @@ attributes of the base class.
       These are printed out in the utility check_mmr_configurable.
 
       rtrid=<rtrid>
-         | 
+         |
          | Optional unique rtr string identifier (e.g., c0-0c0s0a0).
            Defaults to 0 length string.
 
       schema=<sname>
-         | 
+         |
          | Optional schema name. Defaults to 'aries_mmr_configurable'.
 
    **finalize**
-      | 
+      |
       | Creates the mmr_contexts, sets the set counters to the
         configured values, and creates the set. Takes no arguments. If
         finalize fails, all state is cleared and the plugin can be
         configured again.
 
    **ls**
-      | 
+      |
       | Prints out the set counter names and their configured values and
         also the read counter names. Takes no arguments.
 
    **reset**
-      | 
+      |
       | Resets the set counters to their configured values. Takes no
         arguments.
 

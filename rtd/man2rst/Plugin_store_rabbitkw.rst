@@ -41,69 +41,69 @@ user, and pwfile are shared across all metric sets.
    | These parameters are:
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be store_rabbitkw.
 
    routing_key<route>
-      | 
+      |
       | The routing key shared by all metric sets is <route>.
 
    host=<host>
-      | 
+      |
       | The rabbitmq server host. The default is localhost.
 
    port=<port number>
-      | 
+      |
       | The server port on the nearest rabbitmq host. The default is
         5672.
 
    exchange=<exch>
-      | 
+      |
       | The amqp exchange to publish with is <exch>. The default is
         amq.topic. This must preexist; the plugin will no cause its
         creation.
 
    vhost=<vhost>
-      | 
+      |
       | The virtual host to be used is <vhost>. The default is "/".
 
    user=<user>
-      | 
+      |
       | The amqp username is <user>. The default is "guest".
 
    pwfile=<auth>
-      | 
+      |
       | The file <auth> contains the amqp user password in the format
         'secretword=password. The default password "guest" is assumed if
         no file is specified.
 
    retry=<sec>
-      | 
+      |
       | If amqp connection fails due to network or server issue, retry
         every <sec> seconds. Default is 60.
 
    heartbeat=<sec>
-      | 
+      |
       | Heartbeat interval used to detect failed connections.
 
    timeout=<millisec>
-      | 
+      |
       | Timeout to use for connections, in milliseconds. Default is
         1000.
 
    extraprops=<y/n>
-      | 
+      |
       | Turn on (y) or off (n) the use of extra properties with all
         messages. If AMQP-based filtering is not planned, 'n' will
         reduce message sizes slightly.
 
    logmsg=<y/n>
-      | 
+      |
       | Enable (y) or disable (n, the default) logging all message
         metric content at the DEBUG level. This is a debugging option.
 
    useserver=<y/n>
-      | 
+      |
       | Enable (y, the default) or disable (n) calls to the amqp server;
         this is a debugging option.
 
@@ -114,16 +114,16 @@ STORE ATTRIBUTE SYNTAX
    | name=<plugin_name> schema=<schema_name> container=<container>
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be store_rabbitkw.
 
    schema=<schema_name>
-      | 
+      |
       | The name of the metric group, independent of the host name. The
         schema will be used as a header in messages if extraprops is y.
 
    container=<container>
-      | 
+      |
       | The container will be used as a header in messages if extraprops
         is y.
 
@@ -137,12 +137,12 @@ The properties follow the AMQP standard, with LDMS specific
 interpretations:
 
    timestamp
-      | 
+      |
       | The sample collection time in MICROSECONDS UTC. Divide by
         1,000,000 to get seconds UTC.
 
    app_id
-      | 
+      |
       | The app_id is LDMS.
 
 Optional AMQ event contents
@@ -151,19 +151,19 @@ Optional AMQ event contents
 These fields and headers are present if extraprops=y is configured.
 
 content_type
-   | 
+   |
    | <"text/plain"> for all.
 
 reply_to
-   | 
+   |
    | The metric set instance name.
 
 container
-   | 
+   |
    | The container configuration name.
 
 schema
-   | 
+   |
    | The schema configuration name.
 
 PAYLOAD FORMAT

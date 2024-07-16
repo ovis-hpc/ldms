@@ -41,11 +41,11 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be hello_sampler.
 
    stream=<stream>
-      | 
+      |
       | Name of the stream to which to subscribe.
 
 BUGS

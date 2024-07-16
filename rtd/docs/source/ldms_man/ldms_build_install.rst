@@ -94,20 +94,20 @@ A number of top level "enable|disable-feature" options exist. The
 defaults are chosen for a generic linux build to work by default.
 
 **--enable|disable-rpath**
-   | 
+   |
    | Disable this. Do not hardcode runtime library paths.
 
 **--enable|disable-ldms**
-   | 
+   |
    | Enable this. Default enabled.
 
 **--enable|disable-sos**
-   | 
+   |
    | Used to enable or disable sos. Enable only if you are going to use
      the store_sos plugin. Default disable.
 
 **--enable|disable-ocm|baler|me|komondor**
-   | 
+   |
    | Disable all of these. All default disabled.
 
 OVIS_LIB LEVEL OPTIONS
@@ -117,19 +117,19 @@ A number of top level "enable|disable-feature" options exist. The
 defaults are chosen for a generic linux build to work by default.
 
 **--enable|disable-auth**
-   | 
+   |
    | Enables or disables authentication. Default enabled.
 
 **--enable|disable-sock**
-   | 
+   |
    | Enables or disables the sock transport. Default enabled.
 
 **--enable|disable-rdma**
-   | 
+   |
    | Enables or disables the rdma transport. Default disabled
 
 **--enable|disable-ugni**
-   | 
+   |
    | Enables or disables the ugni transport. The is cray-specific for
      rdma over gemini or aries. Default disabled.
 
@@ -144,11 +144,11 @@ General Options
 ---------------
 
 **--enable|disable-ovis_auth**
-   | 
+   |
    | If --enable, then disable/enable authentication. Default enabled.
 
 **--enable|disable-python**
-   | 
+   |
    | Enable the ldms python api and the configuration tools that depend
      on the API. Default: enabled if python and cython detected.
      **--enable|disable-readline**
@@ -158,41 +158,41 @@ General Options
      method), then this can be disabled.
 
 **--with-libevent**\ *[=path]*
-   | 
+   |
    | Specify libevent path [default=/usr]
 
 Generic Sampler Options
 -----------------------
 
 **--enable|disable-meminfo|procinterrupts|procnfs|procnetdev|vmstat**
-   | 
+   |
    | Enable or disable generic linux samplers for data in /proc. Default
      enabled.
 
 **--enable|disable-lustre**
-   | 
+   |
    | Enable or disable the lustre module. Default enabled.
 
 Cray-specific Sampler Options
 -----------------------------
 
 **--enable|disable-kgnilnd**
-   | 
+   |
    | Enable the kgnilnd sampler. Default disabled.
 
 **--enable|disable-cray_system_sampler**
-   | 
+   |
    | Enable or disable the cray_system_sampler module. Default disabled.
      If you enable this, then consider the following options:
 
    **--enable-gemini-gpcdr**
-      | 
+      |
       | Enable the gemini-gpcdr version of the cray_system_sampler.
         Default disabled. Both the gemini and aries versions can be
         built simultaneously.
 
    **--enable-aries-gpcdr**
-      | 
+      |
       | Enable the aries-gpcdr version of the cray_system_sampler.
         Default disabled. For the Aries, we recommended getting the HSN
         metrics via aries-mmr, instead of the aries-gpcdr sampler. Still
@@ -201,39 +201,39 @@ Cray-specific Sampler Options
         be built simultaneously.
 
    **--enable-cray-nvidia**\ OR\ **--with-cray-nvidia-inc**\ [=path]
-      | 
+      |
       | For gemini systems with gpus, Enable the cray-nvidia metric
         sampling in the cray_gemini_r_sampler. You need not specify
         --enable-cray-nvidia if you are instead specifying the path to
         the include file via --with-cray-nvidia-inc.
 
    **--enable|disable-lustre**
-      | 
+      |
       | Enable or disable the lustre module for use in the
         cray_system_sampler. Default enabled.
 
    **--with-rca**\ *[=path]*
-      | 
+      |
       | Specify the path to the rca includes via --with-rca
         [default=/usr].
 
    **--with-krca**\ *[=path]*
-      | 
+      |
       | Specify the path to the krca includes via --with-krca
         [default=/usr].
 
    **--with-cray-hss-devel**\ *[=path]*
-      | 
+      |
       | Specify the path to the hss-devel includes via
         --with-cray-hss-devel [default=/usr].
 
 **--enable|disable-aries-mmr**
-   | 
+   |
    | Enable or disable the aries-mmr module. Default disabled. If you
      enable this, then consider the following options:
 
    **--with-aries-libgpcd**\ *LIBDIR,INCDIR*
-      | 
+      |
       | Locations of gpcd library and headers for aries_mmr sampler.
         E.g. --with-aries-libgpcd=/special/libs,/private/headerdir
 
@@ -241,7 +241,7 @@ Store Options
 -------------
 
 **--enable|disable-csv**
-   | 
+   |
    | Enable the csv stores (store_csv and store_function_csv). Default
      enable. **--enable|disable-sos**
    | Enable or disable the sos stores. Enable this only if you are going

@@ -35,20 +35,20 @@ only covers the configuration attributes specific to this plugin; see
 ldms_sampler_base.man for the attributes of the base class.
 
 name=<plugin_name>
-   | 
+   |
    | This MUST be daos_sampler.
 
 producer=$HOSTNAME
-   | 
+   |
    | The $HOSTNAME variable provides a good unique producer ID.
 
 engine_count=2
-   | 
+   |
    | The default is 2; don't change it unless the number of per-server
      engines is different.
 
 target_count=8
-   | 
+   |
    | The default is 8; don't change it unless the number of targets per
      engine is different.
 

@@ -40,17 +40,17 @@ attributes of the base class.
    | ldmsctl configuration line.
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be lnet_stats.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics have a different schema.
         If not specified, will default to \`lnet_stats\`.
 
    file=<stats_path>
-      | 
+      |
       | Optional full path name of stats file to use. If not supplied,
         the default search path described in NOTES is searched.
         Typically, this option is only used in test environments which

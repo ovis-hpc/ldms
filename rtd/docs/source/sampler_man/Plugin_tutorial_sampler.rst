@@ -45,18 +45,18 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be tutorial_sampler.
 
    num_metrics=<num_metrics>
-      | 
+      |
       | Optional number of metrics for this set. Metrics will be U64.
         Metric names will be 'metric\_%d'. If not specified, default
         number of metrics is determined by DEFAULTNUMMETRICS in the
         source.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that any sets with
         different metrics have a different schema. If not specified,
         will default to \`tutorial_sampler\`. Therefore, if you are
@@ -76,10 +76,10 @@ Within ldmsd_controller or a configuration file:
 ::
 
    config name=tutorial_sampler producer=localhost1 instance=localhost1/test1 schema=test1 component_id=1
-   config name=tutorial_sampler producer=localhost1 instance=localhost1/test2 schema=test2 component_id=2 num_metrics=5                                                          
-   config name=tutorial_sampler producer=localhost1 instance=localhost1/test3 schema=test3 component_id=1 num_metrics=2                                                          
-   job_set=localhost1/jobid                                                                                                                                                     
-   start name=tutorial_sampler interval=1000000                     
+   config name=tutorial_sampler producer=localhost1 instance=localhost1/test2 schema=test2 component_id=2 num_metrics=5
+   config name=tutorial_sampler producer=localhost1 instance=localhost1/test3 schema=test3 component_id=1 num_metrics=2
+   job_set=localhost1/jobid
+   start name=tutorial_sampler interval=1000000
 
 > ldms_ls localhost1/test1: consistent, last update: Thu Oct 24 10:55:14
 2019 -0600 [223680us] M u64 component_id 1 D u64 job_id 0 D u64 app_id 0

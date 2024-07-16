@@ -103,7 +103,7 @@ Load a plugin
 | **load** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The plugin name
 
 List the usage of the loaded plugins
@@ -117,7 +117,7 @@ unload a plugin
 | **term** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The plugin name
 
 Send a configuration command to the specified plugin.
@@ -126,51 +126,51 @@ Send a configuration command to the specified plugin.
 **config** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The plugin name
 
    **attr=value**
-      | 
+      |
       | Plugin specific attr=value tuples
 
       **Attributes specific for sampler plugins (Some sampler plugins
       may have additional** attributes)
 
       **producer** *producer*
-         | 
+         |
          | A unique name for the host providing the data
 
       **instance** *instance*
-         | 
+         |
          | The set instance name. The name must be unique among all
            metric sets in all LDMS daemons.
 
       **[component_id** *component_id*\ **]**
-         | 
+         |
          | A unique number for the comopnent being monitored. The
            default is zero.
 
       **[schema** *schema*\ **]**
-         | 
+         |
          | The name of the metric set schema.
 
       **[job_set** *job_set*\ **]**
-         | 
+         |
          | The set instance name of the set containing the job data. The
            default is 'job_info'.
 
       **[uid** *uid*\ **]**
-         | 
+         |
          | The user id of the set's owner. The default is the returned
            value of geteuid().
 
       **[gid** *gid*\ **]**
-         | 
+         |
          | The group id of the set's owner. The default is the returned
            value of getegid().
 
       **[perm** *perm*\ **]**
-         | 
+         |
          | The sampler plugin instance access permission. The default is
            0440.
 
@@ -180,15 +180,15 @@ Start a sampler plugin
 **start** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The plugin name.
 
    **interval** *interval*
-      | 
+      |
       | The sample interval in microseconds.
 
    **[offset** *offset*\ **]**
-      | 
+      |
       | Offset (shift) from the sample mark in microseconds. Offset can
         be positive or negative with magnitude up to 1/2 the sample
         interval. If this offset is specified, including 0, collection
@@ -201,7 +201,7 @@ Stop a sampler plugin
 **stop** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The plugin name.
 
 PRODUCER COMMAND SYNTAX
@@ -213,29 +213,29 @@ Add a producer to the aggregator
 | **prdcr_add** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The producer name. The producer name must be unique in an
         aggregator. It is independent of any attributes specified for
         the metric sets or hosts.
 
    **xprt** *xprt*
-      | 
+      |
       | The transport name [sock, rdma, ugni]
 
    **host** *host*
-      | 
+      |
       | The hostname of the host
 
    **type** *conn_type*
-      | 
+      |
       | The connection type [active, passive]
 
    **interval** *interval*
-      | 
+      |
       | The connection retry interval
 
    **[perm** *permission*\ **]**
-      | 
+      |
       | The permission to modify the producer in the future
 
 Delete a producer from the aggregator
@@ -245,7 +245,7 @@ Delete a producer from the aggregator
 | **prdcr_del** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The producer name
 
 Start a producer
@@ -254,11 +254,11 @@ Start a producer
 **prdcr_start** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The producer name
 
    **[interval** *interval*\ **]**
-      | 
+      |
       | The connection retry interval in microsec. If unspecified, the
         previously configured value will be used. Optional.
 
@@ -268,11 +268,11 @@ Start all producers matching a regular expression
 **prdcr_start_regex** attr=<value>
 
    **regex** *regex*
-      | 
+      |
       | A regular expression
 
    **[interval** *interval*\ **]**
-      | 
+      |
       | The connection retry interval in microsec. If unspecified, the
         previously configured value will be used. Optional.
 
@@ -282,7 +282,7 @@ Stop a producer
 **prdcr_stop** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The producer name
 
 Stop all producers matching a regular expression
@@ -291,7 +291,7 @@ Stop all producers matching a regular expression
 **prdcr_stop_regex** attr=<value>
 
    **regex** *regex*
-      | 
+      |
       | A regular expression
 
 Query producer status
@@ -300,7 +300,7 @@ Query producer status
 **prdcr_status** attr=<value>
 
    **[name** *name*\ **]**
-      | 
+      |
       | The producer name. If none is given, the statuses of all
         producers are reported.
 
@@ -310,11 +310,11 @@ Subscribe for stream data from all matching producers
 **prdcr_subsribe**
 
    **regex** *regex*
-      | 
+      |
       | The regular expression matching producer name
 
    **stream** *stream*
-      | 
+      |
       | The stream name
 
 UPDATER COMMAND SYNTAX
@@ -326,21 +326,21 @@ Add an updater process that will periodically sample producer metric sets
 **updtr_add** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The update policy name. The policy name should be unique. It is
         independent of any attributes specified for the metric sets or
         hosts.
 
    **interval** *interval*
-      | 
+      |
       | The update/collect interval
 
    **[offset** *offset*\ **]**
-      | 
+      |
       | Offset for synchronized aggregation. Optional.
 
    **[push** *onchange|true*\ **]**
-      | 
+      |
       | Push mode: 'onchange' and 'true'. 'onchange' means the Updater
         will get an update whenever the set source ends a transaction or
         pushes the update. 'true' means the Updater will receive an
@@ -355,7 +355,7 @@ Add an updater process that will periodically sample producer metric sets
       *false*.
 
    **[perm** *permission*\ **]**
-      | 
+      |
       | The permission to modify the updater in the future
 
 Remove an updater from the configuration
@@ -364,7 +364,7 @@ Remove an updater from the configuration
 **updtr_del** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The update policy name
 
 Add a match condition that specifies the sets to update.
@@ -373,15 +373,15 @@ Add a match condition that specifies the sets to update.
 **updtr_match_add** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The update policy name
 
    **regex** *regex*
-      | 
+      |
       | The regular expression
 
    **match** *match (inst|schema)*
-      | 
+      |
       | The value with which to compare; if match=inst, the expression
         will match the set's instance name, if match=schema, the
         expression will match the set's schema name.
@@ -392,15 +392,15 @@ Remove a match condition from the Updater.
 **updtr_match_del** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The update policy name
 
    **regex** *regex*
-      | 
+      |
       | The regular expression
 
    **match** *match (inst|schema)*
-      | 
+      |
       | The value with which to compare; if match=inst, the expression
         will match the set's instance name, if match=schema, the
         expression will match the set's schema name.
@@ -413,11 +413,11 @@ This is required before starting the updater.
 **updtr_prdcr_add** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The update policy name
 
    **regex** *regex*
-      | 
+      |
       | A regular expression matching zero or more producers
 
 Remove matching producers to an updater policy
@@ -426,11 +426,11 @@ Remove matching producers to an updater policy
 **updtr_prdcr_del** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The update policy name
 
    **regex** *regex*
-      | 
+      |
       | A regular expression matching zero or more producers
 
 Start updaters.
@@ -439,16 +439,16 @@ Start updaters.
 **updtr_start** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The update policy name
 
    **[interval** *interval*\ **]**
-      | 
+      |
       | The update interval in micro-seconds. If this is not specified,
         the previously configured value will be used. Optional.
 
    **[offset** *offset*\ **]**
-      | 
+      |
       | Offset for synchronized aggregation. Optional.
 
 Stop an updater.
@@ -459,7 +459,7 @@ The Updater must be stopped in order to change it's configuration.
 **updtr_stop** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The update policy name
 
 Query the updater status
@@ -468,7 +468,7 @@ Query the updater status
 **updtr_status** attr=<value>
 
    **[name** *name*\ **]**
-      | 
+      |
       | The updater name. If none is given, the statuses of all updaters
         are reported.
 
@@ -481,23 +481,23 @@ Create a Storage Policy and open/create the storage instance.
 **strgp_add** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The unique storage policy name.
 
    **plugin** *plugin*
-      | 
+      |
       | The name of the storage backend.
 
    **container** *container*
-      | 
+      |
       | The storage backend container name.
 
    **schema** *schema*
-      | 
+      |
       | The schema name of the metric set to store.
 
    **[perm** *permission*\ **]**
-      | 
+      |
       | The permission to modify the storage in the future
 
 Remove a Storage Policy
@@ -508,7 +508,7 @@ Remove a Storage Policy
 | **strgp_del** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The storage policy name
 
 Add a regular expression used to identify the producers this storage policy will apply to.
@@ -519,11 +519,11 @@ Add a regular expression used to identify the producers this storage policy will
 | **strgp_prdcr_add** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The storage policy name
 
    **regex** *name*
-      | 
+      |
       | A regular expression matching metric set producers.
 
 Remove a regular expression from the producer match list
@@ -535,7 +535,7 @@ Remove a regular expression from the producer match list
    | The storage policy name
 
    **regex** *regex*
-      | 
+      |
       | The regex of the producer to remove.
 
 Add the name of a metric to store
@@ -547,7 +547,7 @@ Add the name of a metric to store
    | The storage policy name
 
    **metric** *metric*
-      | 
+      |
       | The metric name. If the metric list is NULL, all metrics in the
         metric set will be stored.
 
@@ -560,7 +560,7 @@ Remove a metric from the set of stored metrics.
    | The storage policy name
 
    **metric** *metric*
-      | 
+      |
       | The metric to remove
 
 Start a storage policy.
@@ -587,7 +587,7 @@ Query the storage policy status
 **strgp_status** attr=<value>
 
    **[name** *name*\ **]**
-      | 
+      |
       | The storage policy name. If none is given, the statuses of all
         storage policies are reported.
 
@@ -610,11 +610,11 @@ Publish data to the named stream
 **plublish** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The stream name
 
    **data** *data*
-      | 
+      |
       | The data to publish
 
 Subscribe to a stream
@@ -623,7 +623,7 @@ Subscribe to a stream
 **subscribe** attr=<value>
 
    **name** *name*
-      | 
+      |
       | The stream name
 
 LDMS DAEMON COMMAND SYNTAX
@@ -669,7 +669,7 @@ MISC COMMAND SYNTAX
 Display the list of available commands
 --------------------------------------
 
-| 
+|
 | **help** <command>
 
    | [*command]*
@@ -679,19 +679,19 @@ Display the list of available commands
 Set the user data value for a metric in a metric set.
 -----------------------------------------------------
 
-| 
+|
 | **udata** attr=<value>
 
    **set** *set*
-      | 
+      |
       | The sampler plugin name
 
    **metric** *metric*
-      | 
+      |
       | The metric name
 
    **udata** *udata*
-      | 
+      |
       | The desired user-data. This is a 64b unsigned integer.
 
 Set the user data of multiple metrics using regular expression.
@@ -703,19 +703,19 @@ Set the user data of multiple metrics using regular expression.
 | **udata_regex** attr=<value>
 
    **set** *set*
-      | 
+      |
       | The metric set name.
 
    **regex** *regex*
-      | 
+      |
       | A regular expression to match metric names to be set
 
    **base** *base*
-      | 
+      |
       | The base value of user data (uint64)
 
    **[incr** *incr*\ **]**
-      | 
+      |
       | Increment value (int). The default is 0. If incr is 0, the user
         data of all matched metrics are set to the base value. Optional.
 

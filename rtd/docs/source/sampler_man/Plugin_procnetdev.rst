@@ -40,16 +40,16 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be procnetdev.
 
    ifaces=<ifs>
-      | 
+      |
       | CSV list of ifaces. Order matters. Non-existent ifaces will be
         included and default to 0-value data.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics or ifaces have a
         different schema. If not specified, will default to

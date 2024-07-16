@@ -37,7 +37,7 @@ tx2mon are listed here
      [auto-schema=<bool>]
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is required by most storage backends
         that the same sampler on different nodes with different metric
         subsets needs to have a unique schema name. Use auto-schema=1
@@ -45,20 +45,20 @@ tx2mon are listed here
         backend requirement.
 
    auto-schema=<bool>
-      | 
+      |
       | If true, change the schema name to tx2mon\_$X, where $X will be
         a unique value derived from the data selection options. If both
         schema and auto-schema=1 are given, the schema name given is
         used as the base instead of "tx2mon".
 
    array=<bool>
-      | 
+      |
       | For per-core data, report all array value elements if true.
         Report only maximum and minimum values if false. The default is
         false.
 
    extra=<bool>
-      | 
+      |
       | For per-core data, report additional information of the internal
         block frequencies and the set system metrics. These additional
         values are static. If false, additional information will not be

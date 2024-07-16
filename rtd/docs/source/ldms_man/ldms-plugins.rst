@@ -32,11 +32,11 @@ The names all, store, and sampler are interpreted as described in
 ldmsd(8).
 
 -b
-   | 
+   |
    | Produce brief output, omitting usages.
 
 -n
-   | 
+   |
    | Produce names only.
 
 EXAMPLES

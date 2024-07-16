@@ -48,17 +48,17 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be cray_dvs_sampler
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics have a different schema.
         If not specified, will default to \`cray_dvs_sampler\`.
 
    conffile=<cfile>
-      | 
+      |
       | Optional path to the configuration file
 
 DATA AND THE CONFIGURATION FILE

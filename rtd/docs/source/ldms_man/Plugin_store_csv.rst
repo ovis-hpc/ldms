@@ -72,16 +72,16 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
    | ldmsd_controller configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be store_csv.
 
    opt_file=<filename>
-      | 
+      |
       | The options for the plugin and specific instances will be read
         from the named file. See OPTIONS FILE.
 
    path=<path>
-      | 
+      |
       | This option is required; the config line or the options file
         must supply a default value. The output files will be put into a
         directory whose root is specified by the path argument. This
@@ -93,7 +93,7 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
         time e.g., XXX/meminfo_ctr/meminfo-123456789.
 
    altheader=<0/!0>
-      | 
+      |
       | Distinguishes whether or not to write the header to a separate
         file than the data file. 0 = same file. Any non-zero is a
         separate file. Default is the same file. If a separate file is
@@ -104,7 +104,7 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
         written at each rollover. Default is altheader=0.
 
    typeheader=<typeformat>
-      | 
+      |
       | Controls the presence and format of a .KIND file. The kind CSV
         file gives type information on each metric (or metric array).
         For example, if the metric file is named meminfo, the kind file
@@ -132,18 +132,18 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
    contrast to the repetition employed by format 0.
 
    ietfcsv=<0/1>
-      | 
+      |
       | Turns on (1) or off (0) use of IETF 4180 quoting for header
         column names.
 
    userdata=<0/!0>
-      | 
+      |
       | Distinguishes whether or not to write each metrics' user data
         along with each data value. 0 = no write. Any non-zero means to
         write the values. Default is to not write.
 
    buffer=<0/1/N>
-      | 
+      |
       | Distinguishes whether or not to buffer the data for the
         writeout. 0 = does not buffer. 1 enables buffering with the
         system determining the flush. N will flush after approximately N
@@ -151,13 +151,13 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
         these it is. Default is system controlled buffering (1).
 
    buffertype=<3/4>
-      | 
+      |
       | If buffer=N then buffertype determines if the buffer parameter
         refers to kB of writeout or number of lines. The values are the
         same as in rolltype, so only 3 and 4 are applicable.
 
    rolltype=<rolltype>
-      | 
+      |
       | By default, the store does not rollover and the data is written
         to a continously open filehandle. Rolltype and rollover are used
         in conjunction to enable the store to manage rollover, including
@@ -165,26 +165,26 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
         roll occurs. Valid options are:
 
       1
-         | 
+         |
          | wake approximately every rollover seconds and roll. Rollover
            is suppressed if no data at all has been written and
            rollempty=0.
 
       2
-         | 
+         |
          | wake daily at rollover seconds after midnight (>=0) and roll.
            Rollover is suppressed if no data at all has been written and
            rollempty=0.
 
       3
-         | 
+         |
          | roll after approximately rollover records are written.
 
       4
          roll after approximately rollover bytes are written.
 
       5
-         | 
+         |
          | wake at rollover seconds after midnight (>=0) and roll, then
            repeat every rollagain (> rollover) seconds during the day.
            For example "rollagain=3600 rollover=0 rolltype=5" rolls
@@ -192,18 +192,18 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
            been written and rollempty=0.
 
    rollover=<rollover>
-      | 
+      |
       | Rollover value controls the frequency of rollover (e.g., number
         of bytes, number of records, time interval, seconds after
         midnight). Note that these values are estimates.
 
    rollempty=0
-      | 
+      |
       | Turn off rollover of empty files. Default value is 1 (create
         extra empty files).
 
    create_perm=<modebits>
-      | 
+      |
       | Only octal (e.g.0744) specifications are allowed. If unspecified
         or 0 is given, then no change is made. The default permission is
         0600 for data files. The mode specified can include execute bits
@@ -212,18 +212,18 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
         and 0644 for data files.
 
    create_uid=<numeric-uid>
-      | 
+      |
       | Specify a new user id for data files. If unspecified, no change
         in user ownership is made. Changes in ownership of the files do
         not affect intermediate directories.
 
    create_gid=<numeric-gid>
-      | 
+      |
       | Specify a new group id for data files. If unspecified, no change
         in group ownership is made.
 
    rename_template=<metapath>
-      | 
+      |
       | This option relocates closed CSV files, typically to a
         subdirectory, for processing by other tools that watch
         directories. The metapath template is applied to define a new
@@ -240,14 +240,14 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
         output directory and handle completed files.
 
    rename_perm=<modebits>
-      | 
+      |
       | Only octal (e.g.0744) specifications are allowed. If unspecified
         or 0 is given, then no change is made. The permissions are
         changed before the rename and even if the rename fails. This
         option is applied only if rename_template is applied.
 
    rename_uid=<numeric-uid>
-      | 
+      |
       | Specify a new user id for the file. If unspecified, no change in
         user ownership is made. Changes in ownership of the files do not
         affect intermediate directories that might be created following
@@ -255,28 +255,28 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
         applied.
 
    rename_gid=<numeric-gid>
-      | 
+      |
       | Specify a new group id for the file. If unspecified, no change
         in group ownership is made. This option is applied only if
         rename_template is applied.
 
    expand_array=<true/false>
-      | 
+      |
       | The default is false. Each array element is stored in a column.
         True means that all elements are stored in a single column.
 
    array_sep=<char>
-      | 
+      |
       | Specify a character to separate array elements. If exand_array
         is true, the value is ignored.
 
    array_lquote=<char>
-      | 
+      |
       | Specify the left-quote character if expand_array is true. If
         expand_array is false, the value is ignored.
 
    array_rquote=<char>
-      | 
+      |
       | Specify the right-quote character if expand_array is true. If
         expand_array is false, the value is ignored.
 
@@ -312,21 +312,21 @@ output files via identification of the container and schema.
    | ldmsd_controller strgp_add line
 
    plugin=<plugin_name>
-      | 
+      |
       | This MUST be store_csv.
 
    name=<policy_name>
-      | 
+      |
       | The policy name for this strgp.
 
    container=<container>
-      | 
+      |
       | The container and the schema determine where the output files
         will be written (see path above). They also are used to match
         any specific config lines.
 
    schema=<schema>
-      | 
+      |
       | The container and the schema determine where the output files
         will be written (see path above). You can have multiples of the
         same sampler, but with different schema (which means they will
@@ -334,7 +334,7 @@ output files via identification of the container and schema.
         containers (and therefore files).
 
    decomposition=<DECOMP_CONFIG_FILE_JSON>
-      | 
+      |
       | Optionally use set-to-row decomposition with the specified
         configuration file in JSON format. See more about decomposition
         in ldmsd_decomposition(7).
@@ -373,38 +373,38 @@ The following % escape sequence replacements are performed on the
 rename_template value for file renamings:
 
 %P
-   | 
+   |
    | plugin name
 
 %C
-   | 
+   |
    | container name
 
 %S
-   | 
+   |
    | schema name
 
 %T
-   | 
+   |
    | file type (DATA, HEADER, KIND, UNITS, CNAMES, PYNAMES)
 
 %B
-   | 
+   |
    | basename(closed-file-name)
 
 %D
-   | 
+   |
    | dirname(closed-file-name)
 
 %{ENV_VAR_NAME}
-   | 
+   |
    | getenv(ENV_VAR_NAME). The use of undefined or empty environment
      vars yields an empty substitution, not an error. Characters in the
      environment variable are restricted to: 'A-Za-z0-9%@()+-\_./:=';
      other characters present will prevent the rename.
 
 %s
-   | 
+   |
    | timestamp suffix, if it exists.
 
 NOTES

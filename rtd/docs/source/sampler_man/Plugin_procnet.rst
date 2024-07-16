@@ -42,15 +42,15 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be procnet.
 
    exclude_ports=<devs>
-      | 
+      |
       | Comma separated list of ports to exclude.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. If not specified, will default to
         \`procnet\`.
 

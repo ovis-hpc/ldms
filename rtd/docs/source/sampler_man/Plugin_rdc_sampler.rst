@@ -37,48 +37,48 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be rdc_sampler.
 
    producer=<pname>.
-      | 
+      |
       | The producer string value for the timing set.
 
    instance=<set_prefix>
-      | 
+      |
       | The set instance names will be suffixed by device number
         (gpu%d).
 
    schema=<name_base>
-      | 
+      |
       | Optional schema base name. The default is rdc_sampler. The name
         base is suffixed to create uniquely defined schema names based
         on the plugin options specified.
 
    component_id=<compid>
-      | 
+      |
       | Optional component identifier for the timing set. Defaults to
         zero.
 
    metrics=LIST
-      | 
+      |
       | The list of values to be collected as named in rdc_field_t from
         rdc/rdc.h.
 
    update_freq=MICROSEC
-      | 
+      |
       | An argument passed to rdc_field_watch.
 
    max_keep_age=SEC
-      | 
+      |
       | An argument passed to rdc_field_watch.
 
    max_keep_samples=N
-      | 
+      |
       | An argument passed to rdc_field_watch.
 
    warmup=K
-      | 
+      |
       | Delay K cycles update_freq long before attempting to read data
         from the gpu.
 

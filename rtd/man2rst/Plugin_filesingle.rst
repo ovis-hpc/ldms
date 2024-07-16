@@ -35,12 +35,12 @@ See ldms_sampler_base(7) for the common sampler options.
    | conf=<metric_definitions> [timing]
 
    conf=<file>
-      | 
+      |
       | File lines contain the source, type, and default value for each
         metric. See CONF FILE SYNTAX below.
 
    timing
-      | 
+      |
       | If keyword 'timing' is included in the options, extra metrics
         measuring the time to collect every defined metric will be
         included. This allows for the discovery of slow sensors. Each

@@ -37,27 +37,27 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be dcgm_sampler.
 
    interval=<interval(us)>
-      | 
+      |
       | The sampling interval. This MUST be set to the same value that
         is set on the "start" line, otherwise behavior is undetermined.
 
    fields=<fields>
-      | 
+      |
       | <fields> is a comma-separated list of integers representing DCGM
         field numebers that the plugin should watch. By default the
         plugin will watch fields 150,155.
 
    schema=<schema_name>
-      | 
+      |
       | The schema name defaults to "dcgm", but it can be renamed at the
         user's choice.
 
    job_set=<metric set name>
-      | 
+      |
       | The name of the metric set that contains the job id information
         (default=job_id)
 

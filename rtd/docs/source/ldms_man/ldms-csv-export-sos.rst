@@ -35,7 +35,7 @@ OPTIONS
 =======================
 
 --data=<DATA>
-   | 
+   |
    | DATA is a file name of a LDMS .HEADER, .KIND, or data file. The
      file name and at least the first line of the file are digested to
      determine the content and the column types. LDMS CSV file name
@@ -45,71 +45,71 @@ OPTIONS
      must also be gzipped.
 
 --blacklist=<BLACKLIST>
-   | 
+   |
    | BLACKLIST is the name of a file with column names to exclude from
      the schema, one per line. leading # comments allowed in the file.
 
 --whitelist=<WHITELIST>
-   | 
+   |
    | WHITELIST is the name of a file with column names to include in the
      schema, one per line. leading # comments allowed in the file. Any
      other columns found are excluded.
 
 --exclude=<LIST>
-   | 
+   |
    | LIST is a string of metric names separated by commas. Columns named
      are excluded from the generated schema.
 
 --include=<LIST>
-   | 
+   |
    | LIST is a string of metric names separated by commas. Columns named
      are included in the generated schema and all other columns found
      are excluded.
 
 --schema-name=<NAME>
-   | 
+   |
    | NAME overrides the default schema name determined from the data
      file name.
 
 --schema-file=<FILE>
-   | 
+   |
    | Use an existing schema file FILE instead of generating a schema.
      When not specified, a schema file is always generated. Schema files
      may not be gzipped.
 
---map-file=<MAP_FILE> 
-   | 
+--map-file=<MAP_FILE>
+   |
    | Override the output map file name derived from the data file name.
 
---alias-file=<ALIASES> 
-   | 
+--alias-file=<ALIASES>
+   |
    | Provide the list of metrics to rename when creating or matching a
      schema discovered from a header line.
 
---strip-udata 
-   | 
+--strip-udata
+   |
    | Suppress output of .userdata fields and remove .value suffix from
      schema element names.
 
 --guess
-   | 
+   |
    | Guess the ldms data column types. (can be slow on large files)
 
 --maxlines=<MAXLINES>
-   | 
+   |
    | Parse no more than MAXLINES to guess data types with the --guess
      option. The default if unspecified is 100000 lines.
 
 --assume=<ASSUME>
-   | 
+   |
    | Assume all unknown data columns are type ASSUME.
 
 --verbose
-   | 
+   |
    | Show process debugging details.
 
 --widen
-   | 
+   |
    | Widen numeric types discovered to 64 bits.
 
 METRIC FILTERING
@@ -194,11 +194,11 @@ Other examples
    	--schema-file=fptrans.SCHEMASOS
 
    # test input guess when x.14 does not exist
-   ldms-csv-export-sos --data=x.HEADER.14 --guess 
+   ldms-csv-export-sos --data=x.HEADER.14 --guess
 
    # test input guess when y.KIND.14 does not exist but y.14 does
    ldms-csv-export-sos --data=y.HEADER.14 \
-   	--guess --maxlines=4000 
+   	--guess --maxlines=4000
 
    # test input guess and widen
    ldms-csv-export-sos --data=y.HEADER.14 \

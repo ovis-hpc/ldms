@@ -49,28 +49,28 @@ the 'init' action arguments.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be perfevent.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics have a different schema.
 
    action=init
-      | 
+      |
       | Perform initialization
 
    action=del metricname=<string>
-      | 
+      |
       | Deletes the specified event.
 
    action=ls
-      | 
+      |
       | List the currently configured events.
 
    action=add metricname=<string> pid=<int> cpu=<int> type=<int> id=<int>
-      | 
+      |
       | Adds a metric to the list of configured events.
       | metricname
       | The metric name for the event
@@ -88,7 +88,7 @@ the 'init' action arguments.
       | The event id.
 
    The pid and cpu arguments allow specifying which process and CPU to monitor:
-      | 
+      |
       | pid == 0 and cpu == -1
       | This measures the calling process/thread on any CPU.
       | pid == 0 and cpu >= 0
@@ -109,7 +109,7 @@ the 'init' action arguments.
    For more information visit: http://man7.org/linux/man-pages/man2/perf_event_open.2.html
 
    **type**
-      | 
+      |
       | This field specifies the overall event type. It has one of the
         following values:
       | PERF_TYPE_HARDWARE
@@ -133,7 +133,7 @@ the 'init' action arguments.
         execution of an instruction address.
 
    **id**
-      | 
+      |
       | This specifies which event you want, in conjunction with the
         type field.
       | There are various ways to set the id field that are dependent on
@@ -315,7 +315,7 @@ EXAMPLES
 =====================
 
 The following is a short example that measures 4 events.
-   | 
+   |
    | Total CPU cycles
    | Total CPU instructions
    | Total branch instructions

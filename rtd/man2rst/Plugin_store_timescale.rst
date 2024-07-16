@@ -44,37 +44,37 @@ STORE_TIMESCALE CONFIGURATION ATTRIBUTE SYNTAX
    | ldmsd_controller configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be store_timescale.
 
    user=<username>
-      | 
+      |
       | This option is required; It will be used as the user name to
         connect to timescaledb.
 
    pwfile=<full path to password file>
-      | 
+      |
       | This option is required; The file must have content
         secretword=<password>, the password will be used as the password
         to connect to timescaledb.
 
    hostaddr=<host ip addr>
-      | 
+      |
       | This option is required; It will be used as the ip addr of
         timescaledb to connect to.
 
    port=<port no>
-      | 
+      |
       | This option is required; It will be used as the port number of
         timescaledb to connect to.
 
    dbname=<database name>
-      | 
+      |
       | This option is required; It will be used as the timescaledb
         database name to connect to.
 
    measurement_limit=<sql statement length>
-      | 
+      |
       | This is optional; It specifies the maximum length of the sql
         statement to create table or insert data into timescaledb;
         default 8192.
@@ -91,20 +91,20 @@ output files via identification of the container and schema.
    | ldmsd_controller strgp_add line
 
    plugin=<plugin_name>
-      | 
+      |
       | This MUST be store_timescale.
 
    name=<policy_name>
-      | 
+      |
       | The policy name for this strgp.
 
    container=<container>
-      | 
+      |
       | The container and the schema determine where the output files
         will be written (see path above).
 
    schema=<schema>
-      | 
+      |
       | The container and the schema determine where the output files
         will be written (see path above). You can have multiples of the
         same sampler, but with different schema (which means they will

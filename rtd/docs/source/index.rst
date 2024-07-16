@@ -46,7 +46,7 @@ Welcome To OVIS-HPC Documentation!
    Baler <https://ovis-hpc.readthedocs.io/projects/baler/en/latest/deployment/index.html>
    ASF <asf/deployment/index>
 
-   
+
 Other Projects
 ====================================
 
@@ -56,7 +56,7 @@ Other Projects
 `sos <https://github.com/ovis-hpc/sos>`_
 `baler <https://github.com/ovis-hpc/baler>`_
 
-   
+
 
 
 

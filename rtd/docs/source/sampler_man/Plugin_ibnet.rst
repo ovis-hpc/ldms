@@ -41,64 +41,64 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be ibnet.
 
    producer=<pname>.
-      | 
+      |
       | The producer string value for the timing set. Default is the
         result of gethostname().
 
    instance=<set_name>
-      | 
+      |
       | The name of the timing metric set. Default is
         $producer/ibnet_timing.
 
    source-list=<lidfile>
-      | 
+      |
       | Lidfile is the name of a file of LID/port specifications. See
         PORT FILE for format details.
 
    port-name=<hca> [port-number=<num>]
-      | 
+      |
       | Hca is the name of the local IB interface to access the network.
         Num is the number of the port on the interface used to access
         the network. The default is 1.
 
    schema=<name_base>
-      | 
+      |
       | Optional schema base name. The default is ibnet. The name base
         is suffixed to create uniquely defined schema names based on the
         plugin options specified.
 
    component_id=<compid>
-      | 
+      |
       | Optional component identifier for the timing set. Defaults to
         zero.
 
    metric-conf=<metricfile>
-      | 
+      |
       | The file listing the metric groups to collect. See METRIC GROUPS
         below.
 
    ca_port=<port>
-      | 
+      |
       | The port number to use, which must be active.
 
    millis=<millisecond timeout>
-      | 
+      |
       | The number of milliseconds of the timeout on the MAD calls.
         Default 0, which will use the mad library timeout of 1 second.
 
    timing=<T>
-      | 
+      |
       | Disable timing (T=0), enable aggregate timing (T=1), or enable
         individual port timing(T=2) or enable port offset timing(T=3).
         The metric set will contain sampling process timing metrics if T
         > 0.
 
    node-name-map=<nnmap>
-      | 
+      |
       | The file name nnmap, as used by ibnetdiscover and opensm, of a
         mapping from IB GUIDs to short names of IB hardware items
         (switch, node, etc) suitable for use in populating names of
@@ -113,7 +113,7 @@ The lid/port file format is
 
    lid, hexguid, nports, plist
     * where hexguid is 0x....,
-    * nports is int, 
+    * nports is int,
     * plist is ints nports long or * if range is 1-nports,
     * if not using a name map, names will be GUID_hex.
 
@@ -139,20 +139,20 @@ INTERNAL METRICS
 =========================
 
 port_query_time
-   | 
+   |
    | Time in seconds spend in the single port MAD call.
 
 port_query_offset
-   | 
+   |
    | Time in microseconds from start of all MAD calls in the current
      update to the end of the mad call for the specific port.
 
 ib_query_time
-   | 
+   |
    | Time in seconds making all MAD calls in the update.
 
 ib_data_process_time
-   | 
+   |
    | Time in seconds decoding all MAD data in the update
 
 BUGS

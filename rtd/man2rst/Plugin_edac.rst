@@ -39,22 +39,22 @@ attributes of the base class.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be edac.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name. It is intended that the same sampler on
         different nodes with different metrics have a different schema.
         If not specified, will default to edac.
 
    max_mc=<max_mc>
-      | 
+      |
       | The number of mc's in /sys/devices/system/edac/mc. Typically
         this number is 2.
 
    max_csrow=<max_csrow>
-      | 
+      |
       | The number of csrows in a single mc. For example, the value
         should be 4 for when the largest csrow looks like:
         /sys/devices/system/edac/mc/mc0/csrow3. Typically this number is

@@ -38,20 +38,20 @@ CONFIGURATION ATTRIBUTE SYNTAX
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be darshan_stream_store.
 
    path=<path>
-      | 
+      |
       | The path to the root of the SOS container store (should be
         created by the user)
 
    stream=<stream>
-      | 
+      |
       | stream to which to subscribe.
 
    mode=<mode>
-      | 
+      |
       | The container permission mode for create, (defaults to 0660).
 
 INPUT JSON FORMAT

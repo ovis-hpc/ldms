@@ -39,17 +39,17 @@ instance name.
    | configuration line
 
    name=<plugin_name>
-      | 
+      |
       | This MUST be variable.
 
    schema=<schema>
-      | 
+      |
       | Optional schema name prefix. The string given will be suffixed
         with an integer N in the range 1-9 to create the schema name.
         The schema will also contain N integer metrics.
 
    instance=<inst>
-      | 
+      |
       | Optional instance name prefix. The string given will be suffixed
         with an integer in the range 1-9 to create the instance name. If
         not specified, will default prefix is \`$HOST/variable\`.
