@@ -208,10 +208,9 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'auth_add': {'req_attr': ['name'],
                                    'opt_attr' : ['plugin', 'auth_opt'] },
                       ##### Sampler Discovery #####
-                      'advertiser_add': {'req_attr': ['name', 'xprt', 'host', 'port'],
+                      'advertiser_add': {'req_attr': ['name', 'xprt', 'host', 'port', 'reconnect'],
                                         'opt_attr' : ['auth', 'perm', 'interval',
-                                                      'reconnect', 'rail',
-                                                      'credits', 'rx_rate' ] },
+                                                      'rail', 'credits', 'rx_rate' ] },
                       'advertiser_del': {'req_attr': ['name'], 'opt_attr': []},
                       'advertiser_start': {'req_attr': ['name'],
                                         'opt_attr' : ['xprt', 'host', 'port',
@@ -219,8 +218,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                                                       'reconnect', 'rail',
                                                       'credits', 'rx_rate' ] },
                       'advertiser_stop': {'req_attr': ['name'], 'opt_attr': []},
-                      'prdcr_listen_add': {'req_attr': ['name'],
-                                           'opt_attr': ['ip', 'regex', 'disable_start']},
+                      'prdcr_listen_add': {'req_attr': ['name', 'reconnect'],
+                                           'opt_attr': ['rail', 'ip', 'credits', 'rx_rate', 'regex', 'disable_start']},
                       'prdcr_listen_del': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_start': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_stop': {'req_attr': ['name'], 'opt_attr': []},
@@ -2455,7 +2454,7 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def advertiser_add(self, name, xprt, host, port, reconnect, auth=None, perm=None,
-                                            rail=None, credits=None, rx_rate=None):
+                       rail=None, credits=None, rx_rate=None):
         """
         Add an advertiser. An advertiser sends an advertisement to an aggregator
         add it as a producer. Once started, the LDSMD will attempt to
@@ -2472,7 +2471,7 @@ class Communicator(object):
         - The reconnect interval in microseconds
 
         Keyword Parameters:
-        auth - The authentication demain
+        auth - The authentication domain of the remote daemon
         perm - The configuration client permission required to
                modify the producer configuration. Default is None.
         rail - The number of endpoints in a rail. The default is 1.
@@ -2491,7 +2490,7 @@ class Communicator(object):
                   'reconnect': reconnect, 'auth': auth, 'perm': perm,
                   'rail': rail, 'credits': credits, 'rx_rate': rx_rate}
         attrs = self._prdcr_add_attr_prep(**args_d)
-        attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value="advertise"))
+        attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value="advertiser"))
         req = LDMSD_Request( command_id = LDMSD_Request.ADVERTISER_ADD, attrs = attrs)
         try:
             req.send(self)
@@ -2502,8 +2501,8 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def advertiser_start(self, name, xprt=None, host=None, port=None,
-                              reconnect=None, auth=None, perm=None,
-                              rail=None, credits=None, rx_rate=None):
+                         reconnect=None, auth=None, perm=None,
+                         rail=None, credits=None, rx_rate=None):
         """
         Start an advertiser. If the advertiser does not exist, LDMSD will create it.
         In this case, the values of the required attributes in advertiser_add must be given.
@@ -2535,7 +2534,7 @@ class Communicator(object):
                   'reconnect': reconnect, 'auth': auth, 'perm': perm,
                   'rail': rail, 'credits': credits, 'rx_rate': rx_rate}
         attrs = self._prdcr_add_attr_prep(**args_d)
-        attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value="advertise"))
+        attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value="advertiser"))
         req = LDMSD_Request( command_id = LDMSD_Request.ADVERTISER_START, attrs = attrs)
         try:
             req.send(self)
@@ -2567,12 +2566,13 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_listen_add(self, name, disable_start=None, regex=None, ip=None):
+    def prdcr_listen_add(self, name, reconnect, disable_start=None, regex=None, ip=None, rail=None, credits=None, rx_rate=None):
         """
         Tell an aggregator to wait for advertisements from samplers
 
-        The ggregator automatically adds and starts a producer when it receives
-        an advertisement that the peer (sampler) hostname matches the regular expression.
+        The aggregator automatically adds and starts a producer when it receives
+        an advertisement that the peer (sampler) hostname matches the regular expression
+        unless the disable_start parameter is specified.
 
         Parameters:
          - Name of the producer listen
