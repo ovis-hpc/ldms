@@ -2819,13 +2819,14 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Add an advertisement of its hostname to an aggregator. This is a part of the sampler discovery feature.
         Parameters:
-                name=     A unique name to be used as producer name on the aggregator
-                xprt=     The transport name [sock, rdma, ugni]
-                host=     The aggregator hostname
+                name=      A unique name to be used as producer name on the aggregator
+                xprt=      The transport name [sock, rdma, ugni]
+                host=      The aggregator hostname
+                port=      The aggregator port number
                 reconnect= The connection retry interval
-                [auth=]   The authentication method
-                [perm=]   The permission to modify the producer in the future.
-                [rail=]   The number of rail endpoints for the prdcr (default: 1).
+                [auth=]    The authentication method
+                [perm=]    The permission to modify the producer in the future.
+                [rail=]    The number of rail endpoints for the prdcr (default: 1).
                 [credits=] The send credits our ldmsd (the one we are controlling)
                            advertises to the prdcr (default: value from ldmsd --credits
                            option). This limits how much outstanding data our ldmsd
@@ -2851,7 +2852,7 @@ class LdmsdCmdParser(cmd.Cmd):
                                           arg['credits'],
                                           arg['rx_rate'])
             if rc:
-                print(f'Error adding Bridge {arg["name"]}: {msg}')
+                print(f'Error adding advertiser {arg["name"]}: {msg}')
 
     def complete_advertiser_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('advertiser_add', text)
@@ -2918,7 +2919,7 @@ class LdmsdCmdParser(cmd.Cmd):
                 print("Name             Aggregator Host  Aggregator Port Transport    Reconnect(us)  State")
                 print("---------------- ---------------- --------------- ------------ --------------- ------------")
                 for prdcr in producers:
-                    if prdcr['type'] != 'advertise':
+                    if prdcr['type'] != 'advertiser':
                         continue
                     print(f"{prdcr['name']:16} {prdcr['host']:16} {prdcr['port']:<15} " \
                           f"{prdcr['transport']:12} {prdcr['reconnect_us']:15} " \
@@ -2944,10 +2945,18 @@ class LdmsdCmdParser(cmd.Cmd):
         prdcr_stop and prdcr_start, respectively, as manually added producers.
 
         Parameters:
-                name=     A unique name of the producer listen
-                reconnect= The retry interval to check for connection establishment of producers matched the regular expression.
+                name=              A unique name of the producer listen
+                reconnect=         The retry interval to check for connection establishment of producers matched the regular expression.
                 [disable_start=]  Tell LDMSD not to start the producers
-                [regex=]    A regular expression to match sampler hostnames
+                [regex=]           A regular expression to match sampler hostnames
+                [rail=]            The number of rail endpoints for the prdcr (default: 1).
+                [credits=]         The send credits our ldmsd (the one we are controlling)
+                                   advertises to the prdcr (default: value from ldmsd --credits
+                                   option). This limits how much outstanding data our ldmsd
+                                   holds for the prdcr. The prdcr drops messages when it does
+                                   not have enough send credits.
+                [rx_rate=]         The recv rate (bytes/sec) limit for this connection. The
+                                   default is -1 (unlimited).
         """
         arg = self.handle_args('prdcr_listen_add', arg)
         if arg is None:
