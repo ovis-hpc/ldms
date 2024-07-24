@@ -9514,8 +9514,12 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	pl = (ldmsd_prdcr_listen_t)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_PRDCR_LISTEN,
 						sizeof(*pl), NULL, 0, 0, 0);
-	if (!pl)
-		goto enomem;
+	if (!pl) {
+		if (errno == EEXIST)
+			goto eexist;
+		else
+			goto enomem;
+	}
 	pl->auto_start = 1;
 	if (disabled_start) {
 		if ((0 == strcmp(disabled_start, "1")) ||
@@ -9577,6 +9581,11 @@ enomem:
 	reqc->errcode = ENOMEM;
 	(void)snprintf(reqc->line_buf, reqc->line_len,
 			"Memory allocation failed.");
+	goto send_reply;
+eexist:
+	reqc->errcode = EEXIST;
+	(void)snprintf(reqc->line_buf, reqc->line_len,
+			"The prdcr listener %s already exists.", name);
 	goto send_reply;
 einval:
 	reqc->errcode = EINVAL;
