@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 #################################################################################################
 # Copyright (c) 2010, Lawrence Livermore National Security, LLC.
 # Produced at the Lawrence Livermore National Laboratory
@@ -105,7 +105,6 @@ wrapper_includes = '''
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "userheader.h"
 
 #ifndef _EXTERN_C_
 #ifdef __cplusplus
@@ -497,7 +496,7 @@ class Declaration:
         return self.argsNoEllipsis()[index].name
 
     def fortranFormals(self):
-        formals = map(Param.fortranFormal, self.argsNoEllipsis())
+        formals = list(map(Param.fortranFormal, self.argsNoEllipsis()))
         if self.name == "MPI_Init": formals = []    # Special case for init: no args in fortran
 
         ierr = []
