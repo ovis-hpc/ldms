@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import print_function
 import shlex
 from subprocess import Popen, PIPE
 import shutil
