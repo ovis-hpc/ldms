@@ -83,6 +83,7 @@ def main():
         if trval != 0:
             print("Unable to collect sensors config output")
             exit(1)
+
     devices = { }
     with open(trace_file) as file:
         lines = f.readlines()
