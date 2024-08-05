@@ -1,4 +1,4 @@
-#! /usr/bin/env python2
+#! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 ########### section II below by NTESS ################################
 license_ntess="""
@@ -548,10 +548,10 @@ def host_substitute(h, vmap):
                 canon.append(head)
                 continue
             else:
-                print "Fix hmap. Can't map", nonum, "in", i, "of", h
+                print(f"Fix hmap. Can't map {nonum} in {i} of {h}")
                 sys.exit(1)
         else:
-            print "Fix hmap file. Can't map", i, "in", h
+            print(f"Fix hmap file. Can't map {i} in {h}")
             sys.exit(1)
     
     fin = "-".join(canon)
@@ -567,14 +567,14 @@ mapmagic = "#anonymize-csv-map"
 def write_map(maps, kind, fn):
     if len(maps[kind]) > 0:
         with open(fn, "w") as o:
-            print >>o, mapmagic, kind
+            print(f"{mapmagic} {kind}")
             m = maps[kind]
             for key in sorted(m):
                 if key == "netdomains":
                     if len(m[key]) > 0:
-                        print >>o, key, ",".join(m[key])
+                        print(key, ",".join(m[key]))
                 else:
-                    print >>o, key, m[key]
+                    print(f"{key} {m[key]}")
 
 def reload_map(m, fn, kind):
     """prime m with data from prior run. input can be empty, otherwise must match kind."""
@@ -587,10 +587,10 @@ def reload_map(m, fn, kind):
             (k,v) = ln.split()
             if header:
                 if k != mapmagic:
-                    print "error loading map- not a mapping file:", fn,
+                    print("Error loading map- not a mapping file:")
                     sys.exit(1)
                 if v != kind:
-                    print "error loading map file- wrong type.", kind, "vs", v, "in", fn
+                    print(f"Error loading map file- wrong type. {kind} vs {v} in")
                     sys.exit(1)
                 header = False
                 continue
@@ -600,7 +600,7 @@ def convert_col(kstr):
     """convert extended cut index string to python notation."""
     k = int(kstr) 
     if k == 0:
-        print "column numbers are 1-N (as cut(1)) or negative, not 0."
+        print("column numbers are 1-N (as cut(1)) or negative, not 0.")
         sys.exit(1)
     if k > 0:
         k -= 1
@@ -668,12 +668,12 @@ if __name__ == "__main__":
     parser.add_argument("--gen-args", default=None, help="input metric names and file")
     parser.add_argument("--debug", default=False, action='store_true', help="enable debug")
     if len(sys.argv) < 2:
-        print "need some arguments. try -h"
+        print("Need some arguments. Try -h")
         sys.exit(1)
     args = parser.parse_args()
 
     if args.debug:
-        print args
+        print(args)
     sep = args.col_sep
     if not sep:
         sep = ','
@@ -685,7 +685,7 @@ if __name__ == "__main__":
         files.extend(i.split())
     cols = []
     if len(args.mappings) == 0:
-        print "nothing to do"
+        print("Nothing to do")
         sys.exit(1)
     for i in args.mappings:
         if ":" in i:
@@ -693,8 +693,8 @@ if __name__ == "__main__":
         else:
             files.append(i)
     if args.debug:
-        print files
-        print cols
+        print(files)
+        print(cols)
     maps = dict()
     for key in rewrite.keys():
         maps[key] =  dict()
@@ -719,15 +719,15 @@ if __name__ == "__main__":
     random.seed(seed)
     od = args.out_dir
     if not od or not os.path.isdir(od):
-        print "output directory not given or not found"
+        print("output directory not given or not found")
         sys.exit(1)
     for f in files:
         if not os.path.isfile(f):
-            print "file not found", f
+            print("File not found {}")
             sys.exit(1)
     for f in files:
         if args.debug:
-            print f
+            print(f)
         bname = os.path.basename(f)
         with open(f, "r") as i:
             out = os.path.join(od, bname)
@@ -735,7 +735,7 @@ if __name__ == "__main__":
                 for ln in i:
                     ln = ln.rstrip()
                     if len(ln) < 3:
-                        print >>o, ln
+                        print(ln)
                         continue
                     if ln[0] == '#':
                         x = ln.split(sep)
@@ -744,18 +744,18 @@ if __name__ == "__main__":
                             k = convert_col(k)
                             x[k] = map_header(x[k], method)
                         y = sep.join(x)
-                        print >>o, y
+                        print(y)
                         continue
                     x = ln.split(sep)
                     for c in cols:
                         (method, k) = c.split(":")
                         if method == "host" and args.hmap == None:
-                            print "--hmap required for host mapping"
+                            print("--hmap required for host mapping")
                             sys.exit(1)
                         k = convert_col(k)
                         x[k] = rewrite[method](x[k], maps[method])
                     y = sep.join(x)
-                    print >>o, y
+                    print(y)
 
     
     # print seed file if we ever use random
