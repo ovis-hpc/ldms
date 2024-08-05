@@ -523,7 +523,7 @@ def format_join(f, j, col_heads):
         s += "\"" + i + "\""
     s += "], \"index\" : {} }"
     with open(f, "w") as f:
-        print(s)
+        print(f"{s},")
 
 default_joins = [
     ("comp_job_time", "component_id", "job_id", "Time"),
@@ -544,7 +544,7 @@ def format_schema_epilog(f, args, col_heads):
     s += """  ]
 }"""
     with open(f, "w") as f:
-        print(f"{s},")
+        print(s)
 
 def is_index(n, args):
     if n in ["Time", "component_id", "job_id", "component_id.value", "job_id.value", "ProducerName", "anonymized_host_ProducerName"]:
