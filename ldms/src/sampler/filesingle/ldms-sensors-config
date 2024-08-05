@@ -96,6 +96,7 @@ def main():
     last_file = None
     last_file_type = None
     last_group = None
+
     for line in lines:
         line = line.strip()
         if len(line) < 5:
