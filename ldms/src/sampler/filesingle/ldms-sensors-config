@@ -96,7 +96,6 @@ def main():
     last_file = None
     last_file_type = None
     last_group = None
-    
     for line in lines:
         line = line.strip()
         if len(line) < 5:
@@ -192,7 +191,6 @@ def main():
         if trval != 0:
             print("#Unable to collect lscpu config output")
             exit(1)
-
     with open(lscpu_trace_file) as file:
         lines = file.readlines()
 
