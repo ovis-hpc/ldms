@@ -567,14 +567,14 @@ mapmagic = "#anonymize-csv-map"
 def write_map(maps, kind, fn):
     if len(maps[kind]) > 0:
         with open(fn, "w") as o:
-            print(f"{mapmagic} {kind}")
+            print(mapmagic, kind)
             m = maps[kind]
             for key in sorted(m):
                 if key == "netdomains":
                     if len(m[key]) > 0:
                         print(key, ",".join(m[key]))
                 else:
-                    print(f"{key} {m[key]}")
+                    print(key, m[key])
 
 def reload_map(m, fn, kind):
     """prime m with data from prior run. input can be empty, otherwise must match kind."""
@@ -587,7 +587,7 @@ def reload_map(m, fn, kind):
             (k,v) = ln.split()
             if header:
                 if k != mapmagic:
-                    print("Error loading map- not a mapping file:")
+                    print(f"Error loading map- not a mapping file: {fn}")
                     sys.exit(1)
                 if v != kind:
                     print(f"Error loading map file- wrong type. {kind} vs {v} in")
@@ -723,7 +723,7 @@ if __name__ == "__main__":
         sys.exit(1)
     for f in files:
         if not os.path.isfile(f):
-            print("File not found {}")
+            print("File not found {f}")
             sys.exit(1)
     for f in files:
         if args.debug:
