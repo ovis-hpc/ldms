@@ -286,14 +286,6 @@ decomp_static_release_decomp(ldmsd_strgp_t strgp)
 	}
 }
 
-static int init_row_cache(ldmsd_strgp_t strgp, int row_limit)
-{
-	strgp->row_cache = ldmsd_row_cache_create(strgp, row_limit);
-	if (strgp->row_cache)
-		return 0;
-	return 1;
-}
-
 static int get_col_no(decomp_static_row_cfg_t cfg_row, const char *name)
 {
 	int i;
@@ -509,8 +501,8 @@ static int handle_group(
 		}
 	}
 
-	rc = init_row_cache(strgp, cfg_row->row_limit);
-	if (rc)
+	strgp->row_cache = ldmsd_row_cache_create(strgp, cfg_row->row_limit);
+	if (!strgp->row_cache)
 		goto enomem;
 	return 0;
 enomem:
