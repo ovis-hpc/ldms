@@ -433,7 +433,6 @@ typedef struct ldmsd_row_group_s {
 
 typedef struct ldmsd_row_cache_s {
 	ldmsd_strgp_t strgp;
-	int group_key_count;
 	int row_limit;
 	struct rbt group_tree;	/* Tree of ldmsd_row_group_t */
 	pthread_mutex_t lock;
