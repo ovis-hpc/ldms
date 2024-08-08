@@ -434,6 +434,8 @@ struct ldms_xprt_ops_s {
 	void (*event_cb_set)(ldms_t x, ldms_event_cb_t cb ,void *cb_arg);
 
 	zap_ep_t (*get_zap_ep)(ldms_t x);
+
+	ldms_set_t (*set_by_name)(ldms_t x, const char *set_name);
 };
 
 struct ldms_xprt {
