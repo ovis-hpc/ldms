@@ -179,7 +179,6 @@ typedef struct decomp_static_col_cfg_s {
 	ldms_mval_t fill; /* fill value */
 	int fill_len; /* if fill is an array */
 	union ldms_value __fill; /* storing a non-array primitive fill value */
-	char *op_name;
 	enum ldmsd_decomp_op op;
 } *decomp_static_col_cfg_t;
 
@@ -512,6 +511,39 @@ err_0:
 	return rc;
 }
 
+static enum ldmsd_decomp_op
+string_to_ldmsd_decomp_op(const char *operation)
+{
+        if (0 == strcmp(operation, "diff")) {
+                return LDMSD_DECOMP_OP_DIFF;
+        } else if (0 == strcmp(operation, "mean")) {
+                return LDMSD_DECOMP_OP_MEAN;
+        } else if (0 == strcmp(operation, "min")) {
+                return LDMSD_DECOMP_OP_MIN;
+        } else if (0 == strcmp(operation, "max")) {
+                return LDMSD_DECOMP_OP_MAX;
+        } else {
+                return LDMSD_DECOMP_OP_NONE;
+        }
+}
+
+static const char *
+ldmsd_decomp_op_to_string(enum ldmsd_decomp_op operation)
+{
+        switch (operation) {
+        case LDMSD_DECOMP_OP_DIFF:
+                return "diff";
+        case LDMSD_DECOMP_OP_MEAN:
+                return "mean";
+        case LDMSD_DECOMP_OP_MIN:
+                return "min";
+        case LDMSD_DECOMP_OP_MAX:
+                return "max";
+        default:
+                return "none";
+        }
+}
+
 static ldmsd_decomp_t
 decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 		     ldmsd_req_ctxt_t reqc)
@@ -629,28 +661,14 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 
 			jop = json_object_get(jcol, "op");
 			if (jop) {
-				if (0 == strcmp(json_string_value(jop), "diff")) {
-					cfg_col->op_name = strdup(json_string_value(jop));
-					cfg_col->op = LDMSD_DECOMP_OP_DIFF;
-					cfg_row->op_present = 1; /* true */
-				} else if (0 == strcmp(json_string_value(jop), "mean")) {
-					cfg_col->op_name = strdup(json_string_value(jop));
-					cfg_col->op = LDMSD_DECOMP_OP_MEAN;
-					cfg_row->op_present = 1; /* true */
-				} else if (0 == strcmp(json_string_value(jop), "min")) {
-					cfg_col->op_name = strdup(json_string_value(jop));
-					cfg_col->op = LDMSD_DECOMP_OP_MIN;
-					cfg_row->op_present = 1; /* true */
-				} else if (0 == strcmp(json_string_value(jop), "max")) {
-					cfg_col->op_name = strdup(json_string_value(jop));
-					cfg_col->op = LDMSD_DECOMP_OP_MAX;
-					cfg_row->op_present = 1; /* true */
-				} else {
+                                cfg_col->op = string_to_ldmsd_decomp_op(json_string_value(jop));
+                                if (cfg_col->op == LDMSD_DECOMP_OP_NONE) {
 					THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col %d : "
 						"unrecognized functional operator '%s'\n",
 						strgp->obj.name, row_no, col_no, json_string_value(jop));
 					goto err_0;
-				}
+                                }
+                                cfg_row->op_present = 1; /* true */
 			}
 			jfill = json_object_get(jcol, "fill");
 			if (jfill) {
@@ -1776,7 +1794,8 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 						"strgp '%s': insufficient rows in "
 						"cache to satisfy functional operator '%s' "
 						"on column '%s'.\n",
-						strgp->obj.name, cfg_col->op_name,
+                                                strgp->obj.name,
+                                                ldmsd_decomp_op_to_string(cfg_col->op),
 						cfg_col->dst);
 				cfg_col = &cfg_row->cols[j];
 				rc = op_table[cfg_col->op](&row_list, dup_row, j);
