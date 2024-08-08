@@ -1789,15 +1789,16 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 						cfg_row->row_limit,
 						strgp->row_cache,
 						group_idx);
-				if (count != cfg_row->group_count)
-					ldmsd_log(LDMSD_LWARNING,
-						"strgp '%s': insufficient rows in "
-						"cache to satisfy functional operator '%s' "
-						"on column '%s'.\n",
-                                                strgp->obj.name,
-                                                ldmsd_decomp_op_to_string(cfg_col->op),
-						cfg_col->dst);
 				cfg_col = &cfg_row->cols[j];
+				if (cfg_col->op != LDMSD_DECOMP_OP_NONE
+                                    && count < cfg_row->row_limit)
+					ldmsd_log(LDMSD_LDEBUG,
+                                                  "strgp '%s': insufficient rows (%d of %d) in "
+                                                  "cache to satisfy functional operator '%s' "
+                                                  "on column '%s'.\n",
+                                                  strgp->obj.name, count, cfg_row->row_limit,
+                                                  ldmsd_decomp_op_to_string(cfg_col->op),
+                                                  cfg_col->dst);
 				rc = op_table[cfg_col->op](&row_list, dup_row, j);
 			}
 			ldmsd_row_cache_idx_free(group_idx);
