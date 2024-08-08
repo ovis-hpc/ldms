@@ -103,6 +103,7 @@ static void __rail_priority_set(ldms_t _r, int prio);
 static void __rail_cred_get(ldms_t _r, ldms_cred_t lcl, ldms_cred_t rmt);
 static int __rail_update(ldms_t _r, struct ldms_set *set, ldms_update_cb_t cb, void *arg);
 static int __rail_get_threads(ldms_t _r, pthread_t *out, int n);
+static ldms_set_t __rail_set_by_name(ldms_t x, const char *set_name);
 
 zap_ep_t __rail_get_zap_ep(ldms_t x);
 
@@ -133,6 +134,7 @@ static struct ldms_xprt_ops_s __rail_ops = {
 	.get_zap_ep   = __rail_get_zap_ep,
 
 	.event_cb_set = __rail_event_cb_set,
+	.set_by_name  = __rail_set_by_name,
 };
 
 static int __rail_id_cmp(void *k, const void *tk)
@@ -1498,4 +1500,37 @@ ldms_t __ldms_xprt_to_rail(ldms_t x)
 
 	struct ldms_rail_ep_s *ep = ldms_xprt_ctxt_get(x);
 	return ((ep)?(ldms_t)ep->rail:NULL);
+}
+
+static ldms_set_t __rail_set_by_name(ldms_t _x, const char *set_name)
+{
+	struct ldms_set *set;
+	struct rbn *rbn = NULL;
+	int i;
+	struct ldms_rail_s *r = (void*)_x;
+	struct ldms_xprt *x;
+
+	assert(XTYPE_IS_RAIL(r->xtype));
+
+	__ldms_set_tree_lock();
+	set = __ldms_find_local_set(set_name);
+	__ldms_set_tree_unlock();
+	if (!set)
+		return NULL;
+	for (i = 0; i < r->n_eps; i++) {
+		x = r->eps[i].ep;
+		pthread_mutex_lock(&x->lock);
+		rbn = rbt_find(&x->set_coll, set);
+		pthread_mutex_unlock(&x->lock);
+		if (rbn) {
+			/* found */
+			break;
+		}
+	}
+	if (!rbn) {
+		/* no set found in any of the xprt */
+		ref_put(&set->ref, "__ldms_find_local_set");
+		set = NULL;
+	}
+	return set;
 }

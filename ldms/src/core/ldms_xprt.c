@@ -3238,6 +3238,7 @@ static void __ldms_xprt_event_cb_set(ldms_t x, ldms_event_cb_t cb, void *cb_arg)
 int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void *arg);
 int __ldms_xprt_get_threads(ldms_t x, pthread_t *out, int n);
 zap_ep_t __ldms_xprt_get_zap_ep(ldms_t x);
+static ldms_set_t __ldms_xprt_set_by_name(ldms_t x, const char *set_name);
 
 static const struct ldms_xprt_ops_s ldms_xprt_ops = {
 	.connect      = __ldms_xprt_connect,
@@ -3267,6 +3268,7 @@ static const struct ldms_xprt_ops_s ldms_xprt_ops = {
 	.get_zap_ep   = __ldms_xprt_get_zap_ep,
 
 	.event_cb_set = __ldms_xprt_event_cb_set,
+	.set_by_name  = __ldms_xprt_set_by_name,
 };
 
 void __ldms_xprt_init(struct ldms_xprt *x, const char *name, int is_active)
@@ -4233,10 +4235,12 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 	return rc;
 }
 
-extern ldms_set_t ldms_xprt_set_by_name(ldms_t x, const char *set_name)
+static ldms_set_t __ldms_xprt_set_by_name(ldms_t x, const char *set_name)
 {
 	struct ldms_set *set;
 	struct rbn *rbn;
+
+	assert(XTYPE_IS_LEGACY(x->xtype));
 
 	__ldms_set_tree_lock();
 	set = __ldms_find_local_set(set_name);
@@ -4251,6 +4255,11 @@ extern ldms_set_t ldms_xprt_set_by_name(ldms_t x, const char *set_name)
 	}
 	pthread_mutex_unlock(&x->lock);
 	return set;
+}
+
+extern ldms_set_t ldms_xprt_set_by_name(ldms_t x, const char *set_name)
+{
+	return x->ops.set_by_name(x, set_name);
 }
 
 void __ldms_xprt_term(struct ldms_xprt *x)
