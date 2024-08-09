@@ -704,6 +704,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	r->eps[m->idx].rate_credit.rate   = r->send_rate_limit;
 	r->eps[m->idx].rate_credit.ts.tv_sec  = 0;
 	r->eps[m->idx].rate_credit.ts.tv_nsec = 0;
+	r->eps[m->idx].remote_is_rail = 1;
 	ldms_xprt_ctxt_set(_x, &r->eps[m->idx], NULL);
 	pthread_mutex_unlock(&r->mutex);
 
