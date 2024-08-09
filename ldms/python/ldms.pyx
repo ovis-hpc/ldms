@@ -3687,6 +3687,20 @@ cdef class Xprt(object):
         return ( LdmsAddr.from_sockaddr(PTR(&lcl)),
                  LdmsAddr.from_sockaddr(PTR(&rmt)) )
 
+    @property
+    def is_rail(self):
+        """True if this is a rail transport"""
+        cdef int rc
+        rc = ldms_xprt_is_rail(self.xprt)
+        return bool(rc)
+
+    @property
+    def is_remote_rail(self):
+        """True if the remote peer is a rail"""
+        cdef int rc
+        rc = ldms_xprt_is_remote_rail(self.xprt)
+        return bool(rc)
+
 
 cdef class _StreamSubCtxt(object):
     """For internal use"""
