@@ -395,6 +395,7 @@ cdef extern from "ldms.h" nogil:
     ctypedef uint64_t pthread_t
     int ldms_xprt_get_threads(ldms_t x, pthread_t *out, int n)
     int ldms_xprt_is_rail(ldms_t x)
+    int ldms_xprt_is_remote_rail(ldms_t x)
     int ldms_xprt_rail_eps(ldms_t x)
     int ldms_xprt_rail_send_credit_get(ldms_t x, uint64_t *credits, int n)
 
