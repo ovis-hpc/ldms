@@ -137,6 +137,8 @@ static struct ldms_xprt_ops_s __rail_ops = {
 	.set_by_name  = __rail_set_by_name,
 };
 
+void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg);
+
 static int __rail_id_cmp(void *k, const void *tk)
 {
 	return memcmp(k, tk, sizeof(struct ldms_rail_id_s));
@@ -355,6 +357,58 @@ void __rail_ep_credit_return(struct ldms_rail_ep_s *rep, int credit)
 	zap_send(rep->ep->zap_ep, &req, len);
 }
 
+ldms_rail_t __rail_passive_legacy_wrap(ldms_t x, ldms_event_cb_t cb, void *cb_arg)
+{
+	assert(XTYPE_IS_LEGACY(x->xtype));
+	const char *xprt_name = ldms_xprt_type_name(x);
+	ldms_rail_t r;
+	union ldms_sockaddr self_addr, peer_addr;
+	socklen_t addr_len = sizeof(self_addr);
+	r = (ldms_rail_t)ldms_xprt_rail_new(xprt_name, 1,
+					    __RAIL_UNLIMITED, __RAIL_UNLIMITED,
+					    x->auth->plugin->name, NULL);
+	if (!r)
+		goto out;
+
+	x->event_cb = __rail_cb;
+	x->event_cb_arg = &r->eps[0];
+
+	zap_get_name(x->zap_ep, (void*)&self_addr, (void*)&peer_addr, &addr_len);
+
+	/* Replace rail_id w/ information from x */
+	r->rail_id.ip4_addr = peer_addr.sin.sin_addr.s_addr;
+	r->rail_id.pid= 0;
+	r->rail_id.rail_gn = (uint64_t)r;
+
+	r->event_cb = cb;
+	r->event_cb_arg = cb_arg;
+
+	r->xtype = LDMS_XTYPE_PASSIVE_RAIL;
+	r->state = LDMS_RAIL_EP_ACCEPTING;
+
+	rbn_init(&r->rbn, &r->rail_id);
+	pthread_mutex_lock(&__rail_mutex);
+	rbt_ins(&__passive_rail_rbt, &r->rbn);
+	ref_get(&r->ref, "__passive_rail_rbt");
+	pthread_mutex_unlock(&__rail_mutex);
+	r->connecting_eps = 1;
+
+	r->eps[0].ep = x;
+	r->eps[0].state = LDMS_RAIL_EP_ACCEPTING;
+	r->eps[0].send_credit = r->send_limit;
+	r->eps[0].rate_credit.credit = r->send_rate_limit;
+	r->eps[0].rate_credit.rate   = r->send_rate_limit;
+	r->eps[0].rate_credit.ts.tv_sec  = 0;
+	r->eps[0].rate_credit.ts.tv_nsec = 0;
+	r->eps[0].remote_is_rail = 0; /* remote is legacy */
+	ldms_xprt_ctxt_set(x, &r->eps[0], NULL);
+
+	ref_get(&r->ref, "ldms_accepting");
+
+ out:
+	return r;
+}
+
 /* rail interposer */
 void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
@@ -372,16 +426,19 @@ void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 
 	if (r->xtype == LDMS_XTYPE_PASSIVE_RAIL && r->state == LDMS_RAIL_EP_LISTENING) {
 		/* x is a legacy xprt accepted by a listening rail */
-		if (e->type == LDMS_XPRT_EVENT_CONNECTED) {
-			/* remove the rail interposer */
-			x->event_cb = r->event_cb;
-			x->event_cb_arg = r->event_cb_arg;
-			x->event_cb(x, e, x->event_cb_arg);
-		} else {
+		if (e->type != LDMS_XPRT_EVENT_CONNECTED) {
 			/* bad passive legacy xprt does not notify the app */
 			ldms_xprt_put(x);
+			return;
+
 		}
-		return;
+		/* Wrap it in new rail transport and continue */
+		r = __rail_passive_legacy_wrap(x, r->event_cb, r->event_cb_arg);
+		if (!r) {
+			ldms_xprt_put(x);
+			return;
+		}
+		rep = &r->eps[0];
 	}
 
 	ref_get(&r->ref, "rail_cb");
