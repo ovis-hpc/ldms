@@ -251,12 +251,6 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 	}
 	r->max_msg = zap_max_msg(zap);
 
-//	r->eps[0].ep = __ldms_xprt_new_with_auth(r->name, r->auth_name, r->auth_av_list);
-//	if (!r->eps[0].ep)
-//		goto err_1;
-//	ldms_xprt_ctxt_set(r->eps[0].ep, &r->eps[0], NULL);
-//	r->max_msg = r->eps[0].ep->max_msg;
-
 	/* The other endpoints will be created later in connect() or
 	 * __rail_zap_handle_conn_req() */
 
@@ -624,9 +618,6 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 			pthread_mutex_unlock(&__rail_mutex);
 			goto err_0;
 		}
-//		/* drop the unused first initial endpoint */
-//		ldms_xprt_put(r->eps[0].ep);
-//		r->eps[0].ep = NULL;
 
 		r->xtype = LDMS_XTYPE_PASSIVE_RAIL;
 		r->state = LDMS_RAIL_EP_ACCEPTING;
