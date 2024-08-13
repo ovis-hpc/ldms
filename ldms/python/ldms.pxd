@@ -277,6 +277,7 @@ cdef extern from "ldms.h" nogil:
         EVENT_ERROR         "LDMS_XPRT_EVENT_ERROR"
         EVENT_DISCONNECTED  "LDMS_XPRT_EVENT_DISCONNECTED"
         EVENT_RECV          "LDMS_XPRT_EVENT_RECV"
+        EVENT_SET_DELETE    "LDMS_XPRT_EVENT_SET_DELETE"
         EVENT_SEND_COMPLETE "LDMS_XPRT_EVENT_SEND_COMPLETE"
         EVENT_SEND_CREDIT_DEPOSITED "LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED"
         EVENT_LAST          "LDMS_XPRT_EVENT_LAST"
@@ -285,12 +286,16 @@ cdef extern from "ldms.h" nogil:
         LDMS_XPRT_EVENT_ERROR
         LDMS_XPRT_EVENT_DISCONNECTED
         LDMS_XPRT_EVENT_RECV
+        LDMS_XPRT_EVENT_SET_DELETE
         LDMS_XPRT_EVENT_SEND_COMPLETE
         LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED
         LDMS_XPRT_EVENT_LAST
     cdef struct ldms_xprt_credit_event_data:
         uint64_t credit
         int      ep_idx
+    cdef struct ldms_xprt_set_delete_data:
+        void * set
+        const char *name
     cdef struct ldms_xprt_event:
         ldms_xprt_event_type type
         size_t data_len
@@ -298,6 +303,7 @@ cdef extern from "ldms.h" nogil:
         # know the names of the "fields" it can access in C code.
         char *data
         ldms_xprt_credit_event_data credit
+        ldms_xprt_set_delete_data set_delete
     ctypedef ldms_xprt_event *ldms_xprt_event_t
     ctypedef void (*ldms_event_cb_t)(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 

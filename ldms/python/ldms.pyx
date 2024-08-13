@@ -1354,6 +1354,20 @@ cdef class CreditEventData(object):
     def __repr__(self):
         return str(self)
 
+cdef class SetDeleteEventData(object):
+    cdef readonly str name
+    cdef readonly Set set
+
+    def __cinit__(self, Set _lset, str _name):
+        self.set = _lset
+        self.name = _name
+
+    def __str__(self):
+        return f"({self.set}, {self.name})"
+
+    def __repr__(self):
+        return str(self)
+
 
 cdef class XprtEvent(object):
     """An LDMS transport event
@@ -1381,6 +1395,8 @@ cdef class XprtEvent(object):
     cdef readonly CreditEventData credit
     """Current send credit (for the EVENT_SEND_CREDIT_DEPOSITED"""
 
+    cdef readonly SetDeleteEventData set_delete
+
     # NOTE: This is a Python object wrapper of `struct ldms_xprt_event`.
     #
     #       The values of the attributes are also new Python objects. So, we
@@ -1388,9 +1404,14 @@ cdef class XprtEvent(object):
     #       destroyed in the C level after the callback.
     def __cinit__(self, Ptr ptr):
         cdef ldms_xprt_event_t e = <ldms_xprt_event_t>ptr.c_ptr
+        cdef ldms_set_t cset
         self.type = ldms_xprt_event_type(e.type)
         if self.type == ldms.LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED:
             self.credit = CreditEventData(e.credit.credit, e.credit.ep_idx)
+        elif self.type == ldms.LDMS_XPRT_EVENT_SET_DELETE:
+            cset = <ldms_set_t>e.set_delete.set
+            lset = Set(None, None, set_ptr=PTR(cset)) if cset else None
+            self.set_delete = SetDeleteEventData(lset, STR(e.set_delete.name))
         else:
             self.data = e.data[:e.data_len]
 
@@ -1437,6 +1458,9 @@ cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
         # do NOT sem_post()
         return
     elif e.type == EVENT_SEND_CREDIT_DEPOSITED:
+        # do NOT sem_post()
+        return
+    elif e.type == EVENT_SET_DELETE:
         # do NOT sem_post()
         return
     else:
