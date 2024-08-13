@@ -288,7 +288,6 @@ struct ldmsd_stat {
 typedef struct ldmsd_prdcr_set {
 	char *inst_name;
 	char *schema_name;
-	char *producer_name;
 	ldmsd_prdcr_t prdcr;
 	ldms_set_t set;
 	int push_flags;
