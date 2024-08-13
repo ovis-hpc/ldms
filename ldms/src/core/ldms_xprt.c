@@ -127,8 +127,6 @@ const char *ldms_xprt_event_type_to_str(enum ldms_xprt_event_type t)
 	return xprt_event_type_names[t];
 }
 
-void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_fn);
-
 static ldms_t __ldms_xprt_get(ldms_t x)
 {
 	int a;
@@ -302,12 +300,15 @@ ldms_t ldms_xprt_by_remote_sin(struct sockaddr *sa)
 			goto next;
 
 		if (__is_same_addr(sa, (struct sockaddr *)&ss_remote)) {
-			/* Put the next ref back. */
+			/*
+			 * Put the next ref back (taken in ldms_xprt_first()
+			 * or ldms_xprt_next()).
+			 */
 			ldms_xprt_put(l);
 			r = __ldms_xprt_to_rail(l);
 			ldms_xprt_get(r);
 			/*
-			 * Put back the app reference taken in
+			 * Put back the caller reference taken in
 			 * ldms_xprt_first() or ldms_xprt_next().
 			 *
 			 * The rail hold a reference on the ldms_xprt object already.
@@ -608,13 +609,17 @@ static void __set_delete_cb(ldms_t xprt, int status, ldms_set_t rbd, void *cb_ar
 		ref_put(&set->ref, "xprt_set_coll");
 }
 
+/* implementation in ldms_rail.c */
+void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
+			      ldms_set_delete_cb_t cb_fn);
+
 void __ldms_dir_del_set(struct ldms_set *set)
 {
 	/*
 	 * LDMS versions >= 4.3.4 do not send LDMS_DIR_DEL, instead
 	 * they use the two way handshake provided by
-	 * ldms_xprt_set_delete() to inform the peer and receive
-	 * acknowledgment of the set's disuse.
+	 * __rail_on_set_delete() (previously __xprt_set_delete() before rail)
+	 * to inform the peer and receive acknowledgment of the set's disuse.
 	 *
 	 * We still handle LDMS_DIR_DEL and pass it to the application
 	 * so that it can interoperate with compute nodes that are
@@ -623,10 +628,17 @@ void __ldms_dir_del_set(struct ldms_set *set)
 	 * dir_update(set, LDMS_DIR_DEL);
 	 */
 	struct ldms_xprt *x;
+	ldms_t r;
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_FOREACH(x, &xprt_list, xprt_link) {
-		if (x->remote_dir_xid)
-			ldms_xprt_set_delete(x, set, __set_delete_cb);
+		if (x->remote_dir_xid) {
+			/* NOTE:
+			 * There will be only one `x` in `r` that has
+			 * `x->remote_dir_xid != 0`.
+			 */
+			r = __ldms_xprt_to_rail(x);
+			__rail_on_set_delete(r, set, __set_delete_cb);
+		}
 	}
 	pthread_mutex_unlock(&xprt_list_lock);
 }
@@ -3836,64 +3848,6 @@ int ldms_register_notify_cb(ldms_t x, ldms_set_t s, int flags,
  err:
 	errno = EINVAL;
 	return -1;
-}
-
-/*
- * Tell all peers that have an RBD for this set that it is being
- * deleted. When they all reply, we can delete the set.
- */
-void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_fn)
-{
-	struct ldms_request *req;
-	struct ldms_context *ctxt;
-	size_t len;
-	struct rbn *rbn;
-	struct xprt_set_coll_entry *ent;
-
-	pthread_mutex_lock(&x->lock);
-	if (!ldms_xprt_connected(x)) {
-		pthread_mutex_unlock(&x->lock);
-		return;
-	}
-
-	ctxt = __ldms_alloc_ctxt
-		(x,
-		 sizeof(struct ldms_request) + sizeof(struct ldms_context),
-		 LDMS_CONTEXT_SET_DELETE,
-		 s,
-		 cb_fn);
-	if (!ctxt) {
-		XPRT_LOG(x, OVIS_LCRIT, "%s:%s:%d Memory allocation failure\n",
-				__FILE__, __func__, __LINE__);
-		pthread_mutex_unlock(&x->lock);
-		return;
-	}
-	rbn = rbt_find(&x->set_coll, s);
-	if (rbn) {
-		/* We'll put set ref when we receive the reply. */
-		ctxt->set_delete.lookup = 1;
-		rbt_del(&x->set_coll, rbn);
-		ent = container_of(rbn, struct xprt_set_coll_entry, rbn);
-		free(ent);
-	} else {
-		/* We won't put ref on receiving reply. */
-		ctxt->set_delete.lookup = 0;
-	}
-	req = (struct ldms_request *)(ctxt + 1);
-	len = format_set_delete_req(req, (uint64_t)(unsigned long)ctxt,
-					ldms_set_instance_name_get(s));
-	zap_err_t zerr = zap_send(x->zap_ep, req, len);
-	if (zerr) {
-		char name[128];
-		(void) ldms_xprt_names(x, NULL, 0, NULL, 0, name, 128,
-					     NULL, 0, NI_NUMERICHOST);
-		XPRT_LOG(x, OVIS_LERROR, "%s:%s:%d Error %d sending "
-				"the LDMS_SET_DELETE message to '%s'\n",
-				__FILE__, __func__, __LINE__, zerr, name);
-		x->zerrno = zerr;
-		__ldms_free_ctxt(x, ctxt);
-	}
-	pthread_mutex_unlock(&x->lock);
 }
 
 static int send_cancel_notify(ldms_t _x, ldms_set_t s)

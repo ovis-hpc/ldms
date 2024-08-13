@@ -421,11 +421,20 @@ void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 
 	/*
 	 * NOTE: `x` is an xprt that could be:
-	 *   - legacy passive endpoint
+	 *   - legacy passive endpoint (e.g. old remote peer using 4.3.11)
+	 *   - ldms xprt member in a rail
 	 */
 
 	if (r->xtype == LDMS_XTYPE_PASSIVE_RAIL && r->state == LDMS_RAIL_EP_LISTENING) {
-		/* x is a legacy xprt accepted by a listening rail */
+		/*
+		 * This condition is only for `x` with legacy LDMS remote peer.
+		 * In this case, we shall wrap `x` with a new rail before
+		 * continuing.
+		 *
+		 * NOTE: If the remote is rail, it will use rail connect message
+		 * which is handled by `__rail_zap_handle_conn_req()`, which
+		 * bundles xprt members into the associated rail object.
+		 */
 		if (e->type != LDMS_XPRT_EVENT_CONNECTED) {
 			/* bad passive legacy xprt does not notify the app */
 			ldms_xprt_put(x);
@@ -1582,4 +1591,87 @@ static ldms_set_t __rail_set_by_name(ldms_t _x, const char *set_name)
 		set = NULL;
 	}
 	return set;
+}
+
+/* defined in ldms_xprt.c */
+size_t format_set_delete_req(struct ldms_request *req, uint64_t xid,
+			     const char *inst_name);
+
+/* Called from ldms_xprt.c.
+ * Tell the peer that have an RBD for this set that it is being
+ * deleted. When they all reply, we can delete the set.
+ */
+void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
+			      ldms_set_delete_cb_t cb_fn)
+{
+	/*
+	 */
+	assert(XTYPE_IS_RAIL(_r->xtype));
+
+	ldms_rail_t r = (ldms_rail_t)_r;
+	struct ldms_request *req;
+	struct ldms_context *ctxt;
+	size_t len;
+	struct rbn *rbn;
+	struct xprt_set_coll_entry *ent;
+	int i;
+	ldms_t x;
+
+	x = NULL;
+
+	/* for each x in r */
+	for (i = 0; i < r->n_eps; i++) {
+		x = r->eps[i].ep;
+		pthread_mutex_lock(&x->lock);
+		rbn = rbt_find(&x->set_coll, s);
+		if (rbn)
+			goto found;
+		pthread_mutex_unlock(&x->lock);
+	}
+
+	/* No rbn found in any x in r. Just use the first x to notify with
+	 * ctxt->set_delete.lookup being 0. */
+	x = r->eps[0].ep;
+
+	/* let through */
+
+	pthread_mutex_lock(&x->lock);
+ found:
+	ctxt = __ldms_alloc_ctxt
+		(x,
+		 sizeof(struct ldms_request) + sizeof(struct ldms_context),
+		 LDMS_CONTEXT_SET_DELETE,
+		 s,
+		 cb_fn);
+	if (!ctxt) {
+		ovis_log(xlog, OVIS_LCRIT, "%s:%s:%d Memory allocation failure\n",
+				__FILE__, __func__, __LINE__);
+		pthread_mutex_unlock(&x->lock);
+		return;
+	}
+	if (rbn) {
+		/* We'll put set ref when we receive the reply. */
+		ctxt->set_delete.lookup = 1;
+		rbt_del(&x->set_coll, rbn);
+		ent = container_of(rbn, struct xprt_set_coll_entry, rbn);
+		free(ent);
+	} else {
+		/* We won't put ref on receiving reply. */
+		ctxt->set_delete.lookup = 0;
+	}
+	req = (struct ldms_request *)(ctxt + 1);
+	len = format_set_delete_req(req, (uint64_t)(unsigned long)ctxt,
+					ldms_set_instance_name_get(s));
+	zap_err_t zerr = zap_send(x->zap_ep, req, len);
+	if (zerr) {
+		char name[128];
+		(void) ldms_xprt_names(x, NULL, 0, NULL, 0, name, 128,
+					     NULL, 0, NI_NUMERICHOST);
+		ovis_log(xlog, OVIS_LERROR, "%s:%s:%d Error %d sending "
+				"the LDMS_SET_DELETE message to '%s'\n",
+				__FILE__, __func__, __LINE__, zerr, name);
+		x->zerrno = zerr;
+		__ldms_free_ctxt(x, ctxt);
+	}
+	pthread_mutex_unlock(&x->lock);
 }
