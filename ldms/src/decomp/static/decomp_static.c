@@ -1039,6 +1039,10 @@ static int diff_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 	ldmsd_row_t prev_row = TAILQ_NEXT(src_row, entry);
 	ldmsd_col_t dst_col = &dest_row->cols[col_id];
 	union ldms_value zero;
+        uint64_t src_time;
+        uint64_t prev_time;
+        uint64_t diff_time;
+
 	memset(&zero, 0, sizeof(zero));
 	/* dst_col->mval = src_row->cols[col_id].mval - prev_row->cols[col_id].mval; */
 	if (!prev_row) {
@@ -1097,10 +1101,11 @@ static int diff_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 			prev_row->cols[col_id].mval->v_d;
 		break;
 	case LDMS_V_TIMESTAMP:
-		dst_col->mval->v_ts.sec = src_row->cols[col_id].mval->v_ts.sec -
-			prev_row->cols[col_id].mval->v_ts.sec;
-		dst_col->mval->v_ts.usec = src_row->cols[col_id].mval->v_ts.usec -
-			prev_row->cols[col_id].mval->v_ts.usec;
+                src_time = (src_row->cols[col_id].mval->v_ts.sec * 1000000) + src_row->cols[col_id].mval->v_ts.usec;
+                prev_time = (prev_row->cols[col_id].mval->v_ts.sec * 1000000) + prev_row->cols[col_id].mval->v_ts.usec;
+                diff_time = src_time - prev_time;
+                dst_col->mval->v_ts.sec = (uint32_t)(diff_time / 1000000);
+                dst_col->mval->v_ts.usec = (uint32_t)(diff_time % 1000000);
 		break;
 	default:
 		return EINVAL;
@@ -1114,6 +1119,7 @@ static int mean_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 	ldmsd_row_t src_row = TAILQ_FIRST(row_list);
 	ldmsd_col_t dst_col = &dest_row->cols[col_id];
 	union ldms_value zero;
+        uint64_t sum_time;
 	memset(&zero, 0, sizeof(zero));
 
 	assign_value(dst_col->mval, &zero, dst_col->type, dst_col->array_len);
@@ -1151,8 +1157,10 @@ static int mean_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 			dst_col->mval->v_d += src_row->cols[col_id].mval->v_d;
 			break;
 		case LDMS_V_TIMESTAMP:
-			dst_col->mval->v_ts.sec += src_row->cols[col_id].mval->v_ts.sec;
-			dst_col->mval->v_ts.usec += src_row->cols[col_id].mval->v_ts.usec;
+                        sum_time = (dst_col->mval->v_ts.sec * 1000000) + dst_col->mval->v_ts.usec;
+                        sum_time += (src_row->cols[col_id].mval->v_ts.sec * 1000000) + src_row->cols[col_id].mval->v_ts.usec;
+                        dst_col->mval->v_ts.sec += (uint32_t)(sum_time / 1000000);
+                        dst_col->mval->v_ts.usec += (uint32_t)(sum_time % 1000000);
 			break;
 		default:
 			return EINVAL;
@@ -1192,8 +1200,10 @@ static int mean_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 		dst_col->mval->v_d /= count;
 		break;
 	case LDMS_V_TIMESTAMP:
-		dst_col->mval->v_ts.sec /= count;
-		dst_col->mval->v_ts.usec /= count;
+                sum_time = (dst_col->mval->v_ts.sec * 1000000) + dst_col->mval->v_ts.usec;
+                sum_time /= count;
+                dst_col->mval->v_ts.sec += (uint32_t)(sum_time / 1000000);
+                dst_col->mval->v_ts.usec += (uint32_t)(sum_time % 1000000);
 		break;
 	default:
 		return EINVAL;
