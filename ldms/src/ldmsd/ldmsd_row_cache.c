@@ -41,9 +41,11 @@ static int tree_comparator(void *a, const void *b)
 	ldmsd_row_cache_idx_t key_a = (ldmsd_row_cache_idx_t)a;
 	ldmsd_row_cache_idx_t key_b = (ldmsd_row_cache_idx_t)b;
 	ldmsd_row_cache_key_t rowk_a, rowk_b;
+        assert(key_a->key_count == key_b->key_count);
 	for (i = 0; i < key_a->key_count; i++) {
 		rowk_a = key_a->keys[i];
 		rowk_b = key_b->keys[i];
+                assert(rowk_a->type == rowk_b->type);
 		switch (rowk_a->type) {
 		case LDMS_V_TIMESTAMP:
 			if (rowk_a->mval->v_ts.sec < rowk_b->mval->v_ts.sec)
