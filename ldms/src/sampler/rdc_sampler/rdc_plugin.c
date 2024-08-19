@@ -129,11 +129,6 @@ static void term() {
 	rdcinfo_delete(inst);
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 static const char *usage(struct ldmsd_plugin *self) {
 	(void)self;
 	if (!usage_str)
@@ -149,7 +144,6 @@ static struct ldmsd_sampler plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

@@ -87,8 +87,6 @@ int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 int timer_base_create_set(struct timer_base *tb);
 
-ldms_set_t timer_base_get_set(struct ldmsd_sampler *self);
-
 void timer_base_term(struct ldmsd_plugin *self);
 
 int timer_base_sample(struct ldmsd_sampler *self);

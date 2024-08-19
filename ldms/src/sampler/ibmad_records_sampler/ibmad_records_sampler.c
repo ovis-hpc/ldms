@@ -849,11 +849,6 @@ static void term(struct ldmsd_plugin *self)
         sampler_base = NULL;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 static const char *usage(struct ldmsd_plugin *self)
 {
         ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
@@ -870,7 +865,6 @@ static struct ldmsd_sampler ibmad_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

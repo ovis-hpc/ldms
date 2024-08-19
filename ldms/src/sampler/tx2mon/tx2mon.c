@@ -624,11 +624,6 @@ static int sample(struct ldmsd_sampler *self)
 	return rc;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return sc;
-}
-
 static struct ldmsd_sampler tx2mon_plugin = {
 	.base = {
 		.name = SAMP,
@@ -637,7 +632,6 @@ static struct ldmsd_sampler tx2mon_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

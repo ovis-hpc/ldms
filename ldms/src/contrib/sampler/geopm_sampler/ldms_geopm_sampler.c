@@ -506,12 +506,6 @@ exit:
 	return rc;
 }
 
-
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return g_set;
-}
-
 static int sample(struct ldmsd_sampler *self)
 {
 	int rc = 0;
@@ -578,7 +572,6 @@ static struct ldmsd_sampler g_geopm_sampler_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

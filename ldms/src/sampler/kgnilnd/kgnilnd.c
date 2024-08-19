@@ -81,11 +81,6 @@ static int metric_offset = 0;
 static int nmetrics = 0;
 static base_data_t base;
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 
 static char *replace_space(char *s)
 {
@@ -346,7 +341,6 @@ static struct ldmsd_sampler kgnilnd_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

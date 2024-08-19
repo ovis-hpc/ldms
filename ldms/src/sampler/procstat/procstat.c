@@ -147,12 +147,6 @@ struct sampler_data {
 };
 // global instance, to become per instance later.
 
-
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return g.set;
-}
-
 /* records data, accounting for vagaries of cpu reporting in /proc/stat.
 On initial call of a sample, cpu_count, should have -1
 and it will be the size of the total stats row after that.
@@ -773,7 +767,6 @@ static struct ldmsd_sampler procstat_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

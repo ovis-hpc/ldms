@@ -643,11 +643,6 @@ static const char *usage(struct ldmsd_plugin *self)
 		;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 static int sample(struct ldmsd_sampler *self)
 {
 	return 0;
@@ -661,7 +656,6 @@ static struct ldmsd_sampler blob_stream_writer = {
 			.config = config,
 			.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample
 };
 

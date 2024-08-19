@@ -101,12 +101,6 @@ uint64_t tv_to_u64(struct timeval tv)
 	return x;
 }
 
-ldms_set_t timer_base_get_set(struct ldmsd_sampler *self)
-{
-	struct timer_base *tb = (void*)self;
-	return tb->set;
-}
-
 int timer_base_create_metric_set(struct timer_base *tb)
 {
 	int rc = 0;
@@ -334,7 +328,6 @@ void timer_base_init(struct timer_base *tb)
 	tb->base.base.term = timer_base_term;
 	tb->base.base.config = __config;
 	tb->base.base.usage = timer_base_usage;
-	tb->base.get_set = timer_base_get_set;
 	tb->base.sample = timer_base_sample;
 	tb->state = TBS_INIT;
 	TAILQ_INIT(&tb->timer_list);

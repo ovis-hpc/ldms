@@ -277,15 +277,6 @@ static int config(struct ldmsd_plugin *self,
 }
 
 /**
- * LDMS call this function to obtain the current set of metrics.
- * @param self this plugin instance.
- * @return current set of metrics.
- */
-static ldms_set_t get_set(struct ldmsd_sampler *self) {
-    return set;
-}
-
-/**
  * LDMS calls this function to sample GPU metrics and store them in the metrics set.
  * @param self
  * @return 0 if successful; otherwise returns EINVAL.
@@ -357,7 +348,6 @@ static struct ldmsd_sampler gpu_metrics_plugin = {
                 .config = config,   // constructor
                 .usage = usage,
         },
-        .get_set = get_set,
         .sample = sample,
 };
 

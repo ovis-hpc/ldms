@@ -226,11 +226,6 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(mylog);
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 static const char *usage(struct ldmsd_plugin *self)
 {
 	dao_log(OVIS_LDEBUG, "usage() called\n");
@@ -245,7 +240,6 @@ static struct ldmsd_sampler daos_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

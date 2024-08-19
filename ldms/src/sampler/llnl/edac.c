@@ -361,11 +361,6 @@ err:
 
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 static int sample(struct ldmsd_sampler *self)
 {
 	// If there was an error before, don't send multiple errors, just return
@@ -456,7 +451,6 @@ static struct ldmsd_sampler edac_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

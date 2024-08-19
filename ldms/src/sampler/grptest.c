@@ -223,11 +223,6 @@ err:
 	return rc;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return grp;
-}
-
 static void __set_sample(ldms_set_t set)
 {
 	uint32_t counter;
@@ -275,7 +270,6 @@ static struct ldmsd_sampler meminfo_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

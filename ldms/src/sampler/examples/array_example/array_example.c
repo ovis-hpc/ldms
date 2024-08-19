@@ -272,11 +272,6 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 static void term(struct ldmsd_plugin *self)
 {
 	if (base)
@@ -306,7 +301,6 @@ static struct ldmsd_sampler array_example_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

@@ -517,13 +517,6 @@ out:
 
 }
 
-
-
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 static void term(struct ldmsd_plugin *self)
 {
 
@@ -588,7 +581,6 @@ static struct ldmsd_sampler aries_nic_mmr_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

@@ -464,11 +464,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 struct stat_row_ent {
 	const char *prefix;
 	enum stat_row type;
@@ -705,7 +700,6 @@ static struct ldmsd_sampler procstat2_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

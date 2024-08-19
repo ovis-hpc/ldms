@@ -605,11 +605,6 @@ err:
 	return rc;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 /**
  * Utility function for updating a single metric in a port.
  */
@@ -755,7 +750,6 @@ static struct ldmsd_sampler sysclassib_plugin = {
 		.config = config,
 		.usage = usage
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

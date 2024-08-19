@@ -85,11 +85,6 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                   Defaults to 'hello'\n";
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 static int sample(struct ldmsd_sampler *self)
 {
 	return 0;
@@ -146,7 +141,6 @@ static struct ldmsd_sampler hello_sampler = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample
 };
 

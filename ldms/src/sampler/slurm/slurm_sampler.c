@@ -455,11 +455,6 @@ static const char *usage(struct ldmsd_plugin *self)
                 "     task_count    Set the length of the max number of tasks per job. Default set based on CPU\n";
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 static int sample(struct ldmsd_sampler *self)
 {
 	return 0;
@@ -996,7 +991,6 @@ static struct ldmsd_sampler slurm_sampler = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample
 };
 

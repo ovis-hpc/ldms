@@ -358,11 +358,6 @@ err:
 	return rc;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 int atasmart_set_metric(SkDisk *d, SkSmartAttributeParsedData *a,
 				void *userdata)
 {
@@ -475,7 +470,6 @@ static struct ldmsd_sampler sampler_atasmart_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

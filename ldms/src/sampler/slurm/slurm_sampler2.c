@@ -1216,12 +1216,6 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	/* no opt */
-	return NULL;
-}
-
 static struct ldmsd_sampler slurm2_plugin = {
 	.base = {
 		.name = SAMP,
@@ -1230,7 +1224,6 @@ static struct ldmsd_sampler slurm2_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 
