@@ -288,11 +288,6 @@ err:
 	return rc;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 static int sample(struct ldmsd_sampler *self)
 {
 	int rc;
@@ -387,7 +382,6 @@ static struct ldmsd_sampler filesingle_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

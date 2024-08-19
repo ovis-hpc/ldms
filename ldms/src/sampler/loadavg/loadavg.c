@@ -181,11 +181,6 @@ static const char *make_schema_name() {
 	return der_schema;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 static int create_metric_set(base_data_t base)
 {
 	ldms_schema_t schema;
@@ -451,7 +446,6 @@ static struct ldmsd_sampler loadavg_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

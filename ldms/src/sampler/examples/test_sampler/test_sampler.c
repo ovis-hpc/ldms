@@ -1721,11 +1721,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return 0;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	assert(0 == "not implemented");
-}
-
 static int __gen_list_len(int min_len, int max_len)
 {
 	int llen = rand();
@@ -2013,7 +2008,6 @@ static struct ldmsd_sampler test_sampler_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

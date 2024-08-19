@@ -431,11 +431,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 dvs_mount_t find_dvs(const char *dir)
 {
 	struct rbn *rbn = rbt_find(&mount_tree, dir);
@@ -729,7 +724,6 @@ static struct ldmsd_sampler dvs_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

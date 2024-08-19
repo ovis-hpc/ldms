@@ -905,7 +905,6 @@ struct ldmsd_plugin {
 
 struct ldmsd_sampler {
 	struct ldmsd_plugin base;
-	ldms_set_t (*get_set)(struct ldmsd_sampler *self);
 	int (*sample)(struct ldmsd_sampler *self);
 };
 

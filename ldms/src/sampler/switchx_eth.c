@@ -353,11 +353,6 @@ static int sx_config(struct ldmsd_plugin *self, struct attr_value_list *kwl, str
 	return rc;
 }
 
-static ldms_set_t sx_get_set(struct ldmsd_sampler *self)
-{
-	return sx_ldms_sets[1].sx_set;
-}
-
 static int sx_sample_set(int log_port)
 {
 	int rc;
@@ -521,7 +516,6 @@ static struct ldmsd_sampler switchx_plugin = {
 		.config = sx_config,
 		.usage = usage,
 	},
-	.get_set = sx_get_set,
 	.sample = sx_sample,
 };
 

@@ -232,11 +232,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 static
 void value_setter(ldms_mval_t mval, enum ldms_value_type typ, int item)
 {
@@ -396,7 +391,6 @@ static struct ldmsd_sampler __plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

@@ -890,12 +890,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	return 0;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	ovis_log(mylog, OVIS_LINFO, "get_set called mistakenly\n");
-	return NULL;
-}
-
 static void check_box_activation(ldms_shm_box_t *box)
 {
 	if(!ldms_shm_set_is_active(box->shm_set)) {
@@ -1034,7 +1028,6 @@ static struct ldmsd_sampler shm_plugin = {
 			.config = config,
 			.usage = usage,
 		},
-		.get_set = get_set,
 		.sample = sample,
 };
 

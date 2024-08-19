@@ -935,11 +935,6 @@ out:
 	return EINVAL;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler * self)
-{
-	return set;
-}
-
 /*
  * This function called by the create_event_sets to create and add papi events
  * Input: event set
@@ -1423,7 +1418,6 @@ static struct ldmsd_sampler papi_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

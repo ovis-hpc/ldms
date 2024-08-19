@@ -463,11 +463,6 @@ out:
 	return rc;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 static void term(struct ldmsd_plugin *self)
 {
 	if (mf)
@@ -504,7 +499,6 @@ static struct ldmsd_sampler procdiskstats_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 
