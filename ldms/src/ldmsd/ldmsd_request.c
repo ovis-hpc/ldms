@@ -328,6 +328,14 @@ static int advertiser_stop_handler(ldmsd_req_ctxt_t reqc);
 static int advertiser_del_handler(ldmsd_req_ctxt_t reqc);
 static int advertise_handler(ldmsd_req_ctxt_t reqc);
 
+/* Quota Group (qgroup) */
+static int qgroup_config_handler(ldmsd_req_ctxt_t reqc);
+static int qgroup_member_add_handler(ldmsd_req_ctxt_t reqc);
+static int qgroup_member_del_handler(ldmsd_req_ctxt_t reqc);
+static int qgroup_start_handler(ldmsd_req_ctxt_t reqc);
+static int qgroup_stop_handler(ldmsd_req_ctxt_t reqc);
+static int qgroup_info_handler(ldmsd_req_ctxt_t reqc);
+
 /* executable for all */
 #define XALL 0111
 /* executable for user, and group */
@@ -731,6 +739,26 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_ADVERTISE_REQ] = {
 		LDMSD_ADVERTISE_REQ, advertise_handler, XUG
+	},
+
+	/* Quota Group (qgroup) */
+	[LDMSD_QGROUP_CONFIG_REQ] = {
+		LDMSD_QGROUP_CONFIG_REQ, qgroup_config_handler, XUG
+	},
+	[LDMSD_QGROUP_MEMBER_ADD_REQ] = {
+		LDMSD_QGROUP_MEMBER_ADD_REQ, qgroup_member_add_handler, XUG
+	},
+	[LDMSD_QGROUP_MEMBER_DEL_REQ] = {
+		LDMSD_QGROUP_MEMBER_DEL_REQ, qgroup_member_del_handler, XUG
+	},
+	[LDMSD_QGROUP_START_REQ] = {
+		LDMSD_QGROUP_START_REQ, qgroup_start_handler, XUG
+	},
+	[LDMSD_QGROUP_STOP_REQ] = {
+		LDMSD_QGROUP_STOP_REQ, qgroup_stop_handler, XUG
+	},
+	[LDMSD_QGROUP_INFO_REQ] = {
+		LDMSD_QGROUP_INFO_REQ, qgroup_info_handler, XUG
 	},
 };
 
@@ -10199,5 +10227,315 @@ static int advertiser_del_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc = __prdcr_del_handler(reqc, "advertiser_del", "advertiser");
 	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+
+/* -------------------- */
+/* Quota Group (qgroup) */
+/* -------------------- */
+
+static int qgroup_config_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *quota = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_QUOTA);
+	char *reset_interval = ldmsd_req_attr_str_value_get_by_id(reqc,
+						LDMSD_ATTR_RESET_INTERVAL);
+	char *ask_interval = ldmsd_req_attr_str_value_get_by_id(reqc,
+						LDMSD_ATTR_ASK_INTERVAL);
+	char *ask_amount = ldmsd_req_attr_str_value_get_by_id(reqc,
+						LDMSD_ATTR_ASK_AMOUNT);
+	char *ask_mark = ldmsd_req_attr_str_value_get_by_id(reqc,
+						LDMSD_ATTR_ASK_MARK);
+	int rc = 0;
+	uint64_t u64;
+	int64_t s64;
+
+	if (quota) {
+		u64 = ovis_get_mem_size(quota);
+		rc = ldms_qgroup_cfg_quota_set(u64);
+		if (rc) {
+			linebuf_printf(reqc,
+				"qgroup quota set failed, "
+				"set value: \"%s\", rc: %d", quota, rc);
+			goto out;
+		}
+	}
+
+	if (reset_interval) {
+		rc = ovis_time_str2us(reset_interval, &s64);
+		if (rc) {
+			linebuf_printf(reqc,
+				"Bad time format, set value: \"%s\", rc: %d",
+				reset_interval, rc);
+			goto out;
+		}
+		rc = ldms_qgroup_cfg_reset_usec_set(s64);
+		if (rc) {
+			linebuf_printf(reqc,
+				"qgroup reset_interval set failed, "
+				"set value: \"%s\", rc: %d",
+				reset_interval, rc);
+			goto out;
+		}
+	}
+
+	if (ask_interval) {
+		rc = ovis_time_str2us(ask_interval, &s64);
+		if (rc) {
+			linebuf_printf(reqc,
+				"Bad time format, set value: \"%s\", rc: %d",
+				ask_interval, rc);
+			goto out;
+		}
+		rc = ldms_qgroup_cfg_ask_usec_set(s64);
+		if (rc) {
+			linebuf_printf(reqc,
+				"qgroup ask_interval set failed, "
+				"set value: \"%s\", rc: %d",
+				ask_interval, rc);
+			goto out;
+		}
+	}
+
+	if (ask_amount) {
+		s64 = ovis_get_mem_size(ask_amount);
+		rc = ldms_qgroup_cfg_ask_amount_set(s64);
+		if (rc) {
+			linebuf_printf(reqc,
+				"qgroup ask_amount set failed, "
+				"set value: \"%s\", rc: %d",
+				ask_amount, rc);
+			goto out;
+		}
+	}
+
+	if (ask_mark) {
+		s64 = ovis_get_mem_size(ask_mark);
+		rc = ldms_qgroup_cfg_ask_mark_set(s64);
+		if (rc) {
+			linebuf_printf(reqc,
+				"qgroup ask_mark set failed, "
+				"set value: \"%s\", rc: %d",
+				ask_mark, rc);
+			goto out;
+		}
+	}
+
+	rc = 0;
+
+ out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(quota);
+	free(reset_interval);
+	free(ask_interval);
+	free(ask_amount);
+	free(ask_mark);
+	return rc;
+}
+
+
+static int qgroup_member_add_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *a_host = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
+	char *a_port = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
+	char *a_xprt = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_XPRT);
+	char *a_auth = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTH);
+	ldmsd_auth_t auth = NULL;
+	int rc;
+
+	/* ldms_qgroup_member_add(); */
+
+	/* host */
+	if (!a_host) {
+		rc = EINVAL;
+		linebuf_printf(reqc, "Missing 'host' attribute.");
+		goto out;
+	}
+
+	/* port is optional */
+
+	/* xprt */
+	if (!a_xprt) {
+		rc = EINVAL;
+		linebuf_printf(reqc, "Missing 'xprt' attribute.");
+		goto out;
+	}
+
+	/* auth */
+	if (a_auth) {
+		auth = ldmsd_auth_find(a_auth);
+		if (!auth) {
+			rc = ENOENT;
+			linebuf_printf(reqc,
+				"Authentication domain '%s' not found, check"
+				" the auth_add configuration.", a_auth);
+			goto out;
+		}
+	} else {
+		/* use default auth */
+		auth = ldmsd_auth_default_get();
+		assert(auth);
+	}
+
+	rc = ldms_qgroup_member_add(a_xprt, a_host, a_port,
+				    auth->plugin, auth->attrs);
+	switch (rc) {
+	case 0:
+		/* no-op */
+		break;
+	case EEXIST:
+		linebuf_printf(reqc, "qgroup member '%s:%s' already existed",
+				a_host, a_port?a_port:"411");
+		goto out;
+	default:
+		linebuf_printf(reqc, "qgroup member add error: %d", rc);
+		goto out;
+	}
+
+ out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(a_host);
+	free(a_port);
+	free(a_xprt);
+	free(a_auth);
+	if (auth)
+		ldmsd_cfgobj_put(&auth->obj);
+	return rc;
+}
+
+
+static int qgroup_member_del_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *a_host = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
+	char *a_port = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
+	int rc;
+
+	/* host */
+	if (!a_host) {
+		rc = EINVAL;
+		linebuf_printf(reqc, "Missing 'host' attribute.");
+		goto out;
+	}
+
+	/* port is optional */
+	rc = ldms_qgroup_member_del(a_host, a_port);
+	if (rc == ENOENT) {
+		linebuf_printf(reqc, "qgroup member '%s:%s' not found",
+				a_host, a_port?a_port:"411");
+		goto out;
+	}
+
+ out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(a_host);
+	free(a_port);
+	return rc;
+}
+
+
+static int qgroup_start_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	rc = ldms_qgroup_start();
+	if (rc) {
+		linebuf_printf(reqc, "qgroup start error: %s(%d)",
+				     ovis_errno_abbvr(rc), rc);
+	}
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+
+static int qgroup_stop_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	rc = ldms_qgroup_stop();
+	if (rc) {
+		linebuf_printf(reqc, "qgroup stop error: %s(%d)",
+				     ovis_errno_abbvr(rc), rc);
+	}
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+
+#define __LB_PRINTF_RC_OUT( FMT, ... ) do { \
+		rc = linebuf_printf(reqc, FMT, ## __VA_ARGS__); \
+		if (rc) { \
+			snprintf(ebuf, sizeof(ebuf), \
+				"linebuf_printf() error: %d", rc); \
+			goto out; \
+		} \
+	} while (0)
+static int qgroup_info_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	char ebuf[256];
+	ldms_qgroup_info_t qinfo = NULL;
+	ldms_qgroup_member_info_t minfo;
+	const char *sep = "";
+
+	qinfo = ldms_qgroup_info_get();
+	if (!qinfo) {
+		rc = errno;
+		snprintf(ebuf, sizeof(ebuf),
+			 "ldms_qgroup_info_get() error: %s(%d)",
+			 ovis_errno_abbvr(rc), rc);
+		goto out;
+	}
+
+	__LB_PRINTF_RC_OUT("{");
+	__LB_PRINTF_RC_OUT("\"state\":\"%s\"",
+					ldms_qgroup_state_str(qinfo->state));
+	__LB_PRINTF_RC_OUT(",\"quota\":%lu", qinfo->quota);
+	__LB_PRINTF_RC_OUT(",\"config\":{");
+		__LB_PRINTF_RC_OUT("\"quota\":%lu", qinfo->cfg.quota);
+		__LB_PRINTF_RC_OUT(",\"ask_mark\":%lu", qinfo->cfg.ask_mark);
+		__LB_PRINTF_RC_OUT(",\"ask_amount\":%lu", qinfo->cfg.ask_amount);
+		__LB_PRINTF_RC_OUT(",\"ask_usec\":%lu", qinfo->cfg.ask_usec);
+		__LB_PRINTF_RC_OUT(",\"reset_usec\":%lu", qinfo->cfg.reset_usec);
+	__LB_PRINTF_RC_OUT("}"); /* config */
+	__LB_PRINTF_RC_OUT(",\"members\":[");
+	STAILQ_FOREACH(minfo, &qinfo->member_stq, entry) {
+		__LB_PRINTF_RC_OUT("%s{", sep);
+		__LB_PRINTF_RC_OUT("\"state\":\"%s\"",
+				ldms_qgroup_member_state_str(minfo->state));
+		__LB_PRINTF_RC_OUT(",\"host\":\"%s\"", minfo->c_host);
+		__LB_PRINTF_RC_OUT(",\"port\":\"%s\"", minfo->c_port);
+		__LB_PRINTF_RC_OUT(",\"xprt\":\"%s\"", minfo->c_xprt);
+		__LB_PRINTF_RC_OUT(",\"auth\":\"%s\"", minfo->c_auth);
+		if (minfo->c_auth_av_list) {
+			int i;
+			static struct attr_value *av;
+			__LB_PRINTF_RC_OUT(",\"auth_options\":{");
+			for (i = 0; i < minfo->c_auth_av_list->count; i++) {
+				av = &minfo->c_auth_av_list->list[i];
+				__LB_PRINTF_RC_OUT("%s\"%s\":\"%s\"",
+						i?",":"", av->name, av->value);
+			}
+			__LB_PRINTF_RC_OUT("}");
+		}
+		__LB_PRINTF_RC_OUT("}");
+		sep = ",";
+	}
+	__LB_PRINTF_RC_OUT("]"); /* members */
+	__LB_PRINTF_RC_OUT("}"); /* doc */
+
+	rc = 0;
+
+ out:
+	if (qinfo)
+		ldms_qgroup_info_free(qinfo);
+	reqc->errcode = rc;
+	if (rc) {
+		ldmsd_send_req_response(reqc, ebuf);
+	} else {
+		ldmsd_send_req_response(reqc, reqc->line_buf);
+	}
 	return rc;
 }

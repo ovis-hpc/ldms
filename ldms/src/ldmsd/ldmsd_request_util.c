@@ -124,6 +124,12 @@ struct req_str_id req_str_id_table[] = {
 	{  "prdcr_subscribe",    LDMSD_PRDCR_SUBSCRIBE_REQ },
 	{  "prdcr_unsubscribe",  LDMSD_PRDCR_UNSUBSCRIBE_REQ },
 	{  "publish_kernel",     LDMSD_PUBLISH_KERNEL_REQ  },
+	{  "qgroup_config",      LDMSD_QGROUP_CONFIG_REQ },
+	{  "qgroup_info",        LDMSD_QGROUP_INFO_REQ },
+	{  "qgroup_member_add",  LDMSD_QGROUP_MEMBER_ADD_REQ  },
+	{  "qgroup_member_del",  LDMSD_QGROUP_MEMBER_DEL_REQ },
+	{  "qgroup_start",       LDMSD_QGROUP_START_REQ },
+	{  "qgroup_stop",        LDMSD_QGROUP_STOP_REQ },
 	{  "set_memory",         LDMSD_MEMORY_REQ },
 	{  "set_route",          LDMSD_SET_ROUTE_REQ  },
 	{  "set_sec_mod",        LDMSD_SET_SEC_MOD_REQ  },
@@ -170,6 +176,9 @@ struct req_str_id req_str_id_table[] = {
 
 /* This table need to be sorted by keyword for bsearch() */
 struct req_str_id attr_str_id_table[] = {
+	{  "ask_amount",        LDMSD_ATTR_ASK_AMOUNT },
+	{  "ask_interval",      LDMSD_ATTR_ASK_INTERVAL },
+	{  "ask_mark",          LDMSD_ATTR_ASK_MARK },
 	{  "auth",              LDMSD_ATTR_AUTH  },
 	{  "auto_interval",     LDMSD_ATTR_AUTO_INTERVAL  },
 	{  "auto_switch",       LDMSD_ATTR_AUTO_SWITCH  },
@@ -204,6 +213,7 @@ struct req_str_id attr_str_id_table[] = {
 	{  "reconnect",         LDMSD_ATTR_INTERVAL  },
 	{  "regex",             LDMSD_ATTR_REGEX  },
 	{  "reset",             LDMSD_ATTR_RESET  },
+	{  "reset_interval",    LDMSD_ATTR_RESET_INTERVAL },
 	{  "rx_rate",           LDMSD_ATTR_RX_RATE  },
 	{  "schema",            LDMSD_ATTR_SCHEMA  },
 	{  "size",              LDMSD_ATTR_SIZE  },
