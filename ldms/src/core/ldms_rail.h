@@ -114,6 +114,8 @@ struct ldms_rail_rate_quota_s {
 };
 
 struct __pending_sbuf_s {
+	uint32_t hop_num;
+	struct timespec recv_ts;
 	TAILQ_ENTRY(__pending_sbuf_s) entry;
 	struct __stream_buf_s *sbuf;
 };
@@ -133,6 +135,14 @@ struct ldms_rail_ep_s {
 	uint64_t pending_ret_quota; /* pending return quota */
 	int in_eps_stq;
 	TAILQ_HEAD(, __pending_sbuf_s) sbuf_tq; /* pending fwd stream msgs */
+	/*
+	 * Array of operation context lists, indexed by `ldms_xprt_ops_e`.
+	 *
+	 * Each list stores operation contexts for the corresponding operation type.
+	 * Operation contexts track profiling data for various operations,
+	 * such as lookups, updates, and stream operations.
+	 */
+	struct ldms_op_ctxt_list op_ctxt_lists[LDMS_XPRT_OP_COUNT];
 };
 
 typedef struct ldms_rail_dir_ctxt_s {

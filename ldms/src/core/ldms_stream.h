@@ -135,6 +135,9 @@ struct ldms_stream_full_msg_s {
 	struct ldms_cred cred; /* credential of the originator */
 	uint32_t perm; /* 0777 style permission */
 	uint32_t name_hash;
+	/* Allocate space to collect profile data for 8 hops */
+	uint32_t hop_cnt;
+	struct ldms_stream_hop hops[STREAM_MAX_PROFILE_HOPS+1];
 	char     msg[OVIS_FLEX];
 	/* `msg` format:
 	 * .----------------------.
@@ -169,10 +172,11 @@ struct __stream_buf_s {
 
 /* for internal use */
 int __rep_publish(struct ldms_rail_ep_s *rep, const char *stream_name,
-			uint32_t hash,
-                        ldms_stream_type_t stream_type,
+			uint32_t hash, ldms_stream_type_t stream_type,
 			struct ldms_addr *src, uint64_t msg_gn,
 			ldms_cred_t cred, int perm,
-			const char *data, size_t data_len);
-
+			uint32_t hop_cnt,
+			struct ldms_stream_hop *hops,
+			const char *data, size_t data_len,
+			struct strm_publish_profile_s *pts);
 #endif /* __LDMS_STREAM_H__ */
