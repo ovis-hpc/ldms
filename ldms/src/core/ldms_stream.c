@@ -81,6 +81,9 @@
 #include "ldms_stream.h"
 #include "ldms_qgroup.h"
 
+/* The definition is in ldms.c. */
+extern int __enable_profiling[LDMS_XPRT_OP_COUNT];
+
 static ovis_log_t __ldms_stream_log = NULL; /* see __ldms_stream_init() below */
 
 #define __LOG(LVL, FMT, ...) ovis_log(__ldms_stream_log, LVL, FMT, ##__VA_ARGS__ );
@@ -229,12 +232,19 @@ static int __part_send(struct ldms_rail_ep_s *rep,
 	return rc;
 }
 
+/* The implementations are in ldms_rail.c, */
+extern void timespec_ntoh(struct timespec *ts);
+extern void timespec_hton(struct timespec *ts);
+
 int __rep_publish(struct ldms_rail_ep_s *rep, const char *stream_name,
 			uint32_t hash,
-                        ldms_stream_type_t stream_type,
+			ldms_stream_type_t stream_type,
 			struct ldms_addr *src, uint64_t msg_gn,
 			ldms_cred_t cred, int perm,
-			const char *data, size_t data_len)
+			uint32_t hop_cnt,
+			struct ldms_stream_hop * hops,
+			const char *data, size_t data_len,
+			struct strm_publish_profile_s *pts)
 {
 	int rc = 0;
 	int name_len = strlen(stream_name) + 1;
@@ -248,6 +258,7 @@ int __rep_publish(struct ldms_rail_ep_s *rep, const char *stream_name,
 	} else {
 		bzero(&msg.src, sizeof(msg.src));
 	}
+
 	msg.msg_gn = htobe64(msg_gn);
 	msg.msg_len = htobe32(name_len + data_len);
 	msg.stream_type = htobe32(stream_type);
@@ -255,6 +266,32 @@ int __rep_publish(struct ldms_rail_ep_s *rep, const char *stream_name,
 	msg.cred.gid = htobe32(cred->gid);
 	msg.perm = htobe32(perm);
 	msg.name_hash = hash;
+	msg.hop_cnt = htobe32(hop_cnt);
+	if (hops && hop_cnt) {
+		size_t sz = hop_cnt * sizeof(struct ldms_stream_hop);
+		memcpy(&msg.hops, hops, sz);
+		/*
+		 * The timespec in hops are in network order already,
+		 * so don't covert it.
+		 */
+	}
+
+	(void)clock_gettime(CLOCK_REALTIME, &(pts->send_ts));
+	if (hop_cnt <= STREAM_MAX_PROFILE_HOPS) {
+		/*
+		 * We store the receive and send time only
+		 * when the stream data has been forwarded
+		 * at most STREAM_MAX_PROFILE_HOPS times.
+		 *
+		 * We ignore the timestamps after
+		 * the STREAM_MAX_PROFILE_HOPS'th.
+		 *
+		 */
+		msg.hops[hop_cnt].recv_ts = pts->recv_ts;
+		msg.hops[hop_cnt].send_ts = pts->send_ts;
+		timespec_hton(&msg.hops[hop_cnt].recv_ts);
+		timespec_hton(&msg.hops[hop_cnt].send_ts);
+	}
 	rc = __part_send(rep, &msg.src, msg_gn,
 			 &msg, sizeof(msg), /* msg hdr */
 			 stream_name, name_len, /* name */
@@ -279,11 +316,14 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 	int rc;
 	uint64_t addr_port;
 	uint64_t hash;
+	struct ldms_op_ctxt *op_ctxt = NULL;
+
 	if (ev->type == LDMS_STREAM_EVENT_CLOSE)
 		return 0;
 	assert( ev->type == LDMS_STREAM_EVENT_RECV );
 	if (!XTYPE_IS_RAIL(ev->recv.client->x->xtype))
 		return ENOTSUP;
+
 	r = (ldms_rail_t)ev->recv.client->x;
 	switch (ev->recv.src.sa_family) {
 	case 0:
@@ -325,6 +365,8 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 		struct __pending_sbuf_s *e;
 		e = malloc(sizeof(*e));
 		if (e) {
+			e->hop_num = _ev->pub.hop_num;
+			e->recv_ts = _ev->pub.recv_ts;
 			e->sbuf = sbuf;
 			ref_get(&sbuf->ref, "pending");
 			TAILQ_INSERT_TAIL(&r->eps[ep_idx].sbuf_tq, e, entry);
@@ -332,14 +374,29 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 		goto out;
 	}
 
+	op_ctxt = calloc(1, sizeof(*op_ctxt));
+	if (!op_ctxt)
+		return ENOMEM;
+	op_ctxt->op_type = LDMS_XPRT_OP_STREAM_PUBLISH;
+	op_ctxt->stream_pub_profile.hop_num = _ev->pub.hop_num;
+	op_ctxt->stream_pub_profile.recv_ts = _ev->pub.recv_ts;
 	rc = __rep_publish(&r->eps[ep_idx], ev->recv.name,  ev->recv.name_hash,
 			     ev->recv.type,
 			     &ev->recv.src, ev->recv.msg_gn,
 			     &ev->recv.cred, ev->recv.perm,
-			     ev->recv.data,
-			     ev->recv.data_len);
-	if (rc)
+				 _ev->sbuf->msg->hop_cnt,
+				 _ev->sbuf->msg->hops,
+			     ev->recv.data, ev->recv.data_len,
+			     &(op_ctxt->stream_pub_profile));
+	if (rc || !ENABLED_PROFILING(LDMS_XPRT_OP_STREAM_PUBLISH)) {
+		free(op_ctxt);
+	} else {
+		TAILQ_INSERT_TAIL(&(r->eps[ep_idx].op_ctxt_lists[LDMS_XPRT_OP_STREAM_PUBLISH]),
+										op_ctxt, ent);
+	}
+	if (rc) {
 		__rate_quota_release(&ev->recv.client->rate_quota, ev->recv.data_len);
+	}
  out:
 	return rc;
 }
@@ -533,13 +590,15 @@ __stream_deliver(struct __stream_buf_s *sbuf, uint64_t msg_gn,
 		 uint32_t hash,
 		 ldms_stream_type_t stream_type,
 		 ldms_cred_t cred, uint32_t perm,
-		 const char *data, size_t data_len)
+		 const char *data, size_t data_len,
+		 uint32_t hop_cnt, struct timespec *recv_ts)
 {
 	int rc = 0, gc;
 	struct ldms_stream_s *s;
 	struct ldms_stream_client_entry_s *sce, *next_sce;
 	struct ldms_stream_client_s *c;
 	struct timespec now;
+	size_t sz;
 
 	s = __stream_get(stream_name, NULL);
 	if (!s) {
@@ -549,6 +608,8 @@ __stream_deliver(struct __stream_buf_s *sbuf, uint64_t msg_gn,
 
 	struct __stream_event_s _ev = {
 		.pub = {
+			.hop_num = hop_cnt,
+			.recv_ts = *recv_ts,
 			.type = LDMS_STREAM_EVENT_RECV,
 			.recv = {
 				.src = {0},
@@ -577,10 +638,11 @@ __stream_deliver(struct __stream_buf_s *sbuf, uint64_t msg_gn,
 	pthread_rwlock_wrlock(&s->rwlock);
 	clock_gettime(CLOCK_REALTIME, &now);
 	__counters_update(&s->rx, &now, data_len);
-	if (__stream_stats_level > 1) {
+	if ((__stream_stats_level > 1) || ENABLED_PROFILING(LDMS_XPRT_OP_STREAM_PUBLISH)) {
 		/* stats by src */
 		struct rbn *rbn = rbt_find(&s->src_stats_rbt, &_ev.pub.recv.src);
 		struct ldms_stream_src_stats_s *ss;
+		struct ldms_stream_profile_ent *prof;
 		if (rbn) {
 			ss = container_of(rbn, struct ldms_stream_src_stats_s, rbn);
 		} else {
@@ -595,8 +657,30 @@ __stream_deliver(struct __stream_buf_s *sbuf, uint64_t msg_gn,
 			rbn_init(&ss->rbn, &ss->src);
 			ss->rx = LDMS_STREAM_COUNTERS_INITIALIZER;
 			rbt_ins(&s->src_stats_rbt, &ss->rbn);
+			TAILQ_INIT(&ss->profiles);
 		}
 		__counters_update(&ss->rx, &now, data_len);
+		if (sbuf && ENABLED_PROFILING(LDMS_XPRT_OP_STREAM_PUBLISH)) {
+			/* Receive the stream data from remote server, so cache the profile */
+			sz = (sbuf->msg->hop_cnt+1) * sizeof(struct ldms_stream_hop);
+			prof = calloc(1, sizeof(*prof) + sz);
+			if (!prof) {
+				/* error in stats shall not break the normal
+				 * operations
+				 */
+				pthread_rwlock_unlock(&s->rwlock);
+				goto skip_stats;
+			}
+			prof->profiles.hop_cnt = sbuf->msg->hop_cnt;
+			memcpy(&(prof->profiles.hops), &(sbuf->msg->hops), sz);
+			int i;
+			for (i = 0; i < prof->profiles.hop_cnt; i++) {
+				timespec_ntoh(&prof->profiles.hops[i].recv_ts);
+				timespec_ntoh(&prof->profiles.hops[i].send_ts);
+			}
+			prof->profiles.hops[prof->profiles.hop_cnt].recv_ts = *recv_ts;
+			TAILQ_INSERT_TAIL(&ss->profiles, prof, ent);
+		}
 	}
 	pthread_rwlock_unlock(&s->rwlock);
  skip_stats:
@@ -627,9 +711,7 @@ __stream_deliver(struct __stream_buf_s *sbuf, uint64_t msg_gn,
 		ref_get(&c->ref, "callback");
 		pthread_rwlock_unlock(&s->rwlock);
 		_ev.pub.recv.client = c;
-		/* TODO: Start: Get timing for application's stream handling time. */
 		rc = c->cb_fn(&_ev.pub, c->cb_arg);
-		/* TODO: End: Get timing for application's stream handling time. */
 		if (__stream_stats_level > 0) {
 			pthread_rwlock_wrlock(&c->rwlock);
 			if (rc) {
@@ -871,8 +953,7 @@ int __publish_cred_check(ldms_cred_t cred)
 
 int ldms_stream_publish(ldms_t x, const char *stream_name,
                         ldms_stream_type_t stream_type,
-			ldms_cred_t cred,
-			uint32_t perm,
+						ldms_cred_t cred, uint32_t perm,
                         const char *data, size_t data_len)
 {
 	ldms_rail_t r;
@@ -883,6 +964,11 @@ int ldms_stream_publish(ldms_t x, const char *stream_name,
 	int rc;
 	uint32_t hash;
 	int ep_idx;
+	struct ldms_op_ctxt *op_ctxt = NULL;
+	struct ldms_op_ctxt_list *op_ctxt_list;
+	struct timespec recv_ts;
+
+	(void)clock_gettime(CLOCK_REALTIME, &recv_ts);
 
 	msg_gn = __atomic_fetch_add(&stream_gn, 1, __ATOMIC_SEQ_CST);
 
@@ -912,14 +998,30 @@ int ldms_stream_publish(ldms_t x, const char *stream_name,
 		rc = __rep_quota_acquire(&r->eps[ep_idx], q);
 		if (rc)
 			return rc;
-		return __rep_publish(&r->eps[ep_idx], stream_name, hash,
-				stream_type, 0, msg_gn, cred, perm, data,
-				data_len);
+
+		op_ctxt = calloc(1, sizeof(*op_ctxt));
+		if (!op_ctxt)
+			return ENOMEM;
+		op_ctxt->op_type = LDMS_XPRT_OP_PUBLISH;
+		op_ctxt->stream_pub_profile.hop_num = 0;
+		op_ctxt->stream_pub_profile.recv_ts = recv_ts;
+		rc = __rep_publish(&r->eps[ep_idx], stream_name, hash,
+			               stream_type, 0, msg_gn, cred, perm,
+				           0, NULL, data, data_len,
+				           &(op_ctxt->stream_pub_profile));
+
+		if (rc || !ENABLED_PROFILING(LDMS_XPRT_OP_STREAM_PUBLISH)) {
+			free(op_ctxt);
+		} else {
+			op_ctxt_list = &(r->eps[ep_idx].op_ctxt_lists[LDMS_XPRT_OP_PUBLISH]);
+			TAILQ_INSERT_TAIL(op_ctxt_list, op_ctxt, ent);
+		}
+		return rc;
 	}
 
 	/* else publish locally */
 	return __stream_deliver(0, msg_gn, stream_name, name_len, hash,
-				stream_type, cred, perm, data, data_len);
+				stream_type, cred, perm, data, data_len, 0, &recv_ts);
 }
 
 static void __client_ref_free(void *arg)
@@ -1205,6 +1307,7 @@ static void
 __process_stream_msg(ldms_t x, struct ldms_request *req)
 {
 	struct ldms_rail_ep_s *rep = ldms_xprt_ctxt_get(x);
+	struct ldms_thrstat *thrstat;
 	/* no need to take lock ; only one zap thread working on this tree */
 	struct rbn *rbn;
 	struct __stream_buf_s *sbuf;
@@ -1267,7 +1370,7 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 
 	fmsg = (void*)req->stream_part.part_msg;
 	flen = be32toh(fmsg->msg_len);
-	sbuf = malloc(sizeof(*sbuf) + sizeof(*fmsg) + flen);
+	sbuf = calloc(1, sizeof(*sbuf) + sizeof(*fmsg) + flen);
 	if (!sbuf)
 		return;
 	ref_init(&sbuf->ref, "init", __stream_buf_s_ref_free, sbuf);
@@ -1304,6 +1407,8 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 	sbuf->msg->cred.uid = be32toh(sbuf->msg->cred.uid);
 	sbuf->msg->cred.gid = be32toh(sbuf->msg->cred.gid);
 	sbuf->msg->perm = be32toh(sbuf->msg->perm);
+	sbuf->msg->hop_cnt = be32toh(sbuf->msg->hop_cnt);
+	sbuf->msg->hop_cnt++;
 	/* sbuf->msg->name_hash does not need byte conversion */
 
 	sbuf->name = sbuf->msg->msg;
@@ -1318,11 +1423,13 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 		goto cleanup;
 	}
 
+	thrstat = zap_thrstat_ctxt_get(x->zap_ep);
 	__stream_deliver(sbuf, sbuf->msg->msg_gn,
 			 sbuf->name, sbuf->name_len, sbuf->msg->name_hash,
 			 sbuf->msg->stream_type,
 			 &sbuf->msg->cred, sbuf->msg->perm,
-			 sbuf->data, sbuf->data_len);
+			 sbuf->data, sbuf->data_len,
+			 sbuf->msg->hop_cnt, &(thrstat->last_op_start));
 
  cleanup:
 	rbt_del(&rep->sbuf_rbt, &sbuf->rbn);
@@ -1457,6 +1564,7 @@ void __stream_req_recv(ldms_t x, int cmd, struct ldms_request *req)
 {
 	assert(0 == XTYPE_IS_RAIL(x->xtype)); /* x is NOT a rail */
 	assert(x->event_cb == __rail_cb);
+
 	switch (cmd) {
 	case LDMS_CMD_STREAM_MSG:
 		__process_stream_msg(x, req);
@@ -1546,6 +1654,15 @@ int ldms_stream_stats_level_get()
 	return __atomic_load_n(&__stream_stats_level, __ATOMIC_SEQ_CST);
 }
 
+void __stream_profiling_purge(struct ldms_stream_profile_list *profiles)
+{
+	struct ldms_stream_profile_ent *prf;
+	while ((prf = TAILQ_FIRST(profiles))) {
+		TAILQ_REMOVE(profiles, prf, ent);
+		free(prf);
+	}
+}
+
 void __src_stats_rbt_purge(struct rbt *rbt)
 {
 	struct rbn *rbn;
@@ -1553,6 +1670,7 @@ void __src_stats_rbt_purge(struct rbt *rbt)
 	while ((rbn = rbt_min(rbt))) {
 		rbt_del(rbt, rbn);
 		sss = container_of(rbn, struct ldms_stream_src_stats_s, rbn);
+		__stream_profiling_purge(&sss->profiles);
 		free(sss);
 	}
 }
@@ -1562,6 +1680,8 @@ int __src_stats_rbt_copy(struct rbt *t0, struct rbt *t1, int is_reset)
 {
 	struct rbn *rbn;
 	struct ldms_stream_src_stats_s *s0, *s1;
+	struct ldms_stream_profile_ent *prf0, *prf1;
+	size_t sz;
 	int rc;
 	for (rbn = rbt_min(t0); rbn; rbn = rbn_succ(rbn)) {
 		s0 = container_of(rbn, struct ldms_stream_src_stats_s, rbn);
@@ -1571,8 +1691,24 @@ int __src_stats_rbt_copy(struct rbt *t0, struct rbt *t1, int is_reset)
 			goto err_0;
 		}
 		*s1 = *s0;
-		if (is_reset)
+		TAILQ_INIT(&s1->profiles);
+
+		/* Copy the profiles */
+		TAILQ_FOREACH(prf0, &s0->profiles, ent) {
+			sz = prf0->profiles.hop_cnt * sizeof(struct ldms_stream_hop);
+			prf1 = calloc(1, sizeof(*prf1) + sz);
+			if (!prf1) {
+				rc = ENOMEM;
+				goto err_0;
+			}
+			prf1->profiles.hop_cnt = prf0->profiles.hop_cnt;
+			memcpy(&(prf1->profiles.hops), &(prf0->profiles.hops), sz);
+			TAILQ_INSERT_TAIL(&s1->profiles, prf1, ent);
+		}
+		if (is_reset) {
 			LDMS_STREAM_COUNTERS_INIT(&s0->rx);
+			__stream_profiling_purge(&s0->profiles);
+		}
 		rbn_init(&s1->rbn, &s1->src);
 		rbt_ins(t1, &s1->rbn);
 	}

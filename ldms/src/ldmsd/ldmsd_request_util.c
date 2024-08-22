@@ -123,6 +123,7 @@ struct req_str_id req_str_id_table[] = {
 	{  "prdcr_stream_status",LDMSD_PRDCR_STREAM_STATUS_REQ  },
 	{  "prdcr_subscribe",    LDMSD_PRDCR_SUBSCRIBE_REQ },
 	{  "prdcr_unsubscribe",  LDMSD_PRDCR_UNSUBSCRIBE_REQ },
+	{  "profiling",          LDMSD_PROFILING_REQ },
 	{  "publish_kernel",     LDMSD_PUBLISH_KERNEL_REQ  },
 	{  "qgroup_config",      LDMSD_QGROUP_CONFIG_REQ },
 	{  "qgroup_info",        LDMSD_QGROUP_INFO_REQ },
@@ -330,6 +331,7 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_CMDLINE_OPTIONS_SET_REQ : return "CMDLINE_OPTION_SET_REQ";
 	case LDMSD_SET_SEC_MOD_REQ       : return "SET_SEC_REQ";
 	case LDMSD_LOG_STATUS_REQ        : return "LOG_STATUS_REQ";
+	case LDMSD_PROFILING_REQ         : return "PROFILING_REQ";
 
 	/* failover requests by user */
 	case LDMSD_FAILOVER_CONFIG_REQ        : return "FAILOVER_CONFIG_REQ";
