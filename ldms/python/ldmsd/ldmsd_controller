@@ -115,11 +115,15 @@ class LdmsdCmdParser(cmd.Cmd):
         else:
             cmd.Cmd.__init__(self)
 
+    def completedefault(self, text, line, begidx, endidx):
+        cmd = line.split()[0]
+        return self.__complete_attr_list(cmd, text)
+
     def __complete_attr_list(self, verb, text):
         req_opt_attr = get_cmd_attr_list(verb)
         attr_list = []
         if req_opt_attr['req'] is not None:
-            attr_list = req_opt_attr['req']
+            attr_list += req_opt_attr['req']
         if req_opt_attr['opt'] is not None:
             attr_list += req_opt_attr['opt']
         ret = ["{0}=".format(attr) for attr in attr_list if attr.startswith(text)]
@@ -3087,6 +3091,96 @@ class LdmsdCmdParser(cmd.Cmd):
            option --log_file /path/to/logfile --log_level ERROR
         """
         print("Not supported! The 'option' command is only supported in a configuration file.")
+
+    def do_qgroup_config(self, arg):
+        """
+        Configure Quota Group (qgroup) feature
+
+        Parameters:
+            quota=          The amount of our quota (bytes).
+            ask_interval=   The time interval to ask the members when our quota
+                            is low.
+            ask_amount=     The amount of quota to ask from our members.
+            ask_mark=       The amount of quota to determine as 'low'.
+            reset_interval= The time interval to reset our quota to its original
+                            value.
+        """
+        arg = self.handle_args('qgroup_config', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.qgroup_config(**arg)
+        if rc:
+            print(f"qgroup_config error: {msg}")
+
+    def do_qgroup_member_add(self, arg):
+        """
+        Add a member to the Quota Group (qgroup)
+
+        Parameters:
+            host=     The hostname of the host.
+            xprt=     The transport name [sock, rdma, ugni].
+            [port=]   The OPTIONAL port number on which the peer LDMS is
+                      listening (default: 411).
+            [auth=]   The OPTIONAL authentication method.
+        """
+        arg = self.handle_args('qgroup_member_add', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.qgroup_member_add(**arg)
+        if rc:
+            print(f"qgroup_member_add error: {msg}")
+
+    def do_qgroup_member_del(self, arg):
+        """
+        Delete a member from the Quota Group (qgroup).
+
+        Parameters:
+            host=     The hostname of the host.
+            [port=]   The OPTIONAL port number on which the peer LDMS is
+                      listening (default: 411).
+        """
+        arg = self.handle_args('qgroup_member_del', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.qgroup_member_add(**arg)
+        if rc:
+            print(f"qgroup_member_add error: {msg}")
+
+    def do_qgroup_start(self, arg):
+        """
+        Start the Quota Group (qgroup) service.
+        """
+        arg = self.handle_args('qgroup_start', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.qgroup_start(**arg)
+        if rc:
+            print(f"qgroup_start error: {msg}")
+
+    def do_qgroup_stop(self, arg):
+        """
+        Stop the Quota Group (qgroup) service.
+        """
+        arg = self.handle_args('qgroup_stop', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.qgroup_stop(**arg)
+        if rc:
+            print(f"qgroup_stop error: {msg}")
+
+    def do_qgroup_info(self, arg):
+        """
+        Get the Quota Group (qgroup) information.
+        """
+        arg = self.handle_args('qgroup_info', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.qgroup_info(**arg)
+        if rc:
+            print(f"qgroup_info error: {msg}")
+        else:
+            obj = json.loads(msg)
+            print(json.dumps(obj, indent=1))
 
     def parseline(self, line):
         """Parse the line into a command name and a string containing

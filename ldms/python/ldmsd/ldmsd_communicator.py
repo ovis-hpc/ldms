@@ -224,6 +224,25 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_listen_start': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_stop': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_status': {'req_attr': [], 'opt_attr': []},
+                      ##### Quota Group (qgroup) #####
+                      'qgroup_config': {
+                          'req_attr': [],
+                          'opt_attr': [
+                              'quota', 'ask_interval', 'ask_amount',
+                              'ask_mark', 'reset_interval'
+                          ]
+                      },
+                      'qgroup_member_add': {
+                          'req_attr': ['host', 'xprt'],
+                          'opt_attr': ['port', 'auth']
+                      },
+                      'qgroup_member_del': {
+                          'req_attr': ['host'],
+                          'opt_attr': ['port']
+                      },
+                      'qgroup_start': {'req_attr': [], 'opt_attr': []},
+                      'qgroup_stop': {'req_attr': [], 'opt_attr': []},
+                      'qgroup_info': {'req_attr': [], 'opt_attr': []},
                       }
 
 def get_cmd_attr_list(cmd_verb):
@@ -312,7 +331,11 @@ class LDMSD_Req_Attr(object):
     SUMMARY = 41
     SIZE = 42
     IP = 43
-    LAST = 44
+    ASK_INTERVAL = 44
+    ASK_MARK = 45
+    ASK_AMOUNT = 46
+    RESET_INTERVAL = 47
+    LAST = 48
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -361,6 +384,10 @@ class LDMSD_Req_Attr(object):
                    'summary' : SUMMARY,
                    'size' : SIZE,
                    'IP' : IP,
+                   'ask_interval': ASK_INTERVAL,
+                   'ask_mark': ASK_MARK,
+                   'ask_amount': ASK_AMOUNT,
+                   'reset_interval': RESET_INTERVAL,
                    'TERMINATING': LAST
         }
 
@@ -406,6 +433,10 @@ class LDMSD_Req_Attr(object):
                    RX_RATE : 'rx_rate',
                    SUMMARY : 'summary',
                    IP : 'ip',
+                   ASK_INTERVAL : 'ask_interval',
+                   ASK_MARK : 'ask_mark',
+                   ASK_AMOUNT : 'ask_amount',
+                   RESET_INTERVAL : 'reset_interval',
                    LAST : 'TERMINATING'
         }
 
@@ -612,6 +643,13 @@ class LDMSD_Request(object):
 
     AUTH_ADD = 0xa00
 
+    QGROUP_CONFIG     = 0xb00
+    QGROUP_MEMBER_ADD = QGROUP_CONFIG + 1
+    QGROUP_MEMBER_DEL = QGROUP_CONFIG + 2
+    QGROUP_START      = QGROUP_CONFIG + 3
+    QGROUP_STOP       = QGROUP_CONFIG + 4
+    QGROUP_INFO       = QGROUP_CONFIG + 5
+
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
             'greeting': {'id': GREETING},
@@ -717,6 +755,13 @@ class LDMSD_Request(object):
             'metric_sets_default_authz' : {'id' : SET_DEFAULT_AUTHZ },
             'set_sec_mod' : {'id' : SET_SEC_MOD },
             'log_status' : {'id' : LOG_STATUS },
+
+            'qgroup_config'     : {'id' : QGROUP_CONFIG     },
+            'qgroup_member_add' : {'id' : QGROUP_MEMBER_ADD },
+            'qgroup_member_del' : {'id' : QGROUP_MEMBER_DEL },
+            'qgroup_start'      : {'id' : QGROUP_START      },
+            'qgroup_stop'       : {'id' : QGROUP_STOP       },
+            'qgroup_info'       : {'id' : QGROUP_INFO       },
     }
 
     TYPE_CONFIG_CMD = 1
@@ -3469,6 +3514,118 @@ class Communicator(object):
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
+
+    def __comm_routine(self, cmd_id, av_list = list()):
+        attrs = [ LDMSD_Req_Attr(attr_id = a, value = v) \
+                            for a, v in av_list if v is not None ]
+        req = LDMSD_Request(command_id = cmd_id, attrs = attrs)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except ConnectionError as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+        except Exception as e:
+            self.close()
+            return -1, str(e)
+
+    def qgroup_config(self, quota:str=None, ask_interval:str=None,
+                      ask_amount:str=None, ask_mark:str=None,
+                      reset_interval:str=None):
+        """
+        Configure qgroup.
+
+        Parameters:
+        - quota(str): amount of quota in bytes (e.g. '3K').
+        - ask_interval(str): time interval to ask quota from members (e.g.  '1s').
+        - ask_amount(str): the byte amount to ask members for (e.g. '1K').
+        - ask_mark(str): the quota mark to start asking members for more quota
+                         (e.g. '1K').
+        - reset_interval(str): time interval to reset our quota (e.g. '1s').
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        params = [ (LDMSD_Req_Attr.QUOTA,          quota),
+                   (LDMSD_Req_Attr.ASK_INTERVAL,   ask_interval),
+                   (LDMSD_Req_Attr.ASK_AMOUNT,     ask_amount),
+                   (LDMSD_Req_Attr.ASK_MARK,       ask_mark),
+                   (LDMSD_Req_Attr.RESET_INTERVAL, reset_interval) ]
+        return self.__comm_routine(LDMSD_Request.QGROUP_CONFIG, params)
+
+    def qgroup_member_add(self, host:str, xprt:str, port:str=None, auth:str=None):
+        """
+        Add a member into the Quota Group (qgroup).
+
+        Parameters:
+        - host(str): the host (e.g. 'node1').
+        - xprt(str): the transport plugin (e.g. 'sock').
+        - port(str): the port (e.g. '12345', default: '411').
+        - auth(str): the authentication object for this connection (default; None).
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        params = [ (LDMSD_Req_Attr.HOST, host),
+                   (LDMSD_Req_Attr.XPRT, xprt),
+                   (LDMSD_Req_Attr.PORT, port),
+                   (LDMSD_Req_Attr.AUTH, auth) ]
+        return self.__comm_routine(LDMSD_Request.QGROUP_MEMBER_ADD, params)
+
+    def qgroup_member_del(self, host:str, port:str=None):
+        """
+        Remove a member from the Quota Group (qgroup).
+
+        Parameters:
+        - host(str): the host (e.g. 'node1').
+        - port(str): the port (e.g. '12345', default: '411').
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        params = [ (LDMSD_Req_Attr.HOST, host),
+                   (LDMSD_Req_Attr.PORT, port) ]
+        return self.__comm_routine(LDMSD_Request.QGROUP_MEMBER_DEL, params)
+
+    def qgroup_start(self):
+        """
+        Start the Quota Group (qgroup) service in the ldmsd.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        return self.__comm_routine(LDMSD_Request.QGROUP_START)
+
+    def qgroup_stop(self):
+        """
+        Stop the Quota Group (qgroup) service in the ldmsd.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        return self.__comm_routine(LDMSD_Request.QGROUP_STOP)
+
+    def qgroup_info(self):
+        """
+        Get the Quota Group (qgroup) information from the ldmsd.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        return self.__comm_routine(LDMSD_Request.QGROUP_INFO)
 
     def close(self):
         self.state = self.CLOSED

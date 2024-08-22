@@ -1016,6 +1016,103 @@ If true, reset the store time statistics after returning the values. The default
 A storage policy name. Only the statistics of the given storage policy will be reported and reset if reset is true.
 .RE
 
+.SH QGROUP COMMAND SYNTAX
+
+.SS Get qgroup information
+.br
+.BR qgroup_info
+.RS
+.TP
+- This command has no attributes. -
+.RE
+
+.SS Set qgroup parameters
+.br
+.BR qgroup_config
+attr=<value>
+.RS
+.TP
+.BI "[quota " BYTES ]
+The amount of our quota (bytes). The \fIBYTES\fR can be expressed with
+quantifiers, e.g. "1k" for 1024 bytes. The supported quantifiers are
+"b" (bytes), "k" (kilobytes), "m" (megabytes), "g" (gigabytes) and "t"
+(terabytes).
+.TP
+.BI "[ask_interval " TIME ]
+The time interval to ask the members when our quota is low. The \fITIME\fR can
+be expressed with units, e.g. "1s", but will be treated as microseconds if no
+units is specified. The supported units are "us" (microseconds), "ms"
+(milliseconds), "s" (seconds), "m" (minutes), "h" (hours), and "d" (days).
+.TP
+.BI "[ask_amount " BYTES ]
+The amount of quota to ask from our members. The \fIBYTES\fR can be expressed
+with quantifiers, e.g. "1k" for 1024 bytes. The supported quantifiers are "b"
+(bytes), "k" (kilobytes), "m" (megabytes), "g" (gigabytes) and "t" (terabytes).
+.TP
+.BI "[ask_mark " BYTES ]
+The amount of quota to determine as 'low', to start asking quota from other
+members. The \fIBYTES\fR can be expressed with quantifiers, e.g. "1k" for 1024
+bytes. The supported quantifiers are "b" (bytes), "k" (kilobytes), "m"
+(megabytes), "g" (gigabytes) and "t" (terabytes).
+.TP
+.BI "[reset_interval " TIME ]
+The time interval to reset our quota to its original value. The \fITIME\fR can
+be expressed with units, e.g. "1s", but will be treated as microseconds if no
+units is specified. The supported units are "us" (microseconds), "ms"
+(milliseconds), "s" (seconds), "m" (minutes), "h" (hours), and "d" (days).
+.RE
+
+.SS Add a member into our qgroup
+.br
+.BR qgroup_member_add
+attr=<value>
+.RS
+.TP
+.BI "xprt " XPRT
+The transport type of the connection (e.g. "sock").
+.TP
+.BI "host " HOST
+The hostname or IP address of the member.
+.TP
+.BI "[port " PORT ]
+The port of the member (default: 411).
+.TP
+.BI "[auth " AUTH_REF ]
+The reference to the authentication domain (the \fBname\fR in \fBauth_add\fR
+command) to be used in this connection If not specified, the default
+authentication domain of the daemon is used.
+.RE
+
+.SS Remove a member from the qgroup
+.br
+.BR qgroup_member_del
+attr=<value>
+.RS
+.TP
+.BI "host " HOST
+The hostname or IP address of the member.
+.TP
+.BI "[port " PORT ]
+The port of the member (default: 411).
+.RE
+
+.SS Start the qgroup service
+.br
+.BR qgroup_start
+.RS
+.TP
+- This command has no attributes. -
+.RE
+
+.SS Stop the qgroup service
+.br
+.BR qgroup_stop
+.RS
+.TP
+- This command has no attributes. -
+.RE
+
+
 .SH MISC COMMAND SYNTAX
 
 .SS Display the list of available commands
