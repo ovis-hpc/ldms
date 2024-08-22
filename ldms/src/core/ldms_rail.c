@@ -76,6 +76,9 @@ extern ovis_log_t xlog;
 	ovis_log(xlog, OVIS_LERROR, fmt, ## __VA_ARGS__); \
 } while (0);
 
+/* The definition is in ldms.c. */
+extern int __enable_profiling[LDMS_XPRT_OP_COUNT];
+
 static int __rail_connect(ldms_t _r, struct sockaddr *sa, socklen_t sa_len,
 		ldms_event_cb_t cb, void *cb_arg);
 static int __rail_is_connected(ldms_t _r);
@@ -86,13 +89,14 @@ static int __rail_sockaddr(ldms_t _r, struct sockaddr *local_sa,
 	       struct sockaddr *remote_sa,
 	       socklen_t *sa_len);
 static void __rail_close(ldms_t _r);
-static int __rail_send(ldms_t _r, char *msg_buf, size_t msg_len);
+static int __rail_send(ldms_t _r, char *msg_buf, size_t msg_len,
+				  struct ldms_op_ctxt *op_ctxt);
 static size_t __rail_msg_max(ldms_t x);
 static int __rail_dir(ldms_t _r, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 static int __rail_dir_cancel(ldms_t _r);
 static int __rail_lookup(ldms_t _r, const char *name, enum ldms_lookup_flags flags,
-	       ldms_lookup_cb_t cb, void *cb_arg);
-static void __rail_stats(ldms_t _r, ldms_xprt_stats_t stats);
+	       ldms_lookup_cb_t cb, void *cb_arg, struct ldms_op_ctxt *op_ctxt);
+static void __rail_stats(ldms_t _r, ldms_xprt_stats_t stats, int mask, int is_reset);
 
 static ldms_t __rail_get(ldms_t _r); /* ref get */
 static void __rail_put(ldms_t _r); /* ref put */
@@ -102,7 +106,8 @@ static uint64_t __rail_conn_id(ldms_t _r);
 static const char *__rail_type_name(ldms_t _r);
 static void __rail_priority_set(ldms_t _r, int prio);
 static void __rail_cred_get(ldms_t _r, ldms_cred_t lcl, ldms_cred_t rmt);
-static int __rail_update(ldms_t _r, struct ldms_set *set, ldms_update_cb_t cb, void *arg);
+static int __rail_update(ldms_t _r, struct ldms_set *set, ldms_update_cb_t cb, void *arg,
+                                                           struct ldms_op_ctxt *op_ctxt);
 static int __rail_get_threads(ldms_t _r, pthread_t *out, int n);
 static ldms_set_t __rail_set_by_name(ldms_t x, const char *set_name);
 
@@ -199,6 +204,7 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 	ldms_rail_t r;
 	zap_t zap;
 	int i;
+	enum ldms_xprt_ops_e op_e;
 
 	if (n <= 0) {
 		errno = EINVAL;
@@ -228,6 +234,7 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 	r->recv_quota = recv_quota;
 	r->recv_rate_limit = rate_limit;
 	rbt_init(&r->stream_client_rbt, __str_rbn_cmp);
+
 	snprintf(r->name, sizeof(r->name), "%s", xprt_name);
 	snprintf(r->auth_name, sizeof(r->auth_name), "%s", auth_name);
 	if (auth_av_list) {
@@ -248,6 +255,9 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 		r->eps[i].remote_is_rail = -1;
 		rbt_init(&r->eps[i].sbuf_rbt, __stream_buf_cmp);
 		TAILQ_INIT(&r->eps[i].sbuf_tq);
+		for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
+			TAILQ_INIT(&(r->eps[i].op_ctxt_lists[op_e]));
+		}
 	}
 
 	zap = __ldms_zap_get(xprt_name);
@@ -1066,20 +1076,31 @@ int __rail_rep_send_raw(struct ldms_rail_ep_s *rep, void *data, int len)
 	return rc;
 }
 
-static int __rail_send(ldms_t _r, char *msg_buf, size_t msg_len)
+static int __rail_send(ldms_t _r, char *msg_buf, size_t msg_len,
+				struct ldms_op_ctxt *op_ctxt)
 {
 	/* send over ep0 for now */
 	ldms_rail_t r = (ldms_rail_t)_r;
 	int rc;
 	struct ldms_rail_ep_s *rep; /* an endpoint inside the rail */
+
 	pthread_mutex_lock(&r->mutex);
 	if (r->eps[0].state != LDMS_RAIL_EP_CONNECTED) {
 		rc = ENOTCONN;
 		goto out;
 	}
 	rep = &r->eps[0];
-	rc = ldms_xprt_send(rep->ep, msg_buf, msg_len);
+
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND)) {
+		TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_SEND]),
+		                                             op_ctxt, ent);
+	}
+	rc = rep->ep->ops.send(rep->ep, msg_buf, msg_len, op_ctxt);
 	if (rc) {
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND)) {
+			TAILQ_REMOVE(&(rep->op_ctxt_lists[LDMS_XPRT_OP_SEND]),
+			                                        op_ctxt, ent);
+		}
 		/* release the acquired quota if send failed */
 		__rep_quota_release(rep, msg_len);
 	}
@@ -1145,24 +1166,29 @@ struct ldms_rail_lookup_ctxt_s {
 	ldms_lookup_cb_t app_cb;
 	void *cb_arg;
 	enum ldms_lookup_flags flags;
+	struct ldms_op_ctxt *op_ctxt;
 } *ldms_rail_lookup_ctxt_t;
 
 void __rail_lookup_cb(ldms_t x, enum ldms_lookup_status status,
 			int more, ldms_set_t s, void *arg)
 {
 	ldms_rail_lookup_ctxt_t lc = arg;
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP)) {
+		(void)clock_gettime(CLOCK_REALTIME, &lc->op_ctxt->lookup_profile.deliver_ts);
+	}
 	lc->app_cb((void*)lc->r, status, more, s, lc->cb_arg);
 	if (!more)
 		free(lc);
 }
 
 static int __rail_lookup(ldms_t _r, const char *name, enum ldms_lookup_flags flags,
-	       ldms_lookup_cb_t cb, void *cb_arg)
+                   ldms_lookup_cb_t cb, void *cb_arg, struct ldms_op_ctxt *op_ctxt)
 {
 	ldms_rail_t r = (ldms_rail_t)_r;
 	int rc;
 	struct ldms_rail_ep_s *rep;
 	ldms_rail_lookup_ctxt_t lc;
+
 	pthread_mutex_lock(&r->mutex);
 	if (r->state != LDMS_RAIL_EP_CONNECTED) {
 		rc = ENOTCONN;
@@ -1177,19 +1203,27 @@ static int __rail_lookup(ldms_t _r, const char *name, enum ldms_lookup_flags fla
 	lc->app_cb = cb;
 	lc->cb_arg = cb_arg;
 	lc->flags = flags;
+	lc->op_ctxt = op_ctxt;
 	rep = &r->eps[r->lookup_rr++];
 	r->lookup_rr %= r->n_eps;
-	rc = ldms_xprt_lookup(rep->ep, name, flags, __rail_lookup_cb, lc);
+
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP)) {
+		TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_LOOKUP]), op_ctxt, ent);
+	}
+	rc = rep->ep->ops.lookup(rep->ep, name, flags, __rail_lookup_cb, lc, op_ctxt);
 	if (rc) {
 		/* synchronous error */
 		free(lc);
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP)) {
+			TAILQ_REMOVE(&rep->op_ctxt_lists[LDMS_XPRT_OP_LOOKUP], op_ctxt, ent);
+		}
 	}
  out:
 	pthread_mutex_unlock(&r->mutex);
 	return rc;
 }
 
-static void __rail_stats(ldms_t _r, ldms_xprt_stats_t stats)
+static void __rail_stats(ldms_t _r, ldms_xprt_stats_t stats, int mask, int is_reset)
 {
 	/* TODO IMPLEMENT ME */
 	assert(0 == "Not Implemented");
@@ -1263,17 +1297,24 @@ void __rail_update_cb(ldms_t x, ldms_set_t s, int flags, void *arg)
 {
 	struct ldms_rail_ep_s *rep = ldms_xprt_ctxt_get(x);
 	ldms_rail_update_ctxt_t uc = arg;
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE)) {
+		struct ldms_op_ctxt *op_ctxt = s->curr_updt_ctxt;
+
+		(void)clock_gettime(CLOCK_REALTIME, &op_ctxt->update_profile.deliver_ts);
+		s->curr_updt_ctxt = NULL;
+	}
 	uc->app_cb((ldms_t)rep->rail, s, flags, uc->cb_arg);
 	if (!(flags & LDMS_UPD_F_MORE)) {
 		free(uc);
 	}
 }
 
-static int __rail_update(ldms_t _r, struct ldms_set *set,
-			 ldms_update_cb_t cb, void *arg)
+static int __rail_update(ldms_t _r, struct ldms_set *set, ldms_update_cb_t cb,
+									  void *arg, struct ldms_op_ctxt *op_ctxt)
 {
 	ldms_rail_t r = (void*)_r;
 	ldms_rail_update_ctxt_t uc;
+	struct ldms_rail_ep_s *rep;
 	int rc;
 
 	uc = calloc(1, sizeof(*uc));
@@ -1282,9 +1323,19 @@ static int __rail_update(ldms_t _r, struct ldms_set *set,
 	uc->r = r;
 	uc->app_cb = cb;
 	uc->cb_arg = arg;
-	rc = set->xprt->ops.update(set->xprt, set, __rail_update_cb, uc);
+
+	rep = ldms_xprt_ctxt_get(set->xprt);
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE)) {
+		TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_UPDATE]), op_ctxt, ent);
+		set->curr_updt_ctxt = op_ctxt;
+	}
+	rc = set->xprt->ops.update(set->xprt, set, __rail_update_cb, uc, op_ctxt);
 	if (rc) {
 		/* synchronously error, clean up the context */
+		set->curr_updt_ctxt = NULL;
+
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE))
+			TAILQ_REMOVE(&(rep->op_ctxt_lists[LDMS_XPRT_OP_UPDATE]), op_ctxt, ent);
 		free(uc);
 	}
 	return rc;
@@ -1404,6 +1455,13 @@ void __rail_process_send_quota(ldms_t x, struct ldms_request *req)
 	__rep_flush_sbuf_tq(rep);
 }
 
+struct ldms_op_ctxt_list *
+__rail_op_ctxt_list(struct ldms_xprt *x, enum ldms_xprt_ops_e op_e)
+{
+	struct ldms_rail_ep_s *rep = ldms_xprt_ctxt_get(x);
+	return &(rep->op_ctxt_lists[op_e]);
+}
+
 int ldms_xprt_rail_send_quota_get(ldms_t _r, uint64_t *quotas, int n)
 {
 	ldms_rail_t r;
@@ -1461,6 +1519,18 @@ zap_ep_t __rail_get_zap_ep(ldms_t x)
 	if (!r->eps[0].ep)
 		return NULL;
 	return r->eps[0].ep->zap_ep;
+}
+
+void timespec_hton(struct timespec *ts)
+{
+	ts->tv_nsec = htobe64(ts->tv_nsec);
+	ts->tv_sec = htobe64(ts->tv_sec);
+}
+
+void timespec_ntoh(struct timespec *ts)
+{
+	ts->tv_nsec = be64toh(ts->tv_nsec);
+	ts->tv_sec = be64toh(ts->tv_sec);
 }
 
 int sockaddr2ldms_addr(struct sockaddr *sa, struct ldms_addr *la)
@@ -1639,8 +1709,6 @@ size_t format_set_delete_req(struct ldms_request *req, uint64_t xid,
 void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
 			      ldms_set_delete_cb_t cb_fn)
 {
-	/*
-	 */
 	assert(XTYPE_IS_RAIL(_r->xtype));
 
 	ldms_rail_t r = (ldms_rail_t)_r;
@@ -1651,6 +1719,8 @@ void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
 	struct xprt_set_coll_entry *ent;
 	int i;
 	ldms_t x;
+	struct ldms_rail_ep_s *rep;
+	struct ldms_op_ctxt *op_ctxt;
 
 	x = NULL;
 
@@ -1697,6 +1767,19 @@ void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
 	req = (struct ldms_request *)(ctxt + 1);
 	len = format_set_delete_req(req, (uint64_t)(unsigned long)ctxt,
 					ldms_set_instance_name_get(s));
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_SET_DELETE)) {
+		rep = (struct ldms_rail_ep_s *)ldms_xprt_ctxt_get(x);
+		op_ctxt = calloc(1, sizeof(*op_ctxt));
+		if (!op_ctxt) {
+			ovis_log(xlog, OVIS_LCRIT, "%s:%s:%d Memory allocation failure\n",
+					__FILE__, __func__, __LINE__);
+			/* Let the routine continue */
+		} else {
+			ctxt->op_ctxt = op_ctxt;
+			TAILQ_INSERT_TAIL(&rep->op_ctxt_lists[LDMS_XPRT_OP_SET_DELETE], op_ctxt, ent);
+			(void)clock_gettime(CLOCK_REALTIME, &op_ctxt->set_del_profile.send_ts);
+		}
+	}
 	zap_err_t zerr = zap_send(x->zap_ep, req, len);
 	if (zerr) {
 		char name[128];
@@ -1707,6 +1790,8 @@ void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
 				__FILE__, __func__, __LINE__, zerr, name);
 		x->zerrno = zerr;
 		__ldms_free_ctxt(x, ctxt);
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_SET_DELETE))
+			TAILQ_REMOVE(&rep->op_ctxt_lists[LDMS_XPRT_OP_SET_DELETE], op_ctxt, ent);
 	}
 	pthread_mutex_unlock(&x->lock);
 }
@@ -1714,20 +1799,41 @@ void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
 int __rep_flush_sbuf_tq(struct ldms_rail_ep_s *rep)
 {
 	int rc;
+	struct ldms_op_ctxt *op_ctxt = NULL;
 	struct __pending_sbuf_s *p;
 	while ((p = TAILQ_FIRST(&rep->sbuf_tq))) {
 		rc = __rep_quota_acquire(rep, p->sbuf->msg->msg_len);
 		if (rc)
 			goto out;
+
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_STREAM_PUBLISH)) {
+			op_ctxt = calloc(1, sizeof(*op_ctxt));
+			if (!op_ctxt) {
+				rc = ENOMEM;
+				goto out;
+			}
+			op_ctxt->op_type = LDMS_XPRT_OP_STREAM_PUBLISH;
+			op_ctxt->stream_pub_profile.hop_num = p->hop_num;
+			op_ctxt->stream_pub_profile.recv_ts = p->recv_ts;
+			TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_STREAM_PUBLISH]),
+										op_ctxt, ent);
+		}
 		rc = __rep_publish(rep, p->sbuf->name,
 				p->sbuf->msg->name_hash,
 				p->sbuf->msg->stream_type,
 			     &p->sbuf->msg->src, p->sbuf->msg->msg_gn,
 			     &p->sbuf->msg->cred, p->sbuf->msg->perm,
-			     p->sbuf->data,
-			     p->sbuf->data_len);
+				 p->sbuf->msg->hop_cnt,
+				 p->sbuf->msg->hops,
+			     p->sbuf->data, p->sbuf->data_len,
+				 &(op_ctxt->stream_pub_profile));
 		if (rc) {
 			__rep_quota_release(rep, p->sbuf->msg->msg_len);
+			if (ENABLED_PROFILING(LDMS_XPRT_OP_STREAM_PUBLISH)) {
+				TAILQ_REMOVE(&(rep->op_ctxt_lists[LDMS_XPRT_OP_STREAM_PUBLISH]),
+										op_ctxt, ent);
+				free(op_ctxt);
+			}
 			goto out;
 		}
 		TAILQ_REMOVE(&rep->sbuf_tq, p, entry);

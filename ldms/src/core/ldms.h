@@ -939,6 +939,7 @@ int ldms_xprt_addr(ldms_t x, struct ldms_addr *local_addr,
 */
 const char *ldms_addr_ntop(struct ldms_addr *addr, char *buff, size_t sz);
 
+
 /**
  * \brief Convert a CIDR IP address string to \c ldms_addr
  *
@@ -1471,6 +1472,8 @@ struct ldms_stream_close_event_s {
 typedef struct ldms_stream_event_s {
 	ldms_t r; /* rail */
 	enum ldms_stream_event_type type;
+	struct timespec recv_ts;
+	uint32_t hop_num;
 	union {
 		struct ldms_stream_recv_data_s recv;
 		struct ldms_stream_return_status_s status;
@@ -1562,11 +1565,28 @@ struct ldms_stream_counters_s {
 			*(p) = LDMS_STREAM_COUNTERS_INITIALIZER; \
 		} while (0)
 
+struct ldms_stream_hop {
+	struct timespec recv_ts;
+	struct timespec send_ts;
+};
+
+#define STREAM_MAX_PROFILE_HOPS 8
+struct ldms_stream_profile {
+	uint32_t hop_cnt;
+	struct ldms_stream_hop hops[OVIS_FLEX];
+};
+struct ldms_stream_profile_ent {
+	TAILQ_ENTRY(ldms_stream_profile_ent) ent;
+	struct ldms_stream_profile profiles;
+};
+TAILQ_HEAD(ldms_stream_profile_list, ldms_stream_profile_ent);
+
 /* stream statistics by src */
 struct ldms_stream_src_stats_s {
 	struct rbn rbn; /* key ==> src */
 	struct ldms_addr src;
 	struct ldms_stream_counters_s rx; /* total rx from src */
+	struct ldms_stream_profile_list profiles;
 };
 
 /* stats of stream-client pair */
@@ -2063,8 +2083,93 @@ typedef enum ldms_xprt_ops_e {
 	LDMS_XPRT_OP_DIR_REP,
 	LDMS_XPRT_OP_SEND,
 	LDMS_XPRT_OP_RECV,
+	LDMS_XPRT_OP_STREAM_PUBLISH,
+	LDMS_XPRT_OP_STREAM_SUBSCRIBE,
+	LDMS_XPRT_OP_STREAM_UNSUBSCRIBE,
 	LDMS_XPRT_OP_COUNT
 } ldms_xprt_ops_t;
+
+struct  ldms_op_ctxt {
+	enum ldms_xprt_ops_e op_type;
+	union {
+		struct lookup_profile_s {
+			struct timespec app_req_ts;
+			struct timespec req_send_ts;
+			struct timespec req_recv_ts;
+			struct timespec share_ts;
+			struct timespec rendzv_ts;
+			struct timespec read_ts;
+			struct timespec complete_ts;
+			struct timespec deliver_ts;
+		} lookup_profile;
+		struct update_profile {
+			struct timespec app_req_ts;
+			struct timespec read_ts;
+			struct timespec read_complete_ts;
+			struct timespec deliver_ts;
+		} update_profile;
+		struct set_delete_profile_s {
+			struct timespec send_ts;
+			struct timespec recv_ts;
+			struct timespec ack_ts;
+		} set_del_profile;
+		struct send_profile_s {
+			struct timespec app_req_ts;
+			struct timespec send_ts;
+			struct timespec complete_ts;
+			struct timespec deliver_ts;
+		} send_profile;
+		struct strm_publish_profile_s {
+			uint32_t hop_num;
+			struct timespec recv_ts;
+			struct timespec send_ts; /*  to remote client */
+		} stream_pub_profile;
+	};
+	TAILQ_ENTRY(ldms_op_ctxt) ent;
+};
+TAILQ_HEAD(ldms_op_ctxt_list, ldms_op_ctxt);
+
+#define PROFILING_CFG_DISABLED    0
+#define PROFILING_CFG_ENABLED     1
+#define PROFILING_CFG_UNSUPPORTED 2
+
+/**
+ * Enable/disable LDMS operations' profiling
+ *
+ * If profiling is enabled, LDMS collects the following timestamps:
+ *   for LOOKUP: when ldms_xprt_lookup() is called,
+ *               when LDMS sends the lookup request to the peer,
+ *               when the peer receives the lookup request,
+ *               when the peer shares the set memory,
+ *               when LDMS receives the shared memory,
+ *               when LDMS reads the memory,
+ *               when LDMS receives the read completion,
+ *               and when LDMS delivers the lookup data to the application
+ *   for UPDATE: when ldms_xprt_update() is called,
+ *               when LDMS reads the set data,
+ *               when LDMS receives the updated set data,
+ *               when LDMS delivers the update completion to the application
+ *   for SEND:   when ldms_xprt_send() is called,
+ *               when LDMS sends the data to the peer,
+ *               when LDMS receives the send completion event,
+ *               when LDMS delivers the send completion to the application
+ *   for STREAM_PUBLISH: when ldms_stream_publish() is called,
+ *                       when LDMS publishes the stream data,
+ *                       when LDMS delivers the stream data to clients
+ *                       NOTE: LDMS collects the timestamps at each hop where stream data gets forwarded
+ *
+ * \param ops_cnt  Number of operations in \c ops.
+ *                 -1 to enable/disable profiling of all operations
+ * \param ops      Array of operations to enable their profiling
+ * \param ops_err  Array to store an error of each given operation
+ *
+ * \return 0 on success; Otherwise, -1 is given.
+ *         In this case, an error code will be assigned in the \c ops_err
+ *            ENOSYS if the operation does not support profiling;
+ *            EINVAL if the given operation does not exist.
+ */
+int ldms_profiling_enable(int ops_cnt, enum ldms_xprt_ops_e *ops, int *ops_err);
+int ldms_profiling_disable(int ops_cnt, enum ldms_xprt_ops_e *ops, int *ops_err);
 
 extern const char *ldms_xprt_op_names[];
 
@@ -2173,15 +2278,25 @@ typedef struct ldms_xprt_stats {
 	struct timespec disconnected;
 	struct timespec last_op;
 	struct ldms_stats_entry ops[LDMS_XPRT_OP_COUNT];
+	struct ldms_op_ctxt_list op_ctxt_lists[LDMS_XPRT_OP_COUNT];
 } *ldms_xprt_stats_t;
+
+#define LDMS_PERF_M_STATS 1
+#define LDMS_PERF_M_PROFILNG 2
+#define LDMS_PERF_M_ALL LDMS_PERF_M_STATS | LDMS_PERF_M_PROFILNG
 
 /**
  * \brief Retrieve transport request statistics
  *
+ * The function gets the statistics and then reset it if \c reset is not 0.
+ * To only reset the statistics, \c stats must be NULL.
+ *
  * \param x The transport handle
- * \param s Pointer to an ldms_xprt_stats structure
+ * \param stats Pointer to an ldms_xprt_stats structure
+ * \param reset Reset the statistics after getting the statistics if not 0
+ *
  */
-extern void ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats);
+extern void ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats, int mask, int reset);
 
 /*
  * Metric template for:
