@@ -100,8 +100,82 @@ const char *ldms_xprt_op_names[] = {
 	"DIR_REP",
 	"SEND",
 	"RECV",
+	"STREAM_PUBLISH",
+	"STREAM_SUBSCRIBE",
+	"STREAM_UNSUBSCRIBE"
 };
 static char *type_names[];
+
+/* -ENOSYS means that LDMS doesn't support profiling for those operation. */
+int enable_profiling[LDMS_XPRT_OP_COUNT] = {
+	0,          /* lookup */
+	0,          /* update */
+	-ENOSYS,    /* Publish */
+	0,          /* set_delete */
+	-ENOSYS,    /* dir_req */
+	-ENOSYS,    /* dir_rep */
+	0,          /* send */
+	-ENOSYS,    /* receive */
+	0,          /* stream_publish */
+	-ENOSYS,    /* stream_subscribe */
+	-ENOSYS	    /* stream_unsubscribe */
+};
+
+int ldms_profiling_enable(int ops_cnt, enum ldms_xprt_ops_e *ops, int *ops_err)
+{
+	int i;
+	int rc = 0;
+
+	if (ops_cnt < 0) {
+		for (i = 0; i < LDMS_XPRT_OP_COUNT; i++) {
+			if (enable_profiling[i] != ENOSYS)
+				enable_profiling[i] = 1;
+		}
+	} else {
+		if (ops_err)
+			bzero(ops_err, sizeof(int) * ops_cnt);
+		for (i = 0; i < ops_cnt; i++) {
+			if (ops[i] >= LDMS_XPRT_OP_COUNT) {
+				ops_err[i] = EINVAL;
+				continue;
+			}
+			if (enable_profiling[ops[i]] == -ENOSYS) {
+				rc = -1;
+				if (ops_err)
+					ops_err[i] = ENOSYS;
+			} else {
+				enable_profiling[ops[i]] = 1;
+			}
+		}
+	}
+	return rc;
+}
+
+int ldms_profiling_disable(int ops_cnt, enum ldms_xprt_ops_e *ops, int *ops_err)
+{
+	int i;
+	int rc = 0;
+
+	if (ops_cnt < 0) {
+		for (i = 0; i < LDMS_XPRT_OP_COUNT; i++) {
+			if (enable_profiling[i] != ENOSYS)
+				enable_profiling[i] = 0;
+		}
+	} else {
+		if (ops_err)
+			bzero(ops_err, sizeof(int) * ops_cnt);
+		for (i = 0; i < ops_cnt; i++) {
+			if (enable_profiling[ops[i]] == -ENOSYS) {
+				rc = -1;
+					if (ops_err)
+						ops_err[i] = ENOSYS;
+			} else {
+				enable_profiling[ops[i]] = 0;
+			}
+		}
+	}
+	return rc;
+}
 
 static struct ldms_digest_s null_digest;
 
@@ -739,7 +813,8 @@ static void sync_update_cb(ldms_t x, ldms_set_t s, int status, void *arg)
 	sem_post(&x->sem);
 }
 
-int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void *arg)
+int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb,
+                                   void *arg, struct ldms_op_ctxt *op_ctxt)
 {
 	ldms_t xprt = ldms_xprt_get(x);
 	int rc;
@@ -777,6 +852,21 @@ int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void
 ldms_t __ldms_xprt_to_rail(ldms_t x);
 int ldms_xprt_update(struct ldms_set *set, ldms_update_cb_t cb, void *arg)
 {
+	int rc;
+	struct ldms_op_ctxt *op_ctxt = NULL;
+
+	assert(set);
+
+	if (set->curr_updt_ctxt)
+		return EBUSY;
+
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE)) {
+		op_ctxt = calloc(1, sizeof(*op_ctxt));
+		if (!op_ctxt)
+			return ENOMEM;
+		op_ctxt->op_type = LDMS_XPRT_OP_UPDATE;
+		(void)clock_gettime(CLOCK_REALTIME, &(op_ctxt->update_profile.app_req_ts));
+	}
 	/*
 	 * We convert the transport handle to a rail handle using
 	 * __ldms_xprt_to_rail() and pass it to x->ops.update().
@@ -786,7 +876,12 @@ int ldms_xprt_update(struct ldms_set *set, ldms_update_cb_t cb, void *arg)
 	 * when the update completes.
 	 */
 	ldms_t r = __ldms_xprt_to_rail(set->xprt);
-	return r->ops.update(r, set, cb, arg);
+	rc = r->ops.update(r, set, cb, arg, op_ctxt);
+	if (rc) {
+		set->curr_updt_ctxt = NULL;
+		free(op_ctxt);
+	}
+	return rc;
 }
 
 void __ldms_set_on_xprt_term(ldms_set_t set, ldms_t xprt)
