@@ -64,7 +64,7 @@ from datetime import datetime
 
 from ldmsd import ldmsd_util
 from ldmsd.ldmsd_communicator import LDMSD_Request, LDMSD_Req_Attr
-from ldmsd.ldmsd_communicator import Communicator, fmt_status
+from ldmsd.ldmsd_communicator import Communicator, fmt_status, get_cmd_attr_list
 import errno
 import math
 
@@ -116,13 +116,14 @@ class LdmsdCmdParser(cmd.Cmd):
             cmd.Cmd.__init__(self)
 
     def __complete_attr_list(self, verb, text):
-        req_opt_attr = self.comm.get_cmd_attr_list(verb)
+        req_opt_attr = get_cmd_attr_list(verb)
         attr_list = []
         if req_opt_attr['req'] is not None:
             attr_list = req_opt_attr['req']
         if req_opt_attr['opt'] is not None:
             attr_list += req_opt_attr['opt']
-        return ["{0}=".format(attr) for attr in attr_list if attr.startswith(text)]
+        ret = ["{0}=".format(attr) for attr in attr_list if attr.startswith(text)]
+        return ret
 
     def emptyline(self):
         pass
@@ -135,7 +136,7 @@ class LdmsdCmdParser(cmd.Cmd):
         return True
 
     def __check_command_args(self, verb, args):
-        req_opt_attr = self.comm.get_cmd_attr_list(verb)
+        req_opt_attr = get_cmd_attr_list(verb)
         if set(req_opt_attr['req']) <= set(args):
             return 0
         else:
@@ -210,7 +211,7 @@ class LdmsdCmdParser(cmd.Cmd):
     def handle_args(self, verb, _args):
         if _args and not self.__check_command_syntax(_args):
             print("Syntax error, there are attributes for which no value is given.")
-        req_opt_attr = self.comm.get_cmd_attr_list(verb)
+        req_opt_attr = get_cmd_attr_list(verb)
 
         if not self.comm:
             print("Error: no LDMS connection")
