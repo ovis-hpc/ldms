@@ -197,6 +197,24 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'auth_add': {'req_attr': ['name', 'plugin'], 'opt_attr': []},
                       }
 
+def get_cmd_attr_list(cmd_verb):
+    """Return the dictionary of command attributes
+
+    If there are no required/optional attributes, the value of the
+    'req'/'opt' key is None. Otherwise, the value is a list of attribute
+    names.
+
+    @return: {'req': [], 'opt': []}
+    """
+    attr_dict = {'req': [], 'opt': []}
+    if 'req_attr' in LDMSD_CTRL_CMD_MAP[cmd_verb]:
+        if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['req_attr']) > 0:
+            attr_dict['req'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['req_attr']
+    if 'opt_attr' in LDMSD_CTRL_CMD_MAP[cmd_verb]:
+        if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']) > 0:
+            attr_dict['opt'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']
+    return attr_dict
+
 def fmt_status(msg):
     """
     Format communicator status response string into json object
@@ -901,19 +919,12 @@ class Communicator(object):
         """Return the dictionary of command attributes
 
         If there are no required/optional attributes, the value of the
-        'req'/'opt' key is None. Otherweise, the value is a list of attribute
+        'req'/'opt' key is None. Otherwise, the value is a list of attribute
         names.
 
         @return: {'req': [], 'opt': []}
         """
-        attr_dict = {'req': [], 'opt': []}
-        if 'req_attr' in LDMSD_CTRL_CMD_MAP[cmd_verb]:
-            if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['req_attr']) > 0:
-                attr_dict['req'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['req_attr']
-        if 'opt_attr' in LDMSD_CTRL_CMD_MAP[cmd_verb]:
-            if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']) > 0:
-                attr_dict['opt'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']
-        return attr_dict
+        return get_cmd_attr_list(cmd_verb)
 
     def reconnect(self, timeout=0):
         if self.ldms:
