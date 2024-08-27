@@ -154,6 +154,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 static int sample(struct ldmsd_sampler *self)
 {
         json_t *power_obj = NULL;
+	json_t *node_obj = NULL;
         int ret, socket;
 
         if (!set) {
@@ -164,14 +165,25 @@ static int sample(struct ldmsd_sampler *self)
         base_sample_begin(base);
 
         // get variorum data
-        ret = variorum_get_node_power_json(&result_string);
+        ret = variorum_get_power_json(&result_string);
         if (ret != 0) {
                 ovis_log(mylog, OVIS_LERROR, "unable to obtain JSON object data\n");
                 return EINVAL;
         }
 
         power_obj = json_loads(result_string, JSON_DECODE_ANY, NULL);
+	void *iter = json_object_iter(power_obj);
+	while (iter) {
+		node_obj = json_object_iter_value(iter);
+		if (node_obj == NULL) {
+			printf("JSON object not found");
+			exit(0);
+		}
+		/* The following should return NULL after the first call per our object. */
+		iter = json_object_iter_next(power_obj, iter);
+	}
 
+	// TODO UPDATE FROM HERE, Check for GPU-onnly, CPU-only and BOTH build.
         double power_node = json_real_value(json_object_get(power_obj, "power_node_watts"));
         double power_cpu, power_gpu, power_mem;
 
