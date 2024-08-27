@@ -2283,7 +2283,7 @@ int ldms_xprt_names(ldms_t x, char *lcl_name, size_t lcl_name_sz,
 	}
 
 	if (rem_name || rem_port) {
-		(void)getnameinfo((void*)&lcl, xlen, rem_name, rem_name_sz,
+		(void) getnameinfo((void*)&rmt, xlen, rem_name, rem_name_sz,
 					rem_port, rem_port_sz, flags);
 	}
 	return 0;
