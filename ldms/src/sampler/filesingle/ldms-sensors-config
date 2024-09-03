@@ -1,18 +1,14 @@
 #! /usr/bin/env python3
+# usage: $0: sensors_bin_path
 # Run sensors under strace to discover where sensor files
 # live on the current system and generate a draft file.
-
-import argparse
-import os
-import subprocess
-import tempfile
-
 import warnings
 import sys
 import os.path
 import tempfile
 import subprocess
 import argparse
+import os
 
 def fix_label(s, nodash=False):
     if s[-2:] == "\\n":
@@ -86,7 +82,7 @@ def main():
 
     devices = { }
     with open(trace_file) as file:
-        lines = f.readlines()
+        lines = file.readlines()
 
     if not args.test_sensors:
         os.unlink(trace_file)
@@ -147,9 +143,9 @@ def main():
                 base_name = os.path.basename(last_file)
                 split_index = base_name.rfind("_")
                 item = base_name[:split_index]
-                if "group" not in devices[last_device]:
+                if not "group" in devices[last_device]:
                     devices[last_device]["group"] = last_group
-                if item not in devices[last_device]["items"]:
+                if not item in devices[last_device]["items"]:
                     devices[last_device]["items"].append(item)
                     devices[last_device][item] = {}
                     devices[last_device][item]["label"] = fix_label(temp)
@@ -159,9 +155,9 @@ def main():
                 base_name = os.path.basename(last_file)
                 split_index = base_name.rfind("_")
                 item = base_name[:split_index]
-                if "group" not in devices[last_device]:
+                if not "group" in devices[last_device]:
                     devices[last_device]["group"] = last_group
-                if item not in devices[last_device]["items"]:
+                if not item in devices[last_device]["items"]:
                     devices[last_device]["items"].append(item)
                     devices[last_device]["group"] = last_group
                     devices[last_device][item] = {}
@@ -171,13 +167,15 @@ def main():
             if last_file_type in IGNORE_TYPES:
                 continue
             continue
-        if ":" not in line:
+        # exclude   lines with "xxxxx:" and "sdf: bar" but allow : in mlx device names.
+        if ": " not in line and line.strip()[-1] != ':':
             last_group = line
 
     for device, data in devices.items():
         if data["items"]:
             for item in data["items"]:
-                item_label = fix_label(".".join([data["group"], data[item]["label"] ]), nodash)
+                xg = data["group"] if data["group"] else "NOGROUP"
+                item_label = fix_label(".".join([xg, data[item]["label"] ]), nodash)
                 print(f"{item_label} {data[item]['inputfile']} S64 -1")
 
     devices = {}
