@@ -1,5 +1,4 @@
 #! /usr/bin/env python2
-# $0: sensors_bin_path
 # Run sensors under strace to discover where sensor files
 # live on the current system and generate a draft file.
 import warnings
@@ -178,8 +177,9 @@ def main():
             if lastfiletype in ignore_types:
                 continue
             continue
-        if l.find(":") == -1:
-            lastgroup = l
+        # exclude   lines with "xxxxx:" and "sdf: bar" but allow : in mlx device names.
+        if ": " not in line and line[-1] != ':':
+            last_group = line
 
     for k,d in devices.iteritems():
         if len(d["items"]) > 0:
@@ -262,4 +262,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
