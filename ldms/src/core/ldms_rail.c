@@ -1271,9 +1271,9 @@ struct ldms_rail_update_ctxt_s {
 
 void __rail_update_cb(ldms_t x, ldms_set_t s, int flags, void *arg)
 {
-	ldms_rail_t r = ldms_xprt_ctxt_get(x);
+	struct ldms_rail_ep_s *rep = ldms_xprt_ctxt_get(x);
 	ldms_rail_update_ctxt_t uc = arg;
-	uc->app_cb((ldms_t)r, s, flags, uc->cb_arg);
+	uc->app_cb((ldms_t)rep->rail, s, flags, uc->cb_arg);
 	if (!(flags & LDMS_UPD_F_MORE)) {
 		free(uc);
 	}
@@ -1292,7 +1292,7 @@ static int __rail_update(ldms_t _r, struct ldms_set *set,
 	uc->r = r;
 	uc->app_cb = cb;
 	uc->cb_arg = arg;
-	rc = ldms_xprt_update(set, __rail_update_cb, uc);
+	rc = set->xprt->ops.update(set->xprt, set, __rail_update_cb, uc);
 	if (rc) {
 		/* synchronously error, clean up the context */
 		free(uc);
