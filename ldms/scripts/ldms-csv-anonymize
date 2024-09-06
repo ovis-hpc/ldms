@@ -567,14 +567,14 @@ mapmagic = "#anonymize-csv-map"
 def write_map(maps, kind, fn):
     if len(maps[kind]) > 0:
         with open(fn, "w") as o:
-            print(mapmagic, kind)
+            print(mapmagic, kind, file=o)
             m = maps[kind]
             for key in sorted(m):
                 if key == "netdomains":
                     if len(m[key]) > 0:
-                        print(key, ",".join(m[key]))
+                        print(key, ",".join(m[key]), file=o)
                 else:
-                    print(key, m[key])
+                    print(key, m[key], file=o)
 
 def reload_map(m, fn, kind):
     """prime m with data from prior run. input can be empty, otherwise must match kind."""
@@ -696,7 +696,7 @@ if __name__ == "__main__":
         print(files)
         print(cols)
     maps = dict()
-    for key in rewrite.keys():
+    for key in list(rewrite.keys()):
         maps[key] =  dict()
     if args.imap:
         reload_map(maps["int"], args.imap, "int")
@@ -707,7 +707,7 @@ if __name__ == "__main__":
     maps["host"]["netdomains"] = []
     if args.hmap:
         reload_map(maps["host"], args.hmap, "host")
-        if maps["host"].has_key("netdomains"):
+        if "netdomains" in maps["host"]:
             maps["host"]["netdomains"] = maps["host"]["netdomains"].split(",")
 
     prefix = args.save_maps
@@ -715,7 +715,7 @@ if __name__ == "__main__":
         prefix = 'anonmap_'
     seed = args.seed
     if not seed:
-        seed = random.randint(1,sys.maxint)
+        seed = random.randint(1,sys.maxsize)
     random.seed(seed)
     od = args.out_dir
     if not od or not os.path.isdir(od):
@@ -735,7 +735,7 @@ if __name__ == "__main__":
                 for ln in i:
                     ln = ln.rstrip()
                     if len(ln) < 3:
-                        print(ln)
+                        print(ln, file=o)
                         continue
                     if ln[0] == '#':
                         x = ln.split(sep)
@@ -744,7 +744,7 @@ if __name__ == "__main__":
                             k = convert_col(k)
                             x[k] = map_header(x[k], method)
                         y = sep.join(x)
-                        print(y)
+                        print(y, file=o)
                         continue
                     x = ln.split(sep)
                     for c in cols:
@@ -755,7 +755,7 @@ if __name__ == "__main__":
                         k = convert_col(k)
                         x[k] = rewrite[method](x[k], maps[method])
                     y = sep.join(x)
-                    print(y)
+                    print(y, file=o)
 
     
     # print seed file if we ever use random

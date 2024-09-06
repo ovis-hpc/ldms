@@ -66,7 +66,7 @@ ldms_type_sos_map = { "char" : "uint16",
                       "timestamp" : "timestamp"
     }
 
-match_elements = lambda p, s: [i for (q, i) in zip(s, range(len(s))) if p == q]
+match_elements = lambda p, s: [i for (q, i) in zip(s, list(range(len(s)))) if p == q]
 
 def fileopener(fn):
     """return the correct open function for the filename (default or gzip.open)"""
@@ -205,7 +205,7 @@ def value_type(v):
     if len(v) == 0:
             return "u64"
     try:
-        x = long(v)
+        x = int(v)
         if x < 0:
             if x < -9223372036854775808:
                 # cannot happen on s64 data, so must be
@@ -506,8 +506,7 @@ def format_schema_prolog(f, args):
     s = """{
     "name" : """ + "\"" + args.dataname + """",
     "attrs" : ["""
-    with open(f, "w") as f:
-        print(s)
+    print(s, file=f)
 
 def format_join(f, j, col_heads):
     jname =  j[0]
@@ -522,8 +521,7 @@ def format_join(f, j, col_heads):
             s += ", "
         s += "\"" + i + "\""
     s += "], \"index\" : {} }"
-    with open(f, "w") as f:
-        print(f"{s},")
+    print(s, end=' ', file=f)
 
 default_joins = [
     ("comp_job_time", "component_id", "job_id", "Time"),
@@ -543,8 +541,7 @@ def format_schema_epilog(f, args, col_heads):
     s="\n"
     s += """  ]
 }"""
-    with open(f, "w") as f:
-        print(s)
+    print(s, file=f)
 
 def is_index(n, args):
     if n in ["Time", "component_id", "job_id", "component_id.value", "job_id.value", "ProducerName", "anonymized_host_ProducerName"]:
@@ -573,16 +570,13 @@ def format_schema_element(f, args, name, mtype, first):
     if is_index(name, args):
         s += ",\t\"index\" : {} "
     s += " }"
-    with open(f, "w") as f:
-        print(f"{s},")
+    print(s, end=' ', file=f)
 
 def format_map_prolog(f):
-    with open(f, "w") as f:
-        print(f"[")
+    print("[", file=f)
 
 def format_map_epilog(f):
-    with open(f, "w") as f:
-        print(f"\n]")
+    print("\n]", file=f)
 
 def format_map_element(f, k, metric, first):
     # accepts k as in or array of ints
@@ -595,8 +589,7 @@ def format_map_element(f, k, metric, first):
     else:
         colspec = "\"list\" : [" + str(k).strip("[]") +  "]"
     s += "\t{ \"target\" : \"" + metric + "\", \"source\" : { " + colspec + " }}"
-    with open(f, "w") as f:
-        print(f"{s},")
+    print(s, end=' ', file=f)
 
 def generate_map_new(col_heads, col_kinds, arr, udata, mapout, sout, mapvec):
     """ generate map conforming to schema and input file. This skips type checking."""

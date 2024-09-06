@@ -4,7 +4,7 @@ prefix=@prefix@
 exec_prefix=@exec_prefix@
 libdir=@libdir@
 
-export PYTHONPATH=${prefix}/lib/python2.7/site-packages
+export PYTHONPATH=@pythondir@
 . $libdir/ovis-lib-configvars.sh
 . $libdir/ovis-ldms-configvars.sh
 # Manually redefine portbase to avoid collisions.

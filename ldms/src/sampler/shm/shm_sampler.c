@@ -366,9 +366,9 @@ static int create_base_for_box(ldms_shm_box_t *box, const char* schema_name,
 	box->base->job_end_idx = initial_base_config->job_end_idx;
 	box->base->job_id_idx = initial_base_config->job_id_idx;
 	box->base->job_start_idx = initial_base_config->job_start_idx;
-	box->base->uid = initial_base_config->uid;
-	box->base->gid = initial_base_config->gid;
-	box->base->perm = initial_base_config->perm;
+	box->base->auth.uid = initial_base_config->auth.uid;
+	box->base->auth.gid = initial_base_config->auth.gid;
+	box->base->auth.perm = initial_base_config->auth.perm;
 
 	box->base->producer_name = strdup(initial_base_config->producer_name);
 	box->base->schema_name = strdup(schema_name);
@@ -439,14 +439,14 @@ static void handle_ldms_set_delete_issue(ldms_shm_box_t* box)
 								ldms_shm_metric_set_counter)
 								+ 1;
 		int num_delimiter_chars = 1;
-		int instance_name_len = strlen(box->base->instance_name)
+		size_t instance_name_len = strlen(box->base->instance_name)
 				+ num_delimiter_chars
 				+ ldms_shm_metric_set_counter_len + 1;
 
 		char* instance_name = calloc(instance_name_len, sizeof(char));
 		if(!instance_name) {
 			ovis_log(mylog, OVIS_LERROR,
-					"failed to allocate memory of size=%d (%d + %d + %d + 1) for instance %s\n",
+					"failed to allocate memory of size=%zu (%zu + %d + %d + 1) for instance %s\n",
 					instance_name_len,
 					strlen(box->base->instance_name),
 					num_delimiter_chars,
@@ -482,7 +482,7 @@ static int create_metric_set(ldms_shm_box_t *box, ldms_shm_set_t shm_set,
 	if(!box->base->schema) {
 		ovis_log(mylog, OVIS_LERROR,
 				"%s: The schema '%s' could not be created, errno=%d.\n",
-				__FILE__, box->base, errno);
+				__FILE__, box->base->schema_name, errno);
 		rc = errno;
 		return rc;
 	}
