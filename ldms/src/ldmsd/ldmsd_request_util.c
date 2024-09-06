@@ -61,7 +61,7 @@ struct req_str_id {
 	uint32_t id;
 };
 
-const struct req_str_id req_str_id_table[] = {
+struct req_str_id req_str_id_table[] = {
 	/* This table need to be sorted by keyword for bsearch() */
 	{  "advertiser_add",      LDMSD_ADVERTISER_ADD_REQ  },
 	{  "advertiser_del",      LDMSD_ADVERTISER_DEL_REQ  },
@@ -169,7 +169,7 @@ const struct req_str_id req_str_id_table[] = {
 };
 
 /* This table need to be sorted by keyword for bsearch() */
-const struct req_str_id attr_str_id_table[] = {
+struct req_str_id attr_str_id_table[] = {
 	{  "auth",              LDMSD_ATTR_AUTH  },
 	{  "auto_interval",     LDMSD_ATTR_AUTO_INTERVAL  },
 	{  "auto_switch",       LDMSD_ATTR_AUTO_SWITCH  },
@@ -1365,4 +1365,16 @@ int ldmsd_msg_gather(struct ldmsd_msg_buf *buf, ldmsd_req_hdr_t req)
 	if (flags & LDMSD_REQ_EOM_F)
 		return 0;
 	return EBUSY;
+}
+
+__attribute__((constructor))
+void __ldmsd_request_util_init()
+{
+	/* make sure the tables are sorted */
+	qsort(req_str_id_table,
+	      sizeof(req_str_id_table)/sizeof(req_str_id_table[0]),
+	      sizeof(req_str_id_table[0]), (void*)req_str_id_cmp);
+	qsort(attr_str_id_table,
+	      sizeof(attr_str_id_table)/sizeof(attr_str_id_table[0]),
+	      sizeof(attr_str_id_table[0]), (void*)req_str_id_cmp);
 }
