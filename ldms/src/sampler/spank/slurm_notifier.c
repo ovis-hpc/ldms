@@ -313,8 +313,8 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		client->state = CONNECTED;
 		event = "connected";
 		break;
-	case LDMS_XPRT_EVENT_RECV:
-		event = "recv";
+	case LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
+		event = "quota_deposited";
 		client->state = ACKED;
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
