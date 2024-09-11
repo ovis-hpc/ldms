@@ -2616,8 +2616,6 @@ class LdmsdCmdParser(cmd.Cmd):
                 print(f'     - {"drops":23} {drops["bytes"]:>12} {drops["count"]:>12} '\
                       f'{self.__floatts2human(drops["first_ts"]):26} ' \
                       f'{self.__floatts2human(drops["last_ts"]):26}')
-        if is_debug:
-            pdb.set_trace()
 
     def complete_stream_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_stats', text)
@@ -2670,8 +2668,6 @@ class LdmsdCmdParser(cmd.Cmd):
                 print(f'     - {"drops":23} {drops["bytes"]:>12} {drops["count"]:>12} '\
                       f'{self.__floatts2human(drops["first_ts"]):26} ' \
                       f'{self.__floatts2human(drops["last_ts"]):26}')
-        if is_debug:
-            pdb.set_trace()
 
     def complete_stream_client_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_client_stats', text)
