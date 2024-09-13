@@ -25,8 +25,8 @@ static ldms_set_t set = NULL;
 static ovis_log_t mylog;
 static base_data_t base;
 static int nsockets;
-static const char *SOCKET_METRICS[] = {"power_cpu_watts", "power_gpu_watts", "power_mem_watts"};
-static char** metric_names = NULL;
+// static const char *SOCKET_METRICS[] = {"power_cpu_watts", "power_gpu_watts", "power_mem_watts"};
+// static char** metric_names = NULL;
 static int i_node;
 static int i_sock;
 static int i_cpu;
@@ -44,13 +44,14 @@ static int create_metric_set(base_data_t base)
         ldms_schema_t schema;
         ldms_mval_t rec_inst;
 
-        // allocate space for metric names
-        if (!metric_names) {
-                metric_names = malloc(3 * nsockets * sizeof(char*));
-        }
-        for (metric = 0; metric < (3 * nsockets); metric++) {
-                metric_names[metric] = malloc(39);
-        }
+        // DELETE
+        // // allocate space for metric names
+        // if (!metric_names) {
+        //         metric_names = malloc(3 * nsockets * sizeof(char*));
+        // }
+        // for (metric = 0; metric < (3 * nsockets); metric++) {
+        //         metric_names[metric] = malloc(39);
+        // }
 
         // allocate space for record pointers
         if (!rec_idxs) {
@@ -99,15 +100,17 @@ static int create_metric_set(base_data_t base)
                 ldms_record_set_u64(rec_inst, i_sock, socket);
                 // put the record into the list
                 ldms_list_append_record(set, lh, rec_inst);
+                
+                // DELETE
                 // create metric name list (for querying json object later on)
                 //TP NOTE: This is not needed anymore, as we don't need to append the ID here. 
                 // Will fix this once the initial build works.
-                for(metric = 0; metric < 3; metric++) {
-                        strcpy(metric_name,SOCKET_METRICS[metric]);
-                        sprintf(socket_num,"%d",socket);
-                        strcat(metric_name,socket_num);
-                        strcpy(metric_names[(metric*nsockets)+socket], metric_name);
-                }
+                // for(metric = 0; metric < 3; metric++) {
+                //         strcpy(metric_name,SOCKET_METRICS[metric]);
+                //         sprintf(socket_num,"%d",socket);
+                //         strcat(metric_name,socket_num);
+                //         strcpy(metric_names[(metric*nsockets)+socket], metric_name);
+                // }
         }
 
         // allocate space for sampling JSON data depending on number of sockets
@@ -261,6 +264,7 @@ static int sample(struct ldmsd_sampler *self)
                 ldms_record_set_double(rec_idxs[socket], i_gpu, power_gpu);
                 ldms_record_set_double(rec_idxs[socket], i_mem, power_mem);
             }   
+            // DELETE
               /*   
                 ldms_record_set_double(rec_idxs[socket], i_node, power_node);
                 power_cpu = json_real_value(json_object_get(power_obj, metric_names[socket]));
@@ -284,12 +288,14 @@ static void term(struct ldmsd_plugin *self)
 {
         int metric;
 
-        if (metric_names) {
-                for (metric = 0; metric < 3 * nsockets; metric++) {
-                        free(metric_names[metric]);
-                }
-                free(metric_names);
-        }
+        // DELETE
+        // if (metric_names) {
+        //         for (metric = 0; metric < 3 * nsockets; metric++) {
+        //                 free(metric_names[metric]);
+        //         }
+        //         free(metric_names);
+        // }
+        
         if (result_string) {
                 free(result_string);
         }
