@@ -1102,7 +1102,8 @@ static int __rail_send(ldms_t _r, char *msg_buf, size_t msg_len)
 static size_t __rail_msg_max(ldms_t _r)
 {
 	ldms_rail_t r = (ldms_rail_t)_r;
-	return r->max_msg;
+	return	r->max_msg - (sizeof(struct ldms_request_hdr) +
+			sizeof(struct ldms_send_cmd_param));
 }
 
 /* interposer */
