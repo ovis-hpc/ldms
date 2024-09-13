@@ -1810,6 +1810,9 @@ static zap_err_t z_sock_send2(zap_ep_t ep, char *buf, size_t len, void *cb_arg)
 	struct z_sock_io *io;
 	zap_err_t zerr;
 
+	if (len > ep->z->max_msg)
+		return ZAP_ERR_LOCAL_LEN;
+
 	pthread_mutex_lock(&sep->ep.lock);
 
 	if (ep->state != ZAP_EP_CONNECTED) {
