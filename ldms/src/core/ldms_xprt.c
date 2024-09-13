@@ -2283,7 +2283,7 @@ int ldms_xprt_names(ldms_t x, char *lcl_name, size_t lcl_name_sz,
 	}
 
 	if (rem_name || rem_port) {
-		(void)getnameinfo((void*)&lcl, xlen, rem_name, rem_name_sz,
+		(void) getnameinfo((void*)&rmt, xlen, rem_name, rem_name_sz,
 					rem_port, rem_port_sz, flags);
 	}
 	return 0;
@@ -4307,9 +4307,6 @@ int ldms_xprt_get_threads(ldms_t x, pthread_t *out, int n)
 }
 
 enum ldms_thrstat_op_e req2thrstat_op_tbl[] = {
-		/*
-		 * TODO: Finish this table
-		 */
 	[LDMS_CMD_DIR]                = LDMS_THRSTAT_OP_DIR_REQ ,
 	[LDMS_CMD_DIR_CANCEL]         = LDMS_THRSTAT_OP_DIR_REQ ,
 	[LDMS_CMD_LOOKUP]             = LDMS_THRSTAT_OP_LOOKUP_REQ ,
@@ -4322,26 +4319,12 @@ enum ldms_thrstat_op_e req2thrstat_op_tbl[] = {
 	[LDMS_CMD_SET_DELETE]         = LDMS_THRSTAT_OP_SET_DELETE_REQ ,
 	[LDMS_CMD_SEND_CREDIT]        = LDMS_THRSTAT_OP_OTHER ,
 
-	/* stream requests */
-//	[LDMS_CMD_STREAM_MSG] =, /* for stream messages */
-//	[LDMS_CMD_STREAM_SUB] =, /* stream subscribe request */
-//	[LDMS_CMD_STREAM_UNSUB] =, /* stream subscribe request */
-//
-//	[LDMS_CMD_REPLY = 0x100] =,
 	[LDMS_CMD_DIR_REPLY]          = LDMS_THRSTAT_OP_DIR_REPLY ,
-//	[LDMS_CMD_DIR_CANCEL_REPLY] =,
 	[LDMS_CMD_DIR_UPDATE_REPLY]   = LDMS_THRSTAT_OP_UPDATE_REPLY ,
 	[LDMS_CMD_LOOKUP_REPLY]       = LDMS_THRSTAT_OP_LOOKUP_REPLY ,
-//	[LDMS_CMD_REQ_NOTIFY_REPLY] =,
 	[LDMS_CMD_AUTH_CHALLENGE_REPLY] = LDMS_THRSTAT_OP_AUTH ,
 	[LDMS_CMD_AUTH_APPROVAL_REPLY]  = LDMS_THRSTAT_OP_AUTH ,
-//	[LDMS_CMD_PUSH_REPLY] =,
 	[LDMS_CMD_AUTH_REPLY]           = LDMS_THRSTAT_OP_AUTH ,
-//	[LDMS_CMD_SET_DELETE_REPLY] =,
-//
-//	/* stream replies */
-//	[LDMS_CMD_STREAM_SUB_REPLY] =, /* stream subscribe reply (result) */
-//	[LDMS_CMD_STREAM_UNSUB_REPLY] =, /* stream subscribe reply (result) */
 };
 
 char *ldms_thrstat_op_str_tbl[] = {

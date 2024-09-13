@@ -773,10 +773,20 @@ int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void
 	return rc;
 }
 
+/* Implementation is in ldms_rail.c */
+ldms_t __ldms_xprt_to_rail(ldms_t x);
 int ldms_xprt_update(struct ldms_set *set, ldms_update_cb_t cb, void *arg)
 {
-	ldms_t x = set->xprt;
-	return x->ops.update(x, set, cb, arg);
+	/*
+	 * We convert the transport handle to a rail handle using
+	 * __ldms_xprt_to_rail() and pass it to x->ops.update().
+	 * This ensures that the update operation will be handled
+	 * by the __rail_update() function, which allows us to
+	 * interpose the rail update callback and deliver the rail handle
+	 * when the update completes.
+	 */
+	ldms_t r = __ldms_xprt_to_rail(set->xprt);
+	return r->ops.update(r, set, cb, arg);
 }
 
 void __ldms_set_on_xprt_term(ldms_set_t set, ldms_t xprt)
