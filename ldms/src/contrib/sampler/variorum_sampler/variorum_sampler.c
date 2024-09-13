@@ -200,57 +200,49 @@ static int sample(struct ldmsd_sampler *self)
         char socketID[20];
 
          // If we're on a GPU-only build, we don't have power_node_watts.
-        if (json_object_get(node_obj, "power_node_watts") != NULL)
-        {
+        if (json_object_get(node_obj, "power_node_watts") != NULL) {
                 power_node = json_real_value(json_object_get(node_obj, "power_node_watts"));
          //       printf("Node Power: %0.2lf Watts\n", power_node);
         }
 
         // If we're on a CPU-only build, we don't have num_gpus_per_socket
-        if (json_object_get(node_obj, "num_gpus_per_socket") != NULL)
-        {
+        if (json_object_get(node_obj, "num_gpus_per_socket") != NULL) {
                 num_gpus_per_socket = json_integer_value(json_object_get(node_obj,
                                       "num_gpus_per_socket"));
                 // printf("Number of GPUs per socket: %d\n", num_gpus_per_socket);
         }
 
         // update each record
-        for(socket = 0; socket < nsockets; socket++) 
-        {
+        for(socket = 0; socket < nsockets; socket++) {
                 // Node power is same on both sockets.
                 ldms_record_set_double(rec_idxs[socket], i_node, power_node);
 
                 // Obtain Socket Object
                 snprintf(socketID, 20, "socket_%d", i);
                 json_t *socket_obj = json_object_get(node_obj, socketID);
-                if (socket_obj == NULL)
-                {
+                if (socket_obj == NULL) {
                         printf("Socket object not found!\n");
                         exit(0);
                 }
 
                 // If we're on a GPU-only build, we don't have power_cpu_watts
-                if (json_object_get(socket_obj, "power_cpu_watts") != NULL)
-                {                        
+                if (json_object_get(socket_obj, "power_cpu_watts") != NULL) {                        
                         power_cpu = json_real_value(json_object_get(socket_obj, "power_cpu_watts"));
                         // printf("Socket %d, CPU Power: %0.2lf Watts\n", i, power_cpu);
                 }
 
                 // If we're on a GPU-only build on an unsupported platform, 
                 // we don't have power_mem_watts.
-                if (json_object_get(socket_obj, "power_mem_watts") != NULL)
-                {
+                if (json_object_get(socket_obj, "power_mem_watts") != NULL) {
                         power_mem = json_real_value(json_object_get(socket_obj, "power_mem_watts"));
                         //  printf("Socket %d, Mem Power: %0.2lf Watts\n", i, power_mem);
                 }     
                 
                 // If we have GPUs, obtatin the GPU object
                 // As a first cut, add up the power of multiple GPUs on that socket.
-                if (num_gpus_per_socket > 0)
-                {
+                if (num_gpus_per_socket > 0) {
                     json_t *gpu_obj = json_object_get(socket_obj, "power_gpu_watts");
-                    if (gpu_obj == NULL)
-                        {
+                    if (gpu_obj == NULL) {
                                 printf("GPU object not found! \n");
                                 exit(0);
                         }
@@ -258,8 +250,7 @@ static int sample(struct ldmsd_sampler *self)
                         json_t *value;
                         power_gpu = 0.0;
 
-                        json_object_foreach(gpu_obj, key, value)
-                        {
+                        json_object_foreach(gpu_obj, key, value) {
                                 power_gpu += json_real_value(value); 
                                 // printf("Socket %d, %s Power: %0.2lf Watts\n", i, key, json_real_value(value));
                         }
@@ -269,8 +260,7 @@ static int sample(struct ldmsd_sampler *self)
                 ldms_record_set_double(rec_idxs[socket], i_cpu, power_cpu);
                 ldms_record_set_double(rec_idxs[socket], i_gpu, power_gpu);
                 ldms_record_set_double(rec_idxs[socket], i_mem, power_mem);
-            }
-        }   
+            }   
               /*   
                 ldms_record_set_double(rec_idxs[socket], i_node, power_node);
                 power_cpu = json_real_value(json_object_get(power_obj, metric_names[socket]));
