@@ -218,7 +218,7 @@ static int sample(struct ldmsd_sampler *self)
                 ldms_record_set_double(rec_idxs[socket], i_node, power_node);
 
                 // Obtain Socket Object
-                snprintf(socketID, 20, "socket_%d", i);
+                snprintf(socketID, 20, "socket_%d", socket);
                 json_t *socket_obj = json_object_get(node_obj, socketID);
                 if (socket_obj == NULL) {
                         printf("Socket object not found!\n");
