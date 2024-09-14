@@ -1412,7 +1412,7 @@ class Communicator(object):
         """
         attr_list = []
         if uid:
-            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSDS_Req_Attr.UID, value=uid))
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.UID, value=uid))
         if gid:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.GID, value=gid))
         if perm:
@@ -1454,7 +1454,7 @@ class Communicator(object):
         """
         attr_list = []
         if name:
-            attr_list.append(LDMSD_Req_Attr.NAME, value=name)
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name))
         req = LDMSD_Request(command_id=LDMSD_Request.STORE_TIME_STATS,
                             attrs=attr_list)
         try:
