@@ -856,11 +856,11 @@ class LdmsdCmdParser(cmd.Cmd):
         rc, msg = self.comm.strgp_add(arg['name'],
                                       arg['plugin'],
                                       arg['container'],
-                                      arg['schema'],
-                                      arg['regex'],
-                                      arg['perm'],
-                                      arg['flush'],
-                                      arg['decomposition'])
+                                      schema=arg['schema'],
+                                      regex=arg['regex'],
+                                      perm=arg['perm'],
+                                      flush=arg['flush'],
+                                      decomposition=arg['decomposition'])
         if rc:
             print(f'Error adding storage policy {arg["name"]}: {msg}')
 
