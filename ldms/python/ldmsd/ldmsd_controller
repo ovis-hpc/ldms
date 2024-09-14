@@ -184,9 +184,9 @@ class LdmsdCmdParser(cmd.Cmd):
                                      kwargs['auth_opt'])
             rc = self.comm.connect()
             if rc:
-                self.promt = "Error connecting to {1} on port {2} with {0}".format(xprt, host, port)
+                self.prompt = "Error connecting to {1} on port {2} with {0}".format(kwargs['xprt'], kwargs['host'], kwargs['port'])
             else:
-                self.prompt = "{0}:{1}:{2}> ".format(xprt, host, port)
+                self.prompt = "{0}:{1}:{2}> ".format(kwargs['xprt'], kwargs['host'], kwargs['port'])
         else:
             print(f"WARN: Already connected, do nothing.")
             return None
@@ -779,11 +779,11 @@ class LdmsdCmdParser(cmd.Cmd):
         rc, msg = self.comm.strgp_add(arg['name'],
                                       arg['plugin'],
                                       arg['container'],
-                                      arg['schema'],
-                                      arg['regex'],
-                                      arg['perm'],
-                                      arg['flush'],
-                                      arg['decomposition'])
+                                      schema=arg['schema'],
+                                      regex=arg['regex'],
+                                      perm=arg['perm'],
+                                      flush=arg['flush'],
+                                      decomposition=arg['decomposition'])
         if rc:
             print(f'Error adding storage policy {arg["name"]}: {msg}')
 
@@ -1142,10 +1142,11 @@ class LdmsdCmdParser(cmd.Cmd):
             # self.handle() already reported the error.
             return
         j = fmt_status(msg)
-        print("strgp           min(usec)       max(usec)      avg(usec)      Count")
-        print(f"{'-'*15} {'-'*15} {'-'*15} {'-'*15} {'-'*10}")
+        print("{0:32} {1:15} {2:15} {3:15} {4:10}".
+            format("Strgp Name", "min(usec)", "max(usec)", "avg(usec)", "Count"))
+        print(f"{'-'*32} {'-'*15} {'-'*15} {'-'*15} {'-'*10}")
         for n, strgp in j.items():
-            print(f"{n:15} {strgp['min']:15.4f} {strgp['max']:15.4f} {strgp['avg']:15.4f} {strgp['cnt']:10}")
+            print(f"{n:32} {strgp['min']:15.4f} {strgp['max']:15.4f} {strgp['avg']:15.4f} {strgp['cnt']:10}")
 
     def complete_store_time_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('store_time_stats', text)
