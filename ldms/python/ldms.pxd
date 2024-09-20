@@ -259,8 +259,8 @@ cdef extern from "ovis_log/ovis_log.h" nogil:
 
 cdef extern from "ldms_rail.h" nogil:
     cpdef enum :
-        __RAIL_UNLIMITED
-        RAIL_UNLIMITED "__RAIL_UNLIMITED"
+        LDMS_UNLIMITED
+        RAIL_UNLIMITED "LDMS_UNLIMITED"
 
     int ldms_xprt_rail_pending_ret_quota_get(ldms_t x, uint64_t *out, int n)
     int ldms_xprt_rail_in_eps_stq_get(ldms_t _r, uint64_t *out, int n)

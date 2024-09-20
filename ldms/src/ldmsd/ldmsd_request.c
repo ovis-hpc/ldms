@@ -1645,7 +1645,7 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 	gid_t gid;
 	int perm;
 	int64_t quota = ldmsd_quota; /* use the global quota setting by default */
-	int64_t rx_rate = __RAIL_UNLIMITED;
+	int64_t rx_rate = LDMS_UNLIMITED;
 	int rail = 1;
 	char *perm_s = NULL;
 
@@ -2104,7 +2104,7 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	char *rx_rate_s = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
-	int64_t rx_rate = __RAIL_UNLIMITED;
+	int64_t rx_rate = LDMS_UNLIMITED;
 
 	reqc->errcode = 0;
 

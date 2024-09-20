@@ -643,7 +643,7 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
 /**
  * Unlimited value for rail 'quota' and 'rate'.
  */
-#define __RAIL_UNLIMITED (-1)
+#define LDMS_UNLIMITED (-1)
 
 /**
  * \brief Create a new LDMS Rail handle.
@@ -1486,7 +1486,7 @@ void ldms_stream_close(ldms_stream_client_t c);
  * \param cb_fn    The callback function for return status notification (could
  *                 be \c NULL).
  * \param cb_arg   The application context to the `cb_fn`.
- * \param rate     The rate limit (bytes/sec). Use `__RAIL_UNLIMITED` for
+ * \param rate     The rate limit (bytes/sec). Use `LDMS_UNLIMITED` for
  *                 unlimited.
  *
  * \retval 0     If succeeded.

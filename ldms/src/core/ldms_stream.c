@@ -972,8 +972,8 @@ __client_alloc(const char *stream, int is_regex,
 	LDMS_STREAM_COUNTERS_INIT(&c->tx);
 	LDMS_STREAM_COUNTERS_INIT(&c->drops);
 
-	c->rate_quota.quota = __RAIL_UNLIMITED;
-	c->rate_quota.rate   = __RAIL_UNLIMITED;
+	c->rate_quota.quota = LDMS_UNLIMITED;
+	c->rate_quota.rate   = LDMS_UNLIMITED;
 	c->rate_quota.ts.tv_sec  = 0;
 	c->rate_quota.ts.tv_nsec = 0;
 
