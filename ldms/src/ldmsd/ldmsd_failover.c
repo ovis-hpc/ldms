@@ -2056,8 +2056,8 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	mode_t _perm;
 
 	int rail = 1;
-	int64_t quota = __RAIL_UNLIMITED;
-	int64_t rx_rate = __RAIL_UNLIMITED;
+	int64_t quota = LDMS_UNLIMITED;
+	int64_t rx_rate = LDMS_UNLIMITED;
 
 	enum ldmsd_prdcr_type ptype;
 	ldmsd_prdcr_t p;

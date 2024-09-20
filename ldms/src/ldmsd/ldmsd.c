@@ -170,7 +170,7 @@ ldms_t ldms;
 int do_kernel = 0;
 char *setfile = NULL;
 
-int ldmsd_quota = __RAIL_UNLIMITED;
+int ldmsd_quota = LDMS_UNLIMITED;
 
 static int set_cmp(void *a, const void *b)
 {
@@ -1479,13 +1479,13 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth, 
 		/*
 		 * listen->quota will be set to ldmsd_quota (global value) in ldmsd_listen_start().
 		 */
-		listen->quota = __RAIL_UNLIMITED;
+		listen->quota = LDMS_UNLIMITED;
 	}
 
 	if (rx_limit)
 		listen->rx_limit = atoi(rx_limit);
 	else
-		listen->rx_limit = __RAIL_UNLIMITED;
+		listen->rx_limit = LDMS_UNLIMITED;
 
 	if (auth) {
 		auth_dom = ldmsd_auth_find(auth);
@@ -1563,7 +1563,7 @@ int ldmsd_listen_start(ldmsd_listen_t listen)
 {
 	int rc = 0;
 	assert(NULL == listen->x);
-	if (listen->quota == __RAIL_UNLIMITED) {
+	if (listen->quota == LDMS_UNLIMITED) {
 		/*
 		 * Set listen->quota here to cover the case that
 		 * the global value is set after ldmsd_listen_new() is called.
@@ -1574,7 +1574,7 @@ int ldmsd_listen_start(ldmsd_listen_t listen)
 	}
 	listen->x = ldms_xprt_rail_new(listen->xprt, 1,
 						((listen->quota>0)?listen->quota:ldmsd_quota),
-						((listen->rx_limit>0)?listen->rx_limit:__RAIL_UNLIMITED),
+						((listen->rx_limit>0)?listen->rx_limit:LDMS_UNLIMITED),
 						ldmsd_auth_name_get(listen),
 						ldmsd_auth_attr_get(listen));
 	if (!listen->x) {

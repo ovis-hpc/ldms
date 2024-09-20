@@ -239,9 +239,9 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 	for (i = 0; i < n; i++) {
 		r->eps[i].rail = r;
 		r->eps[i].idx = i;
-		r->eps[i].send_quota = __RAIL_UNLIMITED;
-		r->eps[i].rate_quota.quota = __RAIL_UNLIMITED;
-		r->eps[i].rate_quota.rate   = __RAIL_UNLIMITED;
+		r->eps[i].send_quota = LDMS_UNLIMITED;
+		r->eps[i].rate_quota.quota = LDMS_UNLIMITED;
+		r->eps[i].rate_quota.rate   = LDMS_UNLIMITED;
 		r->eps[i].rate_quota.ts.tv_sec    = 0;
 		r->eps[i].rate_quota.ts.tv_nsec   = 0;
 		r->eps[i].remote_is_rail = -1;
@@ -276,7 +276,7 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
 			       struct attr_value_list *auth_av_list)
 {
 	return ldms_xprt_rail_new(xprt_name, 1,
-			__RAIL_UNLIMITED, __RAIL_UNLIMITED,
+			LDMS_UNLIMITED, LDMS_UNLIMITED,
 			auth_name,  auth_av_list);
 }
 
@@ -367,7 +367,7 @@ ldms_rail_t __rail_passive_legacy_wrap(ldms_t x, ldms_event_cb_t cb, void *cb_ar
 	union ldms_sockaddr self_addr, peer_addr;
 	socklen_t addr_len = sizeof(self_addr);
 	r = (ldms_rail_t)ldms_xprt_rail_new(xprt_name, 1,
-					    __RAIL_UNLIMITED, __RAIL_UNLIMITED,
+					    LDMS_UNLIMITED, LDMS_UNLIMITED,
 					    x->auth->plugin->name, NULL);
 	if (!r)
 		goto out;
@@ -668,8 +668,8 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 		} else {
 			xprt_name = lx->name;
 			auth_name = lx->auth?lx->auth->plugin->name:NULL;
-			recv_limit = __RAIL_UNLIMITED;
-			rate_limit = __RAIL_UNLIMITED;
+			recv_limit = LDMS_UNLIMITED;
+			rate_limit = LDMS_UNLIMITED;
 			cb = lx->event_cb;
 			cb_arg = lx->event_cb_arg;
 		}
@@ -968,7 +968,7 @@ int __quota_acquire(uint64_t *quota, uint64_t n)
 	uint64_t v0, v1;
 
 	__atomic_load(quota, &v0, __ATOMIC_SEQ_CST);
-	if (v0 == __RAIL_UNLIMITED)
+	if (v0 == LDMS_UNLIMITED)
 		return 0;
  again:
 	if (v0 < n)
@@ -988,7 +988,7 @@ uint64_t __quota_release(uint64_t *quota, uint64_t n)
 	uint64_t v0;
 
 	__atomic_load(quota, &v0, __ATOMIC_SEQ_CST);
-	if (v0 == __RAIL_UNLIMITED)
+	if (v0 == LDMS_UNLIMITED)
 		return v0;
 	return __atomic_add_fetch(quota, n, __ATOMIC_SEQ_CST);
 }
@@ -1000,7 +1000,7 @@ int __rate_quota_acquire(struct ldms_rail_rate_quota_s *c, uint64_t n)
 	struct timespec ts;
 	uint64_t v0, v1;
 
-	if (c->rate == __RAIL_UNLIMITED)
+	if (c->rate == LDMS_UNLIMITED)
 		return 0;
 
  again:
@@ -1039,7 +1039,7 @@ void __rate_quota_release(struct ldms_rail_rate_quota_s *c, uint64_t n)
 {
 	int rc;
 	struct timespec ts;
-	if (c->rate == __RAIL_UNLIMITED)
+	if (c->rate == LDMS_UNLIMITED)
 		return;
 	rc = clock_gettime(CLOCK_REALTIME, &ts);
 	if (rc)
@@ -1375,9 +1375,9 @@ void __rail_ep_limit(ldms_t x, void *msg, int msg_len)
 	rep->remote_is_rail = 1;
 	return;
  unlimited:
-	rep->send_quota = __RAIL_UNLIMITED;
-	rep->rate_quota.quota = __RAIL_UNLIMITED;
-	rep->rate_quota.rate   = __RAIL_UNLIMITED;
+	rep->send_quota = LDMS_UNLIMITED;
+	rep->rate_quota.quota = LDMS_UNLIMITED;
+	rep->rate_quota.rate   = LDMS_UNLIMITED;
 	rep->remote_is_rail = 0;
 }
 
