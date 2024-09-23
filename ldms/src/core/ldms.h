@@ -1070,6 +1070,20 @@ int64_t ldms_xprt_rail_recv_rate_limit_get(ldms_t x);
  */
 int ldms_xprt_rail_send_quota_get(ldms_t x, uint64_t *quota, int n);
 
+/**
+ * Set a new recv quota value.
+ *
+ * This function notifies the peer of the new recv quota \c q so that the peer
+ * can adjust its send quota accordingly.
+ *
+ * \param x The rail transport handle.
+ * \param q The new recv quota value.
+ *
+ * \retval 0     If succeeded,
+ * \retval -errno If failed.
+ */
+int ldms_xprt_rail_recv_quota_set(ldms_t x, uint64_t q);
+
 /* A convenient sockaddr union for IPv4 and IPv6 (for now) */
 union ldms_sockaddr {
 	struct sockaddr     sa;

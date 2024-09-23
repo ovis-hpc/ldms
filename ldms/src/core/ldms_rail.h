@@ -126,6 +126,7 @@ struct ldms_rail_ep_s {
 	int idx; /* index in the rail */
 	ldms_rail_t rail;
 	uint64_t send_quota; /* peer's recv limit */
+	uint64_t send_quota_debt; /* debt due to quota reconfiguration */
 	struct rbt sbuf_rbt; /* stream message buffer */
 	int remote_is_rail;
 	struct ldms_rail_rate_quota_s rate_quota; /* rate quota */

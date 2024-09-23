@@ -1678,6 +1678,7 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 }
 
 void __rail_process_send_quota(ldms_t x, struct ldms_request *req);
+void __rail_process_quota_reconfig(ldms_t x, struct ldms_request *req);
 
 /* implementation is in ldms_stream.c */
 void __stream_req_recv(ldms_t x, int cmd, struct ldms_request *req);
@@ -1738,6 +1739,9 @@ int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 	case LDMS_CMD_QGROUP_DONATE:
 	case LDMS_CMD_QGROUP_DONATE_BACK:
 		__qgroup_req_recv(x, cmd, req);
+		break;
+	case LDMS_CMD_QUOTA_RECONFIG:
+		__rail_process_quota_reconfig(x, req);
 		break;
 	default:
 		XPRT_LOG(x, OVIS_LERROR, "Unrecognized request %d\n", cmd);

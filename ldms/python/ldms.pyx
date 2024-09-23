@@ -3819,6 +3819,31 @@ cdef class Xprt(object):
         free(tmp)
         return lst
 
+    def get_recv_quota(self):
+        cdef int64_t q
+        q = ldms_xprt_rail_recv_quota_get(self.xprt)
+        if q < 0:
+            if q == ldms.LDMS_UNLIMITED:
+                return ldms.LDMS_UNLIMITED
+            else:
+                err = -q
+                raise RuntimeError(f"ldms_xprt_rail_recv_quota_set() error: {-err}")
+        return q
+
+    def set_recv_quota(self, q:uint64_t):
+        cdef int rc
+        rc = ldms_xprt_rail_recv_quota_set(self.xprt, q)
+        if rc:
+            raise RuntimeError(f"ldms_xprt_rail_recv_quota_set() error: {rc}")
+
+    @property
+    def recv_quota(self):
+        return self.get_recv_quota()
+
+    @recv_quota.setter
+    def recv_quota(self, q:uint64_t):
+        self.set_recv_quota(q)
+
     @property
     def in_eps_stq(self):
         assert(self.rail_eps > 0)
