@@ -398,6 +398,8 @@ typedef struct ldmsd_prdcr_listen {
 	struct ldms_addr net_addr;
 	int prefix_len;
 
+	uint64_t quota;
+
 	/*
 	 * For query the prdcr_listen information, ldmsd could report which
 	 * producers were added because their hostnames match the regex of

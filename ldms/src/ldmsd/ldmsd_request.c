@@ -9533,6 +9533,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	char *reconnect_str;
 	char *disabled_start;
 	char *attr_name;
+	char *quota;
 	ldmsd_prdcr_listen_t pl;
 
 	name = regex_str = reconnect_str = cidr_str = disabled_start = NULL;
@@ -9545,6 +9546,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	regex_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	cidr_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_IP);
 	disabled_start = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTO_INTERVAL);
+	quota = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_QUOTA);
 
 	pl = (ldmsd_prdcr_listen_t)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_PRDCR_LISTEN,
@@ -9599,6 +9601,20 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			ldmsd_cfgobj_put(&pl->obj);
 			goto send_reply;
 		}
+	}
+
+	if (quota) {
+		pl->quota = ovis_get_mem_size(quota);
+		if (!pl->quota) {
+			reqc->errcode = EINVAL;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"The given quota '%s' "
+						"is invalid.", quota);
+			ldmsd_cfgobj_put(&pl->obj);
+			goto send_reply;
+		}
+	} else {
+		pl->quota = 0; /* 0 means inherit quota from the listen xprt */
 	}
 
 	rbt_init(&pl->prdcr_tree, prdcr_ref_cmp);
@@ -10045,6 +10061,9 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t l
 	}
 	ldmsd_prdcr_unlock(prdcr);
 out:
+	if (lp->quota) {
+		ldms_xprt_rail_recv_quota_set(x, lp->quota);
+	}
 	ldms_xprt_put(x); /* Put back the reference at the beginning of the funciton */
 	return rc;
 einval:
