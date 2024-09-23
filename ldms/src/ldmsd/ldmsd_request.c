@@ -9936,7 +9936,9 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t l
 		prdcr = ldmsd_prdcr_new_with_auth(name, xprt_s, hostname, rem_addr->sin_port,
 				LDMSD_PRDCR_TYPE_ADVERTISED, INT_MAX,
 				NULL, uid, gid, 0770,
-				ldms_xprt_rail_eps(x), ldms_xprt_recv_limit(x), ldms_xprt_recv_rate_limit(x));
+				ldms_xprt_rail_eps(x),
+				ldms_xprt_rail_recv_quota_get(x),
+				ldms_xprt_rail_recv_rate_limit_get(x));
 		if (!prdcr) {
 			reqc->errcode = ENOMEM;
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,

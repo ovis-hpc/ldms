@@ -650,7 +650,7 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
  *
  * \param xprt_name The transport type name string.
  * \param n The number of endpoints in the rail.
- * \param recv_limit Our recv buffer limit in bytes, -1 for unlimited.
+ * \param recv_quota Our recv buffer quota in bytes, -1 for unlimited.
  * \param rate_limit Our transfer rate limit in bytes per second.
  * \param auth_name The authentication plugin name (e.g. munge).
  * \param auth_av_list The options for the authentication.
@@ -659,7 +659,7 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
  * \retval NULL If there is an error. \c errno is set to describe the error.
  */
 ldms_t ldms_xprt_rail_new(const char *xprt_name,
-			  int n, int64_t recv_limit, int64_t rate_limit,
+			  int n, int64_t recv_quota, int64_t rate_limit,
 			  const char *auth_name,
 			  struct attr_value_list *auth_av_list);
 
@@ -1036,14 +1036,14 @@ int ldms_xprt_is_remote_rail(ldms_t x);
 int ldms_xprt_rail_eps(ldms_t x);
 
 /**
- * \brief Get the receive limit of an endpoint
+ * \brief Get the receive quota of an endpoint
  *
  * \param x The transport handle
  *
  * \retval Receive limit is retunred.
  * \retval -EINVAL if \c x is NULL or not a rail
  */
-int64_t ldms_xprt_recv_limit(ldms_t x);
+int64_t ldms_xprt_rail_recv_quota_get(ldms_t x);
 
 /**
  * \brief Get the receive rate limit of an endpoint
@@ -1053,7 +1053,7 @@ int64_t ldms_xprt_recv_limit(ldms_t x);
  * \retval Receive limit is retunred.
  * \retval -EINVAL if \c x is NULL or not a rail
  */
-int64_t ldms_xprt_recv_rate_limit(ldms_t x);
+int64_t ldms_xprt_rail_recv_rate_limit_get(ldms_t x);
 
 /**
  * \brief Get the send quota
@@ -1120,10 +1120,10 @@ int ldms_getsockaddr6(const char *host, const char *port,
  * LDMS Quota Group, or qgroup for short, is a feature in LDMS library that
  * enables the control of the amount of the stream data going through the
  * processes participating in the "group". \c qgroup mechanism leverages
- * \c rail.recv_limit to limit the stream data. Hence, the endpoints in our
+ * \c rail.recv_quota to limit the stream data. Hence, the endpoints in our
  * process (a member of \c qgroup) has to be created with
- * \c * ldms_xprt_rail_new() with \c recv_limit. When the peer publishes a
- * stream data, it has to take quota from the said \c recv_limit. When our
+ * \c * ldms_xprt_rail_new() with \c recv_quota. When the peer publishes a
+ * stream data, it has to take quota from the said \c recv_quota. When our
  * process done processing the stream data (all stream callbacks on the data
  * have returned), the quota is issued back to the peer. This limits the amount
  * of buffer in our process. With \c qgruop, before our process returns the
