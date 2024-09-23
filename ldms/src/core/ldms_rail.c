@@ -139,6 +139,7 @@ static struct ldms_xprt_ops_s __rail_ops = {
 };
 
 void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg);
+int __rep_quota_release(struct ldms_rail_ep_s *rep, uint64_t q);
 
 static int __rail_id_cmp(void *k, const void *tk)
 {
@@ -1080,7 +1081,7 @@ static int __rail_send(ldms_t _r, char *msg_buf, size_t msg_len)
 	rc = ldms_xprt_send(rep->ep, msg_buf, msg_len);
 	if (rc) {
 		/* release the acquired quota if send failed */
-		__quota_release(&rep->send_quota, msg_len);
+		__rep_quota_release(rep, msg_len);
 	}
  out:
 	pthread_mutex_unlock(&r->mutex);
@@ -1386,7 +1387,7 @@ void __rail_process_send_quota(ldms_t x, struct ldms_request *req)
 	uint32_t sc = ntohl(req->send_quota.send_quota);
 	struct ldms_rail_ep_s *rep = ldms_xprt_ctxt_get(x);
 	struct ldms_xprt_event ev = {0};
-	ev.quota.quota = __quota_release(&rep->send_quota, sc);
+	ev.quota.quota = __rep_quota_release(rep, sc);
 	ev.quota.ep_idx = rep->idx;
 	ev.type = LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED;
 	rep->rail->event_cb((ldms_t)rep->rail, &ev, rep->rail->event_cb_arg);
@@ -1716,7 +1717,7 @@ int __rep_flush_sbuf_tq(struct ldms_rail_ep_s *rep)
 			     p->sbuf->data,
 			     p->sbuf->data_len);
 		if (rc) {
-			__quota_release(&rep->send_quota, p->sbuf->msg->msg_len);
+			__rep_quota_release(rep, p->sbuf->msg->msg_len);
 			goto out;
 		}
 		TAILQ_REMOVE(&rep->sbuf_tq, p, entry);
@@ -1736,8 +1737,92 @@ int __rep_quota_acquire(struct ldms_rail_ep_s *rep, uint64_t q)
 		return rc;
 	rc = __rate_quota_acquire(&rep->rate_quota, q);
 	if (rc) {
-		__quota_release(&rep->send_quota, q);
+		__rep_quota_release(rep, q);
 		return rc;
 	}
 	return 0;
+}
+
+int __rep_quota_release(struct ldms_rail_ep_s *rep, uint64_t q)
+{
+	uint64_t v0, v1, vx;
+	/* take care of your debt first */
+ again:
+	__atomic_load(&rep->send_quota_debt, &v0, __ATOMIC_SEQ_CST);
+	if (!v0)
+		goto release;
+	if (v0 <= q) {
+		vx = v0;
+		v1 = 0;
+		if (!__atomic_compare_exchange(&rep->send_quota_debt, &vx, &v1, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+			goto again;
+		q -= v0;
+	} else {
+		vx = v0;
+		v1 = v0 - q;
+		if (!__atomic_compare_exchange(&rep->send_quota_debt, &vx, &v1, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+			goto again;
+		q = 0;
+	}
+ release:
+	/* then release what you have left */
+	return __quota_release(&rep->send_quota, q);
+}
+
+int ldms_xprt_rail_recv_quota_set(ldms_t x, uint64_t q)
+{
+	ldms_rail_t r;
+	struct ldms_rail_ep_s *rep;
+	int len;
+	zap_err_t zerr;
+
+	if (!LDMS_IS_RAIL(x))
+		return -EINVAL;
+
+	r = (void*)x;
+
+	if (q == r->recv_quota)
+		return 0; /* no need to continue */
+
+	r->recv_quota = q;
+
+	rep = &r->eps[0];
+
+	len = sizeof(struct ldms_request_hdr) +
+		sizeof(struct ldms_quota_reconfig_param);
+	struct ldms_request req = {
+		.hdr = {
+			.cmd = htonl(LDMS_CMD_QUOTA_RECONFIG),
+			.len = htonl(len),
+		},
+		.quota_reconfig = {
+			.q = htobe64(q),
+		}};
+	zerr = zap_send(rep->ep->zap_ep, &req, len);
+	return -zap_zerr2errno(zerr);
+}
+
+void __rail_process_quota_reconfig(ldms_t x, struct ldms_request *req)
+{
+	int64_t add;
+	int i, rc;
+	uint64_t q = be64toh(req->quota_reconfig.q);
+	struct ldms_rail_ep_s *rep = ldms_xprt_ctxt_get(x);
+	ldms_rail_t r = rep->rail;
+	add = q - r->send_quota;
+	r->send_quota = q;
+	if (!add)
+		return; /* value not changing, nothing else to do */
+	for (i = 0; i < r->n_eps; i++) {
+		rep = &r->eps[i];
+		if (add > 0) {
+			__rep_quota_release(rep, add);
+		} else {
+			rc = __quota_acquire(&rep->send_quota, -add);
+			if (rc) {
+				/* not enough quota to take, now we're in debt */
+				__atomic_add_fetch(&rep->send_quota_debt, -add, __ATOMIC_SEQ_CST);
+			}
+		}
+	}
 }

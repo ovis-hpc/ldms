@@ -133,6 +133,9 @@ enum ldms_request_cmd {
 	LDMS_CMD_QGROUP_DONATE,
 	LDMS_CMD_QGROUP_DONATE_BACK,
 
+	/* rail quota re-config after connected */
+	LDMS_CMD_QUOTA_RECONFIG,
+
 	LDMS_CMD_REPLY = 0x100,
 	LDMS_CMD_DIR_REPLY,
 	LDMS_CMD_DIR_CANCEL_REPLY,
@@ -234,6 +237,10 @@ struct ldms_qgroup_donate {
 	uint64_t usec; /* like 'sec' since epoch, but in usec */
 };
 
+struct ldms_quota_reconfig_param {
+	uint64_t q; /* the new quota */
+};
+
 struct ldms_request_hdr {
 	uint64_t xid;		/*! Transaction id returned in reply */
 	uint32_t cmd;		/*! The operation being requested  */
@@ -255,6 +262,7 @@ struct ldms_request {
 		struct ldms_stream_sub_param stream_sub;
 		struct ldms_qgroup_ask qgroup_ask;
 		struct ldms_qgroup_donate  qgroup_donate;
+		struct ldms_quota_reconfig_param quota_reconfig;
 	};
 };
 

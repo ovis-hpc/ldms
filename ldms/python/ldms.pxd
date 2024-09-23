@@ -452,6 +452,8 @@ cdef extern from "ldms.h" nogil:
     int ldms_xprt_is_remote_rail(ldms_t x)
     int ldms_xprt_rail_eps(ldms_t x)
     int ldms_xprt_rail_send_quota_get(ldms_t x, uint64_t *quota, int n)
+    int64_t ldms_xprt_rail_recv_quota_get(ldms_t x)
+    int ldms_xprt_rail_recv_quota_set(ldms_t x, uint64_t q)
 
     # --- set related --- #
     ldms_set_t ldms_set_by_name(const char *set_name)
