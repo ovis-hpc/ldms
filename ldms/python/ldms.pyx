@@ -3345,6 +3345,9 @@ cdef class Xprt(object):
             - "munge" for munge
     - auth_opts: A dictionary containing LDMS authentication plugin options.
                  Please consult the plugin manuals for their options.
+    - rail_recv_quota:
+            The amount (bytes) of outstanding stream recv buffer we will hold.
+            The peer will respect our recv_quota.
 
     Passive-side simple example:
     >>> x = ldms.Xprt()
@@ -3403,9 +3406,11 @@ cdef class Xprt(object):
     cdef int rail_eps
 
     def __init__(self, name="sock", auth="none", auth_opts=None,
-                       rail_eps = 1, rail_recv_limit = ldms.RAIL_UNLIMITED,
+                       rail_eps = 1, rail_recv_quota = ldms.RAIL_UNLIMITED,
                        rail_rate_limit = ldms.RAIL_UNLIMITED,
-                       Ptr xprt_ptr=None):
+                       Ptr xprt_ptr=None,
+                       rail_recv_limit = None # alias of rail_recv_quota
+                       ):
         cdef attr_value_list *avl = NULL;
         cdef int rc;
         if rail_eps < 1:
@@ -3413,6 +3418,8 @@ cdef class Xprt(object):
         if auth is None:
             auth = "none"
         self.ctxt = None
+        if rail_recv_limit: # alias
+            rail_recv_quota = rail_recv_limit
         # conn
         sem_init(&self._conn_sem, 0, 0)
         self._conn_rc = 0
@@ -3451,7 +3458,7 @@ cdef class Xprt(object):
                                   .format(ERRNO_SYM(rc)))
         self.rail_eps = rail_eps
         self.xprt = ldms_xprt_rail_new(CSTR(BYTES(name)), rail_eps,
-                                        rail_recv_limit, rail_rate_limit,
+                                        rail_recv_quota, rail_rate_limit,
                                         CSTR(BYTES(auth)), avl)
         av_free(avl)
         if not self.xprt:

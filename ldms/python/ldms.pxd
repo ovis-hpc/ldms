@@ -329,7 +329,7 @@ cdef extern from "ldms.h" nogil:
                                    const char *auth_name,
                                    attr_value_list *auth_av_list)
     ldms_t ldms_xprt_rail_new(const char *xprt_name,
-			  int n, int64_t recv_limit, int32_t rate_limit,
+			  int n, int64_t recv_quota, int32_t rate_limit,
 			  const char *auth_name,
 			  attr_value_list *auth_av_list)
     void ldms_xprt_put(ldms_t x)

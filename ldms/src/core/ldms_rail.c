@@ -191,7 +191,7 @@ int __str_rbn_cmp(void *tree_key, const void *key);
 zap_t __ldms_zap_get(const char *xprt);
 
 ldms_t ldms_xprt_rail_new(const char *xprt_name,
-			  int n, int64_t recv_limit, int64_t rate_limit,
+			  int n, int64_t recv_quota, int64_t rate_limit,
 			  const char *auth_name,
 			  struct attr_value_list *auth_av_list)
 {
@@ -224,7 +224,7 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 	sem_init(&r->sem, 0, 0);
 	r->xtype = LDMS_XTYPE_ACTIVE_RAIL; /* change to passive in listen() */
 	r->n_eps = n;
-	r->recv_limit = recv_limit;
+	r->recv_quota = recv_quota;
 	r->recv_rate_limit = rate_limit;
 	rbt_init(&r->stream_client_rbt, __str_rbn_cmp);
 	snprintf(r->name, sizeof(r->name), "%s", xprt_name);
@@ -397,7 +397,7 @@ ldms_rail_t __rail_passive_legacy_wrap(ldms_t x, ldms_event_cb_t cb, void *cb_ar
 
 	r->eps[0].ep = x;
 	r->eps[0].state = LDMS_RAIL_EP_ACCEPTING;
-	r->eps[0].send_quota = r->send_limit;
+	r->eps[0].send_quota = r->send_quota;
 	r->eps[0].rate_quota.quota = r->send_rate_limit;
 	r->eps[0].rate_quota.rate   = r->send_rate_limit;
 	r->eps[0].rate_quota.ts.tv_sec  = 0;
@@ -596,7 +596,7 @@ void __rail_conn_msg_ntoh(struct ldms_rail_conn_msg_s *m)
 	m->pid = ntohl(m->pid);
 	m->rail_gn = be64toh(m->rail_gn);
 	m->rate_limit = be64toh(m->rate_limit);
-	m->recv_limit = be64toh(m->recv_limit);
+	m->recv_quota = be64toh(m->recv_quota);
 }
 
 void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
@@ -653,7 +653,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 		const char *xprt_name;
 		const char *auth_name;
 		struct attr_value_list *auth_av_list = NULL;
-		int64_t recv_limit;
+		int64_t recv_quota;
 		int64_t rate_limit;
 		ldms_event_cb_t cb;
 		void *cb_arg;
@@ -661,20 +661,20 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 			xprt_name = lr->name;
 			auth_name = lr->auth_name;
 			auth_av_list = lr->auth_av_list;
-			recv_limit = lr->recv_limit;
+			recv_quota = lr->recv_quota;
 			rate_limit = lr->recv_rate_limit;
 			cb = lr->event_cb;
 			cb_arg = lr->event_cb_arg;
 		} else {
 			xprt_name = lx->name;
 			auth_name = lx->auth?lx->auth->plugin->name:NULL;
-			recv_limit = LDMS_UNLIMITED;
+			recv_quota = LDMS_UNLIMITED;
 			rate_limit = LDMS_UNLIMITED;
 			cb = lx->event_cb;
 			cb_arg = lx->event_cb_arg;
 		}
 		r = (void*)ldms_xprt_rail_new(xprt_name, m->n_eps,
-				recv_limit, rate_limit, auth_name, auth_av_list);
+				recv_quota, rate_limit, auth_name, auth_av_list);
 		if (!r) {
 			snprintf(rej_msg, sizeof(rej_msg), "passive rail create error: %d", errno);
 			pthread_mutex_unlock(&__rail_mutex);
@@ -683,7 +683,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 
 		r->xtype = LDMS_XTYPE_PASSIVE_RAIL;
 		r->state = LDMS_RAIL_EP_ACCEPTING;
-		r->send_limit = m->recv_limit;
+		r->send_quota = m->recv_quota;
 		r->send_rate_limit = m->rate_limit;
 		r->event_cb = cb;
 		r->event_cb_arg = cb_arg;
@@ -752,7 +752,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	_x->event_cb_arg = &r->eps[m->idx];
 	r->eps[m->idx].ep = _x;
 	r->eps[m->idx].state = LDMS_RAIL_EP_ACCEPTING;
-	r->eps[m->idx].send_quota = r->send_limit;
+	r->eps[m->idx].send_quota = r->send_quota;
 	r->eps[m->idx].rate_quota.quota = r->send_rate_limit;
 	r->eps[m->idx].rate_quota.rate   = r->send_rate_limit;
 	r->eps[m->idx].rate_quota.ts.tv_sec  = 0;
@@ -810,7 +810,7 @@ static void __ldms_rail_conn_msg_init(struct ldms_rail_s *r, int idx, struct ldm
 	__ldms_xprt_conn_msg_init(r->eps[idx].ep, (void*)m);
 	m->conn_type = htonl(LDMS_CONN_TYPE_RAIL);
 	m->rate_limit = htobe64(r->recv_rate_limit);
-	m->recv_limit = htobe64(r->recv_limit);
+	m->recv_quota = htobe64(r->recv_quota);
 	m->n_eps = htonl(r->n_eps);
 	m->idx = htonl(idx);
 	m->pid = htonl(getpid());
@@ -1332,17 +1332,17 @@ int ldms_xprt_rail_eps(ldms_t _r)
 	return r->n_eps;
 }
 
-int64_t ldms_xprt_recv_limit(ldms_t _r)
+int64_t ldms_xprt_rail_recv_quota_get(ldms_t _r)
 {
 	ldms_rail_t r = (void*)_r;
 	if (!_r)
 		return -EINVAL;
 	if (!XTYPE_IS_RAIL(_r->xtype))
 		return -EINVAL;
-	return r->recv_limit;
+	return r->recv_quota;
 }
 
-int64_t ldms_xprt_recv_rate_limit(ldms_t _r)
+int64_t ldms_xprt_rail_recv_rate_limit_get(ldms_t _r)
 {
 	ldms_rail_t r = (void*)_r;
 	if (!_r)
@@ -1364,10 +1364,10 @@ void __rail_ep_limit(ldms_t x, void *msg, int msg_len)
 	if (conn_msg->conn_type != htonl(LDMS_CONN_TYPE_RAIL))
 		goto unlimited;
 	/* This does not race; during end point setup */
-	rep->rail->send_limit = be64toh(conn_msg->recv_limit);
+	rep->rail->send_quota = be64toh(conn_msg->recv_quota);
 	rep->rail->send_rate_limit = be64toh(conn_msg->rate_limit);
 
-	rep->send_quota = be64toh(conn_msg->recv_limit);
+	rep->send_quota = be64toh(conn_msg->recv_quota);
 	rep->rate_quota.quota = be64toh(conn_msg->rate_limit);
 	rep->rate_quota.rate   = be64toh(conn_msg->rate_limit);
 	rep->rate_quota.ts.tv_sec  = 0;
