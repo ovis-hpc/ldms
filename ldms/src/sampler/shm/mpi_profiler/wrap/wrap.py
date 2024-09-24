@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 #################################################################################################
 # Copyright (c) 2010, Lawrence Livermore National Security, LLC.
 # Produced at the Lawrence Livermore National Laboratory
@@ -30,7 +30,7 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #################################################################################################
-from __future__ import print_function
+
 usage_string = \
 '''Usage: wrap.py [-fgd] [-i pmpi_init] [-c mpicc_name] [-o file] wrapper.w [...]
  Python script for creating PMPI wrappers. Roughly follows the syntax of
@@ -238,7 +238,7 @@ def joinlines(list, sep="\n"):
         return ""
 
 # Possible types of Tokens in input.
-LBRACE, RBRACE, TEXT, IDENTIFIER = range(4)
+LBRACE, RBRACE, TEXT, IDENTIFIER = list(range(4))
 
 class Token:
     """Represents tokens; generated from input by lexer and fed to parse()."""
@@ -482,7 +482,7 @@ class Declaration:
         return [arg.cType() for arg in self.args]
 
     def argsNoEllipsis(self):
-        return filter(lambda arg: arg.name != "...", self.args)
+        return [arg for arg in self.args if arg.name != "..."]
 
     def returnsErrorCode(self):
         """This is a special case for MPI_Wtime and MPI_Wtick.
@@ -497,7 +497,7 @@ class Declaration:
         return self.argsNoEllipsis()[index].name
 
     def fortranFormals(self):
-        formals = map(Param.fortranFormal, self.argsNoEllipsis())
+        formals = list(map(Param.fortranFormal, self.argsNoEllipsis()))
         if self.name == "MPI_Init": formals = []    # Special case for init: no args in fortran
 
         ierr = []
@@ -579,7 +579,7 @@ def enumerate_mpi_declarations(mpicc, includes):
                 raise ValueError("Malformed declaration in header: '%s'" % line)
 
             arg_string = line[lparen+1:rparen]
-            arg_list = list(map(lambda s: s.strip(), arg_string.split(",")))
+            arg_list = list([s.strip() for s in arg_string.split(",")])
 
             # Handle functions that take no args specially
             if arg_list == ['void']:
@@ -660,7 +660,7 @@ def write_fortran_binding(out, decl, delegate_name, binding, stmts=None):
     out.write(decl.fortranPrototype(binding, default_modifiers))
     out.write(" { \n")
     if stmts:
-        out.write(joinlines(map(lambda s: "    " + s, stmts)))
+        out.write(joinlines(["    " + s for s in stmts]))
     if decl.returnsErrorCode():
         # regular MPI fortran functions use an error code
         out.write("    %s(%s);\n" % (delegate_name, ", ".join(decl.fortranArgNames())))
@@ -1093,7 +1093,7 @@ class Chunk:
 
     def iwrite(self, file, level, text):
         """Write indented text."""
-        for x in xrange(level):
+        for x in range(level):
             file.write("  ")
         file.write(text)
 

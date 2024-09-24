@@ -1,4 +1,4 @@
-#! /usr/bin/env python2
+#! /usr/bin/env python3
 # currently dump sos import map and optionally schema
 import argparse
 import sys
@@ -39,34 +39,34 @@ ldms_types = [ "char",
                 "f32[]",
                 "d64[]",
                 "timestamp",
-            ]
+             ]
 
 ldms_type_sos_map = { "char" : "uint16",
-        "u8" : "uint16",
-        "s8" : "int16",
-        "u16" : "uint16",
-        "s16" : "int16",
-        "u32" : "uint32",
-        "s32": "int32",
-        "u64" : "uint64",
-        "s64" : "int64" ,
-        "f32" : "float",
-        "d64" : "double",
-        "char[]" : "char_array",
-        "u8[]" : "byte_array",
-        "s8[]" : "byte_array",
-        "u16[]" : "uint16_array",
-        "s16[]" : "int16_array",
-        "u32[]" : "uint32_array",
-        "s32[]" : "int32_array",
-        "u64[]" : "uint64_array",
-        "s64[]" : "int64_array",
-        "f32[]" : "float_array",
-        "d64[]" : "double_array",
-        "timestamp" : "timestamp"
+                      "u8" : "uint16",
+                      "s8" : "int16",
+                      "u16" : "uint16",
+                      "s16" : "int16",
+                      "u32" : "uint32",
+                      "s32": "int32",
+                      "u64" : "uint64",
+                      "s64" : "int64" ,
+                      "f32" : "float",
+                      "d64" : "double",
+                      "char[]" : "char_array",
+                      "u8[]" : "byte_array",
+                      "s8[]" : "byte_array",
+                      "u16[]" : "uint16_array",
+                      "s16[]" : "int16_array",
+                      "u32[]" : "uint32_array",
+                      "s32[]" : "int32_array",
+                      "u64[]" : "uint64_array",
+                      "s64[]" : "int64_array",
+                      "f32[]" : "float_array",
+                      "d64[]" : "double_array",
+                      "timestamp" : "timestamp"
     }
 
-match_elements = lambda p, s: [i for (q, i) in zip(s, range(len(s))) if p == q]
+match_elements = lambda p, s: [i for (q, i) in zip(s, list(range(len(s)))) if p == q]
 
 def fileopener(fn):
     """return the correct open function for the filename (default or gzip.open)"""
@@ -108,10 +108,10 @@ def parse_aliases(fn):
                 continue
             y = i.strip().split()
             if len(y) != 2:
-                print "misformatted alias in", fn, ":", y
+                print(f"Misformatted alias in {fn}: {y}")
                 sys.exit(1)
             if y[0] in aliases:
-                print "redefined alias in", fn, ":", y[0]
+                print(f"Redefined alias in {fn}: {y[0]}")
                 sys.exit(1)
             aliases[y[0]] = y[1]
     return aliases
@@ -145,13 +145,13 @@ def parse_kind(fn, arr, udata, col_heads):
             a = i.rstrip("0123456789")
             if i in ldms_types or a in ldms_types:
                 continue
-            print "invalid kind", "X"+i+"X", "in", fn
-            print i, a, ldms_types
+            print(f"Invalid kind X{i}X in {fn}")
+            print(f"{i} {a} {ldms_types}")
             sys.exit(1)
     # validate kind list vs arr, udata, col_heads
     if not arr:
         if len(col_heads) != len(z):
-            print "column count of header does not match column count of kinds file", fn
+            print(f"Column count of header does not match column count of kinds file {fn}")
             sys.exit(1)
     nc = 0
     for i in z:
@@ -164,7 +164,7 @@ def parse_kind(fn, arr, udata, col_heads):
             if udata:
                 nc += x-1; # one udata appears explicitly
     if nc != len(col_heads):
-        print "column count of header", len(col_heads), "does not match column count of kinds file", fn, ":", nc
+        print(f"Column count of header {len(col_heads)} does not match column count of kinds file {fn}:{nc}")
         sys.exit(1)
     return z
 
@@ -205,7 +205,7 @@ def value_type(v):
     if len(v) == 0:
             return "u64"
     try:
-        x = long(v)
+        x = int(v)
         if x < 0:
             if x < -9223372036854775808:
                 # cannot happen on s64 data, so must be
@@ -241,8 +241,8 @@ def value_type(v):
     return "char[]"
             
 def uncastable(old, new, val):
-    print "incompatible data in guessing column type"
-    print "oldtype=", old, "newtype=", new, "value=", val
+    print("Incompatible data in guessing column type")
+    print(f"Oldtype={old} newtype={new} value={val}")
     sys.exit(1)
     pass
 
@@ -381,7 +381,7 @@ def guess_kind(col_heads, fn, maxlines):
 def validate_assume(a):
     """ return validated type or exit"""
     if not a in ldms_types:
-        print "invalid option to --assume: ", a, "Try one of:", ldms_types
+        print(f"Invalid option to --assume: {a} Try one of: {ldms_types}")
         sys.exit(1)
     return a
 
@@ -417,7 +417,7 @@ def internal_header(fn):
         return False
 
 def strip_gz(s):
-    print "strip_gz", s
+    print(f"strip_gz {s}")
     sp = os.path.splitext(s)
     if sp[1].lower() == ".gz":
         return sp[0]
@@ -429,7 +429,7 @@ def get_filenames(fn, args):
     Does not verify existence or formats.
     """
     if fn is None:
-        print "define input with --data=<file>"
+        print("define input with --data=<file>")
         sys.exit(1)
 
     if ".HEADER" in fn:
@@ -485,19 +485,19 @@ def get_filenames(fn, args):
     if args.kind_file:
         if os.path.isfile(kind) and args.kind_file != kind:
             if args.verbose:
-                print "WARNING: creating", args.kind_file, "but", kind, " is also present."
+                print(f"WARNING: creating {args.kind_file} but {kind} is also present.")
         kind = args.kind_file
     if args.map_file:
         if os.path.isfile(mapfile) and args.map_file != mapfile:
             if args.verbose:
-                print "WARNING: creating", args.map_file, "but", mapfile, " is also present."
+                print(f"WARNING: creating {args.map_file} but {mapfile} is also present.")
         mapfile = args.map_file
     if args.schema_name:
         args.dataname = args.schema_name
     if args.schema_file:
         if os.path.isfile(schemafile) and args.schema_file != schemafile:
             if args.verbose:
-                print "WARNING: using", args.schema_file, "but", schemafile, " is also present."
+                print(f"WARNING: using {args.schema_file} but {schemafile} is also present.")
         schemafile = args.schema_file
     return (data, header, kind, schemafile, mapfile)
 
@@ -506,7 +506,7 @@ def format_schema_prolog(f, args):
     s = """{
     "name" : """ + "\"" + args.dataname + """",
     "attrs" : ["""
-    print >> f, s
+    print(s, file=f)
 
 def format_join(f, j, col_heads):
     jname =  j[0]
@@ -521,7 +521,7 @@ def format_join(f, j, col_heads):
             s += ", "
         s += "\"" + i + "\""
     s += "], \"index\" : {} }"
-    print >>f, s,
+    print(s, end=' ', file=f)
 
 default_joins = [
     ("comp_job_time", "component_id", "job_id", "Time"),
@@ -541,7 +541,7 @@ def format_schema_epilog(f, args, col_heads):
     s="\n"
     s += """  ]
 }"""
-    print >>f, s
+    print(s, file=f)
 
 def is_index(n, args):
     if n in ["Time", "component_id", "job_id", "component_id.value", "job_id.value", "ProducerName", "anonymized_host_ProducerName"]:
@@ -570,13 +570,13 @@ def format_schema_element(f, args, name, mtype, first):
     if is_index(name, args):
         s += ",\t\"index\" : {} "
     s += " }"
-    print >>f, s,
+    print(s, end=' ', file=f)
 
 def format_map_prolog(f):
-    print >> f, "["
+    print("[", file=f)
 
 def format_map_epilog(f):
-    print >>f, "\n]"
+    print("\n]", file=f)
 
 def format_map_element(f, k, metric, first):
     # accepts k as in or array of ints
@@ -589,14 +589,14 @@ def format_map_element(f, k, metric, first):
     else:
         colspec = "\"list\" : [" + str(k).strip("[]") +  "]"
     s += "\t{ \"target\" : \"" + metric + "\", \"source\" : { " + colspec + " }}"
-    print >> f, s,
+    print(s, end=' ', file=f)
 
 def generate_map_new(col_heads, col_kinds, arr, udata, mapout, sout, mapvec):
     """ generate map conforming to schema and input file. This skips type checking."""
     with open(mapout, "w") as f:
         format_map_prolog(f)
         if len(mapvec) != len(col_heads):
-            print "metrics do not match map"
+            print("Metrics do not match map")
             sys.exit(1)
         kmax = len(mapvec)
         k = 0
@@ -661,7 +661,7 @@ def get_metric_index(met, heads, arr, udata):
 def generate_map_old(col_heads, col_kinds, arr, udata, mapout, sout, mapvec, strip_udata):
     """loop over metrics in schema and if present in col_heads, use them"""
     if len(mapvec) != len(col_heads):
-        print "metrics do not match map"
+        print("Metrics do not match map")
         sys.exit(1)
     with open(mapout, "w") as f:
         format_map_prolog(f)
@@ -679,10 +679,10 @@ def generate_map_old(col_heads, col_kinds, arr, udata, mapout, sout, mapvec, str
                 format_map_element(f, q, sout[k], first)
                 first = False
             else:
-                print "warning: schema element", sout[k], "not found in csv"
-                print "u=", udata
-                print "a=", arr
-                print col_heads
+                print(f"Warning: schema element {sout[k]} not found in csv")
+                print(f"u={udata}")
+                print(f"a={arr}")
+                print(f"{col_heads}")
                 # sos records are allowed to have empty fields at present
             k += 1
         format_map_epilog(f)
@@ -737,8 +737,8 @@ def get_filter(args):
         else:
             exclude = blacklist
     if args.verbose:
-        print "exclude=", exclude
-        print "include=", include
+        print(f"exclude={exclude}")
+        print(f"include={include}")
     return (include, exclude)
 
 def is_excluded(include, exclude, n, udata):
@@ -762,7 +762,7 @@ def is_excluded(include, exclude, n, udata):
 def generate_schema(col_heads, col_kinds, arr, udata, args, schemaout, mapout):
     if args.schema_file:
         if args.verbose:
-            print "schema output suppressed by --schema-file"
+            print("Schema output suppressed by --schema-file")
         old_schema = parse_schema(args.schema_file)
         (include, exclude) = ([], [])
     else:
@@ -791,7 +791,7 @@ def generate_schema(col_heads, col_kinds, arr, udata, args, schemaout, mapout):
                 if amax == 0:
                     if is_excluded(include, exclude, col_heads[h], udata):
                         if args.verbose:
-                            print "excluding", col_heads[h]
+                            print("excluding {col_heads[h]}")
                         h += 1
                         k += 1
                         mapvec.append(0)
@@ -886,16 +886,16 @@ def generate_schema(col_heads, col_kinds, arr, udata, args, schemaout, mapout):
      
         if not old_schema:
             if args.verbose:
-                print "rename to", schemaout
+                print(f"rename to {schemaout}")
             os.rename(schematmp, schemaout)
             schematmp = None
             new_schema = parse_schema(schemaout)
             if args.verbose:
-                print "map:", mapout
+                print(f"map: {mapout}")
             generate_map_new(metvec, col_kinds, arr, udata, mapout, new_schema, mapvec)
         else:
             if args.verbose:
-                print "mapold:", mapout
+                print(f"mapold: {mapout}")
             generate_map_old(metvec, col_kinds, arr, udata, mapout, old_schema, mapvec, args.strip_udata)
     except Exception as e:
         traceback.print_exc()
@@ -941,45 +941,45 @@ if __name__ == "__main__":
     # args.dataname will be derived by later code as the default schema name
 
     if args.verbose:
-        print args
+        print(args)
 
     (data, header, kind, schemaout, mapout) = get_filenames(args.data, args)
 
     if not os.path.isfile(data):
         if args.verbose:
-            print "WARNING: input data", data, "does not exist"
+            print(f"WARNING: input data {data} does not exist")
             if data != args.data:
-                print "  name derived from", args.data
+                print(f"  name derived from {args.data}")
         if args.guess:
-            print "ERROR: cannot guess types without data file present", data
+            print(f"ERROR: cannot guess types without data file present {data}")
             sys.exit(1)
     else:
         if args.guess:
             if os.path.getsize(data) == 0:
-                print "input data", data, "empty. Cannot guess."
+                print(f"input data {data} empty. Cannot guess.")
                 sys.exit(1)
     if not os.path.isfile(header):
         if args.verbose:
-            print "Header not present", header
+            print(f"Header not present {header}")
         if internal_header(data):
             header = data
             if args.verbose:
-                print "Found header in data file", data
+                print(f"Found header in data file {data}")
         else:
-            print "Data does not include header line or file is missing", data
+            print(f"Data does not include header line or file is missing {data}")
             sys.exit(1)
     if os.path.isfile(kind) and (args.guess or args.assume):
         if args.verbose:
-            print "Cowardly refusing to guess when there is kind input. Using kinds.", kind
+            print(f"Cowardly refusing to guess when there is kind input. Using kinds {kind}")
         args.guess = False
         args.assume = False
     if not os.path.isfile(kind) and not (args.guess or args.assume):
-        print "Cannot find", kind, "and not told --guess or --assume."
+        print(f"Cannot find {kind} and not told --guess or --assume.")
         sys.exit(1)
     if not (args.guess or args.assume):
         kf = kind_format(kind)
         if kf is None:
-            print "Invalid kind file format in", kind
+            print(f"Invalid kind file format in {kind}")
             sys.exit(1)
         (arr, udata) = kf
     else:
@@ -988,10 +988,10 @@ if __name__ == "__main__":
         if args.assume:
             assume_type = validate_assume(args.assume)
             if args.verbose:
-                print "Assuming data columns are type", assume_type
+                print(f"Assuming data columns are type {assume_type}")
     if args.alias_file:
         if not os.path.isfile(args.alias_file):
-            print "Error: --alias-file given is not found:", args.alias_file
+            print(f"Error: --alias-file given is not found: {args.alias_file}")
             sys.exit(1)
 
     subs = parse_aliases(args.alias_file)
