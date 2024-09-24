@@ -4244,6 +4244,8 @@ static int __ldms_xprt_sockaddr(ldms_t x, struct sockaddr *local_sa,
 		       socklen_t *sa_len)
 {
 	zap_err_t zerr;
+	if (!x->zap_ep)
+		return ENOTCONN;
 	zerr = zap_get_name(x->zap_ep, (struct sockaddr *)local_sa,
 				(struct sockaddr *)remote_sa, sa_len);
 	return zap_zerr2errno(zerr);
