@@ -3844,6 +3844,40 @@ cdef class Xprt(object):
     def recv_quota(self, q:uint64_t):
         self.set_recv_quota(q)
 
+    def get_send_rate_limit(self):
+        cdef int64_t rate = ldms_xprt_rail_send_rate_limit_get(self.xprt)
+        if rate == ldms.LDMS_UNLIMITED:
+            return ldms.LDMS_UNLIMITED
+        if rate < 0:
+            raise RuntimeError(f"ldms_xprt_rail_send_rate_limit_get() error: {-rate}")
+        return rate
+
+    @property
+    def send_rate_limit(self):
+        return self.get_send_rate_limit()
+
+    def get_recv_rate_limit(self):
+        cdef int64_t rate = ldms_xprt_rail_recv_rate_limit_get(self.xprt)
+        if rate == ldms.LDMS_UNLIMITED:
+            return ldms.LDMS_UNLIMITED
+        if rate < 0:
+            raise RuntimeError(f"ldms_xprt_rail_recv_rate_limit_get() error: {-rate}")
+        return rate
+
+    def set_recv_rate_limit(self, rate:uint64_t):
+        cdef int rc
+        rc = ldms_xprt_rail_recv_rate_limit_set(self.xprt, rate)
+        if rc:
+            raise RuntimeError(f"ldms_xprt_rail_recv_rate_limit_set() error: {rc}")
+
+    @property
+    def recv_rate_limit(self):
+        return self.get_recv_rate_limit()
+
+    @recv_rate_limit.setter
+    def recv_rate_limit(self, rate:uint64_t):
+        self.set_recv_rate_limit(rate)
+
     @property
     def in_eps_stq(self):
         assert(self.rail_eps > 0)

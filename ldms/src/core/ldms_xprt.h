@@ -135,6 +135,8 @@ enum ldms_request_cmd {
 
 	/* rail quota re-config after connected */
 	LDMS_CMD_QUOTA_RECONFIG,
+	/* rail rate re-config after connected */
+	LDMS_CMD_RATE_RECONFIG,
 
 	LDMS_CMD_REPLY = 0x100,
 	LDMS_CMD_DIR_REPLY,
@@ -241,6 +243,10 @@ struct ldms_quota_reconfig_param {
 	uint64_t q; /* the new quota */
 };
 
+struct ldms_rate_reconfig_param {
+	uint64_t rate; /* the new rate (bytes/sec) */
+};
+
 struct ldms_request_hdr {
 	uint64_t xid;		/*! Transaction id returned in reply */
 	uint32_t cmd;		/*! The operation being requested  */
@@ -263,6 +269,7 @@ struct ldms_request {
 		struct ldms_qgroup_ask qgroup_ask;
 		struct ldms_qgroup_donate  qgroup_donate;
 		struct ldms_quota_reconfig_param quota_reconfig;
+		struct ldms_rate_reconfig_param rate_reconfig;
 	};
 };
 

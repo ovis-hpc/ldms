@@ -1353,6 +1353,16 @@ int64_t ldms_xprt_rail_recv_rate_limit_get(ldms_t _r)
 	return r->recv_rate_limit;
 }
 
+int64_t ldms_xprt_rail_send_rate_limit_get(ldms_t _r)
+{
+	ldms_rail_t r = (void*)_r;
+	if (!_r)
+		return -EINVAL;
+	if (!XTYPE_IS_RAIL(_r->xtype))
+		return -EINVAL;
+	return r->send_rate_limit;
+}
+
 void __rail_ep_limit(ldms_t x, void *msg, int msg_len)
 {
 	/* x is the legacy ldms xprt in the rail, its context is the assocated
@@ -1824,5 +1834,56 @@ void __rail_process_quota_reconfig(ldms_t x, struct ldms_request *req)
 				__atomic_add_fetch(&rep->send_quota_debt, -add, __ATOMIC_SEQ_CST);
 			}
 		}
+	}
+}
+
+int ldms_xprt_rail_recv_rate_limit_set(ldms_t x, uint64_t rate)
+{
+	ldms_rail_t r;
+	struct ldms_rail_ep_s *rep;
+	int len;
+	zap_err_t zerr;
+
+	if (!LDMS_IS_RAIL(x))
+		return -EINVAL;
+
+	r = (void*)x;
+
+	if (rate == r->recv_rate_limit)
+		return 0; /* no need to continue */
+
+	r->recv_rate_limit = rate;
+
+	rep = &r->eps[0];
+
+	len = sizeof(struct ldms_request_hdr) +
+		sizeof(struct ldms_quota_reconfig_param);
+	struct ldms_request req = {
+		.hdr = {
+			.cmd = htonl(LDMS_CMD_RATE_RECONFIG),
+			.len = htonl(len),
+		},
+		.rate_reconfig = {
+			.rate = htobe64(rate),
+		}};
+	zerr = zap_send(rep->ep->zap_ep, &req, len);
+	return -zap_zerr2errno(zerr);
+}
+
+void __rail_process_rate_reconfig(ldms_t x, struct ldms_request *req)
+{
+	int i;
+	uint64_t rate = be64toh(req->rate_reconfig.rate);
+	struct ldms_rail_ep_s *rep = ldms_xprt_ctxt_get(x);
+	ldms_rail_t r = rep->rail;
+
+	if (r->send_rate_limit == rate)
+		return;
+	r->send_rate_limit = rate;
+	/* We can just update the rate as the rate_quota will be reset in the
+	 * next second anyway. */
+	for (i = 0; i < r->n_eps; i++) {
+		rep = &r->eps[i];
+		rep->rate_quota.rate = rate;
 	}
 }
