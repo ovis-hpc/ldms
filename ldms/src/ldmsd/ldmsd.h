@@ -399,6 +399,7 @@ typedef struct ldmsd_prdcr_listen {
 	int prefix_len;
 
 	uint64_t quota;
+	uint64_t rx_rate;
 
 	/*
 	 * For query the prdcr_listen information, ldmsd could report which
