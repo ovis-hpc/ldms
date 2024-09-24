@@ -1056,6 +1056,26 @@ int64_t ldms_xprt_rail_recv_quota_get(ldms_t x);
 int64_t ldms_xprt_rail_recv_rate_limit_get(ldms_t x);
 
 /**
+ * \brief Get the send rate limit of an endpoint (set by peer)
+ *
+ * \param x The transport handle
+ *
+ * \retval rate_limit The send rate limit.
+ * \retval -EINVAL If \c x is NULL or not a rail
+ */
+int64_t ldms_xprt_rail_send_rate_limit_get(ldms_t x);
+
+/**
+ * \brief Set (reconfig) the new rate limit
+ *
+ * \param rate The new rate
+ *
+ * \retval      0 If succeeded, or
+ * \retval -errno If failed.
+ */
+int ldms_xprt_rail_recv_rate_limit_set(ldms_t x, uint64_t rate);
+
+/**
  * \brief Get the send quota
  *
  * \param[in]  x       The rail transport handle.
