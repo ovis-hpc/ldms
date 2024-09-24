@@ -313,8 +313,9 @@ void post_Pcontrol_call(const int flag)
 	}
 }
 
-void *ldms_shm_periodic_update()
+void *ldms_shm_periodic_update(void *ignored)
 {
+	(void)ignored;
 	if(log_level_info())
 		printf("INFO: ldms_shm_updater_thread (%d): starting!\n\r",
 				profiler->rankid);

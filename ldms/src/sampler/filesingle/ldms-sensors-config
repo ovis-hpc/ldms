@@ -1,4 +1,5 @@
-#! /usr/bin/env python2
+#! /usr/bin/env python3
+# usage: $0: sensors_bin_path
 # Run sensors under strace to discover where sensor files
 # live on the current system and generate a draft file.
 import warnings
@@ -7,8 +8,9 @@ import os.path
 import tempfile
 import subprocess
 import argparse
+import os
 
-def fixlabel(s, nodash=False):
+def fix_label(s, nodash=False):
     if s[-2:] == "\\n":
         s = s[:-2]
     s = s.replace(" ", "_")
@@ -16,249 +18,225 @@ def fixlabel(s, nodash=False):
         s = s.replace("-", "_")
     return s
 
-ignore_types = [
+IGNORE_TYPES = [
     "crit",
     "alarm",
     "hyst",
 ]
 
-def main():
-    opts = argparse.ArgumentParser(
-            description="Generate filesingle metric list")
-    opts.add_argument("--sensors", metavar="SENSORS-PATH",
-            default="/usr/bin/sensors",
-            help="Full path to lm_sensor 'sensors' program")
-    opts.add_argument("--lscpu", metavar="LSCPU-PATH", default="/usr/bin/lscpu",
-            help="Full path to 'lscpu' program")
-    opts.add_argument("--nodash", default=False, action='store_true',
-            help="enable replacing - with _ in names.")
-    opts.add_argument("--test-lscpu", metavar="TEST-INPUT", required=False,
-            help="path to strace result file for parser testing")
-    opts.add_argument("--test-sensors", metavar="TEST-INPUT", required=False,
-            help="path to strace result file for parser testing")
 
-    args = opts.parse_args()
-    if args.test_sensors != None:
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate filesingle metric list")
+    parser.add_argument("--sensors", metavar="SENSORS-PATH",
+                        default="/usr/bin/sensors",
+                        help="Full path to lm_sensor 'sensors' program"
+                       )
+    parser.add_argument("--lscpu", metavar="LSCPU-PATH", default="/usr/bin/lscpu",
+                        help="Full path to 'lscpu' program"
+                       )
+    parser.add_argument("--nodash", default=False, action='store_true',
+                        help="enable replacing - with _ in names."
+                       )
+    parser.add_argument("--test-lscpu", metavar="TEST-INPUT", required=False,
+                        help="path to strace result file for parser testing"
+                       )
+    parser.add_argument("--test-sensors", metavar="TEST-INPUT", required=False,
+                        help="path to strace result file for parser testing"
+                       )
+
+    args = parser.parse_args()
+
+    if args.test_sensors:
         if not os.path.isfile(args.test_sensors):
-            print "missing", args.test_sensors, ". specify a trace log."
-            return 1
+            print(f"Missing {args.test_sensors}. Specify a trace log.")
+            exit(1)
     else:
         if not os.path.isfile(args.sensors):
-            print "missing", args.sensors, ". Need --sensors=<progpath>"
-            return 1
-    if args.test_lscpu != None:
+            print(f"Missing {args.sensors}. Need --sensors=<progpath>")
+            exit(1)
+
+    if args.test_lscpu:
         if not os.path.isfile(args.test_lscpu):
-            print "missing", args.test_lscpu, ". specify a trace log."
-            return 1
+            print(f"Missing {args.test_lscpu}. Specify a trace log.")
+            exit(1)
     else:
         if not os.path.isfile(args.lscpu):
-            print "missing", args.lscpu, ". Need --lscpu=<progpath>"
-            return 1
+            print(f"Missing {args.lscpu}. Need --lscpu=<progpath>")
+            exit(1)
 
-    sensorsbin = args.sensors
-    lscpubin = args.lscpu
+    sensors_bin = args.sensors
+    lscpu_bin = args.lscpu
     nodash = args.nodash
 
-    # build and parse sensors trace
-    tf = tempfile.mktemp(dir="/tmp", suffix=".trace", prefix="ldms-config-sensors.")
-    if args.test_sensors != None:
-        tf = args.test_sensors
+    # Build and parse sensors trace
+    trace_file = tempfile.mktemp(dir="/tmp", suffix=".trace", prefix="ldms-config-sensors.")
+    if args.test_sensors:
+        trace_file = args.test_sensors
     else:
-        cmd = "script -c 'strace -e trace=openat,open,read " + \
-                sensorsbin + " -u' " + tf + " > /dev/null"
+        cmd = f"script -c 'strace -e trace=openat,open,read {sensors_bin} -u' {trace_file} > /dev/null"
         trval = subprocess.call(cmd, shell=True)
         if trval != 0:
-            print "Unable to collect sensors config output"
-            return 1
-    f = open(tf)
-    lines = f.readlines()
-    f.close()
-    if args.test_sensors == None:
-        os.unlink(tf)
-    lastopen = None
-    lastread = None
-    lastfile = None
-    lastfiletype = None
-    lastgroup = None
-    devices = dict(); # nested dict
-    # devices[devpath][item]["label"]
-    # devices[devpath][item]["inputfile"]
-    # devices[devpath]["name"]
-    # where devpath is like /sys/class/hwmon/hwmon0
-    # item is like temp1
-    # and we compose metric names as:
-    # ".".join([devices[devpath]["name"], devices[devpath][item]["label"]])
-    for lf in lines:
-        l = lf.strip()
-        if len(l) < 5:
+            print("Unable to collect sensors config output")
+            exit(1)
+
+    devices = { }
+    with open(trace_file) as file:
+        lines = file.readlines()
+
+    if not args.test_sensors:
+        os.unlink(trace_file)
+
+#review    lastopen = None
+#review    lastread = None
+    last_file = None
+    last_file_type = None
+    last_group = None
+
+    for line in lines:
+        line = line.strip()
+        if len(line) < 5:
             continue
-        if "openat(" == l[:7]:
-            ## print "OPENAT", l
-            tmp = l.split(',')[1].strip().strip('"')
-            if tmp[:11] == '/sys/class/':
-                lastfile = tmp
-                if tmp[-5:] == "/name":
-                    lastdevice = os.path.dirname(tmp)
-                    ## print "DEVICE", lastdevice
-                    devices[lastdevice] = dict()
-                    # devices[lastdevice]["namefile"] = tmp
-                    devices[lastdevice]["items"] = []
-                    lastfiletype = "name"
+        if line.startswith("openat("):
+            temp = line.split(',')[1].strip().strip('"')
+            if temp.startswith('/sys/class/'):
+                last_file = temp
+                if temp.endswith("/name"):
+                    last_device = os.path.dirname(temp)
+                    devices[last_device] = {"items": []}
+                    last_file_type = "name"
                 else:
-                    suff = tmp.split('_')[-1]
-                    lastfiletype = suff
-                ## print "lastfiletype", lastfiletype, tmp
+                    suffix = temp.split('_')[-1]
+                    last_file_type = suffix
             else:
-                lastfile = None
-                lastfiletype = None
-                lastdevice = None
+                last_file = None
+                last_file_type = None
+                last_device = None
             continue
-        if "open(" == l[:5]:
-            ## print "OPEN", l
-            tmp = l.split(',')[0].split("(")[1].strip().strip('"')
-            if tmp[:11] == '/sys/class/':
-                lastfile = tmp
-                if tmp[-5:] == "/name":
-                    lastdevice = os.path.dirname(tmp)
-                    ## print "DEVICE", lastdevice
-                    devices[lastdevice] = dict()
-                    # devices[lastdevice]["namefile"] = tmp
-                    devices[lastdevice]["items"] = []
-                    lastfiletype = "name"
+        if line.startswith("open("):
+            temp = line.split(',')[0].split("(")[1].strip().strip('"')
+            if temp.startswith('/sys/class/'):
+                last_file = temp
+                if temp.endswith("/name"):
+                    last_device = os.path.dirname(temp)
+                    devices[last_device] = {"items": []}
+                    last_file_type = "name"
                 else:
-                    suff = tmp.split('_')[-1]
-                    lastfiletype = suff
-                ## print "lastfiletype", lastfiletype, tmp
+                    suffix = temp.split('_')[-1]
+                    last_file_type = suffix
             else:
-                lastfile = None
-                lastfiletype = None
-                lastdevice = None
+                last_file = None
+                last_file_type = None
+                last_device = None
             continue
-        if "read(" == l[:5]:
-            ## print "READ", l
-            tmp = l.split(',')[1].strip().strip('"')
-            if len(tmp) == 0:
+        if line.startswith("read("):
+            temp = line.split(',')[1].strip().strip('"')
+            if not temp:
                 continue
-            if lastfiletype is None:
-                ## print "skip: no lastfiletype"
+            if last_file_type is None:
                 continue
-            if lastfiletype == "name":
-                devices[lastdevice]['name'] = fixlabel(tmp)
-                ## print "dev name", tmp
+            if last_file_type == "name":
+                devices[last_device]['name'] = fix_label(temp)
                 continue
-            if lastfiletype == "label":
-                lastdevice = os.path.dirname(lastfile)
-                bn = os.path.basename(lastfile)
-                split = bn.rfind("_")
-                item = bn[:split]
-                if not "group" in devices[lastdevice]:
-                    devices[lastdevice]["group"] = lastgroup
-                if not item in devices[lastdevice]["items"]:
-                    devices[lastdevice]["items"].append(item)
-                    devices[lastdevice][item] = dict()
-                    devices[lastdevice][item]["label"] = fixlabel(tmp)
-                ## print "dev LABEL", item, tmp
+            if last_file_type == "label":
+                last_device = os.path.dirname(last_file)
+                base_name = os.path.basename(last_file)
+                split_index = base_name.rfind("_")
+                item = base_name[:split_index]
+                if not "group" in devices[last_device]:
+                    devices[last_device]["group"] = last_group
+                if not item in devices[last_device]["items"]:
+                    devices[last_device]["items"].append(item)
+                    devices[last_device][item] = {}
+                    devices[last_device][item]["label"] = fix_label(temp)
                 continue
-            if lastfiletype == "input" or lastfiletype == "average":
-                lastdevice = os.path.dirname(lastfile)
-                bn = os.path.basename(lastfile)
-                split = bn.rfind("_")
-                item = bn[:split]
-                if not "group" in devices[lastdevice]:
-                    devices[lastdevice]["group"] = lastgroup
-                if not item in devices[lastdevice]["items"]:
-                    devices[lastdevice]["items"].append(item)
-                    devices[lastdevice]["group"] = lastgroup
-                    devices[lastdevice][item] = dict()
-                    devices[lastdevice][item]["label"] = fixlabel(item)
-                devices[lastdevice][item]["inputfile"] = lastfile
-                ## print "dev FILE", item, tmp
+            if last_file_type in ["input", "average"]:
+                last_device = os.path.dirname(last_file)
+                base_name = os.path.basename(last_file)
+                split_index = base_name.rfind("_")
+                item = base_name[:split_index]
+                if not "group" in devices[last_device]:
+                    devices[last_device]["group"] = last_group
+                if not item in devices[last_device]["items"]:
+                    devices[last_device]["items"].append(item)
+                    devices[last_device]["group"] = last_group
+                    devices[last_device][item] = {}
+                    devices[last_device][item]["label"] = fix_label(item)
+                devices[last_device][item]["inputfile"] = last_file
                 continue
-            if lastfiletype in ignore_types:
+            if last_file_type in IGNORE_TYPES:
                 continue
             continue
         # exclude   lines with "xxxxx:" and "sdf: bar" but allow : in mlx device names.
-        if ": " not in line and line[-1] != ':':
+        if ": " not in line and line.strip()[-1] != ':':
             last_group = line
 
-    for k,d in devices.iteritems():
-        if len(d["items"]) > 0:
-            for i in d["items"]:
-                ilbl = fixlabel(".".join([d["group"], d[i]["label"] ]), nodash)
-                print ilbl, d[i]["inputfile"], "S64 -1"
+    for device, data in devices.items():
+        if data["items"]:
+            for item in data["items"]:
+                xg = data["group"] if data["group"] else "NOGROUP"
+                item_label = fix_label(".".join([xg, data[item]["label"] ]), nodash)
+                print(f"{item_label} {data[item]['inputfile']} S64 -1")
 
-    devices = dict()
-    # build and parse lscpu trace
-    if args.test_lscpu != None:
-        atf = args.test_lscpu
+    devices = {}
+    # Build and parse lscpu trace
+    if args.test_lscpu:
+        lscpu_trace_file = args.test_lscpu
     else:
-        tf = tempfile.mktemp(dir="/tmp", suffix=".trace",
-                prefix="ldms-config-sensors.")
-        atf = tf + "a"
-        cmd = "script -c 'strace -e trace=open,openat " + \
-            lscpubin + "' " + tf + "> /dev/null; grep cpuinfo_max_freq " + \
-            tf + " > " + atf
+        trace_file = tempfile.mktemp(dir="/tmp", suffix=".trace", prefix="ldms-config-sensors.")
+        lscpu_trace_file = trace_file + "a"
+        cmd = f"script -c 'strace -e trace=open,openat {lscpu_bin}' {trace_file} > /dev/null; grep cpuinfo_max_freq {trace_file} > {lscpu_trace_file}"
         trval = subprocess.call(cmd, shell=True)
         if trval != 0:
-            print "#Unable to collect lscpu config output"
-            return 1
-    f = open(atf)
-    lines = f.readlines()
-    f.close()
-    if args.test_lscpu == None:
-        os.unlink(tf)
-        os.unlink(atf)
-    for lf in lines:
-        l = lf.strip()
-        if len(l) < 5:
-            continue
-        if "openat(" == l[:7]:
-            ## print "OPENAT", l
-            tmp = l.split('"')[1]
-            metfile = tmp.replace("max_fr", "cur_fr")
-            parts = tmp.split("/")
-            device = parts[-3]
-            item = "cur_freq"
-            if not device in devices:
-                devices[device] = dict()
-            if not "items" in devices[device]:
-                devices[device]["items"] = []
-                devices[device]["group"] = device
-            devices[device]["items"].append(item)
-            devices[device][item] = dict()
-            devices[device][item]["label"] = "cur_freq"
-            devices[device][item]["inputfile"] = metfile
-        elif "open(" == l[:5]:
-            ## print "OPEN", l
-            tmp = l.split('"')[1]
-            metfile = tmp.replace("max_fr", "cur_fr")
-            parts = tmp.split("/")
-            device = parts[-3]
-            item = "cur_freq"
-            if not device in devices:
-                devices[device] = dict()
-            if not "items" in devices[device]:
-                devices[device]["items"] = []
-                devices[device]["group"] = device
-            devices[device]["items"].append(item)
-            devices[device][item] = dict()
-            devices[device][item]["label"] = "cur_freq"
-            devices[device][item]["inputfile"] = metfile
-        else:
-            print "unexpected line from lscpu trace:" + l
+            print("#Unable to collect lscpu config output")
+            exit(1)
+    with open(lscpu_trace_file) as file:
+        lines = file.readlines()
 
-    # cpu temps reported in millicentigrade
-    # intel power averages in microwatts, apparently
-    # cpu freq reported in milliHz
-    llist=[]
-    for k,d in devices.iteritems():
-        if len(d["items"]) > 0:
-            for i in d["items"]:
-                ilbl = fixlabel(".".join([d["group"], d[i]["label"] ]), nodash)
-                ln = ilbl + " " + d[i]["inputfile"] + " " + "S64 -1"
-                llist.append(ln)
-    for i in sorted(llist):
-        print i
+    if not args.test_lscpu:
+        os.unlink(trace_file)
+        os.unlink(lscpu_trace_file)
+
+    for line in lines:
+        line = line.strip()
+        if len(line) < 5:
+            continue
+        if line.startswith("openat("):
+            temp = line.split('"')[1]
+            met_file = temp.replace("max_fr", "cur_fr")
+            parts = temp.split("/")
+            device = parts[-3]
+            item = "cur_freq"
+            if device not in devices:
+                devices[device] = {"items": [], "group": device}
+            devices[device]["items"].append(item)
+            devices[device][item] = {"label": "cur_freq", "inputfile": met_file}
+        elif line.startswith("open("):
+            temp = line.split('"')[1]
+            met_file = temp.replace("max_fr", "cur_fr")
+            parts = temp.split("/")
+            device = parts[-3]
+            item = "cur_freq"
+            if device not in devices:
+                devices[device] = {"items": [], "group": device}
+            devices[device]["items"].append(item)
+            devices[device][item] = {"label": "cur_freq", "inputfile": met_file}
+        else:
+            print(f"Unexpected line from lscpu trace: {line}")
+
+    # CPU temps reported in millicentigrade
+    # Intel power averages in microwatts
+    # CPU freq reported in millihertz
+    output_lines = []
+    for device, data in devices.items():
+        if data["items"]:
+            for item in data["items"]:
+                item_label = fix_label(".".join([data["group"], data[item]["label"] ]), nodash)
+                output_line = f"{item_label} {data[item]['inputfile']} S64 -1"
+                output_lines.append(output_line)
+
+    for line in sorted(output_lines):
+        print(line)
 
 if __name__ == "__main__":
     main()
