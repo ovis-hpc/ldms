@@ -3876,6 +3876,7 @@ static void *delete_proc(void *arg)
 					pthread_mutex_unlock(&set->lock);
 					goto next;
 				}
+				xrbn = rbn_succ(xrbn);
 			}
 			pthread_mutex_unlock(&set->lock);
 
