@@ -224,11 +224,6 @@ int sockaddr2ldms_addr(struct sockaddr *sa, struct ldms_addr *la);
  */
 const char *sockaddr_ntop(struct sockaddr *sa, char *buff, size_t sz);
 
-/**
- * Wrapper of 'inet_ntop()' for ldms_addr.
- */
-const char *ldms_addr_ntop(struct ldms_addr *addr, char *buff, size_t sz);
-
 void __rail_ep_quota_return(struct ldms_rail_ep_s *rep, int quota);
 
 int __rep_flush_sbuf_tq(struct ldms_rail_ep_s *rep);

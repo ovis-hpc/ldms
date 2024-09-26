@@ -928,7 +928,16 @@ struct ldms_addr {
 int ldms_xprt_addr(ldms_t x, struct ldms_addr *local_addr,
 			    struct ldms_addr *remote_addr);
 
-const char *ldms_sockaddr_ntop(struct sockaddr *sa, char *buff, size_t sz);
+/**
+ * \brief Get addresss string
+ *
+ * \param addr LDMS address
+ * \param buff String buffer to receive the address string
+ * \param sz   Size of \c buff
+ *
+ * \return \c buff on success; otherwise, NULL is returned.
+*/
+const char *ldms_addr_ntop(struct ldms_addr *addr, char *buff, size_t sz);
 
 /**
  * \brief Convert a CIDR IP address string to \c ldms_addr
