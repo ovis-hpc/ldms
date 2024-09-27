@@ -102,21 +102,42 @@ ldmsd_decomp_t get()
 }
 
 static int
-mval_from_json(ldms_mval_t *v, enum ldms_value_type *mtype, int *mlen, json_t *jent)
+mval_from_json(ldms_mval_t *v, enum ldms_value_type *mtype,
+	       int *mlen, json_t *jent, char *ebuf, int ebuf_len)
 {
 	json_t *item;
 	json_type type;
 	ldms_mval_t mval = NULL;
-	int i;
+	int i, jlen;
 
 	switch (json_typeof(jent)) {
 	case JSON_REAL:
-		*mtype = LDMS_V_D64;
+		if (!*mtype)
+			*mtype = LDMS_V_D64;
+		if (*mtype != LDMS_V_D64 || *mtype != LDMS_V_F32) {
+			/* conflicting type */
+			snprintf(ebuf, ebuf_len,
+				 "json_type REAL conflicting with"
+				 " ldms_value_type %s",
+				 ldms_metric_type_to_str(*mtype));
+			goto err;
+		}
 		mval = calloc(1, sizeof(mval->v_d));
-		mval->v_d = json_real_value(jent);
+		if (!mval)
+			goto err;
+		ldms_mval_set_real(mval, *mtype, json_real_value(jent));
 		break;
 	case JSON_STRING:
-		*mtype = LDMS_V_CHAR_ARRAY;
+		if (!*mtype)
+			*mtype = LDMS_V_CHAR_ARRAY;
+		if (*mtype != LDMS_V_CHAR_ARRAY) {
+			/* conflicting type */
+			snprintf(ebuf, ebuf_len,
+				 "json_type STRING conflicting"
+				 " with ldms_value_type %s",
+				 ldms_metric_type_to_str(*mtype));
+			goto err;
+		}
 		*mlen = json_string_length(jent) + 1;
 		mval = malloc(*mlen);
 		if (!mval)
@@ -124,24 +145,81 @@ mval_from_json(ldms_mval_t *v, enum ldms_value_type *mtype, int *mlen, json_t *j
 		memcpy(mval->a_char, json_string_value(jent), *mlen);
 		break;
 	case JSON_INTEGER:
+		if (!*mtype)
+			*mtype = LDMS_V_S64;
+		switch (*mtype) {
+		case LDMS_V_S8: case LDMS_V_U8:
+		case LDMS_V_S16: case LDMS_V_U16:
+		case LDMS_V_S32: case LDMS_V_U32:
+		case LDMS_V_S64: case LDMS_V_U64:
+			/* OK */
+			break;
+		default:
+			/* conflict */;
+			snprintf(ebuf, ebuf_len,
+				 "json_type INTEGER conflicting with"
+				 " ldms_value_type %s",
+				 ldms_metric_type_to_str(*mtype));
+			goto err;
+		}
 		mval = calloc(1, sizeof(mval->v_s64));
-		mval->v_s64 = json_integer_value(jent);
+		if (!mval)
+			goto err;
+		ldms_mval_set_int(mval, *mtype, json_integer_value(jent));
 		break;
 	case JSON_ARRAY:
-		*mlen = json_array_size(jent);
+		jlen = json_array_size(jent);
+		if (!*mlen)
+			*mlen = jlen;
+		if (jlen != *mlen) {
+			/* conflicting array length */
+			snprintf(ebuf, ebuf_len,
+				 "json array length %d conflicting with"
+				 " ldms array length %d", jlen, *mlen);
+			goto err;
+		}
 		item = json_array_get(jent, 0);
 		if (!item)
 			goto err;
 		type = json_typeof(item);
 		switch (type) {
 		case JSON_INTEGER:
-			*mtype = LDMS_V_S64_ARRAY;
+			if (!*mtype)
+				*mtype = LDMS_V_S64_ARRAY;
+			switch (*mtype) {
+			case LDMS_V_S8_ARRAY: case LDMS_V_U8_ARRAY:
+			case LDMS_V_S16_ARRAY: case LDMS_V_U16_ARRAY:
+			case LDMS_V_S32_ARRAY: case LDMS_V_U32_ARRAY:
+			case LDMS_V_S64_ARRAY: case LDMS_V_U64_ARRAY:
+				/* ok */
+				break;
+			default:
+				/* conflict */;
+				snprintf(ebuf, ebuf_len,
+					 "json_type INTEGER ARRAY conflicting with"
+					 " ldms_value_type %s",
+					 ldms_metric_type_to_str(*mtype));
+				goto err;
+			}
 			mval = calloc(*mlen, sizeof(mval->v_s64));
 			if (!mval)
 				goto err;
 			break;
 		case JSON_REAL:
-			*mtype = LDMS_V_D64_ARRAY;
+			if (!*mtype)
+				*mtype = LDMS_V_D64_ARRAY;
+			switch (*mtype) {
+			case LDMS_V_F32_ARRAY: case LDMS_V_D64_ARRAY:
+				/* OK */
+				break;
+			default:
+				/* conflict */;
+				snprintf(ebuf, ebuf_len,
+					 "json_type REAL ARRAY conflicting with"
+					 " ldms_value_type %s",
+					 ldms_metric_type_to_str(*mtype));
+				goto err;
+			}
 			mval = calloc(*mlen, sizeof(mval->v_d));
 			if (!mval)
 				goto err;
@@ -153,15 +231,18 @@ mval_from_json(ldms_mval_t *v, enum ldms_value_type *mtype, int *mlen, json_t *j
 		case JSON_TRUE:
 		case JSON_FALSE:
 		default:
+			snprintf(ebuf, ebuf_len, "Unsupported fill for this type");
 			goto err;
 		}
 		json_array_foreach(jent, i, item) {
 			if (type == JSON_INTEGER)
-				ldms_mval_array_set_s64(mval, i, json_integer_value(item));
+				ldms_mval_array_set_int(mval, *mtype, i, json_integer_value(item));
 			else
-				ldms_mval_array_set_double(mval, i, json_real_value(item));
+				ldms_mval_array_set_real(mval, *mtype, i, json_real_value(item));
 		}
+		break;
 	default:
+		snprintf(ebuf, ebuf_len, "Unsupported fill for this type");
 		goto err;
 	}
 	*v = mval;
@@ -552,6 +633,45 @@ ldmsd_decomp_op_to_string(enum ldmsd_decomp_op operation)
         }
 }
 
+/* handle statically specified `type` */
+static int
+decomp_static_config_type(decomp_static_col_cfg_t cfg_col, json_t *jcol,
+			  ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	json_t *jtype = json_object_get(jcol, "type");
+	json_t *jarray_len;
+	if (!jtype)
+		return 0;
+	cfg_col->type = ldms_metric_str_to_type(json_string_value(jtype));
+	if (cfg_col->type == LDMS_V_NONE) {
+		rc = EINVAL;
+		THISLOG(reqc, rc, "column['type']: unknown type: %s\n",
+						json_string_value(jtype));
+		goto out;
+	}
+	if (!ldms_type_is_array(cfg_col->type)) {
+		cfg_col->array_len = 1;
+		goto out;
+	}
+	jarray_len = json_object_get(jcol, "array_len");
+	if (!jarray_len) {
+		rc = EINVAL;
+		THISLOG(reqc, rc, "column['type'] specified as array,"
+				  " but no 'array_len' specified.\n");
+		goto out;
+	}
+	cfg_col->array_len = json_integer_value(jarray_len);
+	if (cfg_col->array_len <= 0) {
+		rc = EINVAL;
+		THISLOG(reqc, rc, "Invalid column['array_len'] value: %d.\n",
+				  cfg_col->array_len);
+		goto out;
+	}
+ out:
+	return rc;
+}
+
 static ldmsd_decomp_t
 decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 		     ldmsd_req_ctxt_t reqc)
@@ -563,6 +683,7 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 	decomp_static_col_cfg_t cfg_col;
 	decomp_static_cfg_t dcfg = NULL;
 	int row_no, col_no, rc;
+	char ebuf[256];
 
 	jrows = json_object_get(jcfg, "rows");
 	if (!jrows || !json_is_array(jrows)) {
@@ -678,16 +799,25 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
                                 }
                                 cfg_row->op_present = 1; /* true */
 			}
+			/* statically resolve the type if we can */
+			rc = decomp_static_config_type(cfg_col, jcol, reqc);
+			if (rc) {
+				/* the function already filled reqc error */
+				goto err_0;
+			}
+
 			jfill = json_object_get(jcol, "fill");
 			if (jfill) {
 				/* The remaining code handles 'fill' */
 				rc = mval_from_json(&cfg_col->fill, &cfg_col->type,
-						&cfg_col->fill_len, jfill);
+						&cfg_col->fill_len, jfill, ebuf,
+						sizeof(ebuf));
 				if (rc) {
-					THISLOG(reqc, EINVAL,
+					THISLOG(reqc, rc,
 						"strgp '%s': row '%d': col[dst] '%s',"
-						"'fill' error %d preparing metric value.\n",
-						strgp->obj.name, row_no, cfg_col->dst, rc);
+						"'fill' error %d: %s\n",
+						strgp->obj.name, row_no,
+						cfg_col->dst, rc, ebuf);
 					goto err_0;
 				}
 			}
@@ -1029,6 +1159,24 @@ static void assign_value(ldms_mval_t dst, ldms_mval_t src,
 		break;
 	case LDMS_V_CHAR_ARRAY:
 		memcpy(dst->a_char, src->a_char, count);
+		break;
+	case LDMS_V_S8_ARRAY: case LDMS_V_U8_ARRAY:
+		memcpy(dst->a_u8, src->a_u8, count);
+		break;
+	case LDMS_V_S16_ARRAY: case LDMS_V_U16_ARRAY:
+		memcpy(dst->a_u16, src->a_u16, count*sizeof(src->a_u16[0]));
+		break;
+	case LDMS_V_S32_ARRAY: case LDMS_V_U32_ARRAY:
+		memcpy(dst->a_u32, src->a_u32, count*sizeof(src->a_u32[0]));
+		break;
+	case LDMS_V_S64_ARRAY: case LDMS_V_U64_ARRAY:
+		memcpy(dst->a_u64, src->a_u64, count*sizeof(src->a_u64[0]));
+		break;
+	case LDMS_V_F32_ARRAY:
+		memcpy(dst->a_f, src->a_f, count*sizeof(src->a_f[0]));
+		break;
+	case LDMS_V_D64_ARRAY:
+		memcpy(dst->a_d, src->a_d, count*sizeof(src->a_d[0]));
 		break;
 	default:
 		break;
