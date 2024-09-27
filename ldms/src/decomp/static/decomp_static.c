@@ -551,6 +551,7 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 	json_t *jsch, *jsrc, *jdst, *jrec_member;
 	json_t *jrows, *jcols, *jidxs;
 	json_t *jrow, *jcol, *jfill, *jop;
+	char *lb, *rb;
 	decomp_static_row_cfg_t cfg_row;
 	decomp_static_col_cfg_t cfg_col;
 	decomp_static_cfg_t dcfg = NULL;
@@ -636,6 +637,7 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 			cfg_col->src = strdup(json_string_value(jsrc));
 			if (!cfg_col->src)
 				goto enomem;
+
 			jdst = json_object_get(jcol, "dst");
 			if (jdst && json_is_string(jdst)) {
 				cfg_col->dst = strdup(json_string_value(jdst));
@@ -646,12 +648,37 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 			if (!cfg_col->dst)
 				goto enomem;
 
+			/* record member encoded in the src */
+			lb = strchr(cfg_col->src, '[');
+			rb = strchr(cfg_col->src, ']');
+			if (lb && rb) {
+				rb[0] = 0;
+				cfg_col->rec_member = strdup(lb+1);
+				if (!cfg_col->rec_member)
+					goto enomem;
+				lb[0] = 0;
+			} else if (lb || rb) {
+				/* incomplete bracket */
+				THISLOG(reqc, EINVAL,
+					"strgp '%s': row '%d'--col '%d': "
+					"incomplete brackets in column['src'].\n",
+					strgp->obj.name, row_no, col_no);
+				goto err_0;
+			}
+
 			jrec_member = json_object_get(jcol, "rec_member");
 			if (jrec_member) {
 				if (!json_is_string(jrec_member)) {
 					THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col '%d': "
 						"rec_member must be a string.\n",
 						strgp->obj.name, row_no, col_no);
+					goto err_0;
+				}
+				if (cfg_col->rec_member) {
+					THISLOG(reqc, EINVAL,
+						"Conflicting configuration: both"
+						" 'rec_member' and '->' (in src)"
+						" are specified.");
 					goto err_0;
 				}
 				cfg_col->rec_member = strdup(json_string_value(jrec_member));
