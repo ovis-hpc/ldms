@@ -3306,6 +3306,14 @@ void ldms_mval_array_set_float(ldms_mval_t mv, int idx, float v);
 void ldms_mval_array_set_double(ldms_mval_t mv, int idx, double v);
 void ldms_mval_array_set_ts(ldms_mval_t mv, int idx, struct ldms_timestamp v);
 
+void ldms_mval_set_int(ldms_mval_t mv, enum ldms_value_type type, int64_t v);
+void ldms_mval_set_real(ldms_mval_t mv, enum ldms_value_type type, double v);
+
+void ldms_mval_array_set_int(ldms_mval_t mv, enum ldms_value_type array_type,
+			     int idx, int64_t v);
+void ldms_mval_array_set_real(ldms_mval_t mv, enum ldms_value_type array_type,
+			      int idx, double v);
+
 /**
  * \brief Get the value from a metric value
  *
