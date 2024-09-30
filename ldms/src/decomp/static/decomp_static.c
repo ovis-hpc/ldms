@@ -1030,6 +1030,18 @@ static void assign_value(ldms_mval_t dst, ldms_mval_t src,
 	case LDMS_V_CHAR_ARRAY:
 		memcpy(dst->a_char, src->a_char, count);
 		break;
+	case LDMS_V_U8_ARRAY:
+	case LDMS_V_S8_ARRAY:
+	case LDMS_V_U16_ARRAY:
+	case LDMS_V_S16_ARRAY:
+	case LDMS_V_U32_ARRAY:
+	case LDMS_V_S32_ARRAY:
+	case LDMS_V_U64_ARRAY:
+	case LDMS_V_S64_ARRAY:
+	case LDMS_V_F32_ARRAY:
+	case LDMS_V_D64_ARRAY:
+		memcpy(dst, src, ldms_metric_value_size_get(type, count));
+		break;
 	default:
 		break;
 	}
