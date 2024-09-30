@@ -93,50 +93,95 @@ ldmsd_decomp_t get()
 	return &decomp_static;
 }
 
+static void assign_value(ldmsd_col_t dst, ldmsd_col_t src);
+
 static int
-mval_from_json(ldms_mval_t *v, enum ldms_value_type *mtype, int *mlen, json_t *jent)
+mval_from_json(ldms_mval_t *v,
+	       enum ldms_value_type mtype, int *mlen, json_t *jent,
+	       char *err_buf, size_t err_sz)
 {
 	json_t *item;
 	json_type type;
-	ldms_mval_t mval = NULL;
-	int i;
+	int i, rc;
+	size_t sz;
+	struct ldmsd_col_s dst = {}, src = {};
+	json_type jtype;
+	/* dst is the output, src is the value from json */
 
-	switch (json_typeof(jent)) {
+	dst.type = mtype;
+	jtype = json_typeof(jent);
+
+	if ((jtype == JSON_STRING && mtype != LDMS_V_CHAR_ARRAY) ||
+			(mtype == LDMS_V_CHAR_ARRAY && jtype != JSON_STRING)) {
+		snprintf(err_buf, err_sz, "string type must have string value");
+		return EINVAL;
+	}
+
+	/* sanity check */
+	switch (jtype) {
 	case JSON_REAL:
-		*mtype = LDMS_V_D64;
-		mval = calloc(1, sizeof(mval->v_d));
-		mval->v_d = json_real_value(jent);
-		break;
-	case JSON_STRING:
-		*mtype = LDMS_V_CHAR_ARRAY;
-		*mlen = json_string_length(jent) + 1;
-		mval = malloc(*mlen);
-		if (!mval)
-			goto err;
-		memcpy(mval->a_char, json_string_value(jent), *mlen);
-		break;
 	case JSON_INTEGER:
-		mval = calloc(1, sizeof(mval->v_s64));
-		mval->v_s64 = json_integer_value(jent);
+		if (ldms_type_is_array(mtype)) {
+			snprintf(err_buf, err_sz, "array type must have array value");
+			return EINVAL;
+		}
 		break;
 	case JSON_ARRAY:
-		*mlen = json_array_size(jent);
+		if (!ldms_type_is_array(mtype)) {
+			snprintf(err_buf, err_sz, "array value must have array type");
+			return EINVAL;
+		}
+		break;
+	default:
+		snprintf(err_buf, err_sz, "Unsupported JSON value");
+		return EINVAL;
+	}
+
+	/* Let's just coerce the value for other cases */
+
+	/* resolve src (from json) */
+	switch (jtype) {
+	case JSON_REAL:
+		src.type = LDMS_V_D64;
+		src.mval = calloc(1, sizeof(src.mval->v_d));
+		src.mval->v_d = json_real_value(jent);
+		src.array_len = 1;
+		break;
+	case JSON_STRING:
+		src.type = LDMS_V_CHAR_ARRAY;
+		src.array_len = json_string_length(jent) + 1;
+		src.mval = malloc(src.array_len);
+		if (!src.mval)
+			goto enomem;
+		memcpy(src.mval->a_char, json_string_value(jent), src.array_len);
+		break;
+	case JSON_INTEGER:
+		src.type = LDMS_V_S64;
+		src.mval = calloc(1, sizeof(src.mval->v_s64));
+		src.mval->v_s64 = json_integer_value(jent);
+		src.array_len = 1;
+		break;
+	case JSON_ARRAY:
+		src.array_len = json_array_size(jent);
 		item = json_array_get(jent, 0);
-		if (!item)
+		if (!item) {
+			rc = ENOENT;
+			snprintf(err_buf, err_sz, "Empty array");
 			goto err;
+		}
 		type = json_typeof(item);
 		switch (type) {
 		case JSON_INTEGER:
-			*mtype = LDMS_V_S64_ARRAY;
-			mval = calloc(*mlen, sizeof(mval->v_s64));
-			if (!mval)
-				goto err;
+			src.type = LDMS_V_S64_ARRAY;
+			src.mval = calloc(src.array_len, sizeof(src.mval->v_s64));
+			if (!src.mval)
+				goto enomem;
 			break;
 		case JSON_REAL:
-			*mtype = LDMS_V_D64_ARRAY;
-			mval = calloc(*mlen, sizeof(mval->v_d));
-			if (!mval)
-				goto err;
+			src.type = LDMS_V_D64_ARRAY;
+			src.mval = calloc(src.array_len, sizeof(src.mval->v_d));
+			if (!src.mval)
+				goto enomem;
 			break;
 		case JSON_OBJECT:
 		case JSON_ARRAY:
@@ -145,21 +190,43 @@ mval_from_json(ldms_mval_t *v, enum ldms_value_type *mtype, int *mlen, json_t *j
 		case JSON_TRUE:
 		case JSON_FALSE:
 		default:
+			rc = EINVAL;
+			snprintf(err_buf, err_sz, "Unsupported JSON array type");
 			goto err;
 		}
 		json_array_foreach(jent, i, item) {
 			if (type == JSON_INTEGER)
-				ldms_mval_array_set_s64(mval, i, json_integer_value(item));
+				ldms_mval_array_set_s64(src.mval, i, json_integer_value(item));
 			else
-				ldms_mval_array_set_double(mval, i, json_real_value(item));
+				ldms_mval_array_set_double(src.mval, i, json_real_value(item));
 		}
+		break;
 	default:
+		rc = EINVAL;
+		snprintf(err_buf, err_sz, "Unsupported JSON type");
 		goto err;
 	}
-	*v = mval;
+
+	dst.type = mtype;
+	dst.array_len = src.array_len;
+	sz = ldms_metric_value_size_get(dst.type, dst.array_len);
+	dst.mval = malloc(sz);
+	if (!dst.mval)
+		goto enomem;
+
+	assign_value(&dst, &src);
+	*v = dst.mval;
+	*mlen = dst.array_len;
+	free(src.mval);
+
 	return 0;
+enomem:
+	rc = ENOMEM;
+	snprintf(err_buf, err_sz, "Not enough memory");
 err:
-	return EINVAL;
+	if (src.mval)
+		free(src.mval);
+	return rc;
 }
 
 /* common index config descriptor */
@@ -180,6 +247,8 @@ typedef struct decomp_static_col_cfg_s {
 	int fill_len; /* if fill is an array */
 	union ldms_value __fill; /* storing a non-array primitive fill value */
 	enum ldmsd_decomp_op op;
+	size_t mval_offset;
+	size_t mval_size;
 } *decomp_static_col_cfg_t;
 
 typedef struct decomp_static_row_cfg_s {
@@ -214,14 +283,16 @@ typedef struct decomp_static_mid_rbn_s {
 	struct rbn rbn;
 	struct ldms_digest_s ldms_digest;
 	int col_count;
-	struct {
+	struct decomp_static_col_mid_s {
 		int mid;
 		int rec_mid;
 		enum ldms_value_type mtype;
 		size_t array_len;
 		enum ldms_value_type rec_mtype;
+#if 0
 		size_t mval_size;	/* Size of this mval */
 		off_t mval_offset;	/* Offset into mval memory for this column */
+#endif
 	} col_mids[OVIS_FLEX];
 } *decomp_static_mid_rbn_t;
 
@@ -550,12 +621,13 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 {
 	json_t *jsch, *jsrc, *jdst, *jrec_member;
 	json_t *jrows, *jcols, *jidxs;
-	json_t *jrow, *jcol, *jfill, *jop;
+	json_t *jrow, *jcol, *jfill, *jop, *jtype;
 	char *lb, *rb;
 	decomp_static_row_cfg_t cfg_row;
 	decomp_static_col_cfg_t cfg_col;
 	decomp_static_cfg_t dcfg = NULL;
 	int row_no, col_no, rc;
+	char err_buf[256];
 
 	jrows = json_object_get(jcfg, "rows");
 	if (!jrows || !json_is_array(jrows)) {
@@ -627,6 +699,9 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 				goto err_0;
 			}
 			cfg_col = &cfg_row->cols[col_no];
+
+			cfg_col->fill_len = -1;
+
 			jsrc = json_object_get(jcol, "src");
 			if (!jsrc || !json_is_string(jsrc)) {
 				THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col '%d': "
@@ -697,18 +772,40 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
                                 }
                                 cfg_row->op_present = 1; /* true */
 			}
-			jfill = json_object_get(jcol, "fill");
-			if (jfill) {
-				/* The remaining code handles 'fill' */
-				rc = mval_from_json(&cfg_col->fill, &cfg_col->type,
-						&cfg_col->fill_len, jfill);
-				if (rc) {
-					THISLOG(reqc, EINVAL,
-						"strgp '%s': row '%d': col[dst] '%s',"
-						"'fill' error %d preparing metric value.\n",
-						strgp->obj.name, row_no, cfg_col->dst, rc);
+			jtype = json_object_get(jcol, "type");
+			if (jtype) {
+				if (jtype->type != JSON_STRING) {
+					THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col %d : "
+						"bad 'type'\n",
+						strgp->obj.name, row_no, col_no);
 					goto err_0;
 				}
+				cfg_col->type = ldms_metric_str_to_type(json_string_value(jtype));
+			} else {
+				cfg_col->type = LDMS_V_NONE;
+			}
+			jfill = json_object_get(jcol, "fill");
+			if (jfill) {
+				if (!jtype) {
+					THISLOG(reqc, EINVAL,
+						"strgp '%s': row '%d': col[dst] '%s',"
+						"'fill' error, 'type' is required.\n",
+						strgp->obj.name, row_no, cfg_col->dst);
+					goto err_0;
+				}
+				/* The remaining code handles 'fill' */
+				rc = mval_from_json(&cfg_col->fill, cfg_col->type,
+						&cfg_col->fill_len, jfill,
+						err_buf, sizeof(err_buf));
+				if (rc) {
+					THISLOG(reqc, rc,
+						"strgp '%s': row '%d': col[dst] '%s',"
+						"'fill' error %d: %s.\n",
+						strgp->obj.name, row_no,
+						cfg_col->dst, rc, err_buf);
+					goto err_0;
+				}
+				cfg_col->array_len = cfg_col->fill_len;
 			}
 		}
 
@@ -738,204 +835,280 @@ err_0:
 	return NULL;
 }
 
+#define ASSERT_RETURN(COND) do { \
+		assert(COND); \
+		if (!(COND)) \
+			return EINVAL; \
+	} while (0)
+
+struct resolve_ctxt_s {
+	ldmsd_strgp_t strgp;
+	ldms_set_t set;
+	EVP_MD_CTX *evp_ctx;
+	int col_no;
+	size_t mval_offset;
+};
+
+static int resolve_col(struct resolve_ctxt_s *ctxt,
+		       struct decomp_static_col_mid_s *col_mid,
+		       decomp_static_col_cfg_t cfg_col)
+{
+	int rc = EINVAL;
+	const char *src;
+	enum ldms_value_type mtype, le_mtype, rec_mtype;
+	ldms_mval_t lh, le, rec_array, rec;
+	int special;
+	int mid, rec_mid;
+	size_t mlen;
+
+	mid = -1;
+	rec_mid = -1;
+	mlen = -1;
+	mtype = LDMS_V_NONE;
+	rec_mtype = LDMS_V_NONE;
+	le_mtype = LDMS_V_NONE;
+
+	col_mid->mtype = LDMS_V_NONE;
+	col_mid->mid = -1;
+	col_mid->rec_mid = -1;
+	col_mid->array_len = -1;
+	col_mid->rec_mid = -EINVAL;
+	col_mid->rec_mtype = LDMS_V_NONE;
+
+	src = cfg_col->src;
+
+	special = 0;
+
+	if (0 == strcmp(src, "timestamp")) {
+		assert( cfg_col->type == LDMS_V_NONE ||
+			cfg_col->type == LDMS_V_TIMESTAMP );
+		mid = LDMSD_PHONY_METRIC_ID_TIMESTAMP;
+		mtype = LDMS_V_TIMESTAMP;
+		mlen = 1;
+		special = 1;
+		goto commit;
+	}
+
+	if (0 == strcmp(src, "producer")) {
+		assert( cfg_col->type == LDMS_V_NONE ||
+			cfg_col->type == LDMS_V_CHAR_ARRAY );
+		col_mid->mid = LDMSD_PHONY_METRIC_ID_PRODUCER;
+		cfg_col->type = LDMS_V_CHAR_ARRAY;
+		/* Doesn't consume mval space, data comes from
+		 * instance name in set meta-data */
+		special = 1;
+		goto next;
+	}
+
+	if (0 == strcmp(src, "instance")) {
+		assert( cfg_col->type == LDMS_V_NONE ||
+			cfg_col->type == LDMS_V_CHAR_ARRAY );
+		col_mid->mid = LDMSD_PHONY_METRIC_ID_INSTANCE;
+		cfg_col->type = LDMS_V_CHAR_ARRAY;
+		/* Doesn't consume mval space, data comes from
+		 * instance name in set meta-data */
+		special = 1;
+		goto next;
+	}
+
+	mid = ldms_metric_by_name(ctxt->set, src);
+	if (mid < 0) {
+		/* This is a fill candidate, must have a type and if
+		 * an array a length */
+		if (cfg_col->type == LDMS_V_NONE) {
+			ldmsd_log(LDMSD_LERROR,
+				"strgp '%s': col[src] '%s' does not exist in "
+				"the set and the 'type' is not specified.\n",
+				ctxt->strgp->obj.name, cfg_col->src);
+			rc = EINVAL;
+			goto err;
+		}
+		if (ldms_type_is_array(cfg_col->type) && cfg_col->fill_len < 0) {
+			ldmsd_log(LDMSD_LERROR,
+				"strgp '%s': col[dst] '%s' array must have a "
+				"len specified if it does not exist in the set.\n",
+				ctxt->strgp->obj.name, cfg_col->dst);
+			rc = EINVAL;
+			goto err;
+		}
+		/* use fill */
+		mid = LDMSD_PHONY_METRIC_ID_FILL;
+		mtype  = cfg_col->type;
+		mlen = cfg_col->fill_len;
+		goto commit;
+	}
+
+	mtype = ldms_metric_type_get(ctxt->set, mid);
+	mlen = ldms_metric_array_get_len(ctxt->set, mid);
+	assert(mlen >= 0);
+
+	if (LDMS_V_NONE < mtype && mtype <= LDMS_V_D64_ARRAY) {
+		/* Primitives & array of primitives. We have mlen, mtype and
+		 * everything figured out */
+		goto commit;
+	}
+
+	if (mtype == LDMS_V_LIST)
+		goto list_routine;
+	if (mtype == LDMS_V_RECORD_ARRAY)
+		goto rec_array_routine;
+
+	/* Invalid type */
+	ldmsd_log(LDMSD_LERROR,
+		"strgp '%s': col[src] '%s' the metric type %s(%d) "
+		"is not supported.\n",
+		ctxt->strgp->obj.name, cfg_col->src,
+		ldms_metric_type_to_str(mtype), mtype);
+	rc = EINVAL;
+	goto err;
+
+list_routine:
+	/* handling LIST */
+	lh = ldms_metric_get(ctxt->set, mid);
+	le = ldms_list_first(ctxt->set, lh, &le_mtype, &mlen);
+	assert(mlen);
+	if (!le) {
+		/* list empty. can't init yet */
+		ldmsd_log(LDMSD_LERROR,
+			"strgp '%s': row '%d': col[dst] '%s' "
+			"LIST is empty, skipping set metric resolution.\n",
+			ctxt->strgp->obj.name, ctxt->col_no, cfg_col->dst
+			);
+		errno = ENOENT;
+		goto err;
+	}
+	if (le_mtype == LDMS_V_LIST) {
+		/* LIST of LIST is not supported */
+		/* Invalid type */
+		ldmsd_log(LDMSD_LERROR,
+			"strgp '%s': row '%d': col[dst] '%s' "
+			"LIST of LIST is not supported.\n",
+			ctxt->strgp->obj.name, ctxt->col_no, cfg_col->dst
+			);
+		rc = EINVAL;
+		goto err;
+	}
+	if (!cfg_col->rec_member) {
+		/* LIST of non-record elements */
+		goto commit;
+	}
+	/* LIST of records */
+	rec_mid = ldms_record_metric_find(le, cfg_col->rec_member);
+	if (rec_mid < 0) {
+		ldmsd_log(LDMSD_LERROR,
+			"strgp '%s': row '%d': col[dst] '%s' "
+			"Record member '%s' not found.\n",
+			ctxt->strgp->obj.name, ctxt->col_no, cfg_col->dst,
+			cfg_col->rec_member);
+		rc = ENOENT;
+		goto err;
+	}
+	rec_mtype = ldms_record_metric_type_get(le, rec_mid, &mlen);
+	assert(mlen);
+	goto commit;
+
+rec_array_routine:
+	rec_array = ldms_metric_get(ctxt->set, mid);
+	rec = ldms_record_array_get_inst(rec_array, 0);
+	if (!cfg_col->rec_member) {
+		ldmsd_log(LDMSD_LERROR,
+			"strgp '%s': row '%d': the record array '%s' "
+			"is empty.\n",
+			ctxt->strgp->obj.name, ctxt->col_no, cfg_col->src);
+		rc = EINVAL;
+		goto err;
+	}
+	rec_mid = ldms_record_metric_find(rec, cfg_col->rec_member);
+	if (rec_mid < 0) {
+		ldmsd_log(LDMSD_LERROR,
+			"strgp '%s': row '%d': col[dst] '%s' "
+			"Missing record member definition.n",
+			ctxt->strgp->obj.name, ctxt->col_no, cfg_col->dst);
+		rc = EINVAL;
+		goto err;
+	}
+	rec_mtype = ldms_record_metric_type_get(rec, rec_mid, &mlen);
+	assert(mlen);
+	/* fall through to commit */
+
+commit:
+	/* commit to col_mid */
+	col_mid->mid = mid;
+	col_mid->mtype = mtype;
+	col_mid->array_len = mlen;
+	assert(mlen);
+	if (rec_mid >= 0) {
+		col_mid->rec_mid = rec_mid;
+		col_mid->rec_mtype = rec_mtype;
+	}
+
+	/* commit to cfg_col */
+
+	assert(mtype != LDMS_V_NONE);
+	if (cfg_col->type == LDMS_V_NONE) {
+		cfg_col->type = rec_mid>=0?rec_mtype:mtype;
+	}
+	if (0 == cfg_col->array_len) {
+		assert(mlen >= 0);
+		cfg_col->array_len = mlen;
+	}
+	if (0 == cfg_col->mval_size) {
+		cfg_col->mval_offset = ctxt->mval_offset;
+		cfg_col->mval_size = ldms_metric_value_size_get(cfg_col->type, mlen);
+	} else {
+		ASSERT_RETURN(cfg_col->type == mtype);
+		ASSERT_RETURN(cfg_col->mval_offset == ctxt->mval_offset);
+	}
+
+	/* update mval_offset */
+	ctxt->mval_offset += LDMS_ROUNDUP(cfg_col->mval_size, sizeof(uint64_t));
+
+next:
+
+	assert(special || cfg_col->mval_size);
+	/* update row schema digest */
+	EVP_DigestUpdate(ctxt->evp_ctx, cfg_col->dst, strlen(cfg_col->dst));
+	EVP_DigestUpdate(ctxt->evp_ctx, &cfg_col->type, sizeof(cfg_col->type));
+	rc = 0;
+err:
+	return rc;
+}
+
 static int resolve_metrics(ldmsd_strgp_t strgp,
 			decomp_static_mid_rbn_t mid_rbn,
 			decomp_static_row_cfg_t cfg_row,
 			ldms_set_t set)
 {
 	EVP_MD_CTX *evp_ctx = NULL;
-	int col_no, mid;
-	size_t mval_offset = 0;
-	ldms_mval_t lh, le, rec_array, rec;
-	size_t mlen = -1;
-	const char *src;
-	enum ldms_value_type mtype;
+	int col_no;
+	decomp_static_col_cfg_t cfg_col;
+	struct decomp_static_col_mid_s *col_mid;
+	int rc;
+
+	struct resolve_ctxt_s ctxt = {
+		.strgp = strgp,
+		.set = set,
+		.mval_offset = 0,
+	};
 
 	evp_ctx = EVP_MD_CTX_create();
 	if (!evp_ctx) {
 		ldmsd_log(LDMSD_LERROR, "out of memory\n");
+		rc = errno;
 		goto err;
 	}
 	EVP_DigestInit_ex(evp_ctx, EVP_sha256(), NULL);
-
+	ctxt.evp_ctx = evp_ctx;
 	mid_rbn->col_count = cfg_row->col_count;
 	for (col_no = 0; col_no < mid_rbn->col_count; col_no++) {
-		mid_rbn->col_mids[col_no].mid = -1;
-		mid_rbn->col_mids[col_no].rec_mid = -1;
-		mid_rbn->col_mids[col_no].array_len = -1;
-		mid_rbn->col_mids[col_no].rec_mid = -EINVAL;
-		mid_rbn->col_mids[col_no].rec_mtype = LDMS_V_NONE;
-
-		src = cfg_row->cols[col_no].src;
-
-		if (0 == strcmp(src, "timestamp")) {
-			mid_rbn->col_mids[col_no].mid = LDMSD_PHONY_METRIC_ID_TIMESTAMP;
-			mid_rbn->col_mids[col_no].mtype = LDMS_V_TIMESTAMP;
-			mid_rbn->col_mids[col_no].mval_offset = mval_offset;
-			mid_rbn->col_mids[col_no].mval_size =
-				ldms_metric_value_size_get(LDMS_V_TIMESTAMP, 0);
-			mval_offset += LDMS_ROUNDUP(mid_rbn->col_mids[col_no].mval_size,
-						sizeof(uint64_t));
-			goto next;
-		}
-
-		if (0 == strcmp(src, "producer")) {
-			mid_rbn->col_mids[col_no].mid = LDMSD_PHONY_METRIC_ID_PRODUCER;
-			cfg_row->cols[col_no].type = LDMS_V_CHAR_ARRAY;
-			/* Doesn't consume mval space, data comes from
-			 * instance name in set meta-data */
-			goto next;
-		}
-
-		if (0 == strcmp(src, "instance")) {
-			mid_rbn->col_mids[col_no].mid = LDMSD_PHONY_METRIC_ID_INSTANCE;
-			cfg_row->cols[col_no].type = LDMS_V_CHAR_ARRAY;
-			/* Doesn't consume mval space, data comes from
-			 * instance name in set meta-data */
-			goto next;
-		}
-
-		mid = ldms_metric_by_name(set, cfg_row->cols[col_no].src);
-		mid_rbn->col_mids[col_no].mid = mid;
-		if (mid < 0) {
-			/* This is a fill candidate, must have a type and if
-			 * an array a length */
-			if (cfg_row->cols[col_no].type) {
-				if (ldms_type_is_array(cfg_row->cols[col_no].type)) {
-					if (cfg_row->cols[col_no].array_len < 0) {
-						ldmsd_log(LDMSD_LERROR,
-							"strgp '%s': col[dst] '%s' "
-							"array must have a len specified if it "
-							"does not exist in the set.\n",
-							strgp->obj.name,
-							cfg_row->cols[col_no].dst);
-						goto err;
-					}
-				}
-				/* Metric does not exist, but it has a type and if needed
-				 * an array length */
-				mid_rbn->col_mids[col_no].mid = LDMSD_PHONY_METRIC_ID_FILL;
-				mtype  = cfg_row->cols[col_no].type;
-				mlen = cfg_row->cols[col_no].array_len;
-				mid_rbn->col_mids[col_no].mtype = mtype;
-				mid_rbn->col_mids[col_no].array_len = mlen;
-				goto next;
-			}
-			ldmsd_log(LDMSD_LERROR,
-				"strgp '%s': col[src] '%s' "
-				"does not exist in the set and the 'type' is not "
-				"specified.\n",
-				strgp->obj.name, cfg_row->cols[col_no].src);
+		col_mid = &mid_rbn->col_mids[col_no];
+		cfg_col = &cfg_row->cols[col_no];
+		ctxt.col_no = col_no;
+		rc = resolve_col(&ctxt, col_mid, cfg_col);
+		if (rc)
 			goto err;
-		}
-
-		mtype = ldms_metric_type_get(set, mid);
-		mid_rbn->col_mids[col_no].mtype = mtype;
-		mlen = ldms_metric_array_get_len(set, mid);
-		mid_rbn->col_mids[col_no].array_len = mlen;
-
-		if (mtype == LDMS_V_LIST)
-			goto list_routine;
-		if (mtype == LDMS_V_RECORD_ARRAY)
-			goto rec_array_routine;
-
-		/* primitives & array of primitives */
-		mid_rbn->col_mids[col_no].mval_offset = mval_offset;
-		mid_rbn->col_mids[col_no].mval_size = ldms_metric_value_size_get(mtype, mlen);
-		mval_offset += LDMS_ROUNDUP(mid_rbn->col_mids[col_no].mval_size, sizeof(uint64_t));
-
-		if (mtype > LDMS_V_D64_ARRAY) {
-			/* Invalid type */
-			ldmsd_log(LDMSD_LERROR,
-				"strgp '%s': col[src] '%s' "
-				"the metric type %d is not supported.\n",
-				strgp->obj.name, cfg_row->cols[col_no].src,
-				mtype
-				);
-			goto err;
-		}
-		goto next;
-
-	list_routine:
-		/* handling LIST */
-		lh = ldms_metric_get(set, mid);
-		le = ldms_list_first(set, lh, &mtype, &mlen);
-		if (!le) {
-			/* list empty. can't init yet */
-			ldmsd_log(LDMSD_LERROR,
-				"strgp '%s': row '%d': col[dst] '%s' "
-				"LIST is empty, skipping set metric resolution.\n",
-				strgp->obj.name, col_no, cfg_row->cols[col_no].dst
-				);
-			errno = ENOENT;
-			goto err;
-		}
-		if (mtype == LDMS_V_LIST) {
-			/* LIST of LIST is not supported */
-			/* Invalid type */
-			ldmsd_log(LDMSD_LERROR,
-				"strgp '%s': row '%d': col[dst] '%s' "
-				"LIST of LIST is not supported.\n",
-				strgp->obj.name, col_no, cfg_row->cols[col_no].dst
-				);
-			goto err;
-		}
-		if (!cfg_row->cols[col_no].rec_member) {
-			/* LIST of non-record elements */
-			goto next;
-		}
-		/* LIST of records */
-		mid = ldms_record_metric_find(le, cfg_row->cols[col_no].rec_member);
-		mid_rbn->col_mids[col_no].rec_mid = mid;
-		if (mid >= 0) {
-			mtype = ldms_record_metric_type_get(le, mid, &mlen);
-			mid_rbn->col_mids[col_no].rec_mtype = mtype;
-			mid_rbn->col_mids[col_no].mval_offset = mval_offset;
-			mid_rbn->col_mids[col_no].mval_size =
-				ldms_metric_value_size_get(mtype, mlen);
-			mval_offset +=
-				LDMS_ROUNDUP(mid_rbn->col_mids[col_no].mval_size,
-						sizeof(uint64_t));
-		}
-		goto next;
-
-	rec_array_routine:
-		rec_array = ldms_metric_get(set, mid);
-		rec = ldms_record_array_get_inst(rec_array, 0);
-		if (!cfg_row->cols[col_no].rec_member) {
-			ldmsd_log(LDMSD_LERROR,
-				"strgp '%s': row '%d': the record array '%s' "
-				"is emptyd.\n",
-				strgp->obj.name, col_no, cfg_row->cols[col_no].src);
-			goto err;
-		}
-		mid = ldms_record_metric_find(rec, cfg_row->cols[col_no].rec_member);
-		if (mid < 0) {
-			ldmsd_log(LDMSD_LERROR,
-				"strgp '%s': row '%d': col[dst] '%s' "
-				"Missing record member definition.n",
-				strgp->obj.name, col_no, cfg_row->cols[col_no].dst);
-			goto next;
-		}
-		mtype = ldms_record_metric_type_get(rec, mid, &mlen);
-		mid_rbn->col_mids[col_no].rec_mid = mid;
-		mid_rbn->col_mids[col_no].rec_mtype = mtype;
-		mtype = ldms_record_metric_type_get(le, mid, &mlen);
-		mid_rbn->col_mids[col_no].rec_mtype = mtype;
-		mid_rbn->col_mids[col_no].mval_offset = mval_offset;
-		mid_rbn->col_mids[col_no].mval_size =
-			ldms_metric_value_size_get(mtype,
-				ldms_metric_array_get_len(set, mid));
-		mval_offset += LDMS_ROUNDUP(mid_rbn->col_mids[col_no].mval_size,
-					sizeof(uint64_t));
-next:
-		/* update row schema digest */
-		EVP_DigestUpdate(evp_ctx, cfg_row->cols[col_no].dst,
-			strlen(cfg_row->cols[col_no].dst));
-		EVP_DigestUpdate(evp_ctx, &cfg_row->cols[col_no].type,
-					sizeof(cfg_row->cols[col_no].type));
 	}
-	cfg_row->mval_size = mval_offset;
+	cfg_row->mval_size = ctxt.mval_offset;
 	/* Finalize row schema digest */
 	unsigned int len = LDMS_DIGEST_LENGTH;
 	EVP_DigestFinal(evp_ctx, cfg_row->schema_digest.digest, &len);
@@ -943,9 +1116,7 @@ next:
 	return 0;
 err:
 	EVP_MD_CTX_destroy(evp_ctx);
-	if (errno)
-		return errno;
-	return EINVAL;
+	return rc;
 }
 
 static ldmsd_row_t
@@ -956,6 +1127,7 @@ row_cache_dup(decomp_static_row_cfg_t cfg_row,
 	int i, j;
 	ldmsd_row_index_t idx;
 	ldmsd_row_t dup_row = NULL;
+	decomp_static_col_cfg_t cfg_col;
 
 	dup_row = calloc(1, cfg_row->row_sz + cfg_row->mval_size);
 	if (!dup_row)
@@ -983,6 +1155,7 @@ row_cache_dup(decomp_static_row_cfg_t cfg_row,
 	dup_row->mvals = (uint8_t *)idx;
 	memcpy(dup_row->mvals, row->mvals, cfg_row->mval_size);
 	for (i = 0; i < row->col_count; i++) {
+		cfg_col = &cfg_row->cols[i];
 		dup_row->cols[i].name = row->cols[i].name;
 		dup_row->cols[i].column = row->cols[i].column;
 		dup_row->cols[i].type = row->cols[i].type;
@@ -997,54 +1170,121 @@ row_cache_dup(decomp_static_row_cfg_t cfg_row,
 			break;
 		case LDMSD_PHONY_METRIC_ID_TIMESTAMP:
 		default:
-			dup_row->cols[i].mval = (ldms_mval_t)&dup_row->mvals[mid_rbn->col_mids[i].mval_offset];
+			dup_row->cols[i].mval = (ldms_mval_t)&dup_row->mvals[cfg_col->mval_offset];
 		}
 	}
  out:
 	return dup_row;
 }
 
-static void assign_value(ldms_mval_t dst, ldms_mval_t src,
-			enum ldms_value_type type, size_t count)
+static void assign_value(ldmsd_col_t dst, ldmsd_col_t src)
 {
-	switch (type) {
+	size_t sz;
+	int i, len;
+	if (ldms_type_is_array(dst->type) && ldms_type_is_array(src->type)) {
+		len = (dst->array_len < src->array_len)?dst->array_len:src->array_len;
+	} else {
+		len = 1;
+	}
+	if (dst->type == src->type) {
+		sz = ldms_metric_value_size_get(dst->type, len);
+		memcpy(dst->mval, src->mval, sz);
+		return;
+	}
+	switch (dst->type) {
+	case LDMS_V_CHAR:
+		dst->mval->v_char = ldms_mval_as_s8(src->mval, src->type, 0);
+		break;
 	case LDMS_V_U8:
-		dst->v_u8 = src->v_u8;
+		dst->mval->v_u8 = ldms_mval_as_u8(src->mval, src->type, 0);
 		break;
 	case LDMS_V_S8:
-		dst->v_s8 = src->v_s8;
+		dst->mval->v_s8 = ldms_mval_as_s8(src->mval, src->type, 0);
 		break;
 	case LDMS_V_U16:
-		dst->v_u16 = src->v_u16;
+		dst->mval->v_u16 = ldms_mval_as_u16(src->mval, src->type, 0);
 		break;
 	case LDMS_V_S16:
-		dst->v_s16 = src->v_s16;
+		dst->mval->v_s16 = ldms_mval_as_s16(src->mval, src->type, 0);
 		break;
 	case LDMS_V_U32:
-		dst->v_u32 = src->v_u32;
+		dst->mval->v_u32 = ldms_mval_as_u32(src->mval, src->type, 0);
 		break;
 	case LDMS_V_S32:
-		dst->v_s32 = src->v_s32;
+		dst->mval->v_s32 = ldms_mval_as_s32(src->mval, src->type, 0);
 		break;
 	case LDMS_V_U64:
-		dst->v_u64 = src->v_u64;
+		dst->mval->v_u64 = ldms_mval_as_u64(src->mval, src->type, 0);
 		break;
 	case LDMS_V_S64:
-		dst->v_s64 = src->v_s64;
+		dst->mval->v_s64 = ldms_mval_as_s64(src->mval, src->type, 0);
 		break;
 	case LDMS_V_F32:
-		dst->v_f = src->v_f;
+		dst->mval->v_f = ldms_mval_as_float(src->mval, src->type, 0);
 		break;
 	case LDMS_V_D64:
-		dst->v_d = src->v_d;
-		break;
-	case LDMS_V_TIMESTAMP:
-		dst->v_ts = src->v_ts;
+		dst->mval->v_d = ldms_mval_as_double(src->mval, src->type, 0);
 		break;
 	case LDMS_V_CHAR_ARRAY:
-		memcpy(dst->a_char, src->a_char, count);
+		for (i = 0; i < len; i++) {
+			dst->mval->a_char[i] = ldms_mval_as_char(src->mval, src->type, i);
+		}
+		break;
+	case LDMS_V_U8_ARRAY:
+		for (i = 0; i < len; i++) {
+			dst->mval->a_u8[i] = ldms_mval_as_u8(src->mval, src->type, i);
+		}
+		break;
+	case LDMS_V_S8_ARRAY:
+		for (i = 0; i < len; i++) {
+			dst->mval->a_s8[i] = ldms_mval_as_s8(src->mval, src->type, i);
+		}
+		break;
+	case LDMS_V_U16_ARRAY:
+		for (i = 0; i < len; i++) {
+			dst->mval->a_u16[i] = ldms_mval_as_u16(src->mval, src->type, i);
+		}
+		break;
+	case LDMS_V_S16_ARRAY:
+		for (i = 0; i < len; i++) {
+			dst->mval->a_s16[i] = ldms_mval_as_s16(src->mval, src->type, i);
+		}
+		break;
+	case LDMS_V_U32_ARRAY:
+		for (i = 0; i < len; i++) {
+			dst->mval->a_u32[i] = ldms_mval_as_u32(src->mval, src->type, i);
+		}
+		break;
+	case LDMS_V_S32_ARRAY:
+		for (i = 0; i < len; i++) {
+			dst->mval->a_s32[i] = ldms_mval_as_s32(src->mval, src->type, i);
+		}
+		break;
+	case LDMS_V_U64_ARRAY:
+		for (i = 0; i < len; i++) {
+			dst->mval->a_u64[i] = ldms_mval_as_u64(src->mval, src->type, i);
+		}
+		break;
+	case LDMS_V_S64_ARRAY:
+		for (i = 0; i < len; i++) {
+			dst->mval->a_s64[i] = ldms_mval_as_s64(src->mval, src->type, i);
+		}
+		break;
+	case LDMS_V_F32_ARRAY:
+		for (i = 0; i < len; i++) {
+			dst->mval->a_f[i] = ldms_mval_as_float(src->mval, src->type, i);
+		}
+		break;
+	case LDMS_V_D64_ARRAY:
+		for (i = 0; i < len; i++) {
+			dst->mval->a_d[i] = ldms_mval_as_double(src->mval, src->type, i);
+		}
+		break;
+	case LDMS_V_TIMESTAMP:
+		dst->mval->v_ts = ldms_mval_as_timestamp(src->mval, src->type, 0);
 		break;
 	default:
+		/* no-op */
 		break;
 	}
 }
@@ -1055,8 +1295,7 @@ static int none_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 	ldmsd_row_t src_row = TAILQ_FIRST(row_list);
 	ldmsd_col_t src_col = &src_row->cols[col_id];
 	ldmsd_col_t dst_col = &dest_row->cols[col_id];
-	assign_value(dst_col->mval, src_col->mval,
-			dst_col->type, dst_col->array_len);
+	assign_value(dst_col, src_col);
 	return 0;
 }
 
@@ -1065,15 +1304,19 @@ static int diff_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 	ldmsd_row_t src_row = TAILQ_FIRST(row_list);
 	ldmsd_row_t prev_row = TAILQ_NEXT(src_row, entry);
 	ldmsd_col_t dst_col = &dest_row->cols[col_id];
+	struct ldmsd_col_s zero_col;
 	union ldms_value zero;
         uint64_t src_time;
         uint64_t prev_time;
         uint64_t diff_time;
 
 	memset(&zero, 0, sizeof(zero));
+	zero_col.mval = &zero;
+	zero_col.array_len = 1;
+	zero_col.type = LDMS_V_U64;
 	/* dst_col->mval = src_row->cols[col_id].mval - prev_row->cols[col_id].mval; */
 	if (!prev_row) {
-		assign_value(dst_col->mval, &zero, dst_col->type, dst_col->array_len);
+		assign_value(dst_col, &zero_col);
 		return 0;
 	}
 	switch (dst_col->type) {
@@ -1145,11 +1388,16 @@ static int mean_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 	int count = 0;
 	ldmsd_row_t src_row = TAILQ_FIRST(row_list);
 	ldmsd_col_t dst_col = &dest_row->cols[col_id];
+	struct ldmsd_col_s zero_col;
 	union ldms_value zero;
         uint64_t sum_time;
 	memset(&zero, 0, sizeof(zero));
 
-	assign_value(dst_col->mval, &zero, dst_col->type, dst_col->array_len);
+	memset(&zero, 0, sizeof(zero));
+	zero_col.mval = &zero;
+	zero_col.array_len = 1;
+	zero_col.type = LDMS_V_U64;
+	assign_value(dst_col, &zero_col);
 	while (src_row)
 	{
 		switch (dst_col->type) {
@@ -1243,8 +1491,13 @@ static int max_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 	ldmsd_row_t src_row = TAILQ_FIRST(row_list);
 	ldmsd_col_t dst_col = &dest_row->cols[col_id];
 	union ldms_value max;
+	struct ldmsd_col_s max_col;
 
-	assign_value(&max, src_row->cols[col_id].mval, dst_col->type, dst_col->array_len);
+	max_col.mval = &max;
+	max_col.type = dst_col->type;
+	max_col.array_len = 1;
+
+	assign_value(&max_col, &src_row->cols[col_id]);
 	src_row = TAILQ_NEXT(src_row, entry);
 	while (src_row)
 	{
@@ -1348,8 +1601,13 @@ static int min_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 	ldmsd_row_t src_row = TAILQ_FIRST(row_list);
 	ldmsd_col_t dst_col = &dest_row->cols[col_id];
 	union ldms_value min;
+	struct ldmsd_col_s min_col;
 
-	assign_value(&min, src_row->cols[col_id].mval, dst_col->type, dst_col->array_len);
+	min_col.mval = &min;
+	min_col.type = dst_col->type;
+	min_col.array_len = 1;
+
+	assign_value(&min_col, &src_row->cols[col_id]);
 	src_row = TAILQ_NEXT(src_row, entry);
 	while (src_row)
 	{
@@ -1483,6 +1741,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 		int rec_array_len;
 		int rec_array_idx;
 	} *col_mvals = NULL, *mcol;
+	struct ldmsd_col_s _col;
 	decomp_static_mid_rbn_t mid_rbn = NULL;
 	ldms_digest_t ldms_digest;
 	TAILQ_HEAD(, _list_entry) list_cols;
@@ -1525,11 +1784,14 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 					cfg_row->col_count * sizeof(mid_rbn->col_mids[0]));
 			if (!mid_rbn) {
 				rc = ENOMEM;
+				free(mid_rbn);
 				goto err_0;
 			}
 			rc = resolve_metrics(strgp, mid_rbn, cfg_row, set);
-			if (rc)
+			if (rc) {
+				free(mid_rbn);
 				goto err_0;
+			}
 			memcpy(&mid_rbn->ldms_digest, ldms_digest, sizeof(*ldms_digest));
 			rbn_init(&mid_rbn->rbn, &mid_rbn->ldms_digest);
 			rbt_ins(&cfg_row->mid_rbt, &mid_rbn->rbn);
@@ -1693,16 +1955,16 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 		row_more_le = 0;
 		/* cols */
 		for (j = 0; j < row->col_count; j++) {
-			col = &row->cols[j];
-			col->mval = (ldms_mval_t)&row->mvals[mid_rbn->col_mids[j].mval_offset];
 			cfg_col = &cfg_row->cols[j];
+			col = &row->cols[j];
+			col->mval = (ldms_mval_t)&row->mvals[cfg_col->mval_offset];
 			mcol = &col_mvals[j];
 
 			col->metric_id = mcol->metric_id;
 			col->rec_metric_id = mcol->rec_metric_id;
 			col->name = cfg_col->dst;
-			col->type = mcol->mtype;
-			col->array_len = mcol->array_len;
+			col->type = cfg_col->type;
+			col->array_len = cfg_col->array_len;
 
 			switch (mid_rbn->col_mids[j].mid) {
 			case LDMSD_PHONY_METRIC_ID_TIMESTAMP:
@@ -1721,7 +1983,10 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				col->array_len = cfg_col->fill_len;
 				continue;
 			default:
-				assign_value(col->mval, mcol->mval, mcol->mtype, mcol->array_len);
+				_col.array_len = mcol->array_len;
+				_col.type = mcol->mtype;
+				_col.mval = mcol->mval;
+				assign_value(col, &_col);
 				break;
 			}
 
@@ -1853,7 +2118,6 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
  err_0:
 	/* clean up stuff here */
 	free(col_mvals);
-	free(mid_rbn);
 	decomp_static_release_rows(strgp, row_list);
 	return rc;
 }
