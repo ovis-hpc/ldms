@@ -6375,17 +6375,24 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 		fprintf(fp, " -r %s", pidfile);
 	if (banner != -1)
 		fprintf(fp, " -B %d", banner);
-	fprintf(fp, " -P %d", ev_thread_count);
-	fprintf(fp, " -C %d", ldmsd_credits);
 	if (do_kernel) {
 		fprintf(fp, " -k");
 		if (setfile)
 			fprintf(fp, " -s %s", setfile);
 	}
-	const char *_name = ldmsd_myname_get();
-	if (_name[0] != '\0')
-		fprintf(fp, " -n %s", _name);
 	fprintf(fp, "\n");
+
+	/* Daemon name */
+	const char *_name = ldmsd_myname_get();
+	if (_name[0] != '\0') {
+		fprintf(fp, "daemon_name name=%s\n", _name);
+	}
+
+	/* Worker threads */
+	fprintf(fp, "worker_threads num=%d\n", ev_thread_count);
+
+	/* Default credits */
+	fprintf(fp, "default_credits credits=%d\n", ldmsd_credits);
 
 	/* Auth */
 	ldmsd_auth_t auth;
