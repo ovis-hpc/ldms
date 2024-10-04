@@ -13,6 +13,7 @@ ldmsd.man \
 ldms-plugins.man \
 ldmsd_exits.man \
 ldmsd_controller.man \
+ldmsd_yaml_parser.man \
 ldmsctl.man
 
 dist_man7_MANS= \
