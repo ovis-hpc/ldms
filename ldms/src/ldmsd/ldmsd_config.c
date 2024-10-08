@@ -1000,7 +1000,7 @@ char *__process_yaml_config_file(const char *path, const char *dname)
 	return config_str;
 }
 
-int __req_deferred_start_regex(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
+int __req_deferred_start_regex(ldmsd_req_ctxt_t reqc, ldmsd_cfgobj_type_t type)
 {
 	regex_t regex = {0};
 	ldmsd_cfgobj_t obj;
