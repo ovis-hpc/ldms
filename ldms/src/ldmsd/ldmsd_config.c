@@ -702,7 +702,7 @@ parse:
 				(0 == strncmp(line, "prdcr_start", 11))) {
 			if (strstr(line, "interval")) {
 				ldmsd_log(LDMSD_LWARNING,
-						"'interval' is begin deprecated. "
+						"'interval' is being deprecated. "
 						"Please use 'reconnect' with 'prdcr_add' or 'prdcr_start*' "
 						"in the future.\n");
 			}
@@ -790,6 +790,235 @@ cleanup:
 	if (request)
 		free(request);
 	return rc;
+}
+
+static
+int __process_config_str(char *cfg_str, int *lno, int trust,
+		int (*req_filter)(ldmsd_cfg_xprt_t, ldmsd_req_hdr_t, void *),
+		void *ctxt)
+{
+	static uint32_t msg_no = 0;
+	int rc = 0;
+	int lineno = 0;
+	char *buff = NULL;
+	char *line = NULL;
+	char *tmp;
+	size_t line_sz = 0;
+	char *comment;
+	ssize_t off = 0;
+	ssize_t cnt;
+	size_t buf_len = 0;
+	struct ldmsd_cfg_xprt_s xprt;
+	ldmsd_req_hdr_t request = NULL;
+	struct ldmsd_req_array *req_array = NULL;
+	if (!cfg_str)
+		return EINVAL;
+	line = malloc(LDMSD_CFG_FILE_XPRT_MAX_REC);
+	if (!line) {
+		rc = errno;
+		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+		goto cleanup;
+	}
+	line_sz = LDMSD_CFG_FILE_XPRT_MAX_REC;
+	xprt.type = LDMSD_CFG_TYPE_FILE;
+	xprt.file.cfgfile_id = __get_cfgfile_id();
+	xprt.send_fn = log_response_fn;
+	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
+	xprt.trust = trust;
+	xprt.rsp_err = 0;
+	xprt.cleanup_fn = NULL;
+
+next_line:
+	errno = 0;
+	if (buff) {
+		memset(buff, 0, buf_len);
+		buff = strtok(NULL, "\n");
+	} else
+		buff = strtok(cfg_str, "\n");
+	if (!buff)
+		goto cleanup;
+	buf_len = sizeof(buff);
+	cnt = strlen(buff);
+
+	lineno++;
+	tmp = buff;
+	comment = find_comment(tmp);
+
+	if (comment)
+		*comment = '\0';
+
+	/* Get rid of trailing spaces */
+	while (cnt && isspace(tmp[cnt-1]))
+		cnt--;
+
+	if (!buff) {
+		/* empty string */
+		goto parse;
+	}
+
+	tmp[cnt] = '\0';
+
+	/* Get rid of leading spaces */
+	while (isspace(*tmp)) {
+		tmp++;
+		cnt--;
+	}
+
+	if (!cnt) {
+		/* empty buffer */
+		goto parse;
+	}
+
+	if (tmp[cnt-1] == '\\') {
+		if (cnt == 1)
+			goto parse;
+	}
+
+	if (cnt + off > line_sz) {
+		char *nline = realloc(line, ((cnt + off)/line_sz + 1) * line_sz);
+		if (!nline) {
+			rc = errno;
+			ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+			goto cleanup;
+		}
+		line = nline;
+		line_sz = ((cnt + off)/line_sz + 1) * line_sz;
+	}
+	off += snprintf(&line[off], line_sz, "%s", tmp);
+
+	/* attempt to merge multiple lines together */
+	if (off > 0 && line[off-1] == '\\') {
+		line[off-1] = ' ';
+		goto next_line;
+	}
+
+parse:
+	if (!off)
+		goto next_line;
+
+	if (ldmsd_is_initialized()) {
+		if ((0 == strncmp(line, "prdcr_add", 9)) ||
+				(0 == strncmp(line, "prdcr_start", 11))) {
+			if (strstr(line, "interval")) {
+				ldmsd_log(LDMSD_LWARNING,
+						"'interval' is being deprecated. "
+						"Please use 'reconnect' with 'prdcr_add' or 'prdcr_start*' "
+						"in the future.\n");
+			}
+		}
+	}
+
+	req_array = ldmsd_parse_config_str(line, msg_no, xprt.max_msg, ldmsd_log);
+	if (!req_array) {
+		rc = errno;
+		ldmsd_log(LDMSD_LERROR, "Process config string error at line %d "
+				"(%s). %s\n", lineno, cfg_str, STRERROR(rc));
+		goto cleanup;
+	}
+
+	request = __aggregate_records(req_array);
+	if (!request) {
+		rc = errno;
+		goto cleanup;
+	}
+	ldmsd_req_array_free(req_array);
+	req_array = NULL;
+
+	if (!ldmsd_is_initialized()) {
+		/* Process only the priority commands, e.g., cmd-line options */
+		if (!is_req_id_priority(ntohl(request->req_id)))
+			goto next_req;
+	} else {
+		/* Process non-priority commands, e.g., cfgobj config commands */
+		if (is_req_id_priority(ntohl(request->req_id)))
+			goto next_req;
+	}
+
+	/*
+	 * Make sure that LDMSD will create large enough buffer to receive
+	 * the config data.
+	 */
+	if (xprt.max_msg < ntohl(request->rec_len))
+		xprt.max_msg = ntohl(request->rec_len);
+
+	if (req_filter) {
+		rc = req_filter(&xprt, request, ctxt);
+		/* rc = 0, filter OK */
+		if (rc == 0) {
+			__dlog(DLOG_CFGOK, "# deferring line %d (%s): %s\n",
+				lineno, cfg_str, line);
+			goto next_req;
+		}
+		/* rc == errno */
+		if (rc > 0) {
+			ldmsd_log(LDMSD_LERROR,
+				  "Configuration error at "
+				  "line %d (%s)\n", lineno, cfg_str);
+			goto cleanup;
+		} else {
+			/* rc < 0, filter not applied */
+			rc = 0;
+		}
+	}
+
+	rc = ldmsd_process_config_request(&xprt, request);
+	if (rc || xprt.rsp_err) {
+		if (!rc)
+			rc = xprt.rsp_err;
+		ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
+				lineno, cfg_str);
+		goto cleanup;
+	}
+next_req:
+	free(request);
+	request = NULL;
+	msg_no += 1;
+	off = 0;
+	goto next_line;
+
+cleanup:
+	if (cfg_str)
+		free(cfg_str);
+	if (buff)
+		free(buff);
+	if (line)
+		free(line);
+	if (lno)
+		*lno = lineno;
+	ldmsd_req_array_free(req_array);
+	if (request)
+		free(request);
+	return rc;
+}
+
+char *__process_yaml_config_file(const char *path, const char *dname)
+{
+	FILE *fp;
+	char command[256];
+	char cstr[256];
+        char *cfg_str = malloc(256);
+	snprintf(command, sizeof(command), "ldmsd_yaml_parser --ldms_config %s --daemon_name %s 2>&1", path, dname);
+	fp = popen(command, "r");
+	if (!fp)
+		printf("Error in yaml_parser\n");
+	int lineno = 0;
+	size_t char_cnt = 0;
+	while (fgets(cstr, sizeof(cstr), fp) != NULL) {
+		printf("%s", cstr);
+		char_cnt += sizeof(cstr);
+		if (char_cnt >= 1024)
+			cfg_str = (char *)realloc(cfg_str, char_cnt - 256);
+		if (lineno)
+			strcat(cfg_str, cstr);
+		else
+			snprintf(cfg_str, sizeof(cstr), cstr);
+		lineno++;
+	}
+	pclose(fp);
+	char *config_str = strdup(cfg_str);
+	if (cfg_str)
+		free(cfg_str);
+	return config_str;
 }
 
 int __req_deferred_start_regex(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
@@ -988,6 +1217,22 @@ int process_config_file(const char *path, int *lno, int trust)
 	rc = __process_config_file(path, lno, trust,
 				   __req_filter_failover, &ldmsd_use_failover);
 	return rc;
+}
+
+int process_config_str(char *config_str, int *lno, int trust)
+{
+	int rc;
+	char *cfg_str = strdup(config_str);
+	rc = __process_config_str(cfg_str, lno, trust,
+				  __req_filter_failover, &ldmsd_use_failover);
+	return rc;
+}
+
+char *process_yaml_config_file(const char *path, const char *dname)
+{
+	char *cstr;
+	cstr = __process_yaml_config_file(path, dname);
+	return cstr;
 }
 
 static inline void __log_sent_req(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t req)
