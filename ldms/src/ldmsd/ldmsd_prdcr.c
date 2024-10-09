@@ -757,6 +757,9 @@ static int __agg_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 	case LDMS_XPRT_EVENT_SEND_COMPLETE:
 		/* Ignore */
 		break;
+	case LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
+		/* Ignore */
+		break;
 	default:
 		assert(0);
 	}
