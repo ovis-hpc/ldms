@@ -315,8 +315,11 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 	if (rc)
 		goto out;
 
-	rc = __rep_quota_acquire(&r->eps[ep_idx], sbuf->msg->msg_len);
+	rc = __rep_quota_acquire(&r->eps[ep_idx], ev->recv.name_len + ev->recv.data_len);
 	if (rc) {
+		__rate_quota_release(&ev->recv.client->rate_quota, ev->recv.data_len);
+		if (!sbuf) /* we don't queue the local publish */
+			goto out;
 		struct __pending_sbuf_s *e;
 		e = malloc(sizeof(*e));
 		if (e) {
@@ -324,7 +327,6 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 			ref_get(&sbuf->ref, "pending");
 			TAILQ_INSERT_TAIL(&r->eps[ep_idx].sbuf_tq, e, entry);
 		}
-		__rate_quota_release(&ev->recv.client->rate_quota, ev->recv.data_len);
 		goto out;
 	}
 
