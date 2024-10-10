@@ -149,6 +149,14 @@ struct ldms_set {
 	struct ldms_context *notify_ctxt; /* Notify req context */
 	ldms_heap_t heap;
 	struct ldms_heap_instance heap_inst;
+
+	/*
+	 * A handle of the context of the current update operation on the set.
+	 *
+	 * curr_updt_ctxt is NULL when there is no outstanding update on the set.
+	 * ldms doesn't update the set while there is an outstanding update on the set.
+	 */
+	struct ldms_op_ctxt *curr_updt_ctxt;
 };
 
 /* Convenience macro to roundup a value to a multiple of the _s parameter */
@@ -157,7 +165,8 @@ struct ldms_set {
 extern int __ldms_xprt_push(ldms_set_t s, int push_flags);
 extern int __ldms_remote_lookup(ldms_t _x, const char *path,
 				enum ldms_lookup_flags flags,
-				ldms_lookup_cb_t cb, void *cb_arg);
+				ldms_lookup_cb_t cb, void *cb_arg,
+				struct ldms_op_ctxt *op_ctxt);
 extern int __ldms_remote_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 extern int __ldms_remote_dir_cancel(ldms_t x);
 extern struct ldms_set *
