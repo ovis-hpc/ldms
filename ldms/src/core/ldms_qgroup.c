@@ -362,6 +362,8 @@ int __qgroup_member_add(ldms_qgroup_t qg, const char *xprt_name,
 			rc = errno;
 			goto err;
 		}
+	} else {
+		m->c_auth_av_list = NULL;
 	}
 
 	/* add */
