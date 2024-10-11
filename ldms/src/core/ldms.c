@@ -1573,6 +1573,27 @@ ldms_set_t ldms_set_create(const char *instance_name,
 	int set_array_card;
 	struct ldms_set *set;
 
+	/*
+	 * Ensure the instance_name does not contain characters
+	 * that can't be encoded in a quoted string
+	 */
+	const char *s = instance_name;
+	while (*s != '\0') {
+		if (iscntrl(*s)) {
+			errno = EINVAL;
+			return NULL;
+		}
+		if (*s == '"') {
+			errno = EINVAL;
+			return NULL;
+		}
+		if (*s == '\'') {
+			errno = EINVAL;
+			return NULL;
+		}
+		s++;
+	}
+
 	if (delete_thread_init_once())
 		return NULL;
 
