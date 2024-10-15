@@ -5603,6 +5603,7 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 				(void) snprintf(reqc->line_buf, reqc->line_len,
 						"The given UID '%s' is invalid.",
 						value);
+				reqc->errcode = EINVAL;
 				goto free_regex;
 			}
 		} else {
@@ -5610,6 +5611,7 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 			if (!pwd) {
 				(void)snprintf(reqc->line_buf, reqc->line_len,
 						"Unknown user '%s'", value);
+				reqc->errcode = EINVAL;
 				goto free_regex;
 			}
 			uid = pwd->pw_uid;
@@ -5625,13 +5627,16 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 				(void) snprintf(reqc->line_buf, reqc->line_len,
 						"The given GID '%s' is invalid.",
 						value);
+				reqc->errcode = EINVAL;
 				goto free_regex;
 			}
 		} else {
 			struct group *grp = getgrnam(value);
 			if (!grp) {
+				reqc->errcode = EINVAL;
 				(void) snprintf(reqc->line_buf, reqc->line_len,
 						"Unknown group '%s'", value);
+				goto free_regex;
 			}
 			gid = grp->gr_gid;
 		}
