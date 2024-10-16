@@ -61,7 +61,17 @@
 #include "ovis_ev/ev.h"
 #include "ovis_util/util.h"
 
+const char *ovis_log_desc_pending = "(pending registration)";
+
 #include "ovis_log.h"
+
+struct ovis_log_s {
+        const char *name;
+        const char *desc; /* allocated pointer or ovis_log_desc_pending (if plugin not yet loaded) */
+        int level;
+        struct rbn rbn;
+        int ref_count;
+};
 
 static ev_worker_t logger_w;
 static ev_type_t log_type;
@@ -89,6 +99,7 @@ static int subsys_cmp(void *a, const void *b)
 
 static struct rbt subsys_tree = RBT_INITIALIZER(subsys_cmp);
 static pthread_mutex_t subsys_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+
 
 #define OVIS_DEFAULT_FILE_PERM 0600
 
@@ -178,8 +189,11 @@ int ovis_log_set_level_by_name(const char *name, int level)
 	ovis_log_t log = NULL;
 	if (name) {
 		log = __find_log(name);
-		if (!log)
-			return ENOENT;
+		if (!log) {
+			log = ovis_log_register(name, ovis_log_desc_pending);
+			if (!log)
+				return ENOMEM;
+		}
 	}
 	return ovis_log_set_level(log, level);
 }
@@ -378,8 +392,11 @@ out:
 
 static void __free_log(ovis_log_t log)
 {
+	if (!log)
+		return;
 	free((char *)log->name);
-	free((char *)log->desc);
+	if (log->desc != ovis_log_desc_pending)
+		free((char *)log->desc);
 	free(log);
 }
 
@@ -415,6 +432,15 @@ ovis_log_t ovis_log_register(const char *subsys_name, const char *desc)
 
 	log = __find_log(subsys_name);
 	if (log) {
+		if (log->desc == ovis_log_desc_pending) {
+			/* update desc if registered previously via set_level. */
+			log->desc = strdup(desc);
+			if (!log->desc) {
+				errno = ENOMEM;
+				return NULL;
+			}
+			return log;
+		}
 		errno = EEXIST;
 		return NULL;
 	}
@@ -428,7 +454,11 @@ ovis_log_t ovis_log_register(const char *subsys_name, const char *desc)
 		errno = ENOMEM;
 		goto free_log;
 	}
-	log->desc = strdup(desc);
+	if (desc == ovis_log_desc_pending) {
+		log->desc = ovis_log_desc_pending;
+	} else {
+		log->desc = strdup(desc);
+	}
 	if (!log->desc) {
 		errno = ENOMEM;
 		goto free_log;

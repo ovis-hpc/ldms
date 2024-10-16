@@ -1,0 +1,49 @@
+export plugname=dstat
+portbase=61028
+VGARGS="--trace-children=yes --track-origins=yes --leak-check=full --show-leak-kinds=all"
+vgoff
+/bin/rm -f ${LOGDIR}/log_config.[1-3]
+LDMSD_EXTRA="-L 54:${LOGDIR}/log_config.1"
+LDMSD 1
+vgoff
+LDMSD_EXTRA="-L 2:${LOGDIR}/log_config.2"
+LDMSD 2
+LDMSD_EXTRA="-L 31:${LOGDIR}/log_config.3"
+LDMSD -p prolog.sampler 3
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -v
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -v
+MESSAGE ldms_ls on host 3:
+LDMS_LS 3
+MESSAGE "trying log_status on host 1"
+echo "log_status " | ldmsctl -p 61029 -a none -x sock -h localhost
+MESSAGE "trying log_level=INFO on host 1"
+echo "log_level level=INFO" | ldmsctl -p 61029 -a none -x sock -h localhost
+MESSAGE "trying log_status on host 1"
+echo "log_status " | ldmsctl -p 61029 -a none -x sock -h localhost
+MESSAGE "trying log_status on host 3"
+echo "log_status " | ldmsctl -p 61031 -a none -x sock -h localhost
+MESSAGE "trying log_level name=sampler.bogon level=INFO on host 1"
+echo "log_level name=sampler.bogon level=info" | ldmsctl -p 61029 -a none -x sock -h localhost
+MESSAGE "trying log_level name=sampler.dstat level=DEFAULT on host 1"
+echo "log_level name=sampler.dstat level=default" | ldmsctl -p 61029 -a none -x sock -h localhost
+SLEEP 5
+MESSAGE "trying log_status"
+echo "log_status " | ldmsctl -p 61029 -a none -x sock -h localhost
+MESSAGE "trying log_level name=sampler.dstat level=default on host 1"
+echo "log_level name=sampler.dstat level=default" | ldmsctl -p 61029 -a none -x sock -h localhost
+MESSAGE "trying log_level name=store.store_csv level=ERROR on host 3"
+echo "log_level name=sampler.dstat level=ERROR" | ldmsctl -p 61031 -a none -x sock -h localhost
+SLEEP 3
+MESSAGE "trying log_status all 3"
+MESSAGE "========== on 1"
+echo "log_status " | ldmsctl -p 61029 -a none -x sock -h localhost
+MESSAGE "========== on 2"
+echo "log_status " | ldmsctl -p 61030 -a none -x sock -h localhost
+MESSAGE "========== on 3"
+echo "log_status " | ldmsctl -p 61031 -a none -x sock -h localhost
+KILL_LDMSD `seq 3`
+file_created $STOREDIR/node/$testname
+if grep 'DEBUG: sampler.dstat'  $LOGDIR/1.txt >/dev/null ; then echo "FAIL: unexpected DEBUG: sampler.dstat in $LOGDIR/1.txt"; fi
+if ! grep 'DEBUG: sampler.dstat'  $LOGDIR/2.txt >/dev/null ; then echo "FAIL: expected DEBUG: sampler.dstat in $LOGDIR/2.txt"; fi
