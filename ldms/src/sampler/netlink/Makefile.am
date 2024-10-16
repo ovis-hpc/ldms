@@ -43,3 +43,6 @@ EXTRA_DIST = $(srcdir)/input/test_slps.sh
 
 distclean-local:
 	$(RM) test_slps.* $(EXTRA_PROGRAMS)
+
+installcheck-local: test_slps $(srcdir)/input/test_slps.sh
+	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) BIN=$(DESTDIR)$(sbindir) TESTBIN=. bash $(srcdir)/input/test_slps.sh

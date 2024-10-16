@@ -30,6 +30,8 @@ set_kokkos () {
 	export KOKKOS_LDMS_RECONNECT=59
 }
 
+timeout=1m
+export ZAP_IO_MAX=8
 $BIN/ldmsd -x sock:10444:localhost -a $LDMS_AUTH -l ./test_slps.daemon.1.log  -r ./test_slps.pid.1 -v DEBUG
 $BIN/ldmsd -x sock:10445:localhost -a $LDMS_AUTH -l ./test_slps.daemon.2.log  -r ./test_slps.pid.2 -v DEBUG
 sleep 1
@@ -43,13 +45,30 @@ targs2="stream=myteststream target=sock:10445:$LDMS_AUTH:2:localhost timeout=5 d
 env | grep KOKKOS
 echo
 echo ./test_slps $targs1
-#valgrind -v --track-origins=yes --leak-check=full $TESTBIN/test_slps $targs1
-$TESTBIN/test_slps $targs1
-
+#valgrind -v --show-leak-kinds=all --trace-children=yes --track-origins=yes --leak-check=full $TESTBIN/test_slps $targs1
+timeout -s TERM -k 10 $timeout $TESTBIN/test_slps $targs1
+case $? in
+0)
+	echo no-kokkos blocking ok
+	;;
+1*)
+	echo no-kokkos blocking test timed out
+	exit 1
+	;;
+esac
 echo
 echo ./test_slps $targs2
 #valgrind -v --track-origins=yes --leak-check=full $TESTBIN/test_slps $targs2
-$TESTBIN/test_slps $targs2
+timeout -s TERM -k 10 $timeout $TESTBIN/test_slps $targs2
+case $? in
+0)
+	echo no-kokkos nonblocking ok
+	;;
+1*)
+	echo no-kokkos nonblocking test timed out
+	exit 1
+	;;
+esac
 
 set_kokkos
 
@@ -59,11 +78,29 @@ env | grep KOKKOS
 echo "./test_slps $targs1.kokkos debug_level=2"
 #valgrind -v  --tool=drd $TESTBIN/test_slps $targs1.kokkos debug_level=0
 #valgrind -v --leak-check=full --show-leak-kinds=all --show-reachable=yes $TESTBIN/test_slps $targs1.kokkos debug_level=0
-$TESTBIN/test_slps $targs1.kokkos debug_level=0
+timeout -s TERM -k 10 $timeout $TESTBIN/test_slps $targs1.kokkos debug_level=0
+case $? in
+0)
+	echo kokkos nonblocking ok
+	;;
+1*)
+	echo kokkos nonblocking test timed out
+	exit 1
+	;;
+esac
 echo
 echo ./test_slps $targs2.kokkos
 #valgrind -v --track-origins=yes --leak-check=full --show-leak-kinds=all $TESTBIN/test_slps $targs2.kokkos
-$TESTBIN/test_slps $targs2.kokkos
+timeout -s TERM -k 10 $timeout $TESTBIN/test_slps $targs2.kokkos
+case $? in
+0)
+	echo kokkos blocking ok
+	;;
+1*)
+	echo kokkos blocking test timed out
+	exit 1
+	;;
+esac
 
 kill $(cat ./test_slps.pid.1)
 kill $(cat ./test_slps.pid.2)
