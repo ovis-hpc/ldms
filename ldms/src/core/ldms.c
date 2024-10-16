@@ -3147,6 +3147,164 @@ void ldms_mval_set_double(ldms_mval_t mv, double v)
 	*(uint64_t *)&mv->v_d = __cpu_to_le64(*(uint64_t *)&v);
 }
 
+void ldms_mval_set_int(ldms_mval_t mv, enum ldms_value_type type, int64_t v)
+{
+	switch (type) {
+	case LDMS_V_S8:
+		ldms_mval_set_s8(mv, v);
+		break;
+	case LDMS_V_U8:
+		ldms_mval_set_u8(mv, v);
+		break;
+	case LDMS_V_S16:
+		ldms_mval_set_s16(mv, v);
+		break;
+	case LDMS_V_U16:
+		ldms_mval_set_u16(mv, v);
+		break;
+	case LDMS_V_S32:
+		ldms_mval_set_s32(mv, v);
+		break;
+	case LDMS_V_U32:
+		ldms_mval_set_u32(mv, v);
+		break;
+	case LDMS_V_F32:
+		ldms_mval_set_float(mv, v);
+		break;
+	case LDMS_V_S64:
+		ldms_mval_set_s64(mv, v);
+		break;
+	case LDMS_V_U64:
+		ldms_mval_set_u64(mv, v);
+		break;
+	case LDMS_V_D64:
+		ldms_mval_set_double(mv, v);
+		break;
+	default:
+		/* no-op */
+		break;
+	}
+}
+
+void ldms_mval_set_real(ldms_mval_t mv, enum ldms_value_type type, double v)
+{
+	switch (type) {
+	case LDMS_V_S8:
+		ldms_mval_set_s8(mv, v);
+		break;
+	case LDMS_V_U8:
+		ldms_mval_set_u8(mv, v);
+		break;
+	case LDMS_V_S16:
+		ldms_mval_set_s16(mv, v);
+		break;
+	case LDMS_V_U16:
+		ldms_mval_set_u16(mv, v);
+		break;
+	case LDMS_V_S32:
+		ldms_mval_set_s32(mv, v);
+		break;
+	case LDMS_V_U32:
+		ldms_mval_set_u32(mv, v);
+		break;
+	case LDMS_V_F32:
+		ldms_mval_set_float(mv, v);
+		break;
+	case LDMS_V_S64:
+		ldms_mval_set_s64(mv, v);
+		break;
+	case LDMS_V_U64:
+		ldms_mval_set_u64(mv, v);
+		break;
+	case LDMS_V_D64:
+		ldms_mval_set_double(mv, v);
+		break;
+	default:
+		/* no-op */
+		break;
+	}
+}
+
+void ldms_mval_array_set_int(ldms_mval_t mv, enum ldms_value_type array_type,
+			     int idx, int64_t v)
+{
+	switch (array_type) {
+	case LDMS_V_S8_ARRAY:
+		ldms_mval_array_set_s8(mv, idx, v);
+		break;
+	case LDMS_V_U8_ARRAY:
+		ldms_mval_array_set_u8(mv, idx, v);
+		break;
+	case LDMS_V_S16_ARRAY:
+		ldms_mval_array_set_s16(mv, idx, v);
+		break;
+	case LDMS_V_U16_ARRAY:
+		ldms_mval_array_set_u16(mv, idx, v);
+		break;
+	case LDMS_V_S32_ARRAY:
+		ldms_mval_array_set_s32(mv, idx, v);
+		break;
+	case LDMS_V_U32_ARRAY:
+		ldms_mval_array_set_u32(mv, idx, v);
+		break;
+	case LDMS_V_F32_ARRAY:
+		ldms_mval_array_set_float(mv, idx, v);
+		break;
+	case LDMS_V_S64_ARRAY:
+		ldms_mval_array_set_s64(mv, idx, v);
+		break;
+	case LDMS_V_U64_ARRAY:
+		ldms_mval_array_set_u64(mv, idx, v);
+		break;
+	case LDMS_V_D64_ARRAY:
+		ldms_mval_array_set_double(mv, idx, v);
+		break;
+	default:
+		/* no-op */
+		break;
+	}
+}
+
+void ldms_mval_array_set_real(ldms_mval_t mv, enum ldms_value_type array_type,
+			     int idx, double v)
+{
+	switch (array_type) {
+	case LDMS_V_S8_ARRAY:
+		ldms_mval_array_set_s8(mv, idx, v);
+		break;
+	case LDMS_V_U8_ARRAY:
+		ldms_mval_array_set_u8(mv, idx, v);
+		break;
+	case LDMS_V_S16_ARRAY:
+		ldms_mval_array_set_s16(mv, idx, v);
+		break;
+	case LDMS_V_U16_ARRAY:
+		ldms_mval_array_set_u16(mv, idx, v);
+		break;
+	case LDMS_V_S32_ARRAY:
+		ldms_mval_array_set_s32(mv, idx, v);
+		break;
+	case LDMS_V_U32_ARRAY:
+		ldms_mval_array_set_u32(mv, idx, v);
+		break;
+	case LDMS_V_F32_ARRAY:
+		ldms_mval_array_set_float(mv, idx, v);
+		break;
+	case LDMS_V_S64_ARRAY:
+		ldms_mval_array_set_s64(mv, idx, v);
+		break;
+	case LDMS_V_U64_ARRAY:
+		ldms_mval_array_set_u64(mv, idx, v);
+		break;
+	case LDMS_V_D64_ARRAY:
+		ldms_mval_array_set_double(mv, idx, v);
+		break;
+	default:
+		/* no-op */
+		break;
+	}
+}
+
 void ldms_mval_array_set_str(ldms_mval_t mv, const char *str, size_t count)
 {
 	strncpy(mv->a_char, str, count);
