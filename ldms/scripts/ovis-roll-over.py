@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 from __future__ import print_function
 import shlex
 from subprocess import Popen, PIPE
@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
     # Check if auth file exists
     if not os.path.isfile(args.cfg_auth_file):
-        print("The secret file specified, '{0}', does not exist.".format(args.cfg_auth_file))
+        print(f"The secret file specified, {args.cfg_auth_file}, does not exist.")
         sys.exit(1)
 
     # Tell the running daemon to start storing data to a new path
@@ -57,9 +57,9 @@ if __name__ == "__main__":
     (out, err) = p.communicate(input="config name=store_sos path={0}\nquit".format(next_path))
     if out is not None and len(out) > 0:
         print("Failure attempting communicate with the ldmsd daemon:")
-        print(out)
+        print(f"{out}")
         sys.exit(2)
-    print("LDMSD now storing into {0}".format(next_path))
+    print(f"LDMSD now storing into {next_path}")
 
     # If a yesterday link exists, destroy that tree and link yesterday to today
     yesterlink = args.src_path + "/" + args.prev_link
@@ -74,7 +74,7 @@ if __name__ == "__main__":
         except Exception as e:
             print("Failed to remove old data.")
             print("The error is:")
-            print(e)
+            print(f"{e}")
 
     #
     # Update the 'Today' link to point to the next_path
@@ -87,12 +87,12 @@ if __name__ == "__main__":
     os.symlink(next_path, today)
     os.symlink(yesterpath, yesterlink)
 
-    print("{0} now pointing to {1}".format(today, next_path))
-    print("{0} now pointing to {1}".format(yesterlink, yesterpath))
+    print(f"{today} now pointing to {next_path}")
+    print(f"{yesterlink} now pointing to {yesterpath}")
 
     # Move the contents of the previous directory to archive storage
     #   copy the container files to the destination directory
-    print("copying {0} to {1}...".format(yesterpath, args.dst_path), end='')
+    print(f"copying {yesterpath} to {args.dst_path}... ")
     shutil.copytree(yesterpath, args.dst_path+"/"+os.path.basename(yesterpath))
     print("done")
     sys.exit(0)
