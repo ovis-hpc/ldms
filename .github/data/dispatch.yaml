@@ -1,0 +1,16 @@
+ref: dispatch
+inputs:
+  TAG: LDMS_TAG
+  # vars is a long string, alternating ATTR VALUE ...
+  vars: LDMS_REPO LDMS_REPO_URL
+        LDMS_BRANCH LDMS_TAG
+        SOS_REPO https://github.com/ovis-hpc/sos
+        SOS_BRANCH SOS-6
+        MAESTRO_REPO https://github.com/ovis-hpc/maestro
+        MAESTRO_BRANCH OVIS-4.4.4
+        NUMSOS_REPO https://github.com/narategithub/numsos
+        NUMSOS_BRANCH compMinMeanMax-fix
+        SOSDBUI_REPO https://github.com/nick-enoent/sosdb-ui
+        SOSDBUI_BRANCH 500069d5388fc8d68fe9ae0d6b847c8ce1da95c0
+        SOSDBGRAFANA_REPO https://github.com/nick-enoent/sosdb-grafana
+        SOSDBGRAFANA_BRANCH e5eb5347f3864e2e3447e996cdbe28b8e74b2bb6
