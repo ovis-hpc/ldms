@@ -651,30 +651,25 @@ static int __log(ovis_log_t log, int level, char *msg,
 
 	int rc;
 	FILE *f;
+	char log_time[200] = "";
+
 	if (!log_fp)
 		f = stdout;
 	else
 		f = log_fp;
+
 	if (default_modes & OVIS_LOG_M_TS) {
-		rc = fprintf(f, "%lu.%06lu:", tv->tv_sec, tv->tv_usec);
+		snprintf(log_time, 199, "%lu.%06lu:", tv->tv_sec, tv->tv_usec);
 	} else if (default_modes & OVIS_LOG_M_DT) {
-		char dtsz[200];
-		if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
-			rc = fprintf(f, "%s:", dtsz);
-		else
-			rc = -EINVAL; /* not expected with gnu libc */
-	} else {
-		rc = 0;
+		strftime(log_time, 199, "%a %b %d %H:%M:%S %Y", tm);
 	}
-	if (rc < 0)
-		return rc;
 
 	/* Print the level name */
-	rc = fprintf(f, "%9s:", ((level == OVIS_LALWAYS)?"":ovis_loglevel_names[level]));
-	if (rc < 0)
-		return rc;
-
-	rc = fprintf(f, " %s: %s", log->name, msg);
+	rc = fprintf(f, "%s: %-10s: %s: %s",
+			log_time,
+			((level == OVIS_LALWAYS)?"":ovis_loglevel_names[level]),
+			log->name,
+			msg);
 	if (rc < 0)
 		return rc;
 	return 0;
@@ -945,6 +940,8 @@ int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap)
 		/* No workers, so directly log to the file. */
 		rc = __log(log, level, msg, &tv, &tm);
 		free(msg);
+		if (log_fp != OVIS_LOG_SYSLOG)
+			fflush(log_fp);
 		goto out;
 	}
 

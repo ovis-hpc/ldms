@@ -297,19 +297,17 @@ int __log(enum ldmsd_loglevel level, char *msg, struct timeval *tv, struct tm *t
 		return 0;
 	}
 
+	char log_time[200];
 	if (log_time_sec) {
-		fprintf(log_fp, "%lu.%06lu: ", tv->tv_sec, tv->tv_usec);
+		snprintf(log_time, 199, "%lu.%06lu: ", tv->tv_sec, tv->tv_usec);
 	} else {
-		char dtsz[200];
-		if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
-			fprintf(log_fp, "%s: ", dtsz);
+		strftime(log_time, 199, "%a %b %d %H:%M:%S %Y", tm);
 	}
 
-	if (level < LDMSD_LALL) {
-		fprintf(log_fp, "%-10s: ", ldmsd_loglevel_names[level]);
-	}
-
-	fprintf(log_fp, "%s", msg);
+	fprintf(log_fp, "%s: %-10s: %s",
+			log_time,
+			((level < LDMSD_LALL)?ldmsd_loglevel_names[level]:""),
+			msg);
 
 	return 0;
 }
@@ -2300,6 +2298,7 @@ int main(int argc, char *argv[])
 
 	/* Initialize LDMS */
 	umask(0);
+	ovis_log_init(NULL, ovis_log_str_to_level("ERROR"), 0);
 	if (!auth_name)
 		auth_name = DEFAULT_AUTH_NAME;
 	if (-1 == banner)
