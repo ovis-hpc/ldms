@@ -121,7 +121,7 @@ static struct ldmsd_stream_publisher_s *__new_publisher(const char *name)
 	p->p_name = strdup(name);
 	if (!p->p_name)
 		goto err;
-	rbn_init(&p->p_ent, (char*)name);
+	rbn_init(&p->p_ent, (char*)p->p_name);
 	return p;
 err:
 	__free_publisher(p);
