@@ -75,6 +75,9 @@
 #include "ldmsd_stream.h"
 #include "ldms_xprt.h"
 
+
+#include "ovis_log/ovis_log.h"
+
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 /*
  * This file implements an LDMSD control protocol. The protocol is
@@ -5704,12 +5707,18 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
 	__dlog(DLOG_CFGOK, "loglevel level=%s%s\n", level_s,
 		is_test ? " test" : "");
 	if (is_test) {
-		ldmsd_log(LDMSD_LDEBUG, "TEST DEBUG\n");
-		ldmsd_log(LDMSD_LINFO, "TEST INFO\n");
-		ldmsd_log(LDMSD_LWARNING, "TEST WARNING\n");
-		ldmsd_log(LDMSD_LERROR, "TEST ERROR\n");
-		ldmsd_log(LDMSD_LCRITICAL, "TEST CRITICAL\n");
-		ldmsd_log(LDMSD_LALL, "TEST ALWAYS\n");
+		ldmsd_log(LDMSD_LDEBUG, "ldmsd_log(TEST DEBUG)\n");
+		ldmsd_log(LDMSD_LINFO, "ldmsd_log(TEST INFO)\n");
+		ldmsd_log(LDMSD_LWARNING, "ldmsd_log(TEST WARNING)\n");
+		ldmsd_log(LDMSD_LERROR, "ldmsd_log(TEST ERROR)\n");
+		ldmsd_log(LDMSD_LCRITICAL, "ldmsd_log(TEST CRITICAL)\n");
+		ldmsd_log(LDMSD_LALL, "ldmsd_log(TEST ALWAYS)\n");
+
+		ovis_log(NULL, OVIS_LDEBUG, "ovis_log(TEST DEBUG)\n");
+		ovis_log(NULL, OVIS_LINFO, "ovis_log(TEST INFO)\n");
+		ovis_log(NULL, OVIS_LWARNING, "ovis_log(TEST WARNING)\n");
+		ovis_log(NULL, OVIS_LERROR, "ovis_log(TEST ERROR)\n");
+		ovis_log(NULL, OVIS_LCRITICAL, "ovis_log(TEST CRITICAL)\n");
 	}
 
 out:

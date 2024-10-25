@@ -85,6 +85,7 @@
 #include "kldms_req.h"
 
 #include "ovis_event/ovis_event.h"
+#include "ovis_log/ovis_log.h"
 
 #ifdef DEBUG
 #include <mcheck.h>
@@ -219,6 +220,14 @@ int ldmsd_loglevel_set(char *verbose_level)
 	if (level < 0)
 		return level;
 	log_level_thr = level;
+
+	/*
+	 * Set ovis_log's log masks
+	 * The code is added to handle the situation of
+	 * the mixed use of ldmsd_log() and ovis_log().
+	 */
+	level = ovis_log_str_to_level(verbose_level);
+	ovis_log_set_level(NULL, level);
 	return 0;
 }
 
