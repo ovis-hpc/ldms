@@ -76,7 +76,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'udata_regex': {'req_attr': ['instance', 'regex', 'base'],
                                       'opt_attr': ['incr']},
                       'version': {'req_attr': [], 'opt_attr': []},
-                      'loglevel': {'req_attr': ['level'],},
+                      'loglevel': {'req_attr': ['level'], 'opt_attr' : ['test']},
                       'include': {'req_attr': ['path'] },
                       'env': {'req_attr': []},
                       'logrotate': {'req_attr': [], 'opt_attr': []},
@@ -1722,7 +1722,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def loglevel(self, level):
+    def loglevel(self, level, is_test = False):
         """
         Change the verbosity level of ldmsd
 
@@ -1733,8 +1733,13 @@ class Communicator(object):
         - status is an errno from the errno module
         - data is an error message if status !=0 or None
         """
+        if is_test:
+            __test = "true"
+        else:
+            __test = "false"
         req = LDMSD_Request(command_id=LDMSD_Request.VERBOSITY_CHANGE,
-                            attrs=[LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.LEVEL, value=level)])
+                            attrs=[LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.LEVEL, value=level),
+                                   LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TEST, value=__test)])
         try:
             req.send(self)
             resp = req.receive(self)

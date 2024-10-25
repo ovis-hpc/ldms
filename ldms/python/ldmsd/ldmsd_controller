@@ -1367,7 +1367,7 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         arg = self.handle_args('loglevel', arg)
         if arg:
-            rc, msg = self.comm.loglevel(arg['level'])
+            rc, msg = self.comm.loglevel(arg['level'], arg['test'])
             if rc:
                 print(f'Error changing log level to arg["level"]: {msg}')
 
