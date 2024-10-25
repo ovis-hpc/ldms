@@ -510,7 +510,7 @@ private:
 				oss << " xprt=" << t.xprt;
 				oss << " auth=" << t.auth;
 				oss << " port=" << t.port;
-				oss << " interval=" << t.retry;
+				oss << " reconnect=" << t.retry;
 				oss << endl;
 				oss << "prdcr_start name=" << t.producer;
 				oss << endl;
@@ -618,7 +618,7 @@ public:
 						oss << " xprt=" << t.xprt;
 						oss << " auth=" << t.auth;
 						oss << " port=" << t.port;
-						oss << " interval=" << t.retry;
+						oss << " reconnect=" << t.retry;
 						oss << endl;
 						oss << "prdcr_start name=" << t.producer;
 						oss << endl;

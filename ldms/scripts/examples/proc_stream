@@ -60,9 +60,9 @@ EOF
 rm -f $LOGDIR/json*.log
 rm -rf $STOREDIR
 mkdir -p $STOREDIR
-# valgrind -v --tool=drd --log-file=$LOGDIR/vg.netlink.txt ${BUILDDIR}/sbin/ldms-netlink-notifier --port=61071 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
+# valgrind -v --tool=drd --log-file=$LOGDIR/vg.netlink.txt ${BUILDDIR}/sbin/ldms-netlink-notifier --port=61071 --auth=none --reconnect_interval=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
 # uncomment next one to test duplicate handling
-#${BUILDDIR}/sbin/ldms-netlink-notifier --port=61071 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json2.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
+#${BUILDDIR}/sbin/ldms-netlink-notifier --port=61071 --auth=none --reconnect_interval=1 -D 30 -r -j $LOGDIR/json2.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
 VGARGS="--tool=drd --suppressions=/scratch1/baallan/ovis/ldms/scripts/examples/linux_proc_sampler.drd.supp"
 VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite --time-stamp=yes --keep-debuginfo=yes"
 DAEMONS $(seq 3)
@@ -75,7 +75,7 @@ LDMSD 1
 vgoff
 LDMSD 3
 vgoff
-${BUILDDIR}/sbin/ldms-netlink-notifier --port=61071 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
+${BUILDDIR}/sbin/ldms-netlink-notifier --port=61071 --auth=none --reconnect_interval=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
 SLEEP 2
 MESSAGE ldms_ls on host 1:
 LDMS_LS 1 -v
