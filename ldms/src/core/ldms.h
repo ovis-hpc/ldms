@@ -3687,6 +3687,27 @@ double ldms_mval_array_get_double(ldms_mval_t mv, int idx);
 struct ldms_timestamp ldms_mval_array_get_ts(ldms_mval_t mv, int idx);
 
 /**
+ * \brief Convert ldms_mval_t mv of type \c type to respective data type
+ *
+ * \param mv   The metric value handle
+ * \param type The type of the metric value handle
+ * \param idx  If \c type is ARRAY, \c idx is the index of the value.
+ *             Otherwise, \c idx is ignored.
+ */
+char ldms_mval_as_char(ldms_mval_t mv, enum ldms_value_type type, int idx);
+uint8_t ldms_mval_as_u8(ldms_mval_t mv, enum ldms_value_type type, int idx);
+int8_t ldms_mval_as_s8(ldms_mval_t mv, enum ldms_value_type type, int idx);
+uint16_t ldms_mval_as_u16(ldms_mval_t mv, enum ldms_value_type type, int idx);
+int16_t ldms_mval_as_s16(ldms_mval_t mv, enum ldms_value_type type, int idx);
+uint32_t ldms_mval_as_u32(ldms_mval_t mv, enum ldms_value_type type, int idx);
+int32_t ldms_mval_as_s32(ldms_mval_t mv, enum ldms_value_type type, int idx);
+uint64_t ldms_mval_as_u64(ldms_mval_t mv, enum ldms_value_type type, int idx);
+int64_t ldms_mval_as_s64(ldms_mval_t mv, enum ldms_value_type type, int idx);
+float ldms_mval_as_float(ldms_mval_t mv, enum ldms_value_type type, int idx);
+double ldms_mval_as_double(ldms_mval_t mv, enum ldms_value_type type, int idx);
+struct ldms_timestamp ldms_mval_as_timestamp(ldms_mval_t mv, enum ldms_value_type type, int idx);
+
+/**
  * \brief Append a new value to a list
  *
  * Append a new value entry to a list metric. The list handle \c lh must be
