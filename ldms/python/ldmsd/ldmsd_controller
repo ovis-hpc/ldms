@@ -1967,6 +1967,9 @@ class LdmsdCmdParser(cmd.Cmd):
         if not msg:
             raise RuntimeError("no response")
         obj = fmt_status(msg)
+        if obj is None:
+            print(msg)
+            return
         print(f"{'stream':15} {'ctxt':15} {'cb_fn':70}")
         print(f"{'-'*15} {'-'*15} {'-'*70}")
         for s in obj['streams']:
