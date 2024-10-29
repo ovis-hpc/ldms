@@ -2292,21 +2292,17 @@ int main(int argc, char *argv[])
 	TAILQ_INIT(&yamlfile_list);
 	TAILQ_INIT(&cfgfile_list);
 	struct ldmsd_str_ent *cpath;
-	struct ldmsd_str_ent *ypath;
-	struct ldmsd_str_ent *config_str;
+	struct ldmsd_str_ent *conf_str;
 	char *resp;
 	while ((op = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
 		switch (op) {
 		case 'y':
-			ypath = ldmsd_str_ent_new(optarg);
-			TAILQ_INSERT_TAIL(&yamlfile_list, ypath, entry);
-			while ((ypath = TAILQ_FIRST(&yamlfile_list))) {
-				resp = process_yaml_config_file(ypath->str, myname);
-				TAILQ_REMOVE(&yamlfile_list, ypath, entry);
-				ldmsd_str_ent_free(ypath);
-			}
-			config_str = ldmsd_str_ent_new(resp);
-			TAILQ_INSERT_TAIL(&yamlfile_list, config_str, entry);
+			resp = process_yaml_config_file(optarg, myname);
+			if (!resp)
+				cleanup(22, "");
+			conf_str = ldmsd_str_ent_new(resp);
+			free(resp);
+			TAILQ_INSERT_TAIL(&yamlfile_list, conf_str, entry);
 			break;
 		case 'c':
 			cpath = ldmsd_str_ent_new(optarg);
@@ -2316,19 +2312,17 @@ int main(int argc, char *argv[])
 	}
 
 	int lln;
-	while ((config_str = TAILQ_FIRST(&yamlfile_list))) {
+	TAILQ_FOREACH(conf_str, &yamlfile_list, entry) {
 		lln = -1;
-		ret = process_config_str(config_str->str, &lln, 1);
+		ret = process_config_str(conf_str->str, &lln, 1);
 		if (ret) {
 			char errstr[128];
 			snprintf(errstr, sizeof(errstr),
 				 "Error %d processing configuration file '%s'",
-				 ret, config_str->str);
+				 ret, conf_str->str);
 			ldmsd_str_list_destroy(&yamlfile_list);
 			cleanup(ret, errstr);
 		}
-		TAILQ_REMOVE(&yamlfile_list, config_str, entry);
-		ldmsd_str_ent_free(config_str);
 	}
 	while ((cpath = TAILQ_FIRST(&cfgfile_list))) {
 		lln = -1;
@@ -2525,15 +2519,20 @@ int main(int argc, char *argv[])
 			break;
 		case 'y':
 			has_config_file = 1;
-			ret = process_config_str(resp, &lln, 1);
-			if (ret) {
-				char errstr[128];
-				snprintf(errstr, sizeof(errstr),
-					 "Error %d processing configuration string '%s'",
-					 ret, resp);
-				cleanup(ret, errstr);
+			while ((conf_str = TAILQ_FIRST(&yamlfile_list))) {
+				lln = -1;
+				ret = process_config_str(conf_str->str, &lln, 1);
+				if (ret) {
+					char errstr[128];
+					snprintf(errstr, sizeof(errstr),
+						 "Error %d processing configuration file '%s'",
+						 ret, conf_str->str);
+					ldmsd_str_list_destroy(&yamlfile_list);
+					cleanup(ret, errstr);
+				}
+				TAILQ_REMOVE(&yamlfile_list, conf_str, entry);
+				ldmsd_str_ent_free(conf_str);
 			}
-			free(resp);
 			break;
 		}
 	}

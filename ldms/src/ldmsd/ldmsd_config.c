@@ -773,10 +773,8 @@ cleanup:
 
 static
 int __process_config_str(char *cfg_str, int *lno, int trust,
-		int (*req_filter)(ldmsd_cfg_xprt_t, ldmsd_req_hdr_t, void *),
-		void *ctxt)
+				req_filter_fn req_filter, void *ctxt)
 {
-	static uint32_t msg_no = 0;
 	int rc = 0;
 	int lineno = 0;
 	char *buff = NULL;
@@ -800,7 +798,6 @@ int __process_config_str(char *cfg_str, int *lno, int trust,
 	}
 	line_sz = LDMSD_CFG_FILE_XPRT_MAX_REC;
 	xprt.type = LDMSD_CFG_TYPE_FILE;
-	xprt.file.cfgfile_id = __get_cfgfile_id();
 	xprt.send_fn = log_response_fn;
 	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
 	xprt.trust = trust;
@@ -887,11 +884,11 @@ parse:
 		}
 	}
 
-	req_array = ldmsd_parse_config_str(line, msg_no, xprt.max_msg, ldmsd_log);
+	req_array = ldmsd_parse_config_str(line, lineno, xprt.max_msg, ldmsd_log);
 	if (!req_array) {
 		rc = errno;
-		ldmsd_log(LDMSD_LERROR, "Process config string error at line %d "
-				"(%s). %s\n", lineno, cfg_str, STRERROR(rc));
+		ldmsd_log(LDMSD_LERROR, "Process config string error in line\n %s\n "
+				". %s\n", line, STRERROR(rc));
 		goto cleanup;
 	}
 
@@ -920,27 +917,7 @@ parse:
 	if (xprt.max_msg < ntohl(request->rec_len))
 		xprt.max_msg = ntohl(request->rec_len);
 
-	if (req_filter) {
-		rc = req_filter(&xprt, request, ctxt);
-		/* rc = 0, filter OK */
-		if (rc == 0) {
-			__dlog(DLOG_CFGOK, "# deferring line %d (%s): %s\n",
-				lineno, cfg_str, line);
-			goto next_req;
-		}
-		/* rc == errno */
-		if (rc > 0) {
-			ldmsd_log(LDMSD_LERROR,
-				  "Configuration error at "
-				  "line %d (%s)\n", lineno, cfg_str);
-			goto cleanup;
-		} else {
-			/* rc < 0, filter not applied */
-			rc = 0;
-		}
-	}
-
-	rc = ldmsd_process_config_request(&xprt, request);
+	rc = ldmsd_process_config_request(&xprt, request, req_filter, ctxt);
 	if (rc || xprt.rsp_err) {
 		if (!rc)
 			rc = xprt.rsp_err;
@@ -951,13 +928,10 @@ parse:
 next_req:
 	free(request);
 	request = NULL;
-	msg_no += 1;
 	off = 0;
 	goto next_line;
 
 cleanup:
-	if (cfg_str)
-		free(cfg_str);
 	if (buff)
 		free(buff);
 	if (line)
@@ -975,29 +949,34 @@ char *__process_yaml_config_file(const char *path, const char *dname)
 	FILE *fp;
 	char command[256];
 	char cstr[256];
-        char *cfg_str = malloc(256);
+        char *cfg_str = malloc(512);
+	*cfg_str = '\0';
 	snprintf(command, sizeof(command), "ldmsd_yaml_parser --ldms_config %s --daemon_name %s 2>&1", path, dname);
 	fp = popen(command, "r");
 	if (!fp)
 		printf("Error in yaml_parser\n");
-	int lineno = 0;
 	size_t char_cnt = 0;
+	int status;
 	while (fgets(cstr, sizeof(cstr), fp) != NULL) {
-		printf("%s", cstr);
-		char_cnt += sizeof(cstr);
-		if (char_cnt >= 1024)
-			cfg_str = (char *)realloc(cfg_str, char_cnt - 256);
-		if (lineno)
-			strcat(cfg_str, cstr);
-		else
-			snprintf(cfg_str, sizeof(cstr), cstr);
-		lineno++;
+		char_cnt += strlen(cstr);
+		if (char_cnt > 512) {
+			cfg_str = (char *)realloc(cfg_str, char_cnt+1);
+			if (cfg_str == NULL) {
+				goto err;
+			}
+		}
+		strcat(cfg_str, cstr);
 	}
-	pclose(fp);
-	char *config_str = strdup(cfg_str);
-	if (cfg_str)
+	status = pclose(fp);
+	if (status)
+		goto err;
+	return cfg_str;
+err:
+	if (cfg_str) {
+		printf("ERROR: %s", cfg_str);
 		free(cfg_str);
-	return config_str;
+	}
+	return NULL;
 }
 
 int __req_deferred_start_regex(ldmsd_req_ctxt_t reqc, ldmsd_cfgobj_type_t type)
@@ -1234,6 +1213,7 @@ int process_config_str(char *config_str, int *lno, int trust)
 	char *cfg_str = strdup(config_str);
 	rc = __process_config_str(cfg_str, lno, trust,
 				  __req_filter_failover, &ldmsd_use_failover);
+	free(cfg_str);
 	return rc;
 }
 

@@ -1,4 +1,4 @@
-import os
+import os, sys
 import errno
 import json
 import subprocess
@@ -81,17 +81,20 @@ def check_intrvl_str(interval_s):
     if type(interval_s) == int or type(interval_s) == float:
         return interval_s
     if type(interval_s) != str:
-        raise ValueError(f"{error_str}")
+        print(f"{error_str}")
+        sys.exit(22)
     interval_s = interval_s.lower()
     unit = next((unit for unit in unit_strs if unit in interval_s), None)
     if unit:
         if interval_s.split(unit)[1] != '':
-            raise ValueError(f"{error_str}")
+            print(f"{error_str}")
+            sys.exit(22)
         ival_s = interval_s.split(unit)[0]
         try:
             ival_s = float(ival_s) * unit_strs[unit]
         except Exception as e:
-            raise ValueError(f"{interval_s} is not a valid time-interval string")
+            print(f"{interval_s} is not a valid time-interval string")
+            sys.exit(22)
     else:
         ival_s = interval_s
     return int(ival_s)
@@ -117,8 +120,9 @@ def check_required(attr_list, container, container_name):
     """Verify that each name in attr_list is in the container"""
     for name in attr_list:
         if name not in container:
-            raise ValueError("The '{0}' attribute is required in a {1}".
-                             format(name, container_name))
+            print(f"The '{0}' attribute is required in a {1}".
+                  format(name, container_name))
+            sys.exit(22)
 
 def NUM_STR(obj):
     return str(obj) if type(obj) in [ int, float ] else obj
@@ -142,16 +146,19 @@ def check_auth(auth_spec):
 
 def check_plugin_config(plugn, plugin_spec):
     if plugn not in plugin_spec:
-        raise ValueError(f'Configuration for plugin instance "{plugn}"\n'\
-                         f'is not defined in the top level "plugins" dictionary"')
+        print(f'Configuration for plugin instance "{plugn}"\n'\
+              f'is not defined in the top level "plugins" dictionary"')
+        sys.exit(22)
     plugin = plugin_spec[plugn]
     check_required([ 'name' ], plugin, f'"plugin" entry. Error in "'+ plugn +'" configuration')
     check_required(['config'], plugin, '"plugin" entry')
     if type(plugin['config']) is not list:
-        raise ValueError('"config" must be a list of configuration commands')
+        print('"config" must be a list of configuration commands')
+        sys.exit(22)
     for cfg in plugin['config']:
         if type(cfg) is not dict and type(cfg) is not str:
-            raise ValueError('"config" list members must be a dictionary or a string')
+            print('"config" list members must be a dictionary or a string')
+            sys.exit(22)
     return plugin
 
 def parse_to_cfg_str(cfg_obj):
@@ -284,6 +291,57 @@ class YamlCfg(object):
                 sys.exit()
         return ep_dict
 
+    def build_advertisers(self, spec):
+        if 'advertise' not in spec:
+            return
+        ad_grp = spec['advertise']
+        check_required(['names', 'hosts', 'xprt', 'port', 'reconnect'],
+                       ad_grp, '"advertise" entry')
+        names = expand_names(ad_grp['names'])
+        dmns = expand_names(spec['daemons'])
+        if len(names) != len(dmns):
+            print(f'Please provide a regex for "names" that is equal to the number of daemons'\
+                   'to advertise from\n')
+            sys.exit()
+        auth_name, plugin, auth_opt = check_auth(ad_grp)
+        perm = check_opt('perm', ad_grp)
+        rail = check_opt('rail', ad_grp)
+        credits = check_opt('credits', ad_grp)
+        rx_rate = check_opt('rx_rate', ad_grp)
+        ad_list = expand_names(spec['daemons'])
+        self.advertisers[spec['daemons']] = {'names'     : ad_grp['names'],
+                                             'hosts'     : ad_grp['hosts'],
+                                             'xprt'      : ad_grp['xprt'],
+                                             'port'      : ad_grp['port'],
+                                             'reconnect' : ad_grp['reconnect'],
+                                             'auth'      : { 'name' : auth_name,
+                                                             'conf' : auth_opt,
+                                                             'plugin' : plugin },
+                                             'perm'      : perm,
+                                             'rail'      : rail,
+                                             'credits'   : credits,
+                                             'rx_rate'   : rx_rate,
+                                             'ad_list'   : ad_list
+        }
+
+    def build_prdcr_listeners(self, spec):
+        if 'prdcr_listen' not in spec:
+            return
+        for pl in spec['prdcr_listen']:
+            check_required(['name'], pl,
+                           '"prdcr_listen" entry')
+            node_listen = {}
+            regex = check_opt('regex', pl)
+            rail = check_opt('rail', pl)
+            credits = check_opt('credits', pl)
+            rx_rate = check_opt('rx_rate', pl)
+            node_listen[pl['name']] = { 'rail'      : rail,
+                                        'credits'   : credits,
+                                        'rx_rate'   : rx_rate,
+                                        'regex'     : regex
+            }
+            self.prdcr_listeners[spec['daemons']] = node_listen
+
     def build_aggregators(self, config):
         aggregators = {}
         if 'aggregators' not in config:
@@ -291,13 +349,13 @@ class YamlCfg(object):
         agg_conf = config['aggregators']
         if type(agg_conf) is not list:
             print(f'{LDMS_YAML_ERR}')
-            print(f'aggregators {LIST_ERR}')
-            print(f'e.g. aggregators:')
-            print(f'       - daemons: "l1-aggregators"')
-            print(f'         peers :')
-            print(f'           - daemons : "samplers"')
-            print(f'             ...     :  ...')
-            return aggregators
+            print(f' aggregators {LIST_ERR}\n')
+            print(f'e.g. aggregators:\n')
+            print(f'       - daemons: "l1-aggregators"\n')
+            print(f'         peers :\n')
+            print(f'           - daemons : "samplers"\n')
+            print(f'             ...     :  ...\n')
+            sys.exit(22)
         for agg_spec in agg_conf:
             check_required([ 'daemons' ],
                            agg_spec, '"aggregators" entry')
@@ -314,7 +372,8 @@ class YamlCfg(object):
                 if group == daemons['names']:
                     daemons_ = daemons
             if daemons_ is None:
-                raise ValueError(f"No daemons matched matched daemon key {group}")
+                print(f"No daemons matched matched daemon key {group}")
+                sys.exit(22)
             if group not in aggregators:
                 aggregators[group] = {}
             subscribe = check_opt('subscribe', agg_spec)
@@ -323,6 +382,8 @@ class YamlCfg(object):
                     check_required([ 'stream', 'regex' ], stream, "stream specification")
             for name in names:
                 aggregators[group][name] = { 'state' : 'stopped' } # 'running', 'error'
+                self.build_advertisers(agg_spec)
+                self.build_prdcr_listeners(agg_spec)
                 if subscribe:
                     aggregators[group][name]['subscribe'] = subscribe
                 if plugins:
@@ -345,7 +406,7 @@ class YamlCfg(object):
                 print(f'       - daemons: "samplers"')
                 print(f'         endpoints : "sampler-endpoints"')
                 print(f'         ...       : ...')
-                continue
+                sys.exit(22)
             for prod in agg['peers']:
                 check_required([ 'endpoints', 'updaters',
                                  'reconnect', 'type', ],
@@ -394,6 +455,7 @@ class YamlCfg(object):
                     except:
                         print(f'Error building producer config:\n'\
                               f'Please ensure "endpoints" is configured to the correct number of ports specified.')
+                        sys.exit(22)
         return producers
 
     def build_updaters(self, config):
@@ -416,7 +478,7 @@ class YamlCfg(object):
                     print(f'         sets     :')
                     print(f'           - regex : ".*"')
                     print(f'             field : inst')
-                    continue
+                    sys.exit(22)
                 for updtr_spec in prod['updaters']:
                     check_required([ 'interval', 'sets', ],
                                    updtr_spec, '"updaters" entry')
@@ -426,8 +488,9 @@ class YamlCfg(object):
                     grp_updaters = updaters[group]
                     updtr_name = f'updtr_{updtr_cnt}'
                     if updtr_name in grp_updaters:
-                        raise ValueError(f"Duplicate updater name '{updtr_name}''. "\
-                                         f"An updater name must be unique within the group")
+                        print(f"Duplicate updater name '{updtr_name}''. "\
+                              f"An updater name must be unique within the group")
+                        sys.exit(22)
                     updtr = {
                         'name'      : updtr_name,
                         'interval'  : check_intrvl_str(updtr_spec['interval']),
@@ -461,7 +524,7 @@ class YamlCfg(object):
             print(f'         daemons   : "l1-aggregators"')
             print(f'         container : ldms_data')
             print(f'         ...       : ...')
-            return None
+            sys.exit(22)
         for store in config['stores']:
             store_spec = config['stores'][store]
             store_spec['name'] = store
@@ -474,15 +537,17 @@ class YamlCfg(object):
             schema = check_opt('schema', store_spec)
             regex = check_opt('regex', store_spec)
             if decomp and not schema and not regex:
-                raise ValueError("Decomposition plugin configuration requires either"
-                                 " 'schema' or 'regex' attribute'")
+                print("Decomposition plugin configuration requires either"
+                      " 'schema' or 'regex' attribute'")
+                sys.exit(22)
             group = store_spec['daemons']
             if group not in stores:
                 stores[group] = {}
             grp_stores = stores[group]
             if store in grp_stores:
-                raise ValueError(f"Duplicate store name '{store}'. "
-                            "A store name must be unique within the group")
+                print(f"Duplicate store name '{store}'. "
+                      f"A store name must be unique within the group")
+                sys.exit(22)
             check_opt('flush', store_spec)
             check_plugin_config(store_spec['plugin'], self.plugins)
             grp_stores[store] = store_spec
@@ -511,10 +576,11 @@ class YamlCfg(object):
             print(f'                 component_id : "10001"')
             print(f'                 producer : "node-1"')
             print(f'                 perm : "0777"')
-            return None
+            sys.exit(22)
         for smplr_spec in config['samplers']:
             check_required([ 'daemons', 'plugins' ],
                            smplr_spec, '"sampler" entry')
+            self.build_advertisers(smplr_spec)
             for plugin in smplr_spec['plugins']:
                 check_plugin_config(plugin, self.plugins)
             smplrs[smplr_spec['daemons']] = smplr_spec
@@ -536,13 +602,14 @@ class YamlCfg(object):
             print(f'         name      : meminfo')
             print(f'         interval  : 1.0s')
             print(f'         config    : [ { schema : meminfo }, { ... : ... } ]')
-
+            sys.exit(22)
         plugins = {}
         plugn_spec = config['plugins']
         for plugn in plugn_spec:
             if plugn in plugins:
-                raise ValueError(f'Duplicate plugin name "{plugin_name}". '
-                                 f'Plugin must be unique within a group.')
+                print(f'Duplicate plugin name "{plugin_name}". '
+                      f'Plugin must be unique within a group.')
+                sys.exit(22)
             check_plugin_config(plugn, plugn_spec)
             plugins[plugn] = plugn_spec[plugn]
         return plugins
@@ -555,6 +622,8 @@ class YamlCfg(object):
         self.name = name
         self.args = args
         self.cluster_config = cluster_config
+        self.advertisers = {}
+        self.prdcr_listeners = {}
         self.daemons = self.build_daemons(cluster_config)
         self.plugins = self.build_plugins(cluster_config)
         self.aggregators = self.build_aggregators(cluster_config)
@@ -589,6 +658,38 @@ class YamlCfg(object):
         start_list.append(f'{local_path}/{dmn}.log')
         start_list.append(f'-F')
         return start_list
+
+    def write_advertisers(self, dstr, dmn_grp, dname, auth_list):
+        if dmn_grp not in self.advertisers:
+            return dstr, auth_list
+        ad_grp = self.advertisers[dmn_grp]
+        for host in expand_names(self.advertisers[dmn_grp]['hosts']):
+            auth, plugin, auth_opt = check_auth(ad_grp)
+            if auth not in auth_list:
+                auth_list[auth] = { 'conf' : auth_opt }
+                dstr += f'auth_add name={auth}'
+                dstr = self.write_opt_attr(dstr, 'plugin', plugin, endline=False)
+                dstr = self.write_opt_attr(dstr, 'conf', auth_opt)
+            dstr += f'advertiser_add name={dname}-{host} host={host} xprt={ad_grp["xprt"]} port={ad_grp["port"]} '\
+                    f'reconnect={ad_grp["reconnect"]}'
+            perm = check_opt('perm', ad_grp)
+            dstr = self.write_opt_attr(dstr, 'auth', auth, endline=False)
+            dstr = self.write_opt_attr(dstr, 'perm', perm, endline=True)
+            dstr += f'advertiser_start name={dname}-{host}\n'
+        return dstr, auth_list
+
+    def write_prdcr_listeners(self, dstr, dmn_grp):
+        if dmn_grp not in self.prdcr_listeners:
+            return dstr
+        plisten = self.prdcr_listeners[dmn_grp]
+        for pl in plisten:
+            dstr += f'prdcr_listen_add name={pl} reconnect={plisten[pl]["reconnect"]}'
+            dstart = check_opt('disable_start', plisten[pl])
+            regex = check_opt('regex', plisten[pl])
+            dstr = self.write_opt_attr(dstr, 'disable_start', dstart, endline=False)
+            dstr = self.write_opt_attr(dstr, 'regex', regex, endline=True)
+            dstr += f'prdcr_listen_start name={pl}\n'
+        return dstr
 
     def write_listeners(self, dstr, dmn_grp, dmn_name, auth_list={}):
         for endp in self.daemons[dmn_grp][dmn_name]['endpoints']:
@@ -633,8 +734,8 @@ class YamlCfg(object):
                     auth_list[auth] = { 'conf' : auth_opt }
                     plugin = check_opt('plugin', self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep]['auth'])
                     if plugin is None:
-                        print(f'Please specify auth plugin type for producer "{producer["daemon"]}" with auth name "{auth}"\n'\
-                               'configuration file generation will continue, but auth will likely be denied.\n')
+                        #print(f'Please specify auth plugin type for producer "{producer["daemon"]}" with auth name "{auth}"\n'\
+                        #       'configuration file generation will continue, but auth will likely be denied.\n')
                         plugin = auth
                     dstr += f'auth_add name={auth} plugin={plugin}'
                     dstr = self.write_opt_attr(dstr, 'conf', auth_list[auth]['conf'])
@@ -661,7 +762,7 @@ class YamlCfg(object):
                     dstr += f'prdcr_start_regex regex={producer["regex"]}\n'
                 if not regex:
                     dstr += f'prdcr_start_regex regex=.*\n'
-            return dstr, auth_list
+        return dstr, auth_list
 
     def write_env(self, dstr, grp, dname):
         if grp not in self.daemons:
@@ -671,7 +772,7 @@ class YamlCfg(object):
         if check_opt('environment', self.daemons[grp][dname]):
             if type(self.daemons[grp][dname]['environment']) is not dict:
                 print(f'Error: Environment variables must be a yaml key:value dictionary\n')
-                sys.exit()
+                sys.exit(22)
             for attr in self.daemons[grp][dname]['environment']:
                 dstr += f'env {attr}={self.daemons[grp][dname]["environment"]}\n'
         return dstr
@@ -681,6 +782,7 @@ class YamlCfg(object):
             return dstr
         dstr = self.write_env(dstr, smplr_grp, sname)
         dstr, auth_list = self.write_listeners(dstr, smplr_grp, sname)
+        dstr, auth_list = self.write_advertisers(dstr, smplr_grp, sname, auth_list)
         for plugin in self.samplers[smplr_grp]['plugins']:
             plugn = self.plugins[plugin]
             dstr += f'load name={plugn["name"]}\n'
@@ -764,6 +866,7 @@ class YamlCfg(object):
             auth_list = {}
             dstr, auth_list = self.write_listeners(dstr, group_name, dmn, auth_list)
             dstr, auth_list = self.write_producers(dstr, group_name, dmn, auth_list)
+            dstr = self.write_prdcr_listeners(dstr, group_name)
             dstr = self.write_stream_subscribe(dstr, group_name, dmn)
             dstr = self.write_agg_plugins(dstr, group_name, dmn)
             dstr = self.write_updaters(dstr, group_name)
@@ -772,7 +875,7 @@ class YamlCfg(object):
         except Exception as e:
             ea, eb, ec = sys.exc_info()
             print('Agg config Error: '+str(e)+' Line:'+str(ec.tb_lineno))
-            raise ValueError
+            sys.exit(22)
 
     def write_agg_plugins(self, dstr, group_name, agg):
         # Write independent plugin configuration for group <group_name>
@@ -824,9 +927,8 @@ class YamlCfg(object):
                 if store_group[store]['plugin'] not in loaded_plugins:
                     if store_group[store]['plugin'] not in self.plugins:
                         print(f'Error: Storage policy plugin reference {store_group[store]["plugin"]} '\
-                              f'is not defined in the top level "plugins" dictionary"\n'
-                              f'Continuing...\n')
-                        continue
+                              f'is not defined in the top level "plugins" dictionary"\n')
+                        sys.exit(22)
                     plugin = self.plugins[store_group[store]['plugin']]
                     dstr += f'load name={plugin["name"]}\n'
                     for cfg_ in plugin['config']:
@@ -859,7 +961,7 @@ class YamlCfg(object):
                 break
         if dmn is None:
             print(f'Error: {dname} does not exist in YAML configuration file {path}\n')
-            return 1
+            sys.exit(22)
         dstr = ''
         dstr = self.write_sampler(dstr, grp, dname)
         dstr = self.write_aggregator(dstr, grp, dname)
