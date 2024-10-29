@@ -211,45 +211,51 @@ char blob_stream_type_to_char(ldmsd_stream_type_t stream_type)
 /* close f, free fname (if final), and rename fname if spool=1 */
 static void fclose_and_spool(FILE* *f, char* *fname, int final)
 {
+	long flen = ftell(*f);
 	fclose(*f);
 	*f = NULL;
-	if (spool) {
-		int mode = 0750;
-		size_t n = strlen(*fname) + 20;
+	if (flen < 9) {
+		/* we have only the magic number. delete the file */
+		unlink(*fname);
+	} else {
+		if (spool) {
+			int mode = 0750;
+			size_t n = strlen(*fname) + 20;
 
-		char *dbuf = alloca(n);
-		strcpy(dbuf, *fname);
-		char *dirn = dirname(dbuf);
+			char *dbuf = alloca(n);
+			strcpy(dbuf, *fname);
+			char *dirn = dirname(dbuf);
 
-		char *bbuf = alloca(n);
-		strcpy(bbuf, *fname);
-		char *base = basename(bbuf);
+			char *bbuf = alloca(n);
+			strcpy(bbuf, *fname);
+			char *base = basename(bbuf);
 
-		char *rbuf = alloca(n);
-		sprintf(rbuf, "%s/spool", dirn);
-		int err = f_mkdir_p(rbuf, mode);
-		if (err) {
-			switch (err) {
-			case EEXIST:
-				break;
-			default:
-				msglog(LDMSD_LERROR,
-					"create_outdir: failed to create"
-					" directory for %s: %s\n",
-					rbuf, STRERROR(err));
-				goto out;
+			char *rbuf = alloca(n);
+			sprintf(rbuf, "%s/spool", dirn);
+			int err = f_mkdir_p(rbuf, mode);
+			if (err) {
+				switch (err) {
+				case EEXIST:
+					break;
+				default:
+					msglog(LDMSD_LERROR,
+						"create_outdir: failed to create"
+						" directory for %s: %s\n",
+						rbuf, STRERROR(err));
+					goto out;
+				}
 			}
-		}
-		sprintf(rbuf, "%s/spool/%s", dirn, base);
-		err = rename(*fname, rbuf);
-		if (err) {
-			msglog(LDMSD_LERROR, PNAME
-				": rename_output: failed rename(%s, %s):"
-				" %s\n", *fname, rbuf, STRERROR(err));
-		} else {
-			msglog(LDMSD_LDEBUG, PNAME
-				": renamed: %s to %s\n",
-				*fname, rbuf);
+			sprintf(rbuf, "%s/spool/%s", dirn, base);
+			err = rename(*fname, rbuf);
+			if (err) {
+				msglog(LDMSD_LERROR, PNAME
+					": rename_output: failed rename(%s, %s):"
+					" %s\n", *fname, rbuf, STRERROR(err));
+			} else {
+				msglog(LDMSD_LDEBUG, PNAME
+					": renamed: %s to %s\n",
+					*fname, rbuf);
+			}
 		}
 	}
 out:
