@@ -131,7 +131,6 @@ int foreground;
 int cfg_cntr = 0;
 pthread_t event_thread = (pthread_t)-1;
 char *logfile;
-int log_truncate = 0;
 char *pidfile;
 char *bannerfile;
 
@@ -553,15 +552,6 @@ FILE *ldmsd_open_log()
 		return f;
 	}
 
-	if (log_truncate) {
-		int err = truncate(logfile, 0);
-		if (err) {
-			ldmsd_log(LDMSD_LERROR, "Could not truncate the log file named '%s'. errno=%d\n",
-				logfile, errno);
-			cleanup(12, "log truncate failed");
-		}
-	}
-
 	f = fopen_perm(logfile, "a", LDMSD_DEFAULT_FILE_PERM);
 	if (!f) {
 		ldmsd_log(LDMSD_LERROR, "Could not open the log file named '%s'\n",
@@ -634,7 +624,7 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -v LEVEL,    --log_level LEVEL                The available verbosity levels, in order of decreasing verbosity,\n"
 	       "                                                  are DEBUG, INFO, ERROR, CRITICAL and QUIET.\n"
 	       "                                                  The default level is ERROR.\n");
-	printf("    -t,          --log_truncate                   Truncate the log file at start if the log file exists.\n");
+	printf("    -t,          --log_truncate                   Deprecated & disabled. Removed in future release.\n");
 	printf("    -L optlog, --log_config optlog                Log config commands; optlog is INT:PATH\n");
 	printf("  Communication Options\n");
 	printf("    -x xprt:port:host\n"
@@ -2116,7 +2106,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		}
 		break;
 	case 't':
-		log_truncate = 1;
+		ldmsd_log(LDMSD_LWARNING, "-t option no longer supported\n");
 		break;
 	case 'x':
 		if (check_arg("x", value, LO_NAME))
