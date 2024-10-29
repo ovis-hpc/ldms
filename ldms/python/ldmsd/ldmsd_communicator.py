@@ -238,7 +238,7 @@ def fmt_status(msg):
         try:
             msg = json.loads(msg)
         except Exception as e:
-            print(f'Error converting {msg} to json object')
+            print(f"The server replied: '{msg}'")
             msg = None
     else:
         msg = None

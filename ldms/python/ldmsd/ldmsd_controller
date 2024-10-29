@@ -1964,6 +1964,9 @@ class LdmsdCmdParser(cmd.Cmd):
         No parameters
         """
         rc, msg = self.comm.stream_client_dump()
+        if rc != 0:
+            print(f"Error {rc}: {msg}")
+            return
         if not msg:
             raise RuntimeError("no response")
         obj = fmt_status(msg)
