@@ -1707,6 +1707,7 @@ static void __csv_handle_close(struct csv_store_handle *s_handle)
 		free(s_handle->store_key);
 	free(s_handle->container);
 	free(s_handle->schema);
+	free(s_handle->lents);
 	pthread_mutex_unlock(&s_handle->lock);
 	pthread_mutex_destroy(&s_handle->lock);
 	free(s_handle);
