@@ -2549,7 +2549,7 @@ int strgp_decomp_init(ldmsd_strgp_t strgp, ldmsd_req_ctxt_t req);
 static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *attr_name, *name, *plugin, *container, *schema, *interval, *regex;
-	char *decomp;
+	char *decomp = NULL;
 	name = plugin = container = schema = NULL;
 	size_t cnt = 0;
 	uid_t uid;
@@ -8596,7 +8596,7 @@ static int prdcr_listen_del_handler(ldmsd_req_ctxt_t reqc)
 	int rc = 0;
 	char *name = NULL;
 	struct ldmsd_sec_ctxt sctxt;
-	ldmsd_prdcr_listen_t pl;
+	ldmsd_prdcr_listen_t pl = NULL;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
