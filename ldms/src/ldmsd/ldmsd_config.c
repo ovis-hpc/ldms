@@ -756,6 +756,13 @@ parse:
 			rc = xprt.rsp_err;
 		ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
 				lineno, path);
+            /* If hostname doesn't resolve skip, non-fatal */
+            if (rc == 97) {
+                ldmsd_log(LDMSD_LERROR,
+                     "Hostname not resolved at "
+                     "line %d (%s), skipping\n", lineno, path);
+                goto next_req;
+            }
 		goto cleanup;
 	}
 next_req:
