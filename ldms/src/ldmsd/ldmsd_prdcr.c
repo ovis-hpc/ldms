@@ -854,6 +854,17 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 {
 	int ret;
 
+	if (0 == prdcr->ss.ss_family) {
+		if (prdcr_resolve(prdcr->host_name, prdcr->port_no, &prdcr->ss,
+								&prdcr->ss_len)) {
+			ldmsd_log(LDMSD_LERROR, "Producer '%s' connection failed. " \
+						"Hostname '%s:%u' not resolved.\n",
+						prdcr->obj.name, prdcr->host_name,
+						(unsigned) prdcr->port_no);
+			return;
+		}
+	}
+
 	switch (prdcr->type) {
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 	case LDMSD_PRDCR_TYPE_BRIDGE:
@@ -1032,11 +1043,9 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	}
 
 	prdcr->ss_len = sizeof(prdcr->ss);
-	if (prdcr_resolve(host_name, port_no, &prdcr->ss, &prdcr->ss_len)) {
-		errno = EAFNOSUPPORT;
-		ovis_log(prdcr_log, OVIS_LERROR, "ldmsd_prdcr_new: %s:%u not resolved.\n",
-			host_name,(unsigned) port_no);
-		goto out;
+	if (prdcr_resolve(prdcr->host_name, prdcr->port_no, &prdcr->ss, &prdcr->ss_len)) {
+		ovis_log(config_log, OVIS_LWARN, "Producer '%s': %s:%u not resolved.\n",
+			prdcr->obj.name, prdcr->host_name,(unsigned) prdcr->port_no);
 	}
 
 	if (!auth)
