@@ -70,21 +70,25 @@ static void prdcr_task_cb(ldmsd_task_t task, void *arg);
 int prdcr_resolve(const char *hostname, unsigned short port_no,
 		  struct sockaddr_storage *ss, socklen_t *ss_len)
 {
-	struct hostent *h;
-
-	h = gethostbyname(hostname);
-	if (!h)
-		return -1;
-
-	if (h->h_addrtype != AF_INET)
+	int rc;
+	struct addrinfo *ai;
+	struct addrinfo hints = {
+		.ai_family = AF_INET,
+		.ai_socktype = SOCK_STREAM
+	};
+	char port_buff[8];
+	snprintf(port_buff, sizeof(port_buff), "%hu", port_no);
+	rc = getaddrinfo(hostname, port_buff, &hints, &ai);
+	if (rc)
 		return -1;
 
 	memset(ss, 0, sizeof *ss);
 	struct sockaddr_in *sin = (struct sockaddr_in *)ss;
-	sin->sin_addr.s_addr = *(unsigned int *)(h->h_addr_list[0]);
-	sin->sin_family = h->h_addrtype;
+	memcpy(sin, ai->ai_addr, ai->ai_addrlen);
+	sin->sin_family = AF_INET;
 	sin->sin_port = htons(port_no);
 	*ss_len = sizeof(*sin);
+	freeaddrinfo(ai);
 	return 0;
 }
 
@@ -845,6 +849,17 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 {
 	int ret;
 
+	if (0 == prdcr->ss.ss_family) {
+		if (prdcr_resolve(prdcr->host_name, prdcr->port_no, &prdcr->ss,
+								&prdcr->ss_len)) {
+			ldmsd_log(LDMSD_LERROR, "Producer '%s' connection failed. " \
+						"Hostname '%s:%u' not resolved.\n",
+						prdcr->obj.name, prdcr->host_name,
+						(unsigned) prdcr->port_no);
+			return;
+		}
+	}
+
 	switch (prdcr->type) {
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 	case LDMSD_PRDCR_TYPE_ADVERTISER:
@@ -1006,11 +1021,9 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		}
 	}
 
-	if (prdcr_resolve(host_name, port_no, &prdcr->ss, &prdcr->ss_len)) {
-		errno = EAFNOSUPPORT;
-		ldmsd_log(LDMSD_LERROR, "ldmsd_prdcr_new: %s:%u not resolved.\n",
-			host_name,(unsigned) port_no);
-		goto out;
+	if (prdcr_resolve(prdcr->host_name, prdcr->port_no, &prdcr->ss, &prdcr->ss_len)) {
+		ldmsd_log(LDMSD_LWARNING, "Producer '%s': %s:%u not resolved.\n",
+			prdcr->obj.name, prdcr->host_name,(unsigned) prdcr->port_no);
 	}
 
 	if (!auth)
