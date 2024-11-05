@@ -1783,7 +1783,7 @@ static int __sample_classic(struct test_sampler_set *ts_set)
 				__metric_set(lent, list->type, cnt, v);
 			}
 		} else {
-			v = mval->v_u64 + 1;
+			v = ldms_mval_as_u64(mval, type, 0) + 1;
 			if (ldms_metric_is_array(ts_set->set, i))
 				len = ldms_metric_array_get_len(ts_set->set, i);
 			else
