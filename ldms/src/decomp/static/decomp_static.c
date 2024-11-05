@@ -111,8 +111,7 @@ mval_from_json(ldms_mval_t *v,
 	dst.type = mtype;
 	jtype = json_typeof(jent);
 
-	if ((jtype == JSON_STRING && mtype != LDMS_V_CHAR_ARRAY) ||
-			(mtype == LDMS_V_CHAR_ARRAY && jtype != JSON_STRING)) {
+	if ((mtype == LDMS_V_CHAR_ARRAY && jtype != JSON_STRING)) {
 		snprintf(err_buf, err_sz, "string type must have string value");
 		return EINVAL;
 	}
@@ -129,6 +128,13 @@ mval_from_json(ldms_mval_t *v,
 	case JSON_ARRAY:
 		if (!ldms_type_is_array(mtype)) {
 			snprintf(err_buf, err_sz, "array value must have array type");
+			return EINVAL;
+		}
+		break;
+	case JSON_STRING:
+		if (mtype != LDMS_V_CHAR && mtype != LDMS_V_CHAR_ARRAY) {
+			snprintf(err_buf, err_sz,
+				 "string value must have 'char' or 'char_array' type");
 			return EINVAL;
 		}
 		break;
@@ -1194,7 +1200,7 @@ static void assign_value(ldmsd_col_t dst, ldmsd_col_t src)
 	}
 	switch (dst->type) {
 	case LDMS_V_CHAR:
-		dst->mval->v_char = ldms_mval_as_s8(src->mval, src->type, 0);
+		dst->mval->v_char = ldms_mval_as_char(src->mval, src->type, 0);
 		break;
 	case LDMS_V_U8:
 		dst->mval->v_u8 = ldms_mval_as_u8(src->mval, src->type, 0);
