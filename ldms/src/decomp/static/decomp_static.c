@@ -928,11 +928,12 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 	if (mid < 0) {
 		/* This is a fill candidate, must have a type and if
 		 * an array a length */
-		if (cfg_col->type == LDMS_V_NONE) {
+		if (!cfg_col->fill) {
 			ovis_log(static_log, OVIS_LERROR,
 				"strgp '%s': col[src] '%s' does not exist in "
-				"the set and the 'type' is not specified.\n",
-				ctxt->strgp->obj.name, cfg_col->src);
+				"the set '%s' and the 'fill' is not specified.\n",
+				ctxt->strgp->obj.name, cfg_col->src,
+				ldms_set_name_get(ctxt->set));
 			rc = EINVAL;
 			goto err;
 		}
