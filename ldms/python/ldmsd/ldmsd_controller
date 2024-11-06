@@ -381,6 +381,8 @@ class LdmsdCmdParser(cmd.Cmd):
                    holds for the prdcr.
         [rx_rate=] The recv rate (bytes/sec) limit for this connection. The
                    default is -1 (unlimited).
+        [cache_ip=]   True to cache the IP address after first successful resolution (default).
+                      False to resolve the hostname at prdcr_add and at every connection attempt.
         """
         arg = self.handle_args('prdcr_add', arg)
         if arg is None:
@@ -404,7 +406,8 @@ class LdmsdCmdParser(cmd.Cmd):
                                           arg['perm'],
                                           arg['rail'],
                                           arg['quota'],
-                                          arg['rx_rate'])
+                                          arg['rx_rate'],
+                                          arg['cache_ip'])
             if rc:
                 print(f'Error adding prdcr {arg["name"]}: {msg}')
 

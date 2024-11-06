@@ -1647,7 +1647,9 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 	int64_t quota = ldmsd_quota; /* use the global quota setting by default */
 	int64_t rx_rate = LDMS_UNLIMITED;
 	int rail = 1;
-	char *perm_s = NULL;
+	char *perm_s, *cache_ip_s;
+	int cache_ip = 1; /* Default is 1. */
+	perm_s = cache_ip_s = NULL;
 
 	name = host = xprt = type_s = port_s = interval_s = auth = rail_s = quota_s = NULL;
 
@@ -1773,9 +1775,17 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 			goto out;
 		}
 	}
+
+	cache_ip_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_IP);
+	if (cache_ip_s) {
+		if (0 == strcasecmp(cache_ip_s, "false")) {
+			cache_ip = 0;
+		}
+	}
+
 	prdcr = ldmsd_prdcr_new_with_auth(name, xprt, host, port_no, type,
 					  interval_us, auth, uid, gid, perm,
-					  rail, quota, rx_rate);
+					  rail, quota, rx_rate, cache_ip);
 	if (!prdcr) {
 		if (errno == EEXIST)
 			goto eexist;
@@ -9988,7 +9998,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t l
 				NULL, uid, gid, 0770,
 				ldms_xprt_rail_eps(x),
 				ldms_xprt_rail_recv_quota_get(x),
-				ldms_xprt_rail_recv_rate_limit_get(x));
+				ldms_xprt_rail_recv_rate_limit_get(x), 1);
 		if (!prdcr) {
 			reqc->errcode = ENOMEM;
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
