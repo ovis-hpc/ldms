@@ -145,7 +145,10 @@ m4_ifndef([PKG_CHECK_MODULES],
       [m4_fatal([pkg.m4 not found. Please install pkg-config (Ubuntu) or pkgconfig (RHEL) package])])
 PKG_PROG_PKG_CONFIG
 
+# <rdc/rdc.h> fails to include <assert.h> in at least rocm 6.2.1, hence the
+# include of assert.h here.
 AC_LIB_HAVE_LINKFLAGS([rdc_bootstrap], [], [
+#include <assert.h>
 #include <rdc/rdc.h>
 ])
 AM_CONDITIONAL([HAVE_LIBRDC_BOOTSTRAP], [test "x$HAVE_LIBRDC_BOOTSTRAP" = xyes])
