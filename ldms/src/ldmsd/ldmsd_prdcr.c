@@ -849,9 +849,9 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 {
 	int ret;
 
-	if (0 == prdcr->ss.ss_family) {
-		if (prdcr_resolve(prdcr->host_name, prdcr->port_no, &prdcr->ss,
-								&prdcr->ss_len)) {
+	if ((0 == prdcr->ss.ss_family) || (!prdcr->cache_ip)) {
+		if (prdcr_resolve(prdcr->host_name, prdcr->port_no,
+					&prdcr->ss, &prdcr->ss_len)) {
 			ldmsd_log(LDMSD_LERROR, "Producer '%s' connection failed. " \
 						"Hostname '%s:%u' not resolved.\n",
 						prdcr->obj.name, prdcr->host_name,
@@ -988,7 +988,8 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type, int conn_intrvl_us,
-		const char *auth, uid_t uid, gid_t gid, int perm)
+		const char *auth, uid_t uid, gid_t gid, int perm,
+		int cache_ip)
 {
 	extern struct rbt *cfgobj_trees[];
 	struct ldmsd_prdcr *prdcr;
@@ -1007,6 +1008,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	prdcr->conn_intrvl_us = conn_intrvl_us;
 	prdcr->port_no = port_no;
 	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+	prdcr->cache_ip = cache_ip;
 	rbt_init(&prdcr->set_tree, set_cmp);
 	rbt_init(&prdcr->hint_set_tree, ldmsd_updtr_schedule_cmp);
 	prdcr->host_name = strdup(host_name);
@@ -1063,7 +1065,7 @@ ldmsd_prdcr_new(const char *name, const char *xprt_name,
 {
 	return ldmsd_prdcr_new_with_auth(name, xprt_name, host_name,
 			port_no, type, conn_intrvl_us,
-			DEFAULT_AUTH, getuid(), getgid(), 0777);
+			DEFAULT_AUTH, getuid(), getgid(), 0777, 1);
 }
 
 extern struct rbt *cfgobj_trees[];

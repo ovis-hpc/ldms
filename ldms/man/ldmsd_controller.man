@@ -300,6 +300,10 @@ Instruct \fBldmsd\fR to use \fIAUTH_REF\fR (a name reference to \fBauth\fR
 object created by \fBauth_add\fR command) with the connections to this
 producer. If not given, the default authentication method specified on
 the CLI options (see \fBldmsd\fR(8) option \fB-a\fR) is used.
+.TP
+.BI [cache_ip " cache_ip"]
+.br
+Controls how \fBldmsd\fR handles hostname resolution for producer IP addresses. When set to \fBtrue\fR (default), \fBldmsd\fR resolves the hostname once during \fBprdcr_add\fR and caches the result. If the initial resolution fails and the producer is started (via \fBprdcr_start\R or \fBprdcr_start_regex\fR), \fBldmsd\fR will retry resolution at connection time and each resonnection attempt until successful. When set to \fBfalse\fR, \fBldmsd\fR performs hostname resolution at \fBprdcr_add\fR time and repeats the resolution at every connection and reconnection attempt if the producer is started.
 .RE
 
 .SS Delete a producer from the aggregator
