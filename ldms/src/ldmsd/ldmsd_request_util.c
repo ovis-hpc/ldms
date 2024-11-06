@@ -183,6 +183,7 @@ struct req_str_id attr_str_id_table[] = {
 	{  "auto_interval",     LDMSD_ATTR_AUTO_INTERVAL  },
 	{  "auto_switch",       LDMSD_ATTR_AUTO_SWITCH  },
 	{  "base",              LDMSD_ATTR_BASE  },
+	{  "cache_ip",          LDMSD_ATTR_IP  },
 	{  "container",         LDMSD_ATTR_CONTAINER  },
 	{  "decomposition",     LDMSD_ATTR_DECOMP  },
 	{  "disable_start",     LDMSD_ATTR_AUTO_INTERVAL  },

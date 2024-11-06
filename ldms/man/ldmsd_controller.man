@@ -338,7 +338,10 @@ data our ldmsd holds for the prdcr.
 .br
 The recv rate (bytes/sec) limit for this connection. The default is -1
 (unlimited).
-
+.TP
+.BI [cache_ip " cache_ip"]
+.br
+Controls how \fBldmsd\fR handles hostname resolution for producer IP addresses. When set to \fBtrue\fR (default), \fBldmsd\fR resolves the hostname once during \fBprdcr_add\fR and caches the result. If the initial resolution fails and the producer is started (via \fBprdcr_start\R or \fBprdcr_start_regex\fR), \fBldmsd\fR will retry resolution at connection time and each resonnection attempt until successful. When set to \fBfalse\fR, \fBldmsd\fR performs hostname resolution at \fBprdcr_add\fR time and repeats the resolution at every connection and reconnection attempt if the producer is started.
 .RE
 
 .SS Delete a producer from the aggregator

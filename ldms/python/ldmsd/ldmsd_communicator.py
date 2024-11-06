@@ -2189,11 +2189,13 @@ class Communicator(object):
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.QUOTA, value=str(int(kwargs['quota']))))
         if 'rx_rate' in kwargs.keys() and kwargs['rx_rate']:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(int(kwargs['rx_rate']))))
+        if 'cache_ip' in kwargs.keys() and kwargs['cache_ip']:
+            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.IP, value = str(kwargs['cache_ip'])))
 
         return attrs
 
     def prdcr_add(self, name, ptype, xprt, host, port, reconnect, auth=None, perm=None,
-                  rail=None, quota=None, rx_rate=None):
+                  rail=None, quota=None, rx_rate=None, cache_ip=None):
         """
         Add a producer. A producer is a peer to the LDMSD being configured.
         Once started, the LDSMD will attempt to connect to this peer
@@ -2211,6 +2213,7 @@ class Communicator(object):
         - The reconnect interval in microseconds
 
         Keyword Parameters:
+        auth - The authentication domain
         perm - The configuration client permission required to
                modify the producer configuration. Default is None.
         rail - The number of endpoints in a rail. The default is 1.
@@ -2219,6 +2222,8 @@ class Communicator(object):
                   ('--quota' ldmsd option).
         rx_rate - The recv rate (bytes/second) limit for this connection. The
                   default is -1 (unlimited).
+        cache_ip - True: Cache hostname after first successfull resolution;
+                   False: Resolve hostname on every connection
 
         Returns:
         A tuple of status, data
@@ -2227,7 +2232,8 @@ class Communicator(object):
         """
         args_d = {'name': name, 'ptype': ptype, 'xprt': xprt, 'host': host, 'port': port,
                   'reconnect': reconnect, 'auth': auth, 'perm': perm,
-                  'rail': rail, 'quota': quota, 'rx_rate': rx_rate}
+                  'rail': rail, 'quota': quota, 'rx_rate': rx_rate,
+                  'cache_ip' : cache_ip}
         attrs = self._prdcr_add_attr_prep(**args_d)
         req = LDMSD_Request( command_id = LDMSD_Request.PRDCR_ADD, attrs = attrs)
         try:
