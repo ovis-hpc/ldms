@@ -55,6 +55,9 @@
 #include "ldmsd.h"
 #include "ovis_json/ovis_json.h"
 #include "sampler_base.h"
+/* rdc/rdc.h in at least ROCm 6.2.1 forget to include <assert.h>, so we
+ * include it here for them before including <rdc/rdc.h> */
+#include <assert.h>
 #include <rdc/rdc.h>
 
 #define SAMP "rdc_sampler"
