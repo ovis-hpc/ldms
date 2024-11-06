@@ -2030,10 +2030,12 @@ class Communicator(object):
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.AUTH, value=kwargs['auth']))
         if 'perm' in kwargs.keys() and kwargs['perm']:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PERM, value=str(kwargs['perm'])))
+        if 'cache_ip' in kwargs.keys() and kwargs['cache_ip']:
+            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.IP, value = str(kwargs['cache_ip'])))
 
         return attrs
 
-    def prdcr_add(self, name, ptype, xprt, host, port, reconnect, auth=None, perm=None):
+    def prdcr_add(self, name, ptype, xprt, host, port, reconnect, auth=None, perm=None, cache_ip=None):
         """
         Add a producer. A producer is a peer to the LDMSD being configured.
         Once started, the LDSMD will attempt to connect to this peer
@@ -2051,8 +2053,11 @@ class Communicator(object):
         - The reconnect interval in microseconds
 
         Keyword Parameters:
+        auth - The authentication domain
         perm - The configuration client permission required to
                modify the producer configuration. Default is None.
+        cache_ip - True: Cache hostname after first successfull resolution;
+                   False: Resolve hostname on every connection
 
         Returns:
         A tuple of status, data
@@ -2060,7 +2065,7 @@ class Communicator(object):
         - data is an error message if status != 0 or None
         """
         args_d = {'name': name, 'ptype': ptype, 'xprt': xprt, 'host': host, 'port': port,
-                  'reconnect': reconnect, 'auth': auth, 'perm': perm}
+                  'reconnect': reconnect, 'auth': auth, 'perm': perm, 'cache_ip': cache_ip}
         attrs = self._prdcr_add_attr_prep(**args_d)
         req = LDMSD_Request( command_id = LDMSD_Request.PRDCR_ADD, attrs = attrs)
         try:

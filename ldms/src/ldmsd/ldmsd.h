@@ -201,6 +201,11 @@ typedef struct ldmsd_prdcr_stream_s {
 typedef struct ldmsd_prdcr {
 	struct ldmsd_cfgobj obj;
 
+	/* Controls hostname resolution caching behavior (user configurable)
+	 * 1 = (default) Cache hostname after first successfull resolution
+	 * 0 = Resolve hostname on every connection
+	 */
+	uint8_t cache_ip;
 	struct sockaddr_storage ss;	/* Host address */
 	socklen_t ss_len;
 	char *host_name;	/* Host name */
@@ -1156,7 +1161,8 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us,
-		const char *auth, uid_t uid, gid_t gid, int perm);
+		const char *auth, uid_t uid, gid_t gid, int perm,
+		int cache_ip);
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt);
 ldmsd_prdcr_t ldmsd_prdcr_first();
 ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr);

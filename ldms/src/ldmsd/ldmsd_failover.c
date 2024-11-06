@@ -440,6 +440,12 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 	if (rc)
 		goto cleanup;
 
+	/* Cache_ip */
+	snprintf(buff, sizeof(buff), "%d", p->cache_ip);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_IP, buff);
+	if (rc)
+		goto cleanup;
+
 	/* Terminate the message */
 	rc = ldmsd_req_cmd_attr_term(rcmd);
 	if (rc)
@@ -2025,6 +2031,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	char *perm = __req_attr_gets(req, LDMSD_ATTR_PERM);
 	char *auth = __req_attr_gets(req, LDMSD_ATTR_AUTH);
 	char *stream = __req_attr_gets(req, LDMSD_ATTR_STREAM);
+	char *cache_ip = __req_attr_gets(req, LDMSD_ATTR_IP);
 
 	uid_t _uid;
 	gid_t _gid;
@@ -2079,7 +2086,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	}
 
 	p = ldmsd_prdcr_new_with_auth(name, xprt, host, atoi(port), ptype,
-			atoi(interval), auth, _uid, _gid, _perm);
+			atoi(interval), auth, _uid, _gid, _perm, atoi(cache_ip));
 	if (!p) {
 		rc = errno;
 		str_rbn_free(srbn);

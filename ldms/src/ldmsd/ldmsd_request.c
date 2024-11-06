@@ -1548,7 +1548,9 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 	uid_t uid;
 	gid_t gid;
 	int perm;
-	char *perm_s = NULL;
+	char *perm_s, *cache_ip_s;
+	int cache_ip = 1; /* Default is 1. */
+	perm_s = cache_ip_s = NULL;
 
 	reqc->errcode = 0;
 	name = host = xprt = type_s = port_s = interval_s = auth = NULL;
@@ -1634,8 +1636,16 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 	if (perm_s)
 		perm = strtol(perm_s, NULL, 0);
 
+	cache_ip_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_IP);
+	if (cache_ip_s) {
+		if (0 == strcasecmp(cache_ip_s, "false")) {
+			cache_ip = 0;
+		}
+	}
+
 	prdcr = ldmsd_prdcr_new_with_auth(name, xprt, host, port_no, type,
-					  interval_us, auth, uid, gid, perm);
+					  interval_us, auth, uid, gid, perm,
+					  cache_ip);
 	if (!prdcr) {
 		if (errno == EEXIST)
 			goto eexist;
@@ -8894,7 +8904,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t l
 	if (!prdcr) {
 		prdcr = ldmsd_prdcr_new_with_auth(name, xprt_s, hostname, rem_addr->sin_port,
 				LDMSD_PRDCR_TYPE_ADVERTISED, INT_MAX,
-				NULL, uid, gid, 0770);
+				NULL, uid, gid, 0770, 1);
 		if (!prdcr) {
 			reqc->errcode = ENOMEM;
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
