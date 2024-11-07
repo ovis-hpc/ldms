@@ -783,7 +783,7 @@ class YamlCfg(object):
         return dstr
 
     def write_sampler(self, dstr, smplr_grp, sname):
-        if smplr_grp not in self.samplers:
+        if not self.samplers or smplr_grp not in self.samplers:
             return dstr
         dstr = self.write_env(dstr, smplr_grp, sname)
         dstr, auth_list = self.write_listeners(dstr, smplr_grp, sname)
@@ -862,7 +862,7 @@ class YamlCfg(object):
         # Agg config
         try:
             ''' "Balance" agg configuration if all samplers are included in each aggregator '''
-            if group_name not in self.aggregators:
+            if not self.aggregators or group_name not in self.aggregators:
                 return dstr
             auth_list = {}
             dstr, auth_list = self.write_listeners(dstr, group_name, dmn, auth_list)
