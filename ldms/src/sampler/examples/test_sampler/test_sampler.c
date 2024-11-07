@@ -1008,7 +1008,8 @@ static int __init_set(struct test_sampler_set *ts_set)
 				} else {
 					lent = ldms_list_append_item(ts_set->set, lh, list->type, list->cnt);
 					cnt = 1;
-					__metric_set(lent, type, cnt, list->init_value.v_u64);
+					__metric_set(lent, list->type, list->cnt,
+						     ldms_mval_as_u64(&list->init_value, list->type, 1));
 				}
 
 			}
