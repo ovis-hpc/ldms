@@ -1754,7 +1754,7 @@ static int __sample_classic(struct test_sampler_set *ts_set)
 				type = ldms_record_metric_type_get(lent, 0, &cnt);
 				lent = ldms_record_metric_get(lent, 0);
 			}
-			v = lent->v_u64 + 1;
+			v = ldms_mval_as_u64(lent, type, 0) + 1;
 			ldms_list_purge(ts_set->set, mval);
 			for (j = 0; j < len; j++) {
 				if (LDMS_V_RECORD_INST == list->type) {
