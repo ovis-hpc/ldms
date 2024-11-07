@@ -966,7 +966,7 @@ class YamlCfg(object):
         dstr = ''
         dstr = self.write_sampler(dstr, grp, dname)
         dstr = self.write_aggregator(dstr, grp, dname)
-        return f'{dstr}\0'
+        return f'{dstr}'
 
     def config_v4(self, path):
         """
