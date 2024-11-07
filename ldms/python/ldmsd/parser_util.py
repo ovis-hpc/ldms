@@ -466,9 +466,14 @@ class YamlCfg(object):
         updaters = {}
         updtr_cnt = 0
         for agg in config.get('aggregators', []):
-            if 'peers' not in agg:
+            if 'peers' not in agg and 'prdcr_listen' not in agg:
                 continue
-            for prod in agg['peers']:
+            peer_list = []
+            if 'peers' in agg:
+                peer_list += agg['peers']
+            if 'prdcr_listen' in agg:
+                peer_list += agg['prdcr_listen']
+            for prod in peer_list:
                 if type(prod['updaters']) is not list:
                     print(f'Error parsing ldms_config yaml file')
                     print(f'Updater spec must be a list of dictionaries, specified with "-" designator in the ldms_config yaml file')
@@ -683,7 +688,7 @@ class YamlCfg(object):
             return dstr
         plisten = self.prdcr_listeners[dmn_grp]
         for pl in plisten:
-            dstr += f'prdcr_listen_add name={pl} reconnect={plisten[pl]["reconnect"]}'
+            dstr += f'prdcr_listen_add name={pl}'
             dstart = check_opt('disable_start', plisten[pl])
             regex = check_opt('regex', plisten[pl])
             dstr = self.write_opt_attr(dstr, 'disable_start', dstart, endline=False)
@@ -790,16 +795,14 @@ class YamlCfg(object):
                 if type(cfg_) is dict:
                     hostname = socket.gethostname()
                     cfg_args = {}
-                    prod = check_opt('producer', cfg_)
-                    inst = check_opt('instance', cfg_)
-                    if not prod:
-                        cfg_args['producer'] = f'{hostname}'
-                    if not inst:
-                        cfg_args['instance'] = f'{hostname}/{plugn["name"]}'
                     for attr in cfg_:
-                        if attr == 'name' or attr == 'interval':
+                        if attr == 'name' or attr == 'interval' or attr == 'reconnect':
                             continue
-                    cfg_args[attr] = cfg_[attr]
+                        cfg_args[attr] = cfg_[attr]
+                    if 'producer' not in cfg_args:
+                        cfg_args['producer'] = f'{hostname}'
+                    if 'instance' not in cfg_args:
+                        cfg_args['instance'] = f'{hostname}/{plugn["name"]}'
                     cfg_str = parse_to_cfg_str(cfg_args)
                 else:
                     cfg_str = cfg_
@@ -825,16 +828,14 @@ class YamlCfg(object):
                                      'component_id' : '${LDMS_COMPONENT_ID}' }
                     else:
                         cfg_args = {}
-                    prod = check_opt('producer', cfg_)
-                    inst = check_opt('instance', cfg_)
-                    if not prod:
-                        cfg_args['producer'] = '{hostname}'
-                    if not inst:
-                        cfg_args['instance'] = '{hostname}/{plugin["name"]}'
                     for attr in cfg_:
                         if attr == 'name' or attr == 'interval':
                             continue
-                    cfg_args[attr] = cfg_[attr]
+                        cfg_args[attr] = cfg_[attr]
+                    if 'producer' not in cfg_args:
+                        cfg_args['producer'] = '{hostname}'
+                    if 'instance' not in cfg_args:
+                        cfg_args['instance'] = '{hostname}/{plugin["name"]}'
                     cfg_str = parse_to_cfg_str(cfg_args)
                 else:
                     cfg_str = cfg_
