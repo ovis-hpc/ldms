@@ -6257,7 +6257,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_prdcr_stream_t s;
 
 		ldmsd_prdcr_lock(prdcr);
-		fprintf(fp, "prdcr_add name=%s host=%s port=%d xprt=%s type=%s interval=%ld auth=%s uid=%d gid=%d\n",
+		fprintf(fp, "prdcr_add name=%s host=%s port=%d xprt=%s type=%s reconnect_interval=%ld auth=%s uid=%d gid=%d\n",
 			prdcr->obj.name, prdcr->host_name,
 			prdcr->port_no, prdcr->xprt_name,
 			ldmsd_prdcr_type2str(prdcr->type),

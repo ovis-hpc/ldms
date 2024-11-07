@@ -274,7 +274,7 @@ The hostname of the host
 .br
 The connection type [active, passive]
 .TP
-.BI reconnect " interval"
+.BI reconnect_interval " interval"
 .br
 The connection retry interval, which is a float followed by a unit string.
 If no unit string is given, the default unit is microseconds.
@@ -286,9 +286,11 @@ A unit string is one of the followings:
   h  -- hours
   d  -- days
 .TP
+.BI reconnect " interval"
+.TP
 .BI interval " interval"
 .br
-It is being deprecated. Please use 'reconnect'.
+Deprecated. Please use 'reconnect_interval'.
 .TP
 .BI [perm " permission"]
 .br
@@ -323,7 +325,7 @@ attr=<value>
 .br
 The producer name
 .TP
-.BI [reconnect " interval"]
+.BI [reconnect_interval " interval"]
 .br
 The connection retry interval, which is a float followed by a unit string.
 If no unit string is given, the default unit is microseconds.
@@ -336,9 +338,11 @@ A unit string is one of the followings:
   d  -- days
 If unspecified, the previously configured value will be used. Optional.
 .TP
+.BI [reconnect " reconnect"]
+.TP
 .BI [interval " interval"]
 .br
-It is being deprecated. Please use 'reconnect'.
+Deprecated. Please use 'reconnect_interval'.
 .RE
 
 .SS Start all producers matching a regular expression
@@ -350,7 +354,7 @@ attr=<value>
 .br
 A regular expression
 .TP
-.BI [reconnect " interval"]
+.BI [reconnect_interval " interval"]
 .br
 The connection retry interval, which is a float followed by a unit stirng.
 If no unit string is given, the default unit is microseconds.
@@ -363,9 +367,11 @@ A unit string is one of the followings:
   d  -- days
 If unspecified, the previously configured value will be used. Optional.
 .TP
+.BI [reconnect " reconnect"]
+.TP
 .BI [interval " interval"]
 .br
-It is being deprecated. Please use 'reconnect'.
+Deprecated. Please use 'reconnect_interval'.
 .RE
 
 .SS Stop a producer
@@ -921,9 +927,9 @@ port1=`expr $portbase + 1`
 port2=`expr $portbase + 2`
 port3=`expr $portbase + 3`
 
-echo "prdcr_add name=localhost2 host=localhost type=active xprt=sock port=$port2 reconnect=20000000"
+echo "prdcr_add name=localhost2 host=localhost type=active xprt=sock port=$port2 reconnect_interval=20000000"
 echo "prdcr_start name=localhost2"
-echo "prdcr_add name=localhost1 host=localhost type=active xprt=sock port=$port1 reconnect=20000000"
+echo "prdcr_add name=localhost1 host=localhost type=active xprt=sock port=$port1 reconnect_interval=20000000"
 echo "prdcr_start name=localhost1"
 echo "updtr_add name=policy5_h1 interval=2000000 offset=0"
 echo "updtr_prdcr_add name=policy5_h1 regex=localhost1"

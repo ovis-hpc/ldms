@@ -182,6 +182,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "producer",          LDMSD_ATTR_PRODUCER  },
 	{  "push",              LDMSD_ATTR_PUSH  },
 	{  "reconnect",         LDMSD_ATTR_INTERVAL  },
+	{  "reconnect_interval",LDMSD_ATTR_INTERVAL  },
 	{  "regex",             LDMSD_ATTR_REGEX  },
 	{  "schema",            LDMSD_ATTR_SCHEMA  },
 	{  "stream",            LDMSD_ATTR_STREAM  },
