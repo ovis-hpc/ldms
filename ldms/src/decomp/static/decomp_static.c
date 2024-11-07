@@ -960,7 +960,7 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 
 	mtype = ldms_metric_type_get(ctxt->set, mid);
 	mlen = ldms_metric_array_get_len(ctxt->set, mid);
-	assert(mlen >= 0);
+	ASSERT_RETURN((!ldms_type_is_array(mtype)) || mlen);
 
 	if (LDMS_V_NONE < mtype && mtype <= LDMS_V_D64_ARRAY) {
 		/* Primitives & array of primitives. We have mlen, mtype and
@@ -986,7 +986,7 @@ list_routine:
 	/* handling LIST */
 	lh = ldms_metric_get(ctxt->set, mid);
 	le = ldms_list_first(ctxt->set, lh, &le_mtype, &mlen);
-	assert(mlen);
+	ASSERT_RETURN((!ldms_type_is_array(le_mtype)) || mlen);
 	if (!le) {
 		/* list empty. can't init yet */
 		ovis_log(static_log, OVIS_LERROR,
@@ -1024,7 +1024,7 @@ list_routine:
 		goto err;
 	}
 	rec_mtype = ldms_record_metric_type_get(le, rec_mid, &mlen);
-	assert(mlen);
+	ASSERT_RETURN((!ldms_type_is_array(rec_mtype)) || mlen);
 	goto commit;
 
 rec_array_routine:
@@ -1048,7 +1048,7 @@ rec_array_routine:
 		goto err;
 	}
 	rec_mtype = ldms_record_metric_type_get(rec, rec_mid, &mlen);
-	assert(mlen);
+	ASSERT_RETURN((!ldms_type_is_array(rec_mtype)) || mlen);
 	/* fall through to commit */
 
 commit:
@@ -1056,21 +1056,24 @@ commit:
 	col_mid->mid = mid;
 	col_mid->mtype = mtype;
 	col_mid->array_len = mlen;
-	assert(mlen);
 	if (rec_mid >= 0) {
 		col_mid->rec_mid = rec_mid;
 		col_mid->rec_mtype = rec_mtype;
+		ASSERT_RETURN((!ldms_type_is_array(rec_mtype)) || mlen);
+	} else {
+		ASSERT_RETURN((!ldms_type_is_array(mtype)) || mlen);
 	}
 
 	/* commit to cfg_col */
 
-	assert(mtype != LDMS_V_NONE);
+	ASSERT_RETURN(mtype != LDMS_V_NONE);
 	if (cfg_col->type == LDMS_V_NONE) {
 		cfg_col->type = rec_mid>=0?rec_mtype:mtype;
 	}
 	if (0 == cfg_col->array_len) {
-		assert(mlen >= 0);
 		cfg_col->array_len = mlen;
+		ASSERT_RETURN((!ldms_type_is_array(cfg_col->type)) ||
+				cfg_col->array_len);
 	}
 	if (0 == cfg_col->mval_size) {
 		cfg_col->mval_offset = ctxt->mval_offset;
@@ -1085,7 +1088,7 @@ commit:
 
 next:
 
-	assert(special || cfg_col->mval_size);
+	ASSERT_RETURN(special || cfg_col->mval_size);
 	/* update row schema digest */
 	EVP_DigestUpdate(ctxt->evp_ctx, cfg_col->dst, strlen(cfg_col->dst));
 	EVP_DigestUpdate(ctxt->evp_ctx, &cfg_col->type, sizeof(cfg_col->type));
