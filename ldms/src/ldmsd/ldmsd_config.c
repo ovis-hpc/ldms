@@ -951,10 +951,12 @@ char *__process_yaml_config_file(const char *path, const char *dname)
 	char cstr[256];
         char *cfg_str = malloc(512);
 	*cfg_str = '\0';
-	snprintf(command, sizeof(command), "ldmsd_yaml_parser --ldms_config %s --daemon_name %s 2>&1", path, dname);
+	snprintf(command, sizeof(command), "ldmsd_yaml_parser --ldms_config %s --daemon_name %s", path, dname);
 	fp = popen(command, "r");
-	if (!fp)
-		printf("Error in yaml_parser\n");
+	if (!fp) {
+		ldmsd_log(LDMSD_LERROR, "Error opening pipe to ldmsd_yaml_parser.\n");
+		goto err;
+	}
 	size_t char_cnt = 0;
 	int status;
 	while (fgets(cstr, sizeof(cstr), fp) != NULL) {
@@ -973,7 +975,6 @@ char *__process_yaml_config_file(const char *path, const char *dname)
 	return cfg_str;
 err:
 	if (cfg_str) {
-		printf("ERROR: %s", cfg_str);
 		free(cfg_str);
 	}
 	return NULL;
