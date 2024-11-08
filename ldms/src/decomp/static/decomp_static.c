@@ -295,6 +295,7 @@ typedef struct decomp_static_mid_rbn_s {
 		enum ldms_value_type mtype;
 		size_t array_len;
 		enum ldms_value_type rec_mtype;
+		enum ldms_value_type le_mtype;
 #if 0
 		size_t mval_size;	/* Size of this mval */
 		off_t mval_offset;	/* Offset into mval memory for this column */
@@ -880,6 +881,7 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 	col_mid->array_len = -1;
 	col_mid->rec_mid = -EINVAL;
 	col_mid->rec_mtype = LDMS_V_NONE;
+	col_mid->le_mtype = LDMS_V_NONE;
 
 	src = cfg_col->src;
 
@@ -1043,19 +1045,24 @@ commit:
 	col_mid->mid = mid;
 	col_mid->mtype = mtype;
 	col_mid->array_len = mlen;
+	col_mid->le_mtype = le_mtype;
 	if (rec_mid >= 0) {
 		col_mid->rec_mid = rec_mid;
 		col_mid->rec_mtype = rec_mtype;
 		ASSERT_RETURN((!ldms_type_is_array(rec_mtype)) || mlen);
 	} else {
-		ASSERT_RETURN((!ldms_type_is_array(mtype)) || mlen);
 	}
 
 	/* commit to cfg_col */
 
 	ASSERT_RETURN(mtype != LDMS_V_NONE);
 	if (cfg_col->type == LDMS_V_NONE) {
-		cfg_col->type = rec_mid>=0?rec_mtype:mtype;
+		if (rec_mid >= 0)
+			cfg_col->type = rec_mtype;
+		else if (mtype == LDMS_V_LIST)
+			cfg_col->type = le_mtype;
+		else
+			cfg_col->type = mtype;
 	}
 	if (0 == cfg_col->array_len) {
 		cfg_col->array_len = mlen;
@@ -1760,6 +1767,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	const char *producer;
 	const char *instance;
 	int producer_len, instance_len;
+	union ldms_value zfill = {0}; /* zero value as default "fill" */
 
 	if (!TAILQ_EMPTY(row_list))
 		return EINVAL;
@@ -1932,8 +1940,15 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 		col_mvals_fill:
 			mcol->le = NULL;
 			mcol->mval = cfg_row->cols[j].fill;
-			mcol->mtype = cfg_row->cols[j].type;
-			mcol->array_len = cfg_row->cols[j].fill_len;
+			if (mcol->mval) {
+				mcol->mtype = cfg_row->cols[j].type;
+				mcol->array_len = cfg_row->cols[j].fill_len;
+			} else {
+				/* no "fill" specified, use default "fill" */
+				mcol->mval = &zfill;
+				mcol->array_len = 1;
+				mcol->mtype = cfg_row->cols[j].type;
+			}
 		}
 
 	make_row: /* make/expand rows according to col_mvals */
@@ -2047,8 +2062,14 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 
 		col_fill:
 			mcol->mval = cfg_row->cols[j].fill;
-			mcol->array_len = row->cols[j].array_len;
-			mcol->mtype = cfg_row->cols[j].type;
+			if (mcol->mval) {
+				mcol->array_len = row->cols[j].array_len;
+				mcol->mtype = cfg_row->cols[j].type;
+			} else {
+				mcol->mval = &zfill;
+				mcol->array_len = 1;
+				mcol->mtype = cfg_row->cols[j].type;
+			}
 		}
 
 		if (cfg_row->op_present) {
