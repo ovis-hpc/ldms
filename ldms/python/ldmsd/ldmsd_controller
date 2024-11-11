@@ -2256,29 +2256,27 @@ class LdmsdCmdParser(cmd.Cmd):
         This is a part of the sampler discovery feature.
         An advertiser advertises its existense to an aggregator.
         Parameters:
-                name=       A unique name to be used as producer name on the aggregator
-                xprt=       The transport name [sock, rdma, ugni]
-                host=       The aggregator hostname
-                port=       The aggregator listening port number
-                reconnect=  The connection retry interval
-                [auth=]     The authentication domain of the remote daemon
-                [perm=]     The permission to modify the advertiser in the future
+                name=                A unique name to be used as producer name on the aggregator
+                xprt=                The transport name [sock, rdma, ugni]
+                host=                The aggregator hostname
+                port=                The aggregator listening port number
+                reconnect_interval=  The connection retry interval
+                [auth=]              The authentication domain of the remote daemon
+                [perm=]              The permission to modify the advertiser in the future
         """
         arg = self.handle_args('advertiser_add', arg)
         if arg is None:
             return
-        if arg['reconnect'] is None:
-            print(f"The attribute 'reconnect' is missing.")
-        else:
-            rc, msg = self.comm.advertiser_add(arg['name'],
-                                          arg['xprt'],
-                                          arg['host'],
-                                          arg['port'],
-                                          arg['reconnect'],
-                                          arg['auth'],
-                                          arg['perm'])
-            if rc:
-                print(f'Error adding advertiser {arg["name"]}: {msg}')
+
+        rc, msg = self.comm.advertiser_add(arg['name'],
+                                        arg['xprt'],
+                                        arg['host'],
+                                        arg['port'],
+                                        arg['reconnect_interval'],
+                                        arg['auth'],
+                                        arg['perm'])
+        if rc:
+            print(f'Error adding advertiser {arg["name"]}: {msg}')
 
     def complete_advertiser_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('advertiser_add', text)
