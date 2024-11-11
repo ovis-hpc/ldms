@@ -705,7 +705,15 @@ parse:
 						"Please use 'reconnect_interval' in the future.\n");
 				}
 			}
+		} else if (0 == strncmp(line, "start", 5)) {
+			if (!strstr(line, "sample_interval") &&
+				strstr(line, "interval")) {
+				ldmsd_log(LDMSD_LWARNING,
+					  "'interval' is depreacated. " \
+					  "Please use 'sample_interval' in the future.\n");
+			}
 		}
+
 	}
 
 	/*

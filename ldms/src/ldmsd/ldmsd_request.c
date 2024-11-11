@@ -6303,7 +6303,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 		if (p->plugin->type == LDMSD_PLUGIN_SAMPLER) {
 			if (p->os) {
 				/* Plugin is running. */
-				fprintf(fp, "start name=%s interval=%ld offset=%ld\n",
+				fprintf(fp, "start name=%s sample_interval=%ld offset=%ld\n",
 					p->plugin->name,
 					p->sample_interval_us,
 					p->sample_offset_us);

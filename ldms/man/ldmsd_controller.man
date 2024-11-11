@@ -164,7 +164,7 @@ attr=<value>
 .br
 The plugin name.
 .TP
-.BI interval " interval"
+.BI sample_interval " interval"
 .br
 The sample interval, which is a float followed by a unit string.
 If no unit string is given, the default unit is microseconds.
@@ -176,6 +176,9 @@ A unit string is one of the followings:
   h  -- hours
   d  -- days
 .TP
+.BI interval " interval"
+.br
+Deprecated. Please use 'sample_interval'
 .BI [offset " offset"]
 .br
 Offset (shift) from the sample mark in the same format as intervals.
