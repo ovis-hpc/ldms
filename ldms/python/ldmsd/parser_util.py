@@ -742,10 +742,9 @@ class YamlCfg(object):
                 dstr = self.write_opt_attr(dstr, 'auth', auth)
                 last_sampler = pname
                 if 'regex' in producer:
-                    regex = True
                     dstr += f'prdcr_start_regex regex={producer["regex"]}\n'
-                if not regex:
-                    dstr += f'prdcr_start_regex regex=.*\n'
+                else :
+                    dstr += f'prdcr_start name={pname}\n'
         return dstr, auth_list
 
     def write_env(self, dstr, grp, dname):
