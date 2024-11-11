@@ -1,0 +1,17 @@
+load   name=json_stream_sampler
+config name=json_stream_sampler producer=localhost${i} instance=localhost${i}/jss component_id=${i} stream=ldms-notify perm=0644 heap_sz=64m
+start  name=json_stream_sampler interval=1000000 offset=0
+#log sampler.json_stream DEBUG
+
+load name=dstat
+config name=dstat producer=localhost${i} instance=localhost${i}/${dstat_schema} component_id=${i} mmalloc=1 io=1 fd=1 auto-schema=1 stat=1 perm=777
+start name=dstat interval=1000000 offset=0
+
+# define updater to push sets to L1 as they appear
+##updtr_add name=push_pidset push=onchange interval=1000000
+# catch self in .*
+##updtr_prdcr_add name=push_pidset regex=.*
+# match sets by schema name
+##updtr_match_add name=push_pidset regex=linux_task_data match=schema
+# begin pushing
+##updtr_start name=push_pidset

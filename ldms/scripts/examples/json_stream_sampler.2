@@ -1,0 +1,44 @@
+load name=dstat
+config name=dstat producer=localhost${i} instance=localhost${i}/${dstat_schema} component_id=${i} mmalloc=1 io=1 fd=1 auto-schema=1 stat=1 perm=777
+start name=dstat interval=1000000 offset=0
+
+# blobs must be allowed by writer plugin and prdcr_subscribe by daemon
+load name=blob_stream_writer plugin=blob_stream_writer
+config name=blob_stream_writer path=${STOREDIR} container=blobs stream=ldms-notify types=1
+
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} reconnect=2000000
+prdcr_subscribe regex=.* stream=ldms-notify
+prdcr_start name=localhost1
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0
+
+strgp_add name=json_stream_store_linux plugin=store_csv schema=linux_task_data container=pnode
+strgp_prdcr_add name=json_stream_store_linux regex=.*
+strgp_start name=json_stream_store_linux
+
+strgp_add name=json_stream_store_lsf plugin=store_csv schema=lsf_task_data container=pnode
+strgp_prdcr_add name=json_stream_store_lsf regex=.*
+strgp_start name=json_stream_store_lsf
+
+strgp_add name=json_stream_store_slurm plugin=store_csv schema=slurm_task_data container=pnode
+strgp_prdcr_add name=json_stream_store_slurm regex=.*
+strgp_start name=json_stream_store_slurm
+
+strgp_add name=json_stream_store_my plugin=store_csv schema=myschema container=pnode
+strgp_prdcr_add name=json_stream_store_my regex=.*
+strgp_start name=json_stream_store_my
+
+
+# define updater to push sets to L1 as they appear
+#updtr_add name=push_pidset push=onchange interval=1000000
+# catch self in .*
+#updtr_prdcr_add name=push_pidset regex=.*
+# match sets by schema name
+#updtr_match_add name=push_pidset regex=linux_task_data match=schema
+# begin pushing
+#updtr_start name=push_pidset

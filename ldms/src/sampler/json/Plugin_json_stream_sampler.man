@@ -18,7 +18,7 @@ Within ldmsd_controller or a configuration file:
 .OP uid=\fIUID\fR
 .OP gid=\fIGID\fR
 .OP perm=\fIPERM\fR
-.OP heap_szperm=\fIBYTES\fR
+.OP heap_sz=\fIBYTES\fR
 .YS
 
 .SH DESCRIPTION

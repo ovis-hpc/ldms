@@ -1,0 +1,96 @@
+export plugname=json_stream_sampler
+export dsname=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 stat=1 auto-schema=1)
+export dstat_schema=$dsname
+export LDMSD_LOG_LEVEL=ERROR
+export LDMSD_LOG_TIME_SEC=1
+export LDMSD_EXTRA="-m 128m"
+
+# Defining and using fakepid to allow testing without root & ldms-notify.
+# good enough for sorting storage pipeline issues.
+# each gets a new msgno so we can check for missing data
+# fake_pid  <daemon number to post to> <pid to fake> <schema name> <event name> <stream name>
+# uses specific formats for events task_init_priv task_exit
+fmsgno=0
+function fake_pid {
+	((fmsgno++))
+	fdaemon=$1
+	fpid=$2
+	fschema=$3
+	fevent=$4
+	fstream=$5
+	case $fevent in
+	task_init_priv)
+		fmsg="{\"msgno\":$fmsgno,\"schema\":\"$fschema\",\"event\":\"task_init_priv\",\"timestamp\":1731000790,\"context\":\"*\",\"data\":{\"start\":\"1729013913.013913\",\"job_id\":\"0\",\"serial\":1,\"os_pid\":$fpid,\"uid\":4294967295,\"gid\":4294967295,\"is_thread\":0,\"exe\":\"/usr/lib/systemd/systemd\",\"start_tick\":\"8\",\"task_pid\":1,\"task_global_id\":-1}}"
+		;;
+	task_exit)
+		fmsg="{\"msgno\":$fmsgno,\"schema\":\"$fschema\",\"event\":\"task_exit\",\"timestamp\":1731000792,\"context\":\"*\",\"data\":{\"start\":\"1731000777.000777\",\"job_id\":\"0\",\"serial\":1131,\"os_pid\":$fpid,\"uid\":4294967295,\"gid\":4294967295,\"is_thread\":0,\"exe\":\"/usr/lpp/mmfs/bin/mmksh\",\"duration\":15.161968946456909,\"start_tick\":\"198686390\",\"task_pid\":140962,\"task_global_id\":-1}}"
+		;;
+	*)
+		fmsg="{\"msgno\":$fmsgno,\"schema\":\"$fschema\",\"event\":\"$fevent\",\"timestamp\":1731000792,\"data\":{\"start\":\"1731000777.000777\",\"job_id\":\"0\",\"os_pid\":$fpid,\"uid\":4294967295,\"gid\":4294967295,\"exe\":\"/mypath/myprog\",\"start_tick\":\"198686390\"}}"
+		;;
+	esac
+	if test -n "$PORT"; then
+		iport=$PORT
+	else
+		iport=${ports[$fdaemon]}
+	fi
+	echo sending "<$fmsg>" to $iport
+	echo "$fmsg" | ldmsd_stream_publish -p $iport -a none -s $fstream -t json -x sock -h localhost
+}
+
+portbase=61070
+rm -f $LOGDIR/json*.log
+rm -rf $STOREDIR
+mkdir -p $STOREDIR
+VGARGS="--tool=drd --suppressions=/scratch1/baallan/ovis/ldms/scripts/examples/linux_proc_sampler.drd.supp"
+VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite --time-stamp=yes --keep-debuginfo=yes"
+DAEMONS $(seq 3)
+#vgon
+LDMSD 1
+vgoff
+#vgon
+LDMSD 2
+vgoff
+LDMSD 3
+vgoff
+SLEEP 1
+
+fake_pid  1 2000 linux_task_data task_init_priv ldms-notify
+fake_pid  1 2002 slurm_task_data task_init_priv ldms-notify
+fake_pid  1 1999 lsf_task_data   task_init_priv ldms-notify
+SLEEP 1
+fake_pid  1 1999 lsf_task_data   task_exit      ldms-notify
+fake_pid  1 2002 slurm_task_data task_exit      ldms-notify
+fake_pid  1 2000 linux_task_data task_exit      ldms-notify
+SLEEP 1
+fake_pid  1 2001 myschema        myevent        ldms-notify
+fake_pid  1 2002 myschema        myevent        ldms-notify
+
+SLEEP 1
+for lc in $(seq 3); do
+	echo "CHECKING STATUS ON $lc:"
+	ldmsd_controller --auth none --port ${ports[$lc]} --cmd stream_status
+done
+SLEEP 2
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -v
+MESSAGE ldms_ls on host 2:
+SLEEP 1
+LDMS_LS 2 -v
+SLEEP 5
+MESSAGE stream_client_dump on sampler daemon 1
+for lc in $(seq 2); do
+	echo "CHECKING CLIENT DUMP ON $lc:"
+	ldmsd_controller --auth none --port ${ports[$lc]} --cmd stream_client_dump
+	SLEEP 1
+done
+SLEEP 5
+for lc in $(seq 3); do
+	LDMS_LS $lc -v
+	SLEEP 2
+done
+SLEEP 2
+KILL_LDMSD 3 2 1
+file_created $STOREDIR/node/$dsname
+rollover_created $STOREDIR/blobs/ldms-notify.DAT
+# check here for csv and line count of csv for stream messages expected
