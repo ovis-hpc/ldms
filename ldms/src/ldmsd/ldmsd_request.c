@@ -6330,7 +6330,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 			updtr_mode = "push=onchange";
 		if (updtr_mode)
 			fprintf(fp, " %s", updtr_mode);
-		fprintf(fp, " interval=%ld", updtr->default_task.task.sched_us);
+		fprintf(fp, " update_interval=%ld", updtr->default_task.task.sched_us);
 		if (updtr->default_task.task_flags & LDMSD_TASK_F_SYNCHRONOUS)
 		    fprintf(fp, " offset=%ld\n", updtr->default_task.task.offset_us);
 		else

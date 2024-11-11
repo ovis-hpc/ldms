@@ -432,7 +432,7 @@ attr=<value>
 The update policy name. The policy name should be unique. It is independent of
 any attributes specified for the metric sets or hosts.
 .TP
-.BI interval " interval"
+.BI update_interval " interval"
 .br
 The update/collect interval, which is a float followed by a unit string.
 If no unit string is given, the default unit is microseconds.
@@ -443,6 +443,10 @@ A unit string is one of the followings:
   m  -- minutes
   h  -- hours
   d  -- days
+.TP
+.BI interval " interval"
+.br
+Deprecated. Please use 'update_interval'.
 .TP
 .BI [offset " offset"]
 .br
@@ -557,7 +561,7 @@ attr=<value>
 .br
 The update policy name
 .TP
-.BI [interval " interval"]
+.BI [update_interval " interval"]
 .br
 The update interval, which is a float followed by a unit string.
 If no unit string is given, the default unit is microseconds.
@@ -569,6 +573,10 @@ A unit string is one of the followings:
   h  -- hours
   d  -- days
 If this is not specified, the previously configured value will be used. Optional.
+.TP
+.BI [interval " interval"]
+.br
+Deprecated. Please use 'update_interval'.
 .TP
 .BI [offset " offset"]
 .br
@@ -934,10 +942,10 @@ echo "prdcr_add name=localhost2 host=localhost type=active xprt=sock port=$port2
 echo "prdcr_start name=localhost2"
 echo "prdcr_add name=localhost1 host=localhost type=active xprt=sock port=$port1 reconnect_interval=20000000"
 echo "prdcr_start name=localhost1"
-echo "updtr_add name=policy5_h1 interval=2000000 offset=0"
+echo "updtr_add name=policy5_h1 update_interval=2000000 offset=0"
 echo "updtr_prdcr_add name=policy5_h1 regex=localhost1"
 echo "updtr_start name=policy5_h1"
-echo "updtr_add name=policy5_h2 interval=5000000 offset=0"
+echo "updtr_add name=policy5_h2 update_interval=5000000 offset=0"
 echo "updtr_prdcr_add name=policy5_h2 regex=localhost2"
 echo "updtr_start name=policy5_h2"
 .fi
@@ -976,11 +984,11 @@ Example to start an ldmsd and use ldmsd_controller to call a script
 .SS
 Example of updtr_match_list's report
 .nf
-ldmsd_controller> updtr_add name=meminfo_vmstat interval=1000000 offset=100000
+ldmsd_controller> updtr_add name=meminfo_vmstat update_interval=1000000 offset=100000
 ldmsd_controller> updtr_match_add name=meminfo_vmstat regex=meminfo match=schema
 ldmsd_controller> updtr_match_add name=meminfo_vmstat regex=vmstat match=schema
 ldmsd_controller>
-ldmsd_controller> updtr_add name=node01_procstat2 interval=2000000 offset=100000
+ldmsd_controller> updtr_add name=node01_procstat2 update_interval=2000000 offset=100000
 ldmsd_controller> updtr_match_add name=node01_procstat2 regex=node01/procstat2 match=inst
 ldmsd_controller> updtr_match_list
 Updater Name      Regex              Selector

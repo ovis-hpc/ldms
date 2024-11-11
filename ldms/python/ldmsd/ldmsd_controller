@@ -613,8 +613,9 @@ class LdmsdCmdParser(cmd.Cmd):
         is to pull set contents.
         Parameters:
         name=       The update policy name
-        [interval=] The update/collect interval. This is required only when the
-                    push argument is not given.
+        [update_interval=] The update/collect interval. This is required only when the
+                           push argument is not given.
+        [interval=] Deprecated. Please use 'update_interval' in the future.
         [offset=]   Offset for synchronized aggregation
         [push=]     [onchange|true] 'onchange' means the
                     Updater will get an update whenever the set source ends a
@@ -633,8 +634,15 @@ class LdmsdCmdParser(cmd.Cmd):
         arg = self.handle_args('updtr_add', arg)
         if not arg:
             return
+        if all(v is not None for v in [arg['interval'], arg['update_interval']]):
+            print(f"Both 'interval' and 'update_interval' were given. " \
+                  f"The value of 'update_interval' will be used.")
+        elif arg['interval'] is not None:
+            print(f"'interval' is deprecated. Please use 'update_interval' in the future.")
+            arg['update_interval'] = arg['interval']
+
         rc, msg = self.comm.updtr_add(arg['name'],
-                                        arg['interval'],
+                                        arg['update_interval'],
                                         arg['offset'],
                                         arg['push'],
                                         arg['auto_interval'],
@@ -765,21 +773,27 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Start updaters. The parameters to the commands are as
         follows:
-        name=     The update policy name
-        [interval=] The update interval in micro-seconds. If this is not
-                  specified, the previously configured value will be used.
-        [offset=]   Offset for synchronization
-                    If 'interval' is given but not 'offset,
-                    the updater will update sets asynchronously.
-        [auto_interval=]   [true|false] If true, the updater will schedule
-                           set updates according to the update hint. If false,
-                           the updater will schedule the set updates according
-                           to the default schedule, i.e., the given interval and offset values.
+        name=               The update policy name
+        [update_interval=]  The update interval in micro-seconds. If this is not
+                            specified, the previously configured value will be used.
+        [interval=]         Deprecated. Please use 'update_interval' in the future.
+        [offset=]           Offset for synchronization
+                            If an update interval is given but not 'offset,
+                            the updater will update sets asynchronously.
+        [auto_interval=]    [true|false] If true, the updater will schedule
+                            set updates according to the update hint. If false,
+                            the updater will schedule the set updates according
+                            to the default schedule, i.e., the given interval and offset values.
         """
         arg = self.handle_args('updtr_start', arg)
         if not arg:
             return
-        rc, msg = self.comm.updtr_start(arg['name'], arg['interval'], arg['offset'], arg['auto_interval'])
+        if all(v is not None for v in [arg['interval'], arg['update_interval']]):
+            print(f"Both 'interval' and 'update_interval' were given. The value of 'update_interval' will be used.")
+        elif arg['interval'] is not None:
+            print(f"'interval' is deprecated. Please use 'update_interval' in the future.")
+            arg['update_interval'] = arg['interval']
+        rc, msg = self.comm.updtr_start(arg['name'], arg['update_interval'], arg['offset'], arg['auto_interval'])
         if rc:
             print(f'Error starting updtr {arg["name"]}: {msg}')
 

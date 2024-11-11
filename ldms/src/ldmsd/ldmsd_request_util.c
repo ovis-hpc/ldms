@@ -195,6 +195,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "type",              LDMSD_ATTR_TYPE  },
 	{  "udata",             LDMSD_ATTR_UDATA  },
 	{  "uid",               LDMSD_ATTR_UID  },
+	{  "update_interval",   LDMSD_ATTR_INTERVAL  },
 	{  "xprt",              LDMSD_ATTR_XPRT  },
 };
 
