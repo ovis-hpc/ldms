@@ -285,6 +285,9 @@ set. See open(3).
 .BI heap_sz=\fIBYTES\fR
 The number of bytes to reserve for the metric set heap.
 .TP
+.BI max_age_seconds=\fIseconds\fR
+If set to a non-zero value, the number of seconds since that last update
+after which a set will be unpublished.
 
 .SH BUGS
 .PP

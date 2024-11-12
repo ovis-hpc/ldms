@@ -54,6 +54,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
+#include <sys/queue.h>
 #include "coll/rbt.h"
 #include "ovis_json/ovis_json.h"
 #include "ldms.h"
@@ -115,6 +116,7 @@ struct schema_entry {
 				   attributes to conversion functions */
 	struct rbn rbn;
 };
+
 static struct rbt schema_tree = RBT_INITIALIZER(str_cmp);
 static pthread_mutex_t schema_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -128,8 +130,10 @@ static const char *usage(struct ldmsd_plugin *self)
 	"     producer      A unique name for the host providing the data\n"
 	"     stream        A stream name to subscribe to.\n"
 	"     heap_sz       The number of bytes to reserve for the set heap.\n"
-	"     instance      A unique name for the metric set. If none is given,"
+	"     instance      A prefix for the metric set. If none is given,"
 	"                   the set instance name will be <producer>_<schema name>.\n"
+	"     max_age_seconds If set to non-zero, unpublish sets which have not had\n"
+	"                   an update in at least max_age_seconds seconds.\n"
 	"     component_id  A unique number for the component being monitored.\n"
 	"                   The default is 0\n"
 	"     uid           The user-id of the set's owner (defaults to geteuid())\n"
@@ -802,12 +806,20 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *cb_arg,
 
 pthread_mutex_t cfg_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct rbt cfg_tree = RBT_INITIALIZER(str_cmp);
+
+struct instance_age {
+        LIST_ENTRY(instance_age) entry;
+        char *instance_name;
+	/* list of set names created on this stream */
+};
 struct json_cfg_inst {
 	struct ldmsd_plugin *plugin;
 	char *stream_name;
 	size_t heap_sz;
 	char *producer_name;
-	char *instance_name;
+	char *instance_name; /* prefix */
+	LIST_HEAD(age_list, instance_age) age_list;
+	unsigned long max_age_seconds; /* 0 for no age checks, or unupdated age after which sets are deleted. */
 	uint64_t comp_id;
 	uid_t uid;
 	gid_t gid;
@@ -815,6 +827,7 @@ struct json_cfg_inst {
 	pthread_mutex_t lock;
 	struct rbn rbn;		/* Key is stream_name */
 };
+
 
 #define DEFAULT_HEAP_SZ 512
 /*
@@ -833,7 +846,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	if (!inst)
 		return ENOMEM;
 
+
 	pthread_mutex_init(&inst->lock, NULL);
+
+	LIST_INIT(&inst->age_list);
 
 	/* stream name */
 	value = av_value(avl, "stream");
@@ -861,7 +877,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		goto err_0;
 	}
 
-	/* instance name */
+	/* instance name prefix */
 	value = av_value(avl, "instance");
 	if (value) {
 		inst->instance_name = strdup(value);
@@ -885,6 +901,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	value = av_value(avl, "heap_sz");
 	if (value)
 		inst->heap_sz = strtol(value, NULL, 0);
+
+	inst->max_age_seconds = 0;
+	value = av_value(avl, "max_age_seconds");
+	if (value)
+		inst->max_age_seconds = strtoul(value, NULL, 0);
 
 	/* Set uid, gid, perm to the default values */
 	ldms_set_default_authz(&inst->uid, &inst->gid, &inst->perm, DEFAULT_AUTHZ_READONLY);
@@ -1014,6 +1035,34 @@ static void update_set_data(struct json_cfg_inst *inst,
 	}
 }
 
+/* clear_old_sets is to be called only inside the config lock of inst->lock.
+ * clears out sets that have not been updated since now - max_age.
+ * When max_age is 0, clears all unconditionally.
+ */
+static void clear_old_sets(struct json_cfg_inst *inst, uint32_t max_age)
+{
+	struct timeval now;
+        (void)gettimeofday(&now, NULL);
+	struct instance_age *ia;
+        LIST_FOREACH(ia, &(inst->age_list), entry) {
+		ldms_set_t set = ldms_set_by_name(ia->instance_name);
+		struct ldms_timestamp then = ldms_transaction_timestamp_get(set);
+		uint32_t dt = now.tv_sec - then.sec ;
+		if (!max_age || dt > max_age) {
+			LIST_REMOVE(ia, entry);
+			ldmsd_set_deregister(ia->instance_name, SAMP);
+			ldms_set_unpublish(set);
+			ldms_set_delete(set);
+			if (ia) {
+				free(ia->instance_name);
+				ia->instance_name = NULL;
+				free(ia);
+			}
+		}
+        }
+	/* should clear old schemas here, but schemas are not yet managed in a per-stream tree. */
+}
+
 static int json_recv_cb(ldmsd_stream_client_t c, void *cb_arg,
 		        ldmsd_stream_type_t stream_type,
 			const char *data, size_t data_len,
@@ -1024,6 +1073,7 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *cb_arg,
 	ldms_schema_t schema = NULL;
 	struct json_cfg_inst *inst = cb_arg;
 	json_entity_t schema_name;
+	char *schema_str;
 
 	LDEBUG("thread: %lu, stream: '%s', msg: '%s'\n", pthread_self(), inst->stream_name, data);
 	if (stream_type != LDMSD_STREAM_JSON) {
@@ -1050,23 +1100,31 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *cb_arg,
 		       "missing or not a string.\n", inst->stream_name);
 		goto err_0;
 	}
-	rc = get_schema_for_json(json_value_str(schema_name)->str, entity, &schema);
+	schema_str = json_value_str(schema_name)->str;
+	rc = get_schema_for_json(schema_str, entity, &schema);
 	if (rc) {
-		LERROR("%s: Error %d creating an LDMS schema for the JSON object '%s'\n",
-		       inst->stream_name, rc, msg);
+		LERROR("%s: Error %d creating an LDMS schema %s for the JSON object in '%s'\n",
+		       inst->stream_name, rc, schema_str, msg);
 		goto err_0;
 	}
 	char *set_name;
+#ifdef OLD
 	if (inst->instance_name) {
 		set_name = strdup(inst->instance_name);
 	} else {
 		rc = asprintf(&set_name, "%s_%s", inst->producer_name,
-			      json_value_str(schema_name)->str);
+			      schema_str);
 		if (rc < 0)
 			set_name = NULL;
 	}
+#else
+	rc = asprintf(&set_name, "%s/%s/%s", inst->instance_name,
+			inst->producer_name, schema_str);
+	if (rc < 0)
+		set_name = NULL;
+#endif
 	if (!set_name) {
-		LERROR("Memory allocation failure.\n");
+		LERROR("Memory allocation failure for instance name.\n");
 		goto err_0;
 	}
 	ldms_set_t set = ldms_set_by_name(set_name);
@@ -1077,6 +1135,10 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *cb_arg,
 			LINFO("Created the set '%s' with schema '%s'\n",
 			      set_name, ldms_schema_name_get(schema));
 			ldms_set_publish(set);
+			ldmsd_set_register(set, SAMP);
+			struct instance_age *ia = calloc(1, sizeof(*ia));
+			ia->instance_name = strdup(set_name);
+			LIST_INSERT_HEAD(&(inst->age_list), ia, entry);
 		} else {
 			LERROR("Error %d creating the set '%s' with schema '%s'\n",
 			       errno, set_name, ldms_schema_name_get(schema));
@@ -1099,6 +1161,9 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *cb_arg,
  err_1:
 	free(set_name);
  err_0:
+	if (inst->max_age_seconds) {
+		clear_old_sets(inst, inst->max_age_seconds);
+	}
 	pthread_mutex_unlock(&inst->lock);
 	return rc;
 }
@@ -1106,6 +1171,8 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *cb_arg,
 static void term(struct ldmsd_plugin *self)
 {
 	/* TODO: Cleanup ... maybe ... */
+	/* for insts existing:
+	     clear_old_sets(inst, 0); */
 }
 
 static int sample(struct ldmsd_sampler *self)
