@@ -349,13 +349,13 @@ function LDMSD {
 				-c $LDMSD_RUN/conf.$i \
 				-l ${LOGDIR}/$i.txt \
 				-v DEBUG $LDMSD_EXTRA \
-				-r $LDMSD_PIDFILE.$i > $LDMSD_RUN/start.$i
+				-r $LDMSD_PIDFILE.$i \& > $LDMSD_RUN/start.$i
 			$wrap ldmsd.${ports[$i]} \
 				-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 				-c $LDMSD_RUN/conf.$i \
 				-l ${LOGDIR}/$i.txt \
 				-v DEBUG $LDMSD_EXTRA \
-				-r $LDMSD_PIDFILE.$i
+				-r $LDMSD_PIDFILE.$i &
 		else
 			if test -f $clonefile -a $cloneinput = "1"; then
 				cp $clonefile $LDMSD_RUN/conf.$i
@@ -367,13 +367,13 @@ function LDMSD {
 					-c $LDMSD_RUN/conf.$i \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG $LDMSD_EXTRA \
-					-r $LDMSD_PIDFILE.$i > $LDMSD_RUN/start.$i
+					-r $LDMSD_PIDFILE.$i \& > $LDMSD_RUN/start.$i
 				$wrap ldmsd.${ports[$i]} \
 					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 					-c $LDMSD_RUN/conf.$i \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG $LDMSD_EXTRA \
-					-r $LDMSD_PIDFILE.$i
+					-r $LDMSD_PIDFILE.$i &
 			else
 				echo $myproc: IDLE DAEMON $i
 				env > $LDMSD_RUN/env.$i
@@ -381,11 +381,11 @@ function LDMSD {
 				echo ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]} \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG \
-					-r $LDMSD_PIDFILE.$i > $LDMSD_RUN/start.$i
+					-r $LDMSD_PIDFILE.$i \& > $LDMSD_RUN/start.$i
 				ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]} \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG \
-					-r $LDMSD_PIDFILE.$i
+					-r $LDMSD_PIDFILE.$i &
 			fi
 		fi
 		# assume gnu sleep and bc exist, because usleep deprecated
