@@ -1614,7 +1614,8 @@ class LdmsdCmdParser(cmd.Cmd):
             port=               The LDMS port of the failover partner.
                                 This is optional in re-configuration.
             [auto_switch=0|1]   Auto switching (failover/failback).
-            [interval=]         The interval of the heartbeat.
+            [ping_interval=]    The interval of the heartbeat.
+            [interval=]         Deprecated. Please use 'ping_interval'.
             [timeout_factor=]   The hearbeat timeout factor.
             [peer_name=]        The failover partner name. If not given,
                                 the ldmsd will accept any partner.
@@ -1622,11 +1623,16 @@ class LdmsdCmdParser(cmd.Cmd):
         arg = self.handle_args('failover_config', arg)
         if not arg:
             return
+        if all(v is not None for v in [arg['ping_interval'], arg['interval']]):
+            print(f"Both 'ping_interval' and 'interval' were given, the value of 'ping_interval' will be used.")
+        elif arg['interval'] is not None:
+            print(f"'interval' is deprecated. Please use 'ping_interval' in the future")
+            arg['pint_interval'] = arg['interval']
         rc, msg = self.comm.failover_config(arg['host'],
                                             arg['xprt'],
                                             arg['port'],
                                             arg['auto_switch'],
-                                            arg['interval'],
+                                            arg['ping_interval'],
                                             arg['timeout_factor'],
                                             arg['peer_name'])
         if rc:

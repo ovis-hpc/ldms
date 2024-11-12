@@ -178,6 +178,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "peer_name",         LDMSD_ATTR_PEER_NAME },
 	{  "perm",              LDMSD_ATTR_PERM  },
 	{  "plugin",            LDMSD_ATTR_PLUGIN  },
+	{  "ping_interval",     LDMSD_ATTR_INTERVAL  },
 	{  "port",              LDMSD_ATTR_PORT  },
 	{  "producer",          LDMSD_ATTR_PRODUCER  },
 	{  "push",              LDMSD_ATTR_PUSH  },

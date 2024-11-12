@@ -15,7 +15,7 @@ ldmsd_failover - explanation, configuration, and commands for ldmsd failover
 
 .IP \fBfailover_config\fR 16
 .RI "host=" HOST " port=" PORT " xprt=" XPRT
-.RI "[peer_name=" NAME "] [interval=" USEC "] [timeout_factor=" FLOAT "]"
+.RI "[peer_name=" NAME "] [ping_interval=" USEC "] [timeout_factor=" FLOAT "]"
 .RI "[auto_switch=" 0|1 "]"
 
 .IP \fBfailover_start\fR
@@ -63,12 +63,12 @@ optional in re-configuration.
 \fBldmsd\fR(8)). If this is specified, the ldmsd will only accept a pairing with
 other ldmsd with matching name. Otherwise, the ldmsd will pair with any ldmsd
 requesting a failover pairing.
-.IP \fBinterval\fR=\fIuSEC\fR
+.IP \fBping_interval\fR=\fIuSEC\fR
 (Optional) The interval (in micro-seconds) for ping and transport re-connecting.
 The default is 1000000 (1 sec).
 .IP \fBtimeout_factor\fR=\fIFLOAT\fR
 (Optional) The echo timeout factor. The echo timeout is calculated by
-\fB\%timeout_factor * \%interval\fR. The default is 2.
+\fB\%timeout_factor * \%ping_interval\fR. The default is 2.
 .IP \fBauto_switch\fR=\fI0|1\fR
 (Optional) If this is on (1), ldmsd will start \fBpeercfg\fR or stop
 \fBpeercfg\fR automatically. Otherwise, the user need to issue
@@ -174,28 +174,28 @@ shown above:
 .B
 # a20.cfg
 prdcr_add name=prdcr_a10 host=a10.hostname port=12345 xprt=sock \\
-          type=active interval=1000000
+          type=active reconnect_interval=1000000
 prdcr_start name=prdcr_a10
 prdcr_add name=prdcr_a11 host=a11.hostname port=12345 xprt=sock \\
-          type=active interval=1000000
+          type=active reconnect_interval=1000000
 prdcr_start name=prdcr_a11
-updtr_add name=upd interval=1000000 offset=0
+updtr_add name=upd update_interval=1000000 offset=0
 updtr_prdcr_add name=upd regex.*
 updtr_start upd
 
 .B
 # a10.cfg
 prdcr_add name=prdcr_s00 host=s00.hostname port=12345 xprt=sock \\
-          type=active interval=1000000
+          type=active reconnect_interval=1000000
 prdcr_start name=prdcr_s00
 prdcr_add name=prdcr_s01 host=s01.hostname port=12345 xprt=sock \\
-          type=active interval=1000000
+          type=active reconnect_interval=1000000
 prdcr_start name=prdcr_s01
-updtr_add name=upd interval=1000000 offset=0
+updtr_add name=upd update_interval=1000000 offset=0
 updtr_prdcr_add name=upd regex.*
 updtr_start upd
 \fIfailover_config\fR host=a11.hostname port=12345 xprt=sock \\
-                      interval=1000000 peer_name=a11
+                      ping_interval=1000000 peer_name=a11
 \fIfailover_start\fR
 .B
 # a10 CLI
@@ -205,16 +205,16 @@ $ ldmsd -c a10.cfg -x sock:12345 \fB-n\fR \fIa10\fR
 .B
 # a11.cfg
 prdcr_add name=prdcr_s02 host=s02.hostname port=12345 xprt=sock \\
-          type=active interval=1000000
+          type=active reconnect_interval=1000000
 prdcr_start name=prdcr_s02
 prdcr_add name=prdcr_s03 host=s03 port=12345 xprt=sock \\
-          type=active interval=1000000
+          type=active reconnect_interval=1000000
 prdcr_start name=prdcr_s03
-updtr_add name=upd interval=1000000 offset=0
+updtr_add name=upd update_interval=1000000 offset=0
 updtr_prdcr_add name=upd regex.*
 updtr_start upd
 \fIfailover_config\fR host=a10.hostname port=12345 xprt=sock \\
-                      interval=1000000 peer_name=a10
+                      ping_interval=1000000 peer_name=a10
 \fIfailover_start\fR
 .B
 # a11 CLI
