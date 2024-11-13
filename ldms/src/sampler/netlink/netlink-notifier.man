@@ -27,6 +27,7 @@ Its messages are mostly compatible with those from the slurm spank based notifie
 -i seconds	 time (float) to sleep between checks for processes exceeding the short dir filter time.
 		 If the -i value > the -m value, -i may effectively filter out additional processes.
 -j file	 file to log json messages and transmission status.
+-J file	 file to dump json messages format examples to.
 -l	force stdout line buffering.
 -L file	log to file instead of stdout.
 -r	run with real time FIFO scheduler (available on some kernels).
@@ -115,7 +116,7 @@ NOTIFIER_LDMS_XPRT=sock
 NOTIFIER_LDMS_HOST=localhost
 NOTIFIER_LDMS_PORT=411
 NOTIFIER_LDMS_AUTH=munge
-NOTIFIER_FORMAT=2
+NOTIFIER_FORMAT=3
 NOTIFIER_HEARTBEAT=(none)
 NOTIFIER_PURGE_TRACK_DIR
 NOTIFIER_JOBID_FILE=(none)
@@ -154,12 +155,16 @@ The variable names checked are:
 Message formats tuned to SLURM, LSF, and Linux without a batch scheduler
 are published, based on what the notifier detects and the users choice of
 ProducerName and component_id. The version of the tuned formats is specified by number.
+If started with the -J option, an example of each available message format it dumped to the
+specified file.
 .PP
 Format 0 omits the start time from slurm process end messages (since it is only sometimes known) and omits process duration, which depend on the start time.
 .PP
 Format 1 includes the start time for slurm process or the dummy value 0 when unknown) and includes process duration for all end messages. When the start time is unavailable, duration of -1.0 is published. Merging data from other sources may allow durations flagged as -1 to be computed in some later data cleanup step.
 .PP
 Format 2 extends process end messages with the executable name in field 'exe'. When this is not available, exe of '/no-exe-data' is published. Merging data from other sources may allow exe flagged as /no-exe-data to be computed in some later data cleanup step.
+.PP
+Format 3 harmonizes schemas across linux, slurm, and lsf task types so that all may be stored in common tables for task_exit and task_init events if slurm specific fields are omitted from the storage.
 
 
 .SH NOTES
@@ -178,7 +183,9 @@ start time, 0 indicates
 data was unavailable. For processes without completely known time bounds, the duration is reported
 as -1.0. For processes without known program paths, exe is reported as /no-exe-data.
 .PP
-Options are still in development. Several options affect only the trace output.
+Several options affect only the trace output.
+.PP
+The check for sufficient privilege occurs after -J and --help options are processed.
 
 .SH EXAMPLES
 .PP
