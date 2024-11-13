@@ -295,7 +295,6 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		msglog(LDMSD_LERROR, PNAME ": stream_cb ctxt is NULL\n");
 		return EINVAL;
 	}
-	msglog(LDMSD_LDEBUG, PNAME ": stream_cb got message size %zu\n", msg_len);
 
 	pthread_mutex_lock(&sd->write_lock);
 	if (sd->ws == WS_REOPEN) {
