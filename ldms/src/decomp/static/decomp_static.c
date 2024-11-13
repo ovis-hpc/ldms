@@ -1402,100 +1402,162 @@ static int diff_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 
 static int mean_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 {
-	int count = 0;
 	ldmsd_row_t src_row = TAILQ_FIRST(row_list);
 	ldmsd_col_t dst_col = &dest_row->cols[col_id];
-	struct ldmsd_col_s zero_col;
-	union ldms_value zero;
-        uint64_t sum_time;
-	memset(&zero, 0, sizeof(zero));
+	union ldms_value *x;
+	int64_t bi, r, g;
+	double bd;
+        uint64_t tm;
+	int n;
 
-	memset(&zero, 0, sizeof(zero));
-	zero_col.mval = &zero;
-	zero_col.array_len = 1;
-	zero_col.type = LDMS_V_U64;
-	assign_value(dst_col, &zero_col);
+	switch (dst_col->type) {
+	case LDMS_V_CHAR:
+	case LDMS_V_U8: case LDMS_V_S8:
+	case LDMS_V_U16: case LDMS_V_S16:
+	case LDMS_V_U32: case LDMS_V_S32:
+	case LDMS_V_U64: case LDMS_V_S64:
+	case LDMS_V_F32: case LDMS_V_D64:
+	case LDMS_V_TIMESTAMP:
+		/* OK */
+		break;
+	default:
+		return EINVAL;
+	}
+
+	/* calculate average iteratively (similar to simple moving average)
+	 * to reduce the chance of value overflow or underflow.
+	 *
+	 * NOTE:
+	 *  A is an average series (real value)
+	 *  B is the integer part of A
+	 *  R is the residual part
+	 *  Namely: A[n] = B[n] + (R[n])/n
+	 *
+	 *   A[n+1] = (n*A[n] + x[n+1]) / (n+1)
+	 *          = ( (n+1)A[n] - A[n] + x[n+1] ) / (n+1)
+	 *          = (n+1)A[n]/(n+1) - A[n]/(n+1) + x[n+1]/(n+1)
+	 *          = A[n] + (x[n+1] - A[n])/(n+1)
+	 *          = B[n] + (R[n])/n + (x[n+1] - B[n] - (R[n])/n)/(n+1)
+	 *          = B[n] + ( (n+1)R[n]/n + x[n+1] - B[n] - R[n]/n )/(n+1)
+	 *          = B[n] + ( R[n] + x[n+1] - B[n] )/(n+1)
+	 *
+	 *   In the calculation below
+	 *   `bi` is integer-type B[n] on LHS, and is B[n+1] on RHS
+	 *   `bd` is double-type  B[n] on LHS, and is B[n+1] on RHS
+	 *   `r` is R[n] on LHS, and is R[n+1] on RHS
+	 *   `g` refers to the term R[n]+x[n+1]-B[n]
+	 */
+	r = 0;
+	n = 0;
+	bi = 0;
+	bd = 0;
 	while (src_row)
 	{
+		x = src_row->cols[col_id].mval;
 		switch (dst_col->type) {
 		case LDMS_V_U8:
-			dst_col->mval->v_u8 += src_row->cols[col_id].mval->v_u8;
+			g = r + x->v_u8 - bi;
+			bi = bi + g/(n+1);
+			r = g % (n+1);
 			break;
 		case LDMS_V_S8:
-			dst_col->mval->v_s8 += src_row->cols[col_id].mval->v_s8;
+			g = r + x->v_s8 - bi;
+			bi = bi + g/(n+1);
+			r = g % (n+1);
 			break;
 		case LDMS_V_U16:
-			dst_col->mval->v_u16 += src_row->cols[col_id].mval->v_u16;
+			g = r + x->v_u16 - bi;
+			bi = bi + g/(n+1);
+			r = g % (n+1);
 			break;
 		case LDMS_V_S16:
-			dst_col->mval->v_s16 += src_row->cols[col_id].mval->v_s16;
+			g = r + x->v_s16 - bi;
+			bi = bi + g/(n+1);
+			r = g % (n+1);
 			break;
 		case LDMS_V_U32:
-			dst_col->mval->v_u32 += src_row->cols[col_id].mval->v_u32;
+			g = r + x->v_u32 - bi;
+			bi = bi + g/(n+1);
+			r = g % (n+1);
 			break;
 		case LDMS_V_S32:
-			dst_col->mval->v_s32 += src_row->cols[col_id].mval->v_s32;
+			g = r + x->v_s32 - bi;
+			bi = bi + g/(n+1);
+			r = g % (n+1);
 			break;
 		case LDMS_V_U64:
-			dst_col->mval->v_u64 += src_row->cols[col_id].mval->v_u64;
+			/* make small terms to prevent over/under flow */
+			g = x->v_u64/(n+1) - bi/(n+1);
+			r = r + (x->v_u64 % (n+1)) - (bi%(n+1));
+			bi = bi + g + r/(n+1);
+			r = r % (n+1);
 			break;
 		case LDMS_V_S64:
-			dst_col->mval->v_s64 += src_row->cols[col_id].mval->v_s64;
+			/* make small terms to prevent over/under flow */
+			g = x->v_s64/(n+1) - bi/(n+1);
+			r = r + (x->v_s64 % (n+1)) - (bi%(n+1));
+			bi = bi + g + r/(n+1);
+			r = r % (n+1);
 			break;
 		case LDMS_V_F32:
-			dst_col->mval->v_f += src_row->cols[col_id].mval->v_f;
+			bd = bd + (x->v_f - bd)/(n+1);
 			break;
 		case LDMS_V_D64:
-			dst_col->mval->v_d += src_row->cols[col_id].mval->v_d;
+			bd = bd + (x->v_d - bd)/(n+1);
 			break;
 		case LDMS_V_TIMESTAMP:
-                        sum_time = (dst_col->mval->v_ts.sec * 1000000) + dst_col->mval->v_ts.usec;
-                        sum_time += (src_row->cols[col_id].mval->v_ts.sec * 1000000) + src_row->cols[col_id].mval->v_ts.usec;
-                        dst_col->mval->v_ts.sec += (uint32_t)(sum_time / 1000000);
-                        dst_col->mval->v_ts.usec += (uint32_t)(sum_time % 1000000);
+			/* do as u64 usecs and convert back later */
+			tm = (x->v_ts.sec * 1000000) + x->v_ts.usec;
+			g = r + tm - bi;
+			bi = bi + g/(n+1);
+			r = g % (n+1);
 			break;
 		default:
 			return EINVAL;
 		}
-		count += 1;
+		n += 1;
 		src_row = TAILQ_NEXT(src_row, entry);
+	}
+	/* residue with opposite sign of the result */
+	if (r < 0 && bi > 0) {
+		bi -= 1;
+	} else if (r > 0 && bi < 0) {
+		bi += 1;
 	}
 	switch (dst_col->type) {
 	case LDMS_V_U8:
-		dst_col->mval->v_u8 /= count;
+		dst_col->mval->v_u8 = bi;
 		break;
 	case LDMS_V_S8:
-		dst_col->mval->v_s8 /= count;
+		dst_col->mval->v_s8 = bi;
 		break;
 	case LDMS_V_U16:
-		dst_col->mval->v_u16 /= count;
+		dst_col->mval->v_u16 = bi;
 		break;
 	case LDMS_V_S16:
-		dst_col->mval->v_s16 /= count;
+		dst_col->mval->v_s16 = bi;
 		break;
 	case LDMS_V_U32:
-		dst_col->mval->v_u32 /= count;
+		dst_col->mval->v_u32 = bi;
 		break;
 	case LDMS_V_S32:
-		dst_col->mval->v_s32 /= count;
+		dst_col->mval->v_s32 = bi;
 		break;
 	case LDMS_V_U64:
-		dst_col->mval->v_u64 /= count;
+		dst_col->mval->v_u64 = bi;
 		break;
 	case LDMS_V_S64:
-		dst_col->mval->v_s64 /= count;
+		dst_col->mval->v_s64 = bi;
 		break;
 	case LDMS_V_F32:
-		dst_col->mval->v_f /= count;
+		dst_col->mval->v_f = bd;
 		break;
 	case LDMS_V_D64:
-		dst_col->mval->v_d /= count;
+		dst_col->mval->v_d = bd;
 		break;
 	case LDMS_V_TIMESTAMP:
-                sum_time = (dst_col->mval->v_ts.sec * 1000000) + dst_col->mval->v_ts.usec;
-                sum_time /= count;
-                dst_col->mval->v_ts.sec += (uint32_t)(sum_time / 1000000);
-                dst_col->mval->v_ts.usec += (uint32_t)(sum_time % 1000000);
+		dst_col->mval->v_ts.sec  = bi / 1000000;
+		dst_col->mval->v_ts.usec = bi % 1000000;
 		break;
 	default:
 		return EINVAL;
