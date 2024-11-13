@@ -331,6 +331,7 @@ typedef struct forkstat {
 	char *jobid_variable_name;			/* variable for for jobid */
 	char *jobid_file_name;			/* where to look for jobid variable data */
 	char *host_jobid;			/* jobid from host file; fallback for proc_info jobid */
+	char *schema_dump;			/* path of file to dump configured schemas into */
 } forkstat_t;
 
 
@@ -4510,6 +4511,94 @@ static void *dump_pids(void *vp)
 	return NULL;
 }
 
+char *dummy_pidenv[] = {"a=1","b=1", NULL};
+proc_info_t test_pi = {
+	.next = NULL,
+	.cmdline = "/bin/sleep 10",
+	.pid = 123,
+	.uid = 1023,
+	.gid = 1024,
+	.euid = 1025,
+	.start.tv_sec = 100000000,
+	.start.tv_usec = 1,
+	.start_tick = 1234567,
+	.kernel_thread = false,	/* true if a kernel thread */
+	.exe = "/bin/sleep",
+	.serno = 601,
+	.rm_type = RM_NONE,	/* replace with lsf or slurm as neeced */
+	.pidenv = dummy_pidenv,
+	.jobid = "123_45",
+	.is_thread = false,	/* replace with true as needed */
+	.excluded = false,
+	.excluded_short = false,
+	.emitted = EMIT_NONE,
+	.duration = 21345
+};
+
+void dump_schemas(forkstat_t *ft)
+{
+	if (!ft || !ft->schema_dump) {
+		return;
+	}
+	proc_info_t *info = &test_pi;
+	jbuf_t jbd = jbuf_new();
+	jbuf_t jb = jbd;
+	FILE *out = fopen(ft->schema_dump, "w");
+	if (!out) {
+		PRINTF("-J error: cannot open file %s\n", ft->schema_dump);
+		return;
+	}
+	PRINTF("dumping schema information to %s. configured format is %lu\n",
+		ft->schema_dump, ft->format);
+	int oldfmt = ft->format;
+	char *end = NULL;
+	unsigned long max_format = strtoul(default_format, &end, 10);
+	unsigned long k;
+	for (k = 0; k <= max_format; k++) {
+		ft->format = k;
+		fprintf(out, "\noptions: format=%lu %s %s\n",
+				ft->format, ft->prod_field, ft->compid_field);
+
+		// case RM_NONE:
+		jb = make_process_end_data_linux(ft, info, jbd);
+		fprintf(out, "// linux task end format=%lu\n%s\n", ft->format, jb->buf);
+		jbuf_reset(jbd);
+
+		// case RM_SLURM:
+		jb = make_process_end_data_slurm(ft, info, jbd);
+		fprintf(out, "// slurm task end format=%lu\n%s\n", ft->format, jb->buf);
+		jbuf_reset(jbd);
+
+		// case RM_LSF:
+		jb = make_process_end_data_lsf(ft, info, jbd);
+		fprintf(out, "// lsf task end format=%lu\n%s\n", ft->format, jb->buf);
+		jbuf_reset(jbd);
+
+		// case RM_NONE:
+		jb = make_process_start_data_linux(ft, info
+#if DEBUG_EMITTER
+									, type
+#endif
+									, jbd);
+		fprintf(out, "// linux task start format=%lu\n%s\n", ft->format, jb->buf);
+		jbuf_reset(jbd);
+		// case RM_SLURM:
+		jb = make_process_start_data_slurm(ft, info
+#if DEBUG_EMITTER
+									, type
+#endif
+									, jbd);
+		fprintf(out, "// slurm task start format=%lu\n%s\n", ft->format, jb->buf);
+		jbuf_reset(jbd);
+		// case RM_LSF:
+		jb = make_process_start_data_lsf(ft, info, jbd);
+		fprintf(out, "// lsf task start format=%lu\n%s\n", ft->format, jb->buf);
+		jbuf_reset(jbd);
+	}
+	ft->format = oldfmt;
+	jbuf_free(jbd);
+	fclose(out);
+}
 /*
  * This portion of the code extended by NTESS from forkstat.
  */
@@ -4524,10 +4613,6 @@ int main(int argc, char * argv[])
 	forkstat_t *ft = NULL;
 	struct dump_args thread_args;
 	memset(&thread_args, 0, sizeof(thread_args));
-	if (geteuid() != 0) {
-		(void)fprintf(stderr, "Need to run with root access.\n");
-		goto done;
-	}
 	ft = forkstat_create(printf, printf);
 	if (!ft) {
 		fprintf(stderr, "%s: out of memory.\n", argv[0]);
@@ -4558,7 +4643,7 @@ int main(int argc, char * argv[])
 	while (1) {
 		// int this_option_optind = optind ? optind : 1;
 		int option_index = 0;
-		c = getopt_long(argc, args, "cdD:e:Eghi:j:L:lm:rsStqxXu:v:",
+		c = getopt_long(argc, args, "cdD:e:Eghi:j:J:L:lm:rsStqxXu:v:",
 				long_options, &option_index);
 		if (c == -1)
 			break;
@@ -4611,6 +4696,12 @@ int main(int argc, char * argv[])
 		case 'j':
 			if (forkstat_set_json_log(ft, optarg)) {
 				(void)fprintf(stderr, "-f %s failed.\n", optarg);
+				exit(EXIT_FAILURE);
+			}
+			break;
+		case 'J':
+			if (!(ft->schema_dump = strdup(optarg))) {
+				(void)fprintf(stderr, "-J %s malloc failed.\n", optarg);
 				exit(EXIT_FAILURE);
 			}
 			break;
@@ -4740,7 +4831,6 @@ int main(int argc, char * argv[])
 		ret = EXIT_FAILURE;
 		goto abort_sock;
 	}
-
 	if (ft->opt_trace)
 		forkstat_option_dump(ft, excludes);
 
@@ -4757,6 +4847,16 @@ int main(int argc, char * argv[])
 		}
 	}
 
+	if (ft->schema_dump) {
+		dump_schemas(ft);
+		free(ft->schema_dump);
+		ft->schema_dump = NULL;
+	}
+
+	if (geteuid() != 0) {
+		(void)fprintf(stderr, "Need to run with root access on netlink socket.\n");
+		goto done;
+	}
 	struct monitor_args ma;
 	ma.ret = 0;
 	int conn_err = forkstat_connect(ft, &ma);
