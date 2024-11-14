@@ -947,31 +947,34 @@ cleanup:
 char *__process_yaml_config_file(const char *path, const char *dname)
 {
 	FILE *fp;
-	char command[256];
-	char cstr[256];
-        char *cfg_str = malloc(512);
-	*cfg_str = '\0';
+	char command[512];
+	size_t buf_sz = 4096;
+	char *cfg_str = malloc(buf_sz);
 	snprintf(command, sizeof(command), "ldmsd_yaml_parser --ldms_config %s --daemon_name %s", path, dname);
 	fp = popen(command, "r");
 	if (!fp) {
 		ldmsd_log(LDMSD_LERROR, "Error opening pipe to ldmsd_yaml_parser.\n");
 		goto err;
 	}
-	size_t char_cnt = 0;
-	int status;
-	while (fgets(cstr, sizeof(cstr), fp) != NULL) {
-		char_cnt += strlen(cstr);
-		if (char_cnt > 512) {
-			cfg_str = (char *)realloc(cfg_str, char_cnt+1);
-			if (cfg_str == NULL) {
+	size_t bytes_read;
+	size_t tbytes = 0;
+	while ((bytes_read = fread(&cfg_str[tbytes], 1, 4096, fp)) > 0) {
+		tbytes += bytes_read;
+		if (bytes_read == 4096) {
+			cfg_str = (char *)realloc(cfg_str, tbytes + bytes_read + 1);
+			if (!cfg_str) {
+				ldmsd_log(LDMSD_LERROR, "Error allocating memory\n");
 				goto err;
 			}
 		}
-		strcat(cfg_str, cstr);
 	}
+	cfg_str[tbytes] = '\0';
+	int status;
 	status = pclose(fp);
-	if (status)
+	if (status) {
+		ldmsd_log(LDMSD_LERROR, "Error occured processing configuration file %s.\n", path);
 		goto err;
+	}
 	return cfg_str;
 err:
 	if (cfg_str) {

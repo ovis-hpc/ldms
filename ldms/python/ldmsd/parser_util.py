@@ -933,11 +933,14 @@ class YamlCfg(object):
         """
         dmn = None
         grp = None
+        ddmns = []
         for dmn_grp in self.daemons:
             if dname in self.daemons[dmn_grp]:
                 dmn = self.daemons[dmn_grp][dname]
                 grp = dmn_grp
-                break
+                ddmns.append(dmn)
+        if len(ddmns) > 1:
+            raise ValueError('fDaemon {dname} has been defined multiple times in the YAML configuration file "{path}"\n')
         if dmn is None:
             raise ValueError(f'Daemon {dname} does not exist in YAML configuration file {path}\n')
         dstr = ''
