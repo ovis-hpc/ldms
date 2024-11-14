@@ -6257,7 +6257,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_prdcr_stream_t s;
 
 		ldmsd_prdcr_lock(prdcr);
-		fprintf(fp, "prdcr_add name=%s host=%s port=%d xprt=%s type=%s interval=%ld auth=%s uid=%d gid=%d\n",
+		fprintf(fp, "prdcr_add name=%s host=%s port=%d xprt=%s type=%s reconnect_interval=%ld auth=%s uid=%d gid=%d\n",
 			prdcr->obj.name, prdcr->host_name,
 			prdcr->port_no, prdcr->xprt_name,
 			ldmsd_prdcr_type2str(prdcr->type),
@@ -6303,7 +6303,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 		if (p->plugin->type == LDMSD_PLUGIN_SAMPLER) {
 			if (p->os) {
 				/* Plugin is running. */
-				fprintf(fp, "start name=%s interval=%ld offset=%ld\n",
+				fprintf(fp, "start name=%s sample_interval=%ld offset=%ld\n",
 					p->plugin->name,
 					p->sample_interval_us,
 					p->sample_offset_us);
@@ -6330,7 +6330,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 			updtr_mode = "push=onchange";
 		if (updtr_mode)
 			fprintf(fp, " %s", updtr_mode);
-		fprintf(fp, " interval=%ld", updtr->default_task.task.sched_us);
+		fprintf(fp, " update_interval=%ld", updtr->default_task.task.sched_us);
 		if (updtr->default_task.task_flags & LDMSD_TASK_F_SYNCHRONOUS)
 		    fprintf(fp, " offset=%ld\n", updtr->default_task.task.offset_us);
 		else

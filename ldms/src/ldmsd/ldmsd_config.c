@@ -697,11 +697,30 @@ parse:
 	if (ldmsd_is_initialized()) {
 		if ((0 == strncmp(line, "prdcr_add", 9)) ||
 				(0 == strncmp(line, "prdcr_start", 11))) {
-			if (strstr(line, "interval")) {
+			/* Handle the reconnect interval aliases */
+			if (!strstr(line, "reconnect_interval")) {
+				if (strstr(line, "interval") ||
+					(strstr(line, "reconnect"))) {
+					ldmsd_log(LDMSD_LWARNING,
+						"'interval' and 'reconnect' are deprecated. "
+						"Please use 'reconnect_interval' in the future.\n");
+				}
+			}
+		} else if (0 == strncmp(line, "start", 5)) {
+			/* Handle the sample interval alias */
+			if (!strstr(line, "sample_interval") &&
+				strstr(line, "interval")) {
 				ldmsd_log(LDMSD_LWARNING,
-						"'interval' is begin deprecated. "
-						"Please use 'reconnect' with 'prdcr_add' or 'prdcr_start*' "
-						"in the future.\n");
+					  "'interval' is depreacated. " \
+					  "Please use 'sample_interval' in the future.\n");
+			}
+		} else if ((0 == strncmp(line, "updtr_add", 9)) ||
+				(0 == strncmp(line, "updtr_start", 11))) {
+			if (!strstr(line, "update_interval") &&
+				strstr(line, "interval")) {
+				ldmsd_log(LDMSD_LWARNING,
+					  "'interval' is deprecated. " \
+					  "Please use 'update_interval' in the future.\n");
 			}
 		}
 	}

@@ -178,11 +178,14 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "peer_name",         LDMSD_ATTR_PEER_NAME },
 	{  "perm",              LDMSD_ATTR_PERM  },
 	{  "plugin",            LDMSD_ATTR_PLUGIN  },
+	{  "ping_interval",     LDMSD_ATTR_INTERVAL  },
 	{  "port",              LDMSD_ATTR_PORT  },
 	{  "producer",          LDMSD_ATTR_PRODUCER  },
 	{  "push",              LDMSD_ATTR_PUSH  },
 	{  "reconnect",         LDMSD_ATTR_INTERVAL  },
+	{  "reconnect_interval",LDMSD_ATTR_INTERVAL  },
 	{  "regex",             LDMSD_ATTR_REGEX  },
+	{  "sample_interval",   LDMSD_ATTR_INTERVAL  },
 	{  "schema",            LDMSD_ATTR_SCHEMA  },
 	{  "stream",            LDMSD_ATTR_STREAM  },
 	{  "string",            LDMSD_ATTR_STRING  },
@@ -193,6 +196,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "type",              LDMSD_ATTR_TYPE  },
 	{  "udata",             LDMSD_ATTR_UDATA  },
 	{  "uid",               LDMSD_ATTR_UID  },
+	{  "update_interval",   LDMSD_ATTR_INTERVAL  },
 	{  "xprt",              LDMSD_ATTR_XPRT  },
 };
 

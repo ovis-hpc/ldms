@@ -357,42 +357,66 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_daemon_exit(self, text, line, begidx, endidx):
         return self.__complete_attr_list('daemon_exit', text)
 
+    def __handle_reconnect_alias(reconnect_interval, reconnect, interval):
+        # Handle multiple aliases of 'reconnect_interval'
+        # 'interval' and 'reconnect' is deprecated and to be removed in v4.5
+        value = None
+        if all(v is None for v in [interval, reconnect, reconnect_interval]):
+            print(f"The attribute 'reconnect_interval' is missing.")
+            return None
+        elif sum(v is not None for v in [interval, reconnect, reconnect_interval]) > 1:
+            print(f"Multiple values of reconnect interval are given. " \
+                  f"The 'reconnect_interval' value will be used if given. " \
+                  f"Otherwise, the 'reconnect' value will be used.")
+
+        if sum(v is not None for v in [interval, reconnect]) > 0:
+            print(f"The 'interval' and 'reconnect' are deprecated. " \
+                  f"Please use 'reconnect_interval' in the future.")
+
+        if reconnect_interval is None:
+            if reconnect is not None:
+                value = reconnect
+            else:
+                value = interval
+        else:
+            value = reconnect_interval
+        return value
+
     def do_prdcr_add(self, arg):
         """
         Add an LDMS Producer to the Aggregator
         Parameters:
-        name=     A unique name for this Producer
-        xprt=     The transport name [sock, rdma, ugni]
-        host=     The hostname of the host
-        port=     The port number on which the LDMS is listening
-        type=     The connection type [active, passive]
-        reconnect= The connection retry interval (us)
-        interval= The connection retry interval (us) (Deprecated, please use 'reconnect'.)
-        auth=     The authentication method
-        [perm=]   The permission to modify the producer in the future.
+        name=                A unique name for this Producer
+        xprt=                The transport name [sock, rdma, ugni]
+        host=                The hostname of the host
+        port=                The port number on which the LDMS is listening
+        type=                The connection type [active, passive]
+        reconnect_interval=  The connection retry interval
+        [reconnect=]         Deprecated, please use 'reconnect_interval'.
+        [interval=]          Deprecated, please use 'reconnect_interval'.
+        [auth=]              The authentication method
+        [perm=]              The permission to modify the producer in the future.
         """
         arg = self.handle_args('prdcr_add', arg)
         if arg is None:
             return
-        if arg['interval'] is None and arg['reconnect'] is None:
-            print(f"The attribute 'reconnect' is missing.")
-        else:
-            if arg['interval'] is not None:
-                if arg['reconnect'] is not None:
-                    print(f"Both 'interval' and 'reconnect' is given. The 'reconnect' value will be used.")
-                else:
-                    arg['reconnect'] = arg['interval']
-                    print(f"'interval' is being deprecated. Please, use 'reconnect' in the future.")
-            rc, msg = self.comm.prdcr_add(arg['name'],
-                                          arg['type'],
-                                          arg['xprt'],
-                                          arg['host'],
-                                          arg['port'],
-                                          arg['reconnect'],
-                                          arg['auth'],
-                                          arg['perm'])
-            if rc:
-                print(f'Error adding prdcr {arg["name"]}: {msg}')
+
+        arg['reconnect_interval'] = self.__handle_reconnect_alias(arg['reconnect_interval'],
+                                                                  arg['reconnect'],
+                                                                  arg['interval'])
+        if arg['reconnect_interval'] is None:
+            return
+
+        rc, msg = self.comm.prdcr_add(arg['name'],
+                                        arg['type'],
+                                        arg['xprt'],
+                                        arg['host'],
+                                        arg['port'],
+                                        arg['reconnect_interval'],
+                                        arg['auth'],
+                                        arg['perm'])
+        if rc:
+            print(f'Error adding prdcr {arg["name"]}: {msg}')
 
     def complete_prdcr_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_add', text)
@@ -417,19 +441,24 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Start the specified producer.
         Parameters:
-        name=     The name of the producer
-        [reconnect=] The connection retry interval in micro-seconds. If this is not
-                  specified, the previously configured value will be used.
-        [interval=]  The same as reconnect. It is being deprecated. Please use 'reconnect'.
+        name=                   The name of the producer
+        [reconnect_interval=]   The connection retry interval. If this is not
+                                specified, the previously configured value will be used.
+        [reconnect=]            Deprecated. Please use 'reconnect_interval'
+        [interval=]             Deprecated. Please use 'reconnect_interval'
         """
         arg = self.handle_args('prdcr_start', arg)
-        if arg:
-            if arg['reconnect'] is None and arg['interval'] is not None:
-                arg['reconnect'] = arg['interval']
-                print(f"'interval' is being deprecated. Please, use 'reconnect' in the future")
-            rc, msg = self.comm.prdcr_start(arg['name'], regex=False, reconnect=arg['reconnect'])
-            if rc:
-                print(f'Error starting prdcr {arg["name"]}: {msg}')
+        if arg is None:
+            return
+
+        arg['reconnect_interval'] = self.__handle_reconnect_alias(arg['reconnect_interval'],
+                                                                  arg['reconnect'],
+                                                                  arg['interval'])
+        if arg['reconnect_interval'] is None:
+            return
+        rc, msg = self.comm.prdcr_start(arg['name'], regex=False, reconnect=arg['reconnect_interval'])
+        if rc:
+            print(f'Error starting prdcr {arg["name"]}: {msg}')
 
     def complete_prdcr_start(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_start', text)
@@ -439,18 +468,22 @@ class LdmsdCmdParser(cmd.Cmd):
         Start all producers matching a regular expression.
         Parameters:
         regex=     A regular expression
-        [reconnect=]  The connection retry interval in micro-seconds. If this is not
-                   specified, the previously configured value will be used.
-        [interval=]   The same as reconnect. It is being deprecated. Please use 'reconnect'.
+        [reconnect_interval=]   The connection retry interval. If this is not
+                                specified, the previously configured value will be used.
+        [reconnect=]            Deprecated. Please use 'reconnect_interval'
+        [interval=]             Deprecated. Please use 'reconnect_interval'
         """
         arg = self.handle_args('prdcr_start_regex', arg)
-        if arg:
-            if arg['reconnect'] is None and arg['interval'] is not None:
-                arg['reconnect'] = arg['interval']
-                print(f"'interval' is being deprecated. Please, use 'reconnect' in the future.")
-            rc, msg = self.comm.prdcr_start(arg['regex'], reconnect=arg['reconnect'])
-            if rc:
-                print(f'Error starting prdcr(s) with regex {arg["regex"]}: {msg}')
+        if arg is None:
+            return
+        arg['reconnect_interval'] = self.__handle_reconnect_alias(arg['reconnect_interval'],
+                                                                  arg['reconnect'],
+                                                                  arg['interval'])
+        if arg['reconnect_interval'] is None:
+            return
+        rc, msg = self.comm.prdcr_start(arg['regex'], reconnect=arg['reconnect_interval'])
+        if rc:
+            print(f'Error starting prdcr(s) with regex {arg["regex"]}: {msg}')
 
     def complete_prdcr_start_regex(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_start_regex', text)
@@ -580,8 +613,9 @@ class LdmsdCmdParser(cmd.Cmd):
         is to pull set contents.
         Parameters:
         name=       The update policy name
-        [interval=] The update/collect interval. This is required only when the
-                    push argument is not given.
+        [update_interval=] The update/collect interval. This is required only when the
+                           push argument is not given.
+        [interval=] Deprecated. Please use 'update_interval' in the future.
         [offset=]   Offset for synchronized aggregation
         [push=]     [onchange|true] 'onchange' means the
                     Updater will get an update whenever the set source ends a
@@ -600,8 +634,15 @@ class LdmsdCmdParser(cmd.Cmd):
         arg = self.handle_args('updtr_add', arg)
         if not arg:
             return
+        if all(v is not None for v in [arg['interval'], arg['update_interval']]):
+            print(f"Both 'interval' and 'update_interval' were given. " \
+                  f"The value of 'update_interval' will be used.")
+        elif arg['interval'] is not None:
+            print(f"'interval' is deprecated. Please use 'update_interval' in the future.")
+            arg['update_interval'] = arg['interval']
+
         rc, msg = self.comm.updtr_add(arg['name'],
-                                        arg['interval'],
+                                        arg['update_interval'],
                                         arg['offset'],
                                         arg['push'],
                                         arg['auto_interval'],
@@ -732,21 +773,27 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Start updaters. The parameters to the commands are as
         follows:
-        name=     The update policy name
-        [interval=] The update interval in micro-seconds. If this is not
-                  specified, the previously configured value will be used.
-        [offset=]   Offset for synchronization
-                    If 'interval' is given but not 'offset,
-                    the updater will update sets asynchronously.
-        [auto_interval=]   [true|false] If true, the updater will schedule
-                           set updates according to the update hint. If false,
-                           the updater will schedule the set updates according
-                           to the default schedule, i.e., the given interval and offset values.
+        name=               The update policy name
+        [update_interval=]  The update interval in micro-seconds. If this is not
+                            specified, the previously configured value will be used.
+        [interval=]         Deprecated. Please use 'update_interval' in the future.
+        [offset=]           Offset for synchronization
+                            If an update interval is given but not 'offset,
+                            the updater will update sets asynchronously.
+        [auto_interval=]    [true|false] If true, the updater will schedule
+                            set updates according to the update hint. If false,
+                            the updater will schedule the set updates according
+                            to the default schedule, i.e., the given interval and offset values.
         """
         arg = self.handle_args('updtr_start', arg)
         if not arg:
             return
-        rc, msg = self.comm.updtr_start(arg['name'], arg['interval'], arg['offset'], arg['auto_interval'])
+        if all(v is not None for v in [arg['interval'], arg['update_interval']]):
+            print(f"Both 'interval' and 'update_interval' were given. The value of 'update_interval' will be used.")
+        elif arg['interval'] is not None:
+            print(f"'interval' is deprecated. Please use 'update_interval' in the future.")
+            arg['update_interval'] = arg['interval']
+        rc, msg = self.comm.updtr_start(arg['name'], arg['update_interval'], arg['offset'], arg['auto_interval'])
         if rc:
             print(f'Error starting updtr {arg["name"]}: {msg}')
 
@@ -1326,18 +1373,29 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Start a sampler plugin
         Parameters:
-        name=     The plugin name
-        interval= The sample interval in microseconds
-        [offset=] Optional offset (shift) from the sample mark in microseconds.
-                  Offset can be positive or negative with magnitude up to 1/2
-                  the sample interval. If this offset is specified, including 0,
-                  collection will be synchronous; if the offset is not specified,
-                  collection will be asynchronous.
+        name=              The plugin name
+        sample_interval=   The sample interval, e.g., 1s
+        (interval=)        Deprecated. Please use 'sample_interval'
+        [offset=]          Optional offset (shift) from the sample mark.
+                           Offset can be positive or negative with magnitude up to 1/2
+                           the sample interval. If this offset is specified, including 0,
+                           collection will be synchronous; if the offset is not specified,
+                           collection will be asynchronous.
         """
         arg = self.handle_args('start', arg)
         if not arg:
             return
-        rc, msg = self.comm.plugn_start(arg['name'], arg['interval'], arg['offset'])
+        if all(v is None for v in [arg['interval'], arg['sample_interval']]):
+            print(f"The 'sample_interval' is missing.")
+            return
+
+        if all(v is None for v in [arg['interval'], arg['sample_interval']]):
+            print(f"The 'sample_interval' value -- {arg['sample_interval']} -- will be used.")
+        elif arg['interval'] is not None:
+            print(f"'interval' is deprecated. Please use 'sample_interval' in the future")
+            arg['sample_interval'] = arg['interval']
+
+        rc, msg = self.comm.plugn_start(arg['name'], arg['sample_interval'], arg['offset'])
         if rc:
             print(f'Error starting {arg["name"]} plugin: {msg}')
 
@@ -1556,7 +1614,8 @@ class LdmsdCmdParser(cmd.Cmd):
             port=               The LDMS port of the failover partner.
                                 This is optional in re-configuration.
             [auto_switch=0|1]   Auto switching (failover/failback).
-            [interval=]         The interval of the heartbeat.
+            [ping_interval=]    The interval of the heartbeat.
+            [interval=]         Deprecated. Please use 'ping_interval'.
             [timeout_factor=]   The hearbeat timeout factor.
             [peer_name=]        The failover partner name. If not given,
                                 the ldmsd will accept any partner.
@@ -1564,11 +1623,16 @@ class LdmsdCmdParser(cmd.Cmd):
         arg = self.handle_args('failover_config', arg)
         if not arg:
             return
+        if all(v is not None for v in [arg['ping_interval'], arg['interval']]):
+            print(f"Both 'ping_interval' and 'interval' were given, the value of 'ping_interval' will be used.")
+        elif arg['interval'] is not None:
+            print(f"'interval' is deprecated. Please use 'ping_interval' in the future")
+            arg['pint_interval'] = arg['interval']
         rc, msg = self.comm.failover_config(arg['host'],
                                             arg['xprt'],
                                             arg['port'],
                                             arg['auto_switch'],
-                                            arg['interval'],
+                                            arg['ping_interval'],
                                             arg['timeout_factor'],
                                             arg['peer_name'])
         if rc:
@@ -2198,29 +2262,27 @@ class LdmsdCmdParser(cmd.Cmd):
         This is a part of the sampler discovery feature.
         An advertiser advertises its existense to an aggregator.
         Parameters:
-                name=       A unique name to be used as producer name on the aggregator
-                xprt=       The transport name [sock, rdma, ugni]
-                host=       The aggregator hostname
-                port=       The aggregator listening port number
-                reconnect=  The connection retry interval
-                [auth=]     The authentication domain of the remote daemon
-                [perm=]     The permission to modify the advertiser in the future
+                name=                A unique name to be used as producer name on the aggregator
+                xprt=                The transport name [sock, rdma, ugni]
+                host=                The aggregator hostname
+                port=                The aggregator listening port number
+                reconnect_interval=  The connection retry interval
+                [auth=]              The authentication domain of the remote daemon
+                [perm=]              The permission to modify the advertiser in the future
         """
         arg = self.handle_args('advertiser_add', arg)
         if arg is None:
             return
-        if arg['reconnect'] is None:
-            print(f"The attribute 'reconnect' is missing.")
-        else:
-            rc, msg = self.comm.advertiser_add(arg['name'],
-                                          arg['xprt'],
-                                          arg['host'],
-                                          arg['port'],
-                                          arg['reconnect'],
-                                          arg['auth'],
-                                          arg['perm'])
-            if rc:
-                print(f'Error adding advertiser {arg["name"]}: {msg}')
+
+        rc, msg = self.comm.advertiser_add(arg['name'],
+                                        arg['xprt'],
+                                        arg['host'],
+                                        arg['port'],
+                                        arg['reconnect_interval'],
+                                        arg['auth'],
+                                        arg['perm'])
+        if rc:
+            print(f'Error adding advertiser {arg["name"]}: {msg}')
 
     def complete_advertiser_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('advertiser_add', text)
