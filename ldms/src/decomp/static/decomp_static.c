@@ -830,6 +830,14 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 			rc = handle_group(strgp, jgroup, cfg_row, row_no, reqc);
 			if (rc)
 				goto err_0;
+		} else if (cfg_row->op_present) {
+			/* has "op", but has no "group" */
+			errno = EINVAL;
+			THISLOG(reqc, errno,
+				"%s: schema \"%s\" requires \"group\" due to"
+				" the presence of \"op\".\n",
+				strgp->obj.name, cfg_row->schema_name);
+			goto err_0;
 		}
 
 		dcfg->row_count++;
