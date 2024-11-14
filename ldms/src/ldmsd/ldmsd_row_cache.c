@@ -289,6 +289,10 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 	int count;
 	const int GB_LEN = sizeof(rcache->group_bucket)/sizeof(rcache->group_bucket[0]);
 
+        if (rcache == NULL) {
+                return EINVAL;
+        }
+
 	/* Insert the row_list into the tree using rcache->row_key */
 	ldmsd_row_cache_entry_t entry = calloc(1, sizeof(*entry));
 	if (!entry)
