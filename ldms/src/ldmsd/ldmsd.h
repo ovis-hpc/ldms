@@ -500,6 +500,8 @@ typedef struct ldmsd_row_group_s {
 	int row_key_count;
 	struct rbt row_tree;	/* Tree of ldmsd_row_cache_entry_t */
 	struct rbn rbn;
+	LIST_ENTRY( ldmsd_row_group_s ) bucket_entry;
+	struct timespec last_update; /* informational */
 } *ldmsd_row_group_t;
 
 typedef struct ldmsd_row_cache_s {
@@ -507,6 +509,10 @@ typedef struct ldmsd_row_cache_s {
 	int row_limit;
 	struct rbt group_tree;	/* Tree of ldmsd_row_group_t */
 	pthread_mutex_t lock;
+	LIST_HEAD(, ldmsd_row_group_s) group_bucket[3];
+	int gb_idx; /* current bucket index: 0, 1, or 2 */
+	struct timespec bucket_ts; /* timestamp to trigger the bucket change */
+	struct timespec cfg_timeout; /* timeout for each bucket */
 } *ldmsd_row_cache_t;
 
 typedef struct ldmsd_row_s *ldmsd_row_t;
@@ -532,7 +538,8 @@ struct ldmsd_row_cache_idx_s {
 typedef struct ldmsd_row_s *ldmsd_row_t;
 typedef struct ldmsd_row_list_s *ldmsd_row_list_t;
 
-ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_count);
+ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_count,
+					 struct timespec *timeout);
 ldmsd_row_cache_key_t ldmsd_row_cache_key_create(enum ldms_value_type type, size_t len);
 ldmsd_row_cache_idx_t ldmsd_row_cache_idx_create(int key_count, ldmsd_row_cache_key_t *keys);
 void ldmsd_row_cache_idx_free(ldmsd_row_cache_idx_t idx);
