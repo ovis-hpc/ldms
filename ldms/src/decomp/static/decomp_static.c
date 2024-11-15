@@ -493,9 +493,10 @@ static int handle_group(
 		ldmsd_req_ctxt_t reqc)
 {
 	json_t *jidxs, *jidx;
-	json_t *jlimit;
+	json_t *jlimit, *jtimeout;
 	int col_no;
 	int rc;
+	struct timespec *timeout, _timeout;
 
 	jlimit  = json_object_get(jgroup, "limit");
 	if (jlimit) {
@@ -586,7 +587,24 @@ static int handle_group(
 		}
 	}
 
-	strgp->row_cache = ldmsd_row_cache_create(strgp, cfg_row->row_limit);
+	jtimeout = json_object_get(jgroup, "timeout");
+	if (jtimeout) {
+		if (json_typeof(jtimeout) != JSON_STRING) {
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+				"group['timeout'] must be a STRING describing "
+				"time (e.g. \"10s\").\n",
+				strgp->obj.name, row_no);
+			rc = ENOENT;
+			goto err_0;
+
+		}
+		ldmsd_timespec_from_str(&_timeout, json_string_value(jtimeout));
+		timeout = &_timeout;
+	} else {
+		timeout = NULL;
+	}
+
+	strgp->row_cache = ldmsd_row_cache_create(strgp, cfg_row->row_limit, timeout);
 	if (!strgp->row_cache)
 		goto enomem;
 	return 0;

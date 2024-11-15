@@ -144,7 +144,8 @@ static int tree_comparator(void *a, const void *b)
  * @param row_limit - The limit of rows to cache in each group
  * @return ldmsd_row_cache_t
  */
-ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_limit)
+ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_limit,
+					 struct timespec *timeout)
 {
 	ldmsd_row_cache_t rcache = calloc(1, sizeof(*rcache));
 	if (!rcache)
@@ -154,6 +155,13 @@ ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_limit)
 	rcache->row_limit = row_limit;
 	rbt_init(&rcache->group_tree, tree_comparator);
 	pthread_mutex_init(&rcache->lock, NULL);
+	LIST_INIT(&rcache->group_bucket[0]);
+	LIST_INIT(&rcache->group_bucket[1]);
+	LIST_INIT(&rcache->group_bucket[2]);
+	rcache->gb_idx = 0;
+
+	if (timeout)
+		rcache->cfg_timeout = *timeout;
 
 	return rcache;
 }
@@ -246,6 +254,33 @@ void ldmsd_row_cache_idx_free(ldmsd_row_cache_idx_t idx)
 	free(idx);
 }
 
+/* NOTE: rcache->lock is held */
+void ldmsd_row_group_bucket_cleanup(ldmsd_row_cache_t rcache, int ci)
+{
+	ldmsd_row_group_t g;
+	struct ldmsd_row_cache_entry_s *cent;
+	struct rbn *rbn;
+	while((g = LIST_FIRST(&rcache->group_bucket[ci]))) {
+		LIST_REMOVE(g, bucket_entry);
+		rbt_del(&rcache->group_tree, &g->rbn);
+		#if 0
+		ldmsd_log(LDMSD_LINFO, "freeing group\n");
+		#endif
+		while ((rbn = rbt_min(&g->row_tree))) {
+			rbt_del(&g->row_tree, rbn);
+			cent = container_of(rbn, struct ldmsd_row_cache_entry_s, rbn);
+			ldmsd_row_cache_idx_free(cent->idx);
+			#if 0
+			ldmsd_log(LDMSD_LINFO, "freeing row\n");
+			#endif
+			free(cent->row);
+			free(cent);
+		}
+		ldmsd_row_cache_idx_free(g->rbn.key); /* group_key */
+		free(g);
+	}
+}
+
 int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 		ldmsd_row_cache_idx_t group_key,
 		ldmsd_row_cache_idx_t row_key,
@@ -253,6 +288,10 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 {
 	ldmsd_row_group_t group;
 	struct rbn *group_rbn;
+	struct timespec ts;
+	int rc = 0;
+	int ci;
+	int count;
 
 	/* Insert the row_list into the tree using rcache->row_key */
 	ldmsd_row_cache_entry_t entry = calloc(1, sizeof(*entry));
@@ -261,6 +300,41 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 
 	pthread_mutex_lock(&rcache->lock);
 
+	rc = clock_gettime(CLOCK_REALTIME, &ts);
+	if (rc) {
+		rc = errno;
+		goto out;
+	}
+
+	if (rcache->cfg_timeout.tv_sec == 0 && rcache->cfg_timeout.tv_nsec == 0)
+		goto skip_cleanup;
+
+	/* process buckets */
+	count = 3;
+	while (count && ldmsd_timespec_cmp(&rcache->bucket_ts, &ts) < 0) {
+		/* ts > bucket_ts ; advancing the bucket */
+		rcache->gb_idx = (rcache->gb_idx + 1) % 3;
+		/* rcache->bucket_ts += rcache->cfg_timeout */
+		ldmsd_timespec_add(&rcache->bucket_ts, &rcache->cfg_timeout,
+				   &rcache->bucket_ts);
+
+		/* clean up the oldest bucket */
+		ci = (rcache->gb_idx + 1) % 3; /* equivalent to `gb_idx - 2` */
+		ldmsd_row_group_bucket_cleanup(rcache, ci);
+
+		count--;
+	}
+
+	if (count == 0 && ldmsd_timespec_cmp(&rcache->bucket_ts, &ts) < 0) {
+		/* setup new bucket_ts since the ts is way ahead of bucket_ts.
+		 * This can happen in the case that the strgp became inactive
+		 * longer than 3*cfg_timeout. */
+
+		/* rcache->ts = ts + rcache->cfg_timeout */
+		ldmsd_timespec_add(&ts, &rcache->cfg_timeout, &rcache->bucket_ts);
+	}
+
+ skip_cleanup:
 	/* Look up the group */
 	group_rbn = rbt_find(&rcache->group_tree, group_key);
 	if (!group_rbn) {
@@ -272,6 +346,8 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 		rbn_init(&group->rbn, group_key);
 		rbt_ins(&rcache->group_tree, &group->rbn);
 		group_rbn = &group->rbn;
+		LIST_INSERT_HEAD(&rcache->group_bucket[rcache->gb_idx],
+				 group, bucket_entry);
 	}
 
 	group = container_of(group_rbn, struct ldmsd_row_group_s, rbn);
@@ -291,9 +367,18 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 	entry->row = row;
 	entry->idx = row_key;
 	rbt_ins(&group->row_tree, &entry->rbn);
+
+	/* informational */
+	group->last_update = ts;
+
+	/* move group to *current* bucket */
+	LIST_REMOVE(group, bucket_entry);
+	LIST_INSERT_HEAD(&rcache->group_bucket[rcache->gb_idx], group, bucket_entry);
+
+ out:
 	pthread_mutex_unlock(&rcache->lock);
 
-	return 0;
+	return rc;
 }
 
 /**
