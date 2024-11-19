@@ -384,6 +384,7 @@ class LDMSD_Req_Attr(object):
                    'summary' : SUMMARY,
                    'size' : SIZE,
                    'IP' : IP,
+                   'ip' : IP,
                    'ask_interval': ASK_INTERVAL,
                    'ask_mark': ASK_MARK,
                    'ask_amount': ASK_AMOUNT,

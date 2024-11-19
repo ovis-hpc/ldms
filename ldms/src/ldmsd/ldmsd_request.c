@@ -9524,6 +9524,19 @@ static int __cidr2addr6(const char *cdir_str, struct ldms_addr *addr, int *prefi
 /* Aggregator */
 /* The implementation is in ldmsd_prdcr.c */
 extern int prdcr_ref_cmp(void *a, const void *b);
+
+static void prdcr_listen___del(ldmsd_cfgobj_t obj)
+{
+	ldmsd_prdcr_listen_t pl = (ldmsd_prdcr_listen_t)obj;
+	if (pl->cidr_str)
+		free((char*)pl->cidr_str);
+	if (pl->hostname_regex_s) {
+		regfree(&pl->regex);
+		free((char*)pl->hostname_regex_s);
+	}
+	ldmsd_cfgobj___del(obj);
+}
+
 static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc = 0;
@@ -9536,6 +9549,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	char *quota;
 	char *rx_rate;
 	ldmsd_prdcr_listen_t pl;
+	extern struct rbt *cfgobj_trees[];
 
 	name = regex_str = reconnect_str = cidr_str = disabled_start = NULL;
 
@@ -9552,13 +9566,15 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 
 	pl = (ldmsd_prdcr_listen_t)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_PRDCR_LISTEN,
-						sizeof(*pl), NULL, 0, 0, 0);
+						sizeof(*pl), prdcr_listen___del,
+						0, 0, 0);
 	if (!pl) {
 		if (errno == EEXIST)
 			goto eexist;
 		else
 			goto enomem;
 	}
+
 	pl->auto_start = 1;
 	if (disabled_start) {
 		if ((0 == strcmp(disabled_start, "1")) ||
@@ -9570,7 +9586,6 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	if (regex_str) {
 		pl->hostname_regex_s = strdup(regex_str);
 		if (!pl->hostname_regex_s) {
-			ldmsd_cfgobj_put(&pl->obj);
 			goto enomem;
 		}
 
@@ -9580,19 +9595,14 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						"The regular expression string "
 						"'%s' is invalid.", regex_str);
-			ldmsd_cfgobj_put(&pl->obj);
-			goto send_reply;
+			goto err;
 		}
 	}
 
 	if (cidr_str) {
 		pl->cidr_str = strdup(cidr_str);
 		if (!pl->cidr_str) {
-			reqc->errcode = ENOMEM;
-			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-						    "Memory allocation failure.");
-			ldmsd_cfgobj_put(&pl->obj);
-			goto send_reply;
+			goto enomem;
 		}
 		rc = __cidr2addr6(cidr_str, &pl->net_addr, &pl->prefix_len);
 		if (rc) {
@@ -9600,8 +9610,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						"The given CIDR string '%s' "
 						"is invalid.", cidr_str);
-			ldmsd_cfgobj_put(&pl->obj);
-			goto send_reply;
+			goto err;
 		}
 	}
 
@@ -9644,20 +9653,28 @@ send_reply:
 	free(disabled_start);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
-enomem:
-	reqc->errcode = ENOMEM;
-	(void)snprintf(reqc->line_buf, reqc->line_len,
-			"Memory allocation failed.");
-	goto send_reply;
 eexist:
 	reqc->errcode = EEXIST;
 	(void)snprintf(reqc->line_buf, reqc->line_len,
 			"The prdcr listener %s already exists.", name);
+	/* We won't remove the existing prdcr_listen in this case, so goto send_reply. */
 	goto send_reply;
+enomem:
+	reqc->errcode = ENOMEM;
+	(void)snprintf(reqc->line_buf, reqc->line_len,
+			"Memory allocation failed.");
+	goto err;
 einval:
 	reqc->errcode = EINVAL;
 	(void) snprintf(reqc->line_buf, reqc->line_len,
 			"The attribute '%s' is required.", attr_name);
+	goto err;
+err:
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR_LISTEN);
+	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR_LISTEN], &pl->obj.rbn);
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR_LISTEN);
+	ldmsd_cfgobj_unlock(&pl->obj);
+	ldmsd_cfgobj_put(&pl->obj);
 	goto send_reply;
 }
 
@@ -9867,6 +9884,7 @@ static int prdcr_listen_status_handler(ldmsd_req_ctxt_t reqc)
 				);
 		if (rc)
 			goto err;
+		prdcr_cnt = 0;
 		RBT_FOREACH(rbn, &pl->prdcr_tree) {
 			pref = container_of(rbn, struct ldmsd_prdcr_ref, rbn);
 			if (prdcr_cnt) {
