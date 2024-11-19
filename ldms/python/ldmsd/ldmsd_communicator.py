@@ -341,6 +341,7 @@ class LDMSD_Req_Attr(object):
                    'reconnect' : INTERVAL,
                    'size' : SIZE,
                    'IP' : IP,
+                   'ip' : IP,
                    'TERMINATING': LAST
         }
 
