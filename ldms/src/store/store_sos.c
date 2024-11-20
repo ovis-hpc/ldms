@@ -1035,7 +1035,13 @@ __store_metric(sos_obj_t obj, sos_attr_t attr, ldms_set_t set,
 				ldms_metric_type_to_str(metric_type),
 				sos_type_map[metric_type]);
 		if (sos_attr_type(attr) != sos_type_map[metric_type]) {
-			assert(0);
+			LOG_(OVIS_LERROR, "Attribute '%s' type mismatch: " \
+					   "attribute expects %s but got %s.\n",
+					   sos_attr_name(attr),
+					   _sos_type_sym_tbl[sos_attr_type(attr)],
+					   _sos_type_sym_tbl[sos_type_map[metric_type]]);
+			errno = EINVAL;
+			return NULL;
 		}
 		if (NULL == sos_value_init(value, obj, attr)) {
 			LOG_(OVIS_LERROR, "Error initializing '%s' attribute\n",
@@ -1052,7 +1058,13 @@ __store_metric(sos_obj_t obj, sos_attr_t attr, ldms_set_t set,
 				ldms_metric_type_to_str(metric_type),
 				sos_type_map[metric_type]);
 		if (sos_attr_type(attr) != sos_type_map[metric_type]) {
-			assert(0);
+			LOG_(OVIS_LERROR, "Attribute '%s' type mismatch: " \
+					   "attribute expects %s but got %s.\n",
+					   sos_attr_name(attr),
+					   _sos_type_sym_tbl[sos_attr_type(attr)],
+					   _sos_type_sym_tbl[sos_type_map[metric_type]]);
+			errno = EINVAL;
+			return NULL;
 		}
 		esz = __element_byte_len(metric_type);
 		if (metric_type == LDMS_V_CHAR_ARRAY) {
@@ -1074,7 +1086,13 @@ __store_metric(sos_obj_t obj, sos_attr_t attr, ldms_set_t set,
 		}
 		array_len *= esz;
 		count = sos_value_memcpy(array_value, mval, array_len);
-		assert(count == array_len);
+		if (count != array_len) {
+			LOG_(OVIS_LERROR, "Attribute '%s' has mismatched length: " \
+					    "expected %zu but got %d.\n", sos_attr_name(attr),
+					                                    count, array_len);
+			errno = E2BIG;
+			return NULL;
+		}
 		sos_value_put(array_value);
 		attr = sos_schema_attr_next(attr);
 	}
@@ -1348,13 +1366,20 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set,
 		si->ts_attr = sos_schema_attr_by_name(si->sos_schema, "timestamp");
 		si->first_attr = sos_schema_attr_by_name(si->sos_schema,
 				ldms_metric_name_get(set, metric_arry[0]));
-		if (si->comp_id_idx < 0)
+		if (si->comp_id_idx < 0) {
 			LOG_(OVIS_LINFO,
 			       "The component_id is missing from the metric set/schema.\n");
-		if (si->job_id_idx < 0)
+		}
+		if (si->job_id_idx < 0) {
 			LOG_(OVIS_LERROR,
 			       "The job_id is missing from the metric set/schema.\n");
-		assert(si->ts_attr);
+		}
+		if (!si->ts_attr) {
+			LOG_(OVIS_LERROR,
+			       "store_sos: Attribute 'timestamp' is missing.\n");
+			errno = EINVAL;
+			goto err;
+		}
 	}
 	if (ss->timeout > 0) {
 		clock_gettime(CLOCK_REALTIME, &now);
