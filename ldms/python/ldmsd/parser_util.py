@@ -220,14 +220,20 @@ class YamlCfg(object):
         for spec in node_config:
             check_required([ 'names', 'endpoints', 'hosts' ],
                            spec, '"daemons" entry')
-            hosts = expand_names(spec['hosts'])
             dnames = expand_names(spec['names'])
+            if 'hosts' not in spec:
+                hosts = []
+                for dname in dnames:
+                    hosts.append('0.0.0.0')
+            else:
+                hosts = expand_names(spec['hosts'])
             hostnames = hosts
             if len(dnames) != len(hostnames):
                 hosts = [ [host]*(len(dnames)//len(hostnames)) for host in hostnames ]
                 hosts = list(it.chain.from_iterable(hosts))
             ep_names = []
             ep_ports = []
+            ep_hosts = []
             if type(spec['endpoints']) is not list:
                 raise TypeError(f'{LDMS_YAML_ERR}\n'
                                 f'endpoints {LIST_ERR}\n'
@@ -250,6 +256,15 @@ class YamlCfg(object):
                     cur_ports = [ _ports for i in range(0, len(cur_epnames)//len(_ports)) ]
                     cur_ports = list(it.chain.from_iterable(cur_ports))
                 ep_ports.append(cur_ports)
+                if check_opt('hosts', endpoints):
+                    cur_ephosts = expand_names(endpoints['hosts'])
+                    _ephosts = cur_ephosts
+                    if len(cur_ephosts) != len(cur_epnames):
+                        cur_ephosts = [ [host]*(len(cur_epnames)//len(_ephosts)) for host in _ephosts ]
+                        cur_ephosts = list(it.chain.from_iterable(cur_ephosts))
+                    ep_hosts.append(cur_ephosts)
+                else:
+                    ep_hosts.append([])
             ep_dict[spec['names']] = {}
             env = check_opt('environment', spec)
             for dname, host in zip(dnames, hosts):
@@ -257,6 +272,7 @@ class YamlCfg(object):
                 ep_dict[spec['names']][dname]['addr'] = host
                 ep_dict[spec['names']][dname]['environment'] = env
                 ep_dict[spec['names']][dname]['endpoints'] = {}
+                dcount = 0
                 for ep_, ep_port, ep in zip(ep_names, ep_ports, spec['endpoints']):
                     port = ep_port.pop(0)
                     ep_name = ep_.pop(0)
@@ -272,8 +288,11 @@ class YamlCfg(object):
                         'maestro_comm' : maestro_comm,
                         'auth' : { 'name' : auth_name, 'conf' : auth_conf, 'plugin' : plugin }
                     }
+                    _ephost = check_opt('hosts', ep)
+                    if _ephost:
+                        h['host'] = ep_hosts[dcount].pop(0)
                     ep_dict[spec['names']][dname]['endpoints'][ep_name] = h
-                    ep_dict[spec['names']][dname]['addr'] = host
+                    dcount += 1
             if len(ep_dict[spec['names']]) == 0:
                 raise ValueError(f'Error processing regex of hostnames {spec["hosts"]} and daemons {spec["names"]}.\n'
                                  f'Number of hosts must be a multiple of daemons with appropriate ports or equivalent to length of daemons.\n'
@@ -689,6 +708,10 @@ class YamlCfg(object):
                     dstr = self.write_opt_attr(dstr, 'conf', auth_opt)
             dstr += f'listen xprt={ep["xprt"]} port={ep["port"]}'
             dstr = self.write_opt_attr(dstr, 'auth', auth, endline=False)
+            host = check_opt('host', ep)
+            if host is None:
+                host = self.daemons[dmn_grp][dmn_name]["addr"]
+            dstr = self.write_opt_attr(dstr, 'host', host, endline=False)
             dstr = self.write_opt_attr(dstr, 'conf', auth_opt)
         return dstr, auth_list
 
@@ -729,7 +752,9 @@ class YamlCfg(object):
                 pname = producer['name']
                 port = self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep]['port']
                 xprt = self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep]['xprt']
-                hostname = self.daemons[producer['dmn_grp']][producer['daemon']]['addr']
+                hostname = check_opt('host', self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep])
+                if hostname is None:
+                    hostname = self.daemons[producer['dmn_grp']][producer['daemon']]['addr']
                 auth = check_opt('auth', self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep])
                 ptype = producer['type']
                 reconnect = producer['reconnect']
