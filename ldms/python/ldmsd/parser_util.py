@@ -267,11 +267,17 @@ class YamlCfg(object):
                     ep_hosts.append([])
             ep_dict[spec['names']] = {}
             env = check_opt('environment', spec)
+            cli_opt = {}
+            for key in spec:
+                if key not in ['hosts','names','endpoints','environment']:
+                    cli_opt[key] = spec[key]
             for dname, host in zip(dnames, hosts):
                 ep_dict[spec['names']][dname] = {}
                 ep_dict[spec['names']][dname]['addr'] = host
                 ep_dict[spec['names']][dname]['environment'] = env
                 ep_dict[spec['names']][dname]['endpoints'] = {}
+                if len(cli_opt):
+                    ep_dict[spec['names']][dname]['cli_opt'] = cli_opt
                 dcount = 0
                 for ep_, ep_port, ep in zip(ep_names, ep_ports, spec['endpoints']):
                     port = ep_port.pop(0)
@@ -772,11 +778,22 @@ class YamlCfg(object):
                     dstr += f'prdcr_start name={pname}\n'
         return dstr, auth_list
 
+    def write_options(self, dstr, grp, dname):
+        if 'cli_opt' not in self.daemons[grp][dname]:
+            return dstr
+        self.daemons[grp][dname]['cli_opt']
+        cli_opt = self.daemons[grp][dname]['cli_opt']
+        for opt in cli_opt:
+            if type(cli_opt[opt]) is dict:
+                dstr += f'{opt}'
+                for arg in cli_opt[opt]:
+                    dstr += f' {arg}={cli_opt[opt][arg]}'
+                dstr += '\n'
+            else:
+                dstr += f'option --{opt} {cli_opt[opt]}\n'
+        return dstr
+
     def write_env(self, dstr, grp, dname):
-        if grp not in self.daemons:
-            return 1
-        if dname not in self.daemons[grp]:
-            return 1
         if check_opt('environment', self.daemons[grp][dname]):
             if type(self.daemons[grp][dname]['environment']) is not dict:
                 raise TypeError(f'Environment variables must be a yaml key:value dictionary\n')
@@ -787,7 +804,6 @@ class YamlCfg(object):
     def write_sampler(self, dstr, smplr_grp, sname):
         if not self.samplers or smplr_grp not in self.samplers:
             return dstr
-        dstr = self.write_env(dstr, smplr_grp, sname)
         dstr, auth_list = self.write_listeners(dstr, smplr_grp, sname)
         dstr, auth_list = self.write_advertisers(dstr, smplr_grp, sname, auth_list)
         for plugin in self.samplers[smplr_grp]['plugins']:
@@ -969,6 +985,8 @@ class YamlCfg(object):
         if dmn is None:
             raise ValueError(f'Daemon {dname} does not exist in YAML configuration file {path}\n')
         dstr = ''
+        dstr = self.write_env(dstr, grp, dname)
+        dstr = self.write_options(dstr, grp, dname)
         dstr = self.write_sampler(dstr, grp, dname)
         dstr = self.write_aggregator(dstr, grp, dname)
         return f'{dstr}'

@@ -2294,9 +2294,11 @@ int main(int argc, char *argv[])
 	struct ldmsd_str_ent *cpath;
 	struct ldmsd_str_ent *conf_str;
 	char *resp;
+	char *ypath;
 	while ((op = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
 		switch (op) {
 		case 'y':
+			ypath = optarg;
 			resp = process_yaml_config_file(optarg, myname);
 			if (!resp)
 				cleanup(22, "");
@@ -2319,7 +2321,7 @@ int main(int argc, char *argv[])
 			char errstr[128];
 			snprintf(errstr, sizeof(errstr),
 				 "Error %d processing configuration file '%s'",
-				 ret, conf_str->str);
+				 ret, ypath);
 			ldmsd_str_list_destroy(&yamlfile_list);
 			cleanup(ret, errstr);
 		}

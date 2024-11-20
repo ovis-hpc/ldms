@@ -887,8 +887,8 @@ parse:
 	req_array = ldmsd_parse_config_str(line, lineno, xprt.max_msg, ldmsd_log);
 	if (!req_array) {
 		rc = errno;
-		ldmsd_log(LDMSD_LERROR, "Process config string error in line\n %s\n "
-				". %s\n", line, STRERROR(rc));
+		ldmsd_log(LDMSD_LERROR, "Process config string error in line %d. %s\n ",
+				lineno, STRERROR(rc));
 		goto cleanup;
 	}
 
@@ -932,8 +932,6 @@ next_req:
 	goto next_line;
 
 cleanup:
-	if (buff)
-		free(buff);
 	if (line)
 		free(line);
 	if (lno)
