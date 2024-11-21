@@ -35,7 +35,8 @@ Plugin_shm_sampler.man \
 Plugin_store_papi.man \
 Plugin_store_app.man \
 ldmsd_decomposition.man \
-Plugin_store_kafka.man
+Plugin_store_kafka.man \
+ldmsd_peer_daemon_advertisement.man
 
 if ENABLE_SLURMTEST
 dist_man8_MANS += pll-ldms-static-test.man
