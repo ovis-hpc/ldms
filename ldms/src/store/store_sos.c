@@ -133,12 +133,11 @@ struct sos_instance {
 	} ctxt;
 	pthread_mutex_t lock; /**< lock at metric store level */
 
-	int job_id_idx;
-	int comp_id_idx;
 	sos_attr_t ts_attr;
-	sos_attr_t comp_id;
-	sos_attr_t job_id;
 	sos_attr_t first_attr;
+
+	/* Set digest when using basic configuration */
+	ldms_digest_t set_digest;
 
 	LIST_ENTRY(sos_instance) entry;
 
@@ -583,6 +582,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		if (si->sos_handle) {
 			put_container_no_lock(si->sos_handle);
 			si->sos_handle = NULL;
+			si->set_digest = NULL;
 		}
 		size_t pathlen =
 			strlen(root_path) + strlen(si->container) + 4;
@@ -945,6 +945,7 @@ _open_store(struct sos_instance *si, ldms_set_t set,
  err_0:
 	put_container(si->sos_handle);
 	si->sos_handle = NULL;
+	si->set_digest = NULL;
 	return EINVAL;
 }
 
@@ -1340,6 +1341,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	}
 
 	if (!si->sos_handle) {
+		if (!si->set_digest)
+			si->set_digest = ldms_set_digest_get(set);
 		rc = _open_store(si, set, metric_arry, metric_count);
 		if (rc) {
 			pthread_mutex_unlock(&si->lock);
@@ -1348,18 +1351,24 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			errno = rc;
 			return -1;
 		}
-		si->job_id_idx = ldms_metric_by_name(set, "job_id");
-		si->comp_id_idx = ldms_metric_by_name(set, "component_id");
 		si->ts_attr = sos_schema_attr_by_name(si->sos_schema, "timestamp");
 		si->first_attr = sos_schema_attr_by_name(si->sos_schema,
 				ldms_metric_name_get(set, metric_arry[0]));
-		if (si->comp_id_idx < 0)
-			LOG_(LDMSD_LINFO,
-			       "The component_id is missing from the metric set/schema.\n");
-		if (si->job_id_idx < 0)
-			LOG_(LDMSD_LERROR,
-			       "The job_id is missing from the metric set/schema.\n");
-		assert(si->ts_attr);
+	}
+	if (ldms_digest_cmp(ldms_set_digest_get(set), si->set_digest)) {
+		char digest_a[LDMS_DIGEST_STR_LENGTH];
+		char digest_b[LDMS_DIGEST_STR_LENGTH];
+		ldms_digest_str(ldms_set_digest_get(set), digest_a, sizeof(digest_a));
+		ldms_digest_str(si->set_digest, digest_b, sizeof(digest_b));
+		LOG_(LDMSD_LERROR,
+			"The set schema '%s' with digest %s does not match "
+			"the storage policy schema '%s' with digest %s. The "
+			"set contents will be discarded.\n",
+			ldms_set_schema_name_get(set), digest_a,
+			sos_schema_name(si->sos_schema), digest_b);
+		pthread_mutex_unlock(&si->lock);
+		errno = EINVAL;
+		return -1;
 	}
 	if (timeout > 0) {
 		clock_gettime(CLOCK_REALTIME, &now);
@@ -1431,7 +1440,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 
 	while ((rrbn = (struct row_schema_rbn_s *)rbt_min(&si->schema_rbt))) {
 		rbt_del(&si->schema_rbt, &rrbn->rbn);
-		/* rrbn->sos_schema will be freed when sos container closed */
+		/* rrbn->sos_schema will be freed when sos container is closed */
 		free(rrbn);
 	}
 	if (si->sos_handle)
