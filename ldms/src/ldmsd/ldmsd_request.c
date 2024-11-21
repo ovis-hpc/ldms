@@ -300,7 +300,7 @@ static int auth_del_handler(ldmsd_req_ctxt_t reqc);
 static int set_default_authz_handler(ldmsd_req_ctxt_t reqc);
 static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc);
 
-/* Sampler Advertisement */
+/* Peer Daemon Advertisement */
 static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc);
 static int prdcr_listen_del_handler(ldmsd_req_ctxt_t reqc);
 static int prdcr_listen_start_handler(ldmsd_req_ctxt_t reqc);
