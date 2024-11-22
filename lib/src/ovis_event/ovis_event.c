@@ -664,7 +664,7 @@ static void __thrstat_wait_start(ovis_event_thrstat_t stats)
 
 	clock_gettime(CLOCK_REALTIME, &now);
 	stats->wait_start = now;
-	stats->wait_tot += __timespec_diff_us(&stats->wait_end, &now);
+	stats->proc_tot += __timespec_diff_us(&stats->wait_end, &now);
 	stats->waiting = 1;
 }
 
@@ -673,7 +673,7 @@ static void __thrstat_wait_end(ovis_event_thrstat_t stats)
 	struct timespec now;
 	clock_gettime(CLOCK_REALTIME, &now);
 	stats->wait_end = now;
-	stats->proc_tot += __timespec_diff_us(&stats->wait_start, &now);
+	stats->wait_tot += __timespec_diff_us(&stats->wait_start, &now);
 	stats->waiting = 0;
 }
 
