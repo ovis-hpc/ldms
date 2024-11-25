@@ -380,12 +380,25 @@ int find_least_busy_thread()
 {
 	int i;
 	int idx = 0;
-	int count = ev_count[0];
-	for (i = 1; i < ev_thread_count; i++) {
-		if (ev_count[i] < count) {
+	int count = 0x7fffffff;
+	struct timespec now;
+	struct ovis_scheduler_thrstat *stat;
+	double best = 100;
+
+	clock_gettime(CLOCK_REALTIME, &now);
+
+	for (i = 0; i < ev_thread_count; i++) {
+		stat = ovis_scheduler_thrstat_get(ovis_scheduler[i], &now);
+		if (!stat)
+			continue;
+		if (stat->active_pc < best ||
+				(stat->active_pc == best &&
+				 ev_count[i] < count)) {
 			idx = i;
+			best = stat->active_pc;
 			count = ev_count[i];
 		}
+		ovis_scheduler_thrstat_free(stat);
 	}
 	return idx;
 }
