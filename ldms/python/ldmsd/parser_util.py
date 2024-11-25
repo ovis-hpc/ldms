@@ -117,8 +117,7 @@ def check_required(attr_list, container, container_name):
     """Verify that each name in attr_list is in the container"""
     for name in attr_list:
         if name not in container:
-            raise ValueError(f'The "{0}" attribute is required in a {1}\n'.
-                             format(name, container_name))
+            raise ValueError(f'The "{name}" attribute is required in {container_name}\n')
 
 def NUM_STR(obj):
     return str(obj) if type(obj) in [ int, float ] else obj
@@ -221,12 +220,7 @@ class YamlCfg(object):
             check_required([ 'names', 'endpoints', 'hosts' ],
                            spec, '"daemons" entry')
             dnames = expand_names(spec['names'])
-            if 'hosts' not in spec:
-                hosts = []
-                for dname in dnames:
-                    hosts.append('0.0.0.0')
-            else:
-                hosts = expand_names(spec['hosts'])
+            hosts = expand_names(spec['hosts'])
             hostnames = hosts
             if len(dnames) != len(hostnames):
                 hosts = [ [host]*(len(dnames)//len(hostnames)) for host in hostnames ]
@@ -294,6 +288,8 @@ class YamlCfg(object):
                         'maestro_comm' : maestro_comm,
                         'auth' : { 'name' : auth_name, 'conf' : auth_conf, 'plugin' : plugin }
                     }
+                    if check_opt('bind_all', ep):
+                        h['bind_all'] = ep['bind_all']
                     _ephost = check_opt('hosts', ep)
                     if _ephost:
                         h['host'] = ep_hosts[dcount].pop(0)
@@ -714,11 +710,15 @@ class YamlCfg(object):
                     dstr = self.write_opt_attr(dstr, 'conf', auth_opt)
             dstr += f'listen xprt={ep["xprt"]} port={ep["port"]}'
             dstr = self.write_opt_attr(dstr, 'auth', auth, endline=False)
-            host = check_opt('host', ep)
-            if host is None:
-                host = self.daemons[dmn_grp][dmn_name]["addr"]
-            dstr = self.write_opt_attr(dstr, 'host', host, endline=False)
-            dstr = self.write_opt_attr(dstr, 'conf', auth_opt)
+            dstr = self.write_opt_attr(dstr, 'conf', auth_opt, endline=False)
+            bind_all = check_opt('bind_all', ep)
+            if bind_all is True or bind_all == "true":
+                host = "0.0.0.0"
+            else:
+                host = check_opt('host', ep)
+                if host is None:
+                    host = self.daemons[dmn_grp][dmn_name]["addr"]
+            dstr = self.write_opt_attr(dstr, 'host', host)
         return dstr, auth_list
 
     def write_opt_attr(self, dstr, attr, val, endline=True):
@@ -798,7 +798,7 @@ class YamlCfg(object):
             if type(self.daemons[grp][dname]['environment']) is not dict:
                 raise TypeError(f'Environment variables must be a yaml key:value dictionary\n')
             for attr in self.daemons[grp][dname]['environment']:
-                dstr += f'env {attr}={self.daemons[grp][dname]["environment"]}\n'
+                dstr += f'env {attr}={self.daemons[grp][dname]["environment"][attr]}\n'
         return dstr
 
     def write_sampler(self, dstr, smplr_grp, sname):
