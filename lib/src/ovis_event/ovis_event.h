@@ -377,6 +377,24 @@ int ovis_scheduler_loop(ovis_scheduler_t m, int return_on_empty);
 int ovis_scheduler_term(ovis_scheduler_t s);
 
 /**
+ * Set the name of the scheduler.
+ *
+ * This name will also be in the result of the thrstat.
+ *
+ * \retval 0 If success.
+ * \retval errno If error.
+ */
+int ovis_scheduler_name_set(ovis_scheduler_t s, const char *name);
+
+/**
+ * Get the name of the scheduler.
+ *
+ * \retval NULL If the name has never set.
+ * \retval name The name of the scheduler.
+ */
+const char *ovis_scheduler_name_get(ovis_scheduler_t s);
+
+/**
  * \brief Return the thread statistics of a scheduler
  *
  * The caller must free the returned statistics.
