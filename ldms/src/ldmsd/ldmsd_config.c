@@ -233,7 +233,6 @@ ldmsd_cfgobj_store_t ldmsd_store_add(const char *cfg_name,
 	return store;
 }
 
-
 const char *prdcr_state_str(enum ldmsd_prdcr_state state)
 {
 	switch (state) {

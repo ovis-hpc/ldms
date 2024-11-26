@@ -190,6 +190,7 @@ struct req_str_id attr_str_id_table[] = {
 	{  "container",         LDMSD_ATTR_CONTAINER  },
 	{  "decomposition",     LDMSD_ATTR_DECOMP  },
 	{  "disable_start",     LDMSD_ATTR_AUTO_INTERVAL  },
+	{  "exclusive_thread",  LDMSD_ATTR_XTHREAD  },
 	{  "flush",             LDMSD_ATTR_INTERVAL },
 	{  "gid",               LDMSD_ATTR_GID  },
 	{  "host",              LDMSD_ATTR_HOST  },
