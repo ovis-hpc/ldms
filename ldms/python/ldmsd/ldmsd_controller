@@ -1709,10 +1709,17 @@ class LdmsdCmdParser(cmd.Cmd):
                   the sample interval. If this offset is specified, including 0,
                   collection will be synchronous; if the offset is not specified,
                   collection will be asynchronous.
+        [exclusive_thread=]
+                  If exclusive_thread is 0, the sampler shares a thread with
+                  other sampler. If exclusive_thread is 1, the sampler has an
+                  exclusive thread to work on. The default is 0 (i.e. share
+                  sampling threads).
         """
         arg = self.handle_args('start', arg)
         if arg:
-            rc, msg = self.comm.plugn_start(arg['name'], arg['interval'], arg['offset'])
+            rc, msg = self.comm.plugn_start(arg['name'], arg['interval'],
+                                            arg['offset'],
+                                            arg.get('exclusive_thread'))
             if rc:
                 print(f'Error starting {arg["name"]} plugin: {msg}')
 
@@ -2155,14 +2162,15 @@ class LdmsdCmdParser(cmd.Cmd):
         usec = int(ts % 1.0 * 1000000)
         return self.__ts2human(sec, usec)
 
-    def display_worker_thread_stats(self, worker_threads):
-        print(f"LDMSD Worker Thread Statistics")
+    def display_worker_thread_stats(self, worker_threads, hdr):
+        print(hdr)
         print(f"{'='*60}")
-        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Idle':15} {'Active':15} {'Duration (sec)':15} {'Event Counts':15}")
-        print(f"{'-'*15} {'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*15}")
+        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Idle':15} {'Active':15} {'Duration (sec)':15} {'Event Counts':15}")
+        print(f"{'-'*15} {'-'*20} {'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*15}")
         for e in worker_threads:
-            print(f"{e['tid']:^15} {e['thread_id']:20} {e['idle_pc']:14.2f}% " \
-                  f"{e['active_pc']:14.2f}% {e['total_us']/1000000:15.2f}" \
+            print(f"{e['tid']:^15} {e['thread_id']:20} {e['name']:20} " \
+                  f"{e['idle_pc']:14.2f}% " \
+                  f"{e['active_pc']:14.2f}% {e['total_us']/1000000:14.2f}" \
                   f"{e['ev_cnt']:15}")
 
     def display_io_thread_stats(self, io_threads):
@@ -2202,7 +2210,11 @@ class LdmsdCmdParser(cmd.Cmd):
             print(f"Error {rc}: {msg}")
             return
         msg = fmt_status(msg)
-        self.display_worker_thread_stats(msg['worker_threads'])
+        print()
+        self.display_worker_thread_stats(msg['worker_threads'],
+                                         f"LDMSD Worker Thread Statistics")
+        self.display_worker_thread_stats(msg['xthreads'],
+                                         f"Exclusive Worker Thread Statistics")
         print(f"{'='*60}")
         self.display_io_thread_stats(msg['io_threads'])
         print(f"{'='*60}")

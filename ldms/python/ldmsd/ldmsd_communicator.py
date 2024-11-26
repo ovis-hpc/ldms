@@ -68,7 +68,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'config': {'req_attr': ['name']},
                       'source': {'req_attr': ['path'], 'opt_attr':[]},
                       'start': {'req_attr': ['name', 'interval'],
-                                'opt_attr': ['offset']},
+                                'opt_attr': ['offset', 'exclusive_thread']},
                       'stop': {'req_attr': ['name']},
                       'udata': {'req_attr': ['instance', 'metric', 'udata']},
                       'daemon_exit': {'req_attr': []},
@@ -339,7 +339,8 @@ class LDMSD_Req_Attr(object):
     ASK_MARK = 45
     ASK_AMOUNT = 46
     RESET_INTERVAL = 47
-    LAST = 48
+    XTHREAD = 48
+    LAST = 49
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -396,6 +397,7 @@ class LDMSD_Req_Attr(object):
                    'ask_mark': ASK_MARK,
                    'ask_amount': ASK_AMOUNT,
                    'reset_interval': RESET_INTERVAL,
+                   'exclusive_thread': XTHREAD,
                    'TERMINATING': LAST
         }
 
@@ -445,6 +447,7 @@ class LDMSD_Req_Attr(object):
                    ASK_MARK : 'ask_mark',
                    ASK_AMOUNT : 'ask_amount',
                    RESET_INTERVAL : 'reset_interval',
+                   XTHREAD : 'exclusive_thread',
                    LAST : 'TERMINATING'
         }
 
@@ -2143,13 +2146,16 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def plugn_start(self, name, interval_us, offset_us=None):
+    def plugn_start(self, name, interval_us, offset_us=None, xthread=None):
         # If offset unspecified, start in non-synchronous mode
         req_attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
                       LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INTERVAL, value=str(interval_us))
                     ]
         if offset_us != None:
             req_attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.OFFSET, value=str(offset_us)))
+        if xthread is not None:
+            req_attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.XTHREAD,
+                                            value=str(xthread)))
         req = LDMSD_Request(
                 command_id = LDMSD_Request.PLUGN_START,
                 attrs=req_attrs
