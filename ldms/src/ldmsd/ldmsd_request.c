@@ -8930,10 +8930,11 @@ extern void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg);
 static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t lp, struct ldms_addr *rem_addr)
 {
 	int rc = 0;
-	char *name;
 	char *xprt_s;
 	char *hostname;
 	char *attr_name;
+	char *lport;
+	char name[NI_MAXHOST + NI_MAXSERV + 1];
 	ldmsd_prdcr_t prdcr;
 	ldmsd_prdcr_ref_t pl_pref, updtr_pref;
 	struct rbn *rbn;
@@ -8942,17 +8943,18 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t l
 	gid_t gid;
 	int is_start = 0;
 	struct ldms_xprt_event conn_ev;
-	name = xprt_s = hostname = NULL;
-
-	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!name)
-		goto einval;
+	xprt_s = hostname = lport = NULL;
 
 	attr_name = "hostname";
 	hostname = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
 	if (!hostname)
 		goto einval;
+	attr_name = "port";
+	lport = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
+	if (!lport)
+		goto einval;
+
+	snprintf(name, 32, "%s:%s", hostname, lport);
 
 	xprt_s = (char *)ldms_xprt_type_name(reqc->xprt->ldms.ldms);
 
@@ -9150,7 +9152,6 @@ static int advertise_handler(ldmsd_req_ctxt_t reqc)
 						"The attribute 'hostname' is required.");
 		goto send_reply;
 	}
-
 	for (pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_PRDCR_LISTEN);
 			pl; pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_next(&pl->obj))
 	{
