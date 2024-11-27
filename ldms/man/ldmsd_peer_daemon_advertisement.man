@@ -1,4 +1,5 @@
-a prdcr_listenv 2024" "v5" "LDMSD Peer Daemon Advertisement man page"
+\" Manpage for ldmsd_peer_daemon_advertisement
+.TH man 7 "12 December 2024" "v4" "LDMSD Peer Daemon Advertisement man page"
 
 .\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""/.
 .SH NAME
@@ -7,7 +8,7 @@ ldmsd_peer_daemon_advertisement - Manual for LDMSD Peer Daemon Advertisement
 .\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""/.
 .SH SYNOPSIS
 
-**Sampler side Commands**
+**Peer side Commands**
 
 .IP \fBadvertiser_add
 .RI "name=" NAME " xprt=" XPRT " host=" HOST " port=" PORT " reconnect=" RECONNECT
@@ -58,19 +59,19 @@ hostname to the aggregator. On the aggregator, admins specify a regular
 expression to be matched with the peer hostname or an IP range that the peer IP
 address falls in via the \fBprdcr_listen_add\fR command. The
 \fBprdcr_listen_start\fR command is used to tell the aggregator to
-automatically add producers corresponding to a peer daemon whose
-hostname matches the regular expression or whose IP address falls in the IP
-range. If neither a regular expression nor an IP range is given, the aggregator
-will create a producer upon receiving any advertisement messages.
+automatically add producers corresponding to a peer daemon whose hostname
+matches the regular expression or whose IP address falls in the IP range. If
+neither a regular expression nor an IP range is given, the aggregator will
+create a producer upon receiving any advertisement messages.
 
 The auto-generated producers are of the ‘advertised’ type. The producer name is
-the same as the name given at the \fBadvertiser_add\fR or
-\fBadvertiser_start\fR line in the peer daemon configuration file. LDMSD
-automatically starts the advertised producers, unless the 'disable_start'
-attribute is given on the \fBprdcr_listen_add\fR line.  The advertised
-producers need to be stopped manually by using the command \fBprdcr_stop\fR or
-\fBprdcr_stop_regex\fR. They can be restarted by using the command
-\fBprdcr_start\fR or \fBprdcr_start_regex\fR.
+\fB<host:port>\fR, where \fBhost\fR is the peer hostname, and \fBport\fR is the
+first listening port of the peer daemon. LDMSD automatically starts the
+advertised producers, unless the 'disable_start' attribute is given on the
+\fBprdcr_listen_add\fR line. The advertised producers need to be stopped
+manually by using the command \fBprdcr_stop\fR or \fBprdcr_stop_regex\fR. They
+can be restarted by using the command \fBprdcr_start\fR or
+\fBprdcr_start_regex\fR.
 
 The description for each command and its parameters are as follows.
 
@@ -79,7 +80,7 @@ The description for each command and its parameters are as follows.
 \fBadvertiser_add\fR adds a new advertisement. The parameters are:
 .RS
 .IP \fBname\fR=\fINAME
-String of the advertisement name. The aggregator uses the string as the producer name as well.
+Advertiser name
 .IP \fBhost\fR=\fIHOST
 Aggregator hostname
 .IP \fBxprt\fR=\fIXPRT
@@ -92,10 +93,12 @@ Reconnect interval
 The authentication domain to be used to connect to the aggregator
 .RE
 
-\fBadvertiser_start\fR starts an advertisement. If the advertiser does not exist, LDMSD will create the advertiser. In this case, the mandatory attributes for \fBadvertiser_add\fB must be given. The parameters are:
+\fBadvertiser_start\fR starts an advertisement. If the advertiser does not
+exist, LDMSD will create the advertiser. In this case, the mandatory attributes
+for \fBadvertiser_add\fB must be given. The parameters are:
 .RS
 .IP \fBname\fR=\fINAME
-The advertisement name to be started
+Name of the advertiser to be started
 .IP \fB[host\fR=\fIHOST\fB]
 Aggregator hostname
 .IP \fB[xprt\fR=\fIXPRT\fB]
@@ -111,19 +114,19 @@ The authentication domain to be used to connect to the aggregator
 \fBadvertiser_stop\fR stops an advertisement. The parameters are:
 .RS
 .IP \fBname\fR=\fINAME
-The advertisement name to be stopped
+Nmae of the advertiser to be stopped
 .RE
 
 \fBadvertiser_del\fR deletes an advertisement. The parameters are:
 .RS
 .IP \fBname\fR=\fINAME
-The advertisement name to be deleted
+Name of the advertiser to be deleted
 .RE
 
 \fBadvertiser_status reports the status of each advertisement. An optional parameter is:
 .RS
 .IP \fB[name\fR=\fINAME\fB]
-Advertisement name
+Advertiser name
 .RE
 
 .PP
@@ -166,20 +169,22 @@ Name of prdcr_listen to be deleted
 In this example, there are three LDMS daemons running on \fBnode-1\fR,
 \fBnode-2\fR, and \fBnode03\fR. LDMSD running on \fBnode-1\fR and \fBnode-2\fR
 are sampler daemons, namely \fBsamplerd-1\fR and \fBsamplerd-2\fR. The
-aggregator (\fBagg\fR) runs on \fBnode-3\fR. All LDMSD listen on port 411.
+aggregator (\fBagg11\fR) runs on \fBnode-3\fR. All LDMSD listen on port 411.
 
 The sampler daemons collect the \fBmeminfo\fR set, and they are configured to
 advertise themselves and connect to the aggregator using sock on host
-\fBnode-3\fR at port 411. The following are the configuration files of the
-\fBsamplerd-1\fR and \fBsamplerd-2\fR.
+\fBnode-3\fR at port 411. They will try to reconnect to the aggregator every 10
+seconds until the connection is established. Once the connection is
+established, they will send an advertisement to the aggregator. The following
+are the configuration files of the \fBsamplerd-1\fR and \fBsamplerd-2\fR.
 
 .EX
 .B
 > cat samplerd-1.conf
 .RS 4
 # Add and start an advertisement
-advertiser_add name=samplerd-1 xprt=sock host=node-3 port=411 reconnect=10s
-advertiser_start name=samplerd-1
+advertiser_add name=agg11 xprt=sock host=node-3 port=411 reconnect=10s
+advertiser_start name=agg11
 # Load, configure, and start the meminfo plugin
 load name=meminfo
 config name=meminfo producer=samplerd-1 instance=samplerd-1/meminfo
@@ -190,7 +195,7 @@ start name=meminfo interval=1s
 > cat samplerd-2.conf
 .RS 4
 # Add and start an advertisement using only the advertiser_start command
-advertiser_start name=samplerd-2 host=node-3 port=411 reconnect=10s
+advertiser_start name=agg11 host=node-3 port=411 reconnect=10s
 # Load, configure, and start the meminfo plugin
 load name=meminfo
 config name=meminfo producer=samplerd-2 instance=samplerd-2/meminfo
@@ -199,11 +204,7 @@ start name=meminfo interval=1s
 .EE
 
 The aggregator is configured to accept advertisements from the sampler daemons
-that the hostnames match the regular expressions \fBnode0[1-2]\fR. The
-auto-added producers will check for an establish connection with the samplers
-every 10 seconds if the connection becomes disconnected. An updater is added to
-update the sets of all producers on the aggregators every 10 seconds at the 100
-milliseconds offset.
+that the hostnames match the regular expressions \fBnode0[1-2]\fR.
 
 .EX
 .B
@@ -215,7 +216,7 @@ prdcr_listen_start name=computes
 # Add and start an updater
 updtr_add name=all_sets interval=1s offset=100ms
 updtr_prdcr_add name=all_sets regex=.*
-updtr_start name=all
+updtr_start name=all_sets
 .RE
 .EE
 
@@ -224,13 +225,13 @@ advertisement of a sampler daemon.
 
 .EX
 .B
-> ldmsd_controller -x sock -p 10001 -h node-1
+> ldmsd_controller -x sock -p 411 -h node-1
 Welcome to the LDMSD control processor
-sock:node-1:10001> advertiser_status
+sock:node-1:411> advertiser_status
 Name             Aggregator Host  Aggregator Port Transport    Reconnect (us)         State
 ---------------- ---------------- --------------- ------------ --------------- ------------
-samplerd-1                 node-3           10001         sock        10000000    CONNECTED
-sock:node-1:10001>
+agg11                      node-3             411         sock        10000000    CONNECTED
+sock:node-1:411>
 .EE
 
 Similarly, LDMSD provides the command \fBprdcr_listen_status\fR to report the
@@ -239,14 +240,14 @@ the list of auto-added producers corresponding to each prdcr_listen object.
 
 .EX
 .B
-> ldmsd_controller -x sock -p 10001 -h node-3
+> ldmsd_controller -x sock -p 411 -h node-3
 Welcome to the LDMSD control processor
-sock:node-3:10001> prdcr_listen_status
+sock:node-3:411> prdcr_listen_status
 Name                 State      Regex           IP Range
 -------------------- ---------- --------------- ------------------------------
 computes             running    node-[1-2]      -
-Producers: samplerd-1, samplerd-2
-sock:node-3:10001>
+Producers: node-1:411, node-2:411
+sock:node-3:411>
 .EE
 
 .SH SEE ALSO

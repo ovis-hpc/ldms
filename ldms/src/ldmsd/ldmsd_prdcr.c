@@ -628,32 +628,54 @@ static int __advertise_resp_cb(ldmsd_req_cmd_t rcmd)
 	return 0;
 }
 
-static int __send_advertisement(ldmsd_prdcr_t prdcr)
+static void __send_advertisement(ldmsd_prdcr_t prdcr)
 {
 	int rc;
 	ldmsd_req_cmd_t rcmd;
+	ldmsd_listen_t l;
 	char my_hostname[HOST_NAME_MAX+1];
+	char lport[10];
 
 	rcmd = ldmsd_req_cmd_new(prdcr->xprt,
 				LDMSD_ADVERTISE_REQ, NULL,
 				__advertise_resp_cb, prdcr);
 	if (!rcmd) {
 		ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
-		return ENOMEM;
+		goto out;
 	}
 
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, prdcr->obj.name);
-	if (rc)
-		goto out;
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Failed to construct an advertisement. " \
+								"Error %d\n", rc);
+		goto err;
+	}
 	rc = gethostname(my_hostname, HOST_NAME_MAX+1);
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_HOST, my_hostname);
-	if (rc)
-		goto out;
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Failed to construct an advertisement. " \
+								"Error %d\n", rc);
+		goto err;
+	}
+	l = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+	snprintf(lport, 10, "%d", l->port_no);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_PORT, lport);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Failed to cosntruct an advertisement. " \
+								"error %d\n", rc);
+		goto err;
+	}
 	rc = ldmsd_req_cmd_attr_term(rcmd);
-	if (rc)
-		goto out;
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Failed to send an advertisement. " \
+								"Error %d\n", rc);
+		goto err;
+	}
 out:
-	return rc;
+	return;
+err:
+	ldmsd_req_cmd_free(rcmd);
+	return;
 }
 
 static int __sampler_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
@@ -665,7 +687,6 @@ static int __sampler_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 			prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
 			if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISER) {
 				__send_advertisement(prdcr);
-				/* TODO: handle the error */
 			}
 			break;
 		case LDMS_XPRT_EVENT_DISCONNECTED:
