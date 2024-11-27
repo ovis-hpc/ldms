@@ -618,7 +618,9 @@ static void __send_advertisement(ldmsd_prdcr_t prdcr)
 {
 	int rc;
 	ldmsd_req_cmd_t rcmd;
+	ldmsd_listen_t l;
 	char my_hostname[HOST_NAME_MAX+1];
+	char lport[10];
 
 	rcmd = ldmsd_req_cmd_new(prdcr->xprt,
 				LDMSD_ADVERTISE_REQ, NULL,
@@ -627,32 +629,42 @@ static void __send_advertisement(ldmsd_prdcr_t prdcr)
 		ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
 		goto out;
 	}
-
-	rc = gethostname(my_hostname, HOST_NAME_MAX+1);
-	if (rc) {
-		ovis_log(NULL, OVIS_LERROR, "Failed to construct an advertisement. " \
-								"gethostname() returned error %d\n", rc);
-		goto out;
-	}
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, prdcr->obj.name);
 	if (rc) {
 		ovis_log(NULL, OVIS_LERROR, "Failed to construct an advertisement. " \
-															"Error %d\n", rc);
-		goto out;
+								"Error %d\n", rc);
+		goto err;
+	}
+	rc = gethostname(my_hostname, HOST_NAME_MAX+1);
+	if (rc) {
+		ovis_log(NULL, OVIS_LERROR, "Failed to construct an advertisement. " \
+						"gethostname() returned error %d\n", rc);
+		goto err;
 	}
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_HOST, my_hostname);
 	if (rc) {
 		ovis_log(NULL, OVIS_LERROR, "Failed to construct an advertisement. " \
-															"Error %d\n", rc);
-		goto out;
+								"Error %d\n", rc);
+		goto err;
+	}
+	l = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+	snprintf(lport, 10, "%d", l->port_no);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_PORT, lport);
+	if (rc) {
+		ovis_log(NULL, OVIS_LERROR, "Failed to cosntruct an advertisement. " \
+								"error %d\n", rc);
+		goto err;
 	}
 	rc = ldmsd_req_cmd_attr_term(rcmd);
 	if (rc) {
 		ovis_log(NULL, OVIS_LERROR, "Failed to send an advertisement. " \
-															"Error %d\n", rc);
-		goto out;
+								"Error %d\n", rc);
+		goto err;
 	}
 out:
+	return;
+err:
+	ldmsd_req_cmd_free(rcmd);
 	return;
 }
 
