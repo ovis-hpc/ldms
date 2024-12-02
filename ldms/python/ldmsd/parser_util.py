@@ -542,9 +542,8 @@ class YamlCfg(object):
             container = check_opt('container', store_spec)
             if not container:
                 container = ""
-            decomp = check_opt('decomp', store_spec)
-            decomposition = check_opt('decomposition', store_spec)
-            if not decomp and not decomposition:
+            decomp = check_opt('decomposition', store_spec)
+            if not decomp:
                 check_required(['schema'], store_spec, '"store" entry')
             schema = check_opt('schema', store_spec)
             regex = check_opt('regex', store_spec)
@@ -958,6 +957,8 @@ class YamlCfg(object):
                     loaded_plugins.append(store_group[store]['plugin'])
                 strgp_add = f'strgp_add name={store} plugin={plugin["name"]} '
                 strgp_add += f'container={store_group[store]["container"]} '
+                if 'decomposition' in store_group[store]:
+                    strgp_add += f'decomposition={store_group[store]["decomposition"]} '
                 if 'schema' in store_group[store]:
                     strgp_add += f'schema={store_group[store]["schema"]}'
                 elif 'regex' in store_group[store]:

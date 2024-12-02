@@ -296,13 +296,21 @@ Dictionary of storage policies and their configuration information with each key
 .br
 File path of the database container.
 .TP
-.BR schema
+.BR [schema]
 .br
-Name of the metric set schema.
+Name of the metric set schema. This is a required argument unless decomposition is specified. May not be used in conjunction with "regex".
 .TP
 .BR plugin
 .br
 Name of a storage plugin that matches a key of a plugin defined in the top level plugins section.
+.TP
+.BR [decomposition]
+.br
+Path to a decomposition configuration file.
+.TP
+.BR [regex]
+.br
+A regular expression matching the schema set names to apply the decomposition file to. May not be used in conjunction with "schema".
 .TP
 .BR [flush]
 .br
