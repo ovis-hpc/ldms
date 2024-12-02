@@ -134,6 +134,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'subscribe': {'req_attr': ['name'], 'opt_attr': []},
                       'stream_client_dump': {'req_attr': [], 'opt_attr': []},
                       'stream_status' : {'req_attr': [], 'opt_attr': []},
+                      'stream_disable' : {'req_attr': [], 'opt_attr':[]},
+
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': ['thread_stats']},
                       ##### Misc. #####
@@ -582,6 +584,8 @@ class LDMSD_Request(object):
     STREAM_CLIENT_DUMP = STREAM_PUBLISH + 3
     STREAM_NEW = STREAM_PUBLISH + 4
     STREAM_STATUS = STREAM_PUBLISH + 5
+    STREAM_ENABLE = STREAM_PUBLISH + 6
+    STREAM_DISABLE = STREAM_PUBLISH + 7
 
     AUTH_ADD = 0xa00
 
@@ -681,6 +685,7 @@ class LDMSD_Request(object):
 
             'stream_client_dump'   :  {'id' : STREAM_CLIENT_DUMP },
             'stream_status'    :  {'id' : STREAM_STATUS },
+            'stream_disable'   :  {'id' : STREAM_DISABLE },
 
             'listen'        :  {'id' : LISTEN },
             'auth_add'      :  {'id' : AUTH_ADD },
@@ -1412,6 +1417,20 @@ class Communicator(object):
         No parameters
         """
         req = LDMSD_Request(command_id=LDMSD_Request.STREAM_STATUS)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
+
+    def stream_disable(self):
+        """
+        Disable stream communication in the daemon
+
+        No parameters
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_DISABLE)
         try:
             req.send(self)
             resp = req.receive(self)
