@@ -263,16 +263,10 @@ void ldmsd_row_group_bucket_cleanup(ldmsd_row_cache_t rcache, int ci)
 	while((g = LIST_FIRST(&rcache->group_bucket[ci]))) {
 		LIST_REMOVE(g, bucket_entry);
 		rbt_del(&rcache->group_tree, &g->rbn);
-		#if 0
-		ldmsd_log(LDMSD_LINFO, "freeing group\n");
-		#endif
 		while ((rbn = rbt_min(&g->row_tree))) {
 			rbt_del(&g->row_tree, rbn);
 			cent = container_of(rbn, struct ldmsd_row_cache_entry_s, rbn);
 			ldmsd_row_cache_idx_free(cent->idx);
-			#if 0
-			ldmsd_log(LDMSD_LINFO, "freeing row\n");
-			#endif
 			free(cent->row);
 			free(cent);
 		}
@@ -292,6 +286,7 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 	int rc = 0;
 	int ci;
 	int count;
+	const int GB_LEN = sizeof(rcache->group_bucket)/sizeof(rcache->group_bucket[0]);
 
 	/* Insert the row_list into the tree using rcache->row_key */
 	ldmsd_row_cache_entry_t entry = calloc(1, sizeof(*entry));
@@ -309,17 +304,47 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 	if (rcache->cfg_timeout.tv_sec == 0 && rcache->cfg_timeout.tv_nsec == 0)
 		goto skip_cleanup;
 
-	/* process buckets */
-	count = 3;
+	/*
+	 * group bucket processing
+	 * -----------------------
+	 *
+	 * A group bucket (`gb`) is a LIST of active groups within a
+	 * specific time window. A group is in only one group bucket.
+	 * - `rcache->group_bucket[]` is  an array group buckets. Referred to as
+	 *   `gb[]` for short.
+	 * - `rcache->gb_idx` is the index of CURRENT group bucket.
+	 *   `gb[CURRENT]` contains groups being active in the CURRENT time
+	 *   window.
+	 *   - current time window: time in range:
+	 *     (rcache->bucket_ts - rcache->cfg_timeout,  rcache->bucket_ts].
+	 * - `(rcache->gb_idx + 1) % GB_LEN` is the index of the NEXT group
+	 *   bucket. gb[NEXT] is empty.
+	 * - `(rcache->gb_idx + GB_LEN) % GB_LEN` is the index of the PREV group
+	 *   bucket. Groups in `gb[PREV]` are active in the PREV time window
+	 *   (rcache->bucket_ts - rcache->cfg_timeout,  rcache->bucket_ts ],
+	 *   but NOT YET active in the CURRENT time window.
+	 *
+	 * When a group is processed, it is removed from the bucket it is in
+	 * (could be PREV or CURRENT), and put into `gb[CURRENT]` bucket.
+	 *
+	 * When the timestamp `ts` (from clock_gettime() above) is greater than
+	 * rcache->bucket_ts, it is time to advance the bucket. `gb[NEXT]`
+	 * becomes CURRENT, `gb[CURRENT]` becomes PREV, and `gb[PREV]` shall be
+	 * cleaned up since all groups in this bucket are being inactive for
+	 * more than `rcache->cfg_timeout`. After the cleanup, `gb[PREV]`
+	 * becomes NEXT (empty).
+	 *
+	 */
+	count = GB_LEN;
 	while (count && ldmsd_timespec_cmp(&rcache->bucket_ts, &ts) < 0) {
 		/* ts > bucket_ts ; advancing the bucket */
-		rcache->gb_idx = (rcache->gb_idx + 1) % 3;
+		rcache->gb_idx = (rcache->gb_idx + 1) % GB_LEN;
 		/* rcache->bucket_ts += rcache->cfg_timeout */
 		ldmsd_timespec_add(&rcache->bucket_ts, &rcache->cfg_timeout,
 				   &rcache->bucket_ts);
 
-		/* clean up the oldest bucket */
-		ci = (rcache->gb_idx + 1) % 3; /* equivalent to `gb_idx - 2` */
+		/* clean up the oldest bucket; making it the NEXT bucket */
+		ci = (rcache->gb_idx + 1) % GB_LEN; /* equivalent to `gb_idx - 2` */
 		ldmsd_row_group_bucket_cleanup(rcache, ci);
 
 		count--;
@@ -371,7 +396,7 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 	/* informational */
 	group->last_update = ts;
 
-	/* move group to *current* bucket */
+	/* move group to CURRENT bucket */
 	LIST_REMOVE(group, bucket_entry);
 	LIST_INSERT_HEAD(&rcache->group_bucket[rcache->gb_idx], group, bucket_entry);
 
