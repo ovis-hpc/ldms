@@ -23,19 +23,11 @@ ldmsd_controller> <cmd> [ <attr>=<value> ]
 DESCRIPTION
 ===========
 
-With LDMS (Lightweight Distributed Metric Service), the ldmsd can be
-configured via the ldmsd_controller.
+Configure and query the status of a running LDMSD daemon.
 
-If ldms is built with --enable-readline, one can invoke the
-ldmsd_controller from the command line and obtain an input interface
-with feedback. In many instances, instances, however, it is prefered to
-execute scripts and send the output commands to an ldmsd instead.
 
 ENVIRONMENT
 ===========
-
-Note: python2.6 with the additional installation of the argparse module
-OR python2.7 (which has the argparse module) is required.
 
 PYTHONPATH
    <path_to_ovis_install>/lib[64]/pythonX.Y/site-packages/
@@ -449,6 +441,17 @@ Query producer status
       |
       | The producer name. If none is given, the statuses of all
         producers are reported.
+
+
+Disable stream communication
+----------------------------
+
+**stream_disable**
+
+Disable the subscription and publication of data on a stream in this daemon.
+Once stream communication is disabled, all stream requests will result in an
+error of ENOSYS. Stream communication cannot be re-enabled without restarting
+the daemon.
 
 
 Subscribe for stream and/or message data from all matching producers
