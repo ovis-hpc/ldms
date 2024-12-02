@@ -146,6 +146,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'subscribe': {'req_attr': ['name'], 'opt_attr': []},
                       'stream_client_dump': {'req_attr': [], 'opt_attr': []},
                       'stream_status' : {'req_attr': [], 'opt_attr': ['reset']},
+                      'stream_disable' : {'req_attr': [], 'opt_attr':[]},
                       'stream_stats' : {'req_attr': [], 'opt_attr': ['regex', 'stream', 'json', 'reset']},
                       'stream_client_stats' : {'req_attr': [], 'opt_attr': ['json', 'reset']},
                       ##### Daemon #####
@@ -659,8 +660,9 @@ class LDMSD_Request(object):
     STREAM_CLIENT_DUMP = STREAM_PUBLISH + 3
     STREAM_NEW = STREAM_PUBLISH + 4
     STREAM_STATUS = STREAM_PUBLISH + 5
-    STREAM_STATS = STREAM_PUBLISH + 6
-    STREAM_CLIENT_STATS = STREAM_PUBLISH + 7
+    STREAM_DISABLE = STREAM_PUBLISH + 6
+    STREAM_STATS = STREAM_PUBLISH + 7
+    STREAM_CLIENT_STATS = STREAM_PUBLISH + 8
 
     AUTH_ADD = 0xa00
 
@@ -767,6 +769,7 @@ class LDMSD_Request(object):
 
             'stream_client_dump'   :  {'id' : STREAM_CLIENT_DUMP },
             'stream_status'    :  {'id' : STREAM_STATUS },
+            'stream_disable'   :  {'id' : STREAM_DISABLE },
             'stream_stats'    :  {'id' : STREAM_STATS },
             'stream_client_stats'    :  {'id' : STREAM_CLIENT_STATS },
 
@@ -1513,6 +1516,20 @@ class Communicator(object):
         if reset:
             attr_list.append(LDMSD_Req_Attr(attr_name='reset', value=reset))
         req = LDMSD_Request(command_id=LDMSD_Request.STREAM_STATS, attrs = attr_list)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
+
+    def stream_disable(self):
+        """
+        Disable stream communication in the daemon
+
+        No parameters
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_DISABLE)
         try:
             req.send(self)
             resp = req.receive(self)

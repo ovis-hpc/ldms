@@ -584,7 +584,8 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_prdcr_stream_status(self, arg):
         """
-        Get stream_status of the matched prdcr. The connected LDMSD acts as a proxy.
+        Report the stream status of each producer matched by the regular expression.
+
         Parameters:
         regex=     A regular expression matching producer names
         """
@@ -2524,7 +2525,7 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_stream_status(self, arg):
         """
-        Dump the stream information
+        Report stream status information for each stream known to the daemon
 
         Parameters:
         [reset=]     If true, reset the statistics of all streams after returning the values.
@@ -2600,6 +2601,22 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_stream_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_status', text)
+
+    def do_stream_disable(self, arg):
+        """
+        Disable stream communication in the daemon
+
+        No Parameters
+        """
+        rc, msg = self.comm.stream_disable()
+        if rc != 0:
+            print(f'Error {rc}: {msg}')
+        else:
+            print('Streams communication is DISABLED in the daemon')
+        return
+
+    def complete_stream_disable(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('stream_disable', text)
 
     def do_stream_stats(self, arg):
         """
