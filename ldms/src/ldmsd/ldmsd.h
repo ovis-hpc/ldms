@@ -510,7 +510,7 @@ typedef struct ldmsd_row_cache_s {
 	struct rbt group_tree;	/* Tree of ldmsd_row_group_t */
 	pthread_mutex_t lock;
 	LIST_HEAD(, ldmsd_row_group_s) group_bucket[3];
-	int gb_idx; /* current bucket index: 0, 1, or 2 */
+	int gb_idx; /* current group bucket index: 0, 1, or 2 */
 	struct timespec bucket_ts; /* timestamp to trigger the bucket change */
 	struct timespec cfg_timeout; /* timeout for each bucket */
 } *ldmsd_row_cache_t;
