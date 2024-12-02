@@ -64,7 +64,8 @@ JSON configuration file is as follows:
         ],
         "order": [
           "\fIDST_COL_NAME\fR", ...
-        ]
+        ],
+        "timeout": "\fITIME\fR"
       }
     },
     ...
@@ -183,6 +184,11 @@ This is an integer limiting the maximum number of rows to be cached in each
 group. The first \fIROW_LIMIT\fR rows in the group descendingly ordered by
 \fB"order"\fR are cached. The rest are discarded.
 
+.TP 4
+\fB"timeout"\fR : "\fITIME\fR"
+The amount of time (e.g. "30m") of group inactivity (no row added to the group)
+to trigger row cache cleanup for the group. If this value is not set, the row
+cache won't be cleaned up.
 .RE
 
 .TP 1
@@ -260,8 +266,9 @@ various forms and with "op".
       ],
       "group": [
         "limit": 2,
-        "index": [ "comp_id", "netdev.name" ]
-        "order": [ "ts" ]
+        "index": [ "comp_id", "netdev.name" ],
+        "order": [ "ts" ],
+        "timeout": "60s"
       ]
     }
   ]
@@ -278,7 +285,9 @@ difference value from "src":"netdev_list[rx_bytes]". The "group" instructs "op"
 to group rows by ["comp_id", "netdev.name"], i.e. the "diff" will be among the
 same net device of the same node (comp_id). The "order":["ts"] orders the rows
 in the group by "ts" (the timestamp). The "limit":2 keeps only 2 rows in the
-group (current and previous row by timestamp).
+group (current and previous row by timestamp). The "timeout": "60s" indicates
+that if a group does not receive any data in 60 seconds (e.g. by removing a
+virtual network device), the row cache for the group will be cleaned up.
 
 The "netdev.tx_bytes_diff" is the same as "netdev.rx_bytes_diff" but for
 tx_bytes.
