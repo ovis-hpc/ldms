@@ -109,6 +109,7 @@ int ldmsd_req_debug = 0; /* turn bits on / off using gdb or -L
 FILE *ldmsd_req_debug_file = NULL; /* change with -L or
 				    * ldmsd.c:process_log_config */
 
+static int stream_enabled = 1;
 static int cleanup_requested = 0;
 
 void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap);
@@ -291,6 +292,8 @@ static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc);
 static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc);
 static int stream_new_handler(ldmsd_req_ctxt_t reqc);
 static int stream_status_handler(ldmsd_req_ctxt_t reqc);
+static int stream_disable_handler(ldmsd_req_ctxt_t reqc);
+static int stream_enable_handler(ldmsd_req_ctxt_t reqc);
 
 static int listen_handler(ldmsd_req_ctxt_t reqc);
 
@@ -623,6 +626,12 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_STREAM_STATUS_REQ] = {
 		LDMSD_STREAM_STATUS_REQ, stream_status_handler, XALL
+	},
+	[LDMSD_STREAM_DISABLE_REQ] = {
+		LDMSD_STREAM_DISABLE_REQ, stream_disable_handler, XUG | MOD
+	},
+	[LDMSD_STREAM_ENABLE_REQ] = {
+		LDMSD_STREAM_ENABLE_REQ, stream_enable_handler, XUG | MOD
 	},
 
 	/* LISTEN */
@@ -7381,11 +7390,18 @@ static const char *__xprt_prdcr_name_get(ldms_t x)
 
 static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *stream_name;
+	char *stream_name = NULL;
 	ldmsd_stream_type_t stream_type = LDMSD_STREAM_STRING;
 	ldmsd_req_attr_t attr;
 	int cnt;
 	char *p_name;
+
+	if (!stream_enabled) {
+		reqc->errcode = EPERM;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "The stream service is DISABLED on this system.");
+		goto err_reply;
+	}
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!stream_name) {
@@ -7578,6 +7594,13 @@ static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
 	char _buff[sizeof(struct __RSE_key_s) + 256]; /* should be enough for stream name */
 	struct __RSE_key_s *key = (void*)_buff;
 
+	if (!stream_enabled) {
+		reqc->errcode = EPERM;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "The stream service is disabled on this system.");
+		goto send_reply;
+	}
+
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!stream_name) {
 		reqc->errcode = EINVAL;
@@ -7644,6 +7667,13 @@ static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc)
 	__RSE_t ent;
 	char _buff[sizeof(struct __RSE_key_s) + 256]; /* should be enough for stream name */
 	struct __RSE_key_s *key = (void*)_buff;
+
+	if (!stream_enabled) {
+		reqc->errcode = EPERM;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "The stream service is disabled on this system.");
+		goto send_reply;
+	}
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!stream_name) {
@@ -7736,6 +7766,24 @@ static int stream_new_handler(ldmsd_req_ctxt_t reqc)
 	return 0;
 }
 
+static int stream_enable_handler(ldmsd_req_ctxt_t reqc)
+{
+	stream_enabled = 1;
+	reqc->errcode = 0;
+	(void)Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
+static int stream_disable_handler(ldmsd_req_ctxt_t reqc)
+{
+	stream_enabled = 0;
+	reqc->errcode = 0;
+	(void)Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
 static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
@@ -7743,11 +7791,19 @@ static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 	size_t len;
 	struct ldmsd_req_attr_s attr;
 
+	if (!stream_enabled) {
+		reqc->errcode = ENOTSUP;
+		(void)Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Stream communication is disabled in this daemon.");
+		ldmsd_send_req_response(reqc, reqc->line_buf);
+		return 0;
+	}
+
 	s = ldmsd_stream_dir_dump();
 	if (!s) {
 		reqc->errcode = errno;
-		rc = snprintf(reqc->line_buf, reqc->line_len,
-				"Failed to get stream_info_dump.");
+		(void)Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Failed to get collect stream status information.");
 		ldmsd_send_req_response(reqc, reqc->line_buf);
 		return 0;
 	}
