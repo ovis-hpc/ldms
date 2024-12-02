@@ -182,12 +182,13 @@ enum ldmsd_request {
 	LDMSD_SETGROUP_RM_REQ, /* Remove a set from a group */
 
 	/* Publish/Subscribe Requests */
-	LDMSD_STREAM_PUBLISH_REQ = 0x900, /* Publish data to a stream */
-	LDMSD_STREAM_SUBSCRIBE_REQ,	  /* Subscribe to a stream */
-	LDMSD_STREAM_UNSUBSCRIBE_REQ,	  /* Unsubscribe to a stream */
-	LDMSD_STREAM_CLIENT_DUMP_REQ,	  /* Dump stream client info */
-	LDMSD_STREAM_NEW_REQ,	/* Create a stream */
+	LDMSD_STREAM_PUBLISH_REQ = 0x900,/* Publish data to a stream */
+	LDMSD_STREAM_SUBSCRIBE_REQ,	/* Subscribe to a stream */
+	LDMSD_STREAM_UNSUBSCRIBE_REQ,	/* Unsubscribe to a stream */
+	LDMSD_STREAM_CLIENT_DUMP_REQ,	/* Dump stream client info */
+	LDMSD_STREAM_NEW_REQ,		/* Create a stream */
 	LDMSD_STREAM_STATUS_REQ,	/* Query stream information */
+	LDMSD_STREAM_DISABLE_REQ,	/* Disable streams in this daemon */
 
 	/* Auth */
 	LDMSD_AUTH_ADD_REQ = 0xa00, /* Add auth domain */
