@@ -1071,6 +1071,7 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	struct rbn *rbn;
 	ldms_set_t l_set;
 	js_set_t j_set;
+	char *inst_name = NULL;
 
 	LDEBUG("thread: %lu, stream: '%s', msg: '%s'\n", pthread_self(), js->stream_name, msg);
 	if (stream_type != LDMSD_STREAM_JSON) {
@@ -1098,7 +1099,7 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		       SAMP, rc, msg);
 		goto err_0;
 	}
-	char *inst_name = get_inst_name(js, entity, j_schema, 0, 0, 0);
+	inst_name = get_inst_name(js, entity, j_schema, 0, 0, 0);
 	if (!inst_name) {
 		LERROR("Error %d constructing set name from instance format '%s'.\n",
 			errno, js->inst_fmt);
