@@ -4420,9 +4420,9 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 	if (name) {
 		updtr = ldmsd_updtr_find(name);
 		if (!updtr) {
+			reqc->errcode = ENOENT;
 			cnt = snprintf(reqc->line_buf, reqc->line_len, "updtr '%s' not found", name);
-			ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, ENOENT,
-							reqc->line_buf, cnt);
+			ldmsd_send_req_response(reqc, reqc->line_buf);
 			free(name);
 			return 0;
 		}
@@ -4475,8 +4475,8 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 	goto out;
 
 err:
-	ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, rc,
-						"internal error", 15);
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, "Internal error.");
 out:
 	free(name);
 	if (updtr)
@@ -4636,8 +4636,8 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
 	goto out;
 
 intr_err:
-	ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, EINTR,
-				"interval error", 14);
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, "Internal error");
 out:
 	free(name);
 	ldmsd_prdcr_put(prdcr, "find");
@@ -5603,8 +5603,8 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 	return ldmsd_append_reply(reqc, (char *)&attr.discrim,
 				sizeof(uint32_t), LDMSD_REQ_EOM_F);
 err:
-	ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, rc,
-				"internal error", 15);
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, "Internal error.");
 	return rc;
 }
 
