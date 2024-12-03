@@ -4373,9 +4373,9 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 	if (name) {
 		updtr = ldmsd_updtr_find(name);
 		if (!updtr) {
+			reqc->errcode = ENOENT;
 			cnt = snprintf(reqc->line_buf, reqc->line_len, "updtr '%s' not found", name);
-			ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, ENOENT,
-							reqc->line_buf, cnt);
+			ldmsd_send_req_response(reqc, reqc->line_buf);
 			return 0;
 		}
 		rc = __updtr_task_tree_json_obj(reqc, updtr);
@@ -4427,8 +4427,8 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 	goto out;
 
 err:
-	ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, rc,
-						"internal error", 15);
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, "Internal error.");
 out:
 	free(name);
 	if (updtr)
@@ -4587,8 +4587,8 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
 	goto out;
 
 intr_err:
-	ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, EINTR,
-				"interval error", 14);
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, "Internal error");
 out:
 	free(name);
 	if (prdcr)
@@ -5454,8 +5454,8 @@ out:
 	return rc;
 
 err:
-	ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, rc,
-						"internal error", 15);
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, "Internal error.");
 	goto out;
 err0:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -6655,8 +6655,8 @@ static int set_route_handler(ldmsd_req_ctxt_t reqc)
 		cnt = snprintf(reqc->line_buf, reqc->line_len,
 				"%s: Set '%s' not exist.",
 				ldmsd_myname_get(), inst_name);
-		(void) ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, ENOENT,
-				reqc->line_buf, cnt + 1);
+		reqc->errcode = ENOENT;
+		(void) ldmsd_send_req_response(reqc, reqc->line_buf);
 		goto out;
 	}
 
