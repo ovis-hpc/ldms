@@ -3,3 +3,5 @@
 .. toctree::
    :hidden:
    :maxdepth: 2
+
+   ldms_stream
