@@ -28,7 +28,7 @@ nobase_include_HEADERS = ovis-ldms-config.h
 docdir = $(datadir)/doc/@PACKAGE@
 dist_doc_DATA = COPYING gpl-2.0.txt
 
-SUBDIRS = lib ldms util gnulib
+SUBDIRS = lib ldms util gnulib docs
 
 # this definition of DIST_SUBDIRS is unusual. May decide to improve later.
 # For now, we ship as we expect to configure.
