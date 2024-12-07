@@ -264,6 +264,7 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc);
 static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc);
 static int log_status_handler(ldmsd_req_ctxt_t reqc);
 static int stats_reset_handler(ldmsd_req_ctxt_t reqc);
+static int profiling_handler(ldmsd_req_ctxt_t req);
 
 /* these are implemented in ldmsd_failover.c */
 int failover_config_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -563,6 +564,10 @@ static struct request_handler_entry request_handler[] = {
 
 	[LDMSD_SET_DEFAULT_AUTHZ_REQ] = {
 		LDMSD_SET_DEFAULT_AUTHZ_REQ, set_default_authz_handler, XUG | MOD
+	},
+
+	[LDMSD_PROFILING_REQ] = {
+		LDMSD_PROFILING_REQ, profiling_handler, XALL
 	},
 
 	/* FAILOVER user commands */
@@ -7066,7 +7071,7 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 			first = 0;
 		}
 
-		ldms_xprt_stats(x, &xs);
+		ldms_xprt_stats(x, &xs, LDMS_PERF_M_STATS, reset);
 		xprt_count += 1;
 
 		switch (ep_state) {
@@ -7235,6 +7240,254 @@ err:
 	free(json_s);
 	req->errcode = ENOMEM;
 	ldmsd_send_req_response(req, "Memory allocation error.");
+	return ENOMEM;
+}
+
+double __ts2double(struct timespec ts)
+{
+	return ts.tv_sec + ((double)ts.tv_nsec)/1000000000.0;
+}
+
+json_t *__ldms_op_profiling_as_json(struct ldms_op_ctxt *xc, enum ldms_xprt_ops_e op_e)
+{
+	json_t *stat;
+	stat = json_object();
+	switch (op_e) {
+	case LDMS_XPRT_OP_LOOKUP:
+		json_object_set_new(stat, "app_req",
+				json_real(__ts2double(xc->lookup_profile.app_req_ts)));
+		json_object_set_new(stat, "req_send",
+				json_real(__ts2double(xc->lookup_profile.req_send_ts)));
+		json_object_set_new(stat, "req_recv",
+				json_real(__ts2double(xc->lookup_profile.req_recv_ts)));
+		json_object_set_new(stat, "share",
+				json_real(__ts2double(xc->lookup_profile.share_ts)));
+		json_object_set_new(stat, "rendzv",
+				json_real(__ts2double(xc->lookup_profile.rendzv_ts)));
+		json_object_set_new(stat, "read",
+				json_real(__ts2double(xc->lookup_profile.read_ts)));
+		json_object_set_new(stat, "complete",
+				json_real(__ts2double(xc->lookup_profile.complete_ts)));
+		json_object_set_new(stat, "deliver",
+				json_real(__ts2double(xc->lookup_profile.deliver_ts)));
+		break;
+	case LDMS_XPRT_OP_UPDATE:
+		json_object_set_new(stat, "app_req",
+				json_real(__ts2double(xc->update_profile.app_req_ts)));
+		json_object_set_new(stat, "read_start",
+				json_real(__ts2double(xc->update_profile.read_ts)));
+		json_object_set_new(stat, "read_complete",
+				json_real(__ts2double(xc->update_profile.read_complete_ts)));
+		json_object_set_new(stat, "deliver",
+				json_real(__ts2double(xc->update_profile.deliver_ts)));
+		break;
+	case LDMS_XPRT_OP_SEND:
+		json_object_set_new(stat, "app_req",
+				json_real(__ts2double(xc->send_profile.app_req_ts)));
+		json_object_set_new(stat, "send",
+				json_real(__ts2double(xc->send_profile.send_ts)));
+		json_object_set_new(stat, "complete",
+				json_real(__ts2double(xc->send_profile.complete_ts)));
+		json_object_set_new(stat, "deliver",
+				json_real(__ts2double(xc->send_profile.deliver_ts)));
+		break;
+	case LDMS_XPRT_OP_SET_DELETE:
+		json_object_set_new(stat, "send",
+				json_real(__ts2double(xc->set_del_profile.send_ts)));
+		json_object_set_new(stat, "recv",
+				json_real(__ts2double(xc->set_del_profile.recv_ts)));
+		json_object_set_new(stat, "acknowledge",
+				json_real(__ts2double(xc->set_del_profile.ack_ts)));
+		break;
+	case LDMS_XPRT_OP_STREAM_PUBLISH:
+		json_object_set_new(stat, "hop_cnt",
+				json_integer(xc->stream_pub_profile.hop_num));
+		json_object_set_new(stat, "recv",
+				json_real(__ts2double(xc->stream_pub_profile.recv_ts)));
+		json_object_set_new(stat, "send",
+				json_real(__ts2double(xc->stream_pub_profile.send_ts)));
+		break;
+	default:
+		break;
+	}
+	return stat;
+}
+
+int __stream_profiling_as_json(json_t **_jobj, int is_reset) {
+	json_t *jobj, *strm_jobj, *src_jobj, *hop_jobj, *prf_array, *prf_jobj;
+	struct ldms_stream_stats_tq_s *tq;
+	struct ldms_stream_stats_s *ss;
+	struct ldms_stream_src_stats_s *strm_src;
+	struct ldms_stream_profile_ent *prf;
+	struct ldms_addr addr;
+	char addr_buf[128] = "";
+	struct rbn *rbn;
+	int i, rc = 0;
+
+	jobj = json_object();
+	tq = ldms_stream_stats_tq_get(NULL, 0, is_reset);
+	if (!tq) {
+		/* no stream ... nothing to do here. */
+		goto out;
+	}
+	TAILQ_FOREACH(ss, tq, entry) {
+		strm_jobj = json_object();
+
+		RBT_FOREACH(rbn, &ss->src_stats_rbt) {
+			src_jobj = json_array();
+
+			strm_src = container_of(rbn, struct ldms_stream_src_stats_s, rbn);
+			addr = strm_src->src;
+			ldms_addr_ntop(&addr, addr_buf, sizeof(addr_buf));
+			TAILQ_FOREACH(prf, &strm_src->profiles, ent) {
+				hop_jobj = json_object();
+				json_object_set_new(hop_jobj, "hop_count", json_integer(prf->profiles.hop_cnt));
+				prf_array = json_array();
+				json_object_set_new(hop_jobj, "profile", prf_array);
+				for (i = 0; i < prf->profiles.hop_cnt; i++) {
+					prf_jobj = json_object();
+					json_object_set_new(prf_jobj, "recv",
+						json_real(__ts2double(prf->profiles.hops[i].recv_ts)));
+					json_object_set_new(prf_jobj, "deliver",
+						json_real(__ts2double(prf->profiles.hops[i].send_ts)));
+					json_array_append_new(prf_array, prf_jobj);
+				}
+				json_array_append_new(src_jobj, hop_jobj);
+			}
+			json_object_set_new(strm_jobj, addr_buf, src_jobj);
+		}
+		json_object_set_new(jobj, ss->name, strm_jobj);
+	}
+ out:
+	*_jobj = jobj;
+	return rc;
+}
+
+int __xprt_profiling_as_json(json_t **_obj, int is_reset)
+{
+	json_t *obj, *ep_prf, *op_prf;
+	ldms_t x;
+	struct ldms_xprt_stats stats;
+	struct ldms_op_ctxt *xc;
+	int rc;
+	enum ldms_xprt_ops_e op_e;
+	char lhostname[128], lport_no[32], rhostname[128], rport_no[32], name[161];
+
+
+	obj = json_object();
+	if (!obj) {
+		ovis_log(config_log, OVIS_LCRIT, "Memory allocation failure\n");
+		return ENOMEM;
+	}
+	for (x = ldms_xprt_first(); x; x = ldms_xprt_next(x)) {
+		rc = ldms_xprt_names(x, lhostname, sizeof(lhostname),
+					lport_no, sizeof(lport_no),
+					rhostname, sizeof(rhostname),
+					rport_no, sizeof(rport_no),
+					NI_NAMEREQD | NI_NUMERICSERV);
+		if (rc) {
+			if (rc == ENOTCONN)
+				continue;
+		}
+
+		ldms_xprt_stats(x, &stats, LDMS_PERF_M_PROFILNG, is_reset);
+		snprintf(name, 160, "%s:%s", rhostname, rport_no);
+		ep_prf = json_object();
+		for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
+			op_prf = json_array();
+			TAILQ_FOREACH(xc, &stats.op_ctxt_lists[op_e], ent) {
+				json_array_append_new(op_prf, __ldms_op_profiling_as_json(xc, op_e));
+			}
+			json_object_set_new(ep_prf, ldms_xprt_op_names[op_e], op_prf);
+
+		}
+		json_object_set_new(obj, name, ep_prf);
+	}
+	*_obj = obj;
+	return 0;
+}
+
+static int profiling_handler(ldmsd_req_ctxt_t req)
+{
+	json_t *obj, *xprt_prf, *strm_prf;
+	char *json_as_str;
+	int rc = 0;
+	struct ldmsd_req_attr_s attr;
+	size_t str_len;
+	char *enable_str, *reset_str;
+	int is_enable = -1; /* -1 means only getting the profile data, don't enable/disable */
+	int is_reset = 0;
+
+	enable_str = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_TYPE);
+	if (enable_str) {
+		is_enable = 1;
+		if (0 == strcasecmp(enable_str, "false"))
+			is_enable = 0; /* disable */
+	}
+	reset_str = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
+	if (reset_str) {
+		is_reset = 1;
+		if (0 == strcasecmp(reset_str, "false"))
+			is_reset = 0;
+	}
+
+	if (is_enable == 1) {
+		ldms_profiling_enable(-1, NULL, NULL);
+	} else if (is_enable == 0) {
+		ldms_profiling_disable(-1, NULL, NULL);
+	}
+
+	/*
+	 * The output JSON object looks like this:
+	 *
+	 * {
+	 *  "xprt": {
+	 * 	<xprt name> : {
+	 * 		"lookup": <profile>,
+	 * 		"update": <profile>,
+	 * 		"send": <profile>
+	 * 		},
+	 * 	...
+	 * 	},
+	 *  "stream" : {
+	 * 	<stream name> : <profile>,
+	 * 	...
+	 * 	}
+	 * }
+	 */
+	obj = json_object();
+	(void)__xprt_profiling_as_json(&xprt_prf, is_reset);
+	json_object_set_new(obj, "xprt", xprt_prf);
+
+	(void)__stream_profiling_as_json(&strm_prf, is_reset);
+	json_object_set_new(obj, "stream", strm_prf);
+
+	json_as_str = json_dumps(obj, JSON_INDENT(0));
+	str_len = strlen(json_as_str) + 1; /* +1 for \0 */
+
+	attr.discrim = 1;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	attr.attr_len = str_len;
+	ldmsd_hton_req_attr(&attr);
+
+	if (ldmsd_append_reply(req, (const char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F))
+		goto err;
+
+	if (ldmsd_append_reply(req, json_as_str, str_len, 0))
+		goto err;
+
+	attr.discrim = 0;
+	if (ldmsd_append_reply(req, (const char *)&attr.discrim, sizeof(attr.discrim), LDMSD_REQ_EOM_F))
+		goto err;
+
+	free(obj);
+	free(json_as_str);
+	return 0;
+err:
+	free(obj);
+	free(json_as_str);
+	req->errcode = rc;
+	ldmsd_send_req_response(req, "Failed to get ldms_xprt's probe data");
 	return ENOMEM;
 }
 

@@ -281,6 +281,8 @@ struct ldms_rendezvous_lookup_param {
 	uint32_t card; /* card of dict */
 	uint32_t schema_len;
 	uint32_t array_card; /* card of array */
+	// struct timespec req_recv; /* Timestamp when server has received the lookup request. */
+	// struct timespec share; /* Timestamp when server has called zap_share(). */
 	/* schema name, then instance name, and then set_info key value pairs */
 	char set_info[OVIS_FLEX];
 };
@@ -346,6 +348,10 @@ struct ldms_stream_sub_reply {
 	char msg[0];
 };
 
+struct ldms_set_delete_reply {
+	struct timespec recv_ts;
+};
+
 struct ldms_reply {
 	struct ldms_reply_hdr hdr;
 	union {
@@ -354,6 +360,7 @@ struct ldms_reply {
 		struct ldms_auth_challenge_reply auth_challenge;
 		struct ldms_push_reply push;
 		struct ldms_stream_sub_reply sub;
+		struct ldms_set_delete_reply set_del;
 	};
 };
 #pragma pack()
@@ -377,6 +384,7 @@ struct ldms_context {
 	int rc;
 	struct ldms_xprt *x;
 	ldms_context_type_t type;
+	struct ldms_op_ctxt *op_ctxt;
 	union {
 		struct {
 			ldms_dir_cb_t cb;
@@ -449,13 +457,13 @@ struct ldms_xprt_ops_s {
 		       struct sockaddr *remote_sa,
 		       socklen_t *sa_len);
 	void (*close)(ldms_t x);
-	int (*send)(ldms_t x, char *msg_buf, size_t msg_len);
+	int (*send)(ldms_t x, char *msg_buf, size_t msg_len, struct ldms_op_ctxt *op_ctxt);
 	size_t (*msg_max)(ldms_t x);
 	int (*dir)(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 	int (*dir_cancel)(ldms_t x);
 	int (*lookup)(ldms_t t, const char *name, enum ldms_lookup_flags flags,
-		       ldms_lookup_cb_t cb, void *cb_arg);
-	void (*stats)(ldms_t x, ldms_xprt_stats_t stats);
+		       ldms_lookup_cb_t cb, void *cb_arg, struct ldms_op_ctxt *op_ctxt);
+	void (*stats)(ldms_t x, ldms_xprt_stats_t stats, int mask, int is_reset);
 
 	ldms_t (*get)(ldms_t x); /* ref get */
 	void (*put)(ldms_t x); /* ref put */
@@ -465,7 +473,8 @@ struct ldms_xprt_ops_s {
 	const char *(*type_name)(ldms_t x);
 	void (*priority_set)(ldms_t x, int prio);
 	void (*cred_get)(ldms_t x, ldms_cred_t lcl, ldms_cred_t rmt);
-	int (*update)(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void *arg);
+	int (*update)(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void *arg,
+	                                               struct ldms_op_ctxt *op_ctxt);
 
 	int (*get_threads)(ldms_t x, pthread_t *out, int n);
 
@@ -558,5 +567,11 @@ int ldms_xprt_auth_bind(ldms_t xprt, ldms_auth_t auth);
 void ldms_xprt_auth_begin(ldms_t xprt);
 int ldms_xprt_auth_send(ldms_t _x, const char *msg_buf, size_t msg_len);
 void ldms_xprt_auth_end(ldms_t xprt, int result);
+
+/* ========================
+ * LDMS operation profiling
+ * ========================
+ */
+#define ENABLED_PROFILING(_OP_) (__enable_profiling[_OP_] == 1)
 
 #endif

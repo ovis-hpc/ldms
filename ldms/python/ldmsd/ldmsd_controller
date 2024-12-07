@@ -2410,6 +2410,30 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_xprt_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('xprt_stats', text)
 
+    def do_profiling(self, arg):
+        """
+        Enable/disable and query the LDMS operation profiling data
+
+        The command was intended for diagnostic or study to improve ldmsd performance.
+
+        The command always reports the cached profiling data if exists.
+
+        Parameters:
+          [enabled=]   True to enable LDMS profiling
+          [reset=]     True to reset and free cached profiling data after the report
+        """
+        arg = self.handle_args('profiling', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.profiling(**arg)
+        if msg == "":
+            return
+        if rc != 0:
+            print(f"Error: {rc} {msg}")
+            return
+        stats = fmt_status(msg)
+        print(stats)
+
     def do_updtr_task(self, arg):
         """
         Report the updater tasks
@@ -3211,7 +3235,6 @@ class LdmsdCmdParser(cmd.Cmd):
         while i < n and line[i] in self.identchars: i = i+1
         cmd, arg = line[:i], line[i:].strip()
         return cmd, arg, line
-
 
 if __name__ == "__main__":
     is_debug = True
