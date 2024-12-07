@@ -97,7 +97,7 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:tL:";
+const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:y:u:a:A:n:tL:";
 
 struct option long_opts[] = {
 	{ "default_auth_args",     required_argument, 0,  'A' },
@@ -645,6 +645,7 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -P COUNT,     --worker_threads COUNT          Count of event threads to start.\n");
 	printf("  Configuration Options\n");
 	printf("    -c PATH                                       The path to configuration file (optional, default: <none>).\n");
+	printf("    -y PATH                                       Path to YAML configuration file (optional, default: <none>).\n");
 	printf("    -V                                            Print LDMS version and exit.\n");
 	printf("  Deprecated options\n");
 	printf("    -H                                            DEPRECATED.\n");
@@ -2043,6 +2044,12 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		 * Handle separately in the main() function.
 		 */
 		break;
+	case 'y':
+		/*
+		 * Must be specified at the command line.
+		 * Handle separately in the main() function.
+		 */
+		break;
 	case 'a':
 		/* auth name */
 		if (auth_name) {
@@ -2219,6 +2226,9 @@ int main(int argc, char *argv[])
 		case 'c':
 			/* Handle below */
 			break;
+		case 'y':
+			/* Handle below */
+			break;
 		default:
 			ret = ldmsd_process_cmd_line_arg(op, optarg);
 			if (ret) {
@@ -2268,10 +2278,24 @@ int main(int argc, char *argv[])
 	opterr = 0;
 	optind = 0;
 	struct ldmsd_str_list cfgfile_list;
+	struct ldmsd_str_list yamlfile_list;
+	TAILQ_INIT(&yamlfile_list);
 	TAILQ_INIT(&cfgfile_list);
 	struct ldmsd_str_ent *cpath;
+	struct ldmsd_str_ent *conf_str;
+	char *resp;
+	char *ypath;
 	while ((op = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
 		switch (op) {
+		case 'y':
+			ypath = optarg;
+			resp = process_yaml_config_file(optarg, myname);
+			if (!resp)
+				cleanup(22, "");
+			conf_str = ldmsd_str_ent_new(resp);
+			free(resp);
+			TAILQ_INSERT_TAIL(&yamlfile_list, conf_str, entry);
+			break;
 		case 'c':
 			cpath = ldmsd_str_ent_new(optarg);
 			TAILQ_INSERT_TAIL(&cfgfile_list, cpath, entry);
@@ -2280,6 +2304,18 @@ int main(int argc, char *argv[])
 	}
 
 	int lln;
+	TAILQ_FOREACH(conf_str, &yamlfile_list, entry) {
+		lln = -1;
+		ret = process_config_str(conf_str->str, &lln, 1);
+		if (ret) {
+			char errstr[128];
+			snprintf(errstr, sizeof(errstr),
+				 "Error %d processing configuration file '%s'",
+				 ret, ypath);
+			ldmsd_str_list_destroy(&yamlfile_list);
+			cleanup(ret, errstr);
+		}
+	}
 	while ((cpath = TAILQ_FIRST(&cfgfile_list))) {
 		lln = -1;
 		ret = process_config_file(cpath->str, &lln, 1);
@@ -2473,6 +2509,23 @@ int main(int argc, char *argv[])
 			}
 			ldmsd_log(LDMSD_LINFO, "Processing the config file '%s' is done.\n", optarg);
 			break;
+		case 'y':
+			has_config_file = 1;
+			while ((conf_str = TAILQ_FIRST(&yamlfile_list))) {
+				lln = -1;
+				ret = process_config_str(conf_str->str, &lln, 1);
+				if (ret) {
+					char errstr[128];
+					snprintf(errstr, sizeof(errstr),
+						 "Error %d processing configuration file '%s'",
+						 ret, ypath);
+					ldmsd_str_list_destroy(&yamlfile_list);
+					cleanup(ret, errstr);
+				}
+				TAILQ_REMOVE(&yamlfile_list, conf_str, entry);
+				ldmsd_str_ent_free(conf_str);
+			}
+			break;
 		}
 	}
 
@@ -2501,7 +2554,7 @@ int main(int argc, char *argv[])
 	_listen = (ldmsd_listen_t) ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
 	if (!_listen && !has_config_file) {
 		ldmsd_log(LDMSD_LCRITICAL,
-			"A config file (-c) or listening port (-x) is required."
+			"A config file, (-c) or (-y), or listening port (-x) is required."
 			" Specify at least one of these. ... exiting\n");
 		cleanup(101, "no config files nor listening ports");
 	}
