@@ -67,6 +67,8 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include "ovis_json/ovis_json.h"
 #include "coll/rbt.h"
@@ -476,6 +478,51 @@ void  __counters_update(struct ldms_stream_counters_s *ctr,
 		ctr->last_ts = *now;
 	ctr->bytes += bytes;
 	ctr->count += 1;
+}
+
+/* returns 1 if OK */
+int __cred_allowed_as(struct ldms_cred *cred, struct ldms_cred *as)
+{
+	struct passwd _pw, *pw;
+	int i, rc;
+	char buf[1024];
+	gid_t *grps = NULL;
+	int grps_len = 0;
+
+	if (cred->uid == 0)
+		return 1; /* root can forge */
+	if (cred->uid != as->uid)
+		return 0; /* non-root users cannot forge uid/gid */
+	if (cred->gid == as->gid)
+		return 1; /* same uid/gid OK! */
+
+	/* as->gid != cred->gid; see if cred->uid has as->gid in grouplist */
+	rc = getpwuid_r(cred->uid, &_pw, buf, sizeof(buf), &pw);
+	if (rc) {
+		errno = rc;
+		return 0;
+	}
+	/* get the grps_len first */
+	getgrouplist(pw->pw_name, pw->pw_gid, NULL, &grps_len);
+ alloc_grps:
+	grps = malloc(sizeof(*grps) * grps_len);
+	if (!grps)
+		return 0;
+	rc = getgrouplist(pw->pw_name, pw->pw_gid, grps, &grps_len);
+	if (rc == -1) { /* `grps_len` is not enough; very unlikely */
+		free(grps);
+		goto alloc_grps;
+	}
+	rc = 0;
+	for (i = 0; i < grps_len; i++) {
+		if (as->uid == grps[i]) {
+			rc = 1;
+			goto out;
+		}
+	}
+ out:
+	free(grps);
+	return rc;
 }
 
 /* deliver stream data to all clients */
@@ -1164,6 +1211,7 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 	struct ldms_stream_full_msg_s *fmsg;
 	int plen, flen;
 	union ldms_sockaddr lsa, rsa;
+	struct ldms_cred xcred;
 	socklen_t slen = sizeof(lsa);
 	int rc;
 
@@ -1247,6 +1295,7 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 		assert(0 == "Bad message / message length");
 		goto cleanup;
 	}
+
 	sbuf->msg->src = req->stream_part.src;
 	sbuf->msg->src.sa_family = ntohs(sbuf->msg->src.sa_family);
 	sbuf->msg->msg_gn = be64toh(sbuf->msg->msg_gn);
@@ -1261,6 +1310,13 @@ __process_stream_msg(ldms_t x, struct ldms_request *req)
 	sbuf->name_len = strlen(sbuf->name)+1;
 	sbuf->data = sbuf->msg->msg + sbuf->name_len;
 	sbuf->data_len = sbuf->msg->msg_len - sbuf->name_len;
+
+	/* credential check */
+	ldms_xprt_cred_get(x, NULL, &xcred);
+	if (0 == __cred_allowed_as(&xcred, &sbuf->msg->cred)) {
+		/* bad credential; drop it */
+		goto cleanup;
+	}
 
 	__stream_deliver(sbuf, sbuf->msg->msg_gn,
 			 sbuf->name, sbuf->name_len, sbuf->msg->name_hash,
