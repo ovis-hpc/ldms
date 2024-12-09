@@ -62,6 +62,12 @@ AM_PROG_CC_C_O
 AC_C_CONST
 AC_C_FLEXIBLE_ARRAY_MEMBER
 
+AC_ARG_VAR([RST2MAN], [rst2man command])
+AC_CHECK_PROG([RST2MAN], [rst2man], [rst2man], [no])
+AS_IF([test "x$RST2MAN" = "xno"],
+      [AC_MSG_WARN([rst2man not found. Please install python3-docutils package.])])
+AM_CONDITIONAL([HAVE_RST2MAN], [test "x$RST2MAN" = xrst2man])
+
 OVIS_PKGLIBDIR
 
 AC_LIB_HAVE_LINKFLAGS([jansson], [], [#include <jansson.h>])
@@ -954,6 +960,7 @@ AC_SUBST(ac_configure_args)
 AC_SUBST(configure_input)
 
 AC_CONFIG_FILES([Makefile
+docs/Makefile
 util/Makefile
 util/relocation/Makefile
 lib/Doxyfile
