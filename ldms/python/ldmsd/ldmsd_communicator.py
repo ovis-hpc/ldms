@@ -1256,7 +1256,7 @@ class Communicator(object):
         try:
             req.send(self)
             resp = req.receive(self)
-            return resp['errcode'], resp['attr_list']
+            return resp['errcode'], resp['msg']
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
