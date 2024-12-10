@@ -47,11 +47,28 @@ A unit string is one of the followings:
   h  -- hours
   d  -- days
 .br
+.PP
+Permissions are defined in a string linux file system format, with a dash separating users, groups, and global. A string of an octal number is also accepted. e.g. "0777"
+.br
+"r" represents read permissions.
+.br
+"w" or "+" represent write permissions.
+.br
+"x" represents execute permissions.
+.br
+If user, group, or global is left blank, the configuration will assume there are no permissions for this group. e.g. "rw-r-", denotes that the user has read/write permissons, the group has read permissions, and global has no permissons.
+.br
+The permissions syntax expects there will always be 3 "-" to seperate users, groups, and global.
+.br
+.PP
 Several of the keys in this configuration syntax utilize the hostlist format.
 .br
 Please see the hostlist documentation for more information regarding this here:
 .br
 https://readthedocs.org/projects/py-hostlist/downloads/pdf/latest/
+.br
+.PP
+NOTE: When using a configuration string, rather than a dictionary, to configure a plugin, the string is not parsed by the YAML parser, and the exact string will be passed to the LDMSD as is. As such, the only accepted permission format when using a configuration string, rather than a dictionary, is an octal number, e.g. "0777". If an octal number is entered into the configuration as an integer, the parser will interpret the number incorrectly, and the permissions will not be set as expected.
 
 .SH daemons
 List of dictionaries describing LDMS daemons that are part of the cluster and their endpoints that share transport configurations. The primary keys are "names", "hosts", "endpoints", and "environment". Any keys provided that do not match this string values are assumed to be either CLI commands, or overarching default configuration commands for a daemon.
@@ -157,6 +174,10 @@ Interval by which the aggregator will attempt to reconnect to a disconnected pro
 .br
 Producer type. Either active or passive. passive is being deprecated.
 .TP
+.BR [perm]
+.br
+The permissions to modify the producer in the future.
+.TP
 .BR updaters
 .br
 List of dictionaries of updater policy configurations.
@@ -180,6 +201,10 @@ The update/collect interval at which to update the producer. Unit string format.
 .br
 Offset for synchronized aggregation. Optional. Unit string format.
 .TP
+.BR [perm]
+.br
+The permissions that allow modification of an updater in the future.
+.TP
 .BR sets
 .br
 List of dictionaries containing regular expressions that match either a schema instance name or a metric set instance name.
@@ -200,6 +225,18 @@ An optional alternative configuration for how your aggregators will add producer
 .BR name
 .br
 String name for the producer listener - does not need to be unique across aggregators.
+.TP
+.BR [regex]
+.br
+A regular expression matching hostnames in advertisements to add as a producer.
+.TP
+.BR [ip]
+.br
+An IP masks to filter advertisements using the source IP.
+.TP
+.BR [disable_start]
+.br
+Informs the ldmsd not to start producers.
 .TP
 .BR updaters
 .br
@@ -260,7 +297,7 @@ String of daemon names in hostlist format to advertise the samplers as.
 .TP
 .BR hosts
 .br
-String of daemon hosts in hostlist format, that references daemon names defined in the top level "daemons" section, for the samplers to advertise to
+String of daemon hosts in hostlist format, that references daemon names defined in the top level "daemons" section, for the samplers to advertise to.
 .TP
 .BR port
 .br
@@ -270,7 +307,10 @@ String of port(s) in hostlist format of the aggregator daemons that the sampler 
 .br
 The interval at which the sampler will attempt to reconnect to a disconnected advertiser. Float followed by a unit string.
 .TP
-.BR auth
+.BR [perm]
+The permissions in order to modify the advertiser in the future. String linux file system format. e.g. "rw-r-"
+.TP
+.BR [auth]
 .br
 Dictionary of a authentication domains plugin configuration.
 .RS
@@ -304,6 +344,10 @@ Name of the metric set schema. This is a required argument unless decomposition 
 .br
 Name of a storage plugin that matches a key of a plugin defined in the top level plugins section.
 .TP
+.BR [perm]
+.br
+The permissions of who can modify the storage plugin in the future. Linux file system format e.g. "rw-r-r"
+.TP
 .BR [decomposition]
 .br
 Path to a decomposition configuration file.
@@ -336,8 +380,13 @@ the sample interval. The default offset is 0. Collection is always synchronous.
 .TP
 .BR config
 .br
-A list of dictionaries containing plugin configuration options. Each dictionary in the list is a "config" command call, and in this fashion, the YAML configuration mimics running multiple "config" statements in a conventional v4 configuration file.
+A list of dictionaries containing plugin configuration options. Each dictionary in the list is a "config" command call, and in this fashion, the YAML configuration mimics running multiple "config" statements in a conventional v4 configuration file. Strings may also be used in lieu of a dictionary, however configuration lines defined as strings will be passed as a LDMSD request as is, with no parsing done by the YAML parser.
 .br
+.RS
+.PP
+NOTE: When using a configuration string, rather than a dictionary, to configure a plugin, the string is not parsed by the YAML parser, and the exact string will be passed to the LDMSD as is. As such, the only accepted permission format when using a configuration string, rather than a dictionary, is an octal number, e.g. "0777". If an octal number is entered into the configuration as an integer, the parser will interpret the number incorrectly, and the permissions will not be set as expected.
+.br
+.PP
 Any plugin-specific configuration options not listed below will be included in the configuration.
 .RS
 .TP

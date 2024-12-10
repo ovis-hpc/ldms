@@ -168,6 +168,30 @@ def parse_yaml_bool(bool_):
     else:
         return False
 
+def perm_handler(perm_str):
+    if perm_str is None or type(perm_str) is int:
+        return perm_str
+    nperm = "0"
+    perm_str = perm_str.split('-')
+    if len(perm_str) == 1:
+        try:
+            z = int(perm_str[0])
+            return perm_str[0]
+        except:
+            raise ValueError(f'Error: permission {perm_str[0]} is not a valid value')
+    if len(perm_str) > 3:
+        raise ValueError(f'There are only 3 definable characteristics of linux permissions; users, group, and global. Please modify {perm_str} to reflect this\n')
+    for uog in perm_str:
+        x = 0
+        if 'r' in uog:
+            x += 4
+        if 'w' in uog or '+' in uog:
+            x += 2
+        if 'x' in uog:
+            x += 1
+        nperm += str(x)
+    return nperm
+
 class YamlCfg(object):
     def build_daemons(self, config):
         """Generate a daemon spec list from YAML config
@@ -316,6 +340,7 @@ class YamlCfg(object):
             sys.exit()
         auth_name, plugin, auth_opt = check_auth(ad_grp)
         perm = check_opt('perm', ad_grp)
+        perm = perm_handler(perm)
         rail = check_opt('rail', ad_grp)
         credits = check_opt('credits', ad_grp)
         rx_rate = check_opt('rx_rate', ad_grp)
@@ -342,14 +367,16 @@ class YamlCfg(object):
             check_required(['name'], pl,
                            '"prdcr_listen" entry')
             node_listen = {}
+            ip = check_opt('ip', pl)
             regex = check_opt('regex', pl)
             rail = check_opt('rail', pl)
             credits = check_opt('credits', pl)
             rx_rate = check_opt('rx_rate', pl)
-            node_listen[pl['name']] = { 'rail'      : rail,
-                                        'credits'   : credits,
-                                        'rx_rate'   : rx_rate,
-                                        'regex'     : regex
+            node_listen[pl['name']] = { 'rail'    : rail,
+                                        'credits' : credits,
+                                        'rx_rate' : rx_rate,
+                                        'regex'   : regex,
+                                        'ip'      : ip
             }
             self.prdcr_listeners[spec['daemons']] = node_listen
 
@@ -438,6 +465,8 @@ class YamlCfg(object):
                     # Expand and generate all the producers
                     typ = prod['type']
                     reconnect = check_intrvl_str(prod['reconnect'])
+                    perm = check_opt('perm', prod)
+                    perm = perm_handler(perm)
                     ports_per_dmn = len(endpoints) / len(smplr_dmns)
                     ppd = ports_per_dmn
                     try:
@@ -457,6 +486,7 @@ class YamlCfg(object):
                                 'type'      : typ,
                                 'group'     : group,
                                 'reconnect' : reconnect,
+                                'perm'      : perm,
                                 'updaters'  : upd_spec
                             }
                             producers[group][endpoint] = prod
@@ -501,9 +531,12 @@ class YamlCfg(object):
                     if updtr_name in grp_updaters:
                         raise ValueError(f'Duplicate updater name "{updtr_name}". '
                                          f'An updater name must be unique within the group\n')
+                    perm = check_opt('perm', updtr_spec)
+                    perm = perm_handler(perm)
                     updtr = {
                         'name'      : updtr_name,
                         'interval'  : check_intrvl_str(updtr_spec['interval']),
+                        'perm'      : perm,
                         'group'     : agg['daemons'],
                         'sets'      : updtr_spec['sets'],
                         'producers' : [{ 'regex' : '.*' }]
@@ -550,6 +583,8 @@ class YamlCfg(object):
             if decomp and not schema and not regex:
                 raise ValueError(f'Decomposition plugin configuration requires either'
                                  f' "schema" or "regex" attribute"\n')
+            if decomp and schema and regex:
+                raise ValueError(f'Please specify either "schema" or "regex" when using decomposition - these parameters are mutually exclusive.\n')
             group = store_spec['daemons']
             if group not in stores:
                 stores[group] = {}
@@ -558,6 +593,8 @@ class YamlCfg(object):
                 raise ValueError(f'Duplicate store name "{store}". '
                                  f'A store name must be unique within the group\n')
             check_opt('flush', store_spec)
+            perm = check_opt('perm', store_spec)
+            store_spec['perm'] = perm_handler(perm)
             check_plugin_config(store_spec['plugin'], self.plugins)
             grp_stores[store] = store_spec
         return stores
@@ -680,7 +717,7 @@ class YamlCfg(object):
                     f'reconnect={ad_grp["reconnect"]}'
             perm = check_opt('perm', ad_grp)
             dstr = self.write_opt_attr(dstr, 'auth', auth, endline=False)
-            dstr = self.write_opt_attr(dstr, 'perm', perm, endline=True)
+            dstr = self.write_opt_attr(dstr, 'perm', perm)
             dstr += f'advertiser_start name={dname}-{host}\n'
         return dstr, auth_list
 
@@ -692,8 +729,10 @@ class YamlCfg(object):
             dstr += f'prdcr_listen_add name={pl}'
             dstart = check_opt('disable_start', plisten[pl])
             regex = check_opt('regex', plisten[pl])
+            ip = check_opt('ip', plisten[pl])
             dstr = self.write_opt_attr(dstr, 'disable_start', dstart, endline=False)
-            dstr = self.write_opt_attr(dstr, 'regex', regex, endline=True)
+            dstr = self.write_opt_attr(dstr, 'regex', regex, endline=False)
+            dstr = self.write_opt_attr(dstr, 'ip', ip)
             dstr += f'prdcr_listen_start name={pl}\n'
         return dstr
 
@@ -761,6 +800,7 @@ class YamlCfg(object):
                 if hostname is None:
                     hostname = self.daemons[producer['dmn_grp']][producer['daemon']]['addr']
                 auth = check_opt('auth', self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep])
+                perm = check_opt('perm', producer)
                 ptype = producer['type']
                 reconnect = producer['reconnect']
                 dstr += f'prdcr_add name={pname} '\
@@ -769,6 +809,7 @@ class YamlCfg(object):
                         f'xprt={xprt} '\
                         f'type={ptype} '\
                         f'reconnect={reconnect}'
+                dstr = self.write_opt_attr(dstr, 'perm', perm, endline=False)
                 dstr = self.write_opt_attr(dstr, 'auth', auth)
                 last_sampler = pname
                 if 'regex' in producer:
@@ -786,6 +827,8 @@ class YamlCfg(object):
             if type(cli_opt[opt]) is dict:
                 dstr += f'{opt}'
                 for arg in cli_opt[opt]:
+                    if arg == 'perm':
+                        cli_opt[opt][arg] = perm_handler(cli_opt[opt][arg])
                     dstr += f' {arg}={cli_opt[opt][arg]}'
                 dstr += '\n'
             else:
@@ -815,6 +858,8 @@ class YamlCfg(object):
                     for attr in cfg_:
                         if attr == 'name' or attr == 'interval' or attr == 'reconnect':
                             continue
+                        if attr == 'perm':
+                            cfg_[attr] = perm_handler(cfg_[attr])
                         cfg_args[attr] = cfg_[attr]
                     if 'producer' not in cfg_args:
                         cfg_args['producer'] = f'{hostname}'
@@ -928,7 +973,9 @@ class YamlCfg(object):
                     updtr_str = f'{updtr_str} auto_interval=True'
                 dstr += f'{updtr_str} '\
                          f'interval={interval}'
+                perm = check_opt('perm', updtr_group[updtr])
                 offset = check_opt('offset', updtr_group[updtr])
+                dstr = self.write_opt_attr(dstr, 'perm', perm, endline=False)
                 dstr = self.write_opt_attr(dstr, 'offset', offset)
                 for prod in updtr_group[updtr]['producers']:
                     dstr += f'updtr_prdcr_add name={updtr_group[updtr]["name"]} '\
@@ -957,12 +1004,15 @@ class YamlCfg(object):
                     loaded_plugins.append(store_group[store]['plugin'])
                 strgp_add = f'strgp_add name={store} plugin={plugin["name"]} '
                 strgp_add += f'container={store_group[store]["container"]} '
+                decomp = check_opt('decomposition', store_group[store])
                 if 'decomposition' in store_group[store]:
                     strgp_add += f'decomposition={store_group[store]["decomposition"]} '
                 if 'schema' in store_group[store]:
                     strgp_add += f'schema={store_group[store]["schema"]}'
                 elif 'regex' in store_group[store]:
                     strgp_add += f'regex={store_group[store]["regex"]}'
+                perm = check_opt('perm', store_group[store])
+                strgp_add = self.write_opt_attr(strgp_add, 'perm', perm, endline=False)
                 dstr += strgp_add
                 flush = check_opt('flush', store_group[store])
                 dstr = self.write_opt_attr(dstr, 'flush', flush)
