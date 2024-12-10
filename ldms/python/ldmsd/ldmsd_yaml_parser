@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+import os, sys
+import yaml
+import errno
+import argparse
+from ldmsd.parser_util import *
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="LDMS Monitoring Cluster Configuration")
+    parser.add_argument("--ldms_config", metavar="FILE", required=True,
+                        help="The ldmsd load balance domain configuration file. "
+                        "This will not start the maestro "
+                        "load balancer")
+    parser.add_argument("--generate-config-path", metavar="STRING", required=False,
+                        default=False)
+    parser.add_argument("--daemon_name", metavar="STRING", required=False,
+                        default=False,
+                        help="Daemon name to generate configuration from YAML file")
+    parser.add_argument("--version", metavar="VERSION",
+                        help="The OVIS version for the output syntax (4 or 5), default is 4",
+                        default=4)
+    parser.add_argument("--debug", action="store_true",
+                        help="Enable debug information")
+    args = parser.parse_args()
+    if not args.debug:
+        import sys
+        sys.tracebacklimit=0
+    config_fp = open(args.ldms_config)
+    conf_spec = yaml.safe_load(config_fp)
+
+    cluster = YamlCfg(None, None, conf_spec, args)
+
+    if args.daemon_name:
+        ldmsd_cfg_str = cluster.daemon_config(args.ldms_config, args.daemon_name.rstrip('0'))
+        print(f'{ldmsd_cfg_str}')
+        sys.exit(0)
+
+    if args.generate_config_path:
+        cluster.config_v4(args.generate_config_path)
+        print("LDMSD v4 config files generated")
+        sys.exit(0)
+
+    if not args.generate_config_path and not args.ldms_config and not args.daemon_name:
+        print(f'No action detected. Exiting...')
+
+    sys.exit(0)
