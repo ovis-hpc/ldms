@@ -805,7 +805,8 @@ void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	switch (prdcr->type) {
 		case LDMSD_PRDCR_TYPE_ACTIVE:
 		case LDMSD_PRDCR_TYPE_PASSIVE:
-		case LDMSD_PRDCR_TYPE_ADVERTISED:
+		case LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE:
+		case LDMSD_PRDCR_TYPE_ADVERTISED_ACTIVE:
 			is_reset_prdcr = __agg_routine(x, e, prdcr);
 			break;
 		case LDMSD_PRDCR_TYPE_BRIDGE:
@@ -844,7 +845,7 @@ reset_prdcr:
 	}
 	if (prdcr->xprt) {
 		if ((prdcr->type == LDMSD_PRDCR_TYPE_PASSIVE) ||
-				(prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED)) {
+				(prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE)) {
 			/* Put back the ldms_xprt_by_remote_sin() reference. */
 			ldms_xprt_put(prdcr->xprt);
 		}
@@ -881,6 +882,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 	case LDMSD_PRDCR_TYPE_BRIDGE:
 	case LDMSD_PRDCR_TYPE_ADVERTISER:
+	case LDMSD_PRDCR_TYPE_ADVERTISED_ACTIVE:
 		assert(prdcr->xprt == NULL);
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 		prdcr->xprt = ldms_xprt_rail_new(prdcr->xprt_name,
@@ -912,7 +914,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 			break;
 		ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
 		/* let through */
-	case LDMSD_PRDCR_TYPE_ADVERTISED:
+	case LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE:
 		if (prdcr->xprt) {
 			/*
 			 * For 'ADVERTISED' producers,
@@ -974,7 +976,7 @@ int ldmsd_prdcr_str2type(const char *type)
 	else if (0 == strcasecmp(type, "advertiser"))
 		prdcr_type = LDMSD_PRDCR_TYPE_ADVERTISER;
 	else if (0 == strcasecmp(type, "advertised"))
-		prdcr_type = LDMSD_PRDCR_TYPE_ADVERTISED;
+		prdcr_type = LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE;
 	else
 		return -EINVAL;
 	return prdcr_type;
@@ -992,8 +994,10 @@ const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type)
 		return "bridge";
 	else if (LDMSD_PRDCR_TYPE_ADVERTISER == type)
 		return "advertiser";
-	else if (LDMSD_PRDCR_TYPE_ADVERTISED == type)
-		return "advertised";
+	else if (LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE == type)
+		return "advertised, passive";
+	else if (LDMSD_PRDCR_TYPE_ADVERTISED_ACTIVE == type)
+		return "advertised, active";
 	else
 		return NULL;
 }
@@ -1065,6 +1069,8 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		auth = DEFAULT_AUTH;
 	auth_dom = ldmsd_auth_find(auth);
 	if (!auth_dom) {
+		ovis_log(config_log, OVIS_LERROR,
+			  "Authentication domain '%s' not found.\n", auth);
 		errno = ENOENT;
 		goto out;
 	}
@@ -1163,7 +1169,7 @@ int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 	if (rc)
 		goto out;
 
-	if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED) {
+	if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE) {
 		if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
 			/* The connect was disconnected. */
 			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
@@ -1237,7 +1243,7 @@ int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 		goto out;
 	}
 
-	if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED) {
+	if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE) {
 		if (prdcr->conn_state == LDMSD_PRDCR_STATE_STANDBY) {
 			/*
 			 * Already stopped, return 0 so that caller knows stop succeeds.

@@ -43,7 +43,7 @@
 # A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
 # OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
 # SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,p
 # DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
@@ -3022,7 +3022,7 @@ class LdmsdCmdParser(cmd.Cmd):
                 [disable_start=]  Tell LDMSD not to start the producers
                 [ip=]              An IP masks to filter advertisements using the source IP
                 [regex=]           A regular expression to match sampler hostnames
-                [rail=]            The number of rail endpoints for the prdcr (default: 1).
+            Parameters to Control Advertised Producers:
                 [quota=]           The send quota our ldmsd (the one we are controlling)
                                    advertises to the prdcr (default: value from ldmsd --quota
                                    option). This limits how much outstanding data our ldmsd
@@ -3030,6 +3030,12 @@ class LdmsdCmdParser(cmd.Cmd):
                                    not have enough send quota.
                 [rx_rate=]         The recv rate (bytes/sec) limit for this connection. The
                                    default is -1 (unlimited).
+                [type=]            Passive(default) or active
+              Parameters for Active, Advertised Producers:
+                [advertiser_xprt=] Advertiser transport for active, advertised producer to use
+                [advertiser_port=] Advertiser port for active, advertised producer to connect to
+                [advertiser_auth=] Autentication domain to be used to connect to the advertiser
+                [rail=]            The number of rail endpoints for the prdcr (default: 1)
         """
         arg = self.handle_args('prdcr_listen_add', arg)
         if arg is None:
@@ -3117,12 +3123,32 @@ class LdmsdCmdParser(cmd.Cmd):
         rc, msg = self.comm.prdcr_listen_status(**arg)
         if rc == 0 and msg is not None:
             l = fmt_status(msg)
-            print(f"{'Name':20} {'State':10} {'Regex':15} {'IP Range':30}")
-            print(f"{'-'*20} {'-'*10} {'-'*15} {'-'*30}")
+            print(f"{'Name':20} {'State':10} {'Type':8} {'IP Range':30} {'Regex':20}")
+            print(f"{'-'*20} {'-'*10} {'-'*8} {'-'*30} {'-'*20}")
             for pl in l:
-                print(f"{pl['name']:20} {pl['state']:10} {pl['regex']:15} {pl['IP range']:30}")
+                print(f"{pl['name']:20} {pl['state']:10} {pl['type']:8} {pl['IP range']:30} {pl['regex']:20}")
+
+                if pl['type'] == "active":
+                    print(f"    Connection config: xprt={pl['xprt']} port={pl['port']} " \
+                          f"reconnect={pl['reconnect']}", end="")
+                    if pl['auth_dom'] is not None and pl['auth_dom'] != "_DEFAULT_":
+                        print(f" auth={pl['auth_dom']}", end="")
+                    if pl['rail_sz'] is not None:
+                        print(f" rail={pl['rail_sz']}", end="")
+                else:
+                    print(f"    Connection config: ", end="")
+                    if pl['rx_rate'] == "-1" and pl['quota'] == "-1":
+                        print("None", end="")
+
+                if pl['rx_rate'] != "-1":
+                    print(f" rx_rate={pl['rx_rate']}", end="")
+                if pl['quota'] != "-1":
+                    print(f" quota={pl['quota']}", end="")
+                print(end="\n")
+
                 if len(pl['producers']):
                     print(f"Producers: {', '.join(p for p in pl['producers'])}")
+                print(end="\n")
         else:
             print(f'Error getting prdcr_listen status: {msg}')
 

@@ -9813,10 +9813,18 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	char *attr_name;
 	char *quota;
 	char *rx_rate;
+	char *prdcr_type;
+	char *rail_s;
+	char *advtr_xprt;
+	char *advtr_port;
+	char *advtr_auth;
+	char *endptr = NULL;
 	ldmsd_prdcr_listen_t pl;
 	extern struct rbt *cfgobj_trees[];
 
 	name = regex_str = reconnect_str = cidr_str = disabled_start = NULL;
+	quota = rx_rate = rail_s = NULL;
+	prdcr_type = advtr_xprt = advtr_port = advtr_auth = NULL;
 
 	attr_name = "name";
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -9828,6 +9836,12 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	disabled_start = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTO_INTERVAL);
 	quota = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_QUOTA);
 	rx_rate = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RX_RATE);
+	rail_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RAIL);
+	prdcr_type = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_TYPE);
+	advtr_xprt = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_XPRT);
+	advtr_port = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
+	advtr_auth = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTH);
+	reconnect_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
 
 	pl = (ldmsd_prdcr_listen_t)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_PRDCR_LISTEN,
@@ -9907,6 +9921,107 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 		pl->rx_rate = 0; /* 0 means inherit rx_rate from the listen xprt */
 	}
 
+	if (prdcr_type) {
+		pl->prdcr_type = ldmsd_prdcr_str2type(prdcr_type);
+		if (pl->prdcr_type == LDMSD_PRDCR_TYPE_PASSIVE) {
+			pl->prdcr_type = LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE;
+		} else if (pl->prdcr_type == LDMSD_PRDCR_TYPE_ACTIVE) {
+			pl->prdcr_type = LDMSD_PRDCR_TYPE_ADVERTISED_ACTIVE;
+		} else {
+			reqc->errcode = EINVAL;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"The type value '%s' is invalid.",
+						prdcr_type);
+			reqc->errcode = EINVAL;
+			goto err;
+		}
+	} else {
+		pl->prdcr_type = LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE;
+	}
+
+	if (pl->prdcr_type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE) {
+		pl->reconnect = INT_MAX;
+
+		if (rail_s) {
+			ovis_log(config_log, OVIS_LINFO,
+					"prdcr_listen_add '%s' is passive. " \
+					"Ignore the given 'rail' value.", name);
+		}
+		if (advtr_xprt) {
+			ovis_log(config_log, OVIS_LINFO,
+					"prdcr_listen_add '%s' is passive. " \
+					"Ignore the given 'advertiser_xprt' value.", name);
+		}
+		if (advtr_auth) {
+			ovis_log(config_log, OVIS_LINFO,
+					"prdcr_listen_add '%s' is passive. " \
+					"Ignore the given 'advertiser_auth' value.", name);
+		}
+		if (advtr_port) {
+			ovis_log(config_log, OVIS_LINFO,
+					"prdcr_listen_add '%s' is passive. " \
+					"Ignore the given 'advertiser_port' value.", name);
+		}
+		if (reconnect_str) {
+			ovis_log(config_log, OVIS_LINFO,
+					"prdcr_listen_add '%s' is passive. " \
+					"Ignore the given 'reconnect' value.", name);
+		}
+
+		goto update_prdcr_tree;
+	}
+
+	/* Active */
+	if (rail_s) {
+		pl->rail = strtol(rail_s, &endptr, 0);
+		if (!endptr) {
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"Rail value '%s' is invalid.", rail_s);
+			reqc->errcode = EINVAL;
+			goto err;
+		}
+	} else {
+		pl->rail = 1;
+	}
+
+	if (advtr_port) {
+		endptr = NULL;
+		pl->advtr_port = strtol(advtr_port, &endptr, 0);
+		if ((pl->advtr_port < 1) || (pl->advtr_port > USHRT_MAX)) {
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						  "The port value '%s' is invalid.",
+						  advtr_port);
+			reqc->errcode = EINVAL;
+			goto err;
+		}
+	} else {
+		attr_name = "advertiser_port";
+		goto einval_active;
+	}
+
+	if (reconnect_str) {
+		rc = ovis_time_str2us(reconnect_str, &pl->reconnect);
+		if (rc) {
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						  "The reconnect value '%s' is invalid.",
+						  reconnect_str);
+			reqc->errcode = EINVAL;
+			goto err;
+		}
+	} else {
+		attr_name = "reconnect";
+		goto einval_active;
+	}
+
+	if (!advtr_xprt) {
+		attr_name = "advertiser_xprt";
+		goto einval_active;
+	}
+
+	pl->auth = advtr_auth;
+	pl->advtr_xprt = advtr_xprt;
+
+update_prdcr_tree:
 	rbt_init(&pl->prdcr_tree, prdcr_ref_cmp);
 	ldmsd_cfgobj_unlock(&pl->obj);
 
@@ -9916,6 +10031,12 @@ send_reply:
 	free(cidr_str);
 	free(reconnect_str);
 	free(disabled_start);
+	free(rx_rate);
+	free(quota);
+	free(advtr_port);
+	free(rail_s);
+	free(prdcr_type);
+
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
 eexist:
@@ -9933,6 +10054,11 @@ einval:
 	reqc->errcode = EINVAL;
 	(void) snprintf(reqc->line_buf, reqc->line_len,
 			"The attribute '%s' is required.", attr_name);
+	goto err;
+einval_active:
+	reqc->errcode = EINVAL;
+	(void) snprintf(reqc->line_buf, reqc->line_len,
+			"The attribute '%s' is required for the 'active' mode.", attr_name);
 	goto err;
 err:
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR_LISTEN);
@@ -10141,12 +10267,40 @@ static int prdcr_listen_status_handler(ldmsd_req_ctxt_t reqc)
 				 "\"state\":\"%s\","
 				 "\"regex\":\"%s\","
 				 "\"IP range\":\"%s\","
-				 "\"producers\":[",
+				 "\"quota\":\"%ld\","
+				 "\"rx_rate\":\"%ld\",",
 				pl->obj.name,
 				((pl->state==LDMSD_PRDCR_LISTEN_STATE_RUNNING)?("running"):("stopped")),
 				(pl->hostname_regex_s?pl->hostname_regex_s:"-"),
-				(pl->cidr_str?pl->cidr_str:"-")
-				);
+				(pl->cidr_str?pl->cidr_str:"-"),
+				(pl->quota?pl->quota:ldmsd_quota),
+				(pl->rx_rate?pl->rx_rate:LDMS_UNLIMITED));
+		if (rc)
+			goto err;
+		if (pl->prdcr_type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE) {
+			rc = linebuf_printf(reqc, "\"type\":\"passive\",");
+			if (rc)
+				goto err;
+		} else {
+			char reconnect_str[16];
+			ovis_time_us2str(pl->reconnect, reconnect_str, sizeof(reconnect_str));
+			rc = linebuf_printf(reqc,
+				"\"type\":\"active\","
+				"\"xprt\":\"%s\","
+				"\"port\":\"%d\","
+				"\"auth_dom\":\"%s\","
+				"\"rail_sz\":\"%d\","
+				"\"reconnect\":\"%s\",",
+				pl->advtr_xprt,
+				pl->advtr_port,
+				(pl->auth?pl->auth:"_DEFAULT_"),
+				pl->rail,
+				reconnect_str);
+			if (rc)
+				goto err;
+
+		}
+		rc = linebuf_printf(reqc, "\"producers\":[");
 		if (rc)
 			goto err;
 		prdcr_cnt = 0;
@@ -10207,41 +10361,154 @@ err:
 	return rc;
 }
 
+enum ldmsd_prdcr_type __prdcr_listen_prdcr_type(ldmsd_prdcr_listen_t pl)
+{
+	if (pl->rail)
+		return LDMSD_PRDCR_TYPE_ADVERTISED_ACTIVE;
+	return LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE;
+}
+
+ldmsd_prdcr_t __advertised_prdcr_new(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t pl,
+				     const char *prdcr_name)
+{
+	int rc;
+	char *attr_name;
+	char *advtr_name;
+	char *adv_hostname;
+	char *advtr_port_s;
+	int adv_port;
+
+	struct ldmsd_sec_ctxt sctxt;
+	char *xprt_s;
+	struct ldms_addr rem_addr = {0};
+	ldms_t x;
+
+	ldmsd_prdcr_t prdcr;
+
+	/* Get daemon's UID and GID */
+	ldmsd_sec_ctxt_get(&sctxt);
+
+	advtr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+
+	x = ldms_xprt_get(reqc->xprt->ldms.ldms);
+	xprt_s = (char *)ldms_xprt_type_name(x);
+
+	attr_name = "hostname";
+	adv_hostname = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
+	if (!adv_hostname)
+		goto einval;
+
+	advtr_port_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
+	if (pl->prdcr_type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE) {
+		rc = ldms_xprt_addr(x, NULL, &rem_addr);
+		if (rc) {
+			ovis_log(NULL, OVIS_LERROR, "Failed to get the hostname " \
+					"of advertiser '%s'\n", advtr_name);
+			goto err;
+		}
+		adv_port = rem_addr.sin_port;
+	} else {
+		adv_port = pl->advtr_port;
+
+
+
+		if (!pl->advtr_port) {
+			char *endptr;
+			adv_port = strtol(advtr_port_s, &endptr, 0);
+		} else {
+			adv_port = pl->advtr_port;
+		}
+	}
+
+	errno = 0;
+	prdcr = ldmsd_prdcr_new_with_auth(prdcr_name,
+			xprt_s, adv_hostname, adv_port,
+			pl->prdcr_type, pl->reconnect, pl->auth,
+			sctxt.crd.uid, sctxt.crd.gid, 0700,
+			pl->rail, pl->quota, pl->rx_rate, 1);
+	if (!prdcr) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LERROR, "Error %d: Failed to create an " \
+					    "advertised producer corresponding " \
+					    "to advertiser '%s' on hostname '%s'\n",
+					    rc, advtr_name, adv_hostname);
+		goto err;
+	}
+	if (pl->quota) {
+		ldms_xprt_rail_recv_quota_set(x, pl->quota);
+	}
+	if (pl->rx_rate) {
+		ldms_xprt_rail_recv_rate_limit_set(x, pl->rx_rate);
+	}
+	ldms_xprt_put(x); /* Put back the reference at the beginning of the funciton */
+	return prdcr;
+
+einval:
+	ovis_log(NULL, OVIS_LERROR,
+			"The '%s' attribute is missing from " \
+			"an advert advtr_nameise request from advertiser %s on hostname '%s'\n",
+			attr_name, advtr_name, adv_hostname);
+	/*
+	 * It is intended to not provide detail information in the response message
+	 * to prevent providing information to ill-intended communication.
+	 */
+	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+				"Invalid advertisement message");
+	reqc->errcode = errno = EINVAL;
+	return NULL;
+err:
+	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+				"ldmsd failed to create producers.");
+	reqc->errcode = EINTR;
+	errno = rc;
+	return NULL;
+}
+
 /* The implementation is in ldmsd_updtr.c */
 extern int __ldmsd_updtr_prdcr_add(ldmsd_updtr_t updtr, ldmsd_prdcr_t prdcr);
 /* The implementations are in ldmsd_prdcr.c */
 extern ldmsd_prdcr_ref_t prdcr_ref_new(ldmsd_prdcr_t prdcr);
 extern void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg);
-static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t lp, struct ldms_addr *rem_addr)
+static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t pl, struct ldms_addr *rem_addr)
 {
 	int rc = 0;
 	char *xprt_s;
-	char *hostname;
+	char *adv_hostname;
+	char *adv_port;
+	char *adv_auth; /* TODO: Design how to get auth info and apply it */
 	char *attr_name;
-	char *lport;
-	char name[NI_MAXHOST + NI_MAXSERV + 1];
+	char prdcr_name[NI_MAXHOST + NI_MAXSERV + 1];
 	ldmsd_prdcr_t prdcr;
 	ldmsd_prdcr_ref_t pl_pref, updtr_pref;
 	struct rbn *rbn;
 	struct ldmsd_sec_ctxt sctxt;
 	uid_t uid;
 	gid_t gid;
-	int is_start = 0;
+	int is_new_prdcr = 0;
 	struct ldms_xprt_event conn_ev;
 	ldms_t x = ldms_xprt_get(reqc->xprt->ldms.ldms);
 
-	xprt_s = hostname = lport = NULL;
+	xprt_s = adv_hostname = adv_port = adv_auth = NULL;
 
 	attr_name = "hostname";
-	hostname = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
-	if (!hostname)
-		goto einval;
-	attr_name = "port";
-	lport = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
-	if (!lport)
+	adv_hostname = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
+	if (!adv_hostname)
 		goto einval;
 
-	snprintf(name, 32, "%s:%s", hostname, lport);
+	if (!pl->advtr_port) {
+		attr_name = "port";
+		adv_port = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
+		if (!adv_port)
+			goto einval;
+	} else {
+		adv_port = malloc(NI_MAXSERV+1);
+		if (!adv_port) {
+			goto enomem;
+		}
+		snprintf(adv_port, NI_MAXSERV, "%d", pl->advtr_port);
+	}
+
+	snprintf(prdcr_name, 32, "%s:%s", adv_hostname, adv_port);;
 
 	xprt_s = (char *)ldms_xprt_type_name(x);
 
@@ -10249,39 +10516,102 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t l
 	uid = sctxt.crd.uid;
 	gid = sctxt.crd.gid;
 
-	prdcr = ldmsd_prdcr_find(name);
-	if (!prdcr) {
-		prdcr = ldmsd_prdcr_new_with_auth(name, xprt_s, hostname, rem_addr->sin_port,
-				LDMSD_PRDCR_TYPE_ADVERTISED, INT_MAX,
-				NULL, uid, gid, 0770,
-				ldms_xprt_rail_eps(x),
-				ldms_xprt_rail_recv_quota_get(x),
-				ldms_xprt_rail_recv_rate_limit_get(x), 1);
+	prdcr = ldmsd_prdcr_find(prdcr_name);
+	if (prdcr) {
+		ldmsd_prdcr_lock(prdcr);
+		if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE) {
+			switch (prdcr->conn_state) {
+			case LDMSD_PRDCR_STATE_CONNECTED:
+			case LDMSD_PRDCR_STATE_STANDBY:
+				ovis_log(NULL, OVIS_LERROR,
+					"Received a duplicate advertisement for producer '%s'. "
+					"LDMSD ignores the advertisement.\n", prdcr_name);
+				rc = EBUSY;
+				ldmsd_prdcr_unlock(prdcr);
+				goto out;
+			case LDMSD_PRDCR_STATE_STOPPING:
+				/*
+				* The producer was manually stopped but
+				* the aggregator hasn't received the 'DISCONNECTED' event yet.
+				* This is a race condition between a disconnected event and
+				* an advertisement notification. We reject any advertisements
+				* of this producer until the transport has been completely torn down.
+				*
+				* Let the sampler daemon retry again.
+				*/
+				rc = EAGAIN;
+				ldmsd_prdcr_unlock(prdcr);
+				goto out;
+			case LDMSD_PRDCR_STATE_STOPPED:
+				prdcr->xprt = ldms_xprt_get(x);
+				ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
+				prdcr->conn_state = LDMSD_PRDCR_STATE_STANDBY;
+				break;
+			case LDMSD_PRDCR_STATE_DISCONNECTED:
+				prdcr->xprt = ldms_xprt_get(reqc->xprt->ldms.ldms);
+				ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
+				/* Move the producer state to CONNECTED here */
+				conn_ev.type = LDMS_XPRT_EVENT_CONNECTED;
+				ldmsd_prdcr_unlock(prdcr);
+				prdcr_connect_cb(prdcr->xprt, &conn_ev, prdcr);
+				ldmsd_prdcr_lock(prdcr);
+				break;
+			default:
+				ovis_log(NULL, OVIS_LERROR, "Reach an unexpected state (%s) of " \
+						"a generated producer %s.\n",
+						prdcr_state_str(prdcr->conn_state),
+						prdcr->obj.name);
+				rc = EINVAL;
+				ldmsd_prdcr_unlock(prdcr);
+				goto out;
+			}
+		} else if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED_ACTIVE) {
+			/*
+			 * Do nothing;
+			 * The producer is an active producer,
+			 * it tries to reconnect until a connection is established.
+			 */
+		} else {
+			ovis_log(NULL, OVIS_LERROR, "Received an advertisement " \
+						    "for producer %s, but " \
+						    "the producer was manually added.\n",
+						    prdcr_name);
+			ldmsd_prdcr_unlock(prdcr);
+			rc = EEXIST;
+			goto out;
+		}
+		ldmsd_prdcr_unlock(prdcr);
+	} else {
+		prdcr = __advertised_prdcr_new(reqc, pl, prdcr_name);
 		if (!prdcr) {
-			reqc->errcode = ENOMEM;
-			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-						"Aggregator failed to create "
-						"the producer '%s'", name);
-			rc = ENOMEM;
+			rc = errno;
 			goto out;
 		}
-		is_start = 1;
-	}
-
-	rbn = rbt_find(&lp->prdcr_tree, name);
-	if (!rbn) {
-		pl_pref = prdcr_ref_new(prdcr);
-		if (!pl_pref) {
-			ovis_log(config_log, OVIS_LCRIT, "Memory allocation failure.\n");
-			reqc->errcode = ENOMEM;
-			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-						"Aggregator has memory allocation failure.");
-			rc = ENOMEM;
-			goto out;
+		is_new_prdcr = 1;
+		rbn = rbt_find(&pl->prdcr_tree, prdcr_name);
+		if (rbn) {
+			ovis_log(NULL, OVIS_LERROR, "Producer %s does not exist, but " \
+						    "it is unexpectedly " \
+						    "in the producer list of " \
+						    "producer_listen '%s'. \n",
+						    prdcr_name, pl->obj.name);
+			assert(rbn == NULL);
+		} else {
+			pl_pref = prdcr_ref_new(prdcr);
+			if (!pl_pref) {
+				ovis_log(config_log, OVIS_LCRIT, "Memory allocation failure.\n");
+				reqc->errcode = ENOMEM;
+				reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+							"Aggregator has memory allocation failure.");
+				rc = ENOMEM;
+				/*
+				* TODO: make sure we clean up the memory, e.g., prdcr
+				*/
+				return rc;
+			}
+			rbt_ins(&pl->prdcr_tree, &pl_pref->rbn);
 		}
-		rbt_ins(&lp->prdcr_tree, &pl_pref->rbn);
 	}
-
 	/* Add the producer to any updaters that the producer matches */
 	ldmsd_updtr_t updtr;
 	ldmsd_name_match_t match;
@@ -10293,86 +10623,37 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t l
 
 		LIST_FOREACH(match, &updtr->prdcr_filter, entry) {
 			if (0 == regexec(&match->regex, prdcr->obj.name, 0, NULL, 0)) {
-				rc = __ldmsd_updtr_prdcr_add(updtr, prdcr);
-				if (rc) {
-					ovis_log(config_log, OVIS_LERROR,
-						"Failed to add the generated producer "
-						"'%s' to updater '%s'. Error %d\n",
-						name, updtr->obj.name, rc);
-					goto err;
-				}
+				(void) __ldmsd_updtr_prdcr_add(updtr, prdcr);
+				/*
+				 * No need to handle errors.
+				 * The call is to make sure that the producer
+				 * has been added to an updater according to configuration.
+				 */
 				break;
 			}
 		}
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 
-	ldmsd_prdcr_lock(prdcr);
-	switch (prdcr->conn_state) {
-	case LDMSD_PRDCR_STATE_CONNECTED:
-	case LDMSD_PRDCR_STATE_STANDBY:
-		/* prdcr->xprt is not NULL. */
-		ovis_log(NULL, OVIS_LERROR,
-			"Received a duplicate advertise request of producer '%s'. "
-			"LDMSD ignores the subsequent request.\n", name);
-		rc = EBUSY;
-		break;
-	case LDMSD_PRDCR_STATE_STOPPING:
-		/*
-		 * The producer was manually stopped but
-		 * the aggregator hasn't received the 'DISCONNECTED' event yet.
-		 * This is a race condition between a disconnected event and
-		 * an advertisement notification. We reject any advertisements
-		 * of this producer until the transport has been completely torn down.
-		 *
-		 * Let the sampler daemon retry again.
-		 */
-		rc = EAGAIN;
-		break;
-	case LDMSD_PRDCR_STATE_STOPPED:
-		prdcr->xprt = ldms_xprt_get(x);
-		ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
-		prdcr->conn_state = LDMSD_PRDCR_STATE_STANDBY;
-		if (lp->auto_start && is_start) {
-			ldmsd_prdcr_unlock(prdcr);
-			rc = ldmsd_prdcr_start(name, NULL, &sctxt);
-			if (rc) {
-				ovis_log(config_log, OVIS_LERROR, "Failed to start the "
-						"generated producer '%s'. Error %d.\n",
-						name, rc);
-				goto err;
-			}
-			ldmsd_prdcr_lock(prdcr);
+	if (pl->auto_start && is_new_prdcr) {
+		if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE) {
+			prdcr->xprt = ldms_xprt_get(x);
+			ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
+			prdcr->conn_state = LDMSD_PRDCR_STATE_STANDBY;
 		}
-		break;
-	case LDMSD_PRDCR_STATE_DISCONNECTED:
-		prdcr->xprt = ldms_xprt_get(reqc->xprt->ldms.ldms);
-		ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
-		/* Move the producer state to CONNECTED */
-		conn_ev.type = LDMS_XPRT_EVENT_CONNECTED;
-		ldmsd_prdcr_unlock(prdcr);
-		prdcr_connect_cb(prdcr->xprt, &conn_ev, prdcr);
-		ldmsd_prdcr_lock(prdcr);
-		break;
-	default:
-		ovis_log(NULL, OVIS_LERROR, "Reach an unexpected state (%s) of "
-				"a generated producer %s.\n",
-				prdcr_state_str(prdcr->conn_state),
-				prdcr->obj.name);
-		break;
+		rc = ldmsd_prdcr_start(prdcr_name, NULL, &sctxt);
+		if (rc) {
+			ovis_log(NULL, OVIS_LERROR, "failed to start the " \
+						    "advertised producer %s. Error %d.\n",
+						    prdcr_name, rc);
+		}
 	}
-	ldmsd_prdcr_unlock(prdcr);
 out:
-	if (lp->quota) {
-		ldms_xprt_rail_recv_quota_set(x, lp->quota);
-	}
-	if (lp->rx_rate) {
-		ldms_xprt_rail_recv_rate_limit_set(x, lp->rx_rate);
-	}
-	ldms_xprt_put(x); /* Put back the reference at the beginning of the funciton */
+	free(adv_hostname);
+	free(adv_port);
 	return rc;
 einval:
-	ovis_log(config_log, OVIS_LERROR,
+	ovis_log(NULL, OVIS_LERROR,
 			"The '%s' attribute is missing from "
 			"an advertise request.\n", attr_name);
 	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
@@ -10380,11 +10661,11 @@ einval:
 				"an advertise request to an aggregator.", attr_name);
 	reqc->errcode = rc = EINVAL;
 	goto out;
-err:
-	reqc->errcode = rc;
+enomem:
 	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-				"Aggregator failed to start the "
-				"generated producer '%s'.", name);
+				  "Aggregator has a memory allocation failure.");
+	ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
+	reqc->errcode = rc = ENOMEM;
 	goto out;
 }
 
