@@ -177,6 +177,9 @@ struct req_str_id req_str_id_table[] = {
 
 /* This table need to be sorted by keyword for bsearch() */
 struct req_str_id attr_str_id_table[] = {
+	{  "advertiser_auth",   LDMSD_ATTR_AUTH  },
+	{  "advertiser_port",   LDMSD_ATTR_PORT  },
+	{  "advertiser_xprt",   LDMSD_ATTR_XPRT  },
 	{  "ask_amount",        LDMSD_ATTR_ASK_AMOUNT },
 	{  "ask_interval",      LDMSD_ATTR_ASK_INTERVAL },
 	{  "ask_mark",          LDMSD_ATTR_ASK_MARK },
