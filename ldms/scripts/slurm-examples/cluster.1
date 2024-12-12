@@ -1,6 +1,6 @@
 # this is the L2 aggregator for the many nodes
 # daemon 2 monitors localhost resource usage
-prdcr_add name=${host2} host=${host2} type=active xprt=${XPRT} port=${port2} interval=1000000
+prdcr_add name=${host2} host=${host2} type=active xprt=${XPRT} port=${port2} reconnect=1000000
 prdcr_start name=${host2}
 
 updtr_add name=allhosts interval=1000000 offset=-400000
