@@ -970,8 +970,10 @@ class LdmsdCmdParser(cmd.Cmd):
             return
 
         producers = fmt_status(msg)
-        print("Name             Host             Port         Transport    State")
-        print("---------------- ---------------- ------------ ------------ ------------")
+        print(f"{'Name':16} {'Host':16} {'Port':12} {'Transport':12} {'State':12} {'Type':10}")
+        #print("Name             Host             Port         Transport    State")
+        print(f"{'-'*16} {'-'*16} {'-'*12} {'-'*12} {'-'*12} {'-'*10}")
+        #print("---------------- ---------------- ------------ ------------ ------------")
         for prdcr in producers:
             port = prdcr['port']
             if prdcr['type'] == 'bridge':
