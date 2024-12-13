@@ -1,6 +1,6 @@
 .\" Manpage for ldmsd_controller
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "19 Nov 2019" "v4.3" "ldmsd_contoller man page"
+.TH man 8 "19 Nov 2019" "v4.4" "ldmsd_contoller man page"
 
 .SH NAME
 ldmsd_controller \- a python program to configure an ldms daemon.
@@ -590,6 +590,11 @@ attr=<value>
 .br
 The updater name. If none is given, the statuses of all updaters are
 reported.
+.TP
+.BI [reset " value"]
+.br
+If true, reset the updater's counters after returning the values.
+The default is false.
 .RE
 
 .SS Query the updaters' list of regular expressions to match set names or set schemas
@@ -884,6 +889,67 @@ A GID. Optional
 .BI [perm " perm"]
 .br
 An octal number representing the permission bits. Optional
+.RE
+
+.SH STATISTICS COMMAND SYNTAX
+
+.SS Display the IO thread statistics
+.br
+
+Output Descriptions:
+   Name            - The name of each thread
+   Samples         - The total number of completed epoll_wait cycles sinze start or last reset
+   Sample Rate     - The number of epoll_wait cycles per second since start or last reset.
+                     A high rate indicates frequent event arrivals
+   Utilization     - The ratio of time spent processing events (outside epoll_wait) to total time,
+                     measured over a fixed number of most recent epoll_wait cycles
+                     (note: the time window width varies based on how quickly these cycles complete).
+                     A low sample rate and low utilization indicates an idle thread.
+                     A low sample rate and high utilization indicates long event processing times.
+                     A high rate and high utilization indicates frequent events with active processing
+   Send Queue Size - The number of pending send requests in the send queue
+   Number of EPs   - The number of connections (endpoints) managed by each IO thread
+
+.BR thread_stats
+attr=<value>
+.RS
+.TP
+.BI [reset " true|false"]
+.br
+If true, reset the thread statistics after returning the values. The default is false.
+.RE
+
+.SS Display the transport operation statistics
+.br
+.BR xprt_stats
+attr=<value>
+.RS
+.TP
+.BI [reset " true|false"]
+.br
+If true, reset the statistics after returning the values. The default is false.
+.RE
+
+.SS Display the statistics of updaters' update time per set
+.br
+.BR update_time_stats
+attr=<value>
+.RS
+.TP
+.BI [name " name"]
+.br
+An updater name. Only the statistics of the given updater will be reported and reset if reset is true.
+.RE
+
+.SS Display the statistics of storage policy's store time per set
+.br
+.BR store_time_stats
+attr=<value>
+.RS
+.TP
+.BI [name " name"]
+.br
+A storage policy name. Only the statistics of the given storage policy will be reported and reset if reset is true.
 .RE
 
 .SH MISC COMMAND SYNTAX
