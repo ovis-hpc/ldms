@@ -1048,7 +1048,8 @@ class LdmsdCmdParser(cmd.Cmd):
         arg = self.handle_args('updtr_status', arg)
         if not arg:
             return
-        rc, msg = self.comm.updtr_status(arg['name'], arg['summary'])
+        rc, msg = self.comm.updtr_status(name=arg['name'], summary=arg['summary'],
+                                                            reset = arg['reset'])
         if rc != 0:
             print(f"Error {rc}: {msg}")
             return
