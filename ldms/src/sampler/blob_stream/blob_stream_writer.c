@@ -107,7 +107,7 @@ static int rolltype = -1;
     rolltype==4 and rollover < MIN_ROLL_BYTES -> rollover = MIN_ROLL_BYTES */
 #define MIN_ROLL_BYTES 1024
 /** Interval to check for passing the record or byte count limits. */
-#define ROLL_LIMIT_INTERVAL 60
+#define ROLL_LIMIT_INTERVAL 5
 
 static pthread_t rothread;
 static int rothread_used = 0;
