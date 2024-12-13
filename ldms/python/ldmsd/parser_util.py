@@ -169,27 +169,35 @@ def parse_yaml_bool(bool_):
         return False
 
 def perm_handler(perm_str):
-    if perm_str is None or type(perm_str) is int:
+    if perm_str is None:
         return perm_str
-    nperm = "0"
-    perm_str = perm_str.split('-')
-    if len(perm_str) == 1:
-        try:
-            z = int(perm_str[0])
-            return perm_str[0]
-        except:
-            raise ValueError(f'Error: permission {perm_str[0]} is not a valid value')
-    if len(perm_str) > 3:
-        raise ValueError(f'There are only 3 definable characteristics of linux permissions; users, group, and global. Please modify {perm_str} to reflect this\n')
-    for uog in perm_str:
+    if type(perm_str) is not str:
+        raise TypeError(f'Error: YAML "perms" value must be a string')
+    nperm = '0'
+    if len(perm_str.split('-')) > 1:
+        if len(perm_str) != 9:
+            raise ValueError(f'Error: Parsing YAML permisson string "{perm_str}"\n'
+                             f'When using unix-like vernacular to configure permissions you must account for read/write in user/group/global\n'
+                             f'Allowed format: (r|-)(w|-)-(r|-)(w|-)-(r|-)(w|-)-')
+        i = 0
         x = 0
-        if 'r' in uog:
-            x += 4
-        if 'w' in uog or '+' in uog:
-            x += 2
-        if 'x' in uog:
-            x += 1
-        nperm += str(x)
+        for ch in perm_str:
+            if i == 2:
+                nperm += str(x)
+                x = 0
+                i = 0
+                continue
+            if ch == 'r':
+                x += 4
+            if ch == 'w' or ch == '+':
+                x += 2
+            i += 1
+    else:
+        try:
+            z = int(perm_str)
+            return perm_str
+        except:
+            raise ValueError(f'Error: permission {perm_str} is not a valid value')
     return nperm
 
 class YamlCfg(object):
@@ -462,6 +470,7 @@ class YamlCfg(object):
                     reconnect = check_intrvl_str(prod['reconnect'])
                     perm = check_opt('perm', prod)
                     perm = perm_handler(perm)
+                    cache_ip = check_opt('cache_ip', prod)
                     ports_per_dmn = len(endpoints) / len(smplr_dmns)
                     ppd = ports_per_dmn
                     try:
@@ -482,6 +491,7 @@ class YamlCfg(object):
                                 'group'     : group,
                                 'reconnect' : reconnect,
                                 'perm'      : perm,
+                                'cache_ip'  : cache_ip,
                                 'updaters'  : upd_spec
                             }
                             producers[group][endpoint] = prod
@@ -810,12 +820,14 @@ class YamlCfg(object):
                 perm = check_opt('perm', producer)
                 ptype = producer['type']
                 reconnect = producer['reconnect']
+                cache_ip = check_opt('cache_ip', producer)
                 dstr += f'prdcr_add name={pname} '\
                         f'host={hostname} '\
                         f'port={port} '\
                         f'xprt={xprt} '\
                         f'type={ptype} '\
                         f'reconnect={reconnect}'
+                dstr = self.write_opt_attr(dstr, 'cache_ip', cache_ip, endline=False)
                 dstr = self.write_opt_attr(dstr, 'perm', perm, endline=False)
                 dstr = self.write_opt_attr(dstr, 'auth', auth)
                 last_sampler = pname
@@ -828,7 +840,6 @@ class YamlCfg(object):
     def write_options(self, dstr, grp, dname):
         if 'cli_opt' not in self.daemons[grp][dname]:
             return dstr
-        self.daemons[grp][dname]['cli_opt']
         cli_opt = self.daemons[grp][dname]['cli_opt']
         for opt in cli_opt:
             if type(cli_opt[opt]) is dict:
