@@ -35,7 +35,7 @@ The name of the LDMS daemon to configure.
 
 The LDMS YAML configuration syntax allows defining a single LMDSDs configuration up to an entire LDMS cluster configuration in a single file.
 .br
-LDMS YAML cluster configuration is organized into “groups” of dictionaries with relevant configurations for each group. The top level dictionaries are “daemons”, “aggregators”, “samplers”, “plugins”, and “stores”.
+LDMS YAML cluster configuration is organized into "groups" of dictionaries with relevant configurations for each group. The top level dictionaries are "daemons", "aggregators", "samplers", "plugins", and "stores".
 .br
 Time intervals are defined as a unit string, or an integer in microseconds.
 .br
@@ -48,17 +48,13 @@ A unit string is one of the followings:
   d  -- days
 .br
 .PP
-Permissions are defined in a string linux file system format, with a dash separating users, groups, and global. A string of an octal number is also accepted. e.g. "0777"
+Permissions are defined in a unix-like permissions format, with a dash indicating a lack of permission. Executable permisson is not supported by "perm" and should always be "-". e.g. "rw-r-----"
+.br
+A string of an octal number is also accepted. e.g. "0640"
 .br
 "r" represents read permissions.
 .br
 "w" or "+" represent write permissions.
-.br
-"x" represents execute permissions.
-.br
-If user, group, or global is left blank, the configuration will assume there are no permissions for this group. e.g. "rw-r-", denotes that the user has read/write permissons, the group has read permissions, and global has no permissons.
-.br
-The permissions syntax expects there will always be 3 "-" to seperate users, groups, and global.
 .br
 .PP
 Several of the keys in this configuration syntax utilize the hostlist format.
@@ -156,7 +152,7 @@ The name of the stream.
 Regular expression matching producers to subscribe to the stream.
 
 .SS peers
-List of dictionaries containing producer configurations. This is an alternative method to configuring producers than using prdcr_listen
+List of dictionaries containing producer configurations. This is an alternative method to configuring producers than using prdcr_listen. Producers defined in the "peers" section are as evenly distributed as possible amongst the "aggregators" defined in the parent directory. e.g. If there are 2 aggregators, and 4 producers, each aggregator will be assigned 2 producers in the configuration.
 .TP
 .BR daemons
 .br
@@ -176,7 +172,11 @@ Producer type. Either active or passive. passive is being deprecated.
 .TP
 .BR [perm]
 .br
-The permissions to modify the producer in the future.
+The permissions to modify the producer in the future. String of octal number or unix-like permissions format. e.g. "rw-r--r--"
+.TP
+.BR [cache_ip]
+.br
+True/False boolean. True will cache the IP address after the first successful resolution (default). False will resolve the hostname at prdcr_add and at every connection attempt.
 .TP
 .BR updaters
 .br
@@ -203,7 +203,7 @@ Offset for synchronized aggregation. Optional. Unit string format.
 .TP
 .BR [perm]
 .br
-The permissions that allow modification of an updater in the future.
+The permissions that allow modification of an updater in the future. String of octal number or unix-like permissions format. e.g. "rw-r--r--"
 .TP
 .BR [producers]
 .br
@@ -268,7 +268,7 @@ Offset for synchronized aggregation. Optional. Unit string format.
 .TP
 .BR [perm]
 .br
-The permissions to modify the producer in the future.
+The permissions to modify the producer in the future. String of octal number or unix-like permissions format. e.g. "rw-r--r--"
 .TP
 .BR [producers]
 .br
@@ -320,7 +320,7 @@ String of port(s) in hostlist format of the aggregator daemons that the sampler 
 The interval at which the sampler will attempt to reconnect to a disconnected advertiser. Float followed by a unit string.
 .TP
 .BR [perm]
-The permissions in order to modify the advertiser in the future. String linux file system format. e.g. "rw-r-"
+The permissions in order to modify the advertiser in the future. String of octal number or unix-like permissions format. e.g. "rw-r--r--"
 .TP
 .BR [auth]
 .br
@@ -358,7 +358,7 @@ Name of a storage plugin that matches a key of a plugin defined in the top level
 .TP
 .BR [perm]
 .br
-The permissions of who can modify the storage plugin in the future. Linux file system format e.g. "rw-r-r"
+The permissions of who can modify the storage plugin in the future. String of octal number or unix-like permissions format. e.g. "rw-r--r--"
 .TP
 .BR [decomposition]
 .br
@@ -408,7 +408,7 @@ Name of the metric set to use.
 .TP
 .BR [perm]
 .br
-Access permissions for the metric set within the container. e.g. "0440"
+Access permissions for the metric set within the container. String of octal number or unix-like permissions format. e.g. "rw-r--r--"
 .TP
 .BR [component_id]
 .br
