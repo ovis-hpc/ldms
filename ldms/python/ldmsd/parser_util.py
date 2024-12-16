@@ -2,6 +2,7 @@ import os, sys
 import errno
 import json
 import subprocess
+import re
 import socket
 import time
 import itertools as it
@@ -173,32 +174,36 @@ def perm_handler(perm_str):
         return perm_str
     if type(perm_str) is not str:
         raise TypeError(f'Error: YAML "perms" value must be a string')
-    nperm = '0'
-    if len(perm_str.split('-')) > 1:
-        if len(perm_str) != 9:
-            raise ValueError(f'Error: Parsing YAML permisson string "{perm_str}"\n'
-                             f'When using unix-like vernacular to configure permissions you must account for read/write in user/group/global\n'
-                             f'Allowed format: (r|-)(w|-)-(r|-)(w|-)-(r|-)(w|-)-')
-        i = 0
-        x = 0
-        for ch in perm_str:
-            if i == 2:
-                nperm += str(x)
-                x = 0
-                i = 0
-                continue
-            if ch == 'r':
-                x += 4
-            if ch == 'w' or ch == '+':
-                x += 2
-            i += 1
+    perms = 0
+    m = perm_handler.string_pattern.fullmatch(perm_str)
+    if m:
+        if m.group(1):
+            perms += 0o400
+        if m.group(2):
+            perms += 0o200
+        if m.group(3):
+            perms += 0o040
+        if m.group(4):
+            perms += 0o020
+        if m.group(5):
+            perms += 0o004
+        if m.group(6):
+            perms += 0o002
     else:
-        try:
-            z = int(perm_str)
-            return perm_str
-        except:
-            raise ValueError(f'Error: permission {perm_str} is not a valid value')
-    return nperm
+        m = perm_handler.octal_pattern.fullmatch(perm_str)
+        if m:
+            try:
+                perms = int(perm_str, base=8)
+            except:
+                raise ValueError(f'Error: permission string \"{perm_str}\" is not a valid octal')
+        else:
+            raise ValueError(f'Error: YAML permisson string "{perm_str}"\n'
+                             f'Must represent either a valid octal number, or a use unix-like vernacular\n'
+                             f'Allowed format: (r|-)(w|-)-(r|-)(w|-)-(r|-)(w|-)-')
+
+    return '0'+oct(perms)[2:]
+perm_handler.string_pattern = re.compile('(?:(r)|-)(?:(w)|-)-(?:(r)|-)(?:(w)|-)-(?:(r)|-)(?:(w)|-)-')
+perm_handler.octal_pattern = re.compile('(0|0o)?[0-7]{1,3}')
 
 class YamlCfg(object):
     def build_daemons(self, config):
