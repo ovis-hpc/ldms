@@ -28,6 +28,8 @@ HDR_LIST = [
     "ldms/src/ldmsd/",
 ]
 
+EXCLUDE_PATH_RE = re.compile(r'.*ldms_stream_avro_ser[.]h')
+
 _list = list()
 for e in HDR_LIST:
     d = OVIS_DIR + "/" + e
@@ -39,7 +41,9 @@ for e in HDR_LIST:
     for dpath, dlist, flist in os.walk(d):
         for f in flist:
             if f.endswith('.h'):
-                _list.append(dpath + '/' + f)
+                path = dpath + '/' + f
+                if not EXCLUDE_PATH_RE.match(path):
+                    _list.append(dpath + '/' + f)
 
 HDR_LIST = _list
 

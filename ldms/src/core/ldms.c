@@ -6074,3 +6074,31 @@ ldms_mval_as_timestamp(ldms_mval_t mv, enum ldms_value_type type, int idx)
 	}
 	return ts;
 }
+
+const char *ldms_stream_type_sym(ldms_stream_type_t t)
+{
+	static const char *tbl[] = {
+		[LDMS_STREAM_STRING]   = "LDMS_STREAM_STRING",
+		[LDMS_STREAM_JSON]     = "LDMS_STREAM_JSON",
+		[LDMS_STREAM_AVRO_SER] = "LDMS_STREAM_AVRO_SER",
+	};
+
+	if (t < LDMS_STREAM_LAST)
+		return tbl[t];
+	return "UNKNOWN";
+}
+
+const char *ldms_stream_event_type_sym(enum ldms_stream_event_type t)
+{
+	static const char *tbl[] = {
+		[LDMS_STREAM_EVENT_RECV] = "LDMS_STREAM_EVENT_RECV",
+		[LDMS_STREAM_EVENT_CLOSE] = "LDMS_STREAM_EVENT_CLOSE",
+		[LDMS_STREAM_EVENT_SUBSCRIBE_STATUS] =
+			"LDMS_STREAM_EVENT_SUBSCRIBE_STATUS",
+		[LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS] =
+			"LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS",
+	};
+	if (t < LDMS_STREAM_EVENT_LAST)
+		return tbl[t];
+	return "UNKNOWN";
+}

@@ -820,6 +820,7 @@ cdef extern from "ldms.h" nogil:
     cpdef enum ldms_stream_type_e:
         LDMS_STREAM_STRING
         LDMS_STREAM_JSON
+        LDMS_STREAM_AVRO_SER
     enum ldms_stream_event_type:
         LDMS_STREAM_EVENT_RECV
         LDMS_STREAM_EVENT_SUBSCRIBE_STATUS
@@ -860,6 +861,7 @@ cdef extern from "ldms.h" nogil:
     ldms_stream_client_t ldms_stream_subscribe(const char *stream, int is_regex,
                             ldms_stream_event_cb_t cb_fn, void *cb_arg,
                             const char *desc)
+
     void ldms_stream_close(ldms_stream_client_t c)
     int ldms_stream_remote_subscribe(ldms_t x, const char *stream, int is_regex,
                             ldms_stream_event_cb_t cb_fn, void *cb_arg,
