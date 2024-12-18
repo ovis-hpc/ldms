@@ -50,7 +50,7 @@ A unit string is one of the followings:
 .PP
 Permissions are defined in a unix-like permissions format, with a dash indicating a lack of permission. Executable permisson is not supported by "perm" and should always be "-". e.g. "rw-r-----"
 .br
-A string of an octal number is also accepted. e.g. "0640"
+A string of an octal number is also accepted. e.g. "0640".
 .br
 "r" represents read permissions.
 .br
