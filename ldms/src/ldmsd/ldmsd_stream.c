@@ -346,8 +346,11 @@ ldmsd_stream_subscribe(const char *stream_name,
 	}
 	LIST_FOREACH(cc, &s->s_c_list, c_ent) {
 		if (cc->c_cb_fn == cb_fn && cc->c_ctxt == ctxt) {
+#if 0
+			/* this is a high frequency common case */
 			msglog("The client %p is already subscribed to "
 			       "stream %s\n", cc, stream_name);
+#endif
 			errno = EEXIST;
 			pthread_mutex_unlock(&s->s_lock);
 			goto err_1;
