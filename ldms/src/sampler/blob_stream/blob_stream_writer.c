@@ -246,6 +246,7 @@ static void fclose_and_spool(FILE* *f, char* *fname, int final)
 			sprintf(rbuf, "%s/spool/%s", dirn, base);
 			err = rename(*fname, rbuf);
 			if (err) {
+				err = errno;
 				msglog(LDMSD_LERROR, PNAME
 					": rename_output: failed rename(%s, %s):"
 					" %s\n", *fname, rbuf, STRERROR(err));
