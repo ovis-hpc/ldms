@@ -2,6 +2,7 @@ import os, sys
 import errno
 import json
 import subprocess
+import re
 import socket
 import time
 import itertools as it
@@ -169,28 +170,40 @@ def parse_yaml_bool(bool_):
         return False
 
 def perm_handler(perm_str):
-    if perm_str is None or type(perm_str) is int:
+    if perm_str is None:
         return perm_str
-    nperm = "0"
-    perm_str = perm_str.split('-')
-    if len(perm_str) == 1:
-        try:
-            z = int(perm_str[0])
-            return perm_str[0]
-        except:
-            raise ValueError(f'Error: permission {perm_str[0]} is not a valid value')
-    if len(perm_str) > 3:
-        raise ValueError(f'There are only 3 definable characteristics of linux permissions; users, group, and global. Please modify {perm_str} to reflect this\n')
-    for uog in perm_str:
-        x = 0
-        if 'r' in uog:
-            x += 4
-        if 'w' in uog or '+' in uog:
-            x += 2
-        if 'x' in uog:
-            x += 1
-        nperm += str(x)
-    return nperm
+    if type(perm_str) is not str:
+        raise TypeError(f'Error: YAML "perms" value must be a string')
+    perms = 0
+    m = perm_handler.string_pattern.fullmatch(perm_str)
+    if m:
+        if m.group(1):
+            perms += 0o400
+        if m.group(2):
+            perms += 0o200
+        if m.group(3):
+            perms += 0o040
+        if m.group(4):
+            perms += 0o020
+        if m.group(5):
+            perms += 0o004
+        if m.group(6):
+            perms += 0o002
+    else:
+        m = perm_handler.octal_pattern.fullmatch(perm_str)
+        if m:
+            try:
+                perms = int(perm_str, base=8)
+            except:
+                raise ValueError(f'Error: permission string \"{perm_str}\" is not a valid octal')
+        else:
+            raise ValueError(f'Error: YAML permisson string "{perm_str} is not a valid octal"\n'
+                             f'Must represent either a valid octal number, or use unix-like vernacular\n'
+                             f'Allowed format: (r|-)(w|-)-(r|-)(w|-)-(r|-)(w|-)-')
+
+    return '0'+oct(perms)[2:]
+perm_handler.string_pattern = re.compile('(?:(r)|-)(?:(w)|-)-(?:(r)|-)(?:(w)|-)-(?:(r)|-)(?:(w)|-)-')
+perm_handler.octal_pattern = re.compile('^0?[0-7]{1,3}')
 
 class YamlCfg(object):
     def build_daemons(self, config):
@@ -462,6 +475,7 @@ class YamlCfg(object):
                     reconnect = check_intrvl_str(prod['reconnect'])
                     perm = check_opt('perm', prod)
                     perm = perm_handler(perm)
+                    cache_ip = check_opt('cache_ip', prod)
                     ports_per_dmn = len(endpoints) / len(smplr_dmns)
                     ppd = ports_per_dmn
                     try:
@@ -482,6 +496,7 @@ class YamlCfg(object):
                                 'group'     : group,
                                 'reconnect' : reconnect,
                                 'perm'      : perm,
+                                'cache_ip'  : cache_ip,
                                 'updaters'  : upd_spec
                             }
                             producers[group][endpoint] = prod
@@ -810,12 +825,14 @@ class YamlCfg(object):
                 perm = check_opt('perm', producer)
                 ptype = producer['type']
                 reconnect = producer['reconnect']
+                cache_ip = check_opt('cache_ip', producer)
                 dstr += f'prdcr_add name={pname} '\
                         f'host={hostname} '\
                         f'port={port} '\
                         f'xprt={xprt} '\
                         f'type={ptype} '\
                         f'reconnect={reconnect}'
+                dstr = self.write_opt_attr(dstr, 'cache_ip', cache_ip, endline=False)
                 dstr = self.write_opt_attr(dstr, 'perm', perm, endline=False)
                 dstr = self.write_opt_attr(dstr, 'auth', auth)
                 last_sampler = pname
@@ -828,7 +845,6 @@ class YamlCfg(object):
     def write_options(self, dstr, grp, dname):
         if 'cli_opt' not in self.daemons[grp][dname]:
             return dstr
-        self.daemons[grp][dname]['cli_opt']
         cli_opt = self.daemons[grp][dname]['cli_opt']
         for opt in cli_opt:
             if type(cli_opt[opt]) is dict:
