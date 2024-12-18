@@ -197,13 +197,13 @@ def perm_handler(perm_str):
             except:
                 raise ValueError(f'Error: permission string \"{perm_str}\" is not a valid octal')
         else:
-            raise ValueError(f'Error: YAML permisson string "{perm_str}"\n'
-                             f'Must represent either a valid octal number, or a use unix-like vernacular\n'
+            raise ValueError(f'Error: YAML permisson string "{perm_str} is not a valid octal"\n'
+                             f'Must represent either a valid octal number, or use unix-like vernacular\n'
                              f'Allowed format: (r|-)(w|-)-(r|-)(w|-)-(r|-)(w|-)-')
 
     return '0'+oct(perms)[2:]
 perm_handler.string_pattern = re.compile('(?:(r)|-)(?:(w)|-)-(?:(r)|-)(?:(w)|-)-(?:(r)|-)(?:(w)|-)-')
-perm_handler.octal_pattern = re.compile('(0|0o)?[0-7]{1,3}')
+perm_handler.octal_pattern = re.compile('^0?[0-7]{1,3}')
 
 class YamlCfg(object):
     def build_daemons(self, config):
