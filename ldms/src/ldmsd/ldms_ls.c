@@ -1127,7 +1127,6 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 			printf("\n");
 		break;
 	case sf_tab:
-		// fixme; maybe falthru normal?
 		break;
 	case sf_json:
 		break;
@@ -1231,7 +1230,7 @@ void print_set(struct ldms_dir_set_s *set_data)
 {
 	if (!verbose) {
 		switch (format) {
-		case sf_normal: /* fall through */
+		case sf_normal:
 			printf("%s\n", set_data->inst_name);
 			break;
 		case sf_tab:
