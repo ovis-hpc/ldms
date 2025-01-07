@@ -2974,6 +2974,7 @@ class LdmsdCmdParser(cmd.Cmd):
                 name=              A unique name of the producer listen
                 reconnect=         The retry interval to check for connection establishment of producers matched the regular expression.
                 [disable_start=]  Tell LDMSD not to start the producers
+                [ip=]              An IP masks to filter advertisements using the source IP
                 [regex=]           A regular expression to match sampler hostnames
                 [rail=]            The number of rail endpoints for the prdcr (default: 1).
                 [quota=]           The send quota our ldmsd (the one we are controlling)

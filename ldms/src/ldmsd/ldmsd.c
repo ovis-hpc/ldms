@@ -96,7 +96,7 @@
 #define OVIS_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:L:C:";
+const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:L:C:y:";
 
 struct option long_opts[] = {
 	{ "default_auth_args",     required_argument, 0,  'A' },
@@ -375,6 +375,7 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -A KEY=VALUE, --default_auth_args KEY=VALUE   Authentication plugin options (repeatable)\n");
 	printf("  Configuration Options\n");
 	printf("    -c PATH                                       The path to configuration file (optional, default: <none>).\n");
+	printf("    -y PATH                                       Path to YAML configuration file (optional, default: <none>).\n");
 	printf("    -V                                            Print LDMS version and exit.\n");
 	if (hint) {
 		printf("\nHINT: %s\n",hint);
@@ -1876,6 +1877,12 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		 * Handle separately in the main() function.
 		 */
 		break;
+	case 'y':
+		/*
+		 * Must be specified at the command line.
+		 * Handle separately in the main() function.
+		 */
+		break;
 	case 'a':
 		/* auth name */
 		if (auth_name) {
@@ -2069,11 +2076,6 @@ int main(int argc, char *argv[])
 				 "The options `-k` and `-s` are obsolete. "
 				 "Please specify `publish_kernel path=<KERNEL_FILE> in a configuration file.\n");
 			cleanup(EINVAL, "Received an obsolete command-line option");
-		case 'n':
-			ovis_log(NULL, OVIS_LCRIT,
-				 "The option `-n` is obsolete. "
-				 "Please specify `daemon_name name=<DAEMON_NAME> in a configuration file.\n");
-			cleanup(EINVAL, "Received an obsolete command-line option");
 		case 'P':
 			ovis_log(NULL, OVIS_LCRIT,
 				 "The option `-P` is obsolete. "
@@ -2137,18 +2139,44 @@ int main(int argc, char *argv[])
 	opterr = 0;
 	optind = 0;
 	struct ldmsd_str_list cfgfile_list;
+	struct ldmsd_str_list yamlfile_list;
 	TAILQ_INIT(&cfgfile_list);
+	TAILQ_INIT(&yamlfile_list);
 	struct ldmsd_str_ent *cpath;
+	struct ldmsd_str_ent *conf_str;
+	char *resp;
+	char *ypath;
 	while ((op = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
 		switch (op) {
 		case 'c':
 			cpath = ldmsd_str_ent_new(optarg);
 			TAILQ_INSERT_TAIL(&cfgfile_list, cpath, entry);
 			break;
+		case 'y':
+			ypath = optarg;
+			resp = process_yaml_config_file(optarg, myname);
+			if (!resp)
+				cleanup(22, "");
+			conf_str = ldmsd_str_ent_new(resp);
+			free(resp);
+			TAILQ_INSERT_TAIL(&yamlfile_list, conf_str, entry);
+			break;
 		}
 	}
 
 	int lln;
+	TAILQ_FOREACH(conf_str, &yamlfile_list, entry) {
+		lln = -1;
+		ret = process_config_str(conf_str->str, &lln, 1);
+		if (ret) {
+			char errstr[128];
+			snprintf(errstr, sizeof(errstr),
+				"Error %d processing configuration file '%s'",
+				ret, ypath);
+			ldmsd_str_list_destroy(&yamlfile_list);
+			cleanup(ret, errstr);
+		}
+	}
 	while ((cpath = TAILQ_FIRST(&cfgfile_list))) {
 		lln = -1;
 		ret = process_config_file(cpath->str, &lln, 1);
@@ -2321,6 +2349,21 @@ int main(int argc, char *argv[])
 				cleanup(ret, errstr);
 			}
 			ovis_log(NULL, OVIS_LINFO, "Processing the config file '%s' is done.\n", optarg);
+			break;
+		case 'y':
+			has_config_file = 1;
+			while ((conf_str = TAILQ_FIRST(&yamlfile_list))) {
+				lln = -1;
+				ret = process_config_str(conf_str->str, &lln, 1);
+				if (ret) {
+					char errstr[128];
+					snprintf(errstr, sizeof(errstr),
+					"Error %d processing configuration file '%s'",
+					ret, ypath);
+				}
+				TAILQ_REMOVE(&yamlfile_list, conf_str, entry);
+				ldmsd_str_ent_free(conf_str);
+			}
 			break;
 		}
 	}
