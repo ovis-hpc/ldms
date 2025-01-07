@@ -623,7 +623,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 		rtrid = strdup("");
 
 
-	base = base_config(avl, SAMP, SAMP, mylog);
+	base = base_config(avl, self->inst_name, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		_free_cfg();

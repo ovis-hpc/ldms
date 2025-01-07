@@ -861,8 +861,8 @@ void zap_thrstat_wait_end(zap_thrstat_t stats);
 double zap_thrstat_get_utilization(zap_thrstat_t in);
 
 struct zap_thrstat_result_entry {
-	char *name;				/*< The thread name */
-	double sample_count;	/*< The number of sample periods */
+	char *name;			/*< The thread name */
+	double sample_count;		/*< The number of sample periods */
 	double sample_rate;		/*< Samples per second */
 	double utilization;		/*< The thread utilization */
 	uint64_t n_eps;			/*< Number of endpoints */

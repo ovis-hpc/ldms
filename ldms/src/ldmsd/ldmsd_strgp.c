@@ -93,8 +93,6 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 		LIST_REMOVE(match, entry);
 		free(match);
 	}
-	if (strgp->plugin_name)
-		free(strgp->plugin_name);
 	if (strgp->decomp_path)
 		free(strgp->decomp_path);
 	free(strgp->digest);
@@ -187,7 +185,7 @@ static void strgp_decompose(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		ovis_log(store_log, OVIS_LERROR, "strgp decompose error: %d\n", rc);
 		return;
 	}
-	rc = strgp->store->commit(strgp, prd_set->set, &row_list, row_count);
+	rc = strgp->store->api->commit(strgp, prd_set->set, &row_list, row_count);
 	if (rc) {
 		ovis_log(store_log, OVIS_LERROR, "strgp row commit error: %d\n", rc);
 	}
@@ -213,7 +211,7 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		strgp->state = LDMSD_STRGP_STATE_STOPPED;
 		return;
 	}
-	strgp->store->store(strgp->store_handle, prd_set->set,
+	strgp->store->api->store(strgp->store_handle, prd_set->set,
 			    strgp->metric_arry, strgp->metric_count);
 	if (strgp->flush_interval.tv_sec || strgp->flush_interval.tv_nsec) {
 		struct timespec expiry;
@@ -222,7 +220,7 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		clock_gettime(CLOCK_REALTIME, &now);
 		if (ldmsd_timespec_cmp(&now, &expiry) >= 0) {
 			clock_gettime(CLOCK_REALTIME, &strgp->last_flush);
-			strgp->store->flush(strgp->store_handle);
+			strgp->store->api->flush(strgp->store_handle);
 		}
 	}
 }
@@ -362,7 +360,7 @@ out_2:
 	free(match);
 out_1:
 	ldmsd_strgp_unlock(strgp);
-	ldmsd_strgp_put(strgp);
+	ldmsd_strgp_put(strgp, "find");
 	return rc;
 }
 
@@ -393,7 +391,7 @@ int ldmsd_strgp_prdcr_del(const char *strgp_name, const char *regex_str,
 	free(match);
 out_1:
 	ldmsd_strgp_unlock(strgp);
-	ldmsd_strgp_put(strgp);
+	ldmsd_strgp_put(strgp, "find");
 	return rc;
 }
 
@@ -448,7 +446,7 @@ int ldmsd_strgp_metric_add(const char *strgp_name, const char *metric_name,
 	TAILQ_INSERT_TAIL(&strgp->metric_list, metric, entry);
 out_1:
 	ldmsd_strgp_unlock(strgp);
-	ldmsd_strgp_put(strgp);
+	ldmsd_strgp_put(strgp, "find");
 	return rc;
 }
 
@@ -477,7 +475,7 @@ int ldmsd_strgp_metric_del(const char *strgp_name, const char *metric_name,
 	free(metric);
 out_1:
 	ldmsd_strgp_unlock(strgp);
-	ldmsd_strgp_put(strgp);
+	ldmsd_strgp_put(strgp, "find");
 	return rc;
 }
 
@@ -485,7 +483,7 @@ static ldmsd_strgp_ref_t strgp_ref_new(ldmsd_strgp_t strgp)
 {
 	ldmsd_strgp_ref_t ref = calloc(1, sizeof *ref);
 	if (ref)
-		ref->strgp = ldmsd_strgp_get(strgp);
+		ref->strgp = ldmsd_strgp_get(strgp, "strgp_ref");
 	return ref;
 }
 
@@ -516,18 +514,12 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	int i, idx, rc;
 	const char *name;
 	ldmsd_strgp_metric_t metric;
-	struct ldmsd_plugin_cfg *store;
 	int alloc_digest = 0;
 
 	if (!prd_set->set)
 		return ENOENT;
 
-	if (!strgp->store) {
-		store = ldmsd_get_plugin(strgp->plugin_name);
-		if (!store)
-			return ENOENT;
-		strgp->store = store->store;
-	}
+	assert(strgp->store);
 	/* Build metric list from the schema in the producer set */
 	strgp->metric_count = 0;
 	strgp->metric_arry = calloc(ldms_set_card_get(prd_set->set), sizeof(int));
@@ -602,22 +594,6 @@ err:
 	return rc;
 }
 
-/* protected by strgp lock */
-int strgp_decomp_init(ldmsd_strgp_t strgp, ldmsd_req_ctxt_t reqc)
-{
-
-	if (!strgp->store) {
-		/* load store */
-		struct ldmsd_plugin_cfg *store;
-		store = ldmsd_get_plugin(strgp->plugin_name);
-		if (!store)
-			return ENOENT;
-		strgp->store = store->store;
-	}
-	assert(!strgp->decomp);
-	return ldmsd_decomp_config(strgp, strgp->decomp_path, reqc);
-}
-
 /** Must be called with the producer set lock and the strgp config lock held and in this order*/
 int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 {
@@ -639,7 +615,7 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	case LDMSD_STRGP_STATE_STOPPED:
 		if (ref) {
 			LIST_REMOVE(ref, entry);
-			ldmsd_strgp_put(ref->strgp);
+			ldmsd_strgp_put(ref->strgp, "strgp_ref");
 			ref->strgp = NULL;
 			free(ref);
 		}
@@ -647,33 +623,26 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	case LDMSD_STRGP_STATE_RUNNING:
 		rc = EEXIST;
 		if (ref)
+			/* strgp has already been initialized for this producer set */
 			break;
-		if (strgp->decomp_path) {
-			if (!strgp->decomp) {
-				rc = strgp_decomp_init(strgp, NULL);
-				if (rc)
-					break;
+		/* legacy store path */
+		if (strgp->digest) {
+			/*
+				* The strgp has cached a digest and been restarted.
+				*/
+			if (0 != ldms_digest_cmp(strgp->digest,
+					ldms_set_digest_get(prd_set->set))) {
+				ovis_log(store_log, OVIS_LERROR,
+						"strgp '%s' ignores set '%s' because "
+						"the metric lists are mismatched.\n",
+						strgp->obj.name, prd_set->inst_name);
+				break;
 			}
-		} else {
-			/* legacy store path */
-			if (strgp->digest) {
-				/*
-				 * The strgp has cached a digest and been restarted.
-				 */
-				if (0 != ldms_digest_cmp(strgp->digest,
-						ldms_set_digest_get(prd_set->set))) {
-					ovis_log(store_log, OVIS_LERROR,
-						  "strgp '%s' ignores set '%s' because "
-						  "the metric lists are mismatched.\n",
-						  strgp->obj.name, prd_set->inst_name);
-					break;
-				}
-			}
-			if (!strgp->store_handle) {
-				rc = strgp_open(strgp, prd_set);
-				if (rc)
-					break;
-			}
+		}
+		if (!strgp->store_handle) {
+			rc = strgp_open(strgp, prd_set);
+			if (rc)
+				break;
 		}
 		rc = ENOMEM;
 		ref = strgp_ref_new(strgp);
@@ -747,7 +716,7 @@ int ldmsd_strgp_start(const char *name, ldmsd_sec_ctxt_t ctxt)
 		return ENOENT;
 	}
 	rc = __ldmsd_strgp_start(strgp, ctxt);
-	ldmsd_strgp_put(strgp);
+	ldmsd_strgp_put(strgp, "find");
 	return rc;
 }
 
@@ -780,21 +749,19 @@ int ldmsd_strgp_stop(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 	if (!strgp)
 		return ENOENT;
 	rc = __ldmsd_strgp_stop(strgp, ctxt);
-	ldmsd_strgp_put(strgp);
+	ldmsd_strgp_put(strgp, "find");
 	return rc;
 }
 
 extern struct rbt *cfgobj_trees[];
-extern pthread_mutex_t *cfgobj_locks[];
 ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
 
 int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_strgp_t strgp;
-	struct ldmsd_plugin_cfg *pi;
 
-	pthread_mutex_lock(cfgobj_locks[LDMSD_CFGOBJ_STRGP]);
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
 	strgp = (ldmsd_strgp_t)__cfgobj_find(strgp_name, LDMSD_CFGOBJ_STRGP);
 	if (!strgp) {
 		rc = ENOENT;
@@ -814,24 +781,18 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 		goto out_1;
 	}
 
-	/* Put back the reference taken when linking the plugin to the strgp. */
-	pi = strgp->store->base.pi;
-	__atomic_sub_fetch(&pi->ref_count, 1, __ATOMIC_SEQ_CST);
-
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STRGP], &strgp->obj.rbn);
-	ldmsd_strgp_put(strgp); /* tree reference */
+	ldmsd_cfgobj_put(&strgp->obj, "cfgobj_tree"); /* tree reference */
 
 	if (strgp->decomp) {
 		strgp->decomp->release_decomp(strgp);
 	}
-
-	/* let through */
 out_1:
 	ldmsd_strgp_unlock(strgp);
 out_0:
-	pthread_mutex_unlock(cfgobj_locks[LDMSD_CFGOBJ_STRGP]);
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 	if (strgp)
-		ldmsd_strgp_put(strgp); /* `find` reference */
+		ldmsd_strgp_put(strgp, "find"); /* `find` reference */
 	return rc;
 }
 

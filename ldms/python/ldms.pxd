@@ -925,9 +925,19 @@ cdef extern from "zap/zap.h" nogil:
         uint64_t sq_sz
         int pool_idx
         uint64_t thread_id
+        pid_t tid
+        uint64_t idle_time
+        uint64_t active_time
+        timespec start
+        timespec wait_start
+        timespec wait_end
+        int waiting
+        void *app_ctxt
+
     struct zap_thrstat_result:
         int count
         zap_thrstat_result_entry entries[0]
+
     zap_thrstat_result *zap_thrstat_get_result()
 
 cdef extern from "asm/byteorder.h" nogil:

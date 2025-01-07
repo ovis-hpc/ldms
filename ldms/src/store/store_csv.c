@@ -74,10 +74,10 @@
 #include "store_common.h"
 #include "store_csv_common.h"
 
-#define TV_SEC_COL    0
-#define TV_USEC_COL    1
-#define GROUP_COL    2
-#define VALUE_COL    3
+#define TV_SEC_COL	0
+#define TV_USEC_COL	1
+#define GROUP_COL	2
+#define VALUE_COL	3
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -2316,23 +2316,26 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set,
 	return 0;
 }
 
-static struct ldmsd_store store_csv = {
-	.base = {
-			.name = "csv",
-			.type = LDMSD_PLUGIN_STORE,
-			.term = term,
-			.config = config,
-			.usage = usage,
-	},
-	.open = open_store,
-	.get_context = get_ucontext,
-	.store = store,
-	.flush = flush_store,
-	.close = close_store,
-	.commit = commit_rows,
-};
+#if 0
+static void store_csv_del(struct ldmsd_cfgobj *obj)
+{
+	store_csv_t sc = (void*)obj;
 
-struct ldmsd_plugin *get_plugin()
+	pthread_mutex_destroy(&sc->cfg_lock);
+	idx_destroy(sc->store_idx);
+	ldmsd_plugattr_destroy(sc->pa);
+	if (sc->rothread_used) {
+		void * dontcare = NULL;
+		pthread_cancel(sc->rothread);
+		pthread_join(sc->rothread, &dontcare);
+	}
+	sc->pa = NULL;
+	sc->store_idx = NULL;
+
+	free(sc);
+}
+
+void __store_csv_once()
 {
 	int rc;
 	mylog = ovis_log_register("store."PNAME, "The log subsystem of '" PNAME "' plugin");
@@ -2343,8 +2346,67 @@ struct ldmsd_plugin *get_plugin()
 	}
 	PG.mylog = mylog;
 	PG.pname = PNAME;
-	return &store_csv.base;
+ out:
+	pthread_mutex_unlock(&once_mutex);
 }
+
+struct ldmsd_plugin *get_plugin_instance(const char *name,
+					 uid_t uid, gid_t gid, int perm)
+{
+	store_csv_t sc;
+
+	__store_csv_once();
+
+	sc = (void*)ldmsd_store_alloc(name, sizeof(*sc), store_csv_del, uid, gid, perm);
+	if (!sc)
+		return NULL;
+
+	snprintf(sc->store.base.name, sizeof(sc->store.base.name), "store_csv");
+	sc->store.base.term   = term;
+	sc->store.base.config = config;
+	sc->store.base.usage  = usage;
+
+	sc->store.open        = open_store;
+	sc->store.get_context = get_ucontext;
+	sc->store.store       = store;
+	sc->store.flush       = flush_store;
+	sc->store.close       = close_store;
+	sc->store.commit      = commit_rows;
+
+	/* TODO COMPLETE ME (just in case) */
+
+	sc->store_idx = idx_create();
+	pthread_mutex_init(&sc->cfg_lock, NULL);
+
+	return &sc->store.base;
+}
+#else
+static struct ldmsd_store store_csv = {
+	.base.type   = LDMSD_PLUGIN_STORE,
+	.base.name   = "store_csv",
+	.base.term   = term,
+	.base.config = config,
+	.base.usage  = usage,
+	.open        = open_store,
+	.get_context = get_ucontext,
+	.store       = store,
+	.flush       = flush_store,
+	.close       = close_store,
+	.commit      = commit_rows,
+};
+
+struct ldmsd_plugin *get_plugin()
+{
+        int rc;
+        mylog = ovis_log_register("store."PNAME, "The log subsystem of '" PNAME "' plugin");
+        if (!mylog) {
+                rc = errno;
+                ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+                                "of '" PNAME "' plugin. Error %d\n", rc);
+        }
+        return &store_csv.base;
+}
+#endif
 
 static void __attribute__ ((constructor)) store_csv_init();
 static void store_csv_init()

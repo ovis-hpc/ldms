@@ -543,7 +543,7 @@ static int config(struct ldmsd_plugin *self,
 		        goto err0;
 		}
 	} else {
-		base = base_config(avl, SAMP, "dcgm", mylog);
+		base = base_config(avl, self->inst_name, "dcgm", mylog);
 		conf.schema_name = strdup(base->schema_name);
 	}
 

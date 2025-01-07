@@ -604,7 +604,7 @@ static int config_hw(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		goto out;
 	}
 
-	base = base_config(avl, SAMP, default_schema_name, mylog);
+	base = base_config(avl, self->inst_name, default_schema_name, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -808,7 +808,7 @@ out:
 /*
  * Use the new configuration parameters to create a new schema and set
  */
-int config_local(struct attr_value_list *kwl,
+int config_local(struct ldmsd_sampler *self, struct attr_value_list *kwl,
 	struct attr_value_list * avl)
 {
 	int rc;
@@ -823,7 +823,7 @@ int config_local(struct attr_value_list *kwl,
 
 	ovis_log(mylog, OVIS_LDEBUG, SAMP ": re-configure the sampler\n");
 
-	base = base_config(avl, SAMP, SAMP, mylog);
+	base = base_config(avl, self->base.inst_name, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -1226,7 +1226,7 @@ static int sample(struct ldmsd_sampler * self)
 						"sampler\n");
 
 					/* Configure the sampler */
-					config_local(kw_list_local,
+					config_local(self, kw_list_local,
 						av_list_local);
 				}
 			}
