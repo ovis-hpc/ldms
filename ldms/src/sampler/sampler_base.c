@@ -186,10 +186,6 @@ err:
 	base->job_id_idx = -1;
 }
 
-/*
- * TODO: Shall the interface receive the libovis_log susbsystem of the sampler plugin?
- *       An alternative is to get the subsystem from \c name
- */
 base_data_t base_config(struct attr_value_list *avl,
 			const char *name, const char *def_schema,
 			ovis_log_t mylog)
@@ -311,43 +307,9 @@ void base_schema_delete(base_data_t base)
         base->schema = NULL;
 }
 
-int __set_init(base_data_t base)
-{
-	int rc;
-	ldms_set_producer_name_set(base->set, base->producer_name);
-	ldms_metric_set_u64(base->set, BASE_COMPONENT_ID, base->component_id);
-	ldms_metric_set_u64(base->set, BASE_JOB_ID, 0);
-	ldms_metric_set_u64(base->set, BASE_APP_ID, 0);
-	base_auth_set(&base->auth, base->set);
-
-	rc = ldms_set_publish(base->set);
-	if (rc) {
-		ovis_log(base->mylog, OVIS_LERROR,"base_set_new: ldms_set_publish failed for %s\n",
-				base->instance_name);
-		return rc;
-	}
-	ldmsd_set_register(base->set, base->pi_name);
-	return 0;
-}
-
 ldms_set_t base_set_new(base_data_t base)
 {
-	int rc;
-	base->missing_warned = 0;
-	errno = 0;
-	base->set = ldms_set_new(base->instance_name, base->schema);
-	if (!base->set) {
-		const char *serr = STRERROR(errno);
-		ovis_log(base->mylog, OVIS_LERROR,"base_set_new: ldms_set_new failed %d(%s) for %s\n",
-				errno, serr, base->instance_name);
-		return NULL;
-	}
-	rc = __set_init(base);
-	if (rc) {
-		ldms_set_delete(base->set);
-		base->set = NULL;
-	}
-	return base->set;
+	return base_set_new_heap(base, 0);
 }
 
 ldms_set_t base_set_new_heap(base_data_t base, size_t heap_sz)
@@ -362,12 +324,35 @@ ldms_set_t base_set_new_heap(base_data_t base, size_t heap_sz)
 				errno, serr, base->instance_name);
 		return NULL;
 	}
-	rc = __set_init(base);
+
+	ldms_set_producer_name_set(base->set, base->producer_name);
+	ldms_metric_set_u64(base->set, BASE_COMPONENT_ID, base->component_id);
+	ldms_metric_set_u64(base->set, BASE_JOB_ID, 0);
+	ldms_metric_set_u64(base->set, BASE_APP_ID, 0);
+	base_auth_set(&base->auth, base->set);
+
+	rc = ldms_set_publish(base->set);
 	if (rc) {
-		ldms_set_delete(base->set);
-		base->set = NULL;
+		ovis_log(base->mylog, OVIS_LERROR,
+			"base_set_new: ldms_set_publish failed for %s "
+			"with error %d\n",
+			base->instance_name, rc);
+		goto err;
+	}
+	rc = ldmsd_set_register(base->set, base->pi_name);
+	if (rc) {
+		ovis_log(base->mylog, OVIS_LERROR,
+			"base_set_new: ldms_set_register failed for %s "
+			"with error %d\n",
+			base->instance_name, rc);
+		goto err;
 	}
 	return base->set;
+err:
+	ldms_set_delete(base->set);
+	base->set = NULL;
+	errno = rc;
+	return NULL;
 }
 
 void base_set_delete(base_data_t base)

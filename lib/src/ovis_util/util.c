@@ -90,7 +90,7 @@ static const char *get_env_var(const char *src, size_t start_off, size_t end_off
 	return name;
 }
 
-int _scpy(char **buff, size_t *slen, size_t *alen,
+static int _scpy(char **buff, size_t *slen, size_t *alen,
 	    const char *str, size_t len)
 {
 	size_t xlen;
@@ -823,7 +823,7 @@ FILE *fopen_perm(const char *path, const char *f_mode, int o_mode)
  * \retval 0 OK
  * \retval errno for error
  */
-int __uid_gid_check(uid_t uid, gid_t gid)
+static int __uid_gid_check(uid_t uid, gid_t gid)
 {
 	struct passwd pw;
 	struct passwd *p;

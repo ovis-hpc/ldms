@@ -121,9 +121,10 @@ struct ovis_loglevel_s {
 	const char *name;
 };
 /*
- * The log level order in the table _must_ be from the least severity to the most severity.
+ * The log level is order by severity
  */
 struct ovis_loglevel_s level_tbl[] = {
+		{ OVIS_LQUIET,  "QUIET" },
 		{ OVIS_LDEBUG,	"DEBUG" },
 		{ OVIS_LINFO,	"INFO" },
 		{ OVIS_LWARN,	"WARNING" },
@@ -277,59 +278,37 @@ static int __str_to_loglevel(const char *level_s)
 	}
 }
 
-static int __get_bit(int level)
-{
-	int counter = -1;
-	while (level > 0) {
-		level = level >> 1;
-		counter++;
-	}
-	return counter;
-}
-
 int ovis_log_str_to_level(const char *level_s)
 {
-	int level = 0;
-	int i, rc = 0;
+	int level;
+	int i, rc;
 	char *s, *ptr, *tok;
-	struct ovis_loglevel_s *l;
 
-	if (!strchr(level_s, ',')) {
-		s = NULL;
-		/*
-		 * A single log level name is given.
-		 */
-		level = __str_to_loglevel(level_s);
-		if (level < 0) {
-			/*
-			 * Unrecognized level name
-			 */
-			rc = level;
-			goto err;
-		} else if (level == OVIS_LQUIET) {
-			/* QUIET is given. Return immediately. */
-		} else {
-			/*
-			 * A log level higher than QUIET is given.
-			 * Iterate through all levels that are equal or higher
-			 * than the given level and return the bitwise-or of the values.
-			 */
-			i = __get_bit(level);
-			l = &level_tbl[i+1];
-			while (l->name) {
-				level |= l->value;
-				l++;
-			}
-		}
-		return level;
-	}
+	if (strchr(level_s, ','))
+		goto parse_log_str;
 
+	/*
+	 * A single log level name is given.
+	 */
+	for (i = 0; strcasecmp(level_tbl[i].name, level_s); i++);
+	if (!i)
+		return OVIS_LQUIET;
+	if (!level_tbl[i].value)
+		return ENOENT;	/* level_s not found */
+	for (rc = 0; level_tbl[i].value; i++)
+		rc |= level_tbl[i].value;
+	return rc;
+
+parse_log_str:
 	s = strdup(level_s);
 	if (!s)
 		return -ENOMEM;
-	for (tok = strtok_r(s, ",", &ptr); tok; tok = strtok_r(NULL, ",", &ptr)) {
+	for (level = 0, tok = strtok_r(s, ",", &ptr); tok;
+			tok = strtok_r(NULL, ",", &ptr)) {
 		rc = __str_to_loglevel(tok);
-		if (rc < 0)
+		if (rc <= 0)
+			/* Not found or QUIET. QUIET cannot be combined
+			 * with any other log level */
 			goto err;
 		level |= rc;
 	}

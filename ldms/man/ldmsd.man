@@ -9,41 +9,26 @@ ldmsd \- Start an ldms daemon
 ldmsd [OPTION...]
 
 .SH DESCRIPTION
-The ldmsd command can be used
-to start an ldms process. Plugin configuration of the ldmsd can be done via the
-a configuration file or the ldmsd_controller.
-
-Starting ldmsd with the configuration file option enables you to statically configure a
-sampler without requiring python. Dynamically configuring samplers with ldmsd_controller requires python.
-Currently, v2's ldmsctl can still be used to dynamically configure a sampler without requiring
-python. This capability will be replaced and it is not recommended that you use this option.
+The \c ldmsd command is used to start an instance of an ldmsd server.
+Configuration of the ldmsd is accomplished statically with a configuration
+file provided on the command line, or dynamically with the ldmsd_controller
+or distributed configuration management server Maestro.
 
 .SH ENVIRONMENT
-.SS
-The ldmsd-check-env program will dump currently set environment variables that may influence ldmsd and plugin behavior.
-The following environment variables must often be set:
-.TP
-LD_LIBRARY_PATH
-Path to ovis/lib and libevent2/lib, if not in a system default path. Depending on the system these may be lib64 instead of lib.
-.TP
-PATH
-Include the path to sbin directory containing ldmsd.
 .SS The following environment variables may be set to override compiled-in defaults:
 .TP
 ZAP_LIBPATH
-Path to ovis/lib/ovis-ldms
+Path to the location of the LDMS transport libraries.
 .TP
 LDMSD_PLUGIN_LIBPATH
-Path to ovis/lib/ovis-ldms
+Path to the location of the LDMS plugin libraries.
 .TP
 LDMSD_PIDFILE
-Full path name of pidfile overriding the default /var/run/ldmsd.pid unless the command line argument "-r pidfilepath" is present.
+Full path name of a file overriding the default of /var/run/ldmsd.pid. The command line
+argument "-r pid-file-path" takes precedence over this value.
 .TP
 LDMSD_LOG_TIME_SEC
 If present, log messages are stamped with the epoch time rather than the date string. This is useful when sub-second information is desired or correlating log messages with other epoch-stamped data.
-.TP
-LDMSD_SOCKPATH
-Path to the unix domain socket for the ldmsd. Default is created within /var/run. If you must change the default (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd) or specify "-S socketpath" to ldmsd.
 .TP
 LDMSD_MEM_SZ
 The size of memory reserved for metric sets. Set this variable or specify "-m"
@@ -51,11 +36,13 @@ to ldmsd. See the -m option for further details. If both are specified, the -m
 option takes precedence over this environment variable.
 .TP
 LDMSD_UPDTR_OFFSET_INCR
-The increment to the offset hint in microseconds. This is only for updaters that
-determine the update interval and offset automatically. For example, the offset
-hint is 100000 which is 100 millisecond of the second.  The updater offset will
-be 100000 + LDMSD_UPDTR_OFFSET_INCR. The default is 100000 (100 milliseconds).
+The increment to the offset hint in microseconds for updaters that
+determine the update interval and offset automatically. For example, if the offset
+hint is 100000, the updater offset will be 100000 + LDMSD_UPDTR_OFFSET_INCR.
+The default is 100000 (100 milliseconds).
+
 .SS CRAY Specific Environment variables for ugni transport
+.TP
 ZAP_UGNI_PTAG
 For XE/XK, the PTag value as given by apstat -P.
 For XC, The value does not matter but the environment variable must be set.
@@ -65,7 +52,7 @@ For XE/XK, the Cookie value corresponding to the PTag value as given by apstat -
 For XC, the Cookie value (not Cookie2) as given by apstat -P
 .TP
 ZAP_UGNI_CQ_DEPTH
-Optional value for the CQ depth. Default is 2048.
+Optional value for the CQ depth. The default is 2048.
 .TP
 ZAP_UGNI_STATE_INTERVAL
 Optional. If set, then ldmsd will check all nodes' states via rca interface.
@@ -155,9 +142,8 @@ Silence can be obtained by specifying /dev/null for the log file or using comman
 .TP
 .BI "-v, --log_level" " LOG_LEVEL"
 .br
-LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET.
+LOG_LEVEL can be one of DEBUG, INFO, WARN, ERROR, CRITICAL or QUIET.
 The default level is ERROR. QUIET produces only user-requested output.
-(Note: this has changed from the previous release where q designated no (QUIET) logging).
 .TP
 .BI -L, --log_config " <CINT:PATH> | <CINT> | <PATH>"
 .br

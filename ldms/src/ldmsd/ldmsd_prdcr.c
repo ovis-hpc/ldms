@@ -140,7 +140,7 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 	while (strgp_ref) {
 		LIST_REMOVE(strgp_ref, entry);
 		__atomic_fetch_sub(&strgp_ref->strgp->prdset_cnt, 1, __ATOMIC_SEQ_CST);
-		ldmsd_strgp_put(strgp_ref->strgp);
+		ldmsd_strgp_put(strgp_ref->strgp, "init");
 		free(strgp_ref);
 		strgp_ref = LIST_FIRST(&set->strgp_list);
 	}
@@ -991,16 +991,6 @@ int prdcr_ref_cmp(void *a, const void *b)
 	return strcmp(a, b);
 }
 
-ldmsd_prdcr_ref_t prdcr_ref_new(ldmsd_prdcr_t prdcr)
-{
-	ldmsd_prdcr_ref_t ref = calloc(1, sizeof *ref);
-	if (ref) {
-		ref->prdcr = ldmsd_prdcr_get(prdcr);
-		rbn_init(&ref->rbn, prdcr->obj.name);
-	}
-	return ref;
-}
-
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
@@ -1074,7 +1064,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 out:
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR], &prdcr->obj.rbn);
 	ldmsd_cfgobj_unlock(&prdcr->obj);
-	ldmsd_cfgobj_put(&prdcr->obj);
+	ldmsd_prdcr_put(prdcr, "cfg_tree");
 	return NULL;
 }
 
@@ -1091,14 +1081,13 @@ ldmsd_prdcr_new(const char *name, const char *xprt_name,
 }
 
 extern struct rbt *cfgobj_trees[];
-extern pthread_mutex_t *cfgobj_locks[];
 ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
 
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_prdcr_t prdcr;
-	pthread_mutex_lock(cfgobj_locks[LDMSD_CFGOBJ_PRDCR]);
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	prdcr = (ldmsd_prdcr_t) __cfgobj_find(prdcr_name, LDMSD_CFGOBJ_PRDCR);
 	if (!prdcr) {
 		rc = ENOENT;
@@ -1120,16 +1109,16 @@ int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 
 	/* removing from the tree */
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR], &prdcr->obj.rbn);
-	ldmsd_prdcr_put(prdcr); /* putting down reference from the tree */
+	ldmsd_prdcr_put(prdcr, "cfg_tree"); /* putting down reference from the tree */
 
 	rc = 0;
 	/* let-through */
 out_1:
 	ldmsd_prdcr_unlock(prdcr);
 out_0:
-	pthread_mutex_unlock(cfgobj_locks[LDMSD_CFGOBJ_PRDCR]);
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	if (prdcr)
-		ldmsd_prdcr_put(prdcr); /* `find` reference */
+		ldmsd_prdcr_put(prdcr, "find"); /* `find` reference */
 	return rc;
 }
 
@@ -1203,7 +1192,7 @@ int ldmsd_prdcr_start(const char *name, const char *interval_str,
 		prdcr->conn_intrvl_us = reconnect;
 	}
 	rc = __ldmsd_prdcr_start(prdcr, ctxt);
-	ldmsd_prdcr_put(prdcr);
+	ldmsd_prdcr_put(prdcr, "find");
 	return rc;
 }
 
@@ -1260,7 +1249,7 @@ int ldmsd_prdcr_stop(const char *name, ldmsd_sec_ctxt_t ctxt)
 	if (!prdcr)
 		return ENOENT;
 	rc = __ldmsd_prdcr_stop(prdcr, ctxt);
-	ldmsd_prdcr_put(prdcr);
+	ldmsd_prdcr_put(prdcr, "start");
 	return rc;
 }
 
