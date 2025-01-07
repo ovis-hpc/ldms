@@ -892,6 +892,11 @@ char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type);
 
 int process_config_file(const char *path, int *lineno, int trust);
 
+int process_config_str(char *config_str, int *lno, int trust);
+
+char *process_yaml_config_file(const char *path, const char *dname);
+
+
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 struct attr_value_list;

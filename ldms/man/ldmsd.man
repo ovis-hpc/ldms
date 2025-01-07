@@ -97,6 +97,11 @@ deferred configuration objects will be started. Please also note that while
 failover service is in use, prdcr, updtr, and strgp cannot be altered (start,
 stop, or reconfigure) over in-band configuration. See also REORDERED COMMANDS below.
 .TP
+.BI "-y" CONFIG_PATH
+The path to a YAML configuration file (optional, default: <none>). The YAML configuration
+file contains a description of an entire cluster of LDMS daemons. Please see "man ldmsd_yaml_parser"
+for more information regarding the YAML configuration file.
+.TP
 .BI "-m, --set_memory" " MEMORY_SIZE"
 .br
 MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
@@ -104,6 +109,10 @@ The given size must be less than 1 petabytes.
 For example, 20M or 20mb are 20 megabytes. The default is adequate for most ldmsd acting in the collector role.
 For aggregating ldmsd, a rough estimate of preallocated memory needed is (Number of nodes aggregated) x (Number of metric sets per node) x 4k.
 Data sets containing arrays may require more. The estimate can be checked by enabling DEBUG logging and examining the mm_stat bytes_used+holes value at ldmsd exit.
+.TP
+.BI "-n, --daemon_name" "NAME"
+.br
+The name of the LDMS daemon. By default it is "HOSTNAME:PORT". When configuring a LDMSD with a YAML configuration file, the "daemon_name" identifies a daemon defined in the configuration file. For more information about YAML configuration files, please see "man ldmsd_yaml_parser".
 .TP
 .BI "-r, --pid_file" " pid_file"
 The path to the pid file and prefix of the .version banner file
@@ -356,7 +365,7 @@ Set the environment variables ZAP_UGNI_PTAG and ZAP_UGNI_COOKIE with the appropr
 Run ldmsd directly or as part of a script launched from aprun. In either case, Use aprun with the correct -p <ptag> when running.
 
 .SH REORDERED COMMANDS
-Certain commands in are reordered when processing input scripts specified with -c. Items related to failover are handled as described in the '-c' section above. Other commands are promoted to run before any non-promoted commands from the loaded script. In particular, env, loglevel, listen, auth, and option are promoted.
+Certain commands in are reordered when processing input scripts specified with -c or -y. Items related to failover are handled as described in the '-c' and '-y' sections above. Other commands are promoted to run before any non-promoted commands from the loaded script. In particular, env, loglevel, listen, auth, and option are promoted.
 
 .SH NOTES
 OCM flags are unsupported at this time.
