@@ -105,8 +105,6 @@ extern int read_history ();
 #define FMT "h:p:a:A:S:x:s:X:i"
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
 
-#define LDMSD_SOCKPATH_ENV "LDMSD_SOCKPATH"
-
 static char *linebuf;
 static size_t linebuf_len;
 static pthread_mutex_t recv_buf_q_lock = PTHREAD_MUTEX_INITIALIZER;;
@@ -2595,7 +2593,7 @@ static struct command command_tbl[] = {
 	{ "updtr_status", LDMSD_UPDTR_STATUS_REQ, NULL, help_updtr_status, resp_updtr_status },
 	{ "updtr_stop", LDMSD_UPDTR_STOP_REQ, NULL, help_updtr_stop, resp_generic },
 	{ "updtr_task", LDMSD_UPDTR_TASK_REQ, NULL, help_updtr_task, resp_updtr_task },
-	{ "usage", LDMSD_PLUGN_LIST_REQ, NULL, help_usage, resp_usage },
+	{ "usage", LDMSD_PLUGN_USAGE_REQ, NULL, help_usage, resp_usage },
 	{ "version", LDMSD_VERSION_REQ, NULL, help_version , resp_generic },
 	{ "xprt_stats", LDMSD_XPRT_STATS_REQ, NULL, help_xprt_stats, resp_xprt_stats },
 };

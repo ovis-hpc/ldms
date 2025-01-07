@@ -3669,7 +3669,7 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		return EALREADY;
 	}
 
-	inst->base_data = base_config(avl, SAMP, SAMP, inst->mylog);
+	inst->base_data = base_config(avl, pi->inst_name, SAMP, inst->mylog);
 	if (!inst->base_data) {
 		/* base_config() already log error message */
 		return errno;

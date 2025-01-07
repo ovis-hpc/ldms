@@ -165,48 +165,6 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         print(args)
 
-    def do_connect(self, args):
-        if self.state != self.comm.CONNECTED:
-            if self.comm:
-                self.comm.connect()
-            kwargs = {
-                "xprt": "sock",
-                "host": "localhost",
-                "port": None,
-                "auth": "none",
-                "auth_opt": {},
-            }
-            r = re.compile(r"\s*(\w+)=(\w+)")
-            for attr, value in r.findall(args):
-                if attr in kwargs:
-                    kwargs[attr] = value
-                else:
-                    # treat as auth options
-                    kwargs["auth_opt"][attr] = value
-            self.comm = Communicator(kwargs['xprt'],
-                                     kwargs['host'],
-                                     kwargs['port'],
-                                     kwargs['auth'],
-                                     kwargs['auth_opt'])
-            rc = self.comm.connect()
-            if rc:
-                self.promt = "Error connecting to {1} on port {2} with {0}".format(xprt, host, port)
-            else:
-                self.prompt = "{0}:{1}:{2}> ".format(xprt, host, port)
-        else:
-            print(f"WARN: Already connected, do nothing.")
-            return None
-
-    def complete_connect(self, text, line, begidx, endidx):
-        name_list = ["xprt=", "host=", "port=", "auth="]
-        full_list = ["xprt=(sock|rdma|ugni)",
-                     "host=HOSTNAME",
-                     "port=PORT",
-                     "auth=AUTH_METHOD"]
-        if not text:
-            return full_list
-        return [x for x in name_list if x.startswith(text)]
-
     def precmd(self, line):
         if line[0:1] == '#':
             return ''
@@ -276,6 +234,9 @@ class LdmsdCmdParser(cmd.Cmd):
             if rc:
                 print(f'Error {rc} printing current configuration: {msg}')
 
+    def complete_dump_cfg(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('dump_cfg', text)
+
     def do_source(self, arg):
         """
         Parse commands from the specified file as if they were entered
@@ -330,13 +291,19 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Load a plugin at the Aggregator/Producer
         Parameters:
-        name=     The plugin name
+        name=   The plugin to load
+        inst=     The configuration name for the plugin (default = <name>)
         """
         arg = self.handle_args('load', arg)
         if arg:
-            rc, msg = self.comm.plugn_load(arg['name'])
+            name = arg['name']
+            if arg['inst']:
+                inst = arg['inst']
+            else:
+                inst = name
+            rc, msg = self.comm.plugn_load(name, inst)
             if rc:
-                print(f'Error loading plugin {arg["name"]}: {msg}')
+                print(f'Error loading plugin {arg["name"]} as {arg["inst"]}: {msg}')
 
     def complete_load(self, text, line, begidx, endidx):
         return self.__complete_attr_list('load', text)
@@ -1314,6 +1281,8 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def __avg_update(self, cur_avg, cur_cnt, v, cnt):
         new_cnt = cur_cnt + cnt
+        if new_cnt == 0:
+            return 0.0
         return (cur_avg * (cur_cnt / new_cnt) + v * (cnt / new_cnt), new_cnt)
 
     def __min_max(self, tbl, data):
@@ -1540,8 +1509,9 @@ class LdmsdCmdParser(cmd.Cmd):
 
         try:
             strgp_tbl, schema_tbl, thread_tbl = self.__store_time_process(j)
-        except:
-            raise
+        except Exception as e:
+            print(e)
+            return
 
         # Schema Table
         print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
@@ -1613,12 +1583,11 @@ class LdmsdCmdParser(cmd.Cmd):
         rc, msg = self.comm.plugn_status(arg['name'])
         if rc == 0:
             plugins = fmt_status(msg)
-            print("Name         Type         Interval     Offset       Libpath")
-            print("------------ ------------ ------------ ------------ ------------")
+            print("Plugin       Instance                 Type         libpath")
+            print("------------ ------------------------ ------------ ------------")
             for plugn in plugins:
-                print("{0:12} {1:12} {2:12} {3:12} {4:12}".format(
-                    plugn['name'], plugn['type'],
-                    plugn['sample_interval_us'], plugn['sample_offset_us'],
+                print("{0:12} {1:24} {2:12} {3}".format(
+                    plugn['name'], plugn['instance'], plugn['type'],
                     plugn['libpath']))
 
     def do_plugn_sets(self, arg):
@@ -1719,7 +1688,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if arg:
             rc, msg = self.comm.plugn_config(arg['name'], arg['cfg_str'])
             if rc:
-                print(f'Error configuring {arg["name"]} plugin: {msg}')
+                print(f'Error configuring the \'{arg["name"]}\' plugin: {msg}')
 
     def complete_config(self, text, line, begidx, endidx):
         return self.__complete_attr_list('config', text)
@@ -2274,7 +2243,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if msg == "":
             return
         if rc != 0:
-            print(f"Error {msg['errcode']}: {resp['msg']}")
+            print(f"Error {rc}: {msg}")
             return
         msg = fmt_status(msg)
         self.display_worker_thread_stats(msg['worker_threads'])

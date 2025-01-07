@@ -65,6 +65,7 @@
 #include <ovis_event/ovis_event.h>
 #include <ovis_util/util.h>
 #include "ovis_log/ovis_log.h"
+#include "ovis_ref/ref.h"
 #include "ldms.h"
 
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
@@ -103,8 +104,7 @@ void ldmsd_version_get(struct ldmsd_version *v);
 
 typedef struct ldmsd_plugin_set {
 	ldms_set_t set;
-	char *plugin_name;
-	char *inst_name;
+	char *cfg_name;	/* The config instance name */
 	LIST_ENTRY(ldmsd_plugin_set) entry;
 } *ldmsd_plugin_set_t;
 typedef struct ldmsd_plugin_set_list {
@@ -149,12 +149,16 @@ typedef struct ldmsd_sec_ctxt {
 } *ldmsd_sec_ctxt_t;
 
 typedef enum ldmsd_cfgobj_type {
-	LDMSD_CFGOBJ_PRDCR = 1,
+	LDMSD_CFGOBJ_FIRST = 1,
+	LDMSD_CFGOBJ_PRDCR = LDMSD_CFGOBJ_FIRST,
 	LDMSD_CFGOBJ_UPDTR,
 	LDMSD_CFGOBJ_STRGP,
 	LDMSD_CFGOBJ_LISTEN,
 	LDMSD_CFGOBJ_AUTH,
 	LDMSD_CFGOBJ_PRDCR_LISTEN,
+	LDMSD_CFGOBJ_SAMPLER,
+	LDMSD_CFGOBJ_STORE,
+	LDMSD_CFGOBJ_LAST = LDMSD_CFGOBJ_STORE,
 } ldmsd_cfgobj_type_t;
 
 struct ldmsd_cfgobj;
@@ -179,9 +183,16 @@ typedef void (*ldmsd_cfgobj_del_fn_t)(struct ldmsd_cfgobj *);
 /* can execute even if the failover is turned on */
 #define LDMSD_PERM_FAILOVER_ALLOWED 04000
 
+struct attr_value_list;
+struct avl_q_item {
+	struct attr_value_list *av_list;
+	TAILQ_ENTRY(avl_q_item) entry;
+};
+TAILQ_HEAD(avl_q, avl_q_item);
+
 typedef struct ldmsd_cfgobj {
-	char *name;		/* Unique producer name */
-	uint32_t ref_count;
+	char *name;		/* Unique cfgobj name */
+	struct ref_s ref;
 	ldmsd_cfgobj_type_t type;
 	ldmsd_cfgobj_del_fn_t __del;
 	struct rbn rbn;
@@ -189,6 +200,8 @@ typedef struct ldmsd_cfgobj {
 	uid_t uid;
 	gid_t gid;
 	int perm;
+	char *avl_str;
+	char *kvl_str;
 } *ldmsd_cfgobj_t;
 
 typedef struct ldmsd_prdcr_stream_s {
@@ -198,7 +211,7 @@ typedef struct ldmsd_prdcr_stream_s {
 } *ldmsd_prdcr_stream_t;
 
 /**
- * Producer: Named instance of an LDMSD
+ * Producer: Named instance of a remote LDMSD
  *
  * The Producer name, by policy, equals the name of this configuration object.
  */
@@ -607,6 +620,8 @@ int ldmsd_row_cache_make_list(ldmsd_row_list_t row_list, int row_count,
 	ldmsd_row_cache_t cache, ldmsd_row_cache_idx_t group_key);
 
 typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set);
+typedef struct ldmsd_store_inst *ldmsd_store_t;
+
 struct ldmsd_strgp {
 	struct ldmsd_cfgobj obj;
 
@@ -628,8 +643,8 @@ struct ldmsd_strgp {
 	char *container;
 
 	/** The storage backend plugin */
-	char *plugin_name;
-	struct ldmsd_store *store;
+	ldmsd_store_t store;
+
 	/** The open instance of the container */
 	ldmsd_store_handle_t store_handle;
 	ldmsd_store_handle_t next_store_handle;
@@ -675,7 +690,7 @@ struct ldmsd_decomp_s {
 	/**
 	 * Configuring the decomposition according to \c strgp and \c json_path.
 	 *
-	 * \c reqc is given so that the config function can describe the errors
+	 * \c reqc is given so that the confiıg function can describe the errors
 	 * back to the user (not just log file) in details.
 	 *
 	 * \param strgp
@@ -933,52 +948,70 @@ char *process_yaml_config_file(const char *path, const char *dname);
 
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
-struct attr_value_list;
-struct avl_q_item {
-	struct attr_value_list *av_list;
-	TAILQ_ENTRY(avl_q_item) entry;
-};
-TAILQ_HEAD(avl_q, avl_q_item);
-struct ldmsd_plugin {
-	char name[LDMSD_MAX_PLUGIN_NAME_LEN];
-	struct avl_q avl_q;
-	struct avl_q kwl_q;
+typedef struct ldmsd_plugin {
+	char name[LDMSD_MAX_PLUGIN_NAME_LEN]; /* plugin name (e.g. meminfo) */
+	char *libpath;
+	const char *inst_name;	/* Plugin instance name (i.e. containing config object) */
+	void *context;		/* Extra memory allocated by plugin instance creation */
+	size_t context_size;	/* Informs instance creation of cfg object context size */
 	enum ldmsd_plugin_type {
 		LDMSD_PLUGIN_OTHER = 0,
 		LDMSD_PLUGIN_SAMPLER,
-		LDMSD_PLUGIN_STORE
+		LDMSD_PLUGIN_STORE,
+		LDMSD_PLUGIN_AUTH,
+		LDMSD_PLUGIN_DECOMP
 	} type;
-	struct ldmsd_plugin_cfg *pi;
+	enum ldmsd_plugin_type (*get_type)(struct ldmsd_plugin *self);
 	int (*config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl);
 	void (*term)(struct ldmsd_plugin *self);
 	const char *(*usage)(struct ldmsd_plugin *self);
-};
+} *ldmsd_plugin_t;
 
-struct ldmsd_sampler {
+struct ldmsd_store {
 	struct ldmsd_plugin base;
-	int (*sample)(struct ldmsd_sampler *self);
+	ldmsd_store_handle_t (*open)(struct ldmsd_store *s,
+				    const char *container, const char *schema,
+				    struct ldmsd_strgp_metric_list *metric_list,
+				    void *ucontext);
+	void (*close)(ldmsd_store_handle_t sh);
+	int (*flush)(ldmsd_store_handle_t sh);
+	void *(*get_context)(ldmsd_store_handle_t sh);
+	int (*store)(ldmsd_store_handle_t sh, ldms_set_t set, int *, size_t count);
+	int (*commit)(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int row_count);
 };
 
-struct ldmsd_plugin_cfg {
-	void *handle;
-	char *name;
-	char *libpath;
+typedef struct ldmsd_sampler {
+	struct ldmsd_plugin base;
+	ldms_set_t (*get_set)(struct ldmsd_sampler *self);
+	int (*sample)(struct ldmsd_sampler *self);
+} *ldmsd_sampler_plugin_t;
+
+struct ldmsd_store_inst {
+	struct ldmsd_cfgobj cfg;
+	struct ldmsd_store *api;
+};
+
+typedef struct ldmsd_sampler_inst *ldmsd_sampler_t;
+typedef struct ldmsd_sampler_set {
+	ldms_set_t set;
+	ldmsd_sampler_t sampler;
+	LIST_ENTRY(ldmsd_sampler_set) entry;
+} *ldmsd_sampler_set_t;
+
+struct ldmsd_sampler_inst {
+	struct ldmsd_cfgobj cfg;
+	struct ldmsd_sampler *api;
 	unsigned long sample_interval_us;
 	long sample_offset_us;
 	int thread_id;
-	int ref_count;
-	union {
-		struct ldmsd_plugin *plugin;
-		struct ldmsd_sampler *sampler;
-		struct ldmsd_store *store;
-	};
-	struct timeval timeout;
-	pthread_mutex_t lock;
 	ovis_scheduler_t os;
 	struct ovis_event_s oev;
-	LIST_ENTRY(ldmsd_plugin_cfg) entry;
+
+	/* List of all sets associated with this configuration. See
+	 * ldmsd_set_register
+	 */
+	LIST_HEAD(, ldmsd_sampler_set) set_list;
 };
-LIST_HEAD(plugin_list, ldmsd_plugin_cfg);
 
 #define LDMSD_DEFAULT_SAMPLE_INTERVAL 1000000
 /** Metric name for component ids (u64). */
@@ -986,9 +1019,12 @@ LIST_HEAD(plugin_list, ldmsd_plugin_cfg);
 /** Metric name for job id number */
 #define LDMSD_JOBID "job_id"
 
-extern void ldmsd_config_cleanup(void);
-extern int ldmsd_config_init(char *name);
-struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name);
+ldmsd_sampler_t ldmsd_sampler_alloc(const char *name,
+					struct ldmsd_sampler *api,
+					ldmsd_cfgobj_del_fn_t __del,
+					uid_t uid, gid_t gid, int perm);
+
+void ldmsd_sampler_free(struct ldmsd_sampler_inst *samp);
 
 /**
  * \brief ldmsd_set_register
@@ -1038,22 +1074,15 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
  * An \c ldms_store manages Metric Series. A Metric Series is a named,
  * grouped, and time ordered series of metric samples. A Metric Series
  * is indexed by Component ID, and Time.
- *
  */
-struct ldmsd_store {
-	struct ldmsd_plugin base;
-	void *ucontext;
-	ldmsd_store_handle_t (*open)(struct ldmsd_store *s,
-				    const char *container, const char *schema,
-				    struct ldmsd_strgp_metric_list *metric_list,
-				    void *ucontext);
-	void (*close)(ldmsd_store_handle_t sh);
-	int (*flush)(ldmsd_store_handle_t sh);
-	void *(*get_context)(ldmsd_store_handle_t sh);
-	int (*store)(ldmsd_store_handle_t sh, ldms_set_t set, int *, size_t count);
 
-	int (*commit)(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int row_count);
-};
+ldmsd_store_t ldmsd_store_alloc(const char *name,
+				struct ldmsd_store *store,
+				ldmsd_cfgobj_del_fn_t __del,
+				uid_t uid, gid_t gid, int perm);
+
+void ldmsd_store_free(ldmsd_store_t store);
+
 
 /**
  * \brief Get the security context (uid, gid) of the daemon.
@@ -1063,30 +1092,30 @@ struct ldmsd_store {
 void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt);
 
 static inline ldmsd_store_handle_t
-ldmsd_store_open(struct ldmsd_store *store,
+ldmsd_store_open(ldmsd_store_t store,
 		const char *container, const char *schema,
 		struct ldmsd_strgp_metric_list *metric_list,
 		void *ucontext)
 {
-	return store->open(store, container, schema, metric_list, ucontext);
+	return store->api->open(store->api, container, schema, metric_list, ucontext);
 }
 
-static inline void *ldmsd_store_get_context(struct ldmsd_store *store,
+static inline void *ldmsd_store_get_context(ldmsd_store_t store,
 					    ldmsd_store_handle_t sh)
 {
-	return store->get_context(sh);
+	return store->api->get_context(sh);
 }
 
 static inline void
-ldmsd_store_flush(struct ldmsd_store *store, ldmsd_store_handle_t sh)
+ldmsd_store_flush(ldmsd_store_t store, ldmsd_store_handle_t sh)
 {
-	store->flush(sh);
+	store->api->flush(sh);
 }
 
 static inline void
-ldmsd_store_close(struct ldmsd_store *store, ldmsd_store_handle_t sh)
+ldmsd_store_close(ldmsd_store_t store, ldmsd_store_handle_t sh)
 {
-	store->close(sh);
+	store->api->close(sh);
 }
 
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)();
@@ -1160,7 +1189,6 @@ char *ldmsd_get_max_mem_sz_str();
 
 /** Configuration object management */
 void ldmsd_cfgobj___del(ldmsd_cfgobj_t obj);
-void ldmsd_cfgobj_init(void);
 void ldmsd_cfg_lock(ldmsd_cfgobj_type_t type);
 void ldmsd_cfg_unlock(ldmsd_cfgobj_type_t type);
 void ldmsd_cfgobj_lock(ldmsd_cfgobj_t obj);
@@ -1174,14 +1202,38 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 					  uid_t uid,
 					  gid_t gid,
 					  int perm);
-ldmsd_cfgobj_t ldmsd_cfgobj_get(ldmsd_cfgobj_t obj);
-void ldmsd_cfgobj_put(ldmsd_cfgobj_t obj);
+#define ldmsd_cfgobj_get(o, name) ({ \
+		if (o) \
+			ref_get(&(o)->ref, name); \
+		(o); \
+	})
 int ldmsd_cfgobj_refcount(ldmsd_cfgobj_t obj);
+void ldmsd_cfgobj_put(ldmsd_cfgobj_t obj, const char *ref_name);
 ldmsd_cfgobj_t ldmsd_cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
 void ldmsd_cfgobj_del(const char *name, ldmsd_cfgobj_type_t type);
 ldmsd_cfgobj_t ldmsd_cfgobj_first(ldmsd_cfgobj_type_t type);
 ldmsd_cfgobj_t ldmsd_cfgobj_next(ldmsd_cfgobj_t obj);
 int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt);
+int ldmsd_cfgobj_add(ldmsd_cfgobj_t obj);
+void ldmsd_cfgobj_rm(ldmsd_cfgobj_t obj);
+
+ldmsd_sampler_t ldmsd_sampler_find(const char *name);
+#define ldmsd_sampler_get(_s_, _r_) (ldmsd_sampler_t)ldmsd_cfgobj_get(&(_s_)->cfg, _r_)
+#define ldmsd_sampler_put(_s_, _r_) ldmsd_cfgobj_put(&(_s_)->cfg, _r_)
+#define ldmsd_store_get(_s_, _r_) (ldmsd_store_t)ldmsd_cfgobj_get(&(_s_)->cfg, _r_)
+#define ldmsd_store_put(_s_, _r_) ldmsd_cfgobj_put(&(_s_)->cfg, _r_)
+ldmsd_sampler_t ldmsd_sampler_first();
+ldmsd_sampler_t ldmsd_sampler_next(ldmsd_sampler_t);
+void ldmsd_sampler_lock(ldmsd_sampler_t samp);
+void ldmsd_sampler_unlock(ldmsd_sampler_t samp);
+extern int ldmsd_sampler_start(char *name, char *interval, char *offset);
+extern int ldmsd_sampler_stop(char *name);
+
+ldmsd_store_t ldmsd_store_find(const char *name);
+ldmsd_store_t ldmsd_store_first();
+ldmsd_store_t ldmsd_store_next(ldmsd_store_t store);
+void ldmsd_store_lock(ldmsd_store_t store);
+void ldmsd_store_unlock(ldmsd_store_t store);
 
 #define LDMSD_CFGOBJ_FOREACH(obj, type) \
 	for ((obj) = ldmsd_cfgobj_first(type); (obj);  \
@@ -1217,12 +1269,12 @@ static inline void ldmsd_prdcr_lock(ldmsd_prdcr_t prdcr) {
 static inline void ldmsd_prdcr_unlock(ldmsd_prdcr_t prdcr) {
 	ldmsd_cfgobj_unlock(&prdcr->obj);
 }
-static inline ldmsd_prdcr_t ldmsd_prdcr_get(ldmsd_prdcr_t prdcr) {
-	ldmsd_cfgobj_get(&prdcr->obj);
+static inline ldmsd_prdcr_t ldmsd_prdcr_get(ldmsd_prdcr_t prdcr, char *name) {
+	ldmsd_cfgobj_get(&prdcr->obj, name);
 	return prdcr;
 }
-static inline void ldmsd_prdcr_put(ldmsd_prdcr_t prdcr) {
-	ldmsd_cfgobj_put(&prdcr->obj);
+static inline void ldmsd_prdcr_put(ldmsd_prdcr_t prdcr, char *name) {
+	ldmsd_cfgobj_put(&prdcr->obj, name);
 }
 static inline ldmsd_prdcr_t ldmsd_prdcr_find(const char *name)
 {
@@ -1280,12 +1332,12 @@ ldmsd_name_match_t ldmsd_updtr_match_first(ldmsd_updtr_t updtr);
 ldmsd_name_match_t ldmsd_updtr_match_next(ldmsd_name_match_t match);
 ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_first(ldmsd_updtr_t updtr);
 ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_next(ldmsd_prdcr_ref_t ref);
-static inline ldmsd_updtr_t ldmsd_updtr_get(ldmsd_updtr_t updtr) {
-	ldmsd_cfgobj_get(&updtr->obj);
+static inline ldmsd_updtr_t ldmsd_updtr_get(ldmsd_updtr_t updtr, const char *name) {
+	ldmsd_cfgobj_get(&updtr->obj, name);
 	return updtr;
 }
-static inline void ldmsd_updtr_put(ldmsd_updtr_t updtr) {
-	ldmsd_cfgobj_put(&updtr->obj);
+static inline void ldmsd_updtr_put(ldmsd_updtr_t updtr, const char *name) {
+	ldmsd_cfgobj_put(&updtr->obj, name);
 }
 static inline void ldmsd_updtr_lock(ldmsd_updtr_t updtr) {
 	ldmsd_cfgobj_lock(&updtr->obj);
@@ -1332,12 +1384,12 @@ ldmsd_name_match_t ldmsd_strgp_prdcr_first(ldmsd_strgp_t strgp);
 ldmsd_name_match_t ldmsd_strgp_prdcr_next(ldmsd_name_match_t match);
 ldmsd_strgp_metric_t ldmsd_strgp_metric_first(ldmsd_strgp_t strgp);
 ldmsd_strgp_metric_t ldmsd_strgp_metric_next(ldmsd_strgp_metric_t metric);
-static inline ldmsd_strgp_t ldmsd_strgp_get(ldmsd_strgp_t strgp) {
-	ldmsd_cfgobj_get(&strgp->obj);
+static inline ldmsd_strgp_t ldmsd_strgp_get(ldmsd_strgp_t strgp, char *name) {
+	ldmsd_cfgobj_get(&strgp->obj, name);
 	return strgp;
 }
-static inline void ldmsd_strgp_put(ldmsd_strgp_t strgp) {
-	ldmsd_cfgobj_put(&strgp->obj);
+static inline void ldmsd_strgp_put(ldmsd_strgp_t strgp, char* name) {
+	ldmsd_cfgobj_put(&strgp->obj, name);
 }
 static inline void ldmsd_strgp_lock(ldmsd_strgp_t strgp) {
 	ldmsd_cfgobj_lock(&strgp->obj);
@@ -1395,7 +1447,6 @@ int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t));
 
 int ldmsd_ourcfg_start_proc();
 
-
 /** Task scheduling */
 void ldmsd_task_init(ldmsd_task_t task);
 int ldmsd_task_start(ldmsd_task_t task,
@@ -1405,14 +1456,6 @@ int ldmsd_task_resched(ldmsd_task_t task,
 		     int flags, long sched_us, long offset_us);
 void ldmsd_task_stop(ldmsd_task_t task);
 void ldmsd_task_join(ldmsd_task_t task);
-
-void ldmsd_set_tree_lock();
-void ldmsd_set_tree_unlock();
-ldmsd_plugin_set_list_t ldmsd_plugin_set_list_first();
-ldmsd_plugin_set_list_t ldmsd_plugin_set_list_next(ldmsd_plugin_set_list_t list);
-ldmsd_plugin_set_list_t ldmsd_plugin_set_list_find(const char *plugin_name);
-ldmsd_plugin_set_t ldmsd_plugin_set_first(const char *plugin_name);
-ldmsd_plugin_set_t ldmsd_plugin_set_next(ldmsd_plugin_set_t set);
 
 int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us);
 int ldmsd_set_update_hint_get(ldms_set_t set, long *interva_us, long *offset_us);

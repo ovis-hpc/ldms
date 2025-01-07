@@ -169,7 +169,7 @@ struct req_str_id req_str_id_table[] = {
 	{  "updtr_status",       LDMSD_UPDTR_STATUS_REQ  },
 	{  "updtr_stop",         LDMSD_UPDTR_STOP_REQ  },
 	{  "updtr_task",         LDMSD_UPDTR_TASK_REQ  },
-	{  "usage",              LDMSD_PLUGN_LIST_REQ  },
+	{  "usage",              LDMSD_PLUGN_USAGE_REQ  },
 	{  "version",            LDMSD_VERSION_REQ  },
 	{  "worker_threads",     LDMSD_WORKER_THR_SET_REQ  },
 	{  "xprt_stats",         LDMSD_XPRT_STATS_REQ  },
@@ -316,7 +316,7 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_PLUGN_LOAD_REQ   : return "PLUGN_LOAD_REQ";
 	case LDMSD_PLUGN_TERM_REQ   : return "PLUGN_TERM_REQ";
 	case LDMSD_PLUGN_CONFIG_REQ : return "PLUGN_CONFIG_REQ";
-	case LDMSD_PLUGN_LIST_REQ   : return "PLUGN_LIST_REQ";
+	case LDMSD_PLUGN_USAGE_REQ   : return "PLUGN_USAGE_REQ";
 	case LDMSD_PLUGN_SETS_REQ   : return "PLUGN_SETS_REQ";
 
 	case LDMSD_SET_UDATA_REQ         : return "SET_UDATA_REQ";
@@ -1164,6 +1164,8 @@ char *ldmsd_req_attr_str_value_get_by_id(ldmsd_req_ctxt_t req, uint32_t attr_id)
 {
 	ldmsd_req_attr_t attr = ldmsd_req_attr_get_by_id(req->req_buf, attr_id);
 	if (!attr)
+		return NULL;
+	if (attr->attr_value[0] == '\0')
 		return NULL;
 	return str_repl_env_vars((char *)attr->attr_value);
 }

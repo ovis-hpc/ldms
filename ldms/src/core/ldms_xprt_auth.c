@@ -152,8 +152,15 @@ void ldms_xprt_auth_end(ldms_t xprt, int result)
 int ldms_access_check(ldms_t x, uint32_t acc, uid_t obj_uid, gid_t obj_gid,
 		      int obj_perm)
 {
+	int rc;
 	struct ldms_cred rmt;
 	ldms_xprt_cred_get(x, NULL, &rmt);
-	return ovis_access_check(rmt.uid, rmt.gid, acc,
+	rc = ovis_access_check(rmt.uid, rmt.gid, acc,
 				obj_uid, obj_gid, obj_perm);
+	if (rc) {
+		ovis_log(xlog, OVIS_LINFO,
+			"Access denied to user %d:%d:%o for object %d:%d:%o.\n",
+			rmt.uid, rmt.gid, acc, obj_uid, obj_gid, obj_perm);
+	}
+	return rc;
 }

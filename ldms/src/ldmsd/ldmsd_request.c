@@ -74,9 +74,6 @@
 #include "ldms_xprt.h"
 #include "ldmsd.h"
 #include "ldmsd_request.h"
-#if 0
-#include "ldmsd_stream.h"
-#endif
 
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 /*
@@ -237,7 +234,7 @@ static int plugn_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_load_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_term_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_config_handler(ldmsd_req_ctxt_t req_ctxt);
-static int plugn_list_handler(ldmsd_req_ctxt_t req_ctxt);
+static int plugn_usage_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_sets_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_udata_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_udata_regex_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -491,8 +488,8 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_PLUGN_CONFIG_REQ] = {
 		LDMSD_PLUGN_CONFIG_REQ, plugn_config_handler, XUG | MOD
 	},
-	[LDMSD_PLUGN_LIST_REQ] = {
-		LDMSD_PLUGN_LIST_REQ, plugn_list_handler, XALL
+	[LDMSD_PLUGN_USAGE_REQ] = {
+		LDMSD_PLUGN_USAGE_REQ, plugn_usage_handler, XALL
 	},
 	[LDMSD_PLUGN_SETS_REQ] = {
 		LDMSD_PLUGN_SETS_REQ, plugn_sets_handler, XALL
@@ -2337,105 +2334,6 @@ int prdcr_stream_status_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = ENOTSUP;
 	ldmsd_send_req_response(reqc, "LDMSD_PRDCR_STREAM_STATUS_REQ is deprecated.");
 	return 0;
-#if 0
-	int rc;
-	char *prdcr_regex;
-	size_t cnt = 0;
-	struct ldmsd_sec_ctxt sctxt;
-	regex_t regex;
-	ldmsd_prdcr_t prdcr;
-	struct pstream_status_regex_ctxt *ctxt;
-	struct ldmsd_str_ent *pname, *nxt_pname;
-
-	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
-	if (!prdcr_regex) {
-		rc = EINVAL;
-		ctxt = NULL;
-		cnt = snprintf(reqc->line_buf, reqc->line_len,
-				"The attribute 'regex' is required by prdcr_stop_regex.");
-		goto send_resp_code;
-	}
-	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
-
-	ctxt = calloc(1, sizeof(*ctxt));
-	if (!ctxt)
-		return ENOMEM;
-	TAILQ_INIT(&ctxt->prdcr_list);
-
-	ctxt->stream_dict = json_entity_new(JSON_DICT_VALUE);
-	if (!ctxt->stream_dict) {
-		rc = ENOMEM;
-		goto send_resp_code;
-	}
-	pthread_mutex_init(&ctxt->lock, NULL);
-
-	rc = ldmsd_compile_regex(&regex, prdcr_regex, reqc->line_buf, reqc->line_len);
-	if (rc)
-		goto send_resp_code;
-
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	/* Count the producers matched the regex */
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
-		if (rc)
-			continue;
-		if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED)
-			continue;
-		pname = malloc(sizeof(*pname));
-		if (!pname) {
-			rc = ENOMEM;
-			goto free_ctxt;
-		}
-		pname->str = strdup(prdcr->obj.name);
-		if (!pname->str) {
-			rc = ENOMEM;
-			goto free_ctxt;
-		}
-		TAILQ_INSERT_TAIL(&ctxt->prdcr_list, pname, entry);
-	}
-
-	/* Forward the request to the connected producers */
-	pname = TAILQ_FIRST(&ctxt->prdcr_list);
-	prdcr = ldmsd_prdcr_first();
-	while (pname && prdcr) {
-		if (0 != strcmp(pname->str, prdcr->obj.name))
-			goto next_prdcr;
-
-		nxt_pname = TAILQ_NEXT(pname, entry);
-		rc = __prdcr_stream_status(prdcr, reqc, ctxt, pname);
-		if (rc) {
-			/* Failed to forward the request.
-			 * Remove the producer name from the list
-			 */
-			TAILQ_REMOVE(&ctxt->prdcr_list, pname, entry);
-			free(pname->str);
-			free(pname);
-		}
-		pname = nxt_pname;
-
-		next_prdcr:
-			prdcr = ldmsd_prdcr_next(prdcr);
-	}
-
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	regfree(&regex);
-	/* Don't reply now. LDMSD will reply when receiving the response from the producers. */
-	if (TAILQ_EMPTY(&ctxt->prdcr_list)) {
-		snprintf(reqc->line_buf, reqc->line_len, "No matched producers");
-		reqc->errcode = ENOENT;
-		rc = 0;
-		goto free_ctxt;
-	}
-	return 0;
-
-send_resp_code:
-	reqc->errcode = rc;
-free_ctxt:
-	free(ctxt);
-	ldmsd_send_req_response(reqc, reqc->line_buf);
-	free(prdcr_regex);
-	return rc;
-#endif
 }
 
 int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdcr_cnt)
@@ -2569,8 +2467,7 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 			sizeof(uint32_t), LDMSD_REQ_EOM_F);
 out:
 	free(name);
-	if (prdcr)
-		ldmsd_prdcr_put(prdcr);
+	ldmsd_prdcr_put(prdcr, "find");
 	return rc;
 }
 
@@ -2721,8 +2618,6 @@ static int prdcr_set_status_handler(ldmsd_req_ctxt_t reqc)
 	return rc;
 }
 
-int strgp_decomp_init(ldmsd_strgp_t strgp, ldmsd_req_ctxt_t req);
-
 static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *attr_name, *name, *plugin, *container, *schema, *interval, *regex;
@@ -2795,8 +2690,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 
-	struct ldmsd_plugin_cfg *store;
-	store = ldmsd_get_plugin(plugin);
+	ldmsd_store_t store = ldmsd_store_find(plugin);
 	if (!store) {
 		reqc->errcode = ENOENT;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -2822,12 +2716,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 			goto enomem;
 	}
 
-	__atomic_add_fetch(&store->ref_count, 1, __ATOMIC_SEQ_CST); /* Release in strgp_del */
-	strgp->store = store->store;
-	strgp->plugin_name = strdup(plugin);
-	if (!strgp->plugin_name)
-		goto enomem;
-
+	strgp->store = store; /* cfgobj ref is released in strgp_del */
 
 	char regex_err[512] = "";
 	if (regex) {
@@ -2854,11 +2743,10 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 		if (!strgp->decomp_path)
 			goto enomem;
 		/* reqc->errcode, reqc->line_buf will be populated if there is an error */
-		if (strgp_decomp_init(strgp, reqc)) {
+		/* protected by strgp lock */
+		rc = ldmsd_decomp_config(strgp, strgp->decomp_path, reqc);
+		if (rc)
 			goto send_reply;
-		}
-	} else {
-		strgp->decomp_path = NULL;
 	}
 	if (reqc->line_buf[0] == '\0' || reqc->line_buf[0] == '0')
 		__dlog(DLOG_CFGOK, "strgp_add name=%s plugin=%s container=%s"
@@ -3342,7 +3230,7 @@ int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
 		       strgp->container,
 		       ((strgp->schema)?strgp->schema:"-"),
 		       ((strgp->regex_s)?strgp->regex_s:"-"),
-		       strgp->plugin_name,
+		       strgp->obj.name,
 		       strgp->flush_interval.tv_sec,
 		       (strgp->flush_interval.tv_nsec/1000),
 		       ldmsd_strgp_state_str(strgp->state),
@@ -3459,7 +3347,7 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 								LDMSD_REQ_EOM_F);
 out:
 	free(name);
-	ldmsd_strgp_put(strgp);
+	ldmsd_strgp_put(strgp, "find");
 	return rc;
 }
 
@@ -4094,7 +3982,7 @@ static int updtr_match_list_handler(ldmsd_req_ctxt_t reqc)
 out:
 	free(name);
 	if (updtr)
-		ldmsd_updtr_put(updtr);
+		ldmsd_updtr_put(updtr, "find");
 	return rc;
 }
 
@@ -4426,8 +4314,7 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 								LDMSD_REQ_EOM_F);
 out:
 	free(name);
-	if (updtr)
-		ldmsd_updtr_put(updtr);
+	ldmsd_updtr_put(updtr, "find");
 	return rc;
 }
 
@@ -4562,7 +4449,7 @@ err:
 out:
 	free(name);
 	if (updtr)
-		ldmsd_updtr_put(updtr);
+		ldmsd_updtr_put(updtr, "find");
 	return rc;
 }
 
@@ -4722,8 +4609,7 @@ intr_err:
 				"interval error", 14);
 out:
 	free(name);
-	if (prdcr)
-		ldmsd_prdcr_put(prdcr);
+	ldmsd_prdcr_put(prdcr, "find");
 	return rc;
 }
 
@@ -5075,23 +4961,17 @@ static char *plugn_state_str(enum ldmsd_plugin_type type)
 	return "unknown";
 }
 
-extern int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset);
-extern int ldmsd_stop_sampler(char *plugin);
-extern int ldmsd_load_plugin(char *plugin_name, char *errstr, size_t errlen);
+extern int ldmsd_load_plugin(char *inst_name, char *plugin_name, char *errstr, size_t errlen);
 extern int ldmsd_term_plugin(char *plugin_name);
-extern int ldmsd_config_plugin(char *plugin_name,
-			struct attr_value_list *_av_list,
-			struct attr_value_list *_kw_list);
-
 static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *plugin_name, *interval_us, *offset, *attr_name;
-	plugin_name = interval_us = offset = NULL;
+	char *name, *interval_us, *offset, *attr_name;
+	name = interval_us = offset = NULL;
 	size_t cnt = 0;
 
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!plugin_name)
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name)
 		goto einval;
 	attr_name = "interval";
 	interval_us = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
@@ -5100,9 +4980,9 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 
 	offset = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
 
-	reqc->errcode = ldmsd_start_sampler(plugin_name, interval_us, offset);
+	reqc->errcode = ldmsd_sampler_start(name, interval_us, offset);
 	if (reqc->errcode == 0) {
-		__dlog(DLOG_CFGOK, "start name=%s%s%s%s%s\n", plugin_name,
+		__dlog(DLOG_CFGOK, "start name=%s%s%s%s%s\n", name,
 			interval_us ? " interval=" : "",
 			interval_us ? interval_us : "",
 			offset ? " offset=" : "", offset ? offset : "");
@@ -5117,10 +4997,10 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 				"The specified plugin is not a sampler.");
 	} else if (reqc->errcode == ENOENT) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Sampler '%s' not found.", plugin_name);
+				"Sampler '%s' not found.", name);
 	} else if (reqc->errcode == EBUSY) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Sampler '%s' is already running.", plugin_name);
+				"Sampler '%s' is already running.", name);
 	} else if (reqc->errcode == EDOM) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -5133,7 +5013,7 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 	} else {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Failed to start the sampler '%s'.", plugin_name);
+				"Failed to start the sampler '%s'.", name);
 	}
 	goto send_reply;
 
@@ -5143,7 +5023,7 @@ einval:
 			"The attribute '%s' is required by start.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	free(plugin_name);
+	free(name);
 	free(interval_us);
 	free(offset);
 	return 0;
@@ -5151,34 +5031,33 @@ send_reply:
 
 static int plugn_stop_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *plugin_name, *attr_name;
-	plugin_name = NULL;
+	char *name, *attr_name;
 	size_t cnt = 0;
 
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!plugin_name)
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name)
 		goto einval;
 
-	reqc->errcode = ldmsd_stop_sampler(plugin_name);
+	reqc->errcode = ldmsd_sampler_stop(name);
 	if (reqc->errcode == 0) {
-		__dlog(DLOG_CFGOK, "stop name=%s\n", plugin_name);
+		__dlog(DLOG_CFGOK, "stop name=%s\n", name);
 		goto send_reply;
 	} else if (reqc->errcode == ENOENT) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Sampler '%s' not found.", plugin_name);
+				"Sampler '%s' not found.", name);
 	} else if (reqc->errcode == EINVAL) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The plugin '%s' is not a sampler.",
-				plugin_name);
+				name);
 	} else if (reqc->errcode == -EBUSY) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The sampler '%s' is not running.", plugin_name);
+				"The sampler '%s' is not running.", name);
 	} else {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Failed to stop sampler '%s'", plugin_name);
+				"Failed to stop sampler '%s'", name);
 	}
 	goto send_reply;
 
@@ -5188,42 +5067,67 @@ einval:
 	reqc->errcode = EINVAL;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	free(plugin_name);
+	free(name);
 	return 0;
 }
 
 int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 {
-	extern struct plugin_list plugin_list;
-	struct ldmsd_plugin_cfg *p;
 	int rc, count;
+	ldmsd_sampler_t samp;
+	ldmsd_store_t store;
 	reqc->errcode = 0;
 
 	rc = linebuf_printf(reqc, "[");
 	if (rc)
 		return rc;
 	count = 0;
-	LIST_FOREACH(p, &plugin_list, entry) {
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_SAMPLER);
+	for (samp = ldmsd_sampler_first(); samp; samp = ldmsd_sampler_next(samp)) {
 		if (count) {
 			rc = linebuf_printf(reqc, ",\n");
-			if (rc)
-				return rc;
+			if (rc) {
+				ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
+				goto err;
+			}
 		}
-
 		count++;
 		rc = linebuf_printf(reqc,
-			       "{\"name\":\"%s\",\"type\":\"%s\","
-			       "\"sample_interval_us\":%ld,"
-			       "\"sample_offset_us\":%ld,"
+			       "{\"name\":\"%s\",\"instance\":\"%s\",\"type\":\"%s\","
 			       "\"libpath\":\"%s\"}",
-			       p->plugin->name,
-			       plugn_state_str(p->plugin->type),
-			       p->sample_interval_us, p->sample_offset_us,
-			       p->libpath);
-		if (rc)
-			return rc;
+			       samp->api->base.name, samp->cfg.name,
+			       plugn_state_str(samp->api->base.type),
+			       samp->api->base.libpath);
+		if (rc) {
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
+			goto err;
+		}
 	}
-	rc = linebuf_printf(reqc, "]");
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
+	for (store = ldmsd_store_first(); store; store = ldmsd_store_next(store)) {
+		if (count) {
+			rc = linebuf_printf(reqc, ",\n");
+			if (rc) {
+				ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
+				goto err;
+			}
+		}
+		count++;
+		rc = linebuf_printf(reqc,
+			       "{\"name\":\"%s\",\"instance\":\"%s\",\"type\":\"%s\","
+			       "\"libpath\":\"%s\"}",
+			       store->api->base.name, store->cfg.name,
+			       plugn_state_str(store->api->base.type),
+			       store->api->base.libpath);
+		if (rc) {
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
+			goto err;
+		}
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
+	return linebuf_printf(reqc, "]");
+err:
 	return rc;
 }
 
@@ -5234,8 +5138,12 @@ static int plugn_status_handler(ldmsd_req_ctxt_t reqc)
 
 	__dlog(DLOG_QUERY, "plugn_status\n");
 	rc = __plugn_status_json_obj(reqc);
-	if (rc)
+	if (rc) {
+		reqc->errcode = rc;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					"Error %d preparing plugin status.", rc);
 		return rc;
+	}
 
 	attr.discrim = 1;
 	attr.attr_len = reqc->line_off;
@@ -5256,23 +5164,27 @@ static int plugn_status_handler(ldmsd_req_ctxt_t reqc)
 
 static int plugn_load_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *plugin_name, *attr_name;
-	plugin_name = NULL;
+	char *name, *inst, *attr_name;
+	name = NULL;
+	inst = NULL;
 	size_t cnt = 0;
 
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!plugin_name) {
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
 		ovis_log(config_log, OVIS_LERROR, "load plugin called without name=$plugin");
 		goto einval;
 	}
 
-	reqc->errcode = ldmsd_load_plugin(plugin_name, reqc->line_buf,
-							reqc->line_len);
+	attr_name = "inst";
+	inst = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
+	reqc->errcode = ldmsd_load_plugin(inst, name,
+					reqc->line_buf,
+					reqc->line_len);
 	if (reqc->errcode)
 		cnt = strlen(reqc->line_buf) + 1;
 	else
-		__dlog(DLOG_CFGOK, "load name=%s\n", plugin_name);
+		__dlog(DLOG_CFGOK, "load name=%s inst=%s\n", name, inst);
 	goto send_reply;
 
 einval:
@@ -5281,7 +5193,8 @@ einval:
 			"The attribute '%s' is required by load.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	free(plugin_name);
+	free(name);
+	free(inst);
 	return 0;
 }
 
@@ -5327,18 +5240,39 @@ send_reply:
 
 static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *plugin_name, *config_attr, *attr_name;
-	plugin_name = config_attr = NULL;
+	char *inst_name, *config_attr, *attr_name;
+	inst_name = config_attr = NULL;
 	struct attr_value_list *av_list = NULL;
 	struct attr_value_list *kw_list = NULL;
+	struct ldmsd_plugin *api;
+	ldmsd_cfgobj_t cfg;
 	char *attr_copy = NULL;
 	size_t cnt = 0;
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!plugin_name)
+	inst_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!inst_name)
 		goto einval;
+	ldmsd_sampler_t sampler = ldmsd_sampler_find(inst_name);
+	if (!sampler) {
+		ldmsd_store_t store = ldmsd_store_find(inst_name);
+		if (!store) {
+			/* See if there is a */
+			reqc->errcode = ENOENT;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"The specified plugin instance '%s' does not exist.",
+					inst_name);
+			goto send_reply;
+		}
+		api = &store->api->base;
+		cfg = &store->cfg;
+		ldmsd_store_put(store, "find");
+	} else {
+		api = &sampler->api->base;
+		cfg = &sampler->cfg;
+		ldmsd_sampler_put(sampler, "find");
+	}
 	config_attr = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
 	if (!config_attr) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -5383,13 +5317,17 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
-	reqc->errcode = ldmsd_config_plugin(plugin_name, av_list, kw_list);
+	free(cfg->avl_str);
+	free(cfg->kvl_str);
+	cfg->avl_str = av_to_string(av_list, 0);
+	cfg->kvl_str = av_to_string(kw_list, 0);
+	reqc->errcode = api->config(api, kw_list, av_list);
 	if (reqc->errcode) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Plugin '%s' configuration error.",
-				plugin_name);
+				"Error %d configuring plugin instance '%s'.",
+				reqc->errcode, inst_name);
 	} else {
-		__dlog(DLOG_CFGOK, "config name=%s %s\n", plugin_name,
+		__dlog(DLOG_CFGOK, "config name=%s %s\n", inst_name,
 			attr_copy);
 	}
 	goto send_reply;
@@ -5402,7 +5340,7 @@ einval:
 	goto send_reply;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	free(plugin_name);
+	free(inst_name);
 	free(config_attr);
 	av_free(kw_list);
 	av_free(av_list);
@@ -5410,30 +5348,55 @@ send_reply:
 	return 0;
 }
 
-extern struct plugin_list plugin_list;
-int __plugn_list_string(ldmsd_req_ctxt_t reqc)
+static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 {
 	char *name = NULL;
 	int rc, count = 0;
-	struct ldmsd_plugin_cfg *p;
+	ldmsd_sampler_t samp;
+	ldmsd_store_t store;
 	rc = 0;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 
-	LIST_FOREACH(p, &plugin_list, entry) {
-		if (name && (0 != strcmp(name, p->name)))
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_SAMPLER);
+	for (samp = ldmsd_sampler_first(); samp;
+			samp = ldmsd_sampler_next(samp)) {
+		if (name && (0 != strcmp(name, samp->cfg.name)))
 			continue;
 
-		if (p->plugin->usage) {
+		if (samp->api->base.usage) {
 			rc = linebuf_printf(reqc, "%s\n%s",
-					p->name, p->plugin->usage(p->plugin));
+					samp->cfg.name, samp->api->base.usage(&samp->api->base));
 		} else {
-			rc = linebuf_printf(reqc, "%s\n", p->name);
+			rc = linebuf_printf(reqc, "%s\n", samp->cfg.name);
 		}
 		if (rc)
 			goto out;
 		count++;
 	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
+	if (name && (0 == count)) {
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+				"Plugin '%s' not loaded.", name);
+		reqc->errcode = ENOENT;
+	}
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
+	for (store = ldmsd_store_first(); samp;
+			store = ldmsd_store_next(store)) {
+		if (name && (0 != strcmp(name, store->cfg.name)))
+			continue;
+
+		if (store->api->base.usage) {
+			rc = linebuf_printf(reqc, "%s\n%s",
+					store->cfg.name, store->api->base.usage(&store->api->base));
+		} else {
+			rc = linebuf_printf(reqc, "%s\n", store->cfg.name);
+		}
+		if (rc)
+			goto out;
+		count++;
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
 	if (name && (0 == count)) {
 		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 				"Plugin '%s' not loaded.", name);
@@ -5444,13 +5407,13 @@ out:
 	return rc;
 }
 
-static int plugn_list_handler(ldmsd_req_ctxt_t reqc)
+static int plugn_usage_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
 	struct ldmsd_req_attr_s attr;
 
 	__dlog(DLOG_QUERY, "usage\n");
-	rc = __plugn_list_string(reqc);
+	rc = __plugn_usage_string(reqc);
 	if (rc)
 		return rc;
 
@@ -5470,29 +5433,26 @@ static int plugn_list_handler(ldmsd_req_ctxt_t reqc)
 }
 
 /* Caller must hold the set tree lock. */
-int __plugn_sets_json_obj(ldmsd_req_ctxt_t reqc,
-				ldmsd_plugin_set_list_t list)
+static int sampler_sets_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_sampler_t samp)
 {
-	ldmsd_plugin_set_t set;
+	ldmsd_sampler_set_t set;
 	int rc, set_count;
-	set = LIST_FIRST(&list->list);
-	if (!set)
-		return 0;
 	rc = linebuf_printf(reqc,
 			"{"
 			"\"plugin\":\"%s\","
 			"\"sets\":[",
-			set->plugin_name);
+			samp->cfg.name);
 	if (rc)
 		return rc;
 	set_count = 0;
-	LIST_FOREACH(set, &list->list, entry) {
+	LIST_FOREACH(set, &samp->set_list, entry) {
 		if (set_count) {
 			rc = linebuf_printf(reqc, ",");
 			if (rc)
 				return rc;
 		}
-		rc = linebuf_printf(reqc, "\"%s\"", set->inst_name);
+		rc = linebuf_printf(reqc, "\"%s\"",
+			ldms_set_instance_name_get(set->set));
 		if (rc)
 			return rc;
 		set_count++;
@@ -5508,48 +5468,31 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 	int rc = 0;
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
-	ldmsd_plugin_set_list_t list;
-	char *plugin;
-	int plugn_count;
+	char *cfg_name;
+	ldmsd_sampler_t samp = NULL;
+	int comma = 0;
 
-	plugin = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	__dlog(DLOG_QUERY, "plugn_sets%s%s\n", plugin? " name=" : "",
-		plugin ? plugin : "");
-	ldmsd_set_tree_lock();
-	if (plugin) {
-		list = ldmsd_plugin_set_list_find(plugin);
-		if (!list) {
-			cnt = snprintf(reqc->line_buf, reqc->line_len,
-					"No sets registered for the plugin '%s' "
-					"or the plugin isn't loaded",
-					plugin);
-			reqc->errcode = ENOENT;
-			ldmsd_set_tree_unlock();
-			goto err0;
+	cfg_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (cfg_name)
+		samp = ldmsd_sampler_find(cfg_name);
+	else
+		samp = ldmsd_sampler_first();
+	free(cfg_name);
+	while (samp) {
+		if (comma) {
+			rc = linebuf_printf(reqc, ",");
+			if (rc)
+				goto err;
 		}
-		rc = __plugn_sets_json_obj(reqc, list);
+		rc = sampler_sets_json_obj(reqc, samp);
 		if (rc) {
-			ldmsd_set_tree_unlock();
 			goto err;
 		}
-	} else {
-		plugn_count = 0;
-		for (list = ldmsd_plugin_set_list_first(); list;
-				list = ldmsd_plugin_set_list_next(list)) {
-			if (plugn_count) {
-				rc = linebuf_printf(reqc, ",");
-				if (rc)
-					goto err;
-			}
-			rc = __plugn_sets_json_obj(reqc, list);
-			if (rc) {
-				ldmsd_set_tree_unlock();
-				goto err;
-			}
-			plugn_count += 1;
-		}
+		comma = 1;
+		if (cfg_name)
+			break;
+		samp = ldmsd_sampler_next(samp);
 	}
-	ldmsd_set_tree_unlock();
 	cnt = reqc->line_off + 2; /* +2 for '[' and ']'*/
 
 	attr.discrim = 1;
@@ -5558,33 +5501,26 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
-		goto out;
+		goto err;
 
 	rc = ldmsd_append_reply(reqc, "[", 1, 0);
 	if (rc)
-		goto out;
+		goto err;
 	if (reqc->line_off) {
 		rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
 		if (rc)
-			goto out;
+			goto err;
 	}
 	rc = ldmsd_append_reply(reqc, "]", 1, 0);
 	if (rc)
-		goto out;
+		goto err;
 	attr.discrim = 0;
-	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
+	return ldmsd_append_reply(reqc, (char *)&attr.discrim,
 				sizeof(uint32_t), LDMSD_REQ_EOM_F);
-out:
-	free(plugin);
-	return rc;
-
 err:
 	ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, rc,
-						"internal error", 15);
-	goto out;
-err0:
-	ldmsd_send_req_response(reqc, reqc->line_buf);
-	goto out;
+				"internal error", 15);
+	return rc;
 }
 
 extern int ldmsd_set_udata(const char *set_name, const char *metric_name,
@@ -6382,8 +6318,6 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 {
 	FILE *fp = NULL;
 	char *filename = NULL;
-	extern struct plugin_list plugin_list;
-	struct ldmsd_plugin_cfg *p;
 	int rc;
 	int i;
 	char hostname[128], port_no[32];
@@ -6500,42 +6434,35 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	/* Plugins */
-	struct avl_q_item *avl;
-	struct avl_q_item *kwl;
-	LIST_FOREACH(p, &plugin_list, entry) {
-		fprintf(fp, "load name=%s\n", p->name);
-		avl = TAILQ_FIRST(&p->plugin->avl_q);
-		kwl = TAILQ_FIRST(&p->plugin->kwl_q);
-		/* Assume that the lengths of av_list_q and kw_list_q are equal. */
-		while (avl) {
-			fprintf(fp, "config name=%s ", p->name);
-			for (i = 0; i < avl->av_list->count; i++) {
-				struct attr_value *v = &avl->av_list->list[i];
-				if (i > 0)
-					fprintf(fp, " ");
-				fprintf(fp, "%s=%s", v->name, v->value);
-			}
-			for (i = 0; i < kwl->av_list->count; i++) {
-				struct attr_value *k = &kwl->av_list->list[i];
-				if (i > 0)
-					fprintf(fp, " ");
-				fprintf(fp, "%s", k->name);
-			}
-			fprintf(fp, "\n");
-			avl = TAILQ_NEXT(avl, entry);
-			kwl = TAILQ_NEXT(kwl, entry);
-		}
-
-		if (p->plugin->type == LDMSD_PLUGIN_SAMPLER) {
-			if (p->os) {
-				/* Plugin is running. */
-				fprintf(fp, "start name=%s interval=%ld offset=%ld\n",
-					p->plugin->name,
-					p->sample_interval_us,
-					p->sample_offset_us);
-			}
+	ldmsd_store_t store;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
+	for (store = ldmsd_store_first(LDMSD_CFGOBJ_STORE); store;
+			store = ldmsd_store_next(store)) {
+		fprintf(fp, "load name=%s as=%s\n", store->api->base.name, store->api->base.inst_name);
+		if (store->cfg.avl_str || store->cfg.kvl_str)
+			fprintf(fp, "config name=%s %s\n",
+				store->cfg.avl_str ? store->cfg.avl_str : "",
+				store->cfg.kvl_str ? store->cfg.kvl_str : "");
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_SAMPLER);
+	ldmsd_sampler_t samp;
+	for (samp = ldmsd_sampler_first(); samp;
+			samp = ldmsd_sampler_next(samp)) {
+		fprintf(fp, "load name=%s as=%s\n", samp->api->base.name, samp->api->base.inst_name);
+		if (samp->cfg.avl_str || samp->cfg.kvl_str)
+			fprintf(fp, "config name=%s %s\n",
+				samp->cfg.avl_str ? samp->cfg.avl_str : "",
+				samp->cfg.kvl_str ? samp->cfg.kvl_str : "");
+		if (samp->thread_id >= 0) {
+			/* Plugin is running. */
+			fprintf(fp, "start name=%s interval=%ld offset=%ld\n",
+				samp->api->base.inst_name,
+				samp->sample_interval_us,
+				samp->sample_offset_us);
 		}
 	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
 	/*  Updaters */
 	ldmsd_name_match_t match;
 	ldmsd_updtr_t updtr;
@@ -6598,7 +6525,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 			"flush=%ld "
 			"perm=%d",
 			strgp->obj.name,
-			strgp->plugin_name,
+			strgp->store->cfg.name,
 			strgp->container,
 			strgp->flush_interval.tv_sec,
 			strgp->obj.perm);
@@ -8074,217 +8001,11 @@ err_reply:
 	return 0;
 }
 
-#if 0
-static int __on_republish_resp(ldmsd_req_cmd_t rcmd)
-{
-	ldmsd_req_attr_t attr;
-	ldmsd_req_hdr_t resp = (ldmsd_req_hdr_t)(rcmd->reqc->req_buf);
-	attr = ldmsd_first_attr(resp);
-	ovis_log(config_log, OVIS_LDEBUG, "%s: %s\n", __func__, (char *)attr->attr_value);
-	return 0;
-}
-
-static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
-			       ldmsd_stream_type_t stream_type,
-			       const char *data, size_t data_len,
-			       json_entity_t entity)
-{
-	ldms_t ldms = (ldms_t)ctxt;
-	int rc, attr_id = LDMSD_ATTR_STRING;
-	const char *stream = ldmsd_stream_client_name(c);
-	ldmsd_req_cmd_t rcmd = ldmsd_req_cmd_new(ldms, LDMSD_STREAM_PUBLISH_REQ,
-						 NULL, __on_republish_resp, NULL);
-	if (!rcmd) {
-		ovis_log(config_log, OVIS_LCRITICAL, "ldmsd is out of memory\n");
-		return ENOMEM;
-	}
-	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, stream);
-	if (rc)
-		goto out;
-	/*
-	 * Add an LDMSD_ATTR_TYPE attribute to let the peer know
-	 * that we don't want an acknowledge response.
-	 */
-	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_TYPE, "");
-	if (rc)
-		goto out;
-	if (stream_type == LDMSD_STREAM_JSON)
-		attr_id = LDMSD_ATTR_JSON;
-	rc = ldmsd_req_cmd_attr_append_str(rcmd, attr_id, data);
-	if (rc)
-		goto out;
-	rc = ldmsd_req_cmd_attr_term(rcmd);
-	if (rc)
-		goto out;
-
-	rc = ldmsd_client_stream_pubstats_update(c, data_len);
- out:
-	ldmsd_req_cmd_free(rcmd);
-	return rc;
-}
-#endif
-
-#if 0
-/* RSE: remote stream entry */
-struct __RSE_key_s {
-	/* xprt ref */
-	ldms_t xprt;
-	/* stream name */
-	char name[];
-};
-
-typedef struct __RSE_s {
-	struct rbn rbn;
-	ldmsd_stream_client_t client;
-	struct __RSE_key_s key;
-} *__RSE_t;
-
-int __RSE_cmp(void *tree_key, const void *key)
-{
-	const struct __RSE_key_s *k0, *k1;
-
-	k0 = tree_key;
-	k1 = key;
-	if (k0->xprt < k1->xprt)
-		return -1;
-	if (k0->xprt > k1->xprt)
-		return 1;
-	/* reaching here means same xprt */
-	return strcmp(k0->name, k1->name);
-}
-
-pthread_mutex_t __RSE_rbt_mutex = PTHREAD_MUTEX_INITIALIZER;
-struct rbt __RSE_rbt = RBT_INITIALIZER(__RSE_cmp);
-
-static inline
-void __RSE_rbt_lock()
-{
-	pthread_mutex_lock(&__RSE_rbt_mutex);
-}
-
-static inline
-void __RSE_rbt_unlock()
-{
-	pthread_mutex_unlock(&__RSE_rbt_mutex);
-}
-
-static inline
-__RSE_t __RSE_alloc(const char *name, ldms_t xprt)
-{
-	__RSE_t ent;
-	ent = calloc(1, sizeof(*ent) + strlen(name) + 1);
-	if (!ent)
-		return NULL;
-	sprintf(ent->key.name, "%s", name);
-	ent->key.xprt = xprt;
-	rbn_init(&ent->rbn, &ent->key);
-	ldms_xprt_get(xprt);
-	return ent;
-}
-
-static inline
-void __RSE_free(__RSE_t ent)
-{
-	ldms_xprt_put(ent->key.xprt);
-	free(ent);
-}
-
-static inline
-__RSE_t __RSE_find(const struct __RSE_key_s *key)
-{
-	/* caller must hold __RSE_rbt_mutex */
-	struct rbn *rbn;
-	rbn = rbt_find(&__RSE_rbt, key);
-	if (!rbn)
-		return NULL;
-	return container_of(rbn, struct __RSE_s, rbn);
-}
-
-static inline
-void __RSE_ins(__RSE_t ent)
-{
-	/* caller must hold __RSE_rbt_mutex */
-	rbt_ins(&__RSE_rbt, &ent->rbn);
-}
-
-static inline
-void __RSE_del(__RSE_t ent)
-{
-	/* caller must hold __RSE_rbt_mutex */
-	rbt_del(&__RSE_rbt, &ent->rbn);
-}
-#endif
-
 static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
 {
 	reqc->errcode = ENOTSUP;
 	ldmsd_send_req_response(reqc, "LDMSD_STREAM_SUBSCRIBE_REQ is deprecated.");
 	return 0;
-
-#if 0
-	char *stream_name;
-	int cnt;
-	int len;
-	__RSE_t ent;
-	char _buff[sizeof(struct __RSE_key_s) + 256]; /* should be enough for stream name */
-	struct __RSE_key_s *key = (void*)_buff;
-
-	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!stream_name) {
-		reqc->errcode = EINVAL;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "The stream name is missing.");
-		goto send_reply;
-	}
-	key->xprt = reqc->xprt->ldms.ldms;
-	len = snprintf(key->name, 256, "%s", stream_name);
-	if (len >= 256) {
-		reqc->errcode = ENAMETOOLONG;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "The stream name is too long (%d >= %d).",
-			       len, 256);
-		goto send_reply;
-	}
-	__RSE_rbt_lock();
-	ent = __RSE_find(key);
-	if (ent) {
-		__RSE_rbt_unlock();
-		reqc->errcode = EEXIST;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "Already subscribed to `%s` stream",
-			       stream_name);
-		goto send_reply;
-	}
-	ent = __RSE_alloc(stream_name, reqc->xprt->ldms.ldms);
-	if (!ent) {
-		__RSE_rbt_unlock();
-		reqc->errcode = ENOMEM;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "Memory allocation failed");
-		goto send_reply;
-	}
-
-	ent->client = ldmsd_stream_subscribe(stream_name, stream_republish_cb,
-					     ent->key.xprt);
-	if (!ent->client) {
-		__RSE_rbt_unlock();
-		__RSE_free(ent);
-		reqc->errcode = errno;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "ldmsd_stream_subscribe() error: %d", errno);
-		goto send_reply;
-	}
-	ldmsd_stream_flags_set(ent->client, LDMSD_STREAM_F_RAW);
-	__RSE_ins(ent);
-	reqc->errcode = 0;
-	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
-	__RSE_rbt_unlock();
-	__dlog(DLOG_CFGOK, "subscribe name=%s\n", stream_name);
-send_reply:
-	free(stream_name);
-	ldmsd_send_req_response(reqc, reqc->line_buf);
-	return 0;
-#endif
 }
 
 static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc)
@@ -8293,53 +8014,6 @@ static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = ENOTSUP;
 	ldmsd_send_req_response(reqc, "LDMSD_STREAM_UNSUBSCRIBE_REQ is deprecated.");
 	return 0;
-
-#if 0
-	char *stream_name;
-	int cnt;
-	int len;
-	__RSE_t ent;
-	char _buff[sizeof(struct __RSE_key_s) + 256]; /* should be enough for stream name */
-	struct __RSE_key_s *key = (void*)_buff;
-
-	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!stream_name) {
-		reqc->errcode = EINVAL;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "The stream name is missing.");
-		goto send_reply;
-	}
-	key->xprt = reqc->xprt->ldms.ldms;
-	len = snprintf(key->name, 256, "%s", stream_name);
-	if (len >= 256) {
-		reqc->errcode = ENAMETOOLONG;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "The stream name is too long (%d >= %d).",
-			       len, 256);
-		goto send_reply;
-	}
-	__RSE_rbt_lock();
-	ent = __RSE_find(key);
-	if (!ent) {
-		__RSE_rbt_unlock();
-		reqc->errcode = ENOENT;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "`%s` stream not found", stream_name);
-		goto send_reply;
-	}
-	__RSE_del(ent);
-	ldmsd_stream_close(ent->client);
-	__RSE_free(ent);
-	reqc->errcode = 0;
-	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
-	__RSE_rbt_unlock();
-	__dlog(DLOG_CFGOK, "unsubscribe name=%s\n", stream_name);
-
-send_reply:
-	free(stream_name);
-	ldmsd_send_req_response(reqc, reqc->line_buf);
-	return 0;
-#endif
 }
 
 static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc)
@@ -8347,36 +8021,6 @@ static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = ENOTSUP;
 	ldmsd_send_req_response(reqc, "LDMSD_STREAM_CLIENT_DUMP_REQ is deprecated.");
 	return 0;
-#if 0
-	int rc;
-	struct ldmsd_req_attr_s attr;
-	char *json;
-
-	__dlog(DLOG_QUERY, "stream_client_dump\n");
-	/* constructin JSON reply */
-	json = ldmsd_stream_client_dump();
-	if (!json)
-		return errno;
-	rc = linebuf_printf(reqc, "%s", json);
-	free(json);
-	if (rc)
-		return rc;
-
-	/* sending messages */
-	attr.discrim = 1;
-	attr.attr_len = reqc->line_off;
-	attr.attr_id = LDMSD_ATTR_JSON;
-	ldmsd_hton_req_attr(&attr);
-	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
-	if (rc)
-		return rc;
-	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
-	if (rc)
-		return rc;
-	attr.discrim = 0;
-	ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t), LDMSD_REQ_EOM_F);
-	return rc;
-#endif
 }
 
 static int stream_new_handler(ldmsd_req_ctxt_t reqc)
@@ -8384,24 +8028,6 @@ static int stream_new_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = ENOTSUP;
 	ldmsd_send_req_response(reqc, "LDMSD_STREAM_NEW_REQ is deprecated.");
 	return 0;
-#if 0
-	int rc;
-	char *name;
-
-	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!name) {
-		ovis_log(config_log, OVIS_LERROR, "Received %s without the stream name\n",
-				ldmsd_req_id2str(reqc->req_id));
-		return 0;
-	}
-	rc = ldmsd_stream_new(name);
-	if (rc) {
-		ovis_log(config_log, OVIS_LERROR, "Error %d: failed to create stream %s\n",
-									rc, name);
-		free(name);
-	}
-	return 0;
-#endif
 }
 
 static int stream_status_handler(ldmsd_req_ctxt_t reqc)
@@ -8409,52 +8035,6 @@ static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = ENOTSUP;
 	ldmsd_send_req_response(reqc, "LDMSD_STREAM_STATUS_REQ is deprecated.");
 	return 0;
-#if 0
-	int rc;
-	char *s, *reset_s;
-	size_t len;
-	struct ldmsd_req_attr_s attr;
-	int reset = 0;
-
-	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
-	if (reset_s && (0 != strcasecmp(reset_s, "false"))) {
-		reset = 1;
-		free(reset_s);
-	}
-
-	s = ldmsd_stream_dir_dump();
-	if (!s) {
-		reqc->errcode = errno;
-		rc = snprintf(reqc->line_buf, reqc->line_len,
-				"Failed to get stream_info_dump.");
-		ldmsd_send_req_response(reqc, reqc->line_buf);
-		return 0;
-	}
-
-	attr.discrim = 1;
-	attr.attr_id = LDMSD_ATTR_JSON;
-	attr.attr_len = len = strlen(s) + 1;
-	ldmsd_hton_req_attr(&attr);
-	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
-	if (rc)
-		goto out;
-
-	rc = ldmsd_append_reply(reqc, s, strlen(s) + 1, 0);
-	if (rc)
-		goto out;
-
-	attr.discrim = 0;
-	rc = ldmsd_append_reply(reqc, (char *)(&attr.discrim),
-				sizeof(attr.discrim), LDMSD_REQ_EOM_F);
-	if (rc)
-		goto out;
-
-	if (reset)
-		ldmsd_stream_stats_reset_all();
-out:
-	free(s);
-	return rc;
-#endif
 }
 
 /*
@@ -8569,28 +8149,6 @@ out:
 void ldmsd_xprt_term(ldms_t x)
 {
 	struct rbn *rbn;
-#if 0
-	__RSE_t ent;
-	char _buff[sizeof(struct __RSE_key_s) + 256] = {};
-	struct __RSE_key_s *key = (void*)_buff;
-
-	key->xprt = x;
-	__RSE_rbt_lock();
-	rbn = rbt_find_lub(&__RSE_rbt, key);
-	while (rbn) {
-		ent = container_of(rbn, struct __RSE_s, rbn);
-		if (key->xprt != ent->key.xprt)
-			break;
-		/* points rbn to the successor before removing ent */
-		rbn = rbn_succ(rbn);
-		/* delete from the tree */
-		__RSE_del(ent);
-		ldmsd_stream_close(ent->client);
-		__RSE_free(ent);
-	}
-	__RSE_rbt_unlock();
-#endif
-
 	/* Free outstanding configuration requests */
 	req_ctxt_tree_lock();
 	ldmsd_req_ctxt_t reqc;
@@ -9865,6 +9423,8 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	if (regex_str) {
 		pl->hostname_regex_s = strdup(regex_str);
 		if (!pl->hostname_regex_s) {
+			// TODO: fix me, this leaves the object dangling
+			ldmsd_cfgobj_put(&pl->obj, "init");
 			goto enomem;
 		}
 
@@ -9874,14 +9434,21 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						"The regular expression string "
 						"'%s' is invalid.", regex_str);
-			goto err;
+			// TODO: fix me, this leaves the object dangling
+			ldmsd_cfgobj_put(&pl->obj, "init");
+			goto send_reply;
 		}
 	}
 
 	if (cidr_str) {
 		pl->cidr_str = strdup(cidr_str);
 		if (!pl->cidr_str) {
-			goto enomem;
+			reqc->errcode = ENOMEM;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						    "Memory allocation failure.");
+			// TODO: fix me, this leaves the object dangling
+			ldmsd_cfgobj_put(&pl->obj, "init");
+			goto send_reply;
 		}
 		rc = __cidr2addr6(cidr_str, &pl->net_addr, &pl->prefix_len);
 		if (rc) {
@@ -9889,18 +9456,8 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						"The given CIDR string '%s' "
 						"is invalid.", cidr_str);
-			goto err;
-		}
-	}
-
-	if (quota) {
-		pl->quota = ovis_get_mem_size(quota);
-		if (!pl->quota) {
-			reqc->errcode = EINVAL;
-			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-						"The given quota '%s' "
-						"is invalid.", quota);
-			ldmsd_cfgobj_put(&pl->obj);
+			// TODO: fix me, this leaves the object dangling
+			ldmsd_cfgobj_put(&pl->obj, "init");
 			goto send_reply;
 		}
 	} else {
@@ -9914,7 +9471,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						"The given rx_rate '%s' "
 						"is invalid.", rx_rate);
-			ldmsd_cfgobj_put(&pl->obj);
+			ldmsd_cfgobj_put(&pl->obj, "init");
 			goto send_reply;
 		}
 	} else {
@@ -10065,7 +9622,7 @@ err:
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR_LISTEN], &pl->obj.rbn);
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR_LISTEN);
 	ldmsd_cfgobj_unlock(&pl->obj);
-	ldmsd_cfgobj_put(&pl->obj);
+	ldmsd_cfgobj_put(&pl->obj, "init");
 	goto send_reply;
 }
 
@@ -10126,7 +9683,7 @@ static int prdcr_listen_del_handler(ldmsd_req_ctxt_t reqc)
 		}
 
 		rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR_LISTEN], &pl->obj.rbn);
-		ldmsd_cfgobj_put(&pl->obj); /* Put back the reference from the tree */
+		ldmsd_cfgobj_put(&pl->obj, "cfgobj_tree"); /* Put back the reference from the tree */
 		ldmsd_cfgobj_unlock(&pl->obj);
 		goto unlock_tree;
 	}
@@ -10145,7 +9702,7 @@ unlock_tree:
 
 send_reply:
 	if (pl)
-		ldmsd_cfgobj_put(&pl->obj); /* Put back the 'first' or 'next' reference */
+		ldmsd_cfgobj_put(&pl->obj, "iter"); /* Put back the 'first' or 'next' reference */
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
 }
@@ -10188,7 +9745,7 @@ static int prdcr_listen_start_handler(ldmsd_req_ctxt_t reqc)
 
 	pl->obj.perm |= LDMSD_PERM_DSTART;
 	pl->state = LDMSD_PRDCR_LISTEN_STATE_RUNNING;
-	ldmsd_cfgobj_put(&pl->obj); /* Put back the 'find' reference */
+	ldmsd_cfgobj_put(&pl->obj, "find"); /* Put back the 'find' reference */
 	ldmsd_cfgobj_unlock(&pl->obj);
 
 send_reply:
@@ -10237,7 +9794,7 @@ static int prdcr_listen_stop_handler(ldmsd_req_ctxt_t reqc)
 	pl->obj.perm &= ~LDMSD_PERM_DSTART;
 	pl->state = LDMSD_PRDCR_LISTEN_STATE_STOPPED;
 out:
-	ldmsd_cfgobj_put(&pl->obj); /* Put back the 'find' reference */
+	ldmsd_cfgobj_put(&pl->obj, "find"); /* Put back the 'find' reference */
 	ldmsd_cfgobj_unlock(&pl->obj);
 
 send_reply:
@@ -10352,7 +9909,7 @@ out:
 	return rc;
 err:
 	if (pl)
-		ldmsd_cfgobj_put(&pl->obj);
+		ldmsd_cfgobj_put(&pl->obj, "iter");
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR_LISTEN);
 	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 				"Error getting the status: Error %d.", rc);
@@ -10748,7 +10305,7 @@ static int advertise_handler(ldmsd_req_ctxt_t reqc)
 						"An error '%d' occurred on the peer.", reqc->errcode);
 				}
 			}
-			ldmsd_cfgobj_put(&pl->obj); /* Put back the 'first' or 'next' reference */
+			ldmsd_cfgobj_put(&pl->obj, "iter"); /* Put back the 'first' or 'next' reference */
 			goto send_reply;
 		}
 	}
@@ -10801,7 +10358,8 @@ static int advertiser_start_handler(ldmsd_req_ctxt_t reqc)
 			 */
 			goto send_reply;
 		}
-		ldmsd_prdcr_get(prdcr); /* Get a reference to match the find reference */
+		// TODO: where is this reference put?
+		ldmsd_prdcr_get(prdcr, "find"); /* Get a reference to match the find reference */
 	}
 
 	rc = __prdcr_start_handler(reqc, "advertiser_start", "advertiser");
@@ -11006,8 +10564,7 @@ static int qgroup_member_add_handler(ldmsd_req_ctxt_t reqc)
 	free(a_port);
 	free(a_xprt);
 	free(a_auth);
-	if (auth)
-		ldmsd_cfgobj_put(&auth->obj);
+	ldmsd_cfgobj_put(&auth->obj, "init");
 	return rc;
 }
 
