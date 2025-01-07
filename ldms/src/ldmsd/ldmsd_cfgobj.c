@@ -1,5 +1,5 @@
-/* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015,2018 National Technology & Engineering Solutions
+/* -*- c-basic-offs get: 8 -*-
+ * Copyright (c) 2015,2018,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  * Copyright (c) 2015,2018 Open Grid Computing, Inc. All rights reserved.
@@ -69,28 +69,36 @@ int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt
 				 obj->uid, obj->gid, obj->perm);
 }
 
-struct rbt prdcr_tree = RBT_INITIALIZER(cfgobj_cmp);
-pthread_mutex_t prdcr_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct rbt prdcr_tree = RBT_INITIALIZER(cfgobj_cmp);
+static pthread_mutex_t prdcr_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
-struct rbt updtr_tree = RBT_INITIALIZER(cfgobj_cmp);
-pthread_mutex_t updtr_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct rbt updtr_tree = RBT_INITIALIZER(cfgobj_cmp);
+static pthread_mutex_t updtr_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
 struct rbt strgp_tree = RBT_INITIALIZER(cfgobj_cmp);
-pthread_mutex_t strgp_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t strgp_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
 struct rbt listen_tree = RBT_INITIALIZER(cfgobj_cmp);
-pthread_mutex_t listen_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t listen_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+
+struct rbt sampler_tree = RBT_INITIALIZER(cfgobj_cmp);
+static pthread_mutex_t sampler_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+
+struct rbt store_tree = RBT_INITIALIZER(cfgobj_cmp);
+static pthread_mutex_t store_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
 struct rbt auth_tree = RBT_INITIALIZER(cfgobj_cmp);
-pthread_mutex_t auth_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t auth_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
-struct rbt listen_prdcr_tree = RBT_INITIALIZER(cfgobj_cmp);
-pthread_mutex_t listen_prdcr_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct rbt listen_prdcr_tree = RBT_INITIALIZER(cfgobj_cmp);
+static pthread_mutex_t listen_prdcr_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
-pthread_mutex_t *cfgobj_locks[] = {
+static pthread_mutex_t *cfgobj_locks[] = {
 	[LDMSD_CFGOBJ_PRDCR] = &prdcr_tree_lock,
 	[LDMSD_CFGOBJ_UPDTR] = &updtr_tree_lock,
 	[LDMSD_CFGOBJ_STRGP] = &strgp_tree_lock,
+	[LDMSD_CFGOBJ_SAMPLER] = &sampler_tree_lock,
+	[LDMSD_CFGOBJ_STORE] = &store_tree_lock,
 	[LDMSD_CFGOBJ_LISTEN] = &listen_tree_lock,
 	[LDMSD_CFGOBJ_AUTH]   = &auth_tree_lock,
 	[LDMSD_CFGOBJ_PRDCR_LISTEN] = &listen_prdcr_tree_lock,
@@ -100,20 +108,12 @@ struct rbt *cfgobj_trees[] = {
 	[LDMSD_CFGOBJ_PRDCR] = &prdcr_tree,
 	[LDMSD_CFGOBJ_UPDTR] = &updtr_tree,
 	[LDMSD_CFGOBJ_STRGP] = &strgp_tree,
+	[LDMSD_CFGOBJ_SAMPLER] = &sampler_tree,
+	[LDMSD_CFGOBJ_STORE] = &store_tree,
 	[LDMSD_CFGOBJ_LISTEN] = &listen_tree,
 	[LDMSD_CFGOBJ_AUTH]   = &auth_tree,
 	[LDMSD_CFGOBJ_PRDCR_LISTEN] = &listen_prdcr_tree,
 };
-
-void ldmsd_cfgobj_init(void)
-{
-	rbt_init(&prdcr_tree, cfgobj_cmp);
-	rbt_init(&updtr_tree, cfgobj_cmp);
-	rbt_init(&strgp_tree, cfgobj_cmp);
-	rbt_init(&listen_tree, cfgobj_cmp);
-	rbt_init(&auth_tree,   cfgobj_cmp);
-	rbt_init(&listen_prdcr_tree, cfgobj_cmp);
-}
 
 void ldmsd_cfgobj___del(ldmsd_cfgobj_t obj)
 {
@@ -139,6 +139,77 @@ void ldmsd_cfgobj_lock(ldmsd_cfgobj_t obj)
 void ldmsd_cfgobj_unlock(ldmsd_cfgobj_t obj)
 {
 	pthread_mutex_unlock(&obj->lock);
+}
+
+/*
+ * Add the obj to the corresponding CFGOBJ tree.
+ *
+ * The caller must hold appropriate CFGOBJ lock.
+ * This function does not check existing entry.
+ */
+void __cfgobj_add(ldmsd_cfgobj_t obj)
+{
+	rbn_init(&obj->rbn, obj->name);
+	rbt_ins(cfgobj_trees[obj->type], &obj->rbn);
+	ldmsd_cfgobj_get(obj, "cfgobj_tree"); /* put in `rm` */
+}
+
+/*
+ * Remove the obj from the corresponding CFGOBJ tree.
+ *
+ * The caller must hold appropriate CFGOBJ lock.
+ */
+void __cfgobj_rm(ldmsd_cfgobj_t obj)
+{
+	rbt_del(cfgobj_trees[obj->type], &obj->rbn);
+	ldmsd_cfgobj_put(obj, "cfgobj_tree"); /* from `add` */
+}
+
+int ldmsd_cfgobj_add(ldmsd_cfgobj_t obj)
+{
+	int rc = EEXIST;
+	struct rbn *n;
+	if (obj->type < LDMSD_CFGOBJ_FIRST || LDMSD_CFGOBJ_LAST < obj->type)
+		return EINVAL;
+	pthread_mutex_lock(cfgobj_locks[obj->type]);
+	n = rbt_find(cfgobj_trees[obj->type], obj->name);
+	if (n)
+		goto out;
+	rc = 0;
+	__cfgobj_add(obj);
+ out:
+	pthread_mutex_unlock(cfgobj_locks[obj->type]);
+	return rc;
+}
+
+void ldmsd_cfgobj_rm(ldmsd_cfgobj_t obj)
+{
+	pthread_mutex_lock(cfgobj_locks[obj->type]);
+	rbt_del(cfgobj_trees[obj->type], &obj->rbn);
+	pthread_mutex_unlock(cfgobj_locks[obj->type]);
+	ldmsd_cfgobj_put(obj, "cfgobj_tree"); /* from `add` */
+}
+
+/* an interposer to call obj->__del() */
+static void __cfgobj_ref_free(void *arg)
+{
+	ldmsd_cfgobj_t obj = arg;
+	obj->__del(obj);
+}
+
+static const char *__cfgobj_type_str[] = {
+	[LDMSD_CFGOBJ_PRDCR]  = "prdcr",
+	[LDMSD_CFGOBJ_UPDTR]  = "updtr",
+	[LDMSD_CFGOBJ_STRGP]  = "strgp",
+	[LDMSD_CFGOBJ_LISTEN] = "listen",
+	[LDMSD_CFGOBJ_AUTH]   = "auth",
+};
+
+const char *ldmsd_cfgobj_type_str(ldmsd_cfgobj_type_t t)
+{
+	if (t < LDMSD_CFGOBJ_FIRST || LDMSD_CFGOBJ_LAST < t)
+		return "UNKNOWN";
+	return __cfgobj_type_str[t];
 }
 
 ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
@@ -167,7 +238,7 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 		goto out_2;
 
 	obj->type = type;
-	obj->ref_count = 1; /* for obj->rbn inserting into the tree */
+	ref_init(&obj->ref, "init", __cfgobj_ref_free, obj);
 	if (__del)
 		obj->__del = __del;
 	else
@@ -203,29 +274,10 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new(const char *name, ldmsd_cfgobj_type_t type,
 					  getuid(), getgid(), 0777);
 }
 
-ldmsd_cfgobj_t ldmsd_cfgobj_get(ldmsd_cfgobj_t obj)
-{
-	uint32_t ref_count;
-	if (obj) {
-		ref_count = __sync_fetch_and_add(&obj->ref_count, 1);
-		assert(ref_count >= 1);
-	}
-
-	return obj;
-}
-
-void ldmsd_cfgobj_put(ldmsd_cfgobj_t obj)
-{
-	if (!obj)
-		return;
-	if (0 == __sync_sub_and_fetch(&obj->ref_count, 1))
-		obj->__del(obj);
-}
-
 /** This function is only useful if the cfgobj lock is held when the function is called. */
 int ldmsd_cfgobj_refcount(ldmsd_cfgobj_t obj)
 {
-	return obj->ref_count;
+	return obj->ref.ref_count;
 }
 
 /*
@@ -239,7 +291,7 @@ ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type)
 		goto out;
 	obj = container_of(n, struct ldmsd_cfgobj, rbn);
 out:
-	return ldmsd_cfgobj_get(obj);
+	return ldmsd_cfgobj_get(obj, "find");
 }
 
 ldmsd_cfgobj_t ldmsd_cfgobj_find(const char *name, ldmsd_cfgobj_type_t type)
@@ -251,14 +303,29 @@ ldmsd_cfgobj_t ldmsd_cfgobj_find(const char *name, ldmsd_cfgobj_type_t type)
 	return obj;
 }
 
+void ldmsd_cfgobj_put(ldmsd_cfgobj_t obj, const char *ref_name)
+{
+	if (!obj)
+		return;
+	ref_put(&obj->ref, ref_name);
+}
+
 void ldmsd_cfgobj_del(const char *name, ldmsd_cfgobj_type_t type)
 {
 	ldmsd_cfgobj_t obj;
 	pthread_mutex_lock(cfgobj_locks[type]);
 	obj = __cfgobj_find(name, type);
 	if (obj) {
+		if (obj->avl_str) {
+			free(obj->avl_str);
+			obj->avl_str = NULL;
+		}
+		if (obj->kvl_str) {
+			free(obj->kvl_str);
+			obj->kvl_str = NULL;
+		}
 		rbt_del(cfgobj_trees[type], &obj->rbn);
-		ldmsd_cfgobj_put(obj);
+		ldmsd_cfgobj_put(obj, "init");
 	}
 	pthread_mutex_unlock(cfgobj_locks[type]);
 }
@@ -272,8 +339,11 @@ ldmsd_cfgobj_t ldmsd_cfgobj_first(ldmsd_cfgobj_type_t type)
 {
 	struct rbn *n;
 	n = rbt_min(cfgobj_trees[type]);
-	if (n)
-		return ldmsd_cfgobj_get(container_of(n, struct ldmsd_cfgobj, rbn));
+	if (n) {
+		ldmsd_cfgobj_t obj = container_of(n, struct ldmsd_cfgobj, rbn);
+		ldmsd_cfgobj_get(obj, "iter");
+		return obj;
+	}
 	return NULL;
 }
 
@@ -290,8 +360,82 @@ ldmsd_cfgobj_t ldmsd_cfgobj_next(ldmsd_cfgobj_t obj)
 	n = rbn_succ(&obj->rbn);
 	if (!n)
 		goto out;
-	nobj = ldmsd_cfgobj_get(container_of(n, struct ldmsd_cfgobj, rbn));
+	nobj = container_of(n, struct ldmsd_cfgobj, rbn);
+	ldmsd_cfgobj_get(nobj, "iter");
 out:
-	ldmsd_cfgobj_put(obj);	/* Drop the next reference */
+	ldmsd_cfgobj_put(obj, "iter");	/* Drop the next reference */
 	return nobj;
+}
+
+ldmsd_sampler_t ldmsd_sampler_first()
+{
+	ldmsd_cfgobj_t obj;
+	obj = ldmsd_cfgobj_first(LDMSD_CFGOBJ_SAMPLER);
+	if (obj)
+		return container_of(obj, struct ldmsd_sampler_inst, cfg);
+	return NULL;
+}
+
+ldmsd_sampler_t ldmsd_sampler_next(ldmsd_sampler_t samp)
+{
+	ldmsd_cfgobj_t obj;
+	obj = ldmsd_cfgobj_next(&samp->cfg);
+	if (obj)
+		return container_of(obj, struct ldmsd_sampler_inst, cfg);
+	return NULL;
+}
+
+ldmsd_sampler_t ldmsd_sampler_find(const char *cfg_name)
+{
+	struct ldmsd_cfgobj *obj = ldmsd_cfgobj_find(cfg_name, LDMSD_CFGOBJ_SAMPLER);
+	if (!obj)
+		return NULL;
+	return container_of(obj, struct ldmsd_sampler_inst, cfg);
+}
+
+void ldmsd_sampler_lock(ldmsd_sampler_t samp)
+{
+	ldmsd_cfgobj_lock(&samp->cfg);
+}
+
+void ldmsd_sampler_unlock(ldmsd_sampler_t samp)
+{
+	ldmsd_cfgobj_unlock(&samp->cfg);
+}
+
+ldmsd_store_t ldmsd_store_find(const char *cfg_name)
+{
+	struct ldmsd_cfgobj *obj = ldmsd_cfgobj_find(cfg_name, LDMSD_CFGOBJ_STORE);
+	if (obj)
+		return container_of(obj, struct ldmsd_store_inst, cfg);
+	return NULL;
+}
+
+ldmsd_store_t ldmsd_store_first()
+{
+	ldmsd_cfgobj_t obj;
+	obj = ldmsd_cfgobj_first(LDMSD_CFGOBJ_STORE);
+	if (obj)
+		return container_of(obj, struct ldmsd_store_inst, cfg);
+	return NULL;
+}
+
+ldmsd_store_t ldmsd_store_next(ldmsd_store_t store)
+{
+	ldmsd_cfgobj_t obj;
+	obj = ldmsd_cfgobj_next(&store->cfg);
+	if (obj)
+		return container_of(obj, struct ldmsd_store_inst, cfg);
+	return NULL;
+}
+
+
+void ldmsd_store_lock(ldmsd_store_t store)
+{
+	ldmsd_cfgobj_lock(&store->cfg);
+}
+
+void ldmsd_store_unlock(ldmsd_store_t store)
+{
+	ldmsd_cfgobj_unlock(&store->cfg);
 }

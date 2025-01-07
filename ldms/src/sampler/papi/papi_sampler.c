@@ -906,7 +906,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value)
 		papi_job_expiry = strtol(value, NULL, 0);
 
-	papi_base = base_config(avl, "papi_sampler", "papi-events", mylog);
+	papi_base = base_config(avl, self->inst_name, "papi-events", mylog);
 	if (!papi_base)
 		return errno;
 	value = av_value(avl, "stream");

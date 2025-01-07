@@ -85,6 +85,7 @@ typedef struct sos_handle_s {
 	LIST_ENTRY(sos_handle_s) entry;
 } *sos_handle_t;
 
+pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 static LIST_HEAD(sos_handle_list, sos_handle_s) sos_handle_list;
 
 struct sos_single_list_records {
@@ -145,11 +146,13 @@ struct sos_instance {
 
 	struct rbt schema_rbt;
 };
-static pthread_mutex_t cfg_lock;
-LIST_HEAD(sos_inst_list, sos_instance) inst_list;
 
-static char root_path[PATH_MAX]; /**< store root path */
-time_t timeout = 5;		/* Default is 5 seconds */
+typedef struct store_sos_s {
+	pthread_mutex_t cfg_lock;
+	LIST_HEAD(sos_inst_list, sos_instance) inst_list;
+	char root_path[PATH_MAX]; /**< store root path */
+	time_t timeout;		  /* Default is forever */
+} *store_sos_t;
 
 struct row_schema_key_s {
 	const struct ldms_digest_s *digest;
@@ -370,7 +373,7 @@ static void sos_mval_set_ts(sos_value_t v, ldms_mval_t mval)
 	v->data->prim.timestamp_.fine.usecs = mval->v_ts.usec;
 }
 
-sos_mval_set_fn sos_mval_set_tbl[] = {
+static sos_mval_set_fn sos_mval_set_tbl[] = {
 	[LDMS_V_CHAR] = sos_mval_set_char,
 	[LDMS_V_U8] = sos_mval_set_u8,
 	[LDMS_V_S8] = sos_mval_set_s8,
@@ -548,10 +551,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc = 0;
 	int len;
 	char *value;
+	store_sos_t ss = (store_sos_t)self->context;
 
 	value = av_value(avl, "timeout");
 	if (value)
-		timeout = strtol(value, NULL, 0);
+		ss->timeout = strtol(value, NULL, 0);
 
 	value = av_value(avl, "path");
 	if (!value) {
@@ -560,8 +564,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		       __func__, __LINE__);
 		return EINVAL;
 	}
-	pthread_mutex_lock(&cfg_lock);
-	if (0 == strcmp(value, root_path))
+	pthread_mutex_lock(&ss->cfg_lock);
+	if (0 == strcmp(value, ss->root_path))
 		/* Ignore the call if the root_path is unchanged */
 		goto out;
 	len = strlen(value);
@@ -572,20 +576,20 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		rc = ENAMETOOLONG;
 		goto out;
 	}
-	strcpy(root_path, value);
+	strcpy(ss->root_path, value);
 
 	/* Run through all open containers and close them. They will
 	 * get re-opened when store() is next called
 	 */
 	rc = ENOMEM;
-	LIST_FOREACH(si, &inst_list, entry) {
+	LIST_FOREACH(si, &ss->inst_list, entry) {
 		pthread_mutex_lock(&si->lock);
 		if (si->sos_handle) {
 			put_container_no_lock(si->sos_handle);
 			si->sos_handle = NULL;
 		}
 		size_t pathlen =
-			strlen(root_path) + strlen(si->container) + 4;
+			strlen(ss->root_path) + strlen(si->container) + 4;
 		if (si->path)
 			free(si->path);
 		si->path = malloc(pathlen);
@@ -594,12 +598,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			pthread_mutex_unlock(&si->lock);
 			goto out;
 		}
-		sprintf(si->path, "%s/%s", root_path, si->container);
+		sprintf(si->path, "%s/%s", ss->root_path, si->container);
 		pthread_mutex_unlock(&si->lock);
 	}
 	rc = 0;
  out:
-	pthread_mutex_unlock(&cfg_lock);
+	pthread_mutex_unlock(&ss->cfg_lock);
 	return rc;
 }
 
@@ -611,8 +615,9 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "    config name=store_sos path=<path>\n"
-		"       path The path to primary storage\n";
+	return  "    config name=<NAME> plugin=store_sos path=<path> timeout=<secs>\n"
+		"       path   - The path to primary storage\n"
+		"       timeout - Max wait in seconds to acquire database transaction.\n";
 }
 
 static void *get_ucontext(ldmsd_store_handle_t _sh)
@@ -626,6 +631,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct sos_instance *si = NULL;
+	store_sos_t ss = (store_sos_t)s->base.context;
 
 	si = calloc(1, sizeof(*si));
 	if (!si)
@@ -639,15 +645,15 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	if (!si->schema_name)
 		goto err2;
 	size_t pathlen =
-		strlen(root_path) + strlen(si->container) + 4;
+		strlen(ss->root_path) + strlen(si->container) + 4;
 	si->path = malloc(pathlen);
 	if (!si->path)
 		goto err3;
-	sprintf(si->path, "%s/%s", root_path, container);
+	sprintf(si->path, "%s/%s", ss->root_path, container);
 	pthread_mutex_init(&si->lock, NULL);
-	pthread_mutex_lock(&cfg_lock);
-	LIST_INSERT_HEAD(&inst_list, si, entry);
-	pthread_mutex_unlock(&cfg_lock);
+	pthread_mutex_lock(&ss->cfg_lock);
+	LIST_INSERT_HEAD(&ss->inst_list, si, entry);
+	pthread_mutex_unlock(&ss->cfg_lock);
 	return si;
  err3:
 	free(si->schema_name);
@@ -1324,6 +1330,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
       int *metric_arry, size_t metric_count)
 {
 	struct sos_instance *si = _sh;
+	store_sos_t ss = si->store->base.context;
 	struct timespec now;
 	int rc = 0;
 
@@ -1363,9 +1370,9 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			       "The job_id is missing from the metric set/schema.\n");
 		assert(si->ts_attr);
 	}
-	if (timeout > 0) {
+	if (ss->timeout > 0) {
 		clock_gettime(CLOCK_REALTIME, &now);
-		now.tv_sec += timeout;
+		now.tv_sec += ss->timeout;
 		if (sos_begin_x_wait(si->sos_handle->sos, &now)) {
 			LOG_(OVIS_LERROR,
 			     "Timeout attempting to open a transaction on the container '%s'.\n",
@@ -1375,9 +1382,16 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			return -1;
 		}
 	} else {
-		sos_begin_x(si->sos_handle->sos);
+		clock_gettime(CLOCK_REALTIME, &now);
+		while (sos_begin_x_wait(si->sos_handle->sos, &now)) {
+			now.tv_sec += 5; /* Report warning every 5 seconds */
+			LOG_(OVIS_LWARN,
+			     "Timeout attempting to open a transaction "
+			     "on the container '%s'...retrying.\n",
+			     si->path);
+			clock_gettime(CLOCK_REALTIME, &now);
+		}
 	}
-
 	switch (si->mode) {
 		case STORE_SOS_M_BASIC:
 			rc = __store_basic(si, set, metric_arry, metric_count);
@@ -1448,6 +1462,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 static int init_store_instance(ldmsd_strgp_t strgp)
 {
 	struct sos_instance *si;
+	store_sos_t ss = (store_sos_t)strgp->store;
 	int len, rc;
 
 	si = calloc(1, sizeof(*si));
@@ -1456,7 +1471,7 @@ static int init_store_instance(ldmsd_strgp_t strgp)
 		goto err_0;
 	}
 	rbt_init(&si->schema_rbt, row_schema_rbn_cmp);
-	len = asprintf(&si->path, "%s/%s", root_path, strgp->container);
+	len = asprintf(&si->path, "%s/%s", ss->root_path, strgp->container);
 	if (len < 0) {
 		rc = errno;
 		goto err_1;
@@ -1468,9 +1483,9 @@ static int init_store_instance(ldmsd_strgp_t strgp)
 	}
 	strgp->store_handle = si;
 	pthread_mutex_init(&si->lock, NULL);
-	pthread_mutex_lock(&cfg_lock);
-	LIST_INSERT_HEAD(&inst_list, si, entry);
-	pthread_mutex_unlock(&cfg_lock);
+	pthread_mutex_lock(&ss->cfg_lock);
+	LIST_INSERT_HEAD(&ss->inst_list, si, entry);
+	pthread_mutex_unlock(&ss->cfg_lock);
 	return 0;
 
  err_2:
@@ -1628,10 +1643,11 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int 
 			goto out;
 		}
 	}
-	if (timeout > 0) {
+	store_sos_t ss = si->store->base.context;
+	if (ss->timeout > 0) {
 		struct timespec now;
 		clock_gettime(CLOCK_REALTIME, &now);
-		now.tv_sec += timeout;
+		now.tv_sec += ss->timeout;
 		if (sos_begin_x_wait(si->sos_handle->sos, &now)) {
 			LOG_(OVIS_LERROR,
 			     "Timeout attempting to open a transaction on the container '%s'.\n",
@@ -1720,32 +1736,39 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int 
 	return rc;
 }
 
-static struct ldmsd_store store_sos = {
-	.base = {
-		.name = "sos",
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.type = LDMSD_PLUGIN_STORE,
-	},
-	.open = open_store,
+void store_sos_del(struct ldmsd_cfgobj *obj)
+{
+	store_sos_t ss = (void*)obj;
+	free(ss);
+}
+
+static struct ldmsd_store sos_store = {
+	.base.type   = LDMSD_PLUGIN_STORE,
+	.base.name   = "store_sos",
+	.base.term   = term,
+	.base.config = config,
+	.base.usage  = usage,
+	.base.context_size = sizeof(struct store_sos_s),
+	.open        = open_store,
 	.get_context = get_ucontext,
-	.store = store,
-	.flush = flush_store,
-	.close = close_store,
-	.commit = commit_rows,
+	.store       = store,
+	.flush       = flush_store,
+	.close       = close_store,
+	.commit      = commit_rows,
 };
 
 struct ldmsd_plugin *get_plugin()
 {
 	int rc;
-	mylog = ovis_log_register("store.store_sos", "Log susbsystem of 'store_sos' plugin");
 	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-				"of 'store_sos' plugin. Error %d\n", rc);
+		mylog = ovis_log_register("store.sos", "The log subsystem of the store_sos plugin");
+		if (!mylog) {
+			rc = errno;
+			ovis_log(NULL, OVIS_LWARN,
+				"Error %d creating the log subsystem 'store.sos'.", rc);
+		}
 	}
-	return &store_sos.base;
+	return &sos_store.base;
 }
 
 static void __attribute__ ((constructor)) store_sos_init();
