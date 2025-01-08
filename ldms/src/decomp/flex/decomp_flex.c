@@ -58,7 +58,6 @@
 
 #include <openssl/sha.h>
 
-#include "ovis_json/ovis_json.h"
 #include "coll/rbt.h"
 
 #include "ldmsd.h"
