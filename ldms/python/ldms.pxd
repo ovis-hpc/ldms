@@ -305,7 +305,6 @@ cdef extern from "ldms.h" nogil:
         LDMS_XPRT_EVENT_QGROUP_ASK
         LDMS_XPRT_EVENT_QGROUP_DONATE
         LDMS_XPRT_EVENT_QGROUP_DONATE_BACK
-
         LDMS_XPRT_EVENT_LAST
     cdef struct ldms_xprt_quota_event_data:
         uint64_t quota
@@ -314,7 +313,7 @@ cdef extern from "ldms.h" nogil:
         void * set
         const char *name
     cdef struct ldms_xprt_event:
-        ldms_xprt_event_type type
+        int type
         size_t data_len
         # data, and quota are in union. Cython doesn't care. It just want to
         # know the names of the "fields" it can access in C code.
@@ -322,7 +321,7 @@ cdef extern from "ldms.h" nogil:
         ldms_xprt_quota_event_data quota
         ldms_xprt_set_delete_data set_delete
     ctypedef ldms_xprt_event *ldms_xprt_event_t
-    ctypedef void (*ldms_event_cb_t)(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+    ctypedef void (*ldms_event_cb_t)(ldms_t x, ldms_xprt_event_t e, void *cb_arg) except *
 
     int ldms_init(size_t max_size)
     ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
@@ -339,7 +338,7 @@ cdef extern from "ldms.h" nogil:
     int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port,
                                  ldms_event_cb_t cb, void *cb_arg)
 
-    ctypedef void (*app_ctxt_free_fn)(void *ctxt)
+    ctypedef void (*app_ctxt_free_fn)(void *ctxt) except *
     void ldms_xprt_ctxt_set(ldms_t x, void *ctxt, app_ctxt_free_fn fn)
     int ldms_xprt_sockaddr(ldms_t x, sockaddr *local_sa,
 		           sockaddr *remote_sa,
@@ -418,7 +417,7 @@ cdef extern from "ldms.h" nogil:
     cpdef enum: # empty enum for constant int values
         DIR_F_NOTIFY "LDMS_DIR_F_NOTIFY"
     ctypedef ldms_dir_s *ldms_dir_t
-    ctypedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg)
+    ctypedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg) except *
     int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
     void ldms_xprt_dir_free(ldms_t t, ldms_dir_t dir)
 
@@ -440,8 +439,7 @@ cdef extern from "ldms.h" nogil:
     struct ldms_rbuf_desc:
         pass
     ctypedef ldms_rbuf_desc *ldms_set_t
-    ctypedef void (*ldms_lookup_cb_t)(ldms_t x, ldms_lookup_status status,
-                                      int more, ldms_set_t s, void *arg)
+    ctypedef void (*ldms_lookup_cb_t)(ldms_t x, ldms_lookup_status status, int more, ldms_set_t s, void *arg) except *
     int ldms_xprt_lookup(ldms_t x, const char *name, ldms_lookup_flags flags,
 		         ldms_lookup_cb_t cb, void *cb_arg)
     int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len)
@@ -488,7 +486,7 @@ cdef extern from "ldms.h" nogil:
     int ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
     void ldms_set_info_unset(ldms_set_t s, const char *key)
     char *ldms_set_info_get(ldms_set_t s, const char *key)
-    ctypedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int flags, void *arg)
+    ctypedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int flags, void *arg) except *
     struct ldms_list:
         uint32_t head
         uint32_t tail
@@ -852,7 +850,7 @@ cdef extern from "ldms.h" nogil:
         ldms_stream_recv_data_s recv
         ldms_stream_return_status_s status
     ctypedef ldms_stream_event_s *ldms_stream_event_t
-    ctypedef int (*ldms_stream_event_cb_t)(ldms_stream_event_t ev, void *cb_arg)
+    ctypedef int (*ldms_stream_event_cb_t)(ldms_stream_event_t ev, void *cb_arg) except *
 
     int ldms_stream_publish(ldms_t x, const char *stream_name,
                             ldms_stream_type_e stream_type,
