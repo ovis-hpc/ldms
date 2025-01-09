@@ -196,7 +196,7 @@ cdef extern from "ldms.h" nogil:
     struct ldms_xprt:
         pass
     ctypedef ldms_xprt *ldms_t
-    ctypedef void (*ldms_log_fn_t)(const char *fmt, ...)
+    ctypedef void (*ldms_log_fn_t)(const char *fmt, ...) except *
     struct ldms_timestamp:
         uint32_t sec
         uint32_t usec
@@ -218,11 +218,11 @@ cdef extern from "ldms.h" nogil:
         LDMS_XPRT_EVENT_SEND_COMPLETE
         LDMS_XPRT_EVENT_LAST
     cdef struct ldms_xprt_event:
-        ldms_xprt_event_type type
+        int type
         char *data
         size_t data_len
     ctypedef ldms_xprt_event *ldms_xprt_event_t
-    ctypedef void (*ldms_event_cb_t)(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+    ctypedef void (*ldms_event_cb_t)(ldms_t x, ldms_xprt_event_t e, void *cb_arg) except *
 
     int ldms_init(size_t max_size)
     ldms_t ldms_xprt_new_with_auth(const char *xprt_name, ldms_log_fn_t log_fn,
@@ -275,7 +275,7 @@ cdef extern from "ldms.h" nogil:
     cpdef enum: # empty enum for constant int values
         DIR_F_NOTIFY "LDMS_DIR_F_NOTIFY"
     ctypedef ldms_dir_s *ldms_dir_t
-    ctypedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg)
+    ctypedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg) except *
     int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
     void ldms_xprt_dir_free(ldms_t t, ldms_dir_t dir)
 
@@ -298,7 +298,7 @@ cdef extern from "ldms.h" nogil:
         pass
     ctypedef ldms_rbuf_desc *ldms_set_t
     ctypedef void (*ldms_lookup_cb_t)(ldms_t x, ldms_lookup_status status,
-                                      int more, ldms_set_t s, void *arg)
+                                      int more, ldms_set_t s, void *arg) except *
     int ldms_xprt_lookup(ldms_t x, const char *name, ldms_lookup_flags flags,
 		         ldms_lookup_cb_t cb, void *cb_arg)
     int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len)
@@ -334,7 +334,7 @@ cdef extern from "ldms.h" nogil:
     int ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
     void ldms_set_info_unset(ldms_set_t s, const char *key)
     char *ldms_set_info_get(ldms_set_t s, const char *key)
-    ctypedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int flags, void *arg)
+    ctypedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int flags, void *arg) except *
     struct ldms_list:
         uint32_t head
         uint32_t tail
