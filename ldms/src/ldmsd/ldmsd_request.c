@@ -2458,11 +2458,13 @@ int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdc
 			"\"host\":\"%s\","
 			"\"port\":%hu,"
 			"\"transport\":\"%s\","
+			"\"auth\":\"%s\","
 			"\"reconnect_us\":\"%ld\","
 			"\"state\":\"%s\","
 			"\"sets\": [",
 			prdcr->obj.name, ldmsd_prdcr_type2str(prdcr->type),
 			prdcr->host_name, prdcr->port_no, prdcr->xprt_name,
+			prdcr->conn_auth_dom_name,
 			prdcr->conn_intrvl_us,
 			prdcr_state_str(prdcr->conn_state));
 	if (rc)
