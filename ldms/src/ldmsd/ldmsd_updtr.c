@@ -259,7 +259,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 
 		ldmsd_strgp_lock(strgp);
 		clock_gettime(CLOCK_REALTIME, &start);
-		strgp->update_fn(strgp, prd_set);
+		strgp->update_fn(strgp, prd_set, &str_ref->decomp_ctxt);
 		clock_gettime(CLOCK_REALTIME, &end);
 		if (prd_set->store_stat.start.tv_sec == 0)
 			prd_set->store_stat.start = start;

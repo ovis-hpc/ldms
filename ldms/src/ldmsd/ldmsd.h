@@ -341,6 +341,7 @@ typedef struct ldmsd_strgp *ldmsd_strgp_t;
 
 typedef struct ldmsd_strgp_ref {
 	ldmsd_strgp_t strgp;
+	void *decomp_ctxt;
 	LIST_ENTRY(ldmsd_strgp_ref) entry;
 } *ldmsd_strgp_ref_t;
 
@@ -619,7 +620,7 @@ ldmsd_row_t ldmsd_row_dup(ldmsd_row_t);
 int ldmsd_row_cache_make_list(ldmsd_row_list_t row_list, int row_count,
 	ldmsd_row_cache_t cache, ldmsd_row_cache_idx_t group_key);
 
-typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set);
+typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, void **ctxt);
 typedef struct ldmsd_cfgobj_store *ldmsd_cfgobj_store_t;
 
 struct ldmsd_strgp {
@@ -706,17 +707,29 @@ struct ldmsd_decomp_s {
 	/**
 	 * Decompose method.
 	 *
+	 * The \c ctxt_ptr is an in/out parameter where \c *ctxt_ptr was
+	 * initially set to \c NULL. The \c ctxt_ptr is a per-set context for
+	 * \c strgp. If \c *ctxt_ptr is set, the value will be supplied in the
+	 * next \c decompose() call of the same \c set for this \c strgp.
+	 *
+	 * When the set is deleted, \c decomp_ctxt_release() is called with
+	 * \c *ctxt_ptr to let the decomposition clean up its context associated
+	 * with the \c set.
+	 *
 	 * \param      strgp     The storage policy.
 	 * \param      set       The LDMS set to be decomposed.
 	 * \param      row_list  The list head to which the output rows are
 	 *                       appended.
 	 * \param[out] row_count The number of rows appended to the \c row_list.
+	 * \param[in,out] ctxt_ptr The pointer to a context for the \c set for
+	 *                         this \c strgp.
 	 *
 	 * \retval 0     If configure successfully.
 	 * \retval errno If there is an error.
 	 */
 	int (*decompose)(ldmsd_strgp_t strgp, ldms_set_t set,
-			 ldmsd_row_list_t row_list, int *row_count);
+			 ldmsd_row_list_t row_list, int *row_count,
+			 void **ctxt_ptr);
 
 	/**
 	 * Release resources of rows from \c decompose().
@@ -733,6 +746,13 @@ struct ldmsd_decomp_s {
 	 * This will be called in the \c strgp_del call chain.
 	 */
 	void (*release_decomp)(ldmsd_strgp_t strgp);
+
+	/**
+	 * Release the \c *ctxt_ptr.
+	 *
+	 * \param[in,out] ctxt_ptr The ctxt pointer.
+	 */
+	void (*decomp_ctxt_release)(ldmsd_strgp_t strgp, void **ctxt_ptr);
 };
 
 /*

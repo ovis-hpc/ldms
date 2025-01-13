@@ -99,7 +99,8 @@ typedef struct flex_cfg_s {
 static ldmsd_decomp_t flex_config(ldmsd_strgp_t strgp,
 			json_t *cfg, ldmsd_req_ctxt_t reqc);
 static int flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
-				     ldmsd_row_list_t row_list, int *row_count);
+				     ldmsd_row_list_t row_list, int *row_count,
+				     void **ctxt);
 static void flex_release_rows(ldmsd_strgp_t strgp,
 					 ldmsd_row_list_t row_list);
 static void flex_release_decomp(ldmsd_strgp_t strgp);
@@ -341,7 +342,8 @@ err_0:
 }
 
 static int flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
-				    ldmsd_row_list_t row_list, int *row_count)
+				    ldmsd_row_list_t row_list, int *row_count,
+				    void **ctxt)
 {
 	flex_cfg_t dcfg = (void*)strgp->decomp;
 	ldms_digest_t digest = ldms_set_digest_get(set);
@@ -364,7 +366,7 @@ static int flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 		decomp_rbn = digest_rbn->decomp[i];
 		rc = decomp_rbn->decomp_api->decompose(
 				&decomp_rbn->strgp,
-				set, &rlist, &rcount);
+				set, &rlist, &rcount, NULL);
 		if (rc)
 			goto err_0;
 		TAILQ_CONCAT(row_list, &rlist, entry);
