@@ -137,6 +137,11 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 	ldmsd_strgp_ref_t strgp_ref = LIST_FIRST(&set->strgp_list);
 	while (strgp_ref) {
 		LIST_REMOVE(strgp_ref, entry);
+		if (strgp_ref->decomp_ctxt && strgp_ref->strgp->decomp &&
+				strgp_ref->strgp->decomp->decomp_ctxt_release) {
+			strgp_ref->strgp->decomp->decomp_ctxt_release(strgp_ref->strgp,
+					&strgp_ref->decomp_ctxt);
+		}
 		__atomic_fetch_sub(&strgp_ref->strgp->prdset_cnt, 1, __ATOMIC_SEQ_CST);
 		ldmsd_strgp_put(strgp_ref->strgp, "prdset_strgp_ref");
 		free(strgp_ref);

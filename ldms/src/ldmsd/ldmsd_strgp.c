@@ -176,11 +176,11 @@ out:
 	return rc;
 }
 
-static void strgp_decompose(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
+static void strgp_decompose(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, void **ctxt)
 {
 	struct ldmsd_row_list_s row_list = TAILQ_HEAD_INITIALIZER(row_list);
 	int row_count, rc;
-	rc = strgp->decomp->decompose(strgp, prd_set->set, &row_list, &row_count);
+	rc = strgp->decomp->decompose(strgp, prd_set->set, &row_list, &row_count, ctxt);
 	if (rc) {
 		ovis_log(store_log, OVIS_LERROR, "strgp decompose error: %d\n", rc);
 		return;
@@ -193,7 +193,7 @@ static void strgp_decompose(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 }
 
 /* protected by strgp lock */
-static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
+static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, void **ctxt)
 {
 	if (strgp->state != LDMSD_STRGP_STATE_RUNNING)
 		return;
@@ -203,7 +203,7 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 			strgp->state = LDMSD_STRGP_STATE_STOPPED;
 			return;
 		}
-		strgp_decompose(strgp, prd_set);
+		strgp_decompose(strgp, prd_set, ctxt);
 		return;
 	}
 

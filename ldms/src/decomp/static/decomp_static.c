@@ -78,7 +78,8 @@ static ovis_log_t static_log;
 static ldmsd_decomp_t decomp_static_config(ldmsd_strgp_t strgp,
 			json_t *cfg, ldmsd_req_ctxt_t reqc);
 static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
-				     ldmsd_row_list_t row_list, int *row_count);
+				     ldmsd_row_list_t row_list, int *row_count,
+				     void **decomp_ctxt);
 static void decomp_static_release_rows(ldmsd_strgp_t strgp,
 					 ldmsd_row_list_t row_list);
 static void decomp_static_release_decomp(ldmsd_strgp_t strgp);
@@ -1825,7 +1826,8 @@ static ldmsd_functional_op_t op_table[] = {
 };
 
 static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
-				   ldmsd_row_list_t row_list, int *row_count)
+				   ldmsd_row_list_t row_list, int *row_count,
+				   void **decomp_ctxt)
 {
 	decomp_static_cfg_t dcfg = (void*)strgp->decomp;
 	decomp_static_row_cfg_t cfg_row;
