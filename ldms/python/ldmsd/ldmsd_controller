@@ -1028,8 +1028,8 @@ class LdmsdCmdParser(cmd.Cmd):
             rc, msg = self.comm.prdcr_status(arg['name'])
             if rc == 0 and msg is not None:
                 producers = fmt_status(msg)
-                print("Name             Host             Port         Transport    State        Type")
-                print("---------------- ---------------- ------------ ------------ ------------ ----------")
+                print(f"{'Name':16} {'Host':16} {'Port':12} {'Transport':12} {'auth':16} {'State':12} {'Type':20}")
+                print(f"{'-'*16} {'-'*16} {'-'*12} {'-'*12} {'-'*16} {'-'*12} {'-'*20}")
                 for prdcr in producers:
                     port = prdcr['port']
                     if prdcr['type'] == 'bridge':
@@ -1043,6 +1043,7 @@ class LdmsdCmdParser(cmd.Cmd):
                     print(f"{prdcr['name']:16} {prdcr['host']:16} " \
                           f"{port:12} " \
                           f"{prdcr['transport']:12} " \
+                          f"{prdcr['auth']:16} " \
                           f"{pstate:12} {prdcr['type']:10}")
                     for pset in prdcr['sets']:
                         print("    {0:16} {1:16} {2}".format(pset['inst_name'],
