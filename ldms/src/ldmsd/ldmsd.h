@@ -763,12 +763,30 @@ struct ldmsd_decomp_s {
  *   - instance
  */
 typedef enum ldmsd_phony_metric_id {
-	LDMSD_PHONY_METRIC_ID_FIRST = 65536,
-	LDMSD_PHONY_METRIC_ID_TIMESTAMP = LDMSD_PHONY_METRIC_ID_FIRST,
-	LDMSD_PHONY_METRIC_ID_PRODUCER,
-	LDMSD_PHONY_METRIC_ID_INSTANCE,
-	LDMSD_PHONY_METRIC_ID_FILL
+	LDMSD_PHONY_METRIC_ID_FIRST = 0x10000,
+	LDMSD_PHONY_METRIC_ID_TIMESTAMP = LDMSD_PHONY_METRIC_ID_FIRST, /* "M_timestamp" */
+	LDMSD_PHONY_METRIC_ID_PRODUCER, /* "M_producer" */
+	LDMSD_PHONY_METRIC_ID_INSTANCE, /* "M_instance" */
+	LDMSD_PHONY_METRIC_ID_UID,      /* "M_uid" */
+	LDMSD_PHONY_METRIC_ID_GID,      /* "M_gid" */
+	LDMSD_PHONY_METRIC_ID_PERM,     /* "M_perm" */
+	LDMSD_PHONY_METRIC_ID_DURATION, /* "M_duration" */
+	LDMSD_PHONY_METRIC_ID_DIGEST,   /* "M_digest" */
+	LDMSD_PHONY_METRIC_ID_SCHEMA,   /* "M_schema" */
+	LDMSD_PHONY_METRIC_ID_CARD,     /* "M_card" */
+
+	LDMSD_PHONY_METRIC_ID_FILL = 0x20000, /* Special `FILL` */
+
+	LDMSD_PHONY_METRIC_ID_UNKNOWN = -1,
 } ldmsd_phony_metric_id_t;
+
+/**
+ * \brief Resolve \c str to phony metric ID.
+ *
+ * \retval id The corresponding phony metric ID.
+ * \retval -1 If \c str does not resolve to any known phony metric ID.
+ */
+ldmsd_phony_metric_id_t ldmsd_phony_metric_resolve(const char *str);
 
 __attribute__((unused)) /* compiler hush */
 static int is_phony_metric_id(int metric_id)
