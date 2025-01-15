@@ -124,11 +124,6 @@ static FILE *mf;
 static int metric_offset;
 static base_data_t base;
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 static int create_metric_set(base_data_t base)
 {
 	ldms_schema_t schema;
@@ -351,7 +346,6 @@ static struct ldmsd_sampler procnfs_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

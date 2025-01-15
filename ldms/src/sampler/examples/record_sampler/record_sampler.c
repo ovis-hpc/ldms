@@ -90,19 +90,21 @@ ldms_record_t rec_def;
 int rec_def_idx;
 int rec_array_idx;
 
+static int with_name = 0;
+
 #define stringify(_x) #_x
 struct rec_metric rec_metrics[] = {
-	{ stringify(LDMS_V_CHAR), LDMS_V_CHAR, 1 },
-	{ stringify(LDMS_V_U8), LDMS_V_U8, 1 },
-	{ stringify(LDMS_V_S8), LDMS_V_S8, 1 },
-	{ stringify(LDMS_V_U16), LDMS_V_U16, 1 },
-	{ stringify(LDMS_V_S16), LDMS_V_S16, 1 },
-	{ stringify(LDMS_V_U32), LDMS_V_U32, 1 },
-	{ stringify(LDMS_V_S32), LDMS_V_S32, 1 },
-	{ stringify(LDMS_V_U64), LDMS_V_U64, 1 },
-	{ stringify(LDMS_V_S64), LDMS_V_S64, 1 },
-	{ stringify(LDMS_V_F32), LDMS_V_F32, 1 },
-	{ stringify(LDMS_V_D64), LDMS_V_D64, 1 },
+	{ stringify(LDMS_V_CHAR), LDMS_V_CHAR, 0 },
+	{ stringify(LDMS_V_U8), LDMS_V_U8, 0 },
+	{ stringify(LDMS_V_S8), LDMS_V_S8, 0 },
+	{ stringify(LDMS_V_U16), LDMS_V_U16, 0 },
+	{ stringify(LDMS_V_S16), LDMS_V_S16, 0 },
+	{ stringify(LDMS_V_U32), LDMS_V_U32, 0 },
+	{ stringify(LDMS_V_S32), LDMS_V_S32, 0 },
+	{ stringify(LDMS_V_U64), LDMS_V_U64, 0 },
+	{ stringify(LDMS_V_S64), LDMS_V_S64, 0 },
+	{ stringify(LDMS_V_F32), LDMS_V_F32, 0 },
+	{ stringify(LDMS_V_D64), LDMS_V_D64, 0 },
 	{ stringify(LDMS_V_CHAR_ARRAY), LDMS_V_CHAR_ARRAY, ARRAY_COUNT },
 	{ stringify(LDMS_V_U8_ARRAY), LDMS_V_U8_ARRAY, ARRAY_COUNT },
 	{ stringify(LDMS_V_S8_ARRAY), LDMS_V_S8_ARRAY, ARRAY_COUNT },
@@ -116,6 +118,9 @@ struct rec_metric rec_metrics[] = {
 	{ stringify(LDMS_V_D64_ARRAY), LDMS_V_D64_ARRAY, ARRAY_COUNT },
 	{ NULL, -1 }
 };
+
+/* the special name metric in the record */
+struct rec_metric rec_metrics_name = { "name", LDMS_V_CHAR_ARRAY, 16, -1 };
 
 #define LBUFSZ 256
 static int create_metric_set(base_data_t base)
@@ -150,6 +155,10 @@ static int create_metric_set(base_data_t base)
 	     i++, m = &rec_metrics[i]) {
 		m->mid = ldms_record_metric_add(rec_def, m->name, "unit", m->type, m->array_count);
 		assert(m->mid >= 0);
+	}
+	if (with_name) {
+		m = &rec_metrics_name;
+		m->mid = ldms_record_metric_add(rec_def, m->name, "", m->type, m->array_count);
 	}
 	total_sz += item_count * ldms_record_heap_size_get(rec_def);
 	/* Add record definition into the schema */
@@ -198,12 +207,18 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP " " BASE_CONFIG_USAGE;
+	return  "config name=" SAMP " " BASE_CONFIG_SYNOPSIS
+		"       [with_name=0|1]\n"
+		BASE_CONFIG_DESC
+		"    with_name    1 to generate dev_name in the device, or\n"
+		"                 0 to not generate dev_name (default: 0)\n"
+		;
 }
 
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
+	char *_with_name = NULL;
 
 	if (set) {
 		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
@@ -213,6 +228,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	rc = config_check(kwl, avl, NULL);
 	if (rc != 0){
 		return rc;
+	}
+
+	_with_name = av_value(avl, "with_name");
+
+	if (_with_name) {
+		with_name = atoi(_with_name);
 	}
 
 	base = base_config(avl, SAMP, SAMP, mylog);
@@ -230,11 +251,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
  err:
 	base_del(base);
 	return rc;
-}
-
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
 }
 
 static
@@ -359,6 +375,11 @@ static int sample(struct ldmsd_sampler *self)
 			mval = ldms_record_metric_get(rec_inst, m->mid);
 			value_setter(mval, m->type, round + i);
 		}
+		if (with_name) {
+			m = &rec_metrics_name;
+			mval = ldms_record_metric_get(rec_inst, m->mid);
+			snprintf(mval->a_char, m->array_count, "list%d", i);
+		}
 		rec_inst = ldms_list_next(set, rec_inst, &typ, &count);
 		i++;
 	}
@@ -369,6 +390,11 @@ static int sample(struct ldmsd_sampler *self)
 		for (m = rec_metrics; m->name; m++) {
 			mval = ldms_record_metric_get(rec_inst, m->mid);
 			value_setter(mval, m->type, round + i + ITEM_COUNT);
+		}
+		if (with_name) {
+			m = &rec_metrics_name;
+			mval = ldms_record_metric_get(rec_inst, m->mid);
+			snprintf(mval->a_char, m->array_count, "arr%d", i);
 		}
 	}
 
@@ -396,7 +422,6 @@ static struct ldmsd_sampler __plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

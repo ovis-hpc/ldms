@@ -1010,7 +1010,8 @@ static int __init_set(struct test_sampler_set *ts_set)
 				} else {
 					lent = ldms_list_append_item(ts_set->set, lh, list->type, list->cnt);
 					cnt = 1;
-					__metric_set(lent, type, cnt, list->init_value.v_u64);
+					__metric_set(lent, list->type, list->cnt,
+						     ldms_mval_as_u64(&list->init_value, list->type, 1));
 				}
 
 			}
@@ -1721,11 +1722,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return 0;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	assert(0 == "not implemented");
-}
-
 static int __gen_list_len(int min_len, int max_len)
 {
 	int llen = rand();
@@ -1766,7 +1762,7 @@ static int __sample_classic(struct test_sampler_set *ts_set)
 				type = ldms_record_metric_type_get(lent, 0, &cnt);
 				lent = ldms_record_metric_get(lent, 0);
 			}
-			v = lent->v_u64 + 1;
+			v = ldms_mval_as_u64(lent, type, 0) + 1;
 			ldms_list_purge(ts_set->set, mval);
 			for (j = 0; j < len; j++) {
 				if (LDMS_V_RECORD_INST == list->type) {
@@ -1788,7 +1784,7 @@ static int __sample_classic(struct test_sampler_set *ts_set)
 				__metric_set(lent, list->type, cnt, v);
 			}
 		} else {
-			v = mval->v_u64 + 1;
+			v = ldms_mval_as_u64(mval, type, 0) + 1;
 			if (ldms_metric_is_array(ts_set->set, i))
 				len = ldms_metric_array_get_len(ts_set->set, i);
 			else
@@ -2013,7 +2009,6 @@ static struct ldmsd_sampler test_sampler_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

@@ -502,11 +502,6 @@ static int SAPI(config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, 
 	return 0;
 }
 
-static ldms_set_t SAPI(get_set)(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 static int SAPI(sample)(struct ldmsd_sampler *self)
 {
 	int dec_val;
@@ -570,7 +565,6 @@ static struct ldmsd_sampler SAPI(plugin) = {
 		.config = SAPI(config),
 		.usage = SAPI(usage),
 	},
-	.get_set = SAPI(get_set),
 	.sample = SAPI(sample),
 };
 

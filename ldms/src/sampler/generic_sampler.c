@@ -321,11 +321,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return create_metric_set(value, prod_name);
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 static void term(struct ldmsd_plugin *self)
 {
 	if (schema)
@@ -421,7 +416,6 @@ static struct ldmsd_sampler gs_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

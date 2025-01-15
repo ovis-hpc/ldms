@@ -17,10 +17,11 @@ libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h \
 		     rrbt.c rrbt.h \
 		     ldms_heap.c ldms_heap.h \
 		     ldms_rail.c ldms_rail.h \
-		     ldms_stream.c ldms_stream.h
+		     ldms_stream.c ldms_stream.h \
+		     ldms_qgroup.c ldms_qgroup.h
 libldms_la_LIBADD = -ldl -lpthread $(top_builddir)/lib/src/coll/libcoll.la \
 		    $(top_builddir)/lib/src/ovis_json/libovis_json.la \
-		    $(top_builddir)/lib/src/ovis_ev/libovis_ev.la \
+		    $(top_builddir)/lib/src/ovis_event/libovis_event.la \
 		    $(top_builddir)/lib/src/mmalloc/libmmalloc.la \
 		    $(top_builddir)/lib/src/zap/libzap.la \
 		    $(top_builddir)/lib/src/ovis_log/libovis_log.la \

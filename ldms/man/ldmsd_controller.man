@@ -226,6 +226,8 @@ plugin for more information.
 \fBxprt\fR=\fIsock\fR|\fIrdma\fR|\fIugni\fR|\fIfabric\fR
 [\fBhost\fR=\fIHOST\fR]
 [\fBauth\fR=\fIAUTH_REF\fR]
+[\fBquota\fR=\fIQUOTA\fR]
+[\fBrx_rate\fR=\fIRX_RATE\fR]
 .RS
 .TP
 \fBport\fR=\fIPORT\fR
@@ -248,6 +250,27 @@ Instruct \fBldmsd\fR to use \fIAUTH_REF\fR (a name reference to \fBauth\fR
 object created by \fBauth_add\fR command) to authenticate connections on this
 port. If not given, the port uses the default authentication method specified on
 the CLI options (see \fBldmsd\fR(8) option \fB-a\fR).
+.TP
+.BI [quota " BYTES"]
+.br
+The LDMS daemon we are managing uses receive quota (measured in bytes) to
+control the amount of data received on the connections established by accepting
+requests to this listening endpoint. The \fRquota\Fb value functions
+similarly to the \fRquota\fB attribute in the \fRprdcr_add\fB command,
+influencing the amount of data producers created by Sampler Advertisement can
+receive. The default value is determined by the command-line \fR--quota\fB
+option used when starting the LDMS daemon (ldmsd). If neither the
+\fR--quota\fB option nor the \fRquota\fB attribute is specified, there is
+no limit on receive quota.
+
+.TP
+.BI [rx_rate " BYTES_PER_SEC"]
+.br
+The receive rate limit (in bytes/second) controls the rate of data received on
+the connections established by accepting requests to this listening endpoint.
+Unlike \fRquota\fB, which controls the total amount of received data, the receive
+rate limit focuses on the data flow per second. If not specified, it is
+unlimited.
 .RE
 
 .SH PRODUCER COMMAND SYNTAX
@@ -305,18 +328,20 @@ the CLI options (see \fBldmsd\fR(8) option \fB-a\fR) is used.
 .br
 The number of rail endpooints for the prdcr (default: 1).
 .TP
-.BI [credits " BYTES"]
+.BI [quota " BYTES"]
 .br
-The send credits our ldmsd (the one we are controlling) advertises to the prdcr
-(default: value from ldmsd --credits option). This limits how much outstanding
-data our ldmsd holds for the prdcr. The prdcr drops messages when it does not
-have enough send credits.
+The send quota our ldmsd (the one we are controlling) advertises to the prdcr
+(default: value from ldmsd --quota option). This limits how much outstanding
+data our ldmsd holds for the prdcr.
 .TP
 .BI [rx_rate " BYTES_PER_SEC"]
 .br
 The recv rate (bytes/sec) limit for this connection. The default is -1
 (unlimited).
-
+.TP
+.BI [cache_ip " cache_ip"]
+.br
+Controls how \fBldmsd\fR handles hostname resolution for producer IP addresses. When set to \fBtrue\fR (default), \fBldmsd\fR resolves the hostname once during \fBprdcr_add\fR and caches the result. If the initial resolution fails and the producer is started (via \fBprdcr_start\R or \fBprdcr_start_regex\fR), \fBldmsd\fR will retry resolution at connection time and each resonnection attempt until successful. When set to \fBfalse\fR, \fBldmsd\fR performs hostname resolution at \fBprdcr_add\fR time and repeats the resolution at every connection and reconnection attempt if the producer is started.
 .RE
 
 .SS Delete a producer from the aggregator
@@ -993,6 +1018,103 @@ If true, reset the store time statistics after returning the values. The default
 .br
 A storage policy name. Only the statistics of the given storage policy will be reported and reset if reset is true.
 .RE
+
+.SH QGROUP COMMAND SYNTAX
+
+.SS Get qgroup information
+.br
+.BR qgroup_info
+.RS
+.TP
+- This command has no attributes. -
+.RE
+
+.SS Set qgroup parameters
+.br
+.BR qgroup_config
+attr=<value>
+.RS
+.TP
+.BI "[quota " BYTES ]
+The amount of our quota (bytes). The \fIBYTES\fR can be expressed with
+quantifiers, e.g. "1k" for 1024 bytes. The supported quantifiers are
+"b" (bytes), "k" (kilobytes), "m" (megabytes), "g" (gigabytes) and "t"
+(terabytes).
+.TP
+.BI "[ask_interval " TIME ]
+The time interval to ask the members when our quota is low. The \fITIME\fR can
+be expressed with units, e.g. "1s", but will be treated as microseconds if no
+units is specified. The supported units are "us" (microseconds), "ms"
+(milliseconds), "s" (seconds), "m" (minutes), "h" (hours), and "d" (days).
+.TP
+.BI "[ask_amount " BYTES ]
+The amount of quota to ask from our members. The \fIBYTES\fR can be expressed
+with quantifiers, e.g. "1k" for 1024 bytes. The supported quantifiers are "b"
+(bytes), "k" (kilobytes), "m" (megabytes), "g" (gigabytes) and "t" (terabytes).
+.TP
+.BI "[ask_mark " BYTES ]
+The amount of quota to determine as 'low', to start asking quota from other
+members. The \fIBYTES\fR can be expressed with quantifiers, e.g. "1k" for 1024
+bytes. The supported quantifiers are "b" (bytes), "k" (kilobytes), "m"
+(megabytes), "g" (gigabytes) and "t" (terabytes).
+.TP
+.BI "[reset_interval " TIME ]
+The time interval to reset our quota to its original value. The \fITIME\fR can
+be expressed with units, e.g. "1s", but will be treated as microseconds if no
+units is specified. The supported units are "us" (microseconds), "ms"
+(milliseconds), "s" (seconds), "m" (minutes), "h" (hours), and "d" (days).
+.RE
+
+.SS Add a member into our qgroup
+.br
+.BR qgroup_member_add
+attr=<value>
+.RS
+.TP
+.BI "xprt " XPRT
+The transport type of the connection (e.g. "sock").
+.TP
+.BI "host " HOST
+The hostname or IP address of the member.
+.TP
+.BI "[port " PORT ]
+The port of the member (default: 411).
+.TP
+.BI "[auth " AUTH_REF ]
+The reference to the authentication domain (the \fBname\fR in \fBauth_add\fR
+command) to be used in this connection If not specified, the default
+authentication domain of the daemon is used.
+.RE
+
+.SS Remove a member from the qgroup
+.br
+.BR qgroup_member_del
+attr=<value>
+.RS
+.TP
+.BI "host " HOST
+The hostname or IP address of the member.
+.TP
+.BI "[port " PORT ]
+The port of the member (default: 411).
+.RE
+
+.SS Start the qgroup service
+.br
+.BR qgroup_start
+.RS
+.TP
+- This command has no attributes. -
+.RE
+
+.SS Stop the qgroup service
+.br
+.BR qgroup_stop
+.RS
+.TP
+- This command has no attributes. -
+.RE
+
 
 .SH MISC COMMAND SYNTAX
 

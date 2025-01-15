@@ -252,11 +252,6 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(lustre_ost_log);
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 static const char *usage(struct ldmsd_plugin *self)
 {
         ovis_log(lustre_ost_log, OVIS_LDEBUG, "usage() called\n");
@@ -271,7 +266,6 @@ static struct ldmsd_sampler ost_job_stats_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

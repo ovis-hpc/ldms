@@ -185,7 +185,7 @@ sos_type_t sos_type_map[] = {
 	[LDMS_V_U8] = SOS_TYPE_UINT32,
 	[LDMS_V_S8] = SOS_TYPE_INT32,
 	[LDMS_V_U16] = SOS_TYPE_UINT16,
-	[LDMS_V_S16] = SOS_TYPE_UINT16,
+	[LDMS_V_S16] = SOS_TYPE_INT16,
 	[LDMS_V_U32] = SOS_TYPE_UINT32,
 	[LDMS_V_S32] = SOS_TYPE_INT32,
 	[LDMS_V_U64] = SOS_TYPE_UINT64,
@@ -1324,10 +1324,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
       int *metric_arry, size_t metric_count)
 {
 	struct sos_instance *si = _sh;
-	struct ldms_timestamp timestamp;
 	struct timespec now;
-	SOS_VALUE(value);
-	sos_obj_t obj;
 	int rc = 0;
 
 	if (!si)
@@ -1380,24 +1377,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	} else {
 		sos_begin_x(si->sos_handle->sos);
 	}
-	obj = sos_obj_new(si->sos_schema);
-	if (!obj) {
-		LOG_(OVIS_LERROR, "Error %d: %s at %s:%d\n", errno,
-		       STRERROR(errno), __FILE__, __LINE__);
-		errno = ENOMEM;
-		goto err;
-	}
-	timestamp = ldms_transaction_timestamp_get(set);
-
-	/* timestamp */
-	if (NULL == sos_value_init(value, obj, si->ts_attr)) {
-		LOG_(OVIS_LERROR, "Error initializing timestamp attribute\n");
-		errno = ENOMEM;
-		goto err;
-	}
-	value->data->prim.timestamp_.fine.secs = timestamp.sec;
-	value->data->prim.timestamp_.fine.usecs = timestamp.usec;
-	sos_value_put(value);
 
 	switch (si->mode) {
 		case STORE_SOS_M_BASIC:

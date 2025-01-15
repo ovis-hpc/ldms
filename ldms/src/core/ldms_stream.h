@@ -118,7 +118,7 @@ struct ldms_stream_client_s {
 	regex_t regex;
 	struct ref_s ref;
 
-	struct ldms_rail_rate_credit_s rate_credit;
+	struct ldms_rail_rate_quota_s rate_quota;
 
 	int desc_len;
 	char *desc; /* a short description at &match[match_len] */
@@ -134,7 +134,10 @@ struct ldms_stream_full_msg_s {
 	uint32_t stream_type;
 	struct ldms_cred cred; /* credential of the originator */
 	uint32_t perm; /* 0777 style permission */
-	uint32_t preserved;
+	uint32_t name_hash;
+	/* Allocate space to collect profile data for 8 hops */
+	uint32_t hop_cnt;
+	struct ldms_stream_hop hops[STREAM_MAX_PROFILE_HOPS+1];
 	char     msg[OVIS_FLEX];
 	/* `msg` format:
 	 * .----------------------.
@@ -145,4 +148,35 @@ struct ldms_stream_full_msg_s {
 	 */
 };
 
+struct __sbuf_key_s {
+	struct ldms_addr src;
+	uint64_t msg_gn;
+};
+
+struct __stream_buf_s {
+	struct rbn rbn;
+	struct __sbuf_key_s key;
+	struct ref_s ref;
+	struct ldms_rail_ep_s *rep;
+	size_t full_msg_len;
+	off_t  off;
+	const char *name;
+	const char *data;
+	uint32_t name_len;
+	uint32_t data_len;
+	union {
+		struct ldms_stream_full_msg_s msg[0];
+		char buf[0];
+	};
+};
+
+/* for internal use */
+int __rep_publish(struct ldms_rail_ep_s *rep, const char *stream_name,
+			uint32_t hash, ldms_stream_type_t stream_type,
+			struct ldms_addr *src, uint64_t msg_gn,
+			ldms_cred_t cred, int perm,
+			uint32_t hop_cnt,
+			struct ldms_stream_hop *hops,
+			const char *data, size_t data_len,
+			struct strm_publish_profile_s *pts);
 #endif /* __LDMS_STREAM_H__ */

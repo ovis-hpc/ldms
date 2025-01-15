@@ -95,11 +95,6 @@ struct kw {
 	int (*action)(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg);
 };
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 static int create_metric_set(base_data_t base)
 {
 	int rc;
@@ -371,7 +366,6 @@ static struct ldmsd_sampler procnetdev_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

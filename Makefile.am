@@ -11,7 +11,7 @@ autogen.sh \
 m4/Ovis-top.m4 \
 m4/gnulib-cache.m4 \
 SHA.txt \
-README.md
+README.rst
 
 EXTRA_DIST += $(top_srcdir)/.version
 BUILT_SOURCES = $(top_srcdir)/.version
@@ -28,13 +28,13 @@ nobase_include_HEADERS = ovis-ldms-config.h
 docdir = $(datadir)/doc/@PACKAGE@
 dist_doc_DATA = COPYING gpl-2.0.txt
 
-SUBDIRS = lib ldms util gnulib
+SUBDIRS = lib ldms util gnulib docs
 
 # this definition of DIST_SUBDIRS is unusual. May decide to improve later.
 # For now, we ship as we expect to configure.
 # Perhaps all should be included all the time but we surround their
 # make content for dist with enable conditionals.
-DIST_SUBDIRS = lib ldms util gnulib
+DIST_SUBDIRS = lib ldms util gnulib docs
 # make dist _will_ fail for these unless we mod their .am files
 # so not included in dist.
 NODIST_SUBDIRS =

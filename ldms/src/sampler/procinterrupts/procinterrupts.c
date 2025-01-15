@@ -74,12 +74,6 @@ static base_data_t base;
 
 static ovis_log_t mylog;
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
-
 static int getNProcs(char buf[]){
 	int nproc = 0;
 	char* pch;
@@ -302,7 +296,6 @@ static struct ldmsd_sampler procinterrupts_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

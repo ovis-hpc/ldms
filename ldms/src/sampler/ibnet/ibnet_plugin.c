@@ -121,11 +121,6 @@ static void term_ibnet(struct ldmsd_plugin *self)
 	pthread_mutex_unlock(&only_lock);
 }
 
-static ldms_set_t get_set_ibnet(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 static const char *usage_ibnet(struct ldmsd_plugin *self)
 {
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " usage() called\n");
@@ -142,7 +137,6 @@ static struct ldmsd_sampler ibnet_plugin = {
 		.config = config_ibnet,
 		.usage = usage_ibnet,
 	},
-	.get_set = get_set_ibnet,
 	.sample = sample_ibnet,
 };
 

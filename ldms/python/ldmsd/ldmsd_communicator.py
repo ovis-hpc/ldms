@@ -86,10 +86,10 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       ###############################
                       ##### Producer Policy #####
                       'prdcr_add': {'req_attr': ['name', 'type', 'xprt', 'host',
-                                                 'port'],
+                                                 'port', 'reconnect'],
                                     'opt_attr' : [ 'auth', 'perm', 'interval',
-                                                   'reconnect', 'rail',
-                                                   'credits', 'rx_rate' ] },
+                                                   'rail', 'quota', 'rx_rate',
+                                                   'cache_ip' ] },
                       'prdcr_del': {'req_attr': ['name']},
                       'prdcr_start': {'req_attr': ['name'],
                                       'opt_attr': ['interval', 'reconnect']},
@@ -106,7 +106,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_stream_status' : {'req_attr':['regex'], 'opt_attr':[]},
                       ##### Bridge #####
                       'bridge_add': {'req_attr': ['name', 'xprt', 'host', 'port', 'reconnect'],
-                                    'opt_attr' : [ 'auth', 'perm', 'rail', 'credits', 'rx_rate' ] },
+                                     'opt_attr' : [ 'auth', 'perm', 'rail', 'quota', 'rx_rate' ] },
                       ##### Updater Policy #####
                       'updtr_add': {'req_attr': ['name'],
                                     'opt_attr': ['offset', 'push', 'interval', 'auto_interval', 'perm']},
@@ -156,11 +156,12 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_stats': {'req_attr':[], 'opt_attr': []},
                       'set_route' : {'req_attr':['instance'], 'opt_attr':[]},
                       'set_stats': {'req_attr':[], 'opt_attr': ['summary']},
-                      'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth']},
+                      'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth', 'quota', 'rx_rate']},
                       'metric_sets_default_authz': {'req_attr':[], 'opt_attr': ['uid', 'gid', 'perm']},
                       'set_sec_mod' : {'req_attr': ['regex'], 'opt_attr': ['uid', 'gid', 'perm']},
                       'log_status' : {'req_attr' : [], 'opt_attr' : ['name']},
                       'stats_reset' : {'req_attr' : [], 'opt_attr' : ['list']},
+                      'profiling' : {'req_attr' : [], 'opt_attr' : ['enable', 'reset']},
                       ##### Failover. #####
                       'failover_config': {
                                 'req_attr': [
@@ -206,27 +207,63 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                                     'opt_attr': ['instance']
                             },
                       ##### Authetication. #####
-                      'auth_add': {'req_attr': ['name', 'xprt', 'host', 'port', 'reconnect'],
-                                   'opt_attr' : [ 'auth', 'perm', 'rail', 'credits', 'rx_rate' ] },
+                      'auth_add': {'req_attr': ['name'],
+                                   'opt_attr' : ['plugin', 'auth_opt'] },
                       ##### Sampler Discovery #####
-                      'advertiser_add': {'req_attr': ['name', 'xprt', 'host', 'port'],
-                                        'opt_attr' : [ 'auth', 'perm', 'interval',
-                                                   'reconnect', 'rail',
-                                                   'credits', 'rx_rate' ] },
+                      'advertiser_add': {'req_attr': ['name', 'xprt', 'host', 'port', 'reconnect'],
+                                        'opt_attr' : ['auth', 'perm', 'interval',
+                                                      'rail', 'quota', 'rx_rate' ] },
                       'advertiser_del': {'req_attr': ['name'], 'opt_attr': []},
                       'advertiser_start': {'req_attr': ['name'],
                                         'opt_attr' : ['xprt', 'host', 'port',
                                                       'auth', 'perm',
                                                       'reconnect', 'rail',
-                                                      'credits', 'rx_rate' ] },
+                                                      'quota', 'rx_rate' ] },
                       'advertiser_stop': {'req_attr': ['name'], 'opt_attr': []},
-                      'prdcr_listen_add': {'req_attr': ['name'],
-                                           'opt_attr': ['rail', 'ip', 'credits', 'rx_rate', 'regex', 'disabled_start']},
+                      'prdcr_listen_add': {'req_attr': ['name', 'reconnect'],
+                                           'opt_attr': ['rail', 'ip', 'quota', 'rx_rate', 'regex', 'disable_start']},
                       'prdcr_listen_del': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_start': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_stop': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_status': {'req_attr': [], 'opt_attr': []},
+                      ##### Quota Group (qgroup) #####
+                      'qgroup_config': {
+                          'req_attr': [],
+                          'opt_attr': [
+                              'quota', 'ask_interval', 'ask_amount',
+                              'ask_mark', 'reset_interval'
+                          ]
+                      },
+                      'qgroup_member_add': {
+                          'req_attr': ['host', 'xprt'],
+                          'opt_attr': ['port', 'auth']
+                      },
+                      'qgroup_member_del': {
+                          'req_attr': ['host'],
+                          'opt_attr': ['port']
+                      },
+                      'qgroup_start': {'req_attr': [], 'opt_attr': []},
+                      'qgroup_stop': {'req_attr': [], 'opt_attr': []},
+                      'qgroup_info': {'req_attr': [], 'opt_attr': []},
                       }
+
+def get_cmd_attr_list(cmd_verb):
+    """Return the dictionary of command attributes
+
+    If there are no required/optional attributes, the value of the
+    'req'/'opt' key is None. Otherwise, the value is a list of attribute
+    names.
+
+    @return: {'req': [], 'opt': []}
+    """
+    attr_dict = {'req': [], 'opt': []}
+    if 'req_attr' in LDMSD_CTRL_CMD_MAP[cmd_verb]:
+        if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['req_attr']) > 0:
+            attr_dict['req'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['req_attr']
+    if 'opt_attr' in LDMSD_CTRL_CMD_MAP[cmd_verb]:
+        if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']) > 0:
+            attr_dict['opt'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']
+    return attr_dict
 
 def fmt_status(msg):
     """
@@ -291,12 +328,16 @@ class LDMSD_Req_Attr(object):
     RESET = 36
     DECOMPOSITION = 37
     RAIL = 38
-    CREDITS = 39
+    QUOTA = 39
     RX_RATE = 40
     SUMMARY = 41
     SIZE = 42
     IP = 43
-    LAST = 44
+    ASK_INTERVAL = 44
+    ASK_MARK = 45
+    ASK_AMOUNT = 46
+    RESET_INTERVAL = 47
+    LAST = 48
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -339,12 +380,17 @@ class LDMSD_Req_Attr(object):
                    'auth': AUTH,
                    'decomposition' : DECOMPOSITION,
                    'rail' : RAIL,
-                   'credits' : CREDITS,
+                   'quota' : QUOTA,
                    'rx_rate' : RX_RATE,
                    'reconnect' : INTERVAL,
                    'summary' : SUMMARY,
                    'size' : SIZE,
                    'IP' : IP,
+                   'ip' : IP,
+                   'ask_interval': ASK_INTERVAL,
+                   'ask_mark': ASK_MARK,
+                   'ask_amount': ASK_AMOUNT,
+                   'reset_interval': RESET_INTERVAL,
                    'TERMINATING': LAST
         }
 
@@ -386,10 +432,14 @@ class LDMSD_Req_Attr(object):
                    AUTH : 'auth',
                    DECOMPOSITION : 'decomposition',
                    RAIL : 'rail',
-                   CREDITS : 'credits',
+                   QUOTA : 'quota',
                    RX_RATE : 'rx_rate',
                    SUMMARY : 'summary',
                    IP : 'ip',
+                   ASK_INTERVAL : 'ask_interval',
+                   ASK_MARK : 'ask_mark',
+                   ASK_AMOUNT : 'ask_amount',
+                   RESET_INTERVAL : 'reset_interval',
                    LAST : 'TERMINATING'
         }
 
@@ -569,6 +619,9 @@ class LDMSD_Request(object):
     SET_SEC_MOD = 0x600 + 19
     LOG_STATUS = 0x600 + 20
     STATS_RESET = 0x600 + 21
+    # IDs 0x600 + 22 to 0x600 + 30 are reserved to match command-line options handlers
+    # defined in ldmsd_request.h. These must stay in sync with the C implementation.
+    PROFILING = 0x600 + 31
 
     FAILOVER_CONFIG        = 0x700
     FAILOVER_PEERCFG_START = 0x700  +  1
@@ -595,6 +648,13 @@ class LDMSD_Request(object):
     STREAM_CLIENT_STATS = STREAM_PUBLISH + 7
 
     AUTH_ADD = 0xa00
+
+    QGROUP_CONFIG     = 0xb00
+    QGROUP_MEMBER_ADD = QGROUP_CONFIG + 1
+    QGROUP_MEMBER_DEL = QGROUP_CONFIG + 2
+    QGROUP_START      = QGROUP_CONFIG + 3
+    QGROUP_STOP       = QGROUP_CONFIG + 4
+    QGROUP_INFO       = QGROUP_CONFIG + 5
 
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
@@ -677,6 +737,7 @@ class LDMSD_Request(object):
             'failover_stop'          : {'id' : FAILOVER_STOP},
             'set_route'     :  {'id': SET_ROUTE},
             'xprt_stats'    :  {'id' : XPRT_STATS},
+            'profiling'    :  {'id' : PROFILING},
             'thread_stats'  :  {'id' : THREAD_STATS},
             'prdcr_stats'   :  {'id' : PRDCR_STATS},
             'set_stats'     :  {'id' : SET_STATS},
@@ -701,6 +762,13 @@ class LDMSD_Request(object):
             'metric_sets_default_authz' : {'id' : SET_DEFAULT_AUTHZ },
             'set_sec_mod' : {'id' : SET_SEC_MOD },
             'log_status' : {'id' : LOG_STATUS },
+
+            'qgroup_config'     : {'id' : QGROUP_CONFIG     },
+            'qgroup_member_add' : {'id' : QGROUP_MEMBER_ADD },
+            'qgroup_member_del' : {'id' : QGROUP_MEMBER_DEL },
+            'qgroup_start'      : {'id' : QGROUP_START      },
+            'qgroup_stop'       : {'id' : QGROUP_STOP       },
+            'qgroup_info'       : {'id' : QGROUP_INFO       },
     }
 
     TYPE_CONFIG_CMD = 1
@@ -974,19 +1042,12 @@ class Communicator(object):
         """Return the dictionary of command attributes
 
         If there are no required/optional attributes, the value of the
-        'req'/'opt' key is None. Otherweise, the value is a list of attribute
+        'req'/'opt' key is None. Otherwise, the value is a list of attribute
         names.
 
         @return: {'req': [], 'opt': []}
         """
-        attr_dict = {'req': [], 'opt': []}
-        if 'req_attr' in LDMSD_CTRL_CMD_MAP[cmd_verb]:
-            if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['req_attr']) > 0:
-                attr_dict['req'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['req_attr']
-        if 'opt_attr' in LDMSD_CTRL_CMD_MAP[cmd_verb]:
-            if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']) > 0:
-                attr_dict['opt'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']
-        return attr_dict
+        return get_cmd_attr_list(cmd_verb)
 
     def reconnect(self, timeout=0):
         if self.ldms:
@@ -1486,7 +1547,7 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def listen(self, xprt, port, host=None, auth=None):
+    def listen(self, xprt, port, host=None, auth=None, quota=None, rx_limit=None):
         """
         Add a listening endpoint
 
@@ -1504,6 +1565,10 @@ class Communicator(object):
         ]
         if auth:
             attr_list.append(LDMSD_Req_Attr(attr_name='auth', value=auth))
+        if quota is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.QUOTA, value=quota))
+        if rx_limit is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=rx_limit))
         req = LDMSD_Request(
                 command='listen',
                 attrs=attr_list
@@ -1520,7 +1585,7 @@ class Communicator(object):
         """
         attr_list = []
         if uid:
-            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSDS_Req_Attr.UID, value=uid))
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.UID, value=uid))
         if gid:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.GID, value=gid))
         if perm:
@@ -2126,15 +2191,17 @@ class Communicator(object):
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PERM, value=str(kwargs['perm'])))
         if 'rail' in kwargs.keys() and kwargs['rail']:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RAIL, value=str(int(kwargs['rail']))))
-        if 'credit' in kwargs.keys() and kwargs['credits']:
-            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.CREDITS, value=str(int(kwargs['credits']))))
+        if 'quota' in kwargs.keys() and kwargs['quota']:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.QUOTA, value=str(int(kwargs['quota']))))
         if 'rx_rate' in kwargs.keys() and kwargs['rx_rate']:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(int(kwargs['rx_rate']))))
+        if 'cache_ip' in kwargs.keys() and kwargs['cache_ip']:
+            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.IP, value = str(kwargs['cache_ip'])))
 
         return attrs
 
     def prdcr_add(self, name, ptype, xprt, host, port, reconnect, auth=None, perm=None,
-                  rail=None, credits=None, rx_rate=None):
+                  rail=None, quota=None, rx_rate=None, cache_ip=None):
         """
         Add a producer. A producer is a peer to the LDMSD being configured.
         Once started, the LDSMD will attempt to connect to this peer
@@ -2152,14 +2219,17 @@ class Communicator(object):
         - The reconnect interval in microseconds
 
         Keyword Parameters:
+        auth - The authentication domain
         perm - The configuration client permission required to
                modify the producer configuration. Default is None.
         rail - The number of endpoints in a rail. The default is 1.
-        credits - The send credits of our side of the connection (the daemon we
+        quota - The recv quota of our side of the connection (the daemon we
                   are controlling). The default is the daemon's default
-                  ('-C' ldmsd option).
+                  ('--quota' ldmsd option).
         rx_rate - The recv rate (bytes/second) limit for this connection. The
                   default is -1 (unlimited).
+        cache_ip - True: Cache hostname after first successfull resolution;
+                   False: Resolve hostname on every connection
 
         Returns:
         A tuple of status, data
@@ -2168,7 +2238,8 @@ class Communicator(object):
         """
         args_d = {'name': name, 'ptype': ptype, 'xprt': xprt, 'host': host, 'port': port,
                   'reconnect': reconnect, 'auth': auth, 'perm': perm,
-                  'rail': rail, 'credits': credits, 'rx_rate': rx_rate}
+                  'rail': rail, 'quota': quota, 'rx_rate': rx_rate,
+                  'cache_ip' : cache_ip}
         attrs = self._prdcr_add_attr_prep(**args_d)
         req = LDMSD_Request( command_id = LDMSD_Request.PRDCR_ADD, attrs = attrs)
         try:
@@ -2452,7 +2523,7 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def advertiser_add(self, name, xprt, host, port, reconnect, auth=None, perm=None,
-                                            rail=None, credits=None, rx_rate=None):
+                       rail=None, quota=None, rx_rate=None):
         """
         Add an advertiser. An advertiser sends an advertisement to an aggregator
         add it as a producer. Once started, the LDSMD will attempt to
@@ -2469,11 +2540,11 @@ class Communicator(object):
         - The reconnect interval in microseconds
 
         Keyword Parameters:
-        auth - The authentication demain
+        auth - The authentication domain of the remote daemon
         perm - The configuration client permission required to
                modify the producer configuration. Default is None.
         rail - The number of endpoints in a rail. The default is 1.
-        credits - The send credits of our side of the connection (the daemon we
+        quota - The send quota of our side of the connection (the daemon we
                   are controlling). The default is the daemon's default
                   ('-C' ldmsd option).
         rx_rate - The recv rate (bytes/second) limit for this connection. The
@@ -2486,9 +2557,9 @@ class Communicator(object):
         """
         args_d = {'name': name, 'xprt': xprt, 'host': host, 'port': port,
                   'reconnect': reconnect, 'auth': auth, 'perm': perm,
-                  'rail': rail, 'credits': credits, 'rx_rate': rx_rate}
+                  'rail': rail, 'quota': quota, 'rx_rate': rx_rate}
         attrs = self._prdcr_add_attr_prep(**args_d)
-        attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value="advertise"))
+        attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value="advertiser"))
         req = LDMSD_Request( command_id = LDMSD_Request.ADVERTISER_ADD, attrs = attrs)
         try:
             req.send(self)
@@ -2499,8 +2570,8 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def advertiser_start(self, name, xprt=None, host=None, port=None,
-                              reconnect=None, auth=None, perm=None,
-                              rail=None, credits=None, rx_rate=None):
+                         reconnect=None, auth=None, perm=None,
+                         rail=None, quota=None, rx_rate=None):
         """
         Start an advertiser. If the advertiser does not exist, LDMSD will create it.
         In this case, the values of the required attributes in advertiser_add must be given.
@@ -2517,7 +2588,7 @@ class Communicator(object):
         perm - The configuration client permission required to
                modify the producer configuration. Default is None.
         rail - The number of endpoints in a rail. The default is 1.
-        credits - The send credits of our side of the connection (the daemon we
+        quota - The send quota of our side of the connection (the daemon we
                   are controlling). The default is the daemon's default
                   ('-C' ldmsd option).
         rx_rate - The recv rate (bytes/second) limit for this connection. The
@@ -2530,9 +2601,9 @@ class Communicator(object):
         """
         args_d = {'name': name, 'xprt': xprt, 'host': host, 'port': port,
                   'reconnect': reconnect, 'auth': auth, 'perm': perm,
-                  'rail': rail, 'credits': credits, 'rx_rate': rx_rate}
+                  'rail': rail, 'quota': quota, 'rx_rate': rx_rate}
         attrs = self._prdcr_add_attr_prep(**args_d)
-        attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value="advertise"))
+        attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value="advertiser"))
         req = LDMSD_Request( command_id = LDMSD_Request.ADVERTISER_START, attrs = attrs)
         try:
             req.send(self)
@@ -2564,37 +2635,30 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_listen_add(self, name, disabled_start=None, regex=None, ip=None, rail=None, credits=None, rx_rate=None):
+    def prdcr_listen_add(self, name, reconnect, disable_start=None, regex=None, ip=None, rail=None, quota=None, rx_rate=None):
         """
         Tell an aggregator to wait for advertisements from samplers
 
-        The ggregator automatically adds and starts a producer when it receives
-        an advertisement that the peer (sampler) hostname matches the regular expression.
+        The aggregator automatically adds and starts a producer when it receives
+        an advertisement that the peer (sampler) hostname matches the regular expression
+        unless the disable_start parameter is specified.
 
         Parameters:
          - Name of the producer listen
          - Regular expression to match sampler hostnames
-         - The number of rail
-         - The credits in bytes
-         - The receive rate limit
+         - IP range in the CIDR format
 
         Return:
         - status is an errno from the errno module
         - data is an error message if status !=0 or None
         """
         attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
-        if disabled_start is not None:
-            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.AUTO_INTERVAL, value=disabled_start))
+        if disable_start is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.AUTO_INTERVAL, value=disable_start))
         if regex is not None:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex))
         if ip is not None:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.IP, value=ip))
-        if rail is not None:
-            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RAIL, value=rail))
-        if credits is not None:
-            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.CREDITS, value=credits))
-        if rx_rate is not None:
-            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=rx_rate))
 
         req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_ADD,
                             attrs=attr_list)
@@ -3335,6 +3399,24 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
+    def profiling(self, enable = None, reset = None):
+        attrs = []
+        if enable is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.TYPE,
+                                         value = enable))
+        if reset is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id  = LDMSD_Req_Attr.RESET,
+                                        value = reset))
+        req = LDMSD_Request(
+                command_id=LDMSD_Request.PROFILING, attrs=attrs)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
     def thread_stats(self, reset=False):
         """Query the daemon's I/O thread utilization data"""
         if reset is None:
@@ -3463,6 +3545,118 @@ class Communicator(object):
         except Exception as e:
             self.close()
             return errno.ENOTCONN, str(e)
+
+    def __comm_routine(self, cmd_id, av_list = list()):
+        attrs = [ LDMSD_Req_Attr(attr_id = a, value = v) \
+                            for a, v in av_list if v is not None ]
+        req = LDMSD_Request(command_id = cmd_id, attrs = attrs)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except ConnectionError as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+        except Exception as e:
+            self.close()
+            return -1, str(e)
+
+    def qgroup_config(self, quota:str=None, ask_interval:str=None,
+                      ask_amount:str=None, ask_mark:str=None,
+                      reset_interval:str=None):
+        """
+        Configure qgroup.
+
+        Parameters:
+        - quota(str): amount of quota in bytes (e.g. '3K').
+        - ask_interval(str): time interval to ask quota from members (e.g.  '1s').
+        - ask_amount(str): the byte amount to ask members for (e.g. '1K').
+        - ask_mark(str): the quota mark to start asking members for more quota
+                         (e.g. '1K').
+        - reset_interval(str): time interval to reset our quota (e.g. '1s').
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        params = [ (LDMSD_Req_Attr.QUOTA,          quota),
+                   (LDMSD_Req_Attr.ASK_INTERVAL,   ask_interval),
+                   (LDMSD_Req_Attr.ASK_AMOUNT,     ask_amount),
+                   (LDMSD_Req_Attr.ASK_MARK,       ask_mark),
+                   (LDMSD_Req_Attr.RESET_INTERVAL, reset_interval) ]
+        return self.__comm_routine(LDMSD_Request.QGROUP_CONFIG, params)
+
+    def qgroup_member_add(self, host:str, xprt:str, port:str=None, auth:str=None):
+        """
+        Add a member into the Quota Group (qgroup).
+
+        Parameters:
+        - host(str): the host (e.g. 'node1').
+        - xprt(str): the transport plugin (e.g. 'sock').
+        - port(str): the port (e.g. '12345', default: '411').
+        - auth(str): the authentication object for this connection (default; None).
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        params = [ (LDMSD_Req_Attr.HOST, host),
+                   (LDMSD_Req_Attr.XPRT, xprt),
+                   (LDMSD_Req_Attr.PORT, port),
+                   (LDMSD_Req_Attr.AUTH, auth) ]
+        return self.__comm_routine(LDMSD_Request.QGROUP_MEMBER_ADD, params)
+
+    def qgroup_member_del(self, host:str, port:str=None):
+        """
+        Remove a member from the Quota Group (qgroup).
+
+        Parameters:
+        - host(str): the host (e.g. 'node1').
+        - port(str): the port (e.g. '12345', default: '411').
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        params = [ (LDMSD_Req_Attr.HOST, host),
+                   (LDMSD_Req_Attr.PORT, port) ]
+        return self.__comm_routine(LDMSD_Request.QGROUP_MEMBER_DEL, params)
+
+    def qgroup_start(self):
+        """
+        Start the Quota Group (qgroup) service in the ldmsd.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        return self.__comm_routine(LDMSD_Request.QGROUP_START)
+
+    def qgroup_stop(self):
+        """
+        Stop the Quota Group (qgroup) service in the ldmsd.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        return self.__comm_routine(LDMSD_Request.QGROUP_STOP)
+
+    def qgroup_info(self):
+        """
+        Get the Quota Group (qgroup) information from the ldmsd.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        return self.__comm_routine(LDMSD_Request.QGROUP_INFO)
 
     def close(self):
         self.state = self.CLOSED

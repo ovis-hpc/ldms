@@ -121,12 +121,22 @@ enum ldms_request_cmd {
 	LDMS_CMD_CANCEL_PUSH,
 	LDMS_CMD_AUTH,
 	LDMS_CMD_SET_DELETE,
-	LDMS_CMD_SEND_CREDIT, /* for updaing send credit */
+	LDMS_CMD_SEND_QUOTA, /* for updaing send quota */
 
 	/* stream requests */
 	LDMS_CMD_STREAM_MSG, /* for stream messages */
 	LDMS_CMD_STREAM_SUB, /* stream subscribe request */
 	LDMS_CMD_STREAM_UNSUB, /* stream subscribe request */
+
+	/* qgroup messages */
+	LDMS_CMD_QGROUP_ASK,
+	LDMS_CMD_QGROUP_DONATE,
+	LDMS_CMD_QGROUP_DONATE_BACK,
+
+	/* rail quota re-config after connected */
+	LDMS_CMD_QUOTA_RECONFIG,
+	/* rail rate re-config after connected */
+	LDMS_CMD_RATE_RECONFIG,
 
 	LDMS_CMD_REPLY = 0x100,
 	LDMS_CMD_DIR_REPLY,
@@ -169,8 +179,8 @@ struct ldms_send_cmd_param {
 	char msg[OVIS_FLEX];
 };
 
-struct ldms_send_credit_param {
-	uint32_t send_credit;
+struct ldms_send_quota_param {
+	uint32_t send_quota;
 };
 
 struct ldms_lookup_cmd_param {
@@ -219,6 +229,24 @@ struct ldms_stream_sub_param {
 	char match[OVIS_FLEX];
 };
 
+struct ldms_qgroup_ask {
+	uint64_t q;
+	uint64_t usec; /* like 'sec' since epoch, but in usec */
+};
+
+struct ldms_qgroup_donate {
+	uint64_t q;
+	uint64_t usec; /* like 'sec' since epoch, but in usec */
+};
+
+struct ldms_quota_reconfig_param {
+	uint64_t q; /* the new quota */
+};
+
+struct ldms_rate_reconfig_param {
+	uint64_t rate; /* the new rate (bytes/sec) */
+};
+
 struct ldms_request_hdr {
 	uint64_t xid;		/*! Transaction id returned in reply */
 	uint32_t cmd;		/*! The operation being requested  */
@@ -229,7 +257,7 @@ struct ldms_request {
 	struct ldms_request_hdr hdr;
 	union {
 		struct ldms_send_cmd_param send;
-		struct ldms_send_credit_param send_credit;
+		struct ldms_send_quota_param send_quota;
 		struct ldms_dir_cmd_param dir;
 		struct ldms_set_delete_cmd_param set_delete;
 		struct ldms_lookup_cmd_param lookup;
@@ -238,6 +266,10 @@ struct ldms_request {
 		struct ldms_cancel_push_cmd_param cancel_push;
 		struct ldms_stream_part_msg_param stream_part;
 		struct ldms_stream_sub_param stream_sub;
+		struct ldms_qgroup_ask qgroup_ask;
+		struct ldms_qgroup_donate  qgroup_donate;
+		struct ldms_quota_reconfig_param quota_reconfig;
+		struct ldms_rate_reconfig_param rate_reconfig;
 	};
 };
 
@@ -249,6 +281,8 @@ struct ldms_rendezvous_lookup_param {
 	uint32_t card; /* card of dict */
 	uint32_t schema_len;
 	uint32_t array_card; /* card of array */
+	// struct timespec req_recv; /* Timestamp when server has received the lookup request. */
+	// struct timespec share; /* Timestamp when server has called zap_share(). */
 	/* schema name, then instance name, and then set_info key value pairs */
 	char set_info[OVIS_FLEX];
 };
@@ -314,6 +348,10 @@ struct ldms_stream_sub_reply {
 	char msg[0];
 };
 
+struct ldms_set_delete_reply {
+	struct timespec recv_ts;
+};
+
 struct ldms_reply {
 	struct ldms_reply_hdr hdr;
 	union {
@@ -322,6 +360,7 @@ struct ldms_reply {
 		struct ldms_auth_challenge_reply auth_challenge;
 		struct ldms_push_reply push;
 		struct ldms_stream_sub_reply sub;
+		struct ldms_set_delete_reply set_del;
 	};
 };
 #pragma pack()
@@ -345,6 +384,7 @@ struct ldms_context {
 	int rc;
 	struct ldms_xprt *x;
 	ldms_context_type_t type;
+	struct ldms_op_ctxt *op_ctxt;
 	union {
 		struct {
 			ldms_dir_cb_t cb;
@@ -401,6 +441,12 @@ typedef enum ldms_xtype_e {
 #define XTYPE_IS_LEGACY(t) (((t) & (~0x1)) == 0)
 #define XTYPE_IS_RAIL(t) ((t) & 0x2)
 
+#define LDMS_IS_RAIL(x) XTYPE_IS_RAIL((x)->xtype)
+#define LDMS_IS_LEGACY(x) XTYPE_IS_LEGACY((x)->xtype)
+#define LDMS_IS_PASSIVE(x) XTYPE_IS_PASSIVE((x)->xtype)
+
+#define LDMS_RAIL(x) ((ldms_rail_t)(x))
+
 struct ldms_xprt_ops_s {
 	int (*connect)(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 			ldms_event_cb_t cb, void *cb_arg);
@@ -411,13 +457,13 @@ struct ldms_xprt_ops_s {
 		       struct sockaddr *remote_sa,
 		       socklen_t *sa_len);
 	void (*close)(ldms_t x);
-	int (*send)(ldms_t x, char *msg_buf, size_t msg_len);
+	int (*send)(ldms_t x, char *msg_buf, size_t msg_len, struct ldms_op_ctxt *op_ctxt);
 	size_t (*msg_max)(ldms_t x);
 	int (*dir)(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 	int (*dir_cancel)(ldms_t x);
 	int (*lookup)(ldms_t t, const char *name, enum ldms_lookup_flags flags,
-		       ldms_lookup_cb_t cb, void *cb_arg);
-	void (*stats)(ldms_t x, ldms_xprt_stats_t stats);
+		       ldms_lookup_cb_t cb, void *cb_arg, struct ldms_op_ctxt *op_ctxt);
+	void (*stats)(ldms_t x, ldms_xprt_stats_t stats, int mask, int is_reset);
 
 	ldms_t (*get)(ldms_t x); /* ref get */
 	void (*put)(ldms_t x); /* ref put */
@@ -427,13 +473,16 @@ struct ldms_xprt_ops_s {
 	const char *(*type_name)(ldms_t x);
 	void (*priority_set)(ldms_t x, int prio);
 	void (*cred_get)(ldms_t x, ldms_cred_t lcl, ldms_cred_t rmt);
-	int (*update)(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void *arg);
+	int (*update)(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void *arg,
+	                                               struct ldms_op_ctxt *op_ctxt);
 
 	int (*get_threads)(ldms_t x, pthread_t *out, int n);
 
 	void (*event_cb_set)(ldms_t x, ldms_event_cb_t cb ,void *cb_arg);
 
 	zap_ep_t (*get_zap_ep)(ldms_t x);
+
+	ldms_set_t (*set_by_name)(ldms_t x, const char *set_name);
 };
 
 struct ldms_xprt {
@@ -518,5 +567,11 @@ int ldms_xprt_auth_bind(ldms_t xprt, ldms_auth_t auth);
 void ldms_xprt_auth_begin(ldms_t xprt);
 int ldms_xprt_auth_send(ldms_t _x, const char *msg_buf, size_t msg_len);
 void ldms_xprt_auth_end(ldms_t xprt, int result);
+
+/* ========================
+ * LDMS operation profiling
+ * ========================
+ */
+#define ENABLED_PROFILING(_OP_) (__enable_profiling[_OP_] == 1)
 
 #endif

@@ -133,13 +133,6 @@ static base_data_t base;
 
 static ovis_log_t mylog;
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-        if (base)
-                return base->set;
-	return NULL;
-}
-
 static int create_metric_set(base_data_t base)
 {
 	ldms_schema_t schema;
@@ -436,7 +429,6 @@ static struct ldmsd_sampler procnetdev2_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

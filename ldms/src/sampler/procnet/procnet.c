@@ -109,11 +109,6 @@ struct kw {
 	int (*action)(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg);
 };
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 static void procnet_reset()
 {
 	if (mf)
@@ -488,7 +483,6 @@ static struct ldmsd_sampler procnet_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

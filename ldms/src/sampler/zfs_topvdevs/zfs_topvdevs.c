@@ -245,11 +245,6 @@ static void term(struct ldmsd_plugin *self)
 
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 static const char *usage(struct ldmsd_plugin *self)
 {
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " usage() called\n");
@@ -267,7 +262,6 @@ struct ldmsd_plugin *get_plugin()
 			 .config = config,
 			 .usage = usage,
 			 },
-		.get_set = get_set,
 		.sample = sample,
 	};
 

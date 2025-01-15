@@ -195,11 +195,6 @@ static int sample(struct ldmsd_sampler *self)
 
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-        return set;
-}
-
 static void term(struct ldmsd_plugin *self)
 {
         int metric;
@@ -238,7 +233,6 @@ static struct ldmsd_sampler variorum_sampler_plugin = {
             .config = config,
             .usage= usage,
         },
-        .get_set = get_set,
         .sample = sample,
 };
 

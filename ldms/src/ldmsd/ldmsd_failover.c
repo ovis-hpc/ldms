@@ -451,15 +451,21 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 	if (rc)
 		goto cleanup;
 
-	/* CREDITS */
-	snprintf(buff, sizeof(buff), "%ld", p->credits);
-	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_CREDITS, buff);
+	/* QUOTA */
+	snprintf(buff, sizeof(buff), "%ld", p->quota);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_QUOTA, buff);
 	if (rc)
 		goto cleanup;
 
 	/* RX_RATE */
 	snprintf(buff, sizeof(buff), "%ld", p->rx_rate);
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_RX_RATE, buff);
+	if (rc)
+		goto cleanup;
+
+	/* Cache_ip */
+	snprintf(buff, sizeof(buff), "%d", p->cache_ip);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_IP, buff);
 	if (rc)
 		goto cleanup;
 
@@ -2048,16 +2054,17 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	char *auth = __req_attr_gets(req, LDMSD_ATTR_AUTH);
 	char *stream = __req_attr_gets(req, LDMSD_ATTR_STREAM);
 	char *rail_s = __req_attr_gets(req, LDMSD_ATTR_RAIL);
-	char *credits_s = __req_attr_gets(req, LDMSD_ATTR_CREDITS);
+	char *quota_s = __req_attr_gets(req, LDMSD_ATTR_QUOTA);
 	char *rx_rate_s = __req_attr_gets(req, LDMSD_ATTR_RX_RATE);
+	char *cache_ip = __req_attr_gets(req, LDMSD_ATTR_IP);
 
 	uid_t _uid;
 	gid_t _gid;
 	mode_t _perm;
 
 	int rail = 1;
-	int64_t credits = __RAIL_UNLIMITED;
-	int64_t rx_rate = __RAIL_UNLIMITED;
+	int64_t quota = LDMS_UNLIMITED;
+	int64_t rx_rate = LDMS_UNLIMITED;
 
 	enum ldmsd_prdcr_type ptype;
 	ldmsd_prdcr_t p;
@@ -2081,8 +2088,8 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 
 	if (rail_s)
 		rail = atoi(rail_s);
-	if (credits_s)
-		credits = atol(credits_s);
+	if (quota_s)
+		quota = atol(quota_s);
 	if (rx_rate_s)
 		rx_rate = atol(rx_rate_s);
 
@@ -2115,8 +2122,8 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	}
 
 	p = ldmsd_prdcr_new_with_auth(name, xprt, host, atoi(port), ptype,
-			atoi(interval), auth, _uid, _gid, _perm, rail, credits,
-			rx_rate);
+			atoi(interval), auth, _uid, _gid, _perm, rail, quota,
+			rx_rate, atoi(cache_ip));
 	if (!p) {
 		rc = errno;
 		str_rbn_free(srbn);
@@ -2147,7 +2154,7 @@ out:
 	free(stream);
 	free(auth);
 	free(rail_s);
-	free(credits_s);
+	free(quota_s);
 	/* this req needs no resp */
 	return rc;
 }

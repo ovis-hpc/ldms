@@ -64,7 +64,7 @@ from datetime import datetime
 
 from ldmsd import ldmsd_util
 from ldmsd.ldmsd_communicator import LDMSD_Request, LDMSD_Req_Attr
-from ldmsd.ldmsd_communicator import Communicator, fmt_status
+from ldmsd.ldmsd_communicator import Communicator, fmt_status, get_cmd_attr_list
 import errno
 import math
 
@@ -115,14 +115,19 @@ class LdmsdCmdParser(cmd.Cmd):
         else:
             cmd.Cmd.__init__(self)
 
+    def completedefault(self, text, line, begidx, endidx):
+        cmd = line.split()[0]
+        return self.__complete_attr_list(cmd, text)
+
     def __complete_attr_list(self, verb, text):
-        req_opt_attr = self.comm.get_cmd_attr_list(verb)
+        req_opt_attr = get_cmd_attr_list(verb)
         attr_list = []
         if req_opt_attr['req'] is not None:
-            attr_list = req_opt_attr['req']
+            attr_list += req_opt_attr['req']
         if req_opt_attr['opt'] is not None:
             attr_list += req_opt_attr['opt']
-        return ["{0}=".format(attr) for attr in attr_list if attr.startswith(text)]
+        ret = ["{0}=".format(attr) for attr in attr_list if attr.startswith(text)]
+        return ret
 
     def emptyline(self):
         pass
@@ -135,7 +140,7 @@ class LdmsdCmdParser(cmd.Cmd):
         return True
 
     def __check_command_args(self, verb, args):
-        req_opt_attr = self.comm.get_cmd_attr_list(verb)
+        req_opt_attr = get_cmd_attr_list(verb)
         if set(req_opt_attr['req']) <= set(args):
             return 0
         else:
@@ -210,7 +215,7 @@ class LdmsdCmdParser(cmd.Cmd):
     def handle_args(self, verb, _args):
         if _args and not self.__check_command_syntax(_args):
             print("Syntax error, there are attributes for which no value is given.")
-        req_opt_attr = self.comm.get_cmd_attr_list(verb)
+        req_opt_attr = get_cmd_attr_list(verb)
 
         if not self.comm:
             print("Error: no LDMS connection")
@@ -370,13 +375,14 @@ class LdmsdCmdParser(cmd.Cmd):
         [auth=]   The authentication method
         [perm=]   The permission to modify the producer in the future.
         [rail=]   The number of rail endpoints for the prdcr (default: 1).
-        [credits=] The send credits our ldmsd (the one we are controlling)
-                   advertises to the prdcr (default: value from ldmsd --credits
+        [quota=]  The recv quota our ldmsd (the one we are controlling)
+                   advertises to the prdcr (default: value from ldmsd --quota
                    option). This limits how much outstanding data our ldmsd
-                   holds for the prdcr. The prdcr drops messages when it does
-                   not have enough send credits.
+                   holds for the prdcr.
         [rx_rate=] The recv rate (bytes/sec) limit for this connection. The
                    default is -1 (unlimited).
+        [cache_ip=]   True to cache the IP address after first successful resolution (default).
+                      False to resolve the hostname at prdcr_add and at every connection attempt.
         """
         arg = self.handle_args('prdcr_add', arg)
         if arg is None:
@@ -399,8 +405,9 @@ class LdmsdCmdParser(cmd.Cmd):
                                           arg['auth'],
                                           arg['perm'],
                                           arg['rail'],
-                                          arg['credits'],
-                                          arg['rx_rate'])
+                                          arg['quota'],
+                                          arg['rx_rate'],
+                                          arg['cache_ip'])
             if rc:
                 print(f'Error adding prdcr {arg["name"]}: {msg}')
 
@@ -411,23 +418,23 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Add a bridge connection. This is the active side of the passive producer.
         Parameters:
-                name=     A unique name for this Producer
-                xprt=     The transport name [sock, rdma, ugni]
-                host=     The hostname of the host
+                name=      A unique name for this Producer
+                xprt=      The transport name [sock, rdma, ugni]
+                host=      The hostname of the host
+                port=      Port number
                 reconnect= The connection retry interval (us)
-                [auth=]   The authentication method
-                [perm=]   The permission to modify the producer in the future.
-                [rail=]   The number of rail endpoints for the prdcr (default: 1).
-                [credits=] The send credits our ldmsd (the one we are controlling)
-                           advertises to the prdcr (default: value from ldmsd --credits
+                [auth=]    The authentication method
+                [perm=]    The permission to modify the producer in the future.
+                [rail=]    The number of rail endpoints for the prdcr (default: 1).
+                [quota=]   The recv quota our ldmsd (the one we are controlling)
+                           advertises to the prdcr (default: value from ldmsd --quota
                            option). This limits how much outstanding data our ldmsd
-                           holds for the prdcr. The prdcr drops messages when it does
-                           not have enough send credits.
+                           holds for the prdcr.
                 [rx_rate=] The recv rate (bytes/sec) limit for this connection. The
                            default is -1 (unlimited).
         """
         arg = f"{arg} type=bridge" # Automatically add the producer type
-        arg = self.handle_args('prdcr_add', arg)
+        arg = self.handle_args('bridge_add', arg)
         if arg is None:
             return
         if arg['reconnect'] is None:
@@ -442,7 +449,7 @@ class LdmsdCmdParser(cmd.Cmd):
                                           arg['auth'],
                                           arg['perm'],
                                           arg['rail'],
-                                          arg['credits'],
+                                          arg['quota'],
                                           arg['rx_rate'])
             if rc:
                 print(f'Error adding Bridge {arg["name"]}: {msg}')
@@ -2403,6 +2410,30 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_xprt_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('xprt_stats', text)
 
+    def do_profiling(self, arg):
+        """
+        Enable/disable and query the LDMS operation profiling data
+
+        The command was intended for diagnostic or study to improve ldmsd performance.
+
+        The command always reports the cached profiling data if exists.
+
+        Parameters:
+          [enabled=]   True to enable LDMS profiling
+          [reset=]     True to reset and free cached profiling data after the report
+        """
+        arg = self.handle_args('profiling', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.profiling(**arg)
+        if msg == "":
+            return
+        if rc != 0:
+            print(f"Error: {rc} {msg}")
+            return
+        stats = fmt_status(msg)
+        print(stats)
+
     def do_updtr_task(self, arg):
         """
         Report the updater tasks
@@ -2614,8 +2645,6 @@ class LdmsdCmdParser(cmd.Cmd):
                 print(f'     - {"drops":23} {drops["bytes"]:>12} {drops["count"]:>12} '\
                       f'{self.__floatts2human(drops["first_ts"]):26} ' \
                       f'{self.__floatts2human(drops["last_ts"]):26}')
-        if is_debug:
-            pdb.set_trace()
 
     def complete_stream_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_stats', text)
@@ -2668,8 +2697,6 @@ class LdmsdCmdParser(cmd.Cmd):
                 print(f'     - {"drops":23} {drops["bytes"]:>12} {drops["count"]:>12} '\
                       f'{self.__floatts2human(drops["first_ts"]):26} ' \
                       f'{self.__floatts2human(drops["last_ts"]):26}')
-        if is_debug:
-            pdb.set_trace()
 
     def complete_stream_client_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_client_stats', text)
@@ -2685,7 +2712,9 @@ class LdmsdCmdParser(cmd.Cmd):
             [auth=] Authenticantion domain.
                     If this is omitted or auth=auth_default is give,
                     the default authentication given the command line (-a and -A)
-                    will be used..
+                    will be used
+            [quota=] Receive quota of the connections established by accepted connection requests
+            [rx_rate=] Receive rate limit of the connections established by accepted connection requests
         """
         arg = self.handle_args('listen', arg)
         if not arg:
@@ -2693,7 +2722,9 @@ class LdmsdCmdParser(cmd.Cmd):
         rc, msg = self.comm.listen(arg['xprt'],
                                    arg['port'],
                                    arg['host'],
-                                   arg['auth'])
+                                   arg['auth'],
+                                   arg['quota'],
+                                   arg['rx_rate'])
         if rc:
             print(f'Error adding listener {arg["xprt"]} on port {arg["port"]}: {msg}')
 
@@ -2814,18 +2845,19 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Add an advertisement of its hostname to an aggregator. This is a part of the sampler discovery feature.
         Parameters:
-                name=     A unique name to be used as producer name on the aggregator
-                xprt=     The transport name [sock, rdma, ugni]
-                host=     The aggregator hostname
+                name=      A unique name to be used as producer name on the aggregator
+                xprt=      The transport name [sock, rdma, ugni]
+                host=      The aggregator hostname
+                port=      The aggregator port number
                 reconnect= The connection retry interval
-                [auth=]   The authentication method
-                [perm=]   The permission to modify the producer in the future.
-                [rail=]   The number of rail endpoints for the prdcr (default: 1).
-                [credits=] The send credits our ldmsd (the one we are controlling)
-                           advertises to the prdcr (default: value from ldmsd --credits
+                [auth=]    The authentication method
+                [perm=]    The permission to modify the producer in the future.
+                [rail=]    The number of rail endpoints for the prdcr (default: 1).
+                [quota=] The send quota our ldmsd (the one we are controlling)
+                           advertises to the prdcr (default: value from ldmsd --quota
                            option). This limits how much outstanding data our ldmsd
                            holds for the prdcr. The prdcr drops messages when it does
-                           not have enough send credits.
+                           not have enough send quota.
                 [rx_rate=] The recv rate (bytes/sec) limit for this connection. The
                            default is -1 (unlimited).
         """
@@ -2843,10 +2875,10 @@ class LdmsdCmdParser(cmd.Cmd):
                                           arg['auth'],
                                           arg['perm'],
                                           arg['rail'],
-                                          arg['credits'],
+                                          arg['quota'],
                                           arg['rx_rate'])
             if rc:
-                print(f'Error adding Bridge {arg["name"]}: {msg}')
+                print(f'Error adding advertiser {arg["name"]}: {msg}')
 
     def complete_advertiser_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('advertiser_add', text)
@@ -2913,7 +2945,7 @@ class LdmsdCmdParser(cmd.Cmd):
                 print("Name             Aggregator Host  Aggregator Port Transport    Reconnect(us)  State")
                 print("---------------- ---------------- --------------- ------------ --------------- ------------")
                 for prdcr in producers:
-                    if prdcr['type'] != 'advertise':
+                    if prdcr['type'] != 'advertiser':
                         continue
                     print(f"{prdcr['name']:16} {prdcr['host']:16} {prdcr['port']:<15} " \
                           f"{prdcr['transport']:12} {prdcr['reconnect_us']:15} " \
@@ -2939,18 +2971,19 @@ class LdmsdCmdParser(cmd.Cmd):
         prdcr_stop and prdcr_start, respectively, as manually added producers.
 
         Parameters:
-                name=     A unique name of the producer listen
-                reconnect= The retry interval to check for connection establishment of producers matched the regular expression.
-                [disabled_start=]  Tell LDMSD not to start the producers
-                [regex=]    A regular expression to match sampler hostnames
-                [rail=]   The number of rail endpoints for the prdcr (default: 1).
-                [credits=] The send credits our ldmsd (the one we are controlling)
-                           advertises to the prdcr (default: value from ldmsd --credits
-                           option). This limits how much outstanding data our ldmsd
-                           holds for the prdcr. The prdcr drops messages when it does
-                           not have enough send credits.
-                [rx_rate=] The recv rate (bytes/sec) limit for this connection. The
-                           default is -1 (unlimited).
+                name=              A unique name of the producer listen
+                reconnect=         The retry interval to check for connection establishment of producers matched the regular expression.
+                [disable_start=]  Tell LDMSD not to start the producers
+                [ip=]              An IP masks to filter advertisements using the source IP
+                [regex=]           A regular expression to match sampler hostnames
+                [rail=]            The number of rail endpoints for the prdcr (default: 1).
+                [quota=]           The send quota our ldmsd (the one we are controlling)
+                                   advertises to the prdcr (default: value from ldmsd --quota
+                                   option). This limits how much outstanding data our ldmsd
+                                   holds for the prdcr. The prdcr drops messages when it does
+                                   not have enough send quota.
+                [rx_rate=]         The recv rate (bytes/sec) limit for this connection. The
+                                   default is -1 (unlimited).
         """
         arg = self.handle_args('prdcr_listen_add', arg)
         if arg is None:
@@ -3087,6 +3120,96 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         print("Not supported! The 'option' command is only supported in a configuration file.")
 
+    def do_qgroup_config(self, arg):
+        """
+        Configure Quota Group (qgroup) feature
+
+        Parameters:
+            quota=          The amount of our quota (bytes).
+            ask_interval=   The time interval to ask the members when our quota
+                            is low.
+            ask_amount=     The amount of quota to ask from our members.
+            ask_mark=       The amount of quota to determine as 'low'.
+            reset_interval= The time interval to reset our quota to its original
+                            value.
+        """
+        arg = self.handle_args('qgroup_config', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.qgroup_config(**arg)
+        if rc:
+            print(f"qgroup_config error: {msg}")
+
+    def do_qgroup_member_add(self, arg):
+        """
+        Add a member to the Quota Group (qgroup)
+
+        Parameters:
+            host=     The hostname of the host.
+            xprt=     The transport name [sock, rdma, ugni].
+            [port=]   The OPTIONAL port number on which the peer LDMS is
+                      listening (default: 411).
+            [auth=]   The OPTIONAL authentication method.
+        """
+        arg = self.handle_args('qgroup_member_add', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.qgroup_member_add(**arg)
+        if rc:
+            print(f"qgroup_member_add error: {msg}")
+
+    def do_qgroup_member_del(self, arg):
+        """
+        Delete a member from the Quota Group (qgroup).
+
+        Parameters:
+            host=     The hostname of the host.
+            [port=]   The OPTIONAL port number on which the peer LDMS is
+                      listening (default: 411).
+        """
+        arg = self.handle_args('qgroup_member_del', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.qgroup_member_add(**arg)
+        if rc:
+            print(f"qgroup_member_add error: {msg}")
+
+    def do_qgroup_start(self, arg):
+        """
+        Start the Quota Group (qgroup) service.
+        """
+        arg = self.handle_args('qgroup_start', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.qgroup_start(**arg)
+        if rc:
+            print(f"qgroup_start error: {msg}")
+
+    def do_qgroup_stop(self, arg):
+        """
+        Stop the Quota Group (qgroup) service.
+        """
+        arg = self.handle_args('qgroup_stop', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.qgroup_stop(**arg)
+        if rc:
+            print(f"qgroup_stop error: {msg}")
+
+    def do_qgroup_info(self, arg):
+        """
+        Get the Quota Group (qgroup) information.
+        """
+        arg = self.handle_args('qgroup_info', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.qgroup_info(**arg)
+        if rc:
+            print(f"qgroup_info error: {msg}")
+        else:
+            obj = json.loads(msg)
+            print(json.dumps(obj, indent=1))
+
     def parseline(self, line):
         """Parse the line into a command name and a string containing
         the arguments.  Returns a tuple containing (command, args, line).
@@ -3113,7 +3236,6 @@ class LdmsdCmdParser(cmd.Cmd):
         while i < n and line[i] in self.identchars: i = i+1
         cmd, arg = line[:i], line[i:].strip()
         return cmd, arg, line
-
 
 if __name__ == "__main__":
     is_debug = True

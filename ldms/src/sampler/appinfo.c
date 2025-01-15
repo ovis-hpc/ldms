@@ -376,14 +376,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 }
 
 /**
- * Sampler metric set accessor (required).
- **/
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
-/**
  * Sample data. In the appinfo sampler, we need to find in the shared
  * memory the next process data structure that is ready for sampling,
  * copy it into the metric set, and mark it as sampled.
@@ -488,7 +480,6 @@ static struct ldmsd_sampler appinfo_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

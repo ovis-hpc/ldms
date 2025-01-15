@@ -62,6 +62,12 @@ AM_PROG_CC_C_O
 AC_C_CONST
 AC_C_FLEXIBLE_ARRAY_MEMBER
 
+AC_ARG_VAR([RST2MAN], [rst2man command])
+AC_CHECK_PROG([RST2MAN], [rst2man], [rst2man], [no])
+AS_IF([test "x$RST2MAN" = "xno"],
+      [AC_MSG_WARN([rst2man not found. Please install python3-docutils package.])])
+AM_CONDITIONAL([HAVE_RST2MAN], [test "x$RST2MAN" = xrst2man])
+
 OVIS_PKGLIBDIR
 
 AC_LIB_HAVE_LINKFLAGS([jansson], [], [#include <jansson.h>])
@@ -145,10 +151,15 @@ m4_ifndef([PKG_CHECK_MODULES],
       [m4_fatal([pkg.m4 not found. Please install pkg-config (Ubuntu) or pkgconfig (RHEL) package])])
 PKG_PROG_PKG_CONFIG
 
+# <rdc/rdc.h> fails to include <assert.h> in at least rocm 6.2.1, hence the
+# include of assert.h here.
 AC_LIB_HAVE_LINKFLAGS([rdc_bootstrap], [], [
+#include <assert.h>
 #include <rdc/rdc.h>
 ])
 AM_CONDITIONAL([HAVE_LIBRDC_BOOTSTRAP], [test "x$HAVE_LIBRDC_BOOTSTRAP" = xyes])
+
+AC_LIB_HAVE_LINKFLAGS([rdc_ras], [], [])
 
 AC_ARG_ENABLE([rdc],
 	[AS_HELP_STRING([--enable-rdc], [Include components that depend upon AMD rdc tooling. @<:@default=no@:>@ for GPUs.])],
@@ -949,6 +960,7 @@ AC_SUBST(ac_configure_args)
 AC_SUBST(configure_input)
 
 AC_CONFIG_FILES([Makefile
+docs/Makefile
 util/Makefile
 util/relocation/Makefile
 lib/Doxyfile

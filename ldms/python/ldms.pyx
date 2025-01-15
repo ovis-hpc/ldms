@@ -422,6 +422,9 @@ cdef Ptr PTR(void *ptr):
     po.c_ptr = ptr
     return po
 
+def type_is_array(ldms_value_type t):
+    return bool(ldms_type_is_array(t))
+
 def JSON_OBJ(o):
     t = type(o)
     if t in (int, float, str):
@@ -580,10 +583,21 @@ cdef py_ldms_metric_get_list(Set s, int m_idx):
 
 cdef py_ldms_metric_get_record_type(Set s, int m_idx):
     cdef ldms_mval_t lt = ldms_metric_get(s.rbd, m_idx)
-    return RecordType(s, PTR(lt))
+    cdef const char *name = ldms_metric_name_get(s.rbd, m_idx)
+    return RecordType(s, PTR(lt), name = STR(name))
 
 cdef py_ldms_metric_get_record_array(Set s, int m_idx):
     return RecordArray(s, m_idx)
+
+cdef char * CSTR(object obj):
+    if obj is None:
+        return NULL
+    return obj
+
+cdef bytes CBYTES(const char *s):
+    if s == NULL:
+        return None
+    return bytes(s)
 
 METRIC_GETTER_TBL = {
         LDMS_V_CHAR : py_ldms_metric_get_char,
@@ -1327,6 +1341,8 @@ cdef ldms_value_type LDMS_VALUE_TYPE(t):
 cdef bytes BYTES(o):
     """Convert Python object `s` to `bytes` (c-string compatible)"""
     # a wrapper to solve the annoying bytes vs str in python3
+    if o is None:
+        return None
     if type(o) == bytes:
         return o
     return str(o).encode()
@@ -1340,16 +1356,30 @@ cdef str STR(o):
         return o.decode()
     return str(o)
 
-cdef class CreditEventData(object):
-    cdef readonly uint64_t credit
+cdef class QuotaEventData(object):
+    cdef readonly uint64_t quota
     cdef readonly int      ep_idx
-    """Data of a credit deposit event"""
-    def __cinit__(self, uint64_t credit, int ep_idx):
-        self.credit = credit
+    """Data of a quota deposit event"""
+    def __cinit__(self, uint64_t quota, int ep_idx):
+        self.quota = quota
         self.ep_idx = ep_idx
 
     def __str__(self):
-        return f"({self.credit}, {self.ep_idx})"
+        return f"({self.quota}, {self.ep_idx})"
+
+    def __repr__(self):
+        return str(self)
+
+cdef class SetDeleteEventData(object):
+    cdef readonly str name
+    cdef readonly Set set
+
+    def __cinit__(self, Set _lset, str _name):
+        self.set = _lset
+        self.name = _name
+
+    def __str__(self):
+        return f"({self.set}, {self.name})"
 
     def __repr__(self):
         return str(self)
@@ -1368,7 +1398,7 @@ cdef class XprtEvent(object):
               - EVENT_DISCONNECTED
               - EVENT_RECV
               - EVENT_SEND_COMPLETE
-              - EVENT_SEND_CREDIT_DEPOSITED
+              - EVENT_SEND_QUOTA_DEPOSITED
     - `data`: a byte array containing event data
     """
 
@@ -1378,8 +1408,10 @@ cdef class XprtEvent(object):
     cdef readonly bytes data
     """A `bytes` containing event data"""
 
-    cdef readonly CreditEventData credit
-    """Current send credit (for the EVENT_SEND_CREDIT_DEPOSITED"""
+    cdef readonly QuotaEventData quota
+    """Current send quota (for the EVENT_SEND_QUOTA_DEPOSITED"""
+
+    cdef readonly SetDeleteEventData set_delete
 
     # NOTE: This is a Python object wrapper of `struct ldms_xprt_event`.
     #
@@ -1388,9 +1420,14 @@ cdef class XprtEvent(object):
     #       destroyed in the C level after the callback.
     def __cinit__(self, Ptr ptr):
         cdef ldms_xprt_event_t e = <ldms_xprt_event_t>ptr.c_ptr
+        cdef ldms_set_t cset
         self.type = ldms_xprt_event_type(e.type)
-        if self.type == ldms.LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED:
-            self.credit = CreditEventData(e.credit.credit, e.credit.ep_idx)
+        if self.type == ldms.LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
+            self.quota = QuotaEventData(e.quota.quota, e.quota.ep_idx)
+        elif self.type == ldms.LDMS_XPRT_EVENT_SET_DELETE:
+            cset = <ldms_set_t>e.set_delete.set
+            lset = Set(None, None, set_ptr=PTR(cset)) if cset else None
+            self.set_delete = SetDeleteEventData(lset, STR(e.set_delete.name))
         else:
             self.data = e.data[:e.data_len]
 
@@ -1436,7 +1473,10 @@ cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
     elif e.type == EVENT_SEND_COMPLETE:
         # do NOT sem_post()
         return
-    elif e.type == EVENT_SEND_CREDIT_DEPOSITED:
+    elif e.type == EVENT_SEND_QUOTA_DEPOSITED:
+        # do NOT sem_post()
+        return
+    elif e.type == EVENT_SET_DELETE:
         # do NOT sem_post()
         return
     else:
@@ -1652,6 +1692,27 @@ cdef void push_cb(ldms_t _t, ldms_set_t _s, int flags, void *arg) with gil:
         s._push_cb(s, flags, s._push_cb_arg)
 
 
+MetricTemplateBase = namedtuple('MetricTemplateBase',
+                                [ 'name', 'type', 'count', 'flags',
+                                  'units', 'rec_def' ])
+class MetricTemplate(MetricTemplateBase):
+    def __new__(_cls, name, metric_type, count = 1, flags = 0, units = None,
+                 rec_def = None):
+        return super().__new__(_cls, name, ldms_value_type(metric_type), count,
+                               flags, units, rec_def)
+
+    @property
+    def is_meta(self):
+        return bool( self.flags & LDMS_MDESC_F_META )
+
+    @classmethod
+    def from_ptr(cls, Ptr ptr):
+        cdef ldms_metric_template_t t = <ldms_metric_template_t>ptr.c_ptr
+        rec_def = RecordDef.from_ptr(PTR(t.rec_def)) if t.rec_def else None
+        return MetricTemplate(STR(t.name), t.type, t.len, t.flags,
+                              STR(CBYTES(t.unit)), rec_def)
+
+
 cdef class RecordDef(object):
     """Record Definition
 
@@ -1685,12 +1746,14 @@ cdef class RecordDef(object):
     """
     cdef str _name
     cdef list metric_list
+    cdef dict metric_dict
     cdef ldms_record_t _rec_def
 
     def __init__(self, name, metric_list = list()):
         self._name = name
         self._rec_def = ldms_record_create(BYTES(name))
         self.metric_list = list()
+        self.metric_dict = dict()
         self.add_metrics(metric_list)
 
     @property
@@ -1707,12 +1770,16 @@ cdef class RecordDef(object):
         t = LDMS_VALUE_TYPE(metric_type)
         if t < LDMS_V_CHAR or LDMS_V_D64_ARRAY < t:
             raise TypeError("{} is not supported in a record".format(metric_type))
-        idx = ldms_record_metric_add(self._rec_def, BYTES(name), BYTES(units),
+        idx = ldms_record_metric_add(self._rec_def, CSTR(BYTES(name)),
+                                     CSTR(BYTES(units)),
                                      t, count)
         if idx < 0:
             raise RuntimeError("ldms_record_metric_add() error: {}" \
                                .format(ERRNO_SYM(-idx)))
-        self.metric_list.append((name, t, count, units))
+        mt = MetricTemplate(name, ldms_value_type(t), count,
+                                LDMS_MDESC_F_DATA|LDMS_MDESC_F_RECORD, units)
+        self.metric_list.append(mt)
+        self.metric_dict[name] = mt
 
     def add_metrics(self, metrics):
         """Batch-add metrics to the record definition.
@@ -1730,9 +1797,12 @@ cdef class RecordDef(object):
             if type(o) in (list, tuple):
                 self.add_metric(*o)
             elif type(o) == dict:
+                metric_type = o.get("type", o.get("metric_type"))
+                if metric_type is None:
+                    raise KeyError(f"'type' or 'metric_type' not found")
                 self.add_metric(
                             name = o["name"],
-                            metric_type = o["type"],
+                            metric_type = metric_type,
                             count = o.get("count", 1),
                             units = o.get("units"),
                         )
@@ -1746,6 +1816,38 @@ cdef class RecordDef(object):
     def heap_size(self):
         """Determine the size of a record in the LDMS heap"""
         return ldms_record_heap_size_get(self._rec_def)
+
+    @classmethod
+    def from_ptr(cls, Ptr p):
+        cdef int n
+        cdef ldms_record_t r = <ldms_record_t>p.c_ptr
+        cdef ldms_metric_template_s _t[1024]
+        cdef const char *name
+        n = ldms_record_bulk_template_get(r, 1024, _t)
+        assert(n <= 1024)
+        mlist = list( ( _t[i].name, ldms_value_type(_t[i].type),
+                        _t[i].len, STR(CBYTES(_t[i].unit))) \
+                                                        for i in range(0, n) )
+        name = ldms_record_name_get(r)
+        return RecordDef(STR(name), mlist)
+
+    @classmethod
+    def from_rec_type(cls, RecordType rec_type):
+        rec_def = RecordDef(rec_type.name)
+        for mt in rec_type:
+            rec_def.add_metric(name = mt.name, metric_type = mt.type,
+                               count = mt.count, units = mt.units)
+        return rec_def
+
+    def __getitem__(self, key):
+        typ = type(key)
+        if typ == int:
+            return self.metric_list[key]
+        if typ == slice:
+            return self.metric_list[key]
+        if typ == str:
+            return self.metric_dict[key]
+        raise KeyError(f"Unsupported key type '{typ}'")
 
 
 cdef class Schema(object):
@@ -1833,6 +1935,10 @@ cdef class Schema(object):
     cdef ldms_schema_t _schema
     cdef dict rec_defs
 
+    # maintain list of metrics for easy access
+    cdef list metric_list
+    cdef dict metric_dict
+
     def __init__(self, name, array_card=1, metric_list = list()):
         """S.__init__(name, array_card=1, metric_list=list())"""
         self._schema = ldms_schema_new(BYTES(name))
@@ -1840,6 +1946,8 @@ cdef class Schema(object):
             raise OSError(errno, "ldms_schema_new() error: {}" \
                                  .format(ERRNO_SYM(errno)))
         self.rec_defs = dict() # rec_defs[ "name" or id ] = Ptr(ldms_record_t)
+        self.metric_list = list()
+        self.metric_dict = dict()
         if metric_list:
             self.add_metrics(metric_list)
         self.set_array_card(array_card)
@@ -1866,6 +1974,10 @@ cdef class Schema(object):
                                .format(ERRNO_SYM(-_id)))
         self.rec_defs[_id] = rec_def
         self.rec_defs[rec_def.name] = rec_def
+        flags = LDMS_MDESC_F_META|LDMS_MDESC_F_RECORD # recrod type is in metadata part
+        mt = MetricTemplate(rec_def.name, LDMS_V_RECORD_TYPE, 1, flags, None, rec_def)
+        self.metric_list.append(mt)
+        self.metric_dict[rec_def.name] = mt
 
     def add_metric(self, name, metric_type, count=1, meta=False, units=None,
                          rec_def=None):
@@ -1876,8 +1988,6 @@ cdef class Schema(object):
         NOTE: If metric_type is LDMS_V_LIST, the count is the heap size in bytes.
         """
         cdef int idx
-        cdef char *u = NULL
-        cdef bytes b
         cdef RecordDef _rec_def
 
         if type(metric_type) == RecordDef:
@@ -1886,33 +1996,38 @@ cdef class Schema(object):
         if type(metric_type) == str:
             metric_type = metric_type.lower()
         t = LDMS_VALUE_TYPE(metric_type)
+        flags = LDMS_MDESC_F_DATA if not meta else LDMS_MDESC_F_META
+        mt = MetricTemplate(name, t, count, flags, units, rec_def)
         if t == LDMS_V_RECORD_ARRAY:
             if type(rec_def) != RecordDef:
                 raise TypeError("Expecting RecordRef `rec_def`")
             _rec_def = <RecordDef>rec_def
-            idx = ldms_schema_record_array_add(self._schema, BYTES(name),
-                    _rec_def._rec_def, count)
+            idx = ldms_schema_record_array_add(self._schema,
+                                CSTR(BYTES(name)), _rec_def._rec_def, count)
         elif t == LDMS_V_LIST:
-            if units is not None:
-                b = BYTES(units)
-                u = b
-            idx = ldms_schema_metric_list_add(self._schema, BYTES(name), u, count)
+            idx = ldms_schema_metric_list_add(self._schema,
+                                              CSTR(BYTES(name)),
+                                              CSTR(BYTES(units)), count)
         elif ldms_type_is_array(t):
             if meta:
-                idx = ldms_schema_meta_array_add(self._schema, BYTES(name), t,
-                                                 count)
+                idx = ldms_schema_meta_array_add_with_unit( self._schema,
+                                CSTR(BYTES(name)), CSTR(BYTES(units)), t, count)
             else:
-                idx = ldms_schema_metric_array_add(self._schema, BYTES(name), t,
-                                                   count)
+                idx = ldms_schema_metric_array_add_with_unit(self._schema,
+                                CSTR(BYTES(name)), CSTR(BYTES(units)), t, count)
         else:
             if meta:
-                idx = ldms_schema_meta_add(self._schema, BYTES(name), t)
+                idx = ldms_schema_meta_add_with_unit(self._schema,
+                                CSTR(BYTES(name)), CSTR(BYTES(units)), t)
             else:
-                idx = ldms_schema_metric_add(self._schema, BYTES(name), t)
+                idx = ldms_schema_metric_add_with_unit(self._schema,
+                                CSTR(BYTES(name)), CSTR(BYTES(units)), t)
         if idx < 0:
             # error = -idx
             raise OSError(-idx, "Adding metric to schema failed: {}" \
                                 .format(ERRNO_SYM(-idx)))
+        self.metric_list.append(mt)
+        self.metric_dict[name] = mt
 
     @cython.binding(True)
     def add_metrics(self, list mlist):
@@ -1938,6 +2053,18 @@ cdef class Schema(object):
                         )
             elif type(o) == RecordDef:
                 self.add_record(o)
+
+    def __getitem__(self, key):
+        typ = type(key)
+        if typ in (int, slice):
+            return self.metric_list[key]
+        if typ is str:
+            return self.metric_dict[key]
+        if hasattr(key, "__iter__"):
+            return [ self.metric_list[k] for k in key ]
+
+    def get_metric_info(self, key):
+        return self[key]
 
 
 cdef class MetricArray(list):
@@ -2482,20 +2609,20 @@ cdef class RecordInstance(MVal):
         """Get metric name of the i_th member of the record"""
         cdef const char *c_str
         c_str = ldms_record_metric_name_get(self.rec_inst, i)
-        return STR(c_str)
+        return STR(CBYTES(c_str))
 
     def get_metric_unit(self, i):
         """Get metric unit of the i_th member of the record"""
         cdef const char *c_str
         c_str = ldms_record_metric_unit_get(self.rec_inst, i)
-        return STR(c_str)
+        return STR(CBYTES(c_str))
 
     def keys(self):
         """Generator yielding the names of the metrics in the record"""
         cdef const char *c_str
         for i in range(len(self)):
             c_str = ldms_record_metric_name_get(self.rec_inst, i)
-            s = STR(c_str)
+            s = STR(CBYTES(c_str))
             yield s
 
     def items(self):
@@ -2516,9 +2643,9 @@ cdef class RecordInstance(MVal):
             self.set_metric(idx, val)
 
     def get_metric_info(self, key):
-        """Returns (name, type, count, unit) of the metric by `key`
+        """Returns (name, type, count, units) of the metric by `key`
 
-        The `key` can be `str` or `int`.
+        The `key` can be `str`, `int` or list of int.
         """
         cdef size_t count
         cdef int t
@@ -2530,7 +2657,9 @@ cdef class RecordInstance(MVal):
             name = self.get_metric_name(key)
             unit = self.get_metric_unit(key)
             t = ldms_record_metric_type_get(self.rec_inst, key, &count)
-            return (name, ldms_value_type(t), count, unit)
+            return MetricTemplate(name = name, metric_type = t,
+                                  flags = LDMS_MDESC_F_RECORD|LDMS_MDESC_F_DATA,
+                                  count = count, units = unit)
         if hasattr(key, "__iter__"):
             return [ self.get_metric_info(k) for k in key ]
         raise TypeError("Unsupported `key` type; {}".format(type(key)))
@@ -2571,8 +2700,13 @@ cdef class RecordType(MVal):
 
     Record Type is meant to be used internally only.
     """
-    def __init__(self, Set lset, Ptr mval):
+    cdef ldms_mval_t rec_type
+    cdef str _name
+
+    def __init__(self, Set lset, Ptr mval, name):
         super().__init__(lset, mval, LDMS_V_RECORD_TYPE, 1)
+        self.rec_type = <ldms_mval_t>mval.c_ptr
+        self._name = STR(name)
 
     def get(self):
         return self
@@ -2585,6 +2719,81 @@ cdef class RecordType(MVal):
 
     def json_obj(self):
         return "__record_type__"
+
+    @property
+    def name(self):
+        return self._name
+
+    def _metric_by_name(self, name):
+        cdef int idx = ldms_record_metric_find(self.rec_type, BYTES(name))
+        if idx < 0:
+            raise KeyError("'{}' not found in the record".format(name))
+        return idx
+
+    def get_metric_name(self, i):
+        """Get metric name of the i_th member of the record"""
+        cdef const char *c_str
+        c_str = ldms_record_metric_name_get(self.rec_type, i)
+        return STR(CBYTES(c_str))
+
+    def get_metric_unit(self, i):
+        """Get metric unit of the i_th member of the record"""
+        cdef const char *c_str
+        c_str = ldms_record_metric_unit_get(self.rec_type, i)
+        return STR(CBYTES(c_str))
+
+    def get_metric_type(self, key):
+        """Get the type of `rec_type[key]`"""
+        cdef int idx
+        cdef size_t count
+        ktype = type(key)
+        if ktype in (str, bytes):
+            key = self._metric_by_name(key)
+            ktype = int
+        if ktype == int:
+            return ldms_value_type(ldms_record_metric_type_get(self.rec_type, key, &count))
+        if hasattr(key, "__iter__"):
+            return [ self.get_metric_type(k) for k in key ]
+        raise TypeError("Unsupported `key` type; {}".format(type(key)))
+
+    def __iter__(self):
+        for i in range(0, len(self)):
+            yield self[i]
+
+    def __len__(self):
+        return ldms_record_card(self.rec_type)
+
+    def __getitem__(self, key):
+        return self.get_metric_info(key)
+
+    def get_metric_info(self, key):
+        """Returns (name, flag, type, unit, count) of the metric by `key`
+
+        The `key` can be `str`, `int` or list of int.
+        """
+        cdef size_t count
+        cdef int t, _id
+        cdef const char *c_name
+        cdef const char *c_unit
+        ktype = type(key)
+        if ktype in (str, bytes):
+            idx = ldms_record_metric_find(self.rec_type, BYTES(key))
+            ktype = int
+            if idx < 0:
+                raise KeyError(f"Cannot find key '{key}' (error: {-idx}")
+            key = idx
+        if ktype == int:
+            if key < 0: # support Python negative indexing
+                key %= len(self)
+            name = self.get_metric_name(key)
+            unit = self.get_metric_unit(key)
+            t = ldms_record_metric_type_get(self.rec_type, key, &count)
+            return MetricTemplate(name, t, count,
+                                  flags = LDMS_MDESC_F_RECORD|LDMS_MDESC_F_DATA,
+                                  units = unit, rec_def = None)
+        if hasattr(key, "__iter__"):
+            return [ self.get_metric_info(k) for k in key ]
+        raise TypeError("Unsupported `key` type; {}".format(type(key)))
 
 
 cdef class Set(object):
@@ -2937,11 +3146,84 @@ cdef class Set(object):
 
     def get_metric_name(self, key):
         """Get the name of `ldms_set[key]`"""
-        pass
+        cdef const char *c_str
+        cdef int i
+        if type(key) in [str, bytes]:
+            i = self._metric_by_name(key)
+            if i < 0:
+                raise RuntimeError(f"`{key}` metric not found")
+        else:
+            i = int(key)
+        c_str = ldms_metric_name_get(self.rbd, i)
+        return STR(CBYTES(c_str))
 
     def get_metric_unit(self, key):
         """Get the unit of `ldms_set[key]`"""
-        pass
+        cdef const char *c_str
+        cdef int i
+        if type(key) in [str, bytes]:
+            i = self._metric_by_name(key)
+            if i < 0:
+                raise RuntimeError(f"`{key}` metric not found")
+        else:
+            i = int(key)
+        c_str = ldms_metric_unit_get(self.rbd, i)
+        return STR(CBYTES(c_str))
+
+    def _get_rec_type(self, idx):
+        cdef ldms_mval_t mval
+        cdef const char *cname
+        mval = ldms_metric_get(self.rbd, idx)
+        cname = ldms_metric_name_get(self.rbd, idx)
+        name = STR(CBYTES(cname))
+        assert(name != None)
+        return RecordType(self, PTR(mval), name = name)
+
+    def _get_rec_def(self, idx):
+        rec_type = self._get_rec_type(idx)
+        rec_def = RecordDef.from_rec_type(rec_type)
+        return rec_def
+
+    def get_metric_info(self, key):
+        """Returns (name, type, count, unit) of the metric by `key`
+
+        The `key` can be `str` or `int`.
+        """
+        cdef size_t count
+        cdef ldms_value_type t
+        cdef ldms_mval_t mval, mrec, mrectype
+        cdef int rec_type_idx
+        ktype = type(key)
+        if ktype in (str, bytes):
+            key = self._metric_by_name(key)
+            ktype = int
+        if ktype == int:
+            mval = ldms_metric_get(self.rbd, key)
+            name = self.get_metric_name(key)
+            unit = self.get_metric_unit(key)
+            flags = ldms_metric_flags_get(self.rbd, key)
+            t = ldms_metric_type_get(self.rbd, key)
+            if ldms_type_is_array(t):
+                count = ldms_metric_array_get_len(self.rbd, key)
+            elif t == LDMS_V_LIST:
+                count = ldms_list_len(self.rbd, mval)
+            else:
+                count = 1
+            # handling rec_def
+            if t == LDMS_V_RECORD_TYPE:
+                rec_def = self._get_rec_def(key)
+            elif t == LDMS_V_RECORD_ARRAY:
+                mrec = ldms_record_array_get_inst(mval, 0)
+                count = ldms_record_array_len(mval)
+                rec_type_idx = ldms_record_type_get(mrec)
+                rec_def = self._get_rec_def(rec_type_idx)
+            else:
+                rec_def = None
+            return MetricTemplate(name, ldms_value_type(t), count,
+                                  flags = flags, units = unit, rec_def = rec_def)
+        if hasattr(key, "__iter__"):
+            return [ self.get_metric_info(k) for k in key ]
+        raise TypeError("Unsupported `key` type; {}".format(type(key)))
 
     def get_metric(self, int idx):
         """S.get_metric(idx) - equivalent to S[idx]"""
@@ -3063,6 +3345,9 @@ cdef class Xprt(object):
             - "munge" for munge
     - auth_opts: A dictionary containing LDMS authentication plugin options.
                  Please consult the plugin manuals for their options.
+    - rail_recv_quota:
+            The amount (bytes) of outstanding stream recv buffer we will hold.
+            The peer will respect our recv_quota.
 
     Passive-side simple example:
     >>> x = ldms.Xprt()
@@ -3121,9 +3406,11 @@ cdef class Xprt(object):
     cdef int rail_eps
 
     def __init__(self, name="sock", auth="none", auth_opts=None,
-                       rail_eps = 1, rail_recv_limit = ldms.RAIL_UNLIMITED,
+                       rail_eps = 1, rail_recv_quota = ldms.RAIL_UNLIMITED,
                        rail_rate_limit = ldms.RAIL_UNLIMITED,
-                       Ptr xprt_ptr=None):
+                       Ptr xprt_ptr=None,
+                       rail_recv_limit = None # alias of rail_recv_quota
+                       ):
         cdef attr_value_list *avl = NULL;
         cdef int rc;
         if rail_eps < 1:
@@ -3131,6 +3418,8 @@ cdef class Xprt(object):
         if auth is None:
             auth = "none"
         self.ctxt = None
+        if rail_recv_limit: # alias
+            rail_recv_quota = rail_recv_limit
         # conn
         sem_init(&self._conn_sem, 0, 0)
         self._conn_rc = 0
@@ -3162,15 +3451,15 @@ cdef class Xprt(object):
                 raise TypeError("auth_opts must be a dictionary")
             avl = av_new(len(auth_opts))
             for k, v in auth_opts.items():
-                rc = av_add(avl, BYTES(k), BYTES(v))
+                rc = av_add(avl, CSTR(BYTES(k)), CSTR(BYTES(v)))
                 if rc:
                     av_free(avl)
                     raise OSError(rc, "av_add() error: {}"\
                                   .format(ERRNO_SYM(rc)))
         self.rail_eps = rail_eps
-        self.xprt = ldms_xprt_rail_new(BYTES(name), rail_eps,
-                                        rail_recv_limit, rail_rate_limit,
-                                        BYTES(auth), avl)
+        self.xprt = ldms_xprt_rail_new(CSTR(BYTES(name)), rail_eps,
+                                        rail_recv_quota, rail_rate_limit,
+                                        CSTR(BYTES(auth)), avl)
         av_free(avl)
         if not self.xprt:
             raise ConnectionError(errno, "Error creating transport, errno: {}"\
@@ -3209,7 +3498,7 @@ cdef class Xprt(object):
         import types
         cdef int rc
         cdef timespec ts
-        if not isinstance(cb, types.FunctionType) and cb is not None:
+        if cb is not None and not callable(cb):
             raise TypeError("Callback argument must be callable")
         self._conn_cb = cb
         self._conn_cb_arg = cb_arg
@@ -3493,16 +3782,16 @@ cdef class Xprt(object):
         else:
             ldms_xprt_ctxt_set(self.xprt, NULL, NULL)
 
-    def get_send_credits(self):
+    def get_send_quota(self):
         assert(self.rail_eps > 0)
         cdef uint64_t *tmp = <uint64_t*>calloc(self.rail_eps, sizeof(uint64_t))
         cdef int rc, i
         if not tmp:
             raise RuntimeError("Not enough memory")
-        rc = ldms_xprt_rail_send_credit_get(self.xprt, tmp, self.rail_eps)
+        rc = ldms_xprt_rail_send_quota_get(self.xprt, tmp, self.rail_eps)
         if rc:
             free(tmp)
-            raise RuntimeError(f"ldms_xprt_rail_send_credit_get() error: {rc}")
+            raise RuntimeError(f"ldms_xprt_rail_send_quota_get() error: {rc}")
         lst = list()
         for i in range(0, self.rail_eps):
             lst.append(tmp[i])
@@ -3510,8 +3799,101 @@ cdef class Xprt(object):
         return lst
 
     @property
-    def send_credits(self):
-        return self.get_send_credits()
+    def send_quota(self):
+        return self.get_send_quota()
+
+    @property
+    def pending_ret_quota(self):
+        assert(self.rail_eps > 0)
+        cdef uint64_t *tmp = <uint64_t*>calloc(self.rail_eps, sizeof(uint64_t))
+        cdef int rc, i
+        if not tmp:
+            raise RuntimeError("Not enough memory")
+        rc = ldms_xprt_rail_pending_ret_quota_get(self.xprt, tmp, self.rail_eps)
+        if rc:
+            free(tmp)
+            raise RuntimeError(f"ldms_xprt_rail_pending_ret_quota_get() error: {rc}")
+        lst = list()
+        for i in range(0, self.rail_eps):
+            lst.append(tmp[i])
+        free(tmp)
+        return lst
+
+    def get_recv_quota(self):
+        cdef int64_t q
+        q = ldms_xprt_rail_recv_quota_get(self.xprt)
+        if q < 0:
+            if q == ldms.LDMS_UNLIMITED:
+                return ldms.LDMS_UNLIMITED
+            else:
+                err = -q
+                raise RuntimeError(f"ldms_xprt_rail_recv_quota_set() error: {-err}")
+        return q
+
+    def set_recv_quota(self, q:uint64_t):
+        cdef int rc
+        rc = ldms_xprt_rail_recv_quota_set(self.xprt, q)
+        if rc:
+            raise RuntimeError(f"ldms_xprt_rail_recv_quota_set() error: {rc}")
+
+    @property
+    def recv_quota(self):
+        return self.get_recv_quota()
+
+    @recv_quota.setter
+    def recv_quota(self, q:uint64_t):
+        self.set_recv_quota(q)
+
+    def get_send_rate_limit(self):
+        cdef int64_t rate = ldms_xprt_rail_send_rate_limit_get(self.xprt)
+        if rate == ldms.LDMS_UNLIMITED:
+            return ldms.LDMS_UNLIMITED
+        if rate < 0:
+            raise RuntimeError(f"ldms_xprt_rail_send_rate_limit_get() error: {-rate}")
+        return rate
+
+    @property
+    def send_rate_limit(self):
+        return self.get_send_rate_limit()
+
+    def get_recv_rate_limit(self):
+        cdef int64_t rate = ldms_xprt_rail_recv_rate_limit_get(self.xprt)
+        if rate == ldms.LDMS_UNLIMITED:
+            return ldms.LDMS_UNLIMITED
+        if rate < 0:
+            raise RuntimeError(f"ldms_xprt_rail_recv_rate_limit_get() error: {-rate}")
+        return rate
+
+    def set_recv_rate_limit(self, rate:uint64_t):
+        cdef int rc
+        rc = ldms_xprt_rail_recv_rate_limit_set(self.xprt, rate)
+        if rc:
+            raise RuntimeError(f"ldms_xprt_rail_recv_rate_limit_set() error: {rc}")
+
+    @property
+    def recv_rate_limit(self):
+        return self.get_recv_rate_limit()
+
+    @recv_rate_limit.setter
+    def recv_rate_limit(self, rate:uint64_t):
+        self.set_recv_rate_limit(rate)
+
+    @property
+    def in_eps_stq(self):
+        assert(self.rail_eps > 0)
+        cdef uint64_t *tmp = <uint64_t*>calloc(self.rail_eps, sizeof(uint64_t))
+        cdef int rc, i
+        if not tmp:
+            raise RuntimeError("Not enough memory")
+        rc = ldms_xprt_rail_in_eps_stq_get(self.xprt, tmp, self.rail_eps)
+        if rc:
+            free(tmp)
+            raise RuntimeError(f"ldms_xprt_rail_pending_ret_quota_get() error: {rc}")
+        lst = list()
+        for i in range(0, self.rail_eps):
+            lst.append(tmp[i])
+        free(tmp)
+        return lst
 
     def stream_publish(self, name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None):
         """r.stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None)
@@ -3687,6 +4069,20 @@ cdef class Xprt(object):
         return ( LdmsAddr.from_sockaddr(PTR(&lcl)),
                  LdmsAddr.from_sockaddr(PTR(&rmt)) )
 
+    @property
+    def is_rail(self):
+        """True if this is a rail transport"""
+        cdef int rc
+        rc = ldms_xprt_is_rail(self.xprt)
+        return bool(rc)
+
+    @property
+    def is_remote_rail(self):
+        """True if the remote peer is a rail"""
+        cdef int rc
+        rc = ldms_xprt_is_remote_rail(self.xprt)
+        return bool(rc)
+
 
 cdef class _StreamSubCtxt(object):
     """For internal use"""
@@ -3785,7 +4181,7 @@ cdef class LdmsAddr(object):
             raise RuntimeError(f"Unsupported address family: {sa.sa_family}")
 
     def as_tuple(self):
-        return tuple( self.family, self.port, self.addr )
+        return ( self.family, self.port, self.addr )
 
     def __iter__(self):
         yield self.family
@@ -4059,7 +4455,7 @@ cdef class StreamClient(object):
             desc = ""
         self.c = ldms_stream_subscribe(BYTES(match), is_regex,
                                        __stream_client_cb, <void*>self,
-                                       BYTES(desc))
+                                       CSTR(BYTES(desc)))
         if not self.c:
             raise RuntimeError(f"ldms_stream_subscribe() error, errno: {errno}")
 
@@ -4147,6 +4543,135 @@ cdef class ZapThrStat(object):
     def __repr__(self):
         return str(self)
 
+
+cdef class QGroup(object):
+    """QGroup - collection of methods to interact with the quota group
+
+    Application can use the pre-created object `qgroup` in this module to
+    interact with the LDMS quota group mechanism, e.g.
+    >>> from ovis_ldms import ldms
+    >>> ldms.qgroup.quota = 1000000000
+    >>> ldms.qgroup.ask_mark = 500000
+    >>> ldms.qgroup.ask_usec = 1500000
+    >>> ldms.qgroup.ask_amount = 500000
+    >>> ldms.qgroup.reset_usec = 1500000
+    >>> ldms.qgroup.start()
+    """
+
+    def __init__(self):
+        pass
+
+    def member_add(self, xprt, host, port=411, auth=None, auth_opts=None):
+        """Add a peer into the quota group"""
+        cdef int rc
+        cdef attr_value_list *avl = NULL
+        if auth is None:
+            auth = "none"
+        if auth_opts:
+            if type(auth_opts) != dict:
+                raise TypeError("auth_opts must be a dictionary")
+            avl = av_new(len(auth_opts))
+            for k, v in auth_opts.items():
+                rc = av_add(avl, BYTES(k), BYTES(v))
+                if rc:
+                    av_free(avl)
+                    raise OSError(rc, "av_add() error: {}"\
+                                  .format(ERRNO_SYM(rc)))
+        xprt = BYTES(xprt)
+        port = BYTES(port)
+        host = BYTES(host)
+        auth = BYTES(auth)
+        rc = ldms_qgroup_member_add(xprt, host, port, auth, avl)
+        av_free(avl)
+        if rc:
+            raise RuntimeError(f"ldms_qgroup_member_add() error: {ERRNO_SYM(rc)}")
+
+    @property
+    def cfg_quota(self):
+        cdef ldms_qgroup_cfg_s cfg
+        cfg = ldms_qgroup_cfg_get()
+        return cfg.quota
+
+    @cfg_quota.setter
+    def cfg_quota(self, long q):
+        cdef int rc
+        rc = ldms_qgroup_cfg_quota_set(q)
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    @property
+    def cfg_ask_mark(self):
+        cdef ldms_qgroup_cfg_s cfg
+        cfg = ldms_qgroup_cfg_get()
+        return cfg.ask_mark
+
+    @cfg_ask_mark.setter
+    def cfg_ask_mark(self, long v):
+        cdef int rc
+        rc = ldms_qgroup_cfg_ask_mark_set(v)
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    @property
+    def cfg_ask_amount(self):
+        cdef ldms_qgroup_cfg_s cfg
+        cfg = ldms_qgroup_cfg_get()
+        return cfg.ask_amount
+
+    @cfg_ask_amount.setter
+    def cfg_ask_amount(self, long v):
+        cdef int rc
+        rc = ldms_qgroup_cfg_ask_amount_set(v)
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    @property
+    def cfg_ask_usec(self):
+        cdef ldms_qgroup_cfg_s cfg
+        cfg = ldms_qgroup_cfg_get()
+        return cfg.ask_usec
+
+    @cfg_ask_usec.setter
+    def cfg_ask_usec(self, long v):
+        cdef int rc
+        rc = ldms_qgroup_cfg_ask_usec_set(v)
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    @property
+    def cfg_reset_usec(self):
+        cdef ldms_qgroup_cfg_s cfg
+        cfg = ldms_qgroup_cfg_get()
+        return cfg.reset_usec
+
+    @cfg_reset_usec.setter
+    def cfg_reset_usec(self, long v):
+        cdef int rc
+        rc = ldms_qgroup_cfg_reset_usec_set(v)
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    def start(self):
+        cdef int rc
+        rc = ldms_qgroup_start()
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    def stop(self):
+        cdef int rc
+        rc = ldms_qgroup_stop()
+        if rc:
+            raise RuntimeError(f"Error {ERRNO_SYM(rc)}")
+
+    @property
+    def quota_probe(self):
+        return ldms_qgroup_quota_probe()
+
+    def __del__(self):
+        pass
+
+qgroup = QGroup()
+
 LOG_LEVEL_MAP = {
         "LDEFAULT":  LDEFAULT,
         "LQUIET":    LQUIET,
@@ -4173,4 +4698,4 @@ def ovis_log_set_level_by_name(str subsys_name, level):
     """ovis_log_set_level_by_name(str subsys_name, level)"""
     if type(level) is str:
         level = LOG_LEVEL_MAP[level.upper()]
-    ldms.ovis_log_set_level_by_name(BYTES(subsys_name), level)
+    ldms.ovis_log_set_level_by_name(CSTR(BYTES(subsys_name)), level)

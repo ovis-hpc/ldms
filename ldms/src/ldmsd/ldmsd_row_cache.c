@@ -40,9 +40,12 @@ static int tree_comparator(void *a, const void *b)
 	ldmsd_row_cache_idx_t key_a = (ldmsd_row_cache_idx_t)a;
 	ldmsd_row_cache_idx_t key_b = (ldmsd_row_cache_idx_t)b;
 	ldmsd_row_cache_key_t rowk_a, rowk_b;
+        int rc;
+        assert(key_a->key_count == key_b->key_count);
 	for (i = 0; i < key_a->key_count; i++) {
 		rowk_a = key_a->keys[i];
 		rowk_b = key_b->keys[i];
+                assert(rowk_a->type == rowk_b->type);
 		switch (rowk_a->type) {
 		case LDMS_V_TIMESTAMP:
 			if (rowk_a->mval->v_ts.sec < rowk_b->mval->v_ts.sec)
@@ -53,10 +56,13 @@ static int tree_comparator(void *a, const void *b)
 				return -1;
 			if (rowk_a->mval->v_ts.usec > rowk_b->mval->v_ts.usec)
 				return 1;
-			return 0;
+                        continue;
 		case LDMS_V_CHAR_ARRAY:
-			return strncmp(rowk_a->mval->a_char, rowk_b->mval->a_char,
-				       rowk_a->count);
+			rc = strncmp(rowk_a->mval->a_char, rowk_b->mval->a_char,
+                                     rowk_a->count);
+                        if (rc != 0)
+                                return rc;
+                        continue;
 		case LDMS_V_CHAR:
 			if (rowk_a->mval->v_char == rowk_b->mval->v_char)
 				continue;
@@ -138,7 +144,8 @@ static int tree_comparator(void *a, const void *b)
  * @param row_limit - The limit of rows to cache in each group
  * @return ldmsd_row_cache_t
  */
-ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_limit)
+ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_limit,
+					 struct timespec *timeout)
 {
 	ldmsd_row_cache_t rcache = calloc(1, sizeof(*rcache));
 	if (!rcache)
@@ -148,6 +155,13 @@ ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_limit)
 	rcache->row_limit = row_limit;
 	rbt_init(&rcache->group_tree, tree_comparator);
 	pthread_mutex_init(&rcache->lock, NULL);
+	LIST_INIT(&rcache->group_bucket[0]);
+	LIST_INIT(&rcache->group_bucket[1]);
+	LIST_INIT(&rcache->group_bucket[2]);
+	rcache->gb_idx = 0;
+
+	if (timeout)
+		rcache->cfg_timeout = *timeout;
 
 	return rcache;
 }
@@ -240,6 +254,27 @@ void ldmsd_row_cache_idx_free(ldmsd_row_cache_idx_t idx)
 	free(idx);
 }
 
+/* NOTE: rcache->lock is held */
+void ldmsd_row_group_bucket_cleanup(ldmsd_row_cache_t rcache, int ci)
+{
+	ldmsd_row_group_t g;
+	struct ldmsd_row_cache_entry_s *cent;
+	struct rbn *rbn;
+	while((g = LIST_FIRST(&rcache->group_bucket[ci]))) {
+		LIST_REMOVE(g, bucket_entry);
+		rbt_del(&rcache->group_tree, &g->rbn);
+		while ((rbn = rbt_min(&g->row_tree))) {
+			rbt_del(&g->row_tree, rbn);
+			cent = container_of(rbn, struct ldmsd_row_cache_entry_s, rbn);
+			ldmsd_row_cache_idx_free(cent->idx);
+			free(cent->row);
+			free(cent);
+		}
+		ldmsd_row_cache_idx_free(g->rbn.key); /* group_key */
+		free(g);
+	}
+}
+
 int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 		ldmsd_row_cache_idx_t group_key,
 		ldmsd_row_cache_idx_t row_key,
@@ -247,6 +282,11 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 {
 	ldmsd_row_group_t group;
 	struct rbn *group_rbn;
+	struct timespec ts;
+	int rc = 0;
+	int ci;
+	int count;
+	const int GB_LEN = sizeof(rcache->group_bucket)/sizeof(rcache->group_bucket[0]);
 
 	/* Insert the row_list into the tree using rcache->row_key */
 	ldmsd_row_cache_entry_t entry = calloc(1, sizeof(*entry));
@@ -255,6 +295,71 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 
 	pthread_mutex_lock(&rcache->lock);
 
+	rc = clock_gettime(CLOCK_REALTIME, &ts);
+	if (rc) {
+		rc = errno;
+		goto out;
+	}
+
+	if (rcache->cfg_timeout.tv_sec == 0 && rcache->cfg_timeout.tv_nsec == 0)
+		goto skip_cleanup;
+
+	/*
+	 * group bucket processing
+	 * -----------------------
+	 *
+	 * A group bucket (`gb`) is a LIST of active groups within a
+	 * specific time window. A group is in only one group bucket.
+	 * - `rcache->group_bucket[]` is  an array group buckets. Referred to as
+	 *   `gb[]` for short.
+	 * - `rcache->gb_idx` is the index of CURRENT group bucket.
+	 *   `gb[CURRENT]` contains groups being active in the CURRENT time
+	 *   window.
+	 *   - current time window: time in range:
+	 *     (rcache->bucket_ts - rcache->cfg_timeout,  rcache->bucket_ts].
+	 * - `(rcache->gb_idx + 1) % GB_LEN` is the index of the NEXT group
+	 *   bucket. gb[NEXT] is empty.
+	 * - `(rcache->gb_idx + GB_LEN) % GB_LEN` is the index of the PREV group
+	 *   bucket. Groups in `gb[PREV]` are active in the PREV time window
+	 *   (rcache->bucket_ts - rcache->cfg_timeout,  rcache->bucket_ts ],
+	 *   but NOT YET active in the CURRENT time window.
+	 *
+	 * When a group is processed, it is removed from the bucket it is in
+	 * (could be PREV or CURRENT), and put into `gb[CURRENT]` bucket.
+	 *
+	 * When the timestamp `ts` (from clock_gettime() above) is greater than
+	 * rcache->bucket_ts, it is time to advance the bucket. `gb[NEXT]`
+	 * becomes CURRENT, `gb[CURRENT]` becomes PREV, and `gb[PREV]` shall be
+	 * cleaned up since all groups in this bucket are being inactive for
+	 * more than `rcache->cfg_timeout`. After the cleanup, `gb[PREV]`
+	 * becomes NEXT (empty).
+	 *
+	 */
+	count = GB_LEN;
+	while (count && ldmsd_timespec_cmp(&rcache->bucket_ts, &ts) < 0) {
+		/* ts > bucket_ts ; advancing the bucket */
+		rcache->gb_idx = (rcache->gb_idx + 1) % GB_LEN;
+		/* rcache->bucket_ts += rcache->cfg_timeout */
+		ldmsd_timespec_add(&rcache->bucket_ts, &rcache->cfg_timeout,
+				   &rcache->bucket_ts);
+
+		/* clean up the oldest bucket; making it the NEXT bucket */
+		ci = (rcache->gb_idx + 1) % GB_LEN; /* equivalent to `gb_idx - 2` */
+		ldmsd_row_group_bucket_cleanup(rcache, ci);
+
+		count--;
+	}
+
+	if (count == 0 && ldmsd_timespec_cmp(&rcache->bucket_ts, &ts) < 0) {
+		/* setup new bucket_ts since the ts is way ahead of bucket_ts.
+		 * This can happen in the case that the strgp became inactive
+		 * longer than 3*cfg_timeout. */
+
+		/* rcache->ts = ts + rcache->cfg_timeout */
+		ldmsd_timespec_add(&ts, &rcache->cfg_timeout, &rcache->bucket_ts);
+	}
+
+ skip_cleanup:
 	/* Look up the group */
 	group_rbn = rbt_find(&rcache->group_tree, group_key);
 	if (!group_rbn) {
@@ -266,6 +371,8 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 		rbn_init(&group->rbn, group_key);
 		rbt_ins(&rcache->group_tree, &group->rbn);
 		group_rbn = &group->rbn;
+		LIST_INSERT_HEAD(&rcache->group_bucket[rcache->gb_idx],
+				 group, bucket_entry);
 	}
 
 	group = container_of(group_rbn, struct ldmsd_row_group_s, rbn);
@@ -285,9 +392,18 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 	entry->row = row;
 	entry->idx = row_key;
 	rbt_ins(&group->row_tree, &entry->rbn);
+
+	/* informational */
+	group->last_update = ts;
+
+	/* move group to CURRENT bucket */
+	LIST_REMOVE(group, bucket_entry);
+	LIST_INSERT_HEAD(&rcache->group_bucket[rcache->gb_idx], group, bucket_entry);
+
+ out:
 	pthread_mutex_unlock(&rcache->lock);
 
-	return 0;
+	return rc;
 }
 
 /**

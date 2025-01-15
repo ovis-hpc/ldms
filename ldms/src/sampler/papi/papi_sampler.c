@@ -330,11 +330,6 @@ static const char *usage(struct ldmsd_plugin *self)
 		"     job_expiry    Number of seconds to retain sets for completed jobs. Defaults to 60s\n";
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
-}
-
 static void sample_job(job_data_t job)
 {
 	long long values[64];
@@ -957,7 +952,6 @@ static struct ldmsd_sampler papi_sampler = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample
 };
 

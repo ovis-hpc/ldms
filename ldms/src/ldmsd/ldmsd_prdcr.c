@@ -614,32 +614,58 @@ static int __advertise_resp_cb(ldmsd_req_cmd_t rcmd)
 	return 0;
 }
 
-static int __send_advertisement(ldmsd_prdcr_t prdcr)
+static void __send_advertisement(ldmsd_prdcr_t prdcr)
 {
 	int rc;
 	ldmsd_req_cmd_t rcmd;
+	ldmsd_listen_t l;
 	char my_hostname[HOST_NAME_MAX+1];
+	char lport[10];
 
 	rcmd = ldmsd_req_cmd_new(prdcr->xprt,
 				LDMSD_ADVERTISE_REQ, NULL,
 				__advertise_resp_cb, prdcr);
 	if (!rcmd) {
 		ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
-		return ENOMEM;
+		goto out;
 	}
-
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, prdcr->obj.name);
-	if (rc)
-		goto out;
+	if (rc) {
+		ovis_log(NULL, OVIS_LERROR, "Failed to construct an advertisement. " \
+								"Error %d\n", rc);
+		goto err;
+	}
 	rc = gethostname(my_hostname, HOST_NAME_MAX+1);
+	if (rc) {
+		ovis_log(NULL, OVIS_LERROR, "Failed to construct an advertisement. " \
+						"gethostname() returned error %d\n", rc);
+		goto err;
+	}
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_HOST, my_hostname);
-	if (rc)
-		goto out;
+	if (rc) {
+		ovis_log(NULL, OVIS_LERROR, "Failed to construct an advertisement. " \
+								"Error %d\n", rc);
+		goto err;
+	}
+	l = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+	snprintf(lport, 10, "%d", l->port_no);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_PORT, lport);
+	if (rc) {
+		ovis_log(NULL, OVIS_LERROR, "Failed to cosntruct an advertisement. " \
+								"error %d\n", rc);
+		goto err;
+	}
 	rc = ldmsd_req_cmd_attr_term(rcmd);
-	if (rc)
-		goto out;
+	if (rc) {
+		ovis_log(NULL, OVIS_LERROR, "Failed to send an advertisement. " \
+								"Error %d\n", rc);
+		goto err;
+	}
 out:
-	return rc;
+	return;
+err:
+	ldmsd_req_cmd_free(rcmd);
+	return;
 }
 
 static int __sampler_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
@@ -651,7 +677,6 @@ static int __sampler_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 			prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
 			if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISER) {
 				__send_advertisement(prdcr);
-				/* TODO: handle the error */
 			}
 			break;
 		case LDMS_XPRT_EVENT_DISCONNECTED:
@@ -672,6 +697,8 @@ static int __sampler_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 				 "Received a set_delete event from the aggregator (%s:%s:%d:%s)",
 				 prdcr->xprt_name, prdcr->host_name,
 				 (int)prdcr->port_no, prdcr->conn_auth);
+			break;
+		case LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
 			break;
 		default:
 			ovis_log(prdcr_log, OVIS_LERROR,
@@ -740,6 +767,9 @@ static int __agg_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 		is_reset_prdcr = 1;
 		goto out;
 	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		/* Ignore */
+		break;
+	case LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
 		/* Ignore */
 		break;
 	default:
@@ -836,6 +866,17 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 {
 	int ret;
 
+	if ((0 == prdcr->ss.ss_family) || (!prdcr->cache_ip)) {
+		if (prdcr_resolve(prdcr->host_name, prdcr->port_no,
+					&prdcr->ss, &prdcr->ss_len)) {
+			ovis_log(prdcr_log, OVIS_LERROR, "Producer '%s' connection failed. " \
+						"Hostname '%s:%u' not resolved.\n",
+						prdcr->obj.name, prdcr->host_name,
+						(unsigned) prdcr->port_no);
+			return;
+		}
+	}
+
 	switch (prdcr->type) {
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 	case LDMSD_PRDCR_TYPE_BRIDGE:
@@ -844,7 +885,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 		prdcr->xprt = ldms_xprt_rail_new(prdcr->xprt_name,
 						 prdcr->rail,
-						 prdcr->credits,
+						 prdcr->quota,
 						 prdcr->rx_rate,
 						 prdcr->conn_auth,
 						 prdcr->conn_auth_args);
@@ -867,6 +908,8 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	case LDMSD_PRDCR_TYPE_PASSIVE:
 		assert(prdcr->xprt == NULL);
 		prdcr->xprt = ldms_xprt_by_remote_sin((struct sockaddr *)&prdcr->ss);
+                if (!prdcr->xprt)
+			break;
 		ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
 		/* let through */
 	case LDMSD_PRDCR_TYPE_ADVERTISED:
@@ -975,7 +1018,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type, int conn_intrvl_us,
 		const char *auth, uid_t uid, gid_t gid, int perm, int rail,
-		int64_t credits, int64_t rx_rate)
+		int64_t quota, int64_t rx_rate, int cache_ip)
 {
 	extern struct rbt *cfgobj_trees[];
 	struct ldmsd_prdcr *prdcr;
@@ -994,10 +1037,11 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	prdcr->conn_intrvl_us = conn_intrvl_us;
 	prdcr->port_no = port_no;
 	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+	prdcr->cache_ip = cache_ip;
 	rbt_init(&prdcr->set_tree, set_cmp);
 	rbt_init(&prdcr->hint_set_tree, ldmsd_updtr_schedule_cmp);
 	prdcr->rail = rail;
-	prdcr->credits = credits;
+	prdcr->quota = quota;
 	prdcr->rx_rate = rx_rate;
 	prdcr->host_name = strdup(host_name);
 	if (!prdcr->host_name)
@@ -1012,11 +1056,9 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	}
 
 	prdcr->ss_len = sizeof(prdcr->ss);
-	if (prdcr_resolve(host_name, port_no, &prdcr->ss, &prdcr->ss_len)) {
-		errno = EAFNOSUPPORT;
-		ovis_log(prdcr_log, OVIS_LERROR, "ldmsd_prdcr_new: %s:%u not resolved.\n",
-			host_name,(unsigned) port_no);
-		goto out;
+	if (prdcr_resolve(prdcr->host_name, prdcr->port_no, &prdcr->ss, &prdcr->ss_len)) {
+		ovis_log(config_log, OVIS_LWARN, "Producer '%s': %s:%u not resolved.\n",
+			prdcr->obj.name, prdcr->host_name,(unsigned) prdcr->port_no);
 	}
 
 	if (!auth)
@@ -1052,11 +1094,12 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us, int rail, int64_t credits, int64_t rx_rate)
+		int conn_intrvl_us, int rail, int64_t quota, int64_t rx_rate)
 {
 	return ldmsd_prdcr_new_with_auth(name, xprt_name, host_name,
 			port_no, type, conn_intrvl_us,
-			DEFAULT_AUTH, getuid(), getgid(), 0777, rail, credits, rx_rate);
+			DEFAULT_AUTH, getuid(), getgid(), 0777, rail, quota,
+			rx_rate, 1);
 }
 
 extern struct rbt *cfgobj_trees[];

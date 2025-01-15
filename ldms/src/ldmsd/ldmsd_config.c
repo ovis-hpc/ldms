@@ -772,6 +772,213 @@ cleanup:
 	return rc;
 }
 
+static
+int __process_config_str(char *cfg_str, int *lno, int trust,
+				req_filter_fn req_filter, void *ctxt)
+{
+	int rc = 0;
+	int lineno = 0;
+	char *buff = NULL;
+	char *line = NULL;
+	char *tmp;
+	size_t line_sz = 0;
+	char *comment;
+	ssize_t off = 0;
+	ssize_t cnt;
+	size_t buf_len = 0;
+	struct ldmsd_cfg_xprt_s xprt;
+	ldmsd_req_hdr_t request = NULL;
+	struct ldmsd_req_array *req_array = NULL;
+	if (!cfg_str)
+		return EINVAL;
+	line = malloc(LDMSD_CFG_FILE_XPRT_MAX_REC);
+	if (!line) {
+		rc = errno;
+		ovis_log(config_log, OVIS_LERROR, "Out of memory\n");
+		goto cleanup;
+	}
+	line_sz = LDMSD_CFG_FILE_XPRT_MAX_REC;
+	xprt.type = LDMSD_CFG_TYPE_FILE;
+	xprt.send_fn = log_response_fn;
+	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
+	xprt.trust = trust;
+	xprt.rsp_err = 0;
+	xprt.cleanup_fn = NULL;
+
+next_line:
+	errno = 0;
+	if (buff) {
+		memset(buff, 0, buf_len);
+		buff = strtok(NULL, "\n");
+	} else
+		buff = strtok(cfg_str, "\n");
+	if (!buff)
+		goto cleanup;
+	buf_len = sizeof(buff);
+	cnt = strlen(buff);
+	lineno++;
+	tmp = buff;
+	comment = find_comment(tmp);
+
+	if (comment)
+		*comment = '\0';
+
+	while (cnt && isspace(tmp[cnt-1]))
+		cnt --;
+
+	if (!buff) {
+		/* empty string */
+		goto parse;
+	}
+
+	tmp[cnt] = '\0';
+
+	/* Get rid of leading spaces */
+	while (isspace(*tmp)) {
+		tmp++;
+		cnt--;
+	}
+
+	if (!cnt) {
+		/* empty buffer */
+		goto parse;
+	}
+
+	if (tmp[cnt-1] == '\\') {
+		if (cnt == 1)
+			goto parse;
+	}
+
+	if (cnt + off > line_sz) {
+		char *nline = realloc(line, ((cnt + off)/line_sz + 1) * line_sz);
+		if (!nline) {
+			rc = errno;
+			ovis_log(config_log, OVIS_LERROR, "Out of memory\n");
+			goto cleanup;
+		}
+		line = nline;
+		line_sz = ((cnt + off)/line_sz + 1) * line_sz;
+	}
+	off += snprintf(&line[off], line_sz, "%s", tmp);
+
+	/* attempt to merge multiple lines together */
+	if (off > 0 && line[off-1] == '\\') {
+		line[off-1] = ' ';
+		goto next_line;
+	}
+
+parse:
+	if (!off)
+		goto next_line;
+
+	if (ldmsd_is_initialized()) {
+		if ((0 == strncmp(line, "prdcr_add", 9)) ||
+				(0 == strncmp(line, "prdcr_start", 11))) {
+			if (strstr(line, "interval")) {
+				ovis_log(config_log, OVIS_LWARNING,
+					"'interval' is being deprecated. "
+					"Please use 'reconnect' with 'prdcr_add' or 'prdcr_start*' "
+					"in the future.\n");
+			}
+		}
+	}
+	req_array = ldmsd_parse_config_str(line, lineno, xprt.max_msg);
+	if (!req_array) {
+		rc = errno;
+		ovis_log(config_log, OVIS_LERROR, "Process config string error in line %d. %s\n ",
+				lineno, STRERROR(rc));
+		goto cleanup;
+	}
+
+	request = __aggregate_records(req_array);
+	if (!request) {
+		rc = errno;
+		goto cleanup;
+	}
+	ldmsd_req_array_free(req_array);
+	req_array = NULL;
+
+	if (!ldmsd_is_initialized()) {
+		/* Process only the priority commands, e.g., cmd-line options */
+		if (!is_req_id_priority(ntohl(request->req_id)))
+			goto next_req;
+	} else {
+		/* Process non-priority commands, e.g., cfgobj config commands */
+		if (is_req_id_priority(ntohl(request->req_id)))
+			goto next_req;
+	}
+
+	/*
+	 * Make sure that LDMSD will create large enough buffer to receive
+	 * the config data.
+	 */
+	if (xprt.max_msg < ntohl(request->rec_len))
+		xprt.max_msg = ntohl(request->rec_len);
+
+	rc = ldmsd_process_config_request(&xprt, request, req_filter, ctxt);
+	if (rc || xprt.rsp_err) {
+		if (!rc)
+			rc = xprt.rsp_err;
+		ovis_log(config_log, OVIS_LERROR, "Configuration error at line %d (%s)\n",
+				lineno, cfg_str);
+		goto cleanup;
+	}
+
+next_req:
+	free(request);
+	request = NULL;
+	off = 0;
+	goto next_line;
+
+cleanup:
+	if (line)
+		free(line);
+	if (lno)
+		*lno = lineno;
+	ldmsd_req_array_free(req_array);
+	if (request)
+		free(request);
+	return rc;
+}
+
+char *__process_yaml_config_file(const char *path, const char *dname)
+{
+	FILE *fp;
+	char command[512];
+	size_t buf_sz = 4096;
+	char *cfg_str = malloc(buf_sz);
+	snprintf(command, sizeof(command), "ldmsd_yaml_parser --ldms_config %s --daemon_name %s", path, dname);
+	fp = popen(command, "r");
+	if (!fp) {
+		ovis_log(config_log, OVIS_LERROR, "Error opening pipe to ldmsd_yaml_parser.\n");
+		goto err;
+	}
+	size_t bytes_read;
+	size_t tbytes = 0;
+	while ((bytes_read = fread(&cfg_str[tbytes], 1, 4096, fp)) > 0) {
+		tbytes += bytes_read;
+		if (bytes_read == 4096) {
+			cfg_str = (char *)realloc(cfg_str, tbytes + bytes_read + 1);
+			if (!cfg_str) {
+				ovis_log(config_log, OVIS_LERROR, "Error allocating memory\n");
+				goto err;
+			}
+		}
+	}
+	cfg_str[tbytes] = '\0';
+	int status;
+	status = pclose(fp);
+	if (status) {
+		ovis_log(config_log, OVIS_LERROR, "Error occured processing configuration file %s.\n", path);
+		goto err;
+	}
+	return cfg_str;
+err:
+	if (cfg_str)
+		free(cfg_str);
+	return NULL;
+}
+
 int __req_deferred_start_regex(ldmsd_req_ctxt_t reqc, ldmsd_cfgobj_type_t type)
 {
 	regex_t regex = {0};
@@ -1000,6 +1207,22 @@ int process_config_file(const char *path, int *lno, int trust)
 	return rc;
 }
 
+int process_config_str(char *config_str, int *lno, int trust)
+{
+	int rc;
+	char *cfg_str = strdup(config_str);
+	rc = __process_config_str(cfg_str, lno, trust,
+				__req_filter_failover, &ldmsd_use_failover);
+	return rc;
+}
+
+char *process_yaml_config_file(const char *path, const char *dname)
+{
+	char *cstr;
+	cstr = __process_yaml_config_file(path, dname);
+	return cstr;
+}
+
 static inline void __log_sent_req(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t req)
 {
 	if (!ldmsd_req_debug) /* defined in ldmsd_request.c */
@@ -1082,7 +1305,7 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		ldmsd_recv_msg(x, e->data, e->data_len);
 		break;
 	case LDMS_XPRT_EVENT_SEND_COMPLETE:
-	case LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED:
+	case LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
 		break;
 	default:
 		assert(0);

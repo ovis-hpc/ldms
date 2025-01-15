@@ -83,7 +83,7 @@ struct ldms_rail_conn_msg_s {
 	/* The rail part */
 
 	int64_t rate_limit;  /* send/recv rate limits in bytes/sec */
-	int64_t recv_limit; /* receive limits in bytes */
+	int64_t recv_quota; /* receive limits in bytes */
 
 	int n_eps; /* number of endpoints */
 	uint32_t idx; /* endpoint index in the rail */
@@ -107,10 +107,17 @@ typedef enum ldms_rail_ep_state_e {
 
 typedef struct ldms_rail_s *ldms_rail_t;
 
-struct ldms_rail_rate_credit_s {
-	uint64_t credit;    /* the bytes available in the second */
+struct ldms_rail_rate_quota_s {
+	uint64_t quota;    /* the bytes available in the second */
 	uint64_t rate;      /* the byte/sec */
 	struct timespec ts; /* timestamp of the last acquire */
+};
+
+struct __pending_sbuf_s {
+	uint32_t hop_num;
+	struct timespec recv_ts;
+	TAILQ_ENTRY(__pending_sbuf_s) entry;
+	struct __stream_buf_s *sbuf;
 };
 
 /* a structure that tracks ldms xprt in the rail */
@@ -120,10 +127,22 @@ struct ldms_rail_ep_s {
 	ldms_t ep;
 	int idx; /* index in the rail */
 	ldms_rail_t rail;
-	uint64_t send_credit; /* peer's recv limit */
+	uint64_t send_quota; /* peer's recv limit */
+	uint64_t send_quota_debt; /* debt due to quota reconfiguration */
 	struct rbt sbuf_rbt; /* stream message buffer */
 	int remote_is_rail;
-	struct ldms_rail_rate_credit_s rate_credit; /* rate credit */
+	struct ldms_rail_rate_quota_s rate_quota; /* rate quota */
+	uint64_t pending_ret_quota; /* pending return quota */
+	int in_eps_stq;
+	TAILQ_HEAD(, __pending_sbuf_s) sbuf_tq; /* pending fwd stream msgs */
+	/*
+	 * Array of operation context lists, indexed by `ldms_xprt_ops_e`.
+	 *
+	 * Each list stores operation contexts for the corresponding operation type.
+	 * Operation contexts track profiling data for various operations,
+	 * such as lookups, updates, and stream operations.
+	 */
+	struct ldms_op_ctxt_list op_ctxt_lists[LDMS_XPRT_OP_COUNT];
 };
 
 typedef struct ldms_rail_dir_ctxt_s {
@@ -150,10 +169,10 @@ struct ldms_rail_s {
 
 	struct ref_s ref;
 
-	/* These are informational. The actual credits are in eps[idx]. */
-	uint64_t recv_limit;      /* 0xffffffffffffffff is unlimited */
+	/* These are informational. The actual quotas are in eps[idx]. */
+	uint64_t recv_quota;      /* 0xffffffffffffffff is unlimited */
 	uint64_t recv_rate_limit; /* 0xffffffffffffffff is unlimited */
-	uint64_t send_limit;      /* 0xffffffffffffffff is unlimited */
+	uint64_t send_quota;      /* 0xffffffffffffffff is unlimited */
 	uint64_t send_rate_limit; /* 0xffffffffffffffff is unlimited */
 
 	ldms_event_cb_t event_cb;
@@ -215,9 +234,15 @@ int sockaddr2ldms_addr(struct sockaddr *sa, struct ldms_addr *la);
  */
 const char *sockaddr_ntop(struct sockaddr *sa, char *buff, size_t sz);
 
+void __rail_ep_quota_return(struct ldms_rail_ep_s *rep, int quota);
+
+int __rep_flush_sbuf_tq(struct ldms_rail_ep_s *rep);
+int __rep_quota_acquire(struct ldms_rail_ep_s *rep, uint64_t q);
+
 /**
- * Wrapper of 'inet_ntop()' for ldms_addr.
+ * For debugging ...
  */
-const char *ldms_addr_ntop(struct ldms_addr *addr, char *buff, size_t sz);
+int ldms_xprt_rail_pending_ret_quota_get(ldms_t x, uint64_t *out, int n);
+int ldms_xprt_rail_in_eps_stq_get(ldms_t x, uint64_t *out, int n);
 
 #endif /* __LDMS_RAIL_H__ */

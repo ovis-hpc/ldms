@@ -597,12 +597,6 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	return rc;
 }
 
-static ldms_set_t
-get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 static int
 sample(struct ldmsd_sampler *self)
 {
@@ -740,7 +734,6 @@ static struct ldmsd_sampler syspapi_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

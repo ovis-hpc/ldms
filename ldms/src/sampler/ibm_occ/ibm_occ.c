@@ -246,11 +246,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return set;
-}
-
 static int sample(struct ldmsd_sampler *self)
 {
 	int rc, metric_no, fd;
@@ -348,7 +343,6 @@ static struct ldmsd_sampler ibm_occ_plugin = {
 		.config = config,
 		.usage = usage,
 	},
-	.get_set = get_set,
 	.sample = sample,
 };
 

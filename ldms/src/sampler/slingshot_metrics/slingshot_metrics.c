@@ -593,6 +593,8 @@ static int sample(struct ldmsd_sampler *self)
                                             &counters.value[j],
                                             NULL);
                         if (rc != 0) {
+                                ovis_log(mylog, OVIS_LWARNING, "sample(): cxil_read_cntr() failed for device %s, rc = %d\n",
+                                         dev_info->device_name, rc);
                                 cache_cxil_dev_close(dev);
                                 /* FIXME - we should really free the record here,
                                    and avoid adding it to the list, but there is
@@ -606,7 +608,7 @@ static int sample(struct ldmsd_sampler *self)
         }
         base_sample_end(sampler_base);
 
-        return rc;
+        return 0;
 }
 
 static void term(struct ldmsd_plugin *self)
@@ -618,11 +620,6 @@ static void term(struct ldmsd_plugin *self)
         cache_cxil_device_list_free();
         cache_cxil_dev_close_all();
         ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
-}
-
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -644,7 +641,6 @@ struct ldmsd_plugin *get_plugin()
                         .config = config,
                         .usage = usage,
                 },
-                .get_set = get_set,
                 .sample = sample,
         };
 

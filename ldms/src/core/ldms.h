@@ -641,16 +641,16 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
 			       struct attr_value_list *auth_av_list);
 
 /**
- * Unlimited value for rail 'credits' and 'rate'.
+ * Unlimited value for rail 'quota' and 'rate'.
  */
-#define __RAIL_UNLIMITED (-1)
+#define LDMS_UNLIMITED (-1)
 
 /**
  * \brief Create a new LDMS Rail handle.
  *
  * \param xprt_name The transport type name string.
  * \param n The number of endpoints in the rail.
- * \param recv_limit Our recv buffer limit in bytes, -1 for unlimited.
+ * \param recv_quota Our recv buffer quota in bytes, -1 for unlimited.
  * \param rate_limit Our transfer rate limit in bytes per second.
  * \param auth_name The authentication plugin name (e.g. munge).
  * \param auth_av_list The options for the authentication.
@@ -659,7 +659,7 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
  * \retval NULL If there is an error. \c errno is set to describe the error.
  */
 ldms_t ldms_xprt_rail_new(const char *xprt_name,
-			  int n, int64_t recv_limit, int64_t rate_limit,
+			  int n, int64_t recv_quota, int64_t rate_limit,
 			  const char *auth_name,
 			  struct attr_value_list *auth_av_list);
 
@@ -728,8 +728,14 @@ enum ldms_xprt_event_type {
 	LDMS_XPRT_EVENT_SET_DELETE,
 	/*! A send request is completed */
 	LDMS_XPRT_EVENT_SEND_COMPLETE,
-	/*! The send credit is deposited.  */
-	LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED,
+	/*! The send quota is deposited.  */
+	LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED,
+	/*! Peer ask us for quota donation. */
+	LDMS_XPRT_EVENT_QGROUP_ASK,
+	/*! Peer donates quota to us. */
+	LDMS_XPRT_EVENT_QGROUP_DONATE,
+	/*! For donating back the unused donated quota. */
+	LDMS_XPRT_EVENT_QGROUP_DONATE_BACK,
 	LDMS_XPRT_EVENT_LAST
 };
 
@@ -738,8 +744,8 @@ struct ldms_xprt_set_delete_data {
 	const char *name;	/*! The name of the set */
 };
 
-struct ldms_xprt_credit_event_data {
-	uint64_t credit; /* current credit */
+struct ldms_xprt_quota_event_data {
+	uint64_t quota; /* current quota */
 	int      ep_idx; /* the index of the endpoint in the rail */
 };
 
@@ -756,7 +762,7 @@ typedef struct ldms_xprt_event {
 		 */
 		char *data;
 		struct ldms_xprt_set_delete_data set_delete;
-		struct ldms_xprt_credit_event_data credit;
+		struct ldms_xprt_quota_event_data quota;
 	};
 	size_t data_len;
 } *ldms_xprt_event_t;
@@ -922,7 +928,17 @@ struct ldms_addr {
 int ldms_xprt_addr(ldms_t x, struct ldms_addr *local_addr,
 			    struct ldms_addr *remote_addr);
 
-const char *ldms_sockaddr_ntop(struct sockaddr *sa, char *buff, size_t sz);
+/**
+ * \brief Get addresss string
+ *
+ * \param addr LDMS address
+ * \param buff String buffer to receive the address string
+ * \param sz   Size of \c buff
+ *
+ * \return \c buff on success; otherwise, NULL is returned.
+*/
+const char *ldms_addr_ntop(struct ldms_addr *addr, char *buff, size_t sz);
+
 
 /**
  * \brief Convert a CIDR IP address string to \c ldms_addr
@@ -1030,19 +1046,73 @@ int ldms_xprt_is_remote_rail(ldms_t x);
 int ldms_xprt_rail_eps(ldms_t x);
 
 /**
- * \brief Get the send credit
+ * \brief Get the receive quota of an endpoint
+ *
+ * \param x The transport handle
+ *
+ * \retval Receive limit is retunred.
+ * \retval -EINVAL if \c x is NULL or not a rail
+ */
+int64_t ldms_xprt_rail_recv_quota_get(ldms_t x);
+
+/**
+ * \brief Get the receive rate limit of an endpoint
+ *
+ * \param x The transport handle
+ *
+ * \retval Receive limit is retunred.
+ * \retval -EINVAL if \c x is NULL or not a rail
+ */
+int64_t ldms_xprt_rail_recv_rate_limit_get(ldms_t x);
+
+/**
+ * \brief Get the send rate limit of an endpoint (set by peer)
+ *
+ * \param x The transport handle
+ *
+ * \retval rate_limit The send rate limit.
+ * \retval -EINVAL If \c x is NULL or not a rail
+ */
+int64_t ldms_xprt_rail_send_rate_limit_get(ldms_t x);
+
+/**
+ * \brief Set (reconfig) the new rate limit
+ *
+ * \param rate The new rate
+ *
+ * \retval      0 If succeeded, or
+ * \retval -errno If failed.
+ */
+int ldms_xprt_rail_recv_rate_limit_set(ldms_t x, uint64_t rate);
+
+/**
+ * \brief Get the send quota
  *
  * \param[in]  x       The rail transport handle.
- * \param[out] credits The array to receive the send-credit for each endpoint in
+ * \param[out] quota   The array to receive the send-quota for each endpoint in
  *                     the rail.
- * \param[in]  n       The size of \c credits array. Must be greater than the
+ * \param[in]  n       The size of \c quota array. Must be greater than the
  *                     number of endpoints in the rail.
  *
  * \retval       0 If there is no error.
  * \retval -EINVAL If \c x is not a rail.
  * \retval -ENOMEM If \c n is less than the number of endpoints in the rail.
  */
-int ldms_xprt_rail_send_credit_get(ldms_t x, uint64_t *credits, int n);
+int ldms_xprt_rail_send_quota_get(ldms_t x, uint64_t *quota, int n);
+
+/**
+ * Set a new recv quota value.
+ *
+ * This function notifies the peer of the new recv quota \c q so that the peer
+ * can adjust its send quota accordingly.
+ *
+ * \param x The rail transport handle.
+ * \param q The new recv quota value.
+ *
+ * \retval 0     If succeeded,
+ * \retval -errno If failed.
+ */
+int ldms_xprt_rail_recv_quota_set(ldms_t x, uint64_t q);
 
 /* A convenient sockaddr union for IPv4 and IPv6 (for now) */
 union ldms_sockaddr {
@@ -1089,6 +1159,219 @@ int ldms_getsockaddr6(const char *host, const char *port,
 /** \} */
 
 /**
+ * \addtogroup ldms_qgroup LDMS Quota Group (qgroup)
+ *
+ * LDMS Quota Group, or qgroup for short, is a feature in LDMS library that
+ * enables the control of the amount of the stream data going through the
+ * processes participating in the "group". \c qgroup mechanism leverages
+ * \c rail.recv_quota to limit the stream data. Hence, the endpoints in our
+ * process (a member of \c qgroup) has to be created with
+ * \c * ldms_xprt_rail_new() with \c recv_quota. When the peer publishes a
+ * stream data, it has to take quota from the said \c recv_quota. When our
+ * process done processing the stream data (all stream callbacks on the data
+ * have returned), the quota is issued back to the peer. This limits the amount
+ * of buffer in our process. With \c qgruop, before our process returns the
+ * quota, we first consults \c qgroup.quota. The returning quota has to be taken
+ * from \c qgroup.quota. If the \c qgroup.quota is not enough (less than the
+ * required returning quota), the returning quota is held off. If we hold off
+ * enough returning quota, the peer will run out of quota and cannot publish
+ * further stream data. \c qgroup.cfg.quota determines the initial amount of
+ * \c qgroup.quota. When \c qgroup.quota goes below \c qgroup.cfg.ask_mark, the
+ * qgroup mechanism asks members for quota donations (with
+ * \c qgroup.cfg.ask_amount) every \c qgroup.cfg.ask_usec interval. The donation
+ * also takes from \c qgroup.quota. Eventually, all \c qgroup.quota in all
+ * members will run out. The \c qgroup.quota gets reset back to
+ * \c qgroup.cfg.quota every \c qgroup.cfg.reset_usec interval. Roughly, the
+ * amount of data that goes through members of \c qgroup (including us) is:
+ *
+ *   \c N * \c qgroup.cfg.quota over \c qgroup.cfg.reset_usec time interval
+ *
+ * provided that all members use the same parameters.
+ *
+ *
+ * To use qgroup feature, we have to
+ * 1) set qgroup paramters of our process (\c ldms_qgroup_cfg_set()),
+ * 2) add member processes (\c ldms_qgroup_member_add()), and
+ * 3) start the qgroup feature (\c ldms_qgroup_start()).
+ *
+ * The member processes can use \c ldms_qgroup_cfg_set() to set the parameters
+ * at once, or use the following functions to set them individually:
+ * - \c ldms_qgroup_cfg_quota_set()
+ * - \c ldms_qgroup_cfg_ask_usec_set()
+ * - \c ldms_qgroup_cfg_ask_mark_set()
+ * - \c ldms_qgroup_cfg_ask_amount_set()
+ * - \c ldms_qgroup_cfg_reset_usec_set()
+ *
+ * After \c ldms_qgroup_start(), the process has to call \c ldms_qgroup_stop()
+ * before altering the member list or modifying \c qgroup.cfg.
+ *
+ * These functions and types manage and manipulate LDMS Quota Group.
+ * \{
+ */
+
+typedef enum ldms_qgroup_state_e {
+	LDMS_QGROUP_STATE_STOPPED = 0,
+	LDMS_QGROUP_STATE_STOPPING,
+	LDMS_QGROUP_STATE_STARTED,
+	LDMS_QGROUP_STATE_BUSY, /* qgroup is in execution routine */
+	LDMS_QGROUP_STATE_LAST,
+} ldms_qgroup_state_t;
+const char *ldms_qgroup_state_str(ldms_qgroup_state_t state);
+
+typedef enum ldms_qgroup_member_state_e {
+	LDMS_QGROUP_MEMBER_STATE_DISCONNECTED,
+	LDMS_QGROUP_MEMBER_STATE_CONNECTING,
+	LDMS_QGROUP_MEMBER_STATE_CONNECTED,
+	LDMS_QGROUP_MEMBER_STATE_LAST,
+} ldms_qgroup_member_state_t;
+
+typedef struct ldms_qgroup_s *ldms_qgroup_t;
+
+const char *ldms_qgroup_member_state_str(ldms_qgroup_member_state_t state);
+
+typedef struct ldms_qgroup_cfg_s *ldms_qgroup_cfg_t;
+struct ldms_qgroup_cfg_s {
+	uint64_t quota;
+	uint64_t ask_mark;
+	uint64_t ask_amount;
+	uint64_t ask_usec;
+	uint64_t reset_usec;
+};
+
+/**
+ * \brief Set the qgroup config with the provided \c cfg.
+ *
+ * \retval 0 Success
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ */
+int ldms_qgroup_cfg_set(ldms_qgroup_cfg_t cfg);
+
+/**
+ * \brief Retrieve the current qgroup config.
+ *
+ * \retval cfg The `ldms_qgroup_cfg_s` structure.
+ */
+struct ldms_qgroup_cfg_s ldms_qgroup_cfg_get();
+
+/**
+ * \brief Set the `cfg.quota` of the qgroup.
+ *
+ * \retval 0 Success
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ */
+int ldms_qgroup_cfg_quota_set(uint64_t quota);
+
+/**
+ * \brief Set the `cfg.ask_usec` of the qgroup.
+ *
+ * \retval 0 Success
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ */
+int ldms_qgroup_cfg_ask_usec_set(uint64_t usec);
+
+/**
+ * \brief Set the `cfg.reset_usec` of the qgroup.
+ *
+ * \retval 0 Success
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ */
+int ldms_qgroup_cfg_reset_usec_set(uint64_t usec);
+
+/**
+ * \brief Set the `cfg.ask_mark` of the qgroup.
+ *
+ * \retval 0 Success
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ */
+int ldms_qgroup_cfg_ask_mark_set(uint64_t ask_mark);
+
+/**
+ * \brief Set the `cfg.ask_amount` of the qgroup.
+ *
+ * \retval 0 Success
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ */
+int ldms_qgroup_cfg_ask_amount_set(uint64_t ask_amount);
+
+/**
+ * \brief Add a member into the qgroup.
+ *
+ * \param xprt_name The name of the xprt type (e.g. "sock").
+ * \param host The host of the member.
+ * \param port The port of the member. If \c port is \c NULL, "411" is supplied
+ *             as a default.
+ * \param auth_name The name of the authentication type (e.g. "munge"). The
+ *                  default is "none".
+ * \param auth_av_list The list attribute-value options for \c auth_name. The
+ *                     default is \c NULL.
+ *
+ *
+ * \retval 0 Success.
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ * \retval EINVAL Invalid argument (e.g.\c host being \c NULL).
+ * \retval ENAMETOOLONG A parameter value is too long (e.g. \c host is longer
+ *                      than 256 bytes).
+ * \retval EEXIST The peer "host:port" already exist in the member list.
+ * \retval ENOMEM Not enough memory.
+ */
+int ldms_qgroup_member_add(const char *xprt_name,
+			   const char *host, const char *port,
+			   const char *auth_name,
+			   struct attr_value_list *auth_av_list);
+
+/**
+ * \brief Remove a member from the qgroup.
+ *
+ * \param host The host of the member.
+ * \param port The port of the member. If \c port is \c NULL, "411" is supplied
+ *             as a default.
+ *
+ * \retval 0 Success.
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ * \retval ENOENT If the "host:port" member does not exist in the list.
+ */
+int ldms_qgroup_member_del(const char *host, const char *port);
+
+/**
+ * \brief Start the qgroup service.
+ *
+ * \retval 0 Success.
+ * \retval EBUSY If the `qgroup` is not in the STOPPED state.
+ * \retval EINVAL If the config is invalid (e.g. \c cfg.quota=0).
+ */
+int ldms_qgroup_start();
+
+/**
+ * \brief Stop the qgroup service.
+ */
+int ldms_qgroup_stop();
+
+/* probe the current quota value */
+uint64_t ldms_qgroup_quota_probe();
+
+typedef struct ldms_qgroup_member_info_s {
+	STAILQ_ENTRY(ldms_qgroup_member_info_s) entry;
+	ldms_qgroup_member_state_t state;
+	char   c_host[256]; /* see rfc1034 */
+	char   c_port[32];  /* port or service name */
+	char   c_xprt[32];  /* the transport type */
+	char   c_auth[32];  /* auth type */
+	struct attr_value_list *c_auth_av_list;
+} *ldms_qgroup_member_info_t;
+
+typedef struct ldms_qgroup_info_s {
+	ldms_qgroup_state_t state;
+	struct ldms_qgroup_cfg_s cfg;
+	uint64_t quota; /* the current quota */
+	STAILQ_HEAD(, ldms_qgroup_member_info_s) member_stq;
+} *ldms_qgroup_info_t;
+
+ldms_qgroup_info_t ldms_qgroup_info_get();
+void ldms_qgroup_info_free(ldms_qgroup_info_t qinfo);
+
+/** \} */ /* ldms_qgroup */
+
+/**
  * \addtogroup ldms_stream LDMS Stream Functions
  *
  * These functions manage and manipulate LDMS Stream.
@@ -1116,7 +1399,7 @@ typedef enum ldms_stream_type_e {
  * \param data_len     The length of the data.
  *
  * \retval 0        If there is no error.
- * \retval EAGAIN   If there is not enough send credit.
+ * \retval EAGAIN   If there is not enough send quota.
  * \retval ENOSTR   If the the handle not valid for publishing a stream.
  */
 int ldms_stream_publish(ldms_t x, const char *stream_name,
@@ -1137,7 +1420,7 @@ int ldms_stream_publish(ldms_t x, const char *stream_name,
  * \param file         The FILE handle.
  *
  * \retval 0        If there is no error.
- * \retval EAGAIN   If there is not enough send credit.
+ * \retval EAGAIN   If there is not enough send quota.
  * \retval ENOSTR   If the the handle not valid for publishing a stream.
  */
 int ldms_stream_publish_file(ldms_t x, const char *stream_name,
@@ -1171,6 +1454,7 @@ struct ldms_stream_recv_data_s {
 	json_entity_t json; /* json entity */
 	struct ldms_cred cred; /* credential */
 	uint32_t perm; /* permission */
+	uint32_t name_hash; /* stream name hash */
 };
 
 /* To report subscrube / unsubscribe return status */
@@ -1188,6 +1472,8 @@ struct ldms_stream_close_event_s {
 typedef struct ldms_stream_event_s {
 	ldms_t r; /* rail */
 	enum ldms_stream_event_type type;
+	struct timespec recv_ts;
+	uint32_t hop_num;
 	union {
 		struct ldms_stream_recv_data_s recv;
 		struct ldms_stream_return_status_s status;
@@ -1246,7 +1532,7 @@ void ldms_stream_close(ldms_stream_client_t c);
  * \param cb_fn    The callback function for return status notification (could
  *                 be \c NULL).
  * \param cb_arg   The application context to the `cb_fn`.
- * \param rate     The rate limit (bytes/sec). Use `__RAIL_UNLIMITED` for
+ * \param rate     The rate limit (bytes/sec). Use `LDMS_UNLIMITED` for
  *                 unlimited.
  *
  * \retval 0     If succeeded.
@@ -1279,11 +1565,28 @@ struct ldms_stream_counters_s {
 			*(p) = LDMS_STREAM_COUNTERS_INITIALIZER; \
 		} while (0)
 
+struct ldms_stream_hop {
+	struct timespec recv_ts;
+	struct timespec send_ts;
+};
+
+#define STREAM_MAX_PROFILE_HOPS 8
+struct ldms_stream_profile {
+	uint32_t hop_cnt;
+	struct ldms_stream_hop hops[OVIS_FLEX];
+};
+struct ldms_stream_profile_ent {
+	TAILQ_ENTRY(ldms_stream_profile_ent) ent;
+	struct ldms_stream_profile profiles;
+};
+TAILQ_HEAD(ldms_stream_profile_list, ldms_stream_profile_ent);
+
 /* stream statistics by src */
 struct ldms_stream_src_stats_s {
 	struct rbn rbn; /* key ==> src */
 	struct ldms_addr src;
 	struct ldms_stream_counters_s rx; /* total rx from src */
+	struct ldms_stream_profile_list profiles;
 };
 
 /* stats of stream-client pair */
@@ -1780,8 +2083,93 @@ typedef enum ldms_xprt_ops_e {
 	LDMS_XPRT_OP_DIR_REP,
 	LDMS_XPRT_OP_SEND,
 	LDMS_XPRT_OP_RECV,
+	LDMS_XPRT_OP_STREAM_PUBLISH,
+	LDMS_XPRT_OP_STREAM_SUBSCRIBE,
+	LDMS_XPRT_OP_STREAM_UNSUBSCRIBE,
 	LDMS_XPRT_OP_COUNT
 } ldms_xprt_ops_t;
+
+struct  ldms_op_ctxt {
+	enum ldms_xprt_ops_e op_type;
+	union {
+		struct lookup_profile_s {
+			struct timespec app_req_ts;
+			struct timespec req_send_ts;
+			struct timespec req_recv_ts;
+			struct timespec share_ts;
+			struct timespec rendzv_ts;
+			struct timespec read_ts;
+			struct timespec complete_ts;
+			struct timespec deliver_ts;
+		} lookup_profile;
+		struct update_profile {
+			struct timespec app_req_ts;
+			struct timespec read_ts;
+			struct timespec read_complete_ts;
+			struct timespec deliver_ts;
+		} update_profile;
+		struct set_delete_profile_s {
+			struct timespec send_ts;
+			struct timespec recv_ts;
+			struct timespec ack_ts;
+		} set_del_profile;
+		struct send_profile_s {
+			struct timespec app_req_ts;
+			struct timespec send_ts;
+			struct timespec complete_ts;
+			struct timespec deliver_ts;
+		} send_profile;
+		struct strm_publish_profile_s {
+			uint32_t hop_num;
+			struct timespec recv_ts;
+			struct timespec send_ts; /*  to remote client */
+		} stream_pub_profile;
+	};
+	TAILQ_ENTRY(ldms_op_ctxt) ent;
+};
+TAILQ_HEAD(ldms_op_ctxt_list, ldms_op_ctxt);
+
+#define PROFILING_CFG_DISABLED    0
+#define PROFILING_CFG_ENABLED     1
+#define PROFILING_CFG_UNSUPPORTED 2
+
+/**
+ * Enable/disable LDMS operations' profiling
+ *
+ * If profiling is enabled, LDMS collects the following timestamps:
+ *   for LOOKUP: when ldms_xprt_lookup() is called,
+ *               when LDMS sends the lookup request to the peer,
+ *               when the peer receives the lookup request,
+ *               when the peer shares the set memory,
+ *               when LDMS receives the shared memory,
+ *               when LDMS reads the memory,
+ *               when LDMS receives the read completion,
+ *               and when LDMS delivers the lookup data to the application
+ *   for UPDATE: when ldms_xprt_update() is called,
+ *               when LDMS reads the set data,
+ *               when LDMS receives the updated set data,
+ *               when LDMS delivers the update completion to the application
+ *   for SEND:   when ldms_xprt_send() is called,
+ *               when LDMS sends the data to the peer,
+ *               when LDMS receives the send completion event,
+ *               when LDMS delivers the send completion to the application
+ *   for STREAM_PUBLISH: when ldms_stream_publish() is called,
+ *                       when LDMS publishes the stream data,
+ *                       when LDMS delivers the stream data to clients
+ *                       NOTE: LDMS collects the timestamps at each hop where stream data gets forwarded
+ *
+ * \param ops_cnt  Number of operations in \c ops.
+ *                 -1 to enable/disable profiling of all operations
+ * \param ops      Array of operations to enable their profiling
+ * \param ops_err  Array to store an error of each given operation
+ *
+ * \return 0 on success; Otherwise, -1 is given.
+ *         In this case, an error code will be assigned in the \c ops_err
+ *            ENOSYS if the operation does not support profiling;
+ *            EINVAL if the given operation does not exist.
+ */
+int ldms_profiling_enable(int ops_cnt, enum ldms_xprt_ops_e *ops, int *ops_err);
+int ldms_profiling_disable(int ops_cnt, enum ldms_xprt_ops_e *ops, int *ops_err);
 
 extern const char *ldms_xprt_op_names[];
 
@@ -1890,15 +2278,25 @@ typedef struct ldms_xprt_stats {
 	struct timespec disconnected;
 	struct timespec last_op;
 	struct ldms_stats_entry ops[LDMS_XPRT_OP_COUNT];
+	struct ldms_op_ctxt_list op_ctxt_lists[LDMS_XPRT_OP_COUNT];
 } *ldms_xprt_stats_t;
+
+#define LDMS_PERF_M_STATS 1
+#define LDMS_PERF_M_PROFILNG 2
+#define LDMS_PERF_M_ALL LDMS_PERF_M_STATS | LDMS_PERF_M_PROFILNG
 
 /**
  * \brief Retrieve transport request statistics
  *
+ * The function gets the statistics and then reset it if \c reset is not 0.
+ * To only reset the statistics, \c stats must be NULL.
+ *
  * \param x The transport handle
- * \param s Pointer to an ldms_xprt_stats structure
+ * \param stats Pointer to an ldms_xprt_stats structure
+ * \param reset Reset the statistics after getting the statistics if not 0
+ *
  */
-extern void ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats);
+extern void ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats, int mask, int reset);
 
 /*
  * Metric template for:
@@ -1982,6 +2380,45 @@ extern void ldms_schema_delete(ldms_schema_t schema);
 extern int ldms_schema_metric_count_get(ldms_schema_t schema);
 
 /**
+ * \brief Populate \c out with information of metric \c mid in \c schema.
+ *
+ * Please note that the pointer members in \c out (e.g. \c out->name) point to
+ * memory that is owned by \c schema. So, please do *NOT* modify or free the
+ * members of \c out. The \c out itself can be freed.
+ *
+ * \param [in]  schema The schema handle.
+ * \param [in]  mid    The metric ID.
+ * \param [out] out    The metric template structure output.
+ *
+ * \retval 0      If succeeded, or
+ * \retval ENOENT if \c mid does not exist.
+ */
+extern int ldms_schema_metric_template_get(ldms_schema_t schema, int mid,
+				struct ldms_metric_template_s *out);
+
+/**
+ * \brief Like \c ldms_schema_metric_template_get(), but in bulk.
+ *
+ * This function copies metric template information from \c schema into \c out
+ * template array up to \c len metrics. The pointers in the template structure
+ * are owned by \c schema, please do not modify or free them. The \c out array,
+ * however, can be freed. Similar to \c snprintf(), this function returns a
+ * number less than or equal to \c len if succeeded, or a number greater than
+ * \c len to indicate the required array length. In the latter case, the
+ * template array \c out contains \c len metric templates.
+ *
+ * \param [in]  schema The schema handle.
+ * \param [in]  len    The length of the \c out array buffer.
+ * \param [out] out    The output template array.
+ *
+ * \retval N<=len If succeeded, or
+ * \retval N>len  if the output array is not long enough
+ *
+ */
+extern int ldms_schema_bulk_template_get(ldms_schema_t schema, int len,
+				struct ldms_metric_template_s out[]);
+
+/**
  * \brief Set the cardinality of the set array created by this schema.
  *
  * \param schema The schema handle.
@@ -2033,6 +2470,18 @@ void ldms_record_delete(ldms_record_t rec_def);
 int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
 			   const char *unit, enum ldms_value_type type,
 			   size_t array_len);
+
+/**
+ * Get the number of metrics in record definition \c rec_def.
+ *
+ * \note \c ldms_record_card() does the same thing on \c mavl (\c record_inst or
+ * \c record_type) from an LDMS set.
+ *
+ * \param rec_def  The record definition handle (from \c ldms_record_alloc()).
+ *
+ * \retval N The number of metrics in the record.
+ */
+int ldms_record_metric_card(ldms_record_t rec_def);
 
 
 /**
@@ -2095,6 +2544,47 @@ size_t ldms_record_heap_size_get(ldms_record_t rec_def);
  * \retval bytes The size of the heap memory
  */
 size_t ldms_record_value_size_get(ldms_record_t rec_def);
+
+/**
+ * \brief Populate \c out with information of metric \c mid in \c record.
+ *
+ * Please note that the pointer members in \c out (e.g. \c out->name) point to
+ * memory that is owned by \c record. So, please do *NOT* modify or free the
+ * members of \c out. The \c out itself can be freed.
+ *
+ * \param [in]  record The record handle.
+ * \param [in]  mid    The metric ID.
+ * \param [out] out    The metric template structure output.
+ *
+ * \retval 0      If succeeded, or
+ * \retval ENOENT if \c mid does not exist.
+ */
+extern int ldms_record_metric_template_get(ldms_record_t record, int mid,
+				struct ldms_metric_template_s *out);
+
+/**
+ * \brief Like \c ldms_record_metric_template_get(), but in bulk.
+ *
+ * This function copies metric template information from \c record into \c out
+ * template array up to \c len metrics. The pointers in the template structure
+ * are owned by \c record, please do not modify or free them. The \c out array,
+ * however, can be freed. Similar to \c snprintf(), this function returns a
+ * number less than or equal to \c len if succeeded, or a number greater than
+ * \c len to indicate the required array length. In the latter case, the
+ * template array \c out contains \c len metric templates.
+ *
+ * \param [in]  record The record handle.
+ * \param [in]  len    The length of the \c out array buffer.
+ * \param [out] out    The output template array.
+ *
+ * \retval N<=len If succeeded, or
+ * \retval N>len  if the output array is not long enough
+ *
+ */
+extern int ldms_record_bulk_template_get(ldms_record_t record, int len,
+				struct ldms_metric_template_s out[]);
+
+extern const char *ldms_record_name_get(ldms_record_t record);
 
 void _ldms_set_ref_get(ldms_set_t s, const char *reason, const char *func, int line);
 int _ldms_set_ref_put(ldms_set_t s, const char *reason, const char *func, int line);
@@ -3319,6 +3809,27 @@ int64_t ldms_mval_array_get_s64(ldms_mval_t mv, int idx);
 float ldms_mval_array_get_float(ldms_mval_t mv, int idx);
 double ldms_mval_array_get_double(ldms_mval_t mv, int idx);
 struct ldms_timestamp ldms_mval_array_get_ts(ldms_mval_t mv, int idx);
+
+/**
+ * \brief Convert ldms_mval_t mv of type \c type to respective data type
+ *
+ * \param mv   The metric value handle
+ * \param type The type of the metric value handle
+ * \param idx  If \c type is ARRAY, \c idx is the index of the value.
+ *             Otherwise, \c idx is ignored.
+ */
+char ldms_mval_as_char(ldms_mval_t mv, enum ldms_value_type type, int idx);
+uint8_t ldms_mval_as_u8(ldms_mval_t mv, enum ldms_value_type type, int idx);
+int8_t ldms_mval_as_s8(ldms_mval_t mv, enum ldms_value_type type, int idx);
+uint16_t ldms_mval_as_u16(ldms_mval_t mv, enum ldms_value_type type, int idx);
+int16_t ldms_mval_as_s16(ldms_mval_t mv, enum ldms_value_type type, int idx);
+uint32_t ldms_mval_as_u32(ldms_mval_t mv, enum ldms_value_type type, int idx);
+int32_t ldms_mval_as_s32(ldms_mval_t mv, enum ldms_value_type type, int idx);
+uint64_t ldms_mval_as_u64(ldms_mval_t mv, enum ldms_value_type type, int idx);
+int64_t ldms_mval_as_s64(ldms_mval_t mv, enum ldms_value_type type, int idx);
+float ldms_mval_as_float(ldms_mval_t mv, enum ldms_value_type type, int idx);
+double ldms_mval_as_double(ldms_mval_t mv, enum ldms_value_type type, int idx);
+struct ldms_timestamp ldms_mval_as_timestamp(ldms_mval_t mv, enum ldms_value_type type, int idx);
 
 /**
  * \brief Append a new value to a list

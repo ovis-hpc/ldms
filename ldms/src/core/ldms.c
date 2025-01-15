@@ -100,8 +100,82 @@ const char *ldms_xprt_op_names[] = {
 	"DIR_REP",
 	"SEND",
 	"RECV",
+	"STREAM_PUBLISH",
+	"STREAM_SUBSCRIBE",
+	"STREAM_UNSUBSCRIBE"
 };
 static char *type_names[];
+
+/* -ENOSYS means that LDMS doesn't support profiling for those operation. */
+int __enable_profiling[LDMS_XPRT_OP_COUNT] = {
+	PROFILING_CFG_DISABLED,          /* lookup */
+	PROFILING_CFG_DISABLED,          /* update */
+	PROFILING_CFG_UNSUPPORTED,       /* Publish */
+	PROFILING_CFG_DISABLED,          /* set_delete */
+	PROFILING_CFG_UNSUPPORTED,       /* dir_req */
+	PROFILING_CFG_UNSUPPORTED,       /* dir_rep */
+	PROFILING_CFG_DISABLED,          /* send */
+	PROFILING_CFG_UNSUPPORTED,       /* receive */
+	PROFILING_CFG_DISABLED,          /* stream_publish */
+	PROFILING_CFG_UNSUPPORTED,       /* stream_subscribe */
+	PROFILING_CFG_UNSUPPORTED	 /* stream_unsubscribe */
+};
+
+int ldms_profiling_enable(int ops_cnt, enum ldms_xprt_ops_e *ops, int *ops_err)
+{
+	int i;
+	int rc = 0;
+
+	if (ops_cnt < 0) {
+		for (i = 0; i < LDMS_XPRT_OP_COUNT; i++) {
+			if (__enable_profiling[i] != PROFILING_CFG_UNSUPPORTED)
+				__enable_profiling[i] = PROFILING_CFG_ENABLED;
+		}
+	} else {
+		if (ops_err)
+			bzero(ops_err, sizeof(int) * ops_cnt);
+		for (i = 0; i < ops_cnt; i++) {
+			if (ops[i] >= LDMS_XPRT_OP_COUNT) {
+				ops_err[i] = EINVAL;
+				continue;
+			}
+			if (__enable_profiling[ops[i]] == PROFILING_CFG_UNSUPPORTED) {
+				rc = -1;
+				if (ops_err)
+					ops_err[i] = ENOSYS;
+			} else {
+				__enable_profiling[ops[i]] = PROFILING_CFG_ENABLED;
+			}
+		}
+	}
+	return rc;
+}
+
+int ldms_profiling_disable(int ops_cnt, enum ldms_xprt_ops_e *ops, int *ops_err)
+{
+	int i;
+	int rc = 0;
+
+	if (ops_cnt < 0) {
+		for (i = 0; i < LDMS_XPRT_OP_COUNT; i++) {
+			if (__enable_profiling[i] != PROFILING_CFG_UNSUPPORTED)
+				__enable_profiling[i] = PROFILING_CFG_DISABLED;
+		}
+	} else {
+		if (ops_err)
+			bzero(ops_err, sizeof(int) * ops_cnt);
+		for (i = 0; i < ops_cnt; i++) {
+			if (__enable_profiling[ops[i]] == PROFILING_CFG_UNSUPPORTED) {
+				rc = -1;
+					if (ops_err)
+						ops_err[i] = ENOSYS;
+			} else {
+				__enable_profiling[ops[i]] = PROFILING_CFG_DISABLED;
+			}
+		}
+	}
+	return rc;
+}
 
 static struct ldms_digest_s null_digest;
 
@@ -739,7 +813,8 @@ static void sync_update_cb(ldms_t x, ldms_set_t s, int status, void *arg)
 	sem_post(&x->sem);
 }
 
-int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void *arg)
+int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb,
+                                   void *arg, struct ldms_op_ctxt *op_ctxt)
 {
 	ldms_t xprt = ldms_xprt_get(x);
 	int rc;
@@ -773,10 +848,40 @@ int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void
 	return rc;
 }
 
+/* Implementation is in ldms_rail.c */
+ldms_t __ldms_xprt_to_rail(ldms_t x);
 int ldms_xprt_update(struct ldms_set *set, ldms_update_cb_t cb, void *arg)
 {
-	ldms_t x = set->xprt;
-	return x->ops.update(x, set, cb, arg);
+	int rc;
+	struct ldms_op_ctxt *op_ctxt = NULL;
+
+	assert(set);
+
+	if (set->curr_updt_ctxt)
+		return EBUSY;
+
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE)) {
+		op_ctxt = calloc(1, sizeof(*op_ctxt));
+		if (!op_ctxt)
+			return ENOMEM;
+		op_ctxt->op_type = LDMS_XPRT_OP_UPDATE;
+		(void)clock_gettime(CLOCK_REALTIME, &(op_ctxt->update_profile.app_req_ts));
+	}
+	/*
+	 * We convert the transport handle to a rail handle using
+	 * __ldms_xprt_to_rail() and pass it to x->ops.update().
+	 * This ensures that the update operation will be handled
+	 * by the __rail_update() function, which allows us to
+	 * interpose the rail update callback and deliver the rail handle
+	 * when the update completes.
+	 */
+	ldms_t r = __ldms_xprt_to_rail(set->xprt);
+	rc = r->ops.update(r, set, cb, arg, op_ctxt);
+	if (rc) {
+		set->curr_updt_ctxt = NULL;
+		free(op_ctxt);
+	}
+	return rc;
 }
 
 void __ldms_set_on_xprt_term(ldms_set_t set, ldms_t xprt)
@@ -1301,6 +1406,63 @@ const char *ldms_schema_name_get(ldms_schema_t schema)
 
 int ldms_schema_metric_count_get(ldms_schema_t schema)
 {
+	return schema->card;
+}
+
+int ldms_schema_metric_template_get(ldms_schema_t schema, int mid,
+				    struct ldms_metric_template_s *out)
+{
+	int i;
+	ldms_mdef_t mdef;
+	if (mid < 0 || schema->card <= mid)
+		return ENOENT;
+	mdef = STAILQ_FIRST(&schema->metric_list);
+	for (i = 0; i < mid; i++) {
+		mdef = STAILQ_NEXT(mdef, entry);
+	}
+	out->name    = mdef->name;
+	out->flags   = mdef->flags;
+	out->type    = mdef->type;
+	out->unit    = mdef->unit;
+	out->len     = mdef->count;
+	out->rec_def = (mdef->type == LDMS_V_RECORD_TYPE) ?
+				container_of(mdef, struct ldms_record, mdef) :
+				NULL;
+	return 0;
+}
+
+int ldms_schema_bulk_template_get(ldms_schema_t schema, int len,
+				struct ldms_metric_template_s out[])
+{
+	int i = 0, n, _id;
+	ldms_record_t rec_def;
+	struct ldms_record_array_def *rec_array_def;
+	ldms_mdef_t mdef;
+	n = len<schema->card?len:schema->card;
+	mdef = STAILQ_FIRST(&schema->metric_list);
+	for (i = 0; i < n; i++) {
+		out[i].name    = mdef->name;
+		out[i].flags   = mdef->flags;
+		out[i].type    = mdef->type;
+		out[i].unit    = mdef->unit;
+		out[i].len     = mdef->count;
+		switch (mdef->type) {
+		case LDMS_V_RECORD_TYPE:
+			rec_def = container_of(mdef, struct ldms_record, mdef);
+			break;
+		case LDMS_V_RECORD_ARRAY:
+			rec_array_def = container_of(mdef,
+						struct ldms_record_array_def, mdef);
+			_id = rec_array_def->rec_type;
+			assert(_id < i);
+			rec_def = out[_id].rec_def;
+			break;
+		default:
+			rec_def = NULL;
+		}
+		out[i].rec_def = rec_def;
+		mdef = STAILQ_NEXT(mdef, entry);
+	}
 	return schema->card;
 }
 
@@ -4232,6 +4394,11 @@ int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
 	return -errno;
 }
 
+int ldms_record_metric_card(ldms_record_t rec_def)
+{
+	return rec_def->n;
+}
+
 size_t ldms_record_heap_size_get(ldms_record_t rec_def)
 {
 	size_t sz = rec_def->inst_sz + sizeof(struct ldms_list_entry);
@@ -4242,6 +4409,50 @@ size_t ldms_record_heap_size_get(ldms_record_t rec_def)
 size_t ldms_record_value_size_get(ldms_record_t rec_def)
 {
 	return rec_def->inst_sz - sizeof(struct ldms_record_inst);
+}
+
+int ldms_record_metric_template_get(ldms_record_t record, int mid,
+				struct ldms_metric_template_s *out)
+{
+	int i;
+	ldms_mdef_t mdef;
+	if (mid < 0 || record->n <= mid)
+		return ENOENT;
+	mdef = STAILQ_FIRST(&record->rec_metric_list);
+	for (i = 0; i < mid; i++) {
+		mdef = STAILQ_NEXT(mdef, entry);
+	}
+	out->name    = mdef->name;
+	out->flags   = mdef->flags;
+	out->type    = mdef->type;
+	out->unit    = mdef->unit;
+	out->len     = mdef->count;
+	out->rec_def = NULL;
+	return 0;
+}
+
+int ldms_record_bulk_template_get(ldms_record_t record, int len,
+				struct ldms_metric_template_s out[])
+{
+	int i = 0, n;
+	ldms_mdef_t mdef;
+	n = len<record->n?len:record->n;
+	mdef = STAILQ_FIRST(&record->rec_metric_list);
+	for (i = 0; i < n; i++) {
+		out[i].name    = mdef->name;
+		out[i].flags   = mdef->flags;
+		out[i].type    = mdef->type;
+		out[i].unit    = mdef->unit;
+		out[i].len     = mdef->count;
+		out[i].rec_def = NULL;
+		mdef = STAILQ_NEXT(mdef, entry);
+	}
+	return record->n;
+}
+
+const char *ldms_record_name_get(ldms_record_t record)
+{
+	return record->mdef.name;
 }
 
 int ldms_record_card(ldms_mval_t rec)
@@ -4974,8 +5185,6 @@ int ldms_schema_metric_add_template(ldms_schema_t s,
 	for (i=0, ent=tmp; ent->name || ent->rec_def; i++,ent++) {
 		switch (ent->type) {
 		case LDMS_V_RECORD_TYPE:
-			if (ent->flags & LDMS_MDESC_F_META)
-				return -EINVAL;
 			ret = ldms_schema_record_add(s, ent->rec_def);
 			break;
 		case LDMS_V_RECORD_ARRAY:
@@ -5133,4 +5342,735 @@ int ldms_getsockaddr(const char *host, const char *port,
 {
 	struct addrinfo hints = { .ai_socktype = SOCK_STREAM };
 	return __getsockaddr(host, port, &hints, sa, sa_len);
+}
+
+#define _FROM_TYPE_BODY(v, t, i) \
+	switch (t) { \
+	case LDMS_V_CHAR: \
+		return (v)->v_char; \
+	case LDMS_V_U8: \
+		return (v)->v_u8; \
+	case LDMS_V_S8: \
+		return (v)->v_s8; \
+	case LDMS_V_U16: \
+		return (v)->v_u16; \
+	case LDMS_V_S16: \
+		return (v)->v_s16; \
+	case LDMS_V_U32: \
+		return (v)->v_u32; \
+	case LDMS_V_S32: \
+		return (v)->v_s32; \
+	case LDMS_V_U64: \
+		return (v)->v_u64; \
+	case LDMS_V_S64: \
+		return (v)->v_s64; \
+	case LDMS_V_F32: \
+		return (v)->v_f; \
+	case LDMS_V_D64: \
+		return (v)->v_d; \
+	case LDMS_V_CHAR_ARRAY: \
+		return (v)->a_char[i]; \
+	case LDMS_V_U8_ARRAY: \
+		return (v)->a_u8[i]; \
+	case LDMS_V_S8_ARRAY: \
+		return (v)->a_s8[i]; \
+	case LDMS_V_U16_ARRAY: \
+		return (v)->a_u16[i]; \
+	case LDMS_V_S16_ARRAY: \
+		return (v)->a_s16[i]; \
+	case LDMS_V_U32_ARRAY: \
+		return (v)->a_u32[i]; \
+	case LDMS_V_S32_ARRAY: \
+		return (v)->a_s32[i]; \
+	case LDMS_V_U64_ARRAY: \
+		return (v)->a_u64[i]; \
+	case LDMS_V_S64_ARRAY: \
+		return (v)->a_s64[i]; \
+	case LDMS_V_F32_ARRAY: \
+		return (v)->a_f[i]; \
+	case LDMS_V_D64_ARRAY: \
+		return (v)->a_d[i]; \
+	case LDMS_V_TIMESTAMP: \
+		return (v)->v_ts.sec + (v)->v_ts.usec*1e-6; \
+	default: \
+		return 0; \
+	}
+
+
+char ldms_mval_as_char(ldms_mval_t mv, enum ldms_value_type type, int idx)
+{
+	switch (type) {
+	case LDMS_V_CHAR:
+		return mv->v_char;
+	case LDMS_V_U8:
+		return mv->v_u8;
+	case LDMS_V_S8:
+		return mv->v_s8;
+	case LDMS_V_U16:
+		return mv->v_u16;
+	case LDMS_V_S16:
+		return mv->v_s16;
+	case LDMS_V_U32:
+		return mv->v_u32;
+	case LDMS_V_S32:
+		return mv->v_s32;
+	case LDMS_V_U64:
+		return mv->v_u64;
+	case LDMS_V_S64:
+		return mv->v_s64;
+	case LDMS_V_F32:
+		return mv->v_f;
+	case LDMS_V_D64:
+		return mv->v_d;
+	case LDMS_V_CHAR_ARRAY:
+		return mv->a_char[idx];
+	case LDMS_V_U8_ARRAY:
+		return mv->a_u8[idx];
+	case LDMS_V_S8_ARRAY:
+		return mv->a_s8[idx];
+	case LDMS_V_U16_ARRAY:
+		return mv->a_u16[idx];
+	case LDMS_V_S16_ARRAY:
+		return mv->a_s16[idx];
+	case LDMS_V_U32_ARRAY:
+		return mv->a_u32[idx];
+	case LDMS_V_S32_ARRAY:
+		return mv->a_s32[idx];
+	case LDMS_V_U64_ARRAY:
+		return mv->a_u64[idx];
+	case LDMS_V_S64_ARRAY:
+		return mv->a_s64[idx];
+	case LDMS_V_F32_ARRAY:
+		return mv->a_f[idx];
+	case LDMS_V_D64_ARRAY:
+		return mv->a_d[idx];
+	case LDMS_V_TIMESTAMP:
+		return mv->v_ts.sec + mv->v_ts.usec*1e-6;
+	default:
+		return 0;
+	}
+}
+
+uint8_t ldms_mval_as_u8(ldms_mval_t mv, enum ldms_value_type type, int idx)
+{
+	switch (type) {
+	case LDMS_V_CHAR:
+		return mv->v_char;
+	case LDMS_V_U8:
+		return mv->v_u8;
+	case LDMS_V_S8:
+		return mv->v_s8;
+	case LDMS_V_U16:
+		return mv->v_u16;
+	case LDMS_V_S16:
+		return mv->v_s16;
+	case LDMS_V_U32:
+		return mv->v_u32;
+	case LDMS_V_S32:
+		return mv->v_s32;
+	case LDMS_V_U64:
+		return mv->v_u64;
+	case LDMS_V_S64:
+		return mv->v_s64;
+	case LDMS_V_F32:
+		return mv->v_f;
+	case LDMS_V_D64:
+		return mv->v_d;
+	case LDMS_V_CHAR_ARRAY:
+		return mv->a_char[idx];
+	case LDMS_V_U8_ARRAY:
+		return mv->a_u8[idx];
+	case LDMS_V_S8_ARRAY:
+		return mv->a_s8[idx];
+	case LDMS_V_U16_ARRAY:
+		return mv->a_u16[idx];
+	case LDMS_V_S16_ARRAY:
+		return mv->a_s16[idx];
+	case LDMS_V_U32_ARRAY:
+		return mv->a_u32[idx];
+	case LDMS_V_S32_ARRAY:
+		return mv->a_s32[idx];
+	case LDMS_V_U64_ARRAY:
+		return mv->a_u64[idx];
+	case LDMS_V_S64_ARRAY:
+		return mv->a_s64[idx];
+	case LDMS_V_F32_ARRAY:
+		return mv->a_f[idx];
+	case LDMS_V_D64_ARRAY:
+		return mv->a_d[idx];
+	case LDMS_V_TIMESTAMP:
+		return mv->v_ts.sec + mv->v_ts.usec*1e-6;
+	default:
+		return 0;
+	}
+}
+
+int8_t ldms_mval_as_s8(ldms_mval_t mv, enum ldms_value_type type, int idx)
+{
+	switch (type) {
+	case LDMS_V_CHAR:
+		return mv->v_char;
+	case LDMS_V_U8:
+		return mv->v_u8;
+	case LDMS_V_S8:
+		return mv->v_s8;
+	case LDMS_V_U16:
+		return mv->v_u16;
+	case LDMS_V_S16:
+		return mv->v_s16;
+	case LDMS_V_U32:
+		return mv->v_u32;
+	case LDMS_V_S32:
+		return mv->v_s32;
+	case LDMS_V_U64:
+		return mv->v_u64;
+	case LDMS_V_S64:
+		return mv->v_s64;
+	case LDMS_V_F32:
+		return mv->v_f;
+	case LDMS_V_D64:
+		return mv->v_d;
+	case LDMS_V_CHAR_ARRAY:
+		return mv->a_char[idx];
+	case LDMS_V_U8_ARRAY:
+		return mv->a_u8[idx];
+	case LDMS_V_S8_ARRAY:
+		return mv->a_s8[idx];
+	case LDMS_V_U16_ARRAY:
+		return mv->a_u16[idx];
+	case LDMS_V_S16_ARRAY:
+		return mv->a_s16[idx];
+	case LDMS_V_U32_ARRAY:
+		return mv->a_u32[idx];
+	case LDMS_V_S32_ARRAY:
+		return mv->a_s32[idx];
+	case LDMS_V_U64_ARRAY:
+		return mv->a_u64[idx];
+	case LDMS_V_S64_ARRAY:
+		return mv->a_s64[idx];
+	case LDMS_V_F32_ARRAY:
+		return mv->a_f[idx];
+	case LDMS_V_D64_ARRAY:
+		return mv->a_d[idx];
+	case LDMS_V_TIMESTAMP:
+		return mv->v_ts.sec + mv->v_ts.usec*1e-6;
+	default:
+		return 0;
+	}
+}
+
+uint16_t ldms_mval_as_u16(ldms_mval_t mv, enum ldms_value_type type, int idx)
+{
+	switch (type) {
+	case LDMS_V_CHAR:
+		return mv->v_char;
+	case LDMS_V_U8:
+		return mv->v_u8;
+	case LDMS_V_S8:
+		return mv->v_s8;
+	case LDMS_V_U16:
+		return mv->v_u16;
+	case LDMS_V_S16:
+		return mv->v_s16;
+	case LDMS_V_U32:
+		return mv->v_u32;
+	case LDMS_V_S32:
+		return mv->v_s32;
+	case LDMS_V_U64:
+		return mv->v_u64;
+	case LDMS_V_S64:
+		return mv->v_s64;
+	case LDMS_V_F32:
+		return mv->v_f;
+	case LDMS_V_D64:
+		return mv->v_d;
+	case LDMS_V_CHAR_ARRAY:
+		return mv->a_char[idx];
+	case LDMS_V_U8_ARRAY:
+		return mv->a_u8[idx];
+	case LDMS_V_S8_ARRAY:
+		return mv->a_s8[idx];
+	case LDMS_V_U16_ARRAY:
+		return mv->a_u16[idx];
+	case LDMS_V_S16_ARRAY:
+		return mv->a_s16[idx];
+	case LDMS_V_U32_ARRAY:
+		return mv->a_u32[idx];
+	case LDMS_V_S32_ARRAY:
+		return mv->a_s32[idx];
+	case LDMS_V_U64_ARRAY:
+		return mv->a_u64[idx];
+	case LDMS_V_S64_ARRAY:
+		return mv->a_s64[idx];
+	case LDMS_V_F32_ARRAY:
+		return mv->a_f[idx];
+	case LDMS_V_D64_ARRAY:
+		return mv->a_d[idx];
+	case LDMS_V_TIMESTAMP:
+		return mv->v_ts.sec + mv->v_ts.usec*1e-6;
+	default:
+		return 0;
+	}
+}
+
+int16_t ldms_mval_as_s16(ldms_mval_t mv, enum ldms_value_type type, int idx)
+{
+	switch (type) {
+	case LDMS_V_CHAR:
+		return mv->v_char;
+	case LDMS_V_U8:
+		return mv->v_u8;
+	case LDMS_V_S8:
+		return mv->v_s8;
+	case LDMS_V_U16:
+		return mv->v_u16;
+	case LDMS_V_S16:
+		return mv->v_s16;
+	case LDMS_V_U32:
+		return mv->v_u32;
+	case LDMS_V_S32:
+		return mv->v_s32;
+	case LDMS_V_U64:
+		return mv->v_u64;
+	case LDMS_V_S64:
+		return mv->v_s64;
+	case LDMS_V_F32:
+		return mv->v_f;
+	case LDMS_V_D64:
+		return mv->v_d;
+	case LDMS_V_CHAR_ARRAY:
+		return mv->a_char[idx];
+	case LDMS_V_U8_ARRAY:
+		return mv->a_u8[idx];
+	case LDMS_V_S8_ARRAY:
+		return mv->a_s8[idx];
+	case LDMS_V_U16_ARRAY:
+		return mv->a_u16[idx];
+	case LDMS_V_S16_ARRAY:
+		return mv->a_s16[idx];
+	case LDMS_V_U32_ARRAY:
+		return mv->a_u32[idx];
+	case LDMS_V_S32_ARRAY:
+		return mv->a_s32[idx];
+	case LDMS_V_U64_ARRAY:
+		return mv->a_u64[idx];
+	case LDMS_V_S64_ARRAY:
+		return mv->a_s64[idx];
+	case LDMS_V_F32_ARRAY:
+		return mv->a_f[idx];
+	case LDMS_V_D64_ARRAY:
+		return mv->a_d[idx];
+	case LDMS_V_TIMESTAMP:
+		return mv->v_ts.sec + mv->v_ts.usec*1e-6;
+	default:
+		return 0;
+	}
+}
+
+uint32_t ldms_mval_as_u32(ldms_mval_t mv, enum ldms_value_type type, int idx)
+{
+	switch (type) {
+	case LDMS_V_CHAR:
+		return mv->v_char;
+	case LDMS_V_U8:
+		return mv->v_u8;
+	case LDMS_V_S8:
+		return mv->v_s8;
+	case LDMS_V_U16:
+		return mv->v_u16;
+	case LDMS_V_S16:
+		return mv->v_s16;
+	case LDMS_V_U32:
+		return mv->v_u32;
+	case LDMS_V_S32:
+		return mv->v_s32;
+	case LDMS_V_U64:
+		return mv->v_u64;
+	case LDMS_V_S64:
+		return mv->v_s64;
+	case LDMS_V_F32:
+		return mv->v_f;
+	case LDMS_V_D64:
+		return mv->v_d;
+	case LDMS_V_CHAR_ARRAY:
+		return mv->a_char[idx];
+	case LDMS_V_U8_ARRAY:
+		return mv->a_u8[idx];
+	case LDMS_V_S8_ARRAY:
+		return mv->a_s8[idx];
+	case LDMS_V_U16_ARRAY:
+		return mv->a_u16[idx];
+	case LDMS_V_S16_ARRAY:
+		return mv->a_s16[idx];
+	case LDMS_V_U32_ARRAY:
+		return mv->a_u32[idx];
+	case LDMS_V_S32_ARRAY:
+		return mv->a_s32[idx];
+	case LDMS_V_U64_ARRAY:
+		return mv->a_u64[idx];
+	case LDMS_V_S64_ARRAY:
+		return mv->a_s64[idx];
+	case LDMS_V_F32_ARRAY:
+		return mv->a_f[idx];
+	case LDMS_V_D64_ARRAY:
+		return mv->a_d[idx];
+	case LDMS_V_TIMESTAMP:
+		return mv->v_ts.sec + mv->v_ts.usec*1e-6;
+	default:
+		return 0;
+	}
+}
+
+int32_t ldms_mval_as_s32(ldms_mval_t mv, enum ldms_value_type type, int idx)
+{
+	switch (type) {
+	case LDMS_V_CHAR:
+		return mv->v_char;
+	case LDMS_V_U8:
+		return mv->v_u8;
+	case LDMS_V_S8:
+		return mv->v_s8;
+	case LDMS_V_U16:
+		return mv->v_u16;
+	case LDMS_V_S16:
+		return mv->v_s16;
+	case LDMS_V_U32:
+		return mv->v_u32;
+	case LDMS_V_S32:
+		return mv->v_s32;
+	case LDMS_V_U64:
+		return mv->v_u64;
+	case LDMS_V_S64:
+		return mv->v_s64;
+	case LDMS_V_F32:
+		return mv->v_f;
+	case LDMS_V_D64:
+		return mv->v_d;
+	case LDMS_V_CHAR_ARRAY:
+		return mv->a_char[idx];
+	case LDMS_V_U8_ARRAY:
+		return mv->a_u8[idx];
+	case LDMS_V_S8_ARRAY:
+		return mv->a_s8[idx];
+	case LDMS_V_U16_ARRAY:
+		return mv->a_u16[idx];
+	case LDMS_V_S16_ARRAY:
+		return mv->a_s16[idx];
+	case LDMS_V_U32_ARRAY:
+		return mv->a_u32[idx];
+	case LDMS_V_S32_ARRAY:
+		return mv->a_s32[idx];
+	case LDMS_V_U64_ARRAY:
+		return mv->a_u64[idx];
+	case LDMS_V_S64_ARRAY:
+		return mv->a_s64[idx];
+	case LDMS_V_F32_ARRAY:
+		return mv->a_f[idx];
+	case LDMS_V_D64_ARRAY:
+		return mv->a_d[idx];
+	case LDMS_V_TIMESTAMP:
+		return mv->v_ts.sec + mv->v_ts.usec*1e-6;
+	default:
+		return 0;
+	}
+}
+
+uint64_t ldms_mval_as_u64(ldms_mval_t mv, enum ldms_value_type type, int idx)
+{
+	switch (type) {
+	case LDMS_V_CHAR:
+		return mv->v_char;
+	case LDMS_V_U8:
+		return mv->v_u8;
+	case LDMS_V_S8:
+		return mv->v_s8;
+	case LDMS_V_U16:
+		return mv->v_u16;
+	case LDMS_V_S16:
+		return mv->v_s16;
+	case LDMS_V_U32:
+		return mv->v_u32;
+	case LDMS_V_S32:
+		return mv->v_s32;
+	case LDMS_V_U64:
+		return mv->v_u64;
+	case LDMS_V_S64:
+		return mv->v_s64;
+	case LDMS_V_F32:
+		return mv->v_f;
+	case LDMS_V_D64:
+		return mv->v_d;
+	case LDMS_V_CHAR_ARRAY:
+		return mv->a_char[idx];
+	case LDMS_V_U8_ARRAY:
+		return mv->a_u8[idx];
+	case LDMS_V_S8_ARRAY:
+		return mv->a_s8[idx];
+	case LDMS_V_U16_ARRAY:
+		return mv->a_u16[idx];
+	case LDMS_V_S16_ARRAY:
+		return mv->a_s16[idx];
+	case LDMS_V_U32_ARRAY:
+		return mv->a_u32[idx];
+	case LDMS_V_S32_ARRAY:
+		return mv->a_s32[idx];
+	case LDMS_V_U64_ARRAY:
+		return mv->a_u64[idx];
+	case LDMS_V_S64_ARRAY:
+		return mv->a_s64[idx];
+	case LDMS_V_F32_ARRAY:
+		return mv->a_f[idx];
+	case LDMS_V_D64_ARRAY:
+		return mv->a_d[idx];
+	case LDMS_V_TIMESTAMP:
+		return mv->v_ts.sec + mv->v_ts.usec*1e-6;
+	default:
+		return 0;
+	}
+}
+
+int64_t ldms_mval_as_s64(ldms_mval_t mv, enum ldms_value_type type, int idx)
+{
+	switch (type) {
+	case LDMS_V_CHAR:
+		return mv->v_char;
+	case LDMS_V_U8:
+		return mv->v_u8;
+	case LDMS_V_S8:
+		return mv->v_s8;
+	case LDMS_V_U16:
+		return mv->v_u16;
+	case LDMS_V_S16:
+		return mv->v_s16;
+	case LDMS_V_U32:
+		return mv->v_u32;
+	case LDMS_V_S32:
+		return mv->v_s32;
+	case LDMS_V_U64:
+		return mv->v_u64;
+	case LDMS_V_S64:
+		return mv->v_s64;
+	case LDMS_V_F32:
+		return mv->v_f;
+	case LDMS_V_D64:
+		return mv->v_d;
+	case LDMS_V_CHAR_ARRAY:
+		return mv->a_char[idx];
+	case LDMS_V_U8_ARRAY:
+		return mv->a_u8[idx];
+	case LDMS_V_S8_ARRAY:
+		return mv->a_s8[idx];
+	case LDMS_V_U16_ARRAY:
+		return mv->a_u16[idx];
+	case LDMS_V_S16_ARRAY:
+		return mv->a_s16[idx];
+	case LDMS_V_U32_ARRAY:
+		return mv->a_u32[idx];
+	case LDMS_V_S32_ARRAY:
+		return mv->a_s32[idx];
+	case LDMS_V_U64_ARRAY:
+		return mv->a_u64[idx];
+	case LDMS_V_S64_ARRAY:
+		return mv->a_s64[idx];
+	case LDMS_V_F32_ARRAY:
+		return mv->a_f[idx];
+	case LDMS_V_D64_ARRAY:
+		return mv->a_d[idx];
+	case LDMS_V_TIMESTAMP:
+		return mv->v_ts.sec + mv->v_ts.usec*1e-6;
+	default:
+		return 0;
+	}
+}
+
+float ldms_mval_as_float(ldms_mval_t mv, enum ldms_value_type type, int idx)
+{
+	switch (type) {
+	case LDMS_V_CHAR:
+		return mv->v_char;
+	case LDMS_V_U8:
+		return mv->v_u8;
+	case LDMS_V_S8:
+		return mv->v_s8;
+	case LDMS_V_U16:
+		return mv->v_u16;
+	case LDMS_V_S16:
+		return mv->v_s16;
+	case LDMS_V_U32:
+		return mv->v_u32;
+	case LDMS_V_S32:
+		return mv->v_s32;
+	case LDMS_V_U64:
+		return mv->v_u64;
+	case LDMS_V_S64:
+		return mv->v_s64;
+	case LDMS_V_F32:
+		return mv->v_f;
+	case LDMS_V_D64:
+		return mv->v_d;
+	case LDMS_V_CHAR_ARRAY:
+		return mv->a_char[idx];
+	case LDMS_V_U8_ARRAY:
+		return mv->a_u8[idx];
+	case LDMS_V_S8_ARRAY:
+		return mv->a_s8[idx];
+	case LDMS_V_U16_ARRAY:
+		return mv->a_u16[idx];
+	case LDMS_V_S16_ARRAY:
+		return mv->a_s16[idx];
+	case LDMS_V_U32_ARRAY:
+		return mv->a_u32[idx];
+	case LDMS_V_S32_ARRAY:
+		return mv->a_s32[idx];
+	case LDMS_V_U64_ARRAY:
+		return mv->a_u64[idx];
+	case LDMS_V_S64_ARRAY:
+		return mv->a_s64[idx];
+	case LDMS_V_F32_ARRAY:
+		return mv->a_f[idx];
+	case LDMS_V_D64_ARRAY:
+		return mv->a_d[idx];
+	case LDMS_V_TIMESTAMP:
+		return mv->v_ts.sec + mv->v_ts.usec*1e-6;
+	default:
+		return 0;
+	}
+}
+
+double ldms_mval_as_double(ldms_mval_t mv, enum ldms_value_type type, int idx)
+{
+	switch (type) {
+	case LDMS_V_CHAR:
+		return mv->v_char;
+	case LDMS_V_U8:
+		return mv->v_u8;
+	case LDMS_V_S8:
+		return mv->v_s8;
+	case LDMS_V_U16:
+		return mv->v_u16;
+	case LDMS_V_S16:
+		return mv->v_s16;
+	case LDMS_V_U32:
+		return mv->v_u32;
+	case LDMS_V_S32:
+		return mv->v_s32;
+	case LDMS_V_U64:
+		return mv->v_u64;
+	case LDMS_V_S64:
+		return mv->v_s64;
+	case LDMS_V_F32:
+		return mv->v_f;
+	case LDMS_V_D64:
+		return mv->v_d;
+	case LDMS_V_CHAR_ARRAY:
+		return mv->a_char[idx];
+	case LDMS_V_U8_ARRAY:
+		return mv->a_u8[idx];
+	case LDMS_V_S8_ARRAY:
+		return mv->a_s8[idx];
+	case LDMS_V_U16_ARRAY:
+		return mv->a_u16[idx];
+	case LDMS_V_S16_ARRAY:
+		return mv->a_s16[idx];
+	case LDMS_V_U32_ARRAY:
+		return mv->a_u32[idx];
+	case LDMS_V_S32_ARRAY:
+		return mv->a_s32[idx];
+	case LDMS_V_U64_ARRAY:
+		return mv->a_u64[idx];
+	case LDMS_V_S64_ARRAY:
+		return mv->a_s64[idx];
+	case LDMS_V_F32_ARRAY:
+		return mv->a_f[idx];
+	case LDMS_V_D64_ARRAY:
+		return mv->a_d[idx];
+	case LDMS_V_TIMESTAMP:
+		return mv->v_ts.sec + mv->v_ts.usec*1e-6;
+	default:
+		return 0;
+	}
+}
+
+struct ldms_timestamp
+ldms_mval_as_timestamp(ldms_mval_t mv, enum ldms_value_type type, int idx)
+{
+	struct ldms_timestamp ts = {};
+	switch (type) {
+	case LDMS_V_CHAR:
+		ts.sec = mv->v_char;
+		break;
+	case LDMS_V_U8:
+		ts.sec = mv->v_u8;
+		break;
+	case LDMS_V_S8:
+		ts.sec = mv->v_s8;
+		break;
+	case LDMS_V_U16:
+		ts.sec = mv->v_u16;
+		break;
+	case LDMS_V_S16:
+		ts.sec = mv->v_s16;
+		break;
+	case LDMS_V_U32:
+		ts.sec = mv->v_u32;
+		break;
+	case LDMS_V_S32:
+		ts.sec = mv->v_s32;
+		break;
+	case LDMS_V_U64:
+		ts.sec = mv->v_u64;
+		break;
+	case LDMS_V_S64:
+		ts.sec = mv->v_s64;
+		break;
+	case LDMS_V_F32:
+		ts.sec = mv->v_f;
+		ts.usec = (uint64_t)((mv->v_f - ts.sec) * 1e6) % 1000000;
+		break;
+	case LDMS_V_D64:
+		ts.sec = mv->v_d;
+		ts.usec = (uint64_t)((mv->v_d - ts.sec) * 1e6) % 1000000;
+		break;
+	case LDMS_V_TIMESTAMP:
+		ts = mv->v_ts;
+		break;
+	case LDMS_V_CHAR_ARRAY:
+		ts.sec = mv->a_char[idx];
+		break;
+	case LDMS_V_U8_ARRAY:
+		ts.sec = mv->a_u8[idx];
+		break;
+	case LDMS_V_S8_ARRAY:
+		ts.sec = mv->a_s8[idx];
+		break;
+	case LDMS_V_U16_ARRAY:
+		ts.sec = mv->a_u16[idx];
+		break;
+	case LDMS_V_S16_ARRAY:
+		ts.sec = mv->a_s16[idx];
+		break;
+	case LDMS_V_U32_ARRAY:
+		ts.sec = mv->a_u32[idx];
+		break;
+	case LDMS_V_S32_ARRAY:
+		ts.sec = mv->a_s32[idx];
+		break;
+	case LDMS_V_U64_ARRAY:
+		ts.sec = mv->a_u64[idx];
+		break;
+	case LDMS_V_S64_ARRAY:
+		ts.sec = mv->a_s64[idx];
+		break;
+	case LDMS_V_F32_ARRAY:
+		ts.sec = mv->a_f[idx];
+		ts.usec = (uint64_t)((mv->a_f[idx] - ts.sec) * 1e6) % 1000000;
+		break;
+	case LDMS_V_D64_ARRAY:
+		ts.sec = mv->a_d[idx];
+		ts.usec = (uint64_t)((mv->a_d[idx] - ts.sec) * 1e6) % 1000000;
+		break;
+	default:
+		/* no-op */;
+	}
+	return ts;
 }

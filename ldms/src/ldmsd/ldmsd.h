@@ -205,6 +205,11 @@ typedef struct ldmsd_prdcr_stream_s {
 typedef struct ldmsd_prdcr {
 	struct ldmsd_cfgobj obj;
 
+	/* Controls hostname resolution caching behavior (user configurable)
+	 * 1 = (default) Cache hostname after first successfull resolution
+	 * 0 = Resolve hostname on every connection
+	 */
+	uint8_t cache_ip;
 	struct sockaddr_storage ss;	/* Host address */
 	socklen_t ss_len;
 	char *host_name;	/* Host name */
@@ -301,7 +306,7 @@ typedef struct ldmsd_prdcr {
 	struct rbt hint_set_tree;
 
 	int rail; /* the number of xprt in the rail */
-	int64_t credits;
+	int64_t quota;
 	int64_t rx_rate;
 } *ldmsd_prdcr_t;
 
@@ -340,7 +345,6 @@ struct ldmsd_stat {
 typedef struct ldmsd_prdcr_set {
 	char *inst_name;
 	char *schema_name;
-	char *producer_name;
 	ldmsd_prdcr_t prdcr;
 	ldms_set_t set;
 	int push_flags;
@@ -392,15 +396,15 @@ typedef struct ldmsd_prdcr_listen {
 	} state;
 	const char *hostname_regex_s;
 	regex_t regex;
-	int rails; /* Rail size */
-	int recv_credits; /* bytes */
-	int rate_limits; /* bytes/sec */
 	int auto_start; /* default is 1, i.e., auto start producers */
 
 	/* Network Address & prefix_len from a given CIDR IP address string */
 	const char *cidr_str; /* IP Range */
 	struct ldms_addr net_addr;
 	int prefix_len;
+
+	uint64_t quota;
+	uint64_t rx_rate;
 
 	/*
 	 * For query the prdcr_listen information, ldmsd could report which
@@ -517,14 +521,19 @@ typedef struct ldmsd_row_group_s {
 	int row_key_count;
 	struct rbt row_tree;	/* Tree of ldmsd_row_cache_entry_t */
 	struct rbn rbn;
+	LIST_ENTRY( ldmsd_row_group_s ) bucket_entry;
+	struct timespec last_update; /* informational */
 } *ldmsd_row_group_t;
 
 typedef struct ldmsd_row_cache_s {
 	ldmsd_strgp_t strgp;
-	int group_key_count;
 	int row_limit;
 	struct rbt group_tree;	/* Tree of ldmsd_row_group_t */
 	pthread_mutex_t lock;
+	LIST_HEAD(, ldmsd_row_group_s) group_bucket[3];
+	int gb_idx; /* current group bucket index: 0, 1, or 2 */
+	struct timespec bucket_ts; /* timestamp to trigger the bucket change */
+	struct timespec cfg_timeout; /* timeout for each bucket */
 } *ldmsd_row_cache_t;
 
 typedef struct ldmsd_row_s *ldmsd_row_t;
@@ -550,7 +559,8 @@ struct ldmsd_row_cache_idx_s {
 typedef struct ldmsd_row_s *ldmsd_row_t;
 typedef struct ldmsd_row_list_s *ldmsd_row_list_t;
 
-ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_count);
+ldmsd_row_cache_t ldmsd_row_cache_create(ldmsd_strgp_t strgp, int row_count,
+					 struct timespec *timeout);
 ldmsd_row_cache_key_t ldmsd_row_cache_key_create(enum ldms_value_type type, size_t len);
 ldmsd_row_cache_idx_t ldmsd_row_cache_idx_create(int key_count, ldmsd_row_cache_key_t *keys);
 void ldmsd_row_cache_idx_free(ldmsd_row_cache_idx_t idx);
@@ -882,6 +892,11 @@ char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type);
 
 int process_config_file(const char *path, int *lineno, int trust);
 
+int process_config_str(char *config_str, int *lno, int trust);
+
+char *process_yaml_config_file(const char *path, const char *dname);
+
+
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 struct attr_value_list;
@@ -900,7 +915,6 @@ struct ldmsd_plugin {
 		LDMSD_PLUGIN_STORE
 	} type;
 	struct ldmsd_plugin_cfg *pi;
-	enum ldmsd_plugin_type (*get_type)(struct ldmsd_plugin *self);
 	int (*config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl);
 	void (*term)(struct ldmsd_plugin *self);
 	const char *(*usage)(struct ldmsd_plugin *self);
@@ -908,7 +922,6 @@ struct ldmsd_plugin {
 
 struct ldmsd_sampler {
 	struct ldmsd_plugin base;
-	ldms_set_t (*get_set)(struct ldmsd_sampler *self);
 	int (*sample)(struct ldmsd_sampler *self);
 };
 
@@ -1147,14 +1160,14 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us, int rail, int64_t credits, int64_t rx_rate);
+		int conn_intrvl_us, int rail, int64_t quota, int64_t rx_rate);
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us,
 		const char *auth, uid_t uid, gid_t gid, int perm, int rail,
-		int64_t credits, int64_t rx_rate);
+		int64_t quota, int64_t rx_rate, int cache_ip);
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt);
 ldmsd_prdcr_t ldmsd_prdcr_first();
 ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr);
@@ -1491,6 +1504,8 @@ typedef struct ldmsd_listen {
 	char *auth_name;
 	char *auth_dom_name;
 	struct attr_value_list *auth_attrs;
+	int quota;
+	int rx_limit;
 	ldms_t x;
 } *ldmsd_listen_t;
 
@@ -1506,10 +1521,15 @@ uint8_t ldmsd_is_initialized();
  * \param port   port
  * \param host   hostname
  * \param auth   authentication domain name
+ * \param quota    receive quota
+ * \param rx_limit   receive rate limit
+ *
+ * To use the default receive quota or receive rate limit, provide NULL.
  *
  * \return a listen cfgobj
  */
-ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth);
+ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth,
+				char *quota, char *rx_limit);
 
 /**
  * LDMSD Authentication Domain Configuration Object

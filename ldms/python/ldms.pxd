@@ -50,6 +50,10 @@ from libc.string cimport *
 from posix.types cimport gid_t, pid_t, off_t, uid_t, mode_t
 
 cdef extern from * nogil:
+    struct ldms_xprt:
+        pass
+    ctypedef ldms_xprt *ldms_t
+
     uint16_t be16toh(uint16_t x)
     uint16_t htobe16(uint16_t x)
     uint32_t be32toh(uint32_t x)
@@ -255,13 +259,19 @@ cdef extern from "ovis_log/ovis_log.h" nogil:
 
 cdef extern from "ldms_rail.h" nogil:
     cpdef enum :
-        __RAIL_UNLIMITED
-        RAIL_UNLIMITED "__RAIL_UNLIMITED"
+        LDMS_UNLIMITED
+        RAIL_UNLIMITED "LDMS_UNLIMITED"
+
+    int ldms_xprt_rail_pending_ret_quota_get(ldms_t x, uint64_t *out, int n)
+    int ldms_xprt_rail_in_eps_stq_get(ldms_t _r, uint64_t *out, int n)
+
+cdef extern from "ldms_core.h" nogil:
+    cpdef enum :
+        LDMS_MDESC_F_DATA
+        LDMS_MDESC_F_META
+        LDMS_MDESC_F_RECORD
 
 cdef extern from "ldms.h" nogil:
-    struct ldms_xprt:
-        pass
-    ctypedef ldms_xprt *ldms_t
     struct ldms_timestamp:
         uint32_t sec
         uint32_t usec
@@ -277,36 +287,48 @@ cdef extern from "ldms.h" nogil:
         EVENT_ERROR         "LDMS_XPRT_EVENT_ERROR"
         EVENT_DISCONNECTED  "LDMS_XPRT_EVENT_DISCONNECTED"
         EVENT_RECV          "LDMS_XPRT_EVENT_RECV"
+        EVENT_SET_DELETE    "LDMS_XPRT_EVENT_SET_DELETE"
         EVENT_SEND_COMPLETE "LDMS_XPRT_EVENT_SEND_COMPLETE"
-        EVENT_SEND_CREDIT_DEPOSITED "LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED"
+        EVENT_SEND_QUOTA_DEPOSITED "LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED"
+        EVENT_QGROUP_ASK    "LDMS_XPRT_EVENT_QGROUP_ASK"
+        EVENT_QGROUP_DONATE "LDMS_XPRT_EVENT_QGROUP_DONATE"
+        EVENT_QGROUP_DONATE_BACK "LDMS_XPRT_EVENT_QGROUP_DONATE_BACK"
         EVENT_LAST          "LDMS_XPRT_EVENT_LAST"
         LDMS_XPRT_EVENT_CONNECTED
         LDMS_XPRT_EVENT_REJECTED
         LDMS_XPRT_EVENT_ERROR
         LDMS_XPRT_EVENT_DISCONNECTED
         LDMS_XPRT_EVENT_RECV
+        LDMS_XPRT_EVENT_SET_DELETE
         LDMS_XPRT_EVENT_SEND_COMPLETE
-        LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED
+        LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED
+        LDMS_XPRT_EVENT_QGROUP_ASK
+        LDMS_XPRT_EVENT_QGROUP_DONATE
+        LDMS_XPRT_EVENT_QGROUP_DONATE_BACK
         LDMS_XPRT_EVENT_LAST
-    cdef struct ldms_xprt_credit_event_data:
-        uint64_t credit
+    cdef struct ldms_xprt_quota_event_data:
+        uint64_t quota
         int      ep_idx
+    cdef struct ldms_xprt_set_delete_data:
+        void * set
+        const char *name
     cdef struct ldms_xprt_event:
-        ldms_xprt_event_type type
+        int type
         size_t data_len
-        # data, and credit are in union. Cython doesn't care. It just want to
+        # data, and quota are in union. Cython doesn't care. It just want to
         # know the names of the "fields" it can access in C code.
         char *data
-        ldms_xprt_credit_event_data credit
+        ldms_xprt_quota_event_data quota
+        ldms_xprt_set_delete_data set_delete
     ctypedef ldms_xprt_event *ldms_xprt_event_t
-    ctypedef void (*ldms_event_cb_t)(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+    ctypedef void (*ldms_event_cb_t)(ldms_t x, ldms_xprt_event_t e, void *cb_arg) except *
 
     int ldms_init(size_t max_size)
     ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
                                    const char *auth_name,
                                    attr_value_list *auth_av_list)
     ldms_t ldms_xprt_rail_new(const char *xprt_name,
-			  int n, int64_t recv_limit, int32_t rate_limit,
+			  int n, int64_t recv_quota, int32_t rate_limit,
 			  const char *auth_name,
 			  attr_value_list *auth_av_list)
     void ldms_xprt_put(ldms_t x)
@@ -316,13 +338,44 @@ cdef extern from "ldms.h" nogil:
     int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port,
                                  ldms_event_cb_t cb, void *cb_arg)
 
-    ctypedef void (*app_ctxt_free_fn)(void *ctxt)
+    ctypedef void (*app_ctxt_free_fn)(void *ctxt) except *
     void ldms_xprt_ctxt_set(ldms_t x, void *ctxt, app_ctxt_free_fn fn)
     int ldms_xprt_sockaddr(ldms_t x, sockaddr *local_sa,
 		           sockaddr *remote_sa,
 		           socklen_t *sa_len)
 
     const char *ldms_metric_type_to_str(ldms_value_type t)
+
+    # --- quota group (qgroup) --- #
+    struct ldms_qgroup_s:
+        pass
+    ctypedef ldms_qgroup_s *ldms_qgroup_t
+    ctypedef ldms_qgroup_cfg_s *ldms_qgroup_cfg_t
+    struct ldms_qgroup_cfg_s:
+        uint64_t quota
+        uint64_t ask_mark
+        uint64_t ask_amount
+        uint64_t ask_usec
+        uint64_t reset_usec
+        void *app_ctxt
+
+    int ldms_qgroup_cfg_quota_set(uint64_t quota)
+    int ldms_qgroup_cfg_ask_usec_set(uint64_t usec)
+    int ldms_qgroup_cfg_reset_usec_set(uint64_t usec)
+    int ldms_qgroup_cfg_ask_mark_set(uint64_t ask_mark)
+    int ldms_qgroup_cfg_ask_amount_set(uint64_t ask_amount)
+
+    int ldms_qgroup_cfg_set(ldms_qgroup_cfg_t cfg)
+    ldms_qgroup_cfg_s ldms_qgroup_cfg_get()
+
+    int ldms_qgroup_member_add(const char *xprt_name,
+                               const char *host, const char *port,
+                               const char *auth_name,
+                               attr_value_list *auth_av_list)
+    int ldms_qgroup_start()
+    int ldms_qgroup_stop()
+
+    uint64_t ldms_qgroup_quota_probe()
 
     # --- dir operation related --- #
     struct ldms_key_value_s:
@@ -364,7 +417,7 @@ cdef extern from "ldms.h" nogil:
     cpdef enum: # empty enum for constant int values
         DIR_F_NOTIFY "LDMS_DIR_F_NOTIFY"
     ctypedef ldms_dir_s *ldms_dir_t
-    ctypedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg)
+    ctypedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg) except *
     int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
     void ldms_xprt_dir_free(ldms_t t, ldms_dir_t dir)
 
@@ -386,8 +439,7 @@ cdef extern from "ldms.h" nogil:
     struct ldms_rbuf_desc:
         pass
     ctypedef ldms_rbuf_desc *ldms_set_t
-    ctypedef void (*ldms_lookup_cb_t)(ldms_t x, ldms_lookup_status status,
-                                      int more, ldms_set_t s, void *arg)
+    ctypedef void (*ldms_lookup_cb_t)(ldms_t x, ldms_lookup_status status, int more, ldms_set_t s, void *arg) except *
     int ldms_xprt_lookup(ldms_t x, const char *name, ldms_lookup_flags flags,
 		         ldms_lookup_cb_t cb, void *cb_arg)
     int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len)
@@ -395,8 +447,14 @@ cdef extern from "ldms.h" nogil:
     ctypedef uint64_t pthread_t
     int ldms_xprt_get_threads(ldms_t x, pthread_t *out, int n)
     int ldms_xprt_is_rail(ldms_t x)
+    int ldms_xprt_is_remote_rail(ldms_t x)
     int ldms_xprt_rail_eps(ldms_t x)
-    int ldms_xprt_rail_send_credit_get(ldms_t x, uint64_t *credits, int n)
+    int ldms_xprt_rail_send_quota_get(ldms_t x, uint64_t *quota, int n)
+    int64_t ldms_xprt_rail_recv_quota_get(ldms_t x)
+    int ldms_xprt_rail_recv_quota_set(ldms_t x, uint64_t q)
+    int64_t ldms_xprt_rail_send_rate_limit_get(ldms_t x)
+    int64_t ldms_xprt_rail_recv_rate_limit_get(ldms_t x)
+    int ldms_xprt_rail_recv_rate_limit_set(ldms_t x, uint64_t rate)
 
     # --- set related --- #
     ldms_set_t ldms_set_by_name(const char *set_name)
@@ -428,7 +486,7 @@ cdef extern from "ldms.h" nogil:
     int ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
     void ldms_set_info_unset(ldms_set_t s, const char *key)
     char *ldms_set_info_get(ldms_set_t s, const char *key)
-    ctypedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int flags, void *arg)
+    ctypedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int flags, void *arg) except *
     struct ldms_list:
         uint32_t head
         uint32_t tail
@@ -574,10 +632,22 @@ cdef extern from "ldms.h" nogil:
     float ldms_metric_array_get_float(ldms_set_t s, int i, int idx)
     double ldms_metric_array_get_double(ldms_set_t s, int i, int idx)
 
+    struct ldms_record:
+        pass # opaque
+    ctypedef ldms_record *ldms_record_t
+
     # --- set schema --- #
     struct ldms_schema_s:
         pass
     ctypedef ldms_schema_s *ldms_schema_t
+    struct ldms_metric_template_s:
+        const char *name
+        int flags
+        ldms_value_type type
+        const char *unit
+        uint32_t len
+        ldms_record_t rec_def
+    ctypedef ldms_metric_template_s *ldms_metric_template_t
     ldms_schema_t ldms_schema_new(const char *schema_name)
     void ldms_schema_delete(ldms_schema_t schema)
     int ldms_schema_metric_count_get(ldms_schema_t schema)
@@ -586,12 +656,25 @@ cdef extern from "ldms.h" nogil:
                                 const ldms_schema_t schema)
     int ldms_schema_metric_add(ldms_schema_t s, const char *name,
                                ldms_value_type t)
+    int ldms_schema_metric_add_with_unit(ldms_schema_t s, const char *name,
+					    const char *unit, ldms_value_type type);
     int ldms_schema_meta_add(ldms_schema_t s, const char *name,
                              ldms_value_type t)
+    int ldms_schema_meta_add_with_unit(ldms_schema_t s, const char *name,
+					  const char *unit, ldms_value_type t);
     int ldms_schema_metric_array_add(ldms_schema_t s, const char *name,
                                      ldms_value_type t, uint32_t count)
+    int ldms_schema_metric_array_add_with_unit(ldms_schema_t s, const char *name,
+						  const char *unit, ldms_value_type t, uint32_t count);
     int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
                                    ldms_value_type t, uint32_t count)
+    int ldms_schema_meta_array_add_with_unit(ldms_schema_t s, const char *name,
+						const char *unit, ldms_value_type t, uint32_t count);
+
+    int ldms_schema_metric_template_get(ldms_schema_t schema, int mid,
+                                        ldms_metric_template_s *out);
+    int ldms_schema_bulk_template_get(ldms_schema_t schema, int len,
+                                      ldms_metric_template_s out[])
 
     # --- schema hash / digest --- #
     ctypedef unsigned char *ldms_digest_t
@@ -646,9 +729,6 @@ cdef extern from "ldms.h" nogil:
     int ldms_list_purge(ldms_set_t s, ldms_mval_t lh)
 
     # --- record related functions --- #
-    struct ldms_record:
-        pass # opaque
-    ctypedef ldms_record *ldms_record_t
     ldms_record_t ldms_record_create(const char *name)
     int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
 			   const char *unit, ldms_value_type type,
@@ -661,6 +741,7 @@ cdef extern from "ldms.h" nogil:
     # --- record instance functions --- #
     int ldms_list_append_record(ldms_set_t set, ldms_mval_t lh, ldms_mval_t rec_inst)
     ldms_mval_t ldms_record_alloc(ldms_set_t set, int metric_id)
+    int ldms_record_type_get(ldms_mval_t rec_inst)
     int ldms_record_card(ldms_mval_t rec_inst)
     int ldms_record_metric_find(ldms_mval_t rec_inst, const char *name)
     ldms_mval_t ldms_record_metric_get(ldms_mval_t rec_inst, int metric_id)
@@ -668,6 +749,7 @@ cdef extern from "ldms.h" nogil:
     const char *ldms_record_metric_unit_get(ldms_mval_t rec_inst, int metric_id)
     ldms_value_type ldms_record_metric_type_get(ldms_mval_t rec_inst,
                                                      int metric_id, size_t *count)
+    int ldms_metric_flags_get(ldms_set_t s, int i)
     void ldms_record_metric_set(ldms_mval_t rec_inst, int metric_id,
                                 ldms_mval_t val)
     void ldms_record_metric_array_set(ldms_mval_t rec_inst, int metric_id,
@@ -722,6 +804,12 @@ cdef extern from "ldms.h" nogil:
     ldms_mval_t ldms_record_array_get_inst(ldms_mval_t rec_array, int idx);
     int ldms_record_array_len(ldms_mval_t rec_array)
 
+    int ldms_record_metric_template_get(ldms_record_t record, int mid,
+                                        ldms_metric_template_s *out)
+    int ldms_record_bulk_template_get(ldms_record_t record, int len,
+                                      ldms_metric_template_s out[])
+    const char * ldms_record_name_get(ldms_record_t record)
+
     # --- ldms_stream --- #
     struct ldms_stream_client_s:
         pass # opaque
@@ -762,7 +850,7 @@ cdef extern from "ldms.h" nogil:
         ldms_stream_recv_data_s recv
         ldms_stream_return_status_s status
     ctypedef ldms_stream_event_s *ldms_stream_event_t
-    ctypedef int (*ldms_stream_event_cb_t)(ldms_stream_event_t ev, void *cb_arg)
+    ctypedef int (*ldms_stream_event_cb_t)(ldms_stream_event_t ev, void *cb_arg) except *
 
     int ldms_stream_publish(ldms_t x, const char *stream_name,
                             ldms_stream_type_e stream_type,
