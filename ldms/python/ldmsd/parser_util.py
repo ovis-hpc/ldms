@@ -578,9 +578,9 @@ class YamlCfg(object):
         Return a dictionary keyed by the group name. Each dictionary
         entry is a list of stores in that group.
         """
-        if 'stores' not in config:
-            return None
         stores = {}
+        if 'stores' not in config:
+            return stores
         if type(config['stores']) is not dict:
             raise ValueError(f'{LDMS_YAML_ERR}\n'
                              f'store {DICT_ERR}\n'
