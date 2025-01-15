@@ -899,3 +899,42 @@ int ldmsd_row_to_json_avro_schema(ldmsd_row_t row, char **str, size_t *len)
 	strbuf_purge(&h);
 	return rc;
 }
+
+typedef struct ldmsd_phony_metric_tbl_entry_s {
+	const char *name;
+	ldmsd_phony_metric_id_t id;
+} *ldmsd_phony_metric_tbl_entry_t;
+
+struct ldmsd_phony_metric_tbl_entry_s __phony_metric_tbl[] = {
+	/* alphabetically ordered for bsearch */
+	{ "M_card",      LDMSD_PHONY_METRIC_ID_CARD      },
+	{ "M_digest",    LDMSD_PHONY_METRIC_ID_DIGEST    },
+	{ "M_duration",  LDMSD_PHONY_METRIC_ID_DURATION  },
+	{ "M_gid",       LDMSD_PHONY_METRIC_ID_GID       },
+	{ "M_instance",  LDMSD_PHONY_METRIC_ID_INSTANCE  },
+	{ "M_perm",      LDMSD_PHONY_METRIC_ID_PERM      },
+	{ "M_producer",  LDMSD_PHONY_METRIC_ID_PRODUCER  },
+	{ "M_schema",    LDMSD_PHONY_METRIC_ID_SCHEMA    },
+	{ "M_timestamp", LDMSD_PHONY_METRIC_ID_TIMESTAMP },
+	{ "M_uid",       LDMSD_PHONY_METRIC_ID_UID       },
+	{ "instance",    LDMSD_PHONY_METRIC_ID_INSTANCE  },
+	{ "producer",    LDMSD_PHONY_METRIC_ID_PRODUCER  },
+	{ "timestamp",   LDMSD_PHONY_METRIC_ID_TIMESTAMP },
+};
+
+static int ldmsd_phony_metric_tbl_entry_cmp(const void *_k, const void *_e)
+{
+	const struct ldmsd_phony_metric_tbl_entry_s *e = _e;
+	return strcmp(_k, e->name);
+}
+
+ldmsd_phony_metric_id_t ldmsd_phony_metric_resolve(const char *str)
+{
+	static const int N = sizeof(__phony_metric_tbl)/sizeof(__phony_metric_tbl[0]);
+	const struct ldmsd_phony_metric_tbl_entry_s *ent;
+	ent = bsearch(str, __phony_metric_tbl, N, sizeof(__phony_metric_tbl[0]),
+			ldmsd_phony_metric_tbl_entry_cmp);
+	if (!ent)
+		return LDMSD_PHONY_METRIC_ID_UNKNOWN;
+	return ent->id;
+}
