@@ -636,6 +636,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	si = calloc(1, sizeof(*si));
 	if (!si)
 		goto out;
+	si->store = s;
 	rbt_init(&si->schema_rbt, row_schema_rbn_cmp);
 	si->ucontext = ucontext;
 	si->container = strdup(container);
@@ -1462,7 +1463,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 static int init_store_instance(ldmsd_strgp_t strgp)
 {
 	struct sos_instance *si;
-	store_sos_t ss = (store_sos_t)strgp->store;
+	store_sos_t ss = (store_sos_t)strgp->store->api->base.context;
 	int len, rc;
 
 	si = calloc(1, sizeof(*si));
@@ -1470,6 +1471,7 @@ static int init_store_instance(ldmsd_strgp_t strgp)
 		rc = errno;
 		goto err_0;
 	}
+	si->store = strgp->store->api;
 	rbt_init(&si->schema_rbt, row_schema_rbn_cmp);
 	len = asprintf(&si->path, "%s/%s", ss->root_path, strgp->container);
 	if (len < 0) {
