@@ -8,6 +8,7 @@ import time
 import itertools as it
 import collections
 import ldmsd.hostlist as hostlist
+from ldmsd.ldmsd_communicator import LDMSD_CTRL_CMD_MAP
 
 AUTH_ATTRS = [
     'auth',
@@ -119,6 +120,16 @@ def check_required(attr_list, container, container_name):
     for name in attr_list:
         if name not in container:
             raise ValueError(f'The "{name}" attribute is required in {container_name}\n')
+
+def dist_list(list_, n):
+    q, r = divmod(len(list_), n)
+    dist_list = []
+    idx = 0
+    for i in range(1, n + 1):
+        s = idx
+        idx += q + 1 if i <= r else q
+        dist_list.append(list_[s:idx])
+    return dist_list
 
 def NUM_STR(obj):
     return str(obj) if type(obj) in [ int, float ] else obj
@@ -301,6 +312,8 @@ class YamlCfg(object):
             cli_opt = {}
             for key in spec:
                 if key not in ['hosts','names','endpoints','environment']:
+                    if type(spec[key]) is list:
+                        raise ValueError(f'Lists are not a valid value for configuration line options. metric_sets_default_authz may be configured as a dictionary')
                     cli_opt[key] = spec[key]
             for dname, host in zip(dnames, hosts):
                 ep_dict[spec['names']][dname] = {}
@@ -469,7 +482,6 @@ class YamlCfg(object):
                     if group not in producers:
                         producers[group] = {}
 
-                    upd_spec = check_opt('updaters', prod)
                     # Expand and generate all the producers
                     typ = prod['type']
                     reconnect = check_intrvl_str(prod['reconnect'])
@@ -496,8 +508,7 @@ class YamlCfg(object):
                                 'group'     : group,
                                 'reconnect' : reconnect,
                                 'perm'      : perm,
-                                'cache_ip'  : cache_ip,
-                                'updaters'  : upd_spec
+                                'cache_ip'  : cache_ip
                             }
                             producers[group][endpoint] = prod
                     except:
@@ -521,7 +532,7 @@ class YamlCfg(object):
             if 'prdcr_listen' in agg:
                 peer_list += agg['prdcr_listen']
             for prod in peer_list:
-                if prod['updaters'] is None:
+                if 'updaters' not in prod:
                     continue
                 if type(prod['updaters']) is not list:
                     raise TypeError(f'{LDMS_YAML_ERR}\n'
@@ -548,20 +559,18 @@ class YamlCfg(object):
                                          f'An updater name must be unique within the group\n')
                     perm = check_opt('perm', updtr_spec)
                     perm = perm_handler(perm)
-                    prod_regex = check_opt('producers', prod)
-                    prod_list = []
-                    if prod_regex:
-                        prod_list.append({'regex' : prod_regex})
-                    else:
-                        prod_regex = '.*'
-                        prod_list.append({'regex' : '.*'})
+                    prod_regex = check_opt('producers', updtr_spec)
+                    if type(prod_regex) is not str and prod_regex is not None:
+                        raise TypeError(f'Error: Configuration error in keyword "producers". Only regex string values are valid.')
+                    if prod_regex is None:
+                        prod_regex = expand_names(prod['endpoints'])
                     updtr = {
                         'name'      : updtr_name,
                         'interval'  : check_intrvl_str(updtr_spec['interval']),
                         'perm'      : perm,
                         'group'     : agg['daemons'],
                         'sets'      : updtr_sets,
-                        'producers' : prod_list
+                        'producers' : prod_regex
                     }
                     if 'offset' in updtr_spec:
                         updtr['offset'] = check_intrvl_str(updtr_spec['offset'])
@@ -792,13 +801,10 @@ class YamlCfg(object):
     def write_producers(self, dstr, group_name, dmn, auth_list):
         if group_name in self.producers:
             ''' Balance samplers across aggregators '''
-            ppd = -(len(self.producers[group_name]) // -len(self.aggregators[group_name].keys()))
-            rem = len(self.producers[group_name]) % len(self.aggregators[group_name].keys())
             prdcrs = list(self.producers[group_name].keys())
             aggs = list(self.daemons[group_name].keys())
             agg_idx = int(aggs.index(dmn))
-            prdcr_idx = int(ppd * agg_idx)
-            prod_group = prdcrs[prdcr_idx:prdcr_idx+ppd]
+            prod_group = dist_list(prdcrs, len(aggs))[agg_idx]
             i = 0
             auth = None
             for ep in prod_group:
@@ -847,15 +853,18 @@ class YamlCfg(object):
             return dstr
         cli_opt = self.daemons[grp][dname]['cli_opt']
         for opt in cli_opt:
-            if type(cli_opt[opt]) is dict:
-                dstr += f'{opt}'
-                for arg in cli_opt[opt]:
-                    if arg == 'perm':
-                        cli_opt[opt][arg] = perm_handler(cli_opt[opt][arg])
-                    dstr += f' {arg}={cli_opt[opt][arg]}'
-                dstr += '\n'
-            else:
+            if opt not in LDMSD_CTRL_CMD_MAP:
                 dstr += f'option --{opt} {cli_opt[opt]}\n'
+            else:
+                if type(cli_opt[opt]) is dict:
+                    dstr += f'{opt}'
+                    for arg in cli_opt[opt]:
+                        if arg == 'perm':
+                            cli_opt[opt][arg] = perm_handler(cli_opt[opt][arg])
+                        dstr += f' {arg}={cli_opt[opt][arg]}'
+                    dstr += '\n'
+                else:
+                    dstr += f'{opt} {cli_opt[opt]}\n'
         return dstr
 
     def write_env(self, dstr, grp, dname):
@@ -955,7 +964,7 @@ class YamlCfg(object):
             dstr = self.write_prdcr_listeners(dstr, group_name)
             dstr = self.write_stream_subscribe(dstr, group_name, dmn)
             dstr = self.write_agg_plugins(dstr, group_name, dmn)
-            dstr = self.write_updaters(dstr, group_name)
+            dstr = self.write_updaters(dstr, group_name, dmn)
             dstr = self.write_stores(dstr, group_name)
             return dstr
         except Exception as e:
@@ -977,7 +986,7 @@ class YamlCfg(object):
                     dstr += f'config name={plugin["name"]} {cfg_str}\n'
         return dstr
 
-    def write_updaters(self, dstr, group_name):
+    def write_updaters(self, dstr, group_name, dmn):
         if group_name in self.updaters:
             updtr_group = self.updaters[group_name]
             for updtr in updtr_group:
@@ -1000,9 +1009,15 @@ class YamlCfg(object):
                 offset = check_opt('offset', updtr_group[updtr])
                 dstr = self.write_opt_attr(dstr, 'perm', perm, endline=False)
                 dstr = self.write_opt_attr(dstr, 'offset', offset)
-                for prod in updtr_group[updtr]['producers']:
+                if type(updtr_group[updtr]['producers']) is str:
                     dstr += f'updtr_prdcr_add name={updtr} '\
-                             f'regex={prod["regex"]}\n'
+                             f'regex={updtr_group[updtr]["producers"]}\n'
+                else:
+                    aggs = list(self.daemons[group_name].keys())
+                    agg_idx = int(aggs.index(dmn))
+                    prod_group = dist_list(updtr_group[updtr]['producers'], len(aggs))[agg_idx]
+                    for prod in prod_group:
+                        dstr += f'updtr_prdcr_add name={updtr} regex={prod}\n'
                 if updtr_group[updtr]['sets']:
                     for s in updtr_group[updtr]['sets']:
                         dstr += f'updtr_match_add name={updtr} regex={s["regex"]} match={s["field"]}\n'
