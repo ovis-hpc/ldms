@@ -1,7 +1,7 @@
 .\" Manpage for ldmsd_yaml_parser
 .\" Contact ovis-help@ca.sandia to correct errors or typos.
 .TH man 8 "20 Nov 2024" "ovis-4.4.5" "ldmsd_yaml_parser man page"
-.TH YAML Configuration Quick Guide
+.TH "YAML Configuration Quick Guide"
 
 .SH NAME
 ldmsd_yaml_parser \- a python program to parse a YAML configuration file into a v4 LDMS configuration.
@@ -67,7 +67,24 @@ https://readthedocs.org/projects/py-hostlist/downloads/pdf/latest/
 NOTE: When using a configuration string, rather than a dictionary, to configure a plugin, the string is not parsed by the YAML parser, and the exact string will be passed to the LDMSD as is. As such, the only accepted permission format when using a configuration string, rather than a dictionary, is an octal number, e.g. "0777". If an octal number is entered into the configuration as an integer, the parser will interpret the number incorrectly, and the permissions will not be set as expected.
 
 .SH daemons
-List of dictionaries describing LDMS daemons that are part of the cluster and their endpoints that share transport configurations. The primary keys are "names", "hosts", "endpoints", and "environment". Any keys provided that do not match this string values are assumed to be either CLI commands, or overarching default configuration commands for a daemon.
+List of dictionaries describing LDMS daemons that are part of the cluster and their endpoints that share transport configurations.
+.br
+The primary keys are "names", "hosts", "endpoints", and "environment"
+.br
+Any key:values provided that do not match one of the primary keys are assumed to be either CLI commands, or overarching default configuration commands for a daemon.
+.br
+CLI commands must have the long form CLI option as the key, and the arugment as the value.
+.br
+.e.g. set_memory : "1g"
+.br
+Configuration commands may be configured in a dictionary format or a string.
+.br
+e.g. metric_sets_default_authz : "perm=0700 uid=0 gid=0"
+.br
+e.g. metric_sets_default_authz:
+       perm : "0777"
+       uid  : 0
+       gid  : 0
 
 .SS names
 Regex of a group of LDMS daemon attributes and endpoints that share transport configuration. These strings are referenced in the samplers and aggregators sections. Hostlist format.
@@ -123,23 +140,12 @@ List of dictionaries defining aggregator configurations, their “peers” i.e. 
 .br
 The daemons reference daemon configuration definitions defined in the "daemons" dictionary.
 .br
-The stores reference storage policy names defined in the "stores" top level dictionary.
-.br
 The "plugins" key reference plugin instance names defined in the "plugins" top level dictionary.
-.br
-The primary keys are "names", "hosts", "endpoints", and "environment"
-.br
-Any keys provided that do not match one of these string values are assumed to be either CLI commands, or overarching default configuration commands for a daemon.
 
-.SS names
-String regex in hostlist format of a group of LDMS daemon attributes and endpoints that share transport configuration in hostlist format. These strings are referenced in the sampler and aggregator configurations.
-
-.SS hosts
-String regex in hostlist format of hostnames on which the LDMS daemon will operate. Must expand to an equal length as the daemon names, or be evenly divisble. e.g. 2 hostnames for 4 daemons.
-
-.SS environment
-A dictionary of environment variables for a LDMSD and their values. Keys are the environment variable name.
-
+.SS daemons
+String of daemon names in hostlist format that references daemon names defined in the top level daemons section.
+.SS [plugins]
+List of plugin key references defined in the top level "plugins" dictionary.
 .SS [subscribe]
 List of dictionaries of streams to subscribe producers to.
 .TP
