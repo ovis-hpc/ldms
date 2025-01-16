@@ -381,6 +381,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		} else {
 			LOG_ERROR("Ignoring unrecognized serialization encoding '%s'\n", encoding);
 		}
+	} else {
+		if (0 == sk->g_serdes_encoding)
+			sk->g_serdes_encoding = AKS_ENCODING_AVRO;
 	}
 	topic = av_value(avl, "topic");
 	if (topic) {
@@ -396,7 +399,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 			*tmp = '\0';
 	} else {
 		/* The default is the schema name */
-		topic = strdup("%S");
+		sk->g_topic_fmt = strdup("%S");
 	}
 out:
 	pthread_mutex_unlock(&sk->sk_lock);
