@@ -24,7 +24,6 @@ Welcome To OVIS-HPC Documentation!
    About Ovis <https://ovis-hpc.readthedocs.io/en/latest/aboutovis.html>
    ldmscon
    ug
-   ug_notes
    OVIS Publications <https://ovis-hpc.readthedocs.io/en/latest/publications.html>
 
 .. toctree::
