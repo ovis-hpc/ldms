@@ -563,7 +563,11 @@ class YamlCfg(object):
                     if type(prod_regex) is not str and prod_regex is not None:
                         raise TypeError(f'Error: Configuration error in keyword "producers". Only regex string values are valid.')
                     if prod_regex is None:
-                        prod_regex = expand_names(prod['endpoints'])
+                        if 'endpoints' in prod:
+                            prod_regex = expand_names(prod['endpoints'])
+                        else:
+                            # When using producer listen, if "producers" is not specified in the updaters dictionary, all producers will be added
+                            prod_regex = '.*'
                     updtr = {
                         'name'      : updtr_name,
                         'interval'  : check_intrvl_str(updtr_spec['interval']),

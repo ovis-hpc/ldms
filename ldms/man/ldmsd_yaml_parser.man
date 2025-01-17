@@ -278,7 +278,7 @@ The permissions to modify the producer in the future. String of octal number or 
 .TP
 .BR [producers]
 .br
-Optional regular expression matching zero or more producers to add to this updater. If omitted, all producers in the parent dictionary will be added to this updater.
+Optional regular expression matching zero or more producers to add to this updater. If omitted with prdcr_listen, all producers will be added to the updater.
 .TP
 .BR [sets]
 .br
