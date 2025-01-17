@@ -1,4 +1,0 @@
-.. contents::
-   :depth: 3
-..
-

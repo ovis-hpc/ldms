@@ -22,8 +22,9 @@ Welcome To OVIS-HPC Documentation!
    :caption: OVIS and Group Activity
 
    About Ovis <https://ovis-hpc.readthedocs.io/en/latest/aboutovis.html>
-   LDMS Users Group Conference (LDMSCON) <https://ovis-hpc.readthedocs.io/projects/ldms/en/latest/ldmscon.html>
-   LDSM Users Group <https://ovis-hpc.readthedocs.io/projects/ldms/en/latest/ug.html>
+   ldmscon
+   ug
+   ug_notes
    OVIS Publications <https://ovis-hpc.readthedocs.io/en/latest/publications.html>
 
 .. toctree::
