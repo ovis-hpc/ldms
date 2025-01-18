@@ -10,7 +10,7 @@
 
 Welcome To OVIS LDMS Documentation!
 ====================================
-.. image:: https://github.com/ovis-hpc/readthedocs/blob/main/docs/images/logo.jpg?raw=true
+.. image:: https://github.com/Snell1224/readthedocs/blob/rst-flux/images/logo.jpg
    :width: 225
    :height: 250
    :align: center
