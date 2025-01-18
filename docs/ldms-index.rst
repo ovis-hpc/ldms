@@ -17,6 +17,20 @@ To join the LDMS Users Group Mailing List: https://github.com/ovis-hpc/ovis-wiki
 
 .. toctree::
    :maxdepth: 2
+   :caption: LDMSCON
+
+   ldmscon
+   ug
+   ug_notes
+
+.. toctree::
+   :maxdepth: 6
+   :caption: Deployment
+
+   deployment/index
+
+.. toctree::
+   :maxdepth: 2
    :caption: LDMS Man Pages
 
    ldms_man/index

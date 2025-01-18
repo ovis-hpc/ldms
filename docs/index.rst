@@ -16,14 +16,6 @@ Welcome To OVIS LDMS Documentation!
    :align: center
 
 .. toctree::
-   :maxdepth: 2
-   :caption: LDMSCON
-
-   ldmscon
-   ug
-   ug_notes
-
-.. toctree::
    :maxdepth: 4
    :caption: LDMS
 
@@ -31,25 +23,15 @@ Welcome To OVIS LDMS Documentation!
 
 .. toctree::
    :maxdepth: 4
-   :caption: OVIS Subprojects
+   :caption: OVIS Subprojects Documentation
 
    SOS <https://ovis-hpc.readthedocs.io/projects/sos/en/latest/sos-index.html>
    Maestro <https://ovis-hpc.readthedocs.io/projects/maestro/en/latest/maestro-index.html>
    Baler <https://ovis-hpc.readthedocs.io/projects/baler/en/latest/baler-index.html>
    ASF <asf/index>
 
-.. toctree::
-   :maxdepth: 6
-   :caption: OVIS Deployment
 
-   LDMS <deployment/index>
-   SOS <https://ovis-hpc.readthedocs.io/projects/sos/en/latest/deployment/index.html>
-   Maestro <https://ovis-hpc.readthedocs.io/projects/maestro/en/latest/deployment/index.html>
-   Baler <https://ovis-hpc.readthedocs.io/projects/baler/en/latest/deployment/index.html>
-   ASF <asf/deployment/index>
-
-
-Other Projects
+OVIS Subproject Github Repositories
 ====================================
 
 `ldms <https://github.com/ovis-hpc/ovis>`_
