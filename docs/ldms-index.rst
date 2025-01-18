@@ -12,8 +12,15 @@ To join the LDMS Users Group Mailing List: https://github.com/ovis-hpc/ovis-wiki
 
    ldms-quickstart
    ldms-tutorial
-   ldms-streams
+   ldms_stream_apps
    container-quickstart
+
+.. toctree::
+   :maxdepth: 3
+   :caption: LDMS Streams
+
+   ldms_stream
+   ldms_stream_apps
 
 .. toctree::
    :maxdepth: 2
