@@ -10,20 +10,71 @@
 
 Welcome To OVIS LDMS Documentation!
 ====================================
-.. image:: https://github.com/Snell1224/readthedocs/blob/rst-flux/images/logo.jpg
-   :width: 225
-   :height: 250
-   :align: center
+.. image:: images/ovis-hpc_homepage.png
+   :width: 1000
+   :height: 150
+
+LDMS GitHub: https://github.com/ovis-hpc/ovis
+
+To join the LDMS Users Group Mailing List: https://github.com/ovis-hpc/ovis-wiki/wiki/Mailing-Lists
+
+.. toctree::
+   :maxdepth: 6
+   :caption: Introduction To LDMS
+
+   ldms-quickstart
+   ldms-tutorial
+   ldms_stream_apps
+   container-quickstart
+
+.. toctree::
+   :maxdepth: 6
+   :caption: LDMS Streams
+
+   ldms_stream
+   ldms_stream_apps
+
+.. toctree::
+   :maxdepth: 5
+   :caption: LDMSCON
+
+   ldmscon
+   ug
+   ug_notes
+
+.. toctree::
+   :maxdepth: 6
+   :caption: Deployment
+
+   deployment/index
+
+.. toctree::
+   :maxdepth: 2
+   :caption: LDMS Man Pages
+
+   ldms_man/index
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Sampler Plugin Man Pages
+
+   sampler_man/index
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Store Plugin Man Pages
+
+   store_man/index
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Contributing to LDMS
+
+   contributing/index
 
 .. toctree::
    :maxdepth: 4
-   :caption: LDMS
-
-   ldms-index
-
-.. toctree::
-   :maxdepth: 4
-   :caption: OVIS Subprojects Documentation
+   :caption: OVIS Subproject Documentation
 
    SOS <https://ovis-hpc.readthedocs.io/projects/sos/en/latest/sos-index.html>
    Maestro <https://ovis-hpc.readthedocs.io/projects/maestro/en/latest/maestro-index.html>
