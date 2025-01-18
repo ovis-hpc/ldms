@@ -1,6 +1,3 @@
-LDMS
-======
-
 .. image:: images/ovis-hpc_homepage.png
    :width: 1000
    :height: 150
