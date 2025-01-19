@@ -1,5 +1,4 @@
-Contributing to LDMS
-====
+.. _contributing:
 
 .. toctree::
    :maxdepth: 2
