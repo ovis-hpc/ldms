@@ -24,7 +24,6 @@ To join the LDMS Users Group Mailing List: https://github.com/ovis-hpc/ovis-wiki
 
    ldms-quickstart
    ldms-tutorial
-   ldms_stream_apps
    container-quickstart
 
 .. toctree::
@@ -33,14 +32,6 @@ To join the LDMS Users Group Mailing List: https://github.com/ovis-hpc/ovis-wiki
 
    ldms_stream
    ldms_stream_apps
-
-.. toctree::
-   :maxdepth: 5
-   :caption: LDMSCON
-
-   ldmscon
-   ug
-   ug_notes
 
 .. toctree::
    :maxdepth: 6
@@ -72,17 +63,7 @@ To join the LDMS Users Group Mailing List: https://github.com/ovis-hpc/ovis-wiki
 
    contributing/index
 
-.. toctree::
-   :maxdepth: 4
-   :caption: OVIS Subproject Documentation
-
-   SOS <https://ovis-hpc.readthedocs.io/projects/sos/en/latest/sos-index.html>
-   Maestro <https://ovis-hpc.readthedocs.io/projects/maestro/en/latest/maestro-index.html>
-   Baler <https://ovis-hpc.readthedocs.io/projects/baler/en/latest/baler-index.html>
-   ASF <asf/index>
-
-
-OVIS Subproject Github Repositories
+OVIS Subproject Github Repositories 
 ====================================
 
 `ldms <https://github.com/ovis-hpc/ovis>`_

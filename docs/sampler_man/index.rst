@@ -1,5 +1,5 @@
 Sampler Man Pages
-=====
+=================
 
 .. toctree::
    :maxdepth: 1
