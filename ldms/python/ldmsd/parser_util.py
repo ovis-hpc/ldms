@@ -217,6 +217,18 @@ perm_handler.string_pattern = re.compile('(?:(r)|-)(?:(w)|-)-(?:(r)|-)(?:(w)|-)-
 perm_handler.octal_pattern = re.compile('^0?[0-7]{1,3}')
 
 class YamlCfg(object):
+    def get_group(self, group):
+        daemons_ = None
+        for daemons in self.cluster_config['daemons']:
+            if group == daemons['names'] or group in expand_names(daemons['names']):
+                if group != daemons['names']:
+                    group = daemons['names']
+                daemons_ = daemons
+        if daemons_ is None:
+            raise ValueError(f'Daemons regex {daemons["names"]} does not match daemon regex "{group}"\n')
+        return group
+
+
     def build_daemons(self, config):
         """Generate a daemon spec list from YAML config
 
@@ -419,19 +431,13 @@ class YamlCfg(object):
             check_required([ 'daemons' ],
                            agg_spec, '"aggregators" entry')
             names = expand_names(agg_spec['daemons'])
-            group = agg_spec['daemons']
+            group = self.get_group(agg_spec['daemons'])
             plugins = check_opt('plugins', agg_spec)
             if plugins:
                 if plugins is not list:
                     raise ValueError(f'"plugins" must be a list of plugin instance names"\n')
                 for plugin in plugins:
                     check_plugin_config(plugin, self.plugins)
-            daemons_ = None
-            for daemons in config['daemons']:
-                if group == daemons['names']:
-                    daemons_ = daemons
-            if daemons_ is None:
-                raise ValueError(f'Daemons regex {daemons["names"]} does not match daemon regex "{group}"\n')
             if group not in aggregators:
                 aggregators[group] = {}
             subscribe = check_opt('subscribe', agg_spec)
@@ -467,6 +473,7 @@ class YamlCfg(object):
             for prod in agg['peers']:
                 check_required([ 'endpoints', 'reconnect', 'type', ],
                                prod, '"peers" entry')
+                group = self.get_group(agg['daemons'])
                 # Use endpoints for producer names and remove names attribute?
                 if prod['daemons'] not in self.daemons:
                     dmn_grps = prod['daemons'].split(',')
@@ -477,7 +484,6 @@ class YamlCfg(object):
                 for daemons, endpoints in zip(dmn_grps, eps):
                     names = expand_names(endpoints)
                     endpoints = expand_names(endpoints)
-                    group = agg['daemons']
                     smplr_dmns = expand_names(daemons)
                     if group not in producers:
                         producers[group] = {}
@@ -531,6 +537,7 @@ class YamlCfg(object):
                 peer_list += agg['peers']
             if 'prdcr_listen' in agg:
                 peer_list += agg['prdcr_listen']
+            group = self.get_group(agg['daemons'])
             for prod in peer_list:
                 if 'updaters' not in prod:
                     continue
@@ -549,7 +556,6 @@ class YamlCfg(object):
                     updtr_sets = check_opt('sets', updtr_spec)
                     if updtr_sets and type(updtr_sets) is not list:
                         raise ValueError(f'Error parsing YAML configuration in "updaters". "sets" must be a list of dictionaries')
-                    group = agg['daemons']
                     if group not in updaters:
                         updaters[group] = {}
                     grp_updaters = updaters[group]
@@ -563,7 +569,10 @@ class YamlCfg(object):
                     if type(prod_regex) is not str and prod_regex is not None:
                         raise TypeError(f'Error: Configuration error in keyword "producers". Only regex string values are valid.')
                     if prod_regex is None:
-                        prod_regex = expand_names(prod['endpoints'])
+                        if 'endpoints' in prod:
+                            prod_regex = expand_names(prod['endpoints'])
+                        else:
+                            prod_regex = ".*"
                     updtr = {
                         'name'      : updtr_name,
                         'interval'  : check_intrvl_str(updtr_spec['interval']),
