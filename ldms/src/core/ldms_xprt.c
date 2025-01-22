@@ -1564,13 +1564,6 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	if (!ldms_xprt_connected(x))
 		return ENOTCONN;
 
-	pthread_mutex_lock(&s->lock);
-	if (!s->lmap || !s->rmap) {
-		pthread_mutex_unlock(&s->lock);
-		return EINVAL;
-	}
-	pthread_mutex_unlock(&s->lock);
-
 	if (LDMS_XPRT_AUTH_GUARD(x))
 		return EPERM;
 	int rc;
@@ -1582,7 +1575,13 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 		return EINVAL;
 	}
 	int idx_from, idx_to, idx_next, idx_curr;
-	zap_get_ep(x->zap_ep, "ldms_xprt:set_update", __func__, __LINE__);		/* Released in handle_zap_read_complete() */
+	/* Released in handle_zap_read_complete() */
+	zap_get_ep(x->zap_ep, "ldms_xprt:set_update", __func__, __LINE__);
+	pthread_mutex_lock(&s->lock);
+	if (!s->lmap || !s->rmap) {
+		pthread_mutex_unlock(&s->lock);
+		return EINVAL;
+	}
 	if (meta_meta_gn == 0 || meta_meta_gn != data_meta_gn) {
 		if (s->curr_idx == (n-1)) {
 			/* We can update the metadata along with the data */
@@ -1602,6 +1601,7 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 			idx_to = (idx_curr < idx_from)?(n - 1):(idx_curr);
 		rc = do_read_data(x, s, idx_from, idx_to, cb, arg);
 	}
+	pthread_mutex_unlock(&s->lock);
 	if (rc) {
 		zap_put_ep(x->zap_ep, "ldms_xprt:set_update", __func__, __LINE__);
 	}
