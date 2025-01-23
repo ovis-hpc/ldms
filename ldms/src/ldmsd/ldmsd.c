@@ -689,6 +689,7 @@ void ldmsd_set_deregister(const char *inst_name, const char *cfg_name)
 		}
 	}
 	ldmsd_sampler_unlock(samp);
+	ldmsd_sampler_put(samp, "find");
 }
 
 int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us)
@@ -1126,7 +1127,8 @@ int ldmsd_oneshot_sample(const char *cfg_name, const char *ts,
 				"The schedule time '%s' "
 				"is ahead of the current time %jd",
 				 ts, (intmax_t)now);
-			return EINVAL;
+			rc = EINVAL;
+			goto put;
 		}
 		tv.tv_sec = diff;
 	}
@@ -1135,7 +1137,8 @@ int ldmsd_oneshot_sample(const char *cfg_name, const char *ts,
 	struct oneshot *ossample = malloc(sizeof(*ossample));
 	if (!ossample) {
 		snprintf(errstr, errlen, "Out of Memory");
-		return ENOMEM;
+		rc = ENOMEM;
+		goto put;
 	}
 
 	ldmsd_sampler_lock(samp);
@@ -1162,6 +1165,8 @@ err:
 	free(ossample);
 out:
 	ldmsd_sampler_unlock(samp);
+put:
+	ldmsd_sampler_put(samp, "find");
 	return rc;
 }
 
@@ -1187,12 +1192,13 @@ int ldmsd_sampler_stop(char *cfg_name)
 		samp->os = NULL;
 		release_ovis_scheduler(samp->thread_id);
 		samp->thread_id = -1;
+		ldmsd_sampler_put(samp, "start");
 	} else {
 		rc = -EBUSY;
 	}
 out:
 	ldmsd_sampler_unlock(samp);
-	ldmsd_sampler_put(samp, "start");
+	ldmsd_sampler_put(samp, "find");
 	return rc;
 }
 
