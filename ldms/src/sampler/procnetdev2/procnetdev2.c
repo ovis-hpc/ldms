@@ -83,7 +83,7 @@ struct rec_metric_info {
 	int array_len;
 };
 
-#define MAXIFACE 32
+#define MAXIFACE 256
 #ifndef IFNAMSIZ
 /* from "linux/if.h" */
 #define IFNAMSIZ 16
@@ -162,8 +162,10 @@ static int create_metric_set(procnetdev2_t p, base_data_t base)
 
 	/* Create netdev record definition */
 	rec_def = ldms_record_from_template("netdev", rec_metrics, p->rec_metric_ids);
-	if (!rec_def)
+	if (!rec_def) {
+		rc = errno;
 		goto err2;
+	}
 	p->rec_heap_sz = ldms_record_heap_size_get(rec_def);
 	p->heap_sz = MAXIFACE * ldms_record_heap_size_get(rec_def);
 
@@ -260,7 +262,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	/* process ifaces */
 	ivalue = av_value(avl, "ifaces");
 	if (!ivalue)
-		goto cfg;
+		goto process_exclude;
 	ifacelist = strdup(ivalue);
 	if (!ifacelist) {
 		ovis_log(mylog, OVIS_LCRIT, "Out of memory\n");
@@ -271,22 +273,24 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	ifcount = 0;
 	iface = strtok_r(ifacelist, ",", &saveptr);
 	while (iface) {
-		ifcount ++;
-		if (ifcount >= (MAXIFACE - 1)) {
+		if (ifcount >= (MAXIFACE)) {
 			ovis_log(mylog, OVIS_LERROR,
 				"Too many ifaces: <%s>\n", iface);
 			goto err;
 		}
-		strncpy(p->iface[ifcount], iface, 20);
+		strncpy(p->iface[ifcount++], iface, 20);
 		ovis_log(mylog, OVIS_LDEBUG,
 			"Added iface <%s>\n", iface);
 		iface = strtok_r(NULL, ",", &saveptr);
 	}
 	p->ifcount = ifcount;
 
+ process_exclude:
 	/* process excludes */
 	excount = 0;
 	ivalue = av_value(avl, "exclude");
+	if (!ivalue)
+		goto cfg;
 	exclude = strdup(ivalue);
 	if (!exclude) {
 		ovis_log(mylog, OVIS_LCRIT, "out of memory\n");
@@ -295,13 +299,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	iface = strtok_r(exclude, ",", &saveptr);
 	excount = 0;
 	while (iface) {
-		excount ++;
-		if (excount >= (MAXIFACE - 1)) {
+		if (excount >= (MAXIFACE)) {
 			ovis_log(mylog, OVIS_LERROR,
-				"Too many ifaces: <%s>\n", iface);
+				"Too many exclude: <%s>\n", ivalue);
 			goto err;
 		}
-		strncpy(p->exclude[excount], iface, 20);
+		strncpy(p->exclude[excount++], iface, 20);
 		ovis_log(mylog, OVIS_LDEBUG,
 			"Excluded iface <%s>\n", iface);
 		iface = strtok_r(NULL, ",", &saveptr);
@@ -401,6 +404,17 @@ begin:
 			}
 			/* not in the ifaces list */
 			continue;
+		}
+
+		if (p->excount) {
+			/* exclude list was given in the config */
+			int excluded = 0;
+			for (i = 0; i < p->excount && !excluded; i++) {
+				if (0 == strcmp(curriface, p->exclude[i]))
+					excluded = 1;
+			}
+			if (excluded)
+				continue;
 		}
 	rec:
 		rec_inst = ldms_record_alloc(p->base->set, p->rec_def_idx);
