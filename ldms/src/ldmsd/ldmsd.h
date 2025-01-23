@@ -1024,8 +1024,6 @@ ldmsd_sampler_t ldmsd_sampler_alloc(const char *name,
 					ldmsd_cfgobj_del_fn_t __del,
 					uid_t uid, gid_t gid, int perm);
 
-void ldmsd_sampler_free(struct ldmsd_sampler_inst *samp);
-
 /**
  * \brief ldmsd_set_register
  *
@@ -1080,9 +1078,6 @@ ldmsd_store_t ldmsd_store_alloc(const char *name,
 				struct ldmsd_store *store,
 				ldmsd_cfgobj_del_fn_t __del,
 				uid_t uid, gid_t gid, int perm);
-
-void ldmsd_store_free(ldmsd_store_t store);
-
 
 /**
  * \brief Get the security context (uid, gid) of the daemon.
@@ -1210,7 +1205,7 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 int ldmsd_cfgobj_refcount(ldmsd_cfgobj_t obj);
 void ldmsd_cfgobj_put(ldmsd_cfgobj_t obj, const char *ref_name);
 ldmsd_cfgobj_t ldmsd_cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
-void ldmsd_cfgobj_del(const char *name, ldmsd_cfgobj_type_t type);
+void ldmsd_cfgobj_del(ldmsd_cfgobj_t obj);
 ldmsd_cfgobj_t ldmsd_cfgobj_first(ldmsd_cfgobj_type_t type);
 ldmsd_cfgobj_t ldmsd_cfgobj_next(ldmsd_cfgobj_t obj);
 int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt);

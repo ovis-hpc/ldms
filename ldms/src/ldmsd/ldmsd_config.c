@@ -280,6 +280,22 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 	return rc;
 }
 
+void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
+{
+	ldmsd_sampler_t samp = (void*)obj;
+	free((void*)samp->api->base.inst_name);
+	free(samp->api);
+	ldmsd_cfgobj___del(obj);
+}
+
+void ldmsd_store___del(ldmsd_cfgobj_t obj)
+{
+	ldmsd_store_t store = (void*)obj;
+	free((void*)store->api->base.inst_name);
+	free(store->api);
+	ldmsd_cfgobj___del(obj);
+}
+
 /*
  * Load a plugin
  */
@@ -293,13 +309,12 @@ int ldmsd_load_plugin(char* inst_name, char *plugin_name, char *errstr, size_t e
 	switch (api->type) {
 	case LDMSD_PLUGIN_SAMPLER:
 		if (ldmsd_sampler_alloc(inst_name, (struct ldmsd_sampler *)api,
-			NULL,
-			geteuid(), getegid(), 0660))
+			ldmsd_sampler___del, geteuid(), getegid(), 0660))
 			return 0;
 		break;
 	case LDMSD_PLUGIN_STORE:
-		if (ldmsd_store_alloc(inst_name, (struct ldmsd_store *)api, NULL,
-			geteuid(), getegid(), 0660))
+		if (ldmsd_store_alloc(inst_name, (struct ldmsd_store *)api,
+			ldmsd_store___del, geteuid(), getegid(), 0660))
 			return 0;
 		break;
 	default:
@@ -317,28 +332,31 @@ int ldmsd_load_plugin(char* inst_name, char *plugin_name, char *errstr, size_t e
  */
 int ldmsd_term_plugin(char *plugin_name)
 {
-#if 0
-	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
+	int rc = EINVAL;
+	ldmsd_sampler_t sampler = NULL;
+	ldmsd_store_t store = NULL;
+	ldmsd_plugin_t plug = NULL;
+	ldmsd_cfgobj_t cfgobj;
 
-	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi)
-		return ENOENT;
-
-	pthread_mutex_lock(&pi->lock);
-	if (pi->ref_count) {
-		rc = EINVAL;
-		pthread_mutex_unlock(&pi->lock);
-		goto out;
+	sampler = ldmsd_sampler_find(plugin_name);
+	if (sampler) {
+		plug = &sampler->api->base;
+		cfgobj = &sampler->cfg;
+	} else {
+		store = ldmsd_store_find(plugin_name);
+		if (!store) {
+			rc = ENOENT;
+			goto out;
+		}
+		plug = &store->api->base;
+		cfgobj = &store->cfg;
 	}
-	pi->plugin->term(pi->plugin);
-	pthread_mutex_unlock(&pi->lock);
-	destroy_plugin(pi);
-out:
+	plug->term(plug);
+	ldmsd_cfgobj_put(cfgobj, "find");
+	ldmsd_cfgobj_del(cfgobj);
+	rc = 0;
+ out:
 	return rc;
-#else
-	return 0;
-#endif
 }
 
 int _ldmsd_set_udata(ldms_set_t set, char *metric_name, uint64_t udata,

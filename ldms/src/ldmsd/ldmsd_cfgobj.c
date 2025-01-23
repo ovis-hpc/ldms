@@ -310,24 +310,20 @@ void ldmsd_cfgobj_put(ldmsd_cfgobj_t obj, const char *ref_name)
 	ref_put(&obj->ref, ref_name);
 }
 
-void ldmsd_cfgobj_del(const char *name, ldmsd_cfgobj_type_t type)
+void ldmsd_cfgobj_del(ldmsd_cfgobj_t obj)
 {
-	ldmsd_cfgobj_t obj;
-	pthread_mutex_lock(cfgobj_locks[type]);
-	obj = __cfgobj_find(name, type);
-	if (obj) {
-		if (obj->avl_str) {
-			free(obj->avl_str);
-			obj->avl_str = NULL;
-		}
-		if (obj->kvl_str) {
-			free(obj->kvl_str);
-			obj->kvl_str = NULL;
-		}
-		rbt_del(cfgobj_trees[type], &obj->rbn);
-		ldmsd_cfgobj_put(obj, "init");
+	pthread_mutex_lock(cfgobj_locks[obj->type]);
+	if (obj->avl_str) {
+		free(obj->avl_str);
+		obj->avl_str = NULL;
 	}
-	pthread_mutex_unlock(cfgobj_locks[type]);
+	if (obj->kvl_str) {
+		free(obj->kvl_str);
+		obj->kvl_str = NULL;
+	}
+	rbt_del(cfgobj_trees[obj->type], &obj->rbn);
+	ldmsd_cfgobj_put(obj, "init");
+	pthread_mutex_unlock(cfgobj_locks[obj->type]);
 }
 
 /**
