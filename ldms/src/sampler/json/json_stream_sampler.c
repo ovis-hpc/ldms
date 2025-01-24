@@ -910,12 +910,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	else
 		js->perm = strdup("0660");
 
-	js->stream_client = ldms_stream_subscribe(js->stream_name, 0, json_recv_cb, js, "js_stream_sampler");
+	js->stream_client = ldms_stream_subscribe(js->stream_name, 0,
+				json_recv_cb, self, "js_stream_sampler");
 	if (!js->stream_client) {
 		LERROR("Cannot create stream client.\n");
 		rc = errno;
 		goto err_0;
 	}
+	ldmsd_cfgobj_get(self->cfgobj, "stream_client");
 	pthread_mutex_unlock(&js->lock);
 	return 0;
  err_0:
@@ -1054,13 +1056,57 @@ static void update_set_data(js_stream_sampler_t js, ldms_set_t l_set,
 	}
 }
 
-static int __stream_close(ldms_stream_event_t ev, js_stream_sampler_t p)
+static void js_set_free(ldmsd_plugin_t plug, js_set_t j_set)
 {
+	if (j_set->set) {
+		ldmsd_set_deregister(j_set->name, plug->inst_name);
+		ldms_set_delete(j_set->set);
+	}
+	free(j_set->name);
+	free(j_set);
+}
+
+static void js_schema_free(ldmsd_plugin_t plug, js_schema_t j_schema)
+{
+	struct rbn *rbn;
+	js_set_t j_set;
+	struct attr_entry *ae;
+	while (( rbn = rbt_min(&j_schema->s_set_tree) )) {
+		rbt_del(&j_schema->s_set_tree, rbn);
+		j_set = container_of(rbn, struct js_set_s, rbn);
+		js_set_free(plug, j_set);
+	}
+	while (( rbn = rbt_min(&j_schema->s_attr_tree) )) {
+		rbt_del(&j_schema->s_attr_tree, rbn);
+		ae = container_of(rbn, struct attr_entry, rbn);
+		free(ae->name);
+		free(ae);
+	}
+	free(j_schema);
+}
+
+static void purge_schema_tree(ldmsd_plugin_t plug, js_stream_sampler_t js)
+{
+	struct rbn *rbn;
+	js_schema_t j_schema;
+	while (( rbn = rbt_min(&js->sch_tree) )) {
+		rbt_del(&js->sch_tree, rbn);
+		j_schema = container_of(rbn, struct js_schema_s, rbn);
+		js_schema_free(plug, j_schema);
+	}
+}
+
+static int __stream_close(ldms_stream_event_t ev, ldmsd_plugin_t self)
+{
+	js_stream_sampler_t js = self->context;
+	purge_schema_tree(self, js);
+	ldmsd_cfgobj_put(self->cfgobj, "stream_client");
 	return 0;
 }
 
-static int __stream_recv(ldms_stream_event_t ev, js_stream_sampler_t js)
+static int __stream_recv(ldms_stream_event_t ev, ldmsd_plugin_t self)
 {
+	js_stream_sampler_t js = self->context;
 	const char *msg;
 	json_entity_t entity;
 	int rc = EINVAL;
@@ -1160,13 +1206,13 @@ err_0:
 
 static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 {
-	js_stream_sampler_t js = arg;
+	ldmsd_plugin_t self = arg;
 
 	switch (ev->type)  {
 	case LDMS_STREAM_EVENT_CLOSE:
-		return __stream_close(ev, js);
+		return __stream_close(ev, self);
 	case LDMS_STREAM_EVENT_RECV:
-		return __stream_recv(ev, js);
+		return __stream_recv(ev, self);
 	default:
 		/* ignore other events */
 		return 0;
@@ -1175,7 +1221,7 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 
 static void term(struct ldmsd_plugin *self)
 {
-	js_stream_sampler_t js = (js_stream_sampler_t)self;
+	js_stream_sampler_t js = (js_stream_sampler_t)self->context;
 	if (js->stream_client) {
 		ldms_stream_close(js->stream_client); /* CLOSE event will clean up `p` */
 	}
