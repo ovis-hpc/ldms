@@ -152,6 +152,8 @@ def check_auth(auth_spec):
     return name, plugin, auth_opt
 
 def check_plugin_config(plugn, plugin_spec):
+    if plugin_spec is None:
+        raise ValueError(f'Error in YAML configuration file. {plugn} has not been configured in the top level "plugins" dictionary\n')
     if plugn not in plugin_spec:
         raise ValueError(f'Configuration for plugin instance "{plugn}" '
                          f'is not defined in the top level "plugins" dictionary\n')
@@ -227,7 +229,6 @@ class YamlCfg(object):
         if daemons_ is None:
             raise ValueError(f'Daemons regex {daemons["names"]} does not match daemon regex "{group}"\n')
         return group
-
 
     def build_daemons(self, config):
         """Generate a daemon spec list from YAML config
@@ -401,18 +402,20 @@ class YamlCfg(object):
     def build_prdcr_listeners(self, spec):
         if 'prdcr_listen' not in spec:
             return
+        dmn_grp = self.get_group(spec['daemons'])
         for pl in spec['prdcr_listen']:
+            node_listen = {}
             check_required(['name'], pl,
                            '"prdcr_listen" entry')
-            node_listen = {}
             ip = check_opt('ip', pl)
             regex = check_opt('regex', pl)
             dstart = check_opt('disable_start', pl)
-            node_listen[pl['name']] = { 'disable_start' : dstart,
-                                        'regex'   : regex,
-                                        'ip'      : ip
+            node_listen[pl['name']] = { 'daemons' : expand_names(spec['daemons']),
+                                     'disable_start' : dstart,
+                                     'regex'   : regex,
+                                     'ip'      : ip
             }
-            self.prdcr_listeners[spec['daemons']] = node_listen
+            self.prdcr_listeners[dmn_grp] = node_listen
 
     def build_aggregators(self, config):
         aggregators = {}
@@ -475,9 +478,11 @@ class YamlCfg(object):
                                prod, '"peers" entry')
                 group = self.get_group(agg['daemons'])
                 # Use endpoints for producer names and remove names attribute?
+                check_dmn_grp = False
                 if prod['daemons'] not in self.daemons:
                     dmn_grps = prod['daemons'].split(',')
                     eps = prod['endpoints'].split(',')
+                    check_dmn_grp = True
                 else:
                     dmn_grps = [ prod['daemons'] ]
                     eps = [ prod['endpoints'] ]
@@ -504,10 +509,14 @@ class YamlCfg(object):
                             else:
                                 smplr_dmn = smplr_dmns.pop(0)
                                 ppd = ports_per_dmn
+                            if check_dmn_grp:
+                                agg_grp = self.get_group(smplr_dmn)
+                            else:
+                                agg_grp = daemons
                             endpoint = endpoints.pop(0)
                             prod = {
                                 'daemon'    : smplr_dmn,
-                                'dmn_grp'   : daemons,
+                                'dmn_grp'   : agg_grp,
                                 'name'      : name,
                                 'endpoint'  : endpoint,
                                 'type'      : typ,
@@ -625,7 +634,7 @@ class YamlCfg(object):
                                  f' "schema" or "regex" attribute"\n')
             if decomp and schema and regex:
                 raise ValueError(f'Please specify either "schema" or "regex" when using decomposition - these parameters are mutually exclusive.\n')
-            group = store_spec['daemons']
+            group = self.get_group(store_spec['daemons'])
             if group not in stores:
                 stores[group] = {}
             grp_stores = stores[group]
@@ -761,11 +770,14 @@ class YamlCfg(object):
             dstr += f'advertiser_start name={dname}-{host}\n'
         return dstr, auth_list
 
-    def write_prdcr_listeners(self, dstr, dmn_grp):
+    def write_prdcr_listeners(self, dstr, dmn_grp, dmn):
+        dmn_grp = self.get_group(dmn_grp)
         if dmn_grp not in self.prdcr_listeners:
             return dstr
         plisten = self.prdcr_listeners[dmn_grp]
         for pl in plisten:
+            if dmn not in plisten[pl]['daemons']:
+                continue
             dstr += f'prdcr_listen_add name={pl}'
             dstart = check_opt('disable_start', plisten[pl])
             regex = check_opt('regex', plisten[pl])
@@ -884,10 +896,9 @@ class YamlCfg(object):
                 dstr += f'env {attr}={self.daemons[grp][dname]["environment"][attr]}\n'
         return dstr
 
-    def write_sampler(self, dstr, smplr_grp, sname):
+    def write_sampler(self, dstr, smplr_grp, sname, auth_list={}):
         if not self.samplers or smplr_grp not in self.samplers:
             return dstr
-        dstr, auth_list = self.write_listeners(dstr, smplr_grp, sname)
         dstr, auth_list = self.write_advertisers(dstr, smplr_grp, sname, auth_list)
         for plugin in self.samplers[smplr_grp]['plugins']:
             plugn = self.plugins[plugin]
@@ -961,16 +972,14 @@ class YamlCfg(object):
                         f'regex={regex}\n'
         return dstr
 
-    def write_aggregator(self, dstr, group_name, dmn):
+    def write_aggregator(self, dstr, group_name, dmn, auth_list={}):
         # Agg config
         try:
             ''' "Balance" agg configuration if all samplers are included in each aggregator '''
-            if not self.aggregators or group_name not in self.aggregators:
+            if not self.aggregators or group_name not in self.aggregators or dmn not in self.aggregators[group_name]:
                 return dstr
-            auth_list = {}
-            dstr, auth_list = self.write_listeners(dstr, group_name, dmn, auth_list)
             dstr, auth_list = self.write_producers(dstr, group_name, dmn, auth_list)
-            dstr = self.write_prdcr_listeners(dstr, group_name)
+            dstr = self.write_prdcr_listeners(dstr, group_name, dmn)
             dstr = self.write_stream_subscribe(dstr, group_name, dmn)
             dstr = self.write_agg_plugins(dstr, group_name, dmn)
             dstr = self.write_updaters(dstr, group_name, dmn)
@@ -1088,8 +1097,9 @@ class YamlCfg(object):
         dstr = ''
         dstr = self.write_env(dstr, grp, dname)
         dstr = self.write_options(dstr, grp, dname)
-        dstr = self.write_sampler(dstr, grp, dname)
-        dstr = self.write_aggregator(dstr, grp, dname)
+        dstr, alist = self.write_listeners(dstr, grp, dname, {})
+        dstr = self.write_sampler(dstr, grp, dname, alist)
+        dstr = self.write_aggregator(dstr, grp, dname, alist)
         return f'{dstr}'
 
     def config_v4(self, path):
