@@ -685,6 +685,7 @@ void ldmsd_set_deregister(const char *inst_name, const char *cfg_name)
 		set_name = ldms_set_instance_name_get(s->set);
 		if (0 == strcmp(set_name, inst_name)) {
 			LIST_REMOVE(s, entry);
+			free(s);
 			break;
 		}
 	}
