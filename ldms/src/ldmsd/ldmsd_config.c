@@ -196,6 +196,7 @@ ldmsd_sampler_alloc(const char *inst_name,
 		free(api_inst);
 		return NULL;
 	}
+	api_inst->base.cfgobj = &sampler->cfg;
 	sampler->api = api_inst;
 	sampler->api->base.inst_name = strdup(inst_name);
 	sampler->thread_id = -1;	/* stopped */
@@ -227,6 +228,7 @@ ldmsd_store_t ldmsd_store_alloc(const char *inst_name,
 		free(api_inst);
 		return NULL;
 	}
+	api_inst->base.cfgobj = &store->cfg;
 	store->api = api_inst;
 	store->api->base.inst_name = strdup(inst_name);
 	return store;
@@ -283,6 +285,14 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_sampler_t samp = (void*)obj;
+	struct ldmsd_sampler_set *_set;
+
+	while (( _set = LIST_FIRST(&samp->set_list))) {
+		LIST_REMOVE(_set, entry);
+		ldms_set_delete(_set->set);
+		free(_set);
+	}
+
 	free((void*)samp->api->base.inst_name);
 	free(samp->api);
 	ldmsd_cfgobj___del(obj);
