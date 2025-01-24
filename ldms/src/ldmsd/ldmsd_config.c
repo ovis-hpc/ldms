@@ -200,6 +200,7 @@ ldmsd_sampler_alloc(const char *inst_name,
 	sampler->api = api_inst;
 	sampler->api->base.inst_name = strdup(inst_name);
 	sampler->thread_id = -1;	/* stopped */
+	ldmsd_cfgobj_unlock(&sampler->cfg);
 	return sampler;
 }
 
@@ -231,6 +232,7 @@ ldmsd_store_t ldmsd_store_alloc(const char *inst_name,
 	api_inst->base.cfgobj = &store->cfg;
 	store->api = api_inst;
 	store->api->base.inst_name = strdup(inst_name);
+	ldmsd_cfgobj_unlock(&store->cfg);
 	return store;
 }
 
