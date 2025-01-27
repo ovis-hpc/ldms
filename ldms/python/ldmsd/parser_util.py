@@ -917,7 +917,7 @@ class YamlCfg(object):
             dstr = self.write_opt_attr(dstr, 'offset', offset)
         return dstr
 
-    def write_samplers(self, dstr, smplr_group):
+    def write_samplers(self, dstr, smplr_group, local=None):
         for inst_name in self.samplers[smplr_group]['plugins']:
             plugin = self.plugins[inst_name]
             sname = plugin['name']
@@ -925,7 +925,7 @@ class YamlCfg(object):
             for cfg_ in plugin['config']:
                 if type(cfg_) is dict:
                     hostname = socket.gethostname()
-                    if args.local:
+                    if local:
                         cfg_args = { 'producer'     : f'{hostname}',
                                      'instance'     : f'{hostname}/{plugin["name"]}',
                                      'component_id' : '${LDMS_COMPONENT_ID}' }
