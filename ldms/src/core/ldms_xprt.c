@@ -2608,11 +2608,17 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	rd_ctxt->rc = ctxt->rc;
 	pthread_mutex_unlock(&x->lock);
 	assert((zep == x->zap_ep) && (x == rd_ctxt->x));
+	pthread_mutex_lock(&lset->lock);
+	if (!lset->lmap || !lset->rmap) {
+		pthread_mutex_unlock(&lset->lock);
+		goto callback;
+	}
 	rc = zap_read(zep,
 		      lset->rmap, zap_map_addr(lset->rmap),
 		      lset->lmap, zap_map_addr(lset->lmap),
 		      __le32_to_cpu(lset->meta->meta_sz),
 		      rd_ctxt);
+	pthread_mutex_unlock(&lset->lock);
 	if (rc) {
 		x->zerrno = rc;
 		rc = zap_zerr2errno(rc);
