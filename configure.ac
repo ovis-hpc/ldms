@@ -75,6 +75,11 @@ AS_IF([test "x$HAVE_LIBJANSSON" = xno],
 	[AC_MSG_ERROR([libjansson or jansson.h not found])])
 AM_CONDITIONAL([HAVE_LIBJANSSON], [test "x$HAVE_LIBJANSSON" = xyes])
 
+AC_LIB_HAVE_LINKFLAGS([yyjson], [], [#include <yyjson.h>])
+AS_IF([test "x$HAVE_LIBYYJSON" = xno],
+	[AC_MSG_ERROR([libyyjson or yyjson.h not found])])
+AM_CONDITIONAL([HAVE_LIBYYJSON], [test "x$HAVE_LIBYYJSON" = xyes])
+
 dnl change sharedstatedir default
 test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'
 

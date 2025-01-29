@@ -892,6 +892,28 @@ int ldmsd_row_to_json_array(ldmsd_row_t row, char **str, int *len);
 int ldmsd_row_to_json_object(ldmsd_row_t row, char **str, int *len);
 
 /**
+ * Create a JSON text object from an ldmsd_row_t using the yyjson
+ * library.
+ *
+ * The user is responsible for freeing the allocated memory
+ * returned in \c str.
+ *
+ * The output format is in the form of JSON object as follows
+ * \code
+ *   { "COL_1_NAME":COL_1_VAL, "COL_2_NAME":COL_2_VAL, ...,
+ *     "COL_N_NAME":COL_N_VAL }
+ * \endcode
+ *
+ * \param       row The row handle.
+ * \param [out] str The output C string containing JSON object for the \c row.
+ * \param [out] len The strlen() of \c *str.
+ *
+ * \retval 0     If succeded.
+ * \retval errno If there is an error.
+ */
+int ldmsd_row_to_json_object_jansson(ldmsd_row_t row, char **str, int *len);
+
+/**
  * Create an Avro schema definition from an ldmsd_row_t
  *
  * The user is responsible for freeing the allocated memory
