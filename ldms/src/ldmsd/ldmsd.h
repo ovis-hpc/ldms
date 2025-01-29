@@ -55,6 +55,7 @@
 #define __LDMSD_H__
 #include <limits.h>
 #include <regex.h>
+#include <stdbool.h>
 #include <sys/queue.h>
 #include <time.h>
 #include <pthread.h>
@@ -191,7 +192,7 @@ struct avl_q_item {
 TAILQ_HEAD(avl_q, avl_q_item);
 
 typedef struct ldmsd_cfgobj {
-	char *name;		/* Unique cfgobj name */
+	char *name;		/* Unique cfgobj name (instance name) */
 	struct ref_s ref;
 	ldmsd_cfgobj_type_t type;
 	ldmsd_cfgobj_del_fn_t __del;
@@ -911,10 +912,10 @@ int process_config_file(const char *path, int *lineno, int trust);
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 typedef struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN]; /* plugin name (e.g. meminfo) */
-	char *libpath;
-	const char *inst_name;	/* Plugin instance name (i.e. containing config object) */
-	void *context;		/* Extra memory allocated by plugin instance creation */
-	size_t context_size;	/* Informs instance creation of cfg object context size */
+	char *inst_name; /* owned and freed by ldmsd not the plugin */
+	char *libpath; /* owned and freed by ldmsd not the plugin */
+        bool multi_instance;
+	void *context; /* owned by the plugin, and freed in term() */
 	enum ldmsd_plugin_type {
 		LDMSD_PLUGIN_OTHER = 0,
 		LDMSD_PLUGIN_SAMPLER,

@@ -446,6 +446,9 @@ static void term(struct ldmsd_plugin *self)
 	base_set_delete(p->base);
 	base_del(p->base);
 	p->base = NULL;
+
+        free(p);
+        free(self);
 }
 
 #if 0
@@ -471,28 +474,38 @@ static void __once()
 }
 #endif
 
-
-
-static struct ldmsd_sampler procnetdev2_sampler = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.context_size = sizeof(struct procnetdev2_s),
-	},
-
-	.sample = sample,
-};
-
 struct ldmsd_plugin *get_plugin()
 {
-	if (!mylog) {
+        struct ldmsd_sampler *self;
+        procnetdev2_t p;
+
+        p = calloc(1, sizeof(*p));
+        if (p == NULL) {
+                return NULL;
+        }
+        self = calloc(1, sizeof(*self));
+        if (self == NULL) {
+                free(p);
+                return NULL;
+        }
+
+        *self = (struct ldmsd_sampler) {
+		.base.name = SAMP,
+		.base.type = LDMSD_PLUGIN_SAMPLER,
+		.base.term = term,
+		.base.config = config,
+		.base.usage = usage,
+                .base.multi_instance = true,
+		.base.context = (void *)p,
+                .sample = sample,
+        };
+
+        if (!mylog) {
 		mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
 		if (!mylog)
 			ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
 				"of '" SAMP "' plugin. Error %d\n", errno);
 	}
-	return &procnetdev2_sampler.base;
+
+	return (struct ldmsd_plugin *)self;
 }

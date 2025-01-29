@@ -256,28 +256,40 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(mylog);
 }
 
-static struct ldmsd_sampler meminfo_plugin = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.context_size = sizeof(struct meminfo_s),
-	},
-	.sample = sample,
-};
-
 struct ldmsd_plugin *get_plugin()
 {
-	int rc;
-	if (!mylog) {
+        struct ldmsd_sampler *self;
+        meminfo_t mi;
+
+        mi = calloc(1, sizeof(*mi));
+        if (mi == NULL) {
+                return NULL;
+        }
+        self = calloc(1, sizeof(*self));
+        if (self == NULL) {
+                free(mi);
+                return NULL;
+        }
+
+        *self = (struct ldmsd_sampler) {
+		.base.name = SAMP,
+		.base.type = LDMSD_PLUGIN_SAMPLER,
+		.base.term = term,
+		.base.config = config,
+		.base.usage = usage,
+                .base.multi_instance = true,
+		.base.context = (void *)mi,
+                .sample = sample,
+        };
+
+        if (!mylog) {
 		mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
 		if (!mylog) {
-			rc = errno;
+			int rc = errno;
 			ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
 					"of '" SAMP "' plugin. Error %d\n", rc);
 		}
 	}
-	return &meminfo_plugin.base;
+
+	return (struct ldmsd_plugin *)self;
 }

@@ -170,6 +170,13 @@ err_0:
 	return NULL;
 }
 
+void ldmsd_unload_plugin(ldmsd_plugin_t pi)
+{
+        free(pi->libpath);
+        pi->term(pi); /* plugin frees pi */
+        pi = NULL;
+}
+
 ldmsd_sampler_t
 ldmsd_sampler_alloc(const char *inst_name,
 			struct ldmsd_sampler *api,
@@ -177,15 +184,7 @@ ldmsd_sampler_alloc(const char *inst_name,
 			uid_t uid, gid_t gid, int perm)
 {
 	ldmsd_sampler_t sampler;
-	struct ldmsd_sampler *api_inst;
-	api_inst = malloc(sizeof (*api_inst) + api->base.context_size);
-	if (!api_inst)
-		return NULL;
-	memcpy(api_inst, api, sizeof(*api));
-	if (api->base.context_size) {
-		api_inst->base.context = (void *)(api_inst + 1);
-		memset(api_inst->base.context, 0, api->base.context_size);
-	}
+
 	sampler = (void*)ldmsd_cfgobj_new_with_auth(inst_name, LDMSD_CFGOBJ_SAMPLER,
 						sizeof(*sampler),
 						__del, uid, gid, perm);
@@ -193,11 +192,9 @@ ldmsd_sampler_alloc(const char *inst_name,
 		ovis_log(config_log, OVIS_LERROR,
 			"Error %d creating the sampler configuration object '%s'\n",
 				errno, inst_name);
-		free(api_inst);
 		return NULL;
 	}
-	sampler->api = api_inst;
-	sampler->api->base.inst_name = strdup(inst_name);
+	sampler->api = api;
 	sampler->thread_id = -1;	/* stopped */
 	return sampler;
 }
@@ -208,15 +205,7 @@ ldmsd_store_t ldmsd_store_alloc(const char *inst_name,
 		uid_t uid, gid_t gid, int perm)
 {
 	ldmsd_store_t store;
-	struct ldmsd_store *api_inst;
-	api_inst = malloc(sizeof (*api_inst) + api->base.context_size);
-	if (!api_inst)
-		return NULL;
-	memcpy(api_inst, api, sizeof(*api));
-	if (api->base.context_size) {
-		api_inst->base.context = (void *)(api_inst + 1);
-		memset(api_inst->base.context, 0, api->base.context_size);
-	}
+
 	store = (void*)ldmsd_cfgobj_new_with_auth(inst_name, LDMSD_CFGOBJ_STORE,
 						sizeof(*store),
 						__del, uid, gid, perm);
@@ -224,11 +213,9 @@ ldmsd_store_t ldmsd_store_alloc(const char *inst_name,
 		ovis_log(config_log, OVIS_LERROR,
 			"Error %d creating the store configuration object '%s'\n",
 				errno, inst_name);
-		free(api_inst);
 		return NULL;
 	}
-	store->api = api_inst;
-	store->api->base.inst_name = strdup(inst_name);
+	store->api = api;
 	return store;
 }
 
@@ -293,15 +280,21 @@ int ldmsd_load_plugin(char* inst_name, char *plugin_name, char *errstr, size_t e
 	switch (api->type) {
 	case LDMSD_PLUGIN_SAMPLER:
 		if (ldmsd_sampler_alloc(inst_name, (struct ldmsd_sampler *)api,
-			NULL,
-			geteuid(), getegid(), 0660))
-			return 0;
+                                        NULL,
+                                        geteuid(), getegid(), 0660)) {
+                        return 0;
+                } else {
+                        ldmsd_unload_plugin(api);
+                }
 		break;
 	case LDMSD_PLUGIN_STORE:
 		if (ldmsd_store_alloc(inst_name, (struct ldmsd_store *)api, NULL,
-			geteuid(), getegid(), 0660))
+                                      geteuid(), getegid(), 0660)) {
 			return 0;
-		break;
+                } else {
+                        ldmsd_unload_plugin(api);
+                }
+                break;
 	default:
 		errno = EINVAL;
 		ovis_log(config_log, OVIS_LERROR,

@@ -1193,27 +1193,39 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 	return NULL;
 }
 
-static struct ldmsd_sampler js_stream_sampler = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.context_size = sizeof(struct js_stream_sampler_s),
-	},
-	.get_set = get_set,
-	.sample = sample,
-};
-
 struct ldmsd_plugin *get_plugin()
 {
-	int rc;
-	__log = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+        struct ldmsd_sampler *self;
+        js_stream_sampler_t js;
+
+        js = calloc(1, sizeof(*js));
+        if (js == NULL) {
+                return NULL;
+        }
+        self = calloc(1, sizeof(*self));
+        if (self == NULL) {
+                free(js);
+                return NULL;
+        }
+
+        *self = (struct ldmsd_sampler) {
+                .base.name = SAMP,
+                .base.type = LDMSD_PLUGIN_SAMPLER,
+                .base.term = term,
+                .base.config = config,
+                .base.usage = usage,
+                .base.multi_instance = true,
+                .base.context = (void *)js,
+                .get_set = get_set,
+                .sample = sample,
+        };
+
+        __log = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
 	if (!__log) {
-		rc = errno;
+		int rc = errno;
 		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
 				"of '" SAMP "' plugin. Error %d\n", rc);
 	}
-	return &js_stream_sampler.base;
+
+	return (struct ldmsd_plugin *)self;
 }

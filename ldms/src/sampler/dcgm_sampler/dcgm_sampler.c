@@ -688,6 +688,7 @@ static struct ldmsd_sampler nvidia_dcgm_plugin = {
 		.term = term,
 		.config = config,
 		.usage = usage,
+                .multi_instance = false,
 	},
 	.sample = sample,
 };

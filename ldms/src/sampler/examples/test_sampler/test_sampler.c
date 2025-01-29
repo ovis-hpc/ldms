@@ -1948,6 +1948,9 @@ static void term(struct ldmsd_plugin *self)
 	}
 	if (mylog)
 		ovis_log_destroy(mylog);
+
+        free(ts);
+        free(self);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -2091,27 +2094,39 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 	return NULL;
 }
 
-static struct ldmsd_sampler test_sampler = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.context_size = sizeof(struct test_sampler_s),
-	},
-	.get_set = get_set,
-	.sample = sample,
-};
-
 struct ldmsd_plugin *get_plugin()
 {
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	return &test_sampler.base;
+        struct ldmsd_sampler *self;
+        test_sampler_t ts;
+
+        ts = calloc(1, sizeof(*ts));
+        if (ts == NULL) {
+                return NULL;
+        }
+        self = calloc(1, sizeof(*self));
+        if (self == NULL) {
+                free(ts);
+                return NULL;
+        }
+
+        *self = (struct ldmsd_sampler) {
+                .base.name = SAMP,
+                .base.type = LDMSD_PLUGIN_SAMPLER,
+                .base.term = term,
+                .base.config = config,
+                .base.usage = usage,
+                .base.multi_instance = true,
+                .base.context = (void *)ts,
+                .get_set = get_set,
+                .sample = sample,
+        };
+
+        mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+        if (!mylog) {
+                int rc = errno;
+                ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+                         "of '" SAMP "' plugin. Error %d\n", rc);
+        }
+
+        return (struct ldmsd_plugin *)self;
 }

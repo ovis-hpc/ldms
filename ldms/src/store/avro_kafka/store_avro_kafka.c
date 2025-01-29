@@ -413,6 +413,9 @@ static void term(struct ldmsd_plugin *self)
 		sk->g_rd_conf = NULL;
 	}
 	pthread_mutex_unlock(&sk->sk_lock);
+
+        free(sk);
+        free(self);
 }
 
 static ldmsd_store_handle_t
@@ -1067,25 +1070,38 @@ void store_kafka_del(struct ldmsd_cfgobj *obj)
 	return;
 }
 
-static struct ldmsd_store kafka_store = {
-	.base.type   = LDMSD_PLUGIN_STORE,
-	.base.name   = "store_avro_kafka",
-	.base.term   = term,
-	.base.config = config,
-	.base.usage  = usage,
-	.base.context_size = sizeof(struct store_kafka_s),
-	.open        = open_store,
-	.get_context = get_ucontext,
-	.store       = store,
-	.flush       = flush_store,
-	.close       = close_store,
-	.commit      = commit_rows,
-};
-
 struct ldmsd_plugin *get_plugin()
 {
-	int rc;
-	if (!aks_log) {
+        struct ldmsd_store *self;
+	store_kafka_t sk;
+
+        sk = calloc(1, sizeof(*sk));
+        if (sk == NULL) {
+                return NULL;
+        }
+        self = calloc(1, sizeof(*self));
+        if (self == NULL) {
+                free(sk);
+                return NULL;
+        }
+
+        *self = (struct ldmsd_store) {
+                .base.type   = LDMSD_PLUGIN_STORE,
+                .base.name   = "store_avro_kafka",
+                .base.term   = term,
+                .base.config = config,
+                .base.usage  = usage,
+                .base.multi_instance = true,
+                .base.context = (void *)sk,
+                .open        = open_store,
+                .get_context = get_ucontext,
+                .store       = store,
+                .flush       = flush_store,
+                .close       = close_store,
+                .commit      = commit_rows,
+        };
+
+        if (!aks_log) {
 		/* Log initialization errors are quiet and will result in
 		 * messages going to the application log instead of our subsystem
 		 * specific log */
@@ -1093,10 +1109,10 @@ struct ldmsd_plugin *get_plugin()
 					    "Storage plugin that implements delivery of Avro "
 					    "serialized messages on the Kafka bus.");
 		if (!aks_log) {
-			rc = errno;
+			int rc = errno;
 			ovis_log(NULL, OVIS_LWARN,
 				"Error %d creating the log subsystem 'store.avro_kafka'.", rc);
 		}
 	}
-	return &kafka_store.base;
+	return (struct ldmsd_plugin *)self;
 }
