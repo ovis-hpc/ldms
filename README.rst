@@ -172,6 +172,7 @@ Build Dependencies
 * libmunge development library (for Munge LDMS Authentication plugin)
 * Python >= 3.6 development library and Cython >= 0.29 (for the LDMS Python API and the LDMSD Interface, ldmsd_controller)
 * doxygen (for the OVIS documentation)
+* yyjson (optional, optimization for the avro_kafka storage plugin)
 
 Some LDMS plug-ins have dependencies on additional libraries.
 

@@ -59,8 +59,7 @@ typedef struct aks_handle_s
 	serdes_t *serdes;	    /* The serdes handle */
 	enum {
 		AKS_ENCODING_JSON = 1,
-		AKS_ENCODING_AVRO = 2,
-        AKS_ENCODING_YYJSON = 3
+		AKS_ENCODING_AVRO = 2
 	} encoding;
 	char *topic_fmt;	   /* Format to use to create topic name from row */
 	char *topic_name;
@@ -379,8 +378,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 			sk->g_serdes_encoding = AKS_ENCODING_AVRO;
 		} else if (0 == strcasecmp(encoding, "json")) {
 			sk->g_serdes_encoding = AKS_ENCODING_JSON;
-		} else if (0 == strcasecmp(encoding, "yyjson")) {
-            sk->g_serdes_encoding = AKS_ENCODING_YYJSON;
 		} else {
 			LOG_ERROR("Ignoring unrecognized serialization encoding '%s'\n", encoding);
 		}
@@ -899,8 +896,7 @@ static char *get_topic_name(aks_handle_t sh, ldms_set_t set, ldmsd_row_t row)
 			topic = str_cat_s(str, row->schema_name);
 			break;
 		case 'F': /* Format */
-			if (sh->encoding == AKS_ENCODING_JSON ||
-                sh->encoding == AKS_ENCODING_YYJSON)
+            if (sh->encoding == AKS_ENCODING_JSON)
 				topic = str_cat_s(str, "json");
 			else
 				topic = str_cat_s(str, "avro");
@@ -1039,20 +1035,17 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 			break;
 		case AKS_ENCODING_JSON:
 			/* Encode row as a JSON text object */
+#ifdef HAVE_YYJSON
+			rc = ldmsd_row_to_json_object_yyjson(row, (char **)&ser_buf, &ser_size);
+#else
 			rc = ldmsd_row_to_json_object(row, (char **)&ser_buf, &ser_size);
+#endif
 			if (rc) {
 				LOG_ERROR("Failed to serialize row as JSON object, error: %d", rc);
 				goto skip_row_1;
 			}
 			ser_buf_size = (size_t)ser_size;
 			break;
-		case AKS_ENCODING_YYJSON:
-			/* Encode row as a JSON text object using yyjson*/
-			rc = ldmsd_row_to_json_object_yyjson(row, (char **)&ser_buf, &ser_size);
-			if (rc < 0) {
-				LOG_ERROR("Failed to serialize row as YYJSON object, error: %d", rc);
-				continue;
-			}
 		default:
 			assert(0 == "Invalid/unsupported serialization encoding");
 		}

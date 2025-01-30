@@ -62,7 +62,11 @@
 #include <openssl/sha.h>
 
 #include <jansson.h>
+
+#ifdef HAVE_YYJSON
 #include <yyjson.h>
+#endif
+
 #include "coll/rbt.h"
 
 #include "ldmsd.h"
@@ -713,6 +717,7 @@ int ldmsd_row_to_json_object(ldmsd_row_t row, char **str, int *len)
 	return rc;
 }
 
+#ifdef HAVE_YYJSON
 bool yyjson_add_by_type(yyjson_mut_doc *doc, yyjson_mut_val *root, ldmsd_col_t col)
 {
 	int rc, i;
@@ -846,6 +851,7 @@ int ldmsd_row_to_json_object_yyjson(ldmsd_row_t row, char **out_str, int *out_le
  err_0:
 	return rc;
 }
+#endif
 
 static const char *col_type_str(enum ldms_value_type type)
 {

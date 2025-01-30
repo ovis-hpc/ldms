@@ -891,6 +891,7 @@ int ldmsd_row_to_json_array(ldmsd_row_t row, char **str, int *len);
  */
 int ldmsd_row_to_json_object(ldmsd_row_t row, char **str, int *len);
 
+#ifdef HAVE_YYJSON
 /**
  * Create a JSON text object from an ldmsd_row_t using the yyjson
  * library.
@@ -911,6 +912,8 @@ int ldmsd_row_to_json_object(ldmsd_row_t row, char **str, int *len);
  * \retval 0     If succeded.
  * \retval errno If there is an error.
  */
+#endif
+
 int ldmsd_row_to_json_object_jansson(ldmsd_row_t row, char **str, int *len);
 
 /**
