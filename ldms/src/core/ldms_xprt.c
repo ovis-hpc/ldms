@@ -4343,57 +4343,15 @@ int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 	return x->ops.connect(x, sa, sa_len, cb, cb_arg);
 }
 
-static void sync_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
-{
-	switch (e->type) {
-	case LDMS_XPRT_EVENT_CONNECTED:
-		(void)clock_gettime(CLOCK_REALTIME, &x->stats.connected);
-		x->sem_rc = 0;
-		sem_post(&x->sem);
-		break;
-	case LDMS_XPRT_EVENT_REJECTED:
-	case LDMS_XPRT_EVENT_ERROR:
-	case LDMS_XPRT_EVENT_DISCONNECTED:
-		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
-		x->sem_rc = ECONNREFUSED;
-		sem_post(&x->sem);
-		break;
-	case LDMS_XPRT_EVENT_RECV:
-		break;
-	case LDMS_XPRT_EVENT_SET_DELETE:
-	case LDMS_XPRT_EVENT_SEND_COMPLETE:
-	case LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
-		/* Don't post */
-		return;
-	default:
-		XPRT_LOG(x, OVIS_LERROR, "sync_connect_cb: unexpected "
-				"ldms_xprt event value %d\n", (int) e->type);
-		assert(0 == "sync_connect_cb: unexpected ldms_xprt event value");
-	}
-}
+int ldms_rail_connect_by_name(ldms_t x, const char *host, const char *port,
+			      ldms_event_cb_t cb, void *cb_arg);
 
 int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
 			      ldms_event_cb_t cb, void *cb_arg)
 {
-	struct addrinfo *ai;
-	struct addrinfo hints = {
-		.ai_socktype = SOCK_STREAM
-	};
-	int rc = getaddrinfo(host, port, &hints, &ai);
-	if (rc)
-		return EHOSTUNREACH;
-	if (!cb) {
-		rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen, sync_connect_cb, cb_arg);
-		if (rc)
-			goto out;
-		sem_wait(&x->sem);
-		rc = x->sem_rc;
-	} else {
-		rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
-	}
-out:
-	freeaddrinfo(ai);
-	return rc;
+	/* `x` from the application is actually a rail handle. Moving
+	 * the implementation into ldms_rail.c */
+	return ldms_rail_connect_by_name(x, host, port, cb, cb_arg);
 }
 
 static int __ldms_xprt_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
