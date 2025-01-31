@@ -192,7 +192,6 @@ struct avl_q_item {
 TAILQ_HEAD(avl_q, avl_q_item);
 
 typedef struct ldmsd_cfgobj {
-	char *name;		/* Unique cfgobj name (instance name) */
 	struct ref_s ref;
 	ldmsd_cfgobj_type_t type;
 	ldmsd_cfgobj_del_fn_t __del;
@@ -208,7 +207,7 @@ typedef struct ldmsd_cfgobj {
 typedef struct ldmsd_prdcr_stream_s {
 	const char *name;
 	int64_t rate;
-	LIST_ENTRY(ldmsd_prdcr_stream_s) entry;
+LIST_ENTRY(ldmsd_prdcr_stream_s) entry;
 } *ldmsd_prdcr_stream_t;
 
 /**
@@ -216,7 +215,7 @@ typedef struct ldmsd_prdcr_stream_s {
  *
  * The Producer name, by policy, equals the name of this configuration object.
  */
-typedef struct ldmsd_prdcr {
+typedef struct ldmsd_cfgobj_prdcr {
 	struct ldmsd_cfgobj obj;
 
 	/* Controls hostname resolution caching behavior (user configurable)
@@ -322,13 +321,13 @@ typedef struct ldmsd_prdcr {
 	int rail; /* the number of xprt in the rail */
 	int64_t quota;
 	int64_t rx_rate;
-} *ldmsd_prdcr_t;
+} *ldmsd_cfgobj_prdcr_t;
 
-struct ldmsd_strgp;
-typedef struct ldmsd_strgp *ldmsd_strgp_t;
+struct ldmsd_cfgobj_strgp;
+typedef struct ldmsd_cfgobj_strgp *ldmsd_cfgobj_strgp_t;
 
 typedef struct ldmsd_strgp_ref {
-	ldmsd_strgp_t strgp;
+	ldmsd_cfgobj_strgp_t strgp;
 	LIST_ENTRY(ldmsd_strgp_ref) entry;
 } *ldmsd_strgp_ref_t;
 
@@ -400,7 +399,7 @@ typedef struct ldmsd_prdcr_ref {
 /**
  * Listening Producer: Named set of conditions of LDMS metric set providers
  */
-typedef struct ldmsd_prdcr_listen {
+typedef struct ldmsd_cfgobj_prdcr_listen {
 	struct ldmsd_cfgobj obj;
 	enum ldmsd_listen_prdcr_state_e {
 		/** Initial listen producer state */
@@ -426,7 +425,7 @@ typedef struct ldmsd_prdcr_listen {
 	 * this prdcr_listen.
 	 */
 	struct rbt prdcr_tree;
-} *ldmsd_prdcr_listen_t;
+} *ldmsd_cfgobj_prdcr_listen_t;
 
 /**
  * Updater: Named set of rules for updating remote metric sets
@@ -457,7 +456,7 @@ typedef struct ldmsd_updtr_task {
 LIST_HEAD(ldmsd_updtr_task_list, ldmsd_updtr_task);
 
 struct ldmsd_name_match;
-typedef struct ldmsd_updtr {
+typedef struct ldmsd_cfgobj_updtr {
 	struct ldmsd_cfgobj obj;
 
 	int push_flags;
@@ -501,7 +500,7 @@ typedef struct ldmsd_updtr {
 	 */
 	struct rbt prdcr_tree;
 	LIST_HEAD(updtr_match_list, ldmsd_name_match) match_list;
-} *ldmsd_updtr_t;
+} *ldmsd_cfgobj_updtr_t;
 
 typedef struct ldmsd_name_match {
 	/** Regular expresion matching schema or instance name */
@@ -589,7 +588,7 @@ int ldmsd_row_cache_make_list(ldmsd_row_list_t row_list, int row_count,
 typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set);
 typedef struct ldmsd_store_inst *ldmsd_store_t;
 
-struct ldmsd_strgp {
+struct ldmsd_cfgobj_strgp {
 	struct ldmsd_cfgobj obj;
 
 	/** A set of match strings to select a subset of all producers */
@@ -912,8 +911,6 @@ int process_config_file(const char *path, int *lineno, int trust);
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 typedef struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN]; /* plugin name (e.g. meminfo) */
-	char *inst_name; /* owned and freed by ldmsd not the plugin */
-	char *libpath; /* owned and freed by ldmsd not the plugin */
         bool multi_instance;
 	void *context; /* owned by the plugin, and freed in term() */
 	enum ldmsd_plugin_type {
@@ -948,21 +945,14 @@ typedef struct ldmsd_sampler {
 	int (*sample)(struct ldmsd_sampler *self);
 } *ldmsd_sampler_plugin_t;
 
-struct ldmsd_store_inst {
-	struct ldmsd_cfgobj cfg;
-	struct ldmsd_store *api;
-};
-
-typedef struct ldmsd_sampler_inst *ldmsd_sampler_t;
 typedef struct ldmsd_sampler_set {
 	ldms_set_t set;
 	ldmsd_sampler_t sampler;
 	LIST_ENTRY(ldmsd_sampler_set) entry;
 } *ldmsd_sampler_set_t;
 
-struct ldmsd_sampler_inst {
+struct ldmsd_cfgobj_sampler {
 	struct ldmsd_cfgobj cfg;
-	struct ldmsd_sampler *api;
 	unsigned long sample_interval_us;
 	long sample_offset_us;
 	int thread_id;
@@ -973,7 +963,7 @@ struct ldmsd_sampler_inst {
 	 * ldmsd_set_register
 	 */
 	LIST_HEAD(, ldmsd_sampler_set) set_list;
-};
+} *ldmsd_cfgobj_sampler;
 
 #define LDMSD_DEFAULT_SAMPLE_INTERVAL 1000000
 /** Metric name for component ids (u64). */
@@ -1157,9 +1147,7 @@ void ldmsd_cfgobj_lock(ldmsd_cfgobj_t obj);
 void ldmsd_cfgobj_unlock(ldmsd_cfgobj_t obj);
 ldmsd_cfgobj_t ldmsd_cfgobj_new(const char *name, ldmsd_cfgobj_type_t type, size_t obj_size,
 				ldmsd_cfgobj_del_fn_t __del);
-ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
-					  ldmsd_cfgobj_type_t type,
-					  size_t obj_size,
+ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(ldmsd_plugin_instance_t instance,
 					  ldmsd_cfgobj_del_fn_t __del,
 					  uid_t uid,
 					  gid_t gid,

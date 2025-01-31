@@ -78,6 +78,7 @@
 #include <mmalloc/mmalloc.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_internal.h"
 #include "ldmsd_request.h"
 #include "config.h"
 
@@ -110,20 +111,28 @@ enum ldmsd_plugin_data_e {
 	LDMSD_PLUGIN_DATA_CONTEXT_SIZE = 1,
 };
 
-ldmsd_plugin_t load_plugin(const char *plugin_name)
+static ldmsd_plugin_instance_t load_plugin_instance(const char *plugin_name, const char *inst_name)
 {
 	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
 	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
 	char *pathdir = library_path;
 	char *libpath;
 	char *saveptr = NULL;
-	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
-	void *d = NULL;
+	char *path;
+	void *dl_handle = NULL;
+        ldmsd_plugin_instance_t instance;
 
-	if (!path)
+        path = getenv("LDMSD_PLUGIN_LIBPATH");
+        if (!path) {
 		path = LDMSD_PLUGIN_LIBPATH_DEFAULT;
+        }
 
 	strncpy(library_path, path, sizeof(library_path) - 1);
+
+        instance = calloc(1, sizeof(*instance));
+        if (instance == NULL) {
+                goto err_0;
+        }
 
 	while ((libpath = strtok_r(pathdir, ":", &saveptr)) != NULL) {
 		ovis_log(config_log, OVIS_LDEBUG,
@@ -131,8 +140,8 @@ ldmsd_plugin_t load_plugin(const char *plugin_name)
 		pathdir = NULL;
 		snprintf(library_name, sizeof(library_name), "%s/lib%s.so",
 			libpath, plugin_name);
-		d = dlopen(library_name, RTLD_NOW);
-		if (d != NULL) {
+		dl_handle = dlopen(library_name, RTLD_NOW);
+		if (dl_handle != NULL) {
 			break;
 		}
 		struct stat buf;
@@ -140,54 +149,61 @@ ldmsd_plugin_t load_plugin(const char *plugin_name)
 			char *dlerr = dlerror();
 			ovis_log(config_log, OVIS_LERROR, "Bad plugin "
 				"'%s': dlerror %s\n", plugin_name, dlerr);
-			goto err_0;
+			goto err_1;
 		}
 	}
 
-	if (!d) {
+	if (!dl_handle) {
 		char *dlerr = dlerror();
 		ovis_log(config_log, OVIS_LERROR, "Failed to load the plugin '%s': "
 				"dlerror %s\n", plugin_name, dlerr);
-		goto err_0;
+		goto err_1;
 	}
 
-	ldmsd_plugin_get_f pget;
-	pget = dlsym(d, "get_plugin");
-	if (!pget) {
+	ldmsd_plugin_get_f get_plugin;
+	get_plugin = dlsym(dl_handle, "get_plugin");
+	if (!get_plugin) {
 		ovis_log(config_log, OVIS_LERROR,
 			"The library, '%s',  is missing the get_plugin() "
 			"function.", plugin_name);
-		goto err_0;
+		goto err_2;
 	}
-	struct ldmsd_plugin *pi = pget();
-	if (pi)
-		pi->libpath = strdup(library_name);
-	return pi;
+	instance->base_api = get_plugin();
+        instance->plugin_name = strdup(plugin_name);
+        instance->instance_name = strdup(inst_name);
+        instance->libpath = strdup(library_name);
 
+	return instance;
+
+err_2:
+	if (dl_handle)
+		dlclose(dl_handle);
+err_1:
+        free(instance);
 err_0:
-	if (d)
-		dlclose(d);
 	return NULL;
 }
 
-void ldmsd_unload_plugin(ldmsd_plugin_t pi)
+static void unload_plugin(ldmsd_plugin_intsance_t instance)
 {
-        free(pi->libpath);
-        pi->term(pi); /* plugin frees pi */
-        pi = NULL;
+        free(instance->libpath);
+        free(instance->instance_name);
+        free(instance->plugin_name);
+        instance->base_api->term(instance->base_api);
+        dl_close(dl_handle);
+        free(instance);
 }
 
 ldmsd_sampler_t
-ldmsd_sampler_alloc(const char *inst_name,
-			struct ldmsd_sampler *api,
-			ldmsd_cfgobj_del_fn_t __del,
-			uid_t uid, gid_t gid, int perm)
+ldmsd_sampler_alloc(ldmsd_plugin_intance_t instance,
+                    ldmsd_cfgobj_del_fn_t __del,
+                    uid_t uid, gid_t gid, int perm)
 {
 	ldmsd_sampler_t sampler;
 
-	sampler = (void*)ldmsd_cfgobj_new_with_auth(inst_name, LDMSD_CFGOBJ_SAMPLER,
-						sizeof(*sampler),
-						__del, uid, gid, perm);
+	instance->sampler = (void*)ldmsd_cfgobj_new_with_auth(LDMSD_CFGOBJ_SAMPLER,
+                                                    sizeof(*sampler),
+                                                    __del, uid, gid, perm);
 	if (!sampler) {
 		ovis_log(config_log, OVIS_LERROR,
 			"Error %d creating the sampler configuration object '%s'\n",
@@ -199,23 +215,20 @@ ldmsd_sampler_alloc(const char *inst_name,
 	return sampler;
 }
 
-ldmsd_store_t ldmsd_store_alloc(const char *inst_name,
-		struct ldmsd_store *api,
-		ldmsd_cfgobj_del_fn_t __del,
-		uid_t uid, gid_t gid, int perm)
+ldmsd_store_t ldmsd_store_alloc(ldmsd_plugin_instance_t instance,
+                                ldmsd_cfgobj_del_fn_t __del,
+                                uid_t uid, gid_t gid, int perm)
 {
 	ldmsd_store_t store;
 
-	store = (void*)ldmsd_cfgobj_new_with_auth(inst_name, LDMSD_CFGOBJ_STORE,
-						sizeof(*store),
-						__del, uid, gid, perm);
-	if (!store) {
+	instance->cfgobj_base = ldmsd_cfgobj_new_with_auth(LDMSD_CFGOBJ_STORE,
+                                                           __del, uid, gid, perm);
+	if (isntnace->!store) {
 		ovis_log(config_log, OVIS_LERROR,
 			"Error %d creating the store configuration object '%s'\n",
 				errno, inst_name);
 		return NULL;
 	}
-	store->api = api;
 	return store;
 }
 
@@ -270,38 +283,18 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 /*
  * Load a plugin
  */
-int ldmsd_load_plugin(char* inst_name, char *plugin_name, char *errstr, size_t errlen)
+int ldmsd_load_plugin(char *inst_name, char *plugin_name, char *errstr, size_t errlen)
 {
-	struct ldmsd_plugin *api = load_plugin(plugin_name);
-	if (!api)
+	struct ldmsd_plugin_instance_t *instance;
+	if (!plugin_name)
+		plugin_name = inst_name;
+
+        instance = load_plugin_instance(plugin_name, inst_name);
+	if (!instance)
 		return errno;
-	if (!inst_name)
-		inst_name = plugin_name;
-	switch (api->type) {
-	case LDMSD_PLUGIN_SAMPLER:
-		if (ldmsd_sampler_alloc(inst_name, (struct ldmsd_sampler *)api,
-                                        NULL,
-                                        geteuid(), getegid(), 0660)) {
-                        return 0;
-                } else {
-                        ldmsd_unload_plugin(api);
-                }
-		break;
-	case LDMSD_PLUGIN_STORE:
-		if (ldmsd_store_alloc(inst_name, (struct ldmsd_store *)api, NULL,
-                                      geteuid(), getegid(), 0660)) {
-			return 0;
-                } else {
-                        ldmsd_unload_plugin(api);
-                }
-                break;
-	default:
-		errno = EINVAL;
-		ovis_log(config_log, OVIS_LERROR,
-			"Error %d, the '%s' plugin is not a valid plugin type.\n",
-			errno, plugin_name);
-		break;
-	}
+
+	instance->cfgobj_base = ldmsd_cfgobj_new_with_auth(instance,
+
 	return errno;
 }
 

@@ -81,7 +81,7 @@ static pthread_mutex_t strgp_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 struct rbt listen_tree = RBT_INITIALIZER(cfgobj_cmp);
 static pthread_mutex_t listen_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
-struct rbt sampler_tree = RBT_INITIALIZER(cfgobj_cmp);
+!!struct rbt sampler_tree = RBT_INITIALIZER(cfgobj_cmp);
 static pthread_mutex_t sampler_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
 struct rbt store_tree = RBT_INITIALIZER(cfgobj_cmp);
@@ -212,30 +212,43 @@ const char *ldmsd_cfgobj_type_str(ldmsd_cfgobj_type_t t)
 	return __cfgobj_type_str[t];
 }
 
-ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
-					  ldmsd_cfgobj_type_t type,
-					  size_t obj_size,
+ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(ldmsd_plugin_instance_t instance,
 					  ldmsd_cfgobj_del_fn_t __del,
 					  uid_t uid,
 					  gid_t gid,
 					  int perm)
 {
 	ldmsd_cfgobj_t obj = NULL;
+        ldmsd_cfgobj_type_t type;
+        size_t obj_size = 0;
 
 	pthread_mutex_lock(cfgobj_locks[type]);
+
+        switch (instance->base_api->type) {
+	case LDMSD_PLUGIN_SAMPLER:
+                type = LDMSD_CFGOBJ_SAMPLER;
+                obj_size = sizeof(1, sizeof(instance->cfgobj_);
+                break;
+	case LDMSD_PLUGIN_STORE:
+                type = LDMSD_CFGOBJ_STORE;
+                obj_size = sizeof(1, ????);
+	default:
+		errno = EINVAL;
+		ovis_log(config_log, OVIS_LERROR,
+			"Error %d, the '%s' plugin is not a valid plugin type.\n",
+			errno, plugin_name);
+		break;
+	}
 
 	errno = EEXIST;
 	struct rbn *n = rbt_find(cfgobj_trees[type], name);
 	if (n)
-		goto out_1;
+o		goto out_1;
 
 	errno = ENOMEM;
 	obj = calloc(1, obj_size);
 	if (!obj)
 		goto out_1;
-	obj->name = strdup(name);
-	if (!obj->name)
-		goto out_2;
 
 	obj->type = type;
 	ref_init(&obj->ref, "init", __cfgobj_ref_free, obj);
