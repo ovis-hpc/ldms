@@ -141,9 +141,9 @@ Lustre information can be gotten from /proc/fs/lustre/llite:
 .nf
 sh-3.2# ls /proc/fs/lustre/llite/
 lustrefs-ffff88081d38f800  snx11024-ffff88041f1aec00
-.if
+.if t
 You will need to specify the Lustre mount points about which you want to collect data (e.g. "lustrefs,snx11024" in this case).
-
+.fi
 In order to enable the ability to collect Lustre information then build with:
 .B --enable-lustre
 Note that this will also build the lustre_sampler.

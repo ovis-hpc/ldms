@@ -8,7 +8,7 @@
 .PP
 ldmsd_store_app - LDMSD store_app storage plugin
 .PP
-.SH "SYNOPSIS "
+.SH "SYNOPSIS TESTING34 "
 .PP
 .SY load
 \fBname\fR=\fBstore_app\fR

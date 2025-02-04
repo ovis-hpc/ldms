@@ -1,4 +1,4 @@
-.\" Manpage for Plugin_procstat
+.\" Manpage for Plugin_procstat testing  testing testing
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
 .TH man 7 "03 Dec 2016" "v3" "LDMS Plugin procstat man page"
 

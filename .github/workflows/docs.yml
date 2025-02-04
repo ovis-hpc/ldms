@@ -1,0 +1,167 @@
+name: Build and Trigger Readthedocs
+
+on:
+  push:
+    paths:
+      - 'docs/**'           # Trigger for changes in the docs directory
+      - '**/*.rst'          # Trigger for any RST files
+  pull_request:
+    paths:
+      - 'docs/**'           # Same triggers for pull requests
+      - '**/*.rst'
+
+# convert all existing .man under ldms/ to .rst
+env:
+ CONVERT_MAN_PAGES: false
+
+jobs:
+  generate-rst:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install pandoc
+
+      - name: Convert .man files to .rst
+        run: |
+          if [ "$CONVERT_MAN_PAGES" == "true" ]; then
+            echo "CONVERT_MAN_PAGES is set, converting all .man files"
+            find ldms/src ldms/man -name "*.man" | while IFS= read -r man_file; do
+              target_file="docs/man/$(echo "$man_file" | sed 's|^ldms/src/||;s|^ldms/man/||;s/\.man$/.rst/')"
+              mkdir -p "$(dirname "$target_file")"
+              base_name=$(basename "$man_file" .man)
+              # Convert the .man file to .rst
+              if pandoc -f man -t rst "$man_file" -s -o "$target_file" --metadata title="$base_name" 2>/tmp/pandoc_error.log; then
+                echo "Successfully converted $man_file -> $target_file"
+              else
+                echo "Error processing $man_file. See error log for details:"
+                cat /tmp/pandoc_error.log | while IFS= read -r error_line; do
+                echo "$error_line"
+              done
+              fi
+            done
+            echo "All man files have been converted."
+            echo "Cleaning up white spaces and empty lines."
+            find docs/ -type f -exec sed -i -e 's/^[ \t]*\t/\t/' -e ':a; /^\s*$/{$d; N; ba}' {} +
+            find docs/ -type f -exec sed -i -e 's/[[:space:]]\+$//' {} +
+          fi
+
+      - name: Update index.rst files
+        run: |
+          echo "Checking for added or deleted .rst files in docs/man/ the most recent commit"
+          git fetch --unshallow || true
+          man_files=$(git diff "${{ github.event.before }}" "${{ github.sha }}" --name-only --diff-filter=ADMR -- "*.rst")
+
+          if [ ! -n "$man_files" ]; then
+            echo "No added or deleted .rst under docs/man/ files detected. Skipping update index.rst files"
+            exit 0
+          fi
+
+          # Function to generate index.rst for all subdirectories
+          generate_index_rsts() {
+           local dir="$1"
+            # Check if the directory contains .rst files (excluding index.rst)
+            rst_files=$(find "$dir" -maxdepth 1 -name "*.rst" ! -name "index.rst" | sort)
+            subdirs=$(find "$dir" -mindepth 1 -maxdepth 1 -type d)  # Find subdirectories within the directory
+            # If the directory contains any .rst files or subdirectories
+            if [ ! -z "$rst_files" ] || [ ! -z "$subdirs" ]; then
+              echo "Generating index.rst in $dir"
+              # Handle title for docs/man, all other subdirectories get their own titles
+              if [ "$dir" == "docs/man" ]; then
+                echo "General" > "$dir/index.rst"
+                echo "=======" >> "$dir/index.rst"
+                echo "" >> "$dir/index.rst"
+                echo ".. toctree::" >> "$dir/index.rst"
+                echo "   :maxdepth: 4" >> "$dir/index.rst"
+                echo "" >> "$dir/index.rst"
+                for rst_file in $rst_files; do
+                  base_name=$(basename "$rst_file" .rst)
+                  echo "   $base_name" >> "$dir/index.rst"
+                done
+              else
+                caption=$(basename "$dir" | sed 's/^\(\w\)/\U\1/')  # Capitalize first letter
+                echo "$caption" > "$dir/index.rst"    # Add title
+                echo "$(echo "$caption" | sed 's/./=/g')" >> "$dir/index.rst"  # Add underline
+                echo "" >> "$dir/index.rst"
+                echo ".. toctree::" >> "$dir/index.rst"
+                echo "   :maxdepth: 4" >> "$dir/index.rst"
+                echo "" >> "$dir/index.rst"
+
+                # List all .rst files in the subdirectory
+                for rst_file in $rst_files; do
+                  base_name=$(basename "$rst_file" .rst)
+                  echo "   $base_name" >> "$dir/index.rst"
+                done
+                # Add subdirectory index paths
+                for subdir in $subdirs; do
+                  subdir_name=$(basename "$subdir")
+                  echo "   $subdir_name/index" >> "$dir/index.rst"
+                done
+              fi
+            fi
+            # Recursively generate index.rst for subdirectories
+            for subdir in $subdirs; do
+              generate_index_rsts "$subdir"  # Recursively process subdirectories
+            done
+          }
+          # Start by generating index.rst for docs/man and all its subdirectories
+          generate_index_rsts "docs/man"
+      - name: Commit and Push Changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git add docs/
+            git commit -m "Update .rst and index.rst files"
+            git push origin HEAD
+          else
+            echo "No changes to commit."
+          fi
+  build-docs:
+    needs: generate-rst
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+
+      - name: Install Dependencies
+        run: |
+          pip install -r docs/requirements.txt
+      - name: Build Documentation Locally
+        run: |
+          sphinx-build -b html docs/ docs/_build
+  trigger-rtd:
+    needs: build-docs  # Ensures this job runs after the build-docs job
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Generate Webhook Signature and Trigger RTD
+        run: |
+          # Define the webhook secret
+          SECRET="${{ secrets.RTD_WEBHOOK_SECRET }}"
+          # Create a JSON payload with "ref" set to the branch name
+          PAYLOAD="{\"ref\": \"${GITHUB_REF_NAME}\"}"
+          # Generate HMAC SHA256 signature for the payload
+          SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | sed 's/^.* //')
+          # Trigger the Read the Docs webhook
+          curl -X POST \
+               -H "Content-Type: application/json" \
+               -H "X-Hub-Signature-256: sha256=$SIGNATURE" \
+               -d "$PAYLOAD" \
+               https://readthedocs.org/api/v2/webhook/ovis-rtd/273836/

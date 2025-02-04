@@ -361,7 +361,6 @@ config name=store_function_csv altheader=1 derivedconf=/XXX/der1.conf,/XXX/der2.
 strgp_add name=csv_memRHeL6_policy plugin=store_function_csv container=data_der schema=meminfoRHeL6
 strgp_add name=csv_memRHeL7_policy plugin=store_function_csv container=data_der schema=meminfoRHeL7
 strgp_add name=csv_ps_policy plugin=store_function_csv container=data_der schema=procstat
-.if
 
 .SH SEE ALSO
 ldms(7), Plugin_store_csv(7), Plugin_msr_interlagos(7)
