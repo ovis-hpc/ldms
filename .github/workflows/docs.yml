@@ -58,10 +58,14 @@ jobs:
 
       - name: Update index.rst files
         run: |
-          echo "Checking for added or deleted .rst files in docs/man/ the most recent commit"
-          git fetch --unshallow || true
-          man_files=$(git diff "${{ github.event.before }}" "${{ github.sha }}" --name-only --diff-filter=ADMR -- "*.rst")
-
+          if git rev-parse --is-shallow-repository | grep -q true; then
+                git fetch --unshallow
+                echo "Checking for added or deleted .rst files in docs/man/ the most recent commit"
+                man_files=$(git diff "${{ github.event.before }}" "${{ github.sha }}" --name-only --diff-filter=ADMR -- "*.rst")
+          else
+                echo "Repository is not shallow. Skipping unshallowing and docs/man/ commit check."
+                exit 0
+          fi
           if [ ! -n "$man_files" ]; then
             echo "No added or deleted .rst under docs/man/ files detected. Skipping update index.rst files"
             exit 0
