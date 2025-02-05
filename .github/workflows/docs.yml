@@ -4,11 +4,9 @@ on:
   push:
     paths:
       - 'docs/**'           # Trigger for changes in the docs directory
-      - '**/*.rst'          # Trigger for any RST files
   pull_request:
     paths:
       - 'docs/**'           # Same triggers for pull requests
-      - '**/*.rst'
 
 # convert all existing .man under ldms/ to .rst
 env:
@@ -50,7 +48,6 @@ jobs:
               done
               fi
             done
-            echo "All man files have been converted."
             echo "Cleaning up white spaces and empty lines."
             find docs/ -type f -exec sed -i -e 's/^[ \t]*\t/\t/' -e ':a; /^\s*$/{$d; N; ba}' {} +
             find docs/ -type f -exec sed -i -e 's/[[:space:]]\+$//' {} +
