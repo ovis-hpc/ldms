@@ -2101,7 +2101,12 @@ static int __process_stream_status(struct prdcr_stream_status_ctxt *ctxt, char *
 			json_attr_add(ctxt->base->stream_dict, stream_name, ss);
 		}
 		pthread_mutex_unlock(&ctxt->base->lock);
-		assert(!json_value_find(ss, ctxt->pname->str)); /* Receive stream_dir from this producer twice */
+		if (json_value_find(ss, ctxt->pname->str)) {
+			ldmsd_log(OVIS_LINFO, "Duplication prdcr_stream_status responses from " \
+					      "producer '%s'. Only the first response was processed.\n",
+					      ctxt->pname->str);
+			continue;
+		}
 		json_attr_rem(s, "publishers"); /* We need to know only the overall statistic on sampler. */
 		p = json_entity_copy(s);
 		if (!p) {
@@ -2123,15 +2128,25 @@ static int __on_stream_status_resp(ldmsd_req_cmd_t rcmd)
 
 	ldmsd_req_hdr_t resp = (ldmsd_req_hdr_t)(rcmd->reqc->req_buf);
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
-	assert(attr->attr_id == LDMSD_ATTR_JSON);
+	if (attr->attr_id != LDMSD_ATTR_JSON) {
+		ldmsd_log(OVIS_LINFO, "Invalid stream_status response from producer '%s': " \
+				      "attribute field must be JSON. Failed to parse.\n",
+				                                      ctxt->pname->str);
+		goto remove_ctxt;
+	}
 	rc = __process_stream_status(ctxt, (char*)attr->attr_value, attr->attr_len);
+remove_ctxt:
+	pthread_mutex_lock(&base->lock);
 	TAILQ_REMOVE(&base->prdcr_list, ctxt->pname, entry);
 	free(ctxt->pname->str);
 	free(ctxt->pname);
 	free(ctxt);
 
-	if (!TAILQ_EMPTY(&base->prdcr_list))
+	if (!TAILQ_EMPTY(&base->prdcr_list)) {
+		pthread_mutex_unlock(&base->lock);
 		goto out;
+	}
+	pthread_mutex_unlock(&base->lock);
 
 	/*
 	 * We have received all responses.
@@ -2151,6 +2166,7 @@ static int __on_stream_status_resp(ldmsd_req_cmd_t rcmd)
 	ldmsd_append_reply(rcmd->org_reqc, (char*)&(discrim),
 				sizeof(discrim), LDMSD_REQ_EOM_F);
 	json_entity_free(base->stream_dict);
+	pthread_mutex_destroy(&base->lock);
 	free(base);
 out:
 	return rc;
@@ -2264,7 +2280,9 @@ int prdcr_stream_status_handler(ldmsd_req_ctxt_t reqc)
 			/* Failed to forward the request.
 			 * Remove the producer name from the list
 			 */
+			pthread_mutex_lock(&ctxt->lock);
 			TAILQ_REMOVE(&ctxt->prdcr_list, pname, entry);
+			pthread_mutex_unlock(&ctxt->lock);
 			free(pname->str);
 			free(pname);
 		}
