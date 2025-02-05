@@ -19,12 +19,13 @@ An analysis module is a python script and has a general template. There is a cla
   * ``params`` - a string of the extra parameters specified by the Grafana query (e.g. 'threshold = 10').
   * ``filters`` - a python list of filter strings for the DSOS query (e.g. ['job_id == 30','component_id < 604']).
 /t
+
 Example Analysis Module
 -------------------------------------
 
 Below is a basic analysis that simply queries the database and returns the DataFrame of the metrics passed in along with the timestamp, component_id, and job_id for each metric.
 
-.. code-block :: python
+.. code-block:: python
 
     import os, sys, traceback
     import datetime as dt
@@ -76,14 +77,14 @@ You do not need to query from the Grafana interface to test your module. Below i
 	**If Grafana and SOS are already installed on your system then please skip the `Required Scripts`_ section** and ask your system administrator where these scripts reside on the system so that you may copy all necessary python scripts and modules to your home directory, edit/modify exisiting python analysis modules and create new ones.
 
 
-.. code-block :: bash
+.. code-block:: bash
 
     export PYTHONPATH=/usr/bin/python:/<INSTALL_PATH>/lib/python<PYTHON_VERSION>/site-packages/
     export PATH=/usr/bin:/<INSTALL_PATH>/bin:/<INSTALL_PATH>/sbin::$PATH
 
 Then you can imitate the Grafana query to call your analysis module using a python script such as:
 
-.. code-block :: python
+.. code-block:: python
 
     #!/usr/bin/python3
 
@@ -118,8 +119,9 @@ Then you can imitate the Grafana query to call your analysis module using a pyth
 
 	The ``params`` can be any number or string that you want to define in your analysis module to better manage, output or analyze the data. For example, you can program your module to return specific analyses such as the average with ``params='analysis=average'`` by parsing the arguement, using ``if`` statements to determine what analysis to apply to the data and, to make things cleaner, a function to perform these calculations in.
 /t
+
 Required Scripts
-////////////////
+*****************
 The following scripts are needed to run the python analysis module. If these python scripts or modules **do not exist on your system and you have no way of accessing them** then please continue. Otherwise, you can skip this section
 
 **If you do not have access to these existing scripts** then please create them in the same directory as your python analysis module.
@@ -130,7 +132,7 @@ The following scripts are needed to run the python analysis module. If these pyt
 
 grafanaFormatter:
 
-.. code:: RST
+.. code-block:: python
 
   from sosdb import Sos
   from sosdb.DataSet import DataSet
@@ -184,7 +186,7 @@ grafanaFormatter:
 
 table_formatter:
 
-.. code:: RST
+.. code-block:: python
 
   from graf_analysis.grafanaFormatter import DataFormatter, RowIter
   from sosdb.DataSet import DataSet
@@ -224,7 +226,7 @@ table_formatter:
 
 time_series_formatter:
 
-.. code:: RST
+.. code-block:: python
 
   from graf_analysis.grafanaFormatter import DataFormatter
   from sosdb.DataSet import DataSet

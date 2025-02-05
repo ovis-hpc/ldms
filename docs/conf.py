@@ -29,6 +29,7 @@ intersphinx_mapping = {
     "maestro": ("https://ovis-hpc.readthedocs.io/projects/maestro/en/latest/", None),
     "baler": ("https://ovis-hpc.readthedocs.io/projects/baler/en/latest/", None),
     "ldms": ("https://ovis-hpc.readthedocs.io/projects/ldms/en/latest/", None),
+    "containers": ("https://ovis-hpc.readthedocs.io/projects/containers/en/latest/", None),
 
 }
 intersphinx_disabled_domains = ['std']
@@ -40,6 +41,7 @@ templates_path = ['_templates']
 
 html_theme = 'sphinx_rtd_theme'
 html_logo = 'https://ovis-hpc.readthedocs.io/en/latest/_images/ovis-logo.png'
+html_url = 'https://ovis-hpc.readthedocs.io/en/latest/index.html'
 html_theme_options = {
     'logo_only': True,
     'logo_url': 'https://ovis-hpc.readthedocs.io/en/latest/',

@@ -10,33 +10,26 @@
 
 Welcome To OVIS LDMS Documentation!
 ====================================
-.. image:: https://github.com/ovis-hpc/readthedocs/blob/main/docs/source/images/ovis-logo.png?raw=true
+.. image:: https://github.com/ovis-hpc/readthedocs/blob/main/images/ovis-logo.png?raw=true
+   :target: https://ovis-hpc.readthedocs.io/en/latest/index.html
    :width: 225
    :height: 250
    :align: center
 
 LDMS is a lightweight framework for collecting, aggregating, and transporting system metrics in HPC environments. It gathers data from diverse sources like hardware counters and system logs, enabling real-time monitoring with low overhead and scalability for large systems.
 
-home page: :doc:`ovis-hpc:index`
-:doc:`Homepage <ovis-hpc:index>`
-
-LDMS GitHub: https://github.com/ovis-hpc/ovis
-
-To join the LDMS Users Group Mailing List: https://github.com/ovis-hpc/ovis-wiki/wiki/Mailing-Lists
-
 .. toctree::
    :maxdepth: 3
    :caption: Introduction To LDMS
 
-   ldms-quickstart
-   container-quickstart
+   intro/ldms-quickstart
+   intro/docker-quickstart
 
 .. toctree::
    :maxdepth: 3
    :caption: LDMS Streams
 
-   ldms_stream
-   ldms_stream_apps
+   streams/ldms_stream_apps
 
 .. toctree::
    :maxdepth: 3
@@ -67,11 +60,15 @@ To join the LDMS Users Group Mailing List: https://github.com/ovis-hpc/ovis-wiki
 
    contributing/index
 
+To join the LDMS Users Group Mailing List: https://github.com/ovis-hpc/ovis-wiki/wiki/Mailing-Lists
+
 OVIS Subproject Github Repositories
 ====================================
 
-`ldms <https://github.com/ovis-hpc/ovis>`_
-`ovis-publications <https://github.com/ovis-hpc/ovis-publications>`_
-`maestro <https://github.com/ovis-hpc/maestro>`_
-`sos <https://github.com/ovis-hpc/sos>`_
-`baler <https://github.com/ovis-hpc/baler>`_
+* `ldms <https://github.com/ovis-hpc/ovis>`_
+* `ovis-publications <https://github.com/ovis-hpc/ovis-publications>`_
+* `maestro <https://github.com/ovis-hpc/maestro>`_
+* `sos <https://github.com/ovis-hpc/sos>`_
+* `baler <https://github.com/ovis-hpc/baler>`_
+* `containers <https://github.com/ovis-hpc/ldms-containers`_
+* `ovis-publications <https://github.com/ovis-hpc/ovis-publications>`_
