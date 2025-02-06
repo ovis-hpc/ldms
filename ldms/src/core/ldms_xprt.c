@@ -511,11 +511,22 @@ char *__ldms_format_set_for_dir(struct ldms_set *set, size_t *buf_sz)
 	return json_buf;
 }
 
+struct xprt_ref {
+	ldms_t x;
+	LIST_ENTRY(xprt_ref) entry;
+};
+LIST_HEAD(xprt_ref_list, xprt_ref);
+
 static void dir_update(struct ldms_set *set, enum ldms_dir_type t)
 {
 	char *json_buf;
 	size_t json_cnt;
 	struct ldms_xprt *x;
+	struct xprt_ref_list xref_list;
+	struct xprt_ref *xref;
+
+	LIST_INIT(&xref_list);
+
 	json_buf = __ldms_format_set_for_dir(set, &json_cnt);
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_FOREACH(x, &xprt_list, xprt_link) {
@@ -523,12 +534,32 @@ static void dir_update(struct ldms_set *set, enum ldms_dir_type t)
 			x->log("%s: memory allocation error\n", __func__);
 			break;
 		}
-		if (x->remote_dir_xid)
-			send_dir_update(x, t, json_buf, json_cnt);
+
+		if (!x->remote_dir_xid)
+			continue;
+
+		xref = malloc(sizeof(*xref));
+		if (!xref) {
+			pthread_mutex_unlock(&xprt_list_lock);
+			goto cleanup;
+		}
+		xref->x = ldms_xprt_get(x);
+		LIST_INSERT_HEAD(&xref_list, xref, entry);
 	}
 	pthread_mutex_unlock(&xprt_list_lock);
+
+	LIST_FOREACH(xref, &xref_list, entry) {
+		send_dir_update(xref->x, t, json_buf, json_cnt);
+	}
+cleanup:
 	if (json_buf)
 		free(json_buf);
+	;
+	while ((xref = LIST_FIRST(&xref_list))) {
+		LIST_REMOVE(xref, entry);
+		ldms_xprt_put(xref->x);
+		free(xref);
+	}
 }
 
 void __ldms_dir_add_set(struct ldms_set *set)
@@ -564,12 +595,33 @@ void __ldms_dir_del_set(struct ldms_set *set)
 	 * dir_update(set, LDMS_DIR_DEL);
 	 */
 	struct ldms_xprt *x;
+	struct xprt_ref *xref;
+	struct xprt_ref_list xref_list;
+
+	LIST_INIT(&xref_list);
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_FOREACH(x, &xprt_list, xprt_link) {
-		if (x->remote_dir_xid)
-			ldms_xprt_set_delete(x, set, __set_delete_cb);
+		if (!x->remote_dir_xid)
+			continue;
+
+		xref = malloc(sizeof(*xref));
+		if (!xref) {
+			pthread_mutex_unlock(&xprt_list_lock);
+			goto cleanup;
+		}
+		xref->x = ldms_xprt_get(x);
+		LIST_INSERT_HEAD(&xref_list, xref, entry);
 	}
 	pthread_mutex_unlock(&xprt_list_lock);
+	LIST_FOREACH(xref, &xref_list, entry) {
+		ldms_xprt_set_delete(xref->x, set, __set_delete_cb);
+	}
+cleanup:
+	while ((xref = LIST_FIRST(&xref_list))) {
+		LIST_REMOVE(xref, entry);
+		ldms_xprt_put(xref->x);
+		free(xref);
+	}
 }
 
 void __ldms_dir_upd_set(struct ldms_set *set)
