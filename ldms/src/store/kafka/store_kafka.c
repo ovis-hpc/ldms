@@ -96,7 +96,7 @@ static const char *_help_str =
 "              decomposition=decomp.json\n"
 "";
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  _help_str;
 }
@@ -104,7 +104,7 @@ static const char *usage(struct ldmsd_plugin *self)
 pthread_mutex_t sk_lock = PTHREAD_MUTEX_INITIALIZER;
 static rd_kafka_conf_t *common_rconf = NULL;
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(void *context, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	int rc = 0;
@@ -269,7 +269,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	pthread_mutex_lock(&sk_lock);
 	if (common_rconf) {
@@ -282,7 +282,7 @@ static void term(struct ldmsd_plugin *self)
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(const struct ldmsd_store *s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	errno = ENOSYS;

@@ -305,7 +305,7 @@ struct derived_data{ //the generic information about the derived metric
 
 /*** per schema (includes instance data within the sets_idx) *******/
 struct function_store_handle { //these are per-schema
-	struct ldmsd_store *store;
+	const struct ldmsd_store *store;
 	char *path;
 	FILE *file;
 	FILE *headerfile;
@@ -1053,7 +1053,7 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value = NULL;
 	char *bvalue = NULL;
@@ -1198,7 +1198,7 @@ static void printStructs(struct function_store_handle *s_handle){
 	ovis_log(mylog, OVIS_LDEBUG, "=========================================\n");
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 
 	//FIXME: update this for the free's.
@@ -1212,7 +1212,7 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(mylog);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "    config name=store_function_csv [path=<path> altheader=<0|1>]\n"
 		"                rollover=<num> rolltype=<num>\n"
@@ -1305,7 +1305,7 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char* schema,
+open_store(const struct ldmsd_store *s, const char *container, const char* schema,
 		struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
 	struct function_store_handle *s_handle = NULL;

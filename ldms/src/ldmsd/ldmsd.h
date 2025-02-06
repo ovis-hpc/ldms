@@ -928,8 +928,8 @@ typedef struct ldmsd_plugin {
 	int (*config)(void *context, struct attr_value_list *kwl, struct attr_value_list *avl);
 	void (*term)(void *context);
 	const char *(*usage)(void *context);
-        void *(*instance_init)(const char *plugin_instance_name);
-        void (*instance_fini)(void *context);
+        void *(*instance_create)(const char *plugin_instance_name);
+        void (*instance_destroy)(void *context);
 } *ldmsd_plugin_t;
 
 /* This struct is owned by the plugin. ldmsd should never edit the contents. */

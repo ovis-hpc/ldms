@@ -69,6 +69,7 @@
 #define SAMP "meminfo"
 
 typedef struct meminfo_s {
+        char *plugin_instance_name;
 	ldms_set_t set;
 	FILE *mf;
 	int metric_offset;
@@ -171,14 +172,14 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	meminfo_t mi = self->context;
+	meminfo_t mi = context;
 	int rc;
 
 	if (mi->set) {
@@ -191,7 +192,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	mi->base = base_config(avl, self->inst_name, SAMP, mylog);
+	mi->base = base_config(avl, mi->plugin_instance_name, SAMP, mylog);
 	if (!mi->base) {
 		rc = errno;
 		goto err;
@@ -207,9 +208,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
-	meminfo_t mi = self->base.context;
+	meminfo_t mi = context;
 	int rc;
 	int metric_no;
 	char *s;
@@ -243,9 +244,9 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
-	meminfo_t mi = self->context;
+	meminfo_t mi = context;
 	if (mi->mf)
 		fclose(mi->mf);
 	if (mi->base)
@@ -256,15 +257,35 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(mylog);
 }
 
+
+static void *instance_create(const char *plugin_instance_name) {
+        meminfo_t context;
+
+        /* FIXME error handling */
+        context = calloc(1, sizeof(*context));
+        /* FIXME - I think it would be better to have an accessor function
+           to look up the instance's name, rather than passing it as an
+           instance_init() parameter. */
+        context->plugin_instance_name = strdup(plugin_instance_name);
+
+        return context;
+}
+
+static void instance_destroy(void *context) {
+        meminfo_t mi = context;
+
+        free(mi->plugin_instance_name);
+        free(mi);
+}
+
 static struct ldmsd_sampler meminfo_plugin = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.context_size = sizeof(struct meminfo_s),
-	},
+        .base.name = SAMP,
+	.base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.term = term,
+	.base.config = config,
+	.base.usage = usage,
+        .base.instance_create = instance_create,
+        .base.instance_destroy = instance_destroy,
 	.sample = sample,
 };
 

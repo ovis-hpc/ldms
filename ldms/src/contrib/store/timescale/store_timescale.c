@@ -71,7 +71,7 @@ static char port[100];
 static char dbname[100];
 static char password[100];
 struct timescale_store {
-        struct ldmsd_store *store;
+        const struct ldmsd_store *store;
         void *ucontext;
         char *schema;
         char *container;
@@ -209,7 +209,7 @@ static char *fixup(char *name)
 /**
  *  * \brief Configuration
  *   */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         char *value, *pwfile = NULL;
         pthread_mutex_lock(&cfg_lock);
@@ -297,13 +297,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
         return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (mylog)
 		ovis_log_destroy(mylog);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
         return "config name=store_timescale user=<username> pwfile=<full path to password file> "
                "hostaddr=<host ip addr> port=<port no> dbname=<database name> "
@@ -311,7 +311,7 @@ static const char *usage(struct ldmsd_plugin *self)
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(const struct ldmsd_store *s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
         struct timescale_store *is = NULL;

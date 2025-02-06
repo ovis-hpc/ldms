@@ -56,13 +56,13 @@
 
 static uint64_t delay = 0; /* delay in usec, default is `no delay` */
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return
 "    config name=store_none delay=uSEC\n"
 "           The number of microseconds for the delay of each entry.\n";
 }
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(void *context, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	char *value;
@@ -72,15 +72,15 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(const struct ldmsd_store *s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
-	return s;
+	return (ldmsd_store_handle_t)s;
 }
 
 static void *get_ucontext(ldmsd_store_handle_t _sh)

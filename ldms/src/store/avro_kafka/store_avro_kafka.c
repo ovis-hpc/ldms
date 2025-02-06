@@ -93,7 +93,7 @@ static const char *_help_str =
     "    strgp_add name=kp plugin=store_avro_kafka container=localhost,br1.kf:9898 \\\n"
     "              decomposition=decomp.json\n"
     "";
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return _help_str;
 }
@@ -317,11 +317,11 @@ static int parse_serdes_conf_file(char *path, serdes_conf_t *s_conf)
 	return rc;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(void *context, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
+	store_kafka_t sk = context;
 	int rc = 0;
-	store_kafka_t sk = (store_kafka_t)self->context;
 	char *path, *encoding, *topic;
 	char err_str[512];
 
@@ -406,9 +406,9 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
-	store_kafka_t sk = (void*)self->context;
+	store_kafka_t sk = context;
 	pthread_mutex_lock(&sk->sk_lock);
 	if (sk->g_rd_conf)
 	{
@@ -419,7 +419,7 @@ static void term(struct ldmsd_plugin *self)
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(const struct ldmsd_store *s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	errno = ENOSYS;
@@ -465,9 +465,9 @@ static void close_store(ldmsd_store_handle_t _sh)
 
 static aks_handle_t __handle_new(ldmsd_strgp_t strgp)
 {
+	store_kafka_t sk = strgp->store->context;
 	char err_str[512];
 	rd_kafka_conf_res_t res;
-	store_kafka_t sk = strgp->store->api->base.context;
 
 	aks_handle_t sh = calloc(1, sizeof(*sh));
 	if (!sh) {
@@ -1070,13 +1070,29 @@ void store_kafka_del(struct ldmsd_cfgobj *obj)
 	return;
 }
 
+static void *instance_create(const char *plugin_instance_name)
+{
+	store_kafka_t context;
+
+        /* FIXME error handling */
+        context = calloc(1, sizeof(*context));
+
+        return context;
+}
+
+static void instance_destroy(void *context)
+{
+        free(context);
+}
+
 static struct ldmsd_store kafka_store = {
 	.base.type   = LDMSD_PLUGIN_STORE,
 	.base.name   = "store_avro_kafka",
 	.base.term   = term,
 	.base.config = config,
 	.base.usage  = usage,
-	.base.context_size = sizeof(struct store_kafka_s),
+        .base.instance_create = instance_create,
+        .base.instance_destroy = instance_destroy,
 	.open        = open_store,
 	.get_context = get_ucontext,
 	.store       = store,

@@ -183,7 +183,7 @@ err:
 	return rc;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return "config name=" SAMP " " BASE_CONFIG_USAGE;
 }
@@ -191,7 +191,7 @@ static const char *usage(struct ldmsd_plugin *self)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = 0;
 
@@ -201,7 +201,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 
-	base = base_config(avl, self->inst_name, SAMP, mylog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base)
 		goto err;
 
@@ -217,7 +217,7 @@ err:
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	int rc;
 	int metric_no;
@@ -275,7 +275,7 @@ out:
 }
 
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (mf)
 		fclose(mf);

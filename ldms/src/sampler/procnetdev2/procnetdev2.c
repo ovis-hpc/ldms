@@ -118,7 +118,7 @@ struct ldms_metric_template_s rec_metrics[] = {
 
 #define SAMP "procnetdev2"
 typedef struct procnetdev2_s {
-        const char *plugin_instance_name;
+        char *plugin_instance_name;
 	int rec_def_idx;
 	int rec_metric_ids[REC_METRICS_LEN];
 	size_t rec_heap_sz;
@@ -313,7 +313,7 @@ static int config(void *context, struct attr_value_list *kwl, struct attr_value_
 	p->excount = excount;
 
  cfg:
-	p->base = base_config(avl, self->plugin_instance_name, SAMP, mylog);
+	p->base = base_config(avl, p->plugin_instance_name, SAMP, mylog);
 	if (!p->base){
 		rc = EINVAL;
 		goto err;
@@ -488,11 +488,11 @@ static void __once()
 }
 #endif
 
-static void *instance_init (const char *plugin_instance_name) {
+static void *instance_create(const char *plugin_instance_name) {
         procnetdev2_t context;
 
         /* FIXME error handling */
-        context = calloc(1, sizeof(struct procnetdev2_s));
+        context = calloc(1, sizeof(*context));
         /* FIXME - I think it would be better to have an accessor function
            to look up the instance's name, rather than passing it as an
            instance_init() parameter. */
@@ -501,20 +501,21 @@ static void *instance_init (const char *plugin_instance_name) {
         return context;
 }
 
-static void instance_fini (void *context) {
-        free(context);
+static void instance_destroy(void *context) {
+	procnetdev2_t p = context;
+
+        free(p->plugin_instance_name);
+        free(p);
 }
 
 static struct ldmsd_sampler procnetdev2_sampler = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-                .instance_init = instance_init,
-                .instance_fini = instance_fini,
-	},
+        .base.name = SAMP,
+        .base.type = LDMSD_PLUGIN_SAMPLER,
+        .base.term = term,
+        .base.config = config,
+        .base.usage = usage,
+        .base.instance_create = instance_create,
+        .base.instance_destroy = instance_destroy,
 	.sample = sample,
 };
 

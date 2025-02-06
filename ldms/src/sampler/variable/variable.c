@@ -217,7 +217,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "config name=" SAMP " producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname> with_jobid=<jid>]\n"
 		"    <prod_name>  The producer name\n"
@@ -236,7 +236,7 @@ static const char *usage(struct ldmsd_plugin *self)
  *     sname            Optional schema name. Defaults to variable
  *     jid              lookup jobid or report 0.
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *sname;
@@ -293,7 +293,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return 0;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	int rc;
 	union ldms_value v;
@@ -342,7 +342,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (set) {
 		ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);

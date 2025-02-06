@@ -233,7 +233,7 @@ err0:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (set)
 		ldms_set_delete(set);
@@ -258,7 +258,7 @@ static void term(struct ldmsd_plugin *self)
  * If mdts is not given, the plugin will create ldms_set according to the
  * available MDTs at the time.
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *mdts;
 
@@ -267,7 +267,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	base = base_config(avl, self->inst_name, "Lustre_MDS", mylog);
+	base = base_config(avl, SAMP, "Lustre_MDS", mylog);
 	if (!base)
 		return errno;
 
@@ -282,7 +282,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return
 "config name=" SAMP " " BASE_CONFIG_SYNOPSIS
@@ -295,7 +295,7 @@ BASE_CONFIG_DESC
 ;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	if (!set)
 		return EINVAL;

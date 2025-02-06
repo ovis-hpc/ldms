@@ -110,7 +110,7 @@ err1:
         return -1;
 }
 
-static int config(struct ldmsd_plugin *self,
+static int config(void *context,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         int rc = 0;
@@ -118,7 +118,7 @@ static int config(struct ldmsd_plugin *self,
 
         ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
-        sampler_base = base_config(avl, self->inst_name, "slingshot_info", mylog);
+        sampler_base = base_config(avl, SAMP, "slingshot_info", mylog);
 
         rc = initialize_ldms_structs();
         if (rc < 0) {
@@ -317,7 +317,7 @@ static void get_mac_address(const char *interface, char *mac_address, int len)
         strncpy(mac_address, value, len);
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
         struct cxil_device_list *device_list;
         ldms_mval_t list_handle;
@@ -408,7 +408,7 @@ static int sample(struct ldmsd_sampler *self)
         return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
         ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
         base_set_delete(sampler_base);
@@ -416,7 +416,7 @@ static void term(struct ldmsd_plugin *self)
         sampler_base = NULL;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
         ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP " " BASE_CONFIG_SYNOPSIS

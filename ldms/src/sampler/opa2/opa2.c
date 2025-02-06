@@ -435,7 +435,7 @@ static int create_metric_set(struct hfi_port_comb *hpc)
 	return 0;
 }
 
-static const char *SAPI(usage)(struct ldmsd_plugin *self)
+static const char *SAPI(usage)(void *context)
 {
 	return  "config name=" SAMP BASE_CONFIG_USAGE
 "    <ports>   A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2)\n"
@@ -458,7 +458,7 @@ static void init_portid() {
 	portid.pkey_idx = 0;
 }
 
-static int SAPI(config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int SAPI(config)(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 	if (hfi_quant != 0) {
@@ -474,7 +474,7 @@ static int SAPI(config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, 
 	}
 
 
-	cfg_base = base_config(avl, self->inst_name, SAMP, mylog);
+	cfg_base = base_config(avl, SAMP, SAMP, mylog);
 	if (!cfg_base) {
 		rc = errno;
 		return rc;
@@ -502,7 +502,7 @@ static int SAPI(config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, 
 	return 0;
 }
 
-static int SAPI(sample)(struct ldmsd_sampler *self)
+static int SAPI(sample)(void *context)
 {
 	int dec_val;
 	union ldms_value v;
@@ -537,7 +537,7 @@ static int SAPI(sample)(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void SAPI(term)(struct ldmsd_plugin *self)
+static void SAPI(term)(void *context)
 {
 	struct hfi_port_comb *hpc;
 	ovis_log(mylog, OVIS_LDEBUG, SAMP ": closing plugin.\n");

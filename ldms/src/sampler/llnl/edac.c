@@ -283,7 +283,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "config name=" SAMP " max_mc=<max_mc> max_csrow=<max_csrow> " BASE_CONFIG_USAGE
 		"    <max_mc>      The max number of mc.\n"
@@ -291,7 +291,7 @@ static const char *usage(struct ldmsd_plugin *self)
 }
 
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 
 	void * arg = NULL;
@@ -337,7 +337,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		}
 	}
 
-	base = base_config(avl, self->inst_name, SAMP, mylog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		ovis_log(mylog, OVIS_LERROR, "failed base_config.\n");
 		rc = EINVAL;
@@ -361,7 +361,7 @@ err:
 
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	// If there was an error before, don't send multiple errors, just return
 	if (edac_valid != 1)
@@ -431,7 +431,7 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (base)
 		base_del(base);

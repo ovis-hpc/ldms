@@ -105,7 +105,7 @@ static const char *_usage = "\
 ";
 
 static const char *
-__usage(struct ldmsd_plugin *self)
+__usage(void *context)
 {
 	return _usage;
 }
@@ -239,7 +239,7 @@ static int __op_close(const char *stream)
 }
 
 static int
-__config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+__config(void *context, struct attr_value_list *kwl,
 		struct attr_value_list *avl)
 {
 	const char *op = av_value(avl, "op");
@@ -257,7 +257,7 @@ __config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 }
 
 static void
-__term(struct ldmsd_plugin *self)
+__term(void *context)
 {
 	struct rbn *rbn;
 	struct __client_s *cli;
@@ -276,9 +276,9 @@ __term(struct ldmsd_plugin *self)
 }
 
 static ldmsd_store_handle_t
-__open(struct ldmsd_store *s, const char *container, const char *schema,
-			    struct ldmsd_strgp_metric_list *metric_list,
-			    void *ucontext)
+__open(const struct ldmsd_store *s, const char *container, const char *schema,
+       struct ldmsd_strgp_metric_list *metric_list,
+       void *ucontext)
 {
 	errno = ENOTSUP;
 	return NULL;

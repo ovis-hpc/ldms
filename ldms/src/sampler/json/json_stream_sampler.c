@@ -125,6 +125,7 @@ typedef struct js_schema_s {
 
 typedef struct js_stream_sampler_s *js_stream_sampler_t;
 struct js_stream_sampler_s {
+        char *plugin_instance_name;
 	int initialized;	/* 0 if 1st config */
 	char *stream_name;	/* stream msgs received from */
 	size_t heap_sz;		/* heap size for created sets */
@@ -141,7 +142,7 @@ struct js_stream_sampler_s {
 	pthread_mutex_t lock;
 };
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return \
 	"config name=js_stream_sampler producer=<prod_name> \n"
@@ -809,12 +810,12 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg);
  *		the instance name from features from the JSON object
  *		and the transport on which the object was received.
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(void *context, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
+	js_stream_sampler_t js = context;
 	char *value;
 	int rc;
-	js_stream_sampler_t js = (js_stream_sampler_t)self->context;
 
 	if (__sync_bool_compare_and_swap(&js->initialized, 0, 1)) {
 		pthread_mutex_init(&js->lock, NULL);
@@ -827,9 +828,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		LERROR("The plugin instance '%s' has been configured to process "
 		       "stream '%s'. Use `term name=%s to terminate the plugin "
 		       "and remove all associated sets and stream clients.\n",
-			self->inst_name,
+			js->plugin_instance_name,
 			js->stream_name,
-			self->inst_name);
+			js->plugin_instance_name);
 		pthread_mutex_unlock(&js->lock);
 		return EEXIST;
 	}
@@ -1173,36 +1174,44 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 	}
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
-	js_stream_sampler_t js = (js_stream_sampler_t)self;
+	js_stream_sampler_t js = context;
 	if (js->stream_client) {
 		ldms_stream_close(js->stream_client); /* CLOSE event will clean up `p` */
 	}
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	/* no opt */
 	return 0;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
+static void *instance_create(const char *plugin_instance_name)
 {
-	/* no ops */
-	return NULL;
+	js_stream_sampler_t context;
+
+        /* FIXME error handling */
+        context = calloc(1, sizeof(*context));
+        context->plugin_instance_name = strdup(plugin_instance_name);
+
+        return context;
+}
+
+static void instance_destroy(void *context)
+{
+        free(context);
 }
 
 static struct ldmsd_sampler js_stream_sampler = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.context_size = sizeof(struct js_stream_sampler_s),
-	},
-	.get_set = get_set,
+	.base.name = SAMP,
+	.base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.term = term,
+	.base.config = config,
+	.base.usage = usage,
+        .base.instance_create = instance_create,
+        .base.instance_destroy = instance_destroy,
 	.sample = sample,
 };
 

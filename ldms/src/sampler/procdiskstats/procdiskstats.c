@@ -325,7 +325,7 @@ err:
 }
 
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *config, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = 0;
 
@@ -336,7 +336,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 
-	base = base_config(avl, self->inst_name, SAMP, mylog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = EINVAL;
 		goto err;
@@ -405,7 +405,7 @@ static void set_disk_metrics(struct proc_disk_s *disk,
 	}
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	int rc = 0;
 	char *s;
@@ -463,7 +463,7 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (mf)
 		fclose(mf);
@@ -485,7 +485,7 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(mylog);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "config name=procdiskstats device=<devices> " BASE_CONFIG_USAGE
 		"    <devices>       A comma-separated list of devices\n";

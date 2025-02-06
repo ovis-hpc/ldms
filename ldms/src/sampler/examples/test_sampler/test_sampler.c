@@ -1700,9 +1700,9 @@ err:
 	return rc;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	test_sampler_t ts = (test_sampler_t)self->context;
+	test_sampler_t ts = context;
 	char *action;
 	int rc;
 
@@ -1883,9 +1883,9 @@ __sample_lists(struct test_sampler_set *ts_set)
 	return 0;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
-	test_sampler_t ts = (test_sampler_t)self->base.context;
+	test_sampler_t ts = context;
 	int rc;
 	struct test_sampler_set *ts_set;
 	struct test_sampler_schema *ts_schema;
@@ -1932,9 +1932,9 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
-	test_sampler_t ts = (test_sampler_t)self->context;
+	test_sampler_t ts = context;
 	struct test_sampler_schema *tschema;
 	while ((tschema = LIST_FIRST(&ts->schema_list))) {
 		LIST_REMOVE(tschema, entry);
@@ -1950,7 +1950,7 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(mylog);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "Create and define schema:\n"
 		"config name=inst-name action=add_schema schema=<schema_name>\n"
@@ -2086,21 +2086,27 @@ struct ldmsd_plugin *get_plugin_instance(const char *name,
 }
 #endif
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
+static void *instance_create(const char *plugin_instance_name) {
+	test_sampler_t context;
+
+        /* FIXME error handling */
+        context = calloc(1, sizeof(*context));
+
+        return context;
+}
+
+static void instance_destroy(void *context) {
+        free(context);
 }
 
 static struct ldmsd_sampler test_sampler = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.context_size = sizeof(struct test_sampler_s),
-	},
-	.get_set = get_set,
+	.base.name = SAMP,
+	.base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.term = term,
+	.base.config = config,
+	.base.usage = usage,
+        .base.instance_create = instance_create,
+        .base.instance_destroy = instance_destroy,
 	.sample = sample,
 };
 

@@ -91,7 +91,7 @@ struct flatfile_metric_store {
 };
 
 struct flatfile_store_instance {
-	struct ldmsd_store *store;
+	const struct ldmsd_store *store;
 	char *path; /**< (root_path)/(container)/schema */
 	char *schema;
 	void *ucontext;
@@ -106,7 +106,7 @@ static pthread_mutex_t cfg_lock;
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	value = av_value(avl, "path");
@@ -125,7 +125,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return EINVAL;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	/*
 	 * TODO: Iterate through all unclosed stores and cleanup resources
@@ -135,7 +135,7 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(mylog);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return
 "    config name=store_flatfile path=<path>\n"
@@ -150,7 +150,7 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(const struct ldmsd_store *s, const char *container, const char *schema,
 	  struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct flatfile_store_instance *si;

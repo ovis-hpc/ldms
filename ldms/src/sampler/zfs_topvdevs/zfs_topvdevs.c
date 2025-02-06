@@ -157,14 +157,14 @@ static int initialize_ldms_structs()
  * ldms daemon. In error the plugin is aborted.
  ****************************************************************************/
 
-static int config(struct ldmsd_plugin *self,
+static int config(void *context,
 		  struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = 0;
 
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " config() called\n");
 
-	sampler_base = base_config(avl, self->inst_name, "zfs_topvdevs", mylog);
+	sampler_base = base_config(avl, SAMP, "zfs_topvdevs", mylog);
 	if ((g_zfs = libzfs_init()) == NULL) {
 		rc = errno;
 		ovis_log(mylog, OVIS_LERROR,
@@ -214,7 +214,7 @@ static int resize_metric_set()
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	int rc = 0;
 
@@ -234,7 +234,7 @@ static int sample(struct ldmsd_sampler *self)
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " term() called\n");
 	base_set_delete(sampler_base);
@@ -245,7 +245,7 @@ static void term(struct ldmsd_plugin *self)
 
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " usage() called\n");
 	return "config name=" SAMP " " BASE_CONFIG_SYNOPSIS BASE_CONFIG_DESC;

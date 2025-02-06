@@ -463,7 +463,7 @@ static int use_default_counters()
         return rc;
 }
 
-static int config(struct ldmsd_plugin *self,
+static int config(void *context,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         int rc = 0;
@@ -471,7 +471,7 @@ static int config(struct ldmsd_plugin *self,
 
         ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
-        sampler_base = base_config(avl, self->inst_name, "slingshot_metrics", mylog);
+        sampler_base = base_config(avl, SAMP, "slingshot_metrics", mylog);
 
         value = av_value(avl, "counters");
         if (value != NULL) {
@@ -544,7 +544,7 @@ static void resize_metric_set(int expected_remaining_nics)
         }
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
         struct cxil_device_list *device_list;
         ldms_mval_t list_handle;
@@ -611,7 +611,7 @@ static int sample(struct ldmsd_sampler *self)
         return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
         ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
         base_set_delete(sampler_base);
@@ -622,7 +622,7 @@ static void term(struct ldmsd_plugin *self)
         ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
         ovis_log(mylog, OVIS_LDEBUG, " usage() called\n");
 	return  "config name=" SAMP " " BASE_CONFIG_SYNOPSIS

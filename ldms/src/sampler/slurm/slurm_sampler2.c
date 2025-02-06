@@ -293,7 +293,7 @@ static int task_list_idx;
 static size_t job_rec_size;
 static size_t task_rec_size;
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return \
 	"config name=slurm_sampler producer=<producer_name> instance=<instance_name>\n"
@@ -422,7 +422,7 @@ err:
 
 static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt);
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc;
@@ -442,7 +442,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		ovis_log(mylog, OVIS_LCRITICAL, "memory allocation error.\n");
 		return ENOMEM;
 	}
-	ldms_stream_subscribe(stream, 0, slurm_recv_cb, self, "slurm_sampler2");
+	ldms_stream_subscribe(stream, 0, slurm_recv_cb, context, "slurm_sampler2");
 
 	/* producer */
 	value = av_value(avl, "producer");
@@ -1198,7 +1198,7 @@ err_0:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (set) {
 		ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
@@ -1210,7 +1210,7 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(mylog);
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	/* no opt */
 	return 0;

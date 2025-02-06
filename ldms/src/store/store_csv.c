@@ -650,7 +650,7 @@ static void __sc_init(store_csv_t sc)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	store_csv_t sc = (void*)self->context;
 	int rollmethod = DEFAULT_ROLLTYPE;
@@ -837,7 +837,7 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	/* TODO REVISE ME */
 /* clean up any allocated globals here that are not handled by store_csv_fini */
@@ -852,7 +852,7 @@ static void term(struct ldmsd_plugin *self)
 	pthread_mutex_unlock(&sc->cfg_lock);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "    config name=store_csv path=<path> rollover=<num> rolltype=<num>\n"
 		"           [altheader=<0/!0> userdata=<0/!0>]\n"
@@ -1034,7 +1034,7 @@ csv_store_handle_get(store_csv_t sc, const char *container, const char *schema);
 static void csv_store_handle_put(struct csv_store_handle *s_handle);
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char* schema,
+open_store(const struct ldmsd_store *s, const char *container, const char* schema,
 		struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
 	struct csv_store_handle *s_handle = NULL;

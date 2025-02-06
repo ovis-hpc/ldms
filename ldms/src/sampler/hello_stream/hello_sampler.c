@@ -73,7 +73,7 @@
 static ovis_log_t mylog;
 static char *stream;
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "config name=hello_sampler producer=<producer_name> instance=<instance_name>\n"
 		"         [stream=<stream_name>] [component_id=<component_id>] [perm=<permissions>]\n"
@@ -85,7 +85,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                   Defaults to 'hello'\n";
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	return 0;
 }
@@ -110,7 +110,7 @@ static int hello_recv_cb(ldms_stream_event_t ev, void *arg)
 	return rc;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(void *context, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	char *value;
@@ -122,12 +122,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	else
 		stream = strdup("hello_stream/hello");
 
-	ldms_stream_subscribe(stream, 0, hello_recv_cb, self, "hello_sampler");
+	ldms_stream_subscribe(stream, 0, hello_recv_cb, context, "hello_sampler");
 
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (mylog)
 		ovis_log_destroy(mylog);

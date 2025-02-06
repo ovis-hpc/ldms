@@ -118,7 +118,7 @@ static int create_metric_set(base_data_t base)
 
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 
         int rc;
@@ -133,7 +133,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
         nsockets = variorum_get_num_sockets();
 
         // prepare the base for metric collection
-        base = base_config(avl, self->inst_name, SAMP, mylog);
+        base = base_config(avl, SAMP, SAMP, mylog);
         if (!base) {
                 rc = errno;
                 goto err;
@@ -151,7 +151,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
         return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
         json_t *power_obj = NULL;
         int ret, socket;
@@ -195,7 +195,7 @@ static int sample(struct ldmsd_sampler *self)
 
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
         int metric;
 
@@ -220,7 +220,7 @@ static void term(struct ldmsd_plugin *self)
         set = NULL;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
         return  "config name=" SAMP " " BASE_CONFIG_USAGE;
 }

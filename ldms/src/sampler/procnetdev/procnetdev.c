@@ -184,7 +184,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return "config name=" SAMP " ifaces=<ifs>\n" \
 		BASE_CONFIG_USAGE \
@@ -193,7 +193,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                    whether they exist of not up to a total of MAXIFACE\n";
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char* ifacelist = NULL;
 	char* pch = NULL;
@@ -241,7 +241,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto err;
 
 
-	base = base_config(avl, self->inst_name, SAMP, mylog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base){
 		rc = EINVAL;
 		goto err;
@@ -263,7 +263,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	char *s;
 	char lbuf[256];
@@ -343,7 +343,7 @@ static int sample(struct ldmsd_sampler *self)
 }
 
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (mf)
 		fclose(mf);
