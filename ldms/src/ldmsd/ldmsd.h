@@ -926,7 +926,7 @@ typedef struct ldmsd_plugin {
 		LDMSD_PLUGIN_DECOMP
 	} type;
 	int (*config)(void *context, struct attr_value_list *kwl, struct attr_value_list *avl);
-	void (*term)(void *context);
+	void (*term)(void *context); /* DEPRECATED - use instance_destroy()/instance_create() */
 	const char *(*usage)(void *context);
         void *(*instance_create)(const char *plugin_instance_name);
         void (*instance_destroy)(void *context);
