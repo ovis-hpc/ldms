@@ -101,7 +101,7 @@ struct cray_power_sampler {
 	int hfcount;
 };
 
-static const char *cray_power_sampler_usage(struct ldmsd_plugin *self)
+static const char *cray_power_sampler_usage(void *context)
 {
 	return  "config name=cray_power_sampler producer=<prod_name>"
 		" instance=<inst_name> [hfinterval=<hfinterval>] "
@@ -132,9 +132,9 @@ void cray_power_sampler_cleanup(struct cray_power_sampler *cps)
 }
 
 static
-void cray_power_sampler_term(struct ldmsd_plugin *self)
+void cray_power_sampler_term(void *context)
 {
-	cray_power_sampler_cleanup((void*)self);
+	cray_power_sampler_cleanup(context);
 	if (mylog)
 		ovis_log_destroy(mylog);
 }
@@ -180,17 +180,17 @@ void cray_power_sampler_timer_cb(tsampler_timer_t t)
 	ldms_metric_array_set_u64(t->set, t->mid, t->idx, v);
 }
 static
-int cray_power_sampler_config(struct ldmsd_plugin *self,
+int cray_power_sampler_config(void *context,
 				struct attr_value_list *kwl,
 				struct attr_value_list *avl)
 {
+	struct cray_power_sampler *cps = context;
 	char *v;
 	uint64_t x;
 	int rc;
-	struct cray_power_sampler *cps = (void*)self;
 	int i;
 
-	rc = timer_base_config(self, kwl, avl, mylog);
+	rc = timer_base_config(context, kwl, avl, mylog);
 	if (rc) {
 		goto out;
 	}

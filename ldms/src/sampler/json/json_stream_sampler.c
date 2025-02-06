@@ -813,9 +813,9 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg);
 static int config(void *context, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
-	js_stream_sampler_t js = context;
 	char *value;
 	int rc;
+	js_stream_sampler_t js = context;
 
 	if (__sync_bool_compare_and_swap(&js->initialized, 0, 1)) {
 		pthread_mutex_init(&js->lock, NULL);
@@ -828,9 +828,9 @@ static int config(void *context, struct attr_value_list *kwl,
 		LERROR("The plugin instance '%s' has been configured to process "
 		       "stream '%s'. Use `term name=%s to terminate the plugin "
 		       "and remove all associated sets and stream clients.\n",
-			js->plugin_instance_name,
+                        js->plugin_instance_name,
 			js->stream_name,
-			js->plugin_instance_name);
+                        js->plugin_instance_name);
 		pthread_mutex_unlock(&js->lock);
 		return EEXIST;
 	}
@@ -1188,28 +1188,32 @@ static int sample(void *context)
 	return 0;
 }
 
-static void *instance_create(const char *plugin_instance_name)
-{
+static void *instance_create(const char *plugin_instance_name) {
 	js_stream_sampler_t context;
 
         /* FIXME error handling */
         context = calloc(1, sizeof(*context));
+        /* FIXME - I think it would be better to have an accessor function
+           to look up the instance's name, rather than passing it as an
+           instance_init() parameter. */
         context->plugin_instance_name = strdup(plugin_instance_name);
 
         return context;
 }
 
-static void instance_destroy(void *context)
-{
-        free(context);
+static void instance_destroy(void *context) {
+	js_stream_sampler_t js = context;
+
+        free(js->plugin_instance_name);
+        free(js);
 }
 
 static struct ldmsd_sampler js_stream_sampler = {
-	.base.name = SAMP,
-	.base.type = LDMSD_PLUGIN_SAMPLER,
-	.base.term = term,
-	.base.config = config,
-	.base.usage = usage,
+        .base.name = SAMP,
+        .base.type = LDMSD_PLUGIN_SAMPLER,
+        .base.term = term,
+        .base.config = config,
+        .base.usage = usage,
         .base.instance_create = instance_create,
         .base.instance_destroy = instance_destroy,
 	.sample = sample,

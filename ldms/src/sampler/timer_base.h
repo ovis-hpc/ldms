@@ -89,9 +89,9 @@ int timer_base_create_set(struct timer_base *tb);
 
 ldms_set_t timer_base_get_set(struct ldmsd_sampler *self);
 
-void timer_base_term(struct ldmsd_plugin *self);
+void timer_base_term(void *context);
 
-int timer_base_sample(struct ldmsd_sampler *self);
+int timer_base_sample(void *context);
 
 void timer_base_cleanup(struct timer_base *tb);
 

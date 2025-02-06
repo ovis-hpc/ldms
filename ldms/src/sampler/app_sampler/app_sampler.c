@@ -1232,9 +1232,9 @@ app_sampler_update_schema(app_sampler_inst_t inst, ldms_schema_t schema)
 	return 0;
 }
 
-static int app_sampler_sample(struct ldmsd_sampler *pi)
+static int app_sampler_sample(void *context)
 {
-	app_sampler_inst_t inst = (void*)pi;
+	app_sampler_inst_t inst = context;
 	int i;
 	struct rbn *rbn;
 	struct app_sampler_set *app_set;
@@ -1292,7 +1292,7 @@ The following is an example of cfg_file:\n\
 ```\n\
 ";
 
-static const char *app_sampler_usage(struct ldmsd_plugin *self)
+static const char *app_sampler_usage(void *context)
 {
 	return _help;
 }
@@ -1520,13 +1520,13 @@ int __stream_cb(ldms_stream_event_t ev, void *ctxt)
 	return 0;
 }
 
-static void app_sampler_term(struct ldmsd_plugin *pi);
+static void app_sampler_term(void *context);
 
 static int
-app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
+app_sampler_config(void *context, struct attr_value_list *kwl,
 					    struct attr_value_list *avl)
 {
-	app_sampler_inst_t inst = (void*)pi;
+	app_sampler_inst_t inst = context;
 	int i, rc;
 	app_sampler_metric_info_t minfo;
 	char *val;
@@ -1537,7 +1537,7 @@ app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		return EALREADY;
 	}
 
-	inst->base_data = base_config(avl, pi->inst_name, SAMP, inst->mylog);
+	inst->base_data = base_config(avl, SAMP, SAMP, inst->mylog);
 	if (!inst->base_data) {
 		/* base_config() already log error message */
 		return errno;
@@ -1627,14 +1627,14 @@ app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 
  err:
 	/* undo the config */
-	app_sampler_term(pi);
+	app_sampler_term(context);
 	return rc;
 }
 
 static
-void app_sampler_term(struct ldmsd_plugin *pi)
+void app_sampler_term(void *context)
 {
-	app_sampler_inst_t inst = (void*)pi;
+	app_sampler_inst_t inst = context;
 	struct rbn *rbn;
 	struct app_sampler_set *app_set;
 

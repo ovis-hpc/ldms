@@ -305,7 +305,7 @@ struct derived_data{ //the generic information about the derived metric
 
 /*** per schema (includes instance data within the sets_idx) *******/
 struct function_store_handle { //these are per-schema
-	const struct ldmsd_store *store;
+	struct ldmsd_store *store;
 	char *path;
 	FILE *file;
 	FILE *headerfile;
@@ -1305,7 +1305,7 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 
 
 static ldmsd_store_handle_t
-open_store(const struct ldmsd_store *s, const char *container, const char* schema,
+open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
 	struct function_store_handle *s_handle = NULL;

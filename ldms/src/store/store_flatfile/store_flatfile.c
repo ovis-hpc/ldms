@@ -91,7 +91,7 @@ struct flatfile_metric_store {
 };
 
 struct flatfile_store_instance {
-	const struct ldmsd_store *store;
+	struct ldmsd_store *store;
 	char *path; /**< (root_path)/(container)/schema */
 	char *schema;
 	void *ucontext;
@@ -150,7 +150,7 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 }
 
 static ldmsd_store_handle_t
-open_store(const struct ldmsd_store *s, const char *container, const char *schema,
+open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	  struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct flatfile_store_instance *si;

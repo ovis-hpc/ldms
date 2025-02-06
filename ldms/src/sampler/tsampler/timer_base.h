@@ -82,14 +82,14 @@ struct timer_base {
 
 void timer_base_init(struct timer_base *tb);
 
-int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+int timer_base_config(void *context, struct attr_value_list *kwl,
 		      struct attr_value_list *avl, ovis_log_t mylog);
 
 int timer_base_create_set(struct timer_base *tb);
 
-void timer_base_term(struct ldmsd_plugin *self);
+void timer_base_term(void *context);
 
-int timer_base_sample(struct ldmsd_sampler *self);
+int timer_base_sample(void *context);
 
 void timer_base_cleanup(struct timer_base *tb);
 

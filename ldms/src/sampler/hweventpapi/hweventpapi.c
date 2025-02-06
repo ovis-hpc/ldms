@@ -585,7 +585,7 @@ int deatach_pids()
 	return 0;
 }
 
-static int config_hw(struct attr_value_list *kwl,
+static int config_hw(void *context, struct attr_value_list *kwl,
 		     struct attr_value_list *avl)
 {
 	int rc = 0;
@@ -758,7 +758,7 @@ static int config(void *context, struct attr_value_list *kwl,
 	if (mode && strcasecmp("hw", mode) == 0) {
 		/* running hardware-only mode */
 		hw_only = 1;
-		return config_hw(kwl, avl);
+		return config_hw(context, kwl, avl);
 	}
 
 	producername = av_value(avl, "producer");
@@ -808,7 +808,7 @@ out:
 /*
  * Use the new configuration parameters to create a new schema and set
  */
-int config_local(struct attr_value_list *kwl,
+int config_local(void *context, struct attr_value_list *kwl,
 	struct attr_value_list * avl)
 {
 	int rc;
@@ -1082,7 +1082,7 @@ static int save_events_data()
 	return 0;
 }
 
-static int sample_hw()
+static int sample_hw(void *context)
 {
 	int i;
 	int rc = 0;
@@ -1120,7 +1120,7 @@ static int sample(void *context)
 	struct sampler_meta *meta = NULL;
 
 	if (hw_only) {
-		return sample_hw();
+		return sample_hw(context);
 	}
 
 	/* Check if the file exist */
@@ -1226,7 +1226,7 @@ static int sample(void *context)
 						"sampler\n");
 
 					/* Configure the sampler */
-					config_local(kw_list_local,
+					config_local(context, kw_list_local,
 						av_list_local);
 				}
 			}
@@ -1335,7 +1335,7 @@ err1:
 	return 0;
 }
 
-static void term_hw()
+static void term_hw(void *context)
 {
 	if (hwc) {
 		if (hwc->started) {
@@ -1366,7 +1366,7 @@ static void term_hw()
 static void term(void *context)
 {
 	if (hw_only) {
-		term_hw();
+		term_hw(context);
 		return;
 	}
 	if (file)

@@ -320,8 +320,8 @@ static int parse_serdes_conf_file(char *path, serdes_conf_t *s_conf)
 static int config(void *context, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
-	store_kafka_t sk = context;
 	int rc = 0;
+	store_kafka_t sk = context;
 	char *path, *encoding, *topic;
 	char err_str[512];
 
@@ -419,7 +419,7 @@ static void term(void *context)
 }
 
 static ldmsd_store_handle_t
-open_store(const struct ldmsd_store *s, const char *container, const char *schema,
+open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	errno = ENOSYS;
@@ -465,9 +465,9 @@ static void close_store(ldmsd_store_handle_t _sh)
 
 static aks_handle_t __handle_new(ldmsd_strgp_t strgp)
 {
-	store_kafka_t sk = strgp->store->context;
 	char err_str[512];
 	rd_kafka_conf_res_t res;
+	store_kafka_t sk = strgp->store->context;
 
 	aks_handle_t sh = calloc(1, sizeof(*sh));
 	if (!sh) {
@@ -1070,8 +1070,7 @@ void store_kafka_del(struct ldmsd_cfgobj *obj)
 	return;
 }
 
-static void *instance_create(const char *plugin_instance_name)
-{
+static void *instance_create(const char *plugin_instance_name) {
 	store_kafka_t context;
 
         /* FIXME error handling */
@@ -1080,9 +1079,10 @@ static void *instance_create(const char *plugin_instance_name)
         return context;
 }
 
-static void instance_destroy(void *context)
-{
-        free(context);
+static void instance_destroy(void *context) {
+	store_kafka_t sk = context;
+
+        free(sk);
 }
 
 static struct ldmsd_store kafka_store = {

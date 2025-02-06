@@ -68,7 +68,7 @@ struct hfclock {
 	int hfcount;
 };
 
-static const char *hfclock_usage(void *context)
+static const char *hfclock_usage(struct ldmsd_plugin *self)
 {
 	return  "config name=hfclock producer=<prod_name>"
 		" instance=<inst_name> [hfinterval=<hfinterval>] "
@@ -91,7 +91,7 @@ void hfclock_cleanup(struct hfclock *hf)
 }
 
 static
-void hfclock_term(void *context)
+void hfclock_term(struct ldmsd_plugin *self)
 {
 	hfclock_cleanup((void*)self);
 	if (mylog)
@@ -107,9 +107,9 @@ void hfclock_timer_cb(tsampler_timer_t t)
 }
 
 static
-int hfclock_config(void *context,
-                   struct attr_value_list *kwl,
-                   struct attr_value_list *avl)
+int hfclock_config(struct ldmsd_plugin *self,
+				struct attr_value_list *kwl,
+				struct attr_value_list *avl)
 {
 	int rc;
 	char *v;

@@ -71,7 +71,7 @@ static char port[100];
 static char dbname[100];
 static char password[100];
 struct timescale_store {
-        const struct ldmsd_store *store;
+        struct ldmsd_store *store;
         void *ucontext;
         char *schema;
         char *container;
@@ -311,7 +311,7 @@ static const char *usage(void *context)
 }
 
 static ldmsd_store_handle_t
-open_store(const struct ldmsd_store *s, const char *container, const char *schema,
+open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
         struct timescale_store *is = NULL;
