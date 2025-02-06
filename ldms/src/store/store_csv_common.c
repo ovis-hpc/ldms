@@ -796,6 +796,14 @@ int csv_row_format_header(FILE *file, const char *fpath,
 
 		if (LDMS_V_RECORD_TYPE == metric_type)
 			continue;
+		if (LDMS_V_TIMESTAMP == metric_type) {
+			ec = fprintf(fp, ",%s%s%s%s,%s%s_usec%s",
+					wsqt, name,
+					time_format==TF_MILLISEC? "_msec":"",
+					wsqt, wsqt, name, wsqt);
+			CHECKERR(ec);
+			continue;
+		}
 		if (LDMS_V_LIST == metric_type) {
 			ldms_mval_t lh, lent;
 			enum ldms_value_type mtype, prev_mtype;
