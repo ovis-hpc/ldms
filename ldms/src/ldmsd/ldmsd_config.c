@@ -209,7 +209,7 @@ ldmsd_sampler_alloc(const char *inst_name,
 	return sampler;
 }
 
-void ldmsd_store_free(ldmsd_store_t store)
+void ldmsd_store_free(ldmsd_store_inst_t store)
 {
         /* FIXME - more cleanup likely needed */
         if (store->api->base.term != NULL) {
@@ -225,13 +225,13 @@ void ldmsd_store_free(ldmsd_store_t store)
         return;
 }
 
-ldmsd_store_t ldmsd_store_alloc(const char *inst_name,
+ldmsd_store_inst_t ldmsd_store_alloc(const char *inst_name,
                                 const char *libpath,
                                 const struct ldmsd_store *api,
                                 ldmsd_cfgobj_del_fn_t __del,
                                 uid_t uid, gid_t gid, int perm)
 {
-	ldmsd_store_t store;
+	ldmsd_store_inst_t store;
 	store = (void*)ldmsd_cfgobj_new_with_auth(inst_name, LDMSD_CFGOBJ_STORE,
 						sizeof(*store),
 						__del, uid, gid, perm);
@@ -314,7 +314,7 @@ void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 
 void ldmsd_store___del(ldmsd_cfgobj_t obj)
 {
-	ldmsd_store_t store = (void*)obj;
+	ldmsd_store_inst_t store = (void*)obj;
 	free((void*)store->api->base.inst_name);
 	free(store->api);
 	ldmsd_cfgobj___del(obj);

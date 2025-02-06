@@ -2688,7 +2688,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 
-	ldmsd_store_t store = ldmsd_store_find(plugin);
+	ldmsd_store_inst_t store = ldmsd_store_find(plugin);
 	if (!store) {
 		reqc->errcode = ENOENT;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -5073,7 +5073,7 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 {
 	int rc, count;
 	ldmsd_sampler_inst_t samp;
-	ldmsd_store_t store;
+	ldmsd_store_inst_t store;
 	reqc->errcode = 0;
 
 	rc = linebuf_printf(reqc, "[");
@@ -5255,7 +5255,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 		goto einval;
 	ldmsd_sampler_inst_t sampler = ldmsd_sampler_find(inst_name);
 	if (!sampler) {
-		ldmsd_store_t store = ldmsd_store_find(inst_name);
+		ldmsd_store_inst_t store = ldmsd_store_find(inst_name);
 		if (!store) {
 			/* See if there is a */
 			reqc->errcode = ENOENT;
@@ -5325,7 +5325,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	case LDMSD_PLUGIN_SAMPLER:
                 reqc->errcode = api->config(((ldmsd_sampler_inst_t)cfg)->context, kw_list, av_list);
 	case LDMSD_PLUGIN_STORE:
-                reqc->errcode = api->config(((ldmsd_store_t)cfg)->context, kw_list, av_list);
+                reqc->errcode = api->config(((ldmsd_store_inst_t)cfg)->context, kw_list, av_list);
         }
         if (reqc->errcode) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -5358,7 +5358,7 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 	char *name = NULL;
 	int rc, count = 0;
 	ldmsd_sampler_inst_t samp;
-	ldmsd_store_t store;
+	ldmsd_store_inst_t store;
 	rc = 0;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -6439,7 +6439,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	/* Plugins */
-	ldmsd_store_t store;
+	ldmsd_store_inst_t store;
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
 	for (store = ldmsd_store_first(LDMSD_CFGOBJ_STORE); store;
 			store = ldmsd_store_next(store)) {

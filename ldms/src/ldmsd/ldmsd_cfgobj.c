@@ -399,7 +399,7 @@ void ldmsd_sampler_unlock(ldmsd_sampler_inst_t samp)
 	ldmsd_cfgobj_unlock(&samp->cfg);
 }
 
-ldmsd_store_t ldmsd_store_find(const char *cfg_name)
+ldmsd_store_inst_t ldmsd_store_find(const char *cfg_name)
 {
 	struct ldmsd_cfgobj *obj = ldmsd_cfgobj_find(cfg_name, LDMSD_CFGOBJ_STORE);
 	if (obj)
@@ -407,7 +407,7 @@ ldmsd_store_t ldmsd_store_find(const char *cfg_name)
 	return NULL;
 }
 
-ldmsd_store_t ldmsd_store_first()
+ldmsd_store_inst_t ldmsd_store_first()
 {
 	ldmsd_cfgobj_t obj;
 	obj = ldmsd_cfgobj_first(LDMSD_CFGOBJ_STORE);
@@ -416,7 +416,7 @@ ldmsd_store_t ldmsd_store_first()
 	return NULL;
 }
 
-ldmsd_store_t ldmsd_store_next(ldmsd_store_t store)
+ldmsd_store_inst_t ldmsd_store_next(ldmsd_store_inst_t store)
 {
 	ldmsd_cfgobj_t obj;
 	obj = ldmsd_cfgobj_next(&store->cfg);
@@ -426,12 +426,12 @@ ldmsd_store_t ldmsd_store_next(ldmsd_store_t store)
 }
 
 
-void ldmsd_store_lock(ldmsd_store_t store)
+void ldmsd_store_lock(ldmsd_store_inst_t store)
 {
 	ldmsd_cfgobj_lock(&store->cfg);
 }
 
-void ldmsd_store_unlock(ldmsd_store_t store)
+void ldmsd_store_unlock(ldmsd_store_inst_t store)
 {
 	ldmsd_cfgobj_unlock(&store->cfg);
 }
