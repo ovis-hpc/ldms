@@ -363,7 +363,7 @@ out:
 	return nobj;
 }
 
-ldmsd_sampler_t ldmsd_sampler_first()
+ldmsd_sampler_inst_t ldmsd_sampler_first()
 {
 	ldmsd_cfgobj_t obj;
 	obj = ldmsd_cfgobj_first(LDMSD_CFGOBJ_SAMPLER);
@@ -372,7 +372,7 @@ ldmsd_sampler_t ldmsd_sampler_first()
 	return NULL;
 }
 
-ldmsd_sampler_t ldmsd_sampler_next(ldmsd_sampler_t samp)
+ldmsd_sampler_inst_t ldmsd_sampler_next(ldmsd_sampler_inst_t samp)
 {
 	ldmsd_cfgobj_t obj;
 	obj = ldmsd_cfgobj_next(&samp->cfg);
@@ -381,7 +381,7 @@ ldmsd_sampler_t ldmsd_sampler_next(ldmsd_sampler_t samp)
 	return NULL;
 }
 
-ldmsd_sampler_t ldmsd_sampler_find(const char *cfg_name)
+ldmsd_sampler_inst_t ldmsd_sampler_find(const char *cfg_name)
 {
 	struct ldmsd_cfgobj *obj = ldmsd_cfgobj_find(cfg_name, LDMSD_CFGOBJ_SAMPLER);
 	if (!obj)
@@ -389,12 +389,12 @@ ldmsd_sampler_t ldmsd_sampler_find(const char *cfg_name)
 	return container_of(obj, struct ldmsd_sampler_inst, cfg);
 }
 
-void ldmsd_sampler_lock(ldmsd_sampler_t samp)
+void ldmsd_sampler_lock(ldmsd_sampler_inst_t samp)
 {
 	ldmsd_cfgobj_lock(&samp->cfg);
 }
 
-void ldmsd_sampler_unlock(ldmsd_sampler_t samp)
+void ldmsd_sampler_unlock(ldmsd_sampler_inst_t samp)
 {
 	ldmsd_cfgobj_unlock(&samp->cfg);
 }

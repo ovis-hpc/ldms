@@ -959,10 +959,10 @@ struct ldmsd_store_inst {
         void *context; /* owned by plugin, ldmsd does not free */
 };
 
-typedef struct ldmsd_sampler_inst *ldmsd_sampler_t;
+typedef struct ldmsd_sampler_inst *ldmsd_sampler_inst_t;
 typedef struct ldmsd_sampler_set {
 	ldms_set_t set;
-	ldmsd_sampler_t sampler;
+	ldmsd_sampler_inst_t sampler;
 	LIST_ENTRY(ldmsd_sampler_set) entry;
 } *ldmsd_sampler_set_t;
 
@@ -989,7 +989,7 @@ struct ldmsd_sampler_inst {
 /** Metric name for job id number */
 #define LDMSD_JOBID "job_id"
 
-ldmsd_sampler_t ldmsd_sampler_alloc(const char *inst_name,
+ldmsd_sampler_inst_t ldmsd_sampler_alloc(const char *inst_name,
                                     const char *libpath,
                                     const struct ldmsd_sampler *api,
                                     ldmsd_cfgobj_del_fn_t __del,
@@ -1184,15 +1184,15 @@ int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt
 int ldmsd_cfgobj_add(ldmsd_cfgobj_t obj);
 void ldmsd_cfgobj_rm(ldmsd_cfgobj_t obj);
 
-ldmsd_sampler_t ldmsd_sampler_find(const char *name);
-#define ldmsd_sampler_get(_s_, _r_) (ldmsd_sampler_t)ldmsd_cfgobj_get(&(_s_)->cfg, _r_)
+ldmsd_sampler_inst_t ldmsd_sampler_find(const char *name);
+#define ldmsd_sampler_get(_s_, _r_) (ldmsd_sampler_inst_t)ldmsd_cfgobj_get(&(_s_)->cfg, _r_)
 #define ldmsd_sampler_put(_s_, _r_) ldmsd_cfgobj_put(&(_s_)->cfg, _r_)
 #define ldmsd_store_get(_s_, _r_) (ldmsd_store_t)ldmsd_cfgobj_get(&(_s_)->cfg, _r_)
 #define ldmsd_store_put(_s_, _r_) ldmsd_cfgobj_put(&(_s_)->cfg, _r_)
-ldmsd_sampler_t ldmsd_sampler_first();
-ldmsd_sampler_t ldmsd_sampler_next(ldmsd_sampler_t);
-void ldmsd_sampler_lock(ldmsd_sampler_t samp);
-void ldmsd_sampler_unlock(ldmsd_sampler_t samp);
+ldmsd_sampler_inst_t ldmsd_sampler_first();
+ldmsd_sampler_inst_t ldmsd_sampler_next(ldmsd_sampler_inst_t);
+void ldmsd_sampler_lock(ldmsd_sampler_inst_t samp);
+void ldmsd_sampler_unlock(ldmsd_sampler_inst_t samp);
 extern int ldmsd_sampler_start(char *name, char *interval, char *offset);
 extern int ldmsd_sampler_stop(char *name);
 

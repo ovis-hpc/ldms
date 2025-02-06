@@ -160,7 +160,7 @@ err_0:
 	return NULL;
 }
 
-void ldmsd_sampler_free(ldmsd_sampler_t sampler)
+void ldmsd_sampler_free(ldmsd_sampler_inst_t sampler)
 {
         /* FIXME - more cleanup likely needed */
         if (sampler->api->base.term != NULL) {
@@ -176,14 +176,14 @@ void ldmsd_sampler_free(ldmsd_sampler_t sampler)
         return;
 }
 
-ldmsd_sampler_t
+ldmsd_sampler_inst_t
 ldmsd_sampler_alloc(const char *inst_name,
                     const char *libpath,
                     const struct ldmsd_sampler *api,
                     ldmsd_cfgobj_del_fn_t __del,
                     uid_t uid, gid_t gid, int perm)
 {
-	ldmsd_sampler_t sampler;
+	ldmsd_sampler_inst_t sampler;
 	sampler = (void*)ldmsd_cfgobj_new_with_auth(inst_name, LDMSD_CFGOBJ_SAMPLER,
 						sizeof(*sampler),
 						__del, uid, gid, perm);
@@ -306,7 +306,7 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 
 void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 {
-	ldmsd_sampler_t samp = (void*)obj;
+	ldmsd_sampler_inst_t samp = (void*)obj;
 	free((void*)samp->api->base.inst_name);
 	free(samp->api);
 	ldmsd_cfgobj___del(obj);

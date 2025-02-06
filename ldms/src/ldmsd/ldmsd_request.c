@@ -5072,7 +5072,7 @@ send_reply:
 int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 {
 	int rc, count;
-	ldmsd_sampler_t samp;
+	ldmsd_sampler_inst_t samp;
 	ldmsd_store_t store;
 	reqc->errcode = 0;
 
@@ -5253,7 +5253,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	inst_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!inst_name)
 		goto einval;
-	ldmsd_sampler_t sampler = ldmsd_sampler_find(inst_name);
+	ldmsd_sampler_inst_t sampler = ldmsd_sampler_find(inst_name);
 	if (!sampler) {
 		ldmsd_store_t store = ldmsd_store_find(inst_name);
 		if (!store) {
@@ -5323,7 +5323,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 
         switch (api->type) {
 	case LDMSD_PLUGIN_SAMPLER:
-                reqc->errcode = api->config(((ldmsd_sampler_t)cfg)->context, kw_list, av_list);
+                reqc->errcode = api->config(((ldmsd_sampler_inst_t)cfg)->context, kw_list, av_list);
 	case LDMSD_PLUGIN_STORE:
                 reqc->errcode = api->config(((ldmsd_store_t)cfg)->context, kw_list, av_list);
         }
@@ -5357,7 +5357,7 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 {
 	char *name = NULL;
 	int rc, count = 0;
-	ldmsd_sampler_t samp;
+	ldmsd_sampler_inst_t samp;
 	ldmsd_store_t store;
 	rc = 0;
 
@@ -5438,7 +5438,7 @@ static int plugn_usage_handler(ldmsd_req_ctxt_t reqc)
 }
 
 /* Caller must hold the set tree lock. */
-static int sampler_sets_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_sampler_t samp)
+static int sampler_sets_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_sampler_inst_t samp)
 {
 	ldmsd_sampler_set_t set;
 	int rc, set_count;
@@ -5474,7 +5474,7 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
 	char *cfg_name;
-	ldmsd_sampler_t samp = NULL;
+	ldmsd_sampler_inst_t samp = NULL;
 	int comma = 0;
 
 	cfg_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -6451,7 +6451,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_SAMPLER);
-	ldmsd_sampler_t samp;
+	ldmsd_sampler_inst_t samp;
 	for (samp = ldmsd_sampler_first(); samp;
 			samp = ldmsd_sampler_next(samp)) {
 		fprintf(fp, "load name=%s plugin=%s\n", samp->cfg.name, samp->api->base.name);
