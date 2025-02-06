@@ -202,8 +202,13 @@ ldmsd_sampler_alloc(const char *inst_name,
                 sampler->context = sampler->api->base.instance_create(inst_name);
                 /* FIXME - should we consider a NULL context an error? */
         } else {
-                /* This plugin is _not_ multi-instance capable */
+                /* This a legacy plugin, _not_ multi-instance capable */
                 /* FIXME - if this plugin is already loaded, error out */
+                /* A small number of legacy plugins expect ldmsd to pass them back
+                   their own API struct, and have hidden memory tacked on to the
+                   end of that. To support that legacy behavior, we have context
+                   point to the api. */
+                sampler->context = (void *)api;
         }
 	ldmsd_cfgobj_unlock(&sampler->cfg);
 	return sampler;
@@ -249,8 +254,13 @@ ldmsd_store_inst_t ldmsd_store_alloc(const char *inst_name,
                 store->context = store->api->base.instance_create(inst_name);
                 /* FIXME - should we consider a NULL context an error? */
         } else {
-                /* This plugin is _not_ multi-instance capable */
+                /* This a legacy plugin, _not_ multi-instance capable */
                 /* FIXME - if this plugin is already loaded, error out */
+                /* A small number of legacy plugins expect ldmsd to pass them back
+                   their own API struct, and have hidden memory tacked on to the
+                   end of that. To support that legacy behavior, we have context
+                   point to the api. */
+                store->context = (void *)api;
         }
 	ldmsd_cfgobj_unlock(&store->cfg);
 	return store;
