@@ -338,7 +338,7 @@ FLEX DECOMPOSITION
 ==================
 
 The **flex** decomposition applies various decompositions by LDMS schema
-digests specified in the configuration. The configurations of the
+digests or `matches` specified in the configuration. The configurations of the
 applied decompositions are also specified in \`flex\` decomposition file
 as follows:
 
@@ -360,10 +360,28 @@ as follows:
        "<LDMS_DIGEST_2>": [ "<DECOMP_B>", "<DECOMP_c>" ],
        ...
        "*": "<DECOMP_Z>" /* optional : the unmatched */
-     }
+     },
+     /* specifying matching conditions and decompositions to apply */
+     "matches": [
+       {
+         "schema": "<REGEX>", /* schema matching */
+         "instance": "<REGEX>", /* instance matching */
+
+         /* If both "schema" and "instance" are specified, a set must
+          * satisfies both conditions.
+          */
+
+         /* specifying decompositions to apply to the matched set */
+         "apply": "<DECOMP_X>"|[ "DECOMP_A", ...]
+       },
+       ...
+     ],
+     /* Optional "default" decompositions if a set does not match any "matches"
+      * or any digest in the "digest" section. */
+     "default": "<DECOMP_X>"|[ "DECOMP_A", ...]
    }
 
-**Example:** In the following example, the "meminfo" LDMS sets have 2
+**Example1:** In the following example, the "meminfo" LDMS sets have 2
 digests due to different metrics from different architecture. The
 configuration then maps those digests to "meminfo" static decomposition
 (producing "meminfo_filter" rows). It also showcases the ability to
@@ -435,6 +453,71 @@ decomposition is applied.
        "E8B9CC8D83FB4E5B779071E801CA351B69DCB9E9CE2601A0B127A2977F11C62A": [ "netdev2", "the_default" ],
        "*": "the_default"
      }
+   }
+
+
+**Example2:** This is another example with the same setup as Example1, but we
+use "matches" with "schema" instead of "digest".
+
+::
+
+   {
+     "type": "flex",
+     "decomposition": {
+       "meminfo": {
+         "type": "static",
+         "rows": [
+           {
+             "schema": "meminfo_filter",
+             "cols": [
+               { "src":"timestamp",    "dst":"ts",      "type":"ts"                         },
+               { "src":"producer",     "dst":"prdcr",   "type":"char_array", "array_len":64 },
+               { "src":"instance",     "dst":"inst",    "type":"char_array", "array_len":64 },
+               { "src":"component_id", "dst":"comp_id", "type":"u64"                        },
+               { "src":"MemFree",      "dst":"free",    "type":"u64"                        },
+               { "src":"MemActive",    "dst":"active",  "type":"u64"                        }
+             ],
+             "indices": [
+               { "name":"time_comp", "cols":["ts", "comp_id"] },
+               { "name":"time", "cols":["ts"] }
+             ]
+           }
+         ]
+       },
+       "netdev2" : {
+         "type" : "static",
+         "rows": [
+           {
+             "schema": "procnetdev2",
+             "cols": [
+               { "src":"timestamp", "dst":"ts","type":"ts" },
+               { "src":"component_id", "dst":"comp_id","type":"u64" },
+               { "src":"netdev_list", "rec_member":"name", "dst":"dev.name",
+                 "type":"char_array", "array_len": 16 },
+                 { "src":"netdev_list", "rec_member":"rx_bytes", "dst":"dev.rx_bytes",
+                   "type":"u64" },
+                   { "src":"netdev_list", "rec_member":"tx_bytes", "dst":"dev.tx_bytes",
+                     "type":"u64" }
+             ],
+             "indices": [
+               { "name":"time_comp", "cols":["ts", "comp_id"] }
+             ]
+           }
+         ]
+       },
+       "the_default": {
+         "type": "as_is",
+         "indices": [
+           { "name": "time", "cols": [ "timestamp" ] },
+           { "name": "time_comp", "cols": [ "timestamp", "component_id" ] }
+         ]
+       }
+     },
+     "matches": [
+       { "schema": "meminfo", "apply": "meminfo" },
+       { "schema": "procnetdev2", "apply": [ "netdev2", "the_default" ] }
+     ],
+     "default": "the_default"
    }
 
 SEE ALSO
