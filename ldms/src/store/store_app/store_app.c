@@ -139,7 +139,7 @@ static sos_t create_container(store_app_cont_t cont)
 static void store_app_close(ldmsd_store_handle_t sh);
 
 static ldmsd_store_handle_t
-store_app_open(struct ldmsd_store *s, const char *container, const char *schema,
+store_app_open(void *context, const char *container, const char *schema,
 	       struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	/* Perform `open` operation */
