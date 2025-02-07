@@ -5325,10 +5325,9 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	cfg->avl_str = av_to_string(av_list, 0);
 	cfg->kvl_str = av_to_string(kw_list, 0);
 
-        switch (api->type) {
-	case LDMSD_PLUGIN_SAMPLER:
+        if (api->type == LDMSD_PLUGIN_SAMPLER) {
                 reqc->errcode = api->config(((ldmsd_sampler_inst_t)cfg)->context, kw_list, av_list);
-	case LDMSD_PLUGIN_STORE:
+        } else if (api->type == LDMSD_PLUGIN_STORE) {
                 reqc->errcode = api->config(((ldmsd_store_inst_t)cfg)->context, kw_list, av_list);
         }
         if (reqc->errcode) {
