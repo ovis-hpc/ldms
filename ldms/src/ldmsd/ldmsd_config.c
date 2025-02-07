@@ -171,7 +171,9 @@ void ldmsd_sampler_free(ldmsd_sampler_inst_t sampler)
                 sampler->api->base.instance_destroy(sampler->context);
                 sampler->context = NULL;
         }
-        ldmsd_cfgobj_del(sampler->cfg.name, LDMSD_CFGOBJ_SAMPLER);
+        free(sampler->libpath);
+        ldmsd_cfgobj_put(sampler->cfg, "find");
+        ldmsd_cfgobj_del(sampler->cfg);
 
         return;
 }
@@ -216,7 +218,6 @@ ldmsd_sampler_alloc(const char *inst_name,
 
 void ldmsd_store_free(ldmsd_store_inst_t store)
 {
-        /* FIXME - more cleanup likely needed */
         if (store->api->base.term != NULL) {
                 store->api->base.term(store->context);
         }
@@ -225,7 +226,9 @@ void ldmsd_store_free(ldmsd_store_inst_t store)
                 store->api->base.instance_destroy(store->context);
                 store->context = NULL;
         }
-        ldmsd_cfgobj_del(store->cfg.name, LDMSD_CFGOBJ_STORE);
+        free(store->libpath);
+        ldmsd_cfgobj_put(store->cfg, "find");
+        ldmsd_cfgobj_del(store->cfg);
 
         return;
 }
@@ -373,33 +376,22 @@ int ldmsd_load_plugin(char *inst_name, char *plugin_name, char *errstr, size_t e
 /*
  * Destroy and unload the plugin
  */
-int ldmsd_term_plugin(char *plugin_name)
+int ldmsd_term_plugin(char *instance_name)
 {
-	int rc = EINVAL;
-	ldmsd_sampler_t sampler = NULL;
-	ldmsd_store_t store = NULL;
-	ldmsd_plugin_t plug = NULL;
-	ldmsd_cfgobj_t cfgobj;
-
-	sampler = ldmsd_sampler_find(plugin_name);
-	if (sampler) {
-		plug = &sampler->api->base;
-		cfgobj = &sampler->cfg;
-	} else {
-		store = ldmsd_store_find(plugin_name);
-		if (!store) {
-			rc = ENOENT;
-			goto out;
-		}
-		plug = &store->api->base;
-		cfgobj = &store->cfg;
-	}
-	plug->term(plug);
-	ldmsd_cfgobj_put(cfgobj, "find");
-	ldmsd_cfgobj_del(cfgobj);
-	rc = 0;
- out:
-	return rc;
+        ldmsd_sampler_inst_t sampler_instance = ldmsd_sampler_find(instance_name);
+        if (sampler_instance) {
+                ldmsd_sampler_free(sampler_instance);
+                return 0;
+        }
+        ldmsd_store_inst_t store_instance = ldmsd_store_find(instance_name);
+        if (store_instance) {
+                ldmsd_store_free(store_instance);
+                return 0;
+        }
+        ovis_log(config_log, OVIS_LWARNING,
+                 "Cannot term plugin instance '%s'. Instance not found.\n",
+                 instance_name);
+        return ENOENT;
 }
 
 int _ldmsd_set_udata(ldms_set_t set, char *metric_name, uint64_t udata,

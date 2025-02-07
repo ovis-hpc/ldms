@@ -954,7 +954,7 @@ typedef struct ldmsd_sampler {
 
 struct ldmsd_store_inst {
 	struct ldmsd_cfgobj cfg;
-        const char *libpath; /* FIXME - who frees this? */
+        const char *libpath;
 	const struct ldmsd_store *api; /* owned by plugin, ldmsd does not free */
         void *context; /* owned by plugin, ldmsd does not free */
 };
@@ -968,7 +968,7 @@ typedef struct ldmsd_sampler_set {
 
 struct ldmsd_sampler_inst {
 	struct ldmsd_cfgobj cfg;
-        const char *libpath; /* FIXME - who frees this? */
+        const char *libpath;
 	const struct ldmsd_sampler *api; /* owned by plugin, ldmsd does not free */
         void *context; /* owned by plugin, ldmsd does not free */
 	unsigned long sample_interval_us;
