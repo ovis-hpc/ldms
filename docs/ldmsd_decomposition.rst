@@ -110,15 +110,29 @@ as follows.
       specified in the form of "*LIST*\ [*MEMBER*]" to refer to MEMBER
       of the record in the list NAME. For example,
 
-   ::
+     ::
 
           "src" : "netdev_list[rx_bytes]"
 
-   refers to the "rx_bytes" member of records in "netdev_list".
+     refers to the "rx_bytes" member of records in "netdev_list".
 
-   The **"timestamp"**, **"producer"**, and **"instance"** are special
-   "src" that refer to update timestamp, producer name and instance name
-   of the set respectively.
+     special src
+       The following is a list of special metric names that can be used in "src"
+       to access set information as column data:
+
+       | - **"timestamp"**: the sampling timestamp.
+       | - **"producer"**: the producer name of the set.
+       | - **"instance"**: the instance name of the set.
+       | - **"M_card"**: the cardinality of the set.
+       | - **"M_digest"**: the digest string of the set schema.
+       | - **"M_duration"**: the sampling duration of the set.
+       | - **"M_gid"**: the set's owner GID.
+       | - **"M_instance"**: the instance name of the set (same as "instance").
+       | - **"M_perm"**: the integer value of the permission of the set.
+       | - **"M_producer"**: the producer name of the set (same as "producer").
+       | - **"M_schema"**: the schema name of the set.
+       | - **"M_timestamp"**: the sampling timestamp (same as "timestamp").
+       | - **"M_uid"**: the set's owner UID.
 
    **"dst"** : "*DST_COL_NAME*" (optional)
       This is the name of the output column, later consumed by storage
