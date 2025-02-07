@@ -1305,7 +1305,7 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char* schema,
+open_store(void *context, const char *container, const char* schema,
 		struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
 	struct function_store_handle *s_handle = NULL;
@@ -1345,7 +1345,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		if (!s_handle)
 			goto out;
 		s_handle->ucontext = ucontext;
-		s_handle->store = s;
+		s_handle->store = (struct ldmsd_store *)context;
 
 		s_handle->sets_idx = idx_create();
 		if (!(s_handle->sets_idx))

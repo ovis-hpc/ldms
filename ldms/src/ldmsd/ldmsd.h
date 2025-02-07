@@ -935,7 +935,7 @@ typedef struct ldmsd_plugin {
 /* This struct is owned by the plugin. ldmsd should never edit the contents. */
 struct ldmsd_store {
 	struct ldmsd_plugin base;
-	ldmsd_store_handle_t (*open)(struct ldmsd_store *s,
+	ldmsd_store_handle_t (*open)(void *context,
 				    const char *container, const char *schema,
 				    struct ldmsd_strgp_metric_list *metric_list,
 				    void *ucontext);
@@ -1064,7 +1064,7 @@ ldmsd_store_open(ldmsd_store_inst_t store,
 		struct ldmsd_strgp_metric_list *metric_list,
 		void *ucontext)
 {
-	return store->api->open((ldmsd_store_handle_t)store->api, container, schema, metric_list, ucontext);
+	return store->api->open(store->context, container, schema, metric_list, ucontext);
 }
 
 static inline void *ldmsd_store_get_context(ldmsd_store_inst_t store,

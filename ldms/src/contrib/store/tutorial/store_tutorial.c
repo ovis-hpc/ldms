@@ -143,7 +143,7 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char* schema,
+open_store(void *context, const char *container, const char* schema,
 		struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
 	struct tutorial_store_handle *s_handle = NULL;
@@ -182,7 +182,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	pthread_mutex_init(&s_handle->lock, NULL);
 	pthread_mutex_lock(&s_handle->lock);
 	s_handle->ucontext = ucontext;
-	s_handle->store = s;
+	s_handle->store = (struct ldmsd_store *)context;
 	s_handle->path = strdup(path);
 
 

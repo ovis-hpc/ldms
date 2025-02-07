@@ -1034,7 +1034,7 @@ csv_store_handle_get(store_csv_t sc, const char *container, const char *schema);
 static void csv_store_handle_put(struct csv_store_handle *s_handle);
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char* schema,
+open_store(void *context, const char *container, const char* schema,
 		struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
 	struct csv_store_handle *s_handle = NULL;

@@ -311,7 +311,7 @@ static const char *usage(void *context)
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(void *context, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
         struct timescale_store *is = NULL;
@@ -323,7 +323,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
                 goto out;
         is->measurement_limit = measurement_limit;
         pthread_mutex_init(&is->lock, NULL);
-        is->store = s;
+        is->store = (struct ldmsd_store *)context;
         is->ucontext = ucontext;
         is->container = strdup(container);
         if (!is->container)

@@ -923,7 +923,7 @@ void destroy_store(struct rabbitkw_store_instance *si)
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(void *context, const char *container, const char *schema,
            struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct rabbitkw_store_instance *si;
@@ -952,7 +952,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		si->key = key;
 		si->extraprops = g_extraprops;
 		si->ucontext = ucontext;
-		si->store = s;
+		si->store = (struct ldmsd_store *)context;
 		si->routingkey = strdup(routing_key_path);
 		si->container = strdup(container);
 		si->schema = strdup(schema);

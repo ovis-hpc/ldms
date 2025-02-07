@@ -148,6 +148,7 @@ struct sos_instance {
 };
 
 typedef struct store_sos_s {
+        char *plugin_instance_name;
 	pthread_mutex_t cfg_lock;
 	LIST_HEAD(sos_inst_list, sos_instance) inst_list;
 	char root_path[PATH_MAX]; /**< store root path */
@@ -627,11 +628,11 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(void *context, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
+        store_sos_t ss = context;
 	struct sos_instance *si = NULL;
-        store_sos_t ss = (store_sos_t)s->base.context;
 
 	si = calloc(1, sizeof(*si));
 	if (!si)

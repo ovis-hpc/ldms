@@ -961,7 +961,7 @@ update_metrics(struct rabbitv3_store_instance *si, ldms_set_t set,
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(void *context, const char *container, const char *schema,
            struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct rabbitv3_store_instance *si;
@@ -1013,7 +1013,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 			goto err2;
 		}
 		si->ucontext = ucontext;
-		si->store = s;
+		si->store = (struct ldmsd_store *)context;
 		si->container = strdup(container);
 		if (!si->container) {
 			ovis_log(mylog, OVIS_LERROR,"rabbitv3: oom container\n");
