@@ -545,13 +545,13 @@ static sos_handle_t get_container(const char *path)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
+	store_sos_t ss = context;
 	struct sos_instance *si;
 	int rc = 0;
 	int len;
 	char *value;
-	store_sos_t ss = (store_sos_t)self->context;
 
 	value = av_value(avl, "timeout");
 	if (value)
@@ -607,13 +607,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (mylog)
 		ovis_log_destroy(mylog);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "    config name=<NAME> plugin=store_sos path=<path> timeout=<secs>\n"
 		"       path   - The path to primary storage\n"
@@ -631,7 +631,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct sos_instance *si = NULL;
-	store_sos_t ss = (store_sos_t)s->base.context;
+        store_sos_t ss = (store_sos_t)s->base.context;
 
 	si = calloc(1, sizeof(*si));
 	if (!si)
@@ -1744,13 +1744,34 @@ void store_sos_del(struct ldmsd_cfgobj *obj)
 	free(ss);
 }
 
+static void *instance_create(const char *plugin_instance_name) {
+	store_sos_t context;
+
+        /* FIXME error handling */
+        context = calloc(1, sizeof(*context));
+        /* FIXME - I think it would be better to have an accessor function
+           to look up the instance's name, rather than passing it as an
+           instance_init() parameter. */
+        context->plugin_instance_name = strdup(plugin_instance_name);
+
+        return context;
+}
+
+static void instance_destroy(void *context) {
+	store_sos_t ss = context;
+
+        free(ss->plugin_instance_name);
+        free(ss);
+}
+
 static struct ldmsd_store sos_store = {
 	.base.type   = LDMSD_PLUGIN_STORE,
 	.base.name   = "store_sos",
 	.base.term   = term,
 	.base.config = config,
 	.base.usage  = usage,
-	.base.context_size = sizeof(struct store_sos_s),
+        .base.instance_create = instance_create,
+        .base.instance_destroy = instance_destroy,
 	.open        = open_store,
 	.get_context = get_ucontext,
 	.store       = store,

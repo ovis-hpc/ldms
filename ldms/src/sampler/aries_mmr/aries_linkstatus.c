@@ -146,7 +146,7 @@ static int create_metric_set(base_data_t base)
 	return rc;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "config name=" SAMP BASE_CONFIG_USAGE
 		" [file_send=<send_file_name> file_recv=<recv_file_name>\n"
@@ -154,7 +154,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"    <recv_file_name>  Optional location of the gpcdr file to read for recv link status\n";
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *fname;
@@ -166,7 +166,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	base = base_config(avl, self->inst_name, SAMP, mylog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base)
 		return EINVAL;
 
@@ -202,7 +202,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return EINVAL;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	int rc, row, col;
 	int metric_no;
@@ -290,7 +290,7 @@ err:
 	return EINVAL;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	//don't close the file handle since we open and close it each time
 	if (lsfile)

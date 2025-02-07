@@ -479,7 +479,7 @@ static char * compute_schema_name(int pidarray, int pidextra, struct attr_value_
  * Plug-in data structure and access method.
  */
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = -1;
 	char *array, *extra;
@@ -522,7 +522,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto err;
 	}
 
-	base = base_config(avl, self->inst_name, sbuf, mylog);
+	base = base_config(avl, SAMP, sbuf, mylog);
 	if (!base) {
 		goto err;
 	}
@@ -554,7 +554,7 @@ err:
 
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return
 "config name=" SAMP " [port-number=<num>]\n"
@@ -576,7 +576,7 @@ static const char *usage(struct ldmsd_plugin *self)
 	        ;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	int i;
 	if (base)
@@ -590,7 +590,7 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(mylog);
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	if (noop)
 		return 0;

@@ -263,7 +263,7 @@ static int reopen_container(char *path)
 	return rc;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return	"config name=darshan_stream_store path=<path> port=<port_no> log=<path>\n"
 		"     path	The path to the root of the SOS container store (required).\n"
@@ -275,7 +275,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			 ldmsd_stream_type_t stream_type,
 			 const char *msg, size_t msg_len,
 			 json_entity_t entity);
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *producer_name;
@@ -294,7 +294,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		stream = strdup(value);
 	else
 		stream = strdup("darshanConnector");
-	ldmsd_stream_subscribe(stream, stream_recv_cb, self);
+	ldmsd_stream_subscribe(stream, stream_recv_cb, context);
 
 	value = av_value(avl, "path");
 	if (!value) {
@@ -574,7 +574,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (sos)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
@@ -591,6 +591,7 @@ static struct ldmsd_plugin darshan_stream_store = {
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
+        /* FIXME - log no longer passed on through get_plugin() argument */
 	msglog = pf;
 	return &darshan_stream_store;
 }

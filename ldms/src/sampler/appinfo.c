@@ -240,7 +240,7 @@ static int config_check(struct attr_value_list *kwl,
  * Sampler usage message.
  * @param self is the LDMS plugin handle
  **/
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return "config name=" SAMP BASE_CONFIG_USAGE
 		" producer=<prod_name> instance=<inst_name>\n"
@@ -265,8 +265,8 @@ static const char *usage(struct ldmsd_plugin *self)
  * @param kwl is the configuration keyword list
  * @param avl is the configuration attribute-value list
  **/
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
-		struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl,
+                  struct attr_value_list *avl)
 {
 	int rc;
 	int actual_shmem_size;
@@ -288,7 +288,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 
 	/* Invoke base sampler config, let it do what it needs */
-	base = base_config(avl, self->inst_name, SAMP, mylog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -380,7 +380,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
  * memory the next process data structure that is ready for sampling,
  * copy it into the metric set, and mark it as sampled.
  **/
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	int rc, i;
 	int metric_no;
@@ -449,7 +449,7 @@ out:
 /**
  * Sampler termination.
  **/
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	ovis_log(mylog, OVIS_LDEBUG, "Terminating sampler.\n");
 	if (base)

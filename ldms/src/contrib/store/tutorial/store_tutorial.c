@@ -100,7 +100,7 @@ static pthread_mutex_t cfg_lock;
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char* s;
 	int rc = 0;
@@ -120,14 +120,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (mylog)
 		ovis_log_destroy(mylog);
 	return;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "    config name=store_tutorial path=<path> \n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"

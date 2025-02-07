@@ -332,7 +332,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "config name=" SAMP " address=<address> username=<username> password=<password> sdrcache=<cachefile> retry=<sec> " BASE_CONFIG_USAGE
 		"    address       address of the host to contact. H flag in the ipmitool command (e.g., cn1-ipmi).\n"
@@ -344,7 +344,7 @@ static const char *usage(struct ldmsd_plugin *self)
 	//FIXME: make an optional command to refresh the cache file.
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *hostname, *username, *password, *sdrcache, *retrycmd;
 	int rc;
@@ -385,7 +385,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		retry = IPMIRETRYDEFAULT;
 	else
 		retry = atoi(retrycmd);
-	
 
 	rc = 0;
 	do {
@@ -395,7 +394,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 		rc = create_commands(hostname, username, password, sdrcache);
 		ovis_log(mylog, OVIS_LERROR, SAMP "cannot create command. sleeping and retrying\n");
-		if (rc == EINVAL) 
+		if (rc == EINVAL)
 			goto err;
 	} while (rc != 0);
 
@@ -403,10 +402,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	rc = 0;
 	do {
 		//if cannot create metric set, retry indefinitely
-		if (rc != 0) 
+		if (rc != 0)
 			sleep(retry);
 
-		base = base_config(avl, self->inst_name, SAMP, mylog);
+		base = base_config(avl, SAMP, SAMP, mylog);
 		if (!base) {
 			rc = errno;
 			goto err;
@@ -429,7 +428,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	int metric_no;
 	char *s;
@@ -513,10 +512,9 @@ static int sample(struct ldmsd_sampler *self)
 	base_sample_end(base);
 
 	return 0;
-	
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 
 	cmd[0] = '\0';

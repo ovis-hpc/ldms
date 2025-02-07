@@ -392,7 +392,7 @@ fail:
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	ovis_log(mylog, OVIS_LDEBUG, STOR ": config start.\n");
 	char *value;
@@ -584,7 +584,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	/* What contract is this supposed to meet. Shall close(sh) have
 	been called for all existing sh already before this is reached.?
@@ -593,7 +593,7 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(mylog);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return
 	"    config name=store_rabbitkw routing_key=<route> host=<host> port=<port> exchange=<exch> \\ \n"

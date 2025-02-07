@@ -99,7 +99,7 @@ inuse_box_list;
  * bytes.
  *
  * Note: This object really needs to be a
- * member of a sampler instance self object so that multiple
+ * member of a sampler instance context object so that multiple
  * shms can be configured simultaneously.
  */
 typedef struct ldms_shm_box_cache {
@@ -750,11 +750,11 @@ static int scan_index(const char* const index_name, int boxlen, int metric_max,
 	return rc;
 }
 
-static int shm_sampler_config(struct ldmsd_plugin *self, struct attr_value_list* avl)
+static int shm_sampler_config(void *context, struct attr_value_list* avl)
 {
 
 	int rc;
-	initial_base_config = base_config(avl, self->inst_name, SAMP, mylog);
+	initial_base_config = base_config(avl, SAMP, SAMP, mylog);
 	if(!initial_base_config) {
 		rc = errno;
 		base_del(initial_base_config);
@@ -870,7 +870,7 @@ static int config_check(struct attr_value_list *kwl,
  *     shm_metric_max	Maximum number of metrics from any process.
  *     shm_set_timeout	Maximum idle time on a set before it is destroyed. 0==infinity
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(void *context, struct attr_value_list *kwl,
 		struct attr_value_list *avl)
 {
 	int rc;
@@ -880,7 +880,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		return rc;
 	}
 
-	rc = shm_sampler_config(self, avl);
+	rc = shm_sampler_config(context, avl);
 
 	if(rc) {
 		ovis_log(mylog, OVIS_LERROR, "failed to config shm_sampler\n");
@@ -902,7 +902,7 @@ static void check_box_activation(ldms_shm_box_t *box)
 	}
 }
 
-static int sample_set(struct ldmsd_sampler *self, ldms_shm_box_t *box)
+static int sample_set(void *context, ldms_shm_box_t *box)
 {
 
 	int shm_metric_index, ldms_metric_index;
@@ -933,7 +933,7 @@ static int sample_set(struct ldmsd_sampler *self, ldms_shm_box_t *box)
 	return 0;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	int rc = 0;
 	if(ldms_shm_index_is_empty(box_cache.index)) {
@@ -956,7 +956,7 @@ static int sample(struct ldmsd_sampler *self)
 	int i;
 	for(i = 0; i < box_cache.box_len; i++) {
 		if(is_active(&boxes[i])) {
-			rc = sample_set(self, &boxes[i]);
+			rc = sample_set(context, &boxes[i]);
 			if(rc) {
 				ovis_log(mylog, OVIS_LERROR,
 						"failed to sample the set %s\n",
@@ -967,7 +967,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	ldms_shm_index_lock();
 
@@ -999,7 +999,7 @@ static void term(struct ldmsd_plugin *self)
 	ovis_log(mylog, OVIS_LINFO, SAMP " was successfully terminated\n");
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return "config name=" SAMP " producer=<name> instance=<name> [shm_index=<name>][shm_boxmax=<int>][shm_array_max=<int>][shm_metric_max=<int>]"
 	"[shm_set_timeout=<int>][component_id=<int>] [schema=<name>]\n"

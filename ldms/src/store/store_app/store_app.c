@@ -569,14 +569,14 @@ Option descriptions:\n\
 ";
 
 static const char *
-store_app_usage(struct ldmsd_plugin * pi)
+store_app_usage(void *context)
 {
 	return _help;
 }
 
 static int
-store_app_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
-					    struct attr_value_list *avl)
+store_app_config(void *context, struct attr_value_list *kwl,
+                 struct attr_value_list *avl)
 {
 	int len;
 	char *val;
@@ -596,7 +596,7 @@ store_app_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	return 0;
 }
 
-static void store_app_term(struct ldmsd_plugin *p)
+static void store_app_term(void *context)
 {
 	if (mylog)
 		ovis_log_destroy(mylog);

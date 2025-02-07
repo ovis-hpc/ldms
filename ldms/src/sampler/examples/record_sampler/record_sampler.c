@@ -205,7 +205,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_SYNOPSIS
 		"       [with_name=0|1]\n"
@@ -215,7 +215,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 	char *_with_name = NULL;
@@ -236,7 +236,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		with_name = atoi(_with_name);
 	}
 
-	base = base_config(avl, self->inst_name, SAMP, mylog);
+	base = base_config(avl, SAMP, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -340,7 +340,7 @@ void value_setter(ldms_mval_t mval, enum ldms_value_type typ, int item)
 	}
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
 	ldms_mval_t lh, rec_inst, mval, rec_array;
 	struct rec_metric *m;
@@ -403,7 +403,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (base)
 		base_del(base);

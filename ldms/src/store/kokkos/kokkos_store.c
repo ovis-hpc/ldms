@@ -847,7 +847,7 @@ static int create_actions(sos_schema_t schema, struct schema_spec *spec)
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return  "config name=kokkos_store path=<path> port=<port_no> log=<path>\n"
 		"     path      The path to the root of the SOS container store.\n"
@@ -861,7 +861,7 @@ static int cmp_json_name(const void *a, const void *b, size_t len)
 }
 
 static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt);
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc;
@@ -871,7 +871,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		stream = strdup(value);
 	else
 		stream = strdup("kokkos");
-	ldms_stream_subscribe(stream, 0, slurm_recv_cb, self, "kokkos_store");
+	ldms_stream_subscribe(stream, 0, slurm_recv_cb, context, "kokkos_store");
 
 	value = av_value(avl, "path");
 	if (!value) {
@@ -984,7 +984,7 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
 	if (sos)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
