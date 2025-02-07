@@ -276,9 +276,9 @@ __term(void *context)
 }
 
 static ldmsd_store_handle_t
-__open(struct ldmsd_store *s, const char *container, const char *schema,
-			    struct ldmsd_strgp_metric_list *metric_list,
-			    void *ucontext)
+__open(void *context, const char *container, const char *schema,
+       struct ldmsd_strgp_metric_list *metric_list,
+       void *ucontext)
 {
 	errno = ENOTSUP;
 	return NULL;
