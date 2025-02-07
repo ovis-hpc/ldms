@@ -109,12 +109,21 @@ struct sos_list_ctxt {
 	struct sos_list *list;
 };
 
+typedef struct store_sos_s {
+        char *plugin_instance_name;
+	pthread_mutex_t cfg_lock;
+	LIST_HEAD(sos_inst_list, sos_instance) inst_list;
+	char root_path[PATH_MAX]; /**< store root path */
+	time_t timeout;		  /* Default is forever */
+} *store_sos_t;
+
 /*
  * NOTE:
  *   <sos::path> = <root_path>/<container>
  */
 struct sos_instance {
 	struct ldmsd_store *store;
+        store_sos_t ss;
 	char *container;
 	char *schema_name;
 	char *path; /**< <root_path>/<container> */
@@ -146,14 +155,6 @@ struct sos_instance {
 
 	struct rbt schema_rbt;
 };
-
-typedef struct store_sos_s {
-        char *plugin_instance_name;
-	pthread_mutex_t cfg_lock;
-	LIST_HEAD(sos_inst_list, sos_instance) inst_list;
-	char root_path[PATH_MAX]; /**< store root path */
-	time_t timeout;		  /* Default is forever */
-} *store_sos_t;
 
 struct row_schema_key_s {
 	const struct ldms_digest_s *digest;
@@ -1332,7 +1333,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
       int *metric_arry, size_t metric_count)
 {
 	struct sos_instance *si = _sh;
-	store_sos_t ss = si->store->base.context;
+	store_sos_t ss = si->ss;
 	struct timespec now;
 	int rc = 0;
 
@@ -1646,7 +1647,7 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int 
 			goto out;
 		}
 	}
-	store_sos_t ss = si->store->base.context;
+	store_sos_t ss = si->ss;
 	if (ss->timeout > 0) {
 		struct timespec now;
 		clock_gettime(CLOCK_REALTIME, &now);
