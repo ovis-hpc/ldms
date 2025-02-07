@@ -58,6 +58,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
 #include <sys/types.h>
@@ -72,6 +73,8 @@
 #define TYPEMAX 31
 #define VALMAX 31
 
+#define SAMP "filesingle"
+
 struct single {
 	char file[LINEMAX+1];
 	char name[NAMEMAX+1];
@@ -83,43 +86,46 @@ struct single {
 	int64_t collect_time; /* how long open/read/close took */
 };
 
-TAILQ_HEAD(single_list, single) metric_list;
-
-#define SAMP "filesingle"
-static ldms_set_t set;
-static int metric_offset; /* Location of first metric from user file */
-static int collect_times = 0;
-static base_data_t base;
-
-static ovis_log_t mylog;
+typedef struct filesingle_context {
+        char *plugin_instance_name;
+        bool configured;
+        ovis_log_t mylog;
+        ldms_set_t set;
+        int metric_offset; /* Location of first metric from user file */
+        int collect_times;
+        base_data_t base;
+        TAILQ_HEAD(single_list, single) metric_list;
+} *filesingle_context_t;
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
 
-static void clear_metric_list() {
-	while (!TAILQ_EMPTY(&metric_list)) {
-		struct single *s = TAILQ_FIRST(&metric_list);
-		TAILQ_REMOVE(&metric_list, s, entry);
+static void clear_metric_list(filesingle_context_t fsc)
+{
+	while (!TAILQ_EMPTY(&fsc->metric_list)) {
+		struct single *s = TAILQ_FIRST(&fsc->metric_list);
+		TAILQ_REMOVE(&fsc->metric_list, s, entry);
 		free(s);
 	}
 }
 
-void errusage(const char *l, int lno)
+static void errusage(filesingle_context_t fsc, const char *l, int lno)
 {
-	ovis_log(mylog, OVIS_LERROR, "Parsing error in line %d: %s\n", lno, l);
-	ovis_log(mylog, OVIS_LERROR, "Expecting: <name> <path> <type> <default>\n");
-	ovis_log(mylog, OVIS_LERROR, "where type is one of U[8,16,32,64] or S[8,16,32,64] or F32 or F64 or CHAR.\n");
+	ovis_log(fsc->mylog, OVIS_LERROR, "Parsing error in line %d: %s\n", lno, l);
+	ovis_log(fsc->mylog, OVIS_LERROR, "Expecting: <name> <path> <type> <default>\n");
+	ovis_log(fsc->mylog, OVIS_LERROR, "where type is one of U[8,16,32,64] or S[8,16,32,64] or F32 or F64 or CHAR.\n");
 }
 
 /* parse lines of: name source type default */
-int parse_single_conf(const char *conf) {
+static int parse_single_conf(filesingle_context_t fsc, const char *conf)
+{
 	if (!conf)
 		return EINVAL;
 	int rc = 0;
 	FILE *in = fopen(conf, "r");
 	if (!in) {
 		rc = errno;
-		ovis_log(mylog, OVIS_LERROR, "Cannot open %s\n", conf);
+		ovis_log(fsc->mylog, OVIS_LERROR, "Cannot open %s\n", conf);
 		return errno;
 	}
 	char *line = NULL;
@@ -147,7 +153,7 @@ int parse_single_conf(const char *conf) {
 			       "%" stringify(VALMAX) "s",
 				name, file, typestr, defstr);
 		if (nitems < 4) {
-			errusage(line, lno);
+			errusage(fsc, line, lno);
 			rc = EINVAL;
 			goto out; 
 		}
@@ -159,21 +165,21 @@ int parse_single_conf(const char *conf) {
 		enum ldms_value_type vt = ldms_metric_str_to_type(typestr);
 		if (vt == LDMS_V_NONE) {
 			rc = EINVAL;
-			errusage(line, lno);
+			errusage(fsc, line, lno);
 			goto out; 
 		}
 		union ldms_value val;
 		val.v_u64 = 0;
 		rc = ldms_mval_parse_scalar(&val, vt, defstr);
 		if (rc) {
-			ovis_log(mylog, OVIS_LERROR, "%s%d: default %s invalid\n",
+			ovis_log(fsc->mylog, OVIS_LERROR, "%s%d: default %s invalid\n",
 				conf, lno, defstr);
 			goto out;
 		}
 		metric = malloc(sizeof(*metric));
 		if (!metric) {
 			rc = ENOMEM;
-			ovis_log(mylog, OVIS_LERROR, "out of memory parsing %s\n",
+			ovis_log(fsc->mylog, OVIS_LERROR, "out of memory parsing %s\n",
 				conf);
 			goto out;
 		}
@@ -184,36 +190,36 @@ int parse_single_conf(const char *conf) {
 		metric->val = val;
 		metric->collect_time = -1;
 		metric->t = vt;
-		TAILQ_INSERT_TAIL(&metric_list, metric, entry);
+		TAILQ_INSERT_TAIL(&fsc->metric_list, metric, entry);
 	}
 	goto done;
 
 out:
-	clear_metric_list();
+	clear_metric_list(fsc);
 done:
 	fclose(in);
 	return rc;
 }
 
-static int create_metric_set(base_data_t base)
+static int create_metric_set(filesingle_context_t fsc)
 {
 	ldms_schema_t schema;
 	int rc;
 	rc = ENOMEM;
 
-	schema = base_schema_new(base);
+	schema = base_schema_new(fsc->base);
 	if (!schema) {
 		rc = errno;
-		ovis_log(mylog, OVIS_LERROR,
+		ovis_log(fsc->mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
-		       __FILE__, base->schema_name, errno);
+		       __FILE__, fsc->base->schema_name, errno);
 		goto err;
 	}
 
-	metric_offset = ldms_schema_metric_count_get(schema);
+	fsc->metric_offset = ldms_schema_metric_count_get(schema);
 
 	struct single *s;
-	TAILQ_FOREACH(s, &metric_list, entry) {
+	TAILQ_FOREACH(s, &fsc->metric_list, entry) {
 		rc = ldms_schema_metric_add(schema, s->name, s->t);
 		if (rc < 0) {
 			rc = ENOMEM;
@@ -221,8 +227,8 @@ static int create_metric_set(base_data_t base)
 		}
 	}
 
-	if (collect_times) {
-		TAILQ_FOREACH(s, &metric_list, entry) {
+	if (fsc->collect_times) {
+		TAILQ_FOREACH(s, &fsc->metric_list, entry) {
 			rc = ldms_schema_metric_add(schema, s->nametime,
 							LDMS_V_S64);
 			if (rc < 0) {
@@ -232,8 +238,8 @@ static int create_metric_set(base_data_t base)
 		}
 	}
 
-	set = base_set_new(base);
-	if (!set) {
+	fsc->set = base_set_new(fsc->base);
+	if (!fsc->set) {
 		rc = errno;
 		goto err;
 	}
@@ -246,50 +252,54 @@ err:
 
 static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
+        filesingle_context_t fsc = context;
 	int rc;
 
-	if (set) {
-		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
+	if (fsc->set) {
+		ovis_log(fsc->mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
 
 	int tidx = av_idx_of(kwl, "timing");
 	if (tidx != -1) {
-		collect_times = 1;
+		fsc->collect_times = 1;
 	}
-	ovis_log(mylog, OVIS_LINFO, "timing = %d\n", collect_times);
+	ovis_log(fsc->mylog, OVIS_LINFO, "timing = %d\n", fsc->collect_times);
 
 	const char *conf = av_value(avl, "conf");
-	rc = parse_single_conf(conf);
+	rc = parse_single_conf(fsc, conf);
 	if (rc)
 		return rc;
 
-	if (TAILQ_EMPTY(&metric_list)) {
-		ovis_log(mylog, OVIS_LERROR, "Empty set not allowed. (%s)\n", conf);
+	if (TAILQ_EMPTY(&fsc->metric_list)) {
+		ovis_log(fsc->mylog, OVIS_LERROR, "Empty set not allowed. (%s)\n", conf);
 		return EINVAL;
 	}
 
-	base = base_config(avl, SAMP, SAMP, mylog);
-	if (!base) {
+	fsc->base = base_config(avl, fsc->plugin_instance_name, fsc->plugin_instance_name, fsc->mylog);
+	if (!fsc->base) {
 		rc = ENOMEM;
 		goto err;
 	}
 
-	rc = create_metric_set(base);
+	rc = create_metric_set(fsc);
 	if (rc) {
-		ovis_log(mylog, OVIS_LERROR, "failed to create the metric set.\n");
+		ovis_log(fsc->mylog, OVIS_LERROR, "failed to create the metric set.\n");
 		goto err;
 	}
+
+        fsc->configured = true;
 
 	return 0;
 
 err:
-	base_del(base);
+	base_del(fsc->base);
 	return rc;
 }
 
 static int sample(void *context)
 {
+        filesingle_context_t fsc = context;
 	int rc;
 	char *l;
 	char lbuf[VALMAX+1];
@@ -301,12 +311,17 @@ static int sample(void *context)
 	struct timeval *tv_prev = &tv[1];
 	struct timeval tv_diff;
 
-	base_sample_begin(base);
-	i = metric_offset;
-	struct single *s = NULL;
-	TAILQ_FOREACH(s, &metric_list, entry) {
+        if (!fsc->configured) {
+                ovis_log(fsc->mylog, OVIS_LERROR, SAMP" plugin not configured\n");
+                return EINVAL;
+        }
 
-		if (collect_times) {
+        base_sample_begin(fsc->base);
+	i = fsc->metric_offset;
+	struct single *s = NULL;
+	TAILQ_FOREACH(s, &fsc->metric_list, entry) {
+
+		if (fsc->collect_times) {
 			gettimeofday(tv_prev, 0);
 		}
 		mf = fopen(s->file, "r");
@@ -318,7 +333,7 @@ static int sample(void *context)
 		if (!l)
 			goto skip;
 
-		if (collect_times) {
+		if (fsc->collect_times) {
 			gettimeofday(tv_now, 0);
 			timersub(tv_now, tv_prev, &tv_diff);
 			s->collect_time = tv_diff.tv_sec * 1000000 + 
@@ -328,39 +343,27 @@ static int sample(void *context)
 		rc = ldms_mval_parse_scalar(&(s->val), s->t, l);
 		if (rc != 0)
 			goto skip;
-		ldms_metric_set(set, i, &(s->val));
+		ldms_metric_set(fsc->set, i, &(s->val));
 		i++;
 		continue;
 skip:
-		ldms_metric_set(set, i, &(s->missing_val));
+		ldms_metric_set(fsc->set, i, &(s->missing_val));
 		s->collect_time = -1;
 		i++;
 	}
 
-	if (collect_times) {
-		TAILQ_FOREACH(s, &metric_list, entry) {
+	if (fsc->collect_times) {
+		TAILQ_FOREACH(s, &fsc->metric_list, entry) {
 			if (s->collect_time != -1) {
 				v.v_s64 = s->collect_time;
-				ldms_metric_set(set, i, &v);
+				ldms_metric_set(fsc->set, i, &v);
 			}
 			i++;
 		}
 	}
 
-	base_sample_end(base);
+	base_sample_end(fsc->base);
 	return 0;
-}
-
-static void term(void *context)
-{
-	if (base)
-		base_del(base);
-	if (set)
-		ldms_set_delete(set);
-	set = NULL;
-	clear_metric_list();
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static const char *usage(void *context)
@@ -374,27 +377,63 @@ static const char *usage(void *context)
 
 }
 
+static void *instance_create(const char *plugin_instance_name)
+{
+        filesingle_context_t fsc;
+
+        fsc = calloc(1, sizeof(*fsc));
+        if (fsc == NULL) {
+		ovis_log(NULL, OVIS_LERROR,
+                         "Failed to allocate context in plugin " SAMP ": %d", errno);
+                return NULL;
+        }
+
+        char *log_name = malloc(strlen("sampler.")+strlen(plugin_instance_name)+1);
+        sprintf(log_name, "sampler.%s", plugin_instance_name);
+        fsc->mylog = ovis_log_register(log_name, "Message from the " SAMP " plugin");
+	if (!fsc->mylog) {
+		int rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem %s"
+                         " for '" SAMP "' plugin. Error %d\n", log_name,  rc);
+                free(log_name);
+                return NULL;
+	}
+        free(log_name);
+
+        fsc->plugin_instance_name = strdup(plugin_instance_name);
+	fsc->set = NULL;
+	TAILQ_INIT(&fsc->metric_list);
+        fsc->configured = false;
+
+        return fsc;
+}
+
+static void instance_destroy(void *context)
+{
+        filesingle_context_t fsc = context;
+
+	if (fsc->base)
+		base_del(fsc->base);
+	if (fsc->set)
+		ldms_set_delete(fsc->set);
+	fsc->set = NULL;
+	clear_metric_list(fsc);
+        ovis_log_destroy(fsc->mylog);
+        free(fsc->plugin_instance_name);
+        free(fsc);
+}
+
 static struct ldmsd_sampler filesingle_plugin = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-	},
+	.base.name = SAMP,
+	.base.type = LDMSD_PLUGIN_SAMPLER,
+        .base.instance_create = instance_create,
+        .base.instance_destroy = instance_destroy,
+	.base.config = config,
+	.base.usage = usage,
 	.sample = sample,
 };
 
 struct ldmsd_plugin *get_plugin()
 {
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	set = NULL;
-	TAILQ_INIT(&metric_list);
-	return &filesingle_plugin.base;
+	return (struct ldmsd_plugin *)&filesingle_plugin;
 }
