@@ -7,7 +7,7 @@ inputs:
         SOS_REPO https://github.com/ovis-hpc/sos
         SOS_BRANCH SOS-6
         MAESTRO_REPO https://github.com/ovis-hpc/maestro
-        MAESTRO_BRANCH OVIS-4.4.4
+        MAESTRO_BRANCH OVIS-4.4.5
         NUMSOS_REPO https://github.com/narategithub/numsos
         NUMSOS_BRANCH compMinMeanMax-fix
         SOSDBUI_REPO https://github.com/nick-enoent/sosdb-ui
