@@ -216,6 +216,20 @@ size_t ovis_get_mem_size(const char *s);
 int ovis_time_str2us(const char *s, long *v);
 
 /**
+ * \brief Converts time in microseconds to a human-readable string format.
+ *
+ * This function takes a time value in microseconds and converts it to a
+ * human-readable string format. The output string represents the time in
+ * one of the following units seconds (s), milliseconds (ms), minutes (m),
+ * hours (h), days (d), and microseconds (µs).
+ *
+ * \param time_us   The input time value in microseconds.
+ * \param output    A pointer to the buffer where the output string will be stored.
+ * \param output_sz The size of the output buffer.
+ */
+void ovis_time_us2str(long time_us, char *output, size_t output_sz);
+
+/**
  * \brief Fork and exec the given command with /bin/sh.
  *
  * This function call will fork and execute the given command with bash. It is
