@@ -794,7 +794,7 @@ static char *get_username(const uid_t uid, forkstat_t *ft)
 static void uid_name_info_free(forkstat_t *ft)
 {
 	size_t i;
-	if (!ft || !ft->uid_name_info)
+	if (!ft)
 		return;
 
 	int dummy = 0;

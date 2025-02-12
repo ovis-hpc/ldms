@@ -842,6 +842,7 @@ struct rrbn *rrbt_find(rrbt_t t, const void *key)
 	return NULL;
 }
 
+#pragma GCC diagnostic ignored "-Waddress"
 static struct rrbn *__rrbn_min(rrbt_t t, struct rrbn *n)
 {
 	for (; n && rrbn_ptr(t, n->left); n = rrbn_ptr(t, n->left));
