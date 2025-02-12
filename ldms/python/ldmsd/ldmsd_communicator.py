@@ -63,7 +63,7 @@ import errno
 #:LDMSD_CTRL_CMD_MAP['load']['opt_attr'] is the list of the optional attributes
 #:of the load command.
 LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
-                      'load': {'req_attr': ['name'], 'opt_attr' : ['inst']},
+                      'load': {'req_attr': ['name'], 'opt_attr' : ['plugin']},
                       'term': {'req_attr': ['name']},
                       'config': {'req_attr': ['name']},
                       'source': {'req_attr': ['path'], 'opt_attr':[]},
@@ -1645,27 +1645,27 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def plugn_load(self, name, instance=None):
+    def plugn_load(self, name, plugin=None):
         """
         Load a plugin instance.
 
         Parameters:
-        name  - The plugin name
-        inst  - The configuration instance name. If None, 'name' is used
+        name  - The instance name
+        plugin- The plugin name. If None, 'name' is used
 
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status != 0 or None
         """
-        if not instance:
-            instance = name
-        req = LDMSD_Request(
-                command_id=LDMSD_Request.PLUGN_LOAD,
-                attrs=[
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INSTANCE, value=instance)
-                ])
+        attrs=[
+            LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)
+        ]
+        if plugin:
+           attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PLUGIN,
+                                            value=plugin))
+        req = LDMSD_Request(command_id=LDMSD_Request.PLUGN_LOAD,
+                            attrs=attrs)
         try:
             req.send(self)
             resp = req.receive(self)

@@ -292,18 +292,18 @@ class LdmsdCmdParser(cmd.Cmd):
         Load a plugin at the Aggregator/Producer
         Parameters:
         name=   The plugin to load
-        inst=     The configuration name for the plugin (default = <name>)
+        plugin= The configuration name for the plugin (default = <name>)
         """
         arg = self.handle_args('load', arg)
         if arg:
             name = arg['name']
-            if arg['inst']:
-                inst = arg['inst']
+            if arg['plugin']:
+                plugin = arg['plugin']
             else:
-                inst = name
-            rc, msg = self.comm.plugn_load(name, inst)
+                plugin = name
+            rc, msg = self.comm.plugn_load(name, plugin)
             if rc:
-                print(f'Error loading plugin {arg["name"]} as {arg["inst"]}: {msg}')
+                print(f'Error loading plugin {arg["name"]} as {arg["plugin"]}: {msg}')
 
     def complete_load(self, text, line, begidx, endidx):
         return self.__complete_attr_list('load', text)
@@ -785,16 +785,20 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Start updaters. The parameters to the commands are as
         follows:
-        name=     The update policy name
-        [interval=] The update interval in micro-seconds. If this is not
-                  specified, the previously configured value will be used.
-        [offset=]   Offset for synchronization
-                    If 'interval' is given but not 'offset,
-                    the updater will update sets asynchronously.
-        [auto_interval=]   [true|false] If true, the updater will schedule
-                           set updates according to the update hint. If false,
-                           the updater will schedule the set updates according
-                           to the default schedule, i.e., the given interval and offset values.
+        name=string
+               The update policy name
+        [interval=us]
+               The update interval in micro-seconds. If this is not
+               specified, the previously configured value will be used.
+        [offset=us]
+               Offset for synchronization If 'interval' is given but not
+               offset, The default is 0.
+        [auto_interval={true|false}]
+               If true, the updater will schedule
+               set updates according to the update hint. If false,
+               the updater will schedule the set updates according
+               to the default schedule, i.e., the given interval and
+               offset values.
         """
         arg = self.handle_args('updtr_start', arg)
         if arg:
@@ -1583,11 +1587,11 @@ class LdmsdCmdParser(cmd.Cmd):
         rc, msg = self.comm.plugn_status(arg['name'])
         if rc == 0:
             plugins = fmt_status(msg)
-            print("Plugin       Instance                 Type         libpath")
+            print("Config Name  Plugin                   Type         libpath")
             print("------------ ------------------------ ------------ ------------")
             for plugn in plugins:
                 print("{0:12} {1:24} {2:12} {3}".format(
-                    plugn['name'], plugn['instance'], plugn['type'],
+                    plugn['name'], plugn['plugin'], plugn['type'],
                     plugn['libpath']))
 
     def do_plugn_sets(self, arg):
