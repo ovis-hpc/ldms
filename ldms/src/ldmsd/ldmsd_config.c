@@ -316,8 +316,8 @@ int ldmsd_load_plugin(char* inst_name, char *plugin_name, char *errstr, size_t e
 	struct ldmsd_plugin *api = load_plugin(plugin_name);
 	if (!api)
 		return errno;
-	if (!inst_name)
-		inst_name = plugin_name;
+	if (!plugin_name)
+		plugin_name = inst_name;
 	switch (api->type) {
 	case LDMSD_PLUGIN_SAMPLER:
 		if (ldmsd_sampler_alloc(inst_name, (struct ldmsd_sampler *)api,

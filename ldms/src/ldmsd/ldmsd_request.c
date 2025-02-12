@@ -5091,9 +5091,10 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 		}
 		count++;
 		rc = linebuf_printf(reqc,
-			       "{\"name\":\"%s\",\"instance\":\"%s\",\"type\":\"%s\","
+			       "{\"name\":\"%s\",\"plugin\":\"%s\",\"type\":\"%s\","
 			       "\"libpath\":\"%s\"}",
-			       samp->api->base.name, samp->cfg.name,
+			       samp->cfg.name,
+			       samp->api->base.name,
 			       plugn_state_str(samp->api->base.type),
 			       samp->api->base.libpath);
 		if (rc) {
@@ -5162,27 +5163,28 @@ static int plugn_status_handler(ldmsd_req_ctxt_t reqc)
 
 static int plugn_load_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *name, *inst, *attr_name;
-	name = NULL;
-	inst = NULL;
+	char *inst = NULL, *attr_name;
+	char *plugn = NULL;
 	size_t cnt = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!name) {
+	inst = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!inst) {
 		ovis_log(config_log, OVIS_LERROR, "load plugin called without name=$plugin");
 		goto einval;
 	}
 
-	attr_name = "inst";
-	inst = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
-	reqc->errcode = ldmsd_load_plugin(inst, name,
+	attr_name = "plugin";
+	plugn = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PLUGIN);
+	if (!plugn)
+		plugn = inst;
+	reqc->errcode = ldmsd_load_plugin(inst, plugn,
 					reqc->line_buf,
 					reqc->line_len);
 	if (reqc->errcode)
 		cnt = strlen(reqc->line_buf) + 1;
 	else
-		__dlog(DLOG_CFGOK, "load name=%s inst=%s\n", name, inst);
+		__dlog(DLOG_CFGOK, "load name=%s plugin=%s\n", inst, plugn);
 	goto send_reply;
 
 einval:
@@ -5191,8 +5193,9 @@ einval:
 			"The attribute '%s' is required by load.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	free(name);
 	free(inst);
+	if (plugn != inst)
+		free(plugn);
 	return 0;
 }
 
