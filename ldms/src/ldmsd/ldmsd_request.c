@@ -5176,8 +5176,6 @@ static int plugn_load_handler(ldmsd_req_ctxt_t reqc)
 
 	attr_name = "plugin";
 	plugn = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PLUGIN);
-	if (!plugn)
-		plugn = inst;
 	reqc->errcode = ldmsd_load_plugin(inst, plugn,
 					reqc->line_buf,
 					reqc->line_len);
@@ -5194,8 +5192,7 @@ einval:
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(inst);
-	if (plugn != inst)
-		free(plugn);
+	free(plugn);
 	return 0;
 }
 

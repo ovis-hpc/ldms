@@ -301,14 +301,20 @@ void ldmsd_store___del(ldmsd_cfgobj_t obj)
 /*
  * Load a plugin
  */
-int ldmsd_load_plugin(char* inst_name, char *plugin_name, char *errstr, size_t errlen)
+int ldmsd_load_plugin(char *inst_name, char *plugin_name, char *errstr, size_t errlen)
 {
-	struct ldmsd_plugin *api = load_plugin(plugin_name);
+	struct ldmsd_plugin *api;
+
+        if (!inst_name)
+                return EINVAL;
+        if (!plugin_name)
+		plugin_name = inst_name;
+
+        api = load_plugin(plugin_name);
 	if (!api)
 		return errno;
-	if (!plugin_name)
-		plugin_name = inst_name;
-	switch (api->type) {
+
+        switch (api->type) {
 	case LDMSD_PLUGIN_SAMPLER:
 		if (ldmsd_sampler_alloc(inst_name, (struct ldmsd_sampler *)api,
 			ldmsd_sampler___del, geteuid(), getegid(), 0660))

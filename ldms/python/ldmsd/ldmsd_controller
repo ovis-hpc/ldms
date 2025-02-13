@@ -291,8 +291,8 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Load a plugin at the Aggregator/Producer
         Parameters:
-        name=   The plugin to load
-        plugin= The configuration name for the plugin (default = <name>)
+        name=   The instance name
+        plugin= The plugin name (if None, the ldmsd will default to <name>)
         """
         arg = self.handle_args('load', arg)
         if arg:
@@ -300,10 +300,10 @@ class LdmsdCmdParser(cmd.Cmd):
             if arg['plugin']:
                 plugin = arg['plugin']
             else:
-                plugin = name
+                plugin = None
             rc, msg = self.comm.plugn_load(name, plugin)
             if rc:
-                print(f'Error loading plugin {arg["name"]} as {arg["plugin"]}: {msg}')
+                print(f'Error loading instance {arg["name"]} from plugin {arg["plugin"] if arg["plugin"] else arg["name"]}: {msg}')
 
     def complete_load(self, text, line, begidx, endidx):
         return self.__complete_attr_list('load', text)

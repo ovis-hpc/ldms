@@ -1645,21 +1645,18 @@ class Communicator(object):
 
         Parameters:
         name  - The instance name
-        plugin- The plugin name. If None, 'name' is used
+        plugin- The plugin name. If None, the ldmsd will use 'name'
 
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status != 0 or None
         """
-        if not plugin:
-            plugin = name
-        req = LDMSD_Request(
-                command_id=LDMSD_Request.PLUGN_LOAD,
-                attrs=[
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PLUGIN, value=plugin)
-                ])
+        attrs = []
+        attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name))
+        if plugin is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PLUGIN, value=plugin))
+        req = LDMSD_Request(command_id=LDMSD_Request.PLUGN_LOAD, attrs=attrs)
         try:
             req.send(self)
             resp = req.receive(self)
