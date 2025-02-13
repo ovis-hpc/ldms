@@ -1242,7 +1242,7 @@ static void* flushThreadInit(void *m)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		struct attr_value_list *avl)
 {
 	char *s = NULL;
@@ -1432,7 +1432,7 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 
 	if (rothread_used) {
@@ -1469,7 +1469,7 @@ static void term(struct ldmsd_plugin *self)
 	return;
 }
 
-static const char* usage(struct ldmsd_plugin *self)
+static const char* usage(ldmsd_plug_handle_t handle)
 {
 	return "    config name=stream_csv_store path=<path> container=<container> stream=<stream> \n"
 			"          [flushtime=<N>] [buffer=<0/1>] [rollover=<N> rolltype=<N>]\n"

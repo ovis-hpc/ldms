@@ -64,6 +64,7 @@
 #include "ovis_log/ovis_log.h"
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 #include "gmg_ldms_util.h"
@@ -212,10 +213,10 @@ static int config_check(struct attr_value_list *keyword_list, struct attr_value_
 
 /**
  * Provides usage information.  Note that BASE_CONFIG_USAGE is defined in sampler_base.h.
- * @param self this plugin instance.
+ * @param context this plugin instance.
  * @return usage string.
  */
-static const char *usage(struct ldmsd_plugin *self) {
+static const char *usage(ldmsd_plug_handle_t handle) {
     return "config name=" SAMP " "
     BASE_CONFIG_USAGE;
 }
@@ -223,7 +224,7 @@ static const char *usage(struct ldmsd_plugin *self) {
 /**
  * Plugin instance constructor.  Base is an instance of the sampler base "class".
  */
-static int config(struct ldmsd_plugin *self,
+static int config(ldmsd_plug_handle_t handle,
                   struct attr_value_list *keyword_list,
                   struct attr_value_list *attribute_value_list) {
 #ifdef ENABLE_AUTO_SIMULATION
@@ -254,7 +255,7 @@ static int config(struct ldmsd_plugin *self,
 
     // Create an instance from the base "class".  This is effectively calling
     // the base class constructor.
-    base = base_config(attribute_value_list, self->cfg_name, SAMP, __gpu_metrics_log);
+    base = base_config(attribute_value_list, ldmsd_plug_config_name_get(handle), SAMP, __gpu_metrics_log);
     if (!base) {
         rc = errno;
         goto err;
@@ -278,10 +279,10 @@ static int config(struct ldmsd_plugin *self,
 
 /**
  * LDMS calls this function to sample GPU metrics and store them in the metrics set.
- * @param self
+ * @param context
  * @return 0 if successful; otherwise returns EINVAL.
  */
-static int sample(struct ldmsd_sampler *self) {
+static int sample(ldmsd_plug_handle_t handle) {
     if (!set) {
         ovis_log(__gpu_metrics_log, OVIS_LDEBUG, SAMP ": plugin not initialized\n");
         return EINVAL;
@@ -318,9 +319,9 @@ static int sample(struct ldmsd_sampler *self) {
 /**
  * Release any opened resource.  Note that we have to call OneAPI C++ destructor to
  * close any opened handles.
- * @param self this plugin instance.
+ * @param context this plugin instance's context.
  */
-static void term(struct ldmsd_plugin *self) {
+static void term(ldmsd_plug_handle_t handle) {
     // No longer need to free device handle array here.
 
     size_t mallocCount = getMallocCount();
@@ -343,7 +344,7 @@ static struct ldmsd_sampler gpu_metrics_plugin = {
                 .name = SAMP,
                 .type = LDMSD_PLUGIN_SAMPLER,
                 .term = term,       // destructor
-                .config = config,   // constructor
+                .config = config,
                 .usage = usage,
         },
         .sample = sample,

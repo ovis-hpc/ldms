@@ -215,7 +215,7 @@ static void mdcs_sample()
 	}
 }
 
-static int config(struct ldmsd_plugin *self,
+static int config(ldmsd_plug_handle_t handle,
 		  struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	ovis_log(lustre_mdc_log, OVIS_LDEBUG, "config() called\n");
@@ -258,7 +258,7 @@ static int config(struct ldmsd_plugin *self,
 	return 0;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	if (mdc_timing < 0)
 		return EPERM;
@@ -275,14 +275,14 @@ static int sample(struct ldmsd_sampler *self)
 	return err;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	ovis_log(lustre_mdc_log, OVIS_LDEBUG, "term() called\n");
 	mdcs_destroy();
 	mdc_general_schema_fini();
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	ovis_log(lustre_mdc_log, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP;

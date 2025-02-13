@@ -108,6 +108,7 @@
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 #include "tx2mon.h"
 #include "stdbool.h"
@@ -479,7 +480,7 @@ static char * compute_schema_name(int pidarray, int pidextra, struct attr_value_
  * Plug-in data structure and access method.
  */
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = -1;
 	char *array, *extra;
@@ -522,7 +523,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto err;
 	}
 
-	base = base_config(avl, self->cfg_name, sbuf, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), sbuf, mylog);
 	if (!base) {
 		goto err;
 	}
@@ -554,7 +555,7 @@ err:
 
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return
 "config name=" SAMP " [port-number=<num>]\n"
@@ -576,7 +577,7 @@ static const char *usage(struct ldmsd_plugin *self)
 	        ;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	int i;
 	if (base)
@@ -588,7 +589,7 @@ static void term(struct ldmsd_plugin *self)
 	}
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	if (noop)
 		return 0;

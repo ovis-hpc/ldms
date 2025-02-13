@@ -58,6 +58,7 @@
 
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "timer_base.h"
 
 static ovis_log_t mylog;
@@ -68,7 +69,7 @@ struct hfclock {
 	int hfcount;
 };
 
-static const char *hfclock_usage(struct ldmsd_plugin *self)
+static const char *hfclock_usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=hfclock producer=<prod_name>"
 		" instance=<inst_name> [hfinterval=<hfinterval>] "
@@ -91,12 +92,6 @@ void hfclock_cleanup(struct hfclock *hf)
 }
 
 static
-void hfclock_term(struct ldmsd_plugin *self)
-{
-	hfclock_cleanup((void*)self);
-}
-
-static
 void hfclock_timer_cb(tsampler_timer_t t)
 {
 	struct timeval tv;
@@ -105,16 +100,16 @@ void hfclock_timer_cb(tsampler_timer_t t)
 }
 
 static
-int hfclock_config(struct ldmsd_plugin *self,
-				struct attr_value_list *kwl,
-				struct attr_value_list *avl)
+int hfclock_config(ldmsd_plug_handle_t handle,
+                   struct attr_value_list *kwl,
+                   struct attr_value_list *avl)
 {
+	struct hfclock *hf = (struct hfclock *)ldmsd_plug_context_get(handle);
 	int rc;
 	char *v;
 	uint64_t x;
-	struct hfclock *hf = (void*)self;
 
-	rc = timer_base_config(self, kwl, avl, mylog);
+	rc = timer_base_config(hf, kwl, avl, mylog);
 	if (rc)
 		goto out;
 
@@ -144,13 +139,14 @@ int hfclock_config(struct ldmsd_plugin *self,
 	}
 
 	rc = timer_base_add_hfmetric(&hf->base, "clock",
-			LDMS_V_D64_ARRAY, hf->hfcount,
-			&hf->hfinterval, hfclock_timer_cb,
-			NULL);
+                                     LDMS_V_D64_ARRAY, hf->hfcount,
+                                     &hf->hfinterval,
+                                     hfclock_timer_cb, NULL,
+                                     NULL);
 	if (rc)
 		goto cleanup;
 
-	rc = timer_base_create_set(&hf->base);
+	rc = timer_base_create_set(&hf->base, ldmsd_plug_config_name_get(handle));
 	if (rc)
 		goto cleanup;
 
@@ -163,27 +159,49 @@ out:
 	return rc;
 }
 
-struct ldmsd_plugin *get_plugin()
+static int constructor(ldmsd_plug_handle_t handle)
 {
+	struct hfclock *hf;
 	int rc;
+
 	mylog = ovis_log_register("sampler.hfclock", "The log subsystem of the hfclock plugin");
 	if (!mylog) {
 		rc = errno;
 		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
 				"of 'hfclock' plugin. Error %d\n", rc);
 	}
-	struct hfclock *hf = calloc(1, sizeof(*hf));
+	hf = calloc(1, sizeof(*hf));
+        if (!hf)
+                return ENOMEM;
 
-	if (!hf)
-		return NULL;
+        timer_base_init(&hf->base);
 
-	timer_base_init(&hf->base);
+        ldmsd_plug_context_set(handle, hf);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	struct hfclock *hf = ldmsd_plug_context_get(handle);
+
+	hfclock_cleanup(hf);
+        free(hf);
+}
+
+static struct ldmsd_sampler plugin_api;
+
+struct ldmsd_plugin *get_plugin()
+{
+	timer_base_init_api(&plugin_api);
 	/* override */
-	hf->base.base.base.usage = hfclock_usage;
-	hf->base.base.base.term = hfclock_term;
-	hf->base.base.base.config = hfclock_config;
-	snprintf(hf->base.base.base.name, sizeof(hf->base.base.base.name),
+	snprintf(plugin_api.base.name, sizeof(plugin_api.base.name),
 			"hfclock");
+	plugin_api.base.usage = hfclock_usage;
+        plugin_api.base.constructor = constructor;
+        plugin_api.base.destructor = destructor;
+	plugin_api.base.term = NULL;
+	plugin_api.base.config = hfclock_config;
 
-	return (void*)hf;
+	return &plugin_api.base;
 }

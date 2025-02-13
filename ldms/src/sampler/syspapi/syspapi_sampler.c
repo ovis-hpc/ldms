@@ -65,6 +65,7 @@
 
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "../sampler_base.h"
 #include "../papi/papi_hook.h"
 
@@ -154,7 +155,7 @@ create_metric_set(base_data_t base)
 }
 
 static const char *
-usage(struct ldmsd_plugin *self)
+usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP BASE_CONFIG_SYNOPSIS
 		"        cfg_file=CFG_PATH [cumulative=0|1]\n"
@@ -398,7 +399,7 @@ syspapi_open(struct syspapi_metric_list *mlist)
 }
 
 static int
-handle_cfg_file(struct ldmsd_plugin *self, const char *cfg_file)
+handle_cfg_file(const char *cfg_file)
 {
 	int rc = 0, fd = -1;
 	ssize_t off, rsz, sz;
@@ -516,7 +517,7 @@ out:
 }
 
 static int
-config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
        struct attr_value_list *avl)
 {
 	int rc;
@@ -542,14 +543,14 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		goto out;
 	}
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
 	}
 
 	if (cfg_file) {
-		rc = handle_cfg_file(self, cfg_file);
+		rc = handle_cfg_file(cfg_file);
 		if (rc)
 			goto err;
 	}
@@ -598,7 +599,7 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 }
 
 static int
-sample(struct ldmsd_sampler *self)
+sample(ldmsd_plug_handle_t handle)
 {
 	uint64_t v;
 	int i, rc;
@@ -636,7 +637,7 @@ sample(struct ldmsd_sampler *self)
 }
 
 static void
-term(struct ldmsd_plugin *self)
+term(ldmsd_plug_handle_t handle)
 {
 	pthread_mutex_lock(&syspapi_mutex);
 	if (base)

@@ -62,6 +62,7 @@
 #include <sys/time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 #include <pthread.h>
 
@@ -255,7 +256,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return "config name=" SAMP " exclude_ports=<devs>\n" \
 		BASE_CONFIG_USAGE \
@@ -263,7 +264,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                    By default all active interfaces discovered will be reported.\n";
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char* ignorelist = NULL;
 	char* pch = NULL;
@@ -310,7 +311,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	free(ignorelist);
 	ignorelist = NULL;
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base) {
 		rc = EINVAL;
 		goto err;
@@ -359,7 +360,7 @@ static int update_port(int j, uint64_t msum, union ldms_value *v)
 	return 0;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	char *s;
 	char lbuf[256];
@@ -464,9 +465,8 @@ err:
 }
 
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
-	(void)self;
 	pthread_mutex_lock(&cfg_lock);
 	procnet_reset();
 	termed = 1;

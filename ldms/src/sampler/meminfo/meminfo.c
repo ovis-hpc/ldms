@@ -63,6 +63,7 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 #define PROC_FILE "/proc/meminfo"
@@ -171,14 +172,14 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	meminfo_t mi = self->context;
+	meminfo_t mi = ldmsd_plug_context_get(handle);
 	int rc;
 
 	if (mi->set) {
@@ -191,7 +192,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	mi->base = base_config(avl, self->cfg_name, SAMP, mylog);
+	mi->base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!mi->base) {
 		rc = errno;
 		goto err;
@@ -207,9 +208,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
-	meminfo_t mi = self->base.context;
+	meminfo_t mi = ldmsd_plug_context_get(handle);
 	int rc;
 	int metric_no;
 	char *s;
@@ -243,9 +244,9 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
-	meminfo_t mi = self->context;
+	meminfo_t mi = ldmsd_plug_context_get(handle);
 	if (mi->mf)
 		fclose(mi->mf);
 	if (mi->base)
@@ -254,15 +255,33 @@ static void term(struct ldmsd_plugin *self)
 		ldms_set_delete(mi->set);
 }
 
+
+static int constructor(ldmsd_plug_handle_t handle) {
+        meminfo_t mi;
+
+        mi = calloc(1, sizeof(*mi));
+        if (!mi) {
+                return ENOMEM;
+        }
+        ldmsd_plug_context_set(handle, mi);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle) {
+        meminfo_t mi = ldmsd_plug_context_get(handle);
+
+        free(mi);
+}
+
 static struct ldmsd_sampler meminfo_plugin = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.context_size = sizeof(struct meminfo_s),
-	},
+        .base.name = SAMP,
+	.base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.term = term,
+	.base.config = config,
+	.base.usage = usage,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
 	.sample = sample,
 };
 

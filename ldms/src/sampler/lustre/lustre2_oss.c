@@ -80,6 +80,7 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 #include "lustre_sampler.h"
 #include "../sampler_base.h"
@@ -312,7 +313,7 @@ err0:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	if (set) {
 		ldms_set_delete(set);
@@ -337,7 +338,7 @@ static void term(struct ldmsd_plugin *self)
  * If osts is not given, the plugin will create ldms_set according to the
  * available OSTs at the time.
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	char *osts;
@@ -347,7 +348,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		return EINVAL;
 	}
 
-	base = base_config(avl, self->cfg_name, "Lustre_OSS", mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), "Lustre_OSS", mylog);
 	if (!base)
 		return errno;
 
@@ -362,7 +363,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return
 "config name=" SAMP " " BASE_CONFIG_SYNOPSIS
@@ -375,7 +376,7 @@ BASE_CONFIG_DESC
 ;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	if (!set)
 		return EINVAL;

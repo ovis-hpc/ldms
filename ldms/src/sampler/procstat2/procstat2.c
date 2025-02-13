@@ -125,6 +125,7 @@
 #include <assert.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "../sampler_base.h"
 #define PROC_FILE "/proc/stat"
 
@@ -366,7 +367,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return	"config name=" SAMP " " BASE_CONFIG_SYNOPSIS
 		"       [interrupt=<intr>] [soft_interrupt=<softirq>]\n"
@@ -381,7 +382,7 @@ static const char *usage(struct ldmsd_plugin *self)
 	;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 	char *val, *end;
@@ -396,7 +397,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -405,7 +406,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	val = av_value(avl, "interrupt");
 	if (val && (0 == strcasecmp(val, "true"))) {
 		collect_intr = 1;
-		intr_base = base_config(avl, self->cfg_name, SAMP"_intr", mylog);
+		intr_base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP"_intr", mylog);
 		if (!intr_base) {
 			rc = errno;
 			goto err;
@@ -424,7 +425,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	val = av_value(avl, "soft_interrupt");
 	if (val && (0 == strcasecmp(val, "true"))) {
 		collect_softirq = 1;
-		softirq_base = base_config(avl, self->cfg_name, SAMP"_softirq", mylog);
+		softirq_base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP"_softirq", mylog);
 		if (!softirq_base) {
 			rc = errno;
 			goto err;
@@ -504,7 +505,7 @@ static ldms_set_t __resize_set(base_data_t b, size_t incr)
 	return s;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int i, rc;
 	char tok[128];
@@ -670,7 +671,7 @@ begin:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	if (mf)
 		fclose(mf);
