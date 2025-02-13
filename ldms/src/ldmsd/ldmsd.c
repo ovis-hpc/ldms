@@ -555,7 +555,7 @@ void plugin_sampler_cb(ovis_event_t oev)
 	ldmsd_cfgobj_lock(&samp->cfg);
 	assert(samp->cfg.type == LDMSD_CFGOBJ_SAMPLER);
 	assert(samp->api->base.type == LDMSD_PLUGIN_SAMPLER);
-	int rc = samp->api->sample(samp->api);
+	int rc = samp->api->sample(samp->context);
 	if (rc) {
 		/*
 		 * If the sampler reports an error don't reschedule
@@ -1095,7 +1095,7 @@ void oneshot_sample_cb(ovis_event_t ev)
 	ldmsd_sampler_t samp = os->samp;
 	ovis_scheduler_event_del(os->os, ev);
 	ldmsd_sampler_lock(samp);
-	samp->api->sample(samp->api);
+	samp->api->sample(samp->context);
 	release_ovis_scheduler(samp->thread_id);
 	free(os);
 	ldmsd_sampler_unlock(samp);

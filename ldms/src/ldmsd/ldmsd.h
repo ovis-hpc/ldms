@@ -914,12 +914,10 @@ char *process_yaml_config_file(const char *path, const char *dname);
 
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
+
+/* This struct is owned by the plugin. ldmsd should never edit the contents. */
 typedef struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN]; /* plugin name (e.g. meminfo) */
-	char *libpath;
-	const char *inst_name;	/* Plugin instance name (i.e. containing config object) */
-	void *context;		/* Extra memory allocated by plugin instance creation */
-	size_t context_size;	/* Informs instance creation of cfg object context size */
 	enum ldmsd_plugin_type {
 		LDMSD_PLUGIN_OTHER = 0,
 		LDMSD_PLUGIN_SAMPLER,
@@ -927,15 +925,17 @@ typedef struct ldmsd_plugin {
 		LDMSD_PLUGIN_AUTH,
 		LDMSD_PLUGIN_DECOMP
 	} type;
-	enum ldmsd_plugin_type (*get_type)(struct ldmsd_plugin *self);
-	int (*config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl);
-	void (*term)(struct ldmsd_plugin *self);
-	const char *(*usage)(struct ldmsd_plugin *self);
+	int (*config)(void *context, struct attr_value_list *kwl, struct attr_value_list *avl);
+	void (*term)(void *context);
+	const char *(*usage)(void *context);
+        void *(*instance_init)(const char *plugin_instance_name);
+        void (*instance_fini)(void *context);
 } *ldmsd_plugin_t;
 
+/* This struct is owned by the plugin. ldmsd should never edit the contents. */
 struct ldmsd_store {
 	struct ldmsd_plugin base;
-	ldmsd_store_handle_t (*open)(struct ldmsd_store *s,
+	ldmsd_store_handle_t (*open)(const struct ldmsd_store *s,
 				    const char *container, const char *schema,
 				    struct ldmsd_strgp_metric_list *metric_list,
 				    void *ucontext);
@@ -946,15 +946,17 @@ struct ldmsd_store {
 	int (*commit)(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int row_count);
 };
 
+/* This struct is owned by the plugin. ldmsd should never edit the contents. */
 typedef struct ldmsd_sampler {
 	struct ldmsd_plugin base;
-	ldms_set_t (*get_set)(struct ldmsd_sampler *self);
-	int (*sample)(struct ldmsd_sampler *self);
+	int (*sample)(void *context);
 } *ldmsd_sampler_plugin_t;
 
 struct ldmsd_store_inst {
 	struct ldmsd_cfgobj cfg;
-	struct ldmsd_store *api;
+        const char *libpath; /* FIXME - who frees this? */
+	const struct ldmsd_store *api; /* owned by plugin, ldmsd does not free */
+        void *context; /* owned by plugin, ldmsd does not free */
 };
 
 typedef struct ldmsd_sampler_inst *ldmsd_sampler_t;
@@ -966,7 +968,9 @@ typedef struct ldmsd_sampler_set {
 
 struct ldmsd_sampler_inst {
 	struct ldmsd_cfgobj cfg;
-	struct ldmsd_sampler *api;
+        const char *libpath; /* FIXME - who frees this? */
+	const struct ldmsd_sampler *api; /* owned by plugin, ldmsd does not free */
+        void *context; /* owned by plugin, ldmsd does not free */
 	unsigned long sample_interval_us;
 	long sample_offset_us;
 	int thread_id;
@@ -985,10 +989,11 @@ struct ldmsd_sampler_inst {
 /** Metric name for job id number */
 #define LDMSD_JOBID "job_id"
 
-ldmsd_sampler_t ldmsd_sampler_alloc(const char *name,
-					struct ldmsd_sampler *api,
-					ldmsd_cfgobj_del_fn_t __del,
-					uid_t uid, gid_t gid, int perm);
+ldmsd_sampler_t ldmsd_sampler_alloc(const char *inst_name,
+                                    const char *libpath,
+                                    const struct ldmsd_sampler *api,
+                                    ldmsd_cfgobj_del_fn_t __del,
+                                    uid_t uid, gid_t gid, int perm);
 
 /**
  * \brief ldmsd_set_register
@@ -1041,7 +1046,8 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
  */
 
 ldmsd_store_t ldmsd_store_alloc(const char *name,
-				struct ldmsd_store *store,
+                                const char *libpath,
+				const struct ldmsd_store *store,
 				ldmsd_cfgobj_del_fn_t __del,
 				uid_t uid, gid_t gid, int perm);
 

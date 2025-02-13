@@ -110,7 +110,7 @@ enum ldmsd_plugin_data_e {
 	LDMSD_PLUGIN_DATA_CONTEXT_SIZE = 1,
 };
 
-ldmsd_plugin_t load_plugin(const char *plugin_name)
+ldmsd_plugin_t load_plugin(const char *plugin_name, const char **libpath_out)
 {
 	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
 	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
@@ -161,7 +161,7 @@ ldmsd_plugin_t load_plugin(const char *plugin_name)
 	}
 	struct ldmsd_plugin *pi = pget();
 	if (pi)
-		pi->libpath = strdup(library_name);
+		*libpath_out = strdup(library_name);
 	return pi;
 
 err_0:
@@ -172,20 +172,12 @@ err_0:
 
 ldmsd_sampler_t
 ldmsd_sampler_alloc(const char *inst_name,
-			struct ldmsd_sampler *api,
-			ldmsd_cfgobj_del_fn_t __del,
-			uid_t uid, gid_t gid, int perm)
+                    const char *libpath,
+                    const struct ldmsd_sampler *api,
+                    ldmsd_cfgobj_del_fn_t __del,
+                    uid_t uid, gid_t gid, int perm)
 {
 	ldmsd_sampler_t sampler;
-	struct ldmsd_sampler *api_inst;
-	api_inst = malloc(sizeof (*api_inst) + api->base.context_size);
-	if (!api_inst)
-		return NULL;
-	memcpy(api_inst, api, sizeof(*api));
-	if (api->base.context_size) {
-		api_inst->base.context = (void *)(api_inst + 1);
-		memset(api_inst->base.context, 0, api->base.context_size);
-	}
 	sampler = (void*)ldmsd_cfgobj_new_with_auth(inst_name, LDMSD_CFGOBJ_SAMPLER,
 						sizeof(*sampler),
 						__del, uid, gid, perm);
@@ -193,31 +185,22 @@ ldmsd_sampler_alloc(const char *inst_name,
 		ovis_log(config_log, OVIS_LERROR,
 			"Error %d creating the sampler configuration object '%s'\n",
 				errno, inst_name);
-		free(api_inst);
 		return NULL;
 	}
-	sampler->api = api_inst;
-	sampler->api->base.inst_name = strdup(inst_name);
+	sampler->api = api;
+        sampler->libpath = libpath;
 	sampler->thread_id = -1;	/* stopped */
 	ldmsd_cfgobj_unlock(&sampler->cfg);
 	return sampler;
 }
 
 ldmsd_store_t ldmsd_store_alloc(const char *inst_name,
-		struct ldmsd_store *api,
-		ldmsd_cfgobj_del_fn_t __del,
-		uid_t uid, gid_t gid, int perm)
+                                const char *libpath,
+                                const struct ldmsd_store *api,
+                                ldmsd_cfgobj_del_fn_t __del,
+                                uid_t uid, gid_t gid, int perm)
 {
 	ldmsd_store_t store;
-	struct ldmsd_store *api_inst;
-	api_inst = malloc(sizeof (*api_inst) + api->base.context_size);
-	if (!api_inst)
-		return NULL;
-	memcpy(api_inst, api, sizeof(*api));
-	if (api->base.context_size) {
-		api_inst->base.context = (void *)(api_inst + 1);
-		memset(api_inst->base.context, 0, api->base.context_size);
-	}
 	store = (void*)ldmsd_cfgobj_new_with_auth(inst_name, LDMSD_CFGOBJ_STORE,
 						sizeof(*store),
 						__del, uid, gid, perm);
@@ -225,11 +208,10 @@ ldmsd_store_t ldmsd_store_alloc(const char *inst_name,
 		ovis_log(config_log, OVIS_LERROR,
 			"Error %d creating the store configuration object '%s'\n",
 				errno, inst_name);
-		free(api_inst);
 		return NULL;
 	}
-	store->api = api_inst;
-	store->api->base.inst_name = strdup(inst_name);
+	store->api = api;
+        store->libpath = libpath;
 	ldmsd_cfgobj_unlock(&store->cfg);
 	return store;
 }
@@ -303,26 +285,29 @@ void ldmsd_store___del(ldmsd_cfgobj_t obj)
  */
 int ldmsd_load_plugin(char *inst_name, char *plugin_name, char *errstr, size_t errlen)
 {
-	struct ldmsd_plugin *api;
+        struct ldmsd_plugin *api;
+        const char *libpath;
 
         if (!inst_name)
                 return EINVAL;
         if (!plugin_name)
 		plugin_name = inst_name;
 
-        api = load_plugin(plugin_name);
+        api = load_plugin(plugin_name, &libpath);
 	if (!api)
 		return errno;
 
         switch (api->type) {
 	case LDMSD_PLUGIN_SAMPLER:
-		if (ldmsd_sampler_alloc(inst_name, (struct ldmsd_sampler *)api,
-			ldmsd_sampler___del, geteuid(), getegid(), 0660))
+		if (ldmsd_sampler_alloc(inst_name, libpath, (struct ldmsd_sampler *)api,
+                                        ldmsd_sampler___del,
+                                        geteuid(), getegid(), 0660))
 			return 0;
 		break;
 	case LDMSD_PLUGIN_STORE:
-		if (ldmsd_store_alloc(inst_name, (struct ldmsd_store *)api,
-			ldmsd_store___del, geteuid(), getegid(), 0660))
+		if (ldmsd_store_alloc(inst_name, libpath, (struct ldmsd_store *)api,
+                                      ldmsd_store___del,
+                                      geteuid(), getegid(), 0660))
 			return 0;
 		break;
 	default:

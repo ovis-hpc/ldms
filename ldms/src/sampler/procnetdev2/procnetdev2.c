@@ -118,6 +118,7 @@ struct ldms_metric_template_s rec_metrics[] = {
 
 #define SAMP "procnetdev2"
 typedef struct procnetdev2_s {
+        const char *plugin_instance_name;
 	int rec_def_idx;
 	int rec_metric_ids[REC_METRICS_LEN];
 	size_t rec_heap_sz;
@@ -228,7 +229,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void *context)
 {
 	return "config inst=NAME plugin=" SAMP " ifaces=IFS\n" \
 		BASE_CONFIG_USAGE \
@@ -237,9 +238,9 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                    whether they exist of not up to a total of MAXIFACE\n";
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	procnetdev2_t p = self->context;
+	procnetdev2_t p = context;
 	char* ifacelist = NULL;
 	char *exclude = NULL;
 	char *ivalue = NULL;
@@ -312,7 +313,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	p->excount = excount;
 
  cfg:
-	p->base = base_config(avl, self->inst_name, SAMP, mylog);
+	p->base = base_config(avl, self->plugin_instance_name, SAMP, mylog);
 	if (!p->base){
 		rc = EINVAL;
 		goto err;
@@ -334,9 +335,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(void *context)
 {
-	procnetdev2_t p = (void*)self->base.context;
+	procnetdev2_t p = (void*)context;
 	int rc;
 	char *s;
 	char lbuf[256];
@@ -449,9 +450,9 @@ resize:
 }
 
 
-static void term(struct ldmsd_plugin *self)
+static void term(void *context)
 {
-	procnetdev2_t p = (void*)self->context;
+	procnetdev2_t p = context;
 	if (p->mf) {
 		fclose(p->mf);
 		p->mf = NULL;
@@ -460,6 +461,8 @@ static void term(struct ldmsd_plugin *self)
 	base_set_delete(p->base);
 	base_del(p->base);
 	p->base = NULL;
+        free(p->plugin_instance_name);
+        free(p);
 }
 
 #if 0
@@ -485,7 +488,22 @@ static void __once()
 }
 #endif
 
+static void *instance_init (const char *plugin_instance_name) {
+        procnetdev2_t context;
 
+        /* FIXME error handling */
+        context = calloc(1, sizeof(struct procnetdev2_s));
+        /* FIXME - I think it would be better to have an accessor function
+           to look up the instance's name, rather than passing it as an
+           instance_init() parameter. */
+        context->plugin_instance_name = strdup(plugin_instance_name);
+
+        return context;
+}
+
+static void instance_fini (void *context) {
+        free(context);
+}
 
 static struct ldmsd_sampler procnetdev2_sampler = {
 	.base = {
@@ -494,14 +512,16 @@ static struct ldmsd_sampler procnetdev2_sampler = {
 		.term = term,
 		.config = config,
 		.usage = usage,
-		.context_size = sizeof(struct procnetdev2_s),
+                .instance_init = instance_init,
+                .instance_fini = instance_fini,
 	},
-
 	.sample = sample,
 };
 
 struct ldmsd_plugin *get_plugin()
 {
+        /* FIXME - move to instance_init, and release in instance_fini
+           Or better yet, introduce plugin_init()/plugin_fini()...or maybe just add a "release_plugin"? */
 	if (!mylog) {
 		mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
 		if (!mylog)

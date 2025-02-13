@@ -5096,7 +5096,7 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 			       samp->cfg.name,
 			       samp->api->base.name,
 			       plugn_state_str(samp->api->base.type),
-			       samp->api->base.libpath);
+			       samp->libpath);
 		if (rc) {
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
 			goto err;
@@ -5118,7 +5118,7 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 			       "\"libpath\":\"%s\"}",
 			       store->api->base.name, store->cfg.name,
 			       plugn_state_str(store->api->base.type),
-			       store->api->base.libpath);
+			       store->libpath);
 		if (rc) {
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
 			goto err;
@@ -5163,8 +5163,9 @@ static int plugn_status_handler(ldmsd_req_ctxt_t reqc)
 
 static int plugn_load_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *inst = NULL, *attr_name;
+	char *inst = NULL;
 	char *plugn = NULL;
+        char *attr_name;
 	size_t cnt = 0;
 
 	attr_name = "name";
@@ -5242,7 +5243,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	inst_name = config_attr = NULL;
 	struct attr_value_list *av_list = NULL;
 	struct attr_value_list *kw_list = NULL;
-	struct ldmsd_plugin *api;
+	const struct ldmsd_plugin *api;
 	ldmsd_cfgobj_t cfg;
 	char *attr_copy = NULL;
 	size_t cnt = 0;
@@ -5319,8 +5320,14 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	free(cfg->kvl_str);
 	cfg->avl_str = av_to_string(av_list, 0);
 	cfg->kvl_str = av_to_string(kw_list, 0);
-	reqc->errcode = api->config(api, kw_list, av_list);
-	if (reqc->errcode) {
+
+        switch (api->type) {
+	case LDMSD_PLUGIN_SAMPLER:
+                reqc->errcode = api->config(((ldmsd_sampler_t)cfg)->context, kw_list, av_list);
+	case LDMSD_PLUGIN_STORE:
+                reqc->errcode = api->config(((ldmsd_store_t)cfg)->context, kw_list, av_list);
+        }
+        if (reqc->errcode) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Error %d configuring plugin instance '%s'.",
 				reqc->errcode, inst_name);
@@ -5364,7 +5371,7 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 
 		if (samp->api->base.usage) {
 			rc = linebuf_printf(reqc, "%s\n%s",
-					samp->cfg.name, samp->api->base.usage(&samp->api->base));
+					samp->cfg.name, samp->api->base.usage(samp->context));
 		} else {
 			rc = linebuf_printf(reqc, "%s\n", samp->cfg.name);
 		}
@@ -5386,7 +5393,7 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 
 		if (store->api->base.usage) {
 			rc = linebuf_printf(reqc, "%s\n%s",
-					store->cfg.name, store->api->base.usage(&store->api->base));
+					store->cfg.name, store->api->base.usage(samp->context));
 		} else {
 			rc = linebuf_printf(reqc, "%s\n", store->cfg.name);
 		}
@@ -6436,7 +6443,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
 	for (store = ldmsd_store_first(LDMSD_CFGOBJ_STORE); store;
 			store = ldmsd_store_next(store)) {
-		fprintf(fp, "load name=%s as=%s\n", store->api->base.name, store->api->base.inst_name);
+		fprintf(fp, "load name=%s plugin=%s\n", store->cfg.name, store->api->base.name);
 		if (store->cfg.avl_str || store->cfg.kvl_str)
 			fprintf(fp, "config name=%s %s\n",
 				store->cfg.avl_str ? store->cfg.avl_str : "",
@@ -6447,7 +6454,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_sampler_t samp;
 	for (samp = ldmsd_sampler_first(); samp;
 			samp = ldmsd_sampler_next(samp)) {
-		fprintf(fp, "load name=%s as=%s\n", samp->api->base.name, samp->api->base.inst_name);
+		fprintf(fp, "load name=%s plugin=%s\n", samp->cfg.name, samp->api->base.name);
 		if (samp->cfg.avl_str || samp->cfg.kvl_str)
 			fprintf(fp, "config name=%s %s\n",
 				samp->cfg.avl_str ? samp->cfg.avl_str : "",
@@ -6455,7 +6462,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 		if (samp->thread_id >= 0) {
 			/* Plugin is running. */
 			fprintf(fp, "start name=%s interval=%ld offset=%ld\n",
-				samp->api->base.inst_name,
+				samp->cfg.name,
 				samp->sample_interval_us,
 				samp->sample_offset_us);
 		}
