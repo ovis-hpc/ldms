@@ -196,7 +196,6 @@ ldmsd_sampler_alloc(const char *cfg_name,
 		free(api_inst);
 		return NULL;
 	}
-	api_inst->base.cfgobj = &sampler->cfg;
 	sampler->api = api_inst;
 	sampler->api->base.cfg_name = strdup(cfg_name);
 	sampler->thread_id = -1;	/* stopped */
@@ -229,7 +228,6 @@ ldmsd_store_t ldmsd_store_alloc(const char *cfg_name,
 		free(api_inst);
 		return NULL;
 	}
-	api_inst->base.cfgobj = &store->cfg;
 	store->api = api_inst;
 	store->api->base.cfg_name = strdup(cfg_name);
 	ldmsd_cfgobj_unlock(&store->cfg);

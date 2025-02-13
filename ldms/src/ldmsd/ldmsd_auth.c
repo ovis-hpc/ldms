@@ -174,6 +174,5 @@ int ldmsd_auth_default_set(const char *plugin, struct attr_value_list *attrs)
 	}
 	rc = 0;
  out:
-	// ???: ldmsd_cfgobj_put(&d->obj);
 	return rc;
 }
