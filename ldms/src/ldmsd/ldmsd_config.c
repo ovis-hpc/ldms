@@ -100,7 +100,8 @@ enum ldmsd_plugin_data_e {
 	LDMSD_PLUGIN_DATA_CONTEXT_SIZE = 1,
 };
 
-ldmsd_plugin_t load_plugin(const char *plugin_name, const char **libpath_out)
+/* caller is responsible for freeing the pointer returned in libpath_out */
+static ldmsd_plugin_t load_plugin(const char *plugin_name, char **libpath_out)
 {
 	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
 	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
@@ -172,15 +173,15 @@ void ldmsd_sampler_free(ldmsd_sampler_inst_t sampler)
                 sampler->context = NULL;
         }
         free(sampler->libpath);
-        ldmsd_cfgobj_put(sampler->cfg, "find");
-        ldmsd_cfgobj_del(sampler->cfg);
+        ldmsd_cfgobj_put(&sampler->cfg, "find");
+        ldmsd_cfgobj_del(&sampler->cfg);
 
         return;
 }
 
 ldmsd_sampler_inst_t
 ldmsd_sampler_alloc(const char *inst_name,
-                    const char *libpath,
+                    char *libpath,
                     const struct ldmsd_sampler *api,
                     ldmsd_cfgobj_del_fn_t __del,
                     uid_t uid, gid_t gid, int perm)
@@ -227,14 +228,14 @@ void ldmsd_store_free(ldmsd_store_inst_t store)
                 store->context = NULL;
         }
         free(store->libpath);
-        ldmsd_cfgobj_put(store->cfg, "find");
-        ldmsd_cfgobj_del(store->cfg);
+        ldmsd_cfgobj_put(&store->cfg, "find");
+        ldmsd_cfgobj_del(&store->cfg);
 
         return;
 }
 
 ldmsd_store_inst_t ldmsd_store_alloc(const char *inst_name,
-                                const char *libpath,
+                                char *libpath,
                                 const struct ldmsd_store *api,
                                 ldmsd_cfgobj_del_fn_t __del,
                                 uid_t uid, gid_t gid, int perm)
@@ -320,16 +321,12 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_sampler_inst_t samp = (void*)obj;
-	free((void*)samp->api->base.inst_name);
-	free(samp->api);
 	ldmsd_cfgobj___del(obj);
 }
 
 void ldmsd_store___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_store_inst_t store = (void*)obj;
-	free((void*)store->api->base.inst_name);
-	free(store->api);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -339,7 +336,7 @@ void ldmsd_store___del(ldmsd_cfgobj_t obj)
 int ldmsd_load_plugin(char *inst_name, char *plugin_name, char *errstr, size_t errlen)
 {
         struct ldmsd_plugin *api;
-        const char *libpath;
+        char *libpath;
 
         if (!inst_name)
                 return EINVAL;

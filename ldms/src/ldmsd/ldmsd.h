@@ -954,7 +954,7 @@ typedef struct ldmsd_sampler {
 
 struct ldmsd_store_inst {
 	struct ldmsd_cfgobj cfg;
-        const char *libpath;
+        char *libpath;
 	const struct ldmsd_store *api; /* owned by plugin, ldmsd does not free */
         void *context; /* owned by plugin, ldmsd does not free */
 };
@@ -968,7 +968,7 @@ typedef struct ldmsd_sampler_set {
 
 struct ldmsd_sampler_inst {
 	struct ldmsd_cfgobj cfg;
-        const char *libpath;
+        char *libpath;
 	const struct ldmsd_sampler *api; /* owned by plugin, ldmsd does not free */
         void *context; /* owned by plugin, ldmsd does not free */
 	unsigned long sample_interval_us;
@@ -990,7 +990,7 @@ struct ldmsd_sampler_inst {
 #define LDMSD_JOBID "job_id"
 
 ldmsd_sampler_inst_t ldmsd_sampler_alloc(const char *inst_name,
-                                    const char *libpath,
+                                    char *libpath,
                                     const struct ldmsd_sampler *api,
                                     ldmsd_cfgobj_del_fn_t __del,
                                     uid_t uid, gid_t gid, int perm);
@@ -1046,7 +1046,7 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
  */
 
 ldmsd_store_inst_t ldmsd_store_alloc(const char *name,
-                                const char *libpath,
+                                char *libpath,
 				const struct ldmsd_store *store,
 				ldmsd_cfgobj_del_fn_t __del,
 				uid_t uid, gid_t gid, int perm);
