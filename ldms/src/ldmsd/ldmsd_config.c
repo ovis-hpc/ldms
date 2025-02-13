@@ -171,7 +171,7 @@ err_0:
 }
 
 ldmsd_sampler_t
-ldmsd_sampler_alloc(const char *inst_name,
+ldmsd_sampler_alloc(const char *cfg_name,
 			struct ldmsd_sampler *api,
 			ldmsd_cfgobj_del_fn_t __del,
 			uid_t uid, gid_t gid, int perm)
@@ -186,25 +186,25 @@ ldmsd_sampler_alloc(const char *inst_name,
 		api_inst->base.context = (void *)(api_inst + 1);
 		memset(api_inst->base.context, 0, api->base.context_size);
 	}
-	sampler = (void*)ldmsd_cfgobj_new_with_auth(inst_name, LDMSD_CFGOBJ_SAMPLER,
+	sampler = (void*)ldmsd_cfgobj_new_with_auth(cfg_name, LDMSD_CFGOBJ_SAMPLER,
 						sizeof(*sampler),
 						__del, uid, gid, perm);
 	if (!sampler) {
 		ovis_log(config_log, OVIS_LERROR,
 			"Error %d creating the sampler configuration object '%s'\n",
-				errno, inst_name);
+				errno, cfg_name);
 		free(api_inst);
 		return NULL;
 	}
 	api_inst->base.cfgobj = &sampler->cfg;
 	sampler->api = api_inst;
-	sampler->api->base.inst_name = strdup(inst_name);
+	sampler->api->base.cfg_name = strdup(cfg_name);
 	sampler->thread_id = -1;	/* stopped */
 	ldmsd_cfgobj_unlock(&sampler->cfg);
 	return sampler;
 }
 
-ldmsd_store_t ldmsd_store_alloc(const char *inst_name,
+ldmsd_store_t ldmsd_store_alloc(const char *cfg_name,
 		struct ldmsd_store *api,
 		ldmsd_cfgobj_del_fn_t __del,
 		uid_t uid, gid_t gid, int perm)
@@ -219,19 +219,19 @@ ldmsd_store_t ldmsd_store_alloc(const char *inst_name,
 		api_inst->base.context = (void *)(api_inst + 1);
 		memset(api_inst->base.context, 0, api->base.context_size);
 	}
-	store = (void*)ldmsd_cfgobj_new_with_auth(inst_name, LDMSD_CFGOBJ_STORE,
+	store = (void*)ldmsd_cfgobj_new_with_auth(cfg_name, LDMSD_CFGOBJ_STORE,
 						sizeof(*store),
 						__del, uid, gid, perm);
 	if (!store) {
 		ovis_log(config_log, OVIS_LERROR,
 			"Error %d creating the store configuration object '%s'\n",
-				errno, inst_name);
+				errno, cfg_name);
 		free(api_inst);
 		return NULL;
 	}
 	api_inst->base.cfgobj = &store->cfg;
 	store->api = api_inst;
-	store->api->base.inst_name = strdup(inst_name);
+	store->api->base.cfg_name = strdup(cfg_name);
 	ldmsd_cfgobj_unlock(&store->cfg);
 	return store;
 }
@@ -295,7 +295,7 @@ void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 		free(_set);
 	}
 
-	free((void*)samp->api->base.inst_name);
+	free((void*)samp->api->base.cfg_name);
 	free(samp->api);
 	ldmsd_cfgobj___del(obj);
 }
@@ -303,7 +303,7 @@ void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 void ldmsd_store___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_store_t store = (void*)obj;
-	free((void*)store->api->base.inst_name);
+	free((void*)store->api->base.cfg_name);
 	free(store->api);
 	ldmsd_cfgobj___del(obj);
 }
@@ -311,21 +311,21 @@ void ldmsd_store___del(ldmsd_cfgobj_t obj)
 /*
  * Load a plugin
  */
-int ldmsd_load_plugin(char* inst_name, char *plugin_name, char *errstr, size_t errlen)
+int ldmsd_load_plugin(char* cfg_name, char *plugin_name, char *errstr, size_t errlen)
 {
 	struct ldmsd_plugin *api = load_plugin(plugin_name);
 	if (!api)
 		return errno;
 	if (!plugin_name)
-		plugin_name = inst_name;
+		plugin_name = cfg_name;
 	switch (api->type) {
 	case LDMSD_PLUGIN_SAMPLER:
-		if (ldmsd_sampler_alloc(inst_name, (struct ldmsd_sampler *)api,
+		if (ldmsd_sampler_alloc(cfg_name, (struct ldmsd_sampler *)api,
 			ldmsd_sampler___del, geteuid(), getegid(), 0660))
 			return 0;
 		break;
 	case LDMSD_PLUGIN_STORE:
-		if (ldmsd_store_alloc(inst_name, (struct ldmsd_store *)api,
+		if (ldmsd_store_alloc(cfg_name, (struct ldmsd_store *)api,
 			ldmsd_store___del, geteuid(), getegid(), 0660))
 			return 0;
 		break;
@@ -372,7 +372,7 @@ int ldmsd_term_plugin(char *plugin_name)
 }
 
 int _ldmsd_set_udata(ldms_set_t set, char *metric_name, uint64_t udata,
-						char err_str[LEN_ERRSTR])
+		     char err_str[LEN_ERRSTR])
 {
 	int i = ldms_metric_by_name(set, metric_name);
 	if (i < 0) {

@@ -303,7 +303,8 @@ class LdmsdCmdParser(cmd.Cmd):
                 plugin = name
             rc, msg = self.comm.plugn_load(name, plugin)
             if rc:
-                print(f'Error loading plugin {arg["name"]} as {arg["plugin"]}: {msg}')
+                print(f'Error loading configuration named {arg["name"]} '
+                      'from plugin {arg["plugin"]')
 
     def complete_load(self, text, line, begidx, endidx):
         return self.__complete_attr_list('load', text)

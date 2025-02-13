@@ -312,7 +312,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	p->excount = excount;
 
  cfg:
-	p->base = base_config(avl, self->inst_name, SAMP, mylog);
+	p->base = base_config(avl, self->cfg_name, SAMP, mylog);
 	if (!p->base){
 		rc = EINVAL;
 		goto err;
