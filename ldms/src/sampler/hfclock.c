@@ -58,6 +58,7 @@
 
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "timer_base.h"
 
 static ovis_log_t mylog;
@@ -68,7 +69,7 @@ struct hfclock {
 	int hfcount;
 };
 
-static const char *hfclock_usage(struct ldmsd_plugin *self)
+static const char *hfclock_usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=hfclock producer=<prod_name>"
 		" instance=<inst_name> [hfinterval=<hfinterval>] "
@@ -91,9 +92,9 @@ void hfclock_cleanup(struct hfclock *hf)
 }
 
 static
-void hfclock_term(struct ldmsd_plugin *self)
+void hfclock_term(ldmsd_plug_handle_t handle)
 {
-	hfclock_cleanup((void*)self);
+	hfclock_cleanup(ldmsd_plug_api_get(handle));
 	if (mylog)
 		ovis_log_destroy(mylog);
 }
@@ -107,16 +108,16 @@ void hfclock_timer_cb(tsampler_timer_t t)
 }
 
 static
-int hfclock_config(struct ldmsd_plugin *self,
+int hfclock_config(ldmsd_plug_handle_t handle,
 				struct attr_value_list *kwl,
 				struct attr_value_list *avl)
 {
+	struct hfclock *hf = ldmsd_plug_api_get(handle);
 	int rc;
 	char *v;
 	uint64_t x;
-	struct hfclock *hf = (void*)self;
 
-	rc = timer_base_config(self, kwl, avl, mylog);
+	rc = timer_base_config(context, kwl, avl, mylog);
 	if (rc)
 		goto out;
 

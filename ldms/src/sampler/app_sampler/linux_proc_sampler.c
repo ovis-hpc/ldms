@@ -69,6 +69,7 @@
 #include <coll/rbt.h>
 
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "../sampler_base.h"
 #include "mmalloc.h"
 #define DSTRING_USE_SHORT
@@ -1619,9 +1620,9 @@ void app_set_destroy(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_s
 
 static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set);
 
-static int linux_proc_sampler_sample(struct ldmsd_sampler *pi)
+static int linux_proc_sampler_sample(ldmsd_plug_handle_t handle)
 {
-	linux_proc_sampler_inst_t inst = (void*)pi;
+	linux_proc_sampler_inst_t inst = ldmsd_plug_api_get(handle);
 	int i, rc;
 	struct rbn *rbn;
 #ifdef LPDEBUG
@@ -1796,7 +1797,7 @@ static void compute_help() {
 		help_all = _help;
 }
 
-static const char *linux_proc_sampler_usage(struct ldmsd_plugin *self)
+static const char *linux_proc_sampler_usage(ldmsd_plug_handle_t handle)
 {
 	if (!help_all)
 		compute_help();
@@ -3652,13 +3653,13 @@ static int __stream_cb(ldms_stream_event_t ev, void *ctxt)
 	return rc;
 }
 
-static void linux_proc_sampler_term(struct ldmsd_plugin *pi);
+static void linux_proc_sampler_term(ldmsd_plug_handle_t handle);
 
 static int
-linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
+linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 					    struct attr_value_list *avl)
 {
-	linux_proc_sampler_inst_t inst = (void*)pi;
+	linux_proc_sampler_inst_t inst = ldmsd_plug_api_get(handle);
 	int i, rc;
 	linux_proc_sampler_metric_info_t minfo;
 	char *val;
@@ -3669,7 +3670,7 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		return EALREADY;
 	}
 
-	inst->base_data = base_config(avl, pi->cfg_name, SAMP, inst->mylog);
+	inst->base_data = base_config(avl, SAMP, SAMP, inst->mylog);
 	if (!inst->base_data) {
 		/* base_config() already log error message */
 		return errno;
@@ -3951,14 +3952,14 @@ no_pids:	;
 
  err:
 	/* undo the config */
-	linux_proc_sampler_term(pi);
+	linux_proc_sampler_term(handle);
 	return rc;
 }
 
 static
-void linux_proc_sampler_term(struct ldmsd_plugin *pi)
+void linux_proc_sampler_term(ldmsd_plug_handle_t handle)
 {
-	linux_proc_sampler_inst_t inst = (void*)pi;
+	linux_proc_sampler_inst_t inst = ldmsd_plug_api_get(handle);
 	struct rbn *rbn;
 	struct linux_proc_sampler_set *app_set;
 

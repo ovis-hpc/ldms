@@ -79,6 +79,7 @@
 #include "ldms.h"
 #include "ldms_rail.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
 #include "config.h"
@@ -555,7 +556,11 @@ void plugin_sampler_cb(ovis_event_t oev)
 	ldmsd_cfgobj_lock(&samp->cfg);
 	assert(samp->cfg.type == LDMSD_CFGOBJ_SAMPLER);
 	assert(samp->api->base.type == LDMSD_PLUGIN_SAMPLER);
-	int rc = samp->api->sample(samp->api);
+
+        int rc = 0;
+        if (samp->api->sample != NULL) {
+                rc = samp->api->sample((ldmsd_plug_handle_t)samp);
+        }
 	if (rc) {
 		/*
 		 * If the sampler reports an error don't reschedule
@@ -659,10 +664,10 @@ int ldmsd_set_register(ldms_set_t set, const char *cfg_name)
 	s->sampler = samp;
 
 	LIST_INSERT_HEAD(&samp->set_list, s, entry);
-	ldmsd_cfgobj_put(&samp->cfg, "find");
+	ldmsd_sampler_lose(samp);
 	return 0;
 err_0:
-	ldmsd_cfgobj_put(&samp->cfg, "find");
+	ldmsd_sampler_lose(samp);
 	free(s);
 	return rc;
 }
@@ -1101,7 +1106,7 @@ void oneshot_sample_cb(ovis_event_t ev)
 	ldmsd_cfgobj_sampler_t samp = os->samp;
 	ovis_scheduler_event_del(os->os, ev);
 	ldmsd_sampler_lock(samp);
-	samp->api->sample(samp->api);
+	samp->api->sample((ldmsd_plug_handle_t)samp);
 	release_ovis_scheduler(samp->thread_id);
 	free(os);
 	ldmsd_sampler_unlock(samp);

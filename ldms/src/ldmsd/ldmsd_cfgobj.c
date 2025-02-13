@@ -212,6 +212,16 @@ const char *ldmsd_cfgobj_type_str(ldmsd_cfgobj_type_t t)
 	return __cfgobj_type_str[t];
 }
 
+/**
+ * Allocate a configuration object of the requested size. A
+ * configuration object with the same name and type must not already
+ * exist.
+ *
+ * On success, the object is returned locked.
+ *
+ * NOTE: The caller must use ldmsd_cfgobj_unlock() to unlock the
+ * object once configured.
+ */
 ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 					  ldmsd_cfgobj_type_t type,
 					  size_t obj_size,
@@ -222,8 +232,7 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 {
 	ldmsd_cfgobj_t obj = NULL;
 
-	pthread_mutex_lock(cfgobj_locks[type]);
-
+	ldmsd_cfg_lock(type);
 	errno = EEXIST;
 	struct rbn *n = rbt_find(cfgobj_trees[type], name);
 	if (n)
@@ -248,7 +257,7 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 	obj->perm = perm;
 
 	pthread_mutex_init(&obj->lock, NULL);
-	pthread_mutex_lock(&obj->lock);
+	ldmsd_cfgobj_lock(obj);
 	rbn_init(&obj->rbn, obj->name);
 	rbt_ins(cfgobj_trees[type], &obj->rbn);
 	goto out_1;
@@ -258,14 +267,19 @@ out_2:
 	obj = NULL;
 
 out_1:
-	pthread_mutex_unlock(cfgobj_locks[type]);
+	ldmsd_cfg_unlock(type);
 	return obj;
 }
 
 /**
  * Allocate a configuration object of the requested size. A
  * configuration object with the same name and type must not already
- * exist. On success, the object is returned locked.
+ * exist.
+ *
+ * On success, the object is returned locked.
+ *
+ * NOTE: The caller must use ldmsd_cfgobj_unlock() to unlock the
+ * object once configured.
  */
 ldmsd_cfgobj_t ldmsd_cfgobj_new(const char *name, ldmsd_cfgobj_type_t type,
 				size_t obj_size, ldmsd_cfgobj_del_fn_t __del)
@@ -294,6 +308,9 @@ out:
 	return ldmsd_cfgobj_get(obj, "find");
 }
 
+/* On success, the returned object will have a reference set.
+   NOTE: The caller must call ldmsd_cfgobj_lose() to drop the
+   reference from ldmsd_cfgobj_find(). */
 ldmsd_cfgobj_t ldmsd_cfgobj_find(const char *name, ldmsd_cfgobj_type_t type)
 {
 	ldmsd_cfgobj_t obj;
@@ -301,6 +318,12 @@ ldmsd_cfgobj_t ldmsd_cfgobj_find(const char *name, ldmsd_cfgobj_type_t type)
 	obj = __cfgobj_find(name, type);
 	pthread_mutex_unlock(cfgobj_locks[type]);
 	return obj;
+}
+
+/* Drop the reference aquired by ldmsd_cfg_obj_find() */
+void ldmsd_cfgobj_lose(ldmsd_cfgobj_t obj)
+{
+        ldmsd_cfgobj_put(obj, "find");
 }
 
 void ldmsd_cfgobj_put(ldmsd_cfgobj_t obj, const char *ref_name)
@@ -389,6 +412,12 @@ ldmsd_cfgobj_sampler_t ldmsd_sampler_find(const char *cfg_name)
 	return container_of(obj, struct ldmsd_cfgobj_sampler, cfg);
 }
 
+/* Drop reference acquired by ldmsd_sampler_find() */
+void ldmsd_sampler_lose(ldmsd_cfgobj_sampler_t samp)
+{
+        ldmsd_cfgobj_lose(&samp->cfg);
+}
+
 void ldmsd_sampler_lock(ldmsd_cfgobj_sampler_t samp)
 {
 	ldmsd_cfgobj_lock(&samp->cfg);
@@ -399,12 +428,19 @@ void ldmsd_sampler_unlock(ldmsd_cfgobj_sampler_t samp)
 	ldmsd_cfgobj_unlock(&samp->cfg);
 }
 
+/* NOTE: Caller must call ldms_store_lose() to drop reference in returned object. */
 ldmsd_cfgobj_store_t ldmsd_store_find(const char *cfg_name)
 {
 	struct ldmsd_cfgobj *obj = ldmsd_cfgobj_find(cfg_name, LDMSD_CFGOBJ_STORE);
 	if (obj)
 		return container_of(obj, struct ldmsd_cfgobj_store, cfg);
 	return NULL;
+}
+
+/* Drop reference acquired by ldmsd_sampler_find() */
+void ldmsd_store_lose(ldmsd_cfgobj_store_t store)
+{
+        ldmsd_cfgobj_lose(&store->cfg);
 }
 
 ldmsd_cfgobj_store_t ldmsd_store_first()
