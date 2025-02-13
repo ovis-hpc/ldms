@@ -434,31 +434,46 @@ def JSON_OBJ(o):
     # otherwise, the object is expected to have `.json_obj()` function
     return o.json_obj()
 
-def stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None):
-    """stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None)
+def __avro_stream_data(sr_cli, sch_def, obj):
+    import avro.schema
+    import avro.io
+    import confluent_kafka.schema_registry as sr
 
-    Publish a stream locally. If the remote peer subscribe to the stream, it
-    will also receive the data.
+    # Resolving Schema (Avro and SchemaRegistry)
+    sr_sch = None
+    if type(sch_def) == avro.schema.Schema:
+        av_sch = sch_def
+    elif type(sch_def) == sr.Schema:
+        av_sch = avro.schema.parse(sch_def.schema_str)
+        sr_sch = sch_def
+    elif type(sch_def) == dict:
+        av_sch = avro.schema.make_avsc_object(sch_def)
+    elif type(sch_def) == str:
+        av_sch = avro.schema.parse(sch_def)
+    else:
+        raise ValueError("Unsupported `sch_def` type")
+    if sr_sch is None:
+        sr_sch = sr.Schema(json.dumps(av_sch.to_json()), 'AVRO')
+    sch_id = sr_cli.register_schema(av_sch.name, sr_sch)
 
-    Arguments:
-    - name (str): The name of the stream being published.
-    - stream_data (bytes, str, dict):
-            The data being published. If it is `dict` and stream_type is
-            LDMS_STREAM_JSON or None, the stream_data is converted into JSON
-            string representation with `json.dumps(stream_data)`.
-    - stream_type (enum):
-            LDMS_STREAM_JSON or LDMS_STREAM_STRING or None.
-            If the type is `None`, it is inferred from the
-            `type(stream_data)`: LDMS_STREAM_STRING for `str` and `bytes`
-            types, and LDMS_STREAM_JSON for `dict` type. If
-            `type(stream_data)` is something else, TypeError is raised.
-    - perm (int): The file-system-style permission bits (e.g. 0o444).
-    - uid (int or str): Publish as the given uid; None for euid.
-    - gid (int or str): Publish as the given gid; None for egid.
+    # framing
+    framing = struct.pack(">bI", 0, sch_id)
+    buff = io.BytesIO()
+    buff.write(framing)
+    # avro payload
+    dw = avro.io.DatumWriter(av_sch)
+    dw.write(obj, avro.io.BinaryEncoder(buff))
+    data = buff.getvalue()
+    return data
 
-    """
+def __stream_publish(Ptr x_ptr, name, stream_data, stream_type=None,
+                     perm=0o444, uid=None, gid=None,
+                     sr_client=None, schema_def=None):
     cdef int rc
     cdef ldms_cred cred
+    cdef ldms_t c_xprt
+
+    c_xprt = NULL if x_ptr is None else <ldms_t>x_ptr.c_ptr
 
     _t = type(stream_data)
     # stream type
@@ -470,6 +485,14 @@ def stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None, gi
             stream_type = ldms.LDMS_STREAM_STRING
         else:
             raise TypeError(f"Cannot infer stream_type from the type of stream_data ({type(stream_data)})")
+    # Avro/Serdes
+    if stream_type == ldms.LDMS_STREAM_AVRO_SER:
+        if not sr_client:
+            raise ValueError(f"LDMS_STREAM_AVRO_SER requires `sr_client`")
+        if not schema_def:
+            raise ValueError(f"LDMS_STREAM_AVRO_SER requires `schema_def`")
+        stream_data = __avro_stream_data(sr_client, schema_def, stream_data)
+    # Json
     if stream_type == ldms.LDMS_STREAM_JSON and _t is dict:
         stream_data = json.dumps(stream_data)
 
@@ -495,10 +518,54 @@ def stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None, gi
     else:
         raise TypeError(f"Type '{type(gid)}' is not supported for `gid`")
 
-    rc = ldms_stream_publish(NULL, BYTES(name), stream_type, &cred, perm,
+    rc = ldms_stream_publish(c_xprt, BYTES(name), stream_type, &cred, perm,
                              BYTES(stream_data), len(stream_data))
     if rc:
         raise RuntimeError(f"ldms_stream_publish() failed, rc: {rc}")
+
+
+def stream_publish(name, stream_data, stream_type=None, perm=0o444,
+                   uid=None, gid=None, sr_client=None, schema_def=None):
+    """stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None,
+                   gid=None, sr_client=None, schema_def=None)
+
+    Publish a stream locally. If the remote peer subscribe to the stream, it
+    will also receive the data.
+
+    For LDMS_STREAM_AVRO_SER type, SchemaRegistryClient `sr_client` and schema
+    definition `schema_def` is required. The `stream_data` object will be
+    serialized by Avro using `schema_def` (see parameter description below). The
+    `schema_def` is also registered to the Schema Registry with `sr_client`.
+
+    Arguments:
+    - name (str): The name of the stream being published.
+    - stream_data (bytes, str, dict):
+            The data being published. If it is `dict` and stream_type is
+            LDMS_STREAM_JSON or None, the stream_data is converted into JSON
+            string representation with `json.dumps(stream_data)`.
+    - stream_type (enum):
+            LDMS_STREAM_JSON or LDMS_STREAM_STRING or LDMS_STREAM_AVRO_SER or
+            None.  If the type is `None`, it is inferred from the
+            `type(stream_data)`: LDMS_STREAM_STRING for `str` and `bytes` types,
+            and LDMS_STREAM_JSON for `dict` type. If `type(stream_data)` is
+            something else, TypeError is raised.
+    - perm (int): The file-system-style permission bits (e.g. 0o444).
+    - uid (int or str): Publish as the given uid; None for euid.
+    - gid (int or str): Publish as the given gid; None for egid.
+    - sr_client (SchemaRegistryClient):
+            required if `stream_type` is `LDMS_STREAM_AVRO_SER`. In this case,
+            the stream data is encoded in Avro format, and the schema is
+            registered to SchemaRegistry.
+    - schema_def (object): The Schema definition, required for
+            LDMS_STREAM_AVRO_SER stream_type. This can be of type:
+            `dict`, `str` (JSON formatted), `avro.Schema`, or
+            `confluent_kafka.schema_registry.Schema`. The `dict` and `str`
+            (JSON) must follow Apache Avro Schema specification:
+            https://avro.apache.org/docs/1.11.1/specification/
+    """
+
+    return __stream_publish(None, name, stream_data, stream_type, perm, uid,
+                            gid, sr_client = sr_client, schema_def = schema_def)
 
 
 # ============================ #
@@ -3895,11 +3962,20 @@ cdef class Xprt(object):
         free(tmp)
         return lst
 
-    def stream_publish(self, name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None):
-        """r.stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None, gid=None)
+    def stream_publish(self, name, stream_data, stream_type=None,
+                       perm=0o444, uid=None, gid=None,
+                       sr_client=None, schema_def=None):
+        """x.stream_publish(name, stream_data, stream_type=None, perm=0o444,
+                         uid=None, gid=None, sr_client=None, schema_def=None)
 
         Publish a stream directly to the remote peer. The local stream client
-        will not get the stream data.
+        will NOT get the stream data.
+
+        For LDMS_STREAM_AVRO_SER type, SchemaRegistryClient `sr_client` and
+        schema definition `schema_def` is required. The `stream_data` object
+        will be serialized by Avro using `schema_def` (see parameter description
+        below). The `schema_def` is also registered to the Schema Registry with
+        `sr_client`.
 
         Arguments:
         - name (str): The name of the stream being published.
@@ -3908,61 +3984,31 @@ cdef class Xprt(object):
                 LDMS_STREAM_JSON or None, the stream_data is converted into JSON
                 string representation with `json.dumps(stream_data)`.
         - stream_type (enum):
-                LDMS_STREAM_JSON or LDMS_STREAM_STRING or None.
-                If the type is `None`, it is inferred from the
+                LDMS_STREAM_JSON or LDMS_STREAM_STRING or LDMS_STREAM_AVRO_SER
+                or None.  If the type is `None`, it is inferred from the
                 `type(stream_data)`: LDMS_STREAM_STRING for `str` and `bytes`
                 types, and LDMS_STREAM_JSON for `dict` type. If
                 `type(stream_data)` is something else, TypeError is raised.
         - perm (int): The file-system-style permission bits (e.g. 0o444).
         - uid (int or str): Publish as the given uid; None for euid.
         - gid (int or str): Publish as the given gid; None for egid.
+        - sr_client (SchemaRegistryClient):
+                required if `stream_type` is `LDMS_STREAM_AVRO_SER`. In this
+                case, the stream data is encoded in Avro format, and the schema
+                is registered to SchemaRegistry.
+        - schema_def (object): The Schema definition, required for
+                LDMS_STREAM_AVRO_SER stream_type. This can be of type:
+                `dict`, `str` (JSON formatted), `avro.Schema`, or
+                `confluent_kafka.schema_registry.Schema`. The `dict` and `str`
+                (JSON) must follow Apache Avro Schema specification:
+                https://avro.apache.org/docs/1.11.1/specification/
 
         """
-        cdef int rc
-        cdef ldms_cred cred
-
-        _t = type(stream_data)
-        # stream type
-        if stream_type is None:
-            if _t is dict:
-                # JSON
-                stream_type = ldms.LDMS_STREAM_JSON
-            elif _t in (str, bytes):
-                stream_type = ldms.LDMS_STREAM_STRING
-            else:
-                raise TypeError(f"Cannot infer stream_type from the type of stream_data ({type(stream_data)})")
-        if stream_type == ldms.LDMS_STREAM_JSON and _t is dict:
-            stream_data = json.dumps(stream_data)
-
-        # uid
-        if type(uid) is str:
-            o = getpwnam(uid)
-            cred.uid = o.pw_uid
-        elif type(uid) is int:
-            cred.uid = uid
-        elif uid is None:
-            cred.uid = geteuid()
-        else:
-            raise TypeError(f"Type '{type(uid)}' is not supported for `uid`")
-
-        # gid
-        if type(gid) is str:
-            o = getgrnam(gid)
-            cred.gid = o.gr_gid
-        elif type(gid) is int:
-            cred.gid = gid
-        elif gid is None:
-            cred.gid = getegid()
-        else:
-            raise TypeError(f"Type '{type(gid)}' is not supported for `gid`")
-
-        rc = ldms_stream_publish(self.xprt, BYTES(name), stream_type, &cred, perm,
-                                 BYTES(stream_data), len(stream_data))
-        if rc:
-            raise RuntimeError(f"ldms_stream_publish() failed, rc: {rc}")
+        return __stream_publish(PTR(self.xprt), name, stream_data, stream_type,
+                perm, uid, gid, sr_client = sr_client, schema_def = schema_def)
 
     def stream_subscribe(self, match, is_regex, cb=None, cb_arg=None, rx_rate=-1):
-        """r.stream_subscribe(match, is_regex, cb=None, cb_arg=None)
+        """x.stream_subscribe(match, is_regex, cb=None, cb_arg=None)
 
         `cb()` signature: `cb(StreamStatusEvent ev, object cb_arg)`
 
@@ -4208,6 +4254,31 @@ cdef class LdmsAddr(object):
                 return False
         return False
 
+SD_FRAME_FMT = ">bI"
+
+cdef object __deserialize_avro_ser(Ptr ev_ptr, StreamClient c):
+    cdef ldms_stream_event_t ev = <ldms_stream_event_t>ev_ptr.c_ptr
+
+    import avro.io
+    import avro.schema
+
+    # unframe
+    cdef int magic, schema_id
+    raw_data = ev.recv.data[:ev.recv.data_len]
+    sd_frame = raw_data[:5]
+    av_data = raw_data[5:]
+
+    # get schema
+    magic, schema_id = struct.unpack(SD_FRAME_FMT, sd_frame)
+    sr_sch = c.sr_client.get_schema(schema_id)
+    av_sch = avro.schema.parse(sr_sch.schema_str)
+
+    # parse data
+    dr = avro.io.DatumReader(av_sch)
+    de = avro.io.BinaryDecoder(io.BytesIO(av_data))
+    obj = dr.read(de)
+    return obj
+
 cdef class StreamData(object):
     """Stream Data"""
     cdef public bytes    raw_data # bytes raw data
@@ -4219,8 +4290,11 @@ cdef class StreamData(object):
     cdef public int      gid      # gid of the original publisher
     cdef public int      perm     # the permission of the data
     cdef public uint64_t tid      # the thread ID creating the StreamData
+    cdef public object   type     # stream type
+
     def __init__(self, name=None, src=None, tid=None, uid=None, gid=None,
-                       perm=None, is_json=None, data=None, raw_data=None):
+                       perm=None, is_json=None, data=None, raw_data=None,
+                       _type=None):
         self.name = name
         self.src = src
         self.tid = tid
@@ -4230,6 +4304,7 @@ cdef class StreamData(object):
         self.is_json = is_json
         self.data = data
         self.raw_data = raw_data
+        self.type = _type
 
     def __str__(self):
         return str(self.data)
@@ -4250,23 +4325,32 @@ cdef class StreamData(object):
         return True
 
     @classmethod
-    def from_ldms_stream_event(cls, Ptr ev_ptr):
+    def from_ldms_stream_event(cls, Ptr ev_ptr, StreamClient c = None):
         cdef ldms_stream_event_t ev = <ldms_stream_event_t>ev_ptr.c_ptr
         assert( ev.type == LDMS_STREAM_EVENT_RECV )
         raw_data = ev.recv.data[:ev.recv.data_len]
-        if ev.recv.type == LDMS_STREAM_JSON:
-            is_json = True
-            data = json.loads(raw_data.strip(b'\x00').strip())
-        else:
+        if ev.recv.type == LDMS_STREAM_STRING:
             is_json = False
             data = raw_data.decode()
+        elif ev.recv.type == LDMS_STREAM_JSON:
+            is_json = True
+            data = json.loads(raw_data.strip(b'\x00').strip())
+        elif ev.recv.type == LDMS_STREAM_AVRO_SER:
+            is_json = False
+            data = __deserialize_avro_ser(ev_ptr, c)
+        else:
+            # no data decode
+            is_json = False
+            data = raw_data
         name = ev.recv.name.decode()
         src = LdmsAddr.from_ldms_addr(PTR(&ev.recv.src))
         uid = ev.recv.cred.uid
         gid = ev.recv.cred.gid
         perm = ev.recv.perm
         tid = threading.get_native_id()
-        obj = StreamData(name, src, tid, uid, gid, perm, is_json, data, raw_data)
+        obj = StreamData(name, src, tid, uid, gid, perm, is_json, data,
+                         raw_data,
+                         ldms.ldms_stream_type_e(ev.recv.type))
         return obj
 
 cdef int __stream_client_cb(ldms_stream_event_t ev, void *arg) with gil:
@@ -4276,7 +4360,7 @@ cdef int __stream_client_cb(ldms_stream_event_t ev, void *arg) with gil:
     if ev.type != LDMS_STREAM_EVENT_RECV:
         return 0
 
-    sdata = StreamData.from_ldms_stream_event(PTR(ev))
+    sdata = StreamData.from_ldms_stream_event(PTR(ev), c)
     if c.cb:
         c.cb(c, sdata, c.cb_arg)
     else:
@@ -4440,17 +4524,23 @@ cdef class StreamClient(object):
                           `def cb(StreamClient client, StreamData data, object cb_arg)`
     - cb_arg (object):  an optional application callback argument.
     - desc (str): a short description of the client.
+    - sr_client (SchemaRegistryClient): a Confluent Kafka Client object,
+                                        required for processing AVRO_SER stream
+                                        data.
     """
 
     cdef ldms_stream_client_t c
     cdef object cb  # optional application callback
     cdef object cb_arg # optional application callback argument
     cdef object data_q
+    cdef object sr_client
 
-    def __init__(self, match, is_regex, cb=None, cb_arg=None, desc=None):
+    def __init__(self, match, is_regex, cb=None, cb_arg=None, desc=None,
+                 sr_client=None):
         self.data_q = Queue()
         self.cb = cb
         self.cb_arg = cb_arg
+        self.sr_client = sr_client
         if desc is None:
             desc = ""
         self.c = ldms_stream_subscribe(BYTES(match), is_regex,

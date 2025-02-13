@@ -307,6 +307,8 @@ AS_IF([test "x$enable_store_avro_kafka" != xno],[
     ])
 ])
 AM_CONDITIONAL([ENABLE_STORE_AVRO_KAFKA], [test "x$enable_store_avro_kafka" != xno])
+AM_CONDITIONAL([HAVE_LIBAVRO], [test "x$HAVE_LIBAVRO" != xno])
+AM_CONDITIONAL([HAVE_LIBSERDES], [test "x$HAVE_LIBSERDES" != xno])
 
 dnl Options for sampler
 OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])

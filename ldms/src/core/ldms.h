@@ -1381,7 +1381,22 @@ void ldms_qgroup_info_free(ldms_qgroup_info_t qinfo);
 typedef enum ldms_stream_type_e {
 	LDMS_STREAM_STRING,
 	LDMS_STREAM_JSON,
+	LDMS_STREAM_AVRO_SER,
+	LDMS_STREAM_LAST, /* the last enumureation; not a real type */
 } ldms_stream_type_t;
+
+/**
+ * \brief Stream Type Symbol.
+ *
+ * This function returns a constant string symbol (e.g. "LDMS_STREAM_STRING") of
+ * the given Stream type \c t. If the given type is out of valid range,
+ * "UNKNOWN" is returned.
+ *
+ * \param t The Stream type.
+ *
+ * \retval s The symbol (e.g. "LDMS_STREAM_STRING").
+ */
+const char *ldms_stream_type_sym(ldms_stream_type_t t);
 
 /**
  * \brief Publish stream data.
@@ -1439,7 +1454,17 @@ enum ldms_stream_event_type {
 	LDMS_STREAM_EVENT_CLOSE, /* reporting stream client close event.
 				  * This is the last event to deliver from a
 				  * client. */
+
+	LDMS_STREAM_EVENT_LAST, /* The last enumeration; not a real event */
 };
+
+/**
+ * \brief String symbol of event type \c t for printing.
+ *
+ * \retval s The string symbol of the given event type (e.g. "LDMS_STREAM_EVENT_RECV").
+ * \retval "UNKNOWn" If the event type \c t is out of range.
+ */
+const char *ldms_stream_event_type_sym(enum ldms_stream_event_type t);
 
 /* For stream data delivery to the application */
 struct ldms_stream_recv_data_s {
