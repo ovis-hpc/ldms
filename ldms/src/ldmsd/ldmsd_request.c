@@ -6442,7 +6442,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
 	for (store = ldmsd_store_first(LDMSD_CFGOBJ_STORE); store;
 			store = ldmsd_store_next(store)) {
-		fprintf(fp, "load name=%s as=%s\n", store->api->base.name, store->api->base.inst_name);
+		fprintf(fp, "load name=%s as=%s\n", store->api->base.name, store->api->base.cfg_name);
 		if (store->cfg.avl_str || store->cfg.kvl_str)
 			fprintf(fp, "config name=%s %s\n",
 				store->cfg.avl_str ? store->cfg.avl_str : "",
@@ -6453,7 +6453,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_sampler_t samp;
 	for (samp = ldmsd_sampler_first(); samp;
 			samp = ldmsd_sampler_next(samp)) {
-		fprintf(fp, "load name=%s as=%s\n", samp->api->base.name, samp->api->base.inst_name);
+		fprintf(fp, "load name=%s as=%s\n", samp->api->base.name, samp->api->base.cfg_name);
 		if (samp->cfg.avl_str || samp->cfg.kvl_str)
 			fprintf(fp, "config name=%s %s\n",
 				samp->cfg.avl_str ? samp->cfg.avl_str : "",
@@ -6461,7 +6461,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 		if (samp->thread_id >= 0) {
 			/* Plugin is running. */
 			fprintf(fp, "start name=%s interval=%ld offset=%ld\n",
-				samp->api->base.inst_name,
+				samp->api->base.cfg_name,
 				samp->sample_interval_us,
 				samp->sample_offset_us);
 		}

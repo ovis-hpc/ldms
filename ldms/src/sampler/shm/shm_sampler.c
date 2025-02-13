@@ -754,7 +754,7 @@ static int shm_sampler_config(struct ldmsd_plugin *self, struct attr_value_list*
 {
 
 	int rc;
-	initial_base_config = base_config(avl, self->inst_name, SAMP, mylog);
+	initial_base_config = base_config(avl, self->cfg_name, SAMP, mylog);
 	if(!initial_base_config) {
 		rc = errno;
 		base_del(initial_base_config);

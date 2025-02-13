@@ -951,7 +951,8 @@ char *process_yaml_config_file(const char *path, const char *dname);
 typedef struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN]; /* plugin name (e.g. meminfo) */
 	char *libpath;
-	const char *inst_name;	/* Plugin instance name (i.e. containing config object) */
+	const char *cfg_name;	/* Plugin configuration object name (i.e. containing
+				 * config object) */
 	void *context;		/* Extra memory allocated by plugin instance creation */
 	size_t context_size;	/* Informs instance creation of cfg object context size */
 	enum ldmsd_plugin_type {

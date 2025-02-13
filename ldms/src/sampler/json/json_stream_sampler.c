@@ -824,12 +824,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 	pthread_mutex_lock(&js->lock);
 	if (js->stream_client) {
-		LERROR("The plugin instance '%s' has been configured to process "
-		       "stream '%s'. Use `term name=%s to terminate the plugin "
-		       "and remove all associated sets and stream clients.\n",
-			self->inst_name,
+		LERROR("The plugin configuration '%s' has been configured "
+		       "to process stream '%s'. Use `term name=%s to "
+		       "terminate the plugin and remove all associated "
+		       "sets and stream clients.\n",
+			self->cfg_name,
 			js->stream_name,
-			self->inst_name);
+			self->cfg_name);
 		pthread_mutex_unlock(&js->lock);
 		return EEXIST;
 	}
@@ -1059,7 +1060,7 @@ static void update_set_data(js_stream_sampler_t js, ldms_set_t l_set,
 static void js_set_free(ldmsd_plugin_t plug, js_set_t j_set)
 {
 	if (j_set->set) {
-		ldmsd_set_deregister(j_set->name, plug->inst_name);
+		ldmsd_set_deregister(j_set->name, plug->cfg_name);
 		ldms_set_delete(j_set->set);
 	}
 	free(j_set->name);
