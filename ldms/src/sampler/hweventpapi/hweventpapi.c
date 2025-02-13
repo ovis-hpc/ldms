@@ -604,7 +604,7 @@ static int config_hw(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		goto out;
 	}
 
-	base = base_config(avl, self->inst_name, default_schema_name, mylog);
+	base = base_config(avl, self->cfg_name, default_schema_name, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -823,7 +823,7 @@ int config_local(struct ldmsd_sampler *self, struct attr_value_list *kwl,
 
 	ovis_log(mylog, OVIS_LDEBUG, SAMP ": re-configure the sampler\n");
 
-	base = base_config(avl, self->base.inst_name, SAMP, mylog);
+	base = base_config(avl, self->base.cfg_name, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
