@@ -96,16 +96,6 @@ void ldmsd_cfg_ldms_xprt_cleanup(ldmsd_cfg_xprt_t xprt)
 	/* nothing to do */
 }
 
-void ldmsd_sampler_cleanup(ldmsd_sampler_t samp)
-{
-	return;
-}
-
-void ldmsd_store_cleanup(ldmsd_store_t store)
-{
-	return;
-}
-
 enum ldmsd_plugin_data_e {
 	LDMSD_PLUGIN_DATA_CONTEXT_SIZE = 1,
 };
@@ -170,6 +160,22 @@ err_0:
 	return NULL;
 }
 
+void ldmsd_sampler_free(ldmsd_sampler_t sampler)
+{
+        /* FIXME - more cleanup likely needed */
+        if (sampler->api->base.term != NULL) {
+                sampler->api->base.term(sampler->context);
+        }
+        if (sampler->api->base.instance_destroy != NULL) {
+                /* This plugin is multi-instance capable */
+                sampler->api->base.instance_destroy(sampler->context);
+                sampler->context = NULL;
+        }
+        ldmsd_cfgobj_del(sampler->cfg.name, LDMSD_CFGOBJ_SAMPLER);
+
+        return;
+}
+
 ldmsd_sampler_t
 ldmsd_sampler_alloc(const char *inst_name,
                     const char *libpath,
@@ -187,11 +193,36 @@ ldmsd_sampler_alloc(const char *inst_name,
 				errno, inst_name);
 		return NULL;
 	}
-	sampler->api = api;
+        sampler->api = api;
         sampler->libpath = libpath;
 	sampler->thread_id = -1;	/* stopped */
+        if (sampler->api->base.instance_create != NULL) {
+                /* This plugin is multi-instance capable */
+                /* FIXME - add check that instance_destroy is also not NULL */
+                sampler->context = sampler->api->base.instance_create(inst_name);
+                /* FIXME - should we consider a NULL context an error? */
+        } else {
+                /* This plugin is _not_ multi-instance capable */
+                /* FIXME - if this plugin is already loaded, error out */
+        }
 	ldmsd_cfgobj_unlock(&sampler->cfg);
 	return sampler;
+}
+
+void ldmsd_store_free(ldmsd_store_t store)
+{
+        /* FIXME - more cleanup likely needed */
+        if (store->api->base.term != NULL) {
+                store->api->base.term(store->context);
+        }
+        if (store->api->base.instance_destroy != NULL) {
+                /* This plugin is multi-instance capable */
+                store->api->base.instance_destroy(store->context);
+                store->context = NULL;
+        }
+        ldmsd_cfgobj_del(store->cfg.name, LDMSD_CFGOBJ_STORE);
+
+        return;
 }
 
 ldmsd_store_t ldmsd_store_alloc(const char *inst_name,
@@ -212,6 +243,15 @@ ldmsd_store_t ldmsd_store_alloc(const char *inst_name,
 	}
 	store->api = api;
         store->libpath = libpath;
+        if (store->api->base.instance_create != NULL) {
+                /* This plugin is multi-instance capable */
+                /* FIXME - add check that instance_destroy is also not NULL */
+                store->context = store->api->base.instance_create(inst_name);
+                /* FIXME - should we consider a NULL context an error? */
+        } else {
+                /* This plugin is _not_ multi-instance capable */
+                /* FIXME - if this plugin is already loaded, error out */
+        }
 	ldmsd_cfgobj_unlock(&store->cfg);
 	return store;
 }
