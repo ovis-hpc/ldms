@@ -191,7 +191,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	mi->base = base_config(avl, self->inst_name, SAMP, mylog);
+	mi->base = base_config(avl, self->cfg_name, SAMP, mylog);
 	if (!mi->base) {
 		rc = errno;
 		goto err;
