@@ -652,7 +652,7 @@ static void __sc_init(store_csv_t sc)
  */
 static int config(void *context, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	store_csv_t sc = (void*)self->context;
+	store_csv_t sc = context;
 	int rollmethod = DEFAULT_ROLLTYPE;
 	int rc;
 
@@ -835,21 +835,6 @@ out:
 	pthread_mutex_unlock(&sc->cfg_lock);
 
 	return rc;
-}
-
-static void term(void *context)
-{
-	/* TODO REVISE ME */
-/* clean up any allocated globals here that are not handled by store_csv_fini */
-	store_csv_t sc = (void*)self->context;
-	pthread_mutex_lock(&sc->cfg_lock);
-	ldmsd_plugattr_destroy(sc->pa);
-	sc->pa = NULL;
-	if (sc->store_idx) {
-		idx_destroy(sc->store_idx);
-		sc->store_idx = NULL;
-	}
-	pthread_mutex_unlock(&sc->cfg_lock);
 }
 
 static const char *usage(void *context)
@@ -1037,8 +1022,8 @@ static ldmsd_store_handle_t
 open_store(void *context, const char *container, const char* schema,
 		struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
+	store_csv_t sc = context;
 	struct csv_store_handle *s_handle = NULL;
-	store_csv_t sc = (void*)s->base.context;
 
 	if (!sc->pa) {
 		ovis_log(mylog, OVIS_LERROR, "config not called. cannot open.\n");
@@ -1989,8 +1974,8 @@ static struct csv_row_schema_rbn_s *
 csv_row_schema_get(ldmsd_strgp_t strgp, struct csv_row_store_handle *rs_handle,
 		   struct csv_row_schema_key_s *key)
 {
+	store_csv_t sc = (void*)strgp->store->context;
 	struct csv_row_schema_rbn_s *rrbn;
-	store_csv_t sc = (void*)strgp->store->api->base.context;
 
 	rrbn = (void*)rbt_find(&rs_handle->row_schema_rbt, key);
 	if (rrbn)
@@ -2426,13 +2411,45 @@ struct ldmsd_plugin *get_plugin_instance(const char *name,
 	return &sc->store.base;
 }
 #else
+static void *instance_create(const char *plugin_instance_name)
+{
+        store_csv_t sc;
+
+        sc = calloc(1, sizeof(*sc));
+        if (sc == NULL) {
+		ovis_log(NULL, OVIS_LERROR,
+                         "Failed to allocate context in plugin store_csv: %d", errno);
+                return NULL;
+        }
+
+        return sc;
+}
+
+static void instance_destroy(void *context)
+{
+        store_csv_t sc = context;
+
+	/* TODO REVISE ME */
+/* clean up any allocated globals here that are not handled by store_csv_fini */
+	pthread_mutex_lock(&sc->cfg_lock);
+	ldmsd_plugattr_destroy(sc->pa);
+	sc->pa = NULL;
+	if (sc->store_idx) {
+		idx_destroy(sc->store_idx);
+		sc->store_idx = NULL;
+	}
+	pthread_mutex_unlock(&sc->cfg_lock);
+
+        free(sc);
+}
+
 static struct ldmsd_store store_csv = {
 	.base.type   = LDMSD_PLUGIN_STORE,
 	.base.name   = "store_csv",
-	.base.term   = term,
 	.base.config = config,
 	.base.usage  = usage,
-	.base.context_size = sizeof(struct store_csv_s),
+        .base.instance_create = instance_create,
+        .base.instance_destroy = instance_destroy,
 	.open        = open_store,
 	.get_context = get_ucontext,
 	.store       = store,
