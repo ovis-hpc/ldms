@@ -932,7 +932,6 @@ typedef struct ldmsd_plugin {
 	int (*config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl);
 	void (*term)(struct ldmsd_plugin *self);
 	const char *(*usage)(struct ldmsd_plugin *self);
-	ldmsd_cfgobj_t cfgobj; /* cfgobj associated to instance */
 } *ldmsd_plugin_t;
 
 struct ldmsd_store {
