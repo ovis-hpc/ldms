@@ -918,7 +918,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		rc = errno;
 		goto err_0;
 	}
-	ldmsd_cfgobj_get(self->cfgobj, "stream_client");
 	pthread_mutex_unlock(&js->lock);
 	return 0;
  err_0:
@@ -1101,7 +1100,6 @@ static int __stream_close(ldms_stream_event_t ev, ldmsd_plugin_t self)
 {
 	js_stream_sampler_t js = self->context;
 	purge_schema_tree(self, js);
-	ldmsd_cfgobj_put(self->cfgobj, "stream_client");
 	return 0;
 }
 
