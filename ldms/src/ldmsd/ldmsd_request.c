@@ -6661,13 +6661,13 @@ size_t __set_route_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
 	if (info->origin_type == LDMSD_SET_ORIGIN_SAMP_PI) {
 		if (!is_internal) {
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
-						"{"
-						"\"instance\":\"%s\","
-						"\"schema\":\"%s\","
-						"\"route\":"
-						"[",
-						ldms_set_instance_name_get(info->set),
-						info->prd_set->schema_name);
+				       "{"
+				       "\"instance\":\"%s\","
+				       "\"schema\":\"%s\","
+				       "\"route\":"
+				       "[",
+				       ldms_set_instance_name_get(info->set),
+				       ldms_set_schema_name_get(info->set));
 		}
 		cnt += snprintf(&reqc->line_buf[cnt], reqc->line_len - cnt,
 				"{"

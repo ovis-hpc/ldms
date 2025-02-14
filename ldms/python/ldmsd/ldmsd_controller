@@ -2150,8 +2150,8 @@ class LdmsdCmdParser(cmd.Cmd):
                     print("{0:20} {1:15} {2:15} {3:15} {4:10} {5:10} {6:5} {7:25} {8:25}".format(
                         hop['host'], hop['type'], detail['name'], "---", detail['interval_us'],
                         detail['offset_us'], detail['sync'],
-                        self.__ts2human(detail['trans_start_sec'], detail['trans_start_usec']),
-                        self.__ts2human(detail['trans_end_sec'], detail['trans_end_usec'])))
+                        self.__ts2human(detail['trans_start_sec'], detail['trans_start_nsec']),
+                        self.__ts2human(detail['trans_end_sec'], detail['trans_end_nsec'])))
         except:
             raise
 
