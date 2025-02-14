@@ -899,7 +899,7 @@ void __transaction_end_time_get(struct timespec *start, struct timespec *dur,
 ldmsd_sampler_set_t ldmsd_sampler_set_find(const char *inst_name)
 {
 	ldmsd_sampler_t samp;
-	ldmsd_sampler_set_t sset;
+	ldmsd_sampler_set_t sset = NULL;
 	ldmsd_cfgobj_t cfg_obj;
 
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_SAMPLER);
@@ -910,11 +910,12 @@ ldmsd_sampler_set_t ldmsd_sampler_set_find(const char *inst_name)
 		samp = (ldmsd_sampler_t)cfg_obj;
 		LIST_FOREACH(sset, &samp->set_list, entry) {
 			if (0 == strcmp(ldms_set_instance_name_get(sset->set), inst_name)) {
-				return sset;
+				break;
 			}
 		}
 	}
-	return NULL;
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
+	return sset;
 }
 
 /*
@@ -979,13 +980,18 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 			} else {
 				info->end = prd_set->updt_stat.end;
 			}
-			goto out;
+			break;
 		}
 		ldmsd_prdcr_unlock(prdcr);
 		prdcr = ldmsd_prdcr_next(prdcr);
 	}
+	if (prdcr)
+		ldmsd_prdcr_unlock(prdcr);
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-out:
+	if (!info->set && !info->prd_set) {
+		free(info);
+		info = NULL;
+	}
 	return info;
 }
 
