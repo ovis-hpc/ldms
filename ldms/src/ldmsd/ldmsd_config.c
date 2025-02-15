@@ -96,12 +96,12 @@ void ldmsd_cfg_ldms_xprt_cleanup(ldmsd_cfg_xprt_t xprt)
 	/* nothing to do */
 }
 
-void ldmsd_sampler_cleanup(ldmsd_sampler_t samp)
+void ldmsd_sampler_cleanup(ldmsd_cfgobj_sampler_t samp)
 {
 	return;
 }
 
-void ldmsd_store_cleanup(ldmsd_store_t store)
+void ldmsd_store_cleanup(ldmsd_cfgobj_store_t store)
 {
 	return;
 }
@@ -170,13 +170,13 @@ err_0:
 	return NULL;
 }
 
-ldmsd_sampler_t
+ldmsd_cfgobj_sampler_t
 ldmsd_sampler_alloc(const char *cfg_name,
 			struct ldmsd_sampler *api,
 			ldmsd_cfgobj_del_fn_t __del,
 			uid_t uid, gid_t gid, int perm)
 {
-	ldmsd_sampler_t sampler;
+	ldmsd_cfgobj_sampler_t sampler;
 	struct ldmsd_sampler *api_inst;
 	api_inst = malloc(sizeof (*api_inst) + api->base.context_size);
 	if (!api_inst)
@@ -203,12 +203,12 @@ ldmsd_sampler_alloc(const char *cfg_name,
 	return sampler;
 }
 
-ldmsd_store_t ldmsd_store_alloc(const char *cfg_name,
+ldmsd_cfgobj_store_t ldmsd_store_alloc(const char *cfg_name,
 		struct ldmsd_store *api,
 		ldmsd_cfgobj_del_fn_t __del,
 		uid_t uid, gid_t gid, int perm)
 {
-	ldmsd_store_t store;
+	ldmsd_cfgobj_store_t store;
 	struct ldmsd_store *api_inst;
 	api_inst = malloc(sizeof (*api_inst) + api->base.context_size);
 	if (!api_inst)
@@ -284,7 +284,7 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 
 void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 {
-	ldmsd_sampler_t samp = (void*)obj;
+	ldmsd_cfgobj_sampler_t samp = (void*)obj;
 	struct ldmsd_sampler_set *_set;
 
 	while (( _set = LIST_FIRST(&samp->set_list))) {
@@ -300,7 +300,7 @@ void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 
 void ldmsd_store___del(ldmsd_cfgobj_t obj)
 {
-	ldmsd_store_t store = (void*)obj;
+	ldmsd_cfgobj_store_t store = (void*)obj;
 	free((void*)store->api->base.cfg_name);
 	free(store->api);
 	ldmsd_cfgobj___del(obj);
@@ -344,8 +344,8 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name, char *errstr, size_t er
 int ldmsd_term_plugin(char *plugin_name)
 {
 	int rc = EINVAL;
-	ldmsd_sampler_t sampler = NULL;
-	ldmsd_store_t store = NULL;
+	ldmsd_cfgobj_sampler_t sampler = NULL;
+	ldmsd_cfgobj_store_t store = NULL;
 	ldmsd_plugin_t plug = NULL;
 	ldmsd_cfgobj_t cfgobj;
 

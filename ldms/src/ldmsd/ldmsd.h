@@ -586,7 +586,7 @@ int ldmsd_row_cache_make_list(ldmsd_row_list_t row_list, int row_count,
 	ldmsd_row_cache_t cache, ldmsd_row_cache_idx_t group_key);
 
 typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set);
-typedef struct ldmsd_store_inst *ldmsd_store_t;
+typedef struct ldmsd_cfgobj_store *ldmsd_cfgobj_store_t;
 
 struct ldmsd_strgp {
 	struct ldmsd_cfgobj obj;
@@ -609,7 +609,7 @@ struct ldmsd_strgp {
 	char *container;
 
 	/** The storage backend plugin */
-	ldmsd_store_t store;
+	ldmsd_cfgobj_store_t store;
 
 	/** The open instance of the container */
 	ldmsd_store_handle_t store_handle;
@@ -953,19 +953,19 @@ typedef struct ldmsd_sampler {
 	int (*sample)(struct ldmsd_sampler *self);
 } *ldmsd_sampler_plugin_t;
 
-struct ldmsd_store_inst {
+struct ldmsd_cfgobj_store {
 	struct ldmsd_cfgobj cfg;
 	struct ldmsd_store *api;
 };
 
-typedef struct ldmsd_sampler_inst *ldmsd_sampler_t;
+typedef struct ldmsd_cfgobj_sampler *ldmsd_cfgobj_sampler_t;
 typedef struct ldmsd_sampler_set {
 	ldms_set_t set;
-	ldmsd_sampler_t sampler;
+	ldmsd_cfgobj_sampler_t sampler;
 	LIST_ENTRY(ldmsd_sampler_set) entry;
 } *ldmsd_sampler_set_t;
 
-struct ldmsd_sampler_inst {
+struct ldmsd_cfgobj_sampler {
 	struct ldmsd_cfgobj cfg;
 	struct ldmsd_sampler *api;
 	unsigned long sample_interval_us;
@@ -986,7 +986,7 @@ struct ldmsd_sampler_inst {
 /** Metric name for job id number */
 #define LDMSD_JOBID "job_id"
 
-ldmsd_sampler_t ldmsd_sampler_alloc(const char *name,
+ldmsd_cfgobj_sampler_t ldmsd_sampler_alloc(const char *name,
 					struct ldmsd_sampler *api,
 					ldmsd_cfgobj_del_fn_t __del,
 					uid_t uid, gid_t gid, int perm);
@@ -1041,7 +1041,7 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
  * is indexed by Component ID, and Time.
  */
 
-ldmsd_store_t ldmsd_store_alloc(const char *name,
+ldmsd_cfgobj_store_t ldmsd_store_alloc(const char *name,
 				struct ldmsd_store *store,
 				ldmsd_cfgobj_del_fn_t __del,
 				uid_t uid, gid_t gid, int perm);
@@ -1054,7 +1054,7 @@ ldmsd_store_t ldmsd_store_alloc(const char *name,
 void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt);
 
 static inline ldmsd_store_handle_t
-ldmsd_store_open(ldmsd_store_t store,
+ldmsd_store_open(ldmsd_cfgobj_store_t store,
 		const char *container, const char *schema,
 		struct ldmsd_strgp_metric_list *metric_list,
 		void *ucontext)
@@ -1062,20 +1062,20 @@ ldmsd_store_open(ldmsd_store_t store,
 	return store->api->open(store->api, container, schema, metric_list, ucontext);
 }
 
-static inline void *ldmsd_store_get_context(ldmsd_store_t store,
+static inline void *ldmsd_store_get_context(ldmsd_cfgobj_store_t store,
 					    ldmsd_store_handle_t sh)
 {
 	return store->api->get_context(sh);
 }
 
 static inline void
-ldmsd_store_flush(ldmsd_store_t store, ldmsd_store_handle_t sh)
+ldmsd_store_flush(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 {
 	store->api->flush(sh);
 }
 
 static inline void
-ldmsd_store_close(ldmsd_store_t store, ldmsd_store_handle_t sh)
+ldmsd_store_close(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 {
 	store->api->close(sh);
 }
@@ -1179,23 +1179,23 @@ int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt
 int ldmsd_cfgobj_add(ldmsd_cfgobj_t obj);
 void ldmsd_cfgobj_rm(ldmsd_cfgobj_t obj);
 
-ldmsd_sampler_t ldmsd_sampler_find(const char *name);
-#define ldmsd_sampler_get(_s_, _r_) (ldmsd_sampler_t)ldmsd_cfgobj_get(&(_s_)->cfg, _r_)
+ldmsd_cfgobj_sampler_t ldmsd_sampler_find(const char *name);
+#define ldmsd_sampler_get(_s_, _r_) (ldmsd_cfgobj_sampler_t)ldmsd_cfgobj_get(&(_s_)->cfg, _r_)
 #define ldmsd_sampler_put(_s_, _r_) ldmsd_cfgobj_put(&(_s_)->cfg, _r_)
-#define ldmsd_store_get(_s_, _r_) (ldmsd_store_t)ldmsd_cfgobj_get(&(_s_)->cfg, _r_)
+#define ldmsd_store_get(_s_, _r_) (ldmsd_cfgobj_store_t)ldmsd_cfgobj_get(&(_s_)->cfg, _r_)
 #define ldmsd_store_put(_s_, _r_) ldmsd_cfgobj_put(&(_s_)->cfg, _r_)
-ldmsd_sampler_t ldmsd_sampler_first();
-ldmsd_sampler_t ldmsd_sampler_next(ldmsd_sampler_t);
-void ldmsd_sampler_lock(ldmsd_sampler_t samp);
-void ldmsd_sampler_unlock(ldmsd_sampler_t samp);
+ldmsd_cfgobj_sampler_t ldmsd_sampler_first();
+ldmsd_cfgobj_sampler_t ldmsd_sampler_next(ldmsd_cfgobj_sampler_t);
+void ldmsd_sampler_lock(ldmsd_cfgobj_sampler_t samp);
+void ldmsd_sampler_unlock(ldmsd_cfgobj_sampler_t samp);
 extern int ldmsd_sampler_start(char *name, char *interval, char *offset);
 extern int ldmsd_sampler_stop(char *name);
 
-ldmsd_store_t ldmsd_store_find(const char *name);
-ldmsd_store_t ldmsd_store_first();
-ldmsd_store_t ldmsd_store_next(ldmsd_store_t store);
-void ldmsd_store_lock(ldmsd_store_t store);
-void ldmsd_store_unlock(ldmsd_store_t store);
+ldmsd_cfgobj_store_t ldmsd_store_find(const char *name);
+ldmsd_cfgobj_store_t ldmsd_store_first();
+ldmsd_cfgobj_store_t ldmsd_store_next(ldmsd_cfgobj_store_t store);
+void ldmsd_store_lock(ldmsd_cfgobj_store_t store);
+void ldmsd_store_unlock(ldmsd_cfgobj_store_t store);
 
 #define LDMSD_CFGOBJ_FOREACH(obj, type) \
 	for ((obj) = ldmsd_cfgobj_first(type); (obj);  \

@@ -1204,6 +1204,7 @@ int ldmsd_prdcr_start(const char *name, const char *interval_str,
 		prdcr->conn_intrvl_us = reconnect;
 	}
 	rc = __ldmsd_prdcr_start(prdcr, ctxt);
+	ldmsd_prdcr_get(prdcr, "start");
 	ldmsd_prdcr_put(prdcr, "find");
 	return rc;
 }
@@ -1266,7 +1267,7 @@ int ldmsd_prdcr_stop(const char *name, ldmsd_sec_ctxt_t ctxt)
 }
 
 /*
- * Guessing if the string s is a regular expression or just a string.
+ * Guessing if the string is a regular expression or just a string.
  */
 static int __is_regex(const char *s)
 {

@@ -363,75 +363,75 @@ out:
 	return nobj;
 }
 
-ldmsd_sampler_t ldmsd_sampler_first()
+ldmsd_cfgobj_sampler_t ldmsd_sampler_first()
 {
 	ldmsd_cfgobj_t obj;
 	obj = ldmsd_cfgobj_first(LDMSD_CFGOBJ_SAMPLER);
 	if (obj)
-		return container_of(obj, struct ldmsd_sampler_inst, cfg);
+		return container_of(obj, struct ldmsd_cfgobj_sampler, cfg);
 	return NULL;
 }
 
-ldmsd_sampler_t ldmsd_sampler_next(ldmsd_sampler_t samp)
+ldmsd_cfgobj_sampler_t ldmsd_sampler_next(ldmsd_cfgobj_sampler_t samp)
 {
 	ldmsd_cfgobj_t obj;
 	obj = ldmsd_cfgobj_next(&samp->cfg);
 	if (obj)
-		return container_of(obj, struct ldmsd_sampler_inst, cfg);
+		return container_of(obj, struct ldmsd_cfgobj_sampler, cfg);
 	return NULL;
 }
 
-ldmsd_sampler_t ldmsd_sampler_find(const char *cfg_name)
+ldmsd_cfgobj_sampler_t ldmsd_sampler_find(const char *cfg_name)
 {
 	struct ldmsd_cfgobj *obj = ldmsd_cfgobj_find(cfg_name, LDMSD_CFGOBJ_SAMPLER);
 	if (!obj)
 		return NULL;
-	return container_of(obj, struct ldmsd_sampler_inst, cfg);
+	return container_of(obj, struct ldmsd_cfgobj_sampler, cfg);
 }
 
-void ldmsd_sampler_lock(ldmsd_sampler_t samp)
+void ldmsd_sampler_lock(ldmsd_cfgobj_sampler_t samp)
 {
 	ldmsd_cfgobj_lock(&samp->cfg);
 }
 
-void ldmsd_sampler_unlock(ldmsd_sampler_t samp)
+void ldmsd_sampler_unlock(ldmsd_cfgobj_sampler_t samp)
 {
 	ldmsd_cfgobj_unlock(&samp->cfg);
 }
 
-ldmsd_store_t ldmsd_store_find(const char *cfg_name)
+ldmsd_cfgobj_store_t ldmsd_store_find(const char *cfg_name)
 {
 	struct ldmsd_cfgobj *obj = ldmsd_cfgobj_find(cfg_name, LDMSD_CFGOBJ_STORE);
 	if (obj)
-		return container_of(obj, struct ldmsd_store_inst, cfg);
+		return container_of(obj, struct ldmsd_cfgobj_store, cfg);
 	return NULL;
 }
 
-ldmsd_store_t ldmsd_store_first()
+ldmsd_cfgobj_store_t ldmsd_store_first()
 {
 	ldmsd_cfgobj_t obj;
 	obj = ldmsd_cfgobj_first(LDMSD_CFGOBJ_STORE);
 	if (obj)
-		return container_of(obj, struct ldmsd_store_inst, cfg);
+		return container_of(obj, struct ldmsd_cfgobj_store, cfg);
 	return NULL;
 }
 
-ldmsd_store_t ldmsd_store_next(ldmsd_store_t store)
+ldmsd_cfgobj_store_t ldmsd_store_next(ldmsd_cfgobj_store_t store)
 {
 	ldmsd_cfgobj_t obj;
 	obj = ldmsd_cfgobj_next(&store->cfg);
 	if (obj)
-		return container_of(obj, struct ldmsd_store_inst, cfg);
+		return container_of(obj, struct ldmsd_cfgobj_store, cfg);
 	return NULL;
 }
 
 
-void ldmsd_store_lock(ldmsd_store_t store)
+void ldmsd_store_lock(ldmsd_cfgobj_store_t store)
 {
 	ldmsd_cfgobj_lock(&store->cfg);
 }
 
-void ldmsd_store_unlock(ldmsd_store_t store)
+void ldmsd_store_unlock(ldmsd_cfgobj_store_t store)
 {
 	ldmsd_cfgobj_unlock(&store->cfg);
 }
