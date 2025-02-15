@@ -539,7 +539,7 @@ int publish_kernel(const char *setfile)
 	return 0;
 }
 
-static void stop_sampler(ldmsd_sampler_t samp)
+static void stop_sampler(ldmsd_cfgobj_sampler_t samp)
 {
 	ovis_scheduler_event_del(samp->os, &samp->oev);
 	release_ovis_scheduler(samp->thread_id);
@@ -550,7 +550,7 @@ static void stop_sampler(ldmsd_sampler_t samp)
 
 void plugin_sampler_cb(ovis_event_t oev)
 {
-	ldmsd_sampler_t samp = oev->param.ctxt;
+	ldmsd_cfgobj_sampler_t samp = oev->param.ctxt;
 	ldmsd_cfgobj_get(&samp->cfg, "cb");
 	ldmsd_cfgobj_lock(&samp->cfg);
 	assert(samp->cfg.type == LDMSD_CFGOBJ_SAMPLER);
@@ -633,7 +633,7 @@ ldmsd_plugin_set_t ldmsd_plugin_set_next(ldmsd_plugin_set_t set)
 
 int ldmsd_set_register(ldms_set_t set, const char *cfg_name)
 {
-	ldmsd_sampler_t samp = NULL;
+	ldmsd_cfgobj_sampler_t samp = NULL;
 	ldmsd_sampler_set_t s = NULL;
 	int rc = 0;
 
@@ -670,7 +670,7 @@ err_0:
 void ldmsd_set_deregister(const char *inst_name, const char *cfg_name)
 {
 	ldmsd_sampler_set_t s;
-	ldmsd_sampler_t samp = ldmsd_sampler_find(cfg_name);
+	ldmsd_cfgobj_sampler_t samp = ldmsd_sampler_find(cfg_name);
 	const char *set_name;
 
 	if (!samp) {
@@ -898,7 +898,7 @@ void __transaction_end_time_get(struct timespec *start, struct timespec *dur,
 
 ldmsd_sampler_set_t ldmsd_sampler_set_find(const char *inst_name)
 {
-	ldmsd_sampler_t samp;
+	ldmsd_cfgobj_sampler_t samp;
 	ldmsd_sampler_set_t sset = NULL;
 	ldmsd_cfgobj_t cfg_obj;
 
@@ -907,7 +907,7 @@ ldmsd_sampler_set_t ldmsd_sampler_set_find(const char *inst_name)
 		cfg_obj;
 		cfg_obj = ldmsd_cfgobj_next(cfg_obj)) {
 
-		samp = (ldmsd_sampler_t)cfg_obj;
+		samp = (ldmsd_cfgobj_sampler_t)cfg_obj;
 		LIST_FOREACH(sset, &samp->set_list, entry) {
 			if (0 == strcmp(ldms_set_instance_name_get(sset->set), inst_name)) {
 				break;
@@ -1007,7 +1007,7 @@ void ldmsd_set_info_delete(ldmsd_set_info_t info)
 	free(info);
 }
 
-int __sampler_set_info_add(ldmsd_sampler_t samp, long interval_us, long offset_us)
+int __sampler_set_info_add(ldmsd_cfgobj_sampler_t samp, long interval_us, long offset_us)
 {
 	ldmsd_sampler_set_t sset;
 	int rc;
@@ -1033,7 +1033,7 @@ int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset)
 	int rc = 0;
 	long sample_interval;
 	long sample_offset = 0;
-	ldmsd_sampler_t samp = ldmsd_sampler_find(cfg_name);
+	ldmsd_cfgobj_sampler_t samp = ldmsd_sampler_find(cfg_name);
 	if (!samp)
 		return ENOENT;
 
@@ -1090,7 +1090,7 @@ out:
 }
 
 struct oneshot {
-	ldmsd_sampler_t samp;
+	ldmsd_cfgobj_sampler_t samp;
 	ovis_scheduler_t os;
 	struct ovis_event_s oev;
 };
@@ -1098,7 +1098,7 @@ struct oneshot {
 void oneshot_sample_cb(ovis_event_t ev)
 {
 	struct oneshot *os = ev->param.ctxt;
-	ldmsd_sampler_t samp = os->samp;
+	ldmsd_cfgobj_sampler_t samp = os->samp;
 	ovis_scheduler_event_del(os->os, ev);
 	ldmsd_sampler_lock(samp);
 	samp->api->sample(samp->api);
@@ -1112,7 +1112,7 @@ int ldmsd_oneshot_sample(const char *cfg_name, const char *ts,
 			char *errstr, size_t errlen)
 {
 	int rc = 0;
-	ldmsd_sampler_t samp;
+	ldmsd_cfgobj_sampler_t samp;
 	time_t now, sched;
 	struct timeval tv;
 
@@ -1183,7 +1183,7 @@ put:
 int ldmsd_sampler_stop(char *cfg_name)
 {
 	int rc = 0;
-	ldmsd_sampler_t samp;
+	ldmsd_cfgobj_sampler_t samp;
 
 	samp = ldmsd_sampler_find(cfg_name);
 	if (!samp)
