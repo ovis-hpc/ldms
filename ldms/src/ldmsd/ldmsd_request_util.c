@@ -110,7 +110,6 @@ const struct req_str_id req_str_id_table[] = {
 	{  "prdcr_stream_status",LDMSD_PRDCR_STREAM_STATUS_REQ  },
 	{  "prdcr_subscribe",    LDMSD_PRDCR_SUBSCRIBE_REQ },
 	{  "prdcr_unsubscribe",  LDMSD_PRDCR_UNSUBSCRIBE_REQ },
-	{  "set_route",          LDMSD_SET_ROUTE_REQ  },
 	{  "set_sec_mod",        LDMSD_SET_SEC_MOD_REQ  },
 	{  "set_stats",          LDMSD_SET_STATS_REQ  },
 	{  "setgroup_add",       LDMSD_SETGROUP_ADD_REQ  },
@@ -294,7 +293,6 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_LOGROTATE_REQ         : return "LOGROTATE_REQ";
 	case LDMSD_EXIT_DAEMON_REQ       : return "EXIT_DAEMON_REQ";
 	case LDMSD_RECORD_LEN_ADVICE_REQ : return "RECORD_LEN_ADVICE_REQ";
-	case LDMSD_SET_ROUTE_REQ         : return "SET_ROUTE_REQ";
 	case LDMSD_CMDLINE_OPTIONS_SET_REQ : return "CMDLINE_OPTION_SET_REQ";
 
 	/* failover requests by user */

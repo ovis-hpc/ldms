@@ -146,7 +146,6 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'xprt_stats': {'req_attr':[], 'opt_attr': ['reset']},
                       'thread_stats': {'req_attr':[], 'opt_attr': ['reset']},
                       'prdcr_stats': {'req_attr':[], 'opt_attr': []},
-                      'set_route' : {'req_attr':['instance'], 'opt_attr':[]},
                       'set_stats': {'req_attr':[], 'opt_attr': ['summary']},
                       'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth']},
                       'metric_sets_default_authz': {'req_attr':[], 'opt_attr': ['uid', 'gid', 'perm']},
@@ -554,7 +553,7 @@ class LDMSD_Request(object):
     ONESHOT = 0x600 + 7
     LOGROTATE = 0x600 + 8
     EXIT_DAEMON = 0x600 + 9
-    SET_ROUTE = 0x600 + 11
+    SET_ROUTE = 0x600 + 11 # Obsolete. Preserved to maintain consistent request IDs for subsequent commands and backward compatibility
     XPRT_STATS = 0x600 + 12
     THREAD_STATS = 0x600 + 13
     PRDCR_STATS = 0x600 + 14
@@ -667,7 +666,6 @@ class LDMSD_Request(object):
             'failover_status'        : {'id' : FAILOVER_STATUS},
             'failover_start'         : {'id' : FAILOVER_START},
             'failover_stop'          : {'id' : FAILOVER_STOP},
-            'set_route'     :  {'id': SET_ROUTE},
             'xprt_stats'    :  {'id' : XPRT_STATS},
             'thread_stats'  :  {'id' : THREAD_STATS},
             'prdcr_stats'   :  {'id' : PRDCR_STATS},
@@ -1235,28 +1233,6 @@ class Communicator(object):
         Manually stop peer configuration
         """
         req = LDMSD_Request(command_id=LDMSD_Request.FAILOVER_PEERCFG_STOP)
-        try:
-            req.send(self)
-            resp = req.receive(self)
-            return resp['errcode'], resp['msg']
-        except Exception as e:
-            return errno.ENOTCONN, str(e)
-
-
-    def set_route(self, instance):
-        """
-        Display the route of the set from aggregators to the sample daemon.
-
-        Parameters:
-        instance - Set instance name
-
-        Returns:
-        A tuple of status, data
-        - status is an errno from the errno module
-        - data is the route of the set from aggregators to the sampler daemon
-        """
-        req = LDMSD_Request(command_id=LDMSD_Request.SET_ROUTE,
-                            attrs=[LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INSTANCE, value=instance)])
         try:
             req.send(self)
             resp = req.receive(self)
