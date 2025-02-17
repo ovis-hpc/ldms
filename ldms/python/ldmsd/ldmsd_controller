@@ -1743,52 +1743,6 @@ class LdmsdCmdParser(cmd.Cmd):
         ts_str = "{0} [{1}]".format(ts_sec, usec)
         return ts_str
 
-    def do_set_route(self, arg):
-        """
-        Display the route of the set from aggregators to the sampler daemon.
-        Parameters:
-        instance=   Set instance name
-        """
-        arg = self.handle_args('set_route', arg)
-        if not arg:
-            return
-        rc, msg = self.comm.set_route(arg['instance'])
-
-        if rc:
-            print(f"Error {rc}: {msg}")
-            return
-
-        try:
-            src = json.loads(msg)
-            route = src['route']
-            print("---------------------")
-            print("instance: '{0}'".format(src['instance']))
-            print("schema: '{0}'".format(src['schema']))
-            print("=====================")
-            print("{0:20} {1:15} {2:15} {3:15} {4:10} {5:10} {6:5} {7:25} {8:25}".format(
-                "host", "type", "name", "prdcr_host", "interval", "offset", "sync", "start", "end"))
-            print("-------------------- --------------- --------------- --------------- "
-                    "---------- ---------- ----- ------------------------- -------------------------")
-            for hop in route:
-                detail = hop['detail']
-                if hop['type'] == "producer":
-                    print("{0:20} {1:15} {2:15} {3:15} {4:10} {5:10} {6:5} {7:25} {8:25}".format(
-                        hop['host'], hop['type'], detail['name'], detail['host'], detail['update_int'],
-                        detail['update_off'], detail['update_sync'],
-                        self.__ts2human(detail['last_start_sec'], detail['last_start_nsec']),
-                        self.__ts2human(detail['last_end_sec'], detail['last_end_nsec'])))
-                else:
-                    print("{0:20} {1:15} {2:15} {3:15} {4:10} {5:10} {6:5} {7:25} {8:25}".format(
-                        hop['host'], hop['type'], detail['name'], "---", detail['interval_us'],
-                        detail['offset_us'], detail['sync'],
-                        self.__ts2human(detail['trans_start_sec'], detail['trans_start_nsec']),
-                        self.__ts2human(detail['trans_end_sec'], detail['trans_end_nsec'])))
-        except:
-            raise
-
-    def complete_set_route(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('set_info', text)
-
     def display_thread_stats(self, stats):
         print(f"{'Name':16} {'Samples':12} {'Sample Rate':12} " \
               f"{'Utilization':12} {'Send Queue Size':16} " \
