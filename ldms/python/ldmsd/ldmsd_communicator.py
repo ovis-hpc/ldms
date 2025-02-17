@@ -220,8 +220,11 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                                                       'reconnect', 'rail',
                                                       'quota', 'rx_rate' ] },
                       'advertiser_stop': {'req_attr': ['name'], 'opt_attr': []},
-                      'prdcr_listen_add': {'req_attr': ['name', 'reconnect'],
-                                           'opt_attr': ['rail', 'ip', 'quota', 'rx_rate', 'regex', 'disable_start']},
+                      'prdcr_listen_add': {'req_attr': ['name'],
+                                           'opt_attr': ['rail', 'ip', 'quota', 'rx_rate',
+                                                        'regex', 'disable_start', 'reconnect',
+                                                        'advertiser_xprt', 'advertiser_port', 'type',
+                                                        'advertiser_auth']},
                       'prdcr_listen_del': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_start': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_stop': {'req_attr': ['name'], 'opt_attr': []},
@@ -349,8 +352,10 @@ class LDMSD_Req_Attr(object):
                    'producer': PRODUCER,
                    'instance': INSTANCE,
                    'xprt': XPRT,
+                   'advertiser_xprt' : XPRT,
                    'host': HOST,
                    'port': PORT,
+                   'advertiser_port' : PORT,
                    'match': MATCH,
                    'plugin': PLUGIN,
                    'container': CONTAINER,
@@ -378,6 +383,7 @@ class LDMSD_Req_Attr(object):
                    'period': INTERVAL,
                    'reset': RESET,
                    'auth': AUTH,
+                   'advertiser_auth' : AUTH,
                    'decomposition' : DECOMPOSITION,
                    'rail' : RAIL,
                    'quota' : QUOTA,
@@ -2635,7 +2641,8 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_listen_add(self, name, reconnect, disable_start=None, regex=None, ip=None, rail=None, quota=None, rx_rate=None):
+    def prdcr_listen_add(self, name, reconnect=None, disable_start=None, regex=None, ip=None, rail=None, quota=None, rx_rate=None,
+                        type="passive", advertiser_xprt=None, advertiser_port=None, advertiser_auth=None):
         """
         Tell an aggregator to wait for advertisements from samplers
 
@@ -2659,6 +2666,22 @@ class Communicator(object):
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex))
         if ip is not None:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.IP, value=ip))
+        if rail is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RAIL, value=rail))
+        if quota is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.QUOTA, value=quota))
+        if rx_rate is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=rx_rate))
+        if type is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.TYPE, value=type))
+        if advertiser_xprt is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.XPRT, value=advertiser_xprt))
+        if advertiser_port is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PORT, value=advertiser_port))
+        if advertiser_auth is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.AUTH, value=advertiser_auth))
+        if reconnect is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INTERVAL, value=reconnect))
 
         req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_ADD,
                             attrs=attr_list)
