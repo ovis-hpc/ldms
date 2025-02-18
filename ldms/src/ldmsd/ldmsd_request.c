@@ -2684,7 +2684,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 
-	ldmsd_store_t store = ldmsd_store_find(plugin);
+	ldmsd_cfgobj_store_t store = ldmsd_store_find(plugin);
 	if (!store) {
 		reqc->errcode = ENOENT;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -5068,8 +5068,8 @@ send_reply:
 int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 {
 	int rc, count;
-	ldmsd_sampler_t samp;
-	ldmsd_store_t store;
+	ldmsd_cfgobj_sampler_t samp;
+	ldmsd_cfgobj_store_t store;
 	reqc->errcode = 0;
 
 	rc = linebuf_printf(reqc, "[");
@@ -5253,9 +5253,9 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	inst_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!inst_name)
 		goto einval;
-	ldmsd_sampler_t sampler = ldmsd_sampler_find(inst_name);
+	ldmsd_cfgobj_sampler_t sampler = ldmsd_sampler_find(inst_name);
 	if (!sampler) {
-		ldmsd_store_t store = ldmsd_store_find(inst_name);
+		ldmsd_cfgobj_store_t store = ldmsd_store_find(inst_name);
 		if (!store) {
 			/* See if there is a */
 			reqc->errcode = ENOENT;
@@ -5351,8 +5351,8 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 {
 	char *name = NULL;
 	int rc, count = 0;
-	ldmsd_sampler_t samp;
-	ldmsd_store_t store;
+	ldmsd_cfgobj_sampler_t samp;
+	ldmsd_cfgobj_store_t store;
 	rc = 0;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -5432,7 +5432,7 @@ static int plugn_usage_handler(ldmsd_req_ctxt_t reqc)
 }
 
 /* Caller must hold the set tree lock. */
-static int sampler_sets_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_sampler_t samp)
+static int sampler_sets_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_cfgobj_sampler_t samp)
 {
 	ldmsd_sampler_set_t set;
 	int rc, set_count;
@@ -5468,7 +5468,7 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
 	char *cfg_name;
-	ldmsd_sampler_t samp = NULL;
+	ldmsd_cfgobj_sampler_t samp = NULL;
 	int comma = 0;
 
 	cfg_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -6433,7 +6433,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	/* Plugins */
-	ldmsd_store_t store;
+	ldmsd_cfgobj_store_t store;
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
 	for (store = ldmsd_store_first(LDMSD_CFGOBJ_STORE); store;
 			store = ldmsd_store_next(store)) {
@@ -6445,7 +6445,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_SAMPLER);
-	ldmsd_sampler_t samp;
+	ldmsd_cfgobj_sampler_t samp;
 	for (samp = ldmsd_sampler_first(); samp;
 			samp = ldmsd_sampler_next(samp)) {
 		fprintf(fp, "load name=%s as=%s\n", samp->api->base.name, samp->api->base.cfg_name);
