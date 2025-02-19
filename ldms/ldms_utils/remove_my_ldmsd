@@ -1,9 +1,0 @@
-#!/bin/bash
-
-cd base
-/home/brandt/ldms-async/ldms_utils/base/control_plugins \
-/home/brandt/ldms-async/ldms_utils/configs/my_hosts \
-/home/brandt/ldms-async/ldms_utils/configs/remove_ldmsd \
-2 \
-sock
-
