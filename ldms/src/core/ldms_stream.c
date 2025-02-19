@@ -795,39 +795,6 @@ gid_array_t __get_gids()
 	return gids;
 }
 
-#if 0
-/* NOTE: This code section requires "libcap-dev" package */
-#include <sys/capability.h>
-int __check_cap_setuidgid(int *can_set_uid, int *can_set_gid)
-{
-	cap_t cap = cap_get_proc();
-	cap_flag_value_t cap_fv;
-	int rc = 0;
-	int x = _LINUX_CAPABILITY_VERSION_3;
-	*can_set_uid = 0;
-	*can_set_gid = 0;
-	if (!cap) {
-		rc = errno;
-		goto out;
-	}
-	rc = cap_get_flag(cap, CAP_SETUID, CAP_PERMITTED, &cap_fv);
-	if (rc) {
-		rc = errno;
-		goto out;
-	}
-	*can_set_uid = (cap_fv == CAP_SET);
-	rc = cap_get_flag(cap, CAP_SETGID, CAP_PERMITTED, &cap_fv);
-	if (rc) {
-		rc = errno;
-		goto out;
-	}
-	*can_set_gid = (cap_fv == CAP_SET);
- out:
-	if (cap)
-		cap_free(cap);
-	return rc;
-}
-#else
 #include <sys/syscall.h>
 int __check_cap_setuidgid(int *can_set_uid, int *can_set_gid)
 {
@@ -895,7 +862,6 @@ int __check_cap_setuidgid(int *can_set_uid, int *can_set_gid)
 	*can_set_gid = !!(cap_data[0].permitted & cap_setgid_mask);
 	return 0;
 }
-#endif
 
 int __publish_cred_check(ldms_cred_t cred)
 {
