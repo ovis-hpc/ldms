@@ -2109,55 +2109,6 @@ class LdmsdCmdParser(cmd.Cmd):
         usec = int(ts % 1.0 * 1000000)
         return self.__ts2human(sec, usec)
 
-    def do_set_route(self, arg):
-        """
-        Display the route of the set from aggregators to the sampler daemon.
-        Parameters:
-        instance=   Set instance name
-        """
-        arg = self.handle_args('set_route', arg)
-        if not arg:
-            return
-        rc, msg = self.comm.set_route(arg['instance'])
-        attr_list = msg
-        if attr_list is None:
-            print("No response back")
-
-        if attr_list[0].attr_id != LDMSD_Req_Attr.JSON:
-            # Assume that this is an error message
-            return
-
-        try:
-            src = json.loads(attr_list[0].attr_value)
-            route = src['route']
-            print("---------------------")
-            print("instance: '{0}'".format(src['instance']))
-            print("schema: '{0}'".format(src['schema']))
-            print("=====================")
-            print("{0:20} {1:15} {2:15} {3:15} {4:10} {5:10} {6:5} {7:25} {8:25}".format(
-                "host", "type", "name", "prdcr_host", "interval", "offset", "sync", "start", "end"))
-            print("-------------------- --------------- --------------- --------------- "
-                    "---------- ---------- ----- ------------------------- -------------------------")
-            for hop in route:
-                detail = hop['detail']
-                if hop['type'] == "producer":
-                    print("{0:20} {1:15} {2:15} {3:15} {4:10} {5:10} {6:5} {7:25} {8:25}".format(
-                        hop['host'], hop['type'], detail['name'], detail['host'], detail['update_int'],
-                        detail['update_off'], detail['update_sync'],
-                        self.__ts2human(detail['last_start_sec'], detail['last_start_usec']),
-                        self.__ts2human(detail['last_end_sec'], detail['last_end_usec'])))
-                else:
-                    print("{0:20} {1:15} {2:15} {3:15} {4:10} {5:10} {6:5} {7:25} {8:25}".format(
-                        hop['host'], hop['type'], detail['name'], "---", detail['interval_us'],
-                        detail['offset_us'], detail['sync'],
-                        self.__ts2human(detail['trans_start_sec'], detail['trans_start_nsec']),
-                        self.__ts2human(detail['trans_end_sec'], detail['trans_end_nsec'])))
-        except:
-            raise
-
-    def complete_set_route(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('set_info', text)
-
     def display_worker_thread_stats(self, worker_threads):
         print(f"LDMSD Worker Thread Statistics")
         print(f"{'='*60}")

@@ -992,7 +992,6 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 		free(info);
 		info = NULL;
 	}
-out:
 	return info;
 }
 
