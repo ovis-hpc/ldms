@@ -59,7 +59,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-#define SAMP "slurm2"
+#define SAMP "slurm_sampler2"
 
 #ifndef ARRAY_LEN
 #define ARRAY_LEN(a) (sizeof(a)/sizeof(*a))

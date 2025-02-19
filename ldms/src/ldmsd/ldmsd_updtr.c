@@ -81,7 +81,7 @@ void ldmsd_updtr___del(ldmsd_cfgobj_t obj)
 		rbn = rbt_min(&updtr->prdcr_tree);
 		rbt_del(&updtr->prdcr_tree, rbn);
 		prdcr_ref = container_of(rbn, struct ldmsd_prdcr_ref, rbn);
-		ldmsd_cfgobj_put(&prdcr_ref->prdcr->obj);
+		ldmsd_cfgobj_put(&prdcr_ref->prdcr->obj, "init");
 		free(prdcr_ref);
 	}
 	ldmsd_cfgobj___del(obj);
@@ -938,10 +938,11 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 	rbt_init(&updtr->task_tree, ldmsd_updtr_schedule_cmp);
 	updtr->push_flags = push_flags;
 	ldmsd_cfgobj_unlock(&updtr->obj);
+	ref_dump(&updtr->obj.ref, updtr->obj.name, stderr);
 	return updtr;
 einval:
 	ldmsd_cfgobj_unlock(&updtr->obj);
-	ldmsd_updtr_put(updtr);
+	ldmsd_updtr_put(updtr, "init");
 	errno = EINVAL;
 	return NULL;
 }
@@ -960,7 +961,6 @@ ldmsd_updtr_new(const char *name, char *interval_str,
 }
 
 extern struct rbt *cfgobj_trees[];
-extern pthread_mutex_t *cfgobj_locks[];
 ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
 
 int ldmsd_updtr_del(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
@@ -968,7 +968,7 @@ int ldmsd_updtr_del(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
 	int rc = 0;
 	ldmsd_updtr_t updtr;
 
-	pthread_mutex_lock(cfgobj_locks[LDMSD_CFGOBJ_UPDTR]);
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 	updtr = (ldmsd_updtr_t)__cfgobj_find(updtr_name, LDMSD_CFGOBJ_UPDTR);
 	if (!updtr) {
 		rc = ENOENT;
@@ -984,15 +984,14 @@ int ldmsd_updtr_del(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
 	}
 
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_UPDTR], &updtr->obj.rbn);
-	ldmsd_updtr_put(updtr); /* tree reference */
+	ldmsd_updtr_put(updtr, "cfg_tree"); /* tree reference */
 	rc = 0;
 	/* let-through */
 out_1:
 	ldmsd_updtr_unlock(updtr);
 out_0:
-	pthread_mutex_unlock(cfgobj_locks[LDMSD_CFGOBJ_UPDTR]);
-	if (updtr)
-		ldmsd_updtr_put(updtr); /* `find` reference */
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+	ldmsd_updtr_put(updtr, "find");
 	return rc;
 }
 
@@ -1098,12 +1097,12 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 	updtr_task_init(&updtr->default_task, updtr, 1, interval_us, offset_us);
 	ldmsd_updtr_unlock(updtr);
 	rc = __ldmsd_updtr_start(updtr, ctxt);
-	ldmsd_updtr_put(updtr);
+	ldmsd_updtr_put(updtr, "find");
 	return rc;
 
 err:
 	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
+	ldmsd_updtr_put(updtr, "find");
 	return rc;
 }
 
@@ -1168,7 +1167,7 @@ int ldmsd_updtr_stop(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
 	if (!updtr)
 		return ENOENT;
 	rc = __ldmsd_updtr_stop(updtr, ctxt);
-	ldmsd_updtr_put(updtr);
+	ldmsd_updtr_put(updtr, "find");
 	return rc;
 }
 
@@ -1288,7 +1287,7 @@ out_2:
 	free(match);
 out_1:
 	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
+	ldmsd_updtr_put(updtr, "find");
 	return rc;
 }
 
@@ -1330,12 +1329,19 @@ int ldmsd_updtr_match_del(const char *updtr_name, const char *regex_str,
 	free(match);
 out_1:
 	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
+	ldmsd_updtr_put(updtr, "find");
 	return rc;
 }
 
-/* The implementations are in ldmsd_prdcr.c */
-extern ldmsd_prdcr_ref_t prdcr_ref_new(ldmsd_prdcr_t prdcr);
+ldmsd_prdcr_ref_t prdcr_ref_new(ldmsd_prdcr_t prdcr)
+{
+	ldmsd_prdcr_ref_t ref = calloc(1, sizeof *ref);
+	if (ref) {
+		ref->prdcr = ldmsd_prdcr_get(prdcr, "prdcr_ref");
+		rbn_init(&ref->rbn, prdcr->obj.name);
+	}
+	return ref;
+}
 
 ldmsd_prdcr_ref_t prdcr_ref_find(ldmsd_updtr_t updtr, const char *name)
 {
@@ -1448,7 +1454,7 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 		if (!ref) {
 			rc = ENOMEM;
 			sprintf(rep_buf, "%dMemory allocation failure.\n", ENOMEM);
-			ldmsd_prdcr_put(prdcr);
+			ldmsd_prdcr_put(prdcr, "iter");
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 			goto out_1;
 		}
@@ -1459,7 +1465,7 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 out_1:
 unlock:
 	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
+	ldmsd_updtr_put(updtr, "find");
 	return rc;
 }
 
@@ -1493,13 +1499,13 @@ int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 	for (ref = prdcr_ref_find_regex(updtr, &regex);
 	     ref; ref = prdcr_ref_find_regex(updtr, &regex)) {
 		rbt_del(&updtr->prdcr_tree, &ref->rbn);
-		ldmsd_prdcr_put(ref->prdcr);
+		ldmsd_prdcr_put(ref->prdcr, "init");
 		free(ref);
 	}
 out_1:
 	regfree(&regex);
 	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
+	ldmsd_updtr_put(updtr, "find");
 out_0:
 	return rc;
 }

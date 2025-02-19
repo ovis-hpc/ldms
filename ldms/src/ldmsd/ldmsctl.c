@@ -105,8 +105,6 @@ extern int read_history ();
 #define FMT "h:p:a:A:S:x:s:X:i"
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
 
-#define LDMSD_SOCKPATH_ENV "LDMSD_SOCKPATH"
-
 static char *linebuf;
 static size_t linebuf_len;
 static pthread_mutex_t recv_buf_q_lock = PTHREAD_MUTEX_INITIALIZER;;
@@ -1544,142 +1542,6 @@ static void help_version()
 	printf( "\nGet the LDMS version.\n");
 }
 
-static void help_set_route()
-{
-	printf("\nDisplay the route of the set from aggregators to the sampler daemon.\n"
-	       "Parameters:\n"
-	       "     instance=   Set instance name\n");
-}
-
-static void resp_set_route(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
-{
-	if (rsp_err) {
-		resp_generic(resp, len, rsp_err);
-		return;
-	}
-
-	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
-	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
-		return;
-
-	json_parser_t parser;
-	json_entity_t json, route, hop, hinfo;;
-	json_entity_t inst_name, schema_name;
-	int rc;
-
-	parser = json_parser_new(0);
-	if (!parser) {
-		printf("Error creating a JSON parser.\n");
-		return;
-	}
-	json = NULL;
-	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
-	if (rc) {
-		printf("syntax error parsing JSON string\n");
-		json_parser_free(parser);
-		return;
-	}
-	json_parser_free(parser);
-
-	if (json->type != JSON_DICT_VALUE) {
-		printf("---Invalid result format---\n");
-		goto out;
-	}
-
-	inst_name = json_value_find(json, "instance");
-	schema_name = json_value_find(json, "schema");
-
-	if (!inst_name || !schema_name)
-		goto invalid_result_format;
-
-	printf("-----------------------------\n");
-	printf("instance: %s\n", json_value_str(inst_name)->str);
-	printf("schema_name: %s\n", json_value_str(schema_name)->str);
-	printf("=============================\n");
-	printf("%20s %15s %15s %15s %10s %10s %5s %25s %25s\n",
-			"host", "type", "name", "prdcr_host",
-			"interval", "offset", "sync", "start", "end");
-	printf("-------------------- --------------- --------------- --------------- "
-		"---------- ---------- ----- ------------------------- -------------------------\n");
-	route = json_value_find(json, "route");
-	if (!route || (route->type != JSON_LIST_VALUE))
-		goto invalid_result_format;
-
-	json_entity_t host, type, name, prdcr_host, intrvl, offset, is_sync;
-	json_entity_t start_sec, start_usec, end_sec, end_usec;
-	char *prdcr_host_s, *type_s, *start, *end;
-	uint32_t sec, usec;
-
-	for (hop = json_item_first(route); hop; hop = json_item_next(hop)) {
-		hinfo = json_value_find(hop, "detail");
-		if (!hinfo || (hinfo->type != JSON_DICT_VALUE))
-			goto invalid_result_format;
-		type = json_value_find(hop, "type");
-		host = json_value_find(hop, "host");
-		name = json_value_find(hinfo, "name");
-
-		if (!type || !host || !name)
-			goto invalid_result_format;
-		type_s = json_value_str(type)->str;
-
-		if (0 == strcmp(type_s, "producer")) {
-			prdcr_host = json_value_find(hinfo, "host");
-			if (!prdcr_host)
-				goto invalid_result_format;
-			else
-				prdcr_host_s = json_value_str(prdcr_host)->str;
-			intrvl = json_value_find(hinfo, "update_int");
-			offset = json_value_find(hinfo, "update_off");
-			is_sync = json_value_find(hinfo, "update_sync");
-			start_sec = json_value_find(hinfo, "last_start_sec");
-			start_usec = json_value_find(hinfo, "last_start_usec");
-			end_sec = json_value_find(hinfo, "last_end_sec");
-			end_usec = json_value_find(hinfo, "last_end_usec");
-		} else {
-			prdcr_host_s = "---";
-			intrvl = json_value_find(hinfo, "interval_us");
-			offset = json_value_find(hinfo, "offset_us");
-			is_sync = json_value_find(hinfo, "sync");
-			start_sec = json_value_find(hinfo, "trans_start_sec");
-			start_usec = json_value_find(hinfo, "trans_start_usec");
-			end_sec = json_value_find(hinfo, "trans_end_sec");
-			end_usec = json_value_find(hinfo, "trans_end_usec");
-		}
-		if (!intrvl || !offset || ! is_sync ||
-			!start_sec || !start_usec || !end_sec || !end_usec) {
-			goto invalid_result_format;
-		}
-
-		sec = strtoul(json_value_str(start_sec)->str, NULL, 0);
-		usec = strtoul(json_value_str(start_usec)->str, NULL, 0);
-		start = ldmsctl_ts_str(sec, usec);
-		sec = strtoul(json_value_str(end_sec)->str, NULL, 0);
-		usec = strtoul(json_value_str(end_usec)->str, NULL, 0);
-		end = ldmsctl_ts_str(sec, usec);
-		printf("%20s %15s %15s %15s %10s %10s %5s %25s %25s\n",
-					json_value_str(host)->str,
-					json_value_str(type)->str,
-					json_value_str(name)->str,
-					prdcr_host_s,
-					json_value_str(intrvl)->str,
-					json_value_str(offset)->str,
-					json_value_str(is_sync)->str,
-					start,
-					end);
-		free(start);
-		free(end);
-	}
-	return;
-
-
-invalid_result_format:
-	printf("---Invalid result format---\n");
-out:
-	if (json)
-		json_entity_free(json);
-	return;
-}
-
 /* failover related functions */
 
 static void help_failover_peercfg_stop()
@@ -2557,7 +2419,6 @@ static struct command command_tbl[] = {
 	{ "prdcr_unsubscribe", LDMSD_PRDCR_UNSUBSCRIBE_REQ, NULL, help_prdcr_unsubscribe_regex, resp_generic },
 	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit, resp_generic },
 	{ "script", LDMSCTL_SCRIPT, handle_script, help_script, resp_generic },
-	{ "set_route", LDMSD_SET_ROUTE_REQ, NULL, help_set_route, resp_set_route },
 	{ "set_sec_mod", LDMSD_SET_SEC_MOD_REQ, NULL, help_set_sec_mod, resp_generic },
 	{ "set_stats", LDMSD_SET_STATS_REQ, NULL, help_set_stats, resp_set_stats },
 	{ "setgroup_add", LDMSD_SETGROUP_ADD_REQ, NULL, help_setgroup_add, resp_generic },
@@ -2595,7 +2456,7 @@ static struct command command_tbl[] = {
 	{ "updtr_status", LDMSD_UPDTR_STATUS_REQ, NULL, help_updtr_status, resp_updtr_status },
 	{ "updtr_stop", LDMSD_UPDTR_STOP_REQ, NULL, help_updtr_stop, resp_generic },
 	{ "updtr_task", LDMSD_UPDTR_TASK_REQ, NULL, help_updtr_task, resp_updtr_task },
-	{ "usage", LDMSD_PLUGN_LIST_REQ, NULL, help_usage, resp_usage },
+	{ "usage", LDMSD_PLUGN_USAGE_REQ, NULL, help_usage, resp_usage },
 	{ "version", LDMSD_VERSION_REQ, NULL, help_version , resp_generic },
 	{ "xprt_stats", LDMSD_XPRT_STATS_REQ, NULL, help_xprt_stats, resp_xprt_stats },
 };

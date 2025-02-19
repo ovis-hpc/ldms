@@ -57,13 +57,13 @@ import json
 import errno
 
 #:Dictionary contains the cmd_id, required attribute list
-#:and optional attribute list of each ldmsd commands. For example,
+#:and optional attribute list of each ldmsd command. For example,
 #:LDMSD_CTRL_CMD_MAP['load']['req_attr'] is the list of the required attributes
 #:of the load command.
 #:LDMSD_CTRL_CMD_MAP['load']['opt_attr'] is the list of the optional attributes
 #:of the load command.
 LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
-                      'load': {'req_attr': ['name']},
+                      'load': {'req_attr': ['name'], 'opt_attr' : ['plugin']},
                       'term': {'req_attr': ['name']},
                       'config': {'req_attr': ['name']},
                       'source': {'req_attr': ['path'], 'opt_attr':[]},
@@ -154,7 +154,6 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'xprt_stats': {'req_attr':[], 'opt_attr': ['reset', 'sq_depth']},
                       'thread_stats': {'req_attr':[], 'opt_attr': ['reset']},
                       'prdcr_stats': {'req_attr':[], 'opt_attr': []},
-                      'set_route' : {'req_attr':['instance'], 'opt_attr':[]},
                       'set_stats': {'req_attr':[], 'opt_attr': ['summary']},
                       'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth', 'quota', 'rx_rate']},
                       'metric_sets_default_authz': {'req_attr':[], 'opt_attr': ['uid', 'gid', 'perm']},
@@ -609,7 +608,7 @@ class LDMSD_Request(object):
     ONESHOT = 0x600 + 7
     LOGROTATE = 0x600 + 8
     EXIT_DAEMON = 0x600 + 9
-    SET_ROUTE = 0x600 + 11
+    SET_ROUTE_OBSOLETE = 0x600 + 11
     XPRT_STATS = 0x600 + 12
     THREAD_STATS = 0x600 + 13
     PRDCR_STATS = 0x600 + 14
@@ -735,7 +734,6 @@ class LDMSD_Request(object):
             'failover_status'        : {'id' : FAILOVER_STATUS},
             'failover_start'         : {'id' : FAILOVER_START},
             'failover_stop'          : {'id' : FAILOVER_STOP},
-            'set_route'     :  {'id': SET_ROUTE},
             'xprt_stats'    :  {'id' : XPRT_STATS},
             'profiling'    :  {'id' : PROFILING},
             'thread_stats'  :  {'id' : THREAD_STATS},
@@ -1320,28 +1318,6 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-
-    def set_route(self, instance):
-        """
-        Display the route of the set from aggregators to the sample daemon.
-
-        Parameters:
-        instance - Set instance name
-
-        Returns:
-        A tuple of status, data
-        - status is an errno from the errno module
-        - data is the route of the set from aggregators to the sampler daemon
-        """
-        req = LDMSD_Request(command_id=LDMSD_Request.SET_ROUTE,
-                            attrs=[LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INSTANCE, value=instance)])
-        try:
-            req.send(self)
-            resp = req.receive(self)
-            return resp['errcode'], resp['attr_list']
-        except Exception as e:
-            return errno.ENOTCONN, str(e)
-
     def setgroup_add(self, name, producer=None, interval=None, offset=None, perm=None):
         """
         Create a new setgroup
@@ -1639,22 +1615,26 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def plugn_load(self, name):
+    def plugn_load(self, name, plugin=None):
         """
-        Load an LDMSD plugin.
+        Load a plugin instance.
 
         Parameters:
-        name  - The plugin name
+        name  - The instance name
+        plugin- The plugin name. If None, 'name' is used
 
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status != 0 or None
         """
+        if not plugin:
+            plugin = name
         req = LDMSD_Request(
                 command_id=LDMSD_Request.PLUGN_LOAD,
                 attrs=[
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
+                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PLUGIN, value=plugin)
                 ])
         try:
             req.send(self)
@@ -1665,10 +1645,10 @@ class Communicator(object):
 
     def plugn_term(self, name):
         """
-        Terminate a plugin
+        Terminate a plugin instance
 
         Parameters:
-        name  - The plugin name
+        name  - The plugin instance name
 
         Returns:
         A tuple of status, data
@@ -1686,7 +1666,7 @@ class Communicator(object):
 
     def plugn_config(self, name, cfg_str):
         """
-        Configure an LDMSD plugin
+        Configure a plugin instance
 
         Parameters:
         - The plugin name
@@ -1709,10 +1689,10 @@ class Communicator(object):
 
     def plugn_stop(self, name):
         """
-        Stop a LDMSD Plugin
+        Stop a plugin instance
 
         Parameters:
-        name - The plugin name
+        name - The plugin instance name
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
@@ -1733,10 +1713,12 @@ class Communicator(object):
 
     def plugn_status(self, name=None):
         """
-        Get the status of a named plugin, or all plugins if no name is specified
+        Get the status of a plugin instance
+
+        If a name is not specified, the status is returned for all plugins.
 
         Parameters:
-        [name]  - The plugin name
+        name - The plugin instance name
 
         Returns:
         A tuple of status, data
@@ -1758,10 +1740,12 @@ class Communicator(object):
 
     def plugn_sets(self, name=None):
         """
-        List the sets by plugin that provides that sets. If name is provided only provide sets for that plugin
+        List the sets provided by a plugin instance
+
+        If name is not provided the sets for each plugin instance are returned.
 
         Parameters:
-        [name] - The plugin name
+        name - The plugin name
 
         Returns:
         A tuple of status, data
