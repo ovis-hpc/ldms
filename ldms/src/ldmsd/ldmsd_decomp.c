@@ -62,6 +62,11 @@
 #include <openssl/sha.h>
 
 #include <jansson.h>
+
+#ifdef HAVE_YYJSON
+#include <yyjson.h>
+#endif
+
 #include "coll/rbt.h"
 
 #include "ldmsd.h"
@@ -711,6 +716,142 @@ int ldmsd_row_to_json_object(ldmsd_row_t row, char **str, int *len)
 	strbuf_purge(&h);
 	return rc;
 }
+
+#ifdef HAVE_YYJSON
+bool yyjson_add_by_type(yyjson_mut_doc *doc, yyjson_mut_val *root, ldmsd_col_t col)
+{
+	int rc, i;
+	char buf[2];
+	yyjson_mut_val *arr = NULL;
+
+	switch (col->type) {
+	case LDMS_V_S8:
+		return yyjson_mut_obj_add_int(doc, root, col->name, col->mval->v_s8);
+		break;
+	case LDMS_V_U8:
+		return yyjson_mut_obj_add_int(doc, root, col->name, col->mval->v_u8);
+		break;
+	case LDMS_V_S16:
+		return yyjson_mut_obj_add_int(doc, root, col->name, col->mval->v_s16);
+		break;
+	case LDMS_V_U16:
+		return yyjson_mut_obj_add_int(doc, root, col->name, col->mval->v_u16);
+		break;
+	case LDMS_V_S32:
+		return yyjson_mut_obj_add_int(doc, root, col->name, col->mval->v_s32);
+		break;
+	case LDMS_V_U32:
+		return yyjson_mut_obj_add_int(doc, root, col->name, col->mval->v_u32);
+		break;
+	case LDMS_V_S64:
+		return yyjson_mut_obj_add_int(doc, root, col->name, col->mval->v_u64);
+		break;
+	case LDMS_V_U64:
+		return yyjson_mut_obj_add_int(doc, root, col->name, col->mval->v_u64);
+		break;
+	case LDMS_V_F32:
+		return yyjson_mut_obj_add_real(doc, root, col->name, col->mval->v_f);
+		break;
+	case LDMS_V_D64:
+		return yyjson_mut_obj_add_real(doc, root, col->name, col->mval->v_d);
+		break;
+	case LDMS_V_CHAR:
+		buf[0] = col->mval->v_char;
+		buf[1] = '\0';
+		return yyjson_mut_obj_add_strcpy(doc, root, col->name, buf);
+		break;
+	case LDMS_V_CHAR_ARRAY:
+		return yyjson_mut_obj_add_strcpy(doc, root, col->name, (char *)col->mval->a_char);
+		break;
+	case LDMS_V_S8_ARRAY:
+		arr = yyjson_mut_arr_with_sint8(doc, col->mval->a_s8, col->array_len);
+		return yyjson_mut_obj_add_val(doc, root, col->name, arr);
+		break;
+	case LDMS_V_U8_ARRAY:
+		arr = yyjson_mut_arr_with_sint16(doc, col->mval->a_s16, col->array_len);
+		return yyjson_mut_obj_add_val(doc, root, col->name, arr);
+		break;
+	case LDMS_V_S16_ARRAY:
+		arr = yyjson_mut_arr_with_sint32(doc, col->mval->a_s32, col->array_len);
+		return yyjson_mut_obj_add_val(doc, root, col->name, arr);
+		break;
+	case LDMS_V_U16_ARRAY:
+		arr = yyjson_mut_arr_with_sint64(doc, col->mval->a_s64, col->array_len);
+		return yyjson_mut_obj_add_val(doc, root, col->name, arr);
+		break;
+	case LDMS_V_S32_ARRAY:
+		arr = yyjson_mut_arr_with_uint8(doc, col->mval->a_u8, col->array_len);
+		return yyjson_mut_obj_add_val(doc, root, col->name, arr);
+		break;
+	case LDMS_V_U32_ARRAY:
+		arr = yyjson_mut_arr_with_uint16(doc, col->mval->a_u16, col->array_len);
+		return yyjson_mut_obj_add_val(doc, root, col->name, arr);
+		break;
+	case LDMS_V_S64_ARRAY:
+		arr = yyjson_mut_arr_with_uint32(doc, col->mval->a_u32, col->array_len);
+		return yyjson_mut_obj_add_val(doc, root, col->name, arr);
+		break;
+	case LDMS_V_U64_ARRAY:
+		arr = yyjson_mut_arr_with_uint64(doc, col->mval->a_u64, col->array_len);
+		return yyjson_mut_obj_add_val(doc, root, col->name, arr);
+		break;
+	case LDMS_V_F32_ARRAY:
+		arr = yyjson_mut_arr_with_float(doc, col->mval->a_f, col->array_len);
+		return yyjson_mut_obj_add_val(doc, root, col->name, arr);
+		break;
+	case LDMS_V_D64_ARRAY:
+		arr = yyjson_mut_arr_with_double(doc, col->mval->a_d, col->array_len);
+		return yyjson_mut_obj_add_val(doc, root, col->name, arr);
+		break;
+	case LDMS_V_TIMESTAMP:
+		char *ts_buf = alloca(128);
+		snprintf(ts_buf, 128, "%u.%06u", col->mval->v_ts.sec,
+						 col->mval->v_ts.usec);
+		return yyjson_mut_obj_add_strcpy(doc, root, col->name, ts_buf);
+		break;
+	case LDMS_V_LAST+1:
+		goto err;
+		break;
+	}
+
+ err:
+	return NULL;
+}
+
+int ldmsd_row_to_json_object_yyjson(ldmsd_row_t row, char **out_str, int *out_len)
+{
+	ldmsd_col_t col;
+	int i, rc = -2;
+	size_t size = 0;
+
+	yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+	yyjson_mut_val *root = yyjson_mut_obj(doc);
+	yyjson_mut_doc_set_root(doc, root);
+	yyjson_mut_val * val = NULL;
+
+	if(doc == NULL || root == NULL) {
+		goto err_0;
+	}
+	for (i = 0; i < row->col_count; i++) {
+		col = &row->cols[i];
+		bool good = yyjson_add_by_type(doc, root, col);
+		if (!good) {
+			rc = -5;
+			goto err_0;
+		}
+	}
+	char *json = yyjson_mut_write(doc, 0, &size);
+	if (size == 0) {
+		return -3;
+	}
+	*out_str = json;
+	*out_len = size;
+	yyjson_mut_doc_free(doc);
+	return 0;
+ err_0:
+	return rc;
+}
+#endif
 
 static const char *col_type_str(enum ldms_value_type type)
 {
