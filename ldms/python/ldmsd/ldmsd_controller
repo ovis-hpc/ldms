@@ -1282,6 +1282,8 @@ class LdmsdCmdParser(cmd.Cmd):
                 'count' : 0,
                 'start_ts' : None,
                 'end_ts' : None,
+                'min_ts' : None,
+                'max_ts' : None,
                 'min_member' : None,
                 'max_member' : None,
                 'min_avg_member' : None,
@@ -1316,11 +1318,13 @@ class LdmsdCmdParser(cmd.Cmd):
     def __min_max(self, tbl, data):
         is_min = False
         is_max = False
-        if tbl['min'] > data['min']:
+
+        if tbl['min'] is None or tbl['min'] > data['min']:
             tbl['min'] = data['min']
             tbl['min_ts'] = data['min_ts']
             is_min = True
-        if tbl['max'] < data['max']:
+
+        if tbl['max'] is None or tbl['max'] < data['max']:
             tbl['max'] = data['max']
             tbl['max_ts'] = data['max_ts']
             is_max = True
@@ -1371,50 +1375,89 @@ class LdmsdCmdParser(cmd.Cmd):
         # -----------------------------------------------
         # SOURCE DICT
         # -----------------------------------------------
-        # Assume that d = { <strgp_name> :{ 'sets': { <set_name> : { <data> }
-        #                                            }
-        #                                 }
-        #                 },
-        # where, <data> = { 'min' : <float>,
-        #                   'max' : <float>,
-        #                   'avg' : <float>,
-        #                   'cnt' : <int>,
-        #                   'start_ts' : <float>, # in seconds
-        #                   'end_ts' : <float> # in seconds
-        #                 }
+        # Assume that the returned jSON object is
+        # { <strgp_name> :{
+        #     "producers" : { <producer_name> : { EMPTY } },
+        #     "threads"   : { <producer set's thread ID> : { EMPTY }},
+        #     "schemas"   : { <set schema name> : { EMPTY }},
+        #     "sets"      : {
+        #        <set instance name> : {
+        #           "producer" : <producer name>,
+        #           "schema"   : <schema name>,
+        #           "thead_id" : <thread ID>,
+        #           "stats"    : {
+        #              "min"      : <float>,
+        #              "max"      : <float>,
+        #              "min_ts"   : <float>,
+        #              "max_ts"   : <float>,
+        #              "avg"      : <float>,
+        #              "count"    : <integer>,
+        #              "start_ts" : <float>, # seconds
+        #              "end_ts"   : <float>  # seconds
+        #           }
+        #        }
+        #     }
+        # }
         #
         # -----------------------------------------------
-        # RESULT TABLES
+        # RESULT TABLES FROM __store_time_process()
         # -----------------------------------------------
-        # stats = { 'min' : <float>,
-        #           'max' : <float>,
-        #           'avg' : <float>,
-        #           'cnt' : <int>,
-        #           'start' : <float> in seconds,
-        #           'end' : <float> in seconds,
-        #           'set_name' : [<set name, the order is the name as the lists above>]
-        #         }
+        # The function returns a tuple of three tables: (strgp_tbl, schema_tbl, thread_tbl)
         #
-        # schema_tbl = { 'stats': <stats>,
-        #                <schema_name> : {'stats' : <stats>},
-        #                ...
-        #              }
+        # Each table organizes the same underlying data from different perspectives
+        # and contains statistics at various levels of hierarchy.
+        #
+        # First, the common stats dictionary structure used throughout:
+        # stats_dict = {
+        #   'set_name': [],          # List of set names in this group
+        #   'min': float,            # Minimum value
+        #   'max': float,            # Maximum value
+        #   'avg': float,            # Weighted average
+        #   'count': int,            # Count of operations
+        #   'start_ts': float,       # Earliest start timestamp (might be None)
+        #   'end_ts': float,         # Latest end timestamp (might be None)
+        #   'min_ts': float,         # Timestamp of minimum value (might be None)
+        #   'max_ts': float,         # Timestamp of maximum value (might be None)
+        #   'min_member': str/None,  # Member with minimum value (None at leaf level)
+        #   'max_member': str/None,  # Member with maximum value (None at leaf level)
+        #   'min_avg_member': str/None, # Member with minimum average (None at leaf level)
+        #   'max_avg_member': str/None  # Member with maximum average (None at leaf level)
+        # }
+        #
+        # 1. Storage Policy Table (strgp_tbl) - Organized by storage policy → schema → thread
+        # strgp_tbl = {
+        #   'stats': stats_dict,       # Global stats across all storage policies
+        #   '<strgp_name>': {          # Per storage policy entry
+        #     'stats': stats_dict,     # Stats for this storage policy
+        #     '<schema_name>': {       # Per schema within this storage policy
+        #       'stats': stats_dict,   # Stats for this schema within this storage policy
+        #       '<thread_id>': {       # Per thread within this schema and storage policy
+        #         'stats': stats_dict  # Stats for this thread, schema, and storage policy
+        #       }
+        #     }
+        #   }
+        # }
+        #
+        # 2. Schema Table (schema_tbl) - Organized by schema
+        # schema_tbl = {
+        #   'stats': stats_dict,       # Global stats across all schemas
+        #   '<schema_name>': {         # Per schema entry
+        #     'stats': stats_dict      # Stats for this schema
+        #   }
+        # }
+        #
+        # 3. Thread Table (thread_tbl) - Organized by thread → schema
+        # thread_tbl = {
+        #   'stats': stats_dict,       # Global stats across all threads
+        #   '<thread_id>': {           # Per thread entry
+        #     'stats': stats_dict,     # Stats for this thread
+        #     '<schema_name>': {       # Per schema within this thread
+        #       'stats': stats_dict    # Stats for this schema within this thread
+        #     }
+        #   }
+        # }
         schema_tbl = {'stats' : self.__datatbl_new()}
-        # thread_tbl = { 'stats' : <stats>,
-        #                <thread_id> : { 'stats' : <stats>,
-        #                                <schema_name> : {'stats' : <stats> },
-        #                                ...
-        #                              }
-        #               }
         thread_tbl = {'stats' : self.__datatbl_new()}
-        #strgp_tbl = { 'stats' : <stats>,
-        #              <strgp name> : { 'stats' : <stats>,
-        #                               <schema_name> : { 'stats' : <stats>,
-        #                                                 <thread_id> : { 'stats' : <stats>},
-        #                                                 ...
-        #                                               },
-        #                               ...
-        #                             }
         strgp_tbl = {'stats' : self.__datatbl_new()}
 
         for strgp_name, strgp in d.items():
@@ -1541,6 +1584,8 @@ class LdmsdCmdParser(cmd.Cmd):
             if strgp == 'stats':
                 continue
             stats = strgp_tbl[strgp]['stats']
+            if 0 == len(stats['set_name']):
+                continue
             print(f"{self.__symbols(strgp, strgp_tbl['stats']):>5}  {strgp:18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {stats['min_ts']:20.4f} {stats['max_ts']:20.4f} {len(set(stats['set_name'])):10} {stats['count']:10}")
             schemas = sorted([s for s in list(strgp_tbl[strgp].keys()) if s != 'stats'])
             for schema in schemas:
