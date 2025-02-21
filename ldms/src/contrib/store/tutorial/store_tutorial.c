@@ -64,6 +64,7 @@
 #include <unistd.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 
 #ifndef ARRAY_SIZE
@@ -100,7 +101,7 @@ static pthread_mutex_t cfg_lock;
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char* s;
 	int rc = 0;
@@ -120,14 +121,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	if (mylog)
 		ovis_log_destroy(mylog);
 	return;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "    config name=store_tutorial path=<path> \n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
@@ -143,7 +144,7 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char* schema,
+open_store(ldmsd_plug_handle_t handle, const char *container, const char* schema,
 		struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
 	struct tutorial_store_handle *s_handle = NULL;
@@ -182,7 +183,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	pthread_mutex_init(&s_handle->lock, NULL);
 	pthread_mutex_lock(&s_handle->lock);
 	s_handle->ucontext = ucontext;
-	s_handle->store = s;
+	s_handle->store = (struct ldmsd_store *)ldmsd_plug_api_get(handle);
 	s_handle->path = strdup(path);
 
 

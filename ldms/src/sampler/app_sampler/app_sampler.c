@@ -67,6 +67,7 @@
 #include "ovis_json/ovis_json.h"
 
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "../sampler_base.h"
 
 #define SAMP "app_sampler"
@@ -1232,9 +1233,9 @@ app_sampler_update_schema(app_sampler_inst_t inst, ldms_schema_t schema)
 	return 0;
 }
 
-static int app_sampler_sample(struct ldmsd_sampler *pi)
+static int app_sampler_sample(ldmsd_plug_handle_t handle)
 {
-	app_sampler_inst_t inst = (void*)pi;
+	app_sampler_inst_t inst = ldmsd_plug_api_get(handle);
 	int i;
 	struct rbn *rbn;
 	struct app_sampler_set *app_set;
@@ -1292,7 +1293,7 @@ The following is an example of cfg_file:\n\
 ```\n\
 ";
 
-static const char *app_sampler_usage(struct ldmsd_plugin *self)
+static const char *app_sampler_usage(ldmsd_plug_handle_t handle)
 {
 	return _help;
 }
@@ -1520,13 +1521,13 @@ int __stream_cb(ldms_stream_event_t ev, void *ctxt)
 	return 0;
 }
 
-static void app_sampler_term(struct ldmsd_plugin *pi);
+static void app_sampler_term(ldmsd_plug_handle_t handle);
 
 static int
-app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
+app_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 					    struct attr_value_list *avl)
 {
-	app_sampler_inst_t inst = (void*)pi;
+	app_sampler_inst_t inst = ldmsd_plug_api_get(handle);
 	int i, rc;
 	app_sampler_metric_info_t minfo;
 	char *val;
@@ -1627,14 +1628,14 @@ app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 
  err:
 	/* undo the config */
-	app_sampler_term(pi);
+	app_sampler_term(inst);
 	return rc;
 }
 
 static
-void app_sampler_term(struct ldmsd_plugin *pi)
+void app_sampler_term(ldmsd_plug_handle_t handle)
 {
-	app_sampler_inst_t inst = (void*)pi;
+	app_sampler_inst_t inst = ldmsd_plug_api_get(handle);
 	struct rbn *rbn;
 	struct app_sampler_set *app_set;
 

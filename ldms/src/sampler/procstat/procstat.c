@@ -495,7 +495,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP " maxcpu=<ncpu> sc_clk_tck=1" BASE_CONFIG_USAGE
 		"    maxcpu       The number of cpus to record. If fewer exist, report 0s; if more ignore them.\n"
@@ -505,7 +505,7 @@ static const char *usage(struct ldmsd_plugin *self)
 
 /**
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value, *endp = NULL;
 	int rc = EINVAL;
@@ -578,7 +578,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int rc = 0;
 	char *saveptr = NULL;
@@ -735,7 +735,7 @@ err1:
 #undef GET_STAT_SCALAR
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	if (g.core_data) {
 		free(g.core_data);

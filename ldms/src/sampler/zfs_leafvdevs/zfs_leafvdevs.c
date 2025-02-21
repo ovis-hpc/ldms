@@ -153,7 +153,7 @@ static int initialize_ldms_structs()
  * ldms daemon. In error the plugin is aborted.
  ****************************************************************************/
 
-static int config(struct ldmsd_plugin *self,
+static int config(ldmsd_plug_handle_t handle,
 		  struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = 0;
@@ -209,7 +209,7 @@ static int resize_metric_set()
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int rc = 0;
 
@@ -230,7 +230,7 @@ static int sample(struct ldmsd_sampler *self)
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " term() called\n");
 	base_set_delete(sampler_base);
@@ -238,7 +238,7 @@ static void term(struct ldmsd_plugin *self)
 	sampler_base = NULL;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " usage() called\n");
 	return "config name=" SAMP " " BASE_CONFIG_SYNOPSIS BASE_CONFIG_DESC;

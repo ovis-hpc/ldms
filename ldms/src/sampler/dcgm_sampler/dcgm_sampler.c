@@ -491,7 +491,7 @@ static void init_field_help(char *preamble)
  * Externally accessed functions
  **************************************************************************/
 
-static int config(struct ldmsd_plugin *self,
+static int config(ldmsd_plug_handle_t handle,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         char *value;
@@ -607,14 +607,14 @@ err0:
         return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
         ovis_log(mylog, OVIS_LDEBUG, SAMP" sample() called\n");
 	gpu_sample();
         return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	int i;
 
@@ -645,7 +645,7 @@ static void term(struct ldmsd_plugin *self)
 
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
         ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
 	char *preamble = "config name=" SAMP

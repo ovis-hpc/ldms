@@ -312,6 +312,18 @@ ldms_set_t ldms_set_by_name(const char *set_name)
 	return set;
 }
 
+ldms_set_t ldms_set_get_(ldms_set_t set)
+{
+	if (set)
+		ref_get(&set->ref, __func__);
+	return set;
+}
+void ldms_set_put_(ldms_set_t set)
+{
+	if (set)
+		ref_put(&set->ref, "ldms_set_get_");
+}
+
 struct set_mode {
 	regex_t regex;
 	uid_t uid;
