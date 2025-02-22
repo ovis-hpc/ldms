@@ -1601,9 +1601,8 @@ class Communicator(object):
         - status is an errno from the errno module
         - data is a json object of storage policy statistics, or an error message
         """
-        if reset is None:
-            reset = False
-        attr_list = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.RESET, value = str(reset))]
+        attr_list = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.RESET,
+                                    value = str(reset))]
         if name:
             attr_list.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.NAME, value=name))
         req = LDMSD_Request(command_id=LDMSD_Request.STORE_TIME_STATS,
