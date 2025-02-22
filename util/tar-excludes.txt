@@ -1,5 +1,0 @@
-ldms/ldms_utils
-util/release_tarball*
-scratch
-ldms_release
-sedcutils
