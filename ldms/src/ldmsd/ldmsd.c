@@ -76,6 +76,7 @@
 #include <coll/rbt.h>
 #include <coll/str_map.h>
 #include "ovis_ev/ev.h"
+#include "ovis_ref/ref.h"
 #include "ldms.h"
 #include "ldms_rail.h"
 #include "ldmsd.h"
@@ -875,16 +876,6 @@ void ldmsd_task_join(ldmsd_task_t task)
 	pthread_mutex_unlock(&task->lock);
 }
 
-char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type)
-{
-	if (type == LDMSD_SET_ORIGIN_PRDCR)
-		return "producer";
-	else if (type == LDMSD_SET_ORIGIN_SAMP_PI)
-		return "sampler plugin";
-	else
-		return "";
-}
-
 void __transaction_end_time_get(struct timespec *start, struct timespec *dur,
 							struct timespec *end__)
 {
@@ -916,95 +907,6 @@ ldmsd_sampler_set_t ldmsd_sampler_set_find(const char *inst_name)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
 	return sset;
-}
-
-/*
- * Get the set information
- *
- * When \c info is unused, ldmsd_set_info_delete() must be called to free \c info.
- */
-ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
-{
-	ldmsd_sampler_set_t sset = ldmsd_sampler_set_find(inst_name);
-	ldmsd_set_info_t info = calloc(1, sizeof(*info));
-	if (!info)
-		return NULL;
-
-	if (sset) {
-		struct ldms_timestamp start;	/* Latest sampling/update timestamp */
-		struct ldms_timestamp dur;	/* latest transaction duration */
-
-		info->origin_type = LDMSD_SET_ORIGIN_SAMP_PI;
-		info->interval_us = sset->sampler->sample_interval_us;
-		info->offset_us = sset->sampler->sample_offset_us;
-		info->set = ldms_set_get_(sset->set);
-		start = ldms_transaction_timestamp_get(sset->set);
-		dur = ldms_transaction_duration_get(sset->set);
-		info->start.tv_sec = start.sec;
-		info->start.tv_nsec = start.usec * 1000;
-		info->end.tv_sec = start.sec + dur.sec;
-		info->end.tv_nsec = info->start.tv_nsec + (dur.usec * 1000);
-		if (info->end.tv_nsec > 1000000000) {
-			info->end.tv_sec += 1;
-			info->end.tv_nsec -= 1000000000;
-		}
-		return info;
-	}
-
-	/*
-	 * The set isn't created by a sampler plugin.
-	 *
-	 * Now search in the producer list.
-	 */
-	ldmsd_prdcr_t prdcr;
-	ldmsd_prdcr_set_t prd_set = NULL;
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	prdcr = ldmsd_prdcr_first();
-	while (prdcr) {
-		ldmsd_prdcr_lock(prdcr);
-		prd_set = ldmsd_prdcr_set_find(prdcr, inst_name);
-		if (prd_set) {
-			info->origin_name = strdup(prdcr->obj.name);
-			ldmsd_prdcr_unlock(prdcr);
-			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-			info->origin_type = LDMSD_SET_ORIGIN_PRDCR;
-			ldmsd_prdcr_set_ref_get(prd_set);
-			info->prd_set = prd_set;
-			info->interval_us = prd_set->updt_interval;
-			info->offset_us = prd_set->updt_offset;
-			info->sync = prd_set->updt_sync;
-			info->start = prd_set->updt_stat.start;
-			if (prd_set->state == LDMSD_PRDCR_SET_STATE_UPDATING) {
-				info->end.tv_sec = 0;
-				info->end.tv_nsec = 0;
-			} else {
-				info->end = prd_set->updt_stat.end;
-			}
-			break;
-		}
-		ldmsd_prdcr_unlock(prdcr);
-		prdcr = ldmsd_prdcr_next(prdcr);
-	}
-	if (prdcr)
-		ldmsd_prdcr_unlock(prdcr);
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	if (!info->set && !info->prd_set) {
-		free(info);
-		info = NULL;
-	}
-	return info;
-}
-
-/*
- * Delete the set information
- */
-void ldmsd_set_info_delete(ldmsd_set_info_t info)
-{
-	ldms_set_put_(info->set);
-	free(info->origin_name);
-	if ((info->origin_type == LDMSD_SET_ORIGIN_PRDCR) && info->prd_set)
-		ldmsd_prdcr_set_ref_put(info->prd_set);
-	free(info);
 }
 
 int __sampler_set_info_add(ldmsd_cfgobj_sampler_t samp, long interval_us, long offset_us)
@@ -1414,6 +1316,9 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth, 
 		if (auth_dom)
 			ldmsd_cfgobj_put(&auth_dom->obj, "find");
 	}
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&listen->obj.ref, listen->obj.name, stderr);
+#endif
 	ldmsd_cfgobj_unlock(&listen->obj);
 	return listen;
 err:

@@ -864,46 +864,9 @@ char *ldmsd_avro_name_get(const char *ldms_name);
  */
 int ldmsd_decomp_config(ldmsd_strgp_t strgp, const char *json_path, ldmsd_req_ctxt_t reqc);
 
-/* ---------------------- */
-
-typedef struct ldmsd_set_info {
-	ldms_set_t set;
-	char *origin_name;
-	enum ldmsd_set_origin_type {
-		LDMSD_SET_ORIGIN_SAMP_PI = 1,
-		LDMSD_SET_ORIGIN_PRDCR,
-	} origin_type; /* who is responsible of the set. */
-	unsigned long interval_us; /* sampling interval or update interval */
-	long offset_us; /* sampling offset or update offset */
-	int sync; /* 1 if synchronous */
-	struct timespec start; /* Latest sampling/update timestamp */
-	struct timespec end; /* latest sampling/update timestamp */
-	union {
-		struct ldmsd_plugin_cfg *pi;
-		ldmsd_prdcr_set_t prd_set;
-	};
-} *ldmsd_set_info_t;
-
 typedef struct ldmsd_xprt_ctxt {
 	char *name;
 } *ldmsd_xprt_ctxt_t;
-
-/**
- * \brief Get the set information
- *
- * \return pointer to struct ldmsd_set_info is returned.
- */
-ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name);
-
-/**
- * Delete the set info \c info
- */
-void ldmsd_set_info_delete(ldmsd_set_info_t info);
-
-/**
- * \brief Convert the set origin type from enum to string
- */
-char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type);
 
 int process_config_file(const char *path, int *lineno, int trust);
 
@@ -1155,8 +1118,6 @@ void ldmsd_cfg_lock(ldmsd_cfgobj_type_t type);
 void ldmsd_cfg_unlock(ldmsd_cfgobj_type_t type);
 void ldmsd_cfgobj_lock(ldmsd_cfgobj_t obj);
 void ldmsd_cfgobj_unlock(ldmsd_cfgobj_t obj);
-ldmsd_cfgobj_t ldmsd_cfgobj_new(const char *name, ldmsd_cfgobj_type_t type, size_t obj_size,
-				ldmsd_cfgobj_del_fn_t __del);
 ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 					  ldmsd_cfgobj_type_t type,
 					  size_t obj_size,

@@ -2777,47 +2777,20 @@ int ldms_set_publish(ldms_set_t set);
 int ldms_set_unpublish(ldms_set_t set);
 
 /**
- * \brief Delete the set reference
+ * \brief Delete the set
  *
- * Delete the set reference. The set will be deleted when all set references
- * are released.
+ * The set will be deleted when all set references are released.
  *
  * \param s	The metric set handle.
  */
 extern void ldms_set_delete(ldms_set_t s);
 
 /**
- * \brief Drop a reference obtained by the LDMS API
+ * @brief Drop the reference obtained by ldms_set_by_name()
  *
- * The LDMS API that acquire a set reference are the following:
- *   - ldms_set_by_name()
- *
- * \param s The metric set handle
+ * @param s The metric set handle
  */
 void ldms_set_put(ldms_set_t s);
-
-/**
- * @brief Take a reference on a metric set
- *
- * Used by applications to take a reference on a metric set. An
- * application should use this interface if it caches a pointer
- * to the set in a data strucure. Use ldms_set_put_ to drop a
- * reference obtained with this interface
- *
- * @param set The set handle
- * @return ldms_set_t The set handle
- */
-ldms_set_t ldms_set_get_(ldms_set_t set);
-
-/**
- * @brief Drop a reference on a metric set
- *
- * Use this interface to drop a reference obtained with the
- * ldms_set_get_() function.
- *
- * @param set The set handle
- */
-void ldms_set_put_(ldms_set_t set);
 
 /**
  * \brief Get the schema name for the set
