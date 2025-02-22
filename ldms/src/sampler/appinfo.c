@@ -288,7 +288,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 
 	/* Invoke base sampler config, let it do what it needs */
-	base = base_config(avl, SAMP, SAMP, mylog);
+	base = base_config(avl, self->inst_name, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;

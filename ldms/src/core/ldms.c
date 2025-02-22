@@ -312,6 +312,18 @@ ldms_set_t ldms_set_by_name(const char *set_name)
 	return set;
 }
 
+ldms_set_t ldms_set_get_(ldms_set_t set)
+{
+	if (set)
+		ref_get(&set->ref, __func__);
+	return set;
+}
+void ldms_set_put_(ldms_set_t set)
+{
+	if (set)
+		ref_put(&set->ref, "ldms_set_get_");
+}
+
 struct set_mode {
 	regex_t regex;
 	uid_t uid;
@@ -6073,4 +6085,32 @@ ldms_mval_as_timestamp(ldms_mval_t mv, enum ldms_value_type type, int idx)
 		/* no-op */;
 	}
 	return ts;
+}
+
+const char *ldms_stream_type_sym(ldms_stream_type_t t)
+{
+	static const char *tbl[] = {
+		[LDMS_STREAM_STRING]   = "LDMS_STREAM_STRING",
+		[LDMS_STREAM_JSON]     = "LDMS_STREAM_JSON",
+		[LDMS_STREAM_AVRO_SER] = "LDMS_STREAM_AVRO_SER",
+	};
+
+	if (t < LDMS_STREAM_LAST)
+		return tbl[t];
+	return "UNKNOWN";
+}
+
+const char *ldms_stream_event_type_sym(enum ldms_stream_event_type t)
+{
+	static const char *tbl[] = {
+		[LDMS_STREAM_EVENT_RECV] = "LDMS_STREAM_EVENT_RECV",
+		[LDMS_STREAM_EVENT_CLOSE] = "LDMS_STREAM_EVENT_CLOSE",
+		[LDMS_STREAM_EVENT_SUBSCRIBE_STATUS] =
+			"LDMS_STREAM_EVENT_SUBSCRIBE_STATUS",
+		[LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS] =
+			"LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS",
+	};
+	if (t < LDMS_STREAM_EVENT_LAST)
+		return tbl[t];
+	return "UNKNOWN";
 }

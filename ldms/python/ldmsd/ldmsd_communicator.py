@@ -57,18 +57,18 @@ import json
 import errno
 
 #:Dictionary contains the cmd_id, required attribute list
-#:and optional attribute list of each ldmsd commands. For example,
+#:and optional attribute list of each ldmsd command. For example,
 #:LDMSD_CTRL_CMD_MAP['load']['req_attr'] is the list of the required attributes
 #:of the load command.
 #:LDMSD_CTRL_CMD_MAP['load']['opt_attr'] is the list of the optional attributes
 #:of the load command.
 LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
-                      'load': {'req_attr': ['name']},
+                      'load': {'req_attr': ['name'], 'opt_attr' : ['inst']},
                       'term': {'req_attr': ['name']},
                       'config': {'req_attr': ['name']},
                       'source': {'req_attr': ['path'], 'opt_attr':[]},
                       'start': {'req_attr': ['name', 'interval'],
-                                'opt_attr': ['offset']},
+                                'opt_attr': ['offset', 'exclusive_thread']},
                       'stop': {'req_attr': ['name']},
                       'udata': {'req_attr': ['instance', 'metric', 'udata']},
                       'daemon_exit': {'req_attr': []},
@@ -337,7 +337,8 @@ class LDMSD_Req_Attr(object):
     ASK_MARK = 45
     ASK_AMOUNT = 46
     RESET_INTERVAL = 47
-    LAST = 48
+    XTHREAD = 48
+    LAST = 49
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -391,6 +392,7 @@ class LDMSD_Req_Attr(object):
                    'ask_mark': ASK_MARK,
                    'ask_amount': ASK_AMOUNT,
                    'reset_interval': RESET_INTERVAL,
+                   'exclusive_thread': XTHREAD,
                    'TERMINATING': LAST
         }
 
@@ -440,6 +442,7 @@ class LDMSD_Req_Attr(object):
                    ASK_MARK : 'ask_mark',
                    ASK_AMOUNT : 'ask_amount',
                    RESET_INTERVAL : 'reset_interval',
+                   XTHREAD : 'exclusive_thread',
                    LAST : 'TERMINATING'
         }
 
@@ -1639,22 +1642,26 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def plugn_load(self, name):
+    def plugn_load(self, name, instance=None):
         """
-        Load an LDMSD plugin.
+        Load a plugin instance.
 
         Parameters:
         name  - The plugin name
+        inst  - The configuration instance name. If None, 'name' is used
 
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status != 0 or None
         """
+        if not instance:
+            instance = name
         req = LDMSD_Request(
                 command_id=LDMSD_Request.PLUGN_LOAD,
                 attrs=[
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
+                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INSTANCE, value=instance)
                 ])
         try:
             req.send(self)
@@ -1665,10 +1672,10 @@ class Communicator(object):
 
     def plugn_term(self, name):
         """
-        Terminate a plugin
+        Terminate a plugin instance
 
         Parameters:
-        name  - The plugin name
+        name  - The plugin instance name
 
         Returns:
         A tuple of status, data
@@ -1686,7 +1693,7 @@ class Communicator(object):
 
     def plugn_config(self, name, cfg_str):
         """
-        Configure an LDMSD plugin
+        Configure a plugin instance
 
         Parameters:
         - The plugin name
@@ -1709,10 +1716,10 @@ class Communicator(object):
 
     def plugn_stop(self, name):
         """
-        Stop a LDMSD Plugin
+        Stop a plugin instance
 
         Parameters:
-        name - The plugin name
+        name - The plugin instance name
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
@@ -1733,10 +1740,12 @@ class Communicator(object):
 
     def plugn_status(self, name=None):
         """
-        Get the status of a named plugin, or all plugins if no name is specified
+        Get the status of a plugin instance
+
+        If a name is not specified, the status is returned for all plugins.
 
         Parameters:
-        [name]  - The plugin name
+        name - The plugin instance name
 
         Returns:
         A tuple of status, data
@@ -1758,10 +1767,12 @@ class Communicator(object):
 
     def plugn_sets(self, name=None):
         """
-        List the sets by plugin that provides that sets. If name is provided only provide sets for that plugin
+        List the sets provided by a plugin instance
+
+        If name is not provided the sets for each plugin instance are returned.
 
         Parameters:
-        [name] - The plugin name
+        name - The plugin name
 
         Returns:
         A tuple of status, data
@@ -2154,13 +2165,16 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def plugn_start(self, name, interval_us, offset_us=None):
+    def plugn_start(self, name, interval_us, offset_us=None, xthread=None):
         # If offset unspecified, start in non-synchronous mode
         req_attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
                       LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INTERVAL, value=str(interval_us))
                     ]
         if offset_us != None:
             req_attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.OFFSET, value=str(offset_us)))
+        if xthread is not None:
+            req_attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.XTHREAD,
+                                            value=str(xthread)))
         req = LDMSD_Request(
                 command_id = LDMSD_Request.PLUGN_START,
                 attrs=req_attrs

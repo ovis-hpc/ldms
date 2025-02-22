@@ -474,7 +474,7 @@ static int SAPI(config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, 
 	}
 
 
-	cfg_base = base_config(avl, SAMP, SAMP, mylog);
+	cfg_base = base_config(avl, self->inst_name, SAMP, mylog);
 	if (!cfg_base) {
 		rc = errno;
 		return rc;

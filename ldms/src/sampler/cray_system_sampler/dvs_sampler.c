@@ -422,7 +422,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 {
 	int rc;
 
-	cfg_base = base_config(avl, SAMP, SAMP, mylog);
+	cfg_base = base_config(avl, self->inst_name, SAMP, mylog);
 	if (!cfg_base)
 		return EINVAL;
 	rc = local_config(avl, SAMP, SAMP);

@@ -172,17 +172,6 @@ char *setfile = NULL;
 
 int ldmsd_quota = LDMS_UNLIMITED;
 
-static int set_cmp(void *a, const void *b)
-{
-	return strcmp(a, b);
-}
-
-static struct rbt set_tree = {
-		.root = 0,
-		.comparator = set_cmp,
-};
-static pthread_mutex_t set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
-
 int find_least_busy_thread();
 
 int passive = 0;
@@ -339,7 +328,7 @@ void cleanup_sa(int signal, siginfo_t *info, void *arg)
 }
 
 
-void usage_hint(char *argv[],char *hint)
+void usage(char *argv[])
 {
 	printf("%s: [%s]\n", argv[0], short_opts);
 	printf("  General Options\n");
@@ -359,7 +348,7 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -l PATH,     --log_file PATH                  The path to the log file for status messages.\n"
 	       "                                                  [" OVIS_LOGFILE "]\n");
 	printf("    -v LEVEL,    --log_level LEVEL                The available verbosity levels, in order of decreasing verbosity,\n"
-	       "                                                  are DEBUG, INFO, ERROR, CRITICAL and QUIET.\n"
+	       "                                                  are DEBUG, INFO, WARN, ERROR, CRITICAL and QUIET.\n"
 	       "                                                  The default level is ERROR.\n");
 	printf("    -L optlog, --log_config optlog                Log config commands; optlog is INT:PATH\n");
 	printf("  Communication Options\n");
@@ -377,14 +366,7 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -c PATH                                       The path to configuration file (optional, default: <none>).\n");
 	printf("    -y PATH                                       Path to YAML configuration file (optional, default: <none>).\n");
 	printf("    -V                                            Print LDMS version and exit.\n");
-	if (hint) {
-		printf("\nHINT: %s\n",hint);
-	}
 	cleanup(1, "usage provided");
-}
-
-void usage(char *argv[]) {
-	usage_hint(argv,NULL);
 }
 
 #define EVTH_MAX 1024
@@ -397,12 +379,25 @@ int find_least_busy_thread()
 {
 	int i;
 	int idx = 0;
-	int count = ev_count[0];
-	for (i = 1; i < ev_thread_count; i++) {
-		if (ev_count[i] < count) {
+	int count = 0x7fffffff;
+	struct timespec now;
+	struct ovis_scheduler_thrstat *stat;
+	double best = 100;
+
+	clock_gettime(CLOCK_REALTIME, &now);
+
+	for (i = 0; i < ev_thread_count; i++) {
+		stat = ovis_scheduler_thrstat_get(ovis_scheduler[i], &now);
+		if (!stat)
+			continue;
+		if (stat->active_pc < best ||
+				(stat->active_pc == best &&
+				 ev_count[i] < count)) {
 			idx = i;
+			best = stat->active_pc;
 			count = ev_count[i];
 		}
+		ovis_scheduler_thrstat_free(stat);
 	}
 	return idx;
 }
@@ -460,6 +455,61 @@ struct ldmsd_worker_thrstat_result *ldmsd_worker_thrstat_get()
 	return res;
 err:
 	ldmsd_worker_thrstat_free(res);
+	return NULL;
+}
+
+struct ldmsd_worker_thrstat_result *ldmsd_xthrstat_get()
+{
+	/* TODO locks / race ... */
+	errno = ENOSYS;
+	struct ldmsd_worker_thrstat_result *ret;
+	ldmsd_sampler_t samp;
+	int count;
+	struct __thrstat_ent {
+		LIST_ENTRY(__thrstat_ent) entry;
+		struct ovis_scheduler_thrstat *stat;
+	} *se;
+	LIST_HEAD(, __thrstat_ent) lh = LIST_HEAD_INITIALIZER(lh);
+	struct timespec now;
+
+	count = 0;
+	clock_gettime(CLOCK_REALTIME, &now);
+
+	for (samp = ldmsd_sampler_first(); samp; samp = ldmsd_sampler_next(samp)) {
+		if (!samp->os || !samp->use_xthread)
+			continue;
+		se = calloc(1, sizeof(*se));
+		if (!se)
+			goto err1;
+		se->stat = ovis_scheduler_thrstat_get(samp->os, &now);
+		if (!se->stat) {
+			free(se);
+			goto err1;
+		}
+		LIST_INSERT_HEAD(&lh, se, entry);
+		count++;
+	}
+	if (!count) {
+		errno = ENOENT;
+		return NULL;
+	}
+	ret = malloc(sizeof(*ret) + sizeof(ret->entries[0])*count);
+	if (!ret)
+		goto err1;
+	ret->count = 0;
+	while ((se = LIST_FIRST(&lh))) {
+		LIST_REMOVE(se, entry);
+		ret->entries[ret->count++] = se->stat;
+		free(se);
+	}
+	assert(ret->count == count);
+	return ret;
+ err1:
+	while ((se = LIST_FIRST(&lh))) {
+		LIST_REMOVE(se, entry);
+		ovis_scheduler_thrstat_free(se->stat);
+		free(se);
+	}
 	return NULL;
 }
 
@@ -557,34 +607,39 @@ int publish_kernel(const char *setfile)
 	return 0;
 }
 
-static void stop_sampler(struct ldmsd_plugin_cfg *pi)
+static void stop_sampler(ldmsd_sampler_t samp)
 {
-	ovis_scheduler_event_del(pi->os, &pi->oev);
-	release_ovis_scheduler(pi->thread_id);
-	pi->ref_count--;
-	pi->os = NULL;
-	pi->thread_id = -1;
+	ovis_scheduler_event_del(samp->os, &samp->oev);
+	release_ovis_scheduler(samp->thread_id);
+	samp->os = NULL;
+	samp->thread_id = -1;
+	ldmsd_cfgobj_put(&samp->cfg, "start");
 }
 
 void plugin_sampler_cb(ovis_event_t oev)
 {
-	struct ldmsd_plugin_cfg *pi = oev->param.ctxt;
-	pthread_mutex_lock(&pi->lock);
-	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
-	int rc = pi->sampler->sample(pi->sampler);
+	ldmsd_sampler_t samp = oev->param.ctxt;
+	ldmsd_cfgobj_get(&samp->cfg, "cb");
+	ldmsd_cfgobj_lock(&samp->cfg);
+	assert(samp->cfg.type == LDMSD_CFGOBJ_SAMPLER);
+	assert(samp->api->base.type == LDMSD_PLUGIN_SAMPLER);
+	int rc = samp->api->sample(samp->api);
 	if (rc) {
 		/*
 		 * If the sampler reports an error don't reschedule
 		 * the timeout. This is an indication of a configuration
 		 * error that needs to be corrected.
 		*/
-		ovis_log(sampler_log, OVIS_LERROR, "'%s': failed to sample. Stopping "
-				"the plug-in.\n", pi->name);
-		stop_sampler(pi);
+		ovis_log(sampler_log, OVIS_LERROR,
+			"'%s': failed to sample. Stopping "
+			"the plug-in.\n", samp->cfg.name);
+		stop_sampler(samp);
 	}
-	pthread_mutex_unlock(&pi->lock);
+	ldmsd_cfgobj_unlock(&samp->cfg);
+	ldmsd_cfgobj_put(&samp->cfg, "cb");
 }
 
+#if 0
 void ldmsd_set_tree_lock()
 {
 	pthread_mutex_lock(&set_tree_lock);
@@ -642,119 +697,68 @@ ldmsd_plugin_set_t ldmsd_plugin_set_next(ldmsd_plugin_set_t set)
 {
 	return LIST_NEXT(set, entry);
 }
+#endif
 
-int ldmsd_set_register(ldms_set_t set, const char *plugin_name)
+int ldmsd_set_register(ldms_set_t set, const char *cfg_name)
 {
-	if (!set || ! plugin_name)
-		return EINVAL;
-	struct rbn *rbn;
-	ldmsd_plugin_set_t s;
-	ldmsd_plugin_set_list_t list;
-	struct ldmsd_plugin_cfg *pi;
-	int rc;
+	ldmsd_sampler_t samp = NULL;
+	ldmsd_sampler_set_t s = NULL;
+	int rc = 0;
 
-	s = malloc(sizeof(*s));
-	if (!s)
-		return ENOMEM;
-	s->plugin_name = strdup(plugin_name);
-	if (!s->plugin_name) {
-		rc = ENOMEM;
-		goto free_set;
-	}
-	s->inst_name = strdup(ldms_set_instance_name_get(set));
-	if (!s->inst_name) {
-		rc = ENOMEM;
-		goto free_plugin;
-	}
-	s->set = ldms_set_by_name(ldms_set_instance_name_get(set));
-	if (!s->set) {
-		rc = ENOMEM;
-		goto free_inst_name;
-	}
-	ldmsd_set_tree_lock();
-	rbn = rbt_find(&set_tree, s->plugin_name);
-	if (!rbn) {
-		list = malloc(sizeof(*list));
-		if (!list) {
-			ldmsd_set_tree_unlock();
-			ldms_set_put(s->set);
-			rc = ENOMEM;
-			goto free_inst_name;
-		}
-		char *pname = strdup(s->plugin_name);
-		if (!pname) {
-			free(list);
-			ldmsd_set_tree_unlock();
-			ldms_set_put(s->set);
-			rc = ENOMEM;
-			goto free_inst_name;
-		}
-		rbn_init(&list->rbn, pname);
-		LIST_INIT(&list->list);
-		rbt_ins(&set_tree, &list->rbn);
-	} else {
-		list = container_of(rbn, struct ldmsd_plugin_set_list, rbn);
-	}
-	LIST_INSERT_HEAD(&list->list, s, entry);
-	ldmsd_set_tree_unlock();
-
-	pi = ldmsd_get_plugin((char *)plugin_name);
-	if (!pi) {
-		ldmsd_set_deregister(s->inst_name, plugin_name);
+	if (!set || ! cfg_name)
 		return EINVAL;
+
+	/* Find the configuration object */
+	samp = ldmsd_sampler_find(cfg_name);
+	if (!samp) {
+		ovis_log(NULL, OVIS_LERROR,
+			"The specified sampler configuration '%s' does not exist.\n",
+			cfg_name);
+			return ENOENT;
 	}
-	if (pi->plugin->type == LDMSD_PLUGIN_SAMPLER) {
-		if (pi->sample_interval_us) {
-			/* Add the update hint to the set_info */
-			rc = ldmsd_set_update_hint_set(s->set,
-					pi->sample_interval_us, pi->sample_offset_us);
-			if (rc) {
-				/* Leave the ldmsd plugin set in the tree, so return 0. */
-				ovis_log(sampler_log, OVIS_LERROR, "Error %d: Failed to add "
-						"the update hint to set '%s'\n",
-						rc, s->inst_name);
-			}
-		}
+
+	s = calloc(1, sizeof(*s));
+	if (!s) {
+		rc = ENOMEM;
+		goto err_0;
 	}
+
+	s->set = set;
+	s->sampler = samp;
+
+	LIST_INSERT_HEAD(&samp->set_list, s, entry);
+	ldmsd_cfgobj_put(&samp->cfg, "find");
 	return 0;
-free_inst_name:
-	free(s->inst_name);
-free_plugin:
-	free(s->plugin_name);
-free_set:
+err_0:
+	ldmsd_cfgobj_put(&samp->cfg, "find");
 	free(s);
 	return rc;
 }
 
-void ldmsd_set_deregister(const char *inst_name, const char *plugin_name)
+void ldmsd_set_deregister(const char *inst_name, const char *cfg_name)
 {
-	ldmsd_plugin_set_t set = NULL;
-	ldmsd_plugin_set_list_t list;
-	struct rbn *rbn;
-	ldmsd_set_tree_lock();
-	rbn = rbt_find(&set_tree, plugin_name);
-	if (!rbn)
-		goto out;
-	list = container_of(rbn, struct ldmsd_plugin_set_list, rbn);
-	LIST_FOREACH(set, &list->list, entry) {
-		if (0 == strcmp(set->inst_name, inst_name))
+	ldmsd_sampler_set_t s;
+	ldmsd_sampler_t samp = ldmsd_sampler_find(cfg_name);
+	const char *set_name;
+
+	if (!samp) {
+		ovis_log(NULL, OVIS_LERROR,
+			"Dregistering set name '%s' failed because the "
+			"sampler config '%s' does not exist.\n",
+			inst_name, cfg_name);
+		return;
+	}
+	ldmsd_sampler_lock(samp);
+	LIST_FOREACH(s, &samp->set_list, entry) {
+		set_name = ldms_set_instance_name_get(s->set);
+		if (0 == strcmp(set_name, inst_name)) {
+			LIST_REMOVE(s, entry);
+			free(s);
 			break;
+		}
 	}
-	if (set) {
-		LIST_REMOVE(set, entry);
-		free(set->inst_name);
-		free(set->plugin_name);
-		ldms_set_put(set->set);
-		free(set);
-	}
-	if (LIST_EMPTY(&list->list)) {
-		char *pname = list->rbn.key;
-		rbt_del(&set_tree, &list->rbn);
-		free(pname);
-		free(list);
-	}
-out:
-	ldmsd_set_tree_unlock();
+	ldmsd_sampler_unlock(samp);
+	ldmsd_sampler_put(samp, "find");
 }
 
 int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us)
@@ -960,6 +964,27 @@ void __transaction_end_time_get(struct timespec *start, struct timespec *dur,
 	}
 }
 
+ldmsd_sampler_set_t ldmsd_sampler_set_find(const char *inst_name)
+{
+	ldmsd_sampler_t samp;
+	ldmsd_sampler_set_t sset;
+	ldmsd_cfgobj_t cfg_obj;
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_SAMPLER);
+	for (cfg_obj = ldmsd_cfgobj_first(LDMSD_CFGOBJ_SAMPLER);
+		cfg_obj;
+		cfg_obj = ldmsd_cfgobj_next(cfg_obj)) {
+
+		samp = (ldmsd_sampler_t)cfg_obj;
+		LIST_FOREACH(sset, &samp->set_list, entry) {
+			if (0 == strcmp(ldms_set_instance_name_get(sset->set), inst_name)) {
+				return sset;
+			}
+		}
+	}
+	return NULL;
+}
+
 /*
  * Get the set information
  *
@@ -967,67 +992,30 @@ void __transaction_end_time_get(struct timespec *start, struct timespec *dur,
  */
 ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 {
-	ldmsd_set_info_t info;
-	struct ldms_timestamp t;
-	struct timespec dur;
-	struct ldmsd_plugin_set_list *plugn_set_list;
-	struct ldmsd_plugin_set *plugn_set = NULL;
-	struct ldmsd_plugin_cfg *pi;
-
-	ldms_set_t lset = ldms_set_by_name(inst_name);
-	if (!lset)
-		return NULL;
-
-	info = calloc(1, sizeof(*info));
+	ldmsd_sampler_set_t sset = ldmsd_sampler_set_find(inst_name);
+	ldmsd_set_info_t info = calloc(1, sizeof(*info));
 	if (!info)
 		return NULL;
 
-	info->set = lset;
-	/* Determine if the set is responsible by a sampler plugin */
-	ldmsd_set_tree_lock();
-	plugn_set_list = ldmsd_plugin_set_list_first();
-	while (plugn_set_list) {
-		LIST_FOREACH(plugn_set, &plugn_set_list->list, entry) {
-			if (0 == strcmp(plugn_set->inst_name, inst_name)) {
-				break;
-			}
-		}
-		if (plugn_set)
-			break;
- 		plugn_set_list = ldmsd_plugin_set_list_next(plugn_set_list);
-	}
-	ldmsd_set_tree_unlock();
-	if (plugn_set) {
-		/* The set is created by a sampler plugin */
-		pi = ldmsd_get_plugin(plugn_set->plugin_name);
-		if (!pi) {
-			ovis_log(NULL, OVIS_LERROR, "Set '%s' is created by "
-					"an unloaded plugin '%s'\n",
-					inst_name, plugn_set->plugin_name);
-		} else {
-			pi->ref_count++;
-			info->interval_us = pi->sample_interval_us;
-			info->offset_us = pi->sample_offset_us;
-			info->sync = 1; /* Sampling is always synchronous. */
-			info->pi = pi;
-		}
-		info->origin_name = strdup(plugn_set->plugin_name);
-		info->origin_type = LDMSD_SET_ORIGIN_SAMP_PI;
+	if (sset) {
+		struct ldms_timestamp start;	/* Latest sampling/update timestamp */
+		struct ldms_timestamp dur;	/* latest transaction duration */
 
-		t = ldms_transaction_timestamp_get(lset);
-		info->start.tv_sec = (long int)t.sec;
-		info->start.tv_nsec = (long int)t.usec * 1000;
-		if (!ldms_set_is_consistent(lset)) {
-			info->end.tv_sec = 0;
-			info->end.tv_nsec = 0;
-		} else {
-			t = ldms_transaction_duration_get(lset);
-			dur.tv_sec = (long int)t.sec;
-			dur.tv_nsec = (long int)t.usec * 1000;
-			__transaction_end_time_get(&info->start,
-					&dur, &info->end);
+		info->origin_type = LDMSD_SET_ORIGIN_SAMP_PI;
+		info->interval_us = sset->sampler->sample_interval_us;
+		info->offset_us = sset->sampler->sample_offset_us;
+		info->set = ldms_set_get_(sset->set);
+		start = ldms_transaction_timestamp_get(sset->set);
+		dur = ldms_transaction_duration_get(sset->set);
+		info->start.tv_sec = start.sec;
+		info->start.tv_nsec = start.usec * 1000;
+		info->end.tv_sec = start.sec + dur.sec;
+		info->end.tv_nsec = info->start.tv_nsec + (dur.usec * 1000);
+		if (info->end.tv_nsec > 1000000000) {
+			info->end.tv_sec += 1;
+			info->end.tv_nsec -= 1000000000;
 		}
-		goto out;
+		return info;
 	}
 
 	/*
@@ -1066,7 +1054,6 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 out:
-	ldms_set_put(lset);
 	return info;
 }
 
@@ -1075,74 +1062,96 @@ out:
  */
 void ldmsd_set_info_delete(ldmsd_set_info_t info)
 {
-	if (info->set) {
-		ldms_set_put(info->set);
-		info->set = NULL;
-	}
-	if (info->origin_name) {
-		free(info->origin_name);
-		info->origin_name = NULL;
-	}
-	if ((info->origin_type == LDMSD_SET_ORIGIN_PRDCR) && info->prd_set) {
+	ldms_set_put_(info->set);
+	free(info->origin_name);
+	if ((info->origin_type == LDMSD_SET_ORIGIN_PRDCR) && info->prd_set)
 		ldmsd_prdcr_set_ref_put(info->prd_set);
-		info->prd_set = NULL;
-	}
-	if (info->pi) {
-		info->pi->ref_count--;
-		info->pi = NULL;
-	}
 	free(info);
 }
 
-int __sampler_set_info_add(struct ldmsd_plugin *pi, long interval_us, long offset_us)
+int __sampler_set_info_add(ldmsd_sampler_t samp, long interval_us, long offset_us)
 {
-	ldmsd_plugin_set_t set;
+	ldmsd_sampler_set_t sset;
 	int rc;
 
-	if (pi->type != LDMSD_PLUGIN_SAMPLER)
-		return EINVAL;
-	for (set = ldmsd_plugin_set_first(pi->name); set;
-				set = ldmsd_plugin_set_next(set)) {
-		rc = ldmsd_set_update_hint_set(set->set, interval_us, offset_us);
+	LIST_FOREACH(sset, &samp->set_list, entry) {
+		rc = ldmsd_set_update_hint_set(sset->set, interval_us, offset_us);
 		if (rc) {
-			ovis_log(sampler_log, OVIS_LERROR, "Error %d: Failed to add "
-					"the update hint to set '%s'\n",
-					rc, ldms_set_instance_name_get(set->set));
+			ovis_log(sampler_log, OVIS_LERROR,
+				"Error %d: Failed to add "
+				"the update hint to set '%s'\n",
+				rc, ldms_set_instance_name_get(sset->set));
 			return rc;
 		}
 	}
 	return 0;
 }
 
+void *event_proc(void *v);
+
+int ldmsd_sampler_xthread_create(ldmsd_sampler_t samp)
+{
+	/* Create exclusive thread and scheduler */
+	int rc;
+	char xname[512];
+	samp->os = ovis_scheduler_new();
+	if (!samp->os) {
+		rc = errno;
+		goto out;
+	}
+	snprintf(xname, sizeof(xname), "xthread_%s", samp->cfg.name);
+	ovis_scheduler_name_set(samp->os, xname);
+	rc = pthread_create(&samp->xthread, NULL, event_proc, samp->os);
+	if (rc)
+		goto err1;
+	pthread_setname_np(samp->xthread, xname);
+	goto out;
+
+err1:
+	ovis_scheduler_free(samp->os);
+	samp->os = NULL;
+out:
+	return rc;
+}
+
+int ldmsd_sampler_xthread_delete(ldmsd_sampler_t samp)
+{
+	assert(samp->os);
+	ovis_scheduler_term(samp->os);
+	pthread_join(samp->xthread, NULL);
+	ovis_scheduler_free(samp->os);
+	samp->os = NULL;
+	bzero(&samp->xthread, sizeof(samp->xthread));
+	return 0;
+}
+
 /*
  * Start the sampler
  */
-int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
+int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset,
+			char *exclusive_thread)
 {
 	int rc = 0;
 	long sample_interval;
 	long sample_offset = 0;
-	struct ldmsd_plugin_cfg *pi;
+	ldmsd_sampler_t samp = ldmsd_sampler_find(cfg_name);
+	if (!samp)
+		return ENOENT;
+
+	if (samp->os) {
+		rc = EBUSY;
+		goto out;
+	}
+
+	if (exclusive_thread) {
+		samp->use_xthread = atoi(exclusive_thread);
+	}
 
 	rc = ovis_time_str2us(interval, &sample_interval);
 	if (rc)
 		return rc;
 
-	pi = ldmsd_get_plugin((char *)plugin_name);
-	if (!pi)
-		return ENOENT;
-
-	pthread_mutex_lock(&pi->lock);
-	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
-		rc = -EINVAL;
-		goto out;
-	}
-	if (pi->thread_id >= 0) {
-		rc = EBUSY;
-		goto out;
-	}
-
-	pi->sample_interval_us = sample_interval;
+	samp->sample_interval_us = sample_interval;
 	if (offset) {
 		rc = ovis_time_str2us(offset, &sample_offset);
 		if (rc) {
@@ -1155,32 +1164,51 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 			goto out;
 		}
 	}
-	pi->sample_offset_us = sample_offset;
+	samp->sample_offset_us = sample_offset;
 
-	rc = __sampler_set_info_add(pi->plugin, sample_interval,
-					         sample_offset);
+	rc = __sampler_set_info_add(samp, sample_interval, sample_offset);
 	if (rc)
 		goto out;
 
-	OVIS_EVENT_INIT(&pi->oev);
-	pi->oev.param.type = OVIS_EVENT_PERIODIC;
-	pi->oev.param.periodic.period_us = sample_interval;
-	pi->oev.param.periodic.phase_us = sample_offset;
-	pi->oev.param.ctxt = pi;
-	pi->oev.param.cb_fn = plugin_sampler_cb;
+	OVIS_EVENT_INIT(&samp->oev);
+	samp->oev.param.type = OVIS_EVENT_PERIODIC;
+	samp->oev.param.periodic.period_us = sample_interval;
+	samp->oev.param.periodic.phase_us = sample_offset;
+	samp->oev.param.ctxt = samp;
+	samp->oev.param.cb_fn = plugin_sampler_cb;
 
-	pi->ref_count++;
+	if (samp->use_xthread) {
+		rc = ldmsd_sampler_xthread_create(samp);
+		if (rc)
+			goto out;
+		rc = ovis_scheduler_event_add(samp->os, &samp->oev);
+		if (rc) {
+			ldmsd_sampler_xthread_delete(samp);
+			goto out;
+		}
+	} else {
+		/* Use shared thread */
+		samp->thread_id = find_least_busy_thread();
+		samp->os = get_ovis_scheduler(samp->thread_id);
+		rc = ovis_scheduler_event_add(samp->os, &samp->oev);
+		if (rc) {
+			release_ovis_scheduler(samp->thread_id);
+			samp->os = NULL;
+			samp->thread_id = -1;
+			goto out;
+		}
+	}
+	ldmsd_sampler_get(samp, "start");
+	/* this ref will be put down in ldmsd_stop_sampler() */
 
-	pi->thread_id = find_least_busy_thread();
-	pi->os = get_ovis_scheduler(pi->thread_id);
-	rc = ovis_scheduler_event_add(pi->os, &pi->oev);
 out:
-	pthread_mutex_unlock(&pi->lock);
+	ldmsd_sampler_unlock(samp);
+	ldmsd_sampler_put(samp, "find");
 	return rc;
 }
 
 struct oneshot {
-	struct ldmsd_plugin_cfg *pi;
+	ldmsd_sampler_t samp;
 	ovis_scheduler_t os;
 	struct ovis_event_s oev;
 };
@@ -1188,24 +1216,29 @@ struct oneshot {
 void oneshot_sample_cb(ovis_event_t ev)
 {
 	struct oneshot *os = ev->param.ctxt;
-	struct ldmsd_plugin_cfg *pi = os->pi;
+	ldmsd_sampler_t samp = os->samp;
 	ovis_scheduler_event_del(os->os, ev);
-	pthread_mutex_lock(&pi->lock);
-	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
-	pi->sampler->sample(pi->sampler);
-	pi->ref_count--;
-	release_ovis_scheduler(pi->thread_id);
+	ldmsd_sampler_lock(samp);
+	samp->api->sample(samp->api);
+	release_ovis_scheduler(samp->thread_id);
 	free(os);
-	pthread_mutex_unlock(&pi->lock);
+	ldmsd_sampler_unlock(samp);
+	ldmsd_sampler_put(samp, "oneshot");
 }
 
-int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
-					char *errstr, size_t errlen)
+int ldmsd_oneshot_sample(const char *cfg_name, const char *ts,
+			char *errstr, size_t errlen)
 {
 	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
+	ldmsd_sampler_t samp;
 	time_t now, sched;
 	struct timeval tv;
+
+	samp = ldmsd_sampler_find(cfg_name);
+	if (!samp) {
+		snprintf(errstr, errlen, "Sampler not found.");
+		return ENOENT;
+	}
 
 	if (0 == strncmp(ts, "now", 3)) {
 		ts = ts + 4;
@@ -1213,19 +1246,14 @@ int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
 	} else {
 		sched = strtoul(ts, NULL, 10);
 		now = time(NULL);
-		if (now < 0) {
-			snprintf(errstr, errlen, "Failed to get "
-						"the current time.");
-			rc = errno;
-			return rc;
-		}
 		double diff = difftime(sched, now);
 		if (diff < 0) {
-			snprintf(errstr, errlen, "The schedule time '%s' "
-				 "is ahead of the current time %jd",
+			snprintf(errstr, errlen,
+				"The schedule time '%s' "
+				"is ahead of the current time %jd",
 				 ts, (intmax_t)now);
 			rc = EINVAL;
-			return rc;
+			goto put;
 		}
 		tv.tv_sec = diff;
 	}
@@ -1235,32 +1263,19 @@ int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
 	if (!ossample) {
 		snprintf(errstr, errlen, "Out of Memory");
 		rc = ENOMEM;
-		return rc;
+		goto put;
 	}
 
-	pi = ldmsd_get_plugin((char *)plugin_name);
-	if (!pi) {
-		rc = ENOENT;
-		snprintf(errstr, errlen, "Sampler not found.");
-		free(ossample);
-		return rc;
-	}
-	pthread_mutex_lock(&pi->lock);
-	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
-		rc = EINVAL;
+	ldmsd_sampler_lock(samp);
+	ossample->samp = samp;
+	if (samp->thread_id < 0) {
 		snprintf(errstr, errlen,
-				"The specified plugin is not a sampler.");
-		goto err;
-	}
-	pi->ref_count++;
-	ossample->pi = pi;
-	if (pi->thread_id < 0) {
-		snprintf(errstr, errlen, "Sampler '%s' not started yet.",
-								plugin_name);
+			"Sampler '%s' not started yet.",
+			cfg_name);
 		rc = EPERM;
 		goto err;
 	}
-	ossample->os = get_ovis_scheduler(pi->thread_id);
+	ossample->os = get_ovis_scheduler(samp->thread_id);
 	OVIS_EVENT_INIT(&ossample->oev);
 	ossample->oev.param.type = OVIS_EVENT_TIMEOUT;
 	ossample->oev.param.ctxt = ossample;
@@ -1268,45 +1283,46 @@ int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
 	ossample->oev.param.timeout = tv;
 
 	rc = ovis_scheduler_event_add(ossample->os, &ossample->oev);
-
 	if (rc)
 		goto err;
 	goto out;
 err:
 	free(ossample);
 out:
-	pthread_mutex_unlock(&pi->lock);
+	ldmsd_sampler_unlock(samp);
+put:
+	ldmsd_sampler_put(samp, "find");
 	return rc;
 }
 
 /*
  * Stop the sampler
  */
-int ldmsd_stop_sampler(char *plugin_name)
+int ldmsd_sampler_stop(char *cfg_name)
 {
 	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
+	ldmsd_sampler_t samp;
 
-	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi)
+	samp = ldmsd_sampler_find(cfg_name);
+	if (!samp)
 		return ENOENT;
-	pthread_mutex_lock(&pi->lock);
-	/* Ensure this is a sampler */
-	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
-		rc = EINVAL;
-		goto out;
-	}
-	if (pi->os) {
-		ovis_scheduler_event_del(pi->os, &pi->oev);
-		pi->os = NULL;
-		release_ovis_scheduler(pi->thread_id);
-		pi->thread_id = -1;
-		pi->ref_count--;
+
+	ldmsd_sampler_lock(samp);
+	if (samp->os) {
+		ovis_scheduler_event_del(samp->os, &samp->oev);
+		if (samp->use_xthread) {
+			ldmsd_sampler_xthread_delete(samp);
+		} else {
+			samp->os = NULL;
+			release_ovis_scheduler(samp->thread_id);
+			samp->thread_id = -1;
+		}
+		ldmsd_sampler_put(samp, "start");
 	} else {
 		rc = -EBUSY;
 	}
-out:
-	pthread_mutex_unlock(&pi->lock);
+	ldmsd_sampler_unlock(samp);
+	ldmsd_sampler_put(samp, "find");
 	return rc;
 }
 
@@ -1513,15 +1529,15 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth, 
 			}
 		}
 		if (auth_dom)
-			ldmsd_cfgobj_put(&auth_dom->obj);
+			ldmsd_cfgobj_put(&auth_dom->obj, "find");
 	}
 	ldmsd_cfgobj_unlock(&listen->obj);
 	return listen;
 err:
 	if (auth_dom)
-		ldmsd_cfgobj_put(&auth_dom->obj);
+		ldmsd_cfgobj_put(&auth_dom->obj, "find");
 	ldmsd_cfgobj_unlock(&listen->obj);
-	ldmsd_cfgobj_put(&listen->obj);
+	ldmsd_cfgobj_put(&listen->obj, "find");
 	return NULL;
 }
 
@@ -2009,8 +2025,6 @@ int main(int argc, char *argv[])
 	struct ldmsd_version ldmsd_version;
 	ldms_version_get(&ldms_version);
 	ldmsd_version_get(&ldmsd_version);
-	char *plug_name = NULL;
-	int list_plugins = 0;
 	int ret;
 	int op, op_idx;
 	struct sigaction action;
@@ -2043,16 +2057,6 @@ int main(int argc, char *argv[])
 	opterr = 0;
 	while ((op = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
 		switch (op) {
-		case 'u':
-			if (check_arg("u", optarg, LO_NAME))
-				return 1;
-			list_plugins = 1;
-			plug_name = strdup(optarg);
-			if (!plug_name) {
-				printf("Not enough memory!!!\n");
-				exit(1);
-			}
-			break;
 		case 'V':
 			printf("LDMSD Version: %s\n", PACKAGE_VERSION);
 			printf("LDMS Protocol Version: %hhu.%hhu.%hhu.%hhu\n",
@@ -2106,20 +2110,6 @@ int main(int argc, char *argv[])
 			}
 			break;
 		}
-	}
-
-	if (list_plugins) {
-		if (plug_name) {
-			if (strcmp(plug_name,"all") == 0) {
-				free(plug_name);
-				plug_name = NULL;
-			}
-		}
-		ldmsd_plugins_usage(plug_name);
-		if (plug_name)
-			free(plug_name);
-		av_free(auth_opt);
-		exit(0);
 	}
 
 	/*
@@ -2294,18 +2284,22 @@ int main(int argc, char *argv[])
 		av_free(auth_opt);
 		exit(1);
 	}
+	char tname[256];
 	for (op = 0; op < ev_thread_count; op++) {
+		snprintf(tname, sizeof(tname), "ldmsd_wkr_%d", op);
 		ovis_scheduler[op] = ovis_scheduler_new();
 		if (!ovis_scheduler[op]) {
 			ovis_log(NULL, OVIS_LERROR, "Error creating an OVIS scheduler.\n");
 			cleanup(6, "OVIS scheduler create failed");
 		}
+		ovis_scheduler_name_set(ovis_scheduler[op], tname);
 		ret = pthread_create(&ev_thread[op], NULL, event_proc, ovis_scheduler[op]);
 		if (ret) {
 			ovis_log(NULL, OVIS_LERROR, "Error %d creating the event "
 					"thread.\n", ret);
 			cleanup(7, "event thread create fail");
 		}
+		pthread_setname_np(ev_thread[op], tname);
 	}
 
 	if (!setfile)

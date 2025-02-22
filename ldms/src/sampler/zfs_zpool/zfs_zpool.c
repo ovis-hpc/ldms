@@ -180,7 +180,7 @@ static int config(struct ldmsd_plugin *self,
 
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " config() called\n");
 
-	sampler_base = base_config(avl, SAMP, "zfs_zpool", mylog);
+	sampler_base = base_config(avl, self->inst_name, "zfs_zpool", mylog);
 	if ((g_zfs = libzfs_init()) == NULL) {
 		rc = errno;
 		ovis_log(mylog, OVIS_LERROR,

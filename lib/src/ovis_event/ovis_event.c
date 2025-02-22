@@ -852,3 +852,19 @@ err:
 	ovis_scheduler_thrstat_free(res);
 	return NULL;
 }
+
+int ovis_scheduler_name_set(ovis_scheduler_t s, const char *name)
+{
+	if (s->stats.name) {
+		free(s->stats.name);
+	}
+	s->stats.name = strdup(name);
+	if (!s->stats.name)
+		return errno;
+	return 0;
+}
+
+const char *ovis_scheduler_name_get(ovis_scheduler_t s)
+{
+	return s->stats.name;
+}

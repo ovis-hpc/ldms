@@ -396,7 +396,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	base = base_config(avl, SAMP, SAMP, mylog);
+	base = base_config(avl, self->inst_name, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -405,7 +405,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	val = av_value(avl, "interrupt");
 	if (val && (0 == strcasecmp(val, "true"))) {
 		collect_intr = 1;
-		intr_base = base_config(avl, SAMP, SAMP"_intr", mylog);
+		intr_base = base_config(avl, self->inst_name, SAMP"_intr", mylog);
 		if (!intr_base) {
 			rc = errno;
 			goto err;
@@ -424,7 +424,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	val = av_value(avl, "soft_interrupt");
 	if (val && (0 == strcasecmp(val, "true"))) {
 		collect_softirq = 1;
-		softirq_base = base_config(avl, SAMP, SAMP"_softirq", mylog);
+		softirq_base = base_config(avl, self->inst_name, SAMP"_softirq", mylog);
 		if (!softirq_base) {
 			rc = errno;
 			goto err;

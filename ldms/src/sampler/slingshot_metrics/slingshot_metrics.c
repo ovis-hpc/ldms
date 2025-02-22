@@ -471,7 +471,7 @@ static int config(struct ldmsd_plugin *self,
 
         ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
-        sampler_base = base_config(avl, SAMP, "slingshot_metrics", mylog);
+        sampler_base = base_config(avl, self->inst_name, "slingshot_metrics", mylog);
 
         value = av_value(avl, "counters");
         if (value != NULL) {

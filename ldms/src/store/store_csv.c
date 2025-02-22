@@ -74,10 +74,10 @@
 #include "store_common.h"
 #include "store_csv_common.h"
 
-#define TV_SEC_COL    0
-#define TV_USEC_COL    1
-#define GROUP_COL    2
-#define VALUE_COL    3
+#define TV_SEC_COL	0
+#define TV_USEC_COL	1
+#define GROUP_COL	2
+#define VALUE_COL	3
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -86,16 +86,30 @@
 
 #define PNAME "store_csv"
 
-static idx_t store_idx; /* protected by cfg_lock */
-struct plugattr *pa = NULL; /* plugin attributes from config */
-static int rollover;
-static int rollagain;
-/** rollempty determines if timed rollovers are performed even
- * when no data has been written (producing empty files).
- */
-static bool rollempty = true;
-/** rolltype determines how to interpret rollover values > 0. */
-static int rolltype = -1;
+/* Plugin structure */
+typedef struct store_csv_s {
+	pthread_mutex_t cfg_lock;
+
+	idx_t store_idx; /* protected by cfg_lock */
+	struct plugattr *pa; /* plugin attributes from config */
+	int rollover;
+	int rollagain;
+
+	/* rollempty determines if timed rollovers are performed even
+	 * when no data has been written (producing empty files).
+	 */
+	bool rollempty;
+
+	/* rolltype determines how to interpret rollover values > 0. */
+	int rolltype;
+
+	pthread_t rothread;
+	int rothread_used;
+
+	int init;
+
+} *store_csv_t;
+
 /** ROLLTYPES documents rolltype and is used in help output. Also used for buffering */
 #define ROLLTYPES \
 "                     1: wake approximately every rollover seconds and roll.\n" \
@@ -122,10 +136,6 @@ static int rolltype = -1;
 /** Interval to check for passing the record or byte count limits. */
 #define ROLL_LIMIT_INTERVAL 60
 
-
-static pthread_t rothread;
-static int rothread_used = 0;
-
 static ovis_log_t mylog;
 
 #define ERR_LOG(FMT, ...) do { \
@@ -136,11 +146,6 @@ static ovis_log_t mylog;
 #define INFO_LOG(FMT, ...) do { \
 	ovis_log(mylog, OVIS_LINFO, FMT, ## __VA_ARGS__); \
 } while(0)
-
-#define _stringify(_x) #_x
-#define stringify(_x) _stringify(_x)
-
-#define LOGFILE "/var/log/store_csv.log"
 
 struct csv_lent {
 	ldms_mval_t mval; /* list entry value */
@@ -175,6 +180,7 @@ struct csv_store_handle {
 	int num_lists; /* Number of list metrics */
 	struct csv_lent *lents;
 	int ref_count; /* number of strgp using the csv file; protected by cfg_lock */
+	store_csv_t sc;
 	CSV_STORE_HANDLE_COMMON;
 };
 
@@ -207,8 +213,6 @@ struct csv_row_store_handle {
 	struct rbt row_schema_rbt;
 };
 
-static pthread_mutex_t cfg_lock;
-
 static char* allocStoreKey(const char* container, const char* schema){
 
   if ((container == NULL) || (schema == NULL) ||
@@ -231,6 +235,7 @@ static char* allocStoreKey(const char* container, const char* schema){
 struct roll_cb_arg {
 	struct csv_plugin_static *cps;
 	time_t appx;
+	store_csv_t sc;
 };
 
 static void roll_cb(void *obj, void *cb_arg)
@@ -241,6 +246,7 @@ static void roll_cb(void *obj, void *cb_arg)
 	struct roll_cb_arg * args = (struct roll_cb_arg *)cb_arg;
 	time_t appx = args->appx;
 	struct csv_plugin_static *cps = args->cps;
+	store_csv_t sc = args->sc;
 
 	FILE* nhfp = NULL;
 	FILE* nfp = NULL;
@@ -252,16 +258,16 @@ static void roll_cb(void *obj, void *cb_arg)
 
 	//if we've got here then we've called new_store, but it might be closed
 	pthread_mutex_lock(&s_handle->lock);
-	switch (rolltype) {
+	switch (sc->rolltype) {
 	case 1:
 	case 2:
 	case 5:
-		if (!s_handle->store_count && !rollempty)
+		if (!s_handle->store_count && !sc->rollempty)
 			/* skip rollover of empty files */
 			goto out;
 		break;
 	case 3:
-		if (s_handle->store_count < rollover)  {
+		if (s_handle->store_count < sc->rollover)  {
 			goto out;
 		} else {
 			s_handle->store_count = 0;
@@ -269,7 +275,7 @@ static void roll_cb(void *obj, void *cb_arg)
 		}
 		break;
 	case 4:
-		if (s_handle->byte_count < rollover) {
+		if (s_handle->byte_count < sc->rollover) {
 			goto out;
 		} else {
 			s_handle->byte_count = 0;
@@ -278,7 +284,7 @@ static void roll_cb(void *obj, void *cb_arg)
 		break;
 	default:
 		ovis_log(mylog, OVIS_LDEBUG, "Error: unexpected rolltype in store(%d)\n",
-		       rolltype);
+		       sc->rolltype);
 		break;
 	}
 
@@ -391,33 +397,35 @@ function is called.
 Volume-based rolltypes must check and shortcircuit within this
 function.
 */
-static int handleRollover(struct csv_plugin_static *cps){
+static int handleRollover(store_csv_t sc){
 	//get the config lock
 	//for every handle we have, do the rollover
 
 	struct roll_cb_arg rca;
 
-	pthread_mutex_lock(&cfg_lock);
+	pthread_mutex_lock(&sc->cfg_lock);
 
 	rca.appx = time(NULL);
-	rca.cps = cps;
-	idx_traverse(store_idx, roll_cb, (void *)&rca);
+	rca.cps  = &PG;
+	rca.sc   = sc;
+	idx_traverse(sc->store_idx, roll_cb, (void *)&rca);
 
-	pthread_mutex_unlock(&cfg_lock);
+	pthread_mutex_unlock(&sc->cfg_lock);
 
 	return 0;
 
 }
 
 static void* rolloverThreadInit(void* m){
+	store_csv_t sc = m;
 	//if got here, then rollover requested
 
 	while(1){
 		int tsleep;
-		switch (rolltype) {
+		switch (sc->rolltype) {
 		case 1:
-			tsleep = (rollover < MIN_ROLL_1) ?
-				 MIN_ROLL_1 : rollover;
+			tsleep = (sc->rollover < MIN_ROLL_1) ?
+				 MIN_ROLL_1 : sc->rollover;
 			break;
 		case 2: {
 				time_t rawtime;
@@ -427,7 +435,7 @@ static void* rolloverThreadInit(void* m){
 				localtime_r( &rawtime, &info );
 				int secSinceMidnight = info.tm_hour*3600 +
 					info.tm_min*60 + info.tm_sec;
-				tsleep = 86400 - secSinceMidnight + rollover;
+				tsleep = 86400 - secSinceMidnight + sc->rollover;
 				if (tsleep < MIN_ROLL_1){
 				/* if we just did a roll then skip this one */
 					tsleep+=86400;
@@ -435,13 +443,13 @@ static void* rolloverThreadInit(void* m){
 			}
 			break;
 		case 3:
-			if (rollover < MIN_ROLL_RECORDS)
-				rollover = MIN_ROLL_RECORDS;
+			if (sc->rollover < MIN_ROLL_RECORDS)
+				sc->rollover = MIN_ROLL_RECORDS;
 			tsleep = ROLL_LIMIT_INTERVAL;
 			break;
 		case 4:
-			if (rollover < MIN_ROLL_BYTES)
-				rollover = MIN_ROLL_BYTES;
+			if (sc->rollover < MIN_ROLL_BYTES)
+				sc->rollover = MIN_ROLL_BYTES;
 			tsleep = ROLL_LIMIT_INTERVAL;
 			break;
 		case 5: {
@@ -453,15 +461,15 @@ static void* rolloverThreadInit(void* m){
 				int secSinceMidnight = info.tm_hour*3600 +
 					info.tm_min*60 + info.tm_sec;
 
-				if (secSinceMidnight < rollover) {
-					tsleep = rollover - secSinceMidnight;
+				if (secSinceMidnight < sc->rollover) {
+					tsleep = sc->rollover - secSinceMidnight;
 				} else {
-					int y = secSinceMidnight - rollover;
-					int z = y / rollagain;
-					tsleep = (z + 1)*rollagain + rollover - secSinceMidnight;
+					int y = secSinceMidnight - sc->rollover;
+					int z = y / sc->rollagain;
+					tsleep = (z + 1)*sc->rollagain + sc->rollover - secSinceMidnight;
 				}
 				if (tsleep < MIN_ROLL_1) {
-					tsleep += rollagain;
+					tsleep += sc->rollagain;
 				}
 			}
 			break;
@@ -472,7 +480,7 @@ static void* rolloverThreadInit(void* m){
 		sleep(tsleep);
 		int oldstate = 0;
 		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldstate);
-		handleRollover(&PG);
+		handleRollover(sc);
 		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldstate);
 	}
 
@@ -484,7 +492,8 @@ static void* rolloverThreadInit(void* m){
  */
 static int config_handle(struct csv_store_handle *s_handle)
 {
-	int cic_err = OPEN_STORE_COMMON(pa, s_handle);
+	store_csv_t sc = s_handle->sc;
+	int cic_err = OPEN_STORE_COMMON(sc->pa, s_handle);
 	if ( cic_err != 0 ) {
 		return cic_err;
 	}
@@ -492,14 +501,14 @@ static int config_handle(struct csv_store_handle *s_handle)
 	char *c;
 
 	bool r = false; /* default if not in pa */
-	int cvt = ldmsd_plugattr_bool(pa, "userdata", k, &r);
+	int cvt = ldmsd_plugattr_bool(sc->pa, "userdata", k, &r);
 	if (cvt == -1) {
 		ovis_log(mylog, OVIS_LERROR, "improper userdata= input.\n");
 		return EINVAL;
 	}
 	s_handle->udata = r;
 	r = true;
-	cvt = ldmsd_plugattr_bool(pa, "expand_array", k, &r);
+	cvt = ldmsd_plugattr_bool(sc->pa, "expand_array", k, &r);
 	if (cvt == -1) {
 		ovis_log(mylog, OVIS_LERROR, "improper expand_array= input.\n");
 		return EINVAL;
@@ -509,13 +518,13 @@ static int config_handle(struct csv_store_handle *s_handle)
 		s_handle->array_sep = ':';
 		s_handle->array_lquote = '\"';
 		s_handle->array_rquote = '\"';
-		c = (char *)ldmsd_plugattr_value(pa, "array_sep", k);
+		c = (char *)ldmsd_plugattr_value(sc->pa, "array_sep", k);
 		if (c)
 			s_handle->array_sep = c[0];
-		c = (char *)ldmsd_plugattr_value(pa, "array_lquote", k);
+		c = (char *)ldmsd_plugattr_value(sc->pa, "array_lquote", k);
 		if (c)
 			s_handle->array_lquote = c[0];
-		c = (char *)ldmsd_plugattr_value(pa, "array_rquote", k);
+		c = (char *)ldmsd_plugattr_value(sc->pa, "array_rquote", k);
 		if (c)
 			s_handle->array_rquote = c[0];
 	}
@@ -587,16 +596,16 @@ static const char *update_blacklist[] = {
 /* the container/schema value pair is the key for our plugin */
 #define KEY_PLUG_ATTR 2, "container", "schema"
 
-static int update_config(struct attr_value_list *kwl, struct attr_value_list *avl, const char *container, const char *schema)
+static int update_config(store_csv_t sc, struct attr_value_list *kwl, struct attr_value_list *avl, const char *container, const char *schema)
 {
 	int rc = 0;
 	char *k = allocStoreKey(container, schema);
 	if (!k) {
 		return ENOMEM;
 	}
-	pthread_mutex_lock(&cfg_lock);
+	pthread_mutex_lock(&sc->cfg_lock);
 	struct csv_store_handle *s_handle = NULL;
-	s_handle = idx_find(store_idx, (void *)k, strlen(k));
+	s_handle = idx_find(sc->store_idx, (void *)k, strlen(k));
 	if (s_handle) {
 		ovis_log(mylog, OVIS_LWARNING, PNAME " updating config on %s not allowed after store is running.\n", k);
 		/* s_handle *could* consult pa again, but that
@@ -617,7 +626,7 @@ static int update_config(struct attr_value_list *kwl, struct attr_value_list *av
 			rc = EINVAL;
 			goto out;
 		}
-		rc = ldmsd_plugattr_add(pa, avl, kwl, update_blacklist, update_blacklist, dep, KEY_PLUG_ATTR);
+		rc = ldmsd_plugattr_add(sc->pa, avl, kwl, update_blacklist, update_blacklist, dep, KEY_PLUG_ATTR);
 		if (rc == EEXIST) {
 			ovis_log(mylog, OVIS_LERROR, PNAME
 				" cannot repeat config on %s.\n", k);
@@ -628,8 +637,14 @@ static int update_config(struct attr_value_list *kwl, struct attr_value_list *av
 	}
 out:
 	free(k);
-	pthread_mutex_unlock(&cfg_lock);
+	pthread_mutex_unlock(&sc->cfg_lock);
 	return rc;
+}
+
+static void __sc_init(store_csv_t sc)
+{
+	sc->init = 1;
+	sc->rolltype = -1;
 }
 
 /**
@@ -637,6 +652,7 @@ out:
  */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
+	store_csv_t sc = (void*)self->context;
 	int rollmethod = DEFAULT_ROLLTYPE;
 	int rc;
 
@@ -653,6 +669,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		NULL
 	};
 	static const char *keywords[] = { NULL };
+
+	if (!sc->init) {
+		__sc_init(sc);
+	}
 
 	rc = ldmsd_plugattr_config_check(attributes, keywords, avl, kwl, dep, PG.pname);
 	if (rc != 0) {
@@ -680,28 +700,28 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			" config arguments schema and opt_file must not be used together.\n");
 		return EINVAL;
 	}
-	if (cn && !pa) {
+	if (cn && !sc->pa) {
 		ovis_log(mylog, OVIS_LERROR, PNAME
 			"plugin defaults must be configured before specifics for container=%s schema=%s\n",
 			cn, sn);
 		return EINVAL;
 	}
-	if (cn && pa) {
+	if (cn && sc->pa) {
 		ovis_log(mylog, OVIS_LDEBUG, "parsing specific schema option\n");
-		return update_config(kwl, avl, cn, sn);
+		return update_config(sc, kwl, avl, cn, sn);
 	}
-	if (pa) {
+	if (sc->pa) {
 		ovis_log(mylog, OVIS_LINFO, "config of defaults cannot be repeated.\n");
 		return EINVAL;
 	}
 
 	/* end strgp pseudo-instance region. */
 
-	pthread_mutex_lock(&cfg_lock);
+	pthread_mutex_lock(&sc->cfg_lock);
 
-	pa = ldmsd_plugattr_create(conf, PNAME, avl, kwl,
+	sc->pa = ldmsd_plugattr_create(conf, PNAME, avl, kwl,
 			init_blacklist, init_blacklist, dep, KEY_PLUG_ATTR);
-	if (!pa) {
+	if (!sc->pa) {
 		ovis_log(mylog, OVIS_LERROR, "Reminder: omit 'config name=<>' from lines in opt_file\n");
 		ovis_log(mylog, OVIS_LERROR, "error parsing %s\n", conf);
 		rc = EINVAL;
@@ -710,25 +730,26 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	ovis_log(mylog, OVIS_LDEBUG, "parsed %s\n", conf);
 
-	const char *s = ldmsd_plugattr_value(pa, "path", NULL);
+	const char *s = ldmsd_plugattr_value(sc->pa, "path", NULL);
 	rc = 0;
 	if (!s) {
 		ovis_log(mylog, OVIS_LERROR, PNAME
 			": config requires path=value be provided in opt_file or arguments.\n");
-		ldmsd_plugattr_destroy(pa);
-		pa = NULL;
+		ldmsd_plugattr_destroy(sc->pa);
+		sc->pa = NULL;
 		rc = EINVAL;
 		goto out;
 	}
 
-	if (rolltype != -1) {
+	if (sc->rolltype != -1) {
 		ovis_log(mylog, OVIS_LWARNING, "%s: repeated rollover config is ignored.\n", PNAME);
+		rc = EINVAL;
 		goto out; /* rollover configured exactly once */
 	}
 	int ragain = 0;
 	int roll = -1;
 	int cvt;
-	cvt = ldmsd_plugattr_s32(pa, "rollagain", NULL, &ragain);
+	cvt = ldmsd_plugattr_s32(sc->pa, "rollagain", NULL, &ragain);
 	if (!cvt) {
 		if (ragain < 0) {
 			ovis_log(mylog, OVIS_LERROR, PNAME
@@ -743,7 +764,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto out;
 	}
 
-	cvt = ldmsd_plugattr_s32(pa, "rollover", NULL, &roll);
+	cvt = ldmsd_plugattr_s32(sc->pa, "rollover", NULL, &roll);
 	if (!cvt) {
 		if (roll < 0) {
 			ovis_log(mylog, OVIS_LERROR, PNAME
@@ -758,7 +779,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto out;
 	}
 
-	cvt = ldmsd_plugattr_s32(pa, "rolltype", NULL, &rollmethod);
+	cvt = ldmsd_plugattr_s32(sc->pa, "rolltype", NULL, &rollmethod);
 	if (!cvt) {
 		if (roll < 0) {
 			/* rolltype not valid without rollover also */
@@ -786,36 +807,49 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		rc = EINVAL;
 		goto out;
 	}
-	cvt = ldmsd_plugattr_bool(pa, "rollempty", NULL, &rollempty);
+	cvt = ldmsd_plugattr_bool(sc->pa, "rollempty", NULL, &sc->rollempty);
 	if (cvt == -1) {
 		ovis_log(mylog, OVIS_LERROR, "expected boole for rollempty= input.\n");
 		rc = EINVAL;
 		goto out;
 	}
 
-	rollover = roll;
-	rollagain = ragain;
+	if (!sc->store_idx) {
+		sc->store_idx = idx_create();
+		if (!sc->store_idx) {
+			ovis_log(mylog, OVIS_LERROR, "idx_create() error: %d\n", errno);
+			rc = errno;
+			goto out;
+		}
+	}
+
+	sc->rollover = roll;
+	sc->rollagain = ragain;
 	if (rollmethod >= MINROLLTYPE) {
-		rolltype = rollmethod;
-		pthread_create(&rothread, NULL, rolloverThreadInit, NULL);
-		rothread_used = 1;
+		sc->rolltype = rollmethod;
+		pthread_create(&sc->rothread, NULL, rolloverThreadInit, sc);
+		sc->rothread_used = 1;
 	}
 
 out:
-	pthread_mutex_unlock(&cfg_lock);
+	pthread_mutex_unlock(&sc->cfg_lock);
 
 	return rc;
 }
 
 static void term(struct ldmsd_plugin *self)
 {
+	/* TODO REVISE ME */
 /* clean up any allocated globals here that are not handled by store_csv_fini */
-	pthread_mutex_lock(&cfg_lock);
-	ldmsd_plugattr_destroy(pa);
-	pa = NULL;
-	pthread_mutex_unlock(&cfg_lock);
-	if (mylog)
-		ovis_log_destroy(mylog);
+	store_csv_t sc = (void*)self->context;
+	pthread_mutex_lock(&sc->cfg_lock);
+	ldmsd_plugattr_destroy(sc->pa);
+	sc->pa = NULL;
+	if (sc->store_idx) {
+		idx_destroy(sc->store_idx);
+		sc->store_idx = NULL;
+	}
+	pthread_mutex_unlock(&sc->cfg_lock);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -920,6 +954,7 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 {
 	/* Only called from Store which already has the lock */
 	FILE* fp;
+	store_csv_t sc = s_handle->sc;
 	char tmp_path[PATH_MAX];
 
 	if (s_handle == NULL){
@@ -935,14 +970,14 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 	}
 	int ec;
 	if (s_handle->altheader) {
-		if (rolltype >= MINROLLTYPE)
+		if (sc->rolltype >= MINROLLTYPE)
 			ec = snprintf(tmp_path, PATH_MAX, "%s.HEADER.%d",
 				s_handle->path, (int)s_handle->otime);
 		else
 			ec = snprintf(tmp_path, PATH_MAX, "%s.HEADER",
 				s_handle->path);
 	} else {
-		if (rolltype >= MINROLLTYPE)
+		if (sc->rolltype >= MINROLLTYPE)
 			ec = snprintf(tmp_path, PATH_MAX, "%s.%d",
 				s_handle->path, (int)s_handle->otime);
 		else
@@ -994,7 +1029,7 @@ static int print_header_from_open(struct csv_store_handle *s_handle,
 #endif
 
 static struct csv_store_handle *
-csv_store_handle_get(const char *container, const char *schema);
+csv_store_handle_get(store_csv_t sc, const char *container, const char *schema);
 
 static void csv_store_handle_put(struct csv_store_handle *s_handle);
 
@@ -1003,15 +1038,16 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
 	struct csv_store_handle *s_handle = NULL;
+	store_csv_t sc = (void*)s->base.context;
 
-	if (!pa) {
+	if (!sc->pa) {
 		ovis_log(mylog, OVIS_LERROR, "config not called. cannot open.\n");
 		return NULL;
 	}
 
-	pthread_mutex_lock(&cfg_lock);
-	s_handle = csv_store_handle_get(container, schema);
-	pthread_mutex_unlock(&cfg_lock);
+	pthread_mutex_lock(&sc->cfg_lock);
+	s_handle = csv_store_handle_get(sc, container, schema);
+	pthread_mutex_unlock(&sc->cfg_lock);
 	return s_handle;
 }
 
@@ -1685,6 +1721,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 
 static void __csv_handle_close(struct csv_store_handle *s_handle)
 {
+	store_csv_t sc = s_handle->sc;
 	pthread_mutex_lock(&s_handle->lock);
 	ovis_log(mylog, OVIS_LDEBUG, "Closing with path <%s>\n",
 	       s_handle->path);
@@ -1701,7 +1738,7 @@ static void __csv_handle_close(struct csv_store_handle *s_handle)
 	s_handle->headerfile = NULL;
 	CLOSE_STORE_COMMON(s_handle);
 
-	idx_delete(store_idx, s_handle->store_key, strlen(s_handle->store_key));
+	idx_delete(sc->store_idx, s_handle->store_key, strlen(s_handle->store_key));
 
 	if (s_handle->store_key)
 		free(s_handle->store_key);
@@ -1740,10 +1777,11 @@ static void __csv_row_handle_close(struct csv_row_store_handle *rs_handle)
 
 static void close_store(ldmsd_store_handle_t _s_handle)
 {
-	pthread_mutex_lock(&cfg_lock);
 	struct csv_store_handle *s_handle = _s_handle;
+	store_csv_t sc = s_handle->sc;
+	pthread_mutex_lock(&sc->cfg_lock);
 	if (!s_handle) {
-		pthread_mutex_unlock(&cfg_lock);
+		pthread_mutex_unlock(&sc->cfg_lock);
 		return;
 	}
 
@@ -1763,7 +1801,7 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	default:
 		ERR_LOG("Unknown csv_handle type: %d\n", s_handle->type);
 	}
-	pthread_mutex_unlock(&cfg_lock);
+	pthread_mutex_unlock(&sc->cfg_lock);
 }
 
 static struct csv_row_store_handle *
@@ -1783,7 +1821,7 @@ row_store_new()
  * - `store_key` is "<CONTAINER>/<SCHEMA>"
  */
 static struct csv_store_handle *
-csv_store_handle_get(const char *container, const char *schema)
+csv_store_handle_get(store_csv_t sc, const char *container, const char *schema)
 {
 	struct csv_store_handle *s_handle;
 	int len, rc;
@@ -1794,7 +1832,7 @@ csv_store_handle_get(const char *container, const char *schema)
 	if (!store_key)
 		goto err_0;
 
-	s_handle = idx_find(store_idx, (void *)store_key, strlen(store_key));
+	s_handle = idx_find(sc->store_idx, (void *)store_key, strlen(store_key));
 	if (s_handle) {
 		assert(s_handle->ref_count > 0);
 		s_handle->ref_count++;
@@ -1808,11 +1846,12 @@ csv_store_handle_get(const char *container, const char *schema)
 		ERR_LOG("Not enough memory (%s:%s():%d)", __FILE__, __func__, __LINE__);
 		goto err_1;
 	}
+	s_handle->sc = sc;
 	s_handle->num_lists = -1;
 	s_handle->ref_count = 1;
 	s_handle->type = CSV_STORE_HANDLE;
 	s_handle->store_key = store_key; /* give store_key to s_handle */
-	const char *root_path = ldmsd_plugattr_value(pa, "path", store_key);
+	const char *root_path = ldmsd_plugattr_value(sc->pa, "path", store_key);
 	if (!root_path) {
 		ERR_LOG("`path` plugin attribute is not set\n");
 		errno = EINVAL;
@@ -1848,7 +1887,7 @@ csv_store_handle_get(const char *container, const char *schema)
 	time_t appx = time(NULL);
 
 	/* csv filename */
-	if (rolltype >= MINROLLTYPE){
+	if (sc->rolltype >= MINROLLTYPE){
 		//append the files with epoch. assume wont collide to the sec.
 		len = asprintf(&s_handle->filename, "%s.%ld", s_handle->path, appx);
 	} else {
@@ -1870,7 +1909,7 @@ csv_store_handle_get(const char *container, const char *schema)
 
 	/* header file name */
 	if (s_handle->altheader) {
-		if (rolltype >= MINROLLTYPE) {
+		if (sc->rolltype >= MINROLLTYPE) {
 			len = asprintf(&s_handle->headerfilename, "%s.HEADER.%ld", s_handle->path, appx);
 		} else {
 			len = asprintf(&s_handle->headerfilename, "%s.HEADER", s_handle->path);
@@ -1904,7 +1943,7 @@ csv_store_handle_get(const char *container, const char *schema)
 	}
 
 	if (s_handle->typeheader > 0) {
-		if (rolltype >= MINROLLTYPE){
+		if (sc->rolltype >= MINROLLTYPE){
 			len = asprintf(&s_handle->typefilename,  "%s.KIND.%ld",
 				s_handle->path, appx);
 		} else {
@@ -1917,7 +1956,7 @@ csv_store_handle_get(const char *container, const char *schema)
 		}
 	}
 
-	idx_add(store_idx, s_handle->store_key, strlen(s_handle->store_key), s_handle);
+	idx_add(sc->store_idx, s_handle->store_key, strlen(s_handle->store_key), s_handle);
 
  out:
 	return s_handle;
@@ -1951,6 +1990,7 @@ csv_row_schema_get(ldmsd_strgp_t strgp, struct csv_row_store_handle *rs_handle,
 		   struct csv_row_schema_key_s *key)
 {
 	struct csv_row_schema_rbn_s *rrbn;
+	store_csv_t sc = (void*)strgp->store->api->base.context;
 
 	rrbn = (void*)rbt_find(&rs_handle->row_schema_rbt, key);
 	if (rrbn)
@@ -1966,9 +2006,9 @@ csv_row_schema_get(ldmsd_strgp_t strgp, struct csv_row_store_handle *rs_handle,
 	snprintf(rrbn->name, sizeof(rrbn->name), "%s", key->name);
 	memcpy(&rrbn->digest, key->digest, sizeof(*key->digest));
 
-	pthread_mutex_lock(&cfg_lock);
-	rrbn->s_handle = csv_store_handle_get(strgp->container, key->name);
-	pthread_mutex_unlock(&cfg_lock);
+	pthread_mutex_lock(&sc->cfg_lock);
+	rrbn->s_handle = csv_store_handle_get(sc, strgp->container, key->name);
+	pthread_mutex_unlock(&sc->cfg_lock);
 	if (!rrbn->s_handle)
 		goto err_1;
 
@@ -2316,56 +2356,112 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set,
 	return 0;
 }
 
+#if 0
+static void store_csv_del(struct ldmsd_cfgobj *obj)
+{
+	store_csv_t sc = (void*)obj;
+
+	pthread_mutex_destroy(&sc->cfg_lock);
+	idx_destroy(sc->store_idx);
+	ldmsd_plugattr_destroy(sc->pa);
+	if (sc->rothread_used) {
+		void * dontcare = NULL;
+		pthread_cancel(sc->rothread);
+		pthread_join(sc->rothread, &dontcare);
+	}
+	sc->pa = NULL;
+	sc->store_idx = NULL;
+
+	free(sc);
+}
+
+void __store_csv_once()
+{
+	static int once = 0;
+	static pthread_mutex_t once_mutex = PTHREAD_MUTEX_INITIALIZER;
+	pthread_mutex_lock(&once_mutex);
+	if (once)
+		goto out;
+	once = 1;
+	if (!mylog) {
+		mylog = ovis_log_register("store."PNAME,
+					  "The log subsystem of '" PNAME "' plugin");
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+				"of '" PNAME "' plugin. Error %d\n", errno);
+	}
+	PG.mylog = mylog;
+	PG.pname = PNAME;
+ out:
+	pthread_mutex_unlock(&once_mutex);
+}
+
+struct ldmsd_plugin *get_plugin_instance(const char *name,
+					 uid_t uid, gid_t gid, int perm)
+{
+	store_csv_t sc;
+
+	__store_csv_once();
+
+	sc = (void*)ldmsd_store_alloc(name, sizeof(*sc), store_csv_del, uid, gid, perm);
+	if (!sc)
+		return NULL;
+
+	snprintf(sc->store.base.name, sizeof(sc->store.base.name), "store_csv");
+	sc->store.base.term   = term;
+	sc->store.base.config = config;
+	sc->store.base.usage  = usage;
+
+	sc->store.open        = open_store;
+	sc->store.get_context = get_ucontext;
+	sc->store.store       = store;
+	sc->store.flush       = flush_store;
+	sc->store.close       = close_store;
+	sc->store.commit      = commit_rows;
+
+	/* TODO COMPLETE ME (just in case) */
+
+	sc->store_idx = idx_create();
+	pthread_mutex_init(&sc->cfg_lock, NULL);
+
+	return &sc->store.base;
+}
+#else
 static struct ldmsd_store store_csv = {
-	.base = {
-			.name = "csv",
-			.type = LDMSD_PLUGIN_STORE,
-			.term = term,
-			.config = config,
-			.usage = usage,
-	},
-	.open = open_store,
+	.base.type   = LDMSD_PLUGIN_STORE,
+	.base.name   = "store_csv",
+	.base.term   = term,
+	.base.config = config,
+	.base.usage  = usage,
+	.base.context_size = sizeof(struct store_csv_s),
+	.open        = open_store,
 	.get_context = get_ucontext,
-	.store = store,
-	.flush = flush_store,
-	.close = close_store,
-	.commit = commit_rows,
+	.store       = store,
+	.flush       = flush_store,
+	.close       = close_store,
+	.commit      = commit_rows,
 };
 
 struct ldmsd_plugin *get_plugin()
 {
-	int rc;
-	mylog = ovis_log_register("store."PNAME, "The log subsystem of '" PNAME "' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-				"of '" PNAME "' plugin. Error %d\n", rc);
-	}
-	PG.mylog = mylog;
-	PG.pname = PNAME;
-	return &store_csv.base;
+        int rc;
+        mylog = ovis_log_register("store."PNAME, "The log subsystem of '" PNAME "' plugin");
+        if (!mylog) {
+                rc = errno;
+                ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+                                "of '" PNAME "' plugin. Error %d\n", rc);
+        }
+        return &store_csv.base;
 }
+#endif
 
 static void __attribute__ ((constructor)) store_csv_init();
 static void store_csv_init()
 {
-	store_idx = idx_create();
-	pthread_mutex_init(&cfg_lock, NULL);
 	LIB_CTOR_COMMON(PG);
 }
 
 static void __attribute__ ((destructor)) store_csv_fini(void);
 static void store_csv_fini()
 {
-	pthread_mutex_destroy(&cfg_lock);
-	idx_destroy(store_idx);
-	ldmsd_plugattr_destroy(pa);
 	LIB_DTOR_COMMON(PG);
-	if (rothread_used) {
-		void * dontcare = NULL;
-		pthread_cancel(rothread);
-		pthread_join(rothread, &dontcare);
-	}
-	pa = NULL;
-	store_idx = NULL;
 }

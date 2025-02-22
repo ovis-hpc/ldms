@@ -267,7 +267,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	base = base_config(avl, SAMP, "Lustre_MDS", mylog);
+	base = base_config(avl, self->inst_name, "Lustre_MDS", mylog);
 	if (!base)
 		return errno;
 

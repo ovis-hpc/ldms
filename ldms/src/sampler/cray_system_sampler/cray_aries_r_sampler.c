@@ -190,8 +190,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	base = base_config(avl, "cray_aries_r_sampler", default_schema_name,
-                           cray_aries_log);
+	base = base_config(avl, self->inst_name, default_schema_name, cray_aries_log);
 	if (!base) {
 		rc = errno;
 		goto out;

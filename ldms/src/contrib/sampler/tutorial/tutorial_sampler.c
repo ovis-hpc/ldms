@@ -173,7 +173,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 	//producer, component_id, instance, schema etc all in base_config
-	tsets[num_sets].base = base_config(avl, SAMP, SAMP, mylog);
+	tsets[num_sets].base = base_config(avl, self->inst_name, SAMP, mylog);
 	if (!tsets[num_sets].base) {
 		rc = errno;
 		goto err;

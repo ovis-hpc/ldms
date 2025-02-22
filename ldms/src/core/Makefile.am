@@ -28,3 +28,14 @@ libldms_la_LIBADD = -ldl -lpthread $(top_builddir)/lib/src/coll/libcoll.la \
 		    @OPENSSL_LIBS@
 
 lib_LTLIBRARIES += libldms.la
+
+if HAVE_LIBAVRO
+if HAVE_LIBSERDES
+
+ldmscoreinclude_HEADERS += ldms_stream_avro_ser.h
+libldms_stream_avro_ser_la_SOURCES = ldms_stream_avro_ser.c
+libldms_stream_avro_ser_la_LIBADD = libldms.la @LIBAVRO@ @LIBSERDES@
+lib_LTLIBRARIES += libldms_stream_avro_ser.la
+
+endif
+endif

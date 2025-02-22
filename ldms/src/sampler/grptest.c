@@ -153,7 +153,7 @@ static int config_init(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		       struct attr_value_list *avl)
 {
 	int rc;
-	base = base_config(avl, SAMP, SAMP, mylog);
+	base = base_config(avl, self->inst_name, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err0;

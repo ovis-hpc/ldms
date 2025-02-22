@@ -157,7 +157,10 @@ The sampler plugin instance access permission. The default is 0440.
 
 .SS Start a sampler plugin
 .BR start
-attr=<value>
+.BI name\fR= NAME
+.BI interval\fR= INTERVAL
+.RB [ offset\fR=\fIOFFSET ]
+.RB [ exclusive_thread\fR=\fI0|1 ]
 .RS
 .TP
 .BI name " name"
@@ -181,6 +184,12 @@ A unit string is one of the followings:
 Offset (shift) from the sample mark in the same format as intervals.
 Offset can be positive or negative with magnitude up to 1/2
 the sample interval. The default offset is 0. Collection is always synchronous.
+.TP
+.RB [ exclusive_thread\fR=\fI0|1 ]
+.br
+If exclusive_thread is 0, the sampler shares a thread with other sampler.
+If exclusive_thread is 1, the sampler has an exclusive thread to work on.
+The default is 0 (i.e. share sampling threads).
 
 .RE
 

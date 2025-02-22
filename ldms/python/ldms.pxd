@@ -820,6 +820,7 @@ cdef extern from "ldms.h" nogil:
     cpdef enum ldms_stream_type_e:
         LDMS_STREAM_STRING
         LDMS_STREAM_JSON
+        LDMS_STREAM_AVRO_SER
     enum ldms_stream_event_type:
         LDMS_STREAM_EVENT_RECV
         LDMS_STREAM_EVENT_SUBSCRIBE_STATUS
@@ -860,6 +861,7 @@ cdef extern from "ldms.h" nogil:
     ldms_stream_client_t ldms_stream_subscribe(const char *stream, int is_regex,
                             ldms_stream_event_cb_t cb_fn, void *cb_arg,
                             const char *desc)
+
     void ldms_stream_close(ldms_stream_client_t c)
     int ldms_stream_remote_subscribe(ldms_t x, const char *stream, int is_regex,
                             ldms_stream_event_cb_t cb_fn, void *cb_arg,
@@ -925,9 +927,19 @@ cdef extern from "zap/zap.h" nogil:
         uint64_t sq_sz
         int pool_idx
         uint64_t thread_id
+        pid_t tid
+        uint64_t idle_time
+        uint64_t active_time
+        timespec start
+        timespec wait_start
+        timespec wait_end
+        int waiting
+        void *app_ctxt
+
     struct zap_thrstat_result:
         int count
         zap_thrstat_result_entry entries[0]
+
     zap_thrstat_result *zap_thrstat_get_result()
 
 cdef extern from "asm/byteorder.h" nogil:

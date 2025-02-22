@@ -767,7 +767,7 @@ static int config(struct ldmsd_plugin *self,
 
         ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
-        sampler_base = base_config(avl, SAMP, "ibmad", mylog);
+        sampler_base = base_config(avl, self->inst_name, "ibmad", mylog);
 
 	value = av_value(avl, "rate");
 	if (value != NULL && value[0] == '0') {

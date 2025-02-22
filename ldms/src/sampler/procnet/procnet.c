@@ -310,7 +310,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	free(ignorelist);
 	ignorelist = NULL;
 
-	base = base_config(avl, SAMP, SAMP, mylog);
+	base = base_config(avl, self->inst_name, SAMP, mylog);
 	if (!base) {
 		rc = EINVAL;
 		goto err;

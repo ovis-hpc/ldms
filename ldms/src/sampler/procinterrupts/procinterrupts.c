@@ -74,16 +74,17 @@ static base_data_t base;
 
 static ovis_log_t mylog;
 
-static int getNProcs(char buf[]){
+static int getNProcs(char buf[])
+{
 	int nproc = 0;
 	char* pch;
 	char *sp = NULL;
 	pch = strtok_r(buf, " ", &sp);
-	while (pch != NULL){
-		if (pch[0] == '\n'){
+	while (pch != NULL) {
+		if (pch[0] == '\n') {
 			break;
 		}
-		if (pch[0] != ' '){
+		if (pch[0] != ' ') {
 			nproc++;
 		}
 		pch = strtok_r(NULL, " ", &sp);
@@ -135,18 +136,18 @@ static int create_metric_set(base_data_t base)
 		return EINVAL;
 	}
 
-	while(s){
+	while(s) {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
 		int currcol = 0;
 		char *sp = NULL;
 		char* pch = strtok_r(lbuf, " ", &sp);
-		while (pch != NULL && currcol <= nprocs){
-			if (pch[0] == '\n'){
+		while (pch != NULL && currcol <= nprocs) {
+			if (pch[0] == '\n') {
 				break;
 			}
-			if (currcol == 0){
+			if (currcol == 0) {
 				/* Strip the colon from metric name if present */
 				i = strlen(pch);
 				if (i && pch[i-1] == ':')
@@ -200,7 +201,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 
-	base = base_config(avl, SAMP, SAMP, mylog);
+	base = base_config(avl, self->inst_name, SAMP, mylog);
 	if (!base)
 		goto err;
 
@@ -223,7 +224,7 @@ static int sample(struct ldmsd_sampler *self)
 	char *s;
 	union ldms_value v;
 
-	if (!set){
+	if (!set) {
 		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
@@ -234,7 +235,7 @@ static int sample(struct ldmsd_sampler *self)
 	/* first line is the cpu list */
 	s = fgets(lbuf, sizeof(lbuf), mf);
 
-	while(s){
+	while(s) {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
@@ -242,16 +243,16 @@ static int sample(struct ldmsd_sampler *self)
 		int currcol = 0;
 		char * sp = NULL;
 		char* pch = strtok_r(lbuf, " ", &sp);
-		while (pch != NULL && currcol <= nprocs){
+		while (pch != NULL && currcol <= nprocs) {
 			if (pch[0] == '\n') {
 				break;
 			}
 			if (pch[0] != ' ') {
-				if (currcol != 0){
+				if (currcol != 0) {
 					char* endptr;
 					unsigned long long int l1;
 					l1 = strtoull(pch,&endptr,10);
-					if (endptr != pch){
+					if (endptr != pch) {
 						v.v_u64 = l1;
 						ldms_metric_set(set, metric_no, &v);
 						metric_no++;

@@ -97,17 +97,11 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev);
  */
 void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev);
 
+pthread_mutex_t xprt_list_lock;
+
 /* The implementation is is ldms_rail.c. */
 struct ldms_op_ctxt_list *
 __rail_op_ctxt_list(ldms_t x, enum ldms_xprt_ops_e op_e);
-
-#if 0
-#define TF() XPRT_LOG(NULL, OVIS_LALWAYS, "%s:%d\n", __FUNCTION__, __LINE__)
-#else
-#define TF()
-#endif
-
-pthread_mutex_t xprt_list_lock;
 
 pthread_mutex_t ldms_zap_list_lock;
 static struct {
@@ -579,22 +573,28 @@ char *__ldms_format_set_for_dir(struct ldms_set *set, size_t *buf_sz)
 
 static void dir_update(struct ldms_set *set, enum ldms_dir_type t)
 {
-	char *json_buf;
+	char *json_buf = NULL;
 	size_t json_cnt;
 	struct ldms_xprt *x;
-	json_buf = __ldms_format_set_for_dir(set, &json_cnt);
+
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_FOREACH(x, &xprt_list, xprt_link) {
-		if (!json_buf) {
-			XPRT_LOG(x, OVIS_LCRIT, "%s: memory allocation error\n", __func__);
-			break;
-		}
-		if (x->remote_dir_xid)
+		if (x->remote_dir_xid) {
+			if (!json_buf) {
+				/* Only build the JSON resonse if there is a
+				 * transport that has registered for updates */
+				json_buf = __ldms_format_set_for_dir(set, &json_cnt);
+				if (!json_buf) {
+					XPRT_LOG(x, OVIS_LCRIT, "%s: memory allocation error\n", __func__);
+					goto out;
+				}
+			}
 			send_dir_update(x, t, json_buf, json_cnt);
+		}
 	}
+	free(json_buf);
+out:
 	pthread_mutex_unlock(&xprt_list_lock);
-	if (json_buf)
-		free(json_buf);
 }
 
 void __ldms_dir_add_set(struct ldms_set *set)
@@ -929,6 +929,10 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 						      &reply->dir.json_data[cnt],
 						      len - hdrlen - cnt - 3 /* ]}\0 */);
 			pthread_mutex_unlock(&set->lock);
+		} else {
+			ovis_log(xlog, OVIS_LINFO,
+				"Access %o denied to user %d:%d for set '%s'.\n",
+				perm, uid, gid, name->name);
 		}
 
 		if (/* Too big to fit in transport message, send what we have */
@@ -1584,7 +1588,6 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 static int do_read_all(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
 	/* Read metadata and the first set in the set array in 1 RDMA read. */
-	TF();
 	struct ldms_context *ctxt;
 	int rc;
 	uint32_t len = __le32_to_cpu(s->meta->meta_sz)
@@ -1629,7 +1632,6 @@ static int do_read_meta(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
 	/* Read only the metadata; the data will be updated separately when the
 	 * metadata read completed. */
-	TF();
 	struct ldms_context *ctxt;
 	int rc;
 	uint32_t meta_sz = __le32_to_cpu(s->meta->meta_sz);
@@ -1674,7 +1676,6 @@ static int do_read_data(ldms_t x, ldms_set_t s, int idx_from, int idx_to,
 	uint32_t data_sz;
 	struct ldms_context *ctxt;
 	size_t doff, dlen;
-	TF();
 
 	ctxt = __ldms_alloc_ctxt(x, sizeof(*ctxt), LDMS_CONTEXT_UPDATE,
 						s, cb, arg, idx_from, idx_to);
@@ -4343,57 +4344,15 @@ int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 	return x->ops.connect(x, sa, sa_len, cb, cb_arg);
 }
 
-static void sync_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
-{
-	switch (e->type) {
-	case LDMS_XPRT_EVENT_CONNECTED:
-		(void)clock_gettime(CLOCK_REALTIME, &x->stats.connected);
-		x->sem_rc = 0;
-		sem_post(&x->sem);
-		break;
-	case LDMS_XPRT_EVENT_REJECTED:
-	case LDMS_XPRT_EVENT_ERROR:
-	case LDMS_XPRT_EVENT_DISCONNECTED:
-		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
-		x->sem_rc = ECONNREFUSED;
-		sem_post(&x->sem);
-		break;
-	case LDMS_XPRT_EVENT_RECV:
-		break;
-	case LDMS_XPRT_EVENT_SET_DELETE:
-	case LDMS_XPRT_EVENT_SEND_COMPLETE:
-	case LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
-		/* Don't post */
-		return;
-	default:
-		XPRT_LOG(x, OVIS_LERROR, "sync_connect_cb: unexpected "
-				"ldms_xprt event value %d\n", (int) e->type);
-		assert(0 == "sync_connect_cb: unexpected ldms_xprt event value");
-	}
-}
+int ldms_rail_connect_by_name(ldms_t x, const char *host, const char *port,
+			      ldms_event_cb_t cb, void *cb_arg);
 
 int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
 			      ldms_event_cb_t cb, void *cb_arg)
 {
-	struct addrinfo *ai;
-	struct addrinfo hints = {
-		.ai_socktype = SOCK_STREAM
-	};
-	int rc = getaddrinfo(host, port, &hints, &ai);
-	if (rc)
-		return EHOSTUNREACH;
-	if (!cb) {
-		rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen, sync_connect_cb, cb_arg);
-		if (rc)
-			goto out;
-		sem_wait(&x->sem);
-		rc = x->sem_rc;
-	} else {
-		rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
-	}
-out:
-	freeaddrinfo(ai);
-	return rc;
+	/* `x` from the application is actually a rail handle. Moving
+	 * the implementation into ldms_rail.c */
+	return ldms_rail_connect_by_name(x, host, port, cb, cb_arg);
 }
 
 static int __ldms_xprt_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
