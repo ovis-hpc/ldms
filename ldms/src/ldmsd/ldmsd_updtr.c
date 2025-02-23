@@ -938,7 +938,9 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 	rbt_init(&updtr->task_tree, ldmsd_updtr_schedule_cmp);
 	updtr->push_flags = push_flags;
 	ldmsd_cfgobj_unlock(&updtr->obj);
+#ifdef _CFG_REF_DUMP_
 	ref_dump(&updtr->obj.ref, updtr->obj.name, stderr);
+#endif
 	return updtr;
 einval:
 	ldmsd_cfgobj_unlock(&updtr->obj);
@@ -983,8 +985,31 @@ int ldmsd_updtr_del(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
 		goto out_1;
 	}
 
+	/*
+	 * Remove our references on our producers
+	 */
+	struct rbn *rbn;
+	ldmsd_prdcr_ref_t ref;
+	rbn = rbt_min(&updtr->prdcr_tree);
+	while (rbn) {
+		ref = container_of(rbn, struct ldmsd_prdcr_ref, rbn);
+		ldmsd_prdcr_put(ref->prdcr, "updtr_prdcr_ref");
+		rbt_del(&updtr->prdcr_tree, rbn);
+		rbn = rbn_succ(rbn);
+		free(ref);
+	}
+	/*
+	 * Check that only 'init', 'find', and 'cfgobj_tree' references
+	 * remain.
+	 */
+	if (ldmsd_cfgobj_refcount(&updtr->obj) > 3) {
+		rc = EBUSY;
+		goto out_1;
+	}
+
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_UPDTR], &updtr->obj.rbn);
-	ldmsd_updtr_put(updtr, "cfg_tree"); /* tree reference */
+	ldmsd_updtr_put(updtr, "cfgobj_tree"); /* tree reference */
+	ldmsd_updtr_put(updtr, "init"); /* tree reference */
 	rc = 0;
 	/* let-through */
 out_1:
@@ -1156,6 +1181,9 @@ int __ldmsd_updtr_stop(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt)
 	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
 	/* let-through */
 out_1:
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&updtr->obj.ref, updtr->obj.name, stderr);
+#endif
 	ldmsd_updtr_unlock(updtr);
 	return rc;
 }
@@ -1337,7 +1365,7 @@ ldmsd_prdcr_ref_t prdcr_ref_new(ldmsd_prdcr_t prdcr)
 {
 	ldmsd_prdcr_ref_t ref = calloc(1, sizeof *ref);
 	if (ref) {
-		ref->prdcr = ldmsd_prdcr_get(prdcr, "prdcr_ref");
+		ref->prdcr = ldmsd_prdcr_get(prdcr, "updtr_prdcr_ref");
 		rbn_init(&ref->rbn, prdcr->obj.name);
 	}
 	return ref;
@@ -1374,10 +1402,6 @@ int __ldmsd_updtr_prdcr_add(ldmsd_updtr_t updtr, ldmsd_prdcr_t prdcr)
 	ldmsd_prdcr_ref_t ref;
 
 	ldmsd_updtr_lock(updtr);
-//	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-//		rc = EBUSY;
-//		goto out;
-//	}
 	ref = prdcr_ref_find(updtr, prdcr->obj.name);
 	if (ref) {
 		rc = EEXIST;
@@ -1499,7 +1523,7 @@ int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 	for (ref = prdcr_ref_find_regex(updtr, &regex);
 	     ref; ref = prdcr_ref_find_regex(updtr, &regex)) {
 		rbt_del(&updtr->prdcr_tree, &ref->rbn);
-		ldmsd_prdcr_put(ref->prdcr, "init");
+		ldmsd_prdcr_put(ref->prdcr, "updtr_prdcr_ref");
 		free(ref);
 	}
 out_1:
