@@ -983,7 +983,7 @@ struct ldmsd_cfgobj_sampler {
 /** Metric name for job id number */
 #define LDMSD_JOBID "job_id"
 
-ldmsd_cfgobj_sampler_t ldmsd_sampler_alloc(const char *name,
+ldmsd_cfgobj_sampler_t ldmsd_sampler_add(const char *name,
 					struct ldmsd_sampler *api,
 					ldmsd_cfgobj_del_fn_t __del,
 					uid_t uid, gid_t gid, int perm);
@@ -1038,7 +1038,7 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
  * is indexed by Component ID, and Time.
  */
 
-ldmsd_cfgobj_store_t ldmsd_store_alloc(const char *name,
+ldmsd_cfgobj_store_t ldmsd_store_add(const char *name,
 				struct ldmsd_store *store,
 				ldmsd_cfgobj_del_fn_t __del,
 				uid_t uid, gid_t gid, int perm);

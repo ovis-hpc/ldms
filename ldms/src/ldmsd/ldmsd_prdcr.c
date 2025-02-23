@@ -87,12 +87,10 @@ int prdcr_resolve(const char *hostname, unsigned short port_no,
 void ldmsd_prdcr___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_prdcr_t prdcr = (ldmsd_prdcr_t)obj;
-	if (prdcr->host_name)
-		free(prdcr->host_name);
-	if (prdcr->xprt_name)
-		free(prdcr->xprt_name);
-	if (prdcr->conn_auth)
-		free(prdcr->conn_auth);
+	free(prdcr->host_name);
+	free(prdcr->xprt_name);
+	free(prdcr->conn_auth);
+	free(prdcr->conn_auth_dom_name);
 	if (prdcr->conn_auth_args)
 		av_free(prdcr->conn_auth_args);
 	ldmsd_cfgobj___del(obj);
@@ -140,7 +138,7 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 	while (strgp_ref) {
 		LIST_REMOVE(strgp_ref, entry);
 		__atomic_fetch_sub(&strgp_ref->strgp->prdset_cnt, 1, __ATOMIC_SEQ_CST);
-		ldmsd_strgp_put(strgp_ref->strgp, "init");
+		ldmsd_strgp_put(strgp_ref->strgp, "prdset_strgp_ref");
 		free(strgp_ref);
 		strgp_ref = LIST_FIRST(&set->strgp_list);
 	}
@@ -1077,12 +1075,15 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	}
 
 	ldmsd_task_init(&prdcr->task);
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&prdcr->obj.ref, prdcr->obj.name, stderr);
+#endif
 	ldmsd_cfgobj_unlock(&prdcr->obj);
 	return prdcr;
 out:
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR], &prdcr->obj.rbn);
 	ldmsd_cfgobj_unlock(&prdcr->obj);
-	ldmsd_prdcr_put(prdcr, "cfg_tree");
+	ldmsd_prdcr_put(prdcr, "cfgobj_tree");
 	return NULL;
 }
 
@@ -1120,15 +1121,22 @@ int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out_1;
 	}
-	if (ldmsd_cfgobj_refcount(&prdcr->obj) > 2) {
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&prdcr->obj.ref, prdcr->obj.name, stderr);
+#endif
+	/*
+	 * Check that only 'init', 'find', and 'cfgobj_tree' references
+	 * remain.
+	 */
+	if (ldmsd_cfgobj_refcount(&prdcr->obj) > 3) {
 		rc = EBUSY;
 		goto out_1;
 	}
 
 	/* removing from the tree */
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR], &prdcr->obj.rbn);
-	ldmsd_prdcr_put(prdcr, "cfg_tree"); /* putting down reference from the tree */
-
+	ldmsd_prdcr_put(prdcr, "cfgobj_tree"); /* putting down reference from the tree */
+	ldmsd_prdcr_put(prdcr, "init");
 	rc = 0;
 	/* let-through */
 out_1:
@@ -1257,6 +1265,9 @@ int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 	if (!prdcr->xprt)
 		prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
 out:
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&prdcr->obj.ref, prdcr->obj.name, stderr);
+#endif
 	ldmsd_prdcr_unlock(prdcr);
 	return rc;
 }
@@ -1268,7 +1279,7 @@ int ldmsd_prdcr_stop(const char *name, ldmsd_sec_ctxt_t ctxt)
 	if (!prdcr)
 		return ENOENT;
 	rc = __ldmsd_prdcr_stop(prdcr, ctxt);
-	ldmsd_prdcr_put(prdcr, "start");
+	ldmsd_prdcr_put(prdcr, "find");
 	return rc;
 }
 

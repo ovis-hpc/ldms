@@ -124,10 +124,10 @@ ldmsd_plugin_t load_plugin(const char *plugin_name)
 		path = LDMSD_PLUGIN_LIBPATH_DEFAULT;
 
 	strncpy(library_path, path, sizeof(library_path) - 1);
-
 	while ((libpath = strtok_r(pathdir, ":", &saveptr)) != NULL) {
 		ovis_log(config_log, OVIS_LDEBUG,
-			"Checking for %s in %s\n", plugin_name, libpath);
+			"Checking for '%s' in '%s'\n",
+			 plugin_name, libpath);
 		pathdir = NULL;
 		snprintf(library_name, sizeof(library_name), "%s/lib%s.so",
 			libpath, plugin_name);
@@ -171,21 +171,19 @@ err_0:
 }
 
 ldmsd_cfgobj_sampler_t
-ldmsd_sampler_alloc(const char *cfg_name,
-			struct ldmsd_sampler *api,
-			ldmsd_cfgobj_del_fn_t __del,
-			uid_t uid, gid_t gid, int perm)
+ldmsd_sampler_add(const char *cfg_name,
+		  struct ldmsd_sampler *api,
+		  ldmsd_cfgobj_del_fn_t __del,
+		  uid_t uid, gid_t gid, int perm)
 {
 	ldmsd_cfgobj_sampler_t sampler;
 	struct ldmsd_sampler *api_inst;
-	api_inst = malloc(sizeof (*api_inst) + api->base.context_size);
+	api_inst = calloc(1, sizeof (*api_inst) + api->base.context_size);
 	if (!api_inst)
 		return NULL;
 	memcpy(api_inst, api, sizeof(*api));
-	if (api->base.context_size) {
+	if (api->base.context_size)
 		api_inst->base.context = (void *)(api_inst + 1);
-		memset(api_inst->base.context, 0, api->base.context_size);
-	}
 	sampler = (void*)ldmsd_cfgobj_new_with_auth(cfg_name, LDMSD_CFGOBJ_SAMPLER,
 						sizeof(*sampler),
 						__del, uid, gid, perm);
@@ -199,25 +197,26 @@ ldmsd_sampler_alloc(const char *cfg_name,
 	sampler->api = api_inst;
 	sampler->api->base.cfg_name = strdup(cfg_name);
 	sampler->thread_id = -1;	/* stopped */
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&sampler->cfg.ref, sampler->cfg.name, stderr);
+#endif
 	ldmsd_cfgobj_unlock(&sampler->cfg);
 	return sampler;
 }
 
-ldmsd_cfgobj_store_t ldmsd_store_alloc(const char *cfg_name,
+ldmsd_cfgobj_store_t ldmsd_store_add(const char *cfg_name,
 		struct ldmsd_store *api,
 		ldmsd_cfgobj_del_fn_t __del,
 		uid_t uid, gid_t gid, int perm)
 {
 	ldmsd_cfgobj_store_t store;
 	struct ldmsd_store *api_inst;
-	api_inst = malloc(sizeof (*api_inst) + api->base.context_size);
+	api_inst = calloc(1, sizeof (*api_inst) + api->base.context_size);
 	if (!api_inst)
 		return NULL;
 	memcpy(api_inst, api, sizeof(*api));
-	if (api->base.context_size) {
+	if (api->base.context_size)
 		api_inst->base.context = (void *)(api_inst + 1);
-		memset(api_inst->base.context, 0, api->base.context_size);
-	}
 	store = (void*)ldmsd_cfgobj_new_with_auth(cfg_name, LDMSD_CFGOBJ_STORE,
 						sizeof(*store),
 						__del, uid, gid, perm);
@@ -292,7 +291,6 @@ void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 		ldms_set_delete(_set->set);
 		free(_set);
 	}
-
 	free((void*)samp->api->base.cfg_name);
 	free(samp->api);
 	ldmsd_cfgobj___del(obj);
@@ -320,22 +318,22 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
 		return errno;
 	switch (api->type) {
 	case LDMSD_PLUGIN_SAMPLER:
-		if (ldmsd_sampler_alloc(cfg_name, (struct ldmsd_sampler *)api,
+		if (ldmsd_sampler_add(cfg_name, (struct ldmsd_sampler *)api,
 			ldmsd_sampler___del, geteuid(), getegid(), 0660))
-			return 0;
 		break;
 	case LDMSD_PLUGIN_STORE:
-		if (ldmsd_store_alloc(cfg_name, (struct ldmsd_store *)api,
+		if (ldmsd_store_add(cfg_name, (struct ldmsd_store *)api,
 			ldmsd_store___del, geteuid(), getegid(), 0660))
-			return 0;
 		break;
 	default:
 		errno = EINVAL;
 		ovis_log(config_log, OVIS_LERROR,
 			"Error %d, the '%s' plugin is not a valid plugin type.\n",
 			errno, plugin_name);
-		break;
+		goto err;
 	}
+	return 0;
+ err:
 	return errno;
 }
 
@@ -365,7 +363,6 @@ int ldmsd_term_plugin(char *plugin_name)
 	}
 	plug->term(plug);
 	ldmsd_cfgobj_put(cfgobj, "find");
-	ldmsd_cfgobj_del(cfgobj);
 	rc = 0;
  out:
 	return rc;

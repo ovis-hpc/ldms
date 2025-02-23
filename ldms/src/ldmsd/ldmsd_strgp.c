@@ -246,6 +246,9 @@ ldmsd_strgp_new_with_auth(const char *name, uid_t uid, gid_t gid, int perm)
 	LIST_INIT(&strgp->prdcr_list);
 	TAILQ_INIT(&strgp->metric_list);
 	ldmsd_task_init(&strgp->task);
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&strgp->obj.ref, strgp->obj.name, stderr);
+#endif
 	ldmsd_cfgobj_unlock(&strgp->obj);
 	return strgp;
 }
@@ -483,7 +486,7 @@ static ldmsd_strgp_ref_t strgp_ref_new(ldmsd_strgp_t strgp)
 {
 	ldmsd_strgp_ref_t ref = calloc(1, sizeof *ref);
 	if (ref)
-		ref->strgp = ldmsd_strgp_get(strgp, "strgp_ref");
+		ref->strgp = ldmsd_strgp_get(strgp, "prdset_strgp_ref");
 	return ref;
 }
 
@@ -615,7 +618,7 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	case LDMSD_STRGP_STATE_STOPPED:
 		if (ref) {
 			LIST_REMOVE(ref, entry);
-			ldmsd_strgp_put(ref->strgp, "strgp_ref");
+			ldmsd_strgp_put(ref->strgp, "prdset_strgp_ref");
 			ref->strgp = NULL;
 			free(ref);
 		}
@@ -740,6 +743,9 @@ int __ldmsd_strgp_stop(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt)
 	strgp->obj.perm &= ~LDMSD_PERM_DSTART;
 	ldmsd_prdcr_update(strgp);
 out:
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&strgp->obj.ref, strgp->obj.name, stderr);
+#endif
 	ldmsd_strgp_unlock(strgp);
 	return rc;
 }
@@ -769,7 +775,6 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 		rc = ENOENT;
 		goto out_0;
 	}
-
 	ldmsd_strgp_lock(strgp);
 	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
 	if (rc)
@@ -778,23 +783,27 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out_1;
 	}
-	if (ldmsd_cfgobj_refcount(&strgp->obj) > 2) {
+	/*
+	 * Check that we only have 'find', 'cfgobj_tree', and 'init'
+	 * references remaining.
+	 */
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&strgp->obj.ref, strgp->obj.name, stderr);
+#endif
+	if (ldmsd_cfgobj_refcount(&strgp->obj) > 3) {
 		rc = EBUSY;
 		goto out_1;
 	}
-
+	if (strgp->decomp)
+		strgp->decomp->release_decomp(strgp);
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STRGP], &strgp->obj.rbn);
 	ldmsd_cfgobj_put(&strgp->obj, "cfgobj_tree"); /* tree reference */
-
-	if (strgp->decomp) {
-		strgp->decomp->release_decomp(strgp);
-	}
+	ldmsd_cfgobj_put(&strgp->obj, "init");	      /* create reference */
 out_1:
 	ldmsd_strgp_unlock(strgp);
 out_0:
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
-	if (strgp)
-		ldmsd_strgp_put(strgp, "find"); /* `find` reference */
+	ldmsd_strgp_put(strgp, "find"); /* __cfgobj_find reference */
 	return rc;
 }
 

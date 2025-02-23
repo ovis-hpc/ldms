@@ -1106,6 +1106,9 @@ int ldmsd_sampler_stop(char *cfg_name)
 		rc = -EBUSY;
 	}
 out:
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&samp->cfg.ref, samp->cfg.name, stderr);
+#endif
 	ldmsd_sampler_unlock(samp);
 	ldmsd_sampler_put(samp, "find");
 	return rc;

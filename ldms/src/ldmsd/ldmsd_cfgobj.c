@@ -141,30 +141,6 @@ void ldmsd_cfgobj_unlock(ldmsd_cfgobj_t obj)
 	pthread_mutex_unlock(&obj->lock);
 }
 
-/*
- * Add the obj to the corresponding CFGOBJ tree.
- *
- * The caller must hold appropriate CFGOBJ lock.
- * This function does not check existing entry.
- */
-void __cfgobj_add(ldmsd_cfgobj_t obj)
-{
-	rbn_init(&obj->rbn, obj->name);
-	rbt_ins(cfgobj_trees[obj->type], &obj->rbn);
-	ldmsd_cfgobj_get(obj, "cfgobj_tree"); /* put in `rm` */
-}
-
-/*
- * Remove the obj from the corresponding CFGOBJ tree.
- *
- * The caller must hold appropriate CFGOBJ lock.
- */
-void __cfgobj_rm(ldmsd_cfgobj_t obj)
-{
-	rbt_del(cfgobj_trees[obj->type], &obj->rbn);
-	ldmsd_cfgobj_put(obj, "cfgobj_tree"); /* from `add` */
-}
-
 int ldmsd_cfgobj_add(ldmsd_cfgobj_t obj)
 {
 	int rc = EEXIST;
@@ -176,7 +152,9 @@ int ldmsd_cfgobj_add(ldmsd_cfgobj_t obj)
 	if (n)
 		goto out;
 	rc = 0;
-	__cfgobj_add(obj);
+	rbn_init(&obj->rbn, obj->name);
+	rbt_ins(cfgobj_trees[obj->type], &obj->rbn);
+	ldmsd_cfgobj_get(obj, "cfgobj_tree");
  out:
 	pthread_mutex_unlock(cfgobj_locks[obj->type]);
 	return rc;
@@ -248,11 +226,9 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 	obj->perm = perm;
 
 	pthread_mutex_init(&obj->lock, NULL);
-	pthread_mutex_lock(&obj->lock);
 	rbn_init(&obj->rbn, obj->name);
 	rbt_ins(cfgobj_trees[type], &obj->rbn);
 	ldmsd_cfgobj_get(obj, "cfgobj_tree");
-
 	goto out_1;
 
 out_2:
@@ -262,18 +238,6 @@ out_2:
 out_1:
 	pthread_mutex_unlock(cfgobj_locks[type]);
 	return obj;
-}
-
-/**
- * Allocate a configuration object of the requested size. A
- * configuration object with the same name and type must not already
- * exist. On success, the object is returned locked.
- */
-ldmsd_cfgobj_t ldmsd_cfgobj_new(const char *name, ldmsd_cfgobj_type_t type,
-				size_t obj_size, ldmsd_cfgobj_del_fn_t __del)
-{
-	return ldmsd_cfgobj_new_with_auth(name, type, obj_size, __del,
-					  getuid(), getgid(), 0777);
 }
 
 /** This function is only useful if the cfgobj lock is held when the function is called. */
