@@ -1,4 +1,4 @@
-.\" Manpage for pll-ldms-static-test.sh
+.\" TESTING Manpage for pll-ldms-static-test.sh
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
 .TH man 8 "4 Oct 2020" "v4.3" "pll-ldms-static-test.sh man page"
 
@@ -357,10 +357,10 @@ sbatch -n 16 --nodes=4 \\
 --job-name=ldms-demo \\
 -p debug \\
 $(pll-ldms-static-test.sh -b cluster)
-.if
+.if t
 .PP
 .PP
 The slurm options shown here override the defaults listed in the sbatch input file to run with 16 daemons on 4 nodes for 1 minute. The defaults are site specific, but the example 'cluster' is coded to run on any number of nodes with any number of tasks >= 3. Adding more tasks adds more data producers. Specifying more tasks than nodes assigns daemons round-robin to available nodes. The options specified with --account, and partition (-p) are site specific.
-
+.fi
 .SH SEE ALSO
 seq(1), sbatch(1), srun(1)

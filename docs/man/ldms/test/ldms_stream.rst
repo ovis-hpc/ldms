@@ -1,3 +1,5 @@
+.. _ldms_stream:
+
 ===========
 ldms_stream
 ===========
@@ -310,7 +312,7 @@ C subscribe example
      if (rc)
          return rc;
 
-     sleep(10); /* sleep 10 sec */
+     :ref:`sleep(10) <sleep>`; /* sleep 10 sec */
 
      /* Request an unsubscription to "s0" stream. Note that the `stream` must
       * match the subscription request. */
@@ -326,7 +328,7 @@ C subscribe example
 
      ldms_stream_close(cli0);
 
-     sleep(5); /* wait a bit so that we can see the events */
+     :ref:`sleep(5) <sleep>`; /* wait a bit so that we can see the events */
 
      return 0;
  }
@@ -444,7 +446,7 @@ Python subscribe examples
  ev = x.stream_subscribe("app.*", is_regex=True)
  print(f"stream '{ev.name}' subscription status: {ev.status}")
 
- time.sleep(10) # wait a bit to get events
+ time.:ref:`sleep(10) <sleep>` # wait a bit to get events
 
  # "s0" stream data were handled by `stream_recv_cb`.
 
@@ -470,4 +472,4 @@ Python subscribe examples
 SEE ALSO
 ========
 
-ldmsd_controller(8)
+:ref:`ldmsd_controller(8) <ldmsd_controller>`
