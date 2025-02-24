@@ -19,6 +19,17 @@ extensions = [
     'sphinx.ext.intersphinx',
 ]
 
+man_pages = []
+
+from docutils.parsers.rst import roles
+
+def dummy_role(name, rawtext, text, lineno, inliner, options={}, content=[]):
+    """A no-op role that prevents errors for unknown roles like :ref: in rst2man."""
+    return [], []
+
+# Register the dummy role for 'ref'
+roles.register_local_role("ref", dummy_role)
+
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3/', None),
     'sphinx': ('https://www.sphinx-doc.org/en/master/', None),
@@ -41,10 +52,8 @@ templates_path = ['_templates']
 
 html_theme = 'sphinx_rtd_theme'
 html_logo = 'https://ovis-hpc.readthedocs.io/en/latest/_images/ovis-logo.png'
-html_url = 'https://ovis-hpc.readthedocs.io/en/latest/index.html'
 html_theme_options = {
     'logo_only': True,
-    'logo_url': 'https://ovis-hpc.readthedocs.io/en/latest/',
     'display_version': False,
 }
 

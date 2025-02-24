@@ -6,4 +6,3 @@ This section covers how to deploy and test LDMS
    :maxdepth: 2
 
    ldms-test
-   ldms-jenkins

@@ -8,10 +8,6 @@ on:
     paths:
       - 'docs/**'           # Same triggers for pull requests
 
-# convert all existing .man under ldms/ to .rst
-env:
- CONVERT_MAN_PAGES: false
-
 jobs:
   generate-rst:
     runs-on: ubuntu-22.04
@@ -30,93 +26,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install pandoc
 
-      - name: Convert .man files to .rst
-        run: |
-          if [ "$CONVERT_MAN_PAGES" == "true" ]; then
-            echo "CONVERT_MAN_PAGES is set, converting all .man files"
-            find ldms/src ldms/man -name "*.man" | while IFS= read -r man_file; do
-              target_file="docs/man/$(echo "$man_file" | sed 's|^ldms/src/||;s|^ldms/man/||;s/\.man$/.rst/')"
-              mkdir -p "$(dirname "$target_file")"
-              base_name=$(basename "$man_file" .man)
-              # Convert the .man file to .rst
-              if pandoc -f man -t rst "$man_file" -s -o "$target_file" --metadata title="$base_name" 2>/tmp/pandoc_error.log; then
-                echo "Successfully converted $man_file -> $target_file"
-              else
-                echo "Error processing $man_file. See error log for details:"
-                cat /tmp/pandoc_error.log | while IFS= read -r error_line; do
-                echo "$error_line"
-              done
-              fi
-            done
-            echo "Cleaning up white spaces and empty lines."
-            find docs/ -type f -exec sed -i -e 's/^[ \t]*\t/\t/' -e ':a; /^\s*$/{$d; N; ba}' {} +
-            find docs/ -type f -exec sed -i -e 's/[[:space:]]\+$//' {} +
-          fi
-
-      - name: Update index.rst files
-        run: |
-          if git rev-parse --is-shallow-repository | grep -q true; then
-                git fetch --unshallow
-                echo "Checking for added or deleted .rst files in docs/man/ the most recent commit"
-                man_files=$(git diff "${{ github.event.before }}" "${{ github.sha }}" --name-only --diff-filter=ADMR -- "*.rst")
-          else
-                echo "Repository is not shallow. Skipping unshallowing and docs/man/ commit check."
-                exit 0
-          fi
-          if [ ! -n "$man_files" ]; then
-            echo "No added or deleted .rst under docs/man/ files detected. Skipping update index.rst files"
-            exit 0
-          fi
-
-          # Function to generate index.rst for all subdirectories
-          generate_index_rsts() {
-           local dir="$1"
-            # Check if the directory contains .rst files (excluding index.rst)
-            rst_files=$(find "$dir" -maxdepth 1 -name "*.rst" ! -name "index.rst" | sort)
-            subdirs=$(find "$dir" -mindepth 1 -maxdepth 1 -type d)  # Find subdirectories within the directory
-            # If the directory contains any .rst files or subdirectories
-            if [ ! -z "$rst_files" ] || [ ! -z "$subdirs" ]; then
-              echo "Generating index.rst in $dir"
-              # Handle title for docs/man, all other subdirectories get their own titles
-              if [ "$dir" == "docs/man" ]; then
-                echo "General" > "$dir/index.rst"
-                echo "=======" >> "$dir/index.rst"
-                echo "" >> "$dir/index.rst"
-                echo ".. toctree::" >> "$dir/index.rst"
-                echo "   :maxdepth: 4" >> "$dir/index.rst"
-                echo "" >> "$dir/index.rst"
-                for rst_file in $rst_files; do
-                  base_name=$(basename "$rst_file" .rst)
-                  echo "   $base_name" >> "$dir/index.rst"
-                done
-              else
-                caption=$(basename "$dir" | sed 's/^\(\w\)/\U\1/')  # Capitalize first letter
-                echo "$caption" > "$dir/index.rst"    # Add title
-                echo "$(echo "$caption" | sed 's/./=/g')" >> "$dir/index.rst"  # Add underline
-                echo "" >> "$dir/index.rst"
-                echo ".. toctree::" >> "$dir/index.rst"
-                echo "   :maxdepth: 4" >> "$dir/index.rst"
-                echo "" >> "$dir/index.rst"
-
-                # List all .rst files in the subdirectory
-                for rst_file in $rst_files; do
-                  base_name=$(basename "$rst_file" .rst)
-                  echo "   $base_name" >> "$dir/index.rst"
-                done
-                # Add subdirectory index paths
-                for subdir in $subdirs; do
-                  subdir_name=$(basename "$subdir")
-                  echo "   $subdir_name/index" >> "$dir/index.rst"
-                done
-              fi
-            fi
-            # Recursively generate index.rst for subdirectories
-            for subdir in $subdirs; do
-              generate_index_rsts "$subdir"  # Recursively process subdirectories
-            done
-          }
-          # Start by generating index.rst for docs/man and all its subdirectories
-          generate_index_rsts "docs/man"
       - name: Commit and Push Changes
         run: |
           if [ -n "$(git status --porcelain)" ]; then

@@ -48,11 +48,6 @@ LDMS is a lightweight framework for collecting, aggregating, and transporting sy
    :caption: Man Pages
 
    man/index
-   man/ldmsd/index
-   man/sampler/index
-   man/store/index
-   man/contrib/index
-   man/third-plugins/index
 
 .. toctree::
    :maxdepth: 2
@@ -70,5 +65,5 @@ OVIS Subproject Github Repositories
 * `maestro <https://github.com/ovis-hpc/maestro>`_
 * `sos <https://github.com/ovis-hpc/sos>`_
 * `baler <https://github.com/ovis-hpc/baler>`_
-* `containers <https://github.com/ovis-hpc/ldms-containers`_
+* `containers <https://github.com/ovis-hpc/ldms-containers>`_
 * `ovis-publications <https://github.com/ovis-hpc/ovis-publications>`_
