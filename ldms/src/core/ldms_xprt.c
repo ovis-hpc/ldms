@@ -2895,7 +2895,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 #ifdef DEBUG
 	XPRT_LOG(x, OVIS_LDEBUG, "%s: lookup error while ldms_xprt is processing the rendezvous "
 			"with error %d. NOTE: error %d indicates that it is "
-			"a synchronous error of zap_read\n", inst_name, rc, EIO);
+			"a synchronous error of zap_read\n", inst_name->name, rc, EIO);
 #endif /* DEBUG */
 	if (ctxt->lu_req.cb)
 		ctxt->lu_req.cb(x, rc, 0, rc ? NULL : lset, ctxt->lu_req.cb_arg);

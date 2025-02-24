@@ -121,7 +121,7 @@ static void dlog_(const char *func, int line, char *fmt, ...)
 	va_start(ap, fmt);
 	vasprintf(&buf, fmt, ap);
 	va_end(ap);
-	ovis_log(zflog, OVIS_LDEBUG, "[%d] %d.%09d: %s:%d | %s", tid, ts.tv_sec, ts.tv_nsec, func, line, buf);
+	ovis_log(zflog, OVIS_LDEBUG, "[%d] %ld.%09ld: %s:%d | %s", tid, ts.tv_sec, ts.tv_nsec, func, line, buf);
 	free(buf);
 }
 #endif
