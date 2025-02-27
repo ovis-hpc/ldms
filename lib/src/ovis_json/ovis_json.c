@@ -726,22 +726,22 @@ size_t json_list_len(json_entity_t list)
 	return list->value.list_->item_count;
 }
 
-json_entity_t __dict_new(json_entity_t d, va_list ap);
-json_entity_t __attr_value_new(int type, va_list ap)
+json_entity_t __dict_new(json_entity_t d, va_list *ap);
+json_entity_t __attr_value_new(int type, va_list *ap)
 {
 	json_entity_t v, item;
 	switch (type) {
 	case JSON_BOOL_VALUE:
-		v = json_entity_new(type, va_arg(ap, int));
+		v = json_entity_new(type, va_arg(*ap, int));
 		break;
 	case JSON_FLOAT_VALUE:
-		v = json_entity_new(type, va_arg(ap, double));
+		v = json_entity_new(type, va_arg(*ap, double));
 		break;
 	case JSON_INT_VALUE:
-		v = json_entity_new(type, va_arg(ap, uint64_t));
+		v = json_entity_new(type, va_arg(*ap, uint64_t));
 		break;
 	case JSON_STRING_VALUE:
-		v = json_entity_new(type, va_arg(ap, char *));
+		v = json_entity_new(type, va_arg(*ap, char *));
 		break;
 	case JSON_DICT_VALUE:
 		v = __dict_new(NULL, ap);
@@ -750,11 +750,11 @@ json_entity_t __attr_value_new(int type, va_list ap)
 		v = json_entity_new(type);
 		if (!v)
 			return NULL;
-		type = va_arg(ap, int);
+		type = va_arg(*ap, int);
 		while (type >= 0) { /* -1 means the end of the ap list, -2 means the end of the list */
 			item = __attr_value_new(type, ap);
 			json_item_add(v, item);
-			type = va_arg(ap, int);
+			type = va_arg(*ap, int);
 		}
 		break;
 	case JSON_NULL_VALUE:
@@ -767,7 +767,7 @@ json_entity_t __attr_value_new(int type, va_list ap)
 	return v;
 }
 
-json_entity_t __dict_new(json_entity_t d_, va_list ap)
+json_entity_t __dict_new(json_entity_t d_, va_list *ap)
 {
 	json_entity_t d, v, a;
 	int type;
@@ -781,11 +781,11 @@ json_entity_t __dict_new(json_entity_t d_, va_list ap)
 			return NULL;
 	}
 
-	type = va_arg(ap, int);
+	type = va_arg(*ap, int);
 	while (type >= 0) {
 		switch (type) {
 		case JSON_ATTR_VALUE:
-			a = va_arg(ap, json_entity_t);
+			a = va_arg(*ap, json_entity_t);
 			__attr_add(d, a);
 			goto next;
 			break;
@@ -797,7 +797,7 @@ json_entity_t __dict_new(json_entity_t d_, va_list ap)
 		case JSON_STRING_VALUE:
 		case JSON_NULL_VALUE:
 			/* attribute name */
-			n = va_arg(ap, const char *);
+			n = va_arg(*ap, const char *);
 			/* attribute value */
 			v = __attr_value_new(type, ap);
 			if (!v)
@@ -808,7 +808,7 @@ json_entity_t __dict_new(json_entity_t d_, va_list ap)
 		}
 		json_attr_add(d, n, v);
 	next:
-		type = va_arg(ap, int); /* -1 means the end of variable list */
+		type = va_arg(*ap, int); /* -1 means the end of variable list */
 	}
 	return d;
 err:
@@ -821,7 +821,7 @@ json_entity_t json_dict_build(json_entity_t d, ...)
 	va_list ap;
 	json_entity_t obj;
 	va_start(ap, d);
-	obj = __dict_new(d, ap);
+	obj = __dict_new(d, &ap);
 	va_end(ap);
 	return obj;
 }
