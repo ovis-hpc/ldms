@@ -60,7 +60,7 @@ typedef struct aks_handle_s
 static const char *_help_str =
     "   config name=store_avro_kafka [path=JSON_FILE]\n"
     "       encoding=MODE"
-    "            MODE is one of JSON or AVRO (default)."
+    "            MODE is one of JSON or YYJSON or AVRO (default)."
     "       kafka_conf=PATH"
     "            Path to a file in Apache Kafka format containing key/value\n"
     "            pairs defining Kafka configuration properties. See\n"
@@ -887,7 +887,7 @@ static char *get_topic_name(aks_handle_t sh, ldms_set_t set, ldmsd_row_t row)
 			topic = str_cat_s(str, row->schema_name);
 			break;
 		case 'F': /* Format */
-			if (sh->encoding == AKS_ENCODING_JSON)
+            if (sh->encoding == AKS_ENCODING_JSON)
 				topic = str_cat_s(str, "json");
 			else
 				topic = str_cat_s(str, "avro");
@@ -1026,7 +1026,11 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 			break;
 		case AKS_ENCODING_JSON:
 			/* Encode row as a JSON text object */
+#ifdef HAVE_YYJSON
+			rc = ldmsd_row_to_json_object_yyjson(row, (char **)&ser_buf, &ser_size);
+#else
 			rc = ldmsd_row_to_json_object(row, (char **)&ser_buf, &ser_size);
+#endif
 			if (rc) {
 				LOG_ERROR("Failed to serialize row as JSON object, error: %d", rc);
 				goto skip_row_1;
