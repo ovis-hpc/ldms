@@ -207,7 +207,7 @@ err:
 	return rc;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 
@@ -233,7 +233,7 @@ err:
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int i;
 	int event_count;
@@ -266,7 +266,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	int papi_event_set;
 
@@ -290,7 +290,7 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(mylog);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name= " SAMP " " BASE_CONFIG_USAGE;
 }

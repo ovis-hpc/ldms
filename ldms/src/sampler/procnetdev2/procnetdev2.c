@@ -66,6 +66,7 @@
 #include <sys/time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "../sampler_base.h"
 
 #ifndef ARRAY_LEN
@@ -83,7 +84,7 @@ struct rec_metric_info {
 	int array_len;
 };
 
-#define MAXIFACE 32
+#define MAXIFACE 256
 #ifndef IFNAMSIZ
 /* from "linux/if.h" */
 #define IFNAMSIZ 16
@@ -110,38 +111,40 @@ struct ldms_metric_template_s rec_metrics[] = {
 	{0},
 };
 #define REC_METRICS_LEN (ARRAY_LEN(rec_metrics) - 1)
-static int rec_metric_ids[REC_METRICS_LEN];
-
 /*
  * Metrics/units references:
  * - linux/net/core/net-procfs.c
  * - linux/include/uapi/linux/if_link.h
  */
 
-
-static int rec_def_idx;
-static int netdev_list_mid;
-static size_t rec_heap_sz;
-
-static int niface = 0;
-//max number of interfaces we can include.
-static char iface[MAXIFACE][20];
-
 #define SAMP "procnetdev2"
-static FILE *mf = NULL;
-static base_data_t base;
+typedef struct procnetdev2_s {
+	int rec_def_idx;
+	int rec_metric_ids[REC_METRICS_LEN];
+	size_t rec_heap_sz;
+	size_t heap_sz;
+
+	int netdev_list_mid;
+
+	int ifcount;
+	char iface[MAXIFACE][20];
+	int excount;
+	char exclude[MAXIFACE][20];
+
+	FILE *mf;
+	base_data_t base;
+} *procnetdev2_t;
 
 static ovis_log_t mylog;
 
-static int create_metric_set(base_data_t base)
+static int create_metric_set(procnetdev2_t p, base_data_t base)
 {
 	ldms_schema_t schema;
-        ldms_record_t rec_def;
-	size_t heap_sz;
+	ldms_record_t rec_def;
 	int rc;
 
-	mf = fopen(procfile, "r");
-	if (!mf) {
+	p->mf = fopen(procfile, "r");
+	if (!p->mf) {
 		ovis_log(mylog, OVIS_LERROR, "Could not open " SAMP " file "
 				"'%s'...exiting\n",
 				procfile);
@@ -149,54 +152,56 @@ static int create_metric_set(base_data_t base)
 	}
 
 	/* Create a metric set of the required size */
-	schema = base_schema_new(base);
+	schema = base_schema_new(p->base);
 	if (!schema) {
 		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
-		       __FILE__, base->schema_name, errno);
+		       __FILE__, p->base->schema_name, errno);
 		rc = EINVAL;
 		goto err1;
 	}
 
 	/* Create netdev record definition */
-	rec_def = ldms_record_from_template("netdev", rec_metrics, rec_metric_ids);
-        if (!rec_def)
-                goto err2;
-	rec_heap_sz = ldms_record_heap_size_get(rec_def);
-	heap_sz = MAXIFACE * ldms_record_heap_size_get(rec_def);
+	rec_def = ldms_record_from_template("netdev", rec_metrics, p->rec_metric_ids);
+	if (!rec_def) {
+		rc = errno;
+		goto err2;
+	}
+	p->rec_heap_sz = ldms_record_heap_size_get(rec_def);
+	p->heap_sz = MAXIFACE * ldms_record_heap_size_get(rec_def);
 
 	/* Add record definition into the schema */
-	rec_def_idx = ldms_schema_record_add(schema, rec_def);
-	if (rec_def_idx < 0) {
-		rc = -rec_def_idx;
+	p->rec_def_idx = ldms_schema_record_add(schema, rec_def);
+	if (p->rec_def_idx < 0) {
+		rc = -p->rec_def_idx;
 		goto err3;
 	}
 
 	/* Add a list (of records) */
-	netdev_list_mid = ldms_schema_metric_list_add(schema, "netdev_list", NULL, heap_sz);
-	if (netdev_list_mid < 0) {
-		rc = -netdev_list_mid;
+	p->netdev_list_mid = ldms_schema_metric_list_add(schema, "netdev_list", NULL, p->heap_sz);
+	if (p->netdev_list_mid < 0) {
+		rc = -p->netdev_list_mid;
 		goto err2;
 	}
 
-	base_set_new(base);
-	if (!base->set) {
+	base_set_new(p->base);
+	if (!p->base->set) {
 		rc = errno;
 		goto err2;
 	}
 
 	return 0;
 err3:
-        /* Only manually delete rec_def when it has not yet been added
-           to the schema */
-        ldms_record_delete(rec_def);
+	/* Only manually delete rec_def when it has not yet been added
+	 * to the schema */
+	ldms_record_delete(rec_def);
 err2:
-        base_schema_delete(base);
-        base = NULL;
+	base_schema_delete(p->base);
+	p->base = NULL;
 err1:
-	if (mf)
-		fclose(mf);
-	mf = NULL;
+	if (p->mf)
+		fclose(p->mf);
+	p->mf = NULL;
 
 	return rc;
 }
@@ -210,7 +215,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	char *value;
 	int i;
 
-	char* deprecated[]={"set"};
+	char* deprecated[] = {"set"};
 
 	for (i = 0; i < ARRAY_LEN(deprecated); i++){
 		value = av_value(avl, deprecated[i]);
@@ -224,30 +229,33 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
-	return "config name=" SAMP " ifaces=<ifs>\n" \
+	return "config inst=NAME plugin=" SAMP " ifaces=IFS\n" \
 		BASE_CONFIG_USAGE \
 		"    <ifs>           A comma-separated list of interface names (e.g. eth0,eth1)\n"
 		"                    Order matters. All ifaces will be included\n"
 		"                    whether they exist of not up to a total of MAXIFACE\n";
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
+	procnetdev2_t p = ldmsd_plug_context_get(handle);
 	char* ifacelist = NULL;
-	char* pch = NULL;
-	char *saveptr = NULL;
+	char *exclude = NULL;
 	char *ivalue = NULL;
+	char *saveptr;
+	char *iface;
 	void *arg = NULL;
+	size_t ifcount;
+	size_t excount;
 	int rc;
 
 	rc = config_check(kwl, avl, arg);
-	if (rc != 0){
+	if (rc != 0)
 		return rc;
-	}
 
-	if (base) {
+	if (p->base) {
 		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
 		return EINVAL;
 	}
@@ -255,39 +263,63 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	/* process ifaces */
 	ivalue = av_value(avl, "ifaces");
 	if (!ivalue)
-		goto cfg;
-
+		goto process_exclude;
 	ifacelist = strdup(ivalue);
 	if (!ifacelist) {
+		ovis_log(mylog, OVIS_LCRIT, "Out of memory\n");
+		goto err;
+	}
+
+	/* Process interface list */
+	ifcount = 0;
+	iface = strtok_r(ifacelist, ",", &saveptr);
+	while (iface) {
+		if (ifcount >= (MAXIFACE)) {
+			ovis_log(mylog, OVIS_LERROR,
+				"Too many ifaces: <%s>\n", iface);
+			goto err;
+		}
+		strncpy(p->iface[ifcount++], iface, 20);
+		ovis_log(mylog, OVIS_LDEBUG,
+			"Added iface <%s>\n", iface);
+		iface = strtok_r(NULL, ",", &saveptr);
+	}
+	p->ifcount = ifcount;
+
+ process_exclude:
+	/* process excludes */
+	excount = 0;
+	ivalue = av_value(avl, "exclude");
+	if (!ivalue)
+		goto cfg;
+	exclude = strdup(ivalue);
+	if (!exclude) {
 		ovis_log(mylog, OVIS_LCRIT, "out of memory\n");
 		goto err;
 	}
-	pch = strtok_r(ifacelist, ",", &saveptr);
-	while (pch != NULL){
-		if (niface >= (MAXIFACE-1)) {
-			ovis_log(mylog, OVIS_LERROR, "too many ifaces: <%s>\n",
-				pch);
+	iface = strtok_r(exclude, ",", &saveptr);
+	excount = 0;
+	while (iface) {
+		if (excount >= (MAXIFACE)) {
+			ovis_log(mylog, OVIS_LERROR,
+				"Too many exclude: <%s>\n", ivalue);
 			goto err;
 		}
-		snprintf(iface[niface], 20, "%s", pch);
-		ovis_log(mylog, OVIS_LDEBUG, "added iface <%s>\n", iface[niface]);
-		niface++;
-		pch = strtok_r(NULL, ",", &saveptr);
+		strncpy(p->exclude[excount++], iface, 20);
+		ovis_log(mylog, OVIS_LDEBUG,
+			"Excluded iface <%s>\n", iface);
+		iface = strtok_r(NULL, ",", &saveptr);
 	}
-	free(ifacelist);
-	ifacelist = NULL;
-
-	if (niface == 0)
-		goto err;
+	p->excount = excount;
 
  cfg:
-	base = base_config(avl, SAMP, SAMP, mylog);
-	if (!base){
+	p->base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
+	if (!p->base){
 		rc = EINVAL;
 		goto err;
 	}
 
-	rc = create_metric_set(base);
+	rc = create_metric_set(p, p->base);
 	if (rc) {
 		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
@@ -298,13 +330,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
  err:
 	if (ifacelist)
 		free(ifacelist);
-	base_del(base);
+	base_del(p->base);
 	return rc;
 
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
+	procnetdev2_t p = ldmsd_plug_context_get(handle);
 	int rc;
 	char *s;
 	char lbuf[256];
@@ -312,35 +345,34 @@ static int sample(struct ldmsd_sampler *self)
 	union ldms_value v[REC_METRICS_LEN];
 	int i;
 	ldms_mval_t lh, rec_inst, name_mval;
-	size_t heap_sz;
 
-	if (!base) {
+	if (!p->base) {
 		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 
-	if (!mf)
-		mf = fopen(procfile, "r");
-	if (!mf) {
+	if (!p->mf)
+		p->mf = fopen(procfile, "r");
+	if (!p->mf) {
 		ovis_log(mylog, OVIS_LERROR, "Could not open /proc/net/dev file "
 				"'%s'...exiting\n", procfile);
 		return ENOENT;
 	}
 begin:
-	base_sample_begin(base);
+	base_sample_begin(p->base);
 
-	lh = ldms_metric_get(base->set, netdev_list_mid);
+	lh = ldms_metric_get(p->base->set, p->netdev_list_mid);
 
 	/* reset device data */
-	ldms_list_purge(base->set, lh);
+	ldms_list_purge(p->base->set, lh);
 
-	fseek(mf, 0, SEEK_SET); //seek should work if get to EOF
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	s = fgets(lbuf, sizeof(lbuf), mf);
+	fseek(p->mf, 0, SEEK_SET); //seek should work if get to EOF
+	s = fgets(lbuf, sizeof(lbuf), p->mf);
+	s = fgets(lbuf, sizeof(lbuf), p->mf);
 
 	/* data */
 	do {
-		s = fgets(lbuf, sizeof(lbuf), mf);
+		s = fgets(lbuf, sizeof(lbuf), p->mf);
 		if (!s)
 			break;
 
@@ -360,45 +392,55 @@ begin:
 				&v[11].v_u64, &v[12].v_u64, &v[13].v_u64,
 				&v[14].v_u64, &v[15].v_u64, &v[16].v_u64);
 		if (rc != 17){
-			ovis_log(mylog, OVIS_LINFO, "wrong number of "
-					"fields in sscanf\n");
+			ovis_log(mylog, OVIS_LINFO,
+				"wrong number of fields in sscanf\n");
 			continue;
 		}
 
-		if (niface) {
+		if (p->ifcount) {
 			/* ifaces list was given in config */
-			for (i = 0; i < niface; i++) {
-				if (strcmp(curriface, iface[i]) == 0)
+			for (i = 0; i < p->ifcount; i++) {
+				if (strcmp(curriface, p->iface[i]) == 0)
 					goto rec;
 			}
 			/* not in the ifaces list */
 			continue;
 		}
+
+		if (p->excount) {
+			/* exclude list was given in the config */
+			int excluded = 0;
+			for (i = 0; i < p->excount && !excluded; i++) {
+				if (0 == strcmp(curriface, p->exclude[i]))
+					excluded = 1;
+			}
+			if (excluded)
+				continue;
+		}
 	rec:
-		rec_inst = ldms_record_alloc(base->set, rec_def_idx);
+		rec_inst = ldms_record_alloc(p->base->set, p->rec_def_idx);
 		if (!rec_inst)
 			goto resize;
 		/* iface name */
-		name_mval = ldms_record_metric_get(rec_inst, rec_metric_ids[0]);
+		name_mval = ldms_record_metric_get(rec_inst, p->rec_metric_ids[0]);
 		snprintf(name_mval->a_char, IFNAMSIZ, "%s", curriface);
 		/* metrics */
 		for (i = 1; i < REC_METRICS_LEN; i++) {
-			ldms_record_set_u64(rec_inst, rec_metric_ids[i], v[i].v_u64);
+			ldms_record_set_u64(rec_inst, p->rec_metric_ids[i], v[i].v_u64);
 		}
-		ldms_list_append_record(base->set, lh, rec_inst);
+		ldms_list_append_record(p->base->set, lh, rec_inst);
 	} while (s);
 
-	base_sample_end(base);
+	base_sample_end(p->base);
 	return 0;
 resize:
 	/*
 	 * We intend to leave the set in the inconsistent state so that
 	 * the aggregators are aware that some metrics have not been newly sampled.
 	 */
-	heap_sz = ldms_set_heap_size_get(base->set) + 2*rec_heap_sz;
-	base_set_delete(base);
-	base_set_new_heap(base, heap_sz);
-	if (!base->set) {
+	base_set_delete(p->base);
+	base_set_new_heap(p->base, p->heap_sz);
+	if (!p->base->set) {
 		rc = errno;
 		ovis_log(mylog, OVIS_LCRITICAL, SAMP " : Failed to create a set with "
 						"a bigger heap. Error %d\n", rc);
@@ -408,39 +450,53 @@ resize:
 }
 
 
-static void term(struct ldmsd_plugin *self)
-{
-	if (mf)
-		fclose(mf);
-	mf = NULL;
-	base_set_delete(base);
-	base_del(base);
-	base = NULL;
-	if (mylog)
-		ovis_log_destroy(mylog);
+static int constructor(ldmsd_plug_handle_t handle) {
+        procnetdev2_t pnd;
+
+        /* FIXME error handling */
+        pnd = calloc(1, sizeof(*pnd));
+        if (!pnd) {
+                return ENOMEM;
+        }
+        ldmsd_plug_context_set(handle, pnd);
+
+        return 0;
 }
 
+static void destructor(ldmsd_plug_handle_t handle) {
+	procnetdev2_t pnd = ldmsd_plug_context_get(handle);
 
-static struct ldmsd_sampler procnetdev2_plugin = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-	},
+	if (pnd->mf) {
+		fclose(pnd->mf);
+		pnd->mf = NULL;
+	}
+	pnd->mf = NULL;
+	base_set_delete(pnd->base);
+	base_del(pnd->base);
+	pnd->base = NULL;
+
+        free(pnd);
+}
+
+static struct ldmsd_sampler procnetdev2_sampler = {
+        .base.name = SAMP,
+        .base.type = LDMSD_PLUGIN_SAMPLER,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
+        .base.config = config,
+        .base.usage = usage,
 	.sample = sample,
 };
 
 struct ldmsd_plugin *get_plugin()
 {
-	int rc;
-	base = NULL;
-	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+        /* FIXME - move to instance_init, and release in instance_fini
+           Or better yet, introduce plugin_init()/plugin_fini()...or maybe just add a "release_plugin"? */
 	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
+		mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+		if (!mylog)
+			ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+				"of '" SAMP "' plugin. Error %d\n", errno);
 	}
-	return &procnetdev2_plugin.base;
+	return &procnetdev2_sampler.base;
 }

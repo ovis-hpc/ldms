@@ -221,7 +221,7 @@ static int check_reply(amqp_rpc_reply_t r, const char *file, int line)
  *   user=<name>        The SASL user name, default is "guest"
  *   pwd=<password>     The SASL password, default is "guest"
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	amqp_inst_t ai;
@@ -397,7 +397,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return "Required key/values\n"
 		"   container=<name>   The unique storage container name.\n"
@@ -424,7 +424,7 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	amqp_inst_t ai;
@@ -497,11 +497,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	return rc;
 }
 
-static int flush_store(ldmsd_store_handle_t _sh)
-{
-	return 0;
-}
-
 static void _close_store(amqp_inst_t ai)
 {
 	amqp_channel_close(ai->conn, ai->channel, AMQP_REPLY_SUCCESS);
@@ -530,7 +525,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 	pthread_mutex_unlock(&cfg_lock);
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	struct rbn *rbn;
 	amqp_inst_t ai;
@@ -914,7 +909,6 @@ static struct ldmsd_store store_amqp = {
 	.open = open_store,
 	.get_context = get_ucontext,
 	.store = store,
-	.flush = flush_store,
 	.close = close_store,
 };
 

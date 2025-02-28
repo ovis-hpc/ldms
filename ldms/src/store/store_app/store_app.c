@@ -139,7 +139,7 @@ static sos_t create_container(store_app_cont_t cont)
 static void store_app_close(ldmsd_store_handle_t sh);
 
 static ldmsd_store_handle_t
-store_app_open(struct ldmsd_store *s, const char *container, const char *schema,
+store_app_open(ldmsd_plug_handle_t handle, const char *container, const char *schema,
 	       struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	/* Perform `open` operation */
@@ -569,14 +569,14 @@ Option descriptions:\n\
 ";
 
 static const char *
-store_app_usage(struct ldmsd_plugin * pi)
+store_app_usage(ldmsd_plug_handle_t handle)
 {
 	return _help;
 }
 
 static int
-store_app_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
-					    struct attr_value_list *avl)
+store_app_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
+                 struct attr_value_list *avl)
 {
 	int len;
 	char *val;
@@ -596,7 +596,7 @@ store_app_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	return 0;
 }
 
-static void store_app_term(struct ldmsd_plugin *p)
+static void store_app_term(ldmsd_plug_handle_t handle)
 {
 	if (mylog)
 		ovis_log_destroy(mylog);

@@ -63,20 +63,22 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 #define PROC_FILE "/proc/meminfo"
-
-static char *procfile = PROC_FILE;
-static ldms_set_t set = NULL;
-static FILE *mf = 0;
 #define SAMP "meminfo"
-static int metric_offset;
-static base_data_t base;
+
+typedef struct meminfo_s {
+	ldms_set_t set;
+	FILE *mf;
+	int metric_offset;
+	base_data_t base;
+} *meminfo_t;
 static ovis_log_t mylog;
 
 #define LBUFSZ 256
-static int create_metric_set(base_data_t base)
+static int create_metric_set(meminfo_t mi)
 {
 	ldms_schema_t schema;
 	int rc, i;
@@ -85,31 +87,31 @@ static int create_metric_set(base_data_t base)
 	char lbuf[LBUFSZ];
 	char metric_name[LBUFSZ];
 
-	mf = fopen(procfile, "r");
-	if (!mf) {
+	mi->mf = fopen(PROC_FILE, "r");
+	if (!mi->mf) {
 		ovis_log(mylog, OVIS_LERROR, "Could not open the " SAMP " file "
-				"'%s'...exiting sampler\n", procfile);
+				"'%s'...exiting sampler\n", PROC_FILE);
 		return ENOENT;
 	}
 
-	schema = base_schema_new(base);
+	schema = base_schema_new(mi->base);
 	if (!schema) {
 		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
-		       __FILE__, base->schema_name, errno);
+		       __FILE__, mi->base->schema_name, errno);
 		rc = errno;
 		goto err;
 	}
 
 	/* Location of first metric from proc/meminfo file */
-	metric_offset = ldms_schema_metric_count_get(schema);
+	mi->metric_offset = ldms_schema_metric_count_get(schema);
 
 	/*
 	 * Process the file to define all the metrics.
 	 */
-	fseek(mf, 0, SEEK_SET);
+	fseek(mi->mf, 0, SEEK_SET);
 	do {
-		s = fgets(lbuf, sizeof(lbuf), mf);
+		s = fgets(lbuf, sizeof(lbuf), mi->mf);
 		if (!s)
 			break;
 
@@ -130,8 +132,8 @@ static int create_metric_set(base_data_t base)
 		}
 	} while (s);
 
-	set = base_set_new(base);
-	if (!set) {
+	mi->set = base_set_new(mi->base);
+	if (!mi->set) {
 		rc = errno;
 		goto err;
 	}
@@ -139,9 +141,12 @@ static int create_metric_set(base_data_t base)
 	return 0;
 
  err:
-	if (mf)
-		fclose(mf);
-	mf = NULL;
+	if (schema)
+		base_schema_delete(mi->base);
+	if (mi->mf) {
+		fclose(mi->mf);
+		mi->mf = NULL;
+	}
 	return rc;
 }
 
@@ -167,18 +172,19 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
+	meminfo_t mi = ldmsd_plug_context_get(handle);
 	int rc;
 
-	if (set) {
+	if (mi->set) {
 		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
-		return EINVAL;
+		return EBUSY;
 	}
 
 	rc = config_check(kwl, avl, NULL);
@@ -186,25 +192,25 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	base = base_config(avl, SAMP, SAMP, mylog);
-	if (!base) {
+	mi->base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
+	if (!mi->base) {
 		rc = errno;
 		goto err;
 	}
 
-	rc = create_metric_set(base);
+	rc = create_metric_set(mi);
 	if (rc) {
 		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
 	return 0;
  err:
-	base_del(base);
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
+	meminfo_t mi = ldmsd_plug_context_get(handle);
 	int rc;
 	int metric_no;
 	char *s;
@@ -212,16 +218,16 @@ static int sample(struct ldmsd_sampler *self)
 	char metric_name[LBUFSZ];
 	union ldms_value v;
 
-	if (!set) {
+	if (!mi->set) {
 		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 
-	base_sample_begin(base);
-	metric_no = metric_offset;
-	fseek(mf, 0, SEEK_SET);
+	base_sample_begin(mi->base);
+	metric_no = mi->metric_offset;
+	fseek(mi->mf, 0, SEEK_SET);
 	do {
-		s = fgets(lbuf, sizeof(lbuf), mf);
+		s = fgets(lbuf, sizeof(lbuf), mi->mf);
 		if (!s)
 			break;
 		rc = sscanf(lbuf, "%s %"PRIu64, metric_name, &v.v_u64);
@@ -230,48 +236,67 @@ static int sample(struct ldmsd_sampler *self)
 			goto out;
 		}
 
-		ldms_metric_set(set, metric_no, &v);
+		ldms_metric_set(mi->set, metric_no, &v);
 		metric_no++;
 	} while (s);
  out:
-	base_sample_end(base);
+	base_sample_end(mi->base);
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
-	if (mf)
-		fclose(mf);
-	mf = NULL;
-	if (base)
-		base_del(base);
-	if (set)
-		ldms_set_delete(set);
+	meminfo_t mi = ldmsd_plug_context_get(handle);
+	if (mi->mf)
+		fclose(mi->mf);
+	if (mi->base)
+		base_del(mi->base);
+	if (mi->set)
+		ldms_set_delete(mi->set);
 	if (mylog)
 		ovis_log_destroy(mylog);
-	set = NULL;
+}
+
+
+static int constructor(ldmsd_plug_handle_t handle) {
+        meminfo_t mi;
+
+        mi = calloc(1, sizeof(*mi));
+        if (!mi) {
+                return ENOMEM;
+        }
+        ldmsd_plug_context_set(handle, mi);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle) {
+        meminfo_t mi = ldmsd_plug_context_get(handle);
+
+        free(mi);
 }
 
 static struct ldmsd_sampler meminfo_plugin = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-	},
+        .base.name = SAMP,
+	.base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.term = term,
+	.base.config = config,
+	.base.usage = usage,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
 	.sample = sample,
 };
 
 struct ldmsd_plugin *get_plugin()
 {
 	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
 	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
+		mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
+		if (!mylog) {
+			rc = errno;
+			ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
+					"of '" SAMP "' plugin. Error %d\n", rc);
+		}
 	}
-	set = NULL;
 	return &meminfo_plugin.base;
 }

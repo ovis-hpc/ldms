@@ -37,7 +37,7 @@
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+_ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
  * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
  * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
@@ -72,6 +72,7 @@
 #include <stdlib.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "tsampler.h"
 #include "timer_base.h"
 #include "ldms_jobid.h"
@@ -162,13 +163,11 @@ out:
 	return rc;
 }
 
-int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+int timer_base_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		      struct attr_value_list *avl, ovis_log_t mylog)
 {
-	struct timer_base *tb;
+	struct timer_base *tb = ldmsd_plug_api_get(handle);
 	int rc = 0;
-
-	tb = (void*)self;
 
 	tb->mylog = mylog;
 
@@ -231,15 +230,17 @@ int timer_base_create_set(struct timer_base *tb)
 
 void timer_base_cleanup(struct timer_base *tb);
 
-void timer_base_term(struct ldmsd_plugin *self)
+void timer_base_term(ldmsd_plug_handle_t handle)
 {
+	struct timer_base *tb = ldmsd_plug_api_get(handle);
+
 	/* remove all timers when we terminate */
-	timer_base_cleanup((void*)self);
+	timer_base_cleanup(tb);
 }
 
-int timer_base_sample(struct ldmsd_sampler *self)
+int timer_base_sample(ldmsd_plug_handle_t handle)
 {
-	struct timer_base *tb = (void*)self;
+	struct timer_base *tb = ldmsd_plug_api_get(handle);
 	int rc = 0;
 	struct tsampler_timer_entry *ent;
 
@@ -282,7 +283,7 @@ out:
 	return rc;
 }
 
-const char *timer_base_usage(struct ldmsd_plugin *self)
+const char *timer_base_usage(ldmsd_plug_handle_t handle)
 {
 	return "timer_base is a base-class sampler that cannot be used by itself.";
 }
@@ -313,7 +314,7 @@ void timer_base_cleanup(struct timer_base *tb)
 }
 
 static
-int __config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+int __config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 struct attr_value_list *avl)
 {
 	assert(0 == "ERROR timer_base.config() not overridden.");

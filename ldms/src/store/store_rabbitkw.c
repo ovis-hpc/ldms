@@ -392,7 +392,7 @@ fail:
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	ovis_log(mylog, OVIS_LDEBUG, STOR ": config start.\n");
 	char *value;
@@ -584,7 +584,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	/* What contract is this supposed to meet. Shall close(sh) have
 	been called for all existing sh already before this is reached.?
@@ -593,7 +593,7 @@ static void term(struct ldmsd_plugin *self)
 		ovis_log_destroy(mylog);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return
 	"    config name=store_rabbitkw routing_key=<route> host=<host> port=<port> exchange=<exch> \\ \n"
@@ -923,7 +923,7 @@ void destroy_store(struct rabbitkw_store_instance *si)
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
            struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct rabbitkw_store_instance *si;
@@ -952,7 +952,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		si->key = key;
 		si->extraprops = g_extraprops;
 		si->ucontext = ucontext;
-		si->store = s;
+		si->store = (struct ldmsd_store *)context;
 		si->routingkey = strdup(routing_key_path);
 		si->container = strdup(container);
 		si->schema = strdup(schema);
@@ -1091,13 +1091,6 @@ estr:
 
 }
 
-static int flush_store(ldmsd_store_handle_t _sh)
-{
-	(void)_sh;
-	return 0;
-}
-
-
 static void close_store(ldmsd_store_handle_t _sh)
 {
 	pthread_mutex_lock(&cfg_lock);
@@ -1128,7 +1121,6 @@ static struct ldmsd_store store_rabbitkw = {
 	.open = open_store,
 	.get_context = get_ucontext,
 	.store = store,
-	.flush = flush_store,
 	.close = close_store,
 };
 
