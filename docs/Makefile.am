@@ -16,7 +16,12 @@ categorize_man_pages = $(shell for man in $(MAN_FILES); do \
 	fi; \
 done)
 
-# convert to man, fix generated "/" after every special characer and remove any unnecessary rst2man output.
+# 1. Remove :ref:`<>` links in .rst to avoid rs2man "Unkown interpretd text role "ref"" errors
+# 	Ex: :ref:`ldms_quickstart(7) <ldms_quickstart>` --> ldms_quickstart(7).
+# 2. Remove generated "/" after every special character.
+# 	Ex: \fB\-a,\fP\fI\-\-default_auth\fP --> \fB-a,\fP\fI--default_auth\fP
+# 3. Remove lines with unnecessary rst2man output.
+# 	Ex: .de1 rstReportMargin, \\$1 \\n[an-margin], level \\n[rst2man-indent-level], .de1 INDENT,. RS \\$1, .de UNINDENT
 %.man: %.rst
 	@echo "Generating $@..."
 	@mkdir -p $(dir $@)
@@ -28,7 +33,7 @@ done)
 		-e '/an-margin/d' \
 		-e '/INDENT/d' > $@
 
-# Create ldms-idx page listing  all available manpages.
+# Create ldms-idx page listing all available manpages.
 $(MAN_IDX):
 	@echo "Generating $@..."
 	@echo ".TH ldms-idx" > $@
@@ -43,9 +48,10 @@ $(MAN_IDX):
 		echo $$([ -n "$$section" ] && echo "\\fB$$name($$section)\\fR" || echo "\\fB$$name(7)\\fR") >> $@; \
 	done
 
-EXTRA_DIST += $(RST_FILES)
-dist_man1_MANS = $(call categorize_man_pages,1)
-dist_man8_MANS = $(call categorize_man_pages,8)
-dist_man7_MANS = $(call categorize_man_pages,7) $(MAN_IDX)
+man1_MANS = $(call categorize_man_pages,1)
+man8_MANS = $(call categorize_man_pages,8)
+man7_MANS = $(call categorize_man_pages,7) $(MAN_IDX)
 
 endif
+
+EXTRA_DIST += $(RST_FILES)
