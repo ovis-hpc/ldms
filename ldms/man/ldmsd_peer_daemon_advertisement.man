@@ -16,7 +16,7 @@ ldmsd_peer_daemon_advertisement - Manual for LDMSD Peer Daemon Advertisement
 
 .IP \fBadvertiser_start
 .RI "name=" NAME
-.RI "[xprt=" XPRT " host=" HOST " port=" PORT " auth=" AUTH_DOMAIN " reconnect=" RECONNECT "]"
+.RI "[xprt=" XPRT "] [host=" HOST "] [port=" PORT "] [auth=" AUTH_DOMAIN "] [reconnect=" RECONNECT "]"
 
 .IP \fBadvertiser_stop
 .RI "name=" NAME
@@ -32,7 +32,11 @@ ldmsd_peer_daemon_advertisement - Manual for LDMSD Peer Daemon Advertisement
 
 .IP \fBprdcr_listen_add
 .RI "name=" NAME "
-.RI "[disable_start=" TURE|FALSE "] [regex=" REGEX "] [ip=" CIDR "]"
+.RI "[regex=" REGEX "] [ip=" CIDR "]"
+.RI "[disable_start=" TRUE|FALSE "]"
+.RI "[quota=" QUOTA "] [rx_rate=" RX_RATE "] [type=" passive|active "]"
+.RI "[advertiser_port=" PORT "] [advertiser_xprt=" XPRT "] [advertiser_auth" AUTH_DOM "] [rails=" RAILS "]"
+.RI "[reconnect=" INTERVAL "]"
 
 .IP \fBprdcr_listen_start
 .RI "name=" NAME
@@ -48,14 +52,22 @@ ldmsd_peer_daemon_advertisement - Manual for LDMSD Peer Daemon Advertisement
 .SH DESCRIPTION
 
 LDMSD Peer Daemon Advertisement is a capability that enables LDMSD to
-automatically add producers for advertisers whose hostname matches a regular
+automatically add producers for advertising peers whose hostname matches a regular
 expression or whose IP address is in a range. The feature reduces the need for
 manual configuration of producers in configuration files.
 
-Admins specify the aggregator's hostname and listening port in the peer's
+LDMSD supports two types of advertised producers: passive and active. In
+passive mode (default), the aggregator accepts connections from advertising
+peers for data transfer. In active mode, after receiving an advertisement from
+a peer, the aggregator initiates a separate connection to the advertising peer using
+specified transport parameters (port, authentication, rail size, etc.).  Active
+mode enables administrators to control data transfer resouces through rail size
+configuration and separate data transfer from communication channels.
+
+Administrators specify the aggregator's hostname and listening port in the peer's
 configuration via the \fBadvertiser_add\fR command and start the advertisement
 with the \fBadvertiser_start\fR command. The peer daemon advertises their
-hostname to the aggregator. On the aggregator, admins specify a regular
+hostname to the aggregator. On the aggregator, administrators specify a regular
 expression to be matched with the peer hostname or an IP range that the peer IP
 address falls in via the \fBprdcr_listen_add\fR command. The
 \fBprdcr_listen_start\fR command is used to tell the aggregator to
@@ -71,7 +83,8 @@ advertised producers, unless the 'disable_start' attribute is given on the
 \fBprdcr_listen_add\fR line. The advertised producers need to be stopped
 manually by using the command \fBprdcr_stop\fR or \fBprdcr_stop_regex\fR. They
 can be restarted by using the command \fBprdcr_start\fR or
-\fBprdcr_start_regex\fR.
+\fBprdcr_start_regex\fR. If type=active is specified at \fBprdcr_listen_add\fR
+line, the advertised producers will behave as active producers.
 
 The description for each command and its parameters are as follows.
 
@@ -135,13 +148,31 @@ Advertiser name
 \fBprdcr_listen_add\fR adds a prdcr_listen. The parameters are:
 .RS
 .IP \fBname\fR=\fINAME
-String of the prdcr_listen name.
-.IP \fB[disable_start\fR=\fITRUE|FALSE\fB]
-True to tell LDMSD not to start producers automatically
+String of the prdcr_listen name
+.IP \fB[type\fR=\fIpassive|active\fB]
+Type of advertised producers. Default is passive.
+
+- passive: aggregator accepts connections from advertising peers
+
+- active: upon receiving an advertisement, aggregator initiates a separate connection back to the advertising peer. Requires advertiser_xprt, advertiser_port, reconnect parameters, and authentication domain if it is used
 .IP \fB[regex\fR=\fIREGEX\fB]
 Regular expression to match with hostnames of peer daemons
 .IP \fB[ip\fR=\fICIDR\fB]
 IP Range in the CIDR format either in IPV4
+.IP \fB[quota\fR=\fIQUOTA\fB
+Controls the amount of data that can be received on connections from advertising peers. Functions like the quota parameter in prdcr_add. If not specified, defaults to the value set by the --quota option when starting the LDMS daemon. If neither --quota nor this parameter is specified, there is no limit on receive quota.
+.IP \fB[rx_rate=RX_RATE\fB]
+Controls the rate of data received (in bytes/second) on connections from advertising peers. Functions like the rx_rate parameter in prdcr_add. Unluck quota which limits total received data, rx_rate limits the data flow per second. If not specified, the receive rate is unlimited
+.IP \fB[disable_start\fR=\fITRUE|FALSE\fB]
+True to tell LDMSD not to start producers automatically
+.IP \fB[advertiser_port=PORT\fB]
+Port number of the advertising peer to connect to. Functions like the port parameter in prdcr_add. Required when type=active
+.IP \fB[advertiser_xprt=XPRT\fB]
+Transport type to use when connecting to advertising peers. Functions like the xprt in prdcr_add. Required when type=active
+.IP \fB[advertiser_auth=AUTH_DOM\fB]
+Authentication domain for connections to advertising peers. Functions like the auth in prdcr_add. If it is omitted when type=active, the default authentication is used to connect to advertising peers
+.IP \fB[reconnect=INTERVAL\fB]
+Reconnection Interval. Functions like the reconnect in prdcr_add. Required when type=active
 .RE
 
 \fBprdcr_listen_start\fR starts accepting peer advertisement with matches hostnames. The parameters are:
@@ -167,7 +198,7 @@ Name of prdcr_listen to be deleted
 .SH EXAMPLE
 
 In this example, there are three LDMS daemons running on \fBnode-1\fR,
-\fBnode-2\fR, and \fBnode03\fR. LDMSD running on \fBnode-1\fR and \fBnode-2\fR
+\fBnode-2\fR, and \fBnode-3\fR. LDMSD running on \fBnode-1\fR and \fBnode-2\fR
 are sampler daemons, namely \fBsamplerd-1\fR and \fBsamplerd-2\fR. The
 aggregator (\fBagg11\fR) runs on \fBnode-3\fR. All LDMSD listen on port 411.
 
@@ -243,11 +274,124 @@ the list of auto-added producers corresponding to each prdcr_listen object.
 > ldmsd_controller -x sock -p 411 -h node-3
 Welcome to the LDMSD control processor
 sock:node-3:411> prdcr_listen_status
-Name                 State      Regex           IP Range
--------------------- ---------- --------------- ------------------------------
-computes             running    node-[1-2]      -
+Name                 State      Type     IP Range                       Regex
+-------------------- ---------- -------- ------------------------------ --------------------
+computes             running    passive  -                              node-[1-2]
+    Connect config: None
 Producers: node-1:411, node-2:411
+
 sock:node-3:411>
+.EE
+
+Below is an example of prdcr_status output of advertised producers. The example
+uses the --cmd cmd-line option to provide the prdcr_status command at the start
+line instead of starting an interactive session.
+
+.EX
+.B
+> ldmsd_controller -x sock -p 411 -h node-3 --cmd 'prdcr_status'
+Name             Host             Port         Transport    auth             State        Type
+---------------- ---------------- ------------ ------------ ---------------- ------------ --------------------
+node-1:10001     node-1                  42210 sock         DEFAULT          CONNECTED    advertised, passive
+    samplerd-1/meminfo meminfo          READY
+    samplerd-1/procnetdev2 procnetdev2      READY
+node-2:10001     node-2                  42212 sock         DEFAULT          CONNECTED    advertised, passive
+    samplerd-2/meminfo meminfo          READY
+    samplerd-2/procnetdev2 procnetdev2      READY
+.EE
+
+Active Mode Example:
+
+This example demonstrates how to configure active mode producers where the
+aggregator initiates the connection request upon receiving an advertisement
+from advertising peers. The configuration shows how to set up multiple rails
+for enhanced data transfer performance and how to separate the configuration
+channel from the data channel using different port. The sampler daemons run on
+\fBnode-1\fR and \fBnode-2\fR. The aggregator runs on \fBnode-3\fR.
+
+.EX
+.B
+> cat samplerd-1.conf
+.RS 4
+# Set up the default authentication domain
+default_auth plugin=munge
+# Listen on port 411 for configuration using the default authentication
+listen port=411 xprt=sock
+# Listen on port 412 for data using the default authentication
+listen port=412 xprt=sock
+# Add and start an advertisement
+advertiser_add name=agg11 xprt=sock host=node-3 port=411 reconnect=10s
+advertiser_start name=agg11
+# Load, configure, and start the meminfo plugin
+load name=meminfo
+config name=meminfo producer=samplerd-1 instance=samplerd-1/meminfo
+start name=meminfo interval=1s
+.RE
+
+.B
+> cat samplerd-2.conf
+.RS 4
+# Set up the default authentication domain
+default_auth plugin=munge
+# Listen on port 411 for configuration using the default authentication
+listen port=411 xprt=sock
+# Listen on port 412 for data using the default authentication
+listen port=412 xprt=sock
+# Add and start an advertisement
+advertiser_add name=agg11 xprt=sock host=node-3 port=411 reconnect=10s
+advertiser_start name=agg11
+# Load, configure, and start the meminfo plugin
+load name=meminfo
+config name=meminfo producer=samplerd-2 instance=samplerd-2/meminfo
+start name=meminfo interval=1s
+.RE
+
+.B
+> cat agg.conf
+.RS 4
+# Set up the default authentication domain
+default_auth plugin=munge
+# Listen on port 411 for configuration using the default authentication
+listen port=411 xprt=sock
+# Listen on port 412 for data using the default authentication
+listen port=412 xprt=sock
+# Accept advertisements and create active producers connecting to the data port
+# 412 using the default authentication
+prdcr_listen_add name=computes type=active regex=node-[1-2] advertiser_port=412 advertiser_xprt=sock rail=4 reconnect=1m
+prdcr_listen_start name=computes
+.RE
+.EE
+
+.EX
+.B
+> ldmsd_controller -x sock -p 411 -h node-3 -a munge
+Welcome to the LDMSD control processor
+sock:node-3:411> prdcr_listen_status
+Name                 State      Type     IP Range                       Regex
+-------------------- ---------- -------- ------------------------------ --------------------
+computes             running    active   -                              node-[1-2]
+    Connect config: xprt=sock port=412 reconnect=1m rail=4
+Producers: node-1:411, node-2:411
+
+sock:node-3:411>
+.EE
+
+Below is an example of prdcr_status output of advertised producers. Note that
+the port numbers in the Port column is the port the advertised producers send a
+connection request to the peers, which are the port the sampler daemons open
+for data transfer.
+
+.EX
+.B
+> ldmsd_controller -x sock -p 411 -h node-3 -a munge --cmd 'prdcr_status'
+Name             Host             Port         Transport    auth             State        Type
+---------------- ---------------- ------------ ------------ ---------------- ------------ --------------------
+node-1:10001     node-1                    412 sock         DEFAULT          CONNECTED    advertised, active
+    samplerd-1/meminfo meminfo          READY
+    samplerd-1/procnetdev2 procnetdev2      READY
+node-2:10001     node-2                    412 sock         DEFAULT          CONNECTED    advertised, active
+    samplerd-2/meminfo meminfo          READY
+    samplerd-2/procnetdev2 procnetdev2      READY
 .EE
 
 .SH SEE ALSO

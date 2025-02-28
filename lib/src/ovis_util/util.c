@@ -641,6 +641,34 @@ int ovis_time_str2us(const char *s, long *v)
 	return 0;
 }
 
+void ovis_time_us2str(long time_us, char *output, size_t output_sz)
+{
+	if (time_us >= 86400000000L) {
+		/* Days */
+		long days = time_us / 86400000000L;
+		snprintf(output, output_sz, "%ldd", days);
+	} else if (time_us >= 3600000000L) {
+		/* Hours */
+		long hours = time_us / 3600000000L;
+		snprintf(output, output_sz, "%ldh", hours);
+	} else if (time_us >= 60000000L) {
+		/* Minutes */
+		long minutes = time_us / 60000000L;
+		snprintf(output, output_sz, "%ldm", minutes);
+	} else if (time_us >= 1000000L) {
+		/* Seconds */
+		long seconds = time_us / 1000000L;
+		snprintf(output, output_sz, "%lds", seconds);
+	} else if (time_us >= 1000L) {
+		/* Milliseconds */
+		long milliseconds = time_us / 1000L;
+		snprintf(output, output_sz, "%ldms", milliseconds);
+	} else {
+		/* Microseconds */
+		snprintf(output, output_sz, "%ldus", time_us);
+	}
+}
+
 pid_t ovis_execute(const char *command)
 {
 	char *argv[] = {"/bin/sh", "-c", (char*)command, NULL};

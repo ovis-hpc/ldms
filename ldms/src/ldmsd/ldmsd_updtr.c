@@ -1368,10 +1368,6 @@ int __ldmsd_updtr_prdcr_add(ldmsd_updtr_t updtr, ldmsd_prdcr_t prdcr)
 	ldmsd_prdcr_ref_t ref;
 
 	ldmsd_updtr_lock(updtr);
-//	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-//		rc = EBUSY;
-//		goto out;
-//	}
 	ref = prdcr_ref_find(updtr, prdcr->obj.name);
 	if (ref) {
 		rc = EEXIST;
