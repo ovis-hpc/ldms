@@ -142,15 +142,17 @@ static void ref_dump_no_lock(ref_t r, const char *name, FILE *f)
 	fprintf(f, "... %s: ref %p free_fn %p free_arg %p ...\n",
 		name, r, r->free_fn, r->free_arg);
 	fprintf(f,
-		"%-16s %-8s %-32s %-32s\n", "Name", "Count", "Get Loc", "Put Loc");
+		"%-16s %-8s %-32s %-32s\n", "Name", "Count",
+		"Get Line:Func", "Put Line:Func");
 	fprintf(stderr,
-		"---------------- -------- -------------------------------- "
-		"--------------------------------\n");
+		"---------------- -------- --------------------------------- "
+		"---------------------------------\n");
 	LIST_FOREACH(inst, &r->head, entry) {
 		fprintf(f,
-			"%-16s %8d %-23s/%8d %-23s/%8d\n",
-			inst->name, inst->ref_count, inst->get_func, inst->get_line,
-			inst->put_func, inst->put_line);
+			"%-16s %8d %6d:%-23s %6d:%-23s\n",
+			inst->name, inst->ref_count,
+			inst->get_line, inst->get_func,
+			inst->put_line, inst->put_func);
 	}
 	fprintf(f, "%16s %8d\n", "Total", r->ref_count);
 #endif

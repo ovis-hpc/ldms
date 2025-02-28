@@ -193,7 +193,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	base= base_config(avl, SAMP, SAMP, mylog);
+	base= base_config(avl, self->cfg_name, SAMP, mylog);
 	if (!base)
 		goto err;
 
