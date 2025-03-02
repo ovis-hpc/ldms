@@ -493,13 +493,10 @@ static void sx_term(struct ldmsd_plugin *self)
 			ldms_set_delete(sx_ldms_sets[port].sx_set);
 		sx_ldms_sets[port].sx_set = NULL;
 	}
-
 	if (sx_schema != NULL) {
 		ldms_schema_delete(sx_schema);
 		sx_schema = NULL;
 	}
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)

@@ -222,8 +222,6 @@ static void term(struct ldmsd_plugin *self)
 	pool_targets_destroy();
 	pools_destroy();
 	pool_target_schema_fini();
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)

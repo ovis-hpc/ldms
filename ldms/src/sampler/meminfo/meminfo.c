@@ -252,8 +252,6 @@ static void term(struct ldmsd_plugin *self)
 		base_del(mi->base);
 	if (mi->set)
 		ldms_set_delete(mi->set);
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler meminfo_plugin = {

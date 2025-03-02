@@ -462,31 +462,6 @@ static void term(struct ldmsd_plugin *self)
 	p->base = NULL;
 }
 
-#if 0
-static void __procnetdev2_del(struct ldmsd_cfgobj *self)
-{
-	procnetdev2_t p = (void*)self;
-	free(p);
-}
-
-static void __once()
-{
-	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-	pthread_mutex_lock(&mutex);
-	if (mylog)
-		goto out;
-	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	return &procnetdev2_plugin.base;
-}
-#endif
-
-
-
 static struct ldmsd_sampler procnetdev2_sampler = {
 	.base = {
 		.name = SAMP,

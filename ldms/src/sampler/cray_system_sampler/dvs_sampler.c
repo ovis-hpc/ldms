@@ -712,8 +712,6 @@ static void term(struct ldmsd_plugin *self)
 	free(cfgmetrics);
 	cfgmetrics = NULL;
 	num_cfgmetrics = 0;
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler dvs_plugin = {

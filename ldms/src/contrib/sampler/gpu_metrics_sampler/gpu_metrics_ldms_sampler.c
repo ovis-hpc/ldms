@@ -332,8 +332,6 @@ static void term(struct ldmsd_plugin *self) {
     free_base();
     free_set();
     free_schema();
-    if (__gpu_metrics_log)
-	    ovis_log_destroy(__gpu_metrics_log);
 }
 
 /**

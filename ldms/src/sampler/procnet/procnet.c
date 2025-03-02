@@ -471,8 +471,6 @@ static void term(struct ldmsd_plugin *self)
 	procnet_reset();
 	termed = 1;
 	pthread_mutex_unlock(&cfg_lock);
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler procnet_plugin = {

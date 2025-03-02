@@ -940,8 +940,6 @@ static void term(struct ldmsd_plugin *self)
 		ldms_stream_close(stream_client);
 		stream_client = NULL;
 	}
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler papi_sampler = {

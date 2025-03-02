@@ -249,8 +249,6 @@ static void term(struct ldmsd_plugin *self)
 	mdts_destroy();
 	mdt_general_schema_fini();
 	mdt_job_stats_schema_fini();
-	if (luster_mdt_log)
-		ovis_log_destroy(luster_mdt_log);
 }
 
 static const char *usage(struct ldmsd_plugin *self)

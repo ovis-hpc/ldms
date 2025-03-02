@@ -1946,8 +1946,6 @@ static void term(struct ldmsd_plugin *self)
 		LIST_REMOVE(ts_stream, entry);
 		__stream_free(ts_stream);
 	}
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)

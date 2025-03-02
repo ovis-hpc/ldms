@@ -354,8 +354,6 @@ static void term(struct ldmsd_plugin *self)
 	schema = NULL;
 	free(schema_name);
 	free(producer_name);
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler variable_plugin = {

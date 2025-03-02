@@ -116,8 +116,6 @@ static void term_ibnet(struct ldmsd_plugin *self)
 		free(usage);
 		usage = NULL;
 	}
-	if (mylog)
-		ovis_log_destroy(mylog);
 	pthread_mutex_unlock(&only_lock);
 }
 

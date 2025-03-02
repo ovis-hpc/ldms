@@ -413,8 +413,6 @@ static void term(struct ldmsd_plugin *self)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 	if (root_path)
 		free(root_path);
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_plugin kokkos_store = {

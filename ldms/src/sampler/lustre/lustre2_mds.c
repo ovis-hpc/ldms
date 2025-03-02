@@ -241,8 +241,6 @@ static void term(struct ldmsd_plugin *self)
 	if (base)
 		base_del(base);
 	base = NULL;
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 /**

@@ -688,8 +688,6 @@ static void term(struct ldmsd_plugin *self)
 	if (softirq_set)
 		ldms_set_delete(softirq_set);
 	set = NULL;
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler procstat2_plugin = {

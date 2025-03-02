@@ -94,8 +94,6 @@ static
 void hfclock_term(struct ldmsd_plugin *self)
 {
 	hfclock_cleanup((void*)self);
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static

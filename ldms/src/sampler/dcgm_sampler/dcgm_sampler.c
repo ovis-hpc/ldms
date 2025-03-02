@@ -638,11 +638,6 @@ static void term(struct ldmsd_plugin *self)
         dcgm_fini();
 	free(field_help);
 	field_help = NULL;
-	if (mylog) {
-		ovis_log_destroy(mylog);
-		mylog = NULL;
-	}
-
 }
 
 static const char *usage(struct ldmsd_plugin *self)

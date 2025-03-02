@@ -249,8 +249,6 @@ static void term(struct ldmsd_plugin *self)
 		tsets[i].metric_offset = 0;
 	}
 	num_sets = 0;
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler tutorial_sampler_plugin = {

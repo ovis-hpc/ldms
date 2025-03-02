@@ -653,8 +653,6 @@ term(struct ldmsd_plugin *self)
 		syspapi_client = NULL;
 	}
 	PAPI_shutdown();
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 /* syspapi_mutex is held */

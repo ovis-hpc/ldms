@@ -276,8 +276,6 @@ static void term(struct ldmsd_plugin *self)
 		rd_kafka_conf_destroy(common_rconf);
 		common_rconf = NULL;
 	}
-	if (mylog)
-		ovis_log_destroy(mylog);
 	pthread_mutex_unlock(&sk_lock);
 }
 

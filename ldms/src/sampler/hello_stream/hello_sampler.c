@@ -132,8 +132,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 static void term(struct ldmsd_plugin *self)
 {
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler hello_sampler = {

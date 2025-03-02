@@ -240,8 +240,6 @@ static void term(struct ldmsd_plugin *self)
 	base_set_delete(sampler_base);
 	base_del(sampler_base);
 	sampler_base = NULL;
-        if (mylog)
-		ovis_log_destroy(mylog);
 
 }
 
