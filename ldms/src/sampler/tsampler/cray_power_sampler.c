@@ -135,8 +135,6 @@ static
 void cray_power_sampler_term(struct ldmsd_plugin *self)
 {
 	cray_power_sampler_cleanup((void*)self);
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static

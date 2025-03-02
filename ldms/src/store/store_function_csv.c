@@ -1208,8 +1208,6 @@ static void term(struct ldmsd_plugin *self)
 		free(root_path);
 	if (derivedconf)
 		free(derivedconf);
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)

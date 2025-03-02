@@ -4005,8 +4005,6 @@ void linux_proc_sampler_term(struct ldmsd_plugin *pi)
 	if (inst->fd_use_regex)
 		regfree(&(inst->fd_regex));
 	free(tmp);
-	if (inst->mylog)
-		ovis_log_destroy(inst->mylog);
 }
 
 static int

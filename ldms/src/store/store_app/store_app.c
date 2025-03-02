@@ -598,8 +598,6 @@ store_app_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 static void store_app_term(struct ldmsd_plugin *p)
 {
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static void *store_app_get_ucontext(ldmsd_store_handle_t _sh)

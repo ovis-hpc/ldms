@@ -979,8 +979,6 @@ static void term(struct ldmsd_plugin *self)
 		ldms_set_delete(job_set);
 	}
 	job_set = NULL;
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler slurm_sampler = {

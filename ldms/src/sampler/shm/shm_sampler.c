@@ -994,8 +994,6 @@ static void term(struct ldmsd_plugin *self)
 	}
 	ldms_shm_clear_index(box_cache.index);
 	clear_box_cache();
-	if (mylog)
-		ovis_log_destroy(mylog);
 	ovis_log(mylog, OVIS_LINFO, SAMP " was successfully terminated\n");
 }
 

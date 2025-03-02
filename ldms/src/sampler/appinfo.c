@@ -465,8 +465,6 @@ static void term(struct ldmsd_plugin *self)
 	shm_unlink(shmem_name);
 	sem_unlink(sem_name);
 	ovis_log(mylog, OVIS_LDEBUG, "Done terminating.\n");
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 /**

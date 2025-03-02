@@ -766,8 +766,6 @@ static void term(struct ldmsd_plugin *self)
 	metrics_tree_destroy();
 	ibmad_schema_destroy();
 	free(conf.schema_name);
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)

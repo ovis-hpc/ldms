@@ -487,8 +487,6 @@ static void sx_term(struct ldmsd_plugin *self)
 		ldms_schema_delete(sx_schema);
 		sx_schema = NULL;
 	}
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)

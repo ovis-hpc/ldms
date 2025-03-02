@@ -586,8 +586,6 @@ static void term(struct ldmsd_plugin *self)
 			ldms_set_delete(set[i]);
 		set[i] = NULL;
 	}
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static int sample(struct ldmsd_sampler *self)

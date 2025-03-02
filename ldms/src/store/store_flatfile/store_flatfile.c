@@ -131,8 +131,6 @@ static void term(struct ldmsd_plugin *self)
 	 * TODO: Iterate through all unclosed stores and cleanup resources
 	 * and close any open files.
 	 */
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)

@@ -1655,8 +1655,6 @@ void app_sampler_term(struct ldmsd_plugin *pi)
 	bzero(inst->fn, sizeof(inst->fn));
 	inst->n_fn = 0;
 	bzero(inst->metric_idx, sizeof(inst->metric_idx));
-	if (inst->mylog)
-		ovis_log_destroy(inst->mylog);
 }
 
 static int

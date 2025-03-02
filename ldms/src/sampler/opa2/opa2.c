@@ -553,8 +553,6 @@ static void SAPI(term)(struct ldmsd_plugin *self)
 		base_del(cfg_base);
 		cfg_base = NULL;
 	}
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler SAPI(plugin) = {

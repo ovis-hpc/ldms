@@ -559,8 +559,6 @@ static void term(struct ldmsd_plugin *self)
 		ldms_geopm_sampler_reset();
 	}
 	g_set = NULL;
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 

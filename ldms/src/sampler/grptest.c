@@ -258,8 +258,6 @@ static void term(struct ldmsd_plugin *self)
 	if (grp)
 		ldms_set_delete(grp);
 	grp = NULL;
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static struct ldmsd_sampler meminfo_plugin = {

@@ -622,8 +622,6 @@ static void term(struct ldmsd_plugin *self)
 	root_path = NULL;
 	free(container);
 	container = NULL;
-	if (mylog)
-		ovis_log_destroy(mylog);
 	return;
 }
 

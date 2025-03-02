@@ -1466,10 +1466,6 @@ static void term(struct ldmsd_plugin *self)
 
 	cfgstate = CFG_PRE;
 	pthread_mutex_unlock(&cfg_lock);
-
-	if (mylog)
-		ovis_log_destroy(mylog);
-
 	return;
 }
 

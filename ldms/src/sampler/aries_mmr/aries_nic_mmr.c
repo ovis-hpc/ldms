@@ -562,8 +562,6 @@ static void term(struct ldmsd_plugin *self)
 	set = NULL;
 	base_del(base);
 	base = NULL;
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)

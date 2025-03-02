@@ -481,8 +481,6 @@ static void term(struct ldmsd_plugin *self)
 		TAILQ_REMOVE(&disk_list, disk, entry);
 		free(disk);
 	}
-	if (mylog)
-		ovis_log_destroy(mylog);
 }
 
 static const char *usage(struct ldmsd_plugin *self)

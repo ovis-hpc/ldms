@@ -288,8 +288,6 @@ static void term(struct ldmsd_plugin *self)
 	ovis_log(lustre_client_log, OVIS_LDEBUG, "term() called\n");
 	llites_destroy();
 	llite_general_schema_fini();
-	if (lustre_client_log)
-		ovis_log_destroy(lustre_client_log);
 }
 
 static const char *usage(struct ldmsd_plugin *self)

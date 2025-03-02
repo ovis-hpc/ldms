@@ -248,8 +248,6 @@ static void term(struct ldmsd_plugin *self)
 	osts_destroy();
 	ost_general_schema_fini();
 	ost_job_stats_schema_fini();
-	if (lustre_ost_log)
-		ovis_log_destroy(lustre_ost_log);
 }
 
 static const char *usage(struct ldmsd_plugin *self)

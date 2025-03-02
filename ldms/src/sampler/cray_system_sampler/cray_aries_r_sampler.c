@@ -322,8 +322,6 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
-	if (cray_aries_log)
-		ovis_log_destroy(cray_aries_log);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
