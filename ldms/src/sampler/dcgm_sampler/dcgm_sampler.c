@@ -359,9 +359,17 @@ static int gpu_sample()
         int i;
         int rc = 0;
 
+	ldms_set_t set_old = base->set; /* this should be null */
+
         for (i = 0; i < gpu_ids_count; i++) {
-                ldms_transaction_begin(gpu_sets[gpu_ids[i]]);
-                jobid_helper_metric_update(gpu_sets[gpu_ids[i]]);
+		if (base) {
+			base->set = gpu_sets[gpu_ids[i]];
+			base_sample_begin(base);
+			base->set = set_old;
+		} else {
+			ldms_transaction_begin(gpu_sets[gpu_ids[i]]);
+			jobid_helper_metric_update(gpu_sets[gpu_ids[i]]);
+		}
         }
         rc = dcgmGetLatestValues(dcgm_handle, gpu_group_id, field_group_id,
                                  &sample_cb, NULL);
@@ -370,7 +378,13 @@ static int gpu_sample()
                 rc = -1;
         }
         for (i = 0; i < gpu_ids_count; i++) {
-                ldms_transaction_end(gpu_sets[gpu_ids[i]]);
+		if (base) {
+			base->set = gpu_sets[gpu_ids[i]];
+			base_sample_end(base);
+			base->set = set_old;
+		} else {
+			ldms_transaction_end(gpu_sets[gpu_ids[i]]);
+		}
         }
 
         return rc;

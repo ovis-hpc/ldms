@@ -13,3 +13,7 @@ updtr_start name=allhosts
 strgp_add name=store_${testname} plugin=store_csv schema=${testname} container=node
 strgp_prdcr_add name=store_${testname} regex=.*
 strgp_start name=store_${testname}
+
+strgp_add name=jobid.csv plugin=store_csv schema=jobid container=node
+strgp_prdcr_add name=jobid.csv regex=.*
+strgp_start name=jobid.csv
