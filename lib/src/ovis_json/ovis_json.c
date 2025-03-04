@@ -738,7 +738,7 @@ json_entity_t __attr_value_new(int type, va_list *ap)
 		v = json_entity_new(type, va_arg(*ap, double));
 		break;
 	case JSON_INT_VALUE:
-		v = json_entity_new(type, va_arg(*ap, uint64_t));
+		v = json_entity_new(type, va_arg(*ap, int));
 		break;
 	case JSON_STRING_VALUE:
 		v = json_entity_new(type, va_arg(*ap, char *));
