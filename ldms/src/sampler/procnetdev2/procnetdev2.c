@@ -66,6 +66,7 @@
 #include <sys/time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "../sampler_base.h"
 
 #ifndef ARRAY_LEN
@@ -228,7 +229,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return "config inst=NAME plugin=" SAMP " ifaces=IFS\n" \
 		BASE_CONFIG_USAGE \
@@ -237,9 +238,9 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                    whether they exist of not up to a total of MAXIFACE\n";
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	procnetdev2_t p = self->context;
+	procnetdev2_t p = ldmsd_plug_context_get(handle);
 	char* ifacelist = NULL;
 	char *exclude = NULL;
 	char *ivalue = NULL;
@@ -312,7 +313,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	p->excount = excount;
 
  cfg:
-	p->base = base_config(avl, self->cfg_name, SAMP, mylog);
+	p->base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!p->base){
 		rc = EINVAL;
 		goto err;
@@ -334,9 +335,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
-	procnetdev2_t p = (void*)self->base.context;
+	procnetdev2_t p = ldmsd_plug_context_get(handle);
 	int rc;
 	char *s;
 	char lbuf[256];
@@ -449,34 +450,47 @@ resize:
 }
 
 
-static void term(struct ldmsd_plugin *self)
-{
-	procnetdev2_t p = (void*)self->context;
-	if (p->mf) {
-		fclose(p->mf);
-		p->mf = NULL;
+static int constructor(ldmsd_plug_handle_t handle) {
+        procnetdev2_t pnd;
+
+        pnd = calloc(1, sizeof(*pnd));
+        if (!pnd) {
+                return ENOMEM;
+        }
+        ldmsd_plug_context_set(handle, pnd);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle) {
+	procnetdev2_t pnd = ldmsd_plug_context_get(handle);
+
+	if (pnd->mf) {
+		fclose(pnd->mf);
+		pnd->mf = NULL;
 	}
-	p->mf = NULL;
-	base_set_delete(p->base);
-	base_del(p->base);
-	p->base = NULL;
+	pnd->mf = NULL;
+	base_set_delete(pnd->base);
+	base_del(pnd->base);
+	pnd->base = NULL;
+
+        free(pnd);
 }
 
 static struct ldmsd_sampler procnetdev2_sampler = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.context_size = sizeof(struct procnetdev2_s),
-	},
-
+        .base.name = SAMP,
+        .base.type = LDMSD_PLUGIN_SAMPLER,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
+        .base.config = config,
+        .base.usage = usage,
 	.sample = sample,
 };
 
 struct ldmsd_plugin *get_plugin()
 {
+        /* FIXME - move to instance_init, and release in instance_fini
+           Or better yet, introduce plugin_init()/plugin_fini()...or maybe just add a "release_plugin"? */
 	if (!mylog) {
 		mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
 		if (!mylog)

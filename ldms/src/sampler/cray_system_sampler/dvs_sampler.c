@@ -68,6 +68,7 @@
 #include <coll/rbt.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 static ovis_log_t mylog;
@@ -340,7 +341,7 @@ static int create_metric_set(dvs_mount_t dvsm)
 	return rc;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP "producer=<name> instance=<name> [component_id=<int>] [schema=<name>] [conffile=<cfgfile>]\n"
 		"                [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>]\n"
@@ -418,11 +419,11 @@ static int local_config(struct attr_value_list *avl,
 
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 
-	cfg_base = base_config(avl, self->cfg_name, SAMP, mylog);
+	cfg_base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!cfg_base)
 		return EINVAL;
 	rc = local_config(avl, SAMP, SAMP);
@@ -690,7 +691,7 @@ static int handle_mount(const char *fpath, const struct stat *sb, int tflag, str
 	return handle_old_mount(dvsm, dir);
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	if (nftw("/proc/fs/dvs/mounts", handle_mount, 2, FTW_PHYS) < 0) {
 		ovis_log(mylog, OVIS_LERROR, "error walking the dvs procfs stats file");
@@ -699,7 +700,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	int i;
 

@@ -31,6 +31,7 @@
 #include <libserdes/serdes-avro.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "ovis_log.h"
 
 #define STORE_AVRO_KAFKA "store_avro_kafka"
@@ -93,7 +94,7 @@ static const char *_help_str =
     "    strgp_add name=kp plugin=store_avro_kafka container=localhost,br1.kf:9898 \\\n"
     "              decomposition=decomp.json\n"
     "";
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return _help_str;
 }
@@ -317,11 +318,11 @@ static int parse_serdes_conf_file(char *path, serdes_conf_t *s_conf)
 	return rc;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	int rc = 0;
-	store_kafka_t sk = (store_kafka_t)self->context;
+	store_kafka_t sk = ldmsd_plug_context_get(handle);
 	char *path, *encoding, *topic;
 	char err_str[512];
 
@@ -406,51 +407,8 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
-{
-	store_kafka_t sk = (void*)self->context;
-	pthread_mutex_lock(&sk->sk_lock);
-	if (sk->g_rd_conf)
-	{
-		rd_kafka_conf_destroy(sk->g_rd_conf);
-		sk->g_rd_conf = NULL;
-	}
-	pthread_mutex_unlock(&sk->sk_lock);
-}
-
-static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
-{
-	errno = ENOSYS;
-	LOG_ERROR("The open_store() interface (non-decomposition strgp) is not supported.\n");
-	return NULL;
-}
-
-static void *get_ucontext(ldmsd_store_handle_t _sh)
-{
-	/* ucontext is for deprecated `open_store()` API */
-	return NULL;
-}
-
-static int flush_store(ldmsd_store_handle_t _sh)
-{
-	/* no-op */
-	return 0;
-}
-
-static int
-store(ldmsd_store_handle_t _sh, ldms_set_t set,
-      int *metric_arry, size_t metric_count)
-{
-	errno = ENOSYS;
-	LOG_ERROR("store_avro_kafka does not support the `store()` "
-		  "interface (non-decomposition strgp)\n");
-	return ENOSYS;
-}
-
 /* protected by strgp->lock */
-static void close_store(ldmsd_store_handle_t _sh)
+static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 {
 	/* This is called when strgp is stopped to clean up resources */
 	aks_handle_t sh = _sh;
@@ -463,11 +421,11 @@ static void close_store(ldmsd_store_handle_t _sh)
 	free(sh);
 }
 
-static aks_handle_t __handle_new(ldmsd_strgp_t strgp)
+static aks_handle_t __handle_new(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp)
 {
+	store_kafka_t sk = ldmsd_plug_context_get(handle);
 	char err_str[512];
 	rd_kafka_conf_res_t res;
-	store_kafka_t sk = strgp->store->api->base.context;
 
 	aks_handle_t sh = calloc(1, sizeof(*sh));
 	if (!sh) {
@@ -988,7 +946,7 @@ out1:
 
 /* protected by strgp->lock */
 static int
-commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
+commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 	    int row_count)
 {
 	aks_handle_t sh;
@@ -999,7 +957,7 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 	sh = strgp->store_handle;
 	if (!sh)
 	{
-		sh = __handle_new(strgp);
+		sh = __handle_new(handle, strgp);
 		if (!sh)
 			return errno;
 		strgp->store_handle = sh;
@@ -1065,22 +1023,40 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 	return 0;
 }
 
-void store_kafka_del(struct ldmsd_cfgobj *obj)
-{
-	return;
+static int constructor(ldmsd_plug_handle_t handle) {
+	store_kafka_t sk;
+
+        sk = calloc(1, sizeof(*sk));
+        if (!sk) {
+                return ENOMEM;
+        }
+        pthread_mutex_init(&sk->sk_lock, NULL);
+        ldmsd_plug_context_set(handle, sk);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle) {
+	store_kafka_t sk = ldmsd_plug_context_get(handle);
+
+	pthread_mutex_lock(&sk->sk_lock);
+	if (sk->g_rd_conf)
+	{
+		rd_kafka_conf_destroy(sk->g_rd_conf);
+		sk->g_rd_conf = NULL;
+	}
+	pthread_mutex_unlock(&sk->sk_lock);
+        pthread_mutex_destroy(&sk->sk_lock);
+        free(sk);
 }
 
 static struct ldmsd_store kafka_store = {
 	.base.type   = LDMSD_PLUGIN_STORE,
 	.base.name   = "store_avro_kafka",
-	.base.term   = term,
 	.base.config = config,
 	.base.usage  = usage,
-	.base.context_size = sizeof(struct store_kafka_s),
-	.open        = open_store,
-	.get_context = get_ucontext,
-	.store       = store,
-	.flush       = flush_store,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
 	.close       = close_store,
 	.commit      = commit_rows,
 };

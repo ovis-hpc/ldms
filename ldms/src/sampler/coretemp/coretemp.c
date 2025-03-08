@@ -64,6 +64,7 @@
 #include "../sampler_base.h"
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 struct sensor {
 	struct sensor_key {
@@ -333,12 +334,12 @@ static int create_metric_set(base_data_t base)
 }
 
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return "config name=" SAMP BASE_CONFIG_USAGE;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 
@@ -347,7 +348,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base){
 		rc = EINVAL;
 		goto err;
@@ -367,7 +368,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	struct sensor *sens;
 	struct rbn *rbn;
@@ -391,7 +392,7 @@ static int sample(struct ldmsd_sampler *self)
 }
 
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	/* Clean up the sensor tree */
 	while (!rbt_empty(&sensor_tree)) {

@@ -260,7 +260,7 @@ err:
 	return rc;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return	"config name=" STREAM "_store path=<path> port=<port_no> log=<path>\n"
 		"     path	The path to the root of the SOS container store (required).\n"
@@ -270,7 +270,7 @@ static const char *usage(struct ldmsd_plugin *self)
 
 static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt);
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc;
@@ -288,7 +288,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		stream = strdup(value);
 	else
 		stream = strdup(STREAM);
-	ldms_stream_subscribe(stream, 0, stream_recv_cb, self, "linux_proc_sampler_files_store");
+	ldms_stream_subscribe(stream, 0, stream_recv_cb, context, "linux_proc_sampler_files_store");
 
 	value = av_value(avl, "path");
 	if (!value) {
@@ -498,9 +498,9 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
-	ovis_log(mylog, OVIS_LDEBUG, "term %s\n", self->name);
+	ovis_log(mylog, OVIS_LDEBUG, "term %s\n", STREAM "_store");
 	if (sos)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 	free(root_path);

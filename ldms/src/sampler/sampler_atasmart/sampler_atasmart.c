@@ -73,6 +73,7 @@
 #include <atasmart.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 #define NFIELD 9
@@ -269,7 +270,7 @@ err:
 	return ENOMEM;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP " disks=<disknames> " BASE_CONFIG_USAGE
 		"    <disks>        A comma-separated list of disk names,\n"
@@ -279,7 +280,7 @@ static const char *usage(struct ldmsd_plugin *self)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *s;
@@ -331,7 +332,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return -1;
 	}
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base){
 		rc = EINVAL;
 		goto err;
@@ -408,7 +409,7 @@ int atasmart_set_metric(SkDisk *d, SkSmartAttributeParsedData *a,
 	return 0;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int ret;
 	int metric_no;
@@ -441,7 +442,7 @@ err:
 	return ret;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 
 	int i;

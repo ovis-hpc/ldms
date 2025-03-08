@@ -58,6 +58,7 @@
 #include "ovis_json/ovis_json.h"
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "ldmsd_stream.h"
 #include "ovis_log.h"
 
@@ -141,7 +142,7 @@ struct js_stream_sampler_s {
 	pthread_mutex_t lock;
 };
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return \
 	"config name=js_stream_sampler producer=<prod_name> \n"
@@ -809,12 +810,12 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg);
  *		the instance name from features from the JSON object
  *		and the transport on which the object was received.
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
+	js_stream_sampler_t js = ldmsd_plug_context_get(handle);
 	char *value;
 	int rc;
-	js_stream_sampler_t js = (js_stream_sampler_t)self->context;
 
 	if (__sync_bool_compare_and_swap(&js->initialized, 0, 1)) {
 		pthread_mutex_init(&js->lock, NULL);
@@ -824,13 +825,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 	pthread_mutex_lock(&js->lock);
 	if (js->stream_client) {
-		LERROR("The plugin configuration '%s' has been configured "
-		       "to process stream '%s'. Use `term name=%s to "
-		       "terminate the plugin and remove all associated "
-		       "sets and stream clients.\n",
-			self->cfg_name,
-			js->stream_name,
-			self->cfg_name);
+		LERROR("The plugin instance '%s' has been configured to process "
+		       "stream '%s'. Use `term name=%s to terminate the plugin "
+		       "and remove all associated sets and stream clients.\n",
+                       ldmsd_plug_config_name_get(handle),
+                       js->stream_name,
+                       ldmsd_plug_config_name_get(handle));
 		pthread_mutex_unlock(&js->lock);
 		return EEXIST;
 	}
@@ -912,7 +912,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		js->perm = strdup("0660");
 
 	js->stream_client = ldms_stream_subscribe(js->stream_name, 0,
-				json_recv_cb, self, "js_stream_sampler");
+				json_recv_cb, js, "js_stream_sampler");
 	if (!js->stream_client) {
 		LERROR("Cannot create stream client.\n");
 		rc = errno;
@@ -1056,17 +1056,17 @@ static void update_set_data(js_stream_sampler_t js, ldms_set_t l_set,
 	}
 }
 
-static void js_set_free(ldmsd_plugin_t plug, js_set_t j_set)
+static void js_set_free(js_set_t j_set)
 {
 	if (j_set->set) {
-		ldmsd_set_deregister(j_set->name, plug->cfg_name);
+		ldmsd_set_deregister(j_set->name, SAMP);
 		ldms_set_delete(j_set->set);
 	}
 	free(j_set->name);
 	free(j_set);
 }
 
-static void js_schema_free(ldmsd_plugin_t plug, js_schema_t j_schema)
+static void js_schema_free(js_schema_t j_schema)
 {
 	struct rbn *rbn;
 	js_set_t j_set;
@@ -1074,7 +1074,7 @@ static void js_schema_free(ldmsd_plugin_t plug, js_schema_t j_schema)
 	while (( rbn = rbt_min(&j_schema->s_set_tree) )) {
 		rbt_del(&j_schema->s_set_tree, rbn);
 		j_set = container_of(rbn, struct js_set_s, rbn);
-		js_set_free(plug, j_set);
+		js_set_free(j_set);
 	}
 	while (( rbn = rbt_min(&j_schema->s_attr_tree) )) {
 		rbt_del(&j_schema->s_attr_tree, rbn);
@@ -1085,27 +1085,25 @@ static void js_schema_free(ldmsd_plugin_t plug, js_schema_t j_schema)
 	free(j_schema);
 }
 
-static void purge_schema_tree(ldmsd_plugin_t plug, js_stream_sampler_t js)
+static void purge_schema_tree(js_stream_sampler_t js)
 {
 	struct rbn *rbn;
 	js_schema_t j_schema;
 	while (( rbn = rbt_min(&js->sch_tree) )) {
 		rbt_del(&js->sch_tree, rbn);
 		j_schema = container_of(rbn, struct js_schema_s, rbn);
-		js_schema_free(plug, j_schema);
+		js_schema_free(j_schema);
 	}
 }
 
-static int __stream_close(ldms_stream_event_t ev, ldmsd_plugin_t self)
+static int __stream_close(ldms_stream_event_t ev, js_stream_sampler_t js)
 {
-	js_stream_sampler_t js = self->context;
-	purge_schema_tree(self, js);
+	purge_schema_tree(js);
 	return 0;
 }
 
-static int __stream_recv(ldms_stream_event_t ev, ldmsd_plugin_t self)
+static int __stream_recv(ldms_stream_event_t ev, js_stream_sampler_t js)
 {
-	js_stream_sampler_t js = self->context;
 	const char *msg;
 	json_entity_t entity;
 	int rc = EINVAL;
@@ -1205,50 +1203,54 @@ err_0:
 
 static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 {
-	ldmsd_plugin_t self = arg;
+	js_stream_sampler_t js = arg;
 
 	switch (ev->type)  {
 	case LDMS_STREAM_EVENT_CLOSE:
-		return __stream_close(ev, self);
+		return __stream_close(ev, js);
 	case LDMS_STREAM_EVENT_RECV:
-		return __stream_recv(ev, self);
+		return __stream_recv(ev, js);
 	default:
 		/* ignore other events */
 		return 0;
 	}
 }
 
-static void term(struct ldmsd_plugin *self)
-{
-	js_stream_sampler_t js = (js_stream_sampler_t)self->context;
+static int constructor(ldmsd_plug_handle_t handle) {
+	js_stream_sampler_t js;
+
+        js = calloc(1, sizeof(*js));
+        if (!js) {
+                return ENOMEM;
+        }
+        ldmsd_plug_context_set(handle, js);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle) {
+	js_stream_sampler_t js = ldmsd_plug_context_get(handle);
+
+        free(js->stream_name);
+        free(js->prod_name);
+        free(js->inst_fmt);
+        free(js->comp_id);
+        free(js->uid);
+        free(js->gid);
+        free(js->perm);
 	if (js->stream_client) {
 		ldms_stream_close(js->stream_client); /* CLOSE event will clean up `p` */
 	}
-}
-
-static int sample(struct ldmsd_sampler *self)
-{
-	/* no opt */
-	return 0;
-}
-
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	/* no ops */
-	return NULL;
+        free(js);
 }
 
 static struct ldmsd_sampler js_stream_sampler = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.context_size = sizeof(struct js_stream_sampler_s),
-	},
-	.get_set = get_set,
-	.sample = sample,
+        .base.name = SAMP,
+        .base.type = LDMSD_PLUGIN_SAMPLER,
+        .base.usage = usage,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
+        .base.config = config,
 };
 
 struct ldmsd_plugin *get_plugin()

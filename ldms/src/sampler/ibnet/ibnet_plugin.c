@@ -70,7 +70,7 @@ static pthread_mutex_t only_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ibnet_data *only = NULL;
 static char *usage = NULL;
 
-static int config_ibnet(struct ldmsd_plugin *self,
+static int config_ibnet(ldmsd_plug_handle_t handle,
 		  struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	pthread_mutex_lock(&only_lock);
@@ -91,7 +91,7 @@ static int config_ibnet(struct ldmsd_plugin *self,
 	return rc;
 }
 
-static int sample_ibnet(struct ldmsd_sampler *self)
+static int sample_ibnet(ldmsd_plug_handle_t handle)
 {
 	pthread_mutex_lock(&only_lock);
 	struct ibnet_data *inst = only;
@@ -106,7 +106,7 @@ static int sample_ibnet(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term_ibnet(struct ldmsd_plugin *self)
+static void term_ibnet(ldmsd_plug_handle_t handle)
 {
 	pthread_mutex_lock(&only_lock);
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " term() called\n");
@@ -119,7 +119,7 @@ static void term_ibnet(struct ldmsd_plugin *self)
 	pthread_mutex_unlock(&only_lock);
 }
 
-static const char *usage_ibnet(struct ldmsd_plugin *self)
+static const char *usage_ibnet(ldmsd_plug_handle_t handle)
 {
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " usage() called\n");
 	if (!usage)

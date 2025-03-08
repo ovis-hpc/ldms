@@ -94,6 +94,7 @@
 //#include <string.h> // needed for memcpy in ldms.h unused feature
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "../sampler_base.h"
 
 // plugin specific (edac)
@@ -283,7 +284,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP " max_mc=<max_mc> max_csrow=<max_csrow> " BASE_CONFIG_USAGE
 		"    <max_mc>      The max number of mc.\n"
@@ -291,7 +292,7 @@ static const char *usage(struct ldmsd_plugin *self)
 }
 
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 
 	void * arg = NULL;
@@ -337,7 +338,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		}
 	}
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base) {
 		ovis_log(mylog, OVIS_LERROR, "failed base_config.\n");
 		rc = EINVAL;
@@ -361,7 +362,7 @@ err:
 
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	// If there was an error before, don't send multiple errors, just return
 	if (edac_valid != 1)
@@ -431,7 +432,7 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	if (base)
 		base_del(base);

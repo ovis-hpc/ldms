@@ -185,7 +185,13 @@ static void strgp_decompose(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, void
 		ovis_log(store_log, OVIS_LERROR, "strgp decompose error: %d\n", rc);
 		return;
 	}
-	rc = strgp->store->api->commit(strgp, prd_set->set, &row_list, row_count);
+        if (strgp->store->api->commit != NULL) {
+                rc = strgp->store->api->commit(strgp->store, strgp, prd_set->set, &row_list, row_count);
+        } else {
+                ovis_log(store_log, OVIS_LERROR,
+                         "store plugin \"%s\" does not support decomposition commit()\n",
+                         strgp->store->plugin_name);
+        }
 	if (rc) {
 		ovis_log(store_log, OVIS_LERROR, "strgp row commit error: %d\n", rc);
 	}
@@ -211,8 +217,14 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, void
 		strgp->state = LDMSD_STRGP_STATE_STOPPED;
 		return;
 	}
-	strgp->store->api->store(strgp->store_handle, prd_set->set,
-			    strgp->metric_arry, strgp->metric_count);
+        if (strgp->store->api->store != NULL) {
+                strgp->store->api->store(strgp->store, strgp->store_handle, prd_set->set,
+                                         strgp->metric_arry, strgp->metric_count);
+        } else {
+                ovis_log(store_log, OVIS_LERROR,
+                         "store plugin \"%s\" does not support non-decomposition store()\n",
+                         strgp->store->plugin_name);
+        }
 	if (strgp->flush_interval.tv_sec || strgp->flush_interval.tv_nsec) {
 		struct timespec expiry;
 		struct timespec now;
@@ -220,7 +232,7 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, void
 		clock_gettime(CLOCK_REALTIME, &now);
 		if (ldmsd_timespec_cmp(&now, &expiry) >= 0) {
 			clock_gettime(CLOCK_REALTIME, &strgp->last_flush);
-			strgp->store->api->flush(strgp->store_handle);
+			strgp->store->api->flush(strgp->store, strgp->store_handle);
 		}
 	}
 }

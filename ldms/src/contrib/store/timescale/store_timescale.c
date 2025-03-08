@@ -63,6 +63,7 @@
 #include <assert.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include </usr/include/libpq-fe.h>
 
 static char user[100];
@@ -71,7 +72,6 @@ static char port[100];
 static char dbname[100];
 static char password[100];
 struct timescale_store {
-        struct ldmsd_store *store;
         void *ucontext;
         char *schema;
         char *container;
@@ -209,7 +209,7 @@ static char *fixup(char *name)
 /**
  *  * \brief Configuration
  *   */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         char *value, *pwfile = NULL;
         pthread_mutex_lock(&cfg_lock);
@@ -297,11 +297,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
         return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
-{
-}
-
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
         return "config name=store_timescale user=<username> pwfile=<full path to password file> "
                "hostaddr=<host ip addr> port=<port no> dbname=<database name> "
@@ -309,7 +305,7 @@ static const char *usage(struct ldmsd_plugin *self)
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
         struct timescale_store *is = NULL;
@@ -321,7 +317,6 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
                 goto out;
         is->measurement_limit = measurement_limit;
         pthread_mutex_init(&is->lock, NULL);
-        is->store = s;
         is->ucontext = ucontext;
         is->container = strdup(container);
         if (!is->container)
@@ -465,7 +460,7 @@ static inline size_t __element_byte_len(enum ldms_value_type t)
 }
 
 static int
-store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_count)
+store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_count)
 {
         struct timescale_store *is = _sh;
         struct ldms_timestamp timestamp;
@@ -553,12 +548,7 @@ err:
         return ENOMEM;
 }
 
-static int flush_store(ldmsd_store_handle_t _sh)
-{
-        return 0;
-}
-
-static void close_store(ldmsd_store_handle_t _sh)
+static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 {
 	struct timescale_store *is = _sh;
 
@@ -575,7 +565,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 	free(is);
 }
 
-static void *get_ucontext(ldmsd_store_handle_t _sh)
+static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 {
 	struct timescale_store *is = _sh;
 	return is->ucontext;
@@ -584,7 +574,6 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 static struct ldmsd_store store_timescale = {
 	.base = {
 		.name = "timescale",
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.type = LDMSD_PLUGIN_STORE,
@@ -592,7 +581,6 @@ static struct ldmsd_store store_timescale = {
 	.open = open_store,
 	.get_context = get_ucontext,
 	.store = store,
-	.flush = flush_store,
 	.close = close_store,
 };
 

@@ -92,7 +92,7 @@ int dao_log(int level, const char *fmt, ...)
 	return rc;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char	*ival;
 	int	 rc;
@@ -168,7 +168,7 @@ int get_daos_rank(struct d_tm_context *ctx, uint32_t *rank)
 	return 0;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	struct d_tm_context	*ctx = NULL;
 	uint32_t		 rank = -1;
@@ -214,7 +214,7 @@ static int sample(struct ldmsd_sampler *self)
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	dao_log(OVIS_LDEBUG, "term() called\n");
 	rank_targets_destroy();
@@ -224,7 +224,7 @@ static void term(struct ldmsd_plugin *self)
 	pool_target_schema_fini();
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	dao_log(OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE;

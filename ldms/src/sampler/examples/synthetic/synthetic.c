@@ -67,6 +67,7 @@
 #include <sys/time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 static ovis_log_t mylog;
@@ -176,7 +177,7 @@ static int create_metric_set(base_data_t base)
 	return rc;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP " origin=<f> height=<f> period=<f>] " BASE_CONFIG_USAGE
 		"    origin  The zero time for periodic functions (float).\n"
@@ -194,7 +195,7 @@ static const char *usage(struct ldmsd_plugin *self)
  *     height      The amplitude of functions
  *     period      The function period
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc;
@@ -239,7 +240,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value)
 		extra_sets = strtoull(value, NULL, 0);
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -268,7 +269,7 @@ err:
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	union ldms_value v;
 
@@ -311,7 +312,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	uint64_t k;
 	if (extras) {

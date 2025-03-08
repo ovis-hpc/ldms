@@ -69,6 +69,7 @@
 #include "config.h"
 #include "cray_sampler_base.h"
 #include "gemini_metrics_gpcdr.h"
+#include "ldmsd_plug_api.h"
 
 #ifdef HAVE_LUSTRE
 #include "lustre_metrics.h"
@@ -179,7 +180,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 }
 
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value = NULL;
 	char *rvalue = NULL;
@@ -192,7 +193,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	base = base_config(avl, self->cfg_name, default_schema_name,
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), default_schema_name,
                            cray_gemini_log);
         if (!base) {
                 rc = errno;
@@ -259,7 +260,7 @@ out:
 static uint64_t dt = 999999999;
 #endif
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int rc;
 	char *s;
@@ -323,7 +324,7 @@ static int sample(struct ldmsd_sampler *self)
 
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	if (base) {
                 base_del(base);
@@ -334,7 +335,7 @@ static void term(struct ldmsd_plugin *self)
 	set = NULL;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=cray_gemini_r_sampler producer=<pname> component_id=<compid>"
 		" instance=<iname> [schema=<sname>]"
