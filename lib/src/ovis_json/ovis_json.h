@@ -106,6 +106,14 @@ int json_verify_string(char *s);
 void json_entity_free(json_entity_t e);
 
 /**
+ * \brief Return the containing JSON document for an entity
+ *
+ * \param entity Entity handle
+ * \returns THe JSON document containting this entity
+ */
+json_doc_t json_entity_doc(json_entity_t entity);
+
+/**
  * \brief Return a string representation of \c type
  */
 const char *json_type_name(enum json_value_e type);

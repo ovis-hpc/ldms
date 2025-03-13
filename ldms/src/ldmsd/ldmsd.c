@@ -77,6 +77,7 @@
 #include <coll/rbt.h>
 #include <coll/str_map.h>
 #include "ovis_ev/ev.h"
+#include "ovis_json/ovis_json.h"
 #include "ovis_ref/ref.h"
 #include "ldms.h"
 #include "ldms_rail.h"
@@ -1260,6 +1261,7 @@ void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct t
 		 */
 		return;
 	}
+
 	double dur = ts_diff_usec(end, start);
 	stat->count++;
 	if (1 == stat->count) {
@@ -1289,6 +1291,25 @@ void ldmsd_stat_reset(struct ldmsd_stat *stats, struct timespec *now)
 	stats->max_ts = *now;
 	stats->min = DBL_MAX;
 	stats->max = DBL_MIN;
+}
+
+json_entity_t ldmsd_stat2dict(json_doc_t jdoc, struct ldmsd_stat *stat)
+{
+	double start_ts = stat->start.tv_sec + stat->start.tv_nsec/1000000.0;
+	double end_ts = stat->end.tv_sec + stat->end.tv_nsec/1000000.0;
+	double min_ts = stat->min_ts.tv_sec + stat->min_ts.tv_nsec/1000000.0;
+	double max_ts = stat->max_ts.tv_sec + stat->max_ts.tv_nsec/1000000.0;
+	json_entity_t d = json_dict_build(jdoc,
+				"min",     JSON_FLOAT_VALUE, stat->min,
+				"min_ts",  JSON_FLOAT_VALUE, min_ts,
+				"max",     JSON_FLOAT_VALUE, stat->max,
+				"max_ts",  JSON_FLOAT_VALUE, max_ts,
+				"avg",     JSON_FLOAT_VALUE, stat->avg,
+				"count",   JSON_INT_VALUE, (int64_t)stat->count,
+				"start_ts",JSON_FLOAT_VALUE, start_ts,
+				"end_ts",  JSON_FLOAT_VALUE, end_ts,
+				NULL);
+	return d;
 }
 
 void *event_proc(void *v)
