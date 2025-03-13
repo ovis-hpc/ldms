@@ -582,6 +582,7 @@ typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
 #define LDMS_SET_F_REMOTE	0x0008
 #define LDMS_SET_F_PUSH_CHANGE	0x0010
 #define LDMS_SET_F_DATA_COPY	0x0020 /* set array data copy on transaction begin */
+#define LDMS_SET_F_SNAPSHOT	0x10000 /* A read-only light copy of a set, which must not be published or shared with remote clients. */
 #define LDMS_SET_F_PUBLISHED	0x100000 /* Set is in the set tree. */
 #define LDMS_SET_ID_DATA	0x1000000
 
@@ -2739,6 +2740,90 @@ ldms_set_t ldms_set_create(const char *instance_name,
 				  ldms_schema_t schema,
 				  uid_t uid, gid_t gid, mode_t perm,
 				  uint32_t heap_sz);
+
+
+/**
+ * \brief Create a lightweight snapshot of an LDMS set
+ *
+ * A set snapshot is a read-only copy that contains only the metric values, types,
+ * and set_info content. It is intended for local use only and cannot be shared
+ * with remote clients.
+ *
+ * Snapshots are implemented as special LDMS sets with the LDMS_SET_F_SNAPSHOT flag.
+ * This allows them to work with most LDMS API functions for reading metrics and set info.
+ *
+ * IMPORTANT: Snapshots should be managed using the dedicated snapshot functions:
+ * - ldms_set_snapshot_create() - Create a new snapshot
+ * - ldms_set_snapshot_delete() - Delete a snapshot
+ * - ldms_set_snapshot_get() - Get a reference to a snapshot
+ * - ldms_set_snapshot_put() - Release a reference to a snapshot
+ *
+ * Do NOT use ldms_set_delete() or ldms_set_put() with snapshots.
+ *
+ * The standard ldms_metric_* and ldms_set_info_* functions can be used to access metric
+ * and set information from a snapshot.
+ *
+ * Snapshot properties:
+ * - Always have an array cardinality of 1. If the original set has a larger
+ *   cardinality, the snapshot will contain metric values from the current
+ *   index of the original set at the time of creation.
+ * - Cannot be published or shared with remote clients
+ * - Writing to snapshot metrics is not supported
+ * - Maintain their own copies of meta data, data, heap, and set_info
+ *
+ * \param src   The source set to create a snapshot from
+ * \return   A new snapshot with reference count of 1, or NULL on error (ENOMEM)
+ *
+ * \see ldms_set_snapshot_delete(), ldms_set_snapshot_get(), ldms_set_snapshot_put()
+ */
+extern ldms_set_t ldms_set_snapshot_create(ldms_set_t src);
+
+/**
+ * \brief Delete a lightweight snapshot of an LDMS set
+ *
+ * Releases the reference held by the creator of the snapshot.
+ * When the reference count reaches zero, all memory associated
+ * with the snapshot will be freed.
+ *
+ * \param snapshot  The snapshot to be deleted
+ *
+ * \note Always use this function to delete snapshots, not ldms_set_delete().
+ *
+ * \see ldms_set_snapshot_create(), ldms_set_snapshot_put()
+ */
+extern void ldms_set_snapshot_delete(ldms_set_t snapshot);
+
+/**
+ * \brief Acquire a reference to a snapshot
+ *
+ * Increments the reference count of the snapshot to prevent
+ * its deletion while it's in use.
+ *
+ * \param snapshot   The snapshot to get a reference to
+ * \param ref_name   A string identifier for the reference (for debugging)
+ *
+ * \note Always use this function to get a reference to snapshots,
+ *       not the regular set reference functions.
+ *
+ * \see ldms_set_snapshot_put()
+ */
+extern void ldms_set_snapshot_get(ldms_set_t snapshot, const char *ref_name);
+
+/**
+ * \brief Release a reference to a snapshot
+ *
+ * Decrements the reference count of the snapshot. When the reference
+ * count reaches zero, all memory associated with the snapshot is freed.
+ *
+ * \param snapshot   The snapshot to release a reference to
+ * \param ref_name   The string identifier used when acquiring the reference
+ *
+ * \note Always use this function to release references to snapshots,
+ *       not ldms_set_put().
+ *
+ * \see ldms_set_snapshot_get()
+ */
+extern void ldms_set_snapshot_put(ldms_set_t snapshot, const char *ref_name);
 
 /**
  * \brief Return the number of metric sets
