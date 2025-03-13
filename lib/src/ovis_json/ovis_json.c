@@ -66,6 +66,11 @@ void json_doc_free(json_doc_t doc)
 	free(doc);
 }
 
+json_doc_t json_entity_doc(json_entity_t entity)
+{
+	return entity->doc;
+}
+
 json_stats_t json_doc_stats(json_doc_t doc)
 {
 	return &doc->state.stats;
