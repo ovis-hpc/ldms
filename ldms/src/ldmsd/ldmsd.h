@@ -620,7 +620,8 @@ ldmsd_row_t ldmsd_row_dup(ldmsd_row_t);
 int ldmsd_row_cache_make_list(ldmsd_row_list_t row_list, int row_count,
 	ldmsd_row_cache_t cache, ldmsd_row_cache_idx_t group_key);
 
-typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, void **ctxt);
+typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set,
+	                          ldms_set_t set_snapshot, void **ctxt);
 typedef struct ldmsd_cfgobj_store *ldmsd_cfgobj_store_t;
 
 struct ldmsd_strgp {
