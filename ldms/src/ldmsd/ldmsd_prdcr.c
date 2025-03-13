@@ -1673,3 +1673,21 @@ int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex, char *stream_name,
 	regfree(&regex);
 	return 0;
 }
+
+void ldmsd_prdcr_set_store_stats_init(ldmsd_prdcr_set_t prdset, struct timespec *ts)
+{
+	struct timespec start;
+
+	if (ts == NULL) {
+		clock_gettime(CLOCK_REALTIME, &start);
+	} else {
+		start = *ts;
+	}
+	prdset->store_stat.start = start;
+
+	prdset->store_stages_stat.io_thread_stat.start = start;
+	prdset->store_stages_stat.decomp_stat.start = start;
+	prdset->store_stages_stat.worker_wait_stat.start = start;
+	prdset->store_stages_stat.queue_stat.start = start;
+	prdset->store_stages_stat.commit_stat.start = start;
+}

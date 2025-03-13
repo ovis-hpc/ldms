@@ -1287,7 +1287,7 @@ class LdmsdCmdParser(cmd.Cmd):
     def __avg_update(self, cur_avg, cur_cnt, v, cnt):
         new_cnt = cur_cnt + cnt
         if new_cnt == 0:
-            return 0.0
+            return (cur_avg, cur_cnt)
         return (cur_avg * (cur_cnt / new_cnt) + v * (cnt / new_cnt), new_cnt)
 
     def __min_max(self, tbl, data):
@@ -1305,51 +1305,76 @@ class LdmsdCmdParser(cmd.Cmd):
             is_max = True
         return (is_min, is_max)
 
-    def __datatbl_update(self, pset, strgp_tbl, schema_tbl, thread_tbl):
+    def __datatbl_update(self, pset, strgp_tbl, schema_tbl):
+        if pset['stats']['count'] == 0:
+            # Skip
+            return
+
         stgtbl = strgp_tbl['stats']
         sstgtbl = strgp_tbl[pset['schema']]['stats']
-        tsstgtbl = strgp_tbl[pset['schema']][pset['thread_id']]['stats']
-
         stbl = schema_tbl[pset['schema']]['stats']
-        ttbl = thread_tbl[pset['thread_id']]['stats']
-        tstbl = thread_tbl[pset['thread_id']][pset['schema']]['stats']
 
         pset_avg = pset['stats']['avg']
         pset_count = pset['stats']['count']
 
         stgtbl['set_name'].append(pset['name'])
         sstgtbl['set_name'].append(pset['name'])
-        tsstgtbl['set_name'].append(pset['name'])
         stbl['set_name'].append(pset['name'])
-        ttbl['set_name'].append(pset['name'])
-        tstbl['set_name'].append(pset['name'])
 
         stgtbl['avg'], stgtbl['count'] = self.__avg_update(stgtbl['avg'], stgtbl['count'],
                                                            pset_avg, pset_count)
         sstgtbl['avg'], sstgtbl['count'] = self.__avg_update(sstgtbl['avg'], sstgtbl['count'],
                                                            pset_avg, pset_count)
-        tsstgtbl['avg'], tsstgtbl['count'] = self.__avg_update(tsstgtbl['avg'], tsstgtbl['count'],
-                                                           pset_avg, pset_count)
 
         stbl['avg'], stbl['count'] = self.__avg_update(stbl['avg'], stbl['count'],
                                                        pset_avg, pset_count)
 
-        ttbl['avg'], ttbl['count'] = self.__avg_update(ttbl['avg'], ttbl['count'],
-                                                       pset_avg, pset_count)
-        tstbl['avg'], tstbl['count'] = self.__avg_update(tstbl['avg'], tstbl['count'],
-                                                         pset_avg, pset_count)
-
         self.__min_max(stgtbl, pset['stats'])
         self.__min_max(sstgtbl, pset['stats'])
-        self.__min_max(tsstgtbl, pset['stats'])
         self.__min_max(stbl, pset['stats'])
-        self.__min_max(ttbl, pset['stats'])
-        self.__min_max(tstbl, pset['stats'])
+
+    def __store_stage_update(self, stage_stats, prdset):
+        # The function calculates the weighted average using an online (or incremental) update method.
+        # The method was chosen to avoid overflowing by summing the value of each stage of each set.
+        # The resulting weighted average is the same as sum(values)/count.
+        if prdset['stats']['count'] == 0:
+            # Skip
+            return stage_stats
+        weight = 1
+        prep = prdset['stage_stats']['io_thread']['avg'] - \
+                                            prdset['stage_stats']['decomp']['avg'] - \
+                                            prdset['stage_stats']['worker_wait']['avg']
+        if stage_stats['count'] == 0:
+            for stage in stage_stats['stages']:
+                if stage != "prep":
+                    stage_stats['stages'][stage] = prdset['stage_stats'][stage]['avg']
+                else:
+                    stage_stats['stages']['prep'] = prep
+        else:
+            stage_stats['count'] += 1
+            for stage in stage_stats['stage']:
+                if stage != "prep":
+                    stage_stats[stage] += (prdset['stage_stats'][stage]['avg'] - stage_stats[stage]) * (weight / stage_stats['count'])
+                else:
+                    stage_stats['prep'] += (prep - stage_stats['prep']) * (weight / stage_stats['count'])
+
+        return stage_stats
 
     def __store_time_process(self, d):
         # -----------------------------------------------
         # SOURCE DICT
         # -----------------------------------------------
+        # First the common statistics dictionary is
+        #    {
+        #              "min"      : <float>, # microseconds
+        #              "max"      : <float>, # microseconds
+        #              "min_ts"   : <float>, # timestamp from epoch
+        #              "max_ts"   : <float>, # timestamp from epoch
+        #              "avg"      : <float>, # microseconds
+        #              "count"    : <integer>, # microseconds
+        #              "start_ts" : <float>, # timestamp from epoch
+        #              "end_ts"   : <float>  # timestamp from epoch
+        #    }
         # Assume that the returned jSON object is
         # { <strgp_name> :{
         #     "producers" : { <producer_name> : { EMPTY } },
@@ -1360,15 +1385,12 @@ class LdmsdCmdParser(cmd.Cmd):
         #           "producer" : <producer name>,
         #           "schema"   : <schema name>,
         #           "thead_id" : <thread ID>,
-        #           "stats"    : {
-        #              "min"      : <float>,
-        #              "max"      : <float>,
-        #              "min_ts"   : <float>,
-        #              "max_ts"   : <float>,
-        #              "avg"      : <float>,
-        #              "count"    : <integer>,
-        #              "start_ts" : <float>, # seconds
-        #              "end_ts"   : <float>  # seconds
+        #           "stats"    : <common stats>,
+        #           "stage_stats"    : {
+        #               "decomp"      : <common stats>,
+        #               "worker_wait" : <common stats>,
+        #               "queue"       : <common stats>,
+        #               "store"       : <common stats>
         #           }
         #        }
         #     }
@@ -1421,19 +1443,32 @@ class LdmsdCmdParser(cmd.Cmd):
         #   }
         # }
         #
-        # 3. Thread Table (thread_tbl) - Organized by thread → schema
-        # thread_tbl = {
-        #   'stats': stats_dict,       # Global stats across all threads
-        #   '<thread_id>': {           # Per thread entry
-        #     'stats': stats_dict,     # Stats for this thread
-        #     '<schema_name>': {       # Per schema within this thread
-        #       'stats': stats_dict    # Stats for this schema within this thread
-        #     }
+        # 3. The stage table = {
+        #   'count' = <number of all sets>,
+        #   'stages' : {
+        #      'decomp' : <average of all sets>,
+        #      'worker_wait' : <average of all sets>,
+        #      'prep'   : <average of all sets>,
+        #      'queue'  : <average of all sets>,
+        #      'commit' : <average of all sets>
         #   }
         # }
+        # 4. The function also returns the number of store operations per second
         schema_tbl = {'stats' : self.__datatbl_new()}
-        thread_tbl = {'stats' : self.__datatbl_new()}
         strgp_tbl = {'stats' : self.__datatbl_new()}
+        stage_tbl = {'sets' : {},
+                   'count' : 0,
+                   'stages' : {
+                       'decomp' : 0,
+                       'worker_wait' : 0,
+                       'prep' : 0,
+                       'queue' : 0,
+                       'commit' : 0
+                   }
+                }
+
+        begin_time = end_time = 0
+        num_op = 0
 
         for strgp_name, strgp in d.items():
             strgp_tbl[strgp_name] = {'stats' : self.__datatbl_new()}
@@ -1441,22 +1476,27 @@ class LdmsdCmdParser(cmd.Cmd):
             for set_name, prdset in strgp['sets'].items():
                 prdset['name'] = set_name
                 schema_name = prdset['schema']
-                thread_id = prdset['thread_id']
+
+                # Calculate the operations per second
+                if begin_time == 0 and end_time == 0:
+                    begin_time = prdset['stats']['start_ts']
+                    end_time = prdset['stats']['end_ts']
+                else:
+                    if prdset['stats']['start_ts'] < begin_time:
+                        begin_time = prdset['stats']['start_ts']
+                    if prdset['stats']['end_ts'] > end_time:
+                        end_time = prdset['stats']['end_ts']
+                num_op += prdset['stats']['count']
+
+                stage_tbl = self.__store_stage_update(stage_tbl, prdset)
 
                 if schema_name not in strgp_tbl[strgp_name]:
                     strgp_tbl[strgp_name][schema_name] = {'stats' : self.__datatbl_new()}
-                if thread_id not in strgp_tbl[strgp_name][schema_name].keys():
-                    strgp_tbl[strgp_name][schema_name][thread_id] = {'stats' : self.__datatbl_new()}
 
                 if schema_name not in schema_tbl.keys():
                     schema_tbl[schema_name] = {'stats': self.__datatbl_new()}
 
-                if thread_id not in thread_tbl.keys():
-                    thread_tbl[thread_id] = {'stats' : self.__datatbl_new()}
-                if schema_name not in thread_tbl[thread_id].keys():
-                    thread_tbl[thread_id][schema_name] = {'stats': self.__datatbl_new()}
-
-                self.__datatbl_update(prdset, strgp_tbl[strgp_name], schema_tbl, thread_tbl)
+                self.__datatbl_update(prdset, strgp_tbl[strgp_name], schema_tbl)
 
         self.__bounds(strgp_tbl)
         for k in strgp_tbl.keys():
@@ -1470,13 +1510,8 @@ class LdmsdCmdParser(cmd.Cmd):
 
         self.__bounds(schema_tbl)
 
-        self.__bounds(thread_tbl)
-        for k in thread_tbl.keys():
-            if k == 'stats':
-                continue
-            self.__bounds(thread_tbl[k])
-
-        return (strgp_tbl, schema_tbl, thread_tbl)
+        num_op_per_sec = num_op/(end_time - begin_time) if  (end_time - begin_time != 0) else 0
+        return (strgp_tbl, schema_tbl, stage_tbl, num_op_per_sec)
 
     def __symbols(self, key, stats):
         symbol = list()
@@ -1506,6 +1541,8 @@ class LdmsdCmdParser(cmd.Cmd):
                        The default is false.
         """
         arg = self.handle_args('store_time_stats', arg)
+        if arg['reset'] is None:
+            arg['reset'] = False
         rc, msg = self.comm.store_time_stats(**arg)
         if rc != 0:
             # self.handle() already reported the error.
@@ -1513,47 +1550,30 @@ class LdmsdCmdParser(cmd.Cmd):
         j = fmt_status(msg)
 
         try:
-            strgp_tbl, schema_tbl, thread_tbl = self.__store_time_process(j)
+            strgp_tbl, schema_tbl, stage_tbl, num_op_per_sec = self.__store_time_process(j)
+            stage_tbl['total_time'] = sum(stage_tbl['stages'].values())
         except Exception as e:
-            print(e)
-            return
+            raise
 
         # Schema Table
         print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
         print(f"   <   Minimum Value          -   Minimum Average value")
         print(f"   >   Maximum Value          +   Maximum Average value")
         print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
-        print(f"{' '*4} {'Schema':^20} {'Min (sec)':^15} {'Avg (sec)':^15} {'Max (sec)':^15} {'Min Timestamp':^20} {'Max Timestamp':^20} {'# of Sets':^10} {'Count':^10}")
+        print(f"{' '*4} {'Schema':^20} {'Min (us)':^15} {'Avg (us)':^15} {'Max (us)':^15} {'Min Timestamp':^20} {'Max Timestamp':^20} {'# of Sets':^10} {'Count':^10}")
         print(f"{'-'*4}-{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
         schema_names = sorted(list(schema_tbl.keys()))
         for schema in schema_names:
             if schema == 'stats':
                 continue
             stats = schema_tbl[schema]['stats']
-            print(f"{self.__symbols(schema, schema_tbl['stats']):>4}   {schema:>18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {stats['min_ts']:20.4f} {stats['max_ts']:20.4f} {len(set(stats['set_name'])):10} {stats['count']:10}")
-
-        # Thread Table
-        print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
-        print(f"{' '*4}-{'Thread':^20} {'Min (sec)':^15} {'Avg (sec)':^15} {'Max (sec)':^15} {'Min Timestamp':^20} {'Max Timestamp':^20} {'# of Sets':^10} {'Count':^10}")
-        # print(f"{'-'*4} {'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
-        threads = sorted(list(thread_tbl.keys()))
-        for tid in threads:
-            if tid == 'stats':
+            if len(stats['set_name']) == 0:
                 continue
-            symbol_tid = list()
-            stats = thread_tbl[tid]['stats']
-            print(f"{'-'*4}-{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
-            print(f"{self.__symbols(tid, thread_tbl['stats']):>4}   {tid:18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {stats['min_ts']:20.4f} {stats['max_ts']:20.4f} {len(set(stats['set_name'])):10} {stats['count']:10}")
-            schema_names = sorted([s for s in list(thread_tbl[tid].keys()) if s != 'stats'])
-            print(f"{' '*4} {'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
-            for schema in schema_names:
-                st = thread_tbl[tid][schema]['stats']
-                print(f"   {self.__symbols(schema, thread_tbl[tid]['stats']):>4} {schema:>18} {st['min']:15.4f} {st['avg']:15.4f} {st['max']:15.4f} {st['min_ts']:20.4f} {st['max_ts']:20.4f} {len(set(st['set_name'])):10} {stats['count']:10}")
-            # print(f"{'-'*(4+21+16+16+16+21+21+11+11)}")
+            print(f"{self.__symbols(schema, schema_tbl['stats']):>4}   {schema:>18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {int(stats['min_ts']):20d} {int(stats['max_ts']):20d} {len(set(stats['set_name'])):10} {stats['count']:10}")
 
         # Storage policy Table
         print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
-        print(f"{' '*4} {'Storage Policy':^20} {'Min (sec)':^15} {'Avg (sec)':^15} {'Max (sec)':^15} {'Min Timestamp':^20} {'Max Timestamp':^20} {'# of Sets':^10} {'Count':^10}")
+        print(f"{' '*4} {'Storage Policy':^20} {'Min (us)':^15} {'Avg (us)':^15} {'Max (us)':^15} {'Min Timestamp':^20} {'Max Timestamp':^20} {'# of Sets':^10} {'Count':^10}")
         print(f"{'-'*4}-{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
         strgps = sorted(list(strgp_tbl.keys()))
         for strgp in strgps:
@@ -1562,21 +1582,27 @@ class LdmsdCmdParser(cmd.Cmd):
             stats = strgp_tbl[strgp]['stats']
             if 0 == len(stats['set_name']):
                 continue
-            print(f"{self.__symbols(strgp, strgp_tbl['stats']):>5}  {strgp:18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {stats['min_ts']:20.4f} {stats['max_ts']:20.4f} {len(set(stats['set_name'])):10} {stats['count']:10}")
+            print(f"{self.__symbols(strgp, strgp_tbl['stats']):>5}  {strgp:18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {int(stats['min_ts']):20d} {int(stats['max_ts']):20d} {len(set(stats['set_name'])):10} {stats['count']:10}")
             schemas = sorted([s for s in list(strgp_tbl[strgp].keys()) if s != 'stats'])
             for schema in schemas:
-                print(f"   {' '*2}{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
                 sch_stats = strgp_tbl[strgp][schema]['stats']
                 print(f"   {self.__symbols(schema, strgp_tbl[strgp]['stats']):>5} {schema:16} {sch_stats['min']:15.4f} {sch_stats['avg']:15.4f} " \
-                      f"{sch_stats['max']:15.4f} {sch_stats['min_ts']:20.4f} {sch_stats['max_ts']:20.4f} " \
-                      f"{len(set(sch_stats['set_name'])):10} {stats['count']:10}")
-                threads = sorted([s for s in list(strgp_tbl[strgp][schema].keys()) if s != 'stats'])
-                for tid in threads:
-                    st = strgp_tbl[strgp][schema][tid]['stats']
-                    print(f"       {self.__symbols(tid, strgp_tbl[strgp][schema]['stats']):>5}{tid:>13} {st['min']:15.4f} {st['avg']:15.4f} " \
-                          f"{st['max']:15.4f} {st['min_ts']:20.4f} {st['max_ts']:20.4f} " \
-                          f"{len(set(st['set_name'])):10} {stats['count']:10}")
+                      f"{sch_stats['max']:15.4f} {int(sch_stats['min_ts']):20d} {int(sch_stats['max_ts']):20d} " \
+                      f"{len(set(sch_stats['set_name'])):10} {sch_stats['count']:10}")
             print(f"{' '*5}  {'-'*18} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
+
+        print()
+        print(f"Number of store operations per second: {num_op_per_sec:0.4f}")
+
+        print("Percentages of each stage:", end = "")
+        if stage_tbl['total_time'] == 0:
+            print(" N/A")
+        else:
+            print()
+            sorted_stages = sorted(stage_tbl['stages'].items(), key=lambda x: x[1], reverse=True)
+            for stage, value in sorted_stages:
+                pct = value/stage_tbl['total_time']*100
+                print(f"   {stage:15}: {pct:>7.2f}%")
 
     def complete_store_time_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('store_time_stats', text)

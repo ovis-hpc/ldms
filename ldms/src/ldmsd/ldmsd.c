@@ -76,6 +76,7 @@
 #include <coll/rbt.h>
 #include <coll/str_map.h>
 #include "ovis_ev/ev.h"
+#include "ovis_json/ovis_json.h"
 #include "ovis_ref/ref.h"
 #include "ldms.h"
 #include "ldms_rail.h"
@@ -1259,6 +1260,7 @@ void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct t
 		 */
 		return;
 	}
+
 	double dur = ts_diff_usec(end, start);
 	stat->count++;
 	if (1 == stat->count) {
@@ -1279,6 +1281,24 @@ void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct t
 	}
 }
 
+json_entity_t ldmsd_stat2dict(struct ldmsd_stat *stat)
+{
+	double start_ts = stat->start.tv_sec + stat->start.tv_nsec/1000000.0;
+	double end_ts = stat->end.tv_sec + stat->end.tv_nsec/1000000.0;
+	double min_ts = stat->min_ts.tv_sec + stat->min_ts.tv_nsec/1000000.0;
+	double max_ts = stat->max_ts.tv_sec + stat->max_ts.tv_nsec/1000000.0;
+	json_entity_t d = json_dict_build(NULL,
+				JSON_FLOAT_VALUE, "min", stat->min,
+				JSON_FLOAT_VALUE, "min_ts", min_ts,
+				JSON_FLOAT_VALUE, "max", stat->max,
+				JSON_FLOAT_VALUE, "max_ts", max_ts,
+				JSON_FLOAT_VALUE, "avg", stat->avg,
+				JSON_INT_VALUE, "count", stat->count,
+				JSON_FLOAT_VALUE, "start_ts", start_ts,
+				JSON_FLOAT_VALUE, "end_ts", end_ts,
+				-1);
+	return d;
+}
 
 void *event_proc(void *v)
 {
