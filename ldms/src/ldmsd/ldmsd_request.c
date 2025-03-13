@@ -7708,6 +7708,7 @@ static int __store_time_thread_tree(struct rbt *tree)
 	ldmsd_prdcr_set_t prdset;
 	struct store_time_thread *ent;
 	pid_t tid;
+	struct ldmsd_stat *store_io_thr_stat; /* Statistics of time duration used on IO thread int he storing process */
 	int rc = 0;
 
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
@@ -7730,7 +7731,9 @@ static int __store_time_thread_tree(struct rbt *tree)
 			} else {
 				ent = container_of(rbn, struct store_time_thread, rbn);
 			}
-			ent->store_time += (uint64_t)(prdset->store_stat.avg * prdset->store_stat.count);
+
+			store_io_thr_stat = &prdset->store_stages_stat.io_thread_stat;
+			ent->store_time += (uint64_t)(store_io_thr_stat->avg * store_io_thr_stat->count);
 		}
 	}
 out:
@@ -7738,17 +7741,11 @@ out:
 }
 
 void ldmsd_prdcr_set_stats_reset(ldmsd_prdcr_set_t prdset, struct timespec *now, int flags);
-static void __prdset_stats_reset(struct timespec *now, int is_update, int is_store)
+static void __prdset_stats_reset(struct timespec *now, int reset_flags)
 {
 	ldmsd_prdcr_t prdcr;
 	ldmsd_prdcr_set_t prdset;
 	struct rbn *rbn;
-	int reset_flags = 0;
-
-	if (is_update)
-		reset_flags |= LDMSD_PRDSET_STATS_F_UPD;
-	if (is_store)
-		reset_flags |= LDMSD_PRDSET_STATS_F_STORE;
 
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
 		ldmsd_prdcr_lock(prdcr);
@@ -7874,6 +7871,11 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	struct timespec start, end;
 	struct ldms_thrstat_result *lres = NULL;
 	struct zap_thrstat_result_entry *zthr;
+	/*
+	 * A tree containing the statistics of time duration spent of
+	 * each IO thread for the storing process, e.g., decomposition and
+	 * waiting for a storage worker
+	 */
 	struct rbt store_time_tree;
 	struct rbn *rbn;
 	struct store_time_thread *stime_ent;
@@ -7953,13 +7955,13 @@ static char * __thread_stats_as_json(size_t *json_sz)
 				if (rbn) {
 					stime_ent = container_of(rbn, struct store_time_thread, rbn);
 					__APPEND("     \"%s\": %ld,\n", ldms_thrstat_op_str(j),
-						lres->entries[i].ops[j] - stime_ent->store_time);
-					__APPEND("     \"Storing Data\": %ld",
+								lres->entries[i].ops[j] - stime_ent->store_time);
+					__APPEND("     \"Store Prep\": %ld",
 							stime_ent->store_time);
 				} else {
 					__APPEND("     \"%s\": %ld,\n", ldms_thrstat_op_str(j),
 								lres->entries[i].ops[j]);
-					__APPEND("     \"Storing Data\": 0");
+					__APPEND("     \"Store Prep\": 0");
 				}
 			} else {
 				__APPEND("     \"%s\": %ld", ldms_thrstat_op_str(j),
@@ -8097,7 +8099,7 @@ static int thread_stats_handler(ldmsd_req_ctxt_t req)
 		zap_thrstat_reset_all(&now);
 		ldmsd_worker_thrstats_reset(&now);
 		ldmsd_xthrstat_reset(&now);
-		__prdset_stats_reset(&now, 1, 1);
+		__prdset_stats_reset(&now, LDMSD_PRDSET_STATS_F_UPD | LDMSD_PRDSET_STATS_F_STORE);
 	}
 
 	return 0;
@@ -9479,25 +9481,30 @@ out:
 	return rc;
 }
 
-static json_entity_t __ldmsd_stat2dict(struct ldmsd_stat *stat)
+static json_entity_t __prdset_store_time_json_get(struct prdset_store_stages_stats *stats)
 {
-	double start_ts = stat->start.tv_sec + stat->start.tv_nsec*1e-9;
-	double end_ts = stat->end.tv_sec + stat->end.tv_nsec*1e-9;
-	double min_ts = stat->min_ts.tv_sec + stat->min_ts.tv_nsec*1e-9;
-	double max_ts = stat->max_ts.tv_sec + stat->max_ts.tv_nsec*1e-9;
 	json_entity_t d = json_dict_build(NULL,
-				JSON_FLOAT_VALUE, "min", stat->min,
-				JSON_FLOAT_VALUE, "min_ts", min_ts,
-				JSON_FLOAT_VALUE, "max", stat->max,
-				JSON_FLOAT_VALUE, "max_ts", max_ts,
-				JSON_FLOAT_VALUE, "avg", stat->avg,
-				JSON_INT_VALUE, "count", (int64_t)stat->count,
-				JSON_FLOAT_VALUE, "start_ts", start_ts,
-				JSON_FLOAT_VALUE, "end_ts", end_ts,
-				-1);
+				JSON_ATTR_VALUE, json_entity_new(JSON_ATTR_VALUE,
+							"io_thread",
+							ldmsd_stat2dict(&stats->io_thread_stat)),
+				JSON_ATTR_VALUE, json_entity_new(JSON_ATTR_VALUE,
+							"decomp",
+							ldmsd_stat2dict(&stats->decomp_stat)),
+				JSON_ATTR_VALUE, json_entity_new(JSON_ATTR_VALUE,
+							"wait",
+							ldmsd_stat2dict(&stats->worker_wait_stat)),
+				JSON_ATTR_VALUE, json_entity_new(JSON_ATTR_VALUE,
+							"queue",
+							ldmsd_stat2dict(&stats->worker_wait_stat)),
+				JSON_ATTR_VALUE, json_entity_new(JSON_ATTR_VALUE,
+							"commit",
+							ldmsd_stat2dict(&stats->commit_stat)),
+				-1
+			);
 	return d;
 }
 
+void ldmsd_prdcr_set_store_stats_init(ldmsd_prdcr_set_t prdset, struct timespec *ts);
 static int
 __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int reset)
 {
@@ -9508,14 +9515,11 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 	struct rbn *rbn;
 	pid_t tid;
 	char tid_s[128];
-	json_entity_t strgp_stats, set_stats ;
-	json_entity_t producers, threads, schemas, sets;
-	json_entity_t prdcr_json, thr_json, sch_json, set_json;
+	json_entity_t strgp_stats, set_stats, stage_stats;
+	json_entity_t sets;
+	json_entity_t set_json;
 
 	strgp_stats = json_dict_build(NULL,
-				JSON_DICT_VALUE, "producers", -2,
-				JSON_DICT_VALUE, "threads", -2,
-				JSON_DICT_VALUE, "schemas", -2,
 				JSON_DICT_VALUE, "sets", -2,
 				-1);
 	if (!strgp_stats) {
@@ -9523,17 +9527,21 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 		rc = ENOMEM;
 		goto out;
 	}
-	producers = json_attr_value(json_attr_find(strgp_stats, "producers"));
-	threads = json_attr_value(json_attr_find(strgp_stats, "threads"));
-	schemas = json_attr_value(json_attr_find(strgp_stats, "schemas"));
+
 	sets = json_attr_value(json_attr_find(strgp_stats, "sets"));
 
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
 		match = ldmsd_strgp_prdcr_first(strgp);
-		for (rc = 0; match; match = ldmsd_strgp_prdcr_next(match)) {
-			rc = regexec(&match->regex, prdcr->obj.name, 0, NULL, 0);
-			if (!rc)
-				break;
+		if (match) {
+			for (rc = 0; match; match = ldmsd_strgp_prdcr_next(match)) {
+				rc = regexec(&match->regex, prdcr->obj.name, 0, NULL, 0);
+				if (!rc)
+					break;
+			}
+			if (!match) {
+				/* Skip this producer because it doesn't match any regex */
+				continue;
+			}
 		}
 		for (rbn = rbt_min(&prdcr->set_tree); rbn; rbn = rbn_succ(rbn)) {
 
@@ -9547,59 +9555,29 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 					continue;
 			}
 
-			prdcr_json = json_attr_find(producers, prdcr->obj.name);
-			if (!prdcr_json) {
-				/*
-				 * The dictionary may be extended to contain
-				 * producer's statistics in the future.
-				 */
-				prdcr_json = json_entity_new(JSON_DICT_VALUE);
-				if (!prdcr_json)
-					goto oom;
-				rc = json_attr_add(producers, prdcr->obj.name, prdcr_json);
-				if (rc)
-					goto json_error;
+			if ((prdset->state != LDMSD_PRDCR_SET_STATE_READY) &&
+				(prdset->state != LDMSD_PRDCR_SET_STATE_UPDATING)) {
+				continue;
 			}
 
 			tid = ldms_set_thread_id_get(prdset->set);
 			snprintf(tid_s, 127, "%d", tid);
-			thr_json = json_attr_find(threads, tid_s);
-			if (!thr_json) {
-				/*
-				 * The dictionary may be extended to contain
-				 * thread's statistics in the future.
-				 */
-				thr_json = json_entity_new(JSON_DICT_VALUE);
-				if (!thr_json)
-					goto oom;
-				rc = json_attr_add(threads, tid_s, thr_json);
-				if (rc)
-					goto json_error;
-			}
-
-			sch_json = json_attr_find(schemas, prdset->schema_name);
-			if (!sch_json) {
-				/*
-				 * The dictionary may be extended to contain
-				 * schema's statistics in the future.
-				 */
-				sch_json = json_entity_new(JSON_DICT_VALUE);
-				if (!sch_json)
-					goto oom;
-				rc = json_attr_add(schemas, prdset->schema_name, sch_json);
-				if (rc)
-					goto json_error;
-			}
 
 			set_json = json_dict_build(NULL,
 					JSON_STRING_VALUE, "producer", prdcr->obj.name,
 					JSON_STRING_VALUE, "schema", prdset->schema_name,
 					JSON_STRING_VALUE, "thread_id", tid_s,
 					-1);
-			set_stats = __ldmsd_stat2dict(&prdset->store_stat);
+			set_stats = ldmsd_stat2dict(&prdset->store_stat);
 			if (!set_json || !set_stats)
 				goto oom;
 			rc = json_attr_add(set_json, "stats", set_stats);
+			if (rc)
+				goto json_error;
+			stage_stats = __prdset_store_time_json_get(&prdset->store_stages_stat);
+			if (!set_json || !set_stats)
+				goto oom;
+			rc = json_attr_add(set_json, "stage_stats", stage_stats);
 			if (rc)
 				goto json_error;
 			rc = json_attr_add(sets, prdset->inst_name, set_json);
@@ -9607,7 +9585,7 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 				goto json_error;
 			if (reset) {
 				memset(&prdset->store_stat, 0, sizeof(prdset->store_stat));
-				clock_gettime(CLOCK_REALTIME, &prdset->store_stat.start);
+				memset(&prdset->store_stages_stat, 0, sizeof(prdset->store_stages_stat));
 			}
 		}
 	}
@@ -9631,9 +9609,9 @@ json_error:
 
 static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 {
-	int rc;
-	char *name = NULL;
-	char *reset_s = NULL;
+	int rc = 0;
+	char *name, *reset_s;
+	name = reset_s = NULL;
 	ldmsd_strgp_t strgp;
 	int reset = 0;
 	json_entity_t strgp_dict;
@@ -9708,6 +9686,7 @@ static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 	int is_xprt;
 	int is_stream;
 	is_update = is_store = is_thread = is_xprt = is_stream = 0;
+	int prdset_reset_flags = 0;
 
 	s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
 	if (s) {
@@ -9730,17 +9709,22 @@ static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 		is_update = is_store = is_thread = is_xprt = is_stream = 1;
 	}
 
+	if (is_update)
+		prdset_reset_flags |= LDMSD_PRDSET_STATS_F_UPD;
+	if (is_store)
+		prdset_reset_flags |= LDMSD_PRDSET_STATS_F_STORE;
+
 	clock_gettime(CLOCK_REALTIME, &now);
 	if (is_thread || is_xprt) {
 		zap_thrstat_reset_all(&now);
 		ldmsd_worker_thrstats_reset(&now);
 		ldmsd_xthrstat_reset(&now);
-		__prdset_stats_reset(&now, is_update, is_store);
+		__prdset_stats_reset(&now, prdset_reset_flags);
 	}
 
 	if (is_xprt) {
 		ldms_xprt_rate_data(NULL, 1);
-		__prdset_stats_reset(&now, is_update, is_store);
+		__prdset_stats_reset(&now, prdset_reset_flags);
 	}
 
 	if (is_stream)
