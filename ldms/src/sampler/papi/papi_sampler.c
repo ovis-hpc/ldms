@@ -317,7 +317,7 @@ static int create_metric_set(job_data_t job)
 	return errno;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=papi_sampler producer=<producer_name> instance=<instance_name>\n"
 		"         [stream=<stream_name>] [component_id=<component_id>] [perm=<permissions>]\n"
@@ -358,7 +358,7 @@ static void sample_job(job_data_t job)
 	ldms_transaction_end(job->set);
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
 	job_data_t job;
 	struct rbn *rbn;
@@ -893,7 +893,7 @@ static int stream_cb(ldms_stream_event_t ev, void *arg)
 			      ev->recv.json);
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 
@@ -906,7 +906,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value)
 		papi_job_expiry = strtol(value, NULL, 0);
 
-	papi_base = base_config(avl, self->cfg_name, "papi-events", mylog);
+	papi_base = base_config(avl, ldmsd_plugin_cfg_name_get(self), "papi-events", mylog);
 	if (!papi_base)
 		return errno;
 	value = av_value(avl, "stream");
@@ -930,7 +930,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return errno;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	if (papi_base) {
 		base_del(papi_base);

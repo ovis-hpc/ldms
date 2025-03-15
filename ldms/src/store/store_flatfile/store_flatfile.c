@@ -91,10 +91,9 @@ struct flatfile_metric_store {
 };
 
 struct flatfile_store_instance {
-	struct ldmsd_store *store;
+	struct ldmsd_cfgobj_store *store_cfg;
 	char *path; /**< (root_path)/(container)/schema */
 	char *schema;
-	void *ucontext;
 	idx_t ms_idx;
 	LIST_HEAD(ms_list, flatfile_metric_store) ms_list;
 	int metric_count;
@@ -106,7 +105,7 @@ static pthread_mutex_t cfg_lock;
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	value = av_value(avl, "path");
@@ -125,7 +124,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return EINVAL;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	/*
 	 * TODO: Iterate through all unclosed stores and cleanup resources
@@ -133,7 +132,7 @@ static void term(struct ldmsd_plugin *self)
 	 */
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return
 "    config name=store_flatfile path=<path>\n"
@@ -141,15 +140,9 @@ static const char *usage(struct ldmsd_plugin *self)
 "              path      The path to the root of the flatfile directory\n";
 }
 
-static void *get_ucontext(ldmsd_store_handle_t _sh)
-{
-	struct flatfile_store_instance *si = _sh;
-	return si->ucontext;
-}
-
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
-	  struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+ open_store(struct ldmsd_cfgobj_store *scfg, const char *container, const char *schema,
+	  struct ldmsd_strgp_metric_list *metric_list)
 {
 	struct flatfile_store_instance *si;
 	struct flatfile_metric_store *ms;
@@ -195,8 +188,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		si->ms_idx = idx_create();
 		if (!si->ms_idx)
 			goto err1;
-		si->ucontext = ucontext;
-		si->store = s;
+		si->store_cfg = scfg;
 		si->path = strdup(tmp_path);
 		if (!si->path)
 			goto err2;
@@ -457,7 +449,6 @@ static struct ldmsd_store store_flatfile = {
 	.open = open_store,
 	.close = close_store,
 	.store = store,
-	.get_context = get_ucontext,
 	.flush = flush_store,
 };
 

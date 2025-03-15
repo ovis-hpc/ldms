@@ -121,7 +121,6 @@ struct sos_instance {
 	struct ldmsd_store *store;
 	char *container;
 	char *path; /**< <root_path>/<container> */
-	void *ucontext;
 	sos_handle_t sos_handle; /**< sos handle */
 	pthread_mutex_t lock; /**< lock at metric store level */
 
@@ -390,7 +389,7 @@ static sos_handle_t find_container(const char *path)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	struct sos_instance *si;
 	int rc, len;
@@ -444,32 +443,25 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "    config name=store_papi path=<path>\n"
 		"       path The path to primary storage\n";
 }
 
-static void *get_ucontext(ldmsd_store_handle_t _sh)
-{
-	struct sos_instance *si = _sh;
-	return si->ucontext;
-}
-
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+open_store(struct ldmsd_cfgobj_store *s, const char *container, const char *schema,
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
 	struct sos_instance *si = NULL;
 
 	si = calloc(1, sizeof(*si));
 	if (!si)
 		goto out;
-	si->ucontext = ucontext;
 	si->container = strdup(container);
 	if (!si->container)
 		goto err1;
@@ -669,7 +661,6 @@ static struct ldmsd_store store_papi = {
 		.type = LDMSD_PLUGIN_STORE,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,

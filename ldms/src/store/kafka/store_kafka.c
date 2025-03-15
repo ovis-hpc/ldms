@@ -96,7 +96,7 @@ static const char *_help_str =
 "              decomposition=decomp.json\n"
 "";
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  _help_str;
 }
@@ -104,7 +104,7 @@ static const char *usage(struct ldmsd_plugin *self)
 pthread_mutex_t sk_lock = PTHREAD_MUTEX_INITIALIZER;
 static rd_kafka_conf_t *common_rconf = NULL;
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	int rc = 0;
@@ -269,7 +269,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	pthread_mutex_lock(&sk_lock);
 	if (common_rconf) {
@@ -280,17 +280,11 @@ static void term(struct ldmsd_plugin *self)
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+open_store(struct ldmsd_cfgobj_store *s, const char *container, const char *schema,
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
 	errno = ENOSYS;
 	LOG_ERROR("store_kafka does not support `open_store()` interface (non-decomposition strgp)\n");
-	return NULL;
-}
-
-static void *get_ucontext(ldmsd_store_handle_t _sh)
-{
-	/* ucontext is for deprecated `open_store()` API */
 	return NULL;
 }
 
@@ -418,15 +412,12 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 }
 
 static struct ldmsd_store store_kafka = {
-	.base = {
-		.name = "kafka",
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.type = LDMSD_PLUGIN_STORE,
-	},
+	.base.name = "kafka",
+	.base.term = term,
+	.base.config = config,
+	.base.usage = usage,
+	.base.type = LDMSD_PLUGIN_STORE,
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,

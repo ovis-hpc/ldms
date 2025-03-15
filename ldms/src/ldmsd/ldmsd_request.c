@@ -2712,6 +2712,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 			goto enomem;
 	}
 
+	ldmsd_store_get(store, "strgp");
 	strgp->store = store; /* cfgobj ref is released in strgp_del */
 
 	char regex_err[512] = "";
@@ -2738,8 +2739,8 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 		strgp->decomp_path = strdup(decomp);
 		if (!strgp->decomp_path)
 			goto enomem;
-		/* reqc->errcode, reqc->line_buf will be populated if there is an error */
-		/* protected by strgp lock */
+		/* reqc->errcode, reqc->line_buf will be populated if
+		 * there is an error. Protected by strgp lock */
 		rc = ldmsd_decomp_config(strgp, strgp->decomp_path, reqc);
 		if (rc)
 			goto send_reply;
@@ -2781,11 +2782,13 @@ einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The attribute '%s' is required by strgp_add.",
-		       	attr_name);
+			attr_name);
 send_reply:
 	if (reqc->errcode)
 		ldmsd_strgp_del(name, &sec_ctxt);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (store)
+		ldmsd_store_put(store, "find");
 	free(name);
 	free(plugin);
 	free(container);
@@ -3164,7 +3167,7 @@ static int strgp_stop_handler(ldmsd_req_ctxt_t reqc)
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The attribute '%s' is required by %s.",
-			       	attr_name, "strgp_stop");
+				attr_name, "strgp_stop");
 		goto send_reply;
 	}
 
@@ -3226,7 +3229,7 @@ int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
 		       strgp->container,
 		       ((strgp->schema)?strgp->schema:"-"),
 		       ((strgp->regex_s)?strgp->regex_s:"-"),
-		       strgp->obj.name,
+		       strgp->store->api->base.name,
 		       strgp->flush_interval.tv_sec,
 		       (strgp->flush_interval.tv_nsec/1000),
 		       ldmsd_strgp_state_str(strgp->state),
@@ -4944,16 +4947,19 @@ out:
 	return rc;
 }
 
-static char *state_str[] = {
-	[LDMSD_PLUGIN_OTHER] = "other",
-	[LDMSD_PLUGIN_SAMPLER] = "sampler",
-	[LDMSD_PLUGIN_STORE] = "store",
-};
-
-static char *plugn_state_str(enum ldmsd_plugin_type type)
+static char *plugin_type_str(enum ldmsd_plugin_type type)
 {
-	if (type <= LDMSD_PLUGIN_STORE)
-		return state_str[type];
+	static char *type_str[] = {
+		[LDMSD_PLUGIN_OTHER] = "other",
+		[LDMSD_PLUGIN_SAMPLER] = "sampler",
+		[LDMSD_PLUGIN_STORE] = "store",
+		[LDMSD_PLUGIN_AUTH] = "auth",
+		[LDMSD_PLUGIN_DECOMP] = "decomp"
+
+	};
+
+	if (type <= sizeof(type_str) / sizeof(type_str[0]))
+		return type_str[type];
 	return "unknown";
 }
 
@@ -5097,8 +5103,8 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 			       "\"libpath\":\"%s\"}",
 			       samp->cfg.name,
 			       samp->api->base.name,
-			       plugn_state_str(samp->api->base.type),
-			       samp->api->base.libpath);
+			       plugin_type_str(samp->api->base.type),
+			       samp->libpath);
 		if (rc) {
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
 			goto err;
@@ -5119,8 +5125,8 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 				"{\"name\":\"%s\",\"plugin\":\"%s\",\"type\":\"%s\","				    "\"libpath\":\"%s\"}",
 				store->cfg.name,
 				store->api->base.name,
-				plugn_state_str(store->api->base.type),
-				store->api->base.libpath);
+				plugin_type_str(store->api->base.type),
+				store->libpath);
 		if (rc) {
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
 			goto err;
@@ -5249,7 +5255,6 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	inst_name = config_attr = NULL;
 	struct attr_value_list *av_list = NULL;
 	struct attr_value_list *kw_list = NULL;
-	struct ldmsd_plugin *api;
 	ldmsd_cfgobj_t cfg;
 	char *attr_copy = NULL;
 	size_t cnt = 0;
@@ -5259,9 +5264,13 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	inst_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!inst_name)
 		goto einval;
-	ldmsd_cfgobj_sampler_t sampler = ldmsd_sampler_find(inst_name);
+
+	ldmsd_cfgobj_sampler_t sampler = NULL;
+	ldmsd_cfgobj_store_t store;
+
+	sampler = ldmsd_sampler_find(inst_name);
 	if (!sampler) {
-		ldmsd_cfgobj_store_t store = ldmsd_store_find(inst_name);
+		store = ldmsd_store_find(inst_name);
 		if (!store) {
 			/* See if there is a */
 			reqc->errcode = ENOENT;
@@ -5270,11 +5279,9 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 					inst_name);
 			goto send_reply;
 		}
-		api = &store->api->base;
 		cfg = &store->cfg;
 		ldmsd_store_put(store, "find");
 	} else {
-		api = &sampler->api->base;
 		cfg = &sampler->cfg;
 		ldmsd_sampler_put(sampler, "find");
 	}
@@ -5326,13 +5333,16 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	free(cfg->avl_str);
 	free(cfg->kvl_str);
 	cfg->avl_str = av_to_string(av_list, 0);
-	cfg->kvl_str = (kw_list->count)?av_to_string(kw_list, 0):"";
+	cfg->kvl_str = av_to_string(kw_list, 0);
 
 	exclusive_thread = av_value(av_list, "exclusive_thread");
 	if (exclusive_thread && sampler)
 		sampler->use_xthread = atoi(exclusive_thread);
 
-	reqc->errcode = api->config(api, kw_list, av_list);
+	if (sampler)
+		reqc->errcode = sampler->api->base.config((ldmsd_cfgobj_t)sampler, kw_list, av_list);
+	else
+		reqc->errcode = store->api->base.config((ldmsd_cfgobj_t)store, kw_list, av_list);
 	if (reqc->errcode) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Error %d configuring plugin instance '%s'.",
@@ -5347,7 +5357,7 @@ einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The attribute '%s' is required by config.",
-		       	attr_name);
+			attr_name);
 	goto send_reply;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -5377,7 +5387,7 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 
 		if (samp->api->base.usage) {
 			rc = linebuf_printf(reqc, "%s\n%s",
-					samp->cfg.name, samp->api->base.usage(&samp->api->base));
+					    samp->cfg.name, samp->api->base.usage(&samp->cfg));
 		} else {
 			rc = linebuf_printf(reqc, "%s\n", samp->cfg.name);
 		}
@@ -5399,7 +5409,7 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 
 		if (store->api->base.usage) {
 			rc = linebuf_printf(reqc, "%s\n%s",
-					store->cfg.name, store->api->base.usage(&store->api->base));
+					store->cfg.name, store->api->base.usage(&store->cfg));
 		} else {
 			rc = linebuf_printf(reqc, "%s\n", store->cfg.name);
 		}
@@ -6096,7 +6106,7 @@ einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The attribute '%s' is required by oneshot.",
-		       	attr_name);
+			attr_name);
 
 out:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -6449,10 +6459,10 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
 	for (store = ldmsd_store_first(LDMSD_CFGOBJ_STORE); store;
 			store = ldmsd_store_next(store)) {
-		fprintf(fp, "load name=%s plugin=%s\n", store->api->base.cfg_name, store->api->base.name);
+		fprintf(fp, "load name=%s plugin=%s\n", store->cfg.name, store->api->base.name);
 		if (store->cfg.avl_str || store->cfg.kvl_str)
 			fprintf(fp, "config name=%s %s %s\n",
-				store->api->base.cfg_name,
+				store->cfg.name,
 				store->cfg.avl_str ? store->cfg.avl_str : "",
 				store->cfg.kvl_str ? store->cfg.kvl_str : "");
 	}
@@ -6461,16 +6471,16 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfgobj_sampler_t samp;
 	for (samp = ldmsd_sampler_first(); samp;
 			samp = ldmsd_sampler_next(samp)) {
-		fprintf(fp, "load name=%s plugin=%s\n", samp->api->base.cfg_name, samp->api->base.name);
+		fprintf(fp, "load name=%s plugin=%s\n", samp->cfg.name, samp->api->base.name);
 		if (samp->cfg.avl_str || samp->cfg.kvl_str)
 			fprintf(fp, "config name=%s %s %s\n",
-				samp->api->base.cfg_name,
+				samp->cfg.name,
 				samp->cfg.avl_str ? samp->cfg.avl_str : "",
 				samp->cfg.kvl_str ? samp->cfg.kvl_str : "");
 		if (samp->thread_id >= 0) {
 			/* Plugin is running. */
 			fprintf(fp, "start name=%s interval=%ld offset=%ld\n",
-				samp->api->base.cfg_name,
+				samp->cfg.name,
 				samp->sample_interval_us,
 				samp->sample_offset_us);
 		}
@@ -6538,7 +6548,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 			"flush=%ld "
 			"perm=%d",
 			strgp->obj.name,
-			strgp->store->cfg.name,
+			strgp->store->api->base.name,
 			strgp->container,
 			strgp->flush_interval.tv_sec,
 			strgp->obj.perm);
@@ -7114,17 +7124,17 @@ static int profiling_handler(ldmsd_req_ctxt_t req)
 	 *
 	 * {
 	 *  "xprt": {
-	 * 	<xprt name> : {
-	 * 		"lookup": <profile>,
-	 * 		"update": <profile>,
-	 * 		"send": <profile>
-	 * 		},
-	 * 	...
-	 * 	},
+	 *	<xprt name> : {
+	 *		"lookup": <profile>,
+	 *		"update": <profile>,
+	 *		"send": <profile>
+	 *		},
+	 *	...
+	 *	},
 	 *  "stream" : {
-	 * 	<stream name> : <profile>,
-	 * 	...
-	 * 	}
+	 *	<stream name> : <profile>,
+	 *	...
+	 *	}
 	 * }
 	 */
 	obj = json_object();
@@ -7591,7 +7601,7 @@ err:
  *   "stopped" : <int>,
  *   "disconnected" : <int>,
  *   "connecting" : <int>,
- * 	 "connected" : <int>,
+ *	 "connected" : <int>,
  *   "stopping"	: <int>,
  *   "compute_time" : <int>
  * }

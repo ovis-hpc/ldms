@@ -577,7 +577,7 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	strgp->metric_count = i;
 
 	strgp->store_handle = ldmsd_store_open(strgp->store, strgp->container,
-			strgp->schema, &strgp->metric_list, strgp);
+					       strgp->schema, &strgp->metric_list);
 	rc = EINVAL;
 	if (!strgp->store_handle)
 		goto err;
@@ -794,6 +794,9 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out_1;
 	}
+	if (strgp->store)
+		ldmsd_store_put(strgp->store, "strgp");
+
 	if (strgp->decomp)
 		strgp->decomp->release_decomp(strgp);
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STRGP], &strgp->obj.rbn);

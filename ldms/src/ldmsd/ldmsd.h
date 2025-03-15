@@ -3,6 +3,7 @@
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  * Copyright (c) 2010-2018,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2025 Lawrence Livermore National Security, LLC
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -67,6 +68,7 @@
 #include "ovis_log/ovis_log.h"
 #include "ovis_ref/ref.h"
 #include "ldms.h"
+#include "ldmsd_plugin.h"
 
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
 
@@ -626,7 +628,7 @@ typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set
 typedef struct ldmsd_cfgobj_store *ldmsd_cfgobj_store_t;
 
 struct ldmsd_strgp {
-	struct ldmsd_cfgobj obj;
+	 struct ldmsd_cfgobj obj;
 
 	/** A set of match strings to select a subset of all producers */
 	LIST_HEAD(ldmsd_strgp_prdcr_list, ldmsd_name_match) prdcr_list;
@@ -948,16 +950,13 @@ int process_config_str(char *config_str, int *lno, int trust);
 
 char *process_yaml_config_file(const char *path, const char *dname);
 
-
+/* These flags populate the 'flags' field in the plugin structure */
+#define LDMSD_PLUGIN_SINGLE_INSTANCE 0
+#define LDMSD_PLUGIN_MULTI_INSTANCE 1
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
-typedef struct ldmsd_plugin {
+typedef struct ldmsd_plugin  {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN]; /* plugin name (e.g. meminfo) */
-	char *libpath;
-	const char *cfg_name;	/* Plugin configuration object name (i.e. containing
-				 * config object) */
-	void *context;		/* Extra memory allocated by plugin instance creation */
-	size_t context_size;	/* Informs instance creation of cfg object context size */
 	enum ldmsd_plugin_type {
 		LDMSD_PLUGIN_OTHER = 0,
 		LDMSD_PLUGIN_SAMPLER,
@@ -965,37 +964,46 @@ typedef struct ldmsd_plugin {
 		LDMSD_PLUGIN_AUTH,
 		LDMSD_PLUGIN_DECOMP
 	} type;
-	enum ldmsd_plugin_type (*get_type)(struct ldmsd_plugin *self);
-	int (*config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl);
-	void (*term)(struct ldmsd_plugin *self);
-	const char *(*usage)(struct ldmsd_plugin *self);
+	uint64_t flags;
+	int (*config)(ldmsd_plugin_handle_t self,
+		      struct attr_value_list *kwl,
+		      struct attr_value_list *avl);
+	const char *(*usage)(ldmsd_plugin_handle_t self);
+
+	int (*constructor)(ldmsd_plugin_handle_t self);
+	void (*destructor)(ldmsd_plugin_handle_t self);
+
+	/* Deprecated, use destructor() */
+	void (*term)(ldmsd_plugin_handle_t self);
 } *ldmsd_plugin_t;
 
 struct ldmsd_store {
 	struct ldmsd_plugin base;
-	ldmsd_store_handle_t (*open)(struct ldmsd_store *s,
-				    const char *container, const char *schema,
-				    struct ldmsd_strgp_metric_list *metric_list,
-				    void *ucontext);
+	ldmsd_store_handle_t (*open)(struct ldmsd_cfgobj_store *s,
+				     const char *container, const char *schema,
+				     struct ldmsd_strgp_metric_list *metric_list);
 	void (*close)(ldmsd_store_handle_t sh);
 	int (*flush)(ldmsd_store_handle_t sh);
-	void *(*get_context)(ldmsd_store_handle_t sh);
 	int (*store)(ldmsd_store_handle_t sh, ldms_set_t set, int *, size_t count);
 	int (*commit)(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int row_count);
 };
 
+typedef struct ldmsd_cfgobj_sampler *ldmsd_cfgobj_sampler_t;
 typedef struct ldmsd_sampler {
 	struct ldmsd_plugin base;
-	ldms_set_t (*get_set)(struct ldmsd_sampler *self);
-	int (*sample)(struct ldmsd_sampler *self);
+	int (*sample)(struct ldmsd_cfgobj_sampler *self);
 } *ldmsd_sampler_plugin_t;
 
 struct ldmsd_cfgobj_store {
 	struct ldmsd_cfgobj cfg;
 	struct ldmsd_store *api;
+	const char *libpath;
+	/* Private context pointer, managed by plugin */
+	void *context;
+	/* ovis_log handle to use when logging plugin messages */
+	ovis_log_t log;
 };
 
-typedef struct ldmsd_cfgobj_sampler *ldmsd_cfgobj_sampler_t;
 typedef struct ldmsd_sampler_set {
 	ldms_set_t set;
 	ldmsd_cfgobj_sampler_t sampler;
@@ -1005,6 +1013,11 @@ typedef struct ldmsd_sampler_set {
 struct ldmsd_cfgobj_sampler {
 	struct ldmsd_cfgobj cfg;
 	struct ldmsd_sampler *api;
+	const char *libpath;
+	/* Private context pointer, managed by plugin */
+	void *context;
+	/* ovis_log handle to use when logging plugin messages */
+	ovis_log_t log;
 	unsigned long sample_interval_us;
 	long sample_offset_us;
 	int thread_id;
@@ -1027,6 +1040,7 @@ struct ldmsd_cfgobj_sampler {
 
 ldmsd_cfgobj_sampler_t ldmsd_sampler_add(const char *name,
 					struct ldmsd_sampler *api,
+					const char *libpath,
 					ldmsd_cfgobj_del_fn_t __del,
 					uid_t uid, gid_t gid, int perm);
 
@@ -1082,6 +1096,7 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
 
 ldmsd_cfgobj_store_t ldmsd_store_add(const char *name,
 				struct ldmsd_store *store,
+				const char *libpath,
 				ldmsd_cfgobj_del_fn_t __del,
 				uid_t uid, gid_t gid, int perm);
 
@@ -1094,17 +1109,10 @@ void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt);
 
 static inline ldmsd_store_handle_t
 ldmsd_store_open(ldmsd_cfgobj_store_t store,
-		const char *container, const char *schema,
-		struct ldmsd_strgp_metric_list *metric_list,
-		void *ucontext)
+		 const char *container, const char *schema,
+		 struct ldmsd_strgp_metric_list *metric_list)
 {
-	return store->api->open(store->api, container, schema, metric_list, ucontext);
-}
-
-static inline void *ldmsd_store_get_context(ldmsd_cfgobj_store_t store,
-					    ldmsd_store_handle_t sh)
-{
-	return store->api->get_context(sh);
+	return store->api->open(store, container, schema, metric_list);
 }
 
 static inline void

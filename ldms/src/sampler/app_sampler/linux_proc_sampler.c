@@ -1619,7 +1619,7 @@ void app_set_destroy(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_s
 
 static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set);
 
-static int linux_proc_sampler_sample(struct ldmsd_sampler *pi)
+static int linux_proc_sampler_sample(struct ldmsd_cfgobj_sampler *pi)
 {
 	linux_proc_sampler_inst_t inst = (void*)pi;
 	int i, rc;
@@ -1796,7 +1796,7 @@ static void compute_help() {
 		help_all = _help;
 }
 
-static const char *linux_proc_sampler_usage(struct ldmsd_plugin *self)
+static const char *linux_proc_sampler_usage(ldmsd_plugin_handle_t self)
 {
 	if (!help_all)
 		compute_help();
@@ -3652,10 +3652,10 @@ static int __stream_cb(ldms_stream_event_t ev, void *ctxt)
 	return rc;
 }
 
-static void linux_proc_sampler_term(struct ldmsd_plugin *pi);
+static void linux_proc_sampler_term(ldmsd_plugin_handle_t pi);
 
 static int
-linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
+linux_proc_sampler_config(ldmsd_plugin_handle_t pi, struct attr_value_list *kwl,
 					    struct attr_value_list *avl)
 {
 	linux_proc_sampler_inst_t inst = (void*)pi;
@@ -3669,7 +3669,7 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		return EALREADY;
 	}
 
-	inst->base_data = base_config(avl, pi->cfg_name, SAMP, inst->mylog);
+	inst->base_data = base_config(avl, ldmsd_plugin_cfg_name_get(pi), SAMP, inst->mylog);
 	if (!inst->base_data) {
 		/* base_config() already log error message */
 		return errno;
@@ -3956,7 +3956,7 @@ no_pids:	;
 }
 
 static
-void linux_proc_sampler_term(struct ldmsd_plugin *pi)
+void linux_proc_sampler_term(ldmsd_plugin_handle_t pi)
 {
 	linux_proc_sampler_inst_t inst = (void*)pi;
 	struct rbn *rbn;

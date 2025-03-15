@@ -173,7 +173,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value = NULL;
 	int mvalue = -1;
@@ -190,7 +190,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	base = base_config(avl, self->cfg_name, default_schema_name, cray_aries_log);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), default_schema_name, cray_aries_log);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -252,7 +252,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 static uint64_t dt = 999999999;
 #endif
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
 	int rc;
 	char *s;
@@ -313,7 +313,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	if (base) {
 		base_del(base);
@@ -324,7 +324,7 @@ static void term(struct ldmsd_plugin *self)
 	set = NULL;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 
     return  "config name=cray_aries_r_sampler producer=<pname> component_id=<compid>"

@@ -448,12 +448,12 @@ static int config_check(struct attr_value_list *avl)
 	return access(g_geopm_request_path, R_OK);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config geopm_request_path=<absolute-path-to-file> name=" SAMP " " BASE_CONFIG_USAGE;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = 0;
 
@@ -481,7 +481,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	 * This makes call into core LDMS functions for initializing the sampler
 	 */
 	errno = 0;
-	g_base = base_config(avl, self->cfg_name, SAMP, mylog);
+	g_base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	ovis_log(mylog, OVIS_LDEBUG, SAMP": Base config() called.\n");
 	if (g_base == NULL) {
 		rc = errno ? errno : -1;
@@ -506,7 +506,7 @@ exit:
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
 	int rc = 0;
 	union ldms_value value;
@@ -547,7 +547,7 @@ exit:
 }
 
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	if (g_base) {
 		base_del(g_base);

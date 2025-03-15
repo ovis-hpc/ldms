@@ -99,7 +99,6 @@ struct amqp_instance {
 	char *ca_pem;		/* CA .PEM */
 	char *key;		/* key .PEM */
 	char *cert;		/* cert .PEM */
-	void *ucontext;
 	struct rbn rbn;
 	char *value_buf;
 	size_t value_buf_len;
@@ -221,7 +220,7 @@ static int check_reply(amqp_rpc_reply_t r, const char *file, int line)
  *   user=<name>        The SASL user name, default is "guest"
  *   pwd=<password>     The SASL password, default is "guest"
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	amqp_inst_t ai;
@@ -397,7 +396,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return "Required key/values\n"
 		"   container=<name>   The unique storage container name.\n"
@@ -417,15 +416,9 @@ static const char *usage(struct ldmsd_plugin *self)
 		"   pwd=<password>     The SASL password, default is 'guest'\n";
 }
 
-static void *get_ucontext(ldmsd_store_handle_t _sh)
-{
-	amqp_inst_t ai = _sh;
-	return ai->ucontext;
-}
-
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+open_store(struct ldmsd_cfgobj_store *s, const char *container, const char *schema,
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
 	amqp_inst_t ai;
 	struct rbn *rbn;
@@ -459,7 +452,6 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		goto err_0;
 
 	ai->schema = strdup(schema);
-	ai->ucontext = ucontext;
 	pthread_mutex_unlock(&cfg_lock);
 	return ai;
  err_0:
@@ -530,7 +522,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 	pthread_mutex_unlock(&cfg_lock);
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	struct rbn *rbn;
 	amqp_inst_t ai;
@@ -912,7 +904,6 @@ static struct ldmsd_store store_amqp = {
 		.usage = usage,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,
