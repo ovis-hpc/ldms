@@ -332,7 +332,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
 	return  "config name=" SAMP " address=<address> username=<username> password=<password> sdrcache=<cachefile> retry=<sec> " BASE_CONFIG_USAGE
 		"    address       address of the host to contact. H flag in the ipmitool command (e.g., cn1-ipmi).\n"
@@ -344,7 +344,7 @@ static const char *usage(struct ldmsd_plugin *self)
 	//FIXME: make an optional command to refresh the cache file.
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *hostname, *username, *password, *sdrcache, *retrycmd;
 	int rc;
@@ -406,7 +406,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		if (rc != 0) 
 			sleep(retry);
 
-		base = base_config(avl, self->cfg_name, SAMP, mylog);
+		base = base_config(avl, self->name, SAMP, mylog);
 		if (!base) {
 			rc = errno;
 			goto err;
@@ -429,7 +429,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
 	int metric_no;
 	char *s;
@@ -516,7 +516,7 @@ static int sample(struct ldmsd_sampler *self)
 	
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
 
 	cmd[0] = '\0';

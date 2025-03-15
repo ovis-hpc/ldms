@@ -203,7 +203,7 @@ static void osts_sample()
         }
 }
 
-static int config(struct ldmsd_plugin *self,
+static int config(struct ldmsd_cfgobj *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         ovis_log(lustre_ost_log, OVIS_LDEBUG, "config() called\n");
@@ -220,7 +220,7 @@ static int config(struct ldmsd_plugin *self,
         return 0;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
         ovis_log(lustre_ost_log, OVIS_LDEBUG, "sample() called\n");
         if (ost_general_schema_is_initialized() < 0) {
@@ -242,7 +242,7 @@ static int sample(struct ldmsd_sampler *self)
         return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
 	ovis_log(lustre_ost_log, OVIS_LDEBUG, "term() called\n");
 	osts_destroy();
@@ -250,7 +250,7 @@ static void term(struct ldmsd_plugin *self)
 	ost_job_stats_schema_fini();
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
         ovis_log(lustre_ost_log, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP;

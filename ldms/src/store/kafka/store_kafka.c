@@ -96,7 +96,7 @@ static const char *_help_str =
 "              decomposition=decomp.json\n"
 "";
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
 	return  _help_str;
 }
@@ -104,7 +104,7 @@ static const char *usage(struct ldmsd_plugin *self)
 pthread_mutex_t sk_lock = PTHREAD_MUTEX_INITIALIZER;
 static rd_kafka_conf_t *common_rconf = NULL;
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	int rc = 0;
@@ -269,7 +269,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
 	pthread_mutex_lock(&sk_lock);
 	if (common_rconf) {
@@ -281,7 +281,7 @@ static void term(struct ldmsd_plugin *self)
 
 static ldmsd_store_handle_t
 open_store(struct ldmsd_store *s, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
 	errno = ENOSYS;
 	LOG_ERROR("store_kafka does not support `open_store()` interface (non-decomposition strgp)\n");

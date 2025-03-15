@@ -139,7 +139,7 @@ static struct mstruct setvals;
 static struct mstruct readvals;
 
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
 	return  "    config name=" SAMP " action=initialize [setfile=<cfile> rtrid=<rtrid>] readfile=<rfile> " BASE_CONFIG_USAGE
 		"            - Initialization activities for the set. Does not create it. Sampler specific arguments:\n"
@@ -623,7 +623,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 		rtrid = strdup("");
 
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, self->name, SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		_free_cfg();
@@ -845,7 +845,7 @@ struct kw kw_tbl[] = {
 };
 
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	struct kw *kw;
@@ -879,7 +879,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
 	union ldms_value v;
 	char sval[MSR_MAXLEN];
@@ -945,7 +945,7 @@ out:
 
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
 	int i;
 

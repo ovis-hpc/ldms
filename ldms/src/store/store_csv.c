@@ -172,7 +172,6 @@ struct csv_store_handle {
 	printheader_t printheader;
 	int udata;
 	pthread_mutex_t lock;
-	void *ucontext;
 	bool conflict_warned;
 	int64_t lastflush;
 	int64_t store_count;
@@ -650,9 +649,10 @@ static void __sc_init(store_csv_t sc)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_cfgobj *cfgobj, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	store_csv_t sc = (void*)self->context;
+	ldmsd_cfgobj_store_t scfg = (ldmsd_cfgobj_store_t)cfgobj;
+	store_csv_t sc = scfg->context;
 	int rollmethod = DEFAULT_ROLLTYPE;
 	int rc;
 
@@ -837,11 +837,15 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
-	/* TODO REVISE ME */
-/* clean up any allocated globals here that are not handled by store_csv_fini */
-	store_csv_t sc = (void*)self->context;
+	ldmsd_cfgobj_store_t scfg = (ldmsd_cfgobj_store_t)self;
+
+	/* TODO REVISE ME: */
+	/* clean up any allocated globals here that are not handled by
+	 * store_csv_fini
+	 */
+	store_csv_t sc = scfg->context;
 	pthread_mutex_lock(&sc->cfg_lock);
 	ldmsd_plugattr_destroy(sc->pa);
 	sc->pa = NULL;
@@ -852,7 +856,7 @@ static void term(struct ldmsd_plugin *self)
 	pthread_mutex_unlock(&sc->cfg_lock);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
 	return  "    config name=store_csv path=<path> rollover=<num> rolltype=<num>\n"
 		"           [altheader=<0/!0> userdata=<0/!0>]\n"
@@ -883,12 +887,6 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                      Only applies for N > 1. Same as rolltypes.\n"
 		"\n"
 		;
-}
-
-static void *get_ucontext(ldmsd_store_handle_t _s_handle)
-{
-	struct csv_store_handle *s_handle = _s_handle;
-	return s_handle->ucontext;
 }
 
 /* caller MUST hold the s_handle->lock */
@@ -1021,24 +1019,17 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 /*
  *  Would like to do this instead, but cannot currently get array size in open_store
  */
-#if 0 /* print_header_from_open proto */
-static int print_header_from_open(struct csv_store_handle *s_handle,
-				  struct ldmsd_store_metric_list *metric_list,
-				  void *ucontext){
-}
-#endif
-
 static struct csv_store_handle *
 csv_store_handle_get(store_csv_t sc, const char *container, const char *schema);
 
 static void csv_store_handle_put(struct csv_store_handle *s_handle);
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char* schema,
-		struct ldmsd_strgp_metric_list *list, void *ucontext)
+open_store(ldmsd_cfgobj_store_t scfg, const char *container, const char* schema,
+	   struct ldmsd_strgp_metric_list *list)
 {
 	struct csv_store_handle *s_handle = NULL;
-	store_csv_t sc = (void*)s->base.context;
+	store_csv_t sc = scfg->context;
 
 	if (!sc->pa) {
 		ovis_log(mylog, OVIS_LERROR, "config not called. cannot open.\n");
@@ -1729,7 +1720,6 @@ static void __csv_handle_close(struct csv_store_handle *s_handle)
 	if (s_handle->path)
 		free(s_handle->path);
 	s_handle->path = NULL;
-	s_handle->ucontext = NULL;
 	if (s_handle->file)
 		fclose(s_handle->file);
 	s_handle->file = NULL;
@@ -1990,7 +1980,7 @@ csv_row_schema_get(ldmsd_strgp_t strgp, struct csv_row_store_handle *rs_handle,
 		   struct csv_row_schema_key_s *key)
 {
 	struct csv_row_schema_rbn_s *rrbn;
-	store_csv_t sc = (void*)strgp->store->api->base.context;
+	store_csv_t sc = (void*)strgp->store->context;
 
 	rrbn = (void*)rbt_find(&rs_handle->row_schema_rbt, key);
 	if (rrbn)
@@ -2356,85 +2346,13 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set,
 	return 0;
 }
 
-#if 0
-static void store_csv_del(struct ldmsd_cfgobj *obj)
-{
-	store_csv_t sc = (void*)obj;
-
-	pthread_mutex_destroy(&sc->cfg_lock);
-	idx_destroy(sc->store_idx);
-	ldmsd_plugattr_destroy(sc->pa);
-	if (sc->rothread_used) {
-		void * dontcare = NULL;
-		pthread_cancel(sc->rothread);
-		pthread_join(sc->rothread, &dontcare);
-	}
-	sc->pa = NULL;
-	sc->store_idx = NULL;
-
-	free(sc);
-}
-
-void __store_csv_once()
-{
-	static int once = 0;
-	static pthread_mutex_t once_mutex = PTHREAD_MUTEX_INITIALIZER;
-	pthread_mutex_lock(&once_mutex);
-	if (once)
-		goto out;
-	once = 1;
-	if (!mylog) {
-		mylog = ovis_log_register("store."PNAME,
-					  "The log subsystem of '" PNAME "' plugin");
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-				"of '" PNAME "' plugin. Error %d\n", errno);
-	}
-	PG.mylog = mylog;
-	PG.pname = PNAME;
- out:
-	pthread_mutex_unlock(&once_mutex);
-}
-
-struct ldmsd_plugin *get_plugin_instance(const char *name,
-					 uid_t uid, gid_t gid, int perm)
-{
-	store_csv_t sc;
-
-	__store_csv_once();
-
-	sc = (void*)ldmsd_store_alloc(name, sizeof(*sc), store_csv_del, uid, gid, perm);
-	if (!sc)
-		return NULL;
-
-	snprintf(sc->store.base.name, sizeof(sc->store.base.name), "store_csv");
-	sc->store.base.term   = term;
-	sc->store.base.config = config;
-	sc->store.base.usage  = usage;
-
-	sc->store.open        = open_store;
-	sc->store.get_context = get_ucontext;
-	sc->store.store       = store;
-	sc->store.flush       = flush_store;
-	sc->store.close       = close_store;
-	sc->store.commit      = commit_rows;
-
-	/* TODO COMPLETE ME (just in case) */
-
-	sc->store_idx = idx_create();
-	pthread_mutex_init(&sc->cfg_lock, NULL);
-
-	return &sc->store.base;
-}
-#else
 static struct ldmsd_store store_csv = {
 	.base.type   = LDMSD_PLUGIN_STORE,
 	.base.name   = "store_csv",
 	.base.term   = term,
 	.base.config = config,
 	.base.usage  = usage,
-	.base.context_size = sizeof(struct store_csv_s),
 	.open        = open_store,
-	.get_context = get_ucontext,
 	.store       = store,
 	.flush       = flush_store,
 	.close       = close_store,
@@ -2452,7 +2370,6 @@ struct ldmsd_plugin *get_plugin()
         }
         return &store_csv.base;
 }
-#endif
 
 static void __attribute__ ((constructor)) store_csv_init();
 static void store_csv_init()

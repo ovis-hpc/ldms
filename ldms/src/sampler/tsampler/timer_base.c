@@ -162,7 +162,7 @@ out:
 	return rc;
 }
 
-int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+int timer_base_config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 		      struct attr_value_list *avl, ovis_log_t mylog)
 {
 	struct timer_base *tb;
@@ -231,13 +231,13 @@ int timer_base_create_set(struct timer_base *tb)
 
 void timer_base_cleanup(struct timer_base *tb);
 
-void timer_base_term(struct ldmsd_plugin *self)
+void timer_base_term(struct ldmsd_cfgobj *self)
 {
 	/* remove all timers when we terminate */
 	timer_base_cleanup((void*)self);
 }
 
-int timer_base_sample(struct ldmsd_sampler *self)
+int timer_base_sample(struct ldmsd_cfgobj_sampler *self)
 {
 	struct timer_base *tb = (void*)self;
 	int rc = 0;
@@ -282,7 +282,7 @@ out:
 	return rc;
 }
 
-const char *timer_base_usage(struct ldmsd_plugin *self)
+const char *timer_base_usage(struct ldmsd_cfgobj *self)
 {
 	return "timer_base is a base-class sampler that cannot be used by itself.";
 }
@@ -313,7 +313,7 @@ void timer_base_cleanup(struct timer_base *tb)
 }
 
 static
-int __config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+int __config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 struct attr_value_list *avl)
 {
 	assert(0 == "ERROR timer_base.config() not overridden.");

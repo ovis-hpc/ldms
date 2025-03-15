@@ -171,13 +171,13 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 }
 
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
 	return  "config name=" SAMP BASE_CONFIG_USAGE;
 }
 
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 
 	void * arg = NULL;
@@ -193,7 +193,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	base= base_config(avl, self->cfg_name, SAMP, mylog);
+	base= base_config(avl, self->name, SAMP, mylog);
 	if (!base)
 		goto err;
 
@@ -210,7 +210,7 @@ err:
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
 	union ldms_value v;
 
@@ -226,7 +226,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
 	if (base)
 		base_del(base);

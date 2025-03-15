@@ -155,13 +155,13 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE;
 }
 
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 
@@ -173,7 +173,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (rc)
 		return rc;
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, self->name, SAMP, mylog);
 	if (!base)
 		return EINVAL;
 
@@ -189,7 +189,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *scfg)
 {
 	int rc;
 	int metric_no;
@@ -199,7 +199,7 @@ static int sample(struct ldmsd_sampler *self)
 	union ldms_value v;
 
 	if (!set) {
-		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
+		ovis_log(scfg->log, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -224,7 +224,7 @@ static int sample(struct ldmsd_sampler *self)
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
 	if (mf)
 		fclose(mf);
