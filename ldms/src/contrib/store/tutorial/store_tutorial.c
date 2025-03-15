@@ -66,11 +66,9 @@
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
 
-
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
 #endif
-
 
 #define PNAME "store_tutorial"
 #define MAXSCHEMA 5
@@ -83,19 +81,17 @@ static ovis_log_t mylog;
 #define LOGFILE "/var/log/store_tutorial.log"
 
 struct tutorial_store_handle {
-	char *path; //full path will be path/container/schema
+	char *path;	     /* full path will be path/container/schema */
 	FILE *file;
 	pthread_mutex_t lock;
-	void *ucontext;
 };
 
-//TUT: keeping these because in a more complex scenario would use the values for flush and searching for a store to close
+/* TUT: keeping these because in a more complex scenario would use the
+ * values for flush and searching for a store to close */
 static struct tutorial_store_handle* tstorehandle[MAXSCHEMA];
 static int numschema = 0;
 static char* root_path;
 static pthread_mutex_t cfg_lock;
-
-
 
 /**
  * \brief Configuration
@@ -128,16 +124,9 @@ static const char *usage(ldmsd_plug_handle_t handle)
 		;
 }
 
-static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_handle)
-{
-	struct tutorial_store_handle *s_handle = _s_handle;
-	return s_handle->ucontext;
-}
-
-
 static ldmsd_store_handle_t
-open_store(ldmsd_plug_handle_t handle, const char *container, const char* schema,
-		struct ldmsd_strgp_metric_list *list, void *ucontext)
+open_store(ldmsd_plug_handle_t s, const char *container, const char* schema,
+		struct ldmsd_strgp_metric_list *list)
 {
 	struct tutorial_store_handle *s_handle = NULL;
 	int rc = 0;
@@ -174,9 +163,7 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char* schema
 
 	pthread_mutex_init(&s_handle->lock, NULL);
 	pthread_mutex_lock(&s_handle->lock);
-	s_handle->ucontext = ucontext;
 	s_handle->path = strdup(path);
-
 
 	/* create path if not already there. */
 	rc = mkdir(dpath, 0777);
@@ -216,8 +203,8 @@ out:
 	return s_handle;
 }
 
-
-static int store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_array, size_t metric_count)
+static int store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh,
+		 ldms_set_t set, int *metric_array, size_t metric_count)
 {
 	const struct ldms_timestamp _ts = ldms_transaction_timestamp_get(set);
 	const struct ldms_timestamp *ts = &_ts;
@@ -278,7 +265,6 @@ static struct ldmsd_store store_tutorial = {
 			.usage = usage,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 };
 

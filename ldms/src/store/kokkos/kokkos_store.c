@@ -871,7 +871,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		stream = strdup(value);
 	else
 		stream = strdup("kokkos");
-	ldms_stream_subscribe(stream, 0, slurm_recv_cb, context, "kokkos_store");
+	ldms_stream_subscribe(stream, 0, slurm_recv_cb, handle, "kokkos_store");
 
 	value = av_value(avl, "path");
 	if (!value) {

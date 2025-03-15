@@ -252,8 +252,7 @@ err:
 
 static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-        filesingle_context_t fsc = ldmsd_plug_context_get(handle);
-        const char *config_name = ldmsd_plug_config_name_get(handle);
+        filesingle_context_t fsc = ldmsd_plug_ctxt_get(handle);
 	int rc;
 
 	if (fsc->set) {
@@ -277,7 +276,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		return EINVAL;
 	}
 
-	fsc->base = base_config(avl, config_name, config_name, fsc->mylog);
+	fsc->base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, fsc->mylog);
 	if (!fsc->base) {
 		rc = ENOMEM;
 		goto err;
@@ -300,7 +299,7 @@ err:
 
 static int sample(ldmsd_plug_handle_t handle)
 {
-        filesingle_context_t fsc = ldmsd_plug_context_get(handle);
+        filesingle_context_t fsc = ldmsd_plug_ctxt_get(handle);
 	int rc;
 	char *l;
 	char lbuf[VALMAX+1];
@@ -381,7 +380,7 @@ static const char *usage(ldmsd_plug_handle_t handle)
 static int constructor(ldmsd_plug_handle_t handle)
 {
         filesingle_context_t fsc;
-        const char *config_name = ldmsd_plug_config_name_get(handle);
+        const char *config_name = ldmsd_plug_cfg_name_get(handle);
 
         fsc = calloc(1, sizeof(*fsc));
         if (fsc == NULL) {
@@ -406,14 +405,14 @@ static int constructor(ldmsd_plug_handle_t handle)
 	TAILQ_INIT(&fsc->metric_list);
         fsc->configured = false;
 
-        ldmsd_plug_context_set(handle, fsc);
+        ldmsd_plug_ctxt_set(handle, fsc);
 
         return 0;
 }
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
-        filesingle_context_t fsc = ldmsd_plug_context_get(handle);
+        filesingle_context_t fsc = ldmsd_plug_ctxt_get(handle);
 
 	if (fsc->base)
 		base_del(fsc->base);
@@ -421,7 +420,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 		ldms_set_delete(fsc->set);
 	fsc->set = NULL;
 	clear_metric_list(fsc);
-        ovis_log_destroy(fsc->mylog);
+        ovis_log_deregister(fsc->mylog);
         free(fsc);
 }
 

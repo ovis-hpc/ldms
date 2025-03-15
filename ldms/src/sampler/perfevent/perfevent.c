@@ -405,7 +405,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		return EINVAL;
 	}
 
-	base = base_config(avl, SAMP, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, mylog);
 	if (!base) {
 		rc = ENOMEM;
 		goto err;

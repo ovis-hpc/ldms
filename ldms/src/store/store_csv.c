@@ -173,7 +173,6 @@ struct csv_store_handle {
 	printheader_t printheader;
 	int udata;
 	pthread_mutex_t lock;
-	void *ucontext;
 	bool conflict_warned;
 	int64_t lastflush;
 	int64_t store_count;
@@ -653,7 +652,7 @@ static void __sc_init(store_csv_t sc)
  */
 static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	store_csv_t sc = ldmsd_plug_context_get(handle);
+	store_csv_t sc = ldmsd_plug_ctxt_get(handle);
 	int rollmethod = DEFAULT_ROLLTYPE;
 	int rc;
 
@@ -871,12 +870,6 @@ static const char *usage(ldmsd_plug_handle_t handle)
 		;
 }
 
-static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_handle)
-{
-	struct csv_store_handle *s_handle = _s_handle;
-	return s_handle->ucontext;
-}
-
 /* caller MUST hold the s_handle->lock */
 static int print_header_from_row(struct csv_store_handle *s_handle,
 				 ldms_set_t set, struct ldmsd_row_s *row)
@@ -1004,6 +997,9 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 	return 0;
 }
 
+/*
+ *  Would like to do this instead, but cannot currently get array size in open_store
+ */
 static struct csv_store_handle *
 csv_store_handle_get(store_csv_t sc, const char *container, const char *schema);
 
@@ -1011,9 +1007,9 @@ static void csv_store_handle_put(struct csv_store_handle *s_handle);
 
 static ldmsd_store_handle_t
 open_store(ldmsd_plug_handle_t handle, const char *container, const char* schema,
-		struct ldmsd_strgp_metric_list *list, void *ucontext)
+		struct ldmsd_strgp_metric_list *list)
 {
-	store_csv_t sc = ldmsd_plug_context_get(handle);
+	store_csv_t sc = ldmsd_plug_ctxt_get(handle);
 	struct csv_store_handle *s_handle = NULL;
 
 	if (!sc->pa) {
@@ -1705,7 +1701,6 @@ static void __csv_handle_close(struct csv_store_handle *s_handle)
 	if (s_handle->path)
 		free(s_handle->path);
 	s_handle->path = NULL;
-	s_handle->ucontext = NULL;
 	if (s_handle->file)
 		fclose(s_handle->file);
 	s_handle->file = NULL;
@@ -1965,7 +1960,7 @@ static struct csv_row_schema_rbn_s *
 csv_row_schema_get(ldmsd_strgp_t strgp, struct csv_row_store_handle *rs_handle,
 		   struct csv_row_schema_key_s *key)
 {
-	store_csv_t sc = (void*)strgp->store->context;
+	store_csv_t sc = ldmsd_plug_ctxt_get(strgp->store);
 	struct csv_row_schema_rbn_s *rrbn;
 
 	rrbn = (void*)rbt_find(&rs_handle->row_schema_rbt, key);
@@ -2342,17 +2337,19 @@ static int constructor(ldmsd_plug_handle_t handle)
                          "Failed to allocate context in plugin store_csv: %d", errno);
                 return ENOMEM;
         }
-        ldmsd_plug_context_set(handle, sc);
+        ldmsd_plug_ctxt_set(handle, sc);
 
         return 0;
 }
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
-        store_csv_t sc = ldmsd_plug_context_get(handle);
+        store_csv_t sc = ldmsd_plug_ctxt_get(handle);
 
 	/* TODO REVISE ME */
-/* clean up any allocated globals here that are not handled by store_csv_fini */
+	/* clean up any allocated globals here that are not handled by
+	 * store_csv_fini
+	 */
 	pthread_mutex_lock(&sc->cfg_lock);
 	ldmsd_plugattr_destroy(sc->pa);
 	sc->pa = NULL;
@@ -2373,7 +2370,6 @@ static struct ldmsd_store store_csv = {
         .base.constructor = constructor,
         .base.destructor = destructor,
 	.open        = open_store,
-	.get_context = get_ucontext,
 	.store       = store,
 	.flush       = flush_store,
 	.close       = close_store,

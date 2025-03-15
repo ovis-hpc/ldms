@@ -101,10 +101,10 @@ void hfclock_timer_cb(tsampler_timer_t t)
 
 static
 int hfclock_config(ldmsd_plug_handle_t handle,
-                   struct attr_value_list *kwl,
-                   struct attr_value_list *avl)
+				struct attr_value_list *kwl,
+				struct attr_value_list *avl)
 {
-	struct hfclock *hf = (struct hfclock *)ldmsd_plug_context_get(handle);
+	struct hfclock *hf = (struct hfclock *)ldmsd_plug_ctxt_get(handle);
 	int rc;
 	char *v;
 	uint64_t x;
@@ -146,7 +146,7 @@ int hfclock_config(ldmsd_plug_handle_t handle,
 	if (rc)
 		goto cleanup;
 
-	rc = timer_base_create_set(&hf->base, ldmsd_plug_config_name_get(handle));
+	rc = timer_base_create_set(&hf->base, ldmsd_plug_cfg_name_get(handle));
 	if (rc)
 		goto cleanup;
 
@@ -176,14 +176,14 @@ static int constructor(ldmsd_plug_handle_t handle)
 
         timer_base_init(&hf->base);
 
-        ldmsd_plug_context_set(handle, hf);
+        ldmsd_plug_ctxt_set(handle, hf);
 
         return 0;
 }
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
-	struct hfclock *hf = ldmsd_plug_context_get(handle);
+	struct hfclock *hf = ldmsd_plug_ctxt_get(handle);
 
 	hfclock_cleanup(hf);
         free(hf);

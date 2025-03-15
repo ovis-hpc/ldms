@@ -447,7 +447,7 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 
 static void term(ldmsd_plug_handle_t handle)
 {
-	ovis_log(mylog, OVIS_LDEBUG, "term %s\n", STREAM "_store");
+	ovis_log(mylog, OVIS_LDEBUG, "term %s\n", ldmsd_plug_cfg_name_get(handle));
 	if (sos)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 	free(root_path);

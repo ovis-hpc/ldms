@@ -126,20 +126,15 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	else
 		stream = strdup("hello_stream/hello");
 
-	ldms_stream_subscribe(stream, 0, hello_recv_cb, NULL, "hello_sampler");
+	ldms_stream_subscribe(stream, 0, hello_recv_cb, handle, "hello_sampler");
 
 	return rc;
-}
-
-static void term(ldmsd_plug_handle_t handle)
-{
 }
 
 static struct ldmsd_sampler hello_sampler = {
 	.base = {
 		.name = "hello_sampler",
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 	},
@@ -157,12 +152,4 @@ struct ldmsd_plugin *get_plugin()
 					"of 'hello_sampler' plugin. Error %d\n", rc);
 	}
 	return &hello_sampler.base;
-}
-
-static void __attribute__ ((constructor)) hello_sampler_init(void)
-{
-}
-
-static void __attribute__ ((destructor)) hello_sampler_term(void)
-{
 }

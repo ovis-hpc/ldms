@@ -238,7 +238,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		stream = strdup(value);
 	else
 		stream = strdup("kokkos-perf-data");
-	ldms_stream_subscribe(stream, 0, stream_recv_cb, context, "kokkos_appmon");
+	ldms_stream_subscribe(stream, 0, stream_recv_cb, handle, "kokkos_appmon");
 
 	value = av_value(avl, "path");
 	if (!value) {

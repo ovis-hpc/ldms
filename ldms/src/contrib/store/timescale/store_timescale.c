@@ -72,7 +72,6 @@ static char port[100];
 static char dbname[100];
 static char password[100];
 struct timescale_store {
-        void *ucontext;
         char *schema;
         char *container;
         pthread_mutex_t lock;
@@ -306,7 +305,7 @@ static const char *usage(ldmsd_plug_handle_t handle)
 
 static ldmsd_store_handle_t
 open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
         struct timescale_store *is = NULL;
         char *measurement_create;
@@ -317,7 +316,6 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
                 goto out;
         is->measurement_limit = measurement_limit;
         pthread_mutex_init(&is->lock, NULL);
-        is->ucontext = ucontext;
         is->container = strdup(container);
         if (!is->container)
                 goto err1;
@@ -328,7 +326,8 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
         is->comp_mid = -1;
 
         char str[128];
-        snprintf(str, sizeof(str), "user=%s password=%s hostaddr=%s port=%s dbname=%s", strdup(user), password, strdup(hostaddr), strdup(port), strdup(dbname));
+        snprintf(str, sizeof(str), "user=%s password=%s hostaddr=%s port=%s dbname=%s",
+		 strdup(user), password, strdup(hostaddr), strdup(port), strdup(dbname));
 
         is->conn = PQconnectdb(str);
         if (PQstatus(is->conn) == CONNECTION_BAD) {
@@ -565,12 +564,6 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 	free(is);
 }
 
-static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
-{
-	struct timescale_store *is = _sh;
-	return is->ucontext;
-}
-
 static struct ldmsd_store store_timescale = {
 	.base = {
 		.name = "timescale",
@@ -579,7 +572,6 @@ static struct ldmsd_store store_timescale = {
 		.type = LDMSD_PLUGIN_STORE,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.close = close_store,
 };

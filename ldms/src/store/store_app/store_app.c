@@ -66,7 +66,6 @@ static ovis_log_t mylog;
 typedef struct store_app_cont_s *store_app_cont_t;
 struct store_app_cont_s {
 	sos_t sos;
-	void *ucontext;
 	pthread_mutex_t lock;
 	struct rbt schema_tree;	/* Tree of schema in this store */
 	char path[PATH_MAX];
@@ -140,7 +139,7 @@ static void store_app_close(ldmsd_plug_handle_t handle, ldmsd_store_handle_t sh)
 
 static ldmsd_store_handle_t
 store_app_open(ldmsd_plug_handle_t handle, const char *container, const char *schema,
-	       struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+	       struct ldmsd_strgp_metric_list *metric_list)
 {
 	/* Perform `open` operation */
 	int len;
@@ -596,26 +595,14 @@ store_app_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	return 0;
 }
 
-static void store_app_term(ldmsd_plug_handle_t handle)
-{
-}
-
-static void *store_app_get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
-{
-	store_app_cont_t si = _sh;
-	return si->ucontext;
-}
-
 static struct ldmsd_store store_app = {
 	.base = {
 		.name = "store_app",
-		.term = store_app_term,
 		.config = store_app_config,
 		.usage = store_app_usage,
 		.type = LDMSD_PLUGIN_STORE,
 	},
 	.open = store_app_open,
-	.get_context = store_app_get_ucontext,
 	.store = store_app_store,
 	.flush = store_app_flush,
 	.close = store_app_close,

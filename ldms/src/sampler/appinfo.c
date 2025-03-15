@@ -267,7 +267,7 @@ static const char *usage(ldmsd_plug_handle_t handle)
  * @param avl is the configuration attribute-value list
  **/
 static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
-                  struct attr_value_list *avl)
+		struct attr_value_list *avl)
 {
 	int rc;
 	int actual_shmem_size;
@@ -289,7 +289,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	}
 
 	/* Invoke base sampler config, let it do what it needs */
-	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, ldmsd_plug_log_get(handle));
 	if (!base) {
 		rc = errno;
 		goto err;

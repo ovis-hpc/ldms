@@ -100,13 +100,19 @@ enum ldmsd_plugin_data_e {
 	LDMSD_PLUGIN_DATA_CONTEXT_SIZE = 1,
 };
 
-/* caller is responsible for freeing the pointer returned in libpath_out */
-static ldmsd_plugin_t load_plugin(char *plugin_name, char **libpath_out)
+/* The ldmsd_plugin_t returned:
+ * - Is the same address when called multiple times
+ * - Is never modified between calls
+ * - Does not need to be freed by the caller of this function
+ *
+ * If sucessfull, the memory containing libpath must be freed by the caller
+ */
+const ldmsd_plugin_t load_plugin(const char *plugin_name, const char **libpath_)
 {
+	char *libpath;
 	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
 	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
 	char *pathdir = library_path;
-	char *libpath;
 	char *saveptr = NULL;
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
 	void *d = NULL;
@@ -152,7 +158,7 @@ static ldmsd_plugin_t load_plugin(char *plugin_name, char **libpath_out)
 	}
 	struct ldmsd_plugin *pi = pget();
 	if (pi)
-		*libpath_out = strdup(library_name);
+		*libpath_ = strdup(library_name);
 	return pi;
 
 err_0:
@@ -172,7 +178,6 @@ void ldmsd_sampler_remove(ldmsd_cfgobj_sampler_t sampler)
                 sampler->api->base.destructor((ldmsd_plug_handle_t)sampler);
                 sampler->context = NULL;
         }
-        free(sampler->plugin_name);
         free(sampler->libpath);
         ldmsd_cfgobj_del(&sampler->cfg);
 
@@ -181,93 +186,92 @@ void ldmsd_sampler_remove(ldmsd_cfgobj_sampler_t sampler)
 
 ldmsd_cfgobj_sampler_t
 ldmsd_sampler_add(const char *cfg_name,
-                  const char *plugin_name,
-                  const char *libpath,
-                  struct ldmsd_sampler *api,
-                  ldmsd_cfgobj_del_fn_t __del,
-                  uid_t uid, gid_t gid, int perm)
+		  struct ldmsd_sampler *api,
+		  const char *libpath,
+		  ldmsd_cfgobj_del_fn_t __del,
+		  uid_t uid, gid_t gid, int perm)
 {
+	int rc;
 	ldmsd_cfgobj_sampler_t sampler;
-	sampler = (void*)ldmsd_cfgobj_new_with_auth(cfg_name, LDMSD_CFGOBJ_SAMPLER,
-						sizeof(*sampler),
-						__del, uid, gid, perm);
+	char log_name[4096];
+
+	sampler = (void *)ldmsd_cfgobj_new_with_auth(cfg_name,
+					     LDMSD_CFGOBJ_SAMPLER,
+					     sizeof(*sampler),
+					     __del, uid, gid, perm);
 	if (!sampler) {
 		ovis_log(config_log, OVIS_LERROR,
 			"Error %d creating the sampler configuration object '%s'\n",
-				errno, cfg_name);
+			 errno, cfg_name);
 		return NULL;
 	}
-        sampler->api = api;
-        sampler->plugin_name = strdup(plugin_name);
-        sampler->libpath = strdup(libpath);
-	sampler->thread_id = -1;	/* stopped */
-        if (sampler->api->base.constructor != NULL) {
-                /* This plugin is multi-instance capable */
-                /* FIXME - add check that destructor is also not NULL */
-                sampler->api->base.constructor((ldmsd_plug_handle_t)sampler);
-                /* FIXME - check the return code */
-        }
+	sprintf(log_name, "sampler.%s.%s", api->base.name, cfg_name);
+	sampler->log = ovis_log_register(log_name, "Sampler plugin log file.");
+	sampler->api = api;
+	sampler->libpath = strdup(libpath);
+	sampler->thread_id = -1; /* stopped */
+	if (sampler->api->base.constructor != NULL
+		&& sampler->api->base.destructor != NULL)
+	{
+		/* This plugin is multi-instance capable */
+		rc = sampler->api->base.constructor(&sampler->cfg);
+		if (rc)
+			goto err;
+	}
 #ifdef _CFG_REF_DUMP_
 	ref_dump(&sampler->cfg.ref, sampler->cfg.name, stderr);
 #endif
 	ldmsd_cfgobj_unlock(&sampler->cfg);
 	return sampler;
-}
-
-void ldmsd_store_remove(ldmsd_cfgobj_store_t store)
-{
-        if (store->api->base.term != NULL) {
-                store->api->base.term((ldmsd_plug_handle_t)store);
-        }
-        if (store->api->base.destructor != NULL) {
-                /* This plugin is multi-instance capable */
-                store->api->base.destructor((ldmsd_plug_handle_t)store);
-                store->context = NULL;
-        }
-        free(store->plugin_name);
-        free(store->libpath);
-        ldmsd_cfgobj_del(&store->cfg);
-
-        return;
+err:
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&sampler->cfg.ref, sampler->cfg.name, stderr);
+#endif
+	/* TODO: cleanup half created cfg obj */
+	errno = rc;
+	return NULL;
 }
 
 ldmsd_cfgobj_store_t
 ldmsd_store_add(const char *cfg_name,
-                const char *plugin_name,
-                const char *libpath,
-                struct ldmsd_store *api,
-                ldmsd_cfgobj_del_fn_t __del,
-                uid_t uid, gid_t gid, int perm)
+		struct ldmsd_store *api, const char *libpath,
+		ldmsd_cfgobj_del_fn_t __del,
+		uid_t uid, gid_t gid, int perm)
 {
+	int rc;
 	ldmsd_cfgobj_store_t store;
+	char log_name[4096];
+
 	store = (void*)ldmsd_cfgobj_new_with_auth(cfg_name, LDMSD_CFGOBJ_STORE,
 						sizeof(*store),
 						__del, uid, gid, perm);
 	if (!store) {
 		ovis_log(config_log, OVIS_LERROR,
 			"Error %d creating the store configuration object '%s'\n",
-				errno, cfg_name);
+			 errno, cfg_name);
 		return NULL;
 	}
+	sprintf(log_name, "store.%s.%s", api->base.name, cfg_name);
+	store->log = ovis_log_register(log_name, "Store plugin log file.");
 	store->api = api;
-        store->plugin_name = strdup(plugin_name);
-        store->libpath = strdup(libpath);
-        if (store->api->base.constructor != NULL) {
-                /* This plugin is multi-instance capable */
-                /* FIXME - add check that destructor is also not NULL */
-                store->api->base.constructor((ldmsd_plug_handle_t)store);
-                /* FIXME - check return code */
-        } else {
-                /* This a legacy plugin, _not_ multi-instance capable */
-                /* FIXME - if this plugin is already loaded, error out */
-                /* A small number of legacy plugins expect ldmsd to pass them back
-                   their own API struct, and have hidden memory tacked on to the
-                   end of that. To support that legacy behavior, we have context
-                   point to the api. */
-                store->context = (void *)api;
-        }
+	store->libpath = strdup(libpath);
+	if (store->api->base.constructor != NULL
+		&& store->api->base.destructor != NULL)
+	{
+		/* This plugin is multi-instance capable */
+		rc = store->api->base.constructor(&store->cfg);
+		if (rc)
+			goto err;
+	}
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&store->cfg.ref, store->cfg.name, stderr);
+#endif
 	ldmsd_cfgobj_unlock(&store->cfg);
 	return store;
+ err:
+	/* TODO: cleanup configuration object */
+	errno = rc;
+	return NULL;
 }
 
 const char *prdcr_state_str(enum ldmsd_prdcr_state state)
@@ -320,19 +324,16 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_cfgobj_sampler_t samp = (void*)obj;
-	struct ldmsd_sampler_set *_set;
-
-	while (( _set = LIST_FIRST(&samp->set_list))) {
-		LIST_REMOVE(_set, entry);
-		ldms_set_delete(_set->set);
-		free(_set);
-	}
-
+	free((char *)samp->libpath);
+	if (samp->api->base.destructor)
+		samp->api->base.destructor(obj);
 	ldmsd_cfgobj___del(obj);
 }
 
 void ldmsd_store___del(ldmsd_cfgobj_t obj)
 {
+	ldmsd_cfgobj_store_t store = (void*)obj;
+	free((char *)store->libpath);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -342,23 +343,56 @@ void ldmsd_store___del(ldmsd_cfgobj_t obj)
 int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
 		      char *errstr, size_t errlen)
 {
+	const char *libpath;
 	struct ldmsd_plugin *api;
-        char *libpath;
+	ldmsd_cfgobj_sampler_t sampler;
+	ldmsd_cfgobj_store_t store;
+	char log_name[1024];
+	ldmsd_cfgobj_t cfgobj;
+
 	if (!plugin_name || !cfg_name)
 		return EINVAL;
+	/* If this plugin does not support multiple configurations,
+	 * the plugin_name must equal the cfg_name
+	 */
 	api = load_plugin(plugin_name, &libpath);
 	if (!api)
 		return errno;
+	if (0 == (api->flags & LDMSD_PLUGIN_MULTI_INSTANCE)) {
+		if (cfg_name && plugin_name) {
+			if (strcmp(cfg_name, plugin_name)) {
+				ovis_log(config_log, OVIS_LERROR,
+					 "Plugin %s does not support multiple "
+					 "configurations, but the name specified "
+					 "was %s.\n", plugin_name, cfg_name);
+				goto err;
+			}
+		}
+	}
 	switch (api->type) {
 	case LDMSD_PLUGIN_SAMPLER:
-		if (ldmsd_sampler_add(cfg_name, plugin_name, libpath, (struct ldmsd_sampler *)api,
-                                      ldmsd_sampler___del,
-                                      geteuid(), getegid(), 0660))
+		sampler = ldmsd_sampler_add(cfg_name,
+				    (struct ldmsd_sampler *)api,
+				    libpath,
+				    ldmsd_sampler___del,
+				    geteuid(), getegid(), 0660);
+		if (!sampler)
+			goto err;
+		cfgobj = &sampler->cfg;
+		strcpy(log_name, "sampler.");
+		ldmsd_sampler_get(sampler, "load");
 		break;
 	case LDMSD_PLUGIN_STORE:
-		if (ldmsd_store_add(cfg_name, plugin_name, libpath, (struct ldmsd_store *)api,
-                                    ldmsd_store___del,
-                                    geteuid(), getegid(), 0660))
+		store = ldmsd_store_add(cfg_name,
+				(struct ldmsd_store *)api,
+				libpath,
+				ldmsd_store___del,
+				geteuid(), getegid(), 0660);
+		if (!store)
+			goto err;
+		cfgobj = &store->cfg;
+		strcpy(log_name, "store.");
+		ldmsd_store_get(store, "load");
 		break;
 	default:
 		errno = EINVAL;
@@ -367,8 +401,23 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
 			errno, plugin_name);
 		goto err;
 	}
+	sprintf(&log_name[strlen(log_name)], "%s.%s", api->name, cfgobj->name);
+	ovis_log_t log = ovis_log_register(log_name, "Plugin log file");
+	if (!log)
+		ovis_log(NULL, OVIS_LWARN,
+			 "Error %d creating the log for the '%s' plugin.\n",
+			 errno, api->name);
+	if (api->type == LDMSD_PLUGIN_SAMPLER)
+		sampler->log = log;
+	else
+		store->log = log;
+	free((char *)libpath);
 	return 0;
  err:
+	ovis_log(config_log, OVIS_LERROR,
+		 "Error %d, the plugin '%s' configuration object '%s' "
+		 "could not be created.\n",
+		 errno, plugin_name, cfg_name);
 	return errno;
 }
 
@@ -377,22 +426,85 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
  */
 int ldmsd_term_plugin(char *cfg_name)
 {
-        ldmsd_cfgobj_sampler_t sampler = ldmsd_sampler_find_get(cfg_name);
-        if (sampler) {
-                ldmsd_sampler_remove(sampler);
-                ldmsd_sampler_find_put(sampler);
-                return 0;
-        }
-        ldmsd_cfgobj_store_t store = ldmsd_store_find_get(cfg_name);
-        if (store) {
-                ldmsd_store_remove(store);
-                ldmsd_store_find_put(store);
-                return 0;
-        }
-        ovis_log(config_log, OVIS_LWARNING,
-                 "Cannot term plugin configuration '%s'. Configuration not found.\n",
-                 cfg_name);
-        return ENOENT;
+	int rc = EINVAL;
+	ldmsd_cfgobj_sampler_t sampler = NULL;
+	ldmsd_cfgobj_store_t store = NULL;
+	ldmsd_cfgobj_t cfgobj;
+	extern struct rbt *cfgobj_trees[];
+
+	sampler = ldmsd_sampler_find_get(cfg_name);
+	if (sampler) {
+		/*
+		 * Make sure it only has 'find', 'load', 'init', and
+		 * 'cfgobj_tree' references, i.e. it is not running
+		 */
+#ifdef _CFG_REF_DUMP_
+		ref_dump(&sampler->cfg.ref, sampler->cfg.name, stderr);
+#endif
+		ldmsd_cfgobj_lock(&sampler->cfg);
+		if (ldmsd_cfgobj_refcount(&sampler->cfg) > 4) {
+			ovis_log(config_log, OVIS_LERROR,
+				 "The sampler '%s' is in use. Use stop "
+				 "name=%s before attempting to unload "
+				 "the plugin\n",
+				 sampler->cfg.name, sampler->cfg.name);
+			ldmsd_cfgobj_unlock(&sampler->cfg);
+			ldmsd_cfgobj_put(&sampler->cfg, "find");
+			return EBUSY;
+		}
+		/* Deregister all sets for this plugin */
+		struct ldmsd_sampler_set *_set;
+		while (( _set = LIST_FIRST(&sampler->set_list))) {
+			LIST_REMOVE(_set, entry);
+			/* The ldms_set itself will be destroyed by the plugin */
+			free(_set);
+		}
+		cfgobj = &sampler->cfg;
+		ldmsd_sampler_put(sampler, "load");
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_SAMPLER);
+		ldmsd_sampler_put(sampler, "cfgobj_tree");
+		rbt_del(cfgobj_trees[LDMSD_CFGOBJ_SAMPLER], &sampler->cfg.rbn);
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
+		ldmsd_cfgobj_unlock(&sampler->cfg);
+		ldmsd_sampler_put(sampler, "init");
+		ldmsd_cfgobj_put(cfgobj, "find");
+	} else {
+		store = ldmsd_store_find_get(cfg_name);
+		if (!store) {
+			rc = ENOENT;
+			goto out;
+		}
+		/*
+		 * Make sure it only has 'find', 'load', 'init', and
+		 * 'cfgobj_tree' references, i.e. it is not running
+		 */
+#ifdef _CFG_REF_DUMP_
+		ref_dump(&store->cfg.ref, store->cfg.name, stderr);
+#endif
+		ldmsd_cfgobj_lock(&store->cfg);
+		if (ldmsd_cfgobj_refcount(&store->cfg) > 4) {
+			ovis_log(config_log, OVIS_LERROR,
+				 "The store '%s' is in use. Use stop "
+				 "name=%s before attempting to unload "
+				 "the plugin\n",
+				 store->cfg.name, store->cfg.name);
+			ldmsd_cfgobj_unlock(&store->cfg);
+			ldmsd_cfgobj_put(&store->cfg, "find");
+			return EBUSY;
+		}
+		cfgobj = &store->cfg;
+		ldmsd_store_put(store, "load");
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
+		ldmsd_store_put(store, "cfgobj_tree");
+		rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STORE], &store->cfg.rbn);
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
+		ldmsd_cfgobj_unlock(&store->cfg);
+		ldmsd_store_put(store, "init");
+		ldmsd_cfgobj_put(cfgobj, "find");
+	}
+	rc = 0;
+ out:
+	return rc;
 }
 
 int _ldmsd_set_udata(ldms_set_t set, char *metric_name, uint64_t udata,

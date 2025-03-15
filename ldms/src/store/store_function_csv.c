@@ -324,7 +324,6 @@ struct function_store_handle { //these are per-schema
 	char *store_key; /* this is the container+schema */
 	char *schema; /* in v3 need to keep this for the comparison with the conf file */
 	pthread_mutex_t lock;
-	void *ucontext;
 	int buffer_type;
 	int buffer_sz;
 	int64_t lastflush;
@@ -1233,13 +1232,6 @@ static const char *usage(ldmsd_plug_handle_t handle)
 		"                       (Optional default no value used. (although neg time will still flag))\n";
 }
 
-
-static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_handle)
-{
-	struct function_store_handle *s_handle = _s_handle;
-	return s_handle->ucontext;
-}
-
 static int print_header_from_store(struct function_store_handle *s_handle,
 				   ldms_set_t set, int* metric_arry, size_t metric_count)
 {
@@ -1304,8 +1296,8 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 
 
 static ldmsd_store_handle_t
-open_store(ldmsd_plug_handle_t handle, const char *container, const char* schema,
-		struct ldmsd_strgp_metric_list *list, void *ucontext)
+open_store(ldmsd_plug_handle_t scfg, const char *container, const char* schema,
+		struct ldmsd_strgp_metric_list *list)
 {
 	struct function_store_handle *s_handle = NULL;
 	int add_handle = 0;
@@ -1343,7 +1335,7 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char* schema
 		s_handle = calloc(1, sizeof *s_handle);
 		if (!s_handle)
 			goto out;
-		s_handle->ucontext = ucontext;
+		s_handle->store = scfg;
 
 		s_handle->sets_idx = idx_create();
 		if (!(s_handle->sets_idx))
@@ -2998,7 +2990,6 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_hand
 	if (s_handle->path)
 		free(s_handle->path);
 	s_handle->path = NULL;
-	s_handle->ucontext = NULL;
 	if (s_handle->file)
 		fclose(s_handle->file);
 	s_handle->file = NULL;
@@ -3052,7 +3043,6 @@ static struct ldmsd_store store_function_csv = {
 			.usage = usage,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,

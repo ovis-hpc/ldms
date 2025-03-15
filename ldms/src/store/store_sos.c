@@ -68,7 +68,6 @@
 #include <coll/rbt.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldmsd_plug_api.h"
 
 static ovis_log_t mylog;
 #define LOG_(level, ...) do { \
@@ -122,11 +121,9 @@ typedef struct store_sos_s {
  *   <sos::path> = <root_path>/<container>
  */
 struct sos_instance {
-        store_sos_t ss;
 	char *container;
 	char *schema_name;
 	char *path; /**< <root_path>/<container> */
-	void *ucontext;
 	sos_handle_t sos_handle; /**< sos handle */
 	sos_schema_t sos_schema;
 	int store_flags;
@@ -548,7 +545,7 @@ static sos_handle_t get_container(const char *path)
  */
 static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	store_sos_t ss = ldmsd_plug_context_get(handle);
+	store_sos_t ss = ldmsd_plug_ctxt_get(handle);
 	struct sos_instance *si;
 	int rc = 0;
 	int len;
@@ -561,8 +558,8 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	value = av_value(avl, "path");
 	if (!value) {
 		LOG_(OVIS_LERROR,
-		       "%s[%d]: The 'path' configuration option is required.\n",
-		       __func__, __LINE__);
+		     "%s[%d]: The 'path' configuration option is required.\n",
+		     __func__, __LINE__);
 		return EINVAL;
 	}
 	pthread_mutex_lock(&ss->cfg_lock);
@@ -615,24 +612,17 @@ static const char *usage(ldmsd_plug_handle_t handle)
 		"       timeout - Max wait in seconds to acquire database transaction.\n";
 }
 
-static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
-{
-	struct sos_instance *si = _sh;
-	return si->ucontext;
-}
-
 static ldmsd_store_handle_t
 open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
-        store_sos_t ss = ldmsd_plug_context_get(handle);
+        store_sos_t ss = ldmsd_plug_ctxt_get(handle);
 	struct sos_instance *si = NULL;
 
 	si = calloc(1, sizeof(*si));
 	if (!si)
 		goto out;
 	rbt_init(&si->schema_rbt, row_schema_rbn_cmp);
-	si->ucontext = ucontext;
 	si->container = strdup(container);
 	if (!si->container)
 		goto err1;
@@ -1325,7 +1315,7 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set,
       int *metric_arry, size_t metric_count)
 {
 	struct sos_instance *si = _sh;
-	store_sos_t ss = si->ss;
+	store_sos_t ss = ldmsd_plug_ctxt_get(handle);
 	struct timespec now;
 	int rc = 0;
 
@@ -1457,7 +1447,7 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 static int init_store_instance(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp)
 {
 	struct sos_instance *si;
-	store_sos_t ss = (store_sos_t)ldmsd_plug_context_get(handle);
+	store_sos_t ss = ldmsd_plug_ctxt_get(handle);
 	int len, rc;
 
 	si = calloc(1, sizeof(*si));
@@ -1610,7 +1600,8 @@ get_row_schema(ldmsd_strgp_t strgp, ldmsd_row_t row)
 }
 
 static int
-commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int row_count)
+commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp,
+	    ldms_set_t set, ldmsd_row_list_t row_list, int row_count)
 {
 	int rc = 0;
 	struct sos_instance *si;
@@ -1638,7 +1629,7 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldm
 			goto out;
 		}
 	}
-	store_sos_t ss = si->ss;
+	store_sos_t ss = ldmsd_plug_ctxt_get(handle);
 	if (ss->timeout > 0) {
 		struct timespec now;
 		clock_gettime(CLOCK_REALTIME, &now);
@@ -1731,7 +1722,7 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldm
 	return rc;
 }
 
-void store_sos_del(struct ldmsd_cfgobj *obj)
+void store_sos_del(ldmsd_plug_handle_t obj)
 {
 	store_sos_t ss = (void*)obj;
 	free(ss);
@@ -1739,42 +1730,29 @@ void store_sos_del(struct ldmsd_cfgobj *obj)
 
 static int constructor(ldmsd_plug_handle_t handle)
 {
-	store_sos_t ss;
-
-	if (!mylog) {
-		mylog = ovis_log_register("store.sos", "The log subsystem of the store_sos plugin");
-		if (!mylog) {
-			int rc = errno;
-			ovis_log(NULL, OVIS_LWARN,
-				"Error %d creating the log subsystem 'store.sos'.", rc);
-                        return rc;
-		}
-	}
-        ss = calloc(1, sizeof(*ss));
-        if (!ss) {
-                return ENOMEM;
-        }
-        ldmsd_plug_context_set(handle, ss);
-
-        return 0;
+	store_sos_t ss = calloc(1, sizeof(*ss));
+	if (!ss)
+		return ENOMEM;
+	ldmsd_plug_ctxt_set(handle, ss);
+	return 0;
 }
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
-	store_sos_t ss = ldmsd_plug_context_get(handle);
-
+	store_sos_t ss = ldmsd_plug_ctxt_get(handle);
         free(ss);
 }
 
 static struct ldmsd_store sos_store = {
 	.base.type   = LDMSD_PLUGIN_STORE,
+	.base.flags  = LDMSD_PLUGIN_MULTI_INSTANCE,
 	.base.name   = "store_sos",
 	.base.config = config,
 	.base.usage  = usage,
-        .base.constructor = constructor,
-        .base.destructor = destructor,
+	.base.constructor = constructor,
+	.base.destructor = destructor,
+
 	.open        = open_store,
-	.get_context = get_ucontext,
 	.store       = store,
 	.flush       = flush_store,
 	.close       = close_store,

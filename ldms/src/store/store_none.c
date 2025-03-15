@@ -78,10 +78,10 @@ static void term(ldmsd_plug_handle_t handle)
 }
 
 static ldmsd_store_handle_t
-open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+open_store(ldmsd_plug_handle_t s, const char *container, const char *schema,
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
-	return (void *)1;
+	return s;
 }
 
 static int

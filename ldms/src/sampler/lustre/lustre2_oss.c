@@ -348,7 +348,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		return EINVAL;
 	}
 
-	base = base_config(avl, ldmsd_plug_config_name_get(handle), "Lustre_OSS", mylog);
+	base = base_config(avl, ldmsd_plug_cfg_name_get(handle), "Lustre_OSS", mylog);
 	if (!base)
 		return errno;
 

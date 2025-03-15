@@ -175,7 +175,6 @@ struct rabbitkw_store_instance {
 	char *container;
 	char *schema;
 	char *key; /* 'container schema' */
-	void *ucontext;
 	bool conflict_warned;
 	bool extraprops; /* include ldmsd (not sampler) metadata in basic message headers */
 	/* was ms */
@@ -615,12 +614,6 @@ static const char *usage(ldmsd_plug_handle_t handle)
 	;
 }
 
-static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
-{
-	struct rabbitkw_store_instance *si = _sh;
-	return si->ucontext;
-}
-
 static const size_t value_fmtlen[] = {
 	[LDMS_V_NONE] = 8,
 	[LDMS_V_CHAR] = 1,
@@ -921,8 +914,8 @@ void destroy_store(struct rabbitkw_store_instance *si)
 }
 
 static ldmsd_store_handle_t
-open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
-           struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+open_store(ldmsd_plug_handle_t s, const char *container, const char *schema,
+           struct ldmsd_strgp_metric_list *metric_list)
 {
 	struct rabbitkw_store_instance *si;
 
@@ -949,8 +942,7 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
 		}
 		si->key = key;
 		si->extraprops = g_extraprops;
-		si->ucontext = ucontext;
-		si->store = (struct ldmsd_store *)context;
+		si->store = s;
 		si->routingkey = strdup(routing_key_path);
 		si->container = strdup(container);
 		si->schema = strdup(schema);
@@ -1117,7 +1109,6 @@ static struct ldmsd_store store_rabbitkw = {
 		.usage = usage,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.close = close_store,
 };
