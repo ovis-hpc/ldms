@@ -342,7 +342,7 @@ void usage(char *argv[])
 	       "                                                  - The environment variable %s could be set instead of\n"
 	       "                                                  giving the -m option. If both are given, the -m option\n"
 	       "                                                  takes precedence over the environment variable.\n",
-	                                                          LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
+								  LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
 	printf("    -r PATH,     --pid_file PATH                  The path to the pid file for daemon mode.\n"
 	       "                                                  [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
 	printf("  Log Verbosity Options\n");
@@ -624,7 +624,7 @@ void plugin_sampler_cb(ovis_event_t oev)
 	ldmsd_cfgobj_lock(&samp->cfg);
 	assert(samp->cfg.type == LDMSD_CFGOBJ_SAMPLER);
 	assert(samp->api->base.type == LDMSD_PLUGIN_SAMPLER);
-	int rc = samp->api->sample(samp->api);
+	int rc = samp->api->sample(samp);
 	if (rc) {
 		/*
 		 * If the sampler reports an error don't reschedule
@@ -1108,6 +1108,9 @@ int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset,
 	}
 	ldmsd_sampler_get(samp, "start");
 	/* this ref will be put down in ldmsd_stop_sampler() */
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&samp->cfg.ref, samp->cfg.name, stderr);
+#endif
 
 out:
 	ldmsd_sampler_unlock(samp);
@@ -1127,7 +1130,8 @@ void oneshot_sample_cb(ovis_event_t ev)
 	ldmsd_cfgobj_sampler_t samp = os->samp;
 	ovis_scheduler_event_del(os->os, ev);
 	ldmsd_sampler_lock(samp);
-	samp->api->sample(samp->api);
+	if (samp->api->sample)
+		samp->api->sample(samp);
 	release_ovis_scheduler(samp->thread_id);
 	free(os);
 	ldmsd_sampler_unlock(samp);

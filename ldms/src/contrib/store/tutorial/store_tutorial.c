@@ -86,7 +86,6 @@ struct tutorial_store_handle {
 	char *path; //full path will be path/container/schema
 	FILE *file;
 	pthread_mutex_t lock;
-	void *ucontext;
 };
 
 //TUT: keeping these because in a more complex scenario would use the values for flush and searching for a store to close
@@ -100,7 +99,7 @@ static pthread_mutex_t cfg_lock;
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char* s;
 	int rc = 0;
@@ -120,11 +119,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
 	return  "    config name=store_tutorial path=<path> \n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
@@ -132,16 +131,9 @@ static const char *usage(struct ldmsd_plugin *self)
 		;
 }
 
-static void *get_ucontext(ldmsd_store_handle_t _s_handle)
-{
-	struct tutorial_store_handle *s_handle = _s_handle;
-	return s_handle->ucontext;
-}
-
-
 static ldmsd_store_handle_t
 open_store(struct ldmsd_store *s, const char *container, const char* schema,
-		struct ldmsd_strgp_metric_list *list, void *ucontext)
+		struct ldmsd_strgp_metric_list *list)
 {
 	struct tutorial_store_handle *s_handle = NULL;
 	int rc = 0;
@@ -178,7 +170,6 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 
 	pthread_mutex_init(&s_handle->lock, NULL);
 	pthread_mutex_lock(&s_handle->lock);
-	s_handle->ucontext = ucontext;
 	s_handle->store = s;
 	s_handle->path = strdup(path);
 
@@ -297,7 +288,6 @@ static struct ldmsd_store store_tutorial = {
 			.usage = usage,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,

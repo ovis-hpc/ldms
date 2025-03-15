@@ -93,7 +93,7 @@ static const char *_help_str =
     "    strgp_add name=kp plugin=store_avro_kafka container=localhost,br1.kf:9898 \\\n"
     "              decomposition=decomp.json\n"
     "";
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
 	return _help_str;
 }
@@ -317,7 +317,7 @@ static int parse_serdes_conf_file(char *path, serdes_conf_t *s_conf)
 	return rc;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	int rc = 0;
@@ -406,7 +406,7 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
 	store_kafka_t sk = (void*)self->context;
 	pthread_mutex_lock(&sk->sk_lock);
@@ -420,16 +420,11 @@ static void term(struct ldmsd_plugin *self)
 
 static ldmsd_store_handle_t
 open_store(struct ldmsd_store *s, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
 	errno = ENOSYS;
-	LOG_ERROR("The open_store() interface (non-decomposition strgp) is not supported.\n");
-	return NULL;
-}
-
-static void *get_ucontext(ldmsd_store_handle_t _sh)
-{
-	/* ucontext is for deprecated `open_store()` API */
+	LOG_ERROR("The open_store() interface (non-decomposition strgp)"
+		  "is not supported.\n");
 	return NULL;
 }
 
@@ -1076,9 +1071,7 @@ static struct ldmsd_store kafka_store = {
 	.base.term   = term,
 	.base.config = config,
 	.base.usage  = usage,
-	.base.context_size = sizeof(struct store_kafka_s),
 	.open        = open_store,
-	.get_context = get_ucontext,
 	.store       = store,
 	.flush       = flush_store,
 	.close       = close_store,

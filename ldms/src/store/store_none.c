@@ -56,13 +56,13 @@
 
 static uint64_t delay = 0; /* delay in usec, default is `no delay` */
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
 	return
 "    config name=store_none delay=uSEC\n"
 "           The number of microseconds for the delay of each entry.\n";
 }
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	char *value;
@@ -72,20 +72,15 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+open_store(struct ldmsd_cfgobj_store *s, const char *container, const char *schema,
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
 	return s;
-}
-
-static void *get_ucontext(ldmsd_store_handle_t _sh)
-{
-	return NULL;
 }
 
 static int flush_store(ldmsd_store_handle_t _sh)
@@ -116,7 +111,6 @@ static struct ldmsd_store store_none = {
 		.type = LDMSD_PLUGIN_STORE,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,

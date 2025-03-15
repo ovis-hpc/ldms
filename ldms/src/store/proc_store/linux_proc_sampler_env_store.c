@@ -238,7 +238,7 @@ err:
 	return rc;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
 	return	"config name=" STREAM "_store path=<path> port=<port_no> log=<path>\n"
 		"     path	The path to the root of the SOS container store (required).\n"
@@ -248,7 +248,7 @@ static const char *usage(struct ldmsd_plugin *self)
 
 static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt);
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc;
@@ -446,7 +446,7 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
 	ovis_log(mylog, OVIS_LDEBUG, "term %s\n", self->name);
 	if (sos)

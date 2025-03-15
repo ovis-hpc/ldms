@@ -64,7 +64,6 @@ static ovis_log_t mylog;
 static char host_port[64];	/* hostname:port_no for influxdb */
 struct influx_store {
 	struct ldmsd_store *store;
-	void *ucontext;
 	char *host_port;
 	char *schema;
 	char *container;
@@ -171,7 +170,7 @@ influx_value_set_fn influx_value_set[] = {
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	pthread_mutex_lock(&cfg_lock);
@@ -198,18 +197,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
 	return  "    config name=influx host_port=<hostname>':'<port_no>\n";
 }
 
 static ldmsd_store_handle_t
 open_store(struct ldmsd_store *s, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
 	struct influx_store *is = NULL;
 
@@ -219,7 +218,6 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	is->measurement_limit = measurement_limit;
 	pthread_mutex_init(&is->lock, NULL);
 	is->store = s;
-	is->ucontext = ucontext;
 	is->container = strdup(container);
 	if (!is->container)
 		goto err1;
@@ -429,12 +427,6 @@ static void close_store(ldmsd_store_handle_t _sh)
 	free(is);
 }
 
-static void *get_ucontext(ldmsd_store_handle_t _sh)
-{
-	struct influx_store *is = _sh;
-	return is->ucontext;
-}
-
 static struct ldmsd_store store_influx = {
 	.base = {
 		.name = "influx",
@@ -444,7 +436,6 @@ static struct ldmsd_store store_influx = {
 		.type = LDMSD_PLUGIN_STORE,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,

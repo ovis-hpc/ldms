@@ -145,12 +145,12 @@ static int create_metric_set(struct tutorial_set* tset)
 }
 
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(struct ldmsd_cfgobj *self)
 {
 	return  "config name=" BASE_CONFIG_USAGE SAMP " schema=<schemaname> num_metrics=<N>\n";
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc;
@@ -173,7 +173,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 	//producer, component_id, instance, schema etc all in base_config
-	tsets[num_sets].base = base_config(avl, self->cfg_name, SAMP, mylog);
+	tsets[num_sets].base = base_config(avl, self->name, SAMP, mylog);
 	if (!tsets[num_sets].base) {
 		rc = errno;
 		goto err;
@@ -196,7 +196,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
 	int metric_no;
 	int i,j;
@@ -228,7 +228,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(struct ldmsd_cfgobj *self)
 {
 
 	int i;
