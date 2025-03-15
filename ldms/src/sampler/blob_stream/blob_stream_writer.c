@@ -482,7 +482,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	char* s;
 	int rc;
 
-	if (!avl)
+	if (!handle || !avl)
 		return EINVAL;
 	pthread_mutex_lock(&cfg_lock);
 	if (closing) {

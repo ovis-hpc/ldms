@@ -129,6 +129,7 @@ static void term() {
 }
 
 static const char *usage(ldmsd_plug_handle_t handle) {
+	(void)self;
 	if (!usage_str)
 		usage_str = rdcinfo_usage();
 	return usage_str;

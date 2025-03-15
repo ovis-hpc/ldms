@@ -59,11 +59,8 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-static ovis_log_t mylog;
-
 static char host_port[64];	/* hostname:port_no for influxdb */
 struct influx_store {
-	void *ucontext;
 	char *host_port;
 	char *schema;
 	char *container;
@@ -177,7 +174,8 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 
 	value = av_value(avl, "host_port");
 	if (!value) {
-		ovis_log(mylog, OVIS_LERROR, "The 'host_port' keyword is required.\n");
+		ovis_log(ldmsd_plug_log_get(handle),
+			 OVIS_LERROR, "The 'host_port' keyword is required.\n");
 		return EINVAL;
 	}
 	strncpy(host_port, value, sizeof(host_port));
@@ -186,9 +184,10 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	if (value) {
 		measurement_limit = strtol(value, NULL, 0);
 		if (measurement_limit <= 0) {
-			ovis_log(mylog, OVIS_LERROR,
-			       "'%s' is not a valid 'measurement_limit' value\n",
-			       value);
+			ovis_log(ldmsd_plug_log_get(handle),
+				 OVIS_LERROR,
+				 "'%s' is not a valid 'measurement_limit' value\n",
+				 value);
 			measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
 		}
 	}
@@ -197,18 +196,14 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "    config name=influx host_port=<hostname>':'<port_no>\n";
 }
 
 static ldmsd_store_handle_t
-open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+open_store(ldmsd_plug_handle_t s, const char *container, const char *schema,
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
 	struct influx_store *is = NULL;
 
@@ -217,7 +212,6 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
 		goto out;
 	is->measurement_limit = measurement_limit;
 	pthread_mutex_init(&is->lock, NULL);
-	is->ucontext = ucontext;
 	is->container = strdup(container);
 	if (!is->container)
 		goto err1;
@@ -364,12 +358,13 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set, int 
 			continue;
 		metric_type = ldms_metric_type_get(set, metric_arry[i]);
 		if (metric_type > LDMS_V_CHAR_ARRAY) {
-			ovis_log(mylog, OVIS_LERROR,
-			       "The metric %s:%s of type %s is not supported by "
-			       "InfluxDB and is being ignored.\n",
-			       is->schema,
-			       ldms_metric_type_to_str(metric_type),
-			       ldms_metric_name_get(set, metric_arry[i]));
+			ovis_log(ldmsd_plug_log_get(handle),
+				 OVIS_LERROR,
+				 "The metric %s:%s of type %s is not supported by "
+				 "InfluxDB and is being ignored.\n",
+				 is->schema,
+				 ldms_metric_type_to_str(metric_type),
+				 ldms_metric_name_get(set, metric_arry[i]));
 			continue;
 		}
 		if (comma) {
@@ -402,7 +397,8 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set, int 
 err:
 	pthread_mutex_unlock(&is->lock);
 
-	ovis_log(mylog, OVIS_LERROR, "Overflow formatting InfluxDB measurement data.\n");
+	ovis_log(ldmsd_plug_log_get(handle),
+		 OVIS_LERROR, "Overflow formatting InfluxDB measurement data.\n");
 	return ENOMEM;
 }
 
@@ -422,35 +418,20 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 	free(is);
 }
 
-static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
-{
-	struct influx_store *is = _sh;
-	return is->ucontext;
-}
-
 static struct ldmsd_store store_influx = {
 	.base = {
 		.name = "influx",
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.type = LDMSD_PLUGIN_STORE,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.close = close_store,
 };
 
 struct ldmsd_plugin *get_plugin()
 {
-	int rc;
-	mylog = ovis_log_register("store.influx", "Log subsystem of the 'influx' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'influx' plugin. Error %d\n", rc);
-	}
 	return &store_influx.base;
 }
 
@@ -459,9 +440,4 @@ static void store_influx_init()
 {
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 	LIST_INIT(&store_list);
-}
-
-static void __attribute__ ((destructor)) store_influx_fini(void);
-static void store_influx_fini()
-{
 }

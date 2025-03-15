@@ -605,7 +605,7 @@ static int config_hw(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		goto out;
 	}
 
-	base = base_config(avl, ldmsd_plug_config_name_get(handle), default_schema_name, mylog);
+	base = base_config(avl, ldmsd_plug_cfg_name_get(handle), default_schema_name, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -824,7 +824,7 @@ int config_local(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 
 	ovis_log(mylog, OVIS_LDEBUG, SAMP ": re-configure the sampler\n");
 
-	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -1409,18 +1409,16 @@ static const char *usage(ldmsd_plug_handle_t handle)
 }
 
 static struct ldmsd_sampler papi_plugin = {
-	.base =
-	{
-		.name = "spapi",
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-	},
+	.base.name = "spapi",
+	.base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.term = term,
+	.base.config = config,
+	.base.usage = usage,
+
 	.sample = sample,
 };
 
-struct ldmsd_plugin * get_plugin()
+struct ldmsd_plugin *get_plugin()
 {
 	int rc;
 	mylog = ovis_log_register("sampler.spapi", "Message for the spapi plugin");

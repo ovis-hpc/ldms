@@ -70,8 +70,6 @@
 #include "ldmsd.h"
 #include "ldmsd_stream.h"
 
-static ovis_log_t mylog;
-
 static sos_schema_t app_schema;
 static char path_buff[PATH_MAX];
 static char *log_path = "/var/log/ldms/darshan_stream_store.log";
@@ -206,7 +204,7 @@ enum attr_ids {
        TIMESTAMP_ID,
 };
 
-static int create_schema(sos_t sos, sos_schema_t *app)
+static int create_schema(ldmsd_plug_handle_t handle, sos_t sos, sos_schema_t *app)
 {
 	int rc;
 	sos_schema_t schema;
@@ -214,15 +212,17 @@ static int create_schema(sos_t sos, sos_schema_t *app)
 	/* Create and add the App schema */
 	schema = sos_schema_from_template(&darshan_data_template);
 	if (!schema) {
-		ovis_log(mylog, OVIS_LERROR, "%s: Error %d creating Darshan data schema.\n",
-		       darshan_stream_store.name, errno);
+		ovis_log(ldmsd_plug_log_get(handle),
+			 OVIS_LERROR, "%s: Error %d creating Darshan data schema.\n",
+			 darshan_stream_store.name, errno);
 		rc = errno;
 		goto err;
 	}
 	rc = sos_schema_add(sos, schema);
 	if (rc) {
-		ovis_log(mylog, OVIS_LERROR, "%s: Error %d adding Darshan data schema.\n",
-				darshan_stream_store.name, rc);
+		ovis_log(ldmsd_plug_log_get(handle),
+			 OVIS_LERROR, "%s: Error %d adding Darshan data schema.\n",
+			 darshan_stream_store.name, rc);
 		goto err;
 	}
 	*app = schema;
@@ -238,7 +238,7 @@ err:
 
 static int container_mode = 0660;	/* Default container permission bits */
 static sos_t sos;
-static int reopen_container(char *path)
+static int reopen_container(ldmsd_plug_handle_t handle, char *path)
 {
 	int rc = 0;
 
@@ -255,7 +255,7 @@ static int reopen_container(char *path)
 
 	app_schema = sos_schema_by_name(sos, darshan_data_template.name);
 	if (!app_schema) {
-		rc = create_schema(sos, &app_schema);
+		rc = create_schema(handle, sos, &app_schema);
 		if (rc)
 			return rc;
 	}
@@ -282,9 +282,10 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	if (value)
 		container_mode = strtol(value, NULL, 0);
 	if (!container_mode) {
-		ovis_log(mylog, OVIS_LERROR,
-		       "%s: ignoring bogus container permission mode of %s, using 0660.\n",
-		       darshan_stream_store.name, value);
+		ovis_log(ldmsd_plug_log_get(handle),
+			 OVIS_LERROR,
+			 "%s: ignoring bogus container permission mode of %s, using 0660.\n",
+			 darshan_stream_store.name, value);
 	}
 
 	value = av_value(avl, "stream");
@@ -296,9 +297,10 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 
 	value = av_value(avl, "path");
 	if (!value) {
-		ovis_log(mylog, OVIS_LERROR,
-		       "%s: the path to the container (path=) must be specified.\n",
-		       darshan_stream_store.name);
+		ovis_log(ldmsd_plug_log_get(handle),
+			 OVIS_LERROR,
+			 "%s: the path to the container (path=) must be specified.\n",
+			 darshan_stream_store.name);
 		return ENOENT;
 	}
 
@@ -306,42 +308,43 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		free(root_path);
 	root_path = strdup(value);
 	if (!root_path) {
-		ovis_log(mylog, OVIS_LERROR,
-		       "%s: Error allocating %zd bytes for the container path.\n",
-		       darshan_stream_store.name,
-		       strlen(value) + 1);
+		ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
+			 "%s: Error allocating %d bytes for the container path.\n",
+			 strlen(value) + 1);
 		return ENOMEM;
 	}
 
-	rc = reopen_container(root_path);
+	rc = reopen_container(handle, root_path);
 	if (rc) {
-		ovis_log(mylog, OVIS_LERROR, "%s: Error opening %s.\n",
-		       darshan_stream_store.name, root_path);
+		ovis_log(ldmsd_plug_log_get(handle),
+			 OVIS_LERROR, "%s: Error opening %s.\n",
+			 darshan_stream_store.name, root_path);
 		return ENOENT;
 	}
 	return 0;
 }
 
-static int get_json_value(json_entity_t e, char *name, int expected_type, json_entity_t *out)
+static int get_json_value(ldmsd_plug_handle_t handle,
+			  json_entity_t e, char *name, int expected_type, json_entity_t *out)
 {
 	int v_type;
 	json_entity_t a = json_attr_find(e, name);
 	json_entity_t v;
 	if (!a) {
-		ovis_log(mylog, OVIS_LERROR,
-		       "%s: The JSON entity is missing the '%s' attribute.\n",
-		       darshan_stream_store.name,
-		       name);
+		ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
+			 "%s: The JSON entity is missing the '%s' attribute.\n",
+			 darshan_stream_store.name,
+			 name);
 		return EINVAL;
 	}
 	v = json_attr_value(a);
 	v_type = json_entity_type(v);
 	if (v_type != expected_type) {
-		ovis_log(mylog, OVIS_LERROR,
-		       "%s: The '%s' JSON entity is the wrong type. "
-		       "Expected %d, received %d\n",
-		       darshan_stream_store.name,
-		       name, expected_type, v_type);
+		ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
+			 "%s: The '%s' JSON entity is the wrong type. "
+			 "Expected %d, received %d\n",
+			 darshan_stream_store.name,
+			 name, expected_type, v_type);
 		return EINVAL;
 	}
 	*out = v;
@@ -353,7 +356,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 // {"schema":"N/A", "uid":99066, "exe":"N/A","job_id":9507660,"rank":0,"ProducerName":"swa61","file":"N/A","record_id":10828342152496851967,"module":"MPIIO","type":"MOD","max_byte":-1,"switches":1,"flushes":-1,"cnt":1,"op":"read","seg":[{"pt_sel":-1,"irreg_hslab":-1,"reg_hslab":-1,"ndims":-1,"npoints":-1,"off":-1,"len":1073741824,"start":25.373728,"dur":4.498358,"total":4.498358,"timestamp":1694458760.521913}]}
 
 
-static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
+static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
 			  ldmsd_stream_type_t stream_type,
 			  const char *msg, size_t msg_len,
 			  json_entity_t entity)
@@ -367,146 +370,146 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	char *module_name, *file_name, *type, *operation, *producer_name, *exe;
 
 	if (!entity) {
-		ovis_log(mylog, OVIS_LERROR,
+		ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
 		       "%s: NULL entity received in stream callback.\n",
 		       darshan_stream_store.name);
 		return 0;
 	}
 
-	rc = get_json_value(entity, "uid", JSON_INT_VALUE, &v);
+	rc = get_json_value(handle, entity, "uid", JSON_INT_VALUE, &v);
         if (rc)
                 goto err;
 	uid = json_value_int(v);
 
-        rc = get_json_value(entity, "exe", JSON_STRING_VALUE, &v);
+        rc = get_json_value(handle, entity, "exe", JSON_STRING_VALUE, &v);
         if (rc)
                 goto err;
         exe = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "job_id", JSON_INT_VALUE, &v);
+	rc = get_json_value(handle, entity, "job_id", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	job_id = json_value_int(v);
 
-	rc = get_json_value(entity, "rank", JSON_INT_VALUE, &v);
+	rc = get_json_value(handle, entity, "rank", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	rank = json_value_int(v);
 
-	rc = get_json_value(entity, "ProducerName", JSON_STRING_VALUE, &v);
+	rc = get_json_value(handle, entity, "ProducerName", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	producer_name = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "file", JSON_STRING_VALUE, &v);
+	rc = get_json_value(handle, entity, "file", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	file_name = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "record_id", JSON_INT_VALUE, &v);
+	rc = get_json_value(handle, entity, "record_id", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	record_id = json_value_int(v);
 
-	rc = get_json_value(entity, "module", JSON_STRING_VALUE, &v);
+	rc = get_json_value(handle, entity, "module", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	module_name = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "type", JSON_STRING_VALUE, &v);
+	rc = get_json_value(handle, entity, "type", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	type = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "max_byte", JSON_INT_VALUE, &v);
+	rc = get_json_value(handle, entity, "max_byte", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	max_byte = json_value_int(v);
 
-	rc = get_json_value(entity, "switches", JSON_INT_VALUE, &v);
+	rc = get_json_value(handle, entity, "switches", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	switches = json_value_int(v);
 
-	rc = get_json_value(entity, "flushes", JSON_INT_VALUE, &v);
+	rc = get_json_value(handle, entity, "flushes", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	flushes = json_value_int(v);
 
-	rc = get_json_value(entity, "cnt", JSON_INT_VALUE, &v);
+	rc = get_json_value(handle, entity, "cnt", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	count = json_value_int(v);
 
-	rc = get_json_value(entity, "op", JSON_STRING_VALUE, &v);
+	rc = get_json_value(handle, entity, "op", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	operation = json_value_str(v)->str;
 
-	rc = get_json_value(entity, "seg", JSON_LIST_VALUE, &list);
+	rc = get_json_value(handle, entity, "seg", JSON_LIST_VALUE, &list);
 	if (rc)
 		goto err;
 	for (item = json_item_first(list); item; item = json_item_next(item)) {
 
 		if (json_entity_type(item) != JSON_DICT_VALUE) {
-			ovis_log(mylog, OVIS_LERROR,
+			ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
 			       "%s: Items in segment must all be dictionaries.\n",
 			       darshan_stream_store.name);
 			rc = EINVAL;
 			goto err;
 		}
 
-		rc = get_json_value(item, "pt_sel", JSON_INT_VALUE, &v);
+		rc = get_json_value(handle, item, "pt_sel", JSON_INT_VALUE, &v);
 		if (rc)
 			goto err;
 		pt_sel = json_value_int(v);
 
-		rc = get_json_value(item, "irreg_hslab", JSON_INT_VALUE, &v);
+		rc = get_json_value(handle, item, "irreg_hslab", JSON_INT_VALUE, &v);
 		if (rc)
 			goto err;
 		irreg_hslab = json_value_int(v);
 
-		rc = get_json_value(item, "reg_hslab", JSON_INT_VALUE, &v);
+		rc = get_json_value(handle, item, "reg_hslab", JSON_INT_VALUE, &v);
 		if (rc)
 			goto err;
 		reg_hslab = json_value_int(v);
 
-		rc = get_json_value(item, "ndims", JSON_INT_VALUE, &v);
+		rc = get_json_value(handle, item, "ndims", JSON_INT_VALUE, &v);
 		if (rc)
 			goto err;
 		ndims = json_value_int(v);
 
-		rc = get_json_value(item, "npoints", JSON_INT_VALUE, &v);
+		rc = get_json_value(handle, item, "npoints", JSON_INT_VALUE, &v);
 		if (rc)
 			goto err;
 		npoints = json_value_int(v);
 
-		rc = get_json_value(item, "off", JSON_INT_VALUE, &v);
+		rc = get_json_value(handle, item, "off", JSON_INT_VALUE, &v);
 		if (rc)
 			goto err;
 		offset = json_value_int(v);
 
-		rc = get_json_value(item, "len", JSON_INT_VALUE, &v);
+		rc = get_json_value(handle, item, "len", JSON_INT_VALUE, &v);
 		if (rc)
 			goto err;
 		length= json_value_int(v);
 
-		rc = get_json_value(item, "start", JSON_FLOAT_VALUE, &v);
+		rc = get_json_value(handle, item, "start", JSON_FLOAT_VALUE, &v);
                 if (rc)
                         goto err;
                 start = json_value_float(v);
 
-		rc = get_json_value(item, "dur", JSON_FLOAT_VALUE, &v);
+		rc = get_json_value(handle, item, "dur", JSON_FLOAT_VALUE, &v);
                 if (rc)
                         goto err;
                 duration = json_value_float(v);
 
-		rc = get_json_value(item, "total", JSON_FLOAT_VALUE, &v);
+		rc = get_json_value(handle, item, "total", JSON_FLOAT_VALUE, &v);
 		if (rc)
 			goto err;
 		total = json_value_float(v);
 
-		rc = get_json_value(item, "timestamp", JSON_FLOAT_VALUE, &v);
+		rc = get_json_value(handle, item, "timestamp", JSON_FLOAT_VALUE, &v);
 		if (rc)
 			goto err;
 		timestamp = json_value_float(v);
@@ -515,9 +518,9 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		clock_gettime(CLOCK_REALTIME, &now);
                 now.tv_sec += 10;
                 if (sos_begin_x_wait(sos, &now)) {
-                        ovis_log(mylog, OVIS_LERROR,
-			       "Timeout attempting to open a transaction on the container '%s'.\n",
-			       sos_container_path(sos));
+                        ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
+				 "Timeout attempting to open a transaction on the container '%s'.\n",
+				 sos_container_path(sos));
                         rc = ETIMEDOUT;
 			goto err;
 		}
@@ -525,15 +528,16 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		obj = sos_obj_new(app_schema);
 		if (!obj) {
 			rc = errno;
-			ovis_log(mylog, OVIS_LERROR,
-			       "%s: Error %d creating Darshan data object.\n",
-			       darshan_stream_store.name, errno);
+			ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
+				 "%s: Error %d creating Darshan data object.\n",
+				 darshan_stream_store.name, errno);
 			sos_end_x(sos);
 			goto err;
 		}
 
-		ovis_log(mylog, OVIS_LDEBUG, "%s: Got a record from stream (%s), module_name = %s\n",
-				darshan_stream_store.name, stream, module_name);
+		ovis_log(ldmsd_plug_log_get(handle),
+			 OVIS_LDEBUG, "%s: Got a record from stream (%s), module_name = %s\n",
+			 darshan_stream_store.name, stream, module_name);
 
 		sos_obj_attr_by_id_set(obj, UID_ID, uid);
                 sos_obj_attr_by_id_set(obj, EXE_ID, strlen(exe),  exe);
@@ -579,8 +583,6 @@ static void term(ldmsd_plug_handle_t handle)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 	if (root_path)
 		free(root_path);
-	if (mylog)
-		ovis_log_deregister(mylog);
 }
 
 static struct ldmsd_plugin darshan_stream_store = {
@@ -592,8 +594,5 @@ static struct ldmsd_plugin darshan_stream_store = {
 
 struct ldmsd_plugin *get_plugin()
 {
-        if (!mylog) {
-                mylog = ovis_log_register("store.darshan_stream", "darshan stream store");
-        }
         return &darshan_stream_store;
 }

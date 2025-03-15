@@ -387,13 +387,11 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldm
 }
 
 static struct ldmsd_store store_kafka = {
-	.base = {
-		.name = "kafka",
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.type = LDMSD_PLUGIN_STORE,
-	},
+	.base.name = "kafka",
+	.base.term = term,
+	.base.config = config,
+	.base.usage = usage,
+	.base.type = LDMSD_PLUGIN_STORE,
 	.close = close_store,
 	.commit = commit_rows,
 };

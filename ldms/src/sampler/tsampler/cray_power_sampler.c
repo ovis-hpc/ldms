@@ -176,13 +176,13 @@ int cray_power_sampler_config(ldmsd_plug_handle_t handle,
 				struct attr_value_list *kwl,
 				struct attr_value_list *avl)
 {
-	struct cray_power_sampler *cps = ldmsd_plug_context_get(handle);
+	struct cray_power_sampler *cps = ldmsd_plug_ctxt_get(handle);
 	char *v;
 	uint64_t x;
 	int rc;
 	int i;
 
-	rc = timer_base_config(cps, kwl, avl, mylog);
+	rc = timer_base_config(handle, kwl, avl, mylog);
 	if (rc) {
 		goto out;
 	}
@@ -225,7 +225,7 @@ int cray_power_sampler_config(ldmsd_plug_handle_t handle,
 			goto cleanup;
 	}
 
-	rc = timer_base_create_set(&cps->base, ldmsd_plug_config_name_get(handle));
+	rc = timer_base_create_set(&cps->base, ldmsd_plug_cfg_name_get(handle));
 	if (rc) {
 		goto cleanup;
 	}
@@ -256,14 +256,14 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 	timer_base_init(&cps->base);
 
-        ldmsd_plug_context_set(handle, cps);
+        ldmsd_plug_ctxt_set(handle, cps);
 
         return 0;
 }
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
-        struct cray_power_sampler *cps = ldmsd_plug_context_get(handle);
+        struct cray_power_sampler *cps = ldmsd_plug_ctxt_get(handle);
 
 	cray_power_sampler_cleanup(cps);
         free(cps);
@@ -280,7 +280,6 @@ struct ldmsd_plugin *get_plugin()
 	plugin_api.base.usage = cray_power_sampler_usage;
         plugin_api.base.constructor = constructor;
         plugin_api.base.destructor = destructor;
-        plugin_api.base.term = NULL;
 	plugin_api.base.config = cray_power_sampler_config;
 
         return &plugin_api.base;

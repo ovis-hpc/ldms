@@ -83,14 +83,14 @@ void timer_base_init_api(struct ldmsd_sampler *api);
 
 void timer_base_init(struct timer_base *tb);
 
-int timer_base_config(void *context, struct attr_value_list *kwl,
+int timer_base_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		      struct attr_value_list *avl, ovis_log_t mylog);
 
 int timer_base_create_set(struct timer_base *tb, const char *config_name);
 
-void timer_base_term(void *context);
+void timer_base_term(ldmsd_plug_handle_t handle);
 
-int timer_base_sample(void *context);
+int timer_base_sample(ldmsd_plug_handle_t handle);
 
 void timer_base_cleanup(struct timer_base *tb);
 

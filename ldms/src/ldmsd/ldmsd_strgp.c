@@ -182,15 +182,17 @@ static void strgp_decompose(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, void
 	int row_count, rc;
 	rc = strgp->decomp->decompose(strgp, prd_set->set, &row_list, &row_count, ctxt);
 	if (rc) {
-		ovis_log(store_log, OVIS_LERROR, "strgp decompose error: %d\n", rc);
+		ovis_log(store_log, OVIS_LERROR,
+			 "decompose error: %d for set '%s'\n", rc, prd_set->inst_name);
 		return;
 	}
         if (strgp->store->api->commit != NULL) {
-                rc = strgp->store->api->commit(strgp->store, strgp, prd_set->set, &row_list, row_count);
+                rc = strgp->store->api->commit(strgp->store,
+					       strgp, prd_set->set, &row_list, row_count);
         } else {
                 ovis_log(store_log, OVIS_LERROR,
                          "store plugin \"%s\" does not support decomposition commit()\n",
-                         strgp->store->plugin_name);
+                         ldmsd_plug_name_get(strgp->store));
         }
 	if (rc) {
 		ovis_log(store_log, OVIS_LERROR, "strgp row commit error: %d\n", rc);
@@ -223,7 +225,7 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, void
         } else {
                 ovis_log(store_log, OVIS_LERROR,
                          "store plugin \"%s\" does not support non-decomposition store()\n",
-                         strgp->store->plugin_name);
+                         ldmsd_plug_name_get(strgp->store));
         }
 	if (strgp->flush_interval.tv_sec || strgp->flush_interval.tv_nsec) {
 		struct timespec expiry;
@@ -589,7 +591,7 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	strgp->metric_count = i;
 
 	strgp->store_handle = ldmsd_store_open(strgp->store, strgp->container,
-			strgp->schema, &strgp->metric_list, strgp);
+					       strgp->schema, &strgp->metric_list);
 	rc = EINVAL;
 	if (!strgp->store_handle)
 		goto err;
@@ -806,6 +808,9 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out_1;
 	}
+	if (strgp->store)
+		ldmsd_store_put(strgp->store, "strgp");
+
 	if (strgp->decomp)
 		strgp->decomp->release_decomp(strgp);
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STRGP], &strgp->obj.rbn);

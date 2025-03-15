@@ -216,7 +216,6 @@ struct rabbitv3_store_instance {
 	char *container;
 	char *schema;
 	char *key; /* container schema */
-	void *ucontext;
 	idx_t ms_idx; /* data metrics */
 	idx_t meta_idx; /* meta metrics */
 	LIST_HEAD(ms_list, rabbitv3_metric_store) ms_list;
@@ -556,12 +555,6 @@ static const char *usage(ldmsd_plug_handle_t handle)
 	"           mint      The interval (seconds) at which to resend metadata.\n"
 	"                     0 means never resend.\n"
 	;
-}
-
-static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
-{
-	struct rabbitv3_store_instance *si = _sh;
-	return si->ucontext;
 }
 
 static size_t value_fmtlen[] = {
@@ -960,7 +953,7 @@ update_metrics(struct rabbitv3_store_instance *si, ldms_set_t set,
 
 static ldmsd_store_handle_t
 open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
-           struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+           struct ldmsd_strgp_metric_list *metric_list)
 {
 	struct rabbitv3_store_instance *si;
 	struct rabbitv3_metric_store *ms;
@@ -1010,8 +1003,7 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
 			ovis_log(mylog, OVIS_LERROR,"rabbitv3: oom meta_idx\n");
 			goto err2;
 		}
-		si->ucontext = ucontext;
-		si->store = (struct ldmsd_store *)context;
+		si->store = s;
 		si->container = strdup(container);
 		if (!si->container) {
 			ovis_log(mylog, OVIS_LERROR,"rabbitv3: oom container\n");
@@ -1300,7 +1292,6 @@ static struct ldmsd_store store_rabbitv3 = {
 		.usage = usage,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.close = close_store,
 };

@@ -1140,7 +1140,7 @@ int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 
 	/* removing from the tree */
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR], &prdcr->obj.rbn);
-	ldmsd_prdcr_put(prdcr, "cfgobj_tree"); /* putting down reference from the tree */
+	ldmsd_prdcr_put(prdcr, "cfgobj_tree");
 	ldmsd_prdcr_put(prdcr, "init");
 	rc = 0;
 	/* let-through */

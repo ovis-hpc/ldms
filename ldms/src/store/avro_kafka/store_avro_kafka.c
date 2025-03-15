@@ -322,7 +322,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	int rc = 0;
-	store_kafka_t sk = ldmsd_plug_context_get(handle);
+	store_kafka_t sk = ldmsd_plug_ctxt_get(handle);
 	char *path, *encoding, *topic;
 	char err_str[512];
 
@@ -423,7 +423,7 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 
 static aks_handle_t __handle_new(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp)
 {
-	store_kafka_t sk = ldmsd_plug_context_get(handle);
+	store_kafka_t sk = ldmsd_plug_ctxt_get(handle);
 	char err_str[512];
 	rd_kafka_conf_res_t res;
 
@@ -1031,13 +1031,13 @@ static int constructor(ldmsd_plug_handle_t handle) {
                 return ENOMEM;
         }
         pthread_mutex_init(&sk->sk_lock, NULL);
-        ldmsd_plug_context_set(handle, sk);
+        ldmsd_plug_ctxt_set(handle, sk);
 
         return 0;
 }
 
 static void destructor(ldmsd_plug_handle_t handle) {
-	store_kafka_t sk = ldmsd_plug_context_get(handle);
+	store_kafka_t sk = ldmsd_plug_ctxt_get(handle);
 
 	pthread_mutex_lock(&sk->sk_lock);
 	if (sk->g_rd_conf)

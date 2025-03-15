@@ -558,7 +558,7 @@ static int config(ldmsd_plug_handle_t handle,
 		        goto err0;
 		}
 	} else {
-		base = base_config(avl, ldmsd_plug_config_name_get(handle), "dcgm", mylog);
+		base = base_config(avl, ldmsd_plug_cfg_name_get(handle), "dcgm", mylog);
 		conf.schema_name = strdup(base->schema_name);
 	}
 
