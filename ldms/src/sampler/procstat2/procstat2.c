@@ -397,7 +397,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		return rc;
 	}
 
-	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -406,7 +406,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	val = av_value(avl, "interrupt");
 	if (val && (0 == strcasecmp(val, "true"))) {
 		collect_intr = 1;
-		intr_base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP"_intr", mylog);
+		intr_base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP"_intr", mylog);
 		if (!intr_base) {
 			rc = errno;
 			goto err;
@@ -425,7 +425,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	val = av_value(avl, "soft_interrupt");
 	if (val && (0 == strcasecmp(val, "true"))) {
 		collect_softirq = 1;
-		softirq_base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP"_softirq", mylog);
+		softirq_base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP"_softirq", mylog);
 		if (!softirq_base) {
 			rc = errno;
 			goto err;
@@ -673,31 +673,43 @@ begin:
 
 static void term(ldmsd_plug_handle_t handle)
 {
-	if (mf)
+	if (mf) {
 		fclose(mf);
-	mf = NULL;
-	if (base)
+		mf = NULL;
+	}
+	if (base) {
 		base_del(base);
-	if (intr_base)
+		base = NULL;
+	}
+	if (intr_base) {
 		base_del(intr_base);
-	if (softirq_base)
+		intr_base = NULL;
+	}
+	if (softirq_base) {
 		base_del(softirq_base);
-	if (set)
+		softirq_base = NULL;
+	}
+	if (set) {
 		ldms_set_delete(set);
-	if (intr_set)
+		set = NULL;
+	}
+	if (intr_set) {
 		ldms_set_delete(intr_set);
-	if (softirq_set)
+		intr_set = NULL;
+	}
+	if (softirq_set) {
 		ldms_set_delete(softirq_set);
-	set = NULL;
+		softirq_set = NULL;
+	}
 }
 
 static struct ldmsd_sampler procstat2_plugin = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.term = term,
 	},
 	.sample = sample,
 };

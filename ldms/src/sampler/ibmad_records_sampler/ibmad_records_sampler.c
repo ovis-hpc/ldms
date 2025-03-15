@@ -768,8 +768,7 @@ static int config(ldmsd_plug_handle_t handle,
 
         ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
-        sampler_base = base_config(avl, ldmsd_plug_config_name_get(handle), "ibmad", mylog);
-
+        sampler_base = base_config(avl, ldmsd_plug_cfg_name_get(handle), "ibmad", mylog);
 	value = av_value(avl, "rate");
 	if (value != NULL && value[0] == '0') {
 		conf.use_rate_metrics = false;

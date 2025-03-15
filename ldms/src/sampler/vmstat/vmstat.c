@@ -174,7 +174,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	if (rc)
 		return rc;
 
-	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, mylog);
 	if (!base)
 		return EINVAL;
 
@@ -200,7 +200,7 @@ static int sample(ldmsd_plug_handle_t handle)
 	union ldms_value v;
 
 	if (!set) {
-		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
+		ovis_log(ldmsd_plug_log_get(handle), OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 

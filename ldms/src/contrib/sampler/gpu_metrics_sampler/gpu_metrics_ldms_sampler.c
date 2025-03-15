@@ -255,7 +255,7 @@ static int config(ldmsd_plug_handle_t handle,
 
     // Create an instance from the base "class".  This is effectively calling
     // the base class constructor.
-    base = base_config(attribute_value_list, ldmsd_plug_config_name_get(handle), SAMP, __gpu_metrics_log);
+    base = base_config(attribute_value_list, ldmsd_plug_cfg_name_get(handle), SAMP, __gpu_metrics_log);
     if (!base) {
         rc = errno;
         goto err;

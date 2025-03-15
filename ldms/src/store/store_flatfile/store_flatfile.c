@@ -94,7 +94,6 @@ struct flatfile_metric_store {
 struct flatfile_store_instance {
 	char *path; /**< (root_path)/(container)/schema */
 	char *schema;
-	void *ucontext;
 	idx_t ms_idx;
 	LIST_HEAD(ms_list, flatfile_metric_store) ms_list;
 	int metric_count;
@@ -141,15 +140,9 @@ static const char *usage(ldmsd_plug_handle_t handle)
 "              path      The path to the root of the flatfile directory\n";
 }
 
-static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
-{
-	struct flatfile_store_instance *si = _sh;
-	return si->ucontext;
-}
-
 static ldmsd_store_handle_t
-open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
-	  struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+ open_store(ldmsd_plug_handle_t scfg, const char *container, const char *schema,
+	  struct ldmsd_strgp_metric_list *metric_list)
 {
 	struct flatfile_store_instance *si;
 	struct flatfile_metric_store *ms;
@@ -195,7 +188,6 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
 		si->ms_idx = idx_create();
 		if (!si->ms_idx)
 			goto err1;
-		si->ucontext = ucontext;
 		si->path = strdup(tmp_path);
 		if (!si->path)
 			goto err2;
@@ -456,7 +448,6 @@ static struct ldmsd_store store_flatfile = {
 	.open = open_store,
 	.close = close_store,
 	.store = store,
-	.get_context = get_ucontext,
 	.flush = flush_store,
 };
 

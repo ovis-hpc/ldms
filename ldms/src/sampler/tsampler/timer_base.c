@@ -167,7 +167,7 @@ out:
 int timer_base_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		      struct attr_value_list *avl, ovis_log_t mylog)
 {
-	struct timer_base *tb = ldmsd_plug_context_get(handle);
+	struct timer_base *tb = ldmsd_plug_ctxt_get(handle);
 	int rc = 0;
 
 	tb->mylog = mylog;
@@ -184,22 +184,21 @@ int timer_base_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	}
 
 	if (tb->schema) {
-		ovis_log(tb->mylog, OVIS_LERROR, "%s: schema existed.\n", ldmsd_plug_config_name_get(handle));
+		ovis_log(tb->mylog, OVIS_LERROR, "%s: schema existed.\n", ldmsd_plug_cfg_name_get(handle));
 		rc = EEXIST;
 		goto out;
 	}
 
 	if (tb->set) {
-		ovis_log(tb->mylog, OVIS_LERROR, "%s: set existed.\n", ldmsd_plug_config_name_get(handle));
+		ovis_log(tb->mylog, OVIS_LERROR, "%s: set existed.\n", ldmsd_plug_cfg_name_get(handle));
 		rc = EEXIST;
 		goto out;
 	}
-	tb->cfg = base_config(avl, ldmsd_plug_config_name_get(handle), ldmsd_plug_config_name_get(handle), mylog);
+	tb->cfg = base_config(avl, ldmsd_plug_cfg_name_get(handle), ldmsd_plug_cfg_name_get(handle), mylog);
 	if (!tb->cfg) {
 		rc = errno;
 		goto out;
 	}
-
 
 	snprintf(tb->pname, sizeof(tb->pname), "%s", tb->cfg->producer_name);
 	snprintf(tb->iname, sizeof(tb->iname), "%s", tb->cfg->instance_name);
@@ -233,14 +232,14 @@ void timer_base_cleanup(struct timer_base *tb);
 
 void timer_base_term(ldmsd_plug_handle_t handle)
 {
-	struct timer_base *tb = ldmsd_plug_context_get(handle);
+	struct timer_base *tb = ldmsd_plug_ctxt_get(handle);
 	/* remove all timers when we terminate */
 	timer_base_cleanup(tb);
 }
 
 int timer_base_sample(ldmsd_plug_handle_t handle)
 {
-	struct timer_base *tb = ldmsd_plug_context_get(handle);
+	struct timer_base *tb = ldmsd_plug_ctxt_get(handle);
 	int rc = 0;
 	struct tsampler_timer_entry *ent;
 

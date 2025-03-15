@@ -642,11 +642,9 @@ void plugin_sampler_cb(ovis_event_t oev)
 	ldmsd_cfgobj_lock(&samp->cfg);
 	assert(samp->cfg.type == LDMSD_CFGOBJ_SAMPLER);
 	assert(samp->api->base.type == LDMSD_PLUGIN_SAMPLER);
-
-        int rc = 0;
-        if (samp->api->sample != NULL) {
-                rc = samp->api->sample((ldmsd_plug_handle_t)samp);
-        }
+	int rc = 0;
+	if (samp->api->sample)
+		rc = samp->api->sample(samp);
 	if (rc) {
 		/*
 		 * If the sampler reports an error don't reschedule
@@ -661,66 +659,6 @@ void plugin_sampler_cb(ovis_event_t oev)
 	ldmsd_cfgobj_unlock(&samp->cfg);
 	ldmsd_cfgobj_put(&samp->cfg, "cb");
 }
-
-#if 0
-void ldmsd_set_tree_lock()
-{
-	pthread_mutex_lock(&set_tree_lock);
-}
-
-void ldmsd_set_tree_unlock()
-{
-	pthread_mutex_unlock(&set_tree_lock);
-}
-
-/* Caller must hold the set tree lock. */
-ldmsd_plugin_set_list_t ldmsd_plugin_set_list_first()
-{
-	struct rbn *rbn;
-
-	rbn = rbt_min(&set_tree);
-	if (!rbn)
-		return NULL;
-	return container_of(rbn, struct ldmsd_plugin_set_list, rbn);
-}
-
-ldmsd_plugin_set_list_t ldmsd_plugin_set_list_next(ldmsd_plugin_set_list_t list)
-{
-	struct rbn *rbn;
-	rbn = rbn_succ(&list->rbn);
-	if (!rbn)
-		return NULL;
-	return container_of(rbn, struct ldmsd_plugin_set_list, rbn);
-}
-
-ldmsd_plugin_set_list_t ldmsd_plugin_set_list_find(const char *plugin_name)
-{
-	struct rbn *rbn;
-	rbn = rbt_find(&set_tree, plugin_name);
-	if (!rbn) {
-		return NULL;
-	}
-	return container_of(rbn, struct ldmsd_plugin_set_list, rbn);
-}
-
-/* Caller must hold the set_tree lock */
-ldmsd_plugin_set_t ldmsd_plugin_set_first(const char *plugin_name)
-{
-	struct rbn *rbn;
-	ldmsd_plugin_set_list_t list;
-	rbn = rbt_find(&set_tree, plugin_name);
-	if (!rbn)
-		return NULL;
-	list = container_of(rbn, struct ldmsd_plugin_set_list, rbn);
-	return LIST_FIRST(&list->list);
-}
-
-/* Caller must hold the set_tree lock */
-ldmsd_plugin_set_t ldmsd_plugin_set_next(ldmsd_plugin_set_t set)
-{
-	return LIST_NEXT(set, entry);
-}
-#endif
 
 int ldmsd_set_register(ldms_set_t set, const char *cfg_name)
 {
@@ -1130,6 +1068,9 @@ int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset,
 	}
 	ldmsd_sampler_get(samp, "start");
 	/* this ref will be put down in ldmsd_stop_sampler() */
+#ifdef _CFG_REF_DUMP_
+	ref_dump(&samp->cfg.ref, samp->cfg.name, stderr);
+#endif
 
 out:
 	ldmsd_sampler_unlock(samp);
@@ -1149,7 +1090,8 @@ void oneshot_sample_cb(ovis_event_t ev)
 	ldmsd_cfgobj_sampler_t samp = os->samp;
 	ovis_scheduler_event_del(os->os, ev);
 	ldmsd_sampler_lock(samp);
-	samp->api->sample((ldmsd_plug_handle_t)samp);
+	if (samp->api->sample)
+		samp->api->sample(samp);
 	release_ovis_scheduler(samp->thread_id);
 	free(os);
 	ldmsd_sampler_unlock(samp);

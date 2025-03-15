@@ -1620,7 +1620,7 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 
 static int linux_proc_sampler_sample(ldmsd_plug_handle_t handle)
 {
-	linux_proc_sampler_inst_t inst = ldmsd_plug_context_get(handle);
+	linux_proc_sampler_inst_t inst = ldmsd_plug_ctxt_get(handle);
 	int i, rc;
 	struct rbn *rbn;
 #ifdef LPDEBUG
@@ -3657,7 +3657,7 @@ static int
 linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 					    struct attr_value_list *avl)
 {
-	linux_proc_sampler_inst_t inst = ldmsd_plug_context_get(handle);
+	linux_proc_sampler_inst_t inst = ldmsd_plug_ctxt_get(handle);
 	int i, rc;
 	linux_proc_sampler_metric_info_t minfo;
 	char *val;
@@ -3668,7 +3668,7 @@ linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kw
 		return EALREADY;
 	}
 
-	inst->base_data = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, inst->mylog);
+	inst->base_data = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, inst->mylog);
 	if (!inst->base_data) {
 		/* base_config() already log error message */
 		return errno;
@@ -3957,7 +3957,7 @@ no_pids:	;
 static
 void linux_proc_sampler_term(ldmsd_plug_handle_t handle)
 {
-	linux_proc_sampler_inst_t inst = ldmsd_plug_context_get(handle);
+	linux_proc_sampler_inst_t inst = ldmsd_plug_ctxt_get(handle);
 	struct rbn *rbn;
 	struct linux_proc_sampler_set *app_set;
 
@@ -4095,14 +4095,14 @@ static int constructor(ldmsd_plug_handle_t handle)
 			sizeof(status_line_tbl[0]), status_line_cmp);
 	rbt_init(&inst->set_rbt, set_rbn_cmp);
 
-        ldmsd_plug_context_set(handle, inst);
+        ldmsd_plug_ctxt_set(handle, inst);
 
         return 0;
 }
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
-        linux_proc_sampler_inst_t inst = ldmsd_plug_context_get(handle);
+        linux_proc_sampler_inst_t inst = ldmsd_plug_ctxt_get(handle);
 
         free(inst);
 }

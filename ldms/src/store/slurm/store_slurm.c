@@ -132,7 +132,6 @@ struct sos_instance {
 	char *container;
 	char *schema_name;
 	char *path; /**< <root_path>/<container> */
-	void *ucontext;
 	sos_handle_t sos_handle; /**< sos handle */
 	sos_schema_t sos_schema;
 	pthread_mutex_t lock; /**< lock at metric store level */
@@ -483,23 +482,15 @@ static const char *usage(ldmsd_plug_handle_t handle)
 		"       path The path to primary storage\n";
 }
 
-static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
-{
-	struct sos_instance *si = _sh;
-	return si->ucontext;
-}
-
-
 static ldmsd_store_handle_t
-open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+open_store(ldmsd_plug_handle_t s, const char *container, const char *schema,
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
 	struct sos_instance *si = NULL;
 
 	si = calloc(1, sizeof(*si));
 	if (!si)
 		goto out;
-	si->ucontext = ucontext;
 	si->container = strdup(container);
 	if (!si->container)
 		goto err1;
@@ -999,7 +990,6 @@ static struct ldmsd_store slurm_store = {
 		.type = LDMSD_PLUGIN_STORE,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,

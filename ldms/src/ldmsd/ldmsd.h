@@ -3,6 +3,7 @@
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  * Copyright (c) 2010-2018,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2025 Lawrence Livermore National Security, LLC
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -67,6 +68,7 @@
 #include "ovis_log/ovis_log.h"
 #include "ovis_ref/ref.h"
 #include "ldms.h"
+#include "ldmsd_plug_api.h"
 
 typedef void *ldmsd_plug_handle_t;
 
@@ -632,7 +634,7 @@ typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set
 typedef struct ldmsd_cfgobj_store *ldmsd_cfgobj_store_t;
 
 struct ldmsd_strgp {
-	struct ldmsd_cfgobj obj;
+	 struct ldmsd_cfgobj obj;
 
 	/** A set of match strings to select a subset of all producers */
 	LIST_HEAD(ldmsd_strgp_prdcr_list, ldmsd_name_match) prdcr_list;
@@ -954,10 +956,9 @@ int process_config_str(char *config_str, int *lno, int trust);
 
 char *process_yaml_config_file(const char *path, const char *dname);
 
-
+#define LDMSD_PLUGIN_MULTI_INSTANCE 1 /* Set in flags to indicate MI capability */
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
-
 /* This struct is owned by the plugin. ldmsd should never modify the contents. */
 typedef struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN]; /* plugin name (e.g. meminfo) */
@@ -968,28 +969,34 @@ typedef struct ldmsd_plugin {
 		LDMSD_PLUGIN_AUTH,
 		LDMSD_PLUGIN_DECOMP
 	} type;
-	int (*config)(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl);
-	void (*term)(ldmsd_plug_handle_t handle); /* DEPRECATED - use destructor()/constructor() */
+	uint64_t flags;
+	int (*config)(ldmsd_plug_handle_t handle,
+		      struct attr_value_list *kwl,
+		      struct attr_value_list *avl);
 	const char *(*usage)(ldmsd_plug_handle_t handle);
-        int (*constructor)(ldmsd_plug_handle_t handle);
-        void (*destructor)(ldmsd_plug_handle_t handle);
+
+	int (*constructor)(ldmsd_plug_handle_t handle);
+	void (*destructor)(ldmsd_plug_handle_t handle);
+
+	/* Deprecated, use destructor() */
+	void (*term)(ldmsd_plug_handle_t handle);
 } *ldmsd_plugin_t;
 
 /* This struct is owned by the plugin. ldmsd should never modify the contents. */
 struct ldmsd_store {
 	struct ldmsd_plugin base;
 	ldmsd_store_handle_t (*open)(ldmsd_plug_handle_t handle,
-				    const char *container, const char *schema,
-				    struct ldmsd_strgp_metric_list *metric_list,
-				    void *ucontext);
+				     const char *container, const char *schema,
+				     struct ldmsd_strgp_metric_list *metric_list);
 	void (*close)(ldmsd_plug_handle_t handle, ldmsd_store_handle_t sh);
 	int (*flush)(ldmsd_plug_handle_t handle, ldmsd_store_handle_t sh);
-	void *(*get_context)(ldmsd_plug_handle_t handle, ldmsd_store_handle_t sh);
-	int (*store)(ldmsd_plug_handle_t handle, ldmsd_store_handle_t sh, ldms_set_t set, int *, size_t count);
-	int (*commit)(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int row_count);
+	int (*store)(ldmsd_plug_handle_t handle, ldmsd_store_handle_t sh,
+		     ldms_set_t set, int *, size_t count);
+	int (*commit)(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set,
+		      ldmsd_row_list_t row_list, int row_count);
 };
 
-/* This struct is owned by the plugin. ldmsd should never modify the contents. */
+typedef struct ldmsd_cfgobj_sampler *ldmsd_cfgobj_sampler_t;
 typedef struct ldmsd_sampler {
 	struct ldmsd_plugin base;
 	int (*sample)(ldmsd_plug_handle_t handle);
@@ -997,13 +1004,14 @@ typedef struct ldmsd_sampler {
 
 struct ldmsd_cfgobj_store {
 	struct ldmsd_cfgobj cfg;
-        char *plugin_name;
-        char *libpath;
-	const struct ldmsd_store *api; /* owned by plugin, ldmsd does not free */
-        void *context; /* owned by plugin, ldmsd does not free */
+	struct ldmsd_store *api;
+	char *libpath;
+	/* Private context pointer, managed by plugin */
+	void *context;
+	/* ovis_log handle to use when logging plugin messages */
+	ovis_log_t log;
 };
 
-typedef struct ldmsd_cfgobj_sampler *ldmsd_cfgobj_sampler_t;
 typedef struct ldmsd_sampler_set {
 	ldms_set_t set;
 	ldmsd_cfgobj_sampler_t sampler;
@@ -1012,10 +1020,12 @@ typedef struct ldmsd_sampler_set {
 
 struct ldmsd_cfgobj_sampler {
 	struct ldmsd_cfgobj cfg;
-        char *plugin_name;
-        char *libpath;
-	const struct ldmsd_sampler *api; /* owned by plugin, ldmsd does not free */
-        void *context; /* owned by plugin, ldmsd does not free */
+	struct ldmsd_sampler *api;
+	char *libpath;
+	/* Private context pointer, managed by plugin */
+	void *context;
+	/* ovis_log handle to use when logging plugin messages */
+	ovis_log_t log;
 	unsigned long sample_interval_us;
 	long sample_offset_us;
 	int thread_id;
@@ -1037,11 +1047,10 @@ struct ldmsd_cfgobj_sampler {
 #define LDMSD_JOBID "job_id"
 
 ldmsd_cfgobj_sampler_t ldmsd_sampler_add(const char *name,
-                                         const char *plguin_name,
-                                         const char *libpath,
-                                         struct ldmsd_sampler *api,
-                                         ldmsd_cfgobj_del_fn_t __del,
-                                         uid_t uid, gid_t gid, int perm);
+					struct ldmsd_sampler *api,
+					const char *libpath,
+					ldmsd_cfgobj_del_fn_t __del,
+					uid_t uid, gid_t gid, int perm);
 
 /**
  * \brief ldmsd_set_register
@@ -1094,11 +1103,10 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
  */
 
 ldmsd_cfgobj_store_t ldmsd_store_add(const char *name,
-                                     const char *plugin_name,
-                                     const char *libpath,
-                                     struct ldmsd_store *store,
-                                     ldmsd_cfgobj_del_fn_t __del,
-                                     uid_t uid, gid_t gid, int perm);
+				struct ldmsd_store *store,
+				const char *libpath,
+				ldmsd_cfgobj_del_fn_t __del,
+				uid_t uid, gid_t gid, int perm);
 
 /**
  * \brief Get the security context (uid, gid) of the daemon.
@@ -1109,46 +1117,26 @@ void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt);
 
 static inline ldmsd_store_handle_t
 ldmsd_store_open(ldmsd_cfgobj_store_t store,
-		const char *container, const char *schema,
-		struct ldmsd_strgp_metric_list *metric_list,
-		void *ucontext)
+		 const char *container, const char *schema,
+		 struct ldmsd_strgp_metric_list *metric_list)
 {
-
-        if (store->api->open != NULL) {
-                return store->api->open((ldmsd_plug_handle_t)store, container, schema, metric_list, ucontext);
-        } else {
-                ovis_log(NULL, OVIS_LERROR,
-                         "store plugin \"%s\" does not support non-decomposition open()\n",
-                         store->plugin_name);
-                return NULL;
-        }
-}
-
-static inline void *ldmsd_store_get_context(ldmsd_cfgobj_store_t store,
-					    ldmsd_store_handle_t sh)
-{
-        if (store->api->get_context != NULL) {
-                return store->api->get_context(store, sh);
-        } else {
-                ovis_log(NULL, OVIS_LERROR,
-                         "store plugin \"%s\" does not support non-decomposition get_context()\n",
-                         store->plugin_name);
-                return NULL;
-        }
+	if (store->api->open)
+		return store->api->open(store, container, schema, metric_list);
+	return NULL;
 }
 
 static inline void
 ldmsd_store_flush(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 {
-        if (store->api->flush != NULL) {
-                store->api->flush(store, sh);
-        }
+        if (store->api->flush)
+                store->api->flush(store->context, sh);
 }
 
 static inline void
 ldmsd_store_close(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 {
-	store->api->close(store, sh);
+	if (store->api->close)
+		store->api->close(store->context, sh);
 }
 
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)();

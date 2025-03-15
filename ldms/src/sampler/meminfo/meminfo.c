@@ -70,12 +70,12 @@
 #define SAMP "meminfo"
 
 typedef struct meminfo_s {
+	ovis_log_t log;
 	ldms_set_t set;
 	FILE *mf;
 	int metric_offset;
 	base_data_t base;
 } *meminfo_t;
-static ovis_log_t mylog;
 
 #define LBUFSZ 256
 static int create_metric_set(meminfo_t mi)
@@ -89,14 +89,15 @@ static int create_metric_set(meminfo_t mi)
 
 	mi->mf = fopen(PROC_FILE, "r");
 	if (!mi->mf) {
-		ovis_log(mylog, OVIS_LERROR, "Could not open the " SAMP " file "
-				"'%s'...exiting sampler\n", PROC_FILE);
+		ovis_log(mi->log, OVIS_LERROR,
+			 "Could not open the " SAMP " file "
+			 "'%s'...exiting sampler\n", PROC_FILE);
 		return ENOENT;
 	}
 
 	schema = base_schema_new(mi->base);
 	if (!schema) {
-		ovis_log(mylog, OVIS_LERROR,
+		ovis_log(mi->log, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, mi->base->schema_name, errno);
 		rc = errno;
@@ -150,49 +151,23 @@ static int create_metric_set(meminfo_t mi)
 	return rc;
 }
 
-/**
- * check for invalid flags, with particular emphasis on warning the user about
- */
-static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
-{
-	char *value;
-	int i;
-
-	char* deprecated[]={"set"};
-
-	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
-		value = av_value(avl, deprecated[i]);
-		if (value){
-			ovis_log(mylog, OVIS_LERROR, "config argument %s has been deprecated.\n",
-			       deprecated[i]);
-			return EINVAL;
-		}
-	}
-
-	return 0;
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE;
 }
 
-static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle,
+		  struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	meminfo_t mi = ldmsd_plug_context_get(handle);
+	meminfo_t mi = ldmsd_plug_ctxt_get(handle);
 	int rc;
 
 	if (mi->set) {
-		ovis_log(mylog, OVIS_LERROR, "Set already created.\n");
+		ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR, "Set already created.\n");
 		return EBUSY;
 	}
 
-	rc = config_check(kwl, avl, NULL);
-	if (rc != 0){
-		return rc;
-	}
-
-	mi->base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
+	mi->base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, mi->log);
 	if (!mi->base) {
 		rc = errno;
 		goto err;
@@ -200,9 +175,10 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 
 	rc = create_metric_set(mi);
 	if (rc) {
-		ovis_log(mylog, OVIS_LERROR, "failed to create a metric set.\n");
+		ovis_log(mi->log, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
+	mi->log = ldmsd_plug_log_get(handle);
 	return 0;
  err:
 	return rc;
@@ -210,7 +186,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 
 static int sample(ldmsd_plug_handle_t handle)
 {
-	meminfo_t mi = ldmsd_plug_context_get(handle);
+	meminfo_t mi = ldmsd_plug_ctxt_get(handle);
 	int rc;
 	int metric_no;
 	char *s;
@@ -219,7 +195,7 @@ static int sample(ldmsd_plug_handle_t handle)
 	union ldms_value v;
 
 	if (!mi->set) {
-		ovis_log(mylog, OVIS_LDEBUG, "plugin not initialized\n");
+		ovis_log(mi->log, OVIS_LDEBUG, "plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -244,57 +220,41 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
 {
-	meminfo_t mi = ldmsd_plug_context_get(handle);
+	meminfo_t mi = calloc(1, sizeof(*mi));
+	if (mi) {
+		ldmsd_plug_ctxt_set(handle, mi);
+		return 0;
+	}
+	return ENOMEM;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	meminfo_t mi = ldmsd_plug_ctxt_get(handle);
 	if (mi->mf)
 		fclose(mi->mf);
 	if (mi->base)
 		base_del(mi->base);
 	if (mi->set)
 		ldms_set_delete(mi->set);
-}
-
-
-static int constructor(ldmsd_plug_handle_t handle) {
-        meminfo_t mi;
-
-        mi = calloc(1, sizeof(*mi));
-        if (!mi) {
-                return ENOMEM;
-        }
-        ldmsd_plug_context_set(handle, mi);
-
-        return 0;
-}
-
-static void destructor(ldmsd_plug_handle_t handle) {
-        meminfo_t mi = ldmsd_plug_context_get(handle);
-
-        free(mi);
-}
+	free(mi);
+};
 
 static struct ldmsd_sampler meminfo_plugin = {
-        .base.name = SAMP,
+	.base.name = SAMP,
 	.base.type = LDMSD_PLUGIN_SAMPLER,
-	.base.term = term,
+	.base.flags = LDMSD_PLUGIN_MULTI_INSTANCE,
 	.base.config = config,
 	.base.usage = usage,
-        .base.constructor = constructor,
-        .base.destructor = destructor,
+	.base.constructor = constructor,
+	.base.destructor = destructor,
+
 	.sample = sample,
 };
 
 struct ldmsd_plugin *get_plugin()
 {
-	int rc;
-	if (!mylog) {
-		mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
-		if (!mylog) {
-			rc = errno;
-			ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-		}
-	}
 	return &meminfo_plugin.base;
 }

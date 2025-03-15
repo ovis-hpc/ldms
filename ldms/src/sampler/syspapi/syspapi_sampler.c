@@ -399,7 +399,7 @@ syspapi_open(struct syspapi_metric_list *mlist)
 }
 
 static int
-handle_cfg_file(const char *cfg_file)
+handle_cfg_file(ldmsd_plug_handle_t handle, const char *cfg_file)
 {
 	int rc = 0, fd = -1;
 	ssize_t off, rsz, sz;
@@ -543,14 +543,14 @@ config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		goto out;
 	}
 
-	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
 	}
 
 	if (cfg_file) {
-		rc = handle_cfg_file(cfg_file);
+		rc = handle_cfg_file(handle, cfg_file);
 		if (rc)
 			goto err;
 	}

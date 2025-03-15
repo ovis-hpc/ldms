@@ -240,7 +240,7 @@ static const char *usage(ldmsd_plug_handle_t handle)
 
 static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	procnetdev2_t p = ldmsd_plug_context_get(handle);
+	procnetdev2_t p = ldmsd_plug_ctxt_get(handle);
 	char* ifacelist = NULL;
 	char *exclude = NULL;
 	char *ivalue = NULL;
@@ -313,7 +313,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	p->excount = excount;
 
  cfg:
-	p->base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
+	p->base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, mylog);
 	if (!p->base){
 		rc = EINVAL;
 		goto err;
@@ -337,7 +337,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 
 static int sample(ldmsd_plug_handle_t handle)
 {
-	procnetdev2_t p = ldmsd_plug_context_get(handle);
+	procnetdev2_t p = ldmsd_plug_ctxt_get(handle);
 	int rc;
 	char *s;
 	char lbuf[256];
@@ -450,40 +450,37 @@ resize:
 }
 
 
-static int constructor(ldmsd_plug_handle_t handle) {
-        procnetdev2_t pnd;
-
-        pnd = calloc(1, sizeof(*pnd));
-        if (!pnd) {
-                return ENOMEM;
-        }
-        ldmsd_plug_context_set(handle, pnd);
-
-        return 0;
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	procnetdev2_t p = calloc(1, sizeof(*p));
+	if (p) {
+		ldmsd_plug_ctxt_set(handle, p);
+		return 0;
+	}
+	return ENOMEM;
 }
 
-static void destructor(ldmsd_plug_handle_t handle) {
-	procnetdev2_t pnd = ldmsd_plug_context_get(handle);
-
-	if (pnd->mf) {
-		fclose(pnd->mf);
-		pnd->mf = NULL;
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	procnetdev2_t p = ldmsd_plug_ctxt_get(handle);
+	if (p->mf) {
+		fclose(p->mf);
+		p->mf = NULL;
 	}
-	pnd->mf = NULL;
-	base_set_delete(pnd->base);
-	base_del(pnd->base);
-	pnd->base = NULL;
-
-        free(pnd);
+	base_set_delete(p->base);
+	base_del(p->base);
+	free(p);
 }
 
 static struct ldmsd_sampler procnetdev2_sampler = {
-        .base.name = SAMP,
-        .base.type = LDMSD_PLUGIN_SAMPLER,
-        .base.constructor = constructor,
-        .base.destructor = destructor,
-        .base.config = config,
-        .base.usage = usage,
+	.base.name = SAMP,
+	.base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.flags = LDMSD_PLUGIN_MULTI_INSTANCE,
+	.base.config = config,
+	.base.usage = usage,
+	.base.constructor = constructor,
+	.base.destructor = destructor,
+
 	.sample = sample,
 };
 

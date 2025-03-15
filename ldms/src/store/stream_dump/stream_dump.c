@@ -275,6 +275,37 @@ __term(ldmsd_plug_handle_t handle)
 	pthread_mutex_unlock(&__mutex);
 }
 
+static ldmsd_store_handle_t
+__open(ldmsd_plug_handle_t handle, const char *container, const char *schema,
+       struct ldmsd_strgp_metric_list *metric_list)
+{
+	errno = ENOTSUP;
+	return NULL;
+}
+
+static void __close(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
+{
+	errno = ENOTSUP;
+}
+
+static int __flush(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
+{
+	return ENOTSUP;
+}
+
+static int
+__store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t sh, ldms_set_t set, int *n, size_t count)
+{
+	return ENOTSUP;
+}
+
+static int
+__commit(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
+	 int row_count)
+{
+	return ENOTSUP;
+}
+
 static struct ldmsd_store stream_dump = {
 	.base = {
 		.name = "stream_dump",
@@ -283,6 +314,11 @@ static struct ldmsd_store stream_dump = {
 		.usage = __usage,
 		.type = LDMSD_PLUGIN_STORE,
 	},
+	.open = __open,
+	.store = __store,
+	.flush = __flush,
+	.close = __close,
+	.commit = __commit,
 };
 
 struct ldmsd_plugin *get_plugin()

@@ -99,7 +99,6 @@ struct amqp_instance {
 	char *ca_pem;		/* CA .PEM */
 	char *key;		/* key .PEM */
 	char *cert;		/* cert .PEM */
-	void *ucontext;
 	struct rbn rbn;
 	char *value_buf;
 	size_t value_buf_len;
@@ -417,15 +416,9 @@ static const char *usage(ldmsd_plug_handle_t handle)
 		"   pwd=<password>     The SASL password, default is 'guest'\n";
 }
 
-static void *get_ucontext(ldmsd_store_handle_t _sh)
-{
-	amqp_inst_t ai = _sh;
-	return ai->ucontext;
-}
-
 static ldmsd_store_handle_t
-open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+open_store(ldmsd_plug_handle_t s, const char *container, const char *schema,
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
 	amqp_inst_t ai;
 	struct rbn *rbn;
@@ -459,7 +452,6 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
 		goto err_0;
 
 	ai->schema = strdup(schema);
-	ai->ucontext = ucontext;
 	pthread_mutex_unlock(&cfg_lock);
 	return ai;
  err_0:
@@ -907,7 +899,6 @@ static struct ldmsd_store store_amqp = {
 		.usage = usage,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.close = close_store,
 };

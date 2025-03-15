@@ -482,7 +482,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	 * This makes call into core LDMS functions for initializing the sampler
 	 */
 	errno = 0;
-	g_base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
+	g_base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, mylog);
 	ovis_log(mylog, OVIS_LDEBUG, SAMP": Base config() called.\n");
 	if (g_base == NULL) {
 		rc = errno ? errno : -1;
