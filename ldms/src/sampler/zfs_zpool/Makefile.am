@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 dist_man1_MANS =
 
@@ -16,4 +19,4 @@ libzfs_zpool_la_SOURCES = zfs_zpool.c
 libzfs_zpool_la_LIBADD = $(COMMON_LIBADD)
 
 pkglib_LTLIBRARIES += libzfs_zpool.la
-dist_man7_MANS = Plugin_zfs_zpool.man
+dist_man7_MANS = ldms-sampler-zfs-zpool.man

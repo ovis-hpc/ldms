@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
@@ -19,4 +22,4 @@ libhweventpapi_la_LDFLAGS = $(AM_LDFLAGS)
 libhweventpapi_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) $(LTLIBPAPI) $(LTLIBPFM) -lm
 pkglib_LTLIBRARIES = libhweventpapi.la
 
-dist_man7_MANS = Plugin_hweventpapi.man
+dist_man7_MANS = ldms-sampler-hweventpapi.man

@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 SUBDIRS =
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
@@ -20,6 +23,6 @@ if ENABLE_TUTORIAL_SAMPLER
 libtutorial_sampler_la_SOURCES = tutorial_sampler.c
 libtutorial_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libtutorial_sampler.la
-dist_man7_MANS += Plugin_tutorial_sampler.man
+dist_man7_MANS += ldms-tutorial-sampler.man
 endif
-EXTRA_DIST += Plugin_tutorial_sampler.man
+EXTRA_DIST += ldms-tutorial-sampler.man

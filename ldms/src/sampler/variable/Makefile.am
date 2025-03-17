@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 dist_man7_MANS =
@@ -12,7 +15,7 @@ if ENABLE_VARSET
 libvariable_la_SOURCES = variable.c 
 libvariable_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libvariable.la
-dist_man7_MANS += Plugin_variable.man
+dist_man7_MANS += ldms-sampler-variable.man
 endif
 
 

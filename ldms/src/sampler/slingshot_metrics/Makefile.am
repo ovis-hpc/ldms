@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 libslingshot_metrics_la_SOURCES = \
         slingshot_metrics.c
 libslingshot_metrics_la_LIBADD = \
@@ -12,4 +15,4 @@ libslingshot_metrics_la_CPPFLAGS = @OVIS_INCLUDE_ABS@
 
 pkglib_LTLIBRARIES = libslingshot_metrics.la
 
-dist_man7_MANS = Plugin_slingshot_metrics.man
+dist_man7_MANS = ldms-sampler-slingshot-metrics.man

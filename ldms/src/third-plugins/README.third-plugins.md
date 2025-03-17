@@ -78,7 +78,7 @@ To copy and modify it, you will need to change the lines (and similar ones) list
 Some files will need to be renamed so that my_plugin is replaced with the real name of $your_plugin.
 
   $your_plugin/src/$your_plugin.c:  #define SAMP "your_plugin"
-  $your_plugin/src/Plugin_your_plugin.man:  .\" Manpage for Plugin_your_plugin
+  $your_plugin/src/your_plugin.man:  .\" Manpage for Plugin_your_plugin
   $your_plugin/src/Makefile.am:  libyour_plugin_la_SOURCES = your_plugin.c
   $your_plugin/test/$your_plugin:  export plugname=$your_plugin
   $your_plugin/test/Makefile.am:  PLUGIN_NAME=$your_plugin

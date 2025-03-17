@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 dist_man7_MANS =
@@ -11,4 +14,4 @@ COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 libprocnetdev_la_SOURCES = procnetdev.c
 libprocnetdev_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocnetdev.la
-dist_man7_MANS += Plugin_procnetdev.man
+dist_man7_MANS += ldms-sampler-procnetdev.man

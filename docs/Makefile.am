@@ -1,18 +1,11 @@
-EXTRA_DIST= \
-	conf.py \
-	index.rst \
-	README.rst \
-	requirements.txt \
-	ldms_stream.rst
+EXTRA_DIST = conf.py index.rst README.rst requirements.txt
 
-man7_MANS =
+RST_SRC = $(top_srcdir)/ldms
+RST_DST = $(srcdir)/rst_man
 
-if HAVE_RST2MAN
+copy_rst:
+	@mkdir -p $(RST_DST)
+	@cd $(RST_SRC) && find . -name "*.rst" -exec cp --parents {} $(abspath $(RST_DST)) \;
 
-%.man: %.rst
-	rst2man $< $@
 
-EXTRA_DIST += ldms_stream.rst ldmsd_decomposition.rst
-man7_MANS += ldms_stream.man ldmsd_decomposition.man
-
-endif
+all: copy_rst

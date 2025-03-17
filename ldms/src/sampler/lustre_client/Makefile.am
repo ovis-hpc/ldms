@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 liblustre_client_la_SOURCES = \
         lustre_client.c \
         lustre_client_general.c \
@@ -19,4 +22,4 @@ liblustre_client_la_CPPFLAGS = \
 
 pkglib_LTLIBRARIES = liblustre_client.la
 
-dist_man7_MANS = Plugin_lustre_client.man
+dist_man7_MANS = ldms-sampler-lustre-client.man

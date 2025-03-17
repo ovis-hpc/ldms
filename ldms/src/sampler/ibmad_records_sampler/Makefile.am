@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 libibmad_records_sampler_la_SOURCES = \
         ibmad_records_sampler.c
 libibmad_records_sampler_la_LIBADD = \
@@ -14,4 +17,4 @@ libibmad_records_sampler_la_CPPFLAGS = \
 
 pkglib_LTLIBRARIES = libibmad_records_sampler.la
 
-dist_man7_MANS = Plugin_ibmad_records_sampler.man
+dist_man7_MANS = ldms-sampler-ibmad-records.man

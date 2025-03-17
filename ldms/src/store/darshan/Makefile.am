@@ -1,6 +1,10 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 SUBDIRS =
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
+dist_man7_MANS =
 CORE = ../../core
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
@@ -18,4 +22,4 @@ libdarshan_stream_store_la_LIBADD = $(COMMON_LIBADD) \
 	@SOS_LIB64DIR_FLAG@ @SOS_LIBDIR_FLAG@ -lsos -lc
 
 pkglib_LTLIBRARIES += libdarshan_stream_store.la
-
+dist_man7_MANS += ldms-store-darshan-stream.man

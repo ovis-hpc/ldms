@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 dist_man7_MANS=
 
@@ -12,7 +15,7 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 		$(top_builddir)/lib/src/ovis_json/libovis_json.la \
 		-lpthread
 
-dist_man7_MANS += Plugin_json_stream_sampler.man
+dist_man7_MANS += ldms-sampler-json-stream.man
 libjson_stream_sampler_la_SOURCES = json_stream_sampler.c
 libjson_stream_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libjson_stream_sampler.la

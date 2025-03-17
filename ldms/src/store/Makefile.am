@@ -1,6 +1,10 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 SUBDIRS = test
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
+dist_man7_MANS =
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
 AM_CPPFLAGS = $(DBGFLAGS) @OVIS_INCLUDE_ABS@
@@ -33,6 +37,7 @@ libstore_sos_la_SOURCES = store_sos.c
 libstore_sos_la_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
 libstore_sos_la_LIBADD = @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@ $(STORE_LIBADD) -lsos
 pkglib_LTLIBRARIES += libstore_sos.la
+dist_man7_MANS += ldms-store-sos.man
 
 MAYBE_SLURM = slurm
 MAYBE_PAPI = papi
@@ -54,12 +59,14 @@ if ENABLE_RABBITV3
 libstore_rabbitv3_la_SOURCES = store_rabbitv3.c rabbit_utils.c rabbit_utils.h
 libstore_rabbitv3_la_LIBADD = -lrabbitmq $(STORE_LIBADD) @OVIS_AUTH_LIBS@
 pkglib_LTLIBRARIES += libstore_rabbitv3.la
+dist_man7_MANS += ldms-store-rabbitv3.man
 endif
 
 if ENABLE_RABBITKW
 libstore_rabbitkw_la_SOURCES = store_rabbitkw.c rabbit_utils.c rabbit_utils.h
 libstore_rabbitkw_la_LIBADD = -lrabbitmq $(STORE_LIBADD) @OVIS_AUTH_LIBS@
 pkglib_LTLIBRARIES += libstore_rabbitkw.la
+dist_man7_MANS += ldms-store-rabbitkw.man
 endif
 
 if ENABLE_CSV
@@ -76,7 +83,7 @@ pkglib_LTLIBRARIES += libstore_csv.la
 libstore_function_csv_la_SOURCES = store_common.h store_function_csv.c
 libstore_function_csv_la_LIBADD = $(STORE_LIBADD) -lpthread
 pkglib_LTLIBRARIES += libstore_function_csv.la
-
+dist_man7_MANS += ldms-store-csv.man ldms-store-function-csv.man
 endif
 
 if ENABLE_STORE_APP

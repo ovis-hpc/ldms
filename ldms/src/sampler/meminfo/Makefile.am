@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 dist_man7_MANS =
@@ -12,7 +15,7 @@ if ENABLE_MEMINFO
 libmeminfo_la_SOURCES = meminfo.c 
 libmeminfo_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libmeminfo.la
-dist_man7_MANS += Plugin_meminfo.man
+dist_man7_MANS += ldms-sampler-meminfo.man
 endif
 
 

@@ -1,7 +1,11 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 ACLOCAL_AMFLAGS = -I m4
 AM_LDFLAGS = @OVIS_LIB_ABS@
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 #COMMON_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
+dist_man8_MANS =
 
 sbin_PROGRAMS =
 sbin_PROGRAMS += test_ldms_xprt_reconnect
@@ -55,7 +59,7 @@ test_metric_LDFLAGS = $(AM_LDFLAGS) -pthread -lm
 mypkglibdir = $(pkglibdir)
 mypkglib_SCRIPTS = ldms-run-static-tests.test
 mypkglib_DATA = ldms-static-test-list.sh ldms-static-test-bypass
-
+dist_man8_MANS += ldms-run-static-tests.man
 # invoke tap-driver
 TEST_LOG_DRIVER = env AM_TAP_AWK='$(AWK)' $(SHELL) \
                   $(top_srcdir)/config/tap-driver.sh

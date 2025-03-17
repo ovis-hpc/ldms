@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 check_PROGRAMS =
@@ -19,5 +22,5 @@ if ENABLE_SYNTHETIC
 libsynthetic_la_SOURCES = synthetic.c
 libsynthetic_la_LIBADD = $(COMMON_LIBADD) -lm
 pkglib_LTLIBRARIES += libsynthetic.la
-dist_man7_MANS += Plugin_synthetic.man
+dist_man7_MANS += ldms-sampler-synthetic.man
 endif

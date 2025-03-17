@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 libibmad_sampler_la_SOURCES = \
         ibmad_sampler.c
 libibmad_sampler_la_LIBADD = \
@@ -15,7 +18,7 @@ libibmad_sampler_la_CPPFLAGS = \
 
 pkglib_LTLIBRARIES = libibmad_sampler.la
 
-dist_man7_MANS = Plugin_ibmad_sampler.man
+dist_man7_MANS = ldms-sampler-ibmad.man
 
 # libibmad is DEPRECATED
 #

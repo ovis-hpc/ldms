@@ -1,4 +1,7 @@
+include $(top_srcdir)/ldms/rules.mk
 
+dist_man1_MANS = ldms-csv-anonymize.man ldms-csv-export-sos.man
+dist_man8_MANS =
 # consider adding ldmsd to bin_SCRIPTS if ldmsd script ever stabilizes
 EXTRA_DIST=examples lsdate slurm-examples
 EXTRA_DIST += ldms-csv-anonymize ldms-csv-export-sos
@@ -39,7 +42,11 @@ if ENABLE_SLURMTEST
 testsets += install-slurm
 untestsets += uninstall-slurm
 bin_SCRIPTS += pll-ldms-static-test.sh
+dist_man8_MANS += ldms-pll-static-test.man
+EXTRA_DIST += ldms-pll-static-test.man
 endif
+
+dist_man8_MANS += ldms-static-test.man
 
 install-data-local: $(testsets)
 

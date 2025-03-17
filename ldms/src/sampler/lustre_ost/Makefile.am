@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 liblustre_ost_la_SOURCES = \
 	lustre_ost.c \
 	lustre_ost_general.c \
@@ -19,4 +22,4 @@ liblustre_ost_la_CPPFLAGS = \
 
 pkglib_LTLIBRARIES = liblustre_ost.la
 
-dist_man7_MANS = Plugin_lustre_ost.man
+dist_man7_MANS = ldms-sampler-lustre-ost.man

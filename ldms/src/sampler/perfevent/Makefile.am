@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 dist_man7_MANS =
@@ -11,4 +14,4 @@ COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 libperfevent_la_SOURCES = perfevent.c
 libperfevent_la_LIBADD = $(COMMON_LIBADD) -lm
 pkglib_LTLIBRARIES += libperfevent.la
-dist_man7_MANS += Plugin_perfevent.man
+dist_man7_MANS += ldms-sampler-perfevent.man

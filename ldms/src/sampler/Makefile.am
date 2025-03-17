@@ -1,9 +1,13 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 ACLOCAL_AMFLAGS = -I m4
 # unlike default automake, we build this dir's local pieces before its children.
 SUBDIRS = .
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 noinst_LTLIBRARIES =
+dist_man7_MANS=
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
@@ -35,7 +39,7 @@ SUBDIRS += lustre_mdt
 SUBDIRS += lustre_ost
 SUBDIRS += lustre_mdc
 SUBDIRS += json
-
+dist_man7_MANS += ldms-sampler-base.man
 if HAVE_DCGM
 SUBDIRS += dcgm_sampler
 endif
@@ -63,6 +67,7 @@ libjobid_la_SOURCES = ldms_jobid.c
 libjobid_la_LIBADD = $(COMMON_LIBADD)
 ldmssamplerinclude_HEADERS += ldms_jobid.h
 pkglib_LTLIBRARIES += libjobid.la
+dist_man7_MANS += ldms-jobid.man
 endif
 
 if ENABLE_TSAMPLER

@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 liblustre_mdc_la_SOURCES = \
 	lustre_mdc.c \
 	lustre_mdc_general.c \
@@ -21,4 +24,4 @@ liblustre_mdc_la_CPPFLAGS = \
 
 pkglib_LTLIBRARIES = liblustre_mdc.la
 
-dist_man7_MANS = Plugin_lustre_mdc.man
+dist_man7_MANS = ldms-sampler-lustre-mdc.man
