@@ -19,7 +19,7 @@ if ENABLE_GEOPM_SAMPLER
 libldms_geopm_sampler_la_SOURCES = ldms_geopm_sampler.c ldms_geopm_sampler.h
 libldms_geopm_sampler_la_LIBADD = $(COMMON_LIBADD) -lgeopmd
 pkglib_LTLIBRARIES += libldms_geopm_sampler.la
-dist_man7_MANS += ldms-geopm-sampler.man
+dist_man7_MANS += ldms-sampler-geopm.man
 ldms_geopm_sampler_test_SOURCES = ldms_geopm_sampler_test.c ldms_geopm_sampler.h
 ldms_geopm_sampler_test_LDADD = libldms_geopm_sampler.la \
 				${top_builddir)/lib/src/ovis_log/libovis_log.la
@@ -47,7 +47,7 @@ EXTRA_DIST += ldms_geopm_sampler.c \
 endif
 EXTRA_DIST += .gitignore \
               COPYING-TPP \
-              ldms-geopm-sampler.man \
+              ldms-sampler-geopm.man \
               README.md \
               ldms_geopm_sampler_test.conf \
               ldms_geopm_sampler_test.expect \

@@ -28,7 +28,7 @@ TESTS = test_sensors test_lscpu
 endif
 
 EXTRA_DIST += \
-	ldms-sampler-ldms-filesingle.man \
+	ldms-sampler-filesingle.man \
 	ldms-sampler-sensors-config.man \
 	test_sensors \
 	test_lscpu \

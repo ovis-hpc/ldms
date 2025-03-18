@@ -1,8 +1,23 @@
 # Documentation
 
-Edits should be made to the `.rst` files.
-The documentation can be built with `make html` or `make man` and the generated files will be found in the `_build` directory.
-If you build the LDMS code, then any .rst files under docs/man/ will be converted to .man in the LDMS build directory.
+Any new documentation will be formatted in ``.rst`` and added to this directory (with the exception of "man pages" explained below).
+
+To enable RST linking, add the following directive at the top of the file:
+   - ``.. _<file-name>``
+   - Refer to any existing ``.rst`` files for formatting examples.
+
+## Man Page .RST File Formatting And Editing
+
+For any code or plugin-specific documentation (e.g., manual pages), please use the ``.rst`` format.
+
+1. To edit existing man page ``.rst`` files, make changes within the ``ldms/`` directory where the corresponding code resides.
+2. **Do not** edit or add files directly in the ``docs/rst_man/`` directory. This directory is automatically populated with ``.rst`` files when building Read the Docs.
+3. When creating a new man page, use the following naming convention: ``<category>-<plugin-type>-<plugin-name>.rst``
+   - Example: ``ldms-sampler-my-plugin.rst`` OR ``ldmsd-store-my-plugin.rst``
+   - For non-plugin files, include the type (e.g., ``ldms/ldmsd``) at the beginning of the filename.
+4. To enable RST linking, add the following directive at the top of the file:
+   - ``.. _<my-plugin>``
+   - Refer to existing man page ``.rst`` files for formatting examples.
 
 ## Using Readthedocs
 To visualize and test your documentation changes on the offical [OVIS LDMS Documentation page](https://ovis-hpc.readthedocs.io/projects/ldms/en/latest/) before submitting a PR, please follow the steps below.
@@ -26,8 +41,9 @@ This will allow you to see your changes in real-time as you push updates to the 
 
 If you are making changes to the project configurations (i.e. conf.py or requirements.txt), submit the PR and one of the admins will review the changes.
 
-## Using Local Machine
+### Using Local Machine
 
+The documentation can be built with `make html` or `make man` and the generated files will be found in the `_build` directory.
 If you instead want to test a build on your local machine, please install the following depencencies before running `make html`.
 
 ``` shell
