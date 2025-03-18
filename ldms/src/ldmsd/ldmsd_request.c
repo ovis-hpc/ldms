@@ -10327,7 +10327,7 @@ static int qgroup_member_add_handler(ldmsd_req_ctxt_t reqc)
 	free(a_port);
 	free(a_xprt);
 	free(a_auth);
-	ldmsd_cfgobj_put(&auth->obj, "init");
+	ldmsd_cfgobj_put(&auth->obj, "find");
 	return rc;
 }
 
