@@ -1806,15 +1806,16 @@ int __rep_flush_sbuf_tq(struct ldms_rail_ep_s *rep)
 		if (rc)
 			goto out;
 
+		op_ctxt = calloc(1, sizeof(*op_ctxt));
+		if (!op_ctxt) {
+			rc = ENOMEM;
+			goto out;
+		}
+		op_ctxt->op_type = LDMS_XPRT_OP_STREAM_PUBLISH;
+		op_ctxt->stream_pub_profile.hop_num = p->hop_num;
+		op_ctxt->stream_pub_profile.recv_ts = p->recv_ts;
+
 		if (ENABLED_PROFILING(LDMS_XPRT_OP_STREAM_PUBLISH)) {
-			op_ctxt = calloc(1, sizeof(*op_ctxt));
-			if (!op_ctxt) {
-				rc = ENOMEM;
-				goto out;
-			}
-			op_ctxt->op_type = LDMS_XPRT_OP_STREAM_PUBLISH;
-			op_ctxt->stream_pub_profile.hop_num = p->hop_num;
-			op_ctxt->stream_pub_profile.recv_ts = p->recv_ts;
 			TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_STREAM_PUBLISH]),
 										op_ctxt, ent);
 		}
@@ -1835,6 +1836,9 @@ int __rep_flush_sbuf_tq(struct ldms_rail_ep_s *rep)
 				free(op_ctxt);
 			}
 			goto out;
+		}
+		if (!ENABLED_PROFILING(LDMS_XPRT_OP_STREAM_PUBLISH)) {
+			free(op_ctxt);
 		}
 		TAILQ_REMOVE(&rep->sbuf_tq, p, entry);
 		ref_put(&p->sbuf->ref, "pending");
