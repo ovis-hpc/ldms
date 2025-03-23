@@ -48,7 +48,7 @@ start name=procstat interval=${SAMPLE_INTERVAL} offset=${SAMPLE_OFFSET}
 # 2) Storing the output will give inconsistant results as all mount points currently have the same schema
 # and no feature to enable differention in the sets themselves -- this is a bug which should be resolved by
 # January 30, 2018
- 
+
 load name=cray_dvs_sampler
 config name=cray_dvs_sampler producer=${NID} instance=${NID}/cray_dvs_sampler component_id=${COMPONENT_ID} job_set=${NID}/jobinfo conffile=/opt/ovis/etc/ldms/dvs.conf uid=0 gid=0 perm=0700
 start name=cray_dvs_sampler interval=${SAMPLE_INTERVAL} offset=${SAMPLE_OFFSET}

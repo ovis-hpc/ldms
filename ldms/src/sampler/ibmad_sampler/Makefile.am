@@ -18,7 +18,7 @@ libibmad_sampler_la_CPPFLAGS = \
 
 pkglib_LTLIBRARIES = libibmad_sampler.la
 
-dist_man7_MANS = ldms-sampler-ibmad.man
+dist_man7_MANS = ldms-sampler_ibmad_sampler.man
 
 # libibmad is DEPRECATED
 #

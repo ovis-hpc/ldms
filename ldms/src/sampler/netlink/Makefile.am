@@ -25,7 +25,7 @@ slpsinclude_HEADERS = simple_lps.h
 if HAVE_NETLINK
 # ldms-netlink-notifier does not use ldms headers except ovis json.
 sbin_PROGRAMS += ldms-netlink-notifier
-dist_man8_MANS += ldms-sampler-netlink-notifier.man ldms-sampler-notify.man ldms-sampler-netlink-notifier.man
+dist_man8_MANS += ldms-sampler_netlink-notifier.man ldms-sampler_ldms-notify.man
 ldms_netlink_notifier_CFLAGS = $(AM_CFLAGS)
 ldms_netlink_notifier_SOURCES = netlink-notifier.c
 ldms_netlink_notifier_LDADD = libsimple_lps.la $(COMMON_LIBADD) -lpthread -lm

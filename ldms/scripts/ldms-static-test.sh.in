@@ -36,7 +36,7 @@ export PYTHONPATH=${ovis_ldms_pythondir}:$PYTHONPATH
 function clusage {
 cat << EOF
 $0: usage:
-$0 -l 
+$0 -l
 $0 -h
 $0 <input_file> [test_dir]
 	-h produces help message

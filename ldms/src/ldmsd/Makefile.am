@@ -6,11 +6,11 @@ SUBDIRS = . test
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
 dist_man8_MANS = ldmsd.man \
-		 ldms-ls.man \
-		 ldms-ldmsctl.man
+		 ldms_ls.man \
+		 ldmsctl.man
 
-dist_man7_MANS = ldmsd-failover.man \
-		 ldmsd-setgroup.man
+dist_man7_MANS = ldmsd_failover.man \
+		 ldmsd_setgroup.man
 
 
 AM_LDFLAGS = @OVIS_LIB_ABS@

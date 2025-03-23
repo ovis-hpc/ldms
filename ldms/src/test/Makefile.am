@@ -64,7 +64,7 @@ dist_man8_MANS += ldms-run-static-tests.man
 TEST_LOG_DRIVER = env AM_TAP_AWK='$(AWK)' $(SHELL) \
                   $(top_srcdir)/config/tap-driver.sh
 
-installcheck-local: 
+installcheck-local:
 	./ldms-run-static-tests.test
 
 TESTS = $(check_PROGRAMS) ldms-run-static-tests.test

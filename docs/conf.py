@@ -53,6 +53,7 @@ html_logo = 'https://ovis-hpc.readthedocs.io/en/latest/_images/ovis-logo.png'
 html_theme_options = {
     'logo_only': True,
     'display_version': False,
+    'navigation_depth': 6,
 }
 
 # -- Options for EPUB output

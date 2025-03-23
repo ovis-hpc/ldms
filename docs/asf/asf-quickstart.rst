@@ -92,7 +92,7 @@ Expected Results & Output
 +++++++++++++++++++++++++
 The following is an example test of an analysis module that queries the ``meminfo`` schema an returns a timeseries dataframe of the ``Active`` and ``Inactive`` metrics:
 
-.. image:: ../images/grafana/grafana_output.png
+.. image:: images/grafana/grafana_output.png
 
 Test Analysis via Grafana Dashboard
 -----------------------------------
@@ -122,6 +122,4 @@ To create a new dashboard, click on the + sign on the left side of the home page
 
 .. image:: ../images/grafana/grafana_timerange.png
 
-* Now you should be able to see a the "Active" and "Inactive" values for each job_id.
-
-.. image::
+* Now you should be able to see a the "Active" and "Inactive" values for each job_id (as seen in `Expected Results & Output`_).

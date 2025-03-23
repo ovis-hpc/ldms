@@ -213,7 +213,7 @@ struct ibnet_data {
 
 	/* local port for contactiung network */
 	struct ibmad_port *port;
-	
+
 
 	/** name of local NIC used to access the fabric. */
 	char ca_name[UMAD_CA_NAME_LEN];
@@ -312,7 +312,7 @@ char *ibnet_data_usage() {
 	dstr_set(&ds, base);
 	size_t i;
 	for (i = 0; i < cr_count; i++) {
-		if (cr_default[i].id == GSI_CONT) 
+		if (cr_default[i].id == GSI_CONT)
 			continue;
 		dstrcat(&ds, "\t", 1);
 		dstrcat(&ds, cr_default[i].subset, DSTRING_ALL);
@@ -460,7 +460,7 @@ struct ibnet_data *ibnet_data_new(ovis_log_t mylog, struct attr_value_list *avl,
 		if (rc)
 			goto err;
 	}
-		
+
 	if (!sbase) {
 		strcpy(d->schema_name_base, "ibnet");
 	} else {
@@ -549,7 +549,7 @@ struct ibnet_data *ibnet_data_new(ovis_log_t mylog, struct attr_value_list *avl,
 		timing_schema_name);
 	if (rc)
 		goto err;
-	
+
 	int mgmt_classes[3] = {
 		IB_SMI_CLASS, IB_SA_CLASS, IB_PERFORMANCE_CLASS
 	};
@@ -816,7 +816,7 @@ const char * timing_schema)
 	if (rc < 0)
 		goto err2;
 	d->index_port = rc;
-	
+
 	MADD("node_name");
 	if (d->lidnames) {
 		rc = ldms_schema_meta_array_add(d->port_schema, "node_name",
@@ -846,7 +846,7 @@ const char * timing_schema)
 			continue;
 		}
 		if (d->cr_opt[i].enabled == 1|| prev) {
-			if (d->debug) 
+			if (d->debug)
 				ovis_log(d->mylog, OVIS_LDEBUG, "add subset %s\n", d->cr_opt[i].subset);
 			prev = 1;
 			enum MAD_FIELDS j = d->cr_opt[i].lo;
@@ -1222,7 +1222,7 @@ static void port_query(struct ibnet_data *d, struct ib_port *port, struct timeva
 			}
 			if (!res) {
 				if (g <= LAST_EXTENDED_IDX) {
-					/* if base or extended query fails, 
+					/* if base or extended query fails,
  * 						skip other subsets on port.*/
 					skip_rest += 1;
 					gettimeofday(&(port->last_fail), 0);
@@ -1269,7 +1269,7 @@ static void port_decode(struct ibnet_data *d, struct ib_port *port)
 {
 	if (!d || !port)
 		return;
-	
+
 	ldms_transaction_begin(port->set);
 	if (! port->meta_init) {
 		port->meta_init = 1;
@@ -1366,7 +1366,7 @@ static const char *compute_schema_suffix(struct ibnet_data *d)
 		tsuffix = "";
 		break;
 	}
-   
+
 	snprintf(suffix, sizeof(suffix), "_%x%s%s", hash, tsuffix,
 		(d->lidnames ? "n" : ""));
 	return suffix;
@@ -1418,7 +1418,7 @@ out:
 }
 
 #include "ibnet_data.h"
-int main(int argc, char **argv) 
+int main(int argc, char **argv)
 {
 	ibnet_get_schema_name(argc, argv);
 	return 0;

@@ -22,4 +22,4 @@ libstore_avro_kafka_la_LIBADD = $(COMMON_LIBADD) \
 
 pkglib_LTLIBRARIES += libstore_avro_kafka.la
 
-dist_man7_MANS = ldms-store-avro-kafka.man
+dist_man7_MANS = ldms-store_avro_kafka.man

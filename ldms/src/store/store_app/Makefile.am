@@ -12,4 +12,4 @@ libstore_app_la_LIBADD = @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@ @OVIS_LIB_ABS@ \
 			 $(top_builddir)/lib/src/ovis_util/libovis_util.la \
 			 -lsos
 
-dist_man7_MANS += ldmsd-store-app.man
+dist_man7_MANS += ldmsd_store_app.man

@@ -22,4 +22,4 @@ libpapi_sampler_la_SOURCES = papi_sampler.h papi_sampler.c papi_config.c
 libpapi_sampler_la_LIBADD = $(COMMON_LIBADD) $(LTLIBPAPI) libpapi_hook.la
 libpapi_sampler_la_CFLAGS = -DSYSCONFDIR='"$(sysconfdir)"'
 pkglib_LTLIBRARIES += libpapi_sampler.la
-dist_man7_MANS += ldms-sampler-papi.man
+dist_man7_MANS += ldms-sampler_papi_sampler.man

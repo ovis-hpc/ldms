@@ -18,7 +18,7 @@ libhello_sampler_la_LIBADD = $(COMMON_LIBADD) \
 			     $(top_builddir)/lib/src/ovis_json/libovis_json.la \
 			     $(top_builddir)/ldms/src/sampler/libsampler_base.la
 pkglib_LTLIBRARIES += libhello_sampler.la
-dist_man7_MANS += ldms-sampler-hello.man
+dist_man7_MANS += ldms-sampler_hello_sampler.man
 
 
 SUBDIRS = stream_configs

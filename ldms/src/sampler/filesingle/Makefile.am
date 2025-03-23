@@ -21,15 +21,15 @@ libfilesingle_la_SOURCES = filesingle.c
 libfilesingle_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libfilesingle.la
 bin_SCRIPTS += ldms-sensors-config
-dist_man7_MANS += ldms-sampler-ldms-filesingle.man
-dist_man1_MANS += ldms-sampler-sensors-config.man
+dist_man7_MANS += ldms-sampler_filesingle.man
+dist_man1_MANS += ldms-sensors-config.man
 
 TESTS = test_sensors test_lscpu
 endif
 
 EXTRA_DIST += \
-	ldms-sampler-filesingle.man \
-	ldms-sampler-sensors-config.man \
+	ldms-sampler_filesingle.man \
+	ldms-sensors-config.man \
 	test_sensors \
 	test_lscpu \
 	test_input

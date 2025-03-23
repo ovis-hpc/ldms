@@ -19,9 +19,9 @@ if ENABLE_BLOB_STREAM
 libblob_stream_writer_la_SOURCES = blob_stream_writer.c
 libblob_stream_writer_la_LIBADD = $(STORE_LIBADD) -lovis_json
 pkglib_LTLIBRARIES += libblob_stream_writer.la
-dist_man7_MANS += ldms-sampler-blob-stream-writer.man
+dist_man7_MANS += ldms-sampler_blob_stream_writer.man
 
 endif
 
 EXTRA_DIST = \
-	ldms-sampler-blob-stream-writer.man
+	ldms-sampler_blob_stream_writer.man

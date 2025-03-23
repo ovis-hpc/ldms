@@ -23,6 +23,6 @@ if ENABLE_TUTORIAL_SAMPLER
 libtutorial_sampler_la_SOURCES = tutorial_sampler.c
 libtutorial_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libtutorial_sampler.la
-dist_man7_MANS += ldms-sampler-tutorial.man
+dist_man7_MANS += ldms-sampler_tutorial_sampler.man
 endif
-EXTRA_DIST += ldms-sampler-tutorial.man
+EXTRA_DIST += ldms-sampler_tutorial_sampler.man

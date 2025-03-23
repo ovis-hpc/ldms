@@ -22,4 +22,4 @@ liblustre_ost_la_CPPFLAGS = \
 
 pkglib_LTLIBRARIES = liblustre_ost.la
 
-dist_man7_MANS = ldms-sampler-lustre-ost.man
+dist_man7_MANS = ldms-sampler_lustre_ost.man

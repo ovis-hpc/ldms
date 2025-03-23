@@ -22,7 +22,7 @@ LIBADD = $(COMMON_LIBADD)
 libshm_sampler_la_SOURCES = shm_sampler.c
 libshm_sampler_la_LIBADD = $(LIBADD) $(JOBID_LIBFLAGS) shm_util/liblshm.la -lm -lrt -lpthread
 pkglib_LTLIBRARIES += libshm_sampler.la
-dist_man7_MANS = ldms-sampler-shm.man
+dist_man7_MANS = ldms-sampler_shm_sampler.man
 
 EXTRA_DIST = \
 	outline \

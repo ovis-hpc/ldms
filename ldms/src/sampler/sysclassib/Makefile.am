@@ -14,4 +14,4 @@ COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 libsysclassib_la_SOURCES = sysclassib.c
 libsysclassib_la_LIBADD = $(COMMON_LIBADD) $(LTLIBIBMAD) $(LTLIBIBUMAD)
 pkglib_LTLIBRARIES += libsysclassib.la
-dist_man7_MANS += ldms-sampler-sysclassib.man
+dist_man7_MANS += ldms-sampler_sysclassib.man

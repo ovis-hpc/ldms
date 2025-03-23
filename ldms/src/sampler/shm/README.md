@@ -14,25 +14,25 @@
 	    * [Example](#example)
 
 
-# Introduction 
+# Introduction
 
 __shm_sampler__ is a sampler plug-in module within the the LDMS. This sampler can read from a dynamic
-number of shm files. These files are tracked by a central index file in shared memory. 
+number of shm files. These files are tracked by a central index file in shared memory.
 The main usage of this sampler is to stream  application performance data.
 [top](#table-of-contents)
 
 
 
-# Overview  
+# Overview
 
-To stream  application performance data, three components are involved: an application profiler, a shared memory index, and a sampler. 
-The application profiler collects information about the software level events. 
-The shared memory index  provides a mechanism to access the data collected by the application profiler. 
+To stream  application performance data, three components are involved: an application profiler, a shared memory index, and a sampler.
+The application profiler collects information about the software level events.
+The shared memory index  provides a mechanism to access the data collected by the application profiler.
 The sampler  utilizes the shared memory index to periodically expose the data collected by the application profiler.
 [top](#table-of-contents)
 
 
-# MPI Sampler 
+# MPI Sampler
 Different application profilers can be used as the data source for shm_sampler. Currently, an MPI profiler is included and can be used to stream MPI application software level events.
 [top](#table-of-contents)
 
@@ -115,9 +115,9 @@ Currently, MPI profiler uses environment variables to get the user options. The 
 |---------------------------------|---------|---------------------------|--------
 |LDMS_SHM_INDEX  				  | String  |```"/ldms_shm_mpi_index"```| A unique name for the shared memory index file. The value for this variable must be the same as the value for __shm_index__ in __shm_sampler__ configurations. If this variable is not provided the profiling will be disabled.
 |LDMS_SHM_MPI_PROFILER_LOG_LEVEL  | Integer | 1 						| The log level for the MPI profiler. Value of ```0``` will disable the profiler. Value of ```1 ``` will enable the profiler with minimum log information. Value of ```2 ``` will print out more log information during the profiling.
-|LDMS_SHM_MPI_FUNC_INCLUDE  	  | String  | ```"MPI_Send,MPI_Recv"``` | The configurations for events. More notes about this option are included below this table. 
-|LDMS_SHM_MPI_STAT_SCOPE          | Integer | 1 						| Data collection granularity mode. Value of ```0``` will assign one global counter for each event. Value of ```1``` will assign one counter per MPI rank for each event. 
-|LDMS_SHM_MPI_EVENT_UPDATE        | Integer | 1 						| Event update type. Value of ```0``` will create a local thread that updates event coutners in the shared memory index periodically. Value of ```1``` will update event counters in the shared memory index immeidately. 
+|LDMS_SHM_MPI_FUNC_INCLUDE  	  | String  | ```"MPI_Send,MPI_Recv"``` | The configurations for events. More notes about this option are included below this table.
+|LDMS_SHM_MPI_STAT_SCOPE          | Integer | 1 						| Data collection granularity mode. Value of ```0``` will assign one global counter for each event. Value of ```1``` will assign one counter per MPI rank for each event.
+|LDMS_SHM_MPI_EVENT_UPDATE        | Integer | 1 						| Event update type. Value of ```0``` will create a local thread that updates event coutners in the shared memory index periodically. Value of ```1``` will update event counters in the shared memory index immeidately.
 
 To configure specifc events the string value for the ```LDMS_SHM_MPI_FUNC_INCLUDE``` variable will be parsed. The following delitmiters are available for determining events:
 

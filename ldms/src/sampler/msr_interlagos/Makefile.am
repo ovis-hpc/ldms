@@ -14,4 +14,4 @@ COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 libmsr_interlagos_la_SOURCES = msr_interlagos.c
 libmsr_interlagos_la_LIBADD = $(COMMON_LIBADD) -lpthread
 pkglib_LTLIBRARIES += libmsr_interlagos.la
-dist_man7_MANS += ldms-sampler-msr-interlagos.man
+dist_man7_MANS += ldms-sampler_msr_interlagos.man

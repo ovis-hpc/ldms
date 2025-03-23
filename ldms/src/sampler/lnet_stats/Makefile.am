@@ -14,4 +14,4 @@ COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 liblnet_stats_la_SOURCES = lnet_stats.c
 liblnet_stats_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += liblnet_stats.la
-dist_man7_MANS += ldms-sampler-lnet-stats.man
+dist_man7_MANS += ldms-sampler_lnet_stats.man

@@ -1,7 +1,7 @@
 # Why this directory?
 
 The preferred location of LDMS contributions is in the ldms/src/contrib where
-contributions are directly integrated with the OVIS autotools build. 
+contributions are directly integrated with the OVIS autotools build.
 
 That approach may not work for some, particularly developers
 wanting or needing to maintain their own separate build system for legal or practical reasons.
@@ -19,7 +19,7 @@ for aspiring plugin writers that do not want to put their code in the tree just 
 
 * Open an issue on our web git and to discuss the plugin you want to create. Make sure there is not already a work in progress that you could help with or influence with your requirements.
 * Document your plugin. This includes a man page, possibly a markdown file documenting design and other considerations outside the scope of a man page, and a test case script set for use on a single node with ldms-static-test.sh.
-* Put it in a new subdirectory of ldms/src/third-plugins. 
+* Put it in a new subdirectory of ldms/src/third-plugins.
   * Share it with us via a pull request when you have it working.
   * Or contact us through your issue page about other means for us to obtain and incorporate your code such as a git submodule.
 
@@ -28,7 +28,7 @@ for aspiring plugin writers that do not want to put their code in the tree just 
 * Names of contributions cannot contain a comma, but may contain a / that maps to a directory. Our plugin name-space is flat. If you are creating, for example, an improved meminfo plugin please call it meminfo_better or some such. If you work for yoyo, perhaps call it yoyo_meminfo.
 * The LDMS developers are the final arbiters of what your directory and plugin will be named if there is a naming conflict with another plugin.
 * Contributions must have a compatible open-source license and it must be located in a file named LICENSE at the top of your plugin directory. If your contribution incorporates source from other open-source libraries, the names of the libraries used and the locations of their open-source licenses must be listed a file LICENSES_THIRD_PARTY.
-* Our top level build system will enable LDMS users and packagers to automatically build your contribution with the rest of LDMS only if your work uses the build approach documented below, implementing ldms_build.sh. 
+* Our top level build system will enable LDMS users and packagers to automatically build your contribution with the rest of LDMS only if your work uses the build approach documented below, implementing ldms_build.sh.
 * Contributions which do not provide build support that integrates with our build may still be included in our repository at our discretion, but the LDMS team will provide no support to users that want to build your plugin. Document your unsupported build process well. LDMS installs libraries and headers that can be used like most other third party libraries.
 
 # Build Approaches
@@ -43,7 +43,7 @@ configure ldms with "--enable-third-plugins=a,b/p2" to request the 'a' and 'p2' 
 
 This approach is for those using autotools, cmake, or other scripted systems.
 
-You provide a script in a file, for example, in ldms/src/third-plugins/my_plugin/ldms_build.sh. 
+You provide a script in a file, for example, in ldms/src/third-plugins/my_plugin/ldms_build.sh.
 After our build and install, we switch to your directory third-plugins/my_plugin and invoke './ldms_build.sh'. That script should do everything needed to configure, build, and install your plugin. The my_plugin example ldms_build.sh can be used as a template for other plugins.
 
 The final exit code of your script should be 0 if installation succeeded and otherwise an error code. Your script should also display a prominent failure message explaining your failure and what the user should do about it (install a needed package, for example).

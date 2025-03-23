@@ -39,7 +39,7 @@ SUBDIRS += lustre_mdt
 SUBDIRS += lustre_ost
 SUBDIRS += lustre_mdc
 SUBDIRS += json
-dist_man7_MANS += ldms-sampler-base.man
+dist_man7_MANS += ldms_sampler_base.man
 if HAVE_DCGM
 SUBDIRS += dcgm_sampler
 endif
@@ -67,7 +67,7 @@ libjobid_la_SOURCES = ldms_jobid.c
 libjobid_la_LIBADD = $(COMMON_LIBADD)
 ldmssamplerinclude_HEADERS += ldms_jobid.h
 pkglib_LTLIBRARIES += libjobid.la
-dist_man7_MANS += ldms-jobid.man
+dist_man7_MANS += ldms-sampler_jobid.man
 endif
 
 if ENABLE_TSAMPLER

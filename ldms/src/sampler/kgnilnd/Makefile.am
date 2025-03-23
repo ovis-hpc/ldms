@@ -17,6 +17,6 @@ if ENABLE_KGNILND
 libkgnilnd_la_SOURCES = kgnilnd.c
 libkgnilnd_la_LIBADD =  $(BASE_LIBADD) $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libkgnilnd.la
-dist_man7_MANS += ldms-sampler-kgnilnd.man
+dist_man7_MANS += ldms-sampler_kgnilnd.man
 endif
-EXTRA_DIST = ldms-sampler-kgnilnd.man
+EXTRA_DIST = ldms-sampler_kgnilnd.man

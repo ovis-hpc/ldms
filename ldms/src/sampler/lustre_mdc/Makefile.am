@@ -24,4 +24,4 @@ liblustre_mdc_la_CPPFLAGS = \
 
 pkglib_LTLIBRARIES = liblustre_mdc.la
 
-dist_man7_MANS = ldms-sampler-lustre-mdc.man
+dist_man7_MANS = ldms-sampler_lustre_mdc.man

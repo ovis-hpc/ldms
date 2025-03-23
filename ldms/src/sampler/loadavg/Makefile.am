@@ -14,5 +14,5 @@ if ENABLE_LOADAVG
 libloadavg_la_SOURCES = loadavg.c
 libloadavg_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libloadavg.la
-dist_man7_MANS += ldms-sampler-loadavg.man
+dist_man7_MANS += ldms-sampler_loadavg.man
 endif

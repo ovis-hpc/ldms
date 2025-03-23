@@ -23,5 +23,5 @@ ldmsd_stream_subscribe_SOURCES = ldmsd_stream_subscribe.c
 ldmsd_stream_subscribe_LDADD = $(COMMON_LD_ADD)
 ldmsd_stream_subscribe_LDFLAGS = $(AM_LDFLAGS) -pthread
 
-dist_man8_MANS += ldmsd-stream-subscribe.man \
-		  ldmsd-stream-publish.man
+dist_man8_MANS += ldmsd_stream_subscribe.man \
+		  ldmsd_stream_publish.man

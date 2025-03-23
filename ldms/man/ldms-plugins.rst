@@ -5,11 +5,13 @@ ldms-plugins
 ============
 
 :Date:   28 Feb 2018
+:Manual section: 8
+:Manual group: LDMS
 
-NAME
-====
 
-ldms-plugins.sh - Display information on installed LDMSD plugins.
+------------------------------------------------
+Display information on installed LDMSD plugins.
+------------------------------------------------
 
 SYNOPSIS
 ========

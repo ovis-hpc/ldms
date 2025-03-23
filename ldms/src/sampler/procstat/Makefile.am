@@ -16,10 +16,10 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 		$(top_builddir)/lib/src/coll/libcoll.la
 
 if ENABLE_PROCSTAT
-libprocstat_la_SOURCES = procstat.c 
+libprocstat_la_SOURCES = procstat.c
 libprocstat_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocstat.la
-dist_man7_MANS += ldms-sampler-procstat.man
+dist_man7_MANS += ldms-sampler_procstat.man
 endif
 
 

@@ -28,8 +28,8 @@ bin_SCRIPTS += scripts/ldms-get-opa-network.sh
 pkglib_LTLIBRARIES += libibnet.la
 
 bin_PROGRAMS += ldms_ibnet_schema_name
-dist_man7_MANS += ldms-sampler-ibnet.man
-dist_man1_MANS += ldms-sampler-ibnet-schema-name.man ldms-sampler-ibnet-gen.man
+dist_man7_MANS += ldms-sampler_ibnet.man
+dist_man1_MANS += ldms_ibnet_schema_name.man ldms-ibnet-sampler-gen.man
 
 ldms_ibnet_schema_name_SOURCES = ibnet_data.c
 ldms_ibnet_schema_name_LDADD = $(top_builddir)/ldms/src/ldmsd/libldmsd_plugattr.la \

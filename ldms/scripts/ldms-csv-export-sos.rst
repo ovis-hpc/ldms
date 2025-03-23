@@ -5,11 +5,13 @@ ldms-csv-export-sos
 ===================
 
 :Date:   18 Apr 2019
+:Manual section: 1
+:Manual group: LDMS scripts
 
-NAME
-====
 
-ldms-csv-export-sos - generate helper files needed by sos-import-csv
+-----------------------------------------------
+Generate helper files needed by sos-import-csv
+-----------------------------------------------
 
 SYNOPSIS
 ========

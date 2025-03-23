@@ -19,4 +19,4 @@ libstore_kafka_la_LIBADD = $(COMMON_LIBADD) \
 			   -lc @KAFKA_LDFLAGS@
 
 pkglib_LTLIBRARIES += libstore_kafka.la
-dist_man7_MANS += ldms-store-kafka.man
+dist_man7_MANS += ldms-store_kafka.man

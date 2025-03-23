@@ -42,9 +42,9 @@ libldms_auth_munge_la_LIBADD = ../core/libldms.la \
 			       @MUNGE_LIBDIR_FLAG@ \
 			       $(top_builddir)/lib/src/ovis_log/libovis_log.la
 lib_LTLIBRARIES += libldms_auth_munge.la
-dist_man7_MANS += ldms-auth-munge.man
+dist_man7_MANS += ldms_auth_munge.man
 endif
 
-dist_man7_MANS += ldms-auth-none.man \
-		  ldms-auth-ovis.man \
-		  ldms-auth-naive.man
+dist_man7_MANS += ldms_auth_none.man \
+		  ldms_auth_ovis.man \
+		  ldms_auth_naive.man

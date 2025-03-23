@@ -12,10 +12,10 @@ COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 		@LDFLAGS_GETTIME@
 
 if ENABLE_VARSET
-libvariable_la_SOURCES = variable.c 
+libvariable_la_SOURCES = variable.c
 libvariable_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libvariable.la
-dist_man7_MANS += ldms-sampler-variable.man
+dist_man7_MANS += ldms-sampler_variable.man
 endif
 
 

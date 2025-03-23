@@ -22,4 +22,4 @@ liblustre_client_la_CPPFLAGS = \
 
 pkglib_LTLIBRARIES = liblustre_client.la
 
-dist_man7_MANS = ldms-sampler-lustre-client.man
+dist_man7_MANS = ldms-sampler_lustre_client.man

@@ -18,10 +18,10 @@ if ENABLE_ARRAY_EXAMPLE
 libarray_example_la_SOURCES = array_example.c
 libarray_example_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libarray_example.la
-dist_man7_MANS += ldms-sampler-array-example.man
+dist_man7_MANS += ldms-sampler_array_example.man
 
 liball_example_la_SOURCES = all_example.c
 liball_example_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += liball_example.la
-dist_man7_MANS += ldms-sampler-all-example.man
+dist_man7_MANS += ldms-sampler_all_example.man
 endif

@@ -18,4 +18,4 @@ COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 libzfs_topvdevs_la_SOURCES = zfs_topvdevs.c
 libzfs_topvdevs_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libzfs_topvdevs.la
-dist_man7_MANS = ldms-sampler-zfs-topvdevs.man
+dist_man7_MANS = ldms-sampler_zfs_topvdevs.man

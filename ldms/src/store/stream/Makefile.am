@@ -19,9 +19,9 @@ if ENABLE_HELLO_STREAM
 libstream_csv_store_la_SOURCES = stream_csv_store.c
 libstream_csv_store_la_LIBADD = $(STORE_LIBADD) -lovis_json
 pkglib_LTLIBRARIES += libstream_csv_store.la
-dist_man7_MANS += ldms-store-stream-csv.man
+dist_man7_MANS += ldms-store_stream_csv_store.man
 
 endif
 
 EXTRA_DIST = \
-	ldms-store-stream-csv.man
+	ldms-store_stream_csv_store.man

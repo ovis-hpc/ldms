@@ -25,10 +25,10 @@ libparse_stat_la_SOURCES = parse_stat.c parse_stat.h
 libdstat_la_SOURCES = dstat.c
 libdstat_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libdstat.la
-dist_man7_MANS += ldms-sampler-dstat.man
+dist_man7_MANS += ldms-sampler_dstat.man
 
 bin_PROGRAMS += ldms_dstat_schema_name
-dist_man1_MANS += ldms-sampler-dstat-schema-name.man
+dist_man1_MANS += ldms_dstat_schema_name.man
 ldms_dstat_schema_name_SOURCES = dstat.c
 ldms_dstat_schema_name_CFLAGS = -DMAIN
 ldms_dstat_schema_name_LDADD = \

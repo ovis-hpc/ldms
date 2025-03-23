@@ -55,7 +55,7 @@ case "x$USER" in
 	;;
 esac
 function mysleep() {
-	echo -n sleep $1 ... 
+	echo -n sleep $1 ...
 	sleep $1
 	echo done
 }

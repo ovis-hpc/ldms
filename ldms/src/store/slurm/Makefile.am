@@ -20,6 +20,6 @@ libstore_slurm_la_SOURCES = store_slurm.c
 libstore_slurm_la_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
 libstore_slurm_la_LIBADD = @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@ $(STORE_LIBADD) -lsos
 pkglib_LTLIBRARIES += libstore_slurm.la
-dist_man7_MANS += ldms-store-slurm.man
+dist_man7_MANS += ldms-store_slurm.man
 endif
 

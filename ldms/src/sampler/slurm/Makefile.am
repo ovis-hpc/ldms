@@ -17,7 +17,7 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 libslurm_sampler_la_SOURCES = slurm_sampler.c slurm_sampler.h
 libslurm_sampler_la_LIBADD = $(COMMON_LIBADD)
 libslurm_sampler_la_CFLAGS = -DSYSCONFDIR='"$(sysconfdir)"'
-dist_man7_MANS += ldms-sampler-slurm.man
+dist_man7_MANS += ldms-sampler_slurm_sampler.man
 pkglib_LTLIBRARIES += libslurm_sampler.la
 
 libslurm_sampler2_la_SOURCES = slurm_sampler2.c
