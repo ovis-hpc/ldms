@@ -32,10 +32,8 @@ LDMSD
    :maxdepth: 6
    :glob:
 
-   man/ldmsd-*
-   man/ldmsd_*
-   src/ldmsd/ldmsd-*
-   src/ldmsd/ldmsd_*
+   man/ldmsd*
+   src/ldmsd/ldmsd*
    src/decomp/*
 
 test

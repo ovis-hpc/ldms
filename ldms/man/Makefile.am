@@ -3,7 +3,7 @@ include $(top_srcdir)/ldms/rules.mk
 EXTRA_DIST=
 
 dist_man1_MANS= \
-ldms-lsdate.man
+ldms_lsdate.man
 
 dist_man8_MANS= \
 ldms_authentication.man \

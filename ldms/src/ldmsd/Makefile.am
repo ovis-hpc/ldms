@@ -7,7 +7,7 @@ sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
 dist_man8_MANS = ldmsd.man \
 		 ldms_ls.man \
-		 ldmsctl.man
+		 ldms_ldmsctl.man
 
 dist_man7_MANS = ldmsd_failover.man \
 		 ldmsd_setgroup.man
