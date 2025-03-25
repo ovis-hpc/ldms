@@ -5,9 +5,8 @@ daos_sampler
 ===================
 
 :Date:   28 Apr 2022
-:Manual section:
+:Manual section: 7
 :Manual group: LDMS store
-
 
 ------------------------------------------
 Man page for the LDMS DAOS sampler plugin

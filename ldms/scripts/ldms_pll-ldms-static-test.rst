@@ -1,11 +1,11 @@
 .. _pll-ldms-static-test:
 
 ====================
-ldms-pll-static-test
+pll-ldms-static-test
 ====================
 
 :Date:   4 Oct 2020
-:Manual section:
+:Manual section: 8
 :Manual group: LDMS scripts
 
 

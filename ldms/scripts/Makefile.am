@@ -42,8 +42,8 @@ if ENABLE_SLURMTEST
 testsets += install-slurm
 untestsets += uninstall-slurm
 bin_SCRIPTS += pll-ldms-static-test.sh
-dist_man8_MANS += ldms-pll-static-test.man
-EXTRA_DIST += ldms-pll-static-test.man
+dist_man8_MANS += ldms_pll-ldms-static-test.man
+EXTRA_DIST += ldms_pll-ldms-static-test.man
 endif
 
 dist_man8_MANS += ldms-static-test.man

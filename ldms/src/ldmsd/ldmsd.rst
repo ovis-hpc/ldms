@@ -5,9 +5,8 @@ ldmsd
 =====
 
 :Date: 28 Feb 2018
-:Manual section:
+:Manual section: 8
 :Manual group: LDMSD
-
 
 ---------------------
 Start an ldms daemon

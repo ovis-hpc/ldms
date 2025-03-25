@@ -25,10 +25,10 @@ libmy_plugin_la_SOURCES = my_plugin.c
 libmy_plugin_CFLAGS = $(AM_CFLAGS)
 libmy_plugin_la_LDFLAGS = $(AM_LDFLAGS) -module
 libmy_plugin_la_LIBADD = $(COMMON_LIBADD)
-dist_man7_MANS += ldms-my-plugin.man
+dist_man7_MANS += ldms_my_plugin.man
 pkglib_LTLIBRARIES += libmy_plugin.la
 endif
-EXTRA_DIST = ldms-my-plugin.man
+EXTRA_DIST = ldms_my_plugin.man
 
 all-local: always_check
 

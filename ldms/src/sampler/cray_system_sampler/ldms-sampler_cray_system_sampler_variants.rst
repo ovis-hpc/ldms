@@ -5,7 +5,7 @@ cray_system_sampler_variants
 ===================================
 
 :Date:   4 Feb 2018
-:Manual section:
+:Manual section: 7
 :Manual group: LDMS sampler
 
 
