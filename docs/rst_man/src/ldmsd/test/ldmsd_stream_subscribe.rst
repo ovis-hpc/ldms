@@ -5,7 +5,7 @@ ldmsd_stream_subscribe
 ======================
 
 :Date:   21 Aug 2021
-:Manual section:
+:Manual section: 8
 :Manual group: LDMSD
 
 
