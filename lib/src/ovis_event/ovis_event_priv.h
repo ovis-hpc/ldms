@@ -90,6 +90,7 @@ struct ovis_scheduler_s {
 		OVIS_EVENT_MANAGER_TERM,
 	} state;
 	struct ovis_event_thrstat stats;
+	TAILQ_HEAD(, ovis_event_s) oneshot_tq;
 };
 
 #endif

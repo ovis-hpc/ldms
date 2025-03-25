@@ -247,6 +247,8 @@ ovis_scheduler_t ovis_scheduler_new()
 	if (!m)
 		goto out;
 
+	TAILQ_INIT(&m->oneshot_tq);
+
 	rc = pthread_mutex_init(&m->mutex, NULL);
 	if (rc) {
 		free(m);
@@ -345,6 +347,16 @@ int ovis_event_heap_process(ovis_scheduler_t m)
 
 loop:
 	pthread_mutex_lock(&m->mutex);
+
+	/* process the immediate events first */
+	ev = TAILQ_FIRST(&m->oneshot_tq);
+	if (ev) {
+		TAILQ_REMOVE(&m->oneshot_tq, ev, priv.entry);
+		m->evcount--;
+		ev->priv.idx = -1;
+		goto process_event;
+	}
+
 	ev = ovis_event_heap_top(m->heap);
 	if (!ev) {
 		timeout = -1;
@@ -389,6 +401,10 @@ process_event:
 		ev->priv.tv.tv_usec = us % USEC;
 		ovis_event_heap_update(m->heap, ev->priv.idx);
 		ev->cb.type = OVIS_EVENT_PERIODIC;
+		break;
+	case OVIS_EVENT_ONESHOT:
+		/* no op */
+		ev->cb.type = OVIS_EVENT_ONESHOT;
 		break;
 	default:
 		assert(0 == "Unexpected event type");
@@ -548,6 +564,26 @@ int ovis_scheduler_event_add(ovis_scheduler_t m, ovis_event_t ev)
 		/* notify only if the new event affect the next timeout */
 		if (m->state == OVIS_EVENT_MANAGER_WAITING
 				&& ev->priv.idx == 0) {
+			wb = write(m->pfd[1], &ev, sizeof(ev));
+			if (wb == -1) {
+				rc = errno;
+				pthread_mutex_unlock(&m->mutex);
+				goto out;
+			}
+		}
+		pthread_mutex_unlock(&m->mutex);
+	}
+
+	if (ev->param.type == OVIS_EVENT_ONESHOT) {
+		if (ev->priv.idx != -1) {
+			rc = EEXIST;
+			goto out;
+		}
+		pthread_mutex_lock(&m->mutex);
+		ev->priv.idx = 0;
+		m->evcount++;
+		TAILQ_INSERT_TAIL(&m->oneshot_tq, ev, priv.entry);
+		if (m->state == OVIS_EVENT_MANAGER_WAITING) {
 			wb = write(m->pfd[1], &ev, sizeof(ev));
 			if (wb == -1) {
 				rc = errno;

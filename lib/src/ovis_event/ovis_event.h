@@ -188,12 +188,14 @@
 #include <sys/epoll.h>
 #include <stdint.h>
 #include <sys/time.h>
+#include <sys/queue.h>
 
 typedef enum ovis_event_type_e {
 	OVIS_EVENT_EPOLL          =  0x1,
 	OVIS_EVENT_TIMEOUT        =  0x2,
 	OVIS_EVENT_EPOLL_TIMEOUT  =  0x3,  /*  EPOLL|TIMEOUT  */
 	OVIS_EVENT_PERIODIC       =  0x4,
+	OVIS_EVENT_ONESHOT        =  0x8,
 } ovis_event_type_t;
 
 typedef struct ovis_event_s *ovis_event_t;
@@ -250,6 +252,7 @@ struct ovis_event_s {
 	struct {
 		struct timeval tv;
 		int idx;
+		TAILQ_ENTRY(ovis_event_s) entry;
 	} priv; /* private data for ovis_scheduler */
 };
 
