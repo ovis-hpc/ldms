@@ -6671,6 +6671,8 @@ struct op_summary {
 #define __APPEND(...) do {					\
 	int len = snprintf(s, sz, __VA_ARGS__);			\
 	if (len >= sz) {					\
+		if (len == sz)					\
+			len++;					\
 		uint64_t off = (uint64_t)s - (uint64_t)buff;	\
 		sz += LDMS_ROUNDUP(len-sz, __APPEND_SZ);	\
 		s = realloc(buff, off + sz);			\
