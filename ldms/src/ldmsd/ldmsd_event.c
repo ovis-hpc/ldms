@@ -339,5 +339,39 @@ int strg_pool_init(unsigned int num_workers, int max_q_depth)
 			return rc;
 		}
 	}
+
+
 	return 0;
+}
+
+extern void ldmsd_worker_thrstat_free(struct ldmsd_worker_thrstat_result *res);
+struct ldmsd_worker_thrstat_result *ldmsd_storage_worker_thrstat_get()
+{
+	int i;
+	struct ldmsd_worker_thrstat_result *res;
+	struct timespec now;
+	int num_workers = ldmsd_strg_worker_pool.num_workers;
+	struct strg_worker *w;
+
+	clock_gettime(CLOCK_REALTIME, &now);
+	res = malloc(sizeof(*res) +
+			(num_workers * sizeof(struct ovis_scheduler_thrstat *)));
+	if (!res) {
+		ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
+		return NULL;
+	}
+	res->count = 0;
+	for (i = 0; i < num_workers; i++) {
+		w = &ldmsd_strg_worker_pool.workers[i];
+		res->entries[i] = ovis_scheduler_thrstat_get(w->worker, &now);
+		if (!res->entries[i]) {
+			ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
+			goto err;
+		}
+		res->count++;
+	}
+	return res;
+err:
+	ldmsd_worker_thrstat_free(res);
+	return NULL;
 }

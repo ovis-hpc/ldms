@@ -2189,6 +2189,11 @@ class LdmsdCmdParser(cmd.Cmd):
         return self.__ts2human(sec, usec)
 
     def display_worker_thread_stats(self, worker_threads, hdr):
+        if len(worker_threads) == 0:
+            print(f"{hdr}: None")
+            print(f"{'='*60}")
+            return
+
         print(hdr)
         print(f"{'='*60}")
         print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Idle':15} {'Active':15} {'Duration (sec)':15} {'Event Counts':15}")
@@ -2241,6 +2246,8 @@ class LdmsdCmdParser(cmd.Cmd):
                                          f"LDMSD Worker Thread Statistics")
         self.display_worker_thread_stats(msg['xthreads'],
                                          f"Exclusive Worker Thread Statistics")
+        self.display_worker_thread_stats(msg['storage threads'],
+                                         f"LDMSD Storage Worker Thread Statistics")
         print(f"{'='*60}")
         self.display_io_thread_stats(msg['io_threads'])
         print(f"{'='*60}")
