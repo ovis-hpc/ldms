@@ -7797,6 +7797,7 @@ static void __prdset_stats_reset(struct timespec *now, int reset_flags)
 extern void ldmsd_worker_thrstat_free(struct ldmsd_worker_thrstat_result *res);
 extern struct ldmsd_worker_thrstat_result *ldmsd_worker_thrstat_get(uint64_t interval_s);
 extern struct ldmsd_worker_thrstat_result *ldmsd_xthrstat_get(uint64_t interval_s);
+extern struct ldmsd_worker_thrstat_result *ldmsd_storage_worker_thrstat_get(int interval_s);
 static char * __thread_stats_as_json(size_t *json_sz)
 {
 	char *buff, *s;
@@ -7816,6 +7817,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	struct store_time_thread *stime_ent;
 	struct ldmsd_worker_thrstat_result *wres = NULL;
 	struct ldmsd_worker_thrstat_result *xres = NULL;
+	struct ldmsd_worker_thrstat_result *sres = NULL; /* storage workers */
 	struct ovis_scheduler_thrstats *wthr;
 	struct ovis_thrstats_result *res;
 
@@ -7847,6 +7849,10 @@ static char * __thread_stats_as_json(size_t *json_sz)
 
 	xres = ldmsd_xthrstat_get(interval_s);
 	if (!xres && errno != ENOENT)
+		goto __APPEND_ERR;
+
+	sres = ldmsd_storage_worker_thrstat_get(interval_s);
+	if (!sres && errno != ENOENT)
 		goto __APPEND_ERR;
 
 	buff = malloc(sz);
@@ -7910,7 +7916,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 		else
 			__APPEND("  }\n");
 	}
-	__APPEND(" ],\n"); /* end of entries array */
+	__APPEND(" ],\n"); /* end of io_thread array */
 	__APPEND(" \"worker_threads\": [\n");
 	for (i = 0; i < wres->count; i++) {
 		wthr = wres->entries[i];
@@ -7964,7 +7970,29 @@ static char * __thread_stats_as_json(size_t *json_sz)
 		else
 			__APPEND("   }\n");
 	}
-	__APPEND(" ],\n"); /* end of worker threads */
+	__APPEND(" ],\n"); /* end of xthreads threads */
+	__APPEND(" \"storage threads\": [\n");
+	for (i = 0; sres && i < sres->count; i++) {
+		wthr = sres->entries[i];
+		res = &wthr->stats;
+		__APPEND("  {\n");
+		__APPEND("   \"name\": \"%s\",\n", res->name);
+		__APPEND("   \"tid\": %d,\n", res->tid);
+		__APPEND("   \"thread_id\": \"%p\",\n", (void*)res->thread_id);
+		__APPEND("   \"idle_tot\" : %ld,\n", res->idle_tot);
+		__APPEND("   \"active_tot\" : %ld,\n", res->active_tot);
+		__APPEND("   \"total_us\" : %ld,\n", res->dur_tot);
+		__APPEND("   \"utilization\" : %lf,\n", utilization);
+		__APPEND("   \"idle_us\": %ld,\n", ((res->interval_us)?res->idle_us:0));
+		__APPEND("   \"active_us\": %ld,\n", ((res->interval_us)?res->active_us:0));
+		__APPEND("   \"refresh_us\": %ld,\n", res->interval_us);
+		__APPEND("   \"ev_cnt\" : %ld\n", wthr->ev_cnt);
+		if (i < sres->count - 1)
+			__APPEND("   },\n");
+		else
+			__APPEND("   }\n");
+	}
+	__APPEND(" ],\n"); /* end of storage threads threads */
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	uint64_t compute_time = ldms_timespec_diff_us(&start, &end);
 
