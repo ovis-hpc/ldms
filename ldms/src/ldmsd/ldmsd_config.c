@@ -945,7 +945,7 @@ char *__process_yaml_config_file(const char *path, const char *dname)
 	char command[512];
 	size_t buf_sz = 4096;
 	char *cfg_str = malloc(buf_sz);
-	snprintf(command, sizeof(command), "ldmsd_yaml_parser --ldms_config %s --daemon_name %s", path, dname);
+	snprintf(command, sizeof(command), "ldmsd_yaml_parser --ldms-config %s --daemon-name %s", path, dname);
 	fp = popen(command, "r");
 	if (!fp) {
 		ovis_log(config_log, OVIS_LERROR, "Error opening pipe to ldmsd_yaml_parser.\n");
