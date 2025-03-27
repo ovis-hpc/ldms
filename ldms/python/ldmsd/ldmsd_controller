@@ -1588,12 +1588,15 @@ class LdmsdCmdParser(cmd.Cmd):
         rc, msg = self.comm.plugn_status(arg['name'])
         if rc == 0:
             plugins = fmt_status(msg)
-            print("Config Name  Plugin                   Type         libpath")
-            print("------------ ------------------------ ------------ ------------")
+            print(f"{'Config Name':12}", f"{'Plugin':24}", f"{'Type':12}",
+                  f"{'Interval':12}", f"{'Offset':12}", f"{'libpath':12}")
+            print('-'*12, '-'*24, '-'*12, '-'*12, '-'*12, '-'*12)
             for plugn in plugins:
-                print("{0:12} {1:24} {2:12} {3}".format(
-                    plugn['name'], plugn['plugin'], plugn['type'],
-                    plugn['libpath']))
+                print(f"{plugn['name']:12}", f"{plugn['plugin']:24}",
+                      f"{plugn['type']:12}",
+                      f"{plugn.get('sample_interval_us', '-'):12}",
+                      f"{plugn.get('sample_offset_us', '-'):12}",
+                      f"{plugn['libpath']}")
 
     def do_plugn_sets(self, arg):
         """

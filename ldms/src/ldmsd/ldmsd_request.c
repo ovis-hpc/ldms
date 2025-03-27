@@ -5094,10 +5094,14 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 		count++;
 		rc = linebuf_printf(reqc,
 			       "{\"name\":\"%s\",\"plugin\":\"%s\",\"type\":\"%s\","
+			       "\"sample_interval_us\":%ld,"
+			       "\"sample_offset_us\":%ld,"
 			       "\"libpath\":\"%s\"}",
 			       samp->cfg.name,
 			       samp->api->base.name,
 			       plugn_state_str(samp->api->base.type),
+			       samp->sample_interval_us,
+			       samp->sample_offset_us,
 			       samp->api->base.libpath);
 		if (rc) {
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
