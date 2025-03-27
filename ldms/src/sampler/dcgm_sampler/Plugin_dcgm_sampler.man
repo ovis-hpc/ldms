@@ -13,6 +13,8 @@ With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms 
 or a configuration file. The dcgm_sampler plugin provides a metric set for each DCGM-compatible Nvidia GPU on the system.
 The schema is named "dcgm" by default.
 
+NOTE: This sampler requires the NVidia DCGM daemon "nv-hostengine" running before it can be configured in ldmsd.
+
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 
 .TP
