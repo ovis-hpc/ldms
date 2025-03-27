@@ -161,7 +161,7 @@ static int dcgm_init()
         if (standalone) {
                 rc = dcgmConnect(host_ip, &dcgm_handle);
                 if (rc != DCGM_ST_OK) {
-                        ovis_log(mylog, OVIS_LERROR, "dcgmConnect() failed: %s(%d)\n",
+                        ovis_log(mylog, OVIS_LERROR, "dcgmConnect() failed: %s(%d) (is DCGM's nv-hostengine daemon running?)\n",
                                errorString(rc), rc);
                         return -1;
                 }
