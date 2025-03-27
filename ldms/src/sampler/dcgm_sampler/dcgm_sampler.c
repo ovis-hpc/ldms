@@ -160,7 +160,7 @@ static int dcgm_init()
         if (standalone) {
                 rc = dcgmConnect(host_ip, &dcgm_handle);
                 if (rc != DCGM_ST_OK) {
-                        log_fn(LDMSD_LERROR, SAMP" dcgmConnect() failed: %s(%d)\n",
+                        log_fn(LDMSD_LERROR, SAMP" dcgmConnect() failed: %s(%d) (is DCGM's nv-hostengine daemon running?)\n",
                                errorString(rc), rc);
                         return -1;
                 }
