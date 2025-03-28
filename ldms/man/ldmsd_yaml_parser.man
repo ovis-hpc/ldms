@@ -25,10 +25,10 @@ The name of the LDMS daemon.
 
 .SH LDMSD_YAML_PARSER COMMAND SYNTAX
 .TP
-.BI --ldms_config, " CONFIG_PATH"
+.BI --ldms-config, " CONFIG_PATH"
 The path to the YAML configuration file.
 .TP
-.BI --daemon_name, " NAME"
+.BI --daemon-name, " NAME"
 The name of the LDMS daemon to configure.
 
 .SH YAML CONFIGURATION SYNTAX
