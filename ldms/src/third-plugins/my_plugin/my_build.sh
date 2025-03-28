@@ -30,7 +30,7 @@ if ! test -f "$LDMS_CONFIG_SH"; then
 	done
 fi
 if ! test -f "$LIB_CONFIG_SH"; then
-	echo LIB_CONFIG_SH not given. 
+	echo LIB_CONFIG_SH not given.
 	if test -z "$guessprefix"; then
 		echo no ldmsd in PATH to guess from.
 		exit 1

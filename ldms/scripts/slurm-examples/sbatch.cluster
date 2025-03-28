@@ -50,7 +50,7 @@ function less1 {
 	shift
 	echo $*
 }
-# srun ignore ntasks when distribution arbitrary is applied and follows 
+# srun ignore ntasks when distribution arbitrary is applied and follows
 # hostfile with 1 task/line
 workers=$(less1 $jl)
 echo "declare -a hosts" > $TEST_HOSTFILE

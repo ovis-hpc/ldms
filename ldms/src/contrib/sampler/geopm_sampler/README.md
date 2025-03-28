@@ -98,4 +98,4 @@ Using the GEOPM LDMS Sampler
 ----------------------------
 
 More details on using the sampler can be found on the
-[man page](Plugin_geopm_sampler.man).
+[man page](geopm_sampler.man).

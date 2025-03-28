@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 dist_man7_MANS =
@@ -13,10 +16,10 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 		$(top_builddir)/lib/src/coll/libcoll.la
 
 if ENABLE_PROCINTERRUPTS
-libprocinterrupts_la_SOURCES = procinterrupts.c 
+libprocinterrupts_la_SOURCES = procinterrupts.c
 libprocinterrupts_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocinterrupts.la
-dist_man7_MANS += Plugin_procinterrupts.man
+dist_man7_MANS += ldms-sampler_procinterrupts.man
 endif
 
 

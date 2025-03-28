@@ -1,6 +1,6 @@
 #! /bin/bash
 if test -n "$1";  then
-cat << EOF 
+cat << EOF
 This script dumps any environment variables that may be influential to
 ldmsd and plugin behavior. This does not include variables that
 appear and get expanded in configuration files.

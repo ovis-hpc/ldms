@@ -3,14 +3,14 @@ import subprocess as sp
 import unittest
 import logging
 import signal
- 
+
 class TestLdmsls(unittest.TestCase):
 
     SCHEMA_NAMES = {'AAA', 'BBB', 'ABC'}
     XPRT = "sock"
     PORT = "10001"
     AUTH_FILE = "~/.ldmsauth.conf"
-    
+
     LDMS_LS_CMD = "ldms_ls -x " + XPRT + " -p " + PORT + " -a " + AUTH_FILE
 
     def setUp(self):
@@ -61,7 +61,7 @@ class TestLdmsls(unittest.TestCase):
             s = s.strip()
             if count == 0:
                 self.assertTrue(s == "ldms_ls: No metric sets matched the given criteria", "Failed -E <not match>")
-            else: 
+            else:
                 self.assertEqual(count, 1, "Unexpected string {0}".format(s))
             count += 1
 
@@ -102,7 +102,7 @@ class TestLdmsls(unittest.TestCase):
             s = s.strip()
             if count == 0:
                 self.assertTrue(s == "ldms_ls: No metric sets matched the given criteria", "Failed -E -S <not match>")
-            else: 
+            else:
                 self.assertEqual(count, 1, "Unexpected string {0}".format(s))
             count += 1
 
@@ -116,7 +116,7 @@ class TestLdmsls(unittest.TestCase):
                 ss = s.split(":")[0]
                 self.assertTrue(ss in expected_sets, "Fail '-v -E' test. Unexpected set " + s)
                 expected_sets.remove(ss)
-        self.assertTrue(len(expected_sets) == 0, "Fail '-v -E' test. Set " + ", ".join(expected_sets) + " not returned")        
+        self.assertTrue(len(expected_sets) == 0, "Fail '-v -E' test. Set " + ", ".join(expected_sets) + " not returned")
 
         cmd = self.LDMS_LS_CMD + " -v -E " + "BB C"
         proc = sp.Popen(cmd, stdout=sp.PIPE, shell=True)
@@ -137,7 +137,7 @@ class TestLdmsls(unittest.TestCase):
             s = s.strip()
             if count == 0:
                 self.assertTrue(s == "ldms_ls: Error 2 looking up metric set.", "Failed -v -E <not match>")
-            else: 
+            else:
                 self.assertEqual(count, 1, "Unexpected string {0}".format(s))
             count += 1
 
@@ -172,7 +172,7 @@ class TestLdmsls(unittest.TestCase):
             s = s.strip()
             if count == 0:
                 self.assertTrue(s == "ldms_ls: Error 2 looking up metric set.", "Failed -v -E -S <not match>")
-            else: 
+            else:
                 self.assertEqual(count, 1, "Unexpected string {0}".format(s))
             count += 1
 

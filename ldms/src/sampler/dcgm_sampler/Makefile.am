@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 libdcgm_sampler_la_SOURCES = \
         dcgm_sampler.c
 libdcgm_sampler_la_LIBADD = \
@@ -16,4 +19,4 @@ libdcgm_sampler_la_CPPFLAGS = \
 
 pkglib_LTLIBRARIES = libdcgm_sampler.la
 
-dist_man7_MANS = Plugin_dcgm_sampler.man
+dist_man7_MANS = ldms-sampler_dcgm_sampler.man

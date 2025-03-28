@@ -34,3 +34,4 @@ lt~obsolete.m4
 *doxygen*
 *.pyc
 *.swp
+*.man

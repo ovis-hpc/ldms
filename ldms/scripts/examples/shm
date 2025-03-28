@@ -1,12 +1,12 @@
 # run meminfo with openmpir+gcc based shm_sampler set
 # Uses localhost interface and Ramin's test MPIApp.
-# bugs: 
+# bugs:
 # Schema names are indefinite so store configs
 # are impossible except in clean-room operation.
 # Ompi generates verbose warnings if fast network is
 # also present.
 # ldms compile: ../configure CC=gcc MPICC=$(which mpicc) CXX=g++ $allconfig
-# where allconfig must include --enable-mpi_sampler 
+# where allconfig must include --enable-mpi_sampler
 # e.g.; module purge; module load openmpi-gnu/3.0
 export plugname=meminfo
 portbase=60000

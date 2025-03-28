@@ -112,7 +112,7 @@ static int create_command(char* hostname, char* username, char* password)
 		       "...exiting sampler\n");
 		return EINVAL;
 	}
-		
+
 	//check command works
 	mf = popen(cmd, "r");
 	if (!mf) {

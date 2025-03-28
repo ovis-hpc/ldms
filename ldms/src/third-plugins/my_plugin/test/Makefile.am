@@ -1,5 +1,5 @@
 
-bin_SCRIPTS= 
+bin_SCRIPTS=
 
 PLUGIN_NAME=my_plugin
 

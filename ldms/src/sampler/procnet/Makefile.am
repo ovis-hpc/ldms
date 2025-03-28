@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 dist_man7_MANS =
@@ -9,7 +12,7 @@ COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 		@LDFLAGS_GETTIME@
 
 if ENABLE_PROCNET
-dist_man7_MANS += Plugin_procnet.man
+dist_man7_MANS += ldms-sampler_procnet.man
 libprocnet_la_SOURCES = procnet.c
 libprocnet_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocnet.la

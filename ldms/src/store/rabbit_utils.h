@@ -3,7 +3,7 @@
 
 /* This is the port for LDMS use of some key librabbitmq support functions.
  * Functions herein prefixed lrmq_ to avoid potential conflicts.
- * Calls to exit() have been removed in favor of logging and appropriate 
+ * Calls to exit() have been removed in favor of logging and appropriate
  * return codes.
  */
 /*
@@ -46,7 +46,7 @@
  * SOFTWARE.
  * ***** END LICENSE BLOCK *****
  *
- * 
+ *
  */
 
 #include <ldmsd.h>

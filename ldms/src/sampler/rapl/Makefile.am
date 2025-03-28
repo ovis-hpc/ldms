@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
@@ -17,4 +20,4 @@ librapl_la_CFLAGS = $(AM_CFLAGS)
 librapl_la_LDFLAGS = $(AM_LDFLAGS) $(PAPI_LDFLAGS)
 librapl_la_LIBADD = $(COMMON_LIBADD) $(LTLIBPAPI) $(LTLIBPFM) -lm
 pkglib_LTLIBRARIES = librapl.la
-dist_man7_MANS = Plugin_rapl.man
+dist_man7_MANS = ldms-sampler_rapl.man

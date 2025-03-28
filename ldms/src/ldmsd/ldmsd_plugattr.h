@@ -89,16 +89,16 @@ struct pa_deprecated {
 
 /**
  * \brief parse the attributes from the attr_value_lists and file.
- * \param filename a file containing lines with attr=value 
+ * \param filename a file containing lines with attr=value
  *        Each line defines an instance named as "a/b".
  *        where the values of keys named after numkeys are joined.
- * \param plugin_name the name of the plugin being configured and 
+ * \param plugin_name the name of the plugin being configured and
  * the set of defaults used.
- * \param plugin_name the name of the plugin being configured and 
+ * \param plugin_name the name of the plugin being configured and
  * the set of defaults used.
- * \param avl optional list that overrides/augments the defaults of 
+ * \param avl optional list that overrides/augments the defaults of
  * plugin_name in filename.
- * \param kwl optional list that overrides/augments the defaults of 
+ * \param kwl optional list that overrides/augments the defaults of
  * plugin_name in filename.
  * \param dep array of deprecated items; last item in the array must
  * be NULL_PA_DEP. Multiple items of the same name handled as in
@@ -216,7 +216,7 @@ int ldmsd_plugattr_bool(struct plugattr *pa, const char *at, const char *key, bo
  * \param key the plugin instance name.
  * \param result address to store the result at.
  * \return 0 if converted, other errno value if not.
- * EINVAL: bad args; 
+ * EINVAL: bad args;
  * ENOKEY: attribute is not found.
  * ENOTSUP value is not properly numeric;
  * ERANGE result does not fit in requested type.
@@ -232,7 +232,7 @@ int ldmsd_plugattr_s32(struct plugattr *pa, const char *at, const char *key, int
  * \param key the plugin instance name.
  * \param result address to store the result at.
  * \return 0 if converted, other errno value if not.
- * EINVAL: bad args; 
+ * EINVAL: bad args;
  * ENOKEY: attribute is not found.
  * ENOTSUP value is not properly numeric;
  * ERANGE result does not fit in requested type.
@@ -248,7 +248,7 @@ int ldmsd_plugattr_u32(struct plugattr *pa, const char *at, const char *key, uin
  * \param key the plugin instance name.
  * \param result address to store the result at.
  * \return 0 if converted, other errno value if not.
- * EINVAL: bad args; 
+ * EINVAL: bad args;
  * ENOKEY: attribute is not found.
  * ENOTSUP value is not properly numeric;
  * ERANGE result does not fit in requested type.
@@ -264,7 +264,7 @@ int ldmsd_plugattr_s64(struct plugattr *pa, const char *at, const char *key, int
  * \param key the plugin instance name.
  * \param result address to store the result at.
  * \return 0 if converted, other errno value if not.
- * EINVAL: bad args; 
+ * EINVAL: bad args;
  * ENOKEY: attribute is not found.
  * ENOTSUP value is not properly numeric;
  * ERANGE result does not fit in requested type.
@@ -280,7 +280,7 @@ int ldmsd_plugattr_u64(struct plugattr *pa, const char *at, const char *key, uin
  * \param key the plugin instance name.
  * \param result address to store the result at.
  * \return 0 if converted, other errno value if not.
- * EINVAL: bad args; 
+ * EINVAL: bad args;
  * ENOKEY: attribute is not found.
  * ENOTSUP value is not properly numeric;
  * ERANGE result does not fit in requested type.

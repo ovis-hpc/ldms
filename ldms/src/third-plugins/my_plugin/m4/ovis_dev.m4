@@ -109,7 +109,7 @@ ovis_lib_pythondir=$ovis_lib_pythondir
 ])
 ])
 
-dnl take a list of script files and define the .in suffixed 
+dnl take a list of script files and define the .in suffixed
 dnl version of the list for packaging via EXTRADIST
 AC_DEFUN([OVIS_EXEC_SCRIPTS], [
 	ovis_exec_scripts=""

@@ -62,17 +62,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #                    Pär Lindfors <paran@nsc.liu.se> and
 #                    Torbjörn Lönnemark <ketl@nsc.liu.se>,
 #                    National Supercomputer Centre
-# 
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 # General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
@@ -112,7 +112,7 @@ MAX_SIZE = 100000
 def expand_hostlist(hostlist, allow_duplicates=False, sort=False):
     """Expand a hostlist expression string to a Python list.
 
-    Example: expand_hostlist("n[9-11],d[01-02]") ==> 
+    Example: expand_hostlist("n[9-11],d[01-02]") ==>
              ['n9', 'n10', 'n11', 'd01', 'd02']
 
     Unless allow_duplicates is true, duplicates will be purged
@@ -122,7 +122,7 @@ def expand_hostlist(hostlist, allow_duplicates=False, sort=False):
     results = []
     bracket_level = 0
     part = ""
-    
+
     for c in hostlist + ",":
         if c == "," and bracket_level == 0:
             # Comma at top level, split!
@@ -186,7 +186,7 @@ def expand_part(s):
 
 def expand_rangelist(prefix, rangelist):
     """ Expand a rangelist (e.g. "1-10,14"), putting a prefix before."""
-    
+
     # Split at commas and expand each range separately
     results = []
     for range_ in rangelist.split(","):
@@ -296,7 +296,7 @@ def collect_hostlist_1(left_right):
         # Add the right part unprocessed to the suffix.
         # This ensures than an already computed range expression
         # in the right part is not analyzed again.
-        suffix = suffix + right 
+        suffix = suffix + right
 
         if num_str is None:
             # A left part with no numeric part at all gets special treatment!
@@ -323,7 +323,7 @@ def collect_hostlist_1(left_right):
     # right) tuples.
 
     results = []
-    needs_another_loop = False 
+    needs_another_loop = False
 
     # Now group entries with the same prefix+suffix combination (the
     # key is the first element in the sortlist) to loop over them and
@@ -342,7 +342,7 @@ def collect_hostlist_1(left_right):
             # ranges expressed as (low, high, width) for later
             # formatting.
             range_list = []
-    
+
             for ((prefix2, suffix2), num_int, num_width, host) in group:
                 if host not in remaining:
                     # Below, we will loop internally to enumate a whole range
@@ -371,7 +371,7 @@ def collect_hostlist_1(left_right):
             if len(range_list) == 1 and range_list[0][0] == range_list[0][1]:
                 # Special case to make sure that n1 is not shown as n[1] etc
                 results.append((prefix,
-                                "%0*d%s" % 
+                                "%0*d%s" %
                                (range_list[0][2], range_list[0][0], suffix)))
             else:
                 # General case where high > low
@@ -545,7 +545,7 @@ class Switch:
 
     def fix_empty_ports(self):
         """will miss trailing ports since we don't know switch port count."""
-        p = 1 
+        p = 1
         while p < self.maxport:
             if not str(p) in self.ports.keys():
                 self.add_port(p, "0", "0", True)
@@ -558,7 +558,7 @@ class Switch:
             if p.empty:
                 r.append(num)
         return sorted_to_int(r)
-        
+
     def active_ports(self):
         # return numbers of connected ports
         r = []
@@ -566,7 +566,7 @@ class Switch:
             if not p.empty:
                 r.append(num)
         return sorted_to_int(r)
-        
+
 
 # hca card or sharp fakery
 class Hca:
@@ -606,14 +606,14 @@ class Hca:
             if p.empty:
                 r.append(num)
         return sorted_to_int(r)
-        
+
     def active_ports(self):
         r = []
         for num,p in self.ports.items():
             if not p.empty:
                 r.append(num)
         return sorted_to_int(r)
-        
+
 # link endpoint
 class EndPoint:
     def __init__(self, lidtype, lid, port, guid, guid_name):
@@ -765,7 +765,7 @@ def add_link(links, lidtype, lid, port, guid, desttype, destlid, destport, destg
         links[name] = Link(lidtype, lid, port, guid, desttype, destlid, destport, destguid, name, rname, guid_name)
     else:
         links[rname] = Link(desttype, destlid, destport, destguid, lidtype, lid, port, guid, rname, name, guid_name)
-    
+
 def add_switch(switches, lid, guid, srcname):
     if lid in switches:
         return switches[lid]
@@ -828,7 +828,7 @@ def ibnd_p_parse(noise, fname):
             print("Unexpected line format at line {}: {}".format(LNO, line))
             return (None, None, None, None, None)
     # rectify link data if needed here fixme
-   
+
     return (cas, switches, links, guid_name, name_guid, lidmax)
 
 # get-opa-network.sh output
@@ -871,7 +871,7 @@ def opa_parse(noise, fname):
                     mode = "LIDS"
                     continue
             if mode == "LINKSHDR":
-                lheads = x           
+                lheads = x
                 hk = 0
                 for h in x:
                     if h in lkhead_index.keys():
@@ -936,7 +936,7 @@ def opa_parse(noise, fname):
 # peel back layers in sw using lk info
 # mark all ca tier 0 by default
 # mark all sw with ca attachments tier 1
-#    but exclude port 37 connections, as these are 
+#    but exclude port 37 connections, as these are
 #    Mellanox Technologies Aggregation Nodes that violate
 #    the hierarchy.
 # mark all sw with tier 1 attachments tier 2
@@ -1374,7 +1374,7 @@ def format_lidnames(ca, sw, guid_name):
          print("{},{}".format(lid, s.host))
 
 def format_links(ca, sw, lk, tr):
-    names = lk.keys() 
+    names = lk.keys()
     print("Links ========");
     for i in sorted_numstr(names):
         print("{}".format(i))
@@ -1529,17 +1529,17 @@ def format_topology_csv(args, ca, sw, lk, tr, fbase, skipca):
         print("#lid,name,host,type,tier", file=f)
         for sn, s in sw.items():
              ilid = int(s.lid, 0)
-             print("{},'{}','{}',{},{}".format( ilid, s.name, s.host, 
+             print("{},'{}','{}',{},{}".format( ilid, s.name, s.host,
                     t2s(switchtype), s.tier), file=f)
         for cn, c in ca.items():
              ilid = int(c.lid, 0)
-             print("{},'{}','{}',{},{}".format( ilid, c.name, c.host, 
+             print("{},'{}','{}',{},{}".format( ilid, c.name, c.host,
                     t2s(catype), c.tier), file=f)
 
     with open(flink, "w") as f:
         print("#src-lid,src-port,src-type,dest-lid,dest-port,dest-type", file=f)
         for ln, l in lk.items():
-             print("{},{},{},{},{},{}".format( int(l.src.lid,0), l.src.port, 
+             print("{},{},{},{},{},{}".format( int(l.src.lid,0), l.src.port,
                    t2s(l.src.ttype), int(l.dst.lid,0), l.dst.port, t2s(l.dst.ttype)),
                    file=f)
 
@@ -1719,14 +1719,14 @@ def format_lk_group(links, l):
     # print("\"{}\" -> \"{}\" [headlabel=\"{}\" taillabel=\"{}\" label=\"{}\"]".format(l.src.lid, l.dst.lid, headlabel, taillabel, taillabel), file=f)
     fmt = "\"{}\" -> \"{}\" ".format(l.src.lid, l.dst.lid)
     links[name] =  [fmt, [int(taillabel)]]
-    
+
 def format_lk(f, l):
     taillabel = l.src.port
     headlabel = l.dst.port
     label = taillabel
     # print("\"{}\" -> \"{}\" [headlabel=\"{}\" taillabel=\"{}\" label=\"{}\"]".format(l.src.lid, l.dst.lid, headlabel, taillabel, taillabel), file=f)
     print("\"{}\" -> \"{}\" [label=\"{}\"]".format(l.src.lid, l.dst.lid, taillabel), file=f)
-    
+
 # compute ca names below s in tier structure matching samp_match list
 def match_ca_descendants(sw, s, samp_match, tn):
     match = set()
@@ -2131,7 +2131,7 @@ def main():
         (ca, sw, lk, guid_name, name_guid, lidmax) = opa_parse(args.dump_parse, args.opafile)
     if not ca:
         sys.exit("either --opa or --net argument must be given")
-        
+
     if args.lidnames:
         format_lidnames(ca, sw, guid_name)
         return
@@ -2213,7 +2213,7 @@ def main():
     except:
         print("cannot detect switch hierarcy. using round robin.")
         rr1_assign_sampler(args, ca, sw, lk, tr, adminlist)
-        
+
     if args.debug:
         print("format_samplers_ibnet")
     # format_samplers_ibnet(args, ca, sw, tr, adminlist, args.outprefix + ".lidorder.sampler", False)

@@ -42,7 +42,7 @@ export PYTHONPATH=${ovis_ldms_pythondir}:$PYTHONPATH
 function clusage {
 cat << EOF
 $0: usage:
-$0 -l 
+$0 -l
 $0 -h
 $0 -b <input_file>
 $0 <input_file> [test_dir]
@@ -205,7 +205,7 @@ function DAEMONS {
 			bypass=1
 			return
 		fi
-			
+
 		/bin/rm -f ${LOGDIR}/$i.txt ${LOGDIR}/vg.$i ${LOGDIR}/teardown.$i.txt
 		binname=ldmsd.${ports[$i]}
 		pkill -9 $binname

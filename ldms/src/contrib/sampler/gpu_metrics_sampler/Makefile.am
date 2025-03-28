@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 # Copyright (c) 2022 Intel Corporation
 # Copyright (c) 2011-2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with

@@ -26,7 +26,7 @@ LDMSD_EXTRA="-P 14 -m 64M"
 #vgon
 VGTAG=.L2
 # start L2 on daemon 1
-LDMSD 1 
+LDMSD 1
 vgoff
 #vgon
 VGTAG=.L1

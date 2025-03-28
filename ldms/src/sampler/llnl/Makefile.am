@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 dist_man7_MANS=
 
@@ -13,7 +16,7 @@ if ENABLE_LLNL_EDAC
 libedac_la_SOURCES = edac.c
 libedac_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libedac.la
-dist_man7_MANS += Plugin_edac.man
+dist_man7_MANS += ldms-sampler_edac.man
 endif
 
 EXTRA_DIST = LLNL_LICENSE_EDAC

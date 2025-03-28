@@ -155,7 +155,7 @@ strgp_prdcr_add name=sfmem regex=.*
 strgp_start name=sfmem regex=.*
 EOF
 
-echo Starting daemons 
+echo Starting daemons
 ldmsd -x sock:$port1 -a ovis -A conf=$SECRET -c $in1 -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1
 die $?
 
@@ -169,7 +169,7 @@ mysleep 1
 
 echo list host1
 echo ldms_ls on host 1:
-ldms_ls -a ovis -A conf=$SECRET -h localhost -x sock -p $port1 
+ldms_ls -a ovis -A conf=$SECRET -h localhost -x sock -p $port1
 echo "11111111111111111111111111111111111111111111111111111111111111"
 
 mysleep 2

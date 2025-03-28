@@ -28,15 +28,15 @@ oprcvcounters
 flowctlcounters
 vloppackets
 vlopdata
-vlxmitflowctlerrors	
-vlxmitcounters	
+vlxmitflowctlerrors
+vlxmitcounters
 swportvlcong
-rcvcc	
+rcvcc
 slrcvfecn
 slrcvbecn
-xmitcc	
+xmitcc
 vlxmittimecc
-smplctl	
+smplctl
 EOF
 #ldms-gen-lidfile.sh |head -n 60 > $LIDFILE
 ldms-gen-lidfile.sh  > $LIDFILE

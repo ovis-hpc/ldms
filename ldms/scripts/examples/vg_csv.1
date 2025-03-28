@@ -1,5 +1,5 @@
 load name=dstat
-config name=dstat producer=localhost${i} instance=localhost${i}/dstat schema=dstat component_id=${i} 
+config name=dstat producer=localhost${i} instance=localhost${i}/dstat schema=dstat component_id=${i}
 start name=dstat interval=1000000 offset=0
 
 prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=2000000
@@ -13,7 +13,7 @@ updtr_prdcr_add name=allhosts regex=.*
 updtr_start name=allhosts
 
 load name=store_csv
-config name=store_csv path=${STOREDIR} altheader=0 
+config name=store_csv path=${STOREDIR} altheader=0
 
 strgp_add name=store_csv_meminfo plugin=store_csv schema=meminfo container=bigiron
 strgp_prdcr_add name=store_csv_meminfo regex=.*

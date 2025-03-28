@@ -9,8 +9,8 @@ SHARED-PROFILE: =======================
 On a compute node with multiple mpi processes (typically
 one per socket) all the ranks local to the node will share the same
 data set in shared memory. So the sampler will have one set to manage
-and the mpi instrumentation library will receive the same set label 
-from the application initialization. 
+and the mpi instrumentation library will receive the same set label
+from the application initialization.
 
 So for example in configuring
 the sampler the ldms plugin config parameters might be:
@@ -18,7 +18,7 @@ instance=myapp/ schema=mpi shm_index=/dev/shm/ldms_shm_index \
 	shm_boxmax=1 shm_array_max=256 shm_metric_max=350 shm_set_timeout=500
 
 The final instance name will be defined as "myapp/" + "mpi"
-where the "mpi" portion is an argument to the ldms_shm initialization 
+where the "mpi" portion is an argument to the ldms_shm initialization
 on the application side.
 
 In this mode, mpi processes can come and go, and even applications can come
@@ -39,14 +39,14 @@ instance=myapp/ schema=mpi shm_index=/dev/shm/ldms_shm_index \
 	shm_boxmax=$NPROC shm_array_max=256
 
 The final instance name will be defined as "myapp/" + "mpi" + $unique
-where the "mpi" + $unique  portion is an argument to the ldms_shm 
+where the "mpi" + $unique  portion is an argument to the ldms_shm
 initialization on the application side.
 For example $unique might be the string form of the MPI_comm_rank
 value in a non-dynamic mpi application.
 In more advanced MPI or non-mpi applications the unique bit might be
 a PID or some process step name known to the app developer.
 
-Regular expression matching will route the congruent metric data all to the 
+Regular expression matching will route the congruent metric data all to the
 same ldms store.
 
 
@@ -54,22 +54,22 @@ EXCLUSIVE-PROFILE-DISSIMILAR-SETS: =======================
 
 Each process will open its own shared memory profile with a set label
 that includes something identifying about it. They will not share the metric
-set definition. 
+set definition.
 instance=myapp/ schema=myapp shm_index=/dev/shm/ldms_shm_index \
 	shm_boxmax=(2xNCORES)
 
 The final instance name will be defined as "myapp/" +  $unique
-where the $unique  portion is an argument to the ldms_shm 
+where the $unique  portion is an argument to the ldms_shm
 initialization on the application side.
 The final schema name will be defined as "myapp" + "_" + $unique_schema.
 
 For example $unique might be the string form of the pid value.
-The unique bit might be a PID or some process step name known to the 
+The unique bit might be a PID or some process step name known to the
 app developer.
 
 For example $unique_schema might be the string form of the profiling type
 chosen at runtime. It might also be the checksum (stringified) of the metric
 set discovered in each process.
 
-Regular expression matching will route the congruent metric data all to the 
+Regular expression matching will route the congruent metric data all to the
 same ldms store.

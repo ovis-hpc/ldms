@@ -7,7 +7,7 @@ cat << EOF > $SC_CONF
 # test conf comment
 # test conf comment \\
 continuation line
-store_csv path=${STOREDIR} altheader=0 
+store_csv path=${STOREDIR} altheader=0
 # test conf continuation
 path=${STOREDIR} altheader=1 \\
 container=bigiron schema=vmstat

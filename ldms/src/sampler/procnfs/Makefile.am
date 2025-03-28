@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 dist_man7_MANS =
@@ -11,4 +14,4 @@ COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 libprocnfs_la_SOURCES = procnfs.c
 libprocnfs_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocnfs.la
-dist_man7_MANS += Plugin_procnfs.man
+dist_man7_MANS += ldms-sampler_procnfs.man

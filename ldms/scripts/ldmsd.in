@@ -70,7 +70,7 @@ case $1 in
 	;;
 	condrestart)
 		[ -f ${LOCKFILE} ] && restart || :
-	;;	
+	;;
 	reload)
 		echo -n $"Reloading $prog: "
 		killproc $DAEMON -HUP

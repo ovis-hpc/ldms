@@ -139,7 +139,7 @@ int parse_single_conf(const char *conf) {
 		}
 		while (line < linebuf + LINEMAX && *line != '\0' && isspace(*line))
 			line++;
-		if (line < linebuf + LINEMAX && line[0] == '#') 
+		if (line < linebuf + LINEMAX && line[0] == '#')
 			continue; /* skip comments */
 		int nitems = sscanf(line, "%" stringify(NAMEMAX) "s "
 			       "%" stringify(LINEMAX) "s "
@@ -149,7 +149,7 @@ int parse_single_conf(const char *conf) {
 		if (nitems < 4) {
 			errusage(line, lno);
 			rc = EINVAL;
-			goto out; 
+			goto out;
 		}
 		char *u = typestr;
 		while (*u != '\0') {
@@ -160,7 +160,7 @@ int parse_single_conf(const char *conf) {
 		if (vt == LDMS_V_NONE) {
 			rc = EINVAL;
 			errusage(line, lno);
-			goto out; 
+			goto out;
 		}
 		union ldms_value val;
 		val.v_u64 = 0;
@@ -321,7 +321,7 @@ static int sample(struct ldmsd_sampler *self)
 		if (collect_times) {
 			gettimeofday(tv_now, 0);
 			timersub(tv_now, tv_prev, &tv_diff);
-			s->collect_time = tv_diff.tv_sec * 1000000 + 
+			s->collect_time = tv_diff.tv_sec * 1000000 +
 				tv_diff.tv_usec;
 		}
 

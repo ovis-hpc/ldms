@@ -1,8 +1,17 @@
+include $(top_srcdir)/ldms/rules.mk
+
 EXTRA_DIST=
 lib_LTLIBRARIES=
 SUBDIRS = . test
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
+dist_man8_MANS = ldmsd.man \
+		 ldms_ls.man \
+		 ldms_ldmsctl.man
+
+dist_man7_MANS = ldmsd_failover.man \
+		 ldmsd_setgroup.man
+
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@

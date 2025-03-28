@@ -137,11 +137,11 @@ static int create_commands(char* hostname, char* username, char* password, char*
 		 * look like there is something to catch with perror, but maybe there is something we
 		 * can get with stderr output
 		 */
-		
+
 		/*
 		 * this seems to be necessary to give the cache file time to get written out.
 		 * if it isnt written in time, the command will still work, and hopefully it will be
-		 * written by the time of the sample call  
+		 * written by the time of the sample call
 		 */
 
 		sleep(2);
@@ -170,7 +170,7 @@ static int create_commands(char* hostname, char* username, char* password, char*
 			return EINVAL;
 		}
 	}
-		
+
 	//check command works
 	mf = popen(cmd, "r");
 	if (!mf) {
@@ -340,7 +340,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"    password      password for the ipmi query. P flag in the ipmitool command (default 'password').\n"
 		"    sdrcache      output file for sdr cache file, to improve performance. Optional.\n"
 		"    retry         interval to retry creating set if fails (e.g., host down). (default 600 sec).\n";
-	
+
 	//FIXME: make an optional command to refresh the cache file.
 }
 
@@ -385,7 +385,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		retry = IPMIRETRYDEFAULT;
 	else
 		retry = atoi(retrycmd);
-	
+
 
 	rc = 0;
 	do {
@@ -395,7 +395,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 		rc = create_commands(hostname, username, password, sdrcache);
 		ovis_log(mylog, OVIS_LERROR, SAMP "cannot create command. sleeping and retrying\n");
-		if (rc == EINVAL) 
+		if (rc == EINVAL)
 			goto err;
 	} while (rc != 0);
 
@@ -403,7 +403,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	rc = 0;
 	do {
 		//if cannot create metric set, retry indefinitely
-		if (rc != 0) 
+		if (rc != 0)
 			sleep(retry);
 
 		base = base_config(avl, self->cfg_name, SAMP, mylog);
@@ -513,7 +513,7 @@ static int sample(struct ldmsd_sampler *self)
 	base_sample_end(base);
 
 	return 0;
-	
+
 }
 
 static void term(struct ldmsd_plugin *self)
