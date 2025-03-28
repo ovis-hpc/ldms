@@ -4,14 +4,14 @@
 ipmisensors
 ==================
 
-:Date:   21 Mar 2019
-:Manual section: 7
-:Manual group: LDMS store
-
 
 -----------------------------------------
 Man page for the LDMS ipmisensors plugin
 -----------------------------------------
+
+:Date:   21 Mar 2019
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

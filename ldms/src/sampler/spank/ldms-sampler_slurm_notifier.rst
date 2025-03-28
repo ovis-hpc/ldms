@@ -4,14 +4,14 @@
 slurm_notifier
 =====================
 
-:Date:   30 Sep 2019
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ---------------------------------------------
 Man page for the SPANK slurm_notifier plugin
 ---------------------------------------------
+
+:Date:   30 Sep 2019
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

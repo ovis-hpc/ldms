@@ -4,14 +4,14 @@
 syspapi_sampler
 ======================
 
-:Date:   30 Sep 2019
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ----------------------------------------------
 Man page for the LDMSD syspapi_sampler plugin
 ----------------------------------------------
+
+:Date:   30 Sep 2019
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

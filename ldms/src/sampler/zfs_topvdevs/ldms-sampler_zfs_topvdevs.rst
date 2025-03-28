@@ -4,14 +4,14 @@
 zfs_topvdevs
 ===================
 
-:Date:   19 Apr 2023
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ------------------------------------------
 Man page for the LDMS zfs_topvdevs plugin
 ------------------------------------------
+
+:Date:   19 Apr 2023
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

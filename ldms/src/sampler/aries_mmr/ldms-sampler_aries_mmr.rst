@@ -4,14 +4,14 @@
 aries_mmr
 ================
 
-:Date:   05 Jan 2020
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -------------------------------------------------
 Man page for the aries_mmr sampler and variants.
 -------------------------------------------------
+
+:Date:   05 Jan 2020
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

@@ -4,14 +4,14 @@
 darshan_stream_store
 ===========================
 
-:Date:   26 September 2021
-:Manual section: 7
-:Manual group: LDMS store
-
 
 ---------------------------------
 LDMS darshan_stream_store plugin
 ---------------------------------
+
+:Date:   26 September 2021
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

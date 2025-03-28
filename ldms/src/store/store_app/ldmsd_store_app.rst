@@ -4,14 +4,14 @@
 ldmsd_store_app
 ================
 
-:Date:   30 Sep 2019
-:Manual section: 7
-:Manual group: LDMS store
-
 
 -------------------------------
 LDMSD store_app storage plugin
 -------------------------------
+
+:Date:   30 Sep 2019
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS TESTING34
 ==================

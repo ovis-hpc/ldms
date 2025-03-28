@@ -4,14 +4,14 @@
 store_rabbitkw
 =====================
 
-:Date:   10 Jun 2018
-:Manual section: 7
-:Manual group: LDMS store
-
 
 --------------------------------------------
 Man page for the LDMS store_rabbitkw plugin
 --------------------------------------------
+
+:Date:   10 Jun 2018
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

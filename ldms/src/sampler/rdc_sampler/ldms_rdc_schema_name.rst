@@ -4,14 +4,14 @@
 ldms_rdc_schema_name
 ====================
 
-:Date:   2 April 2021
-:Manual section: 1
-:Manual group: LDMS sampler
-
 
 --------------------------------------------------------
 Man page for the LDMS rdc_sampler plugin support utility
 --------------------------------------------------------
+
+:Date:   2 April 2021
+:Manual section: 1
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

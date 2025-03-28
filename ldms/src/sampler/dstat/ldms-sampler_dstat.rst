@@ -4,14 +4,14 @@
 dstat
 ============
 
-:Date:   4 Nov 2020
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -----------------------------------
 Man page for the LDMS dstat plugin
 -----------------------------------
+
+:Date:   4 Nov 2020
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

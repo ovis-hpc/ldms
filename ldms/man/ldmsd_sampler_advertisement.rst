@@ -4,14 +4,14 @@
 ldmsd_sampler_advertisement
 ===========================
 
-:Date:   27 March 2024
-:Manual section: 7
-:Manual group: LDMSD
-
 
 ---------------------------------------
 Manual for LDMSD Sampler Advertisement
 ---------------------------------------
+
+:Date:   27 March 2024
+:Manual section: 7
+:Manual group: LDMSD
 
 SYNOPSIS
 ========

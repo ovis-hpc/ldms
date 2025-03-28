@@ -4,14 +4,14 @@
 variable
 ===============
 
-:Date:   08 Jul 2020
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 --------------------------------------
 Man page for the LDMS variable plugin
 --------------------------------------
+
+:Date:   08 Jul 2020
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

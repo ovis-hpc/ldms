@@ -4,14 +4,14 @@
 ldms-sensors-config
 ===================
 
-:Date:   15 Dec 2018
-:Manual section: 1
-:Manual group: LDMS sampler
-
 
 -------------------------------------------------------
 Generate LDMS filesingle plugin configuration prototype
 -------------------------------------------------------
+
+:Date:   15 Dec 2018
+:Manual section: 1
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

@@ -4,14 +4,14 @@
 store_avro_kafka
 =======================
 
-:Date:   30 Mar 2023
-:Manual section: 7
-:Manual group: LDMS store
-
 
 ------------------------------
 LDMSD store_avro_kafka plugin
 ------------------------------
+
+:Date:   30 Mar 2023
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

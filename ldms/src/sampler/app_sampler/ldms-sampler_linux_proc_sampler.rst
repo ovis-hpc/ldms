@@ -4,14 +4,14 @@
 linux_proc_sampler
 =========================
 
-:Date:   15 Jul 2021
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -----------------------------------------------
 Man page for the LDMS linux_proc_sampler plugin
 -----------------------------------------------
+
+:Date:   15 Jul 2021
+:Manual section: 7
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

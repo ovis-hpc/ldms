@@ -4,13 +4,13 @@
 ldms-csv-from-blobs
 ===================
 
-:Date:   21 Apr 2023
-:Manual section: 7
-:Manual group: LDMS sampler
-
 -------------------------------------------------------------------
 Generate schema-consistent csv files from blob_stream_writer output
 -------------------------------------------------------------------
+
+:Date:   21 Apr 2023
+:Manual section: 7
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

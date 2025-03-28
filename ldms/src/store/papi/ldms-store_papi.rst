@@ -4,15 +4,15 @@
 store_papi
 =================
 
-:Date:   30 Sep 2019
-:Manual section: 7
-:Manual group: LDMS store
-
 .SH NAME
 
 -----------------------------------------
 Man page for the LDMSD store_papi plugin
 -----------------------------------------
+
+:Date:   30 Sep 2019
+:Manual section: 7
+:Manual group: LDMS store
 
 .SH SYNOPSIS
 

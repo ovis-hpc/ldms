@@ -4,14 +4,14 @@
 store_kafka
 ==================
 
-:Date:   2 Jun 2022
-:Manual section: 7
-:Manual group: LDMS store
-
 
 -----------------------------------------
 Man page for the LDMS store_kafka plugin
 -----------------------------------------
+
+:Date:   2 Jun 2022
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

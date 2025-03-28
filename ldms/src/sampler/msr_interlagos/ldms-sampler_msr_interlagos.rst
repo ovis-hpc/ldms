@@ -4,14 +4,14 @@
 msr_interlagos
 =====================
 
-:Date:   04 Jan 2018
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 --------------------------------------------
 Man page for the LDMS msr interlagos plugin
 --------------------------------------------
+
+:Date:   04 Jan 2018
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

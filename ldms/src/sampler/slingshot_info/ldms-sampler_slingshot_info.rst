@@ -4,14 +4,14 @@
 slingshot_info
 =====================
 
-:Date:   1 May 2022
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 --------------------------------------------
 Man page for the LDMS slingshot_info plugin
 --------------------------------------------
+
+:Date:   1 May 2022
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

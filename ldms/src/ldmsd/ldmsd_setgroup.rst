@@ -4,14 +4,14 @@
 ldmsd_setgroup
 ==============
 
-:Date:   5 Jul 2018
-:Manual section: 7
-:Manual group: LDMSD
-
 
 ------------------------------------------------------------
 Explanation, configuration, and commands for ldmsd set group
 ------------------------------------------------------------
+
+:Date:   5 Jul 2018
+:Manual section: 7
+:Manual group: LDMSD
 
 
 SYNOPSIS

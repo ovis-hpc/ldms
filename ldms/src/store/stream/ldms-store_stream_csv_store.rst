@@ -4,14 +4,14 @@
 stream_csv_store
 =======================
 
-:Date:   03 Oct 2021
-:Manual section: 7
-:Manual group: LDMS store
-
 
 ----------------------------------------------
 Man page for the LDMS stream_csv_store plugin
 ----------------------------------------------
+
+:Date:   03 Oct 2021
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

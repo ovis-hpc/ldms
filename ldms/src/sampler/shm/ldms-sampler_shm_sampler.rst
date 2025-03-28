@@ -4,10 +4,6 @@
 shm_sampler
 ==================
 
-:Date:   5 March 2018
-:Manual section: 7
-:Manual group: LDMS sampler
-
 This is a sampler plug-in module within the the LDMS that can read from
 a dynamic number of shm files.
 

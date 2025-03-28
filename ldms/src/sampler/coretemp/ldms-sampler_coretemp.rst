@@ -4,14 +4,14 @@
 coretemp
 ===============
 
-:Date:   3 May 2022
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ---------------------------------------------------------
 An LDMS sampler plugin that monitors CPU temperature data
 ---------------------------------------------------------
+
+:Date:   3 May 2022
+:Manual section: 7
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

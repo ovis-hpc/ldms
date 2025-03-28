@@ -4,13 +4,13 @@
 lsdate
 ======
 
-:Date:   June 2018
-:Manual section: 1
-:Manual group: LDMS
-
 --------------------------------------------------------------
 List directory contents with UTC timestamp suffix translation
 --------------------------------------------------------------
+
+:Date:   June 2018
+:Manual section: 1
+:Manual group: LDMS
 
 SYNOPSIS
 ========

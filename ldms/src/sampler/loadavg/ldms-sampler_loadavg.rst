@@ -4,14 +4,14 @@
 loadavg
 ==============
 
-:Date:   7 Apr 2020
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -------------------------------------
 Man page for the LDMS loadavg plugin
 -------------------------------------
+
+:Date:   7 Apr 2020
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

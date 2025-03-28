@@ -4,31 +4,30 @@
 ldmsd_failover
 ==============
 
-:Date:   13 Aug 2018
-:Manual section: 7
-:Manual group: LDMSD
-
-
 -----------------------------------------------------------
 Explanation, configuration, and commands for ldmsd failover
 -----------------------------------------------------------
 
+:Date:   13 Aug 2018
+:Manual section: 7
+:Manual group: LDMSD
 
 SYNOPSIS
 ========
 
--  host=\ *HOST* port=\ *PORT* xprt=\ *XPRT* [peer_name=\ *NAME*]
+failover_config
+   host=\ *HOST* port=\ *PORT* xprt=\ *XPRT* [peer_name=\ *NAME*]
    [interval=\ *USEC*] [timeout_factor=\ *FLOAT*] [auto_switch=\ *0|1*]
 
--
+failover_start
 
--
+failover_stop
 
--
+failover_status
 
--
+failover_peercfg_start
 
--
+failover_peercfg_stop
 
 DESCRIPTION
 ===========
@@ -52,28 +51,35 @@ to ldmsd failover feature.
 service must be stopped before configuring it. The following list
 describes the command parameters.
 
-   -  The hostname of the failover partner. This is optional in
+   host=HOST
+      The hostname of the failover partner. This is optional in
       re-configuration.
 
-   -  The LDMS port of the failover partner. This is optional in
+   port=PORT
+      The LDMS port of the failover partner. This is optional in
       re-configuration.
 
-   -  The LDMS transport type (sock, rdma, or ugni) of the failover
+   xprt=XPRT
+      The LDMS transport type (sock, rdma, or ugni) of the failover
       partner. This is optional in re-configuration.
 
-   -  (Optional) The ldmsd name of the failover parter (please see
+   peer_name=NAME
+      (Optional) The ldmsd name of the failover parter (please see
       option **-n** in :ref:`ldmsd(8) <ldmsd>`). If this is specified, the ldmsd
       will only accept a pairing with other ldmsd with matching name.
       Otherwise, the ldmsd will pair with any ldmsd requesting a
       failover pairing.
 
-   -  (Optional) The interval (in micro-seconds) for ping and transport
+   interval=uSEC
+      (Optional) The interval (in micro-seconds) for ping and transport
       re-connecting. The default is 1000000 (1 sec).
 
-   -  (Optional) The echo timeout factor. The echo timeout is calculated
+   timeout_factor=FLOAT
+      (Optional) The echo timeout factor. The echo timeout is calculated
       by **timeout_factor \* interval**. The default is 2.
 
-   -  (Optional) If this is on (1), ldmsd will start **peercfg** or stop
+   auto_switch=0|1
+      (Optional) If this is on (1), ldmsd will start **peercfg** or stop
       **peercfg** automatically. Otherwise, the user need to issue
       **failover_peercfg_start** or **failover_peercfg_stop** manually.
       By default, this value is 1.
@@ -81,7 +87,7 @@ describes the command parameters.
 **failover_start** is a command to start the (configured) failover
 service. After the failover service has started, it will pair with the
 peer, retreiving peer configurations and start peer configurations when
-it believes that the peer is not in service (with \`auto_switch=1`,
+it believes that the peer is not in service (with \`auto_switch=1\`,
 otherwise it does nothing).
 
 Please also note that when the failover service is in use (after
@@ -113,7 +119,7 @@ FAILOVER: AUTOMATIC PEERCFG ACTIVATION
 ======================================
 
 The peer configuration is automatically activated when an echo-timeout
-event occurred (with \`auto_switch=1`). The echo-timeout is calculated
+event occurred (with \`auto_switch=1\`). The echo-timeout is calculated
 based on ping interval, ping-echo round-trip time, \`timeout_factor\`
 and moving standard deviation of ping-echo round-trip time as follows:
 

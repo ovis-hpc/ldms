@@ -4,14 +4,14 @@
 ldms_ls
 =======
 
-:Date:   28 Feb 2018
-:Manual section: 7
-:Manual group: LDMSD
-
 
 -------------------------------------
 Query an ldmsd for metric set values
 -------------------------------------
+
+:Date:   28 Feb 2018
+:Manual section: 7
+:Manual group: LDMSD
 
 SYNOPSIS
 ========

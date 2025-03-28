@@ -4,14 +4,14 @@
 lustre2_client
 =====================
 
-:Date:   26 Oct 2017
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 --------------------------------------------
 Man page for the LDMS lustre2_client plugin
 --------------------------------------------
+
+:Date:   26 Oct 2017
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

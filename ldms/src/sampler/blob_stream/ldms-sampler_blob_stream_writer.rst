@@ -4,14 +4,14 @@
 blob_stream_writer
 =========================
 
-:Date:   15 Jun 2021
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -----------------------------------------------
 Man page for the LDMS blob_stream_writer plugin
 -----------------------------------------------
+
+:Date:   15 Jun 2021
+:Manual section: 7
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

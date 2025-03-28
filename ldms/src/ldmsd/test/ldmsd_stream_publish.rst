@@ -4,14 +4,14 @@
 ldmsd_stream_publish
 ====================
 
-:Date:   21 Aug 2021
-:Manual section: 8
-:Manual group: LDMSD
-
 
 -------------------------------------------------------------
 Man page for the LDMS ldmsd_stream_publish executable utility
 -------------------------------------------------------------
+
+:Date:   21 Aug 2021
+:Manual section: 8
+:Manual group: LDMSD
 
 
 SYNOPSIS

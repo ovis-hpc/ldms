@@ -4,13 +4,13 @@
 ldms_csv_time_drops
 ===================
 
-:Date:   07 Jul 2022
-:Manual section: 7
-:Manual group: LDMS
-
 -------------------------------
 The LDMS CSV data quality check
 -------------------------------
+
+:Date:   07 Jul 2022
+:Manual section: 7
+:Manual group: LDMS
 
 SYNOPSIS
 ========

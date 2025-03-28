@@ -4,14 +4,14 @@
 ldms_auth_none
 ==============
 
-:Date:   28 Feb 2018
-:Manual section: 7
-:Manual group: LDMS authentication
-
 
 -----------------------------
 LDMS authentication disabled
 -----------------------------
+
+:Date:   28 Feb 2018
+:Manual section: 7
+:Manual group: LDMS authentication
 
 SYNOPSIS
 ========

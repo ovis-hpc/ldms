@@ -4,14 +4,14 @@
 ldms-reverse-conf
 =================
 
-:Date:   6 Jun 2022
-:Manual section: 7
-:Manual group: LDMS
-
 
 ----------------------------------------
 Generate a tear-down configuration file
 ----------------------------------------
+
+:Date:   6 Jun 2022
+:Manual section: 7
+:Manual group: LDMS
 
 SYNOPSIS
 ========

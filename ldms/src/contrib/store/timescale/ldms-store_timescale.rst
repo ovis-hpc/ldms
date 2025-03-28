@@ -4,14 +4,14 @@
 store_timescale
 ======================
 
-:Date:   24 Oct 2019
-:Manual section: 7
-:Manual group: LDMS store
-
 
 ---------------------------------------------
 Man page for the LDMS store_timescale plugin
 ---------------------------------------------
+
+:Date:   24 Oct 2019
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

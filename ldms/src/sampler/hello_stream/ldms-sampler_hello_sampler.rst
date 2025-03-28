@@ -4,14 +4,14 @@
 hello_sampler
 ====================
 
-:Date:   21 Aug 2021
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -------------------------------------------
 Man page for the LDMS hello_sampler plugin
 -------------------------------------------
+
+:Date:   21 Aug 2021
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

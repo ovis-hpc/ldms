@@ -4,14 +4,14 @@
 ldms_auth_ovis
 ==============
 
-:Date:   28 Feb 2018
-:Manual section: 7
-:Manual group: LDMS authentication
-
 
 --------------------------------------------
 LDMS authentication using ovis_auth library
 --------------------------------------------
+
+:Date:   28 Feb 2018
+:Manual section: 7
+:Manual group: LDMS authentication
 
 SYNOPSIS
 ========

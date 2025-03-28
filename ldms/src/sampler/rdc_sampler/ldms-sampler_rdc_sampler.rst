@@ -4,14 +4,14 @@
 rdc_sampler
 ==================
 
-:Date:   1 Apr 2021
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -----------------------------------------
 Man page for the LDMS rdc_sampler plugin
 -----------------------------------------
+
+:Date:   1 Apr 2021
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

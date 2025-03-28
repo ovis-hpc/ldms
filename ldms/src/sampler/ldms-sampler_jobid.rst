@@ -4,14 +4,14 @@
 jobid
 ============
 
-:Date:   03 Dec 2016
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -----------------------------------
 Man page for the LDMS jobid plugin
 -----------------------------------
+
+:Date:   03 Dec 2016
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

@@ -4,14 +4,14 @@
 procnetdev2
 ==================
 
-:Date:   07 Jan 2022
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -----------------------------------------
 Man page for the LDMS procnetdev2 plugin
 -----------------------------------------
+
+:Date:   07 Jan 2022
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========
