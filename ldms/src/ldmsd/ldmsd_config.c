@@ -107,7 +107,8 @@ enum ldmsd_plugin_data_e {
  *
  * If sucessfull, the memory containing libpath must be freed by the caller
  */
-const ldmsd_plugin_t load_plugin(const char *plugin_name, const char **libpath_)
+const ldmsd_plugin_t load_plugin(const char *plugin_name, const char **libpath_,
+				 char *errstr, size_t errlen)
 {
 	char *libpath;
 	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
@@ -135,25 +136,31 @@ const ldmsd_plugin_t load_plugin(const char *plugin_name, const char **libpath_)
 		struct stat buf;
 		if (stat(library_name, &buf) == 0) {
 			char *dlerr = dlerror();
-			ovis_log(config_log, OVIS_LERROR, "Bad plugin "
-				"'%s': dlerror %s\n", plugin_name, dlerr);
+			snprintf(errstr, errlen,
+				 "Error %d plugin '%s': bad plugin, dlerror: %s\n",
+				 errno, plugin_name, dlerr);
+			ovis_log(config_log, OVIS_LERROR, "%s", errstr);
 			goto err_0;
 		}
 	}
 
 	if (!d) {
 		char *dlerr = dlerror();
-		ovis_log(config_log, OVIS_LERROR, "Failed to load the plugin '%s': "
-				"dlerror %s\n", plugin_name, dlerr);
+		snprintf(errstr, errlen,
+			 "Error %d plugin '%s': failed to load the plugin, "
+			 "dlerror: %s\n",
+			 errno, plugin_name, dlerr);
+		ovis_log(config_log, OVIS_LERROR, "%s", errstr);
 		goto err_0;
 	}
 
 	ldmsd_plugin_get_f pget;
 	pget = dlsym(d, "get_plugin");
 	if (!pget) {
-		ovis_log(config_log, OVIS_LERROR,
-			"The library, '%s',  is missing the get_plugin() "
-			"function.", plugin_name);
+		snprintf(errstr, errlen,
+			 "Error %d plugin '%s': get_plugin() function is "
+			 "missing from the library.\n",
+			 errno, plugin_name);
 		goto err_0;
 	}
 	struct ldmsd_plugin *pi = pget();
@@ -356,16 +363,17 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
 	/* If this plugin does not support multiple configurations,
 	 * the plugin_name must equal the cfg_name
 	 */
-	api = load_plugin(plugin_name, &libpath);
+	api = load_plugin(plugin_name, &libpath, errstr, errlen);
 	if (!api)
 		return errno;
 	if (0 == (api->flags & LDMSD_PLUGIN_MULTI_INSTANCE)) {
 		if (cfg_name && plugin_name) {
 			if (strcmp(cfg_name, plugin_name)) {
-				ovis_log(config_log, OVIS_LERROR,
+				snprintf(errstr, errlen,
 					 "Plugin %s does not support multiple "
 					 "configurations, but the name specified "
 					 "was %s.\n", plugin_name, cfg_name);
+				ovis_log(config_log, OVIS_LERROR, "%s", errstr);
 				goto err;
 			}
 		}
@@ -377,8 +385,13 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
 				    libpath,
 				    ldmsd_sampler___del,
 				    geteuid(), getegid(), 0660);
-		if (!sampler)
+		if (!sampler) {
+			snprintf(errstr, errlen,
+				 "Error %d adding sampler named '%s' "
+				 "with plugin '%s'\n", errno, cfg_name,
+				 plugin_name);
 			goto err;
+		}
 		cfgobj = &sampler->cfg;
 		strcpy(log_name, "sampler.");
 		ldmsd_sampler_get(sampler, "load");
@@ -389,17 +402,23 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
 				libpath,
 				ldmsd_store___del,
 				geteuid(), getegid(), 0660);
-		if (!store)
+		if (!store) {
+			snprintf(errstr, errlen,
+				 "Error %d adding store named '%s' "
+				 "with plugin '%s'\n", errno, cfg_name,
+				 plugin_name);
 			goto err;
+		}
 		cfgobj = &store->cfg;
 		strcpy(log_name, "store.");
 		ldmsd_store_get(store, "load");
 		break;
 	default:
 		errno = EINVAL;
-		ovis_log(config_log, OVIS_LERROR,
-			"Error %d, the '%s' plugin is not a valid plugin type.\n",
-			errno, plugin_name);
+		snprintf(errstr, errlen,
+			 "Error %d, the '%s' plugin is not a valid plugin type.\n",
+			 errno, plugin_name);
+		ovis_log(config_log, OVIS_LERROR, "%s", errstr);
 		goto err;
 	}
 	sprintf(&log_name[strlen(log_name)], "%s.%s", api->name, cfgobj->name);
@@ -414,6 +433,7 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
 		store->log = log;
 	free((char *)libpath);
 	return 0;
+
  err:
 	ovis_log(config_log, OVIS_LERROR,
 		 "Error %d, the plugin '%s' configuration object '%s' "
