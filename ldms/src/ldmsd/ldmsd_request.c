@@ -5326,7 +5326,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	free(cfg->avl_str);
 	free(cfg->kvl_str);
 	cfg->avl_str = av_to_string(av_list, 0);
-	cfg->kvl_str = av_to_string(kw_list, 0);
+	cfg->kvl_str = (kw_list->count)?av_to_string(kw_list, 0):"";
 
 	exclusive_thread = av_value(av_list, "exclusive_thread");
 	if (exclusive_thread && sampler)
@@ -6449,9 +6449,10 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
 	for (store = ldmsd_store_first(LDMSD_CFGOBJ_STORE); store;
 			store = ldmsd_store_next(store)) {
-		fprintf(fp, "load name=%s as=%s\n", store->api->base.name, store->api->base.cfg_name);
+		fprintf(fp, "load name=%s plugin=%s\n", store->api->base.cfg_name, store->api->base.name);
 		if (store->cfg.avl_str || store->cfg.kvl_str)
-			fprintf(fp, "config name=%s %s\n",
+			fprintf(fp, "config name=%s %s %s\n",
+				store->api->base.cfg_name,
 				store->cfg.avl_str ? store->cfg.avl_str : "",
 				store->cfg.kvl_str ? store->cfg.kvl_str : "");
 	}
@@ -6460,9 +6461,10 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfgobj_sampler_t samp;
 	for (samp = ldmsd_sampler_first(); samp;
 			samp = ldmsd_sampler_next(samp)) {
-		fprintf(fp, "load name=%s as=%s\n", samp->api->base.name, samp->api->base.cfg_name);
+		fprintf(fp, "load name=%s plugin=%s\n", samp->api->base.cfg_name, samp->api->base.name);
 		if (samp->cfg.avl_str || samp->cfg.kvl_str)
-			fprintf(fp, "config name=%s %s\n",
+			fprintf(fp, "config name=%s %s %s\n",
+				samp->api->base.cfg_name,
 				samp->cfg.avl_str ? samp->cfg.avl_str : "",
 				samp->cfg.kvl_str ? samp->cfg.kvl_str : "");
 		if (samp->thread_id >= 0) {
@@ -6662,7 +6664,10 @@ struct op_summary {
 	int len = snprintf(s, sz, __VA_ARGS__);			\
 	if (len >= sz) {					\
 		uint64_t off = (uint64_t)s - (uint64_t)buff;	\
-		sz += LDMS_ROUNDUP(len-sz, __APPEND_SZ);	\
+		uint64_t bump = LDMS_ROUNDUP(len-sz, __APPEND_SZ);  \
+		if (bump == 0)					\
+			bump = __APPEND_SZ;			\
+		sz += bump;					\
 		s = realloc(buff, off + sz);			\
 		if (!s) {					\
 			goto __APPEND_ERR;			\
@@ -10327,7 +10332,7 @@ static int qgroup_member_add_handler(ldmsd_req_ctxt_t reqc)
 	free(a_port);
 	free(a_xprt);
 	free(a_auth);
-	ldmsd_cfgobj_put(&auth->obj, "init");
+	ldmsd_cfgobj_put(&auth->obj, "find");
 	return rc;
 }
 

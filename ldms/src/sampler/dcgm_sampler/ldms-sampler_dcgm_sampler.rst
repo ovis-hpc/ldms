@@ -4,7 +4,6 @@
 dcgm_sampler
 ===================
 
-
 ------------------------------------------
 Man page for the LDMS dcgm_sampler plugin
 ------------------------------------------
@@ -17,7 +16,7 @@ SYNOPSIS
 ========
 
 | Within ldmsd_controller or a configuration file:
-| config name=dcgm_sampler [ <attr>=<value> ] [use_base=<*>]
+| config name=dcgm_sampler [ <attr>=<value> ] [use_base=<\*>]
 
 DESCRIPTION
 ===========
@@ -28,12 +27,15 @@ configuration file. The dcgm_sampler plugin provides a metric set for
 each DCGM-compatible Nvidia GPU on the system. The schema is named
 "dcgm" by default.
 
+NOTE: This sampler requires the NVidia DCGM daemon "nv-hostengine"
+running before it can be configured in ldmsd.
+
 CONFIGURATION ATTRIBUTE SYNTAX
 ==============================
 
 **config**
    | name=<plugin_name> interval=<interval(us)> [fields=<fields>]
-     [schema=<schema_name>] [job_set=<metric set name>] [use_base=<*>
+     [schema=<schema_name>] [job_set=<metric set name>] [use_base=<\*>
      [uid=<int>] [gid=<int>] [perm=<octal>] [instance=<name>]
      [producer=<name>] [job_id=<metric name in job_set set>]]
    | configuration line
@@ -42,7 +44,7 @@ CONFIGURATION ATTRIBUTE SYNTAX
       |
       | This MUST be dcgm_sampler.
 
-   use_base=<*>
+   use_base=<\*>
       |
       | Any value given enables the sampler_base configuration option
         processing (see :ref:`ldms_sampler_base(7) <ldms_sampler_base>`). If not given, the options
