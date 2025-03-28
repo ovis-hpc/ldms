@@ -380,12 +380,24 @@ __remote_client_cb(ldms_stream_event_t ev, void *cb_arg)
 	op_ctxt->op_type = LDMS_XPRT_OP_STREAM_PUBLISH;
 	op_ctxt->stream_pub_profile.hop_num = _ev->pub.hop_num;
 	op_ctxt->stream_pub_profile.recv_ts = _ev->pub.recv_ts;
+
+	struct ldms_stream_hop *hops;
+	uint32_t hop_cnt;
+
+	if (_ev->sbuf) {
+		hop_cnt = _ev->sbuf->msg->hop_cnt;
+		hops = _ev->sbuf->msg->hops;
+	} else {
+		hop_cnt = 0;
+		hops = NULL;
+	}
+
 	rc = __rep_publish(&r->eps[ep_idx], ev->recv.name,  ev->recv.name_hash,
 			     ev->recv.type,
 			     &ev->recv.src, ev->recv.msg_gn,
 			     &ev->recv.cred, ev->recv.perm,
-				 _ev->sbuf->msg->hop_cnt,
-				 _ev->sbuf->msg->hops,
+				 hop_cnt,
+				 hops,
 			     ev->recv.data, ev->recv.data_len,
 			     &(op_ctxt->stream_pub_profile));
 	if (rc || !ENABLED_PROFILING(LDMS_XPRT_OP_STREAM_PUBLISH)) {
