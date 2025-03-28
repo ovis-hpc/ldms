@@ -4,14 +4,14 @@
 ldms_stream
 ===========
 
+---------------------------------------------
+publish/subscribe stream data in LDMS network
+---------------------------------------------
+
 :Date: 2024-12-03
 :Manual section: 7
 :Manual group: LDMS
 :Version: LDMS 4.5
-
----------------------------------------------
-publish/subscribe stream data in LDMS network
----------------------------------------------
 
 SYNOPSIS
 ========

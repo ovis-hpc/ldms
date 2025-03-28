@@ -4,14 +4,14 @@
 ibnet
 ============
 
-:Date:   19 May 2020
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -----------------------------------
 Man page for the LDMS ibnet plugin
 -----------------------------------
+
+:Date:   19 May 2020
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

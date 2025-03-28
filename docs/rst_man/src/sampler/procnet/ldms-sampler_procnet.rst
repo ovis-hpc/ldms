@@ -4,14 +4,14 @@
 procnet
 ==============
 
-:Date:   9 Apr 2021
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -------------------------------------
 Man page for the LDMS procnet plugin
 -------------------------------------
+
+:Date:   9 Apr 2021
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

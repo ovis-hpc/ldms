@@ -4,13 +4,13 @@
 ldmsd
 =====
 
-:Date: 28 Feb 2018
-:Manual section: 8
-:Manual group: LDMSD
-
 ---------------------
 Start an ldms daemon
 ---------------------
+
+:Date: 28 Feb 2018
+:Manual section: 8
+:Manual group: LDMSD
 
 SYNOPSIS
 ========

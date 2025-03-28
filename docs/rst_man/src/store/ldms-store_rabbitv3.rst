@@ -4,14 +4,14 @@
 store_rabbitv3
 =====================
 
-:Date:   03 Dec 2016
-:Manual section: 7
-:Manual group: LDMS store
-
 
 --------------------------------------------
 Man page for the LDMS store_rabbitv3 plugin
 --------------------------------------------
+
+:Date:   03 Dec 2016
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

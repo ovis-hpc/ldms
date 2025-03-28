@@ -4,14 +4,14 @@
 perfevent
 ================
 
-:Date:   18 Feb 2018
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ------------------------------------------------
 Man page for the LDMS perfevent sampler plugin.
 ------------------------------------------------
+
+:Date:   18 Feb 2018
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

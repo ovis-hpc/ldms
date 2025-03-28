@@ -4,14 +4,14 @@
 variorum_sampler
 =======================
 
-:Date:   27 Jun 2022
-:Manual section: 7
-:Manual group: LDMS store
-
 
 --------------------------------------
 Man page for the LDMS Variorum plugin
 --------------------------------------
+
+:Date:   27 Jun 2022
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

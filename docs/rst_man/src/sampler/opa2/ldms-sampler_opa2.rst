@@ -4,14 +4,14 @@
 opa2
 ===========
 
-:Date:   5 Feb 2018
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ---------------------------------------------------
 Man page for the LDMS opa2 OmniPath network plugin
 ---------------------------------------------------
+
+:Date:   5 Feb 2018
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

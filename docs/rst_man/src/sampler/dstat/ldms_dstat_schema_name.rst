@@ -4,14 +4,14 @@
 ldms_dstat_schema_name
 ======================
 
-:Date:   17 Nov 2020
-:Manual section: 1
-:Manual group: LDMS sampler
-
 
 --------------------------------------------------
 Man page for the LDMS dstat plugin support utility
 --------------------------------------------------
+
+:Date:   17 Nov 2020
+:Manual section: 1
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

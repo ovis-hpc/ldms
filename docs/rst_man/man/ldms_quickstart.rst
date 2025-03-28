@@ -4,14 +4,13 @@
 ldms_quickstart
 ===============
 
-:Date:   12 Dec 2016
-:Manual section: 7
-:Manual group: LDMS
-
-
 ---------------------------------
 Man page for Quick Start of LDMS
 ---------------------------------
+
+:Date:   12 Dec 2016
+:Manual section: 7
+:Manual group: LDMS
 
 INTRODUCTION
 ============

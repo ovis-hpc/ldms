@@ -4,14 +4,14 @@
 vmstat
 =============
 
-:Date:   04 Dec 2018
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ------------------------------------
 Man page for the LDMS vmstat plugin
 ------------------------------------
+
+:Date:   04 Dec 2018
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

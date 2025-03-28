@@ -4,14 +4,14 @@
 all_example
 ==================
 
-:Date:   18 Feb 2018
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -----------------------------------------
 Man page for the LDMS all_example plugin
 -----------------------------------------
+
+:Date:   18 Feb 2018
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

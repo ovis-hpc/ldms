@@ -4,14 +4,13 @@
 ldms-plugins
 ============
 
-:Date:   28 Feb 2018
-:Manual section: 8
-:Manual group: LDMS
-
-
 ------------------------------------------------
 Display information on installed LDMSD plugins.
 ------------------------------------------------
+
+:Date:   28 Feb 2018
+:Manual section: 8
+:Manual group: LDMS
 
 SYNOPSIS
 ========

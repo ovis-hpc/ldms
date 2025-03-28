@@ -4,14 +4,14 @@
 edac
 ===========
 
-:Date:   18 Feb 2018
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ----------------------------------
 Man page for the LDMS edac plugin
 ----------------------------------
+
+:Date:   18 Feb 2018
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

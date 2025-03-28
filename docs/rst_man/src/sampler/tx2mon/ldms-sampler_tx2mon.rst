@@ -4,14 +4,14 @@
 tx2mon
 =============
 
-:Date:   25 Dec 2020
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ------------------------------------
 Man page for the LDMS tx2mon plugin
 ------------------------------------
+
+:Date:   25 Dec 2020
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

@@ -4,13 +4,13 @@
 ldmsctl
 =======
 
-:Date:   19 Nov 2019
-:Manual section: 7
-:Manual group: LDMSD
-
 ---------------------------------
 Issue control commands to ldmsd.
 ---------------------------------
+
+:Date:   19 Nov 2019
+:Manual section: 7
+:Manual group: LDMSD
 
 SYNOPSIS
 ========

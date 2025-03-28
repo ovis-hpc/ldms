@@ -2,14 +2,13 @@
 procstat2
 =========
 
-:Date: 14 Jan 2022
-:Manual section: 7
-:Manual group: LDMS sampler
-
-
 ---------------------------------------
 Man page for the LDMS procstat2 plugin
 ---------------------------------------
+
+:Date: 14 Jan 2022
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

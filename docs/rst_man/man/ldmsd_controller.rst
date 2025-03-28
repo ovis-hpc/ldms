@@ -4,14 +4,14 @@
 ldmsd_controller
 ================
 
-:Date: 19 Nov 2019
-:Manual section: 8
-:Manual group: LDMSD
-
 
 ----------------------------------------------
 A python program to configure an ldms daemon.
 ----------------------------------------------
+
+:Date: 19 Nov 2019
+:Manual section: 8
+:Manual group: LDMSD
 
 SYNOPSIS
 ========

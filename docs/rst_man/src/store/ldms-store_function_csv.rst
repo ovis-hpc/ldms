@@ -4,14 +4,14 @@
 store_function_csv
 =========================
 
-:Date:   22 Aug 2017
-:Manual section: 7
-:Manual group: LDMS store
-
 
 -----------------------------------------------
 Man page for the LDMS store_function_csv plugin
 -----------------------------------------------
+
+:Date:   22 Aug 2017
+:Manual section: 7
+:Manual group: LDMS store
 
 
 SYNOPSIS

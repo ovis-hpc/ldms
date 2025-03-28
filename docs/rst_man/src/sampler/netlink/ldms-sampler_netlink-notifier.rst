@@ -4,14 +4,14 @@
 netlink-notifier
 ================
 
-:Date:   25 June 2021
-:Manual section: 8
-:Manual group: LDMS sampler
-
 
 ---------------------------------------------------------------------
 Transmit Linux kernel netlink process life messages to ldmsd streams.
 ---------------------------------------------------------------------
+
+:Date:   25 June 2021
+:Manual section: 8
+:Manual group: LDMS sampler
 
 
 ldms-notify - systemd service

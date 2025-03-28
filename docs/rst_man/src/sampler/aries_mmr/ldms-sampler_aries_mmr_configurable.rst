@@ -4,14 +4,14 @@
 aries_mmr_configurable
 =============================
 
-:Date:   12 Apr 2020
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ------------------------------------------------
 Man page for the aries_mmr_configurable sampler.
 ------------------------------------------------
+
+:Date:   12 Apr 2020
+:Manual section: 7
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

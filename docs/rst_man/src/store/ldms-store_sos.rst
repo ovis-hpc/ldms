@@ -4,14 +4,14 @@
 store_sos
 ================
 
-:Date:   21 Dec 2015
-:Manual section: 7
-:Manual group: LDMS store
-
 
 ---------------------------------------
 Man page for the LDMS store_sos plugin
 ---------------------------------------
+
+:Date:   21 Dec 2015
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

@@ -4,14 +4,14 @@
 ldms_auth_naive
 ===============
 
-:Date:   28 Feb 2018
-:Manual section: 7
-:Manual group: LDMS authentication
-
 
 -----------------------------------------------------
 Naive LDMS authentication implementation FOR TESTING
 -----------------------------------------------------
+
+:Date:   28 Feb 2018
+:Manual section: 7
+:Manual group: LDMS authentication
 
 SYNOPSIS
 ========

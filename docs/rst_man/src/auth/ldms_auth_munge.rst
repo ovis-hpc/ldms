@@ -4,14 +4,14 @@
 ldms_auth_munge
 ===============
 
-:Date:   10 May 2018
-:Manual section: 7
-:Manual group: LDMS authentication
-
 
 --------------------------------
 LDMS authentication using munge
 --------------------------------
+
+:Date:   10 May 2018
+:Manual section: 7
+:Manual group: LDMS authentication
 
 SYNOPSIS
 ========

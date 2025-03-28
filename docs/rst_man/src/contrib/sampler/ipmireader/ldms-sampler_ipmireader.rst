@@ -4,14 +4,14 @@
 ipmireader
 =================
 
-:Date:   18 Feb 2019
-:Manual section: 7
-:Manual group: LDMS store
-
 
 ----------------------------------------
 Man page for the LDMS ipmireader plugin
 ----------------------------------------
+
+:Date:   18 Feb 2019
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

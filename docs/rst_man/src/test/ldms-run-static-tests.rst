@@ -4,14 +4,14 @@
 ldms-run-static-tests
 =====================
 
-:Date:   21 Aug 2020
-:Manual section: 8
-:Manual group: LDMS tests
-
 
 --------------------
 Execute the program
 --------------------
+
+:Date:   21 Aug 2020
+:Manual section: 8
+:Manual group: LDMS tests
 
 SYNOPSIS
 ========

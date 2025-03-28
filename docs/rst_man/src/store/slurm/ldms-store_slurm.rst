@@ -4,14 +4,14 @@
 store_slurm
 ==================
 
-:Date:   30 Sep 2019
-:Manual section: 7
-:Manual group: LDMS store
-
 
 ------------------------------------------
 Man page for the LDMSD store_slurm plugin
 ------------------------------------------
+
+:Date:   30 Sep 2019
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

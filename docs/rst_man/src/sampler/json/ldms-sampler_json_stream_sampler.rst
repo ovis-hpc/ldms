@@ -4,14 +4,14 @@
 json_stream_sampler
 ==========================
 
-:Date:   5 Aug 2023
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 -------------------------------------------------
 Man page for the LDMSD json_stream_sampler plugin
 -------------------------------------------------
+
+:Date:   5 Aug 2023
+:Manual section: 7
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

@@ -4,14 +4,14 @@
 ldmsd_qgroup
 ============
 
-:Date:   11 Sep 2024
-:Manual section: 7
-:Manual group: LDMSD
-
 
 -----------------------------
 Quota Group Feature in LDMSD
 -----------------------------
+
+:Date:   11 Sep 2024
+:Manual section: 7
+:Manual group: LDMSD
 
 SYNOPSIS
 ========

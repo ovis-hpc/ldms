@@ -4,14 +4,14 @@
 tutorial_sampler
 =======================
 
-:Date:   24 Oct 2019
-:Manual section: 7
-:Manual group: LDMS store
-
 
 ----------------------------------------------
 Man page for the LDMS tutorial_sampler plugin
 ----------------------------------------------
+
+:Date:   24 Oct 2019
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

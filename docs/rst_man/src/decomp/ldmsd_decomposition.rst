@@ -4,14 +4,14 @@
 ldmsd_decomposition
 ===================
 
+------------------------------
+Manual for LDMSD decomposition
+------------------------------
+
 :Date: 2022-06-02
 :Version: v4
 :Manual section: 7
 :Manual group: LDMSD Decomposition man page
-
-------------------------------
-Manual for LDMSD decomposition
-------------------------------
 
 DESCRIPTION
 ===========

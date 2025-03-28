@@ -4,14 +4,14 @@
 store_tutorial
 =====================
 
-:Date:   24 Oct 2019
-:Manual section: 7
-:Manual group: LDMS store
-
 
 --------------------------------------------
 Man page for the LDMS store_tutorial plugin
 --------------------------------------------
+
+:Date:   24 Oct 2019
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

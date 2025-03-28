@@ -4,14 +4,14 @@
 ldms-ibnet-sampler-gen
 ======================
 
-:Date:   4 June 2020
-:Manual section: 1
-:Manual group: LDMS sampler
-
 
 --------------------------------------------------
 Man page for the LDMS ibnet plugin support utility
 --------------------------------------------------
+
+:Date:   4 June 2020
+:Manual section: 1
+:Manual group: LDMS sampler
 
 
 ldms-get-opa-network.sh - man page for the LDMS ibnet plugin support

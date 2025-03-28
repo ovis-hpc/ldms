@@ -4,14 +4,14 @@
 ldms_build_install
 ==================
 
-:Date:   22 Dec 2016
-:Manual section: 8
-:Manual group: LDMS
-
 
 ----------------------------------------------
 Instructions for building and installing ldms
 ----------------------------------------------
+
+:Date:   22 Dec 2016
+:Manual section: 8
+:Manual group: LDMS
 
 INTRODUCTION
 ============

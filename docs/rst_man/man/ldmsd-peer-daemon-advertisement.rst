@@ -1,15 +1,16 @@
+.. _ldmsd_peer_daemon_advertisement:
+
 ===============================
 ldmsd_peer_daemon_advertisement
 ===============================
 
-:Date: 12 December 2024
-:Manual section: 7
-:Manual group: LDMSD
-
-
 ------------------------------------------
 Manual for LDMSD Peer Daemon Advertisement
 ------------------------------------------
+
+:Date: 12 December 2024
+:Manual section: 7
+:Manual group: LDMSD
 
 
 SYNOPSIS

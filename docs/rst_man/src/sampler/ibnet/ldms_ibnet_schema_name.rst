@@ -4,14 +4,14 @@
 ldms_ibnet_schema_name
 ======================
 
-:Date:   4 June 2020
-:Manual section: 1
-:Manual group: LDMS sampler
-
 
 --------------------------------------------------
 Man page for the LDMS ibnet plugin support utility
 --------------------------------------------------
+
+:Date:   4 June 2020
+:Manual section: 1
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

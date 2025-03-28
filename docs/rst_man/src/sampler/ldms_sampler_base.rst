@@ -4,14 +4,14 @@
 ldms_sampler_base
 =================
 
-:Date:   04 Feb 2018
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ----------------------------------------------------------------------
 Man page for the LDMS sampler_base which is the base class for sampler
 ----------------------------------------------------------------------
+
+:Date:   04 Feb 2018
+:Manual section: 7
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

@@ -4,14 +4,14 @@
 cray_system_sampler_variants
 ===================================
 
-:Date:   4 Feb 2018
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ----------------------------------------------------------------
 Man page for all variants of the LDMS cray_system_sampler plugin
 ----------------------------------------------------------------
+
+:Date:   4 Feb 2018
+:Manual section: 7
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

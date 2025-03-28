@@ -4,14 +4,14 @@
 aries_linkstatus
 =======================
 
-:Date:   4 Jan 2018
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ---------------------------------------------------------
 Man page for the linkstatus plugin for Cray Aries systems
 ---------------------------------------------------------
+
+:Date:   4 Jan 2018
+:Manual section: 7
+:Manual group: LDMS sampler
 
 
 SYNOPSIS

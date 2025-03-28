@@ -4,14 +4,14 @@
 geopm_sampler
 ====================
 
-:Date:   06 May 2022
-:Manual section: 7
-:Manual group: LDMS store
-
 
 -----------------------------------
 Man page for the LDMS geopm plugin
 -----------------------------------
+
+:Date:   06 May 2022
+:Manual section: 7
+:Manual group: LDMS store
 
 SYNOPSIS
 ========

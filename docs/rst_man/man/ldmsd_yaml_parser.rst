@@ -4,14 +4,14 @@
 ldmsd_yaml_parser
 =================
 
-:Date: 20 Nov 2024 "ovis-4.4.5"
-:Manual section: 8
-:Manual group: LDMSD
-
 
 ---------------------------------------------------------------------------------
 A python program to parse a YAML configuration file into a v4 LDMS configuration.
 ---------------------------------------------------------------------------------
+
+:Date: 20 Nov 2024 "ovis-4.4.5"
+:Manual section: 8
+:Manual group: LDMSD
 
 
 SYNOPSIS

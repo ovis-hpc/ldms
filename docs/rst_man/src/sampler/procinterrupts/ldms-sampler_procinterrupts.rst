@@ -4,14 +4,14 @@
 procinterrupts
 =====================
 
-:Date:   10 Feb 2018
-:Manual section: 7
-:Manual group: LDMS sampler
-
 
 ----------------------------------------
 Man page for the LDMS interrupts plugin
 ----------------------------------------
+
+:Date:   10 Feb 2018
+:Manual section: 7
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========

@@ -4,14 +4,14 @@
 ldms_authentication
 ===================
 
-:Date:   28 Feb 2018
-:Manual section: 8
-:Manual group: LDMS
-
 
 ----------------------------------
 Authentication in LDMS transports
 ----------------------------------
+
+:Date:   28 Feb 2018
+:Manual section: 8
+:Manual group: LDMS
 
 DESCRIPTION
 ===========
