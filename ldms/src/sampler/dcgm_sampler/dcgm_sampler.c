@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
  */
 #include <stdlib.h>
+#include <stdbool.h>
 #include <limits.h>
 #include <string.h>
 #include <dirent.h>
@@ -54,7 +55,8 @@ static struct {
 } conf;
 
 static ldmsd_msg_log_f log_fn;
-static int dcgm_initialized = 0;
+static bool dcgm_initialized = false;
+static bool sampler_configured = false;
 static char producer_name[LDMS_PRODUCER_NAME_MAX];
 static short standalone = 1;
 static char *host_ip = "127.0.0.1";
@@ -211,7 +213,7 @@ static int dcgm_init()
 
         dcgmUpdateAllFields(dcgm_handle, 1);
 
-        dcgm_initialized = 1;
+        dcgm_initialized = true;
         return 0;
 }
 
@@ -228,8 +230,7 @@ static void dcgm_fini()
                 dcgmStopEmbedded(dcgm_handle);
         }
         dcgmShutdown();
-        dcgm_initialized = 0;
-        /* clear translation table */
+        dcgm_initialized = false;
 }
 
 static ldms_set_t gpu_metric_set_create(int gpu_id)
@@ -357,7 +358,7 @@ static void gpu_schema_destroy()
 static int gpu_sample()
 {
         int i;
-        int rc = 0;
+        int rc = DCGM_ST_OK;
 
         for (i = 0; i < gpu_ids_count; i++) {
                 ldms_transaction_begin(gpu_sets[gpu_ids[i]]);
@@ -366,7 +367,7 @@ static int gpu_sample()
         rc = dcgmGetLatestValues(dcgm_handle, gpu_group_id, field_group_id,
                                  &sample_cb, NULL);
         if (rc != DCGM_ST_OK){
-                /* TODO */
+                log_fn(LDMSD_LERROR, SAMP" failed dcgmGetLatestValues(): %d\n", rc);
                 rc = -1;
         }
         for (i = 0; i < gpu_ids_count; i++) {
@@ -496,7 +497,7 @@ static int config(struct ldmsd_plugin *self,
         int i;
 
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
-	if (dcgm_initialized) {
+	if (sampler_configured) {
 		log_fn(LDMSD_LERROR, SAMP" config() called twice. Stop it first.\n");
 		return EINVAL;
 	}
@@ -575,6 +576,7 @@ static int config(struct ldmsd_plugin *self,
                 }
                 gpu_sets[gpu_ids[i]] = gpu_metric_set_create(gpu_ids[i]);
         }
+        sampler_configured = true;
 
         return 0;
 
@@ -606,7 +608,22 @@ err0:
 static int sample(struct ldmsd_sampler *self)
 {
         log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
-        gpu_sample();
+        if (!sampler_configured) {
+                log_fn(LDMSD_LERROR, SAMP" sampler has not been configured\n");
+                return -1;
+        }
+        if (!dcgm_initialized) {
+                dcgm_init();
+        }
+        if (dcgm_initialized) {
+                int rc;
+                rc = gpu_sample();
+                if (rc != DCGM_ST_OK) {
+                        /* assume catastrophic error */
+                        dcgm_fini();
+                }
+        }
+
         return 0;
 }
 
