@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
  */
 #include <stdlib.h>
+#include <stdbool.h>
 #include <limits.h>
 #include <string.h>
 #include <dirent.h>
@@ -56,7 +57,8 @@ static struct {
 
 static ovis_log_t mylog;
 
-static int dcgm_initialized = 0;
+static bool dcgm_initialized = false;
+static bool sampler_configured = false;
 static char producer_name[LDMS_PRODUCER_NAME_MAX];
 static short standalone = 1;
 static char *host_ip = "127.0.0.1";
@@ -213,7 +215,7 @@ static int dcgm_init()
 
         dcgmUpdateAllFields(dcgm_handle, 1);
 
-        dcgm_initialized = 1;
+        dcgm_initialized = true;
         return 0;
 }
 
@@ -230,8 +232,7 @@ static void dcgm_fini()
                 dcgmStopEmbedded(dcgm_handle);
         }
         dcgmShutdown();
-        dcgm_initialized = 0;
-        /* clear translation table */
+        dcgm_initialized = false;
 }
 
 static ldms_set_t gpu_metric_set_create(int gpu_id)
@@ -361,7 +362,7 @@ static void gpu_schema_destroy()
 static int gpu_sample()
 {
         int i;
-        int rc = 0;
+        int rc = DCGM_ST_OK;
 
 	ldms_set_t set_old = base->set; /* this should be null */
 
@@ -378,7 +379,7 @@ static int gpu_sample()
         rc = dcgmGetLatestValues(dcgm_handle, gpu_group_id, field_group_id,
                                  &sample_cb, NULL);
         if (rc != DCGM_ST_OK){
-                /* TODO */
+                ovis_log(mylog, OVIS_LERROR, SAMP" failed dcgmGetLatestValues(): %d\n", rc);
                 rc = -1;
         }
         for (i = 0; i < gpu_ids_count; i++) {
@@ -514,7 +515,7 @@ static int config(ldmsd_plug_handle_t handle,
         int i;
 
         ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
-	if (dcgm_initialized) {
+	if (sampler_configured) {
 		ovis_log(mylog, OVIS_LERROR, "config() called twice. Stop it first.\n");
 		return EINVAL;
 	}
@@ -594,6 +595,7 @@ static int config(ldmsd_plug_handle_t handle,
                 }
                 gpu_sets[gpu_ids[i]] = gpu_metric_set_create(gpu_ids[i]);
         }
+        sampler_configured = true;
 
         return 0;
 
@@ -624,8 +626,23 @@ err0:
 
 static int sample(ldmsd_plug_handle_t handle)
 {
-        ovis_log(mylog, OVIS_LDEBUG, SAMP" sample() called\n");
-	gpu_sample();
+	ovis_log(mylog, OVIS_LDEBUG, SAMP" sample() called\n");
+        if (!sampler_configured) {
+                ovs_log(mylog, OVIS_LERROR, SAMP" sampler has not been configured\n");
+                return -1;
+        }
+        if (!dcgm_initialized) {
+                dcgm_init();
+        }
+        if (dcgm_initialized) {
+                int rc;
+                rc = gpu_sample();
+                if (rc != DCGM_ST_OK) {
+                        /* assume catastrophic error */
+                        dcgm_fini();
+                }
+        }
+
         return 0;
 }
 
