@@ -361,12 +361,20 @@ typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
 struct ldmsd_stat {
 	struct timespec start;
 	struct timespec end;
-	double min;
-	struct timespec min_ts;
-	double max;
-	struct timespec max_ts;
-	double avg;
+	double min; /* Min value in micro-second */
+	struct timespec min_ts; /* Timestamp the min value belongs to */
+	double max; /* Min value in micro-second */
+	struct timespec max_ts; /* Timestamp the max value belongs to */
+	double avg; /* Mean in micro-second */
 	int count;
+};
+
+struct prdset_store_stages_stats {
+	struct ldmsd_stat io_thread_stat; /* Time spent on Zap IO Thread */
+	struct ldmsd_stat decomp_stat; /* Time spent to decompose the set, spent Zap IO thread time */
+	struct ldmsd_stat worker_wait_stat; /* Time to wait for an available worker, block Zap IO thread */
+	struct ldmsd_stat queue_stat; /* Time in the worker queue */
+	struct ldmsd_stat commit_stat; /* Time spent in writing, sending, committing to storage */
 };
 
 typedef struct ldmsd_prdcr_set {
@@ -396,7 +404,8 @@ typedef struct ldmsd_prdcr_set {
 	uint8_t updt_sync;
 
 	struct ldmsd_stat updt_stat;
-	struct ldmsd_stat store_stat;
+	struct ldmsd_stat store_stat; /* Statistics of total store duration */
+	struct prdset_store_stages_stats store_stages_stat; /* Statistics of store stages */
 	int skipped_upd_cnt;
 	int oversampled_cnt;
 	uint64_t zap_thread_id; /* A thread handling the update completion event. */
@@ -620,7 +629,8 @@ ldmsd_row_t ldmsd_row_dup(ldmsd_row_t);
 int ldmsd_row_cache_make_list(ldmsd_row_list_t row_list, int row_count,
 	ldmsd_row_cache_t cache, ldmsd_row_cache_idx_t group_key);
 
-typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, void **ctxt);
+typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set,
+	                          ldms_set_t set_snapshot, void **ctxt);
 typedef struct ldmsd_cfgobj_store *ldmsd_cfgobj_store_t;
 
 struct ldmsd_strgp {
@@ -1657,5 +1667,30 @@ size_t Snprintf(char **dst, size_t *len, char *fmt, ...);
 __attribute__((format(printf, 2, 3)))
 int linebuf_printf(struct ldmsd_req_ctxt *reqc, char *fmt, ...);
 
+/* All duration statistics are in micro-seconds */
 void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct timespec *end);
+
+/*
+ * \brief Create a jSON dictionary from \c struct ldmsd_stat
+ *
+ * The timestamp statistics are seconds from epoc <sec>.<millisecond>
+ * The time duration statistics are in microseconds.
+ *
+ * The returned json is
+ *
+ * { 'min'      : <minimum duration>,
+ *   'min_ts'   : <timestamp of the minimum value>,
+ *   'max'      : <maximum duration>,
+ *   'max_ts'   : <timestamp of the maximum value>,
+ *   'avg'      : <the mean of durations>,
+ *   'count'    : <number of samples used in the calculation>,
+ *   'start_ts' : <timestamp when the data has been first collected>,
+ *   'end_ts'   : <timestamp of the last sample>
+ * }
+ *
+ * \param stat   Statistics data
+ *
+ * \return a json dictionary
+ */
+json_entity_t ldmsd_stat2dict(struct ldmsd_stat *stat);
 #endif

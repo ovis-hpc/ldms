@@ -140,6 +140,8 @@ struct req_str_id req_str_id_table[] = {
 	{  "setgroup_rm",        LDMSD_SETGROUP_RM_REQ  },
 	{  "start",              LDMSD_PLUGN_START_REQ  },
 	{  "stop",               LDMSD_PLUGN_STOP_REQ  },
+	{  "storage_threads",    LDMSD_STORAGE_THR_SET_REQ  },
+	{  "storage_queue_depth",   LDMSD_STORAGE_MAX_Q_DEPTH_SET_REQ  },
 	{  "stream_client_dump", LDMSD_STREAM_CLIENT_DUMP_REQ  },
 	{  "stream_status",         LDMSD_STREAM_STATUS_REQ  },
 	{  "strgp_add",          LDMSD_STRGP_ADD_REQ  },

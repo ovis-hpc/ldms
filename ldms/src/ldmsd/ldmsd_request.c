@@ -312,6 +312,8 @@ static int worker_threads_set_handler(ldmsd_req_ctxt_t reqc);
 static int default_quota_set_handler(ldmsd_req_ctxt_t reqc);
 static int pid_file_handler(ldmsd_req_ctxt_t reqc);
 static int banner_mode_handler(ldmsd_req_ctxt_t reqc);
+static int storage_threads_set_handler(ldmsd_req_ctxt_t reqc);
+static int storage_max_q_depth_set_handler(ldmsd_req_ctxt_t reqc);
 
 /* Sampler Advertisement */
 static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc);
@@ -675,7 +677,7 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_AUTH_DEL_REQ, auth_del_handler, XUG
 	},
 
-	/* CMD-LINE options */
+	/* CMD-LINE options and configuration processed at start-up */
 	[LDMSD_CMDLINE_OPTIONS_SET_REQ] = {
 		LDMSD_CMDLINE_OPTIONS_SET_REQ, cmd_line_arg_set_handler, XUG
 	},
@@ -705,6 +707,12 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_BANNER_MODE_REQ] = {
 		LDMSD_BANNER_MODE_REQ, banner_mode_handler, XUG
+	},
+	[LDMSD_STORAGE_THR_SET_REQ] = {
+		LDMSD_STORAGE_THR_SET_REQ, storage_threads_set_handler, XUG
+	},
+	[LDMSD_STORAGE_MAX_Q_DEPTH_SET_REQ] = {
+		LDMSD_STORAGE_MAX_Q_DEPTH_SET_REQ, storage_max_q_depth_set_handler, XUG
 	},
 
 	/* Sampler Discovery */
@@ -778,6 +786,8 @@ int is_req_id_priority(enum ldmsd_request req_id)
 	case LDMSD_DEFAULT_QUOTA_REQ:
 	case LDMSD_PID_FILE_REQ:
 	case LDMSD_BANNER_MODE_REQ:
+	case LDMSD_STORAGE_THR_SET_REQ:
+	case LDMSD_STORAGE_MAX_Q_DEPTH_SET_REQ:
 		return 1;
 	default:
 		return 0;
@@ -6663,6 +6673,8 @@ struct op_summary {
 #define __APPEND(...) do {					\
 	int len = snprintf(s, sz, __VA_ARGS__);			\
 	if (len >= sz) {					\
+		if (len == sz)					\
+			len++;					\
 		uint64_t off = (uint64_t)s - (uint64_t)buff;	\
 		uint64_t bump = LDMS_ROUNDUP(len-sz, __APPEND_SZ);  \
 		if (bump == 0)					\
@@ -7183,6 +7195,7 @@ static int __store_time_thread_tree(struct rbt *tree)
 	ldmsd_prdcr_set_t prdset;
 	struct store_time_thread *ent;
 	pid_t tid;
+	struct ldmsd_stat *store_io_thr_stat; /* Statistics of time duration used on IO thread int he storing process */
 	int rc = 0;
 
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
@@ -7205,7 +7218,9 @@ static int __store_time_thread_tree(struct rbt *tree)
 			} else {
 				ent = container_of(rbn, struct store_time_thread, rbn);
 			}
-			ent->store_time += (uint64_t)(prdset->store_stat.avg * prdset->store_stat.count);
+
+			store_io_thr_stat = &prdset->store_stages_stat.io_thread_stat;
+			ent->store_time += (uint64_t)(store_io_thr_stat->avg * store_io_thr_stat->count);
 		}
 	}
 out:
@@ -7248,6 +7263,7 @@ out:
 extern void ldmsd_worker_thrstat_free(struct ldmsd_worker_thrstat_result *res);
 extern struct ldmsd_worker_thrstat_result *ldmsd_worker_thrstat_get();
 extern struct ldmsd_worker_thrstat_result *ldmsd_xthrstat_get();
+extern struct ldmsd_worker_thrstat_result *ldmsd_storage_worker_thrstat_get();
 static char * __thread_stats_as_json(size_t *json_sz)
 {
 	char *buff, *s;
@@ -7257,11 +7273,17 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	struct timespec start, end;
 	struct ldms_thrstat_result *res = NULL;
 	struct zap_thrstat_result_entry *zthr;
+	/*
+	 * A tree containing the statistics of time duration spent of
+	 * each IO thread for the storing process, e.g., decomposition and
+	 * waiting for a storage worker
+	 */
 	struct rbt store_time_tree;
 	struct rbn *rbn;
 	struct store_time_thread *stime_ent;
 	struct ldmsd_worker_thrstat_result *wres = NULL;
 	struct ldmsd_worker_thrstat_result *xres = NULL;
+	struct ldmsd_worker_thrstat_result *sres = NULL; /* storage workers */
 	struct ovis_scheduler_thrstat *wthr;
 	s = buff = NULL;
 
@@ -7283,6 +7305,10 @@ static char * __thread_stats_as_json(size_t *json_sz)
 
 	xres = ldmsd_xthrstat_get();
 	if (!xres && errno != ENOENT)
+		goto __APPEND_ERR;
+
+	sres = ldmsd_storage_worker_thrstat_get();
+	if (!sres && errno != ENOENT)
 		goto __APPEND_ERR;
 
 	buff = malloc(sz);
@@ -7318,12 +7344,12 @@ static char * __thread_stats_as_json(size_t *json_sz)
 					stime_ent = container_of(rbn, struct store_time_thread, rbn);
 					__APPEND("     \"%s\": %ld,\n", ldms_thrstat_op_str(j),
 						res->entries[i].ops[j] - stime_ent->store_time);
-					__APPEND("     \"Storing Data\": %ld",
+					__APPEND("     \"Store Prep\": %ld",
 							stime_ent->store_time);
 				} else {
 					__APPEND("     \"%s\": %ld,\n", ldms_thrstat_op_str(j),
 								res->entries[i].ops[j]);
-					__APPEND("     \"Storing Data\": 0");
+					__APPEND("     \"Store Prep\": 0");
 				}
 			} else {
 				__APPEND("     \"%s\": %ld", ldms_thrstat_op_str(j),
@@ -7337,7 +7363,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 		else
 			__APPEND("  }\n");
 	}
-	__APPEND(" ],\n"); /* end of entries array */
+	__APPEND(" ],\n"); /* end of io_thread array */
 	__APPEND(" \"worker_threads\": [\n");
 	for (i = 0; i < wres->count; i++) {
 		wthr = wres->entries[i];
@@ -7371,7 +7397,24 @@ static char * __thread_stats_as_json(size_t *json_sz)
 		else
 			__APPEND("   }\n");
 	}
-	__APPEND(" ],\n"); /* end of worker threads */
+	__APPEND(" ],\n"); /* end of xthreads threads */
+	__APPEND(" \"storage threads\": [\n");
+	for (i = 0; sres && i < sres->count; i++) {
+		wthr = sres->entries[i];
+		__APPEND("  {\n");
+		__APPEND("   \"name\": \"%s\",\n", wthr->name);
+		__APPEND("   \"tid\": %d,\n", wthr->tid);
+		__APPEND("   \"thread_id\": \"%p\",\n", (void*)wthr->thread_id);
+		__APPEND("   \"idle_pc\" : %lf,\n", wthr->idle_pc);
+		__APPEND("   \"active_pc\" : %lf,\n", wthr->active_pc);
+		__APPEND("   \"total_us\" : %ld,\n", wthr->dur);
+		__APPEND("   \"ev_cnt\" : %ld\n", wthr->ev_cnt);
+		if (i < sres->count - 1)
+			__APPEND("   },\n");
+		else
+			__APPEND("   }\n");
+	}
+	__APPEND(" ],\n"); /* end of storage threads threads */
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	uint64_t compute_time = ldms_timespec_diff_us(&start, &end);
 
@@ -8521,25 +8564,20 @@ out:
 	return rc;
 }
 
-static json_entity_t __ldmsd_stat2dict(struct ldmsd_stat *stat)
+static json_entity_t __prdset_store_time_json_get(struct prdset_store_stages_stats *stats)
 {
-	double start_ts = stat->start.tv_sec + stat->start.tv_nsec/1000000.0;
-	double end_ts = stat->end.tv_sec + stat->end.tv_nsec/1000000.0;
-	double min_ts = stat->min_ts.tv_sec + stat->min_ts.tv_nsec/1000000.0;
-	double max_ts = stat->max_ts.tv_sec + stat->max_ts.tv_nsec/1000000.0;
 	json_entity_t d = json_dict_build(NULL,
-				JSON_FLOAT_VALUE, "min", stat->min,
-				JSON_FLOAT_VALUE, "min_ts", min_ts,
-				JSON_FLOAT_VALUE, "max", stat->max,
-				JSON_FLOAT_VALUE, "max_ts", max_ts,
-				JSON_FLOAT_VALUE, "avg", stat->avg,
-				JSON_INT_VALUE, "count", stat->count,
-				JSON_FLOAT_VALUE, "start_ts", start_ts,
-				JSON_FLOAT_VALUE, "end_ts", end_ts,
-				-1);
+				JSON_ATTR_VALUE, json_entity_new(JSON_ATTR_VALUE, "io_thread", ldmsd_stat2dict(&stats->io_thread_stat)),
+				JSON_ATTR_VALUE, json_entity_new(JSON_ATTR_VALUE, "decomp", ldmsd_stat2dict(&stats->decomp_stat)),
+				JSON_ATTR_VALUE, json_entity_new(JSON_ATTR_VALUE, "worker_wait", ldmsd_stat2dict(&stats->worker_wait_stat)),
+				JSON_ATTR_VALUE, json_entity_new(JSON_ATTR_VALUE, "queue", ldmsd_stat2dict(&stats->worker_wait_stat)),
+				JSON_ATTR_VALUE, json_entity_new(JSON_ATTR_VALUE, "commit", ldmsd_stat2dict(&stats->commit_stat)),
+				-1
+			);
 	return d;
 }
 
+void ldmsd_prdcr_set_store_stats_init(ldmsd_prdcr_set_t prdset, struct timespec *ts);
 static int
 __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int reset)
 {
@@ -8550,7 +8588,7 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 	struct rbn *rbn;
 	pid_t tid;
 	char tid_s[128];
-	json_entity_t strgp_stats, set_stats ;
+	json_entity_t strgp_stats, set_stats, stage_stats;
 	json_entity_t producers, threads, schemas, sets;
 	json_entity_t prdcr_json, thr_json, sch_json, set_json;
 
@@ -8638,10 +8676,16 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 					JSON_STRING_VALUE, "schema", prdset->schema_name,
 					JSON_STRING_VALUE, "thread_id", tid_s,
 					-1);
-			set_stats = __ldmsd_stat2dict(&prdset->store_stat);
+			set_stats = ldmsd_stat2dict(&prdset->store_stat);
 			if (!set_json || !set_stats)
 				goto oom;
 			rc = json_attr_add(set_json, "stats", set_stats);
+			if (rc)
+				goto json_error;
+			stage_stats = __prdset_store_time_json_get(&prdset->store_stages_stat);
+			if (!set_json || !set_stats)
+				goto oom;
+			rc = json_attr_add(set_json, "stage_stats", stage_stats);
 			if (rc)
 				goto json_error;
 			rc = json_attr_add(sets, prdset->inst_name, set_json);
@@ -8649,7 +8693,7 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 				goto json_error;
 			if (reset) {
 				memset(&prdset->store_stat, 0, sizeof(prdset->store_stat));
-				clock_gettime(CLOCK_REALTIME, &prdset->store_stat.start);
+				memset(&prdset->store_stages_stat, 0, sizeof(prdset->store_stages_stat));
 			}
 		}
 	}
@@ -8673,7 +8717,7 @@ json_error:
 
 static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 {
-	int rc;
+	int rc = 0;
 	char *name, *reset_s;
 	name = reset_s = NULL;
 	ldmsd_strgp_t strgp;
@@ -8750,11 +8794,13 @@ static void __prdset_stats_reset(struct timespec *now, int is_update, int is_sto
 			prdset = container_of(rbn, struct ldmsd_prdcr_set, rbn);
 			if (is_update) {
 				memset(&prdset->updt_stat, 0, sizeof(struct ldmsd_stat));
-				prdset->updt_stat.start = prdset->store_stat.start = *now;
+				ldmsd_prdcr_set_store_stats_init(prdset, now);
 				prdset->oversampled_cnt = prdset->skipped_upd_cnt = 0;
 			}
-			if (is_store)
-				memset(&prdset->store_stat, 0, sizeof(struct ldmsd_stat));
+			if (is_store) {
+				memset(&prdset->store_stages_stat, 0, sizeof(struct ldmsd_stat));
+				ldmsd_prdcr_set_store_stats_init(prdset, now);
+			}
 		}
 		ldmsd_prdcr_unlock(prdcr);
 	}
@@ -9064,6 +9110,102 @@ static int banner_mode_handler(ldmsd_req_ctxt_t reqc)
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(mode_s);
+	return rc;
+}
+
+extern int ldmsd_strg_worker_num_set(unsigned int v);
+extern int ldmsd_max_strg_q_depth_set(int v);
+static int storage_threads_set_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *value_s = NULL;
+	long num_threads;
+	char *endptr;
+
+	value_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SIZE);
+	if (!value_s) {
+		reqc->errcode = EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "The attribute 'num' is missing.");
+		goto send_reply;
+	}
+
+	num_threads = strtol(value_s, &endptr, 10);
+	if ((endptr == value_s) || (*endptr != '\0')) {
+		snprintf(reqc->line_buf, reqc->line_len, "The given number of " \
+			 "storage worker threads (%s) is not a number.", value_s);
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
+	if ((num_threads < 1) || (num_threads > UINT_MAX)) {
+		snprintf(reqc->line_buf, reqc->line_len, "The given number of " \
+			"storage worker threads (%s) is out of range (1-%u).",
+			                                   value_s, UINT_MAX);
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
+
+	reqc->errcode = ldmsd_strg_worker_num_set(num_threads);
+	if (reqc->errcode == EBUSY) {
+		snprintf(reqc->line_buf, reqc->line_len,
+			"ldmsd does not allow to change the number of storage worker threads.");
+		goto send_reply;
+	} else {
+		snprintf(reqc->line_buf, reqc->line_len, "Failed to set the number " \
+			"of storage worker threads with error %d.", reqc->errcode);
+		goto send_reply;
+	}
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(value_s);
+	return rc;
+}
+
+static int storage_max_q_depth_set_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *value_s = NULL;
+	char *endptr;
+	int max_q_depth;
+
+	value_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SIZE);
+	if (!value_s) {
+		reqc->errcode = EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "The attribute 'num' is missing.");
+		goto send_reply;
+	}
+
+	max_q_depth = strtol(value_s, &endptr, 10);
+	if ((endptr == value_s) || (*endptr != '\0')) {
+		snprintf(reqc->line_buf, reqc->line_len, "The given maximum of " \
+			 "storage worker queue depth (%s) is not a number.", value_s);
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
+
+	if (max_q_depth > INT_MAX) {
+		snprintf(reqc->line_buf, reqc->line_len, "The given maximum of " \
+			"storage worker queue depth (%s) is out of range.", value_s);
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
+
+	reqc->errcode = ldmsd_max_strg_q_depth_set(max_q_depth);
+	if (reqc->errcode == EBUSY) {
+		snprintf(reqc->line_buf, reqc->line_len,
+			"ldmsd does not allow to change the maximum of storage queue depth.");
+		goto send_reply;
+	} else {
+		snprintf(reqc->line_buf, reqc->line_len, "Failed to set the maximum " \
+			"of storage queue depth with error %d.", reqc->errcode);
+		goto send_reply;
+	}
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(value_s);
 	return rc;
 }
 

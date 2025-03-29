@@ -176,53 +176,70 @@ out:
 	return rc;
 }
 
-static void strgp_decompose(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, void **ctxt)
-{
-	struct ldmsd_row_list_s row_list = TAILQ_HEAD_INITIALIZER(row_list);
-	int row_count, rc;
-	rc = strgp->decomp->decompose(strgp, prd_set->set, &row_list, &row_count, ctxt);
-	if (rc) {
-		ovis_log(store_log, OVIS_LERROR, "strgp decompose error: %d\n", rc);
-		return;
-	}
-	rc = strgp->store->api->commit(strgp, prd_set->set, &row_list, row_count);
-	if (rc) {
-		ovis_log(store_log, OVIS_LERROR, "strgp row commit error: %d\n", rc);
-	}
-	strgp->decomp->release_rows(strgp, &row_list);
-}
-
+extern struct store_event_ctxt *store_event_ctxt_new(ldmsd_strgp_t strgp, ldms_set_t snapshot,
+                                                     ldmsd_prdcr_set_t prd_set,
+                                                     ldmsd_row_list_t row_list, int row_count,
+                                                     struct timespec start
+);
+extern int store_event_post(struct store_event_ctxt *ctxt);
+extern void ldmsd_prdcr_set_store_stats_init(ldmsd_prdcr_set_t prdset, struct timespec *ts);
 /* protected by strgp lock */
-static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, void **ctxt)
+static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms_set_t set_snapshot, void **ctxt)
 {
 	if (strgp->state != LDMSD_STRGP_STATE_RUNNING)
 		return;
 
+	ldmsd_row_list_t row_list = NULL;
+	struct store_event_ctxt *event_ctxt;
+	int row_count;
+	int rc;
+	struct timespec start;
+	struct ldmsd_stat *decomp_stat;
+
+	clock_gettime(CLOCK_REALTIME, &start);
+	if (prd_set->store_stat.start.tv_sec == 0) {
+		/* Initialize the starting time of the store statistics */
+		ldmsd_prdcr_set_store_stats_init(prd_set, &start);
+	}
+
 	if (strgp->decomp_path) {
 		if (!strgp->decomp) {
 			strgp->state = LDMSD_STRGP_STATE_STOPPED;
-			return;
+			goto err;
 		}
-		strgp_decompose(strgp, prd_set, ctxt);
-		return;
+		row_list = malloc(sizeof(*row_list));
+		if (!row_list) {
+			ovis_log(store_log, OVIS_LCRIT, "Memory allocation failure.\n");
+			goto err;
+		}
+		TAILQ_INIT(row_list);
+		rc = strgp->decomp->decompose(strgp, set_snapshot, row_list, &row_count, ctxt);
+		if (rc) {
+			ovis_log(store_log, OVIS_LERROR, "strgp decompose error: %d\n", rc);
+			goto err;
+		}
+		decomp_stat = &(prd_set->store_stages_stat.decomp_stat);
+		clock_gettime(CLOCK_REALTIME, &decomp_stat->end);
+		ldmsd_stat_update(&prd_set->store_stages_stat.decomp_stat, &start, &decomp_stat->end);
+	} else {
+		if (!strgp->store_handle) {
+			strgp->state = LDMSD_STRGP_STATE_STOPPED;
+			goto err;
+		}
 	}
 
-	if (!strgp->store_handle) {
-		strgp->state = LDMSD_STRGP_STATE_STOPPED;
-		return;
+	event_ctxt = store_event_ctxt_new(strgp, set_snapshot, prd_set, row_list, row_count, start);
+	if (!event_ctxt) {
+		ovis_log(store_log, OVIS_LCRIT, "Memory allocation failure.\n");
+		goto err;
 	}
-	strgp->store->api->store(strgp->store_handle, prd_set->set,
-			    strgp->metric_arry, strgp->metric_count);
-	if (strgp->flush_interval.tv_sec || strgp->flush_interval.tv_nsec) {
-		struct timespec expiry;
-		struct timespec now;
-		ldmsd_timespec_add(&strgp->last_flush, &strgp->flush_interval, &expiry);
-		clock_gettime(CLOCK_REALTIME, &now);
-		if (ldmsd_timespec_cmp(&now, &expiry) >= 0) {
-			clock_gettime(CLOCK_REALTIME, &strgp->last_flush);
-			strgp->store->api->flush(strgp->store_handle);
-		}
-	}
+	(void) store_event_post(event_ctxt);
+	return;
+err:
+	if (set_snapshot)
+		ldms_set_snapshot_delete(set_snapshot);
+	if (row_list)
+		free(row_list);
 }
 
 ldmsd_strgp_t

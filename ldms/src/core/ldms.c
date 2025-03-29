@@ -1028,8 +1028,25 @@ void __ldms_set_delete(ldms_set_t s, int notify)
 	ref_put(&s->ref, "__record_set");
 }
 
+void ldms_set_snapshot_get(ldms_set_t snapshot, const char *ref_name)
+{
+	ref_get(&snapshot->ref, ref_name);
+}
+
+void ldms_set_snapshot_put(ldms_set_t snapshot, const char *ref_name)
+{
+	ref_put(&snapshot->ref, ref_name);
+}
+
+void ldms_set_snapshot_delete(ldms_set_t snapshot)
+{
+	ldms_set_snapshot_put(snapshot, "ldms_set_snapshot_create");
+}
+
 void ldms_set_delete(ldms_set_t s)
 {
+	assert(!(s->flags & LDMS_SET_F_SNAPSHOT) &&
+		"ldms_set_delete called on a snapshot. Use ldms_set_snapshot_delete instead.");
 	__ldms_set_delete(s, 1);
 }
 
@@ -1037,6 +1054,8 @@ void ldms_set_put(ldms_set_t s)
 {
 	if (!s)
 		return;
+	assert(!(s->flags & LDMS_SET_F_SNAPSHOT) &&
+		"ldms_set_put called on a snapshot. Use ldms_set_snapshot_put instead.");
 	ref_put(&s->ref, "__ldms_find_local_set");
 }
 
@@ -1908,6 +1927,117 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 
 	ldms_set_default_authz(&uid, &gid, &perm, DEFAULT_AUTHZ_READONLY);
 	return ldms_set_create(instance_name, schema, uid, gid, perm, 0);
+}
+
+static int
+__set_info_copy(struct ldms_set_info_list *src, struct ldms_set_info_list *dst)
+{
+	struct ldms_set_info_pair *x, *y;
+	LIST_FOREACH(x, src, entry) {
+		y = malloc(sizeof(*y));
+		if (!y)
+			goto enomem;
+		y->key = strdup(x->key);
+		if (!y->key) {
+			free(y);
+			goto enomem;
+		}
+		y->value = strdup(x->value);
+		if (!y->value) {
+			free(y->key);
+			free(y);
+			goto enomem;
+		}
+		LIST_INSERT_HEAD(dst, y, entry);
+	}
+	return 0;
+enomem:
+	__ldms_set_info_delete(dst);
+	return ENOMEM;
+}
+
+static void __destroy_set_snapshot(void *v)
+{
+	struct ldms_set *s = v;
+	__ldms_set_info_delete(&s->local_info);
+	__ldms_set_info_delete(&s->remote_info);
+	free(s->meta);
+	free(s);
+}
+
+ldms_set_t ldms_set_snapshot_create(ldms_set_t src)
+{
+	/*
+	 * TODO:
+	 *  - Set fields that callers shouldn't be used to NULL or appropriate values.
+	 *  - Test that lists and records work
+	 *
+	 */
+	struct ldms_set *snapshot = NULL;
+	struct ldms_set_hdr *meta;
+	struct ldms_data_hdr *data, *src_data;
+	size_t heap_sz = __le32_to_cpu(src->meta->heap_sz);
+	size_t meta_sz = __le32_to_cpu(src->meta->meta_sz);
+	size_t data_sz = __le32_to_cpu(src->meta->data_sz);
+	void *dst_heap = NULL;
+
+	meta = malloc(meta_sz + data_sz);
+	if (!meta)
+		return NULL;
+	memcpy(meta, src->meta, meta_sz);
+	meta->array_card = __cpu_to_le32(1);
+
+	/* setup data */
+	data = (void*)meta + meta_sz;
+	src_data = __ldms_set_array_get(src, src->curr_idx);
+	memcpy(data, src_data, data_sz);
+
+	data->curr_idx = __cpu_to_le32(0);
+	data->gn = data->meta_gn = meta->meta_gn;
+
+	snapshot = calloc(1, sizeof(*snapshot));
+	if (!snapshot) {
+		free(meta);
+		return NULL;
+	}
+	pthread_mutex_init(&snapshot->lock, NULL);
+	rbt_init(&snapshot->push_coll, rbn_ptr_cmp);
+	rbt_init(&snapshot->lookup_coll, rbn_ptr_cmp);
+	LIST_INIT(&snapshot->local_info);
+	LIST_INIT(&snapshot->remote_info);
+
+	snapshot->flags = LDMS_SET_F_SNAPSHOT;
+	snapshot->set_id = (uint64_t)(unsigned long)src;
+	snapshot->curr_idx = __cpu_to_le32(0);
+	snapshot->meta = meta;
+	snapshot->data_array = snapshot->data = data;
+
+	/* Handle heap */
+	if (heap_sz > 0 && src->heap) {
+		/*
+		 * The heap is part of the data section we already copied
+		 * We just need to get a reference to it
+		 */
+		dst_heap = &((uint8_t *)data)[data_sz - heap_sz];
+
+		/*
+		 * Don't initialize the heap as that would reset it
+		 * Just get a reference to the already copied heap structures
+		 */
+		snapshot->heap = ldms_heap_get(&snapshot->heap_inst, &data->heap, dst_heap);
+	}
+
+	/* set info */
+	if (__set_info_copy(&src->local_info, &snapshot->local_info))
+		goto enomem;
+	if (__set_info_copy(&src->remote_info, &snapshot->remote_info))
+		goto enomem;
+
+	ref_init(&snapshot->ref, __func__, __destroy_set_snapshot, snapshot);
+	return snapshot;
+enomem:
+	__destroy_set_no_lock(snapshot);
+	return NULL;
 }
 
 int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid,
