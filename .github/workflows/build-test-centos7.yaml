@@ -14,7 +14,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     container:
         image: ovishpc/ovis-centos-build
     steps:
@@ -24,7 +24,7 @@ jobs:
     - run: make
 
   distcheck:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     container:
         image: ovishpc/ovis-centos-build
     steps:
@@ -34,7 +34,7 @@ jobs:
     - run: make distcheck
 
   build-with-rdma:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     container:
         image: ovishpc/ovis-centos-build
     steps:

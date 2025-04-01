@@ -11,7 +11,7 @@ jobs:
     name: Create Release
     # Make sure that test-make-dist.yaml has the same "runs-on" and
     # "container" as used here.
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     container:
         image: ovishpc/ovis-ubuntu-build
 
