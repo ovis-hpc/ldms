@@ -7255,14 +7255,15 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	int i, j;
 	int rc;
 	struct timespec start, end;
-	struct ldms_thrstat_result *res = NULL;
+	struct ldms_thrstat_result *lres = NULL;
 	struct zap_thrstat_result_entry *zthr;
 	struct rbt store_time_tree;
 	struct rbn *rbn;
 	struct store_time_thread *stime_ent;
 	struct ldmsd_worker_thrstat_result *wres = NULL;
 	struct ldmsd_worker_thrstat_result *xres = NULL;
-	struct ovis_scheduler_thrstat *wthr;
+	struct ovis_scheduler_thrstats *wthr;
+	struct ovis_thrstats_result *res;
 	s = buff = NULL;
 
 	(void)clock_gettime(CLOCK_REALTIME, &start);
@@ -7273,8 +7274,8 @@ static char * __thread_stats_as_json(size_t *json_sz)
 		goto __APPEND_ERR;
 	}
 
-	res = ldms_thrstat_result_get();
-	if (!res)
+	lres = ldms_thrstat_result_get();
+	if (!lres)
 		goto __APPEND_ERR;
 
 	wres = ldmsd_worker_thrstat_get();
@@ -7291,10 +7292,10 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	s = buff;
 
 	__APPEND("{");
-	__APPEND(" \"count\": %d,\n", res->count);
+	__APPEND(" \"count\": %d,\n", lres->count);
 	__APPEND(" \"io_threads\": [\n");
-	for (i = 0; i < res->count; i++) {
-		zthr = res->entries[i].zap_res;
+	for (i = 0; i < lres->count; i++) {
+		zthr = lres->entries[i].zap_res;
 		__APPEND("  {\n");
 		__APPEND("   \"name\": \"%s\",\n", zthr->name);
 		__APPEND("   \"tid\": %d,\n", zthr->tid);
@@ -7306,8 +7307,8 @@ static char * __thread_stats_as_json(size_t *json_sz)
 		__APPEND("   \"sq_sz\": %lu,\n", zthr->sq_sz);
 		__APPEND("   \"n_eps\": %lu,\n", zthr->n_eps);
 		__APPEND("   \"ldms_xprt\": {\n");
-		__APPEND("     \"Idle\": %ld,\n", res->entries[i].idle);
-		__APPEND("     \"Zap\": %ld,\n", res->entries[i].zap_time);
+		__APPEND("     \"Idle\": %ld,\n", lres->entries[i].idle);
+		__APPEND("     \"Zap\": %ld,\n", lres->entries[i].zap_time);
 		for (j = 0; j < LDMS_THRSTAT_OP_COUNT; j++) {
 			if (j > 0)
 				__APPEND(",\n");
@@ -7317,22 +7318,22 @@ static char * __thread_stats_as_json(size_t *json_sz)
 				if (rbn) {
 					stime_ent = container_of(rbn, struct store_time_thread, rbn);
 					__APPEND("     \"%s\": %ld,\n", ldms_thrstat_op_str(j),
-						res->entries[i].ops[j] - stime_ent->store_time);
+						lres->entries[i].ops[j] - stime_ent->store_time);
 					__APPEND("     \"Storing Data\": %ld",
 							stime_ent->store_time);
 				} else {
 					__APPEND("     \"%s\": %ld,\n", ldms_thrstat_op_str(j),
-								res->entries[i].ops[j]);
+								lres->entries[i].ops[j]);
 					__APPEND("     \"Storing Data\": 0");
 				}
 			} else {
 				__APPEND("     \"%s\": %ld", ldms_thrstat_op_str(j),
-							res->entries[i].ops[j]);
+							lres->entries[i].ops[j]);
 			}
 		}
 		__APPEND("      }");
 		__APPEND("   ");
-		if (i < res->count - 1)
+		if (i < lres->count - 1)
 			__APPEND("  },\n");
 		else
 			__APPEND("  }\n");
@@ -7341,13 +7342,16 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	__APPEND(" \"worker_threads\": [\n");
 	for (i = 0; i < wres->count; i++) {
 		wthr = wres->entries[i];
+		res = &wthr->stats;
 		__APPEND("  {\n");
-		__APPEND("   \"name\": \"%s\",\n", wthr->name);
-		__APPEND("   \"tid\": %d,\n", wthr->tid);
-		__APPEND("   \"thread_id\": \"%p\",\n", (void*)wthr->thread_id);
-		__APPEND("   \"idle_pc\" : %lf,\n", wthr->idle_pc);
-		__APPEND("   \"active_pc\" : %lf,\n", wthr->active_pc);
-		__APPEND("   \"total_us\" : %ld,\n", wthr->dur);
+		__APPEND("   \"name\": \"%s\",\n", res->name);
+		__APPEND("   \"tid\": %d,\n", res->tid);
+		__APPEND("   \"thread_id\": \"%p\",\n", (void*)res->thread_id);
+		__APPEND("   \"idle_pc\" : %lf,\n", res->idle_pc);
+		__APPEND("   \"active_pc\" : %lf,\n", res->active_pc);
+		__APPEND("   \"total_us\" : %ld,\n", res->dur_tot);
+		__APPEND("   \"utilization\" : %lf,\n", res->utilization);
+		__APPEND("   \"interval_us\" : %ld,\n", res->interval_us);
 		__APPEND("   \"ev_cnt\" : %ld\n", wthr->ev_cnt);
 		if (i < wres->count - 1)
 			__APPEND("   },\n");
@@ -7358,13 +7362,14 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	__APPEND(" \"xthreads\": [\n");
 	for (i = 0; xres && i < xres->count; i++) {
 		wthr = xres->entries[i];
+		res = &wthr->stats;
 		__APPEND("  {\n");
-		__APPEND("   \"name\": \"%s\",\n", wthr->name);
-		__APPEND("   \"tid\": %d,\n", wthr->tid);
-		__APPEND("   \"thread_id\": \"%p\",\n", (void*)wthr->thread_id);
-		__APPEND("   \"idle_pc\" : %lf,\n", wthr->idle_pc);
-		__APPEND("   \"active_pc\" : %lf,\n", wthr->active_pc);
-		__APPEND("   \"total_us\" : %ld,\n", wthr->dur);
+		__APPEND("   \"name\": \"%s\",\n", res->name);
+		__APPEND("   \"tid\": %d,\n", res->tid);
+		__APPEND("   \"thread_id\": \"%p\",\n", (void*)res->thread_id);
+		__APPEND("   \"idle_pc\" : %lf,\n", res->idle_pc);
+		__APPEND("   \"active_pc\" : %lf,\n", res->active_pc);
+		__APPEND("   \"total_us\" : %ld,\n", res->dur_tot);
 		__APPEND("   \"ev_cnt\" : %ld\n", wthr->ev_cnt);
 		if (i < xres->count - 1)
 			__APPEND("   },\n");
@@ -7379,7 +7384,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	__APPEND("}"); /* end */
 
 	*json_sz = s - buff + 1;
-	ldms_thrstat_result_free(res);
+	ldms_thrstat_result_free(lres);
 	ldmsd_worker_thrstat_free(wres);
 	while ((rbn = rbt_min(&store_time_tree))) {
 		rbt_del(&store_time_tree, rbn);
@@ -7388,7 +7393,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	}
 	return buff;
 __APPEND_ERR:
-	ldms_thrstat_result_free(res);
+	ldms_thrstat_result_free(lres);
 	ldmsd_worker_thrstat_free(wres);
 	if (xres)
 		ldmsd_worker_thrstat_free(xres);

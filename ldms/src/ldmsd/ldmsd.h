@@ -844,7 +844,7 @@ typedef struct ldmsd_req_ctxt *ldmsd_req_ctxt_t;
 
 struct ldmsd_worker_thrstat_result {
 	int count; /* Number of worker threads */
-	struct ovis_scheduler_thrstat *entries[0];
+	struct ovis_scheduler_thrstats *entries[0];
 };
 
 /**

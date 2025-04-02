@@ -189,6 +189,8 @@
 #include <stdint.h>
 #include <sys/time.h>
 
+#include "ovis_thrstats/ovis_thrstats.h"
+
 typedef enum ovis_event_type_e {
 	OVIS_EVENT_EPOLL          =  0x1,
 	OVIS_EVENT_TIMEOUT        =  0x2,
@@ -260,16 +262,19 @@ struct ovis_event_s {
 	(ev)->priv.idx = -1; \
 } while(0)
 
-struct ovis_scheduler_thrstat {
-	char *name;
-	pid_t tid;
-	uint64_t thread_id;
-	uint64_t idle; /* Idle time in micro-seconds */
-	uint64_t active; /* Active time in micro-seconds */
-	uint64_t dur; /* Total time in micro-seconds */
-	double idle_pc; /* Percentage of the idle time */
-	double active_pc; /* Percentage of the active time */
-	uint64_t ev_cnt; /* Number of events */
+/**
+ * \struct ovis_scheduler_thrstats
+ * \brief Thread statistics for an ovis scheduler
+ *
+ * This structure contains thread utilization statistics for an ovis scheduler.
+ * It leverages the ovis_thrstats library to provide comprehensive thread
+ * activity tracking and analysis.
+ */
+struct ovis_scheduler_thrstats {
+	/** Core thread statistics from ovis_thrstats */
+	struct ovis_thrstats_result stats;
+	/** Number of events processed by this scheduler */
+	uint64_t ev_cnt;
 };
 
 /**
@@ -377,40 +382,53 @@ int ovis_scheduler_loop(ovis_scheduler_t m, int return_on_empty);
 int ovis_scheduler_term(ovis_scheduler_t s);
 
 /**
- * Set the name of the scheduler.
+ * \brief Set the name of a scheduler
  *
- * This name will also be in the result of the thrstat.
- *
- * \retval 0 If success.
- * \retval errno If error.
+ * \param s The scheduler instance
+ * \param name The name to assign
+ * \return 0 on success, error code on failure
  */
 int ovis_scheduler_name_set(ovis_scheduler_t s, const char *name);
 
 /**
- * Get the name of the scheduler.
+ * \brief Get the name of a scheduler
  *
- * \retval NULL If the name has never set.
- * \retval name The name of the scheduler.
+ * \param s The scheduler instance
+ * \return The scheduler name
  */
 const char *ovis_scheduler_name_get(ovis_scheduler_t s);
 
 /**
- * \brief Return the thread statistics of a scheduler
+ * \brief Get scheduler thread statistics
  *
- * The caller must free the returned statistics.
+ * Retrieves thread statistics for a scheduler thread, including
+ * utilization metrics calculated over the specified time interval.
  *
- * \param  sch   a handle of an ovis_schedule structure
- * \param  now   The current time
- *
- * \return A pointer to an ovis_scheduler_thrstat structure
- * \see ovis_scheduler_thrstat_free()
+ * \param sch The scheduler instance
+ * \param now Current timestamp
+ * \param interval_s Time interval in seconds to analyze (0 = use default 3s)
+ * \return A pointer to an ovis_scheduler_thrstats structure
+ * \see ovis_scheduler_thrstats_free()
  */
-struct ovis_scheduler_thrstat *
-ovis_scheduler_thrstat_get(ovis_scheduler_t sch, struct timespec *now);
+struct ovis_scheduler_thrstats *
+ovis_scheduler_thrstats_get(ovis_scheduler_t sch, struct timespec *now, uint64_t interval_s);
 
 /**
- * \brief Free an ovis_scheduler_thrstat returned by ovis_scheduler_thrstat_get
+ * \brief Free scheduler thread statistics
+ *
+ * Frees resources associated with scheduler thread statistics
+ * obtained from ovis_scheduler_thrstats_get().
+ *
+ * \param res Pointer to thread statistics structure to free
  */
-void ovis_scheduler_thrstat_free(struct ovis_scheduler_thrstat *res);
+void ovis_scheduler_thrstats_free(struct ovis_scheduler_thrstats *res);
+
+/**
+ * \brief Reset scheduler thread statistics
+ *
+ * \param sch The scheduler instance
+ * \param now Current timestamp
+ */
+void ovis_scheduler_thrstats_reset(ovis_scheduler_t sch, struct timespec *now);
 
 #endif

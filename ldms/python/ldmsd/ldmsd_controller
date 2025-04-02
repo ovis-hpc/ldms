@@ -2165,13 +2165,15 @@ class LdmsdCmdParser(cmd.Cmd):
     def display_worker_thread_stats(self, worker_threads, hdr):
         print(hdr)
         print(f"{'='*60}")
-        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Idle':15} {'Active':15} {'Duration (sec)':15} {'Event Counts':15}")
-        print(f"{'-'*15} {'-'*20} {'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*15}")
+        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Utilization':12} {'Refresh rate (s)':17} {'Event Counts':12}")
+        print(f"{'-'*15} {'-'*20} {'-'*20} {'-'*12} {'-'*17} {'-'*12}")
         for e in worker_threads:
-            print(f"{e['tid']:^15} {e['thread_id']:20} {e['name']:20} " \
-                  f"{e['idle_pc']:14.2f}% " \
-                  f"{e['active_pc']:14.2f}% {e['total_us']/1000000:14.2f}" \
-                  f"{e['ev_cnt']:15}")
+            print(f"{e['tid']:^15} {e['thread_id']:20} {e['name']:20} ", end="")
+            if e['utilization'] == -1:
+                  print(f"{'-':>12} {'-':>17} ", end="")
+            else:
+                  print(f"{e['utilization'] * 100:11.4f}% {int(e['interval_us']/1000000):17} ", end="")
+            print(f"{e['ev_cnt']:12}")
 
     def display_io_thread_stats(self, io_threads):
         print(f"IO Thread Statistics")

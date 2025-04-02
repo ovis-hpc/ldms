@@ -382,23 +382,23 @@ int find_least_busy_thread()
 	int idx = 0;
 	int count = 0x7fffffff;
 	struct timespec now;
-	struct ovis_scheduler_thrstat *stat;
+	struct ovis_scheduler_thrstats *stat;
 	double best = 100;
 
 	clock_gettime(CLOCK_REALTIME, &now);
 
 	for (i = 0; i < ev_thread_count; i++) {
-		stat = ovis_scheduler_thrstat_get(ovis_scheduler[i], &now);
+		stat = ovis_scheduler_thrstats_get(ovis_scheduler[i], &now, 0);
 		if (!stat)
 			continue;
-		if (stat->active_pc < best ||
-				(stat->active_pc == best &&
+		if (stat->stats.active_pc < best ||
+				(stat->stats.active_pc == best &&
 				 ev_count[i] < count)) {
 			idx = i;
-			best = stat->active_pc;
+			best = stat->stats.active_pc;
 			count = ev_count[i];
 		}
-		ovis_scheduler_thrstat_free(stat);
+		ovis_scheduler_thrstats_free(stat);
 	}
 	return idx;
 }
@@ -426,12 +426,12 @@ void ldmsd_worker_thrstat_free(struct ldmsd_worker_thrstat_result *res)
 
 	int i;
 	for (i = 0; i < res->count; i++) {
-		ovis_scheduler_thrstat_free(res->entries[i]);
+		ovis_scheduler_thrstats_free(res->entries[i]);
 	}
 	free(res);
 }
 
-struct ldmsd_worker_thrstat_result *ldmsd_worker_thrstat_get()
+struct ldmsd_worker_thrstat_result *ldmsd_worker_thrstat_get(uint64_t interval_s)
 {
 	int i;
 	struct ldmsd_worker_thrstat_result *res;
@@ -439,14 +439,14 @@ struct ldmsd_worker_thrstat_result *ldmsd_worker_thrstat_get()
 
 	clock_gettime(CLOCK_REALTIME, &now);
 	res = malloc(sizeof(*res) +
-			(ev_thread_count * sizeof(struct ovis_scheduler_thrstat *)));
+			(ev_thread_count * sizeof(struct ovis_scheduler_thrstats *)));
 	if (!res) {
 		ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
 		return NULL;
 	}
 	res->count = 0;
 	for (i = 0; i < ev_thread_count; i++) {
-		res->entries[i] = ovis_scheduler_thrstat_get(ovis_scheduler[i], &now);
+		res->entries[i] = ovis_scheduler_thrstats_get(ovis_scheduler[i], &now, interval_s);
 		if (!res->entries[i]) {
 			ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
 			goto err;
@@ -468,7 +468,7 @@ struct ldmsd_worker_thrstat_result *ldmsd_xthrstat_get()
 	int count;
 	struct __thrstat_ent {
 		LIST_ENTRY(__thrstat_ent) entry;
-		struct ovis_scheduler_thrstat *stat;
+		struct ovis_scheduler_thrstats *stat;
 	} *se;
 	LIST_HEAD(, __thrstat_ent) lh = LIST_HEAD_INITIALIZER(lh);
 	struct timespec now;
@@ -482,7 +482,7 @@ struct ldmsd_worker_thrstat_result *ldmsd_xthrstat_get()
 		se = calloc(1, sizeof(*se));
 		if (!se)
 			goto err1;
-		se->stat = ovis_scheduler_thrstat_get(samp->os, &now);
+		se->stat = ovis_scheduler_thrstats_get(samp->os, &now, 0);
 		if (!se->stat) {
 			free(se);
 			goto err1;
@@ -508,7 +508,7 @@ struct ldmsd_worker_thrstat_result *ldmsd_xthrstat_get()
  err1:
 	while ((se = LIST_FIRST(&lh))) {
 		LIST_REMOVE(se, entry);
-		ovis_scheduler_thrstat_free(se->stat);
+		ovis_scheduler_thrstats_free(se->stat);
 		free(se);
 	}
 	return NULL;
