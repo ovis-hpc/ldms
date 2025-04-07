@@ -106,7 +106,7 @@ static struct list_pair *list_pair_create(char *key, struct attr_value_list *avl
 	}
 	p->key = key;
 	p->free_key = 1;
-	
+
 	if (avl) {
 		p->avl = av_copy(avl);
 		if (!p->avl)
@@ -335,7 +335,7 @@ int ldmsd_plugattr_add(struct plugattr *pa, struct attr_value_list *avl, struct 
 	if (dep) {
 		char *alist = av_to_string(avl, 0);
 		char *klist = av_to_string(kwl, 0);
-		rc = attr_deprecated(avl, kwl, dep, "ldmsd_plugattr_add", 
+		rc = attr_deprecated(avl, kwl, dep, "ldmsd_plugattr_add",
 			alist, klist);
 		free(alist);
 		free(klist);
@@ -400,7 +400,7 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 	if (dep) {
 		char *alist = av_to_string(avl, 0);
 		char *klist = av_to_string(kwl, 0);
-		rc = attr_deprecated(avl, kwl, dep, "ldmsd_plugattr_create", 
+		rc = attr_deprecated(avl, kwl, dep, "ldmsd_plugattr_create",
 			alist, klist);
 		free(alist);
 		free(klist);
@@ -505,7 +505,7 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 		if (!lineend)
 			lineend = bufend;
 		*lineend = '\0';
-			
+
 		int size = 1;
 		char *t = linestart;
 		int spacelast = 0;
@@ -550,7 +550,7 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 			if (rc == EINVAL) {
 				ovis_log(app_log, OVIS_LERROR, "ldmsd_plugattr_create misused.\n");
 				goto fout;
-			}	
+			}
 			int npos = av_idx_of(ikvl, plugin_name);
 			if (npos == -1) {
 				char *as, *ks;
@@ -998,7 +998,7 @@ void ldmsd_plugattr_log(int lvl, struct plugattr *pa, const char *key)
 		}
 		da.pilp = NULL;
 		dump_lp(lp, &da);
-	}	
+	}
 }
 
 int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct attr_value_list *avl, struct attr_value_list *kvl, struct pa_deprecated *dep, const char *pname)
@@ -1009,7 +1009,7 @@ int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct
 	if (dep) {
 		char *alist = av_to_string(avl, 0);
 		char *klist = av_to_string(kvl, 0);
-		int rc = attr_deprecated(avl, kvl, dep, "ldmsd_plugattr_config_check", 
+		int rc = attr_deprecated(avl, kvl, dep, "ldmsd_plugattr_config_check",
 			alist, klist);
 		free(alist);
 		free(klist);
@@ -1087,7 +1087,7 @@ int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct
 			}
 		}
 	}
-	return unexpected;			
+	return unexpected;
 }
 
 

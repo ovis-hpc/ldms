@@ -239,7 +239,7 @@ def value_type(v):
     if len(v) < 2:
         return "char"
     return "char[]"
-            
+
 def uncastable(old, new, val):
     print("Incompatible data in guessing column type")
     print(f"Oldtype={old} newtype={new} value={val}")
@@ -373,11 +373,11 @@ def guess_kind(col_heads, fn, maxlines):
                 for k in d:
                     z.append(None)
                 z[0] = "timestamp"
-            
+
             for pos in range(0,len(z)):
                 z[pos] = update_type(z[pos], d[pos])
         return z
- 
+
 def validate_assume(a):
     """ return validated type or exit"""
     if not a in ldms_types:
@@ -386,7 +386,7 @@ def validate_assume(a):
     return a
 
 def kind_format(fn):
-    """Check named file for containing kind line. 
+    """Check named file for containing kind line.
     Return None or (arr, udata) booleans.
     """
     with fileopener(fn)(fn, "r") as f:
@@ -883,7 +883,7 @@ def generate_schema(col_heads, col_kinds, arr, udata, args, schemaout, mapout):
                 # end array case
             # end k
             format_schema_epilog(f, args, col_heads)
-     
+
         if not old_schema:
             if args.verbose:
                 print(f"rename to {schemaout}")

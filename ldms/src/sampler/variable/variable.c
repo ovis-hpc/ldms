@@ -49,7 +49,7 @@
  * \file variable.c
  * \brief 'variable set' test data provider
  *
- * Recreates the data set at a different size/name/schema every 
+ * Recreates the data set at a different size/name/schema every
  * sameticks samples (default 4).
  */
 #define _GNU_SOURCE

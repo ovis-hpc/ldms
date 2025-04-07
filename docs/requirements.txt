@@ -1,1 +1,15 @@
-sphinx_rtd_theme
+sphinx
+sphinxcontrib-spelling
+sphinx-rtd-theme>=1.0.0
+sphinx-copybutton
+docutils
+Jinja2<3.1
+markupsafe==2.0.1
+sphinx_immaterial
+pydantic
+recommonmark
+sphinx_markdown_tables
+myst-parser
+# For sphinx gallery examples
+matplotlib
+sphinx-gallery

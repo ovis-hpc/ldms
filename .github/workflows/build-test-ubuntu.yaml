@@ -1,4 +1,4 @@
-name: Build Test - Ubuntu-20.04
+name: Build Test - Ubuntu-latest
 
 on:
   push:
@@ -14,7 +14,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     container:
         image: ovishpc/ovis-ubuntu-build
     steps:
@@ -24,7 +24,7 @@ jobs:
     - run: make
 
   distcheck:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     container:
         image: ovishpc/ovis-ubuntu-build
     steps:
@@ -34,7 +34,7 @@ jobs:
     - run: make distcheck
 
   build-with-rdma:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     container:
         image: ovishpc/ovis-ubuntu-build
     steps:

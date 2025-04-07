@@ -33,10 +33,10 @@ struct proc_pid_stat {
 	char state;
 	int ppid;
 	int pgrp;
-	int session; 
+	int session;
 	int tty_nr;
 	int tpgid;
-	unsigned int flags; 
+	unsigned int flags;
 	unsigned long minflt;
 	unsigned long cminflt;
 	unsigned long majflt;
@@ -101,7 +101,7 @@ int parse_proc_pid_stat(struct proc_pid_stat *s, const char *pid);
 int parse_proc_pid_statm(struct proc_pid_statm *s, const char *pid);
 
 /* \brief parse /proc/$pid/fd and fill provided struct.
- * \param details: if false, update only fd_count, otherwise classify the 
+ * \param details: if false, update only fd_count, otherwise classify the
  * file descriptors by link target name heuristics.
  * \return 0 on success, errno from readdir/opendir.
  * On a nonzero return, the content of s is undefined.

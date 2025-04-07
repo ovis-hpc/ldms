@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 
 # The mpi_profiler subdirectory really belongs
@@ -19,7 +22,7 @@ LIBADD = $(COMMON_LIBADD)
 libshm_sampler_la_SOURCES = shm_sampler.c
 libshm_sampler_la_LIBADD = $(LIBADD) $(JOBID_LIBFLAGS) shm_util/liblshm.la -lm -lrt -lpthread
 pkglib_LTLIBRARIES += libshm_sampler.la
-dist_man7_MANS = Plugin_shm_sampler.man
+dist_man7_MANS = ldms-sampler_shm_sampler.man
 
 EXTRA_DIST = \
 	outline \
