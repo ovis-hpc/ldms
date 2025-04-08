@@ -1,8 +1,8 @@
 load name=meminfo
-config name=meminfo producer=localhost${i} instance=localhost${i}/meminfo schema=meminfo component_id=${i} 
+config name=meminfo producer=localhost${i} instance=localhost${i}/meminfo schema=meminfo component_id=${i}
 start name=meminfo interval=1000000 offset=0
 load name=vmstat
-config name=vmstat producer=localhost${i} instance=localhost${i}/vmstat schema=vmstat component_id=${i} 
+config name=vmstat producer=localhost${i} instance=localhost${i}/vmstat schema=vmstat component_id=${i}
 start name=vmstat interval=1000000 offset=0
 load name=procnetdev
 config name=procnetdev producer=localhost${i} instance=localhost${i}/procnetdev schema=procnetdev component_id=${i} ifaces=lo

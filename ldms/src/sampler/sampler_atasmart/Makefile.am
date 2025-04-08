@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 dist_man7_MANS =
@@ -11,4 +14,4 @@ COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 libsampler_atasmart_la_SOURCES = sampler_atasmart.c
 libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart
 pkglib_LTLIBRARIES += libsampler_atasmart.la
-dist_man7_MANS += Plugin_sampler_atasmart.man
+dist_man7_MANS += ldms-sampler_atasmart.man

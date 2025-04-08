@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 dist_man1_MANS =
 
@@ -15,4 +18,4 @@ COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
 libzfs_leafvdevs_la_SOURCES = zfs_leafvdevs.c
 libzfs_leafvdevs_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libzfs_leafvdevs.la
-dist_man7_MANS = Plugin_zfs_leafvdevs.man
+dist_man7_MANS = ldms-sampler_zfs_leafvdevs.man

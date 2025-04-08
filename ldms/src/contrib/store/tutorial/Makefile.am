@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 SUBDIRS =
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
@@ -11,13 +14,13 @@ STORE_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
 	       $(top_builddir)/lib/src/ovis_util/libovis_util.la
 
 ldmsstoreincludedir = $(includedir)/ldms
-ldmsstoreinclude_HEADERS = 
+ldmsstoreinclude_HEADERS =
 
 if ENABLE_TUTORIAL_STORE
 libstore_tutorial_la_SOURCES = store_tutorial.c
 libstore_tutorial_la_LIBADD = $(STORE_LIBADD)
 pkglib_LTLIBRARIES += libstore_tutorial.la
-dist_man7_MANS += Plugin_store_tutorial.man
+dist_man7_MANS += ldms-store_tutorial.man
 endif
 
-EXTRA_DIST = Plugin_store_tutorial.man
+EXTRA_DIST = ldms-store_tutorial.man

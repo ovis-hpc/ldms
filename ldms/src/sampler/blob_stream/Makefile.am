@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 SUBDIRS =
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
@@ -16,9 +19,9 @@ if ENABLE_BLOB_STREAM
 libblob_stream_writer_la_SOURCES = blob_stream_writer.c
 libblob_stream_writer_la_LIBADD = $(STORE_LIBADD) -lovis_json
 pkglib_LTLIBRARIES += libblob_stream_writer.la
-dist_man7_MANS += Plugin_blob_stream_writer.man
+dist_man7_MANS += ldms-sampler_blob_stream_writer.man
 
 endif
 
 EXTRA_DIST = \
-	Plugin_blob_stream_writer.man
+	ldms-sampler_blob_stream_writer.man

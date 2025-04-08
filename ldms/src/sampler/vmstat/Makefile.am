@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 dist_man7_MANS =
@@ -12,10 +15,10 @@ COMMON_LIBADD = ../libsampler_base.la \
 		$(top_builddir)/lib/src/coll/libcoll.la
 
 if ENABLE_VMSTAT
-libvmstat_la_SOURCES = vmstat.c 
+libvmstat_la_SOURCES = vmstat.c
 libvmstat_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libvmstat.la
-dist_man7_MANS += Plugin_vmstat.man
+dist_man7_MANS += ldms-sampler_vmstat.man
 endif
 
 

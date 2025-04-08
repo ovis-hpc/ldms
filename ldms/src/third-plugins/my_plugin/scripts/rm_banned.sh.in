@@ -102,7 +102,7 @@ for i in $plugdirs; do
 	pushd $i > /dev/null
 	cd $i
 	for f in *.la ; do
-		if test $f = '*.la'; then 
+		if test $f = '*.la'; then
 			break;
 		else
 			echo not banned yet?: $f

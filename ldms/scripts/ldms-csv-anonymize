@@ -62,17 +62,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #                    Pär Lindfors <paran@nsc.liu.se> and
 #                    Torbjörn Lönnemark <ketl@nsc.liu.se>,
 #                    National Supercomputer Centre
-# 
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 # General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
@@ -112,7 +112,7 @@ MAX_SIZE = 100000
 def expand_hostlist(hostlist, allow_duplicates=False, sort=False):
     """Expand a hostlist expression string to a Python list.
 
-    Example: expand_hostlist("n[9-11],d[01-02]") ==> 
+    Example: expand_hostlist("n[9-11],d[01-02]") ==>
              ['n9', 'n10', 'n11', 'd01', 'd02']
 
     Unless allow_duplicates is true, duplicates will be purged
@@ -122,7 +122,7 @@ def expand_hostlist(hostlist, allow_duplicates=False, sort=False):
     results = []
     bracket_level = 0
     part = ""
-    
+
     for c in hostlist + ",":
         if c == "," and bracket_level == 0:
             # Comma at top level, split!
@@ -186,7 +186,7 @@ def expand_part(s):
 
 def expand_rangelist(prefix, rangelist):
     """ Expand a rangelist (e.g. "1-10,14"), putting a prefix before."""
-    
+
     # Split at commas and expand each range separately
     results = []
     for range_ in rangelist.split(","):
@@ -295,7 +295,7 @@ def collect_hostlist_1(left_right):
         # Add the right part unprocessed to the suffix.
         # This ensures than an already computed range expression
         # in the right part is not analyzed again.
-        suffix = suffix + right 
+        suffix = suffix + right
 
         if num_str is None:
             # A left part with no numeric part at all gets special treatment!
@@ -322,7 +322,7 @@ def collect_hostlist_1(left_right):
     # right) tuples.
 
     results = []
-    needs_another_loop = False 
+    needs_another_loop = False
 
     # Now group entries with the same prefix+suffix combination (the
     # key is the first element in the sortlist) to loop over them and
@@ -341,7 +341,7 @@ def collect_hostlist_1(left_right):
             # ranges expressed as (low, high, width) for later
             # formatting.
             range_list = []
-    
+
             for ((prefix2, suffix2), num_int, num_width, host) in group:
                 if host not in remaining:
                     # Below, we will loop internally to enumate a whole range
@@ -370,7 +370,7 @@ def collect_hostlist_1(left_right):
             if len(range_list) == 1 and range_list[0][0] == range_list[0][1]:
                 # Special case to make sure that n1 is not shown as n[1] etc
                 results.append((prefix,
-                                "%0*d%s" % 
+                                "%0*d%s" %
                                (range_list[0][2], range_list[0][0], suffix)))
             else:
                 # General case where high > low
@@ -452,7 +452,7 @@ def parse_slurm_tasks_per_node(s):
 # dump anonymized csv files and the substitution maps.
 # substitutions are globally consistent for the batch of files.
 # substitution maps may be reused and extended across batches.
-# 
+#
 #
 import argparse
 import os.path
@@ -553,7 +553,7 @@ def host_substitute(h, vmap):
         else:
             print(f"Fix hmap file. Can't map {i} in {h}")
             sys.exit(1)
-    
+
     fin = "-".join(canon)
     if not h in vmap:
         vmap[h] = fin
@@ -562,7 +562,7 @@ def host_substitute(h, vmap):
 def map_header(val, meth):
     return "anonymized_" + meth + "_" + val
 
-mapmagic = "#anonymize-csv-map" 
+mapmagic = "#anonymize-csv-map"
 
 def write_map(maps, kind, fn):
     if len(maps[kind]) > 0:
@@ -598,7 +598,7 @@ def reload_map(m, fn, kind):
 
 def convert_col(kstr):
     """convert extended cut index string to python notation."""
-    k = int(kstr) 
+    k = int(kstr)
     if k == 0:
         print("column numbers are 1-N (as cut(1)) or negative, not 0.")
         sys.exit(1)
@@ -641,7 +641,7 @@ def gen_args(colfile, sep):
                 sys.stdout.write(j+" ")
             sys.stdout.write("\n")
             break
-    
+
 if __name__ == "__main__":
     """Anonymize columns, e.g.
     ./anonymize-csv  "--c=|" --se 123 2:int 3:name 5:path file*
@@ -654,7 +654,7 @@ if __name__ == "__main__":
     1550000000,1000000001,n1,1972,/p1/p3
     """
     parser = argparse.ArgumentParser(description="Anonymize columnar data files.")
-    parser.add_argument('mappings', metavar='M:C', nargs='*', 
+    parser.add_argument('mappings', metavar='M:C', nargs='*',
             help='a mapping:column number pair or filename. M is one of int,path,name,host. C is a nonzero number. Negative number count back from last column.')
     parser.add_argument("--input", default=None, help="input files", action="append", metavar="csv-file")
     parser.add_argument("--out-dir", default=None, help="output files location")
@@ -757,7 +757,7 @@ if __name__ == "__main__":
                     y = sep.join(x)
                     print(y, file=o)
 
-    
+
     # print seed file if we ever use random
 
     # dump imap, pmap, nmap, pmap

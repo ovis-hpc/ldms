@@ -1,47 +1,28 @@
+include $(top_srcdir)/ldms/rules.mk
+
 EXTRA_DIST=
 
 dist_man1_MANS= \
-ldms-csv-anonymize.man \
-ldms-csv-export-sos.man \
-lsdate.man
+ldms_lsdate.man
 
 dist_man8_MANS= \
+ldms_authentication.man \
 ldms_build_install.man \
-ldms_ls.man \
-ldms-static-test.man \
-ldmsd.man \
 ldms-plugins.man \
-ldmsd_exits.man \
+ldmsd-exits.man \
 ldmsd_controller.man \
 ldmsd_yaml_parser.man \
-ldmsctl.man
+ldms_stream.man
 
 dist_man7_MANS= \
-ldms_authentication.man \
-ldms_auth_none.man \
-ldms_auth_ovis.man \
-ldms_auth_munge.man \
-ldms_auth_naive.man \
+ldmsd_qgroup.man \
 ldms_quickstart.man \
-ldms_sampler_base.man \
-ldmsd_failover.man \
-ldmsd_setgroup.man \
-Plugin_jobid.man \
-Plugin_store_csv.man \
-Plugin_store_sos.man \
-Plugin_store_papi.man \
-Plugin_store_app.man \
-Plugin_store_kafka.man
+ldms-reverse-conf.man \
+ldms_csv_time_drops.man \
+ldmsd_sampler_advertisement.man \
+ldmsd-peer-daemon-advertisement.man
 
-if ENABLE_SLURMTEST
-dist_man8_MANS += pll-ldms-static-test.man
-endif
-EXTRA_DIST += pll-ldms-static-test.man
+ldmsd-exits.man: $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c
+	$(srcdir)/make_exits_man.sh $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c > ldmsd-exits.man
 
-dist_man7_MANS += Plugin_store_rabbitv3.man
-dist_man7_MANS += Plugin_store_rabbitkw.man
-
-ldmsd_exits.man: $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c
-	$(srcdir)/make_exits_man.sh $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c > ldmsd_exits.man
-
-CLEANFILES=ldmsd_exits.man
+CLEANFILES=ldmsd-exits.man

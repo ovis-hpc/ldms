@@ -489,7 +489,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (rc != 0){
 		return rc;
 	}
- 
+
 	rc = base_auth_parse(avl, &auth, mylog);
 	if (rc != 0){
 		return rc;

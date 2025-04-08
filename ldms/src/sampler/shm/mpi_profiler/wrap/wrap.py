@@ -72,7 +72,7 @@ pmpi_init_bindings = ["PMPI_INIT", "pmpi_init", "pmpi_init_", "pmpi_init__"]
 # In general, all MPI calls we care about return int.  We include double
 # to grab MPI_Wtick and MPI_Wtime, but we'll ignore the f2c and c2f calls
 # that return MPI_Datatypes and other such things.
-# MPI_Aint_add and MPI_Aint_diff return MPI_Aint, so include that too. 
+# MPI_Aint_add and MPI_Aint_diff return MPI_Aint, so include that too.
 rtypes = ['int', 'double', 'MPI_Aint' ]
 
 # If we find these strings in a declaration, exclude it from consideration.

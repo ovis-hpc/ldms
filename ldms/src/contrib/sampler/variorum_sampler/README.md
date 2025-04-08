@@ -63,4 +63,4 @@ reported as -1 on unsupported platforms); and
 memory power consumption in Watts.
 
 More details on using the sampler can be found on the
-[man page](Plugin_variorum_sampler.man).
+[man page](variorum_sampler.man).

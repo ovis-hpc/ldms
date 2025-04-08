@@ -1,3 +1,6 @@
+include $(top_srcdir)/ldms/rules.mk
+
+
 SUBDIRS=test
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
@@ -15,5 +18,5 @@ libdaos_sampler_la_SOURCES = daos.h daos.c \
 libdaos_sampler_la_LIBADD = $(COMMON_LIBADD) -lgurt \
 			    $(top_builddir)/ldms/src/sampler/libldms_compid_helper.la
 pkglib_LTLIBRARIES += libdaos_sampler.la
-dist_man7_MANS += Plugin_daos_sampler.man
+dist_man7_MANS += ldms-daos-sampler.man
 endif

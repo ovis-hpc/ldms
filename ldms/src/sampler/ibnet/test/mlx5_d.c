@@ -127,7 +127,7 @@ int mad_query_set_create(struct counter_range *r, size_t len_r)
 		r[i].qs = calloc(1, bytes);
 		if (!r[i].qs) {
 			errno = ENOMEM;
-			return errno; 
+			return errno;
 		}
 		r[i].qs->n = n;
 		// populate dec_val and names in slots
@@ -235,14 +235,14 @@ int main(int argc,char **argv)
 				goto cont;
 			}
 			for (k = 0 ; k < klast; k++) {
-				struct query_result *q = &(cr->qs->q[k]);		
+				struct query_result *q = &(cr->qs->q[k]);
 				mad_decode_field(rcv_buf, q->dec_val, &(q->val64));
 				printf("%s: %" PRIu64 "\t %" PRIx64"\n", q->field, q->val64, q->val64);
 			}
 		} else {
 			if ( cr->enabled == 1) {
 				for (k = 0 ; k < klast; k++) {
-					struct query_result *q = &(cr->qs->q[k]);		
+					struct query_result *q = &(cr->qs->q[k]);
 					printf("%s: n/a\t n/a\n", q->field);
 				}
 			}
