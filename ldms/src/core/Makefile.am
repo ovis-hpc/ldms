@@ -17,7 +17,7 @@ libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h \
 		     rrbt.c rrbt.h \
 		     ldms_heap.c ldms_heap.h \
 		     ldms_rail.c ldms_rail.h \
-		     ldms_stream.c ldms_stream.h \
+		     ldms_msg.c ldms_msg.h \
 		     ldms_qgroup.c ldms_qgroup.h
 libldms_la_LIBADD = -ldl -lpthread $(top_builddir)/lib/src/coll/libcoll.la \
 		    $(top_builddir)/lib/src/ovis_json/libovis_json.la \
@@ -32,10 +32,10 @@ lib_LTLIBRARIES += libldms.la
 if HAVE_LIBAVRO
 if HAVE_LIBSERDES
 
-ldmscoreinclude_HEADERS += ldms_stream_avro_ser.h
-libldms_stream_avro_ser_la_SOURCES = ldms_stream_avro_ser.c
-libldms_stream_avro_ser_la_LIBADD = libldms.la @LIBAVRO@ @LIBSERDES@
-lib_LTLIBRARIES += libldms_stream_avro_ser.la
+ldmscoreinclude_HEADERS += ldms_msg_avro_ser.h
+libldms_msg_avro_ser_la_SOURCES = ldms_msg_avro_ser.c
+libldms_msg_avro_ser_la_LIBADD = libldms.la @LIBAVRO@ @LIBSERDES@
+lib_LTLIBRARIES += libldms_msg_avro_ser.la
 
 endif
 endif

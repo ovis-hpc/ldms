@@ -117,7 +117,7 @@ struct __pending_sbuf_s {
 	uint32_t hop_num;
 	struct timespec recv_ts;
 	TAILQ_ENTRY(__pending_sbuf_s) entry;
-	struct __stream_buf_s *sbuf;
+	struct __msg_buf_s *sbuf;
 };
 
 /* a structure that tracks ldms xprt in the rail */
@@ -183,7 +183,7 @@ struct ldms_rail_s {
 
 	pthread_mutex_t mutex; /* mainly for state */
 
-	struct rbt stream_client_rbt; /* stream clients from the peer */
+	struct rbt ch_cli_rbt; /* stream clients from the peer */
 
 	ldms_rail_ep_state_t state;
 

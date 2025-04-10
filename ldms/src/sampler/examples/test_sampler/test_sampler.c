@@ -147,7 +147,7 @@ struct test_sampler_stream {
 	const char *name;
 	const char *path;
 	FILE *file;
-	ldms_stream_type_t type;
+	ldms_msg_type_t type;
 	struct test_sampler_stream_client_list client_list;
 	LIST_ENTRY(test_sampler_stream) entry;
 };
@@ -187,7 +187,7 @@ __stream_find(struct test_sampler_stream_list *list, const char *name)
 }
 
 static struct test_sampler_stream *
-__stream_new(const char *name, ldms_stream_type_t type)
+__stream_new(const char *name, ldms_msg_type_t type)
 {
 	struct test_sampler_stream *ts_stream;
 
@@ -1579,7 +1579,7 @@ static int config_add_stream(test_sampler_t ts, struct attr_value_list *avl)
 	int rc = 0;
 	char *stream_name, *type, *path, *xprt, *host, *port, *auth;
 	struct test_sampler_stream *ts_stream = NULL;
-	enum ldms_stream_type_e stype;
+	enum ldms_msg_type_e stype;
 	struct test_sampler_stream_client *c = NULL;
 	int free_stream = 0;
 
@@ -1595,9 +1595,9 @@ static int config_add_stream(test_sampler_t ts, struct attr_value_list *avl)
 		return EINVAL;
 	}
 	if (0 == strcasecmp(type, "json")) {
-		stype = LDMS_STREAM_JSON;
+		stype = LDMS_MSG_JSON;
 	} else if (0 == strcasecmp(type, "string")) {
-		stype = LDMS_STREAM_STRING;
+		stype = LDMS_MSG_STRING;
 	} else {
 		ovis_log(ts->log, OVIS_LERROR, "The 'type' value ('%s') is "
 							   "invalid.\n", type);
@@ -1910,7 +1910,7 @@ static int sample(ldmsd_plug_handle_t handle)
 	struct test_sampler_stream_client *c;
 	LIST_FOREACH(ts_stream, &ts->stream_list, entry) {
 		LIST_FOREACH(c, &ts_stream->client_list, entry) {
-			rc = ldms_stream_publish_file(
+			rc = ldms_msg_publish_file(
 					c->ldms,
 					ts_stream->name,
 					ts_stream->type,

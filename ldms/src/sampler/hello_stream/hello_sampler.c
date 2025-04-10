@@ -91,24 +91,24 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static int hello_recv_cb(ldms_stream_event_t ev, void *arg)
+static int hello_recv_cb(ldms_msg_event_t ev, void *arg)
 {
 	int rc = 0;
 	const char *type = "UNKNOWN";
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
+	if (ev->type != LDMS_MSG_EVENT_RECV)
 		return 0;
 	switch (ev->recv.type) {
-	case LDMS_STREAM_JSON:
+	case LDMS_MSG_JSON:
 		type = "JSON";
 		break;
-	case LDMS_STREAM_STRING:
+	case LDMS_MSG_STRING:
 		type = "STRING";
 		break;
 	default:
 		/* unhandled type */
 		return 0;
 	}
-	ovis_log(mylog, OVIS_LCRITICAL, "stream_type: %s, msg: \"%s\", "
+	ovis_log(mylog, OVIS_LCRITICAL, "msg_type: %s, msg: \"%s\", "
 					  "msg_len: %d, entity: %p\n",
 	       type, ev->recv.data, ev->recv.data_len, ev->recv.json);
 	return rc;
@@ -126,7 +126,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	else
 		stream = strdup("hello_stream/hello");
 
-	ldms_stream_subscribe(stream, 0, hello_recv_cb, handle, "hello_sampler");
+	ldms_msg_subscribe(stream, 0, hello_recv_cb, handle, "hello_sampler");
 
 	return rc;
 }

@@ -1766,8 +1766,8 @@ void __rail_process_send_quota(ldms_t x, struct ldms_request *req);
 void __rail_process_quota_reconfig(ldms_t x, struct ldms_request *req);
 void __rail_process_rate_reconfig(ldms_t x, struct ldms_request *req);
 
-/* implementation is in ldms_stream.c */
-void __stream_req_recv(ldms_t x, int cmd, struct ldms_request *req);
+/* implementation is in ldms_msg.c */
+void __msg_req_recv(ldms_t x, int cmd, struct ldms_request *req);
 void __qgroup_req_recv(ldms_t x, int cmd, struct ldms_request *req);
 
 enum ldms_thrstat_op_e req2thrstat_op_tbl[];
@@ -1816,10 +1816,10 @@ int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 	case LDMS_CMD_SEND_QUOTA:
 		__rail_process_send_quota(x, req);
 		break;
-	case LDMS_CMD_STREAM_MSG:
-	case LDMS_CMD_STREAM_SUB:
-	case LDMS_CMD_STREAM_UNSUB:
-		__stream_req_recv(x, cmd, req);
+	case LDMS_CMD_MSG:
+	case LDMS_CMD_MSG_SUB:
+	case LDMS_CMD_MSG_UNSUB:
+		__msg_req_recv(x, cmd, req);
 		break;
 	case LDMS_CMD_QGROUP_ASK:
 	case LDMS_CMD_QGROUP_DONATE:
@@ -2236,8 +2236,8 @@ void ldms_event_release(ldms_t t, ldms_notify_event_t e)
 	free(e);
 }
 
-/* implementation is in ldms_stream.c */
-int __stream_reply_recv(ldms_t x, int cmd, struct ldms_reply *reply);
+/* implementation is in ldms_msg.c */
+int __msg_reply_recv(ldms_t x, int cmd, struct ldms_reply *reply);
 
 static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 {
@@ -2270,9 +2270,9 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 	case LDMS_CMD_SET_DELETE_REPLY:
 		process_set_delete_reply(x, reply, ctxt);
 		break;
-	case LDMS_CMD_STREAM_SUB_REPLY:
-	case LDMS_CMD_STREAM_UNSUB_REPLY:
-		__stream_reply_recv(x, cmd, reply);
+	case LDMS_CMD_MSG_SUB_REPLY:
+	case LDMS_CMD_MSG_UNSUB_REPLY:
+		__msg_reply_recv(x, cmd, reply);
 		break;
 	default:
 		XPRT_LOG(x, OVIS_LERROR, "Unrecognized reply %d\n", cmd);
@@ -4672,8 +4672,8 @@ char *ldms_thrstat_op_str_tbl[] = {
 	[LDMS_THRSTAT_OP_LOOKUP_REPLY]		= "Lookup Replies",
 	[LDMS_THRSTAT_OP_UPDATE_REQ]		= "Update Requests",
 	[LDMS_THRSTAT_OP_UPDATE_REPLY]		= "Update Completes",
-	[LDMS_THRSTAT_OP_STREAM_MSG]		= "Stream Data",
-	[LDMS_THRSTAT_OP_STREAM_CLIENT]		= "Stream Client",
+	[LDMS_THRSTAT_OP_MSG_DATA]		= "Message Service Data",
+	[LDMS_THRSTAT_OP_MSG_CLIENT]		= "Message Service Client",
 	[LDMS_THRSTAT_OP_PUSH_REQ]		= "Push Requests",
 	[LDMS_THRSTAT_OP_PUSH_REPLY]		= "Push Replies",
 	[LDMS_THRSTAT_OP_SET_DELETE_REQ]	= "Set Delete Requests",

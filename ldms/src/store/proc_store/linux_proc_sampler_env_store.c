@@ -246,7 +246,7 @@ static const char *usage(ldmsd_plug_handle_t handle)
 		"     mode	The container permission mode for create, (defaults to 0660).\n";
 }
 
-static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt);
+static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt);
 
 static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -266,7 +266,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		stream = strdup(value);
 	else
 		stream = strdup(STREAM);
-	ldms_stream_subscribe(stream, 0, stream_recv_cb, context, "linux_proc_sampler_env_store");
+	ldms_msg_subscribe(stream, 0, stream_recv_cb, handle, "linux_proc_sampler_env_store");
 
 	value = av_value(avl, "path");
 	if (!value) {
@@ -323,7 +323,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 }
 
 
-static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
+static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt)
 {
 	int rc, task_rank;
 	json_entity_t v, list, item;
@@ -333,7 +333,7 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	char *json_v;
 	char *field;
 
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
+	if (ev->type != LDMS_MSG_EVENT_RECV)
 		return 0;
 
 	if (!ev->recv.json) {

@@ -12,13 +12,14 @@ ldms-plugins.man \
 ldmsd-exits.man \
 ldmsd_controller.man \
 ldmsd_yaml_parser.man \
-ldms_stream.man
+ldms_msg.man
 
 dist_man7_MANS= \
 ldmsd_qgroup.man \
 ldms_quickstart.man \
 ldms-reverse-conf.man \
-ldmsd_peer_daemon_advertisement.man
+ldmsd_peer_daemon_advertisement.man \
+ldms_msg.man
 
 ldmsd-exits.man: $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c
 	$(srcdir)/make_exits_man.sh $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c > ldmsd-exits.man
