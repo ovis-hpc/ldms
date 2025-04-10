@@ -135,7 +135,7 @@ struct js_stream_sampler_s {
 	char *uid;		/* User ID*/
 	char *gid;		/* Group ID*/
 	char *perm;		/* Permission */
-	ldms_stream_client_t stream_client;
+	ldms_msg_client_t stream_client;
 	pthread_mutex_t sch_tree_lock;
 	struct rbt sch_tree;
 	LIST_HEAD(, js_entry_s) set_list;
@@ -802,7 +802,7 @@ static int get_schema_for_json(js_stream_sampler_t js, char *name, json_entity_t
 	return rc;
 }
 
-static int json_recv_cb(ldms_stream_event_t ev, void *arg);
+static int json_recv_cb(ldms_msg_event_t ev, void *arg);
 
 #define DEFAULT_HEAP_SZ 512
 /*
@@ -912,7 +912,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	else
 		js->perm = strdup("0660");
 
-	js->stream_client = ldms_stream_subscribe(js->stream_name, 0,
+	js->stream_client = ldms_msg_subscribe(js->stream_name, 0,
 				json_recv_cb, handle, "js_stream_sampler");
 	if (!js->stream_client) {
 		LERROR("Cannot create stream client.\n");
@@ -1097,14 +1097,14 @@ static void purge_schema_tree(ldmsd_cfgobj_store_t scfg, js_stream_sampler_t js)
 	}
 }
 
-static int __stream_close(ldms_stream_event_t ev, ldmsd_cfgobj_store_t scfg)
+static int __stream_close(ldms_msg_event_t ev, ldmsd_cfgobj_store_t scfg)
 {
 	js_stream_sampler_t js = scfg->context;
 	purge_schema_tree(scfg, js);
 	return 0;
 }
 
-static int __stream_recv(ldms_stream_event_t ev, ldmsd_cfgobj_store_t scfg)
+static int __stream_recv(ldms_msg_event_t ev, ldmsd_cfgobj_store_t scfg)
 {
 	js_stream_sampler_t js = scfg->context;
 	const char *msg;
@@ -1116,10 +1116,10 @@ static int __stream_recv(ldms_stream_event_t ev, ldmsd_cfgobj_store_t scfg)
 	ldms_set_t l_set;
 	js_set_t j_set;
 
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
+	if (ev->type != LDMS_MSG_EVENT_RECV)
 		return 0;
 	LDEBUG("thread: %lu, stream: '%s', msg: '%s'\n", pthread_self(), ev->recv.name, ev->recv.data);
-	if (ev->recv.type != LDMS_STREAM_JSON) {
+	if (ev->recv.type != LDMS_MSG_JSON) {
 		LERROR("Unexpected stream type data...ignoring\n");
 		return 0;
 	}
@@ -1205,14 +1205,14 @@ err_0:
 	return rc;
 }
 
-static int json_recv_cb(ldms_stream_event_t ev, void *arg)
+static int json_recv_cb(ldms_msg_event_t ev, void *arg)
 {
 	ldmsd_cfgobj_store_t scfg = arg;
 
 	switch (ev->type)  {
-	case LDMS_STREAM_EVENT_CLOSE:
+	case LDMS_MSG_EVENT_CLIENT_CLOSE:
 		return __stream_close(ev, scfg);
-	case LDMS_STREAM_EVENT_RECV:
+	case LDMS_MSG_EVENT_RECV:
 		return __stream_recv(ev, scfg);
 	default:
 		/* ignore other events */
@@ -1231,7 +1231,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 {
 	js_stream_sampler_t js = ldmsd_plug_ctxt_get(handle);
 	if (js->stream_client)
-		ldms_stream_close(js->stream_client); /* CLOSE event will clean up `p` */
+		ldms_msg_client_close(js->stream_client); /* CLOSE event will clean up `p` */
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {

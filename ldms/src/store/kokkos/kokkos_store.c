@@ -860,7 +860,7 @@ static int cmp_json_name(const void *a, const void *b, size_t len)
 	return strncmp(a, b, len);
 }
 
-static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt);
+static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt);
 static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
@@ -871,7 +871,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		stream = strdup(value);
 	else
 		stream = strdup("kokkos");
-	ldms_stream_subscribe(stream, 0, slurm_recv_cb, handle, "kokkos_store");
+	ldms_msg_subscribe(stream, 0, slurm_recv_cb, handle, "kokkos_store");
 
 	value = av_value(avl, "path");
 	if (!value) {
@@ -932,13 +932,13 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	return rc;
 }
 
-static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
+static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt)
 {
 	json_entity_t list;
 	int rc;
 	json_entity_t entity;
 
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
+	if (ev->type != LDMS_MSG_EVENT_RECV)
 		return 0;
 
 	kokkos_context_t k = calloc(1, sizeof *k);

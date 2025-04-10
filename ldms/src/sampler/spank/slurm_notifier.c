@@ -541,7 +541,7 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	LIST_INIT(&delete_list);
 	LIST_FOREACH(client, &client_list, entry) {
 		DEBUG2("publishing to %s:%s\n", client->host, client->port);
-		rc = ldms_stream_publish(client->ldms, stream, LDMS_STREAM_JSON,
+		rc = ldms_msg_publish(client->ldms, stream, LDMS_MSG_JSON,
 				NULL, 0440, jb->buf, jb->cursor+1);
 		if (rc) {
 			DEBUG2("ERROR %d publishing to %s:%s\n",

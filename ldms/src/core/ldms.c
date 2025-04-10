@@ -100,9 +100,9 @@ const char *ldms_xprt_op_names[] = {
 	"DIR_REP",
 	"SEND",
 	"RECV",
-	"STREAM_PUBLISH",
-	"STREAM_SUBSCRIBE",
-	"STREAM_UNSUBSCRIBE"
+	"MSG_PUBLISH",
+	"MSG_SUBSCRIBE",
+	"MSG_UNSUBSCRIBE"
 };
 static char *type_names[];
 
@@ -116,9 +116,9 @@ int __enable_profiling[LDMS_XPRT_OP_COUNT] = {
 	PROFILING_CFG_UNSUPPORTED,       /* dir_rep */
 	PROFILING_CFG_DISABLED,          /* send */
 	PROFILING_CFG_UNSUPPORTED,       /* receive */
-	PROFILING_CFG_DISABLED,          /* stream_publish */
-	PROFILING_CFG_UNSUPPORTED,       /* stream_subscribe */
-	PROFILING_CFG_UNSUPPORTED	 /* stream_unsubscribe */
+	PROFILING_CFG_DISABLED,          /* msg_publish */
+	PROFILING_CFG_UNSUPPORTED,       /* msg_subscribe */
+	PROFILING_CFG_UNSUPPORTED	 /* msg_unsubscribe */
 };
 
 int ldms_profiling_enable(int ops_cnt, enum ldms_xprt_ops_e *ops, int *ops_err)
@@ -1201,8 +1201,8 @@ int delete_thread_init_once()
 	return rc;
 }
 
-/* implementation in ldms_stream.c */
-void __ldms_stream_stats_init();
+/* implementation in ldms_msg.c */
+void __ldms_msg_stats_init();
 
 int ldms_init(size_t max_size)
 {
@@ -1222,7 +1222,7 @@ int ldms_init(size_t max_size)
 	__ldms_config.default_authz_gid = getegid();
 	__ldms_config.default_authz_perm = 0440;
 	pthread_rwlock_init(&__ldms_config.default_authz_lock, NULL);
-	__ldms_stream_stats_init();
+	__ldms_msg_stats_init();
 	return delete_thread_init_once();
 }
 
@@ -6082,30 +6082,30 @@ ldms_mval_as_timestamp(ldms_mval_t mv, enum ldms_value_type type, int idx)
 	return ts;
 }
 
-const char *ldms_stream_type_sym(ldms_stream_type_t t)
+const char *ldms_msg_type_sym(ldms_msg_type_t t)
 {
 	static const char *tbl[] = {
-		[LDMS_STREAM_STRING]   = "LDMS_STREAM_STRING",
-		[LDMS_STREAM_JSON]     = "LDMS_STREAM_JSON",
-		[LDMS_STREAM_AVRO_SER] = "LDMS_STREAM_AVRO_SER",
+		[LDMS_MSG_STRING]   = "LDMS_MSG_STRING",
+		[LDMS_MSG_JSON]     = "LDMS_MSG_JSON",
+		[LDMS_MSG_AVRO_SER] = "LDMS_MSG_AVRO_SER",
 	};
 
-	if (t < LDMS_STREAM_LAST)
+	if (t < LDMS_MSG_LAST)
 		return tbl[t];
 	return "UNKNOWN";
 }
 
-const char *ldms_stream_event_type_sym(enum ldms_stream_event_type t)
+const char *ldms_msg_event_type_sym(enum ldms_msg_event_type t)
 {
 	static const char *tbl[] = {
-		[LDMS_STREAM_EVENT_RECV] = "LDMS_STREAM_EVENT_RECV",
-		[LDMS_STREAM_EVENT_CLOSE] = "LDMS_STREAM_EVENT_CLOSE",
-		[LDMS_STREAM_EVENT_SUBSCRIBE_STATUS] =
-			"LDMS_STREAM_EVENT_SUBSCRIBE_STATUS",
-		[LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS] =
-			"LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS",
+		[LDMS_MSG_EVENT_RECV] = "LDMS_MSG_EVENT_RECV",
+		[LDMS_MSG_EVENT_CLIENT_CLOSE] = "LDMS_MSG_EVENT_CLIENT_CLOSE",
+		[LDMS_MSG_EVENT_SUBSCRIBE_STATUS] =
+			"LDMS_MSG_EVENT_SUBSCRIBE_STATUS",
+		[LDMS_MSG_EVENT_UNSUBSCRIBE_STATUS] =
+			"LDMS_MSG_EVENT_UNSUBSCRIBE_STATUS",
 	};
-	if (t < LDMS_STREAM_EVENT_LAST)
+	if (t < LDMS_MSG_EVENT_LAST)
 		return tbl[t];
 	return "UNKNOWN";
 }

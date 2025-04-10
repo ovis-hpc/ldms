@@ -496,7 +496,7 @@ struct linux_proc_sampler_inst_s {
 	char *fd_stream;
 	char *recycle_buf;
 	size_t recycle_buf_sz;
-	ldms_stream_client_t stream;
+	ldms_msg_client_t stream;
 	int log_send;
 	char *argv_sep;
 	char *syscalls; /* file of 'int name' lines with # comments */
@@ -1709,7 +1709,7 @@ Option descriptions:\n\
 		when needed to disambiguate producer names that appear in multiple clusters.\n\
 	      (default: no prefix).\n\
     exe_suffix  Append executable path to set instance names.\n\
-    stream    The name of the `ldms_stream` to listen for SLURM job events.\n\
+    stream    The name of the `ldms_msg` to listen for SLURM job events.\n\
 	      (default: slurm).\n\
     sc_clk_tck=1 Include sc_clk_tck, the ticks per second, in the set.\n\
               The default is to exclude sc_clk_tck.\n\
@@ -2651,7 +2651,7 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 			app_set->key.os_pid, argc, off, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldms_stream_publish(NULL, inst->env_stream, LDMS_STREAM_JSON, NULL, 0440, buf, off);
+	ldms_msg_publish(NULL, inst->env_stream, LDMS_MSG_JSON, NULL, 0440, buf, off);
 out:
 	free(vsub);
 	release_proc_strings(envp, argc);
@@ -2791,7 +2791,7 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 			app_set->key.os_pid, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldms_stream_publish(NULL, inst->argv_stream, LDMS_STREAM_JSON, NULL, 0440, buf, off);
+	ldms_msg_publish(NULL, inst->argv_stream, LDMS_MSG_JSON, NULL, 0440, buf, off);
 out:
 	release_proc_strings(argv, argc);
 	free(vbuf);
@@ -2915,7 +2915,7 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 			app_set->key.os_pid, fd, str, state, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldms_stream_publish(NULL, inst->fd_stream, LDMS_STREAM_JSON, NULL, 0440, buf, ssize);
+	ldms_msg_publish(NULL, inst->fd_stream, LDMS_MSG_JSON, NULL, 0440, buf, ssize);
 	return 0;
 }
 
@@ -3592,17 +3592,17 @@ int __handle_task_exit(linux_proc_sampler_inst_t inst, json_entity_t data)
 	return 0;
 }
 
-static int __stream_cb(ldms_stream_event_t ev, void *ctxt)
+static int __stream_cb(ldms_msg_event_t ev, void *ctxt)
 {
 	int rc;
 	linux_proc_sampler_inst_t inst = ctxt;
 	json_entity_t event, data;
 	const char *event_name;
 
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
+	if (ev->type != LDMS_MSG_EVENT_RECV)
 		return 0;
 
-	if (ev->recv.type != LDMS_STREAM_JSON) {
+	if (ev->recv.type != LDMS_MSG_JSON) {
 		INST_LOG(inst, OVIS_LDEBUG, "Unexpected stream type data...ignoring\n");
 		INST_LOG(inst, OVIS_LDEBUG, "%s\n", ev->recv.data);
 		rc = EINVAL;
@@ -3937,7 +3937,7 @@ linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kw
 no_pids:	;
 	}
 	/* subscribe to the stream */
-	inst->stream = ldms_stream_subscribe(inst->stream_name, 0, __stream_cb, inst, "linux_proc_sampler");
+	inst->stream = ldms_msg_subscribe(inst->stream_name, 0, __stream_cb, inst, "linux_proc_sampler");
 	if (!inst->stream) {
 		INST_LOG(inst, OVIS_LERROR,
 			 "Error subcribing to stream `%s`: %d\n",
@@ -3962,7 +3962,7 @@ void linux_proc_sampler_cleanup(linux_proc_sampler_inst_t inst)
 
 	ovis_log(inst->mylog, OVIS_LDEBUG, "terminating plugin linux_proc_sampler\n");
 	if (inst->stream)
-		ldms_stream_close(inst->stream);
+		ldms_msg_client_close(inst->stream);
 	pthread_mutex_lock(&inst->mutex);
 	while ((rbn = rbt_min(&inst->set_rbt))) {
 		rbt_del(&inst->set_rbt, rbn);

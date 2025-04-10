@@ -69,7 +69,7 @@
 static ovis_log_t mylog;
 static char *papi_stream_name;
 base_data_t papi_base = NULL;
-ldms_stream_client_t stream_client = NULL;
+ldms_msg_client_t stream_client = NULL;
 
 pthread_mutex_t job_lock = PTHREAD_MUTEX_INITIALIZER;
 struct rbt job_tree;		/* indexed by job_key */
@@ -821,14 +821,14 @@ static void handle_job_exit(job_data_t job, json_entity_t e)
 	release_job_data(job);
 }
 
-static int stream_recv_cb(ldms_stream_type_t stream_type,
+static int stream_recv_cb(ldms_msg_type_t msg_type,
 			  const char *msg, size_t msg_len,
 			  json_entity_t entity)
 {
 	int rc = 0;
 	json_entity_t event, data, dict, attr;
 
-	if (stream_type != LDMS_STREAM_JSON) {
+	if (msg_type != LDMS_MSG_JSON) {
 		ovis_log(mylog, OVIS_LDEBUG, "papi_sampler: Unexpected stream type data...ignoring\n");
 		ovis_log(mylog, OVIS_LDEBUG, "papi_sampler:" "%s\n", msg);
 		return EINVAL;
@@ -886,9 +886,9 @@ static int stream_recv_cb(ldms_stream_type_t stream_type,
 	return rc;
 }
 
-static int stream_cb(ldms_stream_event_t ev, void *arg)
+static int stream_cb(ldms_msg_event_t ev, void *arg)
 {
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
+	if (ev->type != LDMS_MSG_EVENT_RECV)
 		return 0;
 	return stream_recv_cb(ev->recv.type, ev->recv.data, ev->recv.data_len,
 			      ev->recv.json);
@@ -922,7 +922,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 			return EINVAL;
 		}
 	}
-	stream_client =  ldms_stream_subscribe(papi_stream_name, 0, stream_cb, NULL, "papi_sampler");
+	stream_client =  ldms_msg_subscribe(papi_stream_name, 0, stream_cb, handle, "papi_sampler");
 	if (!stream_client) {
 		ovis_log(mylog, OVIS_LERROR, "papi_sampler[%d]: Error %d attempting "
 		       "subscribe to the '%s' stream.\n",
@@ -945,7 +945,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 		papi_base = NULL;
 	}
 	if (stream_client) {
-		ldms_stream_close(stream_client);
+		ldms_msg_client_close(stream_client);
 		stream_client = NULL;
 	}
 }

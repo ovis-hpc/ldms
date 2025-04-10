@@ -151,38 +151,38 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 }
 #endif
 
-static int stream_subscribe_status_ev(ldms_stream_event_t ev, void *arg)
+static int stream_subscribe_status_ev(ldms_msg_event_t ev, void *arg)
 {
 	/* no-op */
 	return 0;
 }
 
-static int stream_unsubscribe_status_ev(ldms_stream_event_t ev, void *arg)
+static int stream_unsubscribe_status_ev(ldms_msg_event_t ev, void *arg)
 {
 	/* no-op */
 	return 0;
 }
 
-static int stream_recv_ev(ldms_stream_event_t ev, void *arg)
+static int stream_recv_ev(ldms_msg_event_t ev, void *arg)
 {
 	if (events_raw) {
 		msglog("%s\n", ev->recv.data);
 		return 0;
 	}
 	msglog("EVENT:{\"type\":\"%s\",\"size\":%d,\"event\":%s}\n",
-			LDMS_STREAM_STRING ? "string" : "json",
+			LDMS_MSG_STRING ? "string" : "json",
 			ev->recv.data_len, ev->recv.data);
 	return 0;
 }
 
-static int stream_ev_cb(ldms_stream_event_t ev, void *cb_arg)
+static int stream_ev_cb(ldms_msg_event_t ev, void *cb_arg)
 {
 	switch (ev->type) {
-	case LDMS_STREAM_EVENT_RECV:
+	case LDMS_MSG_EVENT_RECV:
 		return stream_recv_ev(ev, cb_arg);
-	case LDMS_STREAM_EVENT_SUBSCRIBE_STATUS:
+	case LDMS_MSG_EVENT_SUBSCRIBE_STATUS:
 		return stream_subscribe_status_ev(ev, cb_arg);
-	case LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS:
+	case LDMS_MSG_EVENT_UNSUBSCRIBE_STATUS:
 		return stream_unsubscribe_status_ev(ev, cb_arg);
 	default:
 		msglog("ERROR: UNSUPPORTED EVENT %d\n", ev->type);
@@ -555,7 +555,7 @@ int main(int argc, char **argv)
 		errno = rc;
 		perror("Could not listen");
 	}
-	ldms_stream_client_t client = ldms_stream_subscribe(stream, 0, stream_ev_cb, NULL, "client");
+	ldms_msg_client_t client = ldms_msg_subscribe(stream, 0, stream_ev_cb, NULL, "client");
 #if 0
 	ldmsd_stream_client_t client = ldmsd_stream_subscribe(stream, stream_recv_cb, NULL);
 #endif

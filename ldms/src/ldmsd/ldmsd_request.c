@@ -7061,13 +7061,13 @@ json_t *__ldms_op_profiling_as_json(struct ldms_op_ctxt *xc, enum ldms_xprt_ops_
 		json_object_set_new(stat, "acknowledge",
 				json_real(__ts2double(xc->set_del_profile.ack_ts)));
 		break;
-	case LDMS_XPRT_OP_STREAM_PUBLISH:
+	case LDMS_XPRT_OP_MSG_PUBLISH:
 		json_object_set_new(stat, "hop_cnt",
-				json_integer(xc->stream_pub_profile.hop_num));
+				json_integer(xc->msg_pub_profile.hop_num));
 		json_object_set_new(stat, "recv",
-				json_real(__ts2double(xc->stream_pub_profile.recv_ts)));
+				json_real(__ts2double(xc->msg_pub_profile.recv_ts)));
 		json_object_set_new(stat, "send",
-				json_real(__ts2double(xc->stream_pub_profile.send_ts)));
+				json_real(__ts2double(xc->msg_pub_profile.send_ts)));
 		break;
 	default:
 		break;
@@ -7077,17 +7077,17 @@ json_t *__ldms_op_profiling_as_json(struct ldms_op_ctxt *xc, enum ldms_xprt_ops_
 
 int __stream_profiling_as_json(json_t **_jobj, int is_reset) {
 	json_t *jobj, *strm_jobj, *src_jobj, *hop_jobj, *prf_array, *prf_jobj;
-	struct ldms_stream_stats_tq_s *tq;
-	struct ldms_stream_stats_s *ss;
-	struct ldms_stream_src_stats_s *strm_src;
-	struct ldms_stream_profile_ent *prf;
+	struct ldms_msg_ch_stats_tq_s *tq;
+	struct ldms_msg_ch_stats_s *ss;
+	struct ldms_msg_src_stats_s *strm_src;
+	struct ldms_msg_profile_ent *prf;
 	struct ldms_addr addr;
 	char addr_buf[128] = "";
 	struct rbn *rbn;
 	int i, rc = 0;
 
 	jobj = json_object();
-	tq = ldms_stream_stats_tq_get(NULL, 0, is_reset);
+	tq = ldms_msg_ch_stats_tq_get(NULL, 0, is_reset);
 	if (!tq) {
 		/* no stream ... nothing to do here. */
 		goto out;
@@ -7098,7 +7098,7 @@ int __stream_profiling_as_json(json_t **_jobj, int is_reset) {
 		RBT_FOREACH(rbn, &ss->src_stats_rbt) {
 			src_jobj = json_array();
 
-			strm_src = container_of(rbn, struct ldms_stream_src_stats_s, rbn);
+			strm_src = container_of(rbn, struct ldms_msg_src_stats_s, rbn);
 			addr = strm_src->src;
 			ldms_addr_ntop(&addr, addr_buf, sizeof(addr_buf));
 			TAILQ_FOREACH(prf, &strm_src->profiles, ent) {
@@ -7953,7 +7953,7 @@ static const char *__xprt_prdcr_name_get(ldms_t x)
 static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *stream_name;
-	ldms_stream_type_t stream_type = LDMS_STREAM_STRING;
+	ldms_msg_type_t msg_type = LDMS_MSG_STRING;
 	ldmsd_req_attr_t attr;
 	int cnt;
 	char *p_name;
@@ -7985,13 +7985,13 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 	/* Check for JSon */
 	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_JSON);
 	if (attr) {
-		stream_type = LDMS_STREAM_JSON;
+		msg_type = LDMS_MSG_JSON;
 	} else {
 		goto out_0;
 	}
 out_1:
 	p_name = (char *)__xprt_prdcr_name_get(reqc->xprt->ldms.ldms);
-	ldms_stream_publish(NULL, stream_name, stream_type, NULL, 0440,
+	ldms_msg_publish(NULL, stream_name, msg_type, NULL, 0440,
 			    (char*)attr->attr_value, attr->attr_len);
 out_0:
 	free(stream_name);
@@ -8069,10 +8069,10 @@ static int stream_stats_handler(ldmsd_req_ctxt_t reqc)
 	if (reset_s && (0 == strcasecmp(reset_s, "true")))
 		is_reset = 1;
 
-	s = ldms_stream_stats_str(match, is_regex, is_reset);
+	s = ldms_msg_stats_str(match, is_regex, is_reset);
 	if (!s) {
 		reqc->errcode = errno;
-		snprintf(buff, sizeof(buff), "ldms_stream_stats_str() error: %d",
+		snprintf(buff, sizeof(buff), "ldms_msg_stats_str() error: %d",
 				errno);
 		ldmsd_send_req_response(reqc, buff);
 		rc = 0;
@@ -8119,10 +8119,10 @@ static int stream_client_stats_handler(ldmsd_req_ctxt_t reqc)
 	if (reset_s && (0 == strcasecmp(reset_s, "true")))
 		is_reset = 1;
 
-	s = ldms_stream_client_stats_str(is_reset);
+	s = ldms_msg_client_stats_str(is_reset);
 	if (!s) {
 		reqc->errcode = errno;
-		snprintf(buff, sizeof(buff), "ldms_stream_client_stats_str() error: %d",
+		snprintf(buff, sizeof(buff), "ldms_msg_client_stats_str() error: %d",
 				errno);
 		ldmsd_send_req_response(reqc, buff);
 		return 0;
@@ -9027,7 +9027,7 @@ static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	if (is_stream)
-		ldms_stream_n_client_stats_reset();
+		ldms_msg_stats_reset();
 out:
 	free(s);
 	ldmsd_send_req_response(reqc, reqc->line_buf);

@@ -199,7 +199,7 @@ struct csv_stream_handle {
 	int64_t byte_count; /* for the roll. Cumulative since last roll */
 	struct timeval tlastrcv; /* for the flush. */
 	struct linedata dataline; /* used to keep track of keys for the header */
-	ldms_stream_client_t client; /* subscribe/unsubscribe */
+	ldms_msg_client_t client; /* subscribe/unsubscribe */
 	pthread_mutex_t lock;
 };
 
@@ -256,7 +256,7 @@ static void close_streamstore(void *obj, void *cb_arg)
 
 	/* unsubscribe */
 	if (stream_handle->client)
-		ldms_stream_close(stream_handle->client);
+		ldms_msg_client_close(stream_handle->client);
 	stream_handle->client = NULL;
 
 	if (stream_handle->file) {
@@ -741,7 +741,7 @@ out:
 }
 
 static void _roll_innards(struct csv_stream_handle *stream_handle);
-static int stream_cb(ldms_stream_event_t ev, void *ctxt)
+static int stream_cb(ldms_msg_event_t ev, void *ctxt)
 {
 
 	struct csv_stream_handle *stream_handle;
@@ -749,7 +749,7 @@ static int stream_cb(ldms_stream_event_t ev, void *ctxt)
 	int gottime = 0;
 	int rc = 0;
 
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
+	if (ev->type != LDMS_MSG_EVENT_RECV)
 		return 0;
 
 #ifdef STREAM_CSV_DIAGNOSTICS
@@ -822,7 +822,7 @@ static int stream_cb(ldms_stream_event_t ev, void *ctxt)
 	 * entity will also be populated.
 	 */
 
-	if (ev->recv.type == LDMS_STREAM_STRING) {
+	if (ev->recv.type == LDMS_MSG_STRING) {
 		/* note that the string might have a newline as part of it */
 #ifdef TIMESTAMP_STORE
 		rc = fprintf(stream_handle->file, "%s,%f\n",
@@ -842,7 +842,7 @@ static int stream_cb(ldms_stream_event_t ev, void *ctxt)
 			fflush(stream_handle->file);
 			fsync(fileno(stream_handle->file));
 		}
-	} else if (ev->recv.type == LDMS_STREAM_JSON) {
+	} else if (ev->recv.type == LDMS_MSG_JSON) {
 		if (!ev->recv.json) {
 			ovis_log(mylog, OVIS_LERROR, "Why is entity NULL?\n");
 			rc = EINVAL;
@@ -967,7 +967,7 @@ static int open_streamstore(char *stream)
 	}
 
 	ovis_log(mylog, OVIS_LDEBUG, "Subscribing to stream '%s'\n", stream);
-	stream_handle->client = ldms_stream_subscribe(stream, 0, stream_cb,
+	stream_handle->client = ldms_msg_subscribe(stream, 0, stream_cb,
 					stream_handle, "stream_csv_store");
 	idx_add(stream_idx, (void*) stream, strlen(stream), stream_handle);
 	pthread_mutex_unlock(&stream_handle->lock);

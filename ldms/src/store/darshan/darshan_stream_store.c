@@ -271,7 +271,7 @@ static const char *usage(ldmsd_plug_handle_t handle)
 }
 
 static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
-			 ldmsd_stream_type_t stream_type,
+			 ldmsd_stream_type_t msg_type,
 			 const char *msg, size_t msg_len,
 			 json_entity_t entity);
 static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
@@ -357,7 +357,7 @@ static int get_json_value(ldmsd_plug_handle_t handle,
 
 
 static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
-			  ldmsd_stream_type_t stream_type,
+			  ldmsd_stream_type_t msg_type,
 			  const char *msg, size_t msg_len,
 			  json_entity_t entity)
 {

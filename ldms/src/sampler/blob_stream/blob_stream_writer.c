@@ -93,7 +93,7 @@ typedef struct stream_data {
 	char* offsetfile_name;
 	char* timingfile_name;
 	char* typefile_name;
-	ldms_stream_client_t subscription;
+	ldms_msg_client_t subscription;
 	/* set at first write */
 	FILE* offsetfile;
 	FILE* streamfile;
@@ -117,9 +117,9 @@ char blob_stream_char_to_type(char c)
 {
 	switch (c) {
 	case 's':
-		return LDMS_STREAM_STRING;
+		return LDMS_MSG_STRING;
 	case 'j':
-		return LDMS_STREAM_JSON;
+		return LDMS_MSG_JSON;
 		break;
 #if 0
 	case 'b':
@@ -131,12 +131,12 @@ char blob_stream_char_to_type(char c)
 	}
 }
 
-char blob_stream_type_to_char(ldms_stream_type_t stream_type)
+char blob_stream_type_to_char(ldms_msg_type_t msg_type)
 {
-	switch (stream_type) {
-	case LDMS_STREAM_STRING:
+	switch (msg_type) {
+	case LDMS_MSG_STRING:
 		return 's';
-	case LDMS_STREAM_JSON:
+	case LDMS_MSG_JSON:
 		return 'j';
 #if 0
 	case LDMSD_STREAM_BINARY:
@@ -144,17 +144,17 @@ char blob_stream_type_to_char(ldms_stream_type_t stream_type)
 #endif
 	default:
 		ovis_log(mylog, OVIS_LERROR, "unexpected stream type %d\n",
-			stream_type);
+			msg_type);
 		return '\0';
 	}
 }
 
 /* open, if not open or already closed, and write to stream files. */
-static int stream_cb(ldms_stream_event_t ev, void *ctxt)
+static int stream_cb(ldms_msg_event_t ev, void *ctxt)
 {
 	int rc = 0;
 	stream_data_t sd = ctxt;
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
+	if (ev->type != LDMS_MSG_EVENT_RECV)
 		return 0;
 	if (!sd) {
 		ovis_log(mylog, OVIS_LERROR, "stream_cb ctxt is NULL\n");
@@ -443,7 +443,7 @@ static int set_paths(stream_data_t sd)
 	if (!sd->subscription) {
 		ovis_log(mylog, OVIS_LDEBUG, "subscribing to stream '%s'\n",
 			sd->stream_name);
-		sd->subscription = ldms_stream_subscribe(sd->stream_name, 0,
+		sd->subscription = ldms_msg_subscribe(sd->stream_name, 0,
 			stream_cb, sd, "blob_stream_writer");
 		/* stream dispatch to stream_cb now holds a reference to sd. */
 	}
@@ -599,7 +599,7 @@ static void stream_data_close( stream_data_t sd )
 	}
 	free(sd->stream_name);
 	sd->stream_name = NULL;
-	ldms_stream_close(sd->subscription);
+	ldms_msg_client_close(sd->subscription);
 	/* sd reference is no longer hiding inside cb handler */
 	sd->subscription = NULL;
 	sd->ws = WS_CLOSED;
