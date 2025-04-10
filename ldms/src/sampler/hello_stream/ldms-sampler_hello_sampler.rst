@@ -76,8 +76,8 @@ Within ldmsd_controller or a configuration file:
 
    In the log file of the ldmsd:
    > cat log.txt
-   Mon May 04 19:44:05 2020: CRITICAL  : stream_type: STRING, msg: "foo", msg_len: 4, entity: (nil)
-   Mon May 04 19:44:24 2020: CRITICAL  : stream_type: STRING, msg: "bar", msg_len: 4, entity: (nil)
+   Mon May 04 19:44:05 2020: CRITICAL  : msg_type: STRING, msg: "foo", msg_len: 4, entity: (nil)
+   Mon May 04 19:44:24 2020: CRITICAL  : msg_type: STRING, msg: "bar", msg_len: 4, entity: (nil)
 
    Note that the hello_streams sampler does not do a sample, instead it subscribes to the stream with a callback and prints out what it got off the stream.
 

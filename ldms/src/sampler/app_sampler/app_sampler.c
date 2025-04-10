@@ -445,7 +445,7 @@ struct app_sampler_inst_s {
 	pthread_mutex_t mutex;
 
 	char *stream_name;
-	ldms_stream_client_t stream;
+	ldms_msg_client_t stream;
 
 	handler_fn_t fn[16];
 	int n_fn;
@@ -1262,7 +1262,7 @@ app_sampler config synopsis: \n\
                             [metrics=METRICS] [cfg_file=FILE]\n\
 \n\
 Option descriptions:\n\
-    stream    The name of the `ldms_stream` to listen for SLURM job events.\n\
+    stream    The name of the `ldms_msg` to listen for SLURM job events.\n\
               (default: slurm).\n\
     metrics   The comma-separated list of metrics to monitor.\n\
               The default is "" (empty), which is equivalent to monitor ALL\n\
@@ -1483,16 +1483,16 @@ int __handle_task_exit(app_sampler_inst_t inst, json_entity_t data)
 	return 0;
 }
 
-int __stream_cb(ldms_stream_event_t ev, void *ctxt)
+int __stream_cb(ldms_msg_event_t ev, void *ctxt)
 {
 	app_sampler_inst_t inst = ctxt;
 	json_entity_t event, data;
 	const char *event_name;
 
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
+	if (ev->type != LDMS_MSG_EVENT_RECV)
 		return 0;
 
-	if (ev->recv.type != LDMS_STREAM_JSON) {
+	if (ev->recv.type != LDMS_MSG_JSON) {
 		INST_LOG(inst, OVIS_LDEBUG, "Unexpected stream type data...ignoring\n");
 		INST_LOG(inst, OVIS_LDEBUG, "%s\n", ev->recv.data);
 		return EINVAL;
@@ -1616,7 +1616,7 @@ app_sampler_config(ldmsd_plug_handle_t pi, struct attr_value_list *kwl,
 		goto err;
 
 	/* subscribe to the stream */
-	inst->stream = ldms_stream_subscribe(inst->stream_name, 0, __stream_cb, inst, "app_sampler");
+	inst->stream = ldms_msg_subscribe(inst->stream_name, 0, __stream_cb, inst, "app_sampler");
 	if (!inst->stream) {
 		INST_LOG(inst, OVIS_LERROR,
 			 "Error subcribing to stream `%s`: %d",
@@ -1703,7 +1703,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 	struct app_sampler_set *app_set;
 
 	if (inst->stream)
-		ldms_stream_close(inst->stream);
+		ldms_msg_client_close(inst->stream);
 	pthread_mutex_lock(&inst->mutex);
 	while ((rbn = rbt_min(&inst->set_rbt))) {
 		rbt_del(&inst->set_rbt, rbn);

@@ -48,8 +48,8 @@
  */
 
 /**
- * \file ldms_stream_avro_ser.h
- * \brief Public interfaces for Avro/Serdes support in ldms_stream.
+ * \file ldms_msg_avro_ser.h
+ * \brief Public interfaces for Avro/Serdes support in ldms_msg.
  *
  * Link with `-lldms_stream_avro_ser` to use functions declared in this header.
  */
@@ -66,8 +66,8 @@
  *
  * \remark
  *     If you wish to just publish bytes of Avro/Serdes encoded data, simply
- *     call \c ldms_stream_publish() the encoded data with \c stream_type being
- *     \c LDMS_STREAM_AVRO_SER. According to libserdes readme
+ *     call \c ldms_msg_publish() the encoded data with \c msg_type being
+ *     \c LDMS_MSG_AVRO_SER. According to libserdes readme
  *     (https://github.com/confluentinc/libserdes?tab=readme-ov-file#configuration)
  *     the default framing for both serializer and deserializer is \c cp1
  *     (Confluent Platform framing). An alternative is currently \c none, i.e.
@@ -111,7 +111,7 @@
  * \retval EIO For other \c serdes -related errors.
  * \retval errno Other errors.
  */
-int ldms_stream_publish_avro_ser(ldms_t x, const char *stream_name,
+int ldms_msg_publish_avro_ser(ldms_t x, const char *stream_name,
 				 ldms_cred_t cred, uint32_t perm,
 				 avro_value_t *value, serdes_t *serdes,
 				 struct serdes_schema_s **sch);
@@ -119,11 +119,11 @@ int ldms_stream_publish_avro_ser(ldms_t x, const char *stream_name,
 /**
  * \brief Stream event for Avro/Serdes steam client.
  */
-typedef struct ldms_stream_avro_ser_event_s {
-	struct ldms_stream_event_s ev; /**< The base event. */
+typedef struct ldms_msg_avro_ser_event_s {
+	struct ldms_msg_event_s ev; /**< The base event. */
 	avro_value_t *avro_value;      /**< The avro value object. */
 	serdes_schema_t *serdes_schema; /**< The associated schema. */
-} *ldms_stream_avro_ser_event_t;
+} *ldms_msg_avro_ser_event_t;
 
 
 /**
@@ -131,8 +131,8 @@ typedef struct ldms_stream_avro_ser_event_s {
  *
  * The callback function is called when there is an event on the stream. The
  * \c ev is owned by LDMS library and will be invalidated after the application
- * callback function is returned. See \c ldms_stream(7) manual (or
- * \c docs/ldms_stream.rst) for more information and example about stream and
+ * callback function is returned. See \c ldms_msg(7) manual (or
+ * \c docs/ldms_msg.rst) for more information and example about stream and
  * callbacks.
  *
  * \c ev->avro_value is the Avro value object decoded from the stream data. This
@@ -150,14 +150,14 @@ typedef struct ldms_stream_avro_ser_event_s {
  *
  * \param ev The callback event.
  */
-typedef int (*ldms_stream_avro_ser_event_cb_t)(ldms_stream_avro_ser_event_t ev, void *cb_arg);
+typedef int (*ldms_msg_avro_ser_event_cb_t)(ldms_msg_avro_ser_event_t ev, void *cb_arg);
 
 /**
  * \brief Subscribe to a stream with Avro/Serdes decoding.
  *
- * This is essentially the same as \c ldms_stream_subscribe(), but with
+ * This is essentially the same as \c ldms_msg_subscribe(), but with
  * \c serdes handle to decode data encoded by Avro/Serdes (see also:
- * \c ldms_stream_publish_avro_ser()).
+ * \c ldms_msg_publish_avro_ser()).
  *
  * \param stream   The stream name or regular expression.
  * \param is_regex 1 if `stream` is a regular expression. Otherwise, 0.
@@ -171,8 +171,8 @@ typedef int (*ldms_stream_avro_ser_event_cb_t)(ldms_stream_avro_ser_event_t ev, 
  *               the error.
  * \retval ptr   The stream client handle.
  */
-ldms_stream_client_t
-ldms_stream_subscribe_avro_ser(const char *stream, int is_regex,
-		      ldms_stream_avro_ser_event_cb_t cb_fn, void *cb_arg,
+ldms_msg_client_t
+ldms_msg_subscribe_avro_ser(const char *stream, int is_regex,
+		      ldms_msg_avro_ser_event_cb_t cb_fn, void *cb_arg,
 		      const char *desc, serdes_t *serdes);
 #endif

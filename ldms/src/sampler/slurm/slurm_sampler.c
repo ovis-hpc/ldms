@@ -461,7 +461,7 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt);
+static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt);
 
 static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -482,7 +482,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		ovis_log(mylog, OVIS_LERROR, "out of memory\n");
 		return ENOMEM;
 	}
-	ldms_stream_subscribe(stream, 0, slurm_recv_cb, handle, "slurm_sampler");
+	ldms_msg_subscribe(stream, 0, slurm_recv_cb, handle, "slurm_sampler");
 
 	value = av_value(avl, "producer");
 	if (!value) {
@@ -852,16 +852,16 @@ static void handle_job_exit(job_data_t job, json_entity_t e)
 	ldms_transaction_end(job_set);
 }
 
-static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
+static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt)
 {
 	int rc = EINVAL;
 	json_entity_t event, data, dict, attr;
 	uint64_t tstamp;
 
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
+	if (ev->type != LDMS_MSG_EVENT_RECV)
 		return 0;
 
-	if (ev->recv.type != LDMS_STREAM_JSON) {
+	if (ev->recv.type != LDMS_MSG_JSON) {
 		ovis_log(mylog, OVIS_LDEBUG, "Unexpected stream type data...ignoring\n");
 		ovis_log(mylog, OVIS_LDEBUG, "%s\n", ev->recv.data);
 		return EINVAL;

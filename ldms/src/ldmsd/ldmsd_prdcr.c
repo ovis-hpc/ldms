@@ -1318,7 +1318,7 @@ static int __is_regex(const char *s)
 	return 0;
 }
 
-int __remote_subscribe_cb(ldms_stream_event_t ev, void *cb_arg)
+int __remote_subscribe_cb(ldms_msg_event_t ev, void *cb_arg)
 {
 	/* TODO handle subscription return code */
 	return 0;
@@ -1353,7 +1353,7 @@ int __old_ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
 static int __prdcr_stream_subscribe(ldmsd_prdcr_t prdcr, const char *stream, int64_t rate)
 {
 	if (ldms_xprt_is_remote_rail(prdcr->xprt))
-		return ldms_stream_remote_subscribe(prdcr->xprt,
+		return ldms_msg_remote_subscribe(prdcr->xprt,
 				stream, __is_regex(stream),
 				__remote_subscribe_cb, prdcr, rate);
 	return __old_ldmsd_prdcr_subscribe(prdcr, stream);
@@ -1440,7 +1440,7 @@ int ldmsd_prdcr_unsubscribe(ldmsd_prdcr_t prdcr, const char *stream)
 	free(s);
 	if (prdcr->conn_state == LDMSD_PRDCR_STATE_CONNECTED) {
 		if (ldms_xprt_is_remote_rail(prdcr->xprt)) {
-			rc = ldms_stream_remote_unsubscribe(prdcr->xprt,
+			rc = ldms_msg_remote_unsubscribe(prdcr->xprt,
 					stream, __is_regex(stream),
 					__remote_subscribe_cb, prdcr);
 		} else {

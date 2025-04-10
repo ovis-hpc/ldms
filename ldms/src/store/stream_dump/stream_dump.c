@@ -115,7 +115,7 @@ pthread_mutex_t __mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct __client_s {
 	struct rbn rbn;
-	ldms_stream_client_t c;
+	ldms_msg_client_t c;
 	FILE *f;
 	char stream[OVIS_FLEX];
 };
@@ -152,11 +152,11 @@ static int __is_regex(const char *s)
 	return 0;
 }
 
-int __stream_cb(ldms_stream_event_t ev, void *cb_arg)
+int __stream_cb(ldms_msg_event_t ev, void *cb_arg)
 {
 	struct __client_s *cli = cb_arg;
 	int tid = (pid_t) syscall (SYS_gettid);
-	if (ev->type != LDMS_STREAM_EVENT_RECV) /* ignore other events */
+	if (ev->type != LDMS_MSG_EVENT_RECV) /* ignore other events */
 		return 0;
 	fprintf(cli->f, "\x1%d: %.*s\n", tid, ev->recv.data_len, ev->recv.data);
 	return 0;
@@ -196,9 +196,9 @@ static int __op_subscribe(const char *stream, const char *path)
 	}
 	snprintf(desc, sizeof(desc), "stream_dump, path:%s", path);
 	setbuf(cli->f, NULL); /* do not buffer */
-	cli->c = ldms_stream_subscribe(stream, __is_regex(stream), __stream_cb, cli, desc);
+	cli->c = ldms_msg_subscribe(stream, __is_regex(stream), __stream_cb, cli, desc);
 	if (!cli->c) {
-		ERR_LOG("ldms_stream_subscribe() failed: %d\n", errno);
+		ERR_LOG("ldms_msg_subscribe() failed: %d\n", errno);
 		rc = errno;
 		goto err2;
 	}
@@ -230,7 +230,7 @@ static int __op_close(const char *stream)
 	rbt_del(&rbt, rbn);
 	pthread_mutex_unlock(&__mutex);
 	cli = container_of(rbn, struct __client_s, rbn);
-	ldms_stream_close(cli->c);
+	ldms_msg_client_close(cli->c);
 	fclose(cli->f);
 	free(cli);
 	return 0;
@@ -305,7 +305,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 		rbt_del(&rbt, rbn);
 		pthread_mutex_unlock(&__mutex);
 		cli = container_of(rbn, struct __client_s, rbn);
-		ldms_stream_close(cli->c);
+		ldms_msg_client_close(cli->c);
 		fclose(cli->f);
 		free(cli);
 		pthread_mutex_lock(&__mutex);

@@ -929,8 +929,8 @@ struct slps_send_result slps_send_event(struct slps *l, jbuf_t jb)
 					EPOCH_STRING, l->stream, __func__,
 					__LINE__, jb->buf);
 			}
-			target->last_publish_rc = ldms_stream_publish(
-				target->ldms, l->stream, LDMS_STREAM_JSON,
+			target->last_publish_rc = ldms_msg_publish(
+				target->ldms, l->stream, LDMS_MSG_JSON,
 				NULL, 0440, jb->buf, jb->cursor + 1);
 			if (target->last_publish_rc) {
 				if (l->send_log_f)
@@ -1000,8 +1000,8 @@ struct slps_send_result slps_send_string(struct slps *l, size_t buf_len,
 					EPOCH_STRING, l->stream, __func__,
 					__LINE__, buf);
 			}
-			target->last_publish_rc = ldms_stream_publish(
-				target->ldms, l->stream, LDMS_STREAM_STRING,
+			target->last_publish_rc = ldms_msg_publish(
+				target->ldms, l->stream, LDMS_MSG_STRING,
 				NULL, 0440, buf, buf_len);
 			target->last_publish_rc = 0;
 			if (target->last_publish_rc) {

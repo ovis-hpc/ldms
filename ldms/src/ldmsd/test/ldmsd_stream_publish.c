@@ -63,7 +63,7 @@ int main(int argc, char **argv)
 	struct attr_value_list *auth_opt = NULL;
 	const int auth_opt_max = AUTH_OPT_MAX;
 	FILE *file;
-	ldms_stream_type_t typ = LDMS_STREAM_STRING;
+	ldms_msg_type_t typ = LDMS_MSG_STRING;
 	int line_mode = 0;	/* publish each line separately */
 	int repeat = 0;
 	unsigned interval = 0;
@@ -144,9 +144,9 @@ int main(int argc, char **argv)
 			break;
 		case 't':
 			if (0 == strcmp("json", optarg)) {
-				typ = LDMS_STREAM_JSON;
+				typ = LDMS_MSG_JSON;
 			} else if (0 == strcmp("string", optarg)) {
-				typ = LDMS_STREAM_STRING;
+				typ = LDMS_MSG_STRING;
 			} else {
 				printf("The type argument must be 'json' or 'string'\n");
 				usage(argc, argv);
@@ -216,7 +216,7 @@ int main(int argc, char **argv)
 	int k;
 	if (!line_mode) {
 		for (k = 0; k < repeat; k++) {
-			rc = ldms_stream_publish_file(ldms, stream, typ, &cred, perm, file);
+			rc = ldms_msg_publish_file(ldms, stream, typ, &cred, perm, file);
 			if (repeat == 1 && rc) {
 				printf("Error %d publishing file.\n", rc);
 				return rc;
@@ -235,7 +235,7 @@ int main(int argc, char **argv)
 		if (k)
 			rewind(file);
 		while (0 != (s = fgets(line_buffer, sizeof(line_buffer)-1, file))) {
-			ldms_stream_publish(ldms, stream, typ, &cred, perm, s, strlen(s)+1);
+			ldms_msg_publish(ldms, stream, typ, &cred, perm, s, strlen(s)+1);
 		}
 		if (k)
 			printf("loop: %d finished.\n", k);
