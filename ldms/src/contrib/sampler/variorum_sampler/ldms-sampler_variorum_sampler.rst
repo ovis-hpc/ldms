@@ -34,7 +34,7 @@ Watts; GPU power consumption in Watts (aggregated across all GPUs on the
 socket, and reported as -1 on unsupported platforms); and memory power
 consumption in Watts.
 
-The variorum sampler depends on Variorum 0.6.0 or higher and Jansson.
+The variorum sampler depends on Variorum 0.8.0 or higher and Jansson.
 The sampler cannot be built without these libraries. If either library
 is installed in a non-standard location, paths to the respective install
 directories should be provided to Autoconf using the
