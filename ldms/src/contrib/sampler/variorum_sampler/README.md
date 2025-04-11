@@ -9,7 +9,7 @@ architecture and implementation.
 Build Requirements
 ------------------
 
-The Variorum LDMS sampler currently requires version 0.6.0 or higher
+The Variorum LDMS sampler currently requires version 0.8.0 or higher
 of the Variorum library (``libvariorum.so``). This library must be built
 from source. The sampler also requires jansson, which is a Variorum
 dependency. If both libraries are installed in standard locations,
@@ -52,7 +52,7 @@ Using the Variorum LDMS Sampler
 
 The sampler, when configured, automatically detects the number of sockets
 on the host machine and then provides, for each socket, an LDMS record
-containing power data. The sampler calls ``variorum_get_node_power_json``
+containing power data. The sampler calls ``variorum_get_power_json``
 internally, for which documentation can be found here:
 [Variorum JSON-Support Functions](https://variorum.readthedocs.io/en/latest/api/json_support_functions.html)
 
