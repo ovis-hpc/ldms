@@ -96,7 +96,7 @@ static const char *_help_str =
 "              decomposition=decomp.json\n"
 "";
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  _help_str;
 }
@@ -104,7 +104,7 @@ static const char *usage(struct ldmsd_cfgobj *self)
 pthread_mutex_t sk_lock = PTHREAD_MUTEX_INITIALIZER;
 static rd_kafka_conf_t *common_rconf = NULL;
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	int rc = 0;
@@ -269,7 +269,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 	return rc;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	pthread_mutex_lock(&sk_lock);
 	if (common_rconf) {

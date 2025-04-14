@@ -141,7 +141,7 @@ struct js_stream_sampler_s {
 	pthread_mutex_t lock;
 };
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return \
 	"config name=js_stream_sampler producer=<prod_name> \n"
@@ -809,13 +809,13 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg);
  *		the instance name from features from the JSON object
  *		and the transport on which the object was received.
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
-	ldmsd_cfgobj_store_t scfg = (ldmsd_cfgobj_store_t)self;
+	ldmsd_cfgobj_store_t scfg = (ldmsd_cfgobj_store_t)ldmsd_plugin_cfg_get(self);
 	char *value;
 	int rc;
-	js_stream_sampler_t js = (js_stream_sampler_t)scfg->context;
+	js_stream_sampler_t js = (js_stream_sampler_t)ldmsd_plugin_ctxt_get(self);
 
 	if (__sync_bool_compare_and_swap(&js->initialized, 0, 1)) {
 		pthread_mutex_init(&js->lock, NULL);
@@ -829,9 +829,9 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 		       "to process stream '%s'. Use `term name=%s to "
 		       "terminate the plugin and remove all associated "
 		       "sets and stream clients.\n",
-		       self->name,
+		       ldmsd_plugin_cfg_name_get(self),
 		       js->stream_name,
-		       self->name);
+		       ldmsd_plugin_cfg_name_get(self));
 		pthread_mutex_unlock(&js->lock);
 		return EEXIST;
 	}
@@ -913,7 +913,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 		js->perm = strdup("0660");
 
 	js->stream_client = ldms_stream_subscribe(js->stream_name, 0,
-				json_recv_cb, scfg, "js_stream_sampler");
+				json_recv_cb, self, "js_stream_sampler");
 	if (!js->stream_client) {
 		LERROR("Cannot create stream client.\n");
 		rc = errno;
@@ -1220,7 +1220,7 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 	}
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	ldmsd_cfgobj_store_t scfg = (ldmsd_cfgobj_store_t)self;
 	js_stream_sampler_t js = (js_stream_sampler_t)scfg->context;

@@ -101,7 +101,7 @@ struct cray_power_sampler {
 	int hfcount;
 };
 
-static const char *cray_power_sampler_usage(struct ldmsd_cfgobj *self)
+static const char *cray_power_sampler_usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=cray_power_sampler producer=<prod_name>"
 		" instance=<inst_name> [hfinterval=<hfinterval>] "
@@ -132,7 +132,7 @@ void cray_power_sampler_cleanup(struct cray_power_sampler *cps)
 }
 
 static
-void cray_power_sampler_term(struct ldmsd_cfgobj *self)
+void cray_power_sampler_term(ldmsd_plugin_handle_t self)
 {
 	cray_power_sampler_cleanup((void*)self);
 }
@@ -178,7 +178,7 @@ void cray_power_sampler_timer_cb(tsampler_timer_t t)
 	ldms_metric_array_set_u64(t->set, t->mid, t->idx, v);
 }
 static
-int cray_power_sampler_config(struct ldmsd_cfgobj *self,
+int cray_power_sampler_config(ldmsd_plugin_handle_t self,
 				struct attr_value_list *kwl,
 				struct attr_value_list *avl)
 {

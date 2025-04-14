@@ -215,7 +215,7 @@ static int config_check(struct attr_value_list *keyword_list, struct attr_value_
  * @param self this plugin instance.
  * @return usage string.
  */
-static const char *usage(struct ldmsd_cfgobj *self) {
+static const char *usage(ldmsd_plugin_handle_t self) {
     return "config name=" SAMP " "
     BASE_CONFIG_USAGE;
 }
@@ -223,7 +223,7 @@ static const char *usage(struct ldmsd_cfgobj *self) {
 /**
  * Plugin instance constructor.  Base is an instance of the sampler base "class".
  */
-static int config(struct ldmsd_cfgobj *self,
+static int config(ldmsd_plugin_handle_t self,
                   struct attr_value_list *keyword_list,
                   struct attr_value_list *attribute_value_list) {
 #ifdef ENABLE_AUTO_SIMULATION
@@ -254,7 +254,7 @@ static int config(struct ldmsd_cfgobj *self,
 
     // Create an instance from the base "class".  This is effectively calling
     // the base class constructor.
-    base = base_config(attribute_value_list, self->name, SAMP, __gpu_metrics_log);
+    base = base_config(attribute_value_list, ldmsd_plugin_cfg_name_get(self), SAMP, __gpu_metrics_log);
     if (!base) {
         rc = errno;
         goto err;
@@ -320,7 +320,7 @@ static int sample(struct ldmsd_cfgobj_sampler *self) {
  * close any opened handles.
  * @param self this plugin instance.
  */
-static void term(struct ldmsd_cfgobj *self) {
+static void term(ldmsd_plugin_handle_t self) {
     // No longer need to free device handle array here.
 
     size_t mallocCount = getMallocCount();

@@ -238,7 +238,7 @@ static void llites_sample()
         }
 }
 
-static int config(struct ldmsd_cfgobj *self,
+static int config(ldmsd_plugin_handle_t self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         ovis_log(lustre_client_log, OVIS_LDEBUG, "config() called\n");
@@ -283,14 +283,14 @@ static int sample(struct ldmsd_cfgobj_sampler *self)
         return err;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	ovis_log(lustre_client_log, OVIS_LDEBUG, "term() called\n");
 	llites_destroy();
 	llite_general_schema_fini();
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
         ovis_log(lustre_client_log, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP;

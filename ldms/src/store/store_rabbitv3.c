@@ -315,7 +315,7 @@ out:
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	value = av_value(avl, "extraprops");
@@ -522,14 +522,14 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	/* What contract is this supposed to meet. Shall close(sh) have
 	been called for all existing sh already before this is reached.?
 	*/
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return
 	"    config name=store_rabbitv3 root=<root> host=<host> port=<port> exchange=<exch> \\ \n"

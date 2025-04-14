@@ -136,7 +136,7 @@ static void gs_metric_free(gs_metric_t gs_metric)
 	free(gs_metric);
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return
 "config name=generic_sampler component_id=<comp_id>  path=<path>\n"
@@ -257,7 +257,7 @@ void permute_metrics(char *name, enum ldms_value_type type)
 	free(suffix);
 }
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value, *ptr, *tok, *t;
 	enum ldms_value_type type;
@@ -321,7 +321,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 	return create_metric_set(value, prod_name);
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	if (schema)
 		ldms_schema_delete(schema);

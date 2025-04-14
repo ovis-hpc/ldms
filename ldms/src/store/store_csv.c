@@ -649,7 +649,7 @@ static void __sc_init(store_csv_t sc)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_cfgobj *cfgobj, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t cfgobj, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	ldmsd_cfgobj_store_t scfg = (ldmsd_cfgobj_store_t)cfgobj;
 	store_csv_t sc = scfg->context;
@@ -837,7 +837,7 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	ldmsd_cfgobj_store_t scfg = (ldmsd_cfgobj_store_t)self;
 
@@ -856,7 +856,7 @@ static void term(struct ldmsd_cfgobj *self)
 	pthread_mutex_unlock(&sc->cfg_lock);
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "    config name=store_csv path=<path> rollover=<num> rolltype=<num>\n"
 		"           [altheader=<0/!0> userdata=<0/!0>]\n"

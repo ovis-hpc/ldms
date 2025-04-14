@@ -105,7 +105,7 @@ static const char *_usage = "\
 ";
 
 static const char *
-__usage(struct ldmsd_cfgobj *self)
+__usage(ldmsd_plugin_handle_t self)
 {
 	return _usage;
 }
@@ -239,7 +239,7 @@ static int __op_close(const char *stream)
 }
 
 static int
-__config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
+__config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
 		struct attr_value_list *avl)
 {
 	const char *op = av_value(avl, "op");
@@ -257,7 +257,7 @@ __config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 }
 
 static void
-__term(struct ldmsd_cfgobj *self)
+__term(ldmsd_plugin_handle_t self)
 {
 	struct rbn *rbn;
 	struct __client_s *cli;

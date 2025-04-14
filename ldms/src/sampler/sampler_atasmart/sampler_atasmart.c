@@ -269,7 +269,7 @@ err:
 	return ENOMEM;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=" SAMP " disks=<disknames> " BASE_CONFIG_USAGE
 		"    <disks>        A comma-separated list of disk names,\n"
@@ -279,7 +279,7 @@ static const char *usage(struct ldmsd_cfgobj *self)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *s;
@@ -331,7 +331,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 		return -1;
 	}
 
-	base = base_config(avl, self->name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if (!base){
 		rc = EINVAL;
 		goto err;
@@ -441,7 +441,7 @@ err:
 	return ret;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 
 	int i;

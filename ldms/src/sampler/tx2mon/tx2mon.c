@@ -479,7 +479,7 @@ static char * compute_schema_name(int pidarray, int pidextra, struct attr_value_
  * Plug-in data structure and access method.
  */
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = -1;
 	char *array, *extra;
@@ -522,7 +522,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 		goto err;
 	}
 
-	base = base_config(avl, self->name, sbuf, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), sbuf, mylog);
 	if (!base) {
 		goto err;
 	}
@@ -554,7 +554,7 @@ err:
 
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return
 "config name=" SAMP " [port-number=<num>]\n"
@@ -576,7 +576,7 @@ static const char *usage(struct ldmsd_cfgobj *self)
 	        ;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	int i;
 	if (base)

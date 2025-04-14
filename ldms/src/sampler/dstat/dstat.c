@@ -423,7 +423,7 @@ static int create_metric_set(base_data_t base)
 
 
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE
 		" [io=<bool>] [stat=<bool>] [statm=<bool>] [mmalloc=<bool>] [fd=<bool>] [fdtypes=<bool>] [sc_clk_tck=<1/*>\n"
@@ -464,7 +464,7 @@ static const char *dstat_words[] = {
  *
  * See usage().
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 
@@ -497,7 +497,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 		goto err;
 	}
 
-	base = base_config(avl, self->name, sbuf, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), sbuf, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -566,7 +566,7 @@ static int sample(struct ldmsd_cfgobj_sampler *self)
 	return rc;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	if (base)
 		base_del(base);

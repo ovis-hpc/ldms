@@ -170,7 +170,7 @@ influx_value_set_fn influx_value_set[] = {
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	pthread_mutex_lock(&cfg_lock);
@@ -197,11 +197,11 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 	return 0;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "    config name=influx host_port=<hostname>':'<port_no>\n";
 }

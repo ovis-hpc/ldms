@@ -531,7 +531,7 @@ int open_ports(struct scib_port_list *list)
 	return 0;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return
 		"config name=" SAMP " ports=<ports> [metrics_type=<mtype>] " \
@@ -547,7 +547,7 @@ static const char *usage(struct ldmsd_cfgobj *self)
  * PORTS is a comma-separate list of the form CARD1.PORT1,CARD2.PORT2,...
  * 	or just a single '*' (w/o quote) for all ports
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 
 	int rc = 0;
@@ -586,7 +586,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	base = base_config(avl, self->name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if (!base){
 		rc = EINVAL;
 		goto err;
@@ -724,7 +724,7 @@ static int sample(struct ldmsd_cfgobj_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_cfgobj *self){
+static void term(ldmsd_plugin_handle_t self){
 
 	struct scib_port *port;
 	while ((port = LIST_FIRST(&scib_port_list))) {

@@ -340,7 +340,7 @@ static int create_metric_set(dvs_mount_t dvsm)
 	return rc;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=" SAMP "producer=<name> instance=<name> [component_id=<int>] [schema=<name>] [conffile=<cfgfile>]\n"
 		"                [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>]\n"
@@ -418,11 +418,11 @@ static int local_config(struct attr_value_list *avl,
 
 }
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 
-	cfg_base = base_config(avl, self->name, SAMP, mylog);
+	cfg_base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if (!cfg_base)
 		return EINVAL;
 	rc = local_config(avl, SAMP, SAMP);
@@ -699,7 +699,7 @@ static int sample(struct ldmsd_cfgobj_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	int i;
 

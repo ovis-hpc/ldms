@@ -241,7 +241,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=" SAMP " address=<address> username=<username> password=<password> " BASE_CONFIG_USAGE
 		"    address       address of the host to contact. h flag in the ipmi-sensors command (e.g., cn1-ipmi).\n"
@@ -249,7 +249,7 @@ static const char *usage(struct ldmsd_cfgobj *self)
 		"    password      password for the ipmi query. p flag in the ipmi-sensors command (default 'password').\n";
 }
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *hostname, *username, *password;
 	int rc;
@@ -286,7 +286,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 		goto err;
 
 
-	base = base_config(avl, self->name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -374,7 +374,7 @@ static int sample(struct ldmsd_cfgobj_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 
 	cmd[0] = '\0';

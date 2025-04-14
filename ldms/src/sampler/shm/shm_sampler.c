@@ -750,11 +750,11 @@ static int scan_index(const char* const index_name, int boxlen, int metric_max,
 	return rc;
 }
 
-static int shm_sampler_config(struct ldmsd_cfgobj *self, struct attr_value_list* avl)
+static int shm_sampler_config(ldmsd_plugin_handle_t self, struct attr_value_list* avl)
 {
 
 	int rc;
-	initial_base_config = base_config(avl, self->name, SAMP, mylog);
+	initial_base_config = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if(!initial_base_config) {
 		rc = errno;
 		base_del(initial_base_config);
@@ -870,7 +870,7 @@ static int config_check(struct attr_value_list *kwl,
  *     shm_metric_max	Maximum number of metrics from any process.
  *     shm_set_timeout	Maximum idle time on a set before it is destroyed. 0==infinity
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
 		struct attr_value_list *avl)
 {
 	int rc;
@@ -967,7 +967,7 @@ static int sample(struct ldmsd_cfgobj_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	ldms_shm_index_lock();
 
@@ -997,7 +997,7 @@ static void term(struct ldmsd_cfgobj *self)
 	ovis_log(mylog, OVIS_LINFO, SAMP " was successfully terminated\n");
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return "config name=" SAMP " producer=<name> instance=<name> [shm_index=<name>][shm_boxmax=<int>][shm_array_max=<int>][shm_metric_max=<int>]"
 	"[shm_set_timeout=<int>][component_id=<int>] [schema=<name>]\n"

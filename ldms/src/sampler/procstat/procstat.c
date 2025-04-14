@@ -495,7 +495,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=" SAMP " maxcpu=<ncpu> sc_clk_tck=1" BASE_CONFIG_USAGE
 		"    maxcpu       The number of cpus to record. If fewer exist, report 0s; if more ignore them.\n"
@@ -505,7 +505,7 @@ static const char *usage(struct ldmsd_cfgobj *self)
 
 /**
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value, *endp = NULL;
 	int rc = EINVAL;
@@ -520,7 +520,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	g.base = base_config(avl, self->name, SAMP, g.mylog);
+	g.base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, g.mylog);
 	if (!g.base) {
 		rc = errno;
 		goto out;
@@ -735,7 +735,7 @@ err1:
 #undef GET_STAT_SCALAR
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	if (g.core_data) {
 		free(g.core_data);

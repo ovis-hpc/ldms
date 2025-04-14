@@ -306,7 +306,7 @@ create_metric_set(const char *instance_name, char* schema_name)
 	return rc;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=" SAMP " producer=<prod_name> instance=<inst_name>]\n [component_id=<compid>}"
 		"    <prod_name>  The producer name\n"
@@ -322,7 +322,7 @@ static const char *usage(struct ldmsd_cfgobj *self)
  *     instance_name    The set name.
  */
 static int
-config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char			*value;
 	int			rc;
@@ -439,7 +439,7 @@ sample(struct ldmsd_cfgobj_sampler *self)
 }
 
 static void
-term(struct ldmsd_cfgobj *self)
+term(ldmsd_plugin_handle_t self)
 {
 	if (job_schema)
 		ldms_schema_delete(job_schema);

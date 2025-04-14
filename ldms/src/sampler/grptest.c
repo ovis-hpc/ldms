@@ -84,7 +84,7 @@ const char *prefix = NULL;
 
 static ldms_schema_t sc;
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=" SAMP BASE_CONFIG_USAGE;
 }
@@ -149,11 +149,11 @@ err0:
 	return rc;
 }
 
-static int config_init(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
+static int config_init(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
 		       struct attr_value_list *avl)
 {
 	int rc;
-	base = base_config(avl, self->name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err0;
@@ -176,7 +176,7 @@ err0:
 	return rc;
 }
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	int rc = 0;
@@ -248,7 +248,7 @@ static int sample(struct ldmsd_cfgobj_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	if (mf)
 		fclose(mf);

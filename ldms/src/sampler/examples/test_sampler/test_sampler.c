@@ -1700,7 +1700,7 @@ err:
 	return rc;
 }
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	ldmsd_cfgobj_sampler_t sampler = (ldmsd_cfgobj_sampler_t)self;
 	test_sampler_t ts = sampler->context;
@@ -1927,7 +1927,7 @@ static int sample(struct ldmsd_cfgobj_sampler *self)
 	return 0;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "Create and define schema:\n"
 		"config name=inst-name action=add_schema schema=<schema_name>\n"
@@ -1993,12 +1993,12 @@ static const char *usage(struct ldmsd_cfgobj *self)
 		"    <auth>           A authentication domain name\n";
 }
 
-static int constructor(struct ldmsd_cfgobj *self)
+static int constructor(ldmsd_plugin_handle_t self)
 {
 	ldmsd_cfgobj_sampler_t sampler = (ldmsd_cfgobj_sampler_t)self;
 	test_sampler_t ts = calloc(1, sizeof *ts);
 	if (!ts)
-		return NULL;
+		return errno;
 	sampler->context = ts;
 	LIST_INIT(&ts->schema_list);
 	LIST_INIT(&ts->set_list);
@@ -2006,7 +2006,7 @@ static int constructor(struct ldmsd_cfgobj *self)
 	return 0;
 }
 
-static void destructor(struct ldmsd_cfgobj *self)
+static void destructor(ldmsd_plugin_handle_t self)
 {
 	ldmsd_cfgobj_sampler_t sampler = (ldmsd_cfgobj_sampler_t)self;
 	test_sampler_t ts = (test_sampler_t)sampler->context;

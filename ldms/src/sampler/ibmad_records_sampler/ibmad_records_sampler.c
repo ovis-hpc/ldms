@@ -759,7 +759,7 @@ static void strip_whitespace(char **start)
 }
 
 
-static int config(struct ldmsd_cfgobj *self,
+static int config(ldmsd_plugin_handle_t self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         char *value;
@@ -767,7 +767,7 @@ static int config(struct ldmsd_cfgobj *self,
 
         ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
-        sampler_base = base_config(avl, self->name, "ibmad", mylog);
+        sampler_base = base_config(avl, ldmsd_plugin_cfg_name_get(self), "ibmad", mylog);
 
 	value = av_value(avl, "rate");
 	if (value != NULL && value[0] == '0') {
@@ -840,7 +840,7 @@ static int sample(struct ldmsd_cfgobj_sampler *self)
         return interfaces_tree_sample();
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
         ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
         interfaces_tree_destroy();
@@ -849,7 +849,7 @@ static void term(struct ldmsd_cfgobj *self)
         sampler_base = NULL;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
         ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP " " BASE_CONFIG_SYNOPSIS

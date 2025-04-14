@@ -585,7 +585,7 @@ int deatach_pids()
 	return 0;
 }
 
-static int config_hw(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
+static int config_hw(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
 		     struct attr_value_list *avl)
 {
 	int rc = 0;
@@ -604,7 +604,7 @@ static int config_hw(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 		goto out;
 	}
 
-	base = base_config(avl, self->name, default_schema_name, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), default_schema_name, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -741,7 +741,7 @@ out:
  *     metafile	    The PAPI configuration file name and path
  *
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
 	struct attr_value_list * avl)
 {
 
@@ -1335,7 +1335,7 @@ err1:
 	return 0;
 }
 
-static void term_hw(struct ldmsd_cfgobj *self)
+static void term_hw(ldmsd_plugin_handle_t self)
 {
 	if (hwc) {
 		if (hwc->started) {
@@ -1363,7 +1363,7 @@ static void term_hw(struct ldmsd_cfgobj *self)
 	}
 }
 
-static void term(struct ldmsd_cfgobj * self)
+static void term(ldmsd_plugin_handle_t  self)
 {
 	if (hw_only) {
 		term_hw(self);
@@ -1387,7 +1387,7 @@ static void term(struct ldmsd_cfgobj * self)
 	set = NULL;
 }
 
-static const char *usage(struct ldmsd_cfgobj * self)
+static const char *usage(ldmsd_plugin_handle_t  self)
 {
 	return
 	"config name=spapi producer=<producer_name> metafile=<file>\n"

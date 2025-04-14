@@ -92,7 +92,7 @@ int dao_log(int level, const char *fmt, ...)
 	return rc;
 }
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char	*ival;
 	int	 rc;
@@ -214,7 +214,7 @@ static int sample(struct ldmsd_cfgobj_sampler *self)
 	return rc;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	dao_log(OVIS_LDEBUG, "term() called\n");
 	rank_targets_destroy();
@@ -224,7 +224,7 @@ static void term(struct ldmsd_cfgobj *self)
 	pool_target_schema_fini();
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	dao_log(OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE;

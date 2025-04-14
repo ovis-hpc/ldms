@@ -646,7 +646,7 @@ int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
 		goto out_metrics;
 	}
 #ifndef MAIN
-	inst->base = base_config(avl, self->name, inst->schema_name, inst->mylog);
+	inst->base = base_config(avl, ldmsd_plugin_cfg_name_get(self), inst->schema_name, inst->mylog);
 	if (!inst->base)
 		goto out_metrics;
 	/* override the schema name default behavior */

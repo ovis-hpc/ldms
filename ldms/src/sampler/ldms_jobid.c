@@ -472,7 +472,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
  *     file  The file to find job id in on 1st line in ascii.
  *     setname     The set name.
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *sname;
@@ -591,7 +591,7 @@ int ldms_job_info_get(struct ldms_job_info *ji, unsigned flags)
 	return 0;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	if (set) {
 		ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
@@ -610,7 +610,7 @@ static void term(struct ldmsd_cfgobj *self)
 	}
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return "config name=jobid producer=<prod_name> instance=<inst_name> "
 		"[component_id=<compid> schema=<sname>] [file=<jobinfo>]"

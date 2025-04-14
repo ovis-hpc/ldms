@@ -93,7 +93,7 @@ static const char *_help_str =
     "    strgp_add name=kp plugin=store_avro_kafka container=localhost,br1.kf:9898 \\\n"
     "              decomposition=decomp.json\n"
     "";
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return _help_str;
 }
@@ -317,7 +317,7 @@ static int parse_serdes_conf_file(char *path, serdes_conf_t *s_conf)
 	return rc;
 }
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	int rc = 0;
@@ -406,7 +406,7 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	store_kafka_t sk = (void*)self->context;
 	pthread_mutex_lock(&sk->sk_lock);
@@ -1060,7 +1060,7 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 	return 0;
 }
 
-void store_kafka_del(struct ldmsd_cfgobj *obj)
+void store_kafka_del(ldmsd_plugin_handle_t obj)
 {
 	return;
 }

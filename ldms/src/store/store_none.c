@@ -56,13 +56,13 @@
 
 static uint64_t delay = 0; /* delay in usec, default is `no delay` */
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return
 "    config name=store_none delay=uSEC\n"
 "           The number of microseconds for the delay of each entry.\n";
 }
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	char *value;
@@ -72,7 +72,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 	return 0;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 }
 

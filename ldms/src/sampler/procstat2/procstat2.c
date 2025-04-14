@@ -366,7 +366,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return	"config name=" SAMP " " BASE_CONFIG_SYNOPSIS
 		"       [interrupt=<intr>] [soft_interrupt=<softirq>]\n"
@@ -381,7 +381,7 @@ static const char *usage(struct ldmsd_cfgobj *self)
 	;
 }
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 	char *val, *end;
@@ -396,7 +396,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	base = base_config(avl, self->name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -405,7 +405,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 	val = av_value(avl, "interrupt");
 	if (val && (0 == strcasecmp(val, "true"))) {
 		collect_intr = 1;
-		intr_base = base_config(avl, self->name, SAMP"_intr", mylog);
+		intr_base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP"_intr", mylog);
 		if (!intr_base) {
 			rc = errno;
 			goto err;
@@ -424,7 +424,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 	val = av_value(avl, "soft_interrupt");
 	if (val && (0 == strcasecmp(val, "true"))) {
 		collect_softirq = 1;
-		softirq_base = base_config(avl, self->name, SAMP"_softirq", mylog);
+		softirq_base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP"_softirq", mylog);
 		if (!softirq_base) {
 			rc = errno;
 			goto err;
@@ -670,7 +670,7 @@ begin:
 	return rc;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	if (mf) {
 		fclose(mf);

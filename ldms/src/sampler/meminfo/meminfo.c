@@ -150,12 +150,12 @@ static int create_metric_set(meminfo_t mi)
 	return rc;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE;
 }
 
-static int config(struct ldmsd_cfgobj *self,
+static int config(ldmsd_plugin_handle_t self,
 		  struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	ldmsd_cfgobj_sampler_t scfg = (ldmsd_cfgobj_sampler_t)self;
@@ -167,7 +167,7 @@ static int config(struct ldmsd_cfgobj *self,
 		return EBUSY;
 	}
 
-	mi->base = base_config(avl, self->name, SAMP, mi->log);
+	mi->base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mi->log);
 	if (!mi->base) {
 		rc = errno;
 		goto err;
@@ -220,7 +220,7 @@ static int sample(struct ldmsd_cfgobj_sampler *self)
 	return 0;
 }
 
-static int constructor(struct ldmsd_cfgobj *self)
+static int constructor(ldmsd_plugin_handle_t self)
 {
 	ldmsd_cfgobj_sampler_t sampler = (ldmsd_cfgobj_sampler_t)self;
 	meminfo_t mi = calloc(1, sizeof(*mi));
@@ -231,7 +231,7 @@ static int constructor(struct ldmsd_cfgobj *self)
 	return ENOMEM;
 }
 
-static void destructor(struct ldmsd_cfgobj *self)
+static void destructor(ldmsd_plugin_handle_t self)
 {
 	ldmsd_cfgobj_sampler_t sampler = (ldmsd_cfgobj_sampler_t)self;
 	meminfo_t mi = sampler->context;

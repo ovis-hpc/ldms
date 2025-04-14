@@ -383,7 +383,7 @@ err:
 }
 
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *sname;
@@ -398,7 +398,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	base = base_config(avl, self->name, default_schema_name, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), default_schema_name, mylog);
 	if (!base)
 		return EINVAL;
 
@@ -515,7 +515,7 @@ out:
 
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 
 	int i;
@@ -562,7 +562,7 @@ static void term(struct ldmsd_cfgobj *self)
 	base = NULL;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=aries_rtr_mmr" BASE_CONFIG_USAGE " file=<file> [aries_rtr_id=<rtrid>]\n"
 		"    <file>         File with full names of metrics\n"

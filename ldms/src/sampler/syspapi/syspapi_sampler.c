@@ -154,7 +154,7 @@ create_metric_set(base_data_t base)
 }
 
 static const char *
-usage(struct ldmsd_cfgobj *self)
+usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=" SAMP BASE_CONFIG_SYNOPSIS
 		"        cfg_file=CFG_PATH [cumulative=0|1]\n"
@@ -398,7 +398,7 @@ syspapi_open(struct syspapi_metric_list *mlist)
 }
 
 static int
-handle_cfg_file(struct ldmsd_cfgobj *self, const char *cfg_file)
+handle_cfg_file(ldmsd_plugin_handle_t self, const char *cfg_file)
 {
 	int rc = 0, fd = -1;
 	ssize_t off, rsz, sz;
@@ -516,7 +516,7 @@ out:
 }
 
 static int
-config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
+config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
        struct attr_value_list *avl)
 {
 	int rc;
@@ -542,7 +542,7 @@ config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 		goto out;
 	}
 
-	base = base_config(avl, self->name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -636,7 +636,7 @@ sample(struct ldmsd_cfgobj_sampler *self)
 }
 
 static void
-term(struct ldmsd_cfgobj *self)
+term(ldmsd_plugin_handle_t self)
 {
 	pthread_mutex_lock(&syspapi_mutex);
 	if (base)

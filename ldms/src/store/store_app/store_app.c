@@ -568,13 +568,13 @@ Option descriptions:\n\
 ";
 
 static const char *
-store_app_usage(struct ldmsd_cfgobj * pi)
+store_app_usage(ldmsd_plugin_handle_t  pi)
 {
 	return _help;
 }
 
 static int
-store_app_config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
+store_app_config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl,
 					    struct attr_value_list *avl)
 {
 	int len;
@@ -595,7 +595,7 @@ store_app_config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl,
 	return 0;
 }
 
-static void store_app_term(struct ldmsd_cfgobj *p)
+static void store_app_term(ldmsd_plugin_handle_t p)
 {
 }
 

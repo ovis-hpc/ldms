@@ -544,7 +544,7 @@ static sos_handle_t get_container(const char *path)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	struct sos_instance *si;
 	int rc = 0;
@@ -606,7 +606,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "    config name=<NAME> plugin=store_sos path=<path> timeout=<secs>\n"
 		"       path   - The path to primary storage\n"
@@ -1724,13 +1724,13 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int 
 	return rc;
 }
 
-void store_sos_del(struct ldmsd_cfgobj *obj)
+void store_sos_del(ldmsd_plugin_handle_t obj)
 {
 	store_sos_t ss = (void*)obj;
 	free(ss);
 }
 
-static int constructor(struct ldmsd_cfgobj *self)
+static int constructor(ldmsd_plugin_handle_t self)
 {
 	ldmsd_cfgobj_store_t store = (ldmsd_cfgobj_store_t)self;
 	store_sos_t ss = calloc(1, sizeof(*ss));
@@ -1741,7 +1741,7 @@ static int constructor(struct ldmsd_cfgobj *self)
 	return ENOMEM;
 }
 
-static void destructor(struct ldmsd_cfgobj *self)
+static void destructor(ldmsd_plugin_handle_t self)
 {
 	ldmsd_cfgobj_store_t store = (ldmsd_cfgobj_store_t)self;
 	store_sos_t ss = store->context;

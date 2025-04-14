@@ -105,7 +105,7 @@ static pthread_mutex_t cfg_lock;
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	value = av_value(avl, "path");
@@ -124,7 +124,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 	return EINVAL;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	/*
 	 * TODO: Iterate through all unclosed stores and cleanup resources
@@ -132,7 +132,7 @@ static void term(struct ldmsd_cfgobj *self)
 	 */
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return
 "    config name=store_flatfile path=<path>\n"

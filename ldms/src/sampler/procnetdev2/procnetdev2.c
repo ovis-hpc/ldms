@@ -228,7 +228,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return "config inst=NAME plugin=" SAMP " ifaces=IFS\n" \
 		BASE_CONFIG_USAGE \
@@ -237,7 +237,7 @@ static const char *usage(struct ldmsd_cfgobj *self)
 		"                    whether they exist of not up to a total of MAXIFACE\n";
 }
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	ldmsd_cfgobj_sampler_t scfg = (ldmsd_cfgobj_sampler_t)self;
 	procnetdev2_t p = scfg->context;
@@ -313,7 +313,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 	p->excount = excount;
 
  cfg:
-	p->base = base_config(avl, self->name, SAMP, mylog);
+	p->base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if (!p->base){
 		rc = EINVAL;
 		goto err;
@@ -450,7 +450,7 @@ resize:
 }
 
 
-static int constructor(struct ldmsd_cfgobj *self)
+static int constructor(ldmsd_plugin_handle_t self)
 {
 	ldmsd_cfgobj_sampler_t sampler = (ldmsd_cfgobj_sampler_t)self;
 	procnetdev2_t p = calloc(1, sizeof(*p));
@@ -461,7 +461,7 @@ static int constructor(struct ldmsd_cfgobj *self)
 	return ENOMEM;
 }
 
-static void destructor(struct ldmsd_cfgobj *self)
+static void destructor(ldmsd_plugin_handle_t self)
 {
 	ldmsd_cfgobj_sampler_t scfg = (ldmsd_cfgobj_sampler_t)self;
 	procnetdev2_t p = (void*)scfg->context;

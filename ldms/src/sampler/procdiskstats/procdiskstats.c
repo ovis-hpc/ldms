@@ -325,7 +325,7 @@ err:
 }
 
 
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = 0;
 
@@ -336,7 +336,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 	}
 
 
-	base = base_config(avl, self->name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if (!base) {
 		rc = EINVAL;
 		goto err;
@@ -463,7 +463,7 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	if (mf)
 		fclose(mf);
@@ -483,7 +483,7 @@ static void term(struct ldmsd_cfgobj *self)
 	}
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=procdiskstats device=<devices> " BASE_CONFIG_USAGE
 		"    <devices>       A comma-separated list of devices\n";

@@ -263,7 +263,7 @@ static int reopen_container(char *path)
 	return rc;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return	"config name=darshan_stream_store path=<path> port=<port_no> log=<path>\n"
 		"     path	The path to the root of the SOS container store (required).\n"
@@ -275,7 +275,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			 ldmsd_stream_type_t stream_type,
 			 const char *msg, size_t msg_len,
 			 json_entity_t entity);
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *producer_name;
@@ -574,7 +574,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	return rc;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	if (sos)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);

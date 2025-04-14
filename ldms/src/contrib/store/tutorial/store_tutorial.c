@@ -99,7 +99,7 @@ static pthread_mutex_t cfg_lock;
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char* s;
 	int rc = 0;
@@ -119,11 +119,11 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "    config name=store_tutorial path=<path> \n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"

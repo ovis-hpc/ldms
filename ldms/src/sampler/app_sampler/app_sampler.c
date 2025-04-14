@@ -1292,7 +1292,7 @@ The following is an example of cfg_file:\n\
 ```\n\
 ";
 
-static const char *app_sampler_usage(struct ldmsd_cfgobj *self)
+static const char *app_sampler_usage(ldmsd_plugin_handle_t self)
 {
 	return _help;
 }
@@ -1520,10 +1520,10 @@ int __stream_cb(ldms_stream_event_t ev, void *ctxt)
 	return 0;
 }
 
-static void app_sampler_term(struct ldmsd_cfgobj *pi);
+static void app_sampler_term(ldmsd_plugin_handle_t pi);
 
 static int
-app_sampler_config(struct ldmsd_cfgobj *pi, struct attr_value_list *kwl,
+app_sampler_config(ldmsd_plugin_handle_t pi, struct attr_value_list *kwl,
 					    struct attr_value_list *avl)
 {
 	ldmsd_cfgobj_sampler_t scfg = (ldmsd_cfgobj_sampler_t)pi;
@@ -1538,7 +1538,7 @@ app_sampler_config(struct ldmsd_cfgobj *pi, struct attr_value_list *kwl,
 		return EALREADY;
 	}
 
-	inst->base_data = base_config(avl, pi->name, SAMP, inst->mylog);
+	inst->base_data = base_config(avl, ldmsd_plugin_cfg_name_get(pi), SAMP, inst->mylog);
 	if (!inst->base_data) {
 		/* base_config() already log error message */
 		return errno;
@@ -1633,7 +1633,7 @@ app_sampler_config(struct ldmsd_cfgobj *pi, struct attr_value_list *kwl,
 }
 
 static
-void app_sampler_term(struct ldmsd_cfgobj *pi)
+void app_sampler_term(ldmsd_plugin_handle_t pi)
 {
 	app_sampler_inst_t inst = (void*)pi;
 	struct rbn *rbn;

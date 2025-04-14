@@ -477,7 +477,7 @@ static int add_stream(const char *stream)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char* s;
 	int rc;
@@ -606,7 +606,7 @@ static void stream_data_close( stream_data_t sd )
 	pthread_mutex_destroy(&sd->write_lock);
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	pthread_mutex_lock(&cfg_lock);
 	closing = 1;
@@ -625,7 +625,7 @@ static void term(struct ldmsd_cfgobj *self)
 	return;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "    config name=blob_stream_writer path=<path> container=<container> stream=<stream> \n"
                 "           timing=1 types=1 debug=1 spool=1\n"

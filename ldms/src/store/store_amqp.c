@@ -220,7 +220,7 @@ static int check_reply(amqp_rpc_reply_t r, const char *file, int line)
  *   user=<name>        The SASL user name, default is "guest"
  *   pwd=<password>     The SASL password, default is "guest"
  */
-static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	amqp_inst_t ai;
@@ -396,7 +396,7 @@ static int config(struct ldmsd_cfgobj *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return "Required key/values\n"
 		"   container=<name>   The unique storage container name.\n"
@@ -522,7 +522,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 	pthread_mutex_unlock(&cfg_lock);
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	struct rbn *rbn;
 	amqp_inst_t ai;

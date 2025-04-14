@@ -204,7 +204,7 @@ static void mdts_sample()
         }
 }
 
-static int config(struct ldmsd_cfgobj *self,
+static int config(ldmsd_plugin_handle_t self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" config() called\n");
@@ -243,7 +243,7 @@ static int sample(struct ldmsd_cfgobj_sampler *self)
         return 0;
 }
 
-static void term(struct ldmsd_cfgobj *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" term() called\n");
 	mdts_destroy();
@@ -251,7 +251,7 @@ static void term(struct ldmsd_cfgobj *self)
 	mdt_job_stats_schema_fini();
 }
 
-static const char *usage(struct ldmsd_cfgobj *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" usage() called\n");
 	return  "config name=" SAMP;

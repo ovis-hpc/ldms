@@ -3,6 +3,7 @@
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  * Copyright (c) 2010-2018,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2025 Lawrence Livermore National Security, LLC
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -946,12 +947,12 @@ int process_config_str(char *config_str, int *lno, int trust);
 
 char *process_yaml_config_file(const char *path, const char *dname);
 
-
 /* These flags populate the 'flags' field in the plugin structure */
 #define LDMSD_PLUGIN_SINGLE_INSTANCE 0
 #define LDMSD_PLUGIN_MULTI_INSTANCE 1
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
+typedef void *ldmsd_plugin_handle_t;
 typedef struct ldmsd_plugin  {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN]; /* plugin name (e.g. meminfo) */
 	enum ldmsd_plugin_type {
@@ -962,16 +963,16 @@ typedef struct ldmsd_plugin  {
 		LDMSD_PLUGIN_DECOMP
 	} type;
 	uint64_t flags;
-	int (*config)(struct ldmsd_cfgobj *self,
+	int (*config)(ldmsd_plugin_handle_t self,
 		      struct attr_value_list *kwl,
 		      struct attr_value_list *avl);
-	const char *(*usage)(struct ldmsd_cfgobj *self);
+	const char *(*usage)(ldmsd_plugin_handle_t self);
 
-	int (*constructor)(struct ldmsd_cfgobj *self);
-	void (*destructor)(struct ldmsd_cfgobj *self);
+	int (*constructor)(ldmsd_plugin_handle_t self);
+	void (*destructor)(ldmsd_plugin_handle_t self);
 
 	/* Deprecated, use destructor() */
-	void (*term)(struct ldmsd_cfgobj *self);
+	void (*term)(ldmsd_plugin_handle_t self);
 } *ldmsd_plugin_t;
 
 struct ldmsd_store {
@@ -1028,6 +1029,73 @@ struct ldmsd_cfgobj_sampler {
 	int use_xthread; /* !0 if use exclusitve thread */
 	pthread_t xthread; /* the exclusive thread */
 };
+
+/*
+ * Return the configuration object associated with the plugin
+ */
+struct ldmsd_cfgobj *ldmsd_plugin_cfg_get(ldmsd_plugin_handle_t handle);
+
+/*
+ * Record an opaque context pointer in the plugin configuration handle.
+ *
+ * In order to be multi-configuration capable, a plugin will need to
+ * maintain separate state (i.e. context) for each configuration. A
+ * plugin will allocate a context structure in the plugin constructor()
+ * and use this function to assign it. Subsequent calls to plugin functions
+ * will use the ldmsd_plugin_ctxt_get() function to return this pointer.
+ */
+void ldmsd_plugin_ctxt_set(ldmsd_plugin_handle_t handle, void *context);
+
+/*
+ * Retrieve the context pointer from the plugin configuration handle
+ * that was set by the ldmsd_plugin_ctxt_set() function.
+ *
+ * This is typically a pointer to the structure created in the
+ * plugin's constructor() function.
+ */
+void *ldmsd_plugin_ctxt_get(ldmsd_plugin_handle_t handle);
+
+/*
+ * Retreive a pointer to the plugin's configuration name. Plugin
+ * configuration names will be unique to a give configuration (in
+ * contrast to the plugin name).
+ *
+ * This function is usefull when informing the administrator of the
+ * configuration to which this message applies
+ */
+const char *ldmsd_plugin_cfg_name_get(ldmsd_plugin_handle_t handle);
+
+/*
+ * Retrive a pointer to the plugin's name. Multiple configurations
+ * may be created from the same plugin, and so multiple configurations
+ * may have the same plugin name.
+ */
+const char *ldmsd_plugin_name_get(ldmsd_plugin_handle_t handle);
+
+/*
+ * Set the plugin log handle
+ *
+ * This function sets the log handle that the plugin will use to write
+ * log messages. This handle is set up by default by the
+ * ldmsd_load_plugin() function and is named as follows:
+ *    <plugin_type>.<config_name>
+ * This function can be used to override this log handle if desired.
+ */
+void ldmsd_plugin_log_set(ldmsd_plugin_handle_t handle, ovis_log_t log);
+
+/*
+ * Retrieve the log handle used to write log messages
+ */
+ovis_log_t ldmsd_plugin_log_get(ldmsd_plugin_handle_t handle);
+
+/*
+ * Lock the configuration associated with the plugin
+ */
+void ldmsd_plugin_lock(ldmsd_plugin_handle_t handle);
+/*
+ * Unlock the configuration associated with the plugin
+ */
+void ldmsd_plugin_unlock(ldmsd_plugin_handle_t handle);
 
 #define LDMSD_DEFAULT_SAMPLE_INTERVAL 1000000
 /** Metric name for component ids (u64). */
