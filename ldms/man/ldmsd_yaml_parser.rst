@@ -40,10 +40,10 @@ LDMSD YAML OPTIONS
 LDMSD_YAML_PARSER COMMAND SYNTAX
 ================================
 
-**--ldms_config,**\ *CONFIG_PATH*
+**--ldms-config,**\ *CONFIG_PATH*
    The path to the YAML configuration file.
 
-**--daemon_name,**\ *NAME*
+**--daemon-name,**\ *NAME*
    The name of the LDMS daemon to configure.
 
 YAML CONFIGURATION SYNTAX

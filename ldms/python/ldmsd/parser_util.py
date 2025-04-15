@@ -5,6 +5,7 @@ import subprocess
 import re
 import socket
 import time
+import bisect
 import itertools as it
 import collections
 import ldmsd.hostlist as hostlist
@@ -114,7 +115,8 @@ def check_opt(attr, spec):
             return check_intrvl_str(spec[attr])
         if attr in BYTE_ATTRS:
             try:
-                return int(spec[attr])
+                if spec[attr] is not None:
+                    return int(spec[attr])
             except:
                 raise ValueError(f'Error: "{spec[attr]}" is not a valid integer')
         return spec[attr]
@@ -163,6 +165,23 @@ def check_plugin_config(plugn, plugin_spec):
         if type(cfg) is not dict and type(cfg) is not str:
             raise TypeError('"config" list members must be a dictionary or a string\n')
     return plugin
+
+def dist_list(list_, n):
+    q, r = divmod(len(list_), n)
+    dist_list = []
+    idx = 0
+    for i in range(1, n + 1):
+        s = idx
+        idx += q + 1 if i <= r else q
+        dist_list.append(list_[s:idx])
+    return dist_list
+
+#logn search function for lists
+def bin_search(slist, x):
+    idx = bisect.bisect_left(slist, x)
+    if idx < len(slist) and slist[idx] == x:
+        return True
+    return None
 
 def parse_to_cfg_str(cfg_obj):
     cfg_str = ''
@@ -243,14 +262,13 @@ class YamlCfg(object):
         results in the following host-spec dictionary:
 
         {
-        "agg-[[1-3]-[10002]" : {
-          "agg-1" : {
-            "endpoints": {
-              "node-1-10002" : { "host" : "node-1", "port" : 10002 },
-              "node-2-10002" : { "host" : "node-2", "port" : 10002 },
-              "node-3-10002" : { "host" : "node-3", "port" : 10002 },
-              ...
-            }
+        "agg-1" : {
+          "endpoints": {
+            "node-1-10002" : { "host" : "node-1", "port" : 10002 },
+             ...
+          }
+        "agg-2" : {
+          ...
           }
         }
 
@@ -306,19 +324,18 @@ class YamlCfg(object):
                     ep_hosts.append(cur_ephosts)
                 else:
                     ep_hosts.append([])
-            ep_dict[spec['names']] = {}
             env = check_opt('environment', spec)
             cli_opt = {}
             for key in spec:
                 if key not in ['hosts','names','endpoints','environment']:
                     cli_opt[key] = spec[key]
             for dname, host in zip(dnames, hosts):
-                ep_dict[spec['names']][dname] = {}
-                ep_dict[spec['names']][dname]['addr'] = host
-                ep_dict[spec['names']][dname]['environment'] = env
-                ep_dict[spec['names']][dname]['endpoints'] = {}
+                ep_dict[dname] = {}
+                ep_dict[dname]['addr'] = host
+                ep_dict[dname]['environment'] = env
+                ep_dict[dname]['endpoints'] = {}
                 if len(cli_opt):
-                    ep_dict[spec['names']][dname]['cli_opt'] = cli_opt
+                    ep_dict[dname]['cli_opt'] = cli_opt
                 dcount = 0
                 for ep_, ep_port, ep in zip(ep_names, ep_ports, spec['endpoints']):
                     port = ep_port.pop(0)
@@ -340,9 +357,9 @@ class YamlCfg(object):
                     _ephost = check_opt('hosts', ep)
                     if _ephost:
                         h['host'] = ep_hosts[dcount].pop(0)
-                    ep_dict[spec['names']][dname]['endpoints'][ep_name] = h
+                    ep_dict[dname]['endpoints'][ep_name] = h
                     dcount += 1
-            if len(ep_dict[spec['names']]) == 0:
+            if len(ep_dict) == 0:
                 raise ValueError(f'Error processing regex of hostnames {spec["hosts"]} and daemons {spec["names"]}.\n'
                                  f'Number of hosts must be a multiple of daemons with appropriate ports or equivalent to length of daemons.\n'
                                  f'Regex {spec["hosts"]} translates to {len(hostnames)} hosts\n'
@@ -430,12 +447,6 @@ class YamlCfg(object):
                     raise ValueError(f'"plugins" must be a list of plugin instance names"\n')
                 for plugin in plugins:
                     check_plugin_config(plugin, self.plugins)
-            daemons_ = None
-            for daemons in config['daemons']:
-                if group == daemons['names']:
-                    daemons_ = daemons
-            if daemons_ is None:
-                raise ValueError(f'Daemons regex {daemons["names"]} does not match daemon regex "{group}"\n')
             if group not in aggregators:
                 aggregators[group] = {}
             subscribe = check_opt('subscribe', agg_spec)
@@ -571,13 +582,16 @@ class YamlCfg(object):
                                          f'An updater name must be unique within the group\n')
                     perm = check_opt('perm', updtr_spec)
                     perm = perm_handler(perm)
-                    prod_regex = check_opt('producers', prod)
+                    prod_regex = check_opt('producers', updtr_spec)
                     prod_list = []
                     if prod_regex:
-                        prod_list.append({'regex' : prod_regex})
+                        if len(expand_names(prod_regex)) > 1:
+                            for pname in expand_names(prod_regex):
+                                prod_list.append(pname)
+                        else:
+                            prod_list.append(prod_regex)
                     else:
-                        prod_regex = '.*'
-                        prod_list.append({'regex' : '.*'})
+                        prod_list.append('.*')
                     updtr = {
                         'name'      : updtr_name,
                         'interval'  : check_intrvl_str(updtr_spec['interval']),
@@ -722,9 +736,9 @@ class YamlCfg(object):
 
     def ldmsd_arg_list(self, local_path, dmn_grp, dmn):
         start_list = [ 'ldmsd' ]
-        for ep in self.daemons[dmn_grp][dmn]['endpoints']:
-            if self.daemons[dmn_grp][dmn]['endpoints'][ep]['maestro_comm'] is True:
-                ep_ = self.daemons[dmn_grp][dmn]['endpoints'][ep]
+        for ep in self.daemons[dmn]['endpoints']:
+            if self.daemons[dmn]['endpoints'][ep]['maestro_comm'] is True:
+                ep_ = self.daemons[dmn]['endpoints'][ep]
                 start_list.append('-x')
                 start_list.append(f'{ep_["xprt"]}:{ep_["port"]}')
                 auth = check_opt('auth', ep_)
@@ -760,15 +774,15 @@ class YamlCfg(object):
             if auth not in auth_list:
                 auth_list[auth] = { 'conf' : auth_opt }
                 dstr += f'auth_add name={auth}'
-                dstr = self.write_opt_attr(dstr, 'plugin', plugin, endline=False)
-                dstr = self.write_opt_attr(dstr, 'conf', auth_opt)
+                dstr = self.write_opt_attr(dstr, 'plugin', plugin)
+                dstr = self.write_opt_attr(dstr, 'conf', auth_opt, endline=True)
             dstr += f'advertiser_add name={dname}-{host} host={host} xprt={ad_grp["xprt"]} port={ad_grp["port"]} '\
                     f'reconnect={ad_grp["reconnect"]}'
-            dstr = self.write_opt_attr(dstr, 'auth', auth, endline=False)
-            dstr = self.write_opt_attr(dstr, 'perm', perm, endline=False)
-            dstr = self.write_opt_attr(dstr, 'rail', rail, endline=False)
-            dstr = self.write_opt_attr(dstr, 'quota', quota, endline=False)
-            dstr = self.write_opt_attr(dstr, 'rx_rate', rx_rate)
+            dstr = self.write_opt_attr(dstr, 'auth', auth)
+            dstr = self.write_opt_attr(dstr, 'perm', perm)
+            dstr = self.write_opt_attr(dstr, 'rail', rail)
+            dstr = self.write_opt_attr(dstr, 'quota', quota)
+            dstr = self.write_opt_attr(dstr, 'rx_rate', rx_rate, endline=True)
             dstr += f'advertiser_start name={dname}-{host}\n'
         return dstr, auth_list
 
@@ -781,36 +795,36 @@ class YamlCfg(object):
             dstart = check_opt('disable_start', plisten[pl])
             regex = check_opt('regex', plisten[pl])
             ip = check_opt('ip', plisten[pl])
-            dstr = self.write_opt_attr(dstr, 'disable_start', dstart, endline=False)
-            dstr = self.write_opt_attr(dstr, 'regex', regex, endline=False)
-            dstr = self.write_opt_attr(dstr, 'ip', ip)
+            dstr = self.write_opt_attr(dstr, 'disable_start', dstart)
+            dstr = self.write_opt_attr(dstr, 'regex', regex)
+            dstr = self.write_opt_attr(dstr, 'ip', ip, endline=True)
             dstr += f'prdcr_listen_start name={pl}\n'
         return dstr
 
     def write_listeners(self, dstr, dmn_grp, dmn_name, auth_list={}):
-        for endp in self.daemons[dmn_grp][dmn_name]['endpoints']:
-            ep = self.daemons[dmn_grp][dmn_name]['endpoints'][endp]
+        for endp in self.daemons[dmn_name]['endpoints']:
+            ep = self.daemons[dmn_name]['endpoints'][endp]
             auth, plugin, auth_opt = check_auth(ep)
             if auth:
                 if auth not in auth_list:
                     auth_list[auth] = { 'conf' : auth_opt }
                     dstr += f'auth_add name={auth}'
-                    dstr = self.write_opt_attr(dstr, 'plugin', plugin, endline=False)
-                    dstr = self.write_opt_attr(dstr, 'conf', auth_opt)
+                    dstr = self.write_opt_attr(dstr, 'plugin', plugin)
+                    dstr = self.write_opt_attr(dstr, 'conf', auth_opt, endline=True)
             dstr += f'listen xprt={ep["xprt"]} port={ep["port"]}'
-            dstr = self.write_opt_attr(dstr, 'auth', auth, endline=False)
-            dstr = self.write_opt_attr(dstr, 'conf', auth_opt, endline=False)
+            dstr = self.write_opt_attr(dstr, 'auth', auth)
+            dstr = self.write_opt_attr(dstr, 'conf', auth_opt)
             bind_all = check_opt('bind_all', ep)
             if bind_all is True or bind_all == "true":
                 host = "0.0.0.0"
             else:
                 host = check_opt('host', ep)
                 if host is None:
-                    host = self.daemons[dmn_grp][dmn_name]["addr"]
-            dstr = self.write_opt_attr(dstr, 'host', host)
+                    host = self.daemons[dmn_name]["addr"]
+            dstr = self.write_opt_attr(dstr, 'host', host, endline=True)
         return dstr, auth_list
 
-    def write_opt_attr(self, dstr, attr, val, endline=True):
+    def write_opt_attr(self, dstr, attr, val, endline=False):
         # Include leading space
         if val is not None:
             dstr += f' {attr}={val}'
@@ -821,40 +835,37 @@ class YamlCfg(object):
     def write_producers(self, dstr, group_name, dmn, auth_list):
         if group_name in self.producers:
             ''' Balance samplers across aggregators '''
-            ppd = -(len(self.producers[group_name]) // -len(self.aggregators[group_name].keys()))
-            rem = len(self.producers[group_name]) % len(self.aggregators[group_name].keys())
             prdcrs = list(self.producers[group_name].keys())
-            aggs = list(self.daemons[group_name].keys())
+            aggs = expand_names(group_name)
             agg_idx = int(aggs.index(dmn))
-            prdcr_idx = int(ppd * agg_idx)
-            prod_group = prdcrs[prdcr_idx:prdcr_idx+ppd]
+            prod_group = dist_list(prdcrs, len(aggs))[agg_idx]
             i = 0
             auth = None
             for ep in prod_group:
                 producer = self.producers[group_name][ep]
-                auth = check_opt('auth', self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep])
-                auth_opt = check_opt('conf', self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep])
+                auth = check_opt('auth', self.daemons[producer['daemon']]['endpoints'][ep])
+                auth_opt = check_opt('conf', self.daemons[producer['daemon']]['endpoints'][ep])
                 if auth not in auth_list:
                     auth_list[auth] = { 'conf' : auth_opt }
-                    plugin = check_opt('plugin', self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep]['auth'])
+                    plugin = check_opt('plugin', self.daemons[producer['daemon']]['endpoints'][ep]['auth'])
                     if plugin is None:
                         plugin = auth
                     dstr += f'auth_add name={auth} plugin={plugin}'
-                    dstr = self.write_opt_attr(dstr, 'conf', auth_list[auth]['conf'])
+                    dstr = self.write_opt_attr(dstr, 'conf', auth_list[auth]['conf'], endline=True)
             for ep in prod_group:
                 regex = False
                 producer = self.producers[group_name][ep]
                 pname = producer['name']
-                port = self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep]['port']
-                xprt = self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep]['xprt']
-                hostname = check_opt('host', self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep])
+                port = self.daemons[producer['daemon']]['endpoints'][ep]['port']
+                xprt = self.daemons[producer['daemon']]['endpoints'][ep]['xprt']
+                hostname = check_opt('host', self.daemons[producer['daemon']]['endpoints'][ep])
                 if hostname is None:
-                    hostname = self.daemons[producer['dmn_grp']][producer['daemon']]['addr']
-                auth = check_opt('auth', self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep])
+                    hostname = self.daemons[producer['daemon']]['addr']
+                auth = check_opt('auth', self.daemons[producer['daemon']]['endpoints'][ep])
                 perm = check_opt('perm', producer)
-                rail = check_opt('rail', self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep])
-                rx_rate = check_opt('rx_rate', self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep])
-                quota = check_opt('quota', self.daemons[producer['dmn_grp']][producer['daemon']]['endpoints'][ep])
+                rail = check_opt('rail', self.daemons[producer['daemon']]['endpoints'][ep])
+                rx_rate = check_opt('rx_rate', self.daemons[producer['daemon']]['endpoints'][ep])
+                quota = check_opt('quota', self.daemons[producer['daemon']]['endpoints'][ep])
                 cache_ip = check_opt('cache_ip', producer)
                 ptype = producer['type']
                 reconnect = producer['reconnect']
@@ -864,12 +875,12 @@ class YamlCfg(object):
                         f'xprt={xprt} '\
                         f'type={ptype} '\
                         f'reconnect={reconnect}'
-                dstr = self.write_opt_attr(dstr, 'cache_ip', cache_ip, endline=False)
-                dstr = self.write_opt_attr(dstr, 'perm', perm, endline=False)
-                dstr = self.write_opt_attr(dstr, 'auth', auth, endline=False)
-                dstr = self.write_opt_attr(dstr, 'rail', rail, endline=False)
-                dstr = self.write_opt_attr(dstr, 'rx_rate', rx_rate, endline=False)
-                dstr = self.write_opt_attr(dstr, 'quota', quota)
+                dstr = self.write_opt_attr(dstr, 'cache_ip', cache_ip)
+                dstr = self.write_opt_attr(dstr, 'perm', perm)
+                dstr = self.write_opt_attr(dstr, 'auth', auth)
+                dstr = self.write_opt_attr(dstr, 'rail', rail)
+                dstr = self.write_opt_attr(dstr, 'rx_rate', rx_rate)
+                dstr = self.write_opt_attr(dstr, 'quota', quota, endline=True)
                 last_sampler = pname
                 if 'regex' in producer:
                     dstr += f'prdcr_start_regex regex={producer["regex"]}\n'
@@ -877,10 +888,10 @@ class YamlCfg(object):
                     dstr += f'prdcr_start name={pname}\n'
         return dstr, auth_list
 
-    def write_options(self, dstr, grp, dname):
-        if 'cli_opt' not in self.daemons[grp][dname]:
+    def write_options(self, dstr, dname):
+        if 'cli_opt' not in self.daemons[dname]:
             return dstr
-        cli_opt = self.daemons[grp][dname]['cli_opt']
+        cli_opt = self.daemons[dname]['cli_opt']
         for opt in cli_opt:
             if type(cli_opt[opt]) is dict:
                 dstr += f'{opt}'
@@ -893,79 +904,48 @@ class YamlCfg(object):
                 dstr += f'option --{opt} {cli_opt[opt]}\n'
         return dstr
 
-    def write_env(self, dstr, grp, dname):
-        if check_opt('environment', self.daemons[grp][dname]):
-            if type(self.daemons[grp][dname]['environment']) is not dict:
+    def write_env(self, dstr, dname):
+        if check_opt('environment', self.daemons[dname]):
+            if type(self.daemons[dname]['environment']) is not dict:
                 raise TypeError(f'Environment variables must be a yaml key:value dictionary\n')
-            for attr in self.daemons[grp][dname]['environment']:
-                dstr += f'env {attr}={self.daemons[grp][dname]["environment"][attr]}\n'
+            for attr in self.daemons[dname]['environment']:
+                dstr += f'env {attr}={self.daemons[dname]["environment"][attr]}\n'
         return dstr
 
-    def write_sampler(self, dstr, smplr_grp, sname):
-        if not self.samplers or smplr_grp not in self.samplers:
+    def write_sampler(self, dstr, sname):
+        if not self.samplers:
             return dstr
-        dstr, auth_list = self.write_listeners(dstr, smplr_grp, sname)
-        dstr, auth_list = self.write_advertisers(dstr, smplr_grp, sname, auth_list)
-        for plugin in self.samplers[smplr_grp]['plugins']:
-            plugn = self.plugins[plugin]
-            dstr += f'load name={plugn["name"]}\n'
-            for cfg_ in plugn['config']:
-                if type(cfg_) is dict:
-                    hostname = socket.gethostname()
-                    cfg_args = {}
-                    for attr in cfg_:
-                        if attr == 'name' or attr == 'interval' or attr == 'reconnect':
-                            continue
-                        if attr == 'perm':
-                            cfg_[attr] = perm_handler(cfg_[attr])
-                        cfg_args[attr] = cfg_[attr]
-                    if 'producer' not in cfg_args:
-                        cfg_args['producer'] = f'{hostname}'
-                    if 'instance' not in cfg_args:
-                        cfg_args['instance'] = f'{hostname}/{plugn["name"]}'
-                    cfg_str = parse_to_cfg_str(cfg_args)
-                else:
-                    cfg_str = cfg_
+        for smplr_grp in self.samplers:
+            if bin_search(expand_names(smplr_grp), sname):
+                dstr, auth_list = self.write_listeners(dstr, smplr_grp, sname)
+                dstr, auth_list = self.write_advertisers(dstr, smplr_grp, sname, auth_list)
+                for plugin in self.samplers[smplr_grp]['plugins']:
+                    plugn = self.plugins[plugin]
+                    dstr += f'load name={plugn["name"]}\n'
+                    for cfg_ in plugn['config']:
+                        if type(cfg_) is dict:
+                            hostname = socket.gethostname()
+                            cfg_args = {}
+                            for attr in cfg_:
+                                if attr == 'name' or attr == 'interval' or attr == 'reconnect':
+                                    continue
+                                if attr == 'perm':
+                                    cfg_[attr] = perm_handler(cfg_[attr])
+                                cfg_args[attr] = cfg_[attr]
+                            if 'producer' not in cfg_args:
+                                cfg_args['producer'] = f'{hostname}'
+                            if 'instance' not in cfg_args:
+                                cfg_args['instance'] = f'{hostname}/{plugn["name"]}'
+                            cfg_str = parse_to_cfg_str(cfg_args)
+                        else:
+                            cfg_str = cfg_
 
-                interval = check_intrvl_str(plugn['interval'])
-                dstr += f'config name={plugn["name"]} {cfg_str}\n'
-            dstr += f'start name={plugn["name"]} interval={interval}'
-            offset = check_opt('offset', plugn)
-            dstr = self.write_opt_attr(dstr, 'offset', offset)
+                        interval = check_intrvl_str(plugn['interval'])
+                        dstr += f'config name={plugn["name"]} {cfg_str}\n'
+                    dstr += f'start name={plugn["name"]} interval={interval}'
+                    offset = check_opt('offset', plugn)
+                    dstr = self.write_opt_attr(dstr, 'offset', offset, endline=True)
         return dstr
-
-    def write_samplers(self, dstr, smplr_group):
-        for inst_name in self.samplers[smplr_group]['plugins']:
-            plugin = self.plugins[inst_name]
-            sname = plugin['name']
-            dstr += f'load name={sname}\n'
-            for cfg_ in plugin['config']:
-                if type(cfg_) is dict:
-                    hostname = socket.gethostname()
-                    if args.local:
-                        cfg_args = { 'producer'     : f'{hostname}',
-                                     'instance'     : f'{hostname}/{plugin["name"]}',
-                                     'component_id' : '${LDMS_COMPONENT_ID}' }
-                    else:
-                        cfg_args = {}
-                    for attr in cfg_:
-                        if attr == 'name' or attr == 'interval':
-                            continue
-                        cfg_args[attr] = cfg_[attr]
-                    if 'producer' not in cfg_args:
-                        cfg_args['producer'] = '{hostname}'
-                    if 'instance' not in cfg_args:
-                        cfg_args['instance'] = '{hostname}/{plugin["name"]}'
-                    cfg_str = parse_to_cfg_str(cfg_args)
-                else:
-                    cfg_str = cfg_
-
-                interval = check_intrvl_str(plugin['interval'])
-                dstr += f'config name={sname} {cfg_str}\n'
-            dstr += f'start name={sname} interval={interval}'
-            offset = check_opt('offset', plugin)
-            dstr = self.write_opt_attr(dstr, 'offset', offset)
-            return dstr
 
     def write_stream_subscribe(self, dstr, group_name, agg):
         subscribe = check_opt('subscribe', self.aggregators[group_name][agg])
@@ -978,20 +958,22 @@ class YamlCfg(object):
                         f'regex={regex}\n'
         return dstr
 
-    def write_aggregator(self, dstr, group_name, dmn):
+    def write_aggregator(self, dstr, dmn):
         # Agg config
         try:
             ''' "Balance" agg configuration if all samplers are included in each aggregator '''
-            if not self.aggregators or group_name not in self.aggregators:
+            if not self.aggregators:
                 return dstr
-            auth_list = {}
-            dstr, auth_list = self.write_listeners(dstr, group_name, dmn, auth_list)
-            dstr, auth_list = self.write_producers(dstr, group_name, dmn, auth_list)
-            dstr = self.write_prdcr_listeners(dstr, group_name)
-            dstr = self.write_stream_subscribe(dstr, group_name, dmn)
-            dstr = self.write_agg_plugins(dstr, group_name, dmn)
-            dstr = self.write_updaters(dstr, group_name)
-            dstr = self.write_stores(dstr, group_name)
+            for group_name in self.aggregators:
+                if bin_search(expand_names(group_name), dmn):
+                    auth_list = {}
+                    dstr, auth_list = self.write_listeners(dstr, group_name, dmn, auth_list)
+                    dstr, auth_list = self.write_producers(dstr, group_name, dmn, auth_list)
+                    dstr = self.write_prdcr_listeners(dstr, group_name)
+                    dstr = self.write_stream_subscribe(dstr, group_name, dmn)
+                    dstr = self.write_agg_plugins(dstr, group_name, dmn)
+                    dstr = self.write_updaters(dstr, group_name, dmn)
+                    dstr = self.write_stores(dstr, group_name)
             return dstr
         except Exception as e:
             ea, eb, ec = sys.exc_info()
@@ -1012,7 +994,7 @@ class YamlCfg(object):
                     dstr += f'config name={plugin["name"]} {cfg_str}\n'
         return dstr
 
-    def write_updaters(self, dstr, group_name):
+    def write_updaters(self, dstr, group_name, dmn):
         if group_name in self.updaters:
             updtr_group = self.updaters[group_name]
             for updtr in updtr_group:
@@ -1033,11 +1015,10 @@ class YamlCfg(object):
                          f'interval={interval}'
                 perm = check_opt('perm', updtr_group[updtr])
                 offset = check_opt('offset', updtr_group[updtr])
-                dstr = self.write_opt_attr(dstr, 'perm', perm, endline=False)
-                dstr = self.write_opt_attr(dstr, 'offset', offset)
-                for prod in updtr_group[updtr]['producers']:
-                    dstr += f'updtr_prdcr_add name={updtr} '\
-                             f'regex={prod["regex"]}\n'
+                dstr = self.write_opt_attr(dstr, 'perm', perm)
+                dstr = self.write_opt_attr(dstr, 'offset', offset, endline=True)
+                for pname in updtr_group[updtr]['producers']:
+                    dstr += f'updtr_prdcr_add name={updtr} regex={pname}\n'
                 if updtr_group[updtr]['sets']:
                     for s in updtr_group[updtr]['sets']:
                         dstr += f'updtr_match_add name={updtr} regex={s["regex"]} match={s["field"]}\n'
@@ -1045,7 +1026,7 @@ class YamlCfg(object):
         return dstr
 
     def write_stores(self, dstr, group_name):
-        if group_name in self.stores:
+        if self.stores is not None and group_name in self.stores:
             store_group = self.stores[group_name]
             loaded_plugins = []
             for store in store_group:
@@ -1070,11 +1051,11 @@ class YamlCfg(object):
                 perm = check_opt('perm', store_group[store])
                 dstr += f'strgp_add name={store} plugin={plugin["name"]} '
                 dstr += f'container={store_group[store]["container"]} '
-                dstr = self.write_opt_attr(dstr, 'decomposition', decomp, endline=False)
-                dstr = self.write_opt_attr(dstr, 'schema', schema, endline=False)
-                dstr = self.write_opt_attr(dstr, 'regex', regex, endline=False)
-                dstr = self.write_opt_attr(dstr, 'perm', endline=False)
-                dstr = self.write_opt_attr(dstr, 'flush', flush)
+                dstr = self.write_opt_attr(dstr, 'decomposition', decomp)
+                dstr = self.write_opt_attr(dstr, 'schema', schema)
+                dstr = self.write_opt_attr(dstr, 'regex', regex)
+                dstr = self.write_opt_attr(dstr, 'perm', perm)
+                dstr = self.write_opt_attr(dstr, 'flush', flush, endline=True)
                 dstr += f'strgp_start name={store}\n'
         return dstr
 
@@ -1085,53 +1066,34 @@ class YamlCfg(object):
         dmn = None
         grp = None
         ddmns = []
-        for dmn_grp in self.daemons:
-            if dname in self.daemons[dmn_grp]:
-                dmn = self.daemons[dmn_grp][dname]
-                grp = dmn_grp
+        if dname in self.daemons:
+                dmn = self.daemons[dname]
                 ddmns.append(dmn)
         if len(ddmns) > 1:
             raise ValueError(f'Daemon {dname} has been defined multiple times in the YAML configuration file "{path}"\n')
         if dmn is None:
             raise ValueError(f'Daemon {dname} does not exist in YAML configuration file {path}\n')
         dstr = ''
-        dstr = self.write_env(dstr, grp, dname)
-        dstr = self.write_options(dstr, grp, dname)
-        dstr = self.write_sampler(dstr, grp, dname)
-        dstr = self.write_aggregator(dstr, grp, dname)
+        dstr = self.write_env(dstr, dname)
+        dstr = self.write_options(dstr, dname)
+        dstr = self.write_sampler(dstr, dname)
+        dstr = self.write_aggregator(dstr, dname)
         return f'{dstr}'
 
     def config_v4(self, path):
         """
-        Read the group configuration from ETCD and generate a version 4 LDMSD configuration
+        Read the group configuration from a YAML file and generate a version 4 LDMSD configuration
         This configuration assumes that the environemnt variables COMPONENT_ID, HOSTNAME
         all exist on the machines relevant to the ldmsd cluster.
         """
-        for group_name in self.daemons:
-            # Sampler config
-            if self.samplers != None:
-                try:
-                    # TO DO: Refactor sampler config architecture to more easily reference appropriate groups
-                    if group_name in self.samplers:
-                        fd = open(f'{path}/{group_name}-samplers.conf', 'w+')
-                        dstr = ''
-                        dstr = self.write_samplers(dstr, group_name)
-                        for dmn_name in self.daemons[group_name]:
-                            dstr, auth_list = self.write_listeners(dstr, group_name, dmn_name)
-                        fd.write(dstr)
-                    if fd:
-                        fd.close()
-                except Exception as e:
-                    a, b, d = sys.exc_info()
-                    raise Exception(f'Error generating sampler configuration: {str(e)} {str(d.tb_lineno)}\n')
-            else:
-                print(f'"samplers" not found in configuration file. Skipping...')
-
-            # Write aggregators in daemon group
-            if group_name in self.aggregators:
-                for dmn in self.aggregators[group_name]:
+        for dmn in self.daemons:
+            try:
+                dstr = self.daemon_config(self.args.ldms_config, dmn)
+                if len(dstr) > 1:
                     fd = open(f'{path}/{dmn}.conf', 'w+')
-                    dstr = ''
-                    dstr = self.write_aggregator(dstr, group_name, dmn)
                     fd.write(dstr)
                     fd.close()
+            except Exception as e:
+               a, b, c = sys.exc_info()
+               raise Exception(f'Error generating configuration file for {dmn}: {str(e)}')
+        return 0
