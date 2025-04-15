@@ -53,6 +53,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <sys/queue.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <pthread.h>
@@ -65,6 +66,7 @@
 #include <unistd.h>
 #include <sys/sysinfo.h>
 #include "ovis_log/ovis_log.h"
+#include "ovis_thrstats/ovis_thrstats.h"
 #include "ovis-ldms-config.h"
 #include "zap.h"
 #include "zap_priv.h"
@@ -310,6 +312,14 @@ zap_t zap_get(const char *name, zap_mem_info_fn_t mem_info_fn)
 		d = dlopen(lib, RTLD_NOW);
 		if (d != NULL) {
 			break;
+		}
+
+		struct stat buf;
+		if (stat(lib, &buf) == 0) {
+			char *dlerr = dlerror();
+			ovis_log(zlog, OVIS_LERROR, "Bad zap plugin " \
+				 "'%s': dlerror %s\n", name, dlerr);
+			goto err;
 		}
 	}
 
@@ -730,10 +740,10 @@ int zap_term(zap_t z, int timeout_sec)
 	return rc;
 }
 
-int zap_io_thread_init(zap_io_thread_t t, zap_t z, const char *name, int stat_window)
+int zap_io_thread_init(zap_io_thread_t t, zap_t z, const char *name)
 {
 	pthread_mutexattr_t mattr;
-	t->stat = zap_thrstat_new(name, stat_window);
+	t->stat = zap_thrstat_new(name);
 	if (!t->stat)
 		return errno;
 	t->zap = z;
@@ -751,6 +761,11 @@ int zap_io_thread_release(zap_io_thread_t t)
 		zap_thrstat_free(t->stat);
 	pthread_mutex_destroy(&t->mutex);
 	return 0;
+}
+
+void zap_io_thread_thread_id(zap_io_thread_t t)
+{
+	ovis_thrstats_thread_id_set(&t->stat->stats);
 }
 
 zap_err_t zap_event_deliver(zap_event_t ev)
@@ -776,7 +791,7 @@ static zap_io_thread_t __io_thread_create(zap_t z, struct zap_io_thread_pool_s *
 	t = z->io_thread_create(z);
 	if (!t)
 		return NULL;
-	t->stat->thread_id = t->thread;
+	t->stat->stats.thread_id = t->thread;
 	t->stat->pool_idx = tp->idx;
 	t->tp = tp;
 	tp->n++;
@@ -793,7 +808,7 @@ static zap_err_t __io_thread_cancel(zap_io_thread_t t)
 	return t->zap->io_thread_cancel(t);
 }
 
-static double zap_utilization(zap_thrstat_t in, struct timespec *now);
+static double zap_utilization(zap_thrstat_t t, struct timespec now);
 
 static zap_io_thread_t __zap_least_busy_thread(zap_t z, zap_ep_t ep, struct zap_io_thread_pool_s *p)
 {
@@ -847,13 +862,13 @@ static zap_io_thread_t __zap_passive_ep_thread(zap_t z, zap_ep_t ep)
 		goto out;
 	char name[16];
 	t = z->io_thread_create(z);
-	t->stat->thread_id = t->thread;
+	t->stat->stats.thread_id = t->thread;
 	t->stat->pool_idx = -1;
 	z->_passive_ep_thread = t;
 	if (t) {
 		/* append "_p" to the thread name for "passive" endpoint thread.
 		 * The suffix is shorten due to pthread 16-char name limit. */
-		snprintf(name, sizeof(name), "%s_p", t->stat->name);
+		snprintf(name, sizeof(name), "%s_p", t->stat->stats.name);
 		pthread_setname_np(t->thread, name);
 	}
  out:
@@ -929,18 +944,6 @@ zap_err_t zap_io_thread_ep_remove(zap_ep_t ep)
 	return zerr;
 }
 
-void zap_thrstat_reset(zap_thrstat_t stats)
-{
-	struct timespec now;
-	clock_gettime(CLOCK_REALTIME, &now);
-	stats->start = stats->wait_start = stats->wait_end = now;
-	stats->proc_count = stats->wait_count = 0;
-	memset(stats->wait_window, 0, sizeof(uint64_t) * stats->window_size);
-	memset(stats->proc_window, 0, sizeof(uint64_t) * stats->window_size);
-	if (stats->app_reset_fn)
-		stats->app_reset_fn(stats->app_ctxt);
-}
-
 static pthread_mutex_t thrstat_list_lock = PTHREAD_MUTEX_INITIALIZER;
 static LIST_HEAD(thrstat_list, zap_thrstat) thrstat_list;
 int thrstat_count = 0;
@@ -953,57 +956,46 @@ void zap_thrstat_dump()
 	clock_gettime(CLOCK_REALTIME, &now);
 	pthread_mutex_lock(&thrstat_list_lock);
 	LIST_FOREACH(t, &thrstat_list, entry) {
-		u = zap_utilization(t, &now);
-		printf("thrstat '%s', u: %lf\n", t->name, u);
+		u = zap_utilization(t, now);
+		printf("thrstat '%s', u: %lf\n", t->stats.name, u);
 	}
 	pthread_mutex_unlock(&thrstat_list_lock);
 }
 
-void zap_thrstat_reset_all()
+void zap_thrstat_reset(zap_thrstat_t stats, struct timespec *now)
+{
+	struct ovis_thrstats *t = &stats->stats;
+	ovis_thrstats_reset(t, now);
+	if (t->app_reset_fn)
+		t->app_reset_fn(t->app_ctxt, now);
+}
+
+void zap_thrstat_reset_all(struct timespec *now)
 {
 	zap_thrstat_t t;
-	struct timespec now;
-	int i;
-	clock_gettime(CLOCK_REALTIME, &now);
 	pthread_mutex_lock(&thrstat_list_lock);
-	i = 0;
 	LIST_FOREACH(t, &thrstat_list, entry) {
-		t->start = t->wait_start = t->wait_end = now;
-		t->proc_count = t->wait_count = 0;
-		memset(t->wait_window, 0, sizeof(uint64_t) * t->window_size);
-		memset(t->proc_window, 0, sizeof(uint64_t) * t->window_size);
-		i += 1;
-		if (t->app_reset_fn)
-			t->app_reset_fn(t->app_ctxt);
+		zap_thrstat_reset(t, now);
 	}
 	pthread_mutex_unlock(&thrstat_list_lock);
 }
 
-zap_thrstat_t zap_thrstat_new(const char *name, int window_size)
+zap_thrstat_t zap_thrstat_new(const char *name)
 {
+	int rc;
 	zap_thrstat_t stats = calloc(1, sizeof(*stats));
-	if (stats) {
-		stats->window_size = window_size;
-		stats->name = strdup(name);
-		if (!stats->name)
-			goto err_1;
-		stats->wait_window = malloc(window_size * sizeof(uint64_t));
-		if (!stats->wait_window)
-			goto err_2;
-		stats->proc_window = malloc(window_size * sizeof(uint64_t));
-		if (!stats->proc_window)
-			goto err_3;
-		zap_thrstat_reset(stats);
-	}
+	if (!stats)
+		return NULL;
+	rc = ovis_thrstats_init(&stats->stats, name);
+	if (rc)
+		goto err_1;
+
 	pthread_mutex_lock(&thrstat_list_lock);
 	LIST_INSERT_HEAD(&thrstat_list, stats, entry);
 	thrstat_count++;
 	pthread_mutex_unlock(&thrstat_list_lock);
 	return stats;
-err_3:
-	free(stats->wait_window);
-err_2:
-	free(stats->name);
+
 err_1:
 	free(stats);
 	return NULL;
@@ -1015,112 +1007,35 @@ void zap_thrstat_free(zap_thrstat_t stats)
 		return;
 	pthread_mutex_lock(&thrstat_list_lock);
 	LIST_REMOVE(stats, entry);
-	thrstat_count --;
+	thrstat_count--;
 	pthread_mutex_unlock(&thrstat_list_lock);
-	free(stats->name);
-	free(stats->proc_window);
-	free(stats->wait_window);
+	ovis_thrstats_cleanup(&stats->stats);
 	free(stats);
 }
 
-static double
-zap_utilization(zap_thrstat_t in, struct timespec *now)
+void inline zap_thrstat_wait_start(zap_thrstat_t stats)
 {
-	uint64_t wait_us;
-	uint64_t proc_us;
-
-	if (in->waiting) {
-		wait_us = in->wait_sum + zap_timespec_diff_us(&in->wait_start, now);
-		proc_us = in->proc_sum;
-	} else {
-		proc_us = in->proc_sum + zap_timespec_diff_us(&in->wait_end, now);
-		wait_us = in->wait_sum;
-	}
-	return (double)proc_us / (double)(proc_us + wait_us);
+	ovis_thrstats_wait_start(&stats->stats);
 }
 
-static uint64_t zap_accumulate(uint64_t sample_no,
-			       uint64_t sample,
-			       uint64_t window_size,
-			       uint64_t current_sum,
-			       uint64_t *window)
+void inline zap_thrstat_wait_end(zap_thrstat_t stats)
 {
-	int win_sample;
-	uint64_t sum;
-	win_sample = sample_no % window_size;
-	sum = current_sum - window[win_sample] + sample;
-	window[win_sample] = sample;
-	return sum;
+	ovis_thrstats_wait_end(&stats->stats);
 }
 
-void zap_thrstat_wait_start(zap_thrstat_t stats)
+static double zap_utilization(zap_thrstat_t t, struct timespec now)
 {
-	struct timespec now;
-	uint64_t proc_us;
-	assert(stats->waiting == 0);
-	stats->waiting = 1;
-	clock_gettime(CLOCK_REALTIME, &now);
-	stats->wait_start = now;
-	proc_us = zap_timespec_diff_us(&stats->wait_end, &now);
-	stats->proc_sum = zap_accumulate(stats->proc_count,
-					 proc_us,
-					 stats->window_size,
-					 stats->proc_sum,
-					 stats->proc_window);
-	stats->proc_tot += proc_us;
-	stats->proc_count += 1;
+	struct ovis_thrstats_result res;
+	ovis_thrstats_result_get(&t->stats, 0, &res);
+	return (double)res.active_us/(double)res.interval_us;
 }
 
-void zap_thrstat_wait_end(zap_thrstat_t stats)
-{
-	uint64_t wait_us;
-	assert(stats->waiting);
-	stats->waiting = 0;
-	clock_gettime(CLOCK_REALTIME, &stats->wait_end);
-	wait_us = zap_timespec_diff_us(&stats->wait_start, &stats->wait_end);
-	stats->wait_sum = zap_accumulate(stats->wait_count,
-					 wait_us,
-					 stats->window_size,
-					 stats->wait_sum,
-					 stats->wait_window);
-	stats->wait_tot += wait_us;
-	stats->wait_count += 1;
-}
-
-const char *zap_thrstat_get_name(zap_thrstat_t stats)
-{
-	return stats->name;
-}
-
-uint64_t zap_thrstat_get_sample_count(zap_thrstat_t stats)
-{
-	return (stats->proc_count + stats->wait_count) / 2;
-}
-
-double zap_thrstat_get_sample_rate(zap_thrstat_t stats)
-{
-	struct timespec now;
-	(void)clock_gettime(CLOCK_REALTIME, &now);
-	return (double)zap_thrstat_get_sample_count(stats)
-		/ ((double)(zap_timespec_diff_us(&stats->start, &now)) / 1000000.0);
-}
-
-double zap_thrstat_get_utilization(zap_thrstat_t in)
-{
-	struct timespec now;
-
-	if (in->wait_count == 0 || in->proc_count == 0)
-		return 0.0;
-
-	clock_gettime(CLOCK_REALTIME, &now);
-	return zap_utilization(in, &now);
-}
-
-struct zap_thrstat_result *zap_thrstat_get_result()
+struct zap_thrstat_result *zap_thrstat_get_result(uint64_t interval_s)
 {
 	struct zap_thrstat_result *res = NULL;
 	zap_thrstat_t t;
 	int i;
+	struct timespec now;
 
 	pthread_mutex_lock(&thrstat_list_lock);
 	res = malloc(sizeof(*res) +
@@ -1129,23 +1044,12 @@ struct zap_thrstat_result *zap_thrstat_get_result()
 		goto out;
 	res->count = thrstat_count;
 	i = 0;
+	clock_gettime(CLOCK_REALTIME, &now);
 	LIST_FOREACH(t, &thrstat_list, entry) {
-		res->entries[i].name = strdup(zap_thrstat_get_name(t));
-		res->entries[i].sample_count = zap_thrstat_get_sample_count(t);
-		res->entries[i].sample_rate = zap_thrstat_get_sample_rate(t);
-		res->entries[i].utilization = zap_thrstat_get_utilization(t);
+		ovis_thrstats_result_get(&t->stats, interval_s, &res->entries[i].res);
 		res->entries[i].n_eps = t->n_eps;
 		res->entries[i].sq_sz = t->sq_sz;
-		res->entries[i].thread_id = t->thread_id;
-		res->entries[i].tid = t->tid;
 		res->entries[i].pool_idx = t->pool_idx;
-		res->entries[i].idle_time = t->wait_tot;
-		res->entries[i].active_time = t->proc_tot;
-		res->entries[i].app_ctxt = t->app_ctxt;
-		res->entries[i].wait_start = t->wait_start;
-		res->entries[i].wait_end = t->wait_end;
-		res->entries[i].waiting = t->waiting;
-		res->entries[i].start = t->start;
 		i += 1;
 	}
 out:
@@ -1159,8 +1063,7 @@ void zap_thrstat_free_result(struct zap_thrstat_result *res)
 		return;
 	int i;
 	for (i = 0; i < res->count; i++) {
-		if (res->entries[i].name)
-			free(res->entries[i].name);
+		ovis_thrstats_result_cleanup(&res->entries[i].res);
 	}
 	free(res);
 }
@@ -1169,19 +1072,15 @@ struct timespec *zap_ep_thrstat_wait_end(zap_ep_t zep)
 {
 	if (!zep->thread)
 		return NULL;
-	return &zep->thread->stat->wait_end;
+	return &zep->thread->stat->stats.wait_end;
 }
 
-int zap_thrstat_ctxt_set(zap_ep_t zep, void *ctxt, zap_thrstat_app_reset_fn reset_fn)
+int zap_thrstat_ctxt_set(zap_ep_t zep, void *ctxt, ovis_thrstats_app_reset_fn reset_fn)
 {
 	zap_thrstat_t thrstat = (zep->thread)?(zep->thread->stat):NULL;
 	if (!thrstat)
 		return EBUSY;
-	if (thrstat->app_ctxt)
-		return EEXIST;
-	thrstat->app_ctxt = ctxt;
-	thrstat->app_reset_fn = reset_fn;
-	return 0;
+	return ovis_thrstats_app_ctxt_set(&thrstat->stats, ctxt, reset_fn);
 }
 
 void *zap_thrstat_ctxt_get(zap_ep_t zep)
@@ -1191,7 +1090,7 @@ void *zap_thrstat_ctxt_get(zap_ep_t zep)
 		errno = EBUSY;
 		return NULL;
 	}
-	return thrstat->app_ctxt;
+	return ovis_thrstats_app_ctxt_get(&thrstat->stats);
 }
 
 pthread_t zap_ep_thread(zap_ep_t ep)
@@ -1199,9 +1098,17 @@ pthread_t zap_ep_thread(zap_ep_t ep)
 	return ep->thread?ep->thread->thread:0;
 }
 
-pid_t zap_ep_thread_id(zap_ep_t ep)
+pid_t zap_ep_thread_id_get(zap_ep_t ep)
 {
-	return ep->thread?ep->thread->stat->tid:-1;
+	return ep->thread?ep->thread->stat->stats.tid:-1;
+}
+
+void zap_ep_thread_id_set(zap_ep_t ep, pid_t tid)
+{
+	if (!ep->thread)
+		return;
+
+	ep->thread->stat->stats.tid = tid;
 }
 
 uint64_t zap_ep_sq_sz(zap_ep_t ep)

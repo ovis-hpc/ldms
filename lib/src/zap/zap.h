@@ -84,6 +84,8 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 
+#include "ovis_thrstats/ovis_thrstats.h"
+
 #define ZAP_MAX_TRANSPORT_NAME_LEN 16
 
 typedef struct zap_ep *zap_ep_t;
@@ -792,10 +794,10 @@ typedef struct zap_thrstat *zap_thrstat_t;
 /**
  * \brief Create a zap_thrstat_t instance
  * \param name The name of the entity being measured
- * \param window_size The size of the measurement window
+ *
  * \returns A zap_thrstat_t instance
  */
-zap_thrstat_t zap_thrstat_new(const char *name, int window_size);
+zap_thrstat_t zap_thrstat_new(const char *name);
 
 /**
  * \brief Release the resources held by the Zap stats instance
@@ -813,9 +815,10 @@ void zap_thrstat_free(zap_thrstat_t stats);
  * zap_thrstat_wait_start()
  *
  * \param stats The zap_thrstat_t handle
+ * \param now   Current timestamp
  */
-void zap_thrstat_reset(zap_thrstat_t stats);
-void zap_thrstat_reset_all();
+void zap_thrstat_reset(zap_thrstat_t stats, struct timespec *now);
+void zap_thrstat_reset_all(struct timespec *now);
 
 /**
  * \brief Begin an I/O wait measurement interval
@@ -850,55 +853,56 @@ void zap_thrstat_wait_start(zap_thrstat_t stats);
 void zap_thrstat_wait_end(zap_thrstat_t stats);
 
 /**
- * \brief Return the thread utilization
+ * \struct zap_thrstat_result_entry
+ * \brief Thread statistics for a Zap I/O thread
  *
- * Returns thread utilization computed as follows:
- *   util = processing_time / (processing_time + wait_time)
- *
- * \param in The thread stat handle
- * \returns The thread's utilization ratio
+ * This structure contains thread statistics for a Zap I/O thread,
+ * including utilization metrics, endpoint count, and send queue size.
+ * The thread statistics are collected and analyzed using the ovis_thrstats
+ * library.
  */
-double zap_thrstat_get_utilization(zap_thrstat_t in);
-
 struct zap_thrstat_result_entry {
-	char *name;			/*< The thread name */
-	double sample_count;		/*< The number of sample periods */
-	double sample_rate;		/*< Samples per second */
-	double utilization;		/*< The thread utilization */
-	uint64_t n_eps;			/*< Number of endpoints */
-	uint64_t sq_sz;			/*< Send queue size */
-	int pool_idx;			/*< Thread pool index */
-	uint64_t thread_id;		/*< The thread ID (pthread_t) */
-	pid_t tid;			/*< The Linux Thread ID (gettid()) */
-	uint64_t idle_time;		/*< Total idle time in micro-seconds */
-	uint64_t active_time;		/*< Total active time in micro-seconds */
-	struct timespec start;		/*< The reset timestamp */
-	struct timespec wait_start;	/*< The last timestamp the thread started waiting for events */
-	struct timespec wait_end;	/*< The last timestamp the thread woke up */
-	int waiting;			/*< A non-zero value means the thread is active. */
-	void *app_ctxt;			/*< Pointer to application's context */
-};
+	/** Core thread statistics from ovis_thrstats */
+	struct ovis_thrstats_result res;
+	/** Number of endpoints handled by this thread */
+	uint64_t n_eps;
+	/** Size of the send queue */
+	uint64_t sq_sz;
+	/** Thread pool index (-1 for dedicated threads) */
+	int pool_idx;
+    };
 
+/**
+ * \struct zap_thrstat_result
+ * \brief Collection of thread statistics for all Zap threads
+ *
+ * This structure contains statistics for all Zap I/O threads in the system.
+ */
 struct zap_thrstat_result {
+	/** Number of threads */
 	int count;
+	/** Array of thread statistics entries */
 	struct zap_thrstat_result_entry entries[0];
 };
 
 /**
- * \brief Return thread utilization information
+ * \brief Get thread statistics for all Zap threads
  *
- * Returns a zap_thrstat_result structure or NULL on memory
- * allocation failure. This result must be freed with the
- * zap_thrstat_free_result() function.
+ * Retrieves thread statistics for all Zap I/O threads, including
+ * utilization metrics calculated over the specified time interval.
  *
- * \returns A pointer to a zap_thrstat_result structure
+ * \param interval_s Time interval in seconds to analyze (0 = use default 3s)
+ * \return A pointer to a zap_thrstat_result structure
+ * \see zap_thrstat_free_result()
  */
-struct zap_thrstat_result *zap_thrstat_get_result();
+struct zap_thrstat_result *zap_thrstat_get_result(uint64_t interval_s);
 
 /**
- * \brief Free a zap_thrstat_result returned by zap_thrstat_get_results
+ * \brief Free resources associated with thread statistics
+ *
+ * \param res Pointer to the result structure to free
  */
-void zap_thrstat_free_result(struct zap_thrstat_result *result);
+void zap_thrstat_free_result(struct zap_thrstat_result *res);
 
 /**
  * \brief Return the name of the Zap stats handle
@@ -933,8 +937,7 @@ struct timespec *zap_ep_thrstat_wait_end(zap_ep_t zep);
  *
  * \see zap_thrstat_ctxt_get
  */
-typedef void (*zap_thrstat_app_reset_fn)(void *ctxt);
-int zap_thrstat_ctxt_set(zap_ep_t zep, void *ctxt, zap_thrstat_app_reset_fn reset_fn);
+int zap_thrstat_ctxt_set(zap_ep_t zep, void *ctxt, ovis_thrstats_app_reset_fn reset_fn);
 /**
  * \brief Get application context of the statistics of a thread corresponding to \c zep
  *
@@ -983,7 +986,7 @@ pthread_t zap_ep_thread(zap_ep_t ep);
  *
  * \return The Linux thread id
  */
-pid_t zap_ep_thread_id(zap_ep_t ep);
+pid_t zap_ep_thread_id_get(zap_ep_t ep);
 
 /**
  * Get the send queue depth of an endpoint

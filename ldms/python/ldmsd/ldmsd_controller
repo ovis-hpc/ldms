@@ -2165,26 +2165,29 @@ class LdmsdCmdParser(cmd.Cmd):
     def display_worker_thread_stats(self, worker_threads, hdr):
         print(hdr)
         print(f"{'='*60}")
-        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Idle':15} {'Active':15} {'Duration (sec)':15} {'Event Counts':15}")
-        print(f"{'-'*15} {'-'*20} {'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*15}")
+        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Utilization':12} {'Trailing (s)':12} {'Event Counts':12}")
+        print(f"{'-'*15} {'-'*20} {'-'*20} {'-'*12} {'-'*12} {'-'*12}")
         for e in worker_threads:
-            print(f"{e['tid']:^15} {e['thread_id']:20} {e['name']:20} " \
-                  f"{e['idle_pc']:14.2f}% " \
-                  f"{e['active_pc']:14.2f}% {e['total_us']/1000000:14.2f}" \
-                  f"{e['ev_cnt']:15}")
+            print(f"{e['tid']:^15} {e['thread_id']:20} {e['name']:20} ", end="")
+            if e['utilization'] == -1:
+                  print(f"{'-':>12} {'-':>12} ", end="")
+            else:
+                  print(f"{e['utilization'] * 100:11.4f}% {int(e['refresh_us']/1000000):12} ", end="")
+            print(f"{e['ev_cnt']:12}")
 
     def display_io_thread_stats(self, io_threads):
         print(f"IO Thread Statistics")
         print(f"{'='*60}")
-        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':16} {'Samples':12} {'Sample Rate':12} " \
-              f"{'Utilization':12} {'Send Queue Size':16} " \
-              f"{'Num of EPs':12}")
-        print(f"{'-'*15} {'-'*20} ---------------- ------------ ------------ ------------ "\
-              "---------------- ------------")
+        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Utilization':12} {'Trailing (s)':12} " \
+              f"{'Send Queue Size':16} {'Num of EPs':12}")
+        print(f"{'-'*15} {'-'*20} {'-'*20} {'-'*12} {'-'*12} {'-'*16} {'-'*12}")
         for e in io_threads:
-            print(f"{e['tid']:^15} {e['thread_id']:20} {e['name']:16} {e['sample_count']:12.0f} " \
-                  f"{e['sample_rate']:12.2f} {e['utilization'] * 100:12.2f} " \
-                  f"{e['sq_sz']:16} {e['n_eps']:12}")
+            print(f"{e['tid']:^15} {e['thread_id']:20} {e['name']:20} ", end = "")
+            if e['utilization'] == -1:
+                  print(f"{'-':>12} {'-':>12} ", end="")
+            else:
+                  print(f"{e['utilization'] * 100:11.4f}% {int(e['refresh_us']/1000000):12} ", end="")
+            print(f"{e['sq_sz']:16} {e['n_eps']:12}")
 
     def do_thread_stats(self, arg):
         """
@@ -2226,7 +2229,7 @@ class LdmsdCmdParser(cmd.Cmd):
             print(f"{thr['tid']}     {thr['thread_id']}     {thr['name']}")
             print("   ", end="")
             display = dict([(k, v) for k, v in thr['ldms_xprt'].items() if v != 0])
-            print('\n   '.join(f"{key:20} {(value/total*100):12.6f}%    {value}" for key, value in display.items()))
+            print('\n   '.join(f"{key:20} {(value/total*100):12.4f}%    {value}" for key, value in display.items()))
             print(f"{'-'*60}")
 
     def complete_thread_stats(self, text, line, begidx, endidx):

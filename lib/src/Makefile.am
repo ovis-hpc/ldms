@@ -14,6 +14,7 @@ SUBDIRS += ovis_util
 SUBDIRS += coll
 SUBDIRS += ovis_ev
 SUBDIRS += ovis_log
+SUBDIRS += ovis_thrstats
 
 if ENABLE_MMALLOC
 SUBDIRS += mmalloc

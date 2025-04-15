@@ -1673,3 +1673,15 @@ int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex, char *stream_name,
 	regfree(&regex);
 	return 0;
 }
+
+void ldmsd_prdcr_set_stats_reset(ldmsd_prdcr_set_t prdset, struct timespec *now, int flags)
+{
+	if (flags & LDMSD_PRDSET_STATS_F_STORE) {
+		ldmsd_stat_reset(&prdset->store_stat, now);
+	}
+
+	if (flags & LDMSD_PRDSET_STATS_F_UPD) {
+		ldmsd_stat_reset(&prdset->updt_stat, now);
+		prdset->oversampled_cnt = prdset->skipped_upd_cnt = 0;
+	}
+}

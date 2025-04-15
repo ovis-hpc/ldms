@@ -7212,38 +7212,130 @@ out:
 	return rc;
 }
 
-/*
- * Sends a JSON formatted summary of Zap thread statistics as follows:
+void ldmsd_prdcr_set_stats_reset(ldmsd_prdcr_set_t prdset, struct timespec *now, int flags);
+static void __prdset_stats_reset(struct timespec *now, int is_update, int is_store)
+{
+	ldmsd_prdcr_t prdcr;
+	ldmsd_prdcr_set_t prdset;
+	struct rbn *rbn;
+	int reset_flags = 0;
+
+	if (is_update)
+		reset_flags |= LDMSD_PRDSET_STATS_F_UPD;
+	if (is_store)
+		reset_flags |= LDMSD_PRDSET_STATS_F_STORE;
+
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		ldmsd_prdcr_lock(prdcr);
+		RBT_FOREACH(rbn, &prdcr->set_tree) {
+			prdset = container_of(rbn, struct ldmsd_prdcr_set, rbn);
+			ldmsd_prdcr_set_stats_reset(prdset, now, reset_flags);
+		}
+		ldmsd_prdcr_unlock(prdcr);
+	}
+}
+
+/**
+ * Thread Statistics Handler
  *
- * { "count" : <int>,
- *   "io_threads" : [
- * 	{ "name" : <string>,
- * 	  "tid"  : <tid>,
- * 	  "thread_id" : <Linux Thread ID>,
- *  	  "sample_count" : <float>,
- *  	  "sample_rate" : <float>,
- *        "utilization" : <float>,
- *        "sq_sz" : <send queue size>,
- *        "n_eps" : <Number of endpoints>,
- *        "ldms_xprt" :
- *          { "Idle" : <Idle Time>,
- *            "Zap" : <Time spent by Zap>,
- *            <ldms_xprt's operations>,
- *            "Storing Time> : <Time spent to store metrics>
- *          }
- *      },
- *      . . .
- *   ],
- *   "worker_threads" : [
- *      { "name" : <string>,
- *        "tid"  : <tid>,
- *        "thread_id" : <Linux Thread ID>,
- *        "total_us" : <Total time in micro-seconds>,
- *        "idle_pc" : <percentage of idle time>,
- *        "active_pc" : <percentage of active time>
- *      }
- *   ]
+ * The thread_stats handler provides information about LDMSD thread performance
+ * and utilization metrics. This includes worker threads, I/O threads, and
+ * sampling threads (xthreads).
+ *
+ * Thread statistics are collected using the ovis_thrstats library, which provides
+ * both overall and time-window based utilization metrics.
+ *
+ * Request Format:
+ * {
+ *   "command": "thread_stats"
  * }
+ *
+ * Response Format:
+ * {
+ *   "count": <total thread count>,
+ *   "io_threads": [
+ *     {
+ *       "name": "<thread name>",
+ *       "tid": <Linux thread ID>,
+ *       "thread_id": "<pthread ID as hex string>",
+ *       "type": "io_thread",
+ *       "utilization": <utilization ratio 0.0-1.0>,
+ *       "sq_sz": <send queue size>,
+ *       "n_eps": <number of endpoints>,
+ *       "idle": <idle ratio 0.0-1.0>,
+ *       "active": <active ratio 0.0-1.0>,
+ *       "interval": <analysis interval in microseconds>,
+ *       "ldms_xprt": {
+ *         "Idle": <idle time in microseconds>,
+ *         "Zap": <zap time in microseconds>,
+ *         "<operation name>": <time in microseconds>,
+ *         ...
+ *       }
+ *     },
+ *     ...
+ *   ],
+ *   "worker_threads": [
+ *     {
+ *       "name": "<thread name>",
+ *       "tid": <Linux thread ID>,
+ *       "thread_id": "<pthread ID as hex string>",
+ *       "idle_pc": <idle percentage over total runtime>,
+ *       "active_pc": <active percentage over total runtime>,
+ *       "total_us": <total runtime in microseconds>,
+ *       "utilization": <utilization ratio 0.0-1.0>,
+ *       "interval_us": <analysis interval in microseconds>,
+ *       "ev_cnt": <event count>
+ *     },
+ *     ...
+ *   ],
+ *   "xthreads": [
+ *     {
+ *       "name": "<thread name>",
+ *       "tid": <Linux thread ID>,
+ *       "thread_id": "<pthread ID as hex string>",
+ *       "idle_pc": <idle percentage over total runtime>,
+ *       "active_pc": <active percentage over total runtime>,
+ *       "total_us": <total runtime in microseconds>,
+ *       "ev_cnt": <event count>
+ *     },
+ *     ...
+ *   ],
+ *   "duration": <statistics collection duration in microseconds>
+ * }
+ *
+ * Field Descriptions:
+ * -------------------
+ * count           - Total number of threads reported
+ * duration        - Duration of the statistics collection in microseconds
+ * name            - Thread name
+ * tid             - Linux thread ID (from gettid() system call)
+ * thread_id       - Thread ID from pthread_self() as hex string
+ *
+ * utilization     - Thread utilization ratio (0.0-1.0) within the analysis interval
+ *                   A value of -1 indicates insufficient data for calculation
+ * sq_sz           - Send queue size (number of pending send operations)
+ * n_eps           - Number of endpoints handled by this thread
+ * idle            - Idle ratio within the last 3 seconds
+ * active          - Active ratio within the last 3 seconds
+ * interval        - Duration of the analysis interval in microseconds (3 seconds)
+ * ldms_xprt       - LDMS transport operation statistics
+ * ldms_xprt.Idle  - Total time spent idle in microseconds since last reset
+ * Zap             - Time spent in Zap transport layer in microseconds
+ * <operation>     - Time spent in specific operations (Lookup, Update, etc.)
+ * idle_pc         - Idle percentage over since last reset (0-100)
+ * active_pc       - Active percentage over since last reset (0-100)
+ * total_us        - Total runtime in microseconds since start/reset
+ * ev_cnt          - Number of events processed by the thread
+ * interval_us     - Duration of the analysis interval in microseconds
+ *
+ * Notes:
+ * ------
+ * - The reported utilization is typically based on a 3-second window by default
+ * - idle_pc and active_pc are based on the entire runtime since thread start/reset
+ * - idle and active ratios are based on the analysis interval (typically 3 seconds)
+ * - The "worker_threads" represent LDMSD event processing threads
+ * - The "io_threads" represent Zap network I/O threads
+ * - The "xthreads" represent sampler execution threads
  */
 extern void ldmsd_worker_thrstat_free(struct ldmsd_worker_thrstat_result *res);
 extern struct ldmsd_worker_thrstat_result *ldmsd_worker_thrstat_get();
@@ -7255,14 +7347,24 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	int i, j;
 	int rc;
 	struct timespec start, end;
-	struct ldms_thrstat_result *res = NULL;
+	struct ldms_thrstat_result *lres = NULL;
 	struct zap_thrstat_result_entry *zthr;
 	struct rbt store_time_tree;
 	struct rbn *rbn;
 	struct store_time_thread *stime_ent;
 	struct ldmsd_worker_thrstat_result *wres = NULL;
 	struct ldmsd_worker_thrstat_result *xres = NULL;
-	struct ovis_scheduler_thrstat *wthr;
+	struct ovis_scheduler_thrstats *wthr;
+	struct ovis_thrstats_result *res;
+
+	double utilization;
+
+	/*
+	 * Get the thread utilization in the last 3 seconds.
+	 * The 3 seconds is adopted as it is the default refresh rate of `top`
+	 */
+	uint64_t interval_s = 3;
+
 	s = buff = NULL;
 
 	(void)clock_gettime(CLOCK_REALTIME, &start);
@@ -7273,11 +7375,11 @@ static char * __thread_stats_as_json(size_t *json_sz)
 		goto __APPEND_ERR;
 	}
 
-	res = ldms_thrstat_result_get();
-	if (!res)
+	lres = ldms_thrstat_result_get(interval_s);
+	if (!lres)
 		goto __APPEND_ERR;
 
-	wres = ldmsd_worker_thrstat_get();
+	wres = ldmsd_worker_thrstat_get(interval_s);
 	if (!wres)
 		goto __APPEND_ERR;
 
@@ -7291,48 +7393,57 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	s = buff;
 
 	__APPEND("{");
-	__APPEND(" \"count\": %d,\n", res->count);
+	__APPEND(" \"count\": %d,\n", lres->count);
 	__APPEND(" \"io_threads\": [\n");
-	for (i = 0; i < res->count; i++) {
-		zthr = res->entries[i].zap_res;
+	for (i = 0; i < lres->count; i++) {
+		zthr = lres->entries[i].zap_res;
+		res = &zthr->res;
+		if (res->interval_us == 0) {
+			utilization = -1;
+		} else {
+			utilization = (double)res->active_us / (double)res->interval_us;
+		}
 		__APPEND("  {\n");
-		__APPEND("   \"name\": \"%s\",\n", zthr->name);
-		__APPEND("   \"tid\": %d,\n", zthr->tid);
-		__APPEND("   \"thread_id\": \"%p\",\n", (void*)zthr->thread_id);
-		__APPEND("   \"type\": \"io_thread\",\n");
-		__APPEND("   \"sample_count\": %g,\n", zthr->sample_count);
-		__APPEND("   \"sample_rate\": %g,\n", zthr->sample_rate);
-		__APPEND("   \"utilization\": %g,\n", zthr->utilization);
+		__APPEND("   \"name\": \"%s\",\n", res->name);
+		__APPEND("   \"tid\": %d,\n", res->tid);
+		__APPEND("   \"thread_id\": \"%p\",\n", (void*)res->thread_id);
+		__APPEND("   \"idle_tot\" : %ld,\n", res->idle_tot);
+		__APPEND("   \"active_tot\" : %ld,\n", res->active_tot);
+		__APPEND("   \"total_us\" : %ld,\n", res->dur_tot);
+		__APPEND("   \"idle_us\": %ld,\n", ((res->interval_us)?res->idle_us:0));
+		__APPEND("   \"active_us\": %ld,\n", ((res->interval_us)?res->active_us:0));
+		__APPEND("   \"refresh_us\": %ld,\n", res->interval_us);
+		__APPEND("   \"utilization\": %g,\n", utilization);
 		__APPEND("   \"sq_sz\": %lu,\n", zthr->sq_sz);
 		__APPEND("   \"n_eps\": %lu,\n", zthr->n_eps);
 		__APPEND("   \"ldms_xprt\": {\n");
-		__APPEND("     \"Idle\": %ld,\n", res->entries[i].idle);
-		__APPEND("     \"Zap\": %ld,\n", res->entries[i].zap_time);
+		__APPEND("     \"Idle\": %ld,\n", lres->entries[i].idle);
+		__APPEND("     \"Zap\": %ld,\n", lres->entries[i].zap_time);
 		for (j = 0; j < LDMS_THRSTAT_OP_COUNT; j++) {
 			if (j > 0)
 				__APPEND(",\n");
 			if (j == LDMS_THRSTAT_OP_UPDATE_REPLY) {
 				/* Substract the store_time from the total update time */
-				rbn = rbt_find(&store_time_tree, (void*)(uint64_t)zthr->tid);
+				rbn = rbt_find(&store_time_tree, (void*)(uint64_t)res->tid);
 				if (rbn) {
 					stime_ent = container_of(rbn, struct store_time_thread, rbn);
 					__APPEND("     \"%s\": %ld,\n", ldms_thrstat_op_str(j),
-						res->entries[i].ops[j] - stime_ent->store_time);
+						lres->entries[i].ops[j] - stime_ent->store_time);
 					__APPEND("     \"Storing Data\": %ld",
 							stime_ent->store_time);
 				} else {
 					__APPEND("     \"%s\": %ld,\n", ldms_thrstat_op_str(j),
-								res->entries[i].ops[j]);
+								lres->entries[i].ops[j]);
 					__APPEND("     \"Storing Data\": 0");
 				}
 			} else {
 				__APPEND("     \"%s\": %ld", ldms_thrstat_op_str(j),
-							res->entries[i].ops[j]);
+							lres->entries[i].ops[j]);
 			}
 		}
 		__APPEND("      }");
 		__APPEND("   ");
-		if (i < res->count - 1)
+		if (i < lres->count - 1)
 			__APPEND("  },\n");
 		else
 			__APPEND("  }\n");
@@ -7341,13 +7452,23 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	__APPEND(" \"worker_threads\": [\n");
 	for (i = 0; i < wres->count; i++) {
 		wthr = wres->entries[i];
+		res = &wthr->stats;
+		if (res->interval_us == 0) {
+			utilization = -1;
+		} else {
+			utilization = (double)res->active_us / (double)res->interval_us;
+		}
 		__APPEND("  {\n");
-		__APPEND("   \"name\": \"%s\",\n", wthr->name);
-		__APPEND("   \"tid\": %d,\n", wthr->tid);
-		__APPEND("   \"thread_id\": \"%p\",\n", (void*)wthr->thread_id);
-		__APPEND("   \"idle_pc\" : %lf,\n", wthr->idle_pc);
-		__APPEND("   \"active_pc\" : %lf,\n", wthr->active_pc);
-		__APPEND("   \"total_us\" : %ld,\n", wthr->dur);
+		__APPEND("   \"name\": \"%s\",\n", res->name);
+		__APPEND("   \"tid\": %d,\n", res->tid);
+		__APPEND("   \"thread_id\": \"%p\",\n", (void*)res->thread_id);
+		__APPEND("   \"idle_tot\" : %ld,\n", res->idle_tot);
+		__APPEND("   \"active_tot\" : %ld,\n", res->active_tot);
+		__APPEND("   \"total_us\" : %ld,\n", res->dur_tot);
+		__APPEND("   \"utilization\" : %lf,\n", utilization);
+		__APPEND("   \"idle_us\": %ld,\n", ((res->interval_us)?res->idle_us:0));
+		__APPEND("   \"active_us\": %ld,\n", ((res->interval_us)?res->active_us:0));
+		__APPEND("   \"refresh_us\": %ld,\n", res->interval_us);
 		__APPEND("   \"ev_cnt\" : %ld\n", wthr->ev_cnt);
 		if (i < wres->count - 1)
 			__APPEND("   },\n");
@@ -7358,13 +7479,23 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	__APPEND(" \"xthreads\": [\n");
 	for (i = 0; xres && i < xres->count; i++) {
 		wthr = xres->entries[i];
+		res = &wthr->stats;
+		if (res->interval_us == 0) {
+			utilization = -1;
+		} else {
+			utilization = (double)res->active_us / (double)res->interval_us;
+		}
 		__APPEND("  {\n");
-		__APPEND("   \"name\": \"%s\",\n", wthr->name);
-		__APPEND("   \"tid\": %d,\n", wthr->tid);
-		__APPEND("   \"thread_id\": \"%p\",\n", (void*)wthr->thread_id);
-		__APPEND("   \"idle_pc\" : %lf,\n", wthr->idle_pc);
-		__APPEND("   \"active_pc\" : %lf,\n", wthr->active_pc);
-		__APPEND("   \"total_us\" : %ld,\n", wthr->dur);
+		__APPEND("   \"name\": \"%s\",\n", res->name);
+		__APPEND("   \"tid\": %d,\n", res->tid);
+		__APPEND("   \"thread_id\": \"%p\",\n", (void*)res->thread_id);
+		__APPEND("   \"idle_tot\" : %ld,\n", res->idle_tot);
+		__APPEND("   \"active_tot\" : %ld,\n", res->active_tot);
+		__APPEND("   \"total_us\" : %ld,\n", res->dur_tot);
+		__APPEND("   \"utilization\" : %lf,\n", utilization);
+		__APPEND("   \"idle_us\": %ld,\n", ((res->interval_us)?res->idle_us:0));
+		__APPEND("   \"active_us\": %ld,\n", ((res->interval_us)?res->active_us:0));
+		__APPEND("   \"refresh_us\": %ld,\n", res->interval_us);
 		__APPEND("   \"ev_cnt\" : %ld\n", wthr->ev_cnt);
 		if (i < xres->count - 1)
 			__APPEND("   },\n");
@@ -7379,7 +7510,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	__APPEND("}"); /* end */
 
 	*json_sz = s - buff + 1;
-	ldms_thrstat_result_free(res);
+	ldms_thrstat_result_free(lres);
 	ldmsd_worker_thrstat_free(wres);
 	while ((rbn = rbt_min(&store_time_tree))) {
 		rbt_del(&store_time_tree, rbn);
@@ -7388,7 +7519,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	}
 	return buff;
 __APPEND_ERR:
-	ldms_thrstat_result_free(res);
+	ldms_thrstat_result_free(lres);
 	ldmsd_worker_thrstat_free(wres);
 	if (xres)
 		ldmsd_worker_thrstat_free(xres);
@@ -7401,6 +7532,8 @@ __APPEND_ERR:
 	return NULL;
 }
 
+extern void ldmsd_worker_thrstats_reset(struct timespec *now);
+extern void ldmsd_xthrstat_reset(struct timespec *now);
 static int thread_stats_handler(ldmsd_req_ctxt_t req)
 {
 	char *json_s, *s;
@@ -7433,8 +7566,15 @@ static int thread_stats_handler(ldmsd_req_ctxt_t req)
 		goto err;
 
 	free(json_s);
-	if (reset)
-		zap_thrstat_reset_all();
+	if (reset) {
+		struct timespec now;
+		clock_gettime(CLOCK_REALTIME, &now);
+		zap_thrstat_reset_all(&now);
+		ldmsd_worker_thrstats_reset(&now);
+		ldmsd_xthrstat_reset(&now);
+		__prdset_stats_reset(&now, 1, 1);
+	}
+
 	return 0;
 err:
 	free(json_s);
@@ -8738,28 +8878,6 @@ out:
 	return rc;
 }
 
-static void __prdset_stats_reset(struct timespec *now, int is_update, int is_store)
-{
-	ldmsd_prdcr_t prdcr;
-	ldmsd_prdcr_set_t prdset;
-	struct rbn *rbn;
-
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		ldmsd_prdcr_lock(prdcr);
-		RBT_FOREACH(rbn, &prdcr->set_tree) {
-			prdset = container_of(rbn, struct ldmsd_prdcr_set, rbn);
-			if (is_update) {
-				memset(&prdset->updt_stat, 0, sizeof(struct ldmsd_stat));
-				prdset->updt_stat.start = prdset->store_stat.start = *now;
-				prdset->oversampled_cnt = prdset->skipped_upd_cnt = 0;
-			}
-			if (is_store)
-				memset(&prdset->store_stat, 0, sizeof(struct ldmsd_stat));
-		}
-		ldmsd_prdcr_unlock(prdcr);
-	}
-}
-
 static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 {
 	struct timespec now;
@@ -8803,13 +8921,17 @@ static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	clock_gettime(CLOCK_REALTIME, &now);
-	if (is_thread)
-		zap_thrstat_reset_all();
+	if (is_thread || is_xprt) {
+		zap_thrstat_reset_all(&now);
+		ldmsd_worker_thrstats_reset(&now);
+		ldmsd_xthrstat_reset(&now);
+		__prdset_stats_reset(&now, is_update, is_store);
+	}
 
-	if (is_xprt)
+	if (is_xprt) {
 		ldms_xprt_rate_data(NULL, 1);
-
-	__prdset_stats_reset(&now, is_update, is_store);
+		__prdset_stats_reset(&now, is_update, is_store);
+	}
 
 	if (is_stream)
 		ldms_stream_n_client_stats_reset();

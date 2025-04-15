@@ -976,6 +976,43 @@ Display the IO thread statistics
       | If true, reset the thread statistics after returning the values.
         The default is false.
 
+Query the IO thread, worker thread, and sampling thread utilization statistics. The statistics include both overall utilization (since start/reset) and recent utilization over a time window.
+
+The report is divided into three section:
+
+* LDMSD Worker Thread Statstics - LDMSD event processing threads
+* Exclusive Worker Thread Statistics - Sampling execution threads
+* IO Thread Statistics - Network I/O threads
+
+The column descriptions for worker threads and xthreads are:
+
+* Thread ID - Linux thread ID (from gettid())
+* Linux Thread ID - pthread ID as hex string
+* Name - Thread name
+* Utilization - Thread utilization ratio (0.0-100.0%) over a recent time window.
+* Trailing (s) - Duration of the most recent time period used for utilization calculation (default 3 seconds)
+* Event Counts - Number of events processed
+
+The column descriptions for IO threads are:
+
+* Thread ID - Linux thread ID (from gettid())
+* Linux Thread ID - pthread ID as hex string
+* Name - Thread name
+* Utilization - Thread utilization ratio (0.0-100.0%) over a recent time window
+* Trailing (s) - Duration of the most recent time period used for utilization calculation (default 3 seconds)
+* Send Queue Size - Number of pending send operations
+* Num of EPs - Number of endpoints handled by this thread
+
+Additionally, detailed IO Thread usage information is provided showing:
+
+* The percentage of time each thread spends in different LDMS operations
+* The absolute time (in microseconds) spent in each operation
+
+Notes:
+* A utilization value of '-' indicates insufficient data points for calculation
+* The reported utilization is typically calculated over a 3-second window by default
+* Idle and active percentages represent recent activity within the time window
+
 Display the transport operation statistics
 ------------------------------------------
 

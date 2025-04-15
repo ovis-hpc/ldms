@@ -369,6 +369,8 @@ struct ldmsd_stat {
 	int count;
 };
 
+#define LDMSD_PRDSET_STATS_F_UPD 1
+#define LDMSD_PRDSET_STATS_F_STORE 2
 typedef struct ldmsd_prdcr_set {
 	char *inst_name;
 	char *schema_name;
@@ -844,7 +846,7 @@ typedef struct ldmsd_req_ctxt *ldmsd_req_ctxt_t;
 
 struct ldmsd_worker_thrstat_result {
 	int count; /* Number of worker threads */
-	struct ovis_scheduler_thrstat *entries[0];
+	struct ovis_scheduler_thrstats *entries[0];
 };
 
 /**
@@ -1658,4 +1660,5 @@ __attribute__((format(printf, 2, 3)))
 int linebuf_printf(struct ldmsd_req_ctxt *reqc, char *fmt, ...);
 
 void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct timespec *end);
+void ldmsd_stat_reset(struct ldmsd_stat *stats, struct timespec *now);
 #endif
