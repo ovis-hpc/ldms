@@ -290,11 +290,11 @@ int ovis_log_str_to_level(const char *level_s)
 	/*
 	 * A single log level name is given.
 	 */
-	for (i = 0; strcasecmp(level_tbl[i].name, level_s); i++);
+	for (i = 0; level_tbl[i].name && strcasecmp(level_tbl[i].name, level_s); i++);
 	if (!i)
 		return OVIS_LQUIET;
 	if (!level_tbl[i].value)
-		return ENOENT;	/* level_s not found */
+		return -EINVAL;	/* level_s not found */
 	for (rc = 0; level_tbl[i].value; i++)
 		rc |= level_tbl[i].value;
 	return rc;
