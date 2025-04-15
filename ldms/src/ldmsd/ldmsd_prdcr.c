@@ -497,19 +497,28 @@ static int __on_subs_resp(ldmsd_req_cmd_t rcmd)
 	return 0;
 }
 
-static int __prdcr_stream_subscribe(ldmsd_prdcr_t prdcr, const char *stream, int64_t rate);
-
 /* Send subscribe request to peer */
 static int __prdcr_subscribe(ldmsd_prdcr_t prdcr)
 {
+	ldmsd_req_cmd_t rcmd;
 	int rc;
 	ldmsd_prdcr_stream_t s;
 	LIST_FOREACH(s, &prdcr->stream_list, entry) {
-		rc = __prdcr_stream_subscribe(prdcr, s->name, s->rate);
-		if (rc)
+		rcmd = ldmsd_req_cmd_new(prdcr->xprt, LDMSD_STREAM_SUBSCRIBE_REQ,
+				NULL, __on_subs_resp, prdcr);
+		rc = errno;
+		if (!rcmd)
 			goto err_0;
+		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, s->name);
+		if (rc)
+			goto err_1;
+		rc = ldmsd_req_cmd_attr_term(rcmd);
+		if (rc)
+			goto err_1;
 	}
 	return 0;
+ err_1:
+	ldmsd_req_cmd_free(rcmd);
  err_0:
 	return rc;
 }
@@ -1107,6 +1116,7 @@ ldmsd_prdcr_new(const char *name, const char *xprt_name,
 extern struct rbt *cfgobj_trees[];
 ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
 
+extern void ldmsd_stream_publisher_remove(const char *p_name);
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
@@ -1137,6 +1147,8 @@ int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out_1;
 	}
+
+	ldmsd_stream_publisher_remove(prdcr_name);
 
 	/* removing from the tree */
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR], &prdcr->obj.rbn);
@@ -1291,6 +1303,7 @@ int ldmsd_prdcr_stop(const char *name, ldmsd_sec_ctxt_t ctxt)
 /*
  * Guessing if the string is a regular expression or just a string.
  */
+__attribute__((unused))
 static int __is_regex(const char *s)
 {
 	const char *c;
@@ -1324,7 +1337,7 @@ int __remote_subscribe_cb(ldms_msg_event_t ev, void *cb_arg)
 	return 0;
 }
 
-int __old_ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
+static int __prdcr_stream_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
 {
 	int rc;
 	ldmsd_req_cmd_t rcmd;
@@ -1350,15 +1363,6 @@ int __old_ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
 	return rc;
 }
 
-static int __prdcr_stream_subscribe(ldmsd_prdcr_t prdcr, const char *stream, int64_t rate)
-{
-	if (ldms_xprt_is_remote_rail(prdcr->xprt))
-		return ldms_msg_remote_subscribe(prdcr->xprt,
-				stream, __is_regex(stream),
-				__remote_subscribe_cb, prdcr, rate);
-	return __old_ldmsd_prdcr_subscribe(prdcr, stream);
-}
-
 int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream, int64_t rate)
 {
 	int rc = 0;
@@ -1381,7 +1385,7 @@ int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream, int64_t rate)
 	rc = 0;
 	LIST_INSERT_HEAD(&prdcr->stream_list, s, entry);
 	if (prdcr->conn_state == LDMSD_PRDCR_STATE_CONNECTED) {
-		rc = __prdcr_stream_subscribe(prdcr, stream, rate);
+		rc = __prdcr_stream_subscribe(prdcr, stream);
 	}
 	if (rc)
 		goto err_2;
@@ -1396,35 +1400,10 @@ int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream, int64_t rate)
 	return rc;
 }
 
-int __old_ldmsd_prdcr_unsubscribe(ldmsd_prdcr_t prdcr, const char *stream)
-{
-	int rc;
-	ldmsd_req_cmd_t rcmd;
-	if (prdcr->conn_state == LDMSD_PRDCR_STATE_CONNECTED) {
-		/* issue stream unsubscribe request right away if connected */
-		rcmd = ldmsd_req_cmd_new(prdcr->xprt, LDMSD_STREAM_UNSUBSCRIBE_REQ,
-				NULL, __on_subs_resp, prdcr);
-		rc = errno;
-		if (!rcmd)
-			goto rcmd_err;
-		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, stream);
-		if (rc)
-			goto rcmd_err;
-		rc = ldmsd_req_cmd_attr_term(rcmd);
-		if (rc)
-			goto rcmd_err;
-	}
-	rc = 0;
-	return rc;
- rcmd_err:
-	if (rcmd)
-		ldmsd_req_cmd_free(rcmd);
-	return rc;
-}
-
 int ldmsd_prdcr_unsubscribe(ldmsd_prdcr_t prdcr, const char *stream)
 {
 	int rc = 0;
+	ldmsd_req_cmd_t rcmd;
 	ldmsd_prdcr_stream_t s = NULL;
 	ldmsd_prdcr_lock(prdcr);
 	LIST_FOREACH(s, &prdcr->stream_list, entry) {
@@ -1439,16 +1418,27 @@ int ldmsd_prdcr_unsubscribe(ldmsd_prdcr_t prdcr, const char *stream)
 	free((void*)s->name);
 	free(s);
 	if (prdcr->conn_state == LDMSD_PRDCR_STATE_CONNECTED) {
-		if (ldms_xprt_is_remote_rail(prdcr->xprt)) {
-			rc = ldms_msg_remote_unsubscribe(prdcr->xprt,
-					stream, __is_regex(stream),
-					__remote_subscribe_cb, prdcr);
-		} else {
-			rc = __old_ldmsd_prdcr_unsubscribe(prdcr, stream);
-		}
+		/* issue stream unsubscribe request right away if connected */
+		rcmd = ldmsd_req_cmd_new(prdcr->xprt, LDMSD_STREAM_UNSUBSCRIBE_REQ,
+				NULL, __on_subs_resp, prdcr);
+		rc = errno;
+		if (!rcmd)
+			goto rcmd_err;
+		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, stream);
+		if (rc)
+			goto rcmd_err;
+		rc = ldmsd_req_cmd_attr_term(rcmd);
+		if (rc)
+			goto rcmd_err;
 	}
  out:
 	ldmsd_prdcr_unlock(prdcr);
+	return rc;
+
+ rcmd_err:
+	ldmsd_prdcr_unlock(prdcr);
+	if (rcmd)
+		ldmsd_req_cmd_free(rcmd);
 	return rc;
 }
 
