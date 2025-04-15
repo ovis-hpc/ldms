@@ -129,6 +129,8 @@ struct ldms_stream_client_s {
 /* the full stream message */
 struct ldms_stream_full_msg_s {
 	struct ldms_addr src;
+	uint32_t pad0;
+	uint64_t reserve[4];
 	uint64_t msg_gn;
 	uint32_t msg_len;
 	uint32_t stream_type;
@@ -137,6 +139,7 @@ struct ldms_stream_full_msg_s {
 	uint32_t name_hash;
 	/* Allocate space to collect profile data for 8 hops */
 	uint32_t hop_cnt;
+	uint32_t pad1;
 	struct ldms_stream_hop hops[STREAM_MAX_PROFILE_HOPS+1];
 	char     msg[OVIS_FLEX];
 	/* `msg` format:
