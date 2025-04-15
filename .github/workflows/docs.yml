@@ -9,44 +9,7 @@ on:
       - '**.rst'           # Same triggers for pull requests
 
 jobs:
-  generate-rst:
-    runs-on: ubuntu-22.04
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.8
-
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install pandoc
-
-      - name: Copy man page .rst files
-        run: |
-          RST_SRC="ldms/"
-          RST_DST="docs/rst_man"
-          mkdir -p "$RST_DST"
-          cd "$RST_SRC"
-          find . -name "*.rst" -exec cp --parents {} "$(realpath ../$RST_DST)" \;
-
-      - name: Commit and Push Changes
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git add docs/
-            git commit -m "Update man page .rst files"
-            git push origin HEAD
-          else
-            echo "No changes to commit."
-          fi
   build-docs:
-    needs: generate-rst
     runs-on: ubuntu-22.04
 
     steps:
