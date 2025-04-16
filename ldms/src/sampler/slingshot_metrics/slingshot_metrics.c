@@ -293,28 +293,10 @@ static int use_counter(const char * const counter_name);
 static int use_counter_group(const char * const counter_group)
 {
         int i;
-        bool all_counters = false;
-        enum c_cntr_group group;
         int rc;
 
-        if (!strcmp(counter_group, "all")) {
-                all_counters = true;
-        } else if (!strcmp(counter_group, "ext")) {
-                group = C_CNTR_GROUP_EXT;
-        } else if (!strcmp(counter_group, "pi_ipd")) {
-                group = C_CNTR_GROUP_PI_IPD;
-        } else if (!strcmp(counter_group, "mb")) {
-                group = C_CNTR_GROUP_MB;
-        } else if (!strcmp(counter_group, "cq")) {
-                group = C_CNTR_GROUP_CQ;
-        } else if (!strcmp(counter_group, "lpe")) {
-                group = C_CNTR_GROUP_LPE;
-        } else if (!strcmp(counter_group, "hni")) {
-                group = C_CNTR_GROUP_HNI;
-        } else if (!strcmp(counter_group, "ext2")) {
-                group = C_CNTR_GROUP_EXT2;
-        } else {
-                log_fn(LDMSD_LERROR, SAMP" unrecognized counter group \"%s\"\n",
+        if (strcmp(counter_group, "all")) {
+                log_fn(LDMSD_LERROR, SAMP" unrecognized counter group \"%s\" (only \"all\" is supported)\n",
                        counter_group);
                 return -1;
         }
@@ -325,7 +307,7 @@ static int use_counter_group(const char * const counter_group)
                            due to grouping, and leaving space for future new
                            counters */
                         continue;
-                } else if (all_counters || c1_cntr_descs[i].group == group) {
+                } else {
                         rc = use_counter(c1_cntr_descs[i].name);
                         if (rc != 0) {
                                 return rc;
