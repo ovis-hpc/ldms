@@ -376,6 +376,11 @@ AC_ARG_ENABLE([variorum],
     [],
     [enable_variorum="check"])
 AS_IF([test "x$enable_variorum" != xno],[
+    PKG_CHECK_MODULES([variorum], [variorum >= 0.8], [variorum_version_check=yes], [variorum_version_check=no])
+    AS_IF([test "x$enable_variorum" != xcheck],[
+        AS_IF([test "x$variorum_version_check" = xno],
+            [AC_MSG_ERROR([variorum pkgconfig file not found, or variorum version is not >= 0.8])])
+    ])
     AC_LIB_HAVE_LINKFLAGS([variorum], [], [#include <variorum.h>
                            #include <variorum_topology.h>])
     AS_IF([test "x$enable_variorum" != xcheck],[
@@ -387,7 +392,7 @@ AS_IF([test "x$enable_variorum" != xno],[
             [AC_MSG_ERROR([libjansson or headers not found])])
     ])
 ])
-AM_CONDITIONAL([ENABLE_VARIORUM_SAMPLER], [test "x$enable_variorum" != no -a "x$HAVE_LIBVARIORUM" = xyes -a "x$HAVE_LIBJANSSON" = xyes])
+AM_CONDITIONAL([ENABLE_VARIORUM_SAMPLER], [test "x$enable_variorum" != no -a "x$HAVE_LIBVARIORUM" = xyes -a "x$variorum_version_check" = xyes -a "x$HAVE_LIBJANSSON" = xyes])
 
 dnl check for libcurl if influx is configured
 OPTION_DEFAULT_DISABLE([influx], [ENABLE_INFLUX])
