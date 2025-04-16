@@ -487,7 +487,12 @@ Add an updater process that will periodically sample producer metric sets
 
    **[offset** *offset*\ **]**
       |
-      | Offset for synchronized aggregation. Optional.
+      | Specifies a time shift for synchronized data updates from the server.
+        This offset determines when update requests are sent relative to the
+        interval boundaries. The offset value delays the update request. This can
+        be used to avoid potential conflicts when the server might be collecting
+        new samples or getting updates. The offset uses the same format as
+        intervals. Default is 0 (no shift).
 
    **[push** *onchange|true*\ **]**
       |
@@ -603,7 +608,12 @@ Start updaters.
 
    **[offset** *offset*\ **]**
       |
-      | Offset for synchronized aggregation. Optional.
+      | Specifies a time shift for synchronized data updates from the server.
+        This offset determines when update requests are sent relative to the
+        interval boundaries. The offset value delays the update request. This can
+        be used to avoid potential conflicts when the server might be collecting
+        new samples or getting updates. The offset uses the same format as
+        intervals. Default is 0 (no shift).
 
 Stop an updater.
 ----------------
