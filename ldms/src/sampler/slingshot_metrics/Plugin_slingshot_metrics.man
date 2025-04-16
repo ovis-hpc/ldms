@@ -62,12 +62,11 @@ The names of the counters can be found in the slingshot/cassini header
 file cassini_cntr_def.h in the array c1_cntr_defs (specifically the strings
 in the "name" field of said array entries).
 
-In addition to the individual counter names, this plugin allows specifying
-entire groups of counters by using the counter name pattern "group:<group name>",
-for insance, "group:hni". The available groups are: ext, pi_ipd, mb, cq, lpe,
-hni, ext2. These groups correspond with the enum c_cntr_group in the
-cassini_cntr_def.h file. Additionally, one may use "group:all", which
-simply includes all available counters.
+NOTE: If you used "group:<group name>" syntax in the past, that is no longer
+available due to API changes in the Slingshot Host Software stack (at least
+as of release/shs-12.0.0, perhaps earlier).
+
+However, you one may still use "group:all" to include all available counters.
 
 .SH EXAMPLES
 .PP
