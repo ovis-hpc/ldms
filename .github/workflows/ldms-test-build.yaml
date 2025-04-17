@@ -1,4 +1,4 @@
-name: OVIS-4 build test compatible with ldms-test
+name: build test compatible with ldms-test
 
 on:
   push:
@@ -14,7 +14,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     container:
       image: ovishpc/ldms-dev
     steps:
