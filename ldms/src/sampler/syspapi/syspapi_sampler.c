@@ -88,7 +88,7 @@ typedef struct syspapi_metric_s {
 	int init_rc; /* if 0, attr is good for perf_event_open() */
 	struct perf_event_attr attr; /* perf attribute */
 	char papi_name[256]; /* metric name in PAPI */
-	char pfm_name[256]; /* metric name in perfmon (PAPI native) */
+	char pfm_name[1024]; /* metric name in perfmon (PAPI native) */
 	int pfd[]; /* one perf fd per CPU */
 } *syspapi_metric_t;
 
