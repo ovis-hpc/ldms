@@ -3,12 +3,10 @@ name: Test "make dist"
 on:
   push:
     branches:
-      - 'OVIS-4'
       - main
       - 'b[0-9]+.[0-9]+'
   pull_request:
     branches:
-      - 'OVIS-4'
       - main
       - 'b[0-9]+.[0-9]+'
 
@@ -18,10 +16,11 @@ jobs:
     # "container" as used here.
     runs-on: ubuntu-latest
     container:
-        image: ovishpc/ovis-ubuntu-build
+      image: ovishpc/ldms-dev-ubuntu-2204:latest-amd64
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+    - run: git config --global --add safe.directory ${PWD}
     - name: autogen
       run: sh autogen.sh
     - name: configure
