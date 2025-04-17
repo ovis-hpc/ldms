@@ -1512,7 +1512,7 @@ cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
             if x.xprt:
                 _xprt = x.xprt
                 x.xprt = NULL
-                ldms_xprt_put(_xprt)
+                ldms_xprt_put(_xprt, "rail_ref")
     if x._conn_cb:
         # Call the callback
         x._conn_cb(x, XprtEvent(PTR(e)), x._conn_cb_arg)
@@ -1570,7 +1570,7 @@ cdef void passive_xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
         if x.xprt:
             _xprt = x.xprt
             x.xprt = NULL
-            ldms_xprt_put(_xprt)
+            ldms_xprt_put(_xprt, "rail_ref")
     if x._conn_cb:
         # Call the callback
         x._conn_cb(x, XprtEvent(PTR(e)), x._conn_cb_arg)
@@ -3534,7 +3534,7 @@ cdef class Xprt(object):
 
     def __del__(self):
         if self.xprt:
-            ldms_xprt_put(self.xprt)
+            ldms_xprt_put(self.xprt, "rail_ref")
 
     def connect(self, host, port=411, cb=None, cb_arg=None, timeout=None):
         """X.connect(host, port=411, cb=None, cb_arg=None, timeout=None)
@@ -3573,7 +3573,7 @@ cdef class Xprt(object):
                                        xprt_cb, <void*>self)
         if rc:
             # synchronously failed, self.xprt is no good. Need to "put" it down.
-            ldms_xprt_put(self.xprt)
+            ldms_xprt_put(self.xprt, "rail_ref")
             self.xprt = NULL
             raise ConnectionError(rc, "ldms_xprt_connect_by_name() error: {}" \
                                       .format(ERRNO_SYM(rc)))
@@ -3626,7 +3626,7 @@ cdef class Xprt(object):
                                       passive_xprt_cb, <void*>self)
         if rc:
             # synchronously failed, self.xprt is no good. Need to "put" it down.
-            ldms_xprt_put(self.xprt)
+            ldms_xprt_put(self.xprt, "rail_ref")
             self.xprt = NULL
             raise ConnectionError(rc, "ldms_xprt_listen_by_name() error: {}" \
                                       .format(ERRNO_SYM(rc)))
@@ -3650,7 +3650,7 @@ cdef class Xprt(object):
         cdef timespec ts
         if self.xprt:
             ldms_xprt_close(self.xprt)
-            ldms_xprt_put(self.xprt)
+            ldms_xprt_put(self.xprt, "rail_ref")
             self.xprt = NULL
             if self._conn_cb: # has `cb` ==> asynchronous/non-blocking mode
                 return

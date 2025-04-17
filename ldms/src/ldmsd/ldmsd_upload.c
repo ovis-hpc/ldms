@@ -54,12 +54,12 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		printf("%s:%d\n", __func__, __LINE__);
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "rail_ref");
 		conn_status = ECONNREFUSED;
 		printf("%s:%d\n", __func__, __LINE__);
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "rail_ref");
 		conn_status = ENOTCONN;
 		printf("%s:%d\n", __func__, __LINE__);
 		break;

@@ -528,11 +528,11 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		conn_status = 0;
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "rail_ref");
 		conn_status = ECONNREFUSED;
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "rail_ref");
 		conn_status = ENOTCONN;
 		break;
 	case LDMS_XPRT_EVENT_ERROR:
@@ -547,7 +547,7 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 			return;
 		break;
 	default:
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "rail_ref");
 		conn_status = ECONNABORTED;
 		msglog("Received invalid event type %d\n", e->type);
 	}
@@ -624,14 +624,14 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	buf = ldmsd_msg_buf_new(max_msg_len);
 	if (!buf) {
 		msglog("Out of memory\n");
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "rail_ref");
 		return ENOMEM;
 	}
 
 	buffer = malloc(max_msg_len);
 	if (!buffer) {
 		msglog("Out of memory\n");
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "rail_ref");
 		rc = ENOMEM;
 		goto err;
 	}

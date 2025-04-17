@@ -91,7 +91,7 @@ int ldms_xprt_auth_send(ldms_t _x, const char *msg_buf, size_t msg_len)
 	if (x->auth_flag != LDMS_XPRT_AUTH_BUSY)
 		return EINVAL;
 
-	ldms_xprt_get(x);
+	ldms_xprt_get(x, "auth_send");
 	pthread_mutex_lock(&x->lock);
 	size_t sz = sizeof(struct ldms_request) + sizeof(struct ldms_context) + msg_len;
 	ctxt = __ldms_alloc_ctxt(x, sz, LDMS_CONTEXT_SEND);
@@ -115,7 +115,7 @@ int ldms_xprt_auth_send(ldms_t _x, const char *msg_buf, size_t msg_len)
 	__ldms_free_ctxt(x, ctxt);
  err_0:
 	pthread_mutex_unlock(&x->lock);
-	ldms_xprt_put(x);
+	ldms_xprt_put(x, "auth_send");
 	return rc;
 }
 

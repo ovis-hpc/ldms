@@ -245,7 +245,7 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	case LDMS_XPRT_EVENT_ERROR:
 		conn->state = DISCONNECTED;
 		printf("%s: conn_error\n", conn->port);
-		ldms_xprt_put(ldms);
+		ldms_xprt_put(ldms, "init");
 		conn->ldms = NULL;
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
@@ -255,7 +255,7 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 			ldms_set_delete(conn->set);
 			conn->set = NULL;
 		}
-		ldms_xprt_put(ldms);
+		ldms_xprt_put(ldms, "init");
 		conn->ldms = NULL;
 		break;
 	case LDMS_XPRT_EVENT_SEND_COMPLETE:

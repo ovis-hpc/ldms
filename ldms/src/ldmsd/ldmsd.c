@@ -261,7 +261,7 @@ void cleanup(int x, const char *reason)
 
 	if (ldms) {
 		/* No need to close the xprt. It has never been connected. */
-		ldms_xprt_put(ldms);
+		ldms_xprt_put(ldms, "rail_ref");
 		ldms = NULL;
 	}
 
@@ -1375,7 +1375,7 @@ void ldmsd_listen___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_listen_t listen = (ldmsd_listen_t)obj;
 	if (listen->x)
-		ldms_xprt_put(listen->x);
+		ldms_xprt_put(listen->x, "rail_ref");
 	if (listen->xprt)
 		free(listen->xprt);
 	if (listen->host)

@@ -1296,7 +1296,7 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		ldmsd_xprt_term(x);
 	case LDMS_XPRT_EVENT_REJECTED:
 	case LDMS_XPRT_EVENT_ERROR:
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "rail_ref");
 		break;
 	case LDMS_XPRT_EVENT_RECV:
 		ldmsd_recv_msg(x, e->data, e->data_len);
@@ -1335,7 +1335,7 @@ int listen_on_ldms_xprt(ldmsd_listen_t listen)
 
 void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
 {
-	xprt->ldms.ldms = ldms_xprt_get(ldms);
+	xprt->ldms.ldms = ldms_xprt_get(ldms, "cfg_xprt");
 	xprt->send_fn = send_ldms_fn;
 	xprt->max_msg = ldms_xprt_msg_max(ldms);
 	xprt->cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;

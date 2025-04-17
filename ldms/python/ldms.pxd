@@ -352,7 +352,7 @@ cdef extern from "ldms.h" nogil:
 			  int n, int64_t recv_quota, int32_t rate_limit,
 			  const char *auth_name,
 			  attr_value_list *auth_av_list)
-    void ldms_xprt_put(ldms_t x)
+    void ldms_xprt_put(ldms_t x, const char *name)
     void ldms_xprt_close(ldms_t x)
     int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
                                   ldms_event_cb_t cb, void *cb_arg)

@@ -458,10 +458,11 @@ int ldms_init(size_t max_size);
  * \brief Take a reference on a transport
  *
  * \param x	The transport handle
+ * \param name  Reference name
  * \returns	The transport handle
  */
-ldms_t ldms_xprt_get(ldms_t x);
-void ldms_xprt_put(ldms_t x);
+ldms_t ldms_xprt_get(ldms_t x, const char *name);
+void ldms_xprt_put(ldms_t x, const char *name);
 
 /**
  * \brief Terminate underlying LDMS Transport threads

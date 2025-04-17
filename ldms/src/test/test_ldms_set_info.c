@@ -606,12 +606,12 @@ static void client_event_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 		break;
 	case LDMS_XPRT_EVENT_ERROR:
 		printf("%d: conn_error\n", port);
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "init");
 		sem_post(&clnt->lookup_sem);
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		printf("%d: disconnected\n", port);
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "init");
 		sem_post(&clnt->lookup_sem);
 		break;
 	case LDMS_XPRT_EVENT_RECV:

@@ -466,11 +466,11 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 		break;
 	case LDMS_XPRT_EVENT_ERROR:
 		printf("%d: conn_error\n", port);
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "init");
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		printf("%d: disconnected\n", port);
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "init");
 		sem_post(&exit_sem);
 		break;
 	case LDMS_XPRT_EVENT_SEND_COMPLETE:

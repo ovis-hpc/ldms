@@ -682,7 +682,7 @@ static void target_reset(struct slps_target *target)
 			"port=%s auth=%s reconnect=%d\n", target->xprt,
 			target->host, target->port, target->auth,
 			target->reconnect);
-		ldms_xprt_put(target->ldms);
+		ldms_xprt_put(target->ldms, "init");
 		target->ldms = NULL;
 	}
 	target_state_set(IDLE, target);
