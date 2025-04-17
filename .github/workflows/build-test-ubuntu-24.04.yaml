@@ -1,0 +1,72 @@
+name: Build Test - Ubuntu-24.04
+
+on:
+  push:
+    branches:
+      - main
+      - 'b[0-9]+.[0-9]+'
+  pull_request:
+    branches:
+      - main
+      - 'b[0-9]+.[0-9]+'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ovishpc/ldms-dev-ubuntu-2404:latest-amd64
+    steps:
+    - uses: actions/checkout@v4
+    - run: git config --global --add safe.directory ${PWD}
+    - run: sh autogen.sh
+    - run: ./configure CFLAGS="-Wall -Werror"
+    - run: make
+
+  distcheck:
+    runs-on: ubuntu-latest
+    container:
+      image: ovishpc/ldms-dev-ubuntu-2404:latest-amd64
+    steps:
+    - uses: actions/checkout@v4
+    - run: git config --global --add safe.directory ${PWD}
+    - run: sh autogen.sh
+    - run: ./configure
+    - run: make distcheck
+
+  build-with-rdma:
+    runs-on: ubuntu-latest
+    container:
+      image: ovishpc/ldms-dev-ubuntu-2404:latest-amd64
+    steps:
+    - uses: actions/checkout@v4
+    - run: git config --global --add safe.directory ${PWD}
+    - run: sh autogen.sh
+    - run: ./configure --enable-rdma CFLAGS="-Wall -Werror"
+    - run: make
+
+  build-ddebug:
+    defaults:
+      run:
+        shell: bash
+    runs-on: ubuntu-latest
+    container:
+      image: ovishpc/ldms-dev-ubuntu-2404:latest-amd64
+    steps:
+    - uses: actions/checkout@v4
+    - run: git config --global --add safe.directory ${PWD}
+    - run: sh autogen.sh
+    - run: |
+        _CFLAGS_=(
+          -DDEBUG -DEP_DEBUG -DCTXT_DEBUG -DPUSH_DEBUG -DLOADAVG_CONFIG_DEBUG
+          -DLOADAVG_TYPE_DEBUG -DSEND_RECV_DEBUG -DZAP_DEBUG -DDEBUG_ZAP_SOCK
+          -DTMP_DEBUG -DZAP_UGNI_DEBUG
+        )
+        _ENABLES_=(
+          --enable-zaptest
+          --enable-ldms-test
+          --enable-rdma
+          --enable-fabric
+          --with-libfabric=/usr
+        )
+        ./configure ${_ENABLES_[*]} CFLAGS="${_CFLAGS_[*]}"
+    - run: make
