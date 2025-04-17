@@ -3,10 +3,12 @@ name: Build and Trigger Readthedocs
 on:
   push:
     paths:
-      - '**.rst'           # Trigger for any .rst changes
+      - '**/*.rst'           # Trigger for any .rst or doc related changes
+      - 'docs/**'
   pull_request:
     paths:
-      - '**.rst'           # Same triggers for pull requests
+      - '**/*.rst'           # Same triggers for pull requests
+      - 'docs/**'
 
 jobs:
   build-docs:
