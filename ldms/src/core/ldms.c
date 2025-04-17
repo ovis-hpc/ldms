@@ -1635,10 +1635,18 @@ void __make_mdesc(ldms_mdesc_t vd, ldms_mdef_t md, off_t *value_off)
 	vd->vd_flags = md->flags;
 	vd->vd_array_count = __cpu_to_le32(md->count);
 	name_len = strlen(md->name) + 1;
-	strncpy(vd->vd_name_unit, md->name, name_len);
+	/*
+	 * The memory safety of these string operations is guaranteed by the allocation
+	 * process in compute_set_sizes() and ldms_set_create(). The 'meta' buffer is
+	 * pre-allocated with enough space to hold all metric descriptors, including
+	 * their variable-length name and unit strings. Each 'vd' (ldms_value_desc)
+	 * points to a section of this buffer, and its vd_name_unit flexible array member
+	 * has sufficient space allocated for both the name and unit strings.
+	 */
+	memcpy(vd->vd_name_unit, md->name, name_len);
 	if (md->unit) {
 		unit_len = strlen(md->unit) + 1;
-		strncpy(&vd->vd_name_unit[name_len], md->unit, unit_len);
+		memcpy(&vd->vd_name_unit[name_len], md->unit, unit_len);
 	} else {
 		unit_len = 0;
 	}
@@ -1648,7 +1656,6 @@ void __make_mdesc(ldms_mdesc_t vd, ldms_mdef_t md, off_t *value_off)
 		(*value_off) += __ldms_value_size_get(md->type, md->count);
 	} else
 		vd->vd_data_offset = 0; /* set after all metrics defined */
-
 }
 
 void __init_rec_array(ldms_set_t set, ldms_schema_t schema)
@@ -1723,15 +1730,15 @@ ldms_set_t ldms_set_create(const char *instance_name,
 	}
 
 	hsz = heap_sz;
-	int ssz = compute_set_sizes(instance_name, schema,
+	int total_mm_sz = compute_set_sizes(instance_name, schema,
 				    &set_array_card, &meta_sz,
 				    &array_data_sz, &hsz);
-	if (!ssz)
+	if (!total_mm_sz)
 		return NULL;
 
 	__ldms_schema_finalize(schema);
 
-	meta = mm_alloc(meta_sz + array_data_sz);
+	meta = mm_alloc(total_mm_sz);
 	if (!meta) {
 		errno = ENOMEM;
 		return NULL;
