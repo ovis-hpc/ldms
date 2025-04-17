@@ -110,7 +110,8 @@ enum ldmsd_plugin_data_e {
 	LDMSD_PLUGIN_DATA_CONTEXT_SIZE = 1,
 };
 
-ldmsd_plugin_t load_plugin(const char *plugin_name)
+ldmsd_plugin_t load_plugin(const char *cfg_name, const char *plugin_name,
+			   char *errstr, size_t errlen)
 {
 	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
 	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
@@ -138,25 +139,33 @@ ldmsd_plugin_t load_plugin(const char *plugin_name)
 		struct stat buf;
 		if (stat(library_name, &buf) == 0) {
 			char *dlerr = dlerror();
-			ovis_log(config_log, OVIS_LERROR, "Bad plugin "
-				"'%s': dlerror %s\n", plugin_name, dlerr);
+			snprintf(errstr, errlen,
+				 "Error %d configuration named '%s' "
+				 "with plugin '%s': bad plugin, dlerror: %s\n",
+				 errno, cfg_name, plugin_name, dlerr);
+			ovis_log(config_log, OVIS_LERROR, "%s", errstr);
 			goto err_0;
 		}
 	}
 
 	if (!d) {
 		char *dlerr = dlerror();
-		ovis_log(config_log, OVIS_LERROR, "Failed to load the plugin '%s': "
-				"dlerror %s\n", plugin_name, dlerr);
+		snprintf(errstr, errlen,
+			 "Error %d configuration named '%s' "
+			 "with plugin '%s': failed to load the plugin, "
+			 "dlerror: %s\n",
+			 errno, cfg_name, plugin_name, dlerr);
+		ovis_log(config_log, OVIS_LERROR, "%s", errstr);
 		goto err_0;
 	}
 
 	ldmsd_plugin_get_f pget;
 	pget = dlsym(d, "get_plugin");
 	if (!pget) {
-		ovis_log(config_log, OVIS_LERROR,
-			"The library, '%s',  is missing the get_plugin() "
-			"function.", plugin_name);
+		snprintf(errstr, errlen,
+			 "Error %d configuration named '%s' with plugin '%s': "
+			 "get_plugin() function is missing from the library.\n",
+			 errno, cfg_name, plugin_name);
 		goto err_0;
 	}
 	struct ldmsd_plugin *pi = pget();
@@ -312,26 +321,40 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
 	struct ldmsd_plugin *api;
 	if (!plugin_name || !cfg_name)
 		return EINVAL;
-	api = load_plugin(plugin_name);
+	api = load_plugin(cfg_name, plugin_name, errstr, errlen);
 	if (!api)
-		return errno;
+		goto err; /* load_plugin() already filled errstr */
 	switch (api->type) {
 	case LDMSD_PLUGIN_SAMPLER:
-		if (ldmsd_sampler_add(cfg_name, (struct ldmsd_sampler *)api,
-			ldmsd_sampler___del, geteuid(), getegid(), 0660))
+		if (NULL == ldmsd_sampler_add(cfg_name, (struct ldmsd_sampler *)api,
+				ldmsd_sampler___del, geteuid(), getegid(), 0660)) {
+			snprintf(errstr, errlen,
+				 "Error %d adding sampler named '%s' "
+				 "with plugin '%s'\n", errno, cfg_name,
+				 plugin_name);
+			goto err;
+		}
 		break;
 	case LDMSD_PLUGIN_STORE:
-		if (ldmsd_store_add(cfg_name, (struct ldmsd_store *)api,
-			ldmsd_store___del, geteuid(), getegid(), 0660))
+		if (NULL == ldmsd_store_add(cfg_name, (struct ldmsd_store *)api,
+				ldmsd_store___del, geteuid(), getegid(), 0660)) {
+			snprintf(errstr, errlen,
+				 "Error %d adding store named '%s' "
+				 "with plugin '%s'\n", errno, cfg_name,
+				 plugin_name);
+			goto err;
+		}
 		break;
 	default:
 		errno = EINVAL;
-		ovis_log(config_log, OVIS_LERROR,
-			"Error %d, the '%s' plugin is not a valid plugin type.\n",
-			errno, plugin_name);
+		snprintf(errstr, errlen,
+			 "Error %d, the '%s' plugin is not a valid plugin type.\n",
+			 errno, plugin_name);
+		ovis_log(config_log, OVIS_LERROR, "%s", errstr);
 		goto err;
 	}
 	return 0;
+
  err:
 	return errno;
 }
