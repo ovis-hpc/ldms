@@ -18,7 +18,6 @@ dist_man7_MANS= \
 ldmsd_qgroup.man \
 ldms_quickstart.man \
 ldms-reverse-conf.man \
-ldms_csv_time_drops.man \
 ldmsd_sampler_advertisement.man \
 ldmsd-peer-daemon-advertisement.man
 
