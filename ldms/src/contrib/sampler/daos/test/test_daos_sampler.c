@@ -74,7 +74,7 @@ extern struct ldmsd_plugin *get_plugin();
 int basic_smoke_test(void)
 {
 	int rc;
-	struct ldmsd_plugin *plugin = NULL;
+	struct ldmsd_cfgobj *plugin = NULL;
 	struct ldmsd_plugin_cfg *cfg = NULL;
 
 	plugin = get_plugin();

@@ -405,7 +405,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		return EINVAL;
 	}
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if (!base) {
 		rc = ENOMEM;
 		goto err;
@@ -446,7 +446,7 @@ err:
 	return rc;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	struct kw kw_tbl[] = {
 		{ "add", add_event },
@@ -484,7 +484,7 @@ err2:
 	return 0;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
 	int rc;
 
@@ -541,7 +541,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	struct pevent *pe;
 	struct event_group *ge;

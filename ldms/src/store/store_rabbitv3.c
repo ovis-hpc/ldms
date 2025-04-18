@@ -216,7 +216,6 @@ struct rabbitv3_store_instance {
 	char *container;
 	char *schema;
 	char *key; /* container schema */
-	void *ucontext;
 	idx_t ms_idx; /* data metrics */
 	idx_t meta_idx; /* meta metrics */
 	LIST_HEAD(ms_list, rabbitv3_metric_store) ms_list;
@@ -316,7 +315,7 @@ out:
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	value = av_value(avl, "extraprops");
@@ -523,14 +522,14 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	/* What contract is this supposed to meet. Shall close(sh) have
 	been called for all existing sh already before this is reached.?
 	*/
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return
 	"    config name=store_rabbitv3 root=<root> host=<host> port=<port> exchange=<exch> \\ \n"
@@ -556,12 +555,6 @@ static const char *usage(struct ldmsd_plugin *self)
 	"           mint      The interval (seconds) at which to resend metadata.\n"
 	"                     0 means never resend.\n"
 	;
-}
-
-static void *get_ucontext(ldmsd_store_handle_t _sh)
-{
-	struct rabbitv3_store_instance *si = _sh;
-	return si->ucontext;
 }
 
 static size_t value_fmtlen[] = {
@@ -959,8 +952,8 @@ update_metrics(struct rabbitv3_store_instance *si, ldms_set_t set,
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
-           struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+open_store(struct ldmsd_cfgobj_store *s, const char *container, const char *schema,
+           struct ldmsd_strgp_metric_list *metric_list)
 {
 	struct rabbitv3_store_instance *si;
 	struct rabbitv3_metric_store *ms;
@@ -1010,7 +1003,6 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 			ovis_log(mylog, OVIS_LERROR,"rabbitv3: oom meta_idx\n");
 			goto err2;
 		}
-		si->ucontext = ucontext;
 		si->store = s;
 		si->container = strdup(container);
 		if (!si->container) {
@@ -1306,7 +1298,6 @@ static struct ldmsd_store store_rabbitv3 = {
 		.usage = usage,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,

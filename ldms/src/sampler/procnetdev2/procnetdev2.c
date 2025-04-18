@@ -228,7 +228,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return "config inst=NAME plugin=" SAMP " ifaces=IFS\n" \
 		BASE_CONFIG_USAGE \
@@ -237,9 +237,10 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                    whether they exist of not up to a total of MAXIFACE\n";
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	procnetdev2_t p = self->context;
+	ldmsd_cfgobj_sampler_t scfg = (ldmsd_cfgobj_sampler_t)self;
+	procnetdev2_t p = scfg->context;
 	char* ifacelist = NULL;
 	char *exclude = NULL;
 	char *ivalue = NULL;
@@ -312,7 +313,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	p->excount = excount;
 
  cfg:
-	p->base = base_config(avl, self->cfg_name, SAMP, mylog);
+	p->base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if (!p->base){
 		rc = EINVAL;
 		goto err;
@@ -334,9 +335,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
-	procnetdev2_t p = (void*)self->base.context;
+	procnetdev2_t p = (void*)self->context;
 	int rc;
 	char *s;
 	char lbuf[256];
@@ -449,28 +450,36 @@ resize:
 }
 
 
-static void term(struct ldmsd_plugin *self)
+static int constructor(ldmsd_plugin_handle_t self)
 {
-	procnetdev2_t p = (void*)self->context;
+	procnetdev2_t p = calloc(1, sizeof(*p));
+	if (p) {
+		ldmsd_plugin_ctxt_set(self, p);
+		return 0;
+	}
+	return ENOMEM;
+}
+
+static void destructor(ldmsd_plugin_handle_t self)
+{
+	procnetdev2_t p = ldmsd_plugin_ctxt_get(self);
 	if (p->mf) {
 		fclose(p->mf);
 		p->mf = NULL;
 	}
-	p->mf = NULL;
 	base_set_delete(p->base);
 	base_del(p->base);
-	p->base = NULL;
+	free(p);
 }
 
 static struct ldmsd_sampler procnetdev2_sampler = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.context_size = sizeof(struct procnetdev2_s),
-	},
+	.base.name = SAMP,
+	.base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.flags = LDMSD_PLUGIN_MULTI_INSTANCE,
+	.base.config = config,
+	.base.usage = usage,
+	.base.constructor = constructor,
+	.base.destructor = destructor,
 
 	.sample = sample,
 };

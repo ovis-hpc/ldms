@@ -68,7 +68,7 @@ static char *usage_str = NULL;
 
 /* ============== Common Plugin APIs ================= */
 
-static int config(struct ldmsd_plugin *self,
+static int config(ldmsd_plugin_handle_t self,
 		  struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	(void)self;
@@ -97,7 +97,7 @@ static int config(struct ldmsd_plugin *self,
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
 	rdcinfo_inst_t inst = singleton;
 	if (!inst)
@@ -129,7 +129,7 @@ static void term() {
 	rdcinfo_delete(inst);
 }
 
-static const char *usage(struct ldmsd_plugin *self) {
+static const char *usage(ldmsd_plugin_handle_t self) {
 	(void)self;
 	if (!usage_str)
 		usage_str = rdcinfo_usage();

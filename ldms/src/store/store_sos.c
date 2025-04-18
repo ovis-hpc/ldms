@@ -114,11 +114,10 @@ struct sos_list_ctxt {
  *   <sos::path> = <root_path>/<container>
  */
 struct sos_instance {
-	struct ldmsd_store *store;
+	struct ldmsd_cfgobj_store *store_cfg;
 	char *container;
 	char *schema_name;
 	char *path; /**< <root_path>/<container> */
-	void *ucontext;
 	sos_handle_t sos_handle; /**< sos handle */
 	sos_schema_t sos_schema;
 	int store_flags;
@@ -545,13 +544,13 @@ static sos_handle_t get_container(const char *path)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	struct sos_instance *si;
 	int rc = 0;
 	int len;
 	char *value;
-	store_sos_t ss = (store_sos_t)self->context;
+	store_sos_t ss = (store_sos_t)((ldmsd_cfgobj_store_t)self)->context;
 
 	value = av_value(avl, "timeout");
 	if (value)
@@ -560,8 +559,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	value = av_value(avl, "path");
 	if (!value) {
 		LOG_(OVIS_LERROR,
-		       "%s[%d]: The 'path' configuration option is required.\n",
-		       __func__, __LINE__);
+		     "%s[%d]: The 'path' configuration option is required.\n",
+		     __func__, __LINE__);
 		return EINVAL;
 	}
 	pthread_mutex_lock(&ss->cfg_lock);
@@ -607,36 +606,25 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
-{
-}
-
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "    config name=<NAME> plugin=store_sos path=<path> timeout=<secs>\n"
 		"       path   - The path to primary storage\n"
 		"       timeout - Max wait in seconds to acquire database transaction.\n";
 }
 
-static void *get_ucontext(ldmsd_store_handle_t _sh)
-{
-	struct sos_instance *si = _sh;
-	return si->ucontext;
-}
-
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
-	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
+open_store(struct ldmsd_cfgobj_store *s, const char *container, const char *schema,
+	   struct ldmsd_strgp_metric_list *metric_list)
 {
 	struct sos_instance *si = NULL;
-	store_sos_t ss = (store_sos_t)s->base.context;
+	store_sos_t ss = (store_sos_t)s->context;
 
 	si = calloc(1, sizeof(*si));
 	if (!si)
 		goto out;
-	si->store = s;
+	si->store_cfg = s;
 	rbt_init(&si->schema_rbt, row_schema_rbn_cmp);
-	si->ucontext = ucontext;
 	si->container = strdup(container);
 	if (!si->container)
 		goto err1;
@@ -1329,7 +1317,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
       int *metric_arry, size_t metric_count)
 {
 	struct sos_instance *si = _sh;
-	store_sos_t ss = si->store->base.context;
+	store_sos_t ss = si->store_cfg->context;
 	struct timespec now;
 	int rc = 0;
 
@@ -1461,7 +1449,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 static int init_store_instance(ldmsd_strgp_t strgp)
 {
 	struct sos_instance *si;
-	store_sos_t ss = (store_sos_t)strgp->store->api->base.context;
+	store_sos_t ss = (store_sos_t)strgp->store->context;
 	int len, rc;
 
 	si = calloc(1, sizeof(*si));
@@ -1469,7 +1457,7 @@ static int init_store_instance(ldmsd_strgp_t strgp)
 		rc = errno;
 		goto err_0;
 	}
-	si->store = strgp->store->api;
+	si->store_cfg = strgp->store;
 	rbt_init(&si->schema_rbt, row_schema_rbn_cmp);
 	len = asprintf(&si->path, "%s/%s", ss->root_path, strgp->container);
 	if (len < 0) {
@@ -1643,7 +1631,7 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int 
 			goto out;
 		}
 	}
-	store_sos_t ss = si->store->base.context;
+	store_sos_t ss = si->store_cfg->context;
 	if (ss->timeout > 0) {
 		struct timespec now;
 		clock_gettime(CLOCK_REALTIME, &now);
@@ -1736,21 +1724,36 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int 
 	return rc;
 }
 
-void store_sos_del(struct ldmsd_cfgobj *obj)
+void store_sos_del(ldmsd_plugin_handle_t obj)
 {
 	store_sos_t ss = (void*)obj;
 	free(ss);
 }
 
+static int constructor(ldmsd_plugin_handle_t self)
+{
+	ldmsd_cfgobj_store_t store = (ldmsd_cfgobj_store_t)self;
+	store_sos_t ss = calloc(1, sizeof(*ss));
+	if (ss) {
+		store->context = ss;
+		return 0;
+	}
+	return ENOMEM;
+}
+
+static void destructor(ldmsd_plugin_handle_t self)
+{
+};
+
 static struct ldmsd_store sos_store = {
 	.base.type   = LDMSD_PLUGIN_STORE,
 	.base.name   = "store_sos",
-	.base.term   = term,
 	.base.config = config,
 	.base.usage  = usage,
-	.base.context_size = sizeof(struct store_sos_s),
+	.base.constructor = constructor,
+	.base.destructor = destructor,
+
 	.open        = open_store,
-	.get_context = get_ucontext,
 	.store       = store,
 	.flush       = flush_store,
 	.close       = close_store,

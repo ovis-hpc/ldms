@@ -505,7 +505,7 @@ static void init_field_help(char *preamble)
  * Externally accessed functions
  **************************************************************************/
 
-static int config(struct ldmsd_plugin *self,
+static int config(ldmsd_plugin_handle_t self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         char *value;
@@ -557,7 +557,7 @@ static int config(struct ldmsd_plugin *self,
 		        goto err0;
 		}
 	} else {
-		base = base_config(avl, self->cfg_name, "dcgm", mylog);
+		base = base_config(avl, ldmsd_plugin_cfg_name_get(self), "dcgm", mylog);
 		conf.schema_name = strdup(base->schema_name);
 	}
 
@@ -621,14 +621,14 @@ err0:
         return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
         ovis_log(mylog, OVIS_LDEBUG, SAMP" sample() called\n");
 	gpu_sample();
         return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	int i;
 
@@ -654,7 +654,7 @@ static void term(struct ldmsd_plugin *self)
 	field_help = NULL;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
         ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
 	char *preamble = "config name=" SAMP

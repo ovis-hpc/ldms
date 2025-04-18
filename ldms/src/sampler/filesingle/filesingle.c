@@ -244,7 +244,7 @@ err:
 	return rc;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 
@@ -269,7 +269,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), SAMP, mylog);
 	if (!base) {
 		rc = ENOMEM;
 		goto err;
@@ -288,7 +288,7 @@ err:
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(struct ldmsd_cfgobj_sampler *self)
 {
 	int rc;
 	char *l;
@@ -351,7 +351,7 @@ skip:
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 	if (base)
 		base_del(base);
@@ -361,7 +361,7 @@ static void term(struct ldmsd_plugin *self)
 	clear_metric_list();
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return "config name= " SAMP BASE_CONFIG_USAGE
 		"  conf=<metric definitions file> [timing]\n"

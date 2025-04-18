@@ -384,7 +384,7 @@ err:
 }
 
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plugin_handle_t self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *rawf;
@@ -398,7 +398,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	base = base_config(avl, self->cfg_name, default_schema_name, mylog);
+	base = base_config(avl, ldmsd_plugin_cfg_name_get(self), default_schema_name, mylog);
 	if (!base)
 		return EINVAL;
 
@@ -440,7 +440,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 }
 
 
-static int sample(struct ldmsd_sampler *self){
+static int sample(struct ldmsd_cfgobj_sampler *self){
 
 	union ldms_value v;
 	int i;
@@ -517,7 +517,7 @@ out:
 
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plugin_handle_t self)
 {
 
 	int i;
@@ -564,7 +564,7 @@ static void term(struct ldmsd_plugin *self)
 	base = NULL;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plugin_handle_t self)
 {
 	return  "config name=aries_nic_mmr" BASE_CONFIG_USAGE " file=<file> [aries_rtr_id=<rtrid>]\n"
 		"    <file>         File with full names of metrics\n"
