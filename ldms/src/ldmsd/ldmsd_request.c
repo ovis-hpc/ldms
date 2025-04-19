@@ -10139,6 +10139,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 out:
 	free(adv_hostname);
 	free(adv_port);
+	ldms_xprt_put(x, "process_advertisement");
 	return rc;
 einval:
 	ovis_log(NULL, OVIS_LERROR,

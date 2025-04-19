@@ -1035,6 +1035,7 @@ int __req_deferred_advertiser_start(ldmsd_req_ctxt_t reqc)
 	int rc = 0;
 	ldmsd_prdcr_t prdcr;
 	char *name;
+	int drop_find_ref = 1;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
@@ -1044,6 +1045,7 @@ int __req_deferred_advertiser_start(ldmsd_req_ctxt_t reqc)
 
 	prdcr = ldmsd_prdcr_find(name);
 	if (!prdcr) {
+		drop_find_ref = 0;
 		prdcr = __prdcr_add_handler(reqc, "advertiser_start", "advertiser");
 		if (!prdcr) {
 			ovis_log(config_log, OVIS_LERROR, "%s", reqc->line_buf);
@@ -1054,7 +1056,8 @@ int __req_deferred_advertiser_start(ldmsd_req_ctxt_t reqc)
 
 	prdcr->obj.perm |= LDMSD_PERM_DSTART;
 out:
-	ldmsd_prdcr_put(prdcr, "find");
+	if (drop_find_ref)
+		ldmsd_prdcr_put(prdcr, "find");
 	free(name);
 	return rc;
 }
