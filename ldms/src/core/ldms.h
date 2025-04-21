@@ -461,8 +461,10 @@ int ldms_init(size_t max_size);
  * \param name  Reference name
  * \returns	The transport handle
  */
-ldms_t ldms_xprt_get(ldms_t x, const char *name);
-void ldms_xprt_put(ldms_t x, const char *name);
+#define ldms_xprt_get(_x_, _n_) _ldms_xprt_get((_x_), (_n_), __func__, __LINE__)
+#define ldms_xprt_put(_x_, _n_) _ldms_xprt_put((_x_), (_n_), __func__, __LINE__)
+ldms_t _ldms_xprt_get(ldms_t x, const char *name, const char *func, int line);
+void _ldms_xprt_put(ldms_t x, const char *name, const char *func, int line);
 
 /**
  * \brief Terminate underlying LDMS Transport threads

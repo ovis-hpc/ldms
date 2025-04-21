@@ -127,17 +127,17 @@ const char *ldms_xprt_event_type_to_str(enum ldms_xprt_event_type t)
 	return xprt_event_type_names[t];
 }
 
-static inline ldms_t __ldms_xprt_get(ldms_t x, const char *name)
+static inline ldms_t __ldms_xprt_get(ldms_t x, const char *name, const char *func, int line)
 {
 	if (x) {
-		ref_get(&x->ref, name);
+		_ref_get(&x->ref, name, func, line);
 	}
 	return x;
 }
 
-ldms_t ldms_xprt_get(ldms_t x, const char *name)
+ldms_t _ldms_xprt_get(ldms_t x, const char *name, const char *func, int line)
 {
-	return x->ops.get(x, name);
+	return x->ops.get(x, name, func, line);
 }
 
 static int __ldms_xprt_is_connected(struct ldms_xprt *x)
@@ -731,14 +731,14 @@ static void __xprt_ref_free(void *arg)
 	free(x);
 }
 
-static inline void __ldms_xprt_put(ldms_t x, const char *name)
+static inline void __ldms_xprt_put(ldms_t x, const char *name, const char *func, int line)
 {
-	ref_put(&x->ref, name);
+	_ref_put(&x->ref, name, func, line);
 }
 
-void ldms_xprt_put(ldms_t x, const char *name)
+void _ldms_xprt_put(ldms_t x, const char *name, const char *func, int line)
 {
-	x->ops.put(x, name);
+	x->ops.put(x, name, func, line);
 }
 
 /* The implementations are in ldms_rail.c. */
@@ -3403,8 +3403,8 @@ static int __ldms_xprt_lookup(ldms_t x, const char *path, enum ldms_lookup_flags
 static int __ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats, int mask, int is_reset);
 static int __ldms_xprt_dir_cancel(ldms_t x);
 
-static ldms_t __ldms_xprt_get(ldms_t x, const char *name); /* ref get */
-static void __ldms_xprt_put(ldms_t x, const char *name); /* ref put */
+static ldms_t __ldms_xprt_get(ldms_t x, const char *name, const char *func, int line); /* ref get */
+static void __ldms_xprt_put(ldms_t x, const char *name, const char *func, int line); /* ref put */
 static void __ldms_xprt_ctxt_set(ldms_t x, void *ctxt, app_ctxt_free_fn fn);
 static void *__ldms_xprt_ctxt_get(ldms_t x);
 static uint64_t __ldms_xprt_conn_id(ldms_t x);

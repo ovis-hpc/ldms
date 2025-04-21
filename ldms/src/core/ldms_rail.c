@@ -98,8 +98,10 @@ static int __rail_lookup(ldms_t _r, const char *name, enum ldms_lookup_flags fla
 	       ldms_lookup_cb_t cb, void *cb_arg, struct ldms_op_ctxt *op_ctxt);
 static int __rail_stats(ldms_t _r, ldms_xprt_stats_t stats, int mask, int is_reset);
 
-static ldms_t __rail_get(ldms_t _r, const char *name); /* ref get */
-static void __rail_put(ldms_t _r, const char *name); /* ref put */
+#define __rail_get(_r_, _n_) ___rail_get((_r_), (_n_), __func__, __LINE__)
+#define __rail_put(_r_, _n_) ___rail_put((_r_), (_n_), __func__, __LINE__)
+static ldms_t ___rail_get(ldms_t _r, const char *name, const char *func, int line); /* ref get */
+static void ___rail_put(ldms_t _r, const char *name, const char *func, int line); /* ref put */
 static void __rail_ctxt_set(ldms_t _r, void *ctxt, app_ctxt_free_fn fn);
 static void *__rail_ctxt_get(ldms_t _r);
 static uint64_t __rail_conn_id(ldms_t _r);
@@ -126,8 +128,8 @@ static struct ldms_xprt_ops_s __rail_ops = {
 	.lookup       = __rail_lookup,
 	.stats        = __rail_stats,
 
-	.get          = __rail_get,
-	.put          = __rail_put,
+	.get          = ___rail_get,
+	.put          = ___rail_put,
 	.ctxt_set     = __rail_ctxt_set,
 	.ctxt_get     = __rail_ctxt_get,
 	.conn_id      = __rail_conn_id,
@@ -840,7 +842,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	__ldms_rail_conn_msg_init(r, m->idx, &msg);
 
 	/* Take a 'connect' reference. Dropped in ldms_xprt_close() */
-	ldms_xprt_get(_x, "connected");
+	ldms_xprt_get(_x, "connect");
 
 	ref_get(&r->ref, "ldms_accepting");
 	zerr = zap_accept2(zep, ldms_zap_auto_cb, (void*)&msg, sizeof(msg), m->idx);
@@ -1369,21 +1371,19 @@ err:
 	return rc;
 }
 
-static ldms_t __rail_get(ldms_t _r, const char *name)
+static ldms_t ___rail_get(ldms_t _r, const char *name, const char *func, int line)
 {
 	assert(XTYPE_IS_RAIL(_r->xtype));
 	ldms_rail_t r = (ldms_rail_t)_r;
-	// ref_get(&r->ref, "rail_ref");
-	ref_get(&r->ref, name);
+	_ref_get(&r->ref, name, func, line);
 	return (ldms_t)r;
 }
 
-static void __rail_put(ldms_t _r, const char *name)
+static void ___rail_put(ldms_t _r, const char *name, const char *func, int line)
 {
 	assert(XTYPE_IS_RAIL(_r->xtype));
 	ldms_rail_t r = (ldms_rail_t)_r;
-	// ref_put(&r->ref, "rail_ref");
-	ref_put(&r->ref, name);
+	_ref_put(&r->ref, name, func, line);
 }
 
 static void __rail_ctxt_set(ldms_t _r, void *ctxt, app_ctxt_free_fn fn)

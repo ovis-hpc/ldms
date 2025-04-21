@@ -465,8 +465,8 @@ struct ldms_xprt_ops_s {
 		       ldms_lookup_cb_t cb, void *cb_arg, struct ldms_op_ctxt *op_ctxt);
 	int (*stats)(ldms_t x, ldms_xprt_stats_t stats, int mask, int is_reset);
 
-	ldms_t (*get)(ldms_t x, const char *name); /* ref get */
-	void (*put)(ldms_t x, const char *name); /* ref put */
+	ldms_t (*get)(ldms_t x, const char *name, const char *func, int line); /* ref get */
+	void (*put)(ldms_t x, const char *name, const char *func, int line); /* ref put */
 	void (*ctxt_set)(ldms_t x, void *ctxt, app_ctxt_free_fn fn);
 	void *(*ctxt_get)(ldms_t x);
 	uint64_t (*conn_id)(ldms_t x);
