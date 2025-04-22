@@ -69,6 +69,7 @@
 #include <coll/rbt.h>
 
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "../sampler_base.h"
 #include "mmalloc.h"
 #define DSTRING_USE_SHORT
@@ -470,8 +471,6 @@ struct handler_info {
 };
 
 struct linux_proc_sampler_inst_s {
-	struct ldmsd_sampler samp;
-
 	ovis_log_t mylog;
 	base_data_t base_data;
 	char *instance_prefix;
@@ -1619,9 +1618,9 @@ void app_set_destroy(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_s
 
 static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set);
 
-static int linux_proc_sampler_sample(struct ldmsd_sampler *pi)
+static int linux_proc_sampler_sample(ldmsd_plug_handle_t handle)
 {
-	linux_proc_sampler_inst_t inst = (void*)pi;
+	linux_proc_sampler_inst_t inst = ldmsd_plug_context_get(handle);
 	int i, rc;
 	struct rbn *rbn;
 #ifdef LPDEBUG
@@ -1796,7 +1795,7 @@ static void compute_help() {
 		help_all = _help;
 }
 
-static const char *linux_proc_sampler_usage(struct ldmsd_plugin *self)
+static const char *linux_proc_sampler_usage(ldmsd_plug_handle_t handle)
 {
 	if (!help_all)
 		compute_help();
@@ -3652,13 +3651,13 @@ static int __stream_cb(ldms_stream_event_t ev, void *ctxt)
 	return rc;
 }
 
-static void linux_proc_sampler_term(struct ldmsd_plugin *pi);
+static void linux_proc_sampler_term(ldmsd_plug_handle_t handle);
 
 static int
-linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
+linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 					    struct attr_value_list *avl)
 {
-	linux_proc_sampler_inst_t inst = (void*)pi;
+	linux_proc_sampler_inst_t inst = ldmsd_plug_context_get(handle);
 	int i, rc;
 	linux_proc_sampler_metric_info_t minfo;
 	char *val;
@@ -3669,7 +3668,7 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		return EALREADY;
 	}
 
-	inst->base_data = base_config(avl, pi->cfg_name, SAMP, inst->mylog);
+	inst->base_data = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, inst->mylog);
 	if (!inst->base_data) {
 		/* base_config() already log error message */
 		return errno;
@@ -3951,14 +3950,14 @@ no_pids:	;
 
  err:
 	/* undo the config */
-	linux_proc_sampler_term(pi);
+	linux_proc_sampler_term(handle);
 	return rc;
 }
 
 static
-void linux_proc_sampler_term(struct ldmsd_plugin *pi)
+void linux_proc_sampler_term(ldmsd_plug_handle_t handle)
 {
-	linux_proc_sampler_inst_t inst = (void*)pi;
+	linux_proc_sampler_inst_t inst = ldmsd_plug_context_get(handle);
 	struct rbn *rbn;
 	struct linux_proc_sampler_set *app_set;
 
@@ -4053,35 +4052,6 @@ find_status_line_handler(const char *key)
 }
 
 static
-struct linux_proc_sampler_inst_s __inst = {
-	.samp = {
-		.base = {
-			.name = SAMP,
-			.type = LDMSD_PLUGIN_SAMPLER,
-			.term = linux_proc_sampler_term,
-			.config = linux_proc_sampler_config,
-			.usage = linux_proc_sampler_usage,
-		},
-		.sample = linux_proc_sampler_sample,
-	},
-	.n_syscalls = -1,
-	.argv_fmt = 2,
-};
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	__inst.mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!__inst.mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	__inst.argv_sep = NULL;
-	return &__inst.samp.base;
-}
-
-static
 int set_rbn_cmp(void *tree_key, const void *key)
 {
 	const struct set_key *tk = tree_key;
@@ -4091,11 +4061,30 @@ int set_rbn_cmp(void *tree_key, const void *key)
 	return tk->os_pid - k->os_pid;
 }
 
-__attribute__((constructor))
-static
-void __init__()
+static int constructor(ldmsd_plug_handle_t handle)
 {
-	/* initialize metric_info_idx_by_name */
+	linux_proc_sampler_inst_t inst;
+
+        inst = calloc(1, sizeof(*inst));
+        if (inst == NULL) {
+		ovis_log(NULL, OVIS_LERROR,
+                         "Failed to allocate context in plugin " SAMP ": %d", errno);
+                return ENOMEM;
+        }
+
+	inst->mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!inst->mylog) {
+		int rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+                         "of '" SAMP "' plugin. Error %d\n", rc);
+                free(inst);
+                return errno;
+	}
+
+	inst->argv_sep = NULL;
+	inst->n_syscalls = -1;
+	inst->argv_fmt = 2;
+
 	int i;
 	for (i = 0; i <= _APP_LAST; i++) {
 		metric_info_idx_by_name[i] = &metric_info[i];
@@ -4104,7 +4093,35 @@ void __init__()
 		sizeof(metric_info_idx_by_name[0]), idx_cmp_by_name);
 	qsort(status_line_tbl, ARRAY_LEN(status_line_tbl),
 			sizeof(status_line_tbl[0]), status_line_cmp);
-	rbt_init(&__inst.set_rbt, set_rbn_cmp);
+	rbt_init(&inst->set_rbt, set_rbn_cmp);
+
+        ldmsd_plug_context_set(handle, inst);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+        linux_proc_sampler_inst_t inst = ldmsd_plug_context_get(handle);
+
+        free(inst);
+}
+
+static
+struct ldmsd_sampler plugin_inst = {
+        .base.name = SAMP,
+        .base.type = LDMSD_PLUGIN_SAMPLER,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
+        .base.term = linux_proc_sampler_term,
+        .base.config = linux_proc_sampler_config,
+        .base.usage = linux_proc_sampler_usage,
+        .sample = linux_proc_sampler_sample,
+};
+
+struct ldmsd_plugin *get_plugin()
+{
+	return &plugin_inst.base;
 }
 
 __attribute__((destructor))

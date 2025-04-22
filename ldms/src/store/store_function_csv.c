@@ -65,6 +65,7 @@
 #include <coll/idx.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "store_common.h"
 
 #define TV_SEC_COL    0
@@ -305,7 +306,7 @@ struct derived_data{ //the generic information about the derived metric
 
 /*** per schema (includes instance data within the sets_idx) *******/
 struct function_store_handle { //these are per-schema
-	struct ldmsd_store *store;
+	const struct ldmsd_store *store;
 	char *path;
 	FILE *file;
 	FILE *headerfile;
@@ -1053,7 +1054,7 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value = NULL;
 	char *bvalue = NULL;
@@ -1198,7 +1199,7 @@ static void printStructs(struct function_store_handle *s_handle){
 	ovis_log(mylog, OVIS_LDEBUG, "=========================================\n");
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 
 	//FIXME: update this for the free's.
@@ -1210,7 +1211,7 @@ static void term(struct ldmsd_plugin *self)
 		free(derivedconf);
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "    config name=store_function_csv [path=<path> altheader=<0|1>]\n"
 		"                rollover=<num> rolltype=<num>\n"
@@ -1233,7 +1234,7 @@ static const char *usage(struct ldmsd_plugin *self)
 }
 
 
-static void *get_ucontext(ldmsd_store_handle_t _s_handle)
+static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_handle)
 {
 	struct function_store_handle *s_handle = _s_handle;
 	return s_handle->ucontext;
@@ -1303,7 +1304,7 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char* schema,
+open_store(ldmsd_plug_handle_t handle, const char *container, const char* schema,
 		struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
 	struct function_store_handle *s_handle = NULL;
@@ -1343,7 +1344,6 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		if (!s_handle)
 			goto out;
 		s_handle->ucontext = ucontext;
-		s_handle->store = s;
 
 		s_handle->sets_idx = idx_create();
 		if (!(s_handle->sets_idx))
@@ -2768,7 +2768,7 @@ err:
 
 
 static int
-store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t metric_count)
+store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t metric_count)
 {
 
 	const struct ldms_timestamp _ts = ldms_transaction_timestamp_get(set);
@@ -2963,7 +2963,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	return 0;
 }
 
-static int flush_store(ldmsd_store_handle_t _s_handle)
+static int flush_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_handle)
 {
 	struct function_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
@@ -2977,7 +2977,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 	return 0;
 }
 
-static void close_store(ldmsd_store_handle_t _s_handle)
+static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_handle)
 {
 	int i;
 

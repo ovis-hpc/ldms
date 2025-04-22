@@ -63,6 +63,7 @@
 #include <assert.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 #define SAMP "grptest"
@@ -84,7 +85,7 @@ const char *prefix = NULL;
 
 static ldms_schema_t sc;
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP BASE_CONFIG_USAGE;
 }
@@ -149,11 +150,11 @@ err0:
 	return rc;
 }
 
-static int config_init(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config_init(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		       struct attr_value_list *avl)
 {
 	int rc;
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto err0;
@@ -176,7 +177,7 @@ err0:
 	return rc;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	int rc = 0;
@@ -186,7 +187,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	const char *name;
 
 	if (!grp) {
-		rc = config_init(self, kwl, avl);
+		rc = config_init(handle, kwl, avl);
 		if (rc)
 			return rc;
 	}
@@ -232,7 +233,7 @@ static void __set_sample(ldms_set_t set)
 	ldms_transaction_end(set);
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int i;
 	if (!grp) {
@@ -248,7 +249,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	if (mf)
 		fclose(mf);

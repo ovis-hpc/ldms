@@ -68,6 +68,8 @@
 #include "ovis_ref/ref.h"
 #include "ldms.h"
 
+typedef void *ldmsd_plug_handle_t;
+
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
 
 /*
@@ -955,13 +957,10 @@ char *process_yaml_config_file(const char *path, const char *dname);
 
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
+
+/* This struct is owned by the plugin. ldmsd should never modify the contents. */
 typedef struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN]; /* plugin name (e.g. meminfo) */
-	char *libpath;
-	const char *cfg_name;	/* Plugin configuration object name (i.e. containing
-				 * config object) */
-	void *context;		/* Extra memory allocated by plugin instance creation */
-	size_t context_size;	/* Informs instance creation of cfg object context size */
 	enum ldmsd_plugin_type {
 		LDMSD_PLUGIN_OTHER = 0,
 		LDMSD_PLUGIN_SAMPLER,
@@ -969,34 +968,39 @@ typedef struct ldmsd_plugin {
 		LDMSD_PLUGIN_AUTH,
 		LDMSD_PLUGIN_DECOMP
 	} type;
-	enum ldmsd_plugin_type (*get_type)(struct ldmsd_plugin *self);
-	int (*config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl);
-	void (*term)(struct ldmsd_plugin *self);
-	const char *(*usage)(struct ldmsd_plugin *self);
+	int (*config)(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl);
+	void (*term)(ldmsd_plug_handle_t handle); /* DEPRECATED - use destructor()/constructor() */
+	const char *(*usage)(ldmsd_plug_handle_t handle);
+        int (*constructor)(ldmsd_plug_handle_t handle);
+        void (*destructor)(ldmsd_plug_handle_t handle);
 } *ldmsd_plugin_t;
 
+/* This struct is owned by the plugin. ldmsd should never modify the contents. */
 struct ldmsd_store {
 	struct ldmsd_plugin base;
-	ldmsd_store_handle_t (*open)(struct ldmsd_store *s,
+	ldmsd_store_handle_t (*open)(ldmsd_plug_handle_t handle,
 				    const char *container, const char *schema,
 				    struct ldmsd_strgp_metric_list *metric_list,
 				    void *ucontext);
-	void (*close)(ldmsd_store_handle_t sh);
-	int (*flush)(ldmsd_store_handle_t sh);
-	void *(*get_context)(ldmsd_store_handle_t sh);
-	int (*store)(ldmsd_store_handle_t sh, ldms_set_t set, int *, size_t count);
-	int (*commit)(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int row_count);
+	void (*close)(ldmsd_plug_handle_t handle, ldmsd_store_handle_t sh);
+	int (*flush)(ldmsd_plug_handle_t handle, ldmsd_store_handle_t sh);
+	void *(*get_context)(ldmsd_plug_handle_t handle, ldmsd_store_handle_t sh);
+	int (*store)(ldmsd_plug_handle_t handle, ldmsd_store_handle_t sh, ldms_set_t set, int *, size_t count);
+	int (*commit)(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int row_count);
 };
 
+/* This struct is owned by the plugin. ldmsd should never modify the contents. */
 typedef struct ldmsd_sampler {
 	struct ldmsd_plugin base;
-	ldms_set_t (*get_set)(struct ldmsd_sampler *self);
-	int (*sample)(struct ldmsd_sampler *self);
+	int (*sample)(ldmsd_plug_handle_t handle);
 } *ldmsd_sampler_plugin_t;
 
 struct ldmsd_cfgobj_store {
 	struct ldmsd_cfgobj cfg;
-	struct ldmsd_store *api;
+        char *plugin_name;
+        char *libpath;
+	const struct ldmsd_store *api; /* owned by plugin, ldmsd does not free */
+        void *context; /* owned by plugin, ldmsd does not free */
 };
 
 typedef struct ldmsd_cfgobj_sampler *ldmsd_cfgobj_sampler_t;
@@ -1008,7 +1012,10 @@ typedef struct ldmsd_sampler_set {
 
 struct ldmsd_cfgobj_sampler {
 	struct ldmsd_cfgobj cfg;
-	struct ldmsd_sampler *api;
+        char *plugin_name;
+        char *libpath;
+	const struct ldmsd_sampler *api; /* owned by plugin, ldmsd does not free */
+        void *context; /* owned by plugin, ldmsd does not free */
 	unsigned long sample_interval_us;
 	long sample_offset_us;
 	int thread_id;
@@ -1030,9 +1037,11 @@ struct ldmsd_cfgobj_sampler {
 #define LDMSD_JOBID "job_id"
 
 ldmsd_cfgobj_sampler_t ldmsd_sampler_add(const char *name,
-					struct ldmsd_sampler *api,
-					ldmsd_cfgobj_del_fn_t __del,
-					uid_t uid, gid_t gid, int perm);
+                                         const char *plguin_name,
+                                         const char *libpath,
+                                         struct ldmsd_sampler *api,
+                                         ldmsd_cfgobj_del_fn_t __del,
+                                         uid_t uid, gid_t gid, int perm);
 
 /**
  * \brief ldmsd_set_register
@@ -1085,9 +1094,11 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
  */
 
 ldmsd_cfgobj_store_t ldmsd_store_add(const char *name,
-				struct ldmsd_store *store,
-				ldmsd_cfgobj_del_fn_t __del,
-				uid_t uid, gid_t gid, int perm);
+                                     const char *plugin_name,
+                                     const char *libpath,
+                                     struct ldmsd_store *store,
+                                     ldmsd_cfgobj_del_fn_t __del,
+                                     uid_t uid, gid_t gid, int perm);
 
 /**
  * \brief Get the security context (uid, gid) of the daemon.
@@ -1102,25 +1113,42 @@ ldmsd_store_open(ldmsd_cfgobj_store_t store,
 		struct ldmsd_strgp_metric_list *metric_list,
 		void *ucontext)
 {
-	return store->api->open(store->api, container, schema, metric_list, ucontext);
+
+        if (store->api->open != NULL) {
+                return store->api->open((ldmsd_plug_handle_t)store, container, schema, metric_list, ucontext);
+        } else {
+                ovis_log(NULL, OVIS_LERROR,
+                         "store plugin \"%s\" does not support non-decomposition open()\n",
+                         store->plugin_name);
+                return NULL;
+        }
 }
 
 static inline void *ldmsd_store_get_context(ldmsd_cfgobj_store_t store,
 					    ldmsd_store_handle_t sh)
 {
-	return store->api->get_context(sh);
+        if (store->api->get_context != NULL) {
+                return store->api->get_context(store, sh);
+        } else {
+                ovis_log(NULL, OVIS_LERROR,
+                         "store plugin \"%s\" does not support non-decomposition get_context()\n",
+                         store->plugin_name);
+                return NULL;
+        }
 }
 
 static inline void
 ldmsd_store_flush(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 {
-	store->api->flush(sh);
+        if (store->api->flush != NULL) {
+                store->api->flush(store, sh);
+        }
 }
 
 static inline void
 ldmsd_store_close(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 {
-	store->api->close(sh);
+	store->api->close(store, sh);
 }
 
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)();
@@ -1198,6 +1226,16 @@ void ldmsd_cfg_lock(ldmsd_cfgobj_type_t type);
 void ldmsd_cfg_unlock(ldmsd_cfgobj_type_t type);
 void ldmsd_cfgobj_lock(ldmsd_cfgobj_t obj);
 void ldmsd_cfgobj_unlock(ldmsd_cfgobj_t obj);
+/**
+ * Allocate a configuration object of the requested size. A
+ * configuration object with the same name and type must not already
+ * exist.
+ *
+ * On success, the object is returned locked.
+ *
+ * NOTE: The caller must use ldmsd_cfgobj_unlock() to unlock the
+ * object once configured.
+ */
 ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 					  ldmsd_cfgobj_type_t type,
 					  size_t obj_size,
@@ -1212,7 +1250,12 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 	})
 int ldmsd_cfgobj_refcount(ldmsd_cfgobj_t obj);
 void ldmsd_cfgobj_put(ldmsd_cfgobj_t obj, const char *ref_name);
-ldmsd_cfgobj_t ldmsd_cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
+/* On success, the returned object will have a reference set.
+   NOTE: The caller must call ldmsd_cfgobj_find_put() to drop the
+   reference from ldmsd_cfgobj_find_get(). */
+ldmsd_cfgobj_t ldmsd_cfgobj_find_get(const char *name, ldmsd_cfgobj_type_t type);
+/* Drop the reference aquired by ldmsd_cfg_obj_find_get() */
+void ldmsd_cfgobj_find_put(ldmsd_cfgobj_t obj);
 void ldmsd_cfgobj_del(ldmsd_cfgobj_t obj);
 ldmsd_cfgobj_t ldmsd_cfgobj_first(ldmsd_cfgobj_type_t type);
 ldmsd_cfgobj_t ldmsd_cfgobj_next(ldmsd_cfgobj_t obj);
@@ -1220,7 +1263,11 @@ int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt
 int ldmsd_cfgobj_add(ldmsd_cfgobj_t obj);
 void ldmsd_cfgobj_rm(ldmsd_cfgobj_t obj);
 
-ldmsd_cfgobj_sampler_t ldmsd_sampler_find(const char *name);
+/* NOTE: Caller must call ldms_sampler_find_put() to drop reference in returned object. */
+ldmsd_cfgobj_sampler_t ldmsd_sampler_find_get(const char *name);
+/* Drop the reference aquired by ldmsd_sampler_find_get() */
+void ldmsd_sampler_find_put(ldmsd_cfgobj_sampler_t obj);
+
 #define ldmsd_sampler_get(_s_, _r_) (ldmsd_cfgobj_sampler_t)ldmsd_cfgobj_get(&(_s_)->cfg, _r_)
 #define ldmsd_sampler_put(_s_, _r_) ldmsd_cfgobj_put(&(_s_)->cfg, _r_)
 #define ldmsd_store_get(_s_, _r_) (ldmsd_cfgobj_store_t)ldmsd_cfgobj_get(&(_s_)->cfg, _r_)
@@ -1233,7 +1280,10 @@ extern int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset,
 			char *exclusive_thread);
 extern int ldmsd_sampler_stop(char *name);
 
-ldmsd_cfgobj_store_t ldmsd_store_find(const char *name);
+/* NOTE: Caller must call ldms_store_find_put() to drop reference in returned object. */
+ldmsd_cfgobj_store_t ldmsd_store_find_get(const char *name);
+/* Drop the reference aquired by ldmsd_store_find_get() */
+void ldmsd_store_find_put(ldmsd_cfgobj_store_t obj);
 ldmsd_cfgobj_store_t ldmsd_store_first();
 ldmsd_cfgobj_store_t ldmsd_store_next(ldmsd_cfgobj_store_t store);
 void ldmsd_store_lock(ldmsd_cfgobj_store_t store);
@@ -1282,7 +1332,7 @@ static inline void ldmsd_prdcr_put(ldmsd_prdcr_t prdcr, char *name) {
 }
 static inline ldmsd_prdcr_t ldmsd_prdcr_find(const char *name)
 {
-	return (ldmsd_prdcr_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_PRDCR);
+	return (ldmsd_prdcr_t)ldmsd_cfgobj_find_get(name, LDMSD_CFGOBJ_PRDCR);
 }
 static inline const char *ldmsd_prdcr_set_state_str(enum ldmsd_prdcr_set_state state) {
 	switch (state) {
@@ -1350,7 +1400,7 @@ static inline void ldmsd_updtr_unlock(ldmsd_updtr_t updtr) {
 	ldmsd_cfgobj_unlock(&updtr->obj);
 }
 static inline ldmsd_updtr_t ldmsd_updtr_find(const char *name) {
-	return (ldmsd_updtr_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_UPDTR);
+	return (ldmsd_updtr_t)ldmsd_cfgobj_find_get(name, LDMSD_CFGOBJ_UPDTR);
 }
 
 static inline const char *ldmsd_updtr_state_str(enum ldmsd_updtr_state state) {
@@ -1402,7 +1452,7 @@ static inline void ldmsd_strgp_unlock(ldmsd_strgp_t strgp) {
 	ldmsd_cfgobj_unlock(&strgp->obj);
 }
 static inline ldmsd_strgp_t ldmsd_strgp_find(const char *name) {
-	return (ldmsd_strgp_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_STRGP);
+	return (ldmsd_strgp_t)ldmsd_cfgobj_find_get(name, LDMSD_CFGOBJ_STRGP);
 }
 static inline const char *ldmsd_strgp_state_str(enum ldmsd_strgp_state state) {
 	switch (state) {
@@ -1637,7 +1687,7 @@ int ldmsd_auth_default_set(const char *plugin, struct attr_value_list *attrs);
 static inline
 ldmsd_auth_t ldmsd_auth_find(const char *name)
 {
-	return (ldmsd_auth_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_AUTH);
+	return (ldmsd_auth_t)ldmsd_cfgobj_find_get(name, LDMSD_CFGOBJ_AUTH);
 }
 void ldmsd_xprt_term(ldms_t x);
 int ldmsd_timespec_from_str(struct timespec *result, const char *str);

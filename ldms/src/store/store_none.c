@@ -53,16 +53,17 @@
 
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 static uint64_t delay = 0; /* delay in usec, default is `no delay` */
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return
 "    config name=store_none delay=uSEC\n"
 "           The number of microseconds for the delay of each entry.\n";
 }
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	char *value;
@@ -72,34 +73,19 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
-	return s;
-}
-
-static void *get_ucontext(ldmsd_store_handle_t _sh)
-{
-	return NULL;
-}
-
-static int flush_store(ldmsd_store_handle_t _sh)
-{
-	return 0;
-}
-
-static void close_store(ldmsd_store_handle_t _sh)
-{
-	/* do nothing */
+	return (void *)1;
 }
 
 static int
-store(ldmsd_store_handle_t _sh, ldms_set_t set,
+store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set,
       int *metric_arry, size_t metric_count)
 {
 	if (delay)
@@ -116,10 +102,7 @@ static struct ldmsd_store store_none = {
 		.type = LDMSD_PLUGIN_STORE,
 	},
 	.open = open_store,
-	.get_context = get_ucontext,
 	.store = store,
-	.flush = flush_store,
-	.close = close_store,
 };
 
 struct ldmsd_plugin *get_plugin()

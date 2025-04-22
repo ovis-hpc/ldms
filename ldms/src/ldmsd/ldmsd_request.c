@@ -2686,7 +2686,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 
-	ldmsd_cfgobj_store_t store = ldmsd_store_find(plugin);
+	ldmsd_cfgobj_store_t store = ldmsd_store_find_get(plugin);
 	if (!store) {
 		reqc->errcode = ENOENT;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -4957,18 +4957,20 @@ static char *plugn_state_str(enum ldmsd_plugin_type type)
 	return "unknown";
 }
 
-extern int ldmsd_load_plugin(char *inst_name, char *plugin_name, char *errstr, size_t errlen);
-extern int ldmsd_term_plugin(char *plugin_name);
+extern int ldmsd_load_plugin(char *instance_name, char *plugin_name, char *errstr, size_t errlen);
+extern int ldmsd_term_plugin(char *instance_name);
 static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *name, *interval_us, *offset, *attr_name;
+	char *instance_name = NULL;
+        char *interval_us = NULL;
+        char *offset = NULL;
+        char *attr_name;
 	char *exclusive_thread;
-	name = interval_us = offset = NULL;
 	size_t cnt = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!name)
+	instance_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!instance_name)
 		goto einval;
 	attr_name = "interval";
 	interval_us = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
@@ -4979,10 +4981,10 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 
 	offset = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
 
-	reqc->errcode = ldmsd_sampler_start(name, interval_us, offset,
-					    exclusive_thread);
+	reqc->errcode = ldmsd_sampler_start(instance_name, interval_us, offset,
+                                            exclusive_thread);
 	if (reqc->errcode == 0) {
-		__dlog(DLOG_CFGOK, "start name=%s%s%s%s%s\n", name,
+		__dlog(DLOG_CFGOK, "start name=%s%s%s%s%s\n", instance_name,
 			interval_us ? " interval=" : "",
 			interval_us ? interval_us : "",
 			offset ? " offset=" : "", offset ? offset : "");
@@ -4997,10 +4999,10 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 				"The specified plugin is not a sampler.");
 	} else if (reqc->errcode == ENOENT) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Sampler '%s' not found.", name);
+				"Sampler instance '%s' not found.", instance_name);
 	} else if (reqc->errcode == EBUSY) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Sampler '%s' is already running.", name);
+				"Sampler instance '%s' is already running.", instance_name);
 	} else if (reqc->errcode == EDOM) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -5013,7 +5015,7 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 	} else {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Failed to start the sampler '%s'.", name);
+				"Failed to start the sampler instance '%s'.", instance_name);
 	}
 	goto send_reply;
 
@@ -5023,7 +5025,7 @@ einval:
 			"The attribute '%s' is required by start.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	free(name);
+	free(instance_name);
 	free(interval_us);
 	free(offset);
 	return 0;
@@ -5031,33 +5033,34 @@ send_reply:
 
 static int plugn_stop_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *name, *attr_name;
+	char *instance_name;
+        char *attr_name;
 	size_t cnt = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!name)
+	instance_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!instance_name)
 		goto einval;
 
-	reqc->errcode = ldmsd_sampler_stop(name);
+	reqc->errcode = ldmsd_sampler_stop(instance_name);
 	if (reqc->errcode == 0) {
-		__dlog(DLOG_CFGOK, "stop name=%s\n", name);
+		__dlog(DLOG_CFGOK, "stop name=%s\n", instance_name);
 		goto send_reply;
 	} else if (reqc->errcode == ENOENT) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Sampler '%s' not found.", name);
+				"Sampler instance '%s' not found.", instance_name);
 	} else if (reqc->errcode == EINVAL) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The plugin '%s' is not a sampler.",
-				name);
+				"The plugin instance '%s' is not a sampler.",
+				instance_name);
 	} else if (reqc->errcode == -EBUSY) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The sampler '%s' is not running.", name);
+				"The sampler instance '%s' is not running.", instance_name);
 	} else {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Failed to stop sampler '%s'", name);
+				"Failed to stop sampler instance '%s'", instance_name);
 	}
 	goto send_reply;
 
@@ -5067,7 +5070,7 @@ einval:
 	reqc->errcode = EINVAL;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	free(name);
+	free(instance_name);
 	return 0;
 }
 
@@ -5098,7 +5101,7 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 			       samp->cfg.name,
 			       samp->api->base.name,
 			       plugn_state_str(samp->api->base.type),
-			       samp->api->base.libpath);
+			       samp->libpath);
 		if (rc) {
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
 			goto err;
@@ -5120,7 +5123,7 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 				store->cfg.name,
 				store->api->base.name,
 				plugn_state_str(store->api->base.type),
-				store->api->base.libpath);
+				store->libpath);
 		if (rc) {
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
 			goto err;
@@ -5165,8 +5168,9 @@ static int plugn_status_handler(ldmsd_req_ctxt_t reqc)
 
 static int plugn_load_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *inst = NULL, *attr_name;
+	char *inst = NULL;
 	char *plugn = NULL;
+        char *attr_name;
 	size_t cnt = 0;
 
 	attr_name = "name";
@@ -5204,31 +5208,31 @@ send_reply:
 
 static int plugn_term_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *plugin_name, *attr_name;
-	plugin_name = NULL;
+	char *instance_name = NULL;
+	char *attr_name;
 	size_t cnt = 0;
 
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!plugin_name)
+	instance_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!instance_name)
 		goto einval;
 
-	reqc->errcode = ldmsd_term_plugin(plugin_name);
+	reqc->errcode = ldmsd_term_plugin(instance_name);
 	if (reqc->errcode == 0) {
-		__dlog(DLOG_CFGOK, "term name=%s\n", plugin_name);
+		__dlog(DLOG_CFGOK, "term name=%s\n", instance_name);
 		goto send_reply;
 	} else if (reqc->errcode == ENOENT) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"plugin '%s' not found.", plugin_name);
+                                "plugin instance '%s' not found.", instance_name);
 	} else if (reqc->errcode == EINVAL) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The specified plugin '%s' has "
+				"The specified plugin instance '%s' has "
 				"active users and cannot be terminated.",
-				plugin_name);
+				instance_name);
 	} else {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Failed to terminate the plugin '%s'.",
-				plugin_name);
+				"Failed to terminate the plugin instance '%s'.",
+				instance_name);
 	}
 	goto send_reply;
 
@@ -5238,45 +5242,46 @@ einval:
 			"The attribute '%s' is required by term.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	free(plugin_name);
+	free(instance_name);
 	return 0;
 }
 
 static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *inst_name, *config_attr, *attr_name;
+	char *instance_name = NULL;
+        char *config_attr = NULL;
+        char *attr_name;
 	char *exclusive_thread;
-	inst_name = config_attr = NULL;
 	struct attr_value_list *av_list = NULL;
 	struct attr_value_list *kw_list = NULL;
-	struct ldmsd_plugin *api;
+	const struct ldmsd_plugin *api;
 	ldmsd_cfgobj_t cfg;
 	char *attr_copy = NULL;
 	size_t cnt = 0;
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	inst_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!inst_name)
+	instance_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!instance_name)
 		goto einval;
-	ldmsd_cfgobj_sampler_t sampler = ldmsd_sampler_find(inst_name);
+	ldmsd_cfgobj_sampler_t sampler = ldmsd_sampler_find_get(instance_name);
 	if (!sampler) {
-		ldmsd_cfgobj_store_t store = ldmsd_store_find(inst_name);
+		ldmsd_cfgobj_store_t store = ldmsd_store_find_get(instance_name);
 		if (!store) {
 			/* See if there is a */
 			reqc->errcode = ENOENT;
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 					"The specified plugin instance '%s' does not exist.",
-					inst_name);
+					instance_name);
 			goto send_reply;
 		}
 		api = &store->api->base;
 		cfg = &store->cfg;
-		ldmsd_store_put(store, "find");
+		ldmsd_store_find_put(store);
 	} else {
 		api = &sampler->api->base;
 		cfg = &sampler->cfg;
-		ldmsd_sampler_put(sampler, "find");
+		ldmsd_sampler_find_put(sampler);
 	}
 
 	config_attr = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
@@ -5326,19 +5331,23 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	free(cfg->avl_str);
 	free(cfg->kvl_str);
 	cfg->avl_str = av_to_string(av_list, 0);
-	cfg->kvl_str = (kw_list->count)?av_to_string(kw_list, 0):"";
+	cfg->kvl_str = (kw_list->count)?av_to_string(kw_list, 0):NULL;
 
 	exclusive_thread = av_value(av_list, "exclusive_thread");
 	if (exclusive_thread && sampler)
 		sampler->use_xthread = atoi(exclusive_thread);
 
-	reqc->errcode = api->config(api, kw_list, av_list);
-	if (reqc->errcode) {
+        if (api->type == LDMSD_PLUGIN_SAMPLER) {
+                reqc->errcode = api->config((ldmsd_plug_handle_t)cfg, kw_list, av_list);
+        } else if (api->type == LDMSD_PLUGIN_STORE) {
+                reqc->errcode = api->config((ldmsd_plug_handle_t)cfg, kw_list, av_list);
+        }
+        if (reqc->errcode) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Error %d configuring plugin instance '%s'.",
-				reqc->errcode, inst_name);
+				reqc->errcode, instance_name);
 	} else {
-		__dlog(DLOG_CFGOK, "config name=%s %s\n", inst_name,
+		__dlog(DLOG_CFGOK, "config name=%s %s\n", instance_name,
 			attr_copy);
 	}
 	goto send_reply;
@@ -5351,7 +5360,7 @@ einval:
 	goto send_reply;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	free(inst_name);
+	free(instance_name);
 	free(config_attr);
 	av_free(kw_list);
 	av_free(av_list);
@@ -5377,7 +5386,7 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 
 		if (samp->api->base.usage) {
 			rc = linebuf_printf(reqc, "%s\n%s",
-					samp->cfg.name, samp->api->base.usage(&samp->api->base));
+					samp->cfg.name, samp->api->base.usage(samp->context));
 		} else {
 			rc = linebuf_printf(reqc, "%s\n", samp->cfg.name);
 		}
@@ -5399,7 +5408,7 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 
 		if (store->api->base.usage) {
 			rc = linebuf_printf(reqc, "%s\n%s",
-					store->cfg.name, store->api->base.usage(&store->api->base));
+					store->cfg.name, store->api->base.usage(samp->context));
 		} else {
 			rc = linebuf_printf(reqc, "%s\n", store->cfg.name);
 		}
@@ -5485,7 +5494,7 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 
 	cfg_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (cfg_name)
-		samp = ldmsd_sampler_find(cfg_name);
+		samp = ldmsd_sampler_find_get(cfg_name);
 	else
 		samp = ldmsd_sampler_first();
 	free(cfg_name);
@@ -6449,10 +6458,10 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
 	for (store = ldmsd_store_first(LDMSD_CFGOBJ_STORE); store;
 			store = ldmsd_store_next(store)) {
-		fprintf(fp, "load name=%s plugin=%s\n", store->api->base.cfg_name, store->api->base.name);
+		fprintf(fp, "load name=%s plugin=%s\n", store->cfg.name, store->api->base.name);
 		if (store->cfg.avl_str || store->cfg.kvl_str)
 			fprintf(fp, "config name=%s %s %s\n",
-				store->api->base.cfg_name,
+				store->cfg.name,
 				store->cfg.avl_str ? store->cfg.avl_str : "",
 				store->cfg.kvl_str ? store->cfg.kvl_str : "");
 	}
@@ -6461,16 +6470,16 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfgobj_sampler_t samp;
 	for (samp = ldmsd_sampler_first(); samp;
 			samp = ldmsd_sampler_next(samp)) {
-		fprintf(fp, "load name=%s plugin=%s\n", samp->api->base.cfg_name, samp->api->base.name);
+		fprintf(fp, "load name=%s plugin=%s\n", samp->cfg.name, samp->api->base.name);
 		if (samp->cfg.avl_str || samp->cfg.kvl_str)
 			fprintf(fp, "config name=%s %s %s\n",
-				samp->api->base.cfg_name,
+				samp->cfg.name,
 				samp->cfg.avl_str ? samp->cfg.avl_str : "",
 				samp->cfg.kvl_str ? samp->cfg.kvl_str : "");
 		if (samp->thread_id >= 0) {
 			/* Plugin is running. */
 			fprintf(fp, "start name=%s interval=%ld offset=%ld\n",
-				samp->api->base.cfg_name,
+				samp->cfg.name,
 				samp->sample_interval_us,
 				samp->sample_offset_us);
 		}
@@ -8655,10 +8664,10 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc = 0;
 	ldmsd_updtr_t updtr;
-	char *name, *reset_s;
+	char *name = NULL;
+        char *reset_s = NULL;
 	int cnt = 0;
 	int reset = 0;
-	name = reset_s = NULL;
 
 	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
 	if (reset_s) {
@@ -8871,8 +8880,8 @@ json_error:
 static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
-	char *name, *reset_s;
-	name = reset_s = NULL;
+	char *name = NULL;
+        char *reset_s = NULL;
 	ldmsd_strgp_t strgp;
 	int reset = 0;
 	json_entity_t strgp_dict;
@@ -9001,8 +9010,8 @@ out:
 static int default_auth_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc = 0;
-	char *plugin_name, *auth_attr;
-	plugin_name = auth_attr = NULL;
+	char *plugin_name = NULL;
+        char *auth_attr = NULL;
 
 	reqc->errcode = 0;
 
@@ -9659,7 +9668,7 @@ static int prdcr_listen_start_handler(ldmsd_req_ctxt_t reqc)
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 
-	pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_PRDCR_LISTEN);
+	pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_find_get(name, LDMSD_CFGOBJ_PRDCR_LISTEN);
 	if (!pl) {
 		reqc->errcode = ENOENT;
 		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
@@ -9680,7 +9689,7 @@ static int prdcr_listen_start_handler(ldmsd_req_ctxt_t reqc)
 
 	pl->obj.perm |= LDMSD_PERM_DSTART;
 	pl->state = LDMSD_PRDCR_LISTEN_STATE_RUNNING;
-	ldmsd_cfgobj_put(&pl->obj, "find"); /* Put back the 'find' reference */
+	ldmsd_cfgobj_find_put(&pl->obj);
 	ldmsd_cfgobj_unlock(&pl->obj);
 
 send_reply:
@@ -9705,7 +9714,7 @@ static int prdcr_listen_stop_handler(ldmsd_req_ctxt_t reqc)
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 
-	pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_PRDCR_LISTEN);
+	pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_find_get(name, LDMSD_CFGOBJ_PRDCR_LISTEN);
 	if (!pl) {
 		reqc->errcode = ENOENT;
 		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
@@ -9729,7 +9738,7 @@ static int prdcr_listen_stop_handler(ldmsd_req_ctxt_t reqc)
 	pl->obj.perm &= ~LDMSD_PERM_DSTART;
 	pl->state = LDMSD_PRDCR_LISTEN_STATE_STOPPED;
 out:
-	ldmsd_cfgobj_put(&pl->obj, "find"); /* Put back the 'find' reference */
+	ldmsd_cfgobj_find_put(&pl->obj);
 	ldmsd_cfgobj_unlock(&pl->obj);
 
 send_reply:

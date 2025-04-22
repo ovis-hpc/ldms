@@ -13,6 +13,7 @@
 #include <glob.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "config.h"
 #include "sampler_base.h"
 
@@ -110,7 +111,7 @@ err1:
         return -1;
 }
 
-static int config(struct ldmsd_plugin *self,
+static int config(ldmsd_plug_handle_t handle,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         int rc = 0;
@@ -118,7 +119,7 @@ static int config(struct ldmsd_plugin *self,
 
         ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
-        sampler_base = base_config(avl, self->cfg_name, "slingshot_info", mylog);
+        sampler_base = base_config(avl, ldmsd_plug_config_name_get(handle), "slingshot_info", mylog);
 
         rc = initialize_ldms_structs();
         if (rc < 0) {
@@ -281,7 +282,7 @@ static void get_interface_name(const char *device_name, char *interface, int len
 
         snprintf(pattern, PATH_MAX,
                  "/sys/class/net/*/device/cxi/%s", device_name);
-        glob(pattern, GLOB_NOSORT, NULL, &globbuf);
+        rc = glob(pattern, GLOB_NOSORT, NULL, &globbuf);
         if (rc != 0) {
                 return;
         }
@@ -317,7 +318,7 @@ static void get_mac_address(const char *interface, char *mac_address, int len)
         strncpy(mac_address, value, len);
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
         struct cxil_device_list *device_list;
         ldms_mval_t list_handle;
@@ -408,7 +409,7 @@ static int sample(struct ldmsd_sampler *self)
         return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
         ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
         base_set_delete(sampler_base);
@@ -416,7 +417,7 @@ static void term(struct ldmsd_plugin *self)
         sampler_base = NULL;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
         ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP " " BASE_CONFIG_SYNOPSIS

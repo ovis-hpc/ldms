@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include <mad.h>
 #include <umad.h>
 #include <iba/ib_types.h>
@@ -759,7 +760,7 @@ static void strip_whitespace(char **start)
 }
 
 
-static int config(struct ldmsd_plugin *self,
+static int config(ldmsd_plug_handle_t handle,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         char *value;
@@ -767,7 +768,7 @@ static int config(struct ldmsd_plugin *self,
 
         ovis_log(mylog, OVIS_LDEBUG, "config() called\n");
 
-        sampler_base = base_config(avl, self->cfg_name, "ibmad", mylog);
+        sampler_base = base_config(avl, ldmsd_plug_config_name_get(handle), "ibmad", mylog);
 
 	value = av_value(avl, "rate");
 	if (value != NULL && value[0] == '0') {
@@ -825,7 +826,7 @@ err:
         return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
         static time_t last_refresh = 0;
         time_t current_time;
@@ -840,7 +841,7 @@ static int sample(struct ldmsd_sampler *self)
         return interfaces_tree_sample();
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
         ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
         interfaces_tree_destroy();
@@ -849,7 +850,7 @@ static void term(struct ldmsd_plugin *self)
         sampler_base = NULL;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
         ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
 	return  "config name=" SAMP " " BASE_CONFIG_SYNOPSIS

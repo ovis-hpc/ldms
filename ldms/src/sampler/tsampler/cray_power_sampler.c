@@ -58,6 +58,7 @@
 
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "timer_base.h"
 #include "sampler_base.h"
 
@@ -101,7 +102,7 @@ struct cray_power_sampler {
 	int hfcount;
 };
 
-static const char *cray_power_sampler_usage(struct ldmsd_plugin *self)
+static const char *cray_power_sampler_usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=cray_power_sampler producer=<prod_name>"
 		" instance=<inst_name> [hfinterval=<hfinterval>] "
@@ -132,12 +133,6 @@ void cray_power_sampler_cleanup(struct cray_power_sampler *cps)
 }
 
 static
-void cray_power_sampler_term(struct ldmsd_plugin *self)
-{
-	cray_power_sampler_cleanup((void*)self);
-}
-
-static
 void cray_power_sampler_timer_cb(tsampler_timer_t t)
 {
 	int rc;
@@ -154,7 +149,7 @@ void cray_power_sampler_timer_cb(tsampler_timer_t t)
 	 * keep modulo-increasing call-after-call (per timer).
 	 * */
 
-	cps = (void*)t->sampler;
+	cps = t->cb_context;
 
 	cps_idx = (uint64_t)t->ctxt; /* abuse ctxt */
 
@@ -170,25 +165,24 @@ void cray_power_sampler_timer_cb(tsampler_timer_t t)
 	if (rc < 0) {
 		/* error */
 		ovis_log(mylog, OVIS_LDEBUG, "read() error, "
-				"errno: %d, cps_idx: %d\n.", errno, cps_idx);
-		return;
+				"errno: %d, cps_idx: %d\n.", errno, cps_idx); return;
 	}
 
 	v = strtoul(buff, NULL, 0);
 	ldms_metric_array_set_u64(t->set, t->mid, t->idx, v);
 }
 static
-int cray_power_sampler_config(struct ldmsd_plugin *self,
+int cray_power_sampler_config(ldmsd_plug_handle_t handle,
 				struct attr_value_list *kwl,
 				struct attr_value_list *avl)
 {
+	struct cray_power_sampler *cps = ldmsd_plug_context_get(handle);
 	char *v;
 	uint64_t x;
 	int rc;
-	struct cray_power_sampler *cps = (void*)self;
 	int i;
 
-	rc = timer_base_config(self, kwl, avl, mylog);
+	rc = timer_base_config(cps, kwl, avl, mylog);
 	if (rc) {
 		goto out;
 	}
@@ -223,14 +217,15 @@ int cray_power_sampler_config(struct ldmsd_plugin *self,
 		if (cps->fd[i] < 0)
 			goto cleanup;
 		rc = timer_base_add_hfmetric(&cps->base, cps_names[i],
-				LDMS_V_U64_ARRAY, cps->hfcount,
-				&cps->hfinterval, cray_power_sampler_timer_cb,
-				(void*)(uint64_t)i);
+                                             LDMS_V_U64_ARRAY, cps->hfcount,
+                                             &cps->hfinterval,
+                                             cray_power_sampler_timer_cb, cps,
+                                             (void*)(uint64_t)i);
 		if (rc)
 			goto cleanup;
 	}
 
-	rc = timer_base_create_set(&cps->base);
+	rc = timer_base_create_set(&cps->base, ldmsd_plug_config_name_get(handle));
 	if (rc) {
 		goto cleanup;
 	}
@@ -241,27 +236,52 @@ cleanup:
 out:
 	return rc;
 }
-struct ldmsd_plugin *get_plugin()
+
+static int constructor(ldmsd_plug_handle_t handle)
 {
+	struct cray_power_sampler *cps;
 	int rc;
+
 	mylog = ovis_log_register("sampler.cray_power_sampler", "The log subsystem of the cray_power_sampler plugin");
 	if (!mylog) {
 		rc = errno;
 		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
 				"of 'cray_power_sampler' plugin. Error %d\n", rc);
+                return errno;
 	}
-	struct cray_power_sampler *cps = calloc(1, sizeof(*cps));
 
+        cps = calloc(1, sizeof(*cps));
 	if (!cps)
-		return NULL;
+		return ENOMEM;
 
 	timer_base_init(&cps->base);
-	/* override */
-	cps->base.base.base.usage = cray_power_sampler_usage;
-	cps->base.base.base.term = cray_power_sampler_term;
-	cps->base.base.base.config = cray_power_sampler_config;
-	snprintf(cps->base.base.base.name, sizeof(cps->base.base.base.name),
-			"cray_power_sampler");
 
-	return (void*)cps;
+        ldmsd_plug_context_set(handle, cps);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+        struct cray_power_sampler *cps = ldmsd_plug_context_get(handle);
+
+	cray_power_sampler_cleanup(cps);
+        free(cps);
+}
+
+static struct ldmsd_sampler plugin_api;
+
+struct ldmsd_plugin *get_plugin()
+{
+        timer_base_init_api(&plugin_api);
+	/* override */
+	snprintf(plugin_api.base.name, sizeof(plugin_api.base.name),
+                 "cray_power_sampler");
+	plugin_api.base.usage = cray_power_sampler_usage;
+        plugin_api.base.constructor = constructor;
+        plugin_api.base.destructor = destructor;
+        plugin_api.base.term = NULL;
+	plugin_api.base.config = cray_power_sampler_config;
+
+        return &plugin_api.base;
 }

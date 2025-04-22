@@ -63,7 +63,6 @@ static ovis_log_t mylog;
 
 static char host_port[64];	/* hostname:port_no for influxdb */
 struct influx_store {
-	struct ldmsd_store *store;
 	void *ucontext;
 	char *host_port;
 	char *schema;
@@ -171,7 +170,7 @@ influx_value_set_fn influx_value_set[] = {
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	pthread_mutex_lock(&cfg_lock);
@@ -198,17 +197,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "    config name=influx host_port=<hostname>':'<port_no>\n";
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct influx_store *is = NULL;
@@ -218,7 +217,6 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		goto out;
 	is->measurement_limit = measurement_limit;
 	pthread_mutex_init(&is->lock, NULL);
-	is->store = s;
 	is->ucontext = ucontext;
 	is->container = strdup(container);
 	if (!is->container)
@@ -323,7 +321,7 @@ static inline size_t __element_byte_len(enum ldms_value_type t)
 }
 
 static int
-store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_count)
+store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_count)
 {
 	struct influx_store *is = _sh;
 	struct ldms_timestamp timestamp;
@@ -408,12 +406,7 @@ err:
 	return ENOMEM;
 }
 
-static int flush_store(ldmsd_store_handle_t _sh)
-{
-	return 0;
-}
-
-static void close_store(ldmsd_store_handle_t _sh)
+static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 {
 	struct influx_store *is = _sh;
 
@@ -429,7 +422,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 	free(is);
 }
 
-static void *get_ucontext(ldmsd_store_handle_t _sh)
+static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 {
 	struct influx_store *is = _sh;
 	return is->ucontext;
@@ -446,7 +439,6 @@ static struct ldmsd_store store_influx = {
 	.open = open_store,
 	.get_context = get_ucontext,
 	.store = store,
-	.flush = flush_store,
 	.close = close_store,
 };
 

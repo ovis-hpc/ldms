@@ -63,6 +63,7 @@
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 #define PROC_FILE "/proc/vmstat"
@@ -155,13 +156,13 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE;
 }
 
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 
@@ -173,7 +174,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (rc)
 		return rc;
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base)
 		return EINVAL;
 
@@ -189,7 +190,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int rc;
 	int metric_no;
@@ -224,7 +225,7 @@ static int sample(struct ldmsd_sampler *self)
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	if (mf)
 		fclose(mf);

@@ -78,6 +78,7 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 #include <assert.h>
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -277,13 +278,13 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP " [file=<stats_path>] " BASE_CONFIG_USAGE
 		"    <stats_path>  The lnet stats file name if not using the default\n";
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	void * arg = NULL;
 	int rc;
@@ -304,7 +305,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		ovis_log(mylog, OVIS_LDEBUG, SAMP ": User-defined lnet_state_file %s.\n", pvalue);
 	}
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base)
 		return EINVAL;
 
@@ -321,7 +322,7 @@ err:
 	return 0;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int i;
 	int metric_no;
@@ -346,7 +347,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	base_del(base);
 	base = NULL;

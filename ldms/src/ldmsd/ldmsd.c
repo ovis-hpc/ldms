@@ -80,6 +80,7 @@
 #include "ldms.h"
 #include "ldms_rail.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
 #include "config.h"
@@ -641,7 +642,11 @@ void plugin_sampler_cb(ovis_event_t oev)
 	ldmsd_cfgobj_lock(&samp->cfg);
 	assert(samp->cfg.type == LDMSD_CFGOBJ_SAMPLER);
 	assert(samp->api->base.type == LDMSD_PLUGIN_SAMPLER);
-	int rc = samp->api->sample(samp->api);
+
+        int rc = 0;
+        if (samp->api->sample != NULL) {
+                rc = samp->api->sample((ldmsd_plug_handle_t)samp);
+        }
 	if (rc) {
 		/*
 		 * If the sampler reports an error don't reschedule
@@ -727,7 +732,7 @@ int ldmsd_set_register(ldms_set_t set, const char *cfg_name)
 		return EINVAL;
 
 	/* Find the configuration object */
-	samp = ldmsd_sampler_find(cfg_name);
+	samp = ldmsd_sampler_find_get(cfg_name);
 	if (!samp) {
 		ovis_log(NULL, OVIS_LERROR,
 			"The specified sampler configuration '%s' does not exist.\n",
@@ -745,10 +750,10 @@ int ldmsd_set_register(ldms_set_t set, const char *cfg_name)
 	s->sampler = samp;
 
 	LIST_INSERT_HEAD(&samp->set_list, s, entry);
-	ldmsd_cfgobj_put(&samp->cfg, "find");
+	ldmsd_sampler_find_put(samp);
 	return 0;
 err_0:
-	ldmsd_cfgobj_put(&samp->cfg, "find");
+	ldmsd_sampler_find_put(samp);
 	free(s);
 	return rc;
 }
@@ -756,7 +761,7 @@ err_0:
 void ldmsd_set_deregister(const char *inst_name, const char *cfg_name)
 {
 	ldmsd_sampler_set_t s;
-	ldmsd_cfgobj_sampler_t samp = ldmsd_sampler_find(cfg_name);
+	ldmsd_cfgobj_sampler_t samp = ldmsd_sampler_find_get(cfg_name);
 	const char *set_name;
 
 	if (!samp) {
@@ -776,7 +781,7 @@ void ldmsd_set_deregister(const char *inst_name, const char *cfg_name)
 		}
 	}
 	ldmsd_sampler_unlock(samp);
-	ldmsd_sampler_put(samp, "find");
+	ldmsd_sampler_find_put(samp);
 }
 
 int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us)
@@ -1059,7 +1064,7 @@ int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset,
 	int rc = 0;
 	long sample_interval;
 	long sample_offset = 0;
-	ldmsd_cfgobj_sampler_t samp = ldmsd_sampler_find(cfg_name);
+	ldmsd_cfgobj_sampler_t samp = ldmsd_sampler_find_get(cfg_name);
 	if (!samp)
 		return ENOENT;
 
@@ -1128,7 +1133,7 @@ int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset,
 
 out:
 	ldmsd_sampler_unlock(samp);
-	ldmsd_sampler_put(samp, "find");
+	ldmsd_sampler_find_put(samp);
 	return rc;
 }
 
@@ -1144,7 +1149,7 @@ void oneshot_sample_cb(ovis_event_t ev)
 	ldmsd_cfgobj_sampler_t samp = os->samp;
 	ovis_scheduler_event_del(os->os, ev);
 	ldmsd_sampler_lock(samp);
-	samp->api->sample(samp->api);
+	samp->api->sample((ldmsd_plug_handle_t)samp);
 	release_ovis_scheduler(samp->thread_id);
 	free(os);
 	ldmsd_sampler_unlock(samp);
@@ -1159,7 +1164,7 @@ int ldmsd_oneshot_sample(const char *cfg_name, const char *ts,
 	time_t now, sched;
 	struct timeval tv;
 
-	samp = ldmsd_sampler_find(cfg_name);
+	samp = ldmsd_sampler_find_get(cfg_name);
 	if (!samp) {
 		snprintf(errstr, errlen, "Sampler not found.");
 		return ENOENT;
@@ -1216,7 +1221,7 @@ err:
 out:
 	ldmsd_sampler_unlock(samp);
 put:
-	ldmsd_sampler_put(samp, "find");
+	ldmsd_sampler_find_put(samp);
 	return rc;
 }
 
@@ -1228,7 +1233,7 @@ int ldmsd_sampler_stop(char *cfg_name)
 	int rc = 0;
 	ldmsd_cfgobj_sampler_t samp;
 
-	samp = ldmsd_sampler_find(cfg_name);
+	samp = ldmsd_sampler_find_get(cfg_name);
 	if (!samp)
 		return ENOENT;
 
@@ -1250,7 +1255,7 @@ int ldmsd_sampler_stop(char *cfg_name)
 	ref_dump(&samp->cfg.ref, samp->cfg.name, stderr);
 #endif
 	ldmsd_sampler_unlock(samp);
-	ldmsd_sampler_put(samp, "find");
+	ldmsd_sampler_find_put(samp);
 	return rc;
 }
 
