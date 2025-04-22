@@ -413,7 +413,7 @@ static sos_handle_t find_container(const char *path)
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	struct sos_instance *si;
 	int rc, len;
@@ -473,17 +473,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "    config name=" STORE " path=<path>\n"
 		"       path The path to primary storage\n";
 }
 
-static void *get_ucontext(ldmsd_store_handle_t _sh)
+static void *get_ucontext(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 {
 	struct sos_instance *si = _sh;
 	return si->ucontext;
@@ -491,7 +491,7 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *container, const char *schema,
+open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct sos_instance *si = NULL;
@@ -890,7 +890,8 @@ int next_slot()
 }
 
 static int
-store(ldmsd_store_handle_t _sh,
+store(ldmsd_plug_handle_t handle,
+      ldmsd_store_handle_t _sh,
       ldms_set_t set,
       int *metric_arry /* ignored */,
       size_t metric_count /* ignored */)
@@ -958,7 +959,7 @@ err:
 	return errno;
 }
 
-static int flush_store(ldmsd_store_handle_t _sh)
+static int flush_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 {
 	struct sos_instance *si = _sh;
 	if (!_sh)
@@ -970,7 +971,7 @@ static int flush_store(ldmsd_store_handle_t _sh)
 	return 0;
 }
 
-static void close_store(ldmsd_store_handle_t _sh)
+static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 {
 	struct sos_instance *si = _sh;
 

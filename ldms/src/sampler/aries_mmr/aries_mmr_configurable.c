@@ -70,6 +70,7 @@
 #include "gpcd_lib.h"
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 #ifndef ARRAY_SIZE
@@ -139,7 +140,7 @@ static struct mstruct setvals;
 static struct mstruct readvals;
 
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "    config name=" SAMP " action=initialize [setfile=<cfile> rtrid=<rtrid>] readfile=<rfile> " BASE_CONFIG_USAGE
 		"            - Initialization activities for the set. Does not create it. Sampler specific arguments:\n"
@@ -623,7 +624,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 		rtrid = strdup("");
 
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		_free_cfg();
@@ -845,7 +846,7 @@ struct kw kw_tbl[] = {
 };
 
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	struct kw *kw;
@@ -869,7 +870,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		goto err2;
 	return 0;
  err0:
-	ovis_log(mylog, OVIS_LDEBUG,usage(self));
+	ovis_log(mylog, OVIS_LDEBUG,usage(context));
 	goto err2;
  err1:
 	ovis_log(mylog, OVIS_LDEBUG, "Invalid configuration keyword '%s'\n", action);
@@ -879,7 +880,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	union ldms_value v;
 	char sval[MSR_MAXLEN];
@@ -945,7 +946,7 @@ out:
 
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	int i;
 

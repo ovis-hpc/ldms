@@ -72,6 +72,7 @@
 #include <stdlib.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "tsampler.h"
 #include "timer_base.h"
 #include "ldms_jobid.h"
@@ -119,12 +120,13 @@ out:
 }
 
 int timer_base_add_hfmetric(struct timer_base *tb,
-				const char *name,
-				enum ldms_value_type type,
-				int n,
-				const struct timeval *interval,
-				tsampler_sample_cb cb,
-				void *ctxt)
+                            const char *name,
+                            enum ldms_value_type type,
+                            int n,
+                            const struct timeval *interval,
+                            tsampler_sample_cb cb,
+                            void *cb_context,
+                            void *ctxt)
 {
 	int rc = 0;
 	struct tsampler_timer_entry *t = calloc(1, sizeof(*t));
@@ -149,8 +151,8 @@ int timer_base_add_hfmetric(struct timer_base *tb,
 		rc = -t->timer.tid;
 		goto out;
 	}
-	t->timer.sampler = &tb->base;
 	t->timer.cb = cb;
+        t->timer.cb_context = cb_context;
 	t->timer.ctxt = ctxt;
 	t->timer.interval = *interval;
 	TAILQ_INSERT_TAIL(&tb->timer_list, t, entry);
@@ -162,13 +164,11 @@ out:
 	return rc;
 }
 
-int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+int timer_base_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		      struct attr_value_list *avl, ovis_log_t mylog)
 {
-	struct timer_base *tb;
+	struct timer_base *tb = ldmsd_plug_context_get(handle);
 	int rc = 0;
-
-	tb = (void*)self;
 
 	tb->mylog = mylog;
 
@@ -184,17 +184,17 @@ int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 
 	if (tb->schema) {
-		ovis_log(tb->mylog, OVIS_LERROR, "%s: schema existed.\n", tb->base.base.name);
+		ovis_log(tb->mylog, OVIS_LERROR, "%s: schema existed.\n", ldmsd_plug_config_name_get(handle));
 		rc = EEXIST;
 		goto out;
 	}
 
 	if (tb->set) {
-		ovis_log(tb->mylog, OVIS_LERROR, "%s: set existed.\n", tb->base.base.name);
+		ovis_log(tb->mylog, OVIS_LERROR, "%s: set existed.\n", ldmsd_plug_config_name_get(handle));
 		rc = EEXIST;
 		goto out;
 	}
-	tb->cfg = base_config(avl, tb->base.base.name, tb->base.base.name, mylog);
+	tb->cfg = base_config(avl, ldmsd_plug_config_name_get(handle), ldmsd_plug_config_name_get(handle), mylog);
 	if (!tb->cfg) {
 		rc = errno;
 		goto out;
@@ -218,12 +218,12 @@ out:
 	return rc;
 }
 
-int timer_base_create_set(struct timer_base *tb)
+int timer_base_create_set(struct timer_base *tb, const char *config_name)
 {
 	tb->set = base_set_new(tb->cfg);
 	if (!tb->set) {
 		ovis_log(tb->mylog, OVIS_LERROR, "%s: ldms_set_new() failed, errno: %d.\n",
-				tb->base.base.name, errno);
+                         config_name, errno);
 		return errno;
 	}
 	return 0;
@@ -231,15 +231,16 @@ int timer_base_create_set(struct timer_base *tb)
 
 void timer_base_cleanup(struct timer_base *tb);
 
-void timer_base_term(struct ldmsd_plugin *self)
+void timer_base_term(ldmsd_plug_handle_t handle)
 {
+	struct timer_base *tb = ldmsd_plug_context_get(handle);
 	/* remove all timers when we terminate */
-	timer_base_cleanup((void*)self);
+	timer_base_cleanup(tb);
 }
 
-int timer_base_sample(struct ldmsd_sampler *self)
+int timer_base_sample(ldmsd_plug_handle_t handle)
 {
-	struct timer_base *tb = (void*)self;
+	struct timer_base *tb = ldmsd_plug_context_get(handle);
 	int rc = 0;
 	struct tsampler_timer_entry *ent;
 
@@ -282,7 +283,7 @@ out:
 	return rc;
 }
 
-const char *timer_base_usage(struct ldmsd_plugin *self)
+const char *timer_base_usage(ldmsd_plug_handle_t handle)
 {
 	return "timer_base is a base-class sampler that cannot be used by itself.";
 }
@@ -313,22 +314,26 @@ void timer_base_cleanup(struct timer_base *tb)
 }
 
 static
-int __config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+int __config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 struct attr_value_list *avl)
 {
 	assert(0 == "ERROR timer_base.config() not overridden.");
 	return ENOSYS;
 }
 
+void timer_base_init_api(struct ldmsd_sampler *api)
+{
+	snprintf(api->base.name, sizeof(api->base.name), "timer_base");
+	api->base.type = LDMSD_PLUGIN_SAMPLER;
+	api->base.term = timer_base_term;
+	api->base.config = __config;
+	api->base.usage = timer_base_usage;
+	api->sample = timer_base_sample;
+}
+
 void timer_base_init(struct timer_base *tb)
 {
 	/* sub-class can override these values after calling this function */
-	snprintf(tb->base.base.name, sizeof(tb->base.base.name), "timer_base");
-	tb->base.base.type = LDMSD_PLUGIN_SAMPLER;
-	tb->base.base.term = timer_base_term;
-	tb->base.base.config = __config;
-	tb->base.base.usage = timer_base_usage;
-	tb->base.sample = timer_base_sample;
 	tb->state = TBS_INIT;
 	TAILQ_INIT(&tb->timer_list);
 	pthread_mutex_init(&tb->mutex, NULL);

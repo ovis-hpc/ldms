@@ -63,6 +63,7 @@
 #include <ctype.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 #define DEFAULT_HWEVENTS "PAPI_TOT_CYC,PAPI_TOT_IIS,PAPI_TOT_INS"
@@ -585,7 +586,7 @@ int deatach_pids()
 	return 0;
 }
 
-static int config_hw(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config_hw(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		     struct attr_value_list *avl)
 {
 	int rc = 0;
@@ -604,7 +605,7 @@ static int config_hw(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		goto out;
 	}
 
-	base = base_config(avl, self->cfg_name, default_schema_name, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), default_schema_name, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -741,7 +742,7 @@ out:
  *     metafile	    The PAPI configuration file name and path
  *
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	struct attr_value_list * avl)
 {
 
@@ -758,7 +759,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	if (mode && strcasecmp("hw", mode) == 0) {
 		/* running hardware-only mode */
 		hw_only = 1;
-		return config_hw(self, kwl, avl);
+		return config_hw(handle, kwl, avl);
 	}
 
 	producername = av_value(avl, "producer");
@@ -808,7 +809,7 @@ out:
 /*
  * Use the new configuration parameters to create a new schema and set
  */
-int config_local(struct ldmsd_sampler *self, struct attr_value_list *kwl,
+int config_local(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	struct attr_value_list * avl)
 {
 	int rc;
@@ -823,7 +824,7 @@ int config_local(struct ldmsd_sampler *self, struct attr_value_list *kwl,
 
 	ovis_log(mylog, OVIS_LDEBUG, SAMP ": re-configure the sampler\n");
 
-	base = base_config(avl, self->base.cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base) {
 		rc = errno;
 		goto out;
@@ -1082,7 +1083,7 @@ static int save_events_data()
 	return 0;
 }
 
-static int sample_hw(struct ldmsd_sampler *self)
+static int sample_hw(ldmsd_plug_handle_t handle)
 {
 	int i;
 	int rc = 0;
@@ -1111,7 +1112,7 @@ out:
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler * self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int rc, c;
 	int pid0_exist;
@@ -1120,7 +1121,7 @@ static int sample(struct ldmsd_sampler * self)
 	struct sampler_meta *meta = NULL;
 
 	if (hw_only) {
-		return sample_hw(self);
+		return sample_hw(handle);
 	}
 
 	/* Check if the file exist */
@@ -1226,7 +1227,7 @@ static int sample(struct ldmsd_sampler * self)
 						"sampler\n");
 
 					/* Configure the sampler */
-					config_local(self, kw_list_local,
+					config_local(handle, kw_list_local,
 						av_list_local);
 				}
 			}
@@ -1335,7 +1336,7 @@ err1:
 	return 0;
 }
 
-static void term_hw(struct ldmsd_plugin *self)
+static void term_hw(ldmsd_plug_handle_t handle)
 {
 	if (hwc) {
 		if (hwc->started) {
@@ -1363,10 +1364,10 @@ static void term_hw(struct ldmsd_plugin *self)
 	}
 }
 
-static void term(struct ldmsd_plugin * self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	if (hw_only) {
-		term_hw(self);
+		term_hw(handle);
 		return;
 	}
 	if (file)
@@ -1387,7 +1388,7 @@ static void term(struct ldmsd_plugin * self)
 	set = NULL;
 }
 
-static const char *usage(struct ldmsd_plugin * self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return
 	"config name=spapi producer=<producer_name> metafile=<file>\n"

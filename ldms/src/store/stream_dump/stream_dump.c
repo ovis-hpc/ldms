@@ -105,7 +105,7 @@ static const char *_usage = "\
 ";
 
 static const char *
-__usage(struct ldmsd_plugin *self)
+__usage(ldmsd_plug_handle_t handle)
 {
 	return _usage;
 }
@@ -239,7 +239,7 @@ static int __op_close(const char *stream)
 }
 
 static int
-__config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+__config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		struct attr_value_list *avl)
 {
 	const char *op = av_value(avl, "op");
@@ -257,7 +257,7 @@ __config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 }
 
 static void
-__term(struct ldmsd_plugin *self)
+__term(ldmsd_plug_handle_t handle)
 {
 	struct rbn *rbn;
 	struct __client_s *cli;
@@ -275,44 +275,6 @@ __term(struct ldmsd_plugin *self)
 	pthread_mutex_unlock(&__mutex);
 }
 
-static ldmsd_store_handle_t
-__open(struct ldmsd_store *s, const char *container, const char *schema,
-			    struct ldmsd_strgp_metric_list *metric_list,
-			    void *ucontext)
-{
-	errno = ENOTSUP;
-	return NULL;
-}
-
-static void __close(ldmsd_store_handle_t sh)
-{
-	errno = ENOTSUP;
-}
-
-static int __flush(ldmsd_store_handle_t sh)
-{
-	return ENOTSUP;
-}
-
-static void *__get_ucontext(ldmsd_store_handle_t sh)
-{
-	errno = ENOTSUP;
-	return NULL;
-}
-
-static int
-__store(ldmsd_store_handle_t sh, ldms_set_t set, int *n, size_t count)
-{
-	return ENOTSUP;
-}
-
-static int
-__commit(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
-	 int row_count)
-{
-	return ENOTSUP;
-}
-
 static struct ldmsd_store stream_dump = {
 	.base = {
 		.name = "stream_dump",
@@ -321,12 +283,6 @@ static struct ldmsd_store stream_dump = {
 		.usage = __usage,
 		.type = LDMSD_PLUGIN_STORE,
 	},
-	.open = __open,
-	.get_context = __get_ucontext,
-	.store = __store,
-	.flush = __flush,
-	.close = __close,
-	.commit = __commit,
 };
 
 struct ldmsd_plugin *get_plugin()
