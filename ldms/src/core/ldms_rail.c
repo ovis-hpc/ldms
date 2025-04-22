@@ -180,8 +180,11 @@ static void __rail_ref_free(void *arg)
 
 	for (i = 0; i < r->n_eps; i++) {
 		rep = &r->eps[i];
-		if (rep->ep)
+		if (rep->ep) {
+			ldms_xprt_ctxt_set(rep->ep, NULL, NULL);
 			ldms_xprt_put(rep->ep, "init");
+		}
+
 	}
 
 	while ((dc = TAILQ_FIRST(&r->dir_notify_tq))) {
