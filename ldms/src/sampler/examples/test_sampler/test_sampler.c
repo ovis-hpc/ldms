@@ -63,6 +63,7 @@
 #include "ldms.h"
 #include "ovis_json/ovis_json.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -1700,9 +1701,9 @@ err:
 	return rc;
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	test_sampler_t ts = (test_sampler_t)self->context;
+	test_sampler_t ts = ldmsd_plug_context_get(handle);
 	char *action;
 	int rc;
 
@@ -1883,9 +1884,9 @@ __sample_lists(struct test_sampler_set *ts_set)
 	return 0;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
-	test_sampler_t ts = (test_sampler_t)self->base.context;
+	test_sampler_t ts = ldmsd_plug_context_get(handle);
 	int rc;
 	struct test_sampler_set *ts_set;
 	struct test_sampler_schema *ts_schema;
@@ -1932,9 +1933,9 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
-	test_sampler_t ts = (test_sampler_t)self->context;
+	test_sampler_t ts = ldmsd_plug_context_get(handle);
 	struct test_sampler_schema *tschema;
 	while ((tschema = LIST_FIRST(&ts->schema_list))) {
 		LIST_REMOVE(tschema, entry);
@@ -1948,7 +1949,7 @@ static void term(struct ldmsd_plugin *self)
 	}
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "Create and define schema:\n"
 		"config name=inst-name action=add_schema schema=<schema_name>\n"
@@ -2084,21 +2085,32 @@ struct ldmsd_plugin *get_plugin_instance(const char *name,
 }
 #endif
 
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	return NULL;
+static int constructor(ldmsd_plug_handle_t handle) {
+	test_sampler_t ts;
+
+        ts = calloc(1, sizeof(*ts));
+        if (!ts) {
+                return ENOMEM;
+        }
+        ldmsd_plug_context_set(handle, ts);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle) {
+	test_sampler_t ts = ldmsd_plug_context_get(handle);
+
+        free(ts);
 }
 
 static struct ldmsd_sampler test_sampler = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-		.context_size = sizeof(struct test_sampler_s),
-	},
-	.get_set = get_set,
+	.base.name = SAMP,
+	.base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.term = term,
+	.base.config = config,
+	.base.usage = usage,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
 	.sample = sample,
 };
 

@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "config.h"
 #include "sampler_base.h"
 #include "libzfs.h"
@@ -157,14 +158,14 @@ static int initialize_ldms_structs()
  * ldms daemon. In error the plugin is aborted.
  ****************************************************************************/
 
-static int config(struct ldmsd_plugin *self,
+static int config(ldmsd_plug_handle_t handle,
 		  struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = 0;
 
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " config() called\n");
 
-	sampler_base = base_config(avl, self->cfg_name, "zfs_topvdevs", mylog);
+	sampler_base = base_config(avl, ldmsd_plug_config_name_get(handle), "zfs_topvdevs", mylog);
 	if ((g_zfs = libzfs_init()) == NULL) {
 		rc = errno;
 		ovis_log(mylog, OVIS_LERROR,
@@ -214,7 +215,7 @@ static int resize_metric_set()
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int rc = 0;
 
@@ -234,7 +235,7 @@ static int sample(struct ldmsd_sampler *self)
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " term() called\n");
 	base_set_delete(sampler_base);
@@ -243,7 +244,7 @@ static void term(struct ldmsd_plugin *self)
 
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " usage() called\n");
 	return "config name=" SAMP " " BASE_CONFIG_SYNOPSIS BASE_CONFIG_DESC;

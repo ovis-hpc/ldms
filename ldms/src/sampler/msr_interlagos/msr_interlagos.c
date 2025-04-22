@@ -74,6 +74,7 @@
 #include <math.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 #ifndef ARRAY_SIZE
@@ -279,7 +280,7 @@ static base_data_t base;
 static ctrcfg_state cfgstate = CFG_PRE;
 
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "    config name=" SAMP " action=initialize producer=<prod_name> instance=<inst_name> [component_id=<comp_id> schema=<sname> with_jobid=<jid>] maxcore=<maxcore> corespernuma=<corespernuma> conffile=<cfile>\n"
 		"            - Initialization activities for the set. Does not create it.\n"
@@ -1269,7 +1270,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	pthread_mutex_lock(&cfglock);
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
         if (!base) {
                 rc = errno;
 		_free_names();
@@ -1620,7 +1621,7 @@ struct kw kw_tbl[] = {
 };
 
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		  struct attr_value_list *avl)
 {
 	struct kw *kw;
@@ -1644,7 +1645,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		goto err2;
 	return 0;
  err0:
-	ovis_log(mylog, OVIS_LDEBUG,usage(self));
+	ovis_log(mylog, OVIS_LDEBUG,usage(context));
 	goto err2;
  err1:
 	ovis_log(mylog, OVIS_LDEBUG,"Invalid configuration keyword '%s'\n", action);
@@ -1685,7 +1686,7 @@ void fin(){
 
 };
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	struct active_counter* pe;
 
@@ -1707,7 +1708,7 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	int i;
 

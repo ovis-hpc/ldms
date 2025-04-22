@@ -69,6 +69,7 @@
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 #define PROC_FILE "/proc/loadavg"
@@ -267,7 +268,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE " [metrics=<mlist>] [force_integer]\n"
 		"                 If force_integer is present, coerces load averages into (uint64_t)100*value\n"
@@ -285,7 +286,7 @@ static const char *usage(struct ldmsd_plugin *self)
  *     list		csv list of wanted metrics. All metrics are included and schema is 'loadavg' if metrics is unspecified.
  * The schema name will (if not supplied) default to a unique short name dependent on the list of metrics.
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 
@@ -314,7 +315,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 #endif
 	const char *def_schema_name = make_schema_name();
 
-	base = base_config(avl, self->cfg_name, def_schema_name, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), def_schema_name, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -334,7 +335,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 static int logdisappear = 1;
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int rc, i;
 	char *s;
@@ -423,7 +424,7 @@ out:
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	if (mf)
 		fclose(mf);
