@@ -67,6 +67,7 @@
 #include "ovis_json/ovis_json.h"
 
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "../sampler_base.h"
 
 #define SAMP "app_sampler"
@@ -435,8 +436,6 @@ typedef struct app_sampler_inst_s *app_sampler_inst_t;
 typedef int (*handler_fn_t)(app_sampler_inst_t inst, pid_t pid, ldms_set_t set);
 
 struct app_sampler_inst_s {
-	struct ldmsd_sampler samp;
-
 	ovis_log_t mylog;
 	base_data_t base_data;
 
@@ -1232,9 +1231,9 @@ app_sampler_update_schema(app_sampler_inst_t inst, ldms_schema_t schema)
 	return 0;
 }
 
-static int app_sampler_sample(struct ldmsd_sampler *pi)
+static int app_sampler_sample(ldmsd_plug_handle_t handle)
 {
-	app_sampler_inst_t inst = (void*)pi;
+	app_sampler_inst_t inst = ldmsd_plug_context_get(handle);
 	int i;
 	struct rbn *rbn;
 	struct app_sampler_set *app_set;
@@ -1292,7 +1291,7 @@ The following is an example of cfg_file:\n\
 ```\n\
 ";
 
-static const char *app_sampler_usage(struct ldmsd_plugin *self)
+static const char *app_sampler_usage(ldmsd_plug_handle_t handle)
 {
 	return _help;
 }
@@ -1520,13 +1519,13 @@ int __stream_cb(ldms_stream_event_t ev, void *ctxt)
 	return 0;
 }
 
-static void app_sampler_term(struct ldmsd_plugin *pi);
+static void app_sampler_term(ldmsd_plug_handle_t handle);
 
 static int
-app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
+app_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 					    struct attr_value_list *avl)
 {
-	app_sampler_inst_t inst = (void*)pi;
+	app_sampler_inst_t inst = ldmsd_plug_context_get(handle);
 	int i, rc;
 	app_sampler_metric_info_t minfo;
 	char *val;
@@ -1537,7 +1536,7 @@ app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		return EALREADY;
 	}
 
-	inst->base_data = base_config(avl, pi->cfg_name, SAMP, inst->mylog);
+	inst->base_data = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, inst->mylog);
 	if (!inst->base_data) {
 		/* base_config() already log error message */
 		return errno;
@@ -1627,14 +1626,14 @@ app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 
  err:
 	/* undo the config */
-	app_sampler_term(pi);
+	app_sampler_term(inst);
 	return rc;
 }
 
 static
-void app_sampler_term(struct ldmsd_plugin *pi)
+void app_sampler_term(ldmsd_plug_handle_t handle)
 {
-	app_sampler_inst_t inst = (void*)pi;
+	app_sampler_inst_t inst = ldmsd_plug_context_get(handle);
 	struct rbn *rbn;
 	struct app_sampler_set *app_set;
 
@@ -1702,42 +1701,29 @@ find_status_line_handler(const char *key)
 			sizeof(status_line_tbl[0]), status_line_key_cmp);
 }
 
-static
-struct app_sampler_inst_s __inst = {
-	.samp = {
-		.base = {
-			.name = SAMP,
-			.type = LDMSD_PLUGIN_SAMPLER,
-			.term = app_sampler_term,
-			.config = app_sampler_config,
-			.usage = app_sampler_usage,
-		},
-		.sample = app_sampler_sample,
-	},
-};
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	__inst.mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!__inst.mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	return &__inst.samp.base;
-}
-
 int set_rbn_cmp(void *tree_key, const void *key)
 {
 	/* the keys are uint64_t */
 	return (int64_t)tree_key - (int64_t)key;
 }
 
-__attribute__((constructor))
-static
-void __init__()
+static int constructor(ldmsd_plug_handle_t handle)
 {
+	app_sampler_inst_t inst;
+
+        inst = calloc(1, sizeof(*inst));
+        if (inst == NULL) {
+		ovis_log(NULL, OVIS_LERROR,
+                         "Failed to allocate context in plugin " SAMP ": %d", errno);
+                return ENOMEM;
+        }
+
+	inst->mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
+	if (!inst->mylog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
+                         "of '" SAMP "' plugin. Error %d\n", errno);
+	}
+
 	/* initialize metric_info_idx_by_name */
 	int i;
 	for (i = 0; i <= _APP_LAST; i++) {
@@ -1747,5 +1733,33 @@ void __init__()
 		sizeof(metric_info_idx_by_name[0]), idx_cmp_by_name);
 	qsort(status_line_tbl, ARRAY_LEN(status_line_tbl),
 			sizeof(status_line_tbl[0]), status_line_cmp);
-	rbt_init(&__inst.set_rbt, set_rbn_cmp);
+	rbt_init(&inst->set_rbt, set_rbn_cmp);
+
+        ldmsd_plug_context_set(handle, inst);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	app_sampler_inst_t inst = ldmsd_plug_context_get(handle);
+
+        free(inst);
+}
+
+static
+struct ldmsd_sampler plugin_api = {
+        .base.name = SAMP,
+        .base.type = LDMSD_PLUGIN_SAMPLER,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
+        .base.term = app_sampler_term,
+        .base.config = app_sampler_config,
+        .base.usage = app_sampler_usage,
+        .sample = app_sampler_sample,
+};
+
+struct ldmsd_plugin *get_plugin()
+{
+	return &plugin_api.base;
 }

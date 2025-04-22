@@ -104,7 +104,7 @@ typedef void (*tsampler_sample_cb)(tsampler_timer_t timer);
 struct tsampler_timer {
 	/* these are the setup parameters */
 	tsampler_sample_cb cb;
-	struct ldmsd_sampler *sampler; /* sampler */
+        void *cb_context; /* context pointer sent to 'cb' */
 	ldms_set_t set; /* set */
 	int mid; /* metric id */
 	int tid; /* metric id for timestamp associated with actual metric sample */

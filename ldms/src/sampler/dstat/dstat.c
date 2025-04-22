@@ -69,6 +69,7 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 #include "stdbool.h"
 #include "parse_stat.h"
@@ -423,7 +424,7 @@ static int create_metric_set(base_data_t base)
 
 
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE
 		" [io=<bool>] [stat=<bool>] [statm=<bool>] [mmalloc=<bool>] [fd=<bool>] [fdtypes=<bool>] [sc_clk_tck=<1/*>\n"
@@ -464,7 +465,7 @@ static const char *dstat_words[] = {
  *
  * See usage().
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 
@@ -497,7 +498,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto err;
 	}
 
-	base = base_config(avl, self->cfg_name, sbuf, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), sbuf, mylog);
 	if (!base) {
 		rc = errno;
 		goto err;
@@ -519,7 +520,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int rc = 0;
 	if (!set) {
@@ -566,7 +567,7 @@ static int sample(struct ldmsd_sampler *self)
 	return rc;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	if (base)
 		base_del(base);

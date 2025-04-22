@@ -63,6 +63,7 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 #define LINKSTATUS_FILE "/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
@@ -146,7 +147,7 @@ static int create_metric_set(base_data_t base)
 	return rc;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP BASE_CONFIG_USAGE
 		" [file_send=<send_file_name> file_recv=<recv_file_name>\n"
@@ -154,7 +155,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"    <recv_file_name>  Optional location of the gpcdr file to read for recv link status\n";
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *fname;
@@ -166,7 +167,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	base = base_config(avl, self->cfg_name, SAMP, mylog);
+	base = base_config(avl, ldmsd_plug_config_name_get(handle), SAMP, mylog);
 	if (!base)
 		return EINVAL;
 
@@ -202,7 +203,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return EINVAL;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	int rc, row, col;
 	int metric_no;
@@ -290,7 +291,7 @@ err:
 	return EINVAL;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	//don't close the file handle since we open and close it each time
 	if (lsfile)

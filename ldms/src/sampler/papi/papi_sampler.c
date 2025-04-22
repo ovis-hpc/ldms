@@ -59,6 +59,7 @@
 #include <ovis_log/ovis_log.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "../sampler_base.h"
 #include "papi_sampler.h"
 #include "papi_hook.h"
@@ -317,7 +318,7 @@ static int create_metric_set(job_data_t job)
 	return errno;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=papi_sampler producer=<producer_name> instance=<instance_name>\n"
 		"         [stream=<stream_name>] [component_id=<component_id>] [perm=<permissions>]\n"
@@ -358,7 +359,7 @@ static void sample_job(job_data_t job)
 	ldms_transaction_end(job->set);
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	job_data_t job;
 	struct rbn *rbn;
@@ -893,7 +894,7 @@ static int stream_cb(ldms_stream_event_t ev, void *arg)
 			      ev->recv.json);
 }
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 
@@ -906,7 +907,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value)
 		papi_job_expiry = strtol(value, NULL, 0);
 
-	papi_base = base_config(avl, self->cfg_name, "papi-events", mylog);
+	papi_base = base_config(avl, ldmsd_plug_config_name_get(handle), "papi-events", mylog);
 	if (!papi_base)
 		return errno;
 	value = av_value(avl, "stream");
@@ -921,7 +922,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			return EINVAL;
 		}
 	}
-	stream_client =  ldms_stream_subscribe(papi_stream_name, 0, stream_cb, self, "papi_sampler");
+	stream_client =  ldms_stream_subscribe(papi_stream_name, 0, stream_cb, NULL, "papi_sampler");
 	if (!stream_client) {
 		ovis_log(mylog, OVIS_LERROR, "papi_sampler[%d]: Error %d attempting "
 		       "subscribe to the '%s' stream.\n",
@@ -930,7 +931,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return errno;
 }
 
-static void term(struct ldmsd_plugin *self)
+static void term(ldmsd_plug_handle_t handle)
 {
 	if (papi_base) {
 		base_del(papi_base);

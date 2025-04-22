@@ -21,7 +21,7 @@ AM_CFLAGS = \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
 
 ldmsdincludedir = $(includedir)/ldms
-ldmsdinclude_HEADERS = ldmsd.h ldmsd_stream.h
+ldmsdinclude_HEADERS = ldmsd.h ldmsd_stream.h ldmsd_plug_api.h
 
 LZAP = $(top_builddir)/lib/src/zap/libzap.la
 LMMALLOC = $(top_builddir)/lib/src/mmalloc/libmmalloc.la
@@ -53,7 +53,8 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_request.h \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
 	ldmsd_failover.c ldmsd_group.c ldmsd_auth.c \
-	ldmsd_decomp.c ldmsd_row_cache.c
+	ldmsd_decomp.c ldmsd_row_cache.c \
+	ldmsd_plug_api.c ldmsd_plug_api.h
 ldmsd_LDADD = ../core/libldms.la libldmsd_request.la libldmsd_stream.la \
 	$(LZAP) $(LMMALLOC) $(LOVIS_UTIL) $(LCOLL) $(LJSON_UTIL) $(LTLIBJANSSON) \
 	$(LOVIS_EVENT) $(LOVIS_EV) -lpthread $(LOVIS_CTRL) -lm -ldl \
