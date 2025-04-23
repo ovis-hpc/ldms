@@ -1,2 +1,0 @@
-Documentation Requirements for Contributions
-===========================================
