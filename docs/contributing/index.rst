@@ -1,8 +1,14 @@
 .. _contributing:
 
+
 .. toctree::
    :maxdepth: 2
+   :caption: Source Code
 
    samplerwrite
    storewrite
-   docreqs
+
+.. toctree::
+   :maxdepth: 2
+
+   ../README

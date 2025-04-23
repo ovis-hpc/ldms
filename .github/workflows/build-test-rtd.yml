@@ -1,0 +1,31 @@
+name: Build Test for Readthedocs
+
+on:
+  push:
+    paths:
+      - '**/*.rst'           # Trigger for any .rst or doc related changes
+      - 'docs/**'
+  pull_request:
+    paths:
+      - '**/*.rst'           # Same triggers for pull requests
+      - 'docs/**'
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+
+      - name: Install Dependencies
+        run: |
+          pip install -r docs/requirements.txt
+      - name: Build Documentation Locally
+        run: |
+          sphinx-build -b html docs/ docs/_build
