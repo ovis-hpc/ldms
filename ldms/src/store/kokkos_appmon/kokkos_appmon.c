@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2021,2023 National Technology & Engineering Solutions
+ * Copyright (c) 2021,2023,2025 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2021,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2021,2023,2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -68,6 +68,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
+#include "ldmsd_stream.h"
 
 static ovis_log_t mylog;
 static char *plugin_config_name;
@@ -185,6 +186,7 @@ static sos_t sos;
 static int reopen_container(char *path)
 {
 	int rc = 0;
+	sos_schema_t schema;
 
 	/* Check if the configuration has changed */
 	if (sos && (0 == strcmp(path, sos_container_path(sos)))
@@ -218,8 +220,10 @@ static const char *usage(ldmsd_plug_handle_t handle)
 		"     mode      The container permission mode for create, (defaults to 0660).\n";
 }
 
-static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt);
-
+static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
+			 ldmsd_stream_type_t stream_type,
+			 const char *msg, size_t msg_len,
+			 json_entity_t entity);
 static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
@@ -239,7 +243,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		stream = strdup(value);
 	else
 		stream = strdup("kokkos-perf-data");
-	ldms_msg_subscribe(stream, 0, stream_recv_cb, handle, "kokkos_appmon");
+	ldmsd_stream_subscribe(stream, stream_recv_cb, handle);
 
 	value = av_value(avl, "path");
 	if (!value) {
@@ -296,7 +300,10 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 	return 0;
 }
 
-static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt)
+static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
+			  ldmsd_stream_type_t stream_type,
+			  const char *msg, size_t msg_len,
+			  json_entity_t entity)
 {
 	int rc;
 	json_entity_t v, list, item;
@@ -305,35 +312,33 @@ static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt)
 	uint64_t level, type, current_kernel_count, total_kernel_count;
 	char *name, *node_name;
 
-	if (ev->type != LDMS_MSG_EVENT_RECV)
-		return 0;
-
-	if (!ev->recv.json) {
+	if (!entity) {
 		ovis_log(mylog, OVIS_LERROR,
-		       "NULL entity received in stream callback.\n");
+		       "%s: NULL entity received in stream callback.\n",
+		       kokkos_store.name);
 		return 0;
 	}
-	rc = get_json_value(ev->recv.json, "rank", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, "rank", JSON_INT_VALUE, &v);
 	if (rc)
 		goto out;
 	rank = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, "job-id", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, "job-id", JSON_INT_VALUE, &v);
 	if (rc)
 		goto out;
 	job_id = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, "node-name", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, "node-name", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto out;
 	node_name = json_value_str(v)->str;
 
-	rc = get_json_value(ev->recv.json, "timestamp", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, "timestamp", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto out;
 	timestamp = strtod(json_value_str(v)->str, NULL);
 
-	rc = get_json_value(ev->recv.json, "kokkos-perf-data", JSON_LIST_VALUE, &list);
+	rc = get_json_value(entity, "kokkos-perf-data", JSON_LIST_VALUE, &list);
 	if (rc)
 		goto out;
 	for (item = json_item_first(list); item; item = json_item_next(item)) {
