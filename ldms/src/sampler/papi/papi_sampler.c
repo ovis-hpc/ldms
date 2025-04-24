@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
  *
- * Copyright (c) 2019,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2019,2023,2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -60,6 +60,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
+#include "ldmsd_stream.h"
 #include "../sampler_base.h"
 #include "papi_sampler.h"
 #include "papi_hook.h"
@@ -68,8 +69,7 @@
 
 static ovis_log_t mylog;
 static char *papi_stream_name;
-base_data_t papi_base = NULL;
-ldms_msg_client_t stream_client = NULL;
+base_data_t papi_base;
 
 pthread_mutex_t job_lock = PTHREAD_MUTEX_INITIALIZER;
 struct rbt job_tree;		/* indexed by job_key */
@@ -416,6 +416,11 @@ static int sample(ldmsd_plug_handle_t handle)
 	pthread_mutex_unlock(&job_lock);
 	return 0;
 }
+
+static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
+			  ldmsd_stream_type_t stream_type,
+			  const char *msg, size_t msg_len,
+			  json_entity_t entity);
 
 static int handle_step_init(job_data_t job, uint64_t job_id, uint64_t app_id, json_entity_t e)
 {
@@ -821,14 +826,15 @@ static void handle_job_exit(job_data_t job, json_entity_t e)
 	release_job_data(job);
 }
 
-static int stream_recv_cb(ldms_msg_type_t msg_type,
+static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
+			  ldmsd_stream_type_t stream_type,
 			  const char *msg, size_t msg_len,
 			  json_entity_t entity)
 {
 	int rc = 0;
 	json_entity_t event, data, dict, attr;
 
-	if (msg_type != LDMS_MSG_JSON) {
+	if (stream_type != LDMSD_STREAM_JSON) {
 		ovis_log(mylog, OVIS_LDEBUG, "papi_sampler: Unexpected stream type data...ignoring\n");
 		ovis_log(mylog, OVIS_LDEBUG, "papi_sampler:" "%s\n", msg);
 		return EINVAL;
@@ -886,23 +892,9 @@ static int stream_recv_cb(ldms_msg_type_t msg_type,
 	return rc;
 }
 
-static int stream_cb(ldms_msg_event_t ev, void *arg)
-{
-	if (ev->type != LDMS_MSG_EVENT_RECV)
-		return 0;
-	return stream_recv_cb(ev->recv.type, ev->recv.data, ev->recv.data_len,
-			      ev->recv.json);
-}
-
 static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
-
-	if (papi_base) {
-		ovis_log(mylog, OVIS_LERROR, "papi_sampler config: already configured.\n");
-		return EEXIST;
-	}
-
 	value = av_value(avl, "job_expiry");
 	if (value)
 		papi_job_expiry = strtol(value, NULL, 0);
@@ -922,8 +914,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 			return EINVAL;
 		}
 	}
-	stream_client =  ldms_msg_subscribe(papi_stream_name, 0, stream_cb, handle, "papi_sampler");
-	if (!stream_client) {
+	if (!ldmsd_stream_subscribe(papi_stream_name, stream_recv_cb, handle)) {
 		ovis_log(mylog, OVIS_LERROR, "papi_sampler[%d]: Error %d attempting "
 		       "subscribe to the '%s' stream.\n",
 		       __LINE__, errno, papi_stream_name);
@@ -940,14 +931,6 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
-	if (papi_base) {
-		base_del(papi_base);
-		papi_base = NULL;
-	}
-	if (stream_client) {
-		ldms_msg_client_close(stream_client);
-		stream_client = NULL;
-	}
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
