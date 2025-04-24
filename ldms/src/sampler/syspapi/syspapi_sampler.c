@@ -1,5 +1,5 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2019,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2019,2023,2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -66,6 +66,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
+#include "ldmsd_stream.h"
 #include "../sampler_base.h"
 #include "../papi/papi_hook.h"
 
@@ -80,7 +81,7 @@ static base_data_t base;
 static int cumulative = 0;
 static int auto_pause = 1;
 
-static ldms_msg_client_t syspapi_client = NULL;
+static ldmsd_stream_client_t syspapi_client = NULL;
 static ovis_log_t mylog;
 
 typedef struct syspapi_metric_s {
@@ -684,20 +685,19 @@ __on_task_empty()
 }
 
 static int
-__stream_cb(ldms_msg_event_t ev, void *ctxt)
+__stream_cb(ldmsd_stream_client_t c, void *ctxt,
+		ldmsd_stream_type_t stream_type,
+		const char *data, size_t data_len,
+		json_entity_t entity)
 {
-	if (ev->type != LDMS_MSG_EVENT_RECV)
+	if (stream_type != LDMSD_STREAM_STRING)
 		return 0;
-
-	if (ev->recv.type != LDMS_MSG_STRING)
-		return EINVAL;
-
 	pthread_mutex_lock(&syspapi_mutex);
-	if (strncmp("pause", ev->recv.data, 5)  == 0) {
+	if (strncmp("pause", data, 5)  == 0) {
 		/* "pause\n" or "pausefoo" would pause too */
 		__pause();
 	}
-	if (strncmp("resume", ev->recv.data, 6)  == 0) {
+	if (strncmp("resume", data, 6)  == 0) {
 		/* "resume\n" or "resumebar" would resume too */
 		__resume();
 	}
@@ -715,7 +715,7 @@ static int constructor(ldmsd_plug_handle_t handle)
 			     "the PAPI library.\n", rc);
 	}
 	NCPU = sysconf(_SC_NPROCESSORS_CONF);
-	syspapi_client = ldms_msg_subscribe("syspapi_stream", 0, __stream_cb, NULL, "syspapi_sampler");
+	syspapi_client = ldmsd_stream_subscribe("syspapi_stream", __stream_cb, NULL);
 	if (!syspapi_client) {
 		ovis_log(mylog, OVIS_LERROR, "failed to subscribe to 'syspapi_stream' "
 			     "stream, errno: %d\n", errno);
@@ -739,7 +739,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 	FLAG_OFF(syspapi_flags, SYSPAPI_OPENED);
 	pthread_mutex_unlock(&syspapi_mutex);
 	if (syspapi_client) {
-		ldms_msg_client_close(syspapi_client);
+		ldmsd_stream_close(syspapi_client);
 		syspapi_client = NULL;
 	}
 	PAPI_shutdown();
