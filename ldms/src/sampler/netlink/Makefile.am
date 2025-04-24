@@ -13,7 +13,8 @@ AM_CPPFLAGS = \
 	-I$(abs_srcdir)/../../../../lib/src
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
-COMMON_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
+COMMON_LIBADD = $(top_builddir)/ldms/src/ldmsd/libldmsd_stream.la \
+		$(top_builddir)/ldms/src/core/libldms.la \
 		@LDFLAGS_GETTIME@ \
 		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
 		$(top_builddir)/lib/src/coll/libcoll.la \
