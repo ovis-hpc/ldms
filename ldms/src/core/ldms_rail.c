@@ -2190,3 +2190,51 @@ out:
 	freeaddrinfo(ai);
 	return rc;
 }
+
+void ldms_xprt_stats_result_free(struct ldms_xprt_stats_result *list)
+{
+	struct ldms_xprt_stats_s *rstats;
+
+	while ((rstats = LIST_FIRST(list))) {
+		LIST_REMOVE(rstats, ent);
+		ldms_xprt_stats_clear(rstats);
+		free(rstats);
+	}
+	free(list);
+}
+
+struct ldms_xprt_stats_result *ldms_xprt_stats_result_get(int mask, int reset)
+{
+	int rc;
+	struct ldms_xprt_stats_result *list;
+	struct ldms_xprt_stats_s *rstats;
+	ldms_rail_t r;
+
+	errno = 0;
+	list = malloc(sizeof(*list));
+	if (!list) {
+		ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
+		errno = ENOMEM;
+		return NULL;
+	}
+	LIST_INIT(list);
+
+	for (r = rail_first(); r; r = rail_next(r)) {
+		rstats = calloc(1, sizeof(*rstats));
+		if (!rstats) {
+			ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
+			errno = ENOMEM;
+			goto err;
+		}
+		rc = ldms_xprt_stats((ldms_t)r, rstats, mask, reset);
+		if (rc) {
+			errno = rc;
+			goto err;
+		}
+		LIST_INSERT_HEAD(list, rstats, ent);
+	}
+	return list;
+err:
+	ldms_xprt_stats_result_free(list);
+	return NULL;
+}

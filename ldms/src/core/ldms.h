@@ -2336,7 +2336,9 @@ typedef struct ldms_xprt_stats_s {
 			struct ldms_xprt_stats_s *eps_stats; /* Array of rail's endpoints's statistics. Null if this is stats of an ldms_xprt. */
 		} rail;
 	};
+	LIST_ENTRY(ldms_xprt_stats_s) ent;
 } *ldms_xprt_stats_t;
+LIST_HEAD(ldms_xprt_stats_result, ldms_xprt_stats_s);
 
 #define LDMS_PERF_M_STATS 1
 #define LDMS_PERF_M_PROFILNG 2
@@ -2373,6 +2375,23 @@ extern int ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats, int mask, int rese
  * \param stats Pointer to an ldms_xprt_stats_res_s structure
  */
 extern void ldms_xprt_stats_clear(ldms_xprt_stats_t stats);
+
+/**
+ * \brief Get the statistics of all transports
+ *
+ * \param mask Bit-mask of LDMS_PERF_M_PROFILNG or LDMS_PERF_M_STATS to specifiy what to be reset
+ * \param reset Reset the statistics after getting the statistics if not 0
+ *
+ * \return A list of ldms_xprt_stats_res_s entries. On error, NULL is returned, and errno is set.
+ */
+extern struct ldms_xprt_stats_result *ldms_xprt_stats_result_get(int mask, int reset);
+
+/**
+ * \brief Free an object of ldms_xprt_stats_result returned by ldms_xprt_stats_results_get()
+ *
+ * \param result A handle of the list of the statistics of all transports
+ */
+extern void ldms_xprt_stats_result_free(struct ldms_xprt_stats_result *result);
 
 /*
  * Metric template for:
