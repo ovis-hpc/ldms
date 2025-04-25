@@ -6686,7 +6686,7 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 	char *buff;
 	char *s;
 	size_t sz = __APPEND_SZ;
-	struct ldms_xprt_stats xs;
+	struct ldms_xprt_stats_s xs;
 	struct op_summary op_sum[LDMS_XPRT_OP_COUNT];
 	struct ldms_xprt *x;
 	enum ldms_xprt_ops_e op_e;
@@ -6764,7 +6764,7 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 			xprt_close_count += 1;
 		}
 		for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
-			op = &xs.ops[op_e];
+			op = &xs.ep.ops[op_e];
 			if (!op->count)
 				continue;
 			op_sum[op_e].op_total_us += op->total_us;
@@ -7039,7 +7039,7 @@ int __xprt_profiling_as_json(json_t **_obj, int is_reset)
 {
 	json_t *obj, *ep_prf, *op_prf;
 	ldms_t x;
-	struct ldms_xprt_stats stats;
+	struct ldms_xprt_stats_s stats;
 	struct ldms_op_ctxt *xc;
 	int rc;
 	enum ldms_xprt_ops_e op_e;
@@ -7067,7 +7067,7 @@ int __xprt_profiling_as_json(json_t **_obj, int is_reset)
 		ep_prf = json_object();
 		for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
 			op_prf = json_array();
-			TAILQ_FOREACH(xc, &stats.op_ctxt_lists[op_e], ent) {
+			TAILQ_FOREACH(xc, &stats.ep.op_ctxt_lists[op_e], ent) {
 				json_array_append_new(op_prf, __ldms_op_profiling_as_json(xc, op_e));
 			}
 			json_object_set_new(ep_prf, ldms_xprt_op_names[op_e], op_prf);

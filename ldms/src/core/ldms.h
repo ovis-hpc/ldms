@@ -2298,17 +2298,58 @@ void ldms_thrstat_result_free(struct ldms_thrstat_result *res);
  */
 void ldms_xprt_rate_data(struct ldms_xprt_rate_data *data, int reset);
 
-typedef struct ldms_xprt_stats {
+LIST_HEAD(ldms_xprt_stats_list, ldms_xprt_stats_s);
+
+#define LDMS_STATS_XFLAGS_PASSIVE 1
+#define LDMS_STATS_XFLAGS_ACTIVE  2
+#define LDMS_STATS_XFLAGS_RAIL    4
+#define LDMS_STATS_XFLAGS_EP      8
+
+enum ldms_xprt_stats_state {
+	LDMS_XPRT_STATS_S_LISTEN = 1,
+	LDMS_XPRT_STATS_S_CONNECTING,
+	LDMS_XPRT_STATS_S_CONNECT, /* connected endpoint */
+	LDMS_XPRT_STATS_S_CLOSE /* disconnected, error, rejected */
+};
+
+typedef struct ldms_xprt_stats_s {
+	char lhostname[128];
+	char lport_no[32];
+	char rhostname[128];
+	char rport_no[32];
+	enum ldms_xprt_stats_state state;
+	int xflags;
 	struct timespec connected;
 	struct timespec disconnected;
-	struct timespec last_op;
-	struct ldms_stats_entry ops[LDMS_XPRT_OP_COUNT];
-	struct ldms_op_ctxt_list op_ctxt_lists[LDMS_XPRT_OP_COUNT];
+	const char *name;
+	union {
+		struct {
+			long int sq_sz; /* The size of the send queue */
+			struct sockaddr_storage ss_remote;
+			struct sockaddr_storage ss_local;
+			struct timespec last_op;
+			struct ldms_stats_entry ops[LDMS_XPRT_OP_COUNT];
+			struct ldms_op_ctxt_list op_ctxt_lists[LDMS_XPRT_OP_COUNT];
+		} ep;
+		struct {
+			int n_eps;
+			struct ldms_xprt_stats_s *eps_stats; /* Array of rail's endpoints's statistics. Null if this is stats of an ldms_xprt. */
+		} rail;
+	};
 } *ldms_xprt_stats_t;
 
 #define LDMS_PERF_M_STATS 1
 #define LDMS_PERF_M_PROFILNG 2
 #define LDMS_PERF_M_ALL LDMS_PERF_M_STATS | LDMS_PERF_M_PROFILNG
+
+/**
+ * \brief Convert enum lmds_xprt_stats_state to a string
+ *
+ * \param state an enumerate ldms_xprt_stats_state
+ *
+ * \return a string. An empty string is returned if \c state isn't recognized.
+ */
+extern const char *ldms_xprt_stats_state(enum ldms_xprt_stats_state state);
 
 /**
  * \brief Retrieve transport request statistics
@@ -2317,11 +2358,21 @@ typedef struct ldms_xprt_stats {
  * To only reset the statistics, \c stats must be NULL.
  *
  * \param x The transport handle
- * \param stats Pointer to an ldms_xprt_stats structure
+ * \param stats Pointer to an ldms_xprt_stats_res_s structure
+ * \param mask  Bit-mask of LDMS_PERF_M_PROFILNG or LDMS_PERF_M_STATS to specifiy what to be reset
  * \param reset Reset the statistics after getting the statistics if not 0
  *
  */
-extern void ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats, int mask, int reset);
+extern int ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats, int mask, int reset);
+
+/**
+ * \brief Clear the content in \c stats
+ *
+ *  The caller is responsible for calling \c free(stats) after the call returns.
+ *
+ * \param stats Pointer to an ldms_xprt_stats_res_s structure
+ */
+extern void ldms_xprt_stats_clear(ldms_xprt_stats_t stats);
 
 /*
  * Metric template for:
