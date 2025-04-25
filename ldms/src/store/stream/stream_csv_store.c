@@ -1,8 +1,8 @@
-/*
- * Copyright (c) 2019-2021,2023 National Technology & Engineering Solutions
+/**
+ * Copyright (c) 2019-2021,2023,2025 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2019-2021,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2019-202,2023,20251 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -68,6 +68,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
+#include "ldmsd_stream.h"
 
 /*
  * CURRENT GROUND RULES:
@@ -199,7 +200,7 @@ struct csv_stream_handle {
 	int64_t byte_count; /* for the roll. Cumulative since last roll */
 	struct timeval tlastrcv; /* for the flush. */
 	struct linedata dataline; /* used to keep track of keys for the header */
-	ldms_msg_client_t client; /* subscribe/unsubscribe */
+	ldmsd_stream_client_t client; /* subscribe/unsubscribe */
 	pthread_mutex_t lock;
 };
 
@@ -256,7 +257,7 @@ static void close_streamstore(void *obj, void *cb_arg)
 
 	/* unsubscribe */
 	if (stream_handle->client)
-		ldms_msg_client_close(stream_handle->client);
+		ldmsd_stream_close(stream_handle->client);
 	stream_handle->client = NULL;
 
 	if (stream_handle->file) {
@@ -741,16 +742,15 @@ out:
 }
 
 static void _roll_innards(struct csv_stream_handle *stream_handle);
-static int stream_cb(ldms_msg_event_t ev, void *ctxt)
+static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
+			ldmsd_stream_type_t stream_type, const char *msg,
+			size_t msg_len, json_entity_t e)
 {
 
 	struct csv_stream_handle *stream_handle;
 	struct timeval tv_prev;
 	int gottime = 0;
 	int rc = 0;
-
-	if (ev->type != LDMS_MSG_EVENT_RECV)
-		return 0;
 
 #ifdef STREAM_CSV_DIAGNOSTICS
 	static uint64_t msg_count = 0;
@@ -759,7 +759,7 @@ static int stream_cb(ldms_msg_event_t ev, void *ctxt)
 	/* diagnostics logging */
 	ovis_log(mylog, OVIS_LDEBUG,
 		PNAME ": Calling stream_cb. msg_count %d on stream '%s'\n",
-		msg_count, ev->recv.name);
+		msg_count, ldmsd_stream_client_name(c));
 
 	msg_count += 1;
 	if (0 == (msg_count % CB_MSG_LOG)) {
@@ -771,7 +771,7 @@ static int stream_cb(ldms_msg_event_t ev, void *ctxt)
 #endif
 
 	/* don't need to check the cfgstate. if you've subscribed, it's ok */
-	const char *skey = ev->recv.name;
+	const char *skey = ldmsd_stream_client_name(c);
 	if (!skey) {
 		ovis_log(mylog, OVIS_LERROR,
 				PNAME ": Cannot get stream_name from client\n");
@@ -822,14 +822,14 @@ static int stream_cb(ldms_msg_event_t ev, void *ctxt)
 	 * entity will also be populated.
 	 */
 
-	if (ev->recv.type == LDMS_MSG_STRING) {
+	if (stream_type == LDMSD_STREAM_STRING) {
 		/* note that the string might have a newline as part of it */
 #ifdef TIMESTAMP_STORE
 		rc = fprintf(stream_handle->file, "%s,%f\n",
 				msg,
 				tv_prev.tv_sec + tv_prev.tv_usec/1000000.0);
 #else
-		rc = fprintf(stream_handle->file, "%s\n", ev->recv.data);
+		rc = fprintf(stream_handle->file, "%s\n", msg);
 #endif
 		stream_handle->byte_count += rc;
 		stream_handle->store_count++;
@@ -842,22 +842,22 @@ static int stream_cb(ldms_msg_event_t ev, void *ctxt)
 			fflush(stream_handle->file);
 			fsync(fileno(stream_handle->file));
 		}
-	} else if (ev->recv.type == LDMS_MSG_JSON) {
-		if (!ev->recv.json) {
+	} else if (stream_type == LDMSD_STREAM_JSON) {
+		if (!e) {
 			ovis_log(mylog, OVIS_LERROR, "Why is entity NULL?\n");
 			rc = EINVAL;
 			goto out;
 		}
 
-		if (ev->recv.json->type != JSON_DICT_VALUE) {
-			ovis_log(mylog, OVIS_LERROR, "Expected a dict object, "
-					"not a %s.\n", json_type_name(ev->recv.json->type));
+		if (e->type != JSON_DICT_VALUE) {
+			ovis_log(mylog, OVIS_LERROR, PNAME ": Expected a dict object, "
+					"not a %s.\n", json_type_name(e->type));
 			rc = EINVAL;
 			goto out;
 		}
 
 		if (!stream_handle->dataline.header) {
-			rc = _get_header_from_data(&stream_handle->dataline, ev->recv.json);
+			rc = _get_header_from_data(&stream_handle->dataline, e);
 			if (rc != 0) {
 				ovis_log(mylog, OVIS_LDEBUG, PNAME ": error getting header "
 							"from data <%d>\n", rc);
@@ -870,7 +870,7 @@ static int stream_cb(ldms_msg_event_t ev, void *ctxt)
 			_print_header(stream_handle);
 		}
 
-		_print_data_lines(stream_handle, &tv_prev, ev->recv.json);
+		_print_data_lines(stream_handle, &tv_prev, e);
 
 		if (!buffer) {
 			fflush(stream_handle->file);
@@ -966,9 +966,10 @@ static int open_streamstore(char *stream)
 		goto err1;
 	}
 
-	ovis_log(mylog, OVIS_LDEBUG, "Subscribing to stream '%s'\n", stream);
-	stream_handle->client = ldms_msg_subscribe(stream, 0, stream_cb,
-					stream_handle, "stream_csv_store");
+	/* NOTE: subscribing but rollover not set yet */
+	ovis_log(mylog, OVIS_LDEBUG, PNAME ": subscribing to stream '%s'\n", stream);
+	stream_handle->client = ldmsd_stream_subscribe(stream, stream_cb,
+								stream_handle);
 	idx_add(stream_idx, (void*) stream, strlen(stream), stream_handle);
 	pthread_mutex_unlock(&stream_handle->lock);
 
