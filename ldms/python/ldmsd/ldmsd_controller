@@ -2309,30 +2309,21 @@ class LdmsdCmdParser(cmd.Cmd):
         return self.__complete_attr_list('set_stats', text)
 
     def display_xprt_stats(self, stats):
-        """
-        { 'compute_time_us': 33,
-          'connect_rate_s': 8e-06, 'connect_request_rate_s': 0.003638,
-          'disconnect_rate_s': 0.003632, 'reject_rate_s': 0.0,
-          'auth_fail_rate_s': 0.0, 'xprt_count': 32,
-          'connect_count': 7, 'connecting_count': 0, 'listen_count': 1,
-          'close_count': 24,
-          'duration': 12353.23,
-          'op_stats': {
-            'LOOKUP': {'count': 3187, 'total_us': 162961103,
-                        'min_us': 308, 'min_peer': '10.10.0.92:10001',
-                        'min_peer_type': 'sock',
-                        'max_us': 3290463, 'max_peer': '10.10.0.91:10001',
-                        'max_peer_type': 'sock', 'mean_us': 51133},
-            'UPDATE': {...},
-            'PUBLISH': {...},
-            'SET_DELETE': {...},
-            'DIR_REQ': {...},
-            'DIR_REP': {...},
-            'SEND': {...},
-            'RECV': {...}
-          }
-        }
-        """
+        def sort_rails_stats(rails_stats):
+            for rail in rails_stats:
+                if 'endpoints' in rail and len(rail['endpoints']) > 0:
+                    rail['endpoints'] = dict(sorted(rail['endpoints'].items()))
+
+            def get_sorting_sq_sz(rail_item):
+                eps = rail.get('endpoints', {})
+
+                sq_sz_values = [eps.get('sq_sz', 0) for ep in eps.values()]
+
+                return max(sq_sz_values) if sq_sz_values else 0
+
+            sorted_rails_stats = sorted(rails_stats, key=get_sorting_sq_sz)
+            return sorted_rails_stats
+
         heading = f"Summary over {stats['duration']:.2f} seconds"
         print(f"{heading:^64s}")
         print(f"{'Connected':12s} {'Connecting':12s} {'Listening':12s} {'Close':12s}")
@@ -2350,14 +2341,16 @@ class LdmsdCmdParser(cmd.Cmd):
             f"{stats['auth_fail_rate_s']:12.2f} "
             )
         print("")
-        print(f"{'Operation':12} {'Count':12} {'Min(us)':12} {'Mean(us)':12} {'Max(us)':12} ")
-        print("------------ ------------ ------------ ------------ ------------")
+        print(f"{'Operation':20} {'Count':12} {'Min(us)':12} {'Mean(us)':12} {'Max(us)':12} ")
+        print(f"{'-'*20} ------------ ------------ ------------ ------------")
         op_stats = stats['op_stats']
         for op_name in op_stats:
             s = op_stats[op_name]
-            print(f"{op_name:12} {s['count']:12} {s['min_us']:12} {s['mean_us']:12} {s['max_us']:12}")
+            print(f"{op_name:20} {s['count']:12} {s['min_us']:12} {s['mean_us']:12} {s['max_us']:12}")
         print(f"{'-'*40}")
-        print(f"Total send-queue depth: {sum([ e['sq_sz'] for k, e in stats['endpoints'].items()])}")
+
+        # Calculate the total send-queue depth
+        print(f"Total send-queue depth: {sum(endpoint.get('sq_sz', 0) for rail in stats['rails'] for endpoint in rail.get('endpoints', {}).values())}")
 
         if stats['level'] == 0:
             # Nothing else to do
@@ -2366,9 +2359,13 @@ class LdmsdCmdParser(cmd.Cmd):
         print(f"{'-'*40}")
         print(f"{'Remote Address':20} {'SQ Depth':10}")
         print(f"{'-'*20} {'-'*10}")
-        sorted_ep = dict(sorted(stats['endpoints'].items()))
-        for k, x in sorted_ep.items():
-            print(f"{k:20} {x['sq_sz']:10}")
+        sorted_rails = sort_rails_stats(stats['rails'])
+
+        for r in sorted_rails:
+            print(f"{r.get('remote_host', 'No remote host'):20}")
+            if 'endpoints' in r and r['endpoints']:
+                for ep_host, _d in r['endpoints'].items():
+                    print(f"   {ep_host:20} {_d['sq_sz']:10}")
 
     def do_xprt_stats(self, arg):
         """
