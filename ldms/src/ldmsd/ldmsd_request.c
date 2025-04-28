@@ -9922,7 +9922,6 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 	char *xprt_s;
 	char *adv_hostname;
 	char *adv_port;
-	char *adv_auth; /* TODO: Design how to get auth info and apply it */
 	char *attr_name;
 	char prdcr_name[NI_MAXHOST + NI_MAXSERV + 1];
 	ldmsd_prdcr_t prdcr;
@@ -9935,7 +9934,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 	struct ldms_xprt_event conn_ev;
 	ldms_t x = ldms_xprt_get(reqc->xprt->ldms.ldms);
 
-	xprt_s = adv_hostname = adv_port = adv_auth = NULL;
+	xprt_s = adv_hostname = adv_port = NULL;
 
 	attr_name = "hostname";
 	adv_hostname = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
