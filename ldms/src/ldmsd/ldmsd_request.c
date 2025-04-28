@@ -9268,7 +9268,6 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	char *advtr_auth;
 	char *endptr = NULL;
 	ldmsd_prdcr_listen_t pl;
-	extern struct rbt *cfgobj_trees[];
 
 	name = regex_str = reconnect_str = cidr_str = disabled_start = NULL;
 	quota = rx_rate = rail_s = NULL;
@@ -9313,8 +9312,6 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	if (regex_str) {
 		pl->hostname_regex_s = strdup(regex_str);
 		if (!pl->hostname_regex_s) {
-			// TODO: fix me, this leaves the object dangling
-			ldmsd_cfgobj_put(&pl->obj, "init");
 			goto enomem;
 		}
 
@@ -9324,9 +9321,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						"The regular expression string "
 						"'%s' is invalid.", regex_str);
-			// TODO: fix me, this leaves the object dangling
-			ldmsd_cfgobj_put(&pl->obj, "init");
-			goto send_reply;
+			goto err;
 		}
 	}
 
@@ -9336,9 +9331,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->errcode = ENOMEM;
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						    "Memory allocation failure.");
-			// TODO: fix me, this leaves the object dangling
-			ldmsd_cfgobj_put(&pl->obj, "init");
-			goto send_reply;
+			goto enomem;
 		}
 		rc = __cidr2addr6(cidr_str, &pl->net_addr, &pl->prefix_len);
 		if (rc) {
@@ -9346,9 +9339,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						"The given CIDR string '%s' "
 						"is invalid.", cidr_str);
-			// TODO: fix me, this leaves the object dangling
-			ldmsd_cfgobj_put(&pl->obj, "init");
-			goto send_reply;
+			goto err;
 		}
 	} else {
 		pl->quota = 0; /* 0 means inherit quota from the listen xprt */
@@ -9361,8 +9352,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						"The given rx_rate '%s' "
 						"is invalid.", rx_rate);
-			ldmsd_cfgobj_put(&pl->obj, "init");
-			goto send_reply;
+			goto err;
 		}
 	} else {
 		pl->rx_rate = 0; /* 0 means inherit rx_rate from the listen xprt */
@@ -9508,10 +9498,8 @@ einval_active:
 			"The attribute '%s' is required for the 'active' mode.", attr_name);
 	goto err;
 err:
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR_LISTEN);
-	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR_LISTEN], &pl->obj.rbn);
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR_LISTEN);
 	ldmsd_cfgobj_unlock(&pl->obj);
+	ldmsd_cfgobj_rm(&pl->obj);
 	ldmsd_cfgobj_put(&pl->obj, "init");
 	goto send_reply;
 }
@@ -10036,27 +10024,24 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 		is_new_prdcr = 1;
 		rbn = rbt_find(&pl->prdcr_tree, prdcr_name);
 		if (rbn) {
-			ovis_log(NULL, OVIS_LERROR, "Producer %s does not exist, but " \
+			ovis_log(NULL, OVIS_LINFO, "Producer %s does not exist, but " \
 						    "it is unexpectedly " \
 						    "in the producer list of " \
 						    "producer_listen '%s'. \n",
 						    prdcr_name, pl->obj.name);
-			assert(rbn == NULL);
-		} else {
-			pl_pref = prdcr_ref_new(prdcr);
-			if (!pl_pref) {
-				ovis_log(config_log, OVIS_LCRIT, "Memory allocation failure.\n");
-				reqc->errcode = ENOMEM;
-				reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-							"Aggregator has memory allocation failure.");
-				rc = ENOMEM;
-				/*
-				* TODO: make sure we clean up the memory, e.g., prdcr
-				*/
-				return rc;
-			}
-			rbt_ins(&pl->prdcr_tree, &pl_pref->rbn);
+			assert((rbn == NULL) && ("Node (rbn) unexpected in the tree"));
+			/* Handle the case when assert() is disabled at compile time. */
+			rbt_del(&pl->prdcr_tree, rbn);
+			pl_pref = (ldmsd_prdcr_ref_t)container_of(rbn, struct ldmsd_prdcr_ref, rbn);
+			free(pl_pref); /* No need to put back prdcr. It has disappeared from the cfgobj_tree */
 		}
+		pl_pref = prdcr_ref_new(prdcr);
+		if (!pl_pref) {
+			/* Completely remove producer as it was just created. */
+			ldmsd_cfgobj_del(&prdcr->obj);
+			goto enomem;
+		}
+		rbt_ins(&pl->prdcr_tree, &pl_pref->rbn);
 	}
 	/* Add the producer to any updaters that the producer matches */
 	ldmsd_updtr_t updtr;
@@ -10247,8 +10232,8 @@ static int advertiser_start_handler(ldmsd_req_ctxt_t reqc)
 			 */
 			goto send_reply;
 		}
-		// TODO: where is this reference put?
-		ldmsd_prdcr_get(prdcr, "find"); /* Get a reference to match the find reference */
+	} else {
+		ldmsd_prdcr_put(prdcr, "find");
 	}
 
 	rc = __prdcr_start_handler(reqc, "advertiser_start", "advertiser");
