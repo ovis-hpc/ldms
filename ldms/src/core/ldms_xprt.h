@@ -463,7 +463,7 @@ struct ldms_xprt_ops_s {
 	int (*dir_cancel)(ldms_t x);
 	int (*lookup)(ldms_t t, const char *name, enum ldms_lookup_flags flags,
 		       ldms_lookup_cb_t cb, void *cb_arg, struct ldms_op_ctxt *op_ctxt);
-	void (*stats)(ldms_t x, ldms_xprt_stats_t stats, int mask, int is_reset);
+	int (*stats)(ldms_t x, ldms_xprt_stats_t stats, int mask, int is_reset);
 
 	ldms_t (*get)(ldms_t x); /* ref get */
 	void (*put)(ldms_t x); /* ref put */
@@ -485,6 +485,13 @@ struct ldms_xprt_ops_s {
 	ldms_set_t (*set_by_name)(ldms_t x, const char *set_name);
 };
 
+typedef struct xprt_stats_s {
+	struct timespec connected;
+	struct timespec disconnected;
+	struct timespec last_op;
+	struct ldms_stats_entry ops[LDMS_XPRT_OP_COUNT];
+} *xprt_stats_t;
+
 struct ldms_xprt {
 	enum ldms_xtype_e xtype;
 	struct ldms_xprt_ops_s ops;
@@ -498,7 +505,7 @@ struct ldms_xprt {
 	uint32_t ref_count;
 	pthread_mutex_t lock;
 	zap_err_t zerrno;
-	struct ldms_xprt_stats stats;
+	struct xprt_stats_s stats;
 
 	/* Maximum size of the underlying transport send/recv message */
 	int max_msg;
