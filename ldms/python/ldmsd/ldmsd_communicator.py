@@ -100,8 +100,12 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_status': {'req_attr': [], 'opt_attr':['name']},
                       'prdcr_set_status': {'opt_attr': ['producer', 'instance', 'schema']},
                       'prdcr_hint_tree': {'req_attr':['name'], 'opt_attr': []},
-                      'prdcr_subscribe': {'req_attr':['regex', 'stream'],
-                                          'opt_attr': ['rx_rate']},
+                      'prdcr_subscribe': {'req_attr':['regex'],
+                                          'opt_attr': [
+                                              'rx_rate', 'stream',
+                                              'message_channel'
+                                          ]
+                                         },
                       'prdcr_unsubscribe': {'req_attr':['regex', 'stream'], 'opt_attr': []},
                       'prdcr_stream_status' : {'req_attr':['regex'], 'opt_attr':[]},
                       ##### Bridge #####
@@ -340,7 +344,8 @@ class LDMSD_Req_Attr(object):
     ASK_AMOUNT = 46
     RESET_INTERVAL = 47
     XTHREAD = 48
-    LAST = 49
+    MSG_CHAN = 49
+    LAST = 50
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -398,6 +403,7 @@ class LDMSD_Req_Attr(object):
                    'ask_amount': ASK_AMOUNT,
                    'reset_interval': RESET_INTERVAL,
                    'exclusive_thread': XTHREAD,
+                   'message_channel': MSG_CHAN,
                    'TERMINATING': LAST
         }
 
@@ -448,6 +454,7 @@ class LDMSD_Req_Attr(object):
                    ASK_AMOUNT : 'ask_amount',
                    RESET_INTERVAL : 'reset_interval',
                    XTHREAD : 'exclusive_thread',
+                   MSG_CHAN : 'message_channel',
                    LAST : 'TERMINATING'
         }
 
@@ -2357,7 +2364,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_subscribe(self, regex, stream, rx_rate='-1'):
+    def prdcr_subscribe(self, regex, stream=None, msg_chan=None, rx_rate='-1'):
         """
         Subscribe to stream data from matching producers
 
@@ -2375,6 +2382,7 @@ class Communicator(object):
                 attrs = [
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex),
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream),
+                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.MSG_CHAN, value=msg_chan),
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(int(rx_rate)))
                 ])
         try:
