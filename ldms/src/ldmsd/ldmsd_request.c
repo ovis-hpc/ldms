@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2020,2023 National Technology & Engineering Solutions
+ * Copyright (c) 2015-2020,2023,2025 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2015-2020,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2020,2023,2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -2104,12 +2104,9 @@ send_reply:
 
 static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 {
-	/* TODO
-	 * Should reply to the ldmsd_controller after we get the subscription
-	 * result from LDMS Stream.
-	 */
 	char *prdcr_regex;
 	char *stream_name = NULL;
+	char *msg = NULL;
 	char *rx_rate_s = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
@@ -2130,17 +2127,20 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
+	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_CHAN);
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
-	if (!stream_name) {
+
+	if (!stream_name && !msg) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The attribute 'stream' is required by prdcr_subscribe_regex.");
+				"One of the 'stream' or `msg` attributes is required by prdcr_subscribe_regex (can specify both).");
 		goto send_reply;
 	}
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_prdcr_subscribe_regex(prdcr_regex,
 						    stream_name,
+						    msg,
 						    reqc->line_buf,
 						    reqc->line_len, &sctxt, rx_rate);
 	/* on error, reqc->line_buf will be filled */
@@ -2159,6 +2159,7 @@ static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *prdcr_regex;
 	char *stream_name = NULL;
+	char *msg = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
 
@@ -2173,16 +2174,18 @@ static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
-	if (!stream_name) {
+	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_CHAN);
+	if (!stream_name && !msg) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The attribute 'stream' is required by prdcr_subscribe_regex.");
+				"One of the 'stream' or `msg` attributes is required by prdcr_unsubscribe_regex (can specify both).");
 		goto send_reply;
 	}
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_prdcr_unsubscribe_regex(prdcr_regex,
 						      stream_name,
+						      msg,
 						      reqc->line_buf,
 						      reqc->line_len, &sctxt);
 	/* on error, reqc->line_buf will be filled */

@@ -450,10 +450,11 @@ Query producer status
       | The producer name. If none is given, the statuses of all
         producers are reported.
 
-Subscribe for stream data from all matching producers
------------------------------------------------------
 
-**prdcr_subsribe**
+Subscribe for stream and/or message data from all matching producers
+--------------------------------------------------------------------
+
+**prdcr_subsribe** attr=<value>
 
    **regex** *regex*
       |
@@ -462,6 +463,11 @@ Subscribe for stream data from all matching producers
    **stream** *stream*
       |
       | The stream name
+
+   **message_channel** *NAME_REGEX*
+      |
+      | The message channel name or regular expression of message channels
+
 
 UPDATER COMMAND SYNTAX
 ======================
