@@ -14,7 +14,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     container:
       image: ovishpc/ldms-dev
     steps:
@@ -24,7 +24,7 @@ jobs:
         set -e
         mkdir /sos-src
         pushd /sos-src
-        git clone -b SOS-6 https://github.com/ovis-hpc/sos .
+        git clone https://github.com/ovis-hpc/sos .
         ./autogen.sh
         mkdir -p build
         pushd build
