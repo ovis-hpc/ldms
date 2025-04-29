@@ -12,6 +12,7 @@
 #include <set>
 #include <iomanip>
 #include <sstream>
+#include <iostream>
 #include <boost/algorithm/string.hpp>
 #include <boost/regex.hpp>
 #include <boost/filesystem.hpp>

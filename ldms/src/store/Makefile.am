@@ -41,9 +41,24 @@ dist_man7_MANS += ldms-store_sos.man
 
 MAYBE_SLURM = slurm
 MAYBE_PAPI = papi
+MAYBE_STORE_APP = store_app
+MAYBE_DARSHAN = darshan
+MAYBE_PROC_STORE = proc_store
 endif
 SUBDIRS += $(MAYBE_SLURM)
 SUBDIRS += $(MAYBE_PAPI)
+
+if ENABLE_STORE_APP
+SUBDIRS += $(MAYBE_STORE_APP)
+endif
+
+if ENABLE_DARSHAN
+SUBDIRS += $(MAYBE_DARSHAN)
+endif
+
+if ENABLE_PROC_STREAMS
+SUBDIRS += $(MAYBE_PROC_STORE)
+endif
 
 if ENABLE_INFLUX
 MAYBE_INFLUX = influx
@@ -86,20 +101,8 @@ pkglib_LTLIBRARIES += libstore_function_csv.la
 dist_man7_MANS += ldms-store_csv.man ldms-store_function_csv.man
 endif
 
-if ENABLE_STORE_APP
-SUBDIRS += store_app
-endif
-
 if ENABLE_HELLO_STREAM
 SUBDIRS += stream
-endif
-
-if ENABLE_DARSHAN
-SUBDIRS += darshan
-endif
-
-if ENABLE_PROC_STREAMS
-SUBDIRS += proc_store
 endif
 
 if HAVE_KAFKA
