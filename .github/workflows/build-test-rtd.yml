@@ -12,7 +12,7 @@ on:
 
 jobs:
   build-docs:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
@@ -29,3 +29,23 @@ jobs:
       - name: Build Documentation Locally
         run: |
           sphinx-build -b html docs/ docs/_build
+
+  trigger-rtd:
+    needs: build-docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Webhook Signature and Trigger RTD
+        run: |
+          # Define the webhook secret
+          SECRET="${{ secrets.RTD_WEBHOOK_SECRET }}"
+          # Create a JSON payload with "ref" set to the branch name
+          PAYLOAD="{\"ref\": \"${GITHUB_REF_NAME}\"}"
+          # Generate HMAC SHA256 signature for the payload
+          SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | sed 's/^.* //')
+          # Trigger the Read the Docs webhook
+          curl -X POST \
+               -H "Content-Type: application/json" \
+               -H "X-Hub-Signature-256: sha256=$SIGNATURE" \
+               -d "$PAYLOAD" \
+               https://readthedocs.org/api/v2/webhook/ldms-rtd/295614/
