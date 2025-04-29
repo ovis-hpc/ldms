@@ -5989,15 +5989,6 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 		goto out;
 	}
 
-	if (reqc->xprt->trust) {
-		exp_val = str_repl_cmd(env_s);
-		if (!exp_val) {
-			rc = errno;
-			goto out;
-		}
-		env_s = exp_val;
-	}
-
 	rc = string2attr_list(env_s, &av_list, &kw_list);
 	if (rc) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
