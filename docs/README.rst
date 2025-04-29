@@ -61,6 +61,20 @@ This will allow you to see your changes in real-time as you push updates to the 
 
 For a full walkthrough with screenshots, visit the `Read the Docs Tutorial <https://docs.readthedocs.com/platform/stable/tutorial/index.html#creating-a-read-the-docs-account>`_.
 
+Review Pull Request Changes
+...........................
+
+To preview documentation changes through a pull request (PR):
+
+1. **Submit a PR** with your changes to the official repository.
+2. Read the Docs will automatically detect the pull request and generate a preview.
+3. On the PR page, a comment from Read the Docs will appear with a link to the **preview documentation build**.
+4. Click the link to review the rendered documentation, including a **side-by-side comparison** ("View docs as diff") between the current version and your proposed changes.
+
+For more details, please visit the `Read the Docs PR Preview Documentation <https://docs.readthedocs.com/platform/stable/pull-requests.html#features>`_.
+
+This is especially useful for maintainers to verify how changes will appear before merging.
+
 Using Local Machine
 ...................
 
