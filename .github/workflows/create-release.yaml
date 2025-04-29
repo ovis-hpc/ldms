@@ -3,7 +3,6 @@ name: Create Release
 on:
   push:
     tags:
-      - 'OVIS-4*'
       - 'v[0-9]+.[0-9]+.[0-9]+**'
 
 jobs:
@@ -13,13 +12,14 @@ jobs:
     # "container" as used here.
     runs-on: ubuntu-latest
     container:
-        image: ovishpc/ovis-ubuntu-build
+      image: ovishpc/ldms-dev-ubuntu-2204:latest-amd64
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     # actions/checkout breaks annotated tags by converting them into
     # lightweight tags, so we need to force fetch the tag again
     # See: https://github.com/actions/checkout/issues/290
+    - run: git config --global --add safe.directory ${PWD}
     - name: Repair tag
       run: git fetch -f origin ${{ github.ref }}:${{ github.ref }}
     - name: Verify tag is annotated

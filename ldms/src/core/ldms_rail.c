@@ -96,7 +96,7 @@ static int __rail_dir(ldms_t _r, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 static int __rail_dir_cancel(ldms_t _r);
 static int __rail_lookup(ldms_t _r, const char *name, enum ldms_lookup_flags flags,
 	       ldms_lookup_cb_t cb, void *cb_arg, struct ldms_op_ctxt *op_ctxt);
-static void __rail_stats(ldms_t _r, ldms_xprt_stats_t stats, int mask, int is_reset);
+static int __rail_stats(ldms_t _r, ldms_xprt_stats_t stats, int mask, int is_reset);
 
 static ldms_t __rail_get(ldms_t _r); /* ref get */
 static void __rail_put(ldms_t _r); /* ref put */
@@ -160,6 +160,8 @@ static struct rbt __passive_rail_rbt = RBT_INITIALIZER(__rail_id_cmp);
  */
 static pthread_mutex_t __rail_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+LIST_HEAD(rail_list, ldms_rail_s) rail_list;
+pthread_mutex_t rail_list_lock = PTHREAD_MUTEX_INITIALIZER;
 static void __rail_ref_free(void *arg)
 {
 	ldms_rail_t r = arg;
@@ -169,6 +171,10 @@ static void __rail_ref_free(void *arg)
 
 	assert( r->connecting_eps == 0 );
 	assert( r->connected_eps  == 0 );
+
+	pthread_mutex_lock(&rail_list_lock);
+	LIST_REMOVE(r, rail_link);
+	pthread_mutex_unlock(&rail_list_lock);
 
 	for (i = 0; i < r->n_eps; i++) {
 		rep = &r->eps[i];
@@ -195,6 +201,35 @@ int __str_rbn_cmp(void *tree_key, const void *key);
 
 /* The implementation is in ldms_xprt.c. */
 zap_t __ldms_zap_get(const char *xprt);
+
+ldms_rail_t rail_first()
+{
+	ldms_rail_t r = NULL;
+	pthread_mutex_lock(&rail_list_lock);
+	r = LIST_FIRST(&rail_list);
+	if (!r)
+		goto out;
+	__rail_get((ldms_t)r); /* next reference */
+	r = (ldms_rail_t)__rail_get((ldms_t)r); /* caller reference */
+out:
+	pthread_mutex_unlock(&rail_list_lock);
+	return r;
+}
+
+ldms_rail_t rail_next(ldms_rail_t r)
+{
+	ldms_rail_t prev_r = r;
+	pthread_mutex_lock(&rail_list_lock);
+	r = LIST_NEXT(r, rail_link);
+	if (!r)
+		goto out;
+	__rail_get((ldms_t)r);	/* next reference */
+	r = (ldms_rail_t)__rail_get((ldms_t)r);	/* caller reference */
+ out:
+	pthread_mutex_unlock(&rail_list_lock);
+	__rail_put((ldms_t)prev_r);	/* next reference */
+	return r;
+}
 
 ldms_t ldms_xprt_rail_new(const char *xprt_name,
 			  int n, int64_t recv_quota, int64_t rate_limit,
@@ -274,6 +309,9 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 	r->rail_id.rail_gn = r->conn_id;
 	r->rail_id.pid = getpid();
 
+	pthread_mutex_lock(&rail_list_lock);
+	LIST_INSERT_HEAD(&rail_list, r, rail_link);
+	pthread_mutex_unlock(&rail_list_lock);
 	return (ldms_t)r;
 
  err_1:
@@ -492,6 +530,16 @@ void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 			break;
 		}
 		call_cb = __rail_ev_prep(r, &ev);
+		if (ev.type == LDMS_XPRT_EVENT_CONNECTED) {
+			/*
+			 * The connected event of this endpoint (rep)
+			 * moves the rail's state to connected.
+			 *
+			 * Set the rail's connected timestamp to be the same
+			 * as the endpoint's connected timestamp.
+			 */
+			r->connected_ts = rep->ep->stats.connected;
+		}
 		pthread_mutex_unlock(&r->mutex);
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
@@ -507,6 +555,7 @@ void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		r->connecting_eps--;
 		r->rejected_eps++;
 		r->state = LDMS_RAIL_EP_REJECTED;
+		r->disconnected_ts = rep->ep->stats.disconnected;
 		rep->state = LDMS_RAIL_EP_REJECTED;
 		__rail_cut(r);
 		call_cb = __rail_ev_prep(r, &ev);
@@ -528,6 +577,7 @@ void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		r->connecting_eps--;
 		r->conn_error_eps++;
 		r->state = LDMS_RAIL_EP_ERROR;
+		r->disconnected_ts = rep->ep->stats.disconnected;
 		__rail_cut(r);
 		call_cb = __rail_ev_prep(r, &ev);
 		passive_rail_rm_trigger = r->xtype == LDMS_XTYPE_PASSIVE_RAIL &&
@@ -537,12 +587,15 @@ void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		pthread_mutex_lock(&r->mutex);
-		if (r->state == LDMS_RAIL_EP_CONNECTED)
+		if (r->state == LDMS_RAIL_EP_CONNECTED) {
 			r->state = LDMS_RAIL_EP_ERROR;
+			r->disconnected_ts = rep->ep->stats.disconnected;
+		}
 		r->connected_eps--;
 		switch (rep->state) {
 		case LDMS_RAIL_EP_CONNECTED:
 			rep->state = LDMS_RAIL_EP_CLOSE;
+			r->disconnected_ts = rep->ep->stats.disconnected;
 			break;
 		case LDMS_RAIL_EP_ERROR:
 			/* no-op */
@@ -1223,10 +1276,97 @@ static int __rail_lookup(ldms_t _r, const char *name, enum ldms_lookup_flags fla
 	return rc;
 }
 
-static void __rail_stats(ldms_t _r, ldms_xprt_stats_t stats, int mask, int is_reset)
+static int __rail_stats(ldms_t _r, struct ldms_xprt_stats_s *stats, int mask, int is_reset)
 {
-	/* TODO IMPLEMENT ME */
-	assert(0 == "Not Implemented");
+	int i, rc;
+	ldms_rail_t r = (ldms_rail_t)_r;
+	struct ldms_rail_ep_s *rep;
+	memset(stats, 0, sizeof(*stats));
+
+	if (!stats) {
+		/* Only reset */
+		for (i = 0; i < r->n_eps; i++) {
+			rep = &r->eps[i];
+			rc = ldms_xprt_stats(rep->ep, NULL, mask, is_reset);
+			if (rc)
+				return rc;
+		}
+		return 0;
+	}
+
+	/* Get the statistics */
+	stats->rail.eps_stats = malloc(r->n_eps * sizeof(*stats->rail.eps_stats));
+	if (!stats->rail.eps_stats) {
+		return ENOMEM;
+	}
+
+	stats->name = strdup(ldms_xprt_type_name(_r));
+	if (!stats->name) {
+		free(stats->rail.eps_stats);
+		return ENOMEM;
+	}
+
+	rc = ldms_xprt_names((ldms_t)r, stats->lhostname, sizeof(stats->lhostname),
+				   stats->lport_no, sizeof(stats->lport_no),
+				   stats->rhostname, sizeof(stats->rhostname),
+				   stats->rport_no, sizeof(stats->rport_no),
+				   NI_NAMEREQD | NI_NUMERICSERV);
+	if (rc) {
+		memset(&stats->lhostname, 0, sizeof(stats->lhostname));
+		memset(&stats->lport_no, 0, sizeof(stats->lport_no));
+		memset(&stats->rhostname, 0, sizeof(stats->rhostname));
+		memset(&stats->rport_no, 0, sizeof(stats->rport_no));
+	}
+
+	switch (r->state) {
+	case LDMS_RAIL_EP_LISTENING:
+		stats->state = LDMS_XPRT_STATS_S_LISTEN;
+		break;
+	case LDMS_RAIL_EP_ACCEPTING:
+	case LDMS_RAIL_EP_CONNECTING:
+		stats->state = LDMS_XPRT_STATS_S_CONNECTING;
+		break;
+	case LDMS_RAIL_EP_CONNECTED:
+		stats->state = LDMS_XPRT_STATS_S_CONNECT;
+		break;
+	case LDMS_RAIL_EP_INIT:
+	case LDMS_RAIL_EP_PEER_CLOSE:
+	case LDMS_RAIL_EP_CLOSE:
+	case LDMS_RAIL_EP_ERROR:
+	case LDMS_RAIL_EP_REJECTED:
+		stats->state = LDMS_XPRT_STATS_S_CLOSE;
+		break;
+	}
+
+	stats->xflags = LDMS_STATS_XFLAGS_RAIL;
+	if (r->xtype == LDMS_XTYPE_ACTIVE_RAIL)
+		stats->xflags |= LDMS_STATS_XFLAGS_ACTIVE;
+	else
+		stats->xflags |= LDMS_STATS_XFLAGS_PASSIVE;
+	stats->connected = r->connected_ts;
+	stats->disconnected = r->disconnected_ts;
+	stats->rail.n_eps = r->n_eps;
+
+	for (i = 0; i < r->n_eps; i++) {
+		rep = &r->eps[i];
+		rc = ldms_xprt_stats(rep->ep, &stats->rail.eps_stats[i], mask, is_reset);
+		if (rc)
+			goto err;
+	}
+
+	if (is_reset) {
+		/* No statistics to be reset for rails */
+	}
+
+	return 0;
+err:
+	if (stats->rail.eps_stats) {
+		for (i = 0; i < r->n_eps; i++) {
+
+		}
+	}
+	free(stats->rail.eps_stats);
+	return rc;
 }
 
 static ldms_t __rail_get(ldms_t _r)
@@ -2049,4 +2189,52 @@ int ldms_rail_connect_by_name(ldms_t x, const char *host, const char *port,
 out:
 	freeaddrinfo(ai);
 	return rc;
+}
+
+void ldms_xprt_stats_result_free(struct ldms_xprt_stats_result *list)
+{
+	struct ldms_xprt_stats_s *rstats;
+
+	while ((rstats = LIST_FIRST(list))) {
+		LIST_REMOVE(rstats, ent);
+		ldms_xprt_stats_clear(rstats);
+		free(rstats);
+	}
+	free(list);
+}
+
+struct ldms_xprt_stats_result *ldms_xprt_stats_result_get(int mask, int reset)
+{
+	int rc;
+	struct ldms_xprt_stats_result *list;
+	struct ldms_xprt_stats_s *rstats;
+	ldms_rail_t r;
+
+	errno = 0;
+	list = malloc(sizeof(*list));
+	if (!list) {
+		ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
+		errno = ENOMEM;
+		return NULL;
+	}
+	LIST_INIT(list);
+
+	for (r = rail_first(); r; r = rail_next(r)) {
+		rstats = calloc(1, sizeof(*rstats));
+		if (!rstats) {
+			ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
+			errno = ENOMEM;
+			goto err;
+		}
+		rc = ldms_xprt_stats((ldms_t)r, rstats, mask, reset);
+		if (rc) {
+			errno = rc;
+			goto err;
+		}
+		LIST_INSERT_HEAD(list, rstats, ent);
+	}
+	return list;
+err:
+	ldms_xprt_stats_result_free(list);
+	return NULL;
 }

@@ -6653,9 +6653,11 @@ struct op_summary {
 	uint64_t op_count;
 	uint64_t op_total_us;
 	uint64_t op_min_us;
-	struct ldms_xprt *op_min_xprt;
+	struct ldms_xprt_stats_s *op_min_ep;
+	// struct ldms_xprt *op_min_xprt;
 	uint64_t op_max_us;
-	struct ldms_xprt *op_max_xprt;
+	struct ldms_xprt_stats_s *op_max_ep;
+	// struct ldms_xprt *op_max_xprt;
 	uint64_t op_mean_us;
 };
 
@@ -6681,30 +6683,81 @@ struct op_summary {
 	break;							\
 } while(1)
 
+/*
+ *       {
+ *          "level": [,
+ *          "rails": [
+ *              {
+ *                  "remote_host": <hostname>:<port>
+ *                  "state": <LISTEN | CONNECTING | CONNECT | CLOSE>,
+ *                  "n_eps": 2,
+ *                  "endpoints": {
+ *                      "<hostname>:<port>": {
+ *                              "sq_sz": 10
+ *                      }
+ *                  }
+ *              }, ....
+ *          ]
+ *          "compute_time_us": 1234,
+ *          "connect_rate_s": 0.5,
+ *          "connect_request_rate_s": 1.0,
+ *          "disconnect_rate_s": 0.2,
+ *          "reject_rate_s": 0.0,
+ *          "auth_fail_rate_s": 0.0,
+ *          "xprt_count": 1,
+ *          "connect_count": 1,
+ *          "connecting_count": 0,
+ *          "listen_count": 0,
+ *          "close_count": 0,
+ *          "duration": 10.5,
+ *          "op_stats": {
+ *              "LOOKUP": {
+ *                  "count": 100,
+ *                  "total_us": 5000,
+ *                  "min_us": 10,
+ *                  "min_peer": "192.168.1.1:1234",
+ *                  "min_peer_type": "tcp",
+ *                  "max_us": 100,
+ *                  "max_peer": "192.168.1.2:5678",
+ *                  "max_peer_type": "tcp",
+ *                  "mean_us": 50
+ *              },
+ *              'UPDATE': {...},
+ *              'PUBLISH': {...},
+ *              'SET_DELETE': {...},
+ *              'DIR_REQ': {...},
+ *              'DIR_REP': {...},
+ *              'SEND': {...},
+ *              'RECV': {...},
+ *              'STREAM_PUBLISH': {...},
+ *              'STREAM_SUBSCRIBE': {...},
+ *              'STREAM_UNSUBSCRIBE': {...}
+ *          }
+ *      }
+ */
+
 static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 {
 	char *buff;
 	char *s;
 	size_t sz = __APPEND_SZ;
-	struct ldms_xprt_stats xs;
 	struct op_summary op_sum[LDMS_XPRT_OP_COUNT];
-	struct ldms_xprt *x;
 	enum ldms_xprt_ops_e op_e;
-	int xprt_count = 0;
+	int rail_count = 0;
 	int xprt_connect_count = 0;
 	int xprt_connecting_count = 0;
 	int xprt_listen_count = 0;
 	int xprt_close_count = 0;
 	struct timespec start, end;
-	struct sockaddr_storage ss_local, ss_remote;
 	struct sockaddr_in *sin;
-	socklen_t socklen;
-	zap_err_t zerr;
 	char ip_str[32];
 	char xprt_type[16];
 	struct ldms_xprt_rate_data rate_data;
-	int rc, first = 1;
-	char lhostname[128], lport_no[32], rhostname[128], rport_no[32];
+	int rc, first_rail = 1, first_ep;
+	struct ldms_xprt_stats_result *res;
+	struct ldms_xprt_stats_s *rent, *ep_res;
+	int i;
+
 
 	xprt_type[sizeof(xprt_type)-1] = 0; /* NULL-terminate at the end */
 
@@ -6721,67 +6774,76 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 
 	__APPEND("{");
 	__APPEND(" \"level\" : %d,", level);
-	__APPEND(" \"endpoints\":{");
+	__APPEND(" \"rails\":[");
 
 	/* Compute summary statistics across all of the transports */
-	for (x = ldms_xprt_first(); x; x = ldms_xprt_next(x)) {
-		ldms_stats_entry_t op;
-		zap_ep_t zep;
-		zep = ldms_xprt_get_zap_ep(x);
-		zap_ep_state_t ep_state = (zep ? zap_ep_state(zep) : ZAP_EP_CLOSE);
-
-		if (x->zap_ep && (ZAP_EP_CONNECTED == zap_ep_state(x->zap_ep))) {
-			rc = ldms_xprt_names(x, lhostname, sizeof(lhostname),
-						lport_no, sizeof(lport_no),
-						rhostname, sizeof(rhostname),
-						rport_no, sizeof(rport_no),
-						NI_NAMEREQD | NI_NUMERICSERV);
-
-			__APPEND("  %s\"%s:%s\":{", ((!first)?",":""), rhostname, rport_no);
-			__APPEND("   \"sq_sz\":%ld", zap_ep_sq_sz(zep));
-			__APPEND("  }");
-			first = 0;
-		}
-
-		ldms_xprt_stats(x, &xs, LDMS_PERF_M_STATS, reset);
-		xprt_count += 1;
-
-		switch (ep_state) {
-		case ZAP_EP_LISTENING:
-			xprt_listen_count += 1;
-			break;
-		case ZAP_EP_ACCEPTING:
-		case ZAP_EP_CONNECTING:
-			xprt_connecting_count += 1;
-			break;
-		case ZAP_EP_CONNECTED:
-			xprt_connect_count += 1;
-			break;
-		case ZAP_EP_INIT:
-		case ZAP_EP_PEER_CLOSE:
-		case ZAP_EP_CLOSE:
-		case ZAP_EP_ERROR:
-			xprt_close_count += 1;
-		}
-		for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
-			op = &xs.ops[op_e];
-			if (!op->count)
-				continue;
-			op_sum[op_e].op_total_us += op->total_us;
-			op_sum[op_e].op_count += op->count;
-			if (op->min_us < op_sum[op_e].op_min_us) {
-				op_sum[op_e].op_min_us = op->min_us;
-				op_sum[op_e].op_min_xprt = ldms_xprt_get(x);
-			}
-			if (op->max_us > op_sum[op_e].op_max_us) {
-				op_sum[op_e].op_max_us = op->max_us;
-				op_sum[op_e].op_max_xprt = ldms_xprt_get(x);
-			}
-		}
-		ldms_xprt_put(x);
+	res = ldms_xprt_stats_result_get(LDMS_PERF_M_STATS, reset);
+	if (!res) {
+		rc = errno;
+		ovis_log(config_log, OVIS_LERROR, "Failed to obtain transport statistics. Error %d.\n", rc);
+		free(buff);
+		return NULL;
 	}
 
-	__APPEND("},");
+	LIST_FOREACH(rent, res, ent) {
+		__APPEND("  %s{", ((!first_rail)?",":""));
+		first_rail = 0;
+		__APPEND("   \"state\":\"%s\",", ldms_xprt_stats_state(rent->state));
+		if (rent->state == LDMS_XPRT_STATS_S_CONNECT) {
+			__APPEND("  \"remote_host\":\"%s:%s\",", rent->rhostname, rent->rport_no);
+		}
+
+		__APPEND("   \"n_eps\":%d,", rent->rail.n_eps);
+
+		switch (rent->state) {
+		case LDMS_XPRT_STATS_S_LISTEN:
+			xprt_listen_count += 1;
+			break;
+		case LDMS_XPRT_STATS_S_CONNECTING:
+			xprt_connecting_count += 1;
+			break;
+		case LDMS_XPRT_STATS_S_CONNECT:
+			xprt_connect_count += 1;
+			break;
+		case LDMS_XPRT_STATS_S_CLOSE:
+			xprt_close_count += 1;
+		}
+
+		__APPEND("   \"endpoints\":{");
+		rail_count += 1;
+		first_ep = 1;
+		for (i = 0; i < rent->rail.n_eps; i++) {
+			ldms_stats_entry_t op;
+
+			ep_res = &rent->rail.eps_stats[i];
+			if (ep_res->state == LDMS_XPRT_STATS_S_CONNECT) {
+				__APPEND("    %s\"%s:%s\":{", ((!first_ep)?",":""),
+						ep_res->rhostname, ep_res->rport_no);
+				__APPEND("     \"sq_sz\":%ld", ep_res->ep.sq_sz);
+				__APPEND("  }");
+				first_ep = 0;
+			}
+
+			for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
+				op = &ep_res->ep.ops[op_e];
+				if (!op->count)
+					continue;
+				op_sum[op_e].op_total_us += op->total_us;
+				op_sum[op_e].op_count += op->count;
+				if (op->min_us < op_sum[op_e].op_min_us) {
+					op_sum[op_e].op_min_us = op->min_us;
+					op_sum[op_e].op_min_ep = ep_res;
+				}
+				if (op->max_us > op_sum[op_e].op_max_us) {
+					op_sum[op_e].op_max_us = op->max_us;
+					op_sum[op_e].op_max_ep = ep_res;
+				}
+			}
+		}
+		__APPEND("  } }");
+	}
+
+	__APPEND("],\n");
 
 	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
 		if (op_sum[op_e].op_count) {
@@ -6799,7 +6861,7 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 	__APPEND(" \"disconnect_rate_s\": %f,\n", rate_data.disconnect_rate_s);
 	__APPEND(" \"reject_rate_s\": %f,\n", rate_data.reject_rate_s);
 	__APPEND(" \"auth_fail_rate_s\": %f,\n", rate_data.auth_fail_rate_s);
-	__APPEND(" \"xprt_count\": %d,\n", xprt_count);
+	__APPEND(" \"xprt_count\": %d,\n", rail_count);
 	__APPEND(" \"connect_count\": %d,\n", xprt_connect_count);
 	__APPEND(" \"connecting_count\": %d,\n", xprt_connecting_count);
 	__APPEND(" \"listen_count\": %d,\n", xprt_listen_count);
@@ -6813,45 +6875,34 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 		__APPEND("    \"count\": %ld,\n", op->op_count);
 		__APPEND("    \"total_us\": %ld,\n", op->op_total_us);
 		__APPEND("    \"min_us\": %ld,\n", (op->op_count ? op->op_min_us: 0));
-		sin = (struct sockaddr_in *)&ss_remote;
-		memset(&ss_remote, 0, sizeof(ss_remote));
+
 		strncpy(ip_str, "0.0.0.0:0", sizeof(ip_str));
 		strncpy(xprt_type, "????", sizeof(xprt_type));
-		zap_ep_t zep;
-		zep = (op->op_min_xprt)?ldms_xprt_get_zap_ep(op->op_min_xprt):NULL;
-		if (zep) {
-			socklen = sizeof(ss_local);
-			zerr = zap_get_name(zep,
-					    (struct sockaddr *)&ss_local,
-					    (struct sockaddr *)&ss_remote,
-					    &socklen);
-			memccpy(xprt_type, ldms_xprt_type_name(op->op_min_xprt),
-				0, sizeof(xprt_type)-1);
+		if (op->op_min_ep) {
+			memccpy(xprt_type, op->op_min_ep->name, 0, sizeof(xprt_type)-1);
+			sin = (struct sockaddr_in *)&op->op_min_ep->ep.ss_remote;
 			inet_ntop(sin->sin_family, &sin->sin_addr, ip_str, sizeof(ip_str));
+			__APPEND("    \"min_peer\": \"%s:%hu\",\n", ip_str, ntohs(sin->sin_port));
+		} else {
+			__APPEND("    \"min_peer\": \"%s:%hu\",\n", ip_str, 0);
 		}
-		if (op->op_min_xprt)
-			ldms_xprt_put(op->op_min_xprt);
-		__APPEND("    \"min_peer\": \"%s:%hu\"\n,", ip_str, ntohs(sin->sin_port));
-		__APPEND("    \"min_peer_type\": \"%s\"\n,", xprt_type);
+		__APPEND("    \"min_peer_type\": \"%s\",\n", xprt_type);
 
 		__APPEND("    \"max_us\": %ld,\n", (op->op_count ? op->op_max_us : 0));
-		memset(&ss_remote, 0, sizeof(ss_remote));
 
-		zep = (op->op_max_xprt)?ldms_xprt_get_zap_ep(op->op_max_xprt):NULL;
-		if (zep) {
-			socklen = sizeof(ss_local);
-			zerr = zap_get_name(zep,
-					    (struct sockaddr *)&ss_local,
-					    (struct sockaddr *)&ss_remote,
-					    &socklen);
-			memccpy(xprt_type, ldms_xprt_type_name(op->op_max_xprt),
-				0, sizeof(xprt_type)-1);
+		strncpy(ip_str, "0.0.0.0:0", sizeof(ip_str));
+		strncpy(xprt_type, "????", sizeof(xprt_type));
+
+		if (op->op_max_ep) {
+			sin = (struct sockaddr_in *)&op->op_max_ep->ep.ss_remote;
+			memccpy(xprt_type, op->op_max_ep->name, 0, sizeof(xprt_type)-1);
 			inet_ntop(sin->sin_family, &sin->sin_addr, ip_str, sizeof(ip_str));
+			__APPEND("    \"max_peer\": \"%s:%hu\",\n", ip_str, ntohs(sin->sin_port));
+		} else {
+			__APPEND("    \"max_peer\": \"%s:%hu\",\n", ip_str, 0);
 		}
-		if (op->op_max_xprt)
-			ldms_xprt_put(op->op_max_xprt);
-		__APPEND("    \"max_peer\": \"%s:%hu\"\n,", ip_str, ntohs(sin->sin_port));
-		__APPEND("    \"max_peer_type\": \"%s\"\n,", xprt_type);
+
+		__APPEND("    \"max_peer_type\": \"%s\",\n", xprt_type);
 		__APPEND("    \"mean_us\": %ld\n", op->op_mean_us);
 		if (op_e < LDMS_XPRT_OP_COUNT - 1)
 			__APPEND(" },\n");
@@ -6861,8 +6912,11 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 	__APPEND(" }\n"); /* op_stats */
 	__APPEND("}");
 	*json_sz = s - buff + 1;
+	ldms_xprt_stats_result_free(res);
 	return buff;
 __APPEND_ERR:
+	if (res)
+		ldms_xprt_stats_result_free(res);
 	return NULL;
 }
 
@@ -7038,44 +7092,47 @@ int __stream_profiling_as_json(json_t **_jobj, int is_reset) {
 int __xprt_profiling_as_json(json_t **_obj, int is_reset)
 {
 	json_t *obj, *ep_prf, *op_prf;
-	ldms_t x;
-	struct ldms_xprt_stats stats;
 	struct ldms_op_ctxt *xc;
 	int rc;
 	enum ldms_xprt_ops_e op_e;
-	char lhostname[128], lport_no[32], rhostname[128], rport_no[32], name[161];
-
+	struct ldms_xprt_stats_result *res;
+	struct ldms_xprt_stats_s *rent, *ep_res;
+	char name[161];
+	int i;
 
 	obj = json_object();
 	if (!obj) {
 		ovis_log(config_log, OVIS_LCRIT, "Memory allocation failure\n");
 		return ENOMEM;
 	}
-	for (x = ldms_xprt_first(); x; x = ldms_xprt_next(x)) {
-		rc = ldms_xprt_names(x, lhostname, sizeof(lhostname),
-					lport_no, sizeof(lport_no),
-					rhostname, sizeof(rhostname),
-					rport_no, sizeof(rport_no),
-					NI_NAMEREQD | NI_NUMERICSERV);
-		if (rc) {
-			if (rc == ENOTCONN)
-				continue;
-		}
 
-		ldms_xprt_stats(x, &stats, LDMS_PERF_M_PROFILNG, is_reset);
-		snprintf(name, 160, "%s:%s", rhostname, rport_no);
+	res = ldms_xprt_stats_result_get(LDMS_PERF_M_PROFILNG, is_reset);
+	if (!res) {
+		rc = errno;
+		ovis_log(config_log, OVIS_LERROR, "Failed to get transport statistics. Error %d.\n", rc);
+		return rc;
+	}
+
+	LIST_FOREACH(rent, res, ent) {
+		if (rent->state != LDMS_XPRT_STATS_S_CONNECT)
+			continue;
+
+		snprintf(name, 160, "%s:%s", rent->rhostname, rent->rport_no);
 		ep_prf = json_object();
-		for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
-			op_prf = json_array();
-			TAILQ_FOREACH(xc, &stats.op_ctxt_lists[op_e], ent) {
-				json_array_append_new(op_prf, __ldms_op_profiling_as_json(xc, op_e));
+		for (i = 0; i < rent->rail.n_eps; i++) {
+			ep_res = &rent->rail.eps_stats[i];
+			for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
+				op_prf = json_array();
+				TAILQ_FOREACH(xc, &ep_res->ep.op_ctxt_lists[op_e], ent) {
+					json_array_append_new(op_prf, __ldms_op_profiling_as_json(xc, op_e));
+				}
+				json_object_set_new(ep_prf, ldms_xprt_op_names[op_e], op_prf);
 			}
-			json_object_set_new(ep_prf, ldms_xprt_op_names[op_e], op_prf);
-
 		}
 		json_object_set_new(obj, name, ep_prf);
 	}
 	*_obj = obj;
+	ldms_xprt_stats_result_free(res);
 	return 0;
 }
 
@@ -9268,7 +9325,6 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	char *advtr_auth;
 	char *endptr = NULL;
 	ldmsd_prdcr_listen_t pl;
-	extern struct rbt *cfgobj_trees[];
 
 	name = regex_str = reconnect_str = cidr_str = disabled_start = NULL;
 	quota = rx_rate = rail_s = NULL;
@@ -9313,8 +9369,6 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	if (regex_str) {
 		pl->hostname_regex_s = strdup(regex_str);
 		if (!pl->hostname_regex_s) {
-			// TODO: fix me, this leaves the object dangling
-			ldmsd_cfgobj_put(&pl->obj, "init");
 			goto enomem;
 		}
 
@@ -9324,9 +9378,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						"The regular expression string "
 						"'%s' is invalid.", regex_str);
-			// TODO: fix me, this leaves the object dangling
-			ldmsd_cfgobj_put(&pl->obj, "init");
-			goto send_reply;
+			goto err;
 		}
 	}
 
@@ -9336,9 +9388,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->errcode = ENOMEM;
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						    "Memory allocation failure.");
-			// TODO: fix me, this leaves the object dangling
-			ldmsd_cfgobj_put(&pl->obj, "init");
-			goto send_reply;
+			goto enomem;
 		}
 		rc = __cidr2addr6(cidr_str, &pl->net_addr, &pl->prefix_len);
 		if (rc) {
@@ -9346,9 +9396,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						"The given CIDR string '%s' "
 						"is invalid.", cidr_str);
-			// TODO: fix me, this leaves the object dangling
-			ldmsd_cfgobj_put(&pl->obj, "init");
-			goto send_reply;
+			goto err;
 		}
 	} else {
 		pl->quota = 0; /* 0 means inherit quota from the listen xprt */
@@ -9361,8 +9409,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						"The given rx_rate '%s' "
 						"is invalid.", rx_rate);
-			ldmsd_cfgobj_put(&pl->obj, "init");
-			goto send_reply;
+			goto err;
 		}
 	} else {
 		pl->rx_rate = 0; /* 0 means inherit rx_rate from the listen xprt */
@@ -9508,10 +9555,8 @@ einval_active:
 			"The attribute '%s' is required for the 'active' mode.", attr_name);
 	goto err;
 err:
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR_LISTEN);
-	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR_LISTEN], &pl->obj.rbn);
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR_LISTEN);
 	ldmsd_cfgobj_unlock(&pl->obj);
+	ldmsd_cfgobj_rm(&pl->obj);
 	ldmsd_cfgobj_put(&pl->obj, "init");
 	goto send_reply;
 }
@@ -9922,7 +9967,6 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 	char *xprt_s;
 	char *adv_hostname;
 	char *adv_port;
-	char *adv_auth; /* TODO: Design how to get auth info and apply it */
 	char *attr_name;
 	char prdcr_name[NI_MAXHOST + NI_MAXSERV + 1];
 	ldmsd_prdcr_t prdcr;
@@ -9935,7 +9979,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 	struct ldms_xprt_event conn_ev;
 	ldms_t x = ldms_xprt_get(reqc->xprt->ldms.ldms);
 
-	xprt_s = adv_hostname = adv_port = adv_auth = NULL;
+	xprt_s = adv_hostname = adv_port = NULL;
 
 	attr_name = "hostname";
 	adv_hostname = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
@@ -10037,27 +10081,24 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 		is_new_prdcr = 1;
 		rbn = rbt_find(&pl->prdcr_tree, prdcr_name);
 		if (rbn) {
-			ovis_log(NULL, OVIS_LERROR, "Producer %s does not exist, but " \
+			ovis_log(NULL, OVIS_LINFO, "Producer %s does not exist, but " \
 						    "it is unexpectedly " \
 						    "in the producer list of " \
 						    "producer_listen '%s'. \n",
 						    prdcr_name, pl->obj.name);
-			assert(rbn == NULL);
-		} else {
-			pl_pref = prdcr_ref_new(prdcr);
-			if (!pl_pref) {
-				ovis_log(config_log, OVIS_LCRIT, "Memory allocation failure.\n");
-				reqc->errcode = ENOMEM;
-				reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-							"Aggregator has memory allocation failure.");
-				rc = ENOMEM;
-				/*
-				* TODO: make sure we clean up the memory, e.g., prdcr
-				*/
-				return rc;
-			}
-			rbt_ins(&pl->prdcr_tree, &pl_pref->rbn);
+			assert((rbn == NULL) && ("Node (rbn) unexpected in the tree"));
+			/* Handle the case when assert() is disabled at compile time. */
+			rbt_del(&pl->prdcr_tree, rbn);
+			pl_pref = (ldmsd_prdcr_ref_t)container_of(rbn, struct ldmsd_prdcr_ref, rbn);
+			free(pl_pref); /* No need to put back prdcr. It has disappeared from the cfgobj_tree */
 		}
+		pl_pref = prdcr_ref_new(prdcr);
+		if (!pl_pref) {
+			/* Completely remove producer as it was just created. */
+			ldmsd_cfgobj_del(&prdcr->obj);
+			goto enomem;
+		}
+		rbt_ins(&pl->prdcr_tree, &pl_pref->rbn);
 	}
 	/* Add the producer to any updaters that the producer matches */
 	ldmsd_updtr_t updtr;
@@ -10248,8 +10289,8 @@ static int advertiser_start_handler(ldmsd_req_ctxt_t reqc)
 			 */
 			goto send_reply;
 		}
-		// TODO: where is this reference put?
-		ldmsd_prdcr_get(prdcr, "find"); /* Get a reference to match the find reference */
+	} else {
+		ldmsd_prdcr_put(prdcr, "find");
 	}
 
 	rc = __prdcr_start_handler(reqc, "advertiser_start", "advertiser");

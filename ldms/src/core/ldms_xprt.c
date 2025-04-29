@@ -213,6 +213,8 @@ static uint64_t xprt_reject_count;
 static uint64_t xprt_auth_fail_count;
 static struct timespec xprt_start;
 
+static void __xprt_stats_reset(ldms_t _x, int mask, struct timespec *ts);
+
 void ldms_xprt_rate_data(struct ldms_xprt_rate_data *data, int reset)
 {
 	struct timespec now;
@@ -231,9 +233,7 @@ void ldms_xprt_rate_data(struct ldms_xprt_rate_data *data, int reset)
 		struct ldms_xprt *x;
 		pthread_mutex_lock(&xprt_list_lock);
 		LIST_FOREACH(x, &xprt_list, xprt_link) {
-			/* don't reset the connect/disconnect time */
-			memset(&x->stats.last_op, 0, sizeof(x->stats.last_op));
-			memset(&x->stats.ops, 0, sizeof(x->stats.ops));
+			__xprt_stats_reset((ldms_t)x, LDMS_PERF_M_STATS, NULL);
 		}
 		xprt_connect_count = 0;
 		xprt_connect_request_count = 0;
@@ -3409,7 +3409,7 @@ static size_t __ldms_xprt_msg_max(ldms_t x);
 static int __ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 static int __ldms_xprt_lookup(ldms_t x, const char *path, enum ldms_lookup_flags flags,
 		     ldms_lookup_cb_t cb, void *cb_arg, struct ldms_op_ctxt *op_ctxt);
-static void __ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats, int mask, int is_reset);
+static int __ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats, int mask, int is_reset);
 static int __ldms_xprt_dir_cancel(ldms_t x);
 
 static ldms_t __ldms_xprt_get(ldms_t x); /* ref get */
@@ -3996,25 +3996,77 @@ int ldms_xprt_lookup(ldms_t x, const char *path, enum ldms_lookup_flags flags,
 	return rc;
 }
 
-static void __ldms_xprt_stats(ldms_t _x, ldms_xprt_stats_t stats, int mask, int is_reset)
+static void __stats_ep_clear(ldms_xprt_stats_t stats)
 {
+	enum ldms_xprt_ops_e op_e;
+	struct ldms_op_ctxt *op_ctxt;
+
+	free((char*)stats->name);
+	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++){
+		while ((op_ctxt = TAILQ_FIRST(&stats->ep.op_ctxt_lists[op_e]))) {
+			TAILQ_REMOVE(&stats->ep.op_ctxt_lists[op_e], op_ctxt, ent);
+			free(op_ctxt);
+		}
+	}
+}
+
+static void __xprt_stats_reset(ldms_t _x, int mask, struct timespec *ts)
+{
+	enum ldms_xprt_ops_e op_e;
+	struct ldms_op_ctxt_list *ctxt_list;
+	struct ldms_op_ctxt *op_ctxt;
+	struct ldms_xprt *x = (struct ldms_xprt *)_x;
+
+	if (mask & LDMS_PERF_M_STATS) {
+		/* last_op and ops could also be reset by ldms_xprt_rate_data(). */
+		/* don't reset the connect/disconnect time */
+		memset(&_x->stats.last_op, 0, sizeof(_x->stats.last_op));
+		memset(&_x->stats.ops, 0, sizeof(_x->stats.ops));
+		for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++)
+			x->stats.ops[op_e].min_us = LLONG_MAX;
+	}
+	if (mask & LDMS_PERF_M_PROFILNG) {
+		for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
+			ctxt_list = __rail_op_ctxt_list(_x, op_e);
+			while ((op_ctxt = TAILQ_FIRST(ctxt_list))) {
+				TAILQ_REMOVE(ctxt_list, op_ctxt, ent);
+				free(op_ctxt);
+			}
+		}
+	}
+}
+
+static int __ldms_xprt_stats(ldms_t _x, ldms_xprt_stats_t stats, int mask, int is_reset)
+{
+	int rc;
 	struct ldms_op_ctxt_list *src_list, *dst_list;
 	struct ldms_op_ctxt *src, *dst;
 	enum ldms_xprt_ops_e op_e;
+	struct ldms_xprt *x = _x;
+	zap_ep_t zep = ldms_xprt_get_zap_ep(x);
+	zap_ep_state_t zep_state;
+	socklen_t socklen;
 
 	if (!stats)
 		goto reset;
-	*stats = _x->stats;
+
+	memset(stats, 0, sizeof(*stats));
+	stats->name = strdup(ldms_xprt_type_name(_x));
+	if (!stats->name) {
+		return ENOMEM;
+	}
+
 	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
-		TAILQ_INIT(&stats->op_ctxt_lists[op_e]);
-		dst_list = &stats->op_ctxt_lists[op_e];
+		TAILQ_INIT(&stats->ep.op_ctxt_lists[op_e]);
+		dst_list = &stats->ep.op_ctxt_lists[op_e];
 		src_list = __rail_op_ctxt_list(_x, op_e);
 
 		TAILQ_FOREACH(src, src_list, ent) {
 			dst = malloc(sizeof(*dst));
 			if (!dst) {
 				ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
-				return;
+				__stats_ep_clear(stats);
+				return ENOMEM;
 			}
 			memcpy(dst, src, sizeof(*dst));
 			dst->ent.tqe_next = NULL;
@@ -4022,29 +4074,109 @@ static void __ldms_xprt_stats(ldms_t _x, ldms_xprt_stats_t stats, int mask, int 
 			TAILQ_INSERT_TAIL(dst_list, dst, ent);
 		}
 	}
- reset:
-	if (!is_reset)
-		return;
-	if (mask & LDMS_PERF_M_STATS) {
-		/* last_op and ops could also be reset by ldms_xprt_rate_data(). */
-		/* don't reset the connect/disconnect time */
-		memset(&_x->stats.last_op, 0, sizeof(_x->stats.last_op));
-		memset(&_x->stats.ops, 0, sizeof(_x->stats.ops));
-	}
-	if (mask & LDMS_PERF_M_PROFILNG) {
-		for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
-			src_list = __rail_op_ctxt_list(_x, op_e);
-			while ((src = TAILQ_FIRST(src_list))) {
-				TAILQ_REMOVE(src_list, src, ent);
-				free(src);
+	stats->connected = x->stats.connected;
+	stats->disconnected = x->stats.disconnected;
+	stats->xflags = LDMS_STATS_XFLAGS_EP;
+	if (x->xtype == LDMS_XTYPE_PASSIVE_XPRT)
+		stats->xflags |= LDMS_STATS_XFLAGS_PASSIVE;
+	else
+		stats->xflags |= LDMS_STATS_XFLAGS_ACTIVE;
+	stats->ep.last_op = x->stats.last_op;
+	memcpy(&stats->ep.ops, x->stats.ops, sizeof(x->stats.ops));
+
+	if (zep) {
+		zep_state = zap_ep_state(zep);
+		if (zep_state == ZAP_EP_CONNECTED) {
+			rc = ldms_xprt_names(x, stats->lhostname, sizeof(stats->lhostname),
+			stats->lport_no, sizeof(stats->lport_no),
+			stats->rhostname, sizeof(stats->rhostname),
+			stats->rport_no, sizeof(stats->rport_no),
+			NI_NAMEREQD | NI_NUMERICSERV);
+			if (rc) {
+				memset(&stats->lhostname, 0, sizeof(stats->lhostname));
+				memset(&stats->lport_no, 0, sizeof(stats->lport_no));
+				memset(&stats->rhostname, 0, sizeof(stats->rhostname));
+				memset(&stats->rport_no, 0, sizeof(stats->rport_no));
+			}
+
+			socklen = sizeof(stats->ep.ss_local);
+			memset(&stats->ep.ss_local, 0, sizeof(stats->ep.ss_local));
+			memset(&stats->ep.ss_remote, 0, sizeof(stats->ep.ss_remote));
+			rc = __ldms_xprt_sockaddr(_x, (struct sockaddr *)&stats->ep.ss_local,
+					(struct sockaddr *)&stats->ep.ss_remote, &socklen);
+			if (rc) {
+				memset(&stats->ep.ss_local, 0, sizeof(stats->ep.ss_local));
+				memset(&stats->ep.ss_remote, 0 , sizeof(stats->ep.ss_remote));
+			}
+
+			stats->ep.sq_sz = zap_ep_sq_sz(zep);
+			stats->state = LDMS_XPRT_STATS_S_CONNECT;
+		} else {
+			/* connected case is handled in the if condition. */
+			switch (zep_state) {
+			case ZAP_EP_ACCEPTING:
+			case ZAP_EP_CONNECTING:
+				stats->state = LDMS_XPRT_STATS_S_CONNECTING;
+				break;
+			case ZAP_EP_LISTENING:
+				stats->state = LDMS_XPRT_STATS_S_LISTEN;
+				break;
+			case ZAP_EP_INIT:
+			case ZAP_EP_PEER_CLOSE:
+			case ZAP_EP_CLOSE:
+			case ZAP_EP_ERROR:
+				stats->state = LDMS_XPRT_STATS_S_CLOSE;
+				break;
+			default:
+				stats->state = 0;
 			}
 		}
 	}
+
+ reset:
+	if (!is_reset)
+		return 0;
+	__xprt_stats_reset(_x, mask, NULL);
+	return 0;
 }
 
-void ldms_xprt_stats(ldms_t _x, ldms_xprt_stats_t stats, int mask, int is_reset)
+int ldms_xprt_stats(ldms_t _x, ldms_xprt_stats_t stats, int mask, int is_reset)
 {
-	_x->ops.stats(_x, stats, mask, is_reset);
+	return _x->ops.stats(_x, stats, mask, is_reset);
+}
+
+const char *ldms_xprt_stats_state(enum ldms_xprt_stats_state state)
+{
+	switch (state) {
+	case LDMS_XPRT_STATS_S_CLOSE:
+		return "close";
+	case LDMS_XPRT_STATS_S_CONNECT:
+		return "connect";
+	case LDMS_XPRT_STATS_S_CONNECTING:
+		return "connecting";
+	case LDMS_XPRT_STATS_S_LISTEN:
+		return "listen";
+	default:
+		return "";
+	}
+}
+
+static void __stats_rail_clear(struct ldms_xprt_stats_s *stats)
+{
+	int i;
+	free((char*)stats->name);
+	for(i = 0; i < stats->rail.n_eps; i++) {
+		ldms_xprt_stats_clear(&stats->rail.eps_stats[i]);
+	}
+	free(stats->rail.eps_stats);
+}
+
+void ldms_xprt_stats_clear(ldms_xprt_stats_t stats)
+{
+	if (stats->xflags & LDMS_STATS_XFLAGS_EP)
+		__stats_ep_clear(stats);
+	else
+		__stats_rail_clear(stats);
 }
 
 static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,

@@ -166,6 +166,7 @@ struct ldms_rail_s {
 	char auth_name[LDMS_AUTH_NAME_MAX + 1];
 	struct attr_value_list *auth_av_list;
 	ldms_log_fn_t log;
+	LIST_ENTRY(ldms_rail_s) rail_link;
 
 	struct ref_s ref;
 
@@ -200,6 +201,10 @@ struct ldms_rail_s {
 	int legacy_peer; /* 0 if peer is rail, 1 if peer is legacy LDMS */
 
 	uint64_t conn_id;
+
+	// struct ldms_xprt_stats_s stats;
+	struct timespec connected_ts;
+	struct timespec disconnected_ts;
 
 	uint32_t lookup_rr; /* lookup round-robin index */
 
