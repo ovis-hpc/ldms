@@ -27,6 +27,8 @@ static const char * const llite_paths[] = {
         "/sys/kernel/debug/lustre/llite"  /* lustre 2.12 and later */
 };
 static const int llite_paths_len = sizeof(llite_paths) / sizeof(llite_paths[0]);
+static char *test_path = NULL;
+static int schema_extras = 0;
 
 static struct comp_id_data cid;
 
@@ -138,6 +140,15 @@ static const char *const find_llite_path()
         static const char *previously_found_path = NULL;
         struct stat sb;
         int i;
+	if (test_path) {
+		if  (stat(test_path, &sb) == -1 || !S_ISDIR(sb.st_mode)) {
+                        log_fn(LDMSD_LERROR, SAMP
+				" find_llite_path() test_path given "
+				"is not a directory: %s\n", test_path);
+			return NULL;
+		}
+		return test_path;
+	}
 
         for (i = 0; i < llite_paths_len; i++) {
                 if (stat(llite_paths[i], &sb) == -1 || !S_ISDIR(sb.st_mode))
@@ -241,6 +252,24 @@ static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
+	test_path = av_value(avl, "test_path");
+	if (test_path) {
+		test_path = strdup(test_path);
+		log_fn(LDMSD_LDEBUG, SAMP": test_path=%s\n",test_path);
+	}
+
+	schema_extras = 0;
+	char *extra215 = av_value(avl, "extra215");
+	if (extra215) {
+		schema_extras |= EXTRA215;
+		log_fn(LDMSD_LDEBUG, SAMP": schema with extra 2.15 enabled\n");
+	}
+	char *extratime = av_value(avl, "extratimes");
+	if (extratime) {
+		schema_extras |= EXTRATIMES;
+		log_fn(LDMSD_LDEBUG, SAMP": schema with start_time enabled\n");
+	}
+
 	char *ival = av_value(avl, "producer");
 	if (ival) {
 		if (strlen(ival) < sizeof(producer_name)) {
@@ -270,7 +299,7 @@ static int sample(struct ldmsd_sampler *self)
 {
         log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
         if (llite_general_schema_is_initialized() < 0) {
-                if (llite_general_schema_init(&cid) < 0) {
+                if (llite_general_schema_init(&cid, schema_extras) < 0) {
                         log_fn(LDMSD_LERROR, SAMP" general schema create failed\n");
                         return ENOMEM;
                 }
@@ -287,6 +316,7 @@ static void term(struct ldmsd_plugin *self)
         log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
         llites_destroy();
         llite_general_schema_fini();
+	free(test_path);
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)

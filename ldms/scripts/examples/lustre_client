@@ -3,14 +3,19 @@ export LDMSD_EXTRA="-m 1G"
 portbase=61016
 DAEMONS $(seq 3)
 JOBDATA $TESTDIR/job.data 1 2 3
-LDMSD -p prolog.jobid -p prolog.jobid.sampler 1 2
+VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=definite"
+vgoff
+LDMSD -p prolog.jobid 1
+vgoff
+LDMSD -p prolog.jobid 2
 LDMSD -p prolog.jobid.store3 3
+SLEEP 3
 MESSAGE ldms_ls on host 1:
-LDMS_LS 1 -l
+LDMS_LS 1 -lv
 MESSAGE ldms_ls on host 2:
-LDMS_LS 2 -l
+LDMS_LS 2 -lv
 MESSAGE ldms_ls on host 3:
-LDMS_LS 3
+LDMS_LS 3 -lv
 SLEEP 5
 KILL_LDMSD $(seq 3)
 file_created $STOREDIR/node/lustre_client

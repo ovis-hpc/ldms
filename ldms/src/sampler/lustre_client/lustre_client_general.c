@@ -59,6 +59,23 @@ static char *llite_stats_uint64_t_entries[] = {
         NULL
 };
 
+
+/* the following get added to the schema if extra215 config option is present. */
+static const char *extra215_llite_stats_uint64_t_entries[] = {
+        "read",
+        "write",
+        "opencount",
+        "openclosetime",
+        NULL
+};
+
+/* the following exist at least as far back as 2.15 lustre clients */
+static const char *extratimes_llite_stats_uint64_t_entries[] = {
+	"start_time", /* this truncates the data to seconds; it's ok. */
+	"elapsed_time", /* this truncates the data to seconds; it's ok. */
+        NULL
+};
+
 int llite_general_schema_is_initialized()
 {
         if (llite_general_schema != NULL)
@@ -67,14 +84,19 @@ int llite_general_schema_is_initialized()
                 return -1;
 }
 
-int llite_general_schema_init(comp_id_t cid)
+int llite_general_schema_init(comp_id_t cid, int schema_extras)
 {
         ldms_schema_t sch;
         int rc;
         int i;
 
         log_fn(LDMSD_LDEBUG, SAMP ": llite_general_schema_init()\n");
-        sch = ldms_schema_new("lustre_client");
+	char schema_name[LDMS_SET_NAME_MAX];
+	if (schema_extras)
+		sprintf(schema_name,"lustre_client_%d", schema_extras);
+	else
+		sprintf(schema_name,"lustre_client");
+        sch = ldms_schema_new(schema_name);
         if (sch == NULL) {
 		log_fn(LDMSD_LERROR, SAMP ": lustre_llite_general schema new failed"
 			" (out of memory)\n");
@@ -110,6 +132,24 @@ int llite_general_schema_init(comp_id_t cid)
                         goto err2;
 		}
         }
+	if (schema_extras & EXTRA215) {
+		for (i = 0; extra215_llite_stats_uint64_t_entries[i] != NULL; i++) {
+			field = extra215_llite_stats_uint64_t_entries[i];
+			rc = ldms_schema_metric_add(sch, field, LDMS_V_U64);
+			if (rc < 0) {
+				goto err2;
+			}
+		}
+	}
+	if (schema_extras & EXTRATIMES) {
+		for (i = 0; extratimes_llite_stats_uint64_t_entries[i] != NULL; i++) {
+			field = extratimes_llite_stats_uint64_t_entries[i];
+			rc = ldms_schema_metric_add(sch, field, LDMS_V_U64);
+			if (rc < 0) {
+				goto err2;
+			}
+		}
+	}
 
         llite_general_schema = sch;
 
@@ -212,21 +252,31 @@ static int llite_stats_sample(const char *stats_path,
                             str1, &val1, &val2);
                 if (rc == 2) {
                         index = ldms_metric_by_name(general_metric_set, str1);
-                        if (index == -1) {
+                        if (index != -1) {
+                                ldms_metric_set_u64(general_metric_set, index, val1);
+			} /*else {
+				// this is a normal case as lustre evolves reporting.
                                 log_fn(LDMSD_LWARNING, SAMP ": llite stats metric not found: %s\n",
                                        str1);
-                        } else {
-                                ldms_metric_set_u64(general_metric_set, index, val1);
-                        }
+                        } */
                         continue;
                 } else if (rc == 3) {
                         int base_name_len = strlen(str1);
                         sprintf(str1+base_name_len, ".sum"); /* append ".sum" */
                         index = ldms_metric_by_name(general_metric_set, str1);
                         if (index == -1) {
-                                log_fn(LDMSD_LWARNING, SAMP ": llite stats metric not found: %s\n",
-                                       str1);
-                        } else {
+				/* non-sum metric, possibly */
+				str1[base_name_len] = '\0';
+				index = ldms_metric_by_name(general_metric_set, str1);
+				if (index != -1) {
+					ldms_metric_set_u64(general_metric_set, index, val1);
+				}/* else {
+				// this is a normal case as lustre evolves reporting
+					log_fn(LDMSD_LWARNING,
+					SAMP ": llite stats metric not found: %s\n", str1);
+				} */
+			} else {
+				/* sum metric */
                                 ldms_metric_set_u64(general_metric_set, index, val2);
                         }
                         continue;
