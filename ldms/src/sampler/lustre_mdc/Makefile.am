@@ -16,7 +16,7 @@ liblustre_mdc_la_LIBADD = \
 
 liblustre_mdc_la_LDFLAGS = \
 	-no-undefined \
-	-export-symbols-regex 'get_plugin' \
+	-export-symbols-regex 'ldmsd_plugin_interface' \
 	-version-info 1:0:0
 liblustre_mdc_la_CFLAGS = $(AM_CFLAGS)
 liblustre_mdc_la_CPPFLAGS = \

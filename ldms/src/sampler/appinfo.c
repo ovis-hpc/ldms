@@ -468,35 +468,33 @@ static void term(ldmsd_plug_handle_t handle)
 	ovis_log(mylog, OVIS_LDEBUG, "Done terminating.\n");
 }
 
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+        set = NULL;
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
 /**
  * Sampler LDMS definition.
  **/
-static struct ldmsd_sampler appinfo_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-/**
- * LDMS creation hook.
- **/
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	set = NULL;
-	return &appinfo_plugin.base;
-}
 
 /**
  * Create shared memory structs and data from the newly defined

@@ -585,14 +585,9 @@ static void term(ldmsd_plug_handle_t handle)
 		free(root_path);
 }
 
-static struct ldmsd_plugin darshan_stream_store = {
+struct ldmsd_plugin ldmsd_plugin_interface = {
 	.name = "darshan_stream_store",
 	.term = term,
 	.config = config,
 	.usage = usage,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-        return &darshan_stream_store;
-}

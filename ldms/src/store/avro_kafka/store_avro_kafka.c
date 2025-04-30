@@ -35,16 +35,9 @@
 #include "ovis_log.h"
 
 #define STORE_AVRO_KAFKA "store_avro_kafka"
-static ovis_log_t aks_log = NULL;
-
-#define LOG(_level_, _fmt_, ...) ovis_log(aks_log, _level_, _fmt_, ##__VA_ARGS__)
-
-#define LOG_ERROR(FMT, ...) LOG(OVIS_LERROR, FMT, ##__VA_ARGS__)
-#define LOG_INFO(FMT, ...) LOG(OVIS_LINFO, FMT, ##__VA_ARGS__)
-#define LOG_WARN(FMT, ...) LOG(OVIS_LWARNING, FMT, ##__VA_ARGS__)
-#define LOG_DEBUG(FMT, ...) LOG(OVIS_LDEBUG, FMT, ##__VA_ARGS__)
 
 typedef struct store_kafka_s {
+        ovis_log_t log;
 	pthread_mutex_t sk_lock;
 	rd_kafka_conf_t *g_rd_conf;
 	serdes_conf_t *g_serdes_conf;
@@ -159,8 +152,8 @@ serdes_schema_find(aks_handle_t sh, char *schema_name,
                                              json_buf, json_len,
                                              errstr, sizeof(errstr));
 	if (!current_schema) {
-		LOG_ERROR("%s\n", json_buf);
-		LOG_ERROR("Error '%s' creating schema '%s'\n", errstr, schema_name);
+		ovis_log(sh->sf->log, OVIS_LERROR, "%s\n", json_buf);
+		ovis_log(sh->sf->log, OVIS_LERROR, "Error '%s' creating schema '%s'\n", errstr, schema_name);
 		goto out;
 	}
 
@@ -168,18 +161,21 @@ serdes_schema_find(aks_handle_t sh, char *schema_name,
         if (previous_schema != NULL) {
                 if (serdes_schema_id(current_schema)
                     == serdes_schema_id(previous_schema)) {
-                        LOG_INFO("Using existing id %d for schema name '%s'\n",
+                        ovis_log(sh->sf->log, OVIS_LINFO,
+                                 "Using existing id %d for schema name '%s'\n",
                                  serdes_schema_id(current_schema),
                                  schema_name);
                 } else {
-                        LOG_WARN("Using replacement id %d for schema name '%s' (previous id %d)\n",
+                        ovis_log(sh->sf->log, OVIS_LWARN,
+                                 "Using replacement id %d for schema name '%s' (previous id %d)\n",
                                  serdes_schema_id(current_schema),
                                  schema_name,
                                  serdes_schema_id(previous_schema));
                         serdes_schema_destroy(previous_schema);
                 }
         } else {
-                LOG_INFO("Using brand new id %d for schema name '%s'\n",
+                ovis_log(sh->sf->log, OVIS_LINFO,
+                         "Using brand new id %d for schema name '%s'\n",
                          serdes_schema_id(current_schema),
                          schema_name);
         }
@@ -212,7 +208,7 @@ static char *strip_whitespace(char *s)
 	return s;
 }
 
-static int parse_rd_conf_file(char *path, rd_kafka_conf_t *rd_conf)
+static int parse_rd_conf_file(char *path, rd_kafka_conf_t *rd_conf, ovis_log_t log)
 {
 	char err_str[512];
 	char line_buf[1024], *line;
@@ -224,12 +220,12 @@ static int parse_rd_conf_file(char *path, rd_kafka_conf_t *rd_conf)
 	res = rd_kafka_conf_set(rd_conf, "bootstrap.servers", "localhost:9092",
 				err_str, sizeof(err_str));
 	if (res) {
-		LOG_ERROR("Error '%s' setting the boostrap.servers default value.\n", err_str);
+		ovis_log(log, OVIS_LERROR, "Error '%s' setting the boostrap.servers default value.\n", err_str);
 		return EINVAL;
 	}
 	rd_f = fopen(path, "r");
 	if (!rd_f) {
-		LOG_ERROR("Error %d opening '%s'.\n", errno, path);
+		ovis_log(log, OVIS_LERROR, "Error %d opening '%s'.\n", errno, path);
 		return errno;
 	}
 	while (NULL != (line = fgets(line_buf, sizeof(line_buf), rd_f))) {
@@ -247,29 +243,29 @@ static int parse_rd_conf_file(char *path, rd_kafka_conf_t *rd_conf)
 		char *saveptr;
 		key = strtok_r(line, "=", &saveptr);
 		if (!key) {
-			LOG_ERROR("Ignoring mal-formed configuration line '%s'\n", line_buf);
+			ovis_log(log, OVIS_LERROR, "Ignoring mal-formed configuration line '%s'\n", line_buf);
 			continue;
 		}
 		value = strtok_r(NULL, "=", &saveptr);
 		if (!value) {
-			LOG_ERROR("Ignoring mal-formed configuration line '%s'\n", line_buf);
+			ovis_log(log, OVIS_LERROR, "Ignoring mal-formed configuration line '%s'\n", line_buf);
 			/* Ignore malformed line ... missing '=' */
 			continue;
 		}
 		/* Strip whitespace from key and value */
 		key = strip_whitespace(key);
 		value = strip_whitespace(value);
-		LOG_INFO("Applying rd_conf key='%s', value='%s'\n", key, value);
+		ovis_log(log, OVIS_LINFO, "Applying rd_conf key='%s', value='%s'\n", key, value);
 		res = rd_kafka_conf_set(rd_conf, key, value, err_str, sizeof(err_str));
 		if (res) {
-			LOG_ERROR("Ignoring configuration key '%s'\n", err_str);
+			ovis_log(log, OVIS_LERROR, "Ignoring configuration key '%s'\n", err_str);
 			continue;
 		}
 	}
 	return rc;
 }
 
-static int parse_serdes_conf_file(char *path, serdes_conf_t *s_conf)
+static int parse_serdes_conf_file(char *path, serdes_conf_t *s_conf, ovis_log_t log)
 {
 	char err_str[512];
 	char line_buf[1024], *line;
@@ -278,7 +274,7 @@ static int parse_serdes_conf_file(char *path, serdes_conf_t *s_conf)
 
 	FILE *rd_f = fopen(path, "r");
 	if (!rd_f) {
-		LOG_ERROR("Error %d opening '%s'.\n", errno, path);
+		ovis_log(log, OVIS_LERROR, "Error %d opening '%s'.\n", errno, path);
 		return errno;
 	}
 	while (NULL != (line = fgets(line_buf, sizeof(line_buf), rd_f))) {
@@ -296,22 +292,22 @@ static int parse_serdes_conf_file(char *path, serdes_conf_t *s_conf)
 		char *saveptr;
 		key = strtok_r(line, "=", &saveptr);
 		if (!key) {
-			LOG_ERROR("Ignoring mal-formed configuration line '%s'\n", line_buf);
+			ovis_log(log, OVIS_LERROR, "Ignoring mal-formed configuration line '%s'\n", line_buf);
 			continue;
 		}
 		value = strtok_r(NULL, "=", &saveptr);
 		if (!value) {
-			LOG_ERROR("Ignoring mal-formed configuration line '%s'\n", line_buf);
+			ovis_log(log, OVIS_LERROR, "Ignoring mal-formed configuration line '%s'\n", line_buf);
 			/* Ignore malformed line ... missing '=' */
 			continue;
 		}
 		/* Strip whitespace from key and value */
 		key = strip_whitespace(key);
 		value = strip_whitespace(value);
-		LOG_INFO("Applying s_conf key='%s', value='%s'\n", key, value);
+		ovis_log(log, OVIS_LINFO, "Applying s_conf key='%s', value='%s'\n", key, value);
 		res = serdes_conf_set(s_conf, key, value, err_str, sizeof(err_str));
 		if (res) {
-			LOG_ERROR("Ignoring serdes configuration key '%s'\n", err_str);
+			ovis_log(log, OVIS_LERROR, "Ignoring serdes configuration key '%s'\n", err_str);
 			continue;
 		}
 	}
@@ -329,24 +325,15 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	pthread_mutex_lock(&sk->sk_lock);
 
 	if (sk->g_rd_conf) {
-		LOG_ERROR("reconfiguration is not supported\n");
+		ovis_log(sk->log, OVIS_LERROR, "reconfiguration is not supported\n");
 		rc = EINVAL;
 		goto out;
-	}
-
-	if (!aks_log) {
-		/* Log initialization errors are quiet and will result in
-		 * messages going to the application log instead of our subsystem
-		 * specific log */
-		aks_log = ovis_log_register(STORE_AVRO_KAFKA,
-					    "Storage plugin that implements delivery of Avro "
-					    "serialized messages on the Kafka bus.");
 	}
 
 	sk->g_rd_conf = rd_kafka_conf_new();
 	if (!sk->g_rd_conf) {
 		rc = errno;
-		LOG_ERROR("rd_kafka_conf_new() failed %d\n", rc);
+		ovis_log(sk->log, OVIS_LERROR, "rd_kafka_conf_new() failed %d\n", rc);
 		goto out;
 	}
 
@@ -355,22 +342,22 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 			      "schema.registry.url", "http://localhost:8081");
 	if (!sk->g_serdes_conf) {
 		rc = EINVAL;
-		LOG_ERROR("serdes_conf_new failed '%s'\n", err_str);
+		ovis_log(sk->log, OVIS_LERROR, "serdes_conf_new failed '%s'\n", err_str);
 		goto out;
 	}
 
 	path = av_value(avl, "kafka_conf");
 	if (path) {
-		rc = parse_rd_conf_file(path, sk->g_rd_conf);
+		rc = parse_rd_conf_file(path, sk->g_rd_conf, sk->log);
 		if (rc) {
-			LOG_ERROR("Error %d parsing the Kafka configuration file '%s'", rc, path);
+			ovis_log(sk->log, OVIS_LERROR, "Error %d parsing the Kafka configuration file '%s'", rc, path);
 		}
 	}
 	path = av_value(avl, "serdes_conf");
 	if (path) {
-		rc = parse_serdes_conf_file(path, sk->g_serdes_conf);
+		rc = parse_serdes_conf_file(path, sk->g_serdes_conf, sk->log);
 		if (rc) {
-			LOG_ERROR("Error %d parsing the Kafka configuration file '%s'", rc, path);
+			ovis_log(sk->log, OVIS_LERROR, "Error %d parsing the Kafka configuration file '%s'", rc, path);
 		}
 	}
 	encoding = av_value(avl, "encoding");
@@ -380,7 +367,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		} else if (0 == strcasecmp(encoding, "json")) {
 			sk->g_serdes_encoding = AKS_ENCODING_JSON;
 		} else {
-			LOG_ERROR("Ignoring unrecognized serialization encoding '%s'\n", encoding);
+			ovis_log(sk->log, OVIS_LERROR, "Ignoring unrecognized serialization encoding '%s'\n", encoding);
 		}
 	} else {
 		if (0 == sk->g_serdes_encoding)
@@ -429,9 +416,10 @@ static aks_handle_t __handle_new(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp
 
 	aks_handle_t sh = calloc(1, sizeof(*sh));
 	if (!sh) {
-		LOG_ERROR("Memory allocation failure @%s:%d\n", __func__, __LINE__);
+		ovis_log(sk->log, OVIS_LERROR, "Memory allocation failure @%s:%d\n", __func__, __LINE__);
 		goto err_0;
 	}
+        sh->sf = sk;
 	rbt_init(&sh->schema_tree, schema_cmp);
 	sh->encoding = sk->g_serdes_encoding;
 	sh->topic_fmt = strdup(sk->g_topic_fmt);
@@ -444,13 +432,13 @@ static aks_handle_t __handle_new(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp
 
 	sh->serdes_conf = serdes_conf_copy(sk->g_serdes_conf);
 	if (!sh->serdes_conf) {
-		LOG_ERROR("%s creating serdes configuration\n", err_str);
+		ovis_log(sk->log, OVIS_LERROR, "%s creating serdes configuration\n", err_str);
 		goto err_2;
 	}
 
 	sh->serdes = serdes_new(sh->serdes_conf, err_str, sizeof(err_str));
 	if (!sh->serdes) {
-		LOG_ERROR("%s creating serdes\n", err_str);
+		ovis_log(sk->log, OVIS_LERROR, "%s creating serdes\n", err_str);
 		goto err_3;
 	}
 
@@ -461,14 +449,14 @@ static aks_handle_t __handle_new(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp
 					strgp->container, err_str, sizeof(err_str));
 		if (res != RD_KAFKA_CONF_OK) {
 			errno = EINVAL;
-			LOG_ERROR("rd_kafka_conf_set() error: %s\n", err_str);
+			ovis_log(sk->log, OVIS_LERROR, "rd_kafka_conf_set() error: %s\n", err_str);
 			goto err_2;
 		}
 	}
 
 	sh->rd = rd_kafka_new(RD_KAFKA_PRODUCER, sh->rd_conf, err_str, sizeof(err_str));
 	if (!sh->rd) {
-		LOG_ERROR("rd_kafka_new() error: %s\n", err_str);
+		ovis_log(sk->log, OVIS_LERROR, "rd_kafka_new() error: %s\n", err_str);
 		goto err_2;
 	}
 	sh->rd_conf = NULL; /* rd_kafka_new consumed and freed the conf */
@@ -683,7 +671,7 @@ static int set_avro_value_from_col(avro_value_t *col_value,
 }
 
 static int serialize_columns_of_row(avro_schema_t schema,
-                                    ldmsd_row_t row, avro_value_t *avro_row)
+                                    ldmsd_row_t row, avro_value_t *avro_row, ovis_log_t log)
 {
 	int rc, i;
 	ldmsd_col_t col;
@@ -697,7 +685,7 @@ static int serialize_columns_of_row(avro_schema_t schema,
 					    &avro_col, NULL);
 		free(avro_name);
 		if (rc) {
-			LOG_ERROR("Error %d retrieving '%s' from '%s' schema\n",
+			ovis_log(log, OVIS_LERROR, "Error %d retrieving '%s' from '%s' schema\n",
                                   rc, col->name, avro_schema_name(schema));
 			continue;
 		}
@@ -891,7 +879,8 @@ static char *get_topic_name(aks_handle_t sh, ldms_set_t set, ldmsd_row_t row)
 			topic = str_cat_s(str, ldms_set_producer_name_get(set));
 			break;
 		default:
-			LOG_ERROR("Illegal format specifier '%c' in topic format\n", *topic_fmt);
+			ovis_log(sh->sf->log, OVIS_LERROR,
+                                 "Illegal format specifier '%c' in topic format\n", *topic_fmt);
 		}
 		topic_fmt ++;
 	}
@@ -914,7 +903,7 @@ static int row_to_avro_payload(aks_handle_t sh, ldmsd_row_t row,
 
         serdes_schema = serdes_schema_find(sh, (char *)row->schema_name, NULL, row);
         if (!serdes_schema) {
-                LOG_ERROR("A serdes schema for '%s' could not be "
+                ovis_log(sh->sf->log, OVIS_LERROR, "A serdes schema for '%s' could not be "
                           "constructed.\n", row->schema_name);
                 rc = 1;
                 goto out1;
@@ -924,16 +913,16 @@ static int row_to_avro_payload(aks_handle_t sh, ldmsd_row_t row,
         avro_generic_value_new(class, &avro_row);
 
         /* Encode ldmsd_row_s as an Avro value */
-        rc = serialize_columns_of_row(schema, row, &avro_row);
+        rc = serialize_columns_of_row(schema, row, &avro_row, sh->sf->log);
         if (rc) {
-                LOG_ERROR("Failed to format row as Avro value, error: %d\n", rc);
+                ovis_log(sh->sf->log, OVIS_LERROR, "Failed to format row as Avro value, error: %d\n", rc);
                 goto out2;
         }
         /* Serialize an Avro value into a buffer */
         if (serdes_schema_serialize_avro(serdes_schema, &avro_row,
                                          payload, sizep,
                                          errstr, sizeof(errstr))) {
-                LOG_ERROR("Failed to serialize Avro row: '%s'\n", errstr);
+                ovis_log(sh->sf->log, OVIS_LERROR, "Failed to serialize Avro row: '%s'\n", errstr);
                 rc = 1;
                 goto out2;
         }
@@ -971,14 +960,14 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldm
 
 		char *topic_name = get_topic_name(sh, set, row);
 		if (!topic_name) {
-			LOG_ERROR("get_topic_name failed for schema '%s'\n", row->schema_name);
+			ovis_log(sh->sf->log, OVIS_LERROR, "get_topic_name failed for schema '%s'\n", row->schema_name);
 			continue;
 		}
-		LOG_DEBUG("topic name %s\n", topic_name);
+		ovis_log(sh->sf->log, OVIS_LDEBUG, "topic name %s\n", topic_name);
 		rkt = rd_kafka_topic_new(sh->rd, topic_name, NULL);
 		if (!rkt)
 		{
-			LOG_ERROR("rd_kafka_topic_new(\"%s\") failed, "
+			ovis_log(sh->sf->log, OVIS_LERROR, "rd_kafka_topic_new(\"%s\") failed, "
 				  "errno: %d\n",
 				  topic_name, errno);
 			goto skip_row_0;
@@ -987,7 +976,7 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldm
 		case AKS_ENCODING_AVRO:
                         rc = row_to_avro_payload(sh, row, &ser_buf, &ser_buf_size);
 			if (rc) {
-				LOG_ERROR("Failed to serialize row as AVRO object, error: %d", rc);
+				ovis_log(sh->sf->log, OVIS_LERROR, "Failed to serialize row as AVRO object, error: %d", rc);
 				goto skip_row_1;
 			}
 			break;
@@ -995,7 +984,7 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldm
 			/* Encode row as a JSON text object */
 			rc = ldmsd_row_to_json_object(row, (char **)&ser_buf, &ser_size);
 			if (rc) {
-				LOG_ERROR("Failed to serialize row as JSON object, error: %d", rc);
+				ovis_log(sh->sf->log, OVIS_LERROR, "Failed to serialize row as JSON object, error: %d", rc);
 				goto skip_row_1;
 			}
 			ser_buf_size = (size_t)ser_size;
@@ -1009,9 +998,9 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldm
 				      RD_KAFKA_MSG_F_FREE,
 				      ser_buf, ser_buf_size, NULL, 0, NULL);
 		if (rc) {
-			LOG_ERROR("rd_kafka_produce(\"%s\") failed, "
-				  "\"%s\"\n", topic_name,
-				  rd_kafka_err2str(rd_kafka_last_error()));
+			ovis_log(sh->sf->log, OVIS_LERROR,
+                                 "rd_kafka_produce(\"%s\") failed, \"%s\"\n",
+                                 topic_name, rd_kafka_err2str(rd_kafka_last_error()));
 			free(ser_buf);
 		}
 	skip_row_1:
@@ -1030,6 +1019,7 @@ static int constructor(ldmsd_plug_handle_t handle) {
         if (!sk) {
                 return ENOMEM;
         }
+        sk->log = ldmsd_plug_log_get(handle);
         pthread_mutex_init(&sk->sk_lock, NULL);
         ldmsd_plug_ctxt_set(handle, sk);
 
@@ -1050,7 +1040,7 @@ static void destructor(ldmsd_plug_handle_t handle) {
         free(sk);
 }
 
-static struct ldmsd_store kafka_store = {
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base.type   = LDMSD_PLUGIN_STORE,
 	.base.name   = "store_avro_kafka",
 	.base.config = config,
@@ -1060,22 +1050,3 @@ static struct ldmsd_store kafka_store = {
 	.close       = close_store,
 	.commit      = commit_rows,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	if (!aks_log) {
-		/* Log initialization errors are quiet and will result in
-		 * messages going to the application log instead of our subsystem
-		 * specific log */
-		aks_log = ovis_log_register("store.avro_kafka",
-					    "Storage plugin that implements delivery of Avro "
-					    "serialized messages on the Kafka bus.");
-		if (!aks_log) {
-			rc = errno;
-			ovis_log(NULL, OVIS_LWARN,
-				"Error %d creating the log subsystem 'store.avro_kafka'.", rc);
-		}
-	}
-	return &kafka_store.base;
-}

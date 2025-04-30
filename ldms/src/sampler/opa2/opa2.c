@@ -556,24 +556,26 @@ static void SAPI(term)(ldmsd_plug_handle_t handle)
 	}
 }
 
-static struct ldmsd_sampler SAPI(plugin) = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = SAPI(term),
 		.config = SAPI(config),
 		.usage = SAPI(usage),
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = SAPI(sample),
 };
-
-struct ldmsd_plugin *get_plugin() {
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	return &SAPI(plugin).base;
-}

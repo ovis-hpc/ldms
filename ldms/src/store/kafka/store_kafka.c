@@ -386,24 +386,25 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldm
 	return 0;
 }
 
-static struct ldmsd_store store_kafka = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base.name = "kafka",
 	.base.term = term,
 	.base.config = config,
 	.base.usage = usage,
 	.base.type = LDMSD_PLUGIN_STORE,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
 	.close = close_store,
 	.commit = commit_rows,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store.kafka", "Log subsystem of the 'kafka' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'kafka' plugin. Error %d\n", rc);
-	}
-	return &store_kafka.base;
-}

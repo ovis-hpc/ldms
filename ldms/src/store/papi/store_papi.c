@@ -647,30 +647,31 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 	free(si);
 }
 
-static struct ldmsd_store store_papi = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
 		.name = STORE,
 		.config = config,
 		.usage = usage,
 		.type = LDMSD_PLUGIN_STORE,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.open = open_store,
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store."STORE, "The log subsystem of " STORE " store plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the "
-				"log subsystem of %s. Error %d", STORE, rc);
-	}
-	return &store_papi.base;
-}
 
 static void __attribute__ ((constructor)) store_papi_init();
 static void store_papi_init()

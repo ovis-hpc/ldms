@@ -153,15 +153,13 @@ static struct ldmsd_plugin_generic *load_plugin(const char *plugin_name)
 		goto err_1;
 	}
 
-	ldmsd_plugin_get_f pget;
-	pget = dlsym(plugin->dl_handle, "get_plugin");
-        if (!pget) {
+        plugin->api = dlsym(plugin->dl_handle, "ldmsd_plugin_interface");
+        if (!plugin->api) {
 		ovis_log(config_log, OVIS_LWARNING,
 			"The library, '%s',  is missing the ldmsd_plugin_interface "
 			"symbol.", plugin_name);
                 goto err_2;
 	}
-	plugin->api = pget();
 
 	/* Verify the following API contract:
 	 * - If flags & MULTI_INSTANCE is !0, then

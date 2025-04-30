@@ -418,7 +418,7 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 	free(is);
 }
 
-static struct ldmsd_store store_influx = {
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
 		.name = "influx",
 		.config = config,
@@ -429,11 +429,6 @@ static struct ldmsd_store store_influx = {
 	.store = store,
 	.close = close_store,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	return &store_influx.base;
-}
 
 static void __attribute__ ((constructor)) store_influx_init();
 static void store_influx_init()

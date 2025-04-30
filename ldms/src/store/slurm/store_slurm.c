@@ -981,31 +981,32 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 	free(si);
 }
 
-static struct ldmsd_store slurm_store = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
 		.name = STORE,
 		.term = term,
 		.config = config,
 		.usage = usage,
 		.type = LDMSD_PLUGIN_STORE,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.open = open_store,
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store."STORE, "Log susbsystem of " STORE " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-				"of '" STORE "' plugin. Error %d\n", rc);
-	}
-	return &slurm_store.base;
-}
 
 static void __attribute__ ((constructor)) store_slurm_init();
 static void store_slurm_init()

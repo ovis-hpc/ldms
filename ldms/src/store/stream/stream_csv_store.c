@@ -1485,25 +1485,25 @@ static const char* usage(ldmsd_plug_handle_t handle)
 	"\n";
 }
 
-static struct ldmsd_store stream_csv_store = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
 		.name = "stream_csv_store",
 		.type = LDMSD_PLUGIN_STORE,
 		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 };
-
-struct ldmsd_plugin* get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store.stream_csv_store",
-				"Log subsystem of the 'stream_csv_store' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'stream_csv_store' plugin. Error %d\n", rc);
-	}
-	return &stream_csv_store.base;
-}

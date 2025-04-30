@@ -2333,10 +2333,11 @@ static int constructor(ldmsd_plug_handle_t handle)
 
         sc = calloc(1, sizeof(*sc));
         if (sc == NULL) {
-		ovis_log(NULL, OVIS_LERROR,
+		ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
                          "Failed to allocate context in plugin store_csv: %d", errno);
                 return ENOMEM;
         }
+	mylog = ldmsd_plug_log_get(handle);
         ldmsd_plug_ctxt_set(handle, sc);
 
         return 0;
@@ -2362,7 +2363,7 @@ static void destructor(ldmsd_plug_handle_t handle)
         free(sc);
 }
 
-static struct ldmsd_store store_csv = {
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base.type   = LDMSD_PLUGIN_STORE,
 	.base.flags  = LDMSD_PLUGIN_MULTI_INSTANCE,
 	.base.name   = "store_csv",
@@ -2376,18 +2377,6 @@ static struct ldmsd_store store_csv = {
 	.close       = close_store,
 	.commit      = commit_rows,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-        int rc;
-        mylog = ovis_log_register("store."PNAME, "The log subsystem of '" PNAME "' plugin");
-        if (!mylog) {
-                rc = errno;
-                ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-                                "of '" PNAME "' plugin. Error %d\n", rc);
-        }
-        return &store_csv.base;
-}
 
 static void __attribute__ ((constructor)) store_csv_init();
 static void store_csv_init()

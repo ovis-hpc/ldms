@@ -1743,7 +1743,7 @@ static void destructor(ldmsd_plug_handle_t handle)
         free(ss);
 }
 
-static struct ldmsd_store sos_store = {
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base.type   = LDMSD_PLUGIN_STORE,
 	.base.flags  = LDMSD_PLUGIN_MULTI_INSTANCE,
 	.base.name   = "store_sos",
@@ -1758,11 +1758,6 @@ static struct ldmsd_store sos_store = {
 	.close       = close_store,
 	.commit      = commit_rows,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	return &sos_store.base;
-}
 
 static void __attribute__ ((constructor)) store_sos_init();
 static void store_sos_init()

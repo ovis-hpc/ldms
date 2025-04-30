@@ -509,22 +509,22 @@ static void term(ldmsd_plug_handle_t handle)
 	stream = NULL;
 }
 
-static struct ldmsd_plugin stream_store = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_plugin ldmsd_plugin_interface = {
 	.name = STREAM "_store",
 	.term = term,
 	.config = config,
 	.usage = usage,
+        .constructor = constructor,
+        .destructor = destructor,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store.linux_proc_sampler_files_store",
-				"log subsystem of 'linux_proc_sampler_files_store' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Faild to create the log subsystem "
-				"of 'linux_proc_sampler_files_store' plugin. Error %d\n", rc);
-	}
-	return &stream_store;
-}

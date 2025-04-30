@@ -595,27 +595,28 @@ store_app_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	return 0;
 }
 
-static struct ldmsd_store store_app = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
 		.name = "store_app",
 		.config = store_app_config,
 		.usage = store_app_usage,
 		.type = LDMSD_PLUGIN_STORE,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.open = store_app_open,
 	.store = store_app_store,
 	.flush = store_app_flush,
 	.close = store_app_close,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store.store_app", "Log subsystem of the 'store_app' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'store_app' plugin. Error %d\n", rc);
-	}
-	return &store_app.base;
-}

@@ -69,19 +69,13 @@
 #include "../daos.h"
 #include "../rank_target.h"
 
-extern struct ldmsd_plugin *get_plugin();
-
 int basic_smoke_test(void)
 {
 	int rc;
 	struct ldmsd_cfgobj *plugin = NULL;
 	struct ldmsd_plugin_cfg *cfg = NULL;
 
-	plugin = get_plugin();
-	if (!plugin) {
-		ovis_log(NULL, OVIS_LERROR, "get_plugin failed\n");
-		return -1;
-	}
+	plugin = ldmsd_plugin_interface;
 
 	cfg = malloc(sizeof(*cfg));
 	if (!cfg) {

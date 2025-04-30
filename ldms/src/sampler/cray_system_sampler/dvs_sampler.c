@@ -715,31 +715,32 @@ static void term(ldmsd_plug_handle_t handle)
 	num_cfgmetrics = 0;
 }
 
-static struct ldmsd_sampler dvs_plugin = {
+static int mount_comparator(void *a, const void *b)
+{
+	return strcmp(a, b);
+}
+
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	rbt_init(&mount_tree, mount_comparator);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-static int mount_comparator(void *a, const void *b)
-{
-	return strcmp(a, b);
-}
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	rbt_init(&mount_tree, mount_comparator);
-	return &dvs_plugin.base;
-}

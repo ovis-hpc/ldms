@@ -760,25 +760,26 @@ static void term(ldmsd_plug_handle_t handle)
 		ovis_log_deregister(g.mylog);
 }
 
-static struct ldmsd_sampler procstat_plugin = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	g.mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	g.mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!g.mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	return &procstat_plugin.base;
-}

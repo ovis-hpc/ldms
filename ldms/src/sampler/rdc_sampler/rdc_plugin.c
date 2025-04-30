@@ -135,28 +135,35 @@ static const char *usage(ldmsd_plug_handle_t handle) {
 	return usage_str;
 }
 
-static struct ldmsd_sampler plugin = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	singleton = rdcinfo_new(ldmsd_plug_log_get(handle));
+	if (!singleton) {
+		ovis_log(ldmsd_plug_log_get(handle),
+                         OVIS_LERROR, SAMP ": unable to allocate singleton\n");
+		errno = ENOMEM;
+		return -1;
+	}
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	singleton = rdcinfo_new();
-	if (!singleton) {
-		ovis_log(singleton->mylog, OVIS_LERROR, SAMP ": unable to allocate singleton\n");
-		errno = ENOMEM;
-		return NULL;
-	}
-	ovis_log(singleton->mylog, OVIS_LDEBUG, SAMP ": get_plugin called\n");
-	return &plugin.base;
-}
 
 static void __attribute__ ((destructor)) rdc_plugin_fini(void);
 static void rdc_plugin_fini()

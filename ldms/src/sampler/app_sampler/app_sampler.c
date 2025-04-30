@@ -1722,7 +1722,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 	free(inst);
 };
 
-static struct ldmsd_sampler app_sampler_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base.name = SAMP,
 	.base.type = LDMSD_PLUGIN_SAMPLER,
 	.base.flags = LDMSD_PLUGIN_MULTI_INSTANCE,
@@ -1733,11 +1733,6 @@ static struct ldmsd_sampler app_sampler_plugin = {
 
 	.sample = app_sampler_sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	return &app_sampler_plugin.base;
-}
 
 __attribute__((constructor))
 static void __init__()

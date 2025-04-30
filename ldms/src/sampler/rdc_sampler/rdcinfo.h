@@ -103,7 +103,7 @@ struct rdcinfo_inst_s {
 char * rdcinfo_usage();
 
 // create unconfigured instance
-rdcinfo_inst_t rdcinfo_new();
+rdcinfo_inst_t rdcinfo_new(ovis_log_t mylog);
 
 // clear all configuration except log and lock. caller must hold inst->lock if multithreaded.
 void rdcinfo_reset(rdcinfo_inst_t);
