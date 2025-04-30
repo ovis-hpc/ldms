@@ -12,8 +12,18 @@
 #include "comp_id_helper.h"
 #include "sampler_base.h"
 
+
 int llite_general_schema_is_initialized();
-int llite_general_schema_init(comp_id_t cid);
+
+#define EXTRA215 0x1
+#define EXTRATIMES 0x2
+/*
+ * \param schema_extras is composed of the bit flags EXTRA* above
+ * to enable extra items. Fixed names for the schema variants
+ * are defined as lustre_client_%d, with the value of schema_extras,
+ * unless schema_extras==0.
+ */
+int llite_general_schema_init(comp_id_t cid, int schema_extras);
 void llite_general_schema_fini();
 ldms_set_t llite_general_create(const char *producer_name,
                                 const char *fs_name,
