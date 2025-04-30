@@ -68,6 +68,20 @@ CONFIGURATION ATTRIBUTE SYNTAX
    perm=<octal number>
       |
       | Set the access permissions for the metric sets. (default 440).
+   extra215=1
+      |
+      | Enable lustre 2.15 new metrics; this appends a small number, unique
+        to the choice of extras, to the default schema name.
+   extratimes=1
+      |
+      | Enable start and elapsed time metrics (rounded to seconds). This
+        appends a small number, unique to the choice of extras, to the
+        default schema name.
+   test_path=<LLITE_DIR>
+      |
+      | This debugging option instructs the plugin to read data from a
+        directory containing a static snapshot of an llite directory
+        instead of from debugfs files.
 
 NOTES
 =====
