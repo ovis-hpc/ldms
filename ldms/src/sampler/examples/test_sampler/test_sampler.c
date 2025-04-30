@@ -2023,7 +2023,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 	}
 }
 
-static struct ldmsd_sampler test_sampler = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base.name = SAMP,
 	.base.type = LDMSD_PLUGIN_SAMPLER,
 	.base.flags = LDMSD_PLUGIN_MULTI_INSTANCE,
@@ -2034,8 +2034,3 @@ static struct ldmsd_sampler test_sampler = {
 
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	return &test_sampler.base;
-}

@@ -1002,7 +1002,7 @@ struct ldmsd_store {
 
 /**
  * struct ldmsd_plugin_generic is used to track generic information common to
- * all plugins that implement the ldms get_plugin() function.
+ * all plugins that implement the ldmsd_plugin_interface symbol.
  * NOTE: This is an ldmsd internals data structure.
  *       Not to be used from inside plugins.
  */
@@ -1163,8 +1163,6 @@ ldmsd_store_close(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 	if (store->api->close)
 		store->api->close(store, sh);
 }
-
-typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)();
 
 /* ldmsctl command callback function definition */
 typedef int (*ldmsctl_cmd_fn_t)(char *, struct attr_value_list*, struct attr_value_list *);

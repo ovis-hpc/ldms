@@ -570,26 +570,27 @@ static const char *usage(ldmsd_plug_handle_t handle)
 		"    <rtrid>        Optional unique rtr string identifier. Defaults to 0 length string.\n";
 }
 
-static struct ldmsd_sampler aries_rtr_mmr_plugin = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+        set = NULL;
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.name = "aries_rtr_mmr",
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler.aries_rtr_mmr", "Message for the aries_rtr_mmr plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of 'aries_rtr_mmr' plugin. Error %d\n", rc);
-	}
-	set = NULL;
-	return &aries_rtr_mmr_plugin.base;
-}

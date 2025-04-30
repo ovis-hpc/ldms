@@ -189,19 +189,13 @@ static void destructor(ldmsd_plug_handle_t handle)
         free(hf);
 }
 
-static struct ldmsd_sampler plugin_api;
-
-struct ldmsd_plugin *get_plugin()
-{
-	timer_base_init_api(&plugin_api);
-	/* override */
-	snprintf(plugin_api.base.name, sizeof(plugin_api.base.name),
-			"hfclock");
-	plugin_api.base.usage = hfclock_usage;
-        plugin_api.base.constructor = constructor;
-        plugin_api.base.destructor = destructor;
-	plugin_api.base.term = NULL;
-	plugin_api.base.config = hfclock_config;
-
-	return &plugin_api.base;
-}
+struct ldmsd_sampler ldmsd_plugin_interface = {
+        .base.name = "hfclock",
+        .base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.term = NULL,
+	.base.config = hfclock_config,
+	.base.usage = hfclock_usage,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
+	.sample = timer_base_sample,
+};

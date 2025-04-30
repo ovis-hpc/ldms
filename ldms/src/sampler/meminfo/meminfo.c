@@ -242,7 +242,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 	free(mi);
 };
 
-static struct ldmsd_sampler meminfo_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base.name = SAMP,
 	.base.type = LDMSD_PLUGIN_SAMPLER,
 	.base.flags = LDMSD_PLUGIN_MULTI_INSTANCE,
@@ -253,8 +253,3 @@ static struct ldmsd_sampler meminfo_plugin = {
 
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	return &meminfo_plugin.base;
-}

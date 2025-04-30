@@ -1283,33 +1283,34 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 	}
 }
 
-static struct ldmsd_store store_rabbitv3 = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	ovis_log(mylog, OVIS_LINFO,"Loading support for rabbitmq amqp version%s\n",
+			amqp_version());
+	rabbit_store_pi_log_set(mylog);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
 		.name = "rabbitv3",
 		.type = LDMSD_PLUGIN_STORE,
 		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.open = open_store,
 	.store = store,
 	.close = close_store,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store.rabbitv3", "Log subsystem of the 'rabbitv3' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'rabbitv3' plugin. Error %d\n", rc);
-	}
-	ovis_log(mylog, OVIS_LINFO,"Loading support for rabbitmq amqp version%s\n",
-			amqp_version());
-	rabbit_store_pi_log_set(mylog);
-	return &store_rabbitv3.base;
-}
 
 static void __attribute__ ((constructor)) store_rabbitv3_init();
 static void store_rabbitv3_init()

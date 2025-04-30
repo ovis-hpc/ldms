@@ -250,29 +250,29 @@ static const char *usage(ldmsd_plug_handle_t handle)
 	return "config name=" SAMP " " BASE_CONFIG_SYNOPSIS BASE_CONFIG_DESC;
 }
 
-struct ldmsd_plugin *get_plugin()
+static int constructor(ldmsd_plug_handle_t handle)
 {
-	int rc;
-	static struct ldmsd_sampler plugin = {
-		.base = {
-			 .name = SAMP,
-			 .type = LDMSD_PLUGIN_SAMPLER,
-			 .term = term,
-			 .config = config,
-			 .usage = usage,
-			 },
-		.sample = sample,
-	};
+	mylog = ldmsd_plug_log_get(handle);
 
-        mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-        if (!mylog) {
-                rc = errno;
-                ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-                                        "of '" SAMP "' plugin. Error %d\n", rc);
-        }
-
-	return &plugin.base;
+        return 0;
 }
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
+        .base = {
+                .name = SAMP,
+                .type = LDMSD_PLUGIN_SAMPLER,
+                .term = term,
+                .config = config,
+                .usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
+        },
+        .sample = sample,
+};
 
 static int vdevs_count(zpool_handle_t * zhp, void *data)
 {

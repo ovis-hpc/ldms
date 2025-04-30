@@ -992,21 +992,22 @@ static void term(ldmsd_plug_handle_t handle)
 		free(root_path);
 }
 
-static struct ldmsd_plugin kokkos_store = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_plugin ldmsd_plugin_interface = {
 	.name = "kokkos_store",
 	.term = term,
 	.config = config,
 	.usage = usage,
+        .constructor = constructor,
+        .destructor = destructor,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store.kokkos_store", "Log subsystem of the 'kokkos_store' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'kokkos_store' plugin. Error %d\n", rc);
-	}
-	return &kokkos_store;
-}

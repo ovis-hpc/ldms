@@ -4107,8 +4107,7 @@ static void destructor(ldmsd_plug_handle_t handle)
         free(inst);
 }
 
-static
-struct ldmsd_sampler plugin_inst = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
         .base.name = SAMP,
         .base.type = LDMSD_PLUGIN_SAMPLER,
         .base.constructor = constructor,
@@ -4118,11 +4117,6 @@ struct ldmsd_sampler plugin_inst = {
         .base.usage = linux_proc_sampler_usage,
         .sample = linux_proc_sampler_sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	return &plugin_inst.base;
-}
 
 __attribute__((destructor))
 static

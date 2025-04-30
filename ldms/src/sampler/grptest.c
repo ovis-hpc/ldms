@@ -261,36 +261,38 @@ static void term(ldmsd_plug_handle_t handle)
 	grp = NULL;
 }
 
-static struct ldmsd_sampler meminfo_plugin = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	if (!sc) {
+                int rc;
+		sc = ldms_schema_new("set_schema");
+		if (!sc)
+			return -1;
+		rc = ldms_schema_metric_add(sc, "counter", LDMS_V_U32);
+		if (rc) {
+			ldms_schema_delete(sc);
+			sc = NULL;
+			return -1;
+		}
+	}
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	if (!sc) {
-		sc = ldms_schema_new("set_schema");
-		if (!sc)
-			return NULL;
-		rc = ldms_schema_metric_add(sc, "counter", LDMS_V_U32);
-		if (rc) {
-			ldms_schema_delete(sc);
-			sc = NULL;
-			return NULL;
-		}
-	}
-	return &meminfo_plugin.base;
-}

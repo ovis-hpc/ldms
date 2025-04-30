@@ -3034,32 +3034,32 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_hand
 	free(s_handle); //FIXME: should this happen?
 }
 
-static struct ldmsd_store store_function_csv = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
 			.name = "function_csv",
 			.type = LDMSD_PLUGIN_STORE,
 			.term = term,
 			.config = config,
 			.usage = usage,
+                        .constructor = constructor,
+                        .destructor = destructor,
 	},
 	.open = open_store,
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store.store_function_csv", "The log subsystem of "
-						"'store_function_csv' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-				"of 'store_function_csv' plugin. Error %d\n", rc);
-	}
-	return &store_function_csv.base;
-}
 
 static void __attribute__ ((constructor)) store_function_csv_init();
 static void store_function_csv_init()

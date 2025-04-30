@@ -10,7 +10,7 @@ libibmad_records_sampler_la_LIBADD = \
 	$(LTLIBIBMAD) $(LTLIBIBUMAD)
 libibmad_records_sampler_la_LDFLAGS = \
 	-no-undefined \
-        -export-symbols-regex 'get_plugin'
+        -export-symbols-regex 'ldmsd_plugin_interface'
 libibmad_records_sampler_la_CPPFLAGS = \
 	@OVIS_INCLUDE_ABS@ \
 	-I/usr/include/infiniband

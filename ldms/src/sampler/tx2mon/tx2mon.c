@@ -623,31 +623,33 @@ static int sample(ldmsd_plug_handle_t handle)
 	return rc;
 }
 
-static struct ldmsd_sampler tx2mon_plugin = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	int i;
+
+	mylog = ldmsd_plug_log_get(handle);
+	for (i = 0; i < MAX_CPUS_PER_SOC; i++)
+		set[i] = NULL;
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	int i;
-	for (i = 0; i < MAX_CPUS_PER_SOC; i++)
-		set[i] = NULL;
-	return &tx2mon_plugin.base;
-}
 
 /***************************************************************************/
 

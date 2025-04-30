@@ -331,26 +331,26 @@ static const char *usage(ldmsd_plug_handle_t handle)
 	return  "config name=" SAMP BASE_CONFIG_USAGE;
 }
 
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
 
-static struct ldmsd_sampler kgnilnd_plugin = {
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	return &kgnilnd_plugin.base;
-}

@@ -646,29 +646,30 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static struct ldmsd_sampler blob_stream_writer = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	LIST_INIT(&data_list);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 			.name = "blob_stream_writer",
 			.type = LDMSD_PLUGIN_SAMPLER,
 			.term = term,
 			.config = config,
 			.usage = usage,
+                        .constructor = constructor,
+                        .destructor = destructor,
 	},
 	.sample = sample
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler.blob_stream_writer", "Message for the blob_stream_writer plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of 'blob_stream_writer' plugin. Error %d\n", rc);
-	}
-	LIST_INIT(&data_list);
-	return &blob_stream_writer.base;
-}
 
 static void __attribute__ ((constructor)) blob_stream_writer_init();
 static void blob_stream_writer_init()

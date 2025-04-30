@@ -725,26 +725,10 @@ __stream_cb(ldms_stream_event_t ev, void *ctxt)
 	return 0;
 }
 
-static struct ldmsd_sampler syspapi_plugin = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-	},
-	.sample = sample,
-};
-
-struct ldmsd_plugin *get_plugin()
+static int constructor(ldmsd_plug_handle_t handle)
 {
 	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
-	}
+	mylog = ldmsd_plug_log_get(handle);
 	rc = PAPI_library_init(PAPI_VER_CURRENT);
 	if (rc < 0) {
 		ovis_log(mylog, OVIS_LERROR, "Error %d attempting to initialize "
@@ -758,5 +742,23 @@ struct ldmsd_plugin *get_plugin()
 	}
 	register_task_init_hook(__on_task_init);
 	register_task_empty_hook(__on_task_empty);
-	return &syspapi_plugin.base;
+
+        return 0;
 }
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
+	.base = {
+		.name = SAMP,
+		.type = LDMSD_PLUGIN_SAMPLER,
+		.term = term,
+		.config = config,
+		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
+	},
+	.sample = sample,
+};

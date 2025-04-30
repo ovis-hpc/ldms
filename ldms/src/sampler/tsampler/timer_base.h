@@ -79,8 +79,6 @@ struct timer_base {
 	char pname[1024]; /* producer name for internal use */
 };
 
-void timer_base_init_api(struct ldmsd_sampler *api);
-
 void timer_base_init(struct timer_base *tb);
 
 int timer_base_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
