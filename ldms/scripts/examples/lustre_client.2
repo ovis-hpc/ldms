@@ -1,0 +1,3 @@
+load name=${plugname}
+config name=${plugname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i} job_set=localhost${i}/jobid
+start name=${plugname} interval=1000000 offset=0

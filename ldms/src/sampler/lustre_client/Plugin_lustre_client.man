@@ -50,6 +50,19 @@ Optional (defaults to 0) number of the host where the sampler is running. All se
 perm=<octal number>
 .br
 Set the access permissions for the metric sets. (default 440).
+.TP
+extra215=1
+.br
+Enable lustre 2.15 new metrics; this appends a small number, unique to the choice of extras, to the default schema name.
+.TP
+extratimes=1
+.br
+Enable start and elapsed time metrics (rounded to seconds). This appends a small number, unique to the choice of extras, to the default schema name.
+.TP
+test_path=LLITE_DIR
+.br
+This debugging option instructs the plugin to read data from a directory containing a static snapshot
+of an llite directory instead of from debugfs files.
 .RE
 
 .SH NOTES
