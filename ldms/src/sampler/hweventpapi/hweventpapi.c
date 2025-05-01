@@ -1420,7 +1420,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
-	.base.name = "spapi",
 	.base.type = LDMSD_PLUGIN_SAMPLER,
 	.base.term = term,
 	.base.config = config,

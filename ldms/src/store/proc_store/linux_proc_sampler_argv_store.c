@@ -468,7 +468,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 }
 
 struct ldmsd_plugin ldmsd_plugin_interface = {
-	.name = STREAM "_store",
 	.term = term,
 	.config = config,
 	.usage = usage,

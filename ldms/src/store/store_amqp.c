@@ -903,7 +903,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 static struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-		.name = "amqp",
 		.type = LDMSD_PLUGIN_STORE,
 		.term = term,
 		.config = config,

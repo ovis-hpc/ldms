@@ -398,7 +398,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 }
 
 struct ldmsd_store ldmsd_plugin_interface = {
-	.base.name = "kafka",
 	.base.term = term,
 	.base.config = config,
 	.base.usage = usage,

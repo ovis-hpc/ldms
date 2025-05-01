@@ -608,7 +608,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-		.name = "store_app",
 		.config = store_app_config,
 		.usage = store_app_usage,
 		.type = LDMSD_PLUGIN_STORE,

@@ -962,7 +962,6 @@ char *process_yaml_config_file(const char *path, const char *dname);
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 /* This struct is owned by the plugin. ldmsd should never modify the contents. */
 typedef struct ldmsd_plugin {
-	char name[LDMSD_MAX_PLUGIN_NAME_LEN]; /* plugin name (e.g. meminfo) */
 	enum ldmsd_plugin_type {
 		LDMSD_PLUGIN_OTHER = 0,
 		LDMSD_PLUGIN_SAMPLER,
@@ -1008,6 +1007,7 @@ struct ldmsd_store {
  */
 struct ldmsd_plugin_generic {
         struct ldmsd_plugin *api;
+        char *name;
         char *libpath;
         void *dl_handle; /* handle that was returned by dlopen() */
 };

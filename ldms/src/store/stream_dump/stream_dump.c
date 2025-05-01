@@ -319,7 +319,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-		.name = "stream_dump",
 		.term = __term,
 		.config = __config,
 		.usage = __usage,
