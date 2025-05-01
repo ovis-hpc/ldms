@@ -1009,6 +1009,7 @@ struct ldmsd_store {
 struct ldmsd_plugin_generic {
         struct ldmsd_plugin *api;
         char *libpath;
+        void *dl_handle; /* handle that was returned by dlopen() */
 };
 
 typedef struct ldmsd_cfgobj_sampler *ldmsd_cfgobj_sampler_t;

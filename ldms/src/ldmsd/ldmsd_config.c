@@ -114,7 +114,6 @@ static struct ldmsd_plugin_generic *load_plugin(const char *plugin_name)
 	char *pathdir = library_path;
 	char *saveptr = NULL;
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
-	void *d = NULL;
 
         plugin = calloc(1, sizeof(*plugin));
         if (!plugin) {
@@ -135,8 +134,8 @@ static struct ldmsd_plugin_generic *load_plugin(const char *plugin_name)
 		pathdir = NULL;
 		snprintf(library_name, sizeof(library_name), "%s/lib%s.so",
 			libpath, plugin_name);
-		d = dlopen(library_name, RTLD_NOW);
-		if (d != NULL) {
+		plugin->dl_handle = dlopen(library_name, RTLD_NOW);
+		if (plugin->dl_handle != NULL) {
 			break;
 		}
 		struct stat buf;
@@ -147,7 +146,7 @@ static struct ldmsd_plugin_generic *load_plugin(const char *plugin_name)
 			goto err_1;
 		}
 	}
-	if (!d) {
+	if (!plugin->dl_handle) {
 		char *dlerr = dlerror();
 		ovis_log(config_log, OVIS_LERROR, "Failed to load the plugin '%s': "
 				"dlerror %s\n", plugin_name, dlerr);
@@ -155,12 +154,12 @@ static struct ldmsd_plugin_generic *load_plugin(const char *plugin_name)
 	}
 
 	ldmsd_plugin_get_f pget;
-	pget = dlsym(d, "get_plugin");
-	if (!pget) {
-		ovis_log(config_log, OVIS_LERROR,
-			"The library, '%s',  is missing the get_plugin() "
-			"function.", plugin_name);
-		goto err_2;
+	pget = dlsym(plugin->dl_handle, "get_plugin");
+        if (!pget) {
+		ovis_log(config_log, OVIS_LWARNING,
+			"The library, '%s',  is missing the ldmsd_plugin_interface "
+			"symbol.", plugin_name);
+                goto err_2;
 	}
 	plugin->api = pget();
 
@@ -186,7 +185,7 @@ static struct ldmsd_plugin_generic *load_plugin(const char *plugin_name)
 	return plugin;
 
 err_2:
-        dlclose(d);
+        dlclose(plugin->dl_handle);
 err_1:
         free(plugin);
 err_0:
@@ -198,6 +197,7 @@ static void unload_plugin(struct ldmsd_plugin_generic *plugin)
         assert(plugin != NULL);
         free(plugin->libpath);
         plugin->api = NULL; /* about to be defunct when dlclose() is called */
+        dlclose(plugin->dl_handle);
         free(plugin);
 }
 
