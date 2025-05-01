@@ -178,6 +178,7 @@ static struct ldmsd_plugin_generic *load_plugin(const char *plugin_name)
 		}
 	}
 
+        plugin->name = strdup(plugin_name);
         plugin->libpath = strdup(library_name);
 
 	return plugin;
@@ -193,6 +194,7 @@ err_0:
 static void unload_plugin(struct ldmsd_plugin_generic *plugin)
 {
         assert(plugin != NULL);
+        free(plugin->name);
         free(plugin->libpath);
         plugin->api = NULL; /* about to be defunct when dlclose() is called */
         dlclose(plugin->dl_handle);
@@ -219,7 +221,7 @@ ldmsd_sampler_add(const char *cfg_name,
 			 errno, cfg_name);
 		return NULL;
 	}
-	sprintf(log_name, "sampler.%s.%s", plugin->api->name, cfg_name);
+	sprintf(log_name, "sampler.%s.%s", plugin->name, cfg_name);
 	sampler->log = ovis_log_register(log_name, "Sampler plugin log file.");
         sampler->plugin = plugin;
 	sampler->api = (struct ldmsd_sampler *)plugin->api;
@@ -265,7 +267,7 @@ ldmsd_store_add(const char *cfg_name,
 			 errno, cfg_name);
 		return NULL;
 	}
-	sprintf(log_name, "store.%s.%s", plugin->api->name, cfg_name);
+	sprintf(log_name, "store.%s.%s", plugin->name, cfg_name);
 	store->log = ovis_log_register(log_name, "Store plugin log file.");
         store->plugin = plugin;
 	store->api = (struct ldmsd_store *)plugin->api;
@@ -419,12 +421,12 @@ int ldmsd_load_plugin(char *cfg_name, char *plugin_name,
 			errno, plugin_name);
 		goto err;
 	}
-	sprintf(&log_name[strlen(log_name)], "%s.%s", plugin->api->name, cfgobj->name);
+	sprintf(&log_name[strlen(log_name)], "%s.%s", plugin_name, cfgobj->name);
 	ovis_log_t log = ovis_log_register(log_name, "Plugin log file");
 	if (!log)
 		ovis_log(NULL, OVIS_LWARN,
 			 "Error %d creating the log for the '%s' plugin.\n",
-			 errno, plugin->api->name);
+			 errno, plugin_name);
 	if (plugin->api->type == LDMSD_PLUGIN_SAMPLER)
 		sampler->log = log;
 	else

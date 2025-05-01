@@ -270,7 +270,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface  = {
-	.base.name = "cray_power_sampler",
         .base.type = LDMSD_PLUGIN_SAMPLER,
         .base.term = timer_base_term,
 	.base.usage = cray_power_sampler_usage,

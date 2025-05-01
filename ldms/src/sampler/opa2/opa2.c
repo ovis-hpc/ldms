@@ -569,7 +569,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = SAPI(term),
 		.config = SAPI(config),

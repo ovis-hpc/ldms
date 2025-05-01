@@ -270,7 +270,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-			.name = PNAME,
 			.type = LDMSD_PLUGIN_STORE,
 			.config = config,
 			.usage = usage,

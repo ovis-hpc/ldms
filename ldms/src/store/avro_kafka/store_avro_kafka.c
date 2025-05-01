@@ -1042,7 +1042,6 @@ static void destructor(ldmsd_plug_handle_t handle) {
 
 struct ldmsd_store ldmsd_plugin_interface = {
 	.base.type   = LDMSD_PLUGIN_STORE,
-	.base.name   = "store_avro_kafka",
 	.base.config = config,
 	.base.usage  = usage,
         .base.constructor = constructor,

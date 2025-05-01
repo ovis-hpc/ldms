@@ -352,7 +352,6 @@ static void __destructor(ldmsd_plug_handle_t handle)
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface  = {
-	.base.name = "timer_base",
         .base.type = LDMSD_PLUGIN_SAMPLER,
         .base.term = timer_base_term,
 	.base.config = __config,

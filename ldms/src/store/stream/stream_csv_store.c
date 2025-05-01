@@ -1498,7 +1498,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-		.name = "stream_csv_store",
 		.type = LDMSD_PLUGIN_STORE,
 		.term = term,
 		.config = config,

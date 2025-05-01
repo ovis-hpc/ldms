@@ -420,7 +420,6 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 
 struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-		.name = "influx",
 		.config = config,
 		.usage = usage,
 		.type = LDMSD_PLUGIN_STORE,
