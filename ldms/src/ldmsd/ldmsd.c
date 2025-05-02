@@ -95,7 +95,6 @@
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define OVIS_LOGFILE "/var/log/ldmsd.log"
-#define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
 const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:L:C:y:";
 
@@ -343,8 +342,7 @@ void usage(char *argv[])
 	       "                                                  giving the -m option. If both are given, the -m option\n"
 	       "                                                  takes precedence over the environment variable.\n",
 	                                                          LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
-	printf("    -r PATH,     --pid_file PATH                  The path to the pid file for daemon mode.\n"
-	       "                                                  [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
+	printf("    -r PATH,     --pid_file PATH                  The path to a pid file.\n");
 	printf("  Log Verbosity Options\n");
 	printf("    -l PATH,     --log_file PATH                  The path to the log file for status messages.\n"
 	       "                                                  [" OVIS_LOGFILE "]\n");
