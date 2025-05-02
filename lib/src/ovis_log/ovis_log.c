@@ -378,7 +378,7 @@ static void __ovis_log_put(ovis_log_t log)
 	}
 }
 
-void ovis_log_destroy(ovis_log_t log)
+void ovis_log_deregister(ovis_log_t log)
 {
 	__ovis_log_put(log);
 }

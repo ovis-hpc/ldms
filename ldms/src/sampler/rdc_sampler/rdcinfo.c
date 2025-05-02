@@ -340,7 +340,7 @@ void rdcinfo_delete(rdcinfo_inst_t inst)
 		return;
 	}
 	if (inst->mylog)
-		ovis_log_destroy(inst->mylog);
+		ovis_log_deregister(inst->mylog);
 	pthread_mutex_destroy(&inst->lock);
 	free(inst);
 }

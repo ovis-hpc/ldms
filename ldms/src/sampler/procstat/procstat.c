@@ -756,7 +756,7 @@ static void term(struct ldmsd_plugin *self)
 		g.mf = NULL;
 	}
 	if (g.mylog)
-		ovis_log_destroy(g.mylog);
+		ovis_log_deregister(g.mylog);
 }
 
 static struct ldmsd_sampler procstat_plugin = {

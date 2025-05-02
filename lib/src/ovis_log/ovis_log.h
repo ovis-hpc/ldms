@@ -240,7 +240,7 @@ ovis_log_t ovis_log_register(const char *subsys_name, const char *desc);
  *
  * \param log   the log handle of a subsystem
  */
-void ovis_log_destroy(ovis_log_t log);
+void ovis_log_deregister(ovis_log_t log);
 
 /**
  * \brief List the information of a log subsystem or all log subsystems
