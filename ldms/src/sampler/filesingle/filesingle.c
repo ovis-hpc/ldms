@@ -372,6 +372,53 @@ static const char *usage(struct ldmsd_plugin *self)
 
 }
 
+static int constructor(ldmsd_plug_handle_t handle)
+{
+        filesingle_context_t fsc;
+        const char *config_name = ldmsd_plug_cfg_name_get(handle);
+
+        fsc = calloc(1, sizeof(*fsc));
+        if (fsc == NULL) {
+		ovis_log(NULL, OVIS_LERROR,
+                         "Failed to allocate context in plugin " SAMP ": %d", errno);
+                return ENOMEM;
+        }
+
+        char *log_name = malloc(strlen("sampler.")+strlen(config_name)+1);
+        sprintf(log_name, "sampler.%s", config_name);
+        fsc->mylog = ovis_log_register(log_name, "Message from the " SAMP " plugin");
+	if (!fsc->mylog) {
+		int rc = errno;
+		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem %s"
+                         " for '" SAMP "' plugin. Error %d\n", log_name,  rc);
+                free(log_name);
+                return errno;
+	}
+        free(log_name);
+
+	fsc->set = NULL;
+	TAILQ_INIT(&fsc->metric_list);
+        fsc->configured = false;
+
+        ldmsd_plug_ctxt_set(handle, fsc);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+        filesingle_context_t fsc = ldmsd_plug_ctxt_get(handle);
+
+	if (fsc->base)
+		base_del(fsc->base);
+	if (fsc->set)
+		ldms_set_delete(fsc->set);
+	fsc->set = NULL;
+	clear_metric_list(fsc);
+        ovis_log_deregister(fsc->mylog);
+        free(fsc);
+}
+
 static struct ldmsd_sampler filesingle_plugin = {
 	.base = {
 		.name = SAMP,
