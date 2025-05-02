@@ -673,7 +673,7 @@ static void __qgroup_member_do_connect(ldms_qgroup_member_t m)
 {
 	int rc;
 	if (m->x) {
-		ldms_xprt_put((ldms_t)m->x);
+		ldms_xprt_put((ldms_t)m->x, "init");
 		m->x = NULL;
 	}
 	m->x = (ldms_rail_t)ldms_xprt_new_with_auth(m->c_xprt, m->c_auth, m->c_auth_av_list);
@@ -685,7 +685,7 @@ static void __qgroup_member_do_connect(ldms_qgroup_member_t m)
 	rc = ldms_xprt_connect_by_name((ldms_t)m->x, m->c_host, m->c_port,
 						__qgroup_member_xprt_cb, m);
 	if (rc) {
-		ldms_xprt_put((ldms_t)m->x);
+		ldms_xprt_put((ldms_t)m->x, "init");
 		m->x = NULL;
 		m->state = LDMS_QGROUP_MEMBER_STATE_DISCONNECTED;
 	} else {

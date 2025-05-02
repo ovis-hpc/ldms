@@ -816,7 +816,7 @@ static void sync_update_cb(ldms_t x, ldms_set_t s, int status, void *arg)
 int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb,
                                    void *arg, struct ldms_op_ctxt *op_ctxt)
 {
-	ldms_t xprt = ldms_xprt_get(x);
+	ldms_t xprt = ldms_xprt_get(x, "update");
 	int rc;
 
 	assert(set);
@@ -835,7 +835,7 @@ int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb,
 		rc = __ldms_remote_update(xprt, set, sync_update_cb, arg);
 		pthread_mutex_unlock(&xprt->lock);
 		if (rc) {
-			ldms_xprt_put(xprt);
+			ldms_xprt_put(xprt, "update");
 			return rc;
 		}
 		sem_wait(&xprt->sem);
@@ -844,7 +844,7 @@ int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb,
 		rc = __ldms_remote_update(xprt, set, cb, arg);
 		pthread_mutex_unlock(&xprt->lock);
 	}
-	ldms_xprt_put(xprt);
+	ldms_xprt_put(xprt, "update");
 	return rc;
 }
 
@@ -902,11 +902,11 @@ void __ldms_set_on_xprt_term(ldms_set_t set, ldms_t xprt)
 	}
 	pthread_mutex_unlock(&set->lock);
 	if (pp) {
-		ldms_xprt_put(pp->xprt);
+		ldms_xprt_put(pp->xprt, "push_peer");
 		free(pp);
 	}
 	if (np) {
-		ldms_xprt_put(np->xprt);
+		ldms_xprt_put(np->xprt, "notify_peer");
 		free(np);
 	}
 }
@@ -1010,7 +1010,7 @@ void __ldms_set_delete(ldms_set_t s, int notify)
 	s->xprt = NULL;
 	pthread_mutex_unlock(&s->lock);
 	if (x)
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "lu_set");
 
 	/* Add the set to the delete tree with the current timestamp */
 	s->del_time = time(NULL);
@@ -4064,7 +4064,7 @@ static void *delete_proc(void *arg)
 					}
 				}
 				pthread_mutex_unlock(&x->lock);
-				ldms_xprt_put(x);
+				ldms_xprt_put(x, "push_peer");
 			free_pp:
 				free(pp);
 			}
@@ -4104,7 +4104,7 @@ static void *delete_proc(void *arg)
 					}
 				}
 				pthread_mutex_unlock(&x->lock);
-				ldms_xprt_put(x);
+				ldms_xprt_put(x, "lookup_peer");
 			free_lp:
 				free(lp);
 			}

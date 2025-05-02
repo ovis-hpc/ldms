@@ -163,12 +163,11 @@ struct ldms_rail_s {
 	int sem_rc;
 
 	char name[LDMS_MAX_TRANSPORT_NAME_LEN];
+	struct ref_s ref;
 	char auth_name[LDMS_AUTH_NAME_MAX + 1];
 	struct attr_value_list *auth_av_list;
 	ldms_log_fn_t log;
 	LIST_ENTRY(ldms_rail_s) rail_link;
-
-	struct ref_s ref;
 
 	/* These are informational. The actual quotas are in eps[idx]. */
 	uint64_t recv_quota;      /* 0xffffffffffffffff is unlimited */

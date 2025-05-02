@@ -850,10 +850,10 @@ reset_prdcr:
 		if ((prdcr->type == LDMSD_PRDCR_TYPE_PASSIVE) ||
 				(prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE)) {
 			/* Put back the ldms_xprt_by_remote_sin() reference. */
-			ldms_xprt_put(prdcr->xprt);
+			ldms_xprt_put(prdcr->xprt, "prdcr");
 		}
 		ldmsd_xprt_term(prdcr->xprt);
-		ldms_xprt_put(prdcr->xprt);
+		ldms_xprt_put(prdcr->xprt, "rail_ref");
 		prdcr->xprt = NULL;
 	}
 	ovis_log(prdcr_log, OVIS_LINFO, "%s:%d Producer (after reset) %s (%s %s:%d)"
@@ -900,7 +900,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 						 prdcr->ss_len,
 						 prdcr_connect_cb, prdcr);
 			if (ret) {
-				ldms_xprt_put(prdcr->xprt);
+				ldms_xprt_put(prdcr->xprt, "rail_ref");
 				prdcr->xprt = NULL;
 				prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 			}

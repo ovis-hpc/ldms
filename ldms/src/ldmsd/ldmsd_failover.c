@@ -1052,7 +1052,7 @@ void __failover_xprt_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		f->task_interval = f->ping_interval;
 		__failover_task_resched(f);
 		f->conn_state = FAILOVER_CONN_STATE_DISCONNECTED;
-		ldms_xprt_put(f->ax);
+		ldms_xprt_put(f->ax, "rail_ref");
 		f->ax = NULL;
 		need_start = !__F_GET(f, __FAILOVER_OURCFG_ACTIVATED);
 		__F_ON(f, __FAILOVER_OURCFG_ACTIVATED);
@@ -1098,7 +1098,7 @@ int __failover_active_connect(ldmsd_failover_t f)
 	f->conn_state = FAILOVER_CONN_STATE_CONNECTING;
 	goto out;
 err1:
-	ldms_xprt_put(f->ax);
+	ldms_xprt_put(f->ax, "rail_ref");
 	f->ax = NULL;
 	f->conn_state = FAILOVER_CONN_STATE_DISCONNECTED;
 out:

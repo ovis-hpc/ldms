@@ -2667,10 +2667,10 @@ void __ldms_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
 		printf("The connected request is rejected.\n");
-		ldms_xprt_put(ctrl->ldms_xprt.x);
+		ldms_xprt_put(ctrl->ldms_xprt.x, "rail_ref");
 		exit(0);
 	case LDMS_XPRT_EVENT_DISCONNECTED:
-		ldms_xprt_put(ctrl->ldms_xprt.x);
+		ldms_xprt_put(ctrl->ldms_xprt.x, "rail_ref");
 		printf("The connection is disconnected.\n");
 		exit(0);
 	case LDMS_XPRT_EVENT_ERROR:
@@ -2716,7 +2716,7 @@ struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
 	rc = ldms_xprt_connect_by_name(ctrl->ldms_xprt.x, host, port,
 						__ldms_event_cb, ctrl);
 	if (rc) {
-		ldms_xprt_put(ctrl->ldms_xprt.x);
+		ldms_xprt_put(ctrl->ldms_xprt.x, "rail_ref");
 		sem_destroy(&ctrl->ldms_xprt.connected_sem);
 		sem_destroy(&ctrl->ldms_xprt.recv_sem);
 		free(ctrl);

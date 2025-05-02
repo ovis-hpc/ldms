@@ -98,8 +98,10 @@ static int __rail_lookup(ldms_t _r, const char *name, enum ldms_lookup_flags fla
 	       ldms_lookup_cb_t cb, void *cb_arg, struct ldms_op_ctxt *op_ctxt);
 static int __rail_stats(ldms_t _r, ldms_xprt_stats_t stats, int mask, int is_reset);
 
-static ldms_t __rail_get(ldms_t _r); /* ref get */
-static void __rail_put(ldms_t _r); /* ref put */
+#define __rail_get(_r_, _n_) ___rail_get((_r_), (_n_), __func__, __LINE__)
+#define __rail_put(_r_, _n_) ___rail_put((_r_), (_n_), __func__, __LINE__)
+static ldms_t ___rail_get(ldms_t _r, const char *name, const char *func, int line); /* ref get */
+static void ___rail_put(ldms_t _r, const char *name, const char *func, int line); /* ref put */
 static void __rail_ctxt_set(ldms_t _r, void *ctxt, app_ctxt_free_fn fn);
 static void *__rail_ctxt_get(ldms_t _r);
 static uint64_t __rail_conn_id(ldms_t _r);
@@ -126,8 +128,8 @@ static struct ldms_xprt_ops_s __rail_ops = {
 	.lookup       = __rail_lookup,
 	.stats        = __rail_stats,
 
-	.get          = __rail_get,
-	.put          = __rail_put,
+	.get          = ___rail_get,
+	.put          = ___rail_put,
 	.ctxt_set     = __rail_ctxt_set,
 	.ctxt_get     = __rail_ctxt_get,
 	.conn_id      = __rail_conn_id,
@@ -178,8 +180,11 @@ static void __rail_ref_free(void *arg)
 
 	for (i = 0; i < r->n_eps; i++) {
 		rep = &r->eps[i];
-		if (rep->ep)
-			ldms_xprt_put(rep->ep);
+		if (rep->ep) {
+			ldms_xprt_ctxt_set(rep->ep, NULL, NULL);
+			ldms_xprt_put(rep->ep, "init");
+		}
+
 	}
 
 	while ((dc = TAILQ_FIRST(&r->dir_notify_tq))) {
@@ -209,8 +214,8 @@ ldms_rail_t rail_first()
 	r = LIST_FIRST(&rail_list);
 	if (!r)
 		goto out;
-	__rail_get((ldms_t)r); /* next reference */
-	r = (ldms_rail_t)__rail_get((ldms_t)r); /* caller reference */
+	__rail_get((ldms_t)r, "iter_next"); /* next reference */
+	r = (ldms_rail_t)__rail_get((ldms_t)r, "inter_caller"); /* caller reference */
 out:
 	pthread_mutex_unlock(&rail_list_lock);
 	return r;
@@ -223,11 +228,11 @@ ldms_rail_t rail_next(ldms_rail_t r)
 	r = LIST_NEXT(r, rail_link);
 	if (!r)
 		goto out;
-	__rail_get((ldms_t)r);	/* next reference */
-	r = (ldms_rail_t)__rail_get((ldms_t)r);	/* caller reference */
+	__rail_get((ldms_t)r, "iter_next");	/* next reference */
+	r = (ldms_rail_t)__rail_get((ldms_t)r, "iter_caller");	/* caller reference */
  out:
 	pthread_mutex_unlock(&rail_list_lock);
-	__rail_put((ldms_t)prev_r);	/* next reference */
+	__rail_put((ldms_t)prev_r, "iter_next"); /* next reference */
 	return r;
 }
 
@@ -488,14 +493,14 @@ void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		 */
 		if (e->type != LDMS_XPRT_EVENT_CONNECTED) {
 			/* bad passive legacy xprt does not notify the app */
-			ldms_xprt_put(x);
+			ldms_xprt_put(x, "init");
 			return;
 
 		}
 		/* Wrap it in new rail transport and continue */
 		r = __rail_passive_legacy_wrap(x, r->event_cb, r->event_cb_arg);
 		if (!r) {
-			ldms_xprt_put(x);
+			ldms_xprt_put(x, "init");
 			return;
 		}
 		rep = &r->eps[0];
@@ -825,7 +830,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	ldms_xprt_ctxt_set(_x, &r->eps[m->idx], NULL);
 	pthread_mutex_unlock(&r->mutex);
 
-	ldms_xprt_get(_x);
+	ldms_xprt_get(_x, "zap_uctxt");
 	zap_set_ucontext(zep, _x);
 
 	auth = ldms_auth_clone(lx->auth);
@@ -840,7 +845,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	__ldms_rail_conn_msg_init(r, m->idx, &msg);
 
 	/* Take a 'connect' reference. Dropped in ldms_xprt_close() */
-	ldms_xprt_get(_x);
+	ldms_xprt_get(_x, "connect");
 
 	ref_get(&r->ref, "ldms_accepting");
 	zerr = zap_accept2(zep, ldms_zap_auto_cb, (void*)&msg, sizeof(msg), m->idx);
@@ -852,7 +857,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	return;
  err_3:
 	ref_put(&r->ref, "ldms_accepting");
-	ldms_xprt_put(_x); /* drop 'connect' reference */
+	ldms_xprt_put(_x, "connect"); /* drop 'connect' reference */
  err_2:
 	ldms_auth_free(auth);
  err_1:
@@ -862,7 +867,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	r->eps[m->idx].state = LDMS_RAIL_EP_ERROR;
 	pthread_mutex_unlock(&r->mutex);
 	zap_set_ucontext(_x->zap_ep, NULL);
-	ldms_xprt_put(_x);	/* context reference */
+	ldms_xprt_put(_x, "zap_uctxt");	/* context reference */
  err_0:
 	zap_reject(zep, rej_msg, strlen(rej_msg)+1);
 }
@@ -893,7 +898,7 @@ static int __rail_ep_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 
 	x->event_cb = cb;
 	x->event_cb_arg = cb_arg;
-	ldms_xprt_get(x);
+	ldms_xprt_get(x, "connect");
 	rc = zap_connect2(x->zap_ep, sa, sa_len, (void*)&msg, sizeof(msg), rep->idx);
 	return rc;
 }
@@ -981,7 +986,7 @@ static int __rail_listen(ldms_t _r, struct sockaddr *sa, socklen_t sa_len,
 	if (rc) {
 		r->eps[0].ep = NULL;
 		r->eps[0].state = LDMS_RAIL_EP_ERROR;
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "init");
 		return rc;
 	}
 	return 0;
@@ -1369,19 +1374,19 @@ err:
 	return rc;
 }
 
-static ldms_t __rail_get(ldms_t _r)
+static ldms_t ___rail_get(ldms_t _r, const char *name, const char *func, int line)
 {
 	assert(XTYPE_IS_RAIL(_r->xtype));
 	ldms_rail_t r = (ldms_rail_t)_r;
-	ref_get(&r->ref, "rail_ref");
+	_ref_get(&r->ref, name, func, line);
 	return (ldms_t)r;
 }
 
-static void __rail_put(ldms_t _r)
+static void ___rail_put(ldms_t _r, const char *name, const char *func, int line)
 {
 	assert(XTYPE_IS_RAIL(_r->xtype));
 	ldms_rail_t r = (ldms_rail_t)_r;
-	ref_put(&r->ref, "rail_ref");
+	_ref_put(&r->ref, name, func, line);
 }
 
 static void __rail_ctxt_set(ldms_t _r, void *ctxt, app_ctxt_free_fn fn)

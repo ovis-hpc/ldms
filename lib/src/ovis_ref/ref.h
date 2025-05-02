@@ -58,6 +58,7 @@ static inline int _ref_put(ref_t r, const char *name, const char *func, int line
 	fprintf(stderr,
 		"name %s ref_count %d func %s line %d put but not taken\n",
 		name, r->ref_count, func, line);
+	pthread_mutex_unlock(&r->lock);
 	assert(0);
  out:
 	if (!count)

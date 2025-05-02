@@ -212,7 +212,7 @@ static void server_listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		printf("The connection is disconnected.\n");
 		free(recv_arg);
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "init");
 		break;
 	case LDMS_XPRT_EVENT_RECV:
 		server_recv_cb(x, e->data, e->data_len, recv_arg);
@@ -283,11 +283,11 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 		break;
 	case LDMS_XPRT_EVENT_ERROR:
 		printf("con_error\n");
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "init");
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		printf("disconnected\n");
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "init");
 		sem_post(&exit_sem);
 		break;
 	case LDMS_XPRT_EVENT_RECV:

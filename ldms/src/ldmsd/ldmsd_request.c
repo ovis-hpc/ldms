@@ -879,7 +879,7 @@ void req_ctxt_tree_unlock()
 
 static void free_cfg_xprt_ldms(ldmsd_cfg_xprt_t xprt)
 {
-	ldms_xprt_put(xprt->ldms.ldms);
+	ldms_xprt_put(xprt->ldms.ldms, "cfg_xprt");
 	free(xprt);
 }
 
@@ -9882,7 +9882,7 @@ ldmsd_prdcr_t __advertised_prdcr_new(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t
 
 	advtr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 
-	x = ldms_xprt_get(reqc->xprt->ldms.ldms);
+	x = ldms_xprt_get(reqc->xprt->ldms.ldms, "advertised_prdcr");
 	xprt_s = (char *)ldms_xprt_type_name(x);
 
 	attr_name = "hostname";
@@ -9932,7 +9932,7 @@ ldmsd_prdcr_t __advertised_prdcr_new(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t
 	if (pl->rx_rate) {
 		ldms_xprt_rail_recv_rate_limit_set(x, pl->rx_rate);
 	}
-	ldms_xprt_put(x); /* Put back the reference at the beginning of the funciton */
+	ldms_xprt_put(x, "advertised_prdcr"); /* Put back the reference at the beginning of the funciton */
 	return prdcr;
 
 einval:
@@ -9977,7 +9977,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 	gid_t gid;
 	int is_new_prdcr = 0;
 	struct ldms_xprt_event conn_ev;
-	ldms_t x = ldms_xprt_get(reqc->xprt->ldms.ldms);
+	ldms_t x = ldms_xprt_get(reqc->xprt->ldms.ldms, "process_advertisement");
 
 	xprt_s = adv_hostname = adv_port = NULL;
 
@@ -10034,12 +10034,12 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 				ldmsd_prdcr_unlock(prdcr);
 				goto out;
 			case LDMSD_PRDCR_STATE_STOPPED:
-				prdcr->xprt = ldms_xprt_get(x);
+				prdcr->xprt = ldms_xprt_get(x, "prdcr");
 				ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
 				prdcr->conn_state = LDMSD_PRDCR_STATE_STANDBY;
 				break;
 			case LDMSD_PRDCR_STATE_DISCONNECTED:
-				prdcr->xprt = ldms_xprt_get(reqc->xprt->ldms.ldms);
+				prdcr->xprt = ldms_xprt_get(reqc->xprt->ldms.ldms, "prdcr");
 				ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
 				/* Move the producer state to CONNECTED here */
 				conn_ev.type = LDMS_XPRT_EVENT_CONNECTED;
@@ -10125,7 +10125,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 
 	if (pl->auto_start && is_new_prdcr) {
 		if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE) {
-			prdcr->xprt = ldms_xprt_get(x);
+			prdcr->xprt = ldms_xprt_get(x, "prdcr");
 			ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
 			prdcr->conn_state = LDMSD_PRDCR_STATE_STANDBY;
 		}
@@ -10139,6 +10139,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 out:
 	free(adv_hostname);
 	free(adv_port);
+	ldms_xprt_put(x, "process_advertisement");
 	return rc;
 einval:
 	ovis_log(NULL, OVIS_LERROR,
