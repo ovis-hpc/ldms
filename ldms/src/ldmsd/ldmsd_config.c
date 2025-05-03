@@ -167,23 +167,6 @@ err_0:
 	return NULL;
 }
 
-void ldmsd_sampler_remove(ldmsd_cfgobj_sampler_t sampler)
-{
-        /* FIXME - more cleanup likely needed */
-        if (sampler->api->base.term != NULL) {
-                sampler->api->base.term((ldmsd_plug_handle_t)sampler);
-        }
-        if (sampler->api->base.destructor != NULL) {
-                /* This plugin is multi-instance capable */
-                sampler->api->base.destructor((ldmsd_plug_handle_t)sampler);
-                sampler->context = NULL;
-        }
-        free(sampler->libpath);
-        ldmsd_cfgobj_del(&sampler->cfg);
-
-        return;
-}
-
 ldmsd_cfgobj_sampler_t
 ldmsd_sampler_add(const char *cfg_name,
 		  struct ldmsd_sampler *api,
@@ -327,6 +310,8 @@ void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 	free((char *)samp->libpath);
 	if (samp->api->base.destructor)
 		samp->api->base.destructor(obj);
+	else if (samp->api->base.term)
+		samp->api->base.term(obj);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -456,9 +441,16 @@ int ldmsd_term_plugin(char *cfg_name)
 		struct ldmsd_sampler_set *_set;
 		while (( _set = LIST_FIRST(&sampler->set_list))) {
 			LIST_REMOVE(_set, entry);
-			/* The ldms_set itself will be destroyed by the plugin */
+			ldmsd_cfgobj_unlock(&sampler->cfg);
+			/* The ldms_set must be deregistered here while
+			 * the cfgobj is still around or
+			 * ldmsd_set_deregister will fail
+			 */
+			ldmsd_set_deregister(ldms_set_name_get(_set->set), sampler->cfg.name);
+			ldmsd_cfgobj_lock(&sampler->cfg);
 			free(_set);
 		}
+		ldmsd_cfgobj_unlock(&sampler->cfg);
 		cfgobj = &sampler->cfg;
 		ldmsd_sampler_put(sampler, "load");
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_SAMPLER);

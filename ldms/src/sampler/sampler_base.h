@@ -62,7 +62,7 @@ struct base_auth {
 };
 
 typedef struct base_data_s {
-	char *pi_name;
+	char *cfg_name;
 	char *instance_name;
 	char *producer_name;
 	char *schema_name;
