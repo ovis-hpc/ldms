@@ -64,10 +64,8 @@ void base_del(base_data_t base)
 {
 	if (!base)
 		return;
-	if (base->instance_name && base->pi_name)
-		ldmsd_set_deregister(base->instance_name, base->pi_name);
-	if (base->pi_name)
-		free(base->pi_name);
+	if (base->cfg_name)
+		free(base->cfg_name);
 	if (base->producer_name)
 		free(base->producer_name);
 	if (base->instance_name)
@@ -94,7 +92,7 @@ static void init_job_data(base_data_t base)
 			ovis_log(base->mylog, base->job_log_lvl,
 			    "%s: The job data set named, %s, does not exist. Valid job "
 			    "data will not be associated with the metric values.\n",
-			    base->pi_name, base->job_set_name);
+			    base->cfg_name, base->job_set_name);
 		}
 		goto err;
 	}
@@ -138,7 +136,7 @@ static void init_job_data(base_data_t base)
 			ovis_log(base->mylog, base->job_log_lvl,
 				"%s: The specified job_set '%s' is missing "
 				"the 'job_start' attribute and cannot be used.\n",
-				base->pi_name, base->job_set_name);
+				base->cfg_name, base->job_set_name);
 		}
 		goto err;
 	} else {
@@ -147,7 +145,7 @@ static void init_job_data(base_data_t base)
 			ovis_log(base->mylog, base->job_log_lvl,
 				"%s: The specified job_set '%s' now has "
 				"the 'job_start' attribute and will be used.\n",
-				base->pi_name, base->job_set_name);
+				base->cfg_name, base->job_set_name);
 		}
 	}
 	base->job_end_idx = ldms_metric_by_name(base->job_set, "job_end");
@@ -157,7 +155,7 @@ static void init_job_data(base_data_t base)
 			ovis_log(base->mylog, base->job_log_lvl,
 				"%s: The specified job_set '%s' is missing "
 				"the 'job_end' attribute and cannot be used.\n",
-				base->pi_name, base->job_set_name);
+				base->cfg_name, base->job_set_name);
 		}
 		goto err;
 	}
@@ -167,7 +165,7 @@ static void init_job_data(base_data_t base)
 			ovis_log(base->mylog, base->job_log_lvl,
 				"%s: The specified job_set '%s' is missing "
 				"the 'job_id' attribute and cannot be used.\n",
-				base->pi_name, base->job_set_name);
+				base->cfg_name, base->job_set_name);
 		}
 		goto err;
 	} else {
@@ -176,7 +174,7 @@ static void init_job_data(base_data_t base)
 			ovis_log(base->mylog, base->job_log_lvl,
 				"%s: The specified job_set '%s' now has "
 				"the 'job_id' attribute and will be used.\n",
-				base->pi_name, base->job_set_name);
+				base->cfg_name, base->job_set_name);
 		}
 	}
 out:
@@ -203,8 +201,8 @@ base_data_t base_config(struct attr_value_list *avl,
 
 	base->job_log_lvl = OVIS_LINFO;
 
-	base->pi_name = strdup(name);
-	if (!base->pi_name) {
+	base->cfg_name = strdup(name);
+	if (!base->cfg_name) {
 		ovis_log(mylog, OVIS_LERROR, "Memory allocation failure in %s\n", name);
 		free(base);
 		errno = ENOMEM;
@@ -339,7 +337,7 @@ ldms_set_t base_set_new_heap(base_data_t base, size_t heap_sz)
 			base->instance_name, rc);
 		goto err;
 	}
-	rc = ldmsd_set_register(base->set, base->pi_name);
+	rc = ldmsd_set_register(base->set, base->cfg_name);
 	if (rc) {
 		ovis_log(base->mylog, OVIS_LERROR,
 			"base_set_new: ldms_set_register failed for %s "
@@ -359,7 +357,7 @@ void base_set_delete(base_data_t base)
 {
 	if (!base || !base->set)
 		return;
-	ldmsd_set_deregister(base->instance_name, base->pi_name);
+	ldmsd_set_deregister(base->instance_name, base->cfg_name);
 	ldms_set_unpublish(base->set);
 	ldms_set_delete(base->set);
 	base->set = NULL;

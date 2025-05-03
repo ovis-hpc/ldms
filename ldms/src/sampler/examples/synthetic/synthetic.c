@@ -120,7 +120,7 @@ static ldms_set_t clone_metric_set(base_data_t base, uint64_t k)
 		ovis_log(mylog, OVIS_LERROR,"clone_metric_set: ldms_set_publish failed for %s\n", buf);
 		return NULL;
 	}
-	ldmsd_set_register(c, base->pi_name);
+	ldmsd_set_register(c, base->cfg_name);
 
 	union ldms_value v;
 	ldms_transaction_begin(c);
