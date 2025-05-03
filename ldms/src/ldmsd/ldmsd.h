@@ -1129,14 +1129,14 @@ static inline void
 ldmsd_store_flush(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 {
         if (store->api->flush)
-                store->api->flush(store->context, sh);
+                store->api->flush(store, sh);
 }
 
 static inline void
 ldmsd_store_close(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 {
 	if (store->api->close)
-		store->api->close(store->context, sh);
+		store->api->close(store, sh);
 }
 
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)();
