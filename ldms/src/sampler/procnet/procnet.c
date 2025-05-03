@@ -120,7 +120,7 @@ static void procnet_reset()
 		ldms_set_t set = ports[j].set;
 		if (set) {
                         const char *tmp = ldms_set_instance_name_get(set);
-                        ldmsd_set_deregister(tmp, base->pi_name);
+                        ldmsd_set_deregister(tmp, base->cfg_name);
                         ldms_set_unpublish(set);
                         ldms_set_delete(set);
 		}
