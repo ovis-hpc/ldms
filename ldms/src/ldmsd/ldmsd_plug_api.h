@@ -53,11 +53,6 @@
 #define _LDMSD_PLUGIN_H_
 typedef void *ldmsd_plug_handle_t;
 /*
- * Return the configuration object associated with the plugin
- */
-struct ldmsd_cfgobj *ldmsd_plug_cfg_get(ldmsd_plug_handle_t handle);
-
-/*
  * Record an opaque context pointer in the plugin configuration handle.
  *
  * In order to be multi-configuration capable, a plugin will need to
@@ -110,12 +105,4 @@ void ldmsd_plug_log_set(ldmsd_plug_handle_t handle, ovis_log_t log);
  */
 ovis_log_t ldmsd_plug_log_get(ldmsd_plug_handle_t handle);
 
-/*
- * Lock the configuration associated with the plugin
- */
-void ldmsd_plug_lock(ldmsd_plug_handle_t handle);
-/*
- * Unlock the configuration associated with the plugin
- */
-void ldmsd_plug_unlock(ldmsd_plug_handle_t handle);
 #endif

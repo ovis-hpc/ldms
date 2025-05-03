@@ -80,15 +80,3 @@ const char *ldmsd_plug_name_get(ldmsd_plug_handle_t handle)
 		return NULL;
 	}
 }
-
-void ldmsd_plug_lock(ldmsd_plug_handle_t handle)
-{
-	ldmsd_cfgobj_t cfg = (ldmsd_cfgobj_t)handle;
-	ldmsd_cfgobj_lock(cfg);
-}
-
-void ldmsd_plug_unlock(ldmsd_plug_handle_t handle)
-{
-	ldmsd_cfgobj_t cfg = (ldmsd_cfgobj_t)handle;
-	ldmsd_cfgobj_unlock(cfg);
-}
