@@ -154,6 +154,8 @@ enum ldms_request_cmd {
 	LDMS_CMD_STREAM_SUB_REPLY, /* stream subscribe reply (result) */
 	LDMS_CMD_STREAM_UNSUB_REPLY, /* stream subscribe reply (result) */
 
+	LDMS_CMD_LAST = LDMS_CMD_STREAM_UNSUB_REPLY,
+
 	/* Transport private requests set bit 32 */
 	LDMS_CMD_XPRT_PRIVATE = 0x80000000,
 };
