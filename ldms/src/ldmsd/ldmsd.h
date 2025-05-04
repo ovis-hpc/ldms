@@ -655,6 +655,7 @@ struct ldmsd_strgp {
 
 	/** The storage backend plugin */
 	ldmsd_cfgobj_store_t store;
+	LIST_ENTRY(ldmsd_strgp) store_entry;
 
 	/** The open instance of the container */
 	ldmsd_store_handle_t store_handle;
@@ -1005,6 +1006,10 @@ typedef struct ldmsd_sampler {
 struct ldmsd_cfgobj_store {
 	struct ldmsd_cfgobj cfg;
 	struct ldmsd_store *api;
+
+	/* List of strgp that are using this store */
+	LIST_HEAD(, ldmsd_strgp) strgp_list;
+
 	char *libpath;
 	/* Private context pointer, managed by plugin */
 	void *context;

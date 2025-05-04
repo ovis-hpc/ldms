@@ -1749,7 +1749,7 @@ static void __csv_row_handle_close(struct csv_row_store_handle *rs_handle)
 static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_handle)
 {
 	struct csv_store_handle *s_handle = _s_handle;
-	store_csv_t sc = s_handle->sc;
+	store_csv_t sc = ldmsd_plug_ctxt_get(handle);
 	pthread_mutex_lock(&sc->cfg_lock);
 	if (!s_handle) {
 		pthread_mutex_unlock(&sc->cfg_lock);
@@ -2364,6 +2364,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 static struct ldmsd_store store_csv = {
 	.base.type   = LDMSD_PLUGIN_STORE,
+	.base.flags  = LDMSD_PLUGIN_MULTI_INSTANCE,
 	.base.name   = "store_csv",
 	.base.config = config,
 	.base.usage  = usage,

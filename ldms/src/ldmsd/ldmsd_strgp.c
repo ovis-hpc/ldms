@@ -808,9 +808,12 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out_1;
 	}
-	if (strgp->store)
+	if (strgp->store) {
+		ldmsd_cfgobj_lock(&strgp->store->cfg);
+		LIST_REMOVE(strgp, store_entry);
+		ldmsd_cfgobj_unlock(&strgp->store->cfg);
 		ldmsd_store_put(strgp->store, "strgp");
-
+	}
 	if (strgp->decomp)
 		strgp->decomp->release_decomp(strgp);
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STRGP], &strgp->obj.rbn);
