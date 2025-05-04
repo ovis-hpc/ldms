@@ -2714,6 +2714,9 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 
 	ldmsd_store_get(store, "strgp");
 	strgp->store = store; /* cfgobj ref is released in strgp_del */
+	ldmsd_cfgobj_lock(&store->cfg);
+	LIST_INSERT_HEAD(&store->strgp_list, strgp, store_entry);
+	ldmsd_cfgobj_unlock(&store->cfg);
 
 	char regex_err[512] = "";
 	if (regex) {

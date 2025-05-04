@@ -441,8 +441,6 @@ int ldmsd_term_plugin(char *cfg_name)
 	int rc = EINVAL;
 	ldmsd_cfgobj_sampler_t sampler = NULL;
 	ldmsd_cfgobj_store_t store = NULL;
-	ldmsd_cfgobj_t cfgobj;
-	extern struct rbt *cfgobj_trees[];
 
 	sampler = ldmsd_sampler_find_get(cfg_name);
 	if (sampler) {
@@ -454,7 +452,7 @@ int ldmsd_term_plugin(char *cfg_name)
 		ref_dump(&sampler->cfg.ref, sampler->cfg.name, stderr);
 #endif
 		ldmsd_cfgobj_lock(&sampler->cfg);
-		if (ldmsd_cfgobj_refcount(&sampler->cfg) > 4) {
+		if (sampler->os) {
 			ovis_log(config_log, OVIS_LERROR,
 				 "The sampler '%s' is in use. Use stop "
 				 "name=%s before attempting to unload "
@@ -478,15 +476,10 @@ int ldmsd_term_plugin(char *cfg_name)
 			free(_set);
 		}
 		ldmsd_cfgobj_unlock(&sampler->cfg);
-		cfgobj = &sampler->cfg;
+		ldmsd_cfgobj_rm(&sampler->cfg);
 		ldmsd_sampler_put(sampler, "load");
-		ldmsd_cfg_lock(LDMSD_CFGOBJ_SAMPLER);
-		ldmsd_sampler_put(sampler, "cfgobj_tree");
-		rbt_del(cfgobj_trees[LDMSD_CFGOBJ_SAMPLER], &sampler->cfg.rbn);
-		ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
-		ldmsd_cfgobj_unlock(&sampler->cfg);
 		ldmsd_sampler_put(sampler, "init");
-		ldmsd_cfgobj_put(cfgobj, "find");
+		ldmsd_sampler_find_put(sampler);
 	} else {
 		store = ldmsd_store_find_get(cfg_name);
 		if (!store) {
@@ -501,25 +494,21 @@ int ldmsd_term_plugin(char *cfg_name)
 		ref_dump(&store->cfg.ref, store->cfg.name, stderr);
 #endif
 		ldmsd_cfgobj_lock(&store->cfg);
-		if (ldmsd_cfgobj_refcount(&store->cfg) > 4) {
+		if (!LIST_EMPTY(&store->strgp_list)) {
 			ovis_log(config_log, OVIS_LERROR,
-				 "The store '%s' is in use. Use stop "
-				 "name=%s before attempting to unload "
-				 "the plugin\n",
-				 store->cfg.name, store->cfg.name);
+				 "The store '%s' is in use. You must delete all strgp"
+				 " that refer to this store.\n",
+				 store->cfg.name);
 			ldmsd_cfgobj_unlock(&store->cfg);
-			ldmsd_cfgobj_put(&store->cfg, "find");
+			ldmsd_store_find_put(store);
 			return EBUSY;
 		}
-		cfgobj = &store->cfg;
-		ldmsd_store_put(store, "load");
-		ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
-		ldmsd_store_put(store, "cfgobj_tree");
-		rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STORE], &store->cfg.rbn);
-		ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
 		ldmsd_cfgobj_unlock(&store->cfg);
+		ldmsd_cfgobj_rm(&store->cfg);
+
+		ldmsd_store_put(store, "load");
 		ldmsd_store_put(store, "init");
-		ldmsd_cfgobj_put(cfgobj, "find");
+		ldmsd_store_find_put(store);
 	}
 	rc = 0;
  out:
