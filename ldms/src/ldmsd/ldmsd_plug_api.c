@@ -71,9 +71,9 @@ const char *ldmsd_plug_name_get(ldmsd_plug_handle_t handle)
 
 	switch (cfg->type) {
 	case LDMSD_CFGOBJ_SAMPLER:
-		return ((ldmsd_cfgobj_sampler_t)cfg)->api->base.name;
+		return ((ldmsd_cfgobj_sampler_t)cfg)->plugin->api->name;
 	case LDMSD_CFGOBJ_STORE:
-		return ((ldmsd_cfgobj_store_t)cfg)->api->base.name;
+		return ((ldmsd_cfgobj_store_t)cfg)->plugin->api->name;
 	default:
 		ovis_log(NULL, OVIS_LERROR,
 			 "%s : handle is not a plugin cfgobj\n", __func__);
