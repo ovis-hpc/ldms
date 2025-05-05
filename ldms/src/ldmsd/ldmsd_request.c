@@ -5265,15 +5265,16 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfgobj_t cfg;
 	char *attr_copy = NULL;
 	size_t cnt = 0;
+	int multi_config;
+	ldmsd_cfgobj_sampler_t sampler;
+	ldmsd_cfgobj_store_t store;
+
 	reqc->errcode = 0;
 
 	attr_name = "name";
 	instance_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!instance_name)
 		goto einval;
-
-	ldmsd_cfgobj_sampler_t sampler = NULL;
-	ldmsd_cfgobj_store_t store;
 
 	sampler = ldmsd_sampler_find_get(instance_name);
 	if (!sampler) {
@@ -5286,9 +5287,27 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 					instance_name);
 			goto send_reply;
 		}
+		multi_config = store->api->base.flags & LDMSD_PLUGIN_MULTI_INSTANCE;
+		if (!multi_config && store->configured) {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				       "The store '%s' does not support multiple "
+				       "configurations.\n",
+				       instance_name);
+			goto send_reply;
+		}
 		cfg = &store->cfg;
 		ldmsd_store_find_put(store);
 	} else {
+		multi_config = sampler->api->base.flags & LDMSD_PLUGIN_MULTI_INSTANCE;
+		if (!multi_config && sampler->configured) {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				       "The sampler '%s' does not support multiple "
+				       "configurations.\n",
+				       instance_name);
+			goto send_reply;
+		}
 		cfg = &sampler->cfg;
 		ldmsd_sampler_find_put(sampler);
 	}
@@ -5346,10 +5365,17 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	if (exclusive_thread && sampler)
 		sampler->use_xthread = atoi(exclusive_thread);
 
-	if (sampler)
+	if (sampler) {
 		reqc->errcode = sampler->api->base.config((ldmsd_cfgobj_t)sampler, kw_list, av_list);
-	else
+		if (!reqc->errcode) {
+			sampler->configured = 1;
+		}
+	} else {
 		reqc->errcode = store->api->base.config((ldmsd_cfgobj_t)store, kw_list, av_list);
+		if (!reqc->errcode) {
+			store->configured = 1;
+		}
+	}
 	if (reqc->errcode) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Error %d configuring plugin instance '%s'.",

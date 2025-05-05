@@ -1007,6 +1007,9 @@ struct ldmsd_cfgobj_store {
 	struct ldmsd_cfgobj cfg;
 	struct ldmsd_store *api;
 
+	/* Set to 1 if the plugin has been configured */
+	int configured;
+
 	/* List of strgp that are using this store */
 	LIST_HEAD(, ldmsd_strgp) strgp_list;
 
@@ -1026,6 +1029,10 @@ typedef struct ldmsd_sampler_set {
 struct ldmsd_cfgobj_sampler {
 	struct ldmsd_cfgobj cfg;
 	struct ldmsd_sampler *api;
+
+	/* Set to 1 if the plugin has been configured */
+	int configured;
+
 	char *libpath;
 	/* Private context pointer, managed by plugin */
 	void *context;
