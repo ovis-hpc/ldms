@@ -999,6 +999,18 @@ struct ldmsd_store {
 		      ldmsd_row_list_t row_list, int row_count);
 };
 
+
+/**
+ * struct ldmsd_plugin_generic is used to track generic information common to
+ * all plugins that implement the ldms get_plugin() function.
+ * NOTE: This is an ldmsd internals data structure.
+ *       Not to be used from inside plugins.
+ */
+struct ldmsd_plugin_generic {
+        struct ldmsd_plugin *api;
+        char *libpath;
+};
+
 typedef struct ldmsd_cfgobj_sampler *ldmsd_cfgobj_sampler_t;
 typedef struct ldmsd_sampler {
 	struct ldmsd_plugin base;
@@ -1007,6 +1019,7 @@ typedef struct ldmsd_sampler {
 
 struct ldmsd_cfgobj_store {
 	struct ldmsd_cfgobj cfg;
+	struct ldmsd_plugin_generic *plugin;
 	struct ldmsd_store *api;
 
 	/* Set to 1 if the plugin has been configured */
@@ -1015,7 +1028,6 @@ struct ldmsd_cfgobj_store {
 	/* List of strgp that are using this store */
 	LIST_HEAD(, ldmsd_strgp) strgp_list;
 
-	char *libpath;
 	/* Private context pointer, managed by plugin */
 	void *context;
 	/* ovis_log handle to use when logging plugin messages */
@@ -1030,12 +1042,12 @@ typedef struct ldmsd_sampler_set {
 
 struct ldmsd_cfgobj_sampler {
 	struct ldmsd_cfgobj cfg;
+	struct ldmsd_plugin_generic *plugin;
 	struct ldmsd_sampler *api;
 
 	/* Set to 1 if the plugin has been configured */
 	int configured;
 
-	char *libpath;
 	/* Private context pointer, managed by plugin */
 	void *context;
 	/* ovis_log handle to use when logging plugin messages */
@@ -1061,8 +1073,7 @@ struct ldmsd_cfgobj_sampler {
 #define LDMSD_JOBID "job_id"
 
 ldmsd_cfgobj_sampler_t ldmsd_sampler_add(const char *name,
-					struct ldmsd_sampler *api,
-					const char *libpath,
+					struct ldmsd_plugin_generic *plugin,
 					ldmsd_cfgobj_del_fn_t __del,
 					uid_t uid, gid_t gid, int perm);
 
@@ -1117,8 +1128,7 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
  */
 
 ldmsd_cfgobj_store_t ldmsd_store_add(const char *name,
-				struct ldmsd_store *store,
-				const char *libpath,
+				struct ldmsd_plugin_generic *plugin,
 				ldmsd_cfgobj_del_fn_t __del,
 				uid_t uid, gid_t gid, int perm);
 
