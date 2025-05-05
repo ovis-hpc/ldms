@@ -162,11 +162,8 @@ const ldmsd_plugin_t load_plugin(const char *plugin_name, const char **libpath_)
 
 	/* Verify the following API contract:
 	 * - If flags & MULTI_INSTANCE is !0, then
-	 *   -- both the constructor and destructor must be defined
-	 *   -- term must _NOT_ be defined
-	 * - otherwise
-	 *   -- constructor and destructor must be NULL
-	 *   -- term may or may not be NULL
+	 *   -- both constructor() and destructor() must be defined
+	 *   -- term() must not be defined
 	 */
 	if (pi->flags && LDMSD_PLUGIN_MULTI_INSTANCE) {
 		if (!pi->constructor || !pi->destructor || pi->term) {
@@ -175,14 +172,6 @@ const ldmsd_plugin_t load_plugin(const char *plugin_name, const char **libpath_)
 				 "but is missing either the constructor or "
 				 "destructor functions, or has term defined.\n",
 				 plugin_name);
-			goto err_0;
-		}
-	} else {
-		if (pi->constructor || pi->destructor) {
-			ovis_log(config_log, OVIS_LERROR,
-				 "The library, '%s', is not multi-instance, "
-				 "but either the constructor or destructor "
-				 "functions are defined.\n", plugin_name);
 			goto err_0;
 		}
 	}
