@@ -224,10 +224,7 @@ ldmsd_sampler_add(const char *cfg_name,
         sampler->plugin = plugin;
 	sampler->api = (struct ldmsd_sampler *)plugin->api;
 	sampler->thread_id = -1; /* stopped */
-	if (sampler->api->base.constructor != NULL
-		&& sampler->api->base.destructor != NULL)
-	{
-		/* This plugin is multi-instance capable */
+	if (sampler->api->base.constructor != NULL) {
 		rc = sampler->api->base.constructor(&sampler->cfg);
 		if (rc)
 			goto err;
@@ -269,10 +266,7 @@ ldmsd_store_add(const char *cfg_name,
 	store->log = ovis_log_register(log_name, "Store plugin log file.");
         store->plugin = plugin;
 	store->api = (struct ldmsd_store *)plugin->api;
-	if (store->api->base.constructor != NULL
-		&& store->api->base.destructor != NULL)
-	{
-		/* This plugin is multi-instance capable */
+	if (store->api->base.constructor != NULL) {
 		rc = store->api->base.constructor(&store->cfg);
 		if (rc)
 			goto err;
