@@ -1,5 +1,6 @@
 #ifndef _REF_H_
 #define _REF_H_
+#include <stdbool.h>
 #include <sys/queue.h>
 #include <string.h>
 #include <assert.h>
@@ -34,12 +35,28 @@ typedef struct ref_s {
 
 static inline int _ref_put(ref_t r, const char *name, const char *func, int line)
 {
-	int count;
 #ifndef _REF_TRACK_
-	count = __sync_sub_and_fetch(&r->ref_count, 1);
-	if (!count)
-		r->free_fn(r->free_arg);
+        int expected_count;
+        int desired_count;
+        bool done = false;
+
+        expected_count = r->ref_count;
+        while (!done) {
+                assert(expected_count > 0);
+                desired_count = expected_count - 1;
+                /* on failure, __atomic_compare_exchange updates expected_count for us */
+                done = __atomic_compare_exchange(&r->ref_count,
+                                                 &expected_count,
+                                                 &desired_count,
+                                                 false,
+                                                 __ATOMIC_SEQ_CST,
+                                                 __ATOMIC_SEQ_CST);
+        }
+        if (desired_count == 0)
+                r->free_fn(r->free_arg);
+        return desired_count;
 #else
+	int count;
 	ref_inst_t inst;
 	assert(r->ref_count);
 	pthread_mutex_lock(&r->lock);
@@ -69,15 +86,35 @@ static inline int _ref_put(ref_t r, const char *name, const char *func, int line
 		r->free_fn(r->free_arg);
 	else
 		pthread_mutex_unlock(&r->lock);
-#endif
 	return count;
+#endif
 }
 #define ref_put(_r_, _n_) _ref_put((_r_), (_n_), __func__, __LINE__)
 
-static inline void _ref_get(ref_t r, const char *name, const char *func, int line)
+static inline bool _ref_get(ref_t r, const char *name, const char *func, int line)
 {
 #ifndef _REF_TRACK_
-	__sync_fetch_and_add(&r->ref_count, 1);
+        int expected_count;
+        int desired_count;
+        bool done = false;
+
+        expected_count = r->ref_count;
+        while (!done) {
+                if (expected_count == 0) {
+                        /* The counter dropped to zero, and associated memory has been freed.
+                           We can no longer increment the counter. */
+                        break;
+                }
+                desired_count = expected_count + 1;
+                /* on failure, __atomic_compare_exchange updates expected_count for us */
+                done = __atomic_compare_exchange(&r->ref_count,
+                                                 &expected_count,
+                                                 &desired_count,
+                                                 false,
+                                                 __ATOMIC_SEQ_CST,
+                                                 __ATOMIC_SEQ_CST);
+        }
+        return done;
 #else
 	ref_inst_t inst;
 	pthread_mutex_lock(&r->lock);
@@ -106,6 +143,7 @@ static inline void _ref_get(ref_t r, const char *name, const char *func, int lin
 	LIST_INSERT_HEAD(&r->head, inst, entry);
  out:
 	pthread_mutex_unlock(&r->lock);
+        return true;
 #endif
 }
 #define ref_get(_r_, _n_) _ref_get((_r_), (_n_), __func__, __LINE__)
