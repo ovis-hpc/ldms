@@ -981,6 +981,8 @@ typedef struct ldmsd_plugin {
 
 	/* Deprecated, use destructor() */
 	void (*term)(ldmsd_plug_handle_t handle);
+
+	void *reserved[8]; /* reserved for future use */
 } *ldmsd_plugin_t;
 
 /* This struct is owned by the plugin. ldmsd should never modify the contents. */
