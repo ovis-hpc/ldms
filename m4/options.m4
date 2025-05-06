@@ -217,7 +217,9 @@ AS_CASE( x$withval,
 	[
 		check=y
 		err_exi=y
-		$2_CFLAGS="$withval/include"
+		$2_INCDIR="$withval/include"
+		$2_INCDIR_FLAG="-I$withval/include"
+		$2_CFLAGS="-I$withval/include"
 		havelibdir=""
 		havelib64dir=""
 		AS_IF([ test -d "$withval/lib64" ], [
