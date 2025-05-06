@@ -35,7 +35,11 @@ typedef struct ref_s {
 static inline int _ref_put(ref_t r, const char *name, const char *func, int line)
 {
 	int count;
-#ifdef _REF_TRACK_
+#ifndef _REF_TRACK_
+	count = __sync_sub_and_fetch(&r->ref_count, 1);
+	if (!count)
+		r->free_fn(r->free_arg);
+#else
 	ref_inst_t inst;
 	assert(r->ref_count);
 	pthread_mutex_lock(&r->lock);
@@ -65,10 +69,6 @@ static inline int _ref_put(ref_t r, const char *name, const char *func, int line
 		r->free_fn(r->free_arg);
 	else
 		pthread_mutex_unlock(&r->lock);
-#else
-	count = __sync_sub_and_fetch(&r->ref_count, 1);
-	if (!count)
-		r->free_fn(r->free_arg);
 #endif
 	return count;
 }
@@ -76,7 +76,9 @@ static inline int _ref_put(ref_t r, const char *name, const char *func, int line
 
 static inline void _ref_get(ref_t r, const char *name, const char *func, int line)
 {
-#ifdef _REF_TRACK_
+#ifndef _REF_TRACK_
+	__sync_fetch_and_add(&r->ref_count, 1);
+#else
 	ref_inst_t inst;
 	pthread_mutex_lock(&r->lock);
 	if (0 == r->ref_count) {
@@ -104,8 +106,6 @@ static inline void _ref_get(ref_t r, const char *name, const char *func, int lin
 	LIST_INSERT_HEAD(&r->head, inst, entry);
  out:
 	pthread_mutex_unlock(&r->lock);
-#else
-	__sync_fetch_and_add(&r->ref_count, 1);
 #endif
 }
 #define ref_get(_r_, _n_) _ref_get((_r_), (_n_), __func__, __LINE__)
