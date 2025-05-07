@@ -16,9 +16,8 @@ SYNOPSIS
 ========
 
 **config** **name=store_avro_kafka** **producer=PRODUCER**
-        **instance=INSTANCE** [ **topic=\ TOPIC_FMT** ] [ **encoding=\ JSON** ]
-        [ **encoding=\ AVRO** ] [ **kafka_conf=\ PATH** ] [
-        **serdes_conf=\ PATH** ]
+**instance=INSTANCE** [ **topic=\ TOPIC_FMT** ] [ **encoding=\ JSON** ]
+[ **encoding=\ AVRO** ] [ **kafka_conf=\ PATH** ] [**serdes_conf=\ PATH** ]
 
 DESCRIPTION
 ===========
