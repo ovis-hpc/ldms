@@ -2794,12 +2794,12 @@ class LdmsdCmdParser(cmd.Cmd):
             print(f"Error getting the logger infomation. {msg}")
         loggers = fmt_status(msg)
 
-        print(f"{'Name':20} {'Log Level':30} Description")
-        print(f"{'-'*20} {'-'*30} {'-'*30}")
+        print(f"{'Name':40} {'Log Level':30} Description")
+        print(f"{'-'*40} {'-'*30} {'-'*30}")
 
         for l in loggers:
-            print(f"{l['name']:20} {l['level']:30} {l['desc']}")
-        print(f"{'-'*(20 + 30 + 30 + 2)}")
+            print(f"{l['name']:40} {l['level']:30} {l['desc']}")
+        print(f"{'-'*(40 + 30 + 30 + 2)}")
         print("The loggers with the Log Level as 'default' use the same "
               "log level as the default logger (ldmsd). When the default log "
               "level changes, their log levels change accordingly.")
