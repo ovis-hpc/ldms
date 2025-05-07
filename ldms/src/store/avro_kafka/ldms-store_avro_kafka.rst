@@ -4,7 +4,6 @@
 store_avro_kafka
 =======================
 
-
 ------------------------------
 LDMSD store_avro_kafka plugin
 ------------------------------
@@ -17,9 +16,9 @@ SYNOPSIS
 ========
 
 **config** **name=store_avro_kafka** **producer=PRODUCER**
-**instance=INSTANCE** [ **topic=\ TOPIC_FMT** ] [ **encoding=\ JSON** ]
-[ **encoding=\ AVRO** ] [ **kafka_conf=\ PATH** ] [
-**serdes_conf=\ PATH** ]
+        **instance=INSTANCE** [ **topic=\ TOPIC_FMT** ] [ **encoding=\ JSON** ]
+        [ **encoding=\ AVRO** ] [ **kafka_conf=\ PATH** ] [
+        **serdes_conf=\ PATH** ]
 
 DESCRIPTION
 ===========
@@ -40,20 +39,24 @@ configuration file or optionally on the **``config``** command line.
 CONFIG OPTIONS
 ==============
 
--  A string indicating the encoding mode: "JSON" will encode messages in
+-  **mode**
+   A string indicating the encoding mode: "JSON" will encode messages in
    JSON format, "AVRO" will encode messages using a schema and Avro
    Serdes. The default is "AVRO". The mode values are not case
    sensitive.
 
--  Must be store_avro_kafka.
+-  **name**
+   Must be store_avro_kafka.
 
--  A path to a configuration file in Java property format. This
+-  **kafka_conf**
+   A path to a configuration file in Java property format. This
    configuration file is parsed and used to configure the Kafka
    kafka_conf_t configuration object. The format of this file and the
    supported attributes are available here:
    https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md.
 
--  A path to a configuration file in Java property format. This
+-  **serdes_conf**
+   A path to a configuration file in Java property format. This
    configuration file is parsed and used to configure the Avro Serdes
    serdes_conf_t configuration object. The only supported option for
    this file is serdes.schema.url.
@@ -71,28 +74,28 @@ The '%' character introduces a *format specifier* that will be
 substituted in the topic format string to create the topic name. The
 format specifiers are as follows:
 
--  The format in which the message is serialized: "json" or "avro".
+-  **%F** The format in which the message is serialized: "json" or "avro".
 
--  The set parameter's *schema* name.
+-  **%S** The set parameter's *schema* name.
 
--  The instance name of the set, e.g. "orion-01/meminfo".
+-  **%I** The instance name of the set, e.g. "orion-01/meminfo".
 
--  The set parameter's *producer* name, e.g. "orion-01."
+-  **%P** The set parameter's *producer* name, e.g. "orion-01."
 
--  The user-name string for the owner of the set. If the user-name is
+-  **%u** The user-name string for the owner of the set. If the user-name is
    not known on the system, the user-id is used.
 
--  The user-id (uid_t) for the owner of the set.
+-  **%U** The user-id (uid_t) for the owner of the set.
 
--  The group-name string for the group of the set. If the group-name is
+-  **%g** The group-name string for the group of the set. If the group-name is
    not known on the system, the group-id is used.
 
--  The group-id (gid_t) for the group of the set.
+-  **%G** The group-id (gid_t) for the group of the set.
 
--  The access/permission bits for the set formatted as a string, e.g.
+-  **%a** The access/permission bits for the set formatted as a string, e.g.
    "-rw-rw----".
 
--  The access/permission bits for the set formatted as an octal number,
+-  **%A** The access/permission bits for the set formatted as an octal number,
    e.g. 0440.
 
 Note that a topic name must only consist of a combination of the

@@ -4,7 +4,6 @@
 darshan_stream_store
 ===========================
 
-
 ---------------------------------
 LDMS darshan_stream_store plugin
 ---------------------------------
@@ -62,7 +61,9 @@ message type between module data and meta data.
 
 A MOD darshan JSON example is shown below:
 
-{"job_id":6582,"rank":0,"ProducerName":"nid00021","file":"N/A","record_id":6222542600266098259,"module":"POSIX","type":"MOD","max_byte":16777215,"switches":0,"cnt":1,"op":"writes_segment_0","seg":[{"off":0,"len":16777216,"dur":0.16,"timestamp":1631904596.737955}]}
+::
+
+        {"schema":"N/A", "uid":12345, "exe":"N/A","job_id":21068382,"rank":1,"ProducerName":"n326","file":"N/A","record_id":4379126583041845751,"module":"POSIX","type":"MOD","max_byte":-1,"switches":-1,"flushes":-1,"cnt":1,"op":"close","seg":[{"pt_sel":-1,"irreg_hslab":-1,"reg_hslab":-1,"ndims":-1,"npoints":-1,"off":-1,"len":-1,"start":0.060127,"dur":0.000002,"total":0.000016,"timestamp":1743618559.147298}]}
 
 A MET darshan JSON example is shown below:
 

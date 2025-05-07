@@ -4,7 +4,6 @@
 tx2mon
 =============
 
-
 ------------------------------------
 Man page for the LDMS tx2mon plugin
 ------------------------------------
@@ -180,4 +179,4 @@ missing tx2mon kernel module.
 SEE ALSO
 ========
 
-:ref:`ldmsd(8) <ldmsd>`, ldms_sampler_base
+:ref:`ldmsd(8) <ldmsd>`, :ref:`ldms_sampler_base(7) <ldmsd_sampler_base>`

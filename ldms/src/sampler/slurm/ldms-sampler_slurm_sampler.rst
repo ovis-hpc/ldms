@@ -4,7 +4,6 @@
 slurm_sampler
 ====================
 
-
 --------------------------------------------
 Man page for the LDMSD slurm_sampler plugin
 --------------------------------------------
@@ -16,8 +15,8 @@ Man page for the LDMSD slurm_sampler plugin
 SYNOPSIS
 ========
 
-Within ldmsd_controller or a configuration file: **config**
-**name=slurm_sampler** **producer=**\ *PRODUCER*
+Within ldmsd_controller or a configuration file:
+**config** **name=slurm_sampler** **producer=**\ *PRODUCER*
 **instance=**\ *INSTANCE* [ **component_id=\ COMP_ID** ] [
 **stream=\ STREAM** ] [ **job_count=\ MAX_JOBS** ] [
 **task_count=\ MAX_TASKS** ]

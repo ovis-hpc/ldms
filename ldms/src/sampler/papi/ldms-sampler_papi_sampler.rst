@@ -4,7 +4,6 @@
 papi_sampler
 ===================
 
-
 -------------------------------------------
 Man page for the LDMSD papi_sampler plugin
 -------------------------------------------
@@ -16,8 +15,8 @@ Man page for the LDMSD papi_sampler plugin
 SYNOPSIS
 ========
 
-Within ldmsd_controller or a configuration file: **config**
-**name=papi_sampler** **producer=**\ *PRODUCER*
+Within ldmsd_controller or a configuration file:
+**config** **name=papi_sampler** **producer=**\ *PRODUCER*
 **instance=**\ *INSTANCE* [ **component_id=\ COMP_ID** ] [
 **stream=\ STREAM** ] [ **job_expiry=\ EXPIRY_SEC** ]
 
