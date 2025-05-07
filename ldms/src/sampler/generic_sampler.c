@@ -321,16 +321,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	return create_metric_set(value, prod_name);
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
-	if (set)
-		ldms_set_delete(set);
-	set = NULL;
-}
-
 static int sample(ldmsd_plug_handle_t handle)
 {
 	gs_metric_t gs_metric;
@@ -419,12 +409,17 @@ int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	if (schema)
+		ldms_schema_delete(schema);
+	schema = NULL;
+	if (set)
+		ldms_set_delete(set);
+	set = NULL;
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

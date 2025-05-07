@@ -606,25 +606,6 @@ static void stream_data_close( stream_data_t sd )
 	pthread_mutex_destroy(&sd->write_lock);
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	pthread_mutex_lock(&cfg_lock);
-	closing = 1;
-	stream_data_t sd = LIST_FIRST(&data_list);
-	while (sd) {
-		stream_data_close(sd);
-		LIST_REMOVE(sd, entry);
-		free(sd);
-		sd = LIST_FIRST(&data_list);
-	}
-	pthread_mutex_unlock(&cfg_lock);
-	free(root_path);
-	root_path = NULL;
-	free(container);
-	container = NULL;
-	return;
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "    config name=blob_stream_writer path=<path> container=<container> stream=<stream> \n"
@@ -656,12 +637,25 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	pthread_mutex_lock(&cfg_lock);
+	closing = 1;
+	stream_data_t sd = LIST_FIRST(&data_list);
+	while (sd) {
+		stream_data_close(sd);
+		LIST_REMOVE(sd, entry);
+		free(sd);
+		sd = LIST_FIRST(&data_list);
+	}
+	pthread_mutex_unlock(&cfg_lock);
+	free(root_path);
+	root_path = NULL;
+	free(container);
+	container = NULL;
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 			.type = LDMSD_PLUGIN_SAMPLER,
-			.term = term,
 			.config = config,
 			.usage = usage,
                         .constructor = constructor,

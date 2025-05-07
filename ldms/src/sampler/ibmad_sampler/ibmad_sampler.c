@@ -760,14 +760,6 @@ static int sample(ldmsd_plug_handle_t handle)
         return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
-	metrics_tree_destroy();
-	ibmad_schema_destroy();
-	free(conf.schema_name);
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
         ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
@@ -786,12 +778,15 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
+	metrics_tree_destroy();
+	ibmad_schema_destroy();
+	free(conf.schema_name);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

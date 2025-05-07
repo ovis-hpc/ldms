@@ -464,7 +464,22 @@ out:
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static const char *usage(ldmsd_plug_handle_t handle)
+{
+	return  "config name=procdiskstats device=<devices> " BASE_CONFIG_USAGE
+		"    <devices>       A comma-separated list of devices\n";
+}
+
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	set = NULL;
+	USER_HZ = sysconf(_SC_CLK_TCK);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	if (mf)
 		fclose(mf);
@@ -484,29 +499,9 @@ static void term(ldmsd_plug_handle_t handle)
 	}
 }
 
-static const char *usage(ldmsd_plug_handle_t handle)
-{
-	return  "config name=procdiskstats device=<devices> " BASE_CONFIG_USAGE
-		"    <devices>       A comma-separated list of devices\n";
-}
-
-static int constructor(ldmsd_plug_handle_t handle)
-{
-	mylog = ldmsd_plug_log_get(handle);
-	set = NULL;
-	USER_HZ = sysconf(_SC_CLK_TCK);
-
-        return 0;
-}
-
-static void destructor(ldmsd_plug_handle_t handle)
-{
-}
-
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

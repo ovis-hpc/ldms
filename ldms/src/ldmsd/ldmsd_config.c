@@ -164,15 +164,13 @@ static struct ldmsd_plugin_generic *load_plugin(const char *plugin_name)
 	/* Verify the following API contract:
 	 * - If flags & MULTI_INSTANCE is !0, then
 	 *   -- both constructor() and destructor() must be defined
-	 *   -- term() must not be defined
 	 */
 	if (plugin->api->flags && LDMSD_PLUGIN_MULTI_INSTANCE) {
-		if (!plugin->api->constructor || !plugin->api->destructor
-                    || plugin->api->term) {
+		if (!plugin->api->constructor || !plugin->api->destructor) {
 			ovis_log(config_log, OVIS_LERROR,
 				 "The library, '%s', has the multi-instance flag, "
 				 "but is missing either the constructor or "
-				 "destructor functions, or has term defined.\n",
+				 "destructor functions.\n",
 				 plugin_name);
 			goto err_2;
 		}
@@ -342,8 +340,6 @@ void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 	ldmsd_cfgobj_sampler_t samp = (void*)obj;
 	if (samp->plugin->api->destructor)
 		samp->plugin->api->destructor(obj);
-	else if (samp->plugin->api->term)
-		samp->plugin->api->term(obj);
         unload_plugin(samp->plugin);
 	ldmsd_cfgobj___del(obj);
 }

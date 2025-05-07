@@ -945,7 +945,13 @@ out:
 
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+        set = NULL;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	int i;
 
@@ -959,20 +965,9 @@ static void term(ldmsd_plug_handle_t handle)
 	set = NULL;
 }
 
-static int constructor(ldmsd_plug_handle_t handle)
-{
-	mylog = ldmsd_plug_log_get(handle);
-        set = NULL;
-}
-
-static void destructor(ldmsd_plug_handle_t handle)
-{
-}
-
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

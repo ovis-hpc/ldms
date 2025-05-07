@@ -583,13 +583,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	}
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	/* What contract is this supposed to meet. Shall close(sh) have
-	been called for all existing sh already before this is reached.?
-	*/
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return
@@ -1113,12 +1106,14 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	/* What contract is this supposed to meet. Shall close(sh) have
+	been called for all existing sh already before this is reached.?
+	*/
 }
 
 struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_STORE,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

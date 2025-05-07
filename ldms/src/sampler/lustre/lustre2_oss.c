@@ -313,18 +313,6 @@ err0:
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	if (set) {
-		ldms_set_delete(set);
-		set = NULL;
-	}
-	if (base) {
-		base_del(base);
-		base = NULL;
-	}
-}
-
 /**
  * \brief Configuration
  *
@@ -408,12 +396,19 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	if (set) {
+		ldms_set_delete(set);
+		set = NULL;
+	}
+	if (base) {
+		base_del(base);
+		base = NULL;
+	}
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

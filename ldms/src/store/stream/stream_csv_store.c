@@ -1432,9 +1432,31 @@ out:
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static const char* usage(ldmsd_plug_handle_t handle)
 {
+	return "    config name=stream_csv_store path=<path> container=<container> stream=<stream> \n"
+			"          [flushtime=<N>] [buffer=<0/1>] [rollover=<N> rolltype=<N>]\n"
+			"         - Set the root path for the storage of csvs and some default parameters\n"
+			"         - path          The path to the root of the csv directory\n"
+			"         - container     The directory under the path\n"
+			"         - stream        a comma separated list of streams, each of which will also be its file name\n"
+			"         - flushtime     Time in sec for a regular flush (independent of any other rollover or flush directives)\n"
+			" 	  - buffer        0 to disable buffering, 1 to enable it with autosize (default)\n"
+			"         - rollover      Greater than or equal to zero; enables file rollover and sets interval\n"
+			"         - rolltype      [1-n] Defines the policy used to schedule rollover events.\n"
+	ROLLTYPES
+	"\n";
+}
 
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
 	if (rothread_used) {
 		void *dontcare = NULL;
 		pthread_cancel(rothread);
@@ -1469,37 +1491,9 @@ static void term(ldmsd_plug_handle_t handle)
 	return;
 }
 
-static const char* usage(ldmsd_plug_handle_t handle)
-{
-	return "    config name=stream_csv_store path=<path> container=<container> stream=<stream> \n"
-			"          [flushtime=<N>] [buffer=<0/1>] [rollover=<N> rolltype=<N>]\n"
-			"         - Set the root path for the storage of csvs and some default parameters\n"
-			"         - path          The path to the root of the csv directory\n"
-			"         - container     The directory under the path\n"
-			"         - stream        a comma separated list of streams, each of which will also be its file name\n"
-			"         - flushtime     Time in sec for a regular flush (independent of any other rollover or flush directives)\n"
-			" 	  - buffer        0 to disable buffering, 1 to enable it with autosize (default)\n"
-			"         - rollover      Greater than or equal to zero; enables file rollover and sets interval\n"
-			"         - rolltype      [1-n] Defines the policy used to schedule rollover events.\n"
-	ROLLTYPES
-	"\n";
-}
-
-static int constructor(ldmsd_plug_handle_t handle)
-{
-	mylog = ldmsd_plug_log_get(handle);
-
-        return 0;
-}
-
-static void destructor(ldmsd_plug_handle_t handle)
-{
-}
-
 struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_STORE,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

@@ -316,12 +316,21 @@ static int sample(ldmsd_plug_handle_t handle) {
     return 0;
 }
 
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	__gpu_metrics_log = ldmsd_plug_log_get(handle);
+        setGmgLoggingFunction(__gpu_metrics_log);
+        set = NULL;
+
+        return 0;
+}
+
 /**
  * Release any opened resource.  Note that we have to call OneAPI C++ destructor to
  * close any opened handles.
- * @param context this plugin instance's context.
  */
-static void term(ldmsd_plug_handle_t handle) {
+static void destructor(ldmsd_plug_handle_t handle)
+{
     // No longer need to free device handle array here.
 
     size_t mallocCount = getMallocCount();
@@ -335,26 +344,12 @@ static void term(ldmsd_plug_handle_t handle) {
     free_schema();
 }
 
-static int constructor(ldmsd_plug_handle_t handle)
-{
-	__gpu_metrics_log = ldmsd_plug_log_get(handle);
-        setGmgLoggingFunction(__gpu_metrics_log);
-        set = NULL;
-
-        return 0;
-}
-
-static void destructor(ldmsd_plug_handle_t handle)
-{
-}
-
 /**
  * This structure defines the plugin interface.
  */
 struct ldmsd_sampler ldmsd_plugin_interface = {
         .base = {
                 .type = LDMSD_PLUGIN_SAMPLER,
-                .term = term,       // destructor
                 .config = config,
                 .usage = usage,
 		.constructor = constructor,

@@ -471,7 +471,20 @@ static int sx_sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void sx_term(ldmsd_plug_handle_t handle)
+static const char *usage(ldmsd_plug_handle_t handle)
+{
+	return  "config name=switchx set=<setname>\n"
+		"    setname     The set name.\n";
+}
+
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	int port;
 
@@ -489,27 +502,9 @@ static void sx_term(ldmsd_plug_handle_t handle)
 	}
 }
 
-static const char *usage(ldmsd_plug_handle_t handle)
-{
-	return  "config name=switchx set=<setname>\n"
-		"    setname     The set name.\n";
-}
-
-static int constructor(ldmsd_plug_handle_t handle)
-{
-	mylog = ldmsd_plug_log_get(handle);
-
-        return 0;
-}
-
-static void destructor(ldmsd_plug_handle_t handle)
-{
-}
-
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = sx_term,
 		.config = sx_config,
 		.usage = usage,
 		.constructor = constructor,

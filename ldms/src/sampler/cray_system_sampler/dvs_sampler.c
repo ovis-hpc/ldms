@@ -700,21 +700,6 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	int i;
-
-	/* TODO: Run through the tree and blow everything away */
-	if (cfg_base)
-		base_del(cfg_base);
-	for (i = 0; i <num_cfgmetrics; i++){
-		free(cfgmetrics[i]);
-	}
-	free(cfgmetrics);
-	cfgmetrics = NULL;
-	num_cfgmetrics = 0;
-}
-
 static int mount_comparator(void *a, const void *b)
 {
 	return strcmp(a, b);
@@ -730,12 +715,22 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	int i;
+
+	/* TODO: Run through the tree and blow everything away */
+	if (cfg_base)
+		base_del(cfg_base);
+	for (i = 0; i <num_cfgmetrics; i++){
+		free(cfgmetrics[i]);
+	}
+	free(cfgmetrics);
+	cfgmetrics = NULL;
+	num_cfgmetrics = 0;
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

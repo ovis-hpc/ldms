@@ -256,25 +256,6 @@ __config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	}
 }
 
-static void
-__term(ldmsd_plug_handle_t handle)
-{
-	struct rbn *rbn;
-	struct __client_s *cli;
-
-	pthread_mutex_lock(&__mutex);
-	while ((rbn = rbt_min(&rbt))) {
-		rbt_del(&rbt, rbn);
-		pthread_mutex_unlock(&__mutex);
-		cli = container_of(rbn, struct __client_s, rbn);
-		ldms_stream_close(cli->c);
-		fclose(cli->f);
-		free(cli);
-		pthread_mutex_lock(&__mutex);
-	}
-	pthread_mutex_unlock(&__mutex);
-}
-
 static ldmsd_store_handle_t
 __open(ldmsd_plug_handle_t handle, const char *container, const char *schema,
        struct ldmsd_strgp_metric_list *metric_list)
@@ -315,11 +296,24 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	struct rbn *rbn;
+	struct __client_s *cli;
+
+	pthread_mutex_lock(&__mutex);
+	while ((rbn = rbt_min(&rbt))) {
+		rbt_del(&rbt, rbn);
+		pthread_mutex_unlock(&__mutex);
+		cli = container_of(rbn, struct __client_s, rbn);
+		ldms_stream_close(cli->c);
+		fclose(cli->f);
+		free(cli);
+		pthread_mutex_lock(&__mutex);
+	}
+	pthread_mutex_unlock(&__mutex);
 }
 
 struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-		.term = __term,
 		.config = __config,
 		.usage = __usage,
 		.type = LDMSD_PLUGIN_STORE,

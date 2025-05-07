@@ -314,17 +314,6 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	if (base) {
-		base_del(base);
-		base = NULL;
-	}
-	if (set)
-		ldms_set_delete(set);
-	set = NULL;
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 
@@ -361,12 +350,18 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	if (base) {
+		base_del(base);
+		base = NULL;
+	}
+	if (set)
+		ldms_set_delete(set);
+	set = NULL;
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

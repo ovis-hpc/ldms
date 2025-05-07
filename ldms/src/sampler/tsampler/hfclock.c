@@ -191,7 +191,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
         .base.type = LDMSD_PLUGIN_SAMPLER,
-	.base.term = NULL,
 	.base.config = hfclock_config,
 	.base.usage = hfclock_usage,
         .base.constructor = constructor,

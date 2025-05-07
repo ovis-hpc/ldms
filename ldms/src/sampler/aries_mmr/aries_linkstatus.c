@@ -291,7 +291,15 @@ err:
 	return EINVAL;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	set = NULL;
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	//don't close the file handle since we open and close it each time
 	if (lsfile)
@@ -307,22 +315,9 @@ static void term(ldmsd_plug_handle_t handle)
 	base = NULL;
 }
 
-static int constructor(ldmsd_plug_handle_t handle)
-{
-	mylog = ldmsd_plug_log_get(handle);
-	set = NULL;
-
-        return 0;
-}
-
-static void destructor(ldmsd_plug_handle_t handle)
-{
-}
-
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

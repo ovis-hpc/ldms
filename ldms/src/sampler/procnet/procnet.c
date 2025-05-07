@@ -465,14 +465,6 @@ err:
 }
 
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	pthread_mutex_lock(&cfg_lock);
-	procnet_reset();
-	termed = 1;
-	pthread_mutex_unlock(&cfg_lock);
-}
-
 static int constructor(ldmsd_plug_handle_t handle)
 {
 	mylog = ldmsd_plug_log_get(handle);
@@ -482,12 +474,15 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	pthread_mutex_lock(&cfg_lock);
+	procnet_reset();
+	termed = 1;
+	pthread_mutex_unlock(&cfg_lock);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,
@@ -495,9 +490,3 @@ struct ldmsd_sampler ldmsd_plugin_interface = {
 	},
 	.sample = sample,
 };
-
-static void __attribute__ ((destructor)) procnet_plugin_fini(void);
-static void procnet_plugin_fini()
-{
-	term(NULL);
-}

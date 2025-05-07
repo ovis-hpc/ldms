@@ -3651,7 +3651,7 @@ static int __stream_cb(ldms_stream_event_t ev, void *ctxt)
 	return rc;
 }
 
-static void linux_proc_sampler_term(ldmsd_plug_handle_t handle);
+static void linux_proc_sampler_cleanup(linux_proc_sampler_inst_t inst);
 
 static int
 linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
@@ -3950,14 +3950,13 @@ no_pids:	;
 
  err:
 	/* undo the config */
-	linux_proc_sampler_term(handle);
+	linux_proc_sampler_cleanup(inst);
 	return rc;
 }
 
 static
-void linux_proc_sampler_term(ldmsd_plug_handle_t handle)
+void linux_proc_sampler_cleanup(linux_proc_sampler_inst_t inst)
 {
-	linux_proc_sampler_inst_t inst = ldmsd_plug_ctxt_get(handle);
 	struct rbn *rbn;
 	struct linux_proc_sampler_set *app_set;
 
@@ -4104,6 +4103,8 @@ static void destructor(ldmsd_plug_handle_t handle)
 {
         linux_proc_sampler_inst_t inst = ldmsd_plug_ctxt_get(handle);
 
+        linux_proc_sampler_cleanup(inst);
+
         free(inst);
 }
 
@@ -4111,7 +4112,6 @@ struct ldmsd_sampler ldmsd_plugin_interface = {
         .base.type = LDMSD_PLUGIN_SAMPLER,
         .base.constructor = constructor,
         .base.destructor = destructor,
-        .base.term = linux_proc_sampler_term,
         .base.config = linux_proc_sampler_config,
         .base.usage = linux_proc_sampler_usage,
         .sample = linux_proc_sampler_sample,

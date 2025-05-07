@@ -517,19 +517,6 @@ static void close_store(ldmsd_store_handle_t _sh)
 	pthread_mutex_unlock(&cfg_lock);
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	struct rbn *rbn;
-	amqp_inst_t ai;
-
-	pthread_mutex_lock(&cfg_lock);
-	while ((rbn = rbt_min(&amqp_rbt)) != NULL) {
-		ai = container_of(rbn, struct amqp_instance, rbn);
-		_close_store(ai);
-	}
-	pthread_mutex_unlock(&cfg_lock);
-}
-
 #define DEF_VALUE_BUF_LEN 1024
 
 size_t u8_printer(char *buf, size_t rem, ldms_mval_t val, int i)
@@ -899,12 +886,20 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	struct rbn *rbn;
+	amqp_inst_t ai;
+
+	pthread_mutex_lock(&cfg_lock);
+	while ((rbn = rbt_min(&amqp_rbt)) != NULL) {
+		ai = container_of(rbn, struct amqp_instance, rbn);
+		_close_store(ai);
+	}
+	pthread_mutex_unlock(&cfg_lock);
 }
 
 static struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_STORE,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

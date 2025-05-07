@@ -447,10 +447,15 @@ out:
 	return 0;
 }
 
-/**
- * Sampler termination.
- **/
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+        set = NULL;
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	ovis_log(mylog, OVIS_LDEBUG, "Terminating sampler.\n");
 	if (base)
@@ -468,25 +473,12 @@ static void term(ldmsd_plug_handle_t handle)
 	ovis_log(mylog, OVIS_LDEBUG, "Done terminating.\n");
 }
 
-static int constructor(ldmsd_plug_handle_t handle)
-{
-	mylog = ldmsd_plug_log_get(handle);
-        set = NULL;
-
-        return 0;
-}
-
-static void destructor(ldmsd_plug_handle_t handle)
-{
-}
-
 /**
  * Sampler LDMS definition.
  **/
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,
