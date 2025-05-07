@@ -4,7 +4,6 @@
 ldms_ibnet_schema_name
 ======================
 
-
 --------------------------------------------------
 Man page for the LDMS ibnet plugin support utility
 --------------------------------------------------

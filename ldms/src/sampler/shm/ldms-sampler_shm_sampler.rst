@@ -1,8 +1,8 @@
 .. _shm_sampler:
 
-==================
+===========
 shm_sampler
-==================
+===========
 
 ------------------------------------------------------------------------------------------------------
 This is a sampler plug-in module within the the LDMS that can read from a dynamic number of shm files.
@@ -19,7 +19,9 @@ SYNOPSIS
 | load name=shm_sampler
 | config name=shm_sampler [ <attr>=<value> ]
 
-is a sampler plug-in module within the the LDMS. This sampler can read
+DESCRIPTION
+===========
+**shm_sampler** is a sampler plug-in module within the the LDMS. This sampler can read
 from a dynamic number of shm files. These files are tracked by a central
 index file in shared memory. The main usage of this sampler is to stream
 application performance data.
@@ -31,38 +33,58 @@ application performance data.
   [job_set=<name> job_id=<name> app_id=<name> job_start=<name>
   job_end=<name>]
 
-A unique name for the host providing the data
+**producer**
+  A unique name for the host providing the data
 
-A unique name for the metric set
+**instance**
+  A unique name for the metric set
 
-A unique name for the shared memory index file
+**shm_index**
+  A unique name for the shared memory index file
 
-Maximum number of entries in the shared memory index file
+**shm_boxmax**
+  Maximum number of entries in the shared memory index file
 
-Maximum number of elements in array metrics
+**shm_array_max**
+  Maximum number of elements in array metrics
 
-Maximum number of metrics
+**shm_metric_max**
+  Maximum number of metrics
 
-No read/write timeout in seconds
+**shm_set_timeout**
+  No read/write timeout in seconds
 
-A unique number for the component being monitored, Defaults to zero.
+**component_id**
+  A unique number for the component being monitored, Defaults to zero.
 
-The name of the metric set schema, Defaults to the sampler name
+**schema**
+  The name of the metric set schema, Defaults to the sampler name
 
-The instance name of the set containing the job data, default is
+**job_set**
+  The instance name of the set containing the job data, default is
 'job_info'
 
-The name of the metric containing the Job Id, default is 'job_id'
+**job_id**
+  The name of the metric containing the Job Id, default is 'job_id'
 
-The name of the metric containing the Application Id, default is
+**app_id**
+  The name of the metric containing the Application Id, default is
 'app_id'
 
-The name of the metric containing the Job start time, default is
+**job_start**
+  The name of the metric containing the Job start time, default is
 'job_start'
 
-The name of the metric containing the Job end time, default is 'job_end'
+**job_end**
+  The name of the metric containing the Job end time, default is 'job_end'
+
+BUGS
+====
 
 None known.
+
+EXAMPLES
+========
 
 Within ldmsd_controller or a configuration file:
 

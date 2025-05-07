@@ -4,7 +4,6 @@
 syspapi_sampler
 ======================
 
-
 ----------------------------------------------
 Man page for the LDMSD syspapi_sampler plugin
 ----------------------------------------------
@@ -16,7 +15,8 @@ Man page for the LDMSD syspapi_sampler plugin
 SYNOPSIS
 ========
 
-Within ldmsd_controller or a configuration file: **config**
+Within ldmsd_controller or a configuration file:
+**config**
 **name=syspapi_sampler** **producer=**\ *PRODUCER*
 **instance=**\ *INSTANCE* [ **schema=\ SCHEMA** ] [
 **component_id=\ COMPONENT_ID** ] [ **cfg_file=\ PATH** ] [

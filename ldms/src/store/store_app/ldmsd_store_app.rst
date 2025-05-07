@@ -4,7 +4,6 @@
 ldmsd_store_app
 ================
 
-
 -------------------------------
 LDMSD store_app storage plugin
 -------------------------------
@@ -13,8 +12,8 @@ LDMSD store_app storage plugin
 :Manual section: 7
 :Manual group: LDMS store
 
-SYNOPSIS TESTING34
-==================
+SYNOPSIS
+========
 
 **load** **name**\ =\ **store_app**
 

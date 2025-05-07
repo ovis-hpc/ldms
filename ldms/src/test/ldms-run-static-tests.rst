@@ -4,7 +4,6 @@
 ldms-run-static-tests
 =====================
 
-
 --------------------
 Execute the program
 --------------------

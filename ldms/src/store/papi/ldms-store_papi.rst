@@ -4,8 +4,6 @@
 store_papi
 =================
 
-.SH NAME
-
 -----------------------------------------
 Man page for the LDMSD store_papi plugin
 -----------------------------------------
@@ -14,7 +12,8 @@ Man page for the LDMSD store_papi plugin
 :Manual section: 7
 :Manual group: LDMS store
 
-.SH SYNOPSIS
+SYNOPSIS
+========
 
 Within ldmsd_controller or a configuration file:
 
@@ -27,7 +26,8 @@ Within ldmsd_controller or a configuration file:
 
 **strgp_prdcr_add** **name=**\ *STRGP_NAME* **regex=**\ *PRDCR_REGEX*
 
-.SH DESCRIPTION
+DESCRIPTION
+===========
 
 **store_papi** is an LDMSD storage plugin for storing data from
 **papi_sampler** specifically as it expects a collection of PAPI event
@@ -45,7 +45,8 @@ schemas at run-time by user jobs (LDMS schemas of sets from
 the schema name defined by user job must match **strgp**'s schema in
 order to store the data.
 
-.SH CONFIG OPTIONS
+CONFIG OPTIONS
+==============
 
 **name=store_papi**
    This MUST be store_papi (the name of the plugin).
@@ -55,7 +56,8 @@ order to store the data.
    specified by the storage policy (**strgp**) will be placed in the
    *STORE_ROOT_PATH* directory.
 
-.SH STORAGE POLICY
+STORAGE POLICY
+==============
 
 An LDMSD storage plugin is like a storage driver that provides only
 storing mechanism. A storage policy (**strgp**) is a glue binding data
@@ -71,11 +73,13 @@ that will store data.
 **strgp_prdcr_add** is a command to specify producers that feed data to
 the storage policy.
 
-.SH BUGS
+BUGS
+====
 
 No known bugs.
 
-.SH EXAMPLES
+EXAMPLES
+========
 
 Plugin configuration example:
 
@@ -110,7 +114,8 @@ PAPI JSON example (/tmp/papi.json):
         ]
       }
 
-.SH SEE ALSO
+SEE ALSO
+========
 
 :ref:`papi_sampler(7) <papi_sampler>`, :ref:`ldmsd(8) <ldmsd>`, :ref:`ldms_quickstart(7) <ldms_quickstart>`,
 :ref:`ldmsd_controller(8) <ldmsd_controller>`, :ref:`ldms_sampler_base(7) <ldms_sampler_base>`.
