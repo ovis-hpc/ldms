@@ -591,25 +591,6 @@ int ldms_job_info_get(struct ldms_job_info *ji, unsigned flags)
 	return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	if (set) {
-		ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
-		ldms_set_delete(set);
-	}
-	set = NULL;
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
-
-	if (metric_name && metric_name != JOBID_COLNAME ) {
-		free(metric_name);
-	}
-	if ( procfile && procfile != JOBID_FILE ) {
-		free(procfile);
-	}
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return "config name=jobid producer=<prod_name> instance=<inst_name> "
@@ -633,12 +614,26 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	if (set) {
+		ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
+		ldms_set_delete(set);
+	}
+	set = NULL;
+	if (schema)
+		ldms_schema_delete(schema);
+	schema = NULL;
+
+	if (metric_name && metric_name != JOBID_COLNAME ) {
+		free(metric_name);
+	}
+	if ( procfile && procfile != JOBID_FILE ) {
+		free(procfile);
+	}
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

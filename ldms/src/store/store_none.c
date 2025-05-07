@@ -73,10 +73,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-}
-
 static ldmsd_store_handle_t
 open_store(ldmsd_plug_handle_t s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list)
@@ -95,7 +91,6 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set,
 
 struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.type = LDMSD_PLUGIN_STORE,

@@ -968,36 +968,6 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	ldms_shm_index_lock();
-
-	int index_should_be_cleaned = 1, i;
-	for(i = 0; i < box_cache.box_len; i++) {
-		ldms_shm_box_t *box = &boxes[i];
-		if(!ldms_shm_set_is_active(box->shm_set)) {
-			int num_of_users = ldms_shm_set_deregister_reader(
-					box->shm_set);
-			if(0 == num_of_users) {
-				/* Nobody uses this set. It's time for cleanup */
-				ldms_shm_set_clean_entry_shared_resources(
-						box->shm_set);
-				clear_box(box);
-			}
-		} else {
-			index_should_be_cleaned = 0;
-		}
-	}
-	ldms_shm_index_unlock();
-	if(index_should_be_cleaned
-			&& ldms_shm_index_is_empty(box_cache.index)) {
-		ldms_shm_index_clean_shared_resources(box_cache.index);
-	}
-	ldms_shm_clear_index(box_cache.index);
-	clear_box_cache();
-	ovis_log(mylog, OVIS_LINFO, SAMP " was successfully terminated\n");
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return "config name=" SAMP " producer=<name> instance=<name> [shm_index=<name>][shm_boxmax=<int>][shm_array_max=<int>][shm_metric_max=<int>]"
@@ -1028,12 +998,37 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	ldms_shm_index_lock();
+
+	int index_should_be_cleaned = 1, i;
+	for(i = 0; i < box_cache.box_len; i++) {
+		ldms_shm_box_t *box = &boxes[i];
+		if(!ldms_shm_set_is_active(box->shm_set)) {
+			int num_of_users = ldms_shm_set_deregister_reader(
+					box->shm_set);
+			if(0 == num_of_users) {
+				/* Nobody uses this set. It's time for cleanup */
+				ldms_shm_set_clean_entry_shared_resources(
+						box->shm_set);
+				clear_box(box);
+			}
+		} else {
+			index_should_be_cleaned = 0;
+		}
+	}
+	ldms_shm_index_unlock();
+	if(index_should_be_cleaned
+			&& ldms_shm_index_is_empty(box_cache.index)) {
+		ldms_shm_index_clean_shared_resources(box_cache.index);
+	}
+	ldms_shm_clear_index(box_cache.index);
+	clear_box_cache();
+	ovis_log(mylog, OVIS_LINFO, SAMP " was successfully terminated\n");
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 		.base = {
 			.type = LDMSD_PLUGIN_SAMPLER,
-			.term = term,
 			.config = config,
 			.usage = usage,
                         .constructor = constructor,

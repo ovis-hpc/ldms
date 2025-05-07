@@ -736,7 +736,14 @@ err1:
 #undef GET_STAT_SCALAR
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	g.mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	if (g.core_data) {
 		free(g.core_data);
@@ -756,25 +763,11 @@ static void term(ldmsd_plug_handle_t handle)
 		fclose(g.mf);
 		g.mf = NULL;
 	}
-	if (g.mylog)
-		ovis_log_deregister(g.mylog);
-}
-
-static int constructor(ldmsd_plug_handle_t handle)
-{
-	g.mylog = ldmsd_plug_log_get(handle);
-
-        return 0;
-}
-
-static void destructor(ldmsd_plug_handle_t handle)
-{
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

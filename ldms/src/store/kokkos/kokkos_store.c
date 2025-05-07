@@ -984,14 +984,6 @@ static int slurm_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	if (sos)
-		sos_container_close(sos, SOS_COMMIT_ASYNC);
-	if (root_path)
-		free(root_path);
-}
-
 static int constructor(ldmsd_plug_handle_t handle)
 {
 	mylog = ldmsd_plug_log_get(handle);
@@ -1001,10 +993,13 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	if (sos)
+		sos_container_close(sos, SOS_COMMIT_ASYNC);
+	if (root_path)
+		free(root_path);
 }
 
 struct ldmsd_plugin ldmsd_plugin_interface = {
-	.term = term,
 	.config = config,
 	.usage = usage,
         .constructor = constructor,

@@ -484,21 +484,6 @@ static int sx_sample(ldmsd_plug_handle_t handle)
 	}
 }
 
-static void sx_term(ldmsd_plug_handle_t handle)
-{
-	int port;
-
-	for (port = 1; port < SX_NUM_PORTS; port++) {
-		if (sx_ldms_sets[port].sx_set)
-			ldms_set_delete(sx_ldms_sets[port].sx_set);
-		sx_ldms_sets[port].sx_set = NULL;
-	}
-	if (sx_schema != NULL) {
-		ldms_schema_delete(sx_schema);
-		sx_schema = NULL;
-	}
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" PNAME " set=<setname>\n"
@@ -514,12 +499,22 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	int port;
+
+	for (port = 1; port < SX_NUM_PORTS; port++) {
+		if (sx_ldms_sets[port].sx_set)
+			ldms_set_delete(sx_ldms_sets[port].sx_set);
+		sx_ldms_sets[port].sx_set = NULL;
+	}
+	if (sx_schema != NULL) {
+		ldms_schema_delete(sx_schema);
+		sx_schema = NULL;
+	}
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = sx_term,
 		.config = sx_config,
 		.usage = usage,
 		.constructor = constructor,

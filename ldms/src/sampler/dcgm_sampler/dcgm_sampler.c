@@ -629,32 +629,6 @@ static int sample(ldmsd_plug_handle_t handle)
         return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	int i;
-
-	ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
-        gpu_schema_destroy();
-	if (base) {
-		free(base->instance_name);
-		base->instance_name = NULL;
-		base_del(base);
-		base = NULL;
-	}
-	free(conf.schema_name);
-	conf.schema_name = NULL;
-        free(conf.fields);
-        conf.fields = NULL;
-        conf.fields_len = 0;
-        conf.interval = 0;
-        for (i = 0; i < gpu_ids_count; i++) {
-                gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
-        }
-        dcgm_fini();
-	free(field_help);
-	field_help = NULL;
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
         ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
@@ -701,12 +675,33 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	int i;
+
+	ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
+        gpu_schema_destroy();
+	if (base) {
+		free(base->instance_name);
+		base->instance_name = NULL;
+		base_del(base);
+		base = NULL;
+	}
+	free(conf.schema_name);
+	conf.schema_name = NULL;
+        free(conf.fields);
+        conf.fields = NULL;
+        conf.fields_len = 0;
+        conf.interval = 0;
+        for (i = 0; i < gpu_ids_count; i++) {
+                gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
+        }
+        dcgm_fini();
+	free(field_help);
+	field_help = NULL;
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

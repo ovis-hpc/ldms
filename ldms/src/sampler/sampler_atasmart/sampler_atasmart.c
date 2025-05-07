@@ -443,9 +443,16 @@ err:
 	return ret;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
 {
+	mylog = ldmsd_plug_log_get(handle);
+	set = NULL;
 
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
 	int i;
 	for (i = 0; i < num_disks; i++) {
 		sk_disk_free(smarts->d[i]);
@@ -462,22 +469,9 @@ static void term(ldmsd_plug_handle_t handle)
 	set = NULL;
 }
 
-static int constructor(ldmsd_plug_handle_t handle)
-{
-	mylog = ldmsd_plug_log_get(handle);
-	set = NULL;
-
-        return 0;
-}
-
-static void destructor(ldmsd_plug_handle_t handle)
-{
-}
-
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

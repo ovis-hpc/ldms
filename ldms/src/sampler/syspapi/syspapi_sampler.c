@@ -636,26 +636,6 @@ sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void
-term(ldmsd_plug_handle_t handle)
-{
-	pthread_mutex_lock(&syspapi_mutex);
-	if (base)
-		base_del(base);
-	if (set)
-		ldms_set_delete(set);
-	set = NULL;
-	purge_mlist(&mlist);
-	FLAG_OFF(syspapi_flags, SYSPAPI_CONFIGURED);
-	FLAG_OFF(syspapi_flags, SYSPAPI_OPENED);
-	pthread_mutex_unlock(&syspapi_mutex);
-	if (syspapi_client) {
-		ldms_stream_close(syspapi_client);
-		syspapi_client = NULL;
-	}
-	PAPI_shutdown();
-}
-
 /* syspapi_mutex is held */
 static void
 __pause()
@@ -748,12 +728,26 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	pthread_mutex_lock(&syspapi_mutex);
+	if (base)
+		base_del(base);
+	if (set)
+		ldms_set_delete(set);
+	set = NULL;
+	purge_mlist(&mlist);
+	FLAG_OFF(syspapi_flags, SYSPAPI_CONFIGURED);
+	FLAG_OFF(syspapi_flags, SYSPAPI_OPENED);
+	pthread_mutex_unlock(&syspapi_mutex);
+	if (syspapi_client) {
+		ldms_stream_close(syspapi_client);
+		syspapi_client = NULL;
+	}
+	PAPI_shutdown();
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

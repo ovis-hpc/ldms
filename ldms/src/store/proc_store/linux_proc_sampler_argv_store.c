@@ -445,7 +445,14 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	ovis_log(mylog, OVIS_LDEBUG, "term %s\n", ldmsd_plug_cfg_name_get(handle));
 	if (sos)
@@ -456,19 +463,7 @@ static void term(ldmsd_plug_handle_t handle)
 	stream = NULL;
 }
 
-static int constructor(ldmsd_plug_handle_t handle)
-{
-	mylog = ldmsd_plug_log_get(handle);
-
-        return 0;
-}
-
-static void destructor(ldmsd_plug_handle_t handle)
-{
-}
-
 struct ldmsd_plugin ldmsd_plugin_interface = {
-	.term = term,
 	.config = config,
 	.usage = usage,
         .constructor = constructor,

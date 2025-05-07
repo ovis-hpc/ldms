@@ -269,16 +269,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	pthread_mutex_lock(&sk_lock);
-	if (common_rconf) {
-		rd_kafka_conf_destroy(common_rconf);
-		common_rconf = NULL;
-	}
-	pthread_mutex_unlock(&sk_lock);
-}
-
 typedef struct store_kafka_handle_s {
 	rd_kafka_t *rk; /* The Kafka handle */
 	rd_kafka_conf_t *rconf; /* The Kafka configuration */
@@ -395,10 +385,15 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	pthread_mutex_lock(&sk_lock);
+	if (common_rconf) {
+		rd_kafka_conf_destroy(common_rconf);
+		common_rconf = NULL;
+	}
+	pthread_mutex_unlock(&sk_lock);
 }
 
 struct ldmsd_store ldmsd_plugin_interface = {
-	.base.term = term,
 	.base.config = config,
 	.base.usage = usage,
 	.base.type = LDMSD_PLUGIN_STORE,

@@ -1198,18 +1198,6 @@ static void printStructs(struct function_store_handle *s_handle){
 	ovis_log(mylog, OVIS_LDEBUG, "=========================================\n");
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-
-	//FIXME: update this for the free's.
-	//Keep in mind restart and what vals have to be kept (if any).
-
-	if (root_path)
-		free(root_path);
-	if (derivedconf)
-		free(derivedconf);
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "    config name=store_function_csv [path=<path> altheader=<0|1>]\n"
@@ -3043,12 +3031,18 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	//FIXME: update this for the free's.
+	//Keep in mind restart and what vals have to be kept (if any).
+
+	if (root_path)
+		free(root_path);
+	if (derivedconf)
+		free(derivedconf);
 }
 
 struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
 			.type = LDMSD_PLUGIN_STORE,
-			.term = term,
 			.config = config,
 			.usage = usage,
                         .constructor = constructor,

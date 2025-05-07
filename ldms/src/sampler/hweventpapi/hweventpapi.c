@@ -1364,30 +1364,6 @@ static void term_hw(ldmsd_plug_handle_t handle)
 	}
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	if (hw_only) {
-		term_hw(handle);
-		return;
-	}
-	if (file)
-		fclose(file);
-
-	if (papi_event_set) {
-		PAPI_destroy_eventset(&papi_event_set);
-		PAPI_shutdown();
-	}
-
-	if (papi_event_val)
-		free(papi_event_val);
-	if (base)
-		base_del(base);
-	base = NULL;
-	if (set)
-		ldms_set_delete(set);
-	set = NULL;
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return
@@ -1417,11 +1393,30 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	if (hw_only) {
+		term_hw(handle);
+		return;
+	}
+	if (file)
+		fclose(file);
+
+	if (papi_event_set) {
+		PAPI_destroy_eventset(&papi_event_set);
+		PAPI_shutdown();
+	}
+
+	if (papi_event_val)
+		free(papi_event_val);
+	if (base)
+		base_del(base);
+	base = NULL;
+	if (set)
+		ldms_set_delete(set);
+	set = NULL;
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base.type = LDMSD_PLUGIN_SAMPLER,
-	.base.term = term,
 	.base.config = config,
 	.base.usage = usage,
         .base.constructor = constructor,

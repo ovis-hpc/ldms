@@ -112,22 +112,6 @@ static int sample(ldmsd_plug_handle_t handle)
 	return rc;
 }
 
-static void term() {
-	if (usage_str) {
-		free(usage_str);
-		usage_str = NULL;
-	}
-	rdcinfo_inst_t inst = singleton;
-	if (!inst)
-		return;
-	pthread_mutex_lock(&inst->lock);
-	INST_LOG(inst, OVIS_LDEBUG, SAMP " term() called\n");
-	singleton = NULL;
-	rdcinfo_reset(inst);
-	pthread_mutex_unlock(&inst->lock);
-	rdcinfo_delete(inst);
-}
-
 static const char *usage(ldmsd_plug_handle_t handle) {
 	(void)self;
 	if (!usage_str)
@@ -150,13 +134,25 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	if (usage_str) {
+		free(usage_str);
+		usage_str = NULL;
+	}
+	rdcinfo_inst_t inst = singleton;
+	if (!inst)
+		return;
+	pthread_mutex_lock(&inst->lock);
+	INST_LOG(inst, OVIS_LDEBUG, SAMP " term() called\n");
+	singleton = NULL;
+	rdcinfo_reset(inst);
+	pthread_mutex_unlock(&inst->lock);
+	rdcinfo_delete(inst);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,
@@ -164,9 +160,3 @@ struct ldmsd_sampler ldmsd_plugin_interface = {
 	},
 	.sample = sample,
 };
-
-static void __attribute__ ((destructor)) rdc_plugin_fini(void);
-static void rdc_plugin_fini()
-{
-	term();
-}

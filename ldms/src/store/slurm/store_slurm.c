@@ -472,10 +472,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "    config name=" STORE " path=<path>\n"
@@ -994,7 +990,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.type = LDMSD_PLUGIN_STORE,

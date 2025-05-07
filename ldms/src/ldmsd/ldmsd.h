@@ -978,9 +978,6 @@ typedef struct ldmsd_plugin {
 	int (*constructor)(ldmsd_plug_handle_t handle);
 	void (*destructor)(ldmsd_plug_handle_t handle);
 
-	/* Deprecated, use destructor() */
-	void (*term)(ldmsd_plug_handle_t handle);
-
 	void *reserved[8]; /* reserved for future use */
 } *ldmsd_plugin_t;
 

@@ -106,19 +106,6 @@ static int sample_ibnet(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void term_ibnet(ldmsd_plug_handle_t handle)
-{
-	pthread_mutex_lock(&only_lock);
-	ovis_log(mylog, OVIS_LDEBUG, SAMP " term() called\n");
-	ibnet_data_delete(only);
-	only = NULL;
-	if (usage) {
-		free(usage);
-		usage = NULL;
-	}
-	pthread_mutex_unlock(&only_lock);
-}
-
 static const char *usage_ibnet(ldmsd_plug_handle_t handle)
 {
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " usage() called\n");
@@ -136,12 +123,20 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	pthread_mutex_lock(&only_lock);
+	ovis_log(mylog, OVIS_LDEBUG, SAMP " term() called\n");
+	ibnet_data_delete(only);
+	only = NULL;
+	if (usage) {
+		free(usage);
+		usage = NULL;
+	}
+	pthread_mutex_unlock(&only_lock);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term_ibnet,
 		.config = config_ibnet,
 		.usage = usage_ibnet,
 		.constructor = constructor,

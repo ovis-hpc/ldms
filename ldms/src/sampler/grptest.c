@@ -249,18 +249,6 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	if (mf)
-		fclose(mf);
-	mf = NULL;
-	if (base)
-		base_del(base);
-	if (grp)
-		ldms_set_delete(grp);
-	grp = NULL;
-}
-
 static int constructor(ldmsd_plug_handle_t handle)
 {
 	mylog = ldmsd_plug_log_get(handle);
@@ -282,12 +270,19 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	if (mf)
+		fclose(mf);
+	mf = NULL;
+	if (base)
+		base_del(base);
+	if (grp)
+		ldms_set_delete(grp);
+	grp = NULL;
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,

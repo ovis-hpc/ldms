@@ -91,7 +91,7 @@ int basic_smoke_test(void)
 		return -1;
 	}
 
-	plugin->term(plugin);
+	plugin->(plugin);
 	free(cfg);
 
 	return 0;

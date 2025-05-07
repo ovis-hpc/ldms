@@ -230,13 +230,6 @@ int timer_base_create_set(struct timer_base *tb, const char *config_name)
 
 void timer_base_cleanup(struct timer_base *tb);
 
-void timer_base_term(ldmsd_plug_handle_t handle)
-{
-	struct timer_base *tb = ldmsd_plug_ctxt_get(handle);
-	/* remove all timers when we terminate */
-	timer_base_cleanup(tb);
-}
-
 int timer_base_sample(ldmsd_plug_handle_t handle)
 {
 	struct timer_base *tb = ldmsd_plug_ctxt_get(handle);
@@ -353,7 +346,6 @@ static void __destructor(ldmsd_plug_handle_t handle)
 
 struct ldmsd_sampler ldmsd_plugin_interface  = {
         .base.type = LDMSD_PLUGIN_SAMPLER,
-        .base.term = timer_base_term,
 	.base.config = __config,
         .base.usage = timer_base_usage,
         .base.constructor = __constructor,
