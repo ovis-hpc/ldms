@@ -141,7 +141,7 @@ function DAEMONS {
 		return
 	fi
 	for i in $*; do
-		/bin/rm -f ${LOGDIR}/$i.txt ${LOGDIR}/vg.$i ${LOGDIR}/teardown.$i.txt
+		/bin/rm -f ${LOGDIR}/$i.txt ${LOGDIR}/vg.$i ${LOGDIR}/teardown.$i.txt ${LOGDIR}/$i.stdio
 		ports[$i]=$(($portbase + $i))
 		eval export port$i=${ports[$i]}
 		binname=ldmsd.${ports[$i]}
@@ -272,13 +272,15 @@ function LDMSD {
 					-c $LDMSD_RUN/conf.$i \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG $LDMSD_EXTRA \
-					-r $LDMSD_PIDFILE.$i > $LDMSD_RUN/start.$i \&
+					-r $LDMSD_PIDFILE.$i \
+				"2>&1 > ${LOGDIR}/$i.stdio &" > $LDMSD_RUN/start.$i
 				$wrap ldmsd.${ports[$i]} \
 					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 					-c $LDMSD_RUN/conf.$i \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG $LDMSD_EXTRA \
-					-r $LDMSD_PIDFILE.$i &
+					-r $LDMSD_PIDFILE.$i \
+					2>&1 > ${LOGDIR}/$i.stdio &
 			fi
 		else
 			if test -z "$clonefile"; then
@@ -294,21 +296,31 @@ function LDMSD {
 					-c $LDMSD_RUN/conf.$i \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG $LDMSD_EXTRA \
-					-r $LDMSD_PIDFILE.$i > $LDMSD_RUN/start.$i \&
+					-r $LDMSD_PIDFILE.$i \
+					"2>&1 > ${LOGDIR}/$i.stdio &" \
+					> $LDMSD_RUN/start.$i
 				$wrap ldmsd.${ports[$i]} \
 					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 					-c $LDMSD_RUN/conf.$i \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG $LDMSD_EXTRA \
-					-r $LDMSD_PIDFILE.$i &
+					-r $LDMSD_PIDFILE.$i \
+					2>&1 > ${LOGDIR}/$i.stdio &
 			else
 				echo IDLE DAEMON $i
 				env > $LDMSD_RUN/env.$i
 				echo "#" > $LDMSD_RUN/revconf.$i
+				echo ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
+					-l ${LOGDIR}/$i.txt \
+					-v DEBUG \
+					-r $LDMSD_PIDFILE.$i \
+					"2>&1 > ${LOGDIR}/$i.stdio &" \
+					> $LDMSD_RUN/start.$i
 				ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG \
-					-r $LDMSD_PIDFILE.$i &
+					-r $LDMSD_PIDFILE.$i \
+					2>&1 > ${LOGDIR}/$i.stdio &
 			fi
 		fi
 		# assume gnu sleep and bc exist, because usleep deprecated
