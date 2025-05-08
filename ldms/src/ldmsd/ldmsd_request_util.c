@@ -1164,8 +1164,11 @@ char *ldmsd_req_attr_str_value_get_by_id(ldmsd_req_ctxt_t req, uint32_t attr_id)
 	ldmsd_req_attr_t attr = ldmsd_req_attr_get_by_id(req->req_buf, attr_id);
 	if (!attr)
 		return NULL;
-	if (attr->attr_value[0] == '\0')
-		return NULL;
+        /* We intentionally do not check if the value is an emptry string.
+           With stores, like store_avro_kafka, the server configuration is more
+           complicated than a single field, and happens in the store, not in
+           the strgp container= line. This function needs to allow returning
+           an emptry string value to support that behavior. */
 	return str_repl_env_vars((char *)attr->attr_value);
 }
 
