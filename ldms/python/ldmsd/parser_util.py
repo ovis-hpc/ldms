@@ -183,12 +183,42 @@ def bin_search(slist, x):
     return None
 
 def parse_to_cfg_str(cfg_obj):
+    """ convert element(s) from a config list dictionary to a conf line.
+    string literal elements are handled elsewhere.
+    a:b  --> a=b
+    a:""  --> a=
+    a:  --> a
+    a:NULL  --> a
+    a:LIST --> a=i for i in LIST
+    'a' in the list INT_ATTRS get special handling elsewhere/are ignored.
+    improperly nested dictionaries or lists generate an error.
+    """
     cfg_str = ''
     for key in cfg_obj:
         if key not in INT_ATTRS:
             if len(cfg_str) > 1:
                 cfg_str += ' '
-            cfg_str += key + '=' + str(cfg_obj[key])
+            val = cfg_obj[key]
+            if val is None:
+                cfg_str += key
+                continue
+            if isinstance(val, (str, int, float)):
+                cfg_str += key + '=' + str(val)
+                continue
+            if isinstance(val, list):
+                for i in val:
+                    if len(cfg_str) > 1:
+                        cfg_str += ' '
+                    if i is None:
+                        cfg_str += str(key)
+                        continue
+                    if isinstance(i, (str, int, float)):
+                        cfg_str += key + '=' + str(i)
+                    else:
+                        raise TypeError(f'Error: parse_to_cfg_str not expecting list value of' + str(i)+' for key '+  key )
+                continue
+            raise TypeError(f'Error: parse_to_cfg_str not expecting value ' + str(val)+' for key '+  key )
+
     return cfg_str
 
 def parse_yaml_bool(bool_):
