@@ -1420,7 +1420,8 @@ err:
 	if (auth_dom)
 		ldmsd_cfgobj_put(&auth_dom->obj, "find");
 	ldmsd_cfgobj_unlock(&listen->obj);
-	ldmsd_cfgobj_put(&listen->obj, "find");
+	ldmsd_cfgobj_rm(&listen->obj);
+	ldmsd_cfgobj_put(&listen->obj, "init");
 	return NULL;
 }
 
