@@ -101,6 +101,8 @@ struct req_str_id req_str_id_table[] = {
 	{  "logrotate",          LDMSD_LOGROTATE_REQ  },
 	{  "memory",             LDMSD_MEMORY_REQ  },
 	{  "metric_sets_default_authz", LDMSD_SET_DEFAULT_AUTHZ_REQ  },
+	{  "msg_client_stats",   LDMSD_MSG_CLIENT_STATS_REQ  },
+	{  "msg_stats",          LDMSD_MSG_STATS_REQ  },
 	{  "oneshot",            LDMSD_ONESHOT_REQ  },
 	{  "option",             LDMSD_CMDLINE_OPTIONS_SET_REQ  },
 	{  "pid_file",           LDMSD_PID_FILE_REQ  },

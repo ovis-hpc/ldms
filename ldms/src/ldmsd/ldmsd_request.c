@@ -294,8 +294,9 @@ static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc);
 static int stream_new_handler(ldmsd_req_ctxt_t reqc);
 static int stream_status_handler(ldmsd_req_ctxt_t reqc);
 static int stream_disable_handler(ldmsd_req_ctxt_t reqc);
-static int stream_stats_handler(ldmsd_req_ctxt_t reqc);
-static int stream_client_stats_handler(ldmsd_req_ctxt_t reqc);
+
+static int msg_stats_handler(ldmsd_req_ctxt_t reqc);
+static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc);
 
 static int listen_handler(ldmsd_req_ctxt_t reqc);
 
@@ -661,11 +662,13 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_STREAM_DISABLE_REQ] = {
 		LDMSD_STREAM_DISABLE_REQ, stream_disable_handler, XUG | MOD
 	},
-	[LDMSD_STREAM_STATS_REQ] = {
-		LDMSD_STREAM_STATS_REQ, stream_stats_handler, XALL
+
+	/* MSG */
+	[LDMSD_MSG_STATS_REQ] = {
+		LDMSD_MSG_STATS_REQ, msg_stats_handler, XALL
 	},
-	[LDMSD_STREAM_CLIENT_STATS_REQ] = {
-		LDMSD_STREAM_CLIENT_STATS_REQ, stream_client_stats_handler, XALL
+	[LDMSD_MSG_CLIENT_STATS_REQ] = {
+		LDMSD_MSG_CLIENT_STATS_REQ, msg_client_stats_handler, XALL
 	},
 
 	/* LISTEN */
@@ -8411,7 +8414,7 @@ out:
  * If `regex` and `stream` are not given, get stats from all streams. `regex`
  * precedes `stream`.
  */
-static int stream_stats_handler(ldmsd_req_ctxt_t reqc)
+static int msg_stats_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	char *stream = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
@@ -8472,7 +8475,7 @@ out:
  *
  * This command takes no options.
  */
-static int stream_client_stats_handler(ldmsd_req_ctxt_t reqc)
+static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *s;
 	char buff[128];

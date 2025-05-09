@@ -202,8 +202,7 @@ enum ldmsd_request {
 	LDMSD_STREAM_NEW_REQ,		/* Create a stream */
 	LDMSD_STREAM_STATUS_REQ,	/* Query stream information */
 	LDMSD_STREAM_DISABLE_REQ,	/* Disable streams in this daemon */
-	LDMSD_STREAM_STATS_REQ,	/* Query stream stats of this process */
-	LDMSD_STREAM_CLIENT_STATS_REQ,	/* Query stream client stats of this process */
+
 
 	/* Auth */
 	LDMSD_AUTH_ADD_REQ = 0xa00, /* Add auth domain */
@@ -217,6 +216,10 @@ enum ldmsd_request {
 	LDMSD_QGROUP_START_REQ,
 	LDMSD_QGROUP_STOP_REQ,
 	LDMSD_QGROUP_INFO_REQ,
+
+	/* Message Service */
+	LDMSD_MSG_STATS_REQ = 0xc00, /* Query stats of message service of this process */
+	LDMSD_MSG_CLIENT_STATS_REQ,  /* Query message client stats of this process */
 };
 
 enum ldmsd_request_attr {
