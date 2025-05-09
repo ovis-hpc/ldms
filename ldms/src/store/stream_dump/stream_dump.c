@@ -66,8 +66,11 @@
 #include <assert.h>
 #include <coll/rbt.h>
 #include <ovis_log/ovis_log.h>
+#include <ovis_ref/ref.h>
+
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_stream.h"
 
 #define LOG_(level, ...) do { \
 	ovis_log(mylog, level, __VA_ARGS__); \
@@ -110,16 +113,31 @@ __usage(ldmsd_plug_handle_t handle)
 	return _usage;
 }
 
-pthread_mutex_t __mutex = PTHREAD_MUTEX_INITIALIZER;
+/* stream dump instance */
+struct stream_dump_s {
+	pthread_mutex_t mutex;
+	struct rbt rbt; /* tree of __client_s */
+};
+
+#define __CLIENT_TYPE_STREAM 's'
+#define __CLIENT_TYPE_MSG 'm'
 
 struct __client_s {
 	struct rbn rbn;
-	ldms_msg_client_t c;
+	struct ref_s ref;
+	ldms_msg_client_t mc;
+	ldmsd_stream_client_t sc;
 	FILE *f;
-	char stream[OVIS_FLEX];
+	char type; /* client type */
+	char match[OVIS_FLEX];
 };
 
-struct rbt rbt = RBT_INITIALIZER((void*)strcmp);
+void __client_free(void *a)
+{
+	struct __client_s *cli = a;
+	fclose(cli->f);
+	free(cli);
+}
 
 /*
  * Guessing if the string s is a regular expression or just a string.
@@ -151,42 +169,63 @@ static int __is_regex(const char *s)
 	return 0;
 }
 
-int __stream_cb(ldms_msg_event_t ev, void *cb_arg)
+int __msg_cb(ldms_msg_event_t ev, void *cb_arg)
 {
 	struct __client_s *cli = cb_arg;
 	int tid = (pid_t) syscall (SYS_gettid);
+	if (ev->type == LDMS_MSG_EVENT_CLIENT_CLOSE) {
+		/* this is the last event for this client */
+		ref_put(&cli->ref, "sub");
+		return 0;
+	}
 	if (ev->type != LDMS_MSG_EVENT_RECV) /* ignore other events */
 		return 0;
 	fprintf(cli->f, "\x1%d: %.*s\n", tid, ev->recv.data_len, ev->recv.data);
 	return 0;
 }
 
-static int __op_subscribe(const char *stream, const char *path)
+int __stream_cb(ldmsd_stream_client_t c, void *cb_arg,
+				      ldmsd_stream_type_t stream_type,
+				      const char *data, size_t data_len,
+				      json_entity_t entity)
+{
+	struct __client_s *cli = cb_arg;
+	int tid = (pid_t) syscall (SYS_gettid);
+	fprintf(cli->f, "\x1%d: %.*s\n", tid, (int)data_len, data);
+	return 0;
+}
+
+static int __op_stream_subscribe(struct stream_dump_s *sd,
+				 const char *stream, const char *path)
 {
 	struct rbn *rbn;
 	struct __client_s *cli;
 	char desc[8192];
+	char key[512];
 	int rc;
 	if (!path) {
 		ERR_LOG("'path' is required for op=subscribe\n");
 		return EINVAL;
 	}
 
-	pthread_mutex_lock(&__mutex);
-	rbn = rbt_find(&rbt, stream);
+	snprintf(key, sizeof(key), "%c%s", __CLIENT_TYPE_STREAM, stream);
+
+	pthread_mutex_lock(&sd->mutex);
+	rbn = rbt_find(&sd->rbt, key);
 	if (rbn) {
-		ERR_LOG("stream client '%s' alread existed\n", stream);
+		ERR_LOG("stream client '%s' already existed\n", stream);
 		rc = EEXIST;
 		goto err0;
 	}
-	cli = malloc(sizeof(*cli) + strlen(stream) + 1);
+	cli = calloc(1, sizeof(*cli) + strlen(stream) + 1);
 	if (!cli) {
-		ERR_LOG("Not enough memory (stream: '%s')\n", stream);
+		ERR_LOG("Not enough memory (stream): '%s')\n", stream);
 		rc = ENOMEM;
 		goto err0;
 	}
-	memcpy(cli->stream, stream, strlen(stream) + 1);
-	rbn_init(&cli->rbn, cli->stream);
+	cli->type = __CLIENT_TYPE_MSG;
+	memcpy(cli->match, stream, strlen(stream) + 1);
+	rbn_init(&cli->rbn, &cli->type);
 	cli->f = fopen(path, "w");
 	if (!cli->f) {
 		ERR_LOG("Failed to open file '%s', errno: %d\n", path, errno);
@@ -195,46 +234,139 @@ static int __op_subscribe(const char *stream, const char *path)
 	}
 	snprintf(desc, sizeof(desc), "stream_dump, path:%s", path);
 	setbuf(cli->f, NULL); /* do not buffer */
-	cli->c = ldms_msg_subscribe(stream, __is_regex(stream), __stream_cb, cli, desc);
-	if (!cli->c) {
+	cli->sc = ldmsd_stream_subscribe(stream, __stream_cb, cli);
+	if (!cli->sc) {
 		ERR_LOG("ldms_msg_subscribe() failed: %d\n", errno);
 		rc = errno;
 		goto err2;
 	}
-	rbt_ins(&rbt, &cli->rbn);
-	pthread_mutex_unlock(&__mutex);
+	ref_init(&cli->ref, "sub", __client_free, cli);
+	rbt_ins(&sd->rbt, &cli->rbn);
+	ref_get(&cli->ref, "rbt");
+	pthread_mutex_unlock(&sd->mutex);
 	return 0;
  err2:
 	fclose(cli->f);
  err1:
 	free(cli);
  err0:
-	pthread_mutex_unlock(&__mutex);
+	pthread_mutex_unlock(&sd->mutex);
 	return rc;
 }
 
-static int __op_close(const char *stream)
+static int __op_msg_subscribe(struct stream_dump_s *sd,
+			      const char *mch, const char *path)
+{
+	struct rbn *rbn;
+	struct __client_s *cli;
+	char desc[8192];
+	char key[512];
+	int rc;
+	if (!path) {
+		ERR_LOG("'path' is required for op=subscribe\n");
+		return EINVAL;
+	}
+
+	snprintf(key, sizeof(key), "%c%s", __CLIENT_TYPE_MSG, mch);
+
+	pthread_mutex_lock(&sd->mutex);
+	rbn = rbt_find(&sd->rbt, key);
+	if (rbn) {
+		ERR_LOG("channel client '%s' already existed\n", mch);
+		rc = EEXIST;
+		goto err0;
+	}
+	cli = calloc(1, sizeof(*cli) + strlen(mch) + 1);
+	if (!cli) {
+		ERR_LOG("Not enough memory (message_channel: '%s')\n", mch);
+		rc = ENOMEM;
+		goto err0;
+	}
+	cli->type = __CLIENT_TYPE_MSG;
+	memcpy(cli->match, mch, strlen(mch) + 1);
+	rbn_init(&cli->rbn, &cli->type);
+	cli->f = fopen(path, "w");
+	if (!cli->f) {
+		ERR_LOG("Failed to open file '%s', errno: %d\n", path, errno);
+		rc = errno;
+		goto err1;
+	}
+	snprintf(desc, sizeof(desc), "stream_dump, path:%s", path);
+	setbuf(cli->f, NULL); /* do not buffer */
+	cli->mc = ldms_msg_subscribe(mch, __is_regex(mch), __msg_cb, cli, desc);
+	if (!cli->mc) {
+		ERR_LOG("ldms_msg_subscribe() failed: %d\n", errno);
+		rc = errno;
+		goto err2;
+	}
+	ref_init(&cli->ref, "sub", __client_free, cli);
+	rbt_ins(&sd->rbt, &cli->rbn);
+	ref_get(&cli->ref, "rbt");
+	pthread_mutex_unlock(&sd->mutex);
+	return 0;
+ err2:
+	fclose(cli->f);
+ err1:
+	free(cli);
+ err0:
+	pthread_mutex_unlock(&sd->mutex);
+	return rc;
+}
+
+static int __op_msg_close(struct stream_dump_s *sd, const char *mch)
 {
 	struct rbn *rbn;
 	struct __client_s *cli;
 	int rc;
+	char key[1024];
 
-	pthread_mutex_lock(&__mutex);
-	rbn = rbt_find(&rbt, stream);
+	snprintf(key, sizeof(key), "%c%s", __CLIENT_TYPE_MSG, mch);
+
+	pthread_mutex_lock(&sd->mutex);
+	rbn = rbt_find(&sd->rbt, key);
+	if (!rbn) {
+		ERR_LOG("message client '%s' not found\n", mch);
+		rc = ENOENT;
+		goto err0;
+	}
+	rbt_del(&sd->rbt, rbn);
+	pthread_mutex_unlock(&sd->mutex);
+	cli = container_of(rbn, struct __client_s, rbn);
+	ref_put(&cli->ref, "rbt");
+	assert(cli->mc);
+	ldms_msg_client_close(cli->mc);
+	return 0;
+
+ err0:
+	pthread_mutex_unlock(&sd->mutex);
+	return rc;
+}
+
+static int __op_stream_close(struct stream_dump_s *sd, const char *stream)
+{
+	struct rbn *rbn;
+	struct __client_s *cli;
+	int rc;
+	char key[1024];
+
+	snprintf(key, sizeof(key), "%c%s", __CLIENT_TYPE_STREAM, stream);
+
+	pthread_mutex_lock(&sd->mutex);
+	rbn = rbt_find(&sd->rbt, stream);
 	if (!rbn) {
 		ERR_LOG("stream client '%s' not found\n", stream);
 		rc = ENOENT;
 		goto err0;
 	}
-	rbt_del(&rbt, rbn);
-	pthread_mutex_unlock(&__mutex);
+	rbt_del(&sd->rbt, rbn);
+	pthread_mutex_unlock(&sd->mutex);
 	cli = container_of(rbn, struct __client_s, rbn);
-	ldms_msg_client_close(cli->c);
-	fclose(cli->f);
-	free(cli);
+	ref_put(&cli->ref, "rbt");
+	ldmsd_stream_close(cli->sc);
+	ref_put(&cli->ref, "sub");
 	return 0;
  err0:
-	pthread_mutex_unlock(&__mutex);
+	pthread_mutex_unlock(&sd->mutex);
 	return rc;
 }
 
@@ -245,34 +377,21 @@ __config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	const char *op = av_value(avl, "op");
 	const char *stream = av_value(avl, "stream");
 	const char *path = av_value(avl, "path");
+	const char *mch = av_value(avl, "message_channel");
+	struct stream_dump_s *sd = ldmsd_plug_ctxt_get(handle);
 
-	if (0 == strcmp(op, "subscribe")) {
-		return __op_subscribe(stream, path);
-	} else if (0 == strcmp(op, "close")) {
-		return __op_close(stream);
+	if (0 == strcmp(op, "msg_subscribe")) {
+		return __op_msg_subscribe(sd, mch, path);
+	} else if (0 == strcmp(op, "stream_subscribe")) {
+		return __op_stream_subscribe(sd, stream, path);
+	} else if (0 == strcmp(op, "msg_close")) {
+		return __op_msg_close(sd, mch);
+	} else if (0 == strcmp(op, "stream_close")) {
+		return __op_stream_close(sd, stream);
 	} else {
 		ERR_LOG("Unknown op '%s'\n", op);
 		return EINVAL;
 	}
-}
-
-static void
-__term(ldmsd_plug_handle_t handle)
-{
-	struct rbn *rbn;
-	struct __client_s *cli;
-
-	pthread_mutex_lock(&__mutex);
-	while ((rbn = rbt_min(&rbt))) {
-		rbt_del(&rbt, rbn);
-		pthread_mutex_unlock(&__mutex);
-		cli = container_of(rbn, struct __client_s, rbn);
-		ldms_msg_client_close(cli->c);
-		fclose(cli->f);
-		free(cli);
-		pthread_mutex_lock(&__mutex);
-	}
-	pthread_mutex_unlock(&__mutex);
 }
 
 static ldmsd_store_handle_t
@@ -306,13 +425,53 @@ __commit(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_
 	return ENOTSUP;
 }
 
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	struct stream_dump_s *sd = malloc(sizeof(*sd));
+	if (!sd)
+		return errno;
+	rbt_init(&sd->rbt, (void*)strcmp);
+	pthread_mutex_init(&sd->mutex, NULL);
+	ldmsd_plug_ctxt_set(handle, sd);
+	return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	struct rbn *rbn;
+	struct __client_s *cli;
+	struct stream_dump_s *sd = ldmsd_plug_ctxt_get(handle);
+	if (!sd)
+		return;
+
+	pthread_mutex_lock(&sd->mutex);
+	while ((rbn = rbt_min(&sd->rbt))) {
+		rbt_del(&sd->rbt, rbn);
+		pthread_mutex_unlock(&sd->mutex);
+		cli = container_of(rbn, struct __client_s, rbn);
+		ref_put(&cli->ref, "rbt");
+		if (cli->mc) {
+			ldms_msg_client_close(cli->mc);
+		}
+		if (cli->sc) {
+			ldmsd_stream_close(cli->sc);
+			ref_put(&cli->ref, "sub");
+		}
+		pthread_mutex_lock(&sd->mutex);
+	}
+	pthread_mutex_unlock(&sd->mutex);
+	free(sd);
+}
+
 static struct ldmsd_store stream_dump = {
 	.base = {
 		.name = "stream_dump",
-		.term = __term,
 		.config = __config,
 		.usage = __usage,
 		.type = LDMSD_PLUGIN_STORE,
+		.flags = LDMSD_PLUGIN_MULTI_INSTANCE,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.open = __open,
 	.store = __store,
