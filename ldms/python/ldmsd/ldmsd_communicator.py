@@ -147,8 +147,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'stream_client_dump': {'req_attr': [], 'opt_attr': []},
                       'stream_status' : {'req_attr': [], 'opt_attr': ['reset']},
                       'stream_disable' : {'req_attr': [], 'opt_attr':[]},
-                      'stream_stats' : {'req_attr': [], 'opt_attr': ['regex', 'stream', 'json', 'reset']},
-                      'stream_client_stats' : {'req_attr': [], 'opt_attr': ['json', 'reset']},
+                      'msg_stats' : {'req_attr': [], 'opt_attr': ['regex', 'stream', 'json', 'reset']},
+                      'msg_client_stats' : {'req_attr': [], 'opt_attr': ['json', 'reset']},
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': ['thread_stats']},
                       ##### Misc. #####
@@ -661,8 +661,6 @@ class LDMSD_Request(object):
     STREAM_NEW = STREAM_PUBLISH + 4
     STREAM_STATUS = STREAM_PUBLISH + 5
     STREAM_DISABLE = STREAM_PUBLISH + 6
-    STREAM_STATS = STREAM_PUBLISH + 7
-    STREAM_CLIENT_STATS = STREAM_PUBLISH + 8
 
     AUTH_ADD = 0xa00
 
@@ -672,6 +670,9 @@ class LDMSD_Request(object):
     QGROUP_START      = QGROUP_CONFIG + 3
     QGROUP_STOP       = QGROUP_CONFIG + 4
     QGROUP_INFO       = QGROUP_CONFIG + 5
+
+    MSG_STATS = 0xc00
+    MSG_CLIENT_STATS = MSG_STATS + 1
 
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
@@ -770,8 +771,8 @@ class LDMSD_Request(object):
             'stream_client_dump'   :  {'id' : STREAM_CLIENT_DUMP },
             'stream_status'    :  {'id' : STREAM_STATUS },
             'stream_disable'   :  {'id' : STREAM_DISABLE },
-            'stream_stats'    :  {'id' : STREAM_STATS },
-            'stream_client_stats'    :  {'id' : STREAM_CLIENT_STATS },
+            'msg_stats'    :  {'id' : MSG_STATS },
+            'msg_client_stats'    :  {'id' : MSG_CLIENT_STATS },
 
             'listen'        :  {'id' : LISTEN },
             'auth_add'      :  {'id' : AUTH_ADD },
@@ -1499,7 +1500,7 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def stream_stats(self, regex=None, stream=None, reset=None):
+    def msg_stats(self, regex=None, stream=None, reset=None):
         """
         Dump stream stats
 
@@ -1515,7 +1516,7 @@ class Communicator(object):
             attr_list.append(LDMSD_Req_Attr(attr_name='stream', value=stream))
         if reset:
             attr_list.append(LDMSD_Req_Attr(attr_name='reset', value=reset))
-        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_STATS, attrs = attr_list)
+        req = LDMSD_Request(command_id=LDMSD_Request.MSG_STATS, attrs = attr_list)
         try:
             req.send(self)
             resp = req.receive(self)
@@ -1537,7 +1538,7 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def stream_client_stats(self, reset=None):
+    def msg_client_stats(self, reset=None):
         """
         Dump stream stats
 
@@ -1548,7 +1549,7 @@ class Communicator(object):
         attr_list = []
         if reset is not None:
             attr_list = [LDMSD_Req_Attr(attr_name='reset', value=reset)]
-        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_CLIENT_STATS, attrs = attr_list)
+        req = LDMSD_Request(command_id=LDMSD_Request.MSG_CLIENT_STATS, attrs = attr_list)
         try:
             req.send(self)
             resp = req.receive(self)

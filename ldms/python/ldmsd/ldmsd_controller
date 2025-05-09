@@ -2618,7 +2618,7 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_stream_disable(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_disable', text)
 
-    def do_stream_stats(self, arg):
+    def do_msg_stats(self, arg):
         """
         Print stream stats that match the given `regex` or `stream`.
 
@@ -2627,12 +2627,12 @@ class LdmsdCmdParser(cmd.Cmd):
             [stream=] The exact stream name
             [json=1]  Set the output format to JSON
         """
-        arg = self.handle_args('stream_stats', arg)
+        arg = self.handle_args('msg_stats', arg)
         if not arg:
             return
-        rc, msg = self.comm.stream_stats(arg['regex'], arg['stream'], arg['reset'])
+        rc, msg = self.comm.msg_stats(arg['regex'], arg['stream'], arg['reset'])
         if rc:
-            emsg = f"stream_stats error: {rc}, msg: {msg}"
+            emsg = f"msg_stats error: {rc}, msg: {msg}"
             print(emsg)
             if is_debug:
                 raise RuntimeError(emsg)
@@ -2675,22 +2675,22 @@ class LdmsdCmdParser(cmd.Cmd):
                       f'{self.__floatts2human(drops["first_ts"]):26} ' \
                       f'{self.__floatts2human(drops["last_ts"]):26}')
 
-    def complete_stream_stats(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('stream_stats', text)
+    def complete_msg_stats(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('msg_stats', text)
 
-    def do_stream_client_stats(self, arg):
+    def do_msg_client_stats(self, arg):
         """
         Print stream stats
 
         Parameters:
             [json=1]  Set the output format to JSON
         """
-        arg = self.handle_args('stream_stats', arg)
+        arg = self.handle_args('msg_stats', arg)
         if arg is None:
             return
-        rc, msg = self.comm.stream_client_stats(arg['reset'])
+        rc, msg = self.comm.msg_client_stats(arg['reset'])
         if rc:
-            emsg = f"stream_client_stats error: {rc}, msg: {msg}"
+            emsg = f"msg_client_stats error: {rc}, msg: {msg}"
             print(emsg)
             if is_debug:
                 raise RuntimeError(emsg)
@@ -2727,8 +2727,8 @@ class LdmsdCmdParser(cmd.Cmd):
                       f'{self.__floatts2human(drops["first_ts"]):26} ' \
                       f'{self.__floatts2human(drops["last_ts"]):26}')
 
-    def complete_stream_client_stats(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('stream_client_stats', text)
+    def complete_msg_client_stats(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('msg_client_stats', text)
 
     def do_listen(self, arg):
         """
