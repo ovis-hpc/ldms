@@ -19,7 +19,7 @@ ldmsd_qgroup.man \
 ldms_quickstart.man \
 ldms-reverse-conf.man \
 ldmsd_sampler_advertisement.man \
-ldmsd-peer-daemon-advertisement.man
+ldmsd_peer_daemon_advertisement.man
 
 ldmsd-exits.man: $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c
 	$(srcdir)/make_exits_man.sh $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c > ldmsd-exits.man
