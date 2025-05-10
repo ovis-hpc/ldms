@@ -4,7 +4,6 @@
 ldms_auth_none
 ==============
 
-
 -----------------------------
 LDMS authentication disabled
 -----------------------------

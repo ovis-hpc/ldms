@@ -4,7 +4,6 @@
 ldms-reverse-conf
 =================
 
-
 ----------------------------------------
 Generate a tear-down configuration file
 ----------------------------------------

@@ -173,9 +173,9 @@ optional parameter is:**
    - passive: aggregator accepts connections from advertising peers
 
    - active: upon receiving an advertisement, aggregator initiates a
-   separate connection back to the advertising peer. Requires
-   advertiser_xprt, advertiser_port, reconnect parameters, and
-   authentication domain if it is used
+     separate connection back to the advertising peer. Requires
+     advertiser_xprt, advertiser_port, reconnect parameters, and
+     authentication domain if it is used
 
    [regex=REGEX]
       Regular expression to match with hostnames of peer daemons
@@ -422,4 +422,4 @@ sampler daemons open for data transfer.
 SEE ALSO
 ========
 
-**ldmsd**\ (8) **ldmsd_controller**\ (8)
+:ref:`ldmsd(8) <ldmsd>` :ref:`ldmsd_controller(8) <ldmsd_controller>`

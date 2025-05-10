@@ -4,7 +4,6 @@
 ldms_dstat_schema_name
 ======================
 
-
 --------------------------------------------------
 Man page for the LDMS dstat plugin support utility
 --------------------------------------------------

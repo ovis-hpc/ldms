@@ -4,7 +4,6 @@
 ldms_ls
 =======
 
-
 -------------------------------------
 Query an ldmsd for metric set values
 -------------------------------------
@@ -125,8 +124,9 @@ If the NAME is specified on the command line without -E/-S/-I, only information 
 DEFAULTS
 ========
 
-**ldms_ls** with no arguments defaults to **ldms_ls -p** *XXX* **-h**
-*localhost* **-x** *sock* where XXX is the LDMS_DEFAULT_PORT.
+**ldms_ls** with no arguments defaults to ``ldms_ls -p XXX -h localhost -x sock``
+
+where XXX is the **LDMS_DEFAULT_PORT**.
 
 NOTES
 =====

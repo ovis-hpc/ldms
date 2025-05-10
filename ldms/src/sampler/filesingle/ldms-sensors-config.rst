@@ -4,7 +4,6 @@
 ldms-sensors-config
 ===================
 
-
 -------------------------------------------------------
 Generate LDMS filesingle plugin configuration prototype
 -------------------------------------------------------
@@ -91,4 +90,4 @@ transformed to \_.
 SEE ALSO
 ========
 
-:ref:`sensors(1) <sensors>`, :ref:`lscpu(1) <lscpu>`, :ref:`filesingle(7) <filesingle>`, ldmsd.
+:ref:`sensors(1) <sensors>`, :ref:`lscpu(1) <lscpu>`, :ref:`filesingle(7) <filesingle>`, :ref:`ldmsd(8) <ldmsd>`.

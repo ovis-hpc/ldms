@@ -4,7 +4,6 @@
 ldms_auth_ovis
 ==============
 
-
 --------------------------------------------
 LDMS authentication using ovis_auth library
 --------------------------------------------
@@ -31,9 +30,9 @@ the file are ignored.
 
 Four locations are checked in order for the secret:
 
-1) the full file path given on the command line via "-A conf=authfile",
+1) the full file path given on the command line via ``-A conf=authfile``,
 
-2) the full file path given in environment variable LDMS_AUTH_FILE,
+2) the full file path given in environment variable **LDMS_AUTH_FILE**,
 
 3) $HOME/.ldmsauth.conf, and
 

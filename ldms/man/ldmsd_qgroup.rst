@@ -4,7 +4,6 @@
 ldmsd_qgroup
 ============
 
-
 -----------------------------
 Quota Group Feature in LDMSD
 -----------------------------
@@ -16,18 +15,24 @@ Quota Group Feature in LDMSD
 SYNOPSIS
 ========
 
--  [quota=\ *BYTES*] [ask_interval=\ *TIME*] [ask_amount=\ *BYTES*]
-   [ask_mark=\ *BYTES*] [reset_interval=\ *TIME*]
+-  **qgroup_config**
 
--  xprt=\ *XPRT* host=\ *HOST* [port=\ *PORT*] [auth=\ *AUTH*]
+        [quota=\ *BYTES*] [ask_interval=\ *TIME*] [ask_amount=\ *BYTES*]
+        [ask_mark=\ *BYTES*] [reset_interval=\ *TIME*]
 
--  host=\ *HOST* [port=\ *PORT*]
+-  **qgroup_member_add**
 
--
+        xprt=\ *XPRT* host=\ *HOST* [port=\ *PORT*] [auth=\ *AUTH*]
 
--
+-  **qgroup_member_del**
 
--
+        host=\ *HOST* [port=\ *PORT*]
+
+-  **qgroup_start**
+
+-  **qgroup_stop**
+
+-  **qgroup_info**
 
 DESCRIPTION
 ===========
@@ -73,24 +78,55 @@ the quota back to the corresponding peer. If there is not enough
 available return quota, the L1 daemon delays the return (in a queue)
 until there is enough available return quota.
 
-┌──────┐ │samp.1│ │■■■■■■├──────┐ └──────┘ │ ┌────────────────┐
-└─────┤L1.1 ▽ ├───┄ ┌──────┐ ┌─────┤◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆│ │samp.2│ │
-└───────┬────────┘ │■■■■■■├──────┘ │ └──────┘ │ │ ┌──────┐ │ │samp.3│ │
-│■■■■■■├──────┐ │ └──────┘ │ ┌───────┴────────┐ └─────┤L1.2 ▽ ├───┄
-┌──────┐ ┌─────┤◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆│ │samp.4│ │ └────────────────┘
-│■■■■■■├──────┘ └──────┘
+::
+
+ ┌──────┐
+ │samp.1│
+ │■■■■■■├──────┐
+ └──────┘      │     ┌────────────────┐
+               └─────┤L1.1   ▽        ├───┄
+ ┌──────┐      ┌─────┤◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆│
+ │samp.2│      │     └───────┬────────┘
+ │■■■■■■├──────┘             │
+ └──────┘                    │
+                             │
+ ┌──────┐                    │
+ │samp.3│                    │
+ │■■■■■■├──────┐             │
+ └──────┘      │     ┌───────┴────────┐
+               └─────┤L1.2   ▽        ├───┄
+ ┌──────┐      ┌─────┤◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆│
+ │samp.4│      │     └────────────────┘
+ │■■■■■■├──────┘
+ └──────┘
+
 
 As things progress, L1's available return quota (referred to as
 **qgroup.quota** for distinction) will eventually run low and won't be
 able to return the quota back to any peer anymore. When this happens the
 peer quota (for publishing) eventually runs out as seen below.
 
-┌──────┐ │samp.1│ │■■□□□□├──────┐ └──────┘ │ ┌────────────────┐
-└─────┤L1.1 ▽ ├───┄ ┌──────┐ ┌─────┤◆◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇│ │samp.2│ │
-└───────┬────────┘ │□□□□□□├──────┘ │ └──────┘ │ │ ┌──────┐ │ │samp.3│ │
-│■■■■■■├──────┐ │ └──────┘ │ ┌───────┴────────┐ └─────┤L1.2 ▽ ├───┄
-┌──────┐ ┌─────┤◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆│ │samp.4│ │ └────────────────┘
-│■■■■■■├──────┘ └──────┘
+::
+
+ ┌──────┐
+ │samp.1│
+ │■■□□□□├──────┐
+ └──────┘      │     ┌────────────────┐
+               └─────┤L1.1   ▽        ├───┄
+ ┌──────┐      ┌─────┤◆◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇│
+ │samp.2│      │     └───────┬────────┘
+ │□□□□□□├──────┘             │
+ └──────┘                    │
+                             │
+ ┌──────┐                    │
+ │samp.3│                    │
+ │■■■■■■├──────┐             │
+ └──────┘      │     ┌───────┴────────┐
+               └─────┤L1.2   ▽        ├───┄
+ ┌──────┐      ┌─────┤◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆│
+ │samp.4│      │     └────────────────┘
+ │■■■■■■├──────┘
+ └──────┘
 
 When the **qgroup.quota** is low, i.e. **qgroup.quota** ◆ lower than the
 threshold **ask_mark** (denoted as ▽ in the figure), the daemon asks for
@@ -101,12 +137,27 @@ parameter. The members who are asked for the donation may not donate
 fully or may not donate at all, depending on the members'
 **qgroup.quota** level.
 
-┌──────┐ │samp.1│ │■■□□□□├──────┐ └──────┘ │ ┌────────────────┐
-└─────┤L1.1 ▽ ├───┄ ┌──────┐ ┌─────┤◆◆◆◆◆◆◆◆◇◇◇◇◇◇◇◇│ │samp.2│ │
-└───────┬────────┘ │□□□□□□├──────┘ │ └──────┘ │ │ ┌──────┐ │ │samp.3│ │
-│■■■■■■├──────┐ │ └──────┘ │ ┌───────┴────────┐ └─────┤L1.2 ▽ ├───┄
-┌──────┐ ┌─────┤◆◆◆◆◆◆◆◆◆◇◇◇◇◇◇◇│ │samp.4│ │ └────────────────┘
-│■■■■■■├──────┘ └──────┘
+::
+
+ ┌──────┐
+ │samp.1│
+ │■■□□□□├──────┐
+ └──────┘      │     ┌────────────────┐
+               └─────┤L1.1   ▽        ├───┄
+ ┌──────┐      ┌─────┤◆◆◆◆◆◆◆◆◇◇◇◇◇◇◇◇│
+ │samp.2│      │     └───────┬────────┘
+ │□□□□□□├──────┘             │
+ └──────┘                    │
+                             │
+ ┌──────┐                    │
+ │samp.3│                    │
+ │■■■■■■├──────┐             │
+ └──────┘      │     ┌───────┴────────┐
+               └─────┤L1.2   ▽        ├───┄
+ ┌──────┐      ┌─────┤◆◆◆◆◆◆◆◆◆◇◇◇◇◇◇◇│
+ │samp.4│      │     └────────────────┘
+ │■■■■■■├──────┘
+ └──────┘
 
 Asking/donating **qgroup.quota** allows the busy members to continue
 working while reducing the unused **qgroup.quota** in the less busy
@@ -121,12 +172,16 @@ returning process continues.
 The maxmum amount of stream data that go through the group per unit time
 can be calculated by:
 
-**N** \* **qgroup.quota** ──────────────── **reset_interval**
+::
+
+        N \ qgroup.quota
+        ────────────────
+        reset_interval
 
 QGROUP COMMANDS
 ===============
 
--  [quota=\ *BYTES*] [ask_interval=\ *TIME*] [ask_amount=\ *BYTES*]
+-  **qgoup_config** [quota=\ *BYTES*] [ask_interval=\ *TIME*] [ask_amount=\ *BYTES*]
    [ask_mark=\ *BYTES*] [reset_interval=\ *TIME*]
 
 ..
@@ -167,7 +222,7 @@ QGROUP COMMANDS
       "us" (microseconds), "ms" (milliseconds), "s" (seconds), "m"
       (minutes), "h" (hours), and "d" (days).
 
--  xprt=\ *XPRT* host=\ *HOST* [port=\ *PORT*] [auth=\ *AUTH*]
+-  **qgroup_member_add** xprt=\ *XPRT* host=\ *HOST* [port=\ *PORT*] [auth=\ *AUTH*]
 
 ..
 
@@ -188,7 +243,7 @@ QGROUP COMMANDS
       specified, the default authentication domain of the daemon is
       used.
 
--  host=\ *HOST* [port=\ *PORT*]
+-  **qgroup_member_del** host=\ *HOST* [port=\ *PORT*]
 
 ..
 
@@ -200,19 +255,19 @@ QGROUP COMMANDS
    **[port**\ *PORT*\ **]**
       The port of the member (default: 411).
 
--
+-  **qgroup_start**
 
 ..
 
    Start the qgroup service.
 
--
+-  **qgroup_stop**
 
 ..
 
    Stop the qgroup service.
 
--
+-  **qgroup_info**
 
 ..
 
@@ -222,14 +277,15 @@ QGROUP COMMANDS
 EXAMPLE
 =======
 
--  quota=1M ask_interval=200ms ask_mark=200K ask_amount=200K
-   reset_interval=1s
+::
 
--  host=node-2 port=411 xprt=sock auth=munge
+	qgroup_config quota=1M ask_interval=200ms ask_mark=200K ask_amount=200K reset_interval=1s
 
--  host=node-3 port=411 xprt=sock auth=munge
+	qgroup_member_add host=node-2 port=411 xprt=sock auth=munge
 
--
+	qgroup_member_add host=node-3 port=411 xprt=sock auth=munge
+
+	qgroup_start
 
 SEE ALSO
 ========

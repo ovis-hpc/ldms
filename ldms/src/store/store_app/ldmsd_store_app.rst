@@ -29,52 +29,57 @@ SYNOPSIS
 DESCRIPTION
 ===========
 
-**``store_app``** is an LDMSD storage plugin for storing data from the
-sets from **``app_sampler``** LDMSD sampler plugin. **``store_app``**
-uses **``SOS``** as its database back-end. The **``path``** option
-points to the directory containing **``SOS``** containers for this
-plugin (one container per **``strgp``**). If the container does not
-exist, it will be created with permission given by **``perm``** option
+``store_app`` is an LDMSD storage plugin for storing data from the
+sets from ``app_sampler`` LDMSD sampler plugin. ``store_app``
+uses **SOS** as its database back-end. The ``path`` option
+points to the directory containing **SOS** containers for this
+plugin (one container per ``strgp``). If the container does not
+exist, it will be created with permission given by ``perm`` option
 (default: 0660). The container contains multiple schemas, each of which
-assoicates with a metric from the sets from **``app_sampler``** (e.g.
-**``stat_utime``**). Schemas in the container have the following
+assoicates with a metric from the sets from ``app_sampler`` (e.g.
+``stat_utime``). Schemas in the container have the following
 attributes:
 
--  **``timestamp``** : the data sampling timestamp.
+-  ``timestamp`` : the data sampling timestamp.
 
--  **``component_id``**: the component ID producing the data.
+-  ``component_id``: the component ID producing the data.
 
--  **``job_id``**: the Slurm job ID.
+-  ``job_id``: the Slurm job ID.
 
--  **``app_id``**: the application ID.
+-  ``app_id``: the application ID.
 
--  **``rank``**: the Slurm task rank.
+-  ``rank``: the Slurm task rank.
 
 -  **METRIC_NAME**: the metric value (the name of this attribute is the
    metric name of the metric).
 
--  **``comp_time``**: (indexed) the join of **``component_id``** and
-   **``timestamp``**.
+-  ``comp_time``: (indexed) the join of ``component_id`` and
+   ``timestamp``.
 
--  **``time_job``**: (indexed) the join of **``timestamp``** and
-   **``job_id``**.
+-  ``time_job``: (indexed) the join of ``timestamp`` and
+   ``job_id``.
 
--  **``job_rank_time``**: (indexed) the join of **``job_id``**,
-   **``rank``**, and **``timestamp``**.
+-  ``job_rank_time``: (indexed) the join of ``job_id``,
+   ``rank``, and ``timestamp``.
 
--  **``job_time_rank``**: (indexed) the join of **``job_id``**,
-   **``timestamp``**, and **``rank``**.
+-  ``job_time_rank``: (indexed) the join of ``job_id``,
+   ``timestamp``, and ``rank``.
 
 CONFIG OPTIONS
 ==============
 
--  The name of the plugin instance to configure.
+-  **name**
 
--  The path to the directory that contains SOS containers (one container
-   per strgp).
+        The name of the plugin instance to configure.
 
--  The octal mode (e.g. 0777) that is used in SOS container creation.
-   The default is **0660**.
+-  **path**
+
+        The path to the directory that contains SOS containers (one container per strgp).
+
+-  **perm**
+
+        The octal mode (e.g. 0777) that is used in SOS container creation.
+        The default is **0660**.
 
 EXAMPLES
 ========

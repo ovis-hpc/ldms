@@ -4,7 +4,6 @@
 ldms-ibnet-sampler-gen
 ======================
 
-
 --------------------------------------------------
 Man page for the LDMS ibnet plugin support utility
 --------------------------------------------------

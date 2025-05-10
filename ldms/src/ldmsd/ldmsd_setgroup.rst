@@ -4,7 +4,6 @@
 ldmsd_setgroup
 ==============
 
-
 ------------------------------------------------------------
 Explanation, configuration, and commands for ldmsd set group
 ------------------------------------------------------------
@@ -17,16 +16,26 @@ Explanation, configuration, and commands for ldmsd set group
 SYNOPSIS
 ========
 
--  name=\ *GROUP_NAME* [producer=\ *PRODUCER*] [interval=\ *USEC*]
-   [offset=\ *USEC*]
+-  **setgroup_add**
 
--  name=\ *GROUP_NAME* [interval=\ *USEC*] [offset=\ *USEC*]
+        name=\ *GROUP_NAME* [producer=\ *PRODUCER*] [interval=\ *USEC*]
+        [offset=\ *USEC*]
 
--  name=\ *GROUP_NAME*
+-  **setgroup_mod**
 
--  name=\ *GROUP_NAME* instance=\ *COMMA_SEPARATED_LIST_OF_INSTANCES*
+        name=\ *GROUP_NAME* [interval=\ *USEC*] [offset=\ *USEC*]
 
--  name=\ *GROUP_NAME* instance=\ *COMMA_SEPARATED_LIST_OF_INSTANCES*
+-  **setgroup_del*
+
+        name=\ *GROUP_NAME*
+
+-  **setgroup_ins**
+
+        name=\ *GROUP_NAME* instance=\ *COMMA_SEPARATED_LIST_OF_INSTANCES*
+
+-  **setgroup_rm**
+
+        name=\ *GROUP_NAME* instance=\ *COMMA_SEPARATED_LIST_OF_INSTANCES*
 
 DESCRIPTION
 ===========
@@ -46,39 +55,63 @@ and its parameters is as follows.
 **setgroup_add** adds (creates) a new setgroup. The following list
 describes the command parameters:
 
-   -  The name of the setgroup.
+   -  **name=GROUP_NAME**
 
-   -  (Optional) The producer name of the setgroup. If not set, the name
-      of the LDMSD (the **-n** option) is used.
+        The name of the setgroup.
 
-   -  (Optional) The micro-second update interval hint.
+   -  **[producer=**\ *PRODUCER*\ **]**
 
-   -  (Optional) The micro-second update offset hint.
+        (Optional) The producer name of the setgroup. If not set, the name
+        of the LDMSD (the **-n** option) is used.
+
+   -  **[interval=**\ *USEC*\ **]**
+
+        (Optional) The micro-second update interval hint.
+
+   -  **[offset=**\ *USEC*\ **]**
+
+        (Optional) The micro-second update offset hint.
 
 **setgroup_mod** modifies (mutable) attributes of the setgroup. The list
 of parameters is as follows:
 
-   -  The name of the setgroup.
+   -  **name=GROUP_NAME**
 
-   -  (Optional) The micro-second update interval hint.
+        The name of the setgroup.
 
-   -  (Optional) The micro-second update offset hint.
+   -  **[interval=**\ *USEC*\ **]**
+
+        (Optional) The micro-second update interval hint.
+
+   -  **[offset=**\ *USEC*\ **]**
+
+        (Optional) The micro-second update offset hint.
 
 **setgroup_ins** inserts a list of set instances into the setgroup.
 
-   -  The name of the setgroup.
+   -  **name=GROUP_NAME**
 
-   -  A comma-separated list of set instances.
+        The name of the setgroup.
+
+   -  **[instance=**\ *COMMA_SEPARATED_LIST_OF_INSTANCES*\ **]**
+
+        A comma-separated list of set instances.
 
 **setgroup_rm** removes a list of set instances from the setgroup.
 
-   -  The name of the setgroup.
+   -  **name=GROUP_NAME**
 
-   -  A comma-separated list of set instances.
+        The name of the setgroup.
+
+   -  **[instance=**\ *COMMA_SEPARATED_LIST_OF_INSTANCES*\ **]**
+
+        A comma-separated list of set instances.
 
 **setgroup_del** deletes the setgroup.
 
-   -  The name of the setgroup.
+   -  **name=GROUP_NAME**
+
+        The name of the setgroup.
 
 EXAMPLE
 =======

@@ -111,7 +111,7 @@ General/Configuration Options:
    cannot be altered (start, stop, or reconfigure) over in-band
    configuration. See also REORDERED COMMANDS below.
 
-**-y**\ *CONFIG_PATH*
+**-y** *CONFIG_PATH*
    The path to a YAML configuration file (optional, default: <none>).
    The YAML configuration file contains a description of an entire
    cluster of LDMS daemons. Please see "man ldmsd_yaml_parser" for more
@@ -129,7 +129,7 @@ General/Configuration Options:
      enabling DEBUG logging and examining the mm_stat bytes_used+holes
      value at ldmsd exit.
 
-**-n, --daemon_name**\ *NAME*
+**-n, --daemon_name** *NAME*
    |
    | The name of the LDMS daemon. By default it is "HOSTNAME:PORT". When
      configuring a LDMSD with a YAML configuration file, the
@@ -327,17 +327,17 @@ Apart from the configuration commands above, the configuration command
    option <COMMAND-LINE OPTIONS>
 
    **-a,**\ *--default_auth*
-      **-A,**\ *--default_auth_args*
-         **-B,**\ *--banner*
-            **-k,**\ *--publish_kernel*
-               **-l,**\ *--log_file* **PATH**
-                  **-m,**\ *--set_memory*
-                     **-n,**\ *--daemon_name*
-                        **-P,**\ *--worker_threads*
-                           **-r,**\ *--pid_file*
-                              **-s,**\ *--kernel_set_path*
-                                 **-v,**\ *--log_level*
-                                    **-L,**\ *--log_config* **<CINT[:PATH]>**
+   **-A,**\ *--default_auth_args*
+   **-B,**\ *--banner*
+   **-k,**\ *--publish_kernel*
+   **-l,**\ *--log_file* **PATH**
+   **-m,**\ *--set_memory*
+   **-n,**\ *--daemon_name*
+   **-P,**\ *--worker_threads*
+   **-r,**\ *--pid_file*
+   **-s,**\ *--kernel_set_path*
+   **-v,**\ *--log_level*
+   **-L,**\ *--log_config* **<CINT[:PATH]>**
 
 Specifying the listen endpoints in configuraton files
 -----------------------------------------------------
@@ -425,5 +425,4 @@ EXAMPLES
 SEE ALSO
 ========
 
-ldms_authentication(7), ldmsctl(8), ldms_ls(8), ldmsd_controller(8),
-ldms_quickstart(7)
+:ref:`ldms_authentication(7) <ldms_authentication>`, :ref:`ldmsctl(8) <ldmsctl>`, :ref:`ldms_ls(8) <ldms_ls`, :ref:`ldmsd_controller(8) <ldmsd_controller>`, :ref:`ldms_quickstart(7) <ldms_quickstart>`

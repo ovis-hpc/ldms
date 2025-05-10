@@ -4,7 +4,6 @@
 app_sampler
 ==================
 
-
 -------------------------
 LDMSD app_sampler plugin
 -------------------------
@@ -41,25 +40,41 @@ string) or writing a JSON configuration file and specifying
 CONFIG OPTIONS
 ==============
 
--  Must be app_sampler.
+-  **name**
 
--  The name of the data producer (e.g. hostname).
+        Must be app_sampler.
 
--  This is required by sampler_base but is not used by app_sampler. So,
-   this can be any string but must be present.
+-  **producer**
 
--  The optional schema name (default: app_sampler).
+        The name of the data producer (e.g. hostname).
 
--  An integer identifying the component (default: *0*).
+-  **instance**
 
--  The name of the **``ldmsd_stream``** to listen for SLURM job events.
-   (default: slurm).
+        This is required by sampler_base but is not used by app_sampler. So,
+        this can be any string but must be present.
 
--  The comma-separated list of metrics to monitor. The default is ''
-   (empty), which is equivalent to monitor ALL metrics.
+-  **schema**
 
--  The alternative config file in JSON format. The file is expected to
-   have an object that may contain the following attributes:
+        The optional schema name (default: app_sampler).
+
+-  **component_id**
+
+        An integer identifying the component (default: *0*).
+
+-  **stream**
+
+        The name of the **``ldmsd_stream``** to listen for SLURM job events.
+        (default: slurm).
+
+-  **metrics**
+
+        The comma-separated list of metrics to monitor. The default is ''
+        (empty), which is equivalent to monitor ALL metrics.
+
+-  **cfg_file**
+
+        The alternative config file in JSON format. The file is expected to
+        have an object that may contain the following attributes:
 
 ..
 
@@ -300,4 +315,4 @@ SEE ALSO
 ========
 
 :ref:`ldmsd(8) <ldmsd>`, :ref:`ldms_quickstart(7) <ldms_quickstart>`, :ref:`ldmsd_controller(8) <ldmsd_controller>`,
-:ref:`ldms_sampler_base(7) <ldms_sampler_base>`, **:ref:`proc(5) <proc>`,** **:ref:`sysconf(3) <sysconf>`,** **:ref:`environ(3) <environ>`.**
+:ref:`ldms_sampler_base(7) <ldms_sampler_base>`, :ref:`proc(5) <proc>`,:ref:`sysconf(3) <sysconf>`,:ref:`environ(3) <environ>`

@@ -4,7 +4,6 @@
 ldmsd_stream_subscribe
 ======================
 
-
 ----------------------------------------------------
 Man page for the LDMS ldmsd_stream_subscribe utility
 ----------------------------------------------------

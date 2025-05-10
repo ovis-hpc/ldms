@@ -4,7 +4,6 @@
 geopm_sampler
 ====================
 
-
 -----------------------------------
 Man page for the LDMS geopm plugin
 -----------------------------------
@@ -118,33 +117,35 @@ comprising of recently monitored signals. This can be achieved by using
 the existing commandline tool - \``ldms_ls`\` available as part of the
 installation of the LDMS framework. An example is shown below:
 
-$> ldms_ls -h localhost -x sock -p 10444 -l -v
+::
 
-Schema Instance Flags Msize Dsize Hsize UID GID Perm Update Duration
-Info -------------- ------------------------ ------ ------ ------ ------
------- ------ ---------- ----------------- ----------------- --------
-ldms_geopm_sampler <hostname>/ldms_geopm_sampler CL 1352 240 0 1024 100
--r--r----- 1656431193.051578 0.000323 "updt_hint_us"="1000000:50000"
--------------- ------------------------ ------ ------ ------ ------
------- ------ ---------- ----------------- ----------------- --------
-Total Sets: 1, Meta Data (kB): 1.35, Data (kB) 0.24, Memory (kB): 1.59
+        $> ldms_ls -h localhost -x sock -p 10444 -l -v
 
-=======================================================================
+        Schema Instance Flags Msize Dsize Hsize UID GID Perm Update Duration
+        Info -------------- ------------------------ ------ ------ ------ ------
+        ------ ------ ---------- ----------------- ----------------- --------
+        ldms_geopm_sampler <hostname>/ldms_geopm_sampler CL 1352 240 0 1024 100
+        -r--r----- 1656431193.051578 0.000323 "updt_hint_us"="1000000:50000"
+        -------------- ------------------------ ------ ------ ------ ------
+        ------ ------ ---------- ----------------- ----------------- --------
+        Total Sets: 1, Meta Data (kB): 1.35, Data (kB) 0.24, Memory (kB): 1.59
 
-<hostname>/ldms_geopm_sampler: consistent, last update: Tue Jun 28
-08:46:33 2022 -0700 [51578us] M u64 component_id 1 D u64 job_id 0 D u64
-app_id 0 D d64 CPU_FREQUENCY_MAX_board_0 3700000000.000000 D d64
-CPU_FREQUENCY_MIN_board_0 1000000000.000000 D d64
-CPU_FREQUENCY_STEP_board_0 100000000.000000 D d64
-CPU_FREQUENCY_STICKER_board_0 2100000000.000000 D d64 TIME_board_0
-6.899751 D d64 ENERGY_PACKAGE_board_0 334936.207092 D d64
-INSTRUCTIONS_RETIRED_board_0 131016700.000000 D d64 POWER_DRAM_board_0
-0.900889 D d64 POWER_PACKAGE_board_0 25.469352 D d64
-POWER_PACKAGE_LIMIT_board_0 140.000000 D d64 POWER_PACKAGE_MAX_board_0
-594.000000 D d64 POWER_PACKAGE_MIN_board_0 140.000000 D d64
-POWER_PACKAGE_TDP_board_0 280.000000 D d64 TEMPERATURE_CORE_board_0
-26.454545 D d64 TEMPERATURE_PACKAGE_board_0 28.000000 D d64
-TIMESTAMP_COUNTER_board_0 10913748924506.000000
+        =======================================================================
+
+        <hostname>/ldms_geopm_sampler: consistent, last update: Tue Jun 28
+        08:46:33 2022 -0700 [51578us] M u64 component_id 1 D u64 job_id 0 D u64
+        app_id 0 D d64 CPU_FREQUENCY_MAX_board_0 3700000000.000000 D d64
+        CPU_FREQUENCY_MIN_board_0 1000000000.000000 D d64
+        CPU_FREQUENCY_STEP_board_0 100000000.000000 D d64
+        CPU_FREQUENCY_STICKER_board_0 2100000000.000000 D d64 TIME_board_0
+        6.899751 D d64 ENERGY_PACKAGE_board_0 334936.207092 D d64
+        INSTRUCTIONS_RETIRED_board_0 131016700.000000 D d64 POWER_DRAM_board_0
+        0.900889 D d64 POWER_PACKAGE_board_0 25.469352 D d64
+        POWER_PACKAGE_LIMIT_board_0 140.000000 D d64 POWER_PACKAGE_MAX_board_0
+        594.000000 D d64 POWER_PACKAGE_MIN_board_0 140.000000 D d64
+        POWER_PACKAGE_TDP_board_0 280.000000 D d64 TEMPERATURE_CORE_board_0
+        26.454545 D d64 TEMPERATURE_PACKAGE_board_0 28.000000 D d64
+        TIMESTAMP_COUNTER_board_0 10913748924506.000000
 
 SEE ALSO
 ========
