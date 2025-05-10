@@ -4,7 +4,6 @@
 cray_system_sampler_variants
 ===================================
 
-
 ----------------------------------------------------------------
 Man page for all variants of the LDMS cray_system_sampler plugin
 ----------------------------------------------------------------
@@ -18,8 +17,8 @@ SYNOPSIS
 ========
 
 | Within ldmsd_controller or in a configuration file
-| config name=cray_gemini_r_sampler [ <attr> = <value> ]
-| config name=cray_aries_r_sampler [ <attr> = <value> ]
+| ``config name=cray_gemini_r_sampler [ <attr> = <value> ]
+    config name=cray_aries_r_sampler [ <attr> = <value> ]``
 
 DESCRIPTION
 ===========
@@ -34,17 +33,17 @@ the gpcdr module for obtaining HSN data. The cray_aries_r_sampler is for
 XC systems and uses the gpcdr module for obtaining HSN data.
 
 To build the cray_gemini_r_sampler, build with the following flags:
-**--enable_cray_system_sampler** **--enable-gemini-gpcdr**
+``--enable_cray_system_sampler --enable-gemini-gpcdr``
 
 To build the cray_aries_r_sampler, build with the following flags:
-**--enable_cray_system_sampler** **--enable-aries-gpcdr**
+``--enable_cray_system_sampler --enable-aries-gpcdr``
 
 You may build multiple variants simultaneously.
 
 ENVIRONMENT
 ===========
 
-If you have built with **--enable_cray_nvidia** and intend to collect
+If you have built with ``--enable_cray_nvidia`` and intend to collect
 data for gpu devices, then the following environment variable must be
 set:
 
@@ -182,7 +181,7 @@ cray_aries_r_sampler. The interconnect information is produced in two
 steps:
 
 1) From the smw as root:
-   rtr --interconnect >> interconnect.txt
+   ``rtr --interconnect >> interconnect.txt``
 
 This produces a list of all the tile, link, and media information
 
@@ -197,7 +196,7 @@ interconnect file is not required to be specified in the configuration
 line.
 
 2) On some host:
-   parse_rtr_dump interconnect.txt >> parsed_interconnect.txt
+   ``parse_rtr_dump interconnect.txt >> parsed_interconnect.txt``
 
 This produces a formatted version of the interconnect.txt file which is
 greatly reduced in size. Using the even/oddness of the component numbers

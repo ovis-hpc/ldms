@@ -1382,5 +1382,4 @@ Example of log_status's report
 SEE ALSO
 ========
 
-ldmsd(8), ldmsctl(8), ldms_quickstart(7), ldmsd_failover(7),
-ldmsd_setgroup(7)
+:ref:`ldmsd(8) <ldmsd>`, :ref:`ldmsctl(8) <ldmsctl>`, :ref:`ldms_quickstart(7) <ldms_quickstart>`, :ref:`ldmsd_failover(7) <ldmsd_failover>`, :ref:`ldmsd_setgroup(7) <ldmsd_setgroup>`

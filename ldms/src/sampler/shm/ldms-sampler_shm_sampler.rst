@@ -61,19 +61,16 @@ application performance data.
   The name of the metric set schema, Defaults to the sampler name
 
 **job_set**
-  The instance name of the set containing the job data, default is
-'job_info'
+  The instance name of the set containing the job data, default is 'job_info'
 
 **job_id**
   The name of the metric containing the Job Id, default is 'job_id'
 
 **app_id**
-  The name of the metric containing the Application Id, default is
-'app_id'
+  The name of the metric containing the Application Id, default is 'app_id'
 
 **job_start**
-  The name of the metric containing the Job start time, default is
-'job_start'
+  The name of the metric containing the Job start time, default is 'job_start'
 
 **job_end**
   The name of the metric containing the Job end time, default is 'job_end'

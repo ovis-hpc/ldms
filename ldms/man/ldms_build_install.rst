@@ -4,7 +4,6 @@
 ldms_build_install
 ==================
 
-
 ----------------------------------------------
 Instructions for building and installing ldms
 ----------------------------------------------

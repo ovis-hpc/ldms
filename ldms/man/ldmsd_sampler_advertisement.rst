@@ -4,7 +4,6 @@
 ldmsd_sampler_advertisement
 ===========================
 
-
 ---------------------------------------
 Manual for LDMSD Sampler Advertisement
 ---------------------------------------
@@ -18,30 +17,48 @@ SYNOPSIS
 
 \**Sampler side Commands*\*
 
--  name=\ *NAME* xprt=\ *XPRT* host=\ *HOST* port=\ *PORT*
-   [auth=\ *AUTH_DOMAIN*]
+-  **advertiser_add**
 
--  name=\ *NAME* [xprt=\ *XPRT* host=\ *HOST* port=\ *PORT*
-   auth=\ *AUTH_DOMAIN*]
+        name=\ *NAME* xprt=\ *XPRT* host=\ *HOST* port=\ *PORT*
+        [auth=\ *AUTH_DOMAIN*]
 
--  name=\ *NAME*
+-  **advertiser_start**
 
--  name=\ *NAME*
+        name=\ *NAME* [xprt=\ *XPRT* host=\ *HOST* port=\ *PORT*
+        auth=\ *AUTH_DOMAIN*]
 
--  [name=\ *NAME*]
+-  **advertiser_stop**
+
+        name=\ *NAME*
+
+-  **advertiser_del**
+
+        name=\ *NAME*
+
+-  **advertiser_status**
+
+        [name=\ *NAME*]
 
 \**Aggregator Side Commands*\*
 
--  name=\ *NAME*" [disable_start=\ *TURE|FALSE*] [regex=\ *REGEX*]
-   [ip=\ *CIDR*]
+-  **prdcr_listen_add**
 
--  name=\ *NAME*
+        name=\ *NAME*" [disable_start=\ *TURE|FALSE*] [regex=\ *REGEX*]
+        [ip=\ *CIDR*]
 
--  name=\ *NAME*
+-  **prdcr_listen_start**
 
--  name=\ *NAME*
+        name=\ *NAME*
 
--
+-  **prdcr_listen_stop**
+
+        name=\ *NAME*
+
+-  **prdcr_listen_del**
+
+        name=\ *NAME*
+
+-  **prdcr_listen_status**
 
 DESCRIPTION
 ===========
@@ -81,76 +98,120 @@ The description for each command and its parameters are as follows.
 
 **advertiser_add** adds a new advertisement. The parameters are:
 
-   -  String of the advertisement name. The aggregator uses the string
-      as the producer name as well.
+   -  **name=NAME**
 
-   -  Aggregator hostname
+        String of the advertisement name. The aggregator uses the string
+        as the producer name as well.
 
-   -  Transport to connect to the aggregator
+   -  **host=HOST**
 
-   -  Listen port of the aggregator
+        Aggregator hostname
 
-   -  Reconnect interval d
+   -  **xprt=XPRT**
 
-   -  The authentication domain to be used to connect to the aggregator
+        Transport to connect to the aggregator
+
+   -  **port=PORT**
+
+        Listen port of the aggregator
+
+   -  **reconnect=INTERVAL**
+
+        Reconnect interval
+
+   -  **[auth=**\ *AUTH_DOMAIN*\ **]**
+
+        The authentication domain to be used to connect to the aggregator
 
 **advertiser_start** starts an advertisement. If the advertiser does not
 exist, LDMSD will create the advertiser. In this case, the mandatory
 attributes for **advertiser_add must be given. The parameters are:**
 
-   -  The advertisement name to be started
+   -  **name=NAME**
 
-   -  Aggregator hostname
+        The advertisement name to be started
 
-   -  Transport to connect to the aggregator
+   -  **[host=**\ *HOST*\ **]**
 
-   -  Listen port of the aggregator
+        Aggregator hostname
 
-   -  Reconnect interval
+   -  **[xprt=**\ *XPRT*\ **]**
 
-   -  The authentication domain to be used to connect to the aggregator
+        Transport to connect to the aggregator
+
+   -  **[port=**\ *PORT*\ **]**
+
+        Listen port of the aggregator
+
+   -  **[reconnect=**\ *INTERVAL*\ **]**
+
+        Reconnect interval
+
+   -  **[auth=**\ *AUTH_DOMAIN*\ **]**
+
+        The authentication domain to be used to connect to the aggregator
 
 **advertiser_stop** stops an advertisement. The parameters are:
 
-   -  The advertisement name to be stopped
+   -  **name=NAME**
+
+        The advertisement name to be stopped
 
 **advertiser_del** deletes an advertisement. The parameters are:
 
-   -  The advertisement name to be deleted
+   -  **name=NAME**
+
+        The advertisement name to be deleted
 
 **advertiser_status reports the status of each advertisement. An
 optional parameter is:**
 
-   -  Advertisement name
+   -  **[name=**\ *NAME*\ **]**
+
+        Advertisement name
 
 \**Aggregator Side commands*\*
 
 **prdcr_listen_add** adds a regular expression to match sampler
 advertisements. The parameters are:
 
-   -  String of the prdcr_listen name.
+   -  **name=NAME**
 
-   -  True to tell LDMSD not to start producers automatically
+        String of the prdcr_listen name.
 
-   -  Regular expression to match with hostnames in sampler
-      advertisements
+   -  **[disable_start=**\ *TRUE|FALSE*\ **]**
 
-   -  IP Range in the CIDR format either in IPV4 or IPV6
+        True to tell LDMSD not to start producers automatically
+
+   -  **[regex=**\ *REGEX*\ **]**
+
+        Regular expression to match with hostnames in sampler
+        advertisements
+
+   -  **ip=CIDR**
+
+        IP Range in the CIDR format either in IPV4 or IPV6
 
 **prdcr_listen_start** starts accepting sampler advertisement with
 matches hostnames. The parameters are:
 
-   -  Name of prdcr_listen to be started
+   -  **name=NAME**
+
+        Name of prdcr_listen to be started
 
 **prdcr_listen_stop** stops accepting sampler advertisement with matches
 hostnames. The parameters are:
 
-   -  Name of prdcr_listen to be stopped
+   -  **name=NAME**
+
+        Name of prdcr_listen to be stopped
 
 **prdcr_listen_del** deletes a regular expression to match hostnames in
 sampler advertisements. The parameters are:
 
-   -  Name of prdcr_listen to be deleted
+   -  **name=NAME**
+
+        Name of prdcr_listen to be deleted
 
 **prdcr_listen_status** report the status of each prdcr_listen object.
 There is no parameter.

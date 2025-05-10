@@ -4,7 +4,6 @@
 ldms-csv-anonymize
 ==================
 
-
 -------------------------------
 Anonymize columns of csv files
 -------------------------------

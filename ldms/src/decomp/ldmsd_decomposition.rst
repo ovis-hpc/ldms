@@ -541,4 +541,4 @@ use "matches" with "schema" instead of "digest".
 SEE ALSO
 ========
 
-**Plugin_store_sos**\ (7), **Plugin_store_csv**\ (7), **Plugin_store_kafka**\ (7)
+:ref:`store_sos(7) <store_sos`, :ref:`store_csv(7) <store_csv>`, :ref:`store_kafka(7) <store_kafka>`

@@ -4,7 +4,6 @@
 ldms_auth_naive
 ===============
 
-
 -----------------------------------------------------
 Naive LDMS authentication implementation FOR TESTING
 -----------------------------------------------------

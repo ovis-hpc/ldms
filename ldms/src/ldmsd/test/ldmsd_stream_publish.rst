@@ -4,7 +4,6 @@
 ldmsd_stream_publish
 ====================
 
-
 -------------------------------------------------------------
 Man page for the LDMS ldmsd_stream_publish executable utility
 -------------------------------------------------------------

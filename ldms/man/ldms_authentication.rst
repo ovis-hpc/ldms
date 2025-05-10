@@ -4,7 +4,6 @@
 ldms_authentication
 ===================
 
-
 ----------------------------------
 Authentication in LDMS transports
 ----------------------------------

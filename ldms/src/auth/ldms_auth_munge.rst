@@ -4,7 +4,6 @@
 ldms_auth_munge
 ===============
 
-
 --------------------------------
 LDMS authentication using munge
 --------------------------------

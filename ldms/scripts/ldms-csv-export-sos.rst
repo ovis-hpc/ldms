@@ -4,7 +4,6 @@
 ldms-csv-export-sos
 ===================
 
-
 -----------------------------------------------
 Generate helper files needed by sos-import-csv
 -----------------------------------------------
@@ -210,4 +209,4 @@ Other examples
 SEE ALSO
 ========
 
-sos-import-csv, :ref:`ldms-csv-export-sos(1) <ldms-csv-export-sos>`
+:ref:`sos-import-csv(1) <sos-import-csv>`, :ref:`ldms-csv-export-sos(1) <ldms-csv-export-sos>`
