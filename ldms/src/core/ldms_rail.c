@@ -76,6 +76,8 @@ extern ovis_log_t xlog;
 	ovis_log(xlog, OVIS_LERROR, fmt, ## __VA_ARGS__); \
 } while (0);
 
+extern int ldms_msg_enabled; /* see ldms_msg.c */
+
 /* The definition is in ldms.c. */
 extern int __enable_profiling[LDMS_XPRT_OP_COUNT];
 
@@ -397,7 +399,7 @@ int __rail_ev_prep(struct ldms_rail_s *r, ldms_xprt_event_t ev)
 void __msg_on_rail_disconnected(struct ldms_rail_s *r);
 
 /* return send quota to peer */
-void __rail_ep_quota_return(struct ldms_rail_ep_s *rep, int quota)
+void __rail_ep_quota_return(struct ldms_rail_ep_s *rep, int quota, int rc)
 {
 	/* give back send quota */
 	int len = sizeof(struct ldms_request_hdr) +
@@ -409,6 +411,7 @@ void __rail_ep_quota_return(struct ldms_rail_ep_s *rep, int quota)
 		},
 		.send_quota = {
 			.send_quota = htonl(quota),
+			.rc         = htonl(rc),
 		}};
 	zap_send(rep->ep->zap_ep, &req, len);
 }
@@ -757,6 +760,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 		r->event_cb = cb;
 		r->event_cb_arg = cb_arg;
 		r->rail_id = rail_id;
+		r->peer_msg_enabled = m->msg_enabled;
 		rbn_init(&r->rbn, &r->rail_id);
 		rbt_ins(&__passive_rail_rbt, &r->rbn);
 		ref_get(&r->ref, "__passive_rail_rbt");
@@ -884,6 +888,7 @@ static void __ldms_rail_conn_msg_init(struct ldms_rail_s *r, int idx, struct ldm
 	m->idx = htonl(idx);
 	m->pid = htonl(getpid());
 	m->rail_gn = htobe64(r->rail_id.rail_gn);
+	m->msg_enabled = htonl(ldms_msg_enabled);
 }
 
 static int __rail_ep_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
@@ -1580,12 +1585,14 @@ void __rail_ep_limit(ldms_t x, void *msg, int msg_len)
 	rep->rate_quota.ts.tv_sec  = 0;
 	rep->rate_quota.ts.tv_nsec = 0;
 	rep->remote_is_rail = 1;
+	rep->rail->peer_msg_enabled = ntohl(conn_msg->msg_enabled);
 	return;
  unlimited:
 	rep->send_quota = LDMS_UNLIMITED;
 	rep->rate_quota.quota = LDMS_UNLIMITED;
 	rep->rate_quota.rate   = LDMS_UNLIMITED;
 	rep->remote_is_rail = 0;
+	rep->rail->peer_msg_enabled = 0;
 }
 
 void __rail_process_send_quota(ldms_t x, struct ldms_request *req)
@@ -1595,6 +1602,10 @@ void __rail_process_send_quota(ldms_t x, struct ldms_request *req)
 	struct ldms_xprt_event ev = {0};
 	ev.quota.quota = __rep_quota_release(rep, sc);
 	ev.quota.ep_idx = rep->idx;
+	ev.quota.rc = ntohl(req->send_quota.rc);
+	if (ev.quota.rc == ENOTSUP) {
+		rep->rail->peer_msg_enabled = 0;
+	}
 	ev.type = LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED;
 	rep->rail->event_cb((ldms_t)rep->rail, &ev, rep->rail->event_cb_arg);
 	__rep_flush_sbuf_tq(rep);
@@ -2242,4 +2253,13 @@ struct ldms_xprt_stats_result *ldms_xprt_stats_result_get(int mask, int reset)
 err:
 	ldms_xprt_stats_result_free(list);
 	return NULL;
+}
+
+int ldms_xprt_peer_msg_is_enabled(ldms_t x)
+{
+	if (!LDMS_IS_RAIL(x)) {
+		return 0;
+	}
+	ldms_rail_t r = LDMS_RAIL(x);
+	return r->peer_msg_enabled;
 }

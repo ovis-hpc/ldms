@@ -183,6 +183,7 @@ struct ldms_send_cmd_param {
 
 struct ldms_send_quota_param {
 	uint32_t send_quota;
+	int32_t  rc;
 };
 
 struct ldms_lookup_cmd_param {

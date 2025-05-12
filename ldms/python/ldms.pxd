@@ -330,6 +330,7 @@ cdef extern from "ldms.h" nogil:
     cdef struct ldms_xprt_quota_event_data:
         uint64_t quota
         int      ep_idx
+        int      rc
     cdef struct ldms_xprt_set_delete_data:
         void * set
         const char *name
@@ -364,6 +365,8 @@ cdef extern from "ldms.h" nogil:
     int ldms_xprt_sockaddr(ldms_t x, sockaddr *local_sa,
 		           sockaddr *remote_sa,
 		           socklen_t *sa_len)
+
+    int ldms_xprt_peer_msg_is_enabled(ldms_t x)
 
     const char *ldms_metric_type_to_str(ldms_value_type t)
 
@@ -874,6 +877,8 @@ cdef extern from "ldms.h" nogil:
     ctypedef ldms_msg_event_s *ldms_msg_event_t
     ctypedef int (*ldms_msg_event_cb_t)(ldms_msg_event_t ev, void *cb_arg) except *
 
+    void ldms_msg_disable()
+    int ldms_msg_is_enabled()
     int ldms_msg_publish(ldms_t x, const char *name,
                             ldms_msg_type_e msg_type,
                             ldms_cred *cred,

@@ -480,7 +480,7 @@ static void __qgroup_reset(ldms_qgroup_t qg)
 			goto next;
 		STAILQ_REMOVE(&qg->eps_stq, ent, __qgroup_rep_s, entry);
 		__atomic_store_n(&ent->rep->in_eps_stq, 0, __ATOMIC_SEQ_CST);
-		__rail_ep_quota_return(ent->rep, p);
+		__rail_ep_quota_return(ent->rep, p, 0);
 		q -= p;
 		__atomic_add_fetch(&ent->rep->pending_ret_quota, -p, __ATOMIC_SEQ_CST);
 		ref_put(&ent->rep->rail->ref, "qgroup_rep");

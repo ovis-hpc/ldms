@@ -94,6 +94,8 @@ static ovis_log_t __ldms_msg_log = NULL; /* see __ldms_msg_init() below */
 
 static int __msg_stats_level = 1;
 
+int ldms_msg_enabled = 1;
+
 struct __msg_event_s {
 	struct ldms_msg_event_s pub;
 	struct __msg_buf_s *sbuf;
@@ -933,6 +935,10 @@ int ldms_msg_publish(ldms_t x, const char *name,
 	struct ldms_op_ctxt_list *op_ctxt_list;
 	struct timespec recv_ts;
 
+	if (!ldms_msg_enabled) {
+		return ENOTSUP;
+	}
+
 	(void)clock_gettime(CLOCK_REALTIME, &recv_ts);
 
 	msg_gn = __atomic_fetch_add(&__msg_gn, 1, __ATOMIC_SEQ_CST);
@@ -957,6 +963,8 @@ int ldms_msg_publish(ldms_t x, const char *name,
 		if (!XTYPE_IS_RAIL(x->xtype))
 			return ENOTSUP;
 		r = (ldms_rail_t)x;
+		if (!r->peer_msg_enabled)
+			return ENOTSUP;
 		ep_idx = ( hash % primer ) % r->n_eps;
 		__rep_flush_sbuf_tq(&r->eps[ep_idx]);
 		q = strlen(name) + 1 + data_len;
@@ -1114,6 +1122,11 @@ ldms_msg_subscribe(const char *match, int is_regex,
 	ldms_msg_client_t c = NULL;
 	int rc;
 
+	if (!ldms_msg_enabled) {
+		errno = ENOTSUP;
+		goto out;
+	}
+
 	if (!cb_fn) {
 		errno = EINVAL;
 		goto out;
@@ -1174,10 +1187,14 @@ __remote_sub(ldms_t x, enum ldms_request_cmd cmd,
 	int msg_len;
 	zap_err_t zerr;
 
+	if (!ldms_msg_enabled)
+		return ENOTSUP;
 	if (!XTYPE_IS_RAIL(x->xtype))
 		return ENOTSUP;
+	r = (ldms_rail_t)x;
+	if (!r->peer_msg_enabled)
+		return ENOTSUP;
 
-	r = (void*)x;
 	match_len = strlen(match) + 1;
 	msg_len = sizeof(req->hdr) + sizeof(req->msg_sub) + match_len;
 	if (msg_len > r->max_msg)
@@ -1252,7 +1269,7 @@ static void __msg_buf_s_ref_free(void *arg)
 	int rc, v, cond;
 
 	if (0 == ldms_qgroup_quota_acquire(q)) {
-		__rail_ep_quota_return(rep, q);
+		__rail_ep_quota_return(rep, q, 0);
 	} else {
 		__atomic_fetch_add(&rep->pending_ret_quota, q, __ATOMIC_SEQ_CST);
 		v = 0;
@@ -1282,6 +1299,15 @@ __process_msg(ldms_t x, struct ldms_request *req)
 	struct ldms_cred xcred;
 	socklen_t slen = sizeof(lsa);
 	int rc;
+
+	if (!ldms_msg_enabled) {
+		/* message service disabled, notify peer via quota return */
+		if (0 == req->msg_part.first)
+			return;
+		/* only return with the first partial message */
+		__rail_ep_quota_return(rep, 0, ENOTSUP);
+		return;
+	}
 
 	/* src is always big endian */
 	req->msg_part.msg_gn = be64toh(req->msg_part.msg_gn);
@@ -1419,6 +1445,12 @@ __process_msg_sub(ldms_t x, struct ldms_request *req)
 		char _[512];
 	} buf;
 
+	if (!ldms_msg_enabled) {
+		rc = ENOTSUP;
+		err_msg = "LDMS Message Service disabled";
+		goto reply;
+	}
+
 	pthread_mutex_lock(&r->mutex);
 	rbn = rbt_find(&r->ch_cli_rbt, req->msg_sub.match);
 	if (rbn) {
@@ -1492,6 +1524,12 @@ __process_msg_unsub(ldms_t x, struct ldms_request *req)
 		struct ldms_reply r;
 		char _[512];
 	} buf;
+
+	if (!ldms_msg_enabled) {
+		rc = ENOTSUP;
+		err_msg = "LDMS Message Service disabled";
+		goto reply;
+	}
 
 	pthread_mutex_lock(&r->mutex);
 	rbn = rbt_find(&r->ch_cli_rbt, req->msg_sub.match);
@@ -2338,6 +2376,17 @@ int ldms_msg_publish_file(ldms_t x, const char *name,
 	if (buff)
 		free(buff);
 	return rc;
+}
+
+
+void ldms_msg_disable()
+{
+	ldms_msg_enabled = 0;
+}
+
+int ldms_msg_is_enabled()
+{
+	return ldms_msg_enabled;
 }
 
 static void __ldms_msg_init();

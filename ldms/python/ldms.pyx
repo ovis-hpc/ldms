@@ -1426,13 +1426,15 @@ cdef str STR(o):
 cdef class QuotaEventData(object):
     cdef readonly uint64_t quota
     cdef readonly int      ep_idx
+    cdef readonly int      rc
     """Data of a quota deposit event"""
-    def __cinit__(self, uint64_t quota, int ep_idx):
+    def __cinit__(self, uint64_t quota, int ep_idx, int rc):
         self.quota = quota
         self.ep_idx = ep_idx
+        self.rc = rc
 
     def __str__(self):
-        return f"({self.quota}, {self.ep_idx})"
+        return f"({self.quota}, {self.ep_idx}, {self.rc})"
 
     def __repr__(self):
         return str(self)
@@ -1490,7 +1492,7 @@ cdef class XprtEvent(object):
         cdef ldms_set_t cset
         self.type = ldms_xprt_event_type(e.type)
         if self.type == ldms.LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
-            self.quota = QuotaEventData(e.quota.quota, e.quota.ep_idx)
+            self.quota = QuotaEventData(e.quota.quota, e.quota.ep_idx, e.quota.rc)
         elif self.type == ldms.LDMS_XPRT_EVENT_SET_DELETE:
             cset = <ldms_set_t>e.set_delete.set
             lset = Set(None, None, set_ptr=PTR(cset)) if cset else None
@@ -4129,6 +4131,10 @@ cdef class Xprt(object):
         rc = ldms_xprt_is_remote_rail(self.xprt)
         return bool(rc)
 
+    @property
+    def peer_msg_is_enabled(self):
+        return ldms_xprt_peer_msg_is_enabled(self.xprt)
+
 
 cdef class _MsgSubCtxt(object):
     """For internal use"""
@@ -4787,3 +4793,9 @@ def ovis_log_set_level_by_name(str subsys_name, level):
     if type(level) is str:
         level = LOG_LEVEL_MAP[level.upper()]
     ldms.ovis_log_set_level_by_name(CSTR(BYTES(subsys_name)), level)
+
+def msg_disable():
+    ldms_msg_disable()
+
+def msg_is_enabled():
+    return ldms_msg_is_enabled()
