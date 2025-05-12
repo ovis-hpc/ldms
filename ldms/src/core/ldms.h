@@ -750,6 +750,7 @@ struct ldms_xprt_set_delete_data {
 struct ldms_xprt_quota_event_data {
 	uint64_t quota; /* current quota */
 	int      ep_idx; /* the index of the endpoint in the rail */
+	int      rc; /* the return code from peer */
 };
 
 typedef struct ldms_xprt_event {
@@ -1387,6 +1388,22 @@ typedef enum ldms_msg_type_e {
 	LDMS_MSG_AVRO_SER,
 	LDMS_MSG_LAST, /* the last enumureation; not a real type */
 } ldms_msg_type_t;
+
+/**
+ * \brief Disable LDMS Message service
+ *
+ * Similar to \c ldmsd_stream, this service can be disabled but cannot be
+ * enabled afterward.
+ */
+void ldms_msg_disable();
+
+/**
+ * \brief Check if LDMS Message Service is enabled.
+ *
+ * \retval 0 if it is DISabled.
+ * \retval 1 if it is ENabled.
+ */
+int ldms_msg_is_enabled();
 
 /**
  * \brief Message Type Symbol.
@@ -4500,6 +4517,16 @@ void ldms_local_cred_get(ldms_t x, ldms_cred_t lcl);
  */
 int ldms_access_check(ldms_t x, uint32_t acc, uid_t obj_uid, gid_t obj_gid,
 		      int obj_perm);
+
+
+/**
+ * \brief Check if peer has LDMS Message Service enabled.
+ *
+ * \retval 0 if the peer has LDMS Message Service DISabled.
+ * \retval 1 if the peer has LDMS Message Service ENabled.
+ */
+int ldms_xprt_peer_msg_is_enabled(ldms_t x);
+
 /**
  * \}
  */
