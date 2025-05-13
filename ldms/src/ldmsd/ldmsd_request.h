@@ -220,6 +220,7 @@ enum ldmsd_request {
 	/* Message Service */
 	LDMSD_MSG_STATS_REQ = 0xc00, /* Query stats of message service of this process */
 	LDMSD_MSG_CLIENT_STATS_REQ,  /* Query message client stats of this process */
+	LDMSD_MSG_DISABLE_REQ,       /* Disable message service */
 };
 
 enum ldmsd_request_attr {

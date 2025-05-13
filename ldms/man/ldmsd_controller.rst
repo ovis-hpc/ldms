@@ -454,6 +454,16 @@ error of ENOSYS. Stream communication cannot be re-enabled without restarting
 the daemon.
 
 
+Disable LDMS Message Service
+----------------------------
+
+**msg_disable**
+
+Disable the LDMS Message Service subscription and publication in this daemon.
+Once this is disabled, all LDMS Messages will be dropped. The LDMS Message
+Service cannot be re-enabled without restarting the daemon.
+
+
 Subscribe for stream and/or message data from all matching producers
 --------------------------------------------------------------------
 

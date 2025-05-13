@@ -2730,6 +2730,22 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_msg_client_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('msg_client_stats', text)
 
+    def do_msg_disable(self, arg):
+        """
+        Disable LDMS Message Service in the daemon
+
+        No Parameters
+        """
+        rc, msg = self.comm.msg_disable()
+        if rc != 0:
+            print(f'Error {rc}: {msg}')
+        else:
+            print('LDMS Message Service is DISABLED in the daemon')
+        return
+
+    def complete_msg_disable(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('msg_disable', text)
+
     def do_listen(self, arg):
         """
         Add a listen endpoint
