@@ -297,6 +297,7 @@ static int stream_disable_handler(ldmsd_req_ctxt_t reqc);
 
 static int msg_stats_handler(ldmsd_req_ctxt_t reqc);
 static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc);
+static int msg_disable_handler(ldmsd_req_ctxt_t reqc);
 
 static int listen_handler(ldmsd_req_ctxt_t reqc);
 
@@ -669,6 +670,9 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_MSG_CLIENT_STATS_REQ] = {
 		LDMSD_MSG_CLIENT_STATS_REQ, msg_client_stats_handler, XALL
+	},
+	[LDMSD_MSG_DISABLE_REQ] = {
+		LDMSD_MSG_DISABLE_REQ, msg_disable_handler, XUG | MOD
 	},
 
 	/* LISTEN */
@@ -8514,6 +8518,15 @@ static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc)
 out:
 	free(s);
 	return rc;
+}
+
+static int msg_disable_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldms_msg_disable();
+	reqc->errcode = 0;
+	(void)Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
 }
 
 void ldmsd_xprt_term(ldms_t x)
