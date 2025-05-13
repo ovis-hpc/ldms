@@ -1431,9 +1431,15 @@ class LdmsdCmdParser(cmd.Cmd):
         #     }
         #   }
         # }
+        #
+        # 4. The function also returns the number of store operations per second
+
         schema_tbl = {'stats' : self.__datatbl_new()}
         thread_tbl = {'stats' : self.__datatbl_new()}
         strgp_tbl = {'stats' : self.__datatbl_new()}
+
+        begin_time = end_time = 0
+        num_op = 0
 
         for strgp_name, strgp in d.items():
             strgp_tbl[strgp_name] = {'stats' : self.__datatbl_new()}
@@ -1442,6 +1448,17 @@ class LdmsdCmdParser(cmd.Cmd):
                 prdset['name'] = set_name
                 schema_name = prdset['schema']
                 thread_id = prdset['thread_id']
+
+                # Calculate the operation
+                if begin_time == 0 and end_time == 0:
+                    begin_time = prdset['stats']['start_ts']
+                    end_time = prdset['stats']['end_ts']
+                else:
+                    if prdset['stats']['start_ts'] < begin_time:
+                        begin_time = prdset['stats']['start_ts']
+                    if prdset['stats']['end_ts'] > end_time:
+                        end_time = prdset['stats']['end_ts']
+                num_op += prdset['stats']['count']
 
                 if schema_name not in strgp_tbl[strgp_name]:
                     strgp_tbl[strgp_name][schema_name] = {'stats' : self.__datatbl_new()}
@@ -1476,7 +1493,9 @@ class LdmsdCmdParser(cmd.Cmd):
                 continue
             self.__bounds(thread_tbl[k])
 
-        return (strgp_tbl, schema_tbl, thread_tbl)
+        num_op_per_sec = num_op/(end_time - begin_time) if (end_time  - begin_time != 0) else 0
+
+        return (strgp_tbl, schema_tbl, thread_tbl, num_op_per_sec)
 
     def __symbols(self, key, stats):
         symbol = list()
@@ -1506,6 +1525,8 @@ class LdmsdCmdParser(cmd.Cmd):
                        The default is false.
         """
         arg = self.handle_args('store_time_stats', arg)
+        if arg['reset'] is None:
+            arg['reset'] = False
         rc, msg = self.comm.store_time_stats(**arg)
         if rc != 0:
             # self.handle() already reported the error.
@@ -1513,7 +1534,7 @@ class LdmsdCmdParser(cmd.Cmd):
         j = fmt_status(msg)
 
         try:
-            strgp_tbl, schema_tbl, thread_tbl = self.__store_time_process(j)
+            strgp_tbl, schema_tbl, thread_tbl, num_op_per_sec = self.__store_time_process(j)
         except Exception as e:
             print(e)
             return
@@ -1577,6 +1598,8 @@ class LdmsdCmdParser(cmd.Cmd):
                           f"{st['max']:15.4f} {st['min_ts']:20.4f} {st['max_ts']:20.4f} " \
                           f"{len(set(st['set_name'])):10} {stats['count']:10}")
             print(f"{' '*5}  {'-'*18} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
+        print()
+        print(f"Number of store operations per second: {num_op_per_sec:0.4f}")
 
     def complete_store_time_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('store_time_stats', text)
