@@ -964,11 +964,8 @@ char *process_yaml_config_file(const char *path, const char *dname);
 /* This struct is owned by the plugin. ldmsd should never modify the contents. */
 typedef struct ldmsd_plugin {
 	enum ldmsd_plugin_type {
-		LDMSD_PLUGIN_OTHER = 0,
-		LDMSD_PLUGIN_SAMPLER,
+		LDMSD_PLUGIN_SAMPLER = 1,
 		LDMSD_PLUGIN_STORE,
-		LDMSD_PLUGIN_AUTH,
-		LDMSD_PLUGIN_DECOMP
 	} type;
 	uint64_t flags;
 	int (*config)(ldmsd_plug_handle_t handle,
