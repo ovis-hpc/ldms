@@ -967,8 +967,6 @@ typedef struct ldmsd_plugin {
 		LDMSD_PLUGIN_OTHER = 0,
 		LDMSD_PLUGIN_SAMPLER,
 		LDMSD_PLUGIN_STORE,
-		LDMSD_PLUGIN_AUTH,
-		LDMSD_PLUGIN_DECOMP
 	} type;
 	uint64_t flags;
 	int (*config)(ldmsd_plug_handle_t handle,
