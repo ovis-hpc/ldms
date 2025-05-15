@@ -322,6 +322,7 @@ OPTION_DEFAULT_ENABLE([synthetic], [ENABLE_SYNTHETIC])
 OPTION_DEFAULT_ENABLE([varset], [ENABLE_VARSET])
 OPTION_DEFAULT_ENABLE([lnet_stats], [ENABLE_LNET_STATS])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
+OPTION_DEFAULT_ENABLE([cxi_sampler], [ENABLE_CXI_SAMPLER])
 OPTION_DEFAULT_DISABLE([gpumetrics], [ENABLE_GPU_METRICS])
 OPTION_DEFAULT_ENABLE([coretemp], [ENABLE_CORETEMP])
 OPTION_DEFAULT_ENABLE([filesingle], [ENABLE_FILESINGLE])
@@ -1059,6 +1060,7 @@ ldms/src/sampler/kgnilnd/Makefile
 ldms/src/sampler/tx2mon/Makefile
 ldms/src/sampler/msr_interlagos/Makefile
 ldms/src/sampler/meminfo/Makefile
+ldms/src/sampler/cxi_sampler/Makefile
 ldms/src/contrib/sampler/gpu_metrics_sampler/Makefile
 ldms/src/sampler/procinterrupts/Makefile
 ldms/src/sampler/procnetdev2/Makefile
