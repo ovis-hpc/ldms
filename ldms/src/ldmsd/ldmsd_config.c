@@ -366,6 +366,11 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
 					 "Plugin %s does not support multiple "
 					 "configurations, but the name specified "
 					 "was %s.\n", plugin_name, cfg_name);
+				Snprintf(&errstr, &errlen,
+					"Plugin %s does not support multiple "
+					"configurations, but the name specified "
+					"was %s. \n", plugin_name, cfg_name);
+				errno = EINVAL;
 				goto err;
 			}
 		}
