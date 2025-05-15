@@ -543,8 +543,7 @@ OPTION_WITH([cray-hss-devel], [CRAY_HSS_DEVEL],[/usr])
 OPTION_ARIES_MMR
 
 dnl munge
-OPTION_DEFAULT_DISABLE([munge], [ENABLE_MUNGE])
-OPTION_WITH([munge], [MUNGE])
+OPTION_WITH_CHECK([munge], [MUNGE], [munge.h], [munge], [munge_encode])
 
 LDMSD_PLUGIN_LIBPATH=${pkglibdir}
 AC_SUBST(LDMSD_PLUGIN_LIBPATH)
@@ -638,15 +637,6 @@ AM_COND_IF([ENABLE_DAOS_SAMPLER],[
 ])
 AC_MSG_CHECKING([for DAOS telemetry support])
 AC_MSG_RESULT([$have_daos])
-
-dnl Munge library check
-if test -z "$ENABLE_MUNGE_TRUE"; then
-	AC_CHECK_LIB(munge, munge_encode, [], AC_MSG_ERROR([libmunge not found]))
-	dnl Reset LIBS variable.
-	LIBS=""
-
-	AC_CHECK_HEADER(munge.h, [], AC_MSG_ERROR([munge.h not found]))
-fi
 
 AC_ARG_WITH([slurm],
 	[AS_HELP_STRING([--with-slurm],

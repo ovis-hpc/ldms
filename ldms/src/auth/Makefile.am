@@ -32,7 +32,7 @@ libldms_auth_ovis_la_LIBADD = ../core/libldms.la \
 			      $(top_builddir)/lib/src/ovis_log/libovis_log.la
 lib_LTLIBRARIES += libldms_auth_ovis.la
 
-if ENABLE_MUNGE
+if HAVE_MUNGE
 libldms_auth_munge_la_SOURCES = ldms_auth_munge.c
 libldms_auth_munge_la_CFLAGS = @MUNGE_INCDIR_FLAG@
 libldms_auth_munge_la_LIBADD = ../core/libldms.la \

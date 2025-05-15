@@ -211,7 +211,7 @@ AS_CASE( x$withval,
 	],
 	[xyes], [
 		check=y
-		err_exi=y
+		err_exit=y
 	],
 	dnl default-case: $withval is PREFIX_PATH
 	[
