@@ -39,6 +39,7 @@ SUBDIRS += lustre_mdt
 SUBDIRS += lustre_ost
 SUBDIRS += lustre_mdc
 SUBDIRS += json
+SUBDIRS += cxi_sampler
 dist_man7_MANS += ldms_sampler_base.man
 if HAVE_DCGM
 SUBDIRS += dcgm_sampler
