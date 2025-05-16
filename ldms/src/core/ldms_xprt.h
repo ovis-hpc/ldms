@@ -123,10 +123,10 @@ enum ldms_request_cmd {
 	LDMS_CMD_SET_DELETE,
 	LDMS_CMD_SEND_QUOTA, /* for updaing send quota */
 
-	/* stream requests */
-	LDMS_CMD_STREAM_MSG, /* for stream messages */
-	LDMS_CMD_STREAM_SUB, /* stream subscribe request */
-	LDMS_CMD_STREAM_UNSUB, /* stream subscribe request */
+	/* message service requests */
+	LDMS_CMD_MSG, /* for messages */
+	LDMS_CMD_MSG_SUB, /* message subscribe request */
+	LDMS_CMD_MSG_UNSUB, /* message unsubscribe request */
 
 	/* qgroup messages */
 	LDMS_CMD_QGROUP_ASK,
@@ -150,11 +150,11 @@ enum ldms_request_cmd {
 	LDMS_CMD_AUTH_REPLY,
 	LDMS_CMD_SET_DELETE_REPLY,
 
-	/* stream replies */
-	LDMS_CMD_STREAM_SUB_REPLY, /* stream subscribe reply (result) */
-	LDMS_CMD_STREAM_UNSUB_REPLY, /* stream subscribe reply (result) */
+	/* message service replies */
+	LDMS_CMD_MSG_SUB_REPLY, /* message subscribe reply (result) */
+	LDMS_CMD_MSG_UNSUB_REPLY, /* message unsubscribe reply (result) */
 
-	LDMS_CMD_LAST = LDMS_CMD_STREAM_UNSUB_REPLY,
+	LDMS_CMD_LAST = LDMS_CMD_MSG_UNSUB_REPLY,
 
 	/* Transport private requests set bit 32 */
 	LDMS_CMD_XPRT_PRIVATE = 0x80000000,
@@ -183,6 +183,7 @@ struct ldms_send_cmd_param {
 
 struct ldms_send_quota_param {
 	uint32_t send_quota;
+	int32_t  rc;
 };
 
 struct ldms_lookup_cmd_param {
@@ -213,18 +214,18 @@ struct ldms_cancel_push_cmd_param {
 	uint64_t set_id;	/*! The set we want to cancel push updates for  */
 };
 
-/* partial stream message; see ldms_stream.h for a full stream message */
-struct ldms_stream_part_msg_param {
+/* partial message (in message service); see ldms_msg.h for a full message */
+struct ldms_msg_part_param {
 	struct ldms_addr src;
 	uint64_t msg_gn;
 	uint32_t more:1; /* more partial message */
 	uint32_t first:1; /* first partial message */
 	uint32_t reserved:30;
-	char     part_msg[OVIS_FLEX];	/* partial stream message; its length
+	char     part_msg[OVIS_FLEX];	/* partial message; its length
 					 * can be inferred from req->hdr.len. */
 };
 
-struct ldms_stream_sub_param {
+struct ldms_msg_sub_param {
 	uint32_t is_regex:1;
 	uint32_t match_len:31;
 	int64_t  rate;
@@ -266,8 +267,8 @@ struct ldms_request {
 		struct ldms_req_notify_cmd_param req_notify;
 		struct ldms_cancel_notify_cmd_param cancel_notify;
 		struct ldms_cancel_push_cmd_param cancel_push;
-		struct ldms_stream_part_msg_param stream_part;
-		struct ldms_stream_sub_param stream_sub;
+		struct ldms_msg_part_param msg_part;
+		struct ldms_msg_sub_param msg_sub;
 		struct ldms_qgroup_ask qgroup_ask;
 		struct ldms_qgroup_donate  qgroup_donate;
 		struct ldms_quota_reconfig_param quota_reconfig;
@@ -345,7 +346,7 @@ struct ldms_reply_hdr {
 	uint32_t rc;
 };
 
-struct ldms_stream_sub_reply {
+struct ldms_msg_sub_reply {
 	int msg_len;
 	char msg[0];
 };
@@ -361,7 +362,7 @@ struct ldms_reply {
 		struct ldms_req_notify_reply req_notify;
 		struct ldms_auth_challenge_reply auth_challenge;
 		struct ldms_push_reply push;
-		struct ldms_stream_sub_reply sub;
+		struct ldms_msg_sub_reply sub;
 		struct ldms_set_delete_reply set_del;
 	};
 };

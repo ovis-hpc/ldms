@@ -2,7 +2,7 @@
  * Copyright (c) 2021 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2021 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2021,2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -66,6 +66,7 @@
 #include <ovis_json/ovis_json.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_stream.h"
 
 #define PNAME "blob_stream_writer"
 
@@ -92,7 +93,7 @@ typedef struct stream_data {
 	char* offsetfile_name;
 	char* timingfile_name;
 	char* typefile_name;
-	ldms_stream_client_t subscription;
+	ldmsd_stream_client_t subscription;
 	/* set at first write */
 	FILE* offsetfile;
 	FILE* streamfile;
@@ -116,9 +117,9 @@ char blob_stream_char_to_type(char c)
 {
 	switch (c) {
 	case 's':
-		return LDMS_STREAM_STRING;
+		return LDMSD_STREAM_STRING;
 	case 'j':
-		return LDMS_STREAM_JSON;
+		return LDMSD_STREAM_JSON;
 		break;
 #if 0
 	case 'b':
@@ -130,31 +131,31 @@ char blob_stream_char_to_type(char c)
 	}
 }
 
-char blob_stream_type_to_char(ldms_stream_type_t stream_type)
+char blob_stream_type_to_char(ldmsd_stream_type_t stream_type)
 {
 	switch (stream_type) {
-	case LDMS_STREAM_STRING:
+	case LDMSD_STREAM_STRING:
 		return 's';
-	case LDMS_STREAM_JSON:
+	case LDMSD_STREAM_JSON:
 		return 'j';
 #if 0
 	case LDMSD_STREAM_BINARY:
 		return 'b';
 #endif
 	default:
-		ovis_log(mylog, OVIS_LERROR, "unexpected stream type %d\n",
-			stream_type);
+		ovis_log(mylog, OVIS_LERROR, "unexpected stream type %d\n", stream_type);
 		return '\0';
 	}
 }
 
 /* open, if not open or already closed, and write to stream files. */
-static int stream_cb(ldms_stream_event_t ev, void *ctxt)
+static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
+		     ldmsd_stream_type_t stream_type,
+		     const char *msg, size_t msg_len,
+		     json_entity_t e)
 {
 	int rc = 0;
 	stream_data_t sd = ctxt;
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
-		return 0;
 	if (!sd) {
 		ovis_log(mylog, OVIS_LERROR, "stream_cb ctxt is NULL\n");
 		return EINVAL;
@@ -192,7 +193,7 @@ static int stream_cb(ldms_stream_event_t ev, void *ctxt)
 	}
 
 	if (sd->typefile) {
-		char st = blob_stream_type_to_char(ev->recv.type);
+		char st = blob_stream_type_to_char(stream_type);
 		rc = fwrite(&st, 1, 1, sd->typefile);
 		if (rc != 1) {
 			int ferr = ferror(sd->typefile);
@@ -200,15 +201,15 @@ static int stream_cb(ldms_stream_event_t ev, void *ctxt)
 				sd->typefile_name, STRERROR(ferr));
 		}
 	}
-	rc = fwrite(ev->recv.data, 1, ev->recv.data_len, sd->streamfile);
+	rc = fwrite(msg, 1, msg_len, sd->streamfile);
 	sd->offset += rc;
-	if (rc != ev->recv.data_len) {
+	if (rc != msg_len) {
 		int ferr = ferror(sd->streamfile);
 		ovis_log(mylog, OVIS_LERROR, "short write starting at %s:%ld: %s\n",
 			sd->streamfile_name, sd->offset, STRERROR(ferr));
 	}
 	if (debug)
-		ovis_log(mylog, OVIS_LDEBUG, "msg=%.50s ...\n", ev->recv.data);
+		ovis_log(mylog, OVIS_LDEBUG, "msg=%.50s ...\n", msg);
 
 out:
 	pthread_mutex_unlock(&sd->write_lock);
@@ -442,8 +443,8 @@ static int set_paths(stream_data_t sd)
 	if (!sd->subscription) {
 		ovis_log(mylog, OVIS_LDEBUG, "subscribing to stream '%s'\n",
 			sd->stream_name);
-		sd->subscription = ldms_stream_subscribe(sd->stream_name, 0,
-			stream_cb, sd, "blob_stream_writer");
+		sd->subscription = ldmsd_stream_subscribe(sd->stream_name,
+			stream_cb, sd);
 		/* stream dispatch to stream_cb now holds a reference to sd. */
 	}
 	return 0;
@@ -598,7 +599,7 @@ static void stream_data_close( stream_data_t sd )
 	}
 	free(sd->stream_name);
 	sd->stream_name = NULL;
-	ldms_stream_close(sd->subscription);
+	ldmsd_stream_close(sd->subscription);
 	/* sd reference is no longer hiding inside cb handler */
 	sd->subscription = NULL;
 	sd->ws = WS_CLOSED;

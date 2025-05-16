@@ -195,14 +195,14 @@ enum ldmsd_request {
 	LDMSD_SETGROUP_RM_REQ, /* Remove a set from a group */
 
 	/* Publish/Subscribe Requests */
-	LDMSD_STREAM_PUBLISH_REQ = 0x900, /* Publish data to a stream */
-	LDMSD_STREAM_SUBSCRIBE_REQ,	  /* Subscribe to a stream */
-	LDMSD_STREAM_UNSUBSCRIBE_REQ,	  /* Unsubscribe to a stream */
-	LDMSD_STREAM_CLIENT_DUMP_REQ,	  /* Dump stream client info */
-	LDMSD_STREAM_NEW_REQ,	/* Create a stream */
+	LDMSD_STREAM_PUBLISH_REQ = 0x900,/* Publish data to a stream */
+	LDMSD_STREAM_SUBSCRIBE_REQ,	/* Subscribe to a stream */
+	LDMSD_STREAM_UNSUBSCRIBE_REQ,	/* Unsubscribe to a stream */
+	LDMSD_STREAM_CLIENT_DUMP_REQ,	/* Dump stream client info */
+	LDMSD_STREAM_NEW_REQ,		/* Create a stream */
 	LDMSD_STREAM_STATUS_REQ,	/* Query stream information */
-	LDMSD_STREAM_STATS_REQ,	/* Query stream stats of this process */
-	LDMSD_STREAM_CLIENT_STATS_REQ,	/* Query stream client stats of this process */
+	LDMSD_STREAM_DISABLE_REQ,	/* Disable streams in this daemon */
+
 
 	/* Auth */
 	LDMSD_AUTH_ADD_REQ = 0xa00, /* Add auth domain */
@@ -216,6 +216,11 @@ enum ldmsd_request {
 	LDMSD_QGROUP_START_REQ,
 	LDMSD_QGROUP_STOP_REQ,
 	LDMSD_QGROUP_INFO_REQ,
+
+	/* Message Service */
+	LDMSD_MSG_STATS_REQ = 0xc00, /* Query stats of message service of this process */
+	LDMSD_MSG_CLIENT_STATS_REQ,  /* Query message client stats of this process */
+	LDMSD_MSG_DISABLE_REQ,       /* Disable message service */
 };
 
 enum ldmsd_request_attr {
@@ -269,6 +274,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_ASK_AMOUNT,
 	LDMSD_ATTR_RESET_INTERVAL,
 	LDMSD_ATTR_XTHREAD,
+	LDMSD_ATTR_MSG_CHAN,
 	LDMSD_ATTR_LAST,
 };
 

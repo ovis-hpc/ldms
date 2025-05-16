@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2020,2023 National Technology & Engineering Solutions
+ * Copyright (c) 2015-2020,2023,2025 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2015-2020,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2020,2023,2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -74,6 +74,7 @@
 #include "ldms_xprt.h"
 #include "ldmsd.h"
 #include "ldmsd_request.h"
+#include "ldmsd_stream.h"
 
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 /*
@@ -108,6 +109,7 @@ int ldmsd_req_debug = 0; /* turn bits on / off using gdb or -L
 FILE *ldmsd_req_debug_file = NULL; /* change with -L or
 				    * ldmsd.c:process_log_config */
 
+static int stream_enabled = 1;
 static int cleanup_requested = 0;
 
 static char * __thread_stats_as_json(size_t *json_sz);
@@ -291,8 +293,11 @@ static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc);
 static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc);
 static int stream_new_handler(ldmsd_req_ctxt_t reqc);
 static int stream_status_handler(ldmsd_req_ctxt_t reqc);
-static int stream_stats_handler(ldmsd_req_ctxt_t reqc);
-static int stream_client_stats_handler(ldmsd_req_ctxt_t reqc);
+static int stream_disable_handler(ldmsd_req_ctxt_t reqc);
+
+static int msg_stats_handler(ldmsd_req_ctxt_t reqc);
+static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc);
+static int msg_disable_handler(ldmsd_req_ctxt_t reqc);
 
 static int listen_handler(ldmsd_req_ctxt_t reqc);
 
@@ -655,11 +660,19 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_STREAM_STATUS_REQ] = {
 		LDMSD_STREAM_STATUS_REQ, stream_status_handler, XALL
 	},
-	[LDMSD_STREAM_STATS_REQ] = {
-		LDMSD_STREAM_STATS_REQ, stream_stats_handler, XALL
+	[LDMSD_STREAM_DISABLE_REQ] = {
+		LDMSD_STREAM_DISABLE_REQ, stream_disable_handler, XUG | MOD
 	},
-	[LDMSD_STREAM_CLIENT_STATS_REQ] = {
-		LDMSD_STREAM_CLIENT_STATS_REQ, stream_client_stats_handler, XALL
+
+	/* MSG */
+	[LDMSD_MSG_STATS_REQ] = {
+		LDMSD_MSG_STATS_REQ, msg_stats_handler, XALL
+	},
+	[LDMSD_MSG_CLIENT_STATS_REQ] = {
+		LDMSD_MSG_CLIENT_STATS_REQ, msg_client_stats_handler, XALL
+	},
+	[LDMSD_MSG_DISABLE_REQ] = {
+		LDMSD_MSG_DISABLE_REQ, msg_disable_handler, XUG | MOD
 	},
 
 	/* LISTEN */
@@ -778,6 +791,7 @@ int is_req_id_priority(enum ldmsd_request req_id)
 	case LDMSD_DEFAULT_QUOTA_REQ:
 	case LDMSD_PID_FILE_REQ:
 	case LDMSD_BANNER_MODE_REQ:
+	case LDMSD_STREAM_DISABLE_REQ:
 		return 1;
 	default:
 		return 0;
@@ -1043,6 +1057,12 @@ int validate_ldmsd_req(ldmsd_req_hdr_t rh)
 	return 1;
 }
 
+static int is_stream_request(int id)
+{
+	return (id >= LDMSD_STREAM_PUBLISH_REQ
+		&& id <= LDMSD_STREAM_STATUS_REQ);
+}
+
 int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 {
 	struct request_handler_entry *ent;
@@ -1051,6 +1071,14 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 	uid_t luid;
 	gid_t lgid;
 	mode_t mask;
+
+	if (!stream_enabled && is_stream_request(reqc->req_id)) {
+		reqc->errcode = ENOSYS;
+		(void)Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "The stream service is DISABLED on this system.");
+		ldmsd_send_req_response(reqc, reqc->line_buf);
+		return 0;
+	}
 
 	if (LDMSD_CFG_TYPE_LDMS == reqc->xprt->type)
 		ldms = reqc->xprt->ldms.ldms;
@@ -2103,12 +2131,9 @@ send_reply:
 
 static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 {
-	/* TODO
-	 * Should reply to the ldmsd_controller after we get the subscription
-	 * result from LDMS Stream.
-	 */
 	char *prdcr_regex;
 	char *stream_name = NULL;
+	char *msg = NULL;
 	char *rx_rate_s = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
@@ -2129,17 +2154,20 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
+	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_CHAN);
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
-	if (!stream_name) {
+
+	if (!stream_name && !msg) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The attribute 'stream' is required by prdcr_subscribe_regex.");
+				"One of the 'stream' or `msg` attributes is required by prdcr_subscribe_regex (can specify both).");
 		goto send_reply;
 	}
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_prdcr_subscribe_regex(prdcr_regex,
 						    stream_name,
+						    msg,
 						    reqc->line_buf,
 						    reqc->line_len, &sctxt, rx_rate);
 	/* on error, reqc->line_buf will be filled */
@@ -2158,6 +2186,7 @@ static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *prdcr_regex;
 	char *stream_name = NULL;
+	char *msg = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
 
@@ -2172,16 +2201,18 @@ static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
-	if (!stream_name) {
+	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_CHAN);
+	if (!stream_name && !msg) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The attribute 'stream' is required by prdcr_subscribe_regex.");
+				"One of the 'stream' or `msg` attributes is required by prdcr_unsubscribe_regex (can specify both).");
 		goto send_reply;
 	}
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_prdcr_unsubscribe_regex(prdcr_regex,
 						      stream_name,
+						      msg,
 						      reqc->line_buf,
 						      reqc->line_len, &sctxt);
 	/* on error, reqc->line_buf will be filled */
@@ -6607,6 +6638,143 @@ send_reply:
 	return rc;
 }
 
+static int __on_republish_resp(ldmsd_req_cmd_t rcmd)
+{
+	ldmsd_req_attr_t attr;
+	ldmsd_req_hdr_t resp = (ldmsd_req_hdr_t)(rcmd->reqc->req_buf);
+	attr = ldmsd_first_attr(resp);
+	ovis_log(config_log, OVIS_LDEBUG, "%s: %s\n", __func__, (char *)attr->attr_value);
+	return 0;
+}
+
+static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
+		ldmsd_stream_type_t stream_type,
+		const char *data, size_t data_len,
+		json_entity_t entity)
+{
+	ldms_t ldms = (ldms_t)ctxt;
+	int rc, attr_id = LDMSD_ATTR_STRING;
+	const char *stream = ldmsd_stream_client_name(c);
+	ldmsd_req_cmd_t rcmd = ldmsd_req_cmd_new(ldms, LDMSD_STREAM_PUBLISH_REQ,
+			NULL, __on_republish_resp, NULL);
+	if (!rcmd) {
+		ovis_log(config_log, OVIS_LCRITICAL, "ldmsd is out of memory\n");
+		return ENOMEM;
+	}
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, stream);
+	if (rc)
+		goto out;
+	/*
+	 * Add an LDMSD_ATTR_TYPE attribute to let the peer know
+	 * that we don't want an acknowledge response.
+	 */
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_TYPE, "");
+	if (rc)
+		goto out;
+	if (stream_type == LDMSD_STREAM_JSON)
+		attr_id = LDMSD_ATTR_JSON;
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, attr_id, data);
+	if (rc)
+		goto out;
+	rc = ldmsd_req_cmd_attr_term(rcmd);
+	if (rc)
+		goto out;
+
+	rc = ldmsd_client_stream_pubstats_update(c, data_len);
+out:
+	ldmsd_req_cmd_free(rcmd);
+	return rc;
+}
+
+/* RSE: remote stream entry */
+struct __RSE_key_s {
+	/* xprt ref */
+	ldms_t xprt;
+	/* stream name */
+	char name[];
+};
+
+typedef struct __RSE_s {
+	struct rbn rbn;
+	ldmsd_stream_client_t client;
+	struct __RSE_key_s key;
+} *__RSE_t;
+
+int __RSE_cmp(void *tree_key, const void *key)
+{
+	const struct __RSE_key_s *k0, *k1;
+
+	k0 = tree_key;
+	k1 = key;
+	if (k0->xprt < k1->xprt)
+		return -1;
+	if (k0->xprt > k1->xprt)
+		return 1;
+	/* reaching here means same xprt */
+	return strcmp(k0->name, k1->name);
+}
+
+pthread_mutex_t __RSE_rbt_mutex = PTHREAD_MUTEX_INITIALIZER;
+struct rbt __RSE_rbt = RBT_INITIALIZER(__RSE_cmp);
+
+	static inline
+void __RSE_rbt_lock()
+{
+	pthread_mutex_lock(&__RSE_rbt_mutex);
+}
+
+	static inline
+void __RSE_rbt_unlock()
+{
+	pthread_mutex_unlock(&__RSE_rbt_mutex);
+}
+
+	static inline
+__RSE_t __RSE_alloc(const char *name, ldms_t xprt)
+{
+	__RSE_t ent;
+	ent = calloc(1, sizeof(*ent) + strlen(name) + 1);
+	if (!ent)
+		return NULL;
+	sprintf(ent->key.name, "%s", name);
+	ent->key.xprt = xprt;
+	rbn_init(&ent->rbn, &ent->key);
+	ldms_xprt_get(xprt, "RSE");
+	return ent;
+}
+
+	static inline
+void __RSE_free(__RSE_t ent)
+{
+	ldms_xprt_put(ent->key.xprt, "RSE");
+	free(ent);
+}
+
+	static inline
+__RSE_t __RSE_find(const struct __RSE_key_s *key)
+{
+	/* caller must hold __RSE_rbt_mutex */
+	struct rbn *rbn;
+	rbn = rbt_find(&__RSE_rbt, key);
+	if (!rbn)
+		return NULL;
+	return container_of(rbn, struct __RSE_s, rbn);
+}
+
+	static inline
+void __RSE_ins(__RSE_t ent)
+{
+	/* caller must hold __RSE_rbt_mutex */
+	rbt_ins(&__RSE_rbt, &ent->rbn);
+}
+
+	static inline
+void __RSE_del(__RSE_t ent)
+{
+	/* caller must hold __RSE_rbt_mutex */
+	rbt_del(&__RSE_rbt, &ent->rbn);
+}
+
 static int unimplemented_handler(ldmsd_req_ctxt_t reqc)
 {
 	size_t cnt;
@@ -7061,13 +7229,13 @@ json_t *__ldms_op_profiling_as_json(struct ldms_op_ctxt *xc, enum ldms_xprt_ops_
 		json_object_set_new(stat, "acknowledge",
 				json_real(__ts2double(xc->set_del_profile.ack_ts)));
 		break;
-	case LDMS_XPRT_OP_STREAM_PUBLISH:
+	case LDMS_XPRT_OP_MSG_PUBLISH:
 		json_object_set_new(stat, "hop_cnt",
-				json_integer(xc->stream_pub_profile.hop_num));
+				json_integer(xc->msg_pub_profile.hop_num));
 		json_object_set_new(stat, "recv",
-				json_real(__ts2double(xc->stream_pub_profile.recv_ts)));
+				json_real(__ts2double(xc->msg_pub_profile.recv_ts)));
 		json_object_set_new(stat, "send",
-				json_real(__ts2double(xc->stream_pub_profile.send_ts)));
+				json_real(__ts2double(xc->msg_pub_profile.send_ts)));
 		break;
 	default:
 		break;
@@ -7077,17 +7245,17 @@ json_t *__ldms_op_profiling_as_json(struct ldms_op_ctxt *xc, enum ldms_xprt_ops_
 
 int __stream_profiling_as_json(json_t **_jobj, int is_reset) {
 	json_t *jobj, *strm_jobj, *src_jobj, *hop_jobj, *prf_array, *prf_jobj;
-	struct ldms_stream_stats_tq_s *tq;
-	struct ldms_stream_stats_s *ss;
-	struct ldms_stream_src_stats_s *strm_src;
-	struct ldms_stream_profile_ent *prf;
+	struct ldms_msg_ch_stats_tq_s *tq;
+	struct ldms_msg_ch_stats_s *ss;
+	struct ldms_msg_src_stats_s *strm_src;
+	struct ldms_msg_profile_ent *prf;
 	struct ldms_addr addr;
 	char addr_buf[128] = "";
 	struct rbn *rbn;
 	int i, rc = 0;
 
 	jobj = json_object();
-	tq = ldms_stream_stats_tq_get(NULL, 0, is_reset);
+	tq = ldms_msg_ch_stats_tq_get(NULL, 0, is_reset);
 	if (!tq) {
 		/* no stream ... nothing to do here. */
 		goto out;
@@ -7098,7 +7266,7 @@ int __stream_profiling_as_json(json_t **_jobj, int is_reset) {
 		RBT_FOREACH(rbn, &ss->src_stats_rbt) {
 			src_jobj = json_array();
 
-			strm_src = container_of(rbn, struct ldms_stream_src_stats_s, rbn);
+			strm_src = container_of(rbn, struct ldms_msg_src_stats_s, rbn);
 			addr = strm_src->src;
 			ldms_addr_ntop(&addr, addr_buf, sizeof(addr_buf));
 			TAILQ_FOREACH(prf, &strm_src->profiles, ent) {
@@ -7952,8 +8120,8 @@ static const char *__xprt_prdcr_name_get(ldms_t x)
 
 static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *stream_name;
-	ldms_stream_type_t stream_type = LDMS_STREAM_STRING;
+	char *stream_name = NULL;
+	ldmsd_stream_type_t stream_type = LDMSD_STREAM_STRING;
 	ldmsd_req_attr_t attr;
 	int cnt;
 	char *p_name;
@@ -7985,14 +8153,15 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 	/* Check for JSon */
 	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_JSON);
 	if (attr) {
-		stream_type = LDMS_STREAM_JSON;
+		stream_type = LDMSD_STREAM_JSON;
 	} else {
 		goto out_0;
 	}
 out_1:
 	p_name = (char *)__xprt_prdcr_name_get(reqc->xprt->ldms.ldms);
-	ldms_stream_publish(NULL, stream_name, stream_type, NULL, 0440,
-			    (char*)attr->attr_value, attr->attr_len);
+	ldmsd_stream_deliver(stream_name, stream_type,
+			    (char*)attr->attr_value,
+			    attr->attr_len, NULL, p_name);
 out_0:
 	free(stream_name);
 	return 0;
@@ -8004,38 +8173,242 @@ err_reply:
 
 static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
 {
-	reqc->errcode = ENOTSUP;
-	ldmsd_send_req_response(reqc, "LDMSD_STREAM_SUBSCRIBE_REQ is deprecated.");
+	char *stream_name;
+	int cnt;
+	int len;
+	__RSE_t ent;
+	char _buff[sizeof(struct __RSE_key_s) + 256]; /* should be enough for stream name */
+	struct __RSE_key_s *key = (void*)_buff;
+
+	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!stream_name) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The stream name is missing.");
+		goto send_reply;
+	}
+	key->xprt = reqc->xprt->ldms.ldms;
+	len = snprintf(key->name, 256, "%s", stream_name);
+	if (len >= 256) {
+		reqc->errcode = ENAMETOOLONG;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The stream name is too long (%d >= %d).",
+				len, 256);
+		goto send_reply;
+	}
+	__RSE_rbt_lock();
+	ent = __RSE_find(key);
+	if (ent) {
+		__RSE_rbt_unlock();
+		reqc->errcode = EEXIST;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Already subscribed to `%s` stream",
+				stream_name);
+		goto send_reply;
+	}
+	ent = __RSE_alloc(stream_name, reqc->xprt->ldms.ldms);
+	if (!ent) {
+		__RSE_rbt_unlock();
+		reqc->errcode = ENOMEM;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Memory allocation failed");
+		goto send_reply;
+	}
+
+	ent->client = ldmsd_stream_subscribe(stream_name, stream_republish_cb,
+			ent->key.xprt);
+	if (!ent->client) {
+		__RSE_rbt_unlock();
+		__RSE_free(ent);
+		reqc->errcode = errno;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"ldmsd_stream_subscribe() error: %d", errno);
+		goto send_reply;
+	}
+	ldmsd_stream_flags_set(ent->client, LDMSD_STREAM_F_RAW);
+	__RSE_ins(ent);
+	reqc->errcode = 0;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
+	__RSE_rbt_unlock();
+	__dlog(DLOG_CFGOK, "subscribe name=%s\n", stream_name);
+send_reply:
+	free(stream_name);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }
 
 static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc)
 
 {
-	reqc->errcode = ENOTSUP;
-	ldmsd_send_req_response(reqc, "LDMSD_STREAM_UNSUBSCRIBE_REQ is deprecated.");
+	char *stream_name;
+	int cnt;
+	int len;
+	__RSE_t ent;
+	char _buff[sizeof(struct __RSE_key_s) + 256]; /* should be enough for stream name */
+	struct __RSE_key_s *key = (void*)_buff;
+
+	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!stream_name) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The stream name is missing.");
+		goto send_reply;
+	}
+	key->xprt = reqc->xprt->ldms.ldms;
+	len = snprintf(key->name, 256, "%s", stream_name);
+	if (len >= 256) {
+		reqc->errcode = ENAMETOOLONG;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The stream name is too long (%d >= %d).",
+				len, 256);
+		goto send_reply;
+	}
+	__RSE_rbt_lock();
+	ent = __RSE_find(key);
+	if (!ent) {
+		__RSE_rbt_unlock();
+		reqc->errcode = ENOENT;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"`%s` stream not found", stream_name);
+		goto send_reply;
+	}
+	__RSE_del(ent);
+	ldmsd_stream_close(ent->client);
+	__RSE_free(ent);
+	reqc->errcode = 0;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
+	__RSE_rbt_unlock();
+	__dlog(DLOG_CFGOK, "unsubscribe name=%s\n", stream_name);
+
+send_reply:
+	free(stream_name);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }
 
 static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc)
 {
-	reqc->errcode = ENOTSUP;
-	ldmsd_send_req_response(reqc, "LDMSD_STREAM_CLIENT_DUMP_REQ is deprecated.");
-	return 0;
+	int rc;
+	char *s, *reset_s;
+	size_t len;
+	struct ldmsd_req_attr_s attr;
+	int reset = 0;
+
+	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
+	if (reset_s && (0 != strcasecmp(reset_s, "false"))) {
+		reset = 1;
+		free(reset_s);
+	}
+
+	s = ldmsd_stream_dir_dump();
+	if (!s) {
+		reqc->errcode = errno;
+		rc = snprintf(reqc->line_buf, reqc->line_len,
+				"Failed to get stream_info_dump.");
+		ldmsd_send_req_response(reqc, reqc->line_buf);
+		return 0;
+	}
+
+	attr.discrim = 1;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	attr.attr_len = len = strlen(s) + 1;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		goto out;
+
+	rc = ldmsd_append_reply(reqc, s, strlen(s) + 1, 0);
+	if (rc)
+		goto out;
+
+	attr.discrim = 0;
+	rc = ldmsd_append_reply(reqc, (char *)(&attr.discrim),
+			sizeof(attr.discrim), LDMSD_REQ_EOM_F);
+	if (rc)
+		goto out;
+
+	if (reset)
+		ldmsd_stream_stats_reset_all();
+out:
+	free(s);
+	return rc;
 }
 
 static int stream_new_handler(ldmsd_req_ctxt_t reqc)
 {
-	reqc->errcode = ENOTSUP;
-	ldmsd_send_req_response(reqc, "LDMSD_STREAM_NEW_REQ is deprecated.");
+	int rc;
+	char *name;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		ovis_log(config_log, OVIS_LERROR, "Received %s without the stream name\n",
+				ldmsd_req_id2str(reqc->req_id));
+		return 0;
+	}
+	rc = ldmsd_stream_new(name);
+	if (rc) {
+		ovis_log(config_log, OVIS_LERROR, "Error %d: failed to create stream %s\n",
+				rc, name);
+		free(name);
+	}
+	return 0;
+}
+
+static int stream_disable_handler(ldmsd_req_ctxt_t reqc)
+{
+	stream_enabled = 0;
+	reqc->errcode = 0;
+	(void)Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }
 
 static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 {
-	reqc->errcode = ENOTSUP;
-	ldmsd_send_req_response(reqc, "LDMSD_STREAM_STATUS_REQ is deprecated.");
-	return 0;
+	int rc;
+	char *s, *reset_s;
+	size_t len;
+	struct ldmsd_req_attr_s attr;
+	int reset = 0;
+
+	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
+	if (reset_s && (0 != strcasecmp(reset_s, "false"))) {
+		reset = 1;
+		free(reset_s);
+	}
+
+	s = ldmsd_stream_dir_dump();
+	if (!s) {
+		reqc->errcode = errno;
+		(void)Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Failed to get collect stream status information.");
+		ldmsd_send_req_response(reqc, reqc->line_buf);
+		return 0;
+	}
+
+	attr.discrim = 1;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	attr.attr_len = len = strlen(s) + 1;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		goto out;
+
+	rc = ldmsd_append_reply(reqc, s, strlen(s) + 1, 0);
+	if (rc)
+		goto out;
+
+	attr.discrim = 0;
+	rc = ldmsd_append_reply(reqc, (char *)(&attr.discrim),
+			sizeof(attr.discrim), LDMSD_REQ_EOM_F);
+	if (rc)
+		goto out;
+
+	if (reset)
+		ldmsd_stream_stats_reset_all();
+out:
+	free(s);
+	return rc;
 }
 
 /*
@@ -8045,7 +8418,7 @@ static int stream_status_handler(ldmsd_req_ctxt_t reqc)
  * If `regex` and `stream` are not given, get stats from all streams. `regex`
  * precedes `stream`.
  */
-static int stream_stats_handler(ldmsd_req_ctxt_t reqc)
+static int msg_stats_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	char *stream = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
@@ -8069,10 +8442,10 @@ static int stream_stats_handler(ldmsd_req_ctxt_t reqc)
 	if (reset_s && (0 == strcasecmp(reset_s, "true")))
 		is_reset = 1;
 
-	s = ldms_stream_stats_str(match, is_regex, is_reset);
+	s = ldms_msg_stats_str(match, is_regex, is_reset);
 	if (!s) {
 		reqc->errcode = errno;
-		snprintf(buff, sizeof(buff), "ldms_stream_stats_str() error: %d",
+		snprintf(buff, sizeof(buff), "ldms_msg_stats_str() error: %d",
 				errno);
 		ldmsd_send_req_response(reqc, buff);
 		rc = 0;
@@ -8106,7 +8479,7 @@ out:
  *
  * This command takes no options.
  */
-static int stream_client_stats_handler(ldmsd_req_ctxt_t reqc)
+static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *s;
 	char buff[128];
@@ -8119,10 +8492,10 @@ static int stream_client_stats_handler(ldmsd_req_ctxt_t reqc)
 	if (reset_s && (0 == strcasecmp(reset_s, "true")))
 		is_reset = 1;
 
-	s = ldms_stream_client_stats_str(is_reset);
+	s = ldms_msg_client_stats_str(is_reset);
 	if (!s) {
 		reqc->errcode = errno;
-		snprintf(buff, sizeof(buff), "ldms_stream_client_stats_str() error: %d",
+		snprintf(buff, sizeof(buff), "ldms_msg_client_stats_str() error: %d",
 				errno);
 		ldmsd_send_req_response(reqc, buff);
 		return 0;
@@ -8147,9 +8520,39 @@ out:
 	return rc;
 }
 
+static int msg_disable_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldms_msg_disable();
+	reqc->errcode = 0;
+	(void)Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
 void ldmsd_xprt_term(ldms_t x)
 {
 	struct rbn *rbn;
+
+	__RSE_t ent;
+	char _buff[sizeof(struct __RSE_key_s) + 256] = {};
+	struct __RSE_key_s *key = (void*)_buff;
+
+	key->xprt = x;
+	__RSE_rbt_lock();
+	rbn = rbt_find_lub(&__RSE_rbt, key);
+	while (rbn) {
+		ent = container_of(rbn, struct __RSE_s, rbn);
+		if (key->xprt != ent->key.xprt)
+			break;
+		/* points rbn to the successor before removing ent */
+		rbn = rbn_succ(rbn);
+		/* delete from the tree */
+		__RSE_del(ent);
+		ldmsd_stream_close(ent->client);
+		__RSE_free(ent);
+	}
+	__RSE_rbt_unlock();
+
 	/* Free outstanding configuration requests */
 	req_ctxt_tree_lock();
 	ldmsd_req_ctxt_t reqc;
@@ -9027,7 +9430,7 @@ static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	if (is_stream)
-		ldms_stream_n_client_stats_reset();
+		ldms_msg_stats_reset();
 out:
 	free(s);
 	ldmsd_send_req_response(reqc, reqc->line_buf);

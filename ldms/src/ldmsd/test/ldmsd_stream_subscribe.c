@@ -71,7 +71,6 @@ static const char *short_opts = "p:f:s:x:a:A:DiRqh:E";
 
 #define AUTH_OPT_MAX 128
 
-#if 0
 struct xprt_ctxt {
 	struct rbn rbn;
 	struct ldmsd_msg_buf *buf;
@@ -149,48 +148,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	msglog("\n");
 	return 0;
 }
-#endif
 
-static int stream_subscribe_status_ev(ldms_stream_event_t ev, void *arg)
-{
-	/* no-op */
-	return 0;
-}
-
-static int stream_unsubscribe_status_ev(ldms_stream_event_t ev, void *arg)
-{
-	/* no-op */
-	return 0;
-}
-
-static int stream_recv_ev(ldms_stream_event_t ev, void *arg)
-{
-	if (events_raw) {
-		msglog("%s\n", ev->recv.data);
-		return 0;
-	}
-	msglog("EVENT:{\"type\":\"%s\",\"size\":%d,\"event\":%s}\n",
-			LDMS_STREAM_STRING ? "string" : "json",
-			ev->recv.data_len, ev->recv.data);
-	return 0;
-}
-
-static int stream_ev_cb(ldms_stream_event_t ev, void *cb_arg)
-{
-	switch (ev->type) {
-	case LDMS_STREAM_EVENT_RECV:
-		return stream_recv_ev(ev, cb_arg);
-	case LDMS_STREAM_EVENT_SUBSCRIBE_STATUS:
-		return stream_subscribe_status_ev(ev, cb_arg);
-	case LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS:
-		return stream_unsubscribe_status_ev(ev, cb_arg);
-	default:
-		msglog("ERROR: UNSUPPORTED EVENT %d\n", ev->type);
-		return EINVAL;
-	}
-}
-
-#if 0
 static int stream_publish_handler(ldmsd_req_hdr_t req)
 {
 	char *stream_name;
@@ -204,7 +162,7 @@ static int stream_publish_handler(ldmsd_req_hdr_t req)
 			break;
 		attr = ldmsd_next_attr(attr);
 	}
-	if (!attr->attr_value) {
+	if (!attr->discrim) {
 		msglog("The stream name is missing, malformed stream request.\n");
 		exit(5);
 	}
@@ -360,38 +318,29 @@ static void recv_msg(ldms_t x, char *data, size_t data_len)
 		exit(2);
 	}
 }
-#endif
 
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-#if 0
 	struct xprt_ctxt *ctxt;
-#endif
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
-		#if 0
 		ctxt = xprt_ctxt_new(x);
 		if (!ctxt) {
 			msglog("xprt_ctxt_new() failed, errno: %d\n", errno);
 			ldms_xprt_close(ldms);
 		}
-		#endif
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 	case LDMS_XPRT_EVENT_REJECTED:
 	case LDMS_XPRT_EVENT_ERROR:
-		#if 0
 		ctxt = xprt_ctxt_find(x);
 		if (ctxt) {
 			xprt_ctxt_free(ctxt);
 		}
-		ldms_xprt_put(x);
-		#endif
+		ldms_xprt_close(x);
 		break;
 	case LDMS_XPRT_EVENT_RECV:
-		#if 0
 		recv_msg(x, e->data, e->data_len);
-		#endif
 		break;
 	case LDMS_XPRT_EVENT_SEND_COMPLETE:
 		/* Ignore */
@@ -422,7 +371,7 @@ static int setup_connection(char *xprt, char *host, char *port, char *auth)
 
 	sem_init(&recv_sem, 1, 0);
 
-	rc = ldms_xprt_listen(ldms, ai->ai_addr, ai->ai_addrlen, event_cb, NULL);
+	rc = ldms_xprt_listen_by_name(ldms, host, port, event_cb, NULL);
 	if (rc)
 		msglog("Error %d listening on the '%s' transport.\n", rc, xprt);
  out:
@@ -555,10 +504,7 @@ int main(int argc, char **argv)
 		errno = rc;
 		perror("Could not listen");
 	}
-	ldms_stream_client_t client = ldms_stream_subscribe(stream, 0, stream_ev_cb, NULL, "client");
-#if 0
 	ldmsd_stream_client_t client = ldmsd_stream_subscribe(stream, stream_recv_cb, NULL);
-#endif
 	if (!client)
 		return 1;
 

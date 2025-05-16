@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2019,2023 National Technology & Engineering Solutions
+ * Copyright (c) 2019 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2019,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2019,2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -70,6 +70,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
+#include "ldmsd_stream.h"
 
 static ovis_log_t mylog;
 static char *stream;
@@ -91,26 +92,26 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static int hello_recv_cb(ldms_stream_event_t ev, void *arg)
+static int hello_recv_cb(ldmsd_stream_client_t c, void *ctxt,
+			 ldmsd_stream_type_t stream_type,
+			 const char *msg, size_t msg_len,
+			 json_entity_t entity)
 {
 	int rc = 0;
 	const char *type = "UNKNOWN";
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
-		return 0;
-	switch (ev->recv.type) {
-	case LDMS_STREAM_JSON:
+	switch (stream_type) {
+	case LDMSD_STREAM_JSON:
 		type = "JSON";
 		break;
-	case LDMS_STREAM_STRING:
+	case LDMSD_STREAM_STRING:
 		type = "STRING";
 		break;
 	default:
 		/* unhandled type */
 		return 0;
 	}
-	ovis_log(mylog, OVIS_LCRITICAL, "stream_type: %s, msg: \"%s\", "
-					  "msg_len: %d, entity: %p\n",
-	       type, ev->recv.data, ev->recv.data_len, ev->recv.json);
+	ovis_log(mylog, OVIS_LCRITICAL, "stream_type: %s, msg: \"%s\", msg_len: %zd, entity: %p\n",
+	       type, msg, msg_len, entity);
 	return rc;
 }
 
@@ -126,7 +127,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	else
 		stream = strdup("hello_stream/hello");
 
-	ldms_stream_subscribe(stream, 0, hello_recv_cb, handle, "hello_sampler");
+	ldmsd_stream_subscribe(stream, hello_recv_cb, handle);
 
 	return rc;
 }

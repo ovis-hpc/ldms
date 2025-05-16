@@ -100,8 +100,12 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_status': {'req_attr': [], 'opt_attr':['name']},
                       'prdcr_set_status': {'opt_attr': ['producer', 'instance', 'schema']},
                       'prdcr_hint_tree': {'req_attr':['name'], 'opt_attr': []},
-                      'prdcr_subscribe': {'req_attr':['regex', 'stream'],
-                                          'opt_attr': ['rx_rate']},
+                      'prdcr_subscribe': {'req_attr':['regex'],
+                                          'opt_attr': [
+                                              'rx_rate', 'stream',
+                                              'message_channel'
+                                          ]
+                                         },
                       'prdcr_unsubscribe': {'req_attr':['regex', 'stream'], 'opt_attr': []},
                       'prdcr_stream_status' : {'req_attr':['regex'], 'opt_attr':[]},
                       ##### Bridge #####
@@ -142,8 +146,10 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'subscribe': {'req_attr': ['name'], 'opt_attr': []},
                       'stream_client_dump': {'req_attr': [], 'opt_attr': []},
                       'stream_status' : {'req_attr': [], 'opt_attr': ['reset']},
-                      'stream_stats' : {'req_attr': [], 'opt_attr': ['regex', 'stream', 'json', 'reset']},
-                      'stream_client_stats' : {'req_attr': [], 'opt_attr': ['json', 'reset']},
+                      'stream_disable' : {'req_attr': [], 'opt_attr':[]},
+                      'msg_stats' : {'req_attr': [], 'opt_attr': ['regex', 'stream', 'json', 'reset']},
+                      'msg_client_stats' : {'req_attr': [], 'opt_attr': ['json', 'reset']},
+                      'msg_disable' : {'req_attr': [], 'opt_attr':[]},
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': ['thread_stats']},
                       ##### Misc. #####
@@ -340,7 +346,8 @@ class LDMSD_Req_Attr(object):
     ASK_AMOUNT = 46
     RESET_INTERVAL = 47
     XTHREAD = 48
-    LAST = 49
+    MSG_CHAN = 49
+    LAST = 50
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -398,6 +405,7 @@ class LDMSD_Req_Attr(object):
                    'ask_amount': ASK_AMOUNT,
                    'reset_interval': RESET_INTERVAL,
                    'exclusive_thread': XTHREAD,
+                   'message_channel': MSG_CHAN,
                    'TERMINATING': LAST
         }
 
@@ -448,6 +456,7 @@ class LDMSD_Req_Attr(object):
                    ASK_AMOUNT : 'ask_amount',
                    RESET_INTERVAL : 'reset_interval',
                    XTHREAD : 'exclusive_thread',
+                   MSG_CHAN : 'message_channel',
                    LAST : 'TERMINATING'
         }
 
@@ -652,8 +661,7 @@ class LDMSD_Request(object):
     STREAM_CLIENT_DUMP = STREAM_PUBLISH + 3
     STREAM_NEW = STREAM_PUBLISH + 4
     STREAM_STATUS = STREAM_PUBLISH + 5
-    STREAM_STATS = STREAM_PUBLISH + 6
-    STREAM_CLIENT_STATS = STREAM_PUBLISH + 7
+    STREAM_DISABLE = STREAM_PUBLISH + 6
 
     AUTH_ADD = 0xa00
 
@@ -663,6 +671,10 @@ class LDMSD_Request(object):
     QGROUP_START      = QGROUP_CONFIG + 3
     QGROUP_STOP       = QGROUP_CONFIG + 4
     QGROUP_INFO       = QGROUP_CONFIG + 5
+
+    MSG_STATS = 0xc00
+    MSG_CLIENT_STATS = MSG_STATS + 1
+    MSG_DISABLE = MSG_STATS + 2
 
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
@@ -760,8 +772,10 @@ class LDMSD_Request(object):
 
             'stream_client_dump'   :  {'id' : STREAM_CLIENT_DUMP },
             'stream_status'    :  {'id' : STREAM_STATUS },
-            'stream_stats'    :  {'id' : STREAM_STATS },
-            'stream_client_stats'    :  {'id' : STREAM_CLIENT_STATS },
+            'stream_disable'   :  {'id' : STREAM_DISABLE },
+            'msg_stats'    :  {'id' : MSG_STATS },
+            'msg_client_stats'    :  {'id' : MSG_CLIENT_STATS },
+            'msg_disable'   :  {'id' : MSG_DISABLE },
 
             'listen'        :  {'id' : LISTEN },
             'auth_add'      :  {'id' : AUTH_ADD },
@@ -1489,7 +1503,7 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def stream_stats(self, regex=None, stream=None, reset=None):
+    def msg_stats(self, regex=None, stream=None, reset=None):
         """
         Dump stream stats
 
@@ -1505,7 +1519,7 @@ class Communicator(object):
             attr_list.append(LDMSD_Req_Attr(attr_name='stream', value=stream))
         if reset:
             attr_list.append(LDMSD_Req_Attr(attr_name='reset', value=reset))
-        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_STATS, attrs = attr_list)
+        req = LDMSD_Request(command_id=LDMSD_Request.MSG_STATS, attrs = attr_list)
         try:
             req.send(self)
             resp = req.receive(self)
@@ -1513,7 +1527,21 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def stream_client_stats(self, reset=None):
+    def stream_disable(self):
+        """
+        Disable stream communication in the daemon
+
+        No parameters
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_DISABLE)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
+
+    def msg_client_stats(self, reset=None):
         """
         Dump stream stats
 
@@ -1524,13 +1552,28 @@ class Communicator(object):
         attr_list = []
         if reset is not None:
             attr_list = [LDMSD_Req_Attr(attr_name='reset', value=reset)]
-        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_CLIENT_STATS, attrs = attr_list)
+        req = LDMSD_Request(command_id=LDMSD_Request.MSG_CLIENT_STATS, attrs = attr_list)
         try:
             req.send(self)
             resp = req.receive(self)
             return resp['errcode'], resp['msg']
         except Exception as e:
             return errno.ENOTCONN, str(e)
+
+    def msg_disable(self):
+        """
+        Disable LDMS message service in the daemon
+
+        No parameters
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.MSG_DISABLE)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
+
 
     def listen(self, xprt, port, host=None, auth=None, quota=None, rx_limit=None):
         """
@@ -2357,7 +2400,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_subscribe(self, regex, stream, rx_rate='-1'):
+    def prdcr_subscribe(self, regex, stream=None, msg_chan=None, rx_rate='-1'):
         """
         Subscribe to stream data from matching producers
 
@@ -2375,6 +2418,7 @@ class Communicator(object):
                 attrs = [
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex),
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream),
+                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.MSG_CHAN, value=msg_chan),
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(int(rx_rate)))
                 ])
         try:

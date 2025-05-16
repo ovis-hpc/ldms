@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2021,2023 National Technology & Engineering Solutions
+ * Copyright (c) 2021,2023,2025 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2021,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2021,2023,2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -64,8 +64,8 @@
 #include <sys/wait.h>
 #include <netinet/in.h>
 #include <pthread.h>
-#include "ldms.h"
 #include "simple_lps.h"
+#include "ldmsd_stream.h"
 
 struct slps {
 	struct slps_target_list *cl;
@@ -929,9 +929,9 @@ struct slps_send_result slps_send_event(struct slps *l, jbuf_t jb)
 					EPOCH_STRING, l->stream, __func__,
 					__LINE__, jb->buf);
 			}
-			target->last_publish_rc = ldms_stream_publish(
-				target->ldms, l->stream, LDMS_STREAM_JSON,
-				NULL, 0440, jb->buf, jb->cursor + 1);
+			target->last_publish_rc = ldmsd_stream_publish(
+				target->ldms, l->stream, LDMSD_STREAM_JSON,
+				jb->buf, jb->cursor + 1);
 			if (target->last_publish_rc) {
 				if (l->send_log_f)
 					fprintf(l->send_log_f, "%s: Fail %d "
@@ -1000,9 +1000,9 @@ struct slps_send_result slps_send_string(struct slps *l, size_t buf_len,
 					EPOCH_STRING, l->stream, __func__,
 					__LINE__, buf);
 			}
-			target->last_publish_rc = ldms_stream_publish(
-				target->ldms, l->stream, LDMS_STREAM_STRING,
-				NULL, 0440, buf, buf_len);
+			target->last_publish_rc = ldmsd_stream_publish(
+				target->ldms, l->stream, LDMSD_STREAM_STRING,
+				buf, buf_len);
 			target->last_publish_rc = 0;
 			if (target->last_publish_rc) {
 				if (l->send_log_f)

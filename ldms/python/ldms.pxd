@@ -330,6 +330,7 @@ cdef extern from "ldms.h" nogil:
     cdef struct ldms_xprt_quota_event_data:
         uint64_t quota
         int      ep_idx
+        int      rc
     cdef struct ldms_xprt_set_delete_data:
         void * set
         const char *name
@@ -364,6 +365,8 @@ cdef extern from "ldms.h" nogil:
     int ldms_xprt_sockaddr(ldms_t x, sockaddr *local_sa,
 		           sockaddr *remote_sa,
 		           socklen_t *sa_len)
+
+    int ldms_xprt_peer_msg_is_enabled(ldms_t x)
 
     const char *ldms_metric_type_to_str(ldms_value_type t)
 
@@ -831,30 +834,30 @@ cdef extern from "ldms.h" nogil:
                                       ldms_metric_template_s out[])
     const char * ldms_record_name_get(ldms_record_t record)
 
-    # --- ldms_stream --- #
-    struct ldms_stream_client_s:
+    # --- ldms_msg --- #
+    struct ldms_msg_client_s:
         pass # opaque
     struct json_entity_s:
         pass # opaque
     ctypedef json_entity_s *json_entity_t;
-    ctypedef ldms_stream_client_s *ldms_stream_client_t;
-    cpdef enum ldms_stream_type_e:
-        LDMS_STREAM_STRING
-        LDMS_STREAM_JSON
-        LDMS_STREAM_AVRO_SER
-    enum ldms_stream_event_type:
-        LDMS_STREAM_EVENT_RECV
-        LDMS_STREAM_EVENT_SUBSCRIBE_STATUS
-        LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS
+    ctypedef ldms_msg_client_s *ldms_msg_client_t;
+    cpdef enum ldms_msg_type_e:
+        LDMS_MSG_STRING
+        LDMS_MSG_JSON
+        LDMS_MSG_AVRO_SER
+    enum ldms_msg_event_type:
+        LDMS_MSG_EVENT_RECV
+        LDMS_MSG_EVENT_SUBSCRIBE_STATUS
+        LDMS_MSG_EVENT_UNSUBSCRIBE_STATUS
     struct ldms_addr:
         uint8_t  addr[4];
         uint16_t sin_port;
         uint16_t sa_family;
-    struct ldms_stream_recv_data_s:
-        ldms_stream_client_t client
+    struct ldms_msg_recv_data_s:
+        ldms_msg_client_t client
         ldms_addr src
         uint64_t msg_gn
-        ldms_stream_type_e type
+        ldms_msg_type_e type
         uint32_t name_len
         uint32_t data_len
         const char *name
@@ -862,81 +865,83 @@ cdef extern from "ldms.h" nogil:
         json_entity_t json
         ldms_cred cred
         uint32_t perm
-    struct ldms_stream_return_status_s:
+    struct ldms_msg_return_status_s:
         const char *match
         int is_regex
         int status
-    struct ldms_stream_event_s:
+    struct ldms_msg_event_s:
         ldms_t r
-        ldms_stream_event_type type
-        ldms_stream_recv_data_s recv
-        ldms_stream_return_status_s status
-    ctypedef ldms_stream_event_s *ldms_stream_event_t
-    ctypedef int (*ldms_stream_event_cb_t)(ldms_stream_event_t ev, void *cb_arg) except *
+        ldms_msg_event_type type
+        ldms_msg_recv_data_s recv
+        ldms_msg_return_status_s status
+    ctypedef ldms_msg_event_s *ldms_msg_event_t
+    ctypedef int (*ldms_msg_event_cb_t)(ldms_msg_event_t ev, void *cb_arg) except *
 
-    int ldms_stream_publish(ldms_t x, const char *stream_name,
-                            ldms_stream_type_e stream_type,
+    void ldms_msg_disable()
+    int ldms_msg_is_enabled()
+    int ldms_msg_publish(ldms_t x, const char *name,
+                            ldms_msg_type_e msg_type,
                             ldms_cred *cred,
                             uint32_t perm,
                             const char *data, size_t data_len)
-    ldms_stream_client_t ldms_stream_subscribe(const char *stream, int is_regex,
-                            ldms_stream_event_cb_t cb_fn, void *cb_arg,
+    ldms_msg_client_t ldms_msg_subscribe(const char *match, int is_regex,
+                            ldms_msg_event_cb_t cb_fn, void *cb_arg,
                             const char *desc)
 
-    void ldms_stream_close(ldms_stream_client_t c)
-    int ldms_stream_remote_subscribe(ldms_t x, const char *stream, int is_regex,
-                            ldms_stream_event_cb_t cb_fn, void *cb_arg,
+    void ldms_msg_client_close(ldms_msg_client_t c)
+    int ldms_msg_remote_subscribe(ldms_t x, const char *match, int is_regex,
+                            ldms_msg_event_cb_t cb_fn, void *cb_arg,
                             int64_t rx_rate)
-    int ldms_stream_remote_unsubscribe(ldms_t x, const char *stream, int is_regex,
-                            ldms_stream_event_cb_t cb_fn, void *cb_arg)
+    int ldms_msg_remote_unsubscribe(ldms_t x, const char *match, int is_regex,
+                            ldms_msg_event_cb_t cb_fn, void *cb_arg)
 
-    # -- ldms_stream_stats -- #
-    struct ldms_stream_counters_s:
+    # -- ldms_msg_stats -- #
+    struct ldms_msg_counters_s:
         timespec first_ts
         timespec last_ts
         uint64_t  count
         size_t    bytes
-    struct ldms_stream_src_stats_s:
+    struct ldms_msg_src_stats_s:
         ldms_addr src
-        ldms_stream_counters_s rx
-    struct ldms_stream_client_pair_stats_s:
-        const char *stream_name
+        ldms_msg_counters_s rx
+    struct ldms_msg_ch_cli_stats_s:
+        const char *name
         const char *client_match
         const char *client_desc
         int is_regex
-        ldms_stream_counters_s tx
-        ldms_stream_counters_s drops
-    struct ldms_stream_client_pair_stats_tq_s:
+        ldms_msg_counters_s tx
+        ldms_msg_counters_s drops
+    struct ldms_msg_ch_cli_stats_tq_s:
         pass
-    struct ldms_stream_stats_s:
-        ldms_stream_counters_s rx
+    struct ldms_msg_ch_stats_s:
+        ldms_msg_counters_s rx
         rbt src_stats_rbt
-        ldms_stream_client_pair_stats_tq_s pair_tq
+        ldms_msg_ch_cli_stats_tq_s stats_tq
         const char *name
-    struct ldms_stream_stats_tq_s:
+    struct ldms_msg_ch_stats_tq_s:
         pass
-    struct ldms_stream_client_stats_s:
-        ldms_stream_counters_s tx
-        ldms_stream_counters_s drops
-        ldms_stream_client_pair_stats_tq_s pair_tq
+    struct ldms_msg_client_stats_s:
+        ldms_msg_counters_s tx
+        ldms_msg_counters_s drops
+        ldms_msg_ch_cli_stats_tq_s stats_tq
         ldms_addr dest
         int is_regex
         const char *match
         const char *desc
-    struct ldms_stream_client_stats_tq_s:
+    struct ldms_msg_client_stats_tq_s:
         pass
-    int ldms_stream_stats_level_set(int level)
-    int ldms_stream_stats_level_get()
-    ldms_stream_stats_tq_s * ldms_stream_stats_tq_get(const char *match, int is_regex, int is_reset)
-    void ldms_stream_stats_tq_free(ldms_stream_stats_tq_s *tq)
-    char *ldms_stream_stats_tq_to_str(ldms_stream_stats_tq_s *tq)
-    char *ldms_stream_stats_str(char *match, int is_regex)
-    ldms_stream_client_stats_tq_s *ldms_stream_client_stats_tq_get(int is_reset)
-    void ldms_stream_client_stats_tq_free(ldms_stream_client_stats_tq_s *tq)
-    ldms_stream_client_stats_s *ldms_stream_client_get_stats(ldms_stream_client_t cli, int is_reset)
-    void ldms_stream_client_stats_free(ldms_stream_client_stats_s *cs)
-    char *ldms_stream_client_stats_tq_to_str(ldms_stream_client_stats_tq_s *tq)
-    char *ldms_stream_client_stats_str()
+    int ldms_msg_stats_level_set(int level)
+    int ldms_msg_stats_level_get()
+    ldms_msg_ch_stats_tq_s * ldms_msg_ch_stats_tq_get(const char *match, int is_regex, int is_reset)
+    void ldms_msg_ch_stats_tq_free(ldms_msg_ch_stats_tq_s *tq)
+    char *ldms_msg_ch_stats_tq_to_str(ldms_msg_ch_stats_tq_s *tq)
+    char *ldms_msg_stats_str(char *match, int is_regex)
+    ldms_msg_client_stats_tq_s *ldms_msg_client_stats_tq_get(int is_reset)
+    void ldms_msg_client_stats_tq_free(ldms_msg_client_stats_tq_s *tq)
+    ldms_msg_client_stats_s *ldms_msg_client_get_stats(ldms_msg_client_t cli, int is_reset)
+    void ldms_msg_client_stats_free(ldms_msg_client_stats_s *cs)
+    char *ldms_msg_client_stats_tq_to_str(ldms_msg_client_stats_tq_s *tq)
+    char *ldms_msg_client_stats_str()
 
 cdef extern from "zap/zap.h" nogil:
     struct zap_thrstat_result_entry:

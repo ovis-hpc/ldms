@@ -90,6 +90,8 @@ struct ldms_rail_conn_msg_s {
 	int pid;
 	uint64_t rail_gn;
 
+	int msg_enabled; /* 0 if peer does not enable message service */
+
 };
 #pragma pack(pop)
 
@@ -117,7 +119,7 @@ struct __pending_sbuf_s {
 	uint32_t hop_num;
 	struct timespec recv_ts;
 	TAILQ_ENTRY(__pending_sbuf_s) entry;
-	struct __stream_buf_s *sbuf;
+	struct __msg_buf_s *sbuf;
 };
 
 /* a structure that tracks ldms xprt in the rail */
@@ -134,6 +136,7 @@ struct ldms_rail_ep_s {
 	struct ldms_rail_rate_quota_s rate_quota; /* rate quota */
 	uint64_t pending_ret_quota; /* pending return quota */
 	int in_eps_stq;
+
 	TAILQ_HEAD(, __pending_sbuf_s) sbuf_tq; /* pending fwd stream msgs */
 	/*
 	 * Array of operation context lists, indexed by `ldms_xprt_ops_e`.
@@ -183,7 +186,7 @@ struct ldms_rail_s {
 
 	pthread_mutex_t mutex; /* mainly for state */
 
-	struct rbt stream_client_rbt; /* stream clients from the peer */
+	struct rbt ch_cli_rbt; /* stream clients from the peer */
 
 	ldms_rail_ep_state_t state;
 
@@ -200,6 +203,8 @@ struct ldms_rail_s {
 	int legacy_peer; /* 0 if peer is rail, 1 if peer is legacy LDMS */
 
 	uint64_t conn_id;
+
+	int peer_msg_enabled;
 
 	// struct ldms_xprt_stats_s stats;
 	struct timespec connected_ts;
@@ -238,7 +243,7 @@ int sockaddr2ldms_addr(struct sockaddr *sa, struct ldms_addr *la);
  */
 const char *sockaddr_ntop(struct sockaddr *sa, char *buff, size_t sz);
 
-void __rail_ep_quota_return(struct ldms_rail_ep_s *rep, int quota);
+void __rail_ep_quota_return(struct ldms_rail_ep_s *rep, int quota, int rc);
 
 int __rep_flush_sbuf_tq(struct ldms_rail_ep_s *rep);
 int __rep_quota_acquire(struct ldms_rail_ep_s *rep, uint64_t q);

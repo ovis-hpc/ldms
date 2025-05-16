@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2022 National Technology & Engineering Solutions
+ * Copyright (c) 2022-2025 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2022 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -47,11 +47,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 /**
- * \file ldms_stream.h
+ * \file ldms_msg.h
  */
 
-#ifndef __LDMS_STREAM_H__
-#define __LDMS_STREAM_H__
+#ifndef __LDMS_MSG_H__
+#define __LDMS_MSG_H__
 
 #include <sys/types.h>
 #include <regex.h>
@@ -63,56 +63,56 @@
 #include "ldms.h"
 #include "ldms_rail.h"
 
-/* private structures / functions for LDMS Stream */
+/* private structures / functions for LDMS Message Service */
 
-struct ldms_stream_s {
+struct ldms_msg_ch_s {
 	struct rbn rbn;
-	pthread_rwlock_t rwlock; /* protects client_tq */
-	TAILQ_HEAD(, ldms_stream_client_entry_s) client_tq;
+	pthread_rwlock_t rwlock; /* protects cli_tq */
+	TAILQ_HEAD(, ldms_msg_ch_cli_entry_s) cli_tq;
 	int name_len;
-	struct ldms_stream_counters_s rx; /* total rx regardless of src */
-	struct rbt src_stats_rbt; /* tree of statistics by src; the nodes are `struct ldms_stream_src_stats_s` */
+	struct ldms_msg_counters_s rx; /* total rx regardless of src */
+	struct rbt src_stats_rbt; /* tree of statistics by src; the nodes are `struct ldms_msg_src_stats_s` */
 	char name[OVIS_FLEX];
 };
 
-/* stream-client relation */
-struct ldms_stream_client_entry_s {
+/* channel-client relation */
+struct ldms_msg_ch_cli_entry_s {
 	struct ref_s ref;
-	struct ldms_stream_s *stream;
-	struct ldms_stream_client_s *client;
+	struct ldms_msg_ch_s *ch;
+	struct ldms_msg_client_s *cli;
 
-	/* For client->stream_tq */
-	TAILQ_ENTRY(ldms_stream_client_entry_s) client_stream_entry;
+	/* For client->ch_tq */
+	TAILQ_ENTRY(ldms_msg_ch_cli_entry_s) cli_ch_entry;
 
-	/* For stream->client_tq */
-	TAILQ_ENTRY(ldms_stream_client_entry_s) stream_client_entry;
+	/* For ch->cli_tq */
+	TAILQ_ENTRY(ldms_msg_ch_cli_entry_s) ch_cli_entry;
 
-	/* transmission-to-client counters for this stream */
-	struct ldms_stream_counters_s tx;
-	/* client drops counters for this stream */
-	struct ldms_stream_counters_s drops;
+	/* transmission-to-client counters for this channel */
+	struct ldms_msg_counters_s tx;
+	/* client drops counters for this channel */
+	struct ldms_msg_counters_s drops;
 };
 
-struct ldms_stream_client_s {
-	TAILQ_ENTRY(ldms_stream_client_s) entry; /* for __regex_client_tq */
+struct ldms_msg_client_s {
+	TAILQ_ENTRY(ldms_msg_client_s) entry; /* for __regex_client_tq */
 
-	struct rbn rbn; /* for rail->stream_client_rbt */
+	struct rbn rbn; /* for rail->ch_cli_rbt */
 
-	struct ldms_stream_client_coll_s *coll;
+	struct ldms_msg_client_coll_s *coll;
 
-	/* transmission-to-client counters regradless of stream */
-	struct ldms_stream_counters_s tx;
-	/* drops counters regradless of stream */
-	struct ldms_stream_counters_s drops;
+	/* transmission-to-client counters regradless of channel */
+	struct ldms_msg_counters_s tx;
+	/* drops counters regradless of channel */
+	struct ldms_msg_counters_s drops;
 
 	pthread_rwlock_t rwlock;
-	/* streams that this client subscribed for */
-	TAILQ_HEAD(, ldms_stream_client_entry_s) stream_tq;
+	/* channels that this client subscribed for */
+	TAILQ_HEAD(, ldms_msg_ch_cli_entry_s) ch_tq;
 
 	struct ldms_addr dest;
 
 	ldms_t x;
-	ldms_stream_event_cb_t cb_fn;
+	ldms_msg_event_cb_t cb_fn;
 	void *cb_arg;
 	int is_regex;
 	regex_t regex;
@@ -126,27 +126,27 @@ struct ldms_stream_client_s {
 	char match[OVIS_FLEX]; /* exact name match or regex */
 };
 
-/* the full stream message */
-struct ldms_stream_full_msg_s {
+/* the full message service message */
+struct ldms_msg_full_s {
 	struct ldms_addr src;
 	uint32_t pad0;
 	uint64_t reserve[4];
 	uint64_t msg_gn;
 	uint32_t msg_len;
-	uint32_t stream_type;
+	uint32_t msg_type;
 	struct ldms_cred cred; /* credential of the originator */
 	uint32_t perm; /* 0777 style permission */
 	uint32_t name_hash;
 	/* Allocate space to collect profile data for 8 hops */
 	uint32_t hop_cnt;
 	uint32_t pad1;
-	struct ldms_stream_hop hops[STREAM_MAX_PROFILE_HOPS+1];
+	struct ldms_msg_hop hops[LDMS_MSG_MAX_PROFILE_HOPS+1];
 	char     msg[OVIS_FLEX];
 	/* `msg` format:
 	 * .----------------------.
 	 * | name (char[])        |
 	 * |----------------------|
-	 * | stream_data (char[]) |
+	 * | data (char[]) |
 	 * '----------------------'
 	 */
 };
@@ -156,7 +156,7 @@ struct __sbuf_key_s {
 	uint64_t msg_gn;
 };
 
-struct __stream_buf_s {
+struct __msg_buf_s {
 	struct rbn rbn;
 	struct __sbuf_key_s key;
 	struct ref_s ref;
@@ -168,18 +168,18 @@ struct __stream_buf_s {
 	uint32_t name_len;
 	uint32_t data_len;
 	union {
-		struct ldms_stream_full_msg_s msg[0];
+		struct ldms_msg_full_s msg[0];
 		char buf[0];
 	};
 };
 
 /* for internal use */
-int __rep_publish(struct ldms_rail_ep_s *rep, const char *stream_name,
-			uint32_t hash, ldms_stream_type_t stream_type,
+int __rep_publish(struct ldms_rail_ep_s *rep, const char *name,
+			uint32_t hash, ldms_msg_type_t msg_type,
 			struct ldms_addr *src, uint64_t msg_gn,
 			ldms_cred_t cred, int perm,
 			uint32_t hop_cnt,
-			struct ldms_stream_hop *hops,
+			struct ldms_msg_hop *hops,
 			const char *data, size_t data_len,
 			struct strm_publish_profile_s *pts);
-#endif /* __LDMS_STREAM_H__ */
+#endif /* __LDMS_MSG_H__ */

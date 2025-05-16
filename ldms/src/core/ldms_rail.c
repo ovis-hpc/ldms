@@ -67,7 +67,7 @@
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_rail.h"
-#include "ldms_stream.h"
+#include "ldms_msg.h"
 
 #include "ldms_private.h"
 
@@ -75,6 +75,8 @@ extern ovis_log_t xlog;
 #define RAIL_LOG(fmt, ...) do { \
 	ovis_log(xlog, OVIS_LERROR, fmt, ## __VA_ARGS__); \
 } while (0);
+
+extern int ldms_msg_enabled; /* see ldms_msg.c */
 
 /* The definition is in ldms.c. */
 extern int __enable_profiling[LDMS_XPRT_OP_COUNT];
@@ -200,8 +202,8 @@ static void __rail_ref_free(void *arg)
 }
 
 uint64_t rail_gn = 1;
-/* implementation in ldms_stream.c */
-int __stream_buf_cmp(void *tree_key, const void *key);
+/* implementation in ldms_msg.c */
+int __msg_buf_cmp(void *tree_key, const void *key);
 int __str_rbn_cmp(void *tree_key, const void *key);
 
 /* The implementation is in ldms_xprt.c. */
@@ -273,7 +275,7 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 	r->n_eps = n;
 	r->recv_quota = recv_quota;
 	r->recv_rate_limit = rate_limit;
-	rbt_init(&r->stream_client_rbt, __str_rbn_cmp);
+	rbt_init(&r->ch_cli_rbt, __str_rbn_cmp);
 
 	snprintf(r->name, sizeof(r->name), "%s", xprt_name);
 	snprintf(r->auth_name, sizeof(r->auth_name), "%s", auth_name);
@@ -293,7 +295,7 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 		r->eps[i].rate_quota.ts.tv_sec    = 0;
 		r->eps[i].rate_quota.ts.tv_nsec   = 0;
 		r->eps[i].remote_is_rail = -1;
-		rbt_init(&r->eps[i].sbuf_rbt, __stream_buf_cmp);
+		rbt_init(&r->eps[i].sbuf_rbt, __msg_buf_cmp);
 		TAILQ_INIT(&r->eps[i].sbuf_tq);
 		for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
 			TAILQ_INIT(&(r->eps[i].op_ctxt_lists[op_e]));
@@ -393,11 +395,11 @@ int __rail_ev_prep(struct ldms_rail_s *r, ldms_xprt_event_t ev)
 	return 0;
 }
 
-/* implementation in ldms_stream.c */
-void __stream_on_rail_disconnected(struct ldms_rail_s *r);
+/* implementation in ldms_msg.c */
+void __msg_on_rail_disconnected(struct ldms_rail_s *r);
 
 /* return send quota to peer */
-void __rail_ep_quota_return(struct ldms_rail_ep_s *rep, int quota)
+void __rail_ep_quota_return(struct ldms_rail_ep_s *rep, int quota, int rc)
 {
 	/* give back send quota */
 	int len = sizeof(struct ldms_request_hdr) +
@@ -409,6 +411,7 @@ void __rail_ep_quota_return(struct ldms_rail_ep_s *rep, int quota)
 		},
 		.send_quota = {
 			.send_quota = htonl(quota),
+			.rc         = htonl(rc),
 		}};
 	zap_send(rep->ep->zap_ep, &req, len);
 }
@@ -616,7 +619,7 @@ void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 					  r->connecting_eps == 0 &&
 					  r->connected_eps  == 0;
 		pthread_mutex_unlock(&r->mutex);
-		__stream_on_rail_disconnected(r);
+		__msg_on_rail_disconnected(r);
 		break;
 	case LDMS_XPRT_EVENT_RECV:
 	case LDMS_XPRT_EVENT_SET_DELETE:
@@ -757,6 +760,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 		r->event_cb = cb;
 		r->event_cb_arg = cb_arg;
 		r->rail_id = rail_id;
+		r->peer_msg_enabled = m->msg_enabled;
 		rbn_init(&r->rbn, &r->rail_id);
 		rbt_ins(&__passive_rail_rbt, &r->rbn);
 		ref_get(&r->ref, "__passive_rail_rbt");
@@ -884,6 +888,7 @@ static void __ldms_rail_conn_msg_init(struct ldms_rail_s *r, int idx, struct ldm
 	m->idx = htonl(idx);
 	m->pid = htonl(getpid());
 	m->rail_gn = htobe64(r->rail_id.rail_gn);
+	m->msg_enabled = htonl(ldms_msg_enabled);
 }
 
 static int __rail_ep_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
@@ -1580,12 +1585,14 @@ void __rail_ep_limit(ldms_t x, void *msg, int msg_len)
 	rep->rate_quota.ts.tv_sec  = 0;
 	rep->rate_quota.ts.tv_nsec = 0;
 	rep->remote_is_rail = 1;
+	rep->rail->peer_msg_enabled = ntohl(conn_msg->msg_enabled);
 	return;
  unlimited:
 	rep->send_quota = LDMS_UNLIMITED;
 	rep->rate_quota.quota = LDMS_UNLIMITED;
 	rep->rate_quota.rate   = LDMS_UNLIMITED;
 	rep->remote_is_rail = 0;
+	rep->rail->peer_msg_enabled = 0;
 }
 
 void __rail_process_send_quota(ldms_t x, struct ldms_request *req)
@@ -1595,6 +1602,10 @@ void __rail_process_send_quota(ldms_t x, struct ldms_request *req)
 	struct ldms_xprt_event ev = {0};
 	ev.quota.quota = __rep_quota_release(rep, sc);
 	ev.quota.ep_idx = rep->idx;
+	ev.quota.rc = ntohl(req->send_quota.rc);
+	if (ev.quota.rc == ENOTSUP) {
+		rep->rail->peer_msg_enabled = 0;
+	}
 	ev.type = LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED;
 	rep->rail->event_cb((ldms_t)rep->rail, &ev, rep->rail->event_cb_arg);
 	__rep_flush_sbuf_tq(rep);
@@ -1956,33 +1967,33 @@ int __rep_flush_sbuf_tq(struct ldms_rail_ep_s *rep)
 			rc = ENOMEM;
 			goto out;
 		}
-		op_ctxt->op_type = LDMS_XPRT_OP_STREAM_PUBLISH;
-		op_ctxt->stream_pub_profile.hop_num = p->hop_num;
-		op_ctxt->stream_pub_profile.recv_ts = p->recv_ts;
+		op_ctxt->op_type = LDMS_XPRT_OP_MSG_PUBLISH;
+		op_ctxt->msg_pub_profile.hop_num = p->hop_num;
+		op_ctxt->msg_pub_profile.recv_ts = p->recv_ts;
 
-		if (ENABLED_PROFILING(LDMS_XPRT_OP_STREAM_PUBLISH)) {
-			TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_STREAM_PUBLISH]),
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_MSG_PUBLISH)) {
+			TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_MSG_PUBLISH]),
 										op_ctxt, ent);
 		}
 		rc = __rep_publish(rep, p->sbuf->name,
 				p->sbuf->msg->name_hash,
-				p->sbuf->msg->stream_type,
+				p->sbuf->msg->msg_type,
 			     &p->sbuf->msg->src, p->sbuf->msg->msg_gn,
 			     &p->sbuf->msg->cred, p->sbuf->msg->perm,
 				 p->sbuf->msg->hop_cnt,
 				 p->sbuf->msg->hops,
 			     p->sbuf->data, p->sbuf->data_len,
-				 &(op_ctxt->stream_pub_profile));
+				 &(op_ctxt->msg_pub_profile));
 		if (rc) {
 			__rep_quota_release(rep, p->sbuf->msg->msg_len);
-			if (ENABLED_PROFILING(LDMS_XPRT_OP_STREAM_PUBLISH)) {
-				TAILQ_REMOVE(&(rep->op_ctxt_lists[LDMS_XPRT_OP_STREAM_PUBLISH]),
+			if (ENABLED_PROFILING(LDMS_XPRT_OP_MSG_PUBLISH)) {
+				TAILQ_REMOVE(&(rep->op_ctxt_lists[LDMS_XPRT_OP_MSG_PUBLISH]),
 										op_ctxt, ent);
 				free(op_ctxt);
 			}
 			goto out;
 		}
-		if (!ENABLED_PROFILING(LDMS_XPRT_OP_STREAM_PUBLISH)) {
+		if (!ENABLED_PROFILING(LDMS_XPRT_OP_MSG_PUBLISH)) {
 			free(op_ctxt);
 		}
 		TAILQ_REMOVE(&rep->sbuf_tq, p, entry);
@@ -2242,4 +2253,13 @@ struct ldms_xprt_stats_result *ldms_xprt_stats_result_get(int mask, int reset)
 err:
 	ldms_xprt_stats_result_free(list);
 	return NULL;
+}
+
+int ldms_xprt_peer_msg_is_enabled(ldms_t x)
+{
+	if (!LDMS_IS_RAIL(x)) {
+		return 0;
+	}
+	ldms_rail_t r = LDMS_RAIL(x);
+	return r->peer_msg_enabled;
 }

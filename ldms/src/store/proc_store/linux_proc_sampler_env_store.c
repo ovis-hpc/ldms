@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2022,2023 National Technology & Engineering Solutions
+ * Copyright (c) 2022,2023,2025 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2021,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2021,2023,2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -68,6 +68,7 @@
 #include <ovis_log/ovis_log.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_stream.h"
 #include "lpss_common.h"
 
 #define UUID "9651a09c-b12e-41d2-afb0-7109b28cc559"
@@ -246,7 +247,10 @@ static const char *usage(ldmsd_plug_handle_t handle)
 		"     mode	The container permission mode for create, (defaults to 0660).\n";
 }
 
-static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt);
+static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
+			 ldmsd_stream_type_t stream_type,
+			 const char *msg, size_t msg_len,
+			 json_entity_t entity);
 
 static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -266,7 +270,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		stream = strdup(value);
 	else
 		stream = strdup(STREAM);
-	ldms_stream_subscribe(stream, 0, stream_recv_cb, context, "linux_proc_sampler_env_store");
+	ldmsd_stream_subscribe(stream, stream_recv_cb, handle);
 
 	value = av_value(avl, "path");
 	if (!value) {
@@ -281,7 +285,8 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	root_path = strdup(value);
 	if (!root_path) {
 		ovis_log(mylog, OVIS_LERROR,
-		       "%s: Error allocating %d bytes for the container path.\n",
+		       "%s: Error allocating %zd bytes for the container path.\n",
+		       stream_store.name,
 		       strlen(value) + 1);
 		return ENOMEM;
 	}
@@ -323,7 +328,10 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 }
 
 
-static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
+static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
+			  ldmsd_stream_type_t stream_type,
+			  const char *msg, size_t msg_len,
+			  json_entity_t entity)
 {
 	int rc, task_rank;
 	json_entity_t v, list, item;
@@ -333,61 +341,58 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	char *json_v;
 	char *field;
 
-	if (ev->type != LDMS_STREAM_EVENT_RECV)
-		return 0;
-
-	if (!ev->recv.json) {
+	if (!entity) {
 		ovis_log(mylog, OVIS_LERROR,
 		       "NULL entity received in stream callback.\n");
 		return 0;
 	}
 
-	rc = get_json_value(ev->recv.json, field="job_id", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, field="job_id", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	job_id = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, field="component_id", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, field="component_id", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	component_id = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, field="producerName", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, field="producerName", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	producer_name = json_value_str(v)->str;
 
-	rc = get_json_value(ev->recv.json, field="pid", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, field="pid", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	pid = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, field="timestamp", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, field="timestamp", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	timestamp = json_value_str(v)->str;
 
-	rc = get_json_value(ev->recv.json, field="task_rank", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, field="task_rank", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	task_rank = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, field="parent", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, field="parent", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	parent = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, field="is_thread", JSON_INT_VALUE, &v);
+	rc = get_json_value(entity, field="is_thread", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
 	is_thread = json_value_int(v);
 
-	rc = get_json_value(ev->recv.json, field="exe", JSON_STRING_VALUE, &v);
+	rc = get_json_value(entity, field="exe", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
 	exec = json_value_str(v)->str;
 
-	rc = get_json_value(ev->recv.json, field=LISTNAME, JSON_LIST_VALUE, &list);
+	rc = get_json_value(entity, field=LISTNAME, JSON_LIST_VALUE, &list);
 	if (rc)
 		goto err;
 	for (item = json_item_first(list); item; item = json_item_next(item)) {

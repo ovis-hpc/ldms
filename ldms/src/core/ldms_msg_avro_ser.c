@@ -1,17 +1,17 @@
 #include "config.h"
 #include "ldms.h"
 
-#include "ldms_stream.h"
-#include "ldms_stream_avro_ser.h"
+#include "ldms_msg.h"
+#include "ldms_msg_avro_ser.h"
 
 #include "avro.h"
 #include <libserdes/serdes.h>
 #include <libserdes/serdes-avro.h>
 
-struct ldms_stream_client_avro_ser_s {
-	ldms_stream_client_t sc;
+struct ldms_msg_client_avro_ser_s {
+	ldms_msg_client_t sc;
 	serdes_t *serdes;
-	ldms_stream_avro_ser_event_cb_t app_cb_fn;
+	ldms_msg_avro_ser_event_cb_t app_cb_fn;
 	void *app_cb_arg;
 };
 
@@ -40,7 +40,7 @@ serdes_schema_t * serdes_schema_from_avro(serdes_t *sd, avro_schema_t asch)
 	return ssch;
 }
 
-int ldms_stream_publish_avro_ser(ldms_t x, const char *stream_name,
+int ldms_msg_publish_avro_ser(ldms_t x, const char *stream_name,
 				 ldms_cred_t cred, uint32_t perm,
 				 avro_value_t *value, serdes_t *sd,
 				 struct serdes_schema_s **sch)
@@ -77,7 +77,7 @@ int ldms_stream_publish_avro_ser(ldms_t x, const char *stream_name,
 	}
 
 	/* We can use existing stream_publish to publish the serialized data */
-	rc = ldms_stream_publish(x, stream_name, LDMS_STREAM_AVRO_SER,
+	rc = ldms_msg_publish(x, stream_name, LDMS_MSG_AVRO_SER,
 				 cred, perm, payload, sz);
 	return rc;
 }
@@ -119,13 +119,13 @@ static int avro_value_from_stream_data(const char *data, size_t data_len,
 }
 
 
-int ldms_stream_avro_ser_interpose(ldms_stream_event_t ev, void *cb_arg)
+int ldms_msg_avro_ser_interpose(ldms_msg_event_t ev, void *cb_arg)
 {
 	int rc = 0;
-	struct ldms_stream_client_avro_ser_s *ac = cb_arg;
-	struct ldms_stream_avro_ser_event_s aev = {.ev = *ev};
+	struct ldms_msg_client_avro_ser_s *ac = cb_arg;
+	struct ldms_msg_avro_ser_event_s aev = {.ev = *ev};
 	switch (ev->type) {
-	case LDMS_STREAM_EVENT_RECV:
+	case LDMS_MSG_EVENT_RECV:
 		rc = avro_value_from_stream_data(ev->recv.data,
 				ev->recv.data_len,
 				ac->serdes,
@@ -136,7 +136,7 @@ int ldms_stream_avro_ser_interpose(ldms_stream_event_t ev, void *cb_arg)
 		rc = ac->app_cb_fn(&aev, ac->app_cb_arg);
 		avro_value_decref(aev.avro_value);
 		break;
-	case LDMS_STREAM_EVENT_CLOSE:
+	case LDMS_MSG_EVENT_CLIENT_CLOSE:
 		rc = ac->app_cb_fn(&aev, ac->app_cb_arg);
 		free(ac);
 		break;
@@ -146,12 +146,12 @@ int ldms_stream_avro_ser_interpose(ldms_stream_event_t ev, void *cb_arg)
 	return rc;
 }
 
-ldms_stream_client_t
-ldms_stream_subscribe_avro_ser(const char *stream, int is_regex,
-		      ldms_stream_avro_ser_event_cb_t cb_fn, void *cb_arg,
+ldms_msg_client_t
+ldms_msg_subscribe_avro_ser(const char *stream, int is_regex,
+		      ldms_msg_avro_ser_event_cb_t cb_fn, void *cb_arg,
 		      const char *desc, serdes_t *serdes)
 {
-	struct ldms_stream_client_avro_ser_s *ac = NULL;
+	struct ldms_msg_client_avro_ser_s *ac = NULL;
 
 	if (!cb_fn) {
 		errno = EINVAL;
@@ -171,8 +171,8 @@ ldms_stream_subscribe_avro_ser(const char *stream, int is_regex,
 	ac->app_cb_fn = cb_fn;
 	ac->app_cb_arg = cb_arg;
 
-	ac->sc = ldms_stream_subscribe(stream, is_regex,
-			ldms_stream_avro_ser_interpose, ac, desc);
+	ac->sc = ldms_msg_subscribe(stream, is_regex,
+			ldms_msg_avro_ser_interpose, ac, desc);
 
 	if (!ac->sc)
 		goto err1;

@@ -268,31 +268,31 @@ cdef extern from *:
         #endif
     }
 
-    #define ldms_stream_src_stats_s_from_rbn(r) \
-                container_of((r), struct ldms_stream_src_stats_s, rbn)
+    #define ldms_msg_src_stats_s_from_rbn(r) \
+                container_of((r), struct ldms_msg_src_stats_s, rbn)
 
-    #define __STREAM_CLIENT_PAIR_STATS_TQ_FIRST(tq) TAILQ_FIRST(tq)
-    #define __STREAM_CLIENT_PAIR_STATS_NEXT(ps) TAILQ_NEXT(ps, entry)
+    #define __MSG_CH_CLI_STATS_TQ_FIRST(tq) TAILQ_FIRST(tq)
+    #define __MSG_CH_CLI_STATS_NEXT(ps) TAILQ_NEXT(ps, entry)
 
-    #define __STREAM_STATS_TQ_FIRST(tq) TAILQ_FIRST(tq)
-    #define __STREAM_STATS_NEXT(s) TAILQ_NEXT(s, entry)
+    #define __MSG_CH_STATS_TQ_FIRST(tq) TAILQ_FIRST(tq)
+    #define __MSG_CH_STATS_NEXT(s) TAILQ_NEXT(s, entry)
 
-    #define __STREAM_CLIENT_STATS_TQ_FIRST(tq) TAILQ_FIRST(tq)
-    #define __STREAM_CLIENT_STATS_NEXT(cs) TAILQ_NEXT(cs, entry)
+    #define __MSG_CLIENT_STATS_TQ_FIRST(tq) TAILQ_FIRST(tq)
+    #define __MSG_CLIENT_STATS_NEXT(cs) TAILQ_NEXT(cs, entry)
 
     """
     cdef void __init_threads()
-    cdef ldms_stream_src_stats_s *ldms_stream_src_stats_s_from_rbn(rbn *rbn)
-    cdef ldms_stream_client_pair_stats_s * \
-    __STREAM_CLIENT_PAIR_STATS_TQ_FIRST(ldms_stream_client_pair_stats_tq_s *tq)
-    cdef ldms_stream_client_pair_stats_s * \
-    __STREAM_CLIENT_PAIR_STATS_NEXT(ldms_stream_client_pair_stats_s *ps)
+    cdef ldms_msg_src_stats_s *ldms_msg_src_stats_s_from_rbn(rbn *rbn)
+    cdef ldms_msg_ch_cli_stats_s * \
+    __MSG_CH_CLI_STATS_TQ_FIRST(ldms_msg_ch_cli_stats_tq_s *tq)
+    cdef ldms_msg_ch_cli_stats_s * \
+    __MSG_CH_CLI_STATS_NEXT(ldms_msg_ch_cli_stats_s *ps)
 
-    cdef ldms_stream_stats_s *__STREAM_STATS_TQ_FIRST(ldms_stream_stats_tq_s *tq)
-    cdef ldms_stream_stats_s * __STREAM_STATS_NEXT(ldms_stream_stats_s *s)
+    cdef ldms_msg_ch_stats_s *__MSG_CH_STATS_TQ_FIRST(ldms_msg_ch_stats_tq_s *tq)
+    cdef ldms_msg_ch_stats_s * __MSG_CH_STATS_NEXT(ldms_msg_ch_stats_s *s)
 
-    cdef ldms_stream_client_stats_s *__STREAM_CLIENT_STATS_TQ_FIRST(ldms_stream_client_stats_tq_s *tq)
-    cdef ldms_stream_client_stats_s * __STREAM_CLIENT_STATS_NEXT(ldms_stream_client_stats_s *s)
+    cdef ldms_msg_client_stats_s *__MSG_CLIENT_STATS_TQ_FIRST(ldms_msg_client_stats_tq_s *tq)
+    cdef ldms_msg_client_stats_s * __MSG_CLIENT_STATS_NEXT(ldms_msg_client_stats_s *s)
 
 __init_threads()
 
@@ -434,7 +434,7 @@ def JSON_OBJ(o):
     # otherwise, the object is expected to have `.json_obj()` function
     return o.json_obj()
 
-def __avro_stream_data(sr_cli, sch_def, obj):
+def __avro_msg_data(sr_cli, sch_def, obj):
     import avro.schema
     import avro.io
     import confluent_kafka.schema_registry as sr
@@ -466,7 +466,7 @@ def __avro_stream_data(sr_cli, sch_def, obj):
     data = buff.getvalue()
     return data
 
-def __stream_publish(Ptr x_ptr, name, stream_data, stream_type=None,
+def __msg_publish(Ptr x_ptr, name, data, msg_type=None,
                      perm=0o444, uid=None, gid=None,
                      sr_client=None, schema_def=None):
     cdef int rc
@@ -475,26 +475,26 @@ def __stream_publish(Ptr x_ptr, name, stream_data, stream_type=None,
 
     c_xprt = NULL if x_ptr is None else <ldms_t>x_ptr.c_ptr
 
-    _t = type(stream_data)
-    # stream type
-    if stream_type is None:
+    _t = type(data)
+    # msg type
+    if msg_type is None:
         if _t is dict:
             # JSON
-            stream_type = ldms.LDMS_STREAM_JSON
+            msg_type = ldms.LDMS_MSG_JSON
         elif _t in (str, bytes):
-            stream_type = ldms.LDMS_STREAM_STRING
+            msg_type = ldms.LDMS_MSG_STRING
         else:
-            raise TypeError(f"Cannot infer stream_type from the type of stream_data ({type(stream_data)})")
+            raise TypeError(f"Cannot infer msg_type from the type of data ({type(data)})")
     # Avro/Serdes
-    if stream_type == ldms.LDMS_STREAM_AVRO_SER:
+    if msg_type == ldms.LDMS_MSG_AVRO_SER:
         if not sr_client:
-            raise ValueError(f"LDMS_STREAM_AVRO_SER requires `sr_client`")
+            raise ValueError(f"LDMS_MSG_AVRO_SER requires `sr_client`")
         if not schema_def:
-            raise ValueError(f"LDMS_STREAM_AVRO_SER requires `schema_def`")
-        stream_data = __avro_stream_data(sr_client, schema_def, stream_data)
+            raise ValueError(f"LDMS_MSG_AVRO_SER requires `schema_def`")
+        data = __avro_msg_data(sr_client, schema_def, data)
     # Json
-    if stream_type == ldms.LDMS_STREAM_JSON and _t is dict:
-        stream_data = json.dumps(stream_data)
+    if msg_type == ldms.LDMS_MSG_JSON and _t is dict:
+        data = json.dumps(data)
 
     # uid
     if type(uid) is str:
@@ -518,53 +518,53 @@ def __stream_publish(Ptr x_ptr, name, stream_data, stream_type=None,
     else:
         raise TypeError(f"Type '{type(gid)}' is not supported for `gid`")
 
-    rc = ldms_stream_publish(c_xprt, BYTES(name), stream_type, &cred, perm,
-                             BYTES(stream_data), len(stream_data))
+    rc = ldms_msg_publish(c_xprt, BYTES(name), msg_type, &cred, perm,
+                             BYTES(data), len(data))
     if rc:
-        raise RuntimeError(f"ldms_stream_publish() failed, rc: {rc}")
+        raise RuntimeError(f"ldms_msg_publish() failed, rc: {rc}")
 
 
-def stream_publish(name, stream_data, stream_type=None, perm=0o444,
+def msg_publish(name, data, msg_type=None, perm=0o444,
                    uid=None, gid=None, sr_client=None, schema_def=None):
-    """stream_publish(name, stream_data, stream_type=None, perm=0o444, uid=None,
+    """msg_publish(name, data, msg_type=None, perm=0o444, uid=None,
                    gid=None, sr_client=None, schema_def=None)
 
-    Publish a stream locally. If the remote peer subscribe to the stream, it
+    Publish a message locally. If the remote peer subscribe to the channel, it
     will also receive the data.
 
-    For LDMS_STREAM_AVRO_SER type, SchemaRegistryClient `sr_client` and schema
-    definition `schema_def` is required. The `stream_data` object will be
+    For LDMS_MSG_AVRO_SER type, SchemaRegistryClient `sr_client` and schema
+    definition `schema_def` is required. The `data` object will be
     serialized by Avro using `schema_def` (see parameter description below). The
     `schema_def` is also registered to the Schema Registry with `sr_client`.
 
     Arguments:
-    - name (str): The name of the stream being published.
-    - stream_data (bytes, str, dict):
-            The data being published. If it is `dict` and stream_type is
-            LDMS_STREAM_JSON or None, the stream_data is converted into JSON
-            string representation with `json.dumps(stream_data)`.
-    - stream_type (enum):
-            LDMS_STREAM_JSON or LDMS_STREAM_STRING or LDMS_STREAM_AVRO_SER or
+    - name (str): The channel name of the message being published.
+    - data (bytes, str, dict):
+            The data being published. If it is `dict` and msg_type is
+            LDMS_MSG_JSON or None, the data is converted into JSON
+            string representation with `json.dumps(data)`.
+    - msg_type (enum):
+            LDMS_MSG_JSON or LDMS_MSG_STRING or LDMS_MSG_AVRO_SER or
             None.  If the type is `None`, it is inferred from the
-            `type(stream_data)`: LDMS_STREAM_STRING for `str` and `bytes` types,
-            and LDMS_STREAM_JSON for `dict` type. If `type(stream_data)` is
+            `type(data)`: LDMS_MSG_STRING for `str` and `bytes` types,
+            and LDMS_MSG_JSON for `dict` type. If `type(data)` is
             something else, TypeError is raised.
     - perm (int): The file-system-style permission bits (e.g. 0o444).
     - uid (int or str): Publish as the given uid; None for euid.
     - gid (int or str): Publish as the given gid; None for egid.
     - sr_client (SchemaRegistryClient):
-            required if `stream_type` is `LDMS_STREAM_AVRO_SER`. In this case,
-            the stream data is encoded in Avro format, and the schema is
+            required if `msg_type` is `LDMS_MSG_AVRO_SER`. In this case,
+            the data is encoded in Avro format, and the schema is
             registered to SchemaRegistry.
     - schema_def (object): The Schema definition, required for
-            LDMS_STREAM_AVRO_SER stream_type. This can be of type:
+            LDMS_MSG_AVRO_SER msg_type. This can be of type:
             `dict`, `str` (JSON formatted), `avro.Schema`, or
             `confluent_kafka.schema_registry.Schema`. The `dict` and `str`
             (JSON) must follow Apache Avro Schema specification:
             https://avro.apache.org/docs/1.11.1/specification/
     """
 
-    return __stream_publish(None, name, stream_data, stream_type, perm, uid,
+    return __msg_publish(None, name, data, msg_type, perm, uid,
                             gid, sr_client = sr_client, schema_def = schema_def)
 
 
@@ -1426,13 +1426,15 @@ cdef str STR(o):
 cdef class QuotaEventData(object):
     cdef readonly uint64_t quota
     cdef readonly int      ep_idx
+    cdef readonly int      rc
     """Data of a quota deposit event"""
-    def __cinit__(self, uint64_t quota, int ep_idx):
+    def __cinit__(self, uint64_t quota, int ep_idx, int rc):
         self.quota = quota
         self.ep_idx = ep_idx
+        self.rc = rc
 
     def __str__(self):
-        return f"({self.quota}, {self.ep_idx})"
+        return f"({self.quota}, {self.ep_idx}, {self.rc})"
 
     def __repr__(self):
         return str(self)
@@ -1490,7 +1492,7 @@ cdef class XprtEvent(object):
         cdef ldms_set_t cset
         self.type = ldms_xprt_event_type(e.type)
         if self.type == ldms.LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
-            self.quota = QuotaEventData(e.quota.quota, e.quota.ep_idx)
+            self.quota = QuotaEventData(e.quota.quota, e.quota.ep_idx, e.quota.rc)
         elif self.type == ldms.LDMS_XPRT_EVENT_SET_DELETE:
             cset = <ldms_set_t>e.set_delete.set
             lset = Set(None, None, set_ptr=PTR(cset)) if cset else None
@@ -3413,7 +3415,7 @@ cdef class Xprt(object):
     - auth_opts: A dictionary containing LDMS authentication plugin options.
                  Please consult the plugin manuals for their options.
     - rail_recv_quota:
-            The amount (bytes) of outstanding stream recv buffer we will hold.
+            The amount (bytes) of outstanding message recv buffer we will hold.
             The peer will respect our recv_quota.
 
     Passive-side simple example:
@@ -3962,73 +3964,73 @@ cdef class Xprt(object):
         free(tmp)
         return lst
 
-    def stream_publish(self, name, stream_data, stream_type=None,
+    def msg_publish(self, name, data, msg_type=None,
                        perm=0o444, uid=None, gid=None,
                        sr_client=None, schema_def=None):
-        """x.stream_publish(name, stream_data, stream_type=None, perm=0o444,
+        """x.msg_publish(name, data, msg_type=None, perm=0o444,
                          uid=None, gid=None, sr_client=None, schema_def=None)
 
-        Publish a stream directly to the remote peer. The local stream client
-        will NOT get the stream data.
+        Publish a message directly to the remote peer. The local client
+        will NOT get the message.
 
-        For LDMS_STREAM_AVRO_SER type, SchemaRegistryClient `sr_client` and
-        schema definition `schema_def` is required. The `stream_data` object
+        For LDMS_MSG_AVRO_SER type, SchemaRegistryClient `sr_client` and
+        schema definition `schema_def` is required. The `data` object
         will be serialized by Avro using `schema_def` (see parameter description
         below). The `schema_def` is also registered to the Schema Registry with
         `sr_client`.
 
         Arguments:
-        - name (str): The name of the stream being published.
-        - stream_data (bytes, str, dict):
-                The data being published. If it is `dict` and stream_type is
-                LDMS_STREAM_JSON or None, the stream_data is converted into JSON
-                string representation with `json.dumps(stream_data)`.
-        - stream_type (enum):
-                LDMS_STREAM_JSON or LDMS_STREAM_STRING or LDMS_STREAM_AVRO_SER
+        - name (str): The channel name of the message being published.
+        - data (bytes, str, dict):
+                The data being published. If it is `dict` and msg_type is
+                LDMS_MSG_JSON or None, the data is converted into JSON
+                string representation with `json.dumps(data)`.
+        - msg_type (enum):
+                LDMS_MSG_JSON or LDMS_MSG_STRING or LDMS_MSG_AVRO_SER
                 or None.  If the type is `None`, it is inferred from the
-                `type(stream_data)`: LDMS_STREAM_STRING for `str` and `bytes`
-                types, and LDMS_STREAM_JSON for `dict` type. If
-                `type(stream_data)` is something else, TypeError is raised.
+                `type(data)`: LDMS_MSG_STRING for `str` and `bytes`
+                types, and LDMS_MSG_JSON for `dict` type. If
+                `type(data)` is something else, TypeError is raised.
         - perm (int): The file-system-style permission bits (e.g. 0o444).
         - uid (int or str): Publish as the given uid; None for euid.
         - gid (int or str): Publish as the given gid; None for egid.
         - sr_client (SchemaRegistryClient):
-                required if `stream_type` is `LDMS_STREAM_AVRO_SER`. In this
-                case, the stream data is encoded in Avro format, and the schema
+                required if `msg_type` is `LDMS_MSG_AVRO_SER`. In this
+                case, the data is encoded in Avro format, and the schema
                 is registered to SchemaRegistry.
         - schema_def (object): The Schema definition, required for
-                LDMS_STREAM_AVRO_SER stream_type. This can be of type:
+                LDMS_MSG_AVRO_SER msg_type. This can be of type:
                 `dict`, `str` (JSON formatted), `avro.Schema`, or
                 `confluent_kafka.schema_registry.Schema`. The `dict` and `str`
                 (JSON) must follow Apache Avro Schema specification:
                 https://avro.apache.org/docs/1.11.1/specification/
 
         """
-        return __stream_publish(PTR(self.xprt), name, stream_data, stream_type,
+        return __msg_publish(PTR(self.xprt), name, data, msg_type,
                 perm, uid, gid, sr_client = sr_client, schema_def = schema_def)
 
-    def stream_subscribe(self, match, is_regex, cb=None, cb_arg=None, rx_rate=-1):
-        """x.stream_subscribe(match, is_regex, cb=None, cb_arg=None)
+    def msg_subscribe(self, match, is_regex, cb=None, cb_arg=None, rx_rate=-1):
+        """x.msg_subscribe(match, is_regex, cb=None, cb_arg=None)
 
-        `cb()` signature: `cb(StreamStatusEvent ev, object cb_arg)`
+        `cb()` signature: `cb(MsgStatusEvent ev, object cb_arg)`
 
         Send a subscription request to the remote peer. If `cb` is `None`,
         this function will block and wait for the peer to reply the subscription
         result. In this case, if the subscription is a success, the function
-        simply returned (no return code); otherwise, a StreamSubscribeError is
+        simply returned (no return code); otherwise, a MsgSubscribeError is
         raised.
 
         If the callback function `cb` is given, it will be called when the
-        remote process sends back the stream subscription request results.
-        The callback signature is `cb(StreamStatusEvent ev, object cb_arg)`.
-        - `ev.name` (str) is the stream name or stream matching regex value.
+        remote process sends back the subscription request results.
+        The callback signature is `cb(MsgStatusEvent ev, object cb_arg)`.
+        - `ev.match` (str) is the channel name or regex value.
         - `ev.is_regex` (int) 1 if `ev.name` is a regex; otherwise 0.
         - `ev.status` (int) is the returned status for the submitted request.
 
         Arguments:
         - match (str): the name or the matching regular expression.
         - is_regex (int): 1 if `match` is a regex; otherwise 0.
-        - cb (callable(StreamStatusEvent, object)):
+        - cb (callable(MsgStatusEvent, object)):
                 a callback function to report the result of the request.
         - cb_arg (object): the application-supplied callback argument.
 
@@ -4038,8 +4040,8 @@ cdef class Xprt(object):
         """
         cdef int rc
         cdef sem_t sem
-        cdef ldms_stream_event_cb_t _cb
-        cdef _StreamSubCtxt ctxt = _StreamSubCtxt()
+        cdef ldms_msg_event_cb_t _cb
+        cdef _MsgSubCtxt ctxt = _MsgSubCtxt()
         cdef const char *c_match
         cdef int c_is_regex
         cdef int64_t c_rx_rate = rx_rate
@@ -4053,28 +4055,28 @@ cdef class Xprt(object):
         if cb is None:
             sem_init(&ctxt.sem, 0, 0)
             with nogil:
-                rc = ldms_stream_remote_subscribe(self.xprt, c_match, c_is_regex,
-                        __stream_block_cb, <void*>ctxt, c_rx_rate)
+                rc = ldms_msg_remote_subscribe(self.xprt, c_match, c_is_regex,
+                        __msg_block_cb, <void*>ctxt, c_rx_rate)
                 if rc:
                     with gil:
-                        raise StreamSubscribeError(f"ldms_stream_remote_subscribe() error, rc: {rc}")
+                        raise MsgSubscribeError(f"ldms_msg_remote_subscribe() error, rc: {rc}")
                 sem_wait(&ctxt.sem)
             if ctxt.rc:
-                raise StreamSubscribeError(f"stream remote subscription error: {ctxt.rc}")
+                raise MsgSubscribeError(f"remote subscription error: {ctxt.rc}")
         else:
             Py_INCREF(ctxt)
             with nogil:
-                rc = ldms_stream_remote_subscribe(self.xprt, c_match, c_is_regex,
-                        __stream_wrap_cb, <void*>ctxt, c_rx_rate)
+                rc = ldms_msg_remote_subscribe(self.xprt, c_match, c_is_regex,
+                        __msg_wrap_cb, <void*>ctxt, c_rx_rate)
             if rc:
-                raise StreamSubscribeError(f"ldms_stream_remote_subscribe() error, rc: {rc}")
+                raise MsgSubscribeError(f"ldms_msg_remote_subscribe() error, rc: {rc}")
 
-    def stream_unsubscribe(self, match, is_regex, cb=None, cb_arg=None):
+    def msg_unsubscribe(self, match, is_regex, cb=None, cb_arg=None):
         """Send an unsubscription request to the remote peer"""
         cdef int rc
         cdef sem_t sem
-        cdef ldms_stream_event_cb_t _cb
-        cdef _StreamSubCtxt ctxt = _StreamSubCtxt()
+        cdef ldms_msg_event_cb_t _cb
+        cdef _MsgSubCtxt ctxt = _MsgSubCtxt()
         cdef char *c_match
         cdef int c_is_regex
         ctxt.cb = cb
@@ -4086,23 +4088,23 @@ cdef class Xprt(object):
         with nogil:
             if cb is None:
                 sem_init(&ctxt.sem, 0, 0)
-                rc = ldms_stream_remote_unsubscribe(self.xprt, c_match, c_is_regex,
-                        __stream_block_cb, <void*>ctxt)
+                rc = ldms_msg_remote_unsubscribe(self.xprt, c_match, c_is_regex,
+                        __msg_block_cb, <void*>ctxt)
                 if rc:
                     with gil:
-                        raise StreamSubscribeError(f"ldms_stream_remote_unsubscribe() error, rc: {rc}")
+                        raise MsgSubscribeError(f"ldms_msg_remote_unsubscribe() error, rc: {rc}")
                 sem_wait(&ctxt.sem)
                 if ctxt.rc:
                     with gil:
-                        raise StreamSubscribeError(f"stream remote unsubscription error: {ctxt.rc}")
+                        raise MsgSubscribeError(f"remote unsubscription error: {ctxt.rc}")
             else:
                 with gil:
                     Py_INCREF(ctxt)
-                rc = ldms_stream_remote_unsubscribe(self.xprt, c_match, c_is_regex,
-                        __stream_wrap_cb, <void*>ctxt)
+                rc = ldms_msg_remote_unsubscribe(self.xprt, c_match, c_is_regex,
+                        __msg_wrap_cb, <void*>ctxt)
                 if rc:
                     with gil:
-                        raise StreamSubscribeError(f"ldms_stream_remote_unsubscribe() error, rc: {rc}")
+                        raise MsgSubscribeError(f"ldms_msg_remote_unsubscribe() error, rc: {rc}")
 
     def get_addr(self):
         """Get the local socket Internet address in ((LOCAL_ADDR, LOCAL_PORT), (REMOTE_ADDR, REMOTE_PORT))"""
@@ -4129,16 +4131,20 @@ cdef class Xprt(object):
         rc = ldms_xprt_is_remote_rail(self.xprt)
         return bool(rc)
 
+    @property
+    def peer_msg_is_enabled(self):
+        return ldms_xprt_peer_msg_is_enabled(self.xprt)
 
-cdef class _StreamSubCtxt(object):
+
+cdef class _MsgSubCtxt(object):
     """For internal use"""
     cdef object cb
     cdef object cb_arg
     cdef sem_t sem
     cdef int rc
 
-cdef int __stream_block_cb(ldms_stream_event_t ev, void *cb_arg) with gil:
-    cdef _StreamSubCtxt ctxt = <_StreamSubCtxt>cb_arg
+cdef int __msg_block_cb(ldms_msg_event_t ev, void *cb_arg) with gil:
+    cdef _MsgSubCtxt ctxt = <_MsgSubCtxt>cb_arg
     try:
         ctxt.rc = ev.status.status
     except:
@@ -4146,14 +4152,14 @@ cdef int __stream_block_cb(ldms_stream_event_t ev, void *cb_arg) with gil:
         raise
     sem_post(&ctxt.sem)
 
-cdef int __stream_wrap_cb(ldms_stream_event_t ev, void *cb_arg) with gil:
-    cdef _StreamSubCtxt ctxt = <_StreamSubCtxt>cb_arg
-    py_ev = StreamStatusEvent(ev.status.match, ev.status.is_regex,
+cdef int __msg_wrap_cb(ldms_msg_event_t ev, void *cb_arg) with gil:
+    cdef _MsgSubCtxt ctxt = <_MsgSubCtxt>cb_arg
+    py_ev = MsgStatusEvent(ev.status.match, ev.status.is_regex,
                                              ev.status.status)
     ctxt.cb(py_ev, ctxt.cb_arg)
     Py_DECREF(ctxt)
 
-cdef class StreamStatusEvent(object):
+cdef class MsgStatusEvent(object):
     cdef public str match
     cdef public int is_regex
     cdef public int status
@@ -4162,18 +4168,18 @@ cdef class StreamStatusEvent(object):
         self.is_regex = is_regex
         self.status = status
 
-class StreamSubscribeError(Exception):
+class MsgSubscribeError(Exception):
     def __init__(self, rc, text):
         self.rc = rc
         self.text = text
 
     def __str__(self):
-        return f"StreamSubscribeError: {self.rc}, {self.text}"
+        return f"MsgSubscribeError: {self.rc}, {self.text}"
 
     def __repr__(self):
-        return f"StreamSubscribeError( {self.rc}, '{self.text}' )"
+        return f"MsgSubscribeError( {self.rc}, '{self.text}' )"
 
-StreamDataAttrs = [ "raw_data", "data", "src", "name", "is_json", "uid", "gid", "perm", "tid" ]
+MsgDataAttrs = [ "raw_data", "data", "src", "name", "is_json", "uid", "gid", "perm", "tid" ]
 
 cdef class LdmsAddr(object):
     cdef public int   family
@@ -4256,8 +4262,8 @@ cdef class LdmsAddr(object):
 
 SD_FRAME_FMT = ">bI"
 
-cdef object __deserialize_avro_ser(Ptr ev_ptr, StreamClient c):
-    cdef ldms_stream_event_t ev = <ldms_stream_event_t>ev_ptr.c_ptr
+cdef object __deserialize_avro_ser(Ptr ev_ptr, MsgClient c):
+    cdef ldms_msg_event_t ev = <ldms_msg_event_t>ev_ptr.c_ptr
 
     import avro.io
     import avro.schema
@@ -4279,18 +4285,18 @@ cdef object __deserialize_avro_ser(Ptr ev_ptr, StreamClient c):
     obj = dr.read(de)
     return obj
 
-cdef class StreamData(object):
-    """Stream Data"""
+cdef class MsgData(object):
+    """Message Data"""
     cdef public bytes    raw_data # bytes raw data
     cdef public object   data     # `str` (for STRING) or `dict` (for JSON)
-    cdef public LdmsAddr src      # stream originator
-    cdef public str      name     # stream name
+    cdef public LdmsAddr src      # message originator
+    cdef public str      name     # channel name
     cdef public int      is_json  # data is JSON
     cdef public int      uid      # uid of the original publisher
     cdef public int      gid      # gid of the original publisher
     cdef public int      perm     # the permission of the data
-    cdef public uint64_t tid      # the thread ID creating the StreamData
-    cdef public object   type     # stream type
+    cdef public uint64_t tid      # the thread ID creating the MsgData
+    cdef public object   type     # message type
 
     def __init__(self, name=None, src=None, tid=None, uid=None, gid=None,
                        perm=None, is_json=None, data=None, raw_data=None,
@@ -4310,14 +4316,14 @@ cdef class StreamData(object):
         return str(self.data)
 
     def __repr__(self):
-        return f"StreamData('{self.name}', {repr(self.src)}, " \
+        return f"MsgData('{self.name}', {repr(self.src)}, " \
                f"{self.tid}, {self.uid}, {self.gid}, {oct(self.perm)}, " \
                f"{self.is_json}, {repr(self.data)})"
 
     def __eq__(self, other):
-        if type(other) != StreamData:
+        if type(other) != MsgData:
             return False
-        for k in StreamDataAttrs:
+        for k in MsgDataAttrs:
             v0 = getattr(self, k)
             v1 = getattr(other, k)
             if v0 != v1:
@@ -4325,17 +4331,17 @@ cdef class StreamData(object):
         return True
 
     @classmethod
-    def from_ldms_stream_event(cls, Ptr ev_ptr, StreamClient c = None):
-        cdef ldms_stream_event_t ev = <ldms_stream_event_t>ev_ptr.c_ptr
-        assert( ev.type == LDMS_STREAM_EVENT_RECV )
+    def from_ldms_msg_event(cls, Ptr ev_ptr, MsgClient c = None):
+        cdef ldms_msg_event_t ev = <ldms_msg_event_t>ev_ptr.c_ptr
+        assert( ev.type == LDMS_MSG_EVENT_RECV )
         raw_data = ev.recv.data[:ev.recv.data_len]
-        if ev.recv.type == LDMS_STREAM_STRING:
+        if ev.recv.type == LDMS_MSG_STRING:
             is_json = False
             data = raw_data.decode()
-        elif ev.recv.type == LDMS_STREAM_JSON:
+        elif ev.recv.type == LDMS_MSG_JSON:
             is_json = True
             data = json.loads(raw_data.strip(b'\x00').strip())
-        elif ev.recv.type == LDMS_STREAM_AVRO_SER:
+        elif ev.recv.type == LDMS_MSG_AVRO_SER:
             is_json = False
             data = __deserialize_avro_ser(ev_ptr, c)
         else:
@@ -4348,19 +4354,19 @@ cdef class StreamData(object):
         gid = ev.recv.cred.gid
         perm = ev.recv.perm
         tid = threading.get_native_id()
-        obj = StreamData(name, src, tid, uid, gid, perm, is_json, data,
+        obj = MsgData(name, src, tid, uid, gid, perm, is_json, data,
                          raw_data,
-                         ldms.ldms_stream_type_e(ev.recv.type))
+                         ldms.ldms_msg_type_e(ev.recv.type))
         return obj
 
-cdef int __stream_client_cb(ldms_stream_event_t ev, void *arg) with gil:
-    cdef StreamClient c = <StreamClient>arg
-    cdef StreamData sdata
+cdef int __msg_client_cb(ldms_msg_event_t ev, void *arg) with gil:
+    cdef MsgClient c = <MsgClient>arg
+    cdef MsgData sdata
 
-    if ev.type != LDMS_STREAM_EVENT_RECV:
+    if ev.type != LDMS_MSG_EVENT_RECV:
         return 0
 
-    sdata = StreamData.from_ldms_stream_event(PTR(ev), c)
+    sdata = MsgData.from_ldms_msg_event(PTR(ev), c)
     if c.cb:
         c.cb(c, sdata, c.cb_arg)
     else:
@@ -4374,162 +4380,161 @@ def _from_ptr(cls, Ptr ptr):
 TimeSpec.from_ptr = classmethod(_from_ptr)
 del _from_ptr
 
-StreamCounters = namedtuple('StreamCounters', [
+MsgCounters = namedtuple('MsgCounters', [
         'first_ts', 'last_ts', 'count', 'bytes'
     ])
 def _from_ptr(cls, Ptr ptr):
-    cdef ldms_stream_counters_s *ctr = <ldms_stream_counters_s *>ptr.c_ptr
+    cdef ldms_msg_counters_s *ctr = <ldms_msg_counters_s *>ptr.c_ptr
     first_ts = TimeSpec.from_ptr(PTR(&ctr.first_ts))
     last_ts = TimeSpec.from_ptr(PTR(&ctr.last_ts))
     return cls(first_ts, last_ts, ctr.count, ctr.bytes)
-StreamCounters.from_ptr = classmethod(_from_ptr)
+MsgCounters.from_ptr = classmethod(_from_ptr)
 del _from_ptr
 
-StreamSrcStats = namedtuple('StreamSrcStats', ['src', 'rx'])
+MsgSrcStats = namedtuple('MsgSrcStats', ['src', 'rx'])
 def _from_ptr(cls, Ptr ptr):
-    cdef ldms_stream_src_stats_s *ss = <ldms_stream_src_stats_s *>ptr.c_ptr
+    cdef ldms_msg_src_stats_s *ss = <ldms_msg_src_stats_s *>ptr.c_ptr
     src = LdmsAddr.from_ldms_addr(PTR(&ss.src))
-    rx = StreamCounters.from_ptr(PTR(&ss.rx))
+    rx = MsgCounters.from_ptr(PTR(&ss.rx))
     return cls(src, rx)
-StreamSrcStats.from_ptr = classmethod(_from_ptr)
+MsgSrcStats.from_ptr = classmethod(_from_ptr)
 del _from_ptr
 
-StreamClientPairStats = namedtuple('StreamClientPairStats', [
-        'stream_name', 'client_match', 'client_desc', 'is_regex', 'tx', 'drops'
+MsgChannelClientStats = namedtuple('MsgChannelClientStats', [
+        'name', 'client_match', 'client_desc', 'is_regex', 'tx', 'drops'
     ])
 def _from_ptr(cls, Ptr ptr):
-    cdef ldms_stream_client_pair_stats_s *ps = <ldms_stream_client_pair_stats_s *>ptr.c_ptr
-    tx = StreamCounters.from_ptr(PTR(&ps.tx))
-    drops = StreamCounters.from_ptr(PTR(&ps.drops))
-    return cls(STR(ps.stream_name), STR(ps.client_match), STR(ps.client_desc),
+    cdef ldms_msg_ch_cli_stats_s *ps = <ldms_msg_ch_cli_stats_s *>ptr.c_ptr
+    tx = MsgCounters.from_ptr(PTR(&ps.tx))
+    drops = MsgCounters.from_ptr(PTR(&ps.drops))
+    return cls(STR(ps.name), STR(ps.client_match), STR(ps.client_desc),
                ps.is_regex, tx, drops)
-StreamClientPairStats.from_ptr = classmethod(_from_ptr)
+MsgChannelClientStats.from_ptr = classmethod(_from_ptr)
 del _from_ptr
 
-StreamStats = namedtuple('StreamStats', ['rx', 'sources', 'clients', 'name'])
+MsgChannelStats = namedtuple('MsgChannelStats', ['rx', 'sources', 'clients', 'name'])
 def _from_ptr(cls, Ptr ptr):
-    cdef ldms_stream_stats_s *s = <ldms_stream_stats_s *>ptr.c_ptr
-    cdef ldms_stream_src_stats_s *ss
-    cdef ldms_stream_client_pair_stats_s *ps
+    cdef ldms_msg_ch_stats_s *s = <ldms_msg_ch_stats_s *>ptr.c_ptr
+    cdef ldms_msg_src_stats_s *ss
+    cdef ldms_msg_ch_cli_stats_s *ps
     cdef rbn *rbn
-    rx = StreamCounters.from_ptr(PTR(&s.rx))
+    rx = MsgCounters.from_ptr(PTR(&s.rx))
     sources = list()
     clients = list()
     rbn = rbt_min(&s.src_stats_rbt)
     while rbn:
-        ss = ldms_stream_src_stats_s_from_rbn(rbn)
-        obj = StreamSrcStats.from_ptr(PTR(ss))
+        ss = ldms_msg_src_stats_s_from_rbn(rbn)
+        obj = MsgSrcStats.from_ptr(PTR(ss))
         sources.append(obj)
         rbn = rbn_succ(rbn)
-    ps = __STREAM_CLIENT_PAIR_STATS_TQ_FIRST(&s.pair_tq)
+    ps = __MSG_CH_CLI_STATS_TQ_FIRST(&s.stats_tq)
     while ps:
-        obj = StreamClientPairStats.from_ptr(PTR(ps))
+        obj = MsgChannelClientStats.from_ptr(PTR(ps))
         clients.append(obj)
-        ps = __STREAM_CLIENT_PAIR_STATS_NEXT(ps)
-    ret = StreamStats(rx, sources, clients, STR(s.name))
+        ps = __MSG_CH_CLI_STATS_NEXT(ps)
+    ret = MsgChannelStats(rx, sources, clients, STR(s.name))
     return ret
-StreamStats.from_ptr = classmethod(_from_ptr)
+MsgChannelStats.from_ptr = classmethod(_from_ptr)
 del _from_ptr
 
-StreamClientStats = namedtuple('StreamClientStats', [
-        'tx', 'drops', 'streams', 'dest', 'is_regex', 'match', 'desc'
+MsgClientStats = namedtuple('MsgClientStats', [
+        'tx', 'drops', 'channels', 'dest', 'is_regex', 'match', 'desc'
     ])
 def _from_ptr(cls, Ptr ptr):
-    cdef ldms_stream_client_stats_s *cs = <ldms_stream_client_stats_s*>ptr.c_ptr
-    cdef ldms_stream_client_pair_stats_s *ps
-    tx = StreamCounters.from_ptr(PTR(&cs.tx))
-    drops = StreamCounters.from_ptr(PTR(&cs.drops))
+    cdef ldms_msg_client_stats_s *cs = <ldms_msg_client_stats_s*>ptr.c_ptr
+    cdef ldms_msg_ch_cli_stats_s *ps
+    tx = MsgCounters.from_ptr(PTR(&cs.tx))
+    drops = MsgCounters.from_ptr(PTR(&cs.drops))
     dest = LdmsAddr.from_ldms_addr(PTR(&cs.dest))
-    ps = __STREAM_CLIENT_PAIR_STATS_TQ_FIRST(&cs.pair_tq)
-    streams = list()
+    ps = __MSG_CH_CLI_STATS_TQ_FIRST(&cs.stats_tq)
+    channels = list()
     while ps:
-        obj = StreamClientPairStats.from_ptr(PTR(ps))
-        streams.append(obj)
-        ps = __STREAM_CLIENT_PAIR_STATS_NEXT(ps)
-    ret = cls(tx, drops, streams, dest, cs.is_regex, STR(cs.match), STR(cs.desc))
+        obj = MsgChannelClientStats.from_ptr(PTR(ps))
+        channels.append(obj)
+        ps = __MSG_CH_CLI_STATS_NEXT(ps)
+    ret = cls(tx, drops, channels, dest, cs.is_regex, STR(cs.match), STR(cs.desc))
     return ret
-StreamClientStats.from_ptr = classmethod(_from_ptr)
+MsgClientStats.from_ptr = classmethod(_from_ptr)
 del _from_ptr
 
-def stream_stats_level_set(lvl):
-    ldms_stream_stats_level_set(lvl)
+def msg_stats_level_set(lvl):
+    ldms_msg_stats_level_set(lvl)
 
-def stream_stats_level_get():
-    return ldms_stream_stats_level_get()
+def msg_stats_level_get():
+    return ldms_msg_stats_level_get()
 
-def stream_stats_get(stream_match=None, is_regex=0, is_reset=0):
-    """Get a collection of stats of the streams in this process that match `stream_match`
+def msg_stats_get(match=None, is_regex=0, is_reset=0):
+    """Get a collection of stats of the matching channels in this process
 
-    stream_match(str) - the stream name or a regular expression
-    is_regex(int) - 1 if `stream_match` is a regular expression; otherwise, 0
+    match(str) - the channel name or a regular expression
+    is_regex(int) - 1 if `match` is a regular expression; otherwise, 0
     """
     cdef const char *m = NULL
-    cdef ldms_stream_stats_tq_s *tq
-    cdef ldms_stream_stats_s *s
-    if stream_match:
-        stream_match = BYTES(stream_match)
-        m = stream_match
-    tq = ldms_stream_stats_tq_get(m, is_regex, is_reset)
+    cdef ldms_msg_ch_stats_tq_s *tq
+    cdef ldms_msg_ch_stats_s *s
+    if match:
+        match = BYTES(match)
+        m = match
+    tq = ldms_msg_ch_stats_tq_get(m, is_regex, is_reset)
     ret = list()
     if not tq:
         if errno == ENOENT:
             return ret
         else:
-            raise RuntimeError(f"ldms_stream_stats_tq_get error: {ERRNO_SYM(errno)}({errno})")
+            raise RuntimeError(f"ldms_msg_ch_stats_tq_get error: {ERRNO_SYM(errno)}({errno})")
     try:
-        s = __STREAM_STATS_TQ_FIRST(tq)
+        s = __MSG_CH_STATS_TQ_FIRST(tq)
         while s:
-            obj = StreamStats.from_ptr(PTR(s))
+            obj = MsgChannelStats.from_ptr(PTR(s))
             ret.append(obj)
-            s = __STREAM_STATS_NEXT(s)
+            s = __MSG_CH_STATS_NEXT(s)
     except:
-        ldms_stream_stats_tq_free(tq)
+        ldms_msg_ch_stats_tq_free(tq)
         raise
-    ldms_stream_stats_tq_free(tq)
+    ldms_msg_ch_stats_tq_free(tq)
     return ret
 
-def stream_client_stats_get(is_reset=0):
-    """Get a collection of stats of stream clients in this process"""
-    cdef ldms_stream_client_stats_tq_s *tq
-    cdef ldms_stream_client_stats_s *cs
-    tq = ldms_stream_client_stats_tq_get(is_reset)
+def msg_client_stats_get(is_reset=0):
+    """Get a collection of stats of msg clients in this process"""
+    cdef ldms_msg_client_stats_tq_s *tq
+    cdef ldms_msg_client_stats_s *cs
+    tq = ldms_msg_client_stats_tq_get(is_reset)
     ret = list()
     if not tq:
         if errno == ENOENT:
             return ret
         else:
-            raise RuntimeError(f"ldms_stream_client_stats_tq_get error: {ERRNO_SYM(errno)}({errno})")
+            raise RuntimeError(f"ldms_msg_client_stats_tq_get error: {ERRNO_SYM(errno)}({errno})")
     try:
-        cs = __STREAM_CLIENT_STATS_TQ_FIRST(tq)
+        cs = __MSG_CLIENT_STATS_TQ_FIRST(tq)
         while cs:
-            obj = StreamClientStats.from_ptr(PTR(cs))
+            obj = MsgClientStats.from_ptr(PTR(cs))
             ret.append(obj)
-            cs = __STREAM_CLIENT_STATS_NEXT(cs)
+            cs = __MSG_CLIENT_STATS_NEXT(cs)
     except:
-        ldms_stream_client_stats_tq_free(tq)
+        ldms_msg_client_stats_tq_free(tq)
         raise
-    ldms_stream_client_stats_tq_free(tq)
+    ldms_msg_client_stats_tq_free(tq)
     return ret
 
-cdef class StreamClient(object):
-    """StreamClient(match, is_regex, cb=None, cb_arg=None)
+cdef class MsgClient(object):
+    """MsgClient(match, is_regex, cb=None, cb_arg=None)
 
     Arguments:
-    - match (str): The name of the stream, or a regular expression
+    - match (str): The name of the message channel, or a regular expression
     - is_regex (int): 1 if `match` is a regular expression;
                       0 otherwise, and the `match` is treated as an exact match
-                      to the stream name
-    - cb (callable): an optional callback function to deliver the stream data
+                      to the channel name
+    - cb (callable): an optional callback function to deliver the data
                         with the following signature
-                          `def cb(StreamClient client, StreamData data, object cb_arg)`
+                          `def cb(MsgClient client, MsgData data, object cb_arg)`
     - cb_arg (object):  an optional application callback argument.
     - desc (str): a short description of the client.
     - sr_client (SchemaRegistryClient): a Confluent Kafka Client object,
-                                        required for processing AVRO_SER stream
-                                        data.
+                                        required for processing AVRO_SER data.
     """
 
-    cdef ldms_stream_client_t c
+    cdef ldms_msg_client_t c
     cdef object cb  # optional application callback
     cdef object cb_arg # optional application callback argument
     cdef object data_q
@@ -4543,20 +4548,20 @@ cdef class StreamClient(object):
         self.sr_client = sr_client
         if desc is None:
             desc = ""
-        self.c = ldms_stream_subscribe(BYTES(match), is_regex,
-                                       __stream_client_cb, <void*>self,
+        self.c = ldms_msg_subscribe(BYTES(match), is_regex,
+                                       __msg_client_cb, <void*>self,
                                        CSTR(BYTES(desc)))
         if not self.c:
-            raise RuntimeError(f"ldms_stream_subscribe() error, errno: {errno}")
+            raise RuntimeError(f"ldms_msg_subscribe() error, errno: {errno}")
 
     def close(self):
         if not self.c:
             return
-        ldms_stream_close(self.c)
+        ldms_msg_client_close(self.c)
         self.c = NULL
 
     def get_data(self):
-        """Get the stream data (None if no data)"""
+        """Get the data (None if no data)"""
         try:
             return self.data_q.get_nowait()
         except Empty as e:
@@ -4564,19 +4569,19 @@ cdef class StreamClient(object):
 
     def stats(self, is_reset=0):
         """Get the client stats"""
-        cdef ldms_stream_client_stats_s *cs;
+        cdef ldms_msg_client_stats_s *cs;
         if not self.c:
             raise RuntimeError("client has been closed")
-        cs = ldms_stream_client_get_stats(self.c, is_reset)
+        cs = ldms_msg_client_get_stats(self.c, is_reset)
         if not cs:
             raise RuntimeError(f"error: {ERRNO_SYM(errno)}({errno})")
         try:
-            obj = StreamClientStats.from_ptr(PTR(cs))
+            obj = MsgClientStats.from_ptr(PTR(cs))
         except:
             # cleanup before raising the error
-            ldms_stream_client_stats_free(cs)
+            ldms_msg_client_stats_free(cs)
             raise
-        ldms_stream_client_stats_free(cs)
+        ldms_msg_client_stats_free(cs)
         return obj
 
 
@@ -4788,3 +4793,9 @@ def ovis_log_set_level_by_name(str subsys_name, level):
     if type(level) is str:
         level = LOG_LEVEL_MAP[level.upper()]
     ldms.ovis_log_set_level_by_name(CSTR(BYTES(subsys_name)), level)
+
+def msg_disable():
+    ldms_msg_disable()
+
+def msg_is_enabled():
+    return ldms_msg_is_enabled()

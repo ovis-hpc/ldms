@@ -199,7 +199,7 @@ struct slps_send_result slps_send_string(struct slps *slps, size_t len, const ch
  * targets every reconnect seconds. Messages may be dropped, as can be
  * determined from the return value.
  * \param buf may contain anything; (This function is not yet supported by the
- * underlying ldms_stream type). It is not required to be nul-terminated.
+ * underlying ldmsd_stream type). It is not required to be nul-terminated.
  * \return tuple of the number of targets to which the message was successfully published
  * etc.
  */

@@ -101,6 +101,9 @@ struct req_str_id req_str_id_table[] = {
 	{  "logrotate",          LDMSD_LOGROTATE_REQ  },
 	{  "memory",             LDMSD_MEMORY_REQ  },
 	{  "metric_sets_default_authz", LDMSD_SET_DEFAULT_AUTHZ_REQ  },
+	{  "msg_client_stats",   LDMSD_MSG_CLIENT_STATS_REQ  },
+	{  "msg_disable",        LDMSD_MSG_DISABLE_REQ  },
+	{  "msg_stats",          LDMSD_MSG_STATS_REQ  },
 	{  "oneshot",            LDMSD_ONESHOT_REQ  },
 	{  "option",             LDMSD_CMDLINE_OPTIONS_SET_REQ  },
 	{  "pid_file",           LDMSD_PID_FILE_REQ  },
@@ -141,7 +144,8 @@ struct req_str_id req_str_id_table[] = {
 	{  "start",              LDMSD_PLUGN_START_REQ  },
 	{  "stop",               LDMSD_PLUGN_STOP_REQ  },
 	{  "stream_client_dump", LDMSD_STREAM_CLIENT_DUMP_REQ  },
-	{  "stream_status",         LDMSD_STREAM_STATUS_REQ  },
+	{  "stream_disable",     LDMSD_STREAM_DISABLE_REQ  },
+	{  "stream_status",      LDMSD_STREAM_STATUS_REQ  },
 	{  "strgp_add",          LDMSD_STRGP_ADD_REQ  },
 	{  "strgp_del",          LDMSD_STRGP_DEL_REQ  },
 	{  "strgp_metric_add",   LDMSD_STRGP_METRIC_ADD_REQ  },
@@ -201,6 +205,7 @@ struct req_str_id attr_str_id_table[] = {
 	{  "ip",                LDMSD_ATTR_IP  },
 	{  "level",             LDMSD_ATTR_LEVEL  },
 	{  "match",             LDMSD_ATTR_MATCH  },
+	{  "message_channel",   LDMSD_ATTR_MSG_CHAN  },
 	{  "metric",            LDMSD_ATTR_METRIC  },
 	{  "mode",              LDMSD_ATTR_LEVEL  },
 	{  "name",              LDMSD_ATTR_NAME  },
@@ -366,6 +371,7 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_STREAM_PUBLISH_REQ : return "STREAM_PUBLISH_REQ";
 	case LDMSD_STREAM_NEW_REQ : return "STREAM_NEW_REQ";
 	case LDMSD_STREAM_STATUS_REQ : return "STREAM_DIR_REQ";
+	case LDMSD_STREAM_DISABLE_REQ : return "STREAM_DISABLE_REQ";
 	default: return "UNKNOWN_REQ";
 	}
 }

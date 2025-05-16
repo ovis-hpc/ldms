@@ -750,6 +750,7 @@ struct ldms_xprt_set_delete_data {
 struct ldms_xprt_quota_event_data {
 	uint64_t quota; /* current quota */
 	int      ep_idx; /* the index of the endpoint in the rail */
+	int      rc; /* the return code from peer */
 };
 
 typedef struct ldms_xprt_event {
@@ -1165,20 +1166,20 @@ int ldms_getsockaddr6(const char *host, const char *port,
  * \addtogroup ldms_qgroup LDMS Quota Group (qgroup)
  *
  * LDMS Quota Group, or qgroup for short, is a feature in LDMS library that
- * enables the control of the amount of the stream data going through the
+ * enables the control of the amount of the message data going through the
  * processes participating in the "group". \c qgroup mechanism leverages
- * \c rail.recv_quota to limit the stream data. Hence, the endpoints in our
+ * \c rail.recv_quota to limit the message data. Hence, the endpoints in our
  * process (a member of \c qgroup) has to be created with
  * \c * ldms_xprt_rail_new() with \c recv_quota. When the peer publishes a
- * stream data, it has to take quota from the said \c recv_quota. When our
- * process done processing the stream data (all stream callbacks on the data
+ * message data, it has to take quota from the said \c recv_quota. When our
+ * process done processing the message data (all message callbacks on the data
  * have returned), the quota is issued back to the peer. This limits the amount
  * of buffer in our process. With \c qgruop, before our process returns the
  * quota, we first consults \c qgroup.quota. The returning quota has to be taken
  * from \c qgroup.quota. If the \c qgroup.quota is not enough (less than the
  * required returning quota), the returning quota is held off. If we hold off
  * enough returning quota, the peer will run out of quota and cannot publish
- * further stream data. \c qgroup.cfg.quota determines the initial amount of
+ * further message data. \c qgroup.cfg.quota determines the initial amount of
  * \c qgroup.quota. When \c qgroup.quota goes below \c qgroup.cfg.ask_mark, the
  * qgroup mechanism asks members for quota donations (with
  * \c qgroup.cfg.ask_amount) every \c qgroup.cfg.ask_usec interval. The donation
@@ -1375,188 +1376,209 @@ void ldms_qgroup_info_free(ldms_qgroup_info_t qinfo);
 /** \} */ /* ldms_qgroup */
 
 /**
- * \addtogroup ldms_stream LDMS Stream Functions
+ * \addtogroup ldms_msg LDMS Message Service Functions
  *
- * These functions manage and manipulate LDMS Stream.
+ * These functions manage and interact with LDMS Message Service.
  * \{
  */
 
-typedef enum ldms_stream_type_e {
-	LDMS_STREAM_STRING,
-	LDMS_STREAM_JSON,
-	LDMS_STREAM_AVRO_SER,
-	LDMS_STREAM_LAST, /* the last enumureation; not a real type */
-} ldms_stream_type_t;
+typedef enum ldms_msg_type_e {
+	LDMS_MSG_STRING,
+	LDMS_MSG_JSON,
+	LDMS_MSG_AVRO_SER,
+	LDMS_MSG_LAST, /* the last enumureation; not a real type */
+} ldms_msg_type_t;
 
 /**
- * \brief Stream Type Symbol.
+ * \brief Disable LDMS Message service
  *
- * This function returns a constant string symbol (e.g. "LDMS_STREAM_STRING") of
- * the given Stream type \c t. If the given type is out of valid range,
+ * Similar to \c ldmsd_stream, this service can be disabled but cannot be
+ * enabled afterward.
+ */
+void ldms_msg_disable();
+
+/**
+ * \brief Check if LDMS Message Service is enabled.
+ *
+ * \retval 0 if it is DISabled.
+ * \retval 1 if it is ENabled.
+ */
+int ldms_msg_is_enabled();
+
+/**
+ * \brief Message Type Symbol.
+ *
+ * This function returns a constant string symbol (e.g. "LDMS_MSG_STRING") of
+ * the given message type \c t. If the given type is out of valid range,
  * "UNKNOWN" is returned.
  *
- * \param t The Stream type.
+ * \param t The message type.
  *
- * \retval s The symbol (e.g. "LDMS_STREAM_STRING").
+ * \retval s The symbol (e.g. "LDMS_MSG_STRING").
  */
-const char *ldms_stream_type_sym(ldms_stream_type_t t);
+const char *ldms_msg_type_sym(ldms_msg_type_t t);
 
 /**
- * \brief Publish stream data.
+ * \brief Publish LDMS Message.
  *
  * If \c x is \c NULL, publish to all subscribers. Otherwise, publish directly
  * to the peer of \c x.
  *
  * \param x            NULL for loopback, or a valid rail handle.
- * \param stream_name  The name of the stream.
- * \param stream_type  The type of the stream (STRING or JSON).
+ * \param name         The name of the channel.
+ * \param msg_type     The type of the message (STRING or JSON).
  * \param cred         The credential of the publisher. This can be \c NULL, and
  *                       the \c euid and \c egid are used.
- * \param perm         The permission on the stream data.
+ * \param perm         The permission on the message data.
  * \param data         The data to be published.
  * \param data_len     The length of the data.
  *
  * \retval 0        If there is no error.
  * \retval EAGAIN   If there is not enough send quota.
- * \retval ENOSTR   If the the handle not valid for publishing a stream.
+ * \retval ENOSTR   If the the handle not valid for publishing.
  */
-int ldms_stream_publish(ldms_t x, const char *stream_name,
-                        ldms_stream_type_t stream_type,
+int ldms_msg_publish(ldms_t x, const char *name,
+                        ldms_msg_type_t msg_type,
 			ldms_cred_t cred,
 			uint32_t perm,
                         const char *data, size_t data_len);
 
 /**
- * Like \c ldms_stream_publsh(), but publish the content of a file.
+ * Like \c ldms_msg_publsh(), but publish the content of a file.
  *
  * \param x            NULL for loopback, or a valid rail handle.
- * \param stream_name  The name of the stream.
- * \param stream_type  The type of the stream (STRING or JSON).
+ * \param name         The name of the channel.
+ * \param msg_type     The type of the message (STRING or JSON).
  * \param cred         The credential of the publisher. This can be \c NULL, and
  *                       the \c euid and \c egid are used.
- * \param perm         The permission on the stream data.
+ * \param perm         The permission on the message data.
  * \param file         The FILE handle.
  *
  * \retval 0        If there is no error.
  * \retval EAGAIN   If there is not enough send quota.
- * \retval ENOSTR   If the the handle not valid for publishing a stream.
+ * \retval ENOSTR   If the the handle not valid for publishing.
  */
-int ldms_stream_publish_file(ldms_t x, const char *stream_name,
-                        ldms_stream_type_t stream_type,
+int ldms_msg_publish_file(ldms_t x, const char *name,
+                        ldms_msg_type_t msg_type,
 			ldms_cred_t cred,
 			uint32_t perm,
 			FILE *file);
 
-typedef struct ldms_stream_client_s *ldms_stream_client_t;
+typedef struct ldms_msg_client_s *ldms_msg_client_t;
 typedef struct json_entity_s *json_entity_t;
 
-enum ldms_stream_event_type {
-	LDMS_STREAM_EVENT_RECV, /* stream data received */
-	LDMS_STREAM_EVENT_SUBSCRIBE_STATUS, /* reporting subscription status */
-	LDMS_STREAM_EVENT_UNSUBSCRIBE_STATUS, /* reporting unsubscription status */
-	LDMS_STREAM_EVENT_CLOSE, /* reporting stream client close event.
+enum ldms_msg_event_type {
+	LDMS_MSG_EVENT_RECV, /* message received */
+	LDMS_MSG_EVENT_SUBSCRIBE_STATUS, /* reporting subscription status */
+	LDMS_MSG_EVENT_UNSUBSCRIBE_STATUS, /* reporting unsubscription status */
+	LDMS_MSG_EVENT_CLIENT_CLOSE, /* reporting message client close event.
 				  * This is the last event to deliver from a
 				  * client. */
 
-	LDMS_STREAM_EVENT_LAST, /* The last enumeration; not a real event */
+	LDMS_MSG_EVENT_LAST, /* The last enumeration; not a real event */
 };
 
 /**
  * \brief String symbol of event type \c t for printing.
  *
- * \retval s The string symbol of the given event type (e.g. "LDMS_STREAM_EVENT_RECV").
+ * \retval s The string symbol of the given event type (e.g. "LDMS_MSG_EVENT_RECV").
  * \retval "UNKNOWn" If the event type \c t is out of range.
  */
-const char *ldms_stream_event_type_sym(enum ldms_stream_event_type t);
+const char *ldms_msg_event_type_sym(enum ldms_msg_event_type t);
 
-/* For stream data delivery to the application */
-struct ldms_stream_recv_data_s {
-	ldms_stream_client_t client;
+/* For message delivery to the application */
+struct ldms_msg_recv_data_s {
+	ldms_msg_client_t client;
 	struct ldms_addr src;
 	uint64_t msg_gn;
-	ldms_stream_type_t type;
+	ldms_msg_type_t type;
 	uint32_t name_len;
 	uint32_t data_len;
-	const char *name; /* stream name */
-	const char *data; /* stream data */
+	const char *name; /* message channel name */
+	const char *data; /* message data */
 	json_entity_t json; /* json entity */
 	struct ldms_cred cred; /* credential */
 	uint32_t perm; /* permission */
-	uint32_t name_hash; /* stream name hash */
+	uint32_t name_hash; /* message name hash */
 };
 
 /* To report subscrube / unsubscribe return status */
-struct ldms_stream_return_status_s {
+struct ldms_msg_return_status_s {
 	const char *match; /* name or regex */
 	int is_regex;
 	int status;
 };
 
-/* For stream close event */
-struct ldms_stream_close_event_s {
-	ldms_stream_client_t client;
+/* For message client close event */
+struct ldms_msg_client_close_event_s {
+	ldms_msg_client_t client;
 };
 
-typedef struct ldms_stream_event_s {
+typedef struct ldms_msg_event_s {
 	ldms_t r; /* rail */
-	enum ldms_stream_event_type type;
+	enum ldms_msg_event_type type;
 	struct timespec recv_ts;
 	uint32_t hop_num;
 	union {
-		struct ldms_stream_recv_data_s recv;
-		struct ldms_stream_return_status_s status;
-		struct ldms_stream_close_event_s close;
+		struct ldms_msg_recv_data_s recv;
+		struct ldms_msg_return_status_s status;
+		struct ldms_msg_client_close_event_s close;
 	};
-} *ldms_stream_event_t;
+} *ldms_msg_event_t;
 
-typedef int (*ldms_stream_event_cb_t)(ldms_stream_event_t ev, void *cb_arg);
+typedef int (*ldms_msg_event_cb_t)(ldms_msg_event_t ev, void *cb_arg);
 
 /**
- * \brief Subscribe to a stream.
+ * \brief Subscribe to message channel(s).
  *
- * Subscribe to the matching streams that go through our process. The callback
- * function is called when a matching stream data reaches our process. The
- * `cb_fn` must not be NULL.
+ * Subscribe to get messages (via \c cb_fn) with the matching channel \c match
+ * (could be regex)  when they reache our process.  The \c cb_fn must not
+ * be \c NULL.
  *
- * \param stream   The stream name or regular expression.
- * \param is_regex 1 if `stream` is a regular expression. Otherwise, 0.
- * \param cb_fn    The callback function for stream data delivery.
+ * This function returns a client handle \c cli on success. The application can
+ * terminate the subscription using \c cli (\c ldms_msg_client_close(cli)). Then, the
+ * \c LDMS_MSG_EVENT_CLIENT_CLOSE will be the last event delivered to the \c cb_fn()
+ * function (after this, LDMS promise not to deliver any more events to this
+ * client).
+ *
+ * \param match    The channel name or regular expression.
+ * \param is_regex 1 if `name` is a regular expression. Otherwise, 0.
+ * \param cb_fn    The callback function for message data delivery.
  * \param cb_arg   The application context to the `cb_fn`.
  * \param desc     An optional short description of the client of this subscription.
  *                 This could be useful for client stats.
  *
  * \retval NULL  If there is an error. In this case `errno` is set to describe
  *               the error.
- * \retval ptr   The stream client handle.
+ * \retval cli   The handle of the client.
  */
-ldms_stream_client_t
-ldms_stream_subscribe(const char *stream, int is_regex,
-		      ldms_stream_event_cb_t cb_fn, void *cb_arg,
-		      const char *desc);
+ldms_msg_client_t
+ldms_msg_subscribe(const char *match, int is_regex,
+		   ldms_msg_event_cb_t cb_fn, void *cb_arg, const char *desc);
 
 /**
- * \brief Terminate the stream client.
+ * \brief Terminate the message client.
  *
- * If the client `c` is a remote subscriber, an "unsubscribe" request will also
- * be sent to the remote peer.
+ * If the client \c cli is a remote subscriber, an "unsubscribe" request will
+ * also be sent to the remote peer.
  *
  * \param c  The subscription handle.
  */
-void ldms_stream_close(ldms_stream_client_t c);
+void ldms_msg_client_close(ldms_msg_client_t cli);
 
 /**
- * \brief Request a remote stream subscritpion.
+ * \brief Request a remote message subscritpion.
  *
- * This function send a remote stream subscription request to the remote peer.
+ * This function send a message subscription request to the remote peer.
  * The callback function, if not \c NULL, is called to notify the application
- * whether or not the remote stream subscription is a success. After a
- * successful subscription, the remote peer will send the matching stream data
- * to our process. Please note that the application still need a stream client
- * (from \c ldms_stream_subscribe()) to process the data.
+ * whether or not the remote message subscription is a success. After a
+ * successful subscription, the remote peer will send the matching messages
+ * to our process. Please note that the application still need a message client
+ * (from \c ldms_msg_subscribe()) to receive the message.
  *
  * \param x        The rail handle.
- * \param stream   The stream name or regular expression.
- * \param is_regex 1 if `stream` is a regular expression. Otherwise, 0.
+ * \param match    The message channel name or regular expression.
+ * \param is_regex 1 if `name` is a regular expression. Otherwise, 0.
  * \param cb_fn    The callback function for return status notification (could
  *                 be \c NULL).
  * \param cb_arg   The application context to the `cb_fn`.
@@ -1566,157 +1588,157 @@ void ldms_stream_close(ldms_stream_client_t c);
  * \retval 0     If succeeded.
  * \retval errno If synchronously failed.
  */
-int ldms_stream_remote_subscribe(ldms_t x, const char *stream, int is_regex,
-		      ldms_stream_event_cb_t cb_fn, void *cb_arg, int64_t rate);
+int ldms_msg_remote_subscribe(ldms_t x, const char *match, int is_regex,
+		      ldms_msg_event_cb_t cb_fn, void *cb_arg, int64_t rate);
 
 /**
- * \brief Request a remote stream unsubscription.
+ * \brief Request a remote message unsubscription.
  *
  * This function unsubscribe the previous subscription. The subscription
- * parameters (\c stream and \c is_regex) must be the same as the previously
+ * parameters (\c match and \c is_regex) must be the same as the previously
  * given at the subscription time. The \c cb_fn is called to let the application
  * know about the unsubscription status.
  */
-int ldms_stream_remote_unsubscribe(ldms_t x, const char *stream, int is_regex,
-		      ldms_stream_event_cb_t cb_fn, void *cb_arg);
+int ldms_msg_remote_unsubscribe(ldms_t x, const char *match, int is_regex,
+		      ldms_msg_event_cb_t cb_fn, void *cb_arg);
 
 
-struct ldms_stream_counters_s {
+struct ldms_msg_counters_s {
 	struct timespec first_ts; /* Timestamp of the first message */
 	struct timespec last_ts;  /* Timestamp of the last message  */
 	uint64_t        count;    /* The number of messages         */
 	size_t          bytes;    /* Total bytes of messages        */
 };
 
-#define LDMS_STREAM_COUNTERS_INITIALIZER ((struct ldms_stream_counters_s){{INT64_MAX, 999999999}, {0, 0}, 0, 0})
-#define LDMS_STREAM_COUNTERS_INIT(p) do { \
-			*(p) = LDMS_STREAM_COUNTERS_INITIALIZER; \
+#define LDMS_MSG_COUNTERS_INITIALIZER ((struct ldms_msg_counters_s){{INT64_MAX, 999999999}, {0, 0}, 0, 0})
+#define LDMS_MSG_COUNTERS_INIT(p) do { \
+			*(p) = LDMS_MSG_COUNTERS_INITIALIZER; \
 		} while (0)
 
-struct ldms_stream_hop {
+struct ldms_msg_hop {
 	struct timespec recv_ts;
 	struct timespec send_ts;
 };
 
-#define STREAM_MAX_PROFILE_HOPS 8
-struct ldms_stream_profile {
+#define LDMS_MSG_MAX_PROFILE_HOPS 8
+struct ldms_msg_profile {
 	uint32_t hop_cnt;
-	struct ldms_stream_hop hops[OVIS_FLEX];
+	struct ldms_msg_hop hops[OVIS_FLEX];
 };
-struct ldms_stream_profile_ent {
-	TAILQ_ENTRY(ldms_stream_profile_ent) ent;
-	struct ldms_stream_profile profiles;
+struct ldms_msg_profile_ent {
+	TAILQ_ENTRY(ldms_msg_profile_ent) ent;
+	struct ldms_msg_profile profiles;
 };
-TAILQ_HEAD(ldms_stream_profile_list, ldms_stream_profile_ent);
+TAILQ_HEAD(ldms_msg_profile_list, ldms_msg_profile_ent);
 
-/* stream statistics by src */
-struct ldms_stream_src_stats_s {
+/* message statistics by src */
+struct ldms_msg_src_stats_s {
 	struct rbn rbn; /* key ==> src */
 	struct ldms_addr src;
-	struct ldms_stream_counters_s rx; /* total rx from src */
-	struct ldms_stream_profile_list profiles;
+	struct ldms_msg_counters_s rx; /* total rx from src */
+	struct ldms_msg_profile_list profiles;
 };
 
-/* stats of stream-client pair */
-struct ldms_stream_client_pair_stats_s {
-	TAILQ_ENTRY(ldms_stream_client_pair_stats_s) entry;
+/* stats of channel-client pair */
+struct ldms_msg_ch_cli_stats_s {
+	TAILQ_ENTRY(ldms_msg_ch_cli_stats_s) entry;
 
-	const char *stream_name; /* allocated with the structure, don't free */
+	const char *name; /* allocated with the structure, don't free */
 	const char *client_match; /* allocated with the structure, don't free */
 	const char *client_desc; /* allocated with the structure, don't free */
 	int is_regex; /* client is a regular expression */
 
-	/* client transmission counters for the stream */
-	struct ldms_stream_counters_s tx;
-	/* client drop counters for the stream */
-	struct ldms_stream_counters_s drops;
+	/* client transmission counters for the channel */
+	struct ldms_msg_counters_s tx;
+	/* client drop counters for the channel */
+	struct ldms_msg_counters_s drops;
 };
-TAILQ_HEAD(ldms_stream_client_pair_stats_tq_s, ldms_stream_client_pair_stats_s);
+TAILQ_HEAD(ldms_msg_ch_cli_stats_tq_s, ldms_msg_ch_cli_stats_s);
 
-/* stats of a stream */
-struct ldms_stream_stats_s {
-	TAILQ_ENTRY(ldms_stream_stats_s) entry;
-	struct ldms_stream_counters_s rx; /* total rx regardless of src */
-	struct rbt src_stats_rbt; /* tree of statistics by src; the nodes are `struct ldms_stream_src_stats_s` */
+/* stats of a message channel */
+struct ldms_msg_ch_stats_s {
+	TAILQ_ENTRY(ldms_msg_ch_stats_s) entry;
+	struct ldms_msg_counters_s rx; /* total rx regardless of src */
+	struct rbt src_stats_rbt; /* tree of statistics by src; the nodes are `struct ldms_msg_src_stats_s` */
 
-	struct ldms_stream_client_pair_stats_tq_s pair_tq; /* stats by client */
+	struct ldms_msg_ch_cli_stats_tq_s stats_tq; /* stats by client */
 	const char *name; /* allocated with the structure, don't free it */
 };
-TAILQ_HEAD(ldms_stream_stats_tq_s, ldms_stream_stats_s);
+TAILQ_HEAD(ldms_msg_ch_stats_tq_s, ldms_msg_ch_stats_s);
 
-/* stats of a stream client */
-struct ldms_stream_client_stats_s {
-	TAILQ_ENTRY(ldms_stream_client_stats_s) entry;
-	struct ldms_stream_counters_s tx;
-	struct ldms_stream_counters_s drops;
-	struct ldms_stream_client_pair_stats_tq_s pair_tq; /* stats by stream */
+/* stats of a message client */
+struct ldms_msg_client_stats_s {
+	TAILQ_ENTRY(ldms_msg_client_stats_s) entry;
+	struct ldms_msg_counters_s tx;
+	struct ldms_msg_counters_s drops;
+	struct ldms_msg_ch_cli_stats_tq_s stats_tq; /* stats by channel */
 	struct ldms_addr dest;
 	int is_regex;
 	const char *match; /* the matching string; allocated with the structure */
 	const char *desc; /* the short description; allocated with the structure */
 };
-TAILQ_HEAD(ldms_stream_client_stats_tq_s, ldms_stream_client_stats_s);
+TAILQ_HEAD(ldms_msg_client_stats_tq_s, ldms_msg_client_stats_s);
 
 /**
- * Set the stream statistics collection level.
+ * Set the message statistics collection level.
  *
  * When `ldms_init()` is called, the `LDMS_STATS_LEVEL` environment variable is
- * read and \c ldms_stream_stats_level_set()` is called accordingly. If
+ * read and \c ldms_msg_stats_level_set()` is called accordingly. If
  * `LDMS_STATS_LEVEL` is not defined, the default level is 1.
  *
  * Levels:
  * - 0: disabled; no stats collection.
  * - 1: shallow collection; only collect "cumulative" stats.
- * - 2: deep collection; collects stream stats by `src`, also collects
- *      delivery stats by client for the stream. For each client stat, this also
- *      collects the client rx stats by stream name.
+ * - 2: deep collection; collects message stats by `src`, also collects
+ *      delivery stats by client. For each client stat, this also
+ *      collects the client rx stats by channel name.
  *
  * \param level The level of stats collection.
  *
  * \retval 0     If there is no error, or
  * \retval errno describing an error.
  */
-int ldms_stream_stats_level_set(int level);
+int ldms_msg_stats_level_set(int level);
 
 /**
- * Obtain the current stream stats level.
+ * Obtain the current message stats level.
  */
-int ldms_stream_stats_level_get();
+int ldms_msg_stats_level_get();
 
 /**
- * \brief Get the statuses/statistics of the matching streams in this process.
+ * \brief Get the statuses/statistics of the matching message channel in this process.
  *
- * \param match    The stream name or a regular expression.
+ * \param match    The channel name or a regular expression.
  * \param is_regex 1 if \c match is a regular expression; otherwise, 0.
- * \param is_reset 1 means to reset the streams' statistics
+ * \param is_reset 1 means to reset the channel' statistics
  *
  * \retval tq   The collection (tailq) of statistics of the matching entries, or
  * \retval NULL if there is an error. \c errno is also set to describe the error.
  *
  * \note The caller is responsible for freeing the \c rbt and the entries in it.
- *       \c ldms_stream_stats_tq_free() is a helping function for this.
+ *       \c ldms_msg_ch_stats_tq_free() is a helping function for this.
  */
-struct ldms_stream_stats_tq_s *
-ldms_stream_stats_tq_get(const char *match, int is_regex, int is_reset);
+struct ldms_msg_ch_stats_tq_s *
+ldms_msg_ch_stats_tq_get(const char *match, int is_regex, int is_reset);
 
 /**
  * \brief Free all of the entries in the given \c tq and the \c tq itself.
  *
- * \note \c tq must be the one returned from \c ldms_stream_stats_tq_get().
+ * \note \c tq must be the one returned from \c ldms_msg_ch_stats_tq_get().
  */
-void ldms_stream_stats_tq_free(struct ldms_stream_stats_tq_s *tq);
+void ldms_msg_ch_stats_tq_free(struct ldms_msg_ch_stats_tq_s *tq);
 
 /**
- * Returns the JSON-formatted text of the stream stats in \c tq.
+ * Returns the JSON-formatted text of the channel stats in \c tq.
  *
  * \remarks The caller is responsible for freeing the returned string.
  */
-char *ldms_stream_stats_tq_to_str(struct ldms_stream_stats_tq_s *tq);
+char *ldms_msg_ch_stats_tq_to_str(struct ldms_msg_ch_stats_tq_s *tq);
 
 /**
- * \brief Returns a JSON-formatted text describing statuses/statistics of the matching streams in this process.
+ * \brief Returns a JSON-formatted text describing statuses/statistics of the matching channels in this process.
  *
- * \param  match    The stream name or a regular expression.
+ * \param  match    The channel name or a regular expression.
  * \param  is_regex 1 if \c match is a regular expression; otherwise, 0.
  * \param  is_reset 0 means not to reset the statistics.
  *                  A non-zero value means to reset the statistics.
@@ -1725,53 +1747,53 @@ char *ldms_stream_stats_tq_to_str(struct ldms_stream_stats_tq_s *tq);
  *
  * \note The caller is responsible for freeing the returned string.
  */
-char *ldms_stream_stats_str(const char *match, int is_regex, int is_reset);
+char *ldms_msg_stats_str(const char *match, int is_regex, int is_reset);
 
 /**
- * Returns a collection of stats of stream clients.
+ * Returns a collection of stats of message clients.
  *
  * \param is_reset   A non-zero value means to reset the statistics
  */
-struct ldms_stream_client_stats_tq_s *ldms_stream_client_stats_tq_get(int is_reset);
+struct ldms_msg_client_stats_tq_s *ldms_msg_client_stats_tq_get(int is_reset);
 
 /**
  * Free the stats entries in the \c tq and the \c tq itself.
  */
-void ldms_stream_client_stats_tq_free(struct ldms_stream_client_stats_tq_s *tq);
+void ldms_msg_client_stats_tq_free(struct ldms_msg_client_stats_tq_s *tq);
 
 /**
  * Get stats from a client.
  *
  * \param is_reset    A non-zero value means to reset the statistics
  */
-struct ldms_stream_client_stats_s *
-ldms_stream_client_get_stats(ldms_stream_client_t cli, int is_reset);
+struct ldms_msg_client_stats_s *
+ldms_msg_client_get_stats(ldms_msg_client_t cli, int is_reset);
 
 /**
- * Free the stream client stats obtained form \c ldms_stream_client_get_stats().
+ * Free the message client stats obtained form \c ldms_msg_client_get_stats().
  */
-void ldms_stream_client_stats_free(struct ldms_stream_client_stats_s *cs);
+void ldms_msg_client_stats_free(struct ldms_msg_client_stats_s *cs);
 
 /**
- * Returns the JSON-formatted text of the stream client stats in \c tq.
+ * Returns the JSON-formatted text of the message client stats in \c tq.
  *
  * \remarks The caller is responsible for freeing the returned string.
  */
-char *ldms_stream_client_stats_tq_to_str(struct ldms_stream_client_stats_tq_s *tq);
+char *ldms_msg_client_stats_tq_to_str(struct ldms_msg_client_stats_tq_s *tq);
 
 /**
- * \brief Return a string describing statuses/statistics of stream clients in this process.
+ * \brief Return a string describing statuses/statistics of message clients in this process.
  * \retval str The string describing the stats.
  * \note The caller is responsible for freeing the returned string.
  *
  * \param is_reset non-zero means to reset the statistics
  */
-char *ldms_stream_client_stats_str(int is_reset);
+char *ldms_msg_client_stats_str(int is_reset);
 
 /**
- * \brief Reset the statistics of streams and their clients
+ * \brief Reset the statistics of all channels and clients in this process.
  */
-void ldms_stream_n_client_stats_reset();
+void ldms_msg_stats_reset();
 
 /** \} */
 
@@ -2111,9 +2133,9 @@ typedef enum ldms_xprt_ops_e {
 	LDMS_XPRT_OP_DIR_REP,
 	LDMS_XPRT_OP_SEND,
 	LDMS_XPRT_OP_RECV,
-	LDMS_XPRT_OP_STREAM_PUBLISH,
-	LDMS_XPRT_OP_STREAM_SUBSCRIBE,
-	LDMS_XPRT_OP_STREAM_UNSUBSCRIBE,
+	LDMS_XPRT_OP_MSG_PUBLISH,
+	LDMS_XPRT_OP_MSG_SUBSCRIBE,
+	LDMS_XPRT_OP_MSG_UNSUBSCRIBE,
 	LDMS_XPRT_OP_COUNT
 } ldms_xprt_ops_t;
 
@@ -2151,7 +2173,7 @@ struct  ldms_op_ctxt {
 			uint32_t hop_num;
 			struct timespec recv_ts;
 			struct timespec send_ts; /*  to remote client */
-		} stream_pub_profile;
+		} msg_pub_profile;
 	};
 	TAILQ_ENTRY(ldms_op_ctxt) ent;
 };
@@ -2181,10 +2203,12 @@ TAILQ_HEAD(ldms_op_ctxt_list, ldms_op_ctxt);
  *               when LDMS sends the data to the peer,
  *               when LDMS receives the send completion event,
  *               when LDMS delivers the send completion to the application
- *   for STREAM_PUBLISH: when ldms_stream_publish() is called,
- *                       when LDMS publishes the stream data,
- *                       when LDMS delivers the stream data to clients
- *                       NOTE: LDMS collects the timestamps at each hop where stream data gets forwarded
+ *   for MSG_PUBLISH:
+ *               when ldms_msg_publish() is called,
+ *               when LDMS publishes the messages,
+ *               when LDMS delivers the message to clients
+ *               NOTE: LDMS collects the timestamps at each hop where the
+ *                     message gets forwarded
  *
  * \param ops_cnt  Number of operations in \c ops.
  *                 -1 to enable/disable profiling of all operations
@@ -2219,8 +2243,8 @@ enum ldms_thrstat_op_e {
 	LDMS_THRSTAT_OP_LOOKUP_REPLY,
 	LDMS_THRSTAT_OP_UPDATE_REQ,
 	LDMS_THRSTAT_OP_UPDATE_REPLY,
-	LDMS_THRSTAT_OP_STREAM_MSG,
-	LDMS_THRSTAT_OP_STREAM_CLIENT,
+	LDMS_THRSTAT_OP_MSG_DATA,
+	LDMS_THRSTAT_OP_MSG_CLIENT,
 	LDMS_THRSTAT_OP_PUSH_REQ,
 	LDMS_THRSTAT_OP_PUSH_REPLY,
 	LDMS_THRSTAT_OP_SET_DELETE_REQ,
@@ -4493,6 +4517,16 @@ void ldms_local_cred_get(ldms_t x, ldms_cred_t lcl);
  */
 int ldms_access_check(ldms_t x, uint32_t acc, uid_t obj_uid, gid_t obj_gid,
 		      int obj_perm);
+
+
+/**
+ * \brief Check if peer has LDMS Message Service enabled.
+ *
+ * \retval 0 if the peer has LDMS Message Service DISabled.
+ * \retval 1 if the peer has LDMS Message Service ENabled.
+ */
+int ldms_xprt_peer_msg_is_enabled(ldms_t x);
+
 /**
  * \}
  */

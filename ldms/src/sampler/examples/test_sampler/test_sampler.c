@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2018,2021,2023 National Technology & Engineering Solutions
+ * Copyright (c) 2015-2018,2021 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2015-2018,2021,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2018,2021,2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -64,6 +64,7 @@
 #include "ovis_json/ovis_json.h"
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
+#include "ldmsd_stream.h"
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -147,7 +148,7 @@ struct test_sampler_stream {
 	const char *name;
 	const char *path;
 	FILE *file;
-	ldms_stream_type_t type;
+	ldmsd_stream_type_t type;
 	struct test_sampler_stream_client_list client_list;
 	LIST_ENTRY(test_sampler_stream) entry;
 };
@@ -187,7 +188,7 @@ __stream_find(struct test_sampler_stream_list *list, const char *name)
 }
 
 static struct test_sampler_stream *
-__stream_new(const char *name, ldms_stream_type_t type)
+__stream_new(const char *name, ldmsd_stream_type_t type)
 {
 	struct test_sampler_stream *ts_stream;
 
@@ -212,7 +213,6 @@ static void __stream_client_free(struct test_sampler_stream_client *c)
 	if (c->ldms) {
 		ldms_xprt_close(c->ldms);
 	}
-	// ldmsd_cfgobj_put(&c->auth_dom->obj);
 	free(c);
 }
 
@@ -1579,7 +1579,7 @@ static int config_add_stream(test_sampler_t ts, struct attr_value_list *avl)
 	int rc = 0;
 	char *stream_name, *type, *path, *xprt, *host, *port, *auth;
 	struct test_sampler_stream *ts_stream = NULL;
-	enum ldms_stream_type_e stype;
+	enum ldmsd_stream_type_e stype;
 	struct test_sampler_stream_client *c = NULL;
 	int free_stream = 0;
 
@@ -1595,9 +1595,9 @@ static int config_add_stream(test_sampler_t ts, struct attr_value_list *avl)
 		return EINVAL;
 	}
 	if (0 == strcasecmp(type, "json")) {
-		stype = LDMS_STREAM_JSON;
+		stype = LDMSD_STREAM_JSON;
 	} else if (0 == strcasecmp(type, "string")) {
-		stype = LDMS_STREAM_STRING;
+		stype = LDMSD_STREAM_STRING;
 	} else {
 		ovis_log(ts->log, OVIS_LERROR, "The 'type' value ('%s') is "
 							   "invalid.\n", type);
@@ -1673,17 +1673,6 @@ static int config_add_stream(test_sampler_t ts, struct attr_value_list *avl)
 		if (!c->auth_dom) {
 			ovis_log(ts->log, OVIS_LERROR, "Cannot find auth '%s'\n", auth);
 			rc = EINVAL;
-			goto err;
-		}
-		c->ldms = ldms_xprt_new_with_auth(c->xprt,
-						  c->auth_dom->plugin,
-						  c->auth_dom->attrs);
-		if (!c->ldms) {
-			rc = errno;
-			goto err;
-		}
-		rc = ldms_xprt_connect_by_name(c->ldms, c->host, c->port, NULL, NULL);
-		if (rc) {
 			goto err;
 		}
 		LIST_INSERT_HEAD(&ts_stream->client_list, c, entry);
@@ -1910,12 +1899,11 @@ static int sample(ldmsd_plug_handle_t handle)
 	struct test_sampler_stream_client *c;
 	LIST_FOREACH(ts_stream, &ts->stream_list, entry) {
 		LIST_FOREACH(c, &ts_stream->client_list, entry) {
-			rc = ldms_stream_publish_file(
-					c->ldms,
-					ts_stream->name,
-					ts_stream->type,
-					NULL, 0440,
-					ts_stream->file);
+			rc = ldmsd_stream_publish_file(ts_stream->name,
+					(LDMSD_STREAM_JSON==ts_stream->type)?"json":"string",
+					c->xprt, c->host, c->port,
+					c->auth_dom->plugin,
+					c->auth_dom->attrs, ts_stream->file);
 			if (rc) {
 				ovis_log(ts->log, OVIS_LERROR, "Failed to "
 					"publish stream '%s' to %s:%s:%s:%s\n",
