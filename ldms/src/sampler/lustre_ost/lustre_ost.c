@@ -242,7 +242,22 @@ static int sample(ldmsd_plug_handle_t handle)
         return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static const char *usage(ldmsd_plug_handle_t handle)
+{
+        ovis_log(lustre_ost_log, OVIS_LDEBUG, "usage() called\n");
+	return  "config name=" SAMP;
+}
+
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	lustre_ost_log = ldmsd_plug_log_get(handle);
+	rbt_init(&ost_tree, string_comparator);
+	gethostname(producer_name, sizeof(producer_name));
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	ovis_log(lustre_ost_log, OVIS_LDEBUG, "term() called\n");
 	osts_destroy();
@@ -250,35 +265,13 @@ static void term(ldmsd_plug_handle_t handle)
 	ost_job_stats_schema_fini();
 }
 
-static const char *usage(ldmsd_plug_handle_t handle)
-{
-        ovis_log(lustre_ost_log, OVIS_LDEBUG, "usage() called\n");
-	return  "config name=" SAMP;
-}
-
-static struct ldmsd_sampler ost_job_stats_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	lustre_ost_log = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!lustre_ost_log) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	ovis_log(lustre_ost_log, OVIS_LDEBUG, "get_plugin() called ("PACKAGE_STRING")\n");
-	rbt_init(&ost_tree, string_comparator);
-	gethostname(producer_name, sizeof(producer_name));
-
-	return &ost_job_stats_plugin.base;
-}

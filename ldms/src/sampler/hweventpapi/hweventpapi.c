@@ -1364,7 +1364,34 @@ static void term_hw(ldmsd_plug_handle_t handle)
 	}
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static const char *usage(ldmsd_plug_handle_t handle)
+{
+	return
+	"config name=spapi producer=<producer_name> metafile=<file>\n"
+	"       [mode=hw] [multiplex=0|1] [events=CSVSTR]\n"
+	"    producer	  The producer name.\n"
+	"    component_id The component id value.\n"
+	"    metafile	  The PAPI configuration file name and path.\n"
+	"    [mode=hw]    Set papi sampler in hw-only mode. This means \n"
+	"                 no application attachment, and the set stay alive\n"
+	"                 forever.\n"
+	"    [multiplex=0|1]  (for mode=hw)\n"
+	"                 Create the papi set with multiplex.\n"
+	"    [events=CSVSTR]  (for mode=hw)\n"
+	"                 The comma-separated list of PAPI events. If not\n"
+	"                 specified, the default is " DEFAULT_HWEVENTS "\n"
+	;
+
+}
+
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	if (hw_only) {
 		term_hw(handle);
@@ -1388,44 +1415,12 @@ static void term(ldmsd_plug_handle_t handle)
 	set = NULL;
 }
 
-static const char *usage(ldmsd_plug_handle_t handle)
-{
-	return
-	"config name=spapi producer=<producer_name> metafile=<file>\n"
-	"       [mode=hw] [multiplex=0|1] [events=CSVSTR]\n"
-	"    producer	  The producer name.\n"
-	"    component_id The component id value.\n"
-	"    metafile	  The PAPI configuration file name and path.\n"
-	"    [mode=hw]    Set papi sampler in hw-only mode. This means \n"
-	"                 no application attachment, and the set stay alive\n"
-	"                 forever.\n"
-	"    [multiplex=0|1]  (for mode=hw)\n"
-	"                 Create the papi set with multiplex.\n"
-	"    [events=CSVSTR]  (for mode=hw)\n"
-	"                 The comma-separated list of PAPI events. If not\n"
-	"                 specified, the default is " DEFAULT_HWEVENTS "\n"
-	;
-
-}
-
-static struct ldmsd_sampler papi_plugin = {
-	.base.name = "spapi",
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base.type = LDMSD_PLUGIN_SAMPLER,
-	.base.term = term,
 	.base.config = config,
 	.base.usage = usage,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
 
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler.spapi", "Message for the spapi plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'spapi' plugin. Error %d\n", rc);
-	}
-	return &papi_plugin.base;
-}

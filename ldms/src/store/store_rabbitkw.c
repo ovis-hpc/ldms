@@ -583,13 +583,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	}
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	/* What contract is this supposed to meet. Shall close(sh) have
-	been called for all existing sh already before this is reached.?
-	*/
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return
@@ -1100,35 +1093,36 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 	}
 }
 
-static struct ldmsd_store store_rabbitkw = {
-	.base = {
-		.name = "rabbitkw",
-		.type = LDMSD_PLUGIN_STORE,
-		.term = term,
-		.config = config,
-		.usage = usage,
-	},
-	.open = open_store,
-	.store = store,
-	.close = close_store,
-};
-
-struct ldmsd_plugin *get_plugin()
+static int constructor(ldmsd_plug_handle_t handle)
 {
-	int rc;
-	mylog = ovis_log_register("store.rabbitkw", "Log subsystem of the 'rabbitkw' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'rabbitkw' plugin. Error %d\n", rc);
-	}
+	mylog = ldmsd_plug_log_get(handle);
 
 	rabbit_store_pi_log_set(mylog);
 
 	ovis_log(mylog, OVIS_LINFO,"Loading support for rabbitmq amqp version%s\n",
 			amqp_version());
-	return &store_rabbitkw.base;
+        return 0;
 }
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	/* What contract is this supposed to meet. Shall close(sh) have
+	been called for all existing sh already before this is reached.?
+	*/
+}
+
+struct ldmsd_store ldmsd_plugin_interface = {
+	.base = {
+		.type = LDMSD_PLUGIN_STORE,
+		.config = config,
+		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
+	},
+	.open = open_store,
+	.store = store,
+	.close = close_store,
+};
 
 static void __attribute__ ((constructor)) store_rabbitkw_init();
 static void store_rabbitkw_init()

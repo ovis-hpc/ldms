@@ -230,13 +230,6 @@ int timer_base_create_set(struct timer_base *tb, const char *config_name)
 
 void timer_base_cleanup(struct timer_base *tb);
 
-void timer_base_term(ldmsd_plug_handle_t handle)
-{
-	struct timer_base *tb = ldmsd_plug_ctxt_get(handle);
-	/* remove all timers when we terminate */
-	timer_base_cleanup(tb);
-}
-
 int timer_base_sample(ldmsd_plug_handle_t handle)
 {
 	struct timer_base *tb = ldmsd_plug_ctxt_get(handle);
@@ -320,16 +313,6 @@ struct attr_value_list *avl)
 	return ENOSYS;
 }
 
-void timer_base_init_api(struct ldmsd_sampler *api)
-{
-	snprintf(api->base.name, sizeof(api->base.name), "timer_base");
-	api->base.type = LDMSD_PLUGIN_SAMPLER;
-	api->base.term = timer_base_term;
-	api->base.config = __config;
-	api->base.usage = timer_base_usage;
-	api->sample = timer_base_sample;
-}
-
 void timer_base_init(struct timer_base *tb)
 {
 	/* sub-class can override these values after calling this function */
@@ -338,11 +321,34 @@ void timer_base_init(struct timer_base *tb)
 	pthread_mutex_init(&tb->mutex, NULL);
 }
 
-struct ldmsd_plugin *get_plugin()
+static int __constructor(ldmsd_plug_handle_t handle)
 {
-	struct timer_base *tb = calloc(1, sizeof(*tb));
+        struct timer_base *tb;
+
+        tb = calloc(1, sizeof(*tb));
 	if (!tb)
-		return NULL;
+		return ENOMEM;
+
 	timer_base_init(tb);
-	return (void*)tb;
+        ldmsd_plug_ctxt_set(handle, tb);
+
+        return 0;
 }
+
+static void __destructor(ldmsd_plug_handle_t handle)
+{
+	struct timer_base *tb = ldmsd_plug_ctxt_get(handle);
+
+        timer_base_cleanup(tb);
+
+        free(tb);
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface  = {
+        .base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.config = __config,
+        .base.usage = timer_base_usage,
+        .base.constructor = __constructor,
+        .base.destructor = __destructor,
+        .sample = timer_base_sample,
+};

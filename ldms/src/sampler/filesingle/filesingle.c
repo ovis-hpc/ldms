@@ -424,8 +424,7 @@ static void destructor(ldmsd_plug_handle_t handle)
         free(fsc);
 }
 
-static struct ldmsd_sampler filesingle_plugin = {
-	.base.name = SAMP,
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base.type = LDMSD_PLUGIN_SAMPLER,
         .base.constructor = constructor,
         .base.destructor = destructor,
@@ -433,8 +432,3 @@ static struct ldmsd_sampler filesingle_plugin = {
 	.base.usage = usage,
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	return (struct ldmsd_plugin *)&filesingle_plugin;
-}

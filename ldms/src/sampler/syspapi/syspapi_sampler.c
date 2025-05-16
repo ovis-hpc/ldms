@@ -636,26 +636,6 @@ sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void
-term(ldmsd_plug_handle_t handle)
-{
-	pthread_mutex_lock(&syspapi_mutex);
-	if (base)
-		base_del(base);
-	if (set)
-		ldms_set_delete(set);
-	set = NULL;
-	purge_mlist(&mlist);
-	FLAG_OFF(syspapi_flags, SYSPAPI_CONFIGURED);
-	FLAG_OFF(syspapi_flags, SYSPAPI_OPENED);
-	pthread_mutex_unlock(&syspapi_mutex);
-	if (syspapi_client) {
-		ldms_stream_close(syspapi_client);
-		syspapi_client = NULL;
-	}
-	PAPI_shutdown();
-}
-
 /* syspapi_mutex is held */
 static void
 __pause()
@@ -725,26 +705,10 @@ __stream_cb(ldms_stream_event_t ev, void *ctxt)
 	return 0;
 }
 
-static struct ldmsd_sampler syspapi_plugin = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-	},
-	.sample = sample,
-};
-
-struct ldmsd_plugin *get_plugin()
+static int constructor(ldmsd_plug_handle_t handle)
 {
 	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
-	}
+	mylog = ldmsd_plug_log_get(handle);
 	rc = PAPI_library_init(PAPI_VER_CURRENT);
 	if (rc < 0) {
 		ovis_log(mylog, OVIS_LERROR, "Error %d attempting to initialize "
@@ -758,5 +722,36 @@ struct ldmsd_plugin *get_plugin()
 	}
 	register_task_init_hook(__on_task_init);
 	register_task_empty_hook(__on_task_empty);
-	return &syspapi_plugin.base;
+
+        return 0;
 }
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	pthread_mutex_lock(&syspapi_mutex);
+	if (base)
+		base_del(base);
+	if (set)
+		ldms_set_delete(set);
+	set = NULL;
+	purge_mlist(&mlist);
+	FLAG_OFF(syspapi_flags, SYSPAPI_CONFIGURED);
+	FLAG_OFF(syspapi_flags, SYSPAPI_OPENED);
+	pthread_mutex_unlock(&syspapi_mutex);
+	if (syspapi_client) {
+		ldms_stream_close(syspapi_client);
+		syspapi_client = NULL;
+	}
+	PAPI_shutdown();
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
+	.base = {
+		.type = LDMSD_PLUGIN_SAMPLER,
+		.config = config,
+		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
+	},
+	.sample = sample,
+};

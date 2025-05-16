@@ -10,7 +10,7 @@ libslingshot_metrics_la_LIBADD = \
 	$(LTLIBCXI)
 libslingshot_metrics_la_LDFLAGS = \
 	-no-undefined \
-        -export-symbols-regex 'get_plugin'
+        -export-symbols-regex 'ldmsd_plugin_interface'
 libslingshot_metrics_la_CPPFLAGS = @OVIS_INCLUDE_ABS@
 
 pkglib_LTLIBRARIES = libslingshot_metrics.la

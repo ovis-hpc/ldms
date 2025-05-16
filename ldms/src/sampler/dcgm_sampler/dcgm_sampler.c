@@ -629,32 +629,6 @@ static int sample(ldmsd_plug_handle_t handle)
         return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	int i;
-
-	ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
-        gpu_schema_destroy();
-	if (base) {
-		free(base->instance_name);
-		base->instance_name = NULL;
-		base_del(base);
-		base = NULL;
-	}
-	free(conf.schema_name);
-	conf.schema_name = NULL;
-        free(conf.fields);
-        conf.fields = NULL;
-        conf.fields_len = 0;
-        conf.interval = 0;
-        for (i = 0; i < gpu_ids_count; i++) {
-                gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
-        }
-        dcgm_fini();
-	free(field_help);
-	field_help = NULL;
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
         ovis_log(mylog, OVIS_LDEBUG, "usage() called\n");
@@ -691,28 +665,47 @@ static const char *usage(ldmsd_plug_handle_t handle)
 	return field_help ? field_help : preamble;
 }
 
-static struct ldmsd_sampler nvidia_dcgm_plugin = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	gethostname(producer_name, sizeof(producer_name));
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	int i;
+
+	ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
+        gpu_schema_destroy();
+	if (base) {
+		free(base->instance_name);
+		base->instance_name = NULL;
+		base_del(base);
+		base = NULL;
+	}
+	free(conf.schema_name);
+	conf.schema_name = NULL;
+        free(conf.fields);
+        conf.fields = NULL;
+        conf.fields_len = 0;
+        conf.interval = 0;
+        for (i = 0; i < gpu_ids_count; i++) {
+                gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
+        }
+        dcgm_fini();
+	free(field_help);
+	field_help = NULL;
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	ovis_log(mylog, OVIS_LDEBUG, "get_plugin() called ("PACKAGE_STRING")\n");
-	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	gethostname(producer_name, sizeof(producer_name));
-
-	return &nvidia_dcgm_plugin.base;
-}

@@ -269,18 +269,11 @@ static void destructor(ldmsd_plug_handle_t handle)
         free(cps);
 }
 
-static struct ldmsd_sampler plugin_api;
-
-struct ldmsd_plugin *get_plugin()
-{
-        timer_base_init_api(&plugin_api);
-	/* override */
-	snprintf(plugin_api.base.name, sizeof(plugin_api.base.name),
-                 "cray_power_sampler");
-	plugin_api.base.usage = cray_power_sampler_usage;
-        plugin_api.base.constructor = constructor;
-        plugin_api.base.destructor = destructor;
-	plugin_api.base.config = cray_power_sampler_config;
-
-        return &plugin_api.base;
-}
+struct ldmsd_sampler ldmsd_plugin_interface  = {
+        .base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.usage = cray_power_sampler_usage,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
+	.base.config = cray_power_sampler_config,
+        .sample = timer_base_sample,
+};

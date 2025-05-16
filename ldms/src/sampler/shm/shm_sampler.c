@@ -968,7 +968,35 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static const char *usage(ldmsd_plug_handle_t handle)
+{
+	return "config name=" SAMP " producer=<name> instance=<name> [shm_index=<name>][shm_boxmax=<int>][shm_array_max=<int>][shm_metric_max=<int>]"
+	"[shm_set_timeout=<int>][component_id=<int>] [schema=<name>]\n"
+	"                [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>]\n"
+	"    producer     A unique name for the host providing the data\n"
+	"    instance     A unique name for the metric set\n"
+	"    shm_index    A unique name for the shared memory index file\n"
+	"    shm_boxmax   Maximum number of entries in the shared memory index file\n"
+	"    shm_array_max   Maximum number of elements in array metrics\n"
+	"    shm_metric_max  Maximum number of metrics\n"
+	"    shm_set_timeout No read/write timeout in seconds\n"
+	"    component_id A unique number for the component being monitored, Defaults to zero.\n"
+	"    schema       The name of the metric set schema, Defaults to the sampler name\n"
+	"    job_set      The instance name of the set containing the job data, default is 'job_info'\n"
+	"    job_id       The name of the metric containing the Job Id, default is 'job_id'\n"
+	"    app_id       The name of the metric containing the Application Id, default is 'app_id'\n"
+	"    job_start    The name of the metric containing the Job start time, default is 'job_start'\n"
+	"    job_end      The name of the metric containing the Job end time, default is 'job_end'\n";
+}
+
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	ldms_shm_index_lock();
 
@@ -998,46 +1026,13 @@ static void term(ldmsd_plug_handle_t handle)
 	ovis_log(mylog, OVIS_LINFO, SAMP " was successfully terminated\n");
 }
 
-static const char *usage(ldmsd_plug_handle_t handle)
-{
-	return "config name=" SAMP " producer=<name> instance=<name> [shm_index=<name>][shm_boxmax=<int>][shm_array_max=<int>][shm_metric_max=<int>]"
-	"[shm_set_timeout=<int>][component_id=<int>] [schema=<name>]\n"
-	"                [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>]\n"
-	"    producer     A unique name for the host providing the data\n"
-	"    instance     A unique name for the metric set\n"
-	"    shm_index    A unique name for the shared memory index file\n"
-	"    shm_boxmax   Maximum number of entries in the shared memory index file\n"
-	"    shm_array_max   Maximum number of elements in array metrics\n"
-	"    shm_metric_max  Maximum number of metrics\n"
-	"    shm_set_timeout No read/write timeout in seconds\n"
-	"    component_id A unique number for the component being monitored, Defaults to zero.\n"
-	"    schema       The name of the metric set schema, Defaults to the sampler name\n"
-	"    job_set      The instance name of the set containing the job data, default is 'job_info'\n"
-	"    job_id       The name of the metric containing the Job Id, default is 'job_id'\n"
-	"    app_id       The name of the metric containing the Application Id, default is 'app_id'\n"
-	"    job_start    The name of the metric containing the Job start time, default is 'job_start'\n"
-	"    job_end      The name of the metric containing the Job end time, default is 'job_end'\n";
-}
-
-static struct ldmsd_sampler shm_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 		.base = {
-			.name = SAMP,
 			.type = LDMSD_PLUGIN_SAMPLER,
-			.term = term,
 			.config = config,
 			.usage = usage,
+                        .constructor = constructor,
+                        .destructor = destructor,
 		},
 		.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	return &shm_plugin.base;
-}

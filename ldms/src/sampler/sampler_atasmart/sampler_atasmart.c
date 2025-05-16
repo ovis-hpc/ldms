@@ -443,9 +443,16 @@ err:
 	return ret;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
 {
+	mylog = ldmsd_plug_log_get(handle);
+	set = NULL;
 
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
 	int i;
 	for (i = 0; i < num_disks; i++) {
 		sk_disk_free(smarts->d[i]);
@@ -462,26 +469,13 @@ static void term(ldmsd_plug_handle_t handle)
 	set = NULL;
 }
 
-static struct ldmsd_sampler sampler_atasmart_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	set = NULL;
-	return &sampler_atasmart_plugin.base;
-}

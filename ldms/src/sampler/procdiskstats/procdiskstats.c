@@ -103,7 +103,7 @@ static FILE *mf = NULL;
 static int metric_offset;
 static base_data_t base;
 
-static long USER_HZ; /* initialized in get_plugin() */
+static long USER_HZ; /* initialized in constructor() */
 static struct timeval _tv[2] = { {0}, {0} };
 static struct timeval *curr_tv = &_tv[0];
 static struct timeval *prev_tv = &_tv[1];
@@ -464,7 +464,22 @@ out:
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static const char *usage(ldmsd_plug_handle_t handle)
+{
+	return  "config name=procdiskstats device=<devices> " BASE_CONFIG_USAGE
+		"    <devices>       A comma-separated list of devices\n";
+}
+
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	set = NULL;
+	USER_HZ = sysconf(_SC_CLK_TCK);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	if (mf)
 		fclose(mf);
@@ -484,33 +499,13 @@ static void term(ldmsd_plug_handle_t handle)
 	}
 }
 
-static const char *usage(ldmsd_plug_handle_t handle)
-{
-	return  "config name=procdiskstats device=<devices> " BASE_CONFIG_USAGE
-		"    <devices>       A comma-separated list of devices\n";
-}
-
-static struct ldmsd_sampler procdiskstats_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	set = NULL;
-	USER_HZ = sysconf(_SC_CLK_TCK);
-	return &procdiskstats_plugin.base;
-}

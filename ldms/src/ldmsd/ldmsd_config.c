@@ -100,24 +100,30 @@ enum ldmsd_plugin_data_e {
 	LDMSD_PLUGIN_DATA_CONTEXT_SIZE = 1,
 };
 
-/* The ldmsd_plugin_t returned:
- * - Is the same address when called multiple times
- * - Is never modified between calls
- * - Does not need to be freed by the caller of this function
+/*
+ * Free the returned pointer by calling unload_plugin().
  *
- * If sucessfull, the memory containing libpath must be freed by the caller
+ * Returns NULL on error.
  */
-const ldmsd_plugin_t load_plugin(const char *plugin_name, const char **libpath_)
+static struct ldmsd_plugin_generic *load_plugin(const char *plugin_name)
 {
+	struct ldmsd_plugin_generic *plugin;
 	char *libpath;
 	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
 	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
 	char *pathdir = library_path;
 	char *saveptr = NULL;
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
-	void *d = NULL;
 
-	if (!path)
+        plugin = calloc(1, sizeof(*plugin));
+        if (!plugin) {
+		ovis_log(config_log, OVIS_LERROR,
+                         "Failed allocate memory to load the plugin '%s'\n",
+                         plugin_name);
+                goto err_0;
+        }
+
+        if (!path)
 		path = LDMSD_PLUGIN_LIBPATH_DEFAULT;
 
 	strncpy(library_path, path, sizeof(library_path) - 1);
@@ -128,8 +134,8 @@ const ldmsd_plugin_t load_plugin(const char *plugin_name, const char **libpath_)
 		pathdir = NULL;
 		snprintf(library_name, sizeof(library_name), "%s/lib%s.so",
 			libpath, plugin_name);
-		d = dlopen(library_name, RTLD_NOW);
-		if (d != NULL) {
+		plugin->dl_handle = dlopen(library_name, RTLD_NOW);
+		if (plugin->dl_handle != NULL) {
 			break;
 		}
 		struct stat buf;
@@ -137,56 +143,65 @@ const ldmsd_plugin_t load_plugin(const char *plugin_name, const char **libpath_)
 			char *dlerr = dlerror();
 			ovis_log(config_log, OVIS_LERROR, "Bad plugin "
 				"'%s': dlerror %s\n", plugin_name, dlerr);
-			goto err_0;
+			goto err_1;
 		}
 	}
-
-	if (!d) {
+	if (!plugin->dl_handle) {
 		char *dlerr = dlerror();
 		ovis_log(config_log, OVIS_LERROR, "Failed to load the plugin '%s': "
 				"dlerror %s\n", plugin_name, dlerr);
-		goto err_0;
+		goto err_1;
 	}
 
-	ldmsd_plugin_get_f pget;
-	pget = dlsym(d, "get_plugin");
-	if (!pget) {
-		ovis_log(config_log, OVIS_LERROR,
-			"The library, '%s',  is missing the get_plugin() "
-			"function.", plugin_name);
-		goto err_0;
+        plugin->api = dlsym(plugin->dl_handle, "ldmsd_plugin_interface");
+        if (!plugin->api) {
+		ovis_log(config_log, OVIS_LWARNING,
+			"The library, '%s',  is missing the ldmsd_plugin_interface "
+			"symbol.", plugin_name);
+                goto err_2;
 	}
-	struct ldmsd_plugin *pi = pget();
-	if (pi)
-		*libpath_ = strdup(library_name);
 
 	/* Verify the following API contract:
 	 * - If flags & MULTI_INSTANCE is !0, then
 	 *   -- both constructor() and destructor() must be defined
-	 *   -- term() must not be defined
 	 */
-	if (pi->flags && LDMSD_PLUGIN_MULTI_INSTANCE) {
-		if (!pi->constructor || !pi->destructor || pi->term) {
+	if (plugin->api->flags && LDMSD_PLUGIN_MULTI_INSTANCE) {
+		if (!plugin->api->constructor || !plugin->api->destructor) {
 			ovis_log(config_log, OVIS_LERROR,
 				 "The library, '%s', has the multi-instance flag, "
 				 "but is missing either the constructor or "
-				 "destructor functions, or has term defined.\n",
+				 "destructor functions.\n",
 				 plugin_name);
-			goto err_0;
+			goto err_2;
 		}
 	}
-	return pi;
 
+        plugin->name = strdup(plugin_name);
+        plugin->libpath = strdup(library_name);
+
+	return plugin;
+
+err_2:
+        dlclose(plugin->dl_handle);
+err_1:
+        free(plugin);
 err_0:
-	if (d)
-		dlclose(d);
 	return NULL;
+}
+
+static void unload_plugin(struct ldmsd_plugin_generic *plugin)
+{
+        assert(plugin != NULL);
+        free(plugin->name);
+        free(plugin->libpath);
+        plugin->api = NULL; /* about to be defunct when dlclose() is called */
+        dlclose(plugin->dl_handle);
+        free(plugin);
 }
 
 ldmsd_cfgobj_sampler_t
 ldmsd_sampler_add(const char *cfg_name,
-		  struct ldmsd_sampler *api,
-		  const char *libpath,
+		  struct ldmsd_plugin_generic *plugin,
 		  ldmsd_cfgobj_del_fn_t __del,
 		  uid_t uid, gid_t gid, int perm)
 {
@@ -204,15 +219,12 @@ ldmsd_sampler_add(const char *cfg_name,
 			 errno, cfg_name);
 		return NULL;
 	}
-	sprintf(log_name, "sampler.%s.%s", api->base.name, cfg_name);
+	sprintf(log_name, "sampler.%s.%s", plugin->name, cfg_name);
 	sampler->log = ovis_log_register(log_name, "Sampler plugin log file.");
-	sampler->api = api;
-	sampler->libpath = strdup(libpath);
+        sampler->plugin = plugin;
+	sampler->api = (struct ldmsd_sampler *)plugin->api;
 	sampler->thread_id = -1; /* stopped */
-	if (sampler->api->base.constructor != NULL
-		&& sampler->api->base.destructor != NULL)
-	{
-		/* This plugin is multi-instance capable */
+	if (sampler->api->base.constructor != NULL) {
 		rc = sampler->api->base.constructor(&sampler->cfg);
 		if (rc)
 			goto err;
@@ -233,7 +245,7 @@ err:
 
 ldmsd_cfgobj_store_t
 ldmsd_store_add(const char *cfg_name,
-		struct ldmsd_store *api, const char *libpath,
+                struct ldmsd_plugin_generic *plugin,
 		ldmsd_cfgobj_del_fn_t __del,
 		uid_t uid, gid_t gid, int perm)
 {
@@ -250,14 +262,11 @@ ldmsd_store_add(const char *cfg_name,
 			 errno, cfg_name);
 		return NULL;
 	}
-	sprintf(log_name, "store.%s.%s", api->base.name, cfg_name);
+	sprintf(log_name, "store.%s.%s", plugin->name, cfg_name);
 	store->log = ovis_log_register(log_name, "Store plugin log file.");
-	store->api = api;
-	store->libpath = strdup(libpath);
-	if (store->api->base.constructor != NULL
-		&& store->api->base.destructor != NULL)
-	{
-		/* This plugin is multi-instance capable */
+        store->plugin = plugin;
+	store->api = (struct ldmsd_store *)plugin->api;
+	if (store->api->base.constructor != NULL) {
 		rc = store->api->base.constructor(&store->cfg);
 		if (rc)
 			goto err;
@@ -323,29 +332,28 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_cfgobj_sampler_t samp = (void*)obj;
-	free((char *)samp->libpath);
-	if (samp->api->base.destructor)
-		samp->api->base.destructor(obj);
-	else if (samp->api->base.term)
-		samp->api->base.term(obj);
+	if (samp->plugin->api->destructor)
+		samp->plugin->api->destructor(obj);
+        unload_plugin(samp->plugin);
 	ldmsd_cfgobj___del(obj);
 }
 
 void ldmsd_store___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_cfgobj_store_t store = (void*)obj;
-	free((char *)store->libpath);
+	if (store->plugin->api->destructor)
+		store->plugin->api->destructor(obj);
+        unload_plugin(store->plugin);
 	ldmsd_cfgobj___del(obj);
 }
 
 /*
  * Load a plugin
  */
-int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
+int ldmsd_load_plugin(char *cfg_name, char *plugin_name,
 		      char *errstr, size_t errlen)
 {
-	const char *libpath;
-	struct ldmsd_plugin *api;
+        struct ldmsd_plugin_generic *plugin;
 	ldmsd_cfgobj_sampler_t sampler;
 	ldmsd_cfgobj_store_t store;
 	char log_name[1024];
@@ -356,30 +364,27 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
 	/* If this plugin does not support multiple configurations,
 	 * the plugin_name must equal the cfg_name
 	 */
-	api = load_plugin(plugin_name, &libpath);
-	if (!api)
+	plugin = load_plugin(plugin_name);
+	if (!plugin)
 		return errno;
-	if (0 == (api->flags & LDMSD_PLUGIN_MULTI_INSTANCE)) {
-		if (cfg_name && plugin_name) {
-			if (strcmp(cfg_name, plugin_name)) {
-				ovis_log(config_log, OVIS_LERROR,
-					 "Plugin %s does not support multiple "
-					 "configurations, but the name specified "
-					 "was %s.\n", plugin_name, cfg_name);
-				Snprintf(&errstr, &errlen,
-					"Plugin %s does not support multiple "
-					"configurations, but the name specified "
-					"was %s. \n", plugin_name, cfg_name);
-				errno = EINVAL;
-				goto err;
-			}
+	if (0 == (plugin->api->flags & LDMSD_PLUGIN_MULTI_INSTANCE)) {
+		if (strcmp(cfg_name, plugin_name)) {
+			ovis_log(config_log, OVIS_LERROR,
+				 "Plugin %s does not support multiple "
+				 "configurations, but the name specified "
+				 "was %s.\n", plugin_name, cfg_name);
+			Snprintf(&errstr, &errlen,
+				"Plugin %s does not support multiple "
+				"configurations, but the name specified "
+				"was %s. \n", plugin_name, cfg_name);
+			errno = EINVAL;
+			goto err;
 		}
 	}
-	switch (api->type) {
+	switch (plugin->api->type) {
 	case LDMSD_PLUGIN_SAMPLER:
 		sampler = ldmsd_sampler_add(cfg_name,
-				    (struct ldmsd_sampler *)api,
-				    libpath,
+				    plugin,
 				    ldmsd_sampler___del,
 				    geteuid(), getegid(), 0660);
 		if (!sampler)
@@ -390,8 +395,7 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
 		break;
 	case LDMSD_PLUGIN_STORE:
 		store = ldmsd_store_add(cfg_name,
-				(struct ldmsd_store *)api,
-				libpath,
+				plugin,
 				ldmsd_store___del,
 				geteuid(), getegid(), 0660);
 		if (!store)
@@ -407,19 +411,19 @@ int ldmsd_load_plugin(char* cfg_name, char *plugin_name,
 			errno, plugin_name);
 		goto err;
 	}
-	sprintf(&log_name[strlen(log_name)], "%s.%s", api->name, cfgobj->name);
+	sprintf(&log_name[strlen(log_name)], "%s.%s", plugin_name, cfgobj->name);
 	ovis_log_t log = ovis_log_register(log_name, "Plugin log file");
 	if (!log)
 		ovis_log(NULL, OVIS_LWARN,
 			 "Error %d creating the log for the '%s' plugin.\n",
-			 errno, api->name);
-	if (api->type == LDMSD_PLUGIN_SAMPLER)
+			 errno, plugin_name);
+	if (plugin->api->type == LDMSD_PLUGIN_SAMPLER)
 		sampler->log = log;
 	else
 		store->log = log;
-	free((char *)libpath);
 	return 0;
  err:
+        unload_plugin(plugin);
 	ovis_log(config_log, OVIS_LERROR,
 		 "Error %d, the plugin '%s' configuration object '%s' "
 		 "could not be created.\n",

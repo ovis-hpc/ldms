@@ -446,7 +446,14 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	ovis_log(mylog, OVIS_LDEBUG, "term %s\n", ldmsd_plug_cfg_name_get(handle));
 	if (sos)
@@ -457,22 +464,9 @@ static void term(ldmsd_plug_handle_t handle)
 	stream = NULL;
 }
 
-static struct ldmsd_plugin stream_store = {
-	.name = STREAM "_store",
-	.term = term,
+struct ldmsd_plugin ldmsd_plugin_interface = {
 	.config = config,
 	.usage = usage,
+        .constructor = constructor,
+        .destructor = destructor,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store.linux_proc_sampler_env_store",
-				"log subsystem of 'linux_proc_sampler_env_store' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Faild to create the log subsystem "
-				"of 'linux_proc_sampler_env_store' plugin. Error %d\n", rc);
-	}
-	return &stream_store;
-}

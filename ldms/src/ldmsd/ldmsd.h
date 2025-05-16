@@ -962,7 +962,6 @@ char *process_yaml_config_file(const char *path, const char *dname);
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 /* This struct is owned by the plugin. ldmsd should never modify the contents. */
 typedef struct ldmsd_plugin {
-	char name[LDMSD_MAX_PLUGIN_NAME_LEN]; /* plugin name (e.g. meminfo) */
 	enum ldmsd_plugin_type {
 		LDMSD_PLUGIN_OTHER = 0,
 		LDMSD_PLUGIN_SAMPLER,
@@ -978,9 +977,6 @@ typedef struct ldmsd_plugin {
 
 	int (*constructor)(ldmsd_plug_handle_t handle);
 	void (*destructor)(ldmsd_plug_handle_t handle);
-
-	/* Deprecated, use destructor() */
-	void (*term)(ldmsd_plug_handle_t handle);
 
 	void *reserved[8]; /* reserved for future use */
 } *ldmsd_plugin_t;
@@ -999,6 +995,20 @@ struct ldmsd_store {
 		      ldmsd_row_list_t row_list, int row_count);
 };
 
+
+/**
+ * struct ldmsd_plugin_generic is used to track generic information common to
+ * all plugins that implement the ldmsd_plugin_interface symbol.
+ * NOTE: This is an ldmsd internals data structure.
+ *       Not to be used from inside plugins.
+ */
+struct ldmsd_plugin_generic {
+        struct ldmsd_plugin *api;
+        char *name;
+        char *libpath;
+        void *dl_handle; /* handle that was returned by dlopen() */
+};
+
 typedef struct ldmsd_cfgobj_sampler *ldmsd_cfgobj_sampler_t;
 typedef struct ldmsd_sampler {
 	struct ldmsd_plugin base;
@@ -1007,6 +1017,7 @@ typedef struct ldmsd_sampler {
 
 struct ldmsd_cfgobj_store {
 	struct ldmsd_cfgobj cfg;
+	struct ldmsd_plugin_generic *plugin;
 	struct ldmsd_store *api;
 
 	/* Set to 1 if the plugin has been configured */
@@ -1015,7 +1026,6 @@ struct ldmsd_cfgobj_store {
 	/* List of strgp that are using this store */
 	LIST_HEAD(, ldmsd_strgp) strgp_list;
 
-	char *libpath;
 	/* Private context pointer, managed by plugin */
 	void *context;
 	/* ovis_log handle to use when logging plugin messages */
@@ -1030,12 +1040,12 @@ typedef struct ldmsd_sampler_set {
 
 struct ldmsd_cfgobj_sampler {
 	struct ldmsd_cfgobj cfg;
+	struct ldmsd_plugin_generic *plugin;
 	struct ldmsd_sampler *api;
 
 	/* Set to 1 if the plugin has been configured */
 	int configured;
 
-	char *libpath;
 	/* Private context pointer, managed by plugin */
 	void *context;
 	/* ovis_log handle to use when logging plugin messages */
@@ -1061,8 +1071,7 @@ struct ldmsd_cfgobj_sampler {
 #define LDMSD_JOBID "job_id"
 
 ldmsd_cfgobj_sampler_t ldmsd_sampler_add(const char *name,
-					struct ldmsd_sampler *api,
-					const char *libpath,
+					struct ldmsd_plugin_generic *plugin,
 					ldmsd_cfgobj_del_fn_t __del,
 					uid_t uid, gid_t gid, int perm);
 
@@ -1117,8 +1126,7 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
  */
 
 ldmsd_cfgobj_store_t ldmsd_store_add(const char *name,
-				struct ldmsd_store *store,
-				const char *libpath,
+				struct ldmsd_plugin_generic *plugin,
 				ldmsd_cfgobj_del_fn_t __del,
 				uid_t uid, gid_t gid, int perm);
 
@@ -1152,8 +1160,6 @@ ldmsd_store_close(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 	if (store->api->close)
 		store->api->close(store, sh);
 }
-
-typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)();
 
 /* ldmsctl command callback function definition */
 typedef int (*ldmsctl_cmd_fn_t)(char *, struct attr_value_list*, struct attr_value_list *);

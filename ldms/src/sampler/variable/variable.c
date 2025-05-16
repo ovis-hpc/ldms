@@ -342,7 +342,15 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	set = NULL;
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	if (set) {
 		ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
@@ -356,26 +364,13 @@ static void term(ldmsd_plug_handle_t handle)
 	free(producer_name);
 }
 
-static struct ldmsd_sampler variable_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	set = NULL;
-	return &variable_plugin.base;
-}

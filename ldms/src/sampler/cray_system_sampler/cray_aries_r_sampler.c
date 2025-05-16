@@ -314,17 +314,6 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	if (base) {
-		base_del(base);
-		base = NULL;
-	}
-	if (set)
-		ldms_set_delete(set);
-	set = NULL;
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 
@@ -346,37 +335,37 @@ static const char *usage(ldmsd_plug_handle_t handle)
 }
 
 
-static struct ldmsd_sampler cray_aries_r_sampler_plugin = {
-	.base = {
-		.name = "cray_aries_r_sampler",
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-	},
-	.sample = sample,
-};
-
-struct ldmsd_plugin *get_plugin()
+static int constructor(ldmsd_plug_handle_t handle)
 {
-	int rc;
-	cray_aries_log = ovis_log_register("sampler.cray_aries_r_sampler", "Message for the cray_aries_r_sampler plugin");
-	if (!cray_aries_log) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of 'cray_aries_r_sampler' plugin. Error %d\n", rc);
-	}
 	static int init_complete = 0;
 	if (init_complete)
-		goto out;
+		return -1;
 
+	cray_aries_log = ldmsd_plug_log_get(handle);
 	set_cray_sampler_log(cray_aries_log);
 	init_complete = 1;
 
-out:
-	return &cray_aries_r_sampler_plugin.base;
-
-err:
-
-	return NULL;
+        return 0;
 }
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	if (base) {
+		base_del(base);
+		base = NULL;
+	}
+	if (set)
+		ldms_set_delete(set);
+	set = NULL;
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
+	.base = {
+		.type = LDMSD_PLUGIN_SAMPLER,
+		.config = config,
+		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
+	},
+	.sample = sample,
+};

@@ -106,7 +106,22 @@ static int sample_ibnet(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void term_ibnet(ldmsd_plug_handle_t handle)
+static const char *usage_ibnet(ldmsd_plug_handle_t handle)
+{
+	ovis_log(mylog, OVIS_LDEBUG, SAMP " usage() called\n");
+	if (!usage)
+		usage = ibnet_data_usage();
+	return usage;
+}
+
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	pthread_mutex_lock(&only_lock);
 	ovis_log(mylog, OVIS_LDEBUG, SAMP " term() called\n");
@@ -119,34 +134,13 @@ static void term_ibnet(ldmsd_plug_handle_t handle)
 	pthread_mutex_unlock(&only_lock);
 }
 
-static const char *usage_ibnet(ldmsd_plug_handle_t handle)
-{
-	ovis_log(mylog, OVIS_LDEBUG, SAMP " usage() called\n");
-	if (!usage)
-		usage = ibnet_data_usage();
-	return usage;
-}
-
-static struct ldmsd_sampler ibnet_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term_ibnet,
 		.config = config_ibnet,
 		.usage = usage_ibnet,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample_ibnet,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	ovis_log(mylog, OVIS_LDEBUG, SAMP" get_plugin() called\n");
-	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	return &ibnet_plugin.base;
-}

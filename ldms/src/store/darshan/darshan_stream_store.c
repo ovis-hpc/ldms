@@ -577,7 +577,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	if (sos)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
@@ -585,14 +585,8 @@ static void term(ldmsd_plug_handle_t handle)
 		free(root_path);
 }
 
-static struct ldmsd_plugin darshan_stream_store = {
-	.name = "darshan_stream_store",
-	.term = term,
+struct ldmsd_plugin ldmsd_plugin_interface = {
 	.config = config,
 	.usage = usage,
+        .destructor = destructor,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-        return &darshan_stream_store;
-}

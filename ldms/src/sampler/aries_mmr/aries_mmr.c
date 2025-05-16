@@ -521,9 +521,23 @@ out:
 
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
+	return  "config name=aries_mmr" BASE_CONFIG_USAGE " file=<file> [aries_rtr_id=<rtrid>]\n"
+		"    <file>         File with full names of metrics\n"
+		"    <rtrid>        Optional unique rtr string identifier. Defaults to 0 length string.\n";
+}
 
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+        set = NULL;
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
 	int i;
 
 	if (rtrid)
@@ -568,33 +582,13 @@ static void term(ldmsd_plug_handle_t handle)
 	base = NULL;
 }
 
-static const char *usage(ldmsd_plug_handle_t handle)
-{
-	return  "config name=aries_mmr" BASE_CONFIG_USAGE " file=<file> [aries_rtr_id=<rtrid>]\n"
-		"    <file>         File with full names of metrics\n"
-		"    <rtrid>        Optional unique rtr string identifier. Defaults to 0 length string.\n";
-}
-
-static struct ldmsd_sampler aries_mmr_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	set = NULL;
-	return &aries_mmr_plugin.base;
-}

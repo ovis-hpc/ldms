@@ -12,7 +12,7 @@ libdcgm_sampler_la_LIBADD = \
 	-ldcgm
 libdcgm_sampler_la_LDFLAGS = \
 	-no-undefined \
-        -export-symbols-regex 'get_plugin' \
+        -export-symbols-regex 'ldmsd_plugin_interface' \
         -version-info 1:0:0
 libdcgm_sampler_la_CPPFLAGS = \
 	@OVIS_INCLUDE_ABS@

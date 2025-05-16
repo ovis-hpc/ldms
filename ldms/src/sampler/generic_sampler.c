@@ -321,16 +321,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	return create_metric_set(value, prod_name);
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
-	if (set)
-		ldms_set_delete(set);
-	set = NULL;
-}
-
 static int sample(ldmsd_plug_handle_t handle)
 {
 	gs_metric_t gs_metric;
@@ -406,30 +396,34 @@ out:
 	return rc;
 }
 
-static struct ldmsd_sampler gs_plugin = {
-	.base = {
-		.name = "generic_sampler",
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-	},
-	.sample = sample,
-};
-
-struct ldmsd_plugin *get_plugin()
+int constructor(ldmsd_plug_handle_t handle)
 {
-	int rc;
-	mylog = ovis_log_register("sampler.generic_sampler",
-			"The log subsystem of the generic_sampler plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'generic_sampler' plugin. Error %d\n", rc);
-	}
+	mylog = ldmsd_plug_log_get(handle);
 	if (!gs_map)
 		gs_map = str_map_create(65537);
 	if (!gs_map)
-		return NULL;
-	return &gs_plugin.base;
+		return -1;
+
+        return 0;
 }
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	if (schema)
+		ldms_schema_delete(schema);
+	schema = NULL;
+	if (set)
+		ldms_set_delete(set);
+	set = NULL;
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
+	.base = {
+		.type = LDMSD_PLUGIN_SAMPLER,
+		.config = config,
+		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
+	},
+	.sample = sample,
+};

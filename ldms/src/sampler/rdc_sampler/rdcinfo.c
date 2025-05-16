@@ -315,7 +315,7 @@ static uint32_t rdcinfo_hash(rdcinfo_inst_t inst)
 	return i;
 }
 
-rdcinfo_inst_t rdcinfo_new()
+rdcinfo_inst_t rdcinfo_new(ovis_log_t mylog)
 {
 	rdcinfo_inst_t x = calloc(1, sizeof(*x));
 	if (!x) {
@@ -323,11 +323,7 @@ rdcinfo_inst_t rdcinfo_new()
 		return NULL;
 	}
 	pthread_mutex_init(&x->lock, NULL);
-	x->mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!x->mylog) {
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-				"of '" SAMP "' plugin. Error %d\n", errno);
-	}
+	x->mylog = mylog;
 	return x;
 }
 

@@ -471,7 +471,20 @@ static int sx_sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static void sx_term(ldmsd_plug_handle_t handle)
+static const char *usage(ldmsd_plug_handle_t handle)
+{
+	return  "config name=switchx set=<setname>\n"
+		"    setname     The set name.\n";
+}
+
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	int port;
 
@@ -489,31 +502,13 @@ static void sx_term(ldmsd_plug_handle_t handle)
 	}
 }
 
-static const char *usage(ldmsd_plug_handle_t handle)
-{
-	return  "config name=switchx set=<setname>\n"
-		"    setname     The set name.\n";
-}
-
-static struct ldmsd_sampler switchx_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = "switchx",
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = sx_term,
 		.config = sx_config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sx_sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler.switchx", "The log subsystem of the the 'switchx' sampler plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'switchx' sampler plugin. Error %d\n", rc);
-	}
-	return &switchx_plugin.base;
-}

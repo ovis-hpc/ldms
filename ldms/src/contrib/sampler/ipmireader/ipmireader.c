@@ -517,9 +517,16 @@ static int sample(ldmsd_plug_handle_t handle)
 
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
 {
+	mylog = ldmsd_plug_log_get(handle);
+	set = NULL;
 
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
 	cmd[0] = '\0';
 	if (base)
 		base_del(base);
@@ -528,24 +535,13 @@ static void term(ldmsd_plug_handle_t handle)
 	set = NULL;
 }
 
-static struct ldmsd_sampler ipmireader_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	mylog = ovis_log_register("sampler." SAMP, "Messages for the " SAMP " plugin");
-	if (!mylog) {
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the " SAMP " plugin's "
-				"log subsystem. Error %d.\n", errno);
-	}
-	set = NULL;
-	return &ipmireader_plugin.base;
-}

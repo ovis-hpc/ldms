@@ -316,12 +316,21 @@ static int sample(ldmsd_plug_handle_t handle) {
     return 0;
 }
 
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	__gpu_metrics_log = ldmsd_plug_log_get(handle);
+        setGmgLoggingFunction(__gpu_metrics_log);
+        set = NULL;
+
+        return 0;
+}
+
 /**
  * Release any opened resource.  Note that we have to call OneAPI C++ destructor to
  * close any opened handles.
- * @param context this plugin instance's context.
  */
-static void term(ldmsd_plug_handle_t handle) {
+static void destructor(ldmsd_plug_handle_t handle)
+{
     // No longer need to free device handle array here.
 
     size_t mallocCount = getMallocCount();
@@ -336,32 +345,15 @@ static void term(ldmsd_plug_handle_t handle) {
 }
 
 /**
- * This structure defines the plugin instance.  .base probably refers to the
- * base "class".  So, the assignments in base are overrides.
+ * This structure defines the plugin interface.
  */
-static struct ldmsd_sampler gpu_metrics_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
         .base = {
-                .name = SAMP,
                 .type = LDMSD_PLUGIN_SAMPLER,
-                .term = term,       // destructor
                 .config = config,
                 .usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
         },
         .sample = sample,
 };
-
-/**
- * LDMS calls this to obtain a plugin instance.  Plugin is initialized here.
- * @param pf logging function provided by LDMS.
- * @return plugin instance.
- */
-struct ldmsd_plugin *get_plugin() {
-    __gpu_metrics_log = ovis_log_register("sampler."SAMP, "Messages for the " SAMP " plugin");
-    if (!__gpu_metrics_log) {
-	    ovis_log(NULL, OVIS_LWARN, "Failed to create the " SAMP " plugin's "
-			    "log subsystem. Error %d.\n", errno);
-    }
-    setGmgLoggingFunction(__gpu_metrics_log);
-    set = NULL;
-    return &gpu_metrics_plugin.base;
-}

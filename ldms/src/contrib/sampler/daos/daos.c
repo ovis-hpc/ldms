@@ -214,9 +214,25 @@ static int sample(ldmsd_plug_handle_t handle)
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
-	dao_log(OVIS_LDEBUG, "term() called\n");
+	dao_log(OVIS_LDEBUG, "usage() called\n");
+	return  "config name=" SAMP " " BASE_CONFIG_USAGE;
+}
+
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	dao_log(OVIS_LDEBUG, "constructor() called ("PACKAGE_STRING")\n");
+	gethostname(producer_name, sizeof(producer_name));
+	strncpy(system_name, DEFAULT_SYS_NAME, sizeof(system_name));
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	dao_log(OVIS_LDEBUG, "destructor() called\n");
 	rank_targets_destroy();
 	rank_target_schema_fini();
 	pool_targets_destroy();
@@ -224,33 +240,13 @@ static void term(ldmsd_plug_handle_t handle)
 	pool_target_schema_fini();
 }
 
-static const char *usage(ldmsd_plug_handle_t handle)
-{
-	dao_log(OVIS_LDEBUG, "usage() called\n");
-	return  "config name=" SAMP " " BASE_CONFIG_USAGE;
-}
-
-static struct ldmsd_sampler daos_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	mylog = ovis_log_register("sampler." SAMP, "Messages for the " SAMP " plugin");
-	if (!mylog) {
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the " SAMP
-				"plugin's log subsystem. Error %d.\n", errno);
-	}
-	dao_log(OVIS_LDEBUG, "get_plugin() called ("PACKAGE_STRING")\n");
-	gethostname(producer_name, sizeof(producer_name));
-	strncpy(system_name, DEFAULT_SYS_NAME, sizeof(system_name));
-
-	return &daos_plugin.base;
-}

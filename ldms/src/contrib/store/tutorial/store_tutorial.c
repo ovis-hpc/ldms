@@ -257,26 +257,28 @@ static int store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh,
 	return 0;
 }
 
-static struct ldmsd_store store_tutorial = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-			.name = PNAME,
 			.type = LDMSD_PLUGIN_STORE,
 			.config = config,
 			.usage = usage,
+                        .constructor = constructor,
+                        .destructor = destructor,
 	},
 	.open = open_store,
 	.store = store,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	mylog = ovis_log_register("store."PNAME, "Messages for the "PNAME" plugin");
-	if (!mylog) {
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the "PNAME
-				" plugin's log subsystem. Error %d.\n", errno);
-	}
-	return &store_tutorial.base;
-}
 
 static void __attribute__ ((constructor)) store_tutorial_init();
 static void store_tutorial_init()

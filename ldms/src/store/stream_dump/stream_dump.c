@@ -256,25 +256,6 @@ __config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	}
 }
 
-static void
-__term(ldmsd_plug_handle_t handle)
-{
-	struct rbn *rbn;
-	struct __client_s *cli;
-
-	pthread_mutex_lock(&__mutex);
-	while ((rbn = rbt_min(&rbt))) {
-		rbt_del(&rbt, rbn);
-		pthread_mutex_unlock(&__mutex);
-		cli = container_of(rbn, struct __client_s, rbn);
-		ldms_stream_close(cli->c);
-		fclose(cli->f);
-		free(cli);
-		pthread_mutex_lock(&__mutex);
-	}
-	pthread_mutex_unlock(&__mutex);
-}
-
 static ldmsd_store_handle_t
 __open(ldmsd_plug_handle_t handle, const char *container, const char *schema,
        struct ldmsd_strgp_metric_list *metric_list)
@@ -306,13 +287,38 @@ __commit(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_
 	return ENOTSUP;
 }
 
-static struct ldmsd_store stream_dump = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	struct rbn *rbn;
+	struct __client_s *cli;
+
+	pthread_mutex_lock(&__mutex);
+	while ((rbn = rbt_min(&rbt))) {
+		rbt_del(&rbt, rbn);
+		pthread_mutex_unlock(&__mutex);
+		cli = container_of(rbn, struct __client_s, rbn);
+		ldms_stream_close(cli->c);
+		fclose(cli->f);
+		free(cli);
+		pthread_mutex_lock(&__mutex);
+	}
+	pthread_mutex_unlock(&__mutex);
+}
+
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-		.name = "stream_dump",
-		.term = __term,
 		.config = __config,
 		.usage = __usage,
 		.type = LDMSD_PLUGIN_STORE,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.open = __open,
 	.store = __store,
@@ -320,15 +326,3 @@ static struct ldmsd_store stream_dump = {
 	.close = __close,
 	.commit = __commit,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store.stream_dump", "Log susbsystem of 'stream_dump' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-				"of 'stream_dump' plugin. Error %d\n", rc);
-	}
-	return &stream_dump.base;
-}

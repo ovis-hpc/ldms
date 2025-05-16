@@ -591,7 +591,28 @@ int ldms_job_info_get(struct ldms_job_info *ji, unsigned flags)
 	return 0;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static const char *usage(ldmsd_plug_handle_t handle)
+{
+	return "config name=jobid producer=<prod_name> instance=<inst_name> "
+		"[component_id=<compid> schema=<sname>] [file=<jobinfo>]"
+		"    comp_id     The component id value.\n"
+		"    <prod_name> The producer name\n"
+		"    <inst_name> The instance name\n"
+		"    <sname>     Optional schema name. Defaults to 'jobid'\n"
+		"    <jobinfo>   Optional file to read.\n"
+		"The default jobinfo is " DEFAULT_FILE ".\n"
+		;
+}
+
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	set = NULL;
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	if (set) {
 		ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
@@ -610,39 +631,13 @@ static void term(ldmsd_plug_handle_t handle)
 	}
 }
 
-static const char *usage(ldmsd_plug_handle_t handle)
-{
-	return "config name=jobid producer=<prod_name> instance=<inst_name> "
-		"[component_id=<compid> schema=<sname>] [file=<jobinfo>]"
-		"    comp_id     The component id value.\n"
-		"    <prod_name> The producer name\n"
-		"    <inst_name> The instance name\n"
-		"    <sname>     Optional schema name. Defaults to 'jobid'\n"
-		"    <jobinfo>   Optional file to read.\n"
-		"The default jobinfo is " DEFAULT_FILE ".\n"
-		;
-}
-
-static struct ldmsd_sampler jobid_plugin = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler."SAMP, "Message for the " SAMP " plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	set = NULL;
-	return &jobid_plugin.base;
-}

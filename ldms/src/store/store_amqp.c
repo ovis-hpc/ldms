@@ -517,19 +517,6 @@ static void close_store(ldmsd_store_handle_t _sh)
 	pthread_mutex_unlock(&cfg_lock);
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	struct rbn *rbn;
-	amqp_inst_t ai;
-
-	pthread_mutex_lock(&cfg_lock);
-	while ((rbn = rbt_min(&amqp_rbt)) != NULL) {
-		ai = container_of(rbn, struct amqp_instance, rbn);
-		_close_store(ai);
-	}
-	pthread_mutex_unlock(&cfg_lock);
-}
-
 #define DEF_VALUE_BUF_LEN 1024
 
 size_t u8_printer(char *buf, size_t rem, ldms_mval_t val, int i)
@@ -890,30 +877,38 @@ static amqp_msg_formatter_t formatters[] = {
 	[BIN_FMT] = bin_msg_formatter,
 };
 
-static struct ldmsd_store store_amqp = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	struct rbn *rbn;
+	amqp_inst_t ai;
+
+	pthread_mutex_lock(&cfg_lock);
+	while ((rbn = rbt_min(&amqp_rbt)) != NULL) {
+		ai = container_of(rbn, struct amqp_instance, rbn);
+		_close_store(ai);
+	}
+	pthread_mutex_unlock(&cfg_lock);
+}
+
+static struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-		.name = "amqp",
 		.type = LDMSD_PLUGIN_STORE,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.open = open_store,
 	.store = store,
 	.close = close_store,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store.amqp", "Log subsystem of the 'amqp' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'amqp' plugin. Error %d\n", rc);
-	}
-	return &store_amqp.base;
-}
 
 static void __attribute__ ((constructor)) store_amqp_init();
 static void store_amqp_init()

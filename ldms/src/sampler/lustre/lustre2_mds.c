@@ -234,16 +234,6 @@ err0:
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	if (set)
-		ldms_set_delete(set);
-	set = NULL;
-	if (base)
-		base_del(base);
-	base = NULL;
-}
-
 /**
  * \brief Configuration
  *
@@ -311,29 +301,32 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static struct ldmsd_sampler lustre_mds_plugin = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	set = NULL;
+	lustre_sampler_set_pilog(mylog);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	if (set)
+		ldms_set_delete(set);
+	set = NULL;
+	if (base)
+		base_del(base);
+	base = NULL;
+}
+
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = "lustre_mds",
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("sampler.lustre_mds", "Message for the lustre_mds plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem "
-					"of 'lustre_mds' plugin. Error %d\n", rc);
-	}
-	set = NULL;
-	lustre_sampler_set_pilog(mylog);
-	return &lustre_mds_plugin.base;
-	errno = ENOMEM;
-	return NULL;
-}

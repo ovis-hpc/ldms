@@ -3230,7 +3230,7 @@ int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
 		       strgp->container,
 		       ((strgp->schema)?strgp->schema:"-"),
 		       ((strgp->regex_s)?strgp->regex_s:"-"),
-		       strgp->store->api->base.name,
+		       strgp->store->plugin->name,
 		       strgp->flush_interval.tv_sec,
 		       (strgp->flush_interval.tv_nsec/1000),
 		       ldmsd_strgp_state_str(strgp->state),
@@ -5106,9 +5106,9 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 			       "{\"name\":\"%s\",\"plugin\":\"%s\",\"type\":\"%s\","
 			       "\"libpath\":\"%s\"}",
 			       samp->cfg.name,
-			       samp->api->base.name,
+			       samp->plugin->name,
 			       plugin_type_str(samp->api->base.type),
-			       samp->libpath);
+			       samp->plugin->libpath);
 		if (rc) {
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
 			goto err;
@@ -5129,9 +5129,9 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 				    "{\"name\":\"%s\",\"plugin\":\"%s\",\"type\":\"%s\","
 				    "\"libpath\":\"%s\"}",
 				    store->cfg.name,
-				    store->api->base.name,
+				    store->plugin->name,
 				    plugin_type_str(store->api->base.type),
-				    store->libpath);
+				    store->plugin->libpath);
 		if (rc) {
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
 			goto err;
@@ -6483,8 +6483,8 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
 	for (store = ldmsd_store_first(LDMSD_CFGOBJ_STORE); store;
 			store = ldmsd_store_next(store)) {
-		fprintf(fp, "load name=%s plugin=%s\n", store->cfg.name, store->api->base.name);
-		fprintf(fp, "load name=%s plugin=%s\n", store->cfg.name, store->api->base.name);
+		fprintf(fp, "load name=%s plugin=%s\n", store->cfg.name, store->plugin->name);
+		fprintf(fp, "load name=%s plugin=%s\n", store->cfg.name, store->plugin->name);
 		if (store->cfg.avl_str || store->cfg.kvl_str)
 			fprintf(fp, "config name=%s %s %s\n",
 				store->cfg.name,
@@ -6496,8 +6496,8 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfgobj_sampler_t samp;
 	for (samp = ldmsd_sampler_first(); samp;
 			samp = ldmsd_sampler_next(samp)) {
-		fprintf(fp, "load name=%s plugin=%s\n", samp->cfg.name, samp->api->base.name);
-		fprintf(fp, "load name=%s plugin=%s\n", samp->cfg.name, samp->api->base.name);
+		fprintf(fp, "load name=%s plugin=%s\n", samp->cfg.name, samp->plugin->name);
+		fprintf(fp, "load name=%s plugin=%s\n", samp->cfg.name, samp->plugin->name);
 		if (samp->cfg.avl_str || samp->cfg.kvl_str)
 			fprintf(fp, "config name=%s %s %s\n",
 				samp->cfg.name,
@@ -6574,7 +6574,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 			"flush=%ld "
 			"perm=%d",
 			strgp->obj.name,
-			strgp->store->api->base.name,
+			strgp->store->plugin->name,
 			strgp->container,
 			strgp->flush_interval.tv_sec,
 			strgp->obj.perm);

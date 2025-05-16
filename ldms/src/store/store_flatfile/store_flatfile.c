@@ -124,14 +124,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	return EINVAL;
 }
 
-static void term(ldmsd_plug_handle_t handle)
-{
-	/*
-	 * TODO: Iterate through all unclosed stores and cleanup resources
-	 * and close any open files.
-	 */
-}
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return
@@ -437,31 +429,34 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 	pthread_mutex_unlock(&cfg_lock);
 }
 
-static struct ldmsd_store store_flatfile = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+	/*
+	 * TODO: Iterate through all unclosed stores and cleanup resources
+	 * and close any open files.
+	 */
+}
+
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-		.name = STRFF,
 		.type = LDMSD_PLUGIN_STORE,
-		.term = term,
 		.config = config,
 		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.open = open_store,
 	.close = close_store,
 	.store = store,
 	.flush = flush_store,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store."STRFF, "Log subsystem of the '" STRFF "' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" STRFF "' plugin. Error %d\n", rc);
-	}
-	return &store_flatfile.base;
-}
 
 static void __attribute__ ((constructor)) store_flatfile_init();
 static void store_flatfile_init()

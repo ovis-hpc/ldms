@@ -1220,31 +1220,26 @@ static int json_recv_cb(ldms_stream_event_t ev, void *arg)
 	}
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	__log = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	js_stream_sampler_t js = ldmsd_plug_ctxt_get(handle);
 	if (js->stream_client)
 		ldms_stream_close(js->stream_client); /* CLOSE event will clean up `p` */
 }
 
-static struct ldmsd_sampler js_stream_sampler = {
+struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
 		.config = config,
-		.usage = usage
+		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	__log = ovis_log_register("sampler."SAMP, "The log subsystem of the " SAMP " plugin");
-	if (!__log) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of '" SAMP "' plugin. Error %d\n", rc);
-	}
-	return &js_stream_sampler.base;
-}

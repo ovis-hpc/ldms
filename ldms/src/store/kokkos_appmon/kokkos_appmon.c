@@ -407,7 +407,14 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 	return rc;
 }
 
-static void term(ldmsd_plug_handle_t handle)
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	if (sos)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
@@ -415,22 +422,9 @@ static void term(ldmsd_plug_handle_t handle)
 		free(root_path);
 }
 
-static struct ldmsd_plugin kokkos_store = {
-	.name = "kokkos_appmon_store",
-	.term = term,
+struct ldmsd_plugin ldmsd_plugin_interface = {
 	.config = config,
 	.usage = usage,
+        .constructor = constructor,
+        .destructor = destructor,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	int rc;
-	mylog = ovis_log_register("store.kokkos_appmon_store",
-				"Log subsystem of the 'kokkos_appmon_store' plugin");
-	if (!mylog) {
-		rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the subsystem "
-				"of 'kokkos_appmon_store' plugin. Error %d\n", rc);
-	}
-	return &kokkos_store;
-}

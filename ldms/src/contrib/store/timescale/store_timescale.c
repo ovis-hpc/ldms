@@ -564,27 +564,29 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 	free(is);
 }
 
-static struct ldmsd_store store_timescale = {
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+
+        return 0;
+}
+
+static void destructor(ldmsd_plug_handle_t handle)
+{
+}
+
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
-		.name = "timescale",
 		.config = config,
 		.usage = usage,
 		.type = LDMSD_PLUGIN_STORE,
+		.constructor = constructor,
+		.destructor = destructor,
 	},
 	.open = open_store,
 	.store = store,
 	.close = close_store,
 };
-
-struct ldmsd_plugin *get_plugin()
-{
-	mylog = ovis_log_register("store.timescale", "Messages for the timescale store plugin");
-	if (!mylog) {
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the timescale "
-				"store plugin's log subsystem. Error %d.\n", errno);
-	}
-	return &store_timescale.base;
-}
 
 static void __attribute__ ((constructor)) store_timescale_init();
 static void store_timescale_init()
