@@ -391,10 +391,10 @@ static jbuf_t __entity_dump(jbuf_t jb, json_entity_t e)
 		jb = __entity_dump(jb, e->value.attr_->value);
 		break;
 	case JSON_LIST_VALUE:
-		__list_dump(jb, e);
+		jb = __list_dump(jb, e);
 		break;
 	case JSON_DICT_VALUE:
-		__dict_dump(jb, e);
+		jb = __dict_dump(jb, e);
 		break;
 	case JSON_NULL_VALUE:
 		jb = jbuf_append_str(jb, "null");
