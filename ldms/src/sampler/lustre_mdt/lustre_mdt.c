@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "config.h"
 #include "lustre_mdt.h"
 #include "lustre_mdt_general.h"

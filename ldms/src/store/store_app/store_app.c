@@ -55,6 +55,7 @@
 #include <sos/sos.h>
 
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 int perm = 0660;
 

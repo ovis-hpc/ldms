@@ -60,6 +60,7 @@
 #include <ctype.h>
 #include <time.h>
 #include "rdcinfo.h"
+#include "ldmsd_plug_api.h"
 #include "dstring.h"
 #include "ldmsd_plugattr.h"
 #include "coll/fnv_hash.h"

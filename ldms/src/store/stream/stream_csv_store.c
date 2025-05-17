@@ -67,6 +67,7 @@
 #include <coll/rbt.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 /*
  * CURRENT GROUND RULES:

@@ -63,6 +63,7 @@
 #include <sos/sos.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 /**
  * \brief PAPI-store

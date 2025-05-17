@@ -71,6 +71,7 @@
 #include <grp.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "jobinfo.h"
 
 static ovis_log_t mylog;

@@ -58,6 +58,7 @@
 #include "ovis_json/ovis_json.h"
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 #define SAMP "slurm_sampler2"
 

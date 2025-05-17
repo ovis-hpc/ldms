@@ -68,6 +68,7 @@
 #include <coll/rbt.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 static ovis_log_t mylog;
 #define LOG_(level, ...) do { \

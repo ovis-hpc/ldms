@@ -64,6 +64,7 @@
 #include <coll/label-set.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "ovis_util/dstring.h"
 #if OVIS_LDMS_HAVE_AUTH
 #include "ovis_auth/auth.h"

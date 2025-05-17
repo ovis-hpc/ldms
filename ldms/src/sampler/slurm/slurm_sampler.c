@@ -75,6 +75,7 @@
 #include <sched.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "slurm_sampler.h"
 
 #define SAMP "slurm_sampler"

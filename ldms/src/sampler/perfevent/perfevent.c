@@ -67,6 +67,7 @@
 #include <math.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "sampler_base.h"
 
 #define SAMP "perfevent"

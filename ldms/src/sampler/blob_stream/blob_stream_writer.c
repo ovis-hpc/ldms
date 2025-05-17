@@ -66,6 +66,7 @@
 #include <ovis_json/ovis_json.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 #define PNAME "blob_stream_writer"
 
