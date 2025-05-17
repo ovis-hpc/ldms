@@ -68,6 +68,7 @@
 #include <ovis_log/ovis_log.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 #define LOG_(level, ...) do { \
 	ovis_log(mylog, level, __VA_ARGS__); \

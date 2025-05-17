@@ -64,6 +64,7 @@
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 #include <infiniband/umad.h>
 #include <infiniband/mad.h>

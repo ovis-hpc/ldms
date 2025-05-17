@@ -68,6 +68,7 @@
 #include <ovis_json/ovis_json.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "ldmsd_stream.h"
 
 static sos_schema_t app_schema;

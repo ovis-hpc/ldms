@@ -54,6 +54,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "ibnet_data.h"
+#include "ldmsd_plug_api.h"
 #include <pthread.h>
 
 #define _GNU_SOURCE

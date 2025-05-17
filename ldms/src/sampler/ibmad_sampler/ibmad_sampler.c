@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include <mad.h>
 #include <umad.h>
 #include <iba/ib_types.h>

@@ -63,6 +63,7 @@
 #include <sos/sos.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "slurm_sampler.h"
 
 #define STORE "store_slurm"

@@ -58,6 +58,7 @@
 #include <curl/curl.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 
 static char host_port[64];	/* hostname:port_no for influxdb */
 struct influx_store {

@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plug_api.h"
 #include "config.h"
 #include "lustre_client.h"
 #include "lustre_client_general.h"
