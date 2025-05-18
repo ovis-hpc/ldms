@@ -70,6 +70,7 @@
 #include "ldmsd_plug_api.h"
 
 static ovis_log_t mylog;
+static char *plugin_config_name;
 
 static sos_schema_t app_schema;
 static char path_buff[PATH_MAX];
@@ -78,7 +79,6 @@ static char *verbosity = "WARN";
 static char *stream;
 static char *root_path;
 static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
-static struct ldmsd_plugin kokkos_store;
 
 static const char *time_job_rank_attrs[] = { "timestamp", "job_id", "rank" };
 static const char *job_time_rank_attrs[] = { "job_id", "timestamp", "rank" };
@@ -167,13 +167,13 @@ static int create_schema(sos_t sos, sos_schema_t *app)
 	schema = sos_schema_from_template(&kokkos_appmon_template);
 	if (!schema) {
 		ovis_log(mylog, OVIS_LERROR, "%s: Error %d creating Kokkos App schema.\n",
-		       kokkos_store.name, errno);
+		       plugin_config_name, errno);
 		return errno;
 	}
 	rc = sos_schema_add(sos, schema);
 	if (rc) {
 		ovis_log(mylog, OVIS_LERROR, "%s: Error %d adding Kokkos App schema.\n",
-		       kokkos_store.name, rc);
+		       plugin_config_name, rc);
 		return rc;
 	}
 	*app = schema;
@@ -232,7 +232,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	if (!container_mode) {
 		ovis_log(mylog, OVIS_LERROR,
 		       "%s: ignoring container permission mode of %s, using 0660.\n",
-		       kokkos_store.name, value);
+		       plugin_config_name, value);
 	}
 	value = av_value(avl, "stream");
 	if (value)
@@ -245,7 +245,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	if (!value) {
 		ovis_log(mylog, OVIS_LERROR,
 		       "%s: the path to the container (path=) must be specified.\n",
-		       kokkos_store.name);
+		       plugin_config_name);
 		rc = ENOENT;
 		goto out;
 	}
@@ -255,7 +255,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	if (!root_path) {
 		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Error allocating %d bytes for the container path.\n",
-		       strlen(value) + 1);
+		       plugin_config_name, strlen(value) + 1);
 		rc = ENOMEM;
 		goto out;
 	}
@@ -263,7 +263,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	rc = reopen_container(root_path);
 	if (rc) {
 		ovis_log(mylog, OVIS_LERROR, "%s: Error opening %s.\n",
-		       kokkos_store.name, root_path);
+		       plugin_config_name, root_path);
 	}
  out:
 	pthread_mutex_unlock(&cfg_lock);
@@ -278,7 +278,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 	if (!a) {
 		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The JSON entity is missing the '%s' attribute.\n",
-		       kokkos_store.name,
+		       plugin_config_name,
 		       name);
 		return EINVAL;
 	}
@@ -288,7 +288,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The '%s' JSON entity is the wrong type. "
 		       "Expected %d, received %d\n",
-		       kokkos_store.name,
+		       plugin_config_name,
 		       name, expected_type, v_type);
 		return EINVAL;
 	}
@@ -341,7 +341,7 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 		if (json_entity_type(item) != JSON_DICT_VALUE) {
 			ovis_log(mylog, OVIS_LERROR,
 			       "%s: Items in kokkos-perf-data must all be dictionaries.\n",
-			       kokkos_store.name);
+			       plugin_config_name);
 			rc = EINVAL;
 			goto out;
 		}
@@ -386,7 +386,7 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 			rc = errno;
 			ovis_log(mylog, OVIS_LERROR,
 			       "%s: Error %d creating Kokkos App Mon object.\n",
-			       kokkos_store.name, errno);
+			       plugin_config_name, errno);
 			goto out;
 		}
 		sos_obj_attr_by_id_set(obj, TIMESTAMP_ID, timestamp);
@@ -411,6 +411,7 @@ static int stream_recv_cb(ldms_stream_event_t ev, void *ctxt)
 static int constructor(ldmsd_plug_handle_t handle)
 {
 	mylog = ldmsd_plug_log_get(handle);
+        plugin_config_name = strdup(ldmsd_plug_cfg_name_get(handle));
 
         return 0;
 }
@@ -421,6 +422,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 	if (root_path)
 		free(root_path);
+        free(plugin_config_name);
 }
 
 struct ldmsd_plugin ldmsd_plugin_interface = {
