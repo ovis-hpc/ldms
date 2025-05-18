@@ -113,7 +113,7 @@ void rdcinfo_delete(rdcinfo_inst_t inst);
 
 // set configuration. If already configured,
 // call reset first. caller must be holding inst->lock if multithreaded
-int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl);
+int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl, const char *instance_name);
 
 // caller must be holding inst->lock
 int rdcinfo_sample(rdcinfo_inst_t inst);

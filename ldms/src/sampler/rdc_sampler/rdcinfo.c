@@ -353,7 +353,7 @@ void rdcinfo_reset(rdcinfo_inst_t inst)
 		ldms_set_t set = inst->devset[i];
 		if (set) {
 			const char *tmp = ldms_set_instance_name_get(set);
-			ldmsd_set_deregister(tmp, inst->base->pi_name);
+			ldmsd_set_deregister(tmp, inst->base->instance_name);
 			ldms_set_unpublish(set);
 			ldms_set_delete(set);
 			inst->devset[i] = NULL;
@@ -530,7 +530,7 @@ static const char *rdc_opts[] = {
 
 
 /* populate inst value from avl, and set up gpu reporting accordingly. */
-int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
+int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl, const char *instance_name)
 {
 	if (!inst || !avl)
 		return EINVAL;
@@ -643,7 +643,7 @@ int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
 		goto out_metrics;
 	}
 #ifndef MAIN
-	inst->base = base_config(avl, ldmsd_plug_cfg_name_get(handle), inst->schema_name, inst->mylog);
+	inst->base = base_config(avl, instance_name, inst->schema_name, inst->mylog);
 	if (!inst->base)
 		goto out_metrics;
 	/* override the schema name default behavior */
@@ -709,6 +709,7 @@ out_metrics:
 /* if MAIN is defined, only the functions and segments needed to compute
  * the schema name are included in compile.
  */
+static int debug = 0;
 
 static void rdc_get_schema_name(int argc, char **argv)
 {
@@ -716,7 +717,9 @@ static void rdc_get_schema_name(int argc, char **argv)
 	dstring_t ds;
 	dstr_init2(&ds, 2048);
 	int i;
-	for (i = 1; i < argc; i++) {
+        ovis_log_t mylog;
+
+        for (i = 1; i < argc; i++) {
 		dstrcat(&ds, argv[i], DSTRING_ALL);
 		dstrcat(&ds, " ", 1);
 	}
@@ -735,13 +738,14 @@ static void rdc_get_schema_name(int argc, char **argv)
 		rc = EINVAL;
 		goto out;
 	}
-	rdcinfo_inst_t d = rdcinfo_new(ldmsd_log);
+        mylog = ovis_log_register("rdcinfo", "rdcinfo test");
+	rdcinfo_inst_t d = rdcinfo_new(mylog);
 	if (!d) {
 		fprintf(stderr, "could not create schema from options\n");
 		rc = EINVAL;
 		goto out;
 	}
-	rc = rdcinfo_config(d, avl);
+	rc = rdcinfo_config(d, avl, "rdc_sampler");
 	if (!rc)
 		printf("%s\n", d->schema_name);
 	else
@@ -755,8 +759,6 @@ out:
 	exit(rc);
 }
 
-static int debug = 0;
-
 int main(int argc, char **argv)
 {
 	if (argc == 2 && strcmp(argv[1],"-h")==0) {
@@ -769,15 +771,6 @@ int main(int argc, char **argv)
 	}
 	rdc_get_schema_name(argc, argv);
 	return 0;
-}
-
-void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...) {
-	if (!debug)
-		return;
-        va_list ap;
-        va_start(ap, fmt);
-        vfprintf(stderr, fmt, ap);
-        va_end(ap);
 }
 
 #endif
