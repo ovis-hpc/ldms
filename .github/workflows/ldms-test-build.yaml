@@ -62,6 +62,7 @@ jobs:
         # stores
         --enable-sos
         --with-sos=${PREFIX}
+        --enable-kokkos
         --enable-store-app
         --with-kafka=yes
 
