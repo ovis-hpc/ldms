@@ -84,7 +84,7 @@ static int config(ldmsd_plug_handle_t handle,
 		INST_LOG(inst, OVIS_LDEBUG, SAMP ": reconfiguring.\n");
 	}
 
-	rc = rdcinfo_config(inst, avl);
+	rc = rdcinfo_config(inst, avl, ldmsd_plug_cfg_name_get(handle));
 	if (rc)
 		goto err;
 
@@ -113,7 +113,6 @@ static int sample(ldmsd_plug_handle_t handle)
 }
 
 static const char *usage(ldmsd_plug_handle_t handle) {
-	(void)self;
 	if (!usage_str)
 		usage_str = rdcinfo_usage();
 	return usage_str;
@@ -151,7 +150,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
-		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.config = config,
 		.usage = usage,
