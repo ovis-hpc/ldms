@@ -71,6 +71,7 @@
 #include "ldmsd_plug_api.h"
 #include "ldmsd_stream.h"
 
+static char *plugin_config_name;
 static sos_schema_t app_schema;
 static char path_buff[PATH_MAX];
 static char *log_path = "/var/log/ldms/darshan_stream_store.log";
@@ -78,8 +79,6 @@ static char *verbosity = "WARN";
 static char *stream;
 
 static char *root_path;
-
-static struct ldmsd_plugin darshan_stream_store;
 
 static union sos_timestamp_u
 to_timestamp(double d)
@@ -215,7 +214,7 @@ static int create_schema(ldmsd_plug_handle_t handle, sos_t sos, sos_schema_t *ap
 	if (!schema) {
 		ovis_log(ldmsd_plug_log_get(handle),
 			 OVIS_LERROR, "%s: Error %d creating Darshan data schema.\n",
-			 darshan_stream_store.name, errno);
+			 plugin_config_name, errno);
 		rc = errno;
 		goto err;
 	}
@@ -223,7 +222,7 @@ static int create_schema(ldmsd_plug_handle_t handle, sos_t sos, sos_schema_t *ap
 	if (rc) {
 		ovis_log(ldmsd_plug_log_get(handle),
 			 OVIS_LERROR, "%s: Error %d adding Darshan data schema.\n",
-			 darshan_stream_store.name, rc);
+			 plugin_config_name, rc);
 		goto err;
 	}
 	*app = schema;
@@ -286,7 +285,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		ovis_log(ldmsd_plug_log_get(handle),
 			 OVIS_LERROR,
 			 "%s: ignoring bogus container permission mode of %s, using 0660.\n",
-			 darshan_stream_store.name, value);
+			 plugin_config_name, value);
 	}
 
 	value = av_value(avl, "stream");
@@ -301,7 +300,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		ovis_log(ldmsd_plug_log_get(handle),
 			 OVIS_LERROR,
 			 "%s: the path to the container (path=) must be specified.\n",
-			 darshan_stream_store.name);
+			 plugin_config_name);
 		return ENOENT;
 	}
 
@@ -319,7 +318,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	if (rc) {
 		ovis_log(ldmsd_plug_log_get(handle),
 			 OVIS_LERROR, "%s: Error opening %s.\n",
-			 darshan_stream_store.name, root_path);
+			 plugin_config_name, root_path);
 		return ENOENT;
 	}
 	return 0;
@@ -334,7 +333,7 @@ static int get_json_value(ldmsd_plug_handle_t handle,
 	if (!a) {
 		ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
 			 "%s: The JSON entity is missing the '%s' attribute.\n",
-			 darshan_stream_store.name,
+			 plugin_config_name,
 			 name);
 		return EINVAL;
 	}
@@ -344,7 +343,7 @@ static int get_json_value(ldmsd_plug_handle_t handle,
 		ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
 			 "%s: The '%s' JSON entity is the wrong type. "
 			 "Expected %d, received %d\n",
-			 darshan_stream_store.name,
+			 plugin_config_name,
 			 name, expected_type, v_type);
 		return EINVAL;
 	}
@@ -373,7 +372,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
 	if (!entity) {
 		ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
 		       "%s: NULL entity received in stream callback.\n",
-		       darshan_stream_store.name);
+		       plugin_config_name);
 		return 0;
 	}
 
@@ -455,7 +454,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
 		if (json_entity_type(item) != JSON_DICT_VALUE) {
 			ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
 			       "%s: Items in segment must all be dictionaries.\n",
-			       darshan_stream_store.name);
+			       plugin_config_name);
 			rc = EINVAL;
 			goto err;
 		}
@@ -520,7 +519,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
                 now.tv_sec += 10;
                 if (sos_begin_x_wait(sos, &now)) {
                         ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
-				 "Timeout attempting to open a transaction on the container '%s'.\n",
+7				 "Timeout attempting to open a transaction on the container '%s'.\n",
 				 sos_container_path(sos));
                         rc = ETIMEDOUT;
 			goto err;
@@ -531,14 +530,14 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
 			rc = errno;
 			ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
 				 "%s: Error %d creating Darshan data object.\n",
-				 darshan_stream_store.name, errno);
+				 plugin_config_name, errno);
 			sos_end_x(sos);
 			goto err;
 		}
 
 		ovis_log(ldmsd_plug_log_get(handle),
 			 OVIS_LDEBUG, "%s: Got a record from stream (%s), module_name = %s\n",
-			 darshan_stream_store.name, stream, module_name);
+			 plugin_config_name, stream, module_name);
 
 		sos_obj_attr_by_id_set(obj, UID_ID, uid);
                 sos_obj_attr_by_id_set(obj, EXE_ID, strlen(exe),  exe);
@@ -578,16 +577,25 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
 	return rc;
 }
 
+static int constructor(ldmsd_plug_handle_t handle)
+{
+        plugin_config_name = strdup(ldmsd_plug_cfg_name_get(handle));
+
+        return 0;
+}
+
 static void destructor(ldmsd_plug_handle_t handle)
 {
 	if (sos)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 	if (root_path)
 		free(root_path);
+        free(plugin_config_name);
 }
 
 struct ldmsd_plugin ldmsd_plugin_interface = {
 	.config = config,
 	.usage = usage,
+	.constructor = constructor,
         .destructor = destructor,
 };
