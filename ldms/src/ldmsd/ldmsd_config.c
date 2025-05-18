@@ -221,6 +221,10 @@ ldmsd_sampler_add(const char *cfg_name,
 	}
 	sprintf(log_name, "sampler.%s.%s", plugin->name, cfg_name);
 	sampler->log = ovis_log_register(log_name, "Sampler plugin log file.");
+	if (!sampler->log)
+		ovis_log(NULL, OVIS_LWARN,
+			 "Error %d creating the log for config '%s' of the '%s' plugin.\n",
+			 errno, cfg_name, plugin->name);
         sampler->plugin = plugin;
 	sampler->api = (struct ldmsd_sampler *)plugin->api;
 	sampler->thread_id = -1; /* stopped */
@@ -264,6 +268,10 @@ ldmsd_store_add(const char *cfg_name,
 	}
 	sprintf(log_name, "store.%s.%s", plugin->name, cfg_name);
 	store->log = ovis_log_register(log_name, "Store plugin log file.");
+	if (!store->log)
+		ovis_log(NULL, OVIS_LWARN,
+			 "Error %d creating the log for config '%s' of the '%s' plugin.\n",
+			 errno, cfg_name, plugin->name);
         store->plugin = plugin;
 	store->api = (struct ldmsd_store *)plugin->api;
 	if (store->api->base.constructor != NULL) {
@@ -335,6 +343,7 @@ void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 	if (samp->plugin->api->destructor)
 		samp->plugin->api->destructor(obj);
         unload_plugin(samp->plugin);
+        ovis_log_deregister(samp->log);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -344,6 +353,7 @@ void ldmsd_store___del(ldmsd_cfgobj_t obj)
 	if (store->plugin->api->destructor)
 		store->plugin->api->destructor(obj);
         unload_plugin(store->plugin);
+        ovis_log_deregister(store->log);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -356,8 +366,6 @@ int ldmsd_load_plugin(char *cfg_name, char *plugin_name,
         struct ldmsd_plugin_generic *plugin;
 	ldmsd_cfgobj_sampler_t sampler;
 	ldmsd_cfgobj_store_t store;
-	char log_name[1024];
-	ldmsd_cfgobj_t cfgobj;
 
 	if (!plugin_name || !cfg_name)
 		return EINVAL;
@@ -389,8 +397,6 @@ int ldmsd_load_plugin(char *cfg_name, char *plugin_name,
 				    geteuid(), getegid(), 0660);
 		if (!sampler)
 			goto err;
-		cfgobj = &sampler->cfg;
-		strcpy(log_name, "sampler.");
 		ldmsd_sampler_get(sampler, "load");
 		break;
 	case LDMSD_PLUGIN_STORE:
@@ -400,8 +406,6 @@ int ldmsd_load_plugin(char *cfg_name, char *plugin_name,
 				geteuid(), getegid(), 0660);
 		if (!store)
 			goto err;
-		cfgobj = &store->cfg;
-		strcpy(log_name, "store.");
 		ldmsd_store_get(store, "load");
 		break;
 	default:
@@ -411,16 +415,6 @@ int ldmsd_load_plugin(char *cfg_name, char *plugin_name,
 			errno, plugin_name);
 		goto err;
 	}
-	sprintf(&log_name[strlen(log_name)], "%s.%s", plugin_name, cfgobj->name);
-	ovis_log_t log = ovis_log_register(log_name, "Plugin log file");
-	if (!log)
-		ovis_log(NULL, OVIS_LWARN,
-			 "Error %d creating the log for the '%s' plugin.\n",
-			 errno, plugin_name);
-	if (plugin->api->type == LDMSD_PLUGIN_SAMPLER)
-		sampler->log = log;
-	else
-		store->log = log;
 	return 0;
  err:
         unload_plugin(plugin);
