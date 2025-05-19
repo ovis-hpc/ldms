@@ -155,10 +155,8 @@ static sos_visit_action_t add_digest_cb(sos_index_t index,
 					sos_key_t key, sos_idx_data_t *idx_data,
 					int found, void *arg)
 {
-	int rc;
 	struct sos_value_s v_, *v;
 	sos_value_data_t digest;
-	size_t sz;
 	sos_obj_t obj;
 	sos_obj_ref_t ref;
 	struct visit_cb_ctxt *ctxt = arg;
@@ -208,7 +206,7 @@ static sos_visit_action_t add_digest_cb(sos_index_t index,
 	return SOS_VISIT_NOP;
 }
 
-int add_digest(kokkos_context_t k, json_entity_t e, char *digest)
+int add_digest(kokkos_context_t k, json_entity_t e, unsigned char *digest)
 {
 	struct visit_cb_ctxt ctxt;
 	SOS_KEY(key);
@@ -232,11 +230,10 @@ static int ignore(kokkos_context_t k, json_entity_t e, sos_obj_t obj, sos_attr_t
 
 static int process_job_tag(kokkos_context_t k, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
 {
-	int i;
 	sos_value_data_t data;
 
 	/* Compute the hash and save it in the parser */
-	SHA256(e->value.str_->str, e->value.str_->str_len, k->job_tag);
+	SHA256((unsigned char*)e->value.str_->str, e->value.str_->str_len, k->job_tag);
 
 	/* Add the digest->string map */
 	add_digest(k, e, k->job_tag);
@@ -250,12 +247,11 @@ static int process_job_tag(kokkos_context_t k, json_entity_t e, sos_obj_t obj, s
 
 static int process_digest(kokkos_context_t k, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
 {
-	int i;
 	sos_value_data_t data;
-	char digest[SHA256_DIGEST_LENGTH];
+	unsigned char digest[SHA256_DIGEST_LENGTH];
 
 	/* Compute the hash and save it in the parser */
-	SHA256(e->value.str_->str, e->value.str_->str_len, digest);
+	SHA256((unsigned char*)e->value.str_->str, e->value.str_->str_len, digest);
 
 	/* Add the digest->string map */
 	add_digest(k, e, digest);
@@ -724,7 +720,6 @@ static int create_schema(sos_t sos,
 static int reopen_container(char *path)
 {
 	int rc = 0;
-	sos_schema_t schema;
 
 	/* Close the container if it already exists */
 	if (sos)
@@ -818,7 +813,7 @@ static struct schema_spec kokkos_sample_spec = {
 
 static int create_actions(sos_schema_t schema, struct schema_spec *spec)
 {
-	int rc, i;
+	int i;
 	sos_attr_t attr;
 	struct metric_spec *metric;
 	action_t act;
@@ -894,7 +889,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	root_path = strdup(value);
 	if (!root_path) {
 		ovis_log(mylog, OVIS_LERROR,
-		       "%s: Error allocating %d bytes for the container path.\n",
+		       "%s: Error allocating %zd bytes for the container path.\n",
 		       plugin_config_name, strlen(value) + 1);
 		return ENOMEM;
 	}
@@ -947,7 +942,6 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			 json_entity_t entity)
 {
 	json_entity_t list;
-	const char *key;
 	int rc;
 	kokkos_context_t k = calloc(1, sizeof *k);
 
@@ -961,7 +955,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	rc = process_dict_entity(k, entity, NULL, NULL);
 	if (!rc) {
 		ovis_log(mylog, OVIS_LINFO,
-		       "Creating Kokkos App record for %d:%d:%d\n",
+		       "Creating Kokkos App record for %lu:%lu:%lu\n",
 		       k->job_id, k->component_id, k->mpi_rank);
 		sos_obj_index(k->app_obj);
 		sos_obj_put(k->app_obj);
