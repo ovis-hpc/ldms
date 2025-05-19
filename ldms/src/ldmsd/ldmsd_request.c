@@ -9604,7 +9604,7 @@ static int prdcr_listen_del_handler(ldmsd_req_ctxt_t reqc)
 	int rc = 0;
 	char *name = NULL;
 	struct ldmsd_sec_ctxt sctxt;
-	ldmsd_prdcr_listen_t pl;
+	ldmsd_prdcr_listen_t pl = NULL;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
