@@ -519,7 +519,8 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
                 now.tv_sec += 10;
                 if (sos_begin_x_wait(sos, &now)) {
                         ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
-7				 "Timeout attempting to open a transaction on the container '%s'.\n",
+				 "Timeout attempting to open a transaction "
+				 "on the container '%s'.\n",
 				 sos_container_path(sos));
                         rc = ETIMEDOUT;
 			goto err;
