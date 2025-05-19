@@ -186,7 +186,6 @@ static sos_t sos;
 static int reopen_container(char *path)
 {
 	int rc = 0;
-	sos_schema_t schema;
 
 	/* Check if the configuration has changed */
 	if (sos && (0 == strcmp(path, sos_container_path(sos)))
@@ -258,7 +257,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	root_path = strdup(value);
 	if (!root_path) {
 		ovis_log(mylog, OVIS_LERROR,
-		       "%s: Error allocating %d bytes for the container path.\n",
+		       "%s: Error allocating %zd bytes for the container path.\n",
 		       plugin_config_name, strlen(value) + 1);
 		rc = ENOMEM;
 		goto out;
@@ -311,11 +310,13 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	double timestamp, current_kernel_time, total_kernel_time;
 	uint64_t level, type, current_kernel_count, total_kernel_count;
 	char *name, *node_name;
+	ldmsd_plug_handle_t handle = ctxt;
+
 
 	if (!entity) {
 		ovis_log(mylog, OVIS_LERROR,
 		       "%s: NULL entity received in stream callback.\n",
-		       kokkos_store.name);
+		       ldmsd_plug_name_get(handle));
 		return 0;
 	}
 	rc = get_json_value(entity, "rank", JSON_INT_VALUE, &v);
