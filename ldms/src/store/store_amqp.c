@@ -898,7 +898,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 	pthread_mutex_unlock(&cfg_lock);
 }
 
-static struct ldmsd_store ldmsd_plugin_interface = {
+struct ldmsd_store ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_STORE,
 		.config = config,
