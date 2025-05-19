@@ -1115,6 +1115,7 @@ static int __stream_recv(ldms_stream_event_t ev, ldmsd_cfgobj_store_t scfg)
 	struct rbn *rbn;
 	ldms_set_t l_set;
 	js_set_t j_set;
+	char *inst_name = NULL;
 
 	if (ev->type != LDMS_STREAM_EVENT_RECV)
 		return 0;
@@ -1148,7 +1149,7 @@ static int __stream_recv(ldms_stream_event_t ev, ldmsd_cfgobj_store_t scfg)
 		       ev->recv.name, rc, msg);
 		goto err_0;
 	}
-	char *inst_name = get_inst_name(js, entity, j_schema,
+	inst_name = get_inst_name(js, entity, j_schema,
 					ev->recv.cred.uid, ev->recv.cred.gid,
 					ev->recv.perm);
 	if (!inst_name) {
