@@ -913,6 +913,14 @@ open_store(ldmsd_plug_handle_t s, const char *container, const char *schema,
 {
 	struct rabbitkw_store_instance *si;
 
+        if (!container) {
+                ovis_log(mylog, OVIS_LERROR,
+                     "Plugin %s requires \"container=\" to be set in the "
+                     "strgp_add command\n",
+                     ldmsd_plug_name_get(s));
+                return NULL;
+        }
+
 	pthread_mutex_lock(&cfg_lock);
 	dsinit(ds);
 	dscat(ds,container);

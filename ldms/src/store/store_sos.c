@@ -620,7 +620,15 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
         store_sos_t ss = ldmsd_plug_ctxt_get(handle);
 	struct sos_instance *si = NULL;
 
-	si = calloc(1, sizeof(*si));
+        if (!container) {
+                LOG_(OVIS_LERROR,
+                     "Plugin %s requires \"container=\" to be set in the "
+                     "strgp_add command\n",
+                     ldmsd_plug_name_get(handle));
+                goto out;
+        }
+
+        si = calloc(1, sizeof(*si));
 	if (!si)
 		goto out;
 	rbt_init(&si->schema_rbt, row_schema_rbn_cmp);
@@ -1450,6 +1458,15 @@ static int init_store_instance(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp)
 	struct sos_instance *si;
 	store_sos_t ss = ldmsd_plug_ctxt_get(handle);
 	int len, rc;
+
+        if (!strgp->container) {
+                LOG_(OVIS_LERROR,
+                     "Plugin %s requires \"container=\" to be set in the "
+                     "strgp_add command\n",
+                     ldmsd_plug_name_get(handle));
+                rc = EINVAL;
+                goto err_0;
+        }
 
 	si = calloc(1, sizeof(*si));
 	if (!si) {

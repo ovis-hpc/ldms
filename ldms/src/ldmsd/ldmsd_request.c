@@ -2672,8 +2672,8 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 
 	attr_name = "container";
 	container = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_CONTAINER);
-	if (!container)
-		goto einval;
+        /* We allow container to be NULL. Some stores, like store_avro_kafka, can
+           configure their server settings in the store configuration. */
 
 	schema = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SCHEMA);
 	regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
@@ -2763,9 +2763,13 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 			goto enomem;
 	}
 
-	strgp->container = strdup(container);
-	if (!strgp->container)
-		goto enomem;
+        if (container) {
+                strgp->container = strdup(container);
+                if (!strgp->container)
+                        goto enomem;
+        } else {
+                strgp->container = NULL;
+        }
 
 	strgp->flush_interval = flush_interval;
 

@@ -111,9 +111,8 @@ store_avro_kafka as the plugin parameter.
 
 The *schema*, *instance*, *producer* and *flush* strgp_add parameters
 have no affect on how data is stored. If the *container* parameter is
-set to any value other than an empty string, it will override the
-bootstrap.servers Kafka configuration parameter in the kafka_conf file
-if present.
+set, it will override the bootstrap.servers Kafka configuration parameter
+in the kafka_conf file if present.
 
 JSON Mode
 =========
@@ -293,9 +292,7 @@ serdes_conf Example File
 
    ::
 
-      # Specify the location of the Avro Schema registry. This can be overridden
-      # on the strgp_add line with the "container" strgp_add option if it is
-      # set to anything other than an empty string
+      # Specify the location of the Avro Schema registry.
       serdes.schema.url=https://localhost:8081
 
 Example strg_add command
@@ -309,14 +306,13 @@ Example strg_add command
 Example strg_add command w/o container
 --------------------------------------
 
-In this example, the strgp_add parameter, container, is set to be
-ignored by store_avro_kafka. In this case, either the default,
-localhost:9092, or the value specified in the rd_kafka_conf file is
-used.
+In this example, the strgp_add parameter "container" is not set. In this case,
+either the default, localhost:9092, or the value specified in the rd_kafka_conf
+file is used.
 
    ::
 
-      strgp_add name=aks plugin=store_avro_kafka container= decomposition=aks-decomp.conf
+      strgp_add name=aks plugin=store_avro_kafka decomposition=aks-decomp.conf
       strgp_start name=aks
 
 Example plugin configuration

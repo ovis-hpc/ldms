@@ -142,6 +142,14 @@ static ldmsd_store_handle_t
 	char *key = NULL;
 	size_t len;
 
+        if (!container) {
+                ovis_log(mylog, OVIS_LERROR,
+                     "Plugin %s requires \"container=\" to be set in the "
+                     "strgp_add command\n",
+                     ldmsd_plug_name_get(scfg));
+                return NULL;
+        }
+
 	len = strlen(container) + strlen(schema) + 2;
 	key = malloc(len);
 	if (!key) {
