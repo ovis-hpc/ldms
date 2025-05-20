@@ -2236,6 +2236,7 @@ int main(int argc, char *argv[])
 					snprintf(errstr, sizeof(errstr),
 					"Error %d processing configuration file '%s'",
 					ret, ypath);
+					cleanup(ret, errstr);
 				}
 				TAILQ_REMOVE(&yamlfile_list, conf_str, entry);
 				ldmsd_str_ent_free(conf_str);
