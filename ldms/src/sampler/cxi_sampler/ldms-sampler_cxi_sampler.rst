@@ -47,7 +47,7 @@ see :ref:`ldms_sampler_base(7) <ldms_sampler_base>` for the attributes
 of the base class.
 
 **config**
-   | name=INST_NAME [ tel_path=PATH ] [ rh_path=PATH ]
+   | name=INST_NAME [ tel_path=PATH ] [ rh_path=PATH ] [ counters=CSV ]
 
    name=INST_NAME
       |
@@ -64,10 +64,21 @@ of the base class.
         The default PATH is /var/run/cxi. This option is primarily for
         testing on systems that lack the actual interface.
 
+   counters=<COUNTER NAMES>
+      |
+      | (Optional) A CSV list of names (POSIX Regular Expressions) matching
+        file names under tel_path and rh_path. See Section COUTNER NAMES for
+        details. If this option is omitted all counters will be collected.
+
 BUGS
 ====
 
 No known bugs.
+
+COUNTER NAMES
+=============
+
+File names found under <tel_path>/<INTERFCE>/device/telemetry/ and <rh_path>/
 
 EXAMPLES
 ========
@@ -78,6 +89,15 @@ Within ldmsd_controller or a configuration file:
 
    load name=cxi_sampler
    config name=cxi_sampler producer=${HOSTNAME} instance=${HOSTNAME}/cxi_sampler
+   start name=cxi_sampler interval=1s
+or 
+
+::
+
+   env CXI_COUNTERS=pct_mst_hit_on_som,pct_*_timeouts,pct_*_nack*,pct_trs_replay*
+   env RH_COUNTERS=accel_close_complete,cancel_no_matching_conn
+   load name=cxi_sampler
+   config name=cxi_sampler producer=${HOSTNAME} instance=${HOSTNAME}/cxi_sampler counters=${CXI_COUNTERS},${RH_COUNTERS}
    start name=cxi_sampler interval=1s
 
 SEE ALSO
