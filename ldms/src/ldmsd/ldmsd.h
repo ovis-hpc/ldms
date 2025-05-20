@@ -1095,19 +1095,21 @@ int ldmsd_set_register(ldms_set_t set, const char *plugin_name);
 /**
  * \brief ldmsd_set_deregister
  *
- * Stop associating the metric set \c set with the plugin
- * \c plugin_name.  After de-registration, the configuration
- * plugin_sets will no longer report \c set with the plugin
- * \c plugin_name.
+ * Stop associating the metric set \c set with the sampler
+ * configuration \c cfg_name.  After de-registration, the
+ * configuration command \c plugin_sets will no longer report \c set with
+ * the sampler.
  *
- * This function is typically called by a plugin prior to calling
- * ldms_set_delete.
+ * This function is typically called by a sampler prior to calling
+ * ldms_set_delete. This function is not thread safe and the caller
+ * should ensure the sampler's set list isn't concurrently updated in
+ * another thread.
  *
- * \param set The set to de-register for the plugin
- * \param plugin_name The name of the plugin
+ * \param inst_name The set-name to de-register for the plugin configuration
+ * \param cfg_name The name of the plugin configuration
  * \returns 0 on success
  */
-void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
+void ldmsd_set_deregister(const char *inst_name, const char *cfg_name);
 
 /**
  * \brief ldms_store
