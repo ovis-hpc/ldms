@@ -9,13 +9,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='LDMS Monitoring YAML Cluster Configuration Parser')
     required = parser.add_argument_group('required arguments')
-    required.add_argument('--ldms-config', metavar='FILE', required=True,
+    required.add_argument('--ldms_config', metavar='FILE', required=True,
                         help='Path to LDMSD YAML configuration file. ')
-    parser.add_argument('--generate-config-path', metavar="STRING", required=False,
+    parser.add_argument('--generate_config_path', metavar="STRING", required=False,
                         help='Path to directory to store generated v4 configuration files for an entire LDMS cluster. '
                              'Samplers with similar configurations share a single configuration file. ',
                         default=False)
-    parser.add_argument('--daemon-name', metavar='STRING', required=False,
+    parser.add_argument('--daemon_name', metavar='STRING', required=False,
                         default=False,
                         help='Daemon name to generate configuration from YAML file')
     parser.add_argument('--debug', action='store_true',
@@ -30,9 +30,9 @@ if __name__ == "__main__":
     cluster = YamlCfg(None, None, conf_spec, args)
 
     if args.daemon_name and args.generate_config_path:
-        print(f'Parameters "daemon-name" and "generate-config-path" are mutually exclusive.\n'
+        print(f'Parameters "daemon_name" and "generate_config_path" are mutually exclusive.\n'
               f'Specifying the "daemon-name" parameter will generate the configuration for a single ldmsd\n'
-              f'Specifying the "generate-config-path" parameter will generate an entire cluster\'s v4 configuration files in the path provided.\n')
+              f'Specifying the "generate_config_path" parameter will generate an entire cluster\'s v4 configuration files in the path provided.\n')
         sys.exit(0)
 
     if args.daemon_name:

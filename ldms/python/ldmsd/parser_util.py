@@ -164,7 +164,6 @@ def check_plugin_config(plugn, plugin_spec):
     for cfg in plugin['config']:
         if type(cfg) is not dict and type(cfg) is not str:
             raise TypeError('"config" list members must be a dictionary or a string\n')
-    return plugin
 
 def dist_list(list_, n):
     q, r = divmod(len(list_), n)
@@ -921,7 +920,7 @@ class YamlCfg(object):
                 dstr, auth_list = self.write_advertisers(dstr, smplr_grp, sname, auth_list)
                 for plugin in self.samplers[smplr_grp]['plugins']:
                     plugn = self.plugins[plugin]
-                    dstr += f'load name={plugn["name"]}\n'
+                    dstr += f'load name={plugin} plugin={plugn["name"]}\n'
                     for cfg_ in plugn['config']:
                         if type(cfg_) is dict:
                             hostname = socket.gethostname()
@@ -935,14 +934,14 @@ class YamlCfg(object):
                             if 'producer' not in cfg_args:
                                 cfg_args['producer'] = f'{hostname}'
                             if 'instance' not in cfg_args:
-                                cfg_args['instance'] = f'{hostname}/{plugn["name"]}'
+                                cfg_args['instance'] = f'{hostname}/{plugin}'
                             cfg_str = parse_to_cfg_str(cfg_args)
                         else:
                             cfg_str = cfg_
 
                         interval = check_intrvl_str(plugn['interval'])
-                        dstr += f'config name={plugn["name"]} {cfg_str}\n'
-                    dstr += f'start name={plugn["name"]} interval={interval}'
+                        dstr += f'config name={plugin} {cfg_str}\n'
+                    dstr += f'start name={plugin} interval={interval}'
                     offset = check_opt('offset', plugn)
                     dstr = self.write_opt_attr(dstr, 'offset', offset, endline=True)
         return dstr
@@ -973,7 +972,7 @@ class YamlCfg(object):
                     dstr = self.write_stream_subscribe(dstr, group_name, dmn)
                     dstr = self.write_agg_plugins(dstr, group_name, dmn)
                     dstr = self.write_updaters(dstr, group_name, dmn)
-                    dstr = self.write_stores(dstr, group_name)
+                    dstr = self.write_stores(dstr, dmn)
             return dstr
         except Exception as e:
             ea, eb, ec = sys.exc_info()
@@ -985,13 +984,13 @@ class YamlCfg(object):
         if plugins is not None:
             for plugn in plugins:
                 plugin = self.plugins[plugn]
-                dstr += f'load name={plugin["name"]}\n'
+                dstr += f'load name={plugn} plugin={self.plugins[plugn]["name"]}\n'
                 for cfg_ in plugin["config"]:
                     if type(cfg_) is dict:
                         cfg_str = parse_to_cfg_str(plugin["config"])
                     else:
                         cfg_str = cfg_
-                    dstr += f'config name={plugin["name"]} {cfg_str}\n'
+                    dstr += f'config name={plugn} {cfg_str}\n'
         return dstr
 
     def write_updaters(self, dstr, group_name, dmn):
@@ -1025,8 +1024,12 @@ class YamlCfg(object):
                 dstr += f'updtr_start name={updtr}\n'
         return dstr
 
-    def write_stores(self, dstr, group_name):
-        if self.stores is not None and group_name in self.stores:
+    def write_stores(self, dstr, dmn):
+        if self.stores is None:
+            return dstr
+        for group_name in self.stores:
+            if dmn not in expand_names(group_name):
+                continue
             store_group = self.stores[group_name]
             loaded_plugins = []
             for store in store_group:
@@ -1035,13 +1038,13 @@ class YamlCfg(object):
                         raise ValueError(f'Storage policy plugin reference {store_group[store]["plugin"]} '
                                          f'is not defined in the top level "plugins" dictionary"\n')
                     plugin = self.plugins[store_group[store]['plugin']]
-                    dstr += f'load name={plugin["name"]}\n'
+                    dstr += f'load name={store_group[store]["plugin"]} plugin={plugin["name"]}\n'
                     for cfg_ in plugin['config']:
                         if type(cfg_) is dict:
                             cfg_str = parse_to_cfg_str(cfg_)
                         else:
                             cfg_str = cfg_
-                        dstr += f'config name={plugin["name"]} '\
+                        dstr += f'config name={store_group[store]["plugin"]} '\
                                  f'{cfg_str}\n'
                     loaded_plugins.append(store_group[store]['plugin'])
                 decomp = check_opt('decomposition', store_group[store])
@@ -1049,7 +1052,7 @@ class YamlCfg(object):
                 regex = check_opt('regex', store_group[store])
                 flush = check_opt('flush', store_group[store])
                 perm = check_opt('perm', store_group[store])
-                dstr += f'strgp_add name={store} plugin={plugin["name"]} '
+                dstr += f'strgp_add name={store} plugin={store_group[store]["plugin"]} '
                 dstr += f'container={store_group[store]["container"]} '
                 dstr = self.write_opt_attr(dstr, 'decomposition', decomp)
                 dstr = self.write_opt_attr(dstr, 'schema', schema)
