@@ -2318,7 +2318,6 @@ out:
 	return rc;
 }
 
-__attribute__((deprecated, unused))
 static int __prdcr_stream_status(ldmsd_prdcr_t prdcr, ldmsd_req_ctxt_t oreqc,
 				struct pstream_status_regex_ctxt *base,
 				struct ldmsd_str_ent *pname)
@@ -2358,9 +2357,103 @@ static int __prdcr_stream_status(ldmsd_prdcr_t prdcr, ldmsd_req_ctxt_t oreqc,
 
 int prdcr_stream_status_handler(ldmsd_req_ctxt_t reqc)
 {
-	reqc->errcode = ENOTSUP;
-	ldmsd_send_req_response(reqc, "LDMSD_PRDCR_STREAM_STATUS_REQ is deprecated.");
+	int rc;
+	char *prdcr_regex;
+	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+	regex_t regex;
+	ldmsd_prdcr_t prdcr;
+	struct pstream_status_regex_ctxt *ctxt;
+	struct ldmsd_str_ent *pname, *nxt_pname;
+
+	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
+	if (!prdcr_regex) {
+		rc = EINVAL;
+		ctxt = NULL;
+		cnt = snprintf(reqc->line_buf, reqc->line_len,
+				"The attribute 'regex' is required by prdcr_stop_regex.");
+		goto send_resp_code;
+	}
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	ctxt = calloc(1, sizeof(*ctxt));
+	if (!ctxt)
+		return ENOMEM;
+	TAILQ_INIT(&ctxt->prdcr_list);
+
+	ctxt->stream_dict = json_entity_new(JSON_DICT_VALUE);
+	if (!ctxt->stream_dict) {
+		rc = ENOMEM;
+		goto send_resp_code;
+	}
+	pthread_mutex_init(&ctxt->lock, NULL);
+
+	rc = ldmsd_compile_regex(&regex, prdcr_regex, reqc->line_buf, reqc->line_len);
+	if (rc)
+		goto send_resp_code;
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	/* Count the producers matched the regex */
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
+		if (rc)
+			continue;
+		if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED)
+			continue;
+		pname = malloc(sizeof(*pname));
+		if (!pname) {
+			rc = ENOMEM;
+			goto free_ctxt;
+		}
+		pname->str = strdup(prdcr->obj.name);
+		if (!pname->str) {
+			rc = ENOMEM;
+			goto free_ctxt;
+		}
+		TAILQ_INSERT_TAIL(&ctxt->prdcr_list, pname, entry);
+	}
+
+	/* Forward the request to the connected producers */
+	pname = TAILQ_FIRST(&ctxt->prdcr_list);
+	prdcr = ldmsd_prdcr_first();
+	while (pname && prdcr) {
+		if (0 != strcmp(pname->str, prdcr->obj.name))
+			goto next_prdcr;
+
+		nxt_pname = TAILQ_NEXT(pname, entry);
+		rc = __prdcr_stream_status(prdcr, reqc, ctxt, pname);
+		if (rc) {
+			/* Failed to forward the request.
+			 * Remove the producer name from the list
+			 */
+			TAILQ_REMOVE(&ctxt->prdcr_list, pname, entry);
+			free(pname->str);
+			free(pname);
+		}
+		pname = nxt_pname;
+
+next_prdcr:
+		prdcr = ldmsd_prdcr_next(prdcr);
+	}
+
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	regfree(&regex);
+	/* Don't reply now. LDMSD will reply when receiving the response from the producers. */
+	if (TAILQ_EMPTY(&ctxt->prdcr_list)) {
+		snprintf(reqc->line_buf, reqc->line_len, "No matched producers");
+		reqc->errcode = ENOENT;
+		rc = 0;
+		goto free_ctxt;
+	}
 	return 0;
+
+send_resp_code:
+	reqc->errcode = rc;
+free_ctxt:
+	free(ctxt);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(prdcr_regex);
+	return rc;
 }
 
 int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdcr_cnt)

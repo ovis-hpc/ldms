@@ -588,9 +588,6 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         regex=     A regular expression matching producer names
         """
-        print("prdcr_stream_status is deprecated")
-        return
-        # DEPRECATED
         FIRST = "first_ts"
         LAST = "last_ts"
         RATE = "bytes/sec"
@@ -2530,9 +2527,6 @@ class LdmsdCmdParser(cmd.Cmd):
         [reset=]     If true, reset the statistics of all streams after returning the values.
                      The default is false.
         """
-        print("stream_status is deprecated")
-        return
-        # DEPRECATED
         FIRST = "first_ts"
         LAST = "last_ts"
         RATE = "bytes/sec"
