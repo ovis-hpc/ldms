@@ -53,6 +53,16 @@ LDMSD_MEM_SZ
    are specified, the -m option takes precedence over this environment
    variable.
 
+LDMS_DELETE_TIMEOUT
+   The timeout period (in seconds) before ldmsd forcibly frees memory of
+   deleted metric sets when network problems prevent normal cleanup. Under
+   normal conditions, metric set memory is freed automatically and this timeout
+   is not used. If network issues prevent proper cleanup, deleted sets will
+   remain in memory and can be observed using the "set_stats" command. Consider
+   increasing this value if network problems are temporary and you want to
+   allow more time for normal cleanup to complete. If not set, defaults to 60
+   seconds.
+
 LDMSD_UPDTR_OFFSET_INCR
    The increment to the offset hint in microseconds for updaters that
    determine the update interval and offset automatically. For example,
