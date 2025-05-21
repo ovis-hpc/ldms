@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     if args.daemon_name and args.generate_config_path:
         print(f'Parameters "daemon_name" and "generate_config_path" are mutually exclusive.\n'
-              f'Specifying the "daemon-name" parameter will generate the configuration for a single ldmsd\n'
+              f'Specifying the "daemon_name" parameter will generate the configuration for a single ldmsd\n'
               f'Specifying the "generate_config_path" parameter will generate an entire cluster\'s v4 configuration files in the path provided.\n')
         sys.exit(0)
 
