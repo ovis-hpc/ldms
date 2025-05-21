@@ -712,6 +712,8 @@ class YamlCfg(object):
                 raise ValueError(f'Duplicate plugin name "{plugin_name}". '
                                  f'Plugin must be unique within a group.\n')
             check_plugin_config(plugn, plugn_spec)
+            if 'perm' in plugn_spec[plugn]:
+                plugn_spec[plugn]['perm'] = perm_handler(plugn_spec[plugn]['perm'])
             plugins[plugn] = plugn_spec[plugn]
         return plugins
 
