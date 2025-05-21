@@ -921,6 +921,7 @@ class YamlCfg(object):
                 for plugin in self.samplers[smplr_grp]['plugins']:
                     plugn = self.plugins[plugin]
                     dstr += f'load name={plugin} plugin={plugn["name"]}\n'
+                    first = True
                     for cfg_ in plugn['config']:
                         if type(cfg_) is dict:
                             hostname = socket.gethostname()
@@ -931,10 +932,12 @@ class YamlCfg(object):
                                 if attr == 'perm':
                                     cfg_[attr] = perm_handler(cfg_[attr])
                                 cfg_args[attr] = cfg_[attr]
-                            if 'producer' not in cfg_args:
-                                cfg_args['producer'] = f'{hostname}'
-                            if 'instance' not in cfg_args:
-                                cfg_args['instance'] = f'{hostname}/{plugin}'
+                            if first:
+                                first = False
+                                if 'producer' not in cfg_args:
+                                    cfg_args['producer'] = f'{hostname}'
+                                if 'instance' not in cfg_args:
+                                    cfg_args['instance'] = f'{hostname}/{plugin}'
                             cfg_str = parse_to_cfg_str(cfg_args)
                         else:
                             cfg_str = cfg_
