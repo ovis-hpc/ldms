@@ -628,7 +628,7 @@ static int sample(ldmsd_plug_handle_t handle)
 {
 	ovis_log(mylog, OVIS_LDEBUG, SAMP" sample() called\n");
         if (!sampler_configured) {
-                ovs_log(mylog, OVIS_LERROR, SAMP" sampler has not been configured\n");
+                ovis_log(mylog, OVIS_LERROR, SAMP" sampler has not been configured\n");
                 return -1;
         }
         if (!dcgm_initialized) {
