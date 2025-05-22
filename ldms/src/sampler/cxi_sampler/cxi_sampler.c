@@ -511,7 +511,7 @@ static int get_cxi_interfaces(ldmsd_plug_handle_t handle, char *tel_path)
 	DIR *dir = opendir(tel_path);
 	int count;
 
-	if (!dir) {
+  if (!dir) {
 		ovis_log(cxi->log, OVIS_LERROR,
 			 "Error %d opening directory '%s'\n",
 			 errno, tel_path);
@@ -738,7 +738,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 	/* Finally, free the main structure */
 	free(cxi);
-}
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base.type = LDMSD_PLUGIN_SAMPLER,

@@ -47,7 +47,8 @@ see :ref:`ldms_sampler_base(7) <ldms_sampler_base>` for the attributes
 of the base class.
 
 **config**
-   | name=INST_NAME [ tel_path=PATH ] [ rh_path=PATH ] [ counters=CSV ]
+
+   | name=INST_NAME [ tel_path=PATH ] [ rh_path=PATH ] [ rh_counters=CSV ] [ tel_counters=CSV ]
 
    name=INST_NAME
       |
