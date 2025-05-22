@@ -94,11 +94,7 @@ typedef struct cxi_s {
 
 	ovis_log_t log;
 	ldms_schema_t schema;
-	ldms_record_t tel_rec;
-	ldms_record_t rh_rec;
 	int iface_mid;
-	int tel_rec_mid;
-	int rh_rec_mid;
 	base_data_t base;
 	int metric_offset;
 	ldms_set_t set;
@@ -383,6 +379,10 @@ static int get_rh_names(ldmsd_plug_handle_t handle, files_t rh_files,
 static int create_metric_set(cxi_t cxi)
 {
 	int rc, i, j;
+	ldms_record_t tel_rec;
+	ldms_record_t rh_rec;
+    int tel_rec_mid;
+	int rh_rec_mid;
 
 	cxi->schema = base_schema_new(cxi->base);
 	if (!cxi->schema) {
@@ -395,13 +395,13 @@ static int create_metric_set(cxi_t cxi)
 	cxi->metric_offset = ldms_schema_metric_count_get(cxi->schema);
 
 	/* Per interface telemetry record */
-	cxi->tel_rec = ldms_record_create("tel_record");
-	cxi->iface_mid = ldms_record_metric_add(cxi->tel_rec,
+	tel_rec = ldms_record_create("tel_record");
+	cxi->iface_mid = ldms_record_metric_add(tel_rec,
 						"iface_name", "",
 						LDMS_V_CHAR_ARRAY, 32);
 
 	for (i = 0; i < cxi->tel_files[0].count; i++) {
-		rc = ldms_record_metric_add(cxi->tel_rec, cxi->tel_files[0].names[i],
+		rc = ldms_record_metric_add(tel_rec, cxi->tel_files[0].names[i],
 					    "", LDMS_V_D64, 0);
 		if (rc < 0) {
 			ovis_log(cxi->log, OVIS_LERROR,
@@ -415,16 +415,16 @@ static int create_metric_set(cxi_t cxi)
 			cxi->tel_files[j].midx[i] = rc;
 		}
 	}
-	cxi->tel_rec_mid = ldms_schema_record_add(cxi->schema, cxi->tel_rec);
+	tel_rec_mid = ldms_schema_record_add(cxi->schema, tel_rec);
 
 	/* Per interface retry handler record */
-	cxi->rh_rec = ldms_record_create("rh_record");
-	rc = ldms_record_metric_add(cxi->rh_rec,
+	rh_rec = ldms_record_create("rh_record");
+	rc = ldms_record_metric_add(rh_rec,
 				    "iface_name", "",
 				    LDMS_V_CHAR_ARRAY, 32);
 
 	for (i = 0; i < cxi->rh_files[0].count; i++) {
-		rc = ldms_record_metric_add(cxi->rh_rec, cxi->rh_files[0].names[i],
+		rc = ldms_record_metric_add(rh_rec, cxi->rh_files[0].names[i],
 					    "", LDMS_V_D64, 0);
 		if (rc < 0) {
 			rc = errno;
@@ -438,7 +438,7 @@ static int create_metric_set(cxi_t cxi)
 
 	/* List of per interface telemetry records */
 	rc = ldms_schema_metric_list_add(cxi->schema, "tel_list", "tel_record",
-					 ldms_record_heap_size_get(cxi->tel_rec) * cxi->iface_count);
+					 ldms_record_heap_size_get(tel_rec) * cxi->iface_count);
 	cxi->tel_list_mid = rc;
 	if (rc < 0) {
 		ovis_log(cxi->log, OVIS_LERROR,
@@ -447,9 +447,9 @@ static int create_metric_set(cxi_t cxi)
 	}
 
 	/* List of per interface retry handler records */
-	cxi->rh_rec_mid = ldms_schema_record_add(cxi->schema, cxi->rh_rec);
+	rh_rec_mid = ldms_schema_record_add(cxi->schema, rh_rec);
 	rc = ldms_schema_metric_list_add(cxi->schema, "rh_list", "rh_record",
-					 ldms_record_heap_size_get(cxi->rh_rec) * cxi->iface_count);
+					 ldms_record_heap_size_get(rh_rec) * cxi->iface_count);
 	cxi->rh_list_mid = rc;
 	if (rc < 0) {
 		ovis_log(cxi->log, OVIS_LERROR,
@@ -457,8 +457,8 @@ static int create_metric_set(cxi_t cxi)
 		goto err;
 	}
 
-	size_t size = ldms_record_heap_size_get(cxi->tel_rec) +
-		      ldms_record_heap_size_get(cxi->rh_rec);
+	size_t size = ldms_record_heap_size_get(tel_rec) +
+		      ldms_record_heap_size_get(rh_rec);
 	size = size * cxi->iface_count;
 	cxi->set = base_set_new_heap(cxi->base, size);
 	if (!cxi->set) {
@@ -466,14 +466,11 @@ static int create_metric_set(cxi_t cxi)
 		goto err;
 	}
 
-	ldms_mval_t rh_rec;
-	ldms_mval_t tel_rec;
-
 	for (i = 0; i < cxi->iface_count; i++) {
 		cxi->rh_list_mval = ldms_metric_get(cxi->set, cxi->rh_list_mid);
 		cxi->tel_list_mval = ldms_metric_get(cxi->set, cxi->tel_list_mid);
-		rh_rec = ldms_record_alloc(cxi->set, cxi->rh_rec_mid);
-		tel_rec = ldms_record_alloc(cxi->set, cxi->tel_rec_mid);
+		rh_rec = ldms_record_alloc(cxi->set, rh_rec_mid);
+		tel_rec = ldms_record_alloc(cxi->set, tel_rec_mid);
 
 		rc = ldms_list_append_record(cxi->set, cxi->rh_list_mval, rh_rec);
 		if (rc) {
