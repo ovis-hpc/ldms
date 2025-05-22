@@ -2883,7 +2883,7 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Add an advertisement of its hostname to an aggregator. This is a part of the sampler discovery feature.
         Parameters:
-                name=      A unique name to be used as producer name on the aggregator
+                name=      Advertiser name
                 xprt=      The transport name [sock, rdma, ugni]
                 host=      The aggregator hostname
                 port=      The aggregator port number
