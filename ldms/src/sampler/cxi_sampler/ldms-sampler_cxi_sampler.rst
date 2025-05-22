@@ -94,7 +94,7 @@ or
 
 ::
 
-   env CXI_COUNTERS=pct_mst_hit_on_som,pct_*_timeouts,pct_*_nack*,pct_trs_replay*
+   env CXI_COUNTERS=pct_mst_hit_on_som,pct_.*_timeouts,pct_.*_nack.*,pct_trs_replay.*
    env RH_COUNTERS=accel_close_complete,cancel_no_matching_conn
    load name=cxi_sampler
    config name=cxi_sampler producer=${HOSTNAME} instance=${HOSTNAME}/cxi_sampler counters=${CXI_COUNTERS},${RH_COUNTERS}
