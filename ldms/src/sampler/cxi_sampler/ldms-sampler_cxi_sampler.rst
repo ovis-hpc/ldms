@@ -78,7 +78,7 @@ No known bugs.
 COUNTER NAMES
 =============
 
-File names found under <tel_path>/<INTERFCE>/device/telemetry/ and <rh_path>/
+File names found under <tel_path>/<INTERFACE>/device/telemetry/ and <rh_path>/
 
 EXAMPLES
 ========
