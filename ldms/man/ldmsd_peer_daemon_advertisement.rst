@@ -189,20 +189,19 @@ optional parameter is:**
    [rx_rate=RX_RATE]
       Controls the rate of data received (in bytes/second) on
       connections from advertising peers. Functions like the rx_rate
-      parameter in prdcr_add. Unluck quota which limits total received
+      parameter in prdcr_add. Unlike quota which limits total received
       data, rx_rate limits the data flow per second. If not specified,
       the receive rate is unlimited
 
    [type=passive|active]
       Type of advertised producers. Default is passive.
 
-   - passive: aggregator accepts connections from advertising peers
+      - passive: aggregator accepts connections from advertising peers
 
-   - active: upon receiving an advertisement, aggregator initiates a
-     separate connection back to the advertising peer. Requires
-     advertiser_xprt, advertiser_port, reconnect parameters, and
-     authentication domain if it is used
-
+      - active: upon receiving an advertisement, aggregator initiates a
+        separate connection back to the advertising peer. Requires
+        advertiser_xprt, advertiser_port, reconnect parameters, and
+        authentication domain if it is used
 
    Parameters for Active, Advertised Producers:
 
