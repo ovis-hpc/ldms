@@ -158,16 +158,15 @@ static int timing;
 static int types;
 static int spool;
 
-// fixme
 void dump_config() {
-	msglog(LDMSD_LDEBUG, PNAME ": debug %d\n", debug);
-	msglog(LDMSD_LDEBUG, PNAME ": timing %d\n", timing);
-	msglog(LDMSD_LDEBUG, PNAME ": types %d\n", types);
-	msglog(LDMSD_LDEBUG, PNAME ": spool %d\n", spool);
-	msglog(LDMSD_LDEBUG, PNAME ": rollover %d\n", rollover);
-	msglog(LDMSD_LDEBUG, PNAME ": rollagain %d\n", rollagain);
-	msglog(LDMSD_LDEBUG, PNAME ": rolltype %d\n", rolltype);
-	msglog(LDMSD_LDEBUG, PNAME ": rollempty %d\n", rollempty);
+	ovis_log(mylog, OVIS_LDEBUG,  " debug %d\n", debug);
+	ovis_log(mylog, OVIS_LDEBUG,  " timing %d\n", timing);
+	ovis_log(mylog, OVIS_LDEBUG,  " types %d\n", types);
+	ovis_log(mylog, OVIS_LDEBUG,  " spool %d\n", spool);
+	ovis_log(mylog, OVIS_LDEBUG,  " rollover %d\n", rollover);
+	ovis_log(mylog, OVIS_LDEBUG,  " rollagain %d\n", rollagain);
+	ovis_log(mylog, OVIS_LDEBUG,  " rolltype %d\n", rolltype);
+	ovis_log(mylog, OVIS_LDEBUG,  " rollempty %d\n", rollempty);
 }
 
 char blob_stream_char_to_type(char c)
@@ -238,7 +237,7 @@ static void fclose_and_spool(FILE* *f, char* *fname, int final)
 				case EEXIST:
 					break;
 				default:
-					msglog(LDMSD_LERROR,
+					ovis_log(mylog, OVIS_LERROR,
 						"create_outdir: failed to create"
 						" directory for %s: %s\n",
 						rbuf, STRERROR(err));
@@ -249,11 +248,11 @@ static void fclose_and_spool(FILE* *f, char* *fname, int final)
 			err = rename(*fname, rbuf);
 			if (err) {
 				err = errno;
-				msglog(LDMSD_LERROR, PNAME
+				ovis_log(mylog, OVIS_LERROR, PNAME
 					": rename_output: failed rename(%s, %s):"
 					" %s\n", *fname, rbuf, STRERROR(err));
 			} else {
-				msglog(LDMSD_LDEBUG, PNAME
+				ovis_log(mylog, OVIS_LDEBUG, PNAME
 					": renamed: %s to %s\n",
 					*fname, rbuf);
 			}
@@ -396,8 +395,8 @@ static void stream_data_open(stream_data_t sd)
 		return;
 	}
 	if (sd->timingfile_name) {
-		end = strlen(sd->timingfile_name);
-		sprintf(sd->timingfile_name + end, "%ld", (long)t);
+		end = strrchr(sd->timingfile_name, '.');
+		sprintf(end, ".%ld", (long)t);
 		sd->timingfile = fopen_perm(sd->timingfile_name, "w", 0640);
 		if (!sd->timingfile) {
 			ovis_log(mylog, OVIS_LERROR, "Error '%s' opening the file %s.\n",
@@ -583,8 +582,8 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 
 	rc = ldmsd_plugattr_config_check(attributes, keywords, avl, kwl, NULL, PNAME);
 	if (rc != 0) {
-		int warnon = (ldmsd_loglevel_get() > LDMSD_LWARNING);
-		msglog(LDMSD_LERROR, PNAME " config arguments unexpected.%s\n",
+		int warnon = (ovis_log_get_level(mylog) > OVIS_LWARNING);
+		ovis_log(mylog, OVIS_LERROR, PNAME " config arguments unexpected.%s\n",
 			(warnon ? " Enable log level WARNING for details." : ""));
 		return EINVAL;
 	}
@@ -596,14 +595,14 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		cvt = ldmsd_plugattr_s32(pa, "rollagain", NULL, &ragain);
 		if (!cvt) {
 			if (ragain < 0) {
-				msglog(LDMSD_LERROR, PNAME
+				ovis_log(mylog, OVIS_LERROR, PNAME
 					": bad rollagain= value %d\n", ragain);
 				rc = EINVAL;
 				goto out;
 			}
 		}
 		if (cvt == ENOTSUP) {
-			msglog(LDMSD_LERROR, PNAME ": improper rollagain= input.\n");
+			ovis_log(mylog, OVIS_LERROR, PNAME ": improper rollagain= input.\n");
 			rc = EINVAL;
 			goto out;
 		}
@@ -611,14 +610,14 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		cvt = ldmsd_plugattr_s32(pa, "rollover", NULL, &roll);
 		if (!cvt) {
 			if (roll < 0) {
-				msglog(LDMSD_LERROR, PNAME
+				ovis_log(mylog, OVIS_LERROR, PNAME
 					": Error: bad rollover value %d\n", roll);
 				rc = EINVAL;
 				goto out;
 			}
 		}
 		if (cvt == ENOTSUP) {
-			msglog(LDMSD_LERROR, PNAME ": improper rollover= input.\n");
+			ovis_log(mylog, OVIS_LERROR, PNAME ": improper rollover= input.\n");
 			rc = EINVAL;
 			goto out;
 		}
@@ -627,37 +626,37 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		if (!cvt) {
 			if (roll < 0) {
 				/* rolltype not valid without rollover also */
-				msglog(LDMSD_LERROR, PNAME
+				ovis_log(mylog, OVIS_LERROR, PNAME
 					": rolltype given without rollover.\n");
 				rc = EINVAL;
 				goto out;
 			}
 			if (rollmethod < MINROLLTYPE || rollmethod > MAXROLLTYPE) {
-				msglog(LDMSD_LERROR, PNAME
+				ovis_log(mylog, OVIS_LERROR, PNAME
 					": rolltype out of range.\n");
 				rc = EINVAL;
 				goto out;
 			}
 			if (rollmethod == 5 && (roll < 0 || ragain < roll ||
 				ragain < MIN_ROLL_1)) {
-				msglog(LDMSD_LERROR, PNAME
+				ovis_log(mylog, OVIS_LERROR, PNAME
 					 ": rollagain=%d rollover=%d\n",
 					 roll, ragain);
-				msglog(LDMSD_LERROR, PNAME ": rolltype=5 needs"
+				ovis_log(mylog, OVIS_LERROR, PNAME ": rolltype=5 needs"
 					" rollagain > max(rollover,10)\n");
 				rc = EINVAL;
 				goto out;
 			}
 		}
 		if (cvt == ENOTSUP) {
-			msglog(LDMSD_LERROR, PNAME
+			ovis_log(mylog, OVIS_LERROR, PNAME
 				 ": improper rolltype= input.\n");
 			rc = EINVAL;
 			goto out;
 		}
 		cvt = ldmsd_plugattr_bool(pa, "rollempty", NULL, &rollempty);
 		if (cvt == -1) {
-			msglog(LDMSD_LERROR, PNAME
+			ovis_log(mylog, OVIS_LERROR, PNAME
 				 ": expected boole for rollempty= input.\n");
 			rc = EINVAL;
 			goto out;
@@ -768,16 +767,16 @@ static void stream_data_close( stream_data_t sd )
 		return;
 	pthread_mutex_lock(&sd->write_lock);
 	if (sd->timingfile) {
-		fclose_and_spool(&sd->timingfile, &sd->timingfile_name);
+		fclose_and_spool(&sd->timingfile, &sd->timingfile_name, SD_FINAL);
 	}
 	if (sd->typefile) {
-		fclose_and_spool(&sd->typefile, &sd->typefile_name);
+		fclose_and_spool(&sd->typefile, &sd->typefile_name, SD_FINAL);
 	}
 	if (sd->streamfile) {
-		fclose_and_spool(&sd->streamfile, &sd->streamfile_name);
+		fclose_and_spool(&sd->streamfile, &sd->streamfile_name, SD_FINAL);
 	}
 	if (sd->offsetfile) {
-		fclose_and_spool(&sd->offsetfile, &sd->offsetfile_name);
+		fclose_and_spool(&sd->offsetfile, &sd->offsetfile_name, SD_FINAL);
 	}
 	free(sd->stream_name);
 	sd->stream_name = NULL;
@@ -787,25 +786,6 @@ static void stream_data_close( stream_data_t sd )
 	sd->ws = WS_CLOSED;
 	pthread_mutex_unlock(&sd->write_lock);
 	pthread_mutex_destroy(&sd->write_lock);
-}
-// fixme removed/relocated?
-static void term(ldmsd_plug_handle_t handle)
-{
-	pthread_mutex_lock(&cfg_lock);
-	closing = 1;
-	stream_data_t sd = LIST_FIRST(&data_list);
-	while (sd) {
-		stream_data_close(sd);
-		LIST_REMOVE(sd, entry);
-		free(sd);
-		sd = LIST_FIRST(&data_list);
-	}
-	pthread_mutex_unlock(&cfg_lock);
-	free(root_path);
-	root_path = NULL;
-	free(container);
-	container = NULL;
-	return;
 }
 
 static void roll_stream_files(stream_data_t sd)
@@ -835,7 +815,7 @@ static void roll_stream_files(stream_data_t sd)
 		}
 		break;
 	default:
-		msglog(LDMSD_LDEBUG, PNAME ": Error: unexpected rolltype in store(%d)\n",
+		ovis_log(mylog, OVIS_LDEBUG, PNAME ": Error: unexpected rolltype in store(%d)\n",
 		       rolltype);
 		break;
 	}
@@ -843,7 +823,7 @@ static void roll_stream_files(stream_data_t sd)
 	sd->store_count = 0;
 	int rc = add_stream(sd->stream_name); /* forces reset */
 	if (rc) {
-		msglog(LDMSD_LERROR, PNAME ": failed to readd"
+		ovis_log(mylog, OVIS_LERROR, PNAME ": failed to read"
 					" stream %s.\n", sd->stream_name);
 	}
 
@@ -995,6 +975,9 @@ struct ldmsd_sampler ldmsd_plugin_interface = {
 			.type = LDMSD_PLUGIN_SAMPLER,
 			.config = config,
 			.usage = usage,
+			.constructor = constructor,
+			.destructor = destructor,
+
 	},
 	.sample = sample
 };
@@ -1008,7 +991,7 @@ static void blob_stream_writer_init()
 static void __attribute__ ((destructor)) blob_stream_writer_fini(void);
 static void blob_stream_writer_fini()
 {
-// fixme: does the next bit still belong destructor?
+// fixme: does the next bit still belong here or in destructor?
 	if (rothread_used) {
 		void * dontcare = NULL;
 		pthread_cancel(rothread);
