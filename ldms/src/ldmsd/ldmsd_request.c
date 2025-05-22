@@ -9930,6 +9930,17 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 						"is invalid.", cidr_str);
 			goto err;
 		}
+	}
+
+	if (quota) {
+		pl->quota = ovis_get_mem_size(quota);
+		if (!pl->quota) {
+			reqc->errcode = EINVAL;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						  "The given quota '%s' "
+						  "is invalid.", quota);
+			goto err;
+		}
 	} else {
 		pl->quota = 0; /* 0 means inherit quota from the listen xprt */
 	}
