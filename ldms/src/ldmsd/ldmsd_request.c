@@ -10458,11 +10458,14 @@ ldmsd_prdcr_t __advertised_prdcr_new(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t
 					    rc, advtr_name, adv_hostname);
 		goto err;
 	}
-	if (pl->quota) {
-		ldms_xprt_rail_recv_quota_set(x, pl->quota);
-	}
-	if (pl->rx_rate) {
-		ldms_xprt_rail_recv_rate_limit_set(x, pl->rx_rate);
+
+	if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE) {
+		if (pl->quota) {
+			ldms_xprt_rail_recv_quota_set(x, pl->quota);
+		}
+		if (pl->rx_rate) {
+			ldms_xprt_rail_recv_rate_limit_set(x, pl->rx_rate);
+		}
 	}
 	ldms_xprt_put(x, "advertised_prdcr"); /* Put back the reference at the beginning of the funciton */
 	return prdcr;
