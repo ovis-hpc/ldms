@@ -758,8 +758,3 @@ struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base.destructor = destructor,
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin(void)
-{
-	return &ldmsd_plugin_interface.base;
-}
