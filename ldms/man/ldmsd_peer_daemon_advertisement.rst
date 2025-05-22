@@ -167,23 +167,18 @@ optional parameter is:**
    name=NAME
       String of the prdcr_listen name
 
-   [type=passive|active]
-      Type of advertised producers. Default is passive.
-
-   - passive: aggregator accepts connections from advertising peers
-
-   - active: upon receiving an advertisement, aggregator initiates a
-     separate connection back to the advertising peer. Requires
-     advertiser_xprt, advertiser_port, reconnect parameters, and
-     authentication domain if it is used
-
    [regex=REGEX]
       Regular expression to match with hostnames of peer daemons
 
    [ip=CIDR]
       IP Range in the CIDR format either in IPV4
 
-   [quota=QUOTA
+   [disable_start=TRUE|FALSE]
+      True to tell LDMSD not to start producers automatically
+
+   Parameters to Control Advertised Producers:
+
+   [quota=QUOTA]
       Controls the amount of data that can be received on connections
       from advertising peers. Functions like the quota parameter in
       prdcr_add. If not specified, defaults to the value set by the
@@ -198,8 +193,18 @@ optional parameter is:**
       data, rx_rate limits the data flow per second. If not specified,
       the receive rate is unlimited
 
-   [disable_start=TRUE|FALSE]
-      True to tell LDMSD not to start producers automatically
+   [type=passive|active]
+      Type of advertised producers. Default is passive.
+
+   - passive: aggregator accepts connections from advertising peers
+
+   - active: upon receiving an advertisement, aggregator initiates a
+     separate connection back to the advertising peer. Requires
+     advertiser_xprt, advertiser_port, reconnect parameters, and
+     authentication domain if it is used
+
+
+   Parameters for Active, Advertised Producers:
 
    [advertiser_port=PORT]
       Port number of the advertising peer to connect to. Functions like
