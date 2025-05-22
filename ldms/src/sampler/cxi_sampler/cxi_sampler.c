@@ -583,9 +583,10 @@ static int config(ldmsd_plug_handle_t handle,
 	cxi_t cxi = ldmsd_plug_ctxt_get(handle);
 	ovis_log_t log = ldmsd_plug_log_get(handle);
 	int rc;
-	char *tel_path;
 	char *rh_path;
-	char *counters;
+	char *rh_counters;
+	char *tel_path;
+	char *tel_counters;
 
 	if (cxi->set) {
 		ovis_log(log, OVIS_LERROR, "Set already created.\n");
@@ -601,10 +602,15 @@ static int config(ldmsd_plug_handle_t handle,
 	}
 
 	/* Metric filter */
-	counters = av_value(avl, "counters");
-	if (counters != NULL) {
-		ovis_log(log, OVIS_LDEBUG, "We have counter filters: %s\n", counters);
+	tel_counters = av_value(avl, "tel_counters");
+	if (tel_counters != NULL) {
+		ovis_log(log, OVIS_LDEBUG, "We have telemetry counter filters: %s\n", tel_counters);
 	}
+	rh_counters = av_value(avl, "rh_counters");
+	if (rh_counters != NULL) {
+		ovis_log(log, OVIS_LDEBUG, "We have retry handler counter filters: %s\n", rh_counters);
+	}
+
 
 	tel_path = av_value(avl, "tel_path");
 	if (!tel_path) {
@@ -636,11 +642,11 @@ static int config(ldmsd_plug_handle_t handle,
 	int i;
 	for (i = 0; i < cxi->iface_count; i++) {
 		if (get_cxi_metric_names(handle, &cxi->tel_files[i], cxi->iface_names[i],
-					 tel_path, counters) != 0) {
+					 tel_path, tel_counters) != 0) {
 			rc = 1;
 			goto err;
 		}
-		if (get_rh_names(handle, &cxi->rh_files[i], cxi->iface_names[i], rh_path, counters) != 0) {
+		if (get_rh_names(handle, &cxi->rh_files[i], cxi->iface_names[i], rh_path, rh_counters) != 0) {
 			rc = 1;
 			goto err;
 		}

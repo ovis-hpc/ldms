@@ -53,22 +53,28 @@ of the base class.
       |
       | The configuration instance name.
 
+   rh_path=PATH
+      | Optional path to the directory containing the CXI retry handler files.
+        The default PATH is /var/run/cxi. This option is primarily for
+        testing on systems that lack the actual interface.
+
    tel_path=<PATH>
       |
       | Optional path to the directory containing the CXI interface telemetry files.
         The default PATH is /sys/kernel/debug/cxi. This option is primarily for
         testing on systems that lack the actual interface.
 
-   rh_path=PATH
-      | Optional path to the directory containing the CXI retry handler files.
-        The default PATH is /var/run/cxi. This option is primarily for
-        testing on systems that lack the actual interface.
-
-   counters=<COUNTER NAMES>
+   rh_counters=<COUNTER NAMES>
       |
       | (Optional) A CSV list of names (POSIX Regular Expressions) matching
-        file names under tel_path and rh_path. See Section COUTNER NAMES for
-        details. If this option is omitted all counters will be collected.
+        file names under rh_path. See Section COUTNER NAMES for details.
+        If this option is omitted all counters will be collected.
+
+   tel_counters=<COUNTER NAMES>
+      |
+      | (Optional) A CSV list of names (POSIX Regular Expressions) matching
+        file names under tel_path. See Section COUTNER NAMES for details.
+        If this option is omitted all counters will be collected.
 
 BUGS
 ====
@@ -97,7 +103,7 @@ or
    env CXI_COUNTERS=pct_mst_hit_on_som,pct_.*_timeouts,pct_.*_nack.*,pct_trs_replay.*
    env RH_COUNTERS=accel_close_complete,cancel_no_matching_conn
    load name=cxi_sampler
-   config name=cxi_sampler producer=${HOSTNAME} instance=${HOSTNAME}/cxi_sampler counters=${CXI_COUNTERS},${RH_COUNTERS}
+   config name=cxi_sampler producer=${HOSTNAME} instance=${HOSTNAME}/cxi_sampler tel_counters=${CXI_COUNTERS} rh_counters=${RH_COUNTERS}
    start name=cxi_sampler interval=1s
 
 SEE ALSO
