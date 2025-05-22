@@ -736,12 +736,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 		free(cxi->rh_files);
 	}
 
-	/* Free LDMS records */
-	if (cxi->tel_rec)
-		ldms_record_delete(cxi->tel_rec);
-	if (cxi->rh_rec)
-		ldms_record_delete(cxi->rh_rec);
-
 	/* Free base data */
 	base_del(cxi->base);
 
