@@ -2572,7 +2572,7 @@ class Communicator(object):
         to start the advertiser.
 
         Parameters:
-        - The name to give the advertiser. This name must be unique among all advertisement sent to the aggregator.
+        - The name to give the advertiser
         - The transport type, one of 'sock', 'ugni', 'rdma', or 'fabric'
         - The aggregator's hostname
         - The aggregator's listening port number
