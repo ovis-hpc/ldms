@@ -311,6 +311,14 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
         char *measurement_create;
         size_t cnt_create, off_create;
 
+        if (!container) {
+                ovis_log(mylog, OVIS_LERROR,
+                     "Plugin %s requires \"container=\" to be set in the "
+                     "strgp_add command\n",
+                     ldmsd_plug_name_get(handle));
+                goto out;
+        }
+
         is = malloc(sizeof(*is) + measurement_limit);
         if (!is)
                 goto out;

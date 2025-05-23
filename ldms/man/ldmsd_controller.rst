@@ -686,7 +686,7 @@ Create a Storage Policy and open/create the storage instance.
       |
       | The name of the storage backend.
 
-   **container** *container*
+   **[container** *container*\ **]**
       |
       | The storage backend container name.
 
