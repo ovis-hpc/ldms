@@ -381,7 +381,7 @@ static int create_metric_set(cxi_t cxi)
 	int rc, i, j;
 	ldms_record_t tel_rec;
 	ldms_record_t rh_rec;
-    int tel_rec_mid;
+	int tel_rec_mid;
 	int rh_rec_mid;
 
 	cxi->schema = base_schema_new(cxi->base);
@@ -466,13 +466,16 @@ static int create_metric_set(cxi_t cxi)
 		goto err;
 	}
 
+	ldms_mval_t rh_rec_mval;
+	ldms_mval_t tel_rec_mval;
+
 	for (i = 0; i < cxi->iface_count; i++) {
 		cxi->rh_list_mval = ldms_metric_get(cxi->set, cxi->rh_list_mid);
 		cxi->tel_list_mval = ldms_metric_get(cxi->set, cxi->tel_list_mid);
-		rh_rec = ldms_record_alloc(cxi->set, rh_rec_mid);
-		tel_rec = ldms_record_alloc(cxi->set, tel_rec_mid);
+		rh_rec_mval = ldms_record_alloc(cxi->set, rh_rec_mid);
+		tel_rec_mval = ldms_record_alloc(cxi->set, tel_rec_mid);
 
-		rc = ldms_list_append_record(cxi->set, cxi->rh_list_mval, rh_rec);
+		rc = ldms_list_append_record(cxi->set, cxi->rh_list_mval, rh_rec_mval);
 		if (rc) {
 			ovis_log(cxi->log, OVIS_LERROR,
 				 "Error %d appending record to rh_list.\n",
@@ -480,7 +483,7 @@ static int create_metric_set(cxi_t cxi)
 			goto err;
 		}
 
-		rc = ldms_list_append_record(cxi->set, cxi->tel_list_mval, tel_rec);
+		rc = ldms_list_append_record(cxi->set, cxi->tel_list_mval, tel_rec_mval);
 		if (rc) {
 			ovis_log(cxi->log, OVIS_LERROR,
 				 "Error %d appending record to tel_list.\n",
@@ -738,6 +741,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 	/* Finally, free the main structure */
 	free(cxi);
+}
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base.type = LDMSD_PLUGIN_SAMPLER,
