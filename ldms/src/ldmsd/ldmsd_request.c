@@ -10645,6 +10645,12 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 			goto enomem;
 		}
 		rbt_ins(&pl->prdcr_tree, &pl_pref->rbn);
+
+		if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE) {
+			prdcr->xprt = ldms_xprt_get(x, "prdcr");
+			ldms_xprt_event_cb_set(prdcr->xprt, prdcr_connect_cb, prdcr);
+			prdcr->conn_state = LDMSD_PRDCR_STATE_STANDBY;
+		}
 	}
 	/* Add the producer to any updaters that the producer matches */
 	ldmsd_updtr_t updtr;
