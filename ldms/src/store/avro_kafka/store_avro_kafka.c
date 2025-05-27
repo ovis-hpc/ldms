@@ -842,7 +842,7 @@ static char *get_topic_name(aks_handle_t sh, ldms_set_t set, ldmsd_row_t row)
 			topic = str_cat_s(str, row->schema_name);
 			break;
 		case 'F': /* Format */
-			if (sh->encoding == AKS_ENCODING_JSON)
+            if (sh->encoding == AKS_ENCODING_JSON)
 				topic = str_cat_s(str, "json");
 			else
 				topic = str_cat_s(str, "avro");
@@ -982,7 +982,11 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldm
 			break;
 		case AKS_ENCODING_JSON:
 			/* Encode row as a JSON text object */
+#ifdef HAVE_LIBYYJSON
+			rc = ldmsd_row_to_json_object_yyjson(row, (char **)&ser_buf, &ser_size);
+#else
 			rc = ldmsd_row_to_json_object(row, (char **)&ser_buf, &ser_size);
+#endif
 			if (rc) {
 				ovis_log(sh->sf->log, OVIS_LERROR, "Failed to serialize row as JSON object, error: %d", rc);
 				goto skip_row_1;
