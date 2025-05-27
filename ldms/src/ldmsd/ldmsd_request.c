@@ -5074,18 +5074,14 @@ out:
 
 static char *plugin_type_str(enum ldmsd_plugin_type type)
 {
-	static char *type_str[] = {
-		[LDMSD_PLUGIN_OTHER] = "other",
-		[LDMSD_PLUGIN_SAMPLER] = "sampler",
-		[LDMSD_PLUGIN_STORE] = "store",
-		[LDMSD_PLUGIN_AUTH] = "auth",
-		[LDMSD_PLUGIN_DECOMP] = "decomp"
-
-	};
-
-	if (type <= sizeof(type_str) / sizeof(type_str[0]))
-		return type_str[type];
-	return "unknown";
+        switch (type) {
+        case LDMSD_PLUGIN_SAMPLER:
+                return "sampler";
+        case LDMSD_PLUGIN_STORE:
+                return "store";
+        default:
+                return "unknown";
+        }
 }
 
 extern int ldmsd_load_plugin(char *instance_name, char *plugin_name, char *errstr, size_t errlen);
