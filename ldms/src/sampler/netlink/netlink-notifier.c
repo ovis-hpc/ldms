@@ -73,6 +73,7 @@
 #include <getopt.h>
 #include <sched.h>
 #include <pwd.h>
+#include <sys/inotify.h>
 
 #include <sys/ioctl.h>
 #include <sys/time.h>
@@ -91,11 +92,13 @@
 #include <math.h>
 #include <stddef.h>
 #include <sys/queue.h>
+#include <glob.h>
 #include "simple_lps.h"
 
 FILE *debug_log;
 #define DEBUG_EMITTER 0
 /* set 1 to trace which path emits the message by adding emitter field to messages */
+#define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
 
 /* provide thread-safe io macros */
 //#define debug_err_lock 1
@@ -207,6 +210,7 @@ const char *rm_names[] = {
 	/* insert additional here when supported. */
 	NULL
 };
+#define UID_MIN 1000 /* least regular uid value */
 
 /* /proc info cache */
 typedef struct proc_info {
@@ -230,6 +234,7 @@ typedef struct proc_info {
 	bool    excluded;	/* true if matches excluded path lists or uid bound */
 	bool    excluded_short;	/* true if matches excluded_short path list */
 	int	emitted;	/* values from EMIT_* below */
+	double duration;	/* -1 if unknown or seconds pid endured (only valid at end) */
 } proc_info_t;
 
 #define EMIT_NONE 0x0
@@ -320,16 +325,25 @@ typedef struct forkstat {
 	double opt_wake_interval;
 	char *compid_field;			/* compid field formatted, if requested */
 	char *prod_field;			/* ProducerName field formatted, if requested */
+	unsigned long format;			/* stream formatting version to use */
+	int heartbeat;				/* approximate seconds between heartbeats */
+	time_t lastbeat;			/* time of last beat */
+	char *jobid_variable_name;			/* variable for for jobid */
+	char *jobid_file_name;			/* where to look for jobid variable data */
+	char *host_jobid;			/* jobid from host file; fallback for proc_info jobid */
+	char *schema_dump;			/* path of file to dump configured schemas into */
 } forkstat_t;
 
 
 static char unknown[] = "<unknown>";
+static char no_exe_data[] = "/no-exe-data"; // this is used for json output only when exe is null.
 #ifdef debug_err_lock
 static pthread_mutex_t err_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif
 static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t stop_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t serial_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t host_jobid_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define THREADED 1
 #define UNTHREADED 1
@@ -405,14 +419,36 @@ static const int signals[] = {
 };
 
 /* add several structures related to filtering. */
+#define default_jobid_file NULL
+#define default_format "3" /* this is also the max format known */
+#define default_heartbeat NULL /* none by default*/
 #define default_component_id NULL
 #define default_ProducerName NULL
 #define default_track_dir "/var/run/ldms-netlink-tracked"
+#define default_purge NULL
 #define default_send_log NULL
 #define default_exclude_programs "(nullexe):<unknown>"
 #define default_exclude_dirs "/sbin"
 #define default_short_path "/bin:/usr"
 #define default_short_time "1"
+
+/* where we find jobid data if not given.*/
+#define jfsearch "/search"
+const char *jobid_file_names[] = {
+	"/var/run/ldms_jobinfo.data"
+	"/var/run/ldms.slurm.jobinfo",
+	"/var/run/ldms.jobinfo"
+};
+
+/* what the jobid data might be called. */
+const char *jobid_variable_names[] = {
+	"JOBID",
+	"JOB_ID",
+	"LSB_JOBID",
+	"PBS_JOBID",
+	"SLURM_JOBID",
+	"SLURM_JOB_ID",
+};
 
 struct path_name {
 	char *n; /* single file or dir name with trailing / */
@@ -550,7 +586,7 @@ static int normalize_exclude(struct exclude_arg *e)
 {
 	if (!e)
 		return EINVAL;
-	int rc;
+	int rc = 0;
 	struct path_elt *pe;
 	int npath;
 	switch (e->valtype) {
@@ -591,6 +627,8 @@ static int normalize_exclude(struct exclude_arg *e)
 		e->len_paths = npath;
 		qsort(e->paths, e->len_paths, sizeof(e->paths[0]), cmp_str);
 		break;
+	case VT_NONE:
+		break;
 	}
 	return rc;
 }
@@ -616,6 +654,11 @@ struct monitor_args {
 	pthread_t tid;	/* thread of the monitoring; set in forkstat_monitor.*/
 	forkstat_t *ft; /* data handle of the monitor from forkstat_create. */
 };
+
+/*
+ * thread to check on jobid data file updates.
+ */
+pthread_t jobid_thread;
 
 /* after configuration, init ma and hook forkstat handle to kernel. */
 static int forkstat_connect(forkstat_t *ft, struct monitor_args *ma);
@@ -1540,6 +1583,7 @@ static void proc_info_unload(forkstat_t *ft)
 			proc_info_t *next = info->next;
 			free_proc_comm(info->cmdline);
 			free(info->exe);
+			info->exe = NULL;
 			info->pid = NULL_PID;
 			info->uid = NULL_UID;
 			info->gid = NULL_GID;
@@ -2105,8 +2149,10 @@ static void *monitor(void *vp)
 						d1 = timeval_to_double(&info1->start);
 						d2 = timeval_to_double(&tv);
 						(void)snprintf(duration, sizeof(duration), "%8s", secs_to_str(d2 - d1));
+						info1->duration = d2 - d1;
 					} else {
 						(void)snprintf(duration, sizeof(duration), "unknown");
+						info1->duration = -1.0;
 					}
 					if (ft->opt_flags & (OPT_UMIN | OPT_EXTRA)) {
 						if (info1->uid < ft->opt_uidmin) {
@@ -2328,7 +2374,10 @@ static void forkstat_destroy(forkstat_t *ft)
 		ft->json_log = NULL;
 	}
 	free(ft->prod_field);
+	free(ft->host_jobid);
 	free(ft->compid_field);
+	free(ft->jobid_variable_name);
+	free(ft->jobid_file_name);
 	free(ft);
 }
 
@@ -2350,6 +2399,10 @@ static struct exclude_arg excludes[] = {
 	{default_track_dir, VT_DIR, 0, "NOTIFIER_TRACK_DIR", NULL, 0, PLINIT},
 	{default_ProducerName, VT_SCALAR, 0, "NOTIFIER_PRODUCERNAME", NULL, 0, PLINIT},
 	{default_component_id, VT_SCALAR, 0, "NOTIFIER_COMPONENT_ID", NULL, 0, PLINIT},
+	{default_format, VT_SCALAR, 0, "NOTIFIER_FORMAT", NULL, 0, PLINIT},
+	{default_heartbeat, VT_SCALAR, 0, "NOTIFIER_HEARTBEAT", NULL, 0, PLINIT},
+	{default_purge, VT_NONE, 0, "NOTIFIER_PURGE_TRACK_DIR", NULL, 0, PLINIT},
+	{default_jobid_file, VT_FILE, 0, "NOTIFIER_JOBID_FILE", NULL, 0, PLINIT},
 };
 static struct exclude_arg *bin_exclude = &excludes[0];
 static struct exclude_arg *dir_exclude = &excludes[1];
@@ -2366,6 +2419,10 @@ static struct exclude_arg *send_log_arg = &excludes[11];
 static struct exclude_arg *track_dir_arg = &excludes[12];
 static struct exclude_arg *prod_arg = &excludes[13];
 static struct exclude_arg *compid_arg = &excludes[14];
+static struct exclude_arg *format_arg = &excludes[15];
+static struct exclude_arg *heartbeat_arg = &excludes[16];
+static struct exclude_arg *purge_track_dir_arg = &excludes[17];
+static struct exclude_arg *jobid_file_arg = &excludes[18];
 
 static struct option long_options[] = {
 	{"exclude-programs", optional_argument, 0, 0},
@@ -2383,6 +2440,10 @@ static struct option long_options[] = {
 	{"track-dir", required_argument, 0, 0},
 	{"ProducerName", required_argument, 0, 0},
 	{"component_id", required_argument, 0, 0},
+	{"format", required_argument, 0, 0},
+	{"heartbeat", required_argument, 0, 0},
+	{"purge-track-dir", no_argument, 0, 0},
+	{"jobid-file", required_argument, 0, 0},
 	{0, 0, 0, 0}
 };
 
@@ -2410,7 +2471,7 @@ static struct env_attr lsf_env_start_default[] = {
 	{ "task_pid", "LS_JOBPID", NULL_STEP_ID, 0 }
 };
 
-static int nlongopt = sizeof(excludes)/sizeof(excludes[0]) ;
+static int nlongopt = ARRAY_SIZE(excludes);
 
 /*
  *  show_help()
@@ -2475,6 +2536,11 @@ static void show_help(char *const argv[])
 				excludes[c].defval, excludes[c].env);
 			break;
 		case VT_NONE:
+			PRINTF("--%s\t enables %s.\n"
+			       "\t If not given, the default is used unless\n"
+			       "\t the environment variable %s exists.\n",
+				long_options[c].name, long_options[c].name,
+				excludes[c].env);
 			break;
 		}
 	}
@@ -2537,6 +2603,241 @@ static int set_interval(char *optarg, forkstat_t *ft)
 	if (ft->opt_trace)
 		PRINTF("wake interval %g\n", ft->opt_wake_interval);
 	return 0;
+}
+
+static int set_heartbeat(char *optarg, forkstat_t *ft)
+{
+	if (!optarg || !ft)
+		return EINVAL;
+	char *end = NULL;
+	ft->heartbeat = strtol(optarg, &end, 10);
+	if (ft->heartbeat < 0) {
+		PRINTF("Illegal --heartbeat: %s, must be positive\n", optarg);
+		return EINVAL;
+	}
+	if (*end != '\0') {
+		PRINTF("--heartbeat <integer> needed, not %s\n", optarg);
+		return EINVAL;
+	}
+	return 0;
+}
+
+static int set_format(char *optarg, forkstat_t *ft)
+{
+	if (!optarg || !ft)
+		return EINVAL;
+	char *end = NULL;
+	unsigned long max_format = strtoul(default_format, &end, 10);
+	ft->format = strtoul(optarg, &end, 10);
+	if (ft->format > max_format) {
+		PRINTF("Illegal --format: %s, must be <= %s\n", optarg, default_format);
+		return EINVAL;
+	}
+	if (*end != '\0') {
+		PRINTF("--format <integer> needed, not %s\n", optarg);
+		return EINVAL;
+	}
+	return 0;
+}
+
+#define JOB_FILES_RETRY 10
+#define JOB_MAX_ENV 512
+static int update_host_jobid(forkstat_t *ft)
+{
+	if (!ft->jobid_variable_name || !ft->jobid_file_name)
+		return 0;
+	FILE *f = fopen(ft->jobid_file_name, "r");
+	if (!f) {
+		pthread_mutex_lock(&host_jobid_lock);
+		free(ft->host_jobid);
+		ft->host_jobid = NULL;
+		pthread_mutex_unlock(&host_jobid_lock);
+		return 0;
+	}
+	char *s = NULL;
+	char *p = NULL;
+	char *name = NULL;
+	char *value = NULL;
+	char buf[JOB_MAX_ENV];
+	int rc = 0;
+	while (NULL != (s = fgets(buf, sizeof(buf), f))) {
+		name = strtok_r(s, "=", &p);
+		if (!name || strcmp(name, ft->jobid_variable_name))
+			continue;
+		value = strtok_r(NULL, " \f\v\r\t\n", &p);
+		if (!value) {
+			pthread_mutex_lock(&host_jobid_lock);
+			free(ft->host_jobid);
+			ft->host_jobid = NULL;
+			pthread_mutex_unlock(&host_jobid_lock);
+			break;
+		}
+		pthread_mutex_lock(&host_jobid_lock);
+		free(ft->host_jobid);
+		ft->host_jobid = strdup(value);
+		pthread_mutex_unlock(&host_jobid_lock);
+		if (!ft->host_jobid) {
+			rc = ENOMEM;
+		}
+		break;
+	}
+	fclose(f);
+	return rc;
+}
+
+/* find variable from list in file. */
+static int set_jobid_variable(forkstat_t *ft)
+{
+	if (ft->jobid_variable_name)
+		return 0;
+	if (!ft->jobid_file_name)
+		return 0;
+	int missing_warned = 0;
+	while (1) {
+		FILE *f = fopen(ft->jobid_file_name, "r");
+		int rc = 0;
+		if (!f) {
+			sleep(JOB_FILES_RETRY);
+			continue;
+		}
+		int k;
+		char *s = NULL;
+		char *p = NULL;
+		char *name = NULL;
+		char buf[JOB_MAX_ENV];
+		while (NULL != (s = fgets(buf, sizeof(buf), f))) {
+			name = strtok_r(s, "=", &p);
+			if (!name)
+				continue;
+			for (k = 0; k < ARRAY_SIZE(jobid_variable_names); k++) {
+				if (! strcmp(name, jobid_variable_names[k])) {
+					ft->jobid_variable_name = strdup(name);
+					if (!ft->jobid_variable_name) {
+						rc = ENOMEM;
+					}
+					fclose(f);
+					return rc;
+				}
+			}
+			if (!missing_warned) {
+				missing_warned = 1;
+				printf("warning: job id file %s"
+				" initially without any job id variable.\n",
+				ft->jobid_file_name);
+			}
+		}
+		fclose(f);
+		sleep(JOB_FILES_RETRY);
+	}
+}
+
+/* set file from option or search loop until file found among expected files.
+ * ft->jobid_file_name will remain NULL if user wants no jobid from /var.
+ * (default is user wants no jobid from /var)
+ */
+#define SJF_LOOP 0
+#define SJF_ONCE 1
+static int set_jobid_file(forkstat_t *ft, int once)
+{
+	if (ft->jobid_file_name)
+		return 0;
+	struct exclude_arg *jfa = jobid_file_arg;
+	if (!jfa->parsed && !getenv(jfa->env))
+		return 0;
+	if (!jfa->paths[0].n)
+		return 0;
+	if (strcmp(jfa->paths[0].n, jfsearch) != 0) {
+		ft->jobid_file_name = strdup(jfa->paths[0].n);
+		if (!ft->jobid_file_name)
+			return ENOMEM;
+		return 0;
+	}
+	while (1) {
+		int i = 0;
+		for (; i < ARRAY_SIZE(jobid_file_names); i++) {
+			FILE *f = fopen(jobid_file_names[i], "r");
+			if (f) {
+				fclose(f);
+				ft->jobid_file_name = strdup(jobid_file_names[i]);
+				if (!ft->jobid_file_name)
+					return ENOMEM;
+				return 0;
+			}
+		}
+		if (once)
+			return 0;
+		sleep(JOB_FILES_RETRY);
+	}
+}
+/*
+ * Wait for changes to the jobinfo file and update the metrics.
+ */
+void *
+jobid_thread_check(void *arg)
+{
+	forkstat_t *ft = (forkstat_t *)arg;
+	if (!arg )
+		return NULL;
+	int rc;
+	int nd;
+	int wd = -1;
+	struct inotify_event ev;
+	int mask = IN_CLOSE_WRITE | IN_CREATE | IN_DELETE | IN_DELETE_SELF;
+
+	// this loops until file is known if file is expected
+	rc = set_jobid_file(ft, SJF_LOOP);
+	if (rc) {
+		printf("out of memory setting job id input file\n");
+		return NULL;
+	}
+	if (!ft->jobid_file_name)
+		return NULL;
+
+	// get var and value from file
+	rc = set_jobid_variable(ft);
+	if (rc) {
+		printf("out of memory setting job id variable\n");
+		return NULL;
+	}
+	if (!ft->jobid_variable_name)
+		return NULL;
+
+	update_host_jobid(ft);
+	/* watch for changes to value found at
+	 * jobid_file_name:jobid_variable_name
+	 */
+	nd = inotify_init();
+	while (1) {
+		/*
+		 * The file may not exist at the time this daemon is started.
+		 * By the time we get here, it existed for set_jobid_file,
+		 * so we expect it to reappear.
+		 */
+		if (wd < 0 && ft->jobid_file_name != NULL) {
+			wd = inotify_add_watch(nd, ft->jobid_file_name, mask);
+			if (wd < 0) {
+				/* try again later. may be briefly gone */
+				sleep(1);
+				continue;
+			}
+		}
+
+		rc = read(nd, &ev, sizeof(ev));
+		if (rc < sizeof(ev) ||
+			(ev.mask & (IN_CREATE | IN_DELETE | IN_DELETE_SELF))) {
+			printf("Error %d reading from the inotify descriptor.\n",
+			       errno);
+			inotify_rm_watch(nd, wd);
+			wd = -1;
+			continue;
+		}
+		update_host_jobid(ft);
+	}
+
+	inotify_rm_watch(nd, wd);
+	close(nd);
+
+	return NULL;
 }
 
 static int set_duration_min(char *optarg, forkstat_t *ft)
@@ -2683,10 +2984,16 @@ static void forkstat_option_dump(forkstat_t *ft, struct exclude_arg *excludes)
 	printf("\topt_trace = %u\n", ft->opt_trace);
 	size_t k;
 	int c;
+	printf("long opts:\n");
 	for (c = 0; c < nlongopt; c++) {
-		PRINTF("\tcomputed %s:\n", excludes[c].env);
+		printf("--%s\n", long_options[c].name);
+		printf("\tparsed %d:\n", excludes[c].parsed);
+		printf("\tcomputed %s:\n", excludes[c].env);
 		for (k = 0; k < excludes[c].len_paths; k++)
-			PRINTF("\t\telt[%zu]: %s\n", k, excludes[c].paths[k].n);
+			printf("\t\telt[%zu]: %s\n", k, excludes[c].paths[k].n);
+		char *ev = getenv(excludes[c].env);
+		printf("\tenv %s: %s\n", excludes[c].env,
+			ev ? (ev[0] != '\0' ? ev : "<empty-string>") : "<unset>");
 	}
 }
 
@@ -3012,22 +3319,46 @@ err:
 /* /////////// end of functions to get env var from a pid ///////////////// */
 #include "ovis_json/ovis_json.h"
 
-#define info_jobid_str(info) info->jobid ? info->jobid : "0"
+/* If jobid unset, copy host_jobid into info.
+ */
+void check_info_jobid( struct proc_info *info, forkstat_t *ft) {
+	if (info->jobid)
+		return;
+	if (info->uid >= UID_MIN && ft->host_jobid)
+		info->jobid = strdup(ft->host_jobid);
+}
 
-static int add_env_attr(struct env_attr *a, jbuf_t *jb, const struct proc_info *info, forkstat_t *ft)
+/* get jobid string from pid environ if present, or if uid > UID_MIN,
+ * get host_jobid.
+ */
+char *info_jobid_str( const struct proc_info *info, forkstat_t *ft) {
+	if (!info || !ft)
+		return "-1";
+	if (info->jobid)
+		return info->jobid;
+	if (info->uid >= UID_MIN && ft->host_jobid) {
+		return ft->host_jobid;
+	}
+	return "0";
+}
+
+
+/* append attr string to jb; if !last, field is also followed by a comma */
+static int add_env_attr(struct env_attr *a, jbuf_t *jb, const struct proc_info *info, forkstat_t *ft, bool last)
 {
 	const char *s = info_get_var(a->env, info, ft);
 	if (!s)
 		s = a->v_default;
 	if (a->quoted == ATTR_QUOTED) {
-		*jb = jbuf_append_attr(*jb, a->attr, "\"%s\",", s );
+		*jb = jbuf_append_attr(*jb, a->attr, "\"%s\"%s", s , (last ? "" : ","));
 	} else {
-		*jb = jbuf_append_attr(*jb, a->attr, "%s,", s);
+		*jb = jbuf_append_attr(*jb, a->attr, "%s%s", s, (last ? "" : ","));
 	}
 	if (!*jb)
 		return errno;
 	return 0;
 }
+
 
 static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_info *info,
 #if DEBUG_EMITTER
@@ -3039,6 +3370,8 @@ static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_in
 	jbuf_t jb = jbd;
 	if (!jb)
 		return NULL;
+	pthread_mutex_lock(&host_jobid_lock);
+	if (ft->format < 3) {
 	jb = jbuf_append_str(jb,
 		"{"
 		"\"msgno\":%" PRIu64 ","
@@ -3075,7 +3408,7 @@ static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_in
 			ft->prod_field, ft->compid_field,
 			info->start.tv_sec, info->start.tv_usec,
 			info->start_tick,
-			info_jobid_str(info),
+			info_jobid_str(info, ft),
 			info->serno,
 			(int64_t)info->pid,
 			(int64_t)info->uid,
@@ -3083,47 +3416,212 @@ static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_in
 			(int)info->pid,
 			(int)info->is_thread,
 			info->exe);
+	}
+	if (ft->format == 3) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"linux_task_data\","
+			"\"event\":\"task_init_priv\","
+			"\"timestamp\":%d,"
+#if DEBUG_EMITTER
+			"\"emitter\":\"%s\","
+#endif
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"uid\":%" PRId64 ","
+				"\"gid\":%" PRId64 ","
+				"\"is_thread\":%d,"
+				"\"exe\":\"%s\","
+				/* format start_tick as string because u64 is out
+				 * of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\","
+				"\"task_pid\":%d,"
+				"\"task_global_id\":" NULL_STEP_ID
+				"}"
+			"}",
+			forkstat_get_serial(ft),
+			time(NULL),
+#if DEBUG_EMITTER
+			type,
+#endif
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int64_t)info->uid,
+				(int64_t)info->gid,
+				(int)info->is_thread,
+				info->exe,
+				info->start_tick,
+				(int)info->pid
+				);
+	}
+	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 
 }
 
+
 static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info *info, jbuf_t jbd)
 {
 	jbuf_t jb = jbd;
-	(void)ft;
 
 	if (!jb)
 		return NULL;
-	jb = jbuf_append_str(jb,
-		"{"
-		"\"msgno\":%" PRIu64 ","
-		"\"schema\":\"linux_task_data\","
-		"\"event\":\"task_exit\","
-		"\"timestamp\":%d,"
-		"\"context\":\"*\","
-		"\"data\":"
-			"{"
-			"%s%s"
-			"\"start\":\"%lu.%06lu\","
-			/* format start_tick as string because u64
-			* is out of ovis_json signed int range */
-			"\"start_tick\":\"%" PRIu64 "\","
-			"\"job_id\":\"%s\","
-			"\"serial\":%" PRId64 ","
-			"\"os_pid\":%" PRId64 ","
-			"\"task_pid\":%d"
-			"}"
-		"}",
-		forkstat_get_serial(ft),
-		time(NULL),
-			ft->prod_field, ft->compid_field,
-			info->start.tv_sec, info->start.tv_usec,
-			info->start_tick,
-			info_jobid_str(info),
-			info->serno,
-			(int64_t)info->pid,
-			(int)info->pid);
 
+	pthread_mutex_lock(&host_jobid_lock);
+	if (ft->format == 0)
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"linux_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				/* format start_tick as string because u64
+				* is out of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"task_pid\":%d"
+				"}"
+			"}",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info->start_tick,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int)info->pid);
+	else if (ft->format == 1)
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"linux_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				/* format start_tick as string because u64
+				* is out of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"task_pid\":%d,"
+				"\"duration\":%.17g"
+				"}"
+			"}",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info->start_tick,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int)info->pid,
+				info->duration);
+	else if (ft->format == 2)
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"linux_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				/* format start_tick as string because u64
+				* is out of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"task_pid\":%d,"
+				"\"duration\":%.17g,"
+				"\"exe\":\"%s\""
+				"}"
+			"}",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info->start_tick,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int)info->pid,
+				info->duration,
+				info->exe ? info->exe : no_exe_data
+				);
+	else if (ft->format == 3) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"linux_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"uid\":%" PRId64 ","
+				"\"gid\":%" PRId64 ","
+				"\"is_thread\":%d,"
+				"\"exe\":\"%s\","
+				"\"duration\":%.17g,"
+				/* format start_tick as string because u64 is out
+				 * of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\","
+				"\"task_pid\":%d,"
+				"\"task_global_id\":" NULL_STEP_ID
+				"}"
+			"}",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int64_t)info->uid,
+				(int64_t)info->gid,
+				(int)info->is_thread,
+				info->exe ? info->exe : no_exe_data,
+				info->duration,
+				info->start_tick,
+				(int)info->pid
+				);
+	}
+	else
+		jb = NULL;
+
+	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 }
 
@@ -3133,6 +3631,8 @@ static jbuf_t make_process_start_data_lsf(forkstat_t *ft, const struct proc_info
 	jbuf_t jb = jbd;
 	if (!jb)
 		return NULL;
+	pthread_mutex_lock(&host_jobid_lock);
+	if (ft->format < 3) {
 	jb = jbuf_append_str(jb,
 		"{"
 		"\"msgno\":%" PRIu64 ","
@@ -3151,15 +3651,15 @@ static jbuf_t make_process_start_data_lsf(forkstat_t *ft, const struct proc_info
 		time(NULL),
 			ft->prod_field, ft->compid_field,
 			info->start.tv_sec, info->start.tv_usec,
-			info_jobid_str(info),
+			info_jobid_str(info, ft),
 			info->serno,
 			(int64_t)info->pid);
 	if (!jb)
 		goto out_1;
 	size_t i, iend;
-	iend = sizeof(lsf_env_start_default)/sizeof(lsf_env_start_default[0]);
+	iend = ARRAY_SIZE(lsf_env_start_default);
 	for (i = 0 ; i < iend; i++)
-		if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft))
+			if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft, 0))
 			goto out_1;
 	jb = jbuf_append_str(jb,
 			"\"uid\":%" PRId64 ","
@@ -3172,8 +3672,55 @@ static jbuf_t make_process_start_data_lsf(forkstat_t *ft, const struct proc_info
 			(int64_t)info->gid,
 			(int)info->is_thread,
 			info->exe);
+	} else if (ft->format == 3) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"lsf_task_data\","
+			"\"event\":\"task_init_priv\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"uid\":%" PRId64 ","
+				"\"gid\":%" PRId64 ","
+				"\"is_thread\":%d,"
+				"\"exe\":\"%s\","
+				/* format start_tick as string because u64 is out
+				 * of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\",",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int64_t)info->uid,
+				(int64_t)info->gid,
+				(int)info->is_thread,
+				info->exe,
+				info->start_tick
+				);
+		if (!jb)
+			goto out_1;
+		size_t i, iend;
+		iend = ARRAY_SIZE(lsf_env_start_default);
+		for (i = 0 ; i < iend; i++)
+			if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft, (i == (iend-1))))
+				goto out_1;
+		jb = jbuf_append_str(jb,
+				"}"
+			"}");
+	}
 
  out_1:
+	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 }
 
@@ -3183,41 +3730,149 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 	jbuf_t jb = jbd;
 	if (!jb)
 		return NULL;
-	jb = jbuf_append_str(jb,
-		"{"
-		"\"msgno\":%" PRIu64 ","
-		"\"schema\":\"lsf_task_data\","
-		"\"event\":\"task_exit\","
-		"\"timestamp\":%d,"
-		"\"context\":\"*\","
-		"\"data\":"
+	pthread_mutex_lock(&host_jobid_lock);
+	if (ft->format == 0) {
+		jb = jbuf_append_str(jb,
 			"{"
-			"%s%s"
-			"\"start\":\"%lu.%06lu\","
-			"\"job_id\":\"%s\","
-			"\"serial\":%" PRId64 ","
-			"\"os_pid\":%" PRId64 ",",
-		forkstat_get_serial(ft),
-		time(NULL),
-			ft->prod_field, ft->compid_field,
-			info->start.tv_sec, info->start.tv_usec,
-			info_jobid_str(info),
-			info->serno,
-			(int64_t)info->pid);
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"lsf_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ",",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid);
+	} else if (ft->format == 1) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"lsf_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"duration\":%.17g,",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				info->duration
+				);
+	} else if (ft->format == 2) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"lsf_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"duration\":%.17g,"
+				"\"exe\":\"%s\",",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				info->duration,
+				info->exe ? info->exe : no_exe_data
+				);
+	} else if (ft->format == 3) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"lsf_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"uid\":%" PRId64 ","
+				"\"gid\":%" PRId64 ","
+				"\"is_thread\":%d,"
+				"\"exe\":\"%s\","
+				"\"duration\":%.17g,"
+				/* format start_tick as string because u64 is out
+				 * of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\",",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int64_t)info->uid,
+				(int64_t)info->gid,
+				(int)info->is_thread,
+				info->exe ? info->exe : no_exe_data,
+				info->duration,
+				info->start_tick
+				);
+		if (!jb)
+			goto out_1;
+		size_t i, iend;
+		iend = ARRAY_SIZE(lsf_env_start_default);
+		for (i = 0 ; i < iend; i++)
+			if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft, (i == (iend-1))))
+				goto out_1;
+		jb = jbuf_append_str(jb,
+				"}"
+			"}");
+	}
+	else
+		jb = NULL;
 	if (!jb)
 		goto out_1;
+	/* common append env for cases 0-2 */
+	if (ft->format < 3) {
 	size_t i, iend;
-	iend = sizeof(lsf_env_start_default)/sizeof(lsf_env_start_default[0]);
+	iend = ARRAY_SIZE(lsf_env_start_default);
 	for (i = 0 ; i < iend; i++)
-		if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft))
+			if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft, 0))
 			goto out_1;
 	jb = jbuf_append_str(jb,
 			"\"uid\":%" PRId64
 			"}"
 		"}",
 			(int64_t)info->uid);
+	}
 
  out_1:
+	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 }
 
@@ -3231,6 +3886,8 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 	jbuf_t jb = jbd;
 	if (!jb)
 		return NULL;
+	pthread_mutex_lock(&host_jobid_lock);
+	if (ft->format < 3) {
 	jb = jbuf_append_str(jb,
 		"{"
 		"\"msgno\":%" PRIu64 ","
@@ -3253,13 +3910,13 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 		type,
 #endif
 			ft->prod_field, ft->compid_field,
-			info_jobid_str(info),
+			info_jobid_str(info, ft),
 			info->serno,
 			(int64_t)info->pid);
 	size_t i, iend;
-	iend = sizeof(slurm_env_start_default)/sizeof(slurm_env_start_default[0]);
+	iend = ARRAY_SIZE(slurm_env_start_default);
 	for (i = 0 ; i < iend; i++) {
-		if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft))
+			if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft, 0))
 			goto out_1;
 	}
 	jb = jbuf_append_str(jb,
@@ -3273,7 +3930,66 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 		"}",
 			(int)info->is_thread,
 			info->exe);
+	} else if (ft->format == 3) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"slurm_task_data\","
+			"\"event\":\"task_init_priv\","
+			"\"timestamp\":%d,"
+#if DEBUG_EMITTER
+			"\"emitter\":\"%s\","
+#endif
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"uid\":%" PRId64 ","
+				"\"gid\":%" PRId64 ","
+				"\"is_thread\":%d,"
+				"\"exe\":\"%s\","
+				/* format start_tick as string because u64 is out
+				 * of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\","
+				"\"task_global_id\":" NULL_STEP_ID ","
+				"\"ncpus\":" NULL_STEP_ID ","
+				"\"local_tasks\":" NULL_STEP_ID ",",
+			forkstat_get_serial(ft),
+			time(NULL),
+#if DEBUG_EMITTER
+			type,
+#endif
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int64_t)info->uid,
+				(int64_t)info->gid,
+				(int)info->is_thread,
+				info->exe,
+				info->start_tick
+				);
+		if (!jb)
+			goto out_1;
+		size_t i, iend;
+		iend = ARRAY_SIZE(slurm_env_start_default);
+		for (i = 0 ; i < iend; i++) {
+			if (i == 4 || i == 5)
+				continue;
+			if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft, (i == (iend-1))))
+				goto out_1;
+		}
+		jb = jbuf_append_str(jb,
+				"}"
+			"}");
+	}
  out_1:
+	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 
 }
@@ -3285,31 +4001,143 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 
 	if (!jb)
 		return NULL;
-	jb = jbuf_append_str(jb,
-		"{"
-		"\"msgno\":%" PRIu64 ","
-		"\"schema\":\"slurm_task_data\","
-		"\"event\":\"task_exit\","
-		"\"timestamp\":%d,"
-		"\"context\":\"*\","
-		"\"data\":"
+	pthread_mutex_lock(&host_jobid_lock);
+	if (ft->format == 0)
+		jb = jbuf_append_str(jb,
 			"{"
-			"%s%s"
-			"\"job_id\":\"%s\","
-			"\"serial\":%" PRId64 ","
-			"\"os_pid\":%" PRId64 ",",
-		forkstat_get_serial(ft),
-		time(NULL),
-			ft->prod_field, ft->compid_field,
-			info_jobid_str(info),
-			info->serno,
-			(int64_t)info->pid);
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"slurm_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ",",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid);
+	else if (ft->format == 1)
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"slurm_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"job_id\":\"%s\","
+				"\"start\":\"%lu.%06lu\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"duration\":%.17g,",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info_jobid_str(info, ft),
+				info->start.tv_sec, info->start.tv_usec,
+				info->serno,
+				(int64_t)info->pid,
+				info->duration);
+	else if (ft->format == 2)
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"slurm_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"job_id\":\"%s\","
+				"\"start\":\"%lu.%06lu\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"duration\":%.17g,"
+				"\"exe\":\"%s\",",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info_jobid_str(info, ft),
+				info->start.tv_sec, info->start.tv_usec,
+				info->serno,
+				(int64_t)info->pid,
+				info->duration,
+				info->exe ? info->exe : no_exe_data
+				);
+	else if  (ft->format == 3) {
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"slurm_task_data\","
+			"\"event\":\"task_exit\","
+			"\"timestamp\":%d,"
+			"\"context\":\"*\","
+			"\"data\":"
+				"{"
+				"%s%s"
+				"\"start\":\"%lu.%06lu\","
+				"\"job_id\":\"%s\","
+				"\"serial\":%" PRId64 ","
+				"\"os_pid\":%" PRId64 ","
+				"\"uid\":%" PRId64 ","
+				"\"gid\":%" PRId64 ","
+				"\"is_thread\":%d,"
+				"\"exe\":\"%s\","
+				"\"duration\":%.17g,"
+				/* format start_tick as string because u64 is out
+				 * of ovis_json signed int range */
+				"\"start_tick\":\"%" PRIu64 "\","
+				"\"task_global_id\":" NULL_STEP_ID ","
+				"\"ncpus\":" NULL_STEP_ID ","
+				"\"local_tasks\":" NULL_STEP_ID ",",
+			forkstat_get_serial(ft),
+			time(NULL),
+				ft->prod_field, ft->compid_field,
+				info->start.tv_sec, info->start.tv_usec,
+				info_jobid_str(info, ft),
+				info->serno,
+				(int64_t)info->pid,
+				(int64_t)info->uid,
+				(int64_t)info->gid,
+				(int)info->is_thread,
+				info->exe ? info->exe : no_exe_data,
+				info->duration,
+				info->start_tick
+				);
+		if (!jb)
+			goto out_1;
+		size_t i, iend;
+		iend = ARRAY_SIZE(slurm_env_start_default);
+		for (i = 0 ; i < iend; i++) { /* deliberately reusing start array here. */
+			if (i == 4 || i == 5)
+				continue;
+			if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft, (i == (iend-1))))
+				goto out_1;
+		}
+		jb = jbuf_append_str(jb,
+				"}"
+			"}");
+
+	}
+	else
+		jb = NULL;
 	if (!jb)
 		goto out_1;
+	if (ft->format < 3) {
+		/* common end for formats < 3 */
 	int i, iend;
-	iend = sizeof(slurm_env_end_default)/sizeof(slurm_env_end_default[0]);
+	iend = ARRAY_SIZE(slurm_env_end_default);
 	for (i = 0 ; i < iend; i++)
-		if (add_env_attr(&slurm_env_end_default[i], &jb, info, ft))
+			if (add_env_attr(&slurm_env_end_default[i], &jb, info, ft, 0))
 			goto out_1;
 	jb = jbuf_append_str(jb,
 			"\"task_id\":" NULL_STEP_ID ","
@@ -3317,8 +4145,10 @@ static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info
 			"\"task_exit_status\":\"*\""
 			"}"
 		"}");
+	}
 
  out_1:
+	pthread_mutex_unlock(&host_jobid_lock);
 	return jb;
 }
 
@@ -3386,6 +4216,7 @@ static jbuf_t make_ldms_message(forkstat_t *ft, struct proc_info *info, const ch
 			free_env(pidenv);
 		}
 	}
+	check_info_jobid(info, ft);
 
 	if (emit_event & EMIT_EXIT) {
 		switch (info->rm_type) {
@@ -3546,6 +4377,69 @@ static int forkstat_set_json_log(forkstat_t *ft, const char *fname)
 
 static forkstat_t *shft;
 
+void heartbeat(forkstat_t *ft, time_t now, jbuf_t *jbd)
+{
+	if (!ft || !ft->heartbeat || !jbd || !*jbd)
+		return;
+	if (now - ft->lastbeat >= ft->heartbeat) {
+		ft->lastbeat = now;
+		jbuf_t jb = *jbd;
+		/* format similar to others without data object */
+		jbuf_reset(jb);
+		jb = jbuf_append_str(jb,
+			"{"
+			"\"msgno\":%" PRIu64 ","
+			"\"schema\":\"ldms-notify-status\","
+			"%s%s"
+			"\"timestamp\":%" PRId64 ","
+			"\"event\":\"heartbeat\",\"data\":{\"host_jobid\":\"%s\"}}",
+				forkstat_get_serial(ft),
+				ft->prod_field, ft->compid_field,
+				(int64_t)ft->lastbeat,
+				ft->host_jobid
+			);
+		if (jb) {
+			send_ldms_message(ft, jb);
+		}
+		*jbd = jb;
+	}
+}
+
+void purge_track_dir(const char *track_dir)
+{
+	if (!track_dir || track_dir[0] != '/')
+		return;
+	PRINTF("Clearing %s\n", track_dir);
+	size_t g_pat_sz = strlen(track_dir) + 10;
+	char gpat[g_pat_sz];
+	glob_t pglob;
+	memset(&pglob, 0, sizeof(pglob));
+	sprintf(gpat, "%s/[0-9]*", track_dir);
+	int gc = glob(gpat, GLOB_NOSORT, NULL, &pglob);
+	if (gc) {
+		PRINTF("Read no pids from %s\n", track_dir);
+		return;
+	}
+	size_t ig = 0;
+	struct proc_info info;
+	struct stat sb;
+	for ( ; ig < pglob.gl_pathc; ig++) {
+		char *pidstr = basename(pglob.gl_pathv[ig]);
+		if (!pidstr)
+			continue;
+		sprintf(gpat, "/proc/%s", pidstr);
+		int rc = stat(gpat, &sb);
+		if (rc) {
+			/* no /proc/$pidstr exists, so remove $track_dir/$pidstr */
+			info.pid = strtol(pidstr, NULL, 10);
+			track_pid_remove(&info, track_dir);
+			PRINTF("Cleared %s%s\n", track_dir, pidstr);
+		}
+	}
+	globfree(&pglob);
+
+}
+
 #define DFLT_SORT_SZ 128
 static void *dump_pids(void *vp)
 {
@@ -3608,6 +4502,7 @@ static void *dump_pids(void *vp)
 		if (ft->opt_trace)
 			PRINTF("end UPDATE\n");
 
+		heartbeat(ft, tv.tv_sec, &jb);
 		nanosleep(&s, NULL);
 	}
 	jbuf_free(jb);
@@ -3616,6 +4511,94 @@ static void *dump_pids(void *vp)
 	return NULL;
 }
 
+char *dummy_pidenv[] = {"a=1","b=1", NULL};
+proc_info_t test_pi = {
+	.next = NULL,
+	.cmdline = "/bin/sleep 10",
+	.pid = 123,
+	.uid = 1023,
+	.gid = 1024,
+	.euid = 1025,
+	.start.tv_sec = 100000000,
+	.start.tv_usec = 1,
+	.start_tick = 1234567,
+	.kernel_thread = false,	/* true if a kernel thread */
+	.exe = "/bin/sleep",
+	.serno = 601,
+	.rm_type = RM_NONE,	/* replace with lsf or slurm as neeced */
+	.pidenv = dummy_pidenv,
+	.jobid = "123_45",
+	.is_thread = false,	/* replace with true as needed */
+	.excluded = false,
+	.excluded_short = false,
+	.emitted = EMIT_NONE,
+	.duration = 21345
+};
+
+void dump_schemas(forkstat_t *ft)
+{
+	if (!ft || !ft->schema_dump) {
+		return;
+	}
+	proc_info_t *info = &test_pi;
+	jbuf_t jbd = jbuf_new();
+	jbuf_t jb = jbd;
+	FILE *out = fopen(ft->schema_dump, "w");
+	if (!out) {
+		PRINTF("-J error: cannot open file %s\n", ft->schema_dump);
+		return;
+	}
+	PRINTF("dumping schema information to %s. configured format is %lu\n",
+		ft->schema_dump, ft->format);
+	int oldfmt = ft->format;
+	char *end = NULL;
+	unsigned long max_format = strtoul(default_format, &end, 10);
+	unsigned long k;
+	for (k = 0; k <= max_format; k++) {
+		ft->format = k;
+		fprintf(out, "\noptions: format=%lu %s %s\n",
+				ft->format, ft->prod_field, ft->compid_field);
+
+		// case RM_NONE:
+		jb = make_process_end_data_linux(ft, info, jbd);
+		fprintf(out, "// linux task end format=%lu\n%s\n", ft->format, jb->buf);
+		jbuf_reset(jbd);
+
+		// case RM_SLURM:
+		jb = make_process_end_data_slurm(ft, info, jbd);
+		fprintf(out, "// slurm task end format=%lu\n%s\n", ft->format, jb->buf);
+		jbuf_reset(jbd);
+
+		// case RM_LSF:
+		jb = make_process_end_data_lsf(ft, info, jbd);
+		fprintf(out, "// lsf task end format=%lu\n%s\n", ft->format, jb->buf);
+		jbuf_reset(jbd);
+
+		// case RM_NONE:
+		jb = make_process_start_data_linux(ft, info
+#if DEBUG_EMITTER
+									, type
+#endif
+									, jbd);
+		fprintf(out, "// linux task start format=%lu\n%s\n", ft->format, jb->buf);
+		jbuf_reset(jbd);
+		// case RM_SLURM:
+		jb = make_process_start_data_slurm(ft, info
+#if DEBUG_EMITTER
+									, type
+#endif
+									, jbd);
+		fprintf(out, "// slurm task start format=%lu\n%s\n", ft->format, jb->buf);
+		jbuf_reset(jbd);
+		// case RM_LSF:
+		jb = make_process_start_data_lsf(ft, info, jbd);
+		fprintf(out, "// lsf task start format=%lu\n%s\n", ft->format, jb->buf);
+		jbuf_reset(jbd);
+	}
+	ft->format = oldfmt;
+	jbuf_free(jbd);
+	fclose(out);
+}
 /*
  * This portion of the code extended by NTESS from forkstat.
  */
@@ -3630,10 +4613,6 @@ int main(int argc, char * argv[])
 	forkstat_t *ft = NULL;
 	struct dump_args thread_args;
 	memset(&thread_args, 0, sizeof(thread_args));
-	if (geteuid() != 0) {
-		(void)fprintf(stderr, "Need to run with root access.\n");
-		goto done;
-	}
 	ft = forkstat_create(printf, printf);
 	if (!ft) {
 		fprintf(stderr, "%s: out of memory.\n", argv[0]);
@@ -3658,13 +4637,13 @@ int main(int argc, char * argv[])
 	}
 	if (argc < 2) {
 		args = default_args;
-		argc = sizeof(default_args) / sizeof(default_args[0]);
+		argc = ARRAY_SIZE(default_args);
 	}
 
 	while (1) {
 		// int this_option_optind = optind ? optind : 1;
 		int option_index = 0;
-		c = getopt_long(argc, args, "cdD:e:Eghi:j:L:lm:rsStqxXu:v:",
+		c = getopt_long(argc, args, "cdD:e:Eghi:j:J:L:lm:rsStqxXu:v:",
 				long_options, &option_index);
 		if (c == -1)
 			break;
@@ -3717,6 +4696,12 @@ int main(int argc, char * argv[])
 		case 'j':
 			if (forkstat_set_json_log(ft, optarg)) {
 				(void)fprintf(stderr, "-f %s failed.\n", optarg);
+				exit(EXIT_FAILURE);
+			}
+			break;
+		case 'J':
+			if (!(ft->schema_dump = strdup(optarg))) {
+				(void)fprintf(stderr, "-J %s malloc failed.\n", optarg);
 				exit(EXIT_FAILURE);
 			}
 			break;
@@ -3788,7 +4773,27 @@ int main(int argc, char * argv[])
 		}
 		normalize_exclude(&excludes[c]);
 	}
-	if (compid_arg[0].parsed && compid_arg->paths[0].n) {
+	int rc = set_jobid_file(ft, SJF_ONCE);
+	switch (rc) {
+	case ENOENT:
+		fprintf(stderr, "Warning: Found no file for %s with %s.\n",
+			 jobid_file_arg->paths[0].n, "jobid-file");
+		/* this may be resolved later for some daemon startup orders */
+		break;
+	case ENOMEM:
+		fprintf(stderr, "out of memory configuring %s.\n", "jobid-file");
+		ret = EXIT_FAILURE;
+		goto abort_sock;
+	default:
+		break;
+	}
+	if (set_format(format_arg->paths[0].n, ft)) {
+		fprintf(stderr, "Bad value %s for %s (>=0 & <= %s).\n",
+			 format_arg->paths[0].n, "format", format_arg[0].defval);
+		ret = EXIT_FAILURE;
+		goto abort_sock;
+	}
+	if (compid_arg[0].parsed || getenv(compid_arg->env)) {
 		size_t csz = strlen(compid_arg->paths[0].n) + 20;
 		char ctmp[csz];
 		sprintf(ctmp, "\"component_id\":%s,", compid_arg->paths[0].n);
@@ -3796,7 +4801,18 @@ int main(int argc, char * argv[])
 	} else {
 		ft->compid_field = strdup("");
 	}
-	if (prod_arg[0].parsed && prod_arg->paths[0].n) {
+	if ( (heartbeat_arg[0].parsed || getenv(heartbeat_arg->env)) &&
+		set_heartbeat(heartbeat_arg->paths[0].n, ft)) {
+		fprintf(stderr, "Bad value %s for %s.\n",
+			heartbeat_arg->paths[0].n, "heartbeat. need seconds.");
+		ret = EXIT_FAILURE;
+		goto abort_sock;
+	}
+	if (track_dir_arg->len_paths && (purge_track_dir_arg[0].parsed ||
+		getenv(purge_track_dir_arg->env) != NULL )) {
+		purge_track_dir(track_dir_arg->paths[0].n);
+	}
+	if (prod_arg[0].parsed || getenv(prod_arg->env)) {
 		size_t csz = strlen(prod_arg->paths[0].n) + 20;
 		char ctmp[csz];
 		sprintf(ctmp, "\"ProducerName\":\"%s\",", prod_arg->paths[0].n);
@@ -3813,8 +4829,8 @@ int main(int argc, char * argv[])
 		fprintf(stderr, "Bad value %s for %s or %s.\n",
 			 duration_exclude->paths[0].n, long_options[3].name, duration_exclude->env);
 		ret = EXIT_FAILURE;
+		goto abort_sock;
 	}
-
 	if (ft->opt_trace)
 		forkstat_option_dump(ft, excludes);
 
@@ -3831,6 +4847,16 @@ int main(int argc, char * argv[])
 		}
 	}
 
+	if (ft->schema_dump) {
+		dump_schemas(ft);
+		free(ft->schema_dump);
+		ft->schema_dump = NULL;
+	}
+
+	if (geteuid() != 0) {
+		(void)fprintf(stderr, "Need to run with root access on netlink socket.\n");
+		goto done;
+	}
 	struct monitor_args ma;
 	ma.ret = 0;
 	int conn_err = forkstat_connect(ft, &ma);
@@ -3848,8 +4874,12 @@ int main(int argc, char * argv[])
 		forkstat_option_dump(ft, excludes);
 
 /* netlink/ldms threaded region */
+	/* thread for jobid file */
+	pthread_create(&jobid_thread, NULL, jobid_thread_check, ft);
+
 	forkstat_init_ldms_stream(ft);
-	int start_err = forkstat_monitor(ft, &ma); // thread to follow kernel netlink sock
+	// thread to follow kernel netlink sock
+	int start_err = forkstat_monitor(ft, &ma);
 	if (start_err)
 		goto close_abort;
 	if (ft->opt_trace)
