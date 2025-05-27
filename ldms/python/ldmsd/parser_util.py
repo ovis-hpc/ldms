@@ -215,9 +215,9 @@ def parse_to_cfg_str(cfg_obj):
                     if isinstance(i, (str, int, float)):
                         cfg_str += key + '=' + str(i)
                     else:
-                        raise TypeError(f'Error: parse_to_cfg_str not expecting list value of' + str(i)+' for key '+  key )
+                        raise TypeError(f'Error: parse_to_cfg_str not expecting list value of {i} for key '+  key )
                 continue
-            raise TypeError(f'Error: parse_to_cfg_str not expecting value ' + str(val)+' for key '+  key )
+            raise TypeError(f'Error: parse_to_cfg_str not expecting value {val} for key '+  key )
 
     return cfg_str
 
