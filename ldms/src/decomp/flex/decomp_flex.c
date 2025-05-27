@@ -624,6 +624,7 @@ static int flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	flex_match_t match;
 	int have_matches = 0;
 	int n_decomp = 0, di;
+	char dbuff[512];
 
 	flex_list = *decomp_ctxt;
 
@@ -649,8 +650,16 @@ static int flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 
 	if (0 == n_decomp) {
 		/* does not match; apply the default */
-		if (!dcfg->default_decomps)
-			return ENOENT;
+		if (!dcfg->default_decomps) {
+			ovis_log(flex_log, OVIS_LWARN,
+				 "strgp '%s': no default decomposition, "
+				 "unhandled set '%s' (%s)",
+				 strgp->obj.name,
+				 ldms_set_name_get(set),
+				 ldms_digest_str(ldms_set_digest_get(set),
+							 dbuff, sizeof(dbuff)));
+			return 0;
+		}
 		n_decomp = dcfg->default_decomps->n_decomp;
 		flex_list = calloc(1, sizeof(struct flex_decomp_list_s) +
 				      n_decomp*sizeof(flex_decomp_t));
