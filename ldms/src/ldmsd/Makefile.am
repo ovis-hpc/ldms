@@ -61,10 +61,6 @@ ldmsd_LDADD = ../core/libldms.la libldmsd_request.la libldmsd_stream.la \
 ldmsd_CFLAGS = $(AM_CFLAGS)
 ldmsd_LDFLAGS = $(AM_LDFLAGS) -rdynamic -pthread
 
-if HAVE_LIBYYJSON
-DEFS += -DHAVE_YYJSON
-endif
-
 if ENABLE_RABBITV3
 ldmsd_LDADD += -lrabbitmq
 ldmsd_CFLAGS += -DENABLE_RABBITMQ

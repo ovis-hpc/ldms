@@ -77,6 +77,9 @@ AM_CONDITIONAL([HAVE_LIBJANSSON], [test "x$HAVE_LIBJANSSON" = xyes])
 
 AC_LIB_HAVE_LINKFLAGS([yyjson], [], [#include <yyjson.h>])
 AM_CONDITIONAL([HAVE_LIBYYJSON], [test "x$HAVE_LIBYYJSON" = xyes])
+AM_COND_IF([HAVE_LIBYYJSON],[
+        AC_DEFINE([HAVE_LIBYYJSON], [], [])
+])
 
 dnl change sharedstatedir default
 test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'

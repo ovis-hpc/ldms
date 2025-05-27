@@ -63,7 +63,7 @@
 
 #include <jansson.h>
 
-#ifdef HAVE_YYJSON
+#ifdef HAVE_LIBYYJSON
 #include <yyjson.h>
 #endif
 
@@ -717,7 +717,7 @@ int ldmsd_row_to_json_object(ldmsd_row_t row, char **str, int *len)
 	return rc;
 }
 
-#ifdef HAVE_YYJSON
+#ifdef HAVE_LIBYYJSON
 bool yyjson_add_by_type(yyjson_mut_doc *doc, yyjson_mut_val *root, ldmsd_col_t col)
 {
 	int rc, i;

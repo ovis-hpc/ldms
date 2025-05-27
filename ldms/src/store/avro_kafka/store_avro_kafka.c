@@ -71,7 +71,7 @@ typedef struct aks_handle_s
 static const char *_help_str =
     "   config name=store_avro_kafka [path=JSON_FILE]\n"
     "       encoding=MODE"
-    "            MODE is one of JSON or YYJSON or AVRO (default)."
+    "            MODE is one of JSON or AVRO (default)."
     "       kafka_conf=PATH"
     "            Path to a file in Apache Kafka format containing key/value\n"
     "            pairs defining Kafka configuration properties. See\n"
@@ -1035,7 +1035,7 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list,
 			break;
 		case AKS_ENCODING_JSON:
 			/* Encode row as a JSON text object */
-#ifdef HAVE_YYJSON
+#ifdef HAVE_LIBYYJSON
 			rc = ldmsd_row_to_json_object_yyjson(row, (char **)&ser_buf, &ser_size);
 #else
 			rc = ldmsd_row_to_json_object(row, (char **)&ser_buf, &ser_size);
