@@ -103,10 +103,8 @@ static int ssport_list_mid;
 static size_t rec_heap_sz;
 
 #define SAMP "slingshot_switch"
-static ldmsd_msg_log_f msglog;
+static ovis_log_t mylog;
 static base_data_t base;
-
-
 
 /* strip leading and trailing whitespace -- TAKEN FROM IBMAD_RECORDS_SAMPLER*/
 static void strip_whitespace(char **start)
@@ -144,12 +142,12 @@ static int buildCommandLinePorts(char* lbuf){
 		/* then parse for n */
 		rc = sscanf(lbuf, "n=%d\n", &n);
 		if (rc != 1){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": Bad format in file. First line MUST be p=XXX or n=XXX\n");
 			return EINVAL;
 		}
 		if ((n < 0) || (n > SS_PORT_MAX)) {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": ERROR: Bad port value '%d'\n", n);
 			return EINVAL;
 		}
@@ -163,7 +161,7 @@ static int buildCommandLinePorts(char* lbuf){
 	strncpy(commandlineports, "", sizeof(commandlineports));
 	pcpy = strdup(plist);
 	if (!pcpy){
-		msglog(LDMSD_LERROR, SAMP ": Out of memory\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Out of memory\n");
 		rc = ENOMEM;
 		goto err;
 	}
@@ -173,20 +171,20 @@ static int buildCommandLinePorts(char* lbuf){
 		/* NOTE: concatinates a range expression to the first val only */
 		rc = sscanf(pch, "%d", &i);
 		if (rc != 1){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": Bad format in file. p has '%s' within\n",
 			       pch);
 			rc = EINVAL;
 			goto err;
 		} else if ((i < 0) || (i > SS_PORT_MAX)){
-			msglog(LDMSD_LERROR, SAMP ": Bad port value '%d'\n", n);
+			ovis_log(mylog, OVIS_LERROR, SAMP ": Bad port value '%d'\n", n);
 			rc = EINVAL;
 			goto err;
 		}
 		snprintf(lbuf, SS_LINE_MAX, " -p %d", i);
 		if (strlen(lbuf) + strlen(commandlineports) >=
 		    sizeof(commandlineports)){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": port lengths will exceed MAX command line\n");
 			rc = EINVAL;
 			goto err;
@@ -201,14 +199,6 @@ static int buildCommandLinePorts(char* lbuf){
 	free(pcpy);
 	pcpy = NULL;
 	return rc;
-}
-
-
-static ldms_set_t get_set(struct ldmsd_sampler *self)
-{
-	if (base)
-		return base->set;
-	return NULL;
 }
 
 static int create_metric_set(base_data_t base)
@@ -229,7 +219,7 @@ static int create_metric_set(base_data_t base)
 	/* make a 1 port output to parse */
 	snprintf(cline, sizeof(cline), "dump_counters -p 1");
 	if (strlen(cline) + strlen(commandlinevars) > sizeof(cline)){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": Varname lengths will exceed MAX command line\n");
 		return EINVAL;
 	}
@@ -238,7 +228,7 @@ static int create_metric_set(base_data_t base)
 	/* Create a metric set of the required size */
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = EINVAL;
@@ -252,7 +242,7 @@ static int create_metric_set(base_data_t base)
 	}
 
 	/* NOTE: need val 'x' (not 0 nor NULL) */
-	msglog(LDMSD_LDEBUG,
+	ovis_log(mylog, OVIS_LDEBUG,
 	       SAMP ": Adding record %d '%s' type LDMS_V_CHAR_ARRAY \n",
 	       0, "port");
 	rc = ldms_record_metric_add(rec_def, "port", "x", LDMS_V_U64, 1);
@@ -261,33 +251,33 @@ static int create_metric_set(base_data_t base)
 		goto err3;
 	}
 	rec_metric_id_port = rc;
-	msglog(LDMSD_LDEBUG,
+	ovis_log(mylog, OVIS_LDEBUG,
 	       SAMP ": Port metric id '%d'\n", rec_metric_id_port);
-	msglog(LDMSD_LDEBUG,
+	ovis_log(mylog, OVIS_LDEBUG,
 	       SAMP ": will be executing '%s' to get the var names\n",
 	       cline);
 	numvars = 0;
 
 	mf = popen(cline, "r");
 	if (!mf) {
-	msglog(LDMSD_LERROR, SAMP ": Could not execute '%s'\n", cline);
+	ovis_log(mylog, OVIS_LERROR, SAMP ": Could not execute '%s'\n", cline);
 		rc = ENOENT;
 		goto err3;
 	}
 	/* first line is just the header */
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	if (!s){
-		msglog(LDMSD_LERROR, SAMP ": Could not skip first line.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Could not skip first line.\n");
 		rc = EINVAL;
 		goto err3;
 	}
-	msglog(LDMSD_LDEBUG, SAMP ": Read '%s'\n", lbuf);
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": Read '%s'\n", lbuf);
 
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
-		msglog(LDMSD_LDEBUG, SAMP ": Read '%s'\n", lbuf);
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": Read '%s'\n", lbuf);
 
 		rc = sscanf(lbuf,"%d,%[^,],%lu", &port, varname, &v);
 		if (rc != 3) {
@@ -298,7 +288,7 @@ static int create_metric_set(base_data_t base)
 		varptr = varname;
 		strip_whitespace(&varptr);
 
-		msglog(LDMSD_LDEBUG,
+		ovis_log(mylog, OVIS_LDEBUG,
 		       SAMP ": Adding record %d '%s' type U64 \n",
 		       numvars++, varptr);
 		/* NOTE: need val 'x' (not 0 nor NULL) */
@@ -308,16 +298,16 @@ static int create_metric_set(base_data_t base)
 			/* errno is already set */
 			goto err3;
 		}
-		msglog(LDMSD_LDEBUG, SAMP ": Added metric id '%d'\n", rc);
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": Added metric id '%d'\n", rc);
 	} while(s);
 	rc = 0;
 
 	if (numvars == 0){
-		msglog(LDMSD_LERROR, SAMP ": No vars!\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": No vars!\n");
 		rc = EINVAL;
 		goto err3;
 	} else {
-		msglog(LDMSD_LDEBUG,
+		ovis_log(mylog, OVIS_LDEBUG,
 		       SAMP ": Added %d records + port\n", numvars);
 	}
 
@@ -381,7 +371,7 @@ static int config_check(struct attr_value_list *kwl,
 	for (i = 0; i < ARRAY_LEN(deprecated); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
@@ -391,14 +381,14 @@ static int config_check(struct attr_value_list *kwl,
 	return 0;
 }
 
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return "config name=" SAMP " conffile=<conffile>\n" \
 		BASE_CONFIG_USAGE \
 		"    <conffile>     full path for the configuration file\n";
 }
 
-static int config(struct ldmsd_plugin *self,
+static int config(ldmsd_plug_handle_t handle,
 		  struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	FILE* mf;
@@ -416,24 +406,24 @@ static int config(struct ldmsd_plugin *self,
 	}
 
 	if (base) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
 	/* process conffile */
 	ivalue = av_value(avl, "conffile");
 	if (!ivalue) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": A configuration file is required.\n");
 		goto err1;
 	}
 
 	conffile = strdup(ivalue);
-	msglog(LDMSD_LDEBUG,
+	ovis_log(mylog, OVIS_LDEBUG,
 	       SAMP ": Should be trying to process conffile '%s'\n", conffile);
 	mf = fopen(conffile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, SAMP ": Could not open '%s'\n", conffile);
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Could not open '%s'\n", conffile);
 		rc = ENOENT;
 		goto err1;
 	 }
@@ -443,13 +433,13 @@ static int config(struct ldmsd_plugin *self,
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s){
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": Bad format in file. First line noncomment line MUST be p=XXX or n=XXX\n");
 			rc = EINVAL;
 			goto err1;
 		}
 		if ((strlen(lbuf) > 1) && (lbuf[0] == '#')){
-			msglog(LDMSD_LDEBUG,
+			ovis_log(mylog, OVIS_LDEBUG,
 			       SAMP ": skipping input <%s>\n", lbuf);
 			continue;
 		}
@@ -471,14 +461,14 @@ static int config(struct ldmsd_plugin *self,
 			break;
 		rc = sscanf(lbuf," %s", varname); /* NOTE: check for extra whitespace */
 		if ((rc != 1) || (strlen(varname) == 0) || (varname[0] == '#')){
-			 msglog(LDMSD_LDEBUG,
+			 ovis_log(mylog, OVIS_LDEBUG,
 				SAMP ": skipping input <%s>\n", lbuf);
 			 continue;
 		}
 		 snprintf(lbuf, sizeof(lbuf), " -s %s", varname);
 		 if (strlen(lbuf) + strlen(commandlinevars) >=
 		     sizeof(commandlinevars)){
-			 msglog(LDMSD_LERROR,
+			 ovis_log(mylog, OVIS_LERROR,
 				SAMP ": varname lengths will exceed MAX command line\n");
 			 rc = EINVAL;
 			 goto err1;
@@ -490,7 +480,7 @@ static int config(struct ldmsd_plugin *self,
 		fclose(mf);
 	mf = NULL;
 
-	base = base_config(avl, SAMP, SAMP, msglog);
+	base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, mylog);
 	if (!base){
 		rc = EINVAL;
 		goto err;
@@ -498,13 +488,13 @@ static int config(struct ldmsd_plugin *self,
 
 	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err;
 	}
 
 	snprintf(commandline, sizeof(commandline), "dump_counters");
 	if (strlen(commandline) + strlen(commandlineports) + strlen(commandlinevars) > sizeof(commandline)){
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": Ports and vars lengths will exceed MAX command line\n");
 		rc = EINVAL;
 		goto err;
@@ -534,7 +524,7 @@ static int config(struct ldmsd_plugin *self,
 	return rc;
 }
 
-static int sample(struct ldmsd_sampler *self)
+static int sample(ldmsd_plug_handle_t handle)
 {
 	FILE* mf;
 	char lbuf[SS_LINE_MAX];
@@ -549,23 +539,23 @@ static int sample(struct ldmsd_sampler *self)
 	int rc;
 
 
-	msglog(LDMSD_LDEBUG, SAMP ": in sample\n");
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": in sample\n");
 
 	if (!base){
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
 
 	mf = popen(commandline, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR,
+		ovis_log(mylog, OVIS_LERROR,
 		       SAMP ": Could not execute '%s'\n", commandline);
 		return ENOENT;
 	}
 
 	v = calloc(numvars, sizeof(union ldms_value));
 	if (!v){
-		msglog(LDMSD_LERROR, SAMP ": Out of memory.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Out of memory.\n");
 		if (mf)
 			pclose(mf);
 		mf = NULL;
@@ -584,9 +574,9 @@ begin:
 
 	/* first line is just the header */
 	s = fgets(lbuf, sizeof(lbuf), mf);
-	msglog(LDMSD_LDEBUG, SAMP ": Read '%s'\n", lbuf);
+	ovis_log(mylog, OVIS_LDEBUG, SAMP ": Read '%s'\n", lbuf);
 	if (!s){
-		msglog(LDMSD_LERROR, SAMP ": Bad format in command output.\n");
+		ovis_log(mylog, OVIS_LERROR, SAMP ": Bad format in command output.\n");
 		rc = EINVAL;
 		goto ERR;
 	}
@@ -598,11 +588,11 @@ begin:
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
-		msglog(LDMSD_LDEBUG, SAMP ": Read '%s'\n", lbuf);
+		ovis_log(mylog, OVIS_LDEBUG, SAMP ": Read '%s'\n", lbuf);
 
 		rc = sscanf(lbuf,"%d,%[^,],%lu", &port, varname, &v[j].v_u64);
 		if (rc != 3) {
-			msglog(LDMSD_LERROR,
+			ovis_log(mylog, OVIS_LERROR,
 			       SAMP ": Bad output to command on port %d variable %d (%d): '%s'\n",
 			       i, j, rc, lbuf);
 			rc = EINVAL;
@@ -613,13 +603,13 @@ begin:
 			if (!rec_inst)
 				goto resize;
 			vport.v_u64 = port;
-			msglog(LDMSD_LDEBUG,
+			ovis_log(mylog, OVIS_LDEBUG,
 			       SAMP ": Should be setting port to %lu\n",
 			       vport.v_u64);
 			ldms_record_set_u64(rec_inst, rec_metric_id_port,
 					    vport.v_u64);
 			for (j = 0; j < numvars; j++){
-				msglog(LDMSD_LDEBUG,
+				ovis_log(mylog, OVIS_LDEBUG,
 				       SAMP ": Should be setting var %d metric %d to %lu\n",
 				       j, rec_metric_id_port+j+1, v[j].v_u64);
 				ldms_record_set_u64(rec_inst,
@@ -633,7 +623,7 @@ begin:
 			j++;
 		}
 		if (i == numports){
-			msglog(LDMSD_LDEBUG,
+			ovis_log(mylog, OVIS_LDEBUG,
 			       SAMP ": read everything expected. breaking\n");
 			break;
 			/* NOTE: not checking if there are extra lines.
@@ -662,7 +652,7 @@ resize:
 	base_set_new_heap(base, heap_sz);
 	if (!base->set) {
 		rc = errno;
-		ldmsd_log(LDMSD_LCRITICAL, SAMP " : Failed to create a set with "
+		ovis_log(mylog, OVIS_LCRITICAL, SAMP " : Failed to create a set with "
 						"a bigger heap. Error %d\n", rc);
 		return rc;
 	}
@@ -679,34 +669,33 @@ resize:
 
 }
 
+static int constructor(ldmsd_plug_handle_t handle)
+{
+	mylog = ldmsd_plug_log_get(handle);
+	base->set = NULL;
+	return 0;
+}
 
-static void term(struct ldmsd_plugin *self)
+static void destructor(ldmsd_plug_handle_t handle)
 {
 	numvars = 0;
 	numports = 0;
 	commandline[0] = '\0';
 	commandline_ok = 0;
-	base_set_delete(base);
-	base_del(base);
+
+	if (base) {
+		base_set_delete(base);
+		base_del(base);
+	}
 	base = NULL;
 }
 
+struct ldmsd_sampler ldmsd_plugin_interface = {
+	.base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.config = config,
+	.base.usage = usage,
+	.base.constructor = constructor,
+	.base.destructor = destructor,
 
-static struct ldmsd_sampler slingshot_switch_plugin = {
-	.base = {
-		.name = SAMP,
-		.type = LDMSD_PLUGIN_SAMPLER,
-		.term = term,
-		.config = config,
-		.usage = usage,
-	},
-	.get_set = get_set,
 	.sample = sample,
 };
-
-struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
-{
-	msglog = pf;
-	base = NULL;
-	return &slingshot_switch_plugin.base;
-}
