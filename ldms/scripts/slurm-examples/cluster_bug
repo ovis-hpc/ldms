@@ -1,0 +1,46 @@
+# run many daemons under slurm. assumes exclusive use of nodes.
+# use of fabric or rdma plugins will require allowroot=1 in the environment.
+# control of network selection is in sbatch.cluster.
+# export LDMSNET=[sock,fabric,sockfabric,rdma] to control network selection
+# before launching pll-ldms-static-test.sh.
+portbase=11000
+ulimit -n 100000
+MESSAGE starting l1, l2 aggs and collectors
+VGARGS="--tool=drd --time-stamp=yes --gen-suppressions=all --track-origins=yes"
+VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=definite --time-stamp=yes --gen-suppressions=all  --main-stacksize=256000000"
+if test -f $pkglibdir/ldms.supp; then
+	VGARGS="$VGARGS --suppressions=$pkglibdir/ldms.supp"
+fi
+# load multithread grind
+#LDMS_CPU_GRIND -n 600 -m multiply
+SET_LOG_LEVEL DEBUG
+# start collector(s)
+if test "x$maxdaemon" = "x"; then
+	maxdaemon=3
+fi
+
+DAEMONS $(seq 1 $maxdaemon)
+LDMSD_EXTRA="-m 20k"
+VGTAG=.samp
+#netstat -tonp
+# start n-2 sampler daemons
+#vgon
+LDMSD -s 1 -c $(seq 3 $maxdaemon)
+vgoff
+
+# without the next sleep, ldms_ls hits config parsing for some
+# daemons and those hit assert
+#SLEEP 60
+#BARRIER_VERBOSE="-v -v"
+echo STRTWAIT1 $(date +%s.%N)
+llw_timeout=$(( $maxdaemon / 4 + 30 ))
+LDMS_LS_WAIT_STORM meminfo $llw_timeout $(seq 3 $maxdaemon)
+echo DONEWAIT1 LDMS_LS_WAIT $(date +%s.%N)
+
+WAIT_ALL $(seq $maxdaemon)
+# kill l1, samps
+KILL_LDMSD $(seq  $maxdaemon)
+WAIT_ALL $(seq $maxdaemon)
+LDMS_CPU_GRIND stop
+MESSAGE logs and data under ${TESTDIR}
+# chown -R baallan.baallan $TESTDIR

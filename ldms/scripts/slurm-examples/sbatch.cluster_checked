@@ -10,7 +10,7 @@
 #SBATCH --account=0
 #SBATCH --job-name=ldms_test470
 #SBATCH -p short,batch
-#SBATCH --time 2:00
+#SBATCH --time 10:00
 
 # Number of aggregator nodes in the test. Can be 0, but not empty.
 # If more than AGG_COUNT nodes are in the slurm node list,
@@ -23,12 +23,14 @@ case x$LDMSNET in
 xfabric)
 	if test "x$HOSTSUFFIX" = "x"; then
 		HOST_SUFFIX=-ib0
+		HOST_IFACE=ib0
 	fi
 	XPRT=fabric
 	;;
 xsockfabric)
 	if test "x$HOSTSUFFIX" = "x"; then
 		HOST_SUFFIX=""
+		HOST_IFACE=eth0
 	fi
 	XPRT=fabric
 	export FI_PROVIDER=sockets
@@ -36,29 +38,34 @@ xsockfabric)
 xrdma|xrdma0)
 	if test "x$HOSTSUFFIX" = "x"; then
 		HOST_SUFFIX=-ib0
+		HOST_IFACE=ib0
 	fi
 	XPRT=rdma
 	;;
 xrdma1)
 	if test "x$HOSTSUFFIX" = "x"; then
 		HOST_SUFFIX=-ib1
+		HOST_IFACE=ib1
 	fi
 	XPRT=rdma
 	;;
 xsock)
 	if test "x$HOSTSUFFIX" = "x"; then
 		HOST_SUFFIX=""
+		HOST_IFACE=eth0
 	fi
 	XPRT=sock
 	;;
 *)
 	HOST_SUFFIX=""
+	HOST_IFACE=eth0
 	;;
 esac
 export XPRT
 export HOST_SUFFIX
+export HOST_IFACE
 
-TEST_NAME=cluster
+TEST_NAME=cluster_checked
 PARENT_DIR=$(pwd)/ldmstest/$TEST_NAME/$SLURM_JOBID.$SLURM_CLUSTER_NAME.nodes-$SLURM_JOB_NUM_NODES.tasks-$SLURM_NTASKS.$LDMSNET
 slurmdir=$PARENT_DIR/slurm
 mkdir -p $slurmdir
@@ -74,7 +81,7 @@ function less1 {
 
 function make_hostlists {
 	if test -z "$AGG_COUNT"; then
-		echo agg_count must be set in the sbatch.cluster script.
+		echo agg_count must be set in the sbatch.$TEST_NAME script.
 		exit 1
 	fi
 
@@ -92,7 +99,6 @@ function make_hostlists {
 		echo "SCHEDULE reserve $AGG_COUNT"
 		# reserve AGG_COUNT nodes for 1 task per node
 		mcount=0
-		set -x
 		for m in $jl; do
 			if test $mcount -lt $AGG_COUNT; then
 				management="$management $m"
@@ -106,7 +112,6 @@ function make_hostlists {
 		done
 		wstart=$(( $AGG_COUNT + 1))
 		workers=$jl
-		set +x
 	fi
 	echo "SCHEDULE workers= $workers"
 	echo "SCHEDULE management= $management"

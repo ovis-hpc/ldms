@@ -17,6 +17,17 @@ bin_SCRIPTS += ovis-roll-over.py
 bin_SCRIPTS += ldms-csv-anonymize
 bin_SCRIPTS += ldms-csv-export-sos
 bin_SCRIPTS += ldmsd-check-env
+bin_PROGRAMS = ldms_cpu_grind
+bin_PROGRAMS += ldms_barrier
+
+ldms_cpu_grind_SOURCES = ldms_cpu_grind.c
+ldms_cpu_grind_LDADD = -lm
+#ldms_cpu_grind_LDFLAGS = $(AM_LDFLAGS) -lpthread
+
+ldms_barrier_SOURCES = ldms_barrier.c
+ldms_barrier_LDADD = -lm
+
+dist_man8_MANS += ldms_barrier.man ldms_cpu_grind.man
 
 DISTCLEANFILES = $(gen_scripts) $(sgen_scripts)
 
