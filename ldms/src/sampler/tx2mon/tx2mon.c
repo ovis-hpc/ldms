@@ -118,6 +118,7 @@
 
 #define SAMP "tx2mon"
 
+static char *plugin_config_name;
 static ovis_log_t mylog;
 
 static ldms_set_t set[MAX_CPUS_PER_SOC];
@@ -419,7 +420,7 @@ static int create_metric_set(base_data_t base)
 			          base->instance_name);
 			return EINVAL;
 		}
-		ldmsd_set_register(set[i], base->pi_name);
+		ldmsd_set_register(set[i], plugin_config_name);
 
 		base->set = set[i];
 		base_sample_begin(base);
@@ -616,6 +617,7 @@ static int constructor(ldmsd_plug_handle_t handle)
 	int i;
 
 	mylog = ldmsd_plug_log_get(handle);
+        plugin_config_name = strdup(ldmsd_plug_cfg_name_get(handle));
 	for (i = 0; i < MAX_CPUS_PER_SOC; i++)
 		set[i] = NULL;
 
@@ -632,6 +634,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 			ldms_set_delete(set[i]);
 		set[i] = NULL;
 	}
+        free(plugin_config_name);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
