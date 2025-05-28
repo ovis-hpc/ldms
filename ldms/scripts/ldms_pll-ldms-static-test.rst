@@ -71,6 +71,11 @@ DAEMONS <daemon-numbers>
      task, since Slurm numbers tasks from 0 and this tool numbers tasks
      from 1.
 
+SET_LOG_LEVEL <DEBUG|ERROR|INFO|ALL|QUIET|WARNING|CRITICAL>
+   |
+   | Set the generic log level for daemons started after
+     calling SET_LOG_LEVEL.
+
 FILECNT_LDMSD <daemon-numbers>
    |
    | Collect the list of open files from /proc/self/fd/ and print the
@@ -94,6 +99,13 @@ MESSAGE [arguments]
 LDMS_LS <k> [ldms_ls_args]
    |
    | This invokes ldms_ls on the k-th ldmsd.
+
+LDMS_CPU_GRIND [-k K] [ldms_cpu_grind_args]
+   |
+   | This invokes or stops ldms_cpu_grind appropriately on all nodes
+     that are running samplers. The load runs until 'LDMS_CPU_GRIND stop'
+     occurs. K grinders are started. If K is not specified with -k, then
+     K matching the number of physical cores detected is used.
 
 KILL_LDMSD <daemon-numbers>
    |
@@ -200,6 +212,13 @@ to the compute nodes:
 | i.TP XPRT=$transport_plugin_name
 | If not set, defaults to sock.
 
+AGG_COUNT=$a
+   |
+   | The number of nodes reserved for daemons, 1 per node.
+     If fewer nodes are allocated in slurm than AGG_COUNT+1, then
+     the first AGG_COUNT daemons are allocated round-robin with
+     the rest of the daemons.
+
 HOST_SUFFIX=$device_suffix
    |
    | If not using sock transport, the string to append to $HOSTNAME to
@@ -223,6 +242,13 @@ hosts[N]
    | Daemon configuration files and commands can refer to ${hosts${i}}
      where N is any value of 'i' described above. hosts[i] is the
      network hostname for the N-th daemon.
+
+least_sampler[N]
+   |
+   | Daemon configuration files and commands can refer to least_sampler[$i]
+     where N is any value of 'i' described above. least_sampler[i] is 1
+     if daemon i is the first daemon with i > AGG_COUNT on the node,
+     or is 0 if not.
 
 The following variables may be set in the script to affect the launch of
 ldmsd or ldms_ls:
@@ -296,9 +322,15 @@ testname
      files when the name of the input file is the same as the plugin
      tested.
 
+INPUT_DIR
+   |
+   | The directory containing the input file. Additional or
+     replacement bash functions accompanying the input can
+     be loaded as '. $INPUT_DIR/extra_script'.
+
 TESTDIR
    |
-   | Root directory of the testing setup.
+   | Root directory of the testing setup and output.
 
 STOREDIR
    |
@@ -383,13 +415,17 @@ GENERATED FILES
    | The valgrind log for the kth daemon with PID %p or the valgrind log
      for ldms_ls of the kth daemon with PID %p, if valgrind is active.
 
-*$test_dir/logs/$k.txt*
+*$test_dir/logs/log.$k.txt*
    |
    | The log for the kth daemon.
 
 *$test_dir/logs/teardown.$k.txt*
    |
    | The teardown log for the kth daemon.
+
+*$test_dir/logs/std.$k.io*
+   |
+   | The stdout/stderr for the kth daemon.
 
 *$test_dir/run/conf.$k*
    |
@@ -415,6 +451,18 @@ GENERATED FILES
 *$test_dir/run/start.$k*
    |
    | The start command of the kth daemon.
+
+*$test_dir/run/grind
+   |
+   | The scratch directory for ldms_cpu_grind pidfiles
+
+*$test_dir/run/grind/lead.$k.tasks_$p
+   |
+   | File identifying task k as having started P ldms_cpu_grind processes.
+
+*$test_dir/run/grind/ldms_cpu_grind.pids.$k.$j
+   |
+   | Pidfile of the j-th grind process started by the k-th slurm task.
 
 *$test_dir/store/*
    |

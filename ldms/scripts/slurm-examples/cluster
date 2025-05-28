@@ -22,7 +22,7 @@ VGTAG=.samp
 LDMSD -s 1000000 -c `seq 3 $maxdaemon`
 # scale m to handle maxdaemon
 # -m > 450 or so seems to be incompatible with arm/valgrind 3.13
-LDMSD_EXTRA="-P 14 -m 64M"
+LDMSD_EXTRA="-m 64M"
 #vgon
 VGTAG=.L2
 # start L2 on daemon 1

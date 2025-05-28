@@ -27,6 +27,8 @@ export pkglibdir=${ovis_ldms_pkglibdir}
 export PACKAGE_TARNAME=ovis-ldms
 export docdir=${ovis_ldms_datarootdir}/doc/${PACKAGE_TARNAME}
 export exdir=$docdir
+# default log is debug
+export LOG_LEVEL=DEBUG
 
 if test -z "$ZAP_LIBPATH"; then
 	ZAP_LIBPATH=$ovis_ldms_plugins
@@ -68,14 +70,43 @@ if test "$1" = "-l"; then
 	exit 0
 fi
 if test "$1" = "-b"; then
-	# >&2 echo "Canned test batch script for $2 should be:"
-	echo "$exdir/examples/slurm-test/sbatch.$2"
-	exit 0
-fi
-if test $(basename $1) = $1 -a ! -f $1; then
-	if test -f $exdir/examples/slurm-test/$1; then
-		input=$exdir/examples/slurm-test/$1
+	shift
+	input=""
+	# check for unqualified name
+	if test $(basename $1) = $1 -a ! -f $1; then
+		if test -f $exdir/examples/slurm-test/sbatch.$1; then
+			input=$exdir/examples/slurm-test/sbatch.$1
+		fi
+	else
+		dname=$(dirname $1)
+		bname=$(basename $1)
+		sbname=$dname/sbatch.$bname
+		if test -f $sbname; then
+			input=$sbname
+		fi
 	fi
+	# >&2 echo "Canned test batch script for $1 should be:"
+	if test -n $input; then
+		echo "$input"
+		exit 0
+	else
+		echo "sbatch file not found for $1"
+		exit 1
+	fi
+fi
+if test $(basename $1) = $1; then
+	# is an unqualified name
+	if ! test -f $1; then
+		# and not in local directory
+		if test -f $exdir/examples/slurm-test/$1; then
+			# and can use the installed input file
+			input=$exdir/examples/slurm-test/$1
+		fi
+	fi
+else
+	echo "pll-ldms-static-test.sh requires an installed case file."
+	echo "Relative input is not supported, although it is for ldms-static-test.sh"
+	exit 1
 fi
 if ! test -f $input -a -r $input; then
 	echo FAIL: cannot read test input $1
@@ -124,11 +155,17 @@ TESTDIR=$2
 
 if test -z "$2"; then
 	if test -n "LDMSNET"; then
-		TESTSUFF="-$LDMSNET"
+		TESTSUFF=".$LDMSNET"
 	fi
-	TESTDIR=`pwd`/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_JOB_NUM_NODES$TESTSUFF
+	TESTDIR=`pwd`/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.nodes-$SLURM_JOB_NUM_NODES.tasks-$SLURM_NTASKS$TESTSUFF
+	TESTDIR_FAST=/dev/shm/$USER/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.nodes-$SLURM_JOB_NUM_NODES.tasks-$SLURM_NTASKS$TESTSUFF/$$
+else
+	TESTDIR_FAST=/dev/shm/$USER/$TESTDIR/$$
 fi
+export TESTDIR_FAST
 export TESTDIR
+# TESTDIR must be on a global file system
+# TESTDIR_FAST must be on a node-local memory or nvme
 
 if test -z "$HOST"; then
 	# used for ldms_ls
@@ -185,8 +222,29 @@ function vgoff {
   usevg=0
 }
 
-# clear old daemons in the range we're expected and define the
-# port variables. The ports are defined sequentially.
+log_level_list="DEBUG|ERROR|INFO|ALL|QUIET|WARNING|CRITICAL"
+function SET_LOG_LEVEL {
+
+	lvl=$1
+	case $lvl in
+	DEBUG|ERROR|INFO|ALL|QUIET|WARNING|CRITICAL)
+		;;
+	*)
+		echo unknown log level $1
+		echo expected one of $log_level_list
+		bypass=1
+		return 1
+		;;
+	esac
+	export LOG_LEVEL=$lvl
+	echo "LOG_LEVEL=$LOG_LEVEL"
+	return 0
+}
+
+# Define the port variables for the listed daemons.
+# The daemons list given is stored in variable
+# ALL_DAEMONS
+# The ports are defined sequentially.
 # The hosts come from slurm.
 # More DAEMONS than tasks is an error.
 did_daemons=0
@@ -194,7 +252,10 @@ function DAEMONS {
 	if test $did_daemons = "1"; then
 		return
 	fi
+	ALL_DAEMONS="$*"
+	declare -a ALL_DAEMONS_ARRAY
 	for i in $*; do
+		ALL_DAEMONS_ARRAY[$i]=$i
 		ports[$i]=$(($portbase + $i))
 		eval export port$i=${ports[$i]}
 		if test $i -ne $myproc; then
@@ -206,7 +267,7 @@ function DAEMONS {
 			return
 		fi
 
-		/bin/rm -f ${LOGDIR}/$i.txt ${LOGDIR}/vg.$i ${LOGDIR}/teardown.$i.txt ${LOGDIR}/$i.stdio
+		/bin/rm -f ${LOGDIR}/log.$i.txt ${LOGDIR}/vg.$i ${LOGDIR}/teardown.$i.txt ${LOGDIR}/std.$i.io
 		binname=ldmsd.${ports[$i]}
 		pkill -9 $binname
 		/bin/rm -f $LDMSD_RUN/$binname
@@ -347,17 +408,17 @@ function LDMSD {
 			echo $wrap ldmsd.${ports[$i]} \
 				-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 				-c $LDMSD_RUN/conf.$i \
-				-l ${LOGDIR}/$i.txt \
-				-v DEBUG $LDMSD_EXTRA \
+				-l ${LOGDIR}/log.$i.txt \
+				-v $LOG_LEVEL $LDMSD_EXTRA \
 				-r $LDMSD_PIDFILE.$i \
-				"2>&1 > ${LOGDIR}/$i.stdio &" > $LDMSD_RUN/start.$i
+				"2>&1 > ${LOGDIR}/std.$i.io &" > $LDMSD_RUN/start.$i
 			$wrap ldmsd.${ports[$i]} \
 				-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 				-c $LDMSD_RUN/conf.$i \
-				-l ${LOGDIR}/$i.txt \
-				-v DEBUG $LDMSD_EXTRA \
+				-l ${LOGDIR}/log.$i.txt \
+				-v $LOG_LEVEL $LDMSD_EXTRA \
 				-r $LDMSD_PIDFILE.$i \
-				2>&1 > ${LOGDIR}/$i.stdio &
+				2>&1 > ${LOGDIR}/std.$i.io &
 		else
 			if test -f $clonefile -a $cloneinput = "1"; then
 				cp $clonefile $LDMSD_RUN/conf.$i
@@ -367,44 +428,45 @@ function LDMSD {
 				echo $wrap ldmsd.${ports[$i]} \
 					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 					-c $LDMSD_RUN/conf.$i \
-					-l ${LOGDIR}/$i.txt \
-					-v DEBUG $LDMSD_EXTRA \
+					-l ${LOGDIR}/log.$i.txt \
+					-v $LOG_LEVEL $LDMSD_EXTRA \
 					-r $LDMSD_PIDFILE.$i \
-					"2>&1 > ${LOGDIR}/$i.stdio &" \
+					"2>&1 > ${LOGDIR}/std.$i.io &" \
 					> $LDMSD_RUN/start.$i
 				$wrap ldmsd.${ports[$i]} \
 					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 					-c $LDMSD_RUN/conf.$i \
-					-l ${LOGDIR}/$i.txt \
-					-v DEBUG $LDMSD_EXTRA \
+					-l ${LOGDIR}/log.$i.txt \
+					-v $LOG_LEVEL $LDMSD_EXTRA \
 					-r $LDMSD_PIDFILE.$i \
-					2>&1 > ${LOGDIR}/$i.stdio &
+					2>&1 > ${LOGDIR}/std.$i.io &
 			else
 				echo $myproc: IDLE DAEMON $i
 				env > $LDMSD_RUN/env.$i
 				echo "#" > $LDMSD_RUN/revconf.$i
 				echo ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
-					-l ${LOGDIR}/$i.txt \
-					-v DEBUG \
+					-l ${LOGDIR}/log.$i.txt \
+					-v $LOG_LEVEL \
 					-r $LDMSD_PIDFILE.$i \
-					"2>&1 > ${LOGDIR}/$i.stdio &" \
+					"2>&1 > ${LOGDIR}/std.$i.io &" \
 					> $LDMSD_RUN/start.$i
 				ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
-					-l ${LOGDIR}/$i.txt \
-					-v DEBUG \
+					-l ${LOGDIR}/log.$i.txt \
+					-v $LOG_LEVEL \
 					-r $LDMSD_PIDFILE.$i \
-					2>&1 > ${LOGDIR}/$i.stdio &
+					2>&1 > ${LOGDIR}/std.$i.io &
 			fi
 		fi
 		# assume gnu sleep and bc exist, because usleep deprecated
 		sleep $(echo "0.000001 * $startwait" |bc)
 
-		if ! test -f $LDMSD_PIDFILE.$i; then
-			echo FAIL: $myproc: failed to start $i $XPRTHOST. check ${LOGDIR}/$i.txt
-			#bypass=1
-			break;
-		fi
+#	if ! test -f $LDMSD_PIDFILE.$i; then
+#		echo FAIL: $myproc: failed to start $i $XPRTHOST. check ${LOGDIR}/$i.txt
+#		#bypass=1
+#		break;
+#	fi
 	done
+
 }
 
 # MESSAGE print arguments to output
@@ -459,6 +521,465 @@ function LDMS_LS {
 		$wrap ldms_ls  -h $ihost -x $XPRT -p $iport $*
 	done
 }
+
+function SOCKWAIT {
+	# wait until nothing local is holding onto myport (return 0)
+	# or until timeout seconds go by (return 1).
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+        myport=$1
+        timeout=$2
+        for i in $(seq $timeout); do
+                y=$(ss -Hon state all "( sport = :$myport )" |wc -l)
+                if test $y = "0"; then
+                        echo done
+                        return 0
+                fi
+                echo -n .
+                sleep 1
+        done
+        return 1 ; # something still stuck
+}
+
+function WAIT_ALL {
+	# WAIT_ALL timeout daemon-number*
+	# the list of daemon-number elements must be unique.
+	# normally $ALL_DAEMONS is needed as the argument list
+	# the first host will be the leader.
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	timeout=$1
+	shift
+	count=$#
+	if test $count -le 1; then
+		return 0
+	fi
+	echo "Waiting $timeout for ($count) $*"
+
+	lead=$1
+	serverhost=${hosts[$lead]}
+	shift
+	for i in $*; do
+		if test $i -ne $myproc; then
+			continue
+		fi
+		ldms_barrier \
+			--client-tag $i \
+			--max-clients $count \
+			--timeout $timeout \
+			--retry-interval 0.1 \
+			--server $serverhost \
+			--interface $HOST_IFACE \
+			--port $portbase \
+			$BARRIER_VERBOSE \
+			$*
+		stat=$?
+		if ! test $stat = "0"; then
+			MESSAGE barrier fail $stat
+			bypass=1
+		fi
+		return $stat
+	done
+	if test $lead = $myproc; then
+		ldms_barrier \
+			-l \
+			--client-tag $lead \
+			--max-clients $count \
+			--timeout $timeout \
+			--retry-interval 0.1 \
+			--server $serverhost \
+			--interface $HOST_IFACE \
+			--port $portbase \
+			$BARRIER_VERBOSE \
+			$*
+		stat=$?
+		if ! test $stat = "0"; then
+			MESSAGE barrier fail $stat
+			bypass=1
+		fi
+		return $stat
+	fi
+	return 0
+}
+
+function LDMS_LS_WAIT {
+	# wait until all daemons given have been seen to have the schema named present
+	# by first rank in the job.
+	# LDMS_LS_WAIT schema timeout daemon_number*
+	# timeout is integer seconds to wait for all to appear. 0 or less is infinite wait.
+	# There's a WAIT_ALL call at the end of this.
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	schema=$1
+	timeout=$2
+	shift
+	shift
+	# do the repeated checking from just aggd driver
+	testleader=1
+	if test "x$myproc" = "x$testleader"; then
+		declare -a lswait
+		# build target daemon list
+		for i in $*; do
+			lswait[$i]=1
+		done
+		if test $timeout -le 0; then
+			timeout=1000000000
+		fi
+		tend=$(( $(date +%s) + $timeout))
+		while test ${#lswait[@]} -gt 0; do
+			sleep 0.1
+			if test $(date +%s) -gt $tend; then
+				break
+			fi
+			echo waiting ${#lswait[@]} daemons
+			for i in ${!lswait[@]}; do
+				if test $(date +%s) -gt $tend; then
+					break
+				fi
+				if test -n "$PORT"; then
+					iport=$PORT
+				else
+					iport=${ports[$i]}
+				fi
+				if ! test -f "$LDMSD_PIDFILE.$i"; then
+					continue
+				fi
+				ihost=${hosts[$i]}
+				if ldms_ls -x $XPRT -p $iport -h $ihost -S $schema -v |grep Tot > /dev/null; then
+					echo found daemon $i at $(date +%s.%N)
+					unset -v lswait[$i]
+				fi
+			done
+		done
+		if test ${#lswait[@]} -gt 0; then
+			echo "LDMS_LS_WAIT missing daemon list: ${!lswait[@]}"
+			echo "LDMS_LS_WAIT timed out waiting for daemon count: ${#lswait[@]}"
+			bypass=1
+			# all other ranks will timeout waiting on leader
+		else
+			WAIT_ALL $timeout $ALL_DAEMONS
+			# start the wait leader
+		fi
+	else
+		WAIT_ALL $timeout $ALL_DAEMONS
+		# start the wait herd
+	fi
+}
+
+function LDMS_LS_WAIT_STORM {
+	# wait until all daemons given have been seen to have the schema named present
+	# by every daemon in the job. (N^2 connecting)
+	# LDMS_LS_WAIT_STORM schema timeout daemon_number*
+	# timeout is integer seconds to wait for all to appear. 0 or less is infinite wait.
+	#
+	# every caller is waiting for the same event to happen, but some might not
+	# start looking for it until others have finished.
+	# so there's a WAIT_ALL call at the end of this.
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	schema=$1
+	timeout=$2
+	shift
+	shift
+	declare -a lswait
+	# build target daemon list
+	for i in $*; do
+		lswait[$i]=1
+	done
+	if test $timeout -le 0; then
+		timeout=1000000000
+	fi
+	tend=$(( $(date +%s) + $timeout))
+	while test ${#lswait[@]} -gt 0; do
+		sleep 0.1
+		if test $(date +%s) -gt $tend; then
+			break
+		fi
+		echo waiting ${#lswait[@]} daemons
+		for i in ${!lswait[@]}; do
+			if test $(date +%s) -gt $tend; then
+				break
+			fi
+			if test -n "$PORT"; then
+				iport=$PORT
+			else
+				iport=${ports[$i]}
+			fi
+			if ! test -f "$LDMSD_PIDFILE.$i"; then
+				continue
+			fi
+			ihost=${hosts[$i]}
+			if ldms_ls -x $XPRT -p $iport -h $ihost -S $schema -v |grep Tot > /dev/null; then
+				echo found daemon $i at $(date +%s.%N)
+				unset -v lswait[$i]
+			fi
+		done
+	done
+	if test ${#lswait[@]} -gt 0; then
+		echo "LDMS_LS_WAIT_STORM missing daemon list: ${!lswait[@]}"
+		echo "LDMS_LS_WAIT_STORM timed out waiting for daemon count: ${#lswait[@]}"
+		bypass=1
+	fi
+	# everyone tried independently. barrier after all reach the same conclusion.
+	WAIT_ALL $timeout $ALL_DAEMONS
+}
+
+function LDMS_AGG_WAIT {
+	# wait until all daemons given have been seen to have the schema named present
+	# on the agg daemon given. Set names must be localhost${i}/$schema
+	# LDMS_AGG_WAIT agg-daemon agg-timeout schema set-timeout daemon_number*
+	# timeouts are integer seconds to wait. 0 or less is infinite wait.
+	# checking of the agg daemon is performed by the process rank which launched it,
+	# while others wait on the result.
+	# aggregator connect retry is 0.5 sec
+        # set lookup retries are 0.2 sec
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	agg_retry_interval=0.5
+	set_retry_interval=0.2
+	aggd=$1
+	agg_timeout=$2
+	schema=$3
+	set_timeout=$4
+	shift
+	shift
+	shift
+	shift
+	# wait on agg to appear
+	if test $agg_timeout -le 0; then
+		agg_timeout=1000000000
+	fi
+	set -x
+	# do the repeated checking from just aggd driver
+	testleader=$aggd
+	if test "x$myproc" = "x$testleader"; then
+		agg_tend=$(( $(date +%s) + $agg_timeout))
+		while /bin/true; do
+			sleep $agg_retry_interval
+			if test $(date +%s) -gt $agg_tend; then
+				echo timeout connecting to aggregator daemon $aggd
+				bypass=1
+				return 1 ; # all others will timeout
+			fi
+			if test -n "$PORT"; then
+				iport=$PORT
+			else
+				iport=${ports[$aggd]}
+			fi
+			if ! test -f "$LDMSD_PIDFILE.$aggd"; then
+				continue
+			fi
+			ihost=${hosts[$aggd]}
+			if ldms_ls -x $XPRT -p $iport -h $ihost -S set_dummy > /dev/null; then
+				echo found aggregator $i at $(date +%s.%N)
+				break
+			fi
+		done
+
+		declare -a lswait
+		# build target set list
+		for i in $*; do
+			lswait[$i]=1
+		done
+		if test $set_timeout -le 0; then
+			set_timeout=1000000000
+		fi
+		set_tend=$(( $(date +%s) + $set_timeout))
+		if test -n "$PORT"; then
+			iport=$PORT
+		else
+			iport=${ports[$aggd]}
+		fi
+		ihost=${hosts[$aggd]}
+		while test ${#lswait[@]} -gt 0; do
+			sleep $set_retry_interval
+			if test $(date +%s) -gt $set_tend; then
+				tnow=$(date +%s.%N)
+				break
+			fi
+			echo waiting ${#lswait[@]} sets to appear
+			ofile=$TESTDIR_FAST/ldms_agg_wait.out
+			while test ${#lswait[@]} -gt 0; do
+				timecheck=$(date +%s)
+				if test $timecheck -gt $set_tend; then
+					echo LDMS_AGG_WAIT sets check timed out at $timecheck
+					break
+				fi
+				if ! test -f "$LDMSD_PIDFILE.$aggd"; then
+					echo LDMS_AGG_WAIT: pid of agg disappeared at $timecheck
+					break; # agg died?
+				fi
+				if ldms_ls -x $XPRT -p $iport -h $ihost -S $schema > $ofile; then
+					tnow=$(date +%s.%N)
+					nl=$(sed -e 's/^ldms.*//' -e 's%^localhost%%' -e  "s%/${schema}.*%%" $ofile)
+					/bin/rm -f $ofile
+					for i in $nl; do
+						if test x${lswait[${i}]} = x1; then
+							echo "found set from daemon $i at $tnow";
+							unset -v lswait[$i];
+						fi
+					done
+				fi
+			done
+		done
+		if test ${#lswait[@]} -gt 0; then
+			echo "LDMS_AGG_WAIT missing daemon list: ${!lswait[@]}"
+
+			echo "LDMS_AGG_WAIT timed out at $tnow waiting for daemon count: ${#lswait[@]}"
+			bypass=1
+			# not starting wait_all, so others will timeout.
+		else
+			WAIT_ALL $(( $set_timeout + $agg_timeout)) $ALL_DAEMONS
+		fi
+	else
+		echo "LDMS_AGG_WAIT: rank $testleader is performing checks."
+		WAIT_ALL $(( $set_timeout + $agg_timeout)) $ALL_DAEMONS
+	fi
+}
+
+function LDMS_AGG_WAIT_SET_COUNT {
+	# wait until daemon given has no more than COUNT sets.
+	# LDMS_AGG_WAITSET_COUNT agg-daemon agg_timeout set-count set_timeout
+	# timeouts are integer seconds to wait. 0 or less is infinite wait.
+	# retry at agg is 0.5 sec
+	# checking of the agg daemon is performed by the process instance which launched it,
+	# while others wait on the result.
+	# could apply $* to ldms_ls as a filter on the count, but have not yet.
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	agg_retry_interval=0.5
+	set_retry_interval=0.5
+	aggd=$1
+	agg_timeout=$2
+	set_count=$3
+	set_timeout=$4
+	shift
+	shift
+	shift
+	shift
+	# do the repeated checking from just aggd driver
+	testleader=1
+	if test "x$myproc" = "x$testleader"; then
+		# wait on agg to appear
+		if test $agg_timeout -le 0; then
+			agg_timeout=1000000000
+		fi
+		agg_tend=$(( $(date +%s) + $agg_timeout))
+		if test -n "$PORT"; then
+			iport=$PORT
+		else
+			iport=${ports[$aggd]}
+		fi
+		ihost=${hosts[$aggd]}
+		while /bin/true; do
+			sleep $agg_retry_interval
+			if test $(date +%s) -gt $agg_tend; then
+				echo timeout connecting to aggregator daemon $aggd
+				bypass=1
+				return 1
+			fi
+			if ! test -f "$LDMSD_PIDFILE.$aggd"; then
+				continue
+			fi
+			if ldms_ls -x $XPRT -p $iport -h $ihost -S set_dummy > /dev/null; then
+				echo found aggregator $i at $(date +%s.%N)
+				break
+			fi
+		done
+
+		if test $set_timeout -le 0; then
+			set_timeout=1000000000
+		fi
+		set_tend=$(( $(date +%s) + $set_timeout))
+		echo waiting drop to $set_count sets
+		while /bin/true; do
+			sleep $set_retry_interval
+			if test $(date +%s) -gt $set_tend; then
+				tnow=$(date +%s.%N)
+				break
+			fi
+			ofile=$TESTDIR_FAST/ldms_agg_wait_set_count.out
+			if ! test -f "$LDMSD_PIDFILE.$aggd"; then
+				break; # agg died?
+			fi
+			/bin/rm -f $ofile
+			if ldms_ls -x $XPRT -p $iport -h $ihost > $ofile; then
+				nl=$(grep ^localhost $ofile | wc -l)
+				/bin/rm $ofile
+				if test $nl -le $set_count; then
+					tnow=$(date +%s.%N)
+					echo "set count dropped to or below $set_count at $tnow";
+					WAIT_ALL $set_timeout $ALL_DAEMONS
+					return 0
+				fi
+			fi
+		done
+		echo "LDMS_AGG_WAIT_SET_COUNT: timeout at $tnow with still $nl sets remaining:"
+		ldms_ls -x $XPRT -p $iport -h $ihost
+		# we don't launch wait_all here, so testleader never appears and all others
+		# hit the timeout error.
+		bypass=1
+		return 1
+	else
+		echo "LDMS_AGG_WAIT_SET_COUNT: rank $testleader is performing checks."
+		WAIT_ALL $(( $set_timeout + $agg_timeout)) $ALL_DAEMONS
+	fi
+}
+
+function LDMS_CPU_GRIND {
+	# start or stop grinders from local lead daemon
+	# LDMS_CPU_GRIND stop
+	# LDMS_CPU_GRIND [-k K] [workargs]
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	if test $1 = "stop"; then
+		if test -z $CPU_GRIND_DIR; then
+			return 0
+		fi
+		pflist=$(ls $CPU_GRIND_DIR/ldms_cpu_grind.pids.$myproc.*  2> /dev/null)
+		for i in dummy $pflist; do
+			if test $i = "dummy"; then
+				continue
+			fi
+			tpid=$(cat $i)
+			if test -d /proc/$tpid/fd; then
+				disown $tpid
+				kill -9 $tpid
+			fi
+			/bin/rm $i
+		done
+		return 0
+	fi
+	if test "${least_sampler[$myproc]}" = "1"; then
+		CPU_GRIND_DIR=$TESTDIR/run/grind
+		gpid=$CPU_GRIND_DIR/ldms_cpu_grind.pids.$myproc
+		gargs="-r -1 -p $gpid"
+		ihost=${hosts[$myproc]}
+		MESSAGE " <$ihost> ldms_cpu_grind ${gargs}.\$i $*"
+		if test "x$1" = "x-k" -a -n $2; then
+			pcores=$2
+			shift
+		else
+			# get physical core count
+			nsock=$(lscpu |grep ^Sock |sed -e 's/.*://' -e 's/ //g')
+			ncore=$(lscpu |grep ^Core |sed -e 's/.*://' -e 's/ //g')
+			pcores=$(($nsock * $ncore))
+		fi
+		mkdir -p $CPU_GRIND_DIR
+		touch $CPU_GRIND_DIR/lead.$myproc.tasks_$pcores
+		for i in $(seq $pcores); do
+			ldms_cpu_grind ${gargs}.$i $* &
+		done
+	fi
+}
+
 # FILECNT_LDMSD num list
 function FILECNT_LDMSD {
 	for i in $*; do
@@ -605,7 +1126,7 @@ for i in $*; do
 done
 }
 
-portbase=61100
+portbase=10000
 if test ! -x $BUILDDIR/sbin/ldmsd; then
 	echo "can't find ldmsd binary. set destdir in $0 before testing?"
 	exit 1
@@ -635,11 +1156,18 @@ export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
 export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
 export LDMSD_RUN=${TESTDIR}/run
 mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_RUN
+/bin/rm -rf $TESTDIR_FAST
+mkdir -p $TESTDIR_FAST
+if ! test -d $TESTDIR_FAST; then
+	echo unable to create $TESTDIR_FAST
+	exit 1
+fi
 if test $myproc -eq 1; then
 	echo "secretword="`openssl rand -hex 16` > $SECRET
 	chmod go-rwx $SECRET
 	echo $myproc: removing old output
 	rm -rf ${STOREDIR}/*
+	echo "$myproc: fast tmpfiles under $TESTDIR_FAST"
 	echo "$myproc: logs and data stored under $TESTDIR"
 else
 	while [ ! -f $SECRET ]; do sleep 0.001; done
@@ -660,11 +1188,14 @@ fi
 echo "$myproc: Listing ldmsd's still running:"
 pgrep ldmsd
 echo "$myproc: Done."
+export INPUT_DIR=$(dirname $input)
+echo "$myproc: fast tmpfiles under $TESTDIR_FAST"
 echo "$myproc: logs and data stored under $TESTDIR"
 
 . $input
 
 SLEEP 1
+echo "$myproc: fast tmpfiles under $TESTDIR_FAST"
 echo "$myproc: logs and data stored under $TESTDIR"
 echo done;
 
