@@ -66,7 +66,7 @@ AC_ARG_VAR([RST2MAN], [rst2man command])
 AC_CHECK_PROG([RST2MAN], [rst2man], [rst2man], [no])
 AS_IF([test "x$RST2MAN" = "xno"],
       [AC_MSG_ERROR([rst2man not found. Please install python3-docutils package.])])
-AM_CONDITIONAL([HAVE_RST2MAN], [test "x$RST2MAN" = xrst2man])
+AM_CONDITIONAL([HAVE_RST2MAN], [test "x$RST2MAN" != "xno"])
 
 OVIS_PKGLIBDIR
 
