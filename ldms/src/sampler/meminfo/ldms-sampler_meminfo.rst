@@ -26,6 +26,8 @@ ldmsd (ldms daemon) are configured via ldmsd_controller or a
 configuration file. The meminfo plugin provides memory info from
 /proc/meminfo.
 
+This plugin is multi-instance capable.
+
 CONFIGURATION ATTRIBUTE SYNTAX
 ==============================
 

@@ -25,6 +25,8 @@ The filesingle plugin provides metrics pulled from files containing a
 single numeric value or character. This supports flexible definition of,
 among others, sensor hardware, file system, and cpu metrics.
 
+This plugin is multi-instance capable.
+
 CONFIGURATION ATTRIBUTE SYNTAX
 ==============================
 
