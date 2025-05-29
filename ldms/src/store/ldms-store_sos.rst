@@ -29,6 +29,8 @@ store_sos plugin is a sos store.
 
 To build the store_sos, build with the following flag: **--enable_sos**
 
+This plugin is multi-instance capable.
+
 STORE_SOS INIT CONFIGURATION ATTRIBUTE SYNTAX
 =============================================
 

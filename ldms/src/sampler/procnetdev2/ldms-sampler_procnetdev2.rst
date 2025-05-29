@@ -27,6 +27,8 @@ ldmsd (ldms daemon) are configured via ldmsd_controller or a
 configuration file. The procnetdev2 plugin uses LDMS_V_LIST and
 LDMS_V_RECORD to provide network info from /proc/net/dev.
 
+This plugin is multi-instance capable.
+
 CONFIGURATION ATTRIBUTE SYNTAX
 ==============================
 

@@ -74,8 +74,6 @@
 #define TYPEMAX 31
 #define VALMAX 31
 
-#define SAMP "filesingle"
-
 struct single {
 	char file[LINEMAX+1];
 	char name[NAMEMAX+1];
@@ -276,7 +274,10 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		return EINVAL;
 	}
 
-	fsc->base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, fsc->mylog);
+	fsc->base = base_config(avl,
+                                ldmsd_plug_cfg_name_get(handle),
+                                ldmsd_plug_name_get(handle),
+                                fsc->mylog);
 	if (!fsc->base) {
 		rc = ENOMEM;
 		goto err;
@@ -312,7 +313,9 @@ static int sample(ldmsd_plug_handle_t handle)
 	struct timeval tv_diff;
 
         if (!fsc->configured) {
-                ovis_log(fsc->mylog, OVIS_LERROR, SAMP" plugin not configured\n");
+                ovis_log(fsc->mylog, OVIS_LERROR,
+                         "plugin \"%s\" not yet configured\n",
+                         ldmsd_plug_cfg_name_get(handle));
                 return EINVAL;
         }
 
@@ -368,39 +371,27 @@ skip:
 
 static const char *usage(ldmsd_plug_handle_t handle)
 {
-	return "config name= " SAMP BASE_CONFIG_USAGE
+	return "config name=<config name> <plugin name> " BASE_CONFIG_USAGE
 		"  conf=<metric definitions file> [timing]\n"
 		"  where each line of file is:\n"
 		"  <name> <file> <type> <default>\n"
 		"  where type is one of U[8,16,32,64] or S[8,16,32,64]\n"
 		"  or F32 or F64 or CHAR.\n";
-
 }
 
 static int constructor(ldmsd_plug_handle_t handle)
 {
         filesingle_context_t fsc;
-        const char *config_name = ldmsd_plug_cfg_name_get(handle);
 
         fsc = calloc(1, sizeof(*fsc));
         if (fsc == NULL) {
 		ovis_log(NULL, OVIS_LERROR,
-                         "Failed to allocate context in plugin " SAMP ": %d", errno);
+                         "Failed to allocate context in plugin %s: %d",
+                         ldmsd_plug_cfg_name_get(handle), errno);
                 return ENOMEM;
         }
 
-        char *log_name = malloc(strlen("sampler.")+strlen(config_name)+1);
-        sprintf(log_name, "sampler.%s", config_name);
-        fsc->mylog = ovis_log_register(log_name, "Message from the " SAMP " plugin");
-	if (!fsc->mylog) {
-		int rc = errno;
-		ovis_log(NULL, OVIS_LWARN, "Failed to create the log subsystem %s"
-                         " for '" SAMP "' plugin. Error %d\n", log_name,  rc);
-                free(log_name);
-                return errno;
-	}
-        free(log_name);
-
+        fsc->mylog = ldmsd_plug_log_get(handle);
 	fsc->set = NULL;
 	TAILQ_INIT(&fsc->metric_list);
         fsc->configured = false;
@@ -420,12 +411,12 @@ static void destructor(ldmsd_plug_handle_t handle)
 		ldms_set_delete(fsc->set);
 	fsc->set = NULL;
 	clear_metric_list(fsc);
-        ovis_log_deregister(fsc->mylog);
         free(fsc);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base.type = LDMSD_PLUGIN_SAMPLER,
+	.base.flags = LDMSD_PLUGIN_MULTI_INSTANCE,
         .base.constructor = constructor,
         .base.destructor = destructor,
 	.base.config = config,

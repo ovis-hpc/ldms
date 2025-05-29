@@ -37,6 +37,8 @@ metrics to monitor by specifying **``metrics``** option (comma-separated
 string) or writing a JSON configuration file and specifying
 **``cfg_file``** option (see **``EXAMPLES``** section).
 
+This plugin is multi-instance capable.
+
 CONFIG OPTIONS
 ==============
 
