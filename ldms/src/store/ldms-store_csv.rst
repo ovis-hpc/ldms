@@ -30,6 +30,8 @@ With LDMS (Lightweight Distributed Metric Service), store plugins for
 the ldmsd (ldms daemon) are configured via the ldmsd_controller or a
 configuration file. The store_csv plugin is a CSV store.
 
+This plugin is multi-instance capable.
+
 STORE_CSV CONFIGURATION SOURCES
 ===============================
 

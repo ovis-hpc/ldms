@@ -35,6 +35,8 @@ When in *AVRO* mode, the plugin manages schema in cooperation with an
 Avro Schema Registry. The location of this registry is specified in a
 configuration file or optionally on the **``config``** command line.
 
+This plugin is multi-instance capable.
+
 CONFIG OPTIONS
 ==============
 
