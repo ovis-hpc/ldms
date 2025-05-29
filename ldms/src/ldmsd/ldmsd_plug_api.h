@@ -90,17 +90,6 @@ const char *ldmsd_plug_cfg_name_get(ldmsd_plug_handle_t handle);
 const char *ldmsd_plug_name_get(ldmsd_plug_handle_t handle);
 
 /*
- * Set the plugin log handle
- *
- * This function sets the log handle that the plugin will use to write
- * log messages. This handle is set up by default by the
- * ldmsd_load_plugin() function and is named as follows:
- *    <plugin_type>.<config_name>
- * This function can be used to override this log handle if desired.
- */
-void ldmsd_plug_log_set(ldmsd_plug_handle_t handle, ovis_log_t log);
-
-/*
  * Retrieve the log handle used to write log messages
  */
 ovis_log_t ldmsd_plug_log_get(ldmsd_plug_handle_t handle);
