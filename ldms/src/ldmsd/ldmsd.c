@@ -383,7 +383,7 @@ int find_least_busy_thread()
 	struct timespec now;
 	struct ovis_scheduler_thrstats *stat;
 	double best = 100;
-	uint64_t active_pc;
+	double active_pc;
 
 	clock_gettime(CLOCK_REALTIME, &now);
 
@@ -391,7 +391,17 @@ int find_least_busy_thread()
 		stat = ovis_scheduler_thrstats_get(ovis_scheduler[i], &now, 0);
 		if (!stat)
 			continue;
-		active_pc = stat->stats.active_tot / stat->stats.dur_tot;
+		if (0 == stat->stats.dur_tot) {
+			/*
+			 * This could happen when the total duration time is smaller than 1 microsecond
+			 * due to the time difference calculation and unit conversion.
+			 *
+			 * We determine that the thread is not busy as it just started.
+			 */
+			active_pc = 0.0;
+		} else {
+			active_pc = 1.0 * stat->stats.active_tot / stat->stats.dur_tot;
+		}
 		if (active_pc < best || (active_pc == best && ev_count[i] < count)) {
 			idx = i;
 			best = active_pc;
