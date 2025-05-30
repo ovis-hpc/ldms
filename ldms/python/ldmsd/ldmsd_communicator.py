@@ -2689,8 +2689,19 @@ class Communicator(object):
 
         Parameters:
          - Name of the producer listen
-         - Regular expression to match sampler hostnames
-         - IP range in the CIDR format
+
+        Keyword Parameters:
+         regex - Regular expression to match sampler hostnames
+         ip - IP range in the CIDR format
+         disable_start - True if prdcr_listen should only create advertised producers.
+                         Otherwise, it will create and automatically start advertised producers
+         quota - Receive quota of advertised producers' connections
+         rx_rate - Receive rate of advertised producers' connections
+         type - Advertised producers' type either 'passive' or 'active'. Default is 'passive'
+         advertiser_xprt -- Transport to connect to the advertiser, only required when type=active
+         advertiser_port -- Advertiser's port to connect to, only required when type=active
+         advertiser_auth -- Authentication domain to be used to connect to advertisers, only used when type=active
+         reconnect -- Advertised producers' reconnect interval, only required when type=active
 
         Return:
         - status is an errno from the errno module
