@@ -333,7 +333,7 @@ void usage(char *argv[])
 {
 	printf("%s: [%s]\n", argv[0], short_opts);
 	printf("  General Options\n");
-	printf("    -u name                                       List named plugin if available, and where possible\n");
+	printf("    -n name                                       List named plugin if available, and where possible\n");
 	printf("                                                  its usage, then exit. Name all, sampler, and store limit output.\n");
 	printf("    -m SIZE,     --set_memory SIZE                Maximum size of pre-allocated memory for metric sets.\n"
 	       "                                                  The given size must be less than 1 petabytes.\n"
