@@ -350,6 +350,49 @@ the samplers section under the key "advertisers".
       |
       | Informs the ldmsd not to start producers.
 
+   **[quota]**
+      |
+      | Controls the amount of data that can be received on connecting from
+        advertising peers. Functions like the quota parameter in the peers
+        section. If not specified, the default value is used. If neither values
+        are set, there is no limit on receive quota.
+
+   **[rx_rate]**
+      |
+      | Controls the rate of data received (in bytes/second) on connections
+        from advertising peers. Functions like the rx_rate parameter in the peers
+        section. Unlike quota which limits total received data, rx_rate limits
+        the data flow per second. If not specified, the receive rate is
+        unlimited.
+
+   **[type]**
+      |
+      | Type of advertised producers. Default is passive.
+        - passive: aggregator uses connections from advertising peers to
+          receive data from the peers
+
+        - active: upon receiving an advertisement, aggregator initiates a
+          separate connection back to the advertising peer. Requires
+          advertiser_xprt, advertiser_port, reconnect parameters, and
+          authentication domain if it is used. Rails can be given to set the
+          rail size of the advertised producers.
+
+   **[advertiser_port]**
+      |
+      | Port number of the advertising peer to connect to. Required when type=active
+
+   **[advertiser_xprt]**
+      |
+      | Transport type to use when connecting to advertising peers. Required when type=active
+
+   **[advertiser_auth]**
+      |
+      | Authentication domain for connections to advertising peers. Used only when type=active
+
+   **[reconnect]**
+      |
+      | Reconnection Interval. Required when type=active
+
    **updaters**
       |
       | List of dictionaries containing updater policies for the
