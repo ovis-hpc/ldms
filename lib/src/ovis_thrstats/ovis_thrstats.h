@@ -230,12 +230,6 @@ struct ovis_thrstats_result {
 	/** Total duration in microseconds (idle_tot + active_tot) */
 	uint64_t dur_tot;
 
-	// /** Idle percentage of total time */
-	// double idle_pc;
-
-	// /** Active percentage of total time */
-	// double active_pc;
-
 	/** Duration of the analyzed interval in microseconds */
 	uint64_t interval_us;
 
@@ -244,13 +238,6 @@ struct ovis_thrstats_result {
 
 	/** Active time within the analyzed interval in microseconds */
 	uint64_t active_us;
-
-	// /**
-	//  * Thread utilization within the analyzed interval (0.0-1.0)
-	//  * Calculated as active_us / interval_us
-	//  * A value of -1 indicates insufficient data for the requested interval
-	//  */
-	// double utilization;
 
 	/** Application context pointer */
 	void *app_ctxt;
