@@ -350,8 +350,6 @@ struct ovis_thrstats_result *ovis_thrstats_result_get(ovis_thrstats_t stats,
 	}
 	pthread_rwlock_unlock(&stats->rwlock);
 	res->dur_tot = res->idle_tot + res->active_tot;
-	// res->idle_pc = (double)res->idle_tot / (double)res->dur_tot * 100;
-	// res->active_pc = (double)res->active_tot / (double)res->dur_tot * 100;
 
 	elapsed = __timespec_diff_us(&last_ts, &now);
 	__buckets_get_usage(is_idling, interval_us, elapsed, curr_idx,
@@ -359,12 +357,9 @@ struct ovis_thrstats_result *ovis_thrstats_result_get(ovis_thrstats_t stats,
 			    idle_buckets, active_buckets, res);
 	if (res->interval_us < interval_us) {
 		/* Not enough data points */
-		// res->utilization = -1;
 		res->interval_us = 0;
 		res->idle_us = 0;
 		res->active_us = 0;
-	} else {
-		// res->utilization = (double)res->active_us / (double)res->interval_us;
 	}
 	return res;
 }
