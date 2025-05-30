@@ -1721,6 +1721,48 @@ ldms_set_t ldms_set_create(const char *instance_name,
 	int set_array_card;
 	struct ldms_set *set;
 
+	/*
+	 * Ensure the instance_name does not contain characters
+	 * that can't be encoded in a quoted string
+	 */
+	const char *s = instance_name;
+	while (*s != '\0') {
+		/* Control characters are not allowed because they would confuse
+		 * parsing of set names
+		 */
+		if (iscntrl(*s)) {
+			errno = EINVAL;
+			return NULL;
+		}
+		/* Double-quote not allowed in quoted string because we
+		 * would have to add logic to handle "" vs. '' when encoding
+		 * as JSON
+		 */
+		if (*s == '"') {
+			errno = EINVAL;
+			return NULL;
+		}
+		/* Single-quote not allowed in quoted string because we
+		 * would have to add logic to handle "" vs. '' when encoding
+		 * as JSON
+		 */
+		if (*s == '\'') {
+			errno = EINVAL;
+			return NULL;
+		}
+		/* Backslash would hide intended character in encoded string */
+		if (*s == '\\') {
+			errno = EINVAL;
+			return NULL;
+		}
+		/* Character values above 127 are not allowed */
+		if (0 != (*s & ~0x7f)) {
+			errno = EINVAL;
+			return NULL;
+		}
+		s++;
+	}
+
 	if (delete_thread_init_once())
 		return NULL;
 

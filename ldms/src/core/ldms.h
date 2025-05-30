@@ -2812,9 +2812,13 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 				  uid_t uid, gid_t gid, mode_t perm);
 
 /**
- * \brief Create an LDMS metric set with owner, permission, and heap size
+ * \brief Create an LDMS metric set
  *
- * Create a metric set, but with customized \c uid, \c gid, \c perm, and \c heap_sz
+ * Create a metric set, with \c uid, \c gid, \c perm, and \c heap_sz
+ * The \c instance name must be unique among sets in the application and must only
+ * contain the characters [a-z], [A-Z], [0-9] and [:-+/%&]. Note that the characters
+ * +, -, / and * are allowed for compatability reasons, but their use is discouraged
+ * in new code because they can be confused with mathematical operators.
  *
  * \param instance_name   The name of the metric set
  * \param schema          The schema of the set
