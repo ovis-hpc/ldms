@@ -38,6 +38,11 @@ SUBDIRS += json
 if ENABLE_CXI_SAMPLER
 SUBDIRS += cxi_sampler
 endif
+
+if ENABLE_CURATED_METRICS
+SUBDIRS += curated_metrics
+endif
+
 dist_man7_MANS += ldms_sampler_base.man
 
 if HAVE_DCGM
