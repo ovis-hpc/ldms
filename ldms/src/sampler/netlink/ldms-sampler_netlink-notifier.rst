@@ -142,10 +142,10 @@ not present, as described in the options section.
    NOTIFIER_PURGE_TRACK_DIR
    NOTIFIER_JOBID_FILE=(none)
 
-Omitting (nullexe):<unknown> from NOTIFIER_EXCLUDE_PROGRAMS may cause
+Omitting ``(nullexe):<unknown>`` from **NOTIFIER_EXCLUDE_PROGRAMS** may cause
 incomplete output related to processes no longer present. In exotic
 circumstances, this may be desirable. The value of
-NOTIFIER_PURGE_TRACK_DIR is not used to enable purge, just its presence.
+**NOTIFIER_PURGE_TRACK_DIR** is not used to enable purge, just its presence.
 
 FILES
 =====
@@ -157,11 +157,11 @@ notifications by examining the files in
 
 For each pid started event which would be emitted to an LDMS stream, a
 temporary file with the name of the pid is created in
-NOTIFIER_TRACK_DIR. The file will contain the json event attempted. The
+**NOTIFIER_TRACK_DIR**. The file will contain the json event attempted. The
 temporary file will be removed when the corresponding pid stopped event
 is sent. These files are not removed when the notifier daemon exits, so
 that they will be found after a restart. Client applications may
-validate a file by checking the contents against the /proc/$pid/stat
+validate a file by checking the contents against the `/proc/$pid/stat`
 content, if it exists. Invalid files should be removed by clients or
 system scripts; the purge option is provided to optionally do this on
 start.
@@ -169,14 +169,13 @@ start.
 JOB ID FILES
 ============
 
-The job id file given must contain a list of KEY=VALUE pairs, one per
+The job id file given must contain a list of **KEY=VALUE** pairs, one per
 line. Lines starting with # are ignored. If the filename given is
-"/search", a list of default locations is checked
-("/var/run/ldms_jobinfo.data", "/var/run/ldms.slurm.jobinfo",
-"/var/run/ldms.jobinfo"). A list of variables in the jobid file is
+`/search`, a list of default locations is checked
+(`/var/run/ldms_jobinfo.data`, `/var/run/ldms.slurm.jobinfo`,
+`/var/run/ldms.jobinfo`). A list of variables in the jobid file is
 checked for, with the first found being used. The variable names checked
-are: "JOBID", "JOB_ID", "LSB_JOBID", "PBS_JOBID", "SLURM_JOBID",
-"SLURM_JOB_ID".
+are: **JOBID**, **JOB_ID**, **LSB_JOBID**, **PBS_JOBID**, **SLURM_JOBID**, **SLURM_JOB_ID**.
 
 MESSAGE FORMATS
 ===============
@@ -184,26 +183,26 @@ MESSAGE FORMATS
 Message formats tuned to SLURM, LSF, and Linux without a batch scheduler
 are published, based on what the notifier detects and the users choice
 of ProducerName and component_id. The version of the tuned formats is
-specified by number. If started with the -J option, an example of each
+specified by number. If started with the ``-J`` option, an example of each
 available message format it dumped to the specified file.
 
-Format 0 omits the start time from slurm process end messages (since it
+**Format 0** omits the start time from slurm process end messages (since it
 is only sometimes known) and omits process duration, which depend on the
 start time.
 
-Format 1 includes the start time for slurm process or the dummy value 0
+**Format 1** includes the start time for slurm process or the dummy value 0
 when unknown) and includes process duration for all end messages. When
-the start time is unavailable, duration of -1.0 is published. Merging
-data from other sources may allow durations flagged as -1 to be computed
+the start time is unavailable, duration of ``-1.0`` is published. Merging
+data from other sources may allow durations flagged as ``-1`` to be computed
 in some later data cleanup step.
 
-Format 2 extends process end messages with the executable name in field
-'exe'. When this is not available, exe of '/no-exe-data' is published.
-Merging data from other sources may allow exe flagged as /no-exe-data to
+**Format 2** extends process end messages with the executable name in field
+``exe``. When this is not available, exe of ``/no-exe-data`` is published.
+Merging data from other sources may allow exe flagged as ``/no-exe-data`` to
 be computed in some later data cleanup step.
 
-Format 3 harmonizes schemas across linux, slurm, and lsf task types so
-that all may be stored in common tables for task_exit and task_init
+**Format 3** harmonizes schemas across linux, slurm, and lsf task types so
+that all may be stored in common tables for ``task_exit`` and ``task_init``
 events if slurm specific fields are omitted from the storage.
 
 NOTES
@@ -214,7 +213,7 @@ The core of this utility is derived from forkstat(8).
 The output of this utility, if used to drive a sampler, usually needs to
 be consumed on the same node.
 
-If not used with a sampler, the --component_id or --ProducerName options
+If not used with a sampler, the ``--component_id`` or ``--ProducerName`` options
 are needed to add a node identifier to the messages. Normally a
 process-following sampler that creates sets will add the node identifier
 automatically.
@@ -223,12 +222,12 @@ When the daemon is started after a process is started, the process start
 time and therefore process duration may not be available. Similarly exe
 may not be available. In message formats which report start time, 0
 indicates data was unavailable. For processes without completely known
-time bounds, the duration is reported as -1.0. For processes without
+time bounds, the duration is reported as ``-1.0``. For processes without
 known program paths, exe is reported as /no-exe-data.
 
 Several options affect only the trace output.
 
-The check for sufficient privilege occurs after -J and --help options
+The check for sufficient privilege occurs after ``-J`` and ``--help`` options
 are processed.
 
 EXAMPLES
@@ -241,7 +240,7 @@ the ldmsd from 'ldms-static-test.sh blobwriter' test:
 
    netlink-notifier -t -D 30 -g -u 1 -x  -e exec,clone,exit  \
 	-j json.log --exclude-dir-path=/bin:/sbin:/usr \
-	--port=61061 --auth=none --reconnect=1"
+	--port=61061 --auth=none --reconnect=1
 
 To run in a typical deployment (sock, munge, port 411, localhost,
 forever, 10 minute reconnect):
@@ -268,4 +267,4 @@ debugging files
 SEE ALSO
 ========
 
-ref:`forkstat(8) <forkstat>`, :ref:`ldmsd(8) <ldmsd>`, :ref:`ldms-static-test(8) <ldms-static-test>`
+forkstat(8), :ref:`ldmsd(8) <ldmsd>`, :ref:`ldms-static-test(8) <ldms-static-test>`
