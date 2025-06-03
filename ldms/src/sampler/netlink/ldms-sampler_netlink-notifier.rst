@@ -15,7 +15,7 @@ Transmit Linux kernel netlink process life messages to ldmsd streams.
 
 ldms-notify - systemd service
 
-.. _netlink-notifier-synopsis
+.. _netlink-notifier-synopsis:
 
 SYNOPSIS
 ========
@@ -162,6 +162,7 @@ If not used with a sampler, the --component_id or --ProducerName options
 are needed to add a node identifier to the messages. Normally a
 process-following sampler that creates sets will add the node identifier
 automatically.
+
 
 Options are still in development. Several options affect only the trace
 output.

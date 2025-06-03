@@ -435,4 +435,4 @@ EXAMPLES
 SEE ALSO
 ========
 
-:ref:`ldms_authentication(7) <ldms_authentication>`, :ref:`ldmsctl(8) <ldmsctl>`, :ref:`ldms_ls(8) <ldms_ls`, :ref:`ldmsd_controller(8) <ldmsd_controller>`, :ref:`ldms_quickstart(7) <ldms_quickstart>`
+:ref:`ldms_authentication(7) <ldms_authentication>`, :ref:`ldmsctl(8) <ldmsctl>`, :ref:`ldms_ls(8) <ldms_ls>`, :ref:`ldmsd_controller(8) <ldmsd_controller>`, :ref:`ldms_quickstart(7) <ldms_quickstart>`

@@ -25,7 +25,7 @@ SYNOPSIS
 
         name=\ *GROUP_NAME* [interval=\ *USEC*] [offset=\ *USEC*]
 
--  **setgroup_del*
+-  **setgroup_del**
 
         name=\ *GROUP_NAME*
 
