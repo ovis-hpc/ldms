@@ -95,7 +95,6 @@
 #define LDMSD_AUTH_ENV "LDMS_AUTH_FILE"
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
-#define OVIS_LOGFILE "/var/log/ldmsd.log"
 
 const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:L:C:y:";
 
@@ -345,8 +344,7 @@ void usage(char *argv[])
 	                                                          LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
 	printf("    -r PATH,     --pid_file PATH                  The path to a pid file.\n");
 	printf("  Log Verbosity Options\n");
-	printf("    -l PATH,     --log_file PATH                  The path to the log file for status messages.\n"
-	       "                                                  [" OVIS_LOGFILE "]\n");
+	printf("    -l PATH,     --log_file PATH                  The path to the log file for status messages.\n");
 	printf("    -v LEVEL,    --log_level LEVEL                The available verbosity levels, in order of decreasing verbosity,\n"
 	       "                                                  are DEBUG, INFO, WARN, ERROR, CRITICAL and QUIET.\n"
 	       "                                                  The default level is ERROR.\n");
