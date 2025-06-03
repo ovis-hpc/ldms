@@ -1,0 +1,1 @@
+.so man8/ldms-sampler_netlink-notifier.8
