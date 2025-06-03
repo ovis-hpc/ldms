@@ -89,16 +89,20 @@ format of the JSON configuration file is as follows:
 The **"rows"** is an array of row definition object, each of which
 defines an output row. Each row definition contains:
 
------------------------------------------------------
-**"schema"**: a string specifying output schema name,
--------------------------------------------------------------------------------------------------------------
-**"cols"**: a list of column definitions,    | - **"indices"**: an optional list of index definitions for the
--------------------------------------------------------------------------------------------------------------
+**"schema"**
+  a string specifying output schema name
 
-     storage technologies that require or support indexing, and
-   | - **"group"**: a grouping definition for "op" operations ("group"
-     is not required if "op" is not specified; see "op" and "group"
-     below).
+**"cols"**
+  a list of column definitions
+
+**"indices"**
+  an optional list of index definitions for
+  the storage technologies that require or support indexing
+
+**"group"**
+  a grouping definition for "op" operations ("group"
+  is not required if "op" is not specified; see "op" and "group"
+  below).
 
 The detail explanation of **"cols"**, **"indices"** and **"group"** are
 as follows.
@@ -541,4 +545,4 @@ use "matches" with "schema" instead of "digest".
 SEE ALSO
 ========
 
-:ref:`store_sos(7) <store_sos`, :ref:`store_csv(7) <store_csv>`, :ref:`store_kafka(7) <store_kafka>`
+:ref:`store_sos(7) <store_sos>`, :ref:`store_csv(7) <store_csv>`, :ref:`store_kafka(7) <store_kafka>`
