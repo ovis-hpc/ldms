@@ -9248,7 +9248,7 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 				"updtr '%s' doesn't exist.", name);
 			reqc->errcode = ENOENT;
 			ldmsd_send_req_response(reqc, reqc->line_buf);
-			goto err;
+			goto out;
 		}
 		rc = __upd_time_stats_json_obj(reqc, updtr, reset);
 	} else {
