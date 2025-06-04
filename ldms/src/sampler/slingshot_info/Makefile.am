@@ -16,3 +16,5 @@ libslingshot_info_la_CPPFLAGS = @OVIS_INCLUDE_ABS@
 pkglib_LTLIBRARIES = libslingshot_info.la
 
 dist_man7_MANS = ldms-sampler_slingshot_info.man
+
+CLEANFILES = $(dist_man7_MANS)

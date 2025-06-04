@@ -20,6 +20,8 @@ pkglib_LTLIBRARIES = libibmad_sampler.la
 
 dist_man7_MANS = ldms-sampler_ibmad_sampler.man
 
+CLEANFILES = $(dist_man7_MANS)
+
 # libibmad is DEPRECATED
 #
 # This symlink is to maintain backward compatibilty as we rename

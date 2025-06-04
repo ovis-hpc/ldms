@@ -25,3 +25,5 @@ liball_example_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += liball_example.la
 dist_man7_MANS += ldms-sampler_all_example.man
 endif
+
+CLEANFILES = $(dist_man7_MANS)

@@ -17,3 +17,5 @@ libprocnet_la_SOURCES = procnet.c
 libprocnet_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocnet.la
 endif
+
+CLEANFILES = $(dist_man7_MANS)

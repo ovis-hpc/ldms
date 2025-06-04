@@ -8,7 +8,6 @@ EXTRA_DIST += ldms-csv-anonymize ldms-csv-export-sos
 EXTRA_DIST += ovis-roll-over.py ldmsd-check-env
 EXTRA_DIST += ldms-reverse-conf.sh
 
-
 if ENABLE_SCRIPTS
 sbin_SCRIPTS= ldms-wrapper
 bin_SCRIPTS = lsdate
@@ -43,10 +42,11 @@ testsets += install-slurm
 untestsets += uninstall-slurm
 bin_SCRIPTS += pll-ldms-static-test.sh
 dist_man8_MANS += ldms_pll-ldms-static-test.man
-EXTRA_DIST += ldms_pll-ldms-static-test.man
 endif
 
 dist_man8_MANS += ldms-static-test.man
+
+CLEANFILES = $(dist_man1_MANS) $(dist_man1_MANS)
 
 install-data-local: $(testsets)
 

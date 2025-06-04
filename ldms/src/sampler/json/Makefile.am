@@ -19,3 +19,5 @@ dist_man7_MANS += ldms-sampler_json_stream_sampler.man
 libjson_stream_sampler_la_SOURCES = json_stream_sampler.c
 libjson_stream_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libjson_stream_sampler.la
+
+CLEANFILES = $(dist_man7_MANS)

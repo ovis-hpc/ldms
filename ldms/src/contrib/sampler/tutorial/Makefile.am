@@ -6,7 +6,6 @@ pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 bin_SCRIPTS=
 dist_man7_MANS =
-dist_man1_MANS =
 EXTRA_DIST =
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
@@ -25,4 +24,5 @@ libtutorial_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libtutorial_sampler.la
 dist_man7_MANS += ldms-sampler_tutorial_sampler.man
 endif
-EXTRA_DIST += ldms-sampler_tutorial_sampler.man
+
+CLEANFILES = $(dist_man7_MANS)

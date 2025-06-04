@@ -24,3 +24,5 @@ libsynthetic_la_LIBADD = $(COMMON_LIBADD) -lm
 pkglib_LTLIBRARIES += libsynthetic.la
 dist_man7_MANS += ldms-sampler_synthetic.man
 endif
+
+CLEANFILES = $(dist_man7_MANS)

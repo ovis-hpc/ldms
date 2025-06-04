@@ -24,4 +24,4 @@ ldms_msg.man
 ldmsd-exits.man: $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c
 	$(srcdir)/make_exits_man.sh $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c > ldmsd-exits.man
 
-CLEANFILES=ldmsd-exits.man
+CLEANFILES=$(dist_man1_MANS) $(dist_man7_MANS) $(dist_man8_MANS)

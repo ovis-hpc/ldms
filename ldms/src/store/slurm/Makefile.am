@@ -23,3 +23,4 @@ pkglib_LTLIBRARIES += libstore_slurm.la
 dist_man7_MANS += ldms-store_slurm.man
 endif
 
+CLEANFILES = $(dist_man7_MANS)

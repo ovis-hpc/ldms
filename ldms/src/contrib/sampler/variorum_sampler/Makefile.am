@@ -16,3 +16,5 @@ libvariorum_sampler_la_LIBADD = $(COMMON_LIBADD) $(LTLIBVARIORUM) $(LTLIBJANSSON
 pkglib_LTLIBRARIES += libvariorum_sampler.la
 dist_man7_MANS += ldms-sampler_variorum_sampler.man
 EXTRA_DIST += README.md
+
+CLEANFILES = $(dist_man7_MANS)

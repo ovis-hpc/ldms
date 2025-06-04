@@ -15,3 +15,5 @@ libprocnfs_la_SOURCES = procnfs.c
 libprocnfs_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocnfs.la
 dist_man7_MANS += ldms-sampler_procnfs.man
+
+CLEANFILES = $(dist_man7_MANS)

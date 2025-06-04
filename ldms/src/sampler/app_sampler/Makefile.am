@@ -24,3 +24,5 @@ liblinux_proc_sampler_la_LDFLAGS = @OVIS_LIB_ABS@
 
 check_PROGRAMS = test_fd_timing
 test_fd_timing_SOURCES=test_fd_timing.c
+
+CLEANFILES = $(dist_man7_MANS)

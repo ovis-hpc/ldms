@@ -5,7 +5,6 @@ SUBDIRS =
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 dist_man7_MANS =
-dist_man1_MANS =
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
@@ -23,4 +22,4 @@ pkglib_LTLIBRARIES += libstore_tutorial.la
 dist_man7_MANS += ldms-store_tutorial.man
 endif
 
-EXTRA_DIST = ldms-store_tutorial.man
+CLEANFILES = $(dist_man7_MANS)

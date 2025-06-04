@@ -23,3 +23,5 @@ pkglib_LTLIBRARIES += libslurm_sampler.la
 libslurm_sampler2_la_SOURCES = slurm_sampler2.c
 libslurm_sampler2_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libslurm_sampler2.la
+
+CLEANFILES = $(dist_man7_MANS)

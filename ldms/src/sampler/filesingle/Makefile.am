@@ -28,8 +28,8 @@ TESTS = test_sensors test_lscpu
 endif
 
 EXTRA_DIST += \
-	ldms-sampler_filesingle.man \
-	ldms-sensors-config.man \
 	test_sensors \
 	test_lscpu \
 	test_input
+
+CLEANFILES = $(dist_man1_MANS) $(dist_man7_MANS)

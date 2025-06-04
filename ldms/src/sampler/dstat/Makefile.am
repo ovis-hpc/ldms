@@ -39,3 +39,5 @@ check_PROGRAMS += parse_stat_test
 parse_stat_test_SOURCES = parse_stat.c parse_stat.h
 parse_stat_test_CFLAGS = -DMAIN
 endif
+
+CLEANFILES = $(dist_man1_MANS) $(dist_man7_MANS)

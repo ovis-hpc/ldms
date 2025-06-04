@@ -20,3 +20,5 @@ pkglib_LTLIBRARIES += libkgnilnd.la
 dist_man7_MANS += ldms-sampler_kgnilnd.man
 endif
 EXTRA_DIST = ldms-sampler_kgnilnd.man
+
+CLEANFILES = $(dist_man7_MANS)
