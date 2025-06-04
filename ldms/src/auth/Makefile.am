@@ -48,3 +48,5 @@ endif
 dist_man7_MANS += ldms_auth_none.man \
 		  ldms_auth_ovis.man \
 		  ldms_auth_naive.man
+
+CLEANFILES= $(dist_man7_MANS)

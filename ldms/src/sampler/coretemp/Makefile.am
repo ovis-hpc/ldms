@@ -4,7 +4,6 @@ include $(top_srcdir)/ldms/rules.mk
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 dist_man7_MANS =
-dist_man1_MANS =
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
@@ -17,3 +16,5 @@ libcoretemp_la_SOURCES = coretemp.c
 libcoretemp_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libcoretemp.la
 endif
+
+CLEANFILES = $(dist_man7_MANS)

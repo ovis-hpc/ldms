@@ -15,3 +15,5 @@ libsysclassib_la_SOURCES = sysclassib.c
 libsysclassib_la_LIBADD = $(COMMON_LIBADD) $(LTLIBIBMAD) $(LTLIBIBUMAD)
 pkglib_LTLIBRARIES += libsysclassib.la
 dist_man7_MANS += ldms-sampler_sysclassib.man
+
+CLEANFILES = $(dist_man7_MANS)

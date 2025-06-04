@@ -25,3 +25,5 @@ ldmsd_stream_subscribe_LDFLAGS = $(AM_LDFLAGS) -pthread
 
 dist_man8_MANS += ldmsd_stream_subscribe.man \
 		  ldmsd_stream_publish.man
+
+CLEANFILES = $(dist_man8_MANS)

@@ -23,3 +23,5 @@ libhweventpapi_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) $(LTLIBPAPI) $(LTL
 pkglib_LTLIBRARIES = libhweventpapi.la
 
 dist_man7_MANS = ldms-sampler_hweventpapi.man
+
+CLEANFILES = $(dist_man7_MANS)

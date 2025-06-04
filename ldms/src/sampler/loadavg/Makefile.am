@@ -16,3 +16,5 @@ libloadavg_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libloadavg.la
 dist_man7_MANS += ldms-sampler_loadavg.man
 endif
+
+CLEANFILES = $(dist_man7_MANS)

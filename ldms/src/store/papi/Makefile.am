@@ -19,3 +19,5 @@ libstore_papi_la_LIBADD = @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@ $(STORE_LIBADD) 
 pkglib_LTLIBRARIES += libstore_papi.la
 dist_man7_MANS += ldms-store_papi.man
 endif
+
+CLEANFILES = $(dist_man7_MANS)

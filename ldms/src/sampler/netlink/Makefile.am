@@ -26,6 +26,7 @@ slpsinclude_HEADERS = simple_lps.h
 if HAVE_NETLINK
 # ldms-netlink-notifier does not use ldms headers except ovis json.
 sbin_PROGRAMS += ldms-netlink-notifier
+# Note: ldms-sampler_ldms-notify.man is not generated.
 dist_man8_MANS += ldms-sampler_netlink-notifier.man ldms-sampler_ldms-notify.man
 ldms_netlink_notifier_CFLAGS = $(AM_CFLAGS)
 ldms_netlink_notifier_SOURCES = netlink-notifier.c
@@ -47,3 +48,6 @@ EXTRA_DIST = $(srcdir)/input/test_slps.sh
 
 distclean-local:
 	$(RM) test_slps.* $(EXTRA_PROGRAMS)
+
+# Don't put ldms-sampler_ldms-notify.man in CLEANFILES. It is not generated.
+CLEANFILES = ldms-sampler_netlink-notifier.man

@@ -5,7 +5,6 @@ SUBDIRS=test
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 dist_man7_MANS =
-dist_man1_MANS =
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@ @DAOS_CFLAGS@
 AM_LDFLAGS = @OVIS_LIB_ABS@ @DAOS_LDFLAGS@
@@ -20,3 +19,5 @@ libdaos_sampler_la_LIBADD = $(COMMON_LIBADD) -lgurt \
 pkglib_LTLIBRARIES += libdaos_sampler.la
 dist_man7_MANS += ldms-daos-sampler.man
 endif
+
+CLEANFILES = $(dist_man7_MANS)

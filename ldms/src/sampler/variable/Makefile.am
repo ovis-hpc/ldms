@@ -18,4 +18,4 @@ pkglib_LTLIBRARIES += libvariable.la
 dist_man7_MANS += ldms-sampler_variable.man
 endif
 
-
+CLEANFILES = $(dist_man7_MANS)

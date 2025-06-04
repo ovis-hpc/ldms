@@ -18,4 +18,4 @@ pkglib_LTLIBRARIES += libmeminfo.la
 dist_man7_MANS += ldms-sampler_meminfo.man
 endif
 
-
+CLEANFILES = $(dist_man7_MANS)

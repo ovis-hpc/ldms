@@ -114,3 +114,5 @@ SUBDIRS += avro_kafka
 endif
 
 SUBDIRS += stream_dump
+
+CLEANFILES = $(dist_man7_MANS)

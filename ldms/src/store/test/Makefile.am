@@ -20,3 +20,5 @@ ldms_csv_time_drops_range_LDADD = -lboost_system
 ldms_csv_time_drops_range_LDFLAGS = $(AM_LDFLAGS) -L$(BOOST_ROOT)/lib
 ldms_csv_time_drops_range_CPPFLAGS = $(AM_CFLAGS) -DPRINT_RANGE
 endif
+
+CLEANFILES = $(dist_man8_MANS)

@@ -15,3 +15,5 @@ libsampler_atasmart_la_SOURCES = sampler_atasmart.c
 libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart
 pkglib_LTLIBRARIES += libsampler_atasmart.la
 dist_man7_MANS += ldms-sampler_atasmart.man
+
+CLEANFILES = $(dist_man7_MANS)

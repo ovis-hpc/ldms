@@ -18,3 +18,5 @@ libibmad_records_sampler_la_CPPFLAGS = \
 pkglib_LTLIBRARIES = libibmad_records_sampler.la
 
 dist_man7_MANS = ldms-sampler_ibmad_records_sampler.man
+
+CLEANFILES = $(dist_man7_MANS)

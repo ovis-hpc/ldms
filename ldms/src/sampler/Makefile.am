@@ -302,3 +302,5 @@ SUBDIRS += slingshot_metrics
 SUBDIRS += slingshot_info
 endif
 endif
+
+CLEANFILES = $(dist_man7_MANS)

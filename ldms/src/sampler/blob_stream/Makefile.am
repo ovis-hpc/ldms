@@ -23,5 +23,4 @@ dist_man7_MANS += ldms-sampler_blob_stream_writer.man
 
 endif
 
-EXTRA_DIST = \
-	ldms-sampler_blob_stream_writer.man
+CLEANFILES = $(dist_man7_MANS)
