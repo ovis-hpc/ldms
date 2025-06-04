@@ -9266,10 +9266,10 @@ out:
 
 static json_entity_t __ldmsd_stat2dict(struct ldmsd_stat *stat)
 {
-	double start_ts = stat->start.tv_sec + stat->start.tv_nsec/1000000.0;
-	double end_ts = stat->end.tv_sec + stat->end.tv_nsec/1000000.0;
-	double min_ts = stat->min_ts.tv_sec + stat->min_ts.tv_nsec/1000000.0;
-	double max_ts = stat->max_ts.tv_sec + stat->max_ts.tv_nsec/1000000.0;
+	double start_ts = stat->start.tv_sec + stat->start.tv_nsec*1e-9;
+	double end_ts = stat->end.tv_sec + stat->end.tv_nsec*1e-9;
+	double min_ts = stat->min_ts.tv_sec + stat->min_ts.tv_nsec*1e-9;
+	double max_ts = stat->max_ts.tv_sec + stat->max_ts.tv_nsec*1e-9;
 	json_entity_t d = json_dict_build(NULL,
 				JSON_FLOAT_VALUE, "min", stat->min,
 				JSON_FLOAT_VALUE, "min_ts", min_ts,
