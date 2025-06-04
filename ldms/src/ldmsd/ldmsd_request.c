@@ -5264,12 +5264,13 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 		}
 		count++;
 		rc = linebuf_printf(reqc,
-			       "{\"name\":\"%s\",\"plugin\":\"%s\",\"type\":\"%s\","
-			       "\"libpath\":\"%s\"}",
-			       samp->cfg.name,
-			       samp->plugin->name,
-			       plugin_type_str(samp->api->base.type),
-			       samp->plugin->libpath);
+			"{\"name\":\"%s\",\"plugin\":\"%s\",\"type\":\"%s[%s]\","
+			"\"libpath\":\"%s\"}",
+			samp->cfg.name,
+			samp->plugin->name,
+			plugin_type_str(samp->api->base.type),
+			samp->api->base.flags & LDMSD_PLUGIN_MULTI_INSTANCE ? "M" : "S",
+			samp->plugin->libpath);
 		if (rc) {
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
 			goto err;
@@ -5287,12 +5288,13 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 		}
 		count++;
 		rc = linebuf_printf(reqc,
-				    "{\"name\":\"%s\",\"plugin\":\"%s\",\"type\":\"%s\","
-				    "\"libpath\":\"%s\"}",
-				    store->cfg.name,
-				    store->plugin->name,
-				    plugin_type_str(store->api->base.type),
-				    store->plugin->libpath);
+				"{\"name\":\"%s\",\"plugin\":\"%s\",\"type\":\"%s[%s]\","
+				"\"libpath\":\"%s\"}",
+				store->cfg.name,
+				store->plugin->name,
+				plugin_type_str(store->api->base.type),
+				store->api->base.flags & LDMSD_PLUGIN_MULTI_INSTANCE ? "M" : "S",
+				store->plugin->libpath);
 		if (rc) {
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_STORE);
 			goto err;
@@ -5590,11 +5592,6 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 		count++;
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
-	if (name && (0 == count)) {
-		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-				"Plugin '%s' not loaded.", name);
-		reqc->errcode = ENOENT;
-	}
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
 	for (store = ldmsd_store_first(); store;
 			store = ldmsd_store_next(store)) {
