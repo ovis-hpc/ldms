@@ -89,7 +89,7 @@ REGULAR EXPRESSION
 ==================
 
 The regular expression specified in *regex=* option of the commands is a
-POSIX Extended (modern) Regular Expression. In short, "*+?{}|^$." are
+POSIX Extended (modern) Regular Expression. In short, "\*+?{}|^$." are
 special regular expression characters. Please see :ref:`regex(7) <regex>` for more
 information.
 

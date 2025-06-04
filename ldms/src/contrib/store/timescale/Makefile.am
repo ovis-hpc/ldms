@@ -5,7 +5,7 @@ SUBDIRS =
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 dist_man7_MANS =
-dist_man1_MANS =
+EXTRA_DIST =
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
@@ -23,6 +23,7 @@ pkglib_LTLIBRARIES += libstore_timescale.la
 dist_man7_MANS += ldms-store_timescale.man
 endif
 
-EXTRA_DIST = ldms-store_timescale.man
 EXTRA_DIST += example.conf
 EXTRA_DIST += README.txt
+
+CLEANFILES = $(dist_man7_MANS)

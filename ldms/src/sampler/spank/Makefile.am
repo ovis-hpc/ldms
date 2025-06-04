@@ -18,3 +18,5 @@ libslurm_notifier_la_LIBADD = $(COMMON_LIBADD)
 libslurm_notifier_la_CFLAGS = $(SLURM_CFLAGS) -DSYSCONFDIR='"$(sysconfdir)"'
 dist_man7_MANS += ldms-sampler_slurm_notifier.man
 pkglib_LTLIBRARIES += libslurm_notifier.la
+
+CLEANFILES = $(dist_man7_MANS)

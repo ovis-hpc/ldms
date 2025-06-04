@@ -24,3 +24,5 @@ libpapi_sampler_la_LIBADD = $(COMMON_LIBADD) $(LTLIBPAPI) libpapi_hook.la
 libpapi_sampler_la_CFLAGS = -DSYSCONFDIR='"$(sysconfdir)"'
 pkglib_LTLIBRARIES += libpapi_sampler.la
 dist_man7_MANS += ldms-sampler_papi_sampler.man
+
+CLEANFILES = $(dist_man7_MANS)

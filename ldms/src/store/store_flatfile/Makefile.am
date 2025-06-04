@@ -22,3 +22,5 @@ libstore_flatfile_la_LIBADD = $(STORE_LIBADD)
 pkglib_LTLIBRARIES += libstore_flatfile.la
 dist_man7_MANS += ldms-store_flatfile.man
 endif
+
+CLEANFILES = $(dist_man7_MANS)

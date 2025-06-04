@@ -68,3 +68,5 @@ installcheck-local:
 	./ldms-run-static-tests.test
 
 TESTS = $(check_PROGRAMS) ldms-run-static-tests.test
+
+CLEANFILES = $(dist_man8_MANS)

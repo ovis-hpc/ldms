@@ -11,7 +11,7 @@ dist_man8_MANS = ldmsd.man \
 
 dist_man7_MANS = ldmsd_failover.man \
 		 ldmsd_setgroup.man
-
+CLEANFILES = $(dist_man7_MANS) $(dist_man8_MANS)
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@

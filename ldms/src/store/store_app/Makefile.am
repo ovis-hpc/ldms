@@ -13,3 +13,5 @@ libstore_app_la_LIBADD = @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@ @OVIS_LIB_ABS@ \
 			 -lsos
 
 dist_man7_MANS += ldmsd_store_app.man
+
+CLEANFILES = $(dist_man7_MANS)

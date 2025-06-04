@@ -22,4 +22,4 @@ pkglib_LTLIBRARIES += libprocstat.la
 dist_man7_MANS += ldms-sampler_procstat.man
 endif
 
-
+CLEANFILES = $(dist_man7_MANS)

@@ -971,7 +971,14 @@ void fprint_decomp(FILE *fp, ldms_set_t s)
 			enum ldms_value_type rtype;
 			ldms_mval_t lval = ldms_metric_get(s, i);
 			ldms_mval_t rval = ldms_list_first(s, lval, &rtype, NULL);
-			fprint_record(fp, 14, ldms_metric_name_get(s, i), rval);
+			if (rval) {
+				fprint_record(fp, 14, ldms_metric_name_get(s, i), rval);
+			} else {
+				/* Can't do decomp for an empty list */
+				fprintf(fp, "              { \"src\" : \"%s\", "
+					"\"dst\" : \"ERROR: Cannot generate decomposition for an empty list\" }",
+					ldms_metric_name_get(s, i));
+			}
 		} else if (ldms_type_is_array(type)) {
 			fprintf(fp, "              { \"src\" : \"%s\", \"dst\" : \"%s\", "
 				"\"type\" : \"%s\", \"array_len\" : %d }",

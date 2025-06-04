@@ -963,9 +963,9 @@ class YamlCfg(object):
                             if first:
                                 first = False
                                 if 'producer' not in cfg_args:
-                                    cfg_args['producer'] = f'{hostname}'
+                                    cfg_args['producer'] = f'{sname}'
                                 if 'instance' not in cfg_args:
-                                    cfg_args['instance'] = f'{hostname}/{plugin}'
+                                    cfg_args['instance'] = f'{sname}/{plugin}'
                             cfg_str = parse_to_cfg_str(cfg_args)
                         else:
                             cfg_str = cfg_

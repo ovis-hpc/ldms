@@ -6,7 +6,6 @@ pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 bin_SCRIPTS=
 dist_man7_MANS =
-dist_man1_MANS =
 EXTRA_DIST =
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
@@ -29,5 +28,5 @@ libipmisensors_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libipmisensors.la
 dist_man7_MANS += ldms-sampler_ipmisensors.man
 endif
-EXTRA_DIST += ldms-sampler_ipmireader.man
-EXTRA_DIST += ldms-sampler_ipmisensors.man
+
+CLEANFILES = $(dist_man7_MANS)

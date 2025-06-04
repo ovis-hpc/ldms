@@ -29,3 +29,5 @@ EXTRA_DIST = \
 	README.md \
 	test/example-mpi_profiler-conf.sh \
 	test/samplerd.conf
+
+CLEANFILES = $(dist_man7_MANS)

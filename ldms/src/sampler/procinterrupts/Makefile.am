@@ -22,4 +22,4 @@ pkglib_LTLIBRARIES += libprocinterrupts.la
 dist_man7_MANS += ldms-sampler_procinterrupts.man
 endif
 
-
+CLEANFILES = $(dist_man7_MANS)

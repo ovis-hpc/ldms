@@ -93,3 +93,5 @@ dist_man7_MANS += ldms-sampler_cray_system_variants.man
 endif
 
 endif
+
+CLEANFILES = $(dist_man7_MANS)

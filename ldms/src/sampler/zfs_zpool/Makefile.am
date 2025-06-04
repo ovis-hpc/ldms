@@ -20,3 +20,5 @@ libzfs_zpool_la_LIBADD = $(COMMON_LIBADD)
 
 pkglib_LTLIBRARIES += libzfs_zpool.la
 dist_man7_MANS = ldms-sampler_zfs_zpool.man
+
+CLEANFILES = $(dist_man7_MANS)

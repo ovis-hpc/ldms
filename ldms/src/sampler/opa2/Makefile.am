@@ -18,3 +18,5 @@ libopa2_la_CFLAGS = $(AM_CFLAGS) -I/usr/include/infiniband
 libopa2_la_LIBADD = $(AM_LDFLAGS) $(COMMON_LIBADD) $(OPA2_LIBADD) $(JOBID_LIBFLAGS)
 dist_man7_MANS += ldms-sampler_opa2.man
 pkglib_LTLIBRARIES += libopa2.la
+
+CLEANFILES = $(dist_man7_MANS)

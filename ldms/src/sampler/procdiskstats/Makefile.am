@@ -15,3 +15,5 @@ libprocdiskstats_la_SOURCES = procdiskstats.c
 libprocdiskstats_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocdiskstats.la
 dist_man7_MANS += ldms-sampler_procdiskstats.man
+
+CLEANFILES = $(dist_man7_MANS)

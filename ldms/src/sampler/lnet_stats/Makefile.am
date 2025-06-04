@@ -15,3 +15,5 @@ liblnet_stats_la_SOURCES = lnet_stats.c
 liblnet_stats_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += liblnet_stats.la
 dist_man7_MANS += ldms-sampler_lnet_stats.man
+
+CLEANFILES = $(dist_man7_MANS)
