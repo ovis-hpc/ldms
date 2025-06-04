@@ -180,6 +180,27 @@ struct ldmsd_plugin_generic * load_plugin(const char *plugin_name,
 				 plugin_name);
 			goto err_2;
 		}
+	} else {
+		/* Verify that this plugin hasn't already been loaded
+		 * with another configuration name */
+		ldmsd_cfgobj_sampler_t sampler;
+		for (sampler = ldmsd_sampler_first(); sampler; sampler = ldmsd_sampler_next(sampler)) {
+			if (0 == strcmp(sampler->plugin->name, plugin_name)) {
+				ovis_log(config_log, OVIS_LERROR,
+					 "The single instance plugin '%s' has already been loaded.\n",
+					 plugin_name);
+				goto err_1;
+			}
+		}
+		ldmsd_cfgobj_store_t store;
+		for (store = ldmsd_store_first(); store; store = ldmsd_store_next(store)) {
+			if (0 == strcmp(store->plugin->name, plugin_name)) {
+				ovis_log(config_log, OVIS_LERROR,
+					 "The single instance plugin '%s' has already been loaded.\n",
+					 plugin_name);
+				goto err_1;
+			}
+		}
 	}
 
         plugin->name = strdup(plugin_name);
@@ -381,16 +402,6 @@ int ldmsd_load_plugin(char *cfg_name, char *plugin_name,
 	plugin = load_plugin(plugin_name, errstr, errlen);
 	if (!plugin)
 		return errno;
-	if (0 == (plugin->api->flags & LDMSD_PLUGIN_MULTI_INSTANCE)) {
-		if (strcmp(cfg_name, plugin_name)) {
-			snprintf(errstr, errlen,
-				"Plugin %s does not support multiple "
-				"configurations, but the name specified "
-				"was %s. \n", plugin_name, cfg_name);
-			errno = EINVAL;
-			goto err;
-		}
-	}
 	switch (plugin->api->type) {
 	case LDMSD_PLUGIN_SAMPLER:
 		sampler = ldmsd_sampler_add(cfg_name,
