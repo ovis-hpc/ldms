@@ -1,0 +1,13 @@
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=2000000
+prdcr_start name=localhost2
+
+updtr_add name=allhosts interval=1000000 offset=200000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0
+
+strgp_add name=store_dstat plugin=store_csv schema=${dstat_schema} container=node
+strgp_prdcr_add name=store_dstat regex=.*
+strgp_start name=store_dstat

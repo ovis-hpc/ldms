@@ -1,0 +1,25 @@
+# blobs must be allowed by writer plugin and prdcr_subscribe by daemon
+load name=blob_stream_writer plugin=blob_stream_writer
+config name=blob_stream_writer path=${STOREDIR} container=blobs stream=slurm stream=linux_proc_sampler_env stream=linux_proc_sampler_argv types=1 stream=linux_proc_sampler_files
+
+load name=dstat
+config name=dstat producer=localhost${i} instance=localhost${i}/${dstat_schema} component_id=${i} mmalloc=1 io=1 fd=1 auto-schema=1 stat=1) perm=777
+start name=dstat interval=1000000 offset=0
+
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=2000000
+prdcr_subscribe regex=.* stream=slurm
+prdcr_subscribe regex=.* stream=linux_proc_sampler_argv
+prdcr_subscribe regex=.* stream=linux_proc_sampler_env
+prdcr_subscribe regex=.* stream=linux_proc_sampler_files
+prdcr_start name=localhost1
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0
+
+strgp_add name=store_${testname} plugin=store_csv schema=linux_proc_sampler container=node
+strgp_prdcr_add name=store_${testname} regex=.*
+strgp_start name=store_${testname}
