@@ -22,6 +22,10 @@ DESCRIPTION
 ===========
 
 The lustre2_client plugin provides Lustre metric information.
+The debugfs filesystem must be mounted for lustre
+data access, which is also usually restricted to the root user.
+
+
 
 CONFIGURATION ATTRIBUTE SYNTAX
 ==============================

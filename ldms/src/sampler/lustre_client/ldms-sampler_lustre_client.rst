@@ -33,8 +33,9 @@ set to the hostname by default, and the metric set instance names are
 derived from the llite instance name. Any user-supplied configuration
 values not documented here will be ignored.
 
-This plugin should work with at least Lustre versions 2.8, 2.10, and
-2.12.
+This plugin should work with at least Lustre versions 2.8, 2.10,
+2.12 and 2.15. The debugfs filesystem must be mounted for lustre
+data access, which is also usually restricted to the root user.
 
 CONFIGURATION ATTRIBUTE SYNTAX
 ==============================

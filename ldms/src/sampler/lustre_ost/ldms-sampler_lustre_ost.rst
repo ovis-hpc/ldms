@@ -43,8 +43,9 @@ This plugin currently employs zero configuration. Any user-supplied
 configuration values will be ignored. Future versions may add
 configuration options.
 
-This plugin should work with at least Lustre versions 2.8, 2.10, and
-2.12.
+This plugin should work with at least Lustre versions 2.8, 2.10,
+2.12 and 2.15. The debugfs filesystem must be mounted for lustre
+data access, which is also usually restricted to the root user.
 
 CONFIGURATION ATTRIBUTE SYNTAX
 ==============================
