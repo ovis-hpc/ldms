@@ -28,7 +28,6 @@ libmy_plugin_la_LIBADD = $(COMMON_LIBADD)
 dist_man7_MANS += ldms_my_plugin.man
 pkglib_LTLIBRARIES += libmy_plugin.la
 endif
-EXTRA_DIST = ldms_my_plugin.man
 
 all-local: always_check
 
@@ -40,3 +39,5 @@ rm_banned:
 	../scripts/rm_banned.sh
 
 .PHONY: always_check
+
+CLEANFILES = $(dist_man7_MANS)

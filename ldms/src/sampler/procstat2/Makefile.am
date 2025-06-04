@@ -15,3 +15,5 @@ libprocstat2_la_SOURCES = procstat2.c
 libprocstat2_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocstat2.la
 dist_man7_MANS += ldms-sampler_procstat2.man
+
+CLEANFILES = $(dist_man7_MANS)

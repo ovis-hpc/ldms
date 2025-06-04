@@ -63,5 +63,5 @@ pkglib_LTLIBRARIES += libaries_linkstatus.la
 dist_man7_MANS += ldms-sampler_aries_linkstatus.man
 
 endif
-EXTRA_DIST = ldms-sampler_aries_linkstatus.man ldms-sampler_aries_mmr_configurable.man ldms-sampler_aries_mmr.man
 
+CLEANFILES = $(dist_man7_MANS)

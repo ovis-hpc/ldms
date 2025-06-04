@@ -63,3 +63,5 @@ EXTRA_DIST += .gitignore \
               ldms_geopm_sampler_test_signal.conf \
               ldms_geopm_sampler_test_signal.expect \
               # end
+
+CLEANFILES = $(dist_man7_MANS)

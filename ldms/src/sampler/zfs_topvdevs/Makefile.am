@@ -19,3 +19,5 @@ libzfs_topvdevs_la_SOURCES = zfs_topvdevs.c
 libzfs_topvdevs_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libzfs_topvdevs.la
 dist_man7_MANS = ldms-sampler_zfs_topvdevs.man
+
+CLEANFILES = $(dist_man7_MANS)

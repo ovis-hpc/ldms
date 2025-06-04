@@ -20,3 +20,5 @@ dist_man7_MANS += ldms-sampler_edac.man
 endif
 
 EXTRA_DIST = LLNL_LICENSE_EDAC
+
+CLEANFILES = $(dist_man7_MANS)

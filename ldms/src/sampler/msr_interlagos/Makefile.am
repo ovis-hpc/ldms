@@ -15,3 +15,5 @@ libmsr_interlagos_la_SOURCES = msr_interlagos.c
 libmsr_interlagos_la_LIBADD = $(COMMON_LIBADD) -lpthread
 pkglib_LTLIBRARIES += libmsr_interlagos.la
 dist_man7_MANS += ldms-sampler_msr_interlagos.man
+
+CLEANFILES = $(dist_man7_MANS)

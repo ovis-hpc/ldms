@@ -15,3 +15,5 @@ libprocnetdev_la_SOURCES = procnetdev.c
 libprocnetdev_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocnetdev.la
 dist_man7_MANS += ldms-sampler_procnetdev.man
+
+CLEANFILES = $(dist_man7_MANS)

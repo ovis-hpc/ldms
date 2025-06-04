@@ -23,3 +23,5 @@ libdarshan_stream_store_la_LIBADD = $(COMMON_LIBADD) \
 
 pkglib_LTLIBRARIES += libdarshan_stream_store.la
 dist_man7_MANS += ldms-store_darshan_stream_store.man
+
+CLEANFILES = $(dist_man7_MANS)

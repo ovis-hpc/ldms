@@ -19,3 +19,5 @@ libzfs_leafvdevs_la_SOURCES = zfs_leafvdevs.c
 libzfs_leafvdevs_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libzfs_leafvdevs.la
 dist_man7_MANS = ldms-sampler_zfs_leafvdevs.man
+
+CLEANFILES = $(dist_man7_MANS)
