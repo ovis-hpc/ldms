@@ -421,6 +421,21 @@ typedef struct ldmsd_prdcr_ref {
 	struct rbn rbn;
 } *ldmsd_prdcr_ref_t;
 
+typedef struct ldmsd_prdcr_sub_unsub {
+	uint8_t is_sub; /* 1 means subscribe. 0 mean unsubscribe */
+	const char *prdcr_regex;
+	regex_t regex;
+	const char *stream_name;
+	const char *msg;
+	int64_t rate;
+	TAILQ_ENTRY(ldmsd_prdcr_sub_unsub) entry;
+} *ldmsd_prdcr_sub_unsub_t;
+TAILQ_HEAD(ldmsd_prdcr_sub_unsub_list, ldmsd_prdcr_sub_unsub);
+void ldmsd_prdcr_sub_unsub_list_lock();
+void ldmsd_prdcr_sub_unsub_list_unlock();
+ldmsd_prdcr_sub_unsub_t ldmsd_prdcr_sub_unsub_list_first();
+ldmsd_prdcr_sub_unsub_t ldmsd_prdcr_sub_unsub_list_next(ldmsd_prdcr_sub_unsub_t x);
+
 /**
  * Listening Producer: Named set of conditions of LDMS metric set providers
  */
@@ -1377,6 +1392,10 @@ int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex,
 				const char *msg,
 				char *rep_buf, size_t rep_len,
 				ldmsd_sec_ctxt_t ctxt);
+int ldmsd_prdcr_stream_subscribe(ldmsd_prdcr_t prdcr, const char *stream);
+int ldmsd_prdcr_msg_subscribe(ldmsd_prdcr_t prdcr, const char *msg, int64_t rate);
+int ldmsd_prdcr_stream_unsubscribe(ldmsd_prdcr_t prdcr, const char *stream);
+int ldmsd_prdcr_msg_unsubscribe(ldmsd_prdcr_t prdcr, const char *msg);
 
 int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt);
 int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt);

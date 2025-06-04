@@ -1711,6 +1711,45 @@ void ldmsd_prdcr_update(ldmsd_strgp_t strgp)
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 }
 
+/*
+ * prdcr_subun_list maintains the chronological order of subscribe and unsubscribe requests
+ * to be applied to advertised producers.
+ *
+ * This list contains each `producer_subscribe` and `producer_unsubscribe` request in the order
+ * they were received. Preserving this order is critical for correct behavior.
+ *
+ * Example scenario:
+ * 1. User configures all producers (.*) to subscribe to msg_channel 'my_data'
+ * 2. User then creates an exception for producers matching the regex pattern (node-[11-20])
+ *    with: `producer_unsubscribe regex=node-[11-20] msg=my_data`
+ *
+ * If prdcr_subun_list does not preserve the arrival order of these requests,
+ * an advertised producer might incorrectly subscribe to a msg_channel that
+ * the user intended to unsubscribe it from.
+ */
+static struct ldmsd_prdcr_sub_unsub_list prdcr_subun_list = TAILQ_HEAD_INITIALIZER(prdcr_subun_list);
+static pthread_mutex_t prdcr_sub_unsub_list_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void ldmsd_prdcr_sub_unsub_list_lock()
+{
+	pthread_mutex_lock(&prdcr_sub_unsub_list_lock);
+}
+
+void ldmsd_prdcr_sub_unsub_list_unlock()
+{
+	pthread_mutex_unlock(&prdcr_sub_unsub_list_lock);
+}
+
+ldmsd_prdcr_sub_unsub_t ldmsd_prdcr_sub_unsub_list_first()
+{
+	return (ldmsd_prdcr_sub_unsub_t) TAILQ_FIRST(&prdcr_subun_list);
+}
+
+ldmsd_prdcr_sub_unsub_t ldmsd_prdcr_sub_unsub_list_next(ldmsd_prdcr_sub_unsub_t x)
+{
+	return (ldmsd_prdcr_sub_unsub_t) TAILQ_NEXT(x, entry);
+}
+
 int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, const char *stream,
 				const char *msg,
 				char *rep_buf, size_t rep_len,
@@ -1719,10 +1758,47 @@ int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, const char *stream,
 	regex_t regex;
 	ldmsd_prdcr_t prdcr;
 	int rc;
+	struct ldmsd_prdcr_sub_unsub *psub = NULL;
 
 	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
 	if (rc)
 		return rc;
+
+	psub = malloc(sizeof(*psub));
+	if (!psub) {
+		rc = ENOMEM;
+		goto err;
+	}
+	psub->is_sub = 1;
+	psub->prdcr_regex = strdup(prdcr_regex);
+	if (!psub->prdcr_regex) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	if (stream) {
+		psub->stream_name = strdup(stream);
+		if (!psub->stream_name) {
+			rc = ENOMEM;
+			goto err;
+		}
+	}
+
+	if (msg) {
+		psub->msg = strdup(msg);
+		if (!psub->msg) {
+			rc = ENOMEM;
+			goto err;
+		}
+	}
+
+	psub->regex = regex;
+	psub->rate = rate;
+
+	ldmsd_prdcr_sub_unsub_list_lock();
+	TAILQ_INSERT_TAIL(&prdcr_subun_list, psub, entry);
+	ldmsd_prdcr_sub_unsub_list_unlock();
+
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
 		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
@@ -1734,8 +1810,15 @@ int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, const char *stream,
 			ldmsd_prdcr_msg_subscribe(prdcr, msg, rate);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	regfree(&regex);
 	return 0;
+err:
+	if (psub) {
+		free((char*)psub->prdcr_regex);
+		free((char*)psub->stream_name);
+	}
+	free(psub);
+	regfree(&regex);
+	return rc;
 }
 
 int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex,
@@ -1747,10 +1830,46 @@ int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex,
 	regex_t regex;
 	ldmsd_prdcr_t prdcr;
 	int rc;
+	struct ldmsd_prdcr_sub_unsub *psub = NULL;
 
 	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
 	if (rc)
 		return rc;
+
+	psub = malloc(sizeof(*psub));
+	if (!psub) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	psub->prdcr_regex = strdup(prdcr_regex);
+	if (!psub->prdcr_regex) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	if (stream_name) {
+		psub->stream_name = strdup(stream_name);
+		if (!psub->stream_name) {
+			rc = ENOMEM;
+			goto err;
+		}
+	}
+
+	if (msg) {
+		psub->msg = strdup(msg);
+		if (!psub->msg) {
+			rc = ENOMEM;
+			goto err;
+		}
+	}
+
+	psub->regex = regex;
+
+	pthread_mutex_lock(&prdcr_sub_unsub_list_lock);
+	TAILQ_INSERT_TAIL(&prdcr_subun_list, psub, entry);
+	pthread_mutex_unlock(&prdcr_sub_unsub_list_lock);
+
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
 		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
@@ -1764,8 +1883,10 @@ int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex,
 		}
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	regfree(&regex);
 	return 0;
+err:
+	regfree(&regex);
+	return rc;
 }
 
 void ldmsd_prdcr_set_stats_reset(ldmsd_prdcr_set_t prdset, struct timespec *now, int flags)
