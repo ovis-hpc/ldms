@@ -463,23 +463,52 @@ Disable the LDMS Message Service subscription and publication in this daemon.
 Once this is disabled, all LDMS Messages will be dropped. The LDMS Message
 Service cannot be re-enabled without restarting the daemon.
 
+Subscribe to a stream or LDMS message service on matching producers
+-------------------------------------------------------------------
 
-Subscribe for stream and/or message data from all matching producers
---------------------------------------------------------------------
+**prdcr_subscribe** attr=<value>
 
-**prdcr_subsribe** attr=<value>
-
-   **regex** *regex*
+   **regex** *PRDCR_REGEX*
       |
-      | The regular expression matching producer name
+      | A regular expression matching PRODUCER names
 
-   **stream** *stream*
+   **stream** *STREAM_NAME*
       |
-      | The stream name
+      | For ldmsd stream subscription, this is the ldmsd stream name. This is
+      | mutually exclusive to **message_channel** attribute.
 
-   **message_channel** *NAME_REGEX*
+   **message_channel** *CHANNEL_NAME_OR_REGEX*
       |
-      | The message channel name or regular expression of message channels
+      | For LDMS message subscription, this is the message channel name or
+      | a regular expression matching the message channel name. This is
+      | mutually exclusive to **stream** attribute.
+
+   **[rx_rate** *BYTES_PER_SECOND*\ **]**
+      |
+      | The recv rate (bytes/sec) limit for the matching message channels. The
+      | default is -1 (unlimited).
+
+
+Unsubscribe a stream or message service
+---------------------------------------
+
+**prdcr_subscribe** attr=<value>
+
+   **regex** *PRDCR_REGEX*
+      |
+      | A regular expression matching PRODUCER names
+
+   **stream** *STREAM_NAME*
+      |
+      | For ldmsd stream unsubscription, this is the ldmsd stream name. This is
+      | mutually exclusive to **message_channel** attribute.
+
+   **message_channel** *CHANNEL_NAME_OR_REGEX*
+      |
+      | For LDMS message unsubscription, this is the message channel name or
+      | a regular expression matching the message channel name previously
+      | specified in the **prdcr_subscription** command. This is mutually
+      | exclusive to **stream** attribute.
 
 
 UPDATER COMMAND SYNTAX
@@ -822,8 +851,8 @@ Publish data to the named stream
       |
       | The data to publish
 
-Subscribe to a stream on matching producers
--------------------------------------------
+Subscribe to a stream or LDMS message service on matching producers
+-------------------------------------------------------------------
 
 **prdcr_subscribe** attr=<value>
 
@@ -831,14 +860,42 @@ Subscribe to a stream on matching producers
       |
       | A regular expression matching PRODUCER names
 
-   **stream** *STREAM_NAME_OR_REGEX*
+   **stream** *STREAM_NAME*
       |
-      | The stream name or regular expression
+      | For ldmsd stream subscription, this is the ldmsd stream name. This is
+      | mutually exclusive to **message_channel** attribute.
+
+   **message_channel** *CHANNEL_NAME_OR_REGEX*
+      |
+      | For LDMS message subscription, this is the message channel name or
+      | a regular expression matching the message channel name. This is
+      | mutually exclusive to **stream** attribute.
 
    **[rx_rate** *BYTES_PER_SECOND*\ **]**
       |
-      | The recv rate (bytes/sec) limit for the matching streams. The
-        default is -1 (unlimited).
+      | The recv rate (bytes/sec) limit for the matching message channels. The
+      | default is -1 (unlimited).
+
+Unsubscribe a stream or message service
+---------------------------------------
+
+**prdcr_subscribe** attr=<value>
+
+   **regex** *PRDCR_REGEX*
+      |
+      | A regular expression matching PRODUCER names
+
+   **stream** *STREAM_NAME*
+      |
+      | For ldmsd stream unsubscription, this is the ldmsd stream name. This is
+      | mutually exclusive to **message_channel** attribute.
+
+   **message_channel** *CHANNEL_NAME_OR_REGEX*
+      |
+      | For LDMS message unsubscription, this is the message channel name or
+      | a regular expression matching the message channel name previously
+      | specified in the **prdcr_subscription** command. This is mutually
+      | exclusive to **stream** attribute.
 
 LDMS DAEMON COMMAND SYNTAX
 ==========================
