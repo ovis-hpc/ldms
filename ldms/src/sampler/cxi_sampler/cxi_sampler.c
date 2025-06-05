@@ -455,7 +455,7 @@ static int create_metric_set(cxi_t cxi)
 			 "%s: The schema '%s' could not be created, errno=%d.\n",
 			 __FILE__, cxi->base->schema_name, errno);
 		rc = errno;
-		goto err;
+		goto err1;
 	}
 	cxi->metric_offset = ldms_schema_metric_count_get(cxi->schema);
 
@@ -475,7 +475,7 @@ static int create_metric_set(cxi_t cxi)
             /* Not owned by the schema yet */
             ldms_record_delete(tel_rec);
 			rc = errno;
-			goto err;
+			goto err1;
 		}
 		/* Cache the record metric index in tel_files */
 		for (j = 0; j < cxi->iface_count; j++) {
@@ -486,7 +486,7 @@ static int create_metric_set(cxi_t cxi)
     if (!tel_rec_mid){
         ldms_record_delete(tel_rec);
         rc = errno;
-        goto err;
+        goto err1;
     }
 
 	/* Per interface retry handler record */
@@ -502,7 +502,7 @@ static int create_metric_set(cxi_t cxi)
             /* Not owned by the schema yet */
             ldms_record_delete(rh_rec);
 			rc = errno;
-			goto err;
+			goto err1;
 		}
 		/* Cache the record metric index in rh_files */
 		for (j = 0; j < cxi->iface_count; j++) {
@@ -517,7 +517,7 @@ static int create_metric_set(cxi_t cxi)
 	if (rc < 0) {
 		ovis_log(cxi->log, OVIS_LERROR,
 			 "Error %d creating tel_list.\n", errno);
-		goto err;
+		goto err1;
 	}
 
 	/* List of per interface retry handler records */
@@ -525,7 +525,7 @@ static int create_metric_set(cxi_t cxi)
     if (!rh_rec_mid){
         ldms_record_delete(rh_rec);
         rc = errno;
-        goto err;
+        goto err1;
     }
 	rc = ldms_schema_metric_list_add(cxi->schema, "rh_list", "rh_record",
 					 ldms_record_heap_size_get(rh_rec) * cxi->iface_count);
@@ -533,7 +533,7 @@ static int create_metric_set(cxi_t cxi)
 	if (rc < 0) {
 		ovis_log(cxi->log, OVIS_LERROR,
 			 "Error %d creating rh_list.\n", errno);
-		goto err;
+		goto err1;
 	}
 
 	size_t size = ldms_record_heap_size_get(tel_rec) +
@@ -542,7 +542,7 @@ static int create_metric_set(cxi_t cxi)
 	cxi->set = base_set_new_heap(cxi->base, size);
 	if (!cxi->set) {
 		rc = errno;
-		goto err;
+		goto err1;
 	}
 
 	ldms_mval_t rh_rec_mval;
@@ -573,10 +573,9 @@ static int create_metric_set(cxi_t cxi)
 	return 0;
 err2:
     if (cxi->set) {
-        base_set_delete(cxi->set);
-        cxi->set = NULL;
+        base_set_delete(cxi->base);
     }
-err:
+err1:
 	if (cxi->base)
 		base_schema_delete(cxi->base);
 	return rc;
