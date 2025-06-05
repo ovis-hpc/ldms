@@ -35,7 +35,7 @@ ldmssamplerinclude_HEADERS = sampler_base.h
 
 SUBDIRS += netlink
 SUBDIRS += json
-
+SUBDIRS += cxi_sampler
 dist_man7_MANS += ldms_sampler_base.man
 
 if ENABLE_LUSTRE
