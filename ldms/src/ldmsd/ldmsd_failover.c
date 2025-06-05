@@ -2241,6 +2241,9 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 		u->push_flags = push_flags;
 		if (push_flags)
 			u->default_task.task_flags = LDMSD_TASK_F_IMMEDIATE;
+		/* get our local ref and put the "find" ref */
+		ldmsd_updtr_get(u, "failover");
+		ldmsd_updtr_put(u, "find");
 	}
 	if (producer) {
 		/* add producer */
@@ -2258,7 +2261,7 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 					   req->line_len, &sctxt);
 	}
 updtr_put:
-	ldmsd_updtr_put(u, "find");
+	ldmsd_updtr_put(u, "failover");
 out:
 	__failover_unlock(f);
 	if (name)
