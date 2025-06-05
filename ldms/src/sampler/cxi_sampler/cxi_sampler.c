@@ -319,7 +319,7 @@ static int get_cxi_metric_values(cxi_t cxi)
 	enum ldms_value_type typ;
 	size_t len;
 	ldms_mval_t tel_rec = ldms_list_first(cxi->set, cxi->tel_list_mval, &typ, &len);
-    
+
 	for (iface = 0; iface < cxi->iface_count; iface++) {
 		ldms_record_array_set_str(tel_rec,
 					  cxi->iface_mid,
