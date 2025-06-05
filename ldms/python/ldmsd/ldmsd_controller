@@ -546,9 +546,11 @@ class LdmsdCmdParser(cmd.Cmd):
 
         Parameters:
         regex=     A regular expression matching PRODUCER names
-        [stream=]    The stream name
+        [stream=]  The stream name. This attribute cannot be specified at the
+                   same time with `message_channel`.
         [message_channel=]
-                   The message channel name or regular expression
+                   The message channel name or regular expression. This
+                   attribute cannot be specified at the same time with `stream`.
         [rx_rate=] The recv rate (bytes/sec) limit for the matching streams. The
                    default is -1 (unlimited).
         """
@@ -567,10 +569,15 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_prdcr_unsubscribe(self, arg):
         """
-        Subscribe for stream data from all matching producers
+        Unsubscribe the stream or message service from all matching producers
         Parameters:
         regex=     A regular expression matching producer names
-        stream=    The stream name
+        [stream=]  The stream name. This attribute cannot be specified at the
+                   same time with `message_channel`.
+        [message_channel=]
+                   The message channel name or regular expression previously
+                   specified in the `prdcr_subscribe` command. This attribute
+                   cannot be specified at the same time with `stream`.
         """
         arg = self.handle_args('prdcr_unsubscribe', arg)
         if arg:

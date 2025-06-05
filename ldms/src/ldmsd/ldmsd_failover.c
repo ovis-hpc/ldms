@@ -487,9 +487,23 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, buff);
 		if (rc)
 			goto cleanup;
-		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_STREAM, s->name);
-		if (rc)
-			goto cleanup;
+		if (s->name) {
+			rc = ldmsd_req_cmd_attr_append_str(rcmd,
+					LDMSD_ATTR_STREAM, s->name);
+			if (rc)
+				goto cleanup;
+		}
+		if (s->msg) {
+			rc = ldmsd_req_cmd_attr_append_str(rcmd,
+					LDMSD_ATTR_MSG_CHAN, s->msg);
+			if (rc)
+				goto cleanup;
+			snprintf(buff, sizeof(buff), "%ld", s->rate);
+			rc = ldmsd_req_cmd_attr_append_str(rcmd,
+					LDMSD_ATTR_RX_RATE, buff);
+			if (rc)
+				goto cleanup;
+		}
 		rc = ldmsd_req_cmd_attr_term(rcmd);
 		if (rc)
 			goto cleanup;
@@ -2034,7 +2048,8 @@ int failover_reset_handler(ldmsd_req_ctxt_t req)
 	ldmsd_send_req_response(req, NULL);
 	return 0;
 }
-int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream);
+int ldmsd_prdcr_stream_subscribe(ldmsd_prdcr_t prdcr, const char *stream);
+int ldmsd_prdcr_msg_subscribe(ldmsd_prdcr_t prdcr, const char *msg, int64_t rate);
 
 int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 {
@@ -2057,6 +2072,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	char *quota_s = __req_attr_gets(req, LDMSD_ATTR_QUOTA);
 	char *rx_rate_s = __req_attr_gets(req, LDMSD_ATTR_RX_RATE);
 	char *cache_ip = __req_attr_gets(req, LDMSD_ATTR_IP);
+	char *msg = __req_attr_gets(req, LDMSD_ATTR_MSG_CHAN);
 
 	uid_t _uid;
 	gid_t _gid;
@@ -2100,7 +2116,10 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 			p->conn_intrvl_us = atoi(interval);
 		/* add stream */
 		if (stream)
-			rc = ldmsd_prdcr_subscribe(p, stream);
+			rc = ldmsd_prdcr_stream_subscribe(p, stream);
+		/* add message subscription */
+		if (msg)
+			rc = ldmsd_prdcr_msg_subscribe(p, msg, rx_rate);
 		ldmsd_prdcr_put(p, "find");
 		goto out;
 	}

@@ -2418,13 +2418,14 @@ class Communicator(object):
         - status is an errno from the errno module
         - data is an error message if status != 0 or None
         """
-        req = LDMSD_Request(command_id = LDMSD_Request.PRDCR_SUBSCRIBE,
-                attrs = [
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex),
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream),
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.MSG_CHAN, value=msg_chan),
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(int(rx_rate)))
-                ])
+        attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex) ]
+        if stream is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream))
+        if msg_chan is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.MSG_CHAN, value=msg_chan))
+        if rx_rate is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(int(rx_rate))))
+        req = LDMSD_Request(command_id = LDMSD_Request.PRDCR_SUBSCRIBE, attrs = attrs)
         try:
             req.send(self)
             resp = req.receive(self)
