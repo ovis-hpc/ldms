@@ -2160,7 +2160,14 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	if (!stream_name && !msg) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"One of the 'stream' or `msg` attributes is required by prdcr_subscribe_regex (can specify both).");
+				"One of the 'stream' or `msg` attributes is required.");
+		goto send_reply;
+	}
+
+	if (stream_name && msg) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Only one of the 'stream' or `msg` attributes can be specified.");
 		goto send_reply;
 	}
 
@@ -2202,10 +2209,18 @@ static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
 	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_CHAN);
+
 	if (!stream_name && !msg) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"One of the 'stream' or `msg` attributes is required by prdcr_unsubscribe_regex (can specify both).");
+				"One of the 'stream' or `msg` attributes is required.");
+		goto send_reply;
+	}
+
+	if (stream_name && msg) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Only one of the 'stream' or `msg` attributes can be specified.");
 		goto send_reply;
 	}
 
