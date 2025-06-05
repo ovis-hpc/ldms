@@ -9090,7 +9090,7 @@ enomem:
 static int
 __prdset_upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 				ldmsd_prdcr_t prdcr, ldmsd_name_match_t match,
-				int prd_cnt, int reset)
+				int prd_cnt, int reset, struct timespec *now)
 {
 	int rc;
 	ldmsd_prdcr_set_t prdset;
@@ -9139,7 +9139,7 @@ __prdset_upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 				prdset->skipped_upd_cnt,
 				prdset->oversampled_cnt);
 		if (reset)
-			memset(&prdset->updt_stat, 0, sizeof(prdset->updt_stat));
+			ldmsd_prdcr_set_stats_reset(prdset, now, LDMSD_PRDSET_STATS_F_UPD);
 		pthread_mutex_unlock(&prdset->lock);
 		if (rc)
 			goto end_quote;
@@ -9157,7 +9157,8 @@ unlock:
 extern ldmsd_prdcr_ref_t updtr_prdcr_ref_first(ldmsd_updtr_t updtr);
 extern ldmsd_prdcr_ref_t updtr_prdcr_ref_next(ldmsd_prdcr_ref_t ref);
 static int
-__upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr, int reset)
+__upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
+					int reset, struct timespec *now)
 {
 	int rc;
 	ldmsd_name_match_t match;
@@ -9173,7 +9174,7 @@ __upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr, int reset)
 			for (ref = updtr_prdcr_ref_first(updtr); ref;
 					ref = updtr_prdcr_ref_next(ref)) {
 				rc = __prdset_upd_time_stats_json_obj(reqc, updtr,
-						ref->prdcr, match, cnt, reset);
+						ref->prdcr, match, cnt, reset, now);
 				if (rc && rc != ENOTCONN)
 					goto out;
 				else if (!rc)
@@ -9185,7 +9186,7 @@ __upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr, int reset)
 		for (ref = updtr_prdcr_ref_first(updtr); ref;
 				ref = updtr_prdcr_ref_next(ref)) {
 			rc = __prdset_upd_time_stats_json_obj(reqc, updtr,
-						   ref->prdcr, NULL, cnt, reset);
+						   ref->prdcr, NULL, cnt, reset, now);
 			if (rc && rc != ENOTCONN)
 				goto out;
 			else if (!rc)
@@ -9205,7 +9206,9 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 	char *reset_s = NULL;
 	int cnt = 0;
 	int reset = 0;
+	struct timespec now;
 
+	clock_gettime(CLOCK_REALTIME, &now);
 	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
 	if (reset_s) {
 		if (0 != strcasecmp(reset_s, "false"))
@@ -9227,9 +9230,9 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 				"updtr '%s' doesn't exist.", name);
 			reqc->errcode = ENOENT;
 			ldmsd_send_req_response(reqc, reqc->line_buf);
-			goto err;
+			goto out;
 		}
-		rc = __upd_time_stats_json_obj(reqc, updtr, reset);
+		rc = __upd_time_stats_json_obj(reqc, updtr, reset, &now);
 	} else {
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 		for (updtr = ldmsd_updtr_first(); updtr;
@@ -9241,7 +9244,7 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 					goto err;
 				}
 			}
-			rc = __upd_time_stats_json_obj(reqc, updtr, reset);
+			rc = __upd_time_stats_json_obj(reqc, updtr, reset, &now);
 			if (rc) {
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 				goto err;
@@ -9266,10 +9269,10 @@ out:
 
 static json_entity_t __ldmsd_stat2dict(struct ldmsd_stat *stat)
 {
-	double start_ts = stat->start.tv_sec + stat->start.tv_nsec/1000000.0;
-	double end_ts = stat->end.tv_sec + stat->end.tv_nsec/1000000.0;
-	double min_ts = stat->min_ts.tv_sec + stat->min_ts.tv_nsec/1000000.0;
-	double max_ts = stat->max_ts.tv_sec + stat->max_ts.tv_nsec/1000000.0;
+	double start_ts = stat->start.tv_sec + stat->start.tv_nsec*1e-9;
+	double end_ts = stat->end.tv_sec + stat->end.tv_nsec*1e-9;
+	double min_ts = stat->min_ts.tv_sec + stat->min_ts.tv_nsec*1e-9;
+	double max_ts = stat->max_ts.tv_sec + stat->max_ts.tv_nsec*1e-9;
 	json_entity_t d = json_dict_build(NULL,
 				JSON_FLOAT_VALUE, "min", stat->min,
 				JSON_FLOAT_VALUE, "min_ts", min_ts,
