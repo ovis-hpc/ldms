@@ -30,8 +30,9 @@ access to the lustre files in ``/proc/fs/lustre/mdc/*/md_stats`` and
 ``/sys/kernel/debug/lustre/mdc/*/stats``. The metric sets will have instance
 names combining the producer name and the mdc name.
 
-This plugin will work with Lustre versions 2.12 and others which share
-these file locations and formats.
+This plugin should work with at least Lustre versions
+2.12 and 2.15. The debugfs filesystem must be mounted for lustre
+data access, which is also usually restricted to the root user.
 
 CONFIGURATION ATTRIBUTE SYNTAX
 ==============================
