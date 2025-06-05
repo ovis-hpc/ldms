@@ -319,7 +319,7 @@ static int get_cxi_metric_values(cxi_t cxi)
 	enum ldms_value_type typ;
 	size_t len;
 	ldms_mval_t tel_rec = ldms_list_first(cxi->set, cxi->tel_list_mval, &typ, &len);
-
+    
 	for (iface = 0; iface < cxi->iface_count; iface++) {
 		ldms_record_array_set_str(tel_rec,
 					  cxi->iface_mid,
@@ -809,9 +809,11 @@ static void destructor(ldmsd_plug_handle_t handle)
 	if (cxi->schema)
 		base_schema_delete(cxi->base);
 
+    int i;
+    int j;
 	/* Free interface names */
 	if (cxi->iface_names) {
-		for (int i = 0; i < cxi->iface_count; i++) {
+		for ( i = 0; i < cxi->iface_count; i++) {
 			free(cxi->iface_names[i]);
 		}
 		free(cxi->iface_names);
@@ -823,8 +825,8 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 	/* Free telemetry files */
 	if (cxi->tel_files) {
-		for (int i = 0; i < cxi->iface_count; i++) {
-			for (int j = 0; j < cxi->tel_files[i].count; j++) {
+		for ( i = 0; i < cxi->iface_count; i++) {
+			for ( j = 0; j < cxi->tel_files[i].count; j++) {
 				free(cxi->tel_files[i].names[j]);
 			}
 		}
@@ -833,8 +835,8 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 	/* Free retry handler files */
 	if (cxi->rh_files) {
-		for (int i = 0; i < cxi->iface_count; i++) {
-			for (int j = 0; j < cxi->rh_files[i].count; j++) {
+		for ( i = 0; i < cxi->iface_count; i++) {
+			for ( j = 0; j < cxi->rh_files[i].count; j++) {
 				free(cxi->rh_files[i].names[j]);
 			}
 		}
