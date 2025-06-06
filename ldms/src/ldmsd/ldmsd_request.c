@@ -7128,8 +7128,7 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 
 			ep_res = &rent->rail.eps_stats[i];
 			if (ep_res->state == LDMS_XPRT_STATS_S_CONNECT) {
-				__APPEND("    %s\"%s:%s\":{", ((!first_ep)?",":""),
-						ep_res->rhostname, ep_res->rport_no);
+				__APPEND("    %s\"ep%d\":{", ((!first_ep)?",":""), i);
 				__APPEND("     \"sq_sz\":%ld", ep_res->ep.sq_sz);
 				__APPEND("  }");
 				first_ep = 0;
