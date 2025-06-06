@@ -475,6 +475,8 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	LIST_INIT(&delete_list);
 
 	setup_clients(argc, argv, &client_list);
+	if (LIST_EMPTY(&client_list))
+		return 0;
 
 	LIST_FOREACH(client, &client_list, entry) {
 		client->ldms =
@@ -482,26 +484,29 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 		if (!client->ldms) {
 			DEBUG2("ERROR %d creating the '%s' transport\n",
 				     errno, client->xprt);
-			continue;
 		}
 		client->state = IDLE;
 	}
-	if (LIST_EMPTY(&client_list))
-		return ENOTCONN;
 
 	pthread_mutex_lock(&exit_lock);
 	/* Attempt to connect to each client */
 	LIST_FOREACH(client, &client_list, entry) {
 		client->state = CONNECTING;
-		assert(client->ldms);
-		rc = ldms_xprt_connect_by_name(client->ldms, client->host,
-					       client->port, event_cb, client);
-		if (rc) {
-			DEBUG2("Synchronous ERROR %d connecting to %s:%s\n",
-				rc, client->host, client->port);
+		if (client->ldms) {
+			rc = ldms_xprt_connect_by_name(client->ldms, client->host,
+						client->port, event_cb, client);
+			if (rc) {
+				DEBUG2("Synchronous ERROR %d connecting to %s:%s\n",
+					rc, client->host, client->port);
+				LIST_INSERT_HEAD(&delete_list, client, delete);
+			}
+		} else {
+			/* NULL transport handle, add to the delete list */
 			LIST_INSERT_HEAD(&delete_list, client, delete);
 		}
 	}
+	/* Remove all clients for which the transport could not be created or
+	 * there was a synchronous connection error */
 	rc = purge(&client_list, &delete_list);
 	if (rc)
 		goto out;
