@@ -2391,7 +2391,9 @@ class LdmsdCmdParser(cmd.Cmd):
         sorted_rails = sort_rails_stats(stats['rails'])
 
         for r in sorted_rails:
-            print(f"{r.get('remote_host', 'No remote host'):20}")
+            if 'remote_host' not in r or not r['remote_host']:
+                continue
+            print(f"{r['remote_host']:20}")
             if 'endpoints' in r and r['endpoints']:
                 for ep_host, _d in r['endpoints'].items():
                     print(f"   {ep_host:20} {_d['sq_sz']:10}")
