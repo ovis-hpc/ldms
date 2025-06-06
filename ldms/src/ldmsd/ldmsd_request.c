@@ -8414,7 +8414,7 @@ static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc)
 		free(reset_s);
 	}
 
-	s = ldmsd_stream_dir_dump();
+	s = ldmsd_stream_client_dump();
 	if (!s) {
 		reqc->errcode = errno;
 		rc = snprintf(reqc->line_buf, reqc->line_len,
