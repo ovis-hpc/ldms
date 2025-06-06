@@ -603,23 +603,31 @@ being a plugin instance name.
 
    **config**
       |
-      | A list of dictionaries containing plugin configuration options.
-        Each dictionary in the list is a "config" command call, and in
-        this fashion, the YAML configuration mimics running multiple
+      | A list of dictionaries (or strings) containing plugin configuration options.
+        Each dictionary in the list yields a "config" command call, and in
+        this fashion the YAML configuration list mimics running multiple
         "config" statements in a conventional v4 configuration file.
-        Strings may also be used in lieu of a dictionary, however
-        configuration lines defined as strings will be passed as a LDMSD
-        request as is, with no parsing done by the YAML parser.
+        Each string in the list is also a config command call, but the
+        content will be passed as a LDMSD request as is, with no parsing or
+        checking done by the YAML parser.
 
       | NOTE: When using a configuration string, rather than a
-        dictionary, to configure a plugin, the string is not parsed by
-        the YAML parser, and the exact string will be passed to the
-        LDMSD as is. As such, the only accepted permission format when
-        using a configuration string, rather than a dictionary, is an
-        octal number, e.g. "0777". If an octal number is entered into
-        the configuration as an integer, the parser will interpret the
-        number incorrectly, and the permissions will not be set as
-        expected.
+        dictionary, the only accepted permission format
+        is a quoted octal number with a leading 0, e.g. "0777". If an octal
+        number is entered as an integer, the
+        parser will interpret the number incorrectly, and the permissions
+        will not be set as expected.
+
+      | NOTE: When using a dictionary, special handling of values is as
+        follows: Entries without a value and entries with an explicit null
+        value are transformed into keyword parameters of the v4 configuration
+        language. Entries with the empty value (a: "") become attribute/value
+        pairs with no value string (a= ). Entries with an array value (a: [1, 2])
+        become multiple attribute value pairs (a=1 a=2).
+
+      | NOTE: If a config dictionary key is repeated, the behavior is undefined.
+        More specifically, either the first or last value read from
+        the dictionary is retained or an error is reported.
 
       Any plugin-specific configuration options not listed below will be
       included in the configuration.
@@ -631,8 +639,8 @@ being a plugin instance name.
          **[perm]**
             |
             | Access permissions for the metric set within the
-              container. String of octal number or unix-like permissions
-              format. e.g. "rw-r--r--"
+              container. A string of octal number or unix-like permissions
+              format. e.g. "rw-r--r--" or "0644", but not a bare number.
 
          **[component_id]**
             |
