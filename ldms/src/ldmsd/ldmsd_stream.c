@@ -902,7 +902,7 @@ int __stream_info_json(struct buf_s *buf, struct ldmsd_stream_info_s *info)
 	if (rc)
 		return rc;
 	if (info->last_ts != info->first_ts) {
-		rc = buf_printf(buf, ",\"msg/sec\":%lf,"
+		rc = buf_printf(buf, ",\"count/sec\":%lf,"
 				     "\"bytes/sec\":%lf",
 				     (info->count*1.0)/(info->last_ts - info->first_ts),
 				     info->total_bytes*1.0/(info->last_ts - info->first_ts));

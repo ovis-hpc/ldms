@@ -591,7 +591,7 @@ class LdmsdCmdParser(cmd.Cmd):
         FIRST = "first_ts"
         LAST = "last_ts"
         RATE = "bytes/sec"
-        FREQ = "msg/sec"
+        FREQ = "count/sec"
 
         def dur(info):
             return (info[LAST] - info[FIRST])/60.0
@@ -624,7 +624,7 @@ class LdmsdCmdParser(cmd.Cmd):
             raise RuntimeError("no response")
         if (rc == 0):
             streams = fmt_status(msg)
-            print("Name         Producer                    bytes/sec    msg/sec      total bytes  msg count   ")
+            print(f"{'Name':12} {'Producer':27} {'bytes/sec':12} {'count/sec':12} {'total bytes':12} {'count':12}")
             print("-" * 12, "-" * 27, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
             for sname,s in streams.items():
                 if sname == "_OVERALL_":
@@ -2533,7 +2533,7 @@ class LdmsdCmdParser(cmd.Cmd):
         FIRST = "first_ts"
         LAST = "last_ts"
         RATE = "bytes/sec"
-        FREQ = "msg/sec"
+        FREQ = "count/sec"
 
         def dur(info):
             return (info[LAST] - info[FIRST])/60.0
@@ -2577,7 +2577,7 @@ class LdmsdCmdParser(cmd.Cmd):
             raise RuntimeError("no response")
         if (rc == 0):
             streams = fmt_status(msg)
-            print(f'{"name":30} {"bytes/sec":12} {"msg/sec":12} {"total bytes":12} {"msg count":12} {"first msg":12} {"last msg":12}')
+            print(f'{"name":30} {"bytes/sec":12} {"count/sec":12} {"total bytes":12} {"count":12} {"first msg":12} {"last msg":12}')
             print("-" * 30, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
             # print("--------------- -------------- --------------- ----- ----------------- -----------\n")
             for name,s in streams.items():
