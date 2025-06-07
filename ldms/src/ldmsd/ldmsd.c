@@ -111,7 +111,7 @@ struct option long_opts[] = {
 	{ "kernel_file",           required_argument, 0,  's' },
 	{ "log_level",             required_argument, 0,  'v' },
 	{ "log_config",            required_argument, 0,  'L' },
-	{ "quota",                 required_argument, 0,  'C' },
+	{ "default_quota",         required_argument, 0,  'C' },
 	{ 0,                       0,                 0,  0 }
 };
 
