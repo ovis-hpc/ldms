@@ -1000,6 +1000,7 @@ class YamlCfg(object):
                     dstr, auth_list = self.write_listeners(dstr, group_name, dmn, auth_list)
                     dstr, auth_list = self.write_producers(dstr, group_name, dmn, auth_list)
                     dstr = self.write_prdcr_listeners(dstr, group_name)
+                    dstr, auth_list = self.write_advertisers(dstr, group_name, dmn, auth_list)
                     dstr = self.write_stream_subscribe(dstr, group_name, dmn)
                     dstr = self.write_agg_plugins(dstr, group_name, dmn)
                     dstr = self.write_updaters(dstr, group_name, dmn)
