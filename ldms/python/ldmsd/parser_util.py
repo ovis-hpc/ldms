@@ -110,6 +110,8 @@ def check_opt(attr, spec):
             attr = 'name'
         if 'auth' in spec:
             spec = spec['auth']
+        else:
+            return None
     if attr in spec:
         if attr in INT_ATTRS:
             return check_intrvl_str(spec[attr])
@@ -416,7 +418,8 @@ class YamlCfg(object):
             reconnect = check_opt('reconnect', pl)
             adv_xprt = check_opt('advertiser_xprt', pl)
             adv_port = check_opt('advertiser_port', pl)
-            adv_auth = check_opt('advertiser_auth', pl)
+            # adv_auth = check_opt('advertiser_auth', pl)
+            auth_name, plugin, auth_opt = check_auth(pl)
             node_listen[pl['name']] = { 'reconnect'     : reconnect,
                                         'disable_start' : dstart,
                                         'ip'            : ip,
@@ -427,7 +430,7 @@ class YamlCfg(object):
                                         'type'          : prdcr_type,
                                         'advertiser_xprt': adv_xprt,
                                         'advertiser_port': adv_port,
-                                        'advertiser_auth': adv_auth
+                                        'advertiser_auth': auth_name
             }
             self.prdcr_listeners[spec['daemons']] = node_listen
 
