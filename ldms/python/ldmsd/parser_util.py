@@ -114,7 +114,8 @@ def check_opt(attr, spec):
             return None
     if attr in spec:
         if attr in INT_ATTRS:
-            return check_intrvl_str(spec[attr])
+            if spec[attr] is not None:
+                return check_intrvl_str(spec[attr])
         if attr in BYTE_ATTRS:
             try:
                 if spec[attr] is not None:
