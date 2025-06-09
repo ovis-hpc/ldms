@@ -571,10 +571,13 @@ static int create_metric_set(cxi_t cxi)
 err2:
 	if (cxi->set) {
 		base_set_delete(cxi->base);
+		cxi->set = NULL;
 	}
 err1:
-	if (cxi->base)
+	if (cxi->schema) {
 		base_schema_delete(cxi->base);
+		cxi->schema = NULL;
+	}
 	return rc;
 }
 
