@@ -291,25 +291,44 @@ char * get_counter_names_from_file(ldmsd_plug_handle_t handle, const char *filen
     return result;
 }
 
-static uint64_t parse_value_before_at(cxi_t cxi, const char *filename)
+/*
+ * The counter files take two forms as of shs-12.0.0.
+ *
+ * For cxi files (in /sys/class/cxi), the form is:
+ *   <counter>@<timestamp seconds>.<timestamp nanoseconds>
+ * e.g.
+ *   103060429480@1743569213.088677609
+ *
+ * For retry handler files, the format is just:
+ *
+ *  <counter>
+ * e.g.
+ *  103060429480
+ *
+ * We do not currently care about the timestamp, so this function
+ * suffices to read the initial unsigned integer in each.
+ */
+static uint64_t read_integer_from_file(cxi_t cxi, const char *filename)
 {
-	char buffer[1024];
+	uint64_t value = 0;
 	FILE *file = fopen(filename, "r");
+
 	if (!file) {
 		ovis_log(cxi->log, OVIS_LERROR,
-			 "Error opening file '%s'\n", filename);
+			 "Error %d opening file '%s'\n", errno, filename);
 		return 0;
 	}
 
-	if (!fgets(buffer, sizeof(buffer), file)) {
+	if (fscanf(file, "%"SCNu64, &value) != 1) {
 		ovis_log(cxi->log, OVIS_LERROR,
-			 "Error reading from file '%s'\n", filename);
+			 "Error %d reading unsigned integer from file '%s'\n",
+			 errno, filename);
 		fclose(file);
 		return 0;
 	}
-	fclose(file);
 
-	return strtoull(buffer, NULL, 10);
+	fclose(file);
+	return value;
 }
 
 static int get_cxi_metric_values(cxi_t cxi)
@@ -330,7 +349,7 @@ static int get_cxi_metric_values(cxi_t cxi)
 				 cxi->tel_path, cxi->iface_names[iface],
 				 cxi->tel_files[iface].names[file]);
 
-			uint64_t value = parse_value_before_at(cxi, path);
+			uint64_t value = read_integer_from_file(cxi, path);
 			ldms_record_set_u64(tel_rec,
 					       cxi->tel_files[iface].midx[file],
 					       value);
@@ -338,28 +357,6 @@ static int get_cxi_metric_values(cxi_t cxi)
 		tel_rec = ldms_list_next(cxi->set, tel_rec, &typ, &len);
 	}
 	return 0;
-}
-
-static int read_integer_from_file(cxi_t cxi, const char *filename)
-{
-	FILE *file = fopen(filename, "r");
-	if (!file) {
-		ovis_log(cxi->log, OVIS_LERROR,
-			 "Error %d opening file '%s'\n", errno, filename);
-		return 0;
-	}
-
-	int value;
-	if (fscanf(file, "%d", &value) != 1) {
-		ovis_log(cxi->log, OVIS_LERROR,
-			 "Error %d reading integer from file '%s'\n",
-			 errno, filename);
-		fclose(file);
-		return 0;
-	}
-
-	fclose(file);
-	return value;
 }
 
 static int get_rh_metric_values(cxi_t cxi)
@@ -380,7 +377,7 @@ static int get_rh_metric_values(cxi_t cxi)
 				 cxi->rh_path, cxi->iface_names[iface],
 				 cxi->rh_files[iface].names[file]);
 
-			int64_t value = read_integer_from_file(cxi, path);
+			uint64_t value = read_integer_from_file(cxi, path);
 			ldms_record_set_s64(rh_rec,
 					    cxi->rh_files[iface].midx[file],
 					    value);
