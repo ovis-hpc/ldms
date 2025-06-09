@@ -194,6 +194,23 @@ int av_check_expansion(printf_t log, const char *name, const char *value);
 size_t ovis_get_mem_size(const char *s);
 
 /**
+ * \brief Converts byte size to formatted string with appropriate memory unit
+ *
+ * This function takes a memory size in bytes and formats it as a human-readable
+ * string with the most appropriate unit (B, K, M, G, T). It can optionally
+ * include decimal precision for non-exact conversions.
+ *
+ * \param bytes The memory size in bytes to convert
+ * \param buffer Output buffer to store the formatted string
+ * \param buffer_size Size of the output buffer
+ * \return Pointer to the formatted string (same as buffer parameter)
+ *
+ * \note Uses binary units (1024-based) for consistency with ovis_get_mem_size()
+ * \note Recommended buffer size is at least 25 characters due to size_t
+ */
+char* ovis_format_mem_size_simple(size_t bytes, char *buffer, size_t buffer_size);
+
+/**
  * \brief Convert a time-interval string to microseconds
  *
  * A time-interval string is an integer followed by a unit string.
