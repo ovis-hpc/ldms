@@ -146,22 +146,23 @@ static int skip_name(char *name, char *counters, ovis_log_t log)
 
 		/* Compile and execute the regex */
 		regex_t regex;
-		int reti = regcomp(&regex, token, REG_NOSUB | REG_EXTENDED);
+		int reti = regcomp(&regex, token, REG_EXTENDED);
 		if (reti != 0) {
 			ovis_log(log, OVIS_LERROR, "Could not compile regex: %s\n", token);
 			token = strtok(NULL, ",");
 			continue;
 		}
 
-		reti = regexec(&regex, name, 0, NULL, 0);
+		regmatch_t pmatch;
+		reti = regexec(&regex, name, 1, &pmatch, 0);
 		regfree(&regex);
-
-		/* Test for match */
-		if (reti == 0) {
-			ovis_log(log, OVIS_LDEBUG, "Found Match: '%s'\n", token);
-			result = 0; /* Don't skip */
-			break;
-		}
+		/* Test for complete match */
+		if (reti == 0 && pmatch.rm_so == 0 && pmatch.rm_eo == strlen(name)) {
+                        ovis_log(log, OVIS_LDEBUG,
+                                 "Found Match: '%s', pattern '%s'\n", name, token);
+                        result = 0; /* Don't skip */
+                        break;
+                }
 		token = strtok(NULL, ",");
 	}
 
