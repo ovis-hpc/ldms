@@ -569,32 +569,49 @@ int av_check_expansion(printf_t log, const char *n, const char *s)
 
 size_t ovis_get_mem_size(const char *s)
 {
-    char unit;
+	char unit;
 
-    size_t n = strlen(s) + 3;
-    char tmp[n];
-    snprintf(tmp, n, "%s%s", s, "B");
-    size_t size;
-    sscanf(tmp, "%lu %c", &size, &unit);
-    switch (unit) {
-    case 'b':
-    case 'B':
-            return size;
-    case 'k':
-    case 'K':
-            return size * 1024L;
-    case 'm':
-    case 'M':
-            return size * 1024L * 1024L;
-    case 'g':
-    case 'G':
-            return size * 1024L * 1024L * 1024L;
-    case 't':
-    case 'T':
-            return size * 1024L * 1024L * 1024L;
-    default:
-            return 0;
-    }
+	size_t n = strlen(s) + 3;
+	char tmp[n];
+	snprintf(tmp, n, "%s%s", s, "B");
+	size_t size;
+	sscanf(tmp, "%lu %c", &size, &unit);
+	switch (unit) {
+	case 'b':
+	case 'B':
+		return size;
+	case 'k':
+	case 'K':
+		return size * 1024L;
+	case 'm':
+	case 'M':
+		return size * 1024L * 1024L;
+	case 'g':
+	case 'G':
+		return size * 1024L * 1024L * 1024L;
+	case 't':
+	case 'T':
+		return size * 1024L * 1024L * 1024L;
+	default:
+		return 0;
+	}
+}
+
+char* ovis_format_mem_size_simple(size_t bytes, char *buffer, size_t buffer_size)
+{
+	if (bytes >= 1024UL * 1024 * 1024 * 1024) {
+		snprintf(buffer, buffer_size, "%luTB", bytes / (1024UL * 1024 * 1024 * 1024));
+	} else if (bytes >= 1024UL * 1024 * 1024) {
+		snprintf(buffer, buffer_size, "%luGB", bytes / (1024UL * 1024 * 1024));
+	} else if (bytes >= 1024UL * 1024) {
+		snprintf(buffer, buffer_size, "%luMB", bytes / (1024UL * 1024));
+	} else if (bytes >= 1024) {
+		snprintf(buffer, buffer_size, "%luKB", bytes / 1024);
+	} else {
+		snprintf(buffer, buffer_size, "%lu", bytes);
+	}
+
+	return buffer;
 }
 
 /*
