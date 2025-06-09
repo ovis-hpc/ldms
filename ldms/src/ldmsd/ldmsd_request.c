@@ -1782,7 +1782,7 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 
 	quota_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_QUOTA);
 	if (quota_s) {
-		quota = atol(quota_s);
+		quota = ovis_get_mem_size(quota_s);
 		if (quota <= -2) {
 			reqc->errcode = EINVAL;
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -1793,7 +1793,7 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 
 	rx_rate_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RX_RATE);
 	if (rx_rate_s) {
-		rx_rate = atol(rx_rate_s);
+		rx_rate = ovis_get_mem_size(rx_rate_s);
 		if (quota <= -2) {
 			reqc->errcode = EINVAL;
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
