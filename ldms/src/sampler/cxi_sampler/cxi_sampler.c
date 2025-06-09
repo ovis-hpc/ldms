@@ -480,11 +480,11 @@ static int create_metric_set(cxi_t cxi)
 		}
 	}
 	tel_rec_mid = ldms_schema_record_add(cxi->schema, tel_rec);
-    if (!tel_rec_mid){
-        ldms_record_delete(tel_rec);
-        rc = errno;
-        goto err1;
-    }
+	if (!tel_rec_mid){
+		ldms_record_delete(tel_rec);
+		rc = errno;
+		goto err1;
+	}
 
 	/* Per interface retry handler record */
 	rh_rec = ldms_record_create("rh_record");
@@ -519,11 +519,11 @@ static int create_metric_set(cxi_t cxi)
 
 	/* List of per interface retry handler records */
 	rh_rec_mid = ldms_schema_record_add(cxi->schema, rh_rec);
-    if (!rh_rec_mid){
-        ldms_record_delete(rh_rec);
-        rc = errno;
-        goto err1;
-    }
+	if (!rh_rec_mid){
+		ldms_record_delete(rh_rec);
+		rc = errno;
+		goto err1;
+	}
 	rc = ldms_schema_metric_list_add(cxi->schema, "rh_list", "rh_record",
 					 ldms_record_heap_size_get(rh_rec) * cxi->iface_count);
 	cxi->rh_list_mid = rc;
@@ -569,9 +569,9 @@ static int create_metric_set(cxi_t cxi)
 	}
 	return 0;
 err2:
-    if (cxi->set) {
-        base_set_delete(cxi->base);
-    }
+	if (cxi->set) {
+		base_set_delete(cxi->base);
+	}
 err1:
 	if (cxi->base)
 		base_schema_delete(cxi->base);
@@ -593,7 +593,7 @@ static int get_cxi_interfaces(ldmsd_plug_handle_t handle, char *tel_path)
 	DIR *dir = opendir(tel_path);
 	int count;
 
-  if (!dir) {
+	if (!dir) {
 		ovis_log(cxi->log, OVIS_LERROR,
 			 "Error %d opening directory '%s'\n",
 			 errno, tel_path);
@@ -796,6 +796,9 @@ static int constructor(ldmsd_plug_handle_t handle)
 static void destructor(ldmsd_plug_handle_t handle)
 {
 	cxi_t cxi = ldmsd_plug_ctxt_get(handle);
+	int i;
+	int j;
+
 	if (!cxi)
 		return;
 
@@ -806,8 +809,6 @@ static void destructor(ldmsd_plug_handle_t handle)
 	if (cxi->schema)
 		base_schema_delete(cxi->base);
 
-    int i;
-    int j;
 	/* Free interface names */
 	if (cxi->iface_names) {
 		for ( i = 0; i < cxi->iface_count; i++) {
