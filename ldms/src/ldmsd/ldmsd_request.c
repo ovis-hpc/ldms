@@ -2479,6 +2479,7 @@ int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdc
 	ldmsd_prdcr_set_t prv_set;
 	int set_count = 0;
 	int rc = 0;
+	char quota_s[32], rx_rate_s[32];
 
 	/* Append the string to line_buf */
 	if (prdcr_cnt) {
@@ -2495,12 +2496,18 @@ int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdc
 			"\"port\":%hu,"
 			"\"transport\":\"%s\","
 			"\"auth\":\"%s\","
+			"\"rail\":\"%d\","
+			"\"quota\":\"%s\","
+			"\"rx_rate\":\"%s\","
 			"\"reconnect_us\":\"%ld\","
 			"\"state\":\"%s\","
 			"\"sets\": [",
 			prdcr->obj.name, ldmsd_prdcr_type2str(prdcr->type),
 			prdcr->host_name, prdcr->port_no, prdcr->xprt_name,
 			prdcr->conn_auth_dom_name,
+			prdcr->rail,
+			((prdcr->quota == -1)?"-1":ovis_format_mem_size_simple(prdcr->quota, quota_s, 32)),
+			((prdcr->rx_rate == -1)?"-1":ovis_format_mem_size_simple(prdcr->rx_rate, rx_rate_s, 32)),
 			prdcr->conn_intrvl_us,
 			prdcr_state_str(prdcr->conn_state));
 	if (rc)
