@@ -115,6 +115,7 @@ Within ldmsd_controller or a configuration file:
    load name=cxi_sampler
    config name=cxi_sampler producer=${HOSTNAME} instance=${HOSTNAME}/cxi_sampler
    start name=cxi_sampler interval=1s
+
 or
 
 ::
@@ -124,6 +125,7 @@ or
    load name=cxi_sampler
    config name=cxi_sampler producer=${HOSTNAME} instance=${HOSTNAME}/cxi_sampler tel_counters=${CXI_COUNTERS} rh_counters=${RH_COUNTERS}
    start name=cxi_sampler interval=1s
+
 or
 
 ::
