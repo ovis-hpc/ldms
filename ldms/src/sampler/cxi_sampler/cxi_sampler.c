@@ -701,9 +701,11 @@ static int config(ldmsd_plug_handle_t handle,
 		if (tel_counters_file != NULL) {
 			ovis_log(log, OVIS_LDEBUG, "We have telemetry counter file: %s\n", tel_counters_file);
 			tel_counters = get_counter_names_from_file(handle, tel_counters_file);
-			if (tel_counters != NULL) {
-				ovis_log(log, OVIS_LDEBUG, "We have telemetry counter filters: %s\n", tel_counters);
+			if (tel_counters == NULL) {
+				rc = EINVAL;
+				goto err;
 			}
+			ovis_log(log, OVIS_LDEBUG, "We have telemetry counter filters: %s\n", tel_counters);
 		}
 	}
 	if (!rh_counters) {
@@ -711,9 +713,11 @@ static int config(ldmsd_plug_handle_t handle,
 		if (rh_counters_file != NULL) {
 			ovis_log(log, OVIS_LDEBUG, "We have retry handler counter file: %s\n", rh_counters_file);
 			rh_counters = get_counter_names_from_file(handle, rh_counters_file);
-			if (rh_counters != NULL) {
-				ovis_log(log, OVIS_LDEBUG, "We have retry handler counter filters: %s\n", rh_counters);
+			if (rh_counters == NULL) {
+				rc = EINVAL;
+				goto err;
 			}
+			ovis_log(log, OVIS_LDEBUG, "We have retry handler counter filters: %s\n", rh_counters);
 		}
 	}
 
