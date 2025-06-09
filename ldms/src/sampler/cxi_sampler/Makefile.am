@@ -14,3 +14,4 @@ libcxi_sampler_la_SOURCES = cxi_sampler.c
 libcxi_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libcxi_sampler.la
 dist_man7_MANS += ldms-sampler_cxi_sampler.man
+CLEANFILES = $(dist_man7_MANS)
