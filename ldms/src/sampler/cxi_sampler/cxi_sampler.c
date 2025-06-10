@@ -254,7 +254,6 @@ static int get_cxi_metric_names(ldmsd_plug_handle_t handle, struct files_s *tel_
 {
 	ovis_log_t log = ldmsd_plug_log_get(handle);
 	const char *end_path_tel = "device/telemetry";
-        DIR *dir;
 
 	/* root_path "/" cxi_name "/" null terminator */
 	size_t path_len = strlen(root_path) + 1 + strlen(cxi_name) + 1 + strlen(end_path_tel) + 2;
@@ -439,7 +438,6 @@ static int get_rh_names(ldmsd_plug_handle_t handle, struct files_s *rh_files,
 			const char *cxi_name, char *root_path, char *patterns)
 {
 	ovis_log_t log = ldmsd_plug_log_get(handle);
-        int i;
 
 	/* +1 for "/" +2 for "/" and null terminator */
 	size_t path_len = strlen(root_path) + 1 + strlen(cxi_name) + 2;
@@ -461,7 +459,7 @@ static int get_rh_names(ldmsd_plug_handle_t handle, struct files_s *rh_files,
 
 static int create_metric_set(cxi_t cxi)
 {
-	int rc, i, j;
+	int rc, i;
 	ldms_record_t tel_rec;
 	ldms_record_t rh_rec;
 	int tel_rec_mid;
