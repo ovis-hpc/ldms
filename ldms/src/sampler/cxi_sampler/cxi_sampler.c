@@ -74,11 +74,11 @@
 #define TEL_PATH_CXI "/sys/class/cxi"
 #define RH_PATH_CXI "/var/run/cxi"
 
-typedef struct files_s {
+struct files_s {
 	int count;
 	int midx[MAX_FILES];
 	char *names[MAX_FILES];
-} *files_t;
+};
 
 typedef struct ifaces_s {
 	int count;
@@ -86,8 +86,8 @@ typedef struct ifaces_s {
 } *cxi_iface_t;
 
 typedef struct cxi_s {
-	struct files_s *rh_files;
-	struct files_s *tel_files;
+	struct files_s rh_files;
+	struct files_s tel_files;
 	int iface_count;
 	char **iface_names;
 	char *tel_path;
@@ -125,7 +125,7 @@ static int skip_entry(DIR *dir, struct dirent *entry)
         return 0;
 }
 
-static int unique_insert(char *name, char *selected[], int num_available)
+static int unique_insert(char *name, int num_available, char *selected[])
 {
         int i;
         for (i = 0; i < num_available; i++) {
@@ -145,7 +145,18 @@ static int qsort_strcmp(const void *a, const void *b, void *log_var)
         return strcmp(*(char * const *)a, *(char * const *)b);
 }
 
-static int select_files(char *directory, char *selected[], char *patterns, ovis_log_t log)
+/*
+ * IN directory - directory in which to look for files
+ * IN patterns - string of comma-separated regular expressions
+ * IN log - the log
+ * OUT selected - Array of size MAX_FILES, used to return pointers to malloc'ed
+ *                file name strings. Individual name strings must be freed by
+ *                the caller.
+ * OUT num_selected - the number of malloced strings pointed to by selected
+ */
+
+static int select_files(char *directory, char *patterns, ovis_log_t log,
+                        char *selected[], int *num_selected)
 {
         int num_available = 0;
         char *available[MAX_FILES];
@@ -189,10 +200,7 @@ static int select_files(char *directory, char *selected[], char *patterns, ovis_
 	/* Splits comma-separated string into individual words. */
 	pattern = strtok(patterns_copy, ",");
 
-        for (i = 0; i < num_available; i++) {
-                selected[i] = NULL;
-        }
-
+        *num_selected = 0;
 	/* Step through each match */
 	while (pattern != NULL) {
 		/* Trim leading spaces */
@@ -220,10 +228,11 @@ static int select_files(char *directory, char *selected[], char *patterns, ovis_
                         reti = regexec(&regex, available[i], 1, &pmatch, 0);
                         /* Test for complete match */
                         if (reti == 0 && pmatch.rm_so == 0 && pmatch.rm_eo == strlen(available[i])) {
-                                if (unique_insert(available[i], selected, num_available)) {
+                                if (unique_insert(available[i], num_available, selected)) {
                                         ovis_log(log, OVIS_LDEBUG,
                                                  "Found first match: '%s', pattern '%s'\n",
                                                  available[i], pattern);
+                                        *num_selected += 1;
                                 } else {
                                         ovis_log(log, OVIS_LDEBUG,
                                                  "Found redundant match: '%s', pattern '%s'\n",
@@ -245,7 +254,7 @@ static int select_files(char *directory, char *selected[], char *patterns, ovis_
 	return 0;
 }
 
-static int get_cxi_metric_names(ldmsd_plug_handle_t handle, files_t tel_files,
+static int get_cxi_metric_names(ldmsd_plug_handle_t handle, struct files_s *tel_files,
 				const char *cxi_name, char *root_path, char *patterns)
 {
 	ovis_log_t log = ldmsd_plug_log_get(handle);
@@ -264,15 +273,7 @@ static int get_cxi_metric_names(ldmsd_plug_handle_t handle, files_t tel_files,
 
 	snprintf(s_path, path_len, "%s/%s/%s", root_path, cxi_name, end_path_tel);
 
-        char *selected_files[MAX_FILES];
-
-        select_files(s_path, selected_files, patterns, log);
-
-        tel_files->count = 0;
-        while (selected_files[tel_files->count] != NULL) {
-                tel_files->names[tel_files->count] = selected_files[tel_files->count];
-                tel_files->count++;
-        }
+        select_files(s_path, patterns, log, tel_files->names, &tel_files->count);
 
 	free(s_path);
 	return 0;
@@ -396,15 +397,15 @@ static int get_cxi_metric_values(cxi_t cxi)
 					  cxi->iface_mid,
 					  cxi->iface_names[iface]);
 
-		for (file = 0; file < cxi->tel_files[iface].count; file++) {
+		for (file = 0; file < cxi->tel_files.count; file++) {
 			snprintf(path, sizeof(path), "%s/%s/device/telemetry/%s",
 				 cxi->tel_path, cxi->iface_names[iface],
-				 cxi->tel_files[iface].names[file]);
+				 cxi->tel_files.names[file]);
 
 			uint64_t value = read_integer_from_file(cxi, path);
 			ldms_record_set_u64(tel_rec,
-					       cxi->tel_files[iface].midx[file],
-					       value);
+                                            cxi->tel_files.midx[file],
+                                            value);
 		}
 		tel_rec = ldms_list_next(cxi->set, tel_rec, &typ, &len);
 	}
@@ -424,14 +425,14 @@ static int get_rh_metric_values(cxi_t cxi)
 					  cxi->iface_mid,
 					  cxi->iface_names[iface]);
 
-		for (file = 0; file < cxi->rh_files[iface].count; file++) {
+		for (file = 0; file < cxi->rh_files.count; file++) {
 			snprintf(path, sizeof(path), "%s/%s/%s",
 				 cxi->rh_path, cxi->iface_names[iface],
-				 cxi->rh_files[iface].names[file]);
+				 cxi->rh_files.names[file]);
 
 			uint64_t value = read_integer_from_file(cxi, path);
 			ldms_record_set_s64(rh_rec,
-					    cxi->rh_files[iface].midx[file],
+					    cxi->rh_files.midx[file],
 					    value);
 		}
 		rh_rec = ldms_list_next(cxi->set, rh_rec, &typ, &len);
@@ -439,10 +440,11 @@ static int get_rh_metric_values(cxi_t cxi)
 	return 0;
 }
 
-static int get_rh_names(ldmsd_plug_handle_t handle, files_t rh_files,
+static int get_rh_names(ldmsd_plug_handle_t handle, struct files_s *rh_files,
 			const char *cxi_name, char *root_path, char *patterns)
 {
 	ovis_log_t log = ldmsd_plug_log_get(handle);
+        int i;
 
 	/* +1 for "/" +2 for "/" and null terminator */
 	size_t path_len = strlen(root_path) + 1 + strlen(cxi_name) + 2;
@@ -456,15 +458,7 @@ static int get_rh_names(ldmsd_plug_handle_t handle, files_t rh_files,
 
 	snprintf(s_path, path_len, "%s/%s", root_path, cxi_name);
 
-        char *selected_files[MAX_FILES];
-
-        select_files(s_path, selected_files, patterns, log);
-
-        rh_files->count = 0;
-        while (selected_files[rh_files->count] != NULL) {
-                rh_files->names[rh_files->count] = selected_files[rh_files->count];
-                rh_files->count++;
-        }
+        select_files(s_path, patterns, log, rh_files->names, &rh_files->count);
 
 	free(s_path);
 	return 0;
@@ -494,22 +488,20 @@ static int create_metric_set(cxi_t cxi)
 						"iface_name", "",
 						LDMS_V_CHAR_ARRAY, 32);
 
-	for (i = 0; i < cxi->tel_files[0].count; i++) {
-		rc = ldms_record_metric_add(tel_rec, cxi->tel_files[0].names[i],
+	for (i = 0; i < cxi->tel_files.count; i++) {
+		rc = ldms_record_metric_add(tel_rec, cxi->tel_files.names[i],
 					    "", LDMS_V_U64, 0);
 		if (rc < 0) {
 			ovis_log(cxi->log, OVIS_LERROR,
 				 "Error %d creating metric '%s'\n",
-				 -rc, cxi->tel_files[0].names[i]);
-            /* Not owned by the schema yet */
-            ldms_record_delete(tel_rec);
-			rc = errno;
-			goto err1;
+				 -rc, cxi->tel_files.names[i]);
+                        /* Not owned by the schema yet */
+                        ldms_record_delete(tel_rec);
+                        rc = errno;
+                        goto err1;
 		}
 		/* Cache the record metric index in tel_files */
-		for (j = 0; j < cxi->iface_count; j++) {
-			cxi->tel_files[j].midx[i] = rc;
-		}
+                cxi->tel_files.midx[i] = rc;
 	}
 	tel_rec_mid = ldms_schema_record_add(cxi->schema, tel_rec);
 	if (!tel_rec_mid){
@@ -524,19 +516,17 @@ static int create_metric_set(cxi_t cxi)
 				    "iface_name", "",
 				    LDMS_V_CHAR_ARRAY, 32);
 
-	for (i = 0; i < cxi->rh_files[0].count; i++) {
-		rc = ldms_record_metric_add(rh_rec, cxi->rh_files[0].names[i],
+	for (i = 0; i < cxi->rh_files.count; i++) {
+		rc = ldms_record_metric_add(rh_rec, cxi->rh_files.names[i],
 					    "", LDMS_V_U64, 0);
 		if (rc < 0) {
-            /* Not owned by the schema yet */
-            ldms_record_delete(rh_rec);
+                        /* Not owned by the schema yet */
+                        ldms_record_delete(rh_rec);
 			rc = errno;
 			goto err1;
 		}
 		/* Cache the record metric index in rh_files */
-		for (j = 0; j < cxi->iface_count; j++) {
-			cxi->rh_files[j].midx[i] = rc;
-		}
+                cxi->rh_files.midx[i] = rc;
 	}
 
 	/* List of per interface telemetry records */
@@ -673,20 +663,6 @@ static int get_cxi_interfaces(ldmsd_plug_handle_t handle, char *tel_path)
 		}
 	}
 
-	cxi->tel_files = calloc(count, sizeof(struct files_s));
-	if (!cxi->tel_files) {
-		ovis_log(cxi->log, OVIS_LERROR, "Memory allocation failed");
-		closedir(dir);
-		return 1;
-	}
-
-	cxi->rh_files = calloc(count, sizeof(struct files_s));
-	if (!cxi->rh_files) {
-		ovis_log(cxi->log, OVIS_LERROR, "Memory allocation failed");
-		closedir(dir);
-		return 1;
-	}
-
 	closedir(dir);
 	return 0;
 }
@@ -780,18 +756,16 @@ static int config(ldmsd_plug_handle_t handle,
 	}
 
 	/* Process telemetry and retry handler files for each CXI interface */
-	int i;
-	for (i = 0; i < cxi->iface_count; i++) {
-		if (get_cxi_metric_names(handle, &cxi->tel_files[i], cxi->iface_names[i],
-					 tel_path, tel_counters) != 0) {
-			rc = 1;
-			goto err;
-		}
-		if (get_rh_names(handle, &cxi->rh_files[i], cxi->iface_names[i], rh_path, rh_counters) != 0) {
-			rc = 1;
-			goto err;
-		}
-	}
+        if (get_cxi_metric_names(handle, &cxi->tel_files, cxi->iface_names[0],
+                                 tel_path, tel_counters) != 0) {
+                rc = 1;
+                goto err;
+        }
+        if (get_rh_names(handle, &cxi->rh_files, cxi->iface_names[0],
+                         rh_path, rh_counters) != 0) {
+                rc = 1;
+                goto err;
+        }
 
 	rc = create_metric_set(cxi);
 	if (rc != 0) {
@@ -861,23 +835,17 @@ static void destructor(ldmsd_plug_handle_t handle)
 	free(cxi->rh_path);
 
 	/* Free telemetry files */
-	if (cxi->tel_files) {
-		for ( i = 0; i < cxi->iface_count; i++) {
-			for ( j = 0; j < cxi->tel_files[i].count; j++) {
-				free(cxi->tel_files[i].names[j]);
-			}
+	if (cxi->tel_files.count > 0) {
+                for ( j = 0; j < cxi->tel_files.count; j++) {
+                        free(cxi->tel_files.names[j]);
 		}
-		free(cxi->tel_files);
 	}
 
 	/* Free retry handler files */
-	if (cxi->rh_files) {
-		for ( i = 0; i < cxi->iface_count; i++) {
-			for ( j = 0; j < cxi->rh_files[i].count; j++) {
-				free(cxi->rh_files[i].names[j]);
-			}
+	if (cxi->rh_files.count > 0) {
+                for ( j = 0; j < cxi->rh_files.count; j++) {
+                        free(cxi->rh_files.names[j]);
 		}
-		free(cxi->rh_files);
 	}
 
 	/* Free base data */
