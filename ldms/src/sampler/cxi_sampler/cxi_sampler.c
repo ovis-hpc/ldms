@@ -57,6 +57,7 @@
 #include <stdbool.h>
 #include <regex.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <pthread.h>
 #include <dirent.h>
@@ -104,83 +105,152 @@ typedef struct cxi_s {
 	ldms_mval_t tel_list_mval;
 } *cxi_t;
 
-static int skip_name(char *name, char *counters, ovis_log_t log)
+/* Skip special files and directories */
+static int skip_entry(DIR *dir, struct dirent *entry)
 {
-	/* Skip special files and directories */
-	if (strcmp(name, ".") == 0 ||
-	    strcmp(name, "..") == 0 ||
-	    strcmp(name, "ALL-in-binary") == 0 ||
-	    strcmp(name, "config") == 0 ||
-	    strcmp(name, "reset_counters") == 0) {
+        if (entry->d_type == DT_UNKNOWN) {
+                struct stat statbuf;
+                if (fstatat(dirfd(dir), entry->d_name, &statbuf, 0) == 0) {
+                        if (!S_ISREG(statbuf.st_mode)) {
+                                return 1;
+                        }
+                }
+        } else if (entry->d_type != DT_REG ) {
+                return 1;
+        }
+        if (strcmp(entry->d_name, "ALL-in-binary") == 0 ||
+	    strcmp(entry->d_name, "reset_counters") == 0) {
+		return 1;
+	}
+        return 0;
+}
+
+static int unique_insert(char *name, char *selected[], int num_available)
+{
+        int i;
+        for (i = 0; i < num_available; i++) {
+                if (selected[i] == NULL) {
+                        selected[i] = strdup(name);
+                        return 1;
+                } else if (strcmp(selected[i], name) == 0) {
+                        return 0;
+                }
+        }
+        return 0;
+}
+
+static int qsort_strcmp(const void *a, const void *b, void *log_var)
+{
+        /* ovis_log_t log = log_var; */
+        return strcmp(*(char * const *)a, *(char * const *)b);
+}
+
+static int select_files(char *directory, char *selected[], char *patterns, ovis_log_t log)
+{
+        int num_available = 0;
+        char *available[MAX_FILES];
+        DIR *dir;
+	struct dirent *ent;
+        char *patterns_copy;
+        char *pattern;
+        int i;
+
+        /* If NULL, skip nothing */
+	if (patterns == NULL) {
+		return 0;
+	}
+
+	dir = opendir(directory);
+	if (!dir) {
+		ovis_log(log, OVIS_LERROR,
+			 "Error %d opening '%s'\n",
+			 errno, directory);
+		return 1;
+	}
+        ovis_log(log, OVIS_LDEBUG, "Selecting files from directory '%s'\n", directory);
+
+	while ((ent = readdir(dir)) != NULL && num_available < MAX_FILES) {
+                if (skip_entry(dir, ent)) {
+                        continue;
+                }
+                available[num_available] = strdup(ent->d_name);
+                num_available++;
+        }
+        closedir(dir);
+        qsort_r(available, num_available, sizeof(char *), qsort_strcmp, log);
+
+	/* Copy of original list */
+	patterns_copy = strdup(patterns);
+	if (!patterns_copy) {
+		ovis_log(log, OVIS_LERROR, "Memory allocation failed for pattern list\n");
 		return 1;
 	}
 
-	/* If NULL, skip nothing */
-	if (counters == NULL) {
-		return 0;
-	}
-
-	/* Copy of original list */
-	char *list_copy = strdup(counters);
-	if (!list_copy) {
-		ovis_log(log, OVIS_LERROR, "Memory allocation failed for counters list\n");
-		return 0;
-	}
-
 	/* Splits comma-separated string into individual words. */
-	char *token = strtok(list_copy, ",");
-	int result = 1; /* Default to skip */
+	pattern = strtok(patterns_copy, ",");
+
+        for (i = 0; i < num_available; i++) {
+                selected[i] = NULL;
+        }
 
 	/* Step through each match */
-	while (token != NULL) {
+	while (pattern != NULL) {
 		/* Trim leading spaces */
-		while (*token == ' ')
-			token++;
+		while (*pattern == ' ')
+			pattern++;
 
 		/* Trim trailing spaces */
-		char *end = token + strlen(token) - 1;
-		while (end > token && *end == ' ') {
+		char *end = pattern + strlen(pattern) - 1;
+		while (end > pattern && *end == ' ') {
 			*end = '\0';
 			end--;
 		}
 
 		/* Compile and execute the regex */
 		regex_t regex;
-		int reti = regcomp(&regex, token, REG_EXTENDED);
+		int reti = regcomp(&regex, pattern, REG_EXTENDED);
 		if (reti != 0) {
-			ovis_log(log, OVIS_LERROR, "Could not compile regex: %s\n", token);
-			token = strtok(NULL, ",");
+			ovis_log(log, OVIS_LERROR, "Could not compile regex: %s\n", pattern);
+			pattern = strtok(NULL, ",");
 			continue;
 		}
 
-		regmatch_t pmatch;
-		reti = regexec(&regex, name, 1, &pmatch, 0);
-		regfree(&regex);
-		/* Test for complete match */
-		if (reti == 0 && pmatch.rm_so == 0 && pmatch.rm_eo == strlen(name)) {
-                        ovis_log(log, OVIS_LDEBUG,
-                                 "Found Match: '%s', pattern '%s'\n", name, token);
-                        result = 0; /* Don't skip */
-                        break;
+                for (i = 0; i < num_available; i++) {
+                        regmatch_t pmatch;
+                        reti = regexec(&regex, available[i], 1, &pmatch, 0);
+                        /* Test for complete match */
+                        if (reti == 0 && pmatch.rm_so == 0 && pmatch.rm_eo == strlen(available[i])) {
+                                if (unique_insert(available[i], selected, num_available)) {
+                                        ovis_log(log, OVIS_LDEBUG,
+                                                 "Found first match: '%s', pattern '%s'\n",
+                                                 available[i], pattern);
+                                } else {
+                                        ovis_log(log, OVIS_LDEBUG,
+                                                 "Found redundant match: '%s', pattern '%s'\n",
+                                                 available[i], pattern);
+                                }
+                        }
                 }
-		token = strtok(NULL, ",");
+
+                regfree(&regex);
+
+		pattern = strtok(NULL, ",");
 	}
 
-	free(list_copy);
+        for (i = 0; i < num_available; i++) {
+                free(available[i]);
+        }
+	free(patterns_copy);
 
-	if (result) {
-		ovis_log(log, OVIS_LDEBUG, "Skip it '%s'\n", name);
-	}
-
-	return result;
+	return 0;
 }
 
-static int get_cxi_metric_names(ldmsd_plug_handle_t handle,
-				files_t tel_files,
-				const char *cxi_name, char *root_path, char *counters)
+static int get_cxi_metric_names(ldmsd_plug_handle_t handle, files_t tel_files,
+				const char *cxi_name, char *root_path, char *patterns)
 {
 	ovis_log_t log = ldmsd_plug_log_get(handle);
 	const char *end_path_tel = "device/telemetry";
+        DIR *dir;
 
 	/* root_path "/" cxi_name "/" null terminator */
 	size_t path_len = strlen(root_path) + 1 + strlen(cxi_name) + 1 + strlen(end_path_tel) + 2;
@@ -192,43 +262,24 @@ static int get_cxi_metric_names(ldmsd_plug_handle_t handle,
 		return 1;
 	}
 
-	snprintf(s_path, path_len, "/%s/%s/%s", root_path, cxi_name, end_path_tel);
+	snprintf(s_path, path_len, "%s/%s/%s", root_path, cxi_name, end_path_tel);
 
-	DIR *dir = opendir(s_path);
-	if (!dir) {
-		ovis_log(log, OVIS_LERROR,
-			 "Error %d opening '%s'\n",
-			 errno, s_path);
-		free(s_path);
-		return 1;
-	}
+        char *selected_files[MAX_FILES];
 
-	struct dirent *ent;
-	while ((ent = readdir(dir)) != NULL && tel_files->count < MAX_FILES) {
-		/* Skip special files and directories */
-		if (skip_name(ent->d_name, counters, log))
-			continue;
+        select_files(s_path, selected_files, patterns, log);
 
-		/* Allocate and copy the file name */
-		tel_files->names[tel_files->count] = strdup(ent->d_name);
-		if (!tel_files->names[tel_files->count]) {
-			ovis_log(log, OVIS_LERROR,
-				 "Memory allocation failed for file name '%s'\n",
-				 ent->d_name);
-			closedir(dir);
-			free(s_path);
-			return 1;
-		}
-		tel_files->count++;
-	}
+        tel_files->count = 0;
+        while (selected_files[tel_files->count] != NULL) {
+                tel_files->names[tel_files->count] = selected_files[tel_files->count];
+                tel_files->count++;
+        }
 
-	closedir(dir);
 	free(s_path);
 	return 0;
 }
 
 
-char * get_counter_names_from_file(ldmsd_plug_handle_t handle, const char *filename)
+static char *get_counter_names_from_file(ldmsd_plug_handle_t handle, const char *filename)
 {
     ovis_log_t log = ldmsd_plug_log_get(handle);
 
@@ -389,7 +440,7 @@ static int get_rh_metric_values(cxi_t cxi)
 }
 
 static int get_rh_names(ldmsd_plug_handle_t handle, files_t rh_files,
-			const char *cxi_name, char *root_path, char *counters)
+			const char *cxi_name, char *root_path, char *patterns)
 {
 	ovis_log_t log = ldmsd_plug_log_get(handle);
 
@@ -403,38 +454,18 @@ static int get_rh_names(ldmsd_plug_handle_t handle, files_t rh_files,
 		return 1;
 	}
 
-	snprintf(s_path, path_len, "/%s/%s", root_path, cxi_name);
+	snprintf(s_path, path_len, "%s/%s", root_path, cxi_name);
 
-	DIR *dir = opendir(s_path);
-	if (!dir) {
-		ovis_log(log, OVIS_LERROR,
-			 "Error %d opening directory '%s'\n",
-			 errno, s_path);
-		free(s_path);
-		return 1;
-	}
+        char *selected_files[MAX_FILES];
 
-	struct dirent *ent;
-	while ((ent = readdir(dir)) != NULL) {
-		/* Skip some files and directories */
-		if (skip_name(ent->d_name, counters, log)) {
-			continue;
-		}
+        select_files(s_path, selected_files, patterns, log);
 
-		/* Allocate and copy the file name */
-		rh_files->names[rh_files->count] = strdup(ent->d_name);
-		if (!rh_files->names[rh_files->count]) {
-			ovis_log(log, OVIS_LERROR,
-				 "Memory allocation failed for file name '%s'\n",
-				 ent->d_name);
-			closedir(dir);
-			free(s_path);
-			return 1;
-		}
-		rh_files->count++;
-	}
+        rh_files->count = 0;
+        while (selected_files[rh_files->count] != NULL) {
+                rh_files->names[rh_files->count] = selected_files[rh_files->count];
+                rh_files->count++;
+        }
 
-	closedir(dir);
 	free(s_path);
 	return 0;
 }
