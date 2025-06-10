@@ -24,19 +24,48 @@ DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the
 ldmsd (ldms daemon) are configured via ldmsd_controller or a
 configuration file. The cxi_sampler plugin provides interface
-telemetry information from /sys/kernel/debug/cxi and /var/run/cxi.
+telemetry and retry handler information from /sys/class/cxi and
+/var/run/cxi, respectively.
 
 There are two classes of information returned: CXI Telementry
 information, retry handler information. This data is organized into
 two lists of records.  One list contains the telemetry information,
 called 'tel_list', and 'rh_list' respectively.
 
+Each list contains one record for each interface.
+
 Each record schema is contructed by searching the directories above
 skipping sub-directories and special files used to reset the counter
-values. The remaining files each become a metric value in the
-associated recored.
+values. By default, all of the remaining files each become a metric
+value in the associated recored.
 
-Each list contains one record for each interface.
+However tel_counters, tel_counters_file, rh_counters, and
+rh_counters_file options may be used to name a smaller set of desired
+metrics.
+
+derived:link_restarts
+=====================
+
+The tel_counters and tel_counters_file options support a special,
+virtual file named "derived:link_restarts". This file doesn't actually
+appear in /sys/class/cxi. Instead, this value creates a virtual metric,
+also named "derived:link_restarts".
+
+The cxi driver maintains a circular list of timestamps accross the
+ten files located in:
+
+**/sys/class/cxi/cxi[0-9]/device/link_restarts/time_[0-9]**
+
+The timestamps each represent the last time that a link restart
+occurred. The cxi_sampler plugin will read those files, and note any
+times that have changed. For each changed time, the "derived:link_restarts"
+metric will be incremented.
+
+Note that there is a potential to miss link_restarts if the sampling
+rate is high. The createst number of counted restarts in a sampling
+interval is limited to 10, since there are ten timestamp files. However,
+in practice if the sampling rate is relatively fast, say 5 seconds or
+faster, most link restarts are likely to be counted.
 
 CONFIGURATION ATTRIBUTE SYNTAX
 ==============================
@@ -69,7 +98,7 @@ of the base class.
       |
       | (Optional) A CSV list of POSIX regular expressions used to match and
         collect metrics from file names under rh_path.
-        See Section COUTNER NAMES for details.
+        See Section COUNTER NAMES for details.
         If this option is omitted all counters will be collected.
 
    rh_counters_file=<PATH>
@@ -78,13 +107,13 @@ of the base class.
         match and collect metrics from file names under rh_path.
         One name per line.
         Ony used if rh_counters is not defined.
-        See Section COUTNER NAMES for details.
+        See Section COUNTER NAMES for details.
 
    tel_counters=<COUNTER NAMES>
       |
       | (Optional) A CSV list of POSIX regular expressions used to match and
         collect metrics from file names under tel_path.
-        See Section COUTNER NAMES for details.
+        See Section COUNTER NAMES for details.
         If this option is omitted all counters will be collected.
 
    tel_counters_file=<PATH>
@@ -93,7 +122,7 @@ of the base class.
         match and collect metrics from file names under tel_path.
         One name per line.
         Ony used if tel_counters is not defined.
-        See Section COUTNER NAMES for details.
+        See Section COUNTER NAMES for details.
 
 BUGS
 ====
