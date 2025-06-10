@@ -80,11 +80,6 @@ struct files_s {
 	char *names[MAX_FILES];
 };
 
-typedef struct ifaces_s {
-	int count;
-	char *names[MAX_CXI_IFACES];
-} *cxi_iface_t;
-
 typedef struct cxi_s {
 	struct files_s rh_files;
 	struct files_s tel_files;
