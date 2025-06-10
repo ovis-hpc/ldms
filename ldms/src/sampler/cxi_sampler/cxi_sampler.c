@@ -120,24 +120,19 @@ static int skip_entry(DIR *dir, struct dirent *entry)
         return 0;
 }
 
-static int unique_insert(char *name, int num_available, char *selected[])
-{
-        int i;
-        for (i = 0; i < num_available; i++) {
-                if (selected[i] == NULL) {
-                        selected[i] = strdup(name);
-                        return 1;
-                } else if (strcmp(selected[i], name) == 0) {
-                        return 0;
-                }
-        }
-        return 0;
-}
-
 static int qsort_strcmp(const void *a, const void *b, void *log_var)
 {
         /* ovis_log_t log = log_var; */
         return strcmp(*(char * const *)a, *(char * const *)b);
+}
+
+static void compact_remaining_available(char *available[], int remaining)
+{
+        int i;
+        for (i = 0; i < remaining; i++) {
+                available[i] = available[i+1];
+        }
+        available[i] = NULL;
 }
 
 /*
@@ -218,21 +213,20 @@ static int select_files(char *directory, char *patterns, ovis_log_t log,
 			continue;
 		}
 
-                for (i = 0; i < num_available; i++) {
+                for (i = 0; i < num_available; ) {
                         regmatch_t pmatch;
                         reti = regexec(&regex, available[i], 1, &pmatch, 0);
                         /* Test for complete match */
                         if (reti == 0 && pmatch.rm_so == 0 && pmatch.rm_eo == strlen(available[i])) {
-                                if (unique_insert(available[i], num_available, selected)) {
-                                        ovis_log(log, OVIS_LDEBUG,
-                                                 "Found first match: '%s', pattern '%s'\n",
-                                                 available[i], pattern);
-                                        *num_selected += 1;
-                                } else {
-                                        ovis_log(log, OVIS_LDEBUG,
-                                                 "Found redundant match: '%s', pattern '%s'\n",
-                                                 available[i], pattern);
-                                }
+                                ovis_log(log, OVIS_LDEBUG,
+                                         "Found match: '%s', pattern '%s'\n",
+                                         available[i], pattern);
+                                selected[*num_selected] = available[i];
+                                compact_remaining_available(&available[i], num_available - i - 1);
+                                num_available--;
+                                *num_selected += 1;
+                        } else {
+                                i++;
                         }
                 }
 
