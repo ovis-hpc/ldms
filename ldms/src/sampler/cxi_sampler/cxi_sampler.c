@@ -662,6 +662,7 @@ static int get_cxi_interfaces(ldmsd_plug_handle_t handle, char *tel_path)
 			count++;
 		}
 	}
+        qsort_r(cxi->iface_names, count, sizeof(char *), qsort_strcmp, cxi->log);
 
 	closedir(dir);
 	return 0;
