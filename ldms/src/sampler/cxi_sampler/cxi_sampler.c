@@ -76,8 +76,16 @@
 
 struct files_s {
 	int count;
-	int midx[MAX_FILES];
-	char *names[MAX_FILES];
+        /* The +1 is to leave room for the extra derived:link_restarts metric */
+	int midx[MAX_FILES+1];
+	char *names[MAX_FILES+1];
+};
+
+#define LINK_RESTARTS_TIMESTAMPS 10
+struct link_restarts {
+        char *path_template;
+        uint64_t timestamps[LINK_RESTARTS_TIMESTAMPS];
+        uint64_t value;
 };
 
 typedef struct cxi_s {
@@ -87,6 +95,8 @@ typedef struct cxi_s {
 	char **iface_names;
 	char *tel_path;
 	char *rh_path;
+        struct link_restarts *restarts; /* array of length iface_count */
+        int restarts_mid;
 
 	ovis_log_t log;
 	ldms_schema_t schema;
@@ -136,6 +146,98 @@ static void compact_remaining_available(char *available[], int remaining)
 }
 
 /*
+ * The counter files take two forms as of shs-12.0.0.
+ *
+ * For cxi files (in /sys/class/cxi), the form is:
+ *   <counter>@<timestamp seconds>.<timestamp nanoseconds>
+ * e.g.
+ *   103060429480@1743569213.088677609
+ *
+ * For retry handler files, the format is just:
+ *
+ *  <counter>
+ * e.g.
+ *  103060429480
+ *
+ * We do not currently care about the timestamp, so this function
+ * suffices to read the initial unsigned integer in each.
+ */
+static uint64_t read_integer_from_file(const char *filename, ovis_log_t log)
+{
+	uint64_t value = 0;
+	FILE *file = fopen(filename, "r");
+
+	if (!file) {
+		ovis_log(log, OVIS_LERROR,
+			 "Error %d opening file '%s'\n", errno, filename);
+		return 0;
+	}
+
+	if (fscanf(file, "%"SCNu64, &value) != 1) {
+		ovis_log(log, OVIS_LERROR,
+			 "Error %d reading unsigned integer from file '%s'\n",
+			 errno, filename);
+		fclose(file);
+		return 0;
+	}
+
+	fclose(file);
+	return value;
+}
+
+static uint64_t link_restarts_sample(struct link_restarts *lr, ovis_log_t log)
+{
+        char filepath[PATH_MAX];
+        uint64_t ts;
+        int i;
+
+        for (i = 0; i < LINK_RESTARTS_TIMESTAMPS; i++) {
+                snprintf(filepath, sizeof(filepath), lr->path_template, i);
+                ts = read_integer_from_file(filepath, log);
+                if (lr->timestamps[i] != ts) {
+                        lr->timestamps[i] = ts;
+                        lr->value += 1;
+                }
+        }
+
+        return lr->value;
+}
+
+static struct link_restarts *link_restarts_init(char *ifaces[], int num_ifaces,
+                                                char *tel_path, ovis_log_t log)
+{
+        struct link_restarts *lr;
+        char path_template[PATH_MAX];
+        int i;
+
+        lr = calloc(num_ifaces, sizeof(*lr));
+        if (lr == NULL) {
+                return NULL;
+        }
+        for (i = 0; i < num_ifaces; i++) {
+                snprintf(path_template, PATH_MAX,
+                         "%s/%s/device/link_restarts/time_%%d",
+                         tel_path, ifaces[i]);
+                lr[i].path_template = strdup(path_template);
+                /* initializing the cache with the existing time stamp values,
+                   so we intentionally ignore the return value */
+                link_restarts_sample(&lr[i], log);
+        }
+
+        return lr;
+}
+
+static void link_restarts_fini(struct link_restarts *lr, int num_ifaces)
+{
+        int i;
+
+        for (i = 0; i < num_ifaces; i++) {
+                free(lr[i].path_template);
+        }
+        free(lr);
+}
+
+/*
  * IN directory - directory in which to look for files
  * IN patterns - string of comma-separated regular expressions
  * IN log - the log
@@ -144,7 +246,6 @@ static void compact_remaining_available(char *available[], int remaining)
  *                the caller.
  * OUT num_selected - the number of malloced strings pointed to by selected
  */
-
 static int select_files(char *directory, char *patterns, ovis_log_t log,
                         char *selected[], int *num_selected)
 {
@@ -203,6 +304,14 @@ static int select_files(char *directory, char *patterns, ovis_log_t log,
 			*end = '\0';
 			end--;
 		}
+
+                if (strcmp(pattern, "derived:link_restarts") == 0) {
+                        /* Special case */
+                        selected[*num_selected] = strdup("derived:link_restarts");
+                        *num_selected +=1;
+                        pattern = strtok(NULL, ",");
+                        continue;
+                }
 
 		/* Compile and execute the regex */
 		regex_t regex;
@@ -332,46 +441,6 @@ static char *get_counter_names_from_file(ldmsd_plug_handle_t handle, const char 
     return result;
 }
 
-/*
- * The counter files take two forms as of shs-12.0.0.
- *
- * For cxi files (in /sys/class/cxi), the form is:
- *   <counter>@<timestamp seconds>.<timestamp nanoseconds>
- * e.g.
- *   103060429480@1743569213.088677609
- *
- * For retry handler files, the format is just:
- *
- *  <counter>
- * e.g.
- *  103060429480
- *
- * We do not currently care about the timestamp, so this function
- * suffices to read the initial unsigned integer in each.
- */
-static uint64_t read_integer_from_file(cxi_t cxi, const char *filename)
-{
-	uint64_t value = 0;
-	FILE *file = fopen(filename, "r");
-
-	if (!file) {
-		ovis_log(cxi->log, OVIS_LERROR,
-			 "Error %d opening file '%s'\n", errno, filename);
-		return 0;
-	}
-
-	if (fscanf(file, "%"SCNu64, &value) != 1) {
-		ovis_log(cxi->log, OVIS_LERROR,
-			 "Error %d reading unsigned integer from file '%s'\n",
-			 errno, filename);
-		fclose(file);
-		return 0;
-	}
-
-	fclose(file);
-	return value;
-}
-
 static int get_cxi_metric_values(cxi_t cxi)
 {
 	int iface, file;
@@ -386,11 +455,21 @@ static int get_cxi_metric_values(cxi_t cxi)
 					  cxi->iface_names[iface]);
 
 		for (file = 0; file < cxi->tel_files.count; file++) {
-			snprintf(path, sizeof(path), "%s/%s/device/telemetry/%s",
-				 cxi->tel_path, cxi->iface_names[iface],
-				 cxi->tel_files.names[file]);
+                        uint64_t value;
 
-			uint64_t value = read_integer_from_file(cxi, path);
+                        if (cxi->restarts &&
+                            cxi->restarts_mid == cxi->tel_files.midx[file]) {
+                                /* Special case sampling for derived:link_restarts metric */
+                                value = link_restarts_sample(&cxi->restarts[iface],
+                                                             cxi->log);
+                        } else {
+                                snprintf(path, sizeof(path), "%s/%s/device/telemetry/%s",
+                                         cxi->tel_path, cxi->iface_names[iface],
+                                         cxi->tel_files.names[file]);
+
+                                value = read_integer_from_file(path, cxi->log);
+                        }
+
 			ldms_record_set_u64(tel_rec,
                                             cxi->tel_files.midx[file],
                                             value);
@@ -418,8 +497,8 @@ static int get_rh_metric_values(cxi_t cxi)
 				 cxi->rh_path, cxi->iface_names[iface],
 				 cxi->rh_files.names[file]);
 
-			uint64_t value = read_integer_from_file(cxi, path);
-			ldms_record_set_s64(rh_rec,
+                        uint64_t value = read_integer_from_file(path, cxi->log);
+                        ldms_record_set_s64(rh_rec,
 					    cxi->rh_files.midx[file],
 					    value);
 		}
@@ -476,19 +555,29 @@ static int create_metric_set(cxi_t cxi)
 						LDMS_V_CHAR_ARRAY, 32);
 
 	for (i = 0; i < cxi->tel_files.count; i++) {
-		rc = ldms_record_metric_add(tel_rec, cxi->tel_files.names[i],
+                int midx;
+		midx = ldms_record_metric_add(tel_rec, cxi->tel_files.names[i],
 					    "", LDMS_V_U64, 0);
-		if (rc < 0) {
+		if (midx < 0) {
 			ovis_log(cxi->log, OVIS_LERROR,
 				 "Error %d creating metric '%s'\n",
-				 -rc, cxi->tel_files.names[i]);
+				 -midx, cxi->tel_files.names[i]);
                         /* Not owned by the schema yet */
                         ldms_record_delete(tel_rec);
                         rc = errno;
                         goto err1;
 		}
 		/* Cache the record metric index in tel_files */
-                cxi->tel_files.midx[i] = rc;
+                cxi->tel_files.midx[i] = midx;
+
+                /* Special case initialization for derived:link_restarts metric */
+                if (strcmp(cxi->tel_files.names[i], "derived:link_restarts") == 0) {
+                        cxi->restarts = link_restarts_init(cxi->iface_names,
+                                                           cxi->iface_count,
+                                                           cxi->tel_path,
+                                                           cxi->log);
+                        cxi->restarts_mid = midx;
+                }
 	}
 	tel_rec_mid = ldms_schema_record_add(cxi->schema, tel_rec);
 	if (!tel_rec_mid){
@@ -809,6 +898,9 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 	if (cxi->schema)
 		base_schema_delete(cxi->base);
+
+        if (cxi->restarts)
+                link_restarts_fini(cxi->restarts, cxi->iface_count);
 
 	/* Free interface names */
 	if (cxi->iface_names) {
