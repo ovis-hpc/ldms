@@ -96,19 +96,16 @@
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 
-const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:L:C:y:";
+const char *short_opts = "l:x:m:r:v:Vc:u:a:A:n:L:C:y:";
 
 struct option long_opts[] = {
 	{ "default_auth_args",     required_argument, 0,  'A' },
 	{ "default_auth",          required_argument, 0,  'a' },
-	{ "banner",                required_argument, 0,  'B' },
 	{ "publish_kernel",        optional_argument, 0,  'k' },
 	{ "log_file",              required_argument, 0,  'l' },
 	{ "set_memory",            required_argument, 0,  'm' },
-	{ "daemon_name",           required_argument, 0,  'n' },
-	{ "worker_threads",        required_argument, 0,  'P' },
 	{ "pid_file",              required_argument, 0,  'r' },
-	{ "kernel_file",           required_argument, 0,  's' },
+	{ "version",               required_argument, 0,  'V' },
 	{ "log_level",             required_argument, 0,  'v' },
 	{ "log_config",            required_argument, 0,  'L' },
 	{ "default_quota",         required_argument, 0,  'C' },
@@ -1964,31 +1961,6 @@ int main(int argc, char *argv[])
 		case 'c':
 			/* Handle below */
 			break;
-		case 'k':
-		case 's':
-			ovis_log(NULL, OVIS_LCRIT,
-				 "The options `-k` and `-s` are obsolete. "
-				 "Please specify `publish_kernel path=<KERNEL_FILE> in a configuration file.\n");
-			cleanup(EINVAL, "Received an obsolete command-line option");
-		case 'P':
-			ovis_log(NULL, OVIS_LCRIT,
-				 "The option `-P` is obsolete. "
-				 "Please specify `worker_threads num=<NUMBER OF THREADS> in a configuration file.\n");
-			cleanup(EINVAL, "Received an obsolete command-line option");
-		case 'C':
-			ovis_log(NULL, OVIS_LCRIT,
-				 "The option `-C` is obsolete. "
-				 "Please specify `default_quota quota=<INTEGER> in a configuration file.\n");
-			cleanup(EINVAL, "Received an obsolete command-line option");
-		case 'B':
-			ovis_log(NULL, OVIS_LCRIT,
-				"The option `-B` is obsolete. "
-				"Please specify `banner mode=<0|1|2>` in a configuration file.");
-			cleanup(EINVAL, "Received an obsolete command-line option");
-		case 'F':
-			ovis_log(NULL, OVIS_LCRIT,
-				"The option `-F` is obsolete. ");
-			cleanup(EINVAL, "Received an obsolete command-line option");
 		default:
 			ret = ldmsd_process_cmd_line_arg(op, optarg);
 			if (ret) {
