@@ -271,7 +271,6 @@ err:
 }
 
 static const char *usage(ldmsd_plug_handle_t handle)
-static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=" SAMP " disks=<disknames> " BASE_CONFIG_USAGE
 		"    <disks>        A comma-separated list of disk names,\n"
