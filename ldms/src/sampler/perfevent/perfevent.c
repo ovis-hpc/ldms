@@ -104,6 +104,7 @@ static ldms_set_t set;
 static base_data_t base;
 
 static ovis_log_t mylog;
+static char *config_name;
 
 struct pevent {
 	struct perf_event_attr attr;
@@ -406,7 +407,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		return EINVAL;
 	}
 
-	base = base_config(avl, ldmsd_plug_cfg_name_get(handle), SAMP, mylog);
+	base = base_config(avl, config_name, SAMP, mylog);
 	if (!base) {
 		rc = ENOMEM;
 		goto err;
@@ -477,7 +478,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	return 0;
 
 err0:
-	ovis_log(mylog, OVIS_LERROR, usage(context));
+	ovis_log(mylog, OVIS_LERROR, usage(handle));
 	goto err2;
 err1:
 	ovis_log(mylog, OVIS_LERROR, "perfevent: Invalid configuration keyword '%s'\n", action);
@@ -544,6 +545,10 @@ static int sample(ldmsd_plug_handle_t handle)
 
 static int constructor(ldmsd_plug_handle_t handle)
 {
+        config_name = strdup(ldmsd_plug_cfg_name_get(handle));
+        if (config_name == NULL) {
+                return 1;
+        }
 	mylog = ldmsd_plug_log_get(handle);
 
         return 0;
@@ -579,6 +584,9 @@ static void destructor(ldmsd_plug_handle_t handle)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+
+        free(config_name);
+        config_name = NULL;
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
