@@ -208,7 +208,7 @@ size_t ovis_get_mem_size(const char *s);
  * \note Uses binary units (1024-based) for consistency with ovis_get_mem_size()
  * \note Recommended buffer size is at least 25 characters due to size_t
  */
-char* ovis_format_mem_size_simple(size_t bytes, char *buffer, size_t buffer_size);
+char* ovis_format_mem_size(size_t bytes, char *buffer, size_t buffer_size);
 
 /**
  * \brief Convert a time-interval string to microseconds

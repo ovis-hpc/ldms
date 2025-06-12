@@ -597,20 +597,24 @@ size_t ovis_get_mem_size(const char *s)
 	}
 }
 
-char* ovis_format_mem_size_simple(size_t bytes, char *buffer, size_t buffer_size)
+char* ovis_format_mem_size(size_t bytes, char *buffer, size_t buffer_size)
 {
-	if (bytes >= 1024UL * 1024 * 1024 * 1024) {
-		snprintf(buffer, buffer_size, "%luTB", bytes / (1024UL * 1024 * 1024 * 1024));
-	} else if (bytes >= 1024UL * 1024 * 1024) {
-		snprintf(buffer, buffer_size, "%luGB", bytes / (1024UL * 1024 * 1024));
-	} else if (bytes >= 1024UL * 1024) {
-		snprintf(buffer, buffer_size, "%luMB", bytes / (1024UL * 1024));
-	} else if (bytes >= 1024) {
-		snprintf(buffer, buffer_size, "%luKB", bytes / 1024);
+	const size_t TB = 1024UL * 1024 * 1024 * 1024;
+	const size_t GB = 1024UL * 1024 * 1024;
+	const size_t MB = 1024UL * 1024;
+	const size_t KB = 1024UL;
+
+	if (bytes >= TB && bytes % TB == 0) {
+		snprintf(buffer, buffer_size, "%luTB", bytes / TB);
+	} else if (bytes >= GB && bytes % GB == 0) {
+		snprintf(buffer, buffer_size, "%luGB", bytes / GB);
+	} else if (bytes >= MB && bytes % MB == 0) {
+		snprintf(buffer, buffer_size, "%luMB", bytes / MB);
+	} else if (bytes >= KB && bytes % KB == 0) {
+		snprintf(buffer, buffer_size, "%luKB", bytes / KB);
 	} else {
 		snprintf(buffer, buffer_size, "%lu", bytes);
 	}
-
 	return buffer;
 }
 

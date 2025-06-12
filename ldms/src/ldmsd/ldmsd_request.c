@@ -2521,8 +2521,8 @@ int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdc
 			prdcr->host_name, prdcr->port_no, prdcr->xprt_name,
 			prdcr->conn_auth_dom_name,
 			prdcr->rail,
-			((prdcr->quota == -1)?"-1":ovis_format_mem_size_simple(prdcr->quota, quota_s, 32)),
-			((prdcr->rx_rate == -1)?"-1":ovis_format_mem_size_simple(prdcr->rx_rate, rx_rate_s, 32)),
+			((prdcr->quota == -1)?"-1":ovis_format_mem_size(prdcr->quota, quota_s, 32)),
+			((prdcr->rx_rate == -1)?"-1":ovis_format_mem_size(prdcr->rx_rate, rx_rate_s, 32)),
 			prdcr->conn_intrvl_us,
 			prdcr_state_str(prdcr->conn_state));
 	if (rc)
