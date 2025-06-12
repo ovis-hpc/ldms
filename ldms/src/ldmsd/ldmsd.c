@@ -1730,12 +1730,14 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 					"specified to %s. Ignore the new value %s\n",
 					ovis_log_level_to_str(ovis_log_get_level(NULL)), value);
 		} else {
-			is_loglevel_thr_set = 1;
 			log_level_thr = ovis_log_str_to_level(value);
 			if (log_level_thr < 0) {
+				ovis_log(NULL, OVIS_LERROR, "Unrecognized log level '%s'\n", value);
 				log_level_thr = OVIS_LERROR;
 				return EINVAL;
 			}
+			is_loglevel_thr_set = 1;
+			ovis_log_default_set_level(log_level_thr);
 		}
 		break;
 	case 'F':
@@ -1896,6 +1898,24 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 
 void log_init()
 {
+	int log_mode = 0;
+	char *lt;
+        int ret;
+	/*
+	 * TODO: There should be a better way to get this information.
+	 */
+	lt = getenv("OVIS_LOG_TIME_SEC");
+	if (lt)
+		log_mode = OVIS_LOG_M_TS;
+	lt = getenv("OVIS_LOG_DATE_TIME");
+	if (lt)
+		log_mode = OVIS_LOG_M_DT;
+	ret = ovis_log_init("ldmsd", log_level_thr, log_mode);
+	if (ret) {
+		printf("Memory allocation failure.\n");
+		exit(1);
+	}
+
 	prdcr_log = ovis_log_register("producer", "Messages for the producer infrastructure");
 	updtr_log = ovis_log_register("updater", "Messages for the updater infrastructure");
 	store_log = ovis_log_register("store", "Messages for the common storage infrastructure");
@@ -1903,6 +1923,7 @@ void log_init()
 	config_log = ovis_log_register("config", "Messages for the configuration infrastructure");
 	sampler_log = ovis_log_register("sampler", "Messages for the common sampler infrastructure");
 	fo_log = ovis_log_register("failover", "Messages for the failover infrastructure");
+
 }
 
 int main(int argc, char *argv[])
@@ -2005,19 +2026,6 @@ int main(int argc, char *argv[])
 			}
 			break;
 		}
-	}
-
-	/*
-	 * TODO: It should be a better way to get this information.
-	 */
-	char *lt = getenv("OVIS_LOG_TIME_SEC");
-	int log_mode = 0;
-	if (lt)
-		log_mode = OVIS_LOG_M_TS;
-	ret = ovis_log_init("ldmsd", log_level_thr, log_mode);
-	if (ret) {
-		printf("Memory allocation failure.\n");
-		exit(1);
 	}
 
 	/* Process cmd-line options in config files */

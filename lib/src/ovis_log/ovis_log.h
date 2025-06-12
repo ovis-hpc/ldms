@@ -111,9 +111,9 @@ typedef struct ovis_log_s {
  *
  * Available modes:
  *  OVIS_LOG_M_DT date-time format (%a %b %d %H:%M:%S %Y) is used to format
- *               message timestamps. (default)
+ *               message timestamps.
  *  OVIS_LOG_M TS timestamp (%lu) is used to format message timestamps.
- *  OVIS_LOG_M_TS_NONE Timestamps are not included in log messages.
+ *  OVIS_LOG_M_TS_NONE Timestamps are not included in log messages. (default)
  *
  * The \c ovis_log_init() call makes \c ovis_log_open, \c ovis_log_close,
  *  \c ovis_log, and \c ovis_vlog asynchronous.
@@ -135,7 +135,7 @@ typedef struct ovis_log_s {
  * Further on, we could extend the default mode to include other mode types
  * by using the bitwise-or operation.
  */
-#define OVIS_LOG_M_DEFAULT OVIS_LOG_M_DT
+#define OVIS_LOG_M_DEFAULT OVIS_LOG_M_TS_NONE
 
 int ovis_log_init(const char *default_subsys_name, int default_level, int modes);
 
@@ -307,6 +307,19 @@ int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap);
 int ovis_log_set_level_by_regex(const char *regex_s, int level);
 int ovis_log_set_level_by_name(const char *subsys_name, int level);
 int ovis_log_set_level(ovis_log_t mylog, int level);
+
+/**
+ * \brief Set the level of the default log.
+ *
+ * If \c level is OVIS_LDEFAULT, the subsystem is set to the default level.
+ *
+ * \param level           The log levels to be enabled. This could be
+ *                        the bitwise-or of multiple log levels.
+ *
+ * \return 0 on success. On error, an errno is returned.
+ *         EINVAL   \c level is invalid.
+ */
+int ovis_log_default_set_level(int level);
 
 /**
  * \brief Get the log level of a subsystem
