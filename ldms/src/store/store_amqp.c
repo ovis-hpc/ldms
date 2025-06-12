@@ -121,7 +121,7 @@ static size_t realloc_msg_buf(amqp_inst_t ai, size_t buf_len)
 	if (ai->msg_buf)
 		return ai->msg_buf_len;
 	else
-		LERR("OOM error allocating %d bytes for message buffer.\n", buf_len);
+		LERR("OOM error allocating %zd bytes for message buffer.\n", buf_len);
 	return 0;
 }
 
@@ -147,7 +147,7 @@ static int setup_certs(amqp_inst_t ai, const char *cacert, struct attr_value_lis
 		}
 		rc = amqp_ssl_socket_set_key(ai->socket, cert, key);
 		if (rc) {
-			LERR("Error %d setting key and cert files.\n");
+			LERR("Error %d setting key and cert files.\n", rc);
 			goto out;
 		}
 	}
