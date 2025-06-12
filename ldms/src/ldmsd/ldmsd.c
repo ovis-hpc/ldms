@@ -1986,9 +1986,14 @@ int main(int argc, char *argv[])
 				"Please specify `banner mode=<0|1|2>` in a configuration file.");
 			cleanup(EINVAL, "Received an obsolete command-line option");
 		case 'F':
-			ovis_log(NULL, OVIS_LCRIT,
-				"The option `-F` is obsolete. ");
-			cleanup(EINVAL, "Received an obsolete command-line option");
+			/* We will keep this as a warning in v4.5.1 to allow backwards compatibility from v4.4.
+			 * This will ease the transition for users since they can update their systemd service
+			 * files to use "-F" while still at v4.4.X, and not have to synchronize their configuration
+			 * changes at v4.5.1 upgrade time.
+			 */
+			ovis_log(NULL, OVIS_LWARN,
+				"The option `-F` is deprecated. ldmsd now ALWAYS runs in the foreground.\n");
+			break;
 		default:
 			ret = ldmsd_process_cmd_line_arg(op, optarg);
 			if (ret) {
