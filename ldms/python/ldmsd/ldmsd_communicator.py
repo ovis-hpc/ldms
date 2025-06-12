@@ -2234,9 +2234,9 @@ class Communicator(object):
         if 'rail' in kwargs.keys() and kwargs['rail']:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RAIL, value=str(int(kwargs['rail']))))
         if 'quota' in kwargs.keys() and kwargs['quota']:
-            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.QUOTA, value=str(int(kwargs['quota']))))
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.QUOTA, value=str(kwargs['quota'])))
         if 'rx_rate' in kwargs.keys() and kwargs['rx_rate']:
-            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(int(kwargs['rx_rate']))))
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(kwargs['rx_rate'])))
         if 'cache_ip' in kwargs.keys() and kwargs['cache_ip']:
             attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.IP, value = str(kwargs['cache_ip'])))
 

@@ -15,11 +15,6 @@ AUTH_ATTRS = [
     'conf'
 ]
 
-BYTE_ATTRS = [
-    'rx_rate',
-    'quota'
-]
-
 CORE_ATTRS = [
     'daemons',
     'aggregators',
@@ -116,12 +111,6 @@ def check_opt(attr, spec):
         if attr in INT_ATTRS:
             if spec[attr] is not None:
                 return check_intrvl_str(spec[attr])
-        if attr in BYTE_ATTRS:
-            try:
-                if spec[attr] is not None:
-                    return int(spec[attr])
-            except:
-                raise ValueError(f'Error: "{spec[attr]}" is not a valid integer')
         return spec[attr]
     else:
         if attr in DEFAULT_ATTR_VAL:
