@@ -465,7 +465,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		int rts = atoi(rt);
 		if (rts < 1) {
 			ovis_log(mylog, OVIS_LERROR,
-				STOR ": config retry=%s invalid.\n", rts);
+				STOR ": config retry=%d invalid.\n", rts);
 			return EINVAL;
 		} else {
 			as.retry_sec = rts;
@@ -479,7 +479,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		int rts = atoi(rt);
 		if (rts < 1) {
 			ovis_log(mylog, OVIS_LERROR,
-				STOR ": config timeout=%s invalid.\n", rts);
+				STOR ": config timeout=%d invalid.\n", rts);
 			return EINVAL;
 		} else {
 			as.timeout.tv_sec = rts / 1000;
@@ -493,7 +493,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		int rts = atoi(rt);
 		if (rts < 0) {
 			ovis_log(mylog, OVIS_LERROR,
-				STOR ": config heartbeat=%s invalid.\n", rts);
+				STOR ": config heartbeat=%d invalid.\n", rts);
 			return EINVAL;
 		} else {
 			as.heartbeat = rts;
@@ -1035,10 +1035,10 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set, int 
 	if (logmsg) {
 		if (message_bytes.len > 4000) {
 			ovis_log(mylog, OVIS_LDEBUG, "%s: %.4000s <truncated>\n",
-				si->routingkey, message_bytes.bytes);
+                                 si->routingkey, (char *)message_bytes.bytes);
 		} else {
 			ovis_log(mylog, OVIS_LDEBUG, "%s: %s\n", si->routingkey,
-				message_bytes.bytes);
+                                 (char *)message_bytes.bytes);
 		}
 		ovis_log(mylog, OVIS_LDEBUG, STOR "%s: len=%zu\n", si->routingkey,
 			message_bytes.len);
