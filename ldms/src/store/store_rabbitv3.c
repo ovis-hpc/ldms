@@ -213,7 +213,6 @@ struct rabbitv3_metric_store {
 
 /* group of metric support data.  */
 struct rabbitv3_store_instance {
-	struct ldmsd_store *store;
 	char *container;
 	char *schema;
 	char *key; /* container schema */
@@ -997,7 +996,6 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
 			ovis_log(mylog, OVIS_LERROR,"rabbitv3: oom meta_idx\n");
 			goto err2;
 		}
-		si->store = s;
 		si->container = strdup(container);
 		if (!si->container) {
 			ovis_log(mylog, OVIS_LERROR,"rabbitv3: oom container\n");
