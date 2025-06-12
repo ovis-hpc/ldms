@@ -1,0 +1,17 @@
+load name=blob_stream_writer plugin=blob_stream_writer
+config name=blob_stream_writer path=${STOREDIR} container=blobs stream=slurm timing=1 types=1 spool=1 rolltype=3 rollover=10
+
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=2000000
+prdcr_subscribe regex=.* stream=slurm
+prdcr_start name=localhost1
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+# load name=store_csv
+# config name=store_csv path=${STOREDIR} altheader=0
+
+# strgp_add name=store_${testname} plugin=store_csv schema=${dstat_schema} container=node
+# strgp_prdcr_add name=store_${testname} regex=.*
+# strgp_start name=store_${testname}
