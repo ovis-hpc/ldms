@@ -67,13 +67,13 @@ static ev_worker_t logger_w;
 static ev_type_t log_type;
 static int is_init;
 static FILE *log_fp;
-static int default_modes = OVIS_LOG_M_DT;
+static int default_modes = OVIS_LOG_M_DEFAULT;
 static char *progname;
 
 static struct ovis_log_s default_log = {
-	.name = "",
+	.name = NULL,
 	.desc = "The default log subsystem",
-	.level = OVIS_LERROR | OVIS_LCRITICAL,
+	.level = OVIS_LWARNING | OVIS_LERROR | OVIS_LCRITICAL,
 	.ref_count = 1,
 };
 
@@ -152,6 +152,14 @@ static ovis_log_t __find_log(const char *subsys_name)
 	if (rbn)
 		log = container_of(rbn, struct ovis_log_s, rbn);
 	return log;
+}
+
+int ovis_log_default_set_level(int level)
+{
+	if (!is_level_valid(level))
+		return EINVAL;
+        default_log.level = level;
+	return 0;
 }
 
 int ovis_log_set_level(ovis_log_t mylog, int level)
@@ -670,11 +678,17 @@ static int __log(ovis_log_t log, int level, char *msg,
 		return rc;
 
 	/* Print the level name */
-	rc = fprintf(f, "%9s:", ((level == OVIS_LALWAYS)?"":ovis_loglevel_names[level]));
+	rc = fprintf(f, "%9s", ((level == OVIS_LALWAYS)?"":ovis_loglevel_names[level]));
 	if (rc < 0)
 		return rc;
 
-	rc = fprintf(f, " %s: %s", log->name, msg);
+	if (log->name) {
+		rc = fprintf(f, ": %s", log->name);
+		if (rc < 0)
+			return rc;
+	}
+
+        rc = fprintf(f, ": %s", msg);
 	if (rc < 0)
 		return rc;
 	return 0;
@@ -928,8 +942,7 @@ int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap)
 
 	if (default_modes & OVIS_LOG_M_TS) {
 		gettimeofday(&tv, NULL);
-
-	} else {
+	} else if (default_modes & OVIS_LOG_M_DT) {
 		t = time(NULL);
 		localtime_r(&t, &tm);
 	}
@@ -959,7 +972,7 @@ int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap)
 
 	if (default_modes & OVIS_LOG_M_TS)
 		EV_DATA(log_ev, struct log_data)->tv = tv;
-	else
+	else if (default_modes & OVIS_LOG_M_DT)
 		EV_DATA(log_ev, struct log_data)->tm = tm;
 	ev_post(NULL, logger_w, log_ev, NULL);
 out:

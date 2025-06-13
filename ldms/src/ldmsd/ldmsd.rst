@@ -69,6 +69,14 @@ LDMSD_UPDTR_OFFSET_INCR
    if the offset hint is 100000, the updater offset will be 100000 +
    LDMSD_UPDTR_OFFSET_INCR. The default is 100000 (100 milliseconds).
 
+LDMSD_LOG_DATE_TIME
+   When set, this environment variable tells ldmsd to prefix each line of
+   output with a timestamp in human readable form.
+
+LDMSD_LOG_TIME_SEC
+   When set, this environment variable tells ldmsd to prefix each line of
+   output with a timestamp in the form of seconds-since-epoch.
+
 CRAY Specific Environment variables for ugni transport
 ------------------------------------------------------
 
