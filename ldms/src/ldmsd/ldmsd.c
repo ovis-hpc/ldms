@@ -1907,7 +1907,10 @@ void log_init()
 	lt = getenv("OVIS_LOG_TIME_SEC");
 	if (lt)
 		log_mode = OVIS_LOG_M_TS;
-	lt = getenv("OVIS_LOG_DATE_TIME");
+	lt = getenv("LDMSD_LOG_TIME_SEC");
+	if (lt)
+		log_mode = OVIS_LOG_M_TS;
+	lt = getenv("LDMSD_LOG_DATE_TIME");
 	if (lt)
 		log_mode = OVIS_LOG_M_DT;
 	ret = ovis_log_init("ldmsd", log_level_thr, log_mode);
