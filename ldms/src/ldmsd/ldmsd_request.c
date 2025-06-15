@@ -10713,6 +10713,29 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 
+	/*
+	 * Make sure that advertised producers subscribe and unsubscribe stream and msg_channel correctly
+	 */
+	struct ldmsd_prdcr_sub_unsub *psun;
+	ldmsd_prdcr_sub_unsub_list_lock();
+	for (psun = ldmsd_prdcr_sub_unsub_list_first(); psun; psun = ldmsd_prdcr_sub_unsub_list_next(psun)) {
+		rc = regexec(&psun->regex, prdcr->obj.name, 0, NULL, 0);
+		if (rc)
+			continue;
+		if (psun->is_sub) {
+			if (psun->stream_name)
+				ldmsd_prdcr_stream_subscribe(prdcr, psun->stream_name);
+			else /* msg_channel */
+				ldmsd_prdcr_msg_subscribe(prdcr, psun->msg, psun->rate);
+		} else {
+			if (psun->stream_name)
+				ldmsd_prdcr_stream_unsubscribe(prdcr, psun->stream_name);
+			else /* msg_channel */
+				ldmsd_prdcr_msg_unsubscribe(prdcr, psun->msg);
+		}
+	}
+	ldmsd_prdcr_sub_unsub_list_unlock();
+
 	if (pl->auto_start && is_new_prdcr) {
 		if (prdcr->type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE) {
 			prdcr->xprt = ldms_xprt_get(x, "prdcr");
