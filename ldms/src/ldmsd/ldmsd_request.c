@@ -9980,7 +9980,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			goto err;
 		}
 	} else {
-		pl->quota = 0; /* 0 means inherit quota from the listen xprt */
+		pl->quota = -1;
 	}
 
 	if (rx_rate) {
@@ -9993,7 +9993,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 			goto err;
 		}
 	} else {
-		pl->rx_rate = 0; /* 0 means inherit rx_rate from the listen xprt */
+		pl->rx_rate = -1;
 	}
 
 	if (prdcr_type) {
@@ -10450,6 +10450,8 @@ ldmsd_prdcr_t __advertised_prdcr_new(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t
 	char *adv_hostname;
 	char *advtr_port_s;
 	int adv_port;
+	int rail;
+	uint64_t quota, rx_rate;
 
 	struct ldmsd_sec_ctxt sctxt;
 	char *xprt_s;
@@ -10457,6 +10459,8 @@ ldmsd_prdcr_t __advertised_prdcr_new(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t
 	ldms_t x;
 
 	ldmsd_prdcr_t prdcr;
+
+	advtr_name = adv_hostname = advtr_port_s = NULL;
 
 	/* Get daemon's UID and GID */
 	ldmsd_sec_ctxt_get(&sctxt);
@@ -10472,6 +10476,10 @@ ldmsd_prdcr_t __advertised_prdcr_new(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t
 		goto einval;
 
 	advtr_port_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
+
+	quota = pl->quota;
+	rx_rate = pl->rx_rate;
+
 	if (pl->prdcr_type == LDMSD_PRDCR_TYPE_ADVERTISED_PASSIVE) {
 		rc = ldms_xprt_addr(x, NULL, &rem_addr);
 		if (rc) {
@@ -10480,17 +10488,26 @@ ldmsd_prdcr_t __advertised_prdcr_new(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t
 			goto err;
 		}
 		adv_port = rem_addr.sin_port;
+
+		rail = ldms_xprt_rail_eps(reqc->xprt->ldms.ldms);
+
+		if (pl->quota == -1) {
+			/* Inherit the limit from the listener endpoint */
+			quota = ldms_xprt_rail_recv_quota_get(reqc->xprt->ldms.ldms);
+		}
+
+		if (pl->rx_rate == -1) {
+			/* Inherit the limit from the listener endpoint */
+			rx_rate = ldms_xprt_rail_recv_rate_limit_get(reqc->xprt->ldms.ldms);
+		}
 	} else {
-		adv_port = pl->advtr_port;
-
-
-
 		if (!pl->advtr_port) {
 			char *endptr;
 			adv_port = strtol(advtr_port_s, &endptr, 0);
 		} else {
 			adv_port = pl->advtr_port;
 		}
+		rail = pl->rail;
 	}
 
 	errno = 0;
@@ -10498,7 +10515,7 @@ ldmsd_prdcr_t __advertised_prdcr_new(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t
 			xprt_s, adv_hostname, adv_port,
 			pl->prdcr_type, pl->reconnect, pl->auth,
 			sctxt.crd.uid, sctxt.crd.gid, 0700,
-			pl->rail, pl->quota, pl->rx_rate, 1);
+			rail, quota, rx_rate, 1);
 	if (!prdcr) {
 		rc = errno;
 		ovis_log(NULL, OVIS_LERROR, "Error %d: Failed to create an " \
@@ -10517,6 +10534,10 @@ ldmsd_prdcr_t __advertised_prdcr_new(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t
 		}
 	}
 	ldms_xprt_put(x, "advertised_prdcr"); /* Put back the reference at the beginning of the funciton */
+out:
+	free(advtr_name);
+	free(adv_hostname);
+	free(advtr_port_s);
 	return prdcr;
 
 einval:
@@ -10531,13 +10552,15 @@ einval:
 	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 				"Invalid advertisement message");
 	reqc->errcode = errno = EINVAL;
-	return NULL;
+	prdcr = NULL;
+	goto out;
 err:
 	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 				"ldmsd failed to create producers.");
 	reqc->errcode = EINTR;
 	errno = rc;
-	return NULL;
+	prdcr = NULL;
+	goto out;
 }
 
 /* The implementation is in ldmsd_updtr.c */
