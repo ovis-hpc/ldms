@@ -804,7 +804,7 @@ class YamlCfg(object):
             adv_xprt = check_opt('advertiser_xprt', plisten[pl])
             adv_port = check_opt('advertiser_port', plisten[pl])
             adv_auth = check_opt('advertiser_auth', plisten[pl])
-            rails = check_opt('rails', plisten[pl])
+            rail = check_opt('rail', plisten[pl])
             reconnect = check_opt('reconnect', plisten[pl])
 
             dstr = self.write_opt_attr(dstr, 'disable_start', dstart)
@@ -816,7 +816,7 @@ class YamlCfg(object):
             dstr = self.write_opt_attr(dstr, 'advertiser_xprt', adv_xprt)
             dstr = self.write_opt_attr(dstr, 'advertiser_port', adv_port)
             dstr = self.write_opt_attr(dstr, 'advertiser_auth', adv_auth)
-            dstr = self.write_opt_attr(dstr, 'rails', rails)
+            dstr = self.write_opt_attr(dstr, 'rail', rail)
             dstr = self.write_opt_attr(dstr, 'reconnect', reconnect, endline=True)
             dstr += f'prdcr_listen_start name={pl}\n'
         return dstr
