@@ -1017,12 +1017,13 @@ list_routine:
 	ASSERT_RETURN((!ldms_type_is_array(le_mtype)) || mlen);
 	if (!le) {
 		/* list empty. can't init yet */
-		ovis_log(static_log, OVIS_LERROR,
+		ovis_log(static_log, OVIS_LDEBUG,
 			"strgp '%s': row '%d': col[dst] '%s' "
 			"LIST is empty, skipping set metric resolution.\n",
 			ctxt->strgp->obj.name, ctxt->col_no, cfg_col->dst
 			);
-		errno = ENOENT;
+		/* The caller resolve_metrics() treates ENOEXEC as a non-error. */
+		rc = ENOEXEC;
 		goto err;
 	}
 	if (le_mtype == LDMS_V_LIST) {
@@ -1130,6 +1131,12 @@ err:
 	return rc;
 }
 
+/*
+ * ENOEXEC is used to indicate that the plugin cannot parse
+ * the input and the further logic shouldn't be executed. However, it is not an error.
+ *
+ * resolve_metrics() treats ENOEXEC as a non-error return code.
+ */
 static int resolve_metrics(ldmsd_strgp_t strgp,
 			decomp_static_mid_rbn_t mid_rbn,
 			decomp_static_row_cfg_t cfg_row,
@@ -1161,6 +1168,7 @@ static int resolve_metrics(ldmsd_strgp_t strgp,
 		cfg_col = &cfg_row->cols[col_no];
 		ctxt.col_no = col_no;
 		rc = resolve_col(&ctxt, col_mid, cfg_col);
+		/* Treat ENOEXEC as a non-error */
 		if (rc)
 			goto err;
 	}
@@ -1914,6 +1922,13 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			}
 			rc = resolve_metrics(strgp, mid_rbn, cfg_row, set);
 			if (rc) {
+				/* decomp_static cannot decompose
+				 * the row but it is not an error,
+				 * e.g., empty list.
+				 */
+				if (rc == ENOEXEC) {
+					rc = 0;
+				}
 				free(mid_rbn);
 				goto err_0;
 			}
