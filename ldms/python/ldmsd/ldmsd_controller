@@ -1872,7 +1872,7 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def __log_level(self, arg):
         arg = self.handle_args('log_level', arg)
-        if arg:
+        if not arg:
             return
         rc, msg = self.comm.log_level(arg['level'], arg['name'], arg['regex'], arg['test'])
         if rc:
