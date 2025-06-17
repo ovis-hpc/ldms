@@ -5596,7 +5596,7 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 		reqc->errcode = ENOENT;
 	}
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
-	for (store = ldmsd_store_first(); samp;
+	for (store = ldmsd_store_first(); store;
 			store = ldmsd_store_next(store)) {
 		if (name && (0 != strcmp(name, store->cfg.name)))
 			continue;
