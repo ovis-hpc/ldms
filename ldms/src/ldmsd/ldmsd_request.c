@@ -792,6 +792,7 @@ int is_req_id_priority(enum ldmsd_request req_id)
 	case LDMSD_PID_FILE_REQ:
 	case LDMSD_BANNER_MODE_REQ:
 	case LDMSD_STREAM_DISABLE_REQ:
+	case LDMSD_MSG_DISABLE_REQ:
 		return 1;
 	default:
 		return 0;
