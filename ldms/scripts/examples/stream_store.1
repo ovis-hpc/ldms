@@ -10,6 +10,6 @@ config name=stream_csv_store path=${STOREDIR} container=csv stream=foo buffer=1 
 # default works
 #config name=stream_csv_store path=${STOREDIR} container=csv stream=foo
 
-prdcr_add name=localhost1 host=localhost type=active xprt=sock port=${port1} interval=20000000
+prdcr_add name=localhost1 host=localhost type=active xprt=sock port=${port1} reconnect=20000000
 prdcr_subscribe stream=foo regex=localhost*
 prdcr_start name=localhost1

@@ -1,19 +1,19 @@
 load name=store_csv
 config name=store_csv path=${STOREDIR} altheader=0
 
-prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=10000000
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} reconnect=10000000
 prdcr_start name=localhost1
 
-prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=10000000
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} reconnect=10000000
 prdcr_start name=localhost2
 
-prdcr_add name=localhost3 host=${HOST} type=active xprt=${XPRT} port=${port3} interval=10000000
+prdcr_add name=localhost3 host=${HOST} type=active xprt=${XPRT} port=${port3} reconnect=10000000
 prdcr_start name=localhost3
 
-prdcr_add name=localhost4 host=${HOST} type=active xprt=${XPRT} port=${port4} interval=10000000
+prdcr_add name=localhost4 host=${HOST} type=active xprt=${XPRT} port=${port4} reconnect=10000000
 prdcr_start name=localhost4
 
-prdcr_add name=localhost5 host=${HOST} type=active xprt=${XPRT} port=${port5} interval=10000000
+prdcr_add name=localhost5 host=${HOST} type=active xprt=${XPRT} port=${port5} reconnect=10000000
 prdcr_start name=localhost5
 
 updtr_add name=allhosts interval=1000000 offset=100000

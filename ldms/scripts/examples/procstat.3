@@ -2,10 +2,10 @@ load name=${testname}
 config name=${testname} producer=localhost${i} schema=${testname}_auto instance=localhost${i}/${testname}ideviant component_id=${i}
 start name=${testname} interval=1000000 offset=0
 
-prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=2000000
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} reconnect=2000000
 prdcr_start name=localhost1
 
-prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=2000000
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} reconnect=2000000
 prdcr_start name=localhost2
 
 updtr_add name=allhosts interval=1000000 offset=100000

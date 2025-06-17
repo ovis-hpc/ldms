@@ -2,13 +2,13 @@ load name=store_csv
 config name=store_csv path=${STOREDIR} altheader=0
 
 # first aggregator at 2 sec intervals
-prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=1000000
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} reconnect=1000000
 prdcr_start name=localhost1
 
-prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=1000000
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} reconnect=1000000
 prdcr_start name=localhost2
 
-prdcr_add name=localhost3 host=${HOST} type=active xprt=${XPRT} port=${port3} interval=1000000
+prdcr_add name=localhost3 host=${HOST} type=active xprt=${XPRT} port=${port3} reconnect=1000000
 prdcr_start name=localhost3
 
 updtr_add name=allhosts interval=2000000 offset=1000000 auto_interval=true

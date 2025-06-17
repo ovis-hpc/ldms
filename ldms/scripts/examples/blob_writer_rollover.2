@@ -1,7 +1,7 @@
 load name=blob_stream_writer plugin=blob_stream_writer
 config name=blob_stream_writer path=${STOREDIR} container=blobs stream=slurm timing=1 types=1 spool=1 rolltype=3 rollover=10
 
-prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=2000000
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} reconnect=2000000
 prdcr_subscribe regex=.* stream=slurm
 prdcr_start name=localhost1
 

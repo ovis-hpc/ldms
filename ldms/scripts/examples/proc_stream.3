@@ -1,7 +1,7 @@
 load name=blob_stream_writer plugin=blob_stream_writer
 config name=blob_stream_writer path=${STOREDIR} container=blobs_L2 stream=slurm stream=linux_proc_sampler_env stream=linux_proc_sampler_argv types=1 stream=linux_proc_sampler_files
 
-prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=2000000
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} reconnect=2000000
 prdcr_subscribe regex=.* stream=linux_proc_sampler_argv
 prdcr_subscribe regex=.* stream=linux_proc_sampler_env
 prdcr_subscribe regex=.* stream=linux_proc_sampler_files
