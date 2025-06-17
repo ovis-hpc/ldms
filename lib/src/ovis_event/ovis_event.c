@@ -298,6 +298,8 @@ ovis_scheduler_t ovis_scheduler_new()
 	if (rc != 0)
 		goto err;
 
+	ovis_thrstats_init(&m->stats, "ovis_scheduler");
+
 	goto out;
 
 err:
@@ -643,7 +645,6 @@ int ovis_scheduler_loop(ovis_scheduler_t m, int return_on_empty)
 	int rc = 0;
 	int cnt;
 
-	ovis_thrstats_init(&m->stats, m->name);
 	ovis_thrstats_thread_id_set(&m->stats);
 	ovis_scheduler_ref_get(m);
 	pthread_mutex_lock(&m->mutex);
@@ -803,6 +804,7 @@ int ovis_scheduler_name_set(ovis_scheduler_t s, const char *name)
 	s->name = strdup(name);
 	if (!s->name)
 		return ENOMEM;
+	ovis_thrstats_init(&s->stats, name);
 	return 0;
 }
 
