@@ -5974,6 +5974,7 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
 	char *level_s = NULL;
 	char *subsys = NULL;
 	char *regex_s = NULL;
+	char *test_s = NULL;
 	size_t cnt = 0;
 	int is_test = 0;
 	int level;
@@ -5988,6 +5989,7 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
 	}
 	subsys = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	regex_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
+	test_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_TEST);
 
 	if (0 == strcasecmp(level_s, "default") || (0 == strcasecmp(level_s, "reset"))) {
 		level = OVIS_LDEFAULT;
@@ -6026,16 +6028,14 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
 	if (rc)
 		goto out;
 
-	if (ldmsd_req_attr_keyword_exist_by_id(reqc->req_buf, LDMSD_ATTR_TEST))
-		is_test = 1;
-
 	__dlog(DLOG_CFGOK, "log_level level=%s%s%s%s%s%s\n", level_s,
 		is_test ? " test" : "",
 		subsys ? " name=" : "",
 		subsys ? subsys : NULL,
 		regex_s ? " regex=" : "",
 		regex_s ? regex_s : "");
-	if (is_test) {
+
+	if (test_s && (0 == strcasecmp(test_s, "true"))) {
 		ovis_log(config_log, OVIS_LDEBUG, "TEST DEBUG\n");
 		ovis_log(config_log, OVIS_LINFO, "TEST INFO\n");
 		ovis_log(config_log, OVIS_LWARNING, "TEST WARNING\n");
@@ -6049,6 +6049,7 @@ out:
 	free(level_s);
 	free(subsys);
 	free(regex_s);
+	free(test_s);
 	return 0;
 }
 
