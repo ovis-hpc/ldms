@@ -306,10 +306,6 @@ typedef struct decomp_static_mid_rbn_s {
 		size_t array_len;
 		enum ldms_value_type rec_mtype;
 		enum ldms_value_type le_mtype;
-#if 0
-		size_t mval_size;	/* Size of this mval */
-		off_t mval_offset;	/* Offset into mval memory for this column */
-#endif
 	} col_mids[OVIS_FLEX];
 } *decomp_static_mid_rbn_t;
 
