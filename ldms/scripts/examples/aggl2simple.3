@@ -1,6 +1,6 @@
 load name=${storename}
 config name=${storename} path=${STOREDIR} altheader=0
-prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=1000000
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} reconnect=1000000
 prdcr_start name=localhost2
 
 updtr_add name=allhosts interval=1000000 offset=200000

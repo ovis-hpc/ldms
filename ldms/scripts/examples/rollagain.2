@@ -1,7 +1,7 @@
 load name=store_csv
 config name=store_csv path=${STOREDIR} altheader=0 rollover=5 rollagain=10 rolltype=5 rename_template=${STOREDIR}/%{HOSTNAME}/%B typeheader=2 create_perm=0643
 
-prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=10000000
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} reconnect=10000000
 prdcr_start name=localhost1
 
 updtr_add name=allhosts interval=1000000 offset=100000

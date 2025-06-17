@@ -2,10 +2,10 @@ load name=dstat
 config name=dstat producer=localhost${i} instance=localhost${i}/dstat schema=dstat component_id=${i}
 start name=dstat interval=1000000 offset=0
 
-prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=2000000
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} reconnect=2000000
 prdcr_start name=localhost2
 
-prdcr_add name=localhost3 host=${HOST} type=active xprt=${XPRT} port=${port3} interval=2000000
+prdcr_add name=localhost3 host=${HOST} type=active xprt=${XPRT} port=${port3} reconnect=2000000
 prdcr_start name=localhost3
 
 updtr_add name=allhosts interval=1000000 offset=100000
