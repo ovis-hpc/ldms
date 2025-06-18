@@ -1017,13 +1017,15 @@ int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset,
 		goto out;
 	}
 
+	ldmsd_sampler_lock(samp);
+
 	if (exclusive_thread) {
 		samp->use_xthread = atoi(exclusive_thread);
 	}
 
 	rc = ovis_time_str2us(interval, &sample_interval);
 	if (rc)
-		return rc;
+		goto out;
 
 	samp->sample_interval_us = sample_interval;
 	if (offset) {
