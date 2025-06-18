@@ -84,7 +84,7 @@ FILECNT_LDMSD <daemon-numbers>
 LDMSD [conf-options] <daemon-numbers>
    |
    | This starts a number of daemons described by daemon-numbers. The
-     numbers can be a given list, such as "1 2 3". The environment of
+     numbers can be an unquoted list, such as 1 2 3. The environment of
      each daemon (and its config script) will contain the variable i set
      to one of the given values, as described in ENVIRONMENT. For each
      value of i, a configuration fragment $input_file.$i must also
@@ -96,9 +96,23 @@ MESSAGE [arguments]
    |
    | The expanded arguments are logged.
 
-LDMS_LS <k> [ldms_ls_args]
+LDMS_LS <daemon-numbers> [ldms_ls_args]
    |
-   | This invokes ldms_ls on the k-th ldmsd.
+   | This invokes ldms_ls on the k-th ldmsd daemons.
+     Valgrind is applied if vgon is current.
+     If more than one daemon is given, the list must be quoted.
+
+LDMS_STATUS <daemon-numbers>
+   |
+   | This sends the status command to the k-th ldmsd daemons.
+     using ldmsd_controller. Valgrind is applied if vgon is current.
+     If more than one daemon is given, the list must be quoted.
+
+FILECNT_LDMSD <daemon-numbers>
+   |
+   | This reports FileCount, Threads, VmRSS, VmSize from the
+     k-th daemon process, as seen in /proc/$pid/[fd,status].
+     Here the daemon-numbers list must not be unquoted.
 
 LDMS_CPU_GRIND [-k K] [ldms_cpu_grind_args]
    |
@@ -164,6 +178,51 @@ portbase=<K>
      that each test uses a unique range of ports. This enables tests to
      proceed in parallel on the same node.
 
+Group Operations
+-------------------
+
+The following functions manage parallel and group-defined behaviors.
+
+WAIT_ALL <timeout> <daemon numbers>
+   |
+   | Waits until all processes listed in daemon numbers meet at this location
+     and complete a barrier check (none continue until all check in). If
+     any process fails to check in before the timeout (defined in seconds),
+     all processes will fail the wait operation. Zero or negative timeouts
+     are converted to one billion second timeouts (31 years).
+
+LDMS_LS_WAIT <schema> timeout> <daemon numbers>
+   |
+   | Waits until all daemons given have been seen by first rank in the job
+     to have the schema named.  A WAIT_ALL across all ranks of the job follows.
+
+LDMS_LS_WAIT_STORM <schema> timeout> <daemon numbers>
+   |
+   | As LDMS_LS_WAIT, but all daemons given check for the schema instead of just
+     the first rank.
+     At high daemon counts, this can fail due to system limits on number of files open
+     or to limits on number of active connections supported in a high speed network
+     interface.  It provides a good test of timing effects on
+     daemons that have just been started and may not have finished input parsing.
+     A WAIT_ALL across all ranks of the job follows.
+
+LDMS_AGG_WAIT <agg-daemon> <agg-timeout> <schema> <set-timeout> <daemon number>
+   |
+   | Wait until all daemons given have been seen to have the schema named present
+     by a checker of the daemon running in the agg-daemon process rank. Waits
+     up to agg-timeout seconds for the agg-daemon to appear and waits up to
+     set-timeout for the sets to appear on that daemon.
+     A WAIT_ALL across all ranks of the job follows.
+
+LDMS_AGG_WAITSET_COUNT agg-daemon agg_timeout set-count set_timeout
+   |
+   | Wait until the agg-daemon given has been seen to have no more than
+     set-count sets. Waits up to agg_timeout for the connection to agg-daemon
+     to succeed. Waits up to set-timeout seconds for sets to disappear.
+     A WAIT_ALL across all ranks of the job follows.
+     This is a test that expected sets have disappeared after upstream daemons
+     have been stopped.
+
 CONFIGURATION OPTIONS
 =====================
 
@@ -196,7 +255,7 @@ files. See FILES below. Multiple -P options are allowed.
 
 -s <wait_microseconds>
    |
-   | After an ldmsd is started, wait wait_microseconds before checking
+   | After an ldmsd is started, wait up to wait_microseconds checking
      for the daemon PID file to exist. The appropriate wait time is
      variable depending on the complexity of the configuration. If not
      specified, the default is 2 seconds wait time. If the gnu command
@@ -330,7 +389,11 @@ INPUT_DIR
 
 TESTDIR
    |
-   | Root directory of the testing setup and output.
+   | Root directory of the shared testing setup.
+
+TESTDIR_FAST
+   |
+   | Root directory of the fast testing scratch (local RAM or NVME)
 
 STOREDIR
    |
@@ -452,15 +515,15 @@ GENERATED FILES
    |
    | The start command of the kth daemon.
 
-*$test_dir/run/grind
+*$test_dir/run/grind*
    |
    | The scratch directory for ldms_cpu_grind pidfiles
 
-*$test_dir/run/grind/lead.$k.tasks_$p
+*$test_dir/run/grind/lead.$k.tasks_$p*
    |
    | File identifying task k as having started P ldms_cpu_grind processes.
 
-*$test_dir/run/grind/ldms_cpu_grind.pids.$k.$j
+*$test_dir/run/grind/ldms_cpu_grind.pids.$k.$j*
    |
    | Pidfile of the j-th grind process started by the k-th slurm task.
 
@@ -488,6 +551,12 @@ With the ldms bin directory in your path, submit a job with
 
 
    The slurm options shown here override the defaults listed in the sbatch input file to run with 16 daemons on 4 nodes for 1 minute. The defaults are site specific, but the example 'cluster' is coded to run on any number of nodes with any number of tasks >= 3. Adding more tasks adds more data producers. Specifying more tasks than nodes assigns daemons round-robin to available nodes. The options specified with --account, and partition (-p) are site specific.
+
+NOTES
+=====
+Some test input files can be scaled by setting the environment variable 'maxdaemon'
+to an integer other than the default value set in the input file.
+It is recommended, but not required, that any scalable test case follow this convention.
 
 SEE ALSO
 ========

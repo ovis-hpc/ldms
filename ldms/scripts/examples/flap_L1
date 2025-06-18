@@ -1,0 +1,110 @@
+# run n+2 daemon (L2, L1, n-samplers) and cycle the L1 (daemon 2) up and down) .
+# use of fabric or rdma plugins will require allowroot=1 in the environment.
+portbase=11000
+ulimit -n 100000
+MESSAGE starting l1, l2 aggs and collectors
+VGARGS="--tool=drd --time-stamp=yes --gen-suppressions=all"
+VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=definite --time-stamp=yes --gen-suppressions=all  --main-stacksize=256000000"
+if test -f $pkglibdir/ldms.supp; then
+	VGARGS="$VGARGS --suppressions=$pkglibdir/ldms.supp"
+fi
+usevg_L1=0
+# might want to flip next 3 to be 1
+usevg_L2=0
+usevg_L0=0
+usevg_ls=0
+SET_LOG_LEVEL DEBUG
+# start collector(s)
+if test "x$maxdaemon" = "x"; then
+	maxdaemon=3
+fi
+ALL_DAEMONS=$(seq 1 $maxdaemon)
+DAEMONS $ALL_DAEMONS
+LDMSD_EXTRA="-m 20k"
+VGTAG=.samp
+
+# start n-2 sampler daemons
+if test $usevg_L0 = "1"; then
+	vgon
+fi
+LDMSD -s 5000000 -c $(seq 3 $maxdaemon)
+vgoff
+SLEEP 5 ;# give samplers time to spin up
+
+# scale m to handle maxdaemon
+# -m > 450 or so seems to be incompatible with arm/valgrind 3.13
+LDMSD_EXTRA="-m 64M"
+if test $usevg_L2 = "1"; then
+	vgon
+fi
+VGTAG=.L2
+if test $usevg_L2 = "1"; then
+	vgon
+fi
+# start L2 on daemon 1
+LDMSD 1
+vgoff
+
+# start L1 on daemon 2, with sampler daemons 3..maxdaemon configured
+if test $usevg_L1 = "1"; then
+	vgon
+fi
+VGTAG=.L1
+LDMSD -s 3000000 -P producer,`seq -s, 3 $maxdaemon` 2
+vgoff
+SLEEP 30
+
+FILECNT_LDMSD $ALL_DAEMONS
+
+if test $usevg_ls = "1"; then
+	vgon
+fi
+LDMS_LS 1
+vgoff
+
+for flap in $(seq 10); do
+	if test $bypass = "1"; then
+		break
+	fi
+	MESSAGE "L1 FLAP $flap starting at $(date +%s) $(date)"
+
+	# check that daemons 3-n started sampling and data reached L2
+	LDMS_AGG_WAIT 1 30 meminfo 30 $(seq 3 $maxdaemon)
+	FILECNT_LDMSD $ALL_DAEMONS
+
+	# stop L1 agg
+	MESSAGE Stopping L1
+	KILL_LDMSD 2
+
+	# check that 3-n samplers got dropped by aggregator
+	# still the local dstat set should be seen
+        lawsc_agg=1
+        lawsc_agg_connect_timeout=5
+        lawsc_count_target=1
+        lawsc_count_timeout=260
+	LDMS_AGG_WAIT_SET_COUNT \
+		$lawsc_agg \
+		$lawsc_agg_connect_timeout \
+		$lawsc_count_target \
+		$lawsc_count_timeout
+
+	MESSAGE DONE flap $flap LDMS_AGG_WAIT_SET_COUNT $(date +%s.%N)
+	SLEEP 10 ; # allow some timestamp space in the log before reconnect
+	# we should now have just dstat on the l2
+	# restart L1
+	MESSAGE restarting L1
+	if test $usevg_L1 = "1"; then
+		vgon
+	fi
+	LDMSD -s 3000000 -P producer,`seq -s, 3 $maxdaemon` 2
+	vgoff
+	SLEEP 30
+done
+FILECNT_LDMSD $ALL_DAEMONS
+
+LDMS_LS 2 -v
+# cleanup
+MESSAGE "cleaning up"
+KILL_LDMSD 1 $ALL_DAEMONS
+
+MESSAGE logs and data under ${TESTDIR}
