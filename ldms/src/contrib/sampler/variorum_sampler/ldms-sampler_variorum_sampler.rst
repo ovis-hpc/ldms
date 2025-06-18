@@ -10,7 +10,7 @@ Man page for the LDMS Variorum plugin
 
 :Date:   27 Jun 2022
 :Manual section: 7
-:Manual group: LDMS store
+:Manual group: LDMS sampler
 
 SYNOPSIS
 ========
