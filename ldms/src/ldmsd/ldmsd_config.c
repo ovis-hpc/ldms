@@ -189,7 +189,7 @@ struct ldmsd_plugin_generic * load_plugin(const char *plugin_name,
 				ovis_log(config_log, OVIS_LERROR,
 					 "The single instance plugin '%s' has already been loaded.\n",
 					 plugin_name);
-				goto err_1;
+				goto err_2;
 			}
 		}
 		ldmsd_cfgobj_store_t store;
@@ -198,7 +198,7 @@ struct ldmsd_plugin_generic * load_plugin(const char *plugin_name,
 				ovis_log(config_log, OVIS_LERROR,
 					 "The single instance plugin '%s' has already been loaded.\n",
 					 plugin_name);
-				goto err_1;
+				goto err_2;
 			}
 		}
 	}
