@@ -57,10 +57,20 @@ DAEMONS <daemon-numbers>
      explained in ENVIRONMENT below. If omitted, the ordering and
      aggregation relationships of LDMSD calls may be infeasible.
 
+SET_LOG_LEVEL <DEBUG|ERROR|INFO|ALL|QUIET|WARNING|CRITICAL>
+   |
+   | Set the generic log level for daemons started after
+     calling SET_LOG_LEVEL.
+
+FILECNT_LDMSD <daemon-numbers>
+   |
+   | Collect the list of open files from /proc/self/fd/ and print the
+     total to stdout. See FILES below.
+
 LDMSD [conf-options] <daemon-numbers>
    |
    | This starts a number of daemons described by daemon-numbers. The
-     numbers can be a given list, such as "1 2 3". The environment of
+     numbers can be an unquoted list, such as 1 2 3. The environment of
      each daemon (and its config script) will contain the variable i set
      to one of the given values, as described in ENVIRONMENT. For each
      value of i, a configuration fragment $input_file.$i must also
@@ -72,9 +82,23 @@ MESSAGE [arguments]
    |
    | The expanded arguments are logged.
 
-LDMS_LS <k> [ldms_ls_args]
+LDMS_LS <daemon-numbers> [ldms_ls_args]
    |
-   | This invokes ldms_ls on the k-th ldmsd.
+   | This invokes ldms_ls on the k-th ldmsd daemons.
+     Valgrind is applied if vgon is current.
+     If more than one daemon is given, the list must be quoted.
+
+LDMS_STATUS <daemon-numbers>
+   |
+   | This sends the status command to the k-th ldmsd daemons.
+     using ldmsd_controller. Valgrind is applied if vgon is current.
+     If more than one daemon is given, the list must be quoted.
+
+FILECNT_LDMSD <daemon-numbers>
+   |
+   | This reports FileCount, Threads, VmRSS, VmSize from the
+     k-th daemon process, as seen in /proc/$pid/[fd,status].
+     Here the daemon-numbers list must not be unquoted.
 
 KILL_LDMSD [strict] <daemon-numbers>
    |
@@ -137,6 +161,26 @@ portbase=<K>
      that each test uses a unique range of ports. This enables tests to
      proceed in parallel.
 
+Group Operations
+-------------------
+
+The following functions manage parallel and group-defined behaviors.
+
+LDMS_AGG_WAIT <agg-daemon> <agg-timeout> <schema> <set-timeout> <daemon number>
+   |
+   | Wait until all daemons given have been seen to have the schema named present
+     by a checker of the daemon running in the agg-daemon process rank. Waits
+     up to agg-timeout seconds for the agg-daemon to appear and waits up to
+     set-timeout for the sets to appear on that daemon.
+
+LDMS_AGG_WAITSET_COUNT agg-daemon agg_timeout set-count set_timeout
+   |
+   | Wait until the agg-daemon given has been seen to have no more than
+     set-count sets. Waits up to agg_timeout for the connection to agg-daemon
+     to succeed. Waits up to set-timeout seconds for sets to disappear.
+     This is a test that expected sets have disappeared after upstream daemons
+     have been stopped.
+
 CONFIGURATION OPTIONS
 =====================
 
@@ -169,7 +213,7 @@ files. See FILES below. Multiple -P options are allowed.
 
 -s <wait_microseconds>
    |
-   | After an ldmsd is started, wait wait_microseconds before checking
+   | After an ldmsd is started, wait up to wait_microseconds checking
      for the daemon PID file to exist. The appropriate wait time is
      variable depending on the complexity of the configuration. If not
      specified, the default is 2 seconds wait time.
@@ -237,7 +281,11 @@ testname
 
 TESTDIR
    |
-   | Root directory of the testing setup.
+   | Root directory of the shared testing setup.
+
+TESTDIR_FAST
+   |
+   | Root directory of the fast testing scratch (local RAM or NVME)
 
 STOREDIR
    |
@@ -340,6 +388,12 @@ GENERATED FILES
 *$test_dir/run/ldmsd/secret*
    |
    | The secret file for authentication.
+
+NOTES
+=====
+Some test input files can be scaled by setting the environment variable 'maxdaemon'
+to an integer larger than the default value set in the input file.
+It is recommended, but not required, that any scalable test case follow this convention.
 
 SEE ALSO
 ========

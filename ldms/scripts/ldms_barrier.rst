@@ -96,6 +96,10 @@ OPTION LIST
 **-h,--help**
    Increase the verbosity of status and debugging output. (repeatable).
 
+**-d,--debug-label** *LABEL*
+   Change the labels in verbose output from HOST-pid-PID to user-defined string.
+
+
 NOTES
 =====
 

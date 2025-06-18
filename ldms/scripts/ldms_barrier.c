@@ -267,6 +267,7 @@ void resolve_interface_ip(const char *interface, char *ip_buffer)
 int usage(const char *prog)
 {
 	fprintf(stderr, "Usage: %s "
+		"[-d,--debug-label <label>] "
 		"[-c,--client-tag <tag>] "
 		"[-m,--max-clients <count>] "
 		"[-t,--timeout <seconds>] "
@@ -293,6 +294,7 @@ int main(int argc, char *argv[])
 	int server_sock, clients_ready = 0;
 	int is_server = 0;
 	char client_tag[256] = { '\0' };
+	char debug_label[256] = { '\0' }; // defaults to host-$pid
 	double client_retry_interval = DEFAULT_RETRY_INTERVAL;
 
 	static struct option long_options[] = {
@@ -303,13 +305,14 @@ int main(int argc, char *argv[])
 		{"port", required_argument, 0, 'p'},
 		{"timeout", required_argument, 0, 't'},
 		{"retry-interval", required_argument, 0, 'r'},
+		{"debug-label", required_argument, 0, 'd'},
 		{"verbose", no_argument, 0, 'v'},
 		{"leader", no_argument, 0, 'l'},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}};
 
 	int opt;
-	while ((opt = getopt_long(argc, argv, "c:i:p:m:t:s:r:vl", long_options,
+	while ((opt = getopt_long(argc, argv, "d:c:i:p:m:t:s:r:vl", long_options,
 				  NULL)) != -1) {
 		switch (opt) {
 			case 'h':
@@ -322,6 +325,9 @@ int main(int argc, char *argv[])
 						optarg);
 					exit(EINVAL);
 				}
+				break;
+			case 'd':
+				strncpy(debug_label, optarg, sizeof(debug_label));
 				break;
 			case 's':
 				strncpy(server_name, optarg, sizeof(server_name));
@@ -350,16 +356,24 @@ int main(int argc, char *argv[])
 				break;
 			case 't':
 				timeout = atoi(optarg);
-				if (timeout <= 0) {
-					fprintf(stderr, "Invalid timeout.\n");
+				if (timeout < 0) {
+					fprintf(stderr, "Invalid timeout %s.\n", optarg);
 					exit(EINVAL);
 				}
+				if (!timeout)
+					timeout = DEFAULT_TIMEOUT;
 				break;
 			default:
 				exit(usage(argv[0]));
 		}
 	}
+	if (debug_label[0] == '\0') {
+		char hname[230];
+		gethostname(hname, sizeof(hname));
+		sprintf(debug_label, "%s:pid-%ld", hname, (long) getpid());
+	}
 	const char *tags[max_clients + 1];
+	const char *print_tags[max_clients + 1];
 
 	int ntags = -max_clients;  // if stays negative, tags are ignored and we
 				   // just want max_clients connections.
@@ -370,8 +384,12 @@ int main(int argc, char *argv[])
 		 */
 		while (optind < argc) {
 			if (next > max_clients) {
-				fprintf(stderr, "More tags given than"
-				       " allowed by -m %d\n", max_clients);
+				fprintf(stderr, "%s%s%sMore tags given than"
+				       " allowed by -m %d\n",
+				       (debug_label[0] != '\0')? "(" : "",
+				       (debug_label[0] != '\0')? debug_label : "",
+				       (debug_label[0] != '\0')? ")" : "",
+				       max_clients);
 				exit(EINVAL);
 			}
 			if (strcmp(argv[optind], client_tag)) {
@@ -389,6 +407,9 @@ int main(int argc, char *argv[])
 				  // done.
 		}
 		while (next < max_clients) tags[next++] = NULL;
+		for (next = 0; next < max_clients; next++) {
+			print_tags[next] = tags[next];
+		}
 	}
 
 	if (is_server) {
@@ -462,8 +483,12 @@ int main(int argc, char *argv[])
 		int client_result = 0;
 		if (ntags <= 0) {
 			PRINTF("Server started on %s:%s, waiting for %d clients "
-			       "(Timeout: %d sec)...\n",
-			       ip_address, port, max_clients, timeout);
+			       "(Timeout: %d sec) %s%s%s...\n",
+				       ip_address, port, max_clients, timeout,
+				       (debug_label[0] != '\0')? "(" : "",
+				       (debug_label[0] != '\0')? debug_label : "",
+				       (debug_label[0] != '\0')? ")" : ""
+			       );
 
 			while (clients_ready < max_clients) {
 				int client_sock = accept(
@@ -486,8 +511,12 @@ int main(int argc, char *argv[])
 			}
 		} else {
 			PRINTF("Server started on %s:%s, waiting for %d tags "
-			       "(Timeout: %d sec)...\n",
-			       ip_address, port, ntags, timeout);
+			       "(Timeout: %d sec) %s%s%s...\n",
+				       ip_address, port, ntags, timeout,
+				       (debug_label[0] != '\0')? "(" : "",
+				       (debug_label[0] != '\0')? debug_label : "",
+				       (debug_label[0] != '\0')? ")" : ""
+			       );
 
 			while (clients_ready < ntags) {
 				int client_sock = accept(
@@ -541,7 +570,7 @@ int main(int argc, char *argv[])
 					close(client[i]);
 					struct timespec trcv;
 					clock_gettime(CLOCK_MONOTONIC, &trcv);
-					PRINTF2("SS: %s: %ld.%09ld\n", client_tag,
+					PRINTF2("SS: %s: %ld.%09ld\n", print_tags[i],
 						trcv.tv_sec, trcv.tv_nsec);
 				}
 			}
