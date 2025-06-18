@@ -160,7 +160,7 @@ static int sample(ldmsd_plug_handle_t handle)
                 node_obj = json_object_iter_value(iter);
                 if (node_obj == NULL)
                 {
-                        msglog(LDMSD_LERROR, SAMP ": JSON object not found.\n");
+                        ovis_log(mylog, OVIS_LERROR, SAMP ": JSON object not found.\n");
                         exit(0);
                 }
                 /* The following should return NULL after the first call per our object. */
@@ -194,7 +194,7 @@ static int sample(ldmsd_plug_handle_t handle)
                 snprintf(socketID, 20, "socket_%d", socket);
                 json_t *socket_obj = json_object_get(node_obj, socketID);
                 if (socket_obj == NULL) {
-                        msglog(LDMSD_LERROR, SAMP ":socket object not found.\n");
+                        ovis_log(mylog, OVIS_LERROR, SAMP ":socket object not found.\n");
                         exit(0);
                 }
 
@@ -213,7 +213,7 @@ static int sample(ldmsd_plug_handle_t handle)
                 if (num_gpus_per_socket > 0) {
                         json_t *gpu_obj = json_object_get(socket_obj, "power_gpu_watts");
                         if (gpu_obj == NULL) {
-                                msglog(LDMSD_LERROR, SAMP ":GPU object not found.\n");
+                                ovis_log(mylog, OVIS_LERROR, SAMP ":GPU object not found.\n");
                                 exit(0);
                         }
                         const char *key;
@@ -270,9 +270,9 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
         .base.type = LDMSD_PLUGIN_SAMPLER,
-        .config = config,
-        .usage= usage,
-        .constructor = constructor,
-        .destructor = destructor,
+        .base.config = config,
+        .base.usage= usage,
+        .base.constructor = constructor,
+        .base.destructor = destructor,
         .sample = sample,
 };
