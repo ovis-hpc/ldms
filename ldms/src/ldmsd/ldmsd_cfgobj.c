@@ -235,6 +235,7 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 	obj->perm = perm;
 
 	pthread_mutex_init(&obj->lock, NULL);
+	pthread_mutex_lock(&obj->lock);
 	rbn_init(&obj->rbn, obj->name);
 	rbt_ins(cfgobj_trees[type], &obj->rbn);
 	ldmsd_cfgobj_get(obj, "cfgobj_tree");
