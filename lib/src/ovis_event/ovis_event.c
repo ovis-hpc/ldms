@@ -804,7 +804,7 @@ int ovis_scheduler_name_set(ovis_scheduler_t s, const char *name)
 	s->name = strdup(name);
 	if (!s->name)
 		return ENOMEM;
-	ovis_thrstats_init(&s->stats, name);
+	ovis_thrstats_name_set(&s->stats, name);
 	return 0;
 }
 
