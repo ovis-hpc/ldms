@@ -454,7 +454,17 @@ static ldmsd_store_handle_t
 open_store(ldmsd_plug_handle_t s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list)
 {
-	struct sos_instance *si = calloc(1, sizeof(*si));
+	struct sos_instance *si;
+
+        if (!container) {
+                LOG_(OVIS_LERROR,
+                     "Plugin %s requires \"container=\" to be set in the "
+                     "strgp_add command\n",
+                     ldmsd_plug_name_get(s));
+                goto out;
+        }
+
+	si = calloc(1, sizeof(*si));
 	if (!si)
 		goto out;
 	si->container = strdup(container);
