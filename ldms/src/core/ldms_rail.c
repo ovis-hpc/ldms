@@ -186,7 +186,6 @@ static void __rail_ref_free(void *arg)
 			ldms_xprt_ctxt_set(rep->ep, NULL, NULL);
 			ldms_xprt_put(rep->ep, "init");
 		}
-
 	}
 
 	while ((dc = TAILQ_FIRST(&r->dir_notify_tq))) {
@@ -197,6 +196,9 @@ static void __rail_ref_free(void *arg)
 	if (r->app_ctxt && r->app_ctxt_free) {
 		r->app_ctxt_free(r->app_ctxt);
 	}
+
+	if (r->auth_av_list)
+		av_free(r->auth_av_list);
 
 	free(r);
 }
