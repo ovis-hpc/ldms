@@ -466,7 +466,7 @@ err:
 	return NULL;
 }
 
-struct ldmsd_worker_thrstat_result *ldmsd_xthrstat_get()
+struct ldmsd_worker_thrstat_result *ldmsd_xthrstat_get(uint64_t interval_s)
 {
 	/* TODO locks / race ... */
 	errno = ENOSYS;
@@ -489,7 +489,7 @@ struct ldmsd_worker_thrstat_result *ldmsd_xthrstat_get()
 		se = calloc(1, sizeof(*se));
 		if (!se)
 			goto err1;
-		se->stat = ovis_scheduler_thrstats_get(samp->os, &now, 0);
+		se->stat = ovis_scheduler_thrstats_get(samp->os, &now, interval_s);
 		if (!se->stat) {
 			free(se);
 			goto err1;

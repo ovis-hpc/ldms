@@ -7726,8 +7726,8 @@ static void __prdset_stats_reset(struct timespec *now, int is_update, int is_sto
  * - The "xthreads" represent sampler execution threads
  */
 extern void ldmsd_worker_thrstat_free(struct ldmsd_worker_thrstat_result *res);
-extern struct ldmsd_worker_thrstat_result *ldmsd_worker_thrstat_get();
-extern struct ldmsd_worker_thrstat_result *ldmsd_xthrstat_get();
+extern struct ldmsd_worker_thrstat_result *ldmsd_worker_thrstat_get(uint64_t interval_s);
+extern struct ldmsd_worker_thrstat_result *ldmsd_xthrstat_get(uint64_t interval_s);
 static char * __thread_stats_as_json(size_t *json_sz)
 {
 	char *buff, *s;
@@ -7771,7 +7771,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	if (!wres)
 		goto __APPEND_ERR;
 
-	xres = ldmsd_xthrstat_get();
+	xres = ldmsd_xthrstat_get(interval_s);
 	if (!xres && errno != ENOENT)
 		goto __APPEND_ERR;
 
