@@ -301,6 +301,7 @@ struct ovis_thrstats_result *ovis_thrstats_result_get(ovis_thrstats_t stats,
 	int is_idling;
 	uint64_t interval_us;
 	uint64_t elapsed;
+	uint64_t max_interval_us;
 
 	if (!res) {
 		res = calloc(1, sizeof(*res));
@@ -311,11 +312,11 @@ struct ovis_thrstats_result *ovis_thrstats_result_get(ovis_thrstats_t stats,
 		}
 	}
 
-	if (interval_s == 0) {
-		interval_us = stats->bucket_cnt * stats->bucket_sz;
-	} else {
-		interval_us = interval_s * 1000000;
-	}
+	max_interval_us = (stats->bucket_cnt -1 ) * stats->bucket_sz;
+	interval_us = interval_s * 1000000;
+
+	if ((interval_us == 0) || (interval_us > max_interval_us))
+		interval_us = max_interval_us;
 
 	clock_gettime(CLOCK_REALTIME, &now);
 
