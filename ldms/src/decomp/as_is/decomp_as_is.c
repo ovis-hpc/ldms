@@ -411,7 +411,7 @@ get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 	col_count = 1;
 
 	/* create other columns */
-	for (i = 1; i < set_card; i++) {
+	for (i = 0; i < set_card; i++) {
 		mtype = ldms_metric_type_get(set, i);
 		switch (mtype) {
 		case LDMS_V_CHAR:
