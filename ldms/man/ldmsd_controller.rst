@@ -1076,7 +1076,7 @@ The column descriptions for worker threads and xthreads are:
 * Linux Thread ID - pthread ID as hex string
 * Name - Thread name
 * Utilization - Thread utilization ratio (0.0-100.0%) over a recent time window.
-* Trailing (s) - Duration of the most recent time period used for utilization calculation (default 3 seconds)
+* Window (s) - Duration of the most recent time period used for utilization calculation (default 3 seconds)
 * Event Counts - Number of events processed
 
 The column descriptions for IO threads are:
@@ -1085,7 +1085,7 @@ The column descriptions for IO threads are:
 * Linux Thread ID - pthread ID as hex string
 * Name - Thread name
 * Utilization - Thread utilization ratio (0.0-100.0%) over a recent time window
-* Trailing (s) - Duration of the most recent time period used for utilization calculation (default 3 seconds)
+* Window (s) - Duration of the most recent time period used for utilization calculation (default 3 seconds)
 * Send Queue Size - Number of pending send operations
 * Num of EPs - Number of endpoints handled by this thread
 
