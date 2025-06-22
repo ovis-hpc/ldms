@@ -2256,7 +2256,7 @@ class LdmsdCmdParser(cmd.Cmd):
     def display_worker_thread_stats(self, worker_threads, hdr):
         print(hdr)
         print(f"{'='*60}")
-        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Utilization':12} {'Trailing (s)':12} {'Event Counts':12}")
+        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Utilization':12} {'Window (s)':12} {'Event Counts':12}")
         print(f"{'-'*15} {'-'*20} {'-'*20} {'-'*12} {'-'*12} {'-'*12}")
         for e in worker_threads:
             print(f"{e['tid']:^15} {e['thread_id']:20} {e['name']:20} ", end="")
@@ -2269,7 +2269,7 @@ class LdmsdCmdParser(cmd.Cmd):
     def display_io_thread_stats(self, io_threads):
         print(f"IO Thread Statistics")
         print(f"{'='*60}")
-        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Utilization':12} {'Trailing (s)':12} " \
+        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Utilization':12} {'Window (s)':12} " \
               f"{'Send Queue Size':16} {'Num of EPs':12}")
         print(f"{'-'*15} {'-'*20} {'-'*20} {'-'*12} {'-'*12} {'-'*16} {'-'*12}")
         for e in io_threads:
@@ -2282,14 +2282,17 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_thread_stats(self, arg):
         """
-        Query the IO thread utilization statistics
+        Query the thread utilization statistics
 
-        The column descriptions are;
-          Samples is the total number of samples from the start or from the last reset until the query;
-          Sample Rate is the frequency of epoll waking up from the start or the last reset until the query;
-          Utilization is the ratio of the active time over a time window of each IO thread.
-          Send Queue Size is the number of send requests pending in the send queue.
-          Number of EPs is the number of connections (endpoints) each IO thread is responsible for.
+        THe column headers:
+        * Thread ID - Linux thread ID (from gettid())
+        * Linux Thread ID - pthread ID as hex string
+        * Name - Thread name
+        * Utilization - Thread utilization ratio (0.0-100.0%) over a recent time window.
+        * Window (s) - Duration of the most recent time period used for utilization calculation (default 3 seconds)
+        * Event Counts - Number of events processed
+        * Send Queue Size - Number of pending send operations
+        * Num of EPs - Number of endpoints handled by this thread
 
         Parameters:
            [reset=]    If 'true', reset the statistics after returning the value. The default is false.
