@@ -33,6 +33,9 @@ export LDMSD_PLUGIN_LIBPATH
 export LD_LIBRARY_PATH=${ovis_ldms_plugins_rpath}:${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$LD_LIBRARY_PATH
 export PYTHONPATH=${ovis_ldms_pythondir}:$PYTHONPATH
 
+export LDMSD_LOG_DATE_TIME=1
+export LDMSD_LOG_TIME_SEC=1
+
 function clusage {
 cat << EOF
 $0: usage:
@@ -324,12 +327,17 @@ function LDMSD {
 			fi
 		fi
 		# assume gnu sleep and bc exist, because usleep deprecated
-		sleep $(echo "0.000001 * $startwait" |bc)
-		if ! test -f $LDMSD_PIDFILE.$i; then
-			echo FAIL: failed to start $i. check ${LOGDIR}/$i.txt
-			bypass=1
-			break;
-		fi
+		#sleep $(echo "0.000001 * $startwait" |bc)
+		nwait=0
+		while ! test -f $LDMSD_PIDFILE.$i; do
+			((nwait++))
+			sleep 0.1
+			if test $nwait -gt 100; then
+				echo FAIL: failed to start $i. check ${LOGDIR}/$i.txt
+				bypass=1
+				break;
+			fi
+		done
 	done
 }
 
@@ -378,6 +386,66 @@ function LDMS_LS {
 		$wrap ldms_ls  -h $HOST -x $XPRT -p $iport $*
 	done
 }
+
+#
+function LDMS_STATUS {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	nodes=$1
+	shift
+	for i in $nodes; do
+		if test "$usevg" = "1"; then
+			if test -z "$VG"; then
+				XVG=valgrind
+			else
+				XVG=$VG
+			fi
+			if test -n "LDMSNET"; then
+				XVGSUFF=".$LDMSNET"
+			fi
+			if test -z "$VGARGS"; then
+				VGARGS="-v --log-file=${LOGDIR}/vgls.$i$VGTAG.%p"
+			else
+				XVGARGS="-v --log-file=${LOGDIR}/vgls.$i$VGTAG.%p$XVGSUFF $VGARGS"
+			fi
+			wrap="$XVG $XVGARGS"
+		else
+			wrap=""
+		fi
+		if ! test -f "$LDMSD_PIDFILE.$i"; then
+			echo FAIL: $i: ls of missing daemon $i skipped. check ${LOGDIR}/$i.txt
+			bypass=1
+			break;
+		fi
+		if test -n "$PORT"; then
+			iport=$PORT
+		else
+			iport=${ports[$i]}
+		fi
+		ihost=localhost
+		echo "$i: echo status | $wrap ldmsd_controller -h $ihost -x $XPRT -p $iport"
+		echo status | $wrap ldmsd_controller  -h $ihost -x $XPRT -p $iport
+	done
+}
+
+# FILECNT_LDMSD num list
+function FILECNT_LDMSD {
+	for i in $*; do
+		if test -f $LDMSD_PIDFILE.$i; then
+			dpid=$(cat $LDMSD_PIDFILE.$i)
+			dts=$(date +%s)
+			/bin/ls /proc/$dpid/fd -l > $LDMSD_PIDFILE.$i.cnt.$dts
+			filecnt=$(wc -l $LDMSD_PIDFILE.$i.cnt.$dts | sed -e 's/ .*//')
+			echo "$i: FileCount=$filecnt"
+			egrep '(Threads|VmRSS|VmSize)' /proc/$dpid/status |sed -e 's/:[[:space:]]*/=/' -e "s/^/$i: /"
+			mv $LDMSD_PIDFILE.$i.cnt.$dts $LDMSD_PIDFILE.$i.cnt.$dts.$filecnt
+		else
+			echo $i: filecnt cannot find pidfile for $i
+		fi
+	done
+}
+
 # KILL_LDMSD num list
 function KILL_LDMSD {
 	for i in $*; do

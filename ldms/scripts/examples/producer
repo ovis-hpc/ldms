@@ -1,0 +1,2 @@
+prdcr_add name=localhost${j} host=localhost type=active xprt=${XPRT} port=${port${j}} reconnect=1000000
+prdcr_start name=localhost${j}

@@ -1,0 +1,37 @@
+# This tests simple sampler/l1 agg/l2 agg
+portbase=11000
+export storename=store_csv
+
+nsock=$(lscpu |grep ^Sock |sed -e 's/.*://' -e 's/ //g')
+ncore=$(lscpu |grep ^Core |sed -e 's/.*://' -e 's/ //g')
+pcores=$(($nsock * $ncore / 2))
+echo cores=$pcores
+maxdaemon=$pcores
+DAEMONS $(seq $maxdaemon)
+
+VGARGS="--tool=drd --time-stamp=yes --gen-suppressions=all"
+VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=definite --time-stamp=yes --gen-suppressions=all  --main-stacksize=256000000"
+
+vgon
+# L2
+VGTAG=.L2
+LDMSD 1
+# L1
+VGTAG=.L1
+LDMSD -P producer,`seq -s, 3 $maxdaemon` 2
+vgoff
+
+for loop in $(seq 10); do
+	LDMSD -s 1 -p prolog.sampler.many -c $(seq 3 $maxdaemon)
+	SLEEP 10
+	FILECNT_LDMSD $(seq 1 3)
+	LDMS_LS 1 -l
+	LDMS_STATUS 1
+	LDMS_LS 2 -l
+	LDMS_STATUS 2
+	KILL_LDMSD $(seq 3 $maxdaemon)
+	SLEEP 5
+done
+FILECNT_LDMSD $(seq 1 2)
+
+KILL_LDMSD 1 2
