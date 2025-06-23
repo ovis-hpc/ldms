@@ -1,0 +1,111 @@
+# run many daemons under slurm. assumes exclusive use of nodes.
+# use of fabric or rdma plugins will require allowroot=1 in the environment.
+# control of network selection is in sbatch.cluster.
+# export LDMSNET=[sock,fabric,sockfabric,rdma] to control network selection
+# before launching pll-ldms-static-test.sh.
+portbase=11000
+ulimit -n 100000
+VGARGS="--tool=drd --time-stamp=yes --gen-suppressions=all --trace-mutex=yes"
+VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=definite --time-stamp=yes --gen-suppressions=all  --main-stacksize=256000000"
+if test -f $pkglibdir/ldms.supp; then
+	VGARGS="$VGARGS --suppressions=$pkglibdir/ldms.supp"
+fi
+
+# define grinding with ldms_ls; wants to see schema in each daemon
+# launch multiple in background before starting the daemons to be polled.
+# args: <schema to expect> <timeout (seconds)> <thread-tag> <daemon number list>
+function LDMS_LS_GRIND {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	schema=$1
+	timeout=$2
+	tag=$3
+	shift
+	shift
+	shift
+	declare -a lswait
+	# build target daemon list
+	for i in $*; do
+		lswait[$i]=1
+	done
+	if test $timeout -le 0; then
+		timeout=1000000000
+	fi
+	tend=$(( $(date +%s) + $timeout))
+	echo thread $tag waiting ${#lswait[@]} daemons
+	while test ${#lswait[@]} -gt 0; do
+		sleep 0.001
+		if test $(date +%s) -gt $tend; then
+			break
+		fi
+		for i in ${!lswait[@]}; do
+			if test $(date +%s) -gt $tend; then
+				break
+			fi
+			if test -n "$PORT"; then
+				iport=$PORT
+			else
+				iport=${ports[$i]}
+			fi
+			if ! test -f "$LDMSD_PIDFILE.$i"; then
+				continue
+			fi
+			ihost=localhost
+			if ldms_ls -x $XPRT -p $iport -h $ihost -S $schema -v |grep Tot > /dev/null; then
+				unset -v lswait[$i]
+			fi
+		done
+	done
+}
+
+MESSAGE starting l1, l2 aggs and collectors
+# start collector(s)
+if test "x$maxdaemon" = "x"; then
+	maxdaemon=56
+fi
+
+DAEMONS $(seq 1 $maxdaemon)
+
+# run ls threads
+declare -a lspids
+ls_timeout=30
+gmax=16
+for g in $(seq $gmax); do
+	LDMS_LS_GRIND meminfo $ls_timeout $g $(seq $maxdaemon) &
+	lspids[$g]=$!
+done
+
+
+LDMSD_EXTRA="-m 20k"
+VGTAG=.samp
+# start n sampler daemons
+vgon
+LDMSD -s 1 -c $(seq $maxdaemon)
+vgoff
+
+# give grind time to complete
+SLEEP $ls_timeout
+dead=0
+alive=0
+for i in $(seq $maxdaemon); do
+	if test -f $LDMSD_PIDFILE.$i; then
+		p=$(cat $LDMSD_PIDFILE.$i)
+		if ps -h -p $p > /dev/null; then
+			((alive++))
+		else
+			((dead++))
+		fi
+	else
+		((dead++))
+	fi
+done
+MESSAGE FOUND $alive samplers ALIVE and $dead samplers GONE
+# whack any unexpected loops left
+for g in $(seq $gmax); do
+	kill ${lspids[$g]}
+done
+
+KILL_LDMSD $(seq $maxdaemon)
+SLEEP 1
+MESSAGE logs and data under ${TESTDIR}
