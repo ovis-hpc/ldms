@@ -290,12 +290,19 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 	free(sh);
 }
 
-static store_kafka_handle_t __handle_new(ldmsd_strgp_t strgp)
+static store_kafka_handle_t __handle_new(ldmsd_strgp_t strgp, const char *plugin_name)
 {
 	char err_str[512];
 	rd_kafka_conf_res_t res;
 
-	store_kafka_handle_t sh = calloc(1, sizeof(*sh));
+        if (!strgp->container) {
+                LOG_ERROR(
+                     "Plugin %s requires \"container=\" to be set in the "
+                     "strgp_add command\n",
+                     plugin_name);
+                goto err_0;
+        }
+        store_kafka_handle_t sh = calloc(1, sizeof(*sh));
 	if (!sh)
 		goto err_0;
 	sh->rconf = rd_kafka_conf_dup(common_rconf);
@@ -342,7 +349,7 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldm
 
 	sh = strgp->store_handle;
 	if (!sh) {
-		sh = __handle_new(strgp);
+		sh = __handle_new(strgp, ldmsd_plug_name_get(handle));
 		if (!sh)
 			return errno;
 		strgp->store_handle = sh;
