@@ -1,0 +1,13 @@
+# l2 agg and stores
+load name=${storename}
+config name=${storename} path=${STOREDIR} altheader=0
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} reconnect=1000000
+prdcr_start name=localhost2
+
+updtr_add name=allhosts interval=1000000 offset=200000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+strgp_add name=${testname} plugin=${storename} schema=${plugname} container=${storename}
+strgp_prdcr_add name=${testname} regex=.*
+strgp_start name=${testname}
