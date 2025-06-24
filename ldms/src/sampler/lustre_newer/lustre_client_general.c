@@ -15,6 +15,7 @@
 #include "lustre_client.h"
 #include "lustre_client_general.h"
 #include "jobid_helper.h"
+#include "lustre_shared.h"
 
 /* Defined in lustre_client.c */
 extern ovis_log_t lustre_client_log;
@@ -223,90 +224,13 @@ ldms_set_t llite_general_create(const char *producer_name,
         return set;
 }
 
-static int llite_stats_sample(const char *stats_path,
-                                   ldms_set_t general_metric_set)
-{
-        FILE *sf;
-        char buf[512];
-	char str1[MAXNAMESIZE+1];
-	int ec = 0;
-
-        sf = fopen(stats_path, "r");
-        if (sf == NULL) {
-                ovis_log(lustre_client_log, OVIS_LWARNING, SAMP ": file %s not found\n",
-                       stats_path);
-                return ENOENT;
-        }
-
-        /* The first line should always be "snapshot_time"
-           we will ignore it because it always contains the time that we read
-           from the file, not any information about when the stats last
-           changed */
-        if (fgets(buf, sizeof(buf), sf) == NULL) {
-                ovis_log(lustre_client_log, OVIS_LWARNING, SAMP ": failed on read from %s\n",
-                       stats_path);
-		ec = ENOMSG;
-                goto out1;
-        }
-        if (strncmp("snapshot_time", buf, sizeof("snapshot_time")-1) != 0) {
-                ovis_log(lustre_client_log, OVIS_LWARNING, SAMP ": first line in %s is not \"snapshot_time\": %s\n",
-                       stats_path, buf);
-		ec = ENOMSG;
-                goto out1;
-        }
-
-        ldms_transaction_begin(general_metric_set);
-	jobid_helper_metric_update(general_metric_set);
-        while (fgets(buf, sizeof(buf), sf)) {
-                uint64_t val1, val2;
-                int rc;
-                int index;
-
-                rc = sscanf(buf, "%64s %lu samples [%*[^]]] %*u %*u %lu",
-                            str1, &val1, &val2);
-                if (rc == 2) {
-                        index = ldms_metric_by_name(general_metric_set, str1);
-                        if (index != -1) {
-                                ldms_metric_set_u64(general_metric_set, index, val1);
-			} /*else {
-				// this is a normal case as lustre evolves reporting.
-                                ovis_log(lustre_client_log, OVIS_LWARNING, SAMP ": llite stats metric not found: %s\n",
-                                       str1);
-                        } */
-                        continue;
-                } else if (rc == 3) {
-                        int base_name_len = strlen(str1);
-                        sprintf(str1+base_name_len, ".sum"); /* append ".sum" */
-                        index = ldms_metric_by_name(general_metric_set, str1);
-                        if (index == -1) {
-				/* non-sum metric, possibly */
-				str1[base_name_len] = '\0';
-				index = ldms_metric_by_name(general_metric_set, str1);
-				if (index != -1) {
-					ldms_metric_set_u64(general_metric_set, index, val1);
-				}/* else {
-				// this is a normal case as lustre evolves reporting
-	                                ovis_log(lustre_client_log, OVIS_LWARNING, SAMP ": llite stats metric not found: %s\n",
-                                                 str1);
-				} */
-			} else {
-				/* sum metric */
-                                ldms_metric_set_u64(general_metric_set, index, val2);
-                        }
-                        continue;
-                }
-        }
-        ldms_transaction_end(general_metric_set);
-out1:
-        fclose(sf);
-
-        return ec;
-}
-
 void llite_general_sample(const char *llite_name, const char *stats_path,
                           ldms_set_t general_metric_set)
 {
         ovis_log(lustre_client_log, OVIS_LDEBUG, SAMP ": llite_general_sample() %s\n",
                llite_name);
-        llite_stats_sample(stats_path, general_metric_set);
+        ldms_transaction_begin(general_metric_set);
+	jobid_helper_metric_update(general_metric_set);
+        lustre_stats_file_sample(stats_path, general_metric_set, lustre_client_log);
+        ldms_transaction_end(general_metric_set);
 }
