@@ -1,20 +1,30 @@
 include $(top_srcdir)/ldms/rules.mk
 
+noinst_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 dist_man7_MANS =
 EXTRA_DIST =
 
+noinst_LTLIBRARIES += liblustre_shared.la
+liblustre_shared_la_SOURCES = lustre_shared.c lustre_shared.h
+liblustre_shared_la_LIBADD = \
+	$(top_builddir)/ldms/src/core/libldms.la
+liblustre_shared_la_CPPFLAGS = \
+	@OVIS_INCLUDE_ABS@
+
 liblustre_client_la_SOURCES = \
-        lustre_client.c \
-        lustre_client_general.c \
-        lustre_client.h \
-        lustre_client_general.h
+	lustre_client.c \
+	lustre_client_general.c \
+	lustre_client.h \
+	lustre_client_general.h \
+	lustre_shared.h
 liblustre_client_la_LIBADD = \
 	$(top_builddir)/ldms/src/core/libldms.la \
 	$(top_builddir)/lib/src/coll/libcoll.la \
 	$(top_builddir)/ldms/src/sampler/libsampler_base.la \
 	$(top_builddir)/ldms/src/sampler/libldms_compid_helper.la \
-	$(top_builddir)/ldms/src/sampler/libjobid_helper.la
+	$(top_builddir)/ldms/src/sampler/libjobid_helper.la \
+	liblustre_shared.la
 liblustre_client_la_LDFLAGS = \
 	-no-undefined \
         -export-symbols-regex 'ldmsd_plugin_interface' \
@@ -31,11 +41,13 @@ liblustre_mdt_la_SOURCES = \
 	lustre_mdt_job_stats.c \
 	lustre_mdt.h \
 	lustre_mdt_general.h \
-	lustre_mdt_job_stats.h
+	lustre_mdt_job_stats.h \
+	lustre_shared.h
 liblustre_mdt_la_LIBADD = \
 	$(top_builddir)/ldms/src/core/libldms.la \
 	$(top_builddir)/lib/src/coll/libcoll.la \
-	$(top_builddir)/ldms/src/sampler/libldms_compid_helper.la
+	$(top_builddir)/ldms/src/sampler/libldms_compid_helper.la \
+	liblustre_shared.la
 liblustre_mdt_la_LDFLAGS = \
 	-no-undefined \
         -export-symbols-regex 'ldmsd_plugin_interface' \
@@ -52,11 +64,13 @@ liblustre_ost_la_SOURCES = \
 	lustre_ost_job_stats.c \
 	lustre_ost.h \
 	lustre_ost_general.h \
-	lustre_ost_job_stats.h
+	lustre_ost_job_stats.h \
+	lustre_shared.h
 liblustre_ost_la_LIBADD = \
 	$(top_builddir)/ldms/src/core/libldms.la \
 	$(top_builddir)/lib/src/coll/libcoll.la \
-	$(top_builddir)/ldms/src/sampler/libldms_compid_helper.la
+	$(top_builddir)/ldms/src/sampler/libldms_compid_helper.la \
+	liblustre_shared.la
 liblustre_ost_la_LDFLAGS = \
 	-no-undefined \
         -export-symbols-regex 'ldmsd_plugin_interface' \
