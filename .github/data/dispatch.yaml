@@ -5,7 +5,7 @@ inputs:
   vars: LDMS_REPO LDMS_REPO_URL
         LDMS_BRANCH LDMS_TAG
         SOS_REPO https://github.com/ovis-hpc/sos
-        SOS_BRANCH SOS-6
+        SOS_BRANCH b2.6
         MAESTRO_REPO https://github.com/ovis-hpc/maestro
         MAESTRO_BRANCH master
         NUMSOS_REPO https://github.com/narategithub/numsos
