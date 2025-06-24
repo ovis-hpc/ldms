@@ -40,13 +40,6 @@ SUBDIRS += cxi_sampler
 endif
 dist_man7_MANS += ldms_sampler_base.man
 
-if ENABLE_LUSTRE
-SUBDIRS += lustre_client
-SUBDIRS += lustre_mdt
-SUBDIRS += lustre_ost
-SUBDIRS += lustre_mdc
-endif
-
 if HAVE_DCGM
 SUBDIRS += dcgm_sampler
 endif
@@ -130,6 +123,8 @@ SUBDIRS += slurm
 endif
 
 if ENABLE_LUSTRE
+SUBDIRS += lustre_newer
+SUBDIRS += lustre_mdc
 SUBDIRS += lustre
 endif
 
