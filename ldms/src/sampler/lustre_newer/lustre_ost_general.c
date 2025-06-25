@@ -101,7 +101,7 @@ int ost_general_schema_init(comp_id_t cid)
 
         return 0;
 err2:
-	ovis_log(lustre_ost_log, OVIS_LERROR, SAMP ": lustre_ost_general schema creation failed to add %s. (%s)\n",
+	ovis_log(lustre_ost_log, OVIS_LERROR, "lustre_ost_general schema creation failed to add %s. (%s)\n",
 		field, STRERROR(-rc));
         ldms_schema_delete(sch);
 err1:
@@ -197,16 +197,17 @@ static void osd_sample(const char *osd_path, ldms_set_t general_metric_set)
 }
 
 
-void ost_general_destroy(ldms_set_t set)
+void ost_general_destroy(lo_context_t ctxt, ldms_set_t set)
 {
-        ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
+        ldmsd_set_deregister(ldms_set_instance_name_get(set), ctxt->cfg_name);
         ldms_set_unpublish(set);
         ldms_set_delete(set);
 }
 
 
 /* must be schema created by ost_general_schema_create() */
-ldms_set_t ost_general_create(const char *producer_name,
+ldms_set_t ost_general_create(lo_context_t ctxt,
+			      const char *producer_name,
 			      const char *fs_name,
 			      const char *ost_name,
 			      const comp_id_t cid)
@@ -226,7 +227,7 @@ ldms_set_t ost_general_create(const char *producer_name,
         ldms_metric_array_set_str(set, index, ost_name);
 	comp_id_helper_metric_update(set, cid);
         ldms_set_publish(set);
-	ldmsd_set_register(set, SAMP);
+	ldmsd_set_register(set, ctxt->cfg_name);
         return set;
 }
 

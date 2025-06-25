@@ -198,16 +198,17 @@ static void osd_sample(const char *osd_path, ldms_set_t general_metric_set)
 }
 
 
-void mdt_general_destroy(ldms_set_t set)
+void mdt_general_destroy(lm_context_t ctxt, ldms_set_t set)
 {
-        ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
+        ldmsd_set_deregister(ldms_set_instance_name_get(set), ctxt->cfg_name);
         ldms_set_unpublish(set);
         ldms_set_delete(set);
 }
 
 
 /* must be schema created by mdt_general_schema_create() */
-ldms_set_t mdt_general_create(const char *producer_name,
+ldms_set_t mdt_general_create(lm_context_t ctxt,
+			      const char *producer_name,
 			      const char *fs_name,
 			      const char *mdt_name,
 			      const comp_id_t cid)
@@ -227,7 +228,7 @@ ldms_set_t mdt_general_create(const char *producer_name,
         ldms_metric_array_set_str(set, index, mdt_name);
 	comp_id_helper_metric_update(set, cid);
         ldms_set_publish(set);
-	ldmsd_set_register(set, SAMP);
+	ldmsd_set_register(set, ctxt->cfg_name);
         return set;
 }
 
