@@ -98,7 +98,8 @@ void ost_job_stats_schema_fini()
         }
 }
 
-static struct ost_job_stats_data *ost_job_stats_data_create(const char *producer_name,
+static struct ost_job_stats_data *ost_job_stats_data_create(lo_context_t ctxt,
+							    const char *producer_name,
                                                             const char *jobid,
                                                             const char *fs_name,
                                                             const char *ost_name)
@@ -131,7 +132,7 @@ static struct ost_job_stats_data *ost_job_stats_data_create(const char *producer
         index = ldms_metric_by_name(job_stats->metric_set, "job_id");
         ldms_metric_array_set_str(job_stats->metric_set, index, jobid);
         ldms_set_publish(job_stats->metric_set);
-        ldmsd_set_register(job_stats->metric_set, SAMP);
+        ldmsd_set_register(job_stats->metric_set, ctxt->cfg_name);
         return job_stats;
 out3:
         free(job_stats->jobid);
@@ -142,18 +143,18 @@ out1:
         return NULL;
 }
 
-static void ost_job_stats_data_destroy(struct ost_job_stats_data *job_stats)
+static void ost_job_stats_data_destroy(lo_context_t ctxt, struct ost_job_stats_data *job_stats)
 {
         ovis_log(lustre_ost_log, OVIS_LDEBUG, "ost_job_stats_data_destroy() jobid=%s\n",
                job_stats->jobid);
-        ldmsd_set_deregister(ldms_set_instance_name_get(job_stats->metric_set), SAMP);
+        ldmsd_set_deregister(ldms_set_instance_name_get(job_stats->metric_set), ctxt->cfg_name);
         ldms_set_unpublish(job_stats->metric_set);
         ldms_set_delete(job_stats->metric_set);
         free(job_stats->jobid);
         free(job_stats);
 }
 
-void ost_job_stats_destroy(struct rbt *job_stats_tree)
+void ost_job_stats_destroy(lo_context_t ctxt, struct rbt *job_stats_tree)
 {
         struct rbn *rbn;
         struct ost_job_stats_data *job_stats;
@@ -163,7 +164,7 @@ void ost_job_stats_destroy(struct rbt *job_stats_tree)
                 job_stats = container_of(rbn, struct ost_job_stats_data,
                                          job_stats_node);
                 rbt_del(job_stats_tree, rbn);
-                ost_job_stats_data_destroy(job_stats);
+                ost_job_stats_data_destroy(ctxt, job_stats);
         }
 }
 
@@ -192,7 +193,7 @@ static void job_stats_sample_stop(struct ost_job_stats_data **job_stats)
    than the ldms aggregator polling interval, there is no need for
    additional caching in ldms.
 */
-void ost_job_stats_sample(const char *producer_name, const char *fs_name,
+void ost_job_stats_sample(lo_context_t ctxt, const char *producer_name, const char *fs_name,
                           const char *ost_name, const char *job_stats_path,
                           struct rbt *job_stats_tree)
 {
@@ -240,7 +241,7 @@ void ost_job_stats_sample(const char *producer_name, const char *fs_name,
                                 job_stats = container_of(rbn, struct ost_job_stats_data, job_stats_node);
                                 rbt_del(job_stats_tree, &job_stats->job_stats_node);
                         } else {
-                                job_stats = ost_job_stats_data_create(producer_name, str1, fs_name, ost_name);
+                                job_stats = ost_job_stats_data_create(ctxt, producer_name, str1, fs_name, ost_name);
                         }
                         if (job_stats != NULL) {
                                 rbt_ins(&new_job_stats, &job_stats->job_stats_node);
@@ -309,7 +310,7 @@ void ost_job_stats_sample(const char *producer_name, const char *fs_name,
 
         /* destroy any remaining job_stats since we didn't see them this
            time (if we had, they would have been moved to new_job_stats) */
-        ost_job_stats_destroy(job_stats_tree);
+        ost_job_stats_destroy(ctxt, job_stats_tree);
 
         /* swap new rbt into old rbt's place */
         memcpy(job_stats_tree, &new_job_stats, sizeof(struct rbt));
