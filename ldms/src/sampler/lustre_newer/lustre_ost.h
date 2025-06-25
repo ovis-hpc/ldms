@@ -10,6 +10,9 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-#define SAMP "lustre_ost"
+typedef struct {
+	char *plug_name;
+	char *cfg_name;
+} *lo_context_t;
 
 #endif /* __LUSTRE_OST_H */

@@ -56,7 +56,7 @@ static int string_comparator(void *a, const void *b)
         return strcmp((char *)a, (char *)b);
 }
 
-static struct llite_data *llite_create(const char *llite_name, const char *basedir)
+static struct llite_data *llite_create(lc_context_t ctxt, const char *llite_name, const char *basedir)
 {
         struct llite_data *llite;
         char path_tmp[PATH_MAX];
@@ -86,7 +86,8 @@ static struct llite_data *llite_create(const char *llite_name, const char *based
                        llite->fs_name);
                 goto out6;
         }
-        llite->general_metric_set = llite_general_create(producer_name,
+        llite->general_metric_set = llite_general_create(ctxt,
+							 producer_name,
                                                          llite->fs_name,
                                                          llite->name,
                                                          &cid, &auth);
@@ -109,10 +110,10 @@ out1:
         return NULL;
 }
 
-static void llite_destroy(struct llite_data *llite)
+static void llite_destroy(lc_context_t ctxt, struct llite_data *llite)
 {
         ovis_log(lustre_client_log, OVIS_LDEBUG, "llite_destroy() %s\n", llite->name);
-        llite_general_destroy(llite->general_metric_set);
+        llite_general_destroy(ctxt, llite->general_metric_set);
         free(llite->fs_name);
         free(llite->stats_path);
         free(llite->path);
@@ -120,7 +121,7 @@ static void llite_destroy(struct llite_data *llite)
         free(llite);
 }
 
-static void llites_destroy()
+static void llites_destroy(lc_context_t ctxt)
 {
         struct rbn *rbn;
         struct llite_data *llite;
@@ -130,7 +131,7 @@ static void llites_destroy()
                 llite = container_of(rbn, struct llite_data,
                                    llite_tree_node);
                 rbt_del(&llite_tree, rbn);
-                llite_destroy(llite);
+                llite_destroy(ctxt, llite);
         }
 }
 
@@ -144,9 +145,9 @@ static const char *const find_llite_path()
         int i;
 	if (test_path) {
 		if  (stat(test_path, &sb) == -1 || !S_ISDIR(sb.st_mode)) {
-                        ovis_log(lustre_client_log, OVIS_LERROR, SAMP
-				" find_llite_path() test_path given "
-				"is not a directory: %s\n", test_path);
+                        ovis_log(lustre_client_log, OVIS_LERROR,
+				 " find_llite_path() test_path given "
+				 "is not a directory: %s\n", test_path);
 			return NULL;
 		}
 		return test_path;
@@ -172,7 +173,7 @@ static int dir_once_log;
 /* List subdirectories in llite_path to get list of
    LLITE names.  Create llite_data structures for any LLITEs that we
    have not seen, and delete any that we no longer see. */
-static int llites_refresh()
+static int llites_refresh(lc_context_t ctxt)
 {
         const char *llite_path;
         struct dirent *dirent;
@@ -217,7 +218,7 @@ static int llites_refresh()
                                            llite_tree_node);
                         rbt_del(&llite_tree, &llite->llite_tree_node);
                 } else {
-                        llite = llite_create(dirent->d_name, llite_path);
+                        llite = llite_create(ctxt, dirent->d_name, llite_path);
                 }
                 if (llite == NULL) {
 			err = errno;
@@ -229,7 +230,7 @@ static int llites_refresh()
 
         /* destroy any llites remaining in the global llite_tree since we
            did not see their associated directories this time around */
-        llites_destroy();
+        llites_destroy(ctxt);
 
         /* copy the new_llite_tree into place over the global llite_tree */
         memcpy(&llite_tree, &new_llite_tree, sizeof(struct rbt));
@@ -257,19 +258,19 @@ static int config(ldmsd_plug_handle_t handle,
 	test_path = av_value(avl, "test_path");
 	if (test_path) {
 		test_path = strdup(test_path);
-		ovis_log(lustre_client_log, OVIS_LDEBUG, SAMP": test_path=%s\n",test_path);
+		ovis_log(lustre_client_log, OVIS_LDEBUG, "test_path=%s\n",test_path);
 	}
 
 	schema_extras = 0;
 	char *extra215 = av_value(avl, "extra215");
 	if (extra215) {
 		schema_extras |= EXTRA215;
-		ovis_log(lustre_client_log, OVIS_LDEBUG, SAMP": schema with extra 2.15 enabled\n");
+		ovis_log(lustre_client_log, OVIS_LDEBUG, "schema with extra 2.15 enabled\n");
 	}
 	char *extratime = av_value(avl, "extratimes");
 	if (extratime) {
 		schema_extras |= EXTRATIMES;
-		ovis_log(lustre_client_log, OVIS_LDEBUG, SAMP": schema with start_time enabled\n");
+		ovis_log(lustre_client_log, OVIS_LDEBUG, "schema with start_time enabled\n");
 	}
 
 	char *ival = av_value(avl, "producer");
@@ -277,20 +278,20 @@ static int config(ldmsd_plug_handle_t handle,
 		if (strlen(ival) < sizeof(producer_name)) {
 			strncpy(producer_name, ival, sizeof(producer_name));
 		} else {
-                        ovis_log(lustre_client_log, OVIS_LERROR, SAMP": config: producer name too long.\n");
+                        ovis_log(lustre_client_log, OVIS_LERROR, "config: producer name too long.\n");
                         return EINVAL;
 		}
 	}
 	(void)base_auth_parse(avl, &auth, lustre_client_log);
 	int jc = jobid_helper_config(avl);
         if (jc) {
-		ovis_log(lustre_client_log, OVIS_LERROR, SAMP": set name for job_set="
+		ovis_log(lustre_client_log, OVIS_LERROR, "set name for job_set="
 			" is too long.\n");
 		return jc;
 	}
 	int cc = comp_id_helper_config(avl, &cid);
         if (cc) {
-		ovis_log(lustre_client_log, OVIS_LERROR, SAMP": value of component_id="
+		ovis_log(lustre_client_log, OVIS_LERROR, "value of component_id="
 			" is invalid.\n");
 		return cc;
 	}
@@ -299,7 +300,9 @@ static int config(ldmsd_plug_handle_t handle,
 
 static int sample(ldmsd_plug_handle_t handle)
 {
-        ovis_log(lustre_client_log, OVIS_LDEBUG, "sample() called\n");
+	lc_context_t ctxt = ldmsd_plug_ctxt_get(handle);
+
+	ovis_log(lustre_client_log, OVIS_LDEBUG, "sample() called\n");
         if (llite_general_schema_is_initialized() < 0) {
                 if (llite_general_schema_init(&cid, schema_extras) < 0) {
                         ovis_log(lustre_client_log, OVIS_LERROR, "general schema create failed\n");
@@ -307,7 +310,7 @@ static int sample(ldmsd_plug_handle_t handle)
                 }
         }
 
-        int err = llites_refresh();  /* running out of set memory is an error */
+        int err = llites_refresh(ctxt);  /* running out of set memory is an error */
         llites_sample();
 
         return err;
@@ -316,12 +319,24 @@ static int sample(ldmsd_plug_handle_t handle)
 static const char *usage(ldmsd_plug_handle_t handle)
 {
         ovis_log(lustre_client_log, OVIS_LDEBUG, "usage() called\n");
-	return  "config name=" SAMP;
+	return  "usage not implemented\n";
 }
 
 static int constructor(ldmsd_plug_handle_t handle)
 {
-        lustre_client_log = ldmsd_plug_log_get(handle);
+	lc_context_t ctxt;
+
+	ctxt = calloc(1, sizeof(*ctxt));
+	if (ctxt == NULL) {
+		ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
+			 "Failed to allocate context\n");
+		return ENOMEM;
+	}
+	ctxt->plug_name = strdup(ldmsd_plug_name_get(handle));
+	ctxt->cfg_name = strdup(ldmsd_plug_cfg_name_get(handle));
+	ldmsd_plug_ctxt_set(handle, ctxt);
+
+	lustre_client_log = ldmsd_plug_log_get(handle);
 	rbt_init(&llite_tree, string_comparator);
 	gethostname(producer_name, sizeof(producer_name));
 
@@ -330,10 +345,16 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	lc_context_t ctxt = ldmsd_plug_ctxt_get(handle);
+
 	ovis_log(lustre_client_log, OVIS_LDEBUG, "term() called\n");
-	llites_destroy();
+	llites_destroy(ctxt);
 	llite_general_schema_fini();
 	free(test_path);
+
+	free(ctxt->cfg_name);
+	free(ctxt->plug_name);
+	free(ctxt);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
