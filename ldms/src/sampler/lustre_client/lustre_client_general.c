@@ -69,7 +69,18 @@ static const char *extra215_llite_stats_uint64_t_entries[] = {
         "write",
         "opencount",
         "openclosetime",
-        NULL
+	"fallocate",
+	"pcc_attach",
+	"pcc_detach",
+	"pcc_auto_attach",
+	"pcc_hit_bytes",
+	"pcc_attach_bytes",
+	"hybrid_noswitch",
+	"hybrid_writesize_switch",
+	"hybrid_readsize_switch",
+	"hybrid_read_bytes.sum",
+	"hybrid_write_bytes.sum",
+	NULL
 };
 
 /* the following exist at least as far back as 2.15 lustre clients */
