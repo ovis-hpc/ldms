@@ -1,0 +1,20 @@
+[Unit]
+Description="ldmsd %i service"
+
+After=network.target
+
+[Service]
+Type=exec
+Restart=always
+RestartSec=60
+LimitNOFILE=8192
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ldmsd@%i
+Environment=CONFIG_FILE=@sysconfdir@/ldmsd/ldmsd@%i.conf
+EnvironmentFile=-@sysconfdir@/sysconfig/ldmsd@%i
+
+ExecStart=/usr/sbin/ldmsd -c ${CONFIG_FILE} ${OPTIONS}
+
+[Install]
+WantedBy=default.target
