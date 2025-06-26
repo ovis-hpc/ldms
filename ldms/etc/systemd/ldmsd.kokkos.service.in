@@ -3,7 +3,7 @@ Description = LDMS Kokkos Daemon
 Documentation = http://ovis.ca.sandia.gov
 
 [Service]
-Type = forking
+Type = exec
 EnvironmentFile = @sysconfdir@/ldms/ldmsd.kokkos.env
 LimitNOFILE = ${LDMSD_ULIMIT_NOFILE}
 Environment = HOSTNAME=%H
