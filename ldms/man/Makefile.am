@@ -19,7 +19,8 @@ ldmsd_qgroup.man \
 ldms_quickstart.man \
 ldms-reverse-conf.man \
 ldmsd_peer_daemon_advertisement.man \
-ldms_msg.man
+ldms_msg.man \
+ldmsd_stream_ldms_msg_conversion_guide.man
 
 ldmsd-exits.man: $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c
 	$(srcdir)/make_exits_man.sh $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c > ldmsd-exits.man
@@ -38,3 +39,4 @@ EXTRA_DIST+=ldms_quickstart.rst
 EXTRA_DIST+=ldms-reverse-conf.rst
 EXTRA_DIST+=ldmsd_peer_daemon_advertisement.rst
 EXTRA_DIST+=ldms_msg.rst
+EXTRA_DIST+=ldmsd_stream_ldms_msg_conversion_guide.rst
