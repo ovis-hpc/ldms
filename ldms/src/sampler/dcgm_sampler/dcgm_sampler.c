@@ -186,7 +186,7 @@ static int dcgm_init()
                 return -1;
         }
 
-        /* Group tpye DCGM_GROUP_DEFAULT means all GPUs on the system */
+        /* Group type DCGM_GROUP_DEFAULT means all GPUs on the system */
         rc = dcgmGroupCreate(dcgm_handle, DCGM_GROUP_DEFAULT,
                              (char *)"ldmsd_group", &gpu_group_id);
         if (rc != DCGM_ST_OK){
@@ -360,10 +360,13 @@ static int gpu_sample()
         int i;
         int rc = DCGM_ST_OK;
 
-	ldms_set_t set_old = base->set; /* this should be null */
-
         for (i = 0; i < gpu_ids_count; i++) {
+		if (!gpu_sets[gpu_ids[i]]) {
+			log_fn(LDMSD_LERROR, SAMP ": sets not created\n");
+			return -1;
+		}
 		if (base) {
+			ldms_set_t set_old = base->set; /* this should be null */
 			base->set = gpu_sets[gpu_ids[i]];
 			base_sample_begin(base);
 			base->set = set_old;
@@ -380,6 +383,7 @@ static int gpu_sample()
         }
         for (i = 0; i < gpu_ids_count; i++) {
 		if (base) {
+			ldms_set_t set_old = base->set; /* this should be null */
 			base->set = gpu_sets[gpu_ids[i]];
 			base_sample_end(base);
 			base->set = set_old;
