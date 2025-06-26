@@ -36,7 +36,7 @@ struct mdt_data {
         char *fs_name;
         char *name;
         char *path;
-        char *stats_path; /* md_stats */
+        char *md_stats_path; /* md_stats */
         char *job_stats_path;
         char *osd_path;
         ldms_set_t general_metric_set; /* a pointer */
@@ -52,7 +52,7 @@ static int string_comparator(void *a, const void *b)
 static struct mdt_data *mdt_create(lm_context_t ctxt, const char *mdt_name, const char *basedir)
 {
         struct mdt_data *mdt;
-        char path_tmp[PATH_MAX]; /* TODO: move large stack allocation to heap */
+        char path_tmp[PATH_MAX];
         char *state;
 
         ovis_log(lustre_mdt_log, OVIS_LDEBUG, "mdt_create() %s from %s\n",
@@ -68,8 +68,8 @@ static struct mdt_data *mdt_create(lm_context_t ctxt, const char *mdt_name, cons
         if (mdt->path == NULL)
                 goto out3;
         snprintf(path_tmp, PATH_MAX, "%s/md_stats", mdt->path);
-        mdt->stats_path = strdup(path_tmp);
-        if (mdt->stats_path == NULL)
+        mdt->md_stats_path = strdup(path_tmp);
+        if (mdt->md_stats_path == NULL)
                 goto out4;
         snprintf(path_tmp, PATH_MAX, "%s/job_stats", mdt->path);
         mdt->job_stats_path = strdup(path_tmp);
@@ -96,7 +96,7 @@ out7:
 out6:
         free(mdt->job_stats_path);
 out5:
-        free(mdt->stats_path);
+        free(mdt->md_stats_path);
 out4:
         free(mdt->path);
 out3:
@@ -115,7 +115,7 @@ static void mdt_destroy(lm_context_t ctxt, struct mdt_data *mdt)
         free(mdt->osd_path);
         free(mdt->fs_name);
         free(mdt->job_stats_path);
-        free(mdt->stats_path);
+        free(mdt->md_stats_path);
         free(mdt->path);
         free(mdt->name);
         free(mdt);
@@ -136,7 +136,7 @@ static void mdts_destroy(lm_context_t ctxt)
 }
 
 /* List subdirectories in MDT_PATH to get list of
-   MDT names.  Create mdt_data structures for any MDTS any that we
+   MDT names.  Create mdt_data structures for any MDTS that we
    have not seen, and delete any that we no longer see. */
 static void mdts_refresh(lm_context_t ctxt)
 {
@@ -198,7 +198,7 @@ static void mdts_sample(lm_context_t ctxt)
         RBT_FOREACH(rbn, &mdt_tree) {
                 struct mdt_data *mdt;
                 mdt = container_of(rbn, struct mdt_data, mdt_tree_node);
-                mdt_general_sample(mdt->name, mdt->stats_path, mdt->osd_path,
+                mdt_general_sample(mdt->name, mdt->md_stats_path, mdt->osd_path,
                                    mdt->general_metric_set);
                 mdt_job_stats_sample(ctxt,
 				     producer_name, mdt->fs_name, mdt->name,
