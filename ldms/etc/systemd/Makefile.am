@@ -8,7 +8,8 @@ BUILT_FILES = \
 	ldmsd.sampler.service \
 	ldmsd.aggregator.service \
 	ldmsd.kokkos.service \
-	papi-sampler.service
+	papi-sampler.service \
+	ldmsd@.service
 BUILT_FILES_SRC = $(BUILT_FILES:=.in)
 
 EXTRA_DIST = $(BUILT_FILES_SRC)
@@ -18,3 +19,5 @@ nodist_sysconfsystemdsystem_DATA=$(BUILT_FILES)
 
 $(builddir)/%.service: $(srcdir)/%.service.in
 	$(do_subst) < $< > $@
+
+CLEANFILES=$(BUILT_FILES)
