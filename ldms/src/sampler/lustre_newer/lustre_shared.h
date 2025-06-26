@@ -11,6 +11,14 @@
 
 #define MAXNAMESIZE 64
 
+/*
+ * Find the osd directory that should contain simple stats files such
+ * as "kbytesfree".
+ *
+ * Returns strdup'ed string or NULL.  Caller must free.
+ */
+char *lustre_osd_dir_find(const char * const *paths, const char *component_name, ovis_log_t log);
+
 int lustre_stats_file_sample(const char *stats_path,
 			     ldms_set_t metric_set,
 			     ovis_log_t log);
