@@ -119,44 +119,6 @@ void mdt_general_schema_fini()
         }
 }
 
-/* Returns strdup'ed string or NULL.  Caller must free. */
-char *mdt_general_osd_path_find(const char *search_path, const char *mdt_name)
-{
-        struct dirent *dirent;
-        DIR *dir;
-        char *osd_path = NULL;
-
-        dir = opendir(search_path);
-        if (dir == NULL) {
-                return NULL;
-        }
-
-        while ((dirent = readdir(dir)) != NULL) {
-                if (dirent->d_type == DT_DIR &&
-                    strncmp(dirent->d_name, "osd-", strlen("osd-")) == 0) {
-                        char tmp_path[PATH_MAX];
-                        snprintf(tmp_path, PATH_MAX, "%s/%s/%s",
-                                 search_path, dirent->d_name, mdt_name);
-                        if (access(tmp_path, F_OK) == 0) {
-                                osd_path = strdup(tmp_path);
-                                break;
-                        }
-                }
-        }
-
-        closedir(dir);
-
-        if (osd_path != NULL) {
-                ovis_log(lustre_mdt_log, OVIS_LDEBUG, "for mdt %s found osd path %s\n",
-                       mdt_name, osd_path);
-        } else {
-                ovis_log(lustre_mdt_log, OVIS_LWARNING, "osd for mdt %s not found\n",
-                       mdt_name);
-        }
-
-        return osd_path;
-}
-
 static uint64_t file_read_uint64_t(const char *dir, const char *file)
 {
         uint64_t val;

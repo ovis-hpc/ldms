@@ -5,10 +5,69 @@
  * SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
  */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <dirent.h>
 #include <stdint.h>
 #include <inttypes.h>
 #include "lustre_shared.h"
 #include "jobid_helper.h"
+
+/*
+ * Find the osd directory that should contain simple stats files such
+ * as "kbytesfree".
+ *
+ * Returns strdup'ed string or NULL.  Caller must free.
+ */
+char *lustre_osd_dir_find(const char * const *paths, const char *component_name, ovis_log_t log)
+{
+	char *path;
+	char *osd_dir = NULL;
+	int i;
+
+	for (i = 0, path = (char *)paths[0]; path != NULL; i++, path = (char *)paths[i]) {
+		struct dirent *dirent;
+		DIR *dir;
+
+		dir = opendir(path);
+		if (dir == NULL) {
+			ovis_log(log, OVIS_LDEBUG,
+				 "osd for %s, base dir %s does not exist\n",
+				 component_name, path);
+			continue;
+		}
+
+		while ((dirent = readdir(dir)) != NULL) {
+			if (dirent->d_type == DT_DIR &&
+			    strncmp(dirent->d_name, "osd-", strlen("osd-")) == 0) {
+				char tmp_path[PATH_MAX];
+				snprintf(tmp_path, PATH_MAX, "%s/%s/%s",
+					 path, dirent->d_name, component_name);
+				if (access(tmp_path, F_OK) == 0) {
+					osd_dir = strdup(tmp_path);
+					break;
+				}
+			}
+		}
+
+		closedir(dir);
+
+		if (osd_dir != NULL) {
+			ovis_log(log, OVIS_LDEBUG,
+				 "osd for %s found at path %s\n",
+				 component_name, osd_dir);
+			break;
+		} else {
+			ovis_log(log, OVIS_LDEBUG,
+				 "osd for %s not found in base path %s\n",
+				 component_name, path);
+		}
+
+	}
+
+	return osd_dir;
+}
 
 int lustre_stats_file_sample(const char *stats_path,
 			     ldms_set_t metric_set,
