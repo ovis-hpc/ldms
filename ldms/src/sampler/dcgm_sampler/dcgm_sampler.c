@@ -27,6 +27,9 @@
 
 #define SAMP "dcgm_sampler"
 
+/* inlining ldmsd_plug_cfg_name_get gets messy; use macro */
+#define H2CN(h) ldmsd_plug_cfg_name_get(h)
+
 static unsigned short default_fields[] = {
         DCGM_FI_DEV_GPU_TEMP,
         DCGM_FI_DEV_POWER_USAGE,
@@ -235,7 +238,7 @@ static void dcgm_fini()
         dcgm_initialized = false;
 }
 
-static ldms_set_t gpu_metric_set_create(int gpu_id)
+static ldms_set_t gpu_metric_set_create(ldmsd_plug_handle_t handle, int gpu_id)
 {
         ldms_set_t set;
         char instance_name[256];
@@ -255,9 +258,9 @@ static ldms_set_t gpu_metric_set_create(int gpu_id)
 		/* override single set assumed in sampler_base api */
 		set = base_set_new(base);
 		if (!set) {
-			ovis_log(mylog, OVIS_LERROR, "failed to make %s set for %s\n",
-				base->instance_name, SAMP);
 			base->instance_name = tmp;
+			ovis_log(mylog, OVIS_LERROR, "failed to make %s set\n",
+				base->instance_name);
 			return set;
 		}
 		base_auth_set(&base->auth, set);
@@ -270,18 +273,30 @@ static ldms_set_t gpu_metric_set_create(int gpu_id)
 		set = ldms_set_new(instance_name, gpu_schema);
 		ldms_set_producer_name_set(set, producer_name);
 		ldms_set_publish(set);
-		ldmsd_set_register(set, SAMP);
+		ldmsd_set_register(set, H2CN(handle));
 	}
 	ldms_metric_set_s32(set, gpu_id_metric_index, gpu_id);
 
         return set;
 }
 
-static void gpu_metric_set_destroy(ldms_set_t set)
+static void gpu_metric_set_destroy(ldmsd_plug_handle_t handle, ldms_set_t set)
 {
-        ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
-        ldms_set_unpublish(set);
-        ldms_set_delete(set);
+	if (!handle || !set) {
+		return;
+	}
+	if (!base) {
+		ldmsd_set_deregister(ldms_set_instance_name_get(set), H2CN(handle));
+		ldms_set_unpublish(set);
+		ldms_set_delete(set);
+	} else {
+		ovis_log(mylog, OVIS_LDEBUG, "base->cfg_name = %s\n", base->cfg_name);
+		ldms_set_t set_old = base->set; /* this should be null */
+		base->set = set;
+		base_set_delete(base);
+		base->set = set_old;
+
+	}
 }
 
 
@@ -563,7 +578,7 @@ static int config(ldmsd_plug_handle_t handle,
 		        goto err0;
 		}
 	} else {
-		base = base_config(avl, ldmsd_plug_cfg_name_get(handle), "dcgm", mylog);
+		base = base_config(avl, H2CN(handle), "dcgm", mylog);
 		conf.schema_name = strdup(base->schema_name);
 	}
 
@@ -597,7 +612,7 @@ static int config(ldmsd_plug_handle_t handle,
 				i , DCGM_MAX_NUM_DEVICES);
                         goto err4;
                 }
-                gpu_sets[gpu_ids[i]] = gpu_metric_set_create(gpu_ids[i]);
+                gpu_sets[gpu_ids[i]] = gpu_metric_set_create(handle, gpu_ids[i]);
         }
         sampler_configured = true;
 
@@ -605,7 +620,8 @@ static int config(ldmsd_plug_handle_t handle,
 
 err4:
         for (i = i-1; i >= 0; i--) {
-                gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
+                gpu_metric_set_destroy(handle, gpu_sets[gpu_ids[i]]);
+		gpu_sets[gpu_ids[i]] = NULL;
         }
 	gpu_schema_destroy();
 	if (base) {
@@ -630,9 +646,9 @@ err0:
 
 static int sample(ldmsd_plug_handle_t handle)
 {
-	ovis_log(mylog, OVIS_LDEBUG, SAMP" sample() called\n");
+	ovis_log(mylog, OVIS_LDEBUG, "sample() called\n");
         if (!sampler_configured) {
-                ovis_log(mylog, OVIS_LERROR, SAMP" sampler has not been configured\n");
+                ovis_log(mylog, OVIS_LERROR, "sampler has not been configured\n");
                 return -1;
         }
         if (!dcgm_initialized) {
@@ -698,7 +714,11 @@ static void destructor(ldmsd_plug_handle_t handle)
 {
 	int i;
 
-	ovis_log(mylog, OVIS_LDEBUG, "term() called\n");
+	ovis_log(mylog, OVIS_LDEBUG, "destructor() called\n");
+        for (i = 0; i < gpu_ids_count; i++) {
+                gpu_metric_set_destroy(handle, gpu_sets[gpu_ids[i]]);
+		gpu_sets[gpu_ids[i]] = NULL;
+        }
         gpu_schema_destroy();
 	if (base) {
 		free(base->instance_name);
@@ -712,9 +732,6 @@ static void destructor(ldmsd_plug_handle_t handle)
         conf.fields = NULL;
         conf.fields_len = 0;
         conf.interval = 0;
-        for (i = 0; i < gpu_ids_count; i++) {
-                gpu_metric_set_destroy(gpu_sets[gpu_ids[i]]);
-        }
         dcgm_fini();
 	free(field_help);
 	field_help = NULL;
