@@ -17,11 +17,17 @@
 #include "lustre_ost.h"
 #include "lustre_ost_general.h"
 #include "lustre_ost_job_stats.h"
+#include "lustre_shared.h"
 
 #define _GNU_SOURCE
 
 #define OBDFILTER_PATH "/proc/fs/lustre/obdfilter"
-#define OSD_SEARCH_PATH "/proc/fs/lustre"
+
+static const char * const possible_osd_base_paths[] = {
+	"/sys/fs/lustre", /* at least lustre >= 1.15 (probably >= 1.12) */
+	"/proc/fs/lustre", /* older lustre */
+	NULL
+};
 
 ovis_log_t lustre_ost_log;
 static struct comp_id_data cid;
@@ -85,7 +91,9 @@ static struct ost_data *ost_create(lo_context_t ctxt, const char *ost_name, cons
         ost->general_metric_set = ost_general_create(ctxt, producer_name, ost->fs_name, ost->name, &cid);
         if (ost->general_metric_set == NULL)
                 goto out7;
-        ost->osd_path = ost_general_osd_path_find(OSD_SEARCH_PATH, ost->name);
+        ost->osd_path = lustre_osd_dir_find(possible_osd_base_paths,
+					    ost->name,
+					    lustre_ost_log);
         rbn_init(&ost->ost_tree_node, ost->name);
         rbt_init(&ost->job_stats, string_comparator);
 
