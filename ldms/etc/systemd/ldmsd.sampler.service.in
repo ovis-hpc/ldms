@@ -3,7 +3,7 @@ Description = LDMS Sampler Daemon
 Documentation = http://ovis.ca.sandia.gov
 
 [Service]
-Type = forking
+Type = exec
 EnvironmentFile = @sysconfdir@/ldms/ldmsd.sampler.env
 Environment = HOSTNAME=%H
 ExecStartPre = /bin/mkdir -p @localstatedir@/run/ldmsd

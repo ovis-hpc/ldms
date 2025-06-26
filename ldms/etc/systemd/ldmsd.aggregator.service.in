@@ -3,7 +3,7 @@ Description = LDMS Daemon
 Documentation = http://ovis.ca.sandia.gov
 
 [Service]
-Type = forking
+Type = exec
 LimitNOFILE = ${LDMSD_ULIMIT_NOFILE}
 EnvironmentFile = @sysconfdir@/ldms/ldmsd.aggregator.env
 Environment = HOSTNAME=%H
@@ -15,7 +15,6 @@ ExecStart = @sbindir@/ldmsd \
 		-v ${LDMSD_VERBOSE} \
 		-m ${LDMSD_MEM} \
 		$LDMSD_LOG_OPTION \
-		-P ${LDMSD_NUM_THREADS} \
 		-r @localstatedir@/run/ldmsd/aggregator.pid
 
 [Install]
