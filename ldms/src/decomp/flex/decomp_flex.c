@@ -651,7 +651,7 @@ static int flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	if (0 == n_decomp) {
 		/* does not match; apply the default */
 		if (!dcfg->default_decomps) {
-			ovis_log(flex_log, OVIS_LWARN,
+			ovis_log(flex_log, OVIS_LDEBUG,
 				 "strgp '%s': no default decomposition, "
 				 "unhandled set '%s' (%s)",
 				 strgp->obj.name,
