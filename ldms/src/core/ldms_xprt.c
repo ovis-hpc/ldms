@@ -603,13 +603,32 @@ static void __set_delete_cb(ldms_t xprt, int status, ldms_set_t rbd, void *cb_ar
 {
 	struct ldms_context *ctxt = cb_arg;
 	struct ldms_set *set = ctxt->set_delete.s;
+	struct rbn *rbn;
+	struct ldms_lookup_peer *lp;
+
+	pthread_mutex_lock(&set->lock);
+	rbn = rbt_find(&set->lookup_coll, xprt);
+	if (rbn) {
+		rbt_del(&set->lookup_coll, rbn);
+		pthread_mutex_unlock(&set->lock);
+		lp = container_of(rbn, struct ldms_lookup_peer, rbn);
+		if (lp->notify_flags)
+			ldms_xprt_put(lp->xprt, "notify_peer");
+		else
+			ldms_xprt_put(lp->xprt, "lookup_peer");
+		free(lp);
+	} else {
+		pthread_mutex_unlock(&set->lock);
+	}
+
 	/* If the set was successfully looked up, it will be be put into
 	 * `x->set_coll` and a reference taken. So, we have to put back the
 	 * reference only in this case. If the set was not in the `x->set_coll`,
 	 * the `ctxt->set_delete.lookup` will be 0 and we must not put the
 	 * reference we have not taken. */
-	if (ctxt->set_delete.lookup)
+	if (ctxt->set_delete.lookup) {
 		ref_put(&set->ref, "xprt_set_coll");
+	}
 }
 
 /* implementation in ldms_rail.c */
