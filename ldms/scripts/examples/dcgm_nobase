@@ -1,0 +1,16 @@
+export plugname=dcgm
+portbase=61073
+VGARGS="--leak-check=full --show-leak-kinds=definite  --track-origins=yes --trace-children=yes"
+JOBDATA $TESTDIR/job.data 1 2
+#vgon
+LDMSD -p prolog.jobid 1
+vgoff
+LDMSD -p prolog.jobid 2
+SLEEP 20
+vgoff
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -lv
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -v
+KILL_LDMSD $(seq 2)
+file_created $STOREDIR/node/nobase_$testname

@@ -1,0 +1,3 @@
+load name=dcgm_sampler
+config name=dcgm_sampler producer=localhost${i} schema=nobase_${testname} instance=localhost${i}/${testname} component_id=${i} interval=1000000 perm=757 uid=3556 gid=3556 job_set=localhost${i}/jobid
+start name=dcgm_sampler interval=1000000 offset=0
