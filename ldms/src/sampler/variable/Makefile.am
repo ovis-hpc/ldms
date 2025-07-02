@@ -19,3 +19,5 @@ dist_man7_MANS += ldms-sampler_variable.man
 endif
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_variable.rst

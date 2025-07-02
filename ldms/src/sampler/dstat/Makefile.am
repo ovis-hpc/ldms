@@ -41,3 +41,5 @@ parse_stat_test_CFLAGS = -DMAIN
 endif
 
 CLEANFILES = $(dist_man1_MANS) $(dist_man7_MANS)
+
+EXTRA_DIST=ldms_dstat_schema_name.rst ldms-sampler_dstat.rst

@@ -41,3 +41,5 @@ rm_banned:
 .PHONY: always_check
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms_my_plugin.rst

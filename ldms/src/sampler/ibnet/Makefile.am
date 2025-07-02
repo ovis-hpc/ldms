@@ -41,3 +41,5 @@ ldms_ibnet_schema_name_LDFLAGS = $(AM_LDFLAGS) -lldms -lovis_util  -pthread
 ldms_ibnet_schema_name_CFLAGS = $(AM_CFLAGS) -DMAIN -I/usr/include/infiniband
 
 CLEANFILES = $(dist_man1_MANS) $(dist_man7_MANS)
+
+EXTRA_DIST+=ldms-ibnet-sampler-gen.rst ldms_ibnet_schema_name.rst ldms-sampler_ibnet.rst

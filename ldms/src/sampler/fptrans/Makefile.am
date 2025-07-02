@@ -17,3 +17,5 @@ pkglib_LTLIBRARIES += libfptrans.la
 dist_man7_MANS += ldms-sampler_fptrans.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_fptrans.rst

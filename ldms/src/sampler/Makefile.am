@@ -305,3 +305,5 @@ endif
 endif
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms_sampler_base.rst ldms-sampler_jobid.rst

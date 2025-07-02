@@ -20,3 +20,5 @@ dist_man7_MANS += ldms-sampler_opa2.man
 pkglib_LTLIBRARIES += libopa2.la
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_opa2.rst

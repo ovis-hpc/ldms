@@ -22,3 +22,5 @@ ldms_csv_time_drops_range_CPPFLAGS = $(AM_CFLAGS) -DPRINT_RANGE
 endif
 
 CLEANFILES = $(dist_man8_MANS)
+
+EXTRA_DIST=ldms-csv-time-drops.rst

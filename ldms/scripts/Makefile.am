@@ -101,3 +101,5 @@ uninstall-local: $(untestsets)
 	echo removing other files:
 	$(RM) $(DESTDIR)/$(sbindir)/.ldms-wrapper
 endif
+
+EXTRA_DIST+=ldms-csv-anonymize.rst ldms-csv-export-sos.rst ldms_pll-ldms-static-test.rst ldms-static-test.rst

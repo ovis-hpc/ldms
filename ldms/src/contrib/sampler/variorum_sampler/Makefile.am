@@ -18,3 +18,5 @@ dist_man7_MANS += ldms-sampler_variorum_sampler.man
 EXTRA_DIST += README.md
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST+=ldms-sampler_variorum_sampler.rst

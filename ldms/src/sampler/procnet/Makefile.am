@@ -19,3 +19,5 @@ pkglib_LTLIBRARIES += libprocnet.la
 endif
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_procnet.rst

@@ -17,3 +17,5 @@ pkglib_LTLIBRARIES += libmsr_interlagos.la
 dist_man7_MANS += ldms-sampler_msr_interlagos.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_msr_interlagos.rst

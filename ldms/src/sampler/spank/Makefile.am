@@ -20,3 +20,5 @@ dist_man7_MANS += ldms-sampler_slurm_notifier.man
 pkglib_LTLIBRARIES += libslurm_notifier.la
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_slurm_notifier.rst

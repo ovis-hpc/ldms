@@ -51,3 +51,5 @@ distclean-local:
 
 # Don't put ldms-sampler_ldms-notify.man in CLEANFILES. It is not generated.
 CLEANFILES = ldms-sampler_netlink-notifier.man
+
+EXTRA_DIST+=ldms-sampler_netlink-notifier.rst

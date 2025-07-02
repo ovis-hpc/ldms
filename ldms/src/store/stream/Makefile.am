@@ -24,3 +24,5 @@ dist_man7_MANS += ldms-store_stream_csv_store.man
 endif
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-store_stream_csv_store.rst
