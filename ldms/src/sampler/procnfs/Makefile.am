@@ -17,3 +17,5 @@ pkglib_LTLIBRARIES += libprocnfs.la
 dist_man7_MANS += ldms-sampler_procnfs.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_procnfs.rst

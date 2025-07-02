@@ -22,3 +22,5 @@ endif
 EXTRA_DIST = ldms-sampler_kgnilnd.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST+=ldms-sampler_kgnilnd.rst

@@ -65,3 +65,5 @@ EXTRA_DIST += .gitignore \
               # end
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST+=ldms-sampler_geopm_sampler.rst

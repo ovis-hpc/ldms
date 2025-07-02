@@ -23,3 +23,5 @@ dist_man7_MANS += ldms-sampler_procinterrupts.man
 endif
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_procinterrupts.rst

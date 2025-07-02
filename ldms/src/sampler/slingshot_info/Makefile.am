@@ -18,3 +18,5 @@ pkglib_LTLIBRARIES = libslingshot_info.la
 dist_man7_MANS = ldms-sampler_slingshot_info.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_slingshot_info.rst

@@ -65,3 +65,5 @@ dist_man7_MANS += ldms-sampler_aries_linkstatus.man
 endif
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_aries_linkstatus.rst ldms-sampler_aries_mmr_configurable.rst ldms-sampler_aries_mmr.rst

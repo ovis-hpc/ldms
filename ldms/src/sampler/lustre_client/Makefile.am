@@ -25,3 +25,5 @@ pkglib_LTLIBRARIES = liblustre_client.la
 dist_man7_MANS = ldms-sampler_lustre_client.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_lustre_client.rst

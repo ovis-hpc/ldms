@@ -26,3 +26,5 @@ pkglib_LTLIBRARIES += libpapi_sampler.la
 dist_man7_MANS += ldms-sampler_papi_sampler.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_papi_sampler.rst

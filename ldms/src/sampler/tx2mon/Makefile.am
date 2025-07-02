@@ -33,3 +33,5 @@ dist_man7_MANS = ldms-sampler_tx2mon.man
 endif
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_tx2mon.rst

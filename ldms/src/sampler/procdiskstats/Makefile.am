@@ -17,3 +17,5 @@ pkglib_LTLIBRARIES += libprocdiskstats.la
 dist_man7_MANS += ldms-sampler_procdiskstats.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_procdiskstats.rst
