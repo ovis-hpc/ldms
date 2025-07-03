@@ -8,170 +8,19 @@
 #SBATCH -n 4
 #SBATCH --nodes=4
 #SBATCH --account=0
-#SBATCH --job-name=ldms_test470
+#SBATCH --job-name=ldms_test.cluster
 #SBATCH -p short,batch
 #SBATCH --time 2:00
 
-# Number of aggregator nodes in the test. Can be 0, but not empty.
+# name of the case file
+TEST_NAME=cluster
+
+# Number of aggregator nodes in the case. Can be 0, but not empty.
 # If more than AGG_COUNT nodes are in the slurm node list,
 # the first AGG_COUNT are reserved for launching daemons 1..$AGG_COUNT by make_hostlists.
-# Else
-# aggregators are in the normal round-robin.
+# Else (not recommended) aggregators are in the normal round-robin.
 AGG_COUNT=2
 
-case x$LDMSNET in
-xfabric)
-	if test "x$HOSTSUFFIX" = "x"; then
-		HOST_SUFFIX=-ib0
-	fi
-	XPRT=fabric
-	;;
-xsockfabric)
-	if test "x$HOSTSUFFIX" = "x"; then
-		HOST_SUFFIX=""
-	fi
-	XPRT=fabric
-	export FI_PROVIDER=sockets
-	;;
-xrdma|xrdma0)
-	if test "x$HOSTSUFFIX" = "x"; then
-		HOST_SUFFIX=-ib0
-	fi
-	XPRT=rdma
-	;;
-xrdma1)
-	if test "x$HOSTSUFFIX" = "x"; then
-		HOST_SUFFIX=-ib1
-	fi
-	XPRT=rdma
-	;;
-xsock)
-	if test "x$HOSTSUFFIX" = "x"; then
-		HOST_SUFFIX=""
-	fi
-	XPRT=sock
-	;;
-*)
-	HOST_SUFFIX=""
-	;;
-esac
-export XPRT
-export HOST_SUFFIX
-
-TEST_NAME=cluster
-PARENT_DIR=$(pwd)/ldmstest/$TEST_NAME/$SLURM_JOBID.$SLURM_CLUSTER_NAME.nodes-$SLURM_JOB_NUM_NODES.tasks-$SLURM_NTASKS.$LDMSNET
-slurmdir=$PARENT_DIR/slurm
-mkdir -p $slurmdir
-export SLURM_HOSTFILE=$slurmdir/Slurm-nodefile.$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_NTASKS.$SLURM_JOB_NUM_NODES
-export TEST_HOSTFILE=$slurmdir/Slurm-ldmsfile.$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_NTASKS.$SLURM_JOB_NUM_NODES
-env > $slurmdir/env.slurm
-scontrol show job $SLURM_JOBID --json > $slurmdir/job.slurm
-export maxdaemon=$SLURM_NTASKS
-function less1 {
-	shift
-	echo $*
-}
-
-function make_hostlists {
-	if test -z "$AGG_COUNT"; then
-		echo agg_count must be set in the sbatch.cluster script.
-		exit 1
-	fi
-
-	# srun ignores ntasks when distribution arbitrary is applied and follows
-	# hostfile with 1 task/line
-	jl=$(scontrol show hostnames $SLURM_JOB_NODELIST)
-	echo nodelist is $jl
-	management=""
-	if test $SLURM_NNODES -le $AGG_COUNT; then
-		# round-robin all daemons
-		echo "SCHEDULE round-robin"
-		workers=$jl
-		wstart=1
-	else
-		echo "SCHEDULE reserve $AGG_COUNT"
-		# reserve AGG_COUNT nodes for 1 task per node
-		mcount=0
-		set -x
-		for m in $jl; do
-			if test $mcount -lt $AGG_COUNT; then
-				management="$management $m"
-				((mcount++))
-			else
-				break
-			fi
-		done
-		for niter in $(seq $AGG_COUNT); do
-			jl=$(less1 $jl)
-		done
-		wstart=$(( $AGG_COUNT + 1))
-		workers=$jl
-		set +x
-	fi
-	echo "SCHEDULE workers= $workers"
-	echo "SCHEDULE management= $management"
-	echo "declare -a hosts" > $TEST_HOSTFILE
-	echo "declare -a least_sampler" > $TEST_HOSTFILE
-	/bin/rm -f $SLURM_HOSTFILE $TEST_HOSTFILE $TEST_HOSTFILE.array
-	k=0
-	for i in $management; do
-		echo $i >> $SLURM_HOSTFILE
-		echo "export host$((k + 1))=$i$HOST_SUFFIX" >> $TEST_HOSTFILE
-		((k++))
-		if test $k -ge $SLURM_NTASKS; then
-			break
-		fi
-	done
-	for i in $(seq $wstart $SLURM_NTASKS); do
-		for j in $workers; do
-			echo $j >> $SLURM_HOSTFILE
-			echo "export host$((k + 1))=$j$HOST_SUFFIX" >> $TEST_HOSTFILE
-			((k++))
-			if test $k -ge $SLURM_NTASKS; then
-				break
-			fi
-		done
-		if test $k -ge $SLURM_NTASKS; then
-			break
-		fi
-	done
-	k=0
-	for i in $management; do
-		echo "hosts[$((k + 1))]=$i$HOST_SUFFIX" >> $TEST_HOSTFILE.array
-		# there is no daemon 0,
-		echo "least_sampler[$((k + 1))]=0" >> $TEST_HOSTFILE.array
-		((k++))
-		if test $k -ge $SLURM_NTASKS; then
-			break
-		fi
-	done
-	firstworkers=1
-	for i in $(seq $wstart $SLURM_NTASKS); do
-		for j in $workers; do
-			echo "hosts[$((k + 1))]=$j$HOST_SUFFIX" >> $TEST_HOSTFILE.array
-			if test $firstworkers = "1"; then
-				echo "least_sampler[$((k + 1))]=1" >> $TEST_HOSTFILE.array
-			else
-				echo "least_sampler[$((k + 1))]=0" >> $TEST_HOSTFILE.array
-			fi
-			((k++))
-			if test $k -ge $SLURM_NTASKS; then
-				break
-			fi
-		done
-		firstworkers=0
-		if test $k -ge $SLURM_NTASKS; then
-			break
-		fi
-	done
-	echo "export hosts" >> $TEST_HOSTFILE.array
-	echo loading env $TEST_HOSTFILE
-	echo loading env $TEST_HOSTFILE
-	. $TEST_HOSTFILE
-	export LDMS_DAEMON_ARRAY_FILE=$TEST_HOSTFILE.array
-}
-
-make_hostlists $AGG_COUNT
-echo "more outputs in $PARENT_DIR"
-echo "slurm input/outputs in $slurmdir"
-srun -n $SLURM_NTASKS --overcommit  --cpu-bind=none --distribution=arbitrary --output=$slurmdir/slurm-%j-%t.out pll-ldms-static-test.sh $TEST_NAME $PARENT_DIR
+commonfile=$(dirname $(pll-ldms-static-test.sh -b $TEST_NAME))/sbatch.common
+# set up host lists from slurm data and launch test_name in a unique output directory.
+. $commonfile
