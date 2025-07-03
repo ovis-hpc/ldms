@@ -43,4 +43,9 @@ KILL_LDMSD $(seq  $maxdaemon)
 WAIT_ALL $(seq $maxdaemon)
 LDMS_CPU_GRIND stop
 MESSAGE logs and data under ${TESTDIR}
-# chown -R baallan.baallan $TESTDIR
+# if configured, reset ownership of output
+if test "x$USER" = "xroot"; then
+	if test -n "$CHOWN_USER"; then
+		chown -R $CHOWN_USER.$CHOWN_USER $TESTDIR
+	fi
+fi
