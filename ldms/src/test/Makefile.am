@@ -70,3 +70,5 @@ installcheck-local:
 TESTS = $(check_PROGRAMS) ldms-run-static-tests.test
 
 CLEANFILES = $(dist_man8_MANS)
+
+EXTRA_DIST=ldms-run-static-tests.rst

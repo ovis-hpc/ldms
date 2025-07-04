@@ -25,3 +25,16 @@ ldmsd-exits.man: $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_con
 	$(srcdir)/make_exits_man.sh $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c > ldmsd-exits.man
 
 CLEANFILES=$(dist_man1_MANS) $(dist_man7_MANS) $(dist_man8_MANS)
+
+EXTRA_DIST+=ldms_lsdate.rst
+EXTRA_DIST+=ldms_authentication.rst
+EXTRA_DIST+=ldms_build_install.rst
+EXTRA_DIST+=ldms-plugins.rst
+EXTRA_DIST+=ldmsd_controller.rst
+EXTRA_DIST+=ldmsd_yaml_parser.rst
+EXTRA_DIST+=ldms_msg.rst
+EXTRA_DIST+=ldmsd_qgroup.rst
+EXTRA_DIST+=ldms_quickstart.rst
+EXTRA_DIST+=ldms-reverse-conf.rst
+EXTRA_DIST+=ldmsd_peer_daemon_advertisement.rst
+EXTRA_DIST+=ldms_msg.rst

@@ -92,3 +92,5 @@ check-local:
 
 EXTRA_DIST += $(srcdir)/input/test_plugattr.txt
 EXTRA_DIST += $(srcdir)/input/bad_test_plugattr.txt
+
+EXTRA_DIST+=ldmsd_failover.rst ldmsd.rst ldmsd_setgroup.rst ldms_ldmsctl.rst ldms_ls.rst

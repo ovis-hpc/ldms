@@ -17,3 +17,5 @@ pkglib_LTLIBRARIES += liblnet_stats.la
 dist_man7_MANS += ldms-sampler_lnet_stats.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_lnet_stats.rst

@@ -37,3 +37,5 @@ dist_man7_MANS = ldms-sampler_rdc_sampler.man
 dist_man1_MANS = ldms_rdc_schema_name.man
 
 CLEANFILES = $(dist_man1_MANS) $(dist_man7_MANS)
+
+EXTRA_DIST=ldms_rdc_schema_name.rst ldms-sampler_rdc_sampler.rst

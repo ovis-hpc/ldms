@@ -25,3 +25,5 @@ libslurm_sampler2_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libslurm_sampler2.la
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_slurm_sampler.rst

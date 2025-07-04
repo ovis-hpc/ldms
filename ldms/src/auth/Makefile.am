@@ -50,3 +50,5 @@ dist_man7_MANS += ldms_auth_none.man \
 		  ldms_auth_naive.man
 
 CLEANFILES= $(dist_man7_MANS)
+
+EXTRA_DIST=ldms_auth_munge.rst ldms_auth_naive.rst ldms_auth_none.rst ldms_auth_ovis.rst

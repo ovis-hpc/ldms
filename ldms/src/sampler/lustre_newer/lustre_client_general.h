@@ -11,7 +11,7 @@
 #include "ldmsd.h"
 #include "comp_id_helper.h"
 #include "sampler_base.h"
-
+#include "lustre_client.h"
 
 int llite_general_schema_is_initialized();
 
@@ -25,7 +25,8 @@ int llite_general_schema_is_initialized();
  */
 int llite_general_schema_init(comp_id_t cid, int schema_extras);
 void llite_general_schema_fini();
-ldms_set_t llite_general_create(const char *producer_name,
+ldms_set_t llite_general_create(lc_context_t ctxt,
+				const char *producer_name,
                                 const char *fs_name,
                                 const char *llite_name,
 				const comp_id_t cid,
@@ -33,6 +34,6 @@ ldms_set_t llite_general_create(const char *producer_name,
 char *llite_general_osd_path_find(const char *search_path, const char *llite_name);
 void llite_general_sample(const char *llite_name, const char *stats_path,
                           ldms_set_t general_metric_set);
-void llite_general_destroy(ldms_set_t set);
+void llite_general_destroy(lc_context_t ctxt, ldms_set_t set);
 
 #endif /* __LUSTRE_LLITE_GENERAL_H */

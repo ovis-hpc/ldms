@@ -22,3 +22,5 @@ dist_man7_MANS += ldms-sampler_syspapi_sampler.man
 pkglib_LTLIBRARIES += libsyspapi_sampler.la
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST+=ldms-sampler_syspapi_sampler.rst

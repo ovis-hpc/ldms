@@ -21,3 +21,5 @@ pkglib_LTLIBRARIES += libzfs_topvdevs.la
 dist_man7_MANS = ldms-sampler_zfs_topvdevs.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_zfs_topvdevs.rst

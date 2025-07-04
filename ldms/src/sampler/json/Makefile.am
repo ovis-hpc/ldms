@@ -21,3 +21,5 @@ libjson_stream_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libjson_stream_sampler.la
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_json_stream_sampler.rst

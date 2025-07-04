@@ -27,3 +27,5 @@ dist_man8_MANS += ldmsd_stream_subscribe.man \
 		  ldmsd_stream_publish.man
 
 CLEANFILES = $(dist_man8_MANS)
+
+EXTRA_DIST=ldmsd_stream_publish.rst ldmsd_stream_subscribe.rst

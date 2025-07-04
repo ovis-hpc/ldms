@@ -10,6 +10,9 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-#define SAMP "lustre_mdt"
+typedef struct {
+	char *plug_name;
+	char *cfg_name;
+} *lm_context_t;
 
 #endif /* __LUSTRE_MDT_H */

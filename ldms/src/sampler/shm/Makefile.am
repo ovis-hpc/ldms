@@ -31,3 +31,5 @@ EXTRA_DIST = \
 	test/samplerd.conf
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST+=ldms-sampler_shm_sampler.rst

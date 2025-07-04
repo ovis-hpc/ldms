@@ -22,3 +22,5 @@ endif
 EXTRA_DIST = LLNL_LICENSE_EDAC
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST+=ldms-sampler_edac.rst

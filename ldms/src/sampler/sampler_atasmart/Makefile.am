@@ -17,3 +17,5 @@ pkglib_LTLIBRARIES += libsampler_atasmart.la
 dist_man7_MANS += ldms-sampler_atasmart.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_atasmart.rst

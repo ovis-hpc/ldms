@@ -22,3 +22,5 @@ pkglib_LTLIBRARIES += libzfs_zpool.la
 dist_man7_MANS = ldms-sampler_zfs_zpool.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_zfs_zpool.rst

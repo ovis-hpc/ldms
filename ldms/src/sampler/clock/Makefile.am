@@ -16,3 +16,5 @@ pkglib_LTLIBRARIES += libclock.la
 dist_man7_MANS += ldms-sampler_clock.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_clock.rst

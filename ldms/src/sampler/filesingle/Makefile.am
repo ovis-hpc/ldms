@@ -33,3 +33,5 @@ EXTRA_DIST += \
 	test_input
 
 CLEANFILES = $(dist_man1_MANS) $(dist_man7_MANS)
+
+EXTRA_DIST+=ldms-sampler_filesingle.rst ldms-sensors-config.rst

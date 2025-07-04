@@ -22,3 +22,5 @@ pkglib_LTLIBRARIES = libdcgm_sampler.la
 dist_man7_MANS = ldms-sampler_dcgm_sampler.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_dcgm_sampler.rst

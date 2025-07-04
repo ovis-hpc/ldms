@@ -17,3 +17,5 @@ pkglib_LTLIBRARIES += libperfevent.la
 dist_man7_MANS += ldms-sampler_perfevent.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_perfevent.rst

@@ -95,3 +95,5 @@ endif
 endif
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_cray_dvs_sampler.rst ldms-sampler_cray_system_sampler_variants.rst

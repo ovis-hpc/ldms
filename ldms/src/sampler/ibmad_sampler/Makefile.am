@@ -33,3 +33,5 @@ install-exec-hook:
 
 uninstall-hook:
 	rm $(DESTDIR)$(pkglibdir)/libibmad.so
+
+EXTRA_DIST=ldms-sampler_ibmad_sampler.rst

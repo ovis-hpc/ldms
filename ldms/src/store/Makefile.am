@@ -116,3 +116,5 @@ endif
 SUBDIRS += stream_dump
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-store_csv.rst ldms-store_function_csv.rst ldms-store_rabbitkw.rst ldms-store_rabbitv3.rst ldms-store_sos.rst

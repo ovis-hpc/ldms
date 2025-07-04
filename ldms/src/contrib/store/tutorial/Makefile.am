@@ -23,3 +23,5 @@ dist_man7_MANS += ldms-store_tutorial.man
 endif
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-store_tutorial.rst

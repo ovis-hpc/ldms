@@ -25,3 +25,5 @@ dist_man7_MANS += ldms-sampler_blob_stream_writer.man
 endif
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_blob_stream_writer.rst ldms-sampler_ldms-csv-from-blobs.rst

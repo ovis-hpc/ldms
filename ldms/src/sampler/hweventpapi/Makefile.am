@@ -25,3 +25,5 @@ pkglib_LTLIBRARIES = libhweventpapi.la
 dist_man7_MANS = ldms-sampler_hweventpapi.man
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_hweventpapi.rst

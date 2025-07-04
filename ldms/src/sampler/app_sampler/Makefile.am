@@ -26,3 +26,5 @@ check_PROGRAMS = test_fd_timing
 test_fd_timing_SOURCES=test_fd_timing.c
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST+=ldms-sampler_app_sampler.rst ldms-sampler_linux_proc_sampler.rst

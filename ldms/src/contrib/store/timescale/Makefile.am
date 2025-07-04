@@ -27,3 +27,5 @@ EXTRA_DIST += example.conf
 EXTRA_DIST += README.txt
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST+=ldms-store_timescale.rst

@@ -22,3 +22,5 @@ dist_man7_MANS += ldms-sampler_vmstat.man
 endif
 
 CLEANFILES = $(dist_man7_MANS)
+
+EXTRA_DIST=ldms-sampler_vmstat.rst
