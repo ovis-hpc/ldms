@@ -34,8 +34,10 @@
 // Initialize the array a size nxn with random values
 void initialize_square_array_with_random_values(int seed, int N, double **a) {
 	srand(seed);
-	for (int i = 0; i < N; i++) {
-		for (int j = 0; j < N; j++) {
+	int i;
+	int j;
+	for (i = 0; i < N; i++) {
+		for ( j = 0; j < N; j++) {
 			a[i][j] = (double)rand() / RAND_MAX;
 		}
 	}
@@ -306,7 +308,6 @@ int main(int argc, char **argv) {
 			break;
 		case 'p':
 			{
-				int k = 0;
 				p = optarg;
 				FILE *pf = fopen(p,"w");
 				if (!pf) {
