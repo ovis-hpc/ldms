@@ -1,0 +1,14 @@
+plugins:
+  ${plugname}:
+    name: ${plugname}
+    interval: "1s"
+    config:
+    - producer: "localhost${i}"
+      schema: ${testname}
+      instance: localhost${i}/${testname}
+      component_id: "${i}"
+      perm: "0644"
+
+samplers:
+- daemons: "localhost[1-2]"
+  plugins: [ "${plugname}" ]

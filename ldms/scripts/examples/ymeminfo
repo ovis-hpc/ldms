@@ -1,15 +1,15 @@
 export plugname=meminfo
-portbase=61020
+portbase=10000
 DAEMONS $(seq 3)
-LDMSD -p prolog.sampler 1 2
-LDMSD -p prolog.sampler -p prolog.store3 3
+LDMSD -y -R yepilog.daemons3 -R yepilog.sampler2 -z 1 2
+LDMSD -y -R yepilog.daemons3 -R yepilog.store3 3
 MESSAGE ldms_ls on host 1:
 LDMS_LS 1 -l
 MESSAGE ldms_ls on host 2:
 LDMS_LS 2 -l
-MESSAGE ldms_ls on host 3:
 SLEEP 5
-LDMS_LS 3
+MESSAGE ldms_ls on host 3:
+LDMS_LS 3 -v
 SLEEP 5
 KILL_LDMSD `seq 3`
 file_created $STOREDIR/node/$testname
