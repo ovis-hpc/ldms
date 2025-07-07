@@ -1,0 +1,15 @@
+# define the sampler $plugname with schema $testname on producers $minsamp-$maxdaemon
+plugins:
+  ${plugname}:
+    name: ${plugname}
+    interval: "1s"
+    config:
+    - producer: "localhost${i}"
+      schema: ${testname}
+      instance: localhost${i}/${testname}
+      component_id: "${i}"
+      perm: "0644"
+
+samplers:
+- daemons: "localhost[@minsamp@-@maxdaemon@]"
+  plugins: [ "${plugname}" ]

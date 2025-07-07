@@ -184,7 +184,59 @@ LDMS_AGG_WAITSET_COUNT agg-daemon agg_timeout set-count set_timeout
 CONFIGURATION OPTIONS
 =====================
 
-The LDMSD command supports the following options. Note that all -P
+The LDMSD command macro supports either assembling a final configuration script
+from raw input files or generating it from a YAML file (possibly also assembled).
+The following options apply in either case:
+
+-s <wait_microseconds>
+   |
+   | After an ldmsd is started, wait up to wait_microseconds checking
+     for the daemon PID file to exist. The appropriate wait time is
+     variable depending on the complexity of the configuration. If not
+     specified, the default is 2 seconds wait time.
+
+Generation from YAML
+--------------------
+
+For yaml configuration scripts, the options are -y, -Q, -R, -z below
+and they are mutually exclusive of the raw configuration options.
+
+-y
+   |
+   | Start the daemon using the corresponding generated yaml file.
+
+-Q <prolog-file>
+   |
+   | Prepend the named prolog-file to the total yaml used.
+     May be repeated.
+
+-R <epilog-file>
+   |
+   | Append the named epilog-file to the total yaml used.
+     May be repeated.
+
+-S <variable>
+   |
+   | Append the named variable to the list of those that
+     will be substituted in generated yaml. @variable@ is
+     replaced with the current value. May be repeated.
+
+-z
+   |
+   | Where multiple daemon numbers are specified, the input generated
+     for the first number is cloned to all subsequent daemons. See
+     FILES. This allows a single file to serve many similar daemon
+     instances in scale testing.
+
+
+Assembly from raw inputs
+------------------------
+
+For raw configuration scripts, the options are -p, -P, -c below
+and they are mutually exclusive of the yaml configuration options.
+
+The LDMSD command supports the following options for building
+configurations from raw script pieces. Note that all -P
 options are processed before all -p options in a single LDMSD call.
 
 -p <prolog file>
@@ -210,13 +262,6 @@ files. See FILES below. Multiple -P options are allowed.
      for the first number is cloned to all subsequent daemons. See
      FILES. This allows a single file to serve many similar daemon
      instances in scale testing.
-
--s <wait_microseconds>
-   |
-   | After an ldmsd is started, wait up to wait_microseconds checking
-     for the daemon PID file to exist. The appropriate wait time is
-     variable depending on the complexity of the configuration. If not
-     specified, the default is 2 seconds wait time.
 
 ENVIRONMENT
 ===========
@@ -286,6 +331,7 @@ TESTDIR
 TESTDIR_FAST
    |
    | Root directory of the fast testing scratch (local RAM or NVME)
+     This is removed at the end of a run in most circumstances.
 
 STOREDIR
    |
@@ -330,14 +376,15 @@ FILES
 *$input_file.$i*
    |
    | For each value of i specifed to start an ldmsd, a configuration
-     file named $input_file.$i must also exist. This configuration file
-     is used when starting the daemon.
+     file named $input_file.$i must also exist. The syntax in the file
+     must be consistent with the other yaml or raw options present.
 
-Exception: For any single "LDMSD -c <daemon-numbers>", only
+Exception: For any single "LDMSD -c <daemon-numbers>" or
+"LDMSD -z <daemon-numbers>", only
 $input_file.$i for the first listed number is needed; the first file
 will be used for all subsequent numbers and any matching files except
-the first are ignored. Where prologs are also specified, the regular
-prolog inclusion process is applied to the first file.
+the first are ignored. Where prologs or epilogs are also specified, the regular
+inclusion process is applied to the first file.
 
 *[test_dir]*
    |
@@ -365,9 +412,20 @@ GENERATED FILES
    |
    | The teardown log for the kth daemon.
 
+*$test_dir/run/yaml.$k*
+   |
+   | The yaml input for the kth daemon.
+
+*$test_dir/run/yaml.$k.pre-sed*
+   |
+   | The yaml input for the kth daemon before @variable@
+     substitution is performed, if -S was given.
+
 *$test_dir/run/conf.$k*
    |
-   | The input for the kth daemon.
+   | The raw input for the kth daemon.
+     Where both conf.k and yaml.k are generated, conf.k is for review only
+     and yaml.k is used in starting the daemon k.
 
 *$test_dir/run/revconf.$k*
    |

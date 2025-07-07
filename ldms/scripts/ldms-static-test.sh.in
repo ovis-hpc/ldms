@@ -113,8 +113,9 @@ if test -z "$2"; then
 	TESTDIR=`pwd`/ldmstest/$testname
 	TESTDIR_FAST=/dev/shm/$USER/ldmstest/$testname/$$
 else
-	TESTDIR_FAST=/dev/shm/$USER/$TESTDIR/$$
+	TESTDIR_FAST=/dev/shm/$USER/ldmstest/$testname/$TESTDIR/$$
 fi
+TESTDIR_FASTroot=/dev/shm/$USER/ldmstest/$testname
 export TESTDIR_FAST
 export TESTDIR
 # TESTDIR must be on a global file system
@@ -172,6 +173,7 @@ function DAEMONS {
 	fi
 	for i in $*; do
 		/bin/rm -f ${LOGDIR}/$i.txt ${LOGDIR}/vg.$i ${LOGDIR}/teardown.$i.txt ${LOGDIR}/$i.stdio
+		/bin/rm -f ${RUNDIR}/revconf.$i ${RUNDIR}/conf.$i ${RUNDIR}/yaml.$i ${RUNDIR}/yaml.$i.pre-sed ${RUNDIR}/start.$i
 		ports[$i]=$(($portbase + $i))
 		eval export port$i=${ports[$i]}
 		binname=ldmsd.${ports[$i]}
@@ -194,16 +196,22 @@ function LDMSD {
 		echo skipping sleep
 		return 0
 	fi
+	yaml_epilogs=""
+	yaml_prologs=""
 	prologs=""
 	loopprologs=""
 	bug=0
 	local OPTIND
 	local cloneinput=0
 	startwait=2000000
-	while getopts ":p:P:s:c" opt; do
+	use_yaml=0
+	use_conf=0
+	sed_vars=""
+	while getopts ":p:P:s:cyzQ:R:S:" opt; do
 		case $opt in
 		p)
 			f="$OPTARG"
+			use_conf=1
 			prologs="$prologs $OPTARG"
 			if test "${f:0:1}" = "-"; then
 				echo "LDMSD: -p expected filename"
@@ -214,6 +222,7 @@ function LDMSD {
 			;;
 		P)
 			f="$OPTARG"
+			use_conf=1
 			# arg is filename,$PLIST
 			# fixme: order should matter, which means we
 			# would need to expand args here and include
@@ -228,8 +237,42 @@ function LDMSD {
 			;;
 		c)
 			cloneinput=1;
+			use_conf=1
 			# recycle input to list of similar daemons
 			# after all prolog processing is done
+			;;
+		y)
+			use_yaml=1
+			;;
+		z)
+			cloneinput=1
+			use_yaml=1
+			;;
+		Q)
+			use_yaml=1
+			f="$OPTARG"
+			yaml_prologs="$yaml_prologs $OPTARG"
+			if test "${f:0:1}" = "-"; then
+				echo "LDMSD: -Q expected filename"
+				file=""
+				bug=2
+				((OPTIND--))
+			fi
+			;;
+		R)
+			use_yaml=1
+			f="$OPTARG"
+			yaml_epilogs="$yaml_epilogs $OPTARG"
+			if test "${f:0:1}" = "-"; then
+				echo "LDMSD: -R expected filename"
+				file=""
+				bug=2
+				((OPTIND--))
+			fi
+			;;
+		S)
+			use_yaml=1
+			sed_vars="$sed_vars $OPTARG"
 			;;
 		s)
 			startwait="$OPTARG";
@@ -240,6 +283,11 @@ function LDMSD {
 			;;
 		esac
 	done
+	if test "$use_conf" = "1" -a "$use_yaml" = "1"; then
+		echo "Conflicting options: cannot use both yaml and raw conf inputs"
+		bypass=1
+		bug=1
+	fi
 	shift "$((OPTIND - 1))"
 	if test "$bug" != "0"; then
 		return
@@ -247,6 +295,7 @@ function LDMSD {
 
 	DAEMONS $*
 	clonefile=""
+	yamlonce=""
 	for i in $*; do
 		export i
 		if test "$usevg" = "1"; then
@@ -269,107 +318,197 @@ function LDMSD {
 		if test -n "$HOST"; then
 			XPRTHOST=":$HOST"
 		fi
-		if test -f $input.$i -a -r $input.$i; then
-			echo "# generated from $input" > $LDMSD_RUN/conf.$i
-			for lf in $loopprologs; do
-				loopfile=0
-				alist=$(echo $lf | tr , " ")
-				for j in $alist; do
-					if test $loopfile = "0"; then
-						loopfile=$j
-						pfn=`get_prolog_name $loopfile $input`
-						if test -f "$pfn"; then
-							echo "# looped prolog from $pfn" >> $LDMSD_RUN/conf.$i
+		if test $use_conf = "1"; then
+			if test -f $input.$i -a -r $input.$i; then
+				echo "# generated from $input" > $LDMSD_RUN/conf.$i
+				for lf in $loopprologs; do
+					loopfile=0
+					alist=$(echo $lf | tr , " ")
+					for j in $alist; do
+						if test $loopfile = "0"; then
+							loopfile=$j
+							pfn=`get_prolog_name $loopfile $input`
+							if test -f "$pfn"; then
+								echo "# looped prolog from $pfn" >> $LDMSD_RUN/conf.$i
+							else
+								echo "# prolog $loopfile MISSING" >> $LDMSD_RUN/conf.$i
+								echo "Prolog $loopfile MISSING"
+								echo "$pfn"
+								bypass=1
+								return
+							fi
 						else
-							echo "# prolog $loopfile MISSING" >> $LDMSD_RUN/conf.$i
-							echo "Prolog $loopfile MISSING"
-							echo "$pfn"
-							bypass=1
-							return
+							cat $pfn | sed -e "s/\${j}/$j/g" >> $LDMSD_RUN/conf.$i
 						fi
+					done
+				done
+				for pf in $prologs; do
+					pfn=`get_prolog_name $pf $input`
+					if test -f "$pfn"; then
+						echo "# prolog from $pfn" >> $LDMSD_RUN/conf.$i
+						cat $pfn >> $LDMSD_RUN/conf.$i
 					else
-						cat $pfn | sed -e "s/\${j}/$j/g" >> $LDMSD_RUN/conf.$i
+						echo "# prolog $pf MISSING" >> $LDMSD_RUN/conf.$i
+						echo "Prolog $pf MISSING"
+						echo $pfn
+						bypass=1
+						return
 					fi
 				done
-			done
-			for pf in $prologs; do
-				pfn=`get_prolog_name $pf $input`
-				if test -f "$pfn"; then
-					echo "# prolog from $pfn" >> $LDMSD_RUN/conf.$i
-					cat $pfn >> $LDMSD_RUN/conf.$i
-				else
-					echo "# prolog $pf MISSING" >> $LDMSD_RUN/conf.$i
-					echo "Prolog $pf MISSING"
-					echo $pfn
-					bypass=1
-					return
-				fi
-			done
-			echo "# generated from $input.$i" >> $LDMSD_RUN/conf.$i
-			cat $input.$i >> $LDMSD_RUN/conf.$i
-			clonefile=$LDMSD_RUN/conf.$i
-			ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
-			env > $LDMSD_RUN/env.$i
-			if test -n "$GDB"; then
-				echo "run -x ${XPRT}:${ports[$i]}:${XPRTHOST} -c $LDMSD_RUN/conf.$i -l ${LOGDIR}/$i.txt -v $LOG_LEVEL $LDMSD_EXTRA -r $LDMSD_PIDFILE.$i"
-				gdb ldmsd.${ports[$i]}
-			else
-				echo $wrap ldmsd.${ports[$i]} \
-					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
-					-c $LDMSD_RUN/conf.$i \
-					-l ${LOGDIR}/$i.txt \
-					-v $LOG_LEVEL $LDMSD_EXTRA \
-					-r $LDMSD_PIDFILE.$i \
-				"2>&1 > ${LOGDIR}/$i.stdio &" > $LDMSD_RUN/start.$i
-				$wrap ldmsd.${ports[$i]} \
-					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
-					-c $LDMSD_RUN/conf.$i \
-					-l ${LOGDIR}/$i.txt \
-					-v $LOG_LEVEL $LDMSD_EXTRA \
-					-r $LDMSD_PIDFILE.$i \
-					2>&1 > ${LOGDIR}/$i.stdio &
-			fi
-		else
-			if test -z "$clonefile"; then
-				echo MISSING input file for DAEMON $i
-				clonefile="/tmp"
-			fi
-			if test -f $clonefile -a $cloneinput = "1"; then
-				cp $clonefile $LDMSD_RUN/conf.$i
+				echo "# generated from $input.$i" >> $LDMSD_RUN/conf.$i
+				cat $input.$i >> $LDMSD_RUN/conf.$i
+				clonefile=$LDMSD_RUN/conf.$i
 				ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
 				env > $LDMSD_RUN/env.$i
-				echo $wrap ldmsd.${ports[$i]} \
-					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
-					-c $LDMSD_RUN/conf.$i \
-					-l ${LOGDIR}/$i.txt \
-					-v $LOG_LEVEL $LDMSD_EXTRA \
-					-r $LDMSD_PIDFILE.$i \
-					"2>&1 > ${LOGDIR}/$i.stdio &" \
-					> $LDMSD_RUN/start.$i
-				$wrap ldmsd.${ports[$i]} \
-					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
-					-c $LDMSD_RUN/conf.$i \
-					-l ${LOGDIR}/$i.txt \
-					-v $LOG_LEVEL $LDMSD_EXTRA \
-					-r $LDMSD_PIDFILE.$i \
-					2>&1 > ${LOGDIR}/$i.stdio &
+				if test -n "$GDB"; then
+					echo "run -x ${XPRT}:${ports[$i]}:${XPRTHOST} -c $LDMSD_RUN/conf.$i -l ${LOGDIR}/$i.txt -v $LOG_LEVEL $LDMSD_EXTRA -r $LDMSD_PIDFILE.$i"
+					gdb ldmsd.${ports[$i]}
+				else
+					echo $wrap ldmsd.${ports[$i]} \
+						-x ${XPRT}:${ports[$i]}${XPRTHOST} \
+						-c $LDMSD_RUN/conf.$i \
+						-l ${LOGDIR}/$i.txt \
+						-v $LOG_LEVEL $LDMSD_EXTRA \
+						-r $LDMSD_PIDFILE.$i \
+					"2>&1 > ${LOGDIR}/$i.stdio &" > $LDMSD_RUN/start.$i
+					$wrap ldmsd.${ports[$i]} \
+						-x ${XPRT}:${ports[$i]}${XPRTHOST} \
+						-c $LDMSD_RUN/conf.$i \
+						-l ${LOGDIR}/$i.txt \
+						-v $LOG_LEVEL $LDMSD_EXTRA \
+						-r $LDMSD_PIDFILE.$i \
+						2>&1 > ${LOGDIR}/$i.stdio &
+				fi
 			else
-				echo IDLE DAEMON $i
+				if test -z "$clonefile"; then
+					echo MISSING input file for DAEMON $i
+					clonefile="/tmp"
+				fi
+				if test -f $clonefile -a $cloneinput = "1"; then
+					cp $clonefile $LDMSD_RUN/conf.$i
+					ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
+					env > $LDMSD_RUN/env.$i
+					echo $wrap ldmsd.${ports[$i]} \
+						-x ${XPRT}:${ports[$i]}${XPRTHOST} \
+						-c $LDMSD_RUN/conf.$i \
+						-l ${LOGDIR}/$i.txt \
+						-v $LOG_LEVEL $LDMSD_EXTRA \
+						-r $LDMSD_PIDFILE.$i \
+						"2>&1 > ${LOGDIR}/$i.stdio &" \
+						> $LDMSD_RUN/start.$i
+					$wrap ldmsd.${ports[$i]} \
+						-x ${XPRT}:${ports[$i]}${XPRTHOST} \
+						-c $LDMSD_RUN/conf.$i \
+						-l ${LOGDIR}/$i.txt \
+						-v $LOG_LEVEL $LDMSD_EXTRA \
+						-r $LDMSD_PIDFILE.$i \
+						2>&1 > ${LOGDIR}/$i.stdio &
+				else
+					echo IDLE DAEMON $i
+					env > $LDMSD_RUN/env.$i
+					echo "#" > $LDMSD_RUN/revconf.$i
+					echo ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
+						-l ${LOGDIR}/$i.txt \
+						-v $LOG_LEVEL \
+						-r $LDMSD_PIDFILE.$i \
+						"2>&1 > ${LOGDIR}/$i.stdio &" \
+						> $LDMSD_RUN/start.$i
+					ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
+						-l ${LOGDIR}/$i.txt \
+						-v $LOG_LEVEL \
+						-r $LDMSD_PIDFILE.$i \
+						2>&1 > ${LOGDIR}/$i.stdio &
+				fi
+			fi
+		else
+		##########################################################
+		# yaml input case
+		# because yaml map keys cannot be repeated, we must generate
+		# .yaml files for each daemon separately if we want to assemble
+		# from reusable parts without ansible
+			if test -f $input.$i -a -r $input.$i; then
+				echo "# generated from $input" > $LDMSD_RUN/yaml.$i
+				for pf in $yaml_prologs; do
+					pfn=`get_prolog_name $pf $input`
+					if test -f "$pfn"; then
+						echo "# prolog from $pfn" >> $LDMSD_RUN/yaml.$i
+						cat $pfn >> $LDMSD_RUN/yaml.$i
+					else
+						echo "# prolog $pf MISSING" >> $LDMSD_RUN/yaml.$i
+						echo "Prolog $pf MISSING"
+						echo $pfn
+						bypass=1
+						return
+					fi
+				done
+				echo "# generated from $input.$i" > $LDMSD_RUN/yaml.$i
+				cat $input.$i >> $LDMSD_RUN/yaml.$i
+				for pf in $yaml_epilogs; do
+					pfn=`get_prolog_name $pf $input`
+					if test -f "$pfn"; then
+						echo "# epilog from $pfn" >> $LDMSD_RUN/yaml.$i
+						cat $pfn >> $LDMSD_RUN/yaml.$i
+					else
+						echo "# epilog $pf MISSING" >> $LDMSD_RUN/yaml.$i
+						echo "Epilog $pf MISSING"
+						echo $pfn
+						bypass=1
+						return
+					fi
+				done
+				clonefile=$LDMSD_RUN/yaml.$i
+			else
+				if test -z "$clonefile"; then
+                                        echo MISSING input file for DAEMON $i
+                                        clonefile="/tmp"
+                                fi
+				if test -f $clonefile -a $cloneinput = "1"; then
+					cp $clonefile $LDMSD_RUN/yaml.$i
+				fi
+			fi
+			/bin/rm -f $LDMSD_RUN/conf.$i
+			if test -n "$sed_vars"; then
+				sf=$LDMSD_RUN/.sed.$i
+				echo $sf
+				for sv in $sed_vars; do
+					svv=${!sv}
+					echo $svv
+					echo "s%@"${sv}"@%"$svv"%g" >> $sf
+				done
+				sed -f $sf -i.pre-sed $LDMSD_RUN/yaml.$i
+			fi
+			ldmsd_yaml_parser --ldms_config $LDMSD_RUN/yaml.$i --daemon_name localhost$i > $LDMSD_RUN/conf.$i
+			stat=$?
+			if test "$stat" = "0"; then
+				ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
 				env > $LDMSD_RUN/env.$i
-				echo "#" > $LDMSD_RUN/revconf.$i
-				echo ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
-					-l ${LOGDIR}/$i.txt \
-					-v $LOG_LEVEL \
-					-r $LDMSD_PIDFILE.$i \
-					"2>&1 > ${LOGDIR}/$i.stdio &" \
-					> $LDMSD_RUN/start.$i
-				ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
-					-l ${LOGDIR}/$i.txt \
-					-v $LOG_LEVEL \
-					-r $LDMSD_PIDFILE.$i \
-					2>&1 > ${LOGDIR}/$i.stdio &
+				if test -n "$GDB"; then
+					echo "run -x ${XPRT}:${ports[$i]}:${XPRTHOST} -y $LDMSD_RUN/yaml.$i --daemon_name $HOST:${ports[$i]} -l ${LOGDIR}/$i.txt -v $LOG_LEVEL $LDMSD_EXTRA -r $LDMSD_PIDFILE.$i"
+					gdb ldmsd.${ports[$i]}
+				else
+					echo $wrap ldmsd.${ports[$i]} \
+						-y $LDMSD_RUN/yaml.$i \
+						--daemon_name localhost$i \
+						-l ${LOGDIR}/$i.txt \
+						-v $LOG_LEVEL $LDMSD_EXTRA \
+						-r $LDMSD_PIDFILE.$i \
+					"2>&1 > ${LOGDIR}/$i.stdio &" > $LDMSD_RUN/start.$i
+					$wrap ldmsd.${ports[$i]} \
+						-y $LDMSD_RUN/yaml.$i \
+						--daemon_name localhost$i \
+						-l ${LOGDIR}/$i.txt \
+						-v $LOG_LEVEL $LDMSD_EXTRA \
+						-r $LDMSD_PIDFILE.$i \
+						2>&1 > ${LOGDIR}/$i.stdio &
+				fi
+			else
+				echo "Couldn't create localhost$i from yaml $LDMSD_RUN/yaml.$i"
+				bypass=1
+				return
 			fi
 		fi
+		# end generating conf.i and revconf.i and starting
+
 		# assume gnu sleep and bc exist, because usleep deprecated
 		#sleep $(echo "0.000001 * $startwait" |bc)
 		nwait=0
@@ -829,6 +968,7 @@ export PATH=$LDMSD_RUN:${BUILDDIR}/sbin:${BUILDDIR}/bin:$PATH
 echo "Listing ldmsd's still running:"
 pgrep ldmsd
 echo "Done."
+echo "fast scratch under $TESTDIR_FAST"
 echo "logs and data stored under $TESTDIR"
 
 echo removing old output
@@ -837,6 +977,8 @@ rm -rf ${STOREDIR}/*
 . $input
 
 SLEEP 1
+echo removing $TESTDIR_FASTroot
+/bin/rm -rf $TESTDIR_FASTroot
 echo "logs and data stored under $TESTDIR"
 echo done
 
