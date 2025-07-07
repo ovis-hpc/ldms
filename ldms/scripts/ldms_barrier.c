@@ -327,10 +327,10 @@ int main(int argc, char *argv[])
 				}
 				break;
 			case 'd':
-				strncpy(debug_label, optarg, sizeof(debug_label));
+				strncpy(debug_label, optarg, sizeof(debug_label)-1);
 				break;
 			case 's':
-				strncpy(server_name, optarg, sizeof(server_name));
+				strncpy(server_name, optarg, sizeof(server_name)-1);
 				break;
 			case 'l':
 				is_server = 1;
@@ -339,13 +339,13 @@ int main(int argc, char *argv[])
 				verbose++;
 				break;
 			case 'c':
-				strncpy(client_tag, optarg, sizeof(client_tag));
+				strncpy(client_tag, optarg, sizeof(client_tag)-1);
 				break;
 			case 'i':
-				strncpy(interface, optarg, sizeof(interface));
+				strncpy(interface, optarg, sizeof(interface)-1);
 				break;
 			case 'p':
-				strncpy(port, optarg, sizeof(port));
+				strncpy(port, optarg, sizeof(port)-1);
 				break;
 			case 'm':
 				max_clients = atoi(optarg);
@@ -553,8 +553,9 @@ int main(int argc, char *argv[])
 			reply = "error";
 		}
 		if (ntags < 0) {
+			int i;
 			PRINTF("Notifying counted clients: %s\n", reply);
-			for (int i = 0; i < clients_ready; i++) {
+			for (i = 0; i < clients_ready; i++) {
 				send(client[i], reply, strlen(reply)+1, 0);
 				close(client[i]);
 				struct timespec trcv;
@@ -563,8 +564,9 @@ int main(int argc, char *argv[])
 					trcv.tv_nsec);
 			}
 		} else {
+			int i;
 			PRINTF("Notifying tagged clients: %s\n", reply);
-			for (int i = 0; i < max_clients; i++) {
+			for (i = 0; i < max_clients; i++) {
 				if (client[i] != -1) {
 					send(client[i], reply, strlen(reply)+1, 0);
 					close(client[i]);
