@@ -9892,12 +9892,26 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	char *advtr_xprt;
 	char *advtr_port;
 	char *advtr_auth;
+	char *perm_s;
 	char *endptr = NULL;
+	uid_t uid;
+	gid_t gid;
+	int perm;
+	struct ldmsd_sec_ctxt sctxt;
 	ldmsd_prdcr_listen_t pl;
 
-	name = regex_str = reconnect_str = cidr_str = disabled_start = NULL;
+	name = regex_str = reconnect_str = cidr_str = disabled_start = perm_s = NULL;
 	quota = rx_rate = rail_s = NULL;
 	prdcr_type = advtr_xprt = advtr_port = advtr_auth = NULL;
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	uid = sctxt.crd.uid;
+	gid = sctxt.crd.gid;
+
+	perm = 0770;
+	perm_s = ldmsd_req_attr_str_value_get_by_name(reqc, "perm");
+	if (perm_s)
+		perm = strtoul(perm_s, NULL, 0);
 
 	attr_name = "name";
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -9919,7 +9933,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	pl = (ldmsd_prdcr_listen_t)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_PRDCR_LISTEN,
 						sizeof(*pl), prdcr_listen___del,
-						0, 0, 0);
+						uid, gid, perm);
 	if (!pl) {
 		if (errno == EEXIST)
 			goto eexist;
@@ -10110,6 +10124,7 @@ send_reply:
 	free(advtr_port);
 	free(rail_s);
 	free(prdcr_type);
+	free(perm_s);
 
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;

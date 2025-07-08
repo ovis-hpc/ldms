@@ -38,7 +38,7 @@ advertiser_status
 \**Aggregator Side Commands*\*
 
 prdcr_listen_add
-   name=\ *NAME*" [regex=\ *REGEX*] [ip=\ *CIDR*]
+   name=\ *NAME*" [perm=\ *PERM*] [regex=\ *REGEX*] [ip=\ *CIDR*]
    [disable_start=\ *TRUE|FALSE*] [quota=\ *QUOTA*]
    [rx_rate=\ *RX_RATE*] [type=\ *passive|active*]
    [advertiser_port=\ *PORT*] [advertiser_xprt=\ *XPRT*]
@@ -166,6 +166,9 @@ optional parameter is:**
 
    name=NAME
       String of the prdcr_listen name
+
+   [perm=PERM]
+      Permission to modify the prdcr_listen
 
    [regex=REGEX]
       Regular expression to match with hostnames of peer daemons
