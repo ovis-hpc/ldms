@@ -2115,6 +2115,8 @@ ldms_msg_client_get_stats(ldms_msg_client_t cli, int is_reset)
 	}
 
 	TAILQ_FOREACH(sce, &cli->ch_tq, cli_ch_entry) {
+		if (!sce->ch) /* client was unbound from channel */
+			continue;
 		/* name_len included '\0' */
 		cps = malloc(sizeof(*cps) + sce->ch->name_len);
 		if (!cps)
