@@ -229,7 +229,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                                            'opt_attr': ['rail', 'ip', 'quota', 'rx_rate',
                                                         'regex', 'disable_start', 'reconnect',
                                                         'advertiser_xprt', 'advertiser_port', 'type',
-                                                        'advertiser_auth']},
+                                                        'advertiser_auth', 'perm']},
                       'prdcr_listen_del': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_start': {'req_attr': ['name'], 'opt_attr': []},
                       'prdcr_listen_stop': {'req_attr': ['name'], 'opt_attr': []},
@@ -2679,8 +2679,9 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_listen_add(self, name, reconnect=None, disable_start=None, regex=None, ip=None, rail=None, quota=None, rx_rate=None,
-                        type="passive", advertiser_xprt=None, advertiser_port=None, advertiser_auth=None):
+    def prdcr_listen_add(self, name, perm=None, disable_start=None, regex=None, ip=None, quota=None, rx_rate=None,
+                        type="passive", advertiser_xprt=None, advertiser_port=None, advertiser_auth=None,
+                        reconnect=None, rail=None):
         """
         Tell an aggregator to wait for advertisements from samplers
 
@@ -2692,6 +2693,7 @@ class Communicator(object):
          - Name of the producer listen
 
         Keyword Parameters:
+         perm - Permission of prdcr_listen configuration object
          regex - Regular expression to match sampler hostnames
          ip - IP range in the CIDR format
          disable_start - True if prdcr_listen should only create advertised producers.
@@ -2731,6 +2733,8 @@ class Communicator(object):
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.AUTH, value=advertiser_auth))
         if reconnect is not None:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INTERVAL, value=reconnect))
+        if perm is not None:
+            attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PERM, value=perm))
 
         req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_ADD,
                             attrs=attr_list)

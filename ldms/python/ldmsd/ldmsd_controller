@@ -3093,6 +3093,7 @@ class LdmsdCmdParser(cmd.Cmd):
                 [ip=]              An IP masks to filter advertisements using the source IP
                 [regex=]           A regular expression to match sampler hostnames
                 [disable_start=]   Tell LDMSD not to start the producers
+                [perm=]            The permission to modify the prdcr_listen in the future
             Parameters to Control Advertised Producers:
                 [quota=]           The send quota our ldmsd (the one we are controlling)
                                    advertises to the prdcr (default: value from ldmsd --quota
