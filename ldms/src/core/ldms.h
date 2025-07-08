@@ -1557,6 +1557,39 @@ ldms_msg_subscribe(const char *match, int is_regex,
 		   ldms_msg_event_cb_t cb_fn, void *cb_arg, const char *desc);
 
 /**
+ * \brief Get the `match` attribute of the message client.
+ *
+ * The returned string belongs to the client object. The application must NOT
+ * free or modify the string.
+ *
+ * \param cli The message client handle.
+ *
+ * \retval match The `match` value (string).
+ */
+const char *ldms_msg_client_match_get(ldms_msg_client_t cli);
+
+/**
+ * \brief Get the `is_regex` attribute of the message client.
+ *
+ * \param cli The message client handle.
+ *
+ * \retval 0|1 The `is_regex` value (int).
+ */
+int ldms_msg_client_is_regex_get(ldms_msg_client_t cli);
+
+/**
+ * \brief Get the `desc` attribute of the message client.
+ *
+ * The returned string belongs to the client object. The application must NOT
+ * free or modify the string.
+ *
+ * \param cli The message client handle.
+ *
+ * \retval desc The `desc` value (string).
+ */
+const char *ldms_msg_client_desc_get(ldms_msg_client_t cli);
+
+/**
  * \brief Terminate the message client.
  *
  * If the client \c cli is a remote subscriber, an "unsubscribe" request will

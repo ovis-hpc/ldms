@@ -1146,6 +1146,21 @@ ldms_msg_subscribe(const char *match, int is_regex,
 	return c;
 }
 
+const char *ldms_msg_client_match_get(ldms_msg_client_t cli)
+{
+	return cli->match;
+}
+
+const char *ldms_msg_client_desc_get(ldms_msg_client_t cli)
+{
+	return cli->desc;
+}
+
+int ldms_msg_client_is_regex_get(ldms_msg_client_t cli)
+{
+	return cli->is_regex;
+}
+
 void ldms_msg_client_close(ldms_msg_client_t c)
 {
 	struct ldms_msg_ch_cli_entry_s *sce;
