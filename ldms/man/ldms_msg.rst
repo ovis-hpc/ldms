@@ -108,17 +108,17 @@ commands in order to receive message data from its producers (``prdcr``).
 .. code:: sh
 
  # subscribe "s0" message channel on all producers
- prdcr_subscribe regex=.* msg=s0
+ prdcr_subscribe regex=.* message_channel=s0
  # subscribe "s1" message channel on all producers
- prdcr_subscribe regex=.* msg=s1
+ prdcr_subscribe regex=.* message_channel=s1
 
-The ``msg`` parameter can also be regular expression, e.g.
+The ``message_channel`` parameter can also be regular expression, e.g.
 
 .. code:: sh
 
- # subscribe message channels matching "app.*" or "sys.*"
- prdcr_subscribe regex=.* msg=app.*
- prdcr_subscribe regex=.* msg=sys.*
+ # subscribe message channels matching "app.*" or "sys.*" on all producers
+ prdcr_subscribe regex=.* message_channel=app.*
+ prdcr_subscribe regex=.* message_channel=sys.*
 
 This is the setup for the following figure:
 
@@ -136,7 +136,7 @@ This is the setup for the following figure:
 
   - ``agg`` subscribes ``.*`` channels on ``samp`` with the following command:
 
-    - ``prdcr_subscribe regex=samp msg=.*``
+    - ``prdcr_subscribe regex=samp message_channel=.*``
 
 - ``alice_app``: an application run by alice that LDMS-conencts to ``agg``.
 
@@ -154,7 +154,7 @@ The ``-->`` arrows illustrate possible message data paths.
  │bob_app    │     ├──────────────┤         ├────────┤
  ├───────────┤     │   .----.     │         │ .----. │
  │           │  .----->|ldms|---------------->|ldms| │
- │publish(s0)│  |  │   '-+-+'<---.│         │ '----' │
+ │publish(s0)│  |  │   '----'<---.│         │ '----' │
  │  |        │  |  │     |       |│         └────|───┘
  │  v        │  |  │.----'       |│      .-------'
  │.----.     │  |  │| .------.   |│      | ┌────────────┐
@@ -288,14 +288,18 @@ C subscribe example
  {
      int rc;
      ldms_t x;
+     ldms_msg_client_t cli0;
+     char *cli0_ctxt;
 
      /* connect to an ldmsd */
      x = ldms_xprt_new_with_auth("sock", "munge", NULL);
      ldms_xprt_connect_by_name(x, "node1", "411", NULL, NULL);
 
-     /* subscribe "s0" messages that reached us; cb_fn0 is the callback function */
-     cli0 = ldms_msg_subscribe("s0", 0, cb_fn0, NULL, "s0 only");
+     cli0_ctxt = malloc(1024); /* some application context for cli0 */
+     printf("cli0_ctxt: %p\n", cli0_ctxt);
 
+     /* subscribe "s0" messages that reached us; cb_fn0 is the callback function */
+     cli0 = ldms_msg_subscribe("s0", 0, cb_fn0, cli0_ctxt, "s0 only");
 
      /* Ask ldmsd to forward "s0" messages to us;
       * There will be NO success report callback since the function is `NULL`. */
@@ -315,18 +319,20 @@ C subscribe example
      sleep(10); /* sleep 10 sec */
 
      /* Request an unsubscription to "s0" channel. Note that the `match` must
-      * match the subscription request. */
+      * match the subscription request. The `success_cb` is called to report
+        the success/failed result of the unsubscription request. */
      rc = ldms_msg_remote_unsubscribe(x, "s0", 0, success_cb, NULL);
      if (rc)
          return rc;
 
      /* Request an unsubscription to "app.*" channels. Note that the `match`
-      * must match the subscription request. */
+      * must match the subscription request. The `success_cb` is called to
+      * report the success/failed result of the unsubscription request. */
      rc = ldms_msg_remote_unsubscribe(x, "app.*", 1, success_cb, NULL);
      if (rc)
          return rc;
 
-     ldms_msg_close(cli0);
+     ldms_msg_client_close(cli0);
 
      sleep(5); /* wait a bit so that we can see the events */
 
@@ -335,19 +341,19 @@ C subscribe example
 
  int cb_fn0(ldms_msg_event_t ev, void *cb_arg)
  {
-     if (ev->type == LDMS_MSG_EVENT_CLOSE) {
+     if (ev->type == LDMS_MSG_EVENT_CLIENT_CLOSE) {
          /*
           * The client is "closed". We can clean up resources
           * associated with it here. No more event will occur
           * on this client.
           */
-         struct ldms_msg_stats_s *stat;
-         stat = ldms_msg_client_get_stats(ev->close.client, 0);
+         ldms_msg_client_t cli = ev->close.client;
          printf("client closed:\n");
-         printf(" - match: %s\n", stat->match);
-         printf(" - is_regex: %d\n", stat->is_regex);
-         printf(" - desc: %s\n", stat->desc);
-         ldms_msg_client_stats_free(stat);
+         printf(" - match: %s\n", ldms_msg_client_match_get(cli));
+         printf(" - is_regex: %d\n", ldms_msg_client_is_regex_get(cli));
+         printf(" - desc: %s\n", ldms_msg_client_desc_get(cli));
+         printf("freeing cli0_ctxt: %p\n", cb_arg);
+         free(cb_arg);
          return 0;
      }
      assert(ev->type == LDMS_MSG_EVENT_RECV);
@@ -359,6 +365,7 @@ C subscribe example
      if (ev->recv.type == LDMS_MSG_JSON) {
          /* process `ev->recv.json` */
      }
+     return 0;
  }
 
  int success_cb(ldms_msg_event_t ev, void *cb_arg)
@@ -386,30 +393,32 @@ Python publish examples
 
  from ovis_ldms import ldms
  x = ldms.Xprt(name="sock", auth="munge") # LDMS socket transport /w munge
- x.connect(host="node0", port=411)
+ x.connect(host="localhost", port=411)
 
  # Explicitly specify STRING type.
- x.msg_publish(name="s0", "somedata", msg_type=ldms.LDMS_MSG_STRING,
-                  perm=0o400)
+ x.msg_publish(name="s0", data="somedata", msg_type=ldms.LDMS_MSG_STRING,
+               perm=0o400)
 
  # JSON; the `dict` data will be converted to JSON
- x.msg_publish(name="s0", {"attr": "value"},
-                  msg_type=ldms.LDMS_MSG_JSON, perm=0o400)
+ x.msg_publish(name="s0", data={"attr": "value"}, msg_type=ldms.LDMS_MSG_JSON,
+               perm=0o400)
 
  # Assumed STRING type if data is `str` or `bytes` when `msg_type` is omitted
- x.msg_publish(name="s0", "somedata", perm=0o400)
+ x.msg_publish(name="s0", data="somedata", perm=0o400)
 
  # Assumed JSON type if data is `dict` when `msg_type` is omitted
- x.msg_publish(name="app0", {"attr": "value"}, perm=0o400)
+ x.msg_publish(name="app0", data={"attr": "value"}, perm=0o400)
 
  # We can publish to our process too
- ldms.msg_publish(name="s0", "data")
+ ldms.msg_publish(name="s0", data="data")
 
 
 Python subscribe examples
 -------------------------
 
 .. code:: python
+
+ #!/usr/bin/python3
 
  import time
  from ovis_ldms import ldms
@@ -421,14 +430,14 @@ Python subscribe examples
      print(f"[{sd.name}]: {sd.data}")
 
  def msg_sub_status_cb(ev, cb_arg):
-     print(f"'{ev.name}' subscription status: {ev.status}")
+     print(f"'{ev.match}' subscription status: {ev.status}")
 
  def msg_unsub_status_cb(ev, cb_arg):
-     print(f"'{ev.name}' unsubscription status: {ev.status}")
+     print(f"'{ev.match}' unsubscription status: {ev.status}")
 
  # Subscribe to messages that reaches our process on "s0" channel.
  # `msg_recv_cb()` will be called when "s0" message reached our process.
- cli0 = ldms.MsgClient(match="s0", cb=msg_recv_cb, cb_arg=None)
+ cli0 = ldms.MsgClient(match="s0", is_regex=False, cb=msg_recv_cb, cb_arg=None)
 
  # Subscribe to messages that reaches our process on channels matching "app.*".
  # Since no `cb` is given, "app.*" data that reaches our process will be
@@ -438,13 +447,14 @@ Python subscribe examples
  # Request peer for message forwarding to us only on channel "s0".
  # The status result of the subscription will be notified via
  #  `msg_sub_status_cb`.
- x.msg_subscribe("s0", cb=msg_sub_status_cb, cb_arg=None)
+ x.msg_subscribe("s0", is_regex=False, cb=msg_sub_status_cb, cb_arg=None)
 
  # Request peer for message forwarding to us on channels matching "app.*".
  # Since no `cb` is given, this call becomes blocking, waiting for the status
- # event, and returns it.
- ev = x.msg_subscribe("app.*", is_regex=True)
- print(f"'{ev.name}' subscription status: {ev.status}")
+ # event. An exception is raised if the subscription request resulted in an
+ # error.
+ x.msg_subscribe("app.*", is_regex=True)
+ print(f"app.* subscription status: 0") # b/c an exception is raised if failed
 
  time.sleep(10) # wait a bit to get events
 
@@ -456,12 +466,13 @@ Python subscribe examples
      print(f"[{sd.name}]: {sd.data}")
      sd = cli1.get_data()
 
- # Cancel our "s0" subscription from peer; notify result via `cb`
- x.msg_unsubscribe("s0", cb=msg_unsub_status_cb, cb_arg=None)
+ # Request "s0" subscription cancellation to peer; notify result via `cb`
+ x.msg_unsubscribe("s0", is_regex=False, cb=msg_unsub_status_cb, cb_arg=None)
 
- # Cancel our "app.*" subscription from peer; result via return object
- ev = x.msg_unsubscribe("app.*", is_regex=True)
- print(f"'{ev.name}' unsubscription status: {ev.status}")
+ # Request "app.*" subscription cancellation to peer; block-wait for result,
+ # raising an exception if failed.
+ x.msg_unsubscribe("app.*", is_regex=True)
+ print(f"app.* unsubscription status: 0") # b/c an exception is raised if failed
 
  # Terminate message clients and the connection
  cli0.close()
