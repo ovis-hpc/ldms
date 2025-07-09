@@ -287,6 +287,10 @@ if ENABLE_HELLO_STREAM
 SUBDIRS += hello_stream
 endif
 
+if ENABLE_HELLO_LDMS_MSG
+SUBDIRS += hello_ldms_msg
+endif
+
 if ENABLE_BLOB_STREAM
 SUBDIRS += blob_stream
 endif
