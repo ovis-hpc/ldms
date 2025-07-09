@@ -4353,7 +4353,6 @@ cdef class MsgData(object):
         uid = ev.recv.cred.uid
         gid = ev.recv.cred.gid
         perm = ev.recv.perm
-        # https://github.com/ovis-hpc/ldms/issues/1846
         if sys.version_info >= (3, 8):
             tid = threading.get_native_id()
         else:
