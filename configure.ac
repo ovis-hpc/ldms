@@ -329,6 +329,7 @@ OPTION_DEFAULT_ENABLE([filesingle], [ENABLE_FILESINGLE])
 OPTION_DEFAULT_DISABLE([msr_interlagos], [ENABLE_MSR_INTERLAGOS])
 OPTION_DEFAULT_ENABLE([array_example], [ENABLE_ARRAY_EXAMPLE])
 OPTION_DEFAULT_ENABLE([hello_stream], [ENABLE_HELLO_STREAM])
+OPTION_DEFAULT_ENABLE([hello_ldms_msg], [ENABLE_HELLO_LDMS_MSG])
 OPTION_DEFAULT_ENABLE([blob_stream], [ENABLE_BLOB_STREAM])
 OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
 OPTION_DEFAULT_DISABLE([mpi_sampler], [ENABLE_MPI_SAMPLER])
@@ -1025,6 +1026,7 @@ ldms/src/sampler/dcgm_sampler/Makefile
 ldms/src/sampler/dstat/Makefile
 ldms/src/sampler/hello_stream/Makefile
 ldms/src/sampler/hello_stream/stream_configs/Makefile
+ldms/src/sampler/hello_ldms_msg/Makefile
 ldms/src/sampler/filesingle/Makefile
 ldms/src/sampler/fptrans/Makefile
 ldms/src/sampler/lustre/Makefile
