@@ -2177,7 +2177,7 @@ static int store_col(ldms_set_t set, struct csv_store_handle *s_handle,
 		return EINVAL;
 	}
 
-	if (s_handle->udata && !is_phony_metric_id(col->metric_id)) {
+	if (s_handle->udata && !ldmsd_is_meta_metric_id(col->metric_id)) {
 		/* NOTE: Phony metrics do NOT have udata. */
 		udata = ldms_metric_user_data_get(set, col->metric_id);
 		snprintf(udata_str, sizeof(udata_str), "%s%lu", sep, udata);
