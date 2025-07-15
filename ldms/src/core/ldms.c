@@ -6132,9 +6132,9 @@ const char *ldms_msg_type_sym(ldms_msg_type_t t)
 		[LDMS_MSG_AVRO_SER] = "LDMS_MSG_AVRO_SER",
 	};
 
-	if (t < LDMS_MSG_LAST)
+	if (t <= LDMS_MSG_AVRO_SER)
 		return tbl[t];
-	return "UNKNOWN";
+	assert(NULL=="Invalid ldms_msg type");
 }
 
 const char *ldms_msg_event_type_sym(enum ldms_msg_event_type t)
@@ -6145,9 +6145,10 @@ const char *ldms_msg_event_type_sym(enum ldms_msg_event_type t)
 		[LDMS_MSG_EVENT_SUBSCRIBE_STATUS] =
 			"LDMS_MSG_EVENT_SUBSCRIBE_STATUS",
 		[LDMS_MSG_EVENT_UNSUBSCRIBE_STATUS] =
-			"LDMS_MSG_EVENT_UNSUBSCRIBE_STATUS",
+			"LDMS_MSG_EVENT_UNSUBSCRIBE_STATUS"
 	};
-	if (t < LDMS_MSG_EVENT_LAST)
+	if (t <= LDMS_MSG_EVENT_CLIENT_CLOSE) {
 		return tbl[t];
-	return "UNKNOWN";
+	}
+	assert(NULL=="Invalid ldms_msg_event type");
 }
