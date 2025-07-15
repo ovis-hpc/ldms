@@ -2,7 +2,7 @@
  * Copyright (c) 2019 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2019,2026 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2019,2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -105,9 +105,6 @@ static int ldms_msg_recv_cb(ldms_msg_event_t ev, void *cb_arg)
 	case LDMS_MSG_EVENT_UNSUBSCRIBE_STATUS:
 		if (cb_arg)
 			free(cb_arg);
-		break;
-	case LDMS_MSG_EVENT_LAST:
-	//	// ignore
 		break;
 	}
 	return rc;
