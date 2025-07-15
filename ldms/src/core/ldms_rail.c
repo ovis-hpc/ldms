@@ -255,12 +255,12 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 		goto err_0;
 	}
 
-	if (strlen(auth_name) > LDMS_AUTH_NAME_MAX) {
+	if (!auth_name || (strlen(auth_name) > LDMS_AUTH_NAME_MAX)) {
 		errno = EINVAL;
 		goto err_0;
 	}
 
-	if (strlen(xprt_name) >= LDMS_MAX_TRANSPORT_NAME_LEN) {
+	if (!xprt_name || (strlen(xprt_name) >= LDMS_MAX_TRANSPORT_NAME_LEN)) {
 		errno = EINVAL;
 		goto err_0;
 	}
