@@ -141,9 +141,12 @@ m4_ifndef([PKG_CHECK_MODULES],
 PKG_PROG_PKG_CONFIG
 
 # <rdc/rdc.h> fails to include <assert.h> in at least rocm 6.2.1, hence the
-# include of assert.h here.
+# include of assert.h here. No longer needed as of >=6.4.0
+# rdc/rdc.h in at least ROCm 6.4.0/6.4.1 forgets to include <stdbool.h>,
+# so we include it here for them before including <rdc/rdc.h> */
 AC_LIB_HAVE_LINKFLAGS([rdc_bootstrap], [], [
 #include <assert.h>
+#include <stdbool.h>
 #include <rdc/rdc.h>
 ])
 AM_CONDITIONAL([HAVE_LIBRDC_BOOTSTRAP], [test "x$HAVE_LIBRDC_BOOTSTRAP" = xyes])
