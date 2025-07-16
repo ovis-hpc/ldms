@@ -15,7 +15,8 @@ libdcgm_sampler_la_LDFLAGS = \
         -export-symbols-regex 'ldmsd_plugin_interface' \
         -version-info 1:0:0
 libdcgm_sampler_la_CPPFLAGS = \
-	@OVIS_INCLUDE_ABS@
+	@OVIS_INCLUDE_ABS@ \
+	-I/usr/include/datacenter-gpu-manager-4
 
 pkglib_LTLIBRARIES = libdcgm_sampler.la
 
