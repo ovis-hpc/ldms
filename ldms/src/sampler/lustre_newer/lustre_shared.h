@@ -23,4 +23,6 @@ int lustre_stats_file_sample(const char *stats_path,
 			     ldms_set_t metric_set,
 			     ovis_log_t log);
 
+uint64_t lustre_file_read_uint64_t(const char *dir, const char *file, ovis_log_t log);
+
 #endif
