@@ -2,7 +2,7 @@
  * Copyright (c) 2014-2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2014-2020 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2014-2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -102,7 +102,7 @@ static int init_complete = 0;
 
 static void *io_thread_proc(void *arg);
 
-static void sock_event(struct epoll_event *ev);
+static void sock_disc_err_event(struct epoll_event *ev);
 static void sock_read(z_sock_io_thread_t thr, struct epoll_event *ev);
 static void sock_write(struct epoll_event *ev);
 static void sock_send_complete(struct epoll_event *ev);
@@ -1186,10 +1186,23 @@ static void sock_ev_cb(z_sock_io_thread_t thr, struct epoll_event *ev)
 		int err;
 		socklen_t err_len = sizeof(err);
 		getsockopt(sep->sock, SOL_SOCKET, SO_ERROR, &err, &err_len);
-		DEBUG_LOG(sep, "%ld ep: %p, sock_ev_cb() events %04x err %d\n",
-			  GETTID(), sep, ev->events, err);
-		sock_event(ev);
-		goto out;
+		ovis_log(zslog, OVIS_LDEBUG,
+			 "%ld ep: %p, thread: %p, sock_ev_cb() events %04x err %d\n",
+			 GETTID(), sep, sep->ep.thread, ev->events, err);
+		if (!sep->ep.thread) {
+			/* The endpoint has not been assigned to an
+			 * io_thread yet, so the event fd is the
+			 * listening thread's event fd. Remove this
+			 * endpoint from the event fd or we will loop
+			 * indefinitely on the listen_fd getting EPOLLERR
+			 */
+			struct epoll_event ignore;
+			epoll_ctl(thr->efd, EPOLL_CTL_DEL, sep->sock, &ignore);
+			ref_put(&sep->ep.ref, "accept/connect"); /* from __z_sock_conn_request() */
+			zap_free(&sep->ep);
+		} else {
+			sock_disc_err_event(ev);
+		}
 	}
  out:
 	DEBUG_LOG(sep, "%ld ep: %p, state: %s\n", GETTID(), sep, __zap_ep_state_str(sep->ep.state));
@@ -1609,7 +1622,7 @@ static zap_err_t __sock_send_msg(struct z_sock_ep *sep, struct sock_msg_hdr *m,
 }
 
 /* Handling error or disconnection events */
-static void sock_event(struct epoll_event *ev)
+static void sock_disc_err_event(struct epoll_event *ev)
 {
 	struct z_sock_ep *sep = ev->data.ptr;
 	struct zap_event zev = { 0 };
@@ -1618,7 +1631,9 @@ static void sock_event(struct epoll_event *ev)
 	int drop_conn_ref = 0;
 
 	pthread_mutex_lock(&sep->ep.lock);
-	zap_io_thread_ep_release(&sep->ep);
+	/* Disconnect before thread assignment, e.g. in accept */
+	if (sep->ep.thread)
+		zap_io_thread_ep_release(&sep->ep);
 
 	sock_send_complete(ev);
 
