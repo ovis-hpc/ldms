@@ -119,33 +119,7 @@ void mdt_general_schema_fini()
         }
 }
 
-static uint64_t file_read_uint64_t(const char *dir, const char *file)
-{
-        uint64_t val;
-        char filepath[PATH_MAX];
-        char valbuf[64];
-        FILE *fp;
-
-        snprintf(filepath, PATH_MAX, "%s/%s", dir, file);
-        fp = fopen(filepath, "r");
-        if (fp == NULL) {
-                ovis_log(lustre_mdt_log, OVIS_LWARNING, "unable to open %s\n", filepath);
-                return 0;
-        }
-        if (fgets(valbuf, sizeof(valbuf), fp) == NULL) {
-                ovis_log(lustre_mdt_log, OVIS_LWARNING, "unable to read %s\n", filepath);
-                fclose(fp);
-                return 0;
-        }
-        fclose(fp);
-
-        /* turn string into int */
-        sscanf(valbuf, "%lu", &val);
-
-        return val;
-}
-
-static void osd_sample(const char *osd_path, ldms_set_t general_metric_set)
+static void osd_sample(const char *osd_path, ldms_set_t general_metric_set, ovis_log_t log)
 {
         char *field;
         uint64_t val;
@@ -153,7 +127,7 @@ static void osd_sample(const char *osd_path, ldms_set_t general_metric_set)
         int i;
 
         for (i = 0; (field = osd_uint64_t_fields[i]) != NULL; i++) {
-                val = file_read_uint64_t(osd_path, field);
+                val = lustre_file_read_uint64_t(osd_path, field, log);
                 index = ldms_metric_by_name(general_metric_set, field);
                 ldms_metric_set_u64(general_metric_set, index, val);
          }
@@ -201,6 +175,6 @@ void mdt_general_sample(const char *mdt_name, const char *stats_path,
                mdt_name);
         ldms_transaction_begin(general_metric_set);
         lustre_stats_file_sample(stats_path, general_metric_set, lustre_mdt_log);
-        osd_sample(osd_path, general_metric_set);
+        osd_sample(osd_path, general_metric_set, lustre_mdt_log);
         ldms_transaction_end(general_metric_set);
 }
