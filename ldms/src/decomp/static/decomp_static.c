@@ -914,30 +914,30 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 
 	src = cfg_col->src;
 
-	/* resolve phony metric names first */
+	/* resolve meta metric names first */
 	special = 1;
-	mid = ldmsd_phony_metric_resolve(src);
+	mid = ldmsd_meta_metric_resolve(src);
 	switch (mid) {
-	case LDMSD_PHONY_METRIC_ID_TIMESTAMP:
-	case LDMSD_PHONY_METRIC_ID_DURATION:
+	case LDMSD_META_METRIC_ID_TIMESTAMP:
+	case LDMSD_META_METRIC_ID_DURATION:
 		assert( cfg_col->type == LDMS_V_NONE ||
 			cfg_col->type == LDMS_V_TIMESTAMP );
 		mtype = LDMS_V_TIMESTAMP;
 		mlen = 1;
 		goto commit;
-	case LDMSD_PHONY_METRIC_ID_UID:
-	case LDMSD_PHONY_METRIC_ID_GID:
-	case LDMSD_PHONY_METRIC_ID_PERM:
-	case LDMSD_PHONY_METRIC_ID_CARD:
+	case LDMSD_META_METRIC_ID_UID:
+	case LDMSD_META_METRIC_ID_GID:
+	case LDMSD_META_METRIC_ID_PERM:
+	case LDMSD_META_METRIC_ID_CARD:
 		assert( cfg_col->type == LDMS_V_NONE ||
 			cfg_col->type == LDMS_V_U32 );
 		mtype = LDMS_V_U32;
 		mlen = 1;
 		goto commit;
-	case LDMSD_PHONY_METRIC_ID_DIGEST:
-	case LDMSD_PHONY_METRIC_ID_SCHEMA:
-	case LDMSD_PHONY_METRIC_ID_PRODUCER:
-	case LDMSD_PHONY_METRIC_ID_INSTANCE:
+	case LDMSD_META_METRIC_ID_DIGEST:
+	case LDMSD_META_METRIC_ID_SCHEMA:
+	case LDMSD_META_METRIC_ID_PRODUCER:
+	case LDMSD_META_METRIC_ID_INSTANCE:
 		assert( cfg_col->type == LDMS_V_NONE ||
 			cfg_col->type == LDMS_V_CHAR_ARRAY );
 		col_mid->mid = mid;
@@ -945,14 +945,14 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 		/* Doesn't consume mval space, data comes from
 		 * instance name in set meta-data */
 		goto next;
-	case LDMSD_PHONY_METRIC_ID_UNKNOWN:
+	case LDMSD_META_METRIC_ID_UNKNOWN:
 		mid = -1;
 		special = 0;
 		/* no-op */
 		break;
 	}
 
-	/* Not a phony metric name; try getting the metric from the set. */
+	/* Not a meta metric name; try getting the metric from the set. */
 
 	mid = ldms_metric_by_name(ctxt->set, src);
 	if (mid < 0) {
@@ -976,7 +976,7 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 			goto err;
 		}
 		/* use fill */
-		mid = LDMSD_PHONY_METRIC_ID_FILL;
+		mid = LDMSD_META_METRIC_ID_FILL;
 		mtype  = cfg_col->type;
 		mlen = cfg_col->fill_len;
 		goto commit;
@@ -1223,14 +1223,14 @@ row_cache_dup(decomp_static_row_cfg_t cfg_row,
 		dup_row->cols[i].metric_id = row->cols[i].metric_id;
 		dup_row->cols[i].rec_metric_id = row->cols[i].rec_metric_id;
 		switch (dup_row->cols[i].metric_id) {
-		case LDMSD_PHONY_METRIC_ID_PRODUCER:
-		case LDMSD_PHONY_METRIC_ID_INSTANCE:
-		case LDMSD_PHONY_METRIC_ID_SCHEMA:
-		case LDMSD_PHONY_METRIC_ID_DIGEST:
-		case LDMSD_PHONY_METRIC_ID_FILL:
+		case LDMSD_META_METRIC_ID_PRODUCER:
+		case LDMSD_META_METRIC_ID_INSTANCE:
+		case LDMSD_META_METRIC_ID_SCHEMA:
+		case LDMSD_META_METRIC_ID_DIGEST:
+		case LDMSD_META_METRIC_ID_FILL:
 			dup_row->cols[i].mval = row->cols[i].mval;
 			break;
-		case LDMSD_PHONY_METRIC_ID_TIMESTAMP:
+		case LDMSD_META_METRIC_ID_TIMESTAMP:
 		default:
 			dup_row->cols[i].mval = (ldms_mval_t)&dup_row->mvals[cfg_col->mval_offset];
 		}
@@ -1954,41 +1954,41 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			mcol->rec_array_idx = -1;
 			mcol->rec_array_len = -1;
 			switch (mid) {
-			case LDMSD_PHONY_METRIC_ID_TIMESTAMP:
-			case LDMSD_PHONY_METRIC_ID_DURATION:
+			case LDMSD_META_METRIC_ID_TIMESTAMP:
+			case LDMSD_META_METRIC_ID_DURATION:
 				/* mcol->mval will be assigned in `make_row` */
 				mcol->mtype = LDMS_V_TIMESTAMP;
 				continue;
-			case LDMSD_PHONY_METRIC_ID_UID:
-			case LDMSD_PHONY_METRIC_ID_GID:
-			case LDMSD_PHONY_METRIC_ID_PERM:
-			case LDMSD_PHONY_METRIC_ID_CARD:
+			case LDMSD_META_METRIC_ID_UID:
+			case LDMSD_META_METRIC_ID_GID:
+			case LDMSD_META_METRIC_ID_PERM:
+			case LDMSD_META_METRIC_ID_CARD:
 				/* mcol->mval will be assigned in `make_row` */
 				mcol->mtype = LDMS_V_U32;
 				continue;
-			case LDMSD_PHONY_METRIC_ID_PRODUCER:
+			case LDMSD_META_METRIC_ID_PRODUCER:
 				mcol->mval = (ldms_mval_t)producer;
 				/* mcol->mval->a_char is producer */
 				mcol->mtype = LDMS_V_CHAR_ARRAY;
 				mcol->array_len = producer_len;
 				continue;
-			case LDMSD_PHONY_METRIC_ID_INSTANCE:
+			case LDMSD_META_METRIC_ID_INSTANCE:
 				mcol->mval = (ldms_mval_t)instance;
 				/* mcol->mval->a_char is instance */
 				mcol->mtype = LDMS_V_CHAR_ARRAY;
 				mcol->array_len = instance_len;
 				continue;
-			case LDMSD_PHONY_METRIC_ID_DIGEST:
+			case LDMSD_META_METRIC_ID_DIGEST:
 				/* mcol->mval->a_char is digest str */
 				mcol->mtype = LDMS_V_CHAR_ARRAY;
 				mcol->array_len = LDMS_DIGEST_STR_LENGTH;
 				continue;
-			case LDMSD_PHONY_METRIC_ID_SCHEMA:
+			case LDMSD_META_METRIC_ID_SCHEMA:
 				/* mcol->mval->a_char is schema */
 				mcol->mtype = LDMS_V_CHAR_ARRAY;
 				mcol->array_len = schema_len;
 				continue;
-			case LDMSD_PHONY_METRIC_ID_FILL:
+			case LDMSD_META_METRIC_ID_FILL:
 				mcol->mval = (ldms_mval_t)instance;
 				/* mcol->mval->a_char is instance */
 				mcol->mtype = cfg_row->cols[j].type;
@@ -2130,41 +2130,41 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			col->array_len = cfg_col->array_len;
 
 			switch (mid_rbn->col_mids[j].mid) {
-			case LDMSD_PHONY_METRIC_ID_TIMESTAMP:
+			case LDMSD_META_METRIC_ID_TIMESTAMP:
 				col->mval->v_ts = ts;
 				continue;
-			case LDMSD_PHONY_METRIC_ID_DURATION:
+			case LDMSD_META_METRIC_ID_DURATION:
 				col->mval->v_ts = ldms_transaction_duration_get(set);
 				continue;
-			case LDMSD_PHONY_METRIC_ID_UID:
+			case LDMSD_META_METRIC_ID_UID:
 				col->mval->v_u32 = ldms_set_uid_get(set);
 				continue;
-			case LDMSD_PHONY_METRIC_ID_GID:
+			case LDMSD_META_METRIC_ID_GID:
 				col->mval->v_u32 = ldms_set_gid_get(set);
 				continue;
-			case LDMSD_PHONY_METRIC_ID_PERM:
+			case LDMSD_META_METRIC_ID_PERM:
 				col->mval->v_u32 = ldms_set_perm_get(set);
 				continue;
-			case LDMSD_PHONY_METRIC_ID_CARD:
+			case LDMSD_META_METRIC_ID_CARD:
 				col->mval->v_u32 = ldms_set_card_get(set);
 				continue;
-			case LDMSD_PHONY_METRIC_ID_PRODUCER:
+			case LDMSD_META_METRIC_ID_PRODUCER:
 				col->mval = (ldms_mval_t)producer;
 				col->array_len = producer_len;
 				continue;
-			case LDMSD_PHONY_METRIC_ID_INSTANCE:
+			case LDMSD_META_METRIC_ID_INSTANCE:
 				col->mval = (ldms_mval_t)instance;
 				col->array_len = instance_len;
 				continue;
-			case LDMSD_PHONY_METRIC_ID_DIGEST:
+			case LDMSD_META_METRIC_ID_DIGEST:
 				col->mval = (ldms_mval_t)mid_rbn->digest_str;
 				col->array_len = LDMS_DIGEST_STR_LENGTH;
 				continue;
-			case LDMSD_PHONY_METRIC_ID_SCHEMA:
+			case LDMSD_META_METRIC_ID_SCHEMA:
 				col->mval = (ldms_mval_t)schema;
 				col->array_len = schema_len;
 				continue;
-			case LDMSD_PHONY_METRIC_ID_FILL:
+			case LDMSD_META_METRIC_ID_FILL:
 				col->mval = cfg_col->fill;
 				col->array_len = cfg_col->fill_len;
 				continue;

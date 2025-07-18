@@ -561,18 +561,18 @@ int csv_row_format_types_common(int typeformat, FILE* file, const char *fpath,
 		col = &row->cols[i];
 		enum ldms_value_type met_type = col->type;
 
-		/* Handle phony metrics. They don't have udata. */
+		/* Handle meta metrics. They don't have udata. */
 		switch (col->metric_id) {
-		case LDMSD_PHONY_METRIC_ID_TIMESTAMP:
+		case LDMSD_META_METRIC_ID_TIMESTAMP:
 			/* timestamp (sec or msec) and remaining usec */
 			rc = fprintf(file,"%stimestamp,%s", sep, u64str);
 			CHECKERR(rc);
 			continue;
-		case LDMSD_PHONY_METRIC_ID_PRODUCER:
+		case LDMSD_META_METRIC_ID_PRODUCER:
 			rc = fprintf(file,"%s%s%d", sep, castr, LDMS_PRODUCER_NAME_MAX);
 			CHECKERR(rc);
 			continue;
-		case LDMSD_PHONY_METRIC_ID_INSTANCE:
+		case LDMSD_META_METRIC_ID_INSTANCE:
 			rc = fprintf(file,"%s%s%d", sep, castr, LDMS_SET_NAME_MAX);
 			CHECKERR(rc);
 			continue;
@@ -709,12 +709,12 @@ int csv_format_types_common(int typeformat, FILE* file, const char *fpath, const
 	row->col_count = 2 + metric_count;
 	row->cols[0].name = "timestamp";
 	row->cols[0].type = LDMS_V_U64;
-	row->cols[0].metric_id = LDMSD_PHONY_METRIC_ID_TIMESTAMP;
+	row->cols[0].metric_id = LDMSD_META_METRIC_ID_TIMESTAMP;
 	row->cols[0].array_len = 1;
 
 	row->cols[1].name = "ProducerName";
 	row->cols[1].type = LDMS_V_CHAR_ARRAY;
-	row->cols[1].metric_id = LDMSD_PHONY_METRIC_ID_PRODUCER;
+	row->cols[1].metric_id = LDMSD_META_METRIC_ID_PRODUCER;
 	row->cols[1].array_len = 16; /* can be anything, unused in this case */
 
 	for (i = 0; i < metric_count; i++) {
@@ -773,7 +773,7 @@ int csv_row_format_header(FILE *file, const char *fpath,
 
 		/* timestamp is a special case */
 		switch (col->metric_id) {
-		case LDMSD_PHONY_METRIC_ID_TIMESTAMP:
+		case LDMSD_META_METRIC_ID_TIMESTAMP:
 			/* Print timestamp header fields */
 			if (time_format == TF_MILLISEC) {
 				/* Alternate time format. First field is milliseconds-since-epoch,
@@ -786,9 +786,9 @@ int csv_row_format_header(FILE *file, const char *fpath,
 			}
 			CHECKERR(ec);
 			continue;
-		case LDMSD_PHONY_METRIC_ID_PRODUCER:
-		case LDMSD_PHONY_METRIC_ID_INSTANCE:
-			/* phony metrics don't have udata */
+		case LDMSD_META_METRIC_ID_PRODUCER:
+		case LDMSD_META_METRIC_ID_INSTANCE:
+			/* meta metrics don't have udata */
 			ec = fprintf(fp, "%s%s%s%s", sep, wsqt, name, wsqt);
 			CHECKERR(ec);
 			continue;
@@ -902,12 +902,12 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
 	row->col_count = 2 + metric_count;
 	row->cols[0].name = "timestamp";
 	row->cols[0].type = LDMS_V_U64;
-	row->cols[0].metric_id = LDMSD_PHONY_METRIC_ID_TIMESTAMP;
+	row->cols[0].metric_id = LDMSD_META_METRIC_ID_TIMESTAMP;
 	row->cols[0].array_len = 1;
 
 	row->cols[1].name = "ProducerName";
 	row->cols[1].type = LDMS_V_CHAR_ARRAY;
-	row->cols[1].metric_id = LDMSD_PHONY_METRIC_ID_PRODUCER;
+	row->cols[1].metric_id = LDMSD_META_METRIC_ID_PRODUCER;
 	row->cols[1].array_len = 16; /* can be anything, unused in this case */
 
 	for (i = 0; i < metric_count; i++) {
