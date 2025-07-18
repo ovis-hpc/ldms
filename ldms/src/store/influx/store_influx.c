@@ -208,6 +208,14 @@ open_store(ldmsd_plug_handle_t s, const char *container, const char *schema,
 {
 	struct influx_store *is = NULL;
 
+        if (!container) {
+                ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
+                     "Plugin %s requires \"container=\" to be set in the "
+                     "strgp_add command\n",
+                     ldmsd_plug_name_get(s));
+                goto out;
+        }
+
 	is = malloc(sizeof(*is) + measurement_limit);
 	if (!is)
 		goto out;
