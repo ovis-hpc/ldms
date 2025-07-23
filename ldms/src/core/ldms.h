@@ -1389,12 +1389,14 @@ typedef enum ldms_msg_type_e {
 } ldms_msg_type_t;
 
 /**
- * \brief Disable LDMS Message service
- *
- * Similar to \c ldmsd_stream, this service can be disabled but cannot be
- * enabled afterward.
+ * \brief Disable the LDMS Message service
  */
 void ldms_msg_disable();
+
+/**
+ * \brief Enable the LDMS Message service
+ */
+void ldms_msg_enable();
 
 /**
  * \brief Check if LDMS Message Service is enabled.

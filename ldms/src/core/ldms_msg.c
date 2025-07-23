@@ -94,7 +94,8 @@ static ovis_log_t __ldms_msg_log = NULL; /* see __ldms_msg_init() below */
 
 static int __msg_stats_level = 1;
 
-int ldms_msg_enabled = 1;
+/* Disable message support by default */
+int ldms_msg_enabled = 0;
 
 struct __msg_event_s {
 	struct ldms_msg_event_s pub;
@@ -2399,6 +2400,11 @@ int ldms_msg_publish_file(ldms_t x, const char *name,
 void ldms_msg_disable()
 {
 	ldms_msg_enabled = 0;
+}
+
+void ldms_msg_enable()
+{
+	ldms_msg_enabled = 1;
 }
 
 int ldms_msg_is_enabled()
