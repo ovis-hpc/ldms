@@ -2702,6 +2702,7 @@ class LdmsdCmdParser(cmd.Cmd):
             print(emsg)
             if is_debug:
                 raise RuntimeError(emsg)
+            return
         streams = fmt_status(msg)
         if arg.get('json'):
             print(json.dumps(streams, indent=1))
@@ -2760,6 +2761,7 @@ class LdmsdCmdParser(cmd.Cmd):
             print(emsg)
             if is_debug:
                 raise RuntimeError(emsg)
+            return
         clients = fmt_status(msg)
         if arg.get('json'):
             print(json.dumps(clients, indent=1))
@@ -2798,7 +2800,7 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_msg_disable(self, arg):
         """
-        Disable LDMS Message Service in the daemon
+        Disable the LDMS Message Service in the daemon
 
         No Parameters
         """
@@ -2811,6 +2813,22 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_msg_disable(self, text, line, begidx, endidx):
         return self.__complete_attr_list('msg_disable', text)
+
+    def do_msg_enable(self, arg):
+        """
+        Enable the LDMS Message Service in the daemon
+
+        No Parameters
+        """
+        rc, msg = self.comm.msg_enable()
+        if rc != 0:
+            print(f'Error {rc}: {msg}')
+        else:
+            print('LDMS Message Service is ENABLED in the daemon')
+        return
+
+    def complete_msg_enable(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('msg_enable', text)
 
     def do_listen(self, arg):
         """

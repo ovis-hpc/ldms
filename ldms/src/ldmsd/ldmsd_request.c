@@ -298,6 +298,7 @@ static int stream_disable_handler(ldmsd_req_ctxt_t reqc);
 static int msg_stats_handler(ldmsd_req_ctxt_t reqc);
 static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc);
 static int msg_disable_handler(ldmsd_req_ctxt_t reqc);
+static int msg_enable_handler(ldmsd_req_ctxt_t reqc);
 
 static int listen_handler(ldmsd_req_ctxt_t reqc);
 
@@ -673,6 +674,10 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_MSG_DISABLE_REQ] = {
 		LDMSD_MSG_DISABLE_REQ, msg_disable_handler, XUG | MOD
+	},
+
+	[LDMSD_MSG_ENABLE_REQ] = {
+		LDMSD_MSG_ENABLE_REQ, msg_enable_handler, XUG | MOD
 	},
 
 	/* LISTEN */
@@ -8559,6 +8564,13 @@ static int msg_stats_handler(ldmsd_req_ctxt_t reqc)
 	size_t len;
 	struct ldmsd_req_attr_s attr;
 
+	if (!ldms_msg_is_enabled()) {
+		reqc->errcode = ENOTSUP;
+		snprintf(buff, sizeof(buff), "The message service is disabled.");
+		ldmsd_send_req_response(reqc, buff);
+		rc = 0;
+		goto out;
+	}
 	if (regex) {
 		match = regex;
 		is_regex = 1;
@@ -8602,9 +8614,9 @@ out:
 
 /*
  * command format:
- *     stream_client_stats
+ *     msg_client_stats
  *
- * This command takes no options.
+ * This command accepts the LDMSD_ATTR_RESET attribute
  */
 static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc)
 {
@@ -8616,6 +8628,12 @@ static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc)
 	char *reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
 	int is_reset = 0;
 
+	if (!ldms_msg_is_enabled()) {
+		reqc->errcode = ENOTSUP;
+		snprintf(buff, sizeof(buff), "The LDMS message service is disabled.");
+		ldmsd_send_req_response(reqc, buff);
+		return 0;
+	}
 	if (reset_s && (0 == strcasecmp(reset_s, "true")))
 		is_reset = 1;
 
@@ -8650,6 +8668,15 @@ out:
 static int msg_disable_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldms_msg_disable();
+	reqc->errcode = 0;
+	(void)Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
+static int msg_enable_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldms_msg_enable();
 	reqc->errcode = 0;
 	(void)Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
 	ldmsd_send_req_response(reqc, reqc->line_buf);

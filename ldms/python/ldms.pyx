@@ -4800,5 +4800,8 @@ def ovis_log_set_level_by_name(str subsys_name, level):
 def msg_disable():
     ldms_msg_disable()
 
+def msg_enable():
+    ldms_msg_enable()
+
 def msg_is_enabled():
     return ldms_msg_is_enabled()
