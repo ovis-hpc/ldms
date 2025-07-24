@@ -996,16 +996,23 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
-	if (sos)
-		sos_container_close(sos, SOS_COMMIT_ASYNC);
-	if (root_path)
-		free(root_path);
+	ovis_log(mylog, OVIS_LDEBUG, "term %s\n", ldmsd_plug_cfg_name_get(handle));
+        if (sos)
+                sos_container_close(sos, SOS_COMMIT_ASYNC);
+
+        free(root_path);
+        root_path = NULL;
+        free(stream);
+        stream = NULL;
         free(plugin_config_name);
 }
 
 struct ldmsd_plugin ldmsd_plugin_interface = {
-	.config = config,
-	.usage = usage,
-        .constructor = constructor,
-        .destructor = destructor,
+	.base = {
+		.type = LDMSD_PLUGIN_STORE,
+		.config = config,
+		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
+	},
 };
