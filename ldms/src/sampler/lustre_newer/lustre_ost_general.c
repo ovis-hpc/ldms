@@ -16,9 +16,6 @@
 #include "lustre_ost_general.h"
 #include "lustre_shared.h"
 
-/* Defined in lustre_ost.c */
-extern ovis_log_t lustre_ost_log;
-
 static ldms_schema_t ost_general_schema;
 
 static char *obdfilter_stats_uint64_t_entries[] = {
@@ -59,13 +56,13 @@ int ost_general_schema_is_initialized()
                 return -1;
 }
 
-int ost_general_schema_init(comp_id_t cid)
+int ost_general_schema_init(lo_context_t ctxt, comp_id_t cid)
 {
         ldms_schema_t sch;
         int rc;
         int i;
 
-        ovis_log(lustre_ost_log, OVIS_LDEBUG, "ost_general_schema_init()\n");
+        ovis_log(ctxt->log, OVIS_LDEBUG, "ost_general_schema_init()\n");
         sch = ldms_schema_new("lustre_ost");
         if (sch == NULL)
                 goto err1;
@@ -101,17 +98,17 @@ int ost_general_schema_init(comp_id_t cid)
 
         return 0;
 err2:
-	ovis_log(lustre_ost_log, OVIS_LERROR, "lustre_ost_general schema creation failed to add %s. (%s)\n",
+	ovis_log(ctxt->log, OVIS_LERROR, "lustre_ost_general schema creation failed to add %s. (%s)\n",
 		field, STRERROR(-rc));
         ldms_schema_delete(sch);
 err1:
-        ovis_log(lustre_ost_log, OVIS_LERROR, "lustre_ost_general schema creation failed\n");
+        ovis_log(ctxt->log, OVIS_LERROR, "lustre_ost_general schema creation failed\n");
         return -1;
 }
 
-void ost_general_schema_fini()
+void ost_general_schema_fini(lo_context_t ctxt)
 {
-        ovis_log(lustre_ost_log, OVIS_LDEBUG, "ost_general_schema_fini()\n");
+        ovis_log(ctxt->log, OVIS_LDEBUG, "ost_general_schema_fini()\n");
         if (ost_general_schema != NULL) {
                 ldms_schema_delete(ost_general_schema);
                 ost_general_schema = NULL;
@@ -152,7 +149,7 @@ ldms_set_t ost_general_create(lo_context_t ctxt,
         int index;
         char instance_name[LDMS_PRODUCER_NAME_MAX+64];
 
-        ovis_log(lustre_ost_log, OVIS_LDEBUG, "ost_general_create()\n");
+        ovis_log(ctxt->log, OVIS_LDEBUG, "ost_general_create()\n");
         snprintf(instance_name, sizeof(instance_name), "%s/%s",
                  producer_name, ost_name);
         set = ldms_set_new(instance_name, ost_general_schema);
@@ -168,13 +165,14 @@ ldms_set_t ost_general_create(lo_context_t ctxt,
 }
 
 
-void ost_general_sample(const char *ost_name, const char *stats_path,
+void ost_general_sample(lo_context_t ctxt,
+			const char *ost_name, const char *stats_path,
                         const char *osd_path, ldms_set_t general_metric_set)
 {
-        ovis_log(lustre_ost_log, OVIS_LDEBUG, "ost_general_sample() %s\n",
+        ovis_log(ctxt->log, OVIS_LDEBUG, "ost_general_sample() %s\n",
                ost_name);
         ldms_transaction_begin(general_metric_set);
-        lustre_stats_file_sample(stats_path, general_metric_set, lustre_ost_log);
-        osd_sample(osd_path, general_metric_set, lustre_ost_log);
+        lustre_stats_file_sample(stats_path, general_metric_set, ctxt->log);
+        osd_sample(osd_path, general_metric_set, ctxt->log);
         ldms_transaction_end(general_metric_set);
 }
