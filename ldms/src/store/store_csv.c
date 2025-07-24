@@ -1012,6 +1012,14 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char* schema
 	store_csv_t sc = ldmsd_plug_ctxt_get(handle);
 	struct csv_store_handle *s_handle = NULL;
 
+        if (!container) {
+                ovis_log(mylog, OVIS_LERROR,
+                     "Plugin %s requires \"container=\" to be set in the "
+                     "strgp_add command\n",
+                     ldmsd_plug_name_get(handle));
+                return NULL;
+        }
+
 	if (!sc->pa) {
 		ovis_log(mylog, OVIS_LERROR, "config not called. cannot open.\n");
 		return NULL;
