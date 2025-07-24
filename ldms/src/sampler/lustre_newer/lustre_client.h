@@ -11,6 +11,7 @@
 #include "ldmsd.h"
 
 typedef struct {
+	ovis_log_t log; /* owned by ldmsd, we do not free the log */
 	char *plug_name;
 	char *cfg_name;
 } *lc_context_t;
