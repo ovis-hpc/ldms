@@ -12,8 +12,8 @@
 #include "lustre_mdt.h"
 
 int mdt_job_stats_schema_is_initialized();
-int mdt_job_stats_schema_init();
-void mdt_job_stats_schema_fini();
+int mdt_job_stats_schema_init(lm_context_t ctxt);
+void mdt_job_stats_schema_fini(lm_context_t ctxt);
 void mdt_job_stats_sample(lm_context_t ctxt,
 			  const char *producer_name, const char *fs_name,
                           const char *mdt_name, const char *job_stats_path,

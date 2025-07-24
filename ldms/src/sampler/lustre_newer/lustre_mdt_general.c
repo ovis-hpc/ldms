@@ -18,9 +18,6 @@
 
 static ldms_schema_t mdt_general_schema;
 
-/* Defined in lustre_mdt.c */
-extern ovis_log_t lustre_mdt_log;
-
 static char *mdt_md_stats_uint64_t_entries[] = {
         "open",
         "close",
@@ -60,13 +57,13 @@ int mdt_general_schema_is_initialized()
                 return -1;
 }
 
-int mdt_general_schema_init(comp_id_t cid)
+int mdt_general_schema_init(lm_context_t ctxt, comp_id_t cid)
 {
         ldms_schema_t sch;
         int rc;
         int i;
 
-        ovis_log(lustre_mdt_log, OVIS_LDEBUG, "mdt_general_schema_init()\n");
+        ovis_log(ctxt->log, OVIS_LDEBUG, "mdt_general_schema_init()\n");
         sch = ldms_schema_new("lustre_mdt");
         if (sch == NULL)
                 goto err1;
@@ -102,17 +99,17 @@ int mdt_general_schema_init(comp_id_t cid)
 
         return 0;
 err2:
-	ovis_log(lustre_mdt_log, OVIS_LERROR, "lustre_mdt_general schema creation failed to add %s. (%s)\n",
+	ovis_log(ctxt->log, OVIS_LERROR, "lustre_mdt_general schema creation failed to add %s. (%s)\n",
 		field, STRERROR(-rc));
         ldms_schema_delete(sch);
 err1:
-        ovis_log(lustre_mdt_log, OVIS_LERROR, "lustre_mdt_general schema creation failed\n");
+        ovis_log(ctxt->log, OVIS_LERROR, "lustre_mdt_general schema creation failed\n");
         return -1;
 }
 
-void mdt_general_schema_fini()
+void mdt_general_schema_fini(lm_context_t ctxt)
 {
-        ovis_log(lustre_mdt_log, OVIS_LDEBUG, "mdt_general_schema_fini()\n");
+        ovis_log(ctxt->log, OVIS_LDEBUG, "mdt_general_schema_fini()\n");
         if (mdt_general_schema != NULL) {
                 ldms_schema_delete(mdt_general_schema);
                 mdt_general_schema = NULL;
@@ -153,7 +150,7 @@ ldms_set_t mdt_general_create(lm_context_t ctxt,
         int index;
         char instance_name[LDMS_PRODUCER_NAME_MAX+64];
 
-        ovis_log(lustre_mdt_log, OVIS_LDEBUG, "mdt_general_create()\n");
+        ovis_log(ctxt->log, OVIS_LDEBUG, "mdt_general_create()\n");
         snprintf(instance_name, sizeof(instance_name), "%s/%s",
                  producer_name, mdt_name);
         set = ldms_set_new(instance_name, mdt_general_schema);
@@ -168,13 +165,14 @@ ldms_set_t mdt_general_create(lm_context_t ctxt,
         return set;
 }
 
-void mdt_general_sample(const char *mdt_name, const char *stats_path,
+void mdt_general_sample(lm_context_t ctxt,
+			const char *mdt_name, const char *stats_path,
                         const char *osd_path, ldms_set_t general_metric_set)
 {
-        ovis_log(lustre_mdt_log, OVIS_LDEBUG, "mdt_general_sample() %s\n",
+        ovis_log(ctxt->log, OVIS_LDEBUG, "mdt_general_sample() %s\n",
                mdt_name);
         ldms_transaction_begin(general_metric_set);
-        lustre_stats_file_sample(stats_path, general_metric_set, lustre_mdt_log);
-        osd_sample(osd_path, general_metric_set, lustre_mdt_log);
+        lustre_stats_file_sample(stats_path, general_metric_set, ctxt->log);
+        osd_sample(osd_path, general_metric_set, ctxt->log);
         ldms_transaction_end(general_metric_set);
 }
