@@ -14,6 +14,14 @@ COMMON_LD_ADD = ../../core/libldms.la \
 		$(top_builddir)/lib/src/coll/libcoll.la \
 		$(top_builddir)/lib/src/ovis_util/libovis_util.la
 
+sbin_PROGRAMS += ldms_msg_publish
+ldms_msg_publish_SOURCES = ldms_msg_publish.c
+ldms_msg_publish_LDADD = $(COMMON_LD_ADD)
+
+sbin_PROGRAMS += ldms_msg_subscribe
+ldms_msg_subscribe_SOURCES = ldms_msg_subscribe.c
+ldms_msg_subscribe_LDADD = $(COMMON_LD_ADD)
+
 sbin_PROGRAMS += ldmsd_stream_publish
 ldmsd_stream_publish_SOURCES = ldmsd_stream_publish.c
 ldmsd_stream_publish_LDADD = $(COMMON_LD_ADD)

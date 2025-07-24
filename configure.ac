@@ -154,9 +154,12 @@ m4_ifndef([PKG_CHECK_MODULES],
 PKG_PROG_PKG_CONFIG
 
 # <rdc/rdc.h> fails to include <assert.h> in at least rocm 6.2.1, hence the
-# include of assert.h here.
+# include of assert.h here. No longer needed as of >=6.4.0
+# rdc/rdc.h in at least ROCm 6.4.0/6.4.1 forgets to include <stdbool.h>,
+# so we include it here for them before including <rdc/rdc.h> */
 AC_LIB_HAVE_LINKFLAGS([rdc_bootstrap], [], [
 #include <assert.h>
+#include <stdbool.h>
 #include <rdc/rdc.h>
 ])
 AM_CONDITIONAL([HAVE_LIBRDC_BOOTSTRAP], [test "x$HAVE_LIBRDC_BOOTSTRAP" = xyes])
@@ -329,6 +332,7 @@ OPTION_DEFAULT_ENABLE([filesingle], [ENABLE_FILESINGLE])
 OPTION_DEFAULT_DISABLE([msr_interlagos], [ENABLE_MSR_INTERLAGOS])
 OPTION_DEFAULT_ENABLE([array_example], [ENABLE_ARRAY_EXAMPLE])
 OPTION_DEFAULT_ENABLE([hello_stream], [ENABLE_HELLO_STREAM])
+OPTION_DEFAULT_ENABLE([hello_ldms_msg], [ENABLE_HELLO_LDMS_MSG])
 OPTION_DEFAULT_ENABLE([blob_stream], [ENABLE_BLOB_STREAM])
 OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
 OPTION_DEFAULT_DISABLE([mpi_sampler], [ENABLE_MPI_SAMPLER])
@@ -1025,15 +1029,14 @@ ldms/src/sampler/dcgm_sampler/Makefile
 ldms/src/sampler/dstat/Makefile
 ldms/src/sampler/hello_stream/Makefile
 ldms/src/sampler/hello_stream/stream_configs/Makefile
+ldms/src/sampler/hello_ldms_msg/Makefile
 ldms/src/sampler/filesingle/Makefile
 ldms/src/sampler/fptrans/Makefile
 ldms/src/sampler/lustre/Makefile
 ldms/src/sampler/job_info/Makefile
 ldms/src/sampler/job_info_slurm/Makefile
 ldms/src/sampler/llnl/Makefile
-ldms/src/sampler/lustre_client/Makefile
-ldms/src/sampler/lustre_mdt/Makefile
-ldms/src/sampler/lustre_ost/Makefile
+ldms/src/sampler/lustre_newer/Makefile
 ldms/src/sampler/lustre_mdc/Makefile
 ldms/src/sampler/lnet_stats/Makefile
 ldms/src/sampler/shm/Makefile

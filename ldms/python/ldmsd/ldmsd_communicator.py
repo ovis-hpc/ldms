@@ -150,6 +150,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'msg_stats' : {'req_attr': [], 'opt_attr': ['regex', 'stream', 'json', 'reset']},
                       'msg_client_stats' : {'req_attr': [], 'opt_attr': ['json', 'reset']},
                       'msg_disable' : {'req_attr': [], 'opt_attr':[]},
+                      'msg_enable' : {'req_attr': [], 'opt_attr':[]},
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': ['thread_stats']},
                       ##### Misc. #####
@@ -675,6 +676,7 @@ class LDMSD_Request(object):
     MSG_STATS = 0xc00
     MSG_CLIENT_STATS = MSG_STATS + 1
     MSG_DISABLE = MSG_STATS + 2
+    MSG_ENABLE = MSG_STATS + 3
 
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
@@ -1562,7 +1564,7 @@ class Communicator(object):
 
     def msg_disable(self):
         """
-        Disable LDMS message service in the daemon
+        Disable the LDMS message service in the daemon
 
         No parameters
         """
@@ -1574,6 +1576,19 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
+    def msg_enable(self):
+        """
+        Enable LDMS the message service in the daemon
+
+        No parameters
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.MSG_ENABLE)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            return errno.ENOTCONN, str(e)
 
     def listen(self, xprt, port, host=None, auth=None, quota=None, rx_limit=None):
         """

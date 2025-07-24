@@ -3131,7 +3131,8 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 						"Memory allocation failure.\n");
 				return;
 			}
-			zap_thrstat_ctxt_set(zep, thrstat, __thrstats_reset);
+			if (zap_thrstat_ctxt_set(zep, thrstat, __thrstats_reset))
+				free(thrstat);
 		} else {
 			ovis_log(xlog, OVIS_LCRIT, "Cannot retrieve thread stats "
 					"from Zap endpoint. Error %d\n", errno);
@@ -4537,7 +4538,7 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 	if (!ai)
 		ai = ai_list;
 	rc = ldms_xprt_listen(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
-	freeaddrinfo(ai);
+	freeaddrinfo(ai_list);
 	return rc;
 }
 

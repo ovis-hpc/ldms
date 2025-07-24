@@ -1386,16 +1386,17 @@ typedef enum ldms_msg_type_e {
 	LDMS_MSG_STRING,
 	LDMS_MSG_JSON,
 	LDMS_MSG_AVRO_SER,
-	LDMS_MSG_LAST, /* the last enumureation; not a real type */
 } ldms_msg_type_t;
 
 /**
- * \brief Disable LDMS Message service
- *
- * Similar to \c ldmsd_stream, this service can be disabled but cannot be
- * enabled afterward.
+ * \brief Disable the LDMS Message service
  */
 void ldms_msg_disable();
+
+/**
+ * \brief Enable the LDMS Message service
+ */
+void ldms_msg_enable();
 
 /**
  * \brief Check if LDMS Message Service is enabled.
@@ -1474,8 +1475,6 @@ enum ldms_msg_event_type {
 	LDMS_MSG_EVENT_CLIENT_CLOSE, /* reporting message client close event.
 				  * This is the last event to deliver from a
 				  * client. */
-
-	LDMS_MSG_EVENT_LAST, /* The last enumeration; not a real event */
 };
 
 /**

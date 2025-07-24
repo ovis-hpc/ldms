@@ -58,6 +58,9 @@
 /* rdc/rdc.h in at least ROCm 6.2.1 forget to include <assert.h>, so we
  * include it here for them before including <rdc/rdc.h> */
 #include <assert.h>
+/* rdc/rdc.h in at least ROCm 6.4.0/6.4.1 forgets to include <stdbool.h>,
+ * so we include it here for them before including <rdc/rdc.h> */
+#include <stdbool.h>
 #include <rdc/rdc.h>
 
 #define SAMP "rdc_sampler"

@@ -878,6 +878,7 @@ cdef extern from "ldms.h" nogil:
     ctypedef int (*ldms_msg_event_cb_t)(ldms_msg_event_t ev, void *cb_arg) except *
 
     void ldms_msg_disable()
+    void ldms_msg_enable()
     int ldms_msg_is_enabled()
     int ldms_msg_publish(ldms_t x, const char *name,
                             ldms_msg_type_e msg_type,

@@ -17,11 +17,17 @@
 #include "lustre_ost.h"
 #include "lustre_ost_general.h"
 #include "lustre_ost_job_stats.h"
+#include "lustre_shared.h"
 
 #define _GNU_SOURCE
 
 #define OBDFILTER_PATH "/proc/fs/lustre/obdfilter"
-#define OSD_SEARCH_PATH "/proc/fs/lustre"
+
+static const char * const possible_osd_base_paths[] = {
+	"/sys/fs/lustre", /* at least lustre >= 1.15 (probably >= 1.12) */
+	"/proc/fs/lustre", /* older lustre */
+	NULL
+};
 
 ovis_log_t lustre_ost_log;
 static struct comp_id_data cid;
@@ -48,7 +54,7 @@ static int string_comparator(void *a, const void *b)
         return strcmp((char *)a, (char *)b);
 }
 
-static struct ost_data *ost_create(const char *ost_name, const char *basedir)
+static struct ost_data *ost_create(lo_context_t ctxt, const char *ost_name, const char *basedir)
 {
         struct ost_data *ost;
         char path_tmp[PATH_MAX]; /* TODO: move large stack allocation to heap */
@@ -82,10 +88,12 @@ static struct ost_data *ost_create(const char *ost_name, const char *basedir)
                        ost->fs_name);
                 goto out7;
         }
-        ost->general_metric_set = ost_general_create(producer_name, ost->fs_name, ost->name, &cid);
+        ost->general_metric_set = ost_general_create(ctxt, producer_name, ost->fs_name, ost->name, &cid);
         if (ost->general_metric_set == NULL)
                 goto out7;
-        ost->osd_path = ost_general_osd_path_find(OSD_SEARCH_PATH, ost->name);
+        ost->osd_path = lustre_osd_dir_find(possible_osd_base_paths,
+					    ost->name,
+					    lustre_ost_log);
         rbn_init(&ost->ost_tree_node, ost->name);
         rbt_init(&ost->job_stats, string_comparator);
 
@@ -106,11 +114,11 @@ out1:
         return NULL;
 }
 
-static void ost_destroy(struct ost_data *ost)
+static void ost_destroy(lo_context_t ctxt, struct ost_data *ost)
 {
         ovis_log(lustre_ost_log, OVIS_LDEBUG, "ost_destroy() %s\n", ost->name);
-        ost_general_destroy(ost->general_metric_set);
-        ost_job_stats_destroy(&ost->job_stats);
+        ost_general_destroy(ctxt, ost->general_metric_set);
+        ost_job_stats_destroy(ctxt, &ost->job_stats);
         free(ost->osd_path);
         free(ost->fs_name);
         free(ost->job_stats_path);
@@ -120,7 +128,7 @@ static void ost_destroy(struct ost_data *ost)
         free(ost);
 }
 
-static void osts_destroy()
+static void osts_destroy(lo_context_t ctxt)
 {
         struct rbn *rbn;
         struct ost_data *ost;
@@ -130,14 +138,14 @@ static void osts_destroy()
                 ost = container_of(rbn, struct ost_data,
                                    ost_tree_node);
                 rbt_del(&ost_tree, rbn);
-                ost_destroy(ost);
+                ost_destroy(ctxt, ost);
         }
 }
 
 /* List subdirectories in OBDFILTER_PATH to get list of
    OST names.  Create ost_data structures for any OSTS any that we
    have not seen, and delete any that we no longer see. */
-static void osts_refresh()
+static void osts_refresh(lo_context_t ctxt)
 {
         struct dirent *dirent;
         DIR *dir;
@@ -171,7 +179,7 @@ static void osts_refresh()
                                            ost_tree_node);
                         rbt_del(&ost_tree, &ost->ost_tree_node);
                 } else {
-                        ost = ost_create(dirent->d_name, OBDFILTER_PATH);
+                        ost = ost_create(ctxt, dirent->d_name, OBDFILTER_PATH);
                 }
                 if (ost == NULL)
                         continue;
@@ -181,7 +189,7 @@ static void osts_refresh()
 
         /* destroy any osts remaining in the global ost_tree since we
            did not see their associated directories this time around */
-        osts_destroy();
+        osts_destroy(ctxt);
 
         /* copy the new_ost_tree into place over the global ost_tree */
         memcpy(&ost_tree, &new_ost_tree, sizeof(struct rbt));
@@ -189,7 +197,7 @@ static void osts_refresh()
         return;
 }
 
-static void osts_sample()
+static void osts_sample(lo_context_t ctxt)
 {
         struct rbn *rbn;
 
@@ -199,7 +207,7 @@ static void osts_sample()
                 ost = container_of(rbn, struct ost_data, ost_tree_node);
                 ost_general_sample(ost->name, ost->stats_path, ost->osd_path,
                                    ost->general_metric_set);
-                ost_job_stats_sample(producer_name, ost->fs_name, ost->name,
+                ost_job_stats_sample(ctxt, producer_name, ost->fs_name, ost->name,
                                      ost->job_stats_path, &ost->job_stats);
         }
 }
@@ -223,7 +231,9 @@ static int config(ldmsd_plug_handle_t handle,
 
 static int sample(ldmsd_plug_handle_t handle)
 {
-        ovis_log(lustre_ost_log, OVIS_LDEBUG, "sample() called\n");
+	lo_context_t ctxt = ldmsd_plug_ctxt_get(handle);
+
+	ovis_log(lustre_ost_log, OVIS_LDEBUG, "sample() called\n");
         if (ost_general_schema_is_initialized() < 0) {
                 if (ost_general_schema_init(&cid) < 0) {
                         ovis_log(lustre_ost_log, OVIS_LERROR, "general schema create failed\n");
@@ -237,8 +247,8 @@ static int sample(ldmsd_plug_handle_t handle)
                 }
         }
 
-        osts_refresh();
-        osts_sample();
+        osts_refresh(ctxt);
+        osts_sample(ctxt);
 
         return 0;
 }
@@ -246,11 +256,23 @@ static int sample(ldmsd_plug_handle_t handle)
 static const char *usage(ldmsd_plug_handle_t handle)
 {
         ovis_log(lustre_ost_log, OVIS_LDEBUG, "usage() called\n");
-	return  "config name=" SAMP;
+	return  "config name=lustre_ost\n";
 }
 
 static int constructor(ldmsd_plug_handle_t handle)
 {
+	lo_context_t ctxt;
+
+	ctxt = calloc(1, sizeof(*ctxt));
+	if (ctxt == NULL) {
+		ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
+			 "Failed to allocate context\n");
+		return ENOMEM;
+	}
+	ctxt->plug_name = strdup(ldmsd_plug_name_get(handle));
+	ctxt->cfg_name = strdup(ldmsd_plug_cfg_name_get(handle));
+	ldmsd_plug_ctxt_set(handle, ctxt);
+
 	lustre_ost_log = ldmsd_plug_log_get(handle);
 	rbt_init(&ost_tree, string_comparator);
 	gethostname(producer_name, sizeof(producer_name));
@@ -260,10 +282,16 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
+	lo_context_t ctxt = ldmsd_plug_ctxt_get(handle);
+
 	ovis_log(lustre_ost_log, OVIS_LDEBUG, "term() called\n");
-	osts_destroy();
+	osts_destroy(ctxt);
 	ost_general_schema_fini();
 	ost_job_stats_schema_fini();
+
+	free(ctxt->cfg_name);
+	free(ctxt->plug_name);
+	free(ctxt);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {

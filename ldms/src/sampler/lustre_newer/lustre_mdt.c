@@ -17,13 +17,19 @@
 #include "lustre_mdt.h"
 #include "lustre_mdt_general.h"
 #include "lustre_mdt_job_stats.h"
+#include "lustre_shared.h"
 
 #define _GNU_SOURCE
 
 #define MDT_PATH "/proc/fs/lustre/mdt"
-#define OSD_SEARCH_PATH "/proc/fs/lustre"
 
-ovis_log_t luster_mdt_log;
+static const char * const possible_osd_base_paths[] = {
+	"/sys/fs/lustre", /* at least lustre >= 1.15 (probably >= 1.12) */
+	"/proc/fs/lustre", /* older lustre */
+	NULL
+};
+
+ovis_log_t lustre_mdt_log;
 
 static struct comp_id_data cid;
 
@@ -36,7 +42,7 @@ struct mdt_data {
         char *fs_name;
         char *name;
         char *path;
-        char *stats_path; /* md_stats */
+        char *md_stats_path; /* md_stats */
         char *job_stats_path;
         char *osd_path;
         ldms_set_t general_metric_set; /* a pointer */
@@ -49,13 +55,13 @@ static int string_comparator(void *a, const void *b)
         return strcmp((char *)a, (char *)b);
 }
 
-static struct mdt_data *mdt_create(const char *mdt_name, const char *basedir)
+static struct mdt_data *mdt_create(lm_context_t ctxt, const char *mdt_name, const char *basedir)
 {
         struct mdt_data *mdt;
-        char path_tmp[PATH_MAX]; /* TODO: move large stack allocation to heap */
+        char path_tmp[PATH_MAX];
         char *state;
 
-        ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" mdt_create() %s from %s\n",
+        ovis_log(lustre_mdt_log, OVIS_LDEBUG, "mdt_create() %s from %s\n",
                mdt_name, basedir);
         mdt = calloc(1, sizeof(*mdt));
         if (mdt == NULL)
@@ -68,8 +74,8 @@ static struct mdt_data *mdt_create(const char *mdt_name, const char *basedir)
         if (mdt->path == NULL)
                 goto out3;
         snprintf(path_tmp, PATH_MAX, "%s/md_stats", mdt->path);
-        mdt->stats_path = strdup(path_tmp);
-        if (mdt->stats_path == NULL)
+        mdt->md_stats_path = strdup(path_tmp);
+        if (mdt->md_stats_path == NULL)
                 goto out4;
         snprintf(path_tmp, PATH_MAX, "%s/job_stats", mdt->path);
         mdt->job_stats_path = strdup(path_tmp);
@@ -79,14 +85,16 @@ static struct mdt_data *mdt_create(const char *mdt_name, const char *basedir)
         if (mdt->fs_name == NULL)
                 goto out6;
         if (strtok_r(mdt->fs_name, "-", &state) == NULL) {
-                ovis_log(luster_mdt_log, OVIS_LWARNING, SAMP" unable to parse filesystem name from \"%s\"\n",
+                ovis_log(lustre_mdt_log, OVIS_LWARNING, "unable to parse filesystem name from \"%s\"\n",
                        mdt->fs_name);
                 goto out7;
         }
-        mdt->general_metric_set = mdt_general_create(producer_name, mdt->fs_name, mdt->name, &cid);
+        mdt->general_metric_set = mdt_general_create(ctxt, producer_name, mdt->fs_name, mdt->name, &cid);
         if (mdt->general_metric_set == NULL)
                 goto out7;
-        mdt->osd_path = mdt_general_osd_path_find(OSD_SEARCH_PATH, mdt->name);
+        mdt->osd_path = lustre_osd_dir_find(possible_osd_base_paths,
+					    mdt->name,
+					    lustre_mdt_log);
         rbn_init(&mdt->mdt_tree_node, mdt->name);
         rbt_init(&mdt->job_stats, string_comparator);
 
@@ -96,7 +104,7 @@ out7:
 out6:
         free(mdt->job_stats_path);
 out5:
-        free(mdt->stats_path);
+        free(mdt->md_stats_path);
 out4:
         free(mdt->path);
 out3:
@@ -107,21 +115,21 @@ out1:
         return NULL;
 }
 
-static void mdt_destroy(struct mdt_data *mdt)
+static void mdt_destroy(lm_context_t ctxt, struct mdt_data *mdt)
 {
-        ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" mdt_destroy() %s\n", mdt->name);
-        mdt_general_destroy(mdt->general_metric_set);
-        mdt_job_stats_destroy(&mdt->job_stats);
+        ovis_log(lustre_mdt_log, OVIS_LDEBUG, "mdt_destroy() %s\n", mdt->name);
+        mdt_general_destroy(ctxt, mdt->general_metric_set);
+        mdt_job_stats_destroy(ctxt, &mdt->job_stats);
         free(mdt->osd_path);
         free(mdt->fs_name);
         free(mdt->job_stats_path);
-        free(mdt->stats_path);
+        free(mdt->md_stats_path);
         free(mdt->path);
         free(mdt->name);
         free(mdt);
 }
 
-static void mdts_destroy()
+static void mdts_destroy(lm_context_t ctxt)
 {
         struct rbn *rbn;
         struct mdt_data *mdt;
@@ -131,14 +139,14 @@ static void mdts_destroy()
                 mdt = container_of(rbn, struct mdt_data,
                                    mdt_tree_node);
                 rbt_del(&mdt_tree, rbn);
-                mdt_destroy(mdt);
+                mdt_destroy(ctxt, mdt);
         }
 }
 
 /* List subdirectories in MDT_PATH to get list of
-   MDT names.  Create mdt_data structures for any MDTS any that we
+   MDT names.  Create mdt_data structures for any MDTS that we
    have not seen, and delete any that we no longer see. */
-static void mdts_refresh()
+static void mdts_refresh(lm_context_t ctxt)
 {
         struct dirent *dirent;
         DIR *dir;
@@ -154,7 +162,7 @@ static void mdts_refresh()
 
         dir = opendir(MDT_PATH);
         if (dir == NULL) {
-                ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" unable to open obdfilter dir %s\n",
+                ovis_log(lustre_mdt_log, OVIS_LDEBUG, "unable to open obdfilter dir %s\n",
                        MDT_PATH);
                 return;
         }
@@ -172,7 +180,7 @@ static void mdts_refresh()
                                            mdt_tree_node);
                         rbt_del(&mdt_tree, &mdt->mdt_tree_node);
                 } else {
-                        mdt = mdt_create(dirent->d_name, MDT_PATH);
+                        mdt = mdt_create(ctxt, dirent->d_name, MDT_PATH);
                 }
                 if (mdt == NULL)
                         continue;
@@ -182,7 +190,7 @@ static void mdts_refresh()
 
         /* destroy any mdts remaining in the global mdt_tree since we
            did not see their associated directories this time around */
-        mdts_destroy();
+        mdts_destroy(ctxt);
 
         /* copy the new_mdt_tree into place over the global mdt_tree */
         memcpy(&mdt_tree, &new_mdt_tree, sizeof(struct rbt));
@@ -190,7 +198,7 @@ static void mdts_refresh()
         return;
 }
 
-static void mdts_sample()
+static void mdts_sample(lm_context_t ctxt)
 {
         struct rbn *rbn;
 
@@ -198,9 +206,10 @@ static void mdts_sample()
         RBT_FOREACH(rbn, &mdt_tree) {
                 struct mdt_data *mdt;
                 mdt = container_of(rbn, struct mdt_data, mdt_tree_node);
-                mdt_general_sample(mdt->name, mdt->stats_path, mdt->osd_path,
+                mdt_general_sample(mdt->name, mdt->md_stats_path, mdt->osd_path,
                                    mdt->general_metric_set);
-                mdt_job_stats_sample(producer_name, mdt->fs_name, mdt->name,
+                mdt_job_stats_sample(ctxt,
+				     producer_name, mdt->fs_name, mdt->name,
                                      mdt->job_stats_path, &mdt->job_stats);
         }
 }
@@ -208,13 +217,13 @@ static void mdts_sample()
 static int config(ldmsd_plug_handle_t handle,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-        ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" config() called\n");
+        ovis_log(lustre_mdt_log, OVIS_LDEBUG, "config() called\n");
 	char *ival = av_value(avl, "producer");
 	if (ival) {
 		if (strlen(ival) < sizeof(producer_name)) {
 			strncpy(producer_name, ival, sizeof(producer_name));
 		} else {
-                        ovis_log(luster_mdt_log, OVIS_LERROR, SAMP": config: producer name too long.\n");
+                        ovis_log(lustre_mdt_log, OVIS_LERROR, "config: producer name too long.\n");
                         return EINVAL;
 		}
 	}
@@ -224,35 +233,49 @@ static int config(ldmsd_plug_handle_t handle,
 
 static int sample(ldmsd_plug_handle_t handle)
 {
-        ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" sample() called\n");
+	lm_context_t ctxt = ldmsd_plug_ctxt_get(handle);
+
+        ovis_log(lustre_mdt_log, OVIS_LDEBUG, "sample() called\n");
         if (mdt_general_schema_is_initialized() < 0) {
                 if (mdt_general_schema_init(&cid) < 0) {
-                        ovis_log(luster_mdt_log, OVIS_LERROR, SAMP" general schema create failed\n");
+                        ovis_log(lustre_mdt_log, OVIS_LERROR, "general schema create failed\n");
                         return ENOMEM;
                 }
         }
         if (mdt_job_stats_schema_is_initialized() < 0) {
                 if (mdt_job_stats_schema_init() < 0) {
-                        ovis_log(luster_mdt_log, OVIS_LERROR, SAMP" job stats schema create failed\n");
+                        ovis_log(lustre_mdt_log, OVIS_LERROR, "job stats schema create failed\n");
                         return ENOMEM;
                 }
         }
 
-        mdts_refresh();
-        mdts_sample();
+        mdts_refresh(ctxt);
+        mdts_sample(ctxt);
 
         return 0;
 }
 
 static const char *usage(ldmsd_plug_handle_t handle)
 {
-	ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" usage() called\n");
-	return  "config name=" SAMP;
+	ovis_log(lustre_mdt_log, OVIS_LDEBUG, "usage() called\n");
+	return  "config name=lutre_mdt\n";
 }
 
 static int constructor(ldmsd_plug_handle_t handle)
 {
-	luster_mdt_log = ldmsd_plug_log_get(handle);
+	lm_context_t ctxt;
+
+	ctxt = calloc(1, sizeof(*ctxt));
+	if (ctxt == NULL) {
+		ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
+			 "Failed to allocate context\n");
+		return ENOMEM;
+	}
+	ctxt->plug_name = strdup(ldmsd_plug_name_get(handle));
+	ctxt->cfg_name = strdup(ldmsd_plug_cfg_name_get(handle));
+	ldmsd_plug_ctxt_set(handle, ctxt);
+
+	lustre_mdt_log = ldmsd_plug_log_get(handle);
         rbt_init(&mdt_tree, string_comparator);
         gethostname(producer_name, sizeof(producer_name));
 
@@ -261,10 +284,16 @@ static int constructor(ldmsd_plug_handle_t handle)
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
-	ovis_log(luster_mdt_log, OVIS_LDEBUG, SAMP" destructor() called\n");
-	mdts_destroy();
+	lm_context_t ctxt = ldmsd_plug_ctxt_get(handle);
+
+	ovis_log(lustre_mdt_log, OVIS_LDEBUG, "destructor() called\n");
+	mdts_destroy(ctxt);
 	mdt_general_schema_fini();
 	mdt_job_stats_schema_fini();
+
+	free(ctxt->cfg_name);
+	free(ctxt->plug_name);
+	free(ctxt);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {

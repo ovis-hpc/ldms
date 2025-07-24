@@ -315,7 +315,7 @@ get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 
 	/* determine number of columns from set schema */
 	set_card = ldms_set_card_get(set);
-	col_count = 1; /* the first col is `timestamp` (phony metric) */
+	col_count = 1; /* the first col is `timestamp` (meta metric) */
 	for (i = 0; i < set_card; i++) {
 		mtype = ldms_metric_type_get(set, i);
 		switch (mtype) {
@@ -400,7 +400,7 @@ get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 
 	/* create timestamp column */
 	dcol = &drow->cols[0];
-	dcol->set_mid = LDMSD_PHONY_METRIC_ID_TIMESTAMP;
+	dcol->set_mid = LDMSD_META_METRIC_ID_TIMESTAMP;
 	dcol->array_len = 1;
 	dcol->rec_mid = -1;
 	dcol->col_type = LDMS_V_TIMESTAMP;
@@ -605,7 +605,7 @@ static int as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	TAILQ_HEAD(, _list_entry) list_cols;
 	int row_more_le;
 	struct ldms_timestamp ts;
-	ldms_mval_t phony;
+	ldms_mval_t meta;
 
 	if (!TAILQ_EMPTY(row_list))
 		return EINVAL;
@@ -639,12 +639,12 @@ static int as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 		assert(mid >= 0);
 		mcol->le = NULL;
 
-		if (mid == LDMSD_PHONY_METRIC_ID_TIMESTAMP) {
+		if (mid == LDMSD_META_METRIC_ID_TIMESTAMP) {
 			/* mcol->mval will be assigned in `make_row` */
 			continue;
 		}
 
-		assert(mid < LDMSD_PHONY_METRIC_ID_FIRST);
+		assert(mid < LDMSD_META_METRIC_ID_FIRST);
 
 		mcol->set_mval = ldms_metric_get(set, mid);
 		mtype = ldms_metric_type_get(set, mid);
@@ -735,7 +735,7 @@ static int as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	 * - idx[1] structure
 	 * - ...
 	 * - idx[idx_count-1] structure
-	 * - phony[0] (for phony metrics such as timestamp)
+	 * - meta[0] (for meta metrics such as timestamp)
 	 */
 
 	/* indices */
@@ -752,8 +752,8 @@ static int as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 		idx = (void*)&idx->cols[idx->col_count];
 	}
 
-	/* phony mvals are next to the idx data */
-	phony = (void*)idx;
+	/* meta mvals are next to the idx data */
+	meta = (void*)idx;
 
 	row_more_le = 0;
 	/* cols */
@@ -768,9 +768,9 @@ static int as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 		col->name = dcol->name;
 		col->type = dcol->col_type;
 		col->array_len = mcol->col_mlen;
-		if (dcol->set_mid == LDMSD_PHONY_METRIC_ID_TIMESTAMP) {
-			phony->v_ts = ts;
-			col->mval = phony;
+		if (dcol->set_mid == LDMSD_META_METRIC_ID_TIMESTAMP) {
+			meta->v_ts = ts;
+			col->mval = meta;
 		} else {
 			col->mval = mcol->col_mval;
 		}
