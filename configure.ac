@@ -776,7 +776,6 @@ AS_IF([test "x$want_python" != xno], [
 		[AX_PYTHON_DEVEL([>='3.6'])
 		 pkgpythondir="${pythondir}/ovis_ldms"
 		 pkgpyexecdir="${pkgpythondir}"
-		 AX_PYTHON_MODULE_VERSION(["argparse"], 1.1, "python")
 		 python_found=true
 		 CYTHON_CHECK([0.25], [$PYTHON_VERSION],
 		 	[cython_found=true], [cython_found=false])],
