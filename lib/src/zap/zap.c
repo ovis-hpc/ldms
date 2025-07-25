@@ -201,7 +201,7 @@ enum zap_err_e zap_errno2zerr(int e)
 
 const char* zap_event_str(enum zap_event_type e)
 {
-	if ((int)e < 0 || e > ZAP_EVENT_LAST)
+	if ((int)e < 1 || e >= ZAP_EVENT_LAST)
 		return "ZAP_EVENT_UNKNOWN";
 	return __zap_event_str[e];
 }
