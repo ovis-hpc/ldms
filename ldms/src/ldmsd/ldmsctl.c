@@ -2596,6 +2596,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	}
 	msg_no++;
 
+	rc = 0;
 	for (i = 0; i < req_array->num_reqs; i++) {
 		request = req_array->reqs[i];
 		len = ntohl(request->rec_len);
@@ -2604,9 +2605,12 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 		if (rc) {
 			printf("Failed to send data to ldmsd. %s\n",
 				STRERROR(errno));
-			return rc;
+			break;
 		}
 	}
+	ldmsd_req_array_free(req_array);
+	if (rc)
+		return rc;
 	/*
 	 * Send all the records and handle the response now.
 	 */
