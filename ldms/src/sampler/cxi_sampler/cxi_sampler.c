@@ -849,9 +849,13 @@ static int config(ldmsd_plug_handle_t handle,
 		goto err;
 	}
 
+	free(tel_counters);
+	free(rh_counters);
 	return 0;
 
 err:
+	free(tel_counters);
+	free(rh_counters);
 	return rc;
 }
 
