@@ -116,6 +116,7 @@ char *dstr_set(dstring_t * dsPtr, const char *string)
 	input_length = strlen(string);
 	if (INT_MAX < input_length) {
 		string = "input_too_big";
+		input_length = strlen(string);
 	}
 	length = (int)input_length;
 	dsPtr->dead = 0;	/* set can revive a dead string if it fits in static space */
