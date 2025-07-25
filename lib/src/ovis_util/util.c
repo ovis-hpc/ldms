@@ -198,6 +198,7 @@ char *str_repl_cmd(const char *_str)
 				if (!xbuff)
 					goto err;
 				buff = xbuff;
+				xbuff = NULL;
 				alen += 4096;
 			}
 		}
@@ -450,7 +451,7 @@ static char *copy_string(struct attr_value_list *av_list, const char *s)
 
 int av_add(struct attr_value_list *avl, const char *name, const char *value)
 {
-        string_ref_t nref, vref;
+        string_ref_t nref, vref = NULL;
         struct attr_value *av;
 
         if (avl->count == avl->size)
@@ -464,6 +465,7 @@ int av_add(struct attr_value_list *avl, const char *name, const char *value)
         if (!nref->str)
                 goto err0;
         av->name = nref->str;
+	nref->str = NULL;
         if (value) {
                 vref = malloc(sizeof(*vref));
                 if (!vref)
@@ -472,8 +474,11 @@ int av_add(struct attr_value_list *avl, const char *name, const char *value)
                 if (!vref->str)
                         goto err2;
                 av->value = vref->str;
+		vref->str = NULL;
         }
         avl->count++;
+	free(vref);
+	free(nref);
         return 0;
 err2:
         free(vref);
