@@ -432,8 +432,10 @@ static int _get_header_from_data(struct linedata *dataline, json_entity_t e)
 		switch (attr->value->type) {
 		case JSON_LIST_VALUE:
 			dataline->listkey = strdup(attr->name->value.str_->str);
-			if (!dataline->listkey)
-				return ENOMEM;
+			if (!dataline->listkey) {
+				rc = ENOMEM;
+				goto err;
+			}
 			rc = _parse_list_for_header(dataline, attr->value);
 			if (rc)
 				goto err;
@@ -959,6 +961,7 @@ static int open_streamstore(char *stream)
 
 	/* swap */
 	stream_handle->file = tmp_file;
+	tmp_file = NULL;
 	stream_handle->basename = tmp_basename;
 	stream_handle->stream = strdup(stream);
 	if (!stream_handle->stream) {
@@ -987,6 +990,10 @@ err1:
 	free(stream_handle);
 
 out:
+	if (tmp_file) {
+		fclose(tmp_file);
+		tmp_file = NULL;
+	}
 	free(tmp_filename);
 	free(dpath);
 	return rc;
