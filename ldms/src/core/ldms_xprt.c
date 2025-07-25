@@ -118,6 +118,11 @@ static char *xprt_event_type_names[] = {
 	[LDMS_XPRT_EVENT_RECV] = "RECV",
 	[LDMS_XPRT_EVENT_SET_DELETE] = "SET_DELETE",
 	[LDMS_XPRT_EVENT_SEND_COMPLETE] = "SEND_COMPLETE",
+	[LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED] = "SEND_QUOTA_DEPOSITED",
+	[LDMS_XPRT_EVENT_QGROUP_ASK] = "QGROUP_ASK",
+	[LDMS_XPRT_EVENT_QGROUP_DONATE] = "QGROUP_DONATE",
+	[LDMS_XPRT_EVENT_QGROUP_DONATE_BACK] = "QGROUP_DONATE_BACK"
+
 };
 
 const char *ldms_xprt_event_type_to_str(enum ldms_xprt_event_type t)
@@ -1998,10 +2003,10 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	if (!ctxt->dir.cb)
 		return;
 
+	(void)clock_gettime(CLOCK_REALTIME, &start);
+
 	if (rc)
 		goto out;
-
-	(void)clock_gettime(CLOCK_REALTIME, &start);
 
 	p = json_parser_new(0);
 	if (!p) {
@@ -3954,8 +3959,9 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 				sizeof(struct ldms_request) + sizeof(*ctxt),
 				LDMS_CONTEXT_LOOKUP_REQ,
 				cb, arg, lu_path, flags);
+	free(lu_path);
+	lu_path = NULL;
 	if (!ctxt) {
-		free(lu_path);
 		pthread_mutex_unlock(&x->lock);
 		ldms_xprt_put(x, "lookup");
 		return ENOMEM;
@@ -4757,8 +4763,10 @@ struct ldms_thrstat_result *ldms_thrstat_result_get(uint64_t interval_s)
 
 	lres = calloc(1, sizeof(*lres) +
 		zres->count * sizeof(struct ldms_thrstat_result_entry));
-	if (!lres)
+	if (!lres) {
+		zap_thrstat_free_result(zres);
 		goto out;
+	}
 	lres->_zres = zres;
 	lres->count = zres->count;
 	for (i = 0; i < zres->count; i++) {
