@@ -576,6 +576,8 @@ static const char *conn_state_str(int state)
 static void __ldmsd_xprt_ctxt_free(void *_ctxt)
 {
 	struct ldmsd_xprt_ctxt *ctxt = _ctxt;
+	if (!ctxt)
+		return;
 	free(ctxt->name);
 	free(ctxt);
 }
@@ -732,7 +734,7 @@ static int __agg_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s is connected (%s %s:%d)\n",
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
-		ctxt = malloc(sizeof(*ctxt));
+		ctxt = calloc(1, sizeof(*ctxt));
 		if (!ctxt) {
 			ovis_log(prdcr_log, OVIS_LCRITICAL, "Out of memory\n");
 			goto out;
@@ -740,6 +742,8 @@ static int __agg_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 		ctxt->name = strdup(prdcr->obj.name);
 		if (!ctxt->name) {
 			ovis_log(prdcr_log, OVIS_LCRITICAL, "Out of memory\n");
+			__ldmsd_xprt_ctxt_free(ctxt);
+			ctxt = NULL;
 			goto out;
 		}
 		ldms_xprt_ctxt_set(x, ctxt, __ldmsd_xprt_ctxt_free);
@@ -1764,7 +1768,7 @@ int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, const char *stream,
 	if (rc)
 		return rc;
 
-	psub = malloc(sizeof(*psub));
+	psub = calloc(1, sizeof(*psub));
 	if (!psub) {
 		rc = ENOMEM;
 		goto err;
@@ -1831,25 +1835,29 @@ int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex,
 	ldmsd_prdcr_t prdcr;
 	int rc;
 	struct ldmsd_prdcr_sub_unsub *psub = NULL;
+	char *prdcr_regex_d, *stream_name_d, *msg_d;
+	prdcr_regex_d = stream_name_d = msg_d = NULL;
 
 	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
 	if (rc)
 		return rc;
 
-	psub = malloc(sizeof(*psub));
+	psub = calloc(1, sizeof(*psub));
 	if (!psub) {
 		rc = ENOMEM;
 		goto err;
 	}
 
-	psub->prdcr_regex = strdup(prdcr_regex);
+	prdcr_regex_d = strdup(prdcr_regex);
+	psub->prdcr_regex = prdcr_regex_d;
 	if (!psub->prdcr_regex) {
 		rc = ENOMEM;
 		goto err;
 	}
 
 	if (stream_name) {
-		psub->stream_name = strdup(stream_name);
+		stream_name_d = strdup(stream_name);
+		psub->stream_name = stream_name_d;
 		if (!psub->stream_name) {
 			rc = ENOMEM;
 			goto err;
@@ -1857,7 +1865,8 @@ int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex,
 	}
 
 	if (msg) {
-		psub->msg = strdup(msg);
+		msg_d = strdup(msg);
+		psub->msg = msg_d;
 		if (!psub->msg) {
 			rc = ENOMEM;
 			goto err;
@@ -1885,6 +1894,10 @@ int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex,
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	return 0;
 err:
+	free(prdcr_regex_d);
+        free(stream_name_d);
+	free(msg_d);
+	free(psub);
 	regfree(&regex);
 	return rc;
 }
