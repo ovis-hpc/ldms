@@ -1911,8 +1911,7 @@ int failover_stop_handler(ldmsd_req_ctxt_t req)
 {
 	/* `failover_stop` will stop the service on both daemons in the pair. */
 	int rc = 0;
-	char errbuf[128];
-	const char *errmsg = errbuf;
+	const char *errmsg = "failover_stop_ok";
 	ldmsd_failover_t f;
 	f = __ldmsd_req_failover_get(req);
 	__failover_lock(f);
