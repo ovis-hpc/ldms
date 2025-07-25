@@ -220,6 +220,8 @@ static int __part_send(struct ldms_rail_ep_s *rep,
  out:
 	if (req)
 		free(req);
+	if (req->msg_part.more != 0)
+		va_end(ap);
 	return rc;
 }
 
@@ -1105,6 +1107,7 @@ __client_alloc(const char *match, int is_regex,
 	goto out;
  err_0:
 	free(c);
+	c = NULL;
  out:
 	return c;
 }
