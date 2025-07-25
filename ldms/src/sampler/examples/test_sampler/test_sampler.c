@@ -1183,9 +1183,15 @@ static int config_add_default(test_sampler_t ts, struct attr_value_list *avl)
 	sname = av_value(avl, "schema");
 	if (!sname)
 		sname = strdup(DEFAULT_SCHEMA_NAME);
-	if (strlen(sname) == 0){
-		ovis_log(ts->log, OVIS_LERROR, "schema name invalid.\n");
-		return EINVAL;
+	if (sname) {
+		if (strlen(sname) == 0){
+			free(sname);
+			ovis_log(ts->log, OVIS_LERROR, "schema name invalid.\n");
+			return EINVAL;
+		}
+	} else {
+		ovis_log(ts->log, OVIS_LERROR, "out of memory in config_add_default\n");
+		return ENOMEM;
 	}
 
 	base_set_name = av_value(avl, "base");
@@ -1249,6 +1255,8 @@ err:
 	free(base_set_name);
 	free(s);
 	free(temp);
+	free(minfo);
+	free(mid);
 	return rc;
 }
 
