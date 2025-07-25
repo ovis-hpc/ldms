@@ -766,11 +766,12 @@ static void __updtr_task_tree_cleanup(ldmsd_updtr_t updtr)
 		if (task->task.flags & LDMSD_TASK_F_STOP)
 			LIST_INSERT_HEAD(&unused_task_list, task, entry);
 	}
-	LIST_FOREACH(task, &unused_task_list, entry) {
-		ldmsd_task_join(&task->task);
+	while (!LIST_EMPTY(&unused_task_list)) {
+		task = LIST_FIRST(&unused_task_list);
 		LIST_REMOVE(task, entry);
 		updtr_task_del(task);
 	}
+
 }
 
 static void updtr_tree_task_cb(ldmsd_task_t task, void *arg)
@@ -1461,6 +1462,7 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 	rc = ldmsd_compile_regex(&prd_match->regex, prdcr_regex, rep_buf, rep_len);
 	if (rc) {
 		rc = EINVAL;
+		regfree(&prd_match->regex);
 		free(prd_match);
 		goto unlock;
 	}
