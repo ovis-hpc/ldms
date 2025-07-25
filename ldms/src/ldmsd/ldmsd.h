@@ -1733,6 +1733,11 @@ struct ldmsd_str_ent {
 	TAILQ_ENTRY(ldmsd_str_ent) entry;
 };
 TAILQ_HEAD(ldmsd_str_list, ldmsd_str_ent);
+/* uncomment next line when gcc 11 is the minimum we support with ldms. */
+/* __attribute__ ((returns_nonnull)) */
+/** make a string list entry, or exit with ENOMEM.
+ * \return new list entry, which is never NULL.
+ */
 struct ldmsd_str_ent *ldmsd_str_ent_new(char *s);
 void ldmsd_str_ent_free(struct ldmsd_str_ent *ent);
 void ldmsd_str_list_destroy(struct ldmsd_str_list *list);
