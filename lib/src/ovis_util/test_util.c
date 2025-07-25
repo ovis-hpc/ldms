@@ -37,6 +37,8 @@ void test_av()
 		printf("failed tokenize\n");
 		return;
 	}
+	av_add(av_list, "AddedATTR", "Value");
+	av_add(kw_list, "AddedKW", NULL);
 	cp = av_copy(av_list);
 	if (!cp) {
 		printf("av copy failed\n");
