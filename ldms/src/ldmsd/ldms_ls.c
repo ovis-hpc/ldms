@@ -419,6 +419,8 @@ void list_record_format(ldms_set_t s, ldms_mval_t lh)
 	int i;
 
 	card = ldms_record_card(ldms_list_first(s, lh, &ltype, &count));
+	if (card < 0)
+		return;
 	cw = calloc(card, sizeof(int));
 
 	/* Determine the column widths */
@@ -466,6 +468,8 @@ void record_array_format(ldms_set_t s, ldms_mval_t rh)
 
 	frec = ldms_record_array_get_inst(rh, 0);
 	card = ldms_record_card(frec);
+	if (card < 0)
+		return;
 	width = calloc(card, sizeof(int));
 
 	for (i = 0; i < len; i++) {
