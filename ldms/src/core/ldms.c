@@ -669,6 +669,7 @@ __record_set(const char *instance_name,
 	if (nset) {
 		ref_put(&nset->ref, "__ldms_find_local_set");
 		errno = EEXIST;
+		zap_unmap(set->lmap);
 		free(set);
 		set = NULL;
 		goto unlock_set_tree;
@@ -2153,7 +2154,13 @@ static enum ldms_value_type type_scalar_types[] = {
 	[LDMS_V_U64_ARRAY] = LDMS_V_U64,
 	[LDMS_V_S64_ARRAY] = LDMS_V_S64,
 	[LDMS_V_F32_ARRAY] = LDMS_V_F32,
-	[LDMS_V_D64_ARRAY] = LDMS_V_D64
+	[LDMS_V_D64_ARRAY] = LDMS_V_D64,
+	[LDMS_V_LIST] = LDMS_V_NONE,
+	[LDMS_V_LIST_ENTRY] = LDMS_V_NONE,
+	[LDMS_V_RECORD_TYPE] = LDMS_V_NONE,
+	[LDMS_V_RECORD_INST] = LDMS_V_NONE,
+	[LDMS_V_RECORD_ARRAY] = LDMS_V_NONE,
+	[LDMS_V_TIMESTAMP] = LDMS_V_TIMESTAMP
 };
 
 static inline ldms_mdesc_t __desc_get(ldms_set_t s, int idx)
