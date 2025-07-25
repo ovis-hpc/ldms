@@ -349,6 +349,9 @@ extern jbuf_t jbuf_append_attr(jbuf_t jb, const char *name, const char *fmt, ...
  * may be {} [] : , and ". No validation is applied.
  * Note: Automatically extends jbuf space as needed with realloc.
  * \return updated pointer for jb, or NULL if realloc fails.
+ *
+ * It is often an error (use-after-free or memory leak) unless
+ * calling this function as jb = jbuf_append_str(jb,...).
  */
 extern jbuf_t jbuf_append_str(jbuf_t jb, const char *fmt, ...);
 
