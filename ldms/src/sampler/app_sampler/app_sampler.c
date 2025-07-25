@@ -968,7 +968,7 @@ int __line_uid(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf,
 	/* populate `status_uid` and/or `status_*username` if changed. */
 	int n;
 	uint64_t x[4];
-	char w[4][20] = { {'\0'}, {'\0'}, {'\0'}, {'\0'} };
+	char w[4][21] = { {'\0'}, {'\0'}, {'\0'}, {'\0'} };
 	n = sscanf(linebuf, "%" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64,
 			 x, x+1, x+2, x+3);
 	if (n != 4)
