@@ -181,6 +181,10 @@ static const char *__cfgobj_type_str[] = {
 	[LDMSD_CFGOBJ_STRGP]  = "strgp",
 	[LDMSD_CFGOBJ_LISTEN] = "listen",
 	[LDMSD_CFGOBJ_AUTH]   = "auth",
+        [LDMSD_CFGOBJ_PRDCR_LISTEN] = "prdcr_listen",
+        [LDMSD_CFGOBJ_SAMPLER] = "sampler",
+        [LDMSD_CFGOBJ_STORE] = "store"
+
 };
 
 const char *ldmsd_cfgobj_type_str(ldmsd_cfgobj_type_t t)
