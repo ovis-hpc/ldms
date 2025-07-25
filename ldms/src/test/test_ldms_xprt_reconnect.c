@@ -470,13 +470,16 @@ static void process_arg(int argc, char **argv)
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'x':
+			free(xprt);
 			xprt = strdup(optarg);
 			break;
 		case 'p':
+			free(port_s);
 			port_s = strdup(optarg);
 			port = atoi(optarg);
 			break;
 		case 'h':
+			free(host);
 			host = strdup(optarg);
 			break;
 		case 's':
