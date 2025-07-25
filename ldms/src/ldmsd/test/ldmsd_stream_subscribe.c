@@ -104,6 +104,7 @@ static struct xprt_ctxt *xprt_ctxt_new(ldms_t ldms)
 	ctxt->buf = ldmsd_msg_buf_new(XPRT_CTXT_INIT_LEN);
 	if (!ctxt->buf) {
 		free(ctxt);
+		ctxt = NULL;
 		goto out;
 	}
 	rbn_init(&ctxt->rbn, ldms);
@@ -243,18 +244,23 @@ static int send_ack(ldms_t x, ldmsd_req_hdr_t req)
 	ldmsd_hton_req_attr(&a);
 	rc = ldmsd_msg_buf_send(buf, x, req->msg_no, __send, LDMSD_REQ_SOM_F,
 			LDMSD_REQ_TYPE_CONFIG_RESP, 0, (char *)&a, sizeof(a));
-	if (rc)
+	if (rc) {
+		free(buf);
 		return rc;
+	}
 	rc = ldmsd_msg_buf_send(buf, x, req->msg_no, __send, 0,
 			LDMSD_REQ_TYPE_CONFIG_RESP, 0, ack_s, strlen(ack_s) + 1);
-	if (rc)
+	if (rc) {
+		free(buf);
 		return rc;
+	}
 
 	/* Terminating */
 	a.discrim = 0;
 	rc = ldmsd_msg_buf_send(buf, x, req->msg_no, __send, LDMSD_REQ_EOM_F,
 				LDMSD_REQ_TYPE_CONFIG_RESP, 0,
 				(char *)&a.discrim, sizeof(a.discrim));
+	free(buf);
 	return rc;
 }
 
