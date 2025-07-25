@@ -1129,16 +1129,14 @@ char *__process_yaml_config_file(const char *path, const char *dname)
 		}
 	}
 	cfg_str[tbytes] = '\0';
-	int status;
-	status = pclose(fp);
-	if (status) {
-		ovis_log(config_log, OVIS_LERROR, "Error occured processing configuration file %s.\n", path);
-		goto err;
-	}
+	(void)pclose(fp);
+	fp = NULL;
 	return cfg_str;
 err:
 	if (cfg_str)
 		free(cfg_str);
+	if (fp)
+		pclose(fp);
 	return NULL;
 }
 
@@ -1378,6 +1376,7 @@ int process_config_str(char *config_str, int *lno, int trust)
 	char *cfg_str = strdup(config_str);
 	rc = __process_config_str(cfg_str, lno, trust,
 				__req_filter_failover, &ldmsd_use_failover);
+	free(cfg_str);
 	return rc;
 }
 
