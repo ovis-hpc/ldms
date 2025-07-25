@@ -524,7 +524,7 @@ out:
 int __ldmsd_parse_plugin_config(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av);
+	size_t len = strlen(av) + 2; /* tmp is padded with blank at end before \0 */
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc;
@@ -585,7 +585,7 @@ out:
 int __ldmsd_parse_env(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av) + 1;
+	size_t len = strlen(av) + 2; /* tmp is padded with trailing blank during formatting */
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc;
@@ -670,11 +670,13 @@ out:
 int __ldmsd_parse_listen_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av);
+	size_t len = strlen(av) + 2;
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc = 0;
 	dummy = NULL;
+	/* tmp must be len+2 because __parse_xprt_endpoint pads
+	 * it with a trailing blank before the \0 */
 	tmp = malloc(len);
 	if (!tmp) {
 		rc = ENOMEM;
@@ -721,7 +723,7 @@ out:
 int __ldmsd_parse_auth_add_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av);
+	size_t len = strlen(av) + 2; /* tmp is padded with trailing blank during formatting */
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc = 0;
@@ -785,7 +787,7 @@ int __ldmsd_parse_cmdline_req(struct ldmsd_parse_ctxt *ctxt)
 int __ldmsd_parse_bridge_add_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av);
+	size_t len = strlen(av) + 2; /* tmp is padded with trailing blank during formatting */
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc = 0;
@@ -843,7 +845,7 @@ out:
 int __ldmsd_parse_default_auth_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av);
+	size_t len = strlen(av) + 2; /* tmp is padded with trailing blank during formatting */
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc;
@@ -895,6 +897,7 @@ int __ldmsd_parse_default_auth_req(struct ldmsd_parse_ctxt *ctxt)
 					    &ctxt->request,
 					    &ctxt->request_sz);
 	}
+	rc = 0;
 out:
 	if (tmp)
 		free(tmp);
@@ -907,7 +910,7 @@ out:
 int __ldmsd_parse_advertiser_add_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av);
+	size_t len = strlen(av) + 2; /* tmp is padded with trailing blank during formatting */
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc = 0;
