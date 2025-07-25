@@ -236,6 +236,7 @@ extern void ldmsd_strgp_close();
 
 static pthread_mutex_t cleanup_lock = PTHREAD_MUTEX_INITIALIZER;
 static int cleaned;
+__attribute__((noreturn))
 void cleanup(int x, const char *reason)
 {
 	pthread_mutex_lock(&cleanup_lock);
@@ -621,6 +622,8 @@ void *k_proc(void *arg)
 			break;
 		}
 	}
+	close(map_fd);
+	fclose(fp);
 	return NULL;
 }
 
@@ -1663,7 +1666,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 {
 	int rc;
 	char *lval, *rval;
-	char *dup_auth;
+	char *dup_auth = NULL;
 	switch (opt) {
 	case 'B':
 		if (check_arg("B", value, LO_UINT))
@@ -1728,9 +1731,11 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		if (check_arg("v", value, LO_NAME))
 			return EINVAL;
 		if (is_loglevel_thr_set) {
+			char *llold =  ovis_log_level_to_str(ovis_log_get_level(NULL));
 			ovis_log(NULL, OVIS_LERROR, "The log level was already "
 					"specified to %s. Ignore the new value %s\n",
-					ovis_log_level_to_str(ovis_log_get_level(NULL)), value);
+					llold, value);
+			free(llold);
 		} else {
 			log_level_thr = ovis_log_str_to_level(value);
 			if (log_level_thr < 0) {
@@ -1840,6 +1845,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			auth_opt->list[auth_opt->count].name = strdup(lval);
 			auth_opt->list[auth_opt->count].value = strdup(rval);
 			if (!auth_opt->list[auth_opt->count].name || !auth_opt->list[auth_opt->count].value) {
+				free(dup_auth);
 				return ENOMEM;
 			}
 			auth_opt->count++;
@@ -2043,7 +2049,7 @@ int main(int argc, char *argv[])
 	struct ldmsd_str_ent *cpath;
 	struct ldmsd_str_ent *conf_str;
 	char *resp;
-	char *ypath;
+	char *ypath = strdup("no_yaml_file");
 	while ((op = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
 		switch (op) {
 		case 'c':
@@ -2051,7 +2057,8 @@ int main(int argc, char *argv[])
 			TAILQ_INSERT_TAIL(&cfgfile_list, cpath, entry);
 			break;
 		case 'y':
-			ypath = optarg;
+			free(ypath);
+			ypath = strdup(optarg);
 			resp = process_yaml_config_file(optarg, myname);
 			if (!resp)
 				cleanup(22, "");
@@ -2072,9 +2079,12 @@ int main(int argc, char *argv[])
 				"Error %d processing configuration file '%s'",
 				ret, ypath);
 			ldmsd_str_list_destroy(&yamlfile_list);
+			free(ypath);
+			ypath = NULL;
 			cleanup(ret, errstr);
 		}
 	}
+	free(ypath);
 	while ((cpath = TAILQ_FIRST(&cfgfile_list))) {
 		lln = -1;
 		ret = process_config_file(cpath->str, &lln, 1);
