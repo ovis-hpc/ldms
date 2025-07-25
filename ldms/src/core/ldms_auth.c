@@ -80,6 +80,7 @@ ldms_auth_plugin_t ldms_auth_plugin_get(const char *name)
 	p = f();
 	if (!p)
 		goto err;
+	/* auth plugins never dlclose, intentionally */
 	return p;
 
  err:
