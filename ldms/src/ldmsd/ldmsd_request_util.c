@@ -524,7 +524,7 @@ out:
 int __ldmsd_parse_plugin_config(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av);
+	size_t len = strlen(av) + 2;
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc;
@@ -675,7 +675,7 @@ int __ldmsd_parse_listen_req(struct ldmsd_parse_ctxt *ctxt)
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc = 0;
 	dummy = NULL;
-	tmp = malloc(len);
+	tmp = malloc(len) + 2;
 	if (!tmp) {
 		rc = ENOMEM;
 		goto out;
@@ -721,7 +721,7 @@ out:
 int __ldmsd_parse_auth_add_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av);
+	size_t len = strlen(av) +1;
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc = 0;
@@ -785,7 +785,7 @@ int __ldmsd_parse_cmdline_req(struct ldmsd_parse_ctxt *ctxt)
 int __ldmsd_parse_bridge_add_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av);
+	size_t len = strlen(av) + 2;
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc = 0;
@@ -843,7 +843,7 @@ out:
 int __ldmsd_parse_default_auth_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av);
+	size_t len = strlen(av) + 2;
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc;
@@ -895,6 +895,7 @@ int __ldmsd_parse_default_auth_req(struct ldmsd_parse_ctxt *ctxt)
 					    &ctxt->request,
 					    &ctxt->request_sz);
 	}
+	rc = 0;
 out:
 	if (tmp)
 		free(tmp);
@@ -907,7 +908,7 @@ out:
 int __ldmsd_parse_advertiser_add_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av);
+	size_t len = strlen(av) + 2;
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
 	int rc = 0;
