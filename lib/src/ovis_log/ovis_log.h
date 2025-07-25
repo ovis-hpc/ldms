@@ -376,6 +376,7 @@ int ovis_log_str_to_level(const char *level_s);
  *
  * \return a string. On errors, NULL is returned, and errno is set.
  */
+__attribute__((malloc))
 char *ovis_log_level_to_str(int level);
 
 #endif
