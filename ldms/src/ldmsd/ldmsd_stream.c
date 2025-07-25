@@ -603,7 +603,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 {
 	int rc, stream_type;
 	size_t data_len;
-	static char *buffer;
+	char *buffer;
 	size_t max_msg_len;
 	ldms_t x;
 	size_t cnt;
@@ -681,6 +681,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		goto err;
 	}
 
+	char * b = NULL;
 	msg_no = ldmsd_msg_no_get();
 	rc = fseek(file, 0L, SEEK_END);
 	if (!rc) {
@@ -710,7 +711,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		}
 
 		/* a non-seekable FILE */
-		char *s, *b;
+		char *s;
 		size_t cnt;
 		size_t len = max_msg_len;
 		data_len = 0;
@@ -740,6 +741,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		}
 		buffer[data_len] = '\0';
 		free(b);
+		b = NULL;
 
 		rc = stream_hdr_send(&ctxt, msg_no, stream, stream_type,
 				     buf, data_len + 1 /* terminating '\0' */);
@@ -775,6 +777,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 close_xprt:
 	ldms_xprt_close(x);
 err:
+	free(b);
 	free(buffer);
 	if (buf)
 		ldmsd_msg_buf_free(buf);
