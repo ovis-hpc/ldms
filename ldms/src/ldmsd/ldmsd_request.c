@@ -1663,7 +1663,7 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 	ldmsd_prdcr_t prdcr = NULL;
 	char *name, *host, *xprt, *attr_name, *type_s, *port_s, *interval_s,
 	     *rail_s, *quota_s, *rx_rate_s;
-	char *auth;
+	char *auth = NULL;
 	enum ldmsd_prdcr_type type = -1;
 	unsigned short port_no = 0;
 	long interval_us = -1;
@@ -1678,7 +1678,7 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 	int cache_ip = 1; /* Default is 1. */
 	perm_s = cache_ip_s = NULL;
 
-	name = host = xprt = type_s = port_s = interval_s = auth = rail_s = quota_s = NULL;
+	name = host = xprt = type_s = port_s = interval_s = auth = rail_s = quota_s = rx_rate_s = NULL;
 
 	attr_name = "name";
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -1808,6 +1808,7 @@ ldmsd_prdcr_t __prdcr_add_handler(ldmsd_req_ctxt_t reqc, char *verb, char *obj_n
 		if (0 == strcasecmp(cache_ip_s, "false")) {
 			cache_ip = 0;
 		}
+		free(cache_ip_s);
 	}
 
 	prdcr = ldmsd_prdcr_new_with_auth(name, xprt, host, port_no, type,
@@ -1860,6 +1861,7 @@ out:
 	free(auth);
 	free(rail_s);
 	free(quota_s);
+	free(rx_rate_s);
 	return prdcr;
 }
 
@@ -2007,6 +2009,7 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 			} else {
 				__dlog(DLOG_CFGOK, "prdcr_start name=%s\n", name);
 			}
+			free(name);
 		}
 	}
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -2186,6 +2189,7 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(prdcr_regex);
+	free(msg);
 	free(stream_name);
 	return 0;
 }
@@ -2238,6 +2242,7 @@ static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(msg);
 	free(prdcr_regex);
 	free(stream_name);
 	return 0;
@@ -2382,6 +2387,7 @@ static int __prdcr_stream_status(ldmsd_prdcr_t prdcr, ldmsd_req_ctxt_t oreqc,
 
  rcmd_err:
 	ldmsd_prdcr_unlock(prdcr);
+	free(ctxt);
 	if (rcmd)
 		ldmsd_req_cmd_free(rcmd);
 	return rc;
@@ -2409,8 +2415,10 @@ int prdcr_stream_status_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 
 	ctxt = calloc(1, sizeof(*ctxt));
-	if (!ctxt)
+	if (!ctxt) {
+		free(prdcr_regex);
 		return ENOMEM;
+	}
 	TAILQ_INIT(&ctxt->prdcr_list);
 
 	ctxt->stream_dict = json_entity_new(JSON_DICT_VALUE);
@@ -2439,6 +2447,7 @@ int prdcr_stream_status_handler(ldmsd_req_ctxt_t reqc)
 		}
 		pname->str = strdup(prdcr->obj.name);
 		if (!pname->str) {
+			free(pname);
 			rc = ENOMEM;
 			goto free_ctxt;
 		}
@@ -5151,6 +5160,7 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 
 	reqc->errcode = ldmsd_sampler_start(instance_name, interval_us, offset,
 					    exclusive_thread);
+	free(exclusive_thread);
 	if (reqc->errcode == 0) {
 		__dlog(DLOG_CFGOK, "start name=%s%s%s%s%s\n", instance_name,
 			interval_us ? " interval=" : "",
@@ -6551,7 +6561,9 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	if (logfile) {
 		fprintf(fp, " -l %s", logfile);
 	}
-	fprintf(fp, " -v %s", ovis_log_level_to_str(log_level_thr));
+	char *lls = ovis_log_level_to_str(log_level_thr);
+	fprintf(fp, " -v %s", lls);
+	free(lls);
 	if (max_mem_sz_str)
 		fprintf(fp, " -m %s", max_mem_sz_str);
 	if (pidfile)
@@ -7086,7 +7098,7 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 	char xprt_type[16];
 	struct ldms_xprt_rate_data rate_data;
 	int rc, first_rail = 1, first_ep;
-	struct ldms_xprt_stats_result *res;
+	struct ldms_xprt_stats_result *res = NULL;
 	struct ldms_xprt_stats_s *rent, *ep_res;
 	int i;
 
@@ -7268,8 +7280,10 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 	}
 
 	s = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_LEVEL);
-	if (s)
+	if (s) {
 		level = atoi(s);
+		free(s);
+	}
 
 	json_s = __xprt_stats_as_json(&json_sz, reset, level);
 	if (!json_s)
@@ -7483,6 +7497,7 @@ static int profiling_handler(ldmsd_req_ctxt_t req)
 		is_enable = 1;
 		if (0 == strcasecmp(enable_str, "false"))
 			is_enable = 0; /* disable */
+		free(enable_str);
 	}
 	reset_str = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
 	if (reset_str) {
@@ -7490,6 +7505,7 @@ static int profiling_handler(ldmsd_req_ctxt_t req)
 		if (0 == strcasecmp(reset_str, "false"))
 			is_reset = 0;
 	}
+	free(reset_str);
 
 	if (is_enable == 1) {
 		ldms_profiling_enable(-1, NULL, NULL);
@@ -8047,6 +8063,7 @@ static char * __prdcr_stats_as_json(size_t *json_sz)
 
 __APPEND_ERR:
 	free(buff);
+	*json_sz = 0;
 	return NULL;
 }
 
@@ -8084,13 +8101,21 @@ err:
 
 /*
  * Sends a JSON formatted summary of Metric Set statistics as follows:
- *
+ * if !is_summary
  * {
  *   "active_count" : <int>,
  *   "deleting_count" : <int>,
- *   "mem_total" : <int>,
- *   "mem_used" : <int>,
- *   "mem_free" : <int>,
+ *   "mem_total" : double,
+ *   "mem_used" : double,
+ *   "mem_free" : double,
+ *   "set_load" : double,
+ *   "compute_time" : <int>
+ * }
+ * else
+ * {
+ *   "active_count" : <int>,
+ *   "deleting_count" : <int>,
+ *   "summary" : true,
  *   "compute_time" : <int>
  * }
  */
@@ -8113,7 +8138,7 @@ static char * __set_stats_as_json(size_t *json_sz, int is_summary)
 		goto __APPEND_ERR;
 	s = buff;
 
-	if (is_summary > 0) {
+	if (is_summary ) {
 		/*
 		 * Only report the active count and deleting count.
 		 */
@@ -8176,7 +8201,7 @@ do_json:
 	__APPEND("{");
 	__APPEND(" \"active_count\": %d,\n", ldms_set_count());
 	__APPEND(" \"deleting_count\": %d,\n", ldms_set_deleting_count());
-	if (is_summary == 1) {
+	if (is_summary ) {
 		__APPEND(" \"summary\": \"true\",\n");
 		goto done_json;
 	}
@@ -8209,8 +8234,9 @@ static int set_stats_handler(ldmsd_req_ctxt_t req)
 	__dlog(DLOG_QUERY, "set_stats\n");
 
 	value = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_SUMMARY);
-	if (0 == strcasecmp(value, "true"))
+	if (value && 0 == strcasecmp(value, "true"))
 		is_summary = 1;
+	free(value);
 
 	json_s = __set_stats_as_json(&json_sz, is_summary);
 	if (!json_s)
@@ -8422,8 +8448,10 @@ static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc)
 	int reset = 0;
 
 	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
-	if (reset_s && (0 != strcasecmp(reset_s, "false"))) {
-		reset = 1;
+	if (reset_s) {
+		if (0 != strcasecmp(reset_s, "false")) {
+			reset = 1;
+		}
 		free(reset_s);
 	}
 
@@ -8501,8 +8529,8 @@ static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
 	if (reset_s && (0 != strcasecmp(reset_s, "false"))) {
 		reset = 1;
-		free(reset_s);
 	}
+	free(reset_s);
 
 	s = ldmsd_stream_dir_dump();
 	if (!s) {
@@ -8568,6 +8596,7 @@ static int msg_stats_handler(ldmsd_req_ctxt_t reqc)
 
 	if (reset_s && (0 == strcasecmp(reset_s, "true")))
 		is_reset = 1;
+	free(reset_s);
 
 	s = ldms_msg_stats_str(match, is_regex, is_reset);
 	if (!s) {
@@ -8618,6 +8647,7 @@ static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc)
 
 	if (reset_s && (0 == strcasecmp(reset_s, "true")))
 		is_reset = 1;
+	free(reset_s);
 
 	s = ldms_msg_client_stats_str(is_reset);
 	if (!s) {
@@ -8790,6 +8820,8 @@ send_reply:
 	free(port);
 	free(host);
 	free(auth);
+	free(quota);
+	free(rx_limit);
 	return 0;
 }
 
@@ -9509,7 +9541,7 @@ static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 	struct timespec now;
 	int rc = 0;
 	char *s;
-	char *tmp, *tok, *ptr;
+	char *tok, *ptr;
 	int is_update;
 	int is_store;
 	int is_thread;
@@ -9519,15 +9551,7 @@ static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 
 	s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
 	if (s) {
-		tmp = strdup(s);
-		if (!tmp) {
-			ovis_log(config_log, OVIS_LCRIT, "Memory allocation failure\n");
-			(void) Snprintf(&reqc->line_buf, &reqc->line_len, "Memory allocation failed.");
-			rc = ENOMEM;
-			goto out;
-		}
-
-		tok = strtok_r(tmp, ",", &ptr);
+		tok = strtok_r(s, ",", &ptr);
 		while (tok) {
 			if (0 == strcasecmp(tok, "update"))
 				is_update = 1;
@@ -9561,7 +9585,7 @@ static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 
 	if (is_stream)
 		ldms_msg_stats_reset();
-out:
+
 	free(s);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
@@ -9898,7 +9922,7 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	gid_t gid;
 	int perm;
 	struct ldmsd_sec_ctxt sctxt;
-	ldmsd_prdcr_listen_t pl;
+	ldmsd_prdcr_listen_t pl = NULL;
 
 	name = regex_str = reconnect_str = cidr_str = disabled_start = perm_s = NULL;
 	quota = rx_rate = rail_s = NULL;
@@ -10107,7 +10131,9 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	pl->auth = advtr_auth;
+	advtr_auth = NULL;
 	pl->advtr_xprt = advtr_xprt;
+	advtr_xprt = NULL;
 
 update_prdcr_tree:
 	rbt_init(&pl->prdcr_tree, prdcr_ref_cmp);
@@ -10125,6 +10151,8 @@ send_reply:
 	free(rail_s);
 	free(prdcr_type);
 	free(perm_s);
+	free(advtr_auth);
+	free(advtr_xprt);
 
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
@@ -10150,9 +10178,11 @@ einval_active:
 			"The attribute '%s' is required for the 'active' mode.", attr_name);
 	goto err;
 err:
-	ldmsd_cfgobj_unlock(&pl->obj);
-	ldmsd_cfgobj_rm(&pl->obj);
-	ldmsd_cfgobj_put(&pl->obj, "init");
+	if (pl) {
+		ldmsd_cfgobj_unlock(&pl->obj);
+		ldmsd_cfgobj_rm(&pl->obj);
+		ldmsd_cfgobj_put(&pl->obj, "init");
+	}
 	goto send_reply;
 }
 
@@ -10234,6 +10264,7 @@ send_reply:
 	if (pl)
 		ldmsd_cfgobj_put(&pl->obj, "iter"); /* Put back the 'first' or 'next' reference */
 	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(name);
 	return rc;
 }
 
