@@ -36,6 +36,7 @@ dist_man7_MANS += ldms-store_sos.man
 
 MAYBE_SLURM = slurm
 endif
+SUBDIRS += $(MAYBE_SLURM)
 
 if ENABLE_KOKKOS
 MAYBE_KOKKOS = kokkos kokkos_appmon

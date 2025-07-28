@@ -521,19 +521,19 @@ AM_CONDITIONAL([HAVE_TX2MON], [test "x$HAVE_TX2MON" = xyes])
 AM_CONDITIONAL([ENABLE_TX2MON], [test "$enable_tx2mon" = "yes"])
 
 # List of plugins that require SOS
-required_features="store-app proc-streams darshan kokkos"
+required_plugins="store-app proc-streams darshan kokkos"
 
 # Initialize an empty list to collect enabled plugins missing SOS
 missing=""
 
-for feat in $required_features; do
+for plug in $required_plugins; do
   # Construct the variable name, e.g. ENABLE_DARSHAN_TRUE
-  varname=ENABLE_`echo $feat | tr a-z A-Z | tr '-' '_'`_TRUE
+  varname=ENABLE_`echo $plug | tr a-z A-Z | tr '-' '_'`_TRUE
   # Use eval to get the value of that variable
   eval val=\$$varname
 
   if test -z "$val"; then
-    missing="$missing $feat,"
+    missing="$missing $plug,"
   fi
 done
 
@@ -734,6 +734,9 @@ if test -z "$ENABLE_SOS_TRUE"; then
 		LIBS=""
 	else
 		AC_MSG_NOTICE([Using staged ovis-sos $OPVIS_SOS_LIB64DIR_FLAG $OVIS_SOS_LIBDIR_FLAG])
+		if test -z "$OPVIS_SOS_LIB64DIR_FLAG" && test -z "$OVIS_SOS_LIBDIR_FLAG"; then
+			AC_MSG_WARN([Both OPVIS_SOS_LIB64DIR_FLAG and OVIS_SOS_LIBDIR_FLAG are empty. This may cause a build error. Please specify `--with-sos=` to bypass.])
+		fi
 	fi
 fi
 
