@@ -520,21 +520,26 @@ AS_IF([test "x$enable_tx2mon" != xno],[
 AM_CONDITIONAL([HAVE_TX2MON], [test "x$HAVE_TX2MON" = xyes])
 AM_CONDITIONAL([ENABLE_TX2MON], [test "$enable_tx2mon" = "yes"])
 
-if test -z "$ENABLE_KOKKOS_TRUE"; then
-	dnl kokkos needs sos (not the storesos).
-	CHECK_SOS=1
-fi
-if test -z "$ENABLE_DARSHAN_TRUE"; then
-        dnl darshan needs sos (not the storesos).
-        CHECK_SOS=1
-fi
-if test -z "$ENABLE_PROC_STREAMS_TRUE"; then
-        dnl linux_proc_sampler stream stores need sos
-        CHECK_SOS=1
-fi
-if test -z "$ENABLE_STORE_APP_TRUE"; then
-	dnl kokkos needs sos (not the storesos).
-	CHECK_SOS=1
+# List of plugins that require SOS
+required_features="store-app proc-streams darshan kokkos"
+
+# Initialize an empty list to collect enabled plugins missing SOS
+missing=""
+
+for feat in $required_features; do
+  # Construct the variable name, e.g. ENABLE_DARSHAN_TRUE
+  varname=ENABLE_`echo $feat | tr a-z A-Z | tr '-' '_'`_TRUE
+  # Use eval to get the value of that variable
+  eval val=\$$varname
+
+  if test -z "$val"; then
+    missing="$missing $feat,"
+  fi
+done
+
+# Now check if SOS is enabled
+if test -n "$ENABLE_SOS_TRUE" && test -n "$missing"; then
+  AC_MSG_ERROR([The following features require --enable-sos:$missing. Please re-run configure with --enable-sos.])
 fi
 
 dnl Other libraries
@@ -674,29 +679,6 @@ OPTION_DEFAULT_ENABLE([spank_subscriber], [ENABLE_SPANK_SUBSCRIBER], [Builds sam
 AC_CHECK_HEADER([linux/netlink.h], [have_netlink=yes], [have_netlink=no])
 AM_CONDITIONAL([HAVE_NETLINK], [test "x$have_netlink" = xyes])
 
-if test -z "$ENABLE_SOS_TRUE"; then
-	CHECK_SOS=1
-fi
-
-if test -n "$CHECK_SOS"; then
-	if test "x$WITH_SOS" != "xbuild"; then
-		OCFLAGS=$CFLAGS
-		CFLAGS=$SOS_INCDIR_FLAG
-		AC_CHECK_HEADERS(sos/sos.h,
-			[],
-			AC_MSG_FAILURE([sos/sos.h not found])
-		)
-		AC_CHECK_LIB( sos, sos_container_open,
-			[],
-			AC_MSG_FAILURE(libsos not found: required by either --enable-sos or --enable-kokkos),
-			[ $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ]
-		)
-		CFLAGS=$OCFLAGS
-		LIBS=""
-	else
-		AC_MSG_NOTICE([Using staged ovis-sos $OVIS_SOS_LIB64DIR_FLAG $OVIS_SOS_LIBDIR_FLAG])
-	fi
-fi
 if test -n "$SOS_LIB64DIR"; then
 	soslibdir="$SOS_LIB64DIR"
 	plugins_rpath="$plugins_rpath:$SOS_LIB64DIR"
@@ -776,7 +758,6 @@ AS_IF([test "x$want_python" != xno], [
 		[AX_PYTHON_DEVEL([>='3.6'])
 		 pkgpythondir="${pythondir}/ovis_ldms"
 		 pkgpyexecdir="${pkgpythondir}"
-		 AX_PYTHON_MODULE_VERSION(["argparse"], 1.1, "python")
 		 python_found=true
 		 CYTHON_CHECK([0.25], [$PYTHON_VERSION],
 		 	[cython_found=true], [cython_found=false])],
