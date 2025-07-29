@@ -443,18 +443,23 @@ AC_ARG_WITH(
 			LDFLAGS="$LDFLAGS -Wl,-rpath-link=$_DIR"
 			]m4_translit([$1], [-+.a-z], [___A-Z])[_LIBDIR="$_DIR"
 			]m4_translit([$1], [-+.a-z], [___A-Z])[_LIBDIR_FLAG="-L$_DIR"
-		fi
-		if test "x$]m4_translit([$1], [-+.a-z], [___A-Z])[_LIBDIR" = "x"; then
+		elif test "x$]m4_translit([$1], [-+.a-z], [___A-Z])[_LIBDIR" = "x"; then
 			_DIR=$WITH_]m4_translit([$1], [-+.a-z], [___A-Z])[/lib64
 			LDFLAGS="$LDFLAGS -Wl,-rpath-link=$_DIR"
 			]m4_translit([$1], [-+.a-z], [___A-Z])[_LIBDIR="$_DIR"
 			]m4_translit([$1], [-+.a-z], [___A-Z])[_LIBDIR_FLAG="-L$_DIR"
+		else
+			]m4_translit([$1], [-+.a-z], [___A_Z])[_LIBDIR=""
+			]m4_translit([$1], [-+.a-z], [___A_Z])[_LIBDIR_FLAG=""
 		fi
 		if test -d $WITH_]m4_translit([$1], [-+.a-z], [___A-Z])[/lib64; then
 			_DIR=$WITH_]m4_translit([$1], [-+.a-z], [___A-Z])[/lib64
 			LDFLAGS="$LDFLAGS -Wl,-rpath-link=$_DIR"
 			]m4_translit([$1], [-+.a-z], [___A-Z])[_LIB64DIR="$_DIR"
 			]m4_translit([$1], [-+.a-z], [___A-Z])[_LIB64DIR_FLAG="-L$_DIR"
+		else
+			]m4_translit([$1], [-+.a-z], [___A_Z])[_LIB64DIR=""
+			]m4_translit([$1], [-+.a-z], [___A_Z])[_LIB64DIR_FLAG=""
 		fi
 		if test -d $WITH_]m4_translit([$1], [-+.a-z], [___A-Z])[/include; then
 			]m4_translit([$1], [-+.a-z], [___A-Z])[_INCDIRS=$WITH_]m4_translit([$1], [-+.a-z], [___A-Z])[/include
