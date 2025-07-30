@@ -890,8 +890,8 @@ int __ldmsd_parse_default_auth_req(struct ldmsd_parse_ctxt *ctxt)
 		free(dummy);
 		dummy = NULL;
 	}
-	tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
 	if (cnt) {
+		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
 		/* Add an attribute of type 'STRING' */
 		rc = add_attr_from_attr_str(NULL, tmp,
 					    &ctxt->request,
