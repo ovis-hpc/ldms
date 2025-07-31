@@ -296,7 +296,7 @@ static int use_counter_group(const char * const counter_group)
         int rc;
 
         if (strcmp(counter_group, "all")) {
-                ovis_log(mylog, OVIS_LERROR, "unrecognized counter group \"%s\"\n",
+                log_fn(LDMSD_LERROR, SAMP" unrecognized counter group \"%s\" (only \"all\" is supported)\n",
                        counter_group);
                 return -1;
         }
