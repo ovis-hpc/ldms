@@ -803,7 +803,7 @@ void __prdcr_set_update_sched(ldmsd_prdcr_set_t prd_set,
  *
  * Caller must hold the updater lock and the prd_set lock.
  *
- * The updater MUST in RUNNING state.
+ * The updater MUST be in the RUNNING state.
  */
 int ldmsd_updtr_tasks_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 {
