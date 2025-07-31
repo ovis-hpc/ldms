@@ -698,6 +698,15 @@ int ldmsd_set_register(ldms_set_t set, const char *cfg_name)
 	s->set = set;
 	s->sampler = samp;
 
+	rc = ldmsd_set_update_hint_set(set, samp->sample_interval_us, samp->sample_offset_us);
+	if (rc) {
+		ovis_log(NULL, OVIS_LINFO,
+			 "Error %d setting the set hint data %ld:%ld "
+			 "for the set '%s'.\n",
+			 rc,
+			 samp->sample_interval_us, samp->sample_offset_us,
+			 ldms_set_instance_name_get(set));
+	}
 	LIST_INSERT_HEAD(&samp->set_list, s, entry);
 	ldmsd_sampler_find_put(samp);
 	return 0;
