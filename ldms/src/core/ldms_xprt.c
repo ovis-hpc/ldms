@@ -3131,8 +3131,11 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 						"Memory allocation failure.\n");
 				return;
 			}
-			if (zap_thrstat_ctxt_set(zep, thrstat, __thrstats_reset))
-				free(thrstat);
+			if (zap_thrstat_ctxt_set(zep, thrstat, __thrstats_reset)) {
+				ovis_log(xlog, OVIS_LDEBUG,
+					 "Error %d assigning thread stats to the endpoint.\n",
+					 errno);
+			}
 		} else {
 			ovis_log(xlog, OVIS_LCRIT, "Cannot retrieve thread stats "
 					"from Zap endpoint. Error %d\n", errno);
