@@ -779,7 +779,9 @@ ovis_scheduler_thrstats_get(ovis_scheduler_t sch, struct timespec *now, uint64_t
 		return NULL;
 	}
 
+	pthread_mutex_lock(&sch->mutex);
 	res = ovis_thrstats_result_get(&sch->stats, interval_s, &sch_res->stats);
+	pthread_mutex_unlock(&sch->mutex);
 	if (!res) {
 		goto err;
 	}

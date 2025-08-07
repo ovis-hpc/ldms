@@ -564,7 +564,7 @@ struct zap_io_thread {
 	/** The transport handle. */
 	zap_t zap;
 
-	/** Primarily used to protect the _ep_list */
+	/** Used to protect the _ep_list and stat entries */
 	pthread_mutex_t mutex;
 
 	/** Thread statistics */

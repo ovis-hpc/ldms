@@ -834,23 +834,22 @@ void zap_thrstat_reset_all(struct timespec *now);
  * void *io_thread_proc(void *)
  * {
  *    ...
- *    zap_thrstat_t stats = zap_thrstat_new("my_thread", 128);
  *    while (1) {
- *        zap_thrstat_wait_start(stats);
+ *        zap_thrstat_wait_start(thread);
  *        ... wait for I/O event ...
- *        zap_thrstat_wait_end(stats);
+ *        zap_thrstat_wait_end(thread);
  *        ... process I/O event ...
  *    }
  * }
  * \param stats The Zap stats handle
  */
-void zap_thrstat_wait_start(zap_thrstat_t stats);
+void zap_thrstat_wait_start(void *);
 
 /**
  * \brief End an I/O wait measurement interval
  * \param stats The Zap stats handle
  */
-void zap_thrstat_wait_end(zap_thrstat_t stats);
+void zap_thrstat_wait_end(void *);
 
 /**
  * \struct zap_thrstat_result_entry
