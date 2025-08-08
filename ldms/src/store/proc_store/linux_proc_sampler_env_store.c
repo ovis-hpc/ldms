@@ -471,9 +471,12 @@ static void destructor(ldmsd_plug_handle_t handle)
         free(plugin_config_name);
 }
 
-struct ldmsd_plugin ldmsd_plugin_interface = {
-	.config = config,
-	.usage = usage,
-        .constructor = constructor,
-        .destructor = destructor,
+struct ldmsd_store ldmsd_plugin_interface = {
+	.base = {
+		.type = LDMSD_PLUGIN_STORE,
+		.config = config,
+		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
+	},
 };
