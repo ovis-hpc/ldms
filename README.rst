@@ -223,7 +223,7 @@ Supported systems
 
 * Ubuntu and friends
 * CentOS and friends
-* Cray XE6, Cray XK, Cray XC
+* Cray XE6, Cray XK, Cray XC, HPE Cray EX
 
 Unsupported features
 ====================
@@ -231,7 +231,6 @@ Unsupported features
 The following LDMS sampler plugins are considered unsupported. Use are your own risk:
 * perfevent sampler
 * hweventpapi sampler
-* switchx
 
 gnulib
 ------

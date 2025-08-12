@@ -366,8 +366,6 @@ dnl linkstatus is not part of the cray_system_sampler
 OPTION_DEFAULT_DISABLE([aries_linkstatus], [ENABLE_ARIES_LINKSTATUS], [Requires gpcdr to be set up with status metrics])
 OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
-OPTION_DEFAULT_DISABLE([switchx], [ENABLE_SWITCHX])
-OPTION_WITH([switchx], [SWITCHX],[/usr/local])
 OPTION_DEFAULT_DISABLE([darshan], [ENABLE_DARSHAN])
 OPTION_DEFAULT_DISABLE([kokkos], [ENABLE_KOKKOS])
 OPTION_DEFAULT_DISABLE([proc-streams], [ENABLE_PROC_STREAMS])
