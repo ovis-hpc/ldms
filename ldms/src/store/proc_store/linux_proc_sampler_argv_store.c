@@ -453,9 +453,9 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 static int constructor(ldmsd_plug_handle_t handle)
 {
 	mylog = ldmsd_plug_log_get(handle);
-        plugin_config_name = strdup(ldmsd_plug_cfg_name_get(handle));
+	plugin_config_name = strdup(ldmsd_plug_cfg_name_get(handle));
 
-        return 0;
+	return 0;
 }
 
 static void destructor(ldmsd_plug_handle_t handle)
@@ -467,12 +467,15 @@ static void destructor(ldmsd_plug_handle_t handle)
 	root_path = NULL;
 	free(stream);
 	stream = NULL;
-        free(plugin_config_name);
+	free(plugin_config_name);
 }
 
-struct ldmsd_plugin ldmsd_plugin_interface = {
-	.config = config,
-	.usage = usage,
-        .constructor = constructor,
-        .destructor = destructor,
+struct ldmsd_store ldmsd_plugin_interface = {
+	.base = {
+		.type = LDMSD_PLUGIN_STORE,
+		.config = config,
+		.usage = usage,
+		.constructor = constructor,
+		.destructor = destructor,
+	},
 };
