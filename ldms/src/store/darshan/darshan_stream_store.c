@@ -584,7 +584,7 @@ static int constructor(ldmsd_plug_handle_t handle)
 	mylog = ldmsd_plug_log_get(handle);
 	plugin_config_name = strdup(ldmsd_plug_cfg_name_get(handle));
 
-        return 0;
+	return 0;
 }
 
 static void destructor(ldmsd_plug_handle_t handle)

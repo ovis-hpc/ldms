@@ -989,22 +989,22 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 static int constructor(ldmsd_plug_handle_t handle)
 {
 	mylog = ldmsd_plug_log_get(handle);
-        plugin_config_name = strdup(ldmsd_plug_cfg_name_get(handle));
+	plugin_config_name = strdup(ldmsd_plug_cfg_name_get(handle));
 
-        return 0;
+	return 0;
 }
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
 	ovis_log(mylog, OVIS_LDEBUG, "term %s\n", ldmsd_plug_cfg_name_get(handle));
-        if (sos)
-                sos_container_close(sos, SOS_COMMIT_ASYNC);
+	if (sos)
+		sos_container_close(sos, SOS_COMMIT_ASYNC);
 
-        free(root_path);
-        root_path = NULL;
-        free(stream);
-        stream = NULL;
-        free(plugin_config_name);
+	free(root_path);
+	root_path = NULL;
+	free(stream);
+	stream = NULL;
+	free(plugin_config_name);
 }
 
 struct ldmsd_store ldmsd_plugin_interface = {
