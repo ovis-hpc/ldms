@@ -236,10 +236,16 @@ static inline int fi_info_dom_cmp(struct fi_info *a, struct fi_info *b)
  */
 static void *__map_addr(struct z_fi_ep *ep, zap_map_t map, void *addr)
 {
+#if FI_VERSION_LT(FI_VERSION(1,4), FI_VERSION(FI_MAJOR_VERSION, FI_MINOR_VERSION))
+	/* Since libfabric 1.5, only scalable addressing is supported.
+	 * See fi_domain(3) man page. */
+	return (void*)(addr - (void*)map->addr); /* ref by offset */
+#else
 	enum fi_mr_mode mr_mode = ep->fi->domain_attr->mr_mode;
 	if (!mr_mode || (mr_mode & FI_MR_SCALABLE)) /* SCALABLE MR mode */
 		return (void*)(addr - (void*)map->addr); /* ref by offset */
 	return addr; /* reference by addr */
+#endif
 }
 
 /*
