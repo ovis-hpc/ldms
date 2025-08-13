@@ -2558,8 +2558,11 @@ class LdmsdCmdParser(cmd.Cmd):
             print("prdcr: {0}".format(prdcr['name']))
             hints = prdcr['hints']
             for hint in hints:
-                print("   update hint: {0}:{1}".format(hint['interval_us'],
-                                                       hint['offset_us']))
+                if hint['interval_us'] == '0' and hint['offset_us'] == '0':
+                    hint_s = "None"
+                else:
+                    hint_s = f"{hint['interval_us']}:{hint['offset_us']}"
+                print(f"   update hint: {hint_s}")
                 sets = hint['sets']
                 for s in sets:
                     print("      {0}".format(s))

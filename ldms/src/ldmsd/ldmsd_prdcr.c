@@ -185,8 +185,7 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 	struct rbn *rbn;
 	struct ldmsd_updt_hint_set_list *list;
 	struct ldmsd_updtr_schedule *hint_key;
-	if (0 == hint->intrvl_us)
-		return;
+
 	rbn = rbt_find(&prdcr->hint_set_tree, hint);
 	if (op == UPDT_HINT_TREE_REMOVE) {
 		if (!rbn)
@@ -383,12 +382,9 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 	}
 
 	__update_set_info(set, dset);
-	if (0 != set->updt_hint.intrvl_us) {
-		ovis_log(prdcr_log, OVIS_LDEBUG, "producer '%s' add set '%s' to hint tree\n",
-						prdcr->obj.name, set->inst_name);
-		prdcr_hint_tree_update(prdcr, set,
-				&set->updt_hint, UPDT_HINT_TREE_ADD);
- 	}
+	ovis_log(prdcr_log, OVIS_LDEBUG, "producer '%s' add set '%s' to hint tree\n",
+					prdcr->obj.name, set->inst_name);
+	prdcr_hint_tree_update(prdcr, set, &set->updt_hint, UPDT_HINT_TREE_ADD);
 
 	ldmsd_prdcr_unlock(prdcr);
 	ldmsd_prd_set_updtr_task_update(set);
