@@ -195,7 +195,7 @@ struct z_fi_conn_data {
 };
 #pragma pack(pop)
 
-#define CONN_DATA_MAX (56)
+#define CONN_DATA_MAX (196)
 #define ZAP_CONN_DATA_MAX (CONN_DATA_MAX - sizeof(struct z_fi_conn_data))
 
 #define ACCEPT_DATA_MAX (196)
