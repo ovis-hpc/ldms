@@ -237,10 +237,16 @@ static inline int fi_info_dom_cmp(struct fi_info *a, struct fi_info *b)
  */
 static void *__map_addr(struct z_fi_ep *ep, zap_map_t map, void *addr)
 {
+#if FI_VERSION_LT(FI_VERSION(1,4), FI_VERSION(FI_MAJOR_VERSION, FI_MINOR_VERSION))
+	/* Since libfabric 1.5, only scalable addressing is supported.
+	 * See fi_domain(3) man page. */
+	return (void*)(addr - (void*)map->addr); /* ref by offset */
+#else
 	enum fi_mr_mode mr_mode = ep->fi->domain_attr->mr_mode;
 	if (!mr_mode || (mr_mode & FI_MR_SCALABLE)) /* SCALABLE MR mode */
 		return (void*)(addr - (void*)map->addr); /* ref by offset */
 	return addr; /* reference by addr */
+#endif
 }
 
 /*
@@ -1573,9 +1579,6 @@ static zap_err_t z_fi_accept(zap_ep_t ep, zap_cb_fn_t cb,
 	rep->ep.cb = cb;
 
 	ref_get(&rep->ep.ref, "accept");
-	ret = __setup_conn(rep, NULL, 0);
-	if (ret)
-		goto err_0;
 
 	ret = fi_accept(rep->fi_ep, msg, len);
 	if (ret) {
@@ -1594,7 +1597,7 @@ err_1:
 	pthread_mutex_lock(&rep->ep.lock);
 	__teardown_conn(rep);
 	pthread_mutex_unlock(&rep->ep.lock);
-err_0:
+
 	ref_put(&rep->ep.ref, "accept");
 	free(msg);
 	return ret;
@@ -1729,6 +1732,7 @@ static void handle_connect_request(struct z_fi_ep *rep, struct fi_eq_cm_entry *e
 	struct z_fi_conn_data *conn_data = (void*)entry->data;
 	struct fi_info *newfi = entry->info;
 	struct zap_event zev = {0};
+	int rc;
 	void *ctxt;
 
 	assert(rep->ep.state == ZAP_EP_LISTENING);
@@ -1765,7 +1769,12 @@ static void handle_connect_request(struct z_fi_ep *rep, struct fi_eq_cm_entry *e
 	new_rep->fabric = rep->fabric;
 	new_rep->domain = rep->domain;
 	new_rep->fabdom_id = rep->fabdom_id;
-	ref_get(&rep->ep.ref, "conn req");
+	ref_get(&rep->ep.ref, "conn req"); /* put in z_fi_destroy */
+	rc = __setup_conn(new_rep, NULL, 0);
+	if (rc) {
+		zap_free(new_ep);
+		return ;
+	}
 	zap_ep_change_state(new_ep, ZAP_EP_INIT, ZAP_EP_ACCEPTING);
 	new_rep->ep.cb(new_ep, &zev);
 
@@ -1984,14 +1993,17 @@ static void scrub_eq(struct z_fi_ep *rep)
 {
 	ssize_t			ret;
 	uint32_t		event;
-	struct fi_eq_err_entry	entry;
+	struct {
+		struct fi_eq_err_entry	entry;
+		char buff[ZAP_CONN_DATA_MAX];
+	} eq_ent;
 	struct fid		*fid[1];
 
 	DLOG("rep %p\n", rep);
 	ref_get(&rep->ep.ref, "handle eq event");
 	while (1) {
-		memset(&entry, 0, sizeof(entry));
-		ret = fi_eq_read(rep->eq, &event, &entry, sizeof(entry), 0);
+		memset(&eq_ent.entry, 0, sizeof(eq_ent.entry));
+		ret = fi_eq_read(rep->eq, &event, &eq_ent.entry, sizeof(eq_ent), 0);
 		if ((ret == 0) || (ret == -FI_EAGAIN)) {
 			fid[0] = &rep->eq->fid;
 			ret = fi_trywait(rep->fabric, fid, 1);
@@ -2000,13 +2012,13 @@ static void scrub_eq(struct z_fi_ep *rep)
 			break;
 		}
 		if (ret == -FI_EAVAIL) {
-			fi_eq_readerr(rep->eq, &entry, 0);
+			fi_eq_readerr(rep->eq, &eq_ent.entry, 0);
 			event = -FI_EAVAIL;
 		} else if (ret < 0) {
 			DLOG("fi_eq_read error %d\n", ret);
 			break;
 		}
-		cm_event_handler(rep, event, &entry, ret);
+		cm_event_handler(rep, event, &eq_ent.entry, ret);
 	}
 	ref_put(&rep->ep.ref, "handle eq event");
 	DLOG("done with rep %p\n", rep);
