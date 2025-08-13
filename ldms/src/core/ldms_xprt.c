@@ -3099,6 +3099,32 @@ void __thrstats_reset(void *ctxt, struct timespec *reset_ts)
 		thrstat->ops[i].count = thrstat->ops[i].total = 0;
 }
 
+struct ldms_thrstat *__thrstats_get(zap_ep_t zep)
+{
+	struct ldms_thrstat *thrstat;
+	int rc;
+
+	thrstat = zap_thrstat_ctxt_get(zep);
+
+	if (thrstat)
+		return thrstat;
+
+	thrstat = calloc(1, sizeof(*thrstat));
+	if (!thrstat) {
+		ovis_log(xlog, OVIS_LCRIT, "Memory allocation failure.\n");
+		return NULL;
+	}
+	rc = zap_thrstat_ctxt_set(zep, thrstat, __thrstats_reset);
+	if (rc) {
+		ovis_log(xlog, OVIS_LCRIT,
+			 "Cannot set thread stats %p to Zap "
+			 "endpoint %p. Error %d\n", thrstat, zep, rc);
+		free(thrstat);
+		return NULL;
+	}
+	return thrstat;
+}
+
 /**
  * ldms-zap event handling function.
  */
@@ -3113,6 +3139,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	struct ldms_thrstat *thrstat;
 	struct ldms_thrstat_entry *thrstat_e = NULL;
 	struct ldms_op_ctxt *op_ctxt = NULL;
+	pthread_t thr;
 
 	if (x == NULL)
 		return;
@@ -3122,23 +3149,29 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 #endif /* DEBUG */
 
 	errno = 0;
-	thrstat = zap_thrstat_ctxt_get(zep);
+	thr = zap_ep_thread(zep);
+	if (thr) {
+		thrstat = __thrstats_get(zep);
+	} else {
+		assert(ev->type == ZAP_EVENT_CONNECT_REQUEST);
+		/* No thread assigned to the zep, this is a new endpoint from
+		 * a connection request. The thread we're on right now is the
+		 * thread on the listening parent endpoint.
+		 *
+		 * In this case `x`, the context of the `zep` is inherited from
+		 * the parent listening endpoint, which makes `x` being the ldms
+		 * xprt object of the parent listening endpoint.
+		 *
+		 * We get `thrstat` object from the parent endpoint because
+		 * we're working the connection request with parent ep's thread.
+		 */
+		thrstat = __thrstats_get(x->zap_ep);
+	}
 	if (!thrstat) {
-		if ((errno == 0) || (ev->type == ZAP_EVENT_CONNECT_REQUEST)) {
-			thrstat = calloc(1, sizeof(*thrstat));
-			if (!thrstat) {
-				ovis_log(xlog, OVIS_LCRIT,
-						"Memory allocation failure.\n");
-				return;
-			}
-			if (zap_thrstat_ctxt_set(zep, thrstat, __thrstats_reset))
-				free(thrstat);
-		} else {
-			ovis_log(xlog, OVIS_LCRIT, "Cannot retrieve thread stats "
-					"from Zap endpoint. Error %d\n", errno);
-			assert(0);
-			return;
-		}
+		ovis_log(xlog, OVIS_LCRIT, "Cannot retrieve thread stats "
+				"from Zap endpoint. Error %d\n", errno);
+		assert(0);
+		return;
 	}
 	assert(thrstat->last_op < LDMS_THRSTAT_OP_COUNT);
 	(void)clock_gettime(CLOCK_REALTIME, &thrstat->last_op_start);
