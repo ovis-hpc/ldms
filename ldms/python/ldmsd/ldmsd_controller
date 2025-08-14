@@ -1681,6 +1681,15 @@ class LdmsdCmdParser(cmd.Cmd):
         List the sets by the plugin that provides the sets
         Parameters:
         [name=]   The plugin name
+
+        Output format:
+        <plugin_name> [<sample_interval>/<sample_offset>]:
+            <set_1>
+            <set_2>
+            ...
+
+        Each plugin displays its name followed by sampling parameters in brackets
+        (interval/offset) in microseconds, with data sets listed as indented items below.
         """
         arg = self.handle_args('plugn_sets', arg)
         if not arg:
@@ -1694,9 +1703,9 @@ class LdmsdCmdParser(cmd.Cmd):
             print("-- None --")
             return
         for p in plugns:
-            print("{0}:".format(p['plugin']))
+            print(f"{p['plugin']} [{p['interval_us']}:{p['offset_us']}]:")
             for s in p['sets']:
-                print("   {0}".format(s))
+                print(f"      {s}")
 
     def do_publish(self, arg):
         """
