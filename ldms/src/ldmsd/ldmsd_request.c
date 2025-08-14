@@ -5671,8 +5671,11 @@ static int sampler_sets_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_cfgobj_sampler_t s
 	rc = linebuf_printf(reqc,
 			"{"
 			"\"plugin\":\"%s\","
+			"\"interval_us\":%ld,"
+			"\"offset_us\":%ld,"
 			"\"sets\":[",
-			samp->cfg.name);
+			samp->cfg.name,
+			samp->sample_interval_us, samp->sample_offset_us);
 	if (rc)
 		return rc;
 	set_count = 0;
