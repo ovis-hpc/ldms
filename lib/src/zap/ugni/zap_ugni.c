@@ -3623,9 +3623,9 @@ static void *z_ugni_io_thread_proc(void *arg)
 		/* max timeout; see 'desperately reaping CQ' note below. */
 		timeout = 250;
 	}
-	zap_thrstat_wait_start(thr->zap_io_thread.stat);
+	zap_thrstat_wait_start(&thr->zap_io_thread);
 	n = epoll_wait(thr->efd, ev, N_EV, timeout);
-	zap_thrstat_wait_end(thr->zap_io_thread.stat);
+	zap_thrstat_wait_end(&thr->zap_io_thread);
 	was_not_empty = !TAILQ_EMPTY(&thr->submitted_wrq)    ||
 			!TAILQ_EMPTY(&thr->pending_rdma_wrq) ;
 	for (i = 0; i < n; i++) {

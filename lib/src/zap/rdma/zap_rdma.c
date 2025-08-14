@@ -2668,9 +2668,9 @@ static void *z_rdma_io_thread_proc(void *arg)
 	}
 	pthread_cleanup_push(z_rdma_io_thread_cleanup, arg);
  loop:
-	zap_thrstat_wait_start(thr->zap_io_thread.stat);
+	zap_thrstat_wait_start(&thr->zap_io_thread);
 	n = epoll_wait(thr->efd, events, 16, -1);
-	zap_thrstat_wait_end(thr->zap_io_thread.stat);
+	zap_thrstat_wait_end(&thr->zap_io_thread);
 	n_cm = 0;
 	for (i = 0; i < n; i++) {
 		ctxt = events[i].data.ptr;

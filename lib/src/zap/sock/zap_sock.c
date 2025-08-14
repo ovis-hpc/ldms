@@ -1340,7 +1340,9 @@ static void sock_read(z_sock_io_thread_t thr, struct epoll_event *ev)
 	int looping = 1;
 
 	do {
+		pthread_mutex_lock(&sep->ep.lock);
 		rc = __recv_msg(sep);
+		pthread_mutex_unlock(&sep->ep.lock);
 		if (rc == EAGAIN)
 			break;
 		if (rc) {
@@ -1472,9 +1474,9 @@ static void *io_thread_proc(void *arg)
 	assert(rc == 0 && "pthread_sigmask error");
 
 	while (1) {
-		zap_thrstat_wait_start(thr->zap_io_thread.stat);
+		zap_thrstat_wait_start(&thr->zap_io_thread);
 		n = epoll_wait(thr->efd, thr->ev, ZAP_SOCK_EV_SIZE, -1);
-		zap_thrstat_wait_end(thr->zap_io_thread.stat);
+		zap_thrstat_wait_end(&thr->zap_io_thread);
 		if (n < 0) {
 			if (errno == EINTR)
 				continue; /* EINTR is OK */
@@ -2010,8 +2012,10 @@ static void z_sock_destroy(zap_ep_t ep)
 
 	DEBUG_LOG(sep, "%ld z_sock_destroy(%p)\n", GETTID(), sep);
 
+	pthread_mutex_lock(&ep->lock);
 	if (ep->thread)
 		zap_io_thread_ep_remove(ep);
+	pthread_mutex_unlock(&ep->lock);
 
 	while (!TAILQ_EMPTY(&sep->sq)) {
 		wr = TAILQ_FIRST(&sep->sq);
