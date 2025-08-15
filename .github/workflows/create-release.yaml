@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
         image: ovishpc/ovis-ubuntu-build
+    permissions:
+        contents: write
 
     steps:
     - uses: actions/checkout@v3
