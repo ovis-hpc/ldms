@@ -6660,7 +6660,7 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	/* Plugins */
 	ldmsd_cfgobj_store_t store;
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STORE);
-	for (store = ldmsd_store_first(LDMSD_CFGOBJ_STORE); store;
+	for (store = ldmsd_store_first(); store;
 			store = ldmsd_store_next(store)) {
 		fprintf(fp, "load name=%s plugin=%s\n", store->cfg.name, store->plugin->name);
 		fprintf(fp, "load name=%s plugin=%s\n", store->cfg.name, store->plugin->name);
@@ -7787,7 +7787,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 		goto __APPEND_ERR;
 	}
 
-	lres = ldms_thrstat_result_get(interval_s);
+	lres = ldms_thrstat_result_get();
 	if (!lres)
 		goto __APPEND_ERR;
 
@@ -8589,7 +8589,7 @@ static int msg_stats_handler(ldmsd_req_ctxt_t reqc)
 	const char *match = NULL;
 	int is_regex = 0;
 	char buff[128];
-	char *s;
+	char *s = NULL;
 	int rc = 0;
 	int is_reset = 0;
 	size_t len;
