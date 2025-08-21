@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ovishpc/ldms-dev-ubuntu-2204:latest-amd64
+    permissions:
+        contents: write
 
     steps:
     - uses: actions/checkout@v4
