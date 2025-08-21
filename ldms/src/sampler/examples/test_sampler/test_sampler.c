@@ -437,7 +437,7 @@ static void test_sampler_set_free(test_sampler_t ts, struct test_sampler_set *s)
 {
 	LIST_REMOVE(s, entry); /* Remove from the set_list of ts_schema */
 	if (s->set) {
-		ldmsd_set_deregister(s->name, ldmsd_plug_cfg_name_get(ts->pi));
+		ldmsd_set_deregister(s->name, ts->pi);
 		ldms_set_unpublish(s->set);
 		ldms_set_delete(s->set);
 	}
@@ -448,7 +448,7 @@ static void test_sampler_set_free(test_sampler_t ts, struct test_sampler_set *s)
 static void test_sampler_set_reset(test_sampler_t ts, struct test_sampler_set *s)
 {
 	if (s->set) {
-		ldmsd_set_deregister(s->name, ldmsd_plug_cfg_name_get(ts->pi));
+		ldmsd_set_deregister(s->name, ts->pi);
 		ldms_set_unpublish(s->set);
 		ldms_set_delete(s->set);
 	}
