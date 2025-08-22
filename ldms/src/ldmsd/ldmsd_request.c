@@ -8778,7 +8778,7 @@ static int listen_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_listen_t listen;
 	char *xprt, *port, *host, *auth, *attr_name, *quota, *rx_limit;
-	unsigned short port_no = -1;
+	long long port_no = -1;
 	xprt = port = host = auth = quota = rx_limit = NULL;
 
 	attr_name = "xprt";
@@ -8787,7 +8787,7 @@ static int listen_handler(ldmsd_req_ctxt_t reqc)
 		goto einval;
 	port = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
 	if (port) {
-		port_no = atoi(port);
+		port_no = atoll(port);
 		if (port_no < 1 || port_no > USHRT_MAX) {
 			reqc->errcode = EINVAL;
 			(void) snprintf(reqc->line_buf, reqc->line_len,
