@@ -8657,8 +8657,6 @@ static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc)
 	int rc = 0;
 	size_t len;
 	struct ldmsd_req_attr_s attr;
-	char *reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
-	int is_reset = 0;
 
 	if (!ldms_msg_is_enabled()) {
 		reqc->errcode = ENOTSUP;
@@ -8666,6 +8664,8 @@ static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_send_req_response(reqc, buff);
 		return 0;
 	}
+	char *reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
+	int is_reset = 0;
 	if (reset_s && (0 == strcasecmp(reset_s, "true")))
 		is_reset = 1;
 	free(reset_s);
