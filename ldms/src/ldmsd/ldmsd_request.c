@@ -5903,8 +5903,8 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_UID);
 	if (value) {
 		if (isdigit(value[0])) {
-			uid = strtol(value, &endptr, 0);
-			if (uid < 0) {
+			long long check_uid = strtoll(value, &endptr, 0);
+			if (check_uid < 0 || check_uid > (UINT32_MAX - 1) ) {
 				reqc->errcode = EINVAL;
 				(void) snprintf(reqc->line_buf, reqc->line_len,
 						"The given UID '%s' is invalid.",
@@ -5912,6 +5912,7 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 				free(value);
 				goto free_regex;
 			}
+			uid = check_uid;
 		} else {
 			struct passwd *pwd = getpwnam(value);
 			if (!pwd) {
@@ -5930,8 +5931,8 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_GID);
 	if (value) {
 		if (isdigit(value[0])) {
-			gid = strtol(value, &endptr, 0);
-			if (gid < 0) {
+			long long check_gid = strtoll(value, &endptr, 0);
+			if (check_gid < 0 || check_gid > (UINT32_MAX - 1) ) {
 				reqc->errcode = EINVAL;
 				(void) snprintf(reqc->line_buf, reqc->line_len,
 						"The given GID '%s' is invalid.",
@@ -5939,6 +5940,7 @@ static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc)
 				free(value);
 				goto free_regex;
 			}
+			gid = check_gid;
 		} else {
 			struct group *grp = getgrnam(value);
 			if (!grp) {
