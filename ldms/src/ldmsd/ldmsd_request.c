@@ -2367,7 +2367,7 @@ static int __prdcr_stream_status(ldmsd_prdcr_t prdcr, ldmsd_req_ctxt_t oreqc,
 				struct ldmsd_str_ent *pname)
 {
 	int rc;
-	ldmsd_req_cmd_t rcmd;
+	ldmsd_req_cmd_t rcmd = NULL;
 	struct prdcr_stream_status_ctxt *ctxt;
 
 	ctxt = malloc(sizeof(*ctxt));
@@ -2388,6 +2388,8 @@ static int __prdcr_stream_status(ldmsd_prdcr_t prdcr, ldmsd_req_ctxt_t oreqc,
 		rc = ldmsd_req_cmd_attr_term(rcmd);
 		if (rc)
 			goto rcmd_err;
+	} else {
+		free(ctxt);
 	}
 	ldmsd_prdcr_unlock(prdcr);
 	return 0;
