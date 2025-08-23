@@ -2155,6 +2155,7 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	rx_rate_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RX_RATE);
 	if (rx_rate_s) {
 		rx_rate = atol(rx_rate_s);
+		free(rx_rate_s);
 	}
 
 	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
