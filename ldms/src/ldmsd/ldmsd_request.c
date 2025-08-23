@@ -9908,15 +9908,15 @@ static int __cidr2addr6(const char *cdir_str, struct ldms_addr *addr, int *prefi
 		return EINVAL;
 	}
 
-	if (prefix_len)
-		*prefix_len = _prefix_len;
+	if (!prefix_len || !addr)
+		return EINVAL;
 
-	if (addr) {
-		if (is_ipv6) {
-			rc = inet_pton(AF_INET6, netaddr_str, &addr->addr);
-		} else {
-			rc = inet_pton(AF_INET, netaddr_str, &addr->addr);
-		}
+	*prefix_len = _prefix_len;
+
+	if (is_ipv6) {
+		rc = inet_pton(AF_INET6, netaddr_str, &addr->addr);
+	} else {
+		rc = inet_pton(AF_INET, netaddr_str, &addr->addr);
 	}
 
 	if (rc != 1)
