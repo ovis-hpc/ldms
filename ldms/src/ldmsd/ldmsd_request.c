@@ -9058,17 +9058,18 @@ static int set_default_authz_handler(ldmsd_req_ctxt_t reqc)
 	if (value) {
 		char *endptr;
 		errno = 0;
-		perm = strtol(value, &endptr, 8);
+		long check_perm = strtol(value, &endptr, 8);
 		if (errno || endptr == value || *endptr != '\0') {
 			reqc->errcode = EINVAL;
 			(void) snprintf(reqc->line_buf, reqc->line_len,
 					"String to permission bits conversion failed");
-		} else if (perm < 0 || perm > 0777) {
+		} else if (check_perm < 0 || check_perm > 0777) {
 			reqc->errcode = EINVAL;
 			(void) snprintf(reqc->line_buf, reqc->line_len,
 					"Permissions value is out of range");
 		} else {
 			perm_is_supplied = true;
+			perm = (mode_t)check_perm;
 		}
 		free(value);
 	}
