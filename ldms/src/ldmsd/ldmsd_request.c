@@ -5703,8 +5703,6 @@ static int sampler_sets_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_cfgobj_sampler_t s
 		if (rc)
 			return rc;
 		set_count++;
-		if (rc)
-			return rc;
 	}
 	rc = linebuf_printf(reqc, "]}");
 	return rc;
