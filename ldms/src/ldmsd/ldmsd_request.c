@@ -1189,6 +1189,7 @@ int linebuf_printf(struct ldmsd_req_ctxt *reqc, char *fmt, ...)
 			if (!reqc->line_buf) {
 				ovis_log(config_log, OVIS_LERROR, "Out of memory\n");
 				reqc->line_len = 0;
+				va_end(ap);
 				return ENOMEM;
 			}
 			va_copy(ap_copy, ap);
