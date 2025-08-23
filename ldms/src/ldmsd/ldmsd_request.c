@@ -8602,7 +8602,6 @@ static int msg_stats_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	char *stream = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
-	char *reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
 	const char *match = NULL;
 	int is_regex = 0;
 	char buff[128];
@@ -8626,6 +8625,7 @@ static int msg_stats_handler(ldmsd_req_ctxt_t reqc)
 		match = stream;
 	}
 
+	char *reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
 	if (reset_s && (0 == strcasecmp(reset_s, "true")))
 		is_reset = 1;
 	free(reset_s);
