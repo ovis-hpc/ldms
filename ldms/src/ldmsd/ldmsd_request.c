@@ -1188,6 +1188,7 @@ int linebuf_printf(struct ldmsd_req_ctxt *reqc, char *fmt, ...)
 						(2 * reqc->line_len) + cnt);
 			if (!reqc->line_buf) {
 				ovis_log(config_log, OVIS_LERROR, "Out of memory\n");
+				reqc->line_len = 0;
 				return ENOMEM;
 			}
 			va_copy(ap_copy, ap);
@@ -2646,6 +2647,7 @@ out:
 	return rc;
 }
 
+/* \return 0 or errno if a problem. */
 size_t __prdcr_set_status(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_set_t prd_set)
 {
 	struct ldms_timestamp ts = { 0, 0 }, dur = { 0, 0 };
@@ -2675,7 +2677,8 @@ size_t __prdcr_set_status(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_set_t prd_set)
 		dur.sec, dur.usec);
 }
 
-/* This function must be called with producer lock held */
+/* This function must be called with producer lock held.
+ * \return 0 or errno if a problem. */
 int __prdcr_set_status_handler(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr,
 			int *count, const char *setname, const char *schema)
 {
@@ -2743,6 +2746,8 @@ int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc)
 		rc = __prdcr_set_status_handler(reqc, prdcr, &count,
 						setname, schema);
 		ldmsd_prdcr_unlock(prdcr);
+		if (rc)
+			goto out;
 	} else {
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 		for (prdcr = ldmsd_prdcr_first(); prdcr;
@@ -2753,7 +2758,7 @@ int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc)
 			ldmsd_prdcr_unlock(prdcr);
 			if (rc) {
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-				goto close_str;
+				goto out;
 			}
 		}
 		ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
@@ -3486,6 +3491,9 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 	/* Construct the json object of the strgp(s) */
 	if (strgp) {
 		rc = __strgp_status_json_obj(reqc, strgp, 0);
+		if (rc) {
+			goto out;
+		}
 	} else {
 		strgp_cnt = 0;
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
@@ -4702,8 +4710,11 @@ int __prdcr_hint_set_tree_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr)
 	count = 0;
 	rbn = rbt_min(&prdcr->hint_set_tree);
 	while (rbn) {
-		if (0 < count)
+		if (0 < count) {
 			rc = linebuf_printf(reqc, ",");
+			if (rc)
+				return rc;
+		}
 		list = container_of(rbn, struct ldmsd_updt_hint_set_list, rbn);
 		rc = __prdcr_hint_set_list_json_obj(reqc, list);
 		if (rc)
@@ -4748,6 +4759,10 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
 				prdcr = ldmsd_prdcr_next(prdcr)) {
 			if (prdcr_count) {
 				rc = linebuf_printf(reqc, ",\n");
+				if (rc) {
+					ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+					goto intr_err;
+				}
 			}
 			ldmsd_prdcr_lock(prdcr);
 			rc = __prdcr_hint_set_tree_json_obj(reqc, prdcr);
@@ -9233,12 +9248,12 @@ __prdset_upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 			ldmsd_prdcr_set_stats_reset(prdset, now, LDMSD_PRDSET_STATS_F_UPD);
 		pthread_mutex_unlock(&prdset->lock);
 		if (rc)
-			goto end_quote;
+			goto unlock;
 		cnt++;
 next_prdset:
 		prdset = ldmsd_prdcr_set_next(prdset);
 	}
-end_quote:
+
 	rc = linebuf_printf(reqc, "}");
 unlock:
 	ldmsd_prdcr_unlock(prdcr);
