@@ -2498,6 +2498,7 @@ next_prdcr:
 		rc = 0;
 		goto free_ctxt;
 	}
+	free(prdcr_regex);
 	return 0;
 
 send_resp_code:
