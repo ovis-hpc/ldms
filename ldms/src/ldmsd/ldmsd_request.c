@@ -8607,7 +8607,7 @@ static int msg_stats_handler(ldmsd_req_ctxt_t reqc)
 	const char *match = NULL;
 	int is_regex = 0;
 	char buff[128];
-	char *s;
+	char *s = NULL;
 	int rc = 0;
 	int is_reset = 0;
 	size_t len;
