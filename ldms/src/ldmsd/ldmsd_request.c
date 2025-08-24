@@ -8886,6 +8886,11 @@ static int auth_add_handler(ldmsd_req_ctxt_t reqc)
 		str = strtok_r(auth_args, " ", &ptr1);
 		while (str) {
 			lval = strtok_r(str, "=", &ptr2);
+			if (!lval) {
+				(void) snprintf(reqc->line_buf, reqc->line_len,
+					"auth option expected '=' in %s", str);
+				goto send_reply;
+			}
 			rval = strtok_r(NULL, "", &ptr2);
 			rc = ldmsd_auth_opt_add(auth_opts, lval, rval);
 			if (rc) {
