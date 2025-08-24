@@ -10134,14 +10134,15 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 
 	if (advtr_port) {
 		endptr = NULL;
-		pl->advtr_port = strtol(advtr_port, &endptr, 0);
-		if ((pl->advtr_port < 1) || (pl->advtr_port > USHRT_MAX)) {
+		long check_port = strtol(advtr_port, &endptr, 0);
+		if ((check_port < 1) || (check_port > USHRT_MAX)) {
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						  "The port value '%s' is invalid.",
 						  advtr_port);
 			reqc->errcode = EINVAL;
 			goto err;
 		}
+		pl->advtr_port = check_port;
 	} else {
 		attr_name = "advertiser_port";
 		goto einval_active;
