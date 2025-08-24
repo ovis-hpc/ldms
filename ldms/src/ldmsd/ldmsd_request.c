@@ -4866,7 +4866,7 @@ static int setgroup_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 	/* rc is 0 */
 	__dlog(DLOG_CFGOK, "setgroup_add name=%s" "%s%s" "%s%s" "%s%s\n",
-		name, producer ? " producer=" : "", producer ? producer : "",
+		name, " producer=", producer,
 		interval ? " interval=" : "", interval ? interval : "",
 		offset ? " offset=" : "", offset ? offset : "");
 	goto out;
