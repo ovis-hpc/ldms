@@ -4866,7 +4866,7 @@ static int setgroup_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 	/* rc is 0 */
 	__dlog(DLOG_CFGOK, "setgroup_add name=%s" "%s%s" "%s%s" "%s%s\n",
-		name, producer ? " producer=" : "", producer ? producer : "",
+		name, " producer=", producer,
 		interval ? " interval=" : "", interval ? interval : "",
 		offset ? " offset=" : "", offset ? offset : "");
 	goto out;
@@ -5172,8 +5172,7 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 	free(exclusive_thread);
 	if (reqc->errcode == 0) {
 		__dlog(DLOG_CFGOK, "start name=%s%s%s%s%s\n", instance_name,
-			interval_us ? " interval=" : "",
-			interval_us ? interval_us : "",
+			" interval=", interval_us,
 			offset ? " offset=" : "", offset ? offset : "");
 
 		goto send_reply;
@@ -8886,6 +8885,11 @@ static int auth_add_handler(ldmsd_req_ctxt_t reqc)
 		str = strtok_r(auth_args, " ", &ptr1);
 		while (str) {
 			lval = strtok_r(str, "=", &ptr2);
+			if (!lval) {
+				(void) snprintf(reqc->line_buf, reqc->line_len,
+					"auth option expected '=' in %s", str);
+				goto send_reply;
+			}
 			rval = strtok_r(NULL, "", &ptr2);
 			rc = ldmsd_auth_opt_add(auth_opts, lval, rval);
 			if (rc) {
@@ -10129,14 +10133,15 @@ static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc)
 
 	if (advtr_port) {
 		endptr = NULL;
-		pl->advtr_port = strtol(advtr_port, &endptr, 0);
-		if ((pl->advtr_port < 1) || (pl->advtr_port > USHRT_MAX)) {
+		long check_port = strtol(advtr_port, &endptr, 0);
+		if ((check_port < 1) || (check_port > USHRT_MAX)) {
 			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 						  "The port value '%s' is invalid.",
 						  advtr_port);
 			reqc->errcode = EINVAL;
 			goto err;
 		}
+		pl->advtr_port = check_port;
 	} else {
 		attr_name = "advertiser_port";
 		goto einval_active;
