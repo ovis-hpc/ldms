@@ -5172,8 +5172,7 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 	free(exclusive_thread);
 	if (reqc->errcode == 0) {
 		__dlog(DLOG_CFGOK, "start name=%s%s%s%s%s\n", instance_name,
-			interval_us ? " interval=" : "",
-			interval_us ? interval_us : "",
+			" interval=", interval_us,
 			offset ? " offset=" : "", offset ? offset : "");
 
 		goto send_reply;
