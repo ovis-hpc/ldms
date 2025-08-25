@@ -1082,9 +1082,7 @@ int __rate_quota_acquire(struct ldms_rail_rate_quota_s *c, uint64_t n)
  again:
 	__atomic_load(&c->ts.tv_sec, &tv_sec, __ATOMIC_SEQ_CST);
 	__atomic_load(&c->quota, &v0, __ATOMIC_SEQ_CST);
-	rc = clock_gettime(CLOCK_REALTIME, &ts);
-	if (rc)
-		return errno;
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
 	if (tv_sec < ts.tv_sec) {
 		/* the second has changed, reset quota */
 		if (0 == __atomic_compare_exchange(
@@ -1117,9 +1115,7 @@ void __rate_quota_release(struct ldms_rail_rate_quota_s *c, uint64_t n)
 	struct timespec ts;
 	if (c->rate == LDMS_UNLIMITED)
 		return;
-	rc = clock_gettime(CLOCK_REALTIME, &ts);
-	if (rc)
-		return ;
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
 	if (0 == __atomic_compare_exchange( &c->ts.tv_sec, &ts.tv_sec, &ts.tv_sec,
 				0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
 		return; /* tv_sec changed, no need to return */
