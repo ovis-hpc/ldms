@@ -876,7 +876,6 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	reply = malloc(len);
 	if (!reply) {
 		rc = ENOMEM;
-		len = sizeof(struct ldms_reply_hdr);
 		goto out;
 	}
 
