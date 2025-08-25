@@ -51,10 +51,14 @@ import os
 import struct
 import sys
 import re
-from ovis_ldms import ldms
 import time
 import json
 import errno
+from queue import Queue, Empty
+import threading
+
+from ovis_ldms import ldms
+
 
 #:Dictionary contains the cmd_id, required attribute list
 #:and optional attribute list of each ldmsd command. For example,
@@ -1020,7 +1024,7 @@ class Communicator(object):
     CTRL_STATES = [ INIT, CONNECTED, CLOSED ]
     CFG_CNTR = 0
 
-    def __init__(self, xprt, host, port, auth=None, auth_opt=None, recv_timeout=5):
+    def __init__(self, xprt, host, port, auth=None, auth_opt=None, recv_timeout=5, disconnect_cb=None):
         """Create a communicator interface with an LDMS Daemon (LDMSD)
 
         Parameters:
@@ -1042,6 +1046,10 @@ class Communicator(object):
         self.auth = auth
         self.auth_opt = auth_opt
         self.recv_timeout = recv_timeout
+        self._recv_queue = Queue()
+        self.disconnect_cb = disconnect_cb
+        self._connection_err = None
+        self._connection_ev = threading.Event()
         self.ldms = None
         self.ldms = ldms.Xprt(name=self.xprt, auth=auth, auth_opts=auth_opt)
 
@@ -1082,11 +1090,51 @@ class Communicator(object):
         self.max_recv_len = self.ldms.msg_max
         return self.connect(timeout=timeout)
 
+    def __xprt_cb(self, xprt, ev, arg):
+        if ev.type == ldms.EVENT_CONNECTED:
+            self._connection_err = 0
+            self._connection_ev.set()
+        elif ev.type == ldms.EVENT_REJECTED:
+            self._connection_err = errno.ECONNREFUSED
+            self._connection_ev.set()
+        elif ev.type == ldms.EVENT_ERROR:
+            self._connection_err = errno.ECONNABORTED
+            self._connection_ev.set()
+            self._recv_queue.put(None) # unblock receive_response()
+        elif ev.type == ldms.EVENT_DISCONNECTED:
+            # Disconnect after being connected
+            self.state = Communicator.CLOSED
+            self._recv_queue.put(None) # unblock receive_response()
+            self.state = Communicator.CLOSED
+            if self.disconnect_cb:
+                self.disconnect_cb()
+        elif ev.type == ldms.EVENT_RECV:
+            self._recv_queue.put(ev.data) # Unblock receive_response()
+        # Ignore other events (SEND_COMPLETE, etc.)
+
     def connect(self, timeout=0):
         try:
             if not self.ldms:
                 self.ldms = ldms.Xprt(name=self.xprt, auth=self.auth, auth_opts=self.auth_opt)
-            rc = self.ldms.connect(self.host, self.port, timeout=timeout)
+
+            self._connection_err = None
+            self._connection_ev.clear()
+            rc = self.ldms.connect(self.host, self.port, cb=self.__xprt_cb, cb_arg=None)
+            if rc:
+                return 1
+
+            # Wait for connection result
+            if timeout > 0:
+                if not self._connection_ev.wait(timeout):
+                    self.close()
+                    return errno.ETIMEDOUT
+            else:
+                self._connection_ev.wait() # Wait indefinitely
+
+            # Check connection state
+            if self._connection_err != 0:
+                return self._connection_err or 1
+
         except Exception as e:
             if self.auth is not None:
                 if self.auth_opt is not None:
@@ -1099,10 +1147,9 @@ class Communicator(object):
             print(f'{e}: connecting to {self.host} on port {self.port} using {self.xprt}{auth_s}')
             self.state = self.CLOSED
             return errno.ENOTCONN
-        if rc:
-            return 1
+
         self.type = 'inband'
-        self.state = self.CONNECTED
+        self.state = Communicator.CONNECTED
         rc, self.CFG_CNTR = self.getCfgCntr()
         if not rc:
             self.CFG_CNTR = int(self.CFG_CNTR)
@@ -1128,14 +1175,19 @@ class Communicator(object):
 
     def receive_response(self, recv_len = None):
         """This is called by the LDMSRequest class to receive a reply"""
-        if self.state != self.CONNECTED:
-            raise RuntimeError("Transport is not connected.")
         try:
-            rsp = self.ldms.recv(timeout=self.recv_timeout)
+            if self.state != Communicator.CONNECTED:
+                raise RuntimeError("Connection disconnected")
+
+            rsp = self._recv_queue.get(timeout=self.recv_timeout)
+            if rsp is None: # Disconnect signal
+                raise ConnectionError("Connection disconnected")
+            return rsp
+        except Empty:
+                raise TimeoutError("Receive timeout")
         except Exception as e:
             self.close()
             raise ConnectionError(str(e))
-        return rsp
 
     def greeting(self, name=None, offset=None, level=None, test=None, path=None):
         """
