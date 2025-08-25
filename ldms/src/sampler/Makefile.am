@@ -152,6 +152,10 @@ if ENABLE_MEMINFO
 SUBDIRS += meminfo
 endif
 
+if ENABLE_FILE_EXPORTER
+SUBDIRS += file_exporter
+endif
+
 if ENABLE_MSR_INTERLAGOS
 SUBDIRS += msr_interlagos
 endif
