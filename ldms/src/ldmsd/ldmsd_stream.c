@@ -912,6 +912,8 @@ int __stream_info_json(struct buf_s *buf, struct ldmsd_stream_info_s *info)
 				     "\"bytes/sec\":%lf",
 				     (info->count*1.0)/(info->last_ts - info->first_ts),
 				     info->total_bytes*1.0/(info->last_ts - info->first_ts));
+		if (rc)
+			return rc;
 	}
 end:
 	rc = buf_printf(buf, "}");
