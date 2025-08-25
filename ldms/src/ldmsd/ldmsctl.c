@@ -2714,6 +2714,7 @@ struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
 	if (!ctrl->ldms_xprt.x) {
 		printf("Failed to create an ldms transport. %s\n",
 						STRERROR(errno));
+		free(ctrl);
 		return NULL;
 	}
 
