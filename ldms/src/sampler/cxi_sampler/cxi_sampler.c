@@ -612,6 +612,7 @@ static int create_metric_set(cxi_t cxi)
 	if (rc < 0) {
 		ovis_log(cxi->log, OVIS_LERROR,
 			 "Error %d creating tel_list.\n", errno);
+		ldms_record_delete(rh_rec);
 		goto err1;
 	}
 
@@ -751,10 +752,10 @@ static int config(ldmsd_plug_handle_t handle,
 	ovis_log_t log = ldmsd_plug_log_get(handle);
 	int rc;
 	char *rh_path;
-	char *rh_counters;
+	char *rh_counters = NULL;;
 	char *rh_counters_file;
 	char *tel_path;
-	char *tel_counters;
+	char *tel_counters = NULL;;
 	char *tel_counters_file;
 
 	if (cxi->set) {
