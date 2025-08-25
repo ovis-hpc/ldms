@@ -1481,7 +1481,6 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 	rc = ldmsd_compile_regex(&prd_match->regex, prdcr_regex, rep_buf, rep_len);
 	if (rc) {
 		rc = EINVAL;
-		regfree(&prd_match->regex);
 		free(prd_match->regex_str);
 		free(prd_match);
 		goto unlock;
