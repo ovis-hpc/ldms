@@ -129,6 +129,10 @@ static ldmsd_decomp_t decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
 		d = dlopen(library_name, RTLD_NOW);
 		if (d)
 			break;
+		/* d is intentionally not tracked for eventual dlclose.
+		 * analyzers will report it as leaked.
+		 * updating the definitions in libdecomp_%s requires
+		 * a daemon restart. */
 		errno = 0;
 		if ((rc = stat(library_name, &st))) {
 			rc = errno;
@@ -155,7 +159,6 @@ static ldmsd_decomp_t decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
 		DECOMP_ERR(reqc, rc, "Cannot load the decomposer %s library.\n", decomp);
 		return NULL;
 	}
-
 	get = dlsym(d, "get");
 	if (!get) {
 		errno = ELIBBAD;
