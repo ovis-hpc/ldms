@@ -310,7 +310,13 @@ int ldmsd_logrotate() {
 	gettimeofday(&tv, NULL);
 	sprintf(ofile_name, "%s-%ld", logfile, tv.tv_sec);
 
-	rename(logfile, ofile_name);
+	rc = rename(logfile, ofile_name);
+	if (rc != 0) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LERROR, "Failed to rename the log file "
+			"%s to %s. (%s) The messages are going to "
+			"the old file.\n", logfile, ofile_name, STRERROR(rc));
+	}
 	rc = ovis_log_open(logfile);
 	if (rc) {
 		ovis_log(NULL, OVIS_LERROR, "Failed to rotate the log file. "
