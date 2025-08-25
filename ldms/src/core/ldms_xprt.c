@@ -337,6 +337,7 @@ struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 	ctxt = calloc(1, sz);
 	if (!ctxt) {
 		XPRT_LOG(x, OVIS_LCRITICAL, "%s(): Out of memory\n", __func__);
+		va_end(ap);
 		return ctxt;
 	}
 	ctxt->x = ldms_xprt_get(x, "alloc_ctxt");
@@ -3960,6 +3961,7 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 				LDMS_CONTEXT_LOOKUP_REQ,
 				cb, arg, lu_path, flags);
 	if (!ctxt) {
+		free(lu_path);
 		pthread_mutex_unlock(&x->lock);
 		ldms_xprt_put(x, "lookup");
 		return ENOMEM;
