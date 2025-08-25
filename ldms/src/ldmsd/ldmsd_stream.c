@@ -492,7 +492,7 @@ int ldmsd_stream_publish(ldms_t xprt,
 	size_t max_msg = ldms_xprt_msg_max(xprt);
 	buf = ldmsd_msg_buf_new(max_msg);
 	if (!buf) {
-		msglog("Error allocating %d bytes of memory for buffer\n",
+		msglog("Error allocating %zu bytes of memory for buffer\n",
 			max_msg);
 		return ENOMEM;
 	}
