@@ -763,6 +763,11 @@ int ldmsd_set_update_hint_get(ldms_set_t set, long *interval_us, long *offset_us
 	if (!value)
 		return 0;
 	tmp = strtok_r(value, ":", &endptr);
+	if (!tmp) {
+		ovis_log(NULL, OVIS_LERROR, "set '%s': updtr hint found empty\n",
+			ldms_set_instance_name_get(set) );
+		return EINVAL;
+	}
 	*interval_us = strtol(tmp, NULL, 0);
 	tmp = strtok_r(NULL, ":", &endptr);
 	if (tmp)
