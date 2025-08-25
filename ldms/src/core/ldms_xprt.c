@@ -337,6 +337,7 @@ struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 	ctxt = calloc(1, sz);
 	if (!ctxt) {
 		XPRT_LOG(x, OVIS_LCRITICAL, "%s(): Out of memory\n", __func__);
+		va_end(ap);
 		return ctxt;
 	}
 	ctxt->x = ldms_xprt_get(x, "alloc_ctxt");
