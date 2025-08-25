@@ -650,6 +650,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		return ENOMEM;
 	}
 
+	char * b = NULL;
 	buffer = malloc(max_msg_len);
 	if (!buffer) {
 		msglog("Out of memory\n");
@@ -681,7 +682,6 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		goto err;
 	}
 
-	char * b = NULL;
 	msg_no = ldmsd_msg_no_get();
 	rc = fseek(file, 0L, SEEK_END);
 	if (!rc) {
