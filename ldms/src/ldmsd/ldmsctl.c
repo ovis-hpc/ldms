@@ -1847,9 +1847,9 @@ static void resp_stream_status(ldmsd_req_hdr_t resp, size_t len,
 	}
 	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
 	json_parser_free(parser);
+	parser = NULL;
 	if (rc) {
-		printf("syntax error parsing JSON string\n");
-		json_parser_free(parser);
+		printf("syntax error parsing JSON string: %s\n", (char*)attr->attr_value);
 		return;
 	}
 
