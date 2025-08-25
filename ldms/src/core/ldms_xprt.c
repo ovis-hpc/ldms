@@ -326,7 +326,8 @@ next:
 	return NULL;
 }
 
-/* Must be called with the xprt lock held */
+/* Must be called with the xprt lock held.
+ * Keeps, rather than copies, string and other pointers in varargs. */
 struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 		ldms_context_type_t type, ...)
 {
@@ -3959,8 +3960,6 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 				sizeof(struct ldms_request) + sizeof(*ctxt),
 				LDMS_CONTEXT_LOOKUP_REQ,
 				cb, arg, lu_path, flags);
-	free(lu_path);
-	lu_path = NULL;
 	if (!ctxt) {
 		pthread_mutex_unlock(&x->lock);
 		ldms_xprt_put(x, "lookup");
