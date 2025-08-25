@@ -356,7 +356,7 @@ build_genders_file () {
 	for i in $LDMS_GENDERS; do
 		echo "#-------------------" >> $ALLGENDERS
 		echo "# from $i:" >> $ALLGENDERS
-		echo "# excluding all except bootnode and ldms keywords" >>$ALLGENDERS
+		echo "# excluding all except bootnode and ldms keywords" >> $ALLGENDERS
 		cat $i | egrep '(bootnode|ldms)' >> $ALLGENDERS
 	done
 
