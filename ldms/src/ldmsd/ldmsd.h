@@ -70,8 +70,6 @@
 #include "ldms.h"
 #include "ldmsd_plug_api.h"
 
-typedef void *ldmsd_plug_handle_t;
-
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
 
 /*
@@ -1158,7 +1156,7 @@ ldmsd_store_open(ldmsd_cfgobj_store_t store,
 		 struct ldmsd_strgp_metric_list *metric_list)
 {
 	if (store->api->open)
-		return store->api->open(store, container, schema, metric_list);
+		return store->api->open((ldmsd_plug_handle_t)store, container, schema, metric_list);
 	return NULL;
 }
 
@@ -1166,14 +1164,14 @@ static inline void
 ldmsd_store_flush(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 {
         if (store->api->flush)
-                store->api->flush(store, sh);
+                store->api->flush((ldmsd_plug_handle_t)store, sh);
 }
 
 static inline void
 ldmsd_store_close(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 {
 	if (store->api->close)
-		store->api->close(store, sh);
+		store->api->close((ldmsd_plug_handle_t)store, sh);
 }
 
 /* ldmsctl command callback function definition */

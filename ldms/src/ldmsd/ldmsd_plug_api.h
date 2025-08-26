@@ -51,7 +51,10 @@
  */
 #ifndef _LDMSD_PLUGIN_H_
 #define _LDMSD_PLUGIN_H_
-typedef void *ldmsd_plug_handle_t;
+
+struct ldmsd_plug_api_s; /* forward declaration of opaque struct */
+typedef struct ldmsd_plug_api_s *ldmsd_plug_handle_t; /* opaque handle */
+
 /*
  * Record an opaque context pointer in the plugin configuration handle.
  *
