@@ -306,7 +306,6 @@ struct derived_data{ //the generic information about the derived metric
 
 /*** per schema (includes instance data within the sets_idx) *******/
 struct function_store_handle { //these are per-schema
-	const struct ldmsd_store *store;
 	char *path;
 	FILE *file;
 	FILE *headerfile;
@@ -1331,7 +1330,6 @@ open_store(ldmsd_plug_handle_t scfg, const char *container, const char* schema,
 		s_handle = calloc(1, sizeof *s_handle);
 		if (!s_handle)
 			goto out;
-		s_handle->store = scfg;
 
 		s_handle->sets_idx = idx_create();
 		if (!(s_handle->sets_idx))
@@ -2982,7 +2980,6 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_hand
 	ovis_log(mylog, OVIS_LDEBUG,"%s: Closing store_csv with path <%s>\n",
 	       __FILE__, s_handle->path);
 	fflush(s_handle->file);
-	s_handle->store = NULL;
 	if (s_handle->path)
 		free(s_handle->path);
 	s_handle->path = NULL;

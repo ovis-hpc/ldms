@@ -83,7 +83,6 @@ typedef int (*amqp_msg_formatter_t)(amqp_inst_t ai, ldms_set_t s,
 static amqp_msg_formatter_t formatters[];
 
 struct amqp_instance {
-	struct ldmsd_store *store;
 	amqp_msg_formatter_t formatter;
 	char *container;
 	char *exchange;		/* AMQP exchange  */

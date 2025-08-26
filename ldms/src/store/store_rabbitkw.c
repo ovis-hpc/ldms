@@ -172,7 +172,6 @@ void rabbit_lerror_tmp(const char *fmt, ...)
 
 /* group of metric support data.  */
 struct rabbitkw_store_instance {
-	struct ldmsd_store *store;
 	char *container;
 	char *schema;
 	char *key; /* 'container schema' */
@@ -944,7 +943,6 @@ open_store(ldmsd_plug_handle_t s, const char *container, const char *schema,
 		}
 		si->key = key;
 		si->extraprops = g_extraprops;
-		si->store = s;
 		si->routingkey = strdup(routing_key_path);
 		si->container = strdup(container);
 		si->schema = strdup(schema);

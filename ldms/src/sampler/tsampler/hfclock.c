@@ -109,7 +109,7 @@ int hfclock_config(ldmsd_plug_handle_t handle,
 	char *v;
 	uint64_t x;
 
-	rc = timer_base_config(hf, kwl, avl, mylog);
+	rc = timer_base_config(handle, kwl, avl, mylog);
 	if (rc)
 		goto out;
 

@@ -119,7 +119,6 @@ static LIST_HEAD(sos_handle_list, sos_handle_s) sos_handle_list;
  *   <sos::path> = <root_path>/<container>
  */
 struct sos_instance {
-	struct ldmsd_store *store;
 	char *container;
 	char *path; /**< <root_path>/<container> */
 	sos_handle_t sos_handle; /**< sos handle */
