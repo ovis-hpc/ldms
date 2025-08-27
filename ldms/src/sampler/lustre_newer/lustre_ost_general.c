@@ -140,7 +140,6 @@ void ost_general_destroy(lo_context_t ctxt, ldms_set_t set)
 
 /* must be schema created by ost_general_schema_create() */
 ldms_set_t ost_general_create(lo_context_t ctxt,
-			      const char *producer_name,
 			      const char *fs_name,
 			      const char *ost_name)
 {
@@ -150,9 +149,9 @@ ldms_set_t ost_general_create(lo_context_t ctxt,
 
         ovis_log(ctxt->log, OVIS_LDEBUG, "ost_general_create()\n");
         snprintf(instance_name, sizeof(instance_name), "%s/%s",
-                 producer_name, ost_name);
+                 ctxt->producer_name, ost_name);
         set = ldms_set_new(instance_name, ost_general_schema);
-        ldms_set_producer_name_set(set, producer_name);
+        ldms_set_producer_name_set(set, ctxt->producer_name);
         index = ldms_metric_by_name(set, "fs_name");
         ldms_metric_array_set_str(set, index, fs_name);
         index = ldms_metric_by_name(set, "ost");
