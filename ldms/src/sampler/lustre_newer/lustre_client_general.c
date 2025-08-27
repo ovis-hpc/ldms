@@ -96,7 +96,7 @@ int llite_general_schema_is_initialized()
                 return -1;
 }
 
-int llite_general_schema_init(lc_context_t ctxt, comp_id_t cid, int schema_extras)
+int llite_general_schema_init(lc_context_t ctxt, int schema_extras)
 {
         ldms_schema_t sch;
         int rc;
@@ -116,7 +116,7 @@ int llite_general_schema_init(lc_context_t ctxt, comp_id_t cid, int schema_extra
 	}
 	const char *field;
 	field = "component_id";
-	rc = comp_id_helper_schema_add(sch, cid);
+	rc = comp_id_helper_schema_add(sch, &ctxt->cid);
 	if (rc) {
 		rc = -rc;
 		goto err2;
@@ -196,7 +196,6 @@ ldms_set_t llite_general_create(lc_context_t ctxt,
 				const char *producer_name,
                                 const char *fs_name,
 				const char *llite_name,
-				const comp_id_t cid,
 				const struct base_auth *auth)
 {
         ldms_set_t set;
@@ -217,7 +216,7 @@ ldms_set_t llite_general_create(lc_context_t ctxt,
         ldms_metric_array_set_str(set, index, fs_name);
         index = ldms_metric_by_name(set, "llite");
         ldms_metric_array_set_str(set, index, llite_name);
-	comp_id_helper_metric_update(set, cid);
+	comp_id_helper_metric_update(set, &ctxt->cid);
         ldms_set_publish(set);
         ldmsd_set_register(set, ctxt->cfg_name);
         return set;
