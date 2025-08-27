@@ -84,6 +84,12 @@ def cvt_intrvl_off_to_str(interval_us, offset_us):
     return str(interval_s) + "s:" + str(offset_ms) + "ms"
 
 class LdmsdCmdParser(cmd.Cmd):
+
+    def on_disconnect(self):
+        print()
+        print(f"*** Connection to LDMSD is disconnected! Please 'quit' and restart ldmsd_controller")
+        print()
+
     def __init__(self, host = None, port = None, xprt = None, infile=None,
                  auth=None, auth_opt=None, debug=False):
         self.msg_no = 1
@@ -95,13 +101,15 @@ class LdmsdCmdParser(cmd.Cmd):
                                          port,
                                          auth,
                                          auth_opt,
-                                         recv_timeout=None)
+                                         recv_timeout=None,
+                                         disconnect_cb=self.on_disconnect)
             else:
                 self.comm = Communicator(xprt,
                                          host,
                                          port,
                                          auth,
-                                         auth_opt)
+                                         auth_opt,
+                                         disconnect_cb=self.on_disconnect)
             rc = self.comm.connect()
             if rc:
                 raise ConnectionError("Please verify the transport, hostname, port, and authentication method.")
