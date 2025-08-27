@@ -14,7 +14,7 @@
 int ost_general_schema_is_initialized();
 int ost_general_schema_init(lo_context_t ctxt);
 void ost_general_schema_fini(lo_context_t ctxt);
-ldms_set_t ost_general_create(lo_context_t ctxt, const char *producer_name, const char *fs_name,
+ldms_set_t ost_general_create(lo_context_t ctxt, const char *fs_name,
                               const char *ost_name);
 void ost_general_sample(lo_context_t ctxt,
 			const char *ost_name, const char *stats_path,

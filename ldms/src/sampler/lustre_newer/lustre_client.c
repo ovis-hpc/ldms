@@ -31,8 +31,6 @@ static const int llite_paths_len = sizeof(llite_paths) / sizeof(llite_paths[0]);
 static char *test_path = NULL;
 static int schema_extras = 0;
 
-char producer_name[LDMS_PRODUCER_NAME_MAX];
-
 /* red-black tree root for llites */
 static struct rbt llite_tree;
 
@@ -83,7 +81,6 @@ static struct llite_data *llite_create(lc_context_t ctxt, const char *llite_name
                 goto out6;
         }
         llite->general_metric_set = llite_general_create(ctxt,
-							 producer_name,
                                                          llite->fs_name,
                                                          llite->name,
                                                          &auth);
@@ -274,8 +271,8 @@ static int config(ldmsd_plug_handle_t handle,
 
 	char *ival = av_value(avl, "producer");
 	if (ival) {
-		if (strlen(ival) < sizeof(producer_name)) {
-			strncpy(producer_name, ival, sizeof(producer_name));
+		if (strlen(ival) < sizeof(ctxt->producer_name)) {
+			strncpy(ctxt->producer_name, ival, sizeof(ctxt->producer_name));
 		} else {
                         ovis_log(ctxt->log, OVIS_LERROR, "config: producer name too long.\n");
                         return EINVAL;
@@ -334,10 +331,10 @@ static int constructor(ldmsd_plug_handle_t handle)
 	ctxt->log = ldmsd_plug_log_get(handle);
 	ctxt->plug_name = strdup(ldmsd_plug_name_get(handle));
 	ctxt->cfg_name = strdup(ldmsd_plug_cfg_name_get(handle));
+	gethostname(ctxt->producer_name, sizeof(ctxt->producer_name));
 	ldmsd_plug_ctxt_set(handle, ctxt);
 
 	rbt_init(&llite_tree, string_comparator);
-	gethostname(producer_name, sizeof(producer_name));
 
         return 0;
 }
