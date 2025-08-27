@@ -7,6 +7,7 @@
 #ifndef __LUSTRE_MDT_H
 #define __LUSTRE_MDT_H
 
+#include <coll/rbt.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "comp_id_helper.h"
@@ -17,6 +18,7 @@ typedef struct {
 	char *cfg_name;
 	struct comp_id_data cid;
 	char producer_name[LDMS_PRODUCER_NAME_MAX];
+	struct rbt mdt_tree; /* red-black tree root for mdts */
 } *lm_context_t;
 
 #endif /* __LUSTRE_MDT_H */

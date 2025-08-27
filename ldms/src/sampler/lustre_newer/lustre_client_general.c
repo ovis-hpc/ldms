@@ -96,7 +96,7 @@ int llite_general_schema_is_initialized()
                 return -1;
 }
 
-int llite_general_schema_init(lc_context_t ctxt, int schema_extras)
+int llite_general_schema_init(lc_context_t ctxt)
 {
         ldms_schema_t sch;
         int rc;
@@ -104,8 +104,8 @@ int llite_general_schema_init(lc_context_t ctxt, int schema_extras)
 
         ovis_log(ctxt->log, OVIS_LDEBUG, "llite_general_schema_init()\n");
 	char schema_name[LDMS_SET_NAME_MAX];
-	if (schema_extras)
-		sprintf(schema_name,"lustre_client_%d", schema_extras);
+	if (ctxt->schema_extras)
+		sprintf(schema_name,"lustre_client_%d", ctxt->schema_extras);
 	else
 		sprintf(schema_name,"lustre_client");
         sch = ldms_schema_new(schema_name);
@@ -144,7 +144,7 @@ int llite_general_schema_init(lc_context_t ctxt, int schema_extras)
                         goto err2;
 		}
         }
-	if (schema_extras & EXTRA215) {
+	if (ctxt->schema_extras & EXTRA215) {
 		for (i = 0; extra215_llite_stats_uint64_t_entries[i] != NULL; i++) {
 			field = extra215_llite_stats_uint64_t_entries[i];
 			rc = ldms_schema_metric_add(sch, field, LDMS_V_U64);
@@ -153,7 +153,7 @@ int llite_general_schema_init(lc_context_t ctxt, int schema_extras)
 			}
 		}
 	}
-	if (schema_extras & EXTRATIMES) {
+	if (ctxt->schema_extras & EXTRATIMES) {
 		for (i = 0; extratimes_llite_stats_uint64_t_entries[i] != NULL; i++) {
 			field = extratimes_llite_stats_uint64_t_entries[i];
 			rc = ldms_schema_metric_add(sch, field, LDMS_V_U64);
@@ -194,8 +194,7 @@ void llite_general_destroy(lc_context_t ctxt, ldms_set_t set)
 /* must be schema created by llite_general_schema_create() */
 ldms_set_t llite_general_create(lc_context_t ctxt,
                                 const char *fs_name,
-				const char *llite_name,
-				const struct base_auth *auth)
+				const char *llite_name)
 {
         ldms_set_t set;
         int index;
@@ -210,7 +209,7 @@ ldms_set_t llite_general_create(lc_context_t ctxt,
 		return NULL;
 	}
         ldms_set_producer_name_set(set, ctxt->producer_name);
-	base_auth_set(auth, set);
+	base_auth_set(&ctxt->auth, set);
         index = ldms_metric_by_name(set, "fs_name");
         ldms_metric_array_set_str(set, index, fs_name);
         index = ldms_metric_by_name(set, "llite");

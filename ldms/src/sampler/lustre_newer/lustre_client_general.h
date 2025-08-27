@@ -22,12 +22,11 @@ int llite_general_schema_is_initialized();
  * are defined as lustre_client_%d, with the value of schema_extras,
  * unless schema_extras==0.
  */
-int llite_general_schema_init(lc_context_t ctxt, int schema_extras);
+int llite_general_schema_init(lc_context_t ctxt);
 void llite_general_schema_fini(lc_context_t ctxt);
 ldms_set_t llite_general_create(lc_context_t ctxt,
                                 const char *fs_name,
-                                const char *llite_name,
-				const struct base_auth *auth);
+                                const char *llite_name);
 void llite_general_sample(lc_context_t ctxt,
 			  const char *llite_name, const char *stats_path,
                           ldms_set_t general_metric_set);
