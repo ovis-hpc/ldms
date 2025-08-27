@@ -299,11 +299,7 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 
 	pthread_mutex_lock(&rcache->lock);
 
-	rc = clock_gettime(CLOCK_REALTIME, &ts);
-	if (rc) {
-		rc = errno;
-		goto out;
-	}
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
 
 	if (rcache->cfg_timeout.tv_sec == 0 && rcache->cfg_timeout.tv_nsec == 0)
 		goto skip_cleanup;
