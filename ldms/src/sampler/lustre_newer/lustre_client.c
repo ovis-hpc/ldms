@@ -31,8 +31,6 @@ static const int llite_paths_len = sizeof(llite_paths) / sizeof(llite_paths[0]);
 static char *test_path = NULL;
 static int schema_extras = 0;
 
-static struct comp_id_data cid;
-
 char producer_name[LDMS_PRODUCER_NAME_MAX];
 
 /* red-black tree root for llites */
@@ -88,7 +86,7 @@ static struct llite_data *llite_create(lc_context_t ctxt, const char *llite_name
 							 producer_name,
                                                          llite->fs_name,
                                                          llite->name,
-                                                         &cid, &auth);
+                                                         &auth);
         if (llite->general_metric_set == NULL)
                 goto out6;
         rbn_init(&llite->llite_tree_node, llite->name);
@@ -290,7 +288,7 @@ static int config(ldmsd_plug_handle_t handle,
 			" is too long.\n");
 		return jc;
 	}
-	int cc = comp_id_helper_config(avl, &cid);
+	int cc = comp_id_helper_config(avl, &ctxt->cid);
         if (cc) {
 		ovis_log(ctxt->log, OVIS_LERROR, "value of component_id="
 			" is invalid.\n");
@@ -305,7 +303,7 @@ static int sample(ldmsd_plug_handle_t handle)
 
 	ovis_log(ctxt->log, OVIS_LDEBUG, "sample() called\n");
         if (llite_general_schema_is_initialized() < 0) {
-                if (llite_general_schema_init(ctxt, &cid, schema_extras) < 0) {
+                if (llite_general_schema_init(ctxt, schema_extras) < 0) {
                         ovis_log(ctxt->log, OVIS_LERROR, "general schema create failed\n");
                         return ENOMEM;
                 }

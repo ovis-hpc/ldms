@@ -9,11 +9,13 @@
 
 #include "ldms.h"
 #include "ldmsd.h"
+#include "comp_id_helper.h"
 
 typedef struct {
 	ovis_log_t log; /* owned by ldmsd, we do not free the log */
 	char *plug_name;
 	char *cfg_name;
+	struct comp_id_data cid;
 } *lm_context_t;
 
 #endif /* __LUSTRE_MDT_H */
