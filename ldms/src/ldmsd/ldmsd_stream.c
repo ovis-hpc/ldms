@@ -721,7 +721,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 			msglog("Out of memory\n");
 			goto close_xprt;
 		}
-		while (0 != (s = fgets(b, sizeof(b)-1, file))) {
+		while (0 != (s = fgets(b, max_msg_len-1, file))) {
 			cnt = strlen(s);
 			if (data_len + cnt >= len) {
 				/*
