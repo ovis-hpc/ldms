@@ -29,8 +29,6 @@ static const char * const possible_osd_base_paths[] = {
 	NULL
 };
 
-static struct comp_id_data cid;
-
 char producer_name[LDMS_PRODUCER_NAME_MAX];
 
 /* red-black tree root for mdts */
@@ -87,7 +85,7 @@ static struct mdt_data *mdt_create(lm_context_t ctxt, const char *mdt_name, cons
                        mdt->fs_name);
                 goto out7;
         }
-        mdt->general_metric_set = mdt_general_create(ctxt, producer_name, mdt->fs_name, mdt->name, &cid);
+        mdt->general_metric_set = mdt_general_create(ctxt, producer_name, mdt->fs_name, mdt->name);
         if (mdt->general_metric_set == NULL)
                 goto out7;
         mdt->osd_path = lustre_osd_dir_find(possible_osd_base_paths,
@@ -227,7 +225,7 @@ static int config(ldmsd_plug_handle_t handle,
                         return EINVAL;
 		}
 	}
-	comp_id_helper_config(avl, &cid);
+	comp_id_helper_config(avl, &ctxt->cid);
         return 0;
 }
 
@@ -237,7 +235,7 @@ static int sample(ldmsd_plug_handle_t handle)
 
         ovis_log(ctxt->log, OVIS_LDEBUG, "sample() called\n");
         if (mdt_general_schema_is_initialized() < 0) {
-                if (mdt_general_schema_init(ctxt, &cid) < 0) {
+                if (mdt_general_schema_init(ctxt) < 0) {
                         ovis_log(ctxt->log, OVIS_LERROR, "general schema create failed\n");
                         return ENOMEM;
                 }
