@@ -96,7 +96,6 @@ void ost_job_stats_schema_fini(lo_context_t ctxt)
 }
 
 static struct ost_job_stats_data *ost_job_stats_data_create(lo_context_t ctxt,
-							    const char *producer_name,
                                                             const char *jobid,
                                                             const char *fs_name,
                                                             const char *ost_name)
@@ -114,14 +113,14 @@ static struct ost_job_stats_data *ost_job_stats_data_create(lo_context_t ctxt,
         if (job_stats->jobid == NULL)
                 goto out2;
         snprintf(instance_name, sizeof(instance_name), "%s/%s/%s",
-                 producer_name, ost_name, jobid);
+                 ctxt->producer_name, ost_name, jobid);
         job_stats->metric_set = ldms_set_new(instance_name,
                                              ost_job_stats_schema);
         if (job_stats->metric_set == NULL)
                 goto out3;
         rbn_init(&job_stats->job_stats_node, job_stats->jobid);
 
-        ldms_set_producer_name_set(job_stats->metric_set, producer_name);
+        ldms_set_producer_name_set(job_stats->metric_set, ctxt->producer_name);
         index = ldms_metric_by_name(job_stats->metric_set, "fs_name");
         ldms_metric_array_set_str(job_stats->metric_set, index, fs_name);
         index = ldms_metric_by_name(job_stats->metric_set, "ost");
@@ -190,7 +189,7 @@ static void job_stats_sample_stop(struct ost_job_stats_data **job_stats)
    than the ldms aggregator polling interval, there is no need for
    additional caching in ldms.
 */
-void ost_job_stats_sample(lo_context_t ctxt, const char *producer_name, const char *fs_name,
+void ost_job_stats_sample(lo_context_t ctxt, const char *fs_name,
                           const char *ost_name, const char *job_stats_path,
                           struct rbt *job_stats_tree)
 {
@@ -238,7 +237,7 @@ void ost_job_stats_sample(lo_context_t ctxt, const char *producer_name, const ch
                                 job_stats = container_of(rbn, struct ost_job_stats_data, job_stats_node);
                                 rbt_del(job_stats_tree, &job_stats->job_stats_node);
                         } else {
-                                job_stats = ost_job_stats_data_create(ctxt, producer_name, str1, fs_name, ost_name);
+                                job_stats = ost_job_stats_data_create(ctxt, str1, fs_name, ost_name);
                         }
                         if (job_stats != NULL) {
                                 rbt_ins(&new_job_stats, &job_stats->job_stats_node);
