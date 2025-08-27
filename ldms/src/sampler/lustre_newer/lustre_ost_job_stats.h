@@ -14,7 +14,7 @@
 int ost_job_stats_schema_is_initialized();
 int ost_job_stats_schema_init(lo_context_t ctxt);
 void ost_job_stats_schema_fini(lo_context_t ctxt);
-void ost_job_stats_sample(lo_context_t ctxt, const char *producer_name, const char *fs_name,
+void ost_job_stats_sample(lo_context_t ctxt, const char *fs_name,
                           const char *ost_name, const char *job_stats_path,
                           struct rbt *job_stats_tree);
 void ost_job_stats_destroy(lo_context_t ctxt, struct rbt *job_stats_tree);
