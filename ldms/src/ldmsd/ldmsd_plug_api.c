@@ -6,10 +6,11 @@
  * SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
  */
 #include "ldmsd.h"
+#include "ldmsd_plug_api_internal.h"
 
 ovis_log_t ldmsd_plug_log_get(ldmsd_plug_handle_t handle)
 {
-	ldmsd_cfgobj_t cfg = (ldmsd_cfgobj_t)handle;
+	ldmsd_cfgobj_t cfg = &(handle->cfgobj);
 
 	switch (cfg->type) {
 	case LDMSD_CFGOBJ_SAMPLER:
@@ -27,7 +28,7 @@ ovis_log_t ldmsd_plug_log_get(ldmsd_plug_handle_t handle)
 
 void ldmsd_plug_ctxt_set(ldmsd_plug_handle_t handle, void *context)
 {
-	ldmsd_cfgobj_t cfg = (ldmsd_cfgobj_t)handle;
+	ldmsd_cfgobj_t cfg = &(handle->cfgobj);
 
 	switch (cfg->type) {
 	case LDMSD_CFGOBJ_SAMPLER:
@@ -45,7 +46,7 @@ void ldmsd_plug_ctxt_set(ldmsd_plug_handle_t handle, void *context)
 
 void *ldmsd_plug_ctxt_get(ldmsd_plug_handle_t handle)
 {
-	ldmsd_cfgobj_t cfg = (ldmsd_cfgobj_t)handle;
+	ldmsd_cfgobj_t cfg = &(handle->cfgobj);
 
 	switch (cfg->type) {
 	case LDMSD_CFGOBJ_SAMPLER:
@@ -61,13 +62,13 @@ void *ldmsd_plug_ctxt_get(ldmsd_plug_handle_t handle)
 
 const char *ldmsd_plug_cfg_name_get(ldmsd_plug_handle_t handle)
 {
-	ldmsd_cfgobj_t cfg = (ldmsd_cfgobj_t)handle;
+	ldmsd_cfgobj_t cfg = &(handle->cfgobj);
 	return cfg->name;
 }
 
 const char *ldmsd_plug_name_get(ldmsd_plug_handle_t handle)
 {
-	ldmsd_cfgobj_t cfg = (ldmsd_cfgobj_t)handle;
+	ldmsd_cfgobj_t cfg = &(handle->cfgobj);
 
 	switch (cfg->type) {
 	case LDMSD_CFGOBJ_SAMPLER:
