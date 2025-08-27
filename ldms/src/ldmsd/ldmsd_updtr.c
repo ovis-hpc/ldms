@@ -216,8 +216,6 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	uint64_t gn, push_it = 0;
 	ldmsd_prdcr_set_t prd_set = arg;
 	int errcode;
-	struct timespec start;
-	struct timespec end;
 
 	pthread_mutex_lock(&prd_set->lock);
 	clock_gettime(CLOCK_REALTIME, &prd_set->updt_stat.end);
@@ -253,20 +251,29 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	prd_set->last_gn = gn;
 	push_it = 1;
 
+	ldms_set_t set_snapshot = NULL;
 	ldmsd_strgp_ref_t str_ref;
-	LIST_FOREACH(str_ref, &prd_set->strgp_list, entry) {
-		ldmsd_strgp_t strgp = str_ref->strgp;
+	if (!LIST_EMPTY(&prd_set->strgp_list)) {
+		set_snapshot = ldms_set_snapshot_create(set);
+		if (!set_snapshot) {
+			ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure\n");
+			return;
+		}
 
-		ldmsd_strgp_lock(strgp);
-		clock_gettime(CLOCK_REALTIME, &start);
-		strgp->update_fn(strgp, prd_set, &str_ref->decomp_ctxt);
-		clock_gettime(CLOCK_REALTIME, &end);
-		if (prd_set->store_stat.start.tv_sec == 0)
-			prd_set->store_stat.start = start;
-		prd_set->store_stat.end = end;
-		ldmsd_stat_update(&prd_set->store_stat, &start, &end);
-		ldmsd_strgp_unlock(strgp);
+		LIST_FOREACH(str_ref, &prd_set->strgp_list, entry) {
+			ldmsd_strgp_t strgp = str_ref->strgp;
+			ldmsd_strgp_lock(strgp);
+			strgp->update_fn(strgp, prd_set, set_snapshot, &str_ref->decomp_ctxt);
+			ldmsd_strgp_unlock(strgp);
+		}
+
+		/*
+		* Store event takes a reference on set_snapshot, so the snapshot won't be
+		* deleted right away unless all store events have been processed.
+		*/
+		ldms_set_snapshot_delete(set_snapshot);
 	}
+
 set_ready:
 	if ((status & LDMS_UPD_F_MORE) == 0)
 		/* No more data pending move prdcr_set state UPDATING --> READY */
