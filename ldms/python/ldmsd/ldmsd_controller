@@ -1120,7 +1120,7 @@ class LdmsdCmdParser(cmd.Cmd):
             ts_sec = datetime.fromtimestamp(ts).strftime('%m-%d-%y %H:%M:%S')
             ts_str = "{0} [{1}]".format(ts_sec, pset['timestamp.usec'])
             dur = pset['duration.sec'] + "." + pset['duration.usec'].zfill(6)
-            print("{0:20} {1:16} {2:10} {3:16} {4:16} {5:25} {6:12}".format(pset['inst_name'],
+            print("{0:30} {1:16} {2:10} {3:16} {4:16} {5:25} {6:12}".format(pset['inst_name'],
                                                                             pset['schema_name'],
                                                                             pset['state'],
                                                                             pset['origin'],
