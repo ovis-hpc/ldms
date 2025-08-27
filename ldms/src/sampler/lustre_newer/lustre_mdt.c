@@ -29,9 +29,6 @@ static const char * const possible_osd_base_paths[] = {
 	NULL
 };
 
-/* red-black tree root for mdts */
-static struct rbt mdt_tree;
-
 struct mdt_data {
         char *fs_name;
         char *name;
@@ -128,11 +125,11 @@ static void mdts_destroy(lm_context_t ctxt)
         struct rbn *rbn;
         struct mdt_data *mdt;
 
-        while (!rbt_empty(&mdt_tree)) {
-                rbn = rbt_min(&mdt_tree);
+        while (!rbt_empty(&ctxt->mdt_tree)) {
+                rbn = rbt_min(&ctxt->mdt_tree);
                 mdt = container_of(rbn, struct mdt_data,
                                    mdt_tree_node);
-                rbt_del(&mdt_tree, rbn);
+                rbt_del(&ctxt->mdt_tree, rbn);
                 mdt_destroy(ctxt, mdt);
         }
 }
@@ -150,7 +147,7 @@ static void mdts_refresh(lm_context_t ctxt)
 
         /* Make sure we have mdt_data objects in the new_mdt_tree for
            each currently existing directory.  We can find the objects
-           cached in the global mdt_tree (in which case we move them
+           cached in the context mdt_tree (in which case we move them
            from mdt_tree to new_mdt_tree), or they can be newly allocated
            here. */
 
@@ -168,11 +165,11 @@ static void mdts_refresh(lm_context_t ctxt)
                     strcmp(dirent->d_name, ".") == 0 ||
                     strcmp(dirent->d_name, "..") == 0)
                         continue;
-                rbn = rbt_find(&mdt_tree, dirent->d_name);
+                rbn = rbt_find(&ctxt->mdt_tree, dirent->d_name);
                 if (rbn) {
                         mdt = container_of(rbn, struct mdt_data,
                                            mdt_tree_node);
-                        rbt_del(&mdt_tree, &mdt->mdt_tree_node);
+                        rbt_del(&ctxt->mdt_tree, &mdt->mdt_tree_node);
                 } else {
                         mdt = mdt_create(ctxt, dirent->d_name, MDT_PATH);
                 }
@@ -182,12 +179,12 @@ static void mdts_refresh(lm_context_t ctxt)
         }
         closedir(dir);
 
-        /* destroy any mdts remaining in the global mdt_tree since we
+        /* destroy any mdts remaining in the context mdt_tree since we
            did not see their associated directories this time around */
         mdts_destroy(ctxt);
 
         /* copy the new_mdt_tree into place over the global mdt_tree */
-        memcpy(&mdt_tree, &new_mdt_tree, sizeof(struct rbt));
+        memcpy(&ctxt->mdt_tree, &new_mdt_tree, sizeof(struct rbt));
 
         return;
 }
@@ -197,7 +194,7 @@ static void mdts_sample(lm_context_t ctxt)
         struct rbn *rbn;
 
         /* walk tree of known MDTs */
-        RBT_FOREACH(rbn, &mdt_tree) {
+        RBT_FOREACH(rbn, &ctxt->mdt_tree) {
                 struct mdt_data *mdt;
                 mdt = container_of(rbn, struct mdt_data, mdt_tree_node);
                 mdt_general_sample(ctxt, mdt->name, mdt->md_stats_path, mdt->osd_path,
@@ -271,9 +268,8 @@ static int constructor(ldmsd_plug_handle_t handle)
 	ctxt->plug_name = strdup(ldmsd_plug_name_get(handle));
 	ctxt->cfg_name = strdup(ldmsd_plug_cfg_name_get(handle));
         gethostname(ctxt->producer_name, sizeof(ctxt->producer_name));
+        rbt_init(&ctxt->mdt_tree, string_comparator);
 	ldmsd_plug_ctxt_set(handle, ctxt);
-
-        rbt_init(&mdt_tree, string_comparator);
 
         return 0;
 }

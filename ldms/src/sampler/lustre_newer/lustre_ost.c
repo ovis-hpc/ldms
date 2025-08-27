@@ -29,9 +29,6 @@ static const char * const possible_osd_base_paths[] = {
 	NULL
 };
 
-/* red-black tree root for osts */
-static struct rbt ost_tree;
-
 struct ost_data {
         char *fs_name;
         char *name;
@@ -128,11 +125,11 @@ static void osts_destroy(lo_context_t ctxt)
         struct rbn *rbn;
         struct ost_data *ost;
 
-        while (!rbt_empty(&ost_tree)) {
-                rbn = rbt_min(&ost_tree);
+        while (!rbt_empty(&ctxt->ost_tree)) {
+                rbn = rbt_min(&ctxt->ost_tree);
                 ost = container_of(rbn, struct ost_data,
                                    ost_tree_node);
-                rbt_del(&ost_tree, rbn);
+                rbt_del(&ctxt->ost_tree, rbn);
                 ost_destroy(ctxt, ost);
         }
 }
@@ -150,7 +147,7 @@ static void osts_refresh(lo_context_t ctxt)
 
         /* Make sure we have ost_data objects in the new_ost_tree for
            each currently existing directory.  We can find the objects
-           cached in the global ost_tree (in which case we move them
+           cached in the context ost_tree (in which case we move them
            from ost_tree to new_ost_tree), or they can be newly allocated
            here. */
 
@@ -168,11 +165,11 @@ static void osts_refresh(lo_context_t ctxt)
                     strcmp(dirent->d_name, ".") == 0 ||
                     strcmp(dirent->d_name, "..") == 0)
                         continue;
-                rbn = rbt_find(&ost_tree, dirent->d_name);
+                rbn = rbt_find(&ctxt->ost_tree, dirent->d_name);
                 if (rbn) {
                         ost = container_of(rbn, struct ost_data,
                                            ost_tree_node);
-                        rbt_del(&ost_tree, &ost->ost_tree_node);
+                        rbt_del(&ctxt->ost_tree, &ost->ost_tree_node);
                 } else {
                         ost = ost_create(ctxt, dirent->d_name, OBDFILTER_PATH);
                 }
@@ -182,12 +179,12 @@ static void osts_refresh(lo_context_t ctxt)
         }
         closedir(dir);
 
-        /* destroy any osts remaining in the global ost_tree since we
+        /* destroy any osts remaining in the context ost_tree since we
            did not see their associated directories this time around */
         osts_destroy(ctxt);
 
         /* copy the new_ost_tree into place over the global ost_tree */
-        memcpy(&ost_tree, &new_ost_tree, sizeof(struct rbt));
+        memcpy(&ctxt->ost_tree, &new_ost_tree, sizeof(struct rbt));
 
         return;
 }
@@ -197,7 +194,7 @@ static void osts_sample(lo_context_t ctxt)
         struct rbn *rbn;
 
         /* walk tree of known OSTs */
-        RBT_FOREACH(rbn, &ost_tree) {
+        RBT_FOREACH(rbn, &ctxt->ost_tree) {
                 struct ost_data *ost;
                 ost = container_of(rbn, struct ost_data, ost_tree_node);
                 ost_general_sample(ctxt, ost->name, ost->stats_path, ost->osd_path,
@@ -270,9 +267,8 @@ static int constructor(ldmsd_plug_handle_t handle)
 	ctxt->plug_name = strdup(ldmsd_plug_name_get(handle));
 	ctxt->cfg_name = strdup(ldmsd_plug_cfg_name_get(handle));
 	gethostname(ctxt->producer_name, sizeof(ctxt->producer_name));
+	rbt_init(&ctxt->ost_tree, string_comparator);
 	ldmsd_plug_ctxt_set(handle, ctxt);
-
-	rbt_init(&ost_tree, string_comparator);
 
         return 0;
 }
