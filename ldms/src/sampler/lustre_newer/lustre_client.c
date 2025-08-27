@@ -28,13 +28,6 @@ static const char * const llite_paths[] = {
         "/proc/fs/lustre/llite",          /* lustre pre-2.12 */
 };
 static const int llite_paths_len = sizeof(llite_paths) / sizeof(llite_paths[0]);
-static char *test_path = NULL;
-static int schema_extras = 0;
-
-/* red-black tree root for llites */
-static struct rbt llite_tree;
-
-static struct base_auth auth;
 
 struct llite_data {
         char *fs_name;
@@ -82,8 +75,7 @@ static struct llite_data *llite_create(lc_context_t ctxt, const char *llite_name
         }
         llite->general_metric_set = llite_general_create(ctxt,
                                                          llite->fs_name,
-                                                         llite->name,
-                                                         &auth);
+                                                         llite->name);
         if (llite->general_metric_set == NULL)
                 goto out6;
         rbn_init(&llite->llite_tree_node, llite->name);
@@ -119,11 +111,11 @@ static void llites_destroy(lc_context_t ctxt)
         struct rbn *rbn;
         struct llite_data *llite;
 
-        while (!rbt_empty(&llite_tree)) {
-                rbn = rbt_min(&llite_tree);
+        while (!rbt_empty(&ctxt->llite_tree)) {
+                rbn = rbt_min(&ctxt->llite_tree);
                 llite = container_of(rbn, struct llite_data,
                                    llite_tree_node);
-                rbt_del(&llite_tree, rbn);
+                rbt_del(&ctxt->llite_tree, rbn);
                 llite_destroy(ctxt, llite);
         }
 }
@@ -136,14 +128,14 @@ static const char *const find_llite_path(lc_context_t ctxt)
         static const char *previously_found_path = NULL;
         struct stat sb;
         int i;
-	if (test_path) {
-		if  (stat(test_path, &sb) == -1 || !S_ISDIR(sb.st_mode)) {
+	if (ctxt->test_path) {
+		if  (stat(ctxt->test_path, &sb) == -1 || !S_ISDIR(sb.st_mode)) {
                         ovis_log(ctxt->log, OVIS_LERROR,
 				 " find_llite_path() test_path given "
-				 "is not a directory: %s\n", test_path);
+				 "is not a directory: %s\n", ctxt->test_path);
 			return NULL;
 		}
-		return test_path;
+		return ctxt->test_path;
 	}
 
         for (i = 0; i < llite_paths_len; i++) {
@@ -183,7 +175,7 @@ static int llites_refresh(lc_context_t ctxt)
 
         /* Make sure we have llite_data objects in the new_llite_tree for
            each currently existing directory.  We can find the objects
-           cached in the global llite_tree (in which case we move them
+           cached in the context llite_tree (in which case we move them
            from llite_tree to new_llite_tree), or they can be newly allocated
            here. */
         dir = opendir(llite_path);
@@ -204,12 +196,12 @@ static int llites_refresh(lc_context_t ctxt)
                     strcmp(dirent->d_name, ".") == 0 ||
                     strcmp(dirent->d_name, "..") == 0)
                         continue;
-                rbn = rbt_find(&llite_tree, dirent->d_name);
+                rbn = rbt_find(&ctxt->llite_tree, dirent->d_name);
 		errno = 0;
                 if (rbn) {
                         llite = container_of(rbn, struct llite_data,
                                            llite_tree_node);
-                        rbt_del(&llite_tree, &llite->llite_tree_node);
+                        rbt_del(&ctxt->llite_tree, &llite->llite_tree_node);
                 } else {
                         llite = llite_create(ctxt, dirent->d_name, llite_path);
                 }
@@ -221,12 +213,12 @@ static int llites_refresh(lc_context_t ctxt)
         }
         closedir(dir);
 
-        /* destroy any llites remaining in the global llite_tree since we
+        /* destroy any llites remaining in the context llite_tree since we
            did not see their associated directories this time around */
         llites_destroy(ctxt);
 
-        /* copy the new_llite_tree into place over the global llite_tree */
-        memcpy(&llite_tree, &new_llite_tree, sizeof(struct rbt));
+        /* copy the new_llite_tree into place over the context llite_tree */
+        memcpy(&ctxt->llite_tree, &new_llite_tree, sizeof(struct rbt));
 
         return err;
 }
@@ -236,7 +228,7 @@ static void llites_sample(lc_context_t ctxt)
         struct rbn *rbn;
 
         /* walk tree of known LLITEs */
-        RBT_FOREACH(rbn, &llite_tree) {
+        RBT_FOREACH(rbn, &ctxt->llite_tree) {
                 struct llite_data *llite;
                 llite = container_of(rbn, struct llite_data, llite_tree_node);
                 llite_general_sample(ctxt,
@@ -251,21 +243,21 @@ static int config(ldmsd_plug_handle_t handle,
 	lc_context_t ctxt = ldmsd_plug_ctxt_get(handle);
 
         ovis_log(ctxt->log, OVIS_LDEBUG, "config() called\n");
-	test_path = av_value(avl, "test_path");
-	if (test_path) {
-		test_path = strdup(test_path);
-		ovis_log(ctxt->log, OVIS_LDEBUG, "test_path=%s\n",test_path);
+	ctxt->test_path = av_value(avl, "test_path");
+	if (ctxt->test_path) {
+		ctxt->test_path = strdup(ctxt->test_path);
+		ovis_log(ctxt->log, OVIS_LDEBUG, "test_path=%s\n",ctxt->test_path);
 	}
 
-	schema_extras = 0;
+	ctxt->schema_extras = 0;
 	char *extra215 = av_value(avl, "extra215");
 	if (extra215) {
-		schema_extras |= EXTRA215;
+		ctxt->schema_extras |= EXTRA215;
 		ovis_log(ctxt->log, OVIS_LDEBUG, "schema with extra 2.15 enabled\n");
 	}
 	char *extratime = av_value(avl, "extratimes");
 	if (extratime) {
-		schema_extras |= EXTRATIMES;
+		ctxt->schema_extras |= EXTRATIMES;
 		ovis_log(ctxt->log, OVIS_LDEBUG, "schema with start_time enabled\n");
 	}
 
@@ -278,7 +270,7 @@ static int config(ldmsd_plug_handle_t handle,
                         return EINVAL;
 		}
 	}
-	(void)base_auth_parse(avl, &auth, ctxt->log);
+	(void)base_auth_parse(avl, &ctxt->auth, ctxt->log);
 	int jc = jobid_helper_config(avl);
         if (jc) {
 		ovis_log(ctxt->log, OVIS_LERROR, "set name for job_set="
@@ -300,7 +292,7 @@ static int sample(ldmsd_plug_handle_t handle)
 
 	ovis_log(ctxt->log, OVIS_LDEBUG, "sample() called\n");
         if (llite_general_schema_is_initialized() < 0) {
-                if (llite_general_schema_init(ctxt, schema_extras) < 0) {
+                if (llite_general_schema_init(ctxt) < 0) {
                         ovis_log(ctxt->log, OVIS_LERROR, "general schema create failed\n");
                         return ENOMEM;
                 }
@@ -332,9 +324,10 @@ static int constructor(ldmsd_plug_handle_t handle)
 	ctxt->plug_name = strdup(ldmsd_plug_name_get(handle));
 	ctxt->cfg_name = strdup(ldmsd_plug_cfg_name_get(handle));
 	gethostname(ctxt->producer_name, sizeof(ctxt->producer_name));
+	rbt_init(&ctxt->llite_tree, string_comparator);
+	ctxt->test_path = NULL;
+	ctxt->schema_extras = 0;
 	ldmsd_plug_ctxt_set(handle, ctxt);
-
-	rbt_init(&llite_tree, string_comparator);
 
         return 0;
 }
@@ -346,8 +339,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 	ovis_log(ctxt->log, OVIS_LDEBUG, "term() called\n");
 	llites_destroy(ctxt);
 	llite_general_schema_fini(ctxt);
-	free(test_path);
-
+	free(ctxt->test_path);
 	free(ctxt->cfg_name);
 	free(ctxt->plug_name);
 	free(ctxt);
