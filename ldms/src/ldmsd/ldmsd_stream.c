@@ -492,7 +492,7 @@ int ldmsd_stream_publish(ldms_t xprt,
 	size_t max_msg = ldms_xprt_msg_max(xprt);
 	buf = ldmsd_msg_buf_new(max_msg);
 	if (!buf) {
-		msglog("Error allocating %d bytes of memory for buffer\n",
+		msglog("Error allocating %zu bytes of memory for buffer\n",
 			max_msg);
 		return ENOMEM;
 	}
@@ -650,6 +650,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		return ENOMEM;
 	}
 
+	char * b = NULL;
 	buffer = malloc(max_msg_len);
 	if (!buffer) {
 		msglog("Out of memory\n");
@@ -681,7 +682,6 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		goto err;
 	}
 
-	char * b = NULL;
 	msg_no = ldmsd_msg_no_get();
 	rc = fseek(file, 0L, SEEK_END);
 	if (!rc) {
@@ -912,6 +912,8 @@ int __stream_info_json(struct buf_s *buf, struct ldmsd_stream_info_s *info)
 				     "\"bytes/sec\":%lf",
 				     (info->count*1.0)/(info->last_ts - info->first_ts),
 				     info->total_bytes*1.0/(info->last_ts - info->first_ts));
+		if (rc)
+			return rc;
 	}
 end:
 	rc = buf_printf(buf, "}");
