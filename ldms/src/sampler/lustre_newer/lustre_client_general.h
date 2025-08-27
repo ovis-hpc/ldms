@@ -25,7 +25,6 @@ int llite_general_schema_is_initialized();
 int llite_general_schema_init(lc_context_t ctxt, int schema_extras);
 void llite_general_schema_fini(lc_context_t ctxt);
 ldms_set_t llite_general_create(lc_context_t ctxt,
-				const char *producer_name,
                                 const char *fs_name,
                                 const char *llite_name,
 				const struct base_auth *auth);
