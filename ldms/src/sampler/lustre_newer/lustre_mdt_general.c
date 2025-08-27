@@ -141,7 +141,6 @@ void mdt_general_destroy(lm_context_t ctxt, ldms_set_t set)
 
 /* must be schema created by mdt_general_schema_create() */
 ldms_set_t mdt_general_create(lm_context_t ctxt,
-			      const char *producer_name,
 			      const char *fs_name,
 			      const char *mdt_name)
 {
@@ -151,9 +150,9 @@ ldms_set_t mdt_general_create(lm_context_t ctxt,
 
         ovis_log(ctxt->log, OVIS_LDEBUG, "mdt_general_create()\n");
         snprintf(instance_name, sizeof(instance_name), "%s/%s",
-                 producer_name, mdt_name);
+                 ctxt->producer_name, mdt_name);
         set = ldms_set_new(instance_name, mdt_general_schema);
-        ldms_set_producer_name_set(set, producer_name);
+        ldms_set_producer_name_set(set, ctxt->producer_name);
         index = ldms_metric_by_name(set, "fs_name");
         ldms_metric_array_set_str(set, index, fs_name);
         index = ldms_metric_by_name(set, "mdt");

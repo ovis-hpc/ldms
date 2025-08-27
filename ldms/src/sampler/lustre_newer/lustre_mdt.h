@@ -16,6 +16,7 @@ typedef struct {
 	char *plug_name;
 	char *cfg_name;
 	struct comp_id_data cid;
+	char producer_name[LDMS_PRODUCER_NAME_MAX];
 } *lm_context_t;
 
 #endif /* __LUSTRE_MDT_H */

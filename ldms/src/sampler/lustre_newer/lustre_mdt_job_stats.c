@@ -103,7 +103,6 @@ void mdt_job_stats_schema_fini(lm_context_t ctxt)
 }
 
 static struct mdt_job_stats_data *mdt_job_stats_data_create(lm_context_t ctxt,
-							    const char *producer_name,
                                                             const char *jobid,
                                                             const char *fs_name,
                                                             const char *mdt_name)
@@ -121,14 +120,14 @@ static struct mdt_job_stats_data *mdt_job_stats_data_create(lm_context_t ctxt,
         if (job_stats->jobid == NULL)
                 goto out2;
         snprintf(instance_name, sizeof(instance_name), "%s/%s/%s",
-                 producer_name, mdt_name, jobid);
+                 ctxt->producer_name, mdt_name, jobid);
         job_stats->metric_set = ldms_set_new(instance_name,
                                              mdt_job_stats_schema);
         if (job_stats->metric_set == NULL)
                 goto out3;
         rbn_init(&job_stats->job_stats_node, job_stats->jobid);
 
-        ldms_set_producer_name_set(job_stats->metric_set, producer_name);
+        ldms_set_producer_name_set(job_stats->metric_set, ctxt->producer_name);
         index = ldms_metric_by_name(job_stats->metric_set, "fs_name");
         ldms_metric_array_set_str(job_stats->metric_set, index, fs_name);
         index = ldms_metric_by_name(job_stats->metric_set, "mdt");
@@ -198,7 +197,7 @@ static void job_stats_sample_stop(struct mdt_job_stats_data **job_stats)
    additional caching in ldms.
 */
 void mdt_job_stats_sample(lm_context_t ctxt,
-			  const char *producer_name, const char *fs_name,
+			  const char *fs_name,
                           const char *mdt_name, const char *job_stats_path,
                           struct rbt *job_stats_tree)
 {
@@ -246,7 +245,7 @@ void mdt_job_stats_sample(lm_context_t ctxt,
                                 job_stats = container_of(rbn, struct mdt_job_stats_data, job_stats_node);
                                 rbt_del(job_stats_tree, &job_stats->job_stats_node);
                         } else {
-                                job_stats = mdt_job_stats_data_create(ctxt, producer_name, str1, fs_name, mdt_name);
+                                job_stats = mdt_job_stats_data_create(ctxt, str1, fs_name, mdt_name);
                         }
                         if (job_stats != NULL) {
                                 rbt_ins(&new_job_stats, &job_stats->job_stats_node);

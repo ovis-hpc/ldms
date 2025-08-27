@@ -29,8 +29,6 @@ static const char * const possible_osd_base_paths[] = {
 	NULL
 };
 
-char producer_name[LDMS_PRODUCER_NAME_MAX];
-
 /* red-black tree root for osts */
 static struct rbt ost_tree;
 
@@ -85,7 +83,7 @@ static struct ost_data *ost_create(lo_context_t ctxt, const char *ost_name, cons
                        ost->fs_name);
                 goto out7;
         }
-        ost->general_metric_set = ost_general_create(ctxt, producer_name, ost->fs_name, ost->name);
+        ost->general_metric_set = ost_general_create(ctxt, ost->fs_name, ost->name);
         if (ost->general_metric_set == NULL)
                 goto out7;
         ost->osd_path = lustre_osd_dir_find(possible_osd_base_paths,
@@ -204,7 +202,7 @@ static void osts_sample(lo_context_t ctxt)
                 ost = container_of(rbn, struct ost_data, ost_tree_node);
                 ost_general_sample(ctxt, ost->name, ost->stats_path, ost->osd_path,
                                    ost->general_metric_set);
-                ost_job_stats_sample(ctxt, producer_name, ost->fs_name, ost->name,
+                ost_job_stats_sample(ctxt, ost->fs_name, ost->name,
                                      ost->job_stats_path, &ost->job_stats);
         }
 }
@@ -217,8 +215,8 @@ static int config(ldmsd_plug_handle_t handle,
         ovis_log(ctxt->log, OVIS_LDEBUG, "config() called\n");
 	char *ival = av_value(avl, "producer");
 	if (ival) {
-		if (strlen(ival) < sizeof(producer_name)) {
-			strncpy(producer_name, ival, sizeof(producer_name));
+		if (strlen(ival) < sizeof(ctxt->producer_name)) {
+			strncpy(ctxt->producer_name, ival, sizeof(ctxt->producer_name));
 		} else {
                         ovis_log(ctxt->log, OVIS_LERROR, "config: producer name too long.\n");
                         return EINVAL;
@@ -271,10 +269,10 @@ static int constructor(ldmsd_plug_handle_t handle)
 	ctxt->log = ldmsd_plug_log_get(handle);
 	ctxt->plug_name = strdup(ldmsd_plug_name_get(handle));
 	ctxt->cfg_name = strdup(ldmsd_plug_cfg_name_get(handle));
+	gethostname(ctxt->producer_name, sizeof(ctxt->producer_name));
 	ldmsd_plug_ctxt_set(handle, ctxt);
 
 	rbt_init(&ost_tree, string_comparator);
-	gethostname(producer_name, sizeof(producer_name));
 
         return 0;
 }
