@@ -435,7 +435,7 @@ static const int signals[] = {
 /* where we find jobid data if not given.*/
 #define jfsearch "/search"
 const char *jobid_file_names[] = {
-	"/var/run/ldms_jobinfo.data"
+	"/var/run/ldms_jobinfo.data",
 	"/var/run/ldms.slurm.jobinfo",
 	"/var/run/ldms.jobinfo"
 };
@@ -1699,6 +1699,7 @@ static proc_info_t *proc_info_add(const pid_t pid, const struct timeval * const 
 				pthread_mutex_unlock(&(ft->proc_info[i].lock));
 			}
 			pthread_setcancelstate(dummy, &dummy);
+			free(newexe);
 			return NULL;
 		}
 		info->next = ft->proc_info[i].pi;
@@ -1773,6 +1774,7 @@ static int proc_info_load(forkstat_t *ft)
 	int rc = init_proc_info(ft);
 	if (rc != 0) {
 		EPRINTF( "init_proc_info fail %d\n", rc);
+		(void)closedir(dir);
 		return -2;
 	}
 
@@ -1949,7 +1951,7 @@ static void *monitor(void *vp)
 			switch (err) {
 			case EINTR:
 				arg->ret = 0;
-				return NULL;
+				goto out;
 			case ENOBUFS: {
 				time_t now;
 				struct tm tm;
@@ -1972,7 +1974,7 @@ static void *monitor(void *vp)
 				EPRINTF("recv failed: errno=%d (%s)\n",
 					err, strerror(err));
 				arg->ret = -1;
-				return NULL;
+				goto out;
 			}
 		}
 
@@ -2342,6 +2344,7 @@ static void *monitor(void *vp)
 			}
 		}
 	}
+out:
 	jbuf_free(jbd);
 	return NULL;
 }
@@ -3031,6 +3034,7 @@ static void llog(int lvl, const char *fmt, ...) {
 	switch (lvl) {
 	case 3:
 		printf("ERR: ");
+		/* fall through */
 	default:
 		printf("Level-%d: ", lvl);
 	}
@@ -3084,7 +3088,7 @@ int forkstat_init_track_dir(forkstat_t *ft, const char *pid_dir)
 		return EINVAL;
 	DIR *dir = opendir(pid_dir);
 	if (!dir) {
-		mkdir(pid_dir, 0755);
+		(void)mkdir(pid_dir, 0755);
 		dir = opendir(pid_dir);
 		if (!dir) {
 			PRINTF("Unable to open pid tracking dir %s: %s\n",
@@ -3279,6 +3283,7 @@ static char **load_pid_env(pid_t pid, size_t *out_len)
         char **result = NULL;
         size_t elen;
         char fname[32];
+        FILE *f = NULL;
         *out_len = 0;
         if (pid < 1) {
 		errno = EINVAL;
@@ -3286,7 +3291,7 @@ static char **load_pid_env(pid_t pid, size_t *out_len)
 	}
 
         snprintf(fname, sizeof(fname), "/proc/%d/environ", pid);
-        FILE *f = fopen(fname, "r");
+        f = fopen(fname, "r");
 	if (!f) {
 		goto err;
 	}
@@ -3313,6 +3318,8 @@ out:
 	free(e);
 	return result;
 err:
+	if (f)
+		fclose(f);
 	free(result);
 	return null_result;
 }
@@ -4541,13 +4548,13 @@ void dump_schemas(forkstat_t *ft)
 		return;
 	}
 	proc_info_t *info = &test_pi;
-	jbuf_t jbd = jbuf_new();
-	jbuf_t jb = jbd;
 	FILE *out = fopen(ft->schema_dump, "w");
 	if (!out) {
 		PRINTF("-J error: cannot open file %s\n", ft->schema_dump);
 		return;
 	}
+	jbuf_t jbd = jbuf_new();
+	jbuf_t jb = jbd;
 	PRINTF("dumping schema information to %s. configured format is %lu\n",
 		ft->schema_dump, ft->format);
 	int oldfmt = ft->format;
@@ -4561,18 +4568,33 @@ void dump_schemas(forkstat_t *ft)
 
 		// case RM_NONE:
 		jb = make_process_end_data_linux(ft, info, jbd);
-		fprintf(out, "// linux task end format=%lu\n%s\n", ft->format, jb->buf);
-		jbuf_reset(jbd);
+		if (jb) {
+			fprintf(out, "// linux task end format=%lu\n%s\n", ft->format, jb->buf);
+			jbuf_reset(jb);
+			jbd = jb;
+		} else {
+			jbuf_reset(jbd);
+		}
 
 		// case RM_SLURM:
 		jb = make_process_end_data_slurm(ft, info, jbd);
-		fprintf(out, "// slurm task end format=%lu\n%s\n", ft->format, jb->buf);
-		jbuf_reset(jbd);
+		if (jb) {
+			fprintf(out, "// slurm task end format=%lu\n%s\n", ft->format, jb->buf);
+			jbuf_reset(jb);
+			jbd = jb;
+		} else {
+			jbuf_reset(jbd);
+		}
 
 		// case RM_LSF:
 		jb = make_process_end_data_lsf(ft, info, jbd);
-		fprintf(out, "// lsf task end format=%lu\n%s\n", ft->format, jb->buf);
-		jbuf_reset(jbd);
+		if (jb) {
+			fprintf(out, "// lsf task end format=%lu\n%s\n", ft->format, jb->buf);
+			jbuf_reset(jb);
+			jbd = jb;
+		} else {
+			jbuf_reset(jbd);
+		}
 
 		// case RM_NONE:
 		jb = make_process_start_data_linux(ft, info
@@ -4580,20 +4602,36 @@ void dump_schemas(forkstat_t *ft)
 									, type
 #endif
 									, jbd);
-		fprintf(out, "// linux task start format=%lu\n%s\n", ft->format, jb->buf);
-		jbuf_reset(jbd);
+		if (jb) {
+			fprintf(out, "// linux task start format=%lu\n%s\n", ft->format, jb->buf);
+			jbuf_reset(jb);
+			jb = jbd;
+		} else {
+			jbuf_reset(jbd);
+		}
 		// case RM_SLURM:
 		jb = make_process_start_data_slurm(ft, info
 #if DEBUG_EMITTER
 									, type
 #endif
 									, jbd);
-		fprintf(out, "// slurm task start format=%lu\n%s\n", ft->format, jb->buf);
-		jbuf_reset(jbd);
+		if (jb) {
+			fprintf(out, "// slurm task start format=%lu\n%s\n", ft->format, jb->buf);
+			jbuf_reset(jb);
+			jbd = jb;
+		} else {
+			jbuf_reset(jbd);
+		}
+
 		// case RM_LSF:
 		jb = make_process_start_data_lsf(ft, info, jbd);
-		fprintf(out, "// lsf task start format=%lu\n%s\n", ft->format, jb->buf);
-		jbuf_reset(jbd);
+		if (jb) {
+			fprintf(out, "// lsf task start format=%lu\n%s\n", ft->format, jb->buf);
+			jbuf_reset(jb);
+			jbd = jb;
+		} else {
+			jbuf_reset(jbd);
+		}
 	}
 	ft->format = oldfmt;
 	jbuf_free(jbd);
