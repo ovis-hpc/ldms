@@ -18,6 +18,12 @@ LDMS_LS 2 -l
 SLEEP 1
 SLEEP 1
 SLEEP 1
+sc=5000
+si=0.001
+MESSAGE try $sc sleep $si
+for i in $(seq $sc); do
+	sleep $si &
+done
 SLEEP 1
 SLEEP 1
 SLEEP 1
