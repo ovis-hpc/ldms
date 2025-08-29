@@ -695,6 +695,7 @@ int ldmsd_set_register(ldms_set_t set, const char *cfg_name)
 		goto err_0;
 	}
 
+	ldms_set_ref_get(set, "ldmsd_set_regiseter");
 	s->set = set;
 	s->sampler = samp;
 
@@ -716,28 +717,35 @@ err_0:
 	return rc;
 }
 
-void ldmsd_set_deregister(const char *inst_name, const char *cfg_name)
+void ldmsd_set_deregister(const char *inst_name, ldmsd_plug_handle_t handle)
 {
 	ldmsd_sampler_set_t s;
-	ldmsd_cfgobj_sampler_t samp = ldmsd_sampler_find_get(cfg_name);
 	const char *set_name;
+	ldmsd_cfgobj_sampler_t samp;
+	ldmsd_cfgobj_t cfg = (ldmsd_cfgobj_t)handle;
 
+	if (cfg->type != LDMSD_CFGOBJ_SAMPLER) {
+		/* It isn't a sampler plugin. Do nothing.*/
+		return;
+	}
+
+	samp = ((ldmsd_cfgobj_sampler_t)cfg);
 	if (!samp) {
 		ovis_log(NULL, OVIS_LERROR,
 			"Dregistering set name '%s' failed because the "
 			"sampler config '%s' does not exist.\n",
-			inst_name, cfg_name);
+			inst_name, samp->plugin->name);
 		return;
 	}
 	LIST_FOREACH(s, &samp->set_list, entry) {
 		set_name = ldms_set_instance_name_get(s->set);
 		if (0 == strcmp(set_name, inst_name)) {
 			LIST_REMOVE(s, entry);
+			ldms_set_ref_put(s->set, "ldmsd_set_register");
 			free(s);
 			break;
 		}
 	}
-	ldmsd_sampler_find_put(samp);
 }
 
 int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us)

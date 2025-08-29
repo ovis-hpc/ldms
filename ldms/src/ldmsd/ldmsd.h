@@ -1119,10 +1119,10 @@ int ldmsd_set_register(ldms_set_t set, const char *plugin_name);
  * another thread.
  *
  * \param inst_name The set-name to de-register for the plugin configuration
- * \param cfg_name The name of the plugin configuration
+ * \param handle    A handle of the sampler plugin instance
  * \returns 0 on success
  */
-void ldmsd_set_deregister(const char *inst_name, const char *cfg_name);
+void ldmsd_set_deregister(const char *inst_name, ldmsd_plug_handle_t handle);
 
 /**
  * \brief ldms_store
