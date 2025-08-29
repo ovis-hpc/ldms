@@ -3085,7 +3085,7 @@ int forkstat_init_track_dir(forkstat_t *ft, const char *pid_dir)
 	DIR *dir = opendir(pid_dir);
 	if (!dir) {
 		mkdir(pid_dir, 0755);
-		DIR *dir = opendir(pid_dir);
+		dir = opendir(pid_dir);
 		if (!dir) {
 			PRINTF("Unable to open pid tracking dir %s: %s\n",
 				pid_dir, strerror(errno));
