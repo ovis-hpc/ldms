@@ -1,5 +1,5 @@
-# Copyright (c) 2020-2023 Open Grid Computing, Inc. All rights reserved.
-# Copyright (c) 2020-2023 NTESS Corporation. All rights reserved.
+# Copyright (c) 2020-2025 Open Grid Computing, Inc. All rights reserved.
+# Copyright (c) 2020-2025 NTESS Corporation. All rights reserved.
 # Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
 # license for use of this work by or on behalf of the U.S. Government.
 # Export of this program may require a license from the United States
@@ -1534,6 +1534,7 @@ cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
     elif e.type == EVENT_DISCONNECTED:
         x._conn_rc = ENOTCONN
         x._conn_rc_msg = "DISCONNECTED"
+        x._recv_queue.put(None)
     elif e.type == EVENT_RECV:
         b = PyBytes_FromStringAndSize(e.data, e.data_len)
         x._recv_queue.put(b)
@@ -1583,6 +1584,8 @@ cdef void passive_xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
     elif e.type == EVENT_RECV:
         b = PyBytes_FromStringAndSize(e.data, e.data_len)
         x._recv_queue.put(b)
+    elif e.type == EVENT_DISCONNECTED:
+        x._recv_queue.put(None)
     # Else, ignore
 
 
@@ -3491,7 +3494,7 @@ cdef class Xprt(object):
             rail_recv_quota = rail_recv_limit
         # conn
         sem_init(&self._conn_sem, 0, 0)
-        self._conn_rc = 0
+        self._conn_rc = ENOTCONN
         self._conn_rc_msg = "OK"
         self._conn_cb = None
         self._conn_cb_arg = None
@@ -3808,6 +3811,8 @@ cdef class Xprt(object):
                     "The callback has been supplied to `connect()`. "
                     "The message will be delivered asynchronously via the "
                     "callback function.")
+        if self._conn_rc:
+            return None # not connected
         return self._recv_queue.get(timeout=timeout)
 
     @property
