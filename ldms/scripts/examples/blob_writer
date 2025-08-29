@@ -7,7 +7,7 @@ VGARGS="--trace-children=yes --track-origins=yes --leak-check=full --show-leak-k
 # drd
 #VGARGS="--trace-children=yes  --tool=drd --trace-mutex=yes"
 # track everything notifier config:
-${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect_interval=1 -D 20 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
+${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 20 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --log-nobufs=1 --exclude-short-time=0.0001 &
 #vgon
 LDMSD 1 2
 #vgoff
@@ -18,6 +18,12 @@ LDMS_LS 2 -l
 SLEEP 1
 SLEEP 1
 SLEEP 1
+sc=5000
+si=0.001
+MESSAGE try $sc sleep $si
+for i in $(seq $sc); do
+	sleep $si &
+done
 SLEEP 1
 SLEEP 1
 SLEEP 1
