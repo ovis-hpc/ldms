@@ -325,7 +325,7 @@ static void __update_set_info(ldmsd_prdcr_set_t set, ldms_dir_set_t dset)
 
 		/* Sanity check the hints */
 		if (offset_us >= intrvl_us) {
-			ovis_log(prdcr_log, OVIS_LERROR, "set %s: Invalid hint '%s', ignoring hint\n",
+			ovis_log(prdcr_log, OVIS_LINFO, "set %s: hint '%s', ignoring hint\n",
 					set->inst_name, hint);
 		} else {
 			if (offset_us != LDMSD_UPDT_HINT_OFFSET_NONE)
