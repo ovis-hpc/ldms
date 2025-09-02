@@ -148,7 +148,7 @@ char *mdt_general_osd_path_find(const char * const *paths, const char *component
 
                 if (osd_dir != NULL) {
                         break;
-                } 
+                }
 
         }
 
