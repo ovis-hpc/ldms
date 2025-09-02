@@ -1131,7 +1131,7 @@ int __line_uid(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *lineb
 	/* populate `status_uid` and/or `status_*username` if changed. */
 	int n;
 	uint64_t x[4];
-	char w[4][20] = { {'\0'}, {'\0'}, {'\0'}, {'\0'} };
+	char w[4][21] = { {'\0'}, {'\0'}, {'\0'}, {'\0'} };
 	n = sscanf(linebuf, "%" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64,
 			 x, x+1, x+2, x+3);
 	if (n != 4)
@@ -1195,7 +1195,7 @@ int __line_gid(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *lineb
 	/* populate `status_uid` and/or `status_username` if changed. */
 	int n;
 	uint64_t x[4];
-	char w[4][20] = { {'\0'}, {'\0'}, {'\0'}, {'\0'} };
+	char w[4][21] = { {'\0'}, {'\0'}, {'\0'}, {'\0'} };
 	n = sscanf(linebuf, "%" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64,
 			 x, x+1, x+2, x+3);
 	if (n != 4)
@@ -1459,6 +1459,7 @@ static int syscall_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t
 			if (inst->n_syscalls != -1) {
 				name = get_syscall_name(inst, call);
 				if (!name) {
+					name = (char*)name0;
 					sprintf(name, "SYS_%d", call);
 				}
 			} else {
@@ -1890,8 +1891,11 @@ char *file_to_regex(linux_proc_sampler_inst_t inst, const char *fname)
 			goto err;
 		}
 	}
+	fclose(f);
 	return dsdone(eme.dp);
 err:
+	if (f)
+		fclose(f);
 	dstr_free(&eme.dp);
 	return NULL;
 }
@@ -2351,9 +2355,14 @@ static uint64_t get_start_tick(linux_proc_sampler_inst_t inst, json_entity_t dat
  * stream messages. */
 
 /* return array of strings o_count long read from /proc/pid/n,
- * set bytes to total bytes read, len_max to longest single item. */
+ * set bytes to total bytes read, len_max to longest single item.
+ * return NULL if arguments are invalid. */
 static char **get_proc_strings(pid_t pid, const char *n, int *o_count, ssize_t *bytes, size_t *len_max)
 {
+	if (!pid || !n || !o_count || !bytes || !len_max) {
+		errno = EINVAL;
+		return NULL;
+	}
 	char fname[64];
 	snprintf(fname, 64, "/proc/%d/%s", pid, n);
 
@@ -2365,9 +2374,9 @@ static char **get_proc_strings(pid_t pid, const char *n, int *o_count, ssize_t *
 	FILE *f = NULL;
 	*bytes = 0;
 	char *s = malloc(slen);
-	if (!s || !result || !o_count || !bytes) {
-		goto err;
+	if (!s || !result) {
 		errno = EINVAL;
+		goto err;
 	}
 	f = fopen(fname, "r");
 	if (!f)
@@ -2438,9 +2447,9 @@ int string_clean_json(const char *v, char *vsub, size_t vsub_sz, int *errpos)
 {
 	int i = 0;
 	int j = 0;
-	*errpos = -1;
 	if (!v || !vsub || !errpos)
 		return 1;
+	*errpos = -1;
 	while (v[i] != '\0' && j < vsub_sz) {
 		if (v[i] > 126) {
 			*errpos = i;
@@ -2865,15 +2874,14 @@ static size_t stat_format_sz = sizeof(stat_format);
 static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set, struct stat *s, const char *str, size_t nlen, const char *state, int fd)
 {
 	if (!inst) {
-		INST_LOG(inst, OVIS_LDEBUG, "!inst, pid %ld\n", app_set->key.os_pid);
-		return 0;
-	}
-	if (!str ) {
-		INST_LOG(inst, OVIS_LDEBUG, "!str, pid %ld\n", app_set->key.os_pid);
 		return 0;
 	}
 	if (!app_set) {
-		INST_LOG(inst, OVIS_LDEBUG, "!app_set, pid %ld\n", app_set->key.os_pid);
+		INST_LOG(inst, OVIS_LDEBUG, "!app_set string_send_state\n");
+		return 0;
+	}
+	if (!str ) {
+		INST_LOG(inst, OVIS_LDEBUG, "!str, pid %ld in string_send_state\n", app_set->key.os_pid);
 		return 0;
 	}
 
