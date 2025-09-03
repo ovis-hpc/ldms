@@ -115,38 +115,38 @@ void ost_general_schema_fini()
 }
 
 /* Returns strdup'ed string or NULL.  Caller must free. */
-char *ost_general_osd_path_find(const char *search_path, const char *ost_name)
+char *ost_general_osd_path_find(const char * const *paths, const char *ost_name)
 {
-        struct dirent *dirent;
-        DIR *dir;
+        char *path;
         char *osd_path = NULL;
+        int i;
 
-        dir = opendir(search_path);
-        if (dir == NULL) {
-                return NULL;
-        }
+        for (i=0, path = (char *)paths[0]; path !=NULL; i++, path = (char *)paths[i]) {
+                struct dirent *dirent;
+                DIR *dir;
+                dir = opendir(path);
+                if (dir == NULL) {
+                        continue;
+                }
 
-        while ((dirent = readdir(dir)) != NULL) {
-                if (dirent->d_type == DT_DIR &&
-                    strncmp(dirent->d_name, "osd-", strlen("osd-")) == 0) {
-                        char tmp_path[PATH_MAX];
-                        snprintf(tmp_path, PATH_MAX, "%s/%s/%s",
-                                 search_path, dirent->d_name, ost_name);
-                        if (access(tmp_path, F_OK) == 0) {
-                                osd_path = strdup(tmp_path);
-                                break;
+                while ((dirent = readdir(dir)) != NULL) {
+                        if (dirent->d_type == DT_DIR &&
+                            strncmp(dirent->d_name, "osd-", strlen("osd-")) == 0) {
+                                char tmp_path[PATH_MAX];
+                                snprintf(tmp_path, PATH_MAX, "%s/%s/%s",
+                                path, dirent->d_name, ost_name);
+                            if (access(tmp_path, F_OK) == 0) {
+                                    osd_path = strdup(tmp_path);
+                                    break;
+                            }
                         }
                 }
-        }
 
-        closedir(dir);
+                closedir(dir);
 
-        if (osd_path != NULL) {
-                log_fn(LDMSD_LDEBUG, SAMP" for ost %s found osd path %s\n",
-                       ost_name, osd_path);
-        } else {
-                log_fn(LDMSD_LWARNING, SAMP" osd for ost %s not found\n",
-                       ost_name);
+                if (osd_path != NULL) {
+                        break;
+                }
         }
 
         return osd_path;
