@@ -60,6 +60,7 @@ import os
 import traceback
 import json
 import re
+import time
 from datetime import datetime
 
 from ldmsd import ldmsd_util
@@ -2051,23 +2052,32 @@ class LdmsdCmdParser(cmd.Cmd):
             print(f'Error {rc}: {msg}')
             return
         streams = fmt_status(msg)
-        print(f'{"name":30} {"bytes/sec":12} {"msg/sec":12} {"total bytes":12} {"msg count":12} {"first msg":12} {"last msg":12}')
-        print("-" * 30, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
-        # print("--------------- -------------- --------------- ----- ----------------- -----------\n")
+        print(f'{"name":30} {"bytes/sec":12} {"msg/sec":12} {"total bytes":12} {"msg count":12} {"first msg":12} {"last msg":12} {"last_age_sec":12}')
+        print("-" * 30, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
+        # print("--------------- -------------- --------------- ----- ----------------- ----------- -----------\n")
+        now = time.time()
         for name,s in streams.items():
             if name == "_OVERALL_":
                 s['mode'] = ""
                 print(f"{name}")
             else:
                 print(f"{name} ({s['mode']})")
-
-            print(f"{'   published':<30} {rate(s['pub']):>12} {freq(s['pub']):>12} {total_bytes(s['pub']):>12} {count(s['pub']):>12} {first(s['pub']):>12} {last(s['pub']):>12}")
-            print(f"{'   received':<30} {rate(s['recv']):>12} {freq(s['recv']):>12} {total_bytes(s['recv']):>12} {count(s['recv']):>12} {first(s['recv']):>12} {last(s['recv']):>12}")
+                if last(s['pub']) == "-":
+                    age = "-"
+                else:
+                    age = int(now - last(s['pub']))
+                print(f"{'   published':<30} {rate(s['pub']):>12} {freq(s['pub']):>12} {total_bytes(s['pub']):>12} {count(s['pub']):>12} {first(s['pub']):>12} {last(s['pub']):>12} {age:>12}")
+                if last(s['recv']) == "-":
+                    age = "-"
+                else:
+                    age = int(now - last(s['recv']))
+                print(f"{'   received':<30} {rate(s['recv']):>12} {freq(s['recv']):>12} {total_bytes(s['recv']):>12} {count(s['recv']):>12} {first(s['recv']):>12} {last(s['recv']):>12} {age:>12}")
             if 'publishers' not in s.keys() or len(s['publishers']) == 0:
                 continue
             print("      Producers")
             for name,p in s['publishers'].items():
-                print(f"{' '*14} {name:15} {rate(p['recv']):>12} {freq(p['recv']):>12} {total_bytes(p['recv']):>12} {count(p['recv']):>12} {first(p['recv']):>12} {last(p['recv']):>12}")
+                    age = int(now - last(p['recv']))
+                    print(f"{' '*14} {name:15} {rate(p['recv']):>12} {freq(p['recv']):>12} {total_bytes(p['recv']):>12} {count(p['recv']):>12} {first(p['recv']):>12} {last(p['recv']):>12} {age:>12}")
 
     def complete_stream_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_status', text)
