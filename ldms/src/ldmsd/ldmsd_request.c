@@ -5547,12 +5547,12 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 		sampler->use_xthread = atoi(exclusive_thread);
 
 	if (sampler) {
-		reqc->errcode = sampler->api->base.config((ldmsd_cfgobj_t)sampler, kw_list, av_list);
+		reqc->errcode = sampler->api->base.config((ldmsd_plug_handle_t)sampler, kw_list, av_list);
 		if (!reqc->errcode) {
 			sampler->configured = 1;
 		}
 	} else {
-		reqc->errcode = store->api->base.config((ldmsd_cfgobj_t)store, kw_list, av_list);
+		reqc->errcode = store->api->base.config((ldmsd_plug_handle_t)store, kw_list, av_list);
 		if (!reqc->errcode) {
 			store->configured = 1;
 		}
@@ -5601,7 +5601,7 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 
 		if (samp->api->base.usage) {
 			rc = linebuf_printf(reqc, "%s\n%s",
-					    samp->cfg.name, samp->api->base.usage(&samp->cfg));
+					    samp->cfg.name, samp->api->base.usage((ldmsd_plug_handle_t)samp));
 		} else {
 			rc = linebuf_printf(reqc, "%s\n", samp->cfg.name);
 		}
@@ -5618,7 +5618,7 @@ static int __plugn_usage_string(ldmsd_req_ctxt_t reqc)
 
 		if (store->api->base.usage) {
 			rc = linebuf_printf(reqc, "%s\n%s",
-					store->cfg.name, store->api->base.usage(&store->cfg));
+					    store->cfg.name, store->api->base.usage((ldmsd_plug_handle_t)store));
 		} else {
 			rc = linebuf_printf(reqc, "%s\n", store->cfg.name);
 		}
