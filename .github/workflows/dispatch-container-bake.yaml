@@ -1,0 +1,24 @@
+name: Dispatch Container Bake
+
+on:
+  release:
+    types: [ released ]
+
+jobs:
+  dispatch-container-bake:
+    if: github.repository == 'ovis-hpc/ldms' || github.repository == 'narategithub/ldms'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: dispatch ldms-containers bake
+        run: |
+          set -e
+          sed -i "s|LDMS_TAG|${{github.ref_name}}|" .github/data/dispatch.yaml
+          sed -i "s|LDMS_REPO_URL|${{github.server_url}}/${{github.repository}}|" .github/data/dispatch.yaml
+          python3 -c 'import sys,yaml,json; print(json.dumps(yaml.load(sys.stdin, yaml.SafeLoader)))' < .github/data/dispatch.yaml > dispatch.json
+          curl -L -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{secrets.NARATEGITHUB_LDMS_CONTAINERS_TOKEN}}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -d "@dispatch.json" \
+            "https://api.github.com/repos/narategithub/ldms-containers/actions/workflows/on_ldms_release.yaml/dispatches"
