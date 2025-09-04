@@ -17,9 +17,6 @@
 #include "jobid_helper.h"
 #include "lustre_shared.h"
 
-/* Defined in lustre_client.c */
-extern ovis_log_t lustre_client_log;
-
 static ldms_schema_t llite_general_schema;
 
 #define MAXNAMESIZE 64
@@ -99,27 +96,27 @@ int llite_general_schema_is_initialized()
                 return -1;
 }
 
-int llite_general_schema_init(comp_id_t cid, int schema_extras)
+int llite_general_schema_init(lc_context_t ctxt)
 {
         ldms_schema_t sch;
         int rc;
         int i;
 
-        ovis_log(lustre_client_log, OVIS_LDEBUG, "llite_general_schema_init()\n");
+        ovis_log(ctxt->log, OVIS_LDEBUG, "llite_general_schema_init()\n");
 	char schema_name[LDMS_SET_NAME_MAX];
-	if (schema_extras)
-		sprintf(schema_name,"lustre_client_%d", schema_extras);
+	if (ctxt->schema_extras)
+		sprintf(schema_name,"lustre_client_%d", ctxt->schema_extras);
 	else
 		sprintf(schema_name,"lustre_client");
         sch = ldms_schema_new(schema_name);
         if (sch == NULL) {
-		ovis_log(lustre_client_log, OVIS_LERROR, "lustre_llite_general schema new failed"
+		ovis_log(ctxt->log, OVIS_LERROR, "lustre_llite_general schema new failed"
 			" (out of memory)\n");
                 goto err1;
 	}
 	const char *field;
 	field = "component_id";
-	rc = comp_id_helper_schema_add(sch, cid);
+	rc = comp_id_helper_schema_add(sch, &ctxt->cid);
 	if (rc) {
 		rc = -rc;
 		goto err2;
@@ -147,7 +144,7 @@ int llite_general_schema_init(comp_id_t cid, int schema_extras)
                         goto err2;
 		}
         }
-	if (schema_extras & EXTRA215) {
+	if (ctxt->schema_extras & EXTRA215) {
 		for (i = 0; extra215_llite_stats_uint64_t_entries[i] != NULL; i++) {
 			field = extra215_llite_stats_uint64_t_entries[i];
 			rc = ldms_schema_metric_add(sch, field, LDMS_V_U64);
@@ -156,7 +153,7 @@ int llite_general_schema_init(comp_id_t cid, int schema_extras)
 			}
 		}
 	}
-	if (schema_extras & EXTRATIMES) {
+	if (ctxt->schema_extras & EXTRATIMES) {
 		for (i = 0; extratimes_llite_stats_uint64_t_entries[i] != NULL; i++) {
 			field = extratimes_llite_stats_uint64_t_entries[i];
 			rc = ldms_schema_metric_add(sch, field, LDMS_V_U64);
@@ -170,16 +167,16 @@ int llite_general_schema_init(comp_id_t cid, int schema_extras)
 
         return 0;
 err2:
-	ovis_log(lustre_client_log, OVIS_LERROR, "lustre_llite_general schema creation failed to add %s. (%s)\n",
+	ovis_log(ctxt->log, OVIS_LERROR, "lustre_llite_general schema creation failed to add %s. (%s)\n",
 		field, STRERROR(-rc));
         ldms_schema_delete(sch);
 err1:
         return -1;
 }
 
-void llite_general_schema_fini()
+void llite_general_schema_fini(lc_context_t ctxt)
 {
-        ovis_log(lustre_client_log, OVIS_LDEBUG, "llite_general_schema_fini()\n");
+        ovis_log(ctxt->log, OVIS_LDEBUG, "llite_general_schema_fini()\n");
         if (llite_general_schema != NULL) {
                 ldms_schema_delete(llite_general_schema);
                 llite_general_schema = NULL;
@@ -196,43 +193,41 @@ void llite_general_destroy(lc_context_t ctxt, ldms_set_t set)
 
 /* must be schema created by llite_general_schema_create() */
 ldms_set_t llite_general_create(lc_context_t ctxt,
-				const char *producer_name,
                                 const char *fs_name,
-				const char *llite_name,
-				const comp_id_t cid,
-				const struct base_auth *auth)
+				const char *llite_name)
 {
         ldms_set_t set;
         int index;
         char instance_name[LDMS_PRODUCER_NAME_MAX+64];
 
-        ovis_log(lustre_client_log, OVIS_LDEBUG, "llite_general_create()\n");
+        ovis_log(ctxt->log, OVIS_LDEBUG, "llite_general_create()\n");
         snprintf(instance_name, sizeof(instance_name), "%s/%s",
-                 producer_name, llite_name);
+                 ctxt->producer_name, llite_name);
         set = ldms_set_new(instance_name, llite_general_schema);
 	if (!set) {
 		errno = ENOMEM;
 		return NULL;
 	}
-        ldms_set_producer_name_set(set, producer_name);
-	base_auth_set(auth, set);
+        ldms_set_producer_name_set(set, ctxt->producer_name);
+	base_auth_set(&ctxt->auth, set);
         index = ldms_metric_by_name(set, "fs_name");
         ldms_metric_array_set_str(set, index, fs_name);
         index = ldms_metric_by_name(set, "llite");
         ldms_metric_array_set_str(set, index, llite_name);
-	comp_id_helper_metric_update(set, cid);
+	comp_id_helper_metric_update(set, &ctxt->cid);
         ldms_set_publish(set);
         ldmsd_set_register(set, ctxt->cfg_name);
         return set;
 }
 
-void llite_general_sample(const char *llite_name, const char *stats_path,
+void llite_general_sample(lc_context_t ctxt,
+			  const char *llite_name, const char *stats_path,
                           ldms_set_t general_metric_set)
 {
-        ovis_log(lustre_client_log, OVIS_LDEBUG, "llite_general_sample() %s\n",
+        ovis_log(ctxt->log, OVIS_LDEBUG, "llite_general_sample() %s\n",
                llite_name);
         ldms_transaction_begin(general_metric_set);
 	jobid_helper_metric_update(general_metric_set);
-        lustre_stats_file_sample(stats_path, general_metric_set, lustre_client_log);
+        lustre_stats_file_sample(stats_path, general_metric_set, ctxt->log);
         ldms_transaction_end(general_metric_set);
 }
