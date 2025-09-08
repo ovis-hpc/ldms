@@ -8747,8 +8747,10 @@ void ldmsd_xprt_term(ldms_t x)
 	while (rbn) {
 		struct rbn *next_rbn = rbn_succ(rbn);
 		reqc = container_of(rbn, struct ldmsd_req_ctxt, rbn);
-		if (reqc->key.conn_id == ldms_xprt_conn_id(x))
-			__free_req_ctxt(reqc);
+		if (reqc->key.flags != REQ_CTXT_KEY_F_CFGFILE) {
+			if (reqc->key.conn_id == ldms_xprt_conn_id(x))
+				__free_req_ctxt(reqc);
+		}
 		rbn = next_rbn;
 	}
 	req_ctxt_tree_unlock();
