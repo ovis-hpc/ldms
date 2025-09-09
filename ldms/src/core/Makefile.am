@@ -37,7 +37,11 @@ lib_LTLIBRARIES += libldms.la
 
 ldms_msg_chan_client_SOURCES = ldms_msg_chan_client.c
 ldms_msg_chan_client_LDADD = \
-	libldms.la $(LOVIS_UTIL) \
+	libldms.la \
+	 $(top_builddir)/lib/src/ovis_util/libovis_util.la \
+	 $(top_builddir)/lib/src/ovis_log/libovis_log.la \
+	 $(top_builddir)/lib/src/ovis_event/libovis_event.la \
+	 $(top_builddir)/lib/src/ovis_json/libovis_json.la \
 	-lpthread \
 	@LDFLAGS_GETTIME@
 

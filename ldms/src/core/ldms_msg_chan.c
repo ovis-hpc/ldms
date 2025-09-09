@@ -750,14 +750,15 @@ void ldms_msg_chan_set_q_limit(ldms_msg_chan_t chan, size_t q_limit)
 
 void ldms_msg_chan_stats(ldms_msg_chan_t chan, ldms_msg_chan_stats_t stats)
 {
-	chan_client_t cli;
-	char *str;
 	pthread_mutex_lock(&chan->lock);
 	*stats = chan->stats;
+#ifdef __not_yet__
+	chan_client_t cli;
+	char *str;
 	LIST_FOREACH(cli, &chan->client_list, entry) {
 		str = ldms_msg_stats_str(cli->regex_s, 1, 0);
-		printf(str);
 	}
+#endif
 	pthread_mutex_unlock(&chan->lock);
 }
 

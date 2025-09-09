@@ -96,12 +96,19 @@
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 
-const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:L:C:y:";
+const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:a:A:n:L:C:y:";
 
 struct option long_opts[] = {
+	{ "xprt",                  no_argument, 0,'x' },
+	{ "foreground",            no_argument, 0,'F' },
+	{ "version",               no_argument, 0,'V' },
+	{ "backtrace",             no_argument, 0,'b' },
+	{ "cfg_file",              required_argument, 0,  'c' },
+	{ "yaml",                  required_argument, 0,  'y' },
+	{ "daemon_name",           required_argument, 0,  'n' },
+	{ "banner",                required_argument, 0,  'B' },
 	{ "default_auth_args",     required_argument, 0,  'A' },
 	{ "default_auth",          required_argument, 0,  'a' },
-	{ "banner",                required_argument, 0,  'B' },
 	{ "publish_kernel",        optional_argument, 0,  'k' },
 	{ "log_file",              required_argument, 0,  'l' },
 	{ "set_memory",            required_argument, 0,  'm' },
