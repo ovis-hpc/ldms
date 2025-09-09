@@ -858,18 +858,6 @@ parse:
 	if (!off)
 		goto next_line;
 
-	if (ldmsd_is_initialized()) {
-		if ((0 == strncmp(line, "prdcr_add", 9)) ||
-				(0 == strncmp(line, "prdcr_start", 11))) {
-			if (strstr(line, "interval")) {
-				ovis_log(config_log, OVIS_LWARN,
-						"'interval' is begin deprecated. "
-						"Please use 'reconnect' with 'prdcr_add' or 'prdcr_start*' "
-						"in the future.\n");
-			}
-		}
-	}
-
 	/*
 	 * The message number is the line number.
 	 */
