@@ -9904,6 +9904,9 @@ static int __cidr2addr6(const char *cdir_str, struct ldms_addr *addr, int *prefi
 	struct ldms_addr s6 = {
 		.addr = {0,0,0,0,0,0,0,0,0,0,0xff,0xff,0,0,0,0}
 	};
+	if (!prefix_len || !addr || !cdir_str)
+		return EINVAL;
+
 	if (strchr(cdir_str, ':') != NULL)
 		is_ipv6 = 1;
 
@@ -9911,9 +9914,6 @@ static int __cidr2addr6(const char *cdir_str, struct ldms_addr *addr, int *prefi
 	if (rc != 2) {
 		return EINVAL;
 	}
-
-	if (!prefix_len || !addr)
-		return EINVAL;
 
 	*prefix_len = _prefix_len;
 
