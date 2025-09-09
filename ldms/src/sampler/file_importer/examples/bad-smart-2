@@ -1,0 +1,15 @@
+# HELP smartmon_unused_rsvd_blk_cnt_tot_threshold SMART metric unused_rsvd_blk_cnt_tot_threshold
+# TYPE smartmon_unused_rsvd_blk_cnt_tot_threshold gauge ldms={list=disklist,record=smartmon,key_name="disk",key_type="char_array",value_type=s32,unit="count"}}
+smartmon_unused_rsvd_blk_cnt_tot_threshold{disk="/dev/sda",type="sat",smart_id="180"} 1
+smartmon_unused_rsvd_blk_cnt_tot_threshold{disk="/dev/sdb",type="sat",smart_id="180"} 1
+smartmon_unused_rsvd_blk_cnt_tot_threshold{disk="/dev/sdc",type="sat",smart_id="180"} 1
+# HELP smartmon_unused_rsvd_blk_cnt_tot_value SMART metric unused_rsvd_blk_cnt_tot_value
+# Missing TYPE section
+smartmon_unused_rsvd_blk_cnt_tot_value{disk="/dev/sda",type="sat",smart_id="180"} 100
+smartmon_unused_rsvd_blk_cnt_tot_value{disk="/dev/sdb",type="sat",smart_id="180"} 100
+smartmon_unused_rsvd_blk_cnt_tot_value{disk="/dev/sdc",type="sat",smart_id="180"} 100
+# HELP smartmon_unused_rsvd_blk_cnt_tot_worst SMART metric unused_rsvd_blk_cnt_tot_worst
+# TYPE smartmon_unused_rsvd_blk_cnt_tot_worst gauge ldms={list=disklist,record=smartmon,key_name="disk",key_type="char_array",value_type=s32,unit="count"}}
+smartmon_unused_rsvd_blk_cnt_tot_worst{disk="/dev/sda",type="sat",smart_id="180"} 100
+smartmon_unused_rsvd_blk_cnt_tot_worst{disk="/dev/sdb",type="sat",smart_id="180"} 100
+smartmon_unused_rsvd_blk_cnt_tot_worst{disk="/dev/sdc",type="sat",smart_id="180"} 100
