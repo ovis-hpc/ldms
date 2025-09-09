@@ -103,6 +103,7 @@ struct req_str_id req_str_id_table[] = {
 	{  "metric_sets_default_authz", LDMSD_SET_DEFAULT_AUTHZ_REQ  },
 	{  "msg_client_stats",   LDMSD_MSG_CLIENT_STATS_REQ  },
 	{  "msg_disable",        LDMSD_MSG_DISABLE_REQ  },
+	{  "msg_enable",	 LDMSD_MSG_ENABLE_REQ  },
 	{  "msg_stats",          LDMSD_MSG_STATS_REQ  },
 	{  "oneshot",            LDMSD_ONESHOT_REQ  },
 	{  "option",             LDMSD_CMDLINE_OPTIONS_SET_REQ  },
@@ -372,6 +373,10 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_STREAM_NEW_REQ : return "STREAM_NEW_REQ";
 	case LDMSD_STREAM_STATUS_REQ : return "STREAM_DIR_REQ";
 	case LDMSD_STREAM_DISABLE_REQ : return "STREAM_DISABLE_REQ";
+
+	case LDMSD_MSG_DISABLE_REQ : return "MSG_DISABLE_REQ";
+	case LDMSD_MSG_ENABLE_REQ : return "MSG_ENABLE_REQ";
+
 	default: return "UNKNOWN_REQ";
 	}
 }

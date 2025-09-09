@@ -2128,6 +2128,8 @@ int main(int argc, char *argv[])
 		av_free(auth_opt);
 		exit(1);
 	}
+	/* Disable message traffic by default. */
+	ldms_msg_disable();
 
 	if (pidfile) {
 		if( !access( pidfile, F_OK ) ) {
