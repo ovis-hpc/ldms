@@ -9368,7 +9368,7 @@ static json_entity_t __ldmsd_stat2dict(struct ldmsd_stat *stat)
 				JSON_FLOAT_VALUE, "max", stat->max,
 				JSON_FLOAT_VALUE, "max_ts", max_ts,
 				JSON_FLOAT_VALUE, "avg", stat->avg,
-				JSON_INT_VALUE, "count", stat->count,
+				JSON_INT_VALUE, "count", (int64_t)stat->count,
 				JSON_FLOAT_VALUE, "start_ts", start_ts,
 				JSON_FLOAT_VALUE, "end_ts", end_ts,
 				-1);
