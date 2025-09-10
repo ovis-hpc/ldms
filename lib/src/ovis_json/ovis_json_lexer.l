@@ -30,7 +30,7 @@ static inline json_entity_t new_int_val(char *str) {
 }
 
 static inline json_entity_t new_bool_val(char *str) {
-	int i;
+	int32_t i;
 	if (0 == strcmp(str, "true"))
 		i = 1;
 	else

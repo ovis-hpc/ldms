@@ -74,7 +74,7 @@ enum json_value_e {
 struct json_entity_s {
 	enum json_value_e type;
 	union {
-		int bool_;
+		int32_t bool_;
 		int64_t int_;
 		double double_;
 		json_str_t str_;
@@ -138,6 +138,25 @@ extern enum json_value_e json_entity_type(json_entity_t e);
 
 extern int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_entity_t *e);
 
+/**
+ * \brief Create a new JSON entity of the specified type
+ *
+ * \param type The JSON entity type to create
+ * \param ...  Type-specific initialization arguments:
+ *             - JSON_INT_VALUE: int64_t value
+ *             - JSON_BOOL_VALUE: int32_t value (0 or 1)
+ *             - JSON_FLOAT_VALUE: double value
+ *             - JSON_STRING_VALUE: char* string
+ *             - JSON_ATTR_VALUE: char* name, json_entity_t value
+ *             - JSON_LIST_VALUE: (no additional arguments)
+ *             - JSON_DICT_VALUE: (no additional arguments)
+ *             - JSON_NULL_VALUE: (no additional arguments)
+ *
+ * \return A new JSON entity, or NULL on error
+ *
+ * \note JSON integers are stored as signed 64-bit values (int64_t).
+ *       Always pass int64_t for JSON_INT_VALUE to avoid truncation.
+ */
 extern json_entity_t json_entity_new(enum json_value_e type, ...);
 
 /**
@@ -175,6 +194,15 @@ extern json_entity_t json_entity_copy(json_entity_t e);
  * The format of the attribute value pair in the list is
  * <JSON value type>, <attribute name>, <attribute value>.
  *
+ * Value types and their expected arguments:
+ * - JSON_INT_VALUE: int64_t value
+ * - JSON_BOOL_VALUE: int32_t value (0 or 1)
+ * - JSON_FLOAT_VALUE: double value
+ * - JSON_STRING_VALUE: char* string
+ * - JSON_DICT_VALUE: (starts nested dictionary, end with -2)
+ * - JSON_LIST_VALUE: (starts list, end with -2)
+ * - JSON_ATTR_VALUE: json_entity_t attribute
+ *
  * The last value must be -1 to end the attribute value list.
  *
  * If the value type is JSON_LIST_VALUE, it must end with -2.
@@ -183,15 +211,15 @@ extern json_entity_t json_entity_copy(json_entity_t e);
  *
  * attr = json_entity_new(JSON_ATTR_NAME, "attr", json_entity_new(JSON_STRING_VALUE, "my attribute"))
  * d = json_dict_build(NULL,
- * 	JSON_INT_VALUE,    "int",    1,
- * 	JSON_BOOL_VALUE,   "bool",   1,
+ * 	JSON_INT_VALUE,    "int",    (int64_t)1,
+ * 	JSON_BOOL_VALUE,   "bool",   (int32_t)1,
  * 	JSON_FLOAT_VALUE,  "float",  1.1,
  * 	JSON_STRING_VALUE, "string", "str",
- * 	JSON_LIST_VALUE,   "list",   JSON_INT_VALUE, 1,
+ * 	JSON_LIST_VALUE,   "list",   JSON_INT_VALUE, (int64_t)1,
  * 				     JSON_STRING_VALUE, "last",
  * 				     -2,
- * 	JSON_DICT_VALUE,   "dict",   JSON_INT_VALUE, "attr1", 2,
- * 				     JSON_BOOL_VALUE, "attr2", 0,
+ * 	JSON_DICT_VALUE,   "dict",   JSON_INT_VALUE, "attr1", (int64_t)2,
+ * 				     JSON_BOOL_VALUE, "attr2", (int32_t)0,
  * 				     JSON_STRING_VALUE, "attr3", "last attribute",
  * 				     -2,
  * 	JSON_ATTR_VALUE, attr,
