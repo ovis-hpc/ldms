@@ -15,6 +15,8 @@
 #include "lustre_ost.h"
 #include "lustre_ost_general.h"
 
+#define MAXNAMESIZE 64
+
 static ldms_schema_t ost_general_schema;
 
 static char *obdfilter_stats_uint64_t_entries[] = {
@@ -115,38 +117,38 @@ void ost_general_schema_fini()
 }
 
 /* Returns strdup'ed string or NULL.  Caller must free. */
-char *ost_general_osd_path_find(const char *search_path, const char *ost_name)
+char *ost_general_osd_path_find(const char * const *paths, const char *ost_name)
 {
-        struct dirent *dirent;
-        DIR *dir;
+        char *path;
         char *osd_path = NULL;
+        int i;
 
-        dir = opendir(search_path);
-        if (dir == NULL) {
-                return NULL;
-        }
+        for (i=0, path = (char *)paths[0]; path !=NULL; i++, path = (char *)paths[i]) {
+                struct dirent *dirent;
+                DIR *dir;
+                dir = opendir(path);
+                if (dir == NULL) {
+                        continue;
+                }
 
-        while ((dirent = readdir(dir)) != NULL) {
-                if (dirent->d_type == DT_DIR &&
-                    strncmp(dirent->d_name, "osd-", strlen("osd-")) == 0) {
-                        char tmp_path[PATH_MAX];
-                        snprintf(tmp_path, PATH_MAX, "%s/%s/%s",
-                                 search_path, dirent->d_name, ost_name);
-                        if (access(tmp_path, F_OK) == 0) {
-                                osd_path = strdup(tmp_path);
-                                break;
+                while ((dirent = readdir(dir)) != NULL) {
+                        if (dirent->d_type == DT_DIR &&
+                            strncmp(dirent->d_name, "osd-", strlen("osd-")) == 0) {
+                                char tmp_path[PATH_MAX];
+                                snprintf(tmp_path, PATH_MAX, "%s/%s/%s",
+                                path, dirent->d_name, ost_name);
+                            if (access(tmp_path, F_OK) == 0) {
+                                    osd_path = strdup(tmp_path);
+                                    break;
+                            }
                         }
                 }
-        }
 
-        closedir(dir);
+                closedir(dir);
 
-        if (osd_path != NULL) {
-                log_fn(LDMSD_LDEBUG, SAMP" for ost %s found osd path %s\n",
-                       ost_name, osd_path);
-        } else {
-                log_fn(LDMSD_LWARNING, SAMP" osd for ost %s not found\n",
-                       ost_name);
+                if (osd_path != NULL) {
+                        break;
+                }
         }
 
         return osd_path;
@@ -231,7 +233,6 @@ static void obdfilter_stats_sample(const char *stats_path,
 {
         FILE *sf;
         char buf[512];
-        char str1[64+1];
 
         sf = fopen(stats_path, "r");
         if (sf == NULL) {
@@ -256,33 +257,30 @@ static void obdfilter_stats_sample(const char *stats_path,
         }
 
         ldms_transaction_begin(general_metric_set);
-        while (fgets(buf, sizeof(buf), sf)) {
-                uint64_t val1, val2;
-                int rc;
+	while (fgets(buf, sizeof(buf), sf)) {
+                char field_name[MAXNAMESIZE+1];
+                uint64_t samples, sum;
+                int num_matches;
                 int index;
 
-                rc = sscanf(buf, "%64s %lu samples [%*[^]]] %*u %*u %lu",
-                            str1, &val1, &val2);
-                if (rc == 2) {
-                        index = ldms_metric_by_name(general_metric_set, str1);
-                        if (index == -1) {
-                                log_fn(LDMSD_LWARNING, SAMP" obdfilter stats metric not found: %s\n",
-                                       str1);
-                        } else {
-                                ldms_metric_set_u64(general_metric_set, index, val1);
+                num_matches = sscanf(buf,
+                                     "%64s %"SCNu64" samples [%*[^]]] %*u %*u %"SCNu64" %*u",
+                                     field_name, &samples, &sum);
+                if (num_matches >= 2) {
+                        /* we know at least "samples" is available */
+                        index = ldms_metric_by_name(general_metric_set, field_name);
+                        if (index != -1) {
+                                ldms_metric_set_u64(general_metric_set, index, samples);
                         }
-                        continue;
-                } else if (rc == 3) {
-                        int base_name_len = strlen(str1);
-                        sprintf(str1+base_name_len, ".sum"); /* append ".sum" */
-                        index = ldms_metric_by_name(general_metric_set, str1);
-                        if (index == -1) {
-                                log_fn(LDMSD_LWARNING, SAMP" obdfilter stats metric not found: %s\n",
-                                       str1);
-                        } else {
-                                ldms_metric_set_u64(general_metric_set, index, val2);
+                }
+                if (num_matches >= 3) {
+                        /* we know that "sum" is also avaible */
+                        int base_name_len = strlen(field_name);
+                        sprintf(field_name+base_name_len, ".sum"); /* append ".sum" */
+                        index = ldms_metric_by_name(general_metric_set, field_name);
+                        if (index != -1) {
+                                ldms_metric_set_u64(general_metric_set, index, sum);
                         }
-                        continue;
                 }
         }
         ldms_transaction_end(general_metric_set);
