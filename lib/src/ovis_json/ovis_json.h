@@ -160,6 +160,27 @@ extern int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_en
 extern json_entity_t json_entity_new(enum json_value_e type, ...);
 
 /**
+ * \brief Type-safe macros for JSON integer and boolean values passed to json_entity_new
+ *
+ * These macros ensure correct type casting for interfer and boolean values in
+ * json_entity_new() calls, preventing varargs type mismatches. They automatically cast values
+ * to the correct types: int64_t for integers and int32_t for booleans.
+ *
+ * \param _v_   Value to be cast and passed
+ *
+ * \Example usage:
+ * \code
+ * json_entity_t bool = json_entity_new(JSON_BOOL_ENT(is_enabled));
+ *
+ * json_entity_t i = json_entity_new(JSON_INT_ENT(x))
+ * \endcode
+ */
+#define JSON_BOOL_ENT(_v_) \
+	JSON_BOOL_VALUE, _v_
+#define JSON_INT_ENT(_v_) \
+	JSON_INT_VALUE, _v_
+
+/**
  * \brief Dump the json entity into a json buffer (\c jbuf_t)
  *
  * This function can be used to appended json string to an existing
@@ -243,6 +264,31 @@ extern json_entity_t json_entity_copy(json_entity_t e);
  *
  */
 extern json_entity_t json_dict_build(json_entity_t d, ...);
+
+/**
+ * \brief Type-safe macros for JSON integer and boolean values passed to json_dict_build
+ *
+ * These macros ensure correct type casting for interfer and boolean values in
+ * json_dict_build() calls, preventing varargs type mismatches. They automatically cast values
+ * to the correct types: int64_t for integers and int32_t for booleans.
+ *
+ * \param _n_   Attribute name
+ * \param _v_   Value to be cast and passed
+ *
+ * \Example usage:
+ * \code
+ * json_entity_t dict = json_dict_build(NULL,
+ * 				JSON_STRING_VALUE, "name", "example",
+ * 				JSON_INT_ARG("count", count),
+ * 				JSON_BOOL_ARG("enabled", is_active),
+ * 				JSON_FLOAT_VALUE, "ratio", 1.5,
+ * 				-1);
+ * \endcode
+ */
+#define JSON_INT_ARG(_n_, _v_) \
+	JSON_INT_VALUE, _n_, (int64_t)_v_
+#define JSON_BOOL_ARG(_n_, _v_) \
+	JSON_BOOL_VALUE, _n_, (int32_t)_v_
 
 /**
  * \brief Add the attributes of dictionary \c src into dictionary \c dst
