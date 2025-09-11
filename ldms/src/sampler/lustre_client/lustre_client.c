@@ -23,8 +23,8 @@
 
 /* locations where llite stats might be found */
 static const char * const llite_paths[] = {
-        "/proc/fs/lustre/llite",          /* lustre pre-2.12 */
-        "/sys/kernel/debug/lustre/llite"  /* lustre 2.12 and later */
+        "/sys/kernel/debug/lustre/llite",  /* lustre 2.12 and later */
+        "/proc/fs/lustre/llite"            /* lustre pre-2.12 */
 };
 static const int llite_paths_len = sizeof(llite_paths) / sizeof(llite_paths[0]);
 static char *test_path = NULL;
