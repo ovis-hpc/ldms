@@ -151,8 +151,15 @@ char *mdt_general_osd_path_find(const char * const *paths, const char *component
                 }
 
         }
+        if (osd_dir != NULL) {
+                log_fn(LDMSD_LDEBUG, SAMP" for mdt %s found osd dir %s\n",
+                       component_name, osd_dir);
+        } else {
+                log_fn(LDMSD_LWARNING, SAMP" osd for mdt %s not found\n",
+                       component_name);
+        }
 
-    return osd_dir;
+        return osd_dir;
 }
 
 static uint64_t file_read_uint64_t(const char *dir, const char *file)
