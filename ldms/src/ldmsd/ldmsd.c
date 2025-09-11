@@ -310,7 +310,13 @@ int ldmsd_logrotate() {
 	gettimeofday(&tv, NULL);
 	sprintf(ofile_name, "%s-%ld", logfile, tv.tv_sec);
 
-	rename(logfile, ofile_name);
+	rc = rename(logfile, ofile_name);
+	if (rc != 0) {
+		rc = errno;
+		ovis_log(NULL, OVIS_LERROR, "Failed to rename the log file "
+			"%s to %s. (%s) The messages are going to "
+			"the old file.\n", logfile, ofile_name, STRERROR(rc));
+	}
 	rc = ovis_log_open(logfile);
 	if (rc) {
 		ovis_log(NULL, OVIS_LERROR, "Failed to rotate the log file. "
@@ -754,6 +760,11 @@ int ldmsd_set_update_hint_get(ldms_set_t set, long *interval_us, long *offset_us
 	if (!value)
 		return 0;
 	tmp = strtok_r(value, ":", &endptr);
+	if (!tmp) {
+		ovis_log(NULL, OVIS_LERROR, "set '%s': updtr hint found empty\n",
+			ldms_set_instance_name_get(set) );
+		return EINVAL;
+	}
 	*interval_us = strtol(tmp, NULL, 0);
 	tmp = strtok_r(NULL, ":", &endptr);
 	if (tmp)
