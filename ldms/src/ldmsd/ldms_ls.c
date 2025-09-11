@@ -335,6 +335,9 @@ size_t prim_value_format(enum ldms_value_type type, ldms_mval_t val, size_t n, i
 			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%f", val->a_d[i]);
 		}
 		break;
+	case LDMS_V_TIMESTAMP:
+		cnt = snprintf(buf, BUF_LEN, "%u.%06u", val->v_ts.sec, val->v_ts.usec);
+		break;
 	default:
 		return 0;
 	}
@@ -644,6 +647,9 @@ void value_format(ldms_set_t s, enum ldms_value_type type, ldms_mval_t val, size
 			printf("]");
 			printf("\n");
 		}
+		break;
+	case LDMS_V_TIMESTAMP:
+		printf("%u.%06u", val->v_ts.sec, val->v_ts.usec);
 		break;
 	default:
 		printf("Unknown metric type");

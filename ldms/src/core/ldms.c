@@ -5269,6 +5269,7 @@ int ldms_schema_metric_add_template(ldms_schema_t s,
 		case LDMS_V_S64:
 		case LDMS_V_F32:
 		case LDMS_V_D64:
+		case LDMS_V_TIMESTAMP:
 			if (ent->flags & LDMS_MDESC_F_META) {
 				ret = ldms_schema_meta_add_with_unit(
 						s, ent->name, ent->unit, ent->type
