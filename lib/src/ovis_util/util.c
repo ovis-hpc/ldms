@@ -1106,7 +1106,7 @@ const char *ovis_strerror(int e) {
  */
 int __read_all(int fd, void **buff, size_t *alen, size_t *dlen)
 {
-	size_t sz;
+	ssize_t sz;
 	void *new;
 loop:
 	if (!*alen) {
