@@ -67,7 +67,6 @@
 #include <unistd.h>
 #include <coll/idx.h>
 #include <coll/rbt.h>
-#include <assert.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
@@ -331,7 +330,7 @@ static void roll_cb(void *obj, void *cb_arg)
 	if (!nfp){
 		//we cant open the new file, skip
 		ERR_LOG("cannot open file <%s>\n", new_filename);
-		goto err_3;
+		goto err_2;
 	}
 	ch_output(nfp, new_filename, CSHC(s_handle), cps);
 
@@ -368,6 +367,7 @@ static void roll_cb(void *obj, void *cb_arg)
 			CSHC(s_handle), cps);
 		free(s_handle->typefilename);
 		s_handle->typefilename = new_typefilename;
+		new_typefilename = NULL;
 	}
 	s_handle->file = nfp;
 	free(s_handle->filename);
@@ -382,13 +382,12 @@ static void roll_cb(void *obj, void *cb_arg)
 
 err_4:
 	fclose(nfp);
-err_3:
-	free(new_typefilename); /* may be NULL, but it is OK */
 err_2:
 	free(new_headerfilename);
 err_1:
 	free(new_filename);
 out:
+	free(new_typefilename);
 	pthread_mutex_unlock(&s_handle->lock);
 }
 
@@ -933,13 +932,13 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 {
 	/* Only called from Store which already has the lock */
 	FILE* fp;
-	store_csv_t sc = s_handle->sc;
 	char tmp_path[PATH_MAX];
 
 	if (s_handle == NULL){
 		ovis_log(mylog, OVIS_LERROR, "Null store handle. Cannot print header\n");
 		return EINVAL;
 	}
+	store_csv_t sc = s_handle->sc;
 	s_handle->printheader = DONT_PRINT_HEADER;
 
 	fp = s_handle->headerfile;
@@ -950,15 +949,15 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 	int ec;
 	if (s_handle->altheader) {
 		if (sc->rolltype >= MINROLLTYPE)
-			ec = snprintf(tmp_path, PATH_MAX, "%s.HEADER.%d",
-				s_handle->path, (int)s_handle->otime);
+			ec = snprintf(tmp_path, PATH_MAX, "%s.HEADER.%lld",
+				s_handle->path, (long long)s_handle->otime);
 		else
 			ec = snprintf(tmp_path, PATH_MAX, "%s.HEADER",
 				s_handle->path);
 	} else {
 		if (sc->rolltype >= MINROLLTYPE)
-			ec = snprintf(tmp_path, PATH_MAX, "%s.%d",
-				s_handle->path, (int)s_handle->otime);
+			ec = snprintf(tmp_path, PATH_MAX, "%s.%lld",
+				s_handle->path, (long long)s_handle->otime);
 		else
 			ec = snprintf(tmp_path, PATH_MAX, "%s", s_handle->path);
 	}
@@ -1719,8 +1718,7 @@ static void __csv_handle_close(struct csv_store_handle *s_handle)
 
 	idx_delete(sc->store_idx, s_handle->store_key, strlen(s_handle->store_key));
 
-	if (s_handle->store_key)
-		free(s_handle->store_key);
+	free(s_handle->store_key);
 	free(s_handle->container);
 	free(s_handle->schema);
 	free(s_handle->lents);
