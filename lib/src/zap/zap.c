@@ -859,30 +859,35 @@ static zap_io_thread_t __zap_least_busy_thread(zap_t z, zap_ep_t ep, struct zap_
 
 static zap_io_thread_t __zap_passive_ep_thread(zap_t z, zap_ep_t ep)
 {
-	zap_io_thread_t t = z->_passive_ep_thread;
-	if (t)
-		goto out;
+	zap_io_thread_t t;
 	char name[16];
+
+	pthread_mutex_lock(&z->_io_mutex);
+	t = z->_passive_ep_thread;
+	if (t) {
+		pthread_mutex_lock(&t->mutex);
+		goto add;
+	}
 	t = z->io_thread_create(z);
+	if (!t)
+		goto out;
 	pthread_mutex_lock(&t->mutex);
 	t->stat->stats.thread_id = t->thread;
 	t->stat->pool_idx = -1;
 	z->_passive_ep_thread = t;
-	if (t) {
-		/* append "_p" to the thread name for "passive" endpoint thread.
-		 * The suffix is shorten due to pthread 16-char name limit. */
-		snprintf(name, sizeof(name), "%s_p", t->stat->stats.name);
-		pthread_setname_np(t->thread, name);
-	}
- out:
-	if (t) {
-		/* also add ep to the thread before releasing io mutex */
-		LIST_INSERT_HEAD(&t->_ep_list, ep, _entry);
-		t->_n_ep++;
-		t->stat->n_eps = t->_n_ep;
-		ep->thread = t;
-	}
+	/* append "_p" to the thread name for "passive" endpoint thread.
+	 * The suffix is shorten due to pthread 16-char name limit. */
+	snprintf(name, sizeof(name), "%s_p", t->stat->stats.name);
+	pthread_setname_np(t->thread, name);
+ add:
+	/* also add ep to the thread before releasing io mutex */
+	LIST_INSERT_HEAD(&t->_ep_list, ep, _entry);
+	t->_n_ep++;
+	t->stat->n_eps = t->_n_ep;
+	ep->thread = t;
 	pthread_mutex_unlock(&t->mutex);
+ out:
+	pthread_mutex_unlock(&z->_io_mutex);
 	return t;
 }
 
