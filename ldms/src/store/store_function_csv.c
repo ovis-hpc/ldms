@@ -435,8 +435,8 @@ static int handleRollover(){
 					fflush(s_handle->headerfile);
 
 				//re name: if got here then rollover requested
-				snprintf(tmp_path, PATH_MAX, "%s.%d",
-					 s_handle->path, (int) appx);
+				snprintf(tmp_path, PATH_MAX, "%s.%lld",
+					 s_handle->path, (long long int) appx);
 				nfp = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
 				if (!nfp){
 					//we cant open the new file, skip
@@ -449,8 +449,8 @@ static int handleRollover(){
 				if (altheader){
 					//re name: if got here then rollover requested
 					snprintf(tmp_headerpath, PATH_MAX,
-						 "%s.HEADER.%d",
-						 s_handle->path, (int)appx);
+						 "%s.HEADER.%lld",
+						 s_handle->path, (long long int)appx);
 					/* truncate a separate headerfile if it exists.
 					* NOTE: do we still want to do this? */
 					nhfp = fopen_perm(tmp_headerpath, "w", LDMSD_DEFAULT_FILE_PERM);
@@ -1388,8 +1388,8 @@ open_store(ldmsd_plug_handle_t scfg, const char *container, const char* schema,
 	char tmp_path[PATH_MAX];
 	time_t appx = time(NULL);
 	if (rolltype >= MINROLLTYPE){
-		snprintf(tmp_path, PATH_MAX, "%s.%d",
-			 s_handle->path, (int)appx);
+		snprintf(tmp_path, PATH_MAX, "%s.%lld",
+			 s_handle->path, (long long int)appx);
 	} else {
 		snprintf(tmp_path, PATH_MAX, "%s",
 			 s_handle->path);
@@ -1415,7 +1415,7 @@ open_store(ldmsd_plug_handle_t scfg, const char *container, const char* schema,
 			char tmp_headerpath[PATH_MAX];
 			if (rolltype >= MINROLLTYPE){
 				snprintf(tmp_headerpath, PATH_MAX,
-					 "%s.HEADER.%d", s_handle->path, (int)appx);
+					 "%s.HEADER.%lld", s_handle->path, (long long int)appx);
 			} else {
 				snprintf(tmp_headerpath, PATH_MAX,
 					 "%s.HEADER", s_handle->path);
@@ -2373,9 +2373,9 @@ oom1:
 					}
 				}
 			} else { //!BASE
-				*retvalid *= dp->datavals[vals[i].i].returnvalid;
 				if (!retvalid)
 					break;
+				*retvalid *= dp->datavals[vals[i].i].returnvalid;
 				for (j = 0; j < dim; j++){
 					uint64_t temp = dp->datavals[vals[i].i].returnvals[j];
 //					ovis_log(mylog, OVIS_LDEBUG, "getting value %d(%d) %llu for var %d\n", i, j, temp, vals[i].i);
@@ -3019,10 +3019,8 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_hand
 			break;
 		}
 	}
-	if (s_handle->schema)
-		free(s_handle->schema);
-	if (s_handle->store_key)
-		free(s_handle->store_key);
+	free(s_handle->schema);
+	free(s_handle->store_key);
 	pthread_mutex_unlock(&s_handle->lock);
 	pthread_mutex_destroy(&s_handle->lock);
 	pthread_mutex_unlock(&cfg_lock);
