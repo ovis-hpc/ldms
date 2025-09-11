@@ -1,0 +1,15 @@
+# HELP ldmsd_metric_total_sets Returns for a ldmsd, count the number of samplers accross producers
+# TYPE ldmsd_metric_total_sets gauge
+ldmsd_metric_total_sets{ldms_group="mana",ldms_name="agg-mana-0",ldms_type="agg"} 61.0
+# HELP ldmsd_metric_meta_data_kb Returns for a ldmsd, meta_data_kb
+# TYPE ldmsd_metric_meta_data_kb gauge
+ldmsd_metric_meta_data_kb{ldms_group="mana",ldms_name="agg-mana-0",ldms_type="agg"} 195.51
+# HELP ldmsd_metric_data_kb Returns for a ldmsd, data_kb
+# TYPE ldmsd_metric_data_kb gauge
+ldmsd_metric_data_kb{ldms_group="mana",ldms_name="agg-mana-0",ldms_type="agg"} 165.62
+# HELP ldmsd_metric_memory_kb Returns for a ldmsd, memory_kb
+# TYPE ldmsd_metric_memory_kb gauge
+ldmsd_metric_memory_kb{ldms_group="mana",ldms_name="agg-mana-0",ldms_type="agg"} 361.13
+# HELP ldmsd_metric_sampler_count Returns for a ldmsd, the number of producers with with sampler vmstat
+# TYPE ldmsd_metric_sampler_count gauge
+ldmsd_metric_sampler_count{ldms_group="mana",ldms_name="agg-mana-0",ldms_type="agg",sampler_type="vmstat"} 10.0
