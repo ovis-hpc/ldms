@@ -449,8 +449,10 @@ static int __buf_append(struct ovis_log_buf *buf, const char *fmt, ...)
 		va_end(ap_dup);
 		if (cnt >= buf->sz - buf->off) {
 			char *tmp = realloc(buf->buf, buf->sz * 2);
-			if (!tmp)
+			if (!tmp) {
+				va_end(ap);
 				return ENOMEM;
+			}
 			buf->buf = tmp;
 			buf->sz *= 2;
 			va_copy(ap_dup, ap);
