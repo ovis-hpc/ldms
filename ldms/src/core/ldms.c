@@ -1722,6 +1722,13 @@ ldms_set_t ldms_set_create(const char *instance_name,
 	int set_array_card;
 	struct ldms_set *set;
 
+	if (!instance_name || !schema) {
+		ovis_log(NULL, OVIS_LERROR, "NULL instance_name or schema "
+				"passed to ldms_set_create\n");
+		errno = EINVAL;
+		return NULL;
+	}
+
 	/*
 	 * Ensure the instance_name does not contain characters
 	 * that can't be encoded in a quoted string
@@ -2600,13 +2607,17 @@ void ldms_metric_set(ldms_set_t s, int i, ldms_mval_t v)
 	ldms_mdesc_t desc;
 	ldms_mval_t mv;
 
-	if (i < 0 || i >= __le32_to_cpu(s->meta->card))
-		assert(0 == "Invalid metric index");
+	if (!s || i < 0 || i >= __le32_to_cpu(s->meta->card)) {
+		ovis_log(NULL, OVIS_LERROR, "NULL set or bad index passed to "
+				"ldms_metric_set\n");
+		return;
+	}
 
 	mv = __mval_to_set(s, i, &desc);
-
-	__metric_set(desc, mv, v);
-	__ldms_gn_inc(s, desc);
+	if (mv) {
+		__metric_set(desc, mv, v);
+		__ldms_gn_inc(s, desc);
+	}
 }
 
 static void __metric_array_set(ldms_mdesc_t desc, ldms_mval_t dst,
@@ -2662,9 +2673,12 @@ void ldms_metric_array_set_val(ldms_set_t s, int metric_idx, int array_idx, ldms
 		assert(0 == "Invalid metric index");
 
 	dst = __mval_to_set(s, metric_idx, &desc);
-
-	__metric_array_set(desc, dst, array_idx, src);
-	__ldms_gn_inc(s, desc);
+	if (dst) {
+		__metric_array_set(desc, dst, array_idx, src);
+		__ldms_gn_inc(s, desc);
+	} else {
+		assert(0 == "Invalid array_index");
+	}
 }
 
 void ldms_metric_set_char(ldms_set_t s, int i, char v)
@@ -2936,8 +2950,11 @@ void ldms_metric_array_set_double(ldms_set_t s, int mid, int idx, double v)
 		*(uint64_t *)&mv->a_d[idx] = __cpu_to_le64(*(uint64_t *)&v);
 #endif
 		__ldms_gn_inc(s, desc);
-	} else
+	} else {
+		ovis_log(NULL, OVIS_LERROR, " Invalid metric or array index"
+				"passed to ldms_metric_array_set_double\n");
 		assert(0 == "Invalid metric or array index");
+	}
 }
 
 void ldms_metric_array_set(ldms_set_t s, int mid, ldms_mval_t mval,
@@ -2946,7 +2963,18 @@ void ldms_metric_array_set(ldms_set_t s, int mid, ldms_mval_t mval,
 	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->meta,
 				      __le32_to_cpu(s->meta->dict[mid]));
 	int i;
+	if (!s) {
+		ovis_log(NULL, OVIS_LERROR, "NULL set passed to "
+				"ldms_metric_array_set\n");
+		return;
+	}
 	ldms_mval_t val = __mval_to_set(s, mid, &desc);
+	if (!val) {
+		ovis_log(NULL, OVIS_LERROR, "invalid metric index passed to "
+				"ldms_metric_array_set %d in %s\n",
+				mid, ldms_set_instance_name_get(s));
+		return;
+	}
 	switch (desc->vd_type) {
 	case LDMS_V_CHAR_ARRAY:
 	case LDMS_V_U8_ARRAY:
@@ -4188,6 +4216,8 @@ ldms_mval_t ldms_record_alloc(ldms_set_t set, int metric_id)
 	ldms_record_inst_t rec_inst;
 	size_t sz;
 	mval = __mval_to_get(set, metric_id, &vd);
+	if (!mval || !vd)
+		goto einval;
 	if (vd->vd_type != LDMS_V_RECORD_TYPE)
 		goto einval;
 	rec_type = &mval->v_rec_type;
@@ -4253,6 +4283,9 @@ static inline ldms_mdesc_t __record_mdesc_get(ldms_mval_t rec, int i)
 		rec_type = &rec->v_rec_type;
 	} else {
 		rec_type = __rec_type((void*)rec, NULL, NULL, NULL);
+		if (!rec_type) {
+			return NULL;
+		}
 	}
 	if (i < 0 || __le32_to_cpu(rec_type->n) <= i) {
 		errno = ENOENT;
