@@ -792,16 +792,9 @@ int __ldmsd_parse_cmdline_req(struct ldmsd_parse_ctxt *ctxt)
 int __ldmsd_parse_bridge_add_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av) + 2; /* tmp is padded with trailing blank during formatting */
-	size_t cnt = 0;
-	char *tmp, *name, *value, *ptr, *dummy;
+	char *name, *value, *ptr, *dummy;
 	int rc = 0;
 	dummy = NULL;
-	tmp = malloc(len);
-	if (!tmp) {
-		rc = ENOMEM;
-		goto out;
-	}
 	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
 	while (av) {
 		ctxt->av = av;
@@ -828,22 +821,8 @@ int __ldmsd_parse_bridge_add_req(struct ldmsd_parse_ctxt *ctxt)
 	rc = add_attr_from_attr_str("type", "bridge",
 				    &ctxt->request,
 				    &ctxt->request_sz);
-	if (rc)
-		goto out;
-
-	if (cnt) {
-		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
-		/* Add an attribute of type 'STRING' */
-		rc = add_attr_from_attr_str(NULL, tmp,
-					    &ctxt->request,
-					    &ctxt->request_sz);
-	}
-
-out:
-	if (tmp)
-		free(tmp);
-	if (dummy)
-		free(dummy);
+ out:
+	free(dummy);
 	return rc;
 }
 
@@ -915,16 +894,10 @@ out:
 int __ldmsd_parse_advertiser_add_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
-	size_t len = strlen(av) + 2; /* tmp is padded with trailing blank during formatting */
-	size_t cnt = 0;
-	char *tmp, *name, *value, *ptr, *dummy;
+	char *name, *value, *ptr, *dummy;
 	int rc = 0;
 	dummy = NULL;
-	tmp = malloc(len);
-	if (!tmp) {
-		rc = ENOMEM;
-		goto out;
-	}
+
 	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
 	while (av) {
 		ctxt->av = av;
@@ -951,22 +924,8 @@ int __ldmsd_parse_advertiser_add_req(struct ldmsd_parse_ctxt *ctxt)
 	rc = add_attr_from_attr_str("type", "advertiser",
 				    &ctxt->request,
 				    &ctxt->request_sz);
-	if (rc)
-		goto out;
-
-	if (cnt) {
-		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
-		/* Add an attribute of type 'STRING' */
-		rc = add_attr_from_attr_str(NULL, tmp,
-					    &ctxt->request,
-					    &ctxt->request_sz);
-	}
-
-out:
-	if (tmp)
-		free(tmp);
-	if (dummy)
-		free(dummy);
+ out:
+	free(dummy);
 	return rc;
 }
 
