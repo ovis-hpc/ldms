@@ -302,6 +302,7 @@ int ldmsd_row_cache(ldmsd_row_cache_t rcache,
 	rc = clock_gettime(CLOCK_REALTIME, &ts);
 	if (rc) {
 		rc = errno;
+		free(entry);
 		goto out;
 	}
 
