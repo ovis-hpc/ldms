@@ -20,7 +20,12 @@
 #define _GNU_SOURCE
 
 #define MDT_PATH "/proc/fs/lustre/mdt"
-#define OSD_SEARCH_PATH "/proc/fs/lustre"
+
+static const char * const possible_osd_base_paths[] = {
+	"/sys/fs/lustre", /* at least lustre >= 1.15 (probably >= 1.12) */
+	"/proc/fs/lustre", /* older lustre */
+	NULL
+};
 
 static struct comp_id_data cid;
 
@@ -84,7 +89,7 @@ static struct mdt_data *mdt_create(const char *mdt_name, const char *basedir)
         mdt->general_metric_set = mdt_general_create(producer_name, mdt->fs_name, mdt->name, &cid);
         if (mdt->general_metric_set == NULL)
                 goto out7;
-        mdt->osd_path = mdt_general_osd_path_find(OSD_SEARCH_PATH, mdt->name);
+        mdt->osd_path = mdt_general_osd_path_find(possible_osd_base_paths, mdt->name);
         rbn_init(&mdt->mdt_tree_node, mdt->name);
         rbt_init(&mdt->job_stats, string_comparator);
 
