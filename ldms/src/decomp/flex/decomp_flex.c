@@ -156,6 +156,8 @@ int flex_digest_cmp(void *tree_key, const void *key)
 
 static void flex_cfg_free(flex_cfg_t dcfg)
 {
+	if (! dcfg)
+		return;
 	struct rbn *rbn;
 	flex_decomp_t decomp_rbn;
 	flex_match_t match;
@@ -179,6 +181,7 @@ static void flex_cfg_free(flex_cfg_t dcfg)
 			decomp_rbn->decomp_api->release_decomp(&decomp_rbn->strgp);
 		free(decomp_rbn);
 	}
+	free(dcfg->default_decomps);
 	free(dcfg);
 }
 
