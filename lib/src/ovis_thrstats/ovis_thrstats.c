@@ -42,14 +42,6 @@ void ovis_thrstats_thread_id_set(ovis_thrstats_t stats)
 	stats->tid = syscall(SYS_gettid);
 }
 
-void ovis_thrstats_thread_id_get(ovis_thrstats_t stats, uint64_t *_thread_id, pid_t *_tid)
-{
-	if (!_thread_id)
-		*_thread_id = stats->thread_id;
-	if (!_tid)
-		*_tid = stats->tid;
-}
-
 int ovis_thrstats_init(ovis_thrstats_t stats, const char *name) {
 	int rc;
 	struct timespec now;

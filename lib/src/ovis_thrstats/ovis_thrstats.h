@@ -269,15 +269,6 @@ int ovis_thrstats_init(ovis_thrstats_t stats, const char *name);
 void ovis_thrstats_thread_id_set(ovis_thrstats_t stats);
 
 /**
- * Get thread identification information
- *
- * \param stats Pointer to thread statistics structure
- * \param _thread_id Pointer to store pthread_t ID (can be NULL)
- * \param _tid Pointer to store Linux thread ID (can be NULL)
- */
-void ovis_thrstats_thread_id_get(ovis_thrstats_t stats, uint64_t *_thread_id, pid_t *_tid);
-
-/**
  * Set application context and reset callback
  *
  * \param stats Pointer to thread statistics structure
