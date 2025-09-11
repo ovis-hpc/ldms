@@ -864,6 +864,9 @@ static zap_io_thread_t __zap_passive_ep_thread(zap_t z, zap_ep_t ep)
 		goto out;
 	char name[16];
 	t = z->io_thread_create(z);
+	if (!t) {
+		return NULL;
+	}
 	pthread_mutex_lock(&t->mutex);
 	t->stat->stats.thread_id = t->thread;
 	t->stat->pool_idx = -1;
