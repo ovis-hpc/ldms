@@ -333,6 +333,8 @@ static int str_int_cmp(const void *a, const void *b)
 
 static void decomp_static_cfg_free(decomp_static_cfg_t dcfg)
 {
+	if (!dcfg)
+		return;
 	int i, j;
 	struct decomp_static_row_cfg_s *cfg_row;
 	struct decomp_static_col_cfg_s *cfg_col;
@@ -482,6 +484,7 @@ enomem:
 	rc = ENOMEM;
 	THISLOG(reqc, ENOMEM, "%s: Insufficent memory.\n", strgp->obj.name);
 err_0:
+	free(col_id_tbl);
 	return rc;
 }
 
