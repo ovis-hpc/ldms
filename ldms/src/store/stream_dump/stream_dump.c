@@ -267,6 +267,11 @@ static int __op_msg_subscribe(struct stream_dump_s *sd,
 		return EINVAL;
 	}
 
+	if (!mch) {
+		ERR_LOG(sd, "'message_channel' is required for op=subscribe\n");
+		return EINVAL;
+	}
+
 	snprintf(key, sizeof(key), "%c%s", __CLIENT_TYPE_MSG, mch);
 
 	pthread_mutex_lock(&sd->mutex);
