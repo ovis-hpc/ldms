@@ -116,41 +116,43 @@ void mdt_general_schema_fini()
 }
 
 /* Returns strdup'ed string or NULL.  Caller must free. */
-char *mdt_general_osd_path_find(const char *search_path, const char *mdt_name)
+char *mdt_general_osd_path_find(const char * const *paths, const char *component_name)
 {
-        struct dirent *dirent;
-        DIR *dir;
-        char *osd_path = NULL;
+        char *path;
+        char *osd_dir = NULL;
+        int i;
 
-        dir = opendir(search_path);
-        if (dir == NULL) {
-                return NULL;
-        }
+        for (i = 0, path = (char *)paths[0]; path != NULL; i++, path = (char *)paths[i]) {
+                struct dirent *dirent;
+                DIR *dir;
 
-        while ((dirent = readdir(dir)) != NULL) {
-                if (dirent->d_type == DT_DIR &&
-                    strncmp(dirent->d_name, "osd-", strlen("osd-")) == 0) {
-                        char tmp_path[PATH_MAX];
-                        snprintf(tmp_path, PATH_MAX, "%s/%s/%s",
-                                 search_path, dirent->d_name, mdt_name);
-                        if (access(tmp_path, F_OK) == 0) {
-                                osd_path = strdup(tmp_path);
-                                break;
+                dir = opendir(path);
+                if (dir == NULL) {
+                        continue;
+                }
+
+                while ((dirent = readdir(dir)) != NULL) {
+                        if (dirent->d_type == DT_DIR &&
+                            strncmp(dirent->d_name, "osd-", strlen("osd-")) == 0) {
+                                char tmp_path[PATH_MAX];
+                                snprintf(tmp_path, PATH_MAX, "%s/%s/%s",
+                                path, dirent->d_name, component_name);
+                                if (access(tmp_path, F_OK) == 0) {
+                                        osd_dir = strdup(tmp_path);
+                                        break;
+                                }
                         }
                 }
+
+                closedir(dir);
+
+                if (osd_dir != NULL) {
+                        break;
+                }
+
         }
 
-        closedir(dir);
-
-        if (osd_path != NULL) {
-                log_fn(LDMSD_LDEBUG, SAMP" for mdt %s found osd path %s\n",
-                       mdt_name, osd_path);
-        } else {
-                log_fn(LDMSD_LWARNING, SAMP" osd for mdt %s not found\n",
-                       mdt_name);
-        }
-
-        return osd_path;
+    return osd_dir;
 }
 
 static uint64_t file_read_uint64_t(const char *dir, const char *file)
