@@ -1433,8 +1433,8 @@ static int diff_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 			prev_row->cols[col_id].mval->v_d;
 		break;
 	case LDMS_V_TIMESTAMP:
-                src_time = (src_row->cols[col_id].mval->v_ts.sec * 1000000) + src_row->cols[col_id].mval->v_ts.usec;
-                prev_time = (prev_row->cols[col_id].mval->v_ts.sec * 1000000) + prev_row->cols[col_id].mval->v_ts.usec;
+                src_time = (src_row->cols[col_id].mval->v_ts.sec * (uint64_t)1000000) + src_row->cols[col_id].mval->v_ts.usec;
+                prev_time = (prev_row->cols[col_id].mval->v_ts.sec * (uint64_t)1000000) + prev_row->cols[col_id].mval->v_ts.usec;
                 diff_time = src_time - prev_time;
                 dst_col->mval->v_ts.sec = (uint32_t)(diff_time / 1000000);
                 dst_col->mval->v_ts.usec = (uint32_t)(diff_time % 1000000);
@@ -1552,7 +1552,7 @@ static int mean_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 			break;
 		case LDMS_V_TIMESTAMP:
 			/* do as u64 usecs and convert back later */
-			tm = (x->v_ts.sec * 1000000) + x->v_ts.usec;
+			tm = (x->v_ts.sec * (uint64_t)1000000) + x->v_ts.usec;
 			g = r + tm - bi;
 			bi = bi + g/(n+1);
 			r = g % (n+1);
