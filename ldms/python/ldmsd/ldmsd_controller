@@ -1050,6 +1050,8 @@ class LdmsdCmdParser(cmd.Cmd):
             port = prdcr['port']
             if prdcr['type'] == 'bridge':
                 continue
+            if prdcr['type'] == 'advertiser':
+                continue
             pstate = prdcr['state']
             if prdcr['type'] == 'advertised':
                 if prdcr['state'] == 'STANDBY':
