@@ -1355,6 +1355,26 @@ int __our_cfgobj_filter(ldmsd_cfgobj_t obj)
 int ldmsd_ourcfg_start_proc()
 {
 	int rc;
+	ldmsd_cfgobj_t cfg;
+	ldmsd_listen_t lcfg;
+	const char *myname = ldmsd_myname_get();
+	if (myname[0] == 0) {
+		/* myname is not set; set the default value 'HOSTNAME:PORT' */
+		char host[256];
+		char buff[288];
+		gethostname(host, sizeof(host));
+		cfg = ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+		if (cfg) {
+			lcfg = container_of(cfg, struct ldmsd_listen, obj);
+			snprintf(buff, sizeof(buff), "%s:%hu",
+					host,
+					lcfg->port_no);
+			ldmsd_cfgobj_put(cfg, "iter");
+		} else {
+			snprintf(buff, sizeof(buff), "%s", host);
+		}
+		ldmsd_myname_set(buff);
+	}
 	rc = ldmsd_cfgobjs_start(__our_cfgobj_filter);
 	if (rc) {
 		exit(100);
