@@ -117,6 +117,8 @@ struct rbt *cfgobj_trees[] = {
 
 void ldmsd_cfgobj___del(ldmsd_cfgobj_t obj)
 {
+	free(obj->avl_str);
+	free(obj->kvl_str);
 	free(obj->name);
 	free(obj);
 }
@@ -301,18 +303,7 @@ void ldmsd_cfgobj_put(ldmsd_cfgobj_t obj, const char *ref_name)
 
 void ldmsd_cfgobj_del(ldmsd_cfgobj_t obj)
 {
-	pthread_mutex_lock(cfgobj_locks[obj->type]);
-	if (obj->avl_str) {
-		free(obj->avl_str);
-		obj->avl_str = NULL;
-	}
-	if (obj->kvl_str) {
-		free(obj->kvl_str);
-		obj->kvl_str = NULL;
-	}
-	rbt_del(cfgobj_trees[obj->type], &obj->rbn);
-	ldmsd_cfgobj_put(obj, "cfgobj_tree");
-	pthread_mutex_unlock(cfgobj_locks[obj->type]);
+	ldmsd_cfgobj_rm(obj);
 	ldmsd_cfgobj_put(obj, "init");
 }
 
