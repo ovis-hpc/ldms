@@ -311,8 +311,9 @@ void ldmsd_cfgobj_del(ldmsd_cfgobj_t obj)
 		obj->kvl_str = NULL;
 	}
 	rbt_del(cfgobj_trees[obj->type], &obj->rbn);
-	ldmsd_cfgobj_put(obj, "init");
+	ldmsd_cfgobj_put(obj, "cfgobj_tree");
 	pthread_mutex_unlock(cfgobj_locks[obj->type]);
+	ldmsd_cfgobj_put(obj, "init");
 }
 
 /**
