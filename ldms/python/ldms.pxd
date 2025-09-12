@@ -566,6 +566,7 @@ cdef extern from "ldms.h" nogil:
         V_RECORD_TYPE      "LDMS_V_RECORD_TYPE"
         V_RECORD_INST      "LDMS_V_RECORD_INST"
         V_RECORD_ARRAY     "LDMS_V_RECORD_ARRAY"
+        V_TIMESTAMP   "LDMS_V_TIMESTAMP"
         V_FIRST       "LDMS_V_FIRST"
         V_LAST        "LDMS_V_LAST"
         LDMS_V_NONE
@@ -596,6 +597,7 @@ cdef extern from "ldms.h" nogil:
         LDMS_V_RECORD_TYPE
         LDMS_V_RECORD_INST
         LDMS_V_RECORD_ARRAY
+        LDMS_V_TIMESTAMP
         LDMS_V_FIRST
         LDMS_V_LAST
     union ldms_value:
@@ -612,6 +614,7 @@ cdef extern from "ldms.h" nogil:
         double v_d
         ldms_list v_lh
         ldms_list_entry v_le
+        ldms_timestamp v_ts
         char a_char[0]
         uint8_t a_u8[0]
         int8_t a_s8[0]
