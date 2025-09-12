@@ -6,6 +6,85 @@
 #include <pthread.h>
 #include <stdio.h>
 
+/*
+ * This header implements a fast reference counter.
+ *
+ * ref_put() and ref_get() are generally thread safe, however the reference
+ * counter is NOT not race-to-zero safe. Users of this reference counter MUST
+ * implement their own race-to-zero protection strategy.
+ *
+ * Leaving race-to-zero protection to the caller permits this reference counter
+ * to be as low over head as possible in general operation.
+ *
+ * The race-to-zero problem is avoided by ensuring that the a ref_get() is
+ * not possible when the final ref_put() is issued.
+ *
+ * Some general approaches to implement race-to-zero safety are:
+ *
+ * 1) Only call ref_get() when the caller knows a reference is still held
+ *
+ *    For instance, a holder of a reference may call ref_get() on behalf
+ *    of another component and logically "pass" that reference's ownership
+ *    onto the other component. This hand off must be well documented.
+ *
+ *    Alternatively, a function might declare that its callers must already
+ *    hold a reference on a counter on which it plans to call ref_get()
+ *    itself. This contract must be well documented.
+ *
+ * 2) Implement a locking scheme under which the counter is tested to
+ *    see if acquiring a reference is currently permitted. Then and only
+ *    then may we ref_get() while still under the same lock.
+ *
+ *    For instance, in psuedo code the process looks like:
+ *
+ *       mutex_lock(lock)
+ *       if (reference_is_acquirable(...)) {
+ *          ref_get(ref)
+ *       }
+ *       mutex_unlock(lock)
+ *
+ *    In the LDMS code, a common approach is to store the object holding
+ *    the reference counter in a collection (list, tree, etc.) that is
+ *    protected by a mutex. The entity that placed the object in the collection
+ *    is contractually bound to:
+ *       A) hold a reference at the time it inserts the object into
+ *          the collection
+ *       B) retain that the reference until it removes the object
+ *          from the collection.
+ *    By doing so, any non-reference holder is safe to call get_ref() on
+ *    an object that it finds in the collection _while holding the lock_
+ *    on the collection.
+ *
+ *    For example, in psuedo-code:
+ *
+ *      X's code (already holds a reference on "obj"):
+ *
+ *        pthread_mutex_lock(foo_tree_lock);
+ *        tree_insert(foo_tree, obj);
+ *        pthread_mutex_unlock(foo_tree_lock);
+ *
+ *      Y's code:
+ *
+ *        pthread_mutex_lock(foo_tree_lock);
+ *        # our aquirability test is to check for the object's presence
+ *        # in the tree
+ *        obj = tree_lookup(foo_tree, <thing we are searching for>);
+ *        if (obj != NULL) {
+ *            ref_get(obj->ref);
+ *        }
+ *        pthread_mutex_unlock(foo_tree_lock);
+ *
+ *      X's code to drop its reference:
+ *
+ *        pthread_mutex_lock(foo_tree_lock);
+ *        tree_remove(foo_tree, obj);
+ *        ref_put(obj->ref);
+ *        pthread_mutex_lock(foo_tree_lock);
+ *
+ * It is essential to document for each reference counter the contract used
+ * to ensure race-to-zero safety.
+ */
+
 #ifdef _REF_TRACK_
 #include <pthread.h>
 #include <stdlib.h>
