@@ -521,8 +521,7 @@ int __ldmsd_parse_generic(struct ldmsd_parse_ctxt *ctxt)
 	rc = 0;
 out:
 	ctxt->av = av;
-	if (dummy)
-		free(dummy);
+	free(dummy);
 	return rc;
 }
 
@@ -580,10 +579,8 @@ int __ldmsd_parse_plugin_config(struct ldmsd_parse_ctxt *ctxt)
 				    &ctxt->request,
 				    &ctxt->request_sz);
 out:
-	if (tmp)
-		free(tmp);
-	if (dummy)
-		free(dummy);
+	free(tmp);
+	free(dummy);
 	return rc;
 }
 
@@ -632,10 +629,8 @@ int __ldmsd_parse_env(struct ldmsd_parse_ctxt *ctxt)
 				    &ctxt->request,
 				    &ctxt->request_sz);
 out:
-	if (tmp)
-		free(tmp);
-	if (dummy)
-		free(dummy);
+	free(tmp);
+	free(dummy);
 	return rc;
 }
 
@@ -718,10 +713,8 @@ int __ldmsd_parse_listen_req(struct ldmsd_parse_ctxt *ctxt)
 	}
 
 out:
-	if (tmp)
-		free(tmp);
-	if (dummy)
-		free(dummy);
+	free(tmp);
+	free(dummy);
 	return rc;
 }
 
@@ -775,10 +768,8 @@ int __ldmsd_parse_auth_add_req(struct ldmsd_parse_ctxt *ctxt)
 	}
 
 out:
-	if (tmp)
-		free(tmp);
-	if (dummy)
-		free(dummy);
+	free(tmp);
+	free(dummy);
 	return rc;
 }
 
@@ -883,10 +874,8 @@ int __ldmsd_parse_default_auth_req(struct ldmsd_parse_ctxt *ctxt)
 	}
 	rc = 0;
 out:
-	if (tmp)
-		free(tmp);
-	if (dummy)
-		free(dummy);
+	free(tmp);
+	free(dummy);
 	return rc;
 }
 
@@ -1089,8 +1078,7 @@ err:
 	errno = rc;
 	free(dummy);
 	ldmsd_req_array_free(req_array);
-	if (ctxt.request)
-		free(ctxt.request);
+	free(ctxt.request);
 	return NULL;
 }
 
