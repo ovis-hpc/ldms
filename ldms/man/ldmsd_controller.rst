@@ -203,6 +203,31 @@ Stop a sampler plugin
       |
       | The plugin name.
 
+MULTI-TENANT COMMAND SYNTAX
+===========================
+
+Add a tenant definition
+-----------------------
+
+**tenant_def_add** **name**\ =\ *NAME* **metrics**\ =\ *METRICS*
+
+   **name**\ =\ *NAME*
+      |
+      | The name of the tenant definition.
+
+   **metrics**\ =\ *METRICS*
+      |
+      | A comma-separated list of attribute names. For example, metrics=job_id,step_id,task_id
+
+Delete a tenant definition
+--------------------------
+
+**tenant_def_del** **name**\ =\ *NAME*
+
+   **name**\ =\ *NAME*
+      |
+      | The name of the tenant definition
+
 AUTHENTICATION COMMAND SYNTAX
 =============================
 

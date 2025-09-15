@@ -51,6 +51,7 @@
 
 #include <stdbool.h>
 #include "ldmsd.h"
+#include "ldmsd_tenant.h"
 
 struct base_auth {
 	uid_t uid;
@@ -73,6 +74,14 @@ typedef struct base_data_s {
 	struct base_auth auth;
 	int set_array_card;
 	uint64_t component_id;
+
+	/* Multi-tenant Support */
+	struct ldmsd_tenant_def_s *tenant_def; /* A tenant definition handle */
+	int tenant_rec_def_idx;                /* Metric ID of the tenant record definition */
+	int tenants_idx;                       /* Metric ID of the tenant list */
+	int num_tenants; /* The number of tenants. This will be used to increment the set heap size. */
+
+	/* TODO: We should consider removing this job-related info. */
 	int job_id_idx;
 	int job_slot_list_idx;
 	int job_slot_list_tail_idx;
@@ -81,6 +90,7 @@ typedef struct base_data_s {
 	int job_start_idx;
 	int job_end_idx;
 	ovis_log_t mylog;
+
 	/*
 	 * TODO: I feel that we shouldn't have \c job_log_lvl anymore with libovis_log
 	 */

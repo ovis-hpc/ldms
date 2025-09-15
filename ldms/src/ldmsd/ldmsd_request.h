@@ -222,6 +222,10 @@ enum ldmsd_request {
 	LDMSD_MSG_CLIENT_STATS_REQ,  /* Query message client stats of this process */
 	LDMSD_MSG_DISABLE_REQ,       /* Disable message service */
 	LDMSD_MSG_ENABLE_REQ,	     /* Enable message service */
+
+	/* Tenant */
+	LDMSD_TENANT_DEF_ADD_REQ = 0xe00,  /* Add a new tenant definition */
+	LDMSD_TENANT_DEF_DEL_REQ,          /* Delete a tenant definition */
 };
 
 enum ldmsd_request_attr {

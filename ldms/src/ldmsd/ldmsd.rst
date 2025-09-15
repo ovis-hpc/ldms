@@ -389,10 +389,16 @@ Example
      worker_threads num=16
      default_auth plugin=munge
      listen xprt=ugni port=411
-     # meminfo
+     tenant_def_add name=job_step_task_tenant metrics=job_id,step_id,task_id
+     # meminfo with tenants
      load name=meminfo
-     config name=meminfo producer=nid0001 instance=nid0001/meminfo
+     config name=meminfo producer=nid0001 instance=nid0001/meminfo tenant=job_step_task_tenant
      start name=meminfo interval=1000000 offset=0
+     # vmstat without tenants
+     load name=vmstat
+     config name=vmstat producer=nid0001 instance=nid0001/vmstat
+     start name=vmstat interval=1s
+
 
 RUNNING LDMSD ON CRAY XE/XK/XC SYSTEMS USING APRUN
 ==================================================
