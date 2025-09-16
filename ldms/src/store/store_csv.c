@@ -1965,10 +1965,11 @@ csv_store_handle_get(store_csv_t sc, const char *container, const char *schema)
 
 /* protected by strgp->lock */
 static struct csv_row_schema_rbn_s *
-csv_row_schema_get(ldmsd_strgp_t strgp, struct csv_row_store_handle *rs_handle,
+csv_row_schema_get(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp,
+		   struct csv_row_store_handle *rs_handle,
 		   struct csv_row_schema_key_s *key)
 {
-	store_csv_t sc = ldmsd_plug_ctxt_get(strgp->store);
+	store_csv_t sc = ldmsd_plug_ctxt_get(handle);
 	struct csv_row_schema_rbn_s *rrbn;
 
 	rrbn = (void*)rbt_find(&rs_handle->row_schema_rbt, key);
@@ -2321,7 +2322,7 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set,
 		/* protected by strgp->lock */
 		rbn = (void*)rbt_find(&rs_handle->row_schema_rbt, &key);
 		if (!rbn) {
-			rbn = csv_row_schema_get(strgp, rs_handle, &key);
+			rbn = csv_row_schema_get(handle, strgp, rs_handle, &key);
 			if (!rbn) {
 				/* csv_row_schema_get() already log the error */
 				continue;
