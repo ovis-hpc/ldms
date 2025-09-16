@@ -2689,6 +2689,22 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_stream_disable(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_disable', text)
 
+    def do_stream_enable(self, arg):
+        """
+        Enable stream communication in the daemon
+
+        No Parameters
+        """
+        rc, msg = self.comm.stream_enable()
+        if rc != 0:
+            print(f'Error {rc}: {msg}')
+        else:
+            print('Streams communication is ENABLED in the daemon')
+        return
+
+    def complete_stream_enable(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('stream_enable', text)
+
     def do_msg_stats(self, arg):
         """
         Print stream stats that match the given `regex` or `stream`.

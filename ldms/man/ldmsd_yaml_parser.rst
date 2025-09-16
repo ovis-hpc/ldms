@@ -85,12 +85,11 @@ expected.
 daemons
 =======
 
-List of dictionaries describing LDMS daemons that are part of the
-cluster and their endpoints that share transport configurations. The
-primary keys are "names", "hosts", "endpoints", and "environment". Any
-keys provided that do not match this string values are assumed to be
-either CLI commands, or overarching default configuration commands for a
-daemon.
+List of dictionaries describing LDMS daemons that are part of the cluster and
+their endpoints that share transport configurations. The primary keys are
+"names", "hosts", "endpoints", and "environment". Any keys provided that do not
+match this string values (except for "stream_enable") are assumed to be either
+CLI commands, or overarching default configuration commands for a daemon.
 
 names
 -----
@@ -160,6 +159,17 @@ List of dictionaries of endpoint configurations for these daemons.
          |
          | Dictionary of plugin specific configuration options for this
            authentication domain.
+
+stream_enable
+-----------
+
+Boolean flag to enable stream communication in the daemon. Streams are disabled
+by default. Set to true to enable stream functionality.
+
+   **stream_enable: true**
+      |
+      | Enable stream functionality for this daemon. If omitted or set to
+        false, streams will be disabled.
 
 aggregators
 ===========

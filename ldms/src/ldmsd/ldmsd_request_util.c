@@ -146,6 +146,7 @@ struct req_str_id req_str_id_table[] = {
 	{  "stop",               LDMSD_PLUGN_STOP_REQ  },
 	{  "stream_client_dump", LDMSD_STREAM_CLIENT_DUMP_REQ  },
 	{  "stream_disable",     LDMSD_STREAM_DISABLE_REQ  },
+	{  "stream_enable",      LDMSD_STREAM_ENABLE_REQ  },
 	{  "stream_status",      LDMSD_STREAM_STATUS_REQ  },
 	{  "strgp_add",          LDMSD_STRGP_ADD_REQ  },
 	{  "strgp_del",          LDMSD_STRGP_DEL_REQ  },
