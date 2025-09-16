@@ -282,11 +282,8 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 		struct kw key;
 		struct kw *kw;
 		char *token;
-		char *value;
 
 		token = av_name(avl, i);
-		value = av_value_at_idx(avl, i);
-
 		key.token = token;
 		kw = bsearch(&key, add_token_tbl, ARRAY_SIZE(add_token_tbl), sizeof(*kw), kw_comparator);
 
@@ -437,7 +434,9 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		current_group->metric_index[pe->group_index] = pe->metric_index;
 
 
-		ovis_log(mylog, OVIS_LINFO, SAMP ": event [name: %s, code: 0x%x] has been added.\n", pe->name, pe->attr.config);
+		ovis_log(mylog, OVIS_LINFO,
+			 SAMP ": event [name: %s, code: 0x%llx] has been added.\n",
+			 pe->name, pe->attr.config);
 	}
 
 	return 0;
