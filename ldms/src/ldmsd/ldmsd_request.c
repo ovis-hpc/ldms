@@ -109,7 +109,7 @@ int ldmsd_req_debug = 0; /* turn bits on / off using gdb or -L
 FILE *ldmsd_req_debug_file = NULL; /* change with -L or
 				    * ldmsd.c:process_log_config */
 
-static int stream_enabled = 1;
+static int stream_enabled = 0;
 static int cleanup_requested = 0;
 
 static char * __thread_stats_as_json(size_t *json_sz);
@@ -294,6 +294,7 @@ static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc);
 static int stream_new_handler(ldmsd_req_ctxt_t reqc);
 static int stream_status_handler(ldmsd_req_ctxt_t reqc);
 static int stream_disable_handler(ldmsd_req_ctxt_t reqc);
+static int stream_enable_handler(ldmsd_req_ctxt_t reqc);
 
 static int msg_stats_handler(ldmsd_req_ctxt_t reqc);
 static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc);
@@ -664,6 +665,9 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_STREAM_DISABLE_REQ] = {
 		LDMSD_STREAM_DISABLE_REQ, stream_disable_handler, XUG | MOD
 	},
+	[LDMSD_STREAM_ENABLE_REQ] = {
+		LDMSD_STREAM_ENABLE_REQ, stream_enable_handler, XUG | MOD
+	},
 
 	/* MSG */
 	[LDMSD_MSG_STATS_REQ] = {
@@ -797,7 +801,9 @@ int is_req_id_priority(enum ldmsd_request req_id)
 	case LDMSD_PID_FILE_REQ:
 	case LDMSD_BANNER_MODE_REQ:
 	case LDMSD_STREAM_DISABLE_REQ:
+	case LDMSD_STREAM_ENABLE_REQ:
 	case LDMSD_MSG_DISABLE_REQ:
+	case LDMSD_MSG_ENABLE_REQ:
 		return 1;
 	default:
 		return 0;
@@ -8542,6 +8548,15 @@ static int stream_disable_handler(ldmsd_req_ctxt_t reqc)
 	stream_enabled = 0;
 	reqc->errcode = 0;
 	(void)Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
+static int stream_enable_handler(ldmsd_req_ctxt_t reqc)
+{
+	stream_enabled = 1;
+	reqc->errcode = 0;
+	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len, "OK");
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }

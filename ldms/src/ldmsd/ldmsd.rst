@@ -336,6 +336,12 @@ the kernel metric file.
    name=NAME
       LDMS process name
 
+**stream_enable** enables stream communication in the daemon.
+
+   Stream communication is disabled by default and must be explicitly enabled when needed.
+
+   No Parameters
+
 'option' configuration command to set the command-line options
 --------------------------------------------------------------
 

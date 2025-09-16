@@ -450,9 +450,14 @@ Disable stream communication
 
 Disable the subscription and publication of data on a stream in this daemon.
 Once stream communication is disabled, all stream requests will result in an
-error of ENOSYS. Stream communication cannot be re-enabled without restarting
-the daemon.
+error of ENOSYS. Stream communication can be re-enabled with "stream_enable".
 
+Enable stream communication
+---------------------------
+
+**stream_enable**
+
+Enable the subscription and publication of data on a stream in this daemon.
 
 Disable LDMS Message Service
 ----------------------------
