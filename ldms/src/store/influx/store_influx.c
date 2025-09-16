@@ -203,7 +203,7 @@ static const char *usage(ldmsd_plug_handle_t handle)
 }
 
 static ldmsd_store_handle_t
-open_store(ldmsd_plug_handle_t s, const char *container, const char *schema,
+open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list)
 {
 	struct influx_store *is = NULL;
@@ -212,7 +212,7 @@ open_store(ldmsd_plug_handle_t s, const char *container, const char *schema,
                 ovis_log(ldmsd_plug_log_get(handle), OVIS_LERROR,
                      "Plugin %s requires \"container=\" to be set in the "
                      "strgp_add command\n",
-                     ldmsd_plug_name_get(s));
+                     ldmsd_plug_name_get(handle));
                 goto out;
         }
 
