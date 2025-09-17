@@ -2041,6 +2041,9 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	/* Disable message traffic by default. */
+	ldms_msg_disable();
+
 	/* Process cmd-line options in config files */
 	opterr = 0;
 	optind = 0;
@@ -2073,6 +2076,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	/* Process all priority configuration commands. */
 	int lln;
 	while ((conf_str = TAILQ_FIRST(&yamlfile_list))) {
 		/* yamlfilename_list and yamlfile_list are parallel by construction */
@@ -2128,8 +2132,6 @@ int main(int argc, char *argv[])
 		av_free(auth_opt);
 		exit(1);
 	}
-	/* Disable message traffic by default. */
-	ldms_msg_disable();
 
 	if (pidfile) {
 		if( !access( pidfile, F_OK ) ) {
