@@ -466,7 +466,14 @@ Disable LDMS Message Service
 
 Disable the LDMS Message Service subscription and publication in this daemon.
 Once this is disabled, all LDMS Messages will be dropped. The LDMS Message
-Service cannot be re-enabled without restarting the daemon.
+Service can be re-enabled with 'msg_enable'.
+
+Disable LDMS Message Service
+----------------------------
+
+**msg_enable**
+
+Enable the LDMS Message Service subscription and publication in this daemon.
 
 Subscribe to a stream or LDMS message service on matching producers
 -------------------------------------------------------------------

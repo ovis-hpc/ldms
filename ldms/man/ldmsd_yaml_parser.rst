@@ -88,8 +88,9 @@ daemons
 List of dictionaries describing LDMS daemons that are part of the cluster and
 their endpoints that share transport configurations. The primary keys are
 "names", "hosts", "endpoints", and "environment". Any keys provided that do not
-match this string values (except for "stream_enable") are assumed to be either
-CLI commands, or overarching default configuration commands for a daemon.
+match this string values (except for "stream_enable" and "msg_enable") are
+assumed to be either CLI commands, or overarching default configuration
+commands for a daemon.
 
 names
 -----
@@ -170,6 +171,17 @@ by default. Set to true to enable stream functionality.
       |
       | Enable stream functionality for this daemon. If omitted or set to
         false, streams will be disabled.
+
+msg_enable
+-----------
+
+Boolean flag to enable LDMS message communication in the daemon. LDMS message
+is disabled by default. Set to true to enable LDMS message functionality.
+
+   **msg_enable: true**
+      |
+      | Enable LDMS message functionality for this daemon. If omitted or set to
+        false, messages will be disabled.
 
 aggregators
 ===========
