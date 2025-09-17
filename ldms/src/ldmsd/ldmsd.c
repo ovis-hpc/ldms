@@ -2074,21 +2074,23 @@ int main(int argc, char *argv[])
 	}
 
 	int lln;
-	while ((conf_str = TAILQ_FIRST(&yamlfile_list))) {
-		/* yamlfilename_list and yamlfile_list are parallel by construction */
+	conf_str = TAILQ_FIRST(&yamlfile_list);
+	ypath = TAILQ_FIRST(&yamlfilename_list);
+	/* yamlfilename_list and yamlfile_list are parallel by construction */
+	while (conf_str) {
 		lln = -1;
-		struct ldmsd_str_ent *file_str =
-			TAILQ_FIRST(&yamlfilename_list);
-		char *yf = file_str->str;
 		ret = process_config_str(conf_str->str, &lln, 1);
 		if (ret) {
 			char errstr[128];
 			snprintf(errstr, sizeof(errstr),
 				"Error %d processing configuration file '%s'",
-				ret, yf);
+				ret, ypath->str);
 			ldmsd_str_list_destroy(&yamlfile_list);
+			ldmsd_str_list_destroy(&yamlfilename_list);
 			cleanup(ret, errstr);
 		}
+		conf_str = TAILQ_NEXT(conf_str, entry);
+		ypath = TAILQ_NEXT(ypath, entry);
 	}
 	while ((cpath = TAILQ_FIRST(&cfgfile_list))) {
 		lln = -1;
