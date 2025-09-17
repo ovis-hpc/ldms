@@ -348,9 +348,12 @@ class YamlCfg(object):
             env = check_opt('environment', spec)
             cli_opt = {}
             stream_enabled = False
+            msg_enabled = False
             for key in spec:
                 if key == 'stream_enable' :
                     stream_enabled = spec['stream_enable']
+                elif key == 'msg_enable':
+                    msg_enabled = spec['msg_enable']
                 elif key not in ['hosts','names','endpoints','environment']:
                     cli_opt[key] = spec[key]
             for dname, host in zip(dnames, hosts):
@@ -361,6 +364,7 @@ class YamlCfg(object):
                 if len(cli_opt):
                     ep_dict[dname]['cli_opt'] = cli_opt
                 ep_dict[dname]['stream_enable'] = stream_enabled
+                ep_dict[dname]['msg_enable'] = msg_enabled
                 dcount = 0
                 for ep_, ep_port, ep in zip(ep_names, ep_ports, spec['endpoints']):
                     port = ep_port.pop(0)
@@ -971,6 +975,11 @@ class YamlCfg(object):
             dstr += f"stream_enable\n"
         return dstr
 
+    def write_msg_enable(self, dstr, dname):
+        if self.daemons[dname]['msg_enable']:
+            dstr += f"msg_enable\n"
+        return dstr
+
     def write_sampler(self, dstr, sname):
         if not self.samplers:
             return dstr
@@ -1144,6 +1153,7 @@ class YamlCfg(object):
         dstr = self.write_env(dstr, dname)
         dstr = self.write_options(dstr, dname)
         dstr = self.write_stream_enable(dstr, dname)
+        dstr = self.write_msg_enable(dstr, dname)
         dstr = self.write_sampler(dstr, dname)
         dstr = self.write_aggregator(dstr, dname)
         return f'{dstr}'

@@ -342,6 +342,12 @@ the kernel metric file.
 
    No Parameters
 
+**msg_enable** enables LDMS message functionality in the daemon.
+
+   LDMS message is disabled by default and must be explicitly enabled when needed.
+
+   No Parameters
+
 'option' configuration command to set the command-line options
 --------------------------------------------------------------
 
