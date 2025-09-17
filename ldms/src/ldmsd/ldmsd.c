@@ -714,7 +714,7 @@ void ldmsd_set_deregister(const char *inst_name, const char *cfg_name)
 	const char *set_name;
 
 	if (!samp) {
-		ovis_log(NULL, OVIS_LERROR,
+		ovis_log(NULL, OVIS_LINFO,
 			"Dregistering set name '%s' failed because the "
 			"sampler config '%s' does not exist.\n",
 			inst_name, cfg_name);
