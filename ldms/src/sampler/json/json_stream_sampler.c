@@ -60,7 +60,7 @@
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
 #include "ldmsd_stream.h"
-#include "ovis_log.h"
+#include "ovis_log/ovis_log.h"
 
 #define SAMP "json_stream"
 
@@ -126,7 +126,6 @@ typedef struct js_schema_s {
 
 typedef struct js_stream_sampler_s *js_stream_sampler_t;
 struct js_stream_sampler_s {
-	int initialized;	/* 0 if 1st config */
 	char *stream_name;	/* stream msgs received from */
 	size_t heap_sz;		/* heap size for created sets */
 	char *prod_name;	/* producer name */
@@ -135,6 +134,9 @@ struct js_stream_sampler_s {
 	char *uid;		/* User ID*/
 	char *gid;		/* Group ID*/
 	char *perm;		/* Permission */
+	mode_t  perm_int;
+	uid_t uid_int;
+	gid_t gid_int;
 	ldms_msg_client_t stream_client;
 	pthread_mutex_t sch_tree_lock;
 	struct rbt sch_tree;
@@ -817,12 +819,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	char *value;
 	int rc;
 
-	if (__sync_bool_compare_and_swap(&js->initialized, 0, 1)) {
-		pthread_mutex_init(&js->lock, NULL);
-		pthread_mutex_init(&js->sch_tree_lock, NULL);
-		rbt_init(&js->sch_tree, str_cmp);
-
-	}
 	pthread_mutex_lock(&js->lock);
 	if (js->stream_client) {
 		LERROR("The plugin configuration '%s' has been configured "
@@ -896,6 +892,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		js->uid = strdup(value);
 	else
 		js->uid = strdup("0");
+	js->uid_int = strtol(js->uid, NULL, 0);
 	/* gid */
 	value = av_value(avl, "gid");
 	js->gid = NULL;
@@ -903,6 +900,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		js->gid = strdup(value);
 	else
 		js->gid = strdup("0");
+	js->gid_int = strtol(js->gid, NULL, 0);
 
 	/* permission */
 	value = av_value(avl, "perm");
@@ -911,6 +909,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		js->perm = strdup(value);
 	else
 		js->perm = strdup("0660");
+	js->perm_int = strtoul(js->perm, NULL, 8);
 
 	js->stream_client = ldms_msg_subscribe(js->stream_name, 0,
 				json_recv_cb, handle, "js_stream_sampler");
@@ -1057,7 +1056,7 @@ static void update_set_data(js_stream_sampler_t js, ldms_set_t l_set,
 	}
 }
 
-static void js_set_free(ldmsd_cfgobj_store_t self, js_set_t j_set)
+static void js_set_free(ldmsd_cfgobj_sampler_t self, js_set_t j_set)
 {
 	if (j_set->set) {
 		ldmsd_set_deregister(j_set->name, self->cfg.name);
@@ -1067,7 +1066,7 @@ static void js_set_free(ldmsd_cfgobj_store_t self, js_set_t j_set)
 	free(j_set);
 }
 
-static void js_schema_free(ldmsd_cfgobj_store_t scfg, js_schema_t j_schema)
+static void js_schema_free(ldmsd_cfgobj_sampler_t scfg, js_schema_t j_schema)
 {
 	struct rbn *rbn;
 	js_set_t j_set;
@@ -1086,7 +1085,7 @@ static void js_schema_free(ldmsd_cfgobj_store_t scfg, js_schema_t j_schema)
 	free(j_schema);
 }
 
-static void purge_schema_tree(ldmsd_cfgobj_store_t scfg, js_stream_sampler_t js)
+static void purge_schema_tree(ldmsd_cfgobj_sampler_t scfg, js_stream_sampler_t js)
 {
 	struct rbn *rbn;
 	js_schema_t j_schema;
@@ -1097,14 +1096,14 @@ static void purge_schema_tree(ldmsd_cfgobj_store_t scfg, js_stream_sampler_t js)
 	}
 }
 
-static int __stream_close(ldms_msg_event_t ev, ldmsd_cfgobj_store_t scfg)
+static int __stream_close(ldms_msg_event_t ev, ldmsd_cfgobj_sampler_t scfg)
 {
 	js_stream_sampler_t js = scfg->context;
 	purge_schema_tree(scfg, js);
 	return 0;
 }
 
-static int __stream_recv(ldms_msg_event_t ev, ldmsd_cfgobj_store_t scfg)
+static int __stream_recv(ldms_msg_event_t ev, ldmsd_cfgobj_sampler_t scfg)
 {
 	js_stream_sampler_t js = scfg->context;
 	const char *msg;
@@ -1164,14 +1163,10 @@ static int __stream_recv(ldms_msg_event_t ev, ldmsd_cfgobj_store_t scfg)
 		j_set->set = l_set = ldms_set_create(
 						inst_name,
 						j_schema->s_schema,
-						ev->recv.cred.uid,
-						ev->recv.cred.gid,
-						0444, // ev->recv.perm,
+						js->uid_int,
+						js->gid_int,
+						js->perm_int,
 						js->heap_sz);
-					/*
-					js->uid, js->gid,
-					js->perm, js->heap_sz);
-					*/
 		if (!l_set) {
 			LERROR("Error %d creating the set '%s' with schema '%s'\n",
 			       errno, inst_name, j_schema->s_name);
@@ -1208,7 +1203,7 @@ err_0:
 
 static int json_recv_cb(ldms_msg_event_t ev, void *arg)
 {
-	ldmsd_cfgobj_store_t scfg = arg;
+	ldmsd_cfgobj_sampler_t scfg = arg;
 
 	switch (ev->type)  {
 	case LDMS_MSG_EVENT_CLIENT_CLOSE:
@@ -1223,6 +1218,13 @@ static int json_recv_cb(ldms_msg_event_t ev, void *arg)
 
 static int constructor(ldmsd_plug_handle_t handle)
 {
+	js_stream_sampler_t js = calloc(1, sizeof(*js));
+	if (!js)
+		return ENOMEM;
+	pthread_mutex_init(&js->lock, NULL);
+	pthread_mutex_init(&js->sch_tree_lock, NULL);
+	rbt_init(&js->sch_tree, str_cmp);
+	ldmsd_plug_ctxt_set(handle, js);
 	__log = ldmsd_plug_log_get(handle);
 
         return 0;
@@ -1238,6 +1240,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
+		.flags = LDMSD_PLUGIN_MULTI_INSTANCE,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,
