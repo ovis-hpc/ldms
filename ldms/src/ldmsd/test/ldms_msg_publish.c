@@ -12,6 +12,9 @@ static struct option long_opts[] = {
 	{"xprt",     required_argument, 0,  'x' },
 	{"auth",     required_argument, 0,  'a' },
 	{"auth_opt", required_argument, 0,  'A' },
+	{"uid",      required_argument, 0,  'U' },
+	{"gid",      required_argument, 0,  'G' },
+	{"perm",     required_argument, 0,  'P' },
 	{0,          0,                 0,  0 }
 };
 
@@ -26,7 +29,7 @@ void usage(int argc, char **argv)
 	exit(1);
 }
 
-static const char *short_opts = "h:p:f:m:t:x:a:A:";
+static const char *short_opts = "h:p:f:m:t:x:a:A:U:G:P:";
 
 #define AUTH_OPT_MAX 128
 
@@ -44,6 +47,10 @@ int main(int argc, char **argv)
 	const int auth_opt_max = AUTH_OPT_MAX;
 	FILE *file;
 	ldms_msg_type_t typ = LDMS_MSG_STRING;
+	uid_t uid = geteuid();
+	gid_t gid = getegid();
+	mode_t perm = 0777;
+	struct ldms_cred cred;
 
 	ldms_init(16*1024*1024);
 	auth_opt = av_new(auth_opt_max);
@@ -123,6 +130,15 @@ int main(int argc, char **argv)
 				usage(argc, argv);
 			}
 			break;
+		case 'U':
+			uid = strtoul(optarg, NULL, 0);
+			break;
+		case 'G':
+			gid = strtoul(optarg, NULL, 0);
+			break;
+		case 'P':
+			perm = strtoul(optarg, NULL, 8);
+			break;
 		}
 	}
 	if (!host || !port || !msg)
@@ -154,7 +170,10 @@ int main(int argc, char **argv)
 		return rc;
 	}
 
-	rc = ldms_msg_publish_file(ldms, msg, typ, NULL, 0777, file);
+	cred.uid = uid;
+	cred.gid = gid;
+
+	rc = ldms_msg_publish_file(ldms, msg, typ, &cred, perm, file);
 	if (rc)
 		printf("Error %d creating ldms_msg and notifying client\n", rc);
 	ldms_xprt_close(ldms);
