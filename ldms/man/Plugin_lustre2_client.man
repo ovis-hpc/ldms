@@ -12,6 +12,8 @@ ldmsctl> config name=lustre2_client [ <attr> = <value> ]
 
 .SH DESCRIPTION
 The lustre2_client plugin provides Lustre metric information.
+The debugfs filesystem must be mounted for lustre
+data access, which is also usually restricted to the root user.
 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 This plugin uses the sampler_base base class. This man page covers only the
