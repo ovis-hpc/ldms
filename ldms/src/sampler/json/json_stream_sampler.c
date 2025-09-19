@@ -64,14 +64,6 @@
 
 #define SAMP "json_stream"
 
-static ovis_log_t __log = NULL;
-#define LOG(_level_, _fmt_, ...) ovis_log(__log, _level_, "[%d] " _fmt_, __LINE__, ##__VA_ARGS__)
-#define LCRITICAL(_fmt_, ...) ovis_log(__log, OVIS_LCRIT, "[%d]" _fmt_, __LINE__, ##__VA_ARGS__)
-#define LERROR(_fmt_, ...) ovis_log(__log, OVIS_LERROR, "[%d] " _fmt_, __LINE__, ##__VA_ARGS__)
-#define LWARN(_fmt_, ...) ovis_log(__log, OVIS_LWARN, "[%d] " _fmt_, __LINE__, ##__VA_ARGS__)
-#define LINFO(_fmt_, ...) ovis_log(__log, OVIS_LINFO, "[%d] " _fmt_, __LINE__, ##__VA_ARGS__)
-#define LDEBUG(_fmt_, ...) ovis_log(__log, OVIS_LDEBUG, "[%d] " _fmt_, __LINE__, ##__VA_ARGS__)
-
 static int str_cmp(void *tree_key, const void *srch_key)
 {
 	return strcmp(tree_key, srch_key);
@@ -126,6 +118,7 @@ typedef struct js_schema_s {
 
 typedef struct js_stream_sampler_s *js_stream_sampler_t;
 struct js_stream_sampler_s {
+	ovis_log_t log;         /* owned by ldmsd, do not free */
 	char *stream_name;	/* stream msgs received from */
 	size_t heap_sz;		/* heap size for created sets */
 	char *config_name;      /* plugin instance config name */
@@ -167,7 +160,7 @@ static const char *usage(ldmsd_plug_handle_t handle)
 	"     perm          The set's access permissions (defaults to 0777)\n";
 }
 
-static int make_record_array(ldms_record_t record, json_entity_t list_attr)
+static int make_record_array(ldms_record_t record, json_entity_t list_attr, ovis_log_t log)
 {
 	json_entity_t list;
 	json_entity_t item;
@@ -178,7 +171,7 @@ static int make_record_array(ldms_record_t record, json_entity_t list_attr)
 	list = json_attr_value(list_attr);
 	item = json_item_first(list);
 	if (!item) {
-		LERROR("Can't encode an empty list in an LDMS schema.\n");
+		ovis_log(log, OVIS_LERROR, "Can't encode an empty list in an LDMS schema.\n");
 		return EINVAL;	/* Can't parse empty list */
 	}
 	list_len = json_list_len(list);
@@ -201,7 +194,7 @@ static int make_record_array(ldms_record_t record, json_entity_t list_attr)
 	case JSON_STRING_VALUE:
 		jbuf = json_entity_dump(NULL, list);
 		if (!jbuf) {
-			LCRITICAL("Memory allocation failure.\n");
+			ovis_log(log, OVIS_LCRIT, "Memory allocation failure.\n");
 			rc = ENOMEM;
 			break;
 		}
@@ -211,15 +204,15 @@ static int make_record_array(ldms_record_t record, json_entity_t list_attr)
 		jbuf_free(jbuf);
 		break;
 	default:
-		LERROR("Invalid list entry type (%d) for encoding as array in record\n",
-		       json_entity_type(item));
+		ovis_log(log, OVIS_LERROR, "Invalid list entry type (%d) for encoding as array in record\n",
+			 json_entity_type(item));
 		rc = EINVAL;
 	}
 	return rc;
 }
 
 static int make_record(ldms_schema_t schema, char *name, json_entity_t dict,
-		       ldms_record_t *rec)
+		       ldms_record_t *rec, ovis_log_t log)
 {
 	int rc = -ENOMEM;
 	ldms_record_t record;
@@ -254,20 +247,20 @@ static int make_record(ldms_schema_t schema, char *name, json_entity_t dict,
 						    LDMS_V_CHAR_ARRAY, 255);
 			break;
 		case JSON_LIST_VALUE:
-			rc = make_record_array(record, json_attr);
+			rc = make_record_array(record, json_attr, log);
 			break;
 		case JSON_DICT_VALUE:
-			LINFO("Encoding unsupported nested dictionary '%s' as a string value.\n",
-			       json_attr_name(json_attr)->str);
+			ovis_log(log, OVIS_LINFO, "Encoding unsupported nested dictionary '%s' as a string value.\n",
+				 json_attr_name(json_attr)->str);
 			rc = ldms_record_metric_add(record,
 						    json_attr_name(json_attr)->str, NULL,
 						    LDMS_V_CHAR_ARRAY, 255);
 			break;
 		default:
-			LERROR("Ignoring unsupported entity '%s[%s]') "
-			       "in JSON dictionary.\n",
-			       json_attr_name(json_attr)->str,
-			       json_type_name(json_entity_type(json_value)));
+			ovis_log(log, OVIS_LERROR, "Ignoring unsupported entity '%s[%s]') "
+				 "in JSON dictionary.\n",
+				 json_attr_name(json_attr)->str,
+				 json_type_name(json_entity_type(json_value)));
 		};
 	}
 	*rec = record;
@@ -276,7 +269,7 @@ static int make_record(ldms_schema_t schema, char *name, json_entity_t dict,
 	return rc;
 }
 
-static int make_list(ldms_schema_t schema, json_entity_t parent, json_entity_t list_attr)
+static int make_list(ldms_schema_t schema, json_entity_t parent, json_entity_t list_attr, ovis_log_t log)
 {
 	json_entity_t list = json_attr_value(list_attr);
 	json_entity_t item, len_attr;
@@ -310,14 +303,14 @@ static int make_list(ldms_schema_t schema, json_entity_t parent, json_entity_t l
 		 * Add a record definition for the dictionary list item
 		 */
 		rc = asprintf(&record_name, "%s_record", json_attr_name(list_attr)->str);
-		rc = make_record(schema, record_name, item, &record);
+		rc = make_record(schema, record_name, item, &record, log);
 		free(record_name);
 		if (rc < 0)
 			return rc;
 		item_size = ldms_record_heap_size_get(record);
 		break;
 	default:
-		LERROR("Invalid item type encountered in list\n");
+		ovis_log(log, OVIS_LERROR, "Invalid item type encountered in list\n");
 		return -EINVAL;
 	}
 	/* Check if there is a max specified for the list to override
@@ -330,57 +323,57 @@ static int make_list(ldms_schema_t schema, json_entity_t parent, json_entity_t l
 	if (len_attr) {
 		if (json_entity_type(json_attr_value(len_attr))
 		    != JSON_INT_VALUE) {
-			LERROR("The list length override for '%s' must be "
-			       "an integer.\n", json_attr_name(list_attr)->str);
+			ovis_log(log, OVIS_LERROR, "The list length override for '%s' must be "
+				 "an integer.\n", json_attr_name(list_attr)->str);
 		} else {
 			list_len = json_value_int(json_attr_value(len_attr));
 		}
 	}
-	LINFO("Adding list '%s' with %zd elements of size %zd\n",
-	      json_attr_name(list_attr)->str, list_len, item_size);
+	ovis_log(log, OVIS_LINFO, "Adding list '%s' with %zd elements of size %zd\n",
+		 json_attr_name(list_attr)->str, list_len, item_size);
 	return ldms_schema_metric_list_add(schema,
 					   json_attr_name(list_attr)->str, NULL,
 					   2 * item_size * list_len);
 }
 
-typedef int (*json_setter_t)(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *);
+typedef int (*json_setter_t)(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *, ovis_log_t log);
 static json_setter_t setter_table[];
 
-typedef int (*dict_list_setter_t)(ldms_mval_t rec_inst, int mid, int idx, json_entity_t value, void *);
+typedef int (*dict_list_setter_t)(ldms_mval_t rec_inst, int mid, int idx, json_entity_t value, void *, ovis_log_t log);
 
-int JSON_INT_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt)
+int JSON_INT_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt, ovis_log_t log)
 {
 	ldms_mval_set_s64(mval, json_value_int(entity));
 	return 0;
 }
 
-int JSON_BOOL_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt)
+int JSON_BOOL_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt, ovis_log_t log)
 {
 	ldms_mval_set_s8(mval, (int8_t)json_value_bool(entity));
 	return 0;
 }
 
-int JSON_FLOAT_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt)
+int JSON_FLOAT_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt, ovis_log_t log)
 {
 	ldms_mval_set_double(mval, json_value_float(entity));
 	return 0;
 }
 
-int JSON_STRING_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt)
+int JSON_STRING_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt, ovis_log_t log)
 {
 	json_str_t v = json_value_str(entity);
 	ldms_mval_array_set_str(mval, v->str, v->str_len);
 	return 0;
 }
 
-int JSON_ATTR_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt)
+int JSON_ATTR_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt, ovis_log_t log)
 {
 	assert(0 == "Invalid JSON type setter");
 	return EINVAL;
 }
 
 int JSON_LIST_VALUE_setter(ldms_set_t set, ldms_mval_t list_mval,
-			   json_entity_t list, void *ctxt)
+			   json_entity_t list, void *ctxt, ovis_log_t log)
 {
 	json_entity_t item;
 	enum json_value_e type;
@@ -392,7 +385,7 @@ int JSON_LIST_VALUE_setter(ldms_set_t set, ldms_mval_t list_mval,
 	rc = ldms_list_purge(set, list_mval);
 	for (item = json_item_first(list); item; item = json_item_next(item)) {
 		type = json_entity_type(item);
-		LDEBUG("Setting list item %d of type %d\n", i, json_entity_type(item));
+		ovis_log(log, OVIS_LDEBUG, "Setting list item %d of type %d\n", i, json_entity_type(item));
 
 		switch (type) {
 		case JSON_INT_VALUE:
@@ -417,35 +410,35 @@ int JSON_LIST_VALUE_setter(ldms_set_t set, ldms_mval_t list_mval,
 					free(rec_type_name);
 					rec_type_name = NULL;
 				} else {
-					LERROR("out of memory");
+					ovis_log(log, OVIS_LERROR, "out of memory");
 					rc = ENOMEM;
 					goto err;
 				}
 			}
 			if (rec_idx < 0) {
-				LERROR("item_not_found");
+				ovis_log(log, OVIS_LERROR, "item_not_found");
 				rc = EINVAL;
 				goto err;
 			}
 			item_mval = ldms_record_alloc(set, rec_idx);
 			if (!item_mval) {
 				rc = ENOMEM;
-				LERROR("out of memory");
+				ovis_log(log, OVIS_LERROR, "out of memory");
 				goto err;
 			}
 			rc = ldms_list_append_record(set, list_mval, item_mval);
 			break;
 		default:
-			LERROR("Invalid list entry %d type (%d)\n", i, type);
+			ovis_log(log, OVIS_LERROR, "Invalid list entry %d type (%d)\n", i, type);
 			rc = EINVAL;
 			goto err;
 		}
 		if (item_mval) {
-			rc = setter_table[type](set, item_mval, item, ctxt);
+			rc = setter_table[type](set, item_mval, item, ctxt, log);
 			if (rc)
-				LERROR("Error %d setting list item %d\n", rc, i);
+				ovis_log(log, OVIS_LERROR, "Error %d setting list item %d\n", rc, i);
 		} else {
-			LERROR("NULL list item %d mval\n", i);
+			ovis_log(log, OVIS_LERROR, "NULL list item %d mval\n", i);
 		}
 		i++;
 	}
@@ -454,8 +447,8 @@ int JSON_LIST_VALUE_setter(ldms_set_t set, ldms_mval_t list_mval,
 	return rc;
 }
 
-static int dict_list_set(ldms_mval_t rec_inst, int mid, json_entity_t list, void *ctxt);
-int JSON_DICT_VALUE_setter(ldms_set_t set, ldms_mval_t rec_inst, json_entity_t dict, void *ctxt)
+static int dict_list_set(ldms_mval_t rec_inst, int mid, json_entity_t list, void *ctxt, ovis_log_t log);
+int JSON_DICT_VALUE_setter(ldms_set_t set, ldms_mval_t rec_inst, json_entity_t dict, void *ctxt, ovis_log_t log)
 {
 	json_entity_t attr;
 	ldms_mval_t mval;
@@ -471,7 +464,7 @@ int JSON_DICT_VALUE_setter(ldms_set_t set, ldms_mval_t rec_inst, json_entity_t d
 		idx = ldms_record_metric_find(rec_inst, name);
 		/* Ignore skipped values from json dictionary */
 		if (idx < 0) {
-			LINFO("Ignoring '%s' attribute in JSON dictionary.\n", name);
+			ovis_log(log, OVIS_LINFO, "Ignoring '%s' attribute in JSON dictionary.\n", name);
 			continue;
 		}
 		mval = ldms_record_metric_get(rec_inst, idx);
@@ -484,10 +477,10 @@ int JSON_DICT_VALUE_setter(ldms_set_t set, ldms_mval_t rec_inst, json_entity_t d
 			(void) ldms_record_metric_type_get(rec_inst, idx, &array_len);
 			jbuf = json_entity_dump(NULL, value);
 			if (array_len <= jbuf->cursor) { /* jbuf->cursor doesn't include '\0'. */
-				LWARN("Dictionary attribute '%s' (%d) is larger "
-					"than the allocated space (%ld). "
-					"The string is chunked.\n",
-					name, jbuf->cursor, array_len);
+				ovis_log(log, OVIS_LWARN, "Dictionary attribute '%s' (%d) is larger "
+					 "than the allocated space (%ld). "
+					 "The string is chunked.\n",
+					 name, jbuf->cursor, array_len);
 				/* Chunk the string */
 				jbuf->buf[array_len] = '\0';
 			} else {
@@ -504,19 +497,19 @@ int JSON_DICT_VALUE_setter(ldms_set_t set, ldms_mval_t rec_inst, json_entity_t d
 			 * is mapped to an array. A list of strings is encoded
 			 * as char[].
 			 */
-			rc = dict_list_set(rec_inst, idx, value, NULL);
+			rc = dict_list_set(rec_inst, idx, value, NULL, log);
 			break;
 		default:
-			rc = setter_table[type](set, mval, value, NULL);
+			rc = setter_table[type](set, mval, value, NULL, log);
 			break;
 		}
 		if (rc)
-			LERROR("Error %d setting record attribute '%s'\n", rc, name);
+			ovis_log(log, OVIS_LERROR, "Error %d setting record attribute '%s'\n", rc, name);
 	}
 	return 0;
 }
 
-int JSON_NULL_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt)
+int JSON_NULL_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt, ovis_log_t log)
 {
 	return 0;
 }
@@ -533,14 +526,14 @@ static json_setter_t setter_table[] = {
 	[JSON_NULL_VALUE] = JSON_NULL_VALUE_setter
 };
 
-static int DICT_LIST_INT_setter(ldms_mval_t rec_inst, int mid, int idx, json_entity_t item, void *ctxt)
+static int DICT_LIST_INT_setter(ldms_mval_t rec_inst, int mid, int idx, json_entity_t item, void *ctxt, ovis_log_t log)
 {
 	enum json_value_e jtype;
 	jtype = json_entity_type(item);
 	if (jtype != JSON_INT_VALUE) {
-		LERROR("List '%s' in a dictionary contains '%s' but expected '%s'.\n",
-					ldms_record_metric_name_get(rec_inst, mid),
-					json_type_name(jtype), json_type_name(JSON_INT_VALUE));
+		ovis_log(log, OVIS_LERROR, "List '%s' in a dictionary contains '%s' but expected '%s'.\n",
+			 ldms_record_metric_name_get(rec_inst, mid),
+			 json_type_name(jtype), json_type_name(JSON_INT_VALUE));
 		return EINVAL;
 	}
 
@@ -548,12 +541,12 @@ static int DICT_LIST_INT_setter(ldms_mval_t rec_inst, int mid, int idx, json_ent
 	return 0;
 }
 
-static int DICT_LIST_BOOL_setter(ldms_mval_t rec_inst, int mid, int idx, json_entity_t item, void *ctxt)
+static int DICT_LIST_BOOL_setter(ldms_mval_t rec_inst, int mid, int idx, json_entity_t item, void *ctxt, ovis_log_t log)
 {
 	enum json_value_e jtype;
 	jtype = json_entity_type(item);
 	if (jtype != JSON_BOOL_VALUE) {
-		LERROR("List '%s' in a dictionary contains '%s' but expected '%s'.\n",
+		ovis_log(log, OVIS_LERROR, "List '%s' in a dictionary contains '%s' but expected '%s'.\n",
 					ldms_record_metric_name_get(rec_inst, mid),
 					json_type_name(jtype), json_type_name(JSON_BOOL_VALUE));
 		return EINVAL;
@@ -562,12 +555,12 @@ static int DICT_LIST_BOOL_setter(ldms_mval_t rec_inst, int mid, int idx, json_en
 	return 0;
 }
 
-static int DICT_LIST_FLOAT_setter(ldms_mval_t rec_inst, int mid, int idx, json_entity_t item, void *ctxt)
+static int DICT_LIST_FLOAT_setter(ldms_mval_t rec_inst, int mid, int idx, json_entity_t item, void *ctxt, ovis_log_t log)
 {
 	enum json_value_e jtype;
 	jtype = json_entity_type(item);
 	if (jtype != JSON_FLOAT_VALUE) {
-		LERROR("List '%s' in a dictionary contains '%s' but expected '%s'.\n",
+		ovis_log(log, OVIS_LERROR, "List '%s' in a dictionary contains '%s' but expected '%s'.\n",
 					ldms_record_metric_name_get(rec_inst, mid),
 					json_type_name(jtype), json_type_name(JSON_FLOAT_VALUE));
 		return EINVAL;
@@ -576,7 +569,7 @@ static int DICT_LIST_FLOAT_setter(ldms_mval_t rec_inst, int mid, int idx, json_e
 	return 0;
 }
 
-static int DICT_LIST_STRING_setter(ldms_mval_t rec_inst, int mid, int idx, json_entity_t list, void *ctxt)
+static int DICT_LIST_STRING_setter(ldms_mval_t rec_inst, int mid, int idx, json_entity_t list, void *ctxt, ovis_log_t log)
 {
 	size_t array_len;
 	jbuf_t jbuf;
@@ -585,14 +578,14 @@ static int DICT_LIST_STRING_setter(ldms_mval_t rec_inst, int mid, int idx, json_
 
 	jbuf = json_entity_dump(NULL, list);
 	if (!jbuf) {
-		LCRITICAL("Memory allocation failure.\n");
+		ovis_log(log, OVIS_LCRIT, "Memory allocation failure.\n");
 		return ENOMEM;
 	}
 
 	if (array_len <= jbuf->cursor) {
-		LWARN("The JSON-formatted of a list of strings (%d) is larger "
-			"than the allocated space. (%ld) The received data is chunked.\n",
-			jbuf->cursor, array_len);
+		ovis_log(log, OVIS_LWARN, "The JSON-formatted of a list of strings (%d) is larger "
+			 "than the allocated space. (%ld) The received data is chunked.\n",
+			 jbuf->cursor, array_len);
 		jbuf->buf[array_len] = '\0';
 	}
 
@@ -608,7 +601,7 @@ static dict_list_setter_t dl_setter_table[] = {
 	[JSON_STRING_VALUE] = DICT_LIST_STRING_setter
 };
 
-static int dict_list_set(ldms_mval_t rec_inst, int mid, json_entity_t list, void *ctxt)
+static int dict_list_set(ldms_mval_t rec_inst, int mid, json_entity_t list, void *ctxt, ovis_log_t log)
 {
 	int idx;
 	int rc = 0;
@@ -618,10 +611,10 @@ static int dict_list_set(ldms_mval_t rec_inst, int mid, json_entity_t list, void
 
 	(void)ldms_record_metric_type_get(rec_inst, mid, &array_len);
 	if (json_list_len(list) > array_len) {
-		LWARN("List '%s' in a dictionary length (%ld) is larger than "
-			"the encoded array length (%ld). The extra items will be ignored.\n",
-					ldms_record_metric_name_get(rec_inst, mid),
-						json_list_len(list), array_len);
+		ovis_log(log, OVIS_LWARN, "List '%s' in a dictionary length (%ld) is larger than "
+			 "the encoded array length (%ld). The extra items will be ignored.\n",
+			 ldms_record_metric_name_get(rec_inst, mid),
+			 json_list_len(list), array_len);
 	}
 
 	item = json_item_first(list);
@@ -629,19 +622,21 @@ static int dict_list_set(ldms_mval_t rec_inst, int mid, json_entity_t list, void
 	for (idx = 0; idx < array_len && item; idx++ , item = json_item_next(item)) {
 		switch (jtype) {
 		case JSON_INT_VALUE:
-			rc = dl_setter_table[JSON_INT_VALUE](rec_inst, mid, idx, item, ctxt);
+			rc = dl_setter_table[JSON_INT_VALUE](rec_inst, mid, idx, item, ctxt, log);
 			break;
 		case JSON_BOOL_VALUE:
-			rc = dl_setter_table[JSON_BOOL_VALUE](rec_inst, mid, idx, item, ctxt);
+			rc = dl_setter_table[JSON_BOOL_VALUE](rec_inst, mid, idx, item, ctxt, log);
 			break;
 		case JSON_FLOAT_VALUE:
-			rc = dl_setter_table[JSON_FLOAT_VALUE](rec_inst, mid, idx, item, ctxt);
+			rc = dl_setter_table[JSON_FLOAT_VALUE](rec_inst, mid, idx, item, ctxt, log);
 			break;
 		case JSON_STRING_VALUE:
-			rc = dl_setter_table[JSON_STRING_VALUE](rec_inst, mid, idx, list, ctxt);
+			rc = dl_setter_table[JSON_STRING_VALUE](rec_inst, mid, idx, list, ctxt, log);
 			break;
 		default:
-			LERROR();
+			ovis_log(log, OVIS_LERROR, "Ignoring unsupported type, '%s', "
+				 "in JSON dict_list_set.\n",
+				 json_type_name(jtype));
 			break;
 		}
 	}
@@ -751,13 +746,13 @@ static int get_schema_for_json(js_stream_sampler_t js, char *name, json_entity_t
 							    LDMS_V_CHAR_ARRAY, DEFAULT_CHAR_ARRAY_LEN);
 			break;
 		case JSON_LIST_VALUE:
-			midx = make_list(schema, e, json_attr);
+			midx = make_list(schema, e, json_attr, js->log);
 			break;
 		case JSON_DICT_VALUE:
 			/* Add the record definition to the schema */
 			rc = asprintf(&record_name, "%s_record", json_attr_name(json_attr)->str);
 			ridx = make_record(schema, record_name,
-					   json_attr_value(json_attr), &record);
+					   json_attr_value(json_attr), &record, js->log);
 			free(record_name);
 			/* A record must be a member of an array or list.
 			 * Create an array to contain the record */
@@ -766,9 +761,9 @@ static int get_schema_for_json(js_stream_sampler_t js, char *name, json_entity_t
 							    record, 1);
 			break;
 		default:
-			LERROR("Ignoring unsupported type, '%s', "
-				"in JSON dictionary.\n",
-			       json_type_name(type));
+			ovis_log(js->log, OVIS_LERROR, "Ignoring unsupported type, '%s', "
+				 "in JSON dictionary.\n",
+				 json_type_name(type));
 			// rc = EINVAL;
 			// goto err_3;
 			continue;
@@ -834,13 +829,13 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 
 	pthread_mutex_lock(&js->lock);
 	if (js->stream_client) {
-		LERROR("The plugin configuration '%s' has been configured "
-		       "to process stream '%s'. Use `term name=%s to "
-		       "terminate the plugin and remove all associated "
-		       "sets and stream clients.\n",
-		       ldmsd_plug_cfg_name_get(handle),
-		       js->stream_name,
-		       ldmsd_plug_cfg_name_get(handle));
+		ovis_log(js->log, OVIS_LERROR, "The plugin configuration '%s' has been configured "
+			 "to process stream '%s'. Use `term name=%s to "
+			 "terminate the plugin and remove all associated "
+			 "sets and stream clients.\n",
+			 ldmsd_plug_cfg_name_get(handle),
+			 js->stream_name,
+			 ldmsd_plug_cfg_name_get(handle));
 		pthread_mutex_unlock(&js->lock);
 		return EEXIST;
 	}
@@ -848,7 +843,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	value = av_value(avl, "stream");
 	if (!value) {
 		rc = EINVAL;
-		LERROR("The 'stream' configuration parameter is required.\n");
+		ovis_log(js->log, OVIS_LERROR, "The 'stream' configuration parameter is required.\n");
 		goto err_0;
 	}
 	js->stream_name = strdup(value);
@@ -860,7 +855,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	/* producer */
 	value = av_value(avl, "producer");
 	if (!value) {
-		LERROR("The 'producer' configuration parameter is required.\n");
+		ovis_log(js->log, OVIS_LERROR, "The 'producer' configuration parameter is required.\n");
 		rc = EINVAL;
 		goto err_0;
 	}
@@ -878,7 +873,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 			goto err_0;
 		}
 	} else {
-		LERROR("The 'inst_fmt' format string must be specified.\n");
+		ovis_log(js->log, OVIS_LERROR, "The 'inst_fmt' format string must be specified.\n");
 		rc = EINVAL;
 		goto err_0;
 	}
@@ -923,7 +918,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 
 	js->stream_client = ldmsd_stream_subscribe(js->stream_name, json_recv_cb, js);
 	if (!js->stream_client) {
-		LERROR("Cannot create stream client.\n");
+		ovis_log(js->log, OVIS_LERROR, "Cannot create stream client.\n");
 		rc = errno;
 		goto err_0;
 	}
@@ -1038,12 +1033,12 @@ static void update_set_data(js_stream_sampler_t js, ldms_set_t l_set,
 		enum json_value_e type = json_entity_type(json_attr_value(json_attr));
 		rbn = rbt_find(&j_schema->s_attr_tree, name);
 		if (!rbn) {
-			LERROR("Could not find attribute entry for '%s'\n", name);
+			ovis_log(js->log, OVIS_LERROR, "Could not find attribute entry for '%s'\n", name);
 			continue;
 		}
 		struct attr_entry *ae = container_of(rbn, struct attr_entry, rbn);
-		LDEBUG("Updating midx %d with json attribute '%s' of type %d\n",
-		       ae->midx, name, type);
+		ovis_log(js->log, OVIS_LDEBUG, "Updating midx %d with json attribute '%s' of type %d\n",
+			 ae->midx, name, type);
 
 		mval = ldms_metric_get(l_set, ae->midx);
 		assert(mval);
@@ -1054,14 +1049,14 @@ static void update_set_data(js_stream_sampler_t js, ldms_set_t l_set,
 			 * element of the containing array at mval */
 			rc = setter_table[JSON_DICT_VALUE](l_set,
 							   ldms_record_array_get_inst(mval, 0),
-							   value, name);
+							   value, name, js->log);
 			break;
 		default:
-			rc = setter_table[ae->type](l_set, mval, value, name);
+			rc = setter_table[ae->type](l_set, mval, value, name, js->log);
 			break;
 		}
 		if (rc)
-			LERROR("Error %d setting the metric value '%s'\n", rc, ae->name);
+			ovis_log(js->log, OVIS_LERROR, "Error %d setting the metric value '%s'\n", rc, ae->name);
 	}
 }
 
@@ -1118,36 +1113,37 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	js_set_t j_set;
 	char *inst_name = NULL;
 
-	LDEBUG("thread: %lu, stream: '%s', msg: '%s'\n", pthread_self(), js->stream_name, msg);
+	ovis_log(js->log, OVIS_LDEBUG, "thread: %lu, stream: '%s', msg: '%s'\n", pthread_self(), js->stream_name, msg);
 	if (stream_type != LDMSD_STREAM_JSON) {
-		LERROR("Unexpected stream type data...ignoring\n");
+		ovis_log(js->log, OVIS_LERROR, "Unexpected stream type data...ignoring\n");
 		return 0;
 	}
 
 	/* Find/create the schema for this JSON object */
 	if (JSON_DICT_VALUE != json_entity_type(entity)) {
 		rc = EINVAL;
-		LERROR("%s: Ignoring JSON object that is not a dictionary.\n", js->stream_name);
+		ovis_log(js->log, OVIS_LERROR,
+			 "%s: Ignoring JSON object that is not a dictionary.\n", js->stream_name);
 		goto err_0;
 	}
 
 	schema_name = json_value_find(entity, "schema");
 	if (!schema_name || (JSON_STRING_VALUE != json_entity_type(schema_name))) {
 		rc = EINVAL;
-		LERROR("%s: Ignoring message with 'schema' attribute that is "
+		ovis_log(js->log, OVIS_LERROR, "%s: Ignoring message with 'schema' attribute that is "
 		       "missing or not a string.\n", js->stream_name);
 		goto err_0;
 	}
 	rc = get_schema_for_json(js, json_value_str(schema_name)->str, entity, &j_schema);
 	if (rc) {
-		LERROR("%s: Error %d creating an LDMS schema for the JSON object '%s'\n",
-		       js->stream_name, rc, msg);
+		ovis_log(js->log, OVIS_LERROR, "%s: Error %d creating an LDMS schema for the JSON object '%s'\n",
+			 js->stream_name, rc, msg);
 		goto err_0;
 	}
 	inst_name = get_inst_name(js, entity, j_schema, 0, 0, 0);
 	if (!inst_name) {
-		LERROR("Error %d constructing set name from instance format '%s'.\n",
-			errno, js->inst_fmt);
+		ovis_log(js->log, OVIS_LERROR, "Error %d constructing set name from instance format '%s'.\n",
+			 errno, js->inst_fmt);
 		goto err_0;
 	}
 	rbn = rbt_find(&j_schema->s_set_tree, inst_name);
@@ -1162,13 +1158,13 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 						strtol(js->perm, NULL, 0),
 						js->heap_sz);
 		if (!l_set) {
-			LERROR("Error %d creating the set '%s' with schema '%s'\n",
-			       errno, inst_name, j_schema->s_name);
+			ovis_log(js->log, OVIS_LERROR, "Error %d creating the set '%s' with schema '%s'\n",
+				 errno, inst_name, j_schema->s_name);
 			rc = errno;
 			goto err_1;
 		}
-		LINFO("Created the set '%s' with schema '%s'\n",
-			inst_name, j_schema->s_name);
+		ovis_log(js->log, OVIS_LINFO, "Created the set '%s' with schema '%s'\n",
+			 inst_name, j_schema->s_name);
 		ldmsd_set_register(l_set, js->config_name);
 		ldms_set_publish(l_set);
 		rbn_init(&j_set->rbn, j_set->name);
@@ -1196,6 +1192,7 @@ static int constructor(ldmsd_plug_handle_t handle)
 	js_stream_sampler_t js = calloc(1, sizeof(*js));
 	if (!js)
 		return ENOMEM;
+	js->log = ldmsd_plug_log_get(handle);
 	js->config_name = strdup(ldmsd_plug_cfg_name_get(handle));
 	if (!js->config_name) {
 		free(js);
@@ -1205,7 +1202,6 @@ static int constructor(ldmsd_plug_handle_t handle)
 	pthread_mutex_init(&js->sch_tree_lock, NULL);
 	rbt_init(&js->sch_tree, str_cmp);
 	ldmsd_plug_ctxt_set(handle, js);
-	__log = ldmsd_plug_log_get(handle);
 
         return 0;
 }
