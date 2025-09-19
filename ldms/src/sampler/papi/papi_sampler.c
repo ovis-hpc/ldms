@@ -417,10 +417,7 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
-			  ldmsd_stream_type_t stream_type,
-			  const char *msg, size_t msg_len,
-			  json_entity_t entity);
+static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt);
 
 static int handle_step_init(job_data_t job, uint64_t job_id, uint64_t app_id, json_entity_t e)
 {
@@ -826,28 +823,27 @@ static void handle_job_exit(job_data_t job, json_entity_t e)
 	release_job_data(job);
 }
 
-static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
-			  ldmsd_stream_type_t stream_type,
-			  const char *msg, size_t msg_len,
-			  json_entity_t entity)
+static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt)
 {
 	int rc = 0;
 	json_entity_t event, data, dict, attr;
 
-	if (stream_type != LDMSD_STREAM_JSON) {
+	if (ev->type != LDMS_MSG_EVENT_RECV)
+		return 0;
+	if (ev->recv.type != LDMS_MSG_JSON) {
 		ovis_log(mylog, OVIS_LDEBUG, "papi_sampler: Unexpected stream type data...ignoring\n");
-		ovis_log(mylog, OVIS_LDEBUG, "papi_sampler:" "%s\n", msg);
+		ovis_log(mylog, OVIS_LDEBUG, "papi_sampler:" "%s\n", ev->recv.data);
 		return EINVAL;
 	}
 
-	event = json_attr_find(entity, "event");
+	event = json_attr_find(ev->recv.json, "event");
 	if (!event) {
 		ovis_log(mylog, OVIS_LERROR, "'event' attribute missing\n");
 		goto out_0;
 	}
 
 	json_str_t event_name = json_value_str(json_attr_value(event));
-	data = json_attr_find(entity, "data");
+	data = json_attr_find(ev->recv.json, "data");
 	if (!data) {
 		ovis_log(mylog, OVIS_LERROR, "'%s' event is missing "
 		       "the 'data' attribute\n", event_name->str);
@@ -873,16 +869,16 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	pthread_mutex_lock(&job_lock);
 	job = get_job_data(job_id, step_id);
 	if (0 == strncmp(event_name->str, "step_init",9)) {
-		rc = handle_step_init(job, job_id, step_id, entity);
+		rc = handle_step_init(job, job_id, step_id, ev->recv.json);
 	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
 		if (job)
-			handle_task_init(job, entity);
+			handle_task_init(job, ev->recv.json);
 	} else if (0 == strncmp(event_name->str, "task_exit", 9)) {
 		if (job)
-			handle_task_exit(job, entity);
+			handle_task_exit(job, ev->recv.json);
 	} else if (0 == strncmp(event_name->str, "exit", 4)) {
 		if (job)
-			handle_job_exit(job, entity);
+			handle_job_exit(job, ev->recv.json);
 	} else {
 		ovis_log(mylog, OVIS_LDEBUG,
 		       "ignoring event '%s'\n", event_name->str);
@@ -914,7 +910,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 			return EINVAL;
 		}
 	}
-	if (!ldmsd_stream_subscribe(papi_stream_name, stream_recv_cb, handle)) {
+	if (!ldms_msg_subscribe(papi_stream_name, 0, stream_recv_cb, handle, "papi_sampler")) {
 		ovis_log(mylog, OVIS_LERROR, "papi_sampler[%d]: Error %d attempting "
 		       "subscribe to the '%s' stream.\n",
 		       __LINE__, errno, papi_stream_name);
