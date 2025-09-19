@@ -127,6 +127,7 @@ typedef struct js_schema_s {
 typedef struct js_stream_sampler_s *js_stream_sampler_t;
 struct js_stream_sampler_s {
 	int initialized;	/* 0 if 1st config */
+	char *config_name;      /* name of the plugin instance */
 	char *stream_name;	/* stream msgs received from */
 	size_t heap_sz;		/* heap size for created sets */
 	char *prod_name;	/* producer name */
@@ -913,7 +914,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		js->perm = strdup("0660");
 
 	js->stream_client = ldms_msg_subscribe(js->stream_name, 0,
-				json_recv_cb, handle, "js_stream_sampler");
+				json_recv_cb, js, "js_stream_sampler");
 	if (!js->stream_client) {
 		LERROR("Cannot create stream client.\n");
 		rc = errno;
@@ -1057,17 +1058,17 @@ static void update_set_data(js_stream_sampler_t js, ldms_set_t l_set,
 	}
 }
 
-static void js_set_free(ldmsd_cfgobj_store_t self, js_set_t j_set)
+static void js_set_free(js_stream_sampler_t js, js_set_t j_set)
 {
 	if (j_set->set) {
-		ldmsd_set_deregister(j_set->name, self->cfg.name);
+		ldmsd_set_deregister(j_set->name, js->config_name);
 		ldms_set_delete(j_set->set);
 	}
 	free(j_set->name);
 	free(j_set);
 }
 
-static void js_schema_free(ldmsd_cfgobj_store_t scfg, js_schema_t j_schema)
+static void js_schema_free(js_stream_sampler_t js, js_schema_t j_schema)
 {
 	struct rbn *rbn;
 	js_set_t j_set;
@@ -1075,7 +1076,7 @@ static void js_schema_free(ldmsd_cfgobj_store_t scfg, js_schema_t j_schema)
 	while (( rbn = rbt_min(&j_schema->s_set_tree) )) {
 		rbt_del(&j_schema->s_set_tree, rbn);
 		j_set = container_of(rbn, struct js_set_s, rbn);
-		js_set_free(scfg, j_set);
+		js_set_free(js, j_set);
 	}
 	while (( rbn = rbt_min(&j_schema->s_attr_tree) )) {
 		rbt_del(&j_schema->s_attr_tree, rbn);
@@ -1086,27 +1087,25 @@ static void js_schema_free(ldmsd_cfgobj_store_t scfg, js_schema_t j_schema)
 	free(j_schema);
 }
 
-static void purge_schema_tree(ldmsd_cfgobj_store_t scfg, js_stream_sampler_t js)
+static void purge_schema_tree(js_stream_sampler_t js)
 {
 	struct rbn *rbn;
 	js_schema_t j_schema;
 	while (( rbn = rbt_min(&js->sch_tree) )) {
 		rbt_del(&js->sch_tree, rbn);
 		j_schema = container_of(rbn, struct js_schema_s, rbn);
-		js_schema_free(scfg, j_schema);
+		js_schema_free(js, j_schema);
 	}
 }
 
-static int __stream_close(ldms_msg_event_t ev, ldmsd_cfgobj_store_t scfg)
+static int __stream_close(ldms_msg_event_t ev, js_stream_sampler_t js)
 {
-	js_stream_sampler_t js = scfg->context;
-	purge_schema_tree(scfg, js);
+	purge_schema_tree(js);
 	return 0;
 }
 
-static int __stream_recv(ldms_msg_event_t ev, ldmsd_cfgobj_store_t scfg)
+static int __stream_recv(ldms_msg_event_t ev, js_stream_sampler_t js)
 {
-	js_stream_sampler_t js = scfg->context;
 	const char *msg;
 	json_entity_t entity;
 	int rc = EINVAL;
@@ -1180,7 +1179,7 @@ static int __stream_recv(ldms_msg_event_t ev, ldmsd_cfgobj_store_t scfg)
 		}
 		LINFO("Created the set '%s' with schema '%s'\n",
 			inst_name, j_schema->s_name);
-		ldmsd_set_register(l_set, scfg->cfg.name);
+		ldmsd_set_register(l_set, js->config_name);
 		ldms_set_publish(l_set);
 
 		rbn_init(&j_set->rbn, j_set->name);
@@ -1208,13 +1207,13 @@ err_0:
 
 static int json_recv_cb(ldms_msg_event_t ev, void *arg)
 {
-	ldmsd_cfgobj_store_t scfg = arg;
+	js_stream_sampler_t js = arg;
 
 	switch (ev->type)  {
 	case LDMS_MSG_EVENT_CLIENT_CLOSE:
-		return __stream_close(ev, scfg);
+		return __stream_close(ev, js);
 	case LDMS_MSG_EVENT_RECV:
-		return __stream_recv(ev, scfg);
+		return __stream_recv(ev, js);
 	default:
 		/* ignore other events */
 		return 0;
@@ -1223,6 +1222,18 @@ static int json_recv_cb(ldms_msg_event_t ev, void *arg)
 
 static int constructor(ldmsd_plug_handle_t handle)
 {
+	js_stream_sampler_t js;
+
+	js = calloc(1, sizeof(*js));
+	if (js == NULL) {
+		ovis_log(NULL, OVIS_LERROR,
+                         "Failed to allocate context in plugin %s: %d",
+                         ldmsd_plug_cfg_name_get(handle), errno);
+                return ENOMEM;
+        }
+	js->config_name = strdup(ldmsd_plug_cfg_name_get(handle));
+	ldmsd_plug_ctxt_set(handle, js);
+
 	__log = ldmsd_plug_log_get(handle);
 
         return 0;
@@ -1233,6 +1244,8 @@ static void destructor(ldmsd_plug_handle_t handle)
 	js_stream_sampler_t js = ldmsd_plug_ctxt_get(handle);
 	if (js->stream_client)
 		ldms_msg_client_close(js->stream_client); /* CLOSE event will clean up `p` */
+	free(js->config_name);
+	free(js);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
