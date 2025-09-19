@@ -126,7 +126,6 @@ typedef struct js_schema_s {
 
 typedef struct js_stream_sampler_s *js_stream_sampler_t;
 struct js_stream_sampler_s {
-	int initialized;	/* 0 if 1st config */
 	char *config_name;      /* name of the plugin instance */
 	char *stream_name;	/* stream msgs received from */
 	size_t heap_sz;		/* heap size for created sets */
@@ -818,12 +817,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	char *value;
 	int rc;
 
-	if (__sync_bool_compare_and_swap(&js->initialized, 0, 1)) {
-		pthread_mutex_init(&js->lock, NULL);
-		pthread_mutex_init(&js->sch_tree_lock, NULL);
-		rbt_init(&js->sch_tree, str_cmp);
-
-	}
 	pthread_mutex_lock(&js->lock);
 	if (js->stream_client) {
 		LERROR("The plugin configuration '%s' has been configured "
@@ -1232,6 +1225,9 @@ static int constructor(ldmsd_plug_handle_t handle)
                 return ENOMEM;
         }
 	js->config_name = strdup(ldmsd_plug_cfg_name_get(handle));
+	pthread_mutex_init(&js->lock, NULL);
+	pthread_mutex_init(&js->sch_tree_lock, NULL);
+	rbt_init(&js->sch_tree, str_cmp);
 	ldmsd_plug_ctxt_set(handle, js);
 
 	__log = ldmsd_plug_log_get(handle);
