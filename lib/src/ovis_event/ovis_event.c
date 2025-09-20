@@ -334,6 +334,26 @@ void ovis_scheduler_free(ovis_scheduler_t m)
 	ovis_scheduler_ref_put(m);
 }
 
+static void set_next_periodic_time(ovis_event_t ev, const struct timeval *tv)
+{
+	uint64_t now, us;
+	int64_t diff;
+	now = us = tv->tv_sec * USEC + tv->tv_usec;
+	us = ROUND(us, ev->param.periodic.period_us);
+	us += ev->param.periodic.phase_us;
+	diff = (int64_t)us - (int64_t)now;
+	if (diff <= 0) {
+		/* This is possible if phase is negative */
+		diff += ev->param.periodic.period_us;
+	} else if (diff > ev->param.periodic.period_us) {
+		/* Prevent waiting > 1 period */
+		diff %= ev->param.periodic.period_us;
+	}
+	us = now + diff;
+	ev->priv.tv.tv_sec = us / USEC;
+	ev->priv.tv.tv_usec = us % USEC;
+}
+
 /**
  * Process events in the heap and returns time-to-next-event.
  *
@@ -343,7 +363,6 @@ static
 int ovis_event_heap_process(ovis_scheduler_t m)
 {
 	struct timeval tv, dtv;
-	uint64_t us;
 	ovis_event_t ev;
 	int timeout = -1;
 
@@ -386,11 +405,7 @@ process_event:
 	case OVIS_EVENT_PERIODIC:
 		/* periodic event application callback */
 		gettimeofday(&tv, NULL);
-		us = tv.tv_sec * USEC + tv.tv_usec;
-		us = ROUND(us, ev->param.periodic.period_us);
-		us += ev->param.periodic.phase_us;
-		ev->priv.tv.tv_sec = us / USEC;
-		ev->priv.tv.tv_usec = us % USEC;
+		set_next_periodic_time(ev, &tv);
 		ovis_event_heap_update(m->heap, ev->priv.idx);
 		ev->cb.type = OVIS_EVENT_PERIODIC;
 		break;
@@ -496,18 +511,13 @@ out:
 
 static void __ovis_event_next_wakeup(const struct timeval *now, ovis_event_t ev)
 {
-	uint64_t us;
 	switch (ev->param.type) {
 	case OVIS_EVENT_TIMEOUT:
 	case OVIS_EVENT_EPOLL_TIMEOUT:
 		timeradd(now, &ev->param.timeout, &ev->priv.tv);
 		break;
 	case OVIS_EVENT_PERIODIC:
-		us = now->tv_sec * USEC + now->tv_usec;
-		us = ROUND(us, ev->param.periodic.period_us);
-		us += ev->param.periodic.phase_us;
-		ev->priv.tv.tv_sec = us / USEC;
-		ev->priv.tv.tv_usec = us % USEC;
+		set_next_periodic_time(ev, now);
 		break;
 	default:
 		assert(0 == "Bad event type");
