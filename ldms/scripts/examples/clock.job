@@ -1,6 +1,7 @@
 # this sampler uses the old job option
 export plugname=clock
 portbase=62008
+DAEMONS 3
 JOBDATA $TESTDIR/job.data 1 2 3
 LDMSD -p prolog.jobid -p prolog.sampler 1 2
 LDMSD -p prolog.jobid -p prolog.sampler -p prolog.jobid.store3 3

@@ -1,5 +1,6 @@
 export plugname=edac
 portbase=61012
+DAEMONS 2
 # data comes from /sys/devices/system/edac/mc/mc*/csrow*
 export max_mc=$(ls /sys/devices/system/edac/mc/mc* -d |wc -l)
 export max_csrow=$(ls /sys/devices/system/edac/mc/mc0/csrow* -d |wc -l)

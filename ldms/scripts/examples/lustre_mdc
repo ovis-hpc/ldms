@@ -3,6 +3,7 @@ export plugname=lustre_mdc
 #VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=all"
 #vgon
 portbase=61060
+DAEMONS 3
 LDMSD -s 2000000 1 2 3
 #vgoff
 SLEEP 2

@@ -1,5 +1,6 @@
 export plugname=meminfo
 portbase=61014
+DAEMONS 3
 LDMSD_EXTRA="-a munge"
 LDMSD -p prolog.sampler 1
 LDMSD -p prolog.sampler -p prolog.store2 2

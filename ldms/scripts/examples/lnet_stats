@@ -1,5 +1,6 @@
 export plugname=lnet_stats
 portbase=61016
+DAEMONS 3
 export statfile=$LDMSD_RUN/lnet_dummy
 vgon
 LDMSD 1

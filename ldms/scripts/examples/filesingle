@@ -1,5 +1,6 @@
 export plugname=filesingle
 portbase=61060
+DAEMONS 2
 ldms-sensors-config > $LDMSD_RUN/filesingle.conf
 export FSCONF=$LDMSD_RUN/filesingle.conf
 vgon

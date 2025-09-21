@@ -10,6 +10,7 @@
 # e.g.; module purge; module load openmpi-gnu/3.0
 export plugname=meminfo
 portbase=60000
+DAEMONS 3
 # meminfo on daemon 1
 LDMSD 1
 # daemon 2shm is configured in shm.2

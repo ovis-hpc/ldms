@@ -5,6 +5,7 @@ export LDMSD_LOG_LEVEL=ERROR
 export LDMSD_LOG_TIME_SEC=1
 export LDMSD_EXTRA="-m 128m"
 
+DAEMONS 3
 tuser=nobody
 function SUSLEEP () {
 	if test "$bypass" = "1"; then

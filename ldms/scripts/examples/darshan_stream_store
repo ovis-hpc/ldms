@@ -1,5 +1,6 @@
 export plugname=darshan_stream_store
 portbase=61020
+DAEMONS 1
 
 echo '{"schema":"darshan_data", "uid":99066, "exe":"/pscratch/spwalto/darshan-ldms-output/mpi-io-test","job_id":21068382,"rank":1,"ProducerName":"ec1326","file":"/pscratch/spwalto/darshan-ldms-output/mpi-io-test_pC.tmp.dat","record_id":4994957589679181304,"module":"POSIX","type":"MET","max_byte":-1,"switches":-1,"flushes":-1,"cnt":2,"op":"open","seg":[{"pt_sel":-1,"irreg_hslab":-1,"reg_hslab":-1,"ndims":-1,"npoints":-1,"off":-1,"len":-1,"start":1.986402,"dur":0.000019,"total":0.000066,"timestamp":1743618561.073590}]}' > $LDMSD_RUN/x.json
 echo "" >> $LDMSD_RUN/x.json
