@@ -1,5 +1,6 @@
 export plugname=meminfo
 portbase=61096
+DAEMONS 3
 #export VGARGS="--track-origins=yes --leak-check=full"
 LDMSD -p prolog.sampler 1
 #vgon

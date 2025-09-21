@@ -1,4 +1,5 @@
 portbase=61076
+DAEMONS 3
 MESSAGE starting agg and two collectors
 JOBDATA $TESTDIR/job.data 1 2 3
 #vgon

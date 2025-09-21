@@ -1,6 +1,7 @@
 # this sampler uses the new job option
 export plugname=procstat
 portbase=62036
+DAEMONS 3
 VGARGS="--leak-check=full --track-origins=yes --trace-children=yes"
 JOBDATA $TESTDIR/job.data 1 2 3
 LDMSD -p prolog.jobid -p prolog.jobid.sampler 1

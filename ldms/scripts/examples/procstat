@@ -1,4 +1,5 @@
 portbase=61036
+DAEMONS 3
 LDMSD `seq 3`
 SLEEP 10
 MESSAGE ldms_ls on host 1:

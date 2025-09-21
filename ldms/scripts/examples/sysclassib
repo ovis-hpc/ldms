@@ -1,5 +1,6 @@
 export plugname=sysclassib
 portbase=61056
+DAEMONS 3
 LDMSD -p prolog.sampler 1 2
 LDMSD -p prolog.sampler -p prolog.store3 3
 MESSAGE ldms_ls on host 1:

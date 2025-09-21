@@ -1,6 +1,7 @@
 # this sampler uses the new job option
 export plugname=dstat
 portbase=62086
+DAEMONS 3
 JOBDATA $TESTDIR/job.data 1 2 3
 export dsname1=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 auto-schema=1 sc_clk_tck=1)
 echo DSNAME1=$dsname1

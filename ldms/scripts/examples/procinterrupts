@@ -1,5 +1,6 @@
 export plugname=procinterrupts
 portbase=61068
+DAEMONS 3
 export LDMSD_EXTRA="-m 1G"
 LDMSD -p prolog.sampler 1 2
 LDMSD -p prolog.sampler -p prolog.store3 3

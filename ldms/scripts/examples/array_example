@@ -1,5 +1,6 @@
 export plugname=array_example
 portbase=61004
+DAEMONS 2
 LDMSD -p prolog.sampler 1
 LDMSD -p prolog.sampler -p prolog.store2 2
 MESSAGE ldms_ls on host 1:

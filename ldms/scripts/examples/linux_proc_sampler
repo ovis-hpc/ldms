@@ -6,6 +6,7 @@ export LDMSD_LOG_TIME_SEC=1
 export LDMSD_EXTRA="-m 128m"
 
 portbase=61060
+DAEMONS 3
 cat << EOF > $LDMSD_RUN/exclude_env
 ^COLORTERM
 ^DBU.*
