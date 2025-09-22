@@ -3831,7 +3831,7 @@ ldms_mval_t ldms_metric_get(ldms_set_t s, int i);
  * \param i The metric ID.
  * \retval ptr The pointer to the array in the set.
  */
-ldms_mval_t ldms_metric_array_get(ldms_set_t s, int i);
+ldms_mval_t ldms_metric_array_item_get(ldms_set_t s, int i);
 
 /**
  * \brief Get length of the array metric.
