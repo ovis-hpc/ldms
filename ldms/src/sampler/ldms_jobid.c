@@ -584,7 +584,7 @@ int ldms_job_info_get(struct ldms_job_info *ji, unsigned flags)
 	if (flags & LJI_uid)
 		ji->uid = ldms_metric_get_u64(set, uid_pos);
 	if (flags & LJI_user) {
-		const char * a = (char *)ldms_metric_array_get(set, user_pos);
+		const char * a = (char *)ldms_metric_array_item_get(set, user_pos);
 		strncpy(ji->user, a, LJI_USER_NAME_MAX );
 	}
 
