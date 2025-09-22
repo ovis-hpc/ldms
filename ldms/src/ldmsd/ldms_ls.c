@@ -656,18 +656,226 @@ void value_format(ldms_set_t s, enum ldms_value_type type, ldms_mval_t val, size
 	}
 }
 
-void value_format_json(ldms_set_t s, enum ldms_value_type type, ldms_mval_t val, size_t n)
+char *json_encode_str(char *dst, size_t dst_len, char *src)
+{
+	char *d, *s;
+	size_t buf_len = dst_len;
+
+	d = dst;
+	s = src;
+
+	while (*s != '\0' || !buf_len) {
+		switch (*s) {
+		case '\\':
+			/* Value is already escaped */
+			*d++ = *s++;
+			buf_len--;
+			if (*s == '\0' || !buf_len)
+				continue;
+			*d++ = *s++;
+			buf_len --;
+			break;
+		case '"':
+			/* Value needs to be escaped */
+			*d++ = '\\';
+			buf_len --;
+			if (*s == '\0' || !buf_len)
+				continue;
+			*d++ = *s++;
+			buf_len --;
+			break;
+		default:
+			*d++ = *s++;
+			buf_len --;
+		}
+	}
+	*d = '\0';
+	return dst;
+}
+
+char *ldms_prim_value_as_json(char *buf, size_t buf_len,
+			      enum ldms_value_type type,
+			      ldms_mval_t val, size_t n)
+{
+	int i;
+	char *s, *fmt;
+	char vbuf[1024];
+	int cnt = 0;
+
+	switch (type) {
+	case LDMS_V_CHAR_ARRAY:
+		s = json_encode_str(vbuf, sizeof(vbuf), val->a_char);
+		if (*s == '\"')
+			fmt = "%s";
+		else
+			fmt = "\"%s\"";
+		cnt = snprintf(buf, buf_len, fmt, s);
+		break;
+	case LDMS_V_CHAR:
+		cnt = snprintf(buf, buf_len, "\"%c\"", val->v_char);
+		break;
+	case LDMS_V_U8:
+		cnt = snprintf(buf, buf_len, "%hhu", val->v_u8);
+		break;
+	case LDMS_V_U8_ARRAY:
+		cnt = snprintf(&buf[cnt], buf_len - cnt, "[");
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], buf_len - cnt, ",");
+			cnt += snprintf(&buf[cnt], buf_len - cnt, "%hhu", val->a_u8[i]);
+		}
+		cnt += snprintf(&buf[cnt], buf_len - cnt, "]");
+		break;
+	case LDMS_V_S8:
+		cnt = snprintf(buf, buf_len, "%hhd", val->v_s8);
+		break;
+	case LDMS_V_S8_ARRAY:
+		cnt = snprintf(&buf[cnt], buf_len - cnt, "[");
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], buf_len - cnt, ",");
+			cnt += snprintf(&buf[cnt], buf_len - cnt, "%hhd", val->a_s8[i]);
+		}
+		cnt += snprintf(&buf[cnt], buf_len - cnt, "]");
+		break;
+	case LDMS_V_U16:
+		cnt = snprintf(buf, buf_len, "%hu", val->v_u16);
+		break;
+	case LDMS_V_U16_ARRAY:
+		cnt = snprintf(&buf[cnt], buf_len - cnt, "[");
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], buf_len, ",");
+			cnt += snprintf(buf, buf_len - cnt, "%hu", val->a_u16[i]);
+		}
+		cnt += snprintf(&buf[cnt], buf_len - cnt, "]");
+		break;
+	case LDMS_V_S16:
+		cnt = snprintf(buf, buf_len, "%hd", val->v_s16);
+		break;
+	case LDMS_V_S16_ARRAY:
+		cnt = snprintf(&buf[cnt], buf_len - cnt, "[");
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], buf_len - cnt, ",");
+			cnt += snprintf(&buf[cnt], buf_len - cnt, "%hd", val->a_s16[i]);
+		}
+		cnt += snprintf(&buf[cnt], buf_len - cnt, "]");
+		break;
+	case LDMS_V_U32:
+		cnt = snprintf(buf, buf_len, "%u", val->v_u32);
+		break;
+	case LDMS_V_U32_ARRAY:
+		cnt = snprintf(&buf[cnt], buf_len - cnt, "[");
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], buf_len - cnt, ",");
+			cnt += snprintf(&buf[cnt], buf_len - cnt, "%u", val->a_u32[i]);
+		}
+		cnt += snprintf(&buf[cnt], buf_len - cnt, "]");
+		break;
+	case LDMS_V_S32:
+		cnt = snprintf(buf, buf_len, "%d", val->v_s32);
+		break;
+	case LDMS_V_S32_ARRAY:
+		cnt = snprintf(&buf[cnt], buf_len - cnt, "[");
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], buf_len - cnt, ",");
+			cnt += snprintf(&buf[cnt], buf_len - cnt, "%d", val->a_s32[i]);
+		}
+		cnt += snprintf(&buf[cnt], buf_len - cnt, "]");
+		break;
+	case LDMS_V_U64:
+		cnt = snprintf(buf, buf_len, "%"PRIu64, val->v_u64);
+		break;
+	case LDMS_V_U64_ARRAY:
+		cnt = snprintf(&buf[cnt], buf_len - cnt, "[");
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], buf_len - cnt, ",");
+			cnt += snprintf(&buf[cnt], buf_len - cnt, "%"PRIu64, val->a_u64[i]);
+		}
+		cnt += snprintf(&buf[cnt], buf_len - cnt, "]");
+		break;
+	case LDMS_V_S64:
+		cnt = snprintf(buf, buf_len, "%"PRId64, val->v_s64);
+		break;
+	case LDMS_V_S64_ARRAY:
+		cnt = snprintf(&buf[cnt], buf_len - cnt, "[");
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], buf_len - cnt, ",");
+			cnt += snprintf(&buf[cnt], buf_len - cnt, "%"PRId64, val->a_s64[i]);
+		}
+		cnt += snprintf(&buf[cnt], buf_len - cnt, "]");
+		break;
+	case LDMS_V_F32:
+		cnt = snprintf(buf, buf_len, "%f", val->v_f);
+		break;
+	case LDMS_V_F32_ARRAY:
+		cnt = snprintf(&buf[cnt], buf_len - cnt, "[");
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], buf_len - cnt, ",");
+			cnt += snprintf(&buf[cnt], buf_len - cnt, "%f", val->a_f[i]);
+		}
+		cnt += snprintf(&buf[cnt], buf_len - cnt, "]");
+		break;
+	case LDMS_V_D64:
+		cnt += snprintf(&buf[cnt], buf_len - cnt, "%f", val->v_d);
+		break;
+	case LDMS_V_D64_ARRAY:
+		cnt = snprintf(&buf[cnt], buf_len - cnt, "[");
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], buf_len - cnt, ",");
+			cnt += snprintf(&buf[cnt], buf_len - cnt, "%f", val->a_d[i]);
+		}
+		cnt += snprintf(&buf[cnt], buf_len - cnt, "]");
+		break;
+	case LDMS_V_TIMESTAMP:
+		cnt = snprintf(buf, buf_len, "%u.%06u", val->v_ts.sec, val->v_ts.usec);
+		break;
+	case LDMS_V_RECORD_TYPE:
+		assert(0 == "RECORD_TYPE is not a primitive type");
+		break;
+	case LDMS_V_RECORD_INST:
+		assert(0 == "RECORD_INST is not a primitive type");
+		break;
+	case LDMS_V_RECORD_ARRAY:
+		assert(0 == "RECORD_ARRAY is not a primitive type");
+		break;
+	case LDMS_V_LIST:
+		assert(0 == "LIST is not a primitive type");
+		break;
+	default:
+		assert(0 ==  "Unknown metric type");
+	}
+	return buf;
+}
+
+void value_format_json(ldms_set_t s, enum ldms_value_type type,
+		       ldms_mval_t val, size_t n)
 {
 	ldms_mval_t lval;
 	enum ldms_value_type ltype, prev_type;
 	int i;
 	size_t count;
+	char buf[1024];
+	char *ss, *fmt;
+
 	printf("\"value\":");
 	if (ldms_type_is_array(type) && type != LDMS_V_CHAR_ARRAY)
 		printf("[");
 	switch (type) {
 	case LDMS_V_CHAR_ARRAY:
-		printf("\"%s\"", val->a_char);
+		ss = json_encode_str(buf, sizeof(buf), val->a_char);
+		if (*ss == '\"')
+			fmt = "%s";
+		else
+			fmt = "\"%s\"";
+		printf(fmt, ss);
 		break;
 	case LDMS_V_CHAR:
 		printf("'%c'", val->v_char);
@@ -828,14 +1036,6 @@ void value_printer(ldms_set_t s, int idx)
 	value_format(s, type, val, n);
 }
 
-void value_printer_json(ldms_set_t s, int idx)
-{
-	enum ldms_value_type type = ldms_metric_type_get(s, idx);
-	ldms_mval_t val = ldms_metric_get(s, idx);
-	int n = ldms_metric_array_get_len(s, idx);
-	value_format_json(s, type, val, n);
-}
-
 static int user_data = 0;
 void metric_printer_tab(ldms_set_t s, int i)
 {
@@ -887,35 +1087,14 @@ void metric_printer(ldms_set_t s, int i)
 	printf("\n");
 }
 
-void metric_printer_json(ldms_set_t s, int i)
+char *metric_value_json(ldms_set_t s, int i)
 {
-	enum ldms_value_type type = ldms_metric_type_get(s, i);
-
-	const char *metname, *metunit;
-	if (type != LDMS_V_NONE) {
-		metname = ldms_metric_name_get(s, i);
-		metunit = ldms_metric_unit_get(s, i);
-	} else {
-		metname = "SET_ERROR";
-		metunit = NULL;
-	}
-	if (i)
-		printf(",");
-	printf("{\"type\":\"%c\",\"kind\":\"%s\",\"name\":\"%s\",",
-	       (ldms_metric_flags_get(s, i) & LDMS_MDESC_F_DATA ? 'D' : 'M'),
-	       ldms_metric_type_to_str(type), metname);
-	if (user_data)
-		printf("\"userdata\":%" PRIx64 ",", ldms_metric_user_data_get(s,i));
-
-	value_printer_json(s, i);
-	if (metunit)
-		printf(",\"units\":\"%s\"", metunit);
-	printf("}");
+	return "";
 }
-
 
 static int is_matched(char *inst_name, char *schema_name)
 {
+	/* All sets match */
 	if (LIST_EMPTY(&match_list))
 		return 1;
 
@@ -935,7 +1114,7 @@ static int is_matched(char *inst_name, char *schema_name)
 static int verbose = 0;
 static int long_format = 0;
 
-void fprint_record(FILE *fp, int indent, const char *lname, ldms_mval_t rval)
+void fprint_decomp_record(FILE *fp, int indent, const char *lname, ldms_mval_t rval)
 {
 	int i;
 	size_t array_len;
@@ -956,6 +1135,30 @@ void fprint_record(FILE *fp, int indent, const char *lname, ldms_mval_t rval)
 		else
 			fprintf(fp, "\n");
 	}
+}
+
+void fprint_record_json(FILE *fp, int indent, ldms_mval_t rec_inst)
+{
+	int i;
+	size_t array_len;
+	enum ldms_value_type type;
+	ldms_mval_t mval;
+	char buf[1024];
+
+	for (i = 0; i < ldms_record_card(rec_inst); i++) {
+		fprintf(fp, "%*s", indent, "");
+		fprintf(fp, "%*s{ \"name\" : \"%s\", ", indent, "",
+			ldms_record_metric_name_get(rec_inst, i));
+		type = ldms_record_metric_type_get(rec_inst, i, &array_len);
+		fprintf(fp, "\"type\" : \"%s\", ", ldms_metric_type_to_str(type));
+		mval = ldms_record_metric_get(rec_inst, i);
+		fprintf(fp, "\"value\" : %s }",
+			ldms_prim_value_as_json(buf, sizeof(buf),
+						type, mval, array_len));
+		if (i < ldms_record_card(rec_inst)-1)
+			fprintf(fp, ",\n");
+	}
+
 }
 
 void fprint_decomp(FILE *fp, ldms_set_t s)
@@ -982,7 +1185,8 @@ void fprint_decomp(FILE *fp, ldms_set_t s)
 			ldms_mval_t lval = ldms_metric_get(s, i);
 			ldms_mval_t rval = ldms_list_first(s, lval, &rtype, NULL);
 			if (rval) {
-				fprint_record(fp, 14, ldms_metric_name_get(s, i), rval);
+				fprint_decomp_record(fp, 14,
+					ldms_metric_name_get(s, i), rval);
 			} else {
 				/* Can't do decomp for an empty list */
 				fprintf(fp, "              { \"src\" : \"%s\", "
@@ -1012,6 +1216,71 @@ void fprint_decomp(FILE *fp, ldms_set_t s)
 	fprintf(fp, "         }\n");   /* terminate row */
 	fprintf(fp, "      ]\n");     /* terminate rows list */
 	fprintf(fp, "    }");	      /* terminate decomposition */
+}
+
+void fprint_list_json(FILE *fp, int indent, ldms_set_t s, ldms_mval_t list_mval)
+{
+	enum ldms_value_type item_type;
+	ldms_mval_t rec_inst_val;
+	size_t array_len;
+
+	fprintf(fp, "%*s[\n", indent, "");
+	rec_inst_val = ldms_list_first(s, list_mval,
+				       &item_type, &array_len);
+	while (rec_inst_val) {
+		fprint_record_json(fp, indent+4, rec_inst_val);
+		rec_inst_val = ldms_list_next(s, list_mval, &item_type, &array_len);
+	} while (rec_inst_val);
+	fprintf(fp, "\n%*s]\n", indent, "");
+}
+
+void fprint_set_json(FILE *fp, int indent, ldms_set_t s)
+{
+	int i;
+	struct ldms_timestamp ts;
+	enum ldms_value_type type;
+	fprintf(fp, "{ \"schema_name\" : \"%s\",\n",
+		ldms_set_schema_name_get(s));
+	fprintf(fp, "  \"inst_name\" : \"%s\",\n",
+		ldms_set_instance_name_get(s));
+	ts = ldms_transaction_timestamp_get(s);
+	fprintf(fp, "  \"timestamp\" : %0d.%06d,\n", ts.sec, ts.usec);
+	ts = ldms_transaction_duration_get(s);
+	fprintf(fp, "  \"duration\" : %0d.%06d,\n", ts.sec, ts.usec);
+	fprintf(fp, "  \"meta_size\" : %d,\n", ldms_set_meta_sz_get(s));
+	fprintf(fp, "  \"data_size\" : %d,\n", ldms_set_data_sz_get(s));
+	fprintf(fp, "  \"heap_size\" : %ld,\n", ldms_set_heap_size_get(s));
+	fprintf(fp, "  \"uid\" : %d,\n", ldms_set_uid_get(s));
+	fprintf(fp, "  \"gid\" : %d,\n", ldms_set_gid_get(s));
+	fprintf(fp, "  \"perm\" : \"0%o\",\n", ldms_set_perm_get(s));
+	fprintf(fp, "  \"info\" : \"%s\",\n", "");
+	fprintf(fp, "  \"metrics\" : [\n");
+	for (i = 0; i < ldms_set_card_get(s); i++) {
+		type = ldms_metric_type_get(s, i);
+		if (type == LDMS_V_RECORD_TYPE)
+			continue;
+		if (i && i < ldms_set_card_get(s))
+			fprintf(fp, ",\n"); /* next element */
+		ldms_mval_t mv = ldms_metric_get(s, i);
+		if (type == LDMS_V_LIST) {
+			fprintf(fp, "  { \"name\" : \"%s\", \"value\" : ",
+				ldms_metric_name_get(s, i));
+			fprint_list_json(fp, indent, s, mv);
+			fprintf(fp, "  }"); /* end list-value */
+		} else {
+			char vbuf[1024];
+			uint32_t count = ldms_metric_array_get_len(s, i);
+			fprintf(fp,
+				"%*s{\"name\" : \"%s\", \"value\" : %s, \"units\" : \"%s\" }",
+				indent, "",
+				ldms_metric_name_get(s, i),
+				ldms_prim_value_as_json(vbuf, sizeof(vbuf),
+							type, mv, count),
+				ldms_metric_unit_get(s, i));
+		}
+	}
+	fprintf(fp, "]\n");	/* end metrics list */
+	fprintf(fp, "}\n");	/* end set */
 }
 
 int digest_cmp(void *a, const void *b)
@@ -1079,8 +1348,7 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	tm = localtime(&ti);
 	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y %z", tm);
 
-	char *metajson = NULL;
-	size_t mj_cnt = 0;
+	static int first_set = 1;
 	switch (format) {
 	case sf_normal:
 		printf("%s: %s, last update: %s [%dus] ",
@@ -1098,23 +1366,13 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 		}
 		break;
 	case sf_json:
-		metajson = __ldms_format_set_for_dir(s, &mj_cnt);
-		if (format_long_first) {
-			format_long_first = 0;
-			printf(",\"long_sets\":[");
-		} else {
-			printf(",");
-		}
-		if (long_format)
-			printf("{");
-		printf("\"dir_info\":%s", metajson);
-		free(metajson);
 		if (long_format) {
-			printf(",\"metrics\":[");
-			int i;
-			for (i = 0; i < ldms_set_card_get(s); i++)
-				metric_printer_json(s, i);
-			printf("]}");
+			if (first_set) {
+				first_set = 0;
+			} else {
+				fprintf(stdout, ","); /* comma for next set */
+			}
+			fprint_set_json(stdout, 0, s);
 		}
 		break;
 	case sf_tab:
@@ -1242,27 +1500,20 @@ long total_meta;
 long total_data;
 long total_sets;
 
-
 void print_set(struct ldms_dir_set_s *set_data)
 {
 	if (!verbose) {
 		switch (format) {
 		case sf_normal:
-			printf("%s\n", set_data->inst_name);
+			if (!verbose && !long_format)
+				printf("%s\n", set_data->inst_name);
 			break;
 		case sf_tab:
-			if (format_first) {
-				printf("#instance\n");
-				format_first = 0;
-			}
+			if (!verbose && !long_format)
+				printf("%s\n", set_data->inst_name);
 			printf("%s\n", set_data->inst_name);
 			break;
 		case sf_json:
-			if (!format_first) {
-				printf(",");
-			} else {
-				format_first = 0;
-			}
 			printf("{\"instance\":\"%s\"}", set_data->inst_name);
 			break;
 		}
@@ -1309,21 +1560,13 @@ void print_set(struct ldms_dir_set_s *set_data)
 			printf("\n");
 			break;
 		case sf_json:
-			if (!format_first) {
-				printf(",");
-			} else {
-				format_first = 0;
-			}
-			if (verbose > 1)
-				printf("{\"schema_digest\":\"%s\",",
-					set_data->digest_str);
-			else
-				printf("{");
-			printf("\"schema\":\"%s\",\"instance\":\"%s\",\"flags\":\"%s\","
-				"\"meta_size\":%lu,\"data_size\":%lu,\"heap_size\":%lu,"
-				"\"uid\":%d,\"gid\":%d,\"perm\":\"%s\","
-				"\"update\":\"%d.%06d\",\"duration\":%d.%06d,"
-				"\"age_seconds\":%.3f,\"age_intervals\":%d,\"info\":{",
+			printf("{\"schema_digest\":\"%s\",\n",
+			       set_data->digest_str);
+			printf("\"schema\":\"%s\",\n\"instance\":\"%s\",\n\"flags\":\"%s\",\n"
+			       "\"meta_size\":%lu,\n\"data_size\":%lu,\n\"heap_size\":%lu,\n"
+			       "\"uid\":%d,\n\"gid\":%d,\n\"perm\":\"%s\",\n"
+			       "\"update\":\"%d.%06d\",\n\"duration\":%d.%06d,\n"
+			       "\"age_seconds\":%.3f,\n\"age_intervals\":%d,\n",
 				set_data->schema_name,
 				set_data->inst_name,
 				set_data->flags,
@@ -1338,10 +1581,16 @@ void print_set(struct ldms_dir_set_s *set_data)
 				set_data->duration.sec,
 				set_data->duration.usec,
 				age_seconds, age_intervals);
-			for (j = 0; j < set_data->info_count-1; j++) {
-				printf("\"%s\":\"%s\",", set_data->info[j].key, set_data->info[j].value);
+			printf("\"info\" : [");
+			for (j = 0; j < set_data->info_count; j++) {
+				if (j)
+					printf(",");
+				printf("{\"%s\":\"%s\"}",
+				       set_data->info[j].key,
+				       set_data->info[j].value);
 			}
-			printf("\"%s\":\"%s\"}}", set_data->info[j].key, set_data->info[j].value);
+			printf("]"); /* end info */
+			printf("}"); /* end set */
 			break;
 		case sf_tab:
 			if (verbose > 1)
@@ -1373,6 +1622,123 @@ void print_set(struct ldms_dir_set_s *set_data)
 	}
 }
 
+void print_conn_data(char *xprt, char *hostname, uint16_t port_no,
+		     union ldms_sockaddr lsa)
+{
+	char addr_buff[128];
+	switch (format) {
+	case sf_normal:
+		printf("Hostname     : %s\n", hostname);
+		switch (lsa.sa.sa_family) {
+		case AF_INET:
+			inet_ntop(AF_INET, &lsa.sin.sin_addr,
+				  addr_buff, sizeof(addr_buff));
+			printf("IP Address   : %s\n", addr_buff);
+			break;
+		case AF_INET6:
+			inet_ntop(AF_INET6, &lsa.sin6.sin6_addr,
+				  addr_buff, sizeof(addr_buff));
+			printf("IPv6 Address : %s\n", addr_buff);
+			break;
+		default:
+			printf("Address  : __UNSUPPORTED__ "
+			       "(address family: %d)\n",
+			       lsa.sa.sa_family);
+			break;
+		}
+		printf("Port         : %hu\n", port_no);
+		printf("Transport    : %s\n", xprt);
+		break;
+	case sf_json:
+		printf("\"conn_data\":{");
+		printf("\"hostname\":\"%s\",\n", hostname);
+		switch (lsa.sa.sa_family) {
+		case AF_INET:
+			inet_ntop(AF_INET, &lsa.sin.sin_addr,
+				  addr_buff, sizeof(addr_buff));
+			printf("\"ip_address\":\"%s\",\n", addr_buff);
+			break;
+		case AF_INET6:
+			inet_ntop(AF_INET6, &lsa.sin6.sin6_addr,
+				  addr_buff, sizeof(addr_buff));
+			printf("\"ipv6_address\":\"%s\",\n", addr_buff);
+			break;
+		default:
+			printf("\"unsupported_address\":\"family_%d\",\n",
+			       lsa.sa.sa_family);
+			break;
+		}
+		printf("\"port\":%hu,\n", port_no);
+		printf("\"transport\":\"%s\"\n", xprt);
+		printf("},");
+		break;
+	case sf_tab:
+		printf("#hostname\t");
+		switch (lsa.sa.sa_family) {
+		case AF_INET:
+			inet_ntop(AF_INET, &lsa.sin.sin_addr,
+				  addr_buff, sizeof(addr_buff));
+			printf("ip_address\t");
+			break;
+		case AF_INET6:
+			inet_ntop(AF_INET6, &lsa.sin6.sin6_addr,
+				  addr_buff, sizeof(addr_buff));
+			printf("ipv6_address\t");
+			break;
+		default:
+			printf("unsupported_address\t");
+			sprintf(addr_buff,"family_%d", lsa.sa.sa_family);
+			break;
+		}
+		printf("port\ttransport\n");
+		printf("%s\t%s\t%hu\t%s\n", hostname, addr_buff, port_no, xprt);
+		break;
+	}
+}
+
+void print_verbose_norm_hdr()
+{
+	if (verbose > 1)
+		printf("%-*s ", 64, "Schema Digest");
+	printf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s\n",
+	       14, "Schema",
+	       24, "Instance",
+	       6, "Flags",
+	       6, "Msize", 6, "Dsize", 6, "Hsize",
+	       6, "UID", 6, "GID", 10, "Perm",
+	       17, "Update", 17, "Duration", 8, "Info");
+	if (verbose > 1)
+		printf("---------------------------------------------------------------- ");
+	printf("-------------- ------------------------ ------ ------ "
+	       "------ ------ ------ ------ ---------- ----------------- "
+	       "----------------- --------\n");
+}
+
+void print_verbose_tab_hdr()
+{
+	printf("#");
+	if (verbose > 1)
+		printf("schema_digest\t");
+	printf("schema\tinstance\tflags\tmsize\tdsize\thsize\t"
+	       "uid\tgid\tperm\tupdate\tduration\t"
+	       "age_seconds\tage_intervals\tinfo\n");
+}
+
+void print_verbose_hdr()
+{
+	switch (format) {
+	case sf_normal:
+		print_verbose_norm_hdr();
+		break;
+	case sf_tab:
+		print_verbose_tab_hdr();
+		break;
+	case sf_json:
+		printf(",\n\"set_verbose\" : [\n");
+		break;
+	}
+}
+
 static int add_set(struct ldms_dir_set_s *set_data)
 {
 	struct ls_set *lss;
@@ -1395,88 +1761,6 @@ static int add_set(struct ldms_dir_set_s *set_data)
 	lss->set_data = set_data;
 	LIST_INSERT_HEAD(&set_list, lss, entry);
 	return 0;
-}
-
-void __add_dir(ldms_dir_t dir)
-{
-	struct ldms_ls_dir *lsdir;
-	lsdir = malloc(sizeof(*lsdir));
-	if (!lsdir) {
-		dir_status = ENOMEM;
-		return;
-	}
-	lsdir->dir = dir;
-	LIST_INSERT_HEAD(&dir_list, lsdir, entry);
-}
-
-void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
-{
-	int i;
-	int more;
-	if (status) {
-		dir_status = status;
-		goto wakeup;
-	}
-	more = _dir->more;
-
-	__add_dir(_dir);
-	for (i = 0; i < _dir->set_count; i++) {
-		if (is_matched(_dir->set_data[i].inst_name, _dir->set_data[i].schema_name)) {
-			/*
-			 * Always add matched sets to the set list.
-			 *
-			 * After the dir is done
-			 * the set_list is checked whether it is empty or not,
-			 * to print an error message in case there are no
-			 * sets matched the given criteria.
-			 */
-			dir_status = add_set(&_dir->set_data[i]);
-			if (verbose || (!verbose && !long_format))
-				print_set(&_dir->set_data[i]);
-		}
-	}
-
-	if (more)
-		return;
-
- wakeup:
-	dir_done = 1;
-	pthread_cond_signal(&dir_cv);
-}
-
-void ldms_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
-{
-	switch (e->type) {
-	case LDMS_XPRT_EVENT_ERROR:
-	case LDMS_XPRT_EVENT_REJECTED:
-		printf("Connection failed/rejected.\n");
-		done = 1;
-		/* let-through */
-	case LDMS_XPRT_EVENT_CONNECTED:
-	case LDMS_XPRT_EVENT_DISCONNECTED:
-		sem_post(&conn_sem);
-		break;
-	case LDMS_XPRT_EVENT_RECV:
-	case LDMS_XPRT_EVENT_SEND_COMPLETE:
-	case LDMS_XPRT_EVENT_SET_DELETE:
-		/* ignore */
-		break;
-	default:
-		assert(0 == "Unknown event.");
-		break;
-	}
-
-}
-
-const char *repeat(char c, size_t count)
-{
-	int i;
-	static char buf[1024];
-	count = count >= 1024 ? 1023 : count;
-	for (i = 0; i < count; i++)
-		buf[i] = c;
-	buf[i] = '\0';
-	return buf;
 }
 
 struct ldms_dir_set_s *find_set_data_in_dirs(const char *inst_name)
@@ -1511,6 +1795,231 @@ int is_in_set_list(const char *name)
 	return 0;
 }
 
+void add_group_members()
+{
+	/* Take care of set groups */
+	char *name;
+	ldms_key_value_t info;
+	struct ldms_dir_set_s *set_data;
+	int i, rc;
+	struct ls_set *lss;
+
+	LIST_FOREACH(lss, &set_list, entry) {
+		if (0 == strcmp(GRP_SCHEMA_NAME, lss->set_data->schema_name)) {
+			info = lss->set_data->info;
+			for (i = 0; i < lss->set_data->info_count; i++) {
+				name = (char *)ldmsd_group_member_name(info[i].key);
+				if (!name)
+					continue;
+
+				set_data = find_set_data_in_dirs(name);
+				if (set_data && !is_in_set_list(set_data->inst_name)) {
+					rc = add_set(set_data);
+					if (!rc) {
+						if (verbose || (!verbose && !long_format))
+							print_set(set_data);
+					}
+				} else {
+					/*
+					 * do nothing.
+					 *
+					 * It is possible that the LDMS set
+					 * does not exist although it is a
+					 * member of a set group which
+					 * is manually created by users.
+					 */
+				}
+			}
+		}
+	}
+}
+
+void print_verbose_normal_ftr()
+{
+	if (verbose > 1)	/* set-digtet footer */
+		printf("---------------------------------------------------------------- ");
+	printf("-------------- ------------------------ ------ ------ "
+	       "------ ------ ------ ------ ---------- ----------------- "
+	       "----------------- --------\n");
+	printf("Total Sets: %ld, Meta Data (kB): %.2f, Data (kB) %.2f, Memory (kB): %.2f\n",
+	       total_sets, (double)total_meta / 1000.0,
+	       (double)total_data / 1000.0,
+	       (double)(total_meta + total_data) / 1000.0);
+	if (long_format)
+		printf("\n============================================="
+		       "==========================\n\n");
+}
+
+void print_verbose_tab_ftr()
+{
+	printf("#total_sets\tmeta_data_kb\tdata_kb\tmemory_kb\n");
+	printf("%ld\t%.2f\t %.2f\t%.2f\n",
+	       total_sets, (double)total_meta / 1000.0, (double)total_data / 1000.0,
+	       (double)(total_meta + total_data) / 1000.0);
+}
+
+void print_verbose_json_ftr()
+{
+	printf("  ]\n"); /* end set_verbose */
+	printf(",\n\"memory\":{");
+	printf("\"total_sets\":%ld,\n\"meta_data_kb\":%.2f,\n"
+	       "\"data_kb\":%.2f,\n\"memory_kb\":%2f",
+	       total_sets, (double)total_meta / 1000.0,
+	       (double)total_data / 1000.0,
+	       (double)(total_meta + total_data) / 1000.0);
+	printf("}"); /* end memory dict value */
+}
+
+void print_verbose_ftr()
+{
+	switch (format) {
+	case sf_normal:
+		print_verbose_normal_ftr();
+		break;
+	case sf_tab:
+		print_verbose_tab_ftr();
+		break;
+	case sf_json:
+		print_verbose_json_ftr();
+	}
+}
+
+void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *cb_arg)
+{
+	int i;
+	struct ls_set *lss;
+	int comma;
+	struct ldms_ls_dir *lsdir;
+
+	if (status) {
+		dir_status = status;
+		goto wakeup;
+	}
+
+	lsdir = malloc(sizeof(*lsdir));
+	if (!lsdir) {
+		dir_status = ENOMEM;
+		return;
+	}
+	lsdir->dir = dir;
+	LIST_INSERT_HEAD(&dir_list, lsdir, entry);
+
+	/* Create a list of only those sets that meet the selection
+	 * criteria */
+	for (i = 0; i < dir->set_count; i++) {
+		if (is_matched(dir->set_data[i].inst_name, dir->set_data[i].schema_name)) {
+			dir_status = add_set(&dir->set_data[i]);
+		}
+	}
+	add_group_members();
+	if (dir->more)
+		/* Continue collecting directory entries */
+		return;
+
+	comma = 0;
+	switch (format) {
+	case sf_normal:
+		if (verbose || long_format)
+			goto verbose;
+		break;
+	case sf_tab:
+		if (verbose || long_format)
+			goto verbose;
+		printf("#instance\n");
+		break;
+	case sf_json:
+		printf("\"set_name\" : [");
+		break;
+	}
+	LIST_FOREACH(lss, &set_list, entry) {
+		switch (format) {
+		case sf_normal:
+		case sf_tab:
+			printf("%s\n", lss->set_data->inst_name);
+			break;
+		case sf_json:
+			if (comma) {
+				printf(",\n");
+			} else {
+				printf("\n");
+				comma = 1;
+			}
+			printf("\"%s\"", lss->set_data->inst_name);
+		}
+	}
+
+ verbose:
+	comma = 0;
+	switch (format) {
+	case sf_normal:
+	case sf_tab:
+		break;
+	case sf_json:
+		printf("\n  ]\n");
+	}
+
+	if (!verbose)
+		goto wakeup;
+
+	/* Print set_verbose data */
+	print_verbose_hdr();
+	comma = 0;
+	LIST_FOREACH(lss, &set_list, entry) {
+		switch (format) {
+		case sf_normal:
+		case sf_tab:
+			print_set(lss->set_data);
+			break;
+		case sf_json:
+			if (comma) {
+				printf("\n,");
+			} else {
+				comma = 1;
+			}
+			print_set(lss->set_data);
+		}
+	}
+	print_verbose_ftr();
+
+ wakeup:
+	dir_done = 1;
+	pthread_cond_signal(&dir_cv);
+}
+
+void ldms_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+{
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_ERROR:
+	case LDMS_XPRT_EVENT_REJECTED:
+		printf("Connection failed/rejected.\n");
+		done = 1;
+		/* let-through */
+	case LDMS_XPRT_EVENT_CONNECTED:
+	case LDMS_XPRT_EVENT_DISCONNECTED:
+		sem_post(&conn_sem);
+		break;
+	case LDMS_XPRT_EVENT_RECV:
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+	case LDMS_XPRT_EVENT_SET_DELETE:
+		/* ignore */
+		break;
+	default:
+		assert(0 == "Unknown event.");
+		break;
+	}
+}
+
+const char *repeat(char c, size_t count)
+{
+	int i;
+	static char buf[1024];
+	count = count >= 1024 ? 1023 : count;
+	for (i = 0; i < count; i++)
+		buf[i] = c;
+	buf[i] = '\0';
+	return buf;
+}
+
 int main(int argc, char *argv[])
 {
 	struct ldms_version version;
@@ -1529,6 +2038,7 @@ int main(int argc, char *argv[])
 	struct timespec ts;
 	char *lval, *rval;
 	struct ldms_ls_dir *dir;
+	struct match_str *match = NULL;
 
 	/* If no arguments are given, print usage. */
 	if (argc == 1)
@@ -1688,78 +2198,12 @@ int main(int argc, char *argv[])
 		printf("Error creating transport.\n");
 		exit(1);
 	}
+	if (format == sf_json)
+		printf("{\n");	/* beginning of returned object */
 
-	if (verbose > 1) {
-		char addr_buff[128];
-		switch (format) {
-		case sf_normal:
-			printf("Hostname    : %s\n", hostname);
-			switch (lsa.sa.sa_family) {
-			case AF_INET:
-				inet_ntop(AF_INET, &lsa.sin.sin_addr,
-					  addr_buff, sizeof(addr_buff));
-				printf("IP Address  : %s\n", addr_buff);
-				break;
-			case AF_INET6:
-				inet_ntop(AF_INET6, &lsa.sin6.sin6_addr,
-					  addr_buff, sizeof(addr_buff));
-				printf("IPv6 Address  : %s\n", addr_buff);
-				break;
-			default:
-				printf("Address  : __UNSUPPORTED__ "
-					"(address family: %d)\n",
-					lsa.sa.sa_family);
-				break;
-			}
-			printf("Port        : %hu\n", port_no);
-			printf("Transport   : %s\n", xprt);
-			break;
-		case sf_json:
-			printf("{\"source\":{");
-			printf("\"hostname\":\"%s\",", hostname);
-			switch (lsa.sa.sa_family) {
-			case AF_INET:
-				inet_ntop(AF_INET, &lsa.sin.sin_addr,
-					  addr_buff, sizeof(addr_buff));
-				printf("\"ip_address\":\"%s\",", addr_buff);
-				break;
-			case AF_INET6:
-				inet_ntop(AF_INET6, &lsa.sin6.sin6_addr,
-					  addr_buff, sizeof(addr_buff));
-				printf("\"ipv6_address\":\"%s\",", addr_buff);
-				break;
-			default:
-				printf("\"unsupported_address\":\"family_%d\",",
-					lsa.sa.sa_family);
-				break;
-			}
-			printf("\"port\":%hu,", port_no);
-			printf("\"transport\":\"%s\"},", xprt);
-			printf("\"sets\":[");
-			break;
-		case sf_tab:
-			printf("#hostname\t");
-			switch (lsa.sa.sa_family) {
-			case AF_INET:
-				inet_ntop(AF_INET, &lsa.sin.sin_addr,
-					  addr_buff, sizeof(addr_buff));
-				printf("ip_address\t");
-				break;
-			case AF_INET6:
-				inet_ntop(AF_INET6, &lsa.sin6.sin6_addr,
-					  addr_buff, sizeof(addr_buff));
-				printf("ipv6_address\t");
-				break;
-			default:
-				printf("unsupported_address\t");
-				sprintf(addr_buff,"family_%d", lsa.sa.sa_family);
-				break;
-			}
-			printf("port\ttransport\n");
-			printf("%s\t%s\t%hu\t%s\n", hostname, addr_buff, port_no, xprt);
-			break;
-		}
-	}
+	if (verbose > 1)
+		print_conn_data(xprt, hostname, port_no, lsa);
+
 	free(xprt);
 	free(hostname);
 	xprt = NULL;
@@ -1782,42 +2226,6 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&print_lock, 0);
 	pthread_cond_init(&print_cv, NULL);
 
-	int is_filter_list = 0;
-
-	if (verbose) {
-		switch (format) {
-		case sf_normal:
-			if (verbose > 1)
-				printf("%-*s ", 64, "Schema Digest");
-			printf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s\n",
-			       14, "Schema",
-			       24, "Instance",
-			       6, "Flags",
-			       6, "Msize", 6, "Dsize", 6, "Hsize",
-			       6, "UID", 6, "GID", 10, "Perm",
-			       17, "Update", 17, "Duration", 8, "Info");
-			if (verbose > 1)
-				printf("---------------------------------------------------------------- ");
-			printf("-------------- ------------------------ ------ ------ "
-			       "------ ------ ------ ------ ---------- ----------------- "
-			       "----------------- --------\n");
-			break;
-		case sf_json:
-			if (verbose <= 1)
-				printf("{\"sets\":[");
-			break;
-		case sf_tab:
-			printf("#");
-			if (verbose > 1)
-				printf("schema_digest\t");
-			printf("schema\tinstance\tflags\tmsize\tdsize\thsize\t"
-			       "uid\tgid\tperm\tupdate\tduration\t"
-			       "age_seconds\tage_intervals\tinfo\n");
-		}
-	} else {
-		if (format == sf_json)
-			printf("{\"sets\":[");
-	}
 	if (optind == argc) {
 		/* List all existing metric sets */
 		ret = ldms_xprt_dir(ldms, dir_cb, NULL, 0);
@@ -1827,12 +2235,10 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 	} else {
-		is_filter_list = 1;
 		/*
 		 * List the metric sets that the instance name or
 		 * schema name matched the given criteria.
 		 */
-		struct match_str *match;
 		for (i = optind; i < argc; i++) {
 			match = malloc(sizeof(*match));
 			if (!match) {
@@ -1884,8 +2290,9 @@ int main(int argc, char *argv[])
 	}
 
 	struct ls_set *lss;
+#if 0
 	if (LIST_EMPTY(&set_list)) {
-		if (is_filter_list)
+		if (match)
 			switch (format) {
 			case sf_normal:
 				printf("ldms_ls: No metric sets matched the given criteria\n");
@@ -1899,77 +2306,11 @@ int main(int argc, char *argv[])
 		done = 1;
 		goto done;
 	}
-
-	/* Take care of set groups */
-	char *name;
-	ldms_key_value_t info;
-	struct ldms_dir_set_s *set_data;
-	LIST_FOREACH(lss, &set_list, entry) {
-		if (0 == strcmp(GRP_SCHEMA_NAME, lss->set_data->schema_name)) {
-			info = lss->set_data->info;
-			for (i = 0; i < lss->set_data->info_count; i++) {
-				name = (char *)ldmsd_group_member_name(info[i].key);
-				if (!name)
-					continue;
-
-				set_data = find_set_data_in_dirs(name);
-				if (set_data && !is_in_set_list(set_data->inst_name)) {
-					rc = add_set(set_data);
-					if (!rc) {
-						if (verbose || (!verbose && !long_format))
-							print_set(set_data);
-					}
-				} else {
-					/*
-					 * do nothing.
-					 *
-					 * It is possible that the LDMS set
-					 * does not exist although it is a
-					 * member of a set group which
-					 * is manually created by users.
-					 */
-				}
-			}
-		}
-	}
-
-	if (verbose) {
-		switch (format) {
-		case sf_normal:
-			if (verbose > 1)
-				printf("---------------------------------------------------------------- ");
-			printf("-------------- ------------------------ ------ ------ "
-			       "------ ------ ------ ------ ---------- ----------------- "
-			       "----------------- --------\n");
-			printf("Total Sets: %ld, Meta Data (kB): %.2f, Data (kB) %.2f, Memory (kB): %.2f\n",
-			       total_sets, (double)total_meta / 1000.0, (double)total_data / 1000.0,
-			       (double)(total_meta + total_data) / 1000.0);
-			break;
-		case sf_json:
-			printf("],\"memory\":{");
-			printf( "\"total_sets\":%ld,\"meta_data_kb\":%.2f,"
-				"\"data_kb\":%.2f,\"memory_kb\":%2f",
-			       total_sets, (double)total_meta / 1000.0, (double)total_data / 1000.0,
-			       (double)(total_meta + total_data) / 1000.0);
-			printf("}");
-			break;
-		case sf_tab:
-			printf("#total_sets\tmeta_data_kb\tdata_kb\tmemory_kb\n");
-			printf("%ld\t%.2f\t %.2f\t%.2f\n",
-			       total_sets, (double)total_meta / 1000.0, (double)total_data / 1000.0,
-			       (double)(total_meta + total_data) / 1000.0);
-			break;
-		}
-	} else {
-		if (format == sf_json)
-			printf("]");
-	}
-
+#endif
 	/*
 	 * At this point,
-	 * - set_list contains all and only set data
-	 *   that are matched the criteria including the members of
-	 *   set groups.
+	 * - set_list contains sets that matched the regex criteria
+	 *   including the members of set groups.
 	 * - the set instance name and/or the information of all sets
 	 *   are printed.
 	 */
@@ -1979,17 +2320,6 @@ int main(int argc, char *argv[])
 		goto done;
 	}
 
-	if (verbose && long_format) {
-		switch (format) {
-		case sf_normal:
-			printf("\n=======================================================================\n\n");
-			break;
-		case sf_tab:
-			break;
-		case sf_json:
-			break;
-		}
-	}
 	if (print_decomp) {
 		fprintf(stdout, "{\n");
 		fprintf(stdout, "  \"type\" : \"flex\",\n");
@@ -1998,10 +2328,10 @@ int main(int argc, char *argv[])
 	/*
 	 * Handle the long format (-l)
 	 */
+	fprintf(stdout, ",\"set_data\" : [");
 	while (!LIST_EMPTY(&set_list)) {
 		lss = LIST_FIRST(&set_list);
 		LIST_REMOVE(lss, entry);
-
 		pthread_mutex_lock(&print_lock);
 		print_done = 0;
 		pthread_mutex_unlock(&print_lock);
@@ -2021,6 +2351,10 @@ int main(int argc, char *argv[])
 		pthread_mutex_unlock(&print_lock);
 		free(lss);
 	}
+
+	/*
+	 * Handle decomp (-d)
+	 */
 	if (print_decomp) {
 		struct digest_entry *de;
 		fprintf(stdout, "\n  },\n"); /* terminate decomposition */
@@ -2047,17 +2381,22 @@ done:
 		pthread_cond_wait(&done_cv, &done_lock);
 	pthread_mutex_unlock(&done_lock);
 
+	switch (format) {
+	case sf_json:
+		if (long_format)
+			printf("]"); /* end set_daa */
+		printf("}\n");	/* end JSON dictionary */
+		break;
+	case sf_normal:
+	case sf_tab:
+		break;
+	}
 	while ((dir = LIST_FIRST(&dir_list))) {
 		LIST_REMOVE(dir, entry);
 		ldms_xprt_dir_free(ldms, dir->dir);
 		free(dir);
 	}
 
-	if (format == sf_json) {
-		if (long_format && ! format_long_first)
-			printf("]");
-		printf("}");
-	}
 	/* gracefully close, and wait at most 2 seconds before exit */
 	ldms_xprt_close(ldms);
 	struct timespec _t;
