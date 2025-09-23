@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2023 National Technology & Engineering Solutions
+ * Copyright (c) 2023,2025 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2023,2025 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -134,10 +134,7 @@ struct js_stream_sampler_s {
 	char *uid;		/* User ID*/
 	char *gid;		/* Group ID*/
 	char *perm;		/* Permission */
-	mode_t  perm_int;
-	uid_t uid_int;
-	gid_t gid_int;
-	ldms_msg_client_t stream_client;
+	ldmsd_stream_client_t stream_client;
 	pthread_mutex_t sch_tree_lock;
 	struct rbt sch_tree;
 	LIST_HEAD(, js_entry_s) set_list;
@@ -149,13 +146,19 @@ static const char *usage(ldmsd_plug_handle_t handle)
 	return \
 	"config name=js_stream_sampler producer=<prod_name> \n"
 	"         heap_sz=<int> stream=<stream_name>\n"
-	"         [instance=<inst_fmt>] [component_id=<component_id>] [perm=<permissions>]\n"
+	"         [instance_fmt=<inst_fmt>] [component_id=<component_id>] [perm=<permissions>]\n"
 	"         [uid=<user_name>] [gid=<group_name>]\n"
 	"     producer      A unique name for the host providing the data\n"
 	"     stream        A stream name to subscribe to.\n"
 	"     heap_sz       The number of bytes to reserve for the set heap.\n"
-	"     instance      A unique name for the metric set. If none is given,"
-	"                   the set instance name will be <producer>_<schema name>.\n"
+	"     instance_fmt  An instance format string. This is required.\n"
+	"                   \%P refers to producer name (given to config).\n"
+	"                   \%S refers to schema name (from stream).\n"
+	"                   \%U refers to uid (given to config).\n"
+	"                   \%G refers to gid (given to config).\n"
+	"                   For example, \%P/jss_\%S generates \"node-1/jss_sch0\"\n"
+	"                   if producer is \"node-1\" and schema from stream data\n"
+	"                   is \"sch0\".\n"
 	"     component_id  A unique number for the component being monitored.\n"
 	"                   The default is 0\n"
 	"     uid           The user-id of the set's owner (defaults to geteuid())\n"
@@ -716,6 +719,13 @@ static int get_schema_for_json(js_stream_sampler_t js, char *name, json_entity_t
 	for (json_attr = json_attr_first(e); json_attr;
 	     json_attr = json_attr_next(json_attr)) {
 
+		if ( 0 == strcmp(json_attr_name(json_attr)->str, "S_uid") ||
+		     0 == strcmp(json_attr_name(json_attr)->str, "S_gid") ||
+		     0 == strcmp(json_attr_name(json_attr)->str, "S_perm")) {
+			/* S_uid, S_gid, S_perm already added above */
+			continue;
+		}
+
 		json_value = json_attr_value(json_attr);
 		type = json_entity_type(json_value);
 		switch (type) {
@@ -804,7 +814,9 @@ static int get_schema_for_json(js_stream_sampler_t js, char *name, json_entity_t
 	return rc;
 }
 
-static int json_recv_cb(ldms_msg_event_t ev, void *arg);
+static int json_recv_cb(ldmsd_stream_client_t c, void *ctxt,
+		ldmsd_stream_type_t stream_type,
+		const char *msg, size_t msg_len, json_entity_t entity);
 
 #define DEFAULT_HEAP_SZ 512
 /*
@@ -892,7 +904,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		js->uid = strdup(value);
 	else
 		js->uid = strdup("0");
-	js->uid_int = strtol(js->uid, NULL, 0);
 	/* gid */
 	value = av_value(avl, "gid");
 	js->gid = NULL;
@@ -900,7 +911,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		js->gid = strdup(value);
 	else
 		js->gid = strdup("0");
-	js->gid_int = strtol(js->gid, NULL, 0);
 
 	/* permission */
 	value = av_value(avl, "perm");
@@ -909,10 +919,8 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		js->perm = strdup(value);
 	else
 		js->perm = strdup("0660");
-	js->perm_int = strtoul(js->perm, NULL, 8);
 
-	js->stream_client = ldms_msg_subscribe(js->stream_name, 0,
-				json_recv_cb, handle, "js_stream_sampler");
+	js->stream_client = ldmsd_stream_subscribe(js->stream_name, json_recv_cb, js);
 	if (!js->stream_client) {
 		LERROR("Cannot create stream client.\n");
 		rc = errno;
@@ -1096,19 +1104,12 @@ static void purge_schema_tree(ldmsd_cfgobj_sampler_t scfg, js_stream_sampler_t j
 	}
 }
 
-static int __stream_close(ldms_msg_event_t ev, ldmsd_cfgobj_sampler_t scfg)
+static int json_recv_cb(ldmsd_stream_client_t c, void *ctxt,
+		ldmsd_stream_type_t stream_type,
+		const char *msg, size_t msg_len, json_entity_t entity)
 {
-	js_stream_sampler_t js = scfg->context;
-	purge_schema_tree(scfg, js);
-	return 0;
-}
-
-static int __stream_recv(ldms_msg_event_t ev, ldmsd_cfgobj_sampler_t scfg)
-{
-	js_stream_sampler_t js = scfg->context;
-	const char *msg;
-	json_entity_t entity;
 	int rc = EINVAL;
+	js_stream_sampler_t js = ctxt;
 	js_schema_t j_schema = NULL;
 	json_entity_t schema_name;
 	struct rbn *rbn;
@@ -1116,22 +1117,16 @@ static int __stream_recv(ldms_msg_event_t ev, ldmsd_cfgobj_sampler_t scfg)
 	js_set_t j_set;
 	char *inst_name = NULL;
 
-	if (ev->type != LDMS_MSG_EVENT_RECV)
-		return 0;
-	LDEBUG("thread: %lu, stream: '%s', msg: '%s'\n", pthread_self(), ev->recv.name, ev->recv.data);
-	if (ev->recv.type != LDMS_MSG_JSON) {
+	LDEBUG("thread: %lu, stream: '%s', msg: '%s'\n", pthread_self(), js->stream_name, msg);
+	if (stream_type != LDMSD_STREAM_JSON) {
 		LERROR("Unexpected stream type data...ignoring\n");
 		return 0;
 	}
 
-	msg = ev->recv.data;
-	entity = ev->recv.json;
-
 	/* Find/create the schema for this JSON object */
 	if (JSON_DICT_VALUE != json_entity_type(entity)) {
 		rc = EINVAL;
-		LERROR("%s: Ignoring message that is not a JSON dictionary.\n",
-				ev->recv.name);
+		LERROR("%s: Ignoring JSON object that is not a dictionary.\n", js->stream_name);
 		goto err_0;
 	}
 
@@ -1139,18 +1134,16 @@ static int __stream_recv(ldms_msg_event_t ev, ldmsd_cfgobj_sampler_t scfg)
 	if (!schema_name || (JSON_STRING_VALUE != json_entity_type(schema_name))) {
 		rc = EINVAL;
 		LERROR("%s: Ignoring message with 'schema' attribute that is "
-		       "missing or not a string.\n", ev->recv.name);
+		       "missing or not a string.\n", js->stream_name);
 		goto err_0;
 	}
 	rc = get_schema_for_json(js, json_value_str(schema_name)->str, entity, &j_schema);
 	if (rc) {
 		LERROR("%s: Error %d creating an LDMS schema for the JSON object '%s'\n",
-		       ev->recv.name, rc, msg);
+		       js->stream_name, rc, msg);
 		goto err_0;
 	}
-	inst_name = get_inst_name(js, entity, j_schema,
-					ev->recv.cred.uid, ev->recv.cred.gid,
-					ev->recv.perm);
+	inst_name = get_inst_name(js, entity, j_schema, 0, 0, 0);
 	if (!inst_name) {
 		LERROR("Error %d constructing set name from instance format '%s'.\n",
 			errno, js->inst_fmt);
@@ -1163,9 +1156,9 @@ static int __stream_recv(ldms_msg_event_t ev, ldmsd_cfgobj_sampler_t scfg)
 		j_set->set = l_set = ldms_set_create(
 						inst_name,
 						j_schema->s_schema,
-						js->uid_int,
-						js->gid_int,
-						js->perm_int,
+						strtol(js->uid, NULL, 0),
+						strtol(js->gid, NULL, 0),
+						strtol(js->perm, NULL, 0),
 						js->heap_sz);
 		if (!l_set) {
 			LERROR("Error %d creating the set '%s' with schema '%s'\n",
@@ -1175,9 +1168,8 @@ static int __stream_recv(ldms_msg_event_t ev, ldmsd_cfgobj_sampler_t scfg)
 		}
 		LINFO("Created the set '%s' with schema '%s'\n",
 			inst_name, j_schema->s_name);
-		ldmsd_set_register(l_set, scfg->cfg.name);
+		ldmsd_set_register(l_set, inst_name);
 		ldms_set_publish(l_set);
-
 		rbn_init(&j_set->rbn, j_set->name);
 		rbt_ins(&j_schema->s_set_tree, &j_set->rbn);
 	} else {
@@ -1185,9 +1177,6 @@ static int __stream_recv(ldms_msg_event_t ev, ldmsd_cfgobj_sampler_t scfg)
 		l_set = j_set->set;
 	}
 	ldms_transaction_begin(l_set);
-	ldms_metric_set_s32(l_set, 0, ev->recv.cred.uid);
-	ldms_metric_set_s32(l_set, 1, ev->recv.cred.gid);
-	ldms_metric_set_s32(l_set, 2, ev->recv.perm);
 	update_set_data(js, l_set, entity, j_schema);
 	ldms_transaction_end(l_set);
 	pthread_mutex_unlock(&js->lock);
@@ -1199,21 +1188,6 @@ err_0:
 	pthread_mutex_unlock(&js->lock);
 	free(inst_name);
 	return rc;
-}
-
-static int json_recv_cb(ldms_msg_event_t ev, void *arg)
-{
-	ldmsd_cfgobj_sampler_t scfg = arg;
-
-	switch (ev->type)  {
-	case LDMS_MSG_EVENT_CLIENT_CLOSE:
-		return __stream_close(ev, scfg);
-	case LDMS_MSG_EVENT_RECV:
-		return __stream_recv(ev, scfg);
-	default:
-		/* ignore other events */
-		return 0;
-	}
 }
 
 static int constructor(ldmsd_plug_handle_t handle)
@@ -1234,7 +1208,8 @@ static void destructor(ldmsd_plug_handle_t handle)
 {
 	js_stream_sampler_t js = ldmsd_plug_ctxt_get(handle);
 	if (js->stream_client)
-		ldms_msg_client_close(js->stream_client); /* CLOSE event will clean up `p` */
+		ldmsd_stream_close(js->stream_client);
+	purge_schema_tree(handle, js);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {

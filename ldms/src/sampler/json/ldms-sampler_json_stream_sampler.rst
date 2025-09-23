@@ -19,19 +19,32 @@ SYNOPSIS
 Within ldmsd_controller or a configuration file:
 
 **config** **name=\ json_stream_sampler** **producer=\ PRODUCER**
-**instance=\ INSTANCE** [ **component_id=\ COMP_ID** ] [
+**instance_fmt=\ INST_FMT** [ **component_id=\ COMP_ID** ] [
 **stream=\ NAME** ] [ **uid=\ UID** ] [ **gid=\ GID** ] [
 **perm=\ PERM** ] [ **heap_szperm=\ BYTES** ]
 
 DESCRIPTION
 ===========
 
-The **json_stream_store** monitors JSON object data presented on a
+The **json_stream_sampler** monitors JSON object data presented on a
 configured set of streams. JSON object data is encoded in LDMS Metric
 Sets; the intention of which is to store these metric sets using
 decomposition through a storage plugin.
 
-When publishing JSON dictionary data to **json_stream_plugin**, there
+The **INST_FMT** is a string expressing set instance format, where:
+
+* %P refers to the producer name (**PRODUCER** given to the config),
+
+* %S refers to the schema name (obtained from stream data),
+
+* %U refers to the uid (**UID** given to the config),
+
+* %G refers to the gid (**GID** given to the config).
+
+For example, ```%P/jss_%S``` will generate "node-1/jss_sch0" instance name if
+the producer is "node-1" and the schema from the stream data is "sch0".
+
+When publishing JSON dictionary data to **json_stream_sampler**, there
 are fields in the JSON dictionary that have special meaning. These
 fields are shown in the table below:
 
@@ -87,10 +100,10 @@ additional limitations as described below.
 Stream Meta-data
 ----------------
 
-Stream events include the user-id, and group-id of the application
-publishing the stream data. This data is encoded in the metric set with
-the special names **S_uid**, and **S_gid** respectively. The intention
-is that this data can stored in rows as configured by the user with a
+Stream events does *not* include the user-id, and group-id of the application
+publishing the stream data. The application may declare uid/gid/perm using
+``S_uid`` (int), ``S_gid`` (int) and ``S_perm`` (int) respectively. The
+intention is that this data can stored in rows as configured by the user with a
 decomposition configuration.
 
 Encoding Strings
@@ -258,8 +271,7 @@ configuration command, set_sec_mod. See ldmsd_controller's Man Page.
 
 Note that the UID, GID, and permissions values given at the
 configuration line do not affect the S_uid and S_gid metric values. The
-S_uid and S_gid metric values are always the security embeded with the
-stream data.
+S_uid and S_gid metric values are always obtained from the stream data.
 
 CONFIG OPTIONS
 ==============
@@ -307,10 +319,10 @@ Plugin configuration example:
 
    ::
 
-      load name=json_stream_sampler
-      config name=json_stream_sampler producer=${HOSTNAME} instance=${HOSTNAME}/slurm \
+      load name=js plugin=json_stream_sampler
+      config name=js producer=${HOSTNAME} instance_fmt=%P/js_%S \
              component_id=2 stream=darshan_data heap_sz=1024
-      start name=json_stream_sampler interval=1000000
+      start name=js interval=1000000
 
 SEE ALSO
 ========
