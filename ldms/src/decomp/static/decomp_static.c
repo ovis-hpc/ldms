@@ -995,6 +995,9 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 		goto commit;
 	}
 
+	if (mtype == LDMS_V_TIMESTAMP)
+		goto commit;
+
 	if (mtype == LDMS_V_LIST)
 		goto list_routine;
 	if (mtype == LDMS_V_RECORD_ARRAY)
@@ -2012,12 +2015,15 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				goto err_0;
 			}
 
+			if (mtype == LDMS_V_TIMESTAMP)
+				goto primitives;
 			if (mtype == LDMS_V_LIST)
 				goto col_mvals_list;
 			if (mtype == LDMS_V_RECORD_ARRAY)
 				goto col_mvals_rec_array;
 			if (mtype > LDMS_V_D64_ARRAY)
 				goto col_mvals_fill;
+		primitives:
 			/* primitives */
 			mlen = ldms_metric_array_get_len(set, mid);
 			mcol->mval = mval;
