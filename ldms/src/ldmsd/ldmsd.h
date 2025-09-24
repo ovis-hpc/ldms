@@ -1556,6 +1556,15 @@ extern const char *ldmsd_myhostname_get();
 /* Get the name of this ldmsd */
 const char *ldmsd_myname_get();
 
+/**
+ * \brief Set the name of this ldmsd.
+ *
+ * \retval 0 If success.
+ * \retval EEXIST If the name has already been set.
+ * \retval ENAMETOOLONG If the name is too long.
+ */
+int ldmsd_myname_set(const char *name);
+
 /* Increment config counter */
 void ldmsd_inc_cfg_cntr();
 int ldmsd_cfg_cntr_get();
