@@ -256,7 +256,7 @@ ldmsd_sampler_add(const char *cfg_name,
 	sampler->api = (struct ldmsd_sampler *)plugin->api;
 	sampler->thread_id = -1; /* stopped */
 	if (sampler->api->base.constructor != NULL) {
-		rc = sampler->api->base.constructor(&sampler->cfg);
+		rc = sampler->api->base.constructor((ldmsd_plug_handle_t)sampler);
 		if (rc)
 			goto err;
 	}
@@ -302,7 +302,7 @@ ldmsd_store_add(const char *cfg_name,
         store->plugin = plugin;
 	store->api = (struct ldmsd_store *)plugin->api;
 	if (store->api->base.constructor != NULL) {
-		rc = store->api->base.constructor(&store->cfg);
+		rc = store->api->base.constructor((ldmsd_plug_handle_t)store);
 		if (rc)
 			goto err;
 	}
@@ -368,7 +368,7 @@ void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_cfgobj_sampler_t samp = (void*)obj;
 	if (samp->plugin->api->destructor)
-		samp->plugin->api->destructor(obj);
+		samp->plugin->api->destructor((ldmsd_plug_handle_t)obj);
         unload_plugin(samp->plugin);
         ovis_log_deregister(samp->log);
 	ldmsd_cfgobj___del(obj);
@@ -378,7 +378,7 @@ void ldmsd_store___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_cfgobj_store_t store = (void*)obj;
 	if (store->plugin->api->destructor)
-		store->plugin->api->destructor(obj);
+		store->plugin->api->destructor((ldmsd_plug_handle_t)obj);
         unload_plugin(store->plugin);
         ovis_log_deregister(store->log);
 	ldmsd_cfgobj___del(obj);
