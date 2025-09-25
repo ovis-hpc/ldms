@@ -70,6 +70,8 @@ DAEMONS <daemon-numbers>
      parallel execution, the Nth daemon will run as the (N-1)th slurm
      task, since Slurm numbers tasks from 0 and this tool numbers tasks
      from 1.
+     If only a single number N is given, it will be expanded to the range
+     $(seq N).
 
 SET_LOG_LEVEL <DEBUG|ERROR|INFO|ALL|QUIET|WARNING|CRITICAL>
    |
