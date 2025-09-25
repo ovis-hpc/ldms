@@ -56,6 +56,8 @@ DAEMONS <daemon-numbers>
      that any daemon can connect to any other by referencing $portN as
      explained in ENVIRONMENT below. If omitted, the ordering and
      aggregation relationships of LDMSD calls may be infeasible.
+     If only a single number N is given, it will be expanded to the range
+     $(seq N).
 
 SET_LOG_LEVEL <DEBUG|ERROR|INFO|ALL|QUIET|WARNING|CRITICAL>
    |
