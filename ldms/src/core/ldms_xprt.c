@@ -2209,6 +2209,7 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 {
 	uint32_t data_off = ntohl(reply->push.data_off);
 	uint32_t data_len = ntohl(reply->push.data_len);
+	uint32_t push_flags;
 	int rc;
 	ldms_set_t set;
 
@@ -2226,9 +2227,22 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		memcpy((char *)set->meta + data_off,
 					reply->push.data, data_len);
 	}
-	if (set->push_cb &&
-		(0 == (ntohl(reply->push.flags) & LDMS_CMD_PUSH_REPLY_F_MORE))) {
-		set->push_cb(x, set, ntohl(reply->push.flags), set->push_cb_arg);
+
+	push_flags = ntohl(reply->push.flags);
+
+	if (push_flags & LDMS_CMD_PUSH_REPLY_F_MORE)
+		return; /* expecting more push data; do not proceed */
+
+	if (set->meta->heap_sz) {
+		void *base = ((void*)set->data) + set->data->size - set->meta->heap_sz;
+		if (ldms_set_is_consistent(set))
+			set->heap = ldms_heap_get(&set->heap_inst, &set->data->heap, base);
+		else
+			set->heap = NULL;
+	}
+
+	if (set->push_cb) {
+		set->push_cb(x, set, ntohl(push_flags), set->push_cb_arg);
 	}
 }
 
