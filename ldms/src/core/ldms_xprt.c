@@ -3082,7 +3082,7 @@ static void __ldms_xprt_release_sets(ldms_t x, struct rbt *set_coll)
 			free(lp);
 		}
 		if (pp) {
-			ldms_xprt_put(pp->xprt, "push_peer");
+			ldms_xprt_put(pp->xprt, "push_set");
 			free(pp);
 		}
 		ref_put(&ent->set->ref, "xprt_set_coll");
