@@ -192,7 +192,6 @@ void __dbg_dump_addr(unsigned long *p, size_t size)
 	}
 }
 
-char *_create_path(const char *set_name);
 static ldms_mval_t __mval_to_get(struct ldms_set *s, int idx, ldms_mdesc_t *pd);
 
 static inline struct ldms_record_type *
@@ -1039,49 +1038,6 @@ void ldms_set_put(ldms_set_t s)
 	if (!s)
 		return;
 	ref_put(&s->ref, "__ldms_find_local_set");
-}
-
-char *_create_path(const char *set_name)
-{
-	int tail, rc = 0;
-	char *dirc = strdup(set_name);
-	char *basec = strdup(set_name);
-	if (!dirc || !basec)
-		goto out;
-	char *dname = dirname(dirc);
-	char *bname = basename(basec);
-	char *p;
-
-	/* Create each node in the dir. __set_dir is presumed to exist */
-	snprintf(__set_path, PATH_MAX, "%s/", __set_dir);
-	tail = strlen(__set_path) - 1;
-	for (p = strtok(dname, "/"); p; p = strtok(NULL, "/")) {
-		/* remove duplicate '/'s */
-		if (*p == '/')
-			p++;
-		if (*p == '\0') {
-			rc = ENOENT;
-			goto out;
-		}
-		tail += strlen(p);
-		strcat(__set_path, p);
-		rc = mkdir(__set_path, 0755);
-		if (rc && errno != EEXIST)
-			goto out;
-		if (__set_path[tail] != '/') {
-			__set_path[tail+1] = '/';
-			tail++;
-			__set_path[tail+1] = '\0';
-		}
-	}
-	strcat(__set_path, bname);
-	rc = 0;
- out:
-	free(dirc);
-	free(basec);
-	if (rc)
-		return NULL;
-	return __set_path;
 }
 
 const char *ldms_set_instance_name_get(ldms_set_t s)
