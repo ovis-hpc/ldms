@@ -128,6 +128,7 @@ typedef struct js_stream_sampler_s *js_stream_sampler_t;
 struct js_stream_sampler_s {
 	char *stream_name;	/* stream msgs received from */
 	size_t heap_sz;		/* heap size for created sets */
+	char *config_name;      /* plugin instance config name */
 	char *prod_name;	/* producer name */
 	char *inst_fmt;		/* set name format specifier */
 	char *comp_id;		/* component id */
@@ -1064,17 +1065,17 @@ static void update_set_data(js_stream_sampler_t js, ldms_set_t l_set,
 	}
 }
 
-static void js_set_free(ldmsd_cfgobj_sampler_t self, js_set_t j_set)
+static void js_set_free(js_set_t j_set, const char *config_name)
 {
 	if (j_set->set) {
-		ldmsd_set_deregister(j_set->name, self->cfg.name);
+		ldmsd_set_deregister(j_set->name, config_name);
 		ldms_set_delete(j_set->set);
 	}
 	free(j_set->name);
 	free(j_set);
 }
 
-static void js_schema_free(ldmsd_cfgobj_sampler_t scfg, js_schema_t j_schema)
+static void js_schema_free(js_schema_t j_schema, const char *config_name)
 {
 	struct rbn *rbn;
 	js_set_t j_set;
@@ -1082,7 +1083,7 @@ static void js_schema_free(ldmsd_cfgobj_sampler_t scfg, js_schema_t j_schema)
 	while (( rbn = rbt_min(&j_schema->s_set_tree) )) {
 		rbt_del(&j_schema->s_set_tree, rbn);
 		j_set = container_of(rbn, struct js_set_s, rbn);
-		js_set_free(scfg, j_set);
+		js_set_free(j_set, config_name);
 	}
 	while (( rbn = rbt_min(&j_schema->s_attr_tree) )) {
 		rbt_del(&j_schema->s_attr_tree, rbn);
@@ -1093,14 +1094,14 @@ static void js_schema_free(ldmsd_cfgobj_sampler_t scfg, js_schema_t j_schema)
 	free(j_schema);
 }
 
-static void purge_schema_tree(ldmsd_cfgobj_sampler_t scfg, js_stream_sampler_t js)
+static void purge_schema_tree(js_stream_sampler_t js)
 {
 	struct rbn *rbn;
 	js_schema_t j_schema;
 	while (( rbn = rbt_min(&js->sch_tree) )) {
 		rbt_del(&js->sch_tree, rbn);
 		j_schema = container_of(rbn, struct js_schema_s, rbn);
-		js_schema_free(scfg, j_schema);
+		js_schema_free(j_schema, js->config_name);
 	}
 }
 
@@ -1168,7 +1169,7 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		}
 		LINFO("Created the set '%s' with schema '%s'\n",
 			inst_name, j_schema->s_name);
-		ldmsd_set_register(l_set, inst_name);
+		ldmsd_set_register(l_set, js->config_name);
 		ldms_set_publish(l_set);
 		rbn_init(&j_set->rbn, j_set->name);
 		rbt_ins(&j_schema->s_set_tree, &j_set->rbn);
@@ -1195,6 +1196,11 @@ static int constructor(ldmsd_plug_handle_t handle)
 	js_stream_sampler_t js = calloc(1, sizeof(*js));
 	if (!js)
 		return ENOMEM;
+	js->config_name = strdup(ldmsd_plug_cfg_name_get(handle));
+	if (!js->config_name) {
+		free(js);
+		return ENOMEM;
+	}
 	pthread_mutex_init(&js->lock, NULL);
 	pthread_mutex_init(&js->sch_tree_lock, NULL);
 	rbt_init(&js->sch_tree, str_cmp);
@@ -1209,9 +1215,10 @@ static void destructor(ldmsd_plug_handle_t handle)
 	js_stream_sampler_t js = ldmsd_plug_ctxt_get(handle);
 	if (js->stream_client)
 		ldmsd_stream_close(js->stream_client);
-	purge_schema_tree(handle, js);
+	purge_schema_tree(js);
 	pthread_mutex_destroy(&js->sch_tree_lock);
 	pthread_mutex_destroy(&js->lock);
+	free(js->config_name);
 	free(js);
 }
 
