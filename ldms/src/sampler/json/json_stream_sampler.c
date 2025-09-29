@@ -1210,6 +1210,9 @@ static void destructor(ldmsd_plug_handle_t handle)
 	if (js->stream_client)
 		ldmsd_stream_close(js->stream_client);
 	purge_schema_tree(handle, js);
+	pthread_mutex_destroy(&js->sch_tree_lock);
+	pthread_mutex_destroy(&js->lock);
+	free(js);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
