@@ -291,13 +291,13 @@ static int create_metric_sets()
 	sz = ldms_record_heap_size_get(rec_def);
 	sch_metrics[1].len = n_cpu * sz;
 
-	incr_heap_sz += ldms_record_heap_size_get(rec_def);
+	incr_heap_sz += sch_metrics[1].len;
 
 	rc = ldms_schema_metric_add_template(core_schema, sch_metrics, sch_metric_ids);
 	if (rc < 0)
 		goto err;
 
-	set = base_set_new(base);
+	set = base_set_new_heap(base, incr_heap_sz);
 	if (!set) {
 		rc = errno;
 		goto err;
