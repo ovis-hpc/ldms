@@ -149,7 +149,7 @@ void __dlog(int match, const char *fmt, ...)
 		vfprintf(ldmsd_req_debug_file, fmt, ap);
 		fflush(ldmsd_req_debug_file);
 	} else {
-		ovis_log(config_log, OVIS_LALWAYS, fmt, ap);
+		ovis_vlog(config_log, OVIS_LALWAYS, fmt, ap);
 	}
 	va_end(ap);
 }
