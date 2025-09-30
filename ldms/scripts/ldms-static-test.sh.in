@@ -288,6 +288,10 @@ function LDMSD {
 			;;
 		esac
 	done
+
+	if test "$use_conf$use_yaml" = "00"; then
+		use_conf=1
+	fi
 	if test "$use_conf" = "1" -a "$use_yaml" = "1"; then
 		echo "Conflicting options: cannot use both yaml and raw conf inputs"
 		bypass=1
