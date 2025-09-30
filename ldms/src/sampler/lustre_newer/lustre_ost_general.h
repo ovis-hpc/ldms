@@ -9,15 +9,15 @@
 
 #include "ldms.h"
 #include "ldmsd.h"
-#include "comp_id_helper.h"
 #include "lustre_ost.h"
 
 int ost_general_schema_is_initialized();
-int ost_general_schema_init(const comp_id_t cid);
-void ost_general_schema_fini();
-ldms_set_t ost_general_create(lo_context_t ctxt, const char *producer_name, const char *fs_name,
-                              const char *ost_name, const comp_id_t cid);
-void ost_general_sample(const char *ost_name, const char *stats_path,
+int ost_general_schema_init(lo_context_t ctxt);
+void ost_general_schema_fini(lo_context_t ctxt);
+ldms_set_t ost_general_create(lo_context_t ctxt, const char *fs_name,
+                              const char *ost_name);
+void ost_general_sample(lo_context_t ctxt,
+			const char *ost_name, const char *stats_path,
                         const char *osd_path, ldms_set_t general_metric_set);
 void ost_general_destroy(lo_context_t ctxt, ldms_set_t set);
 

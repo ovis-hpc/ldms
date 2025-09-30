@@ -9,9 +9,6 @@
 #include "lustre_ost.h"
 #include "lustre_ost_job_stats.h"
 
-/* Defined in lustre_ost.c */
-extern ovis_log_t lustre_ost_log;
-
 /* ldms_schema_t is a pointer */
 static ldms_schema_t ost_job_stats_schema;
 
@@ -53,7 +50,7 @@ int ost_job_stats_schema_is_initialized()
 }
 
 
-int ost_job_stats_schema_init(const char *producer_name)
+int ost_job_stats_schema_init(lo_context_t ctxt)
 {
         /* ldms_schema_t is a pointer */
         ldms_schema_t sch;
@@ -85,13 +82,13 @@ int ost_job_stats_schema_init(const char *producer_name)
 err2:
         ldms_schema_delete(sch);
 err1:
-        ovis_log(lustre_ost_log, OVIS_LERROR, "lustre_ost_job_stats schema creation failed\n");
+        ovis_log(ctxt->log, OVIS_LERROR, "lustre_ost_job_stats schema creation failed\n");
         return -1;
 }
 
-void ost_job_stats_schema_fini()
+void ost_job_stats_schema_fini(lo_context_t ctxt)
 {
-        ovis_log(lustre_ost_log, OVIS_LDEBUG, "ost_job_stats_schema_fini()\n");
+        ovis_log(ctxt->log, OVIS_LDEBUG, "ost_job_stats_schema_fini()\n");
         if (ost_job_stats_schema != NULL) {
                 ldms_schema_delete(ost_job_stats_schema);
                 ost_job_stats_schema = NULL;
@@ -99,7 +96,6 @@ void ost_job_stats_schema_fini()
 }
 
 static struct ost_job_stats_data *ost_job_stats_data_create(lo_context_t ctxt,
-							    const char *producer_name,
                                                             const char *jobid,
                                                             const char *fs_name,
                                                             const char *ost_name)
@@ -108,7 +104,7 @@ static struct ost_job_stats_data *ost_job_stats_data_create(lo_context_t ctxt,
         int index;
         char instance_name[256];
 
-        ovis_log(lustre_ost_log, OVIS_LDEBUG, "ost_job_stats_data_create() jobid=%s\n",
+        ovis_log(ctxt->log, OVIS_LDEBUG, "ost_job_stats_data_create() jobid=%s\n",
                jobid);
         job_stats = calloc(1, sizeof(*job_stats));
         if (job_stats == NULL)
@@ -117,14 +113,14 @@ static struct ost_job_stats_data *ost_job_stats_data_create(lo_context_t ctxt,
         if (job_stats->jobid == NULL)
                 goto out2;
         snprintf(instance_name, sizeof(instance_name), "%s/%s/%s",
-                 producer_name, ost_name, jobid);
+                 ctxt->producer_name, ost_name, jobid);
         job_stats->metric_set = ldms_set_new(instance_name,
                                              ost_job_stats_schema);
         if (job_stats->metric_set == NULL)
                 goto out3;
         rbn_init(&job_stats->job_stats_node, job_stats->jobid);
 
-        ldms_set_producer_name_set(job_stats->metric_set, producer_name);
+        ldms_set_producer_name_set(job_stats->metric_set, ctxt->producer_name);
         index = ldms_metric_by_name(job_stats->metric_set, "fs_name");
         ldms_metric_array_set_str(job_stats->metric_set, index, fs_name);
         index = ldms_metric_by_name(job_stats->metric_set, "ost");
@@ -139,13 +135,13 @@ out3:
 out2:
         free(job_stats);
 out1:
-        ovis_log(lustre_ost_log, OVIS_LERROR, "ost_job_stats_data_create failed\n");
+        ovis_log(ctxt->log, OVIS_LERROR, "ost_job_stats_data_create failed\n");
         return NULL;
 }
 
 static void ost_job_stats_data_destroy(lo_context_t ctxt, struct ost_job_stats_data *job_stats)
 {
-        ovis_log(lustre_ost_log, OVIS_LDEBUG, "ost_job_stats_data_destroy() jobid=%s\n",
+        ovis_log(ctxt->log, OVIS_LDEBUG, "ost_job_stats_data_destroy() jobid=%s\n",
                job_stats->jobid);
         ldmsd_set_deregister(ldms_set_instance_name_get(job_stats->metric_set), ctxt->cfg_name);
         ldms_set_unpublish(job_stats->metric_set);
@@ -193,7 +189,7 @@ static void job_stats_sample_stop(struct ost_job_stats_data **job_stats)
    than the ldms aggregator polling interval, there is no need for
    additional caching in ldms.
 */
-void ost_job_stats_sample(lo_context_t ctxt, const char *producer_name, const char *fs_name,
+void ost_job_stats_sample(lo_context_t ctxt, const char *fs_name,
                           const char *ost_name, const char *job_stats_path,
                           struct rbt *job_stats_tree)
 {
@@ -202,23 +198,23 @@ void ost_job_stats_sample(lo_context_t ctxt, const char *producer_name, const ch
         struct rbt new_job_stats;
         struct ost_job_stats_data *job_stats = NULL;
 
-        ovis_log(lustre_ost_log, OVIS_LDEBUG, "ost_job_stats_sample() %s\n",
+        ovis_log(ctxt->log, OVIS_LDEBUG, "ost_job_stats_sample() %s\n",
                ost_name);
         js = fopen(job_stats_path, "r");
         if (js == NULL) {
-                ovis_log(lustre_ost_log, OVIS_LWARNING, "file %s not found\n",
+                ovis_log(ctxt->log, OVIS_LWARNING, "file %s not found\n",
                        job_stats_path);
                 return;
         }
 
         /* The first line should always be "job_stats:" */
         if (fgets(buf, sizeof(buf), js) == NULL) {
-                ovis_log(lustre_ost_log, OVIS_LWARNING, "failed on read from %s\n",
+                ovis_log(ctxt->log, OVIS_LWARNING, "failed on read from %s\n",
                        job_stats_path);
                 goto out1;
         }
         if (strncmp("job_stats:", buf, sizeof("job_stats:")-1) != 0) {
-                ovis_log(lustre_ost_log, OVIS_LWARNING, "first line in %s is not \"job_stats:\": %s\n",
+                ovis_log(ctxt->log, OVIS_LWARNING, "first line in %s is not \"job_stats:\": %s\n",
                        job_stats_path, buf);
                 goto out1;
         }
@@ -241,7 +237,7 @@ void ost_job_stats_sample(lo_context_t ctxt, const char *producer_name, const ch
                                 job_stats = container_of(rbn, struct ost_job_stats_data, job_stats_node);
                                 rbt_del(job_stats_tree, &job_stats->job_stats_node);
                         } else {
-                                job_stats = ost_job_stats_data_create(ctxt, producer_name, str1, fs_name, ost_name);
+                                job_stats = ost_job_stats_data_create(ctxt, str1, fs_name, ost_name);
                         }
                         if (job_stats != NULL) {
                                 rbt_ins(&new_job_stats, &job_stats->job_stats_node);
@@ -261,13 +257,13 @@ void ost_job_stats_sample(lo_context_t ctxt, const char *producer_name, const ch
                            tells us that the data has changed */
                         if (job_stats->prev_snapshot_time == val1)
                                 continue;
-                        ovis_log(lustre_ost_log, OVIS_LDEBUG, "jobid %s has updated data\n",
+                        ovis_log(ctxt->log, OVIS_LDEBUG, "jobid %s has updated data\n",
                                job_stats->jobid);
                         job_stats->prev_snapshot_time = val1;
                         ldms_transaction_begin(job_stats->metric_set);
                         index = ldms_metric_by_name(job_stats->metric_set, "snapshot_time");
                         if (index == -1) {
-                                ovis_log(lustre_ost_log, OVIS_LWARNING, "ost job_stats metric not found: snapshot_time (job id: %s)\n",
+                                ovis_log(ctxt->log, OVIS_LWARNING, "ost job_stats metric not found: snapshot_time (job id: %s)\n",
                                        str1);
                         } else {
                                 ldms_metric_set_u64(job_stats->metric_set, index, val1);
@@ -286,7 +282,7 @@ void ost_job_stats_sample(lo_context_t ctxt, const char *producer_name, const ch
                         sprintf(str1+base_name_len, "_sum");
                         index = ldms_metric_by_name(job_stats->metric_set, str1);
                         if (index == -1) {
-                                ovis_log(lustre_ost_log, OVIS_LWARNING, "ost job_stats metric not found: %s\n",
+                                ovis_log(ctxt->log, OVIS_LWARNING, "ost job_stats metric not found: %s\n",
                                        str1);
                         } else {
                                 ldms_metric_set_u64(job_stats->metric_set, index, val1);
@@ -298,7 +294,7 @@ void ost_job_stats_sample(lo_context_t ctxt, const char *producer_name, const ch
                 if (rc == 2) {
                         index = ldms_metric_by_name(job_stats->metric_set, str1);
                         if (index == -1) {
-                                ovis_log(lustre_ost_log, OVIS_LWARNING, "ost job_stats metric not found: %s\n",
+                                ovis_log(ctxt->log, OVIS_LWARNING, "ost job_stats metric not found: %s\n",
                                        str1);
                         } else {
                                 ldms_metric_set_u64(job_stats->metric_set, index, val1);

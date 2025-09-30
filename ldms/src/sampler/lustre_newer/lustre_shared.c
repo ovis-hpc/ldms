@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <limits.h>
+#include <linux/limits.h>
 #include <dirent.h>
 #include <stdint.h>
 #include <inttypes.h>
@@ -131,4 +133,30 @@ out1:
         fclose(sf);
 
         return rc;
+}
+
+uint64_t lustre_file_read_uint64_t(const char *dir, const char *file, ovis_log_t log)
+{
+        uint64_t val;
+        char filepath[PATH_MAX];
+        char valbuf[64];
+        FILE *fp;
+
+        snprintf(filepath, PATH_MAX, "%s/%s", dir, file);
+        fp = fopen(filepath, "r");
+        if (fp == NULL) {
+                ovis_log(log, OVIS_LWARNING, "unable to open %s\n", filepath);
+                return 0;
+        }
+        if (fgets(valbuf, sizeof(valbuf), fp) == NULL) {
+                ovis_log(log, OVIS_LWARNING, "unable to read %s\n", filepath);
+                fclose(fp);
+                return 0;
+        }
+        fclose(fp);
+
+        /* turn string into int */
+        sscanf(valbuf, "%lu", &val);
+
+        return val;
 }
