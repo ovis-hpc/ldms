@@ -1,0 +1,4 @@
+stream_enable
+load name=dstat
+config name=dstat producer=localhost${i} schema=dstat instance=localhost${i}/dstat component_id=${i} mmalloc=1 io=1 fd=1 stat=1
+start name=dstat interval=1000000 offset=0

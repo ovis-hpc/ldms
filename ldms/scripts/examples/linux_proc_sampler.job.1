@@ -1,3 +1,4 @@
+stream_enable
 load name=${plugname}
 config name=${plugname} producer=localhost${i} schema=${plugname} instance=localhost${i}/${plugname} component_id=${i} perm=0644 cfg_file=${LDMSD_RUN}/metrics.input
 start name=${plugname} interval=1000000 offset=0
