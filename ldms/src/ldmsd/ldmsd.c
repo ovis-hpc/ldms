@@ -128,6 +128,7 @@ ovis_log_t stream_log;
 ovis_log_t config_log;
 ovis_log_t sampler_log;
 ovis_log_t fo_log; /* failover */
+ovis_log_t tenant_log;
 
 char *progname;
 char myname[512]; /* name to identify ldmsd */
@@ -1936,7 +1937,7 @@ void log_init()
 	config_log = ovis_log_register("config", "Messages for the configuration infrastructure");
 	sampler_log = ovis_log_register("sampler", "Messages for the common sampler infrastructure");
 	fo_log = ovis_log_register("failover", "Messages for the failover infrastructure");
-
+	tenant_log = ovis_log_register("tenant", "Message for the tenant infrastructure");
 }
 
 int main(int argc, char *argv[])
