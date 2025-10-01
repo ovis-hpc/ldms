@@ -1065,11 +1065,7 @@ ldms/src/sampler/tx2mon/Makefile
 ldms/src/sampler/msr_interlagos/Makefile
 ldms/src/sampler/meminfo/Makefile
 ldms/src/sampler/cxi_sampler/Makefile
-<<<<<<< HEAD
-=======
 ldms/src/sampler/curated_metrics/Makefile
-ldms/src/contrib/sampler/gpu_metrics_sampler/Makefile
->>>>>>> 429f28fa0 (curated metric set sampler)
 ldms/src/sampler/procinterrupts/Makefile
 ldms/src/sampler/procnetdev2/Makefile
 ldms/src/sampler/variable/Makefile
