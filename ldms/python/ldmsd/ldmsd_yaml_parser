@@ -27,13 +27,19 @@ if __name__ == "__main__":
     config_fp = open(args.ldms_config)
     conf_spec = yaml.safe_load(config_fp)
 
+    if not isinstance(conf_spec, (list, dict)):
+        print(f"Error: input {args.ldms_config} is not yaml. Contents:", file=sys.stderr)
+        print(conf_spec, file=sys.stderr)
+        sys.exit(errno.EINVAL)
+
     cluster = YamlCfg(None, None, conf_spec, args)
 
     if args.daemon_name and args.generate_config_path:
         print(f'Parameters "daemon_name" and "generate_config_path" are mutually exclusive.\n'
               f'Specifying the "daemon_name" parameter will generate the configuration for a single ldmsd\n'
-              f'Specifying the "generate_config_path" parameter will generate an entire cluster\'s v4 configuration files in the path provided.\n')
-        sys.exit(0)
+              f'Specifying the "generate_config_path" parameter will generate an entire cluster\'s\n'
+              f'v4 configuration files in the path provided.\n', file=sys.stderr)
+        sys.exit(errno.EINVAL)
 
     if args.daemon_name:
         ldmsd_cfg_str = cluster.daemon_config(args.ldms_config, args.daemon_name.rstrip('0'))
@@ -44,10 +50,10 @@ if __name__ == "__main__":
         rc = cluster.config_v4(args.generate_config_path)
         if rc:
             sys.exit(rc)
-        print('LDMSD v4 config files generated')
+        print('LDMSD v4 config files generated', file=sys.stderr)
         sys.exit(0)
 
     if not args.generate_config_path and not args.ldms_config and not args.daemon_name:
-        print(f'No action detected. Exiting...')
+        print(f'No action detected. Exiting.', file=sys.stderr)
 
     sys.exit(0)

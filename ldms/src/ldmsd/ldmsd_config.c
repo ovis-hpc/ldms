@@ -1129,8 +1129,12 @@ char *__process_yaml_config_file(const char *path, const char *dname)
 		}
 	}
 	cfg_str[tbytes] = '\0';
-	(void)pclose(fp);
+	int rc = pclose(fp);
 	fp = NULL;
+	if (rc && !tbytes) {
+		free(cfg_str);
+		return NULL;
+	}
 	return cfg_str;
 err:
 	if (cfg_str)
