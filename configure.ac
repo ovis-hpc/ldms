@@ -521,7 +521,7 @@ AM_CONDITIONAL([HAVE_TX2MON], [test "x$HAVE_TX2MON" = xyes])
 AM_CONDITIONAL([ENABLE_TX2MON], [test "$enable_tx2mon" = "yes"])
 
 # List of plugins that require SOS
-required_plugins="store-app proc-streams darshan kokkos"
+required_plugins="sos store-app proc-streams darshan kokkos"
 
 # Initialize an empty list to collect enabled plugins missing SOS
 missing=""
@@ -533,14 +533,10 @@ for plug in $required_plugins; do
   eval val=\$$varname
 
   if test -z "$val"; then
+    CHECK_SOS=1
     missing="$missing $plug,"
   fi
 done
-
-# Now check if SOS is enabled
-if test -n "$ENABLE_SOS_TRUE" && test -n "$missing"; then
-  AC_MSG_ERROR([The following features require --enable-sos:$missing. Please re-run configure with --enable-sos.])
-fi
 
 dnl Other libraries
 OPTION_DEFAULT_DISABLE([gemini-gpcdr], [ENABLE_GEMINI_GPCDR]) dnl use gpcdr for gemini (not mutually exclusive)
@@ -717,7 +713,7 @@ if test -z "$ENABLE_YAML_TRUE"; then
 	LIBS=""
 fi
 
-if test -z "$ENABLE_SOS_TRUE"; then
+if test -n "$CHECK_SOS"; then
 	if test "x$WITH_SOS" != "xbuild"; then
 		OCFLAGS=$CFLAGS
 		CFLAGS=$SOS_INCDIR_FLAG
@@ -735,7 +731,7 @@ if test -z "$ENABLE_SOS_TRUE"; then
 	else
 		AC_MSG_NOTICE([Using staged ovis-sos $OPVIS_SOS_LIB64DIR_FLAG $OVIS_SOS_LIBDIR_FLAG])
 		if test -z "$OPVIS_SOS_LIB64DIR_FLAG" && test -z "$OVIS_SOS_LIBDIR_FLAG"; then
-			AC_MSG_WARN([Both OPVIS_SOS_LIB64DIR_FLAG and OVIS_SOS_LIBDIR_FLAG are empty. This may cause a build error. Please specify `--with-sos=` to bypass.])
+			AC_MSG_ERROR([The follwing plugins require `--with-sos`:$missing. Please re-run configure with `--with-sos=$<PATH>` (or `--with-sos=` to bypass).])
 		fi
 	fi
 fi
