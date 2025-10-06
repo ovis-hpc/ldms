@@ -46,16 +46,22 @@ static int msg_cb_fn(ldms_msg_event_t ev, void *cb_arg)
 	/* cb_arg is the pointer supplied to ldms_msg_subscribe() */
 	switch (ev->type) {
 	case LDMS_MSG_EVENT_RECV:
-		printf("name: %s\n", ev->recv.name);
-		printf("hop : %d\n", ev->hop_num);
-		printf("type: %s\n", ldms_msg_type_sym(ev->recv.type));
-		printf("data: %s\n", ev->recv.data);
+		if (ev->recv.type == LDMS_MSG_JSON) {
+			printf("%s\n", ev->recv.data);
+		} else {
+			printf("name: %s\n", ev->recv.name);
+			printf("hop : %d\n", ev->hop_num);
+			printf("type: %s\n", ldms_msg_type_sym(ev->recv.type));
+			printf("data: %s\n", ev->recv.data);
+		}
+		fflush(stdout);
 		/* See `struct ldms_msg_event_s` for more information. */
 		break;
 	case LDMS_MSG_EVENT_CLIENT_CLOSE:
-		/* This is the last event guaranteed to delivered to this client. The
-		 * resources application associate to this client (e.g. cb_arg) could be
-		 * safely freed at this point. */
+		/* This is the last event guaranteed to be delivered
+		 * to this client. The resources associated with this
+		 * client (e.g. cb_arg) can be safely freed at this
+		 * point. */
 		break;
 	default:
 		/* ignore other events */;
