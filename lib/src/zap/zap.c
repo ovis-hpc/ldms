@@ -201,7 +201,7 @@ enum zap_err_e zap_errno2zerr(int e)
 
 const char* zap_event_str(enum zap_event_type e)
 {
-	if ((int)e < 0 || e > ZAP_EVENT_LAST)
+	if ((int)e < 1 || e >= ZAP_EVENT_LAST)
 		return "ZAP_EVENT_UNKNOWN";
 	return __zap_event_str[e];
 }
@@ -791,9 +791,11 @@ static zap_io_thread_t __io_thread_create(zap_t z, struct zap_io_thread_pool_s *
 	t = z->io_thread_create(z);
 	if (!t)
 		return NULL;
+	pthread_mutex_lock(&t->mutex);
 	t->stat->stats.thread_id = t->thread;
 	t->stat->pool_idx = tp->idx;
 	t->tp = tp;
+	pthread_mutex_unlock(&t->mutex);
 	tp->n++;
 	LIST_INSERT_HEAD(&tp->_io_threads, t, _entry);
 	return t;
@@ -857,30 +859,35 @@ static zap_io_thread_t __zap_least_busy_thread(zap_t z, zap_ep_t ep, struct zap_
 
 static zap_io_thread_t __zap_passive_ep_thread(zap_t z, zap_ep_t ep)
 {
-	zap_io_thread_t t = z->_passive_ep_thread;
-	if (t)
-		goto out;
+	zap_io_thread_t t;
 	char name[16];
+
+	pthread_mutex_lock(&z->_io_mutex);
+	t = z->_passive_ep_thread;
+	if (t) {
+		pthread_mutex_lock(&t->mutex);
+		goto add;
+	}
 	t = z->io_thread_create(z);
+	if (!t)
+		goto out;
+	pthread_mutex_lock(&t->mutex);
 	t->stat->stats.thread_id = t->thread;
 	t->stat->pool_idx = -1;
 	z->_passive_ep_thread = t;
-	if (t) {
-		/* append "_p" to the thread name for "passive" endpoint thread.
-		 * The suffix is shorten due to pthread 16-char name limit. */
-		snprintf(name, sizeof(name), "%s_p", t->stat->stats.name);
-		pthread_setname_np(t->thread, name);
-	}
+	/* append "_p" to the thread name for "passive" endpoint thread.
+	 * The suffix is shorten due to pthread 16-char name limit. */
+	snprintf(name, sizeof(name), "%s_p", t->stat->stats.name);
+	pthread_setname_np(t->thread, name);
+ add:
+	/* also add ep to the thread before releasing io mutex */
+	LIST_INSERT_HEAD(&t->_ep_list, ep, _entry);
+	t->_n_ep++;
+	t->stat->n_eps = t->_n_ep;
+	ep->thread = t;
+	pthread_mutex_unlock(&t->mutex);
  out:
-	if (t) {
-		/* also add ep to the thread before releasing io mutex */
-		pthread_mutex_lock(&t->mutex);
-		LIST_INSERT_HEAD(&t->_ep_list, ep, _entry);
-		t->_n_ep++;
-		t->stat->n_eps = t->_n_ep;
-		pthread_mutex_unlock(&t->mutex);
-		ep->thread = t;
-	}
+	pthread_mutex_unlock(&z->_io_mutex);
 	return t;
 }
 
@@ -1013,14 +1020,20 @@ void zap_thrstat_free(zap_thrstat_t stats)
 	free(stats);
 }
 
-void inline zap_thrstat_wait_start(zap_thrstat_t stats)
+void inline zap_thrstat_wait_start(void *arg)
 {
-	ovis_thrstats_wait_start(&stats->stats);
+	struct zap_io_thread *thr = arg;
+	pthread_mutex_lock(&thr->mutex);
+	ovis_thrstats_wait_start(&thr->stat->stats);
+	pthread_mutex_unlock(&thr->mutex);
 }
 
-void inline zap_thrstat_wait_end(zap_thrstat_t stats)
+void inline zap_thrstat_wait_end(void *arg)
 {
-	ovis_thrstats_wait_end(&stats->stats);
+	struct zap_io_thread *thr = arg;
+	pthread_mutex_lock(&thr->mutex);
+	ovis_thrstats_wait_end(&thr->stat->stats);
+	pthread_mutex_unlock(&thr->mutex);
 }
 
 static double zap_utilization(zap_thrstat_t t, struct timespec now)

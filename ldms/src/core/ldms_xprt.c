@@ -118,6 +118,11 @@ static char *xprt_event_type_names[] = {
 	[LDMS_XPRT_EVENT_RECV] = "RECV",
 	[LDMS_XPRT_EVENT_SET_DELETE] = "SET_DELETE",
 	[LDMS_XPRT_EVENT_SEND_COMPLETE] = "SEND_COMPLETE",
+	[LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED] = "SEND_QUOTA_DEPOSITED",
+	[LDMS_XPRT_EVENT_QGROUP_ASK] = "QGROUP_ASK",
+	[LDMS_XPRT_EVENT_QGROUP_DONATE] = "QGROUP_DONATE",
+	[LDMS_XPRT_EVENT_QGROUP_DONATE_BACK] = "QGROUP_DONATE_BACK"
+
 };
 
 const char *ldms_xprt_event_type_to_str(enum ldms_xprt_event_type t)
@@ -321,7 +326,8 @@ next:
 	return NULL;
 }
 
-/* Must be called with the xprt lock held */
+/* Must be called with the xprt lock held.
+ * Keeps, rather than copies, string and other pointers in varargs. */
 struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 		ldms_context_type_t type, ...)
 {
@@ -331,6 +337,7 @@ struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 	ctxt = calloc(1, sz);
 	if (!ctxt) {
 		XPRT_LOG(x, OVIS_LCRITICAL, "%s(): Out of memory\n", __func__);
+		va_end(ap);
 		return ctxt;
 	}
 	ctxt->x = ldms_xprt_get(x, "alloc_ctxt");
@@ -870,7 +877,6 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	reply = malloc(len);
 	if (!reply) {
 		rc = ENOMEM;
-		len = sizeof(struct ldms_reply_hdr);
 		goto out;
 	}
 
@@ -1998,10 +2004,10 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	if (!ctxt->dir.cb)
 		return;
 
+	(void)clock_gettime(CLOCK_REALTIME, &start);
+
 	if (rc)
 		goto out;
-
-	(void)clock_gettime(CLOCK_REALTIME, &start);
 
 	p = json_parser_new(0);
 	if (!p) {
@@ -2203,6 +2209,7 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 {
 	uint32_t data_off = ntohl(reply->push.data_off);
 	uint32_t data_len = ntohl(reply->push.data_len);
+	uint32_t push_flags;
 	int rc;
 	ldms_set_t set;
 
@@ -2220,9 +2227,22 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		memcpy((char *)set->meta + data_off,
 					reply->push.data, data_len);
 	}
-	if (set->push_cb &&
-		(0 == (ntohl(reply->push.flags) & LDMS_CMD_PUSH_REPLY_F_MORE))) {
-		set->push_cb(x, set, ntohl(reply->push.flags), set->push_cb_arg);
+
+	push_flags = ntohl(reply->push.flags);
+
+	if (push_flags & LDMS_CMD_PUSH_REPLY_F_MORE)
+		return; /* expecting more push data; do not proceed */
+
+	if (set->meta->heap_sz) {
+		void *base = ((void*)set->data) + set->data->size - set->meta->heap_sz;
+		if (ldms_set_is_consistent(set))
+			set->heap = ldms_heap_get(&set->heap_inst, &set->data->heap, base);
+		else
+			set->heap = NULL;
+	}
+
+	if (set->push_cb) {
+		set->push_cb(x, set, ntohl(push_flags), set->push_cb_arg);
 	}
 }
 
@@ -3076,7 +3096,7 @@ static void __ldms_xprt_release_sets(ldms_t x, struct rbt *set_coll)
 			free(lp);
 		}
 		if (pp) {
-			ldms_xprt_put(pp->xprt, "push_peer");
+			ldms_xprt_put(pp->xprt, "push_set");
 			free(pp);
 		}
 		ref_put(&ent->set->ref, "xprt_set_coll");
@@ -3099,6 +3119,32 @@ void __thrstats_reset(void *ctxt, struct timespec *reset_ts)
 		thrstat->ops[i].count = thrstat->ops[i].total = 0;
 }
 
+struct ldms_thrstat *__thrstats_get(zap_ep_t zep)
+{
+	struct ldms_thrstat *thrstat;
+	int rc;
+
+	thrstat = zap_thrstat_ctxt_get(zep);
+
+	if (thrstat)
+		return thrstat;
+
+	thrstat = calloc(1, sizeof(*thrstat));
+	if (!thrstat) {
+		ovis_log(xlog, OVIS_LCRIT, "Memory allocation failure.\n");
+		return NULL;
+	}
+	rc = zap_thrstat_ctxt_set(zep, thrstat, __thrstats_reset);
+	if (rc) {
+		ovis_log(xlog, OVIS_LCRIT,
+			 "Cannot set thread stats %p to Zap "
+			 "endpoint %p. Error %d\n", thrstat, zep, rc);
+		free(thrstat);
+		return NULL;
+	}
+	return thrstat;
+}
+
 /**
  * ldms-zap event handling function.
  */
@@ -3113,6 +3159,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	struct ldms_thrstat *thrstat;
 	struct ldms_thrstat_entry *thrstat_e = NULL;
 	struct ldms_op_ctxt *op_ctxt = NULL;
+	pthread_t thr;
 
 	if (x == NULL)
 		return;
@@ -3122,23 +3169,29 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 #endif /* DEBUG */
 
 	errno = 0;
-	thrstat = zap_thrstat_ctxt_get(zep);
+	thr = zap_ep_thread(zep);
+	if (thr) {
+		thrstat = __thrstats_get(zep);
+	} else {
+		assert(ev->type == ZAP_EVENT_CONNECT_REQUEST);
+		/* No thread assigned to the zep, this is a new endpoint from
+		 * a connection request. The thread we're on right now is the
+		 * thread on the listening parent endpoint.
+		 *
+		 * In this case `x`, the context of the `zep` is inherited from
+		 * the parent listening endpoint, which makes `x` being the ldms
+		 * xprt object of the parent listening endpoint.
+		 *
+		 * We get `thrstat` object from the parent endpoint because
+		 * we're working the connection request with parent ep's thread.
+		 */
+		thrstat = __thrstats_get(x->zap_ep);
+	}
 	if (!thrstat) {
-		if ((errno == 0) || (ev->type == ZAP_EVENT_CONNECT_REQUEST)) {
-			thrstat = calloc(1, sizeof(*thrstat));
-			if (!thrstat) {
-				ovis_log(xlog, OVIS_LCRIT,
-						"Memory allocation failure.\n");
-				return;
-			}
-			if (zap_thrstat_ctxt_set(zep, thrstat, __thrstats_reset))
-				free(thrstat);
-		} else {
-			ovis_log(xlog, OVIS_LCRIT, "Cannot retrieve thread stats "
-					"from Zap endpoint. Error %d\n", errno);
-			assert(0);
-			return;
-		}
+		ovis_log(xlog, OVIS_LCRIT, "Cannot retrieve thread stats "
+				"from Zap endpoint. Error %d\n", errno);
+		assert(0);
+		return;
 	}
 	assert(thrstat->last_op < LDMS_THRSTAT_OP_COUNT);
 	(void)clock_gettime(CLOCK_REALTIME, &thrstat->last_op_start);
@@ -4724,8 +4777,10 @@ struct ldms_thrstat_result *ldms_thrstat_result_get(uint64_t interval_s)
 
 	lres = calloc(1, sizeof(*lres) +
 		zres->count * sizeof(struct ldms_thrstat_result_entry));
-	if (!lres)
+	if (!lres) {
+		zap_thrstat_free_result(zres);
 		goto out;
+	}
 	lres->_zres = zres;
 	lres->count = zres->count;
 	for (i = 0; i < zres->count; i++) {

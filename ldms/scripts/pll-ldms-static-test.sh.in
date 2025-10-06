@@ -255,7 +255,11 @@ function DAEMONS {
 	if test $did_daemons = "1"; then
 		return
 	fi
-	ALL_DAEMONS="$*"
+	if test "$#" = "1"; then
+		ALL_DAEMONS=$(seq $1)
+	else
+		ALL_DAEMONS="$*"
+	fi
 	declare -a ALL_DAEMONS_ARRAY
 	for i in $*; do
 		ALL_DAEMONS_ARRAY[$i]=$i

@@ -308,6 +308,7 @@ typedef int (*print_f)(const char *fmt, ...);
 typedef struct forkstat {
 	bool stop_recv;				/* true if monitor exit wanted */
 	bool sane_procs;			/* true if not inside a container */
+	bool log_nobufs;			/* true if we should print nobufs msgs */
 	unsigned max_pids;			/* array size; >= INT_MAX if not ready */
 	struct pi_list *proc_info;		/* Proc array w/locks*/
 	struct pi_list *proc_info_head;	/* Proc array -1th ptr */
@@ -423,6 +424,7 @@ static const int signals[] = {
 #define default_format "3" /* this is also the max format known */
 #define default_heartbeat NULL /* none by default*/
 #define default_component_id NULL
+#define default_log_nobufs NULL
 #define default_ProducerName NULL
 #define default_track_dir "/var/run/ldms-netlink-tracked"
 #define default_purge NULL
@@ -435,7 +437,7 @@ static const int signals[] = {
 /* where we find jobid data if not given.*/
 #define jfsearch "/search"
 const char *jobid_file_names[] = {
-	"/var/run/ldms_jobinfo.data"
+	"/var/run/ldms_jobinfo.data",
 	"/var/run/ldms.slurm.jobinfo",
 	"/var/run/ldms.jobinfo"
 };
@@ -1699,6 +1701,7 @@ static proc_info_t *proc_info_add(const pid_t pid, const struct timeval * const 
 				pthread_mutex_unlock(&(ft->proc_info[i].lock));
 			}
 			pthread_setcancelstate(dummy, &dummy);
+			free(newexe);
 			return NULL;
 		}
 		info->next = ft->proc_info[i].pi;
@@ -1773,6 +1776,7 @@ static int proc_info_load(forkstat_t *ft)
 	int rc = init_proc_info(ft);
 	if (rc != 0) {
 		EPRINTF( "init_proc_info fail %d\n", rc);
+		(void)closedir(dir);
 		return -2;
 	}
 
@@ -1931,6 +1935,7 @@ static void *monitor(void *vp)
 	char eibuf[32]; // extra_info output space
 
 	print_heading(ft);
+	uint64_t nobufs_count = 0;
 
 	jbuf_t jbd = jbuf_new();
 	jbuf_t jb = jbd;
@@ -1949,22 +1954,26 @@ static void *monitor(void *vp)
 			switch (err) {
 			case EINTR:
 				arg->ret = 0;
-				return NULL;
+				goto out;
 			case ENOBUFS: {
-				time_t now;
-				struct tm tm;
+				if (ft->log_nobufs) {
+					time_t now;
+					struct tm tm;
 
-				now = time(NULL);
-				if (now == ((time_t) -1)) {
-					PRINTF("--:--:-- recv ----- "
-						"nobufs %8.8s (%s)\n",
-						"", strerror(err));
+					now = time(NULL);
+					if (now == ((time_t) -1)) {
+						PRINTF("--:--:-- recv ----- "
+							"nobufs %8.8s (%s)\n",
+							"", strerror(err));
+					} else {
+						(void)localtime_r(&now, &tm);
+						PRINTF("%2.2d:%2.2d:%2.2d recv ----- "
+							"nobufs %8.8s (%s)\n",
+							tm.tm_hour, tm.tm_min, tm.tm_sec, "",
+							strerror(err));
+					}
 				} else {
-					(void)localtime_r(&now, &tm);
-					PRINTF("%2.2d:%2.2d:%2.2d recv ----- "
-						"nobufs %8.8s (%s)\n",
-						tm.tm_hour, tm.tm_min, tm.tm_sec, "",
-						strerror(err));
+					nobufs_count++;
 				}
 				break;
 			}
@@ -1972,10 +1981,10 @@ static void *monitor(void *vp)
 				EPRINTF("recv failed: errno=%d (%s)\n",
 					err, strerror(err));
 				arg->ret = -1;
-				return NULL;
+				goto out;
 			}
 		}
-
+		/* this loop is a no-op when len==-1 */
 		for (nlmsghdr = (struct nlmsghdr *)buf;
 			NLMSG_OK (nlmsghdr, len);
 			nlmsghdr = NLMSG_NEXT (nlmsghdr, len)) {
@@ -2342,7 +2351,11 @@ static void *monitor(void *vp)
 			}
 		}
 	}
+out:
 	jbuf_free(jbd);
+	if (!(ft->opt_flags & OPT_QUIET) && nobufs_count) {
+		PRINTF("%" PRIu64 " unlogged enobufs events since startup\n", nobufs_count);
+	}
 	return NULL;
 }
 
@@ -2403,6 +2416,7 @@ static struct exclude_arg excludes[] = {
 	{default_heartbeat, VT_SCALAR, 0, "NOTIFIER_HEARTBEAT", NULL, 0, PLINIT},
 	{default_purge, VT_NONE, 0, "NOTIFIER_PURGE_TRACK_DIR", NULL, 0, PLINIT},
 	{default_jobid_file, VT_FILE, 0, "NOTIFIER_JOBID_FILE", NULL, 0, PLINIT},
+	{default_log_nobufs, VT_SCALAR, 0, "NOTIFIER_LOG_NOBUFS", NULL, 0, PLINIT},
 };
 static struct exclude_arg *bin_exclude = &excludes[0];
 static struct exclude_arg *dir_exclude = &excludes[1];
@@ -2423,6 +2437,7 @@ static struct exclude_arg *format_arg = &excludes[15];
 static struct exclude_arg *heartbeat_arg = &excludes[16];
 static struct exclude_arg *purge_track_dir_arg = &excludes[17];
 static struct exclude_arg *jobid_file_arg = &excludes[18];
+static struct exclude_arg *log_nobufs_arg = &excludes[19];
 
 static struct option long_options[] = {
 	{"exclude-programs", optional_argument, 0, 0},
@@ -2444,6 +2459,7 @@ static struct option long_options[] = {
 	{"heartbeat", required_argument, 0, 0},
 	{"purge-track-dir", no_argument, 0, 0},
 	{"jobid-file", required_argument, 0, 0},
+	{"log-nobufs", required_argument, 0, 0},
 	{0, 0, 0, 0}
 };
 
@@ -2977,6 +2993,7 @@ static void forkstat_option_dump(forkstat_t *ft, struct exclude_arg *excludes)
 	printf("forkstat struct:\n");
 	printf("\tstop_recv= %d\n", (int)ft->stop_recv);
 	printf("\tsane_procs= %d\n", (int)ft->sane_procs);
+	printf("\tlog_nobufs= %d\n", (int)ft->log_nobufs);
 	printf("\tmax_pids= %u\n", ft->max_pids);
 	printf("\topt_flags= %lu\n", (unsigned long) ft->opt_flags);
 	printf("\topt_uidmin= %u\n", ft->opt_uidmin);
@@ -3031,6 +3048,7 @@ static void llog(int lvl, const char *fmt, ...) {
 	switch (lvl) {
 	case 3:
 		printf("ERR: ");
+		/* fall through */
 	default:
 		printf("Level-%d: ", lvl);
 	}
@@ -3084,8 +3102,8 @@ int forkstat_init_track_dir(forkstat_t *ft, const char *pid_dir)
 		return EINVAL;
 	DIR *dir = opendir(pid_dir);
 	if (!dir) {
-		mkdir(pid_dir, 0755);
-		DIR *dir = opendir(pid_dir);
+		(void)mkdir(pid_dir, 0755);
+		dir = opendir(pid_dir);
 		if (!dir) {
 			PRINTF("Unable to open pid tracking dir %s: %s\n",
 				pid_dir, strerror(errno));
@@ -3279,6 +3297,7 @@ static char **load_pid_env(pid_t pid, size_t *out_len)
         char **result = NULL;
         size_t elen;
         char fname[32];
+        FILE *f = NULL;
         *out_len = 0;
         if (pid < 1) {
 		errno = EINVAL;
@@ -3286,7 +3305,7 @@ static char **load_pid_env(pid_t pid, size_t *out_len)
 	}
 
         snprintf(fname, sizeof(fname), "/proc/%d/environ", pid);
-        FILE *f = fopen(fname, "r");
+        f = fopen(fname, "r");
 	if (!f) {
 		goto err;
 	}
@@ -3313,6 +3332,8 @@ out:
 	free(e);
 	return result;
 err:
+	if (f)
+		fclose(f);
 	free(result);
 	return null_result;
 }
@@ -4541,13 +4562,13 @@ void dump_schemas(forkstat_t *ft)
 		return;
 	}
 	proc_info_t *info = &test_pi;
-	jbuf_t jbd = jbuf_new();
-	jbuf_t jb = jbd;
 	FILE *out = fopen(ft->schema_dump, "w");
 	if (!out) {
 		PRINTF("-J error: cannot open file %s\n", ft->schema_dump);
 		return;
 	}
+	jbuf_t jbd = jbuf_new();
+	jbuf_t jb = jbd;
 	PRINTF("dumping schema information to %s. configured format is %lu\n",
 		ft->schema_dump, ft->format);
 	int oldfmt = ft->format;
@@ -4561,18 +4582,33 @@ void dump_schemas(forkstat_t *ft)
 
 		// case RM_NONE:
 		jb = make_process_end_data_linux(ft, info, jbd);
-		fprintf(out, "// linux task end format=%lu\n%s\n", ft->format, jb->buf);
-		jbuf_reset(jbd);
+		if (jb) {
+			fprintf(out, "// linux task end format=%lu\n%s\n", ft->format, jb->buf);
+			jbuf_reset(jb);
+			jbd = jb;
+		} else {
+			jbuf_reset(jbd);
+		}
 
 		// case RM_SLURM:
 		jb = make_process_end_data_slurm(ft, info, jbd);
-		fprintf(out, "// slurm task end format=%lu\n%s\n", ft->format, jb->buf);
-		jbuf_reset(jbd);
+		if (jb) {
+			fprintf(out, "// slurm task end format=%lu\n%s\n", ft->format, jb->buf);
+			jbuf_reset(jb);
+			jbd = jb;
+		} else {
+			jbuf_reset(jbd);
+		}
 
 		// case RM_LSF:
 		jb = make_process_end_data_lsf(ft, info, jbd);
-		fprintf(out, "// lsf task end format=%lu\n%s\n", ft->format, jb->buf);
-		jbuf_reset(jbd);
+		if (jb) {
+			fprintf(out, "// lsf task end format=%lu\n%s\n", ft->format, jb->buf);
+			jbuf_reset(jb);
+			jbd = jb;
+		} else {
+			jbuf_reset(jbd);
+		}
 
 		// case RM_NONE:
 		jb = make_process_start_data_linux(ft, info
@@ -4580,20 +4616,36 @@ void dump_schemas(forkstat_t *ft)
 									, type
 #endif
 									, jbd);
-		fprintf(out, "// linux task start format=%lu\n%s\n", ft->format, jb->buf);
-		jbuf_reset(jbd);
+		if (jb) {
+			fprintf(out, "// linux task start format=%lu\n%s\n", ft->format, jb->buf);
+			jbuf_reset(jb);
+			jb = jbd;
+		} else {
+			jbuf_reset(jbd);
+		}
 		// case RM_SLURM:
 		jb = make_process_start_data_slurm(ft, info
 #if DEBUG_EMITTER
 									, type
 #endif
 									, jbd);
-		fprintf(out, "// slurm task start format=%lu\n%s\n", ft->format, jb->buf);
-		jbuf_reset(jbd);
+		if (jb) {
+			fprintf(out, "// slurm task start format=%lu\n%s\n", ft->format, jb->buf);
+			jbuf_reset(jb);
+			jbd = jb;
+		} else {
+			jbuf_reset(jbd);
+		}
+
 		// case RM_LSF:
 		jb = make_process_start_data_lsf(ft, info, jbd);
-		fprintf(out, "// lsf task start format=%lu\n%s\n", ft->format, jb->buf);
-		jbuf_reset(jbd);
+		if (jb) {
+			fprintf(out, "// lsf task start format=%lu\n%s\n", ft->format, jb->buf);
+			jbuf_reset(jb);
+			jbd = jb;
+		} else {
+			jbuf_reset(jbd);
+		}
 	}
 	ft->format = oldfmt;
 	jbuf_free(jbd);
@@ -4800,6 +4852,11 @@ int main(int argc, char * argv[])
 		ft->compid_field = strdup(ctmp);
 	} else {
 		ft->compid_field = strdup("");
+	}
+	if (log_nobufs_arg[0].parsed || getenv(log_nobufs_arg->env)) {
+		ft->log_nobufs = (bool)strtol(log_nobufs_arg->paths[0].n, NULL, 10);
+	} else {
+		ft->log_nobufs = 0;
 	}
 	if ( (heartbeat_arg[0].parsed || getenv(heartbeat_arg->env)) &&
 		set_heartbeat(heartbeat_arg->paths[0].n, ft)) {

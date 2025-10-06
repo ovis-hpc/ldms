@@ -500,6 +500,7 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 	char *bufend = pa->buf + len;
 	char *lineend;
 	char *linestart = pa->buf;
+	char *key = NULL;
 	while (linestart < bufend) {
 		lineend = strchr(linestart, '\n');
 		if (!lineend)
@@ -534,7 +535,6 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 			ovis_log(app_log, OVIS_LERROR, "ldmsd_plugattr_create tokenize failed\n");
 			goto fout;
 		}
-		char *key = NULL;
 		if (iavl->count == 0 && ikvl->count == 0) {
 			av_free(iavl);
 			av_free(ikvl);
@@ -591,6 +591,7 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 
 		struct list_pair *lp;
 		lp = list_pair_create(key, iavl, ikvl);
+		key = NULL;
 		av_free(iavl);
 		av_free(ikvl);
 		iavl = ikvl = NULL;
@@ -610,6 +611,7 @@ next:
 	}
 	rc = 0;
 fout:
+	free(key);
 	av_free(iavl);
 	av_free(ikvl);
 	if (f)

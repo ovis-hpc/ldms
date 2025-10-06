@@ -181,6 +181,10 @@ static const char *__cfgobj_type_str[] = {
 	[LDMSD_CFGOBJ_STRGP]  = "strgp",
 	[LDMSD_CFGOBJ_LISTEN] = "listen",
 	[LDMSD_CFGOBJ_AUTH]   = "auth",
+        [LDMSD_CFGOBJ_PRDCR_LISTEN] = "prdcr_listen",
+        [LDMSD_CFGOBJ_SAMPLER] = "sampler",
+        [LDMSD_CFGOBJ_STORE] = "store"
+
 };
 
 const char *ldmsd_cfgobj_type_str(ldmsd_cfgobj_type_t t)
@@ -307,8 +311,9 @@ void ldmsd_cfgobj_del(ldmsd_cfgobj_t obj)
 		obj->kvl_str = NULL;
 	}
 	rbt_del(cfgobj_trees[obj->type], &obj->rbn);
-	ldmsd_cfgobj_put(obj, "init");
+	ldmsd_cfgobj_put(obj, "cfgobj_tree");
 	pthread_mutex_unlock(cfgobj_locks[obj->type]);
+	ldmsd_cfgobj_put(obj, "init");
 }
 
 /**

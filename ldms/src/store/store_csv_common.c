@@ -277,9 +277,8 @@ void rename_output(const char *name,
 			} else {
 				size_t vlen = vend - head + 1;
 				char var[vlen];
-				memset(var, 0, vlen);
 				strncpy(var, head, vlen-1);
-				var[vlen] = '\0';
+				var[vlen-1] = '\0';
 				head = vend + 1;
 				char *val = getenv(var);
 				if (val) {
@@ -1114,8 +1113,10 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 }
 
 void close_store_common(struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps) {
-	if (!s_handle || !cps) {
-		ovis_log(cps->mylog, OVIS_LERROR,
+	if (!cps)
+		return;
+	if (!s_handle) {
+		ovis_log( cps->mylog, OVIS_LERROR,
 			"%s: close_store_common with null argument\n",
 			cps->pname);
 		return;

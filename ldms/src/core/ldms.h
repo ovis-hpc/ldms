@@ -3692,7 +3692,8 @@ extern const char *ldms_metric_type_to_str(enum ldms_value_type t);
 /**
  * \brief Get a metric type primitive base
  *
- * Returns the scalar ldms_value_type related to t.
+ * Returns the scalar ldms_value_type related to t, or LDMS_V_NONE
+ * when t is a structure type (list & record related types,).
  *
  * \param t	The metric value type which may be array or scalar.
  * \returns	the scalar type.

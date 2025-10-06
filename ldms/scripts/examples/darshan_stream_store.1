@@ -1,0 +1,6 @@
+stream_enable
+load name=darshan_stream_store
+config name=darshan_stream_store path=${STOREDIR}/sos stream=darshanConnector
+prdcr_add name=localhost1 host=localhost type=active xprt=sock port=${port1} reconnect=20000000
+prdcr_subscribe stream=darshanConnector regex=localhost*
+prdcr_start name=localhost1

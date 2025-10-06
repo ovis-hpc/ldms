@@ -335,6 +335,9 @@ size_t prim_value_format(enum ldms_value_type type, ldms_mval_t val, size_t n, i
 			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%f", val->a_d[i]);
 		}
 		break;
+	case LDMS_V_TIMESTAMP:
+		cnt = snprintf(buf, BUF_LEN, "%u.%06u", val->v_ts.sec, val->v_ts.usec);
+		break;
 	default:
 		return 0;
 	}
@@ -419,6 +422,8 @@ void list_record_format(ldms_set_t s, ldms_mval_t lh)
 	int i;
 
 	card = ldms_record_card(ldms_list_first(s, lh, &ltype, &count));
+	if (card < 0)
+		return;
 	cw = calloc(card, sizeof(int));
 
 	/* Determine the column widths */
@@ -466,6 +471,8 @@ void record_array_format(ldms_set_t s, ldms_mval_t rh)
 
 	frec = ldms_record_array_get_inst(rh, 0);
 	card = ldms_record_card(frec);
+	if (card < 0)
+		return;
 	width = calloc(card, sizeof(int));
 
 	for (i = 0; i < len; i++) {
@@ -640,6 +647,9 @@ void value_format(ldms_set_t s, enum ldms_value_type type, ldms_mval_t val, size
 			printf("]");
 			printf("\n");
 		}
+		break;
+	case LDMS_V_TIMESTAMP:
+		printf("%u.%06u", val->v_ts.sec, val->v_ts.usec);
 		break;
 	default:
 		printf("Unknown metric type");

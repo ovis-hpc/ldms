@@ -612,6 +612,7 @@ static int create_metric_set(cxi_t cxi)
 	if (rc < 0) {
 		ovis_log(cxi->log, OVIS_LERROR,
 			 "Error %d creating tel_list.\n", errno);
+		ldms_record_delete(rh_rec);
 		goto err1;
 	}
 
@@ -751,10 +752,10 @@ static int config(ldmsd_plug_handle_t handle,
 	ovis_log_t log = ldmsd_plug_log_get(handle);
 	int rc;
 	char *rh_path;
-	char *rh_counters;
+	char *rh_counters = NULL;;
 	char *rh_counters_file;
 	char *tel_path;
-	char *tel_counters;
+	char *tel_counters = NULL;;
 	char *tel_counters_file;
 
 	if (cxi->set) {
@@ -773,11 +774,25 @@ static int config(ldmsd_plug_handle_t handle,
 	/* Metric filter */
 	tel_counters = av_value(avl, "tel_counters");
 	if (tel_counters != NULL) {
-		ovis_log(log, OVIS_LDEBUG, "We have telemetry counter filters: %s\n", tel_counters);
+		tel_counters = strdup(tel_counters);
+		if (!tel_counters)  {
+			ovis_log(log, OVIS_LERROR, "out of memory during configuration");
+			rc = ENOMEM;
+			goto err;
+		} else {
+			ovis_log(log, OVIS_LDEBUG, "We have telemetry counter filters: %s\n", tel_counters);
+		}
 	}
 	rh_counters = av_value(avl, "rh_counters");
 	if (rh_counters != NULL) {
-		ovis_log(log, OVIS_LDEBUG, "We have retry handler counter filters: %s\n", rh_counters);
+		rh_counters = strdup(rh_counters);
+		if (!rh_counters)  {
+			ovis_log(log, OVIS_LERROR, "out of memory during configuration");
+			rc = ENOMEM;
+			goto err;
+		} else {
+			ovis_log(log, OVIS_LDEBUG, "We have retry handler counter filters: %s\n", rh_counters);
+		}
 	}
 
 	/* Metric filter from files */
@@ -849,9 +864,13 @@ static int config(ldmsd_plug_handle_t handle,
 		goto err;
 	}
 
+	free(tel_counters);
+	free(rh_counters);
 	return 0;
 
 err:
+	free(tel_counters);
+	free(rh_counters);
 	return rc;
 }
 

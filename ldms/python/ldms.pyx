@@ -1,5 +1,5 @@
-# Copyright (c) 2020-2023 Open Grid Computing, Inc. All rights reserved.
-# Copyright (c) 2020-2023 NTESS Corporation. All rights reserved.
+# Copyright (c) 2020-2025 Open Grid Computing, Inc. All rights reserved.
+# Copyright (c) 2020-2025 NTESS Corporation. All rights reserved.
 # Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
 # license for use of this work by or on behalf of the U.S. Government.
 # Export of this program may require a license from the United States
@@ -641,6 +641,11 @@ cdef py_ldms_metric_array_get_float(Set s, int m_idx, int e_idx):
 cdef py_ldms_metric_get_double(Set s, int m_idx):
     return ldms_metric_get_double(s.rbd, m_idx)
 
+cdef py_ldms_metric_get_ts(Set s, int m_idx):
+    cdef ldms_mval_t mv = ldms_metric_get(s.rbd, m_idx)
+    ts = mv.v_ts.sec + mv.v_ts.usec*1e-6
+    return ts
+
 cdef py_ldms_metric_array_get_double(Set s, int m_idx, int e_idx):
     return ldms_metric_array_get_double(s.rbd, m_idx, e_idx)
 
@@ -696,6 +701,8 @@ METRIC_GETTER_TBL = {
 
         LDMS_V_RECORD_TYPE : py_ldms_metric_get_record_type,
         LDMS_V_RECORD_ARRAY : py_ldms_metric_get_record_array,
+
+        LDMS_V_TIMESTAMP : py_ldms_metric_get_ts,
     }
 
 
@@ -876,6 +883,13 @@ cdef py_ldms_metric_array_set_float(Set s, int m_idx, int e_idx, val):
 cdef py_ldms_metric_set_double(Set s, int m_idx, val):
     return ldms_metric_set_double(s.rbd, m_idx, val)
 
+cdef py_ldms_metric_set_ts(Set s, int m_idx, val):
+    cdef ldms_mval_t mv = ldms_metric_get(s.rbd, m_idx)
+    f = float(val)
+    mv.v_ts.sec = int(f)
+    mv.v_ts.usec = int((f % 1) * 1e6)
+    return f
+
 cdef py_ldms_metric_array_set_double(Set s, int m_idx, int e_idx, val):
     return ldms_metric_array_set_double(s.rbd, m_idx, e_idx, val)
 
@@ -917,6 +931,8 @@ METRIC_SETTER_TBL = {
         LDMS_V_LIST : py_ldms_metric_set_list,
         LDMS_V_RECORD_TYPE : py_ldms_metric_set_record_type,
         LDMS_V_RECORD_ARRAY : py_ldms_metric_set_record_array,
+
+        LDMS_V_TIMESTAMP : py_ldms_metric_set_ts,
     }
 
 
@@ -1534,6 +1550,7 @@ cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
     elif e.type == EVENT_DISCONNECTED:
         x._conn_rc = ENOTCONN
         x._conn_rc_msg = "DISCONNECTED"
+        x._recv_queue.put(None)
     elif e.type == EVENT_RECV:
         b = PyBytes_FromStringAndSize(e.data, e.data_len)
         x._recv_queue.put(b)
@@ -1583,6 +1600,8 @@ cdef void passive_xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
     elif e.type == EVENT_RECV:
         b = PyBytes_FromStringAndSize(e.data, e.data_len)
         x._recv_queue.put(b)
+    elif e.type == EVENT_DISCONNECTED:
+        x._recv_queue.put(None)
     # Else, ignore
 
 
@@ -3491,7 +3510,7 @@ cdef class Xprt(object):
             rail_recv_quota = rail_recv_limit
         # conn
         sem_init(&self._conn_sem, 0, 0)
-        self._conn_rc = 0
+        self._conn_rc = ENOTCONN
         self._conn_rc_msg = "OK"
         self._conn_cb = None
         self._conn_cb_arg = None
@@ -3808,6 +3827,8 @@ cdef class Xprt(object):
                     "The callback has been supplied to `connect()`. "
                     "The message will be delivered asynchronously via the "
                     "callback function.")
+        if self._conn_rc:
+            return None # not connected
         return self._recv_queue.get(timeout=timeout)
 
     @property

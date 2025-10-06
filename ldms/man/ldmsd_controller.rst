@@ -450,9 +450,14 @@ Disable stream communication
 
 Disable the subscription and publication of data on a stream in this daemon.
 Once stream communication is disabled, all stream requests will result in an
-error of ENOSYS. Stream communication cannot be re-enabled without restarting
-the daemon.
+error of ENOSYS. Stream communication can be re-enabled with "stream_enable".
 
+Enable stream communication
+---------------------------
+
+**stream_enable**
+
+Enable the subscription and publication of data on a stream in this daemon.
 
 Disable LDMS Message Service
 ----------------------------
@@ -461,7 +466,14 @@ Disable LDMS Message Service
 
 Disable the LDMS Message Service subscription and publication in this daemon.
 Once this is disabled, all LDMS Messages will be dropped. The LDMS Message
-Service cannot be re-enabled without restarting the daemon.
+Service can be re-enabled with 'msg_enable'.
+
+Disable LDMS Message Service
+----------------------------
+
+**msg_enable**
+
+Enable the LDMS Message Service subscription and publication in this daemon.
 
 Subscribe to a stream or LDMS message service on matching producers
 -------------------------------------------------------------------
@@ -715,7 +727,7 @@ Create a Storage Policy and open/create the storage instance.
       |
       | The name of the storage backend.
 
-   **container** *container*
+   **[container** *container*\ **]**
       |
       | The storage backend container name.
 

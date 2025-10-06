@@ -171,9 +171,14 @@ function DAEMONS {
 	if test $did_daemons = "1"; then
 		return
 	fi
-	for i in $*; do
+	if test "$#" = "1"; then
+		ALL_DAEMONS=$(seq $1)
+	else
+		ALL_DAEMONS="$*"
+	fi
+	for i in $ALL_DAEMONS; do
 		/bin/rm -f ${LOGDIR}/$i.txt ${LOGDIR}/vg.$i ${LOGDIR}/teardown.$i.txt ${LOGDIR}/$i.stdio
-		/bin/rm -f ${RUNDIR}/revconf.$i ${RUNDIR}/conf.$i ${RUNDIR}/yaml.$i ${RUNDIR}/yaml.$i.pre-sed ${RUNDIR}/start.$i
+		/bin/rm -f ${LDMSD_RUN}/revconf.$i ${LDMSD_RUN}/conf.$i ${LDMSD_RUN}/yaml.$i ${LDMSD_RUN}/yaml.$i.pre-sed ${LDMSD_RUN}/start.$i
 		ports[$i]=$(($portbase + $i))
 		eval export port$i=${ports[$i]}
 		binname=ldmsd.${ports[$i]}
@@ -283,6 +288,10 @@ function LDMSD {
 			;;
 		esac
 	done
+
+	if test "$use_conf$use_yaml" = "00"; then
+		use_conf=1
+	fi
 	if test "$use_conf" = "1" -a "$use_yaml" = "1"; then
 		echo "Conflicting options: cannot use both yaml and raw conf inputs"
 		bypass=1

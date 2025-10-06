@@ -1,6 +1,7 @@
 # rabbitmq-server.service and epmd.service need to be running
 # in the default configuration (insecure) for this test to pass.
 portbase=61090
+DAEMONS 3
 AUTHFILE=$TESTDIR/run/authfile
 export AUTHFILE
 echo "secretword=guest" > $AUTHFILE

@@ -405,7 +405,7 @@ ovis_log_t ovis_log_register(const char *subsys_name, const char *desc)
 		errno = EEXIST;
 		return NULL;
 	}
-	log = malloc(sizeof(*log));
+	log = calloc(1, sizeof(*log));
 	if (!log) {
 		errno = ENOMEM;
 		return NULL;
@@ -449,8 +449,10 @@ static int __buf_append(struct ovis_log_buf *buf, const char *fmt, ...)
 		va_end(ap_dup);
 		if (cnt >= buf->sz - buf->off) {
 			char *tmp = realloc(buf->buf, buf->sz * 2);
-			if (!tmp)
+			if (!tmp) {
+				va_end(ap);
 				return ENOMEM;
+			}
 			buf->buf = tmp;
 			buf->sz *= 2;
 			va_copy(ap_dup, ap);
@@ -469,7 +471,7 @@ static int __get_log_info(ovis_log_t l, struct ovis_log_buf *buf)
 	char *level_s;
 
 	if (l->level == OVIS_LDEFAULT)
-		level_s = "default";
+		level_s = strdup("default");
 	else
 		level_s = ovis_log_level_to_str(l->level);
 
@@ -477,7 +479,8 @@ static int __get_log_info(ovis_log_t l, struct ovis_log_buf *buf)
 			        "\"desc\":\"%s\","
 			        "\"level\":\"%s\"}",
 				l->name, l->desc,
-				level_s);
+				level_s ? level_s : "out_of_memory");
+	free(level_s);
 	return rc;
 }
 
@@ -518,12 +521,14 @@ char *ovis_log_list(const char *subsys)
 		goto err;
 	}
 
+	char *lls = ovis_log_level_to_str(default_log.level);
 	rc = __buf_append(buf, "{\"name\":\"%s (default)\","
 			        "\"desc\":\"%s\","
 			        "\"level\":\"%s\"}",
 				default_log.name,
 				default_log.desc,
-				ovis_log_level_to_str(default_log.level));
+				lls);
+	free(lls);
 	if (rc) {
 		errno = rc;
 		goto err;
@@ -594,12 +599,14 @@ static FILE *__log_open(const char *path)
 		ovis_log(NULL, OVIS_LERROR,
 				"Cannot redirect log to %s\n", path);
 		errno = EINTR;
+		fclose(f);
 		return NULL;
 	}
 	if (dup2(fd, 2) < 0) {
 		ovis_log(NULL, OVIS_LERROR,
 				"Cannot redirect log to %s\n", path);
 		errno = EINTR;
+		fclose(f);
 		return NULL;
 	}
 	return f;

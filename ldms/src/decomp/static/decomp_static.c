@@ -333,6 +333,8 @@ static int str_int_cmp(const void *a, const void *b)
 
 static void decomp_static_cfg_free(decomp_static_cfg_t dcfg)
 {
+	if (!dcfg)
+		return;
 	int i, j;
 	struct decomp_static_row_cfg_s *cfg_row;
 	struct decomp_static_col_cfg_s *cfg_col;
@@ -482,6 +484,7 @@ enomem:
 	rc = ENOMEM;
 	THISLOG(reqc, ENOMEM, "%s: Insufficent memory.\n", strgp->obj.name);
 err_0:
+	free(col_id_tbl);
 	return rc;
 }
 
@@ -992,6 +995,9 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 		goto commit;
 	}
 
+	if (mtype == LDMS_V_TIMESTAMP)
+		goto commit;
+
 	if (mtype == LDMS_V_LIST)
 		goto list_routine;
 	if (mtype == LDMS_V_RECORD_ARRAY)
@@ -1433,8 +1439,8 @@ static int diff_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 			prev_row->cols[col_id].mval->v_d;
 		break;
 	case LDMS_V_TIMESTAMP:
-                src_time = (src_row->cols[col_id].mval->v_ts.sec * 1000000) + src_row->cols[col_id].mval->v_ts.usec;
-                prev_time = (prev_row->cols[col_id].mval->v_ts.sec * 1000000) + prev_row->cols[col_id].mval->v_ts.usec;
+                src_time = (src_row->cols[col_id].mval->v_ts.sec * (uint64_t)1000000) + src_row->cols[col_id].mval->v_ts.usec;
+                prev_time = (prev_row->cols[col_id].mval->v_ts.sec * (uint64_t)1000000) + prev_row->cols[col_id].mval->v_ts.usec;
                 diff_time = src_time - prev_time;
                 dst_col->mval->v_ts.sec = (uint32_t)(diff_time / 1000000);
                 dst_col->mval->v_ts.usec = (uint32_t)(diff_time % 1000000);
@@ -1552,7 +1558,7 @@ static int mean_op(ldmsd_row_list_t row_list, ldmsd_row_t dest_row, int col_id)
 			break;
 		case LDMS_V_TIMESTAMP:
 			/* do as u64 usecs and convert back later */
-			tm = (x->v_ts.sec * 1000000) + x->v_ts.usec;
+			tm = (x->v_ts.sec * (uint64_t)1000000) + x->v_ts.usec;
 			g = r + tm - bi;
 			bi = bi + g/(n+1);
 			r = g % (n+1);
@@ -2009,12 +2015,15 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				goto err_0;
 			}
 
+			if (mtype == LDMS_V_TIMESTAMP)
+				goto primitives;
 			if (mtype == LDMS_V_LIST)
 				goto col_mvals_list;
 			if (mtype == LDMS_V_RECORD_ARRAY)
 				goto col_mvals_rec_array;
 			if (mtype > LDMS_V_D64_ARRAY)
 				goto col_mvals_fill;
+		primitives:
 			/* primitives */
 			mlen = ldms_metric_array_get_len(set, mid);
 			mcol->mval = mval;

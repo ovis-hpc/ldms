@@ -67,6 +67,13 @@
 #include "simple_lps.h"
 #include "ldmsd_stream.h"
 
+#ifndef LIST_FOREACH_SAFE
+#define LIST_FOREACH_SAFE(var, head, field, tvar) \
+ for ((var) = LIST_FIRST((head)); \
+ (var) && ((tvar) = LIST_NEXT((var), field), 1); \
+ (var) = (tvar))
+#endif
+
 struct slps {
 	struct slps_target_list *cl;
 	struct slps_target_list slps_target_list;
@@ -275,8 +282,8 @@ static void retire_target(struct slps_target *c)
 		LIST_INIT(retired_cl);
 	}
 	time_t now = time(NULL);
-	struct slps_target *target = NULL;
-	LIST_FOREACH(target, retired_cl, entry) {
+	struct slps_target *target = NULL, *tmp_target = NULL;
+	LIST_FOREACH_SAFE(target, retired_cl, entry, tmp_target) {
 		if (!c || target->next_try < now) {
 			LIST_REMOVE(target, entry);
 			target->next_try = 0;
@@ -310,7 +317,6 @@ static void slps_target_destroy(struct slps_target *c)
 static int add_target(struct slps *l, const char *spec)
 {
 	if (!l || !spec || strlen(spec) == 0) {
-		DEBUGL(LERR, "slps add_target bad input\n");
 		return EINVAL;
 	}
 	DEBUGL(LDBG, "slps add_target(l,\"%s\"\n", spec);
@@ -896,13 +902,13 @@ int slps_destroy(struct slps *l)
 struct slps_send_result slps_send_event(struct slps *l, jbuf_t jb)
 {
 	struct slps_target *target;
-	struct slps_target_list *target_list = l->cl;
 	struct slps_send_result result = LN_NULL_RESULT;
 
 	if (!l || !jb) {
 		result.rc = EINVAL;
 		return result;
 	}
+	struct slps_target_list *target_list = l->cl;
 
 	pthread_mutex_lock(&l->list_lock);
 	/* reconnect targets that are missing and beyond next_try wait. */
@@ -967,16 +973,16 @@ struct slps_send_result slps_send_event(struct slps *l, jbuf_t jb)
 struct slps_send_result slps_send_string(struct slps *l, size_t buf_len,
 	const char *buf)
 {
-	struct slps_target *target;
-	struct slps_target_list *target_list = l->cl;
 	struct slps_send_result result = LN_NULL_RESULT;
-
 	if (!l || !buf) {
 		result.rc = EINVAL;
 		return result;
 	}
 	if (!buf_len)
 		return result;
+
+	struct slps_target *target;
+	struct slps_target_list *target_list = l->cl;
 
 	pthread_mutex_lock(&l->list_lock);
 	/* reconnect targets that are missing and beyond next_try wait. */

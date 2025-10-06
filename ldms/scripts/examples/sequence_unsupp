@@ -1,4 +1,5 @@
 portbase=61048
+DAEMONS 4
 export sampler=meminfo
 LDMSD `seq 4`
 

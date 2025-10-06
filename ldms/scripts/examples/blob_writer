@@ -2,6 +2,7 @@ export plugname=dstat
 export dsname=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 auto-schema=1)
 export dstat_schema=$dsname
 portbase=61060
+DAEMONS 2
 # memcheck
 VGARGS="--trace-children=yes --track-origins=yes --leak-check=full --show-leak-kinds=all"
 # drd
@@ -18,6 +19,12 @@ LDMS_LS 2 -l
 SLEEP 1
 SLEEP 1
 SLEEP 1
+sc=5000
+si=0.001
+MESSAGE try $sc sleep $si
+for i in $(seq $sc); do
+	sleep $si &
+done
 SLEEP 1
 SLEEP 1
 SLEEP 1

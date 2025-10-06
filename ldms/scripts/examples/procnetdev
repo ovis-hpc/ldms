@@ -5,6 +5,7 @@ IFACES=`ifconfig -a |grep UP |sed -e 's/:.*//g' | tr -s '[:space:]' , | sed -e '
 export IFACES
 
 portbase=61024
+DAEMONS 2
 LDMSD 1 2
 MESSAGE ldms_ls on host 1:
 LDMS_LS 1 -l

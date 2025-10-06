@@ -57,7 +57,7 @@ static jbuf_t print_entity(jbuf_t jb, json_entity_t e)
 		print_list(jb, e);
 		break;
 	case JSON_DICT_VALUE:
-		print_dict(jb, e);
+		jb = print_dict(jb, e);
 		break;
 	case JSON_NULL_VALUE:
 		jb = jbuf_append_str(jb, "null");

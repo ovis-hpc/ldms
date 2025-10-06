@@ -1,0 +1,24 @@
+stream_enable
+load name=blob_stream_writer plugin=blob_stream_writer
+config name=blob_stream_writer path=${STOREDIR} container=blobs stream=foo stream=bar types=1 timing=1 debug=1
+
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0
+
+prdcr_add name=localhost1 host=localhost type=active xprt=sock port=${port1} reconnect=20000000
+prdcr_subscribe stream=bar regex=localhost*
+prdcr_subscribe stream=foo regex=localhost*
+prdcr_start name=localhost1
+
+prdcr_add name=localhost2 host=localhost type=active xprt=sock port=${port2} reconnect=20000000
+prdcr_subscribe stream=bar regex=localhost*
+prdcr_subscribe stream=foo regex=localhost*
+prdcr_start name=localhost2
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+strgp_add name=store_dstat plugin=store_csv schema=dstat container=node
+strgp_prdcr_add name=store_dstat regex=.*
+strgp_start name=store_dstat

@@ -1,5 +1,6 @@
 export plugname=dcgm
 portbase=61073
+DAEMONS 2
 VGARGS="--leak-check=full --show-leak-kinds=definite  --track-origins=yes --trace-children=yes"
 JOBDATA $TESTDIR/job.data 1 2
 #vgon

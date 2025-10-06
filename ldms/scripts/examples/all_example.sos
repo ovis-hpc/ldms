@@ -1,5 +1,6 @@
 export plugname=all_example
 portbase=61000
+DAEMONS 2
 LDMSD -p prolog.sampler 1
 VGARGS="--track-origins=yes "
 vgon

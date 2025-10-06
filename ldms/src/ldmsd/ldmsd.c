@@ -236,6 +236,7 @@ extern void ldmsd_strgp_close();
 
 static pthread_mutex_t cleanup_lock = PTHREAD_MUTEX_INITIALIZER;
 static int cleaned;
+__attribute__((noreturn))
 void cleanup(int x, const char *reason)
 {
 	pthread_mutex_lock(&cleanup_lock);
@@ -621,6 +622,8 @@ void *k_proc(void *arg)
 			break;
 		}
 	}
+	close(map_fd);
+	fclose(fp);
 	return NULL;
 }
 
@@ -711,7 +714,7 @@ void ldmsd_set_deregister(const char *inst_name, const char *cfg_name)
 	const char *set_name;
 
 	if (!samp) {
-		ovis_log(NULL, OVIS_LERROR,
+		ovis_log(NULL, OVIS_LINFO,
 			"Dregistering set name '%s' failed because the "
 			"sampler config '%s' does not exist.\n",
 			inst_name, cfg_name);
@@ -1529,13 +1532,15 @@ static int __create_default_auth()
 
 struct ldmsd_str_ent *ldmsd_str_ent_new(char *s)
 {
+	if (!s)
+		cleanup(ENOMEM, "");
 	struct ldmsd_str_ent *ent = malloc(sizeof(*ent));
 	if (!ent)
-		return NULL;
+		cleanup(ENOMEM, "");
 	ent->str = strdup(s);
 	if (!ent->str) {
 		free(ent);
-		return NULL;
+		cleanup(ENOMEM, "");
 	}
 	return ent;
 }
@@ -1663,7 +1668,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 {
 	int rc;
 	char *lval, *rval;
-	char *dup_auth;
+	char *dup_auth = NULL;
 	switch (opt) {
 	case 'B':
 		if (check_arg("B", value, LO_UINT))
@@ -1728,9 +1733,11 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		if (check_arg("v", value, LO_NAME))
 			return EINVAL;
 		if (is_loglevel_thr_set) {
+			char *llold =  ovis_log_level_to_str(ovis_log_get_level(NULL));
 			ovis_log(NULL, OVIS_LERROR, "The log level was already "
 					"specified to %s. Ignore the new value %s\n",
-					ovis_log_level_to_str(ovis_log_get_level(NULL)), value);
+					llold, value);
+			free(llold);
 		} else {
 			log_level_thr = ovis_log_str_to_level(value);
 			if (log_level_thr < 0) {
@@ -1840,6 +1847,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			auth_opt->list[auth_opt->count].name = strdup(lval);
 			auth_opt->list[auth_opt->count].value = strdup(rval);
 			if (!auth_opt->list[auth_opt->count].name || !auth_opt->list[auth_opt->count].value) {
+				free(dup_auth);
 				return ENOMEM;
 			}
 			auth_opt->count++;
@@ -2033,17 +2041,22 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	/* Disable message traffic by default. */
+	ldms_msg_disable();
+
 	/* Process cmd-line options in config files */
 	opterr = 0;
 	optind = 0;
 	struct ldmsd_str_list cfgfile_list;
-	struct ldmsd_str_list yamlfile_list;
+	struct ldmsd_str_list yamlfile_list; /* conf generated from yaml */
+	struct ldmsd_str_list yamlfilename_list; /* matching names of yaml inputs */
 	TAILQ_INIT(&cfgfile_list);
 	TAILQ_INIT(&yamlfile_list);
+	TAILQ_INIT(&yamlfilename_list);
 	struct ldmsd_str_ent *cpath;
+	struct ldmsd_str_ent *ypath;
 	struct ldmsd_str_ent *conf_str;
 	char *resp;
-	char *ypath;
 	while ((op = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
 		switch (op) {
 		case 'c':
@@ -2051,29 +2064,37 @@ int main(int argc, char *argv[])
 			TAILQ_INSERT_TAIL(&cfgfile_list, cpath, entry);
 			break;
 		case 'y':
-			ypath = optarg;
 			resp = process_yaml_config_file(optarg, myname);
 			if (!resp)
 				cleanup(22, "");
 			conf_str = ldmsd_str_ent_new(resp);
 			free(resp);
+			ypath = ldmsd_str_ent_new(optarg);
 			TAILQ_INSERT_TAIL(&yamlfile_list, conf_str, entry);
+			TAILQ_INSERT_TAIL(&yamlfilename_list, ypath, entry);
 			break;
 		}
 	}
 
+	/* Process all priority configuration commands. */
 	int lln;
-	TAILQ_FOREACH(conf_str, &yamlfile_list, entry) {
+	conf_str = TAILQ_FIRST(&yamlfile_list);
+	ypath = TAILQ_FIRST(&yamlfilename_list);
+	/* yamlfilename_list and yamlfile_list are parallel by construction */
+	while (conf_str) {
 		lln = -1;
 		ret = process_config_str(conf_str->str, &lln, 1);
 		if (ret) {
 			char errstr[128];
 			snprintf(errstr, sizeof(errstr),
 				"Error %d processing configuration file '%s'",
-				ret, ypath);
+				ret, ypath->str);
 			ldmsd_str_list_destroy(&yamlfile_list);
+			ldmsd_str_list_destroy(&yamlfilename_list);
 			cleanup(ret, errstr);
 		}
+		conf_str = TAILQ_NEXT(conf_str, entry);
+		ypath = TAILQ_NEXT(ypath, entry);
 	}
 	while ((cpath = TAILQ_FIRST(&cfgfile_list))) {
 		lln = -1;
@@ -2255,17 +2276,23 @@ int main(int argc, char *argv[])
 		case 'y':
 			has_config_file = 1;
 			while ((conf_str = TAILQ_FIRST(&yamlfile_list))) {
+				/* yamlfilename_list and yamlfile_list are parallel by construction */
+				struct ldmsd_str_ent *file_str =
+					TAILQ_FIRST(&yamlfilename_list);
+				char *yf = file_str->str;
 				lln = -1;
 				ret = process_config_str(conf_str->str, &lln, 1);
 				if (ret) {
 					char errstr[128];
 					snprintf(errstr, sizeof(errstr),
 					"Error %d processing configuration file '%s'",
-					ret, ypath);
+					ret, yf);
 					cleanup(ret, errstr);
 				}
 				TAILQ_REMOVE(&yamlfile_list, conf_str, entry);
+				TAILQ_REMOVE(&yamlfilename_list, file_str, entry);
 				ldmsd_str_ent_free(conf_str);
+				ldmsd_str_ent_free(file_str);
 			}
 			break;
 		}

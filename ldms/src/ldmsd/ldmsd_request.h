@@ -202,7 +202,7 @@ enum ldmsd_request {
 	LDMSD_STREAM_NEW_REQ,		/* Create a stream */
 	LDMSD_STREAM_STATUS_REQ,	/* Query stream information */
 	LDMSD_STREAM_DISABLE_REQ,	/* Disable streams in this daemon */
-
+	LDMSD_STREAM_ENABLE_REQ,	/* Enable streams in this daemon */
 
 	/* Auth */
 	LDMSD_AUTH_ADD_REQ = 0xa00, /* Add auth domain */

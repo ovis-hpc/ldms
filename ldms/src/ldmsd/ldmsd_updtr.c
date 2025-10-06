@@ -569,96 +569,115 @@ out:
 
 /* Implemented in ldmsd.c */
 extern double ts_diff_usec(struct timespec *a, struct timespec *b);
+static void schedule_prdset_updates(ldmsd_updtr_task_t task,
+				    ldmsd_prdcr_set_t prd_set,
+				    ldmsd_name_match_t match)
+{
+	int rc;
+	const char *str;
+	struct timespec ts;
+
+	if (match) {
+		if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
+			str = prd_set->inst_name;
+		else
+			str = prd_set->schema_name;
+		rc = regexec(&match->regex, str, 0, NULL, 0);
+		if (rc)
+			return;
+	}
+
+	ovis_log(updtr_log, OVIS_LDEBUG, "updtr_task sched '%ld': set '%s'\n",
+			task->sched.intrvl_us, prd_set->inst_name);
+	updtr_task_set_add(task);
+
+	switch (prd_set->state) {
+	case LDMSD_PRDCR_SET_STATE_READY:
+		clock_gettime(CLOCK_REALTIME, &ts);
+		if (ts_diff_usec(&ts, &prd_set->lookup_complete_ts) < 1000000) {
+			return;
+		}
+		break;
+	case LDMSD_PRDCR_SET_STATE_START:
+		ldmsd_prdcr_set_ref_get(prd_set); /* It will be put back in lookup_cb */
+		/* Lookup the set */
+		prd_set->state = LDMSD_PRDCR_SET_STATE_LOOKUP;
+		assert(prd_set->set == NULL);
+		rc = ldms_xprt_lookup(prd_set->prdcr->xprt, prd_set->inst_name,
+					LDMS_LOOKUP_BY_INSTANCE,
+					__ldmsd_prdset_lookup_cb, prd_set);
+		if (rc) {
+			/* If the error is EEXIST, the set is already in the set tree. */
+			if (rc == EEXIST) {
+				ovis_log(updtr_log, OVIS_LERROR, "Prdcr '%s': "
+					"lookup failed synchronously. "
+					"The set '%s' already exists. "
+					"It is likely that there are more "
+					"than one producers pointing to "
+					"the set.\n",
+					prd_set->prdcr->obj.name,
+					prd_set->inst_name);
+			} else {
+				ovis_log(updtr_log, OVIS_LINFO, "Synchronous error "
+						"%d from ldms_lookup\n", rc);
+			}
+			prd_set->state = LDMSD_PRDCR_SET_STATE_START;
+			ldmsd_prdcr_set_ref_put(prd_set);
+		}
+		return;
+	case LDMSD_PRDCR_SET_STATE_LOOKUP:
+		ovis_log(updtr_log, OVIS_LINFO, "%s: Set %s: "
+			"there is an outstanding lookup.\n",
+			__func__, prd_set->inst_name);
+		return;
+	case LDMSD_PRDCR_SET_STATE_UPDATING:
+		ovis_log(updtr_log, OVIS_LINFO, "%s: Set %s: "
+			"there is an outstanding update.\n",
+			__func__, prd_set->inst_name);
+		__atomic_fetch_add(&prd_set->skipped_upd_cnt, 1, __ATOMIC_SEQ_CST);
+	case LDMSD_PRDCR_SET_STATE_DELETED:
+	default:
+		return;
+	}
+
+	schedule_set_updates(prd_set, task);
+}
+
 static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 				   ldmsd_prdcr_t prdcr, ldmsd_name_match_t match)
 {
-	ldmsd_updtr_t updtr = task->updtr;
-	struct timespec ts;
+	struct ldmsd_updtr_schedule no_hint = {0};
+
 	ldmsd_prdcr_lock(prdcr);
 	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED || prdcr->xprt->disconnected)
 		goto out;
 
 	ldmsd_prdcr_set_t prd_set;
-	if (updtr->is_auto_task)
+
+	if (task->updtr->is_auto_task) {
+		/* Handle sets with hints */
 		prd_set = ldmsd_prdcr_set_first_by_hint(prdcr, &task->hint);
-	else
-		prd_set = ldmsd_prdcr_set_first(prdcr);
-
-	while (prd_set) {
-		int rc;
-		const char *str;
-
-		if (match) {
-			if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
-				str = prd_set->inst_name;
-			else
-				str = prd_set->schema_name;
-			rc = regexec(&match->regex, str, 0, NULL, 0);
-			if (rc)
-				goto next_prd_set;
-		}
-
-		ovis_log(updtr_log, OVIS_LDEBUG, "updtr_task sched '%ld': set '%s'\n",
-				task->sched.intrvl_us, prd_set->inst_name);
-		updtr_task_set_add(task);
-
-		switch (prd_set->state) {
-		case LDMSD_PRDCR_SET_STATE_READY:
-			clock_gettime(CLOCK_REALTIME, &ts);
-			if (ts_diff_usec(&ts, &prd_set->lookup_complete_ts) < 1000000) {
-				goto next_prd_set;
-			}
-			break;
-		case LDMSD_PRDCR_SET_STATE_START:
-			ldmsd_prdcr_set_ref_get(prd_set); /* It will be put back in lookup_cb */
-			/* Lookup the set */
-			prd_set->state = LDMSD_PRDCR_SET_STATE_LOOKUP;
-			assert(prd_set->set == NULL);
-			rc = ldms_xprt_lookup(prdcr->xprt, prd_set->inst_name,
-					      LDMS_LOOKUP_BY_INSTANCE,
-					      __ldmsd_prdset_lookup_cb, prd_set);
-			if (rc) {
-				/* If the error is EEXIST, the set is already in the set tree. */
-				if (rc == EEXIST) {
-					ovis_log(updtr_log, OVIS_LERROR, "Prdcr '%s': "
-						"lookup failed synchronously. "
-						"The set '%s' already exists. "
-						"It is likely that there are more "
-						"than one producers pointing to "
-						"the set.\n",
-						prd_set->prdcr->obj.name,
-						prd_set->inst_name);
-				} else {
-					ovis_log(updtr_log, OVIS_LINFO, "Synchronous error "
-							"%d from ldms_lookup\n", rc);
-				}
-				prd_set->state = LDMSD_PRDCR_SET_STATE_START;
-				ldmsd_prdcr_set_ref_put(prd_set);
-			}
-			goto next_prd_set;
-		case LDMSD_PRDCR_SET_STATE_LOOKUP:
-			ovis_log(updtr_log, OVIS_LINFO, "%s: Set %s: "
-				"there is an outstanding lookup.\n",
-				__func__, prd_set->inst_name);
-			goto next_prd_set;
-		case LDMSD_PRDCR_SET_STATE_UPDATING:
-			ovis_log(updtr_log, OVIS_LINFO, "%s: Set %s: "
-				"there is an outstanding update.\n",
-				__func__, prd_set->inst_name);
-			__atomic_fetch_add(&prd_set->skipped_upd_cnt, 1, __ATOMIC_SEQ_CST);
-		case LDMSD_PRDCR_SET_STATE_DELETED:
-		default:
-			goto next_prd_set;
-		}
-
-		schedule_set_updates(prd_set, task);
-
-next_prd_set:
-		if (updtr->is_auto_task)
+		while (prd_set) {
+			schedule_prdset_updates(task, prd_set, match);
 			prd_set = ldmsd_prdcr_set_next_by_hint(prd_set);
-		else
+		}
+
+		if (task->is_default) {
+			/* Handle sets without hints */
+			prd_set = ldmsd_prdcr_set_first_by_hint(prdcr, &no_hint);
+			while (prd_set) {
+				schedule_prdset_updates(task, prd_set, match);
+				prd_set = ldmsd_prdcr_set_next_by_hint(prd_set);
+			}
+		}
+	} else {
+		prd_set = ldmsd_prdcr_set_first(prdcr);
+		while (prd_set) {
+			schedule_prdset_updates(task, prd_set, match);
 			prd_set = ldmsd_prdcr_set_next(prd_set);
+		}
 	}
+
 out:
 	ldmsd_prdcr_unlock(prdcr);
 }
@@ -766,11 +785,12 @@ static void __updtr_task_tree_cleanup(ldmsd_updtr_t updtr)
 		if (task->task.flags & LDMSD_TASK_F_STOP)
 			LIST_INSERT_HEAD(&unused_task_list, task, entry);
 	}
-	LIST_FOREACH(task, &unused_task_list, entry) {
-		ldmsd_task_join(&task->task);
+	while (!LIST_EMPTY(&unused_task_list)) {
+		task = LIST_FIRST(&unused_task_list);
 		LIST_REMOVE(task, entry);
 		updtr_task_del(task);
 	}
+
 }
 
 static void updtr_tree_task_cb(ldmsd_task_t task, void *arg)
@@ -802,7 +822,7 @@ void __prdcr_set_update_sched(ldmsd_prdcr_set_t prd_set,
  *
  * Caller must hold the updater lock and the prd_set lock.
  *
- * The updater MUST in RUNNING state.
+ * The updater MUST be in the RUNNING state.
  */
 int ldmsd_updtr_tasks_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 {
@@ -1461,6 +1481,7 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 	rc = ldmsd_compile_regex(&prd_match->regex, prdcr_regex, rep_buf, rep_len);
 	if (rc) {
 		rc = EINVAL;
+		regfree(&prd_match->regex);
 		free(prd_match);
 		goto unlock;
 	}

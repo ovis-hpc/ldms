@@ -185,8 +185,7 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 	struct rbn *rbn;
 	struct ldmsd_updt_hint_set_list *list;
 	struct ldmsd_updtr_schedule *hint_key;
-	if (0 == hint->intrvl_us)
-		return;
+
 	rbn = rbt_find(&prdcr->hint_set_tree, hint);
 	if (op == UPDT_HINT_TREE_REMOVE) {
 		if (!rbn)
@@ -326,7 +325,7 @@ static void __update_set_info(ldmsd_prdcr_set_t set, ldms_dir_set_t dset)
 
 		/* Sanity check the hints */
 		if (offset_us >= intrvl_us) {
-			ovis_log(prdcr_log, OVIS_LERROR, "set %s: Invalid hint '%s', ignoring hint\n",
+			ovis_log(prdcr_log, OVIS_LINFO, "set %s: hint '%s', ignoring hint\n",
 					set->inst_name, hint);
 		} else {
 			if (offset_us != LDMSD_UPDT_HINT_OFFSET_NONE)
@@ -383,12 +382,9 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 	}
 
 	__update_set_info(set, dset);
-	if (0 != set->updt_hint.intrvl_us) {
-		ovis_log(prdcr_log, OVIS_LDEBUG, "producer '%s' add set '%s' to hint tree\n",
-						prdcr->obj.name, set->inst_name);
-		prdcr_hint_tree_update(prdcr, set,
-				&set->updt_hint, UPDT_HINT_TREE_ADD);
- 	}
+	ovis_log(prdcr_log, OVIS_LDEBUG, "producer '%s' add set '%s' to hint tree\n",
+					prdcr->obj.name, set->inst_name);
+	prdcr_hint_tree_update(prdcr, set, &set->updt_hint, UPDT_HINT_TREE_ADD);
 
 	ldmsd_prdcr_unlock(prdcr);
 	ldmsd_prd_set_updtr_task_update(set);
@@ -576,6 +572,8 @@ static const char *conn_state_str(int state)
 static void __ldmsd_xprt_ctxt_free(void *_ctxt)
 {
 	struct ldmsd_xprt_ctxt *ctxt = _ctxt;
+	if (!ctxt)
+		return;
 	free(ctxt->name);
 	free(ctxt);
 }
@@ -732,7 +730,7 @@ static int __agg_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 		ovis_log(prdcr_log, OVIS_LINFO, "Producer %s is connected (%s %s:%d)\n",
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
-		ctxt = malloc(sizeof(*ctxt));
+		ctxt = calloc(1, sizeof(*ctxt));
 		if (!ctxt) {
 			ovis_log(prdcr_log, OVIS_LCRITICAL, "Out of memory\n");
 			goto out;
@@ -740,6 +738,8 @@ static int __agg_routine(ldms_t x, ldms_xprt_event_t e, ldmsd_prdcr_t prdcr)
 		ctxt->name = strdup(prdcr->obj.name);
 		if (!ctxt->name) {
 			ovis_log(prdcr_log, OVIS_LCRITICAL, "Out of memory\n");
+			__ldmsd_xprt_ctxt_free(ctxt);
+			ctxt = NULL;
 			goto out;
 		}
 		ldms_xprt_ctxt_set(x, ctxt, __ldmsd_xprt_ctxt_free);
@@ -1764,7 +1764,7 @@ int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, const char *stream,
 	if (rc)
 		return rc;
 
-	psub = malloc(sizeof(*psub));
+	psub = calloc(1, sizeof(*psub));
 	if (!psub) {
 		rc = ENOMEM;
 		goto err;
@@ -1831,25 +1831,29 @@ int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex,
 	ldmsd_prdcr_t prdcr;
 	int rc;
 	struct ldmsd_prdcr_sub_unsub *psub = NULL;
+	char *prdcr_regex_d, *stream_name_d, *msg_d;
+	prdcr_regex_d = stream_name_d = msg_d = NULL;
 
 	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
 	if (rc)
 		return rc;
 
-	psub = malloc(sizeof(*psub));
+	psub = calloc(1, sizeof(*psub));
 	if (!psub) {
 		rc = ENOMEM;
 		goto err;
 	}
 
-	psub->prdcr_regex = strdup(prdcr_regex);
+	prdcr_regex_d = strdup(prdcr_regex);
+	psub->prdcr_regex = prdcr_regex_d;
 	if (!psub->prdcr_regex) {
 		rc = ENOMEM;
 		goto err;
 	}
 
 	if (stream_name) {
-		psub->stream_name = strdup(stream_name);
+		stream_name_d = strdup(stream_name);
+		psub->stream_name = stream_name_d;
 		if (!psub->stream_name) {
 			rc = ENOMEM;
 			goto err;
@@ -1857,7 +1861,8 @@ int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex,
 	}
 
 	if (msg) {
-		psub->msg = strdup(msg);
+		msg_d = strdup(msg);
+		psub->msg = msg_d;
 		if (!psub->msg) {
 			rc = ENOMEM;
 			goto err;
@@ -1885,6 +1890,10 @@ int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex,
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	return 0;
 err:
+	free(prdcr_regex_d);
+        free(stream_name_d);
+	free(msg_d);
+	free(psub);
 	regfree(&regex);
 	return rc;
 }
