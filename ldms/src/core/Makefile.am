@@ -10,6 +10,7 @@ AM_CFLAGS += \
 
 ldmscoreincludedir = $(includedir)/ldms
 ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldms_xprt.h ldms_auth.h \
+			  ldms_json.h \
 			  kldms_req.h ldms_heap.h rrbt.h
 
 libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h \
@@ -18,7 +19,8 @@ libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h \
 		     ldms_heap.c ldms_heap.h \
 		     ldms_rail.c ldms_rail.h \
 		     ldms_msg.c ldms_msg.h \
-		     ldms_qgroup.c ldms_qgroup.h
+		     ldms_qgroup.c ldms_qgroup.h \
+		     ldms_json.c ldms_json.h
 libldms_la_LIBADD = -ldl -lpthread $(top_builddir)/lib/src/coll/libcoll.la \
 		    $(top_builddir)/lib/src/ovis_json/libovis_json.la \
 		    $(top_builddir)/lib/src/ovis_event/libovis_event.la \
