@@ -64,6 +64,7 @@
 #include <grp.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <limits.h>
 
 #include "util.h"
 #define DSTRING_USE_SHORT
@@ -330,6 +331,121 @@ char *av_value(struct attr_value_list *av_list, const char *name)
 	return NULL;
 }
 
+char *av_value_default(struct attr_value_list *av_list,
+		       const char *name, const char *def)
+{
+	char *str;
+	int i;
+
+	if (!av_list)
+		return NULL;
+
+	for (i = 0; i < av_list->count; i++) {
+		if (0 == strcmp(name, av_list->list[i].name))
+			break;
+	}
+
+	if (i == av_list->count)
+		/* Not found, use default */
+		str = str_repl_env_vars(def);
+	else
+		str = str_repl_env_vars(av_list->list[i].value);
+	if (str) {
+		string_ref_t ref = malloc(sizeof(*ref));
+		if (!ref) {
+			free(str);
+			return NULL;
+		}
+		ref->str = str;
+		LIST_INSERT_HEAD(&av_list->strings, ref, entry);
+		return str;
+	}
+
+	return str;
+}
+
+int __delim_match(const char c, const char *sep)
+{
+	while (*sep != '\0' && *sep != c)
+		sep++;
+	if (*sep != '\0')
+		return 1;
+	return 0;
+}
+
+/**
+ * We are expecting a value in av_list as follows:
+ *
+ * <name>=<value>SEP<name>=<value>SEP...
+ */
+av_list_t av_value_list(const char *input, const char *sep)
+{
+	char *str;
+	av_list_t avl;
+	char *s, *t;
+	int i;
+
+	errno = 0;
+	if (!input || !sep) {
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* Ensure that the sep string does not contain the '=' or any
+	 * whitespace characters. */
+	for (s = (char *)sep; *s != '\0'; s++) {
+		if (*s == '=' || isspace(*s)) {
+			errno = EINVAL;
+			return NULL;
+		}
+	}
+
+	/* Determine the size of the output av_list */
+	s = (char *)input;
+	for (i = 1; *s; s++) {
+		if (__delim_match(*s, sep))
+			i ++;
+	}
+	avl = av_new(i);
+	if (!avl)
+		return NULL;
+
+	str = strdup(input);
+	if (!str) {
+		av_free(avl);
+		return NULL;
+	}
+
+	/* For each <name>=<value> pair, add an av_list entry */
+	for (s = str, i = 0; i < avl->size; i++) {
+		char buf[512];
+		t = buf;
+		while (*s != '\0' && !__delim_match(*s, sep))
+			*t++ = *s++;
+		*t = '\0';
+		char *name = strtok(buf, "=");
+		char *value = strtok(NULL, "=");
+		avl->list[avl->count].name = strdup(name);
+		avl->list[avl->count].value = str_repl_env_vars(value);
+		if (!avl->list[avl->count].value)
+			goto err;
+		string_ref_t ref = malloc(sizeof(*ref));
+		if (!ref)
+			goto err;
+		ref->str = avl->list[avl->count].value;
+		LIST_INSERT_HEAD(&avl->strings, ref, entry);
+		avl->count += 1;
+		if (__delim_match(*s, sep))
+			s++;
+	}
+	free(str);
+	return avl;
+ err:
+	av_free(avl);
+	free(str);
+	return NULL;
+}
+
 int av_idx_of(const struct attr_value_list *av_list, const char *name)
 {
 	if (!av_list)
@@ -451,42 +567,42 @@ static char *copy_string(struct attr_value_list *av_list, const char *s)
 
 int av_add(struct attr_value_list *avl, const char *name, const char *value)
 {
-        string_ref_t nref, vref = NULL;
-        struct attr_value *av;
+	string_ref_t nref, vref = NULL;
+	struct attr_value *av;
 
-        if (avl->count == avl->size)
-                return ENOSPC;
+	if (avl->count == avl->size)
+		return ENOSPC;
 
-        av = &(avl->list[avl->count]);
-        nref = malloc(sizeof(*nref));
-        if (!nref)
-                return ENOMEM;
-        nref->str = strdup(name);
-        if (!nref->str)
-                goto err0;
-        av->name = nref->str;
+	av = &(avl->list[avl->count]);
+	nref = malloc(sizeof(*nref));
+	if (!nref)
+		return ENOMEM;
+	nref->str = strdup(name);
+	if (!nref->str)
+		goto err0;
+	av->name = nref->str;
 	nref->str = NULL;
-        if (value) {
-                vref = malloc(sizeof(*vref));
-                if (!vref)
-                        goto err1;
-                vref->str = strdup(value);
-                if (!vref->str)
-                        goto err2;
-                av->value = vref->str;
+	if (value) {
+		vref = malloc(sizeof(*vref));
+		if (!vref)
+			goto err1;
+		vref->str = strdup(value);
+		if (!vref->str)
+			goto err2;
+		av->value = vref->str;
 		vref->str = NULL;
-        }
-        avl->count++;
+	}
+	avl->count++;
 	free(vref);
 	free(nref);
-        return 0;
+	return 0;
 err2:
-        free(vref);
+	free(vref);
 err1:
-        free(nref->str);
+	free(nref->str);
 err0:
-        free(nref);
-        return ENOMEM;
+	free(nref);
+	return ENOMEM;
 }
 
 struct attr_value_list *av_copy(struct attr_value_list *src)
@@ -1203,7 +1319,7 @@ err1:
 		TAILQ_REMOVE(&head, ent, entry);
 		free(ent);
 	}
-out: 	if (dir)
+out:	if (dir)
 		closedir(dir);
 	return array;
 }
@@ -1313,4 +1429,30 @@ char *ovis_buff_str(ovis_buff_t buff)
 	ret[off] = 0;
  out:
 	return ret;
+}
+
+uint16_t strtous(const char *port_s)
+{
+	long l;
+
+	errno = 0;
+	l = strtol(port_s, NULL, 0);
+	if (l < 0 || l > USHRT_MAX) {
+		errno = ERANGE;
+		l = USHRT_MAX;
+	}
+	return l;
+}
+
+int16_t strtos(const char *port_s)
+{
+	long l;
+
+	errno = 0;
+	l = strtol(port_s, NULL, 0);
+	if (l < SHRT_MIN || l > SHRT_MAX) {
+		errno = ERANGE;
+		l = SHRT_MAX;
+	}
+	return l;
 }

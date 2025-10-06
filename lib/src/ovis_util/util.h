@@ -59,6 +59,8 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include <sys/queue.h>
+#include <inttypes.h>
+
 #include "ovis-ldms-config.h"
 
 /*
@@ -107,17 +109,58 @@ typedef struct string_ref_s {
 	LIST_ENTRY(string_ref_s) entry;
 } *string_ref_t;
 
-struct attr_value_list {
+typedef struct attr_value_list {
 	int size; /* capacity of list */
 	int count; /* number of keys in the list */
 	LIST_HEAD(string_list, string_ref_s) strings;
 	struct attr_value list[OVIS_FLEX];
-};
+} *av_list_t;
+
+/** \brief Get the value of an attribute in an attr-value list
+ *
+ * Search the \c avl for the specified \c name. If found, return the string value
+ * after applying ${} substitions.
+ *
+ * \param av_list The attribute-value list
+ * \param name The attribute name
+ *
+ * \returns The attribute name with ${} substitution or NULL if \c name is not found.
+ */
+char *av_value(struct attr_value_list *av_list, const char *name);
 
 /**
  * \brief Get the value of attribute \c name
+ *
+ * Search the \c avl for the specified \c name. If found, return the string value
+ * after replacing environement variables  with their values. If not found, perform
+ * the same operation only using the value specified by \c default.
+ *
+ * \param av_list The attribute-value list
+ * \param name The attribute name
+ * \param def The default value to use if \c name is not found.
+ *
+ * \returns The attribute name with ${} substitution or NULL if there is a
+ *          memory allocation failure.
  */
-char *av_value(struct attr_value_list *av_list, const char *name);
+char *av_value_default(struct attr_value_list *av_list, const char *name, const char *def);
+
+/**
+ * \brief Return an AVL given a string containing nameSEPvalue pairs
+ *
+ * Separates \c input into <name>=<value> pairs. The separater for
+ * splitting the input string is specified by \c sep.
+ *
+ * The \c input string cannot contain spaces.
+ *
+ * The \c sep string cannot contain the '=' or whitespace characters.
+ *
+ * \param input A NULL terminated string containing <name>=<value> pairs
+ * \param sep A string specifying the input string separator characters.
+ *
+ * \returns An avl_list_t containing nameSEPvalue pairs or NULL if there
+ * is a memory allocation error.
+ */
+av_list_t av_value_list(const char *input, const char *sep);
 
 /**
  * \brief Get the attribute name in the \c av_list
@@ -509,5 +552,8 @@ int ovis_buff_appendf(ovis_buff_t buff, const char *fmt, ...);
  * \remarks The caller is responsible to free the returned string.
  */
 char *ovis_buff_str(ovis_buff_t buff);
+
+uint16_t strtous(const char *port_s);
+int16_t strtos(const char *port_s);
 
 #endif /* OVIS_UTIL_H_ */
