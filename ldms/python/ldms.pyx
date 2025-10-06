@@ -4070,6 +4070,9 @@ cdef class Xprt(object):
         ctxt.cb = cb
         ctxt.cb_arg = cb_arg
 
+        if self._conn_rc != 0:
+            raise Exception("The ransport is not connected.")
+
         tmp = BYTES(match)
         c_match = <const char*>tmp
         c_is_regex = <int>is_regex
@@ -4550,8 +4553,8 @@ cdef class MsgClient(object):
                       0 otherwise, and the `match` is treated as an exact match
                       to the channel name
     - cb (callable): an optional callback function to deliver the data
-                        with the following signature
-                          `def cb(MsgClient client, MsgData data, object cb_arg)`
+                     with the following signature
+                     `def cb(MsgClient client, MsgData data, object cb_arg)`
     - cb_arg (object):  an optional application callback argument.
     - desc (str): a short description of the client.
     - sr_client (SchemaRegistryClient): a Confluent Kafka Client object,
