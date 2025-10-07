@@ -65,7 +65,7 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include "simple_lps.h"
-#include "ldmsd_stream.h"
+#include "ldms_msg.h"
 
 #ifndef LIST_FOREACH_SAFE
 #define LIST_FOREACH_SAFE(var, head, field, tvar) \
@@ -935,9 +935,9 @@ struct slps_send_result slps_send_event(struct slps *l, jbuf_t jb)
 					EPOCH_STRING, l->stream, __func__,
 					__LINE__, jb->buf);
 			}
-			target->last_publish_rc = ldmsd_stream_publish(
-				target->ldms, l->stream, LDMSD_STREAM_JSON,
-				jb->buf, jb->cursor + 1);
+			target->last_publish_rc = ldms_msg_publish(
+				target->ldms, l->stream, LDMS_MSG_JSON,
+				NULL, 0440, jb->buf, jb->cursor + 1);
 			if (target->last_publish_rc) {
 				if (l->send_log_f)
 					fprintf(l->send_log_f, "%s: Fail %d "
@@ -1006,9 +1006,9 @@ struct slps_send_result slps_send_string(struct slps *l, size_t buf_len,
 					EPOCH_STRING, l->stream, __func__,
 					__LINE__, buf);
 			}
-			target->last_publish_rc = ldmsd_stream_publish(
-				target->ldms, l->stream, LDMSD_STREAM_STRING,
-				buf, buf_len);
+			target->last_publish_rc = ldms_msg_publish(
+				target->ldms, l->stream, LDMS_MSG_STRING,
+				NULL, 0440, buf, buf_len);
 			target->last_publish_rc = 0;
 			if (target->last_publish_rc) {
 				if (l->send_log_f)
