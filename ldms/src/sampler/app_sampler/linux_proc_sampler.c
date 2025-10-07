@@ -66,6 +66,8 @@
 #include <sys/sysmacros.h>
 #include <sys/sysinfo.h>
 
+#include "ldmsd_stream.h"
+
 #include <coll/rbt.h>
 
 #include "ldmsd.h"
@@ -496,7 +498,7 @@ struct linux_proc_sampler_inst_s {
 	char *fd_stream;
 	char *recycle_buf;
 	size_t recycle_buf_sz;
-	ldms_msg_client_t stream;
+	ldmsd_stream_client_t stream;
 	int log_send;
 	char *argv_sep;
 	char *syscalls; /* file of 'int name' lines with # comments */
@@ -1710,7 +1712,7 @@ Option descriptions:\n\
 		when needed to disambiguate producer names that appear in multiple clusters.\n\
 	      (default: no prefix).\n\
     exe_suffix  Append executable path to set instance names.\n\
-    stream    The name of the `ldms_msg` to listen for SLURM job events.\n\
+    stream    The name of the `ldmsd_stream` to listen for SLURM job events.\n\
 	      (default: slurm).\n\
     sc_clk_tck=1 Include sc_clk_tck, the ticks per second, in the set.\n\
               The default is to exclude sc_clk_tck.\n\
@@ -2660,7 +2662,7 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 			app_set->key.os_pid, argc, off, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldms_msg_publish(NULL, inst->env_stream, LDMS_MSG_JSON, NULL, 0440, buf, off);
+	ldmsd_stream_deliver(inst->env_stream, LDMSD_STREAM_JSON, buf, off, NULL, pname);
 out:
 	free(vsub);
 	release_proc_strings(envp, argc);
@@ -2800,7 +2802,7 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 			app_set->key.os_pid, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldms_msg_publish(NULL, inst->argv_stream, LDMS_MSG_JSON, NULL, 0440, buf, off);
+	ldmsd_stream_deliver(inst->argv_stream, LDMSD_STREAM_JSON, buf, off, NULL, pname);
 out:
 	release_proc_strings(argv, argc);
 	free(vbuf);
@@ -2923,7 +2925,7 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 			app_set->key.os_pid, fd, str, state, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldms_msg_publish(NULL, inst->fd_stream, LDMS_MSG_JSON, NULL, 0440, buf, ssize);
+	ldmsd_stream_deliver(inst->fd_stream, LDMSD_STREAM_JSON, buf, ssize, NULL, pname);
 	return 0;
 }
 
@@ -3600,31 +3602,31 @@ int __handle_task_exit(linux_proc_sampler_inst_t inst, json_entity_t data)
 	return 0;
 }
 
-static int __stream_cb(ldms_msg_event_t ev, void *ctxt)
+static int __stream_cb(ldmsd_stream_client_t c, void *cb_arg,
+				      ldmsd_stream_type_t stream_type,
+				      const char *data, size_t data_len,
+				      json_entity_t entity)
 {
 	int rc;
-	linux_proc_sampler_inst_t inst = ctxt;
-	json_entity_t event, data;
+	linux_proc_sampler_inst_t inst = cb_arg;
+	json_entity_t event, jdata;
 	const char *event_name;
 
-	if (ev->type != LDMS_MSG_EVENT_RECV)
-		return 0;
-
-	if (ev->recv.type != LDMS_MSG_JSON) {
+	if (stream_type != LDMSD_STREAM_JSON) {
 		INST_LOG(inst, OVIS_LDEBUG, "Unexpected stream type data...ignoring\n");
-		INST_LOG(inst, OVIS_LDEBUG, "%s\n", ev->recv.data);
+		INST_LOG(inst, OVIS_LDEBUG, "%s\n", data);
 		rc = EINVAL;
 		goto err;
 	}
 
-	event = get_field(inst, ev->recv.json, JSON_STRING_VALUE, "event");
+	event = get_field(inst, entity, JSON_STRING_VALUE, "event");
 	if (!event) {
 		rc = ENOENT;
 		goto err;
 	}
 	event_name = json_value_cstr(event);
-	data = json_value_find(ev->recv.json, "data");
-	if (!data) {
+	jdata = json_value_find(entity, "data");
+	if (!jdata) {
 		INST_LOG(inst, OVIS_LERROR,
 			 "'%s' event is missing the 'data' attribute\n",
 			 event_name);
@@ -3632,7 +3634,7 @@ static int __stream_cb(ldms_msg_event_t ev, void *ctxt)
 		goto err;
 	}
 	if (0 == strcmp(event_name, "task_init_priv")) {
-		rc = __handle_task_init(inst, data, NULL);
+		rc = __handle_task_init(inst, jdata, NULL);
 		if (rc) {
 			INST_LOG(inst, OVIS_LERROR,
 				"failed to process task_init: %d: %s\n",
@@ -3640,7 +3642,7 @@ static int __stream_cb(ldms_msg_event_t ev, void *ctxt)
 			goto err;
 		}
 	} else if (0 == strcmp(event_name, "task_exit")) {
-		rc = __handle_task_exit(inst, data);
+		rc = __handle_task_exit(inst, jdata);
 		if (rc) {
 			INST_LOG(inst, OVIS_LERROR,
 				"failed to process task_exit: %d: %s\n",
@@ -3945,7 +3947,7 @@ linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kw
 no_pids:	;
 	}
 	/* subscribe to the stream */
-	inst->stream = ldms_msg_subscribe(inst->stream_name, 0, __stream_cb, inst, "linux_proc_sampler");
+	inst->stream = ldmsd_stream_subscribe(inst->stream_name, __stream_cb, inst);
 	if (!inst->stream) {
 		INST_LOG(inst, OVIS_LERROR,
 			 "Error subcribing to stream `%s`: %d\n",
@@ -3970,7 +3972,7 @@ void linux_proc_sampler_cleanup(linux_proc_sampler_inst_t inst)
 
 	ovis_log(inst->mylog, OVIS_LDEBUG, "terminating plugin linux_proc_sampler\n");
 	if (inst->stream)
-		ldms_msg_client_close(inst->stream);
+		ldmsd_stream_close(inst->stream);
 	pthread_mutex_lock(&inst->mutex);
 	while ((rbn = rbt_min(&inst->set_rbt))) {
 		rbt_del(&inst->set_rbt, rbn);
