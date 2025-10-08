@@ -121,6 +121,8 @@ json_entity_t json_attr_next(json_entity_t a)
 
 json_entity_t json_attr_find(json_entity_t d, const char *name)
 {
+	if (!d || !name)
+		return NULL;
 	hent_t ent;
 	json_attr_t a;
 	assert (d->type == JSON_DICT_VALUE);
