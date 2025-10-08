@@ -174,7 +174,7 @@ optional parameter is:**
       Regular expression to match with hostnames of peer daemons
 
    [ip=CIDR]
-      IP Range in the CIDR format either in IPV4
+      IP Range in the CIDR format either in IPV4 or IPV6. For example, ip=10.0.1.0/30
 
    [disable_start=TRUE|FALSE]
       True to tell LDMSD not to start producers automatically
@@ -249,6 +249,9 @@ There is no parameter.
 EXAMPLE
 =======
 
+Passive mode Example:
+---------------------
+
 In this example, there are three LDMS daemons running on **node-1**,
 **node-2**, and **node-3**. LDMSD running on **node-1** and **node-2**
 are sampler daemons, namely **samplerd-1** and **samplerd-2**. The
@@ -282,7 +285,7 @@ aggregator. The following are the configuration files of the
    start name=meminfo interval=1s
 
 The aggregator is configured to accept advertisements from the sampler
-daemons that the hostnames match the regular expressions **node0[1-2]**.
+daemons that the hostnames match the regular expressions **node-[1-2]**.
 
 ::
 
@@ -343,6 +346,7 @@ command at the start line instead of starting an interactive session.
        samplerd-2/procnetdev2 procnetdev2      READY
 
 Active Mode Example:
+--------------------
 
 This example demonstrates how to configure active mode producers where
 the aggregator initiates the connection request upon receiving an
@@ -425,6 +429,86 @@ sampler daemons open for data transfer.
    node-2:10001     node-2                    412 sock         DEFAULT          CONNECTED    advertised, active
        samplerd-2/meminfo meminfo          READY
        samplerd-2/procnetdev2 procnetdev2      READY
+
+Filter peers using regular expression and/or IP range:
+------------------------------------------------------
+
+This example demonstrates different ways to filter advertising peers using the
+regex and ip attributes in prdcr_listen_add. Filtering allows administrators
+to control which peers can advertise themselves to the aggregator.
+
+**Filtering by hostname using regular expression:**
+
+The aggregator accepts advertisements only from peers whose hostnames match
+the pattern node-[1-2] (node-1 and ndoe-2).
+
+::
+
+   > cat agg.conf
+   # Accept advertisements from hostnames matching node-[1-2]
+   prdcr_listen_add name=computes regex=node-[1-2]
+   prdcr_listen_start name=computes
+
+**Filtering by IP address using CIDR notation:**
+
+The aggregator accepts advertisements only from peers whose IP addresses fall
+within the 10.0.10/24 subnet (10.0.1.1 through 10.0.1.254).
+
+::
+
+   > cat agg.conf
+   # Accept advertisements from peers in the 10.0.1.0/24 subnet
+   prdcr_listen_add name=subnet1_samplers ip=10.0.1.0/24
+   prdcr_listen_start name=subnet1_samplers
+
+**Filtering multiple IP ranges:**
+
+To accept peers from different IP ranges (from different racks or network segments),
+create separate prdcr_listen objects for each IP range.
+
+::
+
+   > cat agg.conf
+   # Accept advertisements from compute nodes in rack 1
+   prdcr_listen_add name=rack1 ip=10.1.0.0/24
+   prdcr_listen_start name=rack1
+   # Accept advertisements from compute nodes in rack 2
+   prdcr_listen_add name=rack2 ip=10.2.0.0/24
+   prdcr_listen_start name=rack2
+
+**Filtering by IPv6 address:**
+
+The ip attribute supports IPv6 addresses in CIDR notation.
+
+::
+
+   > cat agg.conf
+   # Accept advertisements from peers in ad IPv6 subnet
+   prdcr_listen_add name=ipv6_samplers ip=2001:db8::/64
+   prdcr_listen_start name=ipv6_samplers
+
+**Filtering by both hostname and IP address:**
+
+The aggregator accepts advertisements only from peers that match both
+the hostname pattern and fall within the IP range. Both conditions must be satisfied.
+
+::
+
+   > cat agg.conf
+   # Accept advertisements from compute nodes in a specific subnet
+   prdcr_listen_add name=computes regex=node-[1-2] ip=10.0.1.0/30
+   prdcr_listen_start name=computes
+
+**No filtering:**
+
+If neither regex nor ip is specified, the aggregator accepts advertisements from any peer.
+
+::
+
+   > cat agg.conf
+   # Accept advertisements from all peers
+   prdcr_listen_add name=all_peers
+   prdcr_listen_start name=all_peers
 
 SEE ALSO
 ========
