@@ -3513,7 +3513,7 @@ static void pid_from_file(linux_proc_sampler_inst_t inst, const char *file)
 	FILE *fp = fopen(file, "r");
 	if (!fp)
 		return;
-	json_entity_t entity;
+	json_entity_t entity = NULL;
 	json_parser_t parser = json_parser_new(0);
 	if (!parser) {
 		fclose(fp);
@@ -3521,8 +3521,11 @@ static void pid_from_file(linux_proc_sampler_inst_t inst, const char *file)
 	}
 	char buffer[CMDLINE_SZ];
 	int rc = fread(buffer, 1, sizeof(buffer), fp);
+	if (rc < 2) {
+		goto out;
+	}
 	rc = json_parse_buffer(parser, buffer, rc, &entity);
-	if (rc == 0) {
+	if (rc == 0 && entity) {
 		json_entity_t data = json_value_find(entity, "data");
 		if (data) {
 			int pid_bad = 0;
@@ -3536,6 +3539,7 @@ static void pid_from_file(linux_proc_sampler_inst_t inst, const char *file)
 			file, buffer);
 	}
 
+out:
 	json_parser_free(parser);
 	fclose(fp);
 }
