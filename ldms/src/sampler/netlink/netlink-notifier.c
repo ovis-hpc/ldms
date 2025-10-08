@@ -4345,6 +4345,9 @@ static int emit_info(forkstat_t *ft, struct proc_info *info, const char *type, i
 
 static int send_ldms_message(forkstat_t *ft, jbuf_t jb)
 {
+	if (jb->cursor < 2) {
+		return 0;
+	}
 	if (ft->json_log) {
 		fprintf(ft->json_log, "%s", jb->buf);
 	}
