@@ -242,132 +242,15 @@ SPECIFYING COMMAND-LINE OPTIONS IN CONFIGURATION FILES
 While command-line options are useful for quick configuration, complex
 setups or repeated deployments benefit from configuration files. These
 files provide a centralized location to define all initial settings for
-LDMSD, promoting readability, maintainability, and easy sharing across
-deployments. This section serves as a reference for configuration
-commands used in these files. These commands offer an alternative
-approach to specifying the initial state of LDMSD compared to using
-command-line options
+an LDMS daemon, promoting readability, maintainability, and easy sharing across
+deployments.
 
-Configuration commands to initialize LDMSD
-------------------------------------------
+Configuration commands equivalent to command-line options can be used in
+configuration files as an alternative approach to specifiying the initial
+state of an LDMS daemon. For a complete list of these commands and detailed
+information about configuration file syntax,
+environment variables, and command processing order, please see :ref:`ldmsd_config_files(8) <ldmsd_config_files>`.
 
-**log_file** sets the log file path.
-
-   path=PATH
-      The log file path
-
-**log_level** sets the log verbosify. The default is ERROR.
-
-   level=LEVEL
-      The log level ordered from the most to the least severity:
-      CRITICAL, ERROR, WARNING, INFO, and DEBUG.
-
-**set_memory** sets the total set memory. The default is 512 MB.
-
-   size=SIZE
-      The total set memory size.
-
-**pid_file** sets the path to the PID file.
-
-   path=PATH
-      The PID file path
-
-**banner** specifies the banner mode.
-
-   mode=0|1|2
-      0 means no banner; 1 means auto-deleting the banner file at exit;
-      and 2 means leaving the banner file.
-
-**worker_threads** sets the number of threads scheduling sample and
-update events.
-
-   num=NUM
-      Number of threads that are responsible for scheduling sample, dir,
-      lookup, and update events.
-
-**default_auth** defines the default authentication domain. The default
-is no authentication.
-
-   plugin=NAME
-      The authentication plugin name
-
-   [auth_attr=ttr_value]
-      The attribute-value pairs of the authentication plugin
-
-**auth_add** defines an additional authentication domain.
-
-   name=NAME
-      The authentication domain name
-
-   plugin=PI_NAME
-      The autnentication plugin name
-
-   [auth_attr=ttr_value]
-      The attribute-value pairs of the authentication plugin
-
-**listen** defines a listen endpoint.
-
-   xprt=XPRT
-      Endpoint transport: sock, rdma, ugni
-
-   port=PORT
-      Listening port
-
-   [host=HOST]
-      Listening host
-
-   [auth=AUTH]
-      Authentication domain. The default authentication domain is used
-      if none is specified.
-
-**default_quota** sets the receiving quota in bytes
-
-   quota=BYTES
-      The quota limit in bytes
-
-**publish_kernel** enables LDMSD to publish kernel metrics and specifies
-the kernel metric file.
-
-   path=PATH
-      The path to the kernel metric file
-
-**daemon_name** sets the LDMS process name.
-
-   name=NAME
-      LDMS process name
-
-**stream_enable** enables stream communication in the daemon.
-
-   Stream communication is disabled by default and must be explicitly enabled when needed.
-
-   No Parameters
-
-**msg_enable** enables LDMS message functionality in the daemon.
-
-   LDMS message is disabled by default and must be explicitly enabled when needed.
-
-   No Parameters
-
-'option' configuration command to set the command-line options
---------------------------------------------------------------
-
-Apart from the configuration commands above, the configuration command
-'option' can be used to specify the command-line option.
-
-   option <COMMAND-LINE OPTIONS>
-
-   **-a,**\ *--default_auth*
-   **-A,**\ *--default_auth_args*
-   **-B,**\ *--banner*
-   **-k,**\ *--publish_kernel*
-   **-l,**\ *--log_file* **PATH**
-   **-m,**\ *--set_memory*
-   **-n,**\ *--daemon_name*
-   **-P,**\ *--worker_threads*
-   **-r,**\ *--pid_file*
-   **-s,**\ *--kernel_set_path*
-   **-v,**\ *--log_level*
-   **-L,**\ *--log_config* **<CINT[:PATH]>**
 
 Specifying the listen endpoints in configuraton files
 -----------------------------------------------------
