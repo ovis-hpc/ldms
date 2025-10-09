@@ -334,6 +334,7 @@ OPTION_DEFAULT_ENABLE([array_example], [ENABLE_ARRAY_EXAMPLE])
 OPTION_DEFAULT_ENABLE([hello_stream], [ENABLE_HELLO_STREAM])
 OPTION_DEFAULT_ENABLE([hello_ldms_msg], [ENABLE_HELLO_LDMS_MSG])
 OPTION_DEFAULT_ENABLE([blob_stream], [ENABLE_BLOB_STREAM])
+OPTION_DEFAULT_ENABLE([blob_msg], [ENABLE_BLOB_MSG])
 OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
 OPTION_DEFAULT_DISABLE([mpi_sampler], [ENABLE_MPI_SAMPLER])
 OPTION_DEFAULT_DISABLE([mpi_noprofile], [ENABLE_MPI_NOPROFILE])
@@ -1005,6 +1006,7 @@ ldms/src/decomp/as_is/Makefile
 ldms/src/decomp/flex/Makefile
 ldms/src/contrib/Makefile
 ldms/src/sampler/blob_stream/Makefile
+ldms/src/sampler/blob_msg/Makefile
 ldms/src/store/stream/Makefile
 ldms/src/store/test/Makefile
 ldms/src/store/kokkos/Makefile

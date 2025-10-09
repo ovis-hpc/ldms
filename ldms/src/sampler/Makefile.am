@@ -290,6 +290,10 @@ if ENABLE_BLOB_STREAM
 SUBDIRS += blob_stream
 endif
 
+if ENABLE_BLOB_MSG
+SUBDIRS += blob_msg
+endif
+
 if ENABLE_ZFS
 SUBDIRS += zfs_topvdevs
 SUBDIRS += zfs_leafvdevs
