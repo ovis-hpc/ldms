@@ -208,11 +208,17 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		event = "send_complete";
 #endif
 		goto out;
+	case LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
+#ifdef LNDEBUG
+		event = "send_quota_deposited";
+#endif
+		goto out;
 	default:
 #ifdef LNDEBUG
 		event = "INVALID_EVENT";
 #endif
 		DEBUGC(target, LERR, "Received invalid event type\n");
+		goto out; /* Invalid event should not trigger wait_cond */
 	}
 	pthread_cond_signal(&target->wait_cond);
 out:
