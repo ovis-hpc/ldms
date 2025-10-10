@@ -110,8 +110,9 @@ for lc in $(seq 1); do
 	SLEEP 2
 done
 SLEEP 5
+KILL_NO_TEARDOWN=1
 KILL_LDMSD 3 2 1
-file_created $STOREDIR/node/$testname
+file_created $STOREDIR/node/$plugname
 file_created $STOREDIR/node/$dsname
 rollover_created $STOREDIR/blobs/linux_proc_sampler_argv.DAT
 rollover_created $STOREDIR/blobs/linux_proc_sampler_files.DAT

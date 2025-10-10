@@ -882,6 +882,30 @@ function rollover_created {
 	done
 	return 0
 }
+
+function root_required {
+	if test "$allowroot" = "0"; then
+		case "x$USER" in
+			x)
+			echo "must be run in user environment. USER not set"
+			exit 1
+			;;
+			xroot)
+			echo "ok: running as root"
+			;;
+			*)
+			echo "This case must be run as root, but this might be a bad idea."
+			echo "Review the test input before starting it."
+			echo "Obtain root privileges, then to enable run try:"
+			echo "    'allowroot=1 $0 $input'"
+
+			exit 1
+			;;
+		esac
+	fi
+
+}
+
 function file_created {
 	if test "$bypass" = "1"; then
 		return 0
