@@ -3361,7 +3361,7 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data, int *
 		if (ec == EEXIST) {
 			if (!warn_once_dup) {
 				warn_once_dup = 1;
-				INST_LOG(inst, OVIS_LERROR, "Duplicate set name %s."
+				INST_LOG(inst, OVIS_LERROR, "Duplicate set name %s. "
 					"Check for redundant notifiers running.\n",
 					setname);
 			}
