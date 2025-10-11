@@ -1871,8 +1871,10 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	struct ldms_thrstat *thrstat;
 
 	thrstat = zap_thrstat_ctxt_get(x->zap_ep);
-	memcpy(&ctxt->op_ctxt->lookup_profile.complete_ts, &thrstat->last_op_start,
-					    sizeof(struct timespec));
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && ctxt->op_ctxt) {
+		memcpy(&ctxt->op_ctxt->lookup_profile.complete_ts, &thrstat->last_op_start,
+								    sizeof(struct timespec));
+	}
 
 	int rc = ntohl(reply->hdr.rc);
 	if (!rc) {
