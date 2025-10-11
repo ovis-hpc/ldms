@@ -7526,7 +7526,7 @@ static int profiling_handler(ldmsd_req_ctxt_t req)
 	int is_enable = -1; /* -1 means only getting the profile data, don't enable/disable */
 	int is_reset = 0;
 
-	enable_str = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_TYPE);
+	enable_str = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_ENABLE);
 	if (enable_str) {
 		is_enable = 1;
 		if (0 == strcasecmp(enable_str, "false"))
