@@ -685,7 +685,7 @@ static int __log(ovis_log_t log, int level, char *msg,
 		return rc;
 
 	/* Print the level name */
-	rc = fprintf(f, "%9s", ((level == OVIS_LALWAYS)?"":ovis_loglevel_names[level]));
+	rc = fprintf(f, "%s", ((level == OVIS_LALWAYS)?"":ovis_loglevel_names[level]));
 	if (rc < 0)
 		return rc;
 

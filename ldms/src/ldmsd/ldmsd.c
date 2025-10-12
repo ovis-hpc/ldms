@@ -241,6 +241,7 @@ void cleanup(int x, const char *reason)
 {
 	pthread_mutex_lock(&cleanup_lock);
 	if (cleaned) {
+		/* Ignoring secondary signal occuring afer cleanup() */
 		pthread_mutex_unlock(&cleanup_lock);
 		exit(x);
 	}
@@ -325,7 +326,7 @@ void cleanup_sa(int signal, siginfo_t *info, void *arg)
 {
 	ovis_log(NULL, OVIS_LINFO, "signo : %d\n", info->si_signo);
 	ovis_log(NULL, OVIS_LINFO, "si_pid: %d\n", info->si_pid);
-	cleanup(0, "signal to exit caught");
+	cleanup(1, "signal to exit caught");
 }
 
 
@@ -2333,6 +2334,6 @@ int main(int argc, char *argv[])
 		usleep(LDMSD_KEEP_ALIVE_30MIN);
 	} while (1);
 
-	cleanup(0,NULL);
+	cleanup(0, NULL);
 	return 0;
 }
