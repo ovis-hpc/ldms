@@ -12,11 +12,6 @@
 void yyerror(YYLTYPE *yylloc, json_parser_t parser, char *input, size_t input_len,
 	     json_entity_t *pentity, const char *str)
 {
-	fprintf(stderr, "first_line   : %d\n", yylloc->first_line);
-	fprintf(stderr, "last line    : %d\n", yylloc->last_line);
-	fprintf(stderr, "first column : %d\n", yylloc->first_column);
-	fprintf(stderr, "last column  : %d\n", yylloc->last_column);
-	fprintf(stderr, "str           : %s\n", str);
 	if (*pentity) {
 		json_entity_free(*pentity);
 		*pentity = NULL;
