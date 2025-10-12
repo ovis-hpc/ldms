@@ -68,6 +68,7 @@
 #include "ovis_util/util.h"
 #include "ovis_ev/ev.h"
 #include "ovis_log/ovis_log.h"
+#include "ovis_ref/ref.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -2172,6 +2173,7 @@ typedef enum ldms_xprt_ops_e {
 } ldms_xprt_ops_t;
 
 struct  ldms_op_ctxt {
+	struct ref_s ref;
 	enum ldms_xprt_ops_e op_type;
 	union {
 		struct lookup_profile_s {

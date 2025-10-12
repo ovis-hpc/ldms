@@ -861,10 +861,9 @@ int ldms_xprt_update(struct ldms_set *set, ldms_update_cb_t cb, void *arg)
 		return EBUSY;
 
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE)) {
-		op_ctxt = calloc(1, sizeof(*op_ctxt));
+		op_ctxt = __ldms_op_ctxt_alloc(LDMS_XPRT_OP_UPDATE);
 		if (!op_ctxt)
 			return ENOMEM;
-		op_ctxt->op_type = LDMS_XPRT_OP_UPDATE;
 		(void)clock_gettime(CLOCK_REALTIME, &(op_ctxt->update_profile.app_req_ts));
 	}
 	/*
@@ -879,7 +878,7 @@ int ldms_xprt_update(struct ldms_set *set, ldms_update_cb_t cb, void *arg)
 	rc = r->ops.update(r, set, cb, arg, op_ctxt);
 	if (rc) {
 		set->curr_updt_ctxt = NULL;
-		free(op_ctxt);
+		__ldms_op_ctxt_free(op_ctxt);
 	}
 	return rc;
 }

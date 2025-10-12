@@ -367,10 +367,9 @@ __remote_client_cb(ldms_msg_event_t ev, void *cb_arg)
 		goto out;
 	}
 
-	op_ctxt = calloc(1, sizeof(*op_ctxt));
+	op_ctxt = __ldms_op_ctxt_alloc(LDMS_XPRT_OP_MSG_PUBLISH);
 	if (!op_ctxt)
 		return ENOMEM;
-	op_ctxt->op_type = LDMS_XPRT_OP_MSG_PUBLISH;
 	op_ctxt->msg_pub_profile.hop_num = _ev->pub.hop_num;
 	op_ctxt->msg_pub_profile.recv_ts = _ev->pub.recv_ts;
 
@@ -394,10 +393,9 @@ __remote_client_cb(ldms_msg_event_t ev, void *cb_arg)
 			     ev->recv.data, ev->recv.data_len,
 			     &(op_ctxt->msg_pub_profile));
 	if (rc || !ENABLED_PROFILING(LDMS_XPRT_OP_MSG_PUBLISH)) {
-		free(op_ctxt);
+		__ldms_op_ctxt_free(op_ctxt);
 	} else {
-		TAILQ_INSERT_TAIL(&(r->eps[ep_idx].op_ctxt_lists[LDMS_XPRT_OP_MSG_PUBLISH]),
-										op_ctxt, ent);
+		__ldms_op_ctxt_enqueue(&(r->eps[ep_idx].op_ctxt_lists[LDMS_XPRT_OP_MSG_PUBLISH]), op_ctxt);
 	}
 	if (rc) {
 		__rate_quota_release(&ev->recv.client->rate_quota, ev->recv.data_len);
@@ -975,10 +973,9 @@ int ldms_msg_publish(ldms_t x, const char *name,
 		if (rc)
 			return rc;
 
-		op_ctxt = calloc(1, sizeof(*op_ctxt));
+		op_ctxt = __ldms_op_ctxt_alloc(LDMS_XPRT_OP_PUBLISH);
 		if (!op_ctxt)
 			return ENOMEM;
-		op_ctxt->op_type = LDMS_XPRT_OP_PUBLISH;
 		op_ctxt->msg_pub_profile.hop_num = 0;
 		op_ctxt->msg_pub_profile.recv_ts = recv_ts;
 		rc = __rep_publish(&r->eps[ep_idx], name, hash,
@@ -987,10 +984,10 @@ int ldms_msg_publish(ldms_t x, const char *name,
 				           &(op_ctxt->msg_pub_profile));
 
 		if (rc || !ENABLED_PROFILING(LDMS_XPRT_OP_MSG_PUBLISH)) {
-			free(op_ctxt);
+			__ldms_op_ctxt_free(op_ctxt);
 		} else {
 			op_ctxt_list = &(r->eps[ep_idx].op_ctxt_lists[LDMS_XPRT_OP_PUBLISH]);
-			TAILQ_INSERT_TAIL(op_ctxt_list, op_ctxt, ent);
+			__ldms_op_ctxt_enqueue(op_ctxt_list, op_ctxt);
 		}
 		return rc;
 	}

@@ -326,6 +326,40 @@ next:
 	return NULL;
 }
 
+void __ldms_op_ctxt___destroy(void *arg)
+{
+	free(arg);
+}
+
+struct ldms_op_ctxt *__ldms_op_ctxt_alloc(enum ldms_xprt_ops_e op_type)
+{
+	struct ldms_op_ctxt *op_ctxt;
+	op_ctxt = calloc(1, sizeof(*op_ctxt));
+	if (!op_ctxt)
+		return NULL;
+	ref_init(&op_ctxt->ref, "alloc", __ldms_op_ctxt___destroy, op_ctxt);
+	op_ctxt->op_type = op_type;
+	return op_ctxt;
+}
+
+void __ldms_op_ctxt_free(struct ldms_op_ctxt *op_ctxt)
+{
+	if (op_ctxt)
+		ref_put(&op_ctxt->ref, "alloc");
+}
+
+void __ldms_op_ctxt_enqueue(struct ldms_op_ctxt_list *list, struct ldms_op_ctxt *op_ctxt)
+{
+	ref_get(&op_ctxt->ref, "enqueue");
+	TAILQ_INSERT_TAIL(list, op_ctxt, ent);
+}
+
+void __ldms_op_ctxt_dequeue(struct ldms_op_ctxt_list *list, struct ldms_op_ctxt *op_ctxt)
+{
+	TAILQ_REMOVE(list, op_ctxt, ent);
+	ref_put(&op_ctxt->ref, "enqueue");
+}
+
 /* Must be called with the xprt lock held.
  * Keeps, rather than copies, string and other pointers in varargs. */
 struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
@@ -453,6 +487,9 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 		e->mean_us /= e->count;
 	}
 	ldms_xprt_put(ctxt->x, "alloc_ctxt");
+	if (ctxt->op_ctxt) {
+		ref_put(&ctxt->op_ctxt->ref, "xprt_ctxt");
+	}
 	free(ctxt);
 }
 
@@ -1617,6 +1654,7 @@ static int do_read_all(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	}
 	assert(x == ctxt->x);
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && s->curr_updt_ctxt) {
+		ref_get(&s->curr_updt_ctxt->ref, "xprt_ctxt");
 		ctxt->op_ctxt = s->curr_updt_ctxt;
 		if (0 == ctxt->op_ctxt->update_profile.read_ts.tv_sec) {
 			/*
@@ -1660,6 +1698,7 @@ static int do_read_meta(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	}
 	assert(x == ctxt->x);
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && s->curr_updt_ctxt) {
+		ref_get(&s->curr_updt_ctxt->ref, "xprt_ctxt");
 		ctxt->op_ctxt = s->curr_updt_ctxt;
 		if (0 == ctxt->op_ctxt->update_profile.read_ts.tv_sec) {
 			/*
@@ -1706,6 +1745,7 @@ static int do_read_data(ldms_t x, ldms_set_t s, int idx_from, int idx_to,
 
 	assert(x == ctxt->x);
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && s->curr_updt_ctxt) {
+		ref_get(&s->curr_updt_ctxt->ref, "xprt_ctxt");
 		ctxt->op_ctxt = s->curr_updt_ctxt;
 		if (0 == ctxt->op_ctxt->update_profile.read_ts.tv_sec) {
 			/*
@@ -2899,7 +2939,10 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	rd_ctxt->sem = ctxt->sem;
 	rd_ctxt->sem_p = ctxt->sem_p;
 	rd_ctxt->rc = ctxt->rc;
-	rd_ctxt->op_ctxt = ctxt->op_ctxt;
+	if (ctxt->op_ctxt) {
+		ref_get(&ctxt->op_ctxt->ref, "xprt_ctxt");
+		rd_ctxt->op_ctxt = ctxt->op_ctxt;
+	}
 	pthread_mutex_unlock(&x->lock);
 	assert((zep == x->zap_ep) && (x == rd_ctxt->x));
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && ctxt->op_ctxt) {
@@ -3765,7 +3808,10 @@ static int __ldms_xprt_send(ldms_t _x, char *msg_buf, size_t msg_len,
 		rc = ENOMEM;
 		goto err_0;
 	}
+	if (op_ctxt) {
+		ref_get(&op_ctxt->ref, "xprt_ctxt");
 		ctxt->op_ctxt = op_ctxt;
+	}
 	req = (struct ldms_request *)(ctxt + 1);
 	req->hdr.xid = 0;
 	req->hdr.cmd = htonl(LDMS_CMD_SEND_MSG);
@@ -3796,15 +3842,15 @@ int ldms_xprt_send(ldms_t _x, char *msg_buf, size_t msg_len)
 	int rc;
 	struct ldms_op_ctxt *op_ctxt = NULL;
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND)) {
-		op_ctxt = calloc(1, sizeof(*op_ctxt));
+		op_ctxt = __ldms_op_ctxt_alloc(LDMS_XPRT_OP_SEND);
 		if (!op_ctxt)
 			return ENOMEM;
-		op_ctxt->op_type = LDMS_XPRT_OP_SEND;
 		(void)clock_gettime(CLOCK_REALTIME, &(op_ctxt->send_profile.app_req_ts));
 	}
 	rc = _x->ops.send(_x, msg_buf, msg_len, op_ctxt);
 	if (rc)
-		free(op_ctxt);
+		__ldms_op_ctxt_free(op_ctxt);
+
 	return rc;
 }
 
@@ -3996,6 +4042,7 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 		x->zap_ep, x->active_lookup);
 #endif /* DEBUG */
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && op_ctxt) {
+		ref_get(&op_ctxt->ref, "xprt_ctxt");
 		ctxt->op_ctxt = op_ctxt;
 		(void)clock_gettime(CLOCK_REALTIME, &op_ctxt->lookup_profile.req_send_ts);
 	}
@@ -4051,15 +4098,14 @@ int ldms_xprt_lookup(ldms_t x, const char *path, enum ldms_lookup_flags flags,
 	struct ldms_op_ctxt *op_ctxt = NULL;
 
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP)) {
-		op_ctxt = calloc(1, sizeof(*op_ctxt));
+		op_ctxt = __ldms_op_ctxt_alloc(LDMS_XPRT_OP_LOOKUP);
 		if (!op_ctxt)
 			return ENOMEM;
-		op_ctxt->op_type = LDMS_XPRT_OP_LOOKUP;
 		(void)clock_gettime(CLOCK_REALTIME, &op_ctxt->lookup_profile.app_req_ts);
 	}
 	rc = x->ops.lookup(x, path, flags, cb, cb_arg, op_ctxt);
 	if (rc)
-		free(op_ctxt);
+		__ldms_op_ctxt_free(op_ctxt);
 	return rc;
 }
 
@@ -4096,8 +4142,8 @@ static void __xprt_stats_reset(ldms_t _x, int mask, struct timespec *ts)
 		for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
 			ctxt_list = __rail_op_ctxt_list(_x, op_e);
 			while ((op_ctxt = TAILQ_FIRST(ctxt_list))) {
-				TAILQ_REMOVE(ctxt_list, op_ctxt, ent);
-				free(op_ctxt);
+				__ldms_op_ctxt_dequeue(ctxt_list, op_ctxt);
+				__ldms_op_ctxt_free(op_ctxt);
 			}
 		}
 	}

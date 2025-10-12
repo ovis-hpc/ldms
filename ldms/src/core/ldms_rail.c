@@ -1157,14 +1157,12 @@ static int __rail_send(ldms_t _r, char *msg_buf, size_t msg_len,
 	rep = &r->eps[0];
 
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND) && op_ctxt) {
-		TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_SEND]),
-		                                             op_ctxt, ent);
+		__ldms_op_ctxt_enqueue(&(rep->op_ctxt_lists[LDMS_XPRT_OP_SEND]), op_ctxt);
 	}
 	rc = rep->ep->ops.send(rep->ep, msg_buf, msg_len, op_ctxt);
 	if (rc) {
 		if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND) && op_ctxt) {
-			TAILQ_REMOVE(&(rep->op_ctxt_lists[LDMS_XPRT_OP_SEND]),
-			                                        op_ctxt, ent);
+			__ldms_op_ctxt_dequeue(&(rep->op_ctxt_lists[LDMS_XPRT_OP_SEND]), op_ctxt);
 		}
 		/* release the acquired quota if send failed */
 		__rep_quota_release(rep, msg_len);
@@ -1242,8 +1240,11 @@ void __rail_lookup_cb(ldms_t x, enum ldms_lookup_status status,
 		(void)clock_gettime(CLOCK_REALTIME, &lc->op_ctxt->lookup_profile.deliver_ts);
 	}
 	lc->app_cb((void*)lc->r, status, more, s, lc->cb_arg);
-	if (!more)
+	if (!more) {
+		if (lc->op_ctxt)
+			ref_put(&lc->op_ctxt->ref, "lookup");
 		free(lc);
+	}
 }
 
 static int __rail_lookup(ldms_t _r, const char *name, enum ldms_lookup_flags flags,
@@ -1268,19 +1269,25 @@ static int __rail_lookup(ldms_t _r, const char *name, enum ldms_lookup_flags fla
 	lc->app_cb = cb;
 	lc->cb_arg = cb_arg;
 	lc->flags = flags;
-	lc->op_ctxt = op_ctxt;
+	if (op_ctxt) {
+		ref_get(&op_ctxt->ref, "lookup");
+		lc->op_ctxt = op_ctxt;
+	}
 	rep = &r->eps[r->lookup_rr++];
 	r->lookup_rr %= r->n_eps;
 
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && op_ctxt) {
-		TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_LOOKUP]), op_ctxt, ent);
+		__ldms_op_ctxt_enqueue(&(rep->op_ctxt_lists[LDMS_XPRT_OP_LOOKUP]), op_ctxt);
 	}
 	rc = rep->ep->ops.lookup(rep->ep, name, flags, __rail_lookup_cb, lc, op_ctxt);
 	if (rc) {
 		/* synchronous error */
+		if (lc->op_ctxt) {
+			ref_put(&lc->op_ctxt->ref, "lookup");
+		}
 		free(lc);
 		if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && op_ctxt) {
-			TAILQ_REMOVE(&rep->op_ctxt_lists[LDMS_XPRT_OP_LOOKUP], op_ctxt, ent);
+			__ldms_op_ctxt_dequeue(&rep->op_ctxt_lists[LDMS_XPRT_OP_LOOKUP], op_ctxt);
 		}
 	}
  out:
@@ -1293,7 +1300,6 @@ static int __rail_stats(ldms_t _r, struct ldms_xprt_stats_s *stats, int mask, in
 	int i, rc;
 	ldms_rail_t r = (ldms_rail_t)_r;
 	struct ldms_rail_ep_s *rep;
-	memset(stats, 0, sizeof(*stats));
 
 	if (!stats) {
 		/* Only reset */
@@ -1306,6 +1312,7 @@ static int __rail_stats(ldms_t _r, struct ldms_xprt_stats_s *stats, int mask, in
 		return 0;
 	}
 
+	memset(stats, 0, sizeof(*stats));
 	/* Get the statistics */
 	stats->rail.eps_stats = malloc(r->n_eps * sizeof(*stats->rail.eps_stats));
 	if (!stats->rail.eps_stats) {
@@ -1453,6 +1460,7 @@ void __rail_update_cb(ldms_t x, ldms_set_t s, int flags, void *arg)
 		struct ldms_op_ctxt *op_ctxt = s->curr_updt_ctxt;
 
 		(void)clock_gettime(CLOCK_REALTIME, &op_ctxt->update_profile.deliver_ts);
+		ref_put(&op_ctxt->ref, "set_curr_updt");
 		s->curr_updt_ctxt = NULL;
 	}
 	uc->app_cb((ldms_t)rep->rail, s, flags, uc->cb_arg);
@@ -1478,16 +1486,18 @@ static int __rail_update(ldms_t _r, struct ldms_set *set, ldms_update_cb_t cb,
 
 	rep = ldms_xprt_ctxt_get(set->xprt);
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && op_ctxt) {
-		TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_UPDATE]), op_ctxt, ent);
+		__ldms_op_ctxt_enqueue(&(rep->op_ctxt_lists[LDMS_XPRT_OP_UPDATE]), op_ctxt);
+		ref_get(&op_ctxt->ref, "set_curr_updt");
 		set->curr_updt_ctxt = op_ctxt;
 	}
 	rc = set->xprt->ops.update(set->xprt, set, __rail_update_cb, uc, op_ctxt);
 	if (rc) {
 		/* synchronously error, clean up the context */
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && op_ctxt) {
+			__ldms_op_ctxt_dequeue(&(rep->op_ctxt_lists[LDMS_XPRT_OP_UPDATE]), op_ctxt);
+			ref_put(&op_ctxt->ref, "set_curr_updt");
+		}
 		set->curr_updt_ctxt = NULL;
-
-		if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && op_ctxt)
-			TAILQ_REMOVE(&(rep->op_ctxt_lists[LDMS_XPRT_OP_UPDATE]), op_ctxt, ent);
 		free(uc);
 	}
 	return rc;
@@ -1927,14 +1937,15 @@ void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
 					ldms_set_instance_name_get(s));
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_SET_DELETE)) {
 		rep = (struct ldms_rail_ep_s *)ldms_xprt_ctxt_get(x);
-		op_ctxt = calloc(1, sizeof(*op_ctxt));
+		op_ctxt = __ldms_op_ctxt_alloc(LDMS_XPRT_OP_SET_DELETE);
 		if (!op_ctxt) {
 			ovis_log(xlog, OVIS_LCRIT, "%s:%s:%d Memory allocation failure\n",
 					__FILE__, __func__, __LINE__);
 			/* Let the routine continue */
 		} else {
+			ref_get(&op_ctxt->ref, "xprt_ctxt");
 			ctxt->op_ctxt = op_ctxt;
-			TAILQ_INSERT_TAIL(&rep->op_ctxt_lists[LDMS_XPRT_OP_SET_DELETE], op_ctxt, ent);
+			__ldms_op_ctxt_enqueue(&rep->op_ctxt_lists[LDMS_XPRT_OP_SET_DELETE], op_ctxt);
 			(void)clock_gettime(CLOCK_REALTIME, &op_ctxt->set_del_profile.send_ts);
 		}
 	}
@@ -1949,7 +1960,7 @@ void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
 		x->zerrno = zerr;
 		__ldms_free_ctxt(x, ctxt);
 		if (ENABLED_PROFILING(LDMS_XPRT_OP_SET_DELETE))
-			TAILQ_REMOVE(&rep->op_ctxt_lists[LDMS_XPRT_OP_SET_DELETE], op_ctxt, ent);
+			__ldms_op_ctxt_dequeue(&rep->op_ctxt_lists[LDMS_XPRT_OP_SET_DELETE], op_ctxt);
 	}
 	pthread_mutex_unlock(&x->lock);
 }
@@ -1964,18 +1975,17 @@ int __rep_flush_sbuf_tq(struct ldms_rail_ep_s *rep)
 		if (rc)
 			goto out;
 
-		op_ctxt = calloc(1, sizeof(*op_ctxt));
+		op_ctxt = __ldms_op_ctxt_alloc(LDMS_XPRT_OP_MSG_PUBLISH);
 		if (!op_ctxt) {
 			rc = ENOMEM;
 			goto out;
 		}
-		op_ctxt->op_type = LDMS_XPRT_OP_MSG_PUBLISH;
 		op_ctxt->msg_pub_profile.hop_num = p->hop_num;
 		op_ctxt->msg_pub_profile.recv_ts = p->recv_ts;
 
 		if (ENABLED_PROFILING(LDMS_XPRT_OP_MSG_PUBLISH)) {
-			TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_MSG_PUBLISH]),
-										op_ctxt, ent);
+			__ldms_op_ctxt_enqueue(&(rep->op_ctxt_lists[LDMS_XPRT_OP_MSG_PUBLISH]),
+										      op_ctxt);
 		}
 		rc = __rep_publish(rep, p->sbuf->name,
 				p->sbuf->msg->name_hash,
@@ -1989,14 +1999,14 @@ int __rep_flush_sbuf_tq(struct ldms_rail_ep_s *rep)
 		if (rc) {
 			__rep_quota_release(rep, p->sbuf->msg->msg_len);
 			if (ENABLED_PROFILING(LDMS_XPRT_OP_MSG_PUBLISH)) {
-				TAILQ_REMOVE(&(rep->op_ctxt_lists[LDMS_XPRT_OP_MSG_PUBLISH]),
-										op_ctxt, ent);
-				free(op_ctxt);
+				__ldms_op_ctxt_dequeue(&(rep->op_ctxt_lists[LDMS_XPRT_OP_MSG_PUBLISH]),
+											     op_ctxt);
+				__ldms_op_ctxt_free(op_ctxt);
 			}
 			goto out;
 		}
 		if (!ENABLED_PROFILING(LDMS_XPRT_OP_MSG_PUBLISH)) {
-			free(op_ctxt);
+			__ldms_op_ctxt_free(op_ctxt);
 		}
 		TAILQ_REMOVE(&rep->sbuf_tq, p, entry);
 		ref_put(&p->sbuf->ref, "pending");
