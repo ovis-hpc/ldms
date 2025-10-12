@@ -585,4 +585,9 @@ void ldms_xprt_auth_end(ldms_t xprt, int result);
  */
 #define ENABLED_PROFILING(_OP_) (__enable_profiling[_OP_] == 1)
 
+struct ldms_op_ctxt *__ldms_op_ctxt_alloc(enum ldms_xprt_ops_e op_type);
+void __ldms_op_ctxt_free(struct ldms_op_ctxt *op_ctxt);
+void __ldms_op_ctxt_enqueue(struct ldms_op_ctxt_list *list, struct ldms_op_ctxt *op_ctxt);
+void __ldms_op_ctxt_dequeue(struct ldms_op_ctxt_list *list, struct ldms_op_ctxt *op_ctxt);
+
 #endif
