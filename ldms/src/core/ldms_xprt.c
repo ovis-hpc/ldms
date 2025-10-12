@@ -821,7 +821,7 @@ static
 void process_set_delete_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 			      struct ldms_context *ctxt)
 {
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_SET_DELETE)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_SET_DELETE) && ctxt->op_ctxt) {
 		struct ldms_thrstat *thrstat = zap_thrstat_ctxt_get(x->zap_ep);
 		memcpy(&ctxt->op_ctxt->set_del_profile.ack_ts, &thrstat->last_op_start, sizeof(struct timespec));
 		timespec_ntoh(&reply->set_del.recv_ts);
@@ -1616,7 +1616,7 @@ static int do_read_all(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 		goto out;
 	}
 	assert(x == ctxt->x);
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && s->curr_updt_ctxt) {
 		ctxt->op_ctxt = s->curr_updt_ctxt;
 		if (0 == ctxt->op_ctxt->update_profile.read_ts.tv_sec) {
 			/*
@@ -1659,7 +1659,7 @@ static int do_read_meta(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 		goto out;
 	}
 	assert(x == ctxt->x);
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && s->curr_updt_ctxt) {
 		ctxt->op_ctxt = s->curr_updt_ctxt;
 		if (0 == ctxt->op_ctxt->update_profile.read_ts.tv_sec) {
 			/*
@@ -1705,7 +1705,7 @@ static int do_read_data(ldms_t x, ldms_set_t s, int idx_from, int idx_to,
 	dlen = (idx_to - idx_from + 1) * data_sz;
 
 	assert(x == ctxt->x);
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && s->curr_updt_ctxt) {
 		ctxt->op_ctxt = s->curr_updt_ctxt;
 		if (0 == ctxt->op_ctxt->update_profile.read_ts.tv_sec) {
 			/*
@@ -2670,7 +2670,7 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 	switch (ctxt->type) {
 	case LDMS_CONTEXT_UPDATE:
 		thrstat->last_op = LDMS_THRSTAT_OP_UPDATE_REPLY;
-		if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE)) {
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && ctxt->op_ctxt) {
 			/*
 			 * If read complete timestamp is already set,
 			 * we replace it with a new timestamp.
@@ -2685,7 +2685,7 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 		__handle_update_data(x, ctxt, ev);
 		break;
 	case LDMS_CONTEXT_UPDATE_META:
-		if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE)) {
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && ctxt->op_ctxt) {
 			/*
 			 * With the same reason as in the LDMS_CONTEXT_UPDATE case,
 			 * we set or reset the read complete timestamp.
@@ -2698,7 +2698,7 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 		break;
 	case LDMS_CONTEXT_LOOKUP_READ:
 		thrstat->last_op = LDMS_THRSTAT_OP_LOOKUP_REPLY;
-		if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP)) {
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && ctxt->op_ctxt) {
 			memcpy(&ctxt->op_ctxt->lookup_profile.complete_ts,
 			                          &thrstat->last_op_start,
 			                          sizeof(struct timespec));
@@ -2867,7 +2867,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	pthread_mutex_lock(&lset->lock);
 	(void)__process_lookup_set_info(lset, &inst_name->name[inst_name->len], &prfl_maker);
 
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && ctxt->op_ctxt) {
 		if (prfl_maker < (char *)lm + lm->hdr.len) {
 			/* The message is from v4.5.1+ version,
 			 * which includes the lookup profiling timestamps.
@@ -2902,7 +2902,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	rd_ctxt->op_ctxt = ctxt->op_ctxt;
 	pthread_mutex_unlock(&x->lock);
 	assert((zep == x->zap_ep) && (x == rd_ctxt->x));
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && ctxt->op_ctxt) {
 		(void)clock_gettime(CLOCK_REALTIME, &op_ctxt->lookup_profile.read_ts);
 	}
 	rc = zap_read(zep,
@@ -3333,7 +3333,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 			 */
 		} else {
 			if (x->event_cb && ev->context) {
-				if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND)) {
+				if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND) && ev->context) {
 					op_ctxt = (struct ldms_op_ctxt *)ev->context;
 					memcpy(&op_ctxt->send_profile.complete_ts, &thrstat->last_op_start,
 					                                          sizeof(struct timespec));
@@ -3775,7 +3775,7 @@ static int __ldms_xprt_send(ldms_t _x, char *msg_buf, size_t msg_len,
 		sizeof(struct ldms_send_cmd_param) + msg_len;
 	req->hdr.len = htonl(len);
 
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND) && op_ctxt) {
 		(void)clock_gettime(CLOCK_REALTIME, &op_ctxt->send_profile.send_ts);
 	}
 	rc = zap_send2(x->zap_ep, req, len, (void*)op_ctxt);
@@ -3995,7 +3995,7 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	XPRT_LOG(x, OVIS_LDEBUG, "remote_lookup: get ref %p: active_lookup = %d\n",
 		x->zap_ep, x->active_lookup);
 #endif /* DEBUG */
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && op_ctxt) {
 		ctxt->op_ctxt = op_ctxt;
 		(void)clock_gettime(CLOCK_REALTIME, &op_ctxt->lookup_profile.req_send_ts);
 	}

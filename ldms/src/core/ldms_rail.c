@@ -1156,13 +1156,13 @@ static int __rail_send(ldms_t _r, char *msg_buf, size_t msg_len,
 	}
 	rep = &r->eps[0];
 
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND) && op_ctxt) {
 		TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_SEND]),
 		                                             op_ctxt, ent);
 	}
 	rc = rep->ep->ops.send(rep->ep, msg_buf, msg_len, op_ctxt);
 	if (rc) {
-		if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND)) {
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND) && op_ctxt) {
 			TAILQ_REMOVE(&(rep->op_ctxt_lists[LDMS_XPRT_OP_SEND]),
 			                                        op_ctxt, ent);
 		}
@@ -1238,7 +1238,7 @@ void __rail_lookup_cb(ldms_t x, enum ldms_lookup_status status,
 			int more, ldms_set_t s, void *arg)
 {
 	ldms_rail_lookup_ctxt_t lc = arg;
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && lc->op_ctxt) {
 		(void)clock_gettime(CLOCK_REALTIME, &lc->op_ctxt->lookup_profile.deliver_ts);
 	}
 	lc->app_cb((void*)lc->r, status, more, s, lc->cb_arg);
@@ -1272,14 +1272,14 @@ static int __rail_lookup(ldms_t _r, const char *name, enum ldms_lookup_flags fla
 	rep = &r->eps[r->lookup_rr++];
 	r->lookup_rr %= r->n_eps;
 
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && op_ctxt) {
 		TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_LOOKUP]), op_ctxt, ent);
 	}
 	rc = rep->ep->ops.lookup(rep->ep, name, flags, __rail_lookup_cb, lc, op_ctxt);
 	if (rc) {
 		/* synchronous error */
 		free(lc);
-		if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP)) {
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && op_ctxt) {
 			TAILQ_REMOVE(&rep->op_ctxt_lists[LDMS_XPRT_OP_LOOKUP], op_ctxt, ent);
 		}
 	}
@@ -1449,7 +1449,7 @@ void __rail_update_cb(ldms_t x, ldms_set_t s, int flags, void *arg)
 {
 	struct ldms_rail_ep_s *rep = ldms_xprt_ctxt_get(x);
 	ldms_rail_update_ctxt_t uc = arg;
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && s->curr_updt_ctxt) {
 		struct ldms_op_ctxt *op_ctxt = s->curr_updt_ctxt;
 
 		(void)clock_gettime(CLOCK_REALTIME, &op_ctxt->update_profile.deliver_ts);
@@ -1477,7 +1477,7 @@ static int __rail_update(ldms_t _r, struct ldms_set *set, ldms_update_cb_t cb,
 	uc->cb_arg = arg;
 
 	rep = ldms_xprt_ctxt_get(set->xprt);
-	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE)) {
+	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && op_ctxt) {
 		TAILQ_INSERT_TAIL(&(rep->op_ctxt_lists[LDMS_XPRT_OP_UPDATE]), op_ctxt, ent);
 		set->curr_updt_ctxt = op_ctxt;
 	}
@@ -1486,7 +1486,7 @@ static int __rail_update(ldms_t _r, struct ldms_set *set, ldms_update_cb_t cb,
 		/* synchronously error, clean up the context */
 		set->curr_updt_ctxt = NULL;
 
-		if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE))
+		if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && op_ctxt)
 			TAILQ_REMOVE(&(rep->op_ctxt_lists[LDMS_XPRT_OP_UPDATE]), op_ctxt, ent);
 		free(uc);
 	}
