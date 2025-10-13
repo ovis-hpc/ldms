@@ -1,0 +1,38 @@
+# common suppressions for valgrind drd in ldms 4.5.1 metric set update
+# set transport in ldms assumes 1 write/many readers and that the
+# inconsistent flag is enough to handle read during write.
+{
+   ldms_metric_set_u64
+   drd:ConflictingAccess
+   fun:ldms_metric_set_u64
+   ...
+}
+{
+   __ldms_gn_inc
+   drd:ConflictingAccess
+   fun:__ldms_gn_inc
+   ...
+}
+{
+   ldms_metric_set_s64
+   drd:ConflictingAccess
+   fun:ldms_metric_set_s64
+   ...
+}
+{
+   ldms_metric_set_u32
+   drd:ConflictingAccess
+   fun:ldms_metric_set_u32
+   ...
+}
+{
+   ldms_transaction_end
+   drd:ConflictingAccess
+   fun:ldms_transaction_end
+}
+{
+   ldms_transaction_begin
+   drd:ConflictingAccess
+   fun:ldms_transaction_begin
+   ...
+}
