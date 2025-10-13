@@ -80,15 +80,17 @@ drd="valgrind -v --tool=drd --log-file=$LOGDIR/vg.netlink.drd.txt --trace-cond=y
 memcheck="valgrind -v --leak-check=full --track-origins=yes --trace-children=yes  --log-file=$LOGDIR/vg.netlink.memcheck.txt --keep-debuginfo=yes --malloc-fill=3b"
 #${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked --purge-track-dir &
 
-${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked -x -e exec,clone,exit  -L $LOGDIR/nl.log --heartbeat 1 -v 3 --ProducerName=$(hostname) --purge-track-dir --format 2 &
+${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked -x -e exec,clone,exit  -L $LOGDIR/nl.log --heartbeat 1 -v 3 --ProducerName=$(hostname) --purge-track-dir --format 3 &
 
+drd_supp=$(dirname $input)/drd.set_update.supp
 # uncomment next one to test duplicate handling
 #${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json2.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
 VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite --time-stamp=yes --keep-debuginfo=yes --malloc-fill=3b"
-VGARGS="--tool=drd --trace-cond=yes --trace-fork-join=yes"
-vgon
+VGARGS="--tool=drd --trace-cond=yes --trace-fork-join=yes --gen-suppressions=all --time-stamp=yes --suppressions=$drd_supp"
+#vgon
 LDMSD 1
-vgon
+vgoff
+#vgon
 LDMSD 2
 vgoff
 #vgon
@@ -107,6 +109,7 @@ for lc in $(seq 1); do
 	SLEEP 2
 done
 SLEEP 5
+#KILL_NO_TEARDOWN=1
 KILL_LDMSD 3 2 1
 file_created $STOREDIR/node/$plugname
 file_created $STOREDIR/node/$dsname
