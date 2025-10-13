@@ -64,6 +64,7 @@
 #include <grp.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <limits.h>
 
 #include "util.h"
 #define DSTRING_USE_SHORT
@@ -327,6 +328,94 @@ char *av_value(struct attr_value_list *av_list, const char *name)
 		} else
 			break;
 	}
+	return NULL;
+}
+
+char *av_value_default(struct attr_value_list *av_list,
+		       const char *name, const char *def)
+{
+	char *str;
+	int i;
+
+	if (!av_list)
+		return NULL;
+
+	for (i = 0; i < av_list->count; i++) {
+		if (0 == strcmp(name, av_list->list[i].name))
+			break;
+	}
+
+	if (i == av_list->count)
+		/* Not found, use default */
+		str = str_repl_env_vars(def);
+	else
+		str = str_repl_env_vars(av_list->list[i].value);
+	if (str) {
+		string_ref_t ref = malloc(sizeof(*ref));
+		if (!ref) {
+			free(str);
+			return NULL;
+		}
+		ref->str = str;
+		LIST_INSERT_HEAD(&av_list->strings, ref, entry);
+		return str;
+	}
+
+	return str;
+}
+
+/**
+ * We are expecting a value in av_list as follows:
+ *
+ * <name>=<value>SEP<name>=<value>SEP...
+ */
+av_list_t av_value_list(const char *input, const char *sep)
+{
+	char *str;
+	av_list_t avl;
+	char *s, *t;
+	int i;
+
+	if (!input)
+		return NULL;
+	str = strdup(input);
+	if (!str)
+		return NULL;
+
+	/* Determine the size of the output av_list */
+	s = str;
+	for (i = 1; s; s = strstr(str, sep))
+		i ++;
+	avl = av_new(i);
+	if (!avl)
+		return NULL;
+
+	/* For each <name>=<value> pair, add an av_list entry */
+	for (s = str, i = 0; i < avl->size; i++) {
+		char buf[512];
+		t = buf;
+		while (*s != *sep && *s != '\0') {
+			*t++ = *s++;
+		}
+		*t = '\0';
+		char *name = strtok(buf, "=");
+		char *value = strtok(NULL, "=");
+		avl->list[avl->count].name = strdup(name);
+		avl->list[avl->count].value = str_repl_env_vars(value);
+		if (!avl->list[avl->count].value)
+			goto err;
+		string_ref_t ref = malloc(sizeof(*ref));
+		if (!ref)
+			goto err;
+		ref->str = avl->list[avl->count].value;
+		LIST_INSERT_HEAD(&avl->strings, ref, entry);
+		avl->count += 1;
+		assert(*s == *sep || *sep == '\0');
+	}
+	free(str);
+	return avl;
+ err:
+	free(str);
 	return NULL;
 }
 
@@ -1313,4 +1402,30 @@ char *ovis_buff_str(ovis_buff_t buff)
 	ret[off] = 0;
  out:
 	return ret;
+}
+
+uint16_t strtous(const char *port_s)
+{
+	long l;
+
+	errno = 0;
+	l = strtol(port_s, NULL, 0);
+	if (l < 0 || l > USHRT_MAX) {
+		errno = ERANGE;
+		l = USHRT_MAX;
+	}
+	return l;
+}
+
+int16_t strtos(const char *port_s)
+{
+	long l;
+
+	errno = 0;
+	l = strtol(port_s, NULL, 0);
+	if (l < SHRT_MIN || l > SHRT_MAX) {
+		errno = ERANGE;
+		l = SHRT_MAX;
+	}
+	return l;
 }

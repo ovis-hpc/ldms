@@ -2196,7 +2196,7 @@ cdef class MetricArray(list):
             raise TypeError("set {}[{}] is not an array"\
                             .format(lset.name, metric_id))
         if self._type == LDMS_V_CHAR_ARRAY:
-            raise TypeError("CHAR_ARRAY should be access as `str`")
+            raise TypeError("CHAR_ARRAY should be accessed as str()")
         if rec:
             self._getter = RECORD_METRIC_GETTER_TBL[self._type]
             self._setter = RECORD_METRIC_SETTER_TBL[self._type]
@@ -3499,8 +3499,8 @@ cdef class Xprt(object):
                        Ptr xprt_ptr=None,
                        rail_recv_limit = None # alias of rail_recv_quota
                        ):
-        cdef attr_value_list *avl = NULL;
-        cdef int rc;
+        cdef attr_value_list *avl = NULL
+        cdef int rc
         if rail_eps < 1:
             raise ValueError("rail_eps must be greater than 0")
         if auth is None:
@@ -4070,6 +4070,9 @@ cdef class Xprt(object):
         ctxt.cb = cb
         ctxt.cb_arg = cb_arg
 
+        if self._conn_rc != 0:
+            raise Exception("The ransport is not connected.")
+
         tmp = BYTES(match)
         c_match = <const char*>tmp
         c_is_regex = <int>is_regex
@@ -4339,7 +4342,7 @@ cdef class MsgData(object):
     def __repr__(self):
         return f"MsgData('{self.name}', {repr(self.src)}, " \
                f"{self.tid}, {self.uid}, {self.gid}, {oct(self.perm)}, " \
-               f"{self.is_json}, {repr(self.data)})"
+               f"{self.is_json}, {repr(self.data)}, {self.type})"
 
     def __eq__(self, other):
         if type(other) != MsgData:
@@ -4550,8 +4553,8 @@ cdef class MsgClient(object):
                       0 otherwise, and the `match` is treated as an exact match
                       to the channel name
     - cb (callable): an optional callback function to deliver the data
-                        with the following signature
-                          `def cb(MsgClient client, MsgData data, object cb_arg)`
+                     with the following signature
+                     `def cb(MsgClient client, MsgData data, object cb_arg)`
     - cb_arg (object):  an optional application callback argument.
     - desc (str): a short description of the client.
     - sr_client (SchemaRegistryClient): a Confluent Kafka Client object,
@@ -4608,6 +4611,169 @@ cdef class MsgClient(object):
         ldms_msg_client_stats_free(cs)
         return obj
 
+cdef int __msg_chan_cb(ldms_msg_event_t ev, void *arg) with gil:
+    cdef MessageChannel chan = <MessageChannel>arg
+    cdef MsgData sdata
+
+    if ev.type != LDMS_MSG_EVENT_RECV:
+        return 0
+
+    sdata = MsgData.from_ldms_msg_event(PTR(ev))
+    try:
+        chan.msg_cb_fn(sdata, chan.msg_cb_arg)
+    except Exception as e:
+        print(e)
+
+    return 0
+
+cdef class MessageChannel(object):
+    """A resilient bidirectionl message interface for the LDMS message bus
+
+    The MessageChannel implements a peer to peer, bidirectional message bus
+    interface. The interface is resilient; either side of the channel
+    may be unavailable at the time the object is created. The
+    necessary LDMS transport resources are created and managed
+    automatically by the message channel.
+
+    The local peer listens for incoming Message Bus connect requests
+    and delivers data to subscribing MessageChannel subscribers. The
+    remote peer connects to a remote MeessageChannel and sends
+    messages to the remote peer published by MessageChannel
+    clients. The subscriber and publisher exchange data over different
+    message buses such that incoming (subscribed) and outgoing
+    (published) messages cannot block or otherwise interfere with one
+    another.
+
+    The MessageChannel has an application name that may be useful when
+    reporting statistics for multiple channels. It has no functional
+    impact on the channel or it's configuration. Multiple
+    MessageChannel objects may have the same name, although this may
+    not be recommended for subsequent statistics gathering.
+
+    The interface is designed to be very simple:
+    - ch = MessageChannel(...) # Create a new Metric Channel
+    - ch.publish(...)          # Publish a message
+    - ch.subsribe(...)         # subscribe to receive messages
+
+    There are additional methods to obtains statistics, affect
+    message logging, and set queueing levels as described below.
+
+    """
+
+    cdef ldms_msg_chan_t chan
+    cdef object xprt
+    cdef object rem_host
+    cdef object rem_port
+    cdef object lcl_host
+    cdef object lcl_port
+    cdef object auth
+    cdef object auth_opts
+    cdef object msg_cb_fn
+    cdef object msg_cb_arg
+    cdef attr_value_list *auth_avl
+
+    def __init__(self, name, xprt,
+                 rem_host, rem_port,
+                 lcl_host, lcl_port,
+                 auth = "none", auth_opts = None, reconnect = 6):
+        """ Create a new Message Channel
+
+        Arguments:
+        - name     The application name of the Message Channel
+        - xprt The transport type name, e.g. "sock", "rdma", "fabric"
+        - rem_host The peer host name
+        - rem_port The peer host port number
+        - lcl_host The local host name, e.g. to identify a listening
+                   interface, by default, this is "localhost"
+        - lcl_port The local port to listen for peer connection requests
+        - auth The authentication plugin name
+        - auth_avl An av_list containing the authentication plugin options
+        - reconnect The interval (in seconds) between attempts to reconnect with a peer.
+        """
+        self.auth_avl = NULL
+        if auth_opts:
+            if type(auth_opts) != dict:
+                raise TypeError("auth_opts must be a dictionary")
+            self.auth_avl = av_new(len(auth_opts))
+            for k, v in auth_opts.items():
+                rc = av_add(self.auth_avl, CSTR(BYTES(k)), CSTR(BYTES(v)))
+                if rc:
+                    av_free(self.auth_avl)
+                    raise OSError(rc, "av_add() error: {}"\
+                                  .format(ERRNO_SYM(rc)))
+        self.chan = ldms_msg_chan_new(BYTES(name),
+                                      BYTES(xprt),
+                                      BYTES(rem_host), BYTES(rem_port),
+                                      BYTES(lcl_host), BYTES(lcl_port),
+                                      BYTES(auth), self.auth_avl,
+                                      reconnect)
+        if not self.chan:
+            raise RuntimeError(f"ldms_msg_chan_new() error, errno: {errno}")
+        self.xprt = xprt
+        self.rem_host = rem_host
+        self.rem_port = rem_port
+        self.lcl_host = lcl_host
+        self.lcl_port = lcl_port
+        self.auth = auth
+        self.auth_opts = auth_opts
+
+    def publish(self, chan_name,
+                uid, gid, perm,
+                msg_type, msg, msg_len):
+        """Publish a message
+
+        Publish a message to a remote message channel. The message is
+        tagged with a user-id, group-id, and subscriber permissions.
+        An error is reported if the ownership cannot be assumed by the
+        sending process. In other words, 'chris' cannot send data
+        tagged as 'mary'. Root may send data tagged as anyone.
+
+        Arguments:
+        - The message channel name
+        - The user-id of the publisher
+        - The group-id of the publisher
+        - The permissions to allow subscribers
+        - The message type
+        - The message data
+        - The message data len
+
+        Returns:
+        - 0 Success
+        - ENOMEM Memory allocation failure
+        - ENOBUFS The queued bytes exceeds the channel limit
+        """
+        cdef int rc
+        rc = ldms_msg_chan_publish(self.chan, BYTES(chan_name),
+                                   uid, gid, perm,
+                                   msg_type, BYTES(msg), msg_len)
+        if rc:
+            raise RuntimeError(f"MessageChannel.publish() error, errno: {rc}")
+
+    def subscribe(self, regex, msg_cb_fn, msg_cb_arg):
+        """ Receive messages from a message channel
+
+        Arguments:
+        - A regular expression to match message channels
+        - The callback function invoked when messages arrive
+        - A parameter provided the callback function
+        """
+        cdef int rc
+
+        self.msg_cb_fn = msg_cb_fn
+        self.msg_cb_arg = msg_cb_arg
+
+        rc = ldms_msg_chan_subscribe(self.chan, BYTES(regex),
+                                     __msg_chan_cb, <void *>self)
+        return rc
+
+    def set_log_level(self, level_s):
+        pass
+
+    def set_q_depth(self, max_bytes):
+        pass
+
+    def get_stats(self):
+        pass
 
 cdef class ZapThrStat(object):
     """Zap thread statistics information.
