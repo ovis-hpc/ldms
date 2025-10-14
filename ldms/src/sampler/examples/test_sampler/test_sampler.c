@@ -518,22 +518,6 @@ err:
 	return NULL;
 }
 
-int get_num_metrics(char *s)
-{
-	int num_metrics = 0;
-	while (s) {
-		if (*s == ',') {
-			num_metrics++;
-		} else if (*s == '[') {
-			s = strchr(s, ']');
-		} else if (*s == '{') {
-			s = strchr(s, '}');
-		}
-		s++;
-	}
-	return num_metrics;
-}
-
 /*
  * a primitive metric := NAME:MTYPE:VTYPE:INIT:LENGTH:UNIT
  * a record metric := NAME:MTYPE:RECORD:{NAME:VTYPE:INIT:LENGTH:UNI;,....}:UNIT
@@ -805,10 +789,10 @@ static int config_add_schema(test_sampler_t ts, struct attr_value_list *avl)
 {
 	int rc = 0;
 	int i;
-	struct test_sampler_schema *ts_schema;
-	struct ldms_metric_template_s *temp;
-	struct test_sampler_metric_info *minfo;
-	int *mid;
+	struct test_sampler_schema *ts_schema = NULL;
+	struct ldms_metric_template_s *temp = NULL;
+	struct test_sampler_metric_info *minfo = NULL;
+	int *mid = NULL;;
 
 	char *schema_name = av_value(avl, "schema");
 	if (!schema_name) {
@@ -874,6 +858,7 @@ static int config_add_schema(test_sampler_t ts, struct attr_value_list *avl)
 		goto cleanup;
 	}
 
+	char *mem = NULL;
 	if (metrics) {
 		int i;
 		char *m;
@@ -884,13 +869,28 @@ static int config_add_schema(test_sampler_t ts, struct attr_value_list *avl)
 			goto cleanup;
 		}
 
-		m = s;
+		mem = m = s;
 		i = 0;
 		while (*s) {
 			if (*s == '{') {
 				s = strchr(s, '}');
+				if (!s) {
+					ovis_log(ts->log, OVIS_LERROR,
+						"Failed to create a schema."
+						" unmatched { in '%s'\n", mem);
+					rc = EINVAL;
+					goto cleanup;
+				}
+
 			} else if (*s == '[') {
 				s = strchr(s, ']');
+				if (!s) {
+					ovis_log(ts->log, OVIS_LERROR,
+						"Failed to create a schema."
+						" unmatched [ in '%s'\n", mem);
+					rc = EINVAL;
+					goto cleanup;
+				}
 			} else if (*s == ',') {
 				*s = '\0';
 				rc = __parse_metric_str(ts, m, mattr_delim, minfo, temp, i);
@@ -907,6 +907,8 @@ static int config_add_schema(test_sampler_t ts, struct attr_value_list *avl)
 					goto cleanup;
 			}
 		}
+		free(mem);
+		mem = NULL;
 	} else {
 		enum ldms_value_type type;
 		num_metrics = atoi(value);
@@ -968,6 +970,14 @@ static int config_add_schema(test_sampler_t ts, struct attr_value_list *avl)
 
 cleanup:
 	test_sampler_schema_free(ts, ts_schema);
+	free(mem);
+	free(mid);
+	for (i = 0; temp && i <= num_metrics; i++) {
+		free((char *)temp[i].name);
+		free((char *)temp[i].unit);
+	}
+	free(temp);
+	free(minfo);
 	return rc;
 }
 
@@ -1008,15 +1018,16 @@ static int __init_set(test_sampler_t ts, struct test_sampler_set *ts_set)
 				if (LDMS_V_RECORD_INST == list->type) {
 					int rdef_mid = ldms_metric_by_name(ts_set->set, list->rec_type_name);
 					lent = ldms_record_alloc(ts_set->set, rdef_mid);
-					cnt = ldms_record_card(lent);
-					__metric_set(lent, list->type, cnt,
-						minfo[rdef_mid].info.rec_def.contents[0].init_value.v_u64);
+					int icnt = ldms_record_card(lent);
+					cnt = icnt;
+					if (icnt >= 0)
+						__metric_set(lent, list->type, cnt,
+							minfo[rdef_mid].info.rec_def.contents[0].init_value.v_u64);
 					rc = ldms_list_append_record(ts_set->set, lh, lent);
 					if (rc)
 						return rc;
 				} else {
 					lent = ldms_list_append_item(ts_set->set, lh, list->type, list->cnt);
-					cnt = 1;
 					__metric_set(lent, list->type, list->cnt,
 						     ldms_mval_as_u64(&list->init_value, list->type, 1));
 				}
@@ -1172,7 +1183,7 @@ static int config_add_default(test_sampler_t ts, struct attr_value_list *avl)
 {
 	char *sname, *s, *base_set_name;
 	int rc;
-	int i, *mid;
+	int i, *mid = NULL;
 	struct ldms_metric_template_s *temp = NULL;
 	struct ldms_metric_template_s *m;
 	struct test_sampler_metric_info *minfo = NULL;
@@ -1199,16 +1210,30 @@ static int config_add_default(test_sampler_t ts, struct attr_value_list *avl)
 		base_set_name = strdup(DEFAULT_BASE_SET_NAME);
 
 	s = av_value(avl, "num_sets");
-	if (!s)
+	if (!s) {
 		ts->num_sets = DEFAULT_NUM_SETS;
-	else
+	} else {
 		ts->num_sets = atoi(s);
+		if ( ts->num_sets < 1) {
+			ovis_log(ts->log, OVIS_LERROR,
+				"config_add_default num_sets bad: %s\n",
+				s);
+			rc = EINVAL;
+		}
+	}
 
 	s = av_value(avl, "num_metrics");
-	if (!s)
+	if (!s) {
 		ts->num_metrics = DEFAULT_NUM_METRICS;
-	else
+	} else {
 		ts->num_metrics = atoi(s);
+		if ( ts->num_metrics < 0) {
+			ovis_log(ts->log, OVIS_LERROR,
+				"config_add_default num_metrics bad: %s\n",
+				s);
+			rc = EINVAL;
+		}
+	}
 
 	temp = calloc(ts->num_metrics + 1, sizeof(struct ldms_metric_template_s));
 	if (!temp) {
@@ -1249,14 +1274,24 @@ static int config_add_default(test_sampler_t ts, struct attr_value_list *avl)
 	if (!ts_schema->schema)
 		goto err;
 	ts_schema->metric_info = minfo;
-	return 0;
+	free(base_set_name);
+	rc = 0;
+	goto free_temp;
 err:
-	free(sname);
 	free(base_set_name);
 	free(s);
-	free(temp);
 	free(minfo);
+
+free_temp:
+	free(sname);
 	free(mid);
+	if (temp) {
+		for (i=0;i < ts->num_metrics + 1; i++) {
+			free((char *)temp[i].name);
+			free((char *)temp[i].unit);
+			free(temp);
+		}
+	}
 	return rc;
 }
 
@@ -1318,7 +1353,7 @@ static int config_add_lists(test_sampler_t ts, struct attr_value_list *avl)
 {
 	struct test_sampler_list_info *linfo;
 	char *schema_name, *s, *a, *ptr;
-	int rc, i, j, card, list_id;
+	int rc, i, j, card = 0, list_id;
 	int num_lists = 1;
 	int rec_content_ids[LDMS_V_LAST];
 	struct test_sampler_schema *ts_schema = NULL;
@@ -1565,7 +1600,19 @@ static int config_add_lists(test_sampler_t ts, struct attr_value_list *avl)
 		}
 	}
 	ts_schema->metric_info = minfo;
+	minfo = NULL;
 out:
+	if (minfo) {
+		for (i = 0; i < card; i++) {
+			/* fixme: not entirely clear what condition
+			 * means info.rec_def.contents is set.
+			free(minfo[i].info.rec_def.contents);
+			Also not clear whether minfo or linfo should drive
+			free of rec_type_name.
+			*/
+		}
+		free(minfo);
+	}
 	if (temp) {
 		if (round_idx >= 0) {
 			for (i = round_idx + 1; i < card; i++) {
@@ -1575,6 +1622,13 @@ out:
 		free(temp);
 	}
 	free(mid);
+	ldms_record_delete(rec_def);
+	if (linfo) {
+		for (i = 0; i < num_lists; i++)
+			if ( linfo[i].type == LDMS_V_RECORD_INST)
+				free(linfo[i].rec_type_name);
+		free(linfo);
+	}
 	return rc;
 err:
 	if (ts_schema)
@@ -1641,10 +1695,10 @@ static int config_add_stream(test_sampler_t ts, struct attr_value_list *avl)
 			return EINVAL;
 		}
 	} else {
-		free_stream = 1;
 		ts_stream = __stream_new(stream_name, stype);
 		if (!ts_stream)
 			goto enomem;
+		free_stream = 1;
 		ts_stream->path = strdup(path);
 		if (!ts_stream->path) {
 			goto enomem;
@@ -1665,7 +1719,7 @@ static int config_add_stream(test_sampler_t ts, struct attr_value_list *avl)
 				"%s:%s:%s:%s already exists.\n", ts_stream->name,
 				c->xprt, c->port, c->host, c->auth_dom->obj.name);
 	} else {
-		c = malloc(sizeof(*c));
+		c = calloc(1, sizeof(*c));
 		if (!c)
 			goto enomem;
 		c->host = strdup(host);
@@ -1776,7 +1830,12 @@ static int __sample_classic(test_sampler_t ts, struct test_sampler_set *ts_set)
 					lent = ldms_record_alloc(ts_set->set, rdef_mid);
 					if (!lent)
 						goto delete_set;
-					cnt = ldms_record_card(lent);
+					int icnt = ldms_record_card(lent);
+					if (icnt < 0) {
+						rc = EINVAL;
+						goto delete_set;
+					}
+					cnt = icnt;
 					rc = ldms_list_append_record(ts_set->set, mval, lent);
 					if (rc)
 						return rc;
@@ -1815,7 +1874,8 @@ __sample_lists(struct test_sampler_set *ts_set)
 	time_t t;
 	ldms_mval_t lh, rec_inst, mval;
 	enum ldms_value_type type;
-	size_t cnt, len;
+	int cnt;
+	size_t len;
 	uint64_t round;
 	int round_mid, rc;
 	struct test_sampler_list_info *list;
