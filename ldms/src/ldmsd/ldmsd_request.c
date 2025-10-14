@@ -10662,8 +10662,8 @@ out:
 einval:
 	ovis_log(NULL, OVIS_LERROR,
 			"The '%s' attribute is missing from " \
-			"an advert advtr_nameise request from advertiser %s on hostname '%s'\n",
-			attr_name, advtr_name, adv_hostname);
+			"an advertise request for %s\n",
+			attr_name, advtr_name);
 	/*
 	 * It is intended to not provide detail information in the response message
 	 * to prevent providing information to ill-intended communication.
