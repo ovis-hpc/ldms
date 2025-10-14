@@ -1,0 +1,24 @@
+# ovis auth set from command line
+
+# L3 using pull
+
+stream_enable
+msg_enable
+
+load name=dstat
+config name=dstat producer=localhost${i} instance=localhost${i}/dstat component_id=${i} perm=0644 mmalloc=1 io=1 fd=1 stat=1 statm=1 fdtypes=1
+start name=dstat interval=2000000 offset=0
+
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0
+
+prdcr_add name=localhost3 host=${HOST} type=active xprt=${XPRT} port=${port3} reconnect=10000000
+prdcr_start name=localhost3
+
+updtr_add name=L2_updtr interval=1s auto_interval=true
+updtr_prdcr_add name=L2_updtr regex=.*
+updtr_start name=L2_updtr
+
+strgp_add name=store_dstat plugin=store_csv schema=dstat container=node
+strgp_prdcr_add name=store_dstat regex=.*
+strgp_start name=store_dstat

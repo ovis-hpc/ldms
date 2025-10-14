@@ -1,0 +1,17 @@
+# ovis auth set from command line
+
+# L2 using advertisers
+
+stream_enable
+msg_enable
+
+prdcr_listen_add name=localhost${i}/L1 regex=.*
+prdcr_listen_start name=localhost${i}/L1
+
+updtr_add name=L1_updtr interval=1s auto_interval=true
+updtr_prdcr_add name=L1_updtr regex=.*
+updtr_start name=L1_updtr
+
+load name=dstat
+config name=dstat producer=localhost${i} instance=localhost${i}/dstat component_id=${i} perm=0644 mmalloc=1 io=1 fd=1 stat=1 statm=1 fdtypes=1
+start name=dstat interval=2000000 offset=0

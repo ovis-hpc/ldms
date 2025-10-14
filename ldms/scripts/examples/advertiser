@@ -1,0 +1,35 @@
+# setup daemons for advertiser test
+# 1: L0 adv
+# 2: L1 adv
+# 3: L2 adv
+# 4: L3 prdcr_add
+# >4: L0 adv
+portbase=10000
+nproc=100
+DAEMONS $(seq $nproc)
+LDMSD -c $(seq 5 $nproc)
+#vgon
+LDMSD 3
+vgoff
+#vgon
+LDMSD 2
+vgoff
+#vgon
+LDMSD 1
+vgoff
+SLEEP 1
+#vgon
+LDMSD 4
+vgoff
+SLEEP 2
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -v
+MESSAGE ldms_ls on host 3:
+SLEEP 5
+LDMS_LS 3 -v
+SLEEP 5
+LDMS_LS 4 -v
+KILL_LDMSD $(seq $nproc)
+file_created $STOREDIR/node/dstat
