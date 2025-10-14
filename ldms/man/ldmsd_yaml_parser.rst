@@ -54,7 +54,7 @@ YAML CONFIGURATION SYNTAX
 | LDMS YAML cluster configuration is organized into “groups” of
   dictionaries with relevant configurations for each group. The top
   level dictionaries are “daemons”, “aggregators”, “samplers”,
-  “plugins”, and “stores”.
+  “plugins”, “stores”, and "tenant_definitions".
 | Time intervals are defined as a unit string, or an integer in
   microseconds.
 | A unit string is one of the followings: us -- microseconds ms --
@@ -602,6 +602,17 @@ each key being a storage policy name.
    | Optional interval of time that directs flushing of the store to the
      database.
 
+Tenant definitions
+==================
+
+Dictionary of tenant definitions and the attributes constructing the definitions
+with each key being a tenant definition name.
+
+   **metrics**
+      |
+      | A list of attribute names that will construct the tenant definitions, e.g., [job_id, task_id].
+
+
 plugins
 =======
 
@@ -678,3 +689,8 @@ being a plugin instance name.
               yaml using the hostname of the sampler and the plugin
               instance name if one is not specified.
               <hostname>/<plugin_name>
+
+         **[tenant]**
+            |
+            | Tenant definition name that is a reference of a definition
+              specifying in the 'tenant_definitions' top-level dictionary.
