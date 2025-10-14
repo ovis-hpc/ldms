@@ -1148,8 +1148,16 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	}
 	rbn = rbt_find(&j_schema->s_set_tree, inst_name);
 	if (!rbn) {
-		j_set = malloc(sizeof(*j_set));
+		j_set = calloc(1,sizeof(*j_set));
+		if (!j_set) {
+			rc = ENOMEM;
+			goto err_0;
+		}
 		j_set->name = strdup(inst_name);
+		if (! j_set->name) {
+			rc = errno;
+			goto err_1;
+		}
 		j_set->set = l_set = ldms_set_create(
 						inst_name,
 						j_schema->s_schema,
@@ -1180,6 +1188,8 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	free(inst_name);
 	return 0;
 err_1:
+	if (j_set)
+		free(j_set->name);
 	free(j_set);
 err_0:
 	pthread_mutex_unlock(&js->lock);
