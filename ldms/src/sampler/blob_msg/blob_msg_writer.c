@@ -144,6 +144,8 @@ typedef struct msg_data {
 	int64_t store_count;
 	int64_t byte_count;
 
+	pthread_cond_t close_cond;
+
 	LIST_ENTRY(msg_data) entry;
 } *msg_data_t;
 
@@ -292,6 +294,15 @@ int msg_cb(ldms_msg_event_t ev, void *ctxt)
 	if (!sd) {
 		ovis_log(mylog, OVIS_LERROR, "msg_cb ctxt is NULL\n");
 		return EINVAL;
+	}
+
+	if (ev->type == LDMS_MSG_EVENT_CLIENT_CLOSE) {
+		pthread_mutex_lock(&sd->write_lock);
+		sd->subscription = NULL;
+		sd->ws = WS_CLOSED;
+		pthread_cond_signal(&sd->close_cond);
+		pthread_mutex_unlock(&sd->write_lock);
+		return 0;
 	}
 
 	if (ev->type != LDMS_MSG_EVENT_RECV)
@@ -780,9 +791,9 @@ static void msg_data_close( msg_data_t sd )
 	free(sd->ch_name);
 	sd->ch_name = NULL;
 	ldms_msg_client_close(sd->subscription);
-	/* sd reference is no longer hiding inside cb handler */
-	sd->subscription = NULL;
-	sd->ws = WS_CLOSED;
+	while (sd->ws != WS_CLOSED) {
+		pthread_cond_wait(&sd->close_cond, &sd->write_lock);
+	}
 	pthread_mutex_unlock(&sd->write_lock);
 	pthread_mutex_destroy(&sd->write_lock);
 }
