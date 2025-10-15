@@ -162,7 +162,7 @@ List of dictionaries of endpoint configurations for these daemons.
            authentication domain.
 
 stream_enable
------------
+-------------
 
 Boolean flag to enable stream communication in the daemon. Streams are disabled
 by default. Set to true to enable stream functionality.
@@ -173,7 +173,7 @@ by default. Set to true to enable stream functionality.
         false, streams will be disabled.
 
 msg_enable
------------
+----------
 
 Boolean flag to enable LDMS message communication in the daemon. LDMS message
 is disabled by default. Set to true to enable LDMS message functionality.
