@@ -2653,7 +2653,7 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 			pname ? pname : "");
 	}
 	ldmsd_stream_deliver(inst->env_stream, LDMSD_STREAM_JSON,
-				buf, off, NULL, pname);
+				buf, off+1, NULL, pname);
 out:
 	free(vsub);
 	release_proc_strings(envp, argc);
@@ -2793,7 +2793,7 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 			app_set->key.os_pid, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldmsd_stream_deliver(inst->argv_stream, LDMSD_STREAM_JSON, buf, off, NULL, pname);
+	ldmsd_stream_deliver(inst->argv_stream, LDMSD_STREAM_JSON, buf, off+1, NULL, pname);
 out:
 	release_proc_strings(argv, argc);
 	free(vbuf);
@@ -2918,7 +2918,7 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 			app_set->key.os_pid, fd, str, state, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldmsd_stream_deliver(inst->fd_stream, LDMSD_STREAM_JSON, buf, ssize,
+	ldmsd_stream_deliver(inst->fd_stream, LDMSD_STREAM_JSON, buf, ssize+1,
 			 NULL, pname);
 	return 0;
 }
