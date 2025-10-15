@@ -2660,7 +2660,7 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 			app_set->key.os_pid, argc, off, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldms_msg_publish(NULL, inst->env_stream, LDMS_MSG_JSON, NULL, 0440, buf, off);
+	ldms_msg_publish(NULL, inst->env_stream, LDMS_MSG_JSON, NULL, 0440, buf, off+1);
 out:
 	free(vsub);
 	release_proc_strings(envp, argc);
@@ -2800,7 +2800,7 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 			app_set->key.os_pid, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldms_msg_publish(NULL, inst->argv_stream, LDMS_MSG_JSON, NULL, 0440, buf, off);
+	ldms_msg_publish(NULL, inst->argv_stream, LDMS_MSG_JSON, NULL, 0440, buf, off+1);
 out:
 	release_proc_strings(argv, argc);
 	free(vbuf);
@@ -2923,7 +2923,7 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 			app_set->key.os_pid, fd, str, state, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldms_msg_publish(NULL, inst->fd_stream, LDMS_MSG_JSON, NULL, 0440, buf, ssize);
+	ldms_msg_publish(NULL, inst->fd_stream, LDMS_MSG_JSON, NULL, 0440, buf, ssize+1);
 	return 0;
 }
 
