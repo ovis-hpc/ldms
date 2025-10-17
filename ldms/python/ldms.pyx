@@ -466,7 +466,7 @@ def __avro_msg_data(sr_cli, sch_def, obj):
     data = buff.getvalue()
     return data
 
-def __msg_publish(Ptr x_ptr, name, data, msg_type=None,
+def _msg_publish(Ptr x_ptr, name, data, msg_type=None,
                      perm=0o444, uid=None, gid=None,
                      sr_client=None, schema_def=None):
     cdef int rc
@@ -564,7 +564,7 @@ def msg_publish(name, data, msg_type=None, perm=0o444,
             https://avro.apache.org/docs/1.11.1/specification/
     """
 
-    return __msg_publish(None, name, data, msg_type, perm, uid,
+    return _msg_publish(None, name, data, msg_type, perm, uid,
                             gid, sr_client = sr_client, schema_def = schema_def)
 
 
@@ -4027,7 +4027,7 @@ cdef class Xprt(object):
                 https://avro.apache.org/docs/1.11.1/specification/
 
         """
-        return __msg_publish(PTR(self.xprt), name, data, msg_type,
+        return _msg_publish(PTR(self.xprt), name, data, msg_type,
                 perm, uid, gid, sr_client = sr_client, schema_def = schema_def)
 
     def msg_subscribe(self, match, is_regex, cb=None, cb_arg=None, rx_rate=-1):
