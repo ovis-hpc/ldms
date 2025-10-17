@@ -769,6 +769,11 @@ static int __cache_stdout_stderr()
 	return 0;
 }
 
+static void log_exit(void)
+{
+	(void)ovis_log_flush();
+}
+
 int ovis_log_init(const char *name, int default_level, int modes)
 {
 	if (is_init) {
@@ -821,6 +826,7 @@ int ovis_log_init(const char *name, int default_level, int modes)
 		goto err;
 	}
 	is_init = 1;
+	atexit(log_exit);
 	return 0;
 err:
 	if (need_free)
