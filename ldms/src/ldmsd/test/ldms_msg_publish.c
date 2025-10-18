@@ -15,6 +15,11 @@ static struct option long_opts[] = {
 	{"uid",      required_argument, 0,  'U' },
 	{"gid",      required_argument, 0,  'G' },
 	{"perm",     required_argument, 0,  'P' },
+	{"line",     no_argument,	0,  'l' },
+	{"repeat",   required_argument, 0,  'r' },
+	{"interval", required_argument, 0,  'i' },
+	{"reconnect",no_argument,	0,  'R' },
+	{"verbose",  no_argument,       0,  'v' },
 	{0,          0,                 0,  0 }
 };
 
@@ -29,7 +34,7 @@ void usage(int argc, char **argv)
 	exit(1);
 }
 
-static const char *short_opts = "h:p:f:m:t:x:a:A:U:G:P:";
+static const char *short_opts = "h:p:f:m:t:x:a:A:U:G:P:lr:i:Rv";
 
 #define AUTH_OPT_MAX 128
 
@@ -51,6 +56,11 @@ int main(int argc, char **argv)
 	gid_t gid = getegid();
 	mode_t perm = 0777;
 	struct ldms_cred cred;
+	int verbose = 0;
+	int line_mode = 0;
+	int repeat = 0;
+	int reconnect = 0;
+	int interval = 10000000;
 
 	ldms_init(16*1024*1024);
 	auth_opt = av_new(auth_opt_max);
@@ -130,6 +140,29 @@ int main(int argc, char **argv)
 				usage(argc, argv);
 			}
 			break;
+		case 'l':
+			line_mode = 1;
+			break;
+		case 'r':
+			repeat = atoi(optarg);
+			if (repeat <= 0) {
+				printf("The repeat argument must be a positive number of iterations.\n");
+				usage(argc, argv);
+			}
+			break;
+		case 'R':
+			reconnect = atoi(optarg);
+			break;
+		case 'i':
+			interval = (unsigned)atoi(optarg);
+			if (interval <= 0) {
+				printf("The interval argument must be a positive number of microseconds.\n");
+				usage(argc, argv);
+			}
+			break;
+		case 'v':
+			verbose = 1;
+			break;
 		case 'U':
 			uid = strtoul(optarg, NULL, 0);
 			break;
@@ -151,31 +184,69 @@ int main(int argc, char **argv)
 			exit(1);
 		}
 	} else {
+		if (repeat || interval || reconnect || line_mode) {
+			printf("%s: To use -l, -r, -R, or -i, -f FILE must also be used.\n",argv[0]);
+			exit(1);
+		}
 		file = stdin;
 	}
+	if (!repeat)
+		repeat = 1;
 
 	int rc;
 	ldms_t ldms = NULL;
 
-	/* Create a transport endpoint */
-	ldms = ldms_xprt_new_with_auth(xprt, auth, auth_opt);
-	if (!ldms) {
-		rc = errno;
-		printf("Failed to create the LDMS transport endpoint.\n");
-		return rc;
+	if (line_mode) {
+		/* Create a transport endpoint */
+		ldms = ldms_xprt_new_with_auth(xprt, auth, auth_opt);
+		if (!ldms) {
+			rc = errno;
+			printf("Failed to create the LDMS transport endpoint.\n");
+			return rc;
+		}
+		rc = ldms_xprt_connect_by_name(ldms, host, port, NULL, NULL);
+		if (rc) {
+			printf("Error %d connecting to peer\n", rc);
+			return rc;
+		}
 	}
-	rc = ldms_xprt_connect_by_name(ldms, host, port, NULL, NULL);
-	if (rc) {
-		printf("Error %d connecting to peer\n", rc);
-		return rc;
-	}
-
 	cred.uid = uid;
 	cred.gid = gid;
+	int k;
+	/* repeat whole file -r times, ignoring errors. */
+	if (!line_mode) {
+		for (k = 0; k < repeat; k++) {
+			rc = ldms_msg_publish_file(ldms, msg, type, &cred, perm, file);
+			if (repeat == 1 && rc) {
+				printf("Error %d creating ldms_msg and notifying client.\n", rc);
+				ldms_xprt_close(ldms);
+				return rc;
+			}
+			usleep(interval);
+			if (k && verbose)
+				printf("loop: %d returned %d\n", k, rc);
+		}
+		ldms_xprt_close(ldms);
+		return 0;
+	}
+
+	/* repeat file line by line -r times, returning first error seen. */
+	for (k = 0; k < repeat; k++) {
+		char line_buffer[4096];
+		char *s;
+		if (k)
+			rewind(file);
+		while (0 != (s = fgets(line_buffer, sizeof(line_buffer)-1, file))) {
+			ldms_msg_publish(ldms, msg, typ, s, strlen(s)+1);
+		}
+		if (k && verbose)
+			printf("loop: %d finished.\n", k);
+		usleep(interval);
+	}
 
 	rc = ldms_msg_publish_file(ldms, msg, typ, &cred, perm, file);
 	if (rc)
 		printf("Error %d creating ldms_msg and notifying client\n", rc);
-	ldms_xprt_close(ldms);
+
 	return rc;
 }
