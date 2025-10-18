@@ -1,0 +1,80 @@
+# This test emulates the stream traffic but not the set traffic of linux_proc_sampler
+# by recycling some captured and anonymized json.
+export plugname=linux_proc_sampler
+export dsname=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 stat=1 auto-schema=1)
+export dstat_schema=$dsname
+export LDMSD_LOG_TIME_SEC=1
+export LDMSD_EXTRA="-m 128m"
+
+SET_LOG_LEVEL ERROR
+
+portbase=61060
+DAEMONS 3
+/bin/rm -f $LOGDIR/json*.log
+/bin/rm $LOGDIR/nl.log
+
+function replay_json {
+	# args: daemon-number filename ...
+	# send each unpathed file to port using tag=(filename less suffix starting with -) repeatedly
+	#  avoid line mode, to force more reconnections
+	# for about 3 days or until killed
+	target_num=$1
+	iport=${ports[$target_num]}
+	shift
+	files="$*"
+	replay_json_pidlist=""
+	for f in $files; do
+		tag=$(echo $f | cut -d- -f1)
+		ldms_msg_publish -p $iport -a none -m $tag -t json -x $XPRT -h $HOST -i 10000000 -r 10 -f $(dirname $input)/$f  > $LOGDIR/pub.$target_num.$tag 2>&1 &
+		#sleep 60  > /dev/null 2>&1 &
+		replay_json_pidlist="$! $replay_json_pidlist"
+	done
+	echo $replay_json_pidlist
+}
+
+function check_pids {
+	echo check_pids $*
+	label=$1
+	shift
+	for cpid in $* ; do
+		if ps -p $cpid > /dev/null; then
+			echo MISSING PID for $label: $cpid
+		else
+			echo OK PID for $label: $cpid
+		fi
+	done
+}
+
+REPLAY_PIDS=$(replay_json $port1 linux_proc_sampler_argv-1.json  linux_proc_sampler_env-1.json  linux_proc_sampler_files-1.json  slurm-1.json)
+#replay_json 1 linux_proc_sampler_argv-1.json  linux_proc_sampler_env-1.json  linux_proc_sampler_files-1.json  slurm-1.json
+echo $REPLAY_PIDS
+
+VGARGS="--tool=drd --trace-cond=yes --trace-fork-join=yes"
+VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite --time-stamp=yes --keep-debuginfo=yes --malloc-fill=3b"
+#vgon
+LDMSD 1
+vgoff
+LDMSD 2
+LDMSD 3
+vgoff
+SLEEP 2
+MESSAGE ldms_ls on host 1:
+#LDMS_LS 1 -v
+MESSAGE ldms_ls on host 2:
+SLEEP 1
+LDMS_LS 2 -v
+SLEEP 5
+SLEEP 5
+SLEEP 5
+check_pids "ldms_msg_publish" $REPLAY_PIDS
+KILL_LDMSD 3 2 1
+kill -SIGTERM $REPLAY_PIDS
+sleep 2
+kill -9 $REPLAY_PIDS
+ps auxw |grep sleep
+exit
+file_created $STOREDIR/node/$dsname
+rollover_created $STOREDIR/blobs/linux_proc_sampler_argv.DAT
+rollover_created $STOREDIR/blobs/linux_proc_sampler_files.DAT
+rollover_created $STOREDIR/blobs/linux_proc_sampler_env.DAT
+rollover_created $STOREDIR/blobs/slurm.DAT
