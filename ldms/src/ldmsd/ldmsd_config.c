@@ -116,15 +116,15 @@ struct ldmsd_plugin_generic * load_plugin(const char *plugin_name,
 	char *saveptr = NULL;
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
 
-        plugin = calloc(1, sizeof(*plugin));
-        if (!plugin) {
+	plugin = calloc(1, sizeof(*plugin));
+	if (!plugin) {
 		ovis_log(config_log, OVIS_LERROR,
-                         "Failed allocate memory to load the plugin '%s'\n",
-                         plugin_name);
-                goto err_0;
-        }
+			 "Failed allocate memory to load the plugin '%s'\n",
+			 plugin_name);
+		goto err_0;
+	}
 
-        if (!path)
+	if (!path)
 		path = LDMSD_PLUGIN_LIBPATH_DEFAULT;
 
 	strncpy(library_path, path, sizeof(library_path) - 1);
@@ -159,12 +159,12 @@ struct ldmsd_plugin_generic * load_plugin(const char *plugin_name,
 		goto err_1;
 	}
 
-        plugin->api = dlsym(plugin->dl_handle, "ldmsd_plugin_interface");
-        if (!plugin->api) {
+	plugin->api = dlsym(plugin->dl_handle, "ldmsd_plugin_interface");
+	if (!plugin->api) {
 		snprintf(errstr, errlen,
 			"The library, '%s',  is missing the ldmsd_plugin_interface "
 			"symbol.", plugin_name);
-                goto err_2;
+		goto err_2;
 	}
 
 	/* Verify the following API contract:
@@ -203,27 +203,33 @@ struct ldmsd_plugin_generic * load_plugin(const char *plugin_name,
 		}
 	}
 
-        plugin->name = strdup(plugin_name);
-        plugin->libpath = strdup(library_name);
+	plugin->name = strdup(plugin_name);
+	plugin->libpath = strdup(library_name);
 
 	return plugin;
 
 err_2:
-        dlclose(plugin->dl_handle);
+	dlclose(plugin->dl_handle);
 err_1:
-        free(plugin);
+	free(plugin);
 err_0:
 	return NULL;
 }
 
 static void unload_plugin(struct ldmsd_plugin_generic *plugin)
 {
-        assert(plugin != NULL);
-        free(plugin->name);
-        free(plugin->libpath);
-        plugin->api = NULL; /* about to be defunct when dlclose() is called */
-        dlclose(plugin->dl_handle);
-        free(plugin);
+	assert(plugin != NULL);
+	free(plugin->name);
+	free(plugin->libpath);
+	/* Do not call dlclose() as this will invalidate asynchronous
+	 * cleanup functions cachhed in some libraries.  Plugins whose
+	 * destructors() do not synchronize with these libraries may
+	 * SEGFAULT. This call may return when synchronization
+	 * mechanisms have been implemented to handle this issue.
+	 *
+	 * dlclose(plugin->dl_handle);
+	 */
+	free(plugin);
 }
 
 ldmsd_cfgobj_sampler_t
@@ -252,7 +258,7 @@ ldmsd_sampler_add(const char *cfg_name,
 		ovis_log(NULL, OVIS_LWARN,
 			 "Error %d creating the log for config '%s' of the '%s' plugin.\n",
 			 errno, cfg_name, plugin->name);
-        sampler->plugin = plugin;
+	sampler->plugin = plugin;
 	sampler->api = (struct ldmsd_sampler *)plugin->api;
 	sampler->thread_id = -1; /* stopped */
 	if (sampler->api->base.constructor != NULL) {
@@ -276,7 +282,7 @@ err:
 
 ldmsd_cfgobj_store_t
 ldmsd_store_add(const char *cfg_name,
-                struct ldmsd_plugin_generic *plugin,
+		struct ldmsd_plugin_generic *plugin,
 		ldmsd_cfgobj_del_fn_t __del,
 		uid_t uid, gid_t gid, int perm)
 {
@@ -299,7 +305,7 @@ ldmsd_store_add(const char *cfg_name,
 		ovis_log(NULL, OVIS_LWARN,
 			 "Error %d creating the log for config '%s' of the '%s' plugin.\n",
 			 errno, cfg_name, plugin->name);
-        store->plugin = plugin;
+	store->plugin = plugin;
 	store->api = (struct ldmsd_store *)plugin->api;
 	if (store->api->base.constructor != NULL) {
 		rc = store->api->base.constructor(&store->cfg);
@@ -369,8 +375,8 @@ void ldmsd_sampler___del(ldmsd_cfgobj_t obj)
 	ldmsd_cfgobj_sampler_t samp = (void*)obj;
 	if (samp->plugin->api->destructor)
 		samp->plugin->api->destructor(obj);
-        unload_plugin(samp->plugin);
-        ovis_log_deregister(samp->log);
+	unload_plugin(samp->plugin);
+	ovis_log_deregister(samp->log);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -379,8 +385,8 @@ void ldmsd_store___del(ldmsd_cfgobj_t obj)
 	ldmsd_cfgobj_store_t store = (void*)obj;
 	if (store->plugin->api->destructor)
 		store->plugin->api->destructor(obj);
-        unload_plugin(store->plugin);
-        ovis_log_deregister(store->log);
+	unload_plugin(store->plugin);
+	ovis_log_deregister(store->log);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -390,7 +396,7 @@ void ldmsd_store___del(ldmsd_cfgobj_t obj)
 int ldmsd_load_plugin(char *cfg_name, char *plugin_name,
 		      char *errstr, size_t errlen)
 {
-        struct ldmsd_plugin_generic *plugin;
+	struct ldmsd_plugin_generic *plugin;
 	ldmsd_cfgobj_sampler_t sampler;
 	ldmsd_cfgobj_store_t store;
 
@@ -442,7 +448,7 @@ int ldmsd_load_plugin(char *cfg_name, char *plugin_name,
 	return 0;
 
  err:
-        unload_plugin(plugin);
+	unload_plugin(plugin);
 	ovis_log(config_log, OVIS_LERROR,
 		 "Error %d, the plugin '%s' configuration object '%s' "
 		 "could not be created.\n",
