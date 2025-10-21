@@ -13,7 +13,7 @@ if test -f $pkglibdir/ldms.supp; then
 fi
 # load multithread grind
 #LDMS_CPU_GRIND -n 600 -m multiply
-SET_LOG_LEVEL DEBUG
+SET_LOG_LEVEL INFO
 # start collector(s)
 if test "x$maxdaemon" = "x"; then
 	maxdaemon=3
@@ -43,15 +43,16 @@ echo DONEWAIT1 LDMS_LS_WAIT $(date +%s.%N)
 # info: $myproc is which daemon number this instance is
 #CHECK_PIDS $timeout `seq 3 $maxdaemon` ; # function which waits until all pids files exist and all pids listed in pid files also exist;
 
+ulimit -c unlimited
 # scale m to handle maxdaemon
 # -m > 450 or so seems to be incompatible with arm/valgrind 3.13
-LDMSD_EXTRA="-m 64M"
+LDMSD_EXTRA="-m 32G"
 vgon
 VGTAG=.L2
 # start L2 on daemon 1
 LDMSD 1
 vgoff
-vgon
+#vgon
 VGTAG=.L1
 # start L1 on daemon 2, with sampler daemons 3..maxdaemon
 LDMSD -s 3000000 -P pll.producer,`seq -s, 3 $maxdaemon` 2
@@ -61,6 +62,9 @@ FILECNT_LDMSD $ALL_DAEMONS
 #vgon
 LDMS_LS 1
 vgoff
+
+# no cores from samplers.
+ulimit -c 0
 
 # this loop takes about 5 minutes to allow for barriers to clear time_waits
 flap=0
@@ -112,11 +116,11 @@ LDMS_LS 2
 # kill l2
 KILL_LDMSD 1
 SLEEP 1
-WAIT_ALL $(seq $maxdaemon)
+WAIT_ALL 0 $ALL_DAEMONS
 # kill l1, samps
 KILL_LDMSD $(seq 3 $maxdaemon) 2
 BEST_DELAY 300
-WAIT_ALL $(seq $maxdaemon)
+WAIT_ALL 0 $ALL_DAEMONS
 LDMS_CPU_GRIND stop
 MESSAGE logs and data under ${TESTDIR}
 # if configured, reset ownership of output
