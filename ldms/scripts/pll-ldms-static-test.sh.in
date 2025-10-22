@@ -29,6 +29,9 @@ export docdir=${ovis_ldms_datarootdir}/doc/${PACKAGE_TARNAME}
 export exdir=$docdir
 # default log is debug
 export LOG_LEVEL=DEBUG
+# FAST_DEVICE should be nvme or ram or something equally likely
+# to never pause. Not nfs or lustre or gpfs.
+export FAST_DEVICE=/dev/shm
 
 if test -z "$ZAP_LIBPATH"; then
 	ZAP_LIBPATH=$ovis_ldms_plugins
@@ -56,6 +59,7 @@ $0 <input_file> [test_dir]
 See man ldms_pll-ldms-static-test(8) for details.
 EOF
 }
+
 input=$1
 export input
 if test -z "$1"; then
@@ -122,6 +126,7 @@ else
 	echo "$0: must be run under slurm"
 	exit 1
 fi
+
 # get_prolog_name insertfile basefile
 # find prolog file in . or adjacent to basefile
 # or in standard directory
@@ -161,9 +166,9 @@ if test -z "$2"; then
 		TESTSUFF=".$LDMSNET"
 	fi
 	TESTDIR=`pwd`/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.nodes-$SLURM_JOB_NUM_NODES.tasks-$SLURM_NTASKS$TESTSUFF
-	TESTDIR_FAST=/dev/shm/$USER/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.nodes-$SLURM_JOB_NUM_NODES.tasks-$SLURM_NTASKS$TESTSUFF/$$
+	TESTDIR_FAST=$FAST_DEVICE/$USER/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.nodes-$SLURM_JOB_NUM_NODES.tasks-$SLURM_NTASKS$TESTSUFF
 else
-	TESTDIR_FAST=/dev/shm/$USER/$TESTDIR/$$
+	TESTDIR_FAST=$FAST_DEVICE/$USER/$TESTDIR
 fi
 export TESTDIR_FAST
 export TESTDIR
@@ -274,14 +279,15 @@ function DAEMONS {
 			return
 		fi
 
-		/bin/rm -f ${LOGDIR}/log.$i.txt ${LOGDIR}/vg.$i ${LOGDIR}/teardown.$i.txt ${LOGDIR}/std.$i.io
+		/bin/rm -f ${LOGDIR_FAST}/log.$i.txt ${LOGDIR}/vg.$i ${LOGDIR_FAST}/teardown.$i.txt ${LOGDIR_FAST}/std.$i.io
+		/bin/rm -f ${LOGDIR}/log.$i.txt
 		binname=ldmsd.${ports[$i]}
 		pkill -9 $binname
-		/bin/rm -f $LDMSD_RUN/$binname
+		/bin/rm -f $LDMSD_RUN_FAST/$binname
 		if test -f $pkglibdir/ldmsd; then
-			ln -s $pkglibdir/ldmsd $LDMSD_RUN/$binname
+			ln -s $pkglibdir/ldmsd $LDMSD_RUN_FAST/$binname
 		else
-			ln -s ${BUILDDIR}/sbin/ldmsd $LDMSD_RUN/$binname
+			ln -s ${BUILDDIR}/sbin/ldmsd $LDMSD_RUN_FAST/$binname
 		fi
 	done
 	did_daemons=1
@@ -295,6 +301,7 @@ function LDMSD {
 		echo $myproc: skipping sleep
 		return 0
 	fi
+	MESSAGE fast-device free: $(df -H --output=avail --block-size=G $FAST_DEVICE |tail -n 1)
 	prologs=""
 	loopprologs=""
 	bug=0
@@ -302,8 +309,12 @@ function LDMSD {
 	local cloneinput=0
 	local first=""
 	startwait=2000000
-	while getopts ":p:P:s:c" opt; do
+	local my_logdir=$LOGDIR_FAST
+	while getopts ":ap:P:s:c" opt; do
 		case $opt in
+		a)
+			my_logdir=$LOGDIR
+			;;
 		p)
 			f="$OPTARG"
 			prologs="$prologs $OPTARG"
@@ -387,7 +398,7 @@ function LDMSD {
 			insuff=$i
 		fi
 		if test -f $input.$insuff -a -r $input.$insuff ; then
-			echo "# generated from $input" > $LDMSD_RUN/conf.$i
+			echo "# generated from $input" > $LDMSD_RUN_FAST/conf.$i
 			for lf in $loopprologs; do
 				loopfile=0
 				alist=$(echo $lf | tr , " ")
@@ -396,88 +407,88 @@ function LDMSD {
 						loopfile=$j
 						pfn=`get_prolog_name $loopfile $input`
 						if test -f "$pfn"; then
-							echo "# looped prolog from $pfn" >> $LDMSD_RUN/conf.$i
+							echo "# looped prolog from $pfn" >> $LDMSD_RUN_FAST/conf.$i
 						else
-							echo "# prolog $loopfile MISSING" >> $LDMSD_RUN/conf.$i
+							echo "# prolog $loopfile MISSING" >> $LDMSD_RUN_FAST/conf.$i
 							echo "Prolog $loopfile MISSING"
 							echo "$pfn"
 							bypass=1
 							return
 						fi
 					else
-						cat $pfn | sed -e "s/\${j}/$j/g" >> $LDMSD_RUN/conf.$i
+						cat $pfn | sed -e "s/\${j}/$j/g" >> $LDMSD_RUN_FAST/conf.$i
 					fi
 				done
 			done
 			for pf in $prologs; do
 				pfn=`get_prolog_name $pf $input`
 				if test -f "$pfn"; then
-					echo "# prolog from $pfn" >> $LDMSD_RUN/conf.$i
-					cat $pfn >> $LDMSD_RUN/conf.$i
+					echo "# prolog from $pfn" >> $LDMSD_RUN_FAST/conf.$i
+					cat $pfn >> $LDMSD_RUN_FAST/conf.$i
 				else
-					echo "# prolog $pf MISSING" >> $LDMSD_RUN/conf.$i
+					echo "# prolog $pf MISSING" >> $LDMSD_RUN_FAST/conf.$i
 					echo "Prolog $pf MISSING"
 					echo $pfn
 					bypass=1
 					return
 				fi
 			done
-			echo "# generated from $input.$insuff" >> $LDMSD_RUN/conf.$i
-			cat $input.$insuff >> $LDMSD_RUN/conf.$i
-			clonefile=$LDMSD_RUN/conf.$i
-			ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
+			echo "# generated from $input.$insuff" >> $LDMSD_RUN_FAST/conf.$i
+			cat $input.$insuff >> $LDMSD_RUN_FAST/conf.$i
+			clonefile=$LDMSD_RUN_FAST/conf.$i
+			ldms-reverse-conf.sh $LDMSD_RUN_FAST/conf.$i > $LDMSD_RUN_FAST/revconf.$i
 			echo $myproc: starting daemon $i
-			env > $LDMSD_RUN/env.$i
+			env > $LDMSD_RUN_FAST/env.$i
 			echo $wrap ldmsd.${ports[$i]} \
 				-x ${XPRT}:${ports[$i]}${XPRTHOST} \
-				-c $LDMSD_RUN/conf.$i \
-				-l ${LOGDIR}/log.$i.txt \
+				-c $LDMSD_RUN_FAST/conf.$i \
+				-l ${my_logdir}/log.$i.txt \
 				-v $LOG_LEVEL $LDMSD_EXTRA \
 				-r $LDMSD_PIDFILE.$i \
-				"2>&1 > ${LOGDIR}/std.$i.io &" > $LDMSD_RUN/start.$i
+				"2>&1 > ${my_logdir}/std.$i.io &" > $LDMSD_RUN_FAST/start.$i
 			$wrap ldmsd.${ports[$i]} \
 				-x ${XPRT}:${ports[$i]}${XPRTHOST} \
-				-c $LDMSD_RUN/conf.$i \
-				-l ${LOGDIR}/log.$i.txt \
+				-c $LDMSD_RUN_FAST/conf.$i \
+				-l ${my_logdir}/log.$i.txt \
 				-v $LOG_LEVEL $LDMSD_EXTRA \
 				-r $LDMSD_PIDFILE.$i \
-				2>&1 > ${LOGDIR}/std.$i.io &
+				2>&1 > ${my_logdir}/std.$i.io &
 		else
 			if test -f $clonefile -a $cloneinput = "1"; then
-				cp $clonefile $LDMSD_RUN/conf.$i
-				ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
+				cp $clonefile $LDMSD_RUN_FAST/conf.$i
+				ldms-reverse-conf.sh $LDMSD_RUN_FAST/conf.$i > $LDMSD_RUN_FAST/revconf.$i
 				echo $myproc: starting daemon $i
-				env > $LDMSD_RUN/env.$i
+				env > $LDMSD_RUN_FAST/env.$i
 				echo $wrap ldmsd.${ports[$i]} \
 					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
-					-c $LDMSD_RUN/conf.$i \
-					-l ${LOGDIR}/log.$i.txt \
+					-c $LDMSD_RUN_FAST/conf.$i \
+					-l ${my_logdir}/log.$i.txt \
 					-v $LOG_LEVEL $LDMSD_EXTRA \
 					-r $LDMSD_PIDFILE.$i \
-					"2>&1 > ${LOGDIR}/std.$i.io &" \
-					> $LDMSD_RUN/start.$i
+					"2>&1 > ${my_logdir}/std.$i.io &" \
+					> $LDMSD_RUN_FAST/start.$i
 				$wrap ldmsd.${ports[$i]} \
 					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
-					-c $LDMSD_RUN/conf.$i \
-					-l ${LOGDIR}/log.$i.txt \
+					-c $LDMSD_RUN_FAST/conf.$i \
+					-l ${my_logdir}/log.$i.txt \
 					-v $LOG_LEVEL $LDMSD_EXTRA \
 					-r $LDMSD_PIDFILE.$i \
-					2>&1 > ${LOGDIR}/std.$i.io &
+					2>&1 > ${my_logdir}/std.$i.io &
 			else
 				echo $myproc: IDLE DAEMON $i
-				env > $LDMSD_RUN/env.$i
-				echo "#" > $LDMSD_RUN/revconf.$i
+				env > $LDMSD_RUN_FAST/env.$i
+				echo "#" > $LDMSD_RUN_FAST/revconf.$i
 				echo ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
-					-l ${LOGDIR}/log.$i.txt \
+					-l ${my_logdir}/log.$i.txt \
 					-v $LOG_LEVEL \
 					-r $LDMSD_PIDFILE.$i \
-					"2>&1 > ${LOGDIR}/std.$i.io &" \
-					> $LDMSD_RUN/start.$i
+					"2>&1 > ${my_logdir}/std.$i.io &" \
+					> $LDMSD_RUN_FAST/start.$i
 				ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
-					-l ${LOGDIR}/log.$i.txt \
+					-l ${my_logdir}/log.$i.txt \
 					-v $LOG_LEVEL \
 					-r $LDMSD_PIDFILE.$i \
-					2>&1 > ${LOGDIR}/std.$i.io &
+					2>&1 > ${my_logdir}/std.$i.io &
 			fi
 		fi
 		# assume gnu sleep and bc exist, because usleep deprecated
@@ -488,7 +499,7 @@ function LDMSD {
 			((nwait++))
 			sleep 0.1
 			if test $nwait -ge $nwait_max; then
-				echo FAIL: failed to start $i. check ${LOGDIR}/$i.txt
+				echo FAIL-MAYBE: failed to start $i with $startwait microseconds. check ${my_logdir}/$i.txt
 				# bypass=1
 				break;
 			fi
@@ -534,7 +545,16 @@ function LDMS_LS {
 			wrap=""
 		fi
 		if ! test -f "$LDMSD_PIDFILE.$i"; then
-			echo FAIL: $myproc: ls of missing daemon $i skipped. check ${LOGDIR}/$i.txt
+			if test -f ${LOGDIR_FAST}/$i.txt; then
+				echo FAIL: $myproc: ls of missing daemon $i skipped. check ${LOGDIR_FAST}/log.$i.txt
+			else
+				if test -f ${LOGDIR}/$i.txt; then
+					echo FAIL: $myproc: ls of missing daemon $i skipped. check ${LOGDIR}/log.$i.txt
+				else
+					echo FAIL: $myproc: ls of missing daemon $i skipped. no log.$i.txt found
+				fi
+			fi
+
 			bypass=1
 			break;
 		fi
@@ -579,7 +599,7 @@ function LDMS_STATUS {
 			wrap=""
 		fi
 		if ! test -f "$LDMSD_PIDFILE.$i"; then
-			echo FAIL: $myproc: ls of missing daemon $i skipped. check ${LOGDIR}/$i.txt
+			echo FAIL: $myproc: ls of missing daemon $i skipped. check ${LOGDIR_FAST}/$i.txt
 			bypass=1
 			break;
 		fi
@@ -615,20 +635,20 @@ function SOCKWAIT {
 	if test "$bypass" = "1"; then
 		return 0
 	fi
-        myport=$1
-        timeout=$2
-        for i in $(seq $timeout); do
-                y=$(ss -Hon state all "( sport = :$myport )" |wc -l)
-                if test $y = "0"; then
-                        echo done in $i seconds
-                        return 0
-                fi
-                echo -n .
-                sleep 1
-        done
+	myport=$1
+	timeout=$2
+	for i in $(seq $timeout); do
+		y=$(ss -Hon state all "( sport = :$myport )" |wc -l)
+		if test $y = "0"; then
+			echo done in $i seconds
+			return 0
+		fi
+		echo -n .
+		sleep 1
+	done
 	MESSAGE "port $myport still busy. expect problems.  ss said:"
 	ss -Hon state all "( sport = :$myport )"
-        return 1 ; # something still stuck
+	return 1 ; # something still stuck
 }
 
 function WAIT_ALL {
@@ -831,7 +851,7 @@ function LDMS_AGG_WAIT {
 	# checking of the agg daemon is performed by the process rank which launched it,
 	# while others wait on the result.
 	# aggregator connect retry is 0.5 sec
-        # set lookup retries are 0.2 sec
+	# set lookup retries are 0.2 sec
 	if test "$bypass" = "1"; then
 		return 0
 	fi
@@ -1052,7 +1072,7 @@ function LDMS_CPU_GRIND {
 		return 0
 	fi
 	if test "${least_sampler[$myproc]}" = "1"; then
-		CPU_GRIND_DIR=$TESTDIR/run/grind
+		CPU_GRIND_DIR=$LDMSD_RUN_FAST/grind
 		gpid=$CPU_GRIND_DIR/ldms_cpu_grind.pids.$myproc
 		gargs="-r -1 -p $gpid"
 		ihost=${hosts[$myproc]}
@@ -1066,7 +1086,9 @@ function LDMS_CPU_GRIND {
 			ncore=$(lscpu |grep ^Core |sed -e 's/.*://' -e 's/ //g')
 			pcores=$(($nsock * $ncore))
 		fi
-		mkdir -p $CPU_GRIND_DIR
+		if ! test -d  $CPU_GRIND_DIR; then
+			mkdir -p $CPU_GRIND_DIR
+		fi
 		touch $CPU_GRIND_DIR/lead.$myproc.tasks_$pcores
 		for i in $(seq $pcores); do
 			ldms_cpu_grind ${gargs}.$i $* &
@@ -1114,8 +1136,8 @@ function KILL_LDMSD {
 				iport=${ports[$i]}
 			fi
 			if test -z "$KILL_NO_TEARDOWN"; then
-				echo "ldmsctl -x $XPRT -p $iport -h $HOST -s $LDMSD_RUN/revconf.$i" > ${LOGDIR}/teardown.$i.txt
-				ldmsctl -x $XPRT -p $iport -h $HOST -s $LDMSD_RUN/revconf.$i >> ${LOGDIR}/teardown.$i.txt
+				echo "ldmsctl -x $XPRT -p $iport -h $HOST -s $LDMSD_RUN_FAST/revconf.$i" > ${LOGDIR_FAST}/teardown.$i.txt
+				ldmsctl -x $XPRT -p $iport -h $HOST -s $LDMSD_RUN_FAST/revconf.$i >> ${LOGDIR_FAST}/teardown.$i.txt
 			fi
 			if test -f $LDMSD_PIDFILE.$i; then
 				kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
@@ -1248,33 +1270,15 @@ fi
 export STOREDIR=$TESTDIR/store
 export SOCKDIR=$TESTDIR/run/ldmsd
 export LOGDIR=$TESTDIR/logs
+# the pidfile dir must be global for LDMS_AGG_WAIT pid checks
 export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
 SECRET=$SOCKDIR/secret.$SLURM_JOBID
 export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
 export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
 export LDMSD_RUN=${TESTDIR}/run
-mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_RUN
-/bin/rm -rf $TESTDIR_FAST
-mkdir -p $TESTDIR_FAST
-if ! test -d $TESTDIR_FAST; then
-	echo unable to create $TESTDIR_FAST
-	exit 1
-fi
-if test $myproc -eq 1; then
-	echo "secretword="`openssl rand -hex 16` > $SECRET
-	chmod go-rwx $SECRET
-	echo $myproc: removing old output
-	rm -rf ${STOREDIR}/*
-	echo "$myproc: fast tmpfiles under $TESTDIR_FAST"
-	echo "$myproc: logs and data stored under $TESTDIR"
-else
-	while [ ! -f $SECRET ]; do sleep 0.001; done
-	# if your system has no gnu sleep, replace 0.001 with 1
-fi
-export LDMS_AUTH_FILE=$SECRET
-chmod go-rwx $SECRET
-export PATH=$LDMSD_RUN:${BUILDDIR}/sbin:${BUILDDIR}/bin:$PATH
-
+export LDMSD_RUN_FAST=${TESTDIR_FAST}/run
+export LOGDIR_FAST=${TESTDIR_FAST}/logs
+# load daemon array information
 if test -n "$LDMS_DAEMON_ARRAY_FILE"; then
 	if ! test -f $LDMS_DAEMON_ARRAY_FILE; then
 		echo "$myproc: cannot find $LDMS_DAEMON_ARRAY_FILE"
@@ -1283,13 +1287,63 @@ if test -n "$LDMS_DAEMON_ARRAY_FILE"; then
 		. $LDMS_DAEMON_ARRAY_FILE
 	fi
 fi
+# wait up to $mkdir_timeout seconds for the directory setup
+mkdir_timeout=120
+# create directories without storming directory write locks
+# management ranks are their own least_sampler.
+# worker ranks have 1 least_sampler rank per node.
+if test "${least_sampler[$myproc]}" = "1"; then
+	for newdir in $STOREDIR $SOCKDIR $LOGDIR $LDMSD_RUN; do
+		if ! test -d $newdir; then
+			mkdir -p $newdir
+		fi
+	done
+	/bin/rm -rf $TESTDIR_FAST
+	for newdir in $TESTDIR_FAST $LDMSD_RUN_FAST $LOGDIR_FAST; do
+		if ! test -d $newdir; then
+			mkdir -p $newdir
+		fi
+	done
+else
+	mkdir_try=0
+	until [[ ( -d "$LOGDIR_FAST" && -d "$LDMSD_RUN" ) || $mkdir_try -gt $mkdir_timeout ]]; do
+		sleep 1
+		(( mkdir_try++ ))
+	done
+fi
+if ! test -d $LDMSD_RUN; then
+	echo unable to create $LDMSD_RUN
+	exit 1
+fi
+if ! test -d $TESTDIR_FAST; then
+	echo unable to create $TESTDIR_FAST
+	exit 1
+fi
+
+if test $myproc -eq 1; then
+	echo "secretword="`openssl rand -hex 16` > $SECRET
+	chmod go-rwx $SECRET
+	echo $myproc: removing old output
+	rm -rf ${STOREDIR}/*
+	echo "$myproc: fast temporary files under $TESTDIR_FAST"
+	echo "$myproc: logs cached under $TESTDIR_FAST"
+	echo "$myproc: data stored under $TESTDIR"
+else
+	while [ ! -f $SECRET ]; do sleep 0.1; done
+	# if your system has no gnu sleep, replace 0.1 with 1
+fi
+export LDMS_AUTH_FILE=$SECRET
+chmod go-rwx $SECRET
+# point at ldms install being tested and ldmsd.$daemon links
+export PATH=$LDMSD_RUN_FAST:$LDMSD_RUN:${BUILDDIR}/sbin:${BUILDDIR}/bin:$PATH
+
 echo "$myproc: Listing ldmsd's still running:"
 pgrep ldmsd
 echo "$myproc: Done."
 export INPUT_DIR=$(dirname $input)
 echo "$myproc: fast tmpfiles under $TESTDIR_FAST"
 echo "$myproc: logs and data stored under $TESTDIR"
-
+echo "$myproc: submit script was: $LAUNCHER"
 . $input
 
 SLEEP 1
@@ -1300,5 +1354,3 @@ echo done;
 if test "$KILL_LDMSD_STRICT" = "1"; then
 	exit 1
 fi;
-
-

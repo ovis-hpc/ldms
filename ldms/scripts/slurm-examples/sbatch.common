@@ -128,7 +128,7 @@ function make_hostlists {
 	for i in $management; do
 		echo "hosts[$((k + 1))]=$i$HOST_SUFFIX" >> $TEST_HOSTFILE.array
 		# there is no daemon 0,
-		echo "least_sampler[$((k + 1))]=0" >> $TEST_HOSTFILE.array
+		echo "least_sampler[$((k + 1))]=1" >> $TEST_HOSTFILE.array
 		((k++))
 		if test $k -ge $SLURM_NTASKS; then
 			break

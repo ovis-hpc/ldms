@@ -26,7 +26,6 @@ second_l1_begin=$(( $first_l1_end + 1 ))
 second_l1_end=$maxdaemon
 MESSAGE first L1 collecting $first_l1_begin to $first_l1_end
 MESSAGE second L1 collecting $second_l1_begin to $second_l1_end
-MESSAGE launcher detected: $LAUNCHER
 DAEMONS $(seq 1 $maxdaemon)
 LDMSD_EXTRA="-m 20k"
 VGTAG=.samp
@@ -63,9 +62,9 @@ vgoff
 #vgon
 VGTAG=.L1
 # start L1 on daemon 2, with sampler daemons 4-lower half
-LDMSD -s 3000000 -P pll.producer,`seq -s, $first_l1_begin $first_l1_end` 2
+LDMSD -a -s 3000000 -P pll.producer,`seq -s, $first_l1_begin $first_l1_end` 2
 # start L1 on daemon 3, with sampler daemons upper half
-LDMSD -s 3000000 -P pll.producer,`seq -s, $second_l1_begin $second_l1_end` 3
+LDMSD -a -s 3000000 -P pll.producer,`seq -s, $second_l1_begin $second_l1_end` 3
 vgoff
 SLEEP 30
 FILECNT_LDMSD $ALL_DAEMONS
@@ -104,7 +103,7 @@ while test $(SEC_LEFT) -gt 600; do
 	BEST_DELAY 300
         lawsc_agg=1
         lawsc_agg_connect_timeout=5
-        lawsc_count_target=1
+        lawsc_count_target=2
         lawsc_count_timeout=260
 	MESSAGE "WAITING on L2 for set disappearance at $(date +%s)"
 	LDMS_AGG_WAIT_SET_COUNT \
@@ -118,7 +117,7 @@ while test $(SEC_LEFT) -gt 600; do
 	SLEEP 5
 	FILECNT_LDMSD $ALL_DAEMONS
 	# restart samplers.
-	LDMSD -s 1 -c $(seq 4 $maxdaemon)
+	LDMSD -s 1000000 -c $(seq 4 $maxdaemon)
 done
 
 

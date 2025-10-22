@@ -50,12 +50,12 @@ LDMSD_EXTRA="-m 32G"
 vgon
 VGTAG=.L2
 # start L2 on daemon 1
-LDMSD 1
+LDMSD -a 1
 vgoff
 #vgon
 VGTAG=.L1
 # start L1 on daemon 2, with sampler daemons 3..maxdaemon
-LDMSD -s 3000000 -P pll.producer,`seq -s, 3 $maxdaemon` 2
+LDMSD -a -s 3000000 -P pll.producer,`seq -s, 3 $maxdaemon` 2
 vgoff
 SLEEP 30
 FILECNT_LDMSD $ALL_DAEMONS

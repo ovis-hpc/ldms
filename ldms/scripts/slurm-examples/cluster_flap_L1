@@ -59,7 +59,7 @@ if test $usevg_L2 = "1"; then
 	vgon
 fi
 VGTAG=.L1
-LDMSD -s 3000000 -P pll.producer,`seq -s, 3 $maxdaemon` 2
+LDMSD -a -s 3000000 -P pll.producer,`seq -s, 3 $maxdaemon` 2
 vgoff
 SLEEP 30
 
@@ -114,7 +114,7 @@ while test $(SEC_LEFT) -gt 1200; do
 	if test $usevg_L2 = "1"; then
 		vgon
 	fi
-	LDMSD -s 4000000 -P pll.producer,`seq -s, 3 $maxdaemon` 2
+	LDMSD -a -s 4000000 -P pll.producer,`seq -s, 3 $maxdaemon` 2
 	vgoff
 	SLEEP 60
 done
