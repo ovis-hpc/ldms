@@ -14,6 +14,10 @@ COMMON_LD_ADD = ../../core/libldms.la \
 		$(top_builddir)/lib/src/coll/libcoll.la \
 		$(top_builddir)/lib/src/ovis_util/libovis_util.la
 
+sbin_PROGRAMS += ldms_message_publish
+ldms_message_publish_SOURCES = ldms_msg_publish.c
+ldms_message_publish_LDADD = $(COMMON_LD_ADD)
+
 sbin_PROGRAMS += ldms_msg_publish
 ldms_msg_publish_SOURCES = ldms_msg_publish.c
 ldms_msg_publish_LDADD = $(COMMON_LD_ADD)
@@ -37,3 +41,4 @@ dist_man8_MANS += ldmsd_stream_subscribe.man \
 CLEANFILES = $(dist_man8_MANS)
 
 EXTRA_DIST=ldmsd_stream_publish.rst ldmsd_stream_subscribe.rst
+EXTRA_DIST+=ldms_msg_publish.rst
