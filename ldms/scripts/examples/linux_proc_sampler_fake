@@ -25,7 +25,7 @@ function replay_json {
 	replay_json_pidlist=""
 	for f in $files; do
 		tag=$(echo $f | cut -d- -f1)
-		ldms_msg_publish -p $iport -a none -m $tag -t json -x $XPRT -h $HOST -i 10000000 -r 10 -f $(dirname $input)/$f  > $LOGDIR/pub.$target_num.$tag 2>&1 &
+		ldms_message_publish -p $iport -a none -m $tag -t json -x $XPRT -h $HOST -i 10000000 -r 10 -f $(dirname $input)/$f  > $LOGDIR/pub.$target_num.$tag 2>&1 &
 		#sleep 60  > /dev/null 2>&1 &
 		replay_json_pidlist="$! $replay_json_pidlist"
 	done
