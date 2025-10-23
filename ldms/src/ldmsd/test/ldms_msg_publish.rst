@@ -60,13 +60,16 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
    **-w|--max_wait** <W>
       |
       | Maximum number of cumulative retries to allow if the receiving daemon
-        signals to wait for more transmission credits. Default 0.
+        signals to wait for more transmission credits. Default 0 retries infinitely.
         Each wait is 0.1 second.
 
    **-l|--line**
       |
       | Optional line mode. Publishes file one line at a time as
-        separate publish calls
+        separate publish calls. When used, the maximum line length
+        allowed is specified with '-z <LINE_MAX>'. If a line does
+        not contain a complete message, the recipients may see
+        what is sent as erroneous.
 
    **-f|--file** <file>
       |
@@ -86,6 +89,11 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
       | When -i is specified, use a delay of M microseconds between iterations.
         The default is 10000000 (10 seconds)
 
+   **-z|--line_size** <LINE_MAX>
+      |
+      | The largest line to send when processing an input file in line mode.
+        Any line longer than this will not be sent. The default is 4096.
+
    **-R|--reconnect**
       |
       | If -R and -f are both given, the ldms connection is closed and reopened
@@ -97,12 +105,6 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
       | Optional verbose mode. Tracks progress, and possibly other things.
 
 
-BUGS
-====
-
-Unterminated lines exactly 4094 bytes long at the end of a file or pipe
-will not be published when line-mode (-l) is active.
-
 NOTES
 =====
 
@@ -112,7 +114,11 @@ This supports testing:
 - publishing data once to a single connection from a pipe or file.
 - repeating a file to a single connection.
 - repeating a file to a new connection at each iteration.
-- sending data line-by-line from a file or pipe as separate messages, when each line is a well-formed message.
+- sending data line-by-line from a file or pipe as separate messages, up to
+  a maximum line length which is user specified.
+
+When the input is a pipe and -l is not specified, the entire content
+of the pipe is buffered before anything is sent.
 
 EXAMPLES
 ========
