@@ -90,7 +90,7 @@ JSONString                              \"{JSONStringCharacter}*\"
 "}"	{ return '}'; }
 ","	{ return ','; }
 ":"	{ return ':'; }
-\n	{ }
+\n	{ yylineno ++; }
 [ \t]	{ }
 [-+]?[0-9]+	{
 	*yylval = new_int_val(yytext);
@@ -131,10 +131,14 @@ void init_yylloc(YYLTYPE *yyl, struct yyguts_t *yyg)
 int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_entity_t *pentity)
 {
 	int rc;
+	char *nbuf;
+	json_entity_t entity = NULL;
+
 	*pentity = NULL;
-	char *nbuf = malloc(buf_len + 2);
+	nbuf = malloc(buf_len + 2);
 	if (!nbuf)
 		return ENOMEM;
+
 	memcpy(nbuf, buf, buf_len);
 	nbuf[buf_len] = YY_END_OF_BUFFER_CHAR;
 	nbuf[buf_len+1] = YY_END_OF_BUFFER_CHAR;
@@ -142,7 +146,9 @@ int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_entity_t 
 		rc = EINVAL;
 		goto out;
 	}
-	rc = yyparse(p, nbuf, buf_len + 2, pentity);
+	rc = yyparse(p, nbuf, buf_len + 2, &entity);
+	if (!rc)
+		*pentity = entity;
 out:
 	free(nbuf);
 	return rc;
