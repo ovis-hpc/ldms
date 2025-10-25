@@ -1179,53 +1179,6 @@ ldmsd_store_close(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 /* ldmsctl command callback function definition */
 typedef int (*ldmsctl_cmd_fn_t)(char *, struct attr_value_list*, struct attr_value_list *);
 
-#define LDMSCTL_LIST_PLUGINS	0    /* List Plugins */
-#define LDMSCTL_LOAD_PLUGIN	1    /* Load Plugin */
-#define LDMSCTL_TERM_PLUGIN	2    /* Term Plugin */
-#define LDMSCTL_CFG_PLUGIN	3    /* Configure Plugin */
-#define LDMSCTL_START_SAMPLER	4    /* Start Sampler */
-#define LDMSCTL_STOP_SAMPLER	5    /* Stop Sampler */
-#define LDMSCTL_INFO_DAEMON	9   /* Query daemon status */
-#define LDMSCTL_SET_UDATA	10   /* Set user data of a metric */
-#define LDMSCTL_EXIT_DAEMON	11   /* Shut down ldmsd */
-#define LDMSCTL_ONESHOT_SAMPLE	13   /* Sample a set at a specific timestamp once */
-#define LDMSCTL_SET_UDATA_REGEX 14   /* Set user data of metrics using regex and increment */
-#define LDMSCTL_VERSION		15   /* Get LDMS version */
-#define LDMSCTL_VERBOSE	16   /* Change the log level */
-
-#define LDMSCTL_INCLUDE		17  /* Include another configuration file */
-#define LDMSCTL_ENV		18  /* Set environment variable */
-#define LDMSCTL_LOGROTATE	19  /* Rotate the log file */
-
-#define LDMSCTL_PRDCR_ADD	20   /* Add a producer specification */
-#define LDMSCTL_PRDCR_DEL	21   /* Disable a producer specification */
-#define LDMSCTL_PRDCR_START	22
-#define LDMSCTL_PRDCR_STOP	23
-#define LDMSCTL_PRDCR_START_REGEX	24
-#define LDMSCTL_PRDCR_STOP_REGEX	25
-
-#define LDMSCTL_UPDTR_ADD	30   /* Add an updater specification */
-#define LDMSCTL_UPDTR_DEL	31   /* Delete an updater specification */
-#define LDMSCTL_UPDTR_MATCH_ADD 32
-#define LDMSCTL_UPDTR_MATCH_DEL 33
-#define LDMSCTL_UPDTR_PRDCR_ADD 34
-#define LDMSCTL_UPDTR_PRDCR_DEL 35
-#define LDMSCTL_UPDTR_START	38
-#define LDMSCTL_UPDTR_STOP	39
-
-#define LDMSCTL_STRGP_ADD		40
-#define LDMSCTL_STRGP_DEL		41
-#define LDMSCTL_STRGP_PRDCR_ADD		42
-#define LDMSCTL_STRGP_PRDCR_DEL		43
-#define LDMSCTL_STRGP_METRIC_ADD	44
-#define LDMSCTL_STRGP_METRIC_DEL	45
-#define LDMSCTL_STRGP_START		48
-#define LDMSCTL_STRGP_STOP		49
-
-#define LDMSCTL_LAST_COMMAND	LDMSCTL_STRGP_STOP
-
-extern ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND + 1];
-
 #define LDMSD_CONTROL_SOCKNAME "ldmsd/control"
 
 #define LDMSD_CONNECT_TIMEOUT		20000000 /* 20 Seconds */
