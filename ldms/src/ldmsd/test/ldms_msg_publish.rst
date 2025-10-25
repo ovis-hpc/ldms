@@ -59,7 +59,7 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
 
    **-w|--max_wait** <W>
       |
-      | Maximum number of cumulative retries to allow if the receiving daemon
+      | Maximum number of cumulative waits to allow when the receiving daemon
         signals to wait for more transmission credits. Default 0 retries infinitely.
         Each wait is 0.1 second.
 
@@ -86,8 +86,8 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
 
    **-i|--interval** <M>
       |
-      | When -i is specified, use a delay of M microseconds between iterations.
-        The default is 10000000 (10 seconds)
+      | When -i is specified, use an interval of M microseconds between
+        publication iterations. The default is 10000000 (10 seconds)
 
    **-z|--line_size** <LINE_MAX>
       |
@@ -99,6 +99,13 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
       | If -R and -f are both given, the ldms connection is closed and reopened
         between repeated transmissions of the file.
         Unlike ldmsd_stream_publish, this option is independent of the -l option.
+
+   **-W|--retry** <W>
+      |
+      | If specified, W is the period in milliseconds to wait between connection
+        attempts. 0 means do not retry when a connection fails. (Default is 0).
+        When used, retry is infinite except in the case of detectable authentication
+        failure.
 
    **-v|--verbose**
       |

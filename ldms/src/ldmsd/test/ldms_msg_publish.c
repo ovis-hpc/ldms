@@ -24,15 +24,16 @@ static struct option long_opts[] = {
 	{"repeat",   required_argument, 0,  'r' },
 	{"interval", required_argument, 0,  'i' },
 	{"reconnect",no_argument,	0,  'R' },
+	{"retry",    required_argument,	0,  'W' },
 	{"verbose",  no_argument,       0,  'v' },
 	{0,          0,                 0,  0 }
 };
 
-static const char *short_opts = "Hh:p:f:m:t:x:a:A:U:G:P:lr:i:z:Rw:v";
+static const char *short_opts = "Hh:p:f:m:t:x:a:A:U:G:P:lr:i:z:Rw:W:v";
 
 #define AUTH_OPT_MAX 128
 
-#define RETRY_PAUSE 100000000 /* 1/10th sec if credit shortage*/
+#define CREDIT_RETRY_PAUSE 100000000 /* 1/10th sec if credit shortage*/
 
 #define DEFAULT_BUF_SIZE 4096 /* default max line from pipe or file if sending in line mode. */
 static size_t buf_size = DEFAULT_BUF_SIZE;
@@ -40,23 +41,65 @@ static size_t buf_size = DEFAULT_BUF_SIZE;
 
 static int rc;
 
-/* Create a transport endpoint, or return NULL. When NULL,
- * static global rc will be set and the reasonable action is to exit. */
+/* Create & connect a transport endpoint, or return NULL. When NULL,
+ * static global rc will be set and the reasonable action is to exit.
+ * If retry is nonzero, waits retry millis between connection attempts
+ * unless an authentication error occurs.
+ */
 static ldms_t get_ldms(const char *xprt, const char *auth,
 			struct attr_value_list *auth_opt,
-			const char *host, const char *port)
+			const char *host, const char *port,
+			int retry, int verbose)
 {
-	ldms_t ldms = ldms_xprt_new_with_auth(xprt, auth, auth_opt);
-	if (!ldms) {
-		rc = errno;
-		printf("Failed to create the LDMS transport endpoint.\n");
-		return NULL;
+	ldms_t ldms = NULL;
+	if (verbose) {
+		printf("get_ldms: retry: %d\n", retry);
 	}
-	rc = ldms_xprt_connect_by_name(ldms, host, port, NULL, NULL);
-	if (rc) {
-		printf("Error %d connecting to peer\n", rc);
-		return NULL;
-	}
+	struct timespec nap = { (retry / 1000), (retry * 1000000) % 1000000000 };
+
+	do {
+		ldms = ldms_xprt_new_with_auth(xprt, auth, auth_opt);
+		if (!ldms) {
+			rc = errno;
+			printf("Failed to allocate the local LDMS transport endpoint.\n");
+			return NULL;
+		}
+		rc = ldms_xprt_connect_by_name(ldms, host, port, NULL, NULL);
+		if (!rc) {
+			if (verbose) {
+				printf("Connected to peer %s:%s xprt=%s auth=%s\n",
+					host, port, xprt, auth);
+			}
+			return ldms;
+		}
+		if (verbose) {
+			printf("strerror(rc): %s, zap_err_str(rc): %s\n",
+				strerror(rc), zap_err_str(rc));
+		}
+		/* seems to be no way to distinguish on the ldms_t why the last connection
+		// refused happened. These cases would be of interest:
+		// ENOMEM (something exhausted; give up)
+		// ENOKEY (wrong password for munge or ovis; give up)
+		// EPROTONOSUPPORT (wrong auth type; give up)
+		// EHOSTDOWN (try again)
+		// EHOSTUNREACH (try again)
+		// loop forever since we cannot distinguish
+		*/
+		if (0) {
+			printf("Auth error %s connecting to peer %s:%s xprt=%s auth=%s\n",
+			       strerror(rc), host, port, xprt, auth);
+			break;
+		}
+		ldms_xprt_close(ldms);
+		ldms = NULL;
+		if (retry) {
+			if (verbose) {
+				printf("Waiting %d millis to connect to daemon at %s:%s xprt=%s auth=%s\n",
+					retry, host, port, xprt, auth);
+			}
+			nanosleep(&nap, NULL);
+		}
+	} while (retry);
 	return ldms;
 }
 
@@ -79,8 +122,9 @@ int main(int argc, char **argv)
 	int line_mode = 0;
 	int repeat = 0;
 	int reconnect = 0;
-	int interval = 10000000;
+	int interval = 0;
 	int max_wait = 0;
+	int retry = 0;
 	ldms_t ldms = NULL;
 
 	if (NULL == strstr(argv[0], "ldms_message_publish"))
@@ -221,8 +265,17 @@ int main(int argc, char **argv)
 		case 'w':
 			max_wait = atoi(optarg);
 			if (max_wait < 0) {
-				printf("The max_wait count must be a positive"
+				printf("%s: The max_wait count must be a positive"
 				       " number of retries, not %s.\n",
+				       argv[0], optarg);
+				goto usage;
+			}
+			break;
+		case 'W':
+			retry = atoi(optarg);
+			if (retry < 0) {
+				printf("%s: The retry wait must be a positive"
+				       " number of milliseconds, not %s.\n",
 				       argv[0], optarg);
 				goto usage;
 			}
@@ -235,7 +288,7 @@ int main(int argc, char **argv)
 		case 'U':
 			uid = strtoul(optarg, NULL, 0);
 			if (uid > UINT32_MAX) {
-				printf("The uid must be smaller than UINT32_MAX. Got %s\n",
+				printf("%s: The uid must be smaller than UINT32_MAX. Got %s\n",
 					argv[0], optarg);
 				goto usage;
 			}
@@ -259,8 +312,8 @@ int main(int argc, char **argv)
 			break;
 		}
 	}
-	if (!msg ) {
-		printf("%s: message_channel arguent missing\n",argv[0]);
+	if (!msg || msg[0] == '\0') {
+		printf("%s: message_channel name is missing\n",argv[0]);
 		goto usage;
 	}
 
@@ -277,6 +330,8 @@ int main(int argc, char **argv)
 		}
 		file = stdin;
 	}
+	if (repeat && !interval)
+		interval = 10000000;
 	if (!repeat)
 		repeat = 1;
 
@@ -291,13 +346,13 @@ int main(int argc, char **argv)
 	cred.gid = gid;
 	int k;
 	int wait_count = 0;
-	struct timespec nap = { 0, RETRY_PAUSE };
+	struct timespec nap = { 0, CREDIT_RETRY_PAUSE };
 	/* repeat whole file -r times, ignoring errors except if on first try. */
 	if (filename) {
 		if (!line_mode) {
 			for (k = 0; k < repeat; k++) {
 				if (!ldms) {
-					ldms = get_ldms(xprt, auth, auth_opt, host, port);
+					ldms = get_ldms(xprt, auth, auth_opt, host, port, retry, verbose);
 					if (!ldms)
 						return rc;
 				}
@@ -324,19 +379,19 @@ int main(int argc, char **argv)
 			char line_buffer[4096];
 			char *s;
 			if (!ldms) {
-				ldms = get_ldms(xprt, auth, auth_opt, host, port);
+				ldms = get_ldms(xprt, auth, auth_opt, host, port, retry, verbose);
 				if (!ldms)
 					goto err;
 			}
 			if (k)
 				rewind(file);
 			while (0 != (s = fgets(line_buffer, sizeof(line_buffer)-1, file))) {
-retry1:
+resend1:
 				rc = ldms_msg_publish(ldms, msg, typ, &cred, perm, s, strlen(s)+1);
 				while (rc == EAGAIN && (wait_count < max_wait || !max_wait)) {
 					wait_count++;
 					nanosleep(&nap, NULL);
-					goto retry1;
+					goto resend1;
 				}
 			}
 			if (k && verbose)
@@ -351,7 +406,7 @@ retry1:
 	}
 
 	/* process pipe input as file or lines */
-	ldms = get_ldms(xprt, auth, auth_opt, host, port);
+	ldms = get_ldms(xprt, auth, auth_opt, host, port, retry, verbose);
 	if (!ldms) {
 		goto err;
 	}
@@ -372,12 +427,12 @@ retry1:
 				rc = EMSGSIZE;
 				break;
 			}
-retry2:
+resend2:
 			rc = ldms_msg_publish(ldms, msg, typ, &cred, perm, s, strlen(s)+1);
 			while (rc == EAGAIN && (wait_count < max_wait || !max_wait)) {
 				wait_count++;
 				nanosleep(&nap, NULL);
-				goto retry2;
+				goto resend2;
 			}
 			if (rc) {
 				printf("error %d(%s) at line %d publishing: %s\n", rc, strerror(rc), line, s);
@@ -391,16 +446,16 @@ retry2:
 
 usage:
 	rc = 1;
-	printf("usage: %s -x <xprt> -h <host> -p <port> "
-	       "-m <message-channel> -t <msg-type> "
-	       "-U <uid> -G <gid> -P <perm> "
-	       "-a <auth> -A <auth-opt> "
-	       "-f <file> -l -r <repeat_count> -i <interval_microsecond> -R "
-	       "-z <line_size> "
-	       "-w <max_retries> "
-	       "-v"
-	       "\n",
-	       argv[0]);
+	printf("usage: %s -x <xprt> -h <host> -p <port>\n"
+	       "\t-a <auth> -A <auth-opt>\n"
+	       "\t-U <uid> -G <gid> -P <perm>\n"
+	       "\t-f <file> -l -r <repeat_count> -i <interval_microsecond> -R\n"
+	       "\t-z <line_size>\n"
+	       "\t-m <message-channel> -t <msg-type>\n"
+	       "\t-w <max_resends_for_credit_wait>\n"
+	       "\t-W <connection_retry_wait_milliseconds>\n"
+	       "\t-v\n"
+	       , argv[0]);
 err:
 
 out:
