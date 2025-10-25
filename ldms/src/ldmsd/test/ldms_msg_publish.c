@@ -337,7 +337,7 @@ int main(int argc, char **argv)
 
 	if (verbose) {
 		printf("sending data to host=%s port=%s xprt=%s"
-		       " auth=%s message_channel=%s from\n",
+		       " auth=%s message_channel=%s from %s\n",
 			host, port, xprt, auth, msg,
 			(filename ? filename : "pipe") );
 	}
