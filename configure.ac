@@ -326,7 +326,6 @@ OPTION_DEFAULT_ENABLE([varset], [ENABLE_VARSET])
 OPTION_DEFAULT_ENABLE([lnet_stats], [ENABLE_LNET_STATS])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
 OPTION_DEFAULT_ENABLE([cxi_sampler], [ENABLE_CXI_SAMPLER])
-OPTION_DEFAULT_DISABLE([gpumetrics], [ENABLE_GPU_METRICS])
 OPTION_DEFAULT_ENABLE([coretemp], [ENABLE_CORETEMP])
 OPTION_DEFAULT_ENABLE([filesingle], [ENABLE_FILESINGLE])
 OPTION_DEFAULT_DISABLE([msr_interlagos], [ENABLE_MSR_INTERLAGOS])
@@ -367,8 +366,6 @@ dnl linkstatus is not part of the cray_system_sampler
 OPTION_DEFAULT_DISABLE([aries_linkstatus], [ENABLE_ARIES_LINKSTATUS], [Requires gpcdr to be set up with status metrics])
 OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
-OPTION_DEFAULT_DISABLE([switchx], [ENABLE_SWITCHX])
-OPTION_WITH([switchx], [SWITCHX],[/usr/local])
 OPTION_DEFAULT_DISABLE([darshan], [ENABLE_DARSHAN])
 OPTION_DEFAULT_DISABLE([kokkos], [ENABLE_KOKKOS])
 OPTION_DEFAULT_DISABLE([proc-streams], [ENABLE_PROC_STREAMS])
@@ -1067,7 +1064,6 @@ ldms/src/sampler/tx2mon/Makefile
 ldms/src/sampler/msr_interlagos/Makefile
 ldms/src/sampler/meminfo/Makefile
 ldms/src/sampler/cxi_sampler/Makefile
-ldms/src/contrib/sampler/gpu_metrics_sampler/Makefile
 ldms/src/sampler/procinterrupts/Makefile
 ldms/src/sampler/procnetdev2/Makefile
 ldms/src/sampler/variable/Makefile
