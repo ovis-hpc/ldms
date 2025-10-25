@@ -96,12 +96,19 @@
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 
-const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:L:C:y:";
+const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:a:A:n:L:C:y:";
 
 struct option long_opts[] = {
+	{ "xprt",                  no_argument, 0,'x' },
+	{ "foreground",            no_argument, 0,'F' },
+	{ "version",               no_argument, 0,'V' },
+	{ "backtrace",             no_argument, 0,'b' },
+	{ "cfg_file",              required_argument, 0,  'c' },
+	{ "yaml",                  required_argument, 0,  'y' },
+	{ "daemon_name",           required_argument, 0,  'n' },
+	{ "banner",                required_argument, 0,  'B' },
 	{ "default_auth_args",     required_argument, 0,  'A' },
 	{ "default_auth",          required_argument, 0,  'a' },
-	{ "banner",                required_argument, 0,  'B' },
 	{ "publish_kernel",        optional_argument, 0,  'k' },
 	{ "log_file",              required_argument, 0,  'l' },
 	{ "set_memory",            required_argument, 0,  'm' },
@@ -241,6 +248,7 @@ void cleanup(int x, const char *reason)
 {
 	pthread_mutex_lock(&cleanup_lock);
 	if (cleaned) {
+		/* Ignoring secondary signal occuring afer cleanup() */
 		pthread_mutex_unlock(&cleanup_lock);
 		exit(x);
 	}
@@ -325,7 +333,7 @@ void cleanup_sa(int signal, siginfo_t *info, void *arg)
 {
 	ovis_log(NULL, OVIS_LINFO, "signo : %d\n", info->si_signo);
 	ovis_log(NULL, OVIS_LINFO, "si_pid: %d\n", info->si_pid);
-	cleanup(0, "signal to exit caught");
+	cleanup(1, "signal to exit caught");
 }
 
 
@@ -2333,6 +2341,6 @@ int main(int argc, char *argv[])
 		usleep(LDMSD_KEEP_ALIVE_30MIN);
 	} while (1);
 
-	cleanup(0,NULL);
+	cleanup(0, NULL);
 	return 0;
 }
