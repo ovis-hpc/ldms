@@ -76,7 +76,8 @@ DAEMONS <daemon-numbers>
 SET_LOG_LEVEL <DEBUG|ERROR|INFO|ALL|QUIET|WARNING|CRITICAL>
    |
    | Set the generic log level for daemons started after
-     calling SET_LOG_LEVEL.
+     calling SET_LOG_LEVEL. Levels DEBUG and INFO present some risk of
+     filling the output directory. See section FILES below.
 
 FILECNT_LDMSD <daemon-numbers>
    |
@@ -130,6 +131,18 @@ KILL_LDMSD <daemon-numbers>
 SLEEP <n>
    |
    | Sleeps n seconds and logs a message about it.
+
+SOCKWAIT <port> <timeout>
+   |
+   | This waits just until the ss tcp utility
+     no longer sees anything waiting on port. If the port is
+     is still busy, collective waits and checks that use it will fail.
+
+BEST_DELAY <timeout>
+   |
+   | In single node jobs, this calls SOCKWAIT $portbase $N.
+     In multinode jobs, this sleeps N seconds, which may be rather
+     longer than than SOCKWAIT.
 
 SEC_LEFT
    |
@@ -197,10 +210,11 @@ LDMS_LS_WAIT <schema> timeout> <daemon numbers>
    |
    | Waits until all daemons given have been seen by first rank in the job
      to have the schema named.  A WAIT_ALL across all ranks of the job follows.
+     This is an expensive operation, validating 1-4 daemons per second.
 
 LDMS_LS_WAIT_STORM <schema> timeout> <daemon numbers>
    |
-   | As LDMS_LS_WAIT, but all daemons given check for the schema instead of just
+   | As LDMS_LS_WAIT, but all daemons check for the schema instead of just
      the first rank.
      At high daemon counts, this can fail due to system limits on number of files open
      or to limits on number of active connections supported in a high speed network
@@ -230,6 +244,11 @@ CONFIGURATION OPTIONS
 
 The LDMSD command supports the following options. Note that all -P
 options are processed before all -p options in a single LDMSD call.
+
+-a
+   | This option hints that the daemon is an aggregator. The present
+     effect of this is to keep the ldmsd log on global storage
+     instead of fast storage (as aggregator logs tend to be very large).
 
 -p <prolog file>
    |
@@ -309,7 +328,8 @@ least_sampler[N]
    | Daemon configuration files and commands can refer to least_sampler[$i]
      where N is any value of 'i' described above. least_sampler[i] is 1
      if daemon i is the first daemon with i > AGG_COUNT on the node,
-     or is 0 if not.
+     or is 0 if not. When AGG_COUNT is defined and there are at least
+     AGG_COUNT+1 nodes, least_sampler[i] is 1 for daemons i < AGG_COUNT.
 
 The following variables may be set in the script to affect the launch of
 ldmsd or ldms_ls:
@@ -461,11 +481,20 @@ Which will give the full path to the batch file for test $input_file.
 *[test_dir]*
    |
    | If test_dir is supplied, it is used as the test output directory.
-     The default output location is
-     \`pwd`/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_NTASKS.
+     Due to lock scaling issues in parallel file systems, it is in almost all
+     cases inadvisable to specify this. Instead, change into the global directory
+     where you want the output tree before running.
+     The default output locations are test_dir:
+     \`pwd`/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.nodes-$SLURM_JOB_NUM_NODES.tasks-$SLURM_NTASKS$TESTSUFF
+     and a fast transient local test directory:
+     /dev/shm/$USER/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_JOB_NUM_NODES.tasks-$SLURM_NTASKS$TESTSUFF
      It is the user's job to ensure test_dir is a globally writable
      directory in the cluster before pll-ldms-static-test.sh is run by
-     the sbatch job script.
+     the sbatch job script. The local transient directory size will be printed,
+     but not checked, before each LDMSD daemon is started. It is the user's
+     responsibility to ensure the transient directory is writable and large enough.
+     This script assumes the resource manager will clear the transient directory
+     between jobs.
 
 *$docdir/examples/slurm-test/$input_file*
    |
@@ -475,67 +504,84 @@ Which will give the full path to the batch file for test $input_file.
 GENERATED FILES
 ===============
 
+In this section 'test_dir' means one of the global test_dir or local scratch dir.
+
 *$test_dir/logs/vg.$k$VGTAG.%p*
    | *$test_dir/logs/vgls.$k$VGTAG.%p*
    | The valgrind log for the kth daemon with PID %p or the valgrind log
      for ldms_ls of the kth daemon with PID %p, if valgrind is active.
+     These are always stored in the global test_dir.
 
 *$test_dir/logs/log.$k.txt*
    |
    | The log for the kth daemon.
+     These are stored in the local test_dir unless -a is given to LDMSD.
 
 *$test_dir/logs/teardown.$k.txt*
    |
    | The teardown log for the kth daemon.
+     These are stored in the local test_dir.
 
 *$test_dir/logs/std.$k.io*
    |
    | The stdout/stderr for the kth daemon.
+     These are stored in the local test_dir.
 
 *$test_dir/run/conf.$k*
    |
    | The input for the kth daemon.
+     These are stored in the local test_dir.
 
 *$test_dir/run/revconf.$k*
    |
    | The input for the kth daemon teardown.
+     These are stored in the local test_dir.
 
 *$test_dir/run/env.$k*
    |
    | The environment present for the kth daemon.
+     These are stored in the local test_dir.
 
 *$test_dir/run/ldmsd.pid.$k*
    |
    | The transient pid file of the kth daemon. Contains the pid number.
+     These are stored in the global test_dir.
 
 *$test_dir/run/ldmsd.pid.$k.cnt.$timestamp.$filecnt*
    |
    | The open file list of the kth daemon at time $timestamp. The total
      is $filecnt.
+     These are stored in the local test_dir.
 
 *$test_dir/run/start.$k*
    |
    | The start command of the kth daemon.
+     These are stored in the local test_dir.
 
 *$test_dir/run/grind*
    |
    | The scratch directory for ldms_cpu_grind pidfiles
+     These are stored in the local test_dir.
 
 *$test_dir/run/grind/lead.$k.tasks_$p*
    |
    | File identifying task k as having started P ldms_cpu_grind processes.
+     These are stored in the local test_dir.
 
 *$test_dir/run/grind/ldms_cpu_grind.pids.$k.$j*
    |
    | Pidfile of the j-th grind process started by the k-th slurm task.
+     These are stored in the local test_dir.
 
 *$test_dir/store/*
    |
    | The root of store output locations.
+     These are stored in the global test_dir.
 
 *$test_dir/run/ldmsd/secret.$SLURM_JOBID*
    |
    | The secret file for authentication.
+     This is stored in the global test_dir.
 
 EXAMPLE
 =======

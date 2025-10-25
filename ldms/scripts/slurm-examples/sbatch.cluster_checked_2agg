@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# minimum n is 4 for this test.
+# All SBATCH options below may need to be overridden to change
+# test scale or match user site resources.
+# This script assume ldms and pll-ldms-static-test.sh are installed
+# and accessible via $PATH.
+#SBATCH -n 4
+#SBATCH --nodes=4
+#SBATCH --account=0
+#SBATCH --job-name=ldms_test.cluster_checked_2agg
+#SBATCH -p short,batch
+#SBATCH --time 10:00
+
+# name of the case file
+TEST_NAME=cluster_checked_2agg
+
+# Number of aggregator nodes in the case. Can be 0, but not empty.
+# If more than AGG_COUNT nodes are in the slurm node list,
+# the first AGG_COUNT are reserved for launching daemons 1..$AGG_COUNT by make_hostlists.
+# Else (not recommended) aggregators are in the normal round-robin.
+AGG_COUNT=3
+
+commonfile=$(dirname $(pll-ldms-static-test.sh -b $TEST_NAME))/sbatch.common
+# set up host lists from slurm data and launch test_name in a unique output directory.
+. $commonfile

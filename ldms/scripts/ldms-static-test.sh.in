@@ -181,6 +181,7 @@ function DAEMONS {
 		/bin/rm -f ${LDMSD_RUN}/revconf.$i ${LDMSD_RUN}/conf.$i ${LDMSD_RUN}/yaml.$i ${LDMSD_RUN}/yaml.$i.pre-sed ${LDMSD_RUN}/start.$i
 		ports[$i]=$(($portbase + $i))
 		eval export port$i=${ports[$i]}
+		export ports
 		binname=ldmsd.${ports[$i]}
 		pkill -9 $binname
 		/bin/rm -f $LDMSD_RUN/$binname
@@ -307,6 +308,11 @@ function LDMSD {
 	yamlonce=""
 	for i in $*; do
 		export i
+		if [[ -n "${LOGOPT+x}" ]]; then
+			XLOGOPT="$LOGOPT"
+		else
+			XLOGOPT="-l ${LOGDIR}/$i.txt"
+		fi
 		if test "$usevg" = "1"; then
 			if test -z "$VG"; then
 				XVG=valgrind
@@ -370,20 +376,20 @@ function LDMSD {
 				ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
 				env > $LDMSD_RUN/env.$i
 				if test -n "$GDB"; then
-					echo "run -x ${XPRT}:${ports[$i]}:${XPRTHOST} -c $LDMSD_RUN/conf.$i -l ${LOGDIR}/$i.txt -v $LOG_LEVEL $LDMSD_EXTRA -r $LDMSD_PIDFILE.$i"
+					echo "run -x ${XPRT}:${ports[$i]}:${XPRTHOST} -c $LDMSD_RUN/conf.$i ${XLOGOPT} -v $LOG_LEVEL $LDMSD_EXTRA -r $LDMSD_PIDFILE.$i"
 					gdb ldmsd.${ports[$i]}
 				else
 					echo $wrap ldmsd.${ports[$i]} \
 						-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 						-c $LDMSD_RUN/conf.$i \
-						-l ${LOGDIR}/$i.txt \
+						${XLOGOPT} \
 						-v $LOG_LEVEL $LDMSD_EXTRA \
 						-r $LDMSD_PIDFILE.$i \
 					"2>&1 > ${LOGDIR}/$i.stdio &" > $LDMSD_RUN/start.$i
 					$wrap ldmsd.${ports[$i]} \
 						-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 						-c $LDMSD_RUN/conf.$i \
-						-l ${LOGDIR}/$i.txt \
+						${XLOGOPT} \
 						-v $LOG_LEVEL $LDMSD_EXTRA \
 						-r $LDMSD_PIDFILE.$i \
 						2>&1 > ${LOGDIR}/$i.stdio &
@@ -400,7 +406,7 @@ function LDMSD {
 					echo $wrap ldmsd.${ports[$i]} \
 						-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 						-c $LDMSD_RUN/conf.$i \
-						-l ${LOGDIR}/$i.txt \
+						${XLOGOPT} \
 						-v $LOG_LEVEL $LDMSD_EXTRA \
 						-r $LDMSD_PIDFILE.$i \
 						"2>&1 > ${LOGDIR}/$i.stdio &" \
@@ -408,7 +414,7 @@ function LDMSD {
 					$wrap ldmsd.${ports[$i]} \
 						-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 						-c $LDMSD_RUN/conf.$i \
-						-l ${LOGDIR}/$i.txt \
+						${XLOGOPT} \
 						-v $LOG_LEVEL $LDMSD_EXTRA \
 						-r $LDMSD_PIDFILE.$i \
 						2>&1 > ${LOGDIR}/$i.stdio &
@@ -417,13 +423,13 @@ function LDMSD {
 					env > $LDMSD_RUN/env.$i
 					echo "#" > $LDMSD_RUN/revconf.$i
 					echo ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
-						-l ${LOGDIR}/$i.txt \
+						${XLOGOPT} \
 						-v $LOG_LEVEL \
 						-r $LDMSD_PIDFILE.$i \
 						"2>&1 > ${LOGDIR}/$i.stdio &" \
 						> $LDMSD_RUN/start.$i
 					ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
-						-l ${LOGDIR}/$i.txt \
+						${XLOGOPT} \
 						-v $LOG_LEVEL \
 						-r $LDMSD_PIDFILE.$i \
 						2>&1 > ${LOGDIR}/$i.stdio &
@@ -492,20 +498,20 @@ function LDMSD {
 				ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
 				env > $LDMSD_RUN/env.$i
 				if test -n "$GDB"; then
-					echo "run -x ${XPRT}:${ports[$i]}:${XPRTHOST} -y $LDMSD_RUN/yaml.$i --daemon_name $HOST:${ports[$i]} -l ${LOGDIR}/$i.txt -v $LOG_LEVEL $LDMSD_EXTRA -r $LDMSD_PIDFILE.$i"
+					echo "run -x ${XPRT}:${ports[$i]}:${XPRTHOST} -y $LDMSD_RUN/yaml.$i --daemon_name $HOST:${ports[$i]} ${XLOGOPT} -v $LOG_LEVEL $LDMSD_EXTRA -r $LDMSD_PIDFILE.$i"
 					gdb ldmsd.${ports[$i]}
 				else
 					echo $wrap ldmsd.${ports[$i]} \
 						-y $LDMSD_RUN/yaml.$i \
 						--daemon_name localhost$i \
-						-l ${LOGDIR}/$i.txt \
+						${XLOGOPT} \
 						-v $LOG_LEVEL $LDMSD_EXTRA \
 						-r $LDMSD_PIDFILE.$i \
 					"2>&1 > ${LOGDIR}/$i.stdio &" > $LDMSD_RUN/start.$i
 					$wrap ldmsd.${ports[$i]} \
 						-y $LDMSD_RUN/yaml.$i \
 						--daemon_name localhost$i \
-						-l ${LOGDIR}/$i.txt \
+						${XLOGOPT} \
 						-v $LOG_LEVEL $LDMSD_EXTRA \
 						-r $LDMSD_PIDFILE.$i \
 						2>&1 > ${LOGDIR}/$i.stdio &

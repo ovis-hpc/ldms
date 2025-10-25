@@ -1,0 +1,85 @@
+# This test emulates the stream traffic but not the set traffic of linux_proc_sampler
+# by recycling some captured and anonymized json.
+export plugname=linux_proc_sampler
+export dsname=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 stat=1 auto-schema=1)
+export dstat_schema=$dsname
+export LDMSD_LOG_TIME_SEC=1
+export LDMSD_EXTRA="-m 128m"
+
+SET_LOG_LEVEL DEBUG
+
+portbase=11000
+DAEMONS 3
+/bin/rm -f $LOGDIR/json*.log
+/bin/rm -f $LOGDIR/nl.log
+/bin/rm -f $LOGDIR/vg.*
+
+function REPLAY_JSON {
+	# args: daemon-number repeat count filename ...
+	# Send each unpathed file to port using tag=(filename less suffix starting with -) repeatedly
+	# in line mode, with reconnection each time the file is resent for about 11 days or until killed.
+	# json input files must be next to the input case script.
+	target_num=$1
+	repeats=$2
+	iport=${ports[$target_num]}
+	shift
+	shift
+	files="$*"
+	replay_json_pidlist=""
+	for f in $files; do
+		tag=$(echo $f | cut -d- -f1)
+		ldms_message_publish -p "$iport" -a none -m $tag -t json -x $XPRT -h $HOST \
+			-i 1000000 -W 1000 -l -r $repeats -R -v \
+			-f $(dirname $input)/$f \
+			> $LOGDIR/pub.$target_num.$tag 2>&1 &
+		replay_json_pidlist="$! $replay_json_pidlist"
+	done
+	echo $replay_json_pidlist
+}
+
+# log whether or not the given pids are found
+function CHECK_PIDS {
+	echo check_pids $*
+	label=$1
+	shift
+	for cpid in $* ; do
+		if ps -p $cpid > /dev/null; then
+			echo OK PID for $label: $cpid
+		else
+			echo MISSING PID for $label: $cpid
+		fi
+	done
+}
+
+VGARGS="--tool=drd --trace-cond=yes --trace-fork-join=yes"
+VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=all --time-stamp=yes --keep-debuginfo=yes --malloc-fill=3b"
+# use stdio instead of file specification by uncommenting next line
+#LOGOPT=""
+#sampler
+vgon
+LDMSD 1
+#vgoff
+# L1
+#vgon
+LDMSD 2
+#vgoff
+# L2
+#vgon
+LDMSD 3
+vgoff
+SLEEP 5
+# start publisher loops before ldmsd 1
+REPLAY_PIDS=$(REPLAY_JSON 1 1 linux_proc_sampler_argv-1.json  linux_proc_sampler_env-1.json  linux_proc_sampler_files-1.json  slurm-1.json)
+echo $REPLAY_PIDS
+
+SLEEP 5
+CHECK_PIDS "ldms_message_publish" $REPLAY_PIDS
+SLEEP 10
+KILL_LDMSD 1 2 3
+SLEEP 5
+
+file_created $STOREDIR/node/$dsname
+rollover_created $STOREDIR/blobs/slurm.DAT
+rollover_created $STOREDIR/blobs/linux_proc_sampler_argv.DAT
+rollover_created $STOREDIR/blobs/linux_proc_sampler_env.DAT
+rollover_created $STOREDIR/blobs/linux_proc_sampler_files.DAT

@@ -1,0 +1,29 @@
+msg_enable
+
+load name=dstat
+config name=dstat producer=localhost${i} instance=localhost${i}/${dstat_schema} component_id=${i} mmalloc=1 io=1 fd=1 auto-schema=1 stat=1) perm=777
+start name=dstat interval=1000000 offset=0
+
+# blobs must be allowed by writer plugin and prdcr_subscribe by daemon
+load name=blob_msg_writer plugin=blob_msg_writer
+config name=blob_msg_writer path=${STOREDIR} container=blobs message_channel=slurm message_channel=linux_proc_sampler_env message_channel=linux_proc_sampler_argv types=1 message_channel=linux_proc_sampler_files
+# rolltype=1 rollover=20
+start name=blob_msg_writer interval=10000000000
+
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} reconnect=2000000
+prdcr_subscribe regex=.* message_channel=slurm
+prdcr_subscribe regex=.* message_channel=linux_proc_sampler_argv
+prdcr_subscribe regex=.* message_channel=linux_proc_sampler_env
+prdcr_subscribe regex=.* message_channel=linux_proc_sampler_files
+prdcr_start name=localhost2
+
+updtr_add name=allhosts interval=1000000 offset=200000 auto_interval=true
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0
+
+strgp_add name=store_dstat plugin=store_csv schema=${dstat_schema} container=node
+strgp_prdcr_add name=store_dstat regex=.*
+strgp_start name=store_dstat

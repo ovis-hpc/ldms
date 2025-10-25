@@ -16,46 +16,55 @@ fi
 SET_LOG_LEVEL INFO
 # start collector(s)
 if test "x$maxdaemon" = "x"; then
-	maxdaemon=3
+	maxdaemon=4
 fi
 
+half_daemons=$(( ($maxdaemon-3) / 2 ))
+first_l1_begin=4
+first_l1_end=$(( 3 + $half_daemons))
+second_l1_begin=$(( $first_l1_end + 1 ))
+second_l1_end=$maxdaemon
+MESSAGE first L1 collecting $first_l1_begin to $first_l1_end
+MESSAGE second L1 collecting $second_l1_begin to $second_l1_end
 DAEMONS $(seq 1 $maxdaemon)
 LDMSD_EXTRA="-m 20k"
 VGTAG=.samp
 #netstat -tonp
-# start n-2 sampler daemons
+# start n-3 sampler daemons
 #vgon
-LDMSD -s 1 -c $(seq 3 $maxdaemon)
+LDMSD -s 1 -c $(seq 4 $maxdaemon)
 vgoff
 
 # without the next sleep, ldms_ls hits config parsing for some
-# daemons and those hit assert
+# daemons
 SLEEP 60
 BARRIER_VERBOSE="-v"
 echo STRTWAIT1 $(date +%s.%N)
-llw_timeout=$(( $maxdaemon / 4 + 10 ))
-LDMS_LS_WAIT meminfo $llw_timeout $(seq 3 $maxdaemon)
+llw_timeout=$(( $maxdaemon + 10 ))
+LDMS_LS_WAIT meminfo $llw_timeout $(seq 4 $maxdaemon)
 echo DONEWAIT1 LDMS_LS_WAIT $(date +%s.%N)
 
 #timeout=20
 # run/ldmsd.pid.$k for all k in argument list (after shifting off the timeout value)
 # if fail, set bypass=1.
 # info: $myproc is which daemon number this instance is
-#CHECK_PIDS $timeout `seq 3 $maxdaemon` ; # function which waits until all pids files exist and all pids listed in pid files also exist;
+#CHECK_PIDS $timeout `seq 4 $maxdaemon` ; # function which waits until all pids files exist and all pids listed in pid files also exist;
 
 ulimit -c unlimited
 # scale m to handle maxdaemon
 # -m > 450 or so seems to be incompatible with arm/valgrind 3.13
 LDMSD_EXTRA="-m 32G"
-vgon
+#vgon
 VGTAG=.L2
 # start L2 on daemon 1
-LDMSD -a 1
+LDMSD 1
 vgoff
 #vgon
 VGTAG=.L1
-# start L1 on daemon 2, with sampler daemons 3..maxdaemon
-LDMSD -a -s 3000000 -P pll.producer,`seq -s, 3 $maxdaemon` 2
+# start L1 on daemon 2, with sampler daemons 4-lower half
+LDMSD -a -s 3000000 -P pll.producer,`seq -s, $first_l1_begin $first_l1_end` 2
+# start L1 on daemon 3, with sampler daemons upper half
+LDMSD -a -s 3000000 -P pll.producer,`seq -s, $second_l1_begin $second_l1_end` 3
 vgoff
 SLEEP 30
 FILECNT_LDMSD $ALL_DAEMONS
@@ -75,26 +84,28 @@ while test $(SEC_LEFT) -gt 600; do
 	((flap++))
 	MESSAGE "FLAP $flap starting at $(date +%s)"
 	BEST_DELAY 300
-	# check that 3-n started sampling and data reached L2
-	LDMS_AGG_WAIT 1 30 meminfo 30 $(seq 3 $maxdaemon)
+	# check that 4-n started sampling and data reached L2
+	LDMS_AGG_WAIT 1 300 meminfo 300 $(seq 4 $maxdaemon)
 	echo DONEWAIT2.$flap LDMS_AGG_WAIT $(date +%s.%N)
 	LDMS_STATUS 1
 	BEST_DELAY 300
 	WAIT_ALL 0 $ALL_DAEMONS ; # this should be redundant and fast
 	# stop all samplers and restart a few cycles
-	KILL_LDMSD $(seq 3 $maxdaemon)
+	KILL_LDMSD $(seq 4 $maxdaemon)
 	BEST_DELAY 300
 	WAIT_ALL 0 $ALL_DAEMONS
 	echo DONEWAIT3.$flap KILL_LDMSD $(date +%s.%N)
 	# check that 3-n samplers got dropped by aggregator
 	# still the local dstat set should be seen
 	LDMS_STATUS 2
+	LDMS_STATUS 3
 
 	BEST_DELAY 300
         lawsc_agg=1
         lawsc_agg_connect_timeout=5
-        lawsc_count_target=1
+        lawsc_count_target=2
         lawsc_count_timeout=260
+	MESSAGE "WAITING on L2 for set disappearance at $(date +%s)"
 	LDMS_AGG_WAIT_SET_COUNT \
 		$lawsc_agg \
 		$lawsc_agg_connect_timeout \
@@ -106,7 +117,7 @@ while test $(SEC_LEFT) -gt 600; do
 	SLEEP 5
 	FILECNT_LDMSD $ALL_DAEMONS
 	# restart samplers.
-	LDMSD -s 1 -c $(seq 3 $maxdaemon)
+	LDMSD -s 1000000 -c $(seq 4 $maxdaemon)
 done
 
 
@@ -116,10 +127,12 @@ LDMS_LS 2
 # kill l2
 KILL_LDMSD 1
 SLEEP 1
+# have all script instances check in
 WAIT_ALL 0 $ALL_DAEMONS
-# kill l1, samps
-KILL_LDMSD $(seq 3 $maxdaemon) 2
+# kill samps, l1s
+KILL_LDMSD $(seq 4 $maxdaemon) 2 3
 BEST_DELAY 300
+# have all script instances check in
 WAIT_ALL 0 $ALL_DAEMONS
 LDMS_CPU_GRIND stop
 MESSAGE logs and data under ${TESTDIR}

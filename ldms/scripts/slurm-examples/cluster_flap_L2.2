@@ -1,0 +1,9 @@
+# this is the L1 aggregator
+# collect resource stats about the L1
+load name=dstat
+config name=dstat producer=L1 instance=localhost${i}/dstat component_id=${i} mmalloc=1 statm=1 stat=1 io=1 fdtypes=1 auto-schema=1
+start name=dstat interval=1000000 offset=0
+
+updtr_add name=allhosts interval=1000000 offset=300000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
