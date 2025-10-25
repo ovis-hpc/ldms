@@ -343,6 +343,12 @@ LOGDIR
    |
    | A directory that should be used for log outputs.
 
+LOGOPT
+   |
+   | If set, this replaces the default daemon log setting
+     "-l ${LOGDIR}/$i.txt". Defining LOPGOPT="" sends log data
+     to stdout (${LOGDIR}/$i.stdio).
+
 LDMS_AUTH_FILE
    |
    | Secret file used for daemon communication.

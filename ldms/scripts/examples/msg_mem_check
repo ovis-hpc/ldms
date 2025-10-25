@@ -15,19 +15,21 @@ DAEMONS 3
 /bin/rm -f $LOGDIR/vg.*
 
 function REPLAY_JSON {
-	# args: daemon-number filename ...
+	# args: daemon-number repeat count filename ...
 	# Send each unpathed file to port using tag=(filename less suffix starting with -) repeatedly
 	# in line mode, with reconnection each time the file is resent for about 11 days or until killed.
 	# json input files must be next to the input case script.
 	target_num=$1
+	repeats=$2
 	iport=${ports[$target_num]}
+	shift
 	shift
 	files="$*"
 	replay_json_pidlist=""
 	for f in $files; do
 		tag=$(echo $f | cut -d- -f1)
 		ldms_message_publish -p "$iport" -a none -m $tag -t json -x $XPRT -h $HOST \
-			-i 1000000 -W 1000 -l -r 1000000 -R -v \
+			-i 1000000 -W 1000 -l -r $repeats -R -v \
 			-f $(dirname $input)/$f \
 			> $LOGDIR/pub.$target_num.$tag 2>&1 &
 		replay_json_pidlist="$! $replay_json_pidlist"
@@ -49,10 +51,6 @@ function CHECK_PIDS {
 	done
 }
 
-# start publisher loops before ldmsd 1
-REPLAY_PIDS=$(REPLAY_JSON 1 linux_proc_sampler_argv-1.json  linux_proc_sampler_env-1.json  linux_proc_sampler_files-1.json  slurm-1.json)
-echo $REPLAY_PIDS
-
 VGARGS="--tool=drd --trace-cond=yes --trace-fork-join=yes"
 VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=all --time-stamp=yes --keep-debuginfo=yes --malloc-fill=3b"
 # use stdio instead of file specification by uncommenting next line
@@ -60,27 +58,26 @@ VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-k
 #sampler
 vgon
 LDMSD 1
-vgoff
+#vgoff
 # L1
-vgon
+#vgon
 LDMSD 2
-vgoff
+#vgoff
 # L2
-vgon
+#vgon
 LDMSD 3
 vgoff
 SLEEP 5
+# start publisher loops before ldmsd 1
+REPLAY_PIDS=$(REPLAY_JSON 1 1 linux_proc_sampler_argv-1.json  linux_proc_sampler_env-1.json  linux_proc_sampler_files-1.json  slurm-1.json)
+echo $REPLAY_PIDS
+
 SLEEP 5
 CHECK_PIDS "ldms_message_publish" $REPLAY_PIDS
-SLEEP 60
-kill -SIGTERM $REPLAY_PIDS
-sleep 2
-CHECK_PIDS "ldms_message_publish_termed" $REPLAY_PIDS
-for p in $REPLAY_PIDS; do
-	kill -9 $p
-done
-CHECK_PIDS "ldms_message_publish_forced" $REPLAY_PIDS
+SLEEP 10
 KILL_LDMSD 1 2 3
+SLEEP 5
+
 file_created $STOREDIR/node/$dsname
 rollover_created $STOREDIR/blobs/slurm.DAT
 rollover_created $STOREDIR/blobs/linux_proc_sampler_argv.DAT
