@@ -349,7 +349,8 @@ class LDMSD_Req_Attr(object):
     RESET_INTERVAL = 47
     XTHREAD = 48
     MSG_CHAN = 49
-    LAST = 50
+    ENABLE = 50
+    LAST = 51
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -408,6 +409,7 @@ class LDMSD_Req_Attr(object):
                    'reset_interval': RESET_INTERVAL,
                    'exclusive_thread': XTHREAD,
                    'message_channel': MSG_CHAN,
+                   'enable' : ENABLE,
                    'TERMINATING': LAST
         }
 
@@ -459,6 +461,7 @@ class LDMSD_Req_Attr(object):
                    RESET_INTERVAL : 'reset_interval',
                    XTHREAD : 'exclusive_thread',
                    MSG_CHAN : 'message_channel',
+                   ENABLE : 'enable',
                    LAST : 'TERMINATING'
         }
 
@@ -3510,7 +3513,7 @@ class Communicator(object):
     def profiling(self, enable = None, reset = None):
         attrs = []
         if enable is not None:
-            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.TYPE,
+            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.ENABLE,
                                          value = enable))
         if reset is not None:
             attrs.append(LDMSD_Req_Attr(attr_id  = LDMSD_Req_Attr.RESET,

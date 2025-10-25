@@ -2500,7 +2500,7 @@ class LdmsdCmdParser(cmd.Cmd):
         The command always reports the cached profiling data if exists.
 
         Parameters:
-          [enabled=]   True to enable LDMS profiling
+          [enable=]   True to enable LDMS profiling
           [reset=]     True to reset and free cached profiling data after the report
         """
         arg = self.handle_args('profiling', arg)
