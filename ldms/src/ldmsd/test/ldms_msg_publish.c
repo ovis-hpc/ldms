@@ -55,8 +55,6 @@ static ldms_t get_ldms(const char *xprt, const char *auth,
 	if (verbose) {
 		printf("get_ldms: retry: %d\n", retry);
 	}
-	struct timespec nap = { (retry / 1000), (retry * 1000000) % 1000000000 };
-
 	do {
 		ldms = ldms_xprt_new_with_auth(xprt, auth, auth_opt);
 		if (!ldms) {
@@ -72,32 +70,18 @@ static ldms_t get_ldms(const char *xprt, const char *auth,
 			}
 			return ldms;
 		}
-		if (verbose) {
-			printf("strerror(rc): %s, zap_err_str(rc): %s\n",
-				strerror(rc), zap_err_str(rc));
-		}
-		/* seems to be no way to distinguish on the ldms_t why the last connection
-		// refused happened. These cases would be of interest:
-		// ENOMEM (something exhausted; give up)
-		// ENOKEY (wrong password for munge or ovis; give up)
-		// EPROTONOSUPPORT (wrong auth type; give up)
-		// EHOSTDOWN (try again)
-		// EHOSTUNREACH (try again)
-		// loop forever since we cannot distinguish
-		*/
-		if (0) {
-			printf("Auth error %s connecting to peer %s:%s xprt=%s auth=%s\n",
-			       strerror(rc), host, port, xprt, auth);
-			break;
-		}
+		if (verbose)
+			printf("Connection error: %s\n", strerror(rc));
+
 		ldms_xprt_close(ldms);
 		ldms = NULL;
 		if (retry) {
 			if (verbose) {
-				printf("Waiting %d millis to connect to daemon at %s:%s xprt=%s auth=%s\n",
-					retry, host, port, xprt, auth);
+				printf("Waiting %d millis to connect to daemon "
+				       "at %s:%s xprt=%s auth=%s\n",
+				       retry, host, port, xprt, auth);
 			}
-			nanosleep(&nap, NULL);
+			usleep(retry * 1000);
 		}
 	} while (retry);
 	return ldms;
@@ -126,11 +110,9 @@ int main(int argc, char **argv)
 	int max_wait = 0;
 	int retry = 0;
 	ldms_t ldms = NULL;
+	char *lbuf = NULL;
+	size_t lbuf_sz = 0;
 
-	if (NULL == strstr(argv[0], "ldms_message_publish"))
-		fprintf(stderr,"program name %s is deprecated. Use 'ldms_message_publish' instead.\n", argv[0]);
-
-	ldms_init(16*1024*1024);
 	auth_opt = av_new(auth_opt_max);
 	if (!auth_opt) {
 		perror("could not allocate auth options");
@@ -143,7 +125,7 @@ int main(int argc, char **argv)
 	if (!host || !port || !xprt || !auth) {
 		printf("ERROR: out of memory\n");
 		rc = ENOMEM;
-		goto err;
+		goto out;
 	}
 
 	while ((opt=getopt_long(argc, argv, short_opts, long_opts, &opt_idx)) > 0) {
@@ -154,7 +136,7 @@ int main(int argc, char **argv)
 			if (!host) {
 				printf("ERROR: out of memory\n");
 				rc = ENOMEM;
-				goto err;
+				goto out;
 			}
 			break;
 		case 'p':
@@ -163,7 +145,7 @@ int main(int argc, char **argv)
 			if (!port) {
 				printf("ERROR: out of memory\n");
 				rc = ENOMEM;
-				goto err;
+				goto out;
 			}
 			break;
 		case 'x':
@@ -172,7 +154,7 @@ int main(int argc, char **argv)
 			if (!xprt) {
 				printf("ERROR: out of memory\n");
 				rc = ENOMEM;
-				goto err;
+				goto out;
 			}
 			break;
 		case 'a':
@@ -181,7 +163,7 @@ int main(int argc, char **argv)
 			if (!auth) {
 				printf("ERROR: out of memory\n");
 				rc = ENOMEM;
-				goto err;
+				goto out;
 			}
 			break;
 		case 'A':
@@ -205,7 +187,7 @@ int main(int argc, char **argv)
 			if (!msg) {
 				printf("ERROR: out of memory\n");
 				rc = ENOMEM;
-				goto err;
+				goto out;
 			}
 			break;
 		case 'f':
@@ -213,7 +195,7 @@ int main(int argc, char **argv)
 			if (!filename) {
 				printf("ERROR: out of memory\n");
 				rc = ENOMEM;
-				goto err;
+				goto out;
 			}
 			break;
 		case 't':
@@ -310,6 +292,8 @@ int main(int argc, char **argv)
 				goto usage;
 			}
 			break;
+		default:
+			goto usage;
 		}
 	}
 	if (!msg || msg[0] == '\0') {
@@ -321,7 +305,7 @@ int main(int argc, char **argv)
 		file = fopen(filename, "r");
 		if (!file) {
 			perror(filename);
-			goto err;
+			goto out;
 		}
 	} else {
 		if (repeat || interval || reconnect || line_mode) {
@@ -347,20 +331,24 @@ int main(int argc, char **argv)
 	int k;
 	int wait_count = 0;
 	struct timespec nap = { 0, CREDIT_RETRY_PAUSE };
+	size_t cnt;
 	/* repeat whole file -r times, ignoring errors except if on first try. */
 	if (filename) {
 		if (!line_mode) {
 			for (k = 0; k < repeat; k++) {
 				if (!ldms) {
-					ldms = get_ldms(xprt, auth, auth_opt, host, port, retry, verbose);
+					ldms = get_ldms(xprt, auth, auth_opt,
+							host, port, retry, verbose);
 					if (!ldms)
 						return rc;
 				}
+				if (k)
+					rewind(file);
 				rc = ldms_msg_publish_file(ldms, msg, typ, &cred, perm, file);
 				if (rc) {
 					ldms_xprt_close(ldms);
 					ldms = NULL;
-					goto err;
+					goto out;
 				}
 				usleep(interval);
 				if (k && verbose)
@@ -376,18 +364,16 @@ int main(int argc, char **argv)
 
 		/* repeat file line by line -r times, returning first error seen. */
 		for (k = 0; k < repeat; k++) {
-			char line_buffer[4096];
-			char *s;
 			if (!ldms) {
 				ldms = get_ldms(xprt, auth, auth_opt, host, port, retry, verbose);
 				if (!ldms)
-					goto err;
+					goto out;
 			}
 			if (k)
 				rewind(file);
-			while (0 != (s = fgets(line_buffer, sizeof(line_buffer)-1, file))) {
-resend1:
-				rc = ldms_msg_publish(ldms, msg, typ, &cred, perm, s, strlen(s)+1);
+			while (0 < (int)(cnt = getline(&lbuf, &lbuf_sz, file))) {
+			resend1:
+				rc = ldms_msg_publish(ldms, msg, typ, &cred, perm, lbuf, cnt+1);
 				while (rc == EAGAIN && (wait_count < max_wait || !max_wait)) {
 					wait_count++;
 					nanosleep(&nap, NULL);
@@ -407,39 +393,28 @@ resend1:
 
 	/* process pipe input as file or lines */
 	ldms = get_ldms(xprt, auth, auth_opt, host, port, retry, verbose);
-	if (!ldms) {
-		goto err;
-	}
+	if (!ldms)
+		goto out;
+
 	if (!line_mode) {
 		rc = ldms_msg_publish_file(ldms, msg, typ, &cred, perm, file);
 	} else {
-		char line_buffer[buf_size];
-		char *s;
 		int line = 0;
-		line_buffer[BUF_END] = 1;
-		while (NULL != (s = fgets(line_buffer, sizeof(line_buffer)-1, file))) {
+		while (0 < (int)(cnt = getline(&lbuf, &lbuf_sz, file))) {
 			line++;
-			/* overlong line or unterminated line exactly BUF_SIZE-2 long at end of input */
-			if (line_buffer[BUF_END] == '\0' && line_buffer[BUF_END-1] != '\n') {
-				printf("Error: input line too long (4k limit) at line %d "
-					"or unterminated 4k line "
-					"at eof publishing: %s\n", line, s);
-				rc = EMSGSIZE;
-				break;
-			}
-resend2:
-			rc = ldms_msg_publish(ldms, msg, typ, &cred, perm, s, strlen(s)+1);
+		resend2:
+			rc = ldms_msg_publish(ldms, msg, typ, &cred, perm, lbuf, cnt+1);
 			while (rc == EAGAIN && (wait_count < max_wait || !max_wait)) {
 				wait_count++;
 				nanosleep(&nap, NULL);
 				goto resend2;
 			}
 			if (rc) {
-				printf("error %d(%s) at line %d publishing: %s\n", rc, strerror(rc), line, s);
+				printf("error %d(%s) at line %d publishing: %s\n",
+				       rc, strerror(rc), line, lbuf);
 				printf("ignore the rest of the input.\n");
 				break;
 			}
-			line_buffer[BUF_END] = 1;
 		}
 	}
 	goto out;
@@ -454,11 +429,11 @@ usage:
 	       "\t-m <message-channel> -t <msg-type>\n"
 	       "\t-w <max_resends_for_credit_wait>\n"
 	       "\t-W <connection_retry_wait_milliseconds>\n"
-	       "\t-v\n"
-	       , argv[0]);
-err:
+	       "\t-v\n",
+	       argv[0]);
 
 out:
+	free(lbuf);
 	free(host);
 	free(port);
 	free(xprt);

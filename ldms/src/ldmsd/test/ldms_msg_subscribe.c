@@ -46,14 +46,19 @@ static int msg_cb_fn(ldms_msg_event_t ev, void *cb_arg)
 	/* cb_arg is the pointer supplied to ldms_msg_subscribe() */
 	switch (ev->type) {
 	case LDMS_MSG_EVENT_RECV:
-		printf("name: %s\n", ev->recv.name);
-		printf("hop : %d\n", ev->hop_num);
-		printf("type: %s\n", ldms_msg_type_sym(ev->recv.type));
-		printf("data: %s\n", ev->recv.data);
-		/* See `struct ldms_msg_event_s` for more information. */
+		if (ev->recv.type == LDMS_MSG_JSON) {
+			fputs(ev->recv.data, file);
+		} else {
+			/* See `struct ldms_msg_event_s` for more information. */
+			fprintf(file, "name: %s\n", ev->recv.name);
+			fprintf(file, "hop : %d\n", ev->hop_num);
+			fprintf(file, "type: %s\n", ldms_msg_type_sym(ev->recv.type));
+			fprintf(file, "data: %s\n", ev->recv.data);
+		}
+		fflush(file);
 		break;
 	case LDMS_MSG_EVENT_CLIENT_CLOSE:
-		/* This is the last event guaranteed to delivered to this client. The
+		/* This is the last event guaranteed be to delivered to this client. The
 		 * resources application associate to this client (e.g. cb_arg) could be
 		 * safely freed at this point. */
 		break;
@@ -107,7 +112,9 @@ static int setup_connection(char *xprt, char *host, char *port, char *auth, stru
 
 	rc = ldms_xprt_listen_by_name(ldms, host, port, event_cb, NULL);
 	if (rc)
-		fprintf(stderr, "Error %d attempting to listen at %s:%s:%s:%s\n", rc, xprt, host, port, auth);
+		fprintf(stderr,
+			"Error %d attempting to listen at %s:%s:%s:%s\n",
+			rc, xprt, host, port, auth);
  out:
 	freeaddrinfo(ai);
 	return rc;
