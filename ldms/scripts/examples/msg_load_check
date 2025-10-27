@@ -124,7 +124,7 @@ KILL_NO_TEARDOWN=1
 KILL_LDMSD 1 2 3
 
 # give the file system time to catch up, if it's slow.
-SLEEP 10
+SLEEP 20
 
 file_created $STOREDIR/node/$dsname
 rollover_created $STOREDIR/blobs/slurm.DAT
