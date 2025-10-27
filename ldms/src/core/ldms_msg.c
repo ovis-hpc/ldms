@@ -74,7 +74,7 @@ extern int __enable_profiling[LDMS_XPRT_OP_COUNT];
 
 static ovis_log_t __ldms_msg_log = NULL; /* see __ldms_msg_init() below */
 
-#define __LOG(LVL, FMT, ...) ovis_log(__ldms_msg_log, LVL, FMT, ##__VA_ARGS__ );
+#define __LOG(LVL, FMT, ...) ovis_log(__ldms_msg_log, LVL, FMT, ##__VA_ARGS__ )
 
 
 #define __DEBUG(FMT, ...) __LOG(OVIS_LDEBUG, FMT, ##__VA_ARGS__)
@@ -91,6 +91,8 @@ static ovis_log_t __ldms_msg_log = NULL; /* see __ldms_msg_init() below */
 #define __TIMESPEC_GT(a, b) __TIMESPEC_LT(b, a)
 #define __TIMESPEC_LE(a, b) (!__TIMESPEC_LT(b, a))
 #define __TIMESPEC_GE(a, b) __TIMESPEC_LE(b, a)
+
+#define MAX_ADDR_NAME 64
 
 static int __msg_stats_level = 1;
 
@@ -585,6 +587,7 @@ int __cred_allowed_as(struct ldms_cred *cred, struct ldms_cred *as)
 	return rc;
 }
 
+
 /* deliver message to all clients */
 static int
 __msg_deliver(struct __msg_buf_s *sbuf, uint64_t msg_gn,
@@ -607,6 +610,8 @@ __msg_deliver(struct __msg_buf_s *sbuf, uint64_t msg_gn,
 		rc = errno;
 		goto out;
 	}
+	__DEBUG("__msg_deliver called with channel %s data size %zu\n",
+			name, data_len);
 
 	struct __msg_event_s _ev = {
 		.pub = {
@@ -707,7 +712,16 @@ __msg_deliver(struct __msg_buf_s *sbuf, uint64_t msg_gn,
 			_ev.pub.recv.json = json;
 			json_parser_free(jp);
 			if (rc) {
+				char srcname[MAX_ADDR_NAME];
+				ldms_addr_ntop( &_ev.pub.recv.src, srcname,
+						MAX_ADDR_NAME);
+				__DEBUG("Received malformed JSON on channel %s"
+				       " from uid %u at %s\n",
+					name, sbuf->msg->cred.uid, srcname);
 				goto cleanup;
+			} else {
+				__DEBUG("Parsed json data for delivery on channel %s size %zu\n",
+					name, data_len);
 			}
 		}
 		ref_get(&c->ref, "callback");
