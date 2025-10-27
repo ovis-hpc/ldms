@@ -41,14 +41,45 @@ function REPLAY_JSON {
 
 # log whether or not the given pids are found
 function CHECK_PIDS {
-	echo check_pids $*
+	echo check_pids $1
 	label=$1
+	present=$2
+	absent=$3
+	shift
+	shift
 	shift
 	for cpid in $* ; do
 		if ps -p $cpid > /dev/null; then
-			echo OK PID for $label: $cpid
+			echo $present for $label pid: $cpid
 		else
-			echo MISSING PID for $label: $cpid
+			echo $absent for $label pid: $cpid
+		fi
+	done
+}
+
+# WAIT_DETACHED_PIDS timeout_sec pid...
+# wait up to timeout for all given pids to die.
+function WAIT_DETACHED_PIDS {
+	pidsmaxwait=$1
+	shift
+	MESSAGE "waiting up to $pidsmaxwait seconds for pids to complete: $*"
+	pidtend=$(( $(date +%s) + $pidsmaxwait))
+	while /bin/true; do
+		pidtnow=$(date +%s)
+		if test $pidtnow -gt $pidtend; then
+			MESSAGE "timed-out: WAIT_DETACHED_PIDS after $pidsmaxwait seconds for $*"
+			break
+		fi
+		seen=0
+		for i in $*; do
+			if ps -p $i > /dev/null; then
+				seen=1
+				break
+			fi
+		done
+		if test $seen = "0"; then
+			MESSAGE "completed: WAIT_DETACHED_PIDS took $(( $pidsmaxwait - ($pidtend - $pidtnow) ))"
+			break
 		fi
 	done
 }
@@ -79,7 +110,7 @@ echo $REPLAY_PIDS
 
 SLEEP 10
 # all the replayers should be done
-CHECK_PIDS "message publisher" $REPLAY_PIDS
+CHECK_PIDS "message publisher" "unexpectedly still here" "gone as expected" $REPLAY_PIDS
 KILL_LDMSD 1 2 3
 SLEEP 5
 
