@@ -26,7 +26,7 @@ function REPLAY_JSON {
 	replay_json_pidlist=""
 	for f in $files; do
 		tag=$(echo $f | cut -d- -f1)
-		ldms_message_publish -p "$iport" -a none -m $tag -t json -x $XPRT -h $HOST \
+		ldms_msg_publish -p "$iport" -a none -m $tag -t json -x $XPRT -h $HOST \
 			-i 1000000 -W 1000 -l -r 1000000 -R -v \
 			-f $(dirname $input)/$f \
 			> $LOGDIR/pub.$target_num.$tag 2>&1 &
@@ -71,15 +71,15 @@ LDMSD 3
 vgoff
 SLEEP 5
 SLEEP 5
-CHECK_PIDS "ldms_message_publish" $REPLAY_PIDS
+CHECK_PIDS "message publisher" $REPLAY_PIDS
 SLEEP 60
 kill -SIGTERM $REPLAY_PIDS
 sleep 2
-CHECK_PIDS "ldms_message_publish_termed" $REPLAY_PIDS
+CHECK_PIDS "message publisher sigterm" $REPLAY_PIDS
 for p in $REPLAY_PIDS; do
 	kill -9 $p
 done
-CHECK_PIDS "ldms_message_publish_forced" $REPLAY_PIDS
+CHECK_PIDS "message publisher sigkill" $REPLAY_PIDS
 KILL_LDMSD 1 2 3
 file_created $STOREDIR/node/$dsname
 rollover_created $STOREDIR/blobs/slurm.DAT

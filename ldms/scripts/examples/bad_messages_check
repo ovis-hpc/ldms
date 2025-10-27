@@ -14,6 +14,8 @@ DAEMONS 3
 /bin/rm -f $LOGDIR/nl.log
 /bin/rm -f $LOGDIR/vg.*
 
+#jvg="valgrind -v --leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=all --time-stamp=yes --keep-debuginfo=yes --malloc-fill=0 --log-file=$LOGDIR/vg.replay"
+
 function REPLAY_JSON {
 	# args: daemon-number repeat count filename ...
 	# Send each unpathed file to port using tag=(filename less suffix starting with -) repeatedly
@@ -52,34 +54,40 @@ function CHECK_PIDS {
 }
 
 VGARGS="--tool=drd --trace-cond=yes --trace-fork-join=yes"
-VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=all --time-stamp=yes --keep-debuginfo=yes --malloc-fill=3b"
+VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite --time-stamp=yes --keep-debuginfo=yes --gen-suppressions=all --suppressions=$(dirname $input)/memcheck.config.supp"
 # use stdio instead of file specification by uncommenting next line
 #LOGOPT=""
 #sampler
-vgon
+#vgon
 LDMSD 1
-#vgoff
+vgoff
 # L1
 #vgon
 LDMSD 2
 #vgoff
 # L2
-#vgon
+vgon
 LDMSD 3
 vgoff
 SLEEP 5
 # start publisher loops before ldmsd 1
-REPLAY_PIDS=$(REPLAY_JSON 1 1 linux_proc_sampler_argv-1.json  linux_proc_sampler_env-1.json  linux_proc_sampler_files-1.json  slurm-1.json)
+# all input objects are missing their final }.
+# For plugins that want json, no data should get stored.
+# No data should get leaked due to parse failures.
+REPLAY_PIDS=$(REPLAY_JSON 1 5 bad.linux_proc_sampler_argv-1.json  bad.linux_proc_sampler_env-1.json  bad.linux_proc_sampler_files-1.json  bad.slurm-1.json)
 echo $REPLAY_PIDS
 
-SLEEP 5
-CHECK_PIDS "message publisher" $REPLAY_PIDS
 SLEEP 10
+# all the replayers should be done
+CHECK_PIDS "message publisher" $REPLAY_PIDS
 KILL_LDMSD 1 2 3
 SLEEP 5
 
 file_created $STOREDIR/node/$dsname
-rollover_created $STOREDIR/blobs/slurm.DAT
-rollover_created $STOREDIR/blobs/linux_proc_sampler_argv.DAT
-rollover_created $STOREDIR/blobs/linux_proc_sampler_env.DAT
-rollover_created $STOREDIR/blobs/linux_proc_sampler_files.DAT
+
+if grep 'definitely lost: 0 bytes in 0 blocks' $LOGDIR/vg.3.*; then
+	echo "yay, no bad-json-related leaks!"
+else
+	echo "FAIL: definite leaks found at the L2; see $LOGDIR/vg.3.*"
+	bypass=1
+fi
