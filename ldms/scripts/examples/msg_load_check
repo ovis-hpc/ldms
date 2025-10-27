@@ -1,0 +1,144 @@
+# This test emulates the stream traffic but not the set traffic of linux_proc_sampler
+# by recycling some captured and anonymized json.
+export plugname=linux_proc_sampler
+export dsname=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 stat=1 auto-schema=1)
+export dstat_schema=$dsname
+export LDMSD_LOG_TIME_SEC=1
+export LDMSD_EXTRA="-m 128m"
+
+SET_LOG_LEVEL DEBUG
+
+portbase=11000
+DAEMONS 3
+/bin/rm -f $LOGDIR/json*.log
+/bin/rm -f $LOGDIR/nl.log
+/bin/rm -f $LOGDIR/vg.*
+
+function REPLAY_JSON {
+	# args: daemon-number repeat_count clone_count filename ...
+	# Send each unpathed file to port using tag=(filename less suffix starting with -) repeatedly
+	# in line mode, with reconnection each time the file is resent for about 11 days or until killed.
+	# json input files must be next to the input case script.
+	# repeat_count is how many times each publisher should send the file content for its file.
+	# clone_count is how many publishers should be started for each file.
+	# the total repeat_count*clone_count*number_files connections will be made
+	# with clone_count*number_files connections simultaneous, roughly.
+	target_num=$1
+	repeats=$2
+	clones=$3
+	iport=${ports[$target_num]}
+	shift
+	shift
+	shift
+	files="$*"
+	replay_json_pidlist=""
+	for f in $files; do
+		tag=$(echo $f | cut -d- -f1)
+		for c in $(seq $clones); do
+			ldms_msg_publish -p "$iport" -a none -m $tag -t json -x $XPRT -h $HOST \
+				-i 1000000 -W 1000 -l -r $repeats -R -v \
+				-f $(dirname $input)/$f \
+				> $LOGDIR/pub.$target_num.$c.$tag 2>&1 &
+			replay_json_pidlist="$! $replay_json_pidlist"
+		done
+	done
+	echo $replay_json_pidlist
+}
+
+# log whether or not the given pids are found
+# CHECK_PIDS kind if_present if_absent pid...
+function CHECK_PIDS {
+	echo check_pids $1
+	label=$1
+	present=$2
+	absent=$3
+	shift
+	shift
+	shift
+	for cpid in $* ; do
+		if ps -p $cpid > /dev/null; then
+			echo $present for $label pid: $cpid
+		else
+			echo $absent for $label pid: $cpid
+		fi
+	done
+}
+
+# WAIT_DETACHED_PIDS timeout_sec pid...
+# wait up to timeout for all given pids to die.
+function WAIT_DETACHED_PIDS {
+	pidsmaxwait=$1
+	shift
+	MESSAGE "waiting up to $pidsmaxwait seconds for pids to complete: $*"
+	pidtend=$(( $(date +%s) + $pidsmaxwait))
+	while /bin/true; do
+		pidtnow=$(date +%s)
+		if test $pidtnow -gt $pidtend; then
+			MESSAGE "timed-out: WAIT_DETACHED_PIDS after $pidsmaxwait seconds for $*"
+			break
+		fi
+		seen=0
+		for i in $*; do
+			if ps -p $i > /dev/null; then
+				seen=1
+				break
+			fi
+		done
+		if test $seen = "0"; then
+			MESSAGE "completed: WAIT_DETACHED_PIDS took $(( $pidsmaxwait - ($pidtend - $pidtnow) ))"
+			break
+		fi
+		sleep 1
+	done
+}
+
+#sampler
+LDMSD 1
+# L1
+LDMSD 2
+# L2
+LDMSD 3
+SLEEP 3
+
+core_count=$(LDMS_CPU_GRIND core_count)
+math_procs=$((4 * $core_count))
+
+# Uncomment the next two lines to impose CPU load
+# start math on 2*phys_cores
+#MESSAGE "starting math in $math_procs processes"
+#LDMS_CPU_GRIND -k $math_procs -n 600 -m exp
+
+# start publisher loops after ldmsd chain is up
+n_repeats=10
+n_clones=$core_count
+MESSAGE "starting $((4 * $n_clones)) publishers each with $n_repeats repetitions of its input file."
+REPLAY_PIDS=$(REPLAY_JSON 1 $n_repeats $n_clones linux_proc_sampler_argv-1.json  linux_proc_sampler_env-1.json  linux_proc_sampler_files-1.json  slurm-1.json)
+
+echo started processes $REPLAY_PIDS
+WAIT_DETACHED_PIDS 200 $REPLAY_PIDS
+
+LDMS_CPU_GRIND stop
+
+# if we enable teardown (close plugins, producers) L2 sometimes hangs in teardown
+KILL_NO_TEARDOWN=1
+KILL_LDMSD 1 2 3
+
+# give the file system time to catch up, if it's slow.
+SLEEP 10
+
+file_created $STOREDIR/node/$dsname
+rollover_created $STOREDIR/blobs/slurm.DAT
+rollover_created $STOREDIR/blobs/linux_proc_sampler_argv.DAT
+rollover_created $STOREDIR/blobs/linux_proc_sampler_env.DAT
+rollover_created $STOREDIR/blobs/linux_proc_sampler_files.DAT
+
+# check message count stored (-4 accounts for magic number in each dat file).
+# the total message count in the 4 json line files is 1023.
+n_logged=$(( $(strings $STOREDIR/blobs/*DAT* |wc -l) - 4 ))
+n_expected="$(( $n_repeats * 1023 * $n_clones))"
+if test "$n_logged" = "$n_expected"; then
+	MESSAGE ALL messages received
+else
+	MESSAGE FAIL: expected $n_expected but got "$n_logged"
+	bypass=1
+fi

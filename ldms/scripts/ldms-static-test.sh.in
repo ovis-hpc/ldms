@@ -820,6 +820,59 @@ function LDMS_AGG_WAIT_SET_COUNT {
 	return 1
 }
 
+function LDMS_CPU_GRIND {
+	# start or stop grinders on all cores
+	# LDMS_CPU_GRIND stop
+	# LDMS_CPU_GRIND core_count
+	# LDMS_CPU_GRIND [-k K] [workargs]
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	nsock=$(lscpu |grep ^Sock |sed -e 's/.*://' -e 's/ //g')
+	ncore=$(lscpu |grep ^Core |sed -e 's/.*://' -e 's/ //g')
+	pcores=$(($nsock * $ncore))
+	if test $1 = "core_count"; then
+		echo "$pcores"
+		return 0
+	fi
+	if test $1 = "stop"; then
+		if test -z $CPU_GRIND_DIR; then
+			return 0
+		fi
+		pflist=$(ls $CPU_GRIND_DIR/ldms_cpu_grind.pids.*  2> /dev/null)
+		for i in dummy $pflist; do
+			if test $i = "dummy"; then
+				continue
+			fi
+			tpid=$(cat $i)
+			if test -d /proc/$tpid/fd; then
+				disown $tpid
+				kill -9 $tpid
+			fi
+			/bin/rm $i
+		done
+		return 0
+	else
+		# otherwise start the grinding
+		CPU_GRIND_DIR=$TESTDIR_FAST/grind
+		gpid=$CPU_GRIND_DIR/ldms_cpu_grind.pids
+		gargs="-r -1 -p $gpid"
+		ihost=$HOST
+		MESSAGE "ldms_cpu_grind ${gargs}.\$i $*"
+		if test "x$1" = "x-k" -a -n $2; then
+			pcores=$2
+			shift
+		fi
+		if ! test -d  $CPU_GRIND_DIR; then
+			mkdir -p $CPU_GRIND_DIR
+		fi
+		for i in $(seq $pcores); do
+			ldms_cpu_grind ${gargs}.$i $* > /dev/null &
+		done
+	fi
+}
+
+
 # FILECNT_LDMSD num list
 function FILECNT_LDMSD {
 	if test "$bypass" = "1"; then
