@@ -56,6 +56,8 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
       |
       | Optional data-format. Either 'string' or 'json'. Default is
         string.
+        This publisher program does not validate input before sending it,
+        even if -t json is given.
 
    **-w|--max_wait** <W>
       |
@@ -66,10 +68,10 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
    **-l|--line**
       |
       | Optional line mode. Publishes file one line at a time as
-        separate publish calls. When used, the maximum line length
-        allowed is specified with '-z <LINE_MAX>'. If a line does
-        not contain a complete message, the recipients may see
-        what is sent as erroneous.
+        separate publish calls. In line mode, a delay of -D <nanoseconds>
+        is slept between lines. If a line does
+        not contain a complete message, the recipients will see
+        what is sent as erroneous when the type given is 'json'.
 
    **-f|--file** <file>
       |
@@ -86,13 +88,14 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
 
    **-i|--interval** <M>
       |
-      | When -i is specified, use an interval of M microseconds between
-        publication iterations. The default is 10000000 (10 seconds)
+      | When -i is specified, sleep an interval of M microseconds between
+        file publication iterations. The default is 10000000 (10 seconds).
+        Use -D to delay between lines within a file.
 
-   **-z|--line_size** <LINE_MAX>
+   **-D|--delay** <nanoseconds>
       |
-      | The largest line to send when processing an input file in line mode.
-        Any line longer than this will not be sent. The default is 4096.
+      | The amount of time to sleep between ldms_msg_publish calls when
+        in line mode (-l). Must be in range [0, 999999999]. Default 0.
 
    **-R|--reconnect**
       |
