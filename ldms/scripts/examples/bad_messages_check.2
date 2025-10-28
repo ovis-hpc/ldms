@@ -6,9 +6,9 @@ start name=dstat interval=1000000 offset=0
 
 prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} reconnect=2000000
 prdcr_subscribe regex=.* message_channel=slurm
-prdcr_subscribe regex=.* message_channel=linux_proc_sampler_argv
-prdcr_subscribe regex=.* message_channel=linux_proc_sampler_env
-prdcr_subscribe regex=.* message_channel=linux_proc_sampler_files
+prdcr_subscribe regex=.* message_channel=bad.linux_proc_sampler_argv
+prdcr_subscribe regex=.* message_channel=bad.linux_proc_sampler_env
+prdcr_subscribe regex=.* message_channel=bad.linux_proc_sampler_files
 prdcr_start name=localhost1
 
 updtr_add name=allhosts interval=1000000 offset=100000 auto_interval=true
