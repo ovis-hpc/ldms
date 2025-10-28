@@ -23,21 +23,18 @@ static struct option long_opts[] = {
 	{"line",     no_argument,	0,  'l' },
 	{"repeat",   required_argument, 0,  'r' },
 	{"interval", required_argument, 0,  'i' },
+	{"delay",    required_argument, 0,  'D' },
 	{"reconnect",no_argument,	0,  'R' },
 	{"retry",    required_argument,	0,  'W' },
 	{"verbose",  no_argument,       0,  'v' },
 	{0,          0,                 0,  0 }
 };
 
-static const char *short_opts = "Hh:p:f:m:t:x:a:A:U:G:P:lr:i:z:Rw:W:v";
+static const char *short_opts = "Hh:p:f:m:t:x:a:A:U:G:P:lr:i:D:Rw:W:v";
 
 #define AUTH_OPT_MAX 128
 
 #define CREDIT_RETRY_PAUSE 100000000 /* 1/10th sec if credit shortage*/
-
-#define DEFAULT_BUF_SIZE 4096 /* default max line from pipe or file if sending in line mode. */
-static size_t buf_size = DEFAULT_BUF_SIZE;
-#define BUF_END buf_size-1
 
 static int rc;
 
@@ -91,7 +88,6 @@ int main(int argc, char **argv)
 {
 	char *filename = NULL;
 	char *msg = NULL;
-	char *end = NULL;
 	int opt, opt_idx;
 	char *lval, *rval;
 	struct attr_value_list *auth_opt = NULL;
@@ -107,6 +103,7 @@ int main(int argc, char **argv)
 	int repeat = 0;
 	int reconnect = 0;
 	int interval = 0;
+	int delay = 0;
 	int max_wait = 0;
 	int retry = 0;
 	ldms_t ldms = NULL;
@@ -235,12 +232,12 @@ int main(int argc, char **argv)
 				goto usage;
 			}
 			break;
-		case 'z':
-			errno = 0;
-			buf_size = strtoull(optarg, &end, 0);
-			if (errno) {
-				printf("%s: The z/line_size argument should be a positive"
-				       " number, not %s.\n", argv[0], optarg);
+		case 'D':
+			interval = atoi(optarg);
+			if (delay <= 0 || delay > 999999999) {
+				printf("%s: The delay argument must be a positive"
+					" number of nanoseconds < 1 billion, not %s.\n",
+					argv[0], optarg);
 				goto usage;
 			}
 			break;
@@ -331,6 +328,7 @@ int main(int argc, char **argv)
 	int k;
 	int wait_count = 0;
 	struct timespec nap = { 0, CREDIT_RETRY_PAUSE };
+	struct timespec line_delay = { 0, delay };
 	size_t cnt;
 	/* repeat whole file -r times, ignoring errors except if on first try. */
 	if (filename) {
@@ -379,6 +377,8 @@ int main(int argc, char **argv)
 					nanosleep(&nap, NULL);
 					goto resend1;
 				}
+				if (delay)
+					nanosleep(&line_delay, NULL);
 			}
 			if (k && verbose)
 				printf("loop: %d finished.\n", k);
@@ -415,6 +415,8 @@ int main(int argc, char **argv)
 				printf("ignore the rest of the input.\n");
 				break;
 			}
+			if (delay)
+				nanosleep(&line_delay, NULL);
 		}
 	}
 	goto out;
@@ -425,7 +427,7 @@ usage:
 	       "\t-a <auth> -A <auth-opt>\n"
 	       "\t-U <uid> -G <gid> -P <perm>\n"
 	       "\t-f <file> -l -r <repeat_count> -i <interval_microsecond> -R\n"
-	       "\t-z <line_size>\n"
+	       "\t-D <line_delay_nanoseconds>\n"
 	       "\t-m <message-channel> -t <msg-type>\n"
 	       "\t-w <max_resends_for_credit_wait>\n"
 	       "\t-W <connection_retry_wait_milliseconds>\n"
