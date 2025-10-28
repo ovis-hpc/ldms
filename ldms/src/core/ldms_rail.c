@@ -2275,3 +2275,20 @@ int ldms_xprt_peer_msg_is_enabled(ldms_t x)
 	ldms_rail_t r = LDMS_RAIL(x);
 	return r->peer_msg_enabled;
 }
+
+int ldms_xprt_set_quota(ldms_t x, int64_t recv_quota, int64_t rate_limit)
+{
+	if (!LDMS_IS_RAIL(x)) {
+		/* This should not happen since `x` is the user-facing object
+		 * and expected to be a rail xprt.
+		 */
+		return EINVAL;
+	}
+	ldms_rail_t r = LDMS_RAIL(x);
+	if (r->state != LDMS_RAIL_EP_INIT) {
+		return EBUSY;
+	}
+	r->recv_rate_limit = rate_limit;
+	r->recv_quota = recv_quota;
+	return 0;
+}
