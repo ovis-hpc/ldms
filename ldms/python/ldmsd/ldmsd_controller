@@ -2800,12 +2800,12 @@ class LdmsdCmdParser(cmd.Cmd):
             print(f' - {"drops":27} {drops["bytes"]:>12} {drops["count"]:>12} '\
                   f'{self.__floatts2human(drops["first_ts"]):26} ' \
                   f'{self.__floatts2human(drops["last_ts"]):26}')
-            first_stream = True
-            for s in cli['streams']:
-                if first_stream:
-                    print(" - streams:")
-                    first_stream = False
-                name = s['stream_name']
+            first_channel = True
+            for s in cli['channels']:
+                if first_channel:
+                    print(" - message_channels:")
+                    first_channel = False
+                name = s['name']
                 tx = s['tx']
                 drops = s['drops']
                 print(f'   - {name+":":25}')
