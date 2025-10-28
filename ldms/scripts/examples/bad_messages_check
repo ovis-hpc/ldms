@@ -102,13 +102,21 @@ LDMSD 3
 vgoff
 SLEEP 5
 # start publisher loops before ldmsd 1
-# all input objects are missing their final }.
+# All input objects are missing their final } except the slurm input.
 # For plugins that want json, no data should get stored.
 # No data should get leaked due to parse failures.
-REPLAY_PIDS=$(REPLAY_JSON 1 5 bad.linux_proc_sampler_argv-1.json  bad.linux_proc_sampler_env-1.json  bad.linux_proc_sampler_files-1.json  bad.slurm-1.json)
+REPLAY_PIDS=$(REPLAY_JSON 1 1 bad.linux_proc_sampler_argv-1.json  bad.linux_proc_sampler_env-1.json  bad.linux_proc_sampler_files-1.json slurm-1.json)
 echo $REPLAY_PIDS
 
 SLEEP 10
+
+MESSAGE msg_client_stats L0
+echo msg_client_stats | ldmsd_controller -h localhost -p $port1 -a none -x sock
+MESSAGE msg_client_stats L1
+echo msg_client_stats | ldmsd_controller -h localhost -p $port2 -a none -x sock
+MESSAGE msg_client_stats L2
+echo msg_client_stats | ldmsd_controller -h localhost -p $port3 -a none -x sock
+
 # all the replayers should be done
 CHECK_PIDS "message publisher" "unexpectedly still here" "gone as expected" $REPLAY_PIDS
 KILL_LDMSD 1 2 3

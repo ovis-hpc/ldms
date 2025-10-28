@@ -126,6 +126,10 @@ KILL_LDMSD 1 2 3
 # give the file system time to catch up, if it's slow.
 SLEEP 20
 
+#MESSAGE "L0 __msg_deliver-ies $(grep __msg_deliver $LOGDIR/1.txt | wc -l)"
+#MESSAGE "L1 __msg_deliver-ies $(grep __msg_deliver $LOGDIR/2.txt | wc -l)"
+#MESSAGE "L2 __msg_deliver-ies $(grep __msg_deliver $LOGDIR/3.txt | wc -l)"
+
 file_created $STOREDIR/node/$dsname
 rollover_created $STOREDIR/blobs/slurm.DAT
 rollover_created $STOREDIR/blobs/linux_proc_sampler_argv.DAT
