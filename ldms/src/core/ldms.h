@@ -668,6 +668,21 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 			  struct attr_value_list *auth_av_list);
 
 /**
+ * \brief Set recv quota and rate limit on \c x.
+ *
+ * The quota and rate limit must be set before \c x is used in connect or listen.
+ *
+ * \param x The transport handle.
+ * \param recv_quota Our recv buffer quota in bytes, -1 for unlimited.
+ * \param rate_limit Our transfer rate limit in bytes per second.
+ *
+ * \retval 0 Success!
+ * \retval EBUSY The \c x has already been used in connect or listen.
+ * \retval EINVAL If \c x is not a valid transport handle.
+ */
+int ldms_xprt_set_quota(ldms_t x, int64_t recv_quota, int64_t rate_limit);
+
+/**
  * \brief Set application's context
  *
  * LDMS calls the given function \c fn to free the context when the reference
