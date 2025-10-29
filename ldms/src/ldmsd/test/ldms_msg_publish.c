@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <pthread.h>
 #include "ldms.h"
 
 static struct option long_opts[] = {
@@ -38,6 +39,51 @@ static const char *short_opts = "Hh:p:f:m:t:x:a:A:U:G:P:lr:i:D:Rw:W:v";
 
 static int rc;
 
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+static enum app_state {
+	CONNECTED,
+	DISCONNECTED,
+	IO_WAIT,
+} state = DISCONNECTED;
+
+static int verbose;
+static uint64_t new_quota;
+static uint64_t last_quota = 0;
+
+static  void xprt_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+{
+	pthread_mutex_lock(&lock);
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_CONNECTED:
+		state = CONNECTED;
+		pthread_cond_signal(&cond);
+		break;
+	case LDMS_XPRT_EVENT_REJECTED:
+	case LDMS_XPRT_EVENT_ERROR:
+	case LDMS_XPRT_EVENT_DISCONNECTED:
+		state = DISCONNECTED;
+		pthread_cond_signal(&cond);
+		break;
+	case LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
+		new_quota = e->quota.quota;
+		if (state == IO_WAIT) {
+			if (verbose) {
+				if (new_quota != last_quota)
+					printf("Quota is %ld\n", new_quota);
+				last_quota = new_quota;
+			}
+		}
+		state = CONNECTED;
+		pthread_cond_signal(&cond);
+		break;
+	default:
+		/* ignore */
+		break;
+	}
+	pthread_mutex_unlock(&lock);
+}
+
 /* Create & connect a transport endpoint, or return NULL. When NULL,
  * static global rc will be set and the reasonable action is to exit.
  * If retry is nonzero, waits retry millis between connection attempts
@@ -53,35 +99,60 @@ static ldms_t get_ldms(const char *xprt, const char *auth,
 		printf("get_ldms: retry: %d\n", retry);
 	}
 	do {
+		assert(state == DISCONNECTED);
+
 		ldms = ldms_xprt_new_with_auth(xprt, auth, auth_opt);
 		if (!ldms) {
 			rc = errno;
 			printf("Failed to allocate the local LDMS transport endpoint.\n");
 			return NULL;
 		}
-		rc = ldms_xprt_connect_by_name(ldms, host, port, NULL, NULL);
+		rc = ldms_xprt_connect_by_name(ldms, host, port, xprt_event_cb, NULL);
 		if (!rc) {
+			pthread_mutex_lock(&lock);
+			pthread_cond_wait(&cond, &lock);
+			pthread_mutex_unlock(&lock);
+		}
+		switch (state) {
+		case CONNECTED:
 			if (verbose) {
 				printf("Connected to peer %s:%s xprt=%s auth=%s\n",
-					host, port, xprt, auth);
+				       host, port, xprt, auth);
 			}
 			return ldms;
-		}
-		if (verbose)
-			printf("Connection error: %s\n", strerror(rc));
-
-		ldms_xprt_close(ldms);
-		ldms = NULL;
-		if (retry) {
-			if (verbose) {
-				printf("Waiting %d millis to connect to daemon "
-				       "at %s:%s xprt=%s auth=%s\n",
-				       retry, host, port, xprt, auth);
+		default:
+			if (verbose)
+				printf("Connection ERROR\n");
+			ldms_xprt_close(ldms);
+			ldms = NULL;
+			if (retry) {
+				if (verbose) {
+					printf("Waiting %d millis to connect to daemon "
+					       "at %s:%s xprt=%s auth=%s\n",
+					       retry, host, port, xprt, auth);
+				}
+				usleep(retry * 1000);
 			}
-			usleep(retry * 1000);
+			break;
 		}
 	} while (retry);
 	return ldms;
+}
+
+void enobufs_wait()
+{
+	if (verbose) {
+		printf("Publish lacks send credits to needed to "
+		       "complete transfer, waiting ... ");
+		fflush(stdout);
+	}
+	pthread_mutex_lock(&lock);
+	state = IO_WAIT;
+	while (state == IO_WAIT)
+		pthread_cond_wait(&cond, &lock);
+	pthread_mutex_unlock(&lock);
+	if (verbose)
+		printf("continuing.\n");
 }
 
 int main(int argc, char **argv)
@@ -98,7 +169,6 @@ int main(int argc, char **argv)
 	gid_t gid = getegid();
 	mode_t perm = 0777;
 	struct ldms_cred cred;
-	int verbose = 0;
 	int line_mode = 0;
 	int repeat = 0;
 	int reconnect = 0;
@@ -305,8 +375,8 @@ int main(int argc, char **argv)
 			goto out;
 		}
 	} else {
-		if (repeat || interval || reconnect || line_mode) {
-			printf("%s: To use -l, -r, -R, or -i, -f FILE must also be used.\n",argv[0]);
+		if (repeat || interval || reconnect) {
+			printf("%s: To use -r, -R, or -i, -f FILE must also be used.\n",argv[0]);
 			goto usage;
 		}
 		file = stdin;
@@ -326,8 +396,6 @@ int main(int argc, char **argv)
 	cred.uid = uid;
 	cred.gid = gid;
 	int k;
-	int wait_count = 0;
-	struct timespec nap = { 0, CREDIT_RETRY_PAUSE };
 	struct timespec line_delay = { 0, delay };
 	size_t cnt;
 	/* repeat whole file -r times, ignoring errors except if on first try. */
@@ -340,17 +408,20 @@ int main(int argc, char **argv)
 					if (!ldms)
 						return rc;
 				}
-				if (k)
+				do {
 					rewind(file);
-				rc = ldms_msg_publish_file(ldms, msg, typ, &cred, perm, file);
+					rc = ldms_msg_publish_file(ldms, msg, typ,
+								   &cred, perm, file);
+					if (!rc)
+						break;
+					enobufs_wait();
+				} while (rc == ENOBUFS);
 				if (rc) {
 					ldms_xprt_close(ldms);
 					ldms = NULL;
 					goto out;
 				}
 				usleep(interval);
-				if (k && verbose)
-					printf("loop: %d returned %d\n", k, rc);
 				if (reconnect) {
 					ldms_xprt_close(ldms);
 					ldms = NULL;
@@ -361,27 +432,25 @@ int main(int argc, char **argv)
 		}
 
 		/* repeat file line by line -r times, returning first error seen. */
+		if (!ldms) {
+			ldms = get_ldms(xprt, auth, auth_opt, host, port, retry, verbose);
+			if (!ldms)
+				goto out;
+		}
 		for (k = 0; k < repeat; k++) {
-			if (!ldms) {
-				ldms = get_ldms(xprt, auth, auth_opt, host, port, retry, verbose);
-				if (!ldms)
-					goto out;
-			}
 			if (k)
 				rewind(file);
 			while (0 < (int)(cnt = getline(&lbuf, &lbuf_sz, file))) {
-			resend1:
-				rc = ldms_msg_publish(ldms, msg, typ, &cred, perm, lbuf, cnt+1);
-				while (rc == EAGAIN && (wait_count < max_wait || !max_wait)) {
-					wait_count++;
-					nanosleep(&nap, NULL);
-					goto resend1;
-				}
+				do {
+					rc = ldms_msg_publish(ldms, msg, typ,
+							      &cred, perm, lbuf, cnt+1);
+					if (!rc)
+						break;
+					enobufs_wait();
+				} while (rc == ENOBUFS);
 				if (delay)
 					nanosleep(&line_delay, NULL);
 			}
-			if (k && verbose)
-				printf("loop: %d finished.\n", k);
 			usleep(interval);
 			if (reconnect) {
 				ldms_xprt_close(ldms);
@@ -397,18 +466,23 @@ int main(int argc, char **argv)
 		goto out;
 
 	if (!line_mode) {
-		rc = ldms_msg_publish_file(ldms, msg, typ, &cred, perm, file);
+		do {
+			rc = ldms_msg_publish_file(ldms, msg, typ, &cred, perm, file);
+			if (!rc)
+				break;
+			enobufs_wait();
+		} while (rc == ENOBUFS);
 	} else {
 		int line = 0;
 		while (0 < (int)(cnt = getline(&lbuf, &lbuf_sz, file))) {
 			line++;
-		resend2:
-			rc = ldms_msg_publish(ldms, msg, typ, &cred, perm, lbuf, cnt+1);
-			while (rc == EAGAIN && (wait_count < max_wait || !max_wait)) {
-				wait_count++;
-				nanosleep(&nap, NULL);
-				goto resend2;
-			}
+			do {
+				rc = ldms_msg_publish(ldms, msg, typ, &cred, perm,
+						      lbuf, cnt+1);
+				if (!rc)
+					break;
+				enobufs_wait();
+			} while (rc == ENOBUFS);
 			if (rc) {
 				printf("error %d(%s) at line %d publishing: %s\n",
 				       rc, strerror(rc), line, lbuf);
@@ -418,6 +492,7 @@ int main(int argc, char **argv)
 			if (delay)
 				nanosleep(&line_delay, NULL);
 		}
+		sleep(10);
 	}
 	goto out;
 
@@ -445,7 +520,10 @@ out:
 	av_free(auth_opt);
 	if (ldms) {
 		ldms_xprt_close(ldms);
-		ldms = NULL;
+		pthread_mutex_lock(&lock);
+		while (state == CONNECTED)
+			pthread_cond_wait(&cond, &lock);
+		pthread_mutex_unlock(&lock);
 	}
 	exit(rc);
 }
