@@ -24,13 +24,14 @@ static struct option long_opts[] = {
 	{"repeat",   required_argument, 0,  'r' },
 	{"interval", required_argument, 0,  'i' },
 	{"delay",    required_argument, 0,  'D' },
+	{"linger",   required_argument, 0,  'L' },
 	{"reconnect",no_argument,	0,  'R' },
 	{"retry",    required_argument,	0,  'W' },
 	{"verbose",  no_argument,       0,  'v' },
 	{0,          0,                 0,  0 }
 };
 
-static const char *short_opts = "Hh:p:f:m:t:x:a:A:U:G:P:lr:i:D:Rw:W:v";
+static const char *short_opts = "Hh:p:f:m:t:x:a:A:U:G:P:lr:i:D:L:Rw:W:v";
 
 #define AUTH_OPT_MAX 128
 
@@ -104,6 +105,7 @@ int main(int argc, char **argv)
 	int reconnect = 0;
 	int interval = 0;
 	int delay = 0;
+	int linger = 0;
 	int max_wait = 0;
 	int retry = 0;
 	ldms_t ldms = NULL;
@@ -233,10 +235,19 @@ int main(int argc, char **argv)
 			}
 			break;
 		case 'D':
-			interval = atoi(optarg);
+			delay = atoi(optarg);
 			if (delay <= 0 || delay > 999999999) {
 				printf("%s: The delay argument must be a positive"
 					" number of nanoseconds < 1 billion, not %s.\n",
+					argv[0], optarg);
+				goto usage;
+			}
+			break;
+		case 'L':
+			linger = atoi(optarg);
+			if (linger < 0 || linger > 600) {
+				printf("%s: The linger argument must be a positive"
+					" number of seconds <= 600, not %s.\n",
 					argv[0], optarg);
 				goto usage;
 			}
@@ -427,6 +438,7 @@ usage:
 	       "\t-a <auth> -A <auth-opt>\n"
 	       "\t-U <uid> -G <gid> -P <perm>\n"
 	       "\t-f <file> -l -r <repeat_count> -i <interval_microsecond> -R\n"
+	       "\t-L <linger_seconds_before_close>\n"
 	       "\t-D <line_delay_nanoseconds>\n"
 	       "\t-m <message-channel> -t <msg-type>\n"
 	       "\t-w <max_resends_for_credit_wait>\n"
@@ -444,6 +456,8 @@ out:
 	free(msg);
 	av_free(auth_opt);
 	if (ldms) {
+		if (linger)
+			sleep(linger);
 		ldms_xprt_close(ldms);
 		ldms = NULL;
 	}
