@@ -97,6 +97,11 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
       | The amount of time to sleep between ldms_msg_publish calls when
         in line mode (-l). Must be in range [0, 999999999]. Default 0.
 
+   **-L|--linger** <seconds>
+      |
+      | The amount of time to sleep between last transmission and exit.
+        Must be in range [0, 600]. The default is 0.
+
    **-R|--reconnect**
       |
       | If -R and -f are both given, the ldms connection is closed and reopened
