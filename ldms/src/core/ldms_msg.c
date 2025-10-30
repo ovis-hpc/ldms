@@ -707,6 +707,8 @@ __msg_deliver(struct __msg_buf_s *sbuf, uint64_t msg_gn,
 			_ev.pub.recv.json = json;
 			json_parser_free(jp);
 			if (rc) {
+				__counters_update(&sce->drops, &now, data_len);
+				__counters_update(&c->drops, &now, data_len);
 				goto cleanup;
 			}
 		}
@@ -717,7 +719,7 @@ __msg_deliver(struct __msg_buf_s *sbuf, uint64_t msg_gn,
 		if (__msg_stats_level > 0) {
 			pthread_rwlock_wrlock(&c->rwlock);
 			if (rc) {
-				__counters_update( &sce->drops, &now, data_len);
+				__counters_update(&sce->drops, &now, data_len);
 				__counters_update(&c->drops, &now, data_len);
 			} else {
 				__counters_update(&sce->tx, &now, data_len);
