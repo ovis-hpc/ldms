@@ -6,18 +6,15 @@
 #include "ldms.h"
 
 static struct option long_opts[] = {
-	{"message_channel", required_argument, 0,  'M' },
 	{"help",     no_argument,       0,  'H' },
 	{"host",     required_argument, 0,  'h' },
 	{"port",     required_argument, 0,  'p' },
-	{"file",     required_argument, 0,  'f' },
-	{"msg_name", required_argument, 0,  'm' },
-	{"type",     required_argument, 0,  't' },
 	{"xprt",     required_argument, 0,  'x' },
-	{"max_wait", required_argument, 0,  'w' },
-	{"line_size",required_argument, 0,  'z' },
 	{"auth",     required_argument, 0,  'a' },
 	{"auth_opt", required_argument, 0,  'A' },
+	{"file",     required_argument, 0,  'f' },
+	{"msg_tag",  required_argument, 0,  'm' },
+	{"type",     required_argument, 0,  't' },
 	{"uid",      required_argument, 0,  'U' },
 	{"gid",      required_argument, 0,  'G' },
 	{"perm",     required_argument, 0,  'P' },
@@ -28,14 +25,17 @@ static struct option long_opts[] = {
 	{"reconnect",no_argument,	0,  'R' },
 	{"retry",    required_argument,	0,  'W' },
 	{"verbose",  no_argument,       0,  'v' },
+	{"giveup",   required_argument, 0,  'g' },
 	{0,          0,                 0,  0 }
 };
 
-static const char *short_opts = "Hh:p:f:m:t:x:a:A:U:G:P:lr:i:D:Rw:W:v";
+static const char *short_opts = "h:p:f:m:t:x:a:A:U:G:P:lr:i:D:W:g:RvH";
 
 #define AUTH_OPT_MAX 128
 
 #define CREDIT_RETRY_PAUSE 100000000 /* 1/10th sec if credit shortage*/
+
+static int giveup_wait = 0;
 
 static int rc;
 
@@ -142,14 +142,28 @@ static ldms_t get_ldms(const char *xprt, const char *auth,
 void enobufs_wait()
 {
 	if (verbose) {
-		printf("Publish lacks send credits to needed to "
+		printf("Publish lacks send credits needed to "
 		       "complete transfer, waiting ... ");
 		fflush(stdout);
 	}
 	pthread_mutex_lock(&lock);
 	state = IO_WAIT;
-	while (state == IO_WAIT)
-		pthread_cond_wait(&cond, &lock);
+	while (state == IO_WAIT) {
+		if (!giveup_wait) {
+			pthread_cond_wait(&cond, &lock);
+		} else {
+			struct timespec to = {0, 0};
+			clock_gettime(CLOCK_REALTIME, &to);
+			to.tv_sec += giveup_wait;
+			rc = pthread_cond_timedwait(&cond, &lock, &to);
+			if (rc == ETIMEDOUT) {
+				printf("Giving up after waiting %d seconds.\n",
+				       giveup_wait);
+				fflush(stdout);
+				exit(1);
+			}
+		}
+	}
 	pthread_mutex_unlock(&lock);
 	if (verbose)
 		printf("continuing.\n");
@@ -174,7 +188,6 @@ int main(int argc, char **argv)
 	int reconnect = 0;
 	int interval = 0;
 	int delay = 0;
-	int max_wait = 0;
 	int retry = 0;
 	ldms_t ldms = NULL;
 	char *lbuf = NULL;
@@ -248,7 +261,6 @@ int main(int argc, char **argv)
 			auth_opt->list[auth_opt->count].value = rval;
 			auth_opt->count++;
 			break;
-		case 'M':
 		case 'm':
 			msg = strdup(optarg);
 			if (!msg) {
@@ -303,19 +315,10 @@ int main(int argc, char **argv)
 			}
 			break;
 		case 'D':
-			interval = atoi(optarg);
+			delay = atoi(optarg);
 			if (delay <= 0 || delay > 999999999) {
 				printf("%s: The delay argument must be a positive"
-					" number of nanoseconds < 1 billion, not %s.\n",
-					argv[0], optarg);
-				goto usage;
-			}
-			break;
-		case 'w':
-			max_wait = atoi(optarg);
-			if (max_wait < 0) {
-				printf("%s: The max_wait count must be a positive"
-				       " number of retries, not %s.\n",
+				" number of nanoseconds < 1 billion, not %s.\n",
 				       argv[0], optarg);
 				goto usage;
 			}
@@ -358,16 +361,24 @@ int main(int argc, char **argv)
 				       " number, not %s.\n", argv[0], optarg);
 				goto usage;
 			}
+		case 'g':
+			giveup_wait = atoi(optarg);
+			if (giveup_wait < 0) {
+				printf("%s: the specified giveup waitime ('%s') must be > 0.\n",
+				      argv[0], optarg);
+				goto usage;
+			}
 			break;
 		default:
+			printf("Unrecognized option '%c'\n", opt);
 			goto usage;
 		}
 	}
+
 	if (!msg || msg[0] == '\0') {
-		printf("%s: message_channel name is missing\n",argv[0]);
+		printf("%s: message tag name (-m, --msg_tag) is required\n",argv[0]);
 		goto usage;
 	}
-
 	if (filename) {
 		file = fopen(filename, "r");
 		if (!file) {
@@ -376,7 +387,8 @@ int main(int argc, char **argv)
 		}
 	} else {
 		if (repeat || interval || reconnect) {
-			printf("%s: To use -r, -R, or -i, -f FILE must also be used.\n",argv[0]);
+			printf("%s: The (-r, -R, and -i) options can only be used "
+			       "with the file (-f) option.\n", argv[0]);
 			goto usage;
 		}
 		file = stdin;
@@ -388,7 +400,7 @@ int main(int argc, char **argv)
 
 	if (verbose) {
 		printf("sending data to host=%s port=%s xprt=%s"
-		       " auth=%s message_channel=%s from %s\n",
+		       " auth=%s msg_tag=%s from %s\n",
 			host, port, xprt, auth, msg,
 			(filename ? filename : "pipe") );
 	}
@@ -460,7 +472,11 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
-	/* process pipe input as file or lines */
+	/* Process pipe input as file or lines. If this is a pipe, the
+	 * application may exit before all pipe data is delivered. Use
+	 * the -D option to add delay between message publications to
+	 * attempt to ensure delivery.
+	 */
 	ldms = get_ldms(xprt, auth, auth_opt, host, port, retry, verbose);
 	if (!ldms)
 		goto out;
@@ -492,21 +508,26 @@ int main(int argc, char **argv)
 			if (delay)
 				nanosleep(&line_delay, NULL);
 		}
-		sleep(10);
 	}
 	goto out;
 
 usage:
 	rc = 1;
+	/* "Hh:p:f:m:t:x:a:A:U:G:P:lr:i:D:RW:vg" */
 	printf("usage: %s -x <xprt> -h <host> -p <port>\n"
+	       "\t-x <xprt> the transport name, e.g. 'sock', 'rdma'\n"
+	       "\t-h <name> the subscriber host name.\n"
+	       "\t-p <port> the subscriber port number.\n"
 	       "\t-a <auth> -A <auth-opt>\n"
+	       "\t-m <msg-tag> The message tag to use for published messages.\n"
+	       "\t-t <msg-type> the message type, 'string', or 'json'\n"
 	       "\t-U <uid> -G <gid> -P <perm>\n"
-	       "\t-f <file> -l -r <repeat_count> -i <interval_microsecond> -R\n"
-	       "\t-D <line_delay_nanoseconds>\n"
-	       "\t-m <message-channel> -t <msg-type>\n"
-	       "\t-w <max_resends_for_credit_wait>\n"
+	       "\t-f <file> -l -r <repeat_count> -i <usecs> -R\n"
 	       "\t-W <connection_retry_wait_milliseconds>\n"
-	       "\t-v\n",
+	       "\t-D <nsecs> The delay between message publish calls\n"
+	       "\t-g <secs> wait timeout in seconds for QUOTA credits\n"
+	       "\t-H this help message\n"
+	       "\t-v verbose messages\n",
 	       argv[0]);
 
 out:
@@ -518,12 +539,5 @@ out:
 	free(filename);
 	free(msg);
 	av_free(auth_opt);
-	if (ldms) {
-		ldms_xprt_close(ldms);
-		pthread_mutex_lock(&lock);
-		while (state == CONNECTED)
-			pthread_cond_wait(&cond, &lock);
-		pthread_mutex_unlock(&lock);
-	}
 	exit(rc);
 }
