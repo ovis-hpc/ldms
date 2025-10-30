@@ -14,7 +14,6 @@ aries_mmr
 cray_system_sampler
 sampler_atasmart
 shm
-switchx
 tsampler
 hfclock
 dstat
