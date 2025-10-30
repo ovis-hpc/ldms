@@ -173,7 +173,12 @@ static ldmsd_store_handle_t
 			metric_count++;
 		}
 		sprintf(tmp_path, "%s/%s/%s", root_path, container, schema);
-		f_mkdir_p(tmp_path, 0777);
+		int rc = f_mkdir_p(tmp_path, 0777);
+		if (rc && errno != EEXIST) {
+			ovis_log(mylog, OVIS_LERROR, " cannot create directory %s (%s)\n",
+				tmp_path, STRERROR(errno));
+			goto out;
+		}
 
 		/*
 		 * Open a new store for this component-type and
