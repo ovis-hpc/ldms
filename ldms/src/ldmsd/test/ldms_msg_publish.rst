@@ -8,7 +8,7 @@ ldms_msg_publish
 Man page for the LDMS ldms_msg_publish executable utility
 -------------------------------------------------------------
 
-:Date:   21 Aug 2021
+:Date:   29 Oct 2025
 :Manual section: 8
 :Manual group: LDMSD
 
@@ -48,9 +48,9 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
       |
       | auth-opts to connect to the ldmsd
 
-   **-m|-M|--msg_name|--message_channel** <message_channel_name>
+   **-m||--msg_tag** <message tag>
       |
-      | Name of the channel (this will be used for subscribing)
+      | The message tag to include when publishing messages.
 
    **-t|--type** <data-format>
       |
@@ -58,12 +58,6 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
         string.
         This publisher program does not validate input before sending it,
         even if -t json is given.
-
-   **-w|--max_wait** <W>
-      |
-      | Maximum number of cumulative waits to allow when the receiving daemon
-        signals to wait for more transmission credits. Default 0 retries infinitely.
-        Each wait is 0.1 second.
 
    **-l|--line**
       |
@@ -91,6 +85,12 @@ ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <aut
       | When -i is specified, sleep an interval of M microseconds between
         file publication iterations. The default is 10000000 (10 seconds).
         Use -D to delay between lines within a file.
+
+   **-g|--giveup** <secs>
+      |
+      | When -g is specified, a limit of <secs> seconds is set for
+        QUOTA updates from the peer. If this limit is exceeded, the
+	application will exit.
 
    **-D|--delay** <nanoseconds>
       |
