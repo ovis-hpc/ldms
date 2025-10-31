@@ -2851,6 +2851,41 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_msg_enable(self, text, line, begidx, endidx):
         return self.__complete_attr_list('msg_enable', text)
 
+    def do_tenant_def_add(self, arg):
+        """
+        Add a tenant definition
+
+        Parameters:
+            name=      Tenant definition name
+            metrics=   A comma-separated list of attribute names
+        """
+        arg = self.handle_args('tenant_def_add', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.tenant_def_add(arg['name'], arg['metrics'])
+        if rc:
+            print(f'Error adding tenant definition {arg["name"]}: {msg}')
+
+    def complete_tenant_def_add(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('tenant_def_add', text)
+
+    def do_tenant_def_del(self, arg):
+        """
+        Delete a tenant definition
+
+        Parameter:
+           name=   Tenant definition name
+        """
+        arg = self.handle_args('tenant_def_del', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.tenant_def_del(arg['name'])
+        if rc:
+            print(f"Error deleting tenant definition {arg['name']}: {msg}")
+
+    def complete_tenant_def_del(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('tenant_def_del', text)
+
     def do_listen(self, arg):
         """
         Add a listen endpoint

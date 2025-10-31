@@ -757,6 +757,28 @@ class YamlCfg(object):
             plugins[plugn] = plugn_spec[plugn]
         return plugins
 
+    def build_tenants(self, config):
+        if 'tenant_definitions' not in config:
+            return None
+        if type(config['tenant_definitions']) is not dict:
+            raise TypeError(f"{LDMS_YAML_ERR}\n"
+                            f"store {DICT_ERR}\n"
+                            f"e.g., tenant_defs:\n"
+                            f"        my_tenant :\n"
+                            f"          metrics: [job_id, step_id]\n")
+
+        tenant_defs = {}
+        tenant_def_spec = config['tenant_definitions']
+        for name, tn_def in tenant_def_spec.items():
+            if name in tenant_defs.keys():
+                raise ValueError(f"Duplicate tenant definition name {name}. "
+                                 "Tenant definition name must be unqiue within a daemon.\n")
+            if 'metrics' not in tn_def:
+                raise ValueError("The 'metrics' attribute is required in a "
+                                 f"tenant definition entry. Error in tenant definition '{name}'\n")
+            tenant_defs[name] = tn_def
+        return tenant_defs
+
     def __init__(self, client, name, cluster_config, args):
         """
         Build configuration groups out of the YAML configuration
@@ -768,6 +790,7 @@ class YamlCfg(object):
         self.advertisers = {}
         self.prdcr_listeners = {}
         self.daemons = self.build_daemons(cluster_config)
+        self.tenant_defs = self.build_tenants(cluster_config)
         self.plugins = self.build_plugins(cluster_config)
         self.aggregators = self.build_aggregators(cluster_config)
         self.producers = self.build_producers(cluster_config)
@@ -980,16 +1003,29 @@ class YamlCfg(object):
             dstr += f"msg_enable\n"
         return dstr
 
+    def write_tenant_defs(self, dstr, defs):
+        for name in defs:
+            try:
+                tn = self.tenant_defs[name]
+            except KeyError:
+                raise ValueError(f"Tenant definition '{name}' not found in the tenant_definitions section")
+            dstr += f"tenant_def_add name={name} metrics={','.join(tn['metrics'])}\n"
+        return dstr
+
     def write_sampler(self, dstr, sname):
         if not self.samplers:
             return dstr
         for smplr_grp in self.samplers:
             if bin_search(expand_names(smplr_grp), sname):
+                tenant_defs = []
                 dstr, auth_list = self.write_listeners(dstr, smplr_grp, sname)
                 dstr, auth_list = self.write_advertisers(dstr, smplr_grp, sname, auth_list)
+
+                # Construct the plugin configuration lines and gather required tenant definitions
+                pi_dstr = ""
                 for plugin in self.samplers[smplr_grp]['plugins']:
                     plugn = self.plugins[plugin]
-                    dstr += f'load name={plugin} plugin={plugn["name"]}\n'
+                    pi_dstr += f'load name={plugin} plugin={plugn["name"]}\n'
                     first = True
                     for cfg_ in plugn['config']:
                         if type(cfg_) is dict:
@@ -1000,6 +1036,8 @@ class YamlCfg(object):
                                     continue
                                 if attr == 'perm':
                                     cfg_[attr] = perm_handler(cfg_[attr])
+                                if attr == 'tenant':
+                                    tenant_defs.append(cfg_['tenant'])
                                 cfg_args[attr] = cfg_[attr]
                             if first:
                                 first = False
@@ -1012,10 +1050,13 @@ class YamlCfg(object):
                             cfg_str = cfg_
 
                         interval = check_intrvl_str(plugn['interval'])
-                        dstr += f'config name={plugin} {cfg_str}\n'
-                    dstr += f'start name={plugin} interval={interval}'
+                        pi_dstr += f'config name={plugin} {cfg_str}\n'
+                    pi_dstr += f'start name={plugin} interval={interval}'
                     offset = check_opt('offset', plugn)
-                    dstr = self.write_opt_attr(dstr, 'offset', offset, endline=True)
+                    pi_dstr = self.write_opt_attr(pi_dstr, 'offset', offset, endline=True)
+
+                dstr = self.write_tenant_defs(dstr, tenant_defs)
+                dstr += pi_dstr
         return dstr
 
     def write_stream_subscribe(self, dstr, group_name, agg):
