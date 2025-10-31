@@ -2516,7 +2516,7 @@ uint32_t ldms_metric_array_get_len(ldms_set_t s, int i)
 		return __le32_to_cpu(desc->vd_array_count);
 	return 1;
 }
-ldms_mval_t ldms_metric_array_get(ldms_set_t s, int i)
+ldms_mval_t ldms_metric_array_item_get(ldms_set_t s, int i)
 {
 	ldms_mdesc_t desc;
 	ldms_mval_t ret = __mval_to_get(s, i, &desc);

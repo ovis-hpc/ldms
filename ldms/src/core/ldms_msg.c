@@ -922,9 +922,9 @@ int __publish_cred_check(ldms_cred_t cred)
 }
 
 int ldms_msg_publish(ldms_t x, const char *name,
-                        ldms_msg_type_t msg_type,
-						ldms_cred_t cred, uint32_t perm,
-                        const char *data, size_t data_len)
+		     ldms_msg_type_t msg_type,
+		     ldms_cred_t cred, uint32_t perm,
+		     const char *data, size_t data_len)
 {
 	ldms_rail_t r;
 	uint64_t msg_gn;
@@ -981,9 +981,9 @@ int ldms_msg_publish(ldms_t x, const char *name,
 		op_ctxt->msg_pub_profile.hop_num = 0;
 		op_ctxt->msg_pub_profile.recv_ts = recv_ts;
 		rc = __rep_publish(&r->eps[ep_idx], name, hash,
-			               msg_type, 0, msg_gn, cred, perm,
-				           0, NULL, data, data_len,
-				           &(op_ctxt->msg_pub_profile));
+				   msg_type, 0, msg_gn, cred, perm,
+				   0, NULL, data, data_len,
+				   &(op_ctxt->msg_pub_profile));
 
 		if (rc || !ENABLED_PROFILING(LDMS_XPRT_OP_MSG_PUBLISH)) {
 			__ldms_op_ctxt_free(op_ctxt);
