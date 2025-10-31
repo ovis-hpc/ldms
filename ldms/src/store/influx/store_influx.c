@@ -47,6 +47,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <linux/limits.h>
 #include <pthread.h>
 #include <errno.h>
@@ -62,6 +63,7 @@
 static char host_port[64];	/* hostname:port_no for influxdb */
 struct influx_store {
 	struct ldmsd_store *store;
+	bool initialized;
 	void *ucontext;
 	char *host_port;
 	char *schema;
@@ -215,6 +217,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	is = malloc(sizeof(*is) + measurement_limit);
 	if (!is)
 		goto out;
+	is->initialized = false;
 	is->measurement_limit = measurement_limit;
 	pthread_mutex_init(&is->lock, NULL);
 	is->store = s;
@@ -285,6 +288,8 @@ static int init_store(struct influx_store *is, ldms_set_t set, int *mids, int co
 			return ENOMEM;
 		is->metric_name[i] = fixup(name);
 	}
+
+	is->initialized = true;
 	return 0;
 }
 
@@ -334,7 +339,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		return EINVAL;
 
 	pthread_mutex_lock(&is->lock);
-	if (is->job_mid < 0) {
+	if (is->initialized == false) {
 		rc = init_store(is, set, metric_arry, metric_count);
 		if (rc)
 			goto err;
@@ -348,20 +353,31 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	headers = curl_slist_append(headers, "Content-Type: application/influx");
 
 	measurement = is->measurement;
-	cnt = snprintf(measurement, is->measurement_limit,
-		       "%s,job_id=%lui,component_id=%lui ",
-		       is->schema,
-		       ldms_metric_get_u64(set, is->job_mid),
-		       ldms_metric_get_u64(set, is->comp_mid));
-	off = cnt;
+	off = 0;
+	cnt = snprintf(&measurement[off], is->measurement_limit - off,
+		       "%s", is->schema);
+	off += cnt;
+	if (is->job_mid != -1) {
+		cnt = snprintf(&measurement[off], is->measurement_limit - off,
+			       ",job_id=%lui", ldms_metric_get_u64(set, is->job_mid));
+		off += cnt;
+	}
+	if (is->comp_mid != -1) {
+		cnt = snprintf(&measurement[off], is->measurement_limit - off,
+			       ",component_id=%lui", ldms_metric_get_u64(set, is->comp_mid));
+		off += cnt;
+	}
+	cnt = snprintf(&measurement[off], is->measurement_limit - off,
+		       " ", is->schema);
+	off += cnt;
 
 	enum ldms_value_type metric_type;
 
 	int comma = 0;
 	for (i = 0; i < metric_count; i++) {
-		if (metric_arry[i] == is->job_mid)
+		if (is->job_mid != -1 && metric_arry[i] == is->job_mid)
 			continue;
-		if (metric_arry[i] == is->comp_mid)
+		if (is->comp_mid != -1 && metric_arry[i] == is->comp_mid)
 			continue;
 		metric_type = ldms_metric_type_get(set, metric_arry[i]);
 		if (metric_type > LDMS_V_CHAR_ARRAY) {
