@@ -69,28 +69,53 @@ cimport ldms
 from pwd import getpwnam
 from grp import getgrnam
 
-__doc__ = """Lighweight Distibuted Metric Service (LDMS) for Python
+__doc__ = """Lighweight Distributed Metric Service (LDMS) for Python
 
-This module provides LDMS to Python.
+This module implements a Python API for LDMS
+
+The primary objects provided  by this interface include:
+
+- Xprt      A network object to communicate with remote LDMS peers
+- Sets      A named collection of metric values
+- Metrics   A named metric including its value, type and description
+- MesssgeChannel A
+- MsgBus
 
 Synchronous Active-side Example
 -------------------------------
 ```
 from ovis_ldms import ldms
+
+# Initialize the memory to contain LDMS Metric Sets
 ldms.init(16*1024*1024)
+
+# Create a network handle for an LDMS transport
 x = ldms.Xprt()
-# connect
-x.connect(host="localhost", port=10000)
-# dir
-dlist = x.dir() # list of dir result
-# Lookup
-slist = [] # list of sets from remote lookup
-for d in dlist:
-    s = x.lookup(d.name)
-    slist.append(s)
-# Update
-for s in slist:
-    s.update()
+
+# Connect with a remote peer
+try:
+    x.connect(host="localhost", port=10000)
+except Exception as e:
+    print("Connection failed...")
+
+# Ask the peer for the metric sets it has  available
+try:
+    # Ask the peer for a list of names of available metric sets
+    set_info = x.dir()
+
+    # Get a remote handle for each metric set
+    rem_set_list = []
+    for set in set_list:
+        rem_set = x.lookup(set.name)
+        rem_set_list.append(rem_set)
+
+    # Get the latest values for the each metric set
+    for rem_set in rem_set_list:
+        rem_set.update()
+
+except Exception as e:
+    print(e)
+
 ```
 
 Asynchronous Active-side Example
@@ -154,9 +179,18 @@ lx.listen(port=10001)
 new_x = lx.accept() # this will block
 # All published sets will be available to the peers
 ```
+Xprt
+----
+
+Two interfaces are provided a synchronous interface where
+calls to the API will block, and an asynchronous interface
+where transport events are reported asynchronously.
+
+...
 
 Asynchronous Passive-side Example
 ---------------------------------
+
 ```
 from ovis_ldms import ldms
 ldms.init(16*1024*1024)
@@ -2196,7 +2230,7 @@ cdef class MetricArray(list):
             raise TypeError("set {}[{}] is not an array"\
                             .format(lset.name, metric_id))
         if self._type == LDMS_V_CHAR_ARRAY:
-            raise TypeError("CHAR_ARRAY should be access as `str`")
+            raise TypeError("CHAR_ARRAY should be accessed as str()")
         if rec:
             self._getter = RECORD_METRIC_GETTER_TBL[self._type]
             self._setter = RECORD_METRIC_SETTER_TBL[self._type]
@@ -3441,8 +3475,7 @@ cdef class Xprt(object):
     >>> x = ldms.Xprt()
     >>> x.listen(port=10000)
     >>> while True:
-    ...   newx = x.accept() # this will block
-
+    ...   newx = x.accept() # this will block because no callback is specified
 
     Active-side simple example:
     >>> x = ldms.Xprt()
@@ -3499,8 +3532,8 @@ cdef class Xprt(object):
                        Ptr xprt_ptr=None,
                        rail_recv_limit = None # alias of rail_recv_quota
                        ):
-        cdef attr_value_list *avl = NULL;
-        cdef int rc;
+        cdef attr_value_list *avl = NULL
+        cdef int rc
         if rail_eps < 1:
             raise ValueError("rail_eps must be greater than 0")
         if auth is None:
@@ -4342,7 +4375,7 @@ cdef class MsgData(object):
     def __repr__(self):
         return f"MsgData('{self.name}', {repr(self.src)}, " \
                f"{self.tid}, {self.uid}, {self.gid}, {oct(self.perm)}, " \
-               f"{self.is_json}, {repr(self.data)})"
+               f"{self.is_json}, {repr(self.data)}, {self.type})"
 
     def __eq__(self, other):
         if type(other) != MsgData:
@@ -4611,6 +4644,257 @@ cdef class MsgClient(object):
         ldms_msg_client_stats_free(cs)
         return obj
 
+cdef int __msg_chan_cb(ldms_msg_event_t ev, void *arg) with gil:
+    cdef MessageChannel chan = <MessageChannel>arg
+    cdef MsgData sdata
+
+    if ev.type != LDMS_MSG_EVENT_RECV:
+        return 0
+
+    sdata = MsgData.from_ldms_msg_event(PTR(ev))
+    try:
+        chan.msg_cb_fn(sdata, chan.msg_cb_arg)
+    except Exception as e:
+        print(e)
+
+    return 0
+
+cdef class MessageChannel(object):
+    """A resilient bidirectionl message interface for the LDMS message bus
+
+    The MessageChannel implements a peer to peer, bidirectional message bus
+    interface. The interface is resilient; either side of the channel
+    may be unavailable at the time the object is created. The
+    necessary LDMS transport resources are created and managed
+    automatically by the message channel.
+
+    The local peer listens for incoming Message Bus connect requests
+    and delivers data to subscribing MessageChannel subscribers. The
+    remote peer connects to a remote MeessageChannel and sends
+    messages to the remote peer published by MessageChannel
+    clients. The subscriber and publisher exchange data over different
+    message buses such that incoming (subscribed) and outgoing
+    (published) messages cannot block or otherwise interfere with one
+    another.
+
+    The MessageChannel has an application name that may be useful when
+    reporting statistics for multiple channels. It has no functional
+    impact on the channel or it's configuration. Multiple
+    MessageChannel objects may have the same name, although this may
+    not be recommended for subsequent statistics gathering.
+
+    The interface is designed to be very simple:
+    - ch = MessageChannel(...) # Create a new Metric Channel
+    - ch.publish(...)          # Publish a message
+    - ch.subsribe(...)         # subscribe to receive messages
+
+    There are additional methods to obtains statistics, affect
+    message logging, and set queueing levels as described below.
+
+    """
+
+    cdef ldms_msg_chan_t chan
+    cdef object mode
+    cdef object xprt
+    cdef object rem_host
+    cdef object rem_port
+    cdef object lcl_host
+    cdef object lcl_port
+    cdef object auth
+    cdef object auth_opts
+    cdef object msg_cb_fn
+    cdef object msg_cb_arg
+    cdef attr_value_list *auth_avl
+
+    def __init__(self, name, mode, xprt,
+                 rem_host, rem_port,
+                 lcl_host, lcl_port,
+                 auth = "none", auth_opts = None,
+                 reconnect = 6):
+        """ Create a new Message Channel
+
+        Arguments:
+        - name     The application name of the Message Channel
+        - mode     The message channel communication mode: "bidir", "publish", "subscribe"
+        - xprt The transport type name, e.g. "sock", "rdma", "fabric"
+        - rem_host The peer host name
+        - rem_port The peer host port number
+        - lcl_host The local host name, e.g. to identify a listening
+                   interface, by default, this is "localhost"
+        - lcl_port The local port to listen for peer connection requests
+        - auth The authentication plugin name
+        - auth_avl An av_list containing the authentication plugin options
+        - reconnect The interval (in seconds) between attempts to reconnect with a peer.
+        """
+        self.auth_avl = NULL
+        if auth_opts:
+            if type(auth_opts) != dict:
+                raise TypeError("auth_opts must be a dictionary")
+            self.auth_avl = av_new(len(auth_opts))
+            for k, v in auth_opts.items():
+                rc = av_add(self.auth_avl, CSTR(BYTES(k)), CSTR(BYTES(v)))
+                if rc:
+                    av_free(self.auth_avl)
+                    raise OSError(rc, "av_add() error: {}"\
+                                  .format(ERRNO_SYM(rc)))
+
+        if mode == "bidir":
+            self.mode = LDMS_MSG_CHAN_MODE_BIDIR
+        elif mode == "publish":
+            self.mode = LDMS_MSG_CHAN_MODE_PUBLISH
+        elif mode == "subscribe":
+            self.mode = LDMS_MSG_CHAN_MODE_SUBSCRIBE
+        else:
+            raise ValueError(f'The channel mode must be one of '
+                             f'"bidir", "publish", or "subscribe"')
+
+        self.chan = ldms_msg_chan_new(BYTES(name),
+                                      self.mode,
+                                      BYTES(xprt),
+                                      BYTES(rem_host), rem_port,
+                                      BYTES(lcl_host), lcl_port,
+                                      BYTES(auth), self.auth_avl,
+                                      reconnect)
+        if self.chan == NULL:
+            raise RuntimeError(f"ldms_msg_chan_new() error, errno: {errno}")
+        self.xprt = xprt
+        self.rem_host = rem_host
+        self.rem_port = rem_port
+        self.lcl_host = lcl_host
+        self.lcl_port = lcl_port
+        self.auth = auth
+        self.auth_opts = auth_opts
+
+    def close(self, cancel = False):
+        if self.chan:
+            ldms_msg_chan_close(self.chan, cancel)
+
+    def publish(self, chan_name,
+                uid, gid, perm,
+                msg_type, msg, msg_len):
+        """Publish a message
+
+        Publish a message to a remote message channel. The message is
+        tagged with a user-id, group-id, and subscriber permissions.
+        An error is reported if the ownership cannot be assumed by the
+        sending process. In other words, 'chris' cannot send data
+        tagged as 'mary'. Root may send data tagged as anyone.
+
+        Arguments:
+        - The message channel name
+        - The user-id of the publisher
+        - The group-id of the publisher
+        - The permissions to allow subscribers
+        - The message type
+        - The message data
+        - The message data len
+
+        Returns:
+        - 0 Success
+        - ENOMEM Memory allocation failure
+        - ENOBUFS The queued bytes exceeds the channel limit
+        """
+        cdef int rc
+        rc = ldms_msg_chan_publish(self.chan, BYTES(chan_name),
+                                   uid, gid, perm,
+                                   msg_type, BYTES(msg), msg_len)
+        if rc:
+            raise RuntimeError(f"MessageChannel.publish() error, errno: {rc}")
+
+    def subscribe(self, regex, msg_cb_fn, msg_cb_arg):
+        """ Receive messages from a message channel
+
+        Arguments:
+        - A regular expression to match message channels
+        - The callback function invoked when messages arrive
+        - A parameter provided the callback function
+        """
+        cdef int rc
+
+        self.msg_cb_fn = msg_cb_fn
+        self.msg_cb_arg = msg_cb_arg
+
+        rc = ldms_msg_chan_subscribe(self.chan, BYTES(regex),
+                                     __msg_chan_cb, <void *>self)
+        return rc
+
+    def set_log_level(self, level_s):
+        """Set the current message log level
+
+        Sets the message log level. The log level is specified as a
+        comma separated string. Log levels specified with commas are a
+        bit mask. A level specified with a single string includes
+        message at the specified logging level and all subsequent
+        levels. The levels are as follows:
+
+        - quiet    No messages
+        - debug    Debug messages. This is very verbose.
+        - info     Informational messages including connection
+                   setup/teardown and I/O submission.
+        - error    Error condition messages (default)
+        - critical Potentially fatal error conditions
+
+        Arguments:
+        log_level The log levels
+
+        Returns:
+        - 0 Success
+        - EINVAL An invalid log level was specified
+        """
+        cdef int rc
+        cdef int log_level
+        cdef ovis_log_t log = ldms_msg_chan_log(self.chan)
+        log_level = ovis_log_str_to_level(BYTES(level_s))
+        rc = ovis_log_set_level(log, log_level)
+        return rc
+
+    def set_q_limit(self, max_bytes):
+
+        """Set the message channel message queuing limit
+
+        When the peer connection is not available, messages are
+        queued. The number of bytes queued is limited to a default of
+        1MB, but can be changed. The limit is specified in bytes.
+
+        See the chan_stats() for information on the current message
+        queue limit.
+
+        Arguments:
+        - The queing limit in bytes
+
+        """
+        ldms_msg_chan_set_q_limit(self.chan, max_bytes)
+
+    def get_mode_str(self, mode):
+        if mode == LDMS_MSG_CHAN_MODE_BIDIR:
+            return "bidir"
+        elif mode == LDMS_MSG_CHAN_MODE_PUBLISH:
+            return "publish"
+        elif mode == LDMS_MSG_CHAN_MODE_SUBSCRIBE:
+            return "subscribe"
+        else:
+            return "None"
+
+    def get_state_str(self, state):
+        return [
+            "DISCONNECTED",
+            "CONNECTING",
+            "CONNECTED",
+            "CLOSED"
+        ][state]
+
+    def get_stats(self):
+        """Return the channel state as a string
+
+        This is a convenience method useful for formatting message
+        channel statistics output.
+
+        Arguments:
+        - The channel state
+        """
+        cdef ldms_msg_chan_stats_s stats
+        ldms_msg_chan_stats(self.chan, &stats)
+        return stats
 
 cdef class ZapThrStat(object):
     """Zap thread statistics information.
@@ -4814,12 +5098,6 @@ LOG_LEVEL_MAP = {
         "CRITICAL": LCRITICAL,
         "CRIT":     LCRIT,
         }
-
-def ovis_log_set_level_by_name(str subsys_name, level):
-    """ovis_log_set_level_by_name(str subsys_name, level)"""
-    if type(level) is str:
-        level = LOG_LEVEL_MAP[level.upper()]
-    ldms.ovis_log_set_level_by_name(CSTR(BYTES(subsys_name)), level)
 
 def msg_disable():
     ldms_msg_disable()
