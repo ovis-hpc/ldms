@@ -1,29 +1,64 @@
-.. _ldms_msg:
+.. _ldms_msg_chan:
 
-===========
-ldms_msg
-===========
+=============
+ldms_msg_chan
+=============
 
-----------------------------------------------
-publish/subscribe data in LDMS message service
-----------------------------------------------
+--------------------------------------------------------
+Resilient Publish/Subscribe LDMS Message Channel Service
+--------------------------------------------------------
 
 :Date: 2024-12-03
 :Manual section: 7
 :Manual group: LDMS
 :Version: LDMS 4.5
 
-SYNOPSIS
+OVERVIEW
 ========
+
+A Message Channel is a reliable connected interface between one or
+more peers. A Message Channel differs from a Message Client in the
+following way:
+
+- A Message Client takes a previously established LDMS transport
+  and uses this transport to communicate with a single peer.
+
+- A Message Channel takes a
+- A Message Channel will attempt to connect and reconnect
+  automatically with a peer.
+
+- Messages published on a channel are queued until the connection
+  is established up until a configurable buffer limit is
+  reached. The default queueing limit is 1MB.
+
+- A message Channel can be instantiated in one of three modes:
+
+  - PUBLISH    A connection is established with a remote peer and
+               messages can be published with ldms_msg_chan_publish()
+
+  - SUBSCRIBE The message channel will listen for incoming
+              connections. Channels can be subscribed to with
+              ldms_msg_chan_subscribe().
+
+  - BIDIR     The channel is bi-directional and can both publish and
+              subscribe.
 
 ldmsd_controller commands
 -------------------------
 
+By default the Message Bus and Message Channel Services are disabled.
+The LDMS Message Bus has to be enabled with the ``msg_enable`` command
+in order for the LDMS Message Channel Service to work. This can also
+be done with the ldms_msg_enable() C-API or in Python with
+ldms.msg_enable()
+
 .. parsed-literal::
 
-   ``prdcr_subscribe`` ``regex``\ =\ `PRDCR_REGEX` ``message_tag``\ =\ `NAME_REGEX`
+   ``msg_enable``
 
-   ``prdcr_unsubscribe`` ``regex``\ =\ `PRDCR_REGEX` ``message_tag``\ =\ `NAME_REGEX`
+   ``prdcr_subscribe`` ``regex``\ =\ `PRDCR_REGEX` ``message_channel``\ =\ `NAME_REGEX`
+
+   ``prdcr_unsubscribe`` ``regex``\ =\ `PRDCR_REGEX` ``message_channel``\ =\ `NAME_REGEX`
 
 
 C API
@@ -31,46 +66,88 @@ C API
 
 .. code:: c
 
- #include "ldms.h"
+#include "ldms_msg_chan.h"
 
- int ldms_msg_publish(ldms_t x, const char *name,
-                         ldms_msg_type_t msg_type,
-                         ldms_cred_t cred,
-                         uint32_t perm,
-                         const char *data, size_t data_len);
+int ldms_msg_chan_publish(ldms_msg_chan_t chan, const char *tag,
+			  uid_t uid, gid_t gid, uint32_t perm,
+			  ldms_msg_type_t type, char *msg, size_t msg_len);
 
- typedef int (*ldms_msg_event_cb_t)(ldms_msg_event_t ev, void *cb_arg);
+int ldms_msg_chan_subscribe(ldms_msg_chan_t chan, const char *regex,
+			    ldms_msg_event_cb_t msg_cb_fn, void *cb_arg);
 
- ldms_msg_client_t ldms_msg_subscribe(const char *match,
-                               int is_regex, ldms_msg_event_cb_t cb_fn,
-                               void *cb_arg, const char *desc);
- void ldms_msg_close(ldms_msg_client_t c);
+typedef int (*ldms_msg_event_cb_t)(ldms_msg_chan_event_t ev, void *cb_arg);
 
- int ldms_msg_remote_subscribe(ldms_t x, const char *match, int is_regex,
-                                  ldms_msg_event_cb_t cb_fn, void *cb_arg,
-                                  int64_t rate);
- int ldms_msg_remote_unsubscribe(ldms_t x, const char *match, int is_regex,
-                                    ldms_msg_event_cb_t cb_fn, void *cb_arg);
+int ldms_msg_chan_unsubscribe(ldms_msg_chan_t chan, const char *regex_s);
 
- /* See "ldms.h" for the detailed API documentation */
+ovis_log_t ldms_msg_chan_log(ldms_msg_chan_t chan);
+
+void ldms_msg_chan_set_q_limit(ldms_msg_chan_t chan, size_t q_limit);
+
+void ldms_msg_chan_stats(ldms_msg_chan_t chan, ldms_msg_chan_stats_t stats);
+
+const char *ldms_msg_chan_state_str(ldms_msg_chan_state_t state);
+
+const char *ldms_msg_chan_mode_str(ldms_msg_chan_mode_t mode);
+
+jbuf_t ldms_msg_chan_subscr_json(ldms_msg_chan_t chan);
+
+void ldms_msg_chan_close(ldms_msg_chan_t chan, int cancel);
+
+ldms_msg_chan_t ldms_msg_chan_find(const char *app_name);
+
+ldms_msg_chan_t ldms_msg_chan_list(const char *app_name);
+
+ /* See "ldms_msg_chan.h" for the detailed API documentation */
 
 
 Python APIs
 -----------
+
+    The MessageChannel class implements a bidirectionl message
+    interface that is implemented over the LDMS Message Bus.
+
+    The MessageChannel implements a peer to peer, bidirectional message bus
+    interface. The interface is resilient; either side of the channel
+    may be unavailable at the time the object is created. The
+    necessary LDMS transport resources are created and managed
+    automatically by the message channel.
+
+    The local peer listens for incoming Message Bus connect requests
+    and delivers data to subscribing MessageChannel subscribers. The
+    remote peer connects to a remote MeessageChannel and sends
+    messages to the remote peer published by MessageChannel
+    clients. The subscriber and publisher exchange data over different
+    message buses such that incoming (subscribed) and outgoing
+    (published) messages cannot block or otherwise interfere with one
+    another.
+
+    The MessageChannel has an application name that may be useful when
+    reporting statistics for multiple channels. It has no functional
+    impact on the channel or its configuration. Multiple
+    MessageChannel objects may have the same name, although this may
+    not be recommended for subsequent statistics gathering.
+
+    The interface is designed to be very simple:
+    - ch = MessageChannel(...) # Create a new Metric Channel
+    - ch.publish(...)          # Publish a message
+    - ch.subsribe(...)         # subscribe to receive messages
+
+    There are additional methods to obtain statistics, affect
+    message logging, and set queueing levels as described below.
 
 .. code:: python
 
  from ovis_ldms import ldms
 
  ldms.msg_publish(name=<str>, msg_data=<str|dict>,
-             msg_type=<None|ldms.LDMS_MSG_STRING|ldms.LDMS_MSG_JSON>,
+             msg_type=<None|ldms.LDMS_MSG_CHAN_STRING|ldms.LDMS_MSG_CHAN_JSON>,
              perm=<int>)
 
  xprt = ldms.Xprt()
  xprt.connect(host="node0", port=411)
 
  xprt.msg_publish(name=<str>, msg_data=<str|dict>,
-             msg_type=<None|ldms.LDMS_MSG_STRING|ldms.LDMS_MSG_JSON>,
+             msg_type=<None|ldms.LDMS_MSG_CHAN_STRING|ldms.LDMS_MSG_CHAN_JSON>,
              perm=<int>)
 
  xprt.msg_subscribe(match=<str>, is_regex=<bool>)
@@ -108,17 +185,17 @@ commands in order to receive message data from its producers (``prdcr``).
 .. code:: sh
 
  # subscribe "s0" message channel on all producers
- prdcr_subscribe regex=.* message_tag=s0
+ prdcr_subscribe regex=.* message_channel=s0
  # subscribe "s1" message channel on all producers
- prdcr_subscribe regex=.* message_tag=s1
+ prdcr_subscribe regex=.* message_channel=s1
 
-The ``message_tag`` parameter can also be regular expression, e.g.
+The ``message_channel`` parameter can also be regular expression, e.g.
 
 .. code:: sh
 
  # subscribe message channels matching "app.*" or "sys.*" on all producers
- prdcr_subscribe regex=.* message_tag=app.*
- prdcr_subscribe regex=.* message_tag=sys.*
+ prdcr_subscribe regex=.* message_channel=app.*
+ prdcr_subscribe regex=.* message_channel=sys.*
 
 This is the setup for the following figure:
 
@@ -127,23 +204,23 @@ This is the setup for the following figure:
 - ``samp``: an LDMS daemon (sampler).
 
   - A plugin in ``samp`` has an LDMS Message Client ``cli`` that subscribes to
-    all message_tags (regex ``.*``).
+    all channels (regex ``.*``).
 
-  - Another plugin ``plug0`` in ``samp`` publishes to ``s1`` message_tag.
+  - Another plugin ``plug0`` in ``samp`` publishes to ``s1`` channel.
 
 - ``agg``: another LDMS daemon (aggregator). It has an LDMS connection to
   ``samp``.
 
-  - ``agg`` subscribes ``.*`` message_tags on ``samp`` with the following command:
+  - ``agg`` subscribes ``.*`` channels on ``samp`` with the following command:
 
-    - ``prdcr_subscribe regex=samp message_tag=.*``
+    - ``prdcr_subscribe regex=samp message_channel=.*``
 
 - ``alice_app``: an application run by alice that LDMS-conencts to ``agg``.
 
   - ``alice_app`` subscribe for ``s0``
 
   - ``alice_app`` has an LDMS Message Client ``cli`` that subscribes to ``"my"``
-    message_tag.
+    channel.
 
 The ``-->`` arrows illustrate possible message data paths.
 
@@ -174,7 +251,7 @@ The ``-->`` arrows illustrate possible message data paths.
 
 
 
-``bob_app`` publishes a message by calling ``ldms_msg_publish()`` function.
+``bob_app`` publishes a message by calling ``ldms_msg_chan_publish()`` function.
 Let's assume that ``bob_app`` publishes ``s0`` message over the LDMS
 transport to ``samp`` with ``0400`` permission.
 
@@ -231,7 +308,7 @@ client to ``agg`` will also get the data if authorized.
 CREDENTIALS AND PERMISSIONS
 ===========================
 
-The ``ldms_msg_publish()`` function in C and the ``msg_publish()`` method in
+The ``ldms_msg_chan_publish()`` function in C and the ``msg_publish()`` method in
 Python both receive credential ``cred`` and permission ``perm``. If ``cred`` is
 not set, the process' ``UID/GID`` are used.  If a non-root user tries to
 impersonate anotehr user, the ``ldms`` library on the receiver side will drop
@@ -244,7 +321,7 @@ the data from ``cred`` with ``perm``.
 CODE EXAMPLES
 =============
 
-C publish example
+C example
 -----------------
 
 .. code:: c
@@ -253,22 +330,34 @@ C publish example
 
  int main(int argc, char **argv)
  {
-     ldms_t x;
-     int rc;
-     x = ldms_xprt_new_with_auth("sock", "munge", NULL);
-     /* synchronous connect for simplicity */
-     rc = ldms_xprt_connect_by_name(x, "node1", "411", NULL, NULL);
-     if (rc)
-         return rc;
+  /* - Publish to a remote peer named "remote_peer" to port 20001.
+   * - Listen for incoming traffic on port 20002 on the interface
+   *   that resovles to "my_name".
+   * - Use the authentication method "munge"
+   * - If the peer is not present or disconnects, attempt to reconnect
+   *   every 6 seconds.
+   */
+  ldms_msg_chan_t chan =
+		ldms_msg_chan_new("ldms_msg_chan_client",
+				  "bidir",       "sock",
+				  "remote_peer", 20001,
+				  "my_name",     20002,
+				  "munge",       NULL,
+				  6);
 
-     /* publish to peer */
-     rc = ldms_msg_publish(x, "s0", LDMS_MSG_STRING, NULL,
-                              0400, "data", 5);
+    /* - Get the log handle for this message channel
+     * - Set the log level to "debug"
+     */
+    ovis_log_t log = ldms_msg_chan_log(chan);
+	ovis_log_set_level(log, OVIS_LDEBUG);
 
-     /* publish to our process */
-     rc = ldms_msg_publish(NULL, "json_channel", LDMS_MSG_JSON, NULL,
-                              0400, "{\"attr\":\"value\"}", 17);
-     return rc;
+    /* - Subscribe to all messages from the peer
+     * - When messages arrive call subs_msg_cb()
+     * - Pass chan to the subs_msg_cb() function
+     */
+	rc = ldms_msg_chan_subscribe(chan, ".*", subs_msg_cb, chan);
+
+    return rc;
  }
 
 
@@ -281,14 +370,14 @@ C subscribe example
  #include <unistd.h>
  #include "ldms.h"
 
- int cb_fn0(ldms_msg_event_t ev, void *cb_arg);
- int success_cb(ldms_msg_event_t ev, void *cb_arg);
+ int cb_fn0(ldms_msg_chan_event_t ev, void *cb_arg);
+ int success_cb(ldms_msg_chan_event_t ev, void *cb_arg);
 
  int main(int argc, char **argv)
  {
      int rc;
      ldms_t x;
-     ldms_msg_client_t cli0;
+     ldms_msg_chan_client_t cli0;
      char *cli0_ctxt;
 
      /* connect to an ldmsd */
@@ -299,11 +388,11 @@ C subscribe example
      printf("cli0_ctxt: %p\n", cli0_ctxt);
 
      /* subscribe "s0" messages that reached us; cb_fn0 is the callback function */
-     cli0 = ldms_msg_subscribe("s0", 0, cb_fn0, cli0_ctxt, "s0 only");
+     cli0 = ldms_msg_chan_subscribe("s0", 0, cb_fn0, cli0_ctxt, "s0 only");
 
      /* Ask ldmsd to forward "s0" messages to us;
       * There will be NO success report callback since the function is `NULL`. */
-     rc = ldms_msg_remote_subscribe(x, "s0", 0, NULL, NULL, LDMS_UNLIMITED);
+     rc = ldms_msg_chan_remote_subscribe(x, "s0", 0, NULL, NULL, LDMS_UNLIMITED);
      if (rc)
          return rc;
      /* The non-zero `rc` is a synchronous error that can still be returned,
@@ -312,7 +401,7 @@ C subscribe example
      /* ask ldmsd to forward messages with channels matching "app.*" regex to
       * us.  `success_cb()` will be called once we know the result of the
       * subscription. */
-     rc = ldms_msg_remote_subscribe(x, "app.*", 1, success_cb, NULL, LDMS_UNLIMITED);
+     rc = ldms_msg_chan_remote_subscribe(x, "app.*", 1, success_cb, NULL, LDMS_UNLIMITED);
      if (rc)
          return rc;
 
@@ -321,61 +410,61 @@ C subscribe example
      /* Request an unsubscription to "s0" channel. Note that the `match` must
       * match the subscription request. The `success_cb` is called to report
         the success/failed result of the unsubscription request. */
-     rc = ldms_msg_remote_unsubscribe(x, "s0", 0, success_cb, NULL);
+     rc = ldms_msg_chan_remote_unsubscribe(x, "s0", 0, success_cb, NULL);
      if (rc)
          return rc;
 
      /* Request an unsubscription to "app.*" channels. Note that the `match`
       * must match the subscription request. The `success_cb` is called to
       * report the success/failed result of the unsubscription request. */
-     rc = ldms_msg_remote_unsubscribe(x, "app.*", 1, success_cb, NULL);
+     rc = ldms_msg_chan_remote_unsubscribe(x, "app.*", 1, success_cb, NULL);
      if (rc)
          return rc;
 
-     ldms_msg_client_close(cli0);
+     ldms_msg_chan_client_close(cli0);
 
      sleep(5); /* wait a bit so that we can see the events */
 
      return 0;
  }
 
- int cb_fn0(ldms_msg_event_t ev, void *cb_arg)
+ int cb_fn0(ldms_msg_chan_event_t ev, void *cb_arg)
  {
-     if (ev->type == LDMS_MSG_EVENT_CLIENT_CLOSE) {
+     if (ev->type == LDMS_MSG_CHAN_EVENT_CLIENT_CLOSE) {
          /*
           * The client is "closed". We can clean up resources
           * associated with it here. No more event will occur
           * on this client.
           */
-         ldms_msg_client_t cli = ev->close.client;
+         ldms_msg_chan_client_t cli = ev->close.client;
          printf("client closed:\n");
-         printf(" - match: %s\n", ldms_msg_client_match_get(cli));
-         printf(" - is_regex: %d\n", ldms_msg_client_is_regex_get(cli));
-         printf(" - desc: %s\n", ldms_msg_client_desc_get(cli));
+         printf(" - match: %s\n", ldms_msg_chan_client_match_get(cli));
+         printf(" - is_regex: %d\n", ldms_msg_chan_client_is_regex_get(cli));
+         printf(" - desc: %s\n", ldms_msg_chan_client_desc_get(cli));
          printf("freeing cli0_ctxt: %p\n", cb_arg);
          free(cb_arg);
          return 0;
      }
-     assert(ev->type == LDMS_MSG_EVENT_RECV);
+     assert(ev->type == LDMS_MSG_CHAN_EVENT_RECV);
      /* we expect RECV event or CLOSE event only */
-     if (ev->recv.type == LDMS_MSG_STRING) {
+     if (ev->recv.type == LDMS_MSG_CHAN_STRING) {
          printf("channel name: %s\n", ev->recv.name);
          printf("message data: %s\n", ev->recv.data);
      }
-     if (ev->recv.type == LDMS_MSG_JSON) {
+     if (ev->recv.type == LDMS_MSG_CHAN_JSON) {
          /* process `ev->recv.json` */
      }
      return 0;
  }
 
- int success_cb(ldms_msg_event_t ev, void *cb_arg)
+ int success_cb(ldms_msg_chan_event_t ev, void *cb_arg)
  {
      switch (ev->type) {
-     case LDMS_MSG_EVENT_SUBSCRIBE_STATUS:
+     case LDMS_MSG_CHAN_EVENT_SUBSCRIBE_STATUS:
          printf("'%s' subscription status: %d\n", ev->status.match,
                                                          ev->status.status);
          break;
-     case LDMS_MSG_EVENT_UNSUBSCRIBE_STATUS:
+     case LDMS_MSG_CHAN_EVENT_UNSUBSCRIBE_STATUS:
          printf("'%s' unsubscription status: %d\n", ev->status.match,
                                                            ev->status.status);
          break;
@@ -396,11 +485,11 @@ Python publish examples
  x.connect(host="localhost", port=411)
 
  # Explicitly specify STRING type.
- x.msg_publish(name="s0", data="somedata", msg_type=ldms.LDMS_MSG_STRING,
+ x.msg_publish(name="s0", data="somedata", msg_type=ldms.LDMS_MSG_CHAN_STRING,
                perm=0o400)
 
  # JSON; the `dict` data will be converted to JSON
- x.msg_publish(name="s0", data={"attr": "value"}, msg_type=ldms.LDMS_MSG_JSON,
+ x.msg_publish(name="s0", data={"attr": "value"}, msg_type=ldms.LDMS_MSG_CHAN_JSON,
                perm=0o400)
 
  # Assumed STRING type if data is `str` or `bytes` when `msg_type` is omitted
