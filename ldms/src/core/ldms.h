@@ -914,7 +914,8 @@ void ldms_xprt_event_cb_set(ldms_t x, ldms_event_cb_t cb, void *cb_arg);
  *
  * \param x     The transport handle
  *
- * \retval      0 if the transport endpoint is connected. Otherwise, 1 is returned.
+ * \retval      1 transport endpoint is connected
+ * \retval      0 transport endpoint is not connected
  */
 extern int ldms_xprt_connected(ldms_t x);
 
@@ -1053,7 +1054,6 @@ int ldms_xprt_is_rail(ldms_t x);
  * \retval 0 If the remote peer of \c x is not a rail.
  */
 int ldms_xprt_is_remote_rail(ldms_t x);
-
 
 /**
  * \brief Get the number of endpoints in the rail \c x.
