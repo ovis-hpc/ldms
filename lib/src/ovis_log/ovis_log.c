@@ -187,8 +187,13 @@ int ovis_log_set_level_by_name(const char *name, int level)
 	ovis_log_t log = NULL;
 	if (name) {
 		log = __find_log(name);
-		if (!log)
-			return ENOENT;
+		if (!log) {
+			log = ovis_log_register(name, "");
+			if (!log) {
+				int rc = errno;
+				return rc;
+			}
+		}
 	}
 	return ovis_log_set_level(log, level);
 }
@@ -391,20 +396,9 @@ void ovis_log_deregister(ovis_log_t log)
 	__ovis_log_put(log);
 }
 
-ovis_log_t ovis_log_register(const char *subsys_name, const char *desc)
+static ovis_log_t __ovis_log_register(const char *subsys_name, const char *desc)
 {
 	ovis_log_t log;
-
-	if (!subsys_name || !desc) {
-		errno = EINVAL;
-		return NULL;
-	}
-
-	log = __find_log(subsys_name);
-	if (log) {
-		errno = EEXIST;
-		return NULL;
-	}
 	log = calloc(1, sizeof(*log));
 	if (!log) {
 		errno = ENOMEM;
@@ -415,10 +409,12 @@ ovis_log_t ovis_log_register(const char *subsys_name, const char *desc)
 		errno = ENOMEM;
 		goto free_log;
 	}
-	log->desc = strdup(desc);
-	if (!log->desc) {
-		errno = ENOMEM;
-		goto free_log;
+	if (desc) {
+		log->desc = strdup(desc);
+		if (!log->desc) {
+			errno = ENOMEM;
+			goto free_log;
+		}
 	}
 	log->ref_count = 1;
 	log->level = OVIS_LDEFAULT;
@@ -430,6 +426,30 @@ ovis_log_t ovis_log_register(const char *subsys_name, const char *desc)
 free_log:
 	__free_log(log);
 	return NULL;
+}
+
+ovis_log_t ovis_log_register(const char *subsys_name, const char *desc)
+{
+	ovis_log_t log;
+
+	if (!subsys_name || !desc) {
+		errno = EINVAL;
+		return NULL;
+	}
+
+	log = __find_log(subsys_name);
+	if (log) {
+		if (log->desc[0] == '\0') {
+			/* The log handle has been registered by
+			 * an internal operation, e.g.,
+			 * ovis_log_set_level_by_name.
+			 */
+			log->desc = strdup(desc);
+		}
+	} else {
+		log = __ovis_log_register(subsys_name, desc);
+	}
+	return log;
 }
 
 struct ovis_log_buf {
