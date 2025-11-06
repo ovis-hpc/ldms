@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <limits.h>
 #include <linux/limits.h>
@@ -159,4 +160,47 @@ uint64_t lustre_file_read_uint64_t(const char *dir, const char *file, ovis_log_t
         sscanf(valbuf, "%lu", &val);
 
         return val;
+}
+
+void sanitize_job_id_str(char name[])
+{
+	char *src = name;
+	char *dest = name;
+	bool quoted = false;
+
+	if (*src == '"') {
+		/* skip the first double-quote */
+		quoted = true;
+		src++;
+	}
+	while (*src != '\0') {
+		if (quoted && *(src+1) == '\0' && *src == '"') {
+			/* skip the final _matching_ double-quote */
+			src++;
+			continue;
+		}
+		if (quoted && *src == '\\') {
+		        /* might be the start of a hex representation of a
+			   character, for instance a " might be: \x22 */
+			char c;
+			int num;
+			int rc;
+			rc = sscanf(src, "\\x%2hhx%n", &c, &num);
+			if (rc == 1) {
+				/* convert hex representation back to a character */
+				src += num-1;
+				*src = c;
+			}
+		}
+		if (ldms_set_instance_name_char_allowed(*src)) {
+			*dest = *src;
+		} else {
+			*dest = '_';
+		}
+		src++;
+		dest++;
+	}
+	*dest = '\0';
+
+	return;
 }

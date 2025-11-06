@@ -25,4 +25,11 @@ int lustre_stats_file_sample(const char *stats_path,
 
 uint64_t lustre_file_read_uint64_t(const char *dir, const char *file, ovis_log_t log);
 
+/*
+ * Strip surrounding double-quotes from the "name", and convert any
+ * other banned characters into underscores. Changes will be made to the
+ * "name" string in-place.
+ */
+void sanitize_job_id_str(char name[]);
+
 #endif
