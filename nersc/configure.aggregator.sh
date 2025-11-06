@@ -12,7 +12,6 @@ CYTHON=cython3 \
  --enable-doc-man \
  --enable-etc \
  --enable-genderssystemd \
- --enable-influx \
  --enable-jobinfo-sampler \
  --enable-kgnilnd \
  --enable-lustre \

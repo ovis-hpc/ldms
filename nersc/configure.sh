@@ -6,7 +6,6 @@ CFLAGS="-g -O -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0" \
  --with-slurm="/usr/include/slurm" \
  --with-libevent="/opt/ovis-ldms/lib" \
  --disable-mmap \
- --disable-fortify \
  --enable-cray-samplers \
  --enable-doc \
  --enable-doc-html \
