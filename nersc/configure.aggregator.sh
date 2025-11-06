@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "[>>] configure"
-CFLAGS="-g -O" \
+CFLAGS="-g -O -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0" \
 CYTHON=cython3 \
 ./configure \
  --prefix="/opt/ovis-ldms" \
