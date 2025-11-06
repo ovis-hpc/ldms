@@ -1661,6 +1661,39 @@ static void __ldms_schema_finalize(ldms_schema_t schema)
 	EVP_DigestFinal_ex(schema->evp_ctx, schema->digest.digest, &len);
 }
 
+int ldms_set_instance_name_char_allowed(char c)
+{
+	/* Control characters are not allowed because they would confuse
+	 * parsing of set names
+	 */
+	if (iscntrl(c)) {
+		return 0;
+	}
+	/* Double-quote not allowed in quoted string because we
+	 * would have to add logic to handle "" vs. '' when encoding
+	 * as JSON
+	 */
+	if (c == '"') {
+		return 0;
+	}
+	/* Single-quote not allowed in quoted string because we
+	 * would have to add logic to handle "" vs. '' when encoding
+	 * as JSON
+	 */
+	if (c == '\'') {
+		return 0;
+	}
+	/* Backslash would hide intended character in encoded string */
+	if (c == '\\') {
+		return 0;
+	}
+	/* Character values above 127 are not allowed */
+	if (0 != (c & ~0x7f)) {
+		return 0;
+	}
+	return 1;
+}
+
 ldms_set_t ldms_set_create(const char *instance_name,
 				ldms_schema_t schema,
 				uid_t uid, gid_t gid, mode_t perm,
@@ -1690,36 +1723,7 @@ ldms_set_t ldms_set_create(const char *instance_name,
 	 */
 	const char *s = instance_name;
 	while (*s != '\0') {
-		/* Control characters are not allowed because they would confuse
-		 * parsing of set names
-		 */
-		if (iscntrl(*s)) {
-			errno = EINVAL;
-			return NULL;
-		}
-		/* Double-quote not allowed in quoted string because we
-		 * would have to add logic to handle "" vs. '' when encoding
-		 * as JSON
-		 */
-		if (*s == '"') {
-			errno = EINVAL;
-			return NULL;
-		}
-		/* Single-quote not allowed in quoted string because we
-		 * would have to add logic to handle "" vs. '' when encoding
-		 * as JSON
-		 */
-		if (*s == '\'') {
-			errno = EINVAL;
-			return NULL;
-		}
-		/* Backslash would hide intended character in encoded string */
-		if (*s == '\\') {
-			errno = EINVAL;
-			return NULL;
-		}
-		/* Character values above 127 are not allowed */
-		if (0 != (*s & ~0x7f)) {
+		if (!ldms_set_instance_name_char_allowed(*s)) {
 			errno = EINVAL;
 			return NULL;
 		}
