@@ -1,0 +1,78 @@
+#!/bin/bash
+
+set -x
+
+NOW="$(date +%Y%m%d%H%M%S)"
+
+# assumes that this script is in the nersc subdirectory of the ovis sources
+LDMS_SRCDIR="$(readlink -f $(dirname $0))/.."
+if [ -z "${ldms_srcdir}" -o ! -d "${ldms_srcdir}" ]; then
+    echo Could not identify ldms source directory
+fi
+
+# remember where we were invoked
+WORKDIR="${PWD}"
+
+read_config_var() {
+    local config_h="${1}"
+    local var="${2}"
+    perl -ane '{print "$1\n" if /^#define '"${var}"' \"(.*)\"/}' ${config_h}
+}
+
+get_config_var() {
+    local config_h="$1"
+    local var="$(read_config_var ${config_h} $2)"
+    if [ -z "${var}" ]; then
+        echo "Could not find value for ${var}"
+        exit 1
+    fi
+    echo "${var}"
+}
+
+# builds distribution tarball
+make_tarball() {
+    local ldms_dist_builddir=${WORKDIR}/builddir.${NOW}
+
+    # mkdir "${ldms_dist_builddir}"
+    if [ $? -ne 0 ]; then
+        echo Failed to create "'""${ldms_dist_builddir}""'"
+        exit 1
+    fi
+
+    local ldms_dist_builddir=$(mktemp -d)
+    if [ $? -eq 0 -o -z "${ldms_dist_builddir}" -o ! -d "${ldms_dist_builddir}" ]; then
+        echo Could not create temporary directory
+        exit 1
+    fi
+
+    pushd ${ldms_dist_builddir}
+    ${LDMS_SRCDIR}/configure
+    if [ $? -ne 0 ]; then
+        echo "Failed to configure LDMS sources"
+        exit 1
+    fi
+
+    make dist
+    if [ $? -ne 0 ]; then
+        echo "make dist failed"
+        exit 1
+    fi
+
+    # Read names from config.h
+    local config_h="${ldms_dist_builddir}/config.h"
+
+    PACKAGE_NAME="$(get_config_var ${config_h} PACKAGE_NAME)"
+    PACKAGE_VERSION="$(get_config_var ${config_h} PACKAGE_VERSION)"
+
+    # Derive name of tarball.  Must match Makefile
+    BASE="${PACKAGE_NAME}-${PACKAGE_VERSION}"
+    BASE_TARBALL="${BASE}.tar.gz"
+
+    cp "${BASE_TARBALL}" "${WORKDIR}"
+    popd
+
+    # Wipe the build directory
+    rm -rf "${ldms_dist_builddir}"
+}
+
+make_tarball

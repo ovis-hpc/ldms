@@ -1,0 +1,68 @@
+FROM ubuntu:22.04 as ldms_builder
+
+# do not check ssl
+RUN for i in /etc/zypp/repos.d/*.repo; do sed -i '/url/ s,$,?ssl_verify=no,' $i; grep . $i ; done
+
+RUN echo "Zypper Refresh and install Deps" \
+    && zypper -q --non-interactive --no-gpg-checks refresh
+
+RUN echo "Zypper Update" \
+    zypper -q --non-interactive --no-gpg-checks update
+
+RUN echo "PKG Install" \
+    && apt-get install -y \                                                     
+    automake \                                                                  
+    autotools-dev \                                                             
+    bison \                                                                     
+    build-essential \                                                           
+    bzip2 \                                                                     
+    curl \                                                                      
+    dnsutils \                                                                  
+    doxygen \                                                                   
+    flex \                                                                      
+    gcc \                                                                       
+    gettext \                                                                   
+    git \                                                                       
+    gzip \                                                                      
+    hostname \                                                                  
+    libibverbs-dev \                                                            
+    python3-pyverbs \                                                           
+    librdmacm-dev \                                                             
+    libcurl4-openssl-dev \                                                      
+    iputils-ping \                                                              
+    libmunge-dev \                                                              
+    jq \                                                                        
+    less \                                                                      
+    libpapi-dev \                                                               
+    libpfm4 \                                                                   
+    libpfm4-dev \                                                               
+    libssl3 \                                                                   
+    libssl-dev \                                                                
+    libtool \                                                                   
+    m4 \                                                                        
+    make \                                                                      
+    openssl \                                                                   
+    papi-tools \                                                                
+    pkg-config \                                                                
+    python3 \                                                                   
+    python3-dev \                                                               
+    python3-pip \                                                               
+    cython3 \                                                                   
+    cython3-dbg \                                                               
+    python3-pytest-cython \                                                     
+    python3-cytoolz \                                                           
+    python3-skbuild \                                                           
+    cysignals-tools \
+    traceroute \                                                                
+    tree \                                                                      
+    vim 
+
+#zypper -q --non-interactive install -y \
+#    libpfm4 \
+#    libpfm-devel \
+#    papi \
+#    libpapi \
+#    papi-devel
+
+LABEL maintainer="John Stile <jstile@lbl.gov>"
+CMD /bin/bash

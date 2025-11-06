@@ -1,0 +1,85 @@
+stages:
+  - build
+  - test
+
+variables:
+  GIT_STRATEGY: clone
+  GIT_SUBMODULE_STRATEGY: recursive
+
+.ubuntu_template:
+  image: ovishpc/ldms-dev-ubuntu-2404:latest-amd64
+  before_script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - sh autogen.sh
+
+build:
+  stage: build
+  extends: .ubuntu_template
+  script:
+    - ./configure CFLAGS="-Wall -Werror"
+    - make
+  only:
+    refs:
+      - main
+      - /^b\d+\.\d+$/
+    variables:
+      - $CI_PIPELINE_SOURCE == "push"
+      - $CI_PIPELINE_SOURCE == "merge_request_event"
+
+distcheck:
+  stage: test
+  extends: .ubuntu_template
+  script:
+    - ./configure
+    - make distcheck
+  only:
+    refs:
+      - main
+      - /^b\d+\.\d+$/
+    variables:
+      - $CI_PIPELINE_SOURCE == "push"
+      - $CI_PIPELINE_SOURCE == "merge_request_event"
+
+build-with-rdma:
+  stage: build
+  extends: .ubuntu_template
+  script:
+    - ./configure --enable-rdma CFLAGS="-Wall -Werror"
+    - make
+  only:
+    refs:
+      - main
+      - /^b\d+\.\d+$/
+    variables:
+      - $CI_PIPELINE_SOURCE == "push"
+      - $CI_PIPELINE_SOURCE == "merge_request_event"
+
+build-ddebug:
+  stage: build
+  image: ovishpc/ldms-dev-ubuntu-2404:latest-amd64
+  before_script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - sh autogen.sh
+  script:
+    - |
+      _CFLAGS_=(
+        -DDEBUG -DEP_DEBUG -DCTXT_DEBUG -DPUSH_DEBUG -DLOADAVG_CONFIG_DEBUG
+        -DLOADAVG_TYPE_DEBUG -DSEND_RECV_DEBUG -DZAP_DEBUG -DDEBUG_ZAP_SOCK
+        -DTMP_DEBUG -DZAP_UGNI_DEBUG
+      )
+      _ENABLES_=(
+        --enable-zaptest
+        --enable-ldms-test
+        --enable-rdma
+        --enable-fabric
+        --with-libfabric=/usr
+      )
+      ./configure ${_ENABLES_[*]} CFLAGS="${_CFLAGS_[*]}"
+    - make
+  only:
+    refs:
+      - main
+      - /^b\d+\.\d+$/
+    variables:
+      - $CI_PIPELINE_SOURCE == "push"
+      - $CI_PIPELINE_SOURCE == "merge_request_event"

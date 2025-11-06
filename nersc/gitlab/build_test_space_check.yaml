@@ -1,0 +1,33 @@
+stages:
+  - lint
+
+space_check:
+  stage: lint
+  image: ubuntu:latest
+  before_script:
+    - apt-get update && apt-get install -y git
+  script:
+    - |
+      set -e
+      if [ -z "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" ]; then
+        echo "Not a merge request pipeline. Skipping check."
+        exit 0
+      fi
+      echo "=== Fetching target branch ==="
+      git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+      echo "=== Creating /tmp/diff ==="
+      git diff "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" > /tmp/diff
+      echo "=== Checking trailing spaces in /tmp/diff ==="
+      if grep '^+.*[[:space:]]$' /tmp/diff ; then
+        echo "---------------------------------------"
+        echo "Merge request contains trailing spaces"
+        exit 1
+      else
+        echo "---------------------------------------"
+        echo "OK."
+      fi
+  only:
+    refs:
+      - merge_requests
+    variables:
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME =~ /^(OVIS-4|main|b\d+\.\d+)$/

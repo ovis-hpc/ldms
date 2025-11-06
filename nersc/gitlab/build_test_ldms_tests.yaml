@@ -1,0 +1,69 @@
+stages:
+  - build
+
+build_ldms_test:
+  stage: build
+  image: ovishpc/ldms-dev
+  before_script:
+    - apt-get update && apt-get install -y git
+    - mkdir /sos-src
+    - cd /sos-src
+    - git clone https://github.com/ovis-hpc/sos .
+    - ./autogen.sh
+    - mkdir -p build
+    - cd build
+    - ../configure --prefix=/opt/ovis
+    - make
+    - make install
+    - cd "$CI_PROJECT_DIR"
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - sh autogen.sh
+  script:
+    - |
+      mkdir -p build
+      PREFIX=/opt/ovis
+      OPTIONS=(
+        --prefix=${PREFIX}
+        --enable-python
+        --enable-etc
+        --enable-doc
+        --enable-doc-man
+
+        # tests
+        --enable-zaptest
+        --enable-ldms-test
+        --enable-test_sampler
+        --enable-list_sampler
+        --enable-record_sampler
+
+        # extra xprt
+        --enable-rdma
+
+        # auth
+        --enable-munge
+
+        # stores
+        --enable-sos
+        --with-sos=${PREFIX}
+        --enable-kokkos
+        --enable-store-app
+        --with-kafka=yes
+
+        # samplers
+        --enable-tutorial-sampler
+        --enable-tutorial-store
+        --enable-app-sampler
+        --enable-papi
+
+        CFLAGS="-Wall -Werror -O0 -ggdb3"
+      )
+      ./configure "${OPTIONS[@]}"
+      make
+  only:
+    refs:
+      - main
+      - /^b\d+\.\d+$/
+      - OVIS-4
+    variables:
+      - $CI_PIPELINE_SOURCE == "push"
+      - $CI_PIPELINE_SOURCE == "merge_request_event"

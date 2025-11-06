@@ -1,0 +1,106 @@
+stages:
+  - build
+  - package
+
+variables:
+  CONTAINER_TAG: "20250221"
+  CONTAINER_IMAGE: "ldms_build_cos_3.1"
+  CONTAINER_REGISTRY: "registry.nersc.gov/csg"
+
+build:
+  stage: build
+  image:
+    name: $CONTAINER_REGISTRY/$CONTAINER_IMAGE:$CONTAINER_TAG
+    entrypoint: [ "/bin/bash", "-c" ]
+  script:
+    - echo "Start Build ENV"
+    - pwd
+    - ls -laF
+    - nersc/clean.bash
+    - echo "[>>] Hack DCGM Header"
+    - echo "#define DCGM_PUBLIC_API" >> "/usr/include/dcgm_api_export.h"
+    - echo "[>>] Remove .version"
+    - rm -rf .version
+    - echo "[>>] autoreconf"
+    - autoreconf --install
+    - echo "[>>] autogen"
+    - ./autogen.sh
+    - echo "[>>] configure"
+    - ./nersc/configure.sh
+    - echo "[>>] make"
+    - make -j 10
+    - echo "[>>] make install"
+    - make install
+    - ./nersc/asseble_package_tree.bash
+    - echo "[>>] List assebled install dir"
+    - tree /app
+    - echo "[>>] Size of install"
+    - du -sh /app
+    - tar -C /app -czvpf ovis-ldms.tar.gz .
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - ovis-ldms.tar.gz
+      - config.log
+      - .version
+      #-- ovis-ldms-*.tar.gz
+      #- ldms/src/third-plugins/all-third.tar.gz
+      #- /builds/nersc/csg/ovis/nersc-zypper/nersc-amd-shasta-cray/FILES/aocc-compiler-3.0.0.tar.gz
+      #- /builds/nersc/csg/ovis/nersc-zypper/nersc-amd-shasta-cray/FILES/aocc-compiler-3.1.0.tar.gz
+      #- /builds/nersc/csg/ovis/nersc-zypper/nersc-lustre/SOURCES/lustre-2.12.0.5_cray_327_g809416f.tar.gz
+      #- /builds/nersc/csg/ovis/nersc-zypper/nvidia-kmod-software/FILES/nv_peer_memory-1.2-0.tar.gz
+ 
+
+package:
+  stage: package
+  needs:
+    - "build"
+  dependencies:
+    - "build"
+  image:
+    name: $CONTAINER_REGISTRY/$CONTAINER_IMAGE:$CONTAINER_TAG
+    entrypoint: [ "/bin/bash", "-c" ]
+  script:
+    - echo "Package ldms in RPM"
+    - pwd
+    - ls -laF
+    - echo "[>>] Install fpm"
+    - gem install public_suffix -v 4.0.7
+    - gem install rchardet -v 1.8.0
+    - gem install --no-ri --no-rdoc fpm -v 1.14.2
+    - gem install dotenv -v 2.8.1
+    - echo "[>>] fpm version"
+    - fpm.ruby2.5 --version
+    - echo "[>>] Build RPM"
+    - >
+      fpm.ruby2.5
+      --input-type tar
+      --output-type rpm
+      --name ovis-ldms
+      --version $(cat .version)
+      --iteration 1
+      --depends bash
+      --depends python3-Cython
+      --depends python3-devel
+      --directories=/opt/ovis-ldms
+      --post-uninstall nersc/rpm_postuninstall.txt
+      --license "GPLv2 or BSD"
+      --rpm-group root
+      --description "This package provides the LDMS commands and libraries.\n* ldmsd: the LDMS daemon, which can run as sampler or aggregator (or both).\n* ldms_ls: the tool to list metric information of an ldmsd.\n* ldmsctl: the tool to control an ldmsd."
+      --rpm-summary "LDMS - Lighweight Distributed Metric Service"
+      --package ovis-ldms-$(cat .version).x86_64.rpm
+      ovis-ldms.tar.gz
+    - ls -alF ovis-ldms-*.rpm
+    - echo "[>>]  List files in rpm"
+    - rpm -qlp ovis-ldms-*rpm 
+    - echo "[>>] Show rpm scripts"
+    - rpm -qp --scripts ovis-ldms-*rpm
+    - echo "[>>] Show rpm info"
+    - rpm -qi ovis-ldms-*rpm || EXIT_CODE="$?"
+    - echo "[--] Success. $EXIT_CODE"
+  artifacts:
+    paths:
+      - ovis-ldms-*rpm
+      - ovis-ldms.tar.gz
+    expire_in: 1 week
+

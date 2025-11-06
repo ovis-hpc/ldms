@@ -1,0 +1,5 @@
+# Remove man pages
+mandb --quiet
+# Unlink services
+systemctl daemon-reload
+systemctl reset-failed
