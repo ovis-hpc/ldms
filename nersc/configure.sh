@@ -1,11 +1,12 @@
 #!/bin/bash
 echo "[>>] configure"
-CFLAGS="-g -O" \
+CFLAGS="-g -O  -D_FORTIFY_SOURCE=0" \
 ./configure \
  --prefix="/opt/ovis-ldms" \
  --with-slurm="/usr/include/slurm" \
  --with-libevent="/opt/ovis-ldms/lib" \
  --disable-mmap \
+ --disable-fortify \
  --enable-cray-samplers \
  --enable-doc \
  --enable-doc-html \
