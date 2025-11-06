@@ -2821,6 +2821,15 @@ extern ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema);
 extern uint64_t ldms_set_id(ldms_set_t set);
 
 /**
+ * \brief Test a character to see if it is allowed in a metric set instance name
+ *
+ * \param c  That character to test
+ *
+ * \return Return 1 if the character is allowed, 0 if it is not
+ */
+int ldms_set_instance_name_char_allowed(char c);
+
+/**
  * \brief Create an LDMS metric set with a heap of the given heap size \c heap_sz
  *
  * ::ldms_set_new() creates a set with a heap of the size cached in the schema \c schema.
@@ -2893,7 +2902,7 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
  *         - EEXIST   The specified instance name is already used.
  *         - EINVAL   A parameter or the schema itself is invalid.
  *
- * \see ldms_set_new(), ldms_set_new_with_auth(), ldms_set_new_with_heap()
+ * \see ldms_set_new(), ldms_set_new_with_auth(), ldms_set_new_with_heap(), ldms_set_instance_name_char_allowed()
  */
 ldms_set_t ldms_set_create(const char *instance_name,
 				  ldms_schema_t schema,
