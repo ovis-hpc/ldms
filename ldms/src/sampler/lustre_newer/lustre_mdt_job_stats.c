@@ -8,6 +8,7 @@
 #include "ldmsd.h"
 #include "lustre_mdt.h"
 #include "lustre_mdt_job_stats.h"
+#include "lustre_shared.h"
 
 /* ldms_schema_t is a pointer */
 static ldms_schema_t mdt_job_stats_schema;
@@ -240,6 +241,7 @@ void mdt_job_stats_sample(lm_context_t ctxt,
                         struct rbn *rbn;
 
                         job_stats_sample_stop(&job_stats);
+			sanitize_job_id_str(str1);
                         rbn = rbt_find(job_stats_tree, str1);
                         if (rbn) {
                                 job_stats = container_of(rbn, struct mdt_job_stats_data, job_stats_node);
