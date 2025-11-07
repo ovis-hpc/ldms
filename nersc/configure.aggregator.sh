@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "[>>] configure"
-CFLAGS="-g -O -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0" \
+CFLAGS="-g -O2 -D_FORTIFY_SOURCE=1" 
 CYTHON=cython3 \
 ./configure \
  --prefix="/opt/ovis-ldms" \
@@ -22,4 +22,5 @@ CYTHON=cython3 \
  --enable-swig \
  --enable-sysclassib \
  --enable-tsampler \
+ --enable-victoriametrics \
  --enable-store-avro-kafka

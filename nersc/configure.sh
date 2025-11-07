@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "[>>] configure"
-CFLAGS="-g -O -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0" \
+CFLAGS="-g -O" \
 ./configure \
  --prefix="/opt/ovis-ldms" \
  --with-slurm="/usr/include/slurm" \
