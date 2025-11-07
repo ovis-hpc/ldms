@@ -923,9 +923,9 @@ Changing the log levels of LDMSD infrastructures
    |
    | A string specifying the log levels to be enabled
 
-   The valid string are "default", "quiet", and a comma-separated list
+   The valid strings are "default", "quiet", and a comma-separated list
    of DEBUG, INFO, WARN, ERROR, and CRITICAL. It is case insensitive.
-   "default" means to set the log level to the defaul log level. "quiet"
+   "default" means to set the log level to the default log level. "quiet"
    means disable the log messages. We note that "<level>," and "<level>"
    give different results. "<level>" -- a single level name -- sets the
    log level to the given level and all the higher severity levels. In
@@ -934,15 +934,19 @@ Changing the log levels of LDMSD infrastructures
 
 **[name** *name*\ **]**
    |
-   | A logger name
+   | A logger name. If the subsystem does not exist, it will be created
+     and registered with the specified log level. This allows configuring
+     log levels for subsystems that do not yet exist, such as plugin
+     subsystems before the plugin is loaded.
 
 **[regex** *regex*\ **]**
    |
-   | A regular expression matching logger names. If neither 'name' or
-     'regex' is given, the command sets the default log level to the
-     given level. For example, 'regex=xprt.\*' will change the
-     transport-related log levels. Use log_status to query the available
-     log infrastructures.
+   | A regular expression matching logger names. This only affects
+     subsystems that already exist at the time the command is executed.
+     If neither 'name' or 'regex' is given, the command sets the default
+     log level to the given level. For example, 'regex=xprt.\*' will
+     change the transport-related log levels. Use log_status to query the
+     available log infrastructures.
 
 Query LDMSD's log information
 -----------------------------
