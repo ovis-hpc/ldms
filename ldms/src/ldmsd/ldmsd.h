@@ -120,6 +120,8 @@ typedef struct ldmsd_plugin_set_list {
 #define LDMSD_SET_INFO_INTERVAL_KEY "interval_us"
 #define LDMSD_SET_INFO_OFFSET_KEY "offset_us"
 
+extern ovis_log_t tenant_log;
+
 /** Request that the task stop */
 #define LDMSD_TASK_F_STOP		0x01
 /** Use 'synchronous' scheduling. This is set when offset_us is !0 */
