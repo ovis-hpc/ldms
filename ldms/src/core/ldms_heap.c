@@ -374,8 +374,9 @@ void ldms_heap_free(ldms_heap_t heap, void *d)
 		}
 	}
 	offset = ldms_heap_off(heap, p);
-	rrbn_init(RRBN(p->size_node), p->size_node.key_u64, sizeof(uint64_t));
-	rrbn_init(RRBN(p->addr_node), p->addr_node.key_u64, sizeof(uint64_t));
+	// This copies the key to itself...
+	// rrbn_init(RRBN(p->size_node), p->size_node.key_u64, sizeof(uint64_t));
+	// rrbn_init(RRBN(p->addr_node), p->addr_node.key_u64, sizeof(uint64_t));
 
 	/* Put 'p' back in the trees */
 	rrbt_ins(heap->size_tree, RRBN(p->size_node));

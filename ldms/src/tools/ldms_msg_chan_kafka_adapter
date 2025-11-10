@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+#######################################################################
+# -*- c-basic-offset: 8 -*-
+# Copyright (c) 2025 Open Grid Computing, Inc. All rights reserved.
+#
+# This software is available to you under a choice of one of two
+# licenses.  You may choose to be licensed under the terms of the GNU
+# General Public License (GPL) Version 2, available from the file
+# COPYING in the main directory of this source tree, or the BSD-type
+# license below:
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+#      Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#
+#      Redistributions in binary form must reproduce the above
+#      copyright notice, this list of conditions and the following
+#      disclaimer in the documentation and/or other materials provided
+#      with the distribution.
+#
+#      Neither the name of Open Grid Computing nor the names of any
+#      contributors may be used to endorse or promote products derived
+#      from this software without specific prior written permission.
+#
+#      Modified source versions must be plainly marked as such, and
+#      must not be misrepresented as being the original software.
+#
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,p
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#######################################################################
+from builtins import str
+import struct
+import cmd
+import argparse
+import sys
+import os
+import traceback
+import json
+import re
+import time
+from datetime import datetime
+from ovis_ldms import ldms
+from kafka import KafkaProducer
+import errno
+import math
+
+def msg_cb(msgData, producer):
+    # NB: try..except does NOT work here. So any thing done here
+    # has to be treble checked or you will get silent failures.
+    #
+    print(producer.send('ldms-msg-chan-events', bytes(str(msgData.data), 'utf-8')))
+
+if __name__ == "__main__":
+    try:
+        parser = argparse.ArgumentParser(description="Monitor LDMS Message Traffic and Export to Kafka")
+        parser.add_argument('--kafka-host',
+                            help = "Host address of Kafka broker",
+                            default = 'localhost')
+        parser.add_argument('--kafka-port',
+                            help = "Port number of Kafka broker.",
+                            type = int, default=9092)
+        parser.add_argument('--sub-xprt',
+                            help = "Subscriber transport type",
+                            choices = ['sock', 'ugni', 'rdma', 'fabric'],
+                            default = 'sock')
+        parser.add_argument('--sub-host',
+                            help = "Host on which to listen.",
+                            default = 'localhost')
+        parser.add_argument('--sub-port',
+                            help = "Port on which to listen.",
+                            type = int,
+                            default = 10111)
+        parser.add_argument('--sub-auth',
+                            help = "Subscriber authentication method.",
+                            default = "none")
+        parser.add_argument('--sub-auth-arg',
+                            help = "Subscriber authentication arguments (name=value).",
+                            default = None)
+        parser.add_argument('--sub-regex',
+                            help = "Regular expression for tags to accept from publisher.",
+                            default = ".*")
+        args = parser.parse_args()
+    except Exception as e:
+        print(e)
+        sys.exit(1)
+
+    auth_opt = None
+    if args.sub_auth_arg:
+        auth_opt = dict()
+        rx = re.compile(r"(\w+)=(.+)")
+        for arg in args.sub_auth_arg:
+            m = rx.match(arg)
+            if not m:
+                print("Expecting --auth-arg to be NAME=VALUE")
+                sys.exit(1)
+                (k, v) = m.groups()
+                auth_opt[k] = v
+
+    ldms.msg_enable()
+
+    try:
+        producer = KafkaProducer(bootstrap_servers=f'{args.kafka_host}:{args.kafka_port}')
+        producer.send('ldms-msg-chan-events', b'Kafka Producer Initialized')
+        chan = ldms.MessageChannel("ldms_msg_chan_kafka_adapter",
+                        "subscribe",
+                        args.sub_xprt,
+                        args.sub_host,
+                        0,
+                        args.sub_host,
+                        args.sub_port,
+                        args.sub_auth,
+                        auth_opt,
+                        reconnect = 2)
+        chan.subscribe(args.sub_regex, msg_cb, producer)
+    except Exception as e:
+        print(e)
+        sys.exit(1)
+
+    while True:
+        time.sleep(3)
