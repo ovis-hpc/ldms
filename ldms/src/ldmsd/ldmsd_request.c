@@ -7813,7 +7813,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 		goto __APPEND_ERR;
 	}
 
-	lres = ldms_thrstat_result_get();
+	lres = ldms_thrstat_result_get(interval_s);
 	if (!lres)
 		goto __APPEND_ERR;
 

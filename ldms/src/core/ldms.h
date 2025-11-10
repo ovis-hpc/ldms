@@ -2355,9 +2355,11 @@ char *ldms_thrstat_op_str(enum ldms_thrstat_op_e e);
  * Return an ldms_thrstat_result structure or NULL on memory allocation failure.
  * This result must be freed with the ldms_thrstat_free_result() function.
  *
+ * \param interval_s Time interval in seconds to analyze (0 = use default 3s)
+ *
  * \return A pointer to an ldms_thrstat_result structure
  */
-struct ldms_thrstat_result *ldms_thrstat_result_get();
+struct ldms_thrstat_result *ldms_thrstat_result_get(uint64_t interval_s);
 
 /**
  * \brief Free an ldms_thrstat_result returned by \c ldms_thrstat_result_get
