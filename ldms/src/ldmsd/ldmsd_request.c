@@ -2289,12 +2289,12 @@ static int __process_stream_status(struct prdcr_stream_status_ctxt *ctxt, char *
 		return rc;
 
 	for (a = json_attr_first(d); a; a = json_attr_next(a)) {
-		stream_name = json_attr_name(a)->str;
+		stream_name = (char *)json_attr_name(a);
 		s = json_attr_value(a);
 		pthread_mutex_lock(&ctxt->base->lock);
 		ss = json_value_find(ctxt->base->stream_dict, stream_name);
 		if (!ss) {
-			ss = json_entity_new(JSON_DICT_VALUE);
+			ss = json_entity_new(parser, JSON_DICT_VALUE);
 			json_attr_add(ctxt->base->stream_dict, stream_name, ss);
 		}
 		pthread_mutex_unlock(&ctxt->base->lock);
@@ -2305,7 +2305,7 @@ static int __process_stream_status(struct prdcr_stream_status_ctxt *ctxt, char *
 			continue;
 		}
 		json_attr_rem(s, "publishers"); /* We need to know only the overall statistic on sampler. */
-		p = json_entity_copy(s);
+		p = json_entity_copy(parser, s);
 		if (!p) {
 			rc = ENOMEM;
 			goto free_json;
@@ -2419,6 +2419,7 @@ int prdcr_stream_status_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_prdcr_t prdcr;
 	struct pstream_status_regex_ctxt *ctxt;
 	struct ldmsd_str_ent *pname, *nxt_pname;
+	json_parser_t parser = json_parser_new(0);
 
 	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!prdcr_regex) {
@@ -2437,7 +2438,7 @@ int prdcr_stream_status_handler(ldmsd_req_ctxt_t reqc)
 	}
 	TAILQ_INIT(&ctxt->prdcr_list);
 
-	ctxt->stream_dict = json_entity_new(JSON_DICT_VALUE);
+	ctxt->stream_dict = json_entity_new(parser, JSON_DICT_VALUE);
 	if (!ctxt->stream_dict) {
 		rc = ENOMEM;
 		goto send_resp_code;
@@ -2513,6 +2514,7 @@ free_ctxt:
 	free(ctxt);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(prdcr_regex);
+	json_parser_free(parser);
 	return rc;
 }
 
@@ -9392,27 +9394,28 @@ out:
 	return rc;
 }
 
-static json_entity_t __ldmsd_stat2dict(struct ldmsd_stat *stat)
+static json_entity_t __ldmsd_stat2dict(json_parser_t parser, struct ldmsd_stat *stat)
 {
 	double start_ts = stat->start.tv_sec + stat->start.tv_nsec*1e-9;
 	double end_ts = stat->end.tv_sec + stat->end.tv_nsec*1e-9;
 	double min_ts = stat->min_ts.tv_sec + stat->min_ts.tv_nsec*1e-9;
 	double max_ts = stat->max_ts.tv_sec + stat->max_ts.tv_nsec*1e-9;
-	json_entity_t d = json_dict_build(NULL,
-				JSON_FLOAT_VALUE, "min", stat->min,
-				JSON_FLOAT_VALUE, "min_ts", min_ts,
-				JSON_FLOAT_VALUE, "max", stat->max,
-				JSON_FLOAT_VALUE, "max_ts", max_ts,
-				JSON_FLOAT_VALUE, "avg", stat->avg,
-				JSON_INT_VALUE, "count", (int64_t)stat->count,
-				JSON_FLOAT_VALUE, "start_ts", start_ts,
-				JSON_FLOAT_VALUE, "end_ts", end_ts,
-				-1);
+	json_entity_t d = json_dict_build(parser, NULL,
+				"min",      JSON_FLOAT_VALUE, stat->min,
+				"min_ts",   JSON_FLOAT_VALUE, min_ts,
+				"max",      JSON_FLOAT_VALUE, stat->max,
+				"max_ts",   JSON_FLOAT_VALUE, max_ts,
+				"avg",      JSON_FLOAT_VALUE, stat->avg,
+				"count",    JSON_INT_VALUE, (int64_t)stat->count,
+				"start_ts", JSON_FLOAT_VALUE, start_ts,
+				"end_ts",   JSON_FLOAT_VALUE, end_ts,
+				NULL);
 	return d;
 }
 
 static int
-__store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int reset)
+__store_time_stats_strgp(json_parser_t parser,
+			 json_entity_t strgp_dict, ldmsd_strgp_t strgp, int reset)
 {
 	int rc = 0;
 	ldmsd_prdcr_t prdcr;
@@ -9424,13 +9427,12 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 	json_entity_t strgp_stats, set_stats ;
 	json_entity_t producers, threads, schemas, sets;
 	json_entity_t prdcr_json, thr_json, sch_json, set_json;
-
-	strgp_stats = json_dict_build(NULL,
-				JSON_DICT_VALUE, "producers", -2,
-				JSON_DICT_VALUE, "threads", -2,
-				JSON_DICT_VALUE, "schemas", -2,
-				JSON_DICT_VALUE, "sets", -2,
-				-1);
+	strgp_stats = json_dict_build(parser, NULL,
+				      "producers", JSON_DICT_VALUE, NULL,
+				      "threads",   JSON_DICT_VALUE, NULL,
+				      "schemas",   JSON_DICT_VALUE, NULL,
+				      "sets",      JSON_DICT_VALUE, NULL,
+				      NULL);
 	if (!strgp_stats) {
 		ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
 		rc = ENOMEM;
@@ -9466,7 +9468,7 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 				 * The dictionary may be extended to contain
 				 * producer's statistics in the future.
 				 */
-				prdcr_json = json_entity_new(JSON_DICT_VALUE);
+				prdcr_json = json_entity_new(parser, JSON_DICT_VALUE);
 				if (!prdcr_json)
 					goto oom;
 				rc = json_attr_add(producers, prdcr->obj.name, prdcr_json);
@@ -9482,7 +9484,7 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 				 * The dictionary may be extended to contain
 				 * thread's statistics in the future.
 				 */
-				thr_json = json_entity_new(JSON_DICT_VALUE);
+				thr_json = json_entity_new(parser, JSON_DICT_VALUE);
 				if (!thr_json)
 					goto oom;
 				rc = json_attr_add(threads, tid_s, thr_json);
@@ -9496,7 +9498,7 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 				 * The dictionary may be extended to contain
 				 * schema's statistics in the future.
 				 */
-				sch_json = json_entity_new(JSON_DICT_VALUE);
+				sch_json = json_entity_new(parser, JSON_DICT_VALUE);
 				if (!sch_json)
 					goto oom;
 				rc = json_attr_add(schemas, prdset->schema_name, sch_json);
@@ -9504,12 +9506,21 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 					goto json_error;
 			}
 
-			set_json = json_dict_build(NULL,
-					JSON_STRING_VALUE, "producer", prdcr->obj.name,
-					JSON_STRING_VALUE, "schema", prdset->schema_name,
-					JSON_STRING_VALUE, "thread_id", tid_s,
-					-1);
-			set_stats = __ldmsd_stat2dict(&prdset->store_stat);
+			set_json = json_dict_build(parser, NULL,
+					"producer",
+						   JSON_STRING_VALUE,
+						   prdcr->obj.name,
+						   strlen(prdcr->obj.name),
+					"schema",
+						   JSON_STRING_VALUE,
+						   prdset->schema_name,
+						   strlen(prdset->schema_name),
+					"thread_id",
+						   JSON_STRING_VALUE,
+						   tid_s,
+						   strlen(tid_s),
+					NULL);
+			set_stats = __ldmsd_stat2dict(parser, &prdset->store_stat);
 			if (!set_json || !set_stats)
 				goto oom;
 			rc = json_attr_add(set_json, "stats", set_stats);
@@ -9550,6 +9561,12 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_strgp_t strgp;
 	int reset = 0;
 	json_entity_t strgp_dict;
+	json_parser_t parser = json_parser_new(0);
+	if (!parser) {
+		ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
+		rc = ENOMEM;
+		goto out;
+	}
 
 	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
 	if (reset_s) {
@@ -9558,7 +9575,7 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 		free(reset_s);
 	}
 
-	strgp_dict = json_entity_new(JSON_DICT_VALUE);
+	strgp_dict = json_entity_new(parser, JSON_DICT_VALUE);
 	if (!strgp_dict) {
 		ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
 		rc = ENOMEM;
@@ -9576,7 +9593,7 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 			ldmsd_send_req_response(reqc, reqc->line_buf);
 			return 0;
 		}
-		rc = __store_time_stats_strgp(strgp_dict, strgp, reset);
+		rc = __store_time_stats_strgp(parser, strgp_dict, strgp, reset);
 		if (rc)
 			goto err;
 	} else {
@@ -9584,7 +9601,7 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 		for (strgp = ldmsd_strgp_first(); strgp;
 				strgp = ldmsd_strgp_next(strgp)) {
 			ldmsd_strgp_lock(strgp);
-			rc = __store_time_stats_strgp(strgp_dict, strgp, reset);
+			rc = __store_time_stats_strgp(parser, strgp_dict, strgp, reset);
 			if (rc) {
 				ldmsd_strgp_unlock(strgp);
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
@@ -9606,6 +9623,7 @@ err:
 out:
 	free(name);
 	json_entity_free(strgp_dict);
+	json_parser_free(parser);
 	return rc;
 }
 

@@ -1970,8 +1970,8 @@ static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type
 	     info_entity = json_item_next(info_entity), j++) {
 		k = json_value_find(info_entity, "key");
 		v = json_value_find(info_entity, "value");
-		char *nkey = strdup(json_value_str(k)->str);
-		char *nvalue = strdup(json_value_str(v)->str);
+		char *nkey = strdup(json_value_cstr(k));
+		char *nvalue = strdup(json_value_cstr(v));
 		if (!nkey || !nvalue) {
 			free(nkey);
 			free(nvalue);
@@ -2002,7 +2002,7 @@ static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type
 		for (j = 0, info_entity = json_item_first(info_list); info_entity;
 				info_entity = json_item_next(info_entity)) {
 			k = json_value_find(info_entity, "key");
-			if (0 == strcmp(pair->key, json_value_str(k)->str))
+			if (0 == strcmp(pair->key, json_value_cstr(k)))
 				break;
 		}
 		if (!info_entity) {
@@ -2088,19 +2088,19 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	for (i = 0, set_entity = json_item_first(dir_list); set_entity;
 	     set_entity = json_item_next(set_entity), i++) {
 		json_entity_t e = json_value_find(set_entity, "name");
-		dir->set_data[i].inst_name = strdup(json_value_str(e)->str);
+		dir->set_data[i].inst_name = strdup(json_value_cstr(e));
 
 		e = json_value_find(set_entity, "schema");
-		dir->set_data[i].schema_name = strdup(json_value_str(e)->str);
+		dir->set_data[i].schema_name = strdup(json_value_cstr(e));
 
 		e = json_value_find(set_entity, "digest");
 		if (e)
-			dir->set_data[i].digest_str = strdup(json_value_str(e)->str);
+			dir->set_data[i].digest_str = strdup(json_value_cstr(e));
 		else
 			dir->set_data[i].digest_str = strdup("");
 
 		e = json_value_find(set_entity, "flags");
-		dir->set_data[i].flags = strdup(json_value_str(e)->str);
+		dir->set_data[i].flags = strdup(json_value_cstr(e));
 
 		e = json_value_find(set_entity, "meta_size");
 		dir->set_data[i].meta_size = json_value_int(e);
@@ -2121,7 +2121,7 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		dir->set_data[i].gid = json_value_int(e);
 
 		e = json_value_find(set_entity, "perm");
-		dir->set_data[i].perm = strdup(json_value_str(e)->str);
+		dir->set_data[i].perm = strdup(json_value_cstr(e));
 
 		e = json_value_find(set_entity, "card");
 		dir->set_data[i].card = json_value_int(e);
@@ -2174,10 +2174,14 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	}
 
 out:
-	/* Callback owns dir memory. */
-	ctxt->dir.cb((ldms_t)x, rc, rc ? NULL : dir, ctxt->dir.cb_arg);
+	/* The callback could trigger a process exit. Free this memory
+	 * to avoid attempting to free this data while exiting
+	 */
 	json_entity_free(dir_entity);
 	json_parser_free(p);
+
+	/* Callback owns dir memory. */
+	ctxt->dir.cb((ldms_t)x, rc, rc ? NULL : dir, ctxt->dir.cb_arg);
 	if (rc && dir)
 		ldms_xprt_dir_free(x, dir);
 	(void)clock_gettime(CLOCK_REALTIME, &end);
