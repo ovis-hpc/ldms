@@ -700,7 +700,7 @@ static void handle_step_init(job_data_t job, json_entity_t e)
 		if (json_entity_type(user_name) == JSON_STRING_VALUE) {
 			ldms_metric_array_set_str(job_set,
 						  user_name_idx + job->job_slot,
-						  json_value_str(user_name)->str);
+						  json_value_cstr(user_name));
 		}
 	}
 	attr = json_attr_find(dict, "job_name");
@@ -709,7 +709,7 @@ static void handle_step_init(job_data_t job, json_entity_t e)
 		if (json_entity_type(job_name) == JSON_STRING_VALUE) {
 			ldms_metric_array_set_str(job_set,
 						  job_name_idx + job->job_slot,
-						  json_value_str(job_name)->str);
+						  json_value_cstr(job_name));
 		}
 	}
 	/* If subscriber data is present, look for an instance tag */
@@ -726,7 +726,7 @@ static void handle_step_init(job_data_t job, json_entity_t e)
 			break;
 		ldms_metric_array_set_str(job_set,
 					  job_tag_idx + job->job_slot,
-					  json_value_str(job_tag)->str);
+					  json_value_cstr(job_tag));
 		break;
 	}
 	attr = json_attr_find(dict, "nnodes");
@@ -880,11 +880,11 @@ static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt)
 	}
 	tstamp = json_value_int(json_attr_value(attr));
 
-	json_str_t event_name = json_value_str(json_attr_value(event));
+	char *event_name = json_value_cstr(json_attr_value(event));
 	data = json_attr_find(ev->recv.json, "data");
 	if (!data) {
 		ovis_log(mylog, OVIS_LERROR, "'%s' event is missing "
-		       "the 'data' attribute\n", event_name->str);
+		       "the 'data' attribute\n", event_name);
 		goto out_0;
 	}
 	dict = json_attr_value(data);
@@ -900,14 +900,14 @@ static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt)
 
 	pthread_mutex_lock(&job_lock);
 	rc = ENOENT;
-	if (0 == strncmp(event_name->str, "init", 4)) {
+	if (0 == strncmp(event_name, "init", 4)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			uint64_t local_task_count;
 			attr = json_attr_find(dict, "local_tasks");
 			if (!attr) {
 				ovis_log(mylog, OVIS_LERROR, "'%s' event "
-				       "is missing the 'local_tasks'.\n", event_name->str);
+				       "is missing the 'local_tasks'.\n", event_name);
 				goto out_1;
 			}
 			/* Allocate the job_data used to track the job */
@@ -921,46 +921,46 @@ static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt)
 			}
 			handle_job_init(job, ev->recv.json);
 		}
-	} else if (0 == strncmp(event_name->str, "step_init", 9)) {
+	} else if (0 == strncmp(event_name, "step_init", 9)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event "
 			       "was received for job %ld with no job_data\n",
-			       event_name->str, job_id);
+			       event_name, job_id);
 			goto out_1;
 		}
 		handle_step_init(job, ev->recv.json);
-	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
+	} else if (0 == strncmp(event_name, "task_init_priv", 14)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event "
 			       "was received for job %ld with no job_data\n",
-			       event_name->str, job_id);
+			       event_name, job_id);
 			goto out_1;
 		}
 		handle_task_init(job, ev->recv.json);
-	} else if (0 == strncmp(event_name->str, "task_exit", 9)) {
+	} else if (0 == strncmp(event_name, "task_exit", 9)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event "
 			       "was received for job %ld with no job_data\n",
-			       event_name->str, job_id);
+			       event_name, job_id);
 			goto out_1;
 		}
 		handle_task_exit(job, ev->recv.json);
-	} else if (0 == strncmp(event_name->str, "exit", 4)) {
+	} else if (0 == strncmp(event_name, "exit", 4)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event "
 			       "was received for job %ld with no job_data\n",
-			       event_name->str, job_id);
+			       event_name, job_id);
 			goto out_1;
 		}
 		handle_job_exit(job, ev->recv.json);
 		release_job_data(job);
 	} else {
 		ovis_log(mylog, OVIS_LDEBUG,
-		       "ignoring event '%s'\n", event_name->str);
+		       "ignoring event '%s'\n", event_name);
 	}
 	rc = 0;
  out_1:

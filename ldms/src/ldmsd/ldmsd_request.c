@@ -2271,7 +2271,8 @@ send_reply:
 }
 
 struct pstream_status_regex_ctxt {
-	json_entity_t stream_dict;
+	json_doc_t stream_doc;
+	// json_entity_t stream_dict;
 	struct ldmsd_str_list prdcr_list;
 	pthread_mutex_t lock;
 };
@@ -2284,36 +2285,37 @@ struct prdcr_stream_status_ctxt {
 static int __process_stream_status(struct prdcr_stream_status_ctxt *ctxt, char *data, size_t data_len)
 {
 	int rc = 0;
-	json_parser_t parser;
+	json_doc_t doc;
 	json_entity_t d, a, s, ss, p;
 	char *stream_name;
 
-	parser = json_parser_new(0);
-	if (!parser)
-		return ENOMEM;
-	rc = json_parse_buffer(parser, data, data_len, &d);
-	json_parser_free(parser);
-	if (rc)
+	rc = json_parse_buffer(data, data_len, &doc);
+	if (rc) {
+		json_doc_free(doc);
 		return rc;
+	}
 
+	d = json_doc_root(doc);
 	for (a = json_attr_first(d); a; a = json_attr_next(a)) {
-		stream_name = json_attr_name(a)->str;
+		stream_name = (char *)json_attr_name(a);
 		s = json_attr_value(a);
 		pthread_mutex_lock(&ctxt->base->lock);
-		ss = json_value_find(ctxt->base->stream_dict, stream_name);
+		ss = json_value_find(json_doc_root(ctxt->base->stream_doc), stream_name);
 		if (!ss) {
-			ss = json_entity_new(JSON_DICT_VALUE);
-			json_attr_add(ctxt->base->stream_dict, stream_name, ss);
+			ss = json_entity_new(doc, JSON_DICT_VALUE);
+			json_attr_add(json_doc_root(ctxt->base->stream_doc),
+				      stream_name, ss);
 		}
 		pthread_mutex_unlock(&ctxt->base->lock);
 		if (json_value_find(ss, ctxt->pname->str)) {
-			ovis_log(config_log, OVIS_LINFO, "Duplication prdcr_stream_status responses from " \
-					      "producer '%s'. Only the first response was processed.\n",
-					      ctxt->pname->str);
+			ovis_log(config_log, OVIS_LINFO,
+				 "Duplication prdcr_stream_status responses from " \
+				 "producer '%s'. Only the first response was processed.\n",
+				 ctxt->pname->str);
 			continue;
 		}
 		json_attr_rem(s, "publishers"); /* We need to know only the overall statistic on sampler. */
-		p = json_entity_copy(s);
+		p = json_entity_copy(doc, s);
 		if (!p) {
 			rc = ENOMEM;
 			goto free_json;
@@ -2321,7 +2323,7 @@ static int __process_stream_status(struct prdcr_stream_status_ctxt *ctxt, char *
 		json_attr_add(ss, ctxt->pname->str, p);
 	}
 free_json:
-	json_entity_free(d);
+	json_doc_free(doc);
 	return rc;
 }
 
@@ -2359,7 +2361,7 @@ remove_ctxt:
 	 */
 	jbuf_t jb;
 	struct ldmsd_req_attr_s _a;
-	jb = json_entity_dump(NULL, base->stream_dict);
+	jb = json_doc_dump(base->stream_doc);
 
 	_a.discrim = 1;
 	_a.attr_id = LDMSD_ATTR_JSON;
@@ -2370,7 +2372,7 @@ remove_ctxt:
 	uint32_t discrim = 0;
 	ldmsd_append_reply(rcmd->org_reqc, (char*)&(discrim),
 				sizeof(discrim), LDMSD_REQ_EOM_F);
-	json_entity_free(base->stream_dict);
+	json_doc_free(base->stream_doc);
 	pthread_mutex_destroy(&base->lock);
 	free(base);
 out:
@@ -2445,8 +2447,8 @@ int prdcr_stream_status_handler(ldmsd_req_ctxt_t reqc)
 	}
 	TAILQ_INIT(&ctxt->prdcr_list);
 
-	ctxt->stream_dict = json_entity_new(JSON_DICT_VALUE);
-	if (!ctxt->stream_dict) {
+	ctxt->stream_doc = json_doc_new();
+	if (!ctxt->stream_doc) {
 		rc = ENOMEM;
 		goto send_resp_code;
 	}
@@ -9444,15 +9446,15 @@ static json_entity_t __ldmsd_stat2dict(struct ldmsd_stat *stat)
 	double min_ts = stat->min_ts.tv_sec + stat->min_ts.tv_nsec*1e-9;
 	double max_ts = stat->max_ts.tv_sec + stat->max_ts.tv_nsec*1e-9;
 	json_entity_t d = json_dict_build(NULL,
-				JSON_FLOAT_VALUE, "min", stat->min,
-				JSON_FLOAT_VALUE, "min_ts", min_ts,
-				JSON_FLOAT_VALUE, "max", stat->max,
-				JSON_FLOAT_VALUE, "max_ts", max_ts,
-				JSON_FLOAT_VALUE, "avg", stat->avg,
-				JSON_INT_VALUE, "count", (int64_t)stat->count,
-				JSON_FLOAT_VALUE, "start_ts", start_ts,
-				JSON_FLOAT_VALUE, "end_ts", end_ts,
-				-1);
+				"min",      JSON_FLOAT_VALUE, stat->min,
+				"min_ts",   JSON_FLOAT_VALUE, min_ts,
+				"max",      JSON_FLOAT_VALUE, stat->max,
+				"max_ts",   JSON_FLOAT_VALUE, max_ts,
+				"avg",      JSON_FLOAT_VALUE, stat->avg,
+				"count",    JSON_INT_VALUE, (int64_t)stat->count,
+				"start_ts", JSON_FLOAT_VALUE, start_ts,
+				"end_ts",   JSON_FLOAT_VALUE, end_ts,
+				NULL);
 	return d;
 }
 
@@ -9469,13 +9471,13 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 	json_entity_t strgp_stats, set_stats ;
 	json_entity_t producers, threads, schemas, sets;
 	json_entity_t prdcr_json, thr_json, sch_json, set_json;
-
-	strgp_stats = json_dict_build(NULL,
-				JSON_DICT_VALUE, "producers", -2,
-				JSON_DICT_VALUE, "threads", -2,
-				JSON_DICT_VALUE, "schemas", -2,
-				JSON_DICT_VALUE, "sets", -2,
-				-1);
+	json_doc_t jdoc = json_doc_new();
+	strgp_stats = json_dict_build(jdoc,
+				      "producers", JSON_DICT_VALUE, NULL,
+				      "threads",   JSON_DICT_VALUE, NULL,
+				      "schemas",   JSON_DICT_VALUE, NULL,
+				      "sets",      JSON_DICT_VALUE, NULL,
+				      NULL);
 	if (!strgp_stats) {
 		ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
 		rc = ENOMEM;
@@ -9511,7 +9513,7 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 				 * The dictionary may be extended to contain
 				 * producer's statistics in the future.
 				 */
-				prdcr_json = json_entity_new(JSON_DICT_VALUE);
+				prdcr_json = json_entity_new(jdoc, JSON_DICT_VALUE);
 				if (!prdcr_json)
 					goto oom;
 				rc = json_attr_add(producers, prdcr->obj.name, prdcr_json);
@@ -9527,7 +9529,7 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 				 * The dictionary may be extended to contain
 				 * thread's statistics in the future.
 				 */
-				thr_json = json_entity_new(JSON_DICT_VALUE);
+				thr_json = json_entity_new(jdoc, JSON_DICT_VALUE);
 				if (!thr_json)
 					goto oom;
 				rc = json_attr_add(threads, tid_s, thr_json);
@@ -9541,7 +9543,7 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 				 * The dictionary may be extended to contain
 				 * schema's statistics in the future.
 				 */
-				sch_json = json_entity_new(JSON_DICT_VALUE);
+				sch_json = json_entity_new(jdoc, JSON_DICT_VALUE);
 				if (!sch_json)
 					goto oom;
 				rc = json_attr_add(schemas, prdset->schema_name, sch_json);
@@ -9550,10 +9552,19 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 			}
 
 			set_json = json_dict_build(NULL,
-					JSON_STRING_VALUE, "producer", prdcr->obj.name,
-					JSON_STRING_VALUE, "schema", prdset->schema_name,
-					JSON_STRING_VALUE, "thread_id", tid_s,
-					-1);
+					"producer",
+						   JSON_STRING_VALUE,
+						   prdcr->obj.name,
+						   strlen(prdcr->obj.name),
+					"schema",
+						   JSON_STRING_VALUE,
+						   prdset->schema_name,
+						   strlen(prdset->schema_name),
+					"thread_id",
+						   JSON_STRING_VALUE,
+						   tid_s,
+						   strlen(tid_s),
+					NULL);
 			set_stats = __ldmsd_stat2dict(&prdset->store_stat);
 			if (!set_json || !set_stats)
 				goto oom;
@@ -9564,8 +9575,10 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 			if (rc)
 				goto json_error;
 			if (reset) {
-				memset(&prdset->store_stat, 0, sizeof(prdset->store_stat));
-				clock_gettime(CLOCK_REALTIME, &prdset->store_stat.start);
+				// memset(&prdset->store_stat, 0, sizeof(prdset->store_stat));
+				struct timespec now;
+				clock_gettime(CLOCK_REALTIME, &now);
+				ldmsd_prdcr_set_stats_reset(prdset, &now, LDMSD_PRDSET_STATS_F_STORE);
 			}
 		}
 	}
@@ -9603,7 +9616,8 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 		free(reset_s);
 	}
 
-	strgp_dict = json_entity_new(JSON_DICT_VALUE);
+	json_doc_t jdoc = json_doc_new();
+	strgp_dict = json_entity_new(jdoc, JSON_DICT_VALUE);
 	if (!strgp_dict) {
 		ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
 		rc = ENOMEM;
@@ -9650,7 +9664,7 @@ err:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 out:
 	free(name);
-	json_entity_free(strgp_dict);
+	json_doc_free(jdoc);
 	return rc;
 }
 

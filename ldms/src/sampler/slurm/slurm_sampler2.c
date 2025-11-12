@@ -854,7 +854,7 @@ static void handle_step_init(job_data_t job, json_entity_t e)
 	if (av) {
 		if (json_entity_type(av) == JSON_STRING_VALUE) {
 			snprintf(job->user, JOB_USER_STR_LEN, "%s",
-					json_value_str(av)->str);
+					json_value_cstr(av));
 		}
 	}
 
@@ -863,7 +863,7 @@ static void handle_step_init(job_data_t job, json_entity_t e)
 	if (av) {
 		if (json_entity_type(av) == JSON_STRING_VALUE) {
 			snprintf(job->job_name, JOB_NAME_STR_LEN, "%s",
-					json_value_str(av)->str);
+					json_value_cstr(av));
 		}
 	}
 
@@ -876,7 +876,7 @@ static void handle_step_init(job_data_t job, json_entity_t e)
 			if (av) {
 				if (json_entity_type(av) == JSON_STRING_VALUE) {
 					snprintf(job->job_tag, JOB_TAG_STR_LEN,
-						"%s", json_value_str(av)->str);
+						"%s", json_value_cstr(av));
 				}
 			}
 		}
@@ -1096,24 +1096,24 @@ static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt)
 		goto err_0;
 	}
 
-	json_str_t event_name = json_value_str(event);
+	char *event_name = json_value_cstr(event);
 	dict = json_value_find(ev->recv.json, "data");
 	if (!dict) {
 		ovis_log(mylog, OVIS_LERROR, "'%s' event is missing "
-		       "the 'data' attribute\n", event_name->str);
+		       "the 'data' attribute\n", event_name);
 		goto err_0;
 	}
 	av = json_value_find(dict, "job_id");
 	if (!av) {
 		ovis_log(mylog, OVIS_LERROR, "'%s' event is missing the "
-		       "'job_id' attribute.\n", event_name->str);
+		       "'job_id' attribute.\n", event_name);
 		goto err_0;
 	}
 	uint64_t job_id = json_value_int(av);
 
 	job_data_t job;
 	pthread_mutex_lock(&job_tree_lock);
-	if (0 == strncmp(event_name->str, "init", 4)) {
+	if (0 == strncmp(event_name, "init", 4)) {
 		job = job_data_find(job_id);
 		if (!job) {
 			job = job_data_alloc(job_id);
@@ -1126,7 +1126,7 @@ static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt)
 			}
 		}
 		handle_job_init(job, ev->recv.json);
-	} else if (0 == strncmp(event_name->str, "step_init", 9)) {
+	} else if (0 == strncmp(event_name, "step_init", 9)) {
 		job = job_data_find(job_id);
 		if (!job) {
 			job = job_data_alloc(job_id);
@@ -1140,34 +1140,34 @@ static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt)
 			handle_job_init(job, ev->recv.json);
 			ovis_log(mylog, OVIS_LERROR, "'%s' event was received "
 					    "for job %ld with no job_data.\n",
-					    event_name->str, job_id);
+					    event_name, job_id);
 			goto unlock_tree;
 		}
 		handle_step_init(job, ev->recv.json);
-	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
+	} else if (0 == strncmp(event_name, "task_init_priv", 14)) {
 		job = job_data_find(job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event was received "
 					"for job %ld with no job_data.\n",
-					event_name->str, job_id);
+					event_name, job_id);
 			goto unlock_tree;
 		}
 		handle_task_init(job, ev->recv.json);
-	} else if (0 == strncmp(event_name->str, "task_exit", 9)) {
+	} else if (0 == strncmp(event_name, "task_exit", 9)) {
 		job = job_data_find(job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event was received "
 					"for job %ld with no job_data.\n",
-					event_name->str, job_id);
+					event_name, job_id);
 			goto unlock_tree;
 		}
 		handle_task_exit(job, ev->recv.json);
-	} else if (0 == strncmp(event_name->str, "exit", 4)) {
+	} else if (0 == strncmp(event_name, "exit", 4)) {
 		job = job_data_find(job_id);
 		if (!job) {
 			ovis_log(mylog, OVIS_LERROR, "'%s' event was received "
 					"for job %ld with no job_data.\n",
-					event_name->str, job_id);
+					event_name, job_id);
 			goto unlock_tree;
 		}
 		if (!job->exited) {
@@ -1184,7 +1184,7 @@ static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt)
 		}
 	} else {
 		ovis_log(mylog, OVIS_LDEBUG, "ignoring event '%s'\n",
-						   event_name->str);
+						   event_name);
 	}
 	pthread_mutex_unlock(&job_tree_lock);
 	return 0;

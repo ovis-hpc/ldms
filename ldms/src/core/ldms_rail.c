@@ -1887,8 +1887,8 @@ void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
 	struct xprt_set_coll_entry *ent;
 	int i;
 	ldms_t x;
-	struct ldms_rail_ep_s *rep;
-	struct ldms_op_ctxt *op_ctxt;
+	struct ldms_rail_ep_s *rep = NULL;
+	struct ldms_op_ctxt *op_ctxt = NULL;
 
 	x = NULL;
 

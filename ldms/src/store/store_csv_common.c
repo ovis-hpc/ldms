@@ -536,7 +536,7 @@ int csv_row_format_types_common(int typeformat, FILE* file, const char *fpath,
 	}
 
 	const char *ud = "-udata";
-	const char *arr;
+	const char *arr = NULL;
 	if (!doudata) {
 		ud = "";
 	}

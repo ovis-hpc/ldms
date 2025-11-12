@@ -1171,8 +1171,8 @@ err1:
 static int config_add_default(test_sampler_t ts, struct attr_value_list *avl)
 {
 	char *sname, *s, *base_set_name;
-	int rc;
-	int i, *mid;
+	int rc = 0;
+	int i, *mid = NULL;
 	struct ldms_metric_template_s *temp = NULL;
 	struct ldms_metric_template_s *m;
 	struct test_sampler_metric_info *minfo = NULL;
@@ -1477,8 +1477,8 @@ static int config_add_lists(test_sampler_t ts, struct attr_value_list *avl)
 	i++;
 
 	for (j = 0; j < num_lists; j++) {
-		char n[16];
-		snprintf(n, 16, "list_%d_len", j + 1);
+		char n[32];
+		snprintf(n, sizeof(n), "list_%d_len", j + 1);
 		temp[i].name = strdup(n);
 		temp[i].type = LDMS_V_U64;
 		temp[i].unit = "";

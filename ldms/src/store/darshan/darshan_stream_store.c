@@ -385,7 +385,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
         rc = get_json_value(handle, entity, "exe", JSON_STRING_VALUE, &v);
         if (rc)
                 goto err;
-        exe = json_value_str(v)->str;
+        exe = json_value_cstr(v);
 
 	rc = get_json_value(handle, entity, "job_id", JSON_INT_VALUE, &v);
 	if (rc)
@@ -400,12 +400,12 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
 	rc = get_json_value(handle, entity, "ProducerName", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
-	producer_name = json_value_str(v)->str;
+	producer_name = json_value_cstr(v);
 
 	rc = get_json_value(handle, entity, "file", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
-	file_name = json_value_str(v)->str;
+	file_name = json_value_cstr(v);
 
 	rc = get_json_value(handle, entity, "record_id", JSON_INT_VALUE, &v);
 	if (rc)
@@ -415,12 +415,12 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
 	rc = get_json_value(handle, entity, "module", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
-	module_name = json_value_str(v)->str;
+	module_name = json_value_cstr(v);
 
 	rc = get_json_value(handle, entity, "type", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
-	type = json_value_str(v)->str;
+	type = json_value_cstr(v);
 
 	rc = get_json_value(handle, entity, "max_byte", JSON_INT_VALUE, &v);
 	if (rc)
@@ -445,7 +445,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *handle,
 	rc = get_json_value(handle, entity, "op", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
-	operation = json_value_str(v)->str;
+	operation = json_value_cstr(v);
 
 	rc = get_json_value(handle, entity, "seg", JSON_LIST_VALUE, &list);
 	if (rc)

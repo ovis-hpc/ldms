@@ -69,7 +69,7 @@
 #include "ovis_ev/ev.h"
 #include "ovis_log/ovis_log.h"
 #include "ovis_ref/ref.h"
-
+#include "ovis_json/ovis_json.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -1482,7 +1482,6 @@ int ldms_msg_publish_file(ldms_t x, const char *name,
 			FILE *file);
 
 typedef struct ldms_msg_client_s *ldms_msg_client_t;
-typedef struct json_entity_s *json_entity_t;
 
 enum ldms_msg_event_type {
 	LDMS_MSG_EVENT_RECV, /* message received */
