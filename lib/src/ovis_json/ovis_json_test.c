@@ -27,8 +27,8 @@ static jbuf_t print_dict(jbuf_t jb, json_entity_t e)
 	for (a = json_attr_first(e); a; a = json_attr_next(a)) {
 		if (count)
 			jb = jbuf_append_str(jb, ",");
-		jb = jbuf_append_str(jb, "\"%s\":", a->value.attr_->name->value.str_->str);
-		print_entity(jb, a->value.attr_->value);
+		jb = jbuf_append_str(jb, "\"%s\":", json_attr_name(a));
+		print_entity(jb, json_attr_value(a));
 		count++;
 	}
 	jb = jbuf_append_str(jb, "}");
@@ -37,18 +37,18 @@ static jbuf_t print_dict(jbuf_t jb, json_entity_t e)
 
 static jbuf_t print_entity(jbuf_t jb, json_entity_t e)
 {
-	switch (e->type) {
+	switch (json_entity_type(e)) {
 	case JSON_INT_VALUE:
-		jb = jbuf_append_str(jb, "%ld", e->value.int_);
+		jb = jbuf_append_str(jb, "%ld", json_value_int(e));
 		break;
 	case JSON_BOOL_VALUE:
-		if (e->value.bool_)
+		if (json_value_bool(e))
 			jb = jbuf_append_str(jb, "true");
 		else
 			jb = jbuf_append_str(jb, "false");
 		break;
 	case JSON_FLOAT_VALUE:
-		jb = jbuf_append_str(jb, "%f", e->value.double_);
+		jb = jbuf_append_str(jb, "%f", json_value_float(e));
 		break;
 	case JSON_STRING_VALUE:
 		jb = jbuf_append_str(jb, "\"%s\"", json_value_cstr(e));
@@ -63,7 +63,7 @@ static jbuf_t print_entity(jbuf_t jb, json_entity_t e)
 		jb = jbuf_append_str(jb, "null");
 		break;
 	default:
-		fprintf(stderr, "%d is an invalid entity type", e->type);
+		fprintf(stderr, "%d is an invalid entity type", json_entity_type(e));
 	}
 	return jb;
 }
@@ -80,30 +80,17 @@ int main(int argc, char *argv[])
 		printf("%s: unable to open %s\n" , argv[0], argv[1]);
 		return 1;
 	}
-	json_entity_t entity;
-	json_parser_t parser = json_parser_new(0);
+	json_doc_t doc;
 	int rc = fread(buffer, 1, sizeof(buffer), fp);
-	rc = json_parse_buffer(parser, buffer, rc, &entity);
+	rc = json_parse_buffer(buffer, rc, &doc);
 	jbuf_t jb;
 	jb = jbuf_new();
 	if (rc == 0) {
-		jb = print_entity(jb, entity);
+		jb = print_entity(jb, json_doc_root(doc));
 		printf("%s\n", jb->buf);
 		jbuf_free(jb);
 	}
-#if 0
-	jb = jbuf_new();
-	json_entity_t kernel_data = json_attr_find(entity, "kokkos-kernel-data");
-	if (kernel_data) {
-		print_entity(jb, kernel_data);
-		json_entity_t mpi_rank = json_attr_find(kernel_data, "mpi-rank");
-		if (mpi_rank)
-			print_entity(jb, mpi_rank);
-	}
-	jbuf_free(jb);
-#endif
-	json_entity_free(entity);
-	json_parser_free(parser);
+	json_doc_free(doc);
 	return 0;
 }
 
