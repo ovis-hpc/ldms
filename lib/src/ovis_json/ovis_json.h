@@ -84,11 +84,7 @@ typedef struct jbuf_s {
 /**
  * Max attribute name length not including the terminating '\0'
  */
-// #define JSON_ATTR_NAME_MAX	253 /* (256 - 112)*/
-// #define JSON_ATTR_NAME_MAX	(512 - 112)
-// #define JSON_ATTR_NAME_MAX	(256 - 112)
 #define JSON_ATTR_NAME_MAX	(192 - 112)
-// #define JSON_ATTR_NAME_MAX	(128 - 112)
 
 /**
  * \brief Verify that \c s is valid JSON.
@@ -214,7 +210,7 @@ json_entity_t json_null_new(json_doc_t doc);
  * \note JSON integers are stored as signed 64-bit values (int64_t).
  *       Always pass int64_t for JSON_INT_VALUE to avoid truncation.
  */
-extern json_entity_t json_entity_new(json_doc_t doc, enum json_value_e type, ...);
+json_entity_t json_entity_new(json_doc_t doc, enum json_value_e type, ...);
 
 /**
  * \brief Dump the JSON entity into a json buffer (\c jbuf_t)
@@ -231,7 +227,7 @@ extern json_entity_t json_entity_new(json_doc_t doc, enum json_value_e type, ...
  * \return a json buffer -- \c jbuf_t -- is returned.
  * \see jbuf_free
  */
-extern jbuf_t json_entity_dump(jbuf_t jb, json_entity_t e);
+jbuf_t json_entity_dump(jbuf_t jb, json_entity_t e);
 
 /**
  * \brief Format the JSON document into a JSON buffer (\c jbuf_t)
@@ -241,7 +237,7 @@ extern jbuf_t json_entity_dump(jbuf_t jb, json_entity_t e);
  * \return a json buffer -- \c jbuf_t -- is returned.
  * \see jbuf_free
  */
-extern jbuf_t json_doc_dump(json_doc_t doc);
+jbuf_t json_doc_dump(json_doc_t doc);
 
 /**
  * \brief Create a new JSON entity identical to the given entity \c e.
@@ -250,11 +246,38 @@ extern jbuf_t json_doc_dump(json_doc_t doc);
  *
  * \return a new JSON entity. NULL is returned if an out-of-memory error occurs.
  */
-extern json_entity_t json_entity_copy(json_doc_t doc, json_entity_t e);
+json_entity_t json_entity_copy(json_doc_t doc, json_entity_t e);
 
+
+/**
+ * \brief Return a new JSON Document
+ *
+ * \returns Pointer to a new JSON document or NULL if
+ * there was a memory allocation error.
+ */
 json_doc_t json_doc_new(void);
+
+/**
+ * \brief Release all resources held by the document
+ *
+ * It is safe to call this function with a NULL pointer.
+ */
 void json_doc_free(json_doc_t doc);
+
+/**
+ * \brief Return the entity at the root of the document
+ *
+ * \return Pointer to the root of the document.
+ * \NULL The document is empty
+ */
 json_entity_t json_doc_root(json_doc_t doc);
+
+/**
+ * \brief Return the error string
+ *
+ * If there was a parsing error in json_parse_buffer, this will
+ * return the description of the syntax error.
+ */
 char *json_doc_errstr(json_doc_t doc);
 typedef struct json_stats_s {
 	int fit_count;		/* strings that fit in the entity */
@@ -357,7 +380,7 @@ json_entity_t json_dict_build(json_doc_t doc, ...);
  *
  * \return A JSON entity or NULL if no attributes of the given name exist.
  */
-extern json_entity_t json_attr_find(json_entity_t d, const char *name);
+json_entity_t json_attr_find(json_entity_t d, const char *name);
 
 /**
  * \brief Return the JSON entity of the attribute value
@@ -366,7 +389,7 @@ extern json_entity_t json_attr_find(json_entity_t d, const char *name);
  *
  * \return A json entity. NULL is returned if no attributes of the given name exist.
  */
-extern json_entity_t json_value_find(json_entity_t d, const char *name);
+json_entity_t json_value_find(json_entity_t d, const char *name);
 
 /**
  * \brief Return the first attribute in the dictionary
@@ -375,7 +398,7 @@ extern json_entity_t json_value_find(json_entity_t d, const char *name);
  *
  * \returns An entity handle or NULL if the dictionary is empty
  */
-extern json_entity_t json_attr_first(json_entity_t d);
+json_entity_t json_attr_first(json_entity_t d);
 
 /**
  * \brief Return the next attribute in the dictionary
@@ -384,12 +407,12 @@ extern json_entity_t json_attr_first(json_entity_t d);
  *
  * \returns An entity handle or NULL if there are no more attributes.
  */
-extern json_entity_t json_attr_next(json_entity_t a);
+json_entity_t json_attr_next(json_entity_t a);
 
 /**
  * \brief Return the number of attributes in the dictionary \c d
  */
-extern int json_attr_count(json_entity_t d);
+int json_attr_count(json_entity_t d);
 
 /**
  * \brief Add an attribute with name \c name and value \c v to the JSON dict \c d
@@ -408,17 +431,17 @@ extern int json_attr_count(json_entity_t d);
  *
  * \see json_entity_new, json_attr_rem
  */
-extern int json_attr_add(json_entity_t d, const char *name, json_entity_t v);
+int json_attr_add(json_entity_t d, const char *name, json_entity_t v);
 
 /**
  * \brief Return the attribute name of the entity \c a
  */
-extern char *json_attr_name(json_entity_t a);
+char *json_attr_name(json_entity_t a);
 
 /**
  * \brief Return the value of the attribute entity \c a
  */
-extern json_entity_t json_attr_value(json_entity_t a);
+json_entity_t json_attr_value(json_entity_t a);
 
 /**
  * \brief Remove the attribute \c name from the dictionary \c d and free it
@@ -428,26 +451,26 @@ extern json_entity_t json_attr_value(json_entity_t a);
  *
  * \return 0 on success. ENOENT is returned if no attributes of \c name exist.
  */
-extern int json_attr_rem(json_entity_t d, char *name);
+int json_attr_rem(json_entity_t d, char *name);
 
 /**
  * \brief Return the number of elements in the list \c l
  */
-extern size_t json_list_len(json_entity_t l);
+size_t json_list_len(json_entity_t l);
 
 /**
  * \brief Add the entity \c e to the list \c l
  */
-extern void json_item_add(json_entity_t l, json_entity_t e);
+void json_item_add(json_entity_t l, json_entity_t e);
 /**
  * \brief Return the first entity in the list \c a
  */
-extern json_entity_t json_item_first(json_entity_t a);
+json_entity_t json_item_first(json_entity_t a);
 
 /**
  * \brief Return the element following \c i in the list
  */
-extern json_entity_t json_item_next(json_entity_t i);
+json_entity_t json_item_next(json_entity_t i);
 
 /**
  * \brief Remove and return the element at index \c idx from the list \c a
@@ -457,7 +480,7 @@ extern json_entity_t json_item_next(json_entity_t i);
  *
  * \param a JSON entity. NULL if \c idx is out of range.
  */
-extern json_entity_t json_item_pop(json_entity_t a, int idx);
+json_entity_t json_item_pop(json_entity_t a, int idx);
 
 /**
  * \brief Remove \c item from list \c l
@@ -477,33 +500,33 @@ extern json_entity_t json_item_pop(json_entity_t a, int idx);
  *
  * \return 0 on success. ENOENT if \c item is not found.
  */
-extern int json_item_rem(json_entity_t l, json_entity_t item);
+int json_item_rem(json_entity_t l, json_entity_t item);
 
 /**
  * \brief Return the JSON integer value of the entity \c e
  *
  * If the specified entity is not a JSON integer, this interface will assert.
  */
-extern int64_t json_value_int(json_entity_t e);
+int64_t json_value_int(json_entity_t e);
 /**
  * \brief Return the JSON bool value of the entity \c e
  *
  * If the specified entity is not a JSON boolean, this interface will assert.
  */
-extern int json_value_bool(json_entity_t e);
+int json_value_bool(json_entity_t e);
 /**
  * \brief Return the JSON float value of the entity \c e
  *
  * If the specified entity is not a JSON float, this interface will assert.
  */
-extern double json_value_float(json_entity_t e);
+double json_value_float(json_entity_t e);
 
 /**
  * \brief Return the NULL terminated string value of the entity \c e
  *
  * If the entity \c e is not a string, this function will assert.
  */
-extern char *json_value_cstr(json_entity_t e);
+char *json_value_cstr(json_entity_t e);
 /**
  * \brief Return the length of the string \c e
  *
@@ -511,11 +534,11 @@ extern char *json_value_cstr(json_entity_t e);
  *
  * If the entity \c e is not a string, this function will assert.
  */
-extern size_t json_value_strlen(json_entity_t e);
+size_t json_value_strlen(json_entity_t e);
 
-extern json_list_t json_value_list(json_entity_t e);
+json_list_t json_value_list(json_entity_t e);
 
-extern jbuf_t jbuf_new(void);
+jbuf_t jbuf_new(void);
 /**
  * \brief Add the named attribute (as formatted with fmt) to jb.
  * The JSON formatting "name":<formatted_data> is automatically applied.
@@ -524,7 +547,7 @@ extern jbuf_t jbuf_new(void);
  * jbuf_append_str with a complex argument list, but more flexible.
  * \return updated pointer for jb, or NULL if realloc fails.
  */
-extern jbuf_t jbuf_append_attr(jbuf_t jb, const char *name, const char *fmt, ...);
+jbuf_t jbuf_append_attr(jbuf_t jb, const char *name, const char *fmt, ...);
 
 /** \brief Extend jbuf by the output of formatting with fmt.
  * The fmt argument must include all required JSON elements, which
@@ -535,20 +558,27 @@ extern jbuf_t jbuf_append_attr(jbuf_t jb, const char *name, const char *fmt, ...
  * It is often an error (use-after-free or memory leak) unless
  * calling this function as jb = jbuf_append_str(jb,...).
  */
-extern jbuf_t jbuf_append_str(jbuf_t jb, const char *fmt, ...);
+jbuf_t jbuf_append_str(jbuf_t jb, const char *fmt, ...);
 
 /**
  * \brief Var args version of jbuf_append_str.
  */
-extern jbuf_t jbuf_append_va(jbuf_t jb, const char *fmt, va_list ap);
+jbuf_t jbuf_append_va(jbuf_t jb, const char *fmt, va_list ap);
 /**
  * Destroy result of jbuf_new.
  */
-extern void jbuf_free(jbuf_t jb);
+
+/**
+ * \brief Release all memory held by the JSON Buffer
+ *
+ * It is safe to pass NULL to this function
+ */
+void jbuf_free(jbuf_t jb);
+
 /**
  * Change jb to contain 0-length string data, without modifying
  * the currently allocated buffer memory.
  */
-extern void jbuf_reset(jbuf_t jb);
+void jbuf_reset(jbuf_t jb);
 
 #endif

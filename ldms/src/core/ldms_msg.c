@@ -632,7 +632,7 @@ __msg_deliver(struct __msg_buf_s *sbuf, uint64_t msg_gn,
 		},
 		.sbuf = sbuf,
 	};
-	json_entity_t json = NULL;
+	json_doc_t jdoc = NULL;
 
 	if (sbuf)
 		_ev.pub.recv.src = sbuf->msg->src;
@@ -698,17 +698,10 @@ __msg_deliver(struct __msg_buf_s *sbuf, uint64_t msg_gn,
 			gc = 1;
 			continue;
 		}
-		if (!json && msg_type == LDMS_MSG_JSON && !c->x) {
-			/* json object is only required to parse once for
-			 * the local client */
-			struct json_parser_s *jp = json_parser_new(0);
-			if (!jp) {
-				rc = ENOMEM;
-				goto cleanup;
-			}
-			rc = json_parse_buffer(jp, (void*)data, data_len, &json);
-			_ev.pub.recv.json = json;
-			json_parser_free(jp);
+		if (!jdoc && msg_type == LDMS_MSG_JSON && !c->x) {
+			/* json object is parsed once for all local clients */
+			rc = json_parse_buffer((void*)data, data_len, &jdoc);
+			_ev.pub.recv.json = json_doc_root(jdoc);
 			if (rc) {
 				__counters_update(&sce->drops, &now, data_len);
 				__counters_update(&c->drops, &now, data_len);
@@ -735,8 +728,7 @@ __msg_deliver(struct __msg_buf_s *sbuf, uint64_t msg_gn,
 	}
 
  cleanup:
-	if (json)
-		json_entity_free(json);
+	json_doc_free(jdoc);
 	pthread_rwlock_unlock(&s->rwlock);
 	if (gc) {
 		/* remove unbound sce from s->cli_tq */

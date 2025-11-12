@@ -405,8 +405,8 @@ handle_cfg_file(ldmsd_plug_handle_t handle, const char *cfg_file)
 	int rc = 0, fd = -1;
 	ssize_t off, rsz, sz;
 	char *buff = NULL;
-	json_parser_t parser = NULL;
 	json_entity_t json = NULL;
+	json_doc_t jdoc = NULL;
 	json_entity_t events;
 	json_entity_t event;
 	json_entity_t schema;
@@ -443,16 +443,12 @@ handle_cfg_file(ldmsd_plug_handle_t handle, const char *cfg_file)
 		off += rsz;
 	}
 
-	parser = json_parser_new(0);
-	if (!parser) {
-		rc = ENOMEM;
-		goto out;
-	}
-
-	rc = json_parse_buffer(parser, buff, sz, &json);
+	rc = json_parse_buffer(buff, sz, &jdoc);
+	json = json_doc_root(jdoc);
 	if (rc) {
-		ovis_log(mylog, OVIS_LERROR, "`%s` JSON parse error.\n",
-				cfg_file);
+		ovis_log(mylog, OVIS_LERROR,
+			 "%s in file '%s'.\n",
+			 json_doc_errstr(jdoc), cfg_file);
 		goto out;
 	}
 
@@ -467,7 +463,7 @@ handle_cfg_file(ldmsd_plug_handle_t handle, const char *cfg_file)
 		}
 		if (base->schema_name)
 			free(base->schema_name);
-		base->schema_name = strdup(json_value_str(schema)->str);
+		base->schema_name = strdup(json_value_cstr(schema));
 		if (!base->schema_name) {
 			ovis_log(mylog, OVIS_LERROR, "out of memory.\n");
 			rc = ENOMEM;
@@ -499,7 +495,7 @@ handle_cfg_file(ldmsd_plug_handle_t handle, const char *cfg_file)
 					"strings.\n");
 			goto out;
 		}
-		rc = syspapi_metric_add(json_value_str(event)->str, &mlist);
+		rc = syspapi_metric_add(json_value_cstr(event), &mlist);
 		if (rc)
 			goto out;
 		event = json_item_next(event);
@@ -508,12 +504,8 @@ handle_cfg_file(ldmsd_plug_handle_t handle, const char *cfg_file)
 out:
 	if (fd > -1)
 		close(fd);
-	if (buff)
-		free(buff);
-	if (parser)
-		json_parser_free(parser);
-	if (json)
-		json_entity_free(json);
+	free(buff);
+	json_doc_free(jdoc);
 	return rc;
 }
 

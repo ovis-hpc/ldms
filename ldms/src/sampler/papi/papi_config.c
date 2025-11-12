@@ -58,25 +58,20 @@
 int papi_process_config_data(job_data_t job, char *buf, size_t buflen,
 						    ovis_log_t logger)
 {
-	json_parser_t p = NULL;
-	json_entity_t e = NULL;
+	json_doc_t jdoc;
+	json_entity_t e;
 	json_entity_t schema_attr;
 	json_entity_t events_attr;
 	json_entity_t events_list;
 	int rc;
 
-	p = json_parser_new(0);
-	if (!p) {
-		ovis_log(logger, OVIS_LERROR,
-		       "Parser could not be created.\n");
-		rc = ENOMEM;
-		goto out;
-	}
-
-	rc = json_parse_buffer(p, buf, buflen, &e);
+	rc = json_parse_buffer(buf, buflen, &jdoc);
+	e = json_doc_root(jdoc);
 	if (rc) {
 		ovis_log(logger, OVIS_LERROR,
 		       "configuration file syntax error.\n");
+		ovis_log(logger, OVIS_LERROR,
+			 "%s\n", json_doc_errstr(jdoc));
 		goto out;
 	}
 
@@ -110,8 +105,8 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen,
 		goto out;
 	}
 
-	json_str_t str = json_value_str(json_attr_value(schema_attr));
-	job->schema_name = strdup(str->str);
+	char *str = json_value_cstr(json_attr_value(schema_attr));
+	job->schema_name = strdup(str);
 	if (!job->schema_name) {
 		ovis_log(logger, OVIS_LERROR,
 		       "Error duplicating schema name string.\n");
@@ -131,7 +126,7 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen,
 			       "Event names must be strings.\n");
 			goto out;
 		}
-		event_str = json_value_str(event_name)->str;
+		event_str = json_value_cstr(event_name);
 		rc = PAPI_event_name_to_code(event_str, &event_code);
 		if (rc) {
 			ovis_log(logger, OVIS_LERROR, "PAPI error '%s' "
@@ -169,10 +164,7 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen,
 		TAILQ_INSERT_TAIL(&job->event_list, ev, entry);
 	}
  out:
-	if (e)
-		json_entity_free(e);
-	if (p)
-		json_parser_free(p);
+	json_doc_free(jdoc);
 	return rc;
 }
 

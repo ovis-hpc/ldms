@@ -154,8 +154,7 @@ static int stream_publish_handler(ldmsd_req_hdr_t req)
 {
 	char *stream_name;
 	ldmsd_req_attr_t attr;
-	json_parser_t parser;
-	json_entity_t entity = NULL;
+	json_doc_t jdoc;
 
 	attr = ldmsd_first_attr(req);
 	while (attr->discrim) {
@@ -198,24 +197,17 @@ static int stream_publish_handler(ldmsd_req_hdr_t req)
 		exit(6);
 	}
 
-	parser = json_parser_new(0);
-	if (!parser) {
-		msglog("Error creating JSon parser.\n");
-		exit(7);
-	}
-	int rc = json_parse_buffer(parser,
-				   (char *)attr->attr_value, attr->attr_len,
-				   &entity);
-	json_parser_free(parser);
+	int rc = json_parse_buffer((char *)attr->attr_value, attr->attr_len, &jdoc);
 	if (rc) {
-		msglog("Syntax error parsing JSon payload.\n");
+		msglog("%s\n", json_doc_errstr(jdoc));
 		msglog("%s\n", attr->attr_value);
 		exit(8);
 	}
 	ldmsd_stream_deliver(stream_name, LDMSD_STREAM_JSON,
-			     (char *)attr->attr_value, attr->attr_len, entity, NULL);
+			     (char *)attr->attr_value, attr->attr_len,
+			     json_doc_root(jdoc), NULL);
 	free(stream_name);
-	json_entity_free(entity);
+	json_doc_free(jdoc);
 	return 0;
 }
 

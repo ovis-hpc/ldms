@@ -391,6 +391,7 @@ int ldmsd_plugattr_add(struct plugattr *pa, struct attr_value_list *avl, struct 
 
 struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_name, struct attr_value_list *avl, struct attr_value_list *kwl, const char **avban, const char **kwban, struct pa_deprecated *dep, unsigned numkeys, ...)
 {
+	char *key = NULL;
 	int rc = 0;
 	if (!plugin_name) {
 		ovis_log(app_log, OVIS_LERROR, "ldmsd_plugattr_create: bad call\n");
@@ -500,7 +501,6 @@ struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_
 	char *bufend = pa->buf + len;
 	char *lineend;
 	char *linestart = pa->buf;
-	char *key = NULL;
 	while (linestart < bufend) {
 		lineend = strchr(linestart, '\n');
 		if (!lineend)

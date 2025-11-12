@@ -1343,8 +1343,7 @@ static int load_syscall_names(linux_proc_sampler_inst_t inst)
 	inst->name_syscall = calloc( inst->n_syscalls + 1, sizeof(char *));
 	if (!inst->syscalls) {
 		INST_LOG(inst, OVIS_LERROR,
-			"linux_proc_sampler: parsing %s. out of memory.\n",
-			inst->syscalls);
+			 "linux_proc_sampler: Error parsing NULL syscalls string.\n");
 		rc = ENOMEM;
 		goto err;
 	}
@@ -1904,10 +1903,10 @@ err:
 static
 char *json_to_regex(linux_proc_sampler_inst_t inst, json_entity_t env_exclude)
 {
-	if (env_exclude->type == JSON_STRING_VALUE) {
+	if (json_entity_type(env_exclude) == JSON_STRING_VALUE) {
 		return file_to_regex(inst, json_value_cstr(env_exclude));
 	}
-	if (env_exclude->type != JSON_LIST_VALUE) {
+	if (json_entity_type(env_exclude) != JSON_LIST_VALUE) {
 		INST_LOG(inst, OVIS_LERROR,
 			"env_exclude value is not a list or filename\n");
 		return NULL;
@@ -1918,7 +1917,7 @@ char *json_to_regex(linux_proc_sampler_inst_t inst, json_entity_t env_exclude)
 	json_entity_t c;
 	int rc;
 	for (c = json_item_first(env_exclude); c; c = json_item_next(c)) {
-		if (c->type != JSON_STRING_VALUE) {
+		if (json_entity_type(c) != JSON_STRING_VALUE) {
 			INST_LOG(inst, OVIS_LERROR,
 				"env_exclude list element is not a string.\n");
 			goto err;
@@ -1961,8 +1960,8 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 	int i, fd, rc = -1, off;
 	ssize_t bsz, sz;
 	char *buff = NULL;
-	json_parser_t jp = NULL;
-	json_entity_t jdoc = NULL;
+	json_doc_t jdoc = NULL;
+	json_entity_t root;
 	json_entity_t list, ent;
 	linux_proc_sampler_metric_info_t minfo;
 
@@ -1999,24 +1998,19 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 		sz -= rc;
 	}
 
-	jp = json_parser_new(0);
-	if (!jp) {
-		rc = errno;
-		INST_LOG(inst, OVIS_LERROR, "json_parser_new() error: %d\n",
-			errno);
-		goto out;
-	}
-	rc = json_parse_buffer(jp, buff, bsz, &jdoc);
+	rc = json_parse_buffer(buff, bsz, &jdoc);
+	root = json_doc_root(jdoc);
 	if (rc) {
-		INST_LOG(inst, OVIS_LERROR, "JSON parse failed: %d\n", rc);
+		INST_LOG(inst, OVIS_LERROR,
+			 "JSON parse failed: %s\n", json_doc_errstr(jdoc));
 		INST_LOG(inst, OVIS_LINFO, "input from %s was: %s\n",
 			val, buff);
 		goto out;
 	}
 
-	ent = json_value_find(jdoc, "argv_sep");
+	ent = json_value_find(root, "argv_sep");
 	if (ent) {
-		if (ent->type != JSON_STRING_VALUE) {
+		if (json_entity_type(ent) != JSON_STRING_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
 				"Error: `argv_sep` must be a string.\n");
@@ -2037,9 +2031,9 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			goto out;
 		}
 	}
-	ent = json_value_find(jdoc, "instance_prefix");
+	ent = json_value_find(root, "instance_prefix");
 	if (ent) {
-		if (ent->type != JSON_STRING_VALUE) {
+		if (json_entity_type(ent) != JSON_STRING_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
 				"Error: `instance_prefix` must be a string.\n");
@@ -2053,11 +2047,11 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			goto out;
 		}
 	}
-	ent = json_value_find(jdoc, "exe_suffix");
+	ent = json_value_find(root, "exe_suffix");
 	if (ent) {
 		inst->exe_suffix = 1;
 	}
-	ent = json_value_find(jdoc, "sc_clk_tck");
+	ent = json_value_find(root, "sc_clk_tck");
 	if (ent) {
 		inst->sc_clk_tck = sysconf(_SC_CLK_TCK);
 		if (!inst->sc_clk_tck) {
@@ -2069,9 +2063,9 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 				inst->sc_clk_tck);
 		}
 	}
-	ent = json_value_find(jdoc, "stream");
+	ent = json_value_find(root, "stream");
 	if (ent) {
-		if (ent->type != JSON_STRING_VALUE) {
+		if (json_entity_type(ent) != JSON_STRING_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
 				"Error: `stream` must be a string.\n");
@@ -2085,9 +2079,9 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			goto out;
 		}
 	} /* else, caller will later set default stream_name */
-	ent = json_value_find(jdoc, "syscalls");
+	ent = json_value_find(root, "syscalls");
 	if (ent) {
-		if (ent->type != JSON_STRING_VALUE) {
+		if (json_entity_type(ent) != JSON_STRING_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
 				"Error: `syscalls` must be a path.\n");
@@ -2101,9 +2095,9 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			goto out;
 		}
 	}
-	ent = json_value_find(jdoc, "argv_fmt");
+	ent = json_value_find(root, "argv_fmt");
 	if (ent) {
-		if (ent->type != JSON_INT_VALUE) {
+		if (json_entity_type(ent) != JSON_INT_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
 				"Error: `argv_fmt` must be integer.\n");
@@ -2111,9 +2105,9 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 		}
 		inst->argv_fmt = json_value_int(ent);
 	}
-	ent = json_value_find(jdoc, "argv_msg");
+	ent = json_value_find(root, "argv_msg");
 	if (ent) {
-		if (ent->type != JSON_INT_VALUE) {
+		if (json_entity_type(ent) != JSON_INT_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
 				"Error: `argv_msg` must be 1 or 0.\n");
@@ -2121,9 +2115,9 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 		}
 		inst->argv_msg = (json_value_int(ent) != 0);
 	}
-	ent = json_value_find(jdoc, "fd_msg");
+	ent = json_value_find(root, "fd_msg");
 	if (ent) {
-		if (ent->type != JSON_INT_VALUE) {
+		if (json_entity_type(ent) != JSON_INT_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
 				"Error: `fd_msg` must be integer.\n");
@@ -2137,7 +2131,7 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			goto out;
 		}
 		if (inst->fd_msg) {
-			ent = json_value_find(jdoc, "fd_exclude");
+			ent = json_value_find(root, "fd_exclude");
 			if (ent) {
 				char *fregex = json_to_regex(inst, ent);
 				if (!fregex) {
@@ -2155,10 +2149,10 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			}
 		}
 	}
-	ent = json_value_find(jdoc, "published_pid_dir");
+	ent = json_value_find(root, "published_pid_dir");
 	inst->published_pid_dir = strdup(PID_DIR_DEFAULT);
 	if (ent) {
-		if (ent->type != JSON_STRING_VALUE) {
+		if (json_entity_type(ent) != JSON_STRING_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
 				"Error: `published_pid_dir` must be a path.\n");
@@ -2174,9 +2168,9 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 		}
 	}
 
-	ent = json_value_find(jdoc, "env_msg");
+	ent = json_value_find(root, "env_msg");
 	if (ent) {
-		if (ent->type != JSON_INT_VALUE) {
+		if (json_entity_type(ent) != JSON_INT_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
 				"Error: `env_msg` must be 1 or 0\n");
@@ -2184,7 +2178,7 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 		}
 		inst->env_msg = (json_value_int(ent) != 0);
 		if (inst->env_msg) {
-			ent = json_value_find(jdoc, "env_exclude");
+			ent = json_value_find(root, "env_exclude");
 			if (ent) {
 				char *eregex = json_to_regex(inst, ent);
 				if (!eregex) {
@@ -2202,9 +2196,9 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			}
 		}
 	}
-	ent = json_value_find(jdoc, "log_send");
+	ent = json_value_find(root, "log_send");
 	if (ent) {
-		if (ent->type != JSON_INT_VALUE) {
+		if (json_entity_type(ent) != JSON_INT_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
 				"Error: `log_send` must be 1 or 0\n");
@@ -2212,11 +2206,11 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 		}
 		inst->log_send = (json_value_int(ent) != 0);
 	}
-	list = json_value_find(jdoc, "metrics");
+	list = json_value_find(root, "metrics");
 	if (list) {
 		for (ent = json_item_first(list); ent;
-					ent = json_item_next(ent)) {
-			if (ent->type != JSON_STRING_VALUE) {
+		     ent = json_item_next(ent)) {
+			if (json_entity_type(ent) != JSON_STRING_VALUE) {
 				rc = EINVAL;
 				INST_LOG(inst, OVIS_LERROR,
 					 "Error: metric must be a string.\n");
@@ -2241,12 +2235,8 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 
  out:
 	close(fd);
-	if (buff)
-		free(buff);
-	if (jp)
-		json_parser_free(jp);
-	if (jdoc)
-		json_entity_free(jdoc);
+	free(buff);
+	json_doc_free(jdoc);
 	return rc;
 }
 
@@ -2261,9 +2251,9 @@ uint64_t get_field_value_u64(linux_proc_sampler_inst_t inst, json_entity_t src, 
 		errno = ENOKEY;
 		return 0;
 	}
-	if ( e->type != et && et != JSON_NULL_VALUE) {
+	if ( json_entity_type(e) != et && et != JSON_NULL_VALUE) {
 		INST_LOG(inst, OVIS_LDEBUG, "wrong type found for %s: %s. Expected %s.\n",
-			name, json_type_name(e->type), json_type_name(et));
+			 name, json_type_name(json_entity_type(e)), json_type_name(et));
 		errno = EINVAL;
 		return 0;
 	}
@@ -2312,7 +2302,7 @@ static json_entity_t get_field(linux_proc_sampler_inst_t inst, json_entity_t src
 #endif
 		return NULL;
 	}
-	if ( e->type != et) {
+	if ( json_entity_type(e) != et) {
 #ifdef LPDEBUG
 		INST_LOG(inst, OVIS_LDEBUG, "wrong type found for %s: %s. Expected %s.\n",
 			name, json_type_name(e->type), json_type_name(et));
@@ -3513,19 +3503,16 @@ static void pid_from_file(linux_proc_sampler_inst_t inst, const char *file)
 	FILE *fp = fopen(file, "r");
 	if (!fp)
 		return;
+	json_doc_t jdoc;
 	json_entity_t entity = NULL;
-	json_parser_t parser = json_parser_new(0);
-	if (!parser) {
-		fclose(fp);
-		return;
-	}
 	char buffer[CMDLINE_SZ];
 	int rc = fread(buffer, 1, sizeof(buffer), fp);
 	if (rc < 2) {
 		goto out;
 	}
-	rc = json_parse_buffer(parser, buffer, rc, &entity);
-	if (rc == 0 && entity) {
+	rc = json_parse_buffer(buffer, rc, &jdoc);
+	entity = json_doc_root(jdoc);
+	if (rc == 0) {
 		json_entity_t data = json_value_find(entity, "data");
 		if (data) {
 			int pid_bad = 0;
@@ -3533,15 +3520,15 @@ static void pid_from_file(linux_proc_sampler_inst_t inst, const char *file)
 			if (pid_bad)
 				unlink(file);
 		}
-		json_entity_free(entity);
 	} else {
 		INST_LOG(inst, OVIS_LINFO, "could not parse from %s: %s\n",
 			file, buffer);
+		INST_LOG(inst, OVIS_LINFO, "%s\n", json_doc_errstr(jdoc));
 	}
 
 out:
-	json_parser_free(parser);
 	fclose(fp);
+	json_doc_free(jdoc);
 }
 
 struct pid_search {

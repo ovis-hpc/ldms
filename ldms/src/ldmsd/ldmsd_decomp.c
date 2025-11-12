@@ -109,7 +109,7 @@ static ldmsd_decomp_t decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
 	void *d = NULL;
 	char *dlerr;
 	struct stat st;
-	int rc;
+	int rc = 0;
 	decomp_rbn_t drbn;
 	ldmsd_decomp_t (*get)(), dc;
 

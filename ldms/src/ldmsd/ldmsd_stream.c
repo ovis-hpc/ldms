@@ -19,7 +19,7 @@ static void msglog(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
-	vprintf(format, ap);
+	ovis_vlog(NULL, OVIS_LERROR, format, ap);
 	va_end(ap);
 }
 
@@ -269,7 +269,6 @@ void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_ty
 			  const char *data, size_t data_len,
 			  json_entity_t entity, const char *p_name)
 {
-	json_parser_t parser = NULL;
 	ldmsd_stream_client_t c;
 	ldmsd_stream_publisher_t p;
 	ldmsd_stream_t s = __find_stream(stream_name);
@@ -289,21 +288,18 @@ void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_ty
 	s->s_recv_info.last_ts = now;
 	s->s_recv_info.total_bytes += data_len;
 
+	json_doc_t jdoc = NULL;
 	LIST_FOREACH(c, &s->s_c_list, c_ent) {
 		if (stream_type == LDMSD_STREAM_JSON
 			&& c->c_flags == 0	/* client wants parsed data */
-			&& entity == NULL	/* data hasn't been parsed yet */
-			&& parser == NULL)	/* we haven't tried and failed already */
+			&& jdoc == NULL)	/* data hasn't been parsed yet */
 		{
-			parser = json_parser_new(0);
-			if (!parser)
-				continue;
-			int rc = json_parse_buffer(parser, (char *)data, data_len, &entity);
+			int rc = json_parse_buffer((char *)data, data_len, &jdoc);
 			if (rc)
-				continue;
+				break;
 			need_free = 1;
 		}
-		c->c_cb_fn(c, c->c_ctxt, stream_type, data, data_len, entity);
+		c->c_cb_fn(c, c->c_ctxt, stream_type, data, data_len, json_doc_root(jdoc));
 	}
 
 	if (p_name) {
@@ -322,8 +318,6 @@ void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_ty
 
 	if (entity && need_free)
 		json_entity_free(entity);
-	if (parser)
-		json_parser_free(parser);
 	pthread_mutex_unlock(&s->s_lock);
 }
 
@@ -347,11 +341,6 @@ ldmsd_stream_subscribe(const char *stream_name,
 	}
 	LIST_FOREACH(cc, &s->s_c_list, c_ent) {
 		if (cc->c_cb_fn == cb_fn && cc->c_ctxt == ctxt) {
-#if 0
-			/* this is a high frequency common case */
-			msglog("The client %p is already subscribed to "
-			       "stream %s\n", cc, stream_name);
-#endif
 			errno = EEXIST;
 			pthread_mutex_unlock(&s->s_lock);
 			goto err_1;
@@ -483,7 +472,7 @@ int ldmsd_stream_publish(ldms_t xprt,
 	uint32_t msg_no = ldmsd_msg_no_get();
 	int rc = 0;
 	struct stream_ctxt ctxt = {
-			.x = xprt,
+		.x = xprt,
 	};
 
 	if (!data_len)
