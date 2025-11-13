@@ -1733,11 +1733,6 @@ ldms_set_t ldms_set_create(const char *instance_name,
 	if (delete_thread_init_once())
 		return NULL;
 
-	if (!instance_name || !schema) {
-		errno = EINVAL;
-		return NULL;
-	}
-
 	hsz = heap_sz;
 	int total_mm_sz = compute_set_sizes(instance_name, schema,
 				    &set_array_card, &meta_sz,
@@ -2919,14 +2914,14 @@ void ldms_metric_array_set_double(ldms_set_t s, int mid, int idx, double v)
 void ldms_metric_array_set(ldms_set_t s, int mid, ldms_mval_t mval,
 			   size_t start, size_t count)
 {
-	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->meta,
-				      __le32_to_cpu(s->meta->dict[mid]));
 	int i;
 	if (!s) {
 		ovis_log(NULL, OVIS_LERROR, "NULL set passed to "
 				"ldms_metric_array_set\n");
 		return;
 	}
+	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->meta,
+				      __le32_to_cpu(s->meta->dict[mid]));
 	ldms_mval_t val = __mval_to_set(s, mid, &desc);
 	if (!val) {
 		ovis_log(NULL, OVIS_LERROR, "invalid metric index passed to "
