@@ -110,8 +110,8 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen,
 		goto out;
 	}
 
-	json_str_t str = json_value_str(json_attr_value(schema_attr));
-	job->schema_name = strdup(str->str);
+	char *str = json_value_cstr(json_attr_value(schema_attr));
+	job->schema_name = strdup(str);
 	if (!job->schema_name) {
 		ovis_log(logger, OVIS_LERROR,
 		       "Error duplicating schema name string.\n");
@@ -131,7 +131,7 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen,
 			       "Event names must be strings.\n");
 			goto out;
 		}
-		event_str = json_value_str(event_name)->str;
+		event_str = json_value_cstr(event_name);
 		rc = PAPI_event_name_to_code(event_str, &event_code);
 		if (rc) {
 			ovis_log(logger, OVIS_LERROR, "PAPI error '%s' "

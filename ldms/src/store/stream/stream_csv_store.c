@@ -313,7 +313,7 @@ static int _parse_list_for_header(struct linedata *dataline, json_entity_t e)
 		ovis_log(mylog, OVIS_LERROR, PNAME ": list cannot be empty for header.\n");
 		return -1;
 	}
-	if (li->type != JSON_DICT_VALUE) {
+	if (json_entity_type(li) != JSON_DICT_VALUE) {
 		ovis_log(mylog, OVIS_LERROR, PNAME ": list can only have dict entries\n");
 		return -1;
 	}
@@ -323,8 +323,7 @@ static int _parse_list_for_header(struct linedata *dataline, json_entity_t e)
 		for (di = json_attr_first(li); di; di = json_attr_next(di)) {
 			/* only allowed singleton entries */
 			if (i == 1) {
-				dataline->dictkey[idict] =
-					strdup(di->value.attr_->name->value.str_->str);
+				dataline->dictkey[idict] = strdup(json_attr_name(di));
 				if (!dataline->dictkey[idict])
 					return ENOMEM;
 			}
@@ -370,8 +369,7 @@ static int _get_header_from_data(struct linedata *dataline, json_entity_t e)
 	isingleton = 0;
 	ilist = 0;
 	for (a = json_attr_first(e); a; a = json_attr_next(a)) {
-		json_attr_t attr = a->value.attr_;
-		switch (attr->value->type) {
+		switch (json_entity_type(a)) {
 		case JSON_LIST_VALUE:
 			/*
 			 * assumes that all the dicts in a list will have
@@ -428,15 +426,14 @@ static int _get_header_from_data(struct linedata *dataline, json_entity_t e)
 	i = 0;
 	isingleton = 0;
 	for (a = json_attr_first(e); a; a = json_attr_next(a)) {
-		json_attr_t attr = a->value.attr_;
-		switch (attr->value->type) {
+		switch (json_entity_type(a)) {
 		case JSON_LIST_VALUE:
-			dataline->listkey = strdup(attr->name->value.str_->str);
+			dataline->listkey = strdup(json_attr_name(a));
 			if (!dataline->listkey) {
 				rc = ENOMEM;
 				goto err;
 			}
-			rc = _parse_list_for_header(dataline, attr->value);
+			rc = _parse_list_for_header(dataline, json_attr_value(a));
 			if (rc)
 				goto err;
 			break;
@@ -455,8 +452,7 @@ static int _get_header_from_data(struct linedata *dataline, json_entity_t e)
 		case JSON_NULL_VALUE:
 		default:
 			/* it's a singleton */
-			dataline->singletonkey[isingleton] =
-					strdup(attr->name->value.str_->str);
+			dataline->singletonkey[isingleton] = strdup(json_attr_name(a));
 			if (!dataline->singletonkey[isingleton])
 				return ENOMEM;
 			isingleton++;
@@ -510,22 +506,21 @@ err:
 
 static int _append_singleton(json_entity_t en, jbuf_t jb)
 {
-
-	switch (en->type) {
+	switch (json_entity_type(en)) {
 	case JSON_INT_VALUE:
-		jb = jbuf_append_str(jb, "%ld", en->value.int_);
+		jb = jbuf_append_str(jb, "%ld", json_value_int(en));
 		break;
 	case JSON_BOOL_VALUE:
-		if (en->value.bool_)
+		if (json_value_bool(en))
 			jb = jbuf_append_str(jb, "true");
 		else
 			jb = jbuf_append_str(jb, "false");
 		break;
 	case JSON_FLOAT_VALUE:
-		jb = jbuf_append_str(jb, "%f", en->value.double_);
+		jb = jbuf_append_str(jb, "%f", json_value_float(en));
 		break;
 	case JSON_STRING_VALUE:
-		jb = jbuf_append_str(jb, "\"%s\"", en->value.str_->str);
+		jb = jbuf_append_str(jb, "\"%s\"", json_value_cstr(en));
 		break;
 	case JSON_NULL_VALUE:
 		jb = jbuf_append_str(jb, "null");
@@ -534,7 +529,8 @@ static int _append_singleton(json_entity_t en, jbuf_t jb)
 		/* this should not happen */
 		ovis_log(mylog, OVIS_LDEBUG,
 				PNAME ": cannot process JSON type '%s' "
-				"as singleton\n", json_type_name(en->type));
+				"as singleton\n",
+				json_type_name(json_entity_type(en)));
 		return -1;
 		break;
 	}
@@ -653,11 +649,11 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 	}
 
 	/* if we got the val, but its not a list */
-	if (en->type != JSON_LIST_VALUE) {
+	if (json_entity_type(en) != JSON_LIST_VALUE) {
 		ovis_log(mylog, OVIS_LERROR, PNAME ": %s is not a LIST type %s. "
 						"skipping this data.\n",
 						dataline->listkey,
-						json_type_name(en->type));
+			 json_type_name(json_entity_type(en)));
 		/*
 		 * NOTE: this is bad. currently writing out nothing,
 		 * but could change this later.
@@ -686,12 +682,12 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 
 	/* if there are dicts */
 	for (li = json_item_first(en); li; li = json_item_next(li)) {
-		if (li->type != JSON_DICT_VALUE) {
+		if (json_entity_type(li) != JSON_DICT_VALUE) {
 			ovis_log(mylog, OVIS_LERROR,
 					PNAME ": LIST %s has innards that are not "
 					"a DICT type %s. skipping this data.\n",
 					dataline->listkey,
-					json_type_name(li->type));
+				 json_type_name(json_entity_type(li)));
 			/* no output */
 			jbuf_free(jbs);
 			return -1;
@@ -851,9 +847,9 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 			goto out;
 		}
 
-		if (e->type != JSON_DICT_VALUE) {
+		if (json_entity_type(e) != JSON_DICT_VALUE) {
 			ovis_log(mylog, OVIS_LERROR, PNAME ": Expected a dict object, "
-					"not a %s.\n", json_type_name(e->type));
+				 "not a %s.\n", json_type_name(json_entity_type(e)));
 			rc = EINVAL;
 			goto out;
 		}
@@ -895,7 +891,7 @@ static int open_streamstore(char *stream)
 	char *tmp_filename;
 	char *tmp_basename;
 	char *dpath;
-	FILE *tmp_file;
+	FILE *tmp_file = NULL;
 	unsigned long tspath;
 	int rc = 0;
 

@@ -467,7 +467,7 @@ handle_cfg_file(ldmsd_plug_handle_t handle, const char *cfg_file)
 		}
 		if (base->schema_name)
 			free(base->schema_name);
-		base->schema_name = strdup(json_value_str(schema)->str);
+		base->schema_name = strdup(json_value_cstr(schema));
 		if (!base->schema_name) {
 			ovis_log(mylog, OVIS_LERROR, "out of memory.\n");
 			rc = ENOMEM;
@@ -499,7 +499,7 @@ handle_cfg_file(ldmsd_plug_handle_t handle, const char *cfg_file)
 					"strings.\n");
 			goto out;
 		}
-		rc = syspapi_metric_add(json_value_str(event)->str, &mlist);
+		rc = syspapi_metric_add(json_value_cstr(event), &mlist);
 		if (rc)
 			goto out;
 		event = json_item_next(event);
