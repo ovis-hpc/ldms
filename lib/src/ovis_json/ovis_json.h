@@ -51,14 +51,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
-#include <coll/htbl.h>
+#include <sys/queue.h>
+#include <coll/rbt.h>
 #include <stdarg.h>
+#include <regex.h>
 
 typedef struct json_str_s *json_str_t;
 typedef struct json_attr_s *json_attr_t;
 typedef struct json_list_s *json_list_t;
 typedef struct json_dict_s *json_dict_t;
 typedef struct json_entity_s *json_entity_t;
+typedef struct json_parser_s *json_parser_t;
 
 enum json_value_e {
 	JSON_INT_VALUE,
@@ -70,58 +73,7 @@ enum json_value_e {
 	JSON_DICT_VALUE,
 	JSON_NULL_VALUE
 };
-
-struct json_entity_s {
-	enum json_value_e type;
-	union {
-		int32_t bool_;
-		int64_t int_;
-		double double_;
-		json_str_t str_;
-		json_attr_t attr_;
-		json_list_t list_;
-		json_dict_t dict_;
-	} value;
-	TAILQ_ENTRY(json_entity_s) item_entry;
-};
-
-struct json_str_s {
-	struct json_entity_s base;
-	char *str;
-	size_t str_len;
-};
-
-struct json_list_s {
-	struct json_entity_s base;
-	int item_count;
-	TAILQ_HEAD(json_item_list, json_entity_s) item_list;
-};
-
-struct json_attr_s {
-	struct json_entity_s base;
-	json_entity_t name;
-	json_entity_t value;
-	struct hent attr_ent;
-};
-
-struct json_dict_s {
-	struct json_entity_s base;
-	htbl_t attr_table;
-};
-
-struct json_loc_s {
-	int first_line;
-	int first_column;
-	int last_line;
-	int last_column;
-	char *filename;
-};
-
-typedef void *yyscan_t;
-typedef struct json_parser_s {
-	yyscan_t scanner;
-	struct yy_buffer_state *buffer_state;
-} *json_parser_t;
+#define JSON_EOL_VALUE	-2
 
 typedef struct jbuf_s {
 	size_t buf_len;
@@ -129,14 +81,96 @@ typedef struct jbuf_s {
 	char buf[0];
 } *jbuf_t;
 
-extern json_parser_t json_parser_new(size_t user_data);
-extern void json_parser_free(json_parser_t p);
-extern int json_verify_string(char *s);
-extern void json_entity_free(json_entity_t e);
-extern const char *json_type_name(enum json_value_e type);
-extern enum json_value_e json_entity_type(json_entity_t e);
+/**
+ * Max attribute name length not including the terminating '\0'
+ */
+#define JSON_ATTR_NAME_MAX	255
 
-extern int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_entity_t *e);
+/**
+ * \brief Create an instance of a JSON parser
+ *
+ * \param user_data is not used
+ * \return a pointer a parser instance
+ * \return NULL if there is a memory allocation error
+ */
+json_parser_t json_parser_new(size_t user_data);
+
+/**
+ * \brief Release all resources associated with \c p
+ *
+ * This function free's internal parser resources; it does not free
+ * entities created by json_buffer_parse(). These entities must be freed
+ * with the json_entity_free() function.
+ *
+ */
+void json_parser_free(json_parser_t p);
+
+/**
+ * \brief Verify that \c s is valid JSON.
+ *
+ * This convenience function checks if the specified input string is
+ * valid JSON.
+ *
+ * \return 0 If the string is valid JSON
+ * \return -1 if the string is not valid JSON
+ * \return ENOMEM If there is insufficient memory
+ */
+int json_verify_string(char *s);
+
+/**
+ * \brief Free resources associated with \c e.
+ *
+ * The function protects against a NULL \c e parameter.
+ */
+void json_entity_free(json_entity_t e);
+
+/**
+ * \brief Return a string representation of \c type
+ */
+const char *json_type_name(enum json_value_e type);
+
+/**
+ * \brief Return true (1) if the input \c type is valid.
+ */
+enum json_value_e json_entity_type(json_entity_t e);
+
+/**
+ * \brief Parse an input buffer
+ *
+ * The function returns 0 on a successful parse, and the \c parameter
+ * contains the top level json_entity_t. The input buffer \c buf is
+ * not modified.
+ *
+ * Parsing of the input buffer completes when either a '\0' is found
+ * in the input buffer or \c buf_len bytes are consumed.
+ *
+ * The caller must free the returned JSON entity with
+ * json_entity_free() when finished with the entity.
+ *
+ * If a parsing error occurs, indicated by a non-zero return value,
+ * the json_parse_error() function may be called to return a string
+ * containing description of the error.
+ *
+ * \param p The parser handle
+ * \param buf Pointer to the buffer to parse
+ * \param buf_len The length of the \c buf
+ * \param e Pointer the json_entity_t where the top level json object is returned.
+ *
+ * \return 0 The buffer was successfully parsed
+ * \return !0 An error was encountered.
+ */
+int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_entity_t *e);
+
+/**
+ * \brief Return a character string with an error description
+ *
+ * The returned string must be free'd by the caller. Note that this
+ * function will return unpredictable results if called wihtout
+ * previously calling json_parse_buffer().
+ *
+ * \param p The parser handle
+ */
+char *json_parse_error(json_parser_t p);
 
 /**
  * \brief Create a new JSON entity of the specified type
@@ -157,7 +191,12 @@ extern int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_en
  * \note JSON integers are stored as signed 64-bit values (int64_t).
  *       Always pass int64_t for JSON_INT_VALUE to avoid truncation.
  */
-extern json_entity_t json_entity_new(enum json_value_e type, ...);
+extern json_entity_t json_entity_new(json_parser_t parser, enum json_value_e type, ...);
+
+/**
+ * \brief Return the parser handle associated with \c e
+ */
+json_parser_t json_entity_parser(json_entity_t e);
 
 /**
  * \brief Dump the json entity into a json buffer (\c jbuf_t)
@@ -179,33 +218,59 @@ extern jbuf_t json_entity_dump(jbuf_t jb, json_entity_t e);
 /**
  * \brief Create a new JSON entity identical to the given entity \c e.
  *
+ * \param p	The parser handle for the copied entities
  * \param e     The original JSON entity
  *
  * \return a new JSON entity. NULL is returned if an out-of-memory error occurs.
  */
-extern json_entity_t json_entity_copy(json_entity_t e);
+extern json_entity_t json_entity_copy(json_parser_t p, json_entity_t e);
 
 /*
  * \brief Build or append a dictionary with the given list of its attribute value pairs.
  *
+ * \param p	The parser handle if \c d is NULL
+ * \param d	The dictionary handle to modify
+ *
  * If \c d is NULL, a new dictionary with the given attribute value list.
  * If \c d is not NULL, the given attribute value list will be added to \c d.
  *
- * The format of the attribute value pair in the list is
- * <JSON value type>, <attribute name>, <attribute value>.
+ * The format of the attribute value pair in the list is as follows:
  *
- * Value types and their expected arguments:
+ *      <attr-name>, <value-type>, <attr-value>
+ *
+ * A NULL <attr-name> indicates the end of the argument list.
+ *
+ * A valid <value-type> and the expected arguments are as follows::
+ *
  * - JSON_INT_VALUE: int64_t value
  * - JSON_BOOL_VALUE: int32_t value (0 or 1)
  * - JSON_FLOAT_VALUE: double value
- * - JSON_STRING_VALUE: char* string
- * - JSON_DICT_VALUE: (starts nested dictionary, end with -2)
- * - JSON_LIST_VALUE: (starts list, end with -2)
- * - JSON_ATTR_VALUE: json_entity_t attribute
+ * - JSON_STRING_VALUE: char* string, size_t len
+ * - JSON_DICT_VALUE: A nested dictionary, ends with end with JSON_EOL_VALUE
+ * - JSON_LIST_VALUE: A list of <values>, the list ends with JSON_EOL_VALUE
+ * - JSON_ATTR_VALUE: json_entity_t attribute. The <attr-name> is
+ *                    ignored in this case and would be specified as "".
  *
- * The last value must be -1 to end the attribute value list.
+ * Note that the type of the argument is very important, int, for
+ * example cannot be used for the JSON_STRING_VALUE length field
+ * because sizeof(int) != sizeof(size_t) on some architectures
+ * (e.g. arm).  Because strlen() returns size_t, size_t is used for
+ * the length argument. The reason for requiring the length is to
+ * allow string values to be initialized from unterminated strings.
  *
- * If the value type is JSON_LIST_VALUE, it must end with -2.
+ * \example
+ *
+ * char *str = "this is a string, but only 'string' is being used.";
+ * json_entity_t *e = json_dict_build("my-string", JSON_STRING_VALUE,
+ *                           &str[27], (size_t)8,
+ *                           -1);
+ *
+ * This avoids modifying and/or copying \c str in order to use it to
+ * specify the string value.
+ *
+ * Any value < 0 (JSON_EOL_VALUE) is used to 'terminate' the argument
+ * value list for types that may consume multiple arguments
+ * (e.g. JSON_DICT_VALUE, JSON_LIST_VALUE).
  *
  * \example
  *
@@ -214,21 +279,19 @@ extern json_entity_t json_entity_copy(json_entity_t e);
  * 	JSON_INT_VALUE,    "int",    (int64_t)1,
  * 	JSON_BOOL_VALUE,   "bool",   (int32_t)1,
  * 	JSON_FLOAT_VALUE,  "float",  1.1,
- * 	JSON_STRING_VALUE, "string", "str",
+ * 	JSON_STRING_VALUE, "string", "str", strlen("str"),
  * 	JSON_LIST_VALUE,   "list",   JSON_INT_VALUE, (int64_t)1,
- * 				     JSON_STRING_VALUE, "last",
- * 				     -2,
+ * 				     JSON_STRING_VALUE, "last", strlen(last),
+ * 				     JSON_EOL_VALUE, // end LIST_VALUE argumen list
  * 	JSON_DICT_VALUE,   "dict",   JSON_INT_VALUE, "attr1", (int64_t)2,
  * 				     JSON_BOOL_VALUE, "attr2", (int32_t)0,
- * 				     JSON_STRING_VALUE, "attr3", "last attribute",
- * 				     -2,
- * 	JSON_ATTR_VALUE, attr,
- * 	-1
+ * 				     JSON_STRING_VALUE, "attr3",
+ *                                       "last attribute", (int)strlen("last attribute"),
+ *                                   JSON_EOL_VALUE, // end DICT_VALUE argument list
+ *      NULL  // Terminates json_dict_build argument list
  * 	);
  *
- * Note: attr is "attr": "my attribute".
- *
- * The result dictionary is
+ * The resulting dictionary is
  * { "int":    1,
  *   "bool":   true,
  *   "float":  1.1,
@@ -242,18 +305,7 @@ extern json_entity_t json_entity_copy(json_entity_t e);
  * }
  *
  */
-extern json_entity_t json_dict_build(json_entity_t d, ...);
-
-/**
- * \brief Add the attributes of dictionary \c src into dictionary \c dst
- *
- * The attribute value in \c src will replace the value in \c dst,
- * if the attribute key presents in both dictionaries. \c dst will be modified
- * and \c src is left unchanged.
- *
- * \return 0 on success. ENOMEM if the function fails to add a new attribute to \c src
- */
-extern int json_dict_merge(json_entity_t dst, json_entity_t src);
+json_entity_t json_dict_build(json_parser_t p, json_entity_t d, ...);
 
 /**
  * \brief Return the ATTR entity of the given name \c name
@@ -295,7 +347,7 @@ extern int json_attr_count(json_entity_t d);
  * \see json_entity_new, json_attr_rem
  */
 extern int json_attr_add(json_entity_t d, const char *name, json_entity_t v);
-extern json_str_t json_attr_name(json_entity_t a);
+extern char *json_attr_name(json_entity_t a);
 extern json_entity_t json_attr_value(json_entity_t a);
 
 /**
@@ -350,13 +402,11 @@ extern int64_t json_value_int(json_entity_t e);
 extern int json_value_bool(json_entity_t e);
 extern double json_value_float(json_entity_t e);
 
-/* get the string and length object. */
-extern json_str_t json_value_str(json_entity_t e);
-
 /* \return the underlying null terminated string pointer
  * if e is a string type, or NULL if it is not.  If NULL,
  * errno will also be set. */
-extern const char *json_value_cstr(json_entity_t e);
+extern char *json_value_cstr(json_entity_t e);
+extern size_t json_value_strlen(json_entity_t e);
 
 extern json_dict_t json_value_dict(json_entity_t e);
 extern json_list_t json_value_list(json_entity_t e);

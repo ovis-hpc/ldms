@@ -27,8 +27,8 @@ static jbuf_t print_dict(jbuf_t jb, json_entity_t e)
 	for (a = json_attr_first(e); a; a = json_attr_next(a)) {
 		if (count)
 			jb = jbuf_append_str(jb, ",");
-		jb = jbuf_append_str(jb, "\"%s\":", a->value.attr_->name->value.str_->str);
-		print_entity(jb, a->value.attr_->value);
+		jb = jbuf_append_str(jb, "\"%s\":", json_attr_name(a));
+		print_entity(jb, json_attr_value(a));
 		count++;
 	}
 	jb = jbuf_append_str(jb, "}");
@@ -37,18 +37,18 @@ static jbuf_t print_dict(jbuf_t jb, json_entity_t e)
 
 static jbuf_t print_entity(jbuf_t jb, json_entity_t e)
 {
-	switch (e->type) {
+	switch (json_entity_type(e)) {
 	case JSON_INT_VALUE:
-		jb = jbuf_append_str(jb, "%ld", e->value.int_);
+		jb = jbuf_append_str(jb, "%ld", json_value_int(e));
 		break;
 	case JSON_BOOL_VALUE:
-		if (e->value.bool_)
+		if (json_value_bool(e))
 			jb = jbuf_append_str(jb, "true");
 		else
 			jb = jbuf_append_str(jb, "false");
 		break;
 	case JSON_FLOAT_VALUE:
-		jb = jbuf_append_str(jb, "%f", e->value.double_);
+		jb = jbuf_append_str(jb, "%f", json_value_float(e));
 		break;
 	case JSON_STRING_VALUE:
 		jb = jbuf_append_str(jb, "\"%s\"", json_value_cstr(e));
@@ -63,7 +63,7 @@ static jbuf_t print_entity(jbuf_t jb, json_entity_t e)
 		jb = jbuf_append_str(jb, "null");
 		break;
 	default:
-		fprintf(stderr, "%d is an invalid entity type", e->type);
+		fprintf(stderr, "%d is an invalid entity type", json_entity_type(e));
 	}
 	return jb;
 }
