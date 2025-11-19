@@ -4620,15 +4620,34 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 		ldms_event_cb_t cb, void *cb_arg)
 {
 	int rc;
-	struct addrinfo *ai_list, *ai, *aitr;
-	struct addrinfo hints = {
-		.ai_socktype = SOCK_STREAM,
-		.ai_flags = AI_PASSIVE,
-	};
+	struct addrinfo *ai_list;
+	struct addrinfo *ai;
+	struct addrinfo *aitr;
+	struct addrinfo hints = {0};
+
+	hints.ai_socktype = SOCK_STREAM;
+	if (host != NULL) {
+		/* AI_V4MAPPED | AI_ADDRCONFIG are the Linux default flags */
+		hints.ai_flags = AI_PASSIVE | AI_V4MAPPED | AI_ADDRCONFIG;
+	} else {
+		/* When host is NULL, we allow binding to the
+		   IPv6 wildcard address IN6ADDR_ANY_INIT, even if there are
+		   no non-loopback devices with IPv6 networking configured.
+		   In this case the IPv6 wildcard address would also allow IPv4
+		   wildcard traffic. If we set AI_ADDRCONFIG, this would force
+		   IPv4 wildcard address usage when no non-loopback devices have
+		   IPv6 networking enabled. */
+		hints.ai_flags = AI_PASSIVE;
+	}
+
 	rc = getaddrinfo(host, port_no, &hints, &ai_list);
 	if (rc)
 		return EHOSTUNREACH;
 	ai = NULL;
+	/* FIXME - We should not prefer IPv6 unless explicitly configured by
+	   the user. We should just let the caller set the ai_family.
+	   We should really also try each address returned by getaddrinfo()
+	   until we get one that works, not only try the first one. */
 	/* Prefer the first IPv6 address */
 	for (aitr = ai_list; aitr; aitr = aitr->ai_next) {
 		if (aitr->ai_family == AF_INET6) {
