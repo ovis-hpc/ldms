@@ -4620,26 +4620,46 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 		ldms_event_cb_t cb, void *cb_arg)
 {
 	int rc;
-	struct addrinfo *ai_list, *ai, *aitr;
-	struct addrinfo hints = {
-		.ai_socktype = SOCK_STREAM,
-		.ai_flags = AI_PASSIVE,
-	};
+	struct addrinfo *ai_list;
+	struct addrinfo *aitr;
+	struct addrinfo hints = {0};
+
+	hints.ai_socktype = SOCK_STREAM;
+	/* AI_ADDRCONFIG is one of the linux-default flags.
+	 * AI_ADDRCONFIG ensures that IPv6 addresses are returned only if the
+	 * local system has at least one IPv6 address configured. Likewise with
+	 * IPv4 addresses. */
+	hints.ai_flags = AI_ADDRCONFIG | AI_PASSIVE;
+
+	/* First try IPv6 addresses */
+	/* FIXME - We should not prefer IPv6 unless explcitly configured by
+	   the user. We should just let the caller set the ai_family. */
+	hints.ai_family = AF_INET6;
 	rc = getaddrinfo(host, port_no, &hints, &ai_list);
-	if (rc)
-		return EHOSTUNREACH;
-	ai = NULL;
-	/* Prefer the first IPv6 address */
-	for (aitr = ai_list; aitr; aitr = aitr->ai_next) {
-		if (aitr->ai_family == AF_INET6) {
-			ai = aitr;
-			break;
+	if (rc == 0) {
+		for (aitr = ai_list; aitr; aitr = aitr->ai_next) {
+			rc = ldms_xprt_listen(x, aitr->ai_addr, aitr->ai_addrlen, cb, cb_arg);
+			if (rc == 0)
+				break;
 		}
+		freeaddrinfo(ai_list);
 	}
-	if (!ai)
-		ai = ai_list;
-	rc = ldms_xprt_listen(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
-	freeaddrinfo(ai_list);
+
+	if (rc == 0)
+		return rc;
+
+	/* Next try IPv4 addresses */
+	hints.ai_family = AF_INET;
+	rc = getaddrinfo(host, port_no, &hints, &ai_list);
+	if (rc == 0) {
+		for (aitr = ai_list; aitr; aitr = aitr->ai_next) {
+			rc = ldms_xprt_listen(x, aitr->ai_addr, aitr->ai_addrlen, cb, cb_arg);
+			if (rc == 0)
+				break;
+		}
+		freeaddrinfo(ai_list);
+	}
+
 	return rc;
 }
 
