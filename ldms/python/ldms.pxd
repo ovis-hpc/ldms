@@ -852,6 +852,7 @@ cdef extern from "ldms.h" nogil:
         LDMS_MSG_EVENT_RECV
         LDMS_MSG_EVENT_SUBSCRIBE_STATUS
         LDMS_MSG_EVENT_UNSUBSCRIBE_STATUS
+        LDMS_MSG_EVENT_CLIENT_CLOSE
     struct ldms_addr:
         uint8_t  addr[4];
         uint16_t sin_port;
