@@ -69,6 +69,8 @@
 #include "ldms_msg.h"
 #include "ldms_qgroup.h"
 
+static void __ldms_msg_init();
+
 /* The definition is in ldms.c. */
 extern int __enable_profiling[LDMS_XPRT_OP_COUNT];
 
@@ -126,6 +128,7 @@ static uint64_t __msg_gn = 0;
 static pthread_mutex_t __client_close_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t __client_close_cond = PTHREAD_COND_INITIALIZER;
 static pthread_t __client_close_thread;
+static int __ldms_msg_initialized = 0;
 static TAILQ_HEAD(, ldms_msg_client_s)
 	__client_close_tq = TAILQ_HEAD_INITIALIZER(__client_close_tq);
 
@@ -1022,6 +1025,8 @@ __client_subscribe(struct ldms_msg_client_s *c)
 	struct rbn *rbn;
 	struct ldms_msg_ch_cli_entry_s *sce;
 	struct ldms_msg_ch_s *s;
+
+	__ldms_msg_init();
 
 	if (c->is_regex) {
 		__MSG_WRLOCK();
@@ -2415,14 +2420,14 @@ int ldms_msg_is_enabled()
 	return ldms_msg_enabled;
 }
 
-static void __ldms_msg_init();
+static void ldms_msg_atfork();
 
 static void *__cli_close_proc(void *arg)
 {
 	struct ldms_msg_client_s *c;
 	struct ldms_msg_event_s ev;
 
-	pthread_atfork(NULL, NULL, __ldms_msg_init); /* re-initialize at fork */
+	pthread_atfork(NULL, NULL, ldms_msg_atfork); /* clean up at fork */
 
 	pthread_mutex_lock(&__client_close_mutex);
  loop:
@@ -2450,10 +2455,25 @@ static void *__cli_close_proc(void *arg)
 	return NULL;
 }
 
+static void ldms_msg_atfork()
+{
+	void *dontcare;
+	/* clean up thread at fork b/c setns() does not support multi-threading */
+	(void)pthread_cancel(__client_close_thread);
+	(void)pthread_join(__client_close_thread, &dontcare);
+	__atomic_store_n(&__ldms_msg_initialized, 0, __ATOMIC_SEQ_CST);
+	/* we will reinitialize again at the first client subscription */
+}
+
 __attribute__((constructor))
 static void __ldms_msg_init()
 {
 	int rc;
+
+	if (__atomic_load_n(&__ldms_msg_initialized, __ATOMIC_SEQ_CST)) {
+		return;
+	}
+
 	pthread_mutex_init(&__client_close_mutex, NULL);
 	pthread_cond_init(&__client_close_cond, NULL);
 	if (!__ldms_msg_log)
@@ -2462,6 +2482,7 @@ static void __ldms_msg_init()
 	if (rc) {
 		__ERROR("cannot create ldms_msg_client_close thread, rc: %d, errno: %d\n", rc, errno);
 	} else {
+		__atomic_store_n(&__ldms_msg_initialized, 1, __ATOMIC_SEQ_CST);
 		pthread_setname_np(__client_close_thread, "ldms_strm_cls");
 	}
 }
