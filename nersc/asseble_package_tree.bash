@@ -3,7 +3,7 @@ echo "[>>] Make RPM staging area: /app"
 mkdir -p \
   /app/etc/profile.d \
   /app/etc/sysconfig \
-  /app/lib/systemd/system \
+  /app/usr/lib/systemd/system \
   /app/opt \
   /app/usr/lib/python3.6/site-packages \
   /app/usr/share
@@ -20,8 +20,8 @@ cp nersc/nersc-ldmsd.sampler.env     /app/opt/ovis-ldms/etc/ldms/
 cp nersc/nersc-ldmsd.sampler.service /app/opt/ovis-ldms/etc/systemd/system/
 #echo "[>>] Stage /etc for RPM"
 #ln -s /opt/ovis-ldms/etc/profile.d/set-ovis-variables.sh /app/etc/profile.d/set-ovis-variables.sh
-echo "[>>] Stage /lib/systemd/system for RPM"
-ln -s /opt/ovis-ldms/etc/systemd/system/nersc-ldmsd.sampler.service /app/lib/systemd/system/nersc-ldmsd.sampler.service
+echo "[>>] Stage /usr/lib/systemd/system for RPM"
+ln -s /opt/ovis-ldms/etc/systemd/system/nersc-ldmsd.sampler.service /app/usr/lib/systemd/system/nersc-ldmsd.sampler.service
 echo "[>>] Stage /usr/lib/python3.6 for RPM"
 ln -s /opt/ovis-ldms/lib/python3.6/ldmsd /app/usr/lib/python3.6/
 ln -s /opt/ovis-ldms/lib/python3.6/ovis_ldms /app/usr/lib/python3.6/
