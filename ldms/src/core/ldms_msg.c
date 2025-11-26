@@ -999,9 +999,8 @@ int ldms_msg_publish(ldms_t x, const char *name,
 				msg_type, cred, perm, data, data_len, 0, &recv_ts);
 }
 
-static void __client_ref_free(void *arg)
+static void __client_free(struct ldms_msg_client_s *c)
 {
-	struct ldms_msg_client_s *c = arg;
 	struct ldms_msg_ch_cli_entry_s *sce;
 	while ((sce = TAILQ_FIRST(&c->ch_tq))) {
 		assert(sce->ch == NULL);
@@ -1012,6 +1011,17 @@ static void __client_ref_free(void *arg)
 		regfree(&c->regex);
 	}
 	free(c);
+}
+
+static void __client_ref_cleanup(void *arg)
+{
+	/* Post close event */
+	struct ldms_msg_client_s *c = arg;
+
+	pthread_mutex_lock(&__client_close_mutex);
+	TAILQ_INSERT_TAIL(&__client_close_tq, c, entry);
+	pthread_cond_signal(&__client_close_cond);
+	pthread_mutex_unlock(&__client_close_mutex);
 }
 
 /* subscribe the client to the channels */
@@ -1076,7 +1086,7 @@ __client_alloc(const char *match, int is_regex,
 	if (!c)
 		goto out;
 	pthread_rwlock_init(&c->rwlock, NULL);
-	ref_init(&c->ref, "init", __client_ref_free, c);
+	ref_init(&c->ref, "init", __client_ref_cleanup, c);
 	c->match_len = slen;
 	memcpy(c->match, match, slen);
 	c->desc = &c->match[c->match_len]; /* c->desc next to c->match */
@@ -1109,12 +1119,6 @@ __client_alloc(const char *match, int is_regex,
 	c = NULL;
  out:
 	return c;
-}
-
-static void
-__client_free(ldms_msg_client_t c)
-{
-	ref_put(&c->ref, "init");
 }
 
 ldms_msg_client_t
@@ -1179,11 +1183,10 @@ void ldms_msg_client_close(ldms_msg_client_t c)
 	}
 	__MSG_UNLOCK();
 
-	/* reuse the c->entry for 'close' event queing */
-	pthread_mutex_lock(&__client_close_mutex);
-	TAILQ_INSERT_TAIL(&__client_close_tq, c, entry);
-	pthread_cond_signal(&__client_close_cond);
-	pthread_mutex_unlock(&__client_close_mutex);
+	ref_put(&c->ref, "init");
+	/* NOTE: The last ref put will trigger `__client_ref_cleanup()`
+	 * which will post the CLOSE event.
+	 */
 }
 
 struct __sub_req_ctxt_s {
@@ -2438,11 +2441,9 @@ static void *__cli_close_proc(void *arg)
 	ev.type = LDMS_MSG_EVENT_CLIENT_CLOSE;
 	ev.close.client = c;
 
-	ref_get(&c->ref, "cb");
+	/* Deliver CLOSE event as last event and free the client */
 	c->cb_fn(&ev, c->cb_arg);
-	ref_put(&c->ref, "cb");
-
-	ref_put(&c->ref, "init");
+	__client_free(c);
 
 	pthread_mutex_lock(&__client_close_mutex);
 	goto loop;
