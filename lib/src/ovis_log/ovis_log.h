@@ -290,8 +290,12 @@ int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap);
  * \brief Set the log level of a subsystem.
  *
  * If \c level is OVIS_LDEFAULT, the subsystem is set to the default level.
- *  If \c subsys_name or \c mylog is NULL, and \c level is OVIS_LDEFAULT,
- *  \c level is ignored and 0 is returned.
+ * If \c subsys_name or \c mylog is NULL, and \c level is OVIS_LDEFAULT,
+ * \c level is ignored and 0 is returned.
+ *
+ * \c ovis_log_set_level_by_name() will automatically register a log handle
+ * if the specified subsystem does not exist. This allows log levels to
+ * be pre-configured before the subsystem formally registers itself.
  *
  * \param regex_s         A regular expression string to match subsystem names
  * \param subsys_name     The name of the subsystem to set the log level.
