@@ -4387,6 +4387,10 @@ cdef int __msg_client_cb(ldms_msg_event_t ev, void *arg) with gil:
     cdef MsgClient c = <MsgClient>arg
     cdef MsgData sdata
 
+    if ev.type == LDMS_MSG_EVENT_CLIENT_CLOSE:
+        Py_DECREF(c)
+        return 0
+
     if ev.type != LDMS_MSG_EVENT_RECV:
         return 0
 
@@ -4577,6 +4581,7 @@ cdef class MsgClient(object):
                                        CSTR(BYTES(desc)))
         if not self.c:
             raise RuntimeError(f"ldms_msg_subscribe() error, errno: {errno}")
+        Py_INCREF(self)
 
     def close(self):
         if not self.c:
