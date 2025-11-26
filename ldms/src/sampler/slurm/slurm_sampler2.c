@@ -1162,11 +1162,6 @@ static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt)
 			goto unlock_tree;
 		}
 		handle_task_exit(job, ev->recv.json);
-		if (job->exited_tasks_count == job->v[TASK_COUNT].v_u64) {
-			handle_job_exit(job, ev->recv.json);
-			TAILQ_INSERT_TAIL(&complete_job_list, job, ent);
-			job->exited = 1;
-		}
 	} else if (0 == strncmp(event_name->str, "exit", 4)) {
 		job = job_data_find(job_id);
 		if (!job) {
