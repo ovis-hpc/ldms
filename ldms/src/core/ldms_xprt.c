@@ -186,13 +186,13 @@ ldms_t ldms_xprt_next(ldms_t x)
 	return x;
 }
 
-static void __ldms_xprt_ctxt_set(ldms_t x, void *ctxt, app_ctxt_free_fn fn)
+static void __ldms_xprt_ctxt_set(ldms_t x, void *ctxt, ldms_app_ctxt_free_fn fn)
 {
 	x->app_ctxt = ctxt;
 	x->app_ctxt_free_fn = fn;
 }
 
-void ldms_xprt_ctxt_set(ldms_t x, void *ctxt, app_ctxt_free_fn fn)
+void ldms_xprt_ctxt_set(ldms_t x, void *ctxt, ldms_app_ctxt_free_fn fn)
 {
 	x->ops.ctxt_set(x, ctxt, fn);
 }
@@ -3524,7 +3524,7 @@ static int __ldms_xprt_dir_cancel(ldms_t x);
 
 static ldms_t __ldms_xprt_get(ldms_t x, const char *name, const char *func, int line); /* ref get */
 static void __ldms_xprt_put(ldms_t x, const char *name, const char *func, int line); /* ref put */
-static void __ldms_xprt_ctxt_set(ldms_t x, void *ctxt, app_ctxt_free_fn fn);
+static void __ldms_xprt_ctxt_set(ldms_t x, void *ctxt, ldms_app_ctxt_free_fn fn);
 static void *__ldms_xprt_ctxt_get(ldms_t x);
 static uint64_t __ldms_xprt_conn_id(ldms_t x);
 static const char *__ldms_xprt_type_name(ldms_t x);

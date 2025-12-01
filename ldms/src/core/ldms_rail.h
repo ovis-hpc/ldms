@@ -182,7 +182,7 @@ struct ldms_rail_s {
 	void *event_cb_arg;
 
 	void *app_ctxt;
-	app_ctxt_free_fn app_ctxt_free;
+	ldms_app_ctxt_free_fn app_ctxt_free;
 
 	pthread_mutex_t mutex; /* mainly for state */
 
