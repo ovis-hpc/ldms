@@ -470,7 +470,7 @@ struct ldms_xprt_ops_s {
 
 	ldms_t (*get)(ldms_t x, const char *name, const char *func, int line); /* ref get */
 	void (*put)(ldms_t x, const char *name, const char *func, int line); /* ref put */
-	void (*ctxt_set)(ldms_t x, void *ctxt, app_ctxt_free_fn fn);
+	void (*ctxt_set)(ldms_t x, void *ctxt, ldms_app_ctxt_free_fn fn);
 	void *(*ctxt_get)(ldms_t x);
 	uint64_t (*conn_id)(ldms_t x);
 	const char *(*type_name)(ldms_t x);
@@ -561,7 +561,7 @@ struct ldms_xprt {
 
 	/** Application's context */
 	void *app_ctxt;
-	app_ctxt_free_fn app_ctxt_free_fn;
+	ldms_app_ctxt_free_fn app_ctxt_free_fn;
 
 	LIST_ENTRY(ldms_xprt) xprt_link;
 };
