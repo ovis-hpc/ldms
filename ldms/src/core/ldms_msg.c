@@ -240,7 +240,7 @@ int __rep_publish(struct ldms_rail_ep_s *rep, const char *name,
 			uint32_t hop_cnt,
 			struct ldms_msg_hop * hops,
 			const char *data, size_t data_len,
-			struct strm_publish_profile_s *pts)
+			struct ldms_strm_publish_profile_s *pts)
 {
 	int rc = 0;
 	int name_len = strlen(name) + 1;

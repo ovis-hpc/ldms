@@ -104,7 +104,7 @@ static int __rail_stats(ldms_t _r, ldms_xprt_stats_t stats, int mask, int is_res
 #define __rail_put(_r_, _n_) ___rail_put((_r_), (_n_), __func__, __LINE__)
 static ldms_t ___rail_get(ldms_t _r, const char *name, const char *func, int line); /* ref get */
 static void ___rail_put(ldms_t _r, const char *name, const char *func, int line); /* ref put */
-static void __rail_ctxt_set(ldms_t _r, void *ctxt, app_ctxt_free_fn fn);
+static void __rail_ctxt_set(ldms_t _r, void *ctxt, ldms_app_ctxt_free_fn fn);
 static void *__rail_ctxt_get(ldms_t _r);
 static uint64_t __rail_conn_id(ldms_t _r);
 static const char *__rail_type_name(ldms_t _r);
@@ -1403,7 +1403,7 @@ static void ___rail_put(ldms_t _r, const char *name, const char *func, int line)
 	_ref_put(&r->ref, name, func, line);
 }
 
-static void __rail_ctxt_set(ldms_t _r, void *ctxt, app_ctxt_free_fn fn)
+static void __rail_ctxt_set(ldms_t _r, void *ctxt, ldms_app_ctxt_free_fn fn)
 {
 	assert(XTYPE_IS_RAIL(_r->xtype));
 	ldms_rail_t r = (ldms_rail_t)_r;

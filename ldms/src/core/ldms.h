@@ -692,8 +692,8 @@ int ldms_xprt_set_quota(ldms_t x, int64_t recv_quota, int64_t rate_limit);
  * \param ctxt   Application's context
  * \param fn     Application's function to free the context
  */
-typedef void (*app_ctxt_free_fn)(void *ctxt);
-void ldms_xprt_ctxt_set(ldms_t x, void *ctxt, app_ctxt_free_fn fn);
+typedef void (*ldms_app_ctxt_free_fn)(void *ctxt);
+void ldms_xprt_ctxt_set(ldms_t x, void *ctxt, ldms_app_ctxt_free_fn fn);
 
 /**
  * \brief Get application's context
@@ -2187,42 +2187,52 @@ typedef enum ldms_xprt_ops_e {
 	LDMS_XPRT_OP_COUNT
 } ldms_xprt_ops_t;
 
+struct ldms_lookup_profile_s {
+	struct timespec app_req_ts;
+	struct timespec req_send_ts;
+	struct timespec req_recv_ts;
+	struct timespec share_ts;
+	struct timespec rendzv_ts;
+	struct timespec read_ts;
+	struct timespec complete_ts;
+	struct timespec deliver_ts;
+};
+
+struct ldms_update_profile_s {
+	struct timespec app_req_ts;
+	struct timespec read_ts;
+	struct timespec read_complete_ts;
+	struct timespec deliver_ts;
+};
+
+struct ldms_set_delete_profile_s {
+	struct timespec send_ts;
+	struct timespec recv_ts;
+	struct timespec ack_ts;
+};
+
+struct ldms_send_profile_s {
+	struct timespec app_req_ts;
+	struct timespec send_ts;
+	struct timespec complete_ts;
+	struct timespec deliver_ts;
+};
+
+struct ldms_strm_publish_profile_s {
+	uint32_t hop_num;
+	struct timespec recv_ts;
+	struct timespec send_ts; /*  to remote client */
+};
+
 struct  ldms_op_ctxt {
 	struct ref_s ref;
 	enum ldms_xprt_ops_e op_type;
 	union {
-		struct lookup_profile_s {
-			struct timespec app_req_ts;
-			struct timespec req_send_ts;
-			struct timespec req_recv_ts;
-			struct timespec share_ts;
-			struct timespec rendzv_ts;
-			struct timespec read_ts;
-			struct timespec complete_ts;
-			struct timespec deliver_ts;
-		} lookup_profile;
-		struct update_profile {
-			struct timespec app_req_ts;
-			struct timespec read_ts;
-			struct timespec read_complete_ts;
-			struct timespec deliver_ts;
-		} update_profile;
-		struct set_delete_profile_s {
-			struct timespec send_ts;
-			struct timespec recv_ts;
-			struct timespec ack_ts;
-		} set_del_profile;
-		struct send_profile_s {
-			struct timespec app_req_ts;
-			struct timespec send_ts;
-			struct timespec complete_ts;
-			struct timespec deliver_ts;
-		} send_profile;
-		struct strm_publish_profile_s {
-			uint32_t hop_num;
-			struct timespec recv_ts;
-			struct timespec send_ts; /*  to remote client */
-		} msg_pub_profile;
+		struct ldms_lookup_profile_s lookup_profile;
+		struct ldms_update_profile_s update_profile;
+		struct ldms_set_delete_profile_s set_del_profile;
+		struct ldms_send_profile_s send_profile;
+		struct ldms_strm_publish_profile_s msg_pub_profile;
 	};
 	TAILQ_ENTRY(ldms_op_ctxt) ent;
 };
