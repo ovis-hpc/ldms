@@ -588,8 +588,10 @@ static int handle_group(
 		}
 	}
 
+	timeout = NULL;
 	jtimeout = json_object_get(jgroup, "timeout");
 	if (jtimeout) {
+		const char *timeout_string;
 		if (json_typeof(jtimeout) != JSON_STRING) {
 			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
 				"group['timeout'] must be a STRING describing "
@@ -599,10 +601,15 @@ static int handle_group(
 			goto err_0;
 
 		}
-		ldmsd_timespec_from_str(&_timeout, json_string_value(jtimeout));
+		timeout_string = json_string_value(jtimeout);
+		rc = ldmsd_timespec_from_str(&_timeout, timeout_string);
+		if (rc != 0) {
+			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+				"group['timeout'] value \"%s\" has invalid format.\n",
+				strgp->obj.name, row_no, timeout_string);
+			goto err_0;
+		}
 		timeout = &_timeout;
-	} else {
-		timeout = NULL;
 	}
 
 	strgp->row_cache = ldmsd_row_cache_create(strgp, cfg_row->row_limit, timeout);
