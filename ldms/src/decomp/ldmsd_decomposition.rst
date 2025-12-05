@@ -205,9 +205,13 @@ as follows.
       discarded.
 
    **"timeout"** : "*TIME*"
-      The amount of time (e.g. "30m") of group inactivity (no row added
+      The amount of time (e.g. "30s") of group inactivity (no row added
       to the group) to trigger row cache cleanup for the group. If this
       value is not set, the row cache won't be cleaned up.
+
+      The units of the time value may only be "s" (seconds),
+      "ms" (milliseconds), "us" (microseconds), or "ns" (nanoseconds).
+      A unitless number is assumed to be "us".
 
 **Static Decomposition Example 1: simple meminfo with fill**
    The following is an example of a static decomposition definition
