@@ -83,10 +83,27 @@ test_plugattr_SOURCES = ldmsd_plugattr.c ldmsd_plugattr.h
 test_plugattr_CFLAGS = -DTEST_PLUGATTR $(AM_CFLAGS)
 test_plugattr_LDADD = $(LOVIS_UTIL) $(LCOLL) -lm -lpthread
 
+if ENABLE_CAP_PERFMON
+DO_CAP_PERFMON = true
+else
+DO_CAP_PERFMON = false
+endif
+
 # make sym links for aggd scripting support
 install-exec-hook:
 	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsd ldms-aggd
 	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsctl ldmsaggctl
+	@if $(DO_CAP_PERFMON) ; then \
+		$(SETCAP) 'cap_perfmon=ep' $(DESTDIR)$(sbindir)/ldmsd || { \
+			echo "" ; \
+			echo "setcap failed, command: $(SETCAP) 'cap_perfmon=ep' $(DESTDIR)$(sbindir)/ldmsd " ; \
+			echo "If you get 'Operation not permitted' error, try using setcap with sudo, e.g.:" ; \
+			echo "" ; \
+			echo "        make install SETCAP='sudo "$(SETCAP)"'" ; \
+			echo "" ; \
+			false ; \
+		} \
+	fi
 
 check-local:
 	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) ./test_plugattr $(srcdir)/input/test_plugattr.txt

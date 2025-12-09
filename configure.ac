@@ -925,6 +925,38 @@ AS_IF([test "x$enable_zfs" = xyes],[
         [AC_MSG_ERROR([libzfs or its headers not found])])
 ])
 
+AC_ARG_VAR([SETCAP], [setcap command])
+
+OPTION_DEFAULT_DISABLE([cap-perfmon], [ENABLE_CAP_PERFMON],
+		       [install ldmsd with cap_perfmon capability.])
+
+if test -z "${ENABLE_CAP_PERFMON_TRUE}"; then
+	AC_CHECK_PROG([SETCAP], [setcap], [setcap], [no])
+	if test x"$SETCAP" != xno ; then
+		SETCAP_CHECK_CMD="${SETCAP} -v cap_chown= /bin/sh"
+		AC_MSG_NOTICE([SETCAP: ${SETCAP}])
+		AC_MSG_NOTICE([SETCAP check command: ${SETCAP_CHECK_CMD}])
+		AC_MSG_CHECKING([SETCAP])
+		if ${SETCAP_CHECK_CMD} > /dev/null ; then
+			AC_MSG_RESULT([OK])
+		else
+			AC_MSG_ERROR([SETCAP check command failed.])
+		fi
+	else
+		AC_MSG_ERROR([
+
+'setcap' not found. Please set SETCAP environment varaible to the 'setcap'
+program (e.g. SETCAP=/usr/sbin/setcap). setcap binary can be found in these
+packages:
+
+    - libcap-progs (openSUSE)
+    - libcap (RHEL)
+    - libcap2-bin (Debian/Ubuntu)
+
+		])
+	fi
+fi
+
 # define substitutions for configvars and other sed-generated files.
 # note carefully the escapes.
 OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
