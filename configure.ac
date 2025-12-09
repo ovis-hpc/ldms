@@ -925,6 +925,9 @@ AS_IF([test "x$enable_zfs" = xyes],[
         [AC_MSG_ERROR([libzfs or its headers not found])])
 ])
 
+OPTION_DEFAULT_DISABLE([cap-perfmon], [ENABLE_CAP_PERFMON],
+		       [install ldmsd with cap_perfmon capability.])
+
 # define substitutions for configvars and other sed-generated files.
 # note carefully the escapes.
 OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
