@@ -21,11 +21,11 @@ fi
 podman image list |grep ldms_build_cos_3.1
 if [ $? -ne 0 ]; then
   echo "Pull image"
-  TMPDIR=~/tmp podman pull registry.nersc.gov/csg/ldms_build_cos_3.1:20250221
+  TMPDIR=~/tmp podman pull registry.nersc.gov/csg/ldms_build_cos_3.3.4:20251211
 fi
 echo "Start build container. From there: pushd /builds/nersc/csg/ovis/ && ./nersc/test_build.bash"
 podman run -it --rm \
   --mount type=bind,source=$LDMS_REPO,target=/builds/nersc/csg/ovis \
   --mount type=bind,source=$NERSC_ZYPPER_REPO,target=/nersc-zypper \
-  registry.nersc.gov/csg/ldms_build_cos_3.1:20250221 \
+  registry.nersc.gov/csg/ldms_build_cos_3.3.4:20251211 \
   /bin/bash
