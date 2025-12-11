@@ -3,8 +3,8 @@ stages:
   - package
 
 variables:
-  CONTAINER_TAG: "20251211"
-  CONTAINER_IMAGE: "ldms_build_cos_3.3.4"
+  CONTAINER_TAG: "20250221"
+  CONTAINER_IMAGE: "ldms_build_cos_3.1"
   CONTAINER_REGISTRY: "registry.nersc.gov/csg"
 
 build:
@@ -18,7 +18,7 @@ build:
     - ls -laF
     - nersc/clean.bash
     - echo "[>>] Hack DCGM Header"
-    - echo "#define DCGM_PUBLIC_API" >> "/usr/include/datacenter-gpu-manager-4/dcgm_api_export.h"
+    - echo "#define DCGM_PUBLIC_API" >> "/usr/include/dcgm_api_export.h"
     - echo "[>>] Remove .version"
     - rm -rf .version
     - echo "[>>] autoreconf"
