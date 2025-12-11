@@ -1,4 +1,4 @@
-FROM registry.nersc.gov/csg/slurm_build_cos_3.3.4:20251208 as ldms_build
+FROM registry.nersc.gov/csg/slurm_build_cos_3.1:20250221 as ldms_build
 
 # do not check ssl
 RUN for i in /etc/zypp/repos.d/*.repo; do sed -i '/url/ s,$,?ssl_verify=no,' $i; grep . $i ; done
@@ -9,9 +9,6 @@ RUN echo "Zypper Refresh and install Deps" \
 RUN echo "Zypper Update" \
     zypper -q --non-interactive --no-gpg-checks update
 
-RUN echo "Remove any ovis-ldms in the image" \
-    rpm -e nerscjson_client ovis-ldms 2> /dev/null || echo "OK"
-
 RUN echo "Zypper Install" \
     && zypper -q --non-interactive install -y \
     libpfm4 \
@@ -21,11 +18,7 @@ RUN echo "Zypper Install" \
     papi-devel \
     papi-devel \
     libpfm-devel \
-    libnl3-devel \
-    datacenter-gpu-manager-4-devel \
-    datacenter-gpu-manager-4-core \
-    datacenter-gpu-manager-4-cuda13 \
-    datacenter-gpu-manager-4-proprietary
+    libnl3-devel
 
 LABEL maintainer="John Stile <jstile@lbl.gov>"
 CMD /bin/bash
