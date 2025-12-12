@@ -31,7 +31,8 @@ ldms_rdc_schema_name_LDADD = \
 	$(top_builddir)/ldms/src/ldmsd/libldmsd_plugattr.la \
 	$(top_builddir)/ldms/src/core/libldms.la \
 	$(top_builddir)/lib/src/ovis_util/libovis_util.la \
-	$(top_builddir)/lib/src/coll/libcoll.la
+	$(top_builddir)/lib/src/coll/libcoll.la \
+	$(top_builddir)/lib/src/ovis_log/libovis_log.la
 
 dist_man7_MANS = ldms-sampler_rdc_sampler.man
 dist_man1_MANS = ldms_rdc_schema_name.man
