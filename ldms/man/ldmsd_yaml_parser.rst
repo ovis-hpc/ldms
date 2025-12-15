@@ -8,7 +8,7 @@ ldmsd_yaml_parser
 A python program to parse a YAML configuration file into a v4 LDMS configuration.
 ---------------------------------------------------------------------------------
 
-:Date: 20 Nov 2024 "ovis-4.4.5"
+:Date: 20 Nov 2024 "ovis-4.5.2"
 :Manual section: 8
 :Manual group: LDMSD
 
@@ -23,27 +23,30 @@ SYNOPSIS
 DESCRIPTION
 ===========
 
-A single ldmsd can be configured using a YAML configuration file. This
-can be done by running ldmsd directly, or generating a configuration
-parser with the ldmsd_yaml_parser
+A single ldmsd daemon configuration script or a fleet of them can be generated from
+an ldms YAML configuration file. When ldmsd is configured with a -y option, the
+ldmsd daemon uses ldmsd_yaml_parser to translate the yaml input.
 
 LDMSD YAML OPTIONS
 ==================
 
-**-y,**\ *CONFIG_PATH*
-   The path to the YAML configuration file.
+**-y,--ldms_config**\ *CONFIG_PATH*
+   The path to the YAML configuration file. This is required.
 
-**-n,**\ *NAME*
-   The name of the LDMS daemon.
+**-n,--daemon_name**\ *NAME*
+   The name of the single LDMS daemon to generate.
 
-LDMSD_YAML_PARSER COMMAND SYNTAX
-================================
+**-p,--generate_config_path**\ *PATH*
+   The name of an existing directory to dump fleet of files.
 
-**--ldms-config,**\ *CONFIG_PATH*
-   The path to the YAML configuration file.
+**-d,--debug**
+   Increase the level of debug output to stdout.
+   When run with neither -p nor -n, no configuration script is produced, but
+   an extra -d will dump anchor-expanded yaml and data derived from the yaml for review.
 
-**--daemon-name,**\ *NAME*
-   The name of the LDMS daemon to configure.
+**-o,--outfile**\ *FILE*
+   Send the generated configuration commands output to FILE. Debugging and exception output
+   goes to stdout.
 
 YAML CONFIGURATION SYNTAX
 =========================

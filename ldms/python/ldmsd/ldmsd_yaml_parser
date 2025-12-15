@@ -9,17 +9,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='LDMS Monitoring YAML Cluster Configuration Parser')
     required = parser.add_argument_group('required arguments')
-    required.add_argument('--ldms_config', metavar='FILE', required=True,
+    required.add_argument('-y','--ldms_config', metavar='FILE', required=True,
                         help='Path to LDMSD YAML configuration file. ')
-    parser.add_argument('--generate_config_path', metavar="STRING", required=False,
+    parser.add_argument('-p','--generate_config_path', metavar="STRING", required=False,
                         help='Path to directory to store generated v4 configuration files for an entire LDMS cluster. '
                              'Samplers with similar configurations share a single configuration file. ',
                         default=False)
-    parser.add_argument('--daemon_name', metavar='STRING', required=False,
+    parser.add_argument('-n','--daemon_name', metavar='STRING', required=False,
                         default=False,
                         help='Daemon name to generate configuration from YAML file')
-    parser.add_argument('--debug', action='store_true',
-                        help='Enable debug information')
+    parser.add_argument('-o','--outfile', metavar='STRING', required=False,
+                        default=False,
+                        help='Output file [optional] for -n case')
+    parser.add_argument('-d','--debug', action='count', default=0,
+                        help='Enable more debug information')
     args = parser.parse_args()
     if not args.debug:
         import sys
@@ -27,27 +30,49 @@ if __name__ == "__main__":
     config_fp = open(args.ldms_config)
     conf_spec = yaml.safe_load(config_fp)
 
+    if args.debug > 1:
+        import pprint
+        pprint.pprint("ORIGINAL YAML after anchor expansion")
+        pprint.pprint(conf_spec)
+
     if not isinstance(conf_spec, (list, dict)):
         print(f"Error: input {args.ldms_config} is not yaml. Contents:", file=sys.stderr)
         print(conf_spec, file=sys.stderr)
         sys.exit(errno.EINVAL)
 
     cluster = YamlCfg(None, None, conf_spec, args)
-
     if args.daemon_name and args.generate_config_path:
-        print(f'Parameters "daemon_name" and "generate_config_path" are mutually exclusive.\n'
+        print(f'Parameters "daemon_name"(-n) and "generate_config_path"(-p) are mutually exclusive.\n'
               f'Specifying the "daemon_name" parameter will generate the configuration for a single ldmsd\n'
               f'Specifying the "generate_config_path" parameter will generate an entire cluster\'s\n'
               f'v4 configuration files in the path provided.\n', file=sys.stderr)
         sys.exit(errno.EINVAL)
 
     if args.daemon_name:
-        ldmsd_cfg_str = cluster.daemon_config(args.ldms_config, args.daemon_name.rstrip('0'))
-        print(f'{ldmsd_cfg_str}')
+        ldmsd_cfg_str = cluster.daemon_config(args.ldms_config, args.daemon_name).rstrip()
+        if args.debug > 1:
+            import json
+            print("YamlCfg after processing:")
+            print(json.dumps(cluster))
+            print("# ========================================================")
+        if args.outfile:
+            with open(args.outfile,"w") as f:
+                print(f"# {__file__} generated {args.daemon_name} from {args.ldms_config} to {args.outfile}", file=f)
+                print(f'{ldmsd_cfg_str}', file=f)
+        else:
+            print(f"# {__file__} generated {args.daemon_name} from {args.ldms_config} to stdout")
+            print(f'{ldmsd_cfg_str}')
         sys.exit(0)
 
     if args.generate_config_path:
-        rc = cluster.config_v4(args.generate_config_path)
+        if args.debug:
+            print(f"{__file__} wrote group configs from {args.ldms_config} to {args.generate_config_path}")
+            print("# --------------------------------------------------------")
+        rc = cluster.config_v4(args.generate_config_path, args.debug)
+        if args.debug > 1:
+            print("YamlCfg after processing:")
+            print(cluster)
+            print("# ========================================================")
         if rc:
             sys.exit(rc)
         print('LDMSD v4 config files generated', file=sys.stderr)
