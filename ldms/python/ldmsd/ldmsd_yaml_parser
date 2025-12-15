@@ -42,7 +42,7 @@ if __name__ == "__main__":
         sys.exit(errno.EINVAL)
 
     if args.daemon_name:
-        ldmsd_cfg_str = cluster.daemon_config(args.ldms_config, args.daemon_name.rstrip('0'))
+        ldmsd_cfg_str = cluster.daemon_config(args.ldms_config, args.daemon_name.rstrip('\0'))
         print(f'{ldmsd_cfg_str}')
         sys.exit(0)
 
