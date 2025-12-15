@@ -2965,10 +2965,39 @@ class LdmsdCmdParser(cmd.Cmd):
             print(f"Error getting the logger infomation. {msg}")
         loggers = fmt_status(msg)
 
-        print(f"{'Name':40} {'Log Level':30} Description")
-        print(f"{'-'*40} {'-'*30} {'-'*30}")
+        unregistered_loggers = []
+        valid_loggers = []
 
         for l in loggers:
+            if l['registered'] == 'false':
+                unregistered_loggers.append(l)
+            else:
+                valid_loggers.append(l)
+
+        if 0 < len(unregistered_loggers):
+            print("")
+            print("NOTICE: The following subsystems were configured for specific log levels but have not registrered:")
+            print("        This usually indicates a mis-spelling of the subsystem name.")
+            print("")
+            print("Unregistered log subsystems:")
+            print(f"{'-'*(40 + 30 + 1)}")
+            print(f"{'Name':40} Log Level")
+            print(f"{'-'*40} {'-'*30}")
+            for l in unregistered_loggers:
+                print(f"{l['name']:40} {l['level']}")
+            print(f"{'-'*(40 + 30 + 1)}")
+        else:
+            print("")
+            print("All configured log subsystems have successfully registered with the logging system.")
+
+        print("")
+        print("The following shows all log subsystems that have successfully registered with the logging system.")
+        print("")
+        print("Registered log subsystems:")
+        print(f"{'-'*(40 + 30 + 30 + 2)}")
+        print(f"{'Name':40} {'Log Level':30} Description")
+        print(f"{'-'*40} {'-'*30} {'-'*30}")
+        for l in valid_loggers:
             print(f"{l['name']:40} {l['level']:30} {l['desc']}")
         print(f"{'-'*(40 + 30 + 30 + 2)}")
         print("The loggers with the Log Level as 'default' use the same "
