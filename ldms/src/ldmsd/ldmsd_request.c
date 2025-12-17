@@ -321,6 +321,8 @@ static int worker_threads_set_handler(ldmsd_req_ctxt_t reqc);
 static int default_quota_set_handler(ldmsd_req_ctxt_t reqc);
 static int pid_file_handler(ldmsd_req_ctxt_t reqc);
 static int banner_mode_handler(ldmsd_req_ctxt_t reqc);
+static int storage_threads_set_handler(ldmsd_req_ctxt_t reqc);
+static int storage_max_q_depth_set_handler(ldmsd_req_ctxt_t reqc);
 
 /* Sampler Advertisement */
 static int prdcr_listen_add_handler(ldmsd_req_ctxt_t reqc);
@@ -705,7 +707,7 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_AUTH_DEL_REQ, auth_del_handler, XUG
 	},
 
-	/* CMD-LINE options */
+	/* CMD-LINE options and configuration processed at start-up */
 	[LDMSD_CMDLINE_OPTIONS_SET_REQ] = {
 		LDMSD_CMDLINE_OPTIONS_SET_REQ, cmd_line_arg_set_handler, XUG
 	},
@@ -735,6 +737,12 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_BANNER_MODE_REQ] = {
 		LDMSD_BANNER_MODE_REQ, banner_mode_handler, XUG
+	},
+	[LDMSD_STORAGE_THR_SET_REQ] = {
+		LDMSD_STORAGE_THR_SET_REQ, storage_threads_set_handler, XUG
+	},
+	[LDMSD_STORAGE_MAX_Q_DEPTH_SET_REQ] = {
+		LDMSD_STORAGE_MAX_Q_DEPTH_SET_REQ, storage_max_q_depth_set_handler, XUG
 	},
 
 	/* Sampler Discovery */
@@ -812,6 +820,8 @@ int is_req_id_priority(enum ldmsd_request req_id)
 	case LDMSD_STREAM_ENABLE_REQ:
 	case LDMSD_MSG_DISABLE_REQ:
 	case LDMSD_MSG_ENABLE_REQ:
+	case LDMSD_STORAGE_THR_SET_REQ:
+	case LDMSD_STORAGE_MAX_Q_DEPTH_SET_REQ:
 		return 1;
 	default:
 		return 0;
@@ -9921,6 +9931,102 @@ static int banner_mode_handler(ldmsd_req_ctxt_t reqc)
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(mode_s);
+	return rc;
+}
+
+extern int ldmsd_strg_worker_num_set(unsigned int v);
+extern int ldmsd_max_strg_q_depth_set(int v);
+static int storage_threads_set_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *value_s = NULL;
+	long num_threads;
+	char *endptr;
+
+	value_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SIZE);
+	if (!value_s) {
+		reqc->errcode = EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "The attribute 'num' is missing.");
+		goto send_reply;
+	}
+
+	num_threads = strtol(value_s, &endptr, 10);
+	if ((endptr == value_s) || (*endptr != '\0')) {
+		snprintf(reqc->line_buf, reqc->line_len, "The given number of " \
+			 "storage worker threads (%s) is not a number.", value_s);
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
+	if ((num_threads < 1) || (num_threads > UINT_MAX)) {
+		snprintf(reqc->line_buf, reqc->line_len, "The given number of " \
+			"storage worker threads (%s) is out of range (1-%u).",
+			                                   value_s, UINT_MAX);
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
+
+	reqc->errcode = ldmsd_strg_worker_num_set(num_threads);
+	if (reqc->errcode == EBUSY) {
+		snprintf(reqc->line_buf, reqc->line_len,
+			"ldmsd does not allow to change the number of storage worker threads.");
+		goto send_reply;
+	} else {
+		snprintf(reqc->line_buf, reqc->line_len, "Failed to set the number " \
+			"of storage worker threads with error %d.", reqc->errcode);
+		goto send_reply;
+	}
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(value_s);
+	return rc;
+}
+
+static int storage_max_q_depth_set_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *value_s = NULL;
+	char *endptr;
+	int max_q_depth;
+
+	value_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SIZE);
+	if (!value_s) {
+		reqc->errcode = EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "The attribute 'num' is missing.");
+		goto send_reply;
+	}
+
+	max_q_depth = strtol(value_s, &endptr, 10);
+	if ((endptr == value_s) || (*endptr != '\0')) {
+		snprintf(reqc->line_buf, reqc->line_len, "The given maximum of " \
+			 "storage worker queue depth (%s) is not a number.", value_s);
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
+
+	if (max_q_depth > INT_MAX) {
+		snprintf(reqc->line_buf, reqc->line_len, "The given maximum of " \
+			"storage worker queue depth (%s) is out of range.", value_s);
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
+
+	reqc->errcode = ldmsd_max_strg_q_depth_set(max_q_depth);
+	if (reqc->errcode == EBUSY) {
+		snprintf(reqc->line_buf, reqc->line_len,
+			"ldmsd does not allow to change the maximum of storage queue depth.");
+		goto send_reply;
+	} else {
+		snprintf(reqc->line_buf, reqc->line_len, "Failed to set the maximum " \
+			"of storage queue depth with error %d.", reqc->errcode);
+		goto send_reply;
+	}
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(value_s);
 	return rc;
 }
 

@@ -137,6 +137,42 @@ update events.
       Number of threads that are responsible for scheduling sample, dir,
       lookup, and update events.
 
+**storage_threads** sets the number of dedicated worker threads for storage operations.
+
+   num=NUM
+      Number of dedicated storage worker threads. Must be a positive integer.
+      Default: 1
+
+   Storage operations are performed asynchronously on dedicated worker threads,
+   reducing latency in the update path. This allows decoupling storage overhead
+   from the data collection process. The value can be set only once and cannot
+   be changed after ldmsd initialization.
+
+   Example:
+
+   ::
+
+      storage_threads num=4
+
+**storage_queue_depth** sets the maximum number of events queued per storage worker thread.
+
+   num=NUM
+      Maximum queue depth per worker thread. Use -1 or 0 for unlimited queue depth.
+      Default: -1 (unlimited)
+
+   This setting provides backpressure when storage operations cannot keep pace with
+   metric collection. When a worker's queue reaches the maximum depth, the update
+   callback blocks until space becomes available. Negative values and 0 enable unlimited
+   queue depth, which allows the system to absorb burst workloads but risks excessive
+   memory growth if storage falls significantly behind. The value can be set
+   only once and cannot be changed after ldmsd initialization.
+
+   Example:
+
+   ::
+
+      storage_queue_depth num=1000
+
 **default_auth** defines the default authentication domain. The default
 is no authentication.
 
@@ -324,6 +360,10 @@ A simple aggregator daemon configuration (agg.conf):
         default_auth plugin=munge
         listen xprt=sock port=10001
 
+        # Storage configuration
+        storage_threads num=4
+        storage_queue_depth num=1000
+
         # Environment variables
         env LDMS_XPRT=sock
         env RECONNECT=5s
@@ -341,4 +381,4 @@ A simple aggregator daemon configuration (agg.conf):
 SEE ALSO
 ========
 
-:ref:`ldmsd(8) <ldmsd>`, :ref:`ldmsd_controller(8) <ldmsd_controller>`, :ref:`ldms_authentication(7) <ldms_authentication>`, :ref:`ldms_quickstart(7) <ldms_quickstart>`
+:ref:`ldmsd(8) <ldmsd>`, :ref:`ldmsd_controller(8) <ldmsd_controller>`, :ref:`ldms_authentication(7) <ldms_authentication>`, :ref:`ldms_quickstart(7) <ldms_quickstart>`, :ref:`ldmsd_event_based_storage(7) <ldmsd_event_based_storage>`

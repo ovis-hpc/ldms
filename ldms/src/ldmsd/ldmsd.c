@@ -172,6 +172,11 @@ char *setfile = NULL;
 
 int ldmsd_quota = LDMS_UNLIMITED;
 
+#define DEFAULT_NUM_STRG_WORKERS 1
+#define DEFAULT_MAX_STRG_QUEUE_DEPTH -1 /* Unlimited */
+unsigned int ldmsd_num_strg_workers = DEFAULT_NUM_STRG_WORKERS;
+int ldmsd_max_strg_q_depth = DEFAULT_MAX_STRG_QUEUE_DEPTH;
+
 int find_least_busy_thread();
 
 int passive = 0;
@@ -1917,6 +1922,34 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 	return 0;
 }
 
+int ldmsd_strg_worker_num_set(unsigned int v)
+{
+	if (ldmsd_is_initialized()) {
+		/*
+		 * ldmsd does not allow users to change the number of
+		 * storage workers after the thread pool has been created.
+		 */
+		return EBUSY;
+	}
+	ldmsd_num_strg_workers = v;
+	return 0;
+}
+
+int ldmsd_max_strg_q_depth_set(int v)
+{
+	if (ldmsd_is_initialized()) {
+		/*
+		 * ldmsd does not allow users to change the maximum of
+		 * storage queue depth after the thread pool has been created.
+		 */
+		return EBUSY;
+	}
+	if (v <= 0)
+		v = -1;
+	ldmsd_max_strg_q_depth = v;
+	return 0;
+}
+
 void log_init()
 {
 	int log_mode = 0;
@@ -1949,6 +1982,8 @@ void log_init()
 	fo_log = ovis_log_register("failover", "Messages for the failover infrastructure");
 
 }
+
+extern int strg_pool_init(unsigned int num_workers, int max_q_depth);
 
 int main(int argc, char *argv[])
 {
@@ -2240,6 +2275,11 @@ int main(int argc, char *argv[])
 			cleanup(7, "event thread create fail");
 		}
 		pthread_setname_np(ev_thread[op], tname);
+	}
+
+	if (strg_pool_init(ldmsd_num_strg_workers, ldmsd_max_strg_q_depth)) {
+		ovis_log(NULL, OVIS_LERROR, "Error creating the storage thread pool.\n");
+		cleanup(7, "storage thread pool create fail");
 	}
 
 	if (!setfile)
