@@ -1,0 +1,540 @@
+#!/usr/bin/env python3
+#
+# This script generates a list of available pmu events to be used with ldmsd
+# perfevent plugin.
+#
+
+import os
+import re
+import sys
+import csv
+import json
+import atexit
+import shutil
+import logging
+import tempfile
+import argparse
+import platform
+import subprocess
+
+long_description = """
+
+This script generates a list of pmu events for ldmsd perfevent plugin from a
+Linux source tree specified by -L LINUX_SRC argument. The script uses
+`jevents.py` module (if available) and events data from
+LINUX_SRC/tools/perf/pmu-events/ to produce JSON event objects suitable for
+perfevent LDMS sampler to consume.
+
+If `-L` option is omitted and '-D' option is given, the script will try to get
+the Linux source tarball matching the running kernel from kernel.org. The
+tarball will be downloaded to a temporary directory, and extracted. The
+temporary directory will be deleted after the script exited.
+
+The `-a ARCH` argument specifies the architecture to be collected to perfdb. If
+the option is omitted, the script will use the architecture of the running
+machine.
+
+This script log its progress to STDERR. If `-o` option is not given, the results
+are printed to STDOUT.
+
+"""
+
+DEBUG = False
+
+TMPDIR = None
+
+logging.basicConfig(format="%(asctime)s.%(msecs)03d %(name)s %(levelname)s %(message)s",
+                    datefmt="%F %T",
+                    level=logging.INFO)
+
+log = logging.getLogger()
+
+# For `arch/{ARCH}`
+MACHINE_ARCH_MAP = {
+        "i386" : "x86",
+        "i486" : "x86",
+        "i586" : "x86",
+        "i686" : "x86",
+        "x86_64" : "x86",
+        "amd64" : "x86",
+        "aarch64" : "arm64",
+        "arm64" : "arm64",
+        }
+
+def get_arch():
+    """Get architecture of the running machine"""
+    m = platform.machine().lower()
+    a = MACHINE_ARCH_MAP.get(m, None)
+    return a
+
+def get_running_linux_ver():
+    """Get the version of the running Linux kernel"""
+    r = platform.release()
+    m = re.match(r'\d+\.\d+\.\d+', r)
+    if not m:
+        msg = f"Cannot determine Linux version from: {r}"
+        log.error(msg)
+        raise ValueError(msg)
+    return m.group()
+
+all_events = list()
+
+def to_jobj(o):
+    """Convert object `o` to json-friendly object"""
+    if type(o) == jevents.JsonEvent:
+        # NOTE: 'unit' is actually ScaleUnit
+        attrs = [ 'pmu', 'name', 'topic', 'desc', 'event', 'compat',
+                  'deprecated', 'perpkg', 'unit', 'long_desc' ]
+        ret = { k: to_jobj(getattr(o, k)) for k in attrs }
+        return ret
+    return o
+
+def process_dir(dpath):
+    log.info(f"Processing: {dpath}")
+    ret_events = dict()
+    ret_metrics = dict()
+    for e in os.listdir(dpath):
+        if not e.endswith(".json"):
+            continue
+        if not e.endswith(".json"):
+            continue
+        jobjs = json.load(open(f"{dpath}/{e}"))
+        if e == "metricgroups.json":
+            # This is not a list of events
+            continue # metricgroups - a dict of metric group descriptions
+        assert( type(jobjs) == list )
+        name = e[:-5] # cut '.json' off
+        for o in jobjs:
+            o = jevents.JsonEvent(o)
+            o.topic = jevents.get_topic(e)
+            if o.name:
+                jobj = to_jobj(o)
+                if o.pmu == "default_core":
+                    ret_events[f"cpu/{o.name}/"] = jobj
+                    ret_events[o.name] = jobj
+                else:
+                    ret_events[f"{o.pmu}/{o.name}/"] = jobj
+                    ret_events[o.name] = jobj
+                all_events.append(o)
+    return [ ret_events, ret_metrics ]
+
+def skip_comment(f):
+    for l in f:
+        s = l.split("#")[0].strip()
+        if s:
+            yield s
+
+def get_linux_tar(linux_ver):
+    """Get Linux src tarball from kernel.org
+
+    Returns:
+      location (str) - the location of the downloaded src
+    """
+    ver = linux_ver.split('.') + [ None, None, None ]
+    major = int(ver[0]) if ver[0] else 0
+    minor = int(ver[1]) if ver[1] else 0
+    patch = int(ver[2]) if ver[2] else 0
+    if major < 2:
+        msg = f"perf is not supported in kernel version {linux_ver}"
+        log.error(msg)
+        raise RuntimeError(msg)
+    elif major > 2:
+        vx = f"v{major}.x"
+        if not patch:
+            linux_ver = f"{major}.{minor}"
+    else: # major == 2
+        if minor < 6 or (minor == 6 and patch < 31):
+            msg = f"perf is not supported in kernel version {linux_ver}"
+            log.error(msg)
+            raise RuntimeError(msg)
+        vx = f'v2.6'
+    linux_dir = f"{TMPDIR}/linux-{linux_ver}"
+    log.info(f"linux_ver: {linux_ver}")
+    url = f"https://kernel.org/pub/linux/kernel/{vx}/linux-{linux_ver}.tar.gz"
+
+    cmd = [ "/bin/bash", "-c",
+            f"set -e; set -x; " +
+            f"cd {TMPDIR}; " +
+            f"curl -LO {url} ; " +
+            f"tar xzf linux-{linux_ver}.tar.gz ; " +
+            f"cd {linux_dir}; "
+          ]
+    log.info(f"Getting Linux source ...")
+    log.info(f"  url: {url}")
+    log.debug(f"cmd: {cmd}")
+    ret = subprocess.run(cmd, stdout = sys.stderr.fileno())
+    ret.check_returncode()
+    return f"{linux_dir}"
+
+def get_linux_src_ver(d):
+    """Get Linux version from the directory"""
+    f = open(f"{d}/Makefile")
+    txt = f.read()
+    major = re.findall(r'VERSION\s*=\s*(\d+)', txt)
+    minor = re.findall(r'PATCHLEVEL\s*=\s*(\d+)', txt)
+    patch = re.findall(r'SUBLEVEL\s*=\s*(\d+)', txt)
+
+    return f"{major[0]}.{minor[0]}.{patch[0]}"
+
+def _atexit():
+    if TMPDIR:
+        if not DEBUG:
+            log.info(f"Cleaning up tmpdir: {TMPDIR}")
+            shutil.rmtree(TMPDIR)
+        else:
+            log.info(f"tmpdir: {TMPDIR} is not removed due to '--debug' flag.")
+
+
+# ====== jevents ============================================================= #
+
+def get_jevents(pmu_events_dir):
+    try:
+        sys.path.insert(0, pmu_events_dir)
+        import jevents
+        log.info(f"Using jevents from '{pmu_events_dir}'")
+        return jevents
+    except:
+        pass # import failed, use jevents excerpted from Linux v6.x tree.
+
+    # ==== excerpt =========================================================== #
+    #
+    # Excerpted from linux-6.12.56/tools/perf/pmu-events/jevents.py, just enough
+    # to process json events in pmu-events/ (just counters, ignoring metrics).
+    #
+    # This is only here as a backup when "jevents.py" does not exist in
+    # "pmu-events/" directory (Linux v5.x).
+
+    from functools import lru_cache
+    from typing import (Callable, Dict, Optional, Sequence, Set, Tuple)
+
+    # Map from an event name to an architecture standard
+    # JsonEvent. Architecture standard events are in json files in the top
+    # f'{_args.starting_dir}/{_args.arch}' directory.
+    _arch_std_events = {}
+
+
+    def removesuffix(s: str, suffix: str) -> str:
+      """Remove the suffix from a string
+
+      The removesuffix function is added to str in Python 3.9. We aim for 3.6
+      compatibility and so provide our own function here.
+      """
+      return s[0:-len(suffix)] if s.endswith(suffix) else s
+
+
+    class JsonEvent:
+      """Representation of an event loaded from a json file dictionary."""
+
+      def __init__(self, jd: dict):
+        """Constructor passed the dictionary of parsed json values."""
+
+        def llx(x: int) -> str:
+          """Convert an int to a string similar to a printf modifier of %#llx."""
+          return str(x) if x >= 0 and x < 10 else hex(x)
+
+        def fixdesc(s: str) -> str:
+          """Fix formatting issue for the desc string."""
+          if s is None:
+            return None
+          return removesuffix(removesuffix(removesuffix(s, '.  '),
+                                           '. '), '.').replace('\n', '\\n').replace(
+                                               '\"', '\\"').replace('\r', '\\r')
+
+        def convert_aggr_mode(aggr_mode: str) -> Optional[str]:
+          """Returns the aggr_mode_class enum value associated with the JSON string."""
+          if not aggr_mode:
+            return None
+          aggr_mode_to_enum = {
+              'PerChip': '1',
+              'PerCore': '2',
+          }
+          return aggr_mode_to_enum[aggr_mode]
+
+        def lookup_msr(num: str) -> Optional[str]:
+          """Converts the msr number, or first in a list to the appropriate event field."""
+          if not num:
+            return None
+          msrmap = {
+              0x3F6: 'ldlat=',
+              0x1A6: 'offcore_rsp=',
+              0x1A7: 'offcore_rsp=',
+              0x3F7: 'frontend=',
+          }
+          return msrmap[int(num.split(',', 1)[0], 0)]
+
+        def real_event(name: str, event: str) -> Optional[str]:
+          """Convert well known event names to an event string otherwise use the event argument."""
+          fixed = {
+              'inst_retired.any': 'event=0xc0,period=2000003',
+              'inst_retired.any_p': 'event=0xc0,period=2000003',
+              'cpu_clk_unhalted.ref': 'event=0x0,umask=0x03,period=2000003',
+              'cpu_clk_unhalted.thread': 'event=0x3c,period=2000003',
+              'cpu_clk_unhalted.core': 'event=0x3c,period=2000003',
+              'cpu_clk_unhalted.thread_any': 'event=0x3c,any=1,period=2000003',
+          }
+          if not name:
+            return None
+          if name.lower() in fixed:
+            return fixed[name.lower()]
+          return event
+
+        def unit_to_pmu(unit: str) -> Optional[str]:
+          """Convert a JSON Unit to Linux PMU name."""
+          if not unit:
+            return 'default_core'
+          # Comment brought over from jevents.c:
+          # it's not realistic to keep adding these, we need something more scalable ...
+          table = {
+              'CBO': 'uncore_cbox',
+              'QPI LL': 'uncore_qpi',
+              'SBO': 'uncore_sbox',
+              'iMPH-U': 'uncore_arb',
+              'CPU-M-CF': 'cpum_cf',
+              'CPU-M-SF': 'cpum_sf',
+              'PAI-CRYPTO' : 'pai_crypto',
+              'PAI-EXT' : 'pai_ext',
+              'UPI LL': 'uncore_upi',
+              'hisi_sicl,cpa': 'hisi_sicl,cpa',
+              'hisi_sccl,ddrc': 'hisi_sccl,ddrc',
+              'hisi_sccl,hha': 'hisi_sccl,hha',
+              'hisi_sccl,l3c': 'hisi_sccl,l3c',
+              'imx8_ddr': 'imx8_ddr',
+              'imx9_ddr': 'imx9_ddr',
+              'L3PMC': 'amd_l3',
+              'DFPMC': 'amd_df',
+              'UMCPMC': 'amd_umc',
+              'cpu_core': 'cpu_core',
+              'cpu_atom': 'cpu_atom',
+              'ali_drw': 'ali_drw',
+              'arm_cmn': 'arm_cmn',
+          }
+          return table[unit] if unit in table else f'uncore_{unit.lower()}'
+
+        def is_zero(val: str) -> bool:
+            try:
+                if val.startswith('0x'):
+                    return int(val, 16) == 0
+                else:
+                    return int(val) == 0
+            except e:
+                return False
+
+        def canonicalize_value(val: str) -> str:
+            try:
+                if val.startswith('0x'):
+                    return llx(int(val, 16))
+                return str(int(val))
+            except e:
+                return val
+
+        eventcode = 0
+        if 'EventCode' in jd:
+          eventcode = int(jd['EventCode'].split(',', 1)[0], 0)
+        if 'ExtSel' in jd:
+          eventcode |= int(jd['ExtSel']) << 8
+        configcode = int(jd['ConfigCode'], 0) if 'ConfigCode' in jd else None
+        eventidcode = int(jd['EventidCode'], 0) if 'EventidCode' in jd else None
+        self.name = jd['EventName'].lower() if 'EventName' in jd else None
+        self.topic = ''
+        self.compat = jd.get('Compat')
+        self.desc = fixdesc(jd.get('BriefDescription'))
+        self.long_desc = fixdesc(jd.get('PublicDescription'))
+        precise = jd.get('PEBS')
+        msr = lookup_msr(jd.get('MSRIndex'))
+        msrval = jd.get('MSRValue')
+        extra_desc = ''
+        if 'Data_LA' in jd:
+          extra_desc += '  Supports address when precise'
+          if 'Errata' in jd:
+            extra_desc += '.'
+        if 'Errata' in jd:
+          extra_desc += '  Spec update: ' + jd['Errata']
+        self.pmu = unit_to_pmu(jd.get('Unit'))
+        filter = jd.get('Filter')
+        self.unit = jd.get('ScaleUnit')
+        self.perpkg = jd.get('PerPkg')
+        self.aggr_mode = convert_aggr_mode(jd.get('AggregationMode'))
+        self.deprecated = jd.get('Deprecated')
+        self.metric_name = jd.get('MetricName')
+        self.metric_group = jd.get('MetricGroup')
+        self.metricgroup_no_group = jd.get('MetricgroupNoGroup')
+        self.default_metricgroup_name = jd.get('DefaultMetricgroupName')
+        self.metric_expr = None
+        #if 'MetricExpr' in jd:
+        #  self.metric_expr = metric.ParsePerfJson(jd['MetricExpr']).Simplify()
+        # Note, the metric formula for the threshold isn't parsed as the &
+        # and > have incorrect precedence.
+        self.metric_threshold = jd.get('MetricThreshold')
+
+        arch_std = jd.get('ArchStdEvent')
+        if precise and self.desc and '(Precise Event)' not in self.desc:
+          extra_desc += ' (Must be precise)' if precise == '2' else (' (Precise '
+                                                                     'event)')
+        event = None
+        if configcode is not None:
+          event = f'config={llx(configcode)}'
+        elif eventidcode is not None:
+          event = f'eventid={llx(eventidcode)}'
+        else:
+          event = f'event={llx(eventcode)}'
+        event_fields = [
+            ('AnyThread', 'any='),
+            ('PortMask', 'ch_mask='),
+            ('CounterMask', 'cmask='),
+            ('EdgeDetect', 'edge='),
+            ('FCMask', 'fc_mask='),
+            ('Invert', 'inv='),
+            ('SampleAfterValue', 'period='),
+            ('UMask', 'umask='),
+            ('NodeType', 'type='),
+            ('RdWrMask', 'rdwrmask='),
+            ('EnAllCores', 'enallcores='),
+            ('EnAllSlices', 'enallslices='),
+            ('SliceId', 'sliceid='),
+            ('ThreadMask', 'threadmask='),
+        ]
+        for key, value in event_fields:
+          if key in jd and not is_zero(jd[key]):
+            event += f',{value}{canonicalize_value(jd[key])}'
+        if filter:
+          event += f',{filter}'
+        if msr:
+          event += f',{msr}{msrval}'
+        if self.desc and extra_desc:
+          self.desc += extra_desc
+        if self.long_desc and extra_desc:
+          self.long_desc += extra_desc
+        if arch_std:
+          if arch_std.lower() in _arch_std_events:
+            event = _arch_std_events[arch_std.lower()].event
+            # Copy from the architecture standard event to self for undefined fields.
+            for attr, value in _arch_std_events[arch_std.lower()].__dict__.items():
+              if hasattr(self, attr) and not getattr(self, attr):
+                setattr(self, attr, value)
+          else:
+            raise argparse.ArgumentTypeError('Cannot find arch std event:', arch_std)
+
+        self.event = real_event(self.name, event)
+
+      def __repr__(self) -> str:
+        """String representation primarily for debugging."""
+        s = '{\n'
+        for attr, value in self.__dict__.items():
+          if value:
+            s += f'\t{attr} = {value},\n'
+        return s + '}'
+
+
+    def get_topic(topic: str) -> str:
+      if topic.endswith('metrics.json'):
+        return 'metrics'
+      return removesuffix(topic, '.json').replace('-', ' ')
+
+    @lru_cache(maxsize=None)
+    def read_json_events(path: str, topic: str) -> Sequence[JsonEvent]:
+      """Read json events from the specified file."""
+      try:
+        events = json.load(open(path), object_hook=JsonEvent)
+      except BaseException as err:
+        print(f"Exception processing {path}")
+        raise
+      ret = list()
+      for event in events:
+        if event.metric_name:
+            continue
+        event.topic = topic
+        ret.append(event)
+
+      return ret
+
+    def preprocess_arch_std_files(archpath: str) -> None:
+      """Read in all architecture standard events."""
+      global _arch_std_events
+      for item in os.scandir(archpath):
+        if item.is_file() and item.name.endswith('.json'):
+          for event in read_json_events(item.path, topic=''):
+            if event.name:
+              _arch_std_events[event.name.lower()] = event
+            if event.metric_name:
+              _arch_std_events[event.metric_name.lower()] = event
+    # ---- excerpt (end) ----------------------------------------------------- #
+
+    log.info("Using built-in jevents")
+    from types import ModuleType
+    jevents = ModuleType("jevents")
+    jevents.JsonEvent = JsonEvent
+    jevents.get_topic = get_topic
+    jevents.preprocess_arch_std_files = preprocess_arch_std_files
+    return jevents
+
+# ----- jevents (end) -------------------------------------------------------- #
+
+
+if __name__ == "__main__":
+    atexit.register(_atexit)
+
+    ap = argparse.ArgumentParser(epilog=long_description,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--linux-src", "-L", required=False,
+                    help="Location of Linux source directory.")
+    ap.add_argument("--download-linux-src", "-D", required=False, action="store_true",
+                    help="Try downloading a tarball with matching MAJOR.MINOR.PATCH release (uname -r) from kernel.org. If '--linux-src' is specified, this option is ignored.")
+    ap.add_argument("--arch", "-a", help="Architecture (e.g. x86). The script will try to determine the system arch if not specified.",
+                    default=get_arch())
+    ap.add_argument("--output", "-o", help="Output file (default: stdout)",
+                    default=sys.stdout, type=( lambda f: open(f, "w") ) )
+    ap.add_argument("--debug", "-d", help="Turn on DEBUG mode", action="store_true" )
+    args = ap.parse_args()
+
+    DEBUG = args.debug
+    if DEBUG:
+        log.setLevel(logging.DEBUG)
+
+    TMPDIR = tempfile.mkdtemp(prefix="ldms-perfdb-gen-")
+
+    if not args.arch:
+        log.error("CPU architecture cannot be determined")
+
+    linux_ver = get_running_linux_ver()
+    if args.linux_src:
+        linux_src = args.linux_src
+    elif args.download_linux_src:
+        linux_src = get_linux_tar(linux_ver)
+    else:
+        log.error(f"'-L <LINUX_SRC_DIR>' or '-D' (download linux-src tarball) is needed.")
+        sys.exit(-1)
+
+    pmu_events_dir = f"{linux_src}/tools/perf/pmu-events"
+    pmu_events_dir = os.path.abspath(pmu_events_dir)
+
+    linux_src_ver = get_linux_src_ver(linux_src)
+
+    if linux_ver != linux_src_ver:
+        log.warn(f"Linux src version ({linux_src_ver}) does not match running kernel version ({linux_ver})")
+
+    log.info(f"pmu-events-dir: {pmu_events_dir}")
+    log.info(f"arch: {args.arch}")
+    jevents = get_jevents(pmu_events_dir)
+    archdir = f"{pmu_events_dir}/arch/{args.arch}"
+    mapfile = open(f"{archdir}/mapfile.csv")
+    csv_rdr = csv.reader(skip_comment(mapfile))
+    rows = [ r for r in csv_rdr ]
+    if rows[0][2] == "Filename":
+        # first row is the header
+        hdr, rows = rows[0], rows[1:]
+    jevents.preprocess_arch_std_files(f'{archdir}')
+    pmu_table = list() # entry = { "family-model": fm, "microarch": m,
+                       #           "events": events, "metrics": metrics }
+
+    for fm, v, f, ev in rows:
+        events, metrics = process_dir(f"{archdir}/{f}")
+        entry = { "family-model": fm, "microarch": f,
+                  "events": events, "metrics": metrics }
+        pmu_table.append( entry )
+    log.info(f"Writing output to {args.output.name}")
+    perfdb = {
+            "linux_src_ver": linux_src_ver,
+            "pmu_table": pmu_table,
+        }
+    print(json.dumps(perfdb, indent=1), file=args.output)
+    log.info("DONE")
