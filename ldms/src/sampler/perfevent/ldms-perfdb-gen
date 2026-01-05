@@ -1,0 +1,263 @@
+#!/usr/bin/env python3
+#
+# This script generates a list of available pmu events to be used with ldmsd
+# perfevent plugin.
+#
+
+import os
+import re
+import sys
+import csv
+import json
+import atexit
+import shutil
+import logging
+import tempfile
+import argparse
+import platform
+import subprocess
+
+long_description = """
+
+This script generates a list of pmu events for ldmsd perfevent plugin from a
+Linux source tree specified by -L LINUX_SRC argument. The script uses
+`jevents.py` module and events data from LINUX_SRC/tools/perf/pmu-events/ to
+produce JSON event objects suitable for perfevent LDMS sampler to consume.
+
+If `-L` option is omitted, the script will try to get the Linux source tarball
+matching the running kernel from kernel.org. The tarball will be downloaded to a
+temporary directory, and extracted. The temporary directory will be deleted
+after the script exited.
+
+The `-a ARCH` argument specifies the architecture to be collected to perfdb. If
+the option is omitted, the script will use the architecture of the running
+machine.
+
+This script log its progress to STDERR. If `-o` option is not given, the results
+are printed to STDOUT.
+
+"""
+
+DEBUG = False
+
+TMPDIR = None
+
+logging.basicConfig(format="%(asctime)s.%(msecs)03d %(name)s %(levelname)s %(message)s",
+                    datefmt="%F %T",
+                    level=logging.INFO)
+
+log = logging.getLogger()
+
+# For `arch/{ARCH}`
+MACHINE_ARCH_MAP = {
+        "i386" : "x86",
+        "i486" : "x86",
+        "i586" : "x86",
+        "i686" : "x86",
+        "x86_64" : "x86",
+        "amd64" : "amd64",
+        "aarch64" : "amd64",
+        }
+
+def get_arch():
+    """Get architecture of the running machine"""
+    m = platform.machine().lower()
+    a = MACHINE_ARCH_MAP.get(m, None)
+    return a
+
+def get_running_linux_ver():
+    """Get the version of the running Linux kernel"""
+    r = platform.release()
+    m = re.match(r'\d+\.\d+\.\d+', r)
+    if not m:
+        msg = f"Cannot determine Linux version from: {r}"
+        log.error(msg)
+        raise ValueError(msg)
+    return m.group()
+
+metric_groups = list()
+
+both = list()
+all_metrics = list()
+all_events = list()
+
+def to_jobj(o, is_metric = None):
+    """Convert object `o` to json-friendly object"""
+    if type(o) == jevents.JsonEvent:
+        # NOTE: 'unit' is actually ScaleUnit
+        if is_metric is None:
+            is_metric = not o.name
+        if is_metric:
+            # metric
+            attrs = [ 'pmu', 'metric_name', 'metric_group', 'metric_expr',
+                      'metric_threshold', 'desc', 'long_desc', 'unit', 'compat',
+                      'metricgroup_no_group', 'default_metricgroup_name',
+                      'aggr_mode', 'event_grouping' ]
+        else:
+            attrs = [ 'pmu', 'name', 'topic', 'desc', 'event', 'compat',
+                      'deprecated', 'perpkg', 'unit', 'long_desc' ]
+        ret = { k: to_jobj(getattr(o, k), is_metric = is_metric) for k in attrs }
+        return ret
+    elif issubclass(type(o), metric.Expression):
+        return str(o)
+    return o
+
+def process_dir(dpath):
+    log.info(f"Processing: {dpath}")
+    ret_events = dict()
+    ret_metrics = dict()
+    for e in os.listdir(dpath):
+        if not e.endswith(".json"):
+            continue
+        if not e.endswith(".json"):
+            continue
+        jobjs = json.load(open(f"{dpath}/{e}"))
+        if e == "metricgroups.json":
+            # This is not a list of events
+            metric_groups.append( (f"{dpath}", jobjs) )
+            continue # metricgroups - a dict of metric group descriptions
+        assert( type(jobjs) == list )
+        name = e[:-5] # cut '.json' off
+        for o in jobjs:
+            o = jevents.JsonEvent(o)
+            o.topic = jevents.get_topic(e)
+            if o.name:
+                jobj = to_jobj(o, is_metric=False)
+                if o.pmu == "default_core":
+                    ret_events[f"cpu/{o.name}/"] = jobj
+                    ret_events[o.name] = jobj
+                else:
+                    ret_events[f"{o.pmu}/{o.name}/"] = jobj
+                    ret_events[o.name] = jobj
+                all_events.append(o)
+            if o.metric_name:
+                jobj = to_jobj(o, is_metric=True)
+                ret_metrics[o.metric_name] = jobj
+                all_metrics.append(o)
+            if o.name and o.metric_name:
+                both.append(o)
+    return [ ret_events, ret_metrics ]
+
+def skip_comment(f):
+    for l in f:
+        s = l.split("#")[0].strip()
+        if s:
+            yield s
+
+def get_linux_tar(linux_ver):
+    """Get Linux src tarball from kernel.org
+
+    Returns:
+      location (str) - the location of the downloaded src
+    """
+    linux_dir = f"{TMPDIR}/linux-{linux_ver}"
+    ver = linux_ver.split('.') + [ None, None, None ]
+    major = int(ver[0]) if ver[0] else 0
+    minor = int(ver[1]) if ver[1] else 0
+    patch = int(ver[2]) if ver[2] else 0
+    if major < 2:
+        msg = f"perf is not supported in kernel version {linux_ver}"
+        log.error(msg)
+        raise RuntimeError(msg)
+    elif major > 2:
+        vx = f"v{major}.x"
+    else: # major == 2
+        if minor < 6 or (minor == 6 and patch < 31):
+            msg = f"perf is not supported in kernel version {linux_ver}"
+            log.error(msg)
+            raise RuntimeError(msg)
+        vx = f'v2.6'
+    url = f"https://kernel.org/pub/linux/kernel/{vx}/linux-{linux_ver}.tar.gz"
+
+    cmd = [ "/bin/bash", "-c",
+            f"set -e; set -x; " +
+            f"cd {TMPDIR}; " +
+            f"curl -LO {url} ; " +
+            f"tar xzf linux-{linux_ver}.tar.gz ; " +
+            f"cd {linux_dir}; "
+          ]
+    log.info(f"Getting Linux source ...")
+    log.info(f"  url: {url}")
+    log.debug(f"cmd: {cmd}")
+    ret = subprocess.run(cmd, stdout = sys.stderr.fileno())
+    ret.check_returncode()
+    return f"{linux_dir}"
+
+def get_linux_src_ver(d):
+    """Get Linux version from the directory"""
+    f = open(f"{d}/Makefile")
+    txt = f.read()
+    major = re.findall(r'VERSION\s*=\s*(\d+)', txt)
+    minor = re.findall(r'PATCHLEVEL\s*=\s*(\d+)', txt)
+    patch = re.findall(r'SUBLEVEL\s*=\s*(\d+)', txt)
+
+    return f"{major[0]}.{minor[0]}.{patch[0]}"
+
+def _atexit():
+    if TMPDIR:
+        if not DEBUG:
+            shutil.rmtree(TMPDIR)
+
+if __name__ == "__main__":
+    atexit.register(_atexit)
+
+    ap = argparse.ArgumentParser(epilog=long_description,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--linux-src", "-L", required=False,
+                    help="Location of Linux source directory. If not specified, the script will try to download a tarball from kernel.org.")
+    ap.add_argument("--arch", "-a", help="Architecture (e.g. x86). The script will try to determine the system arch if not specified.",
+                    default=get_arch())
+    ap.add_argument("--output", "-o", help="Output file (default: stdout)",
+                    default=sys.stdout, type=( lambda f: open(f, "w") ) )
+    ap.add_argument("--debug", "-D", help="Turn on DEBUG mode", action="store_true" )
+    args = ap.parse_args()
+
+    DEBUG = args.debug
+    if DEBUG:
+        log.setLevel(logging.DEBUG)
+
+    TMPDIR = tempfile.mkdtemp(prefix="ldms-perfdb-gen-")
+
+    if not args.arch:
+        log.error("CPU architecture cannot be determined")
+
+    linux_ver = get_running_linux_ver()
+
+    linux_src = args.linux_src if args.linux_src \
+                               else get_linux_tar(linux_ver)
+    pmu_events_dir = f"{linux_src}/tools/perf/pmu-events"
+    pmu_events_dir = os.path.abspath(pmu_events_dir)
+
+    linux_src_ver = get_linux_src_ver(linux_src)
+
+    if linux_ver != linux_src_ver:
+        log.warn(f"Linux src version ({linux_src_ver}) does not match running kernel version ({linux_ver})")
+
+    log.info(f"pmu-events-dir: {pmu_events_dir}")
+    log.info(f"arch: {args.arch}")
+    sys.path.insert(0, pmu_events_dir)
+    import jevents # jevents.py in pmu_events_dir
+    import metric
+    archdir = f"{pmu_events_dir}/arch/{args.arch}"
+    mapfile = open(f"{archdir}/mapfile.csv")
+    csv_rdr = csv.reader(skip_comment(mapfile))
+    rows = [ r for r in csv_rdr ]
+    if rows[0][2] == "Filename":
+        # first row is the header
+        hdr, rows = rows[0], rows[1:]
+    jevents.preprocess_arch_std_files(f'{archdir}')
+    pmu_table = list() # entry = { "family-model": fm, "microarch": m,
+                       #           "events": events, "metrics": metrics }
+
+    for fm, v, f, ev in rows:
+        events, metrics = process_dir(f"{archdir}/{f}")
+        entry = { "family-model": fm, "microarch": f,
+                  "events": events, "metrics": metrics }
+        pmu_table.append( entry )
+    log.info(f"Writing output to {args.output.name}")
+    perfdb = {
+            "linux_src_ver": linux_src_ver,
+            "pmu_table": pmu_table,
+        }
+    print(json.dumps(perfdb, indent=1), file=args.output)
+    log.info("DONE")
