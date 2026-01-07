@@ -169,6 +169,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'log_status' : {'req_attr' : [], 'opt_attr' : ['name']},
                       'stats_reset' : {'req_attr' : [], 'opt_attr' : ['list']},
                       'profiling' : {'req_attr' : [], 'opt_attr' : ['enable', 'reset']},
+                      'profiling_enable' : {'req_attr' : [], 'opt_attr' : []},
+                      'profiling_disable' : {'req_attr' : [], 'opt_attr' : []},
                       ##### Failover. #####
                       'failover_config': {
                                 'req_attr': [
@@ -349,7 +351,8 @@ class LDMSD_Req_Attr(object):
     RESET_INTERVAL = 47
     XTHREAD = 48
     MSG_CHAN = 49
-    LAST = 50
+    ENABLE = 50
+    LAST = 51
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -408,6 +411,7 @@ class LDMSD_Req_Attr(object):
                    'reset_interval': RESET_INTERVAL,
                    'exclusive_thread': XTHREAD,
                    'message_channel': MSG_CHAN,
+                   'enable' : ENABLE,
                    'TERMINATING': LAST
         }
 
@@ -459,6 +463,7 @@ class LDMSD_Req_Attr(object):
                    RESET_INTERVAL : 'reset_interval',
                    XTHREAD : 'exclusive_thread',
                    MSG_CHAN : 'message_channel',
+                   ENABLE : 'enable',
                    LAST : 'TERMINATING'
         }
 
@@ -641,6 +646,8 @@ class LDMSD_Request(object):
     # IDs 0x600 + 22 to 0x600 + 30 are reserved to match command-line options handlers
     # defined in ldmsd_request.h. These must stay in sync with the C implementation.
     PROFILING = 0x600 + 31
+    PROFILING_DISABLE = 0x600 + 32
+    PROFILNG_ENABLE = 0x600 + 33
 
     FAILOVER_CONFIG        = 0x700
     FAILOVER_PEERCFG_START = 0x700  +  1
@@ -3507,11 +3514,28 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
+    def profiling_disable(self):
+        req = LDMSD_Request(command_id=LDMSD_Request.PROFILING_DISABLE)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def profiling_enable(self):
+        req = LDMSD_Request(command_id=LDMSD_Request.PROFILNG_ENABLE)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
     def profiling(self, enable = None, reset = None):
         attrs = []
-        if enable is not None:
-            attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.TYPE,
-                                         value = enable))
         if reset is not None:
             attrs.append(LDMSD_Req_Attr(attr_id  = LDMSD_Req_Attr.RESET,
                                         value = reset))

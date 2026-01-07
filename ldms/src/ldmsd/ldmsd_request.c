@@ -262,7 +262,9 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc);
 static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc);
 static int log_status_handler(ldmsd_req_ctxt_t reqc);
 static int stats_reset_handler(ldmsd_req_ctxt_t reqc);
-static int profiling_handler(ldmsd_req_ctxt_t req);
+static int profiling_handler(ldmsd_req_ctxt_t reqc);
+static int profiling_disable_handler(ldmsd_req_ctxt_t reqc);
+static int profiling_enable_handler(ldmsd_req_ctxt_t reqc);
 
 /* these are implemented in ldmsd_failover.c */
 int failover_config_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -568,6 +570,12 @@ static struct request_handler_entry request_handler[] = {
 
 	[LDMSD_PROFILING_REQ] = {
 		LDMSD_PROFILING_REQ, profiling_handler, XALL
+	},
+	[LDMSD_PROFILING_DISABLE_REQ] = {
+		LDMSD_PROFILING_DISABLE_REQ, profiling_disable_handler, XUG | MOD
+	},
+	[LDMSD_PROFILING_ENABLE_REQ] = {
+		LDMSD_PROFILING_ENABLE_REQ, profiling_enable_handler, XUG | MOD
 	},
 
 	/* FAILOVER user commands */
@@ -7515,6 +7523,24 @@ int __xprt_profiling_as_json(json_t **_obj, int is_reset)
 	return 0;
 }
 
+static int profiling_enable_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldms_profiling_enable(-1, NULL, NULL);
+	reqc->errcode = 0;
+	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len, "OK");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
+static int profiling_disable_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldms_profiling_disable(-1, NULL, NULL);
+	reqc->errcode = 0;
+	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len, "OK");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
 static int profiling_handler(ldmsd_req_ctxt_t req)
 {
 	json_t *obj, *xprt_prf, *strm_prf;
@@ -7522,17 +7548,9 @@ static int profiling_handler(ldmsd_req_ctxt_t req)
 	int rc = 0;
 	struct ldmsd_req_attr_s attr;
 	size_t str_len;
-	char *enable_str, *reset_str;
-	int is_enable = -1; /* -1 means only getting the profile data, don't enable/disable */
+	char *reset_str;
 	int is_reset = 0;
 
-	enable_str = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_TYPE);
-	if (enable_str) {
-		is_enable = 1;
-		if (0 == strcasecmp(enable_str, "false"))
-			is_enable = 0; /* disable */
-		free(enable_str);
-	}
 	reset_str = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
 	if (reset_str) {
 		is_reset = 1;
@@ -7540,12 +7558,6 @@ static int profiling_handler(ldmsd_req_ctxt_t req)
 			is_reset = 0;
 	}
 	free(reset_str);
-
-	if (is_enable == 1) {
-		ldms_profiling_enable(-1, NULL, NULL);
-	} else if (is_enable == 0) {
-		ldms_profiling_disable(-1, NULL, NULL);
-	}
 
 	/*
 	 * The output JSON object looks like this:

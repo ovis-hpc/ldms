@@ -166,6 +166,8 @@ enum ldmsd_request {
 	LDMSD_PID_FILE_REQ,
 	LDMSD_BANNER_MODE_REQ,
 	LDMSD_PROFILING_REQ,
+	LDMSD_PROFILING_DISABLE_REQ,
+	LDMSD_PROFILING_ENABLE_REQ,
 
 	/* failover requests by user */
 	LDMSD_FAILOVER_CONFIG_REQ = 0x700, /* "failover_config" user command */

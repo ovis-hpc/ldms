@@ -2491,16 +2491,47 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_xprt_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('xprt_stats', text)
 
+    def do_profiling_disable(self, arg):
+        """
+        Disable the profiling feature
+
+        Parameters:
+           NONE
+        """
+        rc, msg = self.comm.profiling_disable()
+        if rc != 0:
+            print(f'Error {rc}: {msg}')
+        else:
+            print('LDMS Profiling is DISABLED in the daemon')
+        return
+
+    def complete_profiling_disable(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('profiling_disable', text)
+
+    def do_profiling_enable(self, arg):
+        """
+        Enable the profiling feature
+
+        Parameters:
+           NONE
+        """
+        rc, msg = self.comm.profiling_enable()
+        if rc != 0:
+            print(f'Error {rc}: {msg}')
+        else:
+            print('LDMS Profiling is ENABLED in the daemon')
+        return
+
+    def complete_profiling_enable(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('profiling_enable', text)
+
     def do_profiling(self, arg):
         """
-        Enable/disable and query the LDMS operation profiling data
-
         The command was intended for diagnostic or study to improve ldmsd performance.
 
         The command always reports the cached profiling data if exists.
 
         Parameters:
-          [enabled=]   True to enable LDMS profiling
           [reset=]     True to reset and free cached profiling data after the report
         """
         arg = self.handle_args('profiling', arg)
