@@ -1,0 +1,359 @@
+---
+# set up a listener hierarchy binding:
+# - ovis auth port to only ib0 interface on sampler daemons (L0)
+# - munge auth port to all eth interfaces on sampler daemons (L0)
+# - ovis auth port to all eth interfaces on aggregator daemons (L1)
+# - munge auth port to all eth interfaces on aggregator daemons (L1)
+#
+# This example is for a cluster named 'cluster' using node prefixes 'cn*'.
+defaults:
+  ovis_port_default: &DEFAULT_OVIS_AUTH
+    xprt: sock
+    auth:
+      name: ovis
+      plugin: ovis
+    ports: 20411
+    bind_all: False
+  munge_port_default: &DEFAULT_MUNGE_AUTH
+    xprt: sock
+    auth:
+      name: munge
+      plugin: munge
+    ports: 20412
+    bind_all: True
+  producer_defaults: &DEFAULT_AGG
+    reconnect: "20s"
+    type: active
+    updaters:
+      - mode: pull
+        interval: "1.0s"
+        offset: "100ms"
+        sets:
+          - regex: ".*"
+            field: inst
+  schema_defaults: &DEFAULT_SCHEMA
+    component_id: "${COMPONENT_ID}"
+    producer: "${HOSTNAME}"
+    perm: "0644"
+    job_set: "${HOSTNAME}/jobid"
+  comment_group_definitions_and_aliases: "-------------------------------------------------------------------------"
+  comment_host_groups: "--------------------------------------------"
+  all_sampling_nodes: &NODES_ALL "cn[1-1488],cluster-login[1-12],cnadmin[1-8],cngw[1-24]"
+  all_sampling_nodes_ib: &NODES_ALL_IB "cn[1-1488]-ib0,cluster-login[1-12]-ib0,cnadmin[1-8]-ib0,cngw[1-24]-ib0"
+  all_compute_nodes: &COMPUTE_NODES_ALL "cn[1-1488]"
+  all_compute_nodes_ib: &COMPUTE_NODES_ALL_IB "cn[1-1488]-ib0"
+  login_nodes: &LOGIN_NODES "cluster-login[1-12]"
+  login_nodes_ib: &LOGIN_NODES_IB "cluster-login[1-12]-ib0"
+  admin_nodes: &ADMIN_NODES "cnadmin[1-8]"
+  admin_nodes_ib: &ADMIN_NODES_IB "cnadmin[1-8]-ib0"
+  admin_nodes_agg: &ADMIN_NODES_AGG "cnadmin[1-8]-agg"
+  admin_nodes_aggport_o: &ADMIN_NODES_AGG_OVIS "cnadmin[1-8]-agg-ovis"
+  admin_nodes_aggport_m: &ADMIN_NODES_AGG_MUNGE "cnadmin[1-8]-agg-munge"
+  gw_nodes: &GW_NODES "cngw[1-24]"
+  gw_nodes_ib: &GW_NODES_IB "cngw[1-24]-ib0"
+  comment_plugin_groups: "------------------------------------------"
+  compute_sampler_plugin_list: &LOCAL_COMPUTE_PLUGIN_LIST [ "jobid_60s", "meminfo_60s", "dstat_60s", "vmstat_60s", "procnfs_60s", "procstat_60s", "opa2_60s", "lnet_stats_60s", "loadavg_60s", "filesingle_compute_60s", "procnet_60s", "lustre_client_60s", "lustre_mdc_60s", "syspapi_sampler_60s" ]
+  login_sampler_plugin_list: &LOCAL_LOGIN_PLUGIN_LIST [ "jobid_60s", "meminfo_60s", "dstat_60s", "vmstat_60s", "procnfs_60s", "procstat_60s" ]
+  admin_sampler_plugin_list: &LOCAL_ADMIN_PLUGIN_LIST [ "jobid_60s", "meminfo_60s", "dstat_60s", "vmstat_60s", "procnfs_60s", "procstat_60s", "opa2_60s", "loadavg_60s", "filesingle_admin_60s", "procnet_60s" ]
+  gw_sampler_plugin_list: &LOCAL_GW_PLUGIN_LIST [ "jobid_60s", "meminfo_60s", "dstat_60s", "vmstat_60s", "procnfs_60s", "procstat_60s", "opa2_60s", "loadavg_60s", "filesingle_gw_60s", "procnet_60s", "sysclassib_60s", "lnet_stats_60s" ]
+  agg_admin_sampler_plugin_list: &AGG_ADMIN_PLUGIN_LIST [ "dstat_60s" ]
+
+daemons:
+# L1
+- names: *ADMIN_NODES_AGG
+  hosts: *ADMIN_NODES
+  stream_enable: true
+  msg_enable: true
+  endpoints:
+    - names: *ADMIN_NODES_AGG_OVIS
+      <<: *DEFAULT_OVIS_AUTH
+    - names: *ADMIN_NODES_AGG_MUNGE
+      <<: *DEFAULT_MUNGE_AUTH
+# L0
+- names: *NODES_ALL
+  hosts: *NODES_ALL
+  stream_enable: true
+  msg_enable: true
+  endpoints:
+    - names: *NODES_ALL_IB
+      hosts: *NODES_ALL_IB
+      <<: *DEFAULT_OVIS_AUTH
+    - names: *NODES_ALL
+      <<: *DEFAULT_MUNGE_AUTH
+
+
+# L0/L1
+samplers:
+- daemons: *ADMIN_NODES
+  plugins: *LOCAL_ADMIN_PLUGIN_LIST
+- daemons: *LOGIN_NODES
+  plugins: *LOCAL_LOGIN_PLUGIN_LIST
+- daemons: *GW_NODES
+  plugins: *LOCAL_GW_PLUGIN_LIST
+- daemons: *COMPUTE_NODES_ALL
+  plugins: *LOCAL_COMPUTE_PLUGIN_LIST
+- daemons: *ADMIN_NODES_AGG
+  plugins: *AGG_ADMIN_PLUGIN_LIST
+
+# Peers are distributed among the aggregators in blocks.
+# Given the minimal network traffic from ldms and the lack of
+# admin node locality in many systems, assigning by SU
+# is not a win and complicates the config substantially.
+aggregators:
+- daemons: *ADMIN_NODES_AGG
+  peers:
+  - daemons: *NODES_ALL
+    endpoints: *NODES_ALL_IB
+    <<: *DEFAULT_AGG
+
+# plugin configurations
+plugins:
+  jobid: &JOBID
+    name: jobid
+    offset: -100000
+    config:
+    - schema: jobid
+      component_id: "${COMPONENT_ID}"
+      instance: "${HOSTNAME}/jobid"
+      producer: "${HOSTNAME}"
+      perm: "0644"
+      file: "/var/run/ldms.slurm.jobinfo"
+  jobid_60s:
+    interval: "60s"
+    <<: *JOBID
+  jobid_1s:
+    interval: "1s"
+    <<: *JOBID
+
+  meminfo: &MEMINFO
+    name: meminfo
+    config:
+    - schema: meminfo
+      instance: "${HOSTNAME}/meminfo"
+      <<: *DEFAULT_SCHEMA
+  meminfo_60s:
+    interval: "60s"
+    <<: *MEMINFO
+  meminfo_1s:
+    interval: "1s"
+    <<: *MEMINFO
+
+  dstat: &DSTAT
+    name: dstat
+    config:
+    - schema: dstat
+      instance: "${HOSTNAME}/dstat"
+      <<: *DEFAULT_SCHEMA
+  dstat_60s:
+    interval: "60s"
+    <<: *DSTAT
+  dstat_1s:
+    interval: "1s"
+    <<: *DSTAT
+
+  vmstat: &VMSTAT
+    name: vmstat
+    config:
+    - schema: vmstat
+      instance: "${HOSTNAME}/vmstat"
+      <<: *DEFAULT_SCHEMA
+  vmstat_60s:
+    interval: "60s"
+    <<: *VMSTAT
+  vmstat_1s:
+    interval: "1s"
+    <<: *VMSTAT
+
+  procnfs: &PROCNFS
+    name: procnfs
+    config:
+    - schema: procnfs
+      instance: "${HOSTNAME}/procnfs"
+      <<: *DEFAULT_SCHEMA
+  procnfs_60s:
+    interval: "60s"
+    <<: *PROCNFS
+  procnfs_1s:
+    interval: "1s"
+    <<: *PROCNFS
+
+  procstat: &PROCSTAT
+    name: procstat
+    config:
+    - schema: procstat_72
+      instance: "${HOSTNAME}/procstat"
+      maxcpu: 72
+      <<: *DEFAULT_SCHEMA
+  procstat_60s:
+    interval: "60s"
+    <<: *PROCSTAT
+  procstat_1s:
+    interval: "1s"
+    <<: *PROCSTAT
+
+  opa2: &OPA2
+    name: opa2
+    config:
+    - schema: opa2
+      instance: "${HOSTNAME}/opa2"
+      ports: hfi1_0.1
+      <<: *DEFAULT_SCHEMA
+  opa2_60s:
+    interval: "60s"
+    <<: *OPA2
+  opa2_1s:
+    interval: "1s"
+    <<: *OPA2
+
+  lnet_stats: &LNET_STATS
+    name: lnet_stats
+    config:
+    - schema: lnet_stats
+      instance: "${HOSTNAME}/lnet_stats"
+      <<: *DEFAULT_SCHEMA
+  lnet_stats_60s:
+    interval: "60s"
+    <<: *LNET_STATS
+  lnet_stats_1s:
+    interval: "1s"
+    <<: *LNET_STATS
+
+  loadavg: &LOADAVG
+    name: loadavg
+    config:
+    - schema: loadavg
+      instance: "${HOSTNAME}/loadavg"
+      <<: *DEFAULT_SCHEMA
+  loadavg_60s:
+    interval: "60s"
+    <<: *LOADAVG
+  loadavg_1s:
+    interval: "1s"
+    <<: *LOADAVG
+
+  sysclassib: &SYSCLASS
+    name: sysclassib
+    config:
+    - schema: gw_sysclassib
+      instance: "${HOSTNAME}/gw_sysclassib"
+      ports: hfi1_0.1,mlx5_0.1
+      <<: *DEFAULT_SCHEMA
+  sysclassib_60s:
+    interval: "60s"
+    <<: *SYSCLASS
+  sysclassib_1s:
+    interval: "1s"
+    <<: *SYSCLASS
+
+  filesingle_admin: &FILESINGLE_ADMIN
+    name: filesingle
+    config:
+    - schema: filesingle_cluster_admin
+      conf: "/etc/sysconfig/ldms.d/plugins-conf/filesingle.cluster.data.admin"
+      timing:
+      instance: "${HOSTNAME}/filesingle"
+      <<: *DEFAULT_SCHEMA
+  filesingle_admin_60s:
+    interval: "60s"
+    <<: *FILESINGLE_ADMIN
+  filesingle_admin_1s:
+    interval: "1s"
+    <<: *FILESINGLE_ADMIN
+
+  filesingle_compute: &FILESINGLE_COMPUTE
+    name: filesingle
+    config:
+    - schema: filesingle_cluster_compute
+      conf: "/etc/sysconfig/ldms.d/plugins-conf/filesingle.cluster.data.compute"
+      timing:
+      instance: "${HOSTNAME}/filesingle"
+      <<: *DEFAULT_SCHEMA
+  filesingle_compute_60s:
+    interval: "60s"
+    <<: *FILESINGLE_COMPUTE
+  filesingle_compute_1s:
+    interval: "1s"
+    <<: *FILESINGLE_COMPUTE
+
+  filesingle_gw: &FILESINGLE_GW
+    name: filesingle
+    config:
+    - schema: filesingle_cluster_gateway
+      conf: "/etc/sysconfig/ldms.d/plugins-conf/filesingle.cluster.data.gateway"
+      timing:
+      instance: "${HOSTNAME}/filesingle"
+      <<: *DEFAULT_SCHEMA
+  filesingle_gw_60s:
+    interval: "60s"
+    <<: *FILESINGLE_GW
+  filesingle_gw_1s:
+    interval: "1s"
+    <<: *FILESINGLE_GW
+
+  filesingle_login: &FILESINGLE_LOGIN
+    name: filesingle
+    config:
+    - schema: filesingle_cluster_login
+      timing:
+      conf: "/etc/sysconfig/ldms.d/plugins-conf/filesingle.cluster.data.login"
+      instance: "${HOSTNAME}/filesingle"
+      <<: *DEFAULT_SCHEMA
+  filesingle_login_60s:
+    interval: "60s"
+    <<: *FILESINGLE_LOGIN
+  filesingle_login_1s:
+    interval: "1s"
+    <<: *FILESINGLE_LOGIN
+
+  procnet: &PROCNET
+    name: procnet
+    config:
+    - schema: procnet
+      instance: "${HOSTNAME}/procnet"
+      <<: *DEFAULT_SCHEMA
+  procnet_60s:
+    interval: "60s"
+    <<: *PROCNET
+  procnet_1s:
+    interval: "1s"
+    <<: *PROCNET
+
+  lustre_client: &LUSTRE_CLIENT
+    name: lustre_client
+    config:
+    - schema: lustre_client
+      instance: "${HOSTNAME}/lustre_client"
+      <<: *DEFAULT_SCHEMA
+  lustre_client_60s:
+    interval: "60s"
+    <<: *LUSTRE_CLIENT
+  lustre_client_1s:
+    interval: "1s"
+    <<: *LUSTRE_CLIENT
+
+  lustre_mdc: &LUSTRE_MDC
+    name: lustre_mdc
+    config:
+    - schema: lustre_mdc
+      instance: "${HOSTNAME}/lustre_mdc"
+      <<: *DEFAULT_SCHEMA
+  lustre_mdc_60s:
+    interval: "60s"
+    <<: *LUSTRE_MDC
+  lustre_mdc_1s:
+    interval: "1s"
+    <<: *LUSTRE_MDC
+
+  syspapi_sampler: &SYSPAPI
+    name: syspapi_sampler
+    config:
+    - schema: syspapi_sampler
+      instance: "${HOSTNAME}/syspapi_sampler"
+      cfg_file: "/etc/sysconfig/ldms.d/plugins-conf/syspapi-events.json.E5-2695"
+      <<: *DEFAULT_SCHEMA
+  syspapi_sampler_60s:
+    interval: "60s"
+    <<: *SYSPAPI
+  syspapi_sampler_1s:
+    interval: "1s"
+    <<: *SYSPAPI
