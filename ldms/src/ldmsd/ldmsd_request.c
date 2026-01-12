@@ -5452,6 +5452,11 @@ static int plugn_term_handler(ldmsd_req_ctxt_t reqc)
 				"The specified plugin instance '%s' has "
 				"active users and cannot be terminated.",
 				instance_name);
+	} else if (reqc->errcode == EBUSY) {
+		cnt = snprintf(reqc->line_buf, reqc->line_len,
+				"The plugin instance '%s' is running. " \
+				"The instance needs to be stopped before " \
+				"being terminated.", instance_name);
 	} else {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Failed to terminate the plugin instance '%s'.",
@@ -5571,6 +5576,26 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
+	ldmsd_cfgobj_lock(cfg);
+	if (sampler) {
+		if (sampler->state == LDMSD_SAMP_STATE_RUNNING) {
+			reqc->errcode = EBUSY;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						  "The plugin instance '%s' is running. " \
+						  "Please stop it before re-configuring it.",
+						  sampler->cfg.name);
+			ldmsd_cfgobj_unlock(cfg);
+			goto send_reply;
+		}
+		if (sampler->state == LDMSD_SAMP_STATE_TERMINATING) {
+			reqc->errcode = EBUSY;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						  "The plugin instance '%s' has been terminated.",
+						  sampler->cfg.name);
+			ldmsd_cfgobj_unlock(cfg);
+			goto send_reply;
+		}
+	}
 	free(cfg->avl_str);
 	free(cfg->kvl_str);
 	cfg->avl_str = av_to_string(av_list, 0);
@@ -5584,6 +5609,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 		reqc->errcode = sampler->api->base.config((ldmsd_plug_handle_t)sampler, kw_list, av_list);
 		if (!reqc->errcode) {
 			sampler->configured = 1;
+			sampler->state = LDMSD_SAMP_STATE_CONFIGURED;
 		}
 	} else {
 		reqc->errcode = store->api->base.config((ldmsd_plug_handle_t)store, kw_list, av_list);
@@ -5591,6 +5617,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 			store->configured = 1;
 		}
 	}
+	ldmsd_cfgobj_unlock(cfg);
 	if (reqc->errcode) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Error %d configuring plugin instance '%s'.",

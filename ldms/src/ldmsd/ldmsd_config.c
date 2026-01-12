@@ -258,6 +258,7 @@ ldmsd_sampler_add(const char *cfg_name,
 			 errno, cfg_name);
 		return NULL;
 	}
+	sampler->state = LDMSD_SAMP_STATE_INIT;
 	sprintf(log_name, "sampler.%s.%s", plugin->name, cfg_name);
 	sampler->log = ovis_log_register(log_name, "Sampler plugin log file.");
 	if (!sampler->log)
@@ -481,7 +482,16 @@ int ldmsd_term_plugin(char *cfg_name)
 		ref_dump(&sampler->cfg.ref, sampler->cfg.name, stderr);
 #endif
 		ldmsd_cfgobj_lock(&sampler->cfg);
-		if (sampler->os) {
+		if (sampler->state == LDMSD_SAMP_STATE_TERMINATING) {
+			/*
+			 * The termination of the plugin instance has started.
+			 * There is nothing to do.
+			 */
+			ldmsd_cfgobj_unlock(&sampler->cfg);
+			ldmsd_cfgobj_put(&sampler->cfg, "find");
+			return 0;
+		}
+		if (sampler->state == LDMSD_SAMP_STATE_RUNNING) {
 			ovis_log(config_log, OVIS_LERROR,
 				 "The sampler '%s' is in use. Use stop "
 				 "name=%s before attempting to unload "
@@ -491,6 +501,7 @@ int ldmsd_term_plugin(char *cfg_name)
 			ldmsd_cfgobj_put(&sampler->cfg, "find");
 			return EBUSY;
 		}
+		sampler->state = LDMSD_SAMP_STATE_TERMINATING;
 		/* Deregister all sets for this plugin */
 		struct ldmsd_sampler_set *_set;
 		while (( _set = LIST_FIRST(&sampler->set_list))) {

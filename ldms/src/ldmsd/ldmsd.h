@@ -1058,6 +1058,13 @@ struct ldmsd_cfgobj_sampler {
 	/* Set to 1 if the plugin has been configured */
 	int configured;
 
+	enum ldmsd_cfgobj_sampler_state {
+		LDMSD_SAMP_STATE_INIT = 0,
+		LDMSD_SAMP_STATE_CONFIGURED,
+		LDMSD_SAMP_STATE_RUNNING,
+		LDMSD_SAMP_STATE_TERMINATING,
+	} state;
+
 	/* Private context pointer, managed by plugin */
 	void *context;
 	/* ovis_log handle to use when logging plugin messages */
@@ -1075,6 +1082,21 @@ struct ldmsd_cfgobj_sampler {
 	int use_xthread; /* !0 if use exclusitve thread */
 	pthread_t xthread; /* the exclusive thread */
 };
+
+static inline const char *
+ldmsd_cfgobj_sampler_state_str(enum ldmsd_cfgobj_sampler_state state) {
+	switch (state) {
+	case LDMSD_SAMP_STATE_INIT:
+		return "INIT";
+	case LDMSD_SAMP_STATE_CONFIGURED:
+		return "CONFIGURED";
+	case LDMSD_SAMP_STATE_RUNNING:
+		return "RUNNING";
+	case LDMSD_SAMP_STATE_TERMINATING:
+		return "TERMINATING";
+	}
+	return "BAD STATE";
+}
 
 #define LDMSD_DEFAULT_SAMPLE_INTERVAL 1000000
 /** Metric name for component ids (u64). */

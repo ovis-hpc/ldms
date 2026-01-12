@@ -1026,12 +1026,11 @@ int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset,
 	if (!samp)
 		return ENOENT;
 
-	if (samp->os) {
+	ldmsd_sampler_lock(samp);
+	if (samp->state != LDMSD_SAMP_STATE_CONFIGURED) {
 		rc = EBUSY;
 		goto out;
 	}
-
-	ldmsd_sampler_lock(samp);
 
 	if (exclusive_thread) {
 		samp->use_xthread = atoi(exclusive_thread);
@@ -1088,6 +1087,7 @@ int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset,
 			goto out;
 		}
 	}
+	samp->state = LDMSD_SAMP_STATE_RUNNING;
 	ldmsd_sampler_get(samp, "start");
 	/* this ref will be put down in ldmsd_stop_sampler() */
 #ifdef _CFG_REF_DUMP_
@@ -1202,6 +1202,10 @@ int ldmsd_sampler_stop(char *cfg_name)
 		return ENOENT;
 
 	ldmsd_sampler_lock(samp);
+	if (samp->state != LDMSD_SAMP_STATE_RUNNING) {
+		rc = -EBUSY;
+		goto out;
+	}
 	if (samp->os) {
 		ovis_scheduler_event_del(samp->os, &samp->oev);
 		if (samp->use_xthread) {
@@ -1212,12 +1216,12 @@ int ldmsd_sampler_stop(char *cfg_name)
 			samp->thread_id = -1;
 		}
 		ldmsd_sampler_put(samp, "start");
-	} else {
-		rc = -EBUSY;
 	}
+	samp->state = LDMSD_SAMP_STATE_CONFIGURED;
 #ifdef _CFG_REF_DUMP_
 	ref_dump(&samp->cfg.ref, samp->cfg.name, stderr);
 #endif
+out:
 	ldmsd_sampler_unlock(samp);
 	ldmsd_sampler_find_put(samp);
 	return rc;
