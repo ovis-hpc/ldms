@@ -134,6 +134,7 @@ def expand_names(name_spec):
             names += hostlist.expand_hostlist(NUM_STR(name))
     else:
         names = hostlist.expand_hostlist(NUM_STR(name_spec))
+    names.sort()
     return names
 
 def check_auth(auth_spec):
