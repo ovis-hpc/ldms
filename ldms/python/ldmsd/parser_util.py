@@ -803,9 +803,9 @@ class YamlCfg(object):
         start_list.append(f'-F')
         return start_list
 
-    def write_advertisers(self, dstr, dmn_grp, dname, auth_list):
+    def write_advertisers(self, dstr, dmn_grp, dname, auth_listen):
         if dmn_grp not in self.advertisers:
-            return dstr, auth_list
+            return dstr, auth_listen
         ad_grp = self.advertisers[dmn_grp]
         for host in expand_names(self.advertisers[dmn_grp]['hosts']):
             auth, plugin, auth_opt = check_auth(ad_grp)
@@ -813,8 +813,8 @@ class YamlCfg(object):
             rail = check_opt('rail', ad_grp)
             quota = check_opt('quota', ad_grp)
             rx_rate = check_opt('rx_rate', ad_grp)
-            if auth not in auth_list:
-                auth_list[auth] = { 'conf' : auth_opt }
+            if auth not in auth_listen:
+                auth_listen[auth] = { 'conf' : auth_opt }
                 dstr += f'auth_add name={auth}'
                 dstr = self.write_opt_attr(dstr, 'plugin', plugin)
                 dstr = self.write_opt_attr(dstr, 'conf', auth_opt, endline=True)
@@ -826,7 +826,7 @@ class YamlCfg(object):
             dstr = self.write_opt_attr(dstr, 'quota', quota)
             dstr = self.write_opt_attr(dstr, 'rx_rate', rx_rate, endline=True)
             dstr += f'advertiser_start name={dname}-{host}\n'
-        return dstr, auth_list
+        return dstr, auth_listen
 
     def write_prdcr_listeners(self, dstr, dmn_grp):
         if dmn_grp not in self.prdcr_listeners:
@@ -860,28 +860,31 @@ class YamlCfg(object):
             dstr += f'prdcr_listen_start name={pl}\n'
         return dstr
 
-    def write_listeners(self, dstr, dmn_grp, dmn_name, auth_list={}):
+    def write_listeners(self, dstr, dmn_grp, dmn_name, auth_listen):
         for endp in self.daemons[dmn_name]['endpoints']:
             ep = self.daemons[dmn_name]['endpoints'][endp]
             auth, plugin, auth_opt = check_auth(ep)
             if auth:
-                if auth not in auth_list:
-                    auth_list[auth] = { 'conf' : auth_opt }
+                if auth not in auth_listen:
+                    auth_listen[auth] = { 'conf' : auth_opt }
                     dstr += f'auth_add name={auth}'
                     dstr = self.write_opt_attr(dstr, 'plugin', plugin)
                     dstr = self.write_opt_attr(dstr, 'conf', auth_opt, endline=True)
-            dstr += f'listen xprt={ep["xprt"]} port={ep["port"]}'
-            dstr = self.write_opt_attr(dstr, 'auth', auth)
-            dstr = self.write_opt_attr(dstr, 'conf', auth_opt)
-            bind_all = check_opt('bind_all', ep)
-            if bind_all is True or bind_all == "true":
-                host = "0.0.0.0"
-            else:
-                host = check_opt('host', ep)
-                if host is None:
-                    host = self.daemons[dmn_name]["addr"]
-            dstr = self.write_opt_attr(dstr, 'host', host, endline=True)
-        return dstr, auth_list
+            if ep["port"] not in auth_listen:
+                auth_listen[ep["port"]] = True
+                dstr += f'listen xprt={ep["xprt"]} port={ep["port"]}'
+                dstr = self.write_opt_attr(dstr, 'auth', auth)
+                dstr = self.write_opt_attr(dstr, 'conf', auth_opt)
+                bind_all = check_opt('bind_all', ep)
+                if bind_all is True or bind_all == "true":
+                    host = "0.0.0.0"
+                    # is this all addresses or only all v4 addresses? use ::/0
+                else:
+                    host = check_opt('host', ep)
+                    if host is None:
+                        host = self.daemons[dmn_name]["addr"]
+                dstr = self.write_opt_attr(dstr, 'host', host, endline=True)
+        return dstr, auth_listen
 
     def write_opt_attr(self, dstr, attr, val, endline=False):
         # Include leading space
@@ -891,7 +894,7 @@ class YamlCfg(object):
             dstr += f'\n'
         return dstr
 
-    def write_producers(self, dstr, group_name, dmn, auth_list):
+    def write_producers(self, dstr, group_name, dmn, auth_listen):
         if group_name in self.producers:
             ''' Balance samplers across aggregators '''
             prdcrs = list(self.producers[group_name].keys())
@@ -904,13 +907,13 @@ class YamlCfg(object):
                 producer = self.producers[group_name][ep]
                 auth = check_opt('auth', self.daemons[producer['daemon']]['endpoints'][ep])
                 auth_opt = check_opt('conf', self.daemons[producer['daemon']]['endpoints'][ep])
-                if auth not in auth_list:
-                    auth_list[auth] = { 'conf' : auth_opt }
+                if auth not in auth_listen:
+                    auth_listen[auth] = { 'conf' : auth_opt }
                     plugin = check_opt('plugin', self.daemons[producer['daemon']]['endpoints'][ep]['auth'])
                     if plugin is None:
                         plugin = auth
                     dstr += f'auth_add name={auth} plugin={plugin}'
-                    dstr = self.write_opt_attr(dstr, 'conf', auth_list[auth]['conf'], endline=True)
+                    dstr = self.write_opt_attr(dstr, 'conf', auth_listen[auth]['conf'], endline=True)
             for ep in prod_group:
                 regex = False
                 producer = self.producers[group_name][ep]
@@ -945,7 +948,7 @@ class YamlCfg(object):
                     dstr += f'prdcr_start_regex regex={producer["regex"]}\n'
                 else :
                     dstr += f'prdcr_start name={pname}\n'
-        return dstr, auth_list
+        return dstr, auth_listen
 
     def write_options(self, dstr, dname):
         if 'cli_opt' not in self.daemons[dname]:
@@ -981,13 +984,13 @@ class YamlCfg(object):
             dstr += f"msg_enable\n"
         return dstr
 
-    def write_sampler(self, dstr, sname):
+    def write_sampler(self, dstr, sname, auth_listen):
         if not self.samplers:
             return dstr
         for smplr_grp in self.samplers:
             if bin_search(expand_names(smplr_grp), sname):
-                dstr, auth_list = self.write_listeners(dstr, smplr_grp, sname)
-                dstr, auth_list = self.write_advertisers(dstr, smplr_grp, sname, auth_list)
+                dstr, auth_listen = self.write_listeners(dstr, smplr_grp, sname, auth_listen)
+                dstr, auth_listen = self.write_advertisers(dstr, smplr_grp, sname, auth_listen)
                 for plugin in self.samplers[smplr_grp]['plugins']:
                     plugn = self.plugins[plugin]
                     dstr += f'load name={plugin} plugin={plugn["name"]}\n'
@@ -1030,7 +1033,7 @@ class YamlCfg(object):
                         f'regex={regex}\n'
         return dstr
 
-    def write_aggregator(self, dstr, dmn):
+    def write_aggregator(self, dstr, dmn, auth_listen):
         # Agg config
         try:
             ''' "Balance" agg configuration if all samplers are included in each aggregator '''
@@ -1038,11 +1041,10 @@ class YamlCfg(object):
                 return dstr
             for group_name in self.aggregators:
                 if bin_search(expand_names(group_name), dmn):
-                    auth_list = {}
-                    dstr, auth_list = self.write_listeners(dstr, group_name, dmn, auth_list)
-                    dstr, auth_list = self.write_producers(dstr, group_name, dmn, auth_list)
+                    dstr, auth_listen = self.write_listeners(dstr, group_name, dmn, auth_listen)
+                    dstr, auth_listen = self.write_producers(dstr, group_name, dmn, auth_listen)
                     dstr = self.write_prdcr_listeners(dstr, group_name)
-                    dstr, auth_list = self.write_advertisers(dstr, group_name, dmn, auth_list)
+                    dstr, auth_listen = self.write_advertisers(dstr, group_name, dmn, auth_listen)
                     dstr = self.write_stream_subscribe(dstr, group_name, dmn)
                     dstr = self.write_agg_plugins(dstr, group_name, dmn)
                     dstr = self.write_updaters(dstr, group_name, dmn)
@@ -1150,13 +1152,16 @@ class YamlCfg(object):
             raise ValueError(f'Daemon {dname} has been defined multiple times in the YAML configuration file "{path}"\n')
         if dmn is None:
             raise ValueError(f'Daemon {dname} does not exist in YAML configuration file {path}\n')
+        # define auth and listen statements once only in output dstr, tracking in the auth_listen mapping
+        # reset at each per-daemon call
+        auth_listen = dict()
         dstr = ''
         dstr = self.write_env(dstr, dname)
         dstr = self.write_options(dstr, dname)
         dstr = self.write_stream_enable(dstr, dname)
         dstr = self.write_msg_enable(dstr, dname)
-        dstr = self.write_sampler(dstr, dname)
-        dstr = self.write_aggregator(dstr, dname)
+        dstr = self.write_sampler(dstr, dname, auth_listen)
+        dstr = self.write_aggregator(dstr, dname, auth_listen)
         return f'{dstr}'
 
     def config_v4(self, path):
