@@ -9,6 +9,8 @@ import bisect
 import itertools as it
 import collections
 import ldmsd.hostlist as hostlist
+import logging
+import pprint
 
 AUTH_ATTRS = [
     'auth',
@@ -787,10 +789,8 @@ class YamlCfg(object):
                 'producers': self.producers,
                 'updaters': self.updaters,
                 'stores': self.stores,
-                'samplers': self.samplers,
-                'multi_shot': self.multi_shot
+                'samplers': self.samplers
                 }
-        import pprint
         return pprint.pformat(printable)
 
     def ldmsd_arg_list(self, local_path, dmn_grp, dmn):
@@ -1189,6 +1189,9 @@ class YamlCfg(object):
         all exist on the machines relevant to the ldmsd cluster.
         """
         for dmn in self.daemons:
+            logging.debug(f"daemon {dmn} PRETTY:")
+            logging.debug(pprint.pformat(self.daemons[dmn]))
+            logging.debug(f"daemon {dmn} END --------")
             try:
                 dstr = self.daemon_config(self.args.ldms_config, dmn)
                 if len(dstr) > 1:
