@@ -328,7 +328,7 @@ class YamlCfg(object):
                                 f'          plugin : munge\n')
             for endpoints in spec['endpoints']:
                 check_required(['names','ports'],
-                               endpoints, '"endpoints" entry')
+                               endpoints, f'"endpoints" entry of daemons {spec["names"]}')
                 cur_epnames = expand_names(endpoints['names'])
                 ep_names.append(cur_epnames)
                 cur_ports = expand_names(endpoints['ports'])
@@ -401,12 +401,11 @@ class YamlCfg(object):
             return
         ad_grp = spec['advertise']
         check_required(['names', 'hosts', 'xprt', 'port', 'reconnect'],
-                       ad_grp, '"advertise" entry')
+                       ad_grp, f'"advertise" entry of {ad_grp}')
         names = expand_names(ad_grp['names'])
         dmns = expand_names(spec['daemons'])
         if len(names) != len(dmns):
-            raise ValueError(f'Please provide a regex for "names" that is equal to the number of daemons '
-                             f'to advertise from.\n')
+            raise ValueError(f'Please provide a hostlist for "names" that is equal to the number of daemons to advertise from. in: \n{spec}')
             sys.exit()
         auth_name, plugin, auth_opt = check_auth(ad_grp)
         perm = check_opt('perm', ad_grp)
@@ -435,7 +434,7 @@ class YamlCfg(object):
             return
         for pl in spec['prdcr_listen']:
             check_required(['name'], pl,
-                           '"prdcr_listen" entry')
+                           f'"prdcr_listen" entry of {spec["prdcr_listen"]}')
             node_listen = {}
             regex = check_opt('regex', pl)
             dstart = check_opt('disable_start', pl)
@@ -478,7 +477,7 @@ class YamlCfg(object):
                             f'             ...     :  ...\n')
         for agg_spec in agg_conf:
             check_required([ 'daemons' ],
-                           agg_spec, '"aggregators" entry')
+                           agg_spec, f'"aggregators" entry of {agg_spec}')
             names = expand_names(agg_spec['daemons'])
             group = agg_spec['daemons']
             plugins = check_opt('plugins', agg_spec)
@@ -492,7 +491,7 @@ class YamlCfg(object):
             subscribe = check_opt('subscribe', agg_spec)
             if subscribe:
                 for stream in subscribe:
-                    check_required([ 'stream', 'regex' ], stream, "stream specification")
+                    check_required([ 'stream', 'regex' ], stream, f'"aggregators" stream specification')
             for name in names:
                 aggregators[group][name] = { 'state' : 'stopped' } # 'running', 'error'
                 self.build_advertisers(agg_spec)
@@ -521,7 +520,7 @@ class YamlCfg(object):
                                 f'         ...       : ...\n')
             for prod in agg['peers']:
                 check_required([ 'endpoints', 'reconnect', 'type', ],
-                               prod, '"peers" entry')
+                               prod, f'"peers" entry of {prod}')
                 # Use endpoints for producer names and remove names attribute?
                 if prod['daemons'] not in self.daemons:
                     dmn_grps = prod['daemons'].split(',')
@@ -775,6 +774,24 @@ class YamlCfg(object):
         self.updaters = self.build_updaters(cluster_config)
         self.stores = self.build_stores(cluster_config)
         self.samplers = self.build_samplers(cluster_config)
+
+    def __str__(self):
+        printable = { 'client': self.client,
+                'name': self.name,
+                'args': self.args,
+                'advertisers': self.advertisers,
+                'prdcr_listeners': self.prdcr_listeners,
+                'daemons': self.daemons,
+                'plugins': self.plugins,
+                'aggregators': self.aggregators,
+                'producers': self.producers,
+                'updaters': self.updaters,
+                'stores': self.stores,
+                'samplers': self.samplers,
+                'multi_shot': self.multi_shot
+                }
+        import pprint
+        return pprint.pformat(printable)
 
     def ldmsd_arg_list(self, local_path, dmn_grp, dmn):
         start_list = [ 'ldmsd' ]
@@ -1049,8 +1066,9 @@ class YamlCfg(object):
                     dstr = self.write_stores(dstr, dmn)
             return dstr
         except Exception as e:
+            traceback.print_exc()
             ea, eb, ec = sys.exc_info()
-            raise Exception('Agg config Error: '+str(e)+' Line:'+str(ec.tb_lineno))
+            raise Exception('Agg config Error: '+str(e)+' Python Line:'+str(ec.tb_lineno)) from e
 
     def write_agg_plugins(self, dstr, group_name, agg):
         # Write independent plugin configuration for group <group_name>
@@ -1173,6 +1191,6 @@ class YamlCfg(object):
                     fd.write(dstr)
                     fd.close()
             except Exception as e:
-               a, b, c = sys.exc_info()
-               raise Exception(f'Error generating configuration file for {dmn}: {str(e)}')
+                traceback.print_exc()
+                raise Exception(f'Error generating configuration file for {dmn}:') from e
         return 0
