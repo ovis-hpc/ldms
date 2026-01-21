@@ -212,6 +212,18 @@ const char *ldmsd_myname_get()
 	return myname;
 }
 
+int ldmsd_myname_set(const char *name)
+{
+	int len;
+	if (myname[0])
+		return EEXIST;
+	len = strlen(name) + 1;
+	if (len > sizeof(myname))
+		return ENAMETOOLONG;
+	snprintf(myname, sizeof(myname), "%s", name);
+	return 0;
+}
+
 mode_t ldmsd_inband_cfg_mask_get()
 {
 	return inband_cfg_mask;
