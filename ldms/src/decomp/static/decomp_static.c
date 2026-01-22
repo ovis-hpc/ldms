@@ -1927,6 +1927,10 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			if (!mid_rbn) {
 				rc = ENOMEM;
 				free(mid_rbn);
+				ovis_log(static_log, OVIS_LCRIT,
+					"Memory allocation failure when " \
+					"decompose set '%s' for strgp '%s'\n",
+					instance, strgp->obj.name);
 				goto err_0;
 			}
 			rc = resolve_metrics(strgp, mid_rbn, cfg_row, set);
@@ -1956,6 +1960,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 		col_mvals = calloc(1, cfg_row->col_count * sizeof(*col_mvals));
 		if (!col_mvals) {
 			rc = ENOMEM;
+			ovis_log(static_log, OVIS_LCRIT, "Memory allocation failure.\n");
 			goto err_0;
 		}
 		for (j = 0; j < cfg_row->col_count; j++) {
@@ -2108,7 +2113,8 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	make_row: /* make/expand rows according to col_mvals */
 		row = calloc(1, cfg_row->row_sz + cfg_row->mval_size);
 		if (!row) {
-			rc = errno;
+			rc = ENOMEM;
+			ovis_log(static_log, OVIS_LCRIT, "Memory allocation failure\n");
 			goto err_0;
 		}
 		row->schema_name = cfg_row->schema_name;
@@ -2283,8 +2289,11 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 
 			/* Cache the current, unmodified row */
 			rc = ldmsd_row_cache(strgp->row_cache, group_idx, row_idx, row);
-			if (rc)
+			if (rc) {
+				ovis_log(static_log, OVIS_LERROR,
+					"Failed to cache the current, unmodifed row with error %d.\n", rc);
 				goto err_0;
+			}
 
 			/* We are about to modify the row. We can't modify the
 			 * row we just cached or it will be useless for the next
@@ -2310,6 +2319,11 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
                                                   ldmsd_decomp_op_to_string(cfg_col->op),
                                                   cfg_col->dst);
 				rc = op_table[cfg_col->op](&tmp_row_list, dup_row, j);
+				if (rc) {
+					ovis_log(static_log, OVIS_LERROR,
+						 "Failed to perform decomposition " \
+						 "operation with error %d\n", rc);
+				}
 			}
 			ldmsd_row_cache_idx_free(group_idx);
 			row = dup_row;
