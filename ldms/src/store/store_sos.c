@@ -70,9 +70,8 @@
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
 
-static ovis_log_t mylog;
-#define LOG_(level, ...) do { \
-	ovis_log(mylog, level, ## __VA_ARGS__); \
+#define LOG_(ss, level, ...) do { \
+	ovis_log(ss->log, level, ## __VA_ARGS__); \
 } while(0);
 
 /*
@@ -112,6 +111,7 @@ struct sos_list_ctxt {
 
 typedef struct store_sos_s {
 	pthread_mutex_t cfg_lock;
+	ovis_log_t log;
 	LIST_HEAD(sos_inst_list, sos_instance) inst_list;
 	char root_path[PATH_MAX]; /**< store root path */
 	time_t timeout;		  /* Default is forever */
@@ -122,6 +122,7 @@ typedef struct store_sos_s {
  *   <sos::path> = <root_path>/<container>
  */
 struct sos_instance {
+	ovis_log_t log; /* This points to log in store_sos_t. */
 	char *container;
 	char *schema_name;
 	char *path; /**< <root_path>/<container> */
@@ -417,7 +418,7 @@ static sos_handle_t __create_handle(const char *path, sos_t sos)
 }
 
 /* caller must hold cfg_lock */
-static sos_handle_t __create_container(const char *path)
+static sos_handle_t __create_container(struct sos_instance *si)
 {
 	int rc = 0;
 	sos_t sos;
@@ -425,16 +426,17 @@ static sos_handle_t __create_container(const char *path)
 	char part_name[16];	/* Unix timestamp as string */
 	sos_part_t part;
 	sos_handle_t h;
+	const char *path = si->path;
 
 	rc = sos_container_new(path, 0660);
 	if (rc) {
-		LOG_(OVIS_LERROR, "Error %d creating the container at '%s'\n",
+		LOG_(si, OVIS_LERROR, "Error %d creating the container at '%s'\n",
 		       rc, path);
 		goto err_0;
 	}
 	sos = sos_container_open(path, SOS_PERM_RW);
 	if (!sos) {
-		LOG_(OVIS_LERROR, "Error %d opening the container at '%s'\n",
+		LOG_(si, OVIS_LERROR, "Error %d opening the container at '%s'\n",
 		       errno, path);
 		goto err_0;
 	}
@@ -446,18 +448,18 @@ static sos_handle_t __create_container(const char *path)
 	sprintf(part_name, "%d", (unsigned int)t);
 	rc = sos_part_create(sos, part_name, path);
 	if (rc) {
-		LOG_(OVIS_LERROR, "Error %d creating the partition '%s' in '%s'\n",
+		LOG_(si, OVIS_LERROR, "Error %d creating the partition '%s' in '%s'\n",
 		       rc, part_name, path);
 		goto err_1;
 	}
 	part = sos_part_find(sos, part_name);
 	if (!part) {
-		LOG_(OVIS_LERROR, "Newly created partition was not found\n");
+		LOG_(si, OVIS_LERROR, "Newly created partition was not found\n");
 		goto err_1;
 	}
 	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
 	if (rc) {
-		LOG_(OVIS_LERROR, "New partition could not be made primary\n");
+		LOG_(si, OVIS_LERROR, "New partition could not be made primary\n");
 		goto err_2;
 	}
 	sos_part_put(part);
@@ -514,9 +516,10 @@ static sos_handle_t __find_container(const char *path)
 	return h;
 }
 
-static sos_handle_t get_container(const char *path)
+static sos_handle_t get_container(struct sos_instance *si)
 {
 	sos_handle_t h = NULL;
+	const char *path = si->path;
 	sos_t sos;
 
 	pthread_mutex_lock(&cfg_lock);
@@ -535,7 +538,7 @@ static sos_handle_t get_container(const char *path)
 		goto out;
 	}
 	/* the container does not exist, must create it */
-	h = __create_container(path);
+	h = __create_container(si);
  out:
 	pthread_mutex_unlock(&cfg_lock);
 	return h;
@@ -558,7 +561,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 
 	value = av_value(avl, "path");
 	if (!value) {
-		LOG_(OVIS_LERROR,
+		LOG_(ss, OVIS_LERROR,
 		     "%s[%d]: The 'path' configuration option is required.\n",
 		     __func__, __LINE__);
 		return EINVAL;
@@ -569,7 +572,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		goto out;
 	len = strlen(value);
 	if (len >= PATH_MAX) {
-		LOG_(OVIS_LERROR,
+		LOG_(ss, OVIS_LERROR,
 		       "%s[%d]: The 'path' is too long.\n",
 		       __func__, __LINE__);
 		rc = ENAMETOOLONG;
@@ -621,7 +624,7 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
 	struct sos_instance *si = NULL;
 
         if (!container) {
-                LOG_(OVIS_LERROR,
+                LOG_(ss, OVIS_LERROR,
                      "Plugin %s requires \"container=\" to be set in the "
                      "strgp_add command\n",
                      ldmsd_plug_name_get(handle));
@@ -631,6 +634,7 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
         si = calloc(1, sizeof(*si));
 	if (!si)
 		goto out;
+	si->log = ss->log;
 	rbt_init(&si->schema_rbt, row_schema_rbn_cmp);
 	si->container = strdup(container);
 	if (!si->container)
@@ -660,7 +664,7 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
 }
 
 static int
-__schema_list(sos_schema_t schema, ldms_set_t set, int list_idx)
+__schema_list(struct sos_instance *si, sos_schema_t schema, ldms_set_t set, int list_idx)
 {
 	int i, rc, rec_type = -1;
 	ldms_mval_t lent, lh;
@@ -678,7 +682,7 @@ __schema_list(sos_schema_t schema, ldms_set_t set, int list_idx)
 			if (-1 == rec_type) {
 				rec_type = ldms_record_type_get(lent);
 			} else if (rec_type != ldms_record_type_get(lent)) {
-				LOG_(OVIS_LERROR, "set '%s' contains a list of records "
+				LOG_(si, OVIS_LERROR, "set '%s' contains a list of records "
 					"of multiple record types, which store_sos does "
 					"not support records of multiple record types.\n",
 					ldms_set_instance_name_get(set));
@@ -686,7 +690,7 @@ __schema_list(sos_schema_t schema, ldms_set_t set, int list_idx)
 			}
 		}
 		if ((LDMS_V_NONE != prev_mtype) && (prev_mtype != mtype)) {
-			LOG_(OVIS_LERROR, "List '%s' in set '%s' contains "
+			LOG_(si, OVIS_LERROR, "List '%s' in set '%s' contains "
 					"multiple value types. "
 					"store_sos doesn't support this.\n",
 					lname, ldms_set_instance_name_get(set));
@@ -752,14 +756,14 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 			continue;
 		if (0 == strcmp("job_id", ldms_metric_name_get(set, metric_arry[i])))
 			continue;
-		LOG_(OVIS_LINFO, "Adding attribute %s to the schema\n",
+		LOG_(si, OVIS_LINFO, "Adding attribute %s to the schema\n",
 		       ldms_metric_name_get(set, metric_arry[i]));
 
 		mtype = ldms_metric_type_get(set, metric_arry[i]);
 		if (LDMS_V_RECORD_TYPE == mtype) {
 			continue;
 		} else if (LDMS_V_LIST == mtype) {
-			rc = __schema_list(schema, set, metric_arry[i]);
+			rc = __schema_list(si, schema, set, metric_arry[i]);
 		} else {
 			rc = sos_schema_attr_add(schema,
 				ldms_metric_name_get(set, metric_arry[i]),
@@ -857,7 +861,7 @@ __sos_mode_set(struct sos_instance *si, ldms_set_t set,
 		if (LDMS_V_LIST == ldms_metric_type_get(set, metric_arry[i])) {
 			num_lists++;
 			if (num_lists > 1) {
-				LOG_(OVIS_LERROR, "'%s' contains multiple lists. "
+				LOG_(si, OVIS_LERROR, "'%s' contains multiple lists. "
 						"Please store the set using "
 						"a decomposition.\n",
 						ldms_set_instance_name_get(set));
@@ -878,7 +882,7 @@ __sos_mode_set(struct sos_instance *si, ldms_set_t set,
 		si->ctxt.lists.num_lists = num_lists;
 		si->ctxt.lists.list = calloc(num_lists, sizeof(struct sos_list));
 		if (!si->ctxt.lists.list) {
-			LOG_(OVIS_LCRITICAL, "store_sos: Out of memory\n");
+			LOG_(si, OVIS_LCRITICAL, "store_sos: Out of memory\n");
 			return ENOMEM;
 		}
 	} else {
@@ -912,7 +916,7 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 		return rc;
 
 	/* Check if the container is already open */
-	si->sos_handle = get_container(si->path);
+	si->sos_handle = get_container(si);
 	if (!si->sos_handle)
 		return errno;
 	/* See if the required schema is already present */
@@ -936,7 +940,7 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 			if (schema)
 				goto out;
 		}
-		LOG_(OVIS_LERROR, "Error %d adding the schema to the container\n", rc);
+		LOG_(si, OVIS_LERROR, "Error %d adding the schema to the container\n", rc);
 		goto err_1;
 	}
  out:
@@ -991,7 +995,7 @@ __store_timestamp(struct sos_instance *si, sos_obj_t obj, ldms_set_t set)
 
 	/* timestamp */
 	if (NULL == sos_value_init(value, obj, si->ts_attr)) {
-		LOG_(OVIS_LERROR, "Error initializing timestamp attribute\n");
+		LOG_(si, OVIS_LERROR, "Error initializing timestamp attribute\n");
 		return ENOMEM;
 	}
 	value->data->prim.timestamp_.fine.secs = timestamp.sec;
@@ -1003,7 +1007,7 @@ __store_timestamp(struct sos_instance *si, sos_obj_t obj, ldms_set_t set)
 
 /* We assume that the order of \c mval passed by the caller and sos attributes are the same. */
 static sos_attr_t
-__store_metric(sos_obj_t obj, sos_attr_t attr, ldms_set_t set,
+__store_metric(struct sos_instance *si, sos_obj_t obj, sos_attr_t attr, ldms_set_t set,
 				enum ldms_value_type metric_type,
 				ldms_mval_t mval, size_t count)
 {
@@ -1027,23 +1031,23 @@ __store_metric(sos_obj_t obj, sos_attr_t attr, ldms_set_t set,
 		for (i = 0; i < ldms_record_card(mval); i++) {
 			mtype = ldms_record_metric_type_get(mval, i, &cnt);
 			rent = ldms_record_metric_get(mval, i);
-			LOG_(OVIS_LDEBUG, "store_sos: attr[%s, %d]: metric[%s, %s, %d]\n",
+			LOG_(si, OVIS_LDEBUG, "store_sos: attr[%s, %d]: metric[%s, %s, %d]\n",
 					sos_attr_name(attr), sos_attr_type(attr),
 					ldms_record_metric_name_get(mval, i),
 					ldms_metric_type_to_str(mtype),
 					sos_type_map[mtype]);
-			attr = __store_metric(obj, attr, set, mtype, rent, cnt);
+			attr = __store_metric(si, obj, attr, set, mtype, rent, cnt);
 			if (!attr && errno) {
 				return NULL;
 			}
 		}
 	} else if (metric_type < LDMS_V_CHAR_ARRAY) {
-		LOG_(OVIS_LDEBUG, "store_sos: attr[%s, %d]: metric[null, %s, %d]\n",
+		LOG_(si, OVIS_LDEBUG, "store_sos: attr[%s, %d]: metric[null, %s, %d]\n",
 				sos_attr_name(attr), sos_attr_type(attr),
 				ldms_metric_type_to_str(metric_type),
 				sos_type_map[metric_type]);
 		if (sos_attr_type(attr) != sos_type_map[metric_type]) {
-			LOG_(OVIS_LERROR, "Attribute '%s' type mismatch: " \
+			LOG_(si, OVIS_LERROR, "Attribute '%s' type mismatch: " \
 					   "attribute expects %s but got %s.\n",
 					   sos_attr_name(attr),
 					   _sos_type_sym_tbl[sos_attr_type(attr)],
@@ -1052,7 +1056,7 @@ __store_metric(sos_obj_t obj, sos_attr_t attr, ldms_set_t set,
 			return NULL;
 		}
 		if (NULL == sos_value_init(value, obj, attr)) {
-			LOG_(OVIS_LERROR, "Error initializing '%s' attribute\n",
+			LOG_(si, OVIS_LERROR, "Error initializing '%s' attribute\n",
 			       sos_attr_name(attr));
 			errno = ENOMEM;
 			return NULL;
@@ -1061,12 +1065,12 @@ __store_metric(sos_obj_t obj, sos_attr_t attr, ldms_set_t set,
 		sos_value_put(value);
 		attr = sos_schema_attr_next(attr);
 	} else {
-		LOG_(OVIS_LINFO, "store_sos: attr[%s, %d]: metric[null, %s, %d]\n",
+		LOG_(si, OVIS_LINFO, "store_sos: attr[%s, %d]: metric[null, %s, %d]\n",
 				sos_attr_name(attr), sos_attr_type(attr),
 				ldms_metric_type_to_str(metric_type),
 				sos_type_map[metric_type]);
 		if (sos_attr_type(attr) != sos_type_map[metric_type]) {
-			LOG_(OVIS_LERROR, "Attribute '%s' type mismatch: " \
+			LOG_(si, OVIS_LERROR, "Attribute '%s' type mismatch: " \
 					   "attribute expects %s but got %s.\n",
 					   sos_attr_name(attr),
 					   _sos_type_sym_tbl[sos_attr_type(attr)],
@@ -1085,7 +1089,7 @@ __store_metric(sos_obj_t obj, sos_attr_t attr, ldms_set_t set,
 		}
 		array_value = sos_array_new(array_value, attr, obj, array_len);
 		if (!array_value) {
-			LOG_(OVIS_LERROR, "Error %d allocating '%s' array of size %d\n",
+			LOG_(si, OVIS_LERROR, "Error %d allocating '%s' array of size %d\n",
 			     errno,
 			     sos_attr_name(attr),
 			     array_len);
@@ -1095,7 +1099,7 @@ __store_metric(sos_obj_t obj, sos_attr_t attr, ldms_set_t set,
 		array_len *= esz;
 		count = sos_value_memcpy(array_value, mval, array_len);
 		if (count != array_len) {
-			LOG_(OVIS_LERROR, "Attribute '%s' has mismatched length: " \
+			LOG_(si, OVIS_LERROR, "Attribute '%s' has mismatched length: " \
 					    "expected %zu but got %d.\n", sos_attr_name(attr),
 					                                    count, array_len);
 			errno = E2BIG;
@@ -1131,7 +1135,7 @@ __store_list_row(struct sos_instance *si, ldms_set_t s,
 
 	obj = sos_obj_new(si->sos_schema);
 	if (!obj) {
-		LOG_(OVIS_LERROR, "Error %d: %s at %s:%d\n", errno,
+		LOG_(si, OVIS_LERROR, "Error %d: %s at %s:%d\n", errno,
 		       STRERROR(errno), __FILE__, __LINE__);
 		rc = ENOMEM;
 		goto err;
@@ -1144,7 +1148,7 @@ __store_list_row(struct sos_instance *si, ldms_set_t s,
 	attr = si->first_attr;
 	for (i = 0; i < metric_count; i++) {
 		if (!attr) {
-			LOG_(OVIS_LERROR,
+			LOG_(si, OVIS_LERROR,
 			       "The set '%s' with schema '%s' has more "
 			       "attributes than the SOS schema '%s' to which "
 			       "it is being stored.\n",
@@ -1163,7 +1167,7 @@ __store_list_row(struct sos_instance *si, ldms_set_t s,
 			count = 0;
 		if (LDMS_V_LIST == mtype) {
 			if (LDMS_V_LIST == lent[list_no].mtype) {
-				LOG_(OVIS_LERROR, "List '%s' in set '%s' "
+				LOG_(si, OVIS_LERROR, "List '%s' in set '%s' "
 					"contains a list, which store_sos "
 					"does not support.\n",
 					ldms_metric_name_get(s, metric_arry[i]),
@@ -1172,7 +1176,7 @@ __store_list_row(struct sos_instance *si, ldms_set_t s,
 				goto err;
 			}
 			if (si->ctxt.lists.list[list_no].mtype != lent[list_no].mtype) {
-				LOG_(OVIS_LERROR, "List '%s' in set '%s' "
+				LOG_(si, OVIS_LERROR, "List '%s' in set '%s' "
 					"contains a metric of '%s' instead of '%s'.\n",
 					ldms_metric_name_get(s, metric_arry[i]),
 					ldms_set_instance_name_get(s),
@@ -1184,13 +1188,13 @@ __store_list_row(struct sos_instance *si, ldms_set_t s,
 			union ldms_value idxv;
 			idxv.v_u64 = lent[list_no].idx;
 			/* Store the list entry index */
-			attr = __store_metric(obj, attr, s, LDMS_V_U64, &idxv, 1);
+			attr = __store_metric(si, obj, attr, s, LDMS_V_U64, &idxv, 1);
 			if (!attr && errno) {
 				rc = errno;
 				goto err;
 			}
 			/* Store the record content */
-			attr = __store_metric(obj, attr, s,
+			attr = __store_metric(si, obj, attr, s,
 						lent[list_no].mtype,
 						lent[list_no].mval,
 						lent[list_no].count);
@@ -1210,7 +1214,7 @@ __store_list_row(struct sos_instance *si, ldms_set_t s,
 			}
 			list_no++;
 		} else {
-			attr = __store_metric(obj, attr, s, mtype, mval, count);
+			attr = __store_metric(si, obj, attr, s, mtype, mval, count);
 			if (!attr && errno) {
 				rc = errno;
 				goto err;
@@ -1237,7 +1241,7 @@ __store_lists(struct sos_instance *si, ldms_set_t set,
 	num_lists = si->ctxt.lrec.num_lists;
 	lent = calloc(num_lists, sizeof(*lent));
 	if (!lent) {
-		LOG_(OVIS_LCRITICAL, "store_sos: Out of memory\n");
+		LOG_(si, OVIS_LCRITICAL, "store_sos: Out of memory\n");
 		rc = ENOMEM;
 		goto err;
 	}
@@ -1249,7 +1253,7 @@ __store_lists(struct sos_instance *si, ldms_set_t set,
 		mval = ldms_metric_get(set, mid);
 		lent[i].list_len = ldms_list_len(set, mval);
 		if (0 == lent[i].list_len) {
-			LOG_(OVIS_LINFO, "store_sos: List '%s' in set '%s' is "
+			LOG_(si, OVIS_LINFO, "store_sos: List '%s' in set '%s' is "
 					"empty. store_sos won't store the data.\n",
 					ldms_metric_name_get(set, mid),
 					ldms_set_instance_name_get(set));
@@ -1290,7 +1294,7 @@ __store_basic(struct sos_instance *si, ldms_set_t s,
 
 	obj = sos_obj_new(si->sos_schema);
 	if (!obj) {
-		LOG_(OVIS_LERROR, "Error %d: %s at %s:%d\n", errno,
+		LOG_(si, OVIS_LERROR, "Error %d: %s at %s:%d\n", errno,
 		       STRERROR(errno), __FILE__, __LINE__);
 		rc = ENOMEM;
 		goto err;
@@ -1309,7 +1313,7 @@ __store_basic(struct sos_instance *si, ldms_set_t s,
 		size_t count = 0;
 		if (!attr) {
 			errno = E2BIG;
-			LOG_(OVIS_LERROR,
+			LOG_(si, OVIS_LERROR,
 			       "The set '%s' with schema '%s' has fewer "
 			       "attributes than the SOS schema '%s' to which "
 			       "it is being stored.\n",
@@ -1322,7 +1326,7 @@ __store_basic(struct sos_instance *si, ldms_set_t s,
 		mval = ldms_metric_get(s, metric_arry[i]);
 		if (ldms_metric_is_array(s, metric_arry[i]))
 			count = ldms_metric_array_get_len(s, metric_arry[i]);
-		attr = __store_metric(obj, attr, s, metric_type, mval, count);
+		attr = __store_metric(si, obj, attr, s, metric_type, mval, count);
 		if (!attr && errno)
 			goto err;
 	}
@@ -1364,7 +1368,7 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set,
 		rc = _open_store(si, set, metric_arry, metric_count);
 		if (rc) {
 			pthread_mutex_unlock(&si->lock);
-			LOG_(OVIS_LERROR, "Failed to create store "
+			LOG_(ss, OVIS_LERROR, "Failed to create store "
 			       "for %s.\n", si->container);
 			errno = rc;
 			return -1;
@@ -1375,15 +1379,15 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set,
 		si->first_attr = sos_schema_attr_by_name(si->sos_schema,
 				ldms_metric_name_get(set, metric_arry[0]));
 		if (si->comp_id_idx < 0) {
-			LOG_(OVIS_LINFO,
+			LOG_(ss, OVIS_LINFO,
 			       "The component_id is missing from the metric set/schema.\n");
 		}
 		if (si->job_id_idx < 0) {
-			LOG_(OVIS_LERROR,
+			LOG_(ss, OVIS_LERROR,
 			       "The job_id is missing from the metric set/schema.\n");
 		}
 		if (!si->ts_attr) {
-			LOG_(OVIS_LERROR,
+			LOG_(ss, OVIS_LERROR,
 			       "store_sos: Attribute 'timestamp' is missing.\n");
 			errno = EINVAL;
 			goto err;
@@ -1393,7 +1397,7 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set,
 		clock_gettime(CLOCK_REALTIME, &now);
 		now.tv_sec += ss->timeout;
 		if (sos_begin_x_wait(si->sos_handle->sos, &now)) {
-			LOG_(OVIS_LERROR,
+			LOG_(ss, OVIS_LERROR,
 			     "Timeout attempting to open a transaction on the container '%s'.\n",
 			     si->path);
 			errno = ETIMEDOUT;
@@ -1404,7 +1408,7 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set,
 		clock_gettime(CLOCK_REALTIME, &now);
 		while (sos_begin_x_wait(si->sos_handle->sos, &now)) {
 			now.tv_sec += 5; /* Report warning every 5 seconds */
-			LOG_(OVIS_LWARN,
+			LOG_(ss, OVIS_LWARN,
 			     "Timeout attempting to open a transaction "
 			     "on the container '%s'...retrying.\n",
 			     si->path);
@@ -1419,7 +1423,7 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set,
 			rc = __store_lists(si, set, metric_arry, metric_count);
 			break;
 		default:
-			LOG_(OVIS_LERROR, "Unrecognized store_sos mode '%d' "
+			LOG_(ss, OVIS_LERROR, "Unrecognized store_sos mode '%d' "
 							"at %s:%d\n", si->mode,
 							   __FILE__, __LINE__);
 			errno = EINVAL;
@@ -1427,7 +1431,7 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set,
 	}
 	sos_end_x(si->sos_handle->sos);
 	if (rc) {
-		LOG_(OVIS_LERROR, "Error %d: %s at %s:%d\n", errno,
+		LOG_(ss, OVIS_LERROR, "Error %d: %s at %s:%d\n", errno,
 		       STRERROR(errno), __FILE__, __LINE__);
 	}
 	pthread_mutex_unlock(&si->lock);
@@ -1485,7 +1489,7 @@ static int init_store_instance(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp)
 	int len, rc;
 
         if (!strgp->container) {
-                LOG_(OVIS_LERROR,
+                LOG_(ss, OVIS_LERROR,
                      "Plugin %s requires \"container=\" to be set in the "
                      "strgp_add command\n",
                      ldmsd_plug_name_get(handle));
@@ -1504,7 +1508,7 @@ static int init_store_instance(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp)
 		rc = errno;
 		goto err_1;
 	}
-	si->sos_handle = get_container(si->path);
+	si->sos_handle = get_container(si);
 	if (!si->sos_handle) {
 		rc = errno;
 		goto err_2;
@@ -1537,7 +1541,7 @@ create_row_schema(ldmsd_strgp_t strgp, ldmsd_row_t row)
 
 	sos_schema = sos_schema_new(row->schema_name);
 	if (!sos_schema) {
-		LOG_(OVIS_LERROR, "sos_schema_new() failed, errno: %d, "
+		LOG_(si, OVIS_LERROR, "sos_schema_new() failed, errno: %d, "
 		     "container: %s, schema: %s\n",
 		     errno, si->path, row->schema_name);
 		goto err_0;
@@ -1547,7 +1551,7 @@ create_row_schema(ldmsd_strgp_t strgp, ldmsd_row_t row)
 	for (i = 0; i < row->col_count; i++) {
 		sos_type = sos_type_from_ldms_type(row->cols[i].type);
 		if (sos_type == -1) {
-			LOG_(OVIS_LERROR, "Unsupported type %s, "
+			LOG_(si, OVIS_LERROR, "Unsupported type %s, "
 			     "errno: %d, container: %s, schema: %s\n",
 			     ldms_metric_type_to_str(row->cols[i].type),
 			     errno, si->path, row->schema_name);
@@ -1614,7 +1618,7 @@ get_row_schema(ldmsd_strgp_t strgp, ldmsd_row_t row)
 
 	rrbn = calloc(1, sizeof(*rrbn));
 	if (!rrbn) {
-		LOG_(OVIS_LERROR, "Not enough memory, errno: %d, "
+		LOG_(si, OVIS_LERROR, "Not enough memory, errno: %d, "
 		     "container: %s, schema: %s\n",
 		     errno, si->path, row->schema_name);
 		goto err_0;
@@ -1666,7 +1670,7 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp,
 	si = strgp->store_handle;
 	if (!si->sos_handle) {
 		/* rare; only in the case of store_sos reconfig */
-		si->sos_handle = get_container(si->path);
+		si->sos_handle = get_container(si);
 		if (!si->sos_handle) {
 			rc = errno;
 			goto out;
@@ -1678,7 +1682,7 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp,
 		clock_gettime(CLOCK_REALTIME, &now);
 		now.tv_sec += ss->timeout;
 		if (sos_begin_x_wait(si->sos_handle->sos, &now)) {
-			LOG_(OVIS_LERROR,
+			LOG_(ss, OVIS_LERROR,
 			     "Timeout attempting to open a transaction on the container '%s'.\n",
 			     si->path);
 			errno = ETIMEDOUT;
@@ -1696,7 +1700,7 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp,
 		}
 		sos_obj = sos_obj_new(rrbn->sos_schema);
 		if (!sos_obj) {
-			LOG_(OVIS_LERROR, "cannot create SOS object, "
+			LOG_(ss, OVIS_LERROR, "cannot create SOS object, "
 			     "errno: %d, container: %s, schema: %s\n",
 			     errno, si->path, rrbn->key.name);
 			goto row_next;
@@ -1705,16 +1709,16 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp,
 		for (i = 0; i < row->col_count; i++) {
 			col = &row->cols[i];
 			if (!sos_attr) {
-				LOG_(OVIS_LERROR,
+				LOG_(ss, OVIS_LERROR,
 				     "sos attribute - ldms metric mismatch: "
 				     "expecting more sos attributes\n");
 				goto row_err;
 			}
 			sos_type = sos_type_from_ldms_type(col->type);
 			if (sos_attr_type(sos_attr) != sos_type) {
-				LOG_(OVIS_LERROR,
-				     "sos attribute - ldms metric type mismatch: "
-				     "expecting %s, but got %s\n",
+				LOG_(ss, OVIS_LERROR,
+				     "Column '%s': sos attribute - ldms metric type mismatch: "
+				     "expecting %s, but got %s\n", col->name,
 				     sos_type_sym(sos_type),
 				     sos_type_sym(sos_attr_type(sos_attr)));
 				goto row_err;
@@ -1736,7 +1740,7 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp,
 				array_value = sos_array_new(array_value,
 						sos_attr, sos_obj, array_len);
 				if (!array_value) {
-					LOG_(OVIS_LERROR, "Error %d allocating '%s' array of size %d\n",
+					LOG_(ss, OVIS_LERROR, "Error %d allocating '%s' array of size %d\n",
 					     errno,
 					     sos_attr_name(sos_attr),
 					     array_len);
@@ -1777,13 +1781,14 @@ static int constructor(ldmsd_plug_handle_t handle)
 	if (!ss)
 		return ENOMEM;
 	ldmsd_plug_ctxt_set(handle, ss);
+	ss->log = ldmsd_plug_log_get(handle);
 	return 0;
 }
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
 	store_sos_t ss = ldmsd_plug_ctxt_get(handle);
-        free(ss);
+	free(ss);
 }
 
 struct ldmsd_store ldmsd_plugin_interface = {
