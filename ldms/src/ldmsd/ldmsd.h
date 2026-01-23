@@ -1548,9 +1548,6 @@ int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t err
 /* Receive a message from an ldms endpoint */
 void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len);
 
-/* Get the hostname of this ldmsd */
-extern const char *ldmsd_myhostname_get();
-
 /* Get the name of this ldmsd */
 const char *ldmsd_myname_get();
 
