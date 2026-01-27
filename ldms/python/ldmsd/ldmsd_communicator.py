@@ -258,7 +258,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       }
 
 def get_cmd_attr_list(cmd_verb):
-    """Return the dictionary of command attributes
+    """
+    Return the dictionary of command attributes
 
     If there are no required/optional attributes, the value of the
     'req'/'opt' key is None. Otherwise, the value is a list of attribute
@@ -290,13 +291,18 @@ def fmt_status(msg):
     return msg
 
 class LDMSDRequestException(Exception):
-    """Raise when there is an error in the ldmsd request module"""
+    """
+    Raise when there is an error in the ldmsd request module
+    """
     def __init__(self, message, errcode, *args):
         self.message = message
         self.errcode = errcode
         super(LDMSDRequestException, self).__init__(message, errcode, *args)
 
 class LDMSD_Req_Attr(object):
+    """
+    Class definition of LDMSD Request Attributes
+    """
     LDMSD_REQ_ATTR_SZ = 12
     LDMSD_REQ_ATTR_DISCRIM_SZ = 4
 
@@ -549,6 +555,10 @@ class LDMSD_Req_Attr(object):
         return self.packed
 
 class LDMSD_Request(object):
+    """
+    Class defintion for LDMSD Requests and the request command ids,
+    as well as class methods to send/recieve LDMSD Requests
+    """
     EXAMPLE = 1
     GREETING = 2
     CFG_CNTR = 3
@@ -886,6 +896,9 @@ class LDMSD_Request(object):
         return self.message_number
 
     def send(self, ctrl):
+        """
+        Sends an LDMSD request
+        """
         data_len = self.request_size - self.header_size - LDMSD_Req_Attr.getDiscrimSize()
         max_msg = ctrl.getMaxRecvLen()
         offset = 0
@@ -912,6 +925,9 @@ class LDMSD_Request(object):
             raise
 
     def receive(self, ctrl):
+        """
+        Waits to receive an LDMSD request response
+        """
         self.response = None
         resp = None
         while True:
@@ -1024,16 +1040,18 @@ class Communicator(object):
     CFG_CNTR = 0
 
     def __init__(self, xprt, host, port, auth=None, auth_opt=None, recv_timeout=5):
-        """Create a communicator interface with an LDMS Daemon (LDMSD)
+        """
+        Create a communicator interface with an LDMS Daemon (LDMSD)
 
         Parameters:
-        - The transport name: 'sock', 'rdma', 'ugni', or 'fabric'
-        - The host name
-        - The port number
+        xprt - The transport name: 'sock', 'rdma', 'ugni', or 'fabric'
+        host - The host name
+        port - The port number
 
         Keyword Parameters:
-        auth     - The authentication plugin name
-        auth_opt - Options (if any) to pass to the authentication plugin
+        [auth]         - The authentication plugin name
+        [auth_opt]     - Options (if any) to pass to the authentication plugin
+        [recv_timeout] - Receive connection timeout. Defaults to 5.
         """
         self.INIT = Communicator.INIT
         self.CONNECTED = Communicator.CONNECTED
@@ -1065,17 +1083,41 @@ class Communicator(object):
                f"max_recv_len = {self.max_recv_len}>"
 
     def get_cmd_attr_list(self, cmd_verb):
-        """Return the dictionary of command attributes
+        """
+        Class method for Communicator object.
+        Returns a dictionary of command attributes
 
         If there are no required/optional attributes, the value of the
         'req'/'opt' key is None. Otherwise, the value is a list of attribute
         names.
 
+        Parameters:
+        [cmd_verb] - LDMSD request command
+                     e.g. prdcr_add
+
         @return: {'req': [], 'opt': []}
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is a dictionary of optional and required command parameters,
+          or an error message if status is !=0 or None
         """
         return get_cmd_attr_list(cmd_verb)
 
     def reconnect(self, timeout=0):
+        """
+        Close the LDMSD Xprt object and create a new one. Return an error
+        if the Xprt object fails to instantiate.
+
+        Keyword Parameters:
+        [timeout] - Connection timeout. Defaults to 0.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status is !=0 or None
+        """
         if self.ldms:
             self.close()
         self.ldms = ldms.Xprt(name=self.xprt, auth=self.auth, auth_opts=self.auth_opt)
@@ -1086,6 +1128,18 @@ class Communicator(object):
         return self.connect(timeout=timeout)
 
     def connect(self, timeout=0):
+        """
+        Instantiate or connect to an existing ldms Xprt object and attempt to connect to a LDMSD.
+        Upon failure raises an Exception and prints an error.
+
+        Keyword Parameters:
+        [timeout] - Connection timeout. Defaults to 0.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status is !=0 or None
+        """
         try:
             if not self.ldms:
                 self.ldms = ldms.Xprt(name=self.xprt, auth=self.auth, auth_opts=self.auth_opt)
@@ -1112,25 +1166,46 @@ class Communicator(object):
         return 0
 
     def getState(self):
+        """
+        Returns the current state of the ldms Xprt
+
+        Possible states:
+        Communicator.INIT      - LDMS xprt is initializing
+        Communicator.CONNECTED - LDMS xprt is connected
+        Communicator.CLOSED    - LDMS xprt is closed
+        """
         return self.state
 
     def getMaxRecvLen(self):
+        """
+        Returns the max receive length of a LDMSD Request for this Xprt
+        """
         return self.max_recv_len
 
     def getHost(self):
+        """
+        Returns the hostname of the LDMSD for this Xprt
+        """
         return self.host
 
     def getPort(self):
+        """
+        Returns the port number of the LDMSD for this Xprt
+        """
         return self.port
 
     def send_command(self, cmd):
-        """This is called by the LDMSRequest class to send a message"""
+        """
+        This is called by the LDMSRequest class to send a message
+        """
         if self.state != self.CONNECTED:
             raise ConnectionError("Transport is not connected.")
         return self.ldms.send(cmd)
 
     def receive_response(self, recv_len = None):
-        """This is called by the LDMSRequest class to receive a reply"""
+        """
+        This is called by the LDMSRequest class to receive a reply
+        """
         if self.state != self.CONNECTED:
             raise RuntimeError("Transport is not connected.")
         try:
@@ -1146,12 +1221,19 @@ class Communicator(object):
         If the parameter name is omitted, no responses will be returned. If a keywords 'test' is
         given, ldmsd will respond with the string 'Hi'. e.g. 'greeting test'
 
-        Parameters
-        [name]
-        [offset]
-        [level]
-        [test]
-        [path]
+        Keyword Parameters
+        [name]   - String that ldmsd will echo back
+        [offset] - Number of characters in the response message
+        [level]  - Number of records in the response message
+        [test]   - Boolean, if True, will return "Hi"
+        [path]   - String 'XXX:YYY:...:ZZZ' will be returned, where 'XXX', 'YYY' and 'ZZZ'
+                   are myhostname of the first producer in the list of each daemon.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is a string of responses from the ldmsd or
+          is an error message if status is !=0 or None
         """
         attr_list = []
         if name:
@@ -1177,9 +1259,12 @@ class Communicator(object):
     def dump_cfg(self, path=None):
         """
         Dumps the currently running configuration of a running ldmsd
-        Parameters:
-        path - The path to write the configuration file
+
+        Keyword Parameters:
+        [path] - The path to write the configuration file
+
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status is !=0 or None
         """
@@ -1199,8 +1284,18 @@ class Communicator(object):
         """
         Add an authentication domain
         Parameters:
-        name - The authentication domain name
-        <plugin-specific attribute> e.g. conf=ldmsauth.conf
+        name     - The authentication domain name
+
+        Keyword Parameters:
+        [plugin]   - Plugin name. If not specified the authentication domain name
+                     will be used.
+        [auth_opt] - Configuration string for authentication domain.
+                     e.g. conf=ldmsauth.conf
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status is !=0 or None
         """
         attrs=[ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
         if plugin is not None:
@@ -1223,6 +1318,11 @@ class Communicator(object):
     def daemon_exit(self):
         """
         Exits the daemon
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status is !=0 or None
         """
         req = LDMSD_Request(
                 command='daemon_exit'
@@ -1244,6 +1344,8 @@ class Communicator(object):
         host             - host name of the failover partner
         xprt             - transport of the failover parter
         port             - LDMS port of the faijlover parter
+
+        Keyword Parameters:
         [auto_switch]    - 0|1 Auto switching (failover/failback)
         [interval]       - The interval of the heartbeat
         [timeout_factor] - The heartbeat timeout factor
@@ -1251,6 +1353,7 @@ class Communicator(object):
                            the ldmsd will accept any partner
 
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status is !=0 or None
         """
@@ -1279,6 +1382,7 @@ class Communicator(object):
         Start LDMSD failover service
 
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status is !=0 or None
         """
@@ -1295,6 +1399,7 @@ class Communicator(object):
         Stop LDMSD failover service
 
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status is !=0 or None
         """
@@ -1311,6 +1416,7 @@ class Communicator(object):
         Get LDMSD failover status
 
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status is !=0 or None
         """
@@ -1325,6 +1431,11 @@ class Communicator(object):
     def failover_peercfg_start(self):
         """
         Manually start peer configuration
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status is !=0 or None
         """
         req = LDMSD_Request(command_id=LDMSD_Request.FAILOVER_PEERCFG_START)
         try:
@@ -1337,6 +1448,11 @@ class Communicator(object):
     def failover_peercfg_stop(self):
         """
         Manually stop peer configuration
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status is !=0 or None
         """
         req = LDMSD_Request(command_id=LDMSD_Request.FAILOVER_PEERCFG_STOP)
         try:
@@ -1352,6 +1468,8 @@ class Communicator(object):
 
         Parameters:
         name        - The set group name.
+
+        Keyword Parameters:
         [producer]  - The producer name of the set group.
         [interval]  - The update interval hint (in usec).
         [offset]    - The update offset hint (in usec).
@@ -1385,6 +1503,8 @@ class Communicator(object):
 
         Parameters:
         name        - The set group name.
+
+        Keyword Parameters:
         [interval]  - The update interval hint (in usec).
         [offset]    - The update offset hint (in usec).
 
@@ -1457,7 +1577,7 @@ class Communicator(object):
         Remove sets from the set group
 
         Parameters:
-        name    - Set group name
+        name     - Set group name
         instance - Comma-separated list of set instances to removed
 
         Returns:
@@ -1481,7 +1601,10 @@ class Communicator(object):
         """
         Dump stream client info (for debugging)
 
-        No Parameters
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is stream client info or an error message if status !=0 or None
         """
         req = LDMSD_Request(command_id=LDMSD_Request.STREAM_CLIENT_DUMP)
         try:
@@ -1495,7 +1618,13 @@ class Communicator(object):
         """
         Dump stream info
 
-        No parameters
+        Keyword Parameters:
+        [reset] - Reset stream status info on value return
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is stream's status data or an error message if status !=0 or None
         """
         if reset is None:
             reset = False
@@ -1512,10 +1641,15 @@ class Communicator(object):
         """
         Dump stream stats
 
-        Parameters:
-        regex - The regular expression matching the stream names
-        stream - The exact match of the stearm name
-        reset - Reset the statistics
+        Keyword Parameters:
+        [regex]  - The regular expression matching the stream names
+        [stream] - The exact match of the stearm name
+        [reset]  - Reset the statistics. True/False
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is message statistics or an error message if status !=0 or None
         """
         attr_list = []
         if regex:
@@ -1536,7 +1670,10 @@ class Communicator(object):
         """
         Disable stream communication in the daemon
 
-        No parameters
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status !=0 or None
         """
         req = LDMSD_Request(command_id=LDMSD_Request.STREAM_DISABLE)
         try:
@@ -1550,7 +1687,10 @@ class Communicator(object):
         """
         Enable stream communication in the daemon
 
-        No Parameters
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status !=0 or None
         """
         req = LDMSD_Request(command_id=LDMSD_Request.STREAM_ENABLE)
         try:
@@ -1564,9 +1704,14 @@ class Communicator(object):
         """
         Dump stream stats
 
-        Parameters:
-        regex - The regular expression matching the stream names
-        stream - The exact match of the stearm name
+        Keyword Parameters:
+        [reset] - Boolean that reset the msg client statistics on return of values.
+                  Defaults to False.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is msg client statistics or an error message if status !=0 or None
         """
         attr_list = []
         if reset is not None:
@@ -1583,7 +1728,10 @@ class Communicator(object):
         """
         Disable the LDMS message service in the daemon
 
-        No parameters
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status !=0 or None
         """
         req = LDMSD_Request(command_id=LDMSD_Request.MSG_DISABLE)
         try:
@@ -1597,7 +1745,10 @@ class Communicator(object):
         """
         Enable LDMS the message service in the daemon
 
-        No parameters
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status !=0 or None
         """
         req = LDMSD_Request(command_id=LDMSD_Request.MSG_ENABLE)
         try:
@@ -1614,11 +1765,22 @@ class Communicator(object):
         Parameters:
         xprt - Transport name [sock, rdma, ugni]
         port - Port number
-        [host] - Hostname
-        [auth] - Authentication domain - If none, the default
-                 authentication given the command line
-                 (-a and -A) will be used
 
+        Keyword Parameters:
+        [auth]    - Authentication domain - If none, the default
+                    authentication given the command line
+                    (-a and -A) will be used
+        [quota]   - Receive quota of the connections established by accepted connection requests
+        [rx_rate] - Receive rate limit of the connections established by accepted connection requests
+
+        Deprecated Parameters:
+        [name] - Deprecated keyword parameter currently kept for backwards compatability.
+                 Will be removed in a future release.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status !=0 or None
         """
         attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.XPRT, value=xprt),
                       LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.PORT, value=port)
@@ -1642,6 +1804,19 @@ class Communicator(object):
 
     def metric_sets_default_authz(self, uid=None, gid=None, perm=None):
         """
+        Set the default authorization values for subsequently created metric sets.
+
+        If no arguments are passed, returns the current metric sets defaults.
+
+        Keyword Parameters:
+        [uid]  - User ID number or user name string
+        [gid]  - Group ID number or group name string
+        [perm] - Octal number representing the permissions bits
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is a string in json format of current metric sets defaults for uid/gid/perm, or an error message
         """
         attr_list = []
         if uid:
@@ -1666,24 +1841,33 @@ class Communicator(object):
     def dir_list(self):
         """
         Return the dir sets of this ldms daemon
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the current dir sets of this LDMSD or an error message if status !=0 or None
         """
         try:
             dlist = self.ldms.dir()
             return 0, dlist
-        except Exception as e:
+        except Exception as r:
             return errno.ENOTCONN, str(e)
 
-    def store_time_stats(self, name=None, reset = False):
+    def store_time_stats(self, name=None, reset=False):
         """
         Return the time statistics of a LDMSD storage policy.
+
         If no name is specified, return statistics of all storgage policies
 
-        Parameters:
-        name - The storage policy name
+        Keyword Parameters:
+        [name]  - The storage policy name
+        [reset] - Boolean that indicates whether to reset statistics after returning values.
+                  The default to False
+
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
-        - data is a json object of storage policy statistics, or an error message
+        - data is a string in json format of storage policy statistics, or an error message
         """
         attr_list = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.RESET,
                                     value = str(reset))]
@@ -1703,8 +1887,10 @@ class Communicator(object):
         Load a plugin instance.
 
         Parameters:
-        name  - The instance name
-        plugin- The plugin name. If None, 'name' is used
+        name   - The instance name
+
+        Keyword Parameters:
+        [plugin] - The plugin name. If None, 'name' is used
 
         Returns:
         A tuple of status, data
@@ -1752,10 +1938,13 @@ class Communicator(object):
         Configure a plugin instance
 
         Parameters:
-        - The plugin name
+        name    - The plugin name
+        cfg_str - Dictionary of plugin specific key/value pairs
 
-        Keyword Parameters:
-        - dictionary of plugin specific key/value pairs
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
         """
         req = LDMSD_Request(
                 command_id=LDMSD_Request.PLUGN_CONFIG,
@@ -1776,6 +1965,7 @@ class Communicator(object):
 
         Parameters:
         name - The plugin instance name
+
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
@@ -1796,17 +1986,16 @@ class Communicator(object):
 
     def plugn_status(self, name=None):
         """
-        Get the status of a plugin instance
+        Get the status of plugin instances loaded by this LDMSD
 
-        If a name is not specified, the status is returned for all plugins.
-
-        Parameters:
-        name - The plugin instance name
+        Deprecated Parameters:
+        [name] - Deprecated keyword parameter currently kept for backwards compatability.
+                 Will be removed in a future release.
 
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
-        - data is the plugin status
+        - data is the status of all plugins or an error message if status !=0 or None
         """
         if name:
             attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
@@ -1827,8 +2016,8 @@ class Communicator(object):
 
         If name is not provided the sets for each plugin instance are returned.
 
-        Parameters:
-        name - The plugin name
+        Keyword Parameters:
+        [name] - The plugin name
 
         Returns:
         A tuple of status, data
@@ -1859,6 +2048,7 @@ class Communicator(object):
         udata    - The desired user-data. This is a 64b unsigned int
 
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status !=0 or None
         """
@@ -1887,9 +2077,12 @@ class Communicator(object):
         instance - The instance name
         regex    - A regex matching metric names to be set
         base     - A base value of user data (uint64)
+
+        Keyword Parameters:
         [incr]   - Increment value. The default is 0, if incr is 0 the user data of all
                    matched metrics are set to the base value.
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status !=0 or None
         """
@@ -1911,6 +2104,30 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def update_time_stats(self, name=None, reset = False):
+        """
+        Get the update time statistics of updaters
+
+        If the name parameter is not used, returns the time stats of all
+        updaters.
+
+        Updater time statistics returned:
+
+        - Updater is the updater name.
+        - Min(usec) is the minimum time the updater spent to update a set.
+        - Max(usec) is the maximum time the updater spent to update a set.
+        - Average(usec) is the average time the updater spent to update a set.
+        - Count is the number of samples used to calculate the minimum, maximum, and average values.
+
+        Keyword Parameters:
+        [name] - updater name
+        [reset] - If 'true' reset the statistics after returning the values.
+                  Default is false
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data returns an error message or a string in json format of updaters,
+          their producers, their metric set instances, and their time statistics
+        """
         attr_list = None
         if reset is None:
             reset = False
@@ -1934,10 +2151,14 @@ class Communicator(object):
         Parameters:
            level  - The valid values are "default", "quiet",
                     or a string of comma-separated list of DEBUG, INFO, WARN, ERROR, and CRITICAL
-           name -   A logger name
-           regex -  A regular expression match logger names
+
+        Keyword Parameters:
+        [name]    - A logger name
+        [regex]   - A regular expression match logger names
+        [is_test] - Boolean to indicate whether to write current log levels to log
 
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status !=0 or None
         """
@@ -1963,6 +2184,22 @@ class Communicator(object):
     def stats_reset(self, s = None):
         """
         Reset the statistics counters
+
+        Keyword Parameters:
+        [s] - A comma separated list of defined statistics to be reset
+
+            Keyword statistics options:
+
+            thread - reset the thread statistics
+            xprt   - reset the transport statistics
+            update - reset the update time statistics, skipped, and over-sampled counters
+            store  - reset the store time statistics
+            stream - reset the stream and stream client statistics
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message or None
         """
         if s is not None and len(s) > 0:
             attr_list = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.STRING, value = s)]
@@ -1979,6 +2216,15 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def getCfgCntr(self):
+        """
+        Returns the amount of configuration commands a LDMSD has received.
+        This command is currently only used by Maestro.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the current configuration count, or an error message
+        """
         req = LDMSD_Request(command_id=LDMSD_Request.CFG_CNTR)
         try:
             req.send(self)
@@ -1990,7 +2236,9 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def send_command(self, cmd):
-        """This is called by the LDMSRequest class to send a message"""
+        """
+        This is called by the LDMSRequest class to send a message
+        """
         if self.state != self.CONNECTED:
             raise ConnectionError("Transport is not connected.")
         return self.ldms.send(cmd)
@@ -2002,6 +2250,7 @@ class Communicator(object):
         ldmsd command-line
 
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message is status !=0 or None
         """
@@ -2018,9 +2267,10 @@ class Communicator(object):
         """
         Get the LDMS version
 
-        Returns
+        Returns:
+        A tuple of status, data
         - status is an errno from the errno module
-        - data is the ldms version
+        - data is the ldms version or an error message if status !=0 or None
         """
         req = LDMSD_Request(command_id=LDMSD_Request.VERSION)
         try:
@@ -2038,6 +2288,7 @@ class Communicator(object):
         cfg_str - string of attr=value
 
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error msg if status !=0 or None
         """
@@ -2055,9 +2306,10 @@ class Communicator(object):
         Include a configuration file
 
         Parameters
-        path  - Path to the configuration file
+        path - Path to the configuration file
 
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status !=0 or None
         """
@@ -2076,10 +2328,11 @@ class Communicator(object):
         Make a sample plugin take a sample at a specific time
 
         Parameters:
-        name - plugin name
+        name - Plugin instance name
         time - Timestamp since epoch. If 'now' is given, teh sample plugin will sample data immediately
 
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status !=0 or None
         """
@@ -2102,10 +2355,11 @@ class Communicator(object):
         Publish data to the named stream
 
         Parameters:
-        name  - The stream name
-        data  - The data to publish
+        name - The stream name
+        data - The data to publish
 
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status !=0 or None
         """
@@ -2126,7 +2380,7 @@ class Communicator(object):
         Subscribe to a stream
 
         Parameters:
-        name  - The stream name
+        name - The stream name
 
         Returns:
         A tuple of status, data
@@ -2143,43 +2397,15 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def smplr_load(self, name):
+    def smplr_status(self):
         """
-        Load an LDMSD sampler plugin.
-
-        Parameters:
-        name  - The plugin name
-
-        Returns:
-        A tuple of status, data
-        - status is an errno from the errno module
-        - data is an error message if status != 0 or None
-        """
-        req = LDMSD_Request(
-                command_id=LDMSD_Request.PLUGN_LOAD,
-                attrs=[
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
-                ])
-        try:
-            req.send(self)
-            resp = req.receive(self)
-            return resp['errcode'], resp['msg']
-        except Exception as e:
-            self.close()
-            return errno.ENOTCONN, str(e)
-
-    def smplr_status(self, name = None):
-        """
-        Query the LDMSD for the status of one or more sampler plugins.
-
-        Keyword Parameters:
-        name - If not None (default), the name of the producer to query.
+        Query a LDMSD for the status of all sampler plugins.
 
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status != 0 or
-          the object containing the producer status
+          a list of dictionaries in json format containing the producer status
         """
         attrs = None
         if name:
@@ -2199,14 +2425,15 @@ class Communicator(object):
         Return the metric sets provided by a sampler plugin.
 
         Keyword Parameters:
-        name  - The name of the sampler to query. If None (default), all
-                samplers are queried.
+        [name] - The name of the sampler to query. If None (default), all
+                 samplers are queried.
 
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status != 0 or
-          the object containing the sampler set status
+          a list of plugin instance metric sets in json format
+          containing the sampler set status
         """
         attrs = None
         if name:
@@ -2226,6 +2453,28 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def plugn_start(self, name, interval_us, offset_us=None, xthread=None):
+        """
+        Start the specified plugin instance
+
+        Parameters:
+        name - The plugin instance name
+        interval - The sampler interval in microseconds
+
+        Keyword Parameters:
+        [offset] - Optional offset (shift) from the sample mark in microseconds
+                   Offset can be positive or negative with magnitude up to 1/2
+                   the sample interval. If this offset is specified, including 0,
+                   collection will be synchronous; if not specified, collection
+                   will be asynchronous.
+        [exclusive_thread]
+                 - If 0, the sampler shares a thread with other samplers (default).
+                   If 1, the sampler has an exclusive thread to work on.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message is status !=0 or None
+        """
         # If offset unspecified, start in non-synchronous mode
         req_attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
                       LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.INTERVAL, value=str(interval_us))
@@ -2285,25 +2534,25 @@ class Communicator(object):
         to start the producer.
 
         Parameters:
-        - The name to give the producer. This name must be unique on the producer.
-        - The type of the producer, one of 'passive', or 'active'
-        - The transport type, one of 'sock', 'ugni', 'rdma', or 'fabric'
-        - The hostname
-        - The port number
-        - The reconnect interval in microseconds
+        name      - The name to give the producer. This name must be unique on the producer.
+        ptype     - The type of the producer, one of 'passive', or 'active'
+        xprt      - The transport type, one of 'sock', 'ugni', 'rdma', or 'fabric'
+        host      - The hostname
+        port      - The port number
+        reconnect - The reconnect interval in microseconds
 
         Keyword Parameters:
-        auth - The authentication domain
-        perm - The configuration client permission required to
-               modify the producer configuration. Default is None.
-        rail - The number of endpoints in a rail. The default is 1.
-        quota - The recv quota of our side of the connection (the daemon we
-                  are controlling). The default is the daemon's default
-                  ('--quota' ldmsd option).
-        rx_rate - The recv rate (bytes/second) limit for this connection. The
-                  default is -1 (unlimited).
-        cache_ip - True: Cache hostname after first successfull resolution;
-                   False: Resolve hostname on every connection
+        [auth]     - The authentication domain
+        [perm]     - The configuration client permission required to
+                     modify the producer configuration. Default is None.
+        [rail]     - The number of endpoints in a rail. The default is 1.
+        [quota]    - The recv quota of our side of the connection (the daemon we
+                     are controlling). The default is the daemon's default
+                     ('--quota' ldmsd option).
+        [rx_rate]  - The recv rate (bytes/second) limit for this connection. The
+                     default is -1 (unlimited).
+        [cache_ip] - True: Cache hostname after first successfull resolution;
+                     False: Resolve hostname on every connection
 
         Returns:
         A tuple of status, data
@@ -2354,8 +2603,8 @@ class Communicator(object):
         Start one or more STOPPED producers
 
         Parameters:
-        - The name of the producer to start. If regex=True (default),
-          this is a regular expression.
+        name - The name of the producer to start. If regex=True (default),
+               this is a regular expression.
 
         Keyword Parameters:
         regex     - True, the 'name' parameter is a regular expression.
@@ -2363,7 +2612,7 @@ class Communicator(object):
         reconnect - The reconnect interval in microseconds. If not None, this
                     will override the interval specified when the producer
                     was created. Default is None.
-        kwargs   - Additional keyword argument as in prdcr_add().
+        kwargs    - Additional keyword argument as in prdcr_add().
                     It is to support producer creation if it doesn't exist at start.
                     Currently, only advertiser_start() uses this feature.
 
@@ -2404,12 +2653,12 @@ class Communicator(object):
         Stop one or more RUNNING producers
 
         Parameters:
-        - The name of the producer to start. If regex=True (default),
-          this is a regular expression.
+        name - The name of the producer to start. If regex=True (default),
+               this is a regular expression.
 
         Keyword Parameters:
-        regex     - True, the 'name' parameter is a regular expression.
-                    Default is False.
+        [regex] - True, the 'name' parameter is a regular expression.
+                  Default is False.
 
         Returns:
         A tuple of status, data
@@ -2441,9 +2690,15 @@ class Communicator(object):
         Subscribe to stream data from matching producers
 
         Parameters:
-        - A regular expression matching producer names
-        - The name of the stream
-        - The recv rate limit
+        regex - A regular expression matching producer names
+
+        Keyword Parameters:
+        [stream]   - The name of the stream.
+        [msg_chan] - True, uses a ldms message channel rather than streams.
+                     Defaults to False.
+                     If stream name is specified, as well as msg_chan set to True,
+                     will return an error message.
+        [rx_rate]  - The recv rate limit
 
         Returns:
         A tuple of status, data
@@ -2521,7 +2776,7 @@ class Communicator(object):
         Query the LDMSD for the status of one or more producers.
 
         Keyword Parameters:
-        name - If not None (default), the name of the producer to query.
+        [name] - If not None (default), the name of the producer to query.
 
         Returns:
         A tuple of status, data
@@ -2579,10 +2834,11 @@ class Communicator(object):
         Report the update hints for the given producer name. If no prdcr name is specified,
         report update hints for all prdcrs.
 
-        Parameters:
+        Keyword Parameters:
         [name] - Producer name
 
         Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is the prdcr update hints, or an error msg if status !=0 or None
         """
@@ -2609,22 +2865,22 @@ class Communicator(object):
         to start the advertiser.
 
         Parameters:
-        - The name to give the advertiser
-        - The transport type, one of 'sock', 'ugni', 'rdma', or 'fabric'
-        - The aggregator's hostname
-        - The aggregator's listening port number
-        - The reconnect interval in microseconds
+        name      - The name to give the advertiser
+        xprt      - The transport type, one of 'sock', 'ugni', 'rdma', or 'fabric'
+        host      - The aggregator's hostname
+        port      - The aggregator's listening port number
+        reconnect - The reconnect interval in microseconds
 
         Keyword Parameters:
-        auth - The authentication domain of the remote daemon
-        perm - The configuration client permission required to
-               modify the producer configuration. Default is None.
-        rail - The number of endpoints in a rail. The default is 1.
-        quota - The send quota of our side of the connection (the daemon we
-                  are controlling). The default is the daemon's default
-                  ('-C' ldmsd option).
-        rx_rate - The recv rate (bytes/second) limit for this connection. The
-                  default is -1 (unlimited).
+        [auth]    - The authentication domain of the remote daemon
+        [perm]    - The configuration client permission required to
+                    modify the producer configuration. Default is None.
+        [rail]    - The number of endpoints in a rail. The default is 1.
+        [quota]   - The send quota of our side of the connection (the daemon we
+                    are controlling). The default is the daemon's default
+                    ('-C' ldmsd option).
+        [rx_rate] - The recv rate (bytes/second) limit for this connection. The
+                    default is -1 (unlimited).
 
         Returns:
         A tuple of status, data
@@ -2653,22 +2909,22 @@ class Communicator(object):
         In this case, the values of the required attributes in advertiser_add must be given.
 
         Parameters:
-        - The name to give the advertiser. This name must be unique among all advertisement sent to the aggregator.
+        name - The name to give the advertiser. This name must be unique among all advertisement sent to the aggregator.
 
         Keyword Parameters:
-        xprt - The transport type, one of 'sock', 'ugni', 'rdma', or 'fabric'
-        host - The aggregator's hostname
-        port - The aggregator's listening port number
-        reconnect - The reconnect interval in microseconds
-        auth - The authentication demain
-        perm - The configuration client permission required to
-               modify the producer configuration. Default is None.
-        rail - The number of endpoints in a rail. The default is 1.
-        quota - The send quota of our side of the connection (the daemon we
-                  are controlling). The default is the daemon's default
-                  ('-C' ldmsd option).
-        rx_rate - The recv rate (bytes/second) limit for this connection. The
-                  default is -1 (unlimited).
+        [xprt]      - The transport type, one of 'sock', 'ugni', 'rdma', or 'fabric'
+        [host]      - The aggregator's hostname
+        [port]      - The aggregator's listening port number
+        [reconnect] - The reconnect interval in microseconds
+        [auth]      - The authentication demain
+        [perm]      - The configuration client permission required to
+                      modify the producer configuration. Default is None.
+        [rail]      - The number of endpoints in a rail. The default is 1.
+        [quota]     - The send quota of our side of the connection (the daemon we
+                      are controlling). The default is the daemon's default
+                      ('-C' ldmsd option).
+        [rx_rate    - The recv rate (bytes/second) limit for this connection. The
+                      default is -1 (unlimited).
 
         Returns:
         A tuple of status, data
@@ -2690,6 +2946,17 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def advertiser_stop(self, name):
+        """
+        Stop an advertisement.
+
+        Parameters:
+        name - The advertise name
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
         req = LDMSD_Request(command_id = LDMSD_Request.ADVERTISER_STOP,
                             attrs = [LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)])
         try:
@@ -2701,6 +2968,17 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def advertiser_del(self, name):
+        """
+        Delete an advertisement
+
+        Parameters:
+        name - The advertise name
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
         req = LDMSD_Request(command_id = LDMSD_Request.ADVERTISER_DEL,
                             attrs = [LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)])
         try:
@@ -2722,23 +3000,26 @@ class Communicator(object):
         unless the disable_start parameter is specified.
 
         Parameters:
-         - Name of the producer listen
+        name - Name of the producer listen
 
         Keyword Parameters:
-         perm - Permission of prdcr_listen configuration object
-         regex - Regular expression to match sampler hostnames
-         ip - IP range in the CIDR format
-         disable_start - True if prdcr_listen should only create advertised producers.
-                         Otherwise, it will create and automatically start advertised producers
-         quota - Receive quota of advertised producers' connections
-         rx_rate - Receive rate of advertised producers' connections
-         type - Advertised producers' type either 'passive' or 'active'. Default is 'passive'
-         advertiser_xprt -- Transport to connect to the advertiser, only required when type=active
-         advertiser_port -- Advertiser's port to connect to, only required when type=active
-         advertiser_auth -- Authentication domain to be used to connect to advertisers, only used when type=active
-         reconnect -- Advertised producers' reconnect interval, only required when type=active
+        [perm]          - Permission of prdcr_listen configuration object
+        [regex]         - Regular expression to match sampler hostnames
+        [ip]            - IP range in the CIDR format
+        [disable_start] - True if prdcr_listen should only create advertised producers.
+                          Otherwise, it will create and automatically start advertised producers
+        [quota]         - Receive quota of advertised producers' connections
+        [rx_rate]       - Receive rate of advertised producers' connections
+        [type]          - Advertised producers' type either 'passive' or 'active'. Default is 'passive'
 
-        Return:
+        Keyword Parameters required when keyword parameter 'type' is set to active:
+        [advertiser_xprt] -- Transport to connect to the advertiser, only required when type=active
+        [advertiser_port] -- Advertiser's port to connect to, only required when type=active
+        [advertiser_auth] -- Authentication domain to be used to connect to advertisers, only used when type=active
+        [reconnect]       -- Advertised producers' reconnect interval, only required when type=active
+
+        Returns:
+        A tuple of status, data
         - status is an errno from the errno module
         - data is an error message if status !=0 or None
         """
@@ -2782,11 +3063,12 @@ class Communicator(object):
         Delete a producer listen
 
         Parameter:
-         - Name of the producer listen to be deleted
+        name - Name of the producer listen to be deleted
 
-        Return:
-         - Status is an errno from the errno module
-         - Data is an error message if status != 0 or None
+        Returns:
+        A tuple of status, data
+         - status is an errno from the errno module
+         - data is an error message if status != 0 or None
         """
         attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)]
         req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_DEL,
@@ -2803,11 +3085,12 @@ class Communicator(object):
         Start a producer listen
 
         Parameter:
-         - Name of the producer listen to be started
+        name - Name of the producer listen to be started
 
-        Return:
-         - Status is an errno from the errno module
-         - Data is an error message if status != 0 or None
+        Returns:
+        A tuple of status, data
+         - status is an errno from the errno module
+         - data is an error message if status != 0 or None
         """
         attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)]
         req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_START,
@@ -2824,11 +3107,12 @@ class Communicator(object):
         Stop a producer listen
 
         Parameter:
-         - Name of the producer listen to be stopped
+        name - Name of the producer listen to be stopped
 
-        Return:
-         - Status is an errno from the errno module
-         - Data is an error message if status != 0 or None
+        Returns:
+        A tuple of status, data
+         - status is an errno from the errno module
+         - data is an error message if status != 0 or None
         """
         attr_list = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)]
         req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_STOP,
@@ -2843,6 +3127,12 @@ class Communicator(object):
     def prdcr_listen_status(self):
         """
         Get the status of all producer listen
+
+        Returns:
+        A tuple of status, data
+         - status is an errno from the errno module
+         - data is the status of all producer listeners
+           or an error message if status != 0 or None
         """
         req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_STATUS)
         try:
@@ -2859,24 +3149,24 @@ class Communicator(object):
         is to pull a set's contents.
 
         Parameters:
-        name      - The update policy name
+        name - The update policy name
 
         Keyword Parameters:
-        interval  - The update data collection interval. This is when the
-                    push argument is not given. Defaults to 1s
-        push      - [onchange|true] 'onchange' means the updater will receive
-                    updated set data when the set sampler ends a transaction or
-                    explicitly pushes the update. 'true' means the updater
-                    will receive an update only when the set source explicitly
-                    pushes the update.
-                    If `push` is used, `auto_interval` cannot be `true`.
-        auto      - [True|False] If True, the updater will schedule
-                    set updates according to the update hint. The sets
-                    with no hints will not be updated. If False, the
-                    updater will schedule the set updates according to
-                    the given sample interval. The default is False.
-        perm      - The configuration client permission required to
-                    modify the updater configuration.
+        [interval]  - The update data collection interval. This is when the
+                      push argument is not given. Defaults to 1s
+        [push]      - [onchange|true] 'onchange' means the updater will receive
+                      updated set data when the set sampler ends a transaction or
+                      explicitly pushes the update. 'true' means the updater
+                      will receive an update only when the set source explicitly
+                      pushes the update.
+                      If `push` is used, `auto_interval` cannot be `true`.
+        [auto]      - [True|False] If True, the updater will schedule
+                      set updates according to the update hint. The sets
+                      with no hints will not be updated. If False, the
+                      updater will schedule the set updates according to
+                      the given sample interval. The default is False.
+        [perm]      - The configuration client permission required to
+                      modify the updater configuration.
 
         Returns:
         A tuple of status, data
@@ -2947,8 +3237,12 @@ class Communicator(object):
         """
         Get the status of all updaters on a producer.
 
-        Parameters:
-        name - The name of the producer on which updater status is requested
+        Keyword Parameters:
+        [name]    - The name of the producer on which updater status is requested
+        [summary] - [True/False] If True, don't show updaters' producers.
+                    Default is False.
+        [reset]   - [True/False] If True, resets the counter after it reports the information.
+                    Default is False.
 
         Returns:
         A tuple of status, data
@@ -2976,16 +3270,17 @@ class Communicator(object):
         Start a STOPPED updater.
 
         Parameters:
-        - The name of the updater to start.
+        name - The name of the updater to start.
 
         Keyword Parameters:
-        interval  - The update data collection interval in microseconds.
-                    This is required if auto is False.
-        auto      - [True|False] If True, the updater will schedule
-                    set updates according to the update hint. The sets
-                    with no hints will not be updated. If False, the
-                    updater will schedule the set updates according to
-                    the given sample interval. The default is False.
+        [interval]      - The update data collection interval in microseconds.
+                          This is required if auto is False.
+        [offset]        - Offset for synchronization in microseconds.
+        [auto_interval] - [True|False] If True, the updater will schedule
+                          set updates according to the update hint. The sets
+                          with no hints will not be updated. If False, the
+                          updater will schedule the set updates according to
+                          the given sample interval. The default is False.
 
         Returns:
         A tuple of status, data
@@ -3048,8 +3343,8 @@ class Communicator(object):
         updater must be STOPPED.
 
         Parameters:
-        - The updater name
-        - A regular expression matching zero or more producers
+        name  - The updater name
+        regex - A regular expression matching zero or more producers
 
         Returns:
         A tuple of status, data
@@ -3076,8 +3371,8 @@ class Communicator(object):
         updater must be STOPPED.
 
         Parameters:
-        - The updater name
-        - A regular expression matching zero or more producers
+        name  - The updater name
+        regex - A regular expression matching zero or more producers
 
         Returns:
         A tuple of status, data
@@ -3106,10 +3401,13 @@ class Communicator(object):
         Parameters::
         name  - The update policy name
         regex - The regular expression string
-        match - The value with which to compare; if match='inst' (default),
-                the expression will match the set's instance name, if
-                match='schema', the expression will match the set's
-                schema name.
+
+        Keyword Parameters:
+        [match] - The value with which to compare; if match='inst',
+                  the expression will match the set's instance name, if
+                  match='schema', the expression will match the set's
+                  schema name.
+                  Default is 'schema'.
 
         Returns:
         A tuple of status, data
@@ -3140,10 +3438,13 @@ class Communicator(object):
         Parameters::
         name  - The update policy name
         regex - The regular expression string
-        match - The value with which to compare; if match='inst' (default),
-                the expression will match the set's instance name, if
-                match='schema', the expression will match the set's
-                schema name.
+
+        Keyword Parameters:
+        [match] - The value with which to compare; if match='inst',
+                  the expression will match the set's instance name, if
+                  match='schema', the expression will match the set's
+                  schema name.
+                  Default is 'schema'
 
         Returns:
         A tuple of status, data
@@ -3166,8 +3467,11 @@ class Communicator(object):
 
     def updtr_match_list(self, name=None):
         """
-        Return a list of sets that an updater is matched to update.
-        name - The update policy name
+        Return a list of sets that an updater is matched to update. If name is not set,
+        returns a list of sets for all updaters.
+
+        Keyword Parameters:
+        [name] - The update policy name
 
         Returns:
         A tuple of status, data
@@ -3190,9 +3494,10 @@ class Communicator(object):
 
     def updtr_task(self, name=None):
         """
-        Report the updater tasks
+        Report the updater tasks for an updater if 'name' is specified. If name is
+        not set, returns tasks for all updaters.
 
-        Parameters:
+        Keyword Parameters:
         [name] - Updater name, if ommited, reports on all updaters
 
         Returns:
@@ -3213,11 +3518,17 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def usage(self, name=None):
-        ### WIP
         """
         List the usage of the plugins loaded on the server.
-        Parameters:
-        name        (optional) Name of plugin
+
+        Keyword Parameters:
+        [name] - Name of plugin instance
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the usage for a single plugin instance, or all loaded plugins.
+          If status != 0 or None an error msg is returned
         """
         attr_list = []
         if name:
@@ -3246,14 +3557,14 @@ class Communicator(object):
         container - The storage backend container name.
 
         Keyword Parameters:
-        schema        - The schema name of the metric set to store. If 'schema' is given, 'regex' is ignored.
-        regex         - A regular expression matching set schemas. This must be
-                        used with decomposition. Either 'schema' or 'regex' must be given.
-        perm          - The permission required to modify the storage policy,
-                        default perm=0o600
-        flush         - Interval between calls to the storage plugin flush method.
-                        By default, the flush method is not called.
-        decomposition - The path to a decomposition configuration file
+        [schema]        - The schema name of the metric set to store. If 'schema' is given, 'regex' is ignored.
+        [regex]         - A regular expression matching set schemas. This must be
+                          used with decomposition. Either 'schema' or 'regex' must be given.
+        [perm]          - The permission required to modify the storage policy,
+                          default perm=0o600
+        [flush]         - Interval between calls to the storage plugin flush method.
+                          By default, the flush method is not called.
+        [decomposition] - The path to a decomposition configuration file
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
@@ -3313,7 +3624,7 @@ class Communicator(object):
         Start a STOPPED storage policy.
 
         Parameters:
-        - The name of the storage policy to start.
+        name - The name of the storage policy to start.
 
         Returns:
         A tuple of status, data
@@ -3337,7 +3648,7 @@ class Communicator(object):
         Stop a RUNNING storage policy.
 
         Parameters:
-        - The name of the storage policy
+        name - The name of the storage policy
 
         Returns:
         A tuple of status, data
@@ -3359,9 +3670,17 @@ class Communicator(object):
 
     def strgp_status(self, name=None):
         """
-        Get the status of storage policies
+        Get the status of storage policies. Returns status of all storage
+        policies if name is not set.
+
         Parameters:
-            [name=]      storage policy name
+        [name] - The name of a storage policy
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is a json formatted string of storage policies status,
+          or an error message if status != 0 or None
         """
         attr_list = None
         if name:
@@ -3381,8 +3700,8 @@ class Communicator(object):
         storage policy must be STOPPED.
 
         Parameters:
-        - The storage policy name
-        - A regular expression matching zero or more producers
+        name - The storage policy name
+        regex - A regular expression matching zero or more producers
 
         Returns:
         A tuple of status, data
@@ -3409,8 +3728,8 @@ class Communicator(object):
         storage policy must be STOPPED.
 
         Parameters:
-        - The storage policy name
-        - A regular expression matching zero or more producers
+        name - The storage policy name
+        regex - A regular expression matching zero or more producers
 
         Returns:
         A tuple of status, data
@@ -3437,8 +3756,8 @@ class Communicator(object):
         in the schema specified in strgp_add will be stored.
 
         Parameters::
-        - The update policy name
-        - The name of the metric to store
+        name        - The update policy name
+        metric_name - The name of the metric to store
 
         Returns:
         A tuple of status, data
@@ -3465,8 +3784,8 @@ class Communicator(object):
         must be STOPPED.
 
         Parameters:
-        - The storage policy name
-        - The metric name to remove
+        name        - The storage policy name
+        metric_name - The metric name to remove
 
         Returns:
         A tuple of status, data
@@ -3488,7 +3807,23 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def xprt_stats(self, reset=False, level=0):
-        """Query the daemon's telemetry data"""
+        """
+        Query the daemon's telemetry data
+
+        Keyword Parameters:
+        [reset] - [True/False]
+                  If True, reset the xprt statistics after returning them.
+                  Default is False.
+        [level] - [True/False]
+                  If True, the send-queue depth of each endpoint will be reported.
+                  Default is False.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is a json formatted string of xprt statistics,
+          or an error message if status != 0 or None
+        """
         if reset is None:
             reset = False
         req = LDMSD_Request(
@@ -3508,6 +3843,25 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def profiling(self, enable = None, reset = None):
+        """
+        Enable/disable and query the LDMS operation profiling data.
+        This command is intended for diagnostic or study to improve LDMSD performance.
+        The command always reports the cached profiling data if it exists.
+
+        Keyword Parameters:
+        [enable] - [True/False]
+                   If True, enables LDMS profiling.
+                   Default is False.
+        [reset]  - [True/False]
+                   If True, reset and free cached profiling data after report.
+                   Default is False.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is a json formatted string of LDMSD profiling data,
+          or an error message if status != 0 or None
+        """
         attrs = []
         if enable is not None:
             attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.TYPE,
@@ -3526,7 +3880,20 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def thread_stats(self, reset=False):
-        """Query the daemon's I/O thread utilization data"""
+        """
+        Query the daemon's I/O thread utilization data
+
+        Keyword Parameters:
+        [reset] - [True/False]
+                  If True, reset the thread statistics after report.
+                  Default is False.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is a json formatted string of thread statistics,
+          or an error message if status != 0 or None
+        """
         if reset is None:
             reset = False
         req = LDMSD_Request(
@@ -3581,13 +3948,17 @@ class Communicator(object):
     def daemon_status(self, thread_stats=None):
         """
         Query the daemon's status
-        Parameters:
-        - True/False boolean that returns thread statistics in response if True
+
+        Keyword Parameters:
+        [thread_stats] - [True/False]
+                         If True, includes thread statistics in response.
+                         Default is False.
+
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
         - data is the daemon's current status. if thread_stats is True, it
-               also returns the daemon's thread statistics
+          also returns the daemon's thread statistics
         """
         attr_list = None
         if thread_stats:
@@ -3610,11 +3981,19 @@ class Communicator(object):
     def set_sec_mod(self, regex, uid = None, gid = None, perm = None):
         """
         Change the security parameters of the set matched the regular expression
+
         Parameters:
-           Regular expression string
-           UID
-           GID
-           Permissions
+        regex - Regular expression string
+
+        Keyword Parameters:
+        [uid]  - UID
+        [gid]  - GID
+        [perm] - Permissions
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error msg if status !=0 or None
         """
         attr_list = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.REGEX,
                                     value = regex)]
@@ -3639,7 +4018,17 @@ class Communicator(object):
 
     def log_status(self, name = None):
         """
-        List the log systems with the log level threashold
+        List the log systems with the log level threashold. If name is not set, return
+        status of all log levels.
+
+        Keyword Parameters:
+        [name] - Name of the log level
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is a json formatted string of the status of log systems,
+          or an error msg if status !=0 or None
         """
         if name is not None:
             attr_list = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.NAME, value = name)]
@@ -3675,13 +4064,13 @@ class Communicator(object):
         """
         Configure qgroup.
 
-        Parameters:
-        - quota(str): amount of quota in bytes (e.g. '3K').
-        - ask_interval(str): time interval to ask quota from members (e.g.  '1s').
-        - ask_amount(str): the byte amount to ask members for (e.g. '1K').
-        - ask_mark(str): the quota mark to start asking members for more quota
-                         (e.g. '1K').
-        - reset_interval(str): time interval to reset our quota (e.g. '1s').
+        Keyword Parameters:
+        [quota]          - String amount of quota in bytes (e.g. '3K').
+        [ask_interval]   - String time interval to ask quota from members (e.g.  '1s').
+        [ask_amount]     - String byte amount to ask members for (e.g. '1K').
+        [ask_mark]       - String quota mark to start asking members for more quota
+                           (e.g. '1K').
+        [reset_interval] - String time interval to reset our quota (e.g. '1s').
 
         Returns:
         A tuple of status, data
@@ -3700,10 +4089,12 @@ class Communicator(object):
         Add a member into the Quota Group (qgroup).
 
         Parameters:
-        - host(str): the host (e.g. 'node1').
-        - xprt(str): the transport plugin (e.g. 'sock').
-        - port(str): the port (e.g. '12345', default: '411').
-        - auth(str): the authentication object for this connection (default; None).
+        host - The host (e.g. 'node1').
+        xprt - The transport plugin (e.g. 'sock').
+
+        Keyword Parameters:
+        [port] - The port (e.g. '12345', default: '411').
+        [auth] - The authentication domain name for this connection (default; None).
 
         Returns:
         A tuple of status, data
@@ -3721,8 +4112,10 @@ class Communicator(object):
         Remove a member from the Quota Group (qgroup).
 
         Parameters:
-        - host(str): the host (e.g. 'node1').
-        - port(str): the port (e.g. '12345', default: '411').
+        host - The host (e.g. 'node1').
+
+        Keyword Parameters:
+        [port] - The port (e.g. '12345', default: '411').
 
         Returns:
         A tuple of status, data
