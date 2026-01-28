@@ -2284,7 +2284,7 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	}
 
 	if (set->push_cb) {
-		set->push_cb(x, set, ntohl(push_flags), set->push_cb_arg);
+		set->push_cb(x, set, push_flags, set->push_cb_arg);
 	}
 }
 
