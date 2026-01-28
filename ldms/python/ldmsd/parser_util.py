@@ -595,7 +595,7 @@ class YamlCfg(object):
             if 'prdcr_listen' in agg:
                 peer_list += agg['prdcr_listen']
             for prod in peer_list:
-                if prod['updaters'] is None:
+                if not 'updaters' in prod or prod['updaters'] is None:
                     continue
                 if type(prod['updaters']) is not list:
                     raise TypeError(f'{LDMS_YAML_ERR}\n'
