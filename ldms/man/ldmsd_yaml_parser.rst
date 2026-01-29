@@ -8,7 +8,7 @@ ldmsd_yaml_parser
 A python program to parse a YAML configuration file into a v4 LDMS configuration.
 ---------------------------------------------------------------------------------
 
-:Date: 20 Nov 2024 "ovis-4.4.5"
+:Date: 20 Nov 2024 "ovis-4.5.2"
 :Manual section: 8
 :Manual group: LDMSD
 
@@ -23,27 +23,33 @@ SYNOPSIS
 DESCRIPTION
 ===========
 
-A single ldmsd can be configured using a YAML configuration file. This
-can be done by running ldmsd directly, or generating a configuration
-parser with the ldmsd_yaml_parser
+A single ldmsd daemon configuration script or a fleet of them can be generated from
+an ldms YAML configuration file. When ldmsd is configured with a -y option, the
+ldmsd daemon uses ldmsd_yaml_parser to translate the yaml input.
 
 LDMSD YAML OPTIONS
 ==================
 
-**-y,**\ *CONFIG_PATH*
-   The path to the YAML configuration file.
+Option -y is required and options -n and -p are mutually exclusive.
 
-**-n,**\ *NAME*
-   The name of the LDMS daemon.
+**-y,--ldms_config**\ *INPUT_CONFIG_PATH*
+   The path to the LDMSD YAML configuration file. This is required.
 
-LDMSD_YAML_PARSER COMMAND SYNTAX
-================================
+**-p,--output_path,--generate_config_path**\ *DIR_PATH*
+   The name of an existing directory to dump fleet of files.
 
-**--ldms-config,**\ *CONFIG_PATH*
-   The path to the YAML configuration file.
+**-n,--daemon_name**\ *DAEMON_NAME*
+   The name of the single LDMS daemon to generate.
 
-**--daemon-name,**\ *NAME*
-   The name of the LDMS daemon to configure.
+**-l,--log_level**\ *LEVEL*
+   Set the log level (debug,info,warning,error,critical).
+   The debug level will dump anchor-expanded yaml and data derived from the yaml for review.
+
+**-L,--log_file**
+   Set the log output file to use instead of stderr.
+
+**-h,--help**
+   Print help to stdout.
 
 YAML CONFIGURATION SYNTAX
 =========================
