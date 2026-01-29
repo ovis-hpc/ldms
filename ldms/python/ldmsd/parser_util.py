@@ -483,7 +483,7 @@ class YamlCfg(object):
             plugins = check_opt('plugins', agg_spec)
             if plugins:
                 if plugins is not list:
-                    raise ValueError(f'"plugins" must be a list of plugin instance names"\n')
+                    raise ValueError('"plugins" must be a list of plugin instance names\n')
                 for plugin in plugins:
                     check_plugin_config(plugin, self.plugins)
             if group not in aggregators:
@@ -491,7 +491,7 @@ class YamlCfg(object):
             subscribe = check_opt('subscribe', agg_spec)
             if subscribe:
                 for stream in subscribe:
-                    check_required([ 'stream', 'regex' ], stream, f'"aggregators" stream specification')
+                    check_required([ 'stream', 'regex' ], stream, '"aggregators" stream specification')
             for name in names:
                 aggregators[group][name] = { 'state' : 'stopped' } # 'running', 'error'
                 self.build_advertisers(agg_spec)
