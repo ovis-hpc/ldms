@@ -97,7 +97,9 @@ names
 
 Regex of a group of LDMS daemon attributes and endpoints that share
 transport configuration. These strings are referenced in the samplers
-and aggregators sections. Hostlist format.
+and aggregators sections. Hostlist format. Convention is to use the hostname
+followed by a suffix, such as "agg" or "sampler"
+e.g. "node-[1-4]-agg" for hosts "node-[1-4]".
 
 hosts
 -----
