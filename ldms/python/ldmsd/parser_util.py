@@ -1165,6 +1165,9 @@ class YamlCfg(object):
         all exist on the machines relevant to the ldmsd cluster.
         """
         for dmn in self.daemons:
+            logging.debug(f"daemon {dmn} PRETTY:")
+            logging.debug(pprint.pformat(self.daemons[dmn]))
+            logging.debug(f"daemon {dmn} END --------")
             try:
                 dstr = self.daemon_config(self.args.ldms_config, dmn)
                 if len(dstr) > 1:
