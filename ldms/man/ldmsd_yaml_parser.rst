@@ -91,12 +91,18 @@ expected.
 daemons
 =======
 
-List of dictionaries describing LDMS daemons that are part of the cluster and
-their endpoints that share transport configurations. The primary keys are
-"names", "hosts", "endpoints", and "environment". Any keys provided that do not
-match this string values (except for "stream_enable" and "msg_enable") are
-assumed to be either CLI commands, or overarching default configuration
-commands for a daemon.
+| List of dictionaries describing LDMS daemons that are part of the cluster and
+  their endpoints that share transport configurations. The primary keys are
+  "names", "hosts", "endpoints", and "environment". Any keys provided that do not
+  match this string values (except for "stream_enable" and "msg_enable") are
+  assumed to be either CLI commands, or overarching default configuration
+  commands for a daemon. This includes commands such as "metric_sets_default_authz",
+  and "set_memory". If a command requires multiple parameters, it may be set as a dictionary.
+| e.g.
+| metric_sets_default_authz:
+    uid : 0
+    gid : 0
+    perm : "777"
 
 names
 -----
