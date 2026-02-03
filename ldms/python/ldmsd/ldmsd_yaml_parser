@@ -4,6 +4,7 @@ import yaml
 import errno
 import argparse
 import logging
+import pprint
 from ldmsd.parser_util import *
 
 if __name__ == "__main__":
@@ -37,6 +38,9 @@ if __name__ == "__main__":
     config_fp = open(args.ldms_config)
     conf_spec = yaml.safe_load(config_fp)
 
+    logging.debug("ORIGINAL YAML after anchor expansion")
+    logging.debug(pprint.pformat(conf_spec))
+
     if not isinstance(conf_spec, (list, dict)):
         logging.error(f"Input {args.ldms_config} is not yaml. Contents:")
         logging.error(conf_spec)
@@ -46,13 +50,21 @@ if __name__ == "__main__":
 
     if args.daemon_name:
         ldmsd_cfg_str = cluster.daemon_config(args.ldms_config, args.daemon_name)
+        import json
+        logging.debug("# YamlCfg after processing:")
+        logging.debug(cluster)
+        logging.debug("# ========================================================")
         print(f"# {__file__} generated {args.daemon_name} from {args.ldms_config} to stdout")
         print(f'{ldmsd_cfg_str}')
         sys.exit(0)
 
     if args.output_path:
         logging.debug(f"{__file__} wrote group configs from {args.ldms_config} to {args.output_path}")
+        logging.debug("# --------------------------------------------------------")
         rc = cluster.config_v4(args.output_path)
+        logging.debug("YamlCfg after processing:")
+        logging.debug(cluster)
+        logging.debug("# ========================================================")
         if rc:
             sys.exit(rc)
         logging.info('LDMSD config files generated')
