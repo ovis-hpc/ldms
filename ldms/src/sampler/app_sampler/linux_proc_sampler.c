@@ -4122,6 +4122,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
         .base.type = LDMSD_PLUGIN_SAMPLER,
+        .base.flags = LDMSD_PLUGIN_NOT_RENAMABLE,
         .base.constructor = constructor,
         .base.destructor = destructor,
         .base.config = linux_proc_sampler_config,
