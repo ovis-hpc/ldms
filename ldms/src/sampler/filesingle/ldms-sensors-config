@@ -24,6 +24,13 @@ IGNORE_TYPES = [
     "hyst",
 ]
 
+def get_freq_file(temp):
+    met_file1 = temp.replace("max_fr", "cur_fr")
+    if os.path.isfile(met_file1):
+        return met_file1
+    met_file2 = temp.replace("cpuinfo_max_freq", "scaling_cur_freq")
+    if os.path.isfile(met_file2):
+        return met_file2
 
 def main():
     parser = argparse.ArgumentParser(
@@ -203,7 +210,7 @@ def main():
             continue
         if line.startswith("openat("):
             temp = line.split('"')[1]
-            met_file = temp.replace("max_fr", "cur_fr")
+            met_file = get_freq_file(temp)
             parts = temp.split("/")
             device = parts[-3]
             item = "cur_freq"
@@ -213,7 +220,7 @@ def main():
             devices[device][item] = {"label": "cur_freq", "inputfile": met_file}
         elif line.startswith("open("):
             temp = line.split('"')[1]
-            met_file = temp.replace("max_fr", "cur_fr")
+            met_file = get_freq_file(temp)
             parts = temp.split("/")
             device = parts[-3]
             item = "cur_freq"
