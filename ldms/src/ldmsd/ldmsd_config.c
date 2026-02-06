@@ -171,7 +171,7 @@ struct ldmsd_plugin_generic * load_plugin(const char *plugin_name,
 	 * - If flags & MULTI_INSTANCE is !0, then
 	 *   -- both constructor() and destructor() must be defined
 	 */
-	if (plugin->api->flags && LDMSD_PLUGIN_MULTI_INSTANCE) {
+	if (plugin->api->flags & LDMSD_PLUGIN_MULTI_INSTANCE) {
 		if (!plugin->api->constructor || !plugin->api->destructor) {
 			ovis_log(config_log, OVIS_LERROR,
 				 "The library, '%s', has the multi-instance flag, "
