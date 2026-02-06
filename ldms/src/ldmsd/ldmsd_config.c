@@ -105,7 +105,7 @@ enum ldmsd_plugin_data_e {
  *
  * Returns NULL on error.
  */
-struct ldmsd_plugin_generic * load_plugin(const char *plugin_name,
+struct ldmsd_plugin_generic * load_plugin(const char *plugin_name, bool renaming,
 				 char *errstr, size_t errlen)
 {
 	struct ldmsd_plugin_generic *plugin;
@@ -181,6 +181,12 @@ struct ldmsd_plugin_generic * load_plugin(const char *plugin_name,
 			goto err_2;
 		}
 	} else {
+		if (renaming && plugin->api->flags & LDMSD_PLUGIN_NOT_RENAMABLE) {
+			ovis_log(config_log, OVIS_LERROR,
+				 "The plugin '%s' is not renamable. Its name must match its plugin_name.\n",
+				 plugin_name);
+			goto err_2;
+		}
 		/* Verify that this plugin hasn't already been loaded
 		 * with another configuration name */
 		ldmsd_cfgobj_sampler_t sampler;
@@ -399,13 +405,13 @@ int ldmsd_load_plugin(char *cfg_name, char *plugin_name,
 	struct ldmsd_plugin_generic *plugin;
 	ldmsd_cfgobj_sampler_t sampler;
 	ldmsd_cfgobj_store_t store;
+	bool renaming = false;
 
 	if (!plugin_name || !cfg_name)
 		return EINVAL;
-	/* If this plugin does not support multiple configurations,
-	 * the plugin_name must equal the cfg_name
-	 */
-	plugin = load_plugin(plugin_name, errstr, errlen);
+	if (0 != strcmp(plugin_name, cfg_name))
+		renaming = true;
+	plugin = load_plugin(plugin_name, renaming, errstr, errlen);
 	if (!plugin)
 		return errno;
 	switch (plugin->api->type) {

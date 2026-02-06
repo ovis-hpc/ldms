@@ -932,6 +932,7 @@ static void destructor(ldmsd_plug_handle_t handle)
 struct ldmsd_sampler ldmsd_plugin_interface = {
 	.base = {
 		.type = LDMSD_PLUGIN_SAMPLER,
+		.flags = LDMSD_PLUGIN_NOT_RENAMABLE,
 		.config = config,
 		.usage = usage,
 		.constructor = constructor,
