@@ -972,6 +972,7 @@ int process_config_str(char *config_str, int *lno, int trust);
 char *process_yaml_config_file(const char *path, const char *dname);
 
 #define LDMSD_PLUGIN_MULTI_INSTANCE 1 /* Set in flags to indicate MI capability */
+#define LDMSD_PLUGIN_NOT_RENAMABLE 2 /* Set in flags to indicate not renameable */
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 /* This struct is owned by the plugin. ldmsd should never modify the contents. */
