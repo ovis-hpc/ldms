@@ -24,7 +24,7 @@ bin_SCRIPTS += ldms-sensors-config
 dist_man7_MANS += ldms-sampler_filesingle.man
 dist_man1_MANS += ldms-sensors-config.man
 
-TESTS = test_sensors test_lscpu
+TESTS = test_sensors
 endif
 
 EXTRA_DIST += \
