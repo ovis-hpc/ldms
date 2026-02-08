@@ -84,6 +84,8 @@ def check_intrvl_str(interval_s):
         return interval_s
     if type(interval_s) != str:
         raise ValueError(f'{error_str}')
+    if "${" in interval_s:
+        return interval_s
     interval_s = interval_s.lower()
     unit = next((unit for unit in unit_strs if unit in interval_s), None)
     if unit:
