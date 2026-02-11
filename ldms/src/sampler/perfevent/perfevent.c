@@ -477,7 +477,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	return 0;
 
 err0:
-	ovis_log(mylog, OVIS_LERROR, usage(handle));
+	ovis_log(mylog, OVIS_LERROR, "%s", usage(handle));
 	goto err2;
 err1:
 	ovis_log(mylog, OVIS_LERROR, "perfevent: Invalid configuration keyword '%s'\n", action);
