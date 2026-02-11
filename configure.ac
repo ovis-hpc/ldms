@@ -334,7 +334,7 @@ OPTION_DEFAULT_ENABLE([hello_stream], [ENABLE_HELLO_STREAM])
 OPTION_DEFAULT_ENABLE([hello_ldms_msg], [ENABLE_HELLO_LDMS_MSG])
 OPTION_DEFAULT_ENABLE([blob_stream], [ENABLE_BLOB_STREAM])
 OPTION_DEFAULT_ENABLE([blob_msg], [ENABLE_BLOB_MSG])
-OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
+OPTION_DEFAULT_ENABLE([perfevent], [ENABLE_PERFEVENT])
 OPTION_DEFAULT_DISABLE([mpi_sampler], [ENABLE_MPI_SAMPLER])
 OPTION_DEFAULT_DISABLE([mpi_noprofile], [ENABLE_MPI_NOPROFILE])
 if test -z "$ENABLE_MPI_SAMPLER_TRUE" ; then
@@ -925,6 +925,9 @@ AS_IF([test "x$enable_zfs" = xyes],[
         [AC_MSG_ERROR([libzfs or its headers not found])])
 ])
 
+OPTION_DEFAULT_DISABLE([cap-perfmon], [ENABLE_CAP_PERFMON],
+		       [install ldmsd with cap_perfmon capability.])
+
 # define substitutions for configvars and other sed-generated files.
 # note carefully the escapes.
 OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
@@ -961,6 +964,10 @@ OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
 
 AC_SUBST(ac_configure_args)
 AC_SUBST(configure_input)
+
+AC_DEFINE_UNQUOTED([LDMS_PREFIX],["$prefix"],[prefix])
+AC_DEFINE_UNQUOTED([LDMS_DATADIR],["$datadir"],[datadir])
+AC_DEFINE_UNQUOTED([LDMS_DATAROOTDIR],["$datarootdir"],[datarootdir])
 
 AC_CONFIG_FILES([Makefile
 docs/Makefile

@@ -83,10 +83,17 @@ test_plugattr_SOURCES = ldmsd_plugattr.c ldmsd_plugattr.h
 test_plugattr_CFLAGS = -DTEST_PLUGATTR $(AM_CFLAGS)
 test_plugattr_LDADD = $(LOVIS_UTIL) $(LCOLL) -lm -lpthread
 
+if ENABLE_CAP_PERFMON
+DO_CAP_PERFMON = true
+else
+DO_CAP_PERFMON = false
+endif
+
 # make sym links for aggd scripting support
 install-exec-hook:
 	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsd ldms-aggd
 	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsctl ldmsaggctl
+	if $(DO_CAP_PERFMON) ; then sudo setcap 'cap_perfmon=ep' $(DESTDIR)$(sbindir)/ldmsd ; fi
 
 check-local:
 	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) ./test_plugattr $(srcdir)/input/test_plugattr.txt
