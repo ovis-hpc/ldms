@@ -34,8 +34,6 @@ DEFAULT_ATTR_VAL = {
 }
 
 INT_ATTRS = [
-    'interval',
-    'offset',
     'reconnect',
     'flush'
 ]
