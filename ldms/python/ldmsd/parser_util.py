@@ -195,29 +195,28 @@ def parse_to_cfg_str(cfg_obj):
     """
     cfg_str = ''
     for key in cfg_obj:
-        if key not in INT_ATTRS:
-            if len(cfg_str) > 1:
-                cfg_str += ' '
-            val = cfg_obj[key]
-            if val is None:
-                cfg_str += key
-                continue
-            if isinstance(val, (str, int, float)):
-                cfg_str += key + '=' + str(val)
-                continue
-            if isinstance(val, list):
-                for i in val:
-                    if len(cfg_str) > 1:
-                        cfg_str += ' '
-                    if i is None:
-                        cfg_str += str(key)
-                        continue
-                    if isinstance(i, (str, int, float)):
-                        cfg_str += key + '=' + str(i)
-                    else:
-                        raise TypeError(f'Error: parse_to_cfg_str not expecting list value of {i} for key '+  key )
-                continue
-            raise TypeError(f'Error: parse_to_cfg_str not expecting value {val} for key '+  key )
+        val = cfg_obj[key]
+        if len(cfg_str) > 1:
+            cfg_str += ' '
+        if val is None:
+            cfg_str += key
+            continue
+        if isinstance(val, (str, int, float)):
+            cfg_str += key + '=' + str(val)
+            continue
+        if isinstance(val, list):
+            for i in val:
+                if len(cfg_str) > 1:
+                    cfg_str += ' '
+                if i is None:
+                    cfg_str += str(key)
+                    continue
+                if isinstance(i, (str, int, float)):
+                    cfg_str += key + '=' + str(i)
+                else:
+                    raise TypeError(f'Error: parse_to_cfg_str not expecting list value of {i} for key '+  key )
+            continue
+        raise TypeError(f'Error: parse_to_cfg_str not expecting value {val} for key '+  key )
 
     return cfg_str
 
@@ -1022,10 +1021,6 @@ class YamlCfg(object):
                             hostname = socket.gethostname()
                             cfg_args = {}
                             for attr in cfg_:
-                                if attr == 'name' or attr == 'interval' or attr == 'reconnect':
-                                    continue
-                                if attr == 'perm':
-                                    cfg_[attr] = perm_handler(cfg_[attr])
                                 cfg_args[attr] = cfg_[attr]
                             if first:
                                 first = False
