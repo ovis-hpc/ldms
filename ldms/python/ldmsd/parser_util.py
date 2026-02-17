@@ -86,6 +86,11 @@ def check_intrvl_str(interval_s):
         return interval_s
     if type(interval_s) != str:
         raise ValueError(f'{error_str}')
+    if interval_s.startswith("$"):
+        if bool(re.match(r'^\$(?:\{[A-Za-z][A-Za-z0-9_]*\}|[A-Za-z][A-Za-z0-9_]*)$', interval_s)):
+            return interval_s
+        else:
+            raise ValueError(f'"{interval_s}" is not a valid environment reference to a time-interval string\n')
     interval_s = interval_s.lower()
     unit = next((unit for unit in unit_strs if unit in interval_s), None)
     if unit:
