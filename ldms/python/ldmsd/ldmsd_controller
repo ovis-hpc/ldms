@@ -1034,6 +1034,9 @@ class LdmsdCmdParser(cmd.Cmd):
         Get the statuses of all producers
         Parameters:
         [name=]        producer name
+        [summary=]     True to print only the producer status.
+                       False (default) will print the producer status
+                       and the producer sets collected from the producer host
         """
         arg = self.handle_args('prdcr_status', arg)
         if not arg:
@@ -1066,10 +1069,11 @@ class LdmsdCmdParser(cmd.Cmd):
                     f"{prdcr['quota']:>8} " \
                     f"{prdcr['rx_rate']:>8} " \
                     f"{pstate:12} {prdcr['type']:10}")
-            for pset in prdcr['sets']:
-                print("    {0:16} {1:16} {2}".format(pset['inst_name'],
-                                                        pset['schema_name'],
-                                                        pset['state']))
+            if arg['summary'] is None or arg['summary'] == False:
+                for pset in prdcr['sets']:
+                    print("    {0:16} {1:16} {2}".format(pset['inst_name'],
+                                                            pset['schema_name'],
+                                                            pset['state']))
 
     def complete_prdcr_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_status', text)
@@ -3125,7 +3129,7 @@ class LdmsdCmdParser(cmd.Cmd):
         arg = self.handle_args('prdcr_status', arg)
         if not arg:
             return
-        rc, msg = self.comm.prdcr_status(arg['name'])
+        rc, msg = self.comm.prdcr_status(arg['name'], summary=False)
         if rc != 0:
             print(f'Error {rc}: {msg}')
             return

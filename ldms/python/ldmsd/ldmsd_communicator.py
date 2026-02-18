@@ -97,7 +97,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_start_regex': {'req_attr': ['regex'],
                                             'opt_attr': ['interval', 'reconnect']},
                       'prdcr_stop_regex': {'req_attr': ['regex']},
-                      'prdcr_status': {'req_attr': [], 'opt_attr':['name']},
+                      'prdcr_status': {'req_attr': [], 'opt_attr':['name', 'summary']},
                       'prdcr_set_status': {'opt_attr': ['producer', 'instance', 'schema']},
                       'prdcr_hint_tree': {'req_attr':['name'], 'opt_attr': []},
                       'prdcr_subscribe': {'req_attr':['regex'],
@@ -2778,12 +2778,14 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_status(self, name = None):
+    def prdcr_status(self, name = None, summary = False):
         """
         Query the LDMSD for the status of one or more producers.
 
         Keyword Parameters:
         [name] - If not None (default), the name of the producer to query.
+        [summary] - If false (default), for each producer, the producer sets will be reported.
+                    If true, only the producer status will be reported.
 
         Returns:
         A tuple of status, data
@@ -2794,6 +2796,8 @@ class Communicator(object):
         attrs = None
         if name:
             attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
+        if summary:
+            attrs += [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.SUMMARY, value = summary)]
         req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_STATUS, attrs=attrs)
         try:
             req.send(self)
