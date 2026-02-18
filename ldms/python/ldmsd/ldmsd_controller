@@ -3260,6 +3260,13 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_prdcr_listen_status(self, arg):
         """
         Display the status of all producer listen
+
+        Parameters:
+            [summary=True|False]      If false (default), for each prdcr_listen,
+                                      the status and the producers corresponding
+                                      to the prdcr_listen will be reported.
+                                      If true, for each prdcr_listen,
+                                      only the status will be reported.
         """
         arg = self.handle_args('prdcr_listen_status', arg)
         if arg is None:

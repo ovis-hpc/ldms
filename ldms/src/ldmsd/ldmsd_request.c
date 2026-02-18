@@ -10458,7 +10458,12 @@ static int prdcr_listen_status_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_prdcr_ref_t pref;
 	struct rbn *rbn;
 	struct ldmsd_req_attr_s attr;
+	char *summary_str = NULL;
+	int summary = 0;
 
+	summary_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SUMMARY);
+	if (summary_str && (0 == strcasecmp(summary_str, "true")))
+		summary = 1;
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR_LISTEN);
 	for (pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_PRDCR_LISTEN); pl;
 			pl = (ldmsd_prdcr_listen_t)ldmsd_cfgobj_next(&pl->obj)) {
@@ -10507,16 +10512,18 @@ static int prdcr_listen_status_handler(ldmsd_req_ctxt_t reqc)
 		rc = linebuf_printf(reqc, "\"producers\":[");
 		if (rc)
 			goto err;
-		prdcr_cnt = 0;
-		RBT_FOREACH(rbn, &pl->prdcr_tree) {
-			pref = container_of(rbn, struct ldmsd_prdcr_ref, rbn);
-			if (prdcr_cnt) {
-				if ((rc = linebuf_printf(reqc, ",")))
+		if (summary == 0) {
+			prdcr_cnt = 0;
+			RBT_FOREACH(rbn, &pl->prdcr_tree) {
+				pref = container_of(rbn, struct ldmsd_prdcr_ref, rbn);
+				if (prdcr_cnt) {
+					if ((rc = linebuf_printf(reqc, ",")))
+						goto err;
+				}
+				if ((rc = linebuf_printf(reqc, "\"%s\"", pref->prdcr->obj.name)))
 					goto err;
+				prdcr_cnt++;
 			}
-			if ((rc = linebuf_printf(reqc, "\"%s\"", pref->prdcr->obj.name)))
-				goto err;
-			prdcr_cnt++;
 		}
 		if ((rc = linebuf_printf(reqc, "]}")))
 			goto err;
