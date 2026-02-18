@@ -2524,7 +2524,7 @@ free_ctxt:
 	return rc;
 }
 
-int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdcr_cnt)
+int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdcr_cnt, int summary)
 {
 	ldmsd_prdcr_set_t prv_set;
 	int set_count = 0;
@@ -2563,25 +2563,27 @@ int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdc
 	if (rc)
 		goto out;
 
-	set_count = 0;
-	for (prv_set = ldmsd_prdcr_set_first(prdcr); prv_set;
-	     prv_set = ldmsd_prdcr_set_next(prv_set)) {
-		if (set_count) {
-			rc = linebuf_printf(reqc, ",\n");
+	if (summary == 0) {
+		set_count = 0;
+		for (prv_set = ldmsd_prdcr_set_first(prdcr); prv_set;
+		prv_set = ldmsd_prdcr_set_next(prv_set)) {
+			if (set_count) {
+				rc = linebuf_printf(reqc, ",\n");
+				if (rc)
+					goto out;
+			}
+
+			rc = linebuf_printf(reqc,
+				"{ \"inst_name\":\"%s\","
+				"\"schema_name\":\"%s\","
+				"\"state\":\"%s\"}",
+				prv_set->inst_name,
+				(prv_set->schema_name ? prv_set->schema_name : ""),
+				ldmsd_prdcr_set_state_str(prv_set->state));
 			if (rc)
 				goto out;
+			set_count++;
 		}
-
-		rc = linebuf_printf(reqc,
-			"{ \"inst_name\":\"%s\","
-			"\"schema_name\":\"%s\","
-			"\"state\":\"%s\"}",
-			prv_set->inst_name,
-			(prv_set->schema_name ? prv_set->schema_name : ""),
-			ldmsd_prdcr_set_state_str(prv_set->state));
-		if (rc)
-			goto out;
-		set_count++;
 	}
 	rc = linebuf_printf(reqc, "]}");
 out:
@@ -2595,10 +2597,11 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
 	ldmsd_prdcr_t prdcr = NULL;
-	char *name;
-	int count;
+	char *name, *summary_str;
+	int count, summary = 0;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	summary_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SUMMARY);
 	if (name) {
 		prdcr = ldmsd_prdcr_find(name);
 		if (!prdcr) {
@@ -2611,10 +2614,13 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 			return 0;
 		}
 	}
+	if (summary_str && (0 == strcmp(summary_str, "true"))) {
+		summary = 1;
+	}
 
 	/* Construct the json object of the producer(s) */
 	if (prdcr) {
-		rc = __prdcr_status_json_obj(reqc, prdcr, 0);
+		rc = __prdcr_status_json_obj(reqc, prdcr, 0, summary);
 		if (rc)
 			goto out;
 	} else {
@@ -2622,7 +2628,7 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 		for (prdcr = ldmsd_prdcr_first(); prdcr;
 				prdcr = ldmsd_prdcr_next(prdcr)) {
-			rc = __prdcr_status_json_obj(reqc, prdcr, count);
+			rc = __prdcr_status_json_obj(reqc, prdcr, count, summary);
 			if (rc) {
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 				goto out;

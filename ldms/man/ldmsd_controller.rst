@@ -441,7 +441,11 @@ Query producer status
       |
       | The producer name. If none is given, the statuses of all
         producers are reported.
-
+   **[summary** *true|false* **]**
+      |
+      | If false (default), for each producer, the status and the list of sets collected
+        from the produce will be reported. The true, only the status of each producer
+        will be reported.
 
 Disable stream communication
 ----------------------------
