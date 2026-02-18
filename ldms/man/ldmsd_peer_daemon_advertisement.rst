@@ -55,6 +55,7 @@ prdcr_listen_del
    name=\ *NAME*
 
 prdcr_listen_status
+   [summary=\ *true|false*]
 
 DESCRIPTION
 ===========
@@ -245,6 +246,10 @@ hostnames. The parameters are:
 
 **prdcr_listen_status** report the status of each prdcr_listen object.
 There is no parameter.
+
+   [summary=True|False]
+      False (default) to report both status and producers corresponding to each prdcr_listen.
+      True to report only the status of each prdcr_listen.
 
 EXAMPLE
 =======

@@ -3135,9 +3135,16 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def prdcr_listen_status(self):
+    def prdcr_listen_status(self, summary = False):
         """
         Get the status of all producer listen
+
+        Parameters:
+        [summary=True|False]          If false (default), for each prdcr_listen,
+                                      the status and the producers corresponding
+                                      to the prdcr_listen will be reported.
+                                      If true, for each prdcr_listen,
+                                      only the status will be reported.
 
         Returns:
         A tuple of status, data
@@ -3145,7 +3152,8 @@ class Communicator(object):
          - data is the status of all producer listeners
            or an error message if status != 0 or None
         """
-        req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_STATUS)
+        req = LDMSD_Request(command_id=LDMSD_Request.PRDCR_LISTEN_STATUS,
+                            attrs = [LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.SUMMARY, value=summary)])
         try:
             req.send(self)
             resp = req.receive(self)
