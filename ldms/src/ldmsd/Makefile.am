@@ -56,8 +56,8 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_decomp.c ldmsd_row_cache.c \
 	ldmsd_plug_api.c \
 	ldmsd_plug_api.h \
-	ldmsd_plug_api_internal.h
-
+	ldmsd_plug_api_internal.h \
+	ldmsd_event_strg.c
 ldmsd_LDADD = ../core/libldms.la libldmsd_request.la libldmsd_stream.la \
 	$(LZAP) $(LMMALLOC) $(LOVIS_UTIL) $(LCOLL) $(LJSON_UTIL) $(LTLIBJANSSON) \
 	$(LOVIS_EVENT) $(LOVIS_EV) -lpthread $(LOVIS_CTRL) -lm -ldl \
