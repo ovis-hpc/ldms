@@ -137,6 +137,11 @@ the .TIMING file as a binary pair (tv_sec, tv_usec) with each value
 stored as a little-endian 64 bit value which should be read and then
 converted with le64toh.
 
+ERRORS
+======
+
+Plugin will do nothing useful unless the daemon is configured with 'msg_enable'.
+
 NOTES
 =====
 
