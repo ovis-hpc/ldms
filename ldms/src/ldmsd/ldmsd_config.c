@@ -349,6 +349,25 @@ const char *prdcr_state_str(enum ldmsd_prdcr_state state)
 	return "BAD STATE";
 }
 
+int prdcr_state_str2enum(const char *s)
+{
+	if ((0 == strcasecmp(s, "connecting")) || (0 == strcasecmp(s, "reconnecting"))) {
+		return LDMSD_PRDCR_STATE_CONNECTING;
+	} else if (0 == strcasecmp(s, "stopped")) {
+		return LDMSD_PRDCR_STATE_STOPPED;
+	} else if (0 == strcasecmp(s, "stopping")) {
+		return LDMSD_PRDCR_STATE_STOPPING;
+	} else if (0 == strcasecmp(s, "connected")) {
+		return LDMSD_PRDCR_STATE_CONNECTED;
+	} else if (0 == strcasecmp(s, "standby")) {
+		return LDMSD_PRDCR_STATE_STANDBY;
+	} else if (0 == strcasecmp(s, "disconnected")) {
+		return LDMSD_PRDCR_STATE_DISCONNECTED;
+	} else {
+		return -EINVAL;
+	}
+}
+
 
 const char *match_selector_str(enum ldmsd_name_match_sel sel)
 {
