@@ -104,6 +104,13 @@ BUGS
 
 No known bugs.
 
+ERRORS
+======
+
+Plugin configuration will log an error and continue if the daemon is
+configured without 'msg_enable', and the pause and resume capablity
+will be disabled.
+
 EXAMPLES
 ========
 
