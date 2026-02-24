@@ -1037,11 +1037,13 @@ class LdmsdCmdParser(cmd.Cmd):
         [summary=]     True to print only the producer status.
                        False (default) will print the producer status
                        and the producer sets collected from the producer host
+        [state=]       If given, only producers that are in the given state will be reported.
+                       `state` is ignored if `name` is given.
         """
         arg = self.handle_args('prdcr_status', arg)
         if not arg:
             return
-        rc, msg = self.comm.prdcr_status(arg['name'])
+        rc, msg = self.comm.prdcr_status(arg['name'], summary=arg['summary'], state=arg['state'])
         if rc != 0:
             print(f"Error {rc}: {msg}")
             return

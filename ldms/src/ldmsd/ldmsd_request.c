@@ -2591,17 +2591,27 @@ out:
 	return rc;
 }
 
+static int __prdcr_is_state(ldmsd_prdcr_t prdcr, enum ldmsd_prdcr_state state)
+{
+	if (prdcr->conn_state == state)
+		return 1;
+	return 0;
+}
+
+extern int prdcr_state_str2enum(const char *s);
 static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc = 0;
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
 	ldmsd_prdcr_t prdcr = NULL;
-	char *name, *summary_str;
+	char *name, *summary_str, *state_str;
 	int count, summary = 0;
+	enum ldmsd_prdcr_state state;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	summary_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SUMMARY);
+	state_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STATE);
 	if (name) {
 		prdcr = ldmsd_prdcr_find(name);
 		if (!prdcr) {
@@ -2610,10 +2620,23 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 					"prdcr '%s' doesn't exist.", name);
 			reqc->errcode = ENOENT;
 			ldmsd_send_req_response(reqc, reqc->line_buf);
-			free(name);
-			return 0;
+			rc = 0;
+			goto out;
 		}
 	}
+
+	if (state_str) {
+		state = prdcr_state_str2enum(state_str);
+		if (0 > (int)state) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+				"The given producer state '%s' is invalid.", state_str);
+			reqc->errcode = EINVAL;
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+			rc = 0;
+			goto out;
+		}
+	}
+
 	if (summary_str && (0 == strcmp(summary_str, "true"))) {
 		summary = 1;
 	}
@@ -2622,12 +2645,14 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 	if (prdcr) {
 		rc = __prdcr_status_json_obj(reqc, prdcr, 0, summary);
 		if (rc)
-			goto out;
+			goto prdcr_put;
 	} else {
 		count = 0;
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 		for (prdcr = ldmsd_prdcr_first(); prdcr;
 				prdcr = ldmsd_prdcr_next(prdcr)) {
+			if (state_str && !__prdcr_is_state(prdcr, state))
+				continue;
 			rc = __prdcr_status_json_obj(reqc, prdcr, count, summary);
 			if (rc) {
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
@@ -2646,29 +2671,32 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
-		goto out;
+		goto prdcr_put;
 
 	/* Send the json object */
 	rc = ldmsd_append_reply(reqc, "[", 1, 0);
 	if (rc)
-		goto out;
+		goto prdcr_put;
 	if (reqc->line_off) {
 		rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
 		if (rc)
-			goto out;
+			goto prdcr_put;
 	}
 	rc = ldmsd_append_reply(reqc, "]", 1, 0);
 	if (rc) {
-		goto out;
+		goto prdcr_put;
 	}
 
 	/* Send the terminating attribute */
 	attr.discrim = 0;
 	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
 			sizeof(uint32_t), LDMSD_REQ_EOM_F);
+prdcr_put:
+	ldmsd_prdcr_put(prdcr, "find");
 out:
 	free(name);
-	ldmsd_prdcr_put(prdcr, "find");
+	free(summary_str);
+	free(state_str);
 	return rc;
 }
 

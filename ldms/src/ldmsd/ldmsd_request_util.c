@@ -231,6 +231,7 @@ struct req_str_id attr_str_id_table[] = {
 	{  "rx_rate",           LDMSD_ATTR_RX_RATE  },
 	{  "schema",            LDMSD_ATTR_SCHEMA  },
 	{  "size",              LDMSD_ATTR_SIZE  },
+	{  "state",             LDMSD_ATTR_STATE  },
 	{  "stream",            LDMSD_ATTR_STREAM  },
 	{  "string",            LDMSD_ATTR_STRING  },
 	{  "summary",           LDMSD_ATTR_SUMMARY  },
