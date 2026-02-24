@@ -52,25 +52,22 @@
 
 from __future__ import print_function
 from builtins import str
-import struct
-import cmd
+import cmd as Cmd
 import argparse
 import sys
 import os
-import traceback
 import json
 import re
 from datetime import datetime
-
-from ldmsd import ldmsd_util
-from ldmsd.ldmsd_communicator import LDMSD_Request, LDMSD_Req_Attr
-from ldmsd.ldmsd_communicator import Communicator, fmt_status, get_cmd_attr_list
-import errno
 import math
 
+from ldmsd import ldmsd_util
+from ldmsd.ldmsd_communicator import Communicator, fmt_status, get_cmd_attr_list
+
+IS_DEBUG = False
 LDMSD_REQ_SOM_F=1
 LDMSD_REQ_EOM_F=2
-LDMSD_REQ_ALL_F=(LDMSD_REQ_SOM_F|LDMSD_REQ_EOM_F)
+LDMSD_REQ_ALL_F=LDMSD_REQ_SOM_F|LDMSD_REQ_EOM_F
 LDMSD_CLI_REQ=1
 LDMSD_PRDCR_STATUS_REQ=0x104
 LDMSD_PRDCR_SET_REQ=0x107
@@ -83,7 +80,10 @@ def cvt_intrvl_off_to_str(interval_us, offset_us):
     offset_ms = float(offset_us) / 1000.0
     return str(interval_s) + "s:" + str(offset_ms) + "ms"
 
-class LdmsdCmdParser(cmd.Cmd):
+class LdmsdCmdParser(Cmd.Cmd):
+    # pylint: disable=unused-argument
+    # pylint: disable=arguments-differ
+    # pylint: disable=missing-function-docstring
     def __init__(self, host = None, port = None, xprt = None, infile=None,
                  auth=None, auth_opt=None, debug=False):
         self.msg_no = 1
@@ -104,16 +104,17 @@ class LdmsdCmdParser(cmd.Cmd):
                                          auth_opt)
             rc = self.comm.connect()
             if rc:
-                raise ConnectionError("Please verify the transport, hostname, port, and authentication method.")
-            self.prompt = "{0}:{1}:{2}> ".format(xprt, host, port)
+                raise ConnectionError("Please verify the transport, hostname, "
+                                      "port, and authentication method.")
+            self.prompt = f"{xprt}:{host}:{port}> "
         else:
             self.comm = None
             self.prompt = "(not connected)> "
 
         if infile:
-            cmd.Cmd.__init__(self, stdin=infile)
+            Cmd.Cmd.__init__(self, stdin=infile)
         else:
-            cmd.Cmd.__init__(self)
+            Cmd.Cmd.__init__(self)
 
     def completedefault(self, text, line, begidx, endidx):
         cmd = line.split()[0]
@@ -126,7 +127,7 @@ class LdmsdCmdParser(cmd.Cmd):
             attr_list += req_opt_attr['req']
         if req_opt_attr['opt'] is not None:
             attr_list += req_opt_attr['opt']
-        ret = ["{0}=".format(attr) for attr in attr_list if attr.startswith(text)]
+        ret = [f"{attr}=" for attr in attr_list if attr.startswith(text)]
         return ret
 
     def emptyline(self):
@@ -141,14 +142,6 @@ class LdmsdCmdParser(cmd.Cmd):
                 print(f"Error: The attribute {tk} is missing a value")
         return rv
 
-    def __check_command_args(self, verb, args):
-        req_opt_attr = get_cmd_attr_list(verb)
-        if set(req_opt_attr['req']) <= set(args):
-            return 0
-        else:
-            print(f'Error: The attributes {req_opt_attr["req"]} are required by {verb}')
-            return 1
-
     def do_shell(self, args):
         """
         Execute a shell command
@@ -159,7 +152,6 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         skip comments
         """
-        pass
 
     def do_say(self, args):
         """
@@ -190,7 +182,6 @@ class LdmsdCmdParser(cmd.Cmd):
 
         kwargs = {}
         if _args is not None:
-            attr_s = []
             cfg_str = ''
             attr_str_list = _args.split()
             for attr_str in attr_str_list:
@@ -208,9 +199,9 @@ class LdmsdCmdParser(cmd.Cmd):
 
                     kwargs[name] = value
                 except ValueError:
-                    # keyword
-                    kwargs[attr_str] = True
-
+                    print(f"Error: The '=' character must be present exactly once in the "
+                          f"argument value '{attr_str}'")
+                    return None
         if len(cfg_str) > 0:
             kwargs['cfg_str'] = cfg_str
 
@@ -256,7 +247,7 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         arg = self.handle_args('source', arg)
         if arg:
-            script = open(arg['path'], 'r')
+            script = open(arg['path'], 'r', encoding = 'utf-8')
             self.read_none_tty(script)
             for cmd in script:
                 self.onecmd(cmd)
@@ -275,14 +266,11 @@ class LdmsdCmdParser(cmd.Cmd):
         if arg:
             exit_code, out, err = ldmsd_util.sh_exec(arg['path'])
             if exit_code != 0:
-                print("Script exited with code {0} and error: {1}".format(exit_code, err))
+                print(f"Script exited with code {exit_code} and error: {err}")
                 return
             cfg = out.split("\n")
             for cmd in cfg:
                 self.onecmd(cmd)
-
-    def do_try(self, arg):
-        print(self.__complete_attr_list(arg, ""))
 
     def do_usage(self, arg):
         """List the usage of the plugins loaded on the server.
@@ -324,7 +312,9 @@ class LdmsdCmdParser(cmd.Cmd):
         rc, msg = self.comm.daemon_exit()
         if rc == 0:
             self.do_quit(arg)
-            print("Please 'quit' the ldmsd_controller interface")
+            sys.exit(0)
+        else:
+            print(f"The daemon returned {rc} with message {msg}")
 
     def complete_daemon_exit(self, text, line, begidx, endidx):
         return self.__complete_attr_list('daemon_exit', text)
@@ -364,14 +354,14 @@ class LdmsdCmdParser(cmd.Cmd):
         if arg is None:
             return
         if arg['interval'] is None and arg['reconnect'] is None:
-            print(f"The attribute 'reconnect' is missing.")
+            print("The attribute 'reconnect' is missing.")
         else:
             if arg['interval'] is not None:
                 if arg['reconnect'] is not None:
-                    print(f"Both 'interval' and 'reconnect' is given. The 'reconnect' value will be used.")
+                    print("Both 'interval' and 'reconnect' is given. The 'reconnect' value will be used.")
                 else:
                     arg['reconnect'] = arg['interval']
-                    print(f"'interval' is being deprecated. Please, use 'reconnect' in the future.")
+                    print("'interval' is being deprecated. Please, use 'reconnect' in the future.")
             rc, msg = self.comm.prdcr_add(arg['name'],
                                           arg['type'],
                                           arg['xprt'],
@@ -392,7 +382,7 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_bridge_add(self, arg):
         """
-        Add a bridge connection. This is the active side of the passive producer.
+        Add a bridge connection. This is the active side of a passive producer.
         Parameters:
                 name=      A unique name for this Producer
                 xprt=      The transport name [sock, rdma, ugni]
@@ -414,7 +404,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if arg is None:
             return
         if arg['reconnect'] is None:
-            print(f"The attribute 'reconnect' is missing.")
+            print("The attribute 'reconnect' is missing.")
         else:
             rc, msg = self.comm.prdcr_add(arg['name'],
                                           "bridge",
@@ -473,7 +463,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if arg:
             if arg['reconnect'] is None and arg['interval'] is not None:
                 arg['reconnect'] = arg['interval']
-                print(f"'interval' is being deprecated. Please, use 'reconnect' in the future")
+                print("'interval' is being deprecated. Please, use 'reconnect' in the future")
             rc, msg = self.comm.prdcr_start(arg['name'], regex=False, reconnect=arg['reconnect'])
             if rc:
                 print(f'Error starting prdcr {arg["name"]}: {msg}')
@@ -482,10 +472,14 @@ class LdmsdCmdParser(cmd.Cmd):
         return self.__complete_attr_list('prdcr_start', text)
 
     def do_bridge_start(self, arg):
+        """
+        Start the specified bridging producer.
+        Parameters:
+        name=        The name of the producer
+        [reconnect=] The connection retry interval in micro-seconds. If this is not
+                     specified, the previously configured value will be used.
+        """
         self.do_prdcr_start(arg)
-
-    def complete_bridge_del(self, text, line, begidx, endidx):
-        return self.complete_prdcr_start(text, line, begidx, endidx)
 
     def do_prdcr_start_regex(self, arg):
         """
@@ -500,7 +494,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if arg:
             if arg['reconnect'] is None and arg['interval'] is not None:
                 arg['reconnect'] = arg['interval']
-                print(f"'interval' is being deprecated. Please, use 'reconnect' in the future.")
+                print("'interval' is being deprecated. Please, use 'reconnect' in the future.")
             rc, msg = self.comm.prdcr_start(arg['regex'], reconnect=arg['reconnect'])
             if rc:
                 print(f'Error starting prdcr(s) with regex {arg["regex"]}: {msg}')
@@ -544,7 +538,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if arg:
             rc, msg = self.comm.prdcr_stop(arg['regex'])
             if rc:
-               print(f'Error stopping prdcr(s) with regex {arg["regex"]}: {msg}')
+                print(f'Error stopping prdcr(s) with regex {arg["regex"]}: {msg}')
 
     def complete_prdcr_stop_regex(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_stop_regex', text)
@@ -604,23 +598,18 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         regex=     A regular expression matching producer names
         """
-        FIRST = "first_ts"
-        LAST = "last_ts"
-        RATE = "bytes/sec"
-        FREQ = "count/sec"
-
-        def dur(info):
-            return (info[LAST] - info[FIRST])/60.0
+        rate_key = "bytes/sec"
+        freq_key = "count/sec"
 
         def rate(info):
-            if not info or RATE not in info.keys():
+            if not info or rate_key not in info.keys():
                 return "-"
-            return info[RATE]
+            return info[rate_key]
 
         def freq(info):
-            if not info or FREQ not in info.keys():
+            if not info or freq_key not in info.keys():
                 return "-"
-            return info[FREQ]
+            return info[freq_key]
 
         def total_bytes(info):
             if not info or "total_bytes" not in info.keys():
@@ -746,7 +735,11 @@ class LdmsdCmdParser(cmd.Cmd):
         arg = self.handle_args('updtr_match_del', arg)
         if not arg:
             return
-        rc, msg = self.comm.updtr_match_del(arg['name'])
+        if 'match' in arg:
+            m = arg['match']
+        else:
+            m = 'schema'
+        rc, msg = self.comm.updtr_match_del(arg['name'], arg['regex'], match=m)
         if rc:
             print(f'Error deleting match condition from the updater: {msg}')
 
@@ -757,7 +750,8 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Return the regex match list of updaters
         Parameters are as follows:
-        name=  The update policy name. If none, return the list of regular expressions to match set names or set schemas.
+        name   The update policy name. If none, return the list of regular
+               expressions to match set names or set schemas.
         """
         arg = self.handle_args('updtr_match_list', arg)
         if not arg:
@@ -902,7 +896,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if rc:
             print(f'Error deleting storage policy {arg["name"]}: {msg}')
 
-    def complete_strgp_del(self, text, line, begidx, endidx):
+    def complete_strgp_del(self, text):
         return self.__complete_attr_list('strgp_del', text)
 
     def do_strgp_prdcr_add(self, arg):
@@ -1023,8 +1017,6 @@ class LdmsdCmdParser(cmd.Cmd):
             return
         msg = fmt_status(msg)
         print(f"Deamon State: {msg['state']}\n")
-        if arg['thread_stats']:
-            self.display_thread_stats(msg['thread_stats'])
 
     def complete_daemon_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('daemon_status', text)
@@ -1085,13 +1077,13 @@ class LdmsdCmdParser(cmd.Cmd):
             rc, msg = self.comm.prdcr_status(arg['name'])
             if rc == 0 and msg is not None:
                 producers = fmt_status(msg)
-                print("Name             Host             Port         Transport    State")
-                print("---------------- ---------------- ------------ ------------ ------------")
+                print(f"{'Name':16} {'Host':16} {'Port':8} {'Transport':10} {'State':12}")
+                print(f"{'-'*16} {'-'*16} {'-'*8} {'-'*10} {'-'*12}")
                 for prdcr in producers:
                     if prdcr['type'] != 'bridge':
                         continue
-                    print(f"{prdcr['name']:16} {prdcr['host']:16} {prdcr['port']:12} {prdcr['transport']:12} " \
-                          f"{prdcr['state']:12}")
+                    print(f"{prdcr['name']:16} {prdcr['host']:16} {prdcr['port']:12} "
+                          f"{prdcr['transport']:12} {prdcr['state']:12}")
             else:
                 print(f'Error getting prdcr status: {msg}')
 
@@ -1138,14 +1130,15 @@ class LdmsdCmdParser(cmd.Cmd):
         Get the statuses of all Updaters.
 
         Parameters:
-        [name=]        updater name
-        [summary]      not show updaters' producers
-        [reset=]       'false' for not resetting the counter after it reports the information.
-                       If it isn't given, the counters are not reset.
+        [name=]        Updater name
+        [summary]      Show a summary report for updater status
+        [reset=]       If true, reset the counter values
 
         Counter descriptions:
-          Skipped      The number of times there exists an outstanding update request when the updater tries to schedule an update request.
-          Oversampled  The number of times the generation number of a set has not changed from the previous update complete.
+          Skipped      The number of times there exists an outstanding update request
+                       when scheduling the next update
+          Oversampled  The number of times the set generation number has not
+                       changed
         """
         arg = self.handle_args('updtr_status', arg)
         if not arg:
@@ -1156,7 +1149,7 @@ class LdmsdCmdParser(cmd.Cmd):
             return
         updaters = fmt_status(msg)
         print("Name             Interval:Offset  Auto   Mode            State")
-        print(f"---------------- ---------------- ------ --------------- ---------------")
+        print("---------------- ---------------- ------ --------------- ---------------")
         for updtr in updaters:
             if 'auto' in updtr:
                 auto = updtr['auto']
@@ -1293,11 +1286,11 @@ class LdmsdCmdParser(cmd.Cmd):
                     f"{strgp['decomp']}")
             print("    producers: ", end='')
             for prdcr in strgp['producers']:
-                print("{0} ".format(prdcr), end='')
+                print(f"{prdcr} ", end='')
             print('')
             print("    metrics: ", end='')
             for metric in strgp['metrics']:
-                print("{0} ".format(metric), end='')
+                print(f"{metric} ", end='')
             print('')
 
     def complete_strgp_status(self, text, line, begidx, endidx):
@@ -1343,12 +1336,15 @@ class LdmsdCmdParser(cmd.Cmd):
     def __avg_update(self, cur_avg, cur_cnt, v, cnt):
         new_cnt = cur_cnt + cnt
         if new_cnt == 0:
-            return 0.0
+            return ( 0.0, 0 )
         return (cur_avg * (cur_cnt / new_cnt) + v * (cnt / new_cnt), new_cnt)
 
     def __min_max(self, tbl, data):
         is_min = False
         is_max = False
+
+        if data['count'] is None or data['count'] == 0:
+            return (False, False)
 
         if tbl['min'] is None or tbl['min'] > data['min']:
             tbl['min'] = data['min']
@@ -1494,7 +1490,8 @@ class LdmsdCmdParser(cmd.Cmd):
         thread_tbl = {'stats' : self.__datatbl_new()}
         strgp_tbl = {'stats' : self.__datatbl_new()}
 
-        begin_time = end_time = 0
+        begin_time = sys.maxsize
+        end_time = 0
         num_op = 0
 
         for strgp_name, strgp in d.items():
@@ -1506,14 +1503,12 @@ class LdmsdCmdParser(cmd.Cmd):
                 thread_id = prdset['thread_id']
 
                 # Calculate the operation
-                if begin_time == 0 and end_time == 0:
-                    begin_time = prdset['stats']['start_ts']
-                    end_time = prdset['stats']['end_ts']
-                else:
-                    if prdset['stats']['start_ts'] < begin_time:
-                        begin_time = prdset['stats']['start_ts']
-                    if prdset['stats']['end_ts'] > end_time:
-                        end_time = prdset['stats']['end_ts']
+                bt = prdset['stats']['start_ts']
+                if bt != 0 and bt < begin_time:
+                    begin_time = bt
+                et = prdset['stats']['end_ts']
+                if et > end_time:
+                    end_time = et
                 num_op += prdset['stats']['count']
 
                 if schema_name not in strgp_tbl[strgp_name]:
@@ -1532,22 +1527,22 @@ class LdmsdCmdParser(cmd.Cmd):
                 self.__datatbl_update(prdset, strgp_tbl[strgp_name], schema_tbl, thread_tbl)
 
         self.__bounds(strgp_tbl)
-        for k in strgp_tbl.keys():
+        for k, v in strgp_tbl.items():
             if k == 'stats':
                 continue
-            self.__bounds(strgp_tbl[k])
-            for tid in strgp_tbl[k].keys():
+            self.__bounds(v)
+            for tid, vt in v.items():
                 if tid == 'stats':
                     continue
-                self.__bounds(strgp_tbl[k][tid])
+                self.__bounds(vt)
 
         self.__bounds(schema_tbl)
 
         self.__bounds(thread_tbl)
-        for k in thread_tbl.keys():
+        for k, v in thread_tbl.items():
             if k == 'stats':
                 continue
-            self.__bounds(thread_tbl[k])
+            self.__bounds(v)
 
         num_op_per_sec = num_op/(end_time - begin_time) if (end_time  - begin_time != 0) else 0
 
@@ -1572,7 +1567,8 @@ class LdmsdCmdParser(cmd.Cmd):
          - Storage Policy is the storage policy name.
          - Min(usec), Max(usec), Avg(usec) are the minumum, maximum, and average times
            the storage policy spent to store a set in microseconds.
-         - Count is the number of samples used to calculate the minimum, maximum, and average values.
+         - Count is the number of samples used to calculate the minimum, maximum,
+           and average values.
          - Number of Sets is the number of sets the storage policy is responsible to store.
 
         Parameters:
@@ -1599,8 +1595,8 @@ class LdmsdCmdParser(cmd.Cmd):
 
         # Schema Table
         print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
-        print(f"   <   Minimum Value          -   Minimum Average value")
-        print(f"   >   Maximum Value          +   Maximum Average value")
+        print("   <   Minimum Value          -   Minimum Average value")
+        print("   >   Maximum Value          +   Maximum Average value")
         print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
         print(f"{' '*4} {'Schema':^20} {'Min (us)':^15} {'Avg (us)':^15} {'Max (us)':^15} {'Min Timestamp':^20} {'Max Timestamp':^20} {'# of Sets':^10} {'Count':^10}")
         print(f"{'-'*4}-{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
@@ -1609,6 +1605,8 @@ class LdmsdCmdParser(cmd.Cmd):
             if schema == 'stats':
                 continue
             stats = schema_tbl[schema]['stats']
+            if stats['min_ts'] is None:
+                continue
             print(f"{self.__symbols(schema, schema_tbl['stats']):>4}   {schema:>18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {stats['min_ts']:20.0f} {stats['max_ts']:20.0f} {len(set(stats['set_name'])):10} {stats['count']:10}")
 
         # Thread Table
@@ -1619,7 +1617,7 @@ class LdmsdCmdParser(cmd.Cmd):
         for tid in threads:
             if tid == 'stats':
                 continue
-            symbol_tid = list()
+
             stats = thread_tbl[tid]['stats']
             print(f"{'-'*4}-{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
             print(f"{self.__symbols(tid, thread_tbl['stats']):>4}   {tid:18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {stats['min_ts']:20.0f} {stats['max_ts']:20.0f} {len(set(stats['set_name'])):10} {stats['count']:10}")
@@ -1627,6 +1625,8 @@ class LdmsdCmdParser(cmd.Cmd):
             print(f"{' '*4} {'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
             for schema in schema_names:
                 st = thread_tbl[tid][schema]['stats']
+                if st['start_ts'] is None:
+                    continue
                 print(f"   {self.__symbols(schema, thread_tbl[tid]['stats']):>4} {schema:>18} {st['min']:15.4f} {st['avg']:15.4f} {st['max']:15.4f} {st['min_ts']:20.0f} {st['max_ts']:20.0f} {len(set(st['set_name'])):10} {stats['count']:10}")
             # print(f"{'-'*(4+21+16+16+16+21+21+11+11)}")
 
@@ -1644,8 +1644,10 @@ class LdmsdCmdParser(cmd.Cmd):
             print(f"{self.__symbols(strgp, strgp_tbl['stats']):>5}  {strgp:18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {stats['min_ts']:20.0f} {stats['max_ts']:20.0f} {len(set(stats['set_name'])):10} {stats['count']:10}")
             schemas = sorted([s for s in list(strgp_tbl[strgp].keys()) if s != 'stats'])
             for schema in schemas:
-                print(f"   {' '*2}{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
                 sch_stats = strgp_tbl[strgp][schema]['stats']
+                if sch_stats['start_ts'] is None:
+                    continue
+                print(f"   {' '*2}{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
                 print(f"   {self.__symbols(schema, strgp_tbl[strgp]['stats']):>5} {schema:16} {sch_stats['min']:15.4f} {sch_stats['avg']:15.4f} " \
                       f"{sch_stats['max']:15.4f} {sch_stats['min_ts']:20.0f} {sch_stats['max_ts']:20.0f} " \
                       f"{len(set(sch_stats['set_name'])):10} {stats['count']:10}")
@@ -1711,7 +1713,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if not arg:
             return
         rc, msg = self.comm.stream_publish(arg['name'], arg['data'])
-        print(msg)
+        print(f"The server returned {rc} : {msg}")
 
     def do_subscribe(self, arg):
         """
@@ -1725,7 +1727,7 @@ class LdmsdCmdParser(cmd.Cmd):
         arg = self.handle_args('subscribe', arg)
         if arg:
             rc, msg = self.comm.stream_subscribe(arg['name'])
-            print(rc)
+            print(f"The server returned {rc} : {msg}")
 
     def do_status(self, arg):
         """
@@ -1900,7 +1902,7 @@ class LdmsdCmdParser(cmd.Cmd):
            [regex=]  A regular expression matching logger names,
                      e.g., xprt.* to change the transport-related log levels.
         """
-        print(f'`loglevel` is being deprecated. Please use `log_level` in the future.')
+        print('`loglevel` is being deprecated. Please use `log_level` in the future.')
         self.__log_level(arg)
 
     def complete_loglevel(self, text, line, begidx, endidx):
@@ -2027,6 +2029,9 @@ class LdmsdCmdParser(cmd.Cmd):
         if not arg:
             return
         rc, msg = self.comm.greeting(arg['name'], arg['offset'], arg['level'], arg['test'], arg['path'])
+        if rc != 0:
+            print(f"The server returned {rc} : {msg}")
+            return
         if arg["level"] is not None:
             tbl = bytes(range(0, 256)) # identity mapping tbl
             for attr in msg:
@@ -2037,22 +2042,6 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_greeting(self, text, line, begidx, endidx):
         return self.__complete_attr_list('greeting', text)
-
-    def do_example(self, arg):
-        # WIP
-        arg = self.handle_args('example', arg)
-        if not arg:
-            return
-
-        rc, msg = self.comm.example(arg['cfg_str'])
-        if rc != 0:
-            print(f"Error {rc}: {msg}")
-            return
-        attr_list = msg
-        print("{0:10} {1:10} {2}".format("ATTR_ID", "VALUE_LENGTH", "VALUE"))
-        print("---------- ---------- ----------")
-        for attr in attr_list:
-            print("{0:10} {1:10} {2}".format(attr['attr_id'], attr['attr_len'], attr['attr_value']))
 
     def do_failover_config(self, arg):
         """Configure LDMSD failover.
@@ -2176,7 +2165,7 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         arg = self.handle_args('setgroup_mod', arg)
         if not arg:
-           return
+            return
         rc, msg = self.comm.setgroup_mod(arg['name'],
                                          arg['interval'],
                                          arg['offset'])
@@ -2236,9 +2225,6 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_setgroup_rm(self, text, line, begidx, endidx):
         return self.__complete_attr_list('setgroup_rm', text)
 
-    def complete_example(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('example', text)
-
     def __ts2human(self, sec, usec):
         ts = float(sec)
         ts_sec = datetime.fromtimestamp(ts).strftime('%m-%d-%y %H:%M:%S')
@@ -2263,13 +2249,13 @@ class LdmsdCmdParser(cmd.Cmd):
         for e in worker_threads:
             print(f"{e['tid']:^15} {e['thread_id']:20} {e['name']:20} ", end="")
             if e['utilization'] == -1:
-                  print(f"{'-':>12} {'-':>12} ", end="")
+                print(f"{'-':>12} {'-':>12} ", end="")
             else:
-                  print(f"{e['utilization'] * 100:11.4f}% {int(e['refresh_us']/1000000):12} ", end="")
+                print(f"{e['utilization'] * 100:11.4f}% {int(e['refresh_us']/1000000):12} ", end="")
             print(f"{e['ev_cnt']:12}")
 
     def display_io_thread_stats(self, io_threads):
-        print(f"IO Thread Statistics")
+        print("IO Thread Statistics")
         print(f"{'='*60}")
         print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Utilization':12} {'Window (s)':12} " \
               f"{'Send Queue Size':16} {'Num of EPs':12}")
@@ -2277,9 +2263,9 @@ class LdmsdCmdParser(cmd.Cmd):
         for e in io_threads:
             print(f"{e['tid']:^15} {e['thread_id']:20} {e['name']:20} ", end = "")
             if e['utilization'] == -1:
-                  print(f"{'-':>12} {'-':>12} ", end="")
+                print(f"{'-':>12} {'-':>12} ", end="")
             else:
-                  print(f"{e['utilization'] * 100:11.4f}% {int(e['refresh_us']/1000000):12} ", end="")
+                print(f"{e['utilization'] * 100:11.4f}% {int(e['refresh_us']/1000000):12} ", end="")
             print(f"{e['sq_sz']:16} {e['n_eps']:12}")
 
     def do_thread_stats(self, arg):
@@ -2311,13 +2297,13 @@ class LdmsdCmdParser(cmd.Cmd):
         msg = fmt_status(msg)
         print()
         self.display_worker_thread_stats(msg['worker_threads'],
-                                         f"LDMSD Worker Thread Statistics")
+                                         "LDMSD Worker Thread Statistics")
         self.display_worker_thread_stats(msg['xthreads'],
-                                         f"Exclusive Worker Thread Statistics")
+                                         "Exclusive Worker Thread Statistics")
         print(f"{'='*60}")
         self.display_io_thread_stats(msg['io_threads'])
         print(f"{'='*60}")
-        print(f"IO Thread Usages of LDMS Operations")
+        print("IO Thread Usages of LDMS Operations")
         print(f"{'='*60}")
         for thr in msg['io_threads']:
             thr['ldms_xprt'] = dict(sorted(thr['ldms_xprt'].items(), key = lambda item: item[1], reverse = True))
@@ -2603,23 +2589,18 @@ class LdmsdCmdParser(cmd.Cmd):
         [reset=]     If true, reset the statistics of all streams after returning the values.
                      The default is false.
         """
-        FIRST = "first_ts"
-        LAST = "last_ts"
-        RATE = "bytes/sec"
-        FREQ = "count/sec"
-
-        def dur(info):
-            return (info[LAST] - info[FIRST])/60.0
+        rate_key = "bytes/sec"
+        freq_key = "count/sec"
 
         def rate(info):
-            if not info or RATE not in info.keys():
+            if not info or rate_key not in info.keys():
                 return "-"
-            return info[RATE]
+            return info[rate_key]
 
         def freq(info):
-            if not info or FREQ not in info.keys():
+            if not info or freq_key not in info.keys():
                 return "-"
-            return info[FREQ]
+            return info[freq_key]
 
         def total_bytes(info):
             if not info or "total_bytes" not in info.keys():
@@ -2662,13 +2643,18 @@ class LdmsdCmdParser(cmd.Cmd):
             else:
                 print(f"{name} ({s['mode']})")
 
-            print(f"{'   published':<30} {rate(s['pub']):>12} {freq(s['pub']):>12} {total_bytes(s['pub']):>12} {count(s['pub']):>12} {first(s['pub']):>12} {last(s['pub']):>12}")
-            print(f"{'   received':<30} {rate(s['recv']):>12} {freq(s['recv']):>12} {total_bytes(s['recv']):>12} {count(s['recv']):>12} {first(s['recv']):>12} {last(s['recv']):>12}")
+            print(f"{'   published':<30} {rate(s['pub']):>12} {freq(s['pub']):>12} "
+                  f"{total_bytes(s['pub']):>12} {count(s['pub']):>12} "
+                  f" {first(s['pub']):>12} {last(s['pub']):>12}")
+            print(f"{'   received':<30} {rate(s['recv']):>12} {freq(s['recv']):>12} {total_bytes(s['recv']):>12}"
+                  f" {count(s['recv']):>12} {first(s['recv']):>12} {last(s['recv']):>12}")
             if 'publishers' not in s.keys() or len(s['publishers']) == 0:
                 continue
             print("      Producers")
             for name,p in s['publishers'].items():
-                print(f"{' '*14} {name:15} {rate(p['recv']):>12} {freq(p['recv']):>12} {total_bytes(p['recv']):>12} {count(p['recv']):>12} {first(p['recv']):>12} {last(p['recv']):>12}")
+                print(f"{' '*14} {name:15} {rate(p['recv']):>12} {freq(p['recv']):>12} "
+                      f"{total_bytes(p['recv']):>12} {count(p['recv']):>12} "
+                      f"{first(p['recv']):>12} {last(p['recv']):>12}")
 
     def complete_stream_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_status', text)
@@ -2721,7 +2707,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if rc:
             emsg = f"msg_stats error: {rc}, msg: {msg}"
             print(emsg)
-            if is_debug:
+            if IS_DEBUG:
                 raise RuntimeError(emsg)
             return
         streams = fmt_status(msg)
@@ -2780,7 +2766,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if rc:
             emsg = f"msg_client_stats error: {rc}, msg: {msg}"
             print(emsg)
-            if is_debug:
+            if IS_DEBUG:
                 raise RuntimeError(emsg)
             return
         clients = fmt_status(msg)
@@ -2993,11 +2979,13 @@ class LdmsdCmdParser(cmd.Cmd):
         arg = self.handle_args('stats_reset', arg)
         rc, msg = self.comm.stats_reset(s = arg['list'])
         if rc:
-            print(f"Failed to reset the statistics")
+            print(f"Error {msg}, failed to reset the statistics")
 
     def do_advertiser_add(self, arg):
         """
-        Add an advertisement of its hostname to an aggregator. This is a part of the sampler discovery feature.
+        Add an advertisement of its hostname to an aggregator. This is a part
+        of the sampler discovery feature.
+
         Parameters:
                 name=      Advertiser name
                 xprt=      The transport name [sock, rdma, ugni]
@@ -3019,7 +3007,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if arg is None:
             return
         if arg['reconnect'] is None:
-            print(f"The attribute 'reconnect' is missing.")
+            print("The attribute 'reconnect' is missing.")
         else:
             rc, msg = self.comm.advertiser_add(arg['name'],
                                           arg['xprt'],
@@ -3101,7 +3089,8 @@ class LdmsdCmdParser(cmd.Cmd):
 
         producers = fmt_status(msg)
         print("Name             Aggregator Host  Aggregator Port Transport    Reconnect(us)  State")
-        print("---------------- ---------------- --------------- ------------ --------------- ------------")
+        print("---------------- ---------------- --------------- ------------ "
+              "--------------- ------------")
         for prdcr in producers:
             if prdcr['type'] != 'advertiser':
                 continue
@@ -3241,7 +3230,8 @@ class LdmsdCmdParser(cmd.Cmd):
         print(f"{'Name':20} {'State':10} {'Type':8} {'IP Range':30} {'Regex':20}")
         print(f"{'-'*20} {'-'*10} {'-'*8} {'-'*30} {'-'*20}")
         for pl in l:
-            print(f"{pl['name']:20} {pl['state']:10} {pl['type']:8} {pl['IP range']:30} {pl['regex']:20}")
+            print(f"{pl['name']:20} {pl['state']:10} {pl['type']:8} "
+                  f"{pl['IP range']:30} {pl['regex']:20}")
 
             if pl['type'] == "active":
                 print(f"    Connection config: xprt={pl['xprt']} port={pl['port']} " \
@@ -3251,7 +3241,7 @@ class LdmsdCmdParser(cmd.Cmd):
                 if pl['rail_sz'] is not None:
                     print(f" rail={pl['rail_sz']}", end="")
             else:
-                print(f"    Connection config: ", end="")
+                print("    Connection config: ", end="")
                 if pl['rx_rate'] == "-1" and pl['quota'] == "-1":
                     print("None", end="")
 
@@ -3273,7 +3263,8 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
             -A, -- defulat_auth_args    Arguments of the default authentication method
             -a, -- default_auth         Default authentication method
-            -B, --banner                Banner mode: 0=do banner file, 1=auto-delete at exit, 2=keep the file
+            -B, --banner                Banner mode: 0=do banner file, 1=auto-delete at
+                                        exit, 2=keep the file
             -H, --host_name             Host/producer name used by the kernel metric sets
             -k, --publish_kernel        Publish kernel: true or false
             -l, --log_file              Path to the log file or 'syslog'
@@ -3418,90 +3409,90 @@ class LdmsdCmdParser(cmd.Cmd):
             else:
                 return None, None, line
         i, n = 0, len(line)
-        while i < n and line[i] in self.identchars: i = i+1
+        while i < n and line[i] in self.identchars:
+            i = i+1
         cmd, arg = line[:i], line[i:].strip()
         return cmd, arg, line
 
 if __name__ == "__main__":
-    is_debug = True
     try:
-        parser = argparse.ArgumentParser(description="Configure an LDMS Daemon. " \
+        PARSER = argparse.ArgumentParser(description="Configure an LDMS Daemon. " \
                                          "To connect to an ldmsd, either give " \
                                          "the socket path of the ldmsd or " \
                                          "give both hostname and inet control port. " \
                                          "If all are given, the sockname takes the priority.",
                                          add_help=False)
-        parser.add_argument('-?', '--help', action='help', default='==SUPPRESS==',
+        PARSER.add_argument('-?', '--help', action='help', default='==SUPPRESS==',
                 help='show this help message and exit')
-        parser.add_argument('-h','--host',
+        PARSER.add_argument('-h','--host',
                             help = "Hostname of ldmsd to connect to",
                             default = 'localhost')
-        parser.add_argument('-p','--port',
+        PARSER.add_argument('-p','--port',
                             help = "Inet ctrl listener port of ldmsd")
-        parser.add_argument('-x','--xprt',
+        PARSER.add_argument('-x','--xprt',
                             help = "LDMS Transport type",
                             choices = ['sock', 'ugni', 'rdma', 'fabric'],
                             default = 'sock')
-        parser.add_argument('--source',
+        PARSER.add_argument('--source',
                             help = "Path to the config file")
-        parser.add_argument('--script',
+        PARSER.add_argument('--script',
                             help = "Execute the script and send the output \
                             commands to the connected ldmsd")
-        parser.add_argument('--cmd',
+        PARSER.add_argument('--cmd',
                             help = "Command to be sent to an LDMSD")
-        parser.add_argument('-a', '--auth',
+        PARSER.add_argument('-a', '--auth',
                             help = "Authentication method.")
-        parser.add_argument('-A', '--auth-arg', action = 'append',
+        PARSER.add_argument('-A', '--auth-arg', action = 'append',
                             help = "Authentication arguments (name=value). \
                                     This option can be given multiple times.")
-        parser.add_argument('--debug', action = "store_true",
+        PARSER.add_argument('--debug', action = "store_true",
                             help = argparse.SUPPRESS)
 
-        args = parser.parse_args()
+        Args = PARSER.parse_args()
 
-        is_debug = args.debug
-        if is_debug:
-            import pdb
+        IS_DEBUG = Args.debug
 
-        auth_opt = None
-        if args.auth_arg:
-            auth_opt = dict()
-            rx = re.compile(r"(\w+)=(.+)")
-            for arg in args.auth_arg:
-                m = rx.match(arg)
-                if not m:
+        AUTH_OPT = None
+        if Args.auth_arg:
+            AUTH_OPT = dict()
+            RX = re.compile(r"(\w+)=(.+)")
+            for arg_ in Args.auth_arg:
+                M = RX.match(arg_)
+                if not M:
                     print("Expecting --auth-arg to be NAME=VALUE")
                     sys.exit(1)
-                (k, v) = m.groups()
-                auth_opt[k] = v
+                (K, V) = M.groups()
+                AUTH_OPT[K] = V
 
-        cmdParser = LdmsdCmdParser(host = args.host,
-                                   port = args.port,
-                                   xprt = args.xprt,
-                                   auth = args.auth,
-                                   auth_opt = auth_opt,
-                                   debug = args.debug)
+        CMD_PARSER = LdmsdCmdParser(host = Args.host,
+                                   port = Args.port,
+                                   xprt = Args.xprt,
+                                   auth = Args.auth,
+                                   auth_opt = AUTH_OPT,
+                                   debug = Args.debug)
 
-        if args.source is not None or args.script is not None or args.cmd is not None:
-            if args.source is not None:
-                cmdParser.do_source(args.source)
-            if args.script is not None:
-                cmdParser.do_script(args.script)
-            if args.cmd is not None:
-                cmdParser.onecmd(args.cmd)
-            cmdParser.do_quit(None)
+        if Args.source is not None or Args.script is not None or Args.cmd is not None:
+            if Args.source is not None:
+                CMD_PARSER.do_source(Args.source)
+            if Args.script is not None:
+                CMD_PARSER.do_script(Args.script)
+            if Args.cmd is not None:
+                CMD_PARSER.onecmd(Args.cmd)
+            CMD_PARSER.do_quit(None)
         else:
             if sys.stdin.isatty() is False:
-                cmdParser.read_none_tty(sys.stdin)
-                cmdParser.do_quit(None)
+                CMD_PARSER.read_none_tty(sys.stdin)
+                CMD_PARSER.do_quit(None)
             else:
-                cmdParser.cmdloop("Welcome to the LDMSD control processor")
-                cmdParser.do_quit(None)
+                CMD_PARSER.cmdloop("Welcome to the LDMSD control processor")
+                CMD_PARSER.do_quit(None)
+
     except KeyboardInterrupt:
         sys.exit(0)
+
     except Exception as e:
-        if is_debug:
-            raise
-        else:
-            print(e)
-            sys.exit(0)
+        if IS_DEBUG:
+            raise e
+
+        print(e)
+        sys.exit(0)
