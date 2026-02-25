@@ -235,11 +235,15 @@ are the environment variable name.
 [subscribe]
 -----------
 
-List of dictionaries of streams to subscribe producers to.
+List of dictionaries of streams or messages to subscribe producers to.
 
 **stream**
    |
    | The name of the stream.
+
+**msg_tag**
+   |
+   | The name of the msg_tag.
 
 **regex**
    |
