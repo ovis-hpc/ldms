@@ -496,8 +496,13 @@ class YamlCfg(object):
                 aggregators[group] = {}
             subscribe = check_opt('subscribe', agg_spec)
             if subscribe:
-                for stream in subscribe:
-                    check_required([ 'stream', 'regex' ], stream, '"aggregators" stream specification')
+                for sub in subscribe:
+                    check_required([ 'regex' ], sub, '"aggregators" stream specification')
+                    msg = check_opt('msg_tag', sub)
+                    stream = check_opt('stream', sub)
+                    if not msg and not stream:
+                        raise ValueError(f'"subscribe" for hostlist {group} must contain '\
+                                         f'either a "stream" or "msg_tag" attribute\n')
             for name in names:
                 aggregators[group][name] = { 'state' : 'stopped' } # 'running', 'error'
                 self.build_advertisers(agg_spec)
@@ -1039,15 +1044,18 @@ class YamlCfg(object):
                     dstr = self.write_opt_attr(dstr, 'offset', offset, endline=True)
         return dstr
 
-    def write_stream_subscribe(self, dstr, group_name, agg):
+    def write_subscribe(self, dstr, group_name, agg):
         subscribe = check_opt('subscribe', self.aggregators[group_name][agg])
         if subscribe:
-            for stream in subscribe:
-                regex = check_opt('regex', stream)
+            for sub in subscribe:
+                regex = check_opt('regex', sub)
                 if regex is None:
                     regex = '.*'
-                dstr += f'prdcr_subscribe stream={stream["stream"]} '\
-                        f'regex={regex}\n'
+                dstr += f'prdcr_subscribe '
+                for k, v in sub.items():
+                    if k != 'regex':
+                        dstr += f'{k}={v} '
+                dstr += f'regex={regex}\n'
         return dstr
 
     def write_aggregator(self, dstr, dmn, auth_listen):
@@ -1062,7 +1070,7 @@ class YamlCfg(object):
                     dstr, auth_listen = self.write_producers(dstr, group_name, dmn, auth_listen)
                     dstr = self.write_prdcr_listeners(dstr, group_name)
                     dstr, auth_listen = self.write_advertisers(dstr, group_name, dmn, auth_listen)
-                    dstr = self.write_stream_subscribe(dstr, group_name, dmn)
+                    dstr = self.write_subscribe(dstr, group_name, dmn)
                     dstr = self.write_agg_plugins(dstr, group_name, dmn)
                     dstr = self.write_updaters(dstr, group_name, dmn)
                     dstr = self.write_stores(dstr, dmn)
