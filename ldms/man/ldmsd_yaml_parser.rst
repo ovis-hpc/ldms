@@ -237,9 +237,9 @@ List of dictionaries of streams or messages to subscribe producers to.
    |
    | The name of the stream.
 
-**msg_tag**
+**message_channel**
    |
-   | The name of the msg_tag.
+   | The name of the message_channel.
 
 **regex**
    |

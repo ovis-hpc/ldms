@@ -498,11 +498,11 @@ class YamlCfg(object):
             if subscribe:
                 for sub in subscribe:
                     check_required([ 'regex' ], sub, '"aggregators" stream specification')
-                    msg = check_opt('msg_tag', sub)
+                    msg = check_opt('message_channel', sub)
                     stream = check_opt('stream', sub)
                     if not msg and not stream:
                         raise ValueError(f'"subscribe" for hostlist {group} must contain '\
-                                         f'either a "stream" or "msg_tag" attribute\n')
+                                         f'either a "stream" or "message_channel" attribute\n')
             for name in names:
                 aggregators[group][name] = { 'state' : 'stopped' } # 'running', 'error'
                 self.build_advertisers(agg_spec)
