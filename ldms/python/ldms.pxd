@@ -255,7 +255,13 @@ cdef extern from "ovis_log/ovis_log.h" nogil:
         LCRITICAL "OVIS_LCRITICAL"
         LCRIT     "OVIS_LCRIT"
 
-    int ovis_log_set_level_by_name(const char *subsys_name, int level)
+    cdef struct ovis_log_s:
+        pass
+    ctypedef ovis_log_s *ovis_log_t
+
+    int ovis_log_str_to_level(char *str)
+    int ovis_log_set_level(ovis_log_t log, int level)
+    int ovis_log_get_level(ovis_log_t log)
 
 cdef extern from "ovis_thrstats/ovis_thrstats.h" nogil:
     struct timespec:
@@ -350,9 +356,9 @@ cdef extern from "ldms.h" nogil:
                                    const char *auth_name,
                                    attr_value_list *auth_av_list)
     ldms_t ldms_xprt_rail_new(const char *xprt_name,
-			  int n, int64_t recv_quota, int32_t rate_limit,
-			  const char *auth_name,
-			  attr_value_list *auth_av_list)
+                          int n, int64_t recv_quota, int32_t rate_limit,
+                          const char *auth_name,
+                          attr_value_list *auth_av_list)
     void ldms_xprt_put(ldms_t x, const char *name)
     void ldms_xprt_close(ldms_t x)
     int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
@@ -363,8 +369,8 @@ cdef extern from "ldms.h" nogil:
     ctypedef void (*app_ctxt_free_fn)(void *ctxt) except *
     void ldms_xprt_ctxt_set(ldms_t x, void *ctxt, app_ctxt_free_fn fn)
     int ldms_xprt_sockaddr(ldms_t x, sockaddr *local_sa,
-		           sockaddr *remote_sa,
-		           socklen_t *sa_len)
+                           sockaddr *remote_sa,
+                           socklen_t *sa_len)
 
     int ldms_xprt_peer_msg_is_enabled(ldms_t x)
 
@@ -465,7 +471,7 @@ cdef extern from "ldms.h" nogil:
     ctypedef ldms_rbuf_desc *ldms_set_t
     ctypedef void (*ldms_lookup_cb_t)(ldms_t x, ldms_lookup_status status, int more, ldms_set_t s, void *arg) except *
     int ldms_xprt_lookup(ldms_t x, const char *name, ldms_lookup_flags flags,
-		         ldms_lookup_cb_t cb, void *cb_arg)
+                         ldms_lookup_cb_t cb, void *cb_arg)
     int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len)
     size_t ldms_xprt_msg_max(ldms_t x)
     ctypedef uint64_t pthread_t
@@ -534,7 +540,7 @@ cdef extern from "ldms.h" nogil:
     int LDMS_UPD_ERROR(int flags)
     int ldms_xprt_update(ldms_set_t s, ldms_update_cb_t update_cb, void *arg)
     int ldms_xprt_register_push(ldms_set_t s, int push_flags,
-				ldms_update_cb_t cb_fn, void *cb_arg)
+                                ldms_update_cb_t cb_fn, void *cb_arg)
     int ldms_xprt_cancel_push(ldms_set_t s)
 
     cpdef enum ldms_value_type:
@@ -684,19 +690,19 @@ cdef extern from "ldms.h" nogil:
     int ldms_schema_metric_add(ldms_schema_t s, const char *name,
                                ldms_value_type t)
     int ldms_schema_metric_add_with_unit(ldms_schema_t s, const char *name,
-					    const char *unit, ldms_value_type type);
+                                            const char *unit, ldms_value_type type);
     int ldms_schema_meta_add(ldms_schema_t s, const char *name,
                              ldms_value_type t)
     int ldms_schema_meta_add_with_unit(ldms_schema_t s, const char *name,
-					  const char *unit, ldms_value_type t);
+                                          const char *unit, ldms_value_type t);
     int ldms_schema_metric_array_add(ldms_schema_t s, const char *name,
                                      ldms_value_type t, uint32_t count)
     int ldms_schema_metric_array_add_with_unit(ldms_schema_t s, const char *name,
-						  const char *unit, ldms_value_type t, uint32_t count);
+                                                  const char *unit, ldms_value_type t, uint32_t count);
     int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
                                    ldms_value_type t, uint32_t count)
     int ldms_schema_meta_array_add_with_unit(ldms_schema_t s, const char *name,
-						const char *unit, ldms_value_type t, uint32_t count);
+                                                const char *unit, ldms_value_type t, uint32_t count);
 
     int ldms_schema_metric_template_get(ldms_schema_t schema, int mid,
                                         ldms_metric_template_s *out);
@@ -713,8 +719,8 @@ cdef extern from "ldms.h" nogil:
     # --- set provider --- #
     ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
     ldms_set_t ldms_set_new_with_auth(const char *instance_name,
-				  ldms_schema_t schema,
-				  uid_t uid, gid_t gid, mode_t perm)
+                                  ldms_schema_t schema,
+                                  uid_t uid, gid_t gid, mode_t perm)
     int ldms_set_publish(ldms_set_t set)
     int ldms_set_unpublish(ldms_set_t set)
     void ldms_set_delete(ldms_set_t s)
@@ -747,7 +753,7 @@ cdef extern from "ldms.h" nogil:
     size_t ldms_list_heap_size_get(ldms_value_type t, size_t item_count,
                                    size_t array_count)
     int ldms_schema_metric_list_add(ldms_schema_t s, const char *name,
-				    const char *units, uint32_t heap_sz)
+                                    const char *units, uint32_t heap_sz)
     ldms_mval_t ldms_list_append_item(ldms_set_t s, ldms_mval_t l, ldms_value_type typ, size_t count)
     ldms_mval_t ldms_list_first(ldms_set_t s, ldms_mval_t l, ldms_value_type *typ_out, size_t *count)
     ldms_mval_t ldms_list_next(ldms_set_t s, ldms_mval_t v, ldms_value_type *typ_out, size_t *count)
@@ -758,8 +764,8 @@ cdef extern from "ldms.h" nogil:
     # --- record related functions --- #
     ldms_record_t ldms_record_create(const char *name)
     int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
-			   const char *unit, ldms_value_type type,
-			   size_t count)
+                           const char *unit, ldms_value_type type,
+                           size_t count)
     int ldms_schema_record_add(ldms_schema_t s, ldms_record_t rec_def)
     int ldms_schema_record_array_add(ldms_schema_t s, const char *name,
                                      ldms_record_t rec_def, int array_len)
@@ -947,6 +953,59 @@ cdef extern from "ldms.h" nogil:
     void ldms_msg_client_stats_free(ldms_msg_client_stats_s *cs)
     char *ldms_msg_client_stats_tq_to_str(ldms_msg_client_stats_tq_s *tq)
     char *ldms_msg_client_stats_str()
+
+cdef extern from "ldms_msg_chan.h":
+    cdef enum ldms_msg_chan_state_e:
+        LDMS_MSG_CHAN_DISCONNECTED
+        LDMS_MSG_CHAN_CONNECTING
+        LDMS_MSG_CHAN_CONNECTED
+
+    cdef enum ldms_msg_chan_mode_e:
+        LDMS_MSG_CHAN_MODE_SUBSCRIBE
+        LDMS_MSG_CHAN_MODE_PUBLISH
+        LDMS_MSG_CHAN_MODE_BIDIR
+
+    struct ldms_msg_chan_stats_s:
+        ldms_msg_chan_mode_e mode
+        size_t max_q_depth
+        size_t cur_q_depth
+        size_t pub_msg_sent
+        size_t pub_msg_acked
+        size_t pub_byte_cnt
+        size_t pub_conn_attempt
+        size_t pub_conn_success
+        timespec pub_last_conn
+        size_t sub_byte_cnt
+        size_t sub_msg_cnt
+        size_t sub_conn_cnt
+        timespec sub_last_conn
+        int closing
+        int cancel
+        ldms_msg_chan_state_e state
+
+    struct ldms_msg_chan_s:
+        pass
+    ctypedef ldms_msg_chan_s *ldms_msg_chan_t
+
+    ldms_msg_chan_t ldms_msg_chan_new(const char *app_name,
+                                      ldms_msg_chan_mode_e mode,
+				      const char *xprt,
+				      const char *rem_host,
+				      int rem_port,
+				      const char *lcl_host,
+				      int lcl_port,
+				      const char *auth,
+                                      attr_value_list *auth_avl,
+				      int reconnect)
+    void ldms_msg_chan_close(ldms_msg_chan_t chan, int cancel)
+    int ldms_msg_chan_publish(ldms_msg_chan_t chan, const char *chan_name,
+			      uid_t uid, gid_t gid, uint32_t perm,
+			      ldms_msg_type_e type,  char *msg, size_t msg_len)
+    int ldms_msg_chan_subscribe(ldms_msg_chan_t chan, const char *regex,
+			        ldms_msg_event_cb_t msg_cb_fn, void *cb_arg)
+    void ldms_msg_chan_set_q_limit(ldms_msg_chan_t chan, size_t limit)
+    void ldms_msg_chan_stats(ldms_msg_chan_t chan, ldms_msg_chan_stats_s *stats)
+    ovis_log_t ldms_msg_chan_log(ldms_msg_chan_t chan)
 
 cdef extern from "zap/zap.h" nogil:
     struct zap_thrstat_result_entry:
