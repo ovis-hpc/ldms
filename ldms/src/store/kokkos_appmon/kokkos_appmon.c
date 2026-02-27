@@ -332,12 +332,12 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	rc = get_json_value(entity, "node-name", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto out;
-	node_name = json_value_str(v)->str;
+	node_name = json_value_cstr(v);
 
 	rc = get_json_value(entity, "timestamp", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto out;
-	timestamp = strtod(json_value_str(v)->str, NULL);
+	timestamp = strtod(json_value_cstr(v), NULL);
 
 	rc = get_json_value(entity, "kokkos-perf-data", JSON_LIST_VALUE, &list);
 	if (rc)
@@ -355,7 +355,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		rc = get_json_value(item, "name", JSON_STRING_VALUE, &v);
 		if (rc)
 			goto out;
-		name = json_value_str(v)->str;
+		name = json_value_cstr(v);
 
 		rc = get_json_value(item, "type", JSON_INT_VALUE, &v);
 		if (rc)

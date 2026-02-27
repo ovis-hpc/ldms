@@ -72,6 +72,7 @@
 #include <dlfcn.h>
 #include <assert.h>
 #include <libgen.h>
+#include <float.h>
 #include <time.h>
 #include <coll/rbt.h>
 #include <coll/str_map.h>
@@ -1268,6 +1269,11 @@ void ldmsd_stat_reset(struct ldmsd_stat *stats, struct timespec *now)
 {
 	memset(stats, 0, sizeof(*stats));
 	stats->start = *now;
+	stats->end = *now;
+	stats->min_ts = *now;
+	stats->max_ts = *now;
+	stats->min = DBL_MAX;
+	stats->max = DBL_MIN;
 }
 
 void *event_proc(void *v)

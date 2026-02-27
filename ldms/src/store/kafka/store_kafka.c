@@ -110,9 +110,10 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 {
 	int rc = 0;
 	const char *path;
-	json_entity_t jdoc = NULL, jent, jval;
-	json_str_t jkey;
-	json_parser_t jp = NULL;
+	json_doc_t jdoc = NULL;
+	json_entity_t jent, jval;
+	json_entity_t root = NULL;
+	char *jkey;
 	char *buff = NULL;
 	size_t buff_sz, buff_len = 0;
 	ssize_t len;
@@ -187,65 +188,60 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	buff[buff_len] = 0;
 
 	/* json parse */
-	jp = json_parser_new(buff_len + 1);
-	if (!jp) {
-		rc = errno;
-		LOG_ERROR("json_parser_new() failed, errno: %d\n", errno);
-		goto out;
-	}
-	rc = json_parse_buffer(jp, buff, buff_len+1, &jdoc);
+	rc = json_parse_buffer(buff, buff_len+1, &jdoc);
 	if (rc) {
-		LOG_ERROR("json_parse_buffer() failed: %d\n", rc);
+		LOG_ERROR("json_parse_buffer() failed: %s\n", json_doc_errstr(jdoc));
 		goto out;
 	}
+	root = json_doc_root(jdoc);
 
 	/* we expect a dict of "PROPERTY": "VALUE" */
-	if ( jdoc->type != JSON_DICT_VALUE ) {
+	if ( json_entity_type(root) != JSON_DICT_VALUE ) {
 		LOG_ERROR("Expecting a dictionary in the store_kafka JSON "
 			  "configuration file (%s), but got: %s\n",
-			  path, json_type_name(jdoc->type));
+			  path, json_type_name(json_entity_type(root)));
 		goto out;
 	}
 
 	/* for each attr */
-	for (jent = json_attr_first(jdoc); jent; jent = json_attr_next(jent)) {
+	for (jent = json_attr_first(root); jent; jent = json_attr_next(jent)) {
 		jkey = json_attr_name(jent);
 		jval = json_attr_value(jent);
-		switch (jval->type) {
+		switch (json_entity_type(jval)) {
 		case JSON_STRING_VALUE:
 			val = json_value_cstr(jval);
 			break;
 		case JSON_INT_VALUE:
 			val = num_str;
-			snprintf(num_str, sizeof(num_str), "%ld", jval->value.int_);
+			snprintf(num_str, sizeof(num_str), "%ld", json_value_int(jval));
 			break;
 		case JSON_FLOAT_VALUE:
 			val = num_str;
-			snprintf(num_str, sizeof(num_str), "%g", jval->value.double_);
+			snprintf(num_str, sizeof(num_str), "%g", json_value_float(jval));
 			break;
 		case JSON_BOOL_VALUE:
 			val = num_str;
-			snprintf(num_str, sizeof(num_str), "%d", jval->value.bool_);
+			snprintf(num_str, sizeof(num_str), "%d", json_value_bool(jval));
 			break;
 		case JSON_NULL_VALUE:
 			val = "";
 			break;
 		default:
-			LOG_ERROR("Unsupported value type: %s\n", json_type_name(jval->type));
+			LOG_ERROR("Unsupported value type: %s\n", json_type_name(json_entity_type(jval)));
 			goto out;
 		}
-		conf_res = rd_kafka_conf_set(common_rconf, jkey->str, val, err_str, sizeof(err_str));
+		conf_res = rd_kafka_conf_set(common_rconf, jkey, val, err_str, sizeof(err_str));
 		switch (conf_res) {
 		case RD_KAFKA_CONF_OK:
 			/* no-op */
 			break;
 		case RD_KAFKA_CONF_UNKNOWN:
 			rc = EINVAL;
-			LOG_ERROR("Unknown kafka config param: %s\n", jkey->str);
+			LOG_ERROR("Unknown kafka config param: %s\n", jkey);
 			goto out;
 		case RD_KAFKA_CONF_INVALID:
 			rc = EINVAL;
-			LOG_ERROR("param: %s, invalid value: %s\n", jkey->str, val);
+			LOG_ERROR("param: %s, invalid value: %s\n", jkey, val);
 			goto out;
 		default:
 			rc = EINVAL;
@@ -261,12 +257,8 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	pthread_mutex_unlock(&sk_lock);
 	if (fd >= 0)
 		close(fd);
-	if (buff)
-		free(buff);
-	if (jp)
-		json_parser_free(jp);
-	if (jdoc)
-		json_entity_free(jdoc);
+	free(buff);
+	json_doc_free(jdoc);
 	return rc;
 }
 

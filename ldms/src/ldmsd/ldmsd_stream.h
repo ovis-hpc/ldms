@@ -140,7 +140,7 @@ extern int ldmsd_stream_publish_file(const char *stream, const char *type,
  */
 void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_type,
 			  const char *data, size_t data_len,
-			  json_entity_t entitym, const char *p_name);
+			  json_entity_t entity, const char *p_name);
 
 int ldmsd_stream_response(ldms_xprt_event_t e);
 

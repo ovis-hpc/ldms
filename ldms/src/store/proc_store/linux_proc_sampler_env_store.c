@@ -360,7 +360,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	rc = get_json_value(entity, field="producerName", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
-	producer_name = json_value_str(v)->str;
+	producer_name = json_value_cstr(v);
 
 	rc = get_json_value(entity, field="pid", JSON_INT_VALUE, &v);
 	if (rc)
@@ -370,7 +370,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	rc = get_json_value(entity, field="timestamp", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
-	timestamp = json_value_str(v)->str;
+	timestamp = json_value_cstr(v);
 
 	rc = get_json_value(entity, field="task_rank", JSON_INT_VALUE, &v);
 	if (rc)
@@ -390,7 +390,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	rc = get_json_value(entity, field="exe", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
-	exec = json_value_str(v)->str;
+	exec = json_value_cstr(v)->str;
 
 	rc = get_json_value(entity, field=LISTNAME, JSON_LIST_VALUE, &list);
 	if (rc)
@@ -408,12 +408,12 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		rc = get_json_value(item, field="k", JSON_STRING_VALUE, &v);
 		if (rc)
 			goto err;
-		json_k = json_value_str(v)->str;
+		json_k = json_value_cstr(v)->str;
 
 		rc = get_json_value(item, field="v", JSON_STRING_VALUE, &v);
 		if (rc)
 			goto err;
-		json_v = json_value_str(v)->str;
+		json_v = json_value_cstr(v)->str;
 
 		sos_obj_t obj = sos_obj_new(app_schema);
 		if (!obj) {

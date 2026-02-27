@@ -178,17 +178,17 @@ static int make_record_array(ldms_record_t record, json_entity_t list_attr, ovis
 	switch (json_entity_type(item)) {
 	case JSON_INT_VALUE:
 		rc = ldms_record_metric_add(record,
-					    json_attr_name(list_attr)->str, NULL,
+					    json_attr_name(list_attr), NULL,
 					    LDMS_V_S64_ARRAY, list_len);
 		break;
 	case JSON_BOOL_VALUE:
 		rc = ldms_record_metric_add(record,
-					    json_attr_name(list_attr)->str, NULL,
+					    json_attr_name(list_attr), NULL,
 					    LDMS_V_S8_ARRAY, list_len);
 		break;
 	case JSON_FLOAT_VALUE:
 		rc = ldms_record_metric_add(record,
-					    json_attr_name(list_attr)->str, NULL,
+					    json_attr_name(list_attr), NULL,
 					    LDMS_V_D64_ARRAY, list_len);
 		break;
 	case JSON_STRING_VALUE:
@@ -199,7 +199,7 @@ static int make_record_array(ldms_record_t record, json_entity_t list_attr, ovis
 			break;
 		}
 		rc = ldms_record_metric_add(record,
-					    json_attr_name(list_attr)->str, NULL,
+					    json_attr_name(list_attr), NULL,
 					    LDMS_V_CHAR_ARRAY, jbuf->cursor+1);
 		jbuf_free(jbuf);
 		break;
@@ -228,22 +228,22 @@ static int make_record(ldms_schema_t schema, char *name, json_entity_t dict,
 		switch (json_entity_type(json_value)) {
 		case JSON_INT_VALUE:
 			rc = ldms_record_metric_add(record,
-						    json_attr_name(json_attr)->str, NULL,
+						    json_attr_name(json_attr), NULL,
 						    LDMS_V_S64, 0);
 			break;
 		case JSON_BOOL_VALUE:
 			rc = ldms_record_metric_add(record,
-						    json_attr_name(json_attr)->str, NULL,
+						    json_attr_name(json_attr), NULL,
 						    LDMS_V_S8, 0);
 			break;
 		case JSON_FLOAT_VALUE:
 			rc = ldms_record_metric_add(record,
-						    json_attr_name(json_attr)->str, NULL,
+						    json_attr_name(json_attr), NULL,
 						    LDMS_V_D64, 0);
 			break;
 		case JSON_STRING_VALUE:
 			rc = ldms_record_metric_add(record,
-						    json_attr_name(json_attr)->str, NULL,
+						    json_attr_name(json_attr), NULL,
 						    LDMS_V_CHAR_ARRAY, 255);
 			break;
 		case JSON_LIST_VALUE:
@@ -251,15 +251,15 @@ static int make_record(ldms_schema_t schema, char *name, json_entity_t dict,
 			break;
 		case JSON_DICT_VALUE:
 			ovis_log(log, OVIS_LINFO, "Encoding unsupported nested dictionary '%s' as a string value.\n",
-				 json_attr_name(json_attr)->str);
+				 json_attr_name(json_attr));
 			rc = ldms_record_metric_add(record,
-						    json_attr_name(json_attr)->str, NULL,
+						    json_attr_name(json_attr), NULL,
 						    LDMS_V_CHAR_ARRAY, 255);
 			break;
 		default:
 			ovis_log(log, OVIS_LERROR, "Ignoring unsupported entity '%s[%s]') "
 				 "in JSON dictionary.\n",
-				 json_attr_name(json_attr)->str,
+				 json_attr_name(json_attr),
 				 json_type_name(json_entity_type(json_value)));
 		};
 	}
@@ -296,13 +296,13 @@ static int make_list(ldms_schema_t schema, json_entity_t parent, json_entity_t l
 		break;
 	case JSON_STRING_VALUE:
 		item_size = ldms_list_heap_size_get(LDMS_V_CHAR_ARRAY,
-						    1, json_value_str(item)->str_len);
+						    1, json_value_strlen(item));
 		break;
 	case JSON_DICT_VALUE:
 		/*
 		 * Add a record definition for the dictionary list item
 		 */
-		rc = asprintf(&record_name, "%s_record", json_attr_name(list_attr)->str);
+		rc = asprintf(&record_name, "%s_record", json_attr_name(list_attr));
 		rc = make_record(schema, record_name, item, &record, log);
 		free(record_name);
 		if (rc < 0)
@@ -316,7 +316,7 @@ static int make_list(ldms_schema_t schema, json_entity_t parent, json_entity_t l
 	/* Check if there is a max specified for the list to override
 	 * the current length */
 	rc = asprintf(&record_name, "%s_max_len",
-		      json_attr_name(list_attr)->str);
+		      json_attr_name(list_attr));
 	len_attr = json_attr_find(parent, record_name);
 	free(record_name);
 	size_t list_len = json_list_len(list);
@@ -324,15 +324,15 @@ static int make_list(ldms_schema_t schema, json_entity_t parent, json_entity_t l
 		if (json_entity_type(json_attr_value(len_attr))
 		    != JSON_INT_VALUE) {
 			ovis_log(log, OVIS_LERROR, "The list length override for '%s' must be "
-				 "an integer.\n", json_attr_name(list_attr)->str);
+				 "an integer.\n", json_attr_name(list_attr));
 		} else {
 			list_len = json_value_int(json_attr_value(len_attr));
 		}
 	}
 	ovis_log(log, OVIS_LINFO, "Adding list '%s' with %zd elements of size %zd\n",
-		 json_attr_name(list_attr)->str, list_len, item_size);
+		 json_attr_name(list_attr), list_len, item_size);
 	return ldms_schema_metric_list_add(schema,
-					   json_attr_name(list_attr)->str, NULL,
+					   json_attr_name(list_attr), NULL,
 					   2 * item_size * list_len);
 }
 
@@ -361,8 +361,7 @@ int JSON_FLOAT_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t enti
 
 int JSON_STRING_VALUE_setter(ldms_set_t set, ldms_mval_t mval, json_entity_t entity, void *ctxt, ovis_log_t log)
 {
-	json_str_t v = json_value_str(entity);
-	ldms_mval_array_set_str(mval, v->str, v->str_len);
+	ldms_mval_array_set_str(mval, json_value_cstr(entity), json_value_strlen(entity));
 	return 0;
 }
 
@@ -457,7 +456,7 @@ int JSON_DICT_VALUE_setter(ldms_set_t set, ldms_mval_t rec_inst, json_entity_t d
 	size_t array_len;
 
 	for (attr = json_attr_first(dict); attr; attr = json_attr_next(attr)) {
-		char *name = json_attr_name(attr)->str;
+		char *name = json_attr_name(attr);
 		json_entity_t value = json_attr_value(attr);
 		enum json_value_e type = json_entity_type(value);
 
@@ -715,9 +714,9 @@ static int get_schema_for_json(js_stream_sampler_t js, char *name, json_entity_t
 	for (json_attr = json_attr_first(e); json_attr;
 	     json_attr = json_attr_next(json_attr)) {
 
-		if ( 0 == strcmp(json_attr_name(json_attr)->str, "S_uid") ||
-		     0 == strcmp(json_attr_name(json_attr)->str, "S_gid") ||
-		     0 == strcmp(json_attr_name(json_attr)->str, "S_perm")) {
+		if ( 0 == strcmp(json_attr_name(json_attr), "S_uid") ||
+		     0 == strcmp(json_attr_name(json_attr), "S_gid") ||
+		     0 == strcmp(json_attr_name(json_attr), "S_perm")) {
 			/* S_uid, S_gid, S_perm already added above */
 			continue;
 		}
@@ -727,22 +726,22 @@ static int get_schema_for_json(js_stream_sampler_t js, char *name, json_entity_t
 		switch (type) {
 		case JSON_INT_VALUE:
 			midx = ldms_schema_metric_add(schema,
-						      json_attr_name(json_attr)->str,
+						      json_attr_name(json_attr),
 						      LDMS_V_S64);
 			break;
 		case JSON_BOOL_VALUE:
 			midx = ldms_schema_metric_add(schema,
-						      json_attr_name(json_attr)->str,
+						      json_attr_name(json_attr),
 						      LDMS_V_S8);
 			break;
 		case JSON_FLOAT_VALUE:
 			midx = ldms_schema_metric_add(schema,
-						      json_attr_name(json_attr)->str,
+						      json_attr_name(json_attr),
 						      LDMS_V_D64);
 			break;
 		case JSON_STRING_VALUE:
 			midx = ldms_schema_metric_array_add(schema,
-							    json_attr_name(json_attr)->str,
+							    json_attr_name(json_attr),
 							    LDMS_V_CHAR_ARRAY, DEFAULT_CHAR_ARRAY_LEN);
 			break;
 		case JSON_LIST_VALUE:
@@ -750,14 +749,14 @@ static int get_schema_for_json(js_stream_sampler_t js, char *name, json_entity_t
 			break;
 		case JSON_DICT_VALUE:
 			/* Add the record definition to the schema */
-			rc = asprintf(&record_name, "%s_record", json_attr_name(json_attr)->str);
+			rc = asprintf(&record_name, "%s_record", json_attr_name(json_attr));
 			ridx = make_record(schema, record_name,
 					   json_attr_value(json_attr), &record, js->log);
 			free(record_name);
 			/* A record must be a member of an array or list.
 			 * Create an array to contain the record */
 			midx = ldms_schema_record_array_add(schema,
-							    json_attr_name(json_attr)->str,
+							    json_attr_name(json_attr),
 							    record, 1);
 			break;
 		default:
@@ -777,7 +776,7 @@ static int get_schema_for_json(js_stream_sampler_t js, char *name, json_entity_t
 			rc = errno;
 			goto err_3;
 		}
-		ae->name = strdup(json_attr_name(json_attr)->str);
+		ae->name = strdup(json_attr_name(json_attr));
 		if (!ae->name) {
 			rc = ENOMEM;
 			free(ae);
@@ -1028,7 +1027,7 @@ static void update_set_data(js_stream_sampler_t js, ldms_set_t l_set,
 	for (json_attr = json_attr_first(entity); json_attr;
 	     json_attr = json_attr_next(json_attr)) {
 
-		char *name = json_attr_name(json_attr)->str;
+		char *name = json_attr_name(json_attr);
 		json_entity_t value = json_attr_value(json_attr);
 		enum json_value_e type = json_entity_type(json_attr_value(json_attr));
 		rbn = rbt_find(&j_schema->s_attr_tree, name);
@@ -1134,7 +1133,7 @@ static int json_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		       "missing or not a string.\n", js->stream_name);
 		goto err_0;
 	}
-	rc = get_schema_for_json(js, json_value_str(schema_name)->str, entity, &j_schema);
+	rc = get_schema_for_json(js, (char *)json_value_cstr(schema_name), entity, &j_schema);
 	if (rc) {
 		ovis_log(js->log, OVIS_LERROR, "%s: Error %d creating an LDMS schema for the JSON object '%s'\n",
 			 js->stream_name, rc, msg);

@@ -383,7 +383,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	rc = get_json_value(entity, field="producerName", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
-	producer_name = json_value_str(v)->str;
+	producer_name = json_value_cstr(v)->str;
 
 	rc = get_json_value(entity, field="pid", JSON_INT_VALUE, &v);
 	if (rc)
@@ -393,7 +393,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	rc = get_json_value(entity, field="timestamp", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
-	timestamp = json_value_str(v)->str;
+	timestamp = json_value_cstr(v)->str;
 
 	rc = get_json_value(entity, field="task_rank", JSON_INT_VALUE, &v);
 	if (rc)
@@ -413,7 +413,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	rc = get_json_value(entity, field="exe", JSON_STRING_VALUE, &v);
 	if (rc)
 		goto err;
-	exec = json_value_str(v)->str;
+	exec = json_value_cstr(v)->str;
 
 	rc = get_json_value(entity, field=LISTNAME, JSON_LIST_VALUE, &list);
 	if (rc)
@@ -431,12 +431,12 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		rc = get_json_value(item, field="file", JSON_STRING_VALUE, &v);
 		if (rc)
 			goto err;
-		file_name = json_value_str(v)->str;
+		file_name = json_value_cstr(v)->str;
 
 		rc = get_json_value(item, field="st_dev", JSON_STRING_VALUE, &v);
 		if (rc)
 			goto err;
-		st_dev = json_value_str(v)->str;
+		st_dev = json_value_cstr(v)->str;
 
 		rc = get_json_value(item, field="st_ino", JSON_INT_VALUE, &v);
 		if (rc)
@@ -456,12 +456,12 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		rc = get_json_value(item, field="mtime", JSON_STRING_VALUE, &v);
 		if (rc)
 			goto err;
-		mtime = json_value_str(v)->str;
+		mtime = json_value_cstr(v)->str;
 
 		rc = get_json_value(item, field="state", JSON_STRING_VALUE, &v);
 		if (rc)
 			goto err;
-		state = json_value_str(v)->str;
+		state = json_value_cstr(v)->str;
 
 		sos_obj_t obj = sos_obj_new(app_schema);
 		if (!obj) {

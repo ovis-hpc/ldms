@@ -1304,8 +1304,8 @@ int __handle_cfg_file(app_sampler_inst_t inst, char *val)
 	int i, fd, rc = -1, off;
 	ssize_t sz;
 	char *buff = NULL;
-	json_parser_t jp = NULL;
-	json_entity_t jdoc = NULL;
+	json_doc_t jdoc = NULL;
+	json_entity_t root;
 	json_entity_t list, ent;
 	app_sampler_metric_info_t minfo;
 
@@ -1338,48 +1338,44 @@ int __handle_cfg_file(app_sampler_inst_t inst, char *val)
 		sz -= rc;
 	}
 
-	jp = json_parser_new(0);
-	if (!jp) {
-		rc = errno;
-		INST_LOG(inst, OVIS_LERROR, "json_parser_new() error: %d", errno);
-		goto out;
-	}
-	rc = json_parse_buffer(jp, buff, sz, &jdoc);
+	rc = json_parse_buffer(buff, sz, &jdoc);
+	root = json_doc_root(jdoc);
 	if (rc) {
-		INST_LOG(inst, OVIS_LERROR, "JSON parse failed: %d", rc);
+		INST_LOG(inst, OVIS_LERROR,
+			 "JSON parse failed: %s", json_doc_errstr(jdoc));
 		goto out;
 	}
 
-	ent = json_value_find(jdoc, "stream");
+	ent = json_value_find(root, "stream");
 	if (ent) {
-		if (ent->type != JSON_STRING_VALUE) {
+		if (json_entity_type(ent) != JSON_STRING_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR, "Error: `stream` must be a string.");
 			goto out;
 		}
-		inst->stream_name = strdup(ent->value.str_->str);
+		inst->stream_name = strdup(json_value_cstr(ent));
 		if (!inst->stream_name) {
 			rc = ENOMEM;
 			INST_LOG(inst, OVIS_LERROR, "Out of memory.");
 			goto out;
 		}
 	} /* else, caller will later set default stream_name */
-	list = json_value_find(jdoc, "metrics");
+	list = json_value_find(root, "metrics");
 	if (list) {
 		for (ent = json_item_first(list); ent;
 					ent = json_item_next(ent)) {
-			if (ent->type != JSON_STRING_VALUE) {
+			if (json_entity_type(ent) != JSON_STRING_VALUE) {
 				rc = EINVAL;
 				INST_LOG(inst, OVIS_LERROR,
 					 "Error: metric must be a string.");
 				goto out;
 			}
-			minfo = find_metric_info_by_name(ent->value.str_->str);
+			minfo = find_metric_info_by_name(json_value_cstr(ent));
 			if (!minfo) {
 				rc = ENOENT;
 				INST_LOG(inst, OVIS_LERROR,
 					 "Error: metric '%s' not found",
-					 ent->value.str_->str);
+					 json_value_cstr(ent));
 				goto out;
 			}
 			inst->metric_idx[minfo->code] = -1;
@@ -1395,12 +1391,8 @@ int __handle_cfg_file(app_sampler_inst_t inst, char *val)
 
  out:
 	close(fd);
-	if (buff)
-		free(buff);
-	if (jp)
-		json_parser_free(jp);
-	if (jdoc)
-		json_entity_free(jdoc);
+	free(buff);
+	json_doc_free(jdoc);
 	return rc;
 }
 
@@ -1415,34 +1407,34 @@ int __handle_task_init(app_sampler_inst_t inst, json_entity_t data)
 	json_entity_t task_rank;
 	char setname[PATH_MAX];
 	job_id = json_value_find(data, "job_id");
-	if (!job_id || job_id->type != JSON_INT_VALUE)
+	if (!job_id || json_entity_type(job_id) != JSON_INT_VALUE)
 		return EINVAL;
 	task_pid = json_value_find(data, "task_pid");
-	if (!task_pid || task_pid->type != JSON_INT_VALUE)
+	if (!task_pid || json_entity_type(task_pid) != JSON_INT_VALUE)
 		return EINVAL;
 	task_rank = json_value_find(data, "task_global_id");
-	if (!task_rank || task_rank->type != JSON_INT_VALUE)
+	if (!task_rank || json_entity_type(task_rank) != JSON_INT_VALUE)
 		return EINVAL;
 	len = snprintf(setname, sizeof(setname), "%s/%s/%ld/%ld",
 		       inst->base_data->producer_name,
 		       ldmsd_plug_cfg_name_get(inst->pi),
-		       job_id->value.int_,
-		       task_pid->value.int_);
+		       json_value_int(job_id),
+		       json_value_int(task_pid));
 	if (len >= sizeof(setname))
 		return ENAMETOOLONG;
 	app_set = calloc(1, sizeof(*app_set));
 	if (!app_set)
 		return ENOMEM;
-	app_set->task_pid = task_pid->value.int_;
+		       app_set->task_pid = json_value_int(task_pid);
         set = ldms_set_new(setname, inst->base_data->schema);
 	if (!set) {
 		free(app_set);
 		return errno;
 	}
         base_auth_set(&inst->base_data->auth, set);
-	ldms_metric_set_u64(set, BASE_JOB_ID, job_id->value.int_);
+	ldms_metric_set_u64(set, BASE_JOB_ID, json_value_int(job_id));
 	ldms_metric_set_u64(set, BASE_COMPONENT_ID, inst->base_data->component_id);
-	ldms_metric_set_u64(set, inst->task_rank_idx, task_rank->value.int_);
+	ldms_metric_set_u64(set, inst->task_rank_idx, json_value_int(task_rank));
 	app_set->set = set;
 	rbn_init(&app_set->rbn, (void*)app_set->task_pid);
 	pthread_mutex_lock(&inst->mutex);
@@ -1461,13 +1453,13 @@ int __handle_task_exit(app_sampler_inst_t inst, json_entity_t data)
 	json_entity_t job_id;
 	json_entity_t task_pid;
 	job_id = json_value_find(data, "job_id");
-	if (!job_id || job_id->type != JSON_INT_VALUE)
+	if (!job_id || json_entity_type(job_id) != JSON_INT_VALUE)
 		return EINVAL;
 	task_pid = json_value_find(data, "task_pid");
-	if (!task_pid || task_pid->type != JSON_INT_VALUE)
+	if (!task_pid || json_entity_type(task_pid) != JSON_INT_VALUE)
 		return EINVAL;
 	pthread_mutex_lock(&inst->mutex);
-	rbn = rbt_find(&inst->set_rbt, (void*)task_pid->value.int_);
+	rbn = rbt_find(&inst->set_rbt, (void*)json_value_int(task_pid));
 	if (!rbn) {
 		pthread_mutex_unlock(&inst->mutex);
 		return ENOENT;
@@ -1503,11 +1495,11 @@ int __stream_cb(ldms_msg_event_t ev, void *ctxt)
 		INST_LOG(inst, OVIS_LERROR, "'event' attribute missing\n");
 		goto out_0;
 	}
-	if (event->type != JSON_STRING_VALUE) {
+	if (json_entity_type(event) != JSON_STRING_VALUE) {
 		INST_LOG(inst, OVIS_LERROR, "'event' is not a string\n");
 		goto out_0;
 	}
-	event_name = event->value.str_->str;
+	event_name = json_value_cstr(event);
 	data = json_value_find(ev->recv.json, "data");
 	if (!data) {
 		INST_LOG(inst, OVIS_LERROR,

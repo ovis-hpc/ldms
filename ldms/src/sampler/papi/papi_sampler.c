@@ -539,26 +539,26 @@ static int handle_step_init(job_data_t job, uint64_t job_id, uint64_t app_id, js
 			rc = EINVAL;
 			goto out;
 		}
-		rc = papi_process_config_file(job, json_value_str(file_name)->str, mylog);
+		rc = papi_process_config_file(job, json_value_cstr(file_name), mylog);
 		if (rc) {
 			switch (rc) {
 			case ENOENT:
 				ovis_log(mylog, OVIS_LERROR,
 				       "The configuration "
 				       "file, %s, does not exist.\n",
-				       json_value_str(file_name)->str);
+				       json_value_cstr(file_name));
 				break;
 			case EPERM:
 				ovis_log(mylog, OVIS_LERROR,
 				       "Permission denied "
 				       "processing the %s configuration file\n",
-				       json_value_str(file_name)->str);
+				       json_value_cstr(file_name));
 				break;
 			default:
 				ovis_log(mylog, OVIS_LERROR,
 				       "Error %d processing "
 				       "the %s configuration file\n",
-				       rc, json_value_str(file_name)->str);
+				       rc, json_value_cstr(file_name));
 
 				break;
 			}
@@ -575,8 +575,8 @@ static int handle_step_init(job_data_t job, uint64_t job_id, uint64_t app_id, js
 			goto out;
 		}
 		rc = papi_process_config_data(job,
-					      json_value_str(config_string)->str,
-					      json_value_str(config_string)->str_len,
+					      json_value_cstr(config_string),
+					      json_value_strlen(config_string),
 					      mylog);
 	}
 	job->job_state = JOB_PAPI_INIT;
@@ -842,11 +842,11 @@ static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt)
 		goto out_0;
 	}
 
-	json_str_t event_name = json_value_str(json_attr_value(event));
+	char *event_name = json_value_cstr(json_attr_value(event));
 	data = json_attr_find(ev->recv.json, "data");
 	if (!data) {
 		ovis_log(mylog, OVIS_LERROR, "'%s' event is missing "
-		       "the 'data' attribute\n", event_name->str);
+		       "the 'data' attribute\n", event_name);
 		goto out_0;
 	}
 	dict = json_attr_value(data);
@@ -868,20 +868,20 @@ static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt)
 
 	pthread_mutex_lock(&job_lock);
 	job = get_job_data(job_id, step_id);
-	if (0 == strncmp(event_name->str, "step_init",9)) {
+	if (0 == strncmp(event_name, "step_init",9)) {
 		rc = handle_step_init(job, job_id, step_id, ev->recv.json);
-	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
+	} else if (0 == strncmp(event_name, "task_init_priv", 14)) {
 		if (job)
 			handle_task_init(job, ev->recv.json);
-	} else if (0 == strncmp(event_name->str, "task_exit", 9)) {
+	} else if (0 == strncmp(event_name, "task_exit", 9)) {
 		if (job)
 			handle_task_exit(job, ev->recv.json);
-	} else if (0 == strncmp(event_name->str, "exit", 4)) {
+	} else if (0 == strncmp(event_name, "exit", 4)) {
 		if (job)
 			handle_job_exit(job, ev->recv.json);
 	} else {
 		ovis_log(mylog, OVIS_LDEBUG,
-		       "ignoring event '%s'\n", event_name->str);
+		       "ignoring event '%s'\n", event_name);
 	}
  	pthread_mutex_unlock(&job_lock);
  out_0:

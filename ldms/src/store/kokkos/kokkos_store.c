@@ -135,9 +135,9 @@ static int process_string(kokkos_context_t k, json_entity_t e, sos_obj_t obj, so
 {
 	struct sos_value_s v_;
 	assert(obj);
-	sos_value_t v = sos_array_new(&v_, attr, obj, e->value.str_->str_len);
+	sos_value_t v = sos_array_new(&v_, attr, obj, json_value_strlen(e));
 	if (v) {
-		memcpy(v->data->array.data.char_, e->value.str_->str, e->value.str_->str_len);
+		memcpy(v->data->array.data.char_, json_value_cstr(e), json_value_strlen(e));
 		sos_value_put(v);
 		return 0;
 	}
@@ -181,14 +181,14 @@ static sos_visit_action_t add_digest_cb(sos_index_t index,
 	}
 	memcpy(digest->prim.struc_, ctxt->digest, sos_attr_size(sha256_digest_attr));
 
-	v = sos_array_new(&v_, sha256_string_attr, obj, ctxt->e->value.str_->str_len);
+	v = sos_array_new(&v_, sha256_string_attr, obj, json_value_strlen(ctxt->e));
 	if (!v) {
 		ovis_log(mylog, OVIS_LERROR,
 		       "%s: Error %d allocating the digest string.\n",
 		       plugin_config_name, errno);
 		goto err_1;
 	}
-	sos_value_memcpy(v, ctxt->e->value.str_->str, ctxt->e->value.str_->str_len);
+	sos_value_memcpy(v, json_value_cstr(ctxt->e), json_value_strlen(ctxt->e));
 	sos_value_put(v);
 
 	ref = sos_obj_ref(obj);
@@ -233,7 +233,7 @@ static int process_job_tag(kokkos_context_t k, json_entity_t e, sos_obj_t obj, s
 	sos_value_data_t data;
 
 	/* Compute the hash and save it in the parser */
-	SHA256((unsigned char*)e->value.str_->str, e->value.str_->str_len, k->job_tag);
+	SHA256((unsigned char*)json_value_cstr(e), json_value_strlen(e), k->job_tag);
 
 	/* Add the digest->string map */
 	add_digest(k, e, k->job_tag);
@@ -251,7 +251,7 @@ static int process_digest(kokkos_context_t k, json_entity_t e, sos_obj_t obj, so
 	unsigned char digest[SHA256_DIGEST_LENGTH];
 
 	/* Compute the hash and save it in the parser */
-	SHA256((unsigned char*)e->value.str_->str, e->value.str_->str_len, digest);
+	SHA256((unsigned char*)json_value_cstr(e), json_value_strlen(e), digest);
 
 	/* Add the digest->string map */
 	add_digest(k, e, digest);
@@ -268,10 +268,10 @@ static int process_double(kokkos_context_t k, json_entity_t e, sos_obj_t obj, so
 	sos_value_data_t data;
 	assert(obj);
 	data = sos_obj_attr_data(obj, attr, NULL);
-	if (e->type == JSON_FLOAT_VALUE)
-		data->prim.double_ = e->value.double_;
-	else if (e->type == JSON_INT_VALUE)
-		data->prim.double_ = (double)e->value.int_;
+	if (json_entity_type(e) == JSON_FLOAT_VALUE)
+		data->prim.double_ = json_value_float(e);
+	else if (json_entity_type(e) == JSON_INT_VALUE)
+		data->prim.double_ = (double)json_value_int(e);
 	else
 		data->prim.double_ = 0.0;
 	return 0;
@@ -282,7 +282,7 @@ static int process_int(kokkos_context_t k, json_entity_t e, sos_obj_t obj, sos_a
 	sos_value_data_t data;
 	assert(obj);
 	data = sos_obj_attr_data(obj, attr, NULL);
-	data->prim.uint64_ = e->value.int_;
+	data->prim.uint64_ = json_value_int(e);
 	return 0;
 }
 
@@ -300,11 +300,11 @@ static int process_start_time(kokkos_context_t k, json_entity_t e, sos_obj_t obj
 {
 	sos_value_data_t data;
 	assert(obj);
-	if (e->value.double_ == 0)
+	if (json_value_float(e) == 0)
 		return EINVAL;
 	data = sos_obj_attr_data(obj, attr, NULL);
-	data->prim.timestamp_ = to_timestamp(e->value.double_);
-	k->start_time = e->value.double_;
+	data->prim.timestamp_ = to_timestamp(json_value_float(e));
+	k->start_time = json_value_float(e);
 	return 0;
 }
 
@@ -312,11 +312,11 @@ static int process_end_time(kokkos_context_t k, json_entity_t e, sos_obj_t obj, 
 {
 	sos_value_data_t data;
 	assert(obj);
-	if (e->value.double_ == 0)
+	if (json_value_float(e) == 0)
 		return EINVAL;
 	data = sos_obj_attr_data(obj, attr, NULL);
-	data->prim.timestamp_ = to_timestamp(e->value.double_);
-	k->end_time = e->value.double_;
+	data->prim.timestamp_ = to_timestamp(json_value_float(e));
+	k->end_time = json_value_float(e);
 	return 0;
 }
 
@@ -324,11 +324,11 @@ static int process_job_id(kokkos_context_t k, json_entity_t e, sos_obj_t obj, so
 {
 	sos_value_data_t data;
 	assert(obj);
-	if (e->value.int_ == 0)
+	if (json_value_int(e) == 0)
 		return EINVAL;
 	data = sos_obj_attr_data(obj, attr, NULL);
-	k->job_id = e->value.int_;
-	data->prim.uint64_ = e->value.int_;
+	k->job_id = json_value_int(e);
+	data->prim.uint64_ = json_value_int(e);
 	return 0;
 }
 
@@ -337,8 +337,8 @@ static int process_app_id(kokkos_context_t k, json_entity_t e, sos_obj_t obj, so
 	sos_value_data_t data;
 	assert(obj);
 	data = sos_obj_attr_data(obj, attr, NULL);
-	k->app_id = e->value.int_;
-	data->prim.uint64_ = e->value.int_;
+	k->app_id = json_value_int(e);
+	data->prim.uint64_ = json_value_int(e);
 	return 0;
 }
 
@@ -347,10 +347,10 @@ static int process_component_id(kokkos_context_t k, json_entity_t e, sos_obj_t o
 	sos_value_data_t data;
 	assert(obj);
 	data = sos_obj_attr_data(obj, attr, NULL);
-	if (e->value.int_ < 0)
+	if (json_value_int(e) < 0)
 		k->component_id = 0;
 	else
-		k->component_id = e->value.int_;
+		k->component_id = json_value_int(e);
 	data->prim.uint64_ = k->component_id;
 	return 0;
 }
@@ -362,10 +362,10 @@ static int process_mpi_rank(kokkos_context_t k, json_entity_t e, sos_obj_t obj, 
 	data = sos_obj_attr_data(obj, attr, NULL);
 
 	/* If the kokkos job wasn't MPI, use the component-id for the rank */
-	if (e->value.int_ < 0)
+	if (json_value_int(e) < 0)
 		k->mpi_rank = k->component_id;
 	else
-		k->mpi_rank = e->value.int_;
+		k->mpi_rank = json_value_int(e);
 	data->prim.uint64_ = k->mpi_rank;
 
 	return 0;
@@ -378,9 +378,9 @@ static int process_sample_entity(kokkos_context_t k, json_entity_t e, sos_obj_t 
 	json_entity_t a;
 	int rc = 0;
 
-	if (e->type != JSON_DICT_VALUE) {
+	if (json_entity_type(e) != JSON_DICT_VALUE) {
 		ovis_log(mylog, OVIS_LERROR, "%s: The sample entity must be a dictionary, not a %s\n",
-		       plugin_config_name, json_type_name(e->type));
+			 plugin_config_name, json_type_name(json_entity_type(e)));
 		return EINVAL;
 	}
 
@@ -413,18 +413,16 @@ static int process_sample_entity(kokkos_context_t k, json_entity_t e, sos_obj_t 
 	memcpy(data->prim.struc_, k->job_tag, sizeof(k->job_tag));
 
 	for (a = json_attr_first(e); a; a = json_attr_next(a)) {
-		json_attr_t attr = a->value.attr_;
-		act = get_act(attr->name->value.str_->str,
-			      attr->name->value.str_->str_len);
+		act = get_act(json_attr_name(a), json_value_strlen(json_attr_value(a)));
 		if (!act) {
 			ovis_log(mylog, OVIS_LERROR, "%s: '%s' is not a recognized attribute name.\n",
-			       plugin_config_name, attr->name->value.str_->str);
+				 plugin_config_name, json_attr_name(a));
 			continue;
 		}
 		if (act->app_n_kernel)
-			rc = act->act_fn(k, attr->value, k->app_obj, act->attr);
+			rc = act->act_fn(k, json_attr_value(a), k->app_obj, act->attr);
 		else
-			rc = act->act_fn(k, attr->value, k->kernel_obj, act->attr);
+			rc = act->act_fn(k, json_attr_value(a), k->kernel_obj, act->attr);
 		if (rc)
 			goto err;
 	}
@@ -442,10 +440,10 @@ static int process_sample_entity(kokkos_context_t k, json_entity_t e, sos_obj_t 
 static int process_list_entity(kokkos_context_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
 {
 	json_entity_t i;
-	if (e->type != JSON_LIST_VALUE) {
+	if (json_entity_type(e) != JSON_LIST_VALUE) {
 		ovis_log(mylog, OVIS_LERROR, "%s: The kernel-perf-info entity "
 			  "must be a JSon array, i.e. []. Got a %d.\n",
-			  plugin_config_name, e->type);
+			 plugin_config_name, json_entity_type(e));
 		return 1;
 	}
 	for (i = json_item_first(e); i; i = json_item_next(i)) {
@@ -460,25 +458,24 @@ static int process_dict_entity(kokkos_context_t k, json_entity_t e, sos_obj_t ob
 	json_entity_t a;
 	int rc = 0;
 
-	if (e->type != JSON_DICT_VALUE) {
+	if (json_entity_type(e) != JSON_DICT_VALUE) {
 		ovis_log(mylog, OVIS_LERROR, "%s: Expected a dictionary object, not a %s.\n",
-		       plugin_config_name, json_type_name(e->type));
+			 plugin_config_name, json_type_name(json_entity_type(e)));
 		return EINVAL;
 	}
 
 	for (a = json_attr_first(e); a; a = json_attr_next(a)) {
-		json_attr_t attr = a->value.attr_;
-		act = get_act(attr->name->value.str_->str,
-			      attr->name->value.str_->str_len);
+		act = get_act(json_value_cstr(json_attr_value(a)),
+			      json_value_strlen(json_attr_value(a)));
 		if (!act) {
 			ovis_log(mylog, OVIS_LERROR, "%s: '%s' is not a recognized attribute name.\n",
-			       plugin_config_name, attr->name->value.str_->str);
+				 plugin_config_name, json_attr_name(a));
 			continue;
 		}
 		if (act->app_n_kernel)
-			rc = act->act_fn(k, attr->value, k->app_obj, act->attr);
+			rc = act->act_fn(k, json_attr_value(a), k->app_obj, act->attr);
 		else
-			rc = act->act_fn(k, attr->value, k->kernel_obj, act->attr);
+			rc = act->act_fn(k, json_attr_value(a), k->kernel_obj, act->attr);
 		if (rc)
 			break;
 	}

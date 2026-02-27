@@ -230,7 +230,7 @@ flex_config(ldmsd_strgp_t strgp, json_t *jcfg,
 	const char *key;
 	json_t *jdecomp, *jdigest, *jschema, *jtype;
 	json_t *jdefault;
-	json_t *jmatches, *jobj, *jinstance, *japply;
+	json_t *jmatches, *jobj, *jinstance, *japply = NULL;
 	flex_match_t match;
 	int idx, rc;
 
