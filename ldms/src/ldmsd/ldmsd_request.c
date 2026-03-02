@@ -220,6 +220,7 @@ static int strgp_metric_add_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_metric_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int store_time_stats_handler(ldmsd_req_ctxt_t reqc);
+static int strgp_pi_stats_handler(ldmsd_req_ctxt_t reqc);
 static int updtr_add_handler(ldmsd_req_ctxt_t req_ctxt);
 static int updtr_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int updtr_prdcr_add_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -434,6 +435,10 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_STORE_TIME_STATS_REQ] = {
 		LDMSD_STORE_TIME_STATS_REQ, store_time_stats_handler,
+		XALL
+	},
+	[LDMSD_STRGP_PI_STATS_REQ] = {
+		LDMSD_STRGP_PI_STATS_REQ, strgp_pi_stats_handler,
 		XALL
 	},
 
@@ -3608,6 +3613,59 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 out:
 	free(name);
 	ldmsd_strgp_put(strgp, "find");
+	return rc;
+}
+
+static int strgp_pi_stats_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *strgp_name = NULL;
+	ldmsd_strgp_t strgp = NULL;
+	char *stats_res = NULL;
+
+	reqc->errcode = 0;
+
+	strgp_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!strgp_name) {
+		reqc->errcode = EINVAL;
+		snprintf(reqc->line_buf, reqc->line_len, "The 'name' parameter is required.");
+		goto out;
+	} else {
+		strgp = ldmsd_strgp_find(strgp_name);
+		if (!strgp) {
+			snprintf(reqc->line_buf, reqc->line_len,
+				"strgp '%s' doesn't exist.", strgp_name);
+			reqc->errcode = ENOENT;
+			goto out;
+		}
+	}
+
+	if (!strgp->store->api->stats_get) {
+		snprintf(reqc->line_buf, reqc->line_len,
+				"strgp's plugin '%s' doesn't provide statistics.",
+				strgp->store->plugin->name);
+		reqc->errcode = ENOTSUP;
+		goto out;
+	}
+	stats_res = strgp->store->api->stats_get((ldmsd_plug_handle_t)strgp->store, strgp);
+	if (!stats_res) {
+		reqc->line_buf[0] = '\0';
+		goto out;
+	}
+	rc = linebuf_printf(reqc, "%s", stats_res);
+	if (rc) {
+		snprintf(reqc->line_buf, reqc->line_len, "ldmsd had memory allocation failure.");
+		reqc->errcode = EINTR;
+		rc = ENOMEM;
+		ovis_log(config_log, OVIS_LCRIT, "Memory allocation failure.\n");
+		goto out;
+	}
+
+out:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (strgp)
+		ldmsd_cfgobj_find_put(&strgp->obj);
+	free(strgp_name);
 	return rc;
 }
 
