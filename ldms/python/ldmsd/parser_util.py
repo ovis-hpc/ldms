@@ -473,7 +473,7 @@ class YamlCfg(object):
         if 'aggregators' not in config:
             return aggregators
         agg_conf = config['aggregators']
-        if type(agg_conf) is not list:
+        if not isinstance(agg_conf, list):
             raise TypeError(f'{LDMS_YAML_ERR}\n'
                             f' aggregators {LIST_ERR}\n'
                             f'e.g. aggregators:\n'
@@ -488,7 +488,7 @@ class YamlCfg(object):
             group = agg_spec['daemons']
             plugins = check_opt('plugins', agg_spec)
             if plugins:
-                if plugins is not list:
+                if not isinstance(plugins, list):
                     raise ValueError(f'"plugins" must be a list of plugin instance names"\n')
                 for plugin in plugins:
                     check_plugin_config(plugin, self.plugins)
