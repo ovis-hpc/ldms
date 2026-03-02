@@ -845,6 +845,14 @@ Query the storage policy status
       | The storage policy name. If none is given, the statuses of all
         storage policies are reported.
 
+Query the storage plugin statistics corresponding to a storage policy
+---------------------------------------------------------------------
+
+**strgp_plugin_stats** name=<value>
+
+   | **name** *name*
+   | The storage policy name
+
 FAILOVER COMMAND SYNTAX
 =======================
 
