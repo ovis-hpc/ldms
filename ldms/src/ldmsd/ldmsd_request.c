@@ -2205,8 +2205,11 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 						    reqc->line_len, &sctxt, rx_rate);
 	/* on error, reqc->line_buf will be filled */
 	if (reqc->line_buf[0] == '\0' || reqc->line_buf[0] == '0')
-		__dlog(DLOG_CFGOK, "prdcr_subscribe_regex prdcr_regex=%s stream=%s\n",
-			prdcr_regex, stream_name);
+		__dlog(DLOG_CFGOK, "prdcr_subscribe_regex prdcr_regex=%s %s=%s\n",
+			prdcr_regex, (msg ? ldmsd_req_attr_id2str(LDMSD_ATTR_MSG_CHAN, 0)
+				: ldmsd_req_attr_id2str(LDMSD_ATTR_STREAM, 0)),
+			( msg ? msg : stream_name));
+
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
