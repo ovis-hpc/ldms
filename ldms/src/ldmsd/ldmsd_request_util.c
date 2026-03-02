@@ -306,6 +306,7 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_STRGP_PRDCR_DEL_REQ  : return "STRGP_PRDCR_DEL_REQ";
 	case LDMSD_STRGP_METRIC_ADD_REQ : return "STRGP_METRIC_ADD_REQ";
 	case LDMSD_STRGP_METRIC_DEL_REQ : return "STRGP_METRIC_DEL_REQ";
+	case LDMSD_STRGP_PI_STATS_REQ   : return "STRGP_PI_STATS_REQ";
 	case LDMSD_STORAGE_THR_SET_REQ  : return "STORAGE_THR_SET_REQ";
 	case LDMSD_STORAGE_MAX_Q_DEPTH_SET_REQ : return "STORAGE_MAX_Q_DEPTH_SET_REQ";
 
