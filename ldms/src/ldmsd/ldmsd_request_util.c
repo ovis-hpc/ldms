@@ -290,6 +290,10 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_PRDCR_SUBSCRIBE_REQ   : return "PRDCR_SUBSCRIBE_REQ";
 	case LDMSD_PRDCR_UNSUBSCRIBE_REQ : return "PRDCR_UNSUBSCRIBE_REQ";
 	case LDMSD_PRDCR_LISTEN_ADD_REQ      : return "PRDCR_LISTEN_REQ";
+	case LDMSD_PRDCR_LISTEN_DEL_REQ:	return "prdcr_listen_del";
+	case LDMSD_PRDCR_LISTEN_START_REQ:	return "prdcr_listen_start";
+	case LDMSD_PRDCR_LISTEN_STOP_REQ:	return "prdcr_listen_stop";
+	case LDMSD_PRDCR_LISTEN_STATUS_REQ:     return "prdcr_listen_status";
 
 	case LDMSD_STRGP_ADD_REQ        : return "STRGP_ADD_REQ";
 	case LDMSD_STRGP_DEL_REQ        : return "STRGP_DEL_REQ";
@@ -375,16 +379,156 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_SETGROUP_RM_REQ  : return "SETGROUP_RM_REQ";
 
 	case LDMSD_STREAM_SUBSCRIBE_REQ : return "STREAM_SUBSCRIBE_REQ";
+	case LDMSD_STREAM_UNSUBSCRIBE_REQ:      return "LDMSD_STREAM_UNSUBSCRIBE_REQ";
 	case LDMSD_STREAM_PUBLISH_REQ : return "STREAM_PUBLISH_REQ";
 	case LDMSD_STREAM_NEW_REQ : return "STREAM_NEW_REQ";
-	case LDMSD_STREAM_STATUS_REQ : return "STREAM_DIR_REQ";
-	case LDMSD_STREAM_DISABLE_REQ : return "STREAM_DISABLE_REQ";
+	case LDMSD_STREAM_STATUS_REQ : return "stream_status";
+	case LDMSD_STREAM_DISABLE_REQ : return "stream_disable";
+	case LDMSD_STREAM_ENABLE_REQ:	return "stream_enable";
+	case LDMSD_STREAM_CLIENT_DUMP_REQ:	return "stream_client_dump";
 
-	case LDMSD_MSG_DISABLE_REQ : return "MSG_DISABLE_REQ";
-	case LDMSD_MSG_ENABLE_REQ : return "MSG_ENABLE_REQ";
+	case LDMSD_MSG_DISABLE_REQ : return "msg_disable";
+	case LDMSD_MSG_ENABLE_REQ : return "msg_enable";
 
-	default: return "UNKNOWN_REQ";
+	case LDMSD_PRDCR_STREAM_STATUS_REQ:	return "prdcr_stream_status";
+	case LDMSD_BRIDGE_ADD_REQ:	return "bridge_add";
+
+	case LDMSD_ADVERTISER_ADD_REQ:	return "advertiser_add";
+	case LDMSD_ADVERTISER_START_REQ:	return "advertiser_start";
+	case LDMSD_ADVERTISER_STOP_REQ:	return "advertiser_stop";
+	case LDMSD_ADVERTISER_DEL_REQ:	return "advertiser_del";
+	case LDMSD_ADVERTISE_REQ:       return "LDMSD_ADVERTISE_REQ";
+
+	case LDMSD_UPDATE_TIME_STATS_REQ:	return "update_time_stats";
+	case LDMSD_XPRT_STATS_REQ:	return "xprt_stats";
+	case LDMSD_THREAD_STATS_REQ:	return "thread_stats";
+	case LDMSD_PRDCR_STATS_REQ:	return "prdcr_stats";
+	case LDMSD_SET_STATS_REQ:	return "set_stats";
+	case LDMSD_STATS_RESET_REQ:     return "stats_reset";
+	case LDMSD_MSG_STATS_REQ:	return "msg_stats";
+	case LDMSD_MSG_CLIENT_STATS_REQ:	return "msg_client_stats";
+
+        case LDMSD_STORE_TIME_STATS_REQ:        return "store_time_stats";
+	case LDMSD_LISTEN_REQ:	return "listen";
+	case LDMSD_SET_DEFAULT_AUTHZ_REQ:	return "metric_sets_default_authz";
+	case LDMSD_DEFAULT_AUTH_REQ:	return "default_auth";
+	case LDMSD_MEMORY_REQ:	return "set_memory"; /* alias of 'memory' */
+	case LDMSD_LOG_FILE_REQ:	return "log_file";
+	case LDMSD_PUBLISH_KERNEL_REQ:	return "publish_kernel";
+	case LDMSD_DAEMON_NAME_SET_REQ:	return "daemon_name";
+	case LDMSD_WORKER_THR_SET_REQ:	return "worker_threads";
+	case LDMSD_DEFAULT_QUOTA_REQ:	return "default_quota";
+	case LDMSD_PID_FILE_REQ:	return "pid_file";
+	case LDMSD_BANNER_MODE_REQ:	return "banner";
+	case LDMSD_AUTH_ADD_REQ:	return "auth_add";
+	case LDMSD_AUTH_DEL_REQ:	return "auth_del";
+
+	case LDMSD_QGROUP_CONFIG_REQ:	return "qgroup_config";
+	case LDMSD_QGROUP_MEMBER_ADD_REQ:	return "qgroup_member_add";
+	case LDMSD_QGROUP_MEMBER_DEL_REQ:	return "qgroup_member_del";
+	case LDMSD_QGROUP_START_REQ:	return "qgroup_start";
+	case LDMSD_QGROUP_STOP_REQ:	return "qgroup_stop";
+	case LDMSD_QGROUP_INFO_REQ:	return "qgroup_info";
+
+	case LDMSD_NOTSUPPORT_REQ:      return "LDMSD_NOTSUPPORT_REQ";
+	case LDMSD_SET_ROUTE_REQ:       return "LDMSD_SET_ROUTE_REQ";
+	case LDMSD_CFG_CNTR_REQ:	return "cfg_cntr";
 	}
+	return "UNKNOWN_REQ";
+}
+
+const char *ldmsd_req_attr_id2str(uint32_t attr_id, int fuzzy)
+{
+	if (fuzzy) {
+		switch (attr_id) {
+		case LDMSD_ATTR_AUTH:	return "[auth,advertiser_auth]";
+		case LDMSD_ATTR_PORT:	return "[port,advertiser_port]";
+		case LDMSD_ATTR_XPRT:	return "[xprt,advertiser_xprt]";
+		case LDMSD_ATTR_IP:	return "[ip,cache_ip]";
+		case LDMSD_ATTR_INTERVAL:	return "[interval_us,interval,reconnect,flush]";
+		case LDMSD_ATTR_LEVEL:	return "[level,mode]";
+		case LDMSD_ATTR_SIZE:	return "[size,num]";
+		case LDMSD_ATTR_AUTO_INTERVAL:	return "[auto_interval,disable_start]";
+		default: break;
+		}
+	}
+
+	switch (attr_id) {
+	/* known ambiguity
+	case LDMSD_ATTR_AUTH:	return "advertiser_auth";
+	*/
+	case LDMSD_ATTR_AUTH:	return "auth";
+	/* known ambiguity
+	case LDMSD_ATTR_PORT:	return "advertiser_port";
+	*/
+	case LDMSD_ATTR_PORT:	return "port";
+	/* known ambiguity
+	case LDMSD_ATTR_XPRT:	return "advertiser_xprt";
+	*/
+	case LDMSD_ATTR_XPRT:	return "xprt";
+	case LDMSD_ATTR_ASK_AMOUNT:	return "ask_amount";
+	case LDMSD_ATTR_ASK_INTERVAL:	return "ask_interval";
+	case LDMSD_ATTR_ASK_MARK:	return "ask_mark";
+	/* known ambiguity
+	case LDMSD_ATTR_AUTO_INTERVAL:	return "disable_start";
+	*/
+	case LDMSD_ATTR_AUTO_INTERVAL:	return "auto_interval";
+	case LDMSD_ATTR_AUTO_SWITCH:	return "auto_switch";
+	case LDMSD_ATTR_BASE:	return "base";
+	/*  known ambiguity
+	case LDMSD_ATTR_IP:	return "cache_ip";
+	*/
+	case LDMSD_ATTR_IP:	return "ip";
+	case LDMSD_ATTR_CONTAINER:	return "container";
+	case LDMSD_ATTR_DECOMP:	return "decomposition";
+	case LDMSD_ATTR_XTHREAD:	return "exclusive_thread";
+	case LDMSD_ATTR_GID:	return "gid";
+	case LDMSD_ATTR_HOST:	return "host";
+	case LDMSD_ATTR_INCREMENT:	return "incr";
+	case LDMSD_ATTR_INSTANCE:	return "instance";
+	/* known ambiguity
+	case LDMSD_ATTR_INTERVAL:	return "reconnect";
+	case LDMSD_ATTR_INTERVAL:	return "flush";
+	case LDMSD_ATTR_INTERVAL:	return "interval";
+	*/
+	case LDMSD_ATTR_INTERVAL:	return "interval_us";
+	/* known ambiguity
+	case LDMSD_ATTR_LEVEL:	return "mode";
+	*/
+	case LDMSD_ATTR_LEVEL:	return "level";
+	case LDMSD_ATTR_MATCH:	return "match";
+	case LDMSD_ATTR_MSG_CHAN:	return "message_channel";
+	case LDMSD_ATTR_METRIC:	return "metric";
+	case LDMSD_ATTR_NAME:	return "name";
+	/* known ambiguity
+	case LDMSD_ATTR_SIZE:	return "num";
+	*/
+	case LDMSD_ATTR_SIZE:	return "size";
+	case LDMSD_ATTR_OFFSET:	return "offset";
+	case LDMSD_ATTR_PATH:	return "path";
+	case LDMSD_ATTR_PEER_NAME:	return "peer_name";
+	case LDMSD_ATTR_PERM:	return "perm";
+	case LDMSD_ATTR_PLUGIN:	return "plugin";
+	case LDMSD_ATTR_PRODUCER:	return "producer";
+	case LDMSD_ATTR_PUSH:	return "push";
+	case LDMSD_ATTR_QUOTA:	return "quota";
+	case LDMSD_ATTR_RAIL:	return "rail";
+	case LDMSD_ATTR_REGEX:	return "regex";
+	case LDMSD_ATTR_RESET:	return "reset";
+	case LDMSD_ATTR_RESET_INTERVAL:	return "reset_interval";
+	case LDMSD_ATTR_RX_RATE:	return "rx_rate";
+	case LDMSD_ATTR_SCHEMA:	return "schema";
+	case LDMSD_ATTR_STREAM:	return "stream";
+	case LDMSD_ATTR_STRING:	return "string";
+	case LDMSD_ATTR_SUMMARY:	return "summary";
+	case LDMSD_ATTR_TEST:	return "test";
+	case LDMSD_ATTR_TIME:	return "time";
+	case LDMSD_ATTR_TIMEOUT_FACTOR:	return "timeout_factor";
+	case LDMSD_ATTR_TYPE:	return "type";
+	case LDMSD_ATTR_UDATA:	return "udata";
+	case LDMSD_ATTR_UID:	return "uid";
+	}
+	return "UNKNOWN_ATTR";
 }
 
 /*

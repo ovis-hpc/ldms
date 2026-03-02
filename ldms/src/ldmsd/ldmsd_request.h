@@ -481,6 +481,19 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id);
 int32_t ldmsd_req_attr_str2id(const char *name);
 
 /**
+ * \brief attr_id to string (for debugging)
+ * Note: Some ids are not uniqueley mapped, specifically:
+ * LDMSD_ATTR_AUTH LDMSD_ATTR_PORT LDMSD_ATTR_XPRT LDMSD_ATTR_IP
+ * LDMSD_ATTR_INTERVAL LDMSD_ATTR_LEVEL LDMSD_ATTR_SIZE LDMSD_ATTR_AUTO_INTERVAL.
+ * These ids return auth, port, xprt, ip, interval_us, level, size, and
+ * auto_interval, respectively, unless fuzzy is non-zero.
+ *
+ * \param fuzzy if non-zero, returns the string of all possible inversions
+ *        for the attr_id given.
+ */
+const char * ldmsd_req_attr_id2str(uint32_t attr_id, int fuzzy);
+
+/**
  * \brief Return a request attribute handle of the given ID
  *
  * \param request   Buffer storing request header and the attributes
