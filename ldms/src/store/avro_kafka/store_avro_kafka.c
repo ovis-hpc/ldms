@@ -35,11 +35,13 @@
 #include "ovis_log.h"
 
 #define STORE_AVRO_KAFKA "store_avro_kafka"
+#define KAFKA_STATS_CONF "statistics.interval.ms"
 
 typedef struct store_kafka_s {
         ovis_log_t log;
 	pthread_mutex_t sk_lock;
 	rd_kafka_conf_t *g_rd_conf;
+	uint8_t kafka_enabled_stats;
 	serdes_conf_t *g_serdes_conf;
 	int g_serdes_encoding;
 	char *g_topic_fmt;
@@ -60,6 +62,11 @@ typedef struct aks_handle_s
 	store_kafka_t sf;
 
 	struct rbt schema_tree;
+
+	/* cached librdkafka stats JSON string and its lock */
+	uint8_t kafka_enabled_stats;
+	pthread_mutex_t stats_lock;
+	char *stats_json; /* Last JSON string from stats_cb, or NULL */
 } *aks_handle_t;
 
 static const char *_help_str =
@@ -352,6 +359,16 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		if (rc) {
 			ovis_log(sk->log, OVIS_LERROR, "Error %d parsing the Kafka configuration file '%s'", rc, path);
 		}
+		/* Check if "statistics.interval.ms" is given. */
+		char v[16];
+		size_t len = sizeof(v);
+		rd_kafka_conf_res_t res;
+
+		res = rd_kafka_conf_get(sk->g_rd_conf, KAFKA_STATS_CONF, v, &len);
+		if ((res == RD_KAFKA_CONF_OK) && (0 < atoi(v)))
+			sk->kafka_enabled_stats = 1;
+		else
+			sk->kafka_enabled_stats = 0;
 	}
 	path = av_value(avl, "serdes_conf");
 	if (path) {
@@ -400,12 +417,28 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 	/* This is called when strgp is stopped to clean up resources */
 	aks_handle_t sh = _sh;
 	if (sh->rd) {
+		rd_kafka_flush(sh->rd, -1); /* Wait until all queued events have been flushed. */
 		rd_kafka_destroy(sh->rd);
 	}
 	if (sh->rd_conf) {
 		rd_kafka_conf_destroy(sh->rd_conf);
 	}
+	pthread_mutex_destroy(&sh->stats_lock);
+	free(sh->stats_json);
+
 	free(sh);
+}
+
+static int __kafka_stats_cb(rd_kafka_t *rk, char *json, size_t json_len, void *opaque)
+{
+	aks_handle_t sh = opaque;
+
+	pthread_mutex_lock(&sh->stats_lock);
+	free(sh->stats_json);
+	sh->stats_json = strdup(json); /* TODO: cache the latest snapshot */
+	pthread_mutex_unlock(&sh->stats_lock);
+
+	return 0;
 }
 
 static aks_handle_t __handle_new(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp)
@@ -452,6 +485,15 @@ static aks_handle_t __handle_new(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp
 			ovis_log(sk->log, OVIS_LERROR, "rd_kafka_conf_set() error: %s\n", err_str);
 			goto err_2;
 		}
+	}
+
+	sh->kafka_enabled_stats = sk->kafka_enabled_stats;
+	if (sk->kafka_enabled_stats) {
+		/* Register the stats callback on the conf */
+		rd_kafka_conf_set_stats_cb(sh->rd_conf, __kafka_stats_cb);
+
+		/* Make sure the callback can reach sh */
+		rd_kafka_conf_set_opaque(sh->rd_conf, sh);
 	}
 
 	sh->rd = rd_kafka_new(RD_KAFKA_PRODUCER, sh->rd_conf, err_str, sizeof(err_str));
@@ -1009,7 +1051,40 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldm
 		free(topic_name);
 	}
 
+	if (sh->kafka_enabled_stats) {
+		rd_kafka_poll(sh->rd, 0); /* Poll Kafka queued events, non-blocking */
+	}
+
 	return 0;
+}
+
+static char *stats_get(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp)
+{
+	aks_handle_t sh;
+	char *json = NULL;
+
+	sh = strgp->store_handle;
+	if (!sh)
+		return NULL;
+
+	if (!sh->kafka_enabled_stats) {
+		/* The Kafka stats was disabled. */
+		return NULL;
+	}
+
+	/*
+	 * Block until all queued events have been delivered.
+	 * Currently, we have only the statistics events.
+	 */
+	rd_kafka_poll(sh->rd, -1);
+
+	/* All stats events have been delivered. Return the latest one. */
+	pthread_mutex_lock(&sh->stats_lock);
+	if (sh->stats_json) {
+		json = strdup(sh->stats_json); /* caller is responsible for freeing */
+	}
+	pthread_mutex_unlock(&sh->stats_lock);
+	return json;
 }
 
 static int constructor(ldmsd_plug_handle_t handle) {
@@ -1049,4 +1124,5 @@ struct ldmsd_store ldmsd_plugin_interface = {
         .base.destructor = destructor,
 	.close       = close_store,
 	.commit      = commit_rows,
+	.stats_get   = stats_get,
 };
