@@ -3,8 +3,8 @@ stages:
   - package
 
 variables:
-  CONTAINER_TAG: "20250221"
-  CONTAINER_IMAGE: "ldms_build_cos_3.1"
+  CONTAINER_TAG: "20260303"
+  CONTAINER_IMAGE: "ldms_build_cos_3.2"
   CONTAINER_REGISTRY: "registry.nersc.gov/csg"
 
 build:
