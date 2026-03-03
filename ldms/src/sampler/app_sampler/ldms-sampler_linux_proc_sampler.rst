@@ -389,6 +389,11 @@ The files defined with published_pid_dir appear in (for example)
 and each contains the JSON message sent by the publisher. Publishers,
 not ldmsd, populate this directory to allow asynchronous startup.
 
+ERRORS
+======
+
+Plugin configuration will fail with ENOTSUP unless the daemon is configured with 'msg_enable'.
+
 NOTES
 =====
 

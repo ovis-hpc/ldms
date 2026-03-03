@@ -89,6 +89,11 @@ BUGS
 
 No known bugs.
 
+ERRORS
+======
+
+Plugin configuration will fail with ENOTSUP unless the daemon is configured with 'msg_enable'.
+
 EXAMPLES
 ========
 

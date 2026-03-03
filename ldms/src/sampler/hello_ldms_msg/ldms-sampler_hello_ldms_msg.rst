@@ -52,6 +52,11 @@ BUGS
 
 No known bugs.
 
+ERRORS
+======
+
+Plugin will do nothing useful unless the daemon is configured with 'msg_enable'.
+
 EXAMPLES
 ========
 

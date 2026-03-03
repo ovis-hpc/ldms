@@ -82,9 +82,9 @@ def check_intrvl_str(interval_s):
                 f"'1h'   - 1 hour\n"\
                 f"'1d'   - 1 day\n"\
                 f"\n"
-    if type(interval_s) == int or type(interval_s) == float:
+    if isinstance(interval_s, int) or isinstance(interval_s, float):
         return interval_s
-    if type(interval_s) != str:
+    if not isinstance(interval_s, str):
         raise ValueError(f'{error_str}')
     if interval_s.startswith("$"):
         if bool(re.match(r'^\$(?:\{[A-Za-z][A-Za-z0-9_]*\}|[A-Za-z][A-Za-z0-9_]*)$', interval_s)):
@@ -135,7 +135,7 @@ def NUM_STR(obj):
     return str(obj) if type(obj) in [ int, float ] else obj
 
 def expand_names(name_spec):
-    if type(name_spec) != str and isinstance(name_spec, collections.abc.Sequence):
+    if not isinstance(name_spec, str) and isinstance(name_spec, collections.abc.Sequence):
         names = []
         for name in name_spec:
             names += hostlist.expand_hostlist(NUM_STR(name))
@@ -159,10 +159,10 @@ def check_plugin_config(plugn, plugin_spec):
     plugin = plugin_spec[plugn]
     check_required([ 'name' ], plugin, f'"plugin" entry. Error in "'+ plugn +'" configuration')
     check_required(['config'], plugin, '"plugin" entry')
-    if type(plugin['config']) is not list:
+    if not isinstance(plugin['config'], list):
         raise TypeError('"config" must be a list of configuration commands\n')
     for cfg in plugin['config']:
-        if type(cfg) is not dict and type(cfg) is not str:
+        if not isinstance(cfg, dict) and not isinstance(cfg, str):
             raise TypeError('"config" list members must be a dictionary or a string\n')
 
 def dist_list(list_, n):
@@ -195,29 +195,28 @@ def parse_to_cfg_str(cfg_obj):
     """
     cfg_str = ''
     for key in cfg_obj:
-        if key not in INT_ATTRS:
-            if len(cfg_str) > 1:
-                cfg_str += ' '
-            val = cfg_obj[key]
-            if val is None:
-                cfg_str += key
-                continue
-            if isinstance(val, (str, int, float)):
-                cfg_str += key + '=' + str(val)
-                continue
-            if isinstance(val, list):
-                for i in val:
-                    if len(cfg_str) > 1:
-                        cfg_str += ' '
-                    if i is None:
-                        cfg_str += str(key)
-                        continue
-                    if isinstance(i, (str, int, float)):
-                        cfg_str += key + '=' + str(i)
-                    else:
-                        raise TypeError(f'Error: parse_to_cfg_str not expecting list value of {i} for key '+  key )
-                continue
-            raise TypeError(f'Error: parse_to_cfg_str not expecting value {val} for key '+  key )
+        val = cfg_obj[key]
+        if len(cfg_str) > 1:
+            cfg_str += ' '
+        if val is None:
+            cfg_str += key
+            continue
+        if isinstance(val, (str, int, float)):
+            cfg_str += key + '=' + str(val)
+            continue
+        if isinstance(val, list):
+            for i in val:
+                if len(cfg_str) > 1:
+                    cfg_str += ' '
+                if i is None:
+                    cfg_str += str(key)
+                    continue
+                if isinstance(i, (str, int, float)):
+                    cfg_str += key + '=' + str(i)
+                else:
+                    raise TypeError(f'Error: parse_to_cfg_str not expecting list value of {i} for key '+  key )
+            continue
+        raise TypeError(f'Error: parse_to_cfg_str not expecting value {val} for key '+  key )
 
     return cfg_str
 
@@ -230,7 +229,7 @@ def parse_yaml_bool(bool_):
 def perm_handler(perm_str):
     if perm_str is None:
         return perm_str
-    if type(perm_str) is not str:
+    if not isinstance(perm_str, str):
         raise TypeError(f'Error: YAML "perms" value must be a string')
     perms = 0
     m = perm_handler.string_pattern.fullmatch(perm_str)
@@ -304,7 +303,7 @@ class YamlCfg(object):
         """
         ep_dict = {}
         node_config = config['daemons']
-        if type(node_config) is not list:
+        if not isinstance(node_config, list):
             raise TypeError(f'{LDMS_YAML_ERR}\n'
                             f'daemons {LIST_ERR}\n'
                             f'e.g. daemons:\n'
@@ -322,7 +321,7 @@ class YamlCfg(object):
             ep_names = []
             ep_ports = []
             ep_hosts = []
-            if type(spec['endpoints']) is not list:
+            if not isinstance(spec['endpoints'], list):
                 raise TypeError(f'{LDMS_YAML_ERR}\n'
                                 f'endpoints {LIST_ERR}\n'
                                 f'e.g endpoints :\n'
@@ -474,7 +473,7 @@ class YamlCfg(object):
         if 'aggregators' not in config:
             return aggregators
         agg_conf = config['aggregators']
-        if type(agg_conf) is not list:
+        if not isinstance(agg_conf, list):
             raise TypeError(f'{LDMS_YAML_ERR}\n'
                             f' aggregators {LIST_ERR}\n'
                             f'e.g. aggregators:\n'
@@ -489,7 +488,7 @@ class YamlCfg(object):
             group = agg_spec['daemons']
             plugins = check_opt('plugins', agg_spec)
             if plugins:
-                if plugins is not list:
+                if not isinstance(plugins, list):
                     raise ValueError('"plugins" must be a list of plugin instance names\n')
                 for plugin in plugins:
                     check_plugin_config(plugin, self.plugins)
@@ -497,8 +496,13 @@ class YamlCfg(object):
                 aggregators[group] = {}
             subscribe = check_opt('subscribe', agg_spec)
             if subscribe:
-                for stream in subscribe:
-                    check_required([ 'stream', 'regex' ], stream, '"aggregators" stream specification')
+                for sub in subscribe:
+                    check_required([ 'regex' ], sub, '"aggregators" stream specification')
+                    msg = check_opt('msg_tag', sub)
+                    stream = check_opt('stream', sub)
+                    if not msg and not stream:
+                        raise ValueError(f'"subscribe" for hostlist {group} must contain '\
+                                         f'either a "stream" or "msg_tag" attribute\n')
             for name in names:
                 aggregators[group][name] = { 'state' : 'stopped' } # 'running', 'error'
                 self.build_advertisers(agg_spec)
@@ -518,7 +522,7 @@ class YamlCfg(object):
         for agg in config.get('aggregators', []):
             if 'peers' not in agg:
                 continue
-            if type(agg['peers']) is not list:
+            if not isinstance(agg['peers'], list):
                 raise TypeError(f'{LDMS_YAML_ERR}\n'
                                 f'peers {LIST_ERR}\n'
                                 f'e.g. peers:\n'
@@ -603,7 +607,7 @@ class YamlCfg(object):
             for prod in peer_list:
                 if not 'updaters' in prod or prod['updaters'] is None:
                     continue
-                if type(prod['updaters']) is not list:
+                if not isinstance(prod['updaters'], list):
                     raise TypeError(f'{LDMS_YAML_ERR}\n'
                                     f'"updaters" {LIST_ERR}\n'
                                     f'e.g. updaters:\n'
@@ -616,7 +620,7 @@ class YamlCfg(object):
                     check_required([ 'interval' ],
                                    updtr_spec, '"updaters" entry')
                     updtr_sets = check_opt('sets', updtr_spec)
-                    if updtr_sets and type(updtr_sets) is not list:
+                    if updtr_sets and not isinstance(updtr_sets, list):
                         raise ValueError(f'Error parsing YAML configuration in "updaters". "sets" must be a list of dictionaries')
                     group = agg['daemons']
                     if group not in updaters:
@@ -664,7 +668,7 @@ class YamlCfg(object):
         if 'stores' not in config:
             return None
         stores = {}
-        if type(config['stores']) is not dict:
+        if not isinstance(config['stores'], dict):
             raise ValueError(f'{LDMS_YAML_ERR}\n'
                              f'store {DICT_ERR}\n'
                              f'e.g. stores:\n'
@@ -713,7 +717,7 @@ class YamlCfg(object):
         if 'samplers' not in config:
             return None
         smplrs = {}
-        if type(config['samplers']) is not list:
+        if not isinstance(config['samplers'], list):
             raise TypeError(f'{LDMS_YAML_ERR}\n'
                             f'samplers {LIST_ERR}\n'
                             f'e.g. samplers:\n'
@@ -744,7 +748,7 @@ class YamlCfg(object):
         """
         if 'plugins' not in config:
             return None
-        if type(config['plugins']) is not dict:
+        if not isinstance(config['plugins'], dict):
             raise TypeError(f'{LDMS_YAML_ERR}\n'
                             f'store {DICT_ERR}\n'
                             f'e.g. plugins:\n'
@@ -977,7 +981,7 @@ class YamlCfg(object):
             return dstr
         cli_opt = self.daemons[dname]['cli_opt']
         for opt in cli_opt:
-            if type(cli_opt[opt]) is dict:
+            if isinstance(cli_opt[opt], is dict):
                 dstr += f'{opt}'
                 for arg in cli_opt[opt]:
                     if arg == 'perm':
@@ -990,7 +994,7 @@ class YamlCfg(object):
 
     def write_env(self, dstr, dname):
         if check_opt('environment', self.daemons[dname]):
-            if type(self.daemons[dname]['environment']) is not dict:
+            if not isinstance(self.daemons[dname]['environment'], dict):
                 raise TypeError(f'Environment variables must be a yaml key:value dictionary\n')
             for attr in self.daemons[dname]['environment']:
                 dstr += f'env {attr}={self.daemons[dname]["environment"][attr]}\n'
@@ -1018,14 +1022,10 @@ class YamlCfg(object):
                     dstr += f'load name={plugin} plugin={plugn["name"]}\n'
                     first = True
                     for cfg_ in plugn['config']:
-                        if type(cfg_) is dict:
+                        if isinstance(cfg_, dict):
                             hostname = socket.gethostname()
                             cfg_args = {}
                             for attr in cfg_:
-                                if attr == 'name' or attr == 'interval' or attr == 'reconnect':
-                                    continue
-                                if attr == 'perm':
-                                    cfg_[attr] = perm_handler(cfg_[attr])
                                 cfg_args[attr] = cfg_[attr]
                             if first:
                                 first = False
@@ -1044,15 +1044,18 @@ class YamlCfg(object):
                     dstr = self.write_opt_attr(dstr, 'offset', offset, endline=True)
         return dstr
 
-    def write_stream_subscribe(self, dstr, group_name, agg):
+    def write_subscribe(self, dstr, group_name, agg):
         subscribe = check_opt('subscribe', self.aggregators[group_name][agg])
         if subscribe:
-            for stream in subscribe:
-                regex = check_opt('regex', stream)
+            for sub in subscribe:
+                regex = check_opt('regex', sub)
                 if regex is None:
                     regex = '.*'
-                dstr += f'prdcr_subscribe stream={stream["stream"]} '\
-                        f'regex={regex}\n'
+                dstr += f'prdcr_subscribe '
+                for k, v in sub.items():
+                    if k != 'regex':
+                        dstr += f'{k}={v} '
+                dstr += f'regex={regex}\n'
         return dstr
 
     def write_aggregator(self, dstr, dmn, auth_listen):
@@ -1067,7 +1070,7 @@ class YamlCfg(object):
                     dstr, auth_listen = self.write_producers(dstr, group_name, dmn, auth_listen)
                     dstr = self.write_prdcr_listeners(dstr, group_name)
                     dstr, auth_listen = self.write_advertisers(dstr, group_name, dmn, auth_listen)
-                    dstr = self.write_stream_subscribe(dstr, group_name, dmn)
+                    dstr = self.write_subscribe(dstr, group_name, dmn)
                     dstr = self.write_agg_plugins(dstr, group_name, dmn)
                     dstr = self.write_updaters(dstr, group_name, dmn)
                     dstr = self.write_stores(dstr, dmn)
@@ -1085,7 +1088,7 @@ class YamlCfg(object):
                 plugin = self.plugins[plugn]
                 dstr += f'load name={plugn} plugin={self.plugins[plugn]["name"]}\n'
                 for cfg_ in plugin["config"]:
-                    if type(cfg_) is dict:
+                    if isinstance(cfg_, dict):
                         cfg_str = parse_to_cfg_str(plugin["config"])
                     else:
                         cfg_str = cfg_
@@ -1139,7 +1142,7 @@ class YamlCfg(object):
                     plugin = self.plugins[store_group[store]['plugin']]
                     dstr += f'load name={store_group[store]["plugin"]} plugin={plugin["name"]}\n'
                     for cfg_ in plugin['config']:
-                        if type(cfg_) is dict:
+                        if isinstance(cfg_, dict):
                             cfg_str = parse_to_cfg_str(cfg_)
                         else:
                             cfg_str = cfg_
