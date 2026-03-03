@@ -1089,7 +1089,7 @@ class YamlCfg(object):
                 dstr += f'load name={plugn} plugin={self.plugins[plugn]["name"]}\n'
                 for cfg_ in plugin["config"]:
                     if isinstance(cfg_, dict):
-                        cfg_str = parse_to_cfg_str(plugin["config"])
+                        cfg_str = parse_to_cfg_str(cfg_)
                     else:
                         cfg_str = cfg_
                     dstr += f'config name={plugn} {cfg_str}\n'
