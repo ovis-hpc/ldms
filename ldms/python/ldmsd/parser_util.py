@@ -981,7 +981,7 @@ class YamlCfg(object):
             return dstr
         cli_opt = self.daemons[dname]['cli_opt']
         for opt in cli_opt:
-            if isinstance(cli_opt[opt], is dict):
+            if isinstance(cli_opt[opt], dict):
                 dstr += f'{opt}'
                 for arg in cli_opt[opt]:
                     if arg == 'perm':
@@ -1089,7 +1089,7 @@ class YamlCfg(object):
                 dstr += f'load name={plugn} plugin={self.plugins[plugn]["name"]}\n'
                 for cfg_ in plugin["config"]:
                     if isinstance(cfg_, dict):
-                        cfg_str = parse_to_cfg_str(plugin["config"])
+                        cfg_str = parse_to_cfg_str(cfg_)
                     else:
                         cfg_str = cfg_
                     dstr += f'config name={plugn} {cfg_str}\n'
