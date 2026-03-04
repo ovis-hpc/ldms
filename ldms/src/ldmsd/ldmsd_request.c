@@ -2193,7 +2193,8 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	if (stream_name && msg) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Only one of the 'stream' or `msg` attributes can be specified.");
+				"Only one of the 'stream' or `msg` attributes can be specified."
+				" Got: stream=%s and message=%s", stream_name, msg);
 		goto send_reply;
 	}
 
@@ -5576,6 +5577,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 		reqc->errcode = EINVAL;
 		goto send_reply;
 	}
+	attr_copy = strdup(config_attr);
 
 	char *cmd_s;
 	int tokens;
@@ -5596,7 +5598,6 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = ENOMEM;
 	av_list = av_new(tokens);
 	kw_list = av_new(tokens);
-	attr_copy = strdup(config_attr);
 	if (!av_list || !kw_list || !attr_copy) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Out of memory");
