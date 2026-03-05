@@ -3,6 +3,7 @@ import errno
 import json
 import subprocess
 import re
+import traceback
 import socket
 import time
 import bisect
@@ -134,7 +135,7 @@ def check_required(attr_list, container, container_name):
 def NUM_STR(obj):
     return str(obj) if isinstance(obj, (int, float)) else obj
 
-def expand_names(name_spec):i
+def expand_names(name_spec):
     if not isinstance(name_spec, str) and isinstance(name_spec, collections.abc.Sequence):
         names = []
         for name in name_spec:
