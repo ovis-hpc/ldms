@@ -9588,6 +9588,10 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 				continue;
 			}
 
+			/* Check if this set has ever been stored to */
+			if (prdset->store_stat.count == 0)
+				continue;
+
 			tid = ldms_set_thread_id_get(prdset->set);
 			snprintf(tid_s, 127, "%d", tid);
 
