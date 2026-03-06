@@ -528,7 +528,7 @@ static int set_paths(msg_data_t sd)
 	snprintf(sd->offsetfile_name, pathlen, "%s/%s/%s.OFFSET.", root_path,
 		container, sd->ch_name);
 	if (!sd->subscription) {
-		ovis_log(mylog, OVIS_LDEBUG, "subscribing to channel '%s'\n",
+		ovis_log(mylog, OVIS_LDEBUG, "subscribing to tag '%s'\n",
 			sd->ch_name);
 		sd->subscription = ldms_msg_subscribe(sd->ch_name, 0,
 			msg_cb, sd, "blob_msg_writer");
@@ -537,7 +537,7 @@ static int set_paths(msg_data_t sd)
 	return 0;
 }
 
-static int add_channel(const char *ch_name)
+static int add_tag(const char *ch_name)
 {
 	if (!ch_name)
 		return EINVAL;
@@ -573,7 +573,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	int rc;
 	int rollmethod = DEFAULT_ROLLTYPE;
 	static const char *attributes[] = {
-		"container", "spool", "message_channel", "debug", "timing", "types", "path",
+		"container", "spool", "message_tag", "debug", "timing", "types", "path",
 		"rollagain", "rollover", "rolltype", "rollempty",
 		NULL
 	};
@@ -689,9 +689,9 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 
 	int i, size = avl->count;
 	for (i = 0; i < size; i++) {
-		if (strcmp("message_channel", av_name(avl, i)) == 0) {
+		if (strcmp("message_tag", av_name(avl, i)) == 0) {
 			const char *sn = av_value_at_idx(avl, i);
-			rc = add_channel(sn);
+			rc = add_tag(sn);
 			if (rc) {
 				ovis_log(mylog, OVIS_LERROR, "failed to add"
 					" message channel %s.\n", sn);
@@ -700,7 +700,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		}
 	}
 	if (LIST_FIRST(&data_list) == NULL) {
-		ovis_log(mylog, OVIS_LERROR, "missing 'message_channel=...' in config\n");
+		ovis_log(mylog, OVIS_LERROR, "missing 'message_tag=...' in config\n");
 		rc = EINVAL;
 		goto out;
 	}
@@ -831,7 +831,7 @@ static void roll_msg_files(msg_data_t sd)
 	}
 
 	sd->store_count = 0;
-	int rc = add_channel(sd->ch_name); /* forces reset */
+	int rc = add_tag(sd->ch_name); /* forces reset */
 	if (rc) {
 		ovis_log(mylog, OVIS_LERROR, PNAME ": failed to read"
 					" message channel %s.\n", sd->ch_name);
@@ -929,14 +929,14 @@ static void* rolloverThreadInit(void* m){
 }
 static const char *usage(ldmsd_plug_handle_t handle)
 {
-	return  "    config name=blob_msg_writer path=<path> container=<container> message_channel=<message_channel> \n"
+	return  "    config name=blob_msg_writer path=<path> container=<container> message_tag=<message_tag> \n"
                 "           timing=1 types=1 debug=1 spool=1\n"
                 "         [rollover=<num> rolltype=<num> rollempty=<num> rollagain=<num>\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - path       The path to the root of the csv directory\n"
 		"         - container  The directory under the path\n"
-		"         - message_channel\n"
-		"                      The message channel name which will also be the file name\n"
+		"         - message_tag\n"
+		"                      The message tag name which will also be the file name\n"
 		"                      This argument may be repeated.\n"
 		"         - timing=1   Enabling TIMING output file\n"
 		"         - types=1    Enabling TYPES output file\n"

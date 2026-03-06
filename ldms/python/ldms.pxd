@@ -868,9 +868,9 @@ cdef extern from "ldms.h" nogil:
         ldms_addr src
         uint64_t msg_gn
         ldms_msg_type_e type
-        uint32_t name_len
+        uint32_t tag_len
         uint32_t data_len
-        const char *name
+        const char *msg_tag
         const char *data
         json_entity_t json
         ldms_cred cred
@@ -890,7 +890,7 @@ cdef extern from "ldms.h" nogil:
     void ldms_msg_disable()
     void ldms_msg_enable()
     int ldms_msg_is_enabled()
-    int ldms_msg_publish(ldms_t x, const char *name,
+    int ldms_msg_publish(ldms_t x, const char *msg_tag,
                             ldms_msg_type_e msg_type,
                             ldms_cred *cred,
                             uint32_t perm,
@@ -916,7 +916,7 @@ cdef extern from "ldms.h" nogil:
         ldms_addr src
         ldms_msg_counters_s rx
     struct ldms_msg_ch_cli_stats_s:
-        const char *name
+        const char *msg_tag
         const char *client_match
         const char *client_desc
         int is_regex
@@ -928,7 +928,7 @@ cdef extern from "ldms.h" nogil:
         ldms_msg_counters_s rx
         rbt src_stats_rbt
         ldms_msg_ch_cli_stats_tq_s stats_tq
-        const char *name
+        const char *msg_tag
     struct ldms_msg_ch_stats_tq_s:
         pass
     struct ldms_msg_client_stats_s:

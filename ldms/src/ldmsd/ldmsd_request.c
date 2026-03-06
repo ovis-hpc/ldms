@@ -2195,7 +2195,7 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
-	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_CHAN);
+	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_TAG);
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
 
 	if (!stream_name && !msg) {
@@ -2222,7 +2222,7 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	/* on error, reqc->line_buf will be filled */
 	if (reqc->line_buf[0] == '\0' || reqc->line_buf[0] == '0')
 		__dlog(DLOG_CFGOK, "prdcr_subscribe_regex prdcr_regex=%s %s=%s\n",
-			prdcr_regex, (msg ? ldmsd_req_attr_id2str(LDMSD_ATTR_MSG_CHAN, 0)
+			prdcr_regex, (msg ? ldmsd_req_attr_id2str(LDMSD_ATTR_MSG_TAG, 0)
 				: ldmsd_req_attr_id2str(LDMSD_ATTR_STREAM, 0)),
 			( msg ? msg : stream_name));
 
@@ -2254,7 +2254,7 @@ static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
-	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_CHAN);
+	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_TAG);
 
 	if (!stream_name && !msg) {
 		reqc->errcode = EINVAL;
@@ -7613,7 +7613,7 @@ int __stream_profiling_as_json(json_t **_jobj, int is_reset) {
 			}
 			json_object_set_new(strm_jobj, addr_buf, src_jobj);
 		}
-		json_object_set_new(jobj, ss->name, strm_jobj);
+		json_object_set_new(jobj, ss->msg_tag, strm_jobj);
 	}
  out:
 	*_jobj = jobj;
@@ -11215,7 +11215,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 
 	/*
-	 * Make sure that advertised producers subscribe and unsubscribe stream and msg_channel correctly
+	 * Make sure that advertised producers subscribe and unsubscribe stream and msg_tag correctly
 	 */
 	struct ldmsd_prdcr_sub_unsub *psun;
 	ldmsd_prdcr_sub_unsub_list_lock();
@@ -11226,12 +11226,12 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 		if (psun->is_sub) {
 			if (psun->stream_name)
 				ldmsd_prdcr_stream_subscribe(prdcr, psun->stream_name);
-			else /* msg_channel */
+			else /* msg_tag */
 				ldmsd_prdcr_msg_subscribe(prdcr, psun->msg, psun->rate);
 		} else {
 			if (psun->stream_name)
 				ldmsd_prdcr_stream_unsubscribe(prdcr, psun->stream_name);
-			else /* msg_channel */
+			else /* msg_tag */
 				ldmsd_prdcr_msg_unsubscribe(prdcr, psun->msg);
 		}
 	}

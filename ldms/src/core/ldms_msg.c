@@ -232,7 +232,7 @@ static int __part_send(struct ldms_rail_ep_s *rep,
 extern void timespec_ntoh(struct timespec *ts);
 extern void timespec_hton(struct timespec *ts);
 
-int __rep_publish(struct ldms_rail_ep_s *rep, const char *name,
+int __rep_publish(struct ldms_rail_ep_s *rep, const char *msg_tag,
 			uint32_t hash,
 			ldms_msg_type_t msg_type,
 			struct ldms_addr *src, uint64_t msg_gn,
@@ -243,7 +243,7 @@ int __rep_publish(struct ldms_rail_ep_s *rep, const char *name,
 			struct ldms_strm_publish_profile_s *pts)
 {
 	int rc = 0;
-	int name_len = strlen(name) + 1;
+	int tag_len = strlen(msg_tag) + 1;
 	struct ldms_msg_full_s msg;
 
 	/* quota already acquired */
@@ -256,12 +256,12 @@ int __rep_publish(struct ldms_rail_ep_s *rep, const char *name,
 	}
 
 	msg.msg_gn = htobe64(msg_gn);
-	msg.msg_len = htobe32(name_len + data_len);
+	msg.msg_len = htobe32(tag_len + data_len);
 	msg.msg_type = htobe32(msg_type);
 	msg.cred.uid = htobe32(cred->uid);
 	msg.cred.gid = htobe32(cred->gid);
 	msg.perm = htobe32(perm);
-	msg.name_hash = hash;
+	msg.tag_hash = hash;
 	msg.hop_cnt = htobe32(hop_cnt);
 	if (hops && hop_cnt) {
 		size_t sz = hop_cnt * sizeof(struct ldms_msg_hop);
@@ -290,7 +290,7 @@ int __rep_publish(struct ldms_rail_ep_s *rep, const char *name,
 	}
 	rc = __part_send(rep, &msg.src, msg_gn,
 			 &msg, sizeof(msg), /* msg hdr */
-			 name, name_len, /* name */
+			 msg_tag, tag_len, /* msg_tag */
 			 data, data_len, /* data */
 			 NULL /* term */);
 	return rc;
@@ -323,18 +323,18 @@ __remote_client_cb(ldms_msg_event_t ev, void *cb_arg)
 	r = (ldms_rail_t)ev->recv.client->x;
 	switch (ev->recv.src.sa_family) {
 	case 0:
-		ep_idx = ( ev->recv.name_hash % primer ) % r->n_eps;
+		ep_idx = ( ev->recv.tag_hash % primer ) % r->n_eps;
 		break;
 	case AF_INET:
 		addr_port = be32toh(*(int*)&ev->recv.src.addr[0]);
 		addr_port = (addr_port<<16) | be16toh(ev->recv.src.sin_port);
-		hash = (addr_port << 32) | ev->recv.name_hash;
+		hash = (addr_port << 32) | ev->recv.tag_hash;
 		ep_idx = ( hash % primer ) % r->n_eps;
 		break;
 	case AF_INET6:
 		addr_port = be32toh(*(int*)&ev->recv.src.addr[12]);
 		addr_port = (addr_port<<16) | be16toh(ev->recv.src.sin_port);
-		hash = (addr_port << 32) | ev->recv.name_hash;
+		hash = (addr_port << 32) | ev->recv.tag_hash;
 		ep_idx = ( hash % primer ) % r->n_eps;
 		break;
 	default:
@@ -353,7 +353,7 @@ __remote_client_cb(ldms_msg_event_t ev, void *cb_arg)
 	if (rc)
 		goto out;
 
-	rc = __rep_quota_acquire(&r->eps[ep_idx], ev->recv.name_len + ev->recv.data_len);
+	rc = __rep_quota_acquire(&r->eps[ep_idx], ev->recv.tag_len + ev->recv.data_len);
 	if (rc) {
 		__rate_quota_release(&ev->recv.client->rate_quota, ev->recv.data_len);
 		if (!sbuf) /* we don't queue the local publish */
@@ -387,7 +387,7 @@ __remote_client_cb(ldms_msg_event_t ev, void *cb_arg)
 		hops = NULL;
 	}
 
-	rc = __rep_publish(&r->eps[ep_idx], ev->recv.name,  ev->recv.name_hash,
+	rc = __rep_publish(&r->eps[ep_idx], ev->recv.msg_tag,  ev->recv.tag_hash,
 			     ev->recv.type,
 			     &ev->recv.src, ev->recv.msg_gn,
 			     &ev->recv.cred, ev->recv.perm,
@@ -412,12 +412,12 @@ __cli_ch_bind(ldms_msg_client_t c, struct ldms_msg_ch_s *s);
 
 /* must NOT hold __msg_rwlock */
 static struct ldms_msg_ch_s *
-__ch_get(const char *name, int *is_new)
+__ch_get(const char *msg_tag, int *is_new)
 {
 	struct ldms_msg_ch_s *s;
-	int name_len = strlen(name) + 1;
+	int tag_len = strlen(msg_tag) + 1;
 	__MSG_RDLOCK();
-	s = (void*)rbt_find(&__msg_ch_rbt, name);
+	s = (void*)rbt_find(&__msg_ch_rbt, msg_tag);
 	__MSG_UNLOCK();
 	if (s)
 		goto out_0;
@@ -425,17 +425,17 @@ __ch_get(const char *name, int *is_new)
 	__MSG_WRLOCK();
 	/* need to find the channel again in the case that the other thread
 	 * won the write race */
-	s = (void*)rbt_find(&__msg_ch_rbt, name);
+	s = (void*)rbt_find(&__msg_ch_rbt, msg_tag);
 	if (s)
 		goto out_1;
-	s = calloc(1, sizeof(*s) + name_len);
+	s = calloc(1, sizeof(*s) + tag_len);
 	if (!s)
 		goto out_1;
 	pthread_rwlock_init(&s->rwlock, NULL);
-	rbn_init(&s->rbn, s->name);
+	rbn_init(&s->rbn, s->msg_tag);
 	TAILQ_INIT(&s->cli_tq);
-	s->name_len = name_len;
-	memcpy(s->name, name, name_len);
+	s->tag_len = tag_len;
+	memcpy(s->msg_tag, msg_tag, tag_len);
 	rbt_ins(&__msg_ch_rbt, &s->rbn);
 	if (is_new)
 		*is_new = 1;
@@ -449,7 +449,7 @@ __ch_get(const char *name, int *is_new)
 	struct ldms_msg_client_s *c;
 	int rc;
 	TAILQ_FOREACH(c, &__regex_client_tq, entry) {
-		rc = regexec(&c->regex, name, 0, NULL, 0);
+		rc = regexec(&c->regex, msg_tag, 0, NULL, 0);
 		if (rc) /* does not match */
 			continue;
 		/* matched; add the client into the client list */
@@ -499,7 +499,7 @@ __cli_ch_bind(ldms_msg_client_t c, struct ldms_msg_ch_s *s)
 	LDMS_MSG_COUNTERS_INIT(&sce->drops);
 
 	__DEBUG("sce %p: bind channel '%s' - client '%s' match '%s'\n",
-			sce, s->name, c->desc, c->match);
+			sce, s->msg_tag, c->desc, c->match);
 
 	return 0;
 }
@@ -519,7 +519,7 @@ __cli_ch_unbind(struct ldms_msg_ch_cli_entry_s *sce)
 	/* Unbind the client and channel from the entry.
 	 * The sce list entry is not removed from either list */
 	__DEBUG("sce %p: unbind channel '%s' - client '%s' match '%s'\n",
-			sce, s->name, c->desc, c->match);
+			sce, s->msg_tag, c->desc, c->match);
 
 	pthread_rwlock_wrlock(&c->rwlock);
 	sce->ch = NULL;
@@ -591,7 +591,7 @@ int __cred_allowed_as(struct ldms_cred *cred, struct ldms_cred *as)
 /* deliver message to all clients */
 static int
 __msg_deliver(struct __msg_buf_s *sbuf, uint64_t msg_gn,
-		 const char *name, int name_len,
+		 const char *msg_tag, int tag_len,
 		 uint32_t hash,
 		 ldms_msg_type_t msg_type,
 		 ldms_cred_t cred, uint32_t perm,
@@ -605,7 +605,7 @@ __msg_deliver(struct __msg_buf_s *sbuf, uint64_t msg_gn,
 	struct timespec now;
 	size_t sz;
 
-	s = __ch_get(name, NULL);
+	s = __ch_get(msg_tag, NULL);
 	if (!s) {
 		rc = errno;
 		goto out;
@@ -620,10 +620,10 @@ __msg_deliver(struct __msg_buf_s *sbuf, uint64_t msg_gn,
 				.src = {0},
 				.msg_gn = msg_gn,
 				.type = msg_type,
-				.name_len = name_len,
+				.tag_len = tag_len,
 				.data_len = data_len,
-				.name = name,
-				.name_hash = hash,
+				.msg_tag = msg_tag,
+				.tag_hash = hash,
 				.data = data,
 				.cred = *cred,
 				.perm = perm,
@@ -916,14 +916,14 @@ int __publish_cred_check(ldms_cred_t cred)
 	return rc;
 }
 
-int ldms_msg_publish(ldms_t x, const char *name,
+int ldms_msg_publish(ldms_t x, const char *msg_tag,
                         ldms_msg_type_t msg_type,
 						ldms_cred_t cred, uint32_t perm,
                         const char *data, size_t data_len)
 {
 	ldms_rail_t r;
 	uint64_t msg_gn;
-	int name_len = strlen(name) + 1;
+	int tag_len = strlen(msg_tag) + 1;
 	struct ldms_cred _cred;
 	uint64_t q;
 	int rc;
@@ -954,7 +954,7 @@ int ldms_msg_publish(ldms_t x, const char *name,
 		cred = &_cred;
 	}
 
-	hash = fnv_hash_a1_32(name, strlen(name), FNV_32_PRIME);
+	hash = fnv_hash_a1_32(msg_tag, strlen(msg_tag), FNV_32_PRIME);
 
 	/* publish directly to remote peer */
 	if (x) {
@@ -965,7 +965,7 @@ int ldms_msg_publish(ldms_t x, const char *name,
 			return ENOTSUP;
 		ep_idx = ( hash % primer ) % r->n_eps;
 		__rep_flush_sbuf_tq(&r->eps[ep_idx]);
-		q = strlen(name) + 1 + data_len;
+		q = strlen(msg_tag) + 1 + data_len;
 		rc = __rep_quota_acquire(&r->eps[ep_idx], q);
 		if (rc)
 			return rc;
@@ -975,7 +975,7 @@ int ldms_msg_publish(ldms_t x, const char *name,
 			return ENOMEM;
 		op_ctxt->msg_pub_profile.hop_num = 0;
 		op_ctxt->msg_pub_profile.recv_ts = recv_ts;
-		rc = __rep_publish(&r->eps[ep_idx], name, hash,
+		rc = __rep_publish(&r->eps[ep_idx], msg_tag, hash,
 			               msg_type, 0, msg_gn, cred, perm,
 				           0, NULL, data, data_len,
 				           &(op_ctxt->msg_pub_profile));
@@ -990,7 +990,7 @@ int ldms_msg_publish(ldms_t x, const char *name,
 	}
 
 	/* else publish locally */
-	return __msg_deliver(0, msg_gn, name, name_len, hash,
+	return __msg_deliver(0, msg_gn, msg_tag, tag_len, hash,
 				msg_type, cred, perm, data, data_len, 0, &recv_ts);
 }
 
@@ -1036,7 +1036,7 @@ __client_subscribe(struct ldms_msg_client_s *c)
 		ref_get(&c->ref, "__regex_client_tq");
 		RBT_FOREACH(rbn, &__msg_ch_rbt) {
 			s = container_of(rbn, struct ldms_msg_ch_s, rbn);
-			if (regexec(&c->regex, s->name, 0, NULL, 0))
+			if (regexec(&c->regex, s->msg_tag, 0, NULL, 0))
 				continue; /* not matched */
 			/* matched; bind the client */
 			rc = __cli_ch_bind(c, s);
@@ -1418,12 +1418,12 @@ __process_msg(ldms_t x, struct ldms_request *req)
 	sbuf->msg->perm = be32toh(sbuf->msg->perm);
 	sbuf->msg->hop_cnt = be32toh(sbuf->msg->hop_cnt);
 	sbuf->msg->hop_cnt++;
-	/* sbuf->msg->name_hash does not need byte conversion */
+	/* sbuf->msg->tag_hash does not need byte conversion */
 
-	sbuf->name = sbuf->msg->msg;
-	sbuf->name_len = strlen(sbuf->name)+1;
-	sbuf->data = sbuf->msg->msg + sbuf->name_len;
-	sbuf->data_len = sbuf->msg->msg_len - sbuf->name_len;
+	sbuf->msg_tag = sbuf->msg->msg;
+	sbuf->tag_len = strlen(sbuf->msg_tag)+1;
+	sbuf->data = sbuf->msg->msg + sbuf->tag_len;
+	sbuf->data_len = sbuf->msg->msg_len - sbuf->tag_len;
 
 	/* credential check */
 	ldms_xprt_cred_get(x, NULL, &xcred);
@@ -1434,7 +1434,7 @@ __process_msg(ldms_t x, struct ldms_request *req)
 
 	thrstat = zap_thrstat_ctxt_get(x->zap_ep);
 	__msg_deliver(sbuf, sbuf->msg->msg_gn,
-			 sbuf->name, sbuf->name_len, sbuf->msg->name_hash,
+			 sbuf->msg_tag, sbuf->tag_len, sbuf->msg->tag_hash,
 			 sbuf->msg->msg_type,
 			 &sbuf->msg->cred, sbuf->msg->perm,
 			 sbuf->data, sbuf->data_len,
@@ -1755,17 +1755,17 @@ void __msg_stats_free(struct ldms_msg_ch_stats_s *ss)
 /* readlock already taken */
 struct ldms_msg_ch_stats_s * __msg_get_stats(struct ldms_msg_ch_s *s, int is_reset)
 {
-	/* s->name_len already includes '\0' */
+	/* s->tag_len already includes '\0' */
 	struct ldms_msg_ch_stats_s *ss;
 	struct ldms_msg_ch_cli_entry_s *sce;
 	struct ldms_msg_ch_cli_stats_s *ps;
 	int rc;
 
-	ss = malloc(sizeof(*ss) + s->name_len);
+	ss = malloc(sizeof(*ss) + s->tag_len);
 	if (!ss)
 		goto err_0;
-	ss->name = (char*)&ss[1];
-	memcpy((char*)ss->name, s->name, s->name_len);
+	ss->msg_tag = (char*)&ss[1];
+	memcpy((char*)ss->msg_tag, s->msg_tag, s->tag_len);
 	TAILQ_INIT(&ss->stats_tq);
 	rbt_init(&ss->src_stats_rbt, __ldms_addr_rbn_cmp);
 	LDMS_MSG_COUNTERS_INIT(&ss->rx);
@@ -1780,7 +1780,7 @@ struct ldms_msg_ch_stats_s * __msg_get_stats(struct ldms_msg_ch_s *s, int is_res
 		ps = malloc(sizeof(*ps) + sce->cli->match_len + sce->cli->desc_len);
 		if (!ps)
 			goto err_2;
-		ps->name = ss->name;
+		ps->msg_tag = ss->msg_tag;
 		ps->client_match = (char*)&ps[1];
 		ps->client_desc = ps->client_match + sce->cli->match_len;
 		memcpy((char*)ps->client_match, sce->cli->match,
@@ -1855,7 +1855,7 @@ ldms_msg_ch_stats_tq_get(const char *match, int is_regex, int is_reset)
 	for (rbn = rbt_min(&__msg_ch_rbt); rbn; rbn = rbn_succ(rbn)) {
 		ch = container_of(rbn, struct ldms_msg_ch_s, rbn);
 		if (is_regex) {
-			rc = regexec(&r, ch->name, 0, NULL, 0);
+			rc = regexec(&r, ch->msg_tag, 0, NULL, 0);
 			if (rc)
 				continue;
 		}
@@ -1950,7 +1950,7 @@ int __client_pair_stats_buff_append(struct ldms_msg_ch_cli_stats_s *ent,
 {
 	int rc;
 	rc = ovis_buff_appendf(buff, "{") ||
-	     ovis_buff_appendf(buff, "\"name\":\"%s\"", ent->name) ||
+	     ovis_buff_appendf(buff, "\"msg_tag\":\"%s\"", ent->msg_tag) ||
 	     ovis_buff_appendf(buff, ",\"client_match\":\"%s\"", ent->client_match) ||
 	     ovis_buff_appendf(buff, ",\"client_desc\":\"%s\"", ent->client_desc) ||
 	     ovis_buff_appendf(buff, ",\"is_regex\": %d", ent->is_regex) ||
@@ -1988,7 +1988,7 @@ int __msg_stats_buff_append(struct ldms_msg_ch_stats_s *stats,
 {
 	int rc = 0;
 	rc = ovis_buff_appendf(buff, "{") ||
-	     ovis_buff_appendf(buff, "\"name\":\"%s\"", stats->name) ||
+	     ovis_buff_appendf(buff, "\"msg_tag\":\"%s\"", stats->msg_tag) ||
 	     ovis_buff_appendf(buff, ",\"rx\":") ||
 	     __counters_buff_append(&stats->rx, buff) ||
 	     ovis_buff_appendf(buff, ",\"sources\":") ||
@@ -2013,7 +2013,7 @@ char *ldms_msg_ch_stats_tq_to_str(struct ldms_msg_ch_stats_tq_s *tq)
 	if (rc)
 		goto out;
 	TAILQ_FOREACH(stats, tq, entry) {
-		/* "name": { ... } */
+		/* "msg_tag": { ... } */
 		rc = ovis_buff_appendf(buff, "%s", sep) ||
 		     __msg_stats_buff_append(stats, buff);
 		if (rc)
@@ -2136,15 +2136,15 @@ ldms_msg_client_get_stats(ldms_msg_client_t cli, int is_reset)
 	TAILQ_FOREACH(sce, &cli->ch_tq, cli_ch_entry) {
 		if (!sce->ch) /* client was unbound from channel */
 			continue;
-		/* name_len included '\0' */
-		cps = malloc(sizeof(*cps) + sce->ch->name_len);
+		/* tag_len included '\0' */
+		cps = malloc(sizeof(*cps) + sce->ch->tag_len);
 		if (!cps)
 			goto err_0;
 		cps->client_match = cs->match;
 		cps->client_desc = cs->desc;
-		cps->name = (char*)&cps[1];
-		memcpy((char*)cps->name, sce->ch->name,
-				sce->ch->name_len);
+		cps->msg_tag = (char*)&cps[1];
+		memcpy((char*)cps->msg_tag, sce->ch->msg_tag,
+				sce->ch->tag_len);
 		cps->is_regex = sce->cli->is_regex;
 		cps->tx = sce->tx;
 		cps->drops = sce->drops;
@@ -2323,7 +2323,7 @@ char *ldms_msg_client_stats_str(int is_reset)
 	return ret;
 }
 
-int ldms_msg_publish_file(ldms_t x, const char *name,
+int ldms_msg_publish_file(ldms_t x, const char *msg_tag,
                         ldms_msg_type_t msg_type,
 			ldms_cred_t cred, uint32_t perm,
 			FILE *f)
@@ -2389,7 +2389,7 @@ int ldms_msg_publish_file(ldms_t x, const char *name,
 	sz = st.st_size + 1;
 	/* let through */
  publish:
-	rc = ldms_msg_publish(x, name, msg_type, cred, perm,
+	rc = ldms_msg_publish(x, msg_tag, msg_type, cred, perm,
 			buff, sz);
  out:
 	if (obuff)

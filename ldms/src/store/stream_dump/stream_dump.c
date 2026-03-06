@@ -268,7 +268,7 @@ static int __op_msg_subscribe(struct stream_dump_s *sd,
 	}
 
 	if (!mch) {
-		ERR_LOG(sd, "'message_channel' is required for op=subscribe\n");
+		ERR_LOG(sd, "'message_tag' is required for op=subscribe\n");
 		return EINVAL;
 	}
 
@@ -283,7 +283,7 @@ static int __op_msg_subscribe(struct stream_dump_s *sd,
 	}
 	cli = calloc(1, sizeof(*cli) + strlen(mch) + 1);
 	if (!cli) {
-		ERR_LOG(sd, "Not enough memory (message_channel: '%s')\n", mch);
+		ERR_LOG(sd, "Not enough memory (message_tag: '%s')\n", mch);
 		rc = ENOMEM;
 		goto err0;
 	}
@@ -382,7 +382,7 @@ __config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	const char *op = av_value(avl, "op");
 	const char *stream = av_value(avl, "stream");
 	const char *path = av_value(avl, "path");
-	const char *mch = av_value(avl, "message_channel");
+	const char *mch = av_value(avl, "message_tag");
 	struct stream_dump_s *sd = ldmsd_plug_ctxt_get(handle);
 
 	if (0 == strcmp(op, "msg_subscribe")) {
