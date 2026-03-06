@@ -1987,8 +1987,8 @@ int __rep_flush_sbuf_tq(struct ldms_rail_ep_s *rep)
 			__ldms_op_ctxt_enqueue(&(rep->op_ctxt_lists[LDMS_XPRT_OP_MSG_PUBLISH]),
 										      op_ctxt);
 		}
-		rc = __rep_publish(rep, p->sbuf->name,
-				p->sbuf->msg->name_hash,
+		rc = __rep_publish(rep, p->sbuf->msg_tag,
+				p->sbuf->msg->tag_hash,
 				p->sbuf->msg->msg_type,
 			     &p->sbuf->msg->src, p->sbuf->msg->msg_gn,
 			     &p->sbuf->msg->cred, p->sbuf->msg->perm,

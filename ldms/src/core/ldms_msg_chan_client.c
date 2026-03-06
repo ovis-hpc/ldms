@@ -55,7 +55,7 @@ int subs_msg_cb(ldms_msg_event_t ev, void *cb_arg)
 	switch (ev->type) {
 	case LDMS_MSG_EVENT_RECV:
 		if (verbose_s) {
-			printf("%s name: %s\n", verbose_s, ev->recv.name);
+			printf("%s msg_tag: %s\n", verbose_s, ev->recv.msg_tag);
 			printf("%s hop : %d\n", verbose_s, ev->hop_num);
 			printf("%s type: %s\n", verbose_s,
 			       ldms_msg_type_sym(ev->recv.type));
