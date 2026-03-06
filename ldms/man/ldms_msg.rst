@@ -21,9 +21,9 @@ ldmsd_controller commands
 
 .. parsed-literal::
 
-   ``prdcr_subscribe`` ``regex``\ =\ `PRDCR_REGEX` ``message_channel``\ =\ `NAME_REGEX`
+   ``prdcr_subscribe`` ``regex``\ =\ `PRDCR_REGEX` ``message_tag``\ =\ `NAME_REGEX`
 
-   ``prdcr_unsubscribe`` ``regex``\ =\ `PRDCR_REGEX` ``message_channel``\ =\ `NAME_REGEX`
+   ``prdcr_unsubscribe`` ``regex``\ =\ `PRDCR_REGEX` ``message_tag``\ =\ `NAME_REGEX`
 
 
 C APIs
@@ -107,18 +107,18 @@ commands in order to receive message data from its producers (``prdcr``).
 
 .. code:: sh
 
- # subscribe "s0" message channel on all producers
- prdcr_subscribe regex=.* message_channel=s0
- # subscribe "s1" message channel on all producers
- prdcr_subscribe regex=.* message_channel=s1
+ # subscribe "s0" message tag on all producers
+ prdcr_subscribe regex=.* message_tag=s0
+ # subscribe "s1" message tag on all producers
+ prdcr_subscribe regex=.* message_tag=s1
 
-The ``message_channel`` parameter can also be regular expression, e.g.
+The ``message_tag`` parameter can also be regular expression, e.g.
 
 .. code:: sh
 
- # subscribe message channels matching "app.*" or "sys.*" on all producers
- prdcr_subscribe regex=.* message_channel=app.*
- prdcr_subscribe regex=.* message_channel=sys.*
+ # subscribe message tags matching "app.*" or "sys.*" on all producers
+ prdcr_subscribe regex=.* message_tag=app.*
+ prdcr_subscribe regex=.* message_tag=sys.*
 
 This is the setup for the following figure:
 
@@ -136,7 +136,7 @@ This is the setup for the following figure:
 
   - ``agg`` subscribes ``.*`` channels on ``samp`` with the following command:
 
-    - ``prdcr_subscribe regex=samp message_channel=.*``
+    - ``prdcr_subscribe regex=samp message_tag=.*``
 
 - ``alice_app``: an application run by alice that LDMS-conencts to ``agg``.
 
