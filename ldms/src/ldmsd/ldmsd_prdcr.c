@@ -1719,12 +1719,12 @@ void ldmsd_prdcr_update(ldmsd_strgp_t strgp)
  * they were received. Preserving this order is critical for correct behavior.
  *
  * Example scenario:
- * 1. User configures all producers (.*) to subscribe to msg_channel 'my_data'
+ * 1. User configures all producers (.*) to subscribe to message_tag 'my_data'
  * 2. User then creates an exception for producers matching the regex pattern (node-[11-20])
  *    with: `producer_unsubscribe regex=node-[11-20] msg=my_data`
  *
  * If prdcr_subun_list does not preserve the arrival order of these requests,
- * an advertised producer might incorrectly subscribe to a msg_channel that
+ * an advertised producer might incorrectly subscribe to a message_tag that
  * the user intended to unsubscribe it from.
  */
 static struct ldmsd_prdcr_sub_unsub_list prdcr_subun_list = TAILQ_HEAD_INITIALIZER(prdcr_subun_list);

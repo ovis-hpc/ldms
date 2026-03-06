@@ -123,7 +123,7 @@ data from the ``ldmsd_request`` message sent from ``ldmsd`` as ``ldmsd_stream``
 is implemented on top of ``ldmsd_request`` protocol.
 
 
-For LDMS Message, an application can subscribe to message channels as follows:
+For LDMS Message, an application can subscribe to message tags as follows:
 
 .. code:: c
 

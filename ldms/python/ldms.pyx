@@ -563,7 +563,7 @@ def msg_publish(name, data, msg_type=None, perm=0o444,
     """msg_publish(name, data, msg_type=None, perm=0o444, uid=None,
                    gid=None, sr_client=None, schema_def=None)
 
-    Publish a message locally. If the remote peer subscribe to the channel, it
+    Publish a message locally. If the remote peer subscribed to the message tag, it
     will also receive the data.
 
     For LDMS_MSG_AVRO_SER type, SchemaRegistryClient `sr_client` and schema
@@ -572,7 +572,7 @@ def msg_publish(name, data, msg_type=None, perm=0o444,
     `schema_def` is also registered to the Schema Registry with `sr_client`.
 
     Arguments:
-    - name (str): The channel name of the message being published.
+    - name (str): The message tag name of the message being published.
     - data (bytes, str, dict):
             The data being published. If it is `dict` and msg_type is
             LDMS_MSG_JSON or None, the data is converted into JSON
@@ -4043,7 +4043,7 @@ cdef class Xprt(object):
         `sr_client`.
 
         Arguments:
-        - name (str): The channel name of the message being published.
+        - name (str): The messsage_tag of the message being published.
         - data (bytes, str, dict):
                 The data being published. If it is `dict` and msg_type is
                 LDMS_MSG_JSON or None, the data is converted into JSON
@@ -4086,7 +4086,7 @@ cdef class Xprt(object):
         If the callback function `cb` is given, it will be called when the
         remote process sends back the subscription request results.
         The callback signature is `cb(MsgStatusEvent ev, object cb_arg)`.
-        - `ev.match` (str) is the channel name or regex value.
+        - `ev.match` (str) is the message tag or regex value.
         - `ev.is_regex` (int) 1 if `ev.name` is a regex; otherwise 0.
         - `ev.status` (int) is the returned status for the submitted request.
 
@@ -4356,7 +4356,7 @@ cdef class MsgData(object):
     cdef public bytes    raw_data # bytes raw data
     cdef public object   data     # `str` (for STRING) or `dict` (for JSON)
     cdef public LdmsAddr src      # message originator
-    cdef public str      name     # channel name
+    cdef public str      name     # message_tag name
     cdef public int      is_json  # data is JSON
     cdef public int      uid      # uid of the original publisher
     cdef public int      gid      # gid of the original publisher
@@ -4414,7 +4414,7 @@ cdef class MsgData(object):
             # no data decode
             is_json = False
             data = raw_data
-        name = ev.recv.name.decode()
+        name = ev.recv.msg_tag.decode()
         src = LdmsAddr.from_ldms_addr(PTR(&ev.recv.src))
         uid = ev.recv.cred.uid
         gid = ev.recv.cred.gid
@@ -4474,18 +4474,18 @@ MsgSrcStats.from_ptr = classmethod(_from_ptr)
 del _from_ptr
 
 MsgChannelClientStats = namedtuple('MsgChannelClientStats', [
-        'name', 'client_match', 'client_desc', 'is_regex', 'tx', 'drops'
+        'msg_tag', 'client_match', 'client_desc', 'is_regex', 'tx', 'drops'
     ])
 def _from_ptr(cls, Ptr ptr):
     cdef ldms_msg_ch_cli_stats_s *ps = <ldms_msg_ch_cli_stats_s *>ptr.c_ptr
     tx = MsgCounters.from_ptr(PTR(&ps.tx))
     drops = MsgCounters.from_ptr(PTR(&ps.drops))
-    return cls(STR(ps.name), STR(ps.client_match), STR(ps.client_desc),
+    return cls(STR(ps.msg_tag), STR(ps.client_match), STR(ps.client_desc),
                ps.is_regex, tx, drops)
 MsgChannelClientStats.from_ptr = classmethod(_from_ptr)
 del _from_ptr
 
-MsgChannelStats = namedtuple('MsgChannelStats', ['rx', 'sources', 'clients', 'name'])
+MsgChannelStats = namedtuple('MsgChannelStats', ['rx', 'sources', 'clients', 'msg_tag'])
 def _from_ptr(cls, Ptr ptr):
     cdef ldms_msg_ch_stats_s *s = <ldms_msg_ch_stats_s *>ptr.c_ptr
     cdef ldms_msg_src_stats_s *ss
@@ -4505,13 +4505,13 @@ def _from_ptr(cls, Ptr ptr):
         obj = MsgChannelClientStats.from_ptr(PTR(ps))
         clients.append(obj)
         ps = __MSG_CH_CLI_STATS_NEXT(ps)
-    ret = MsgChannelStats(rx, sources, clients, STR(s.name))
+    ret = MsgChannelStats(rx, sources, clients, STR(s.msg_tag))
     return ret
 MsgChannelStats.from_ptr = classmethod(_from_ptr)
 del _from_ptr
 
 MsgClientStats = namedtuple('MsgClientStats', [
-        'tx', 'drops', 'channels', 'dest', 'is_regex', 'match', 'desc'
+        'tx', 'drops', 'tags', 'dest', 'is_regex', 'match', 'desc'
     ])
 def _from_ptr(cls, Ptr ptr):
     cdef ldms_msg_client_stats_s *cs = <ldms_msg_client_stats_s*>ptr.c_ptr
@@ -4520,12 +4520,12 @@ def _from_ptr(cls, Ptr ptr):
     drops = MsgCounters.from_ptr(PTR(&cs.drops))
     dest = LdmsAddr.from_ldms_addr(PTR(&cs.dest))
     ps = __MSG_CH_CLI_STATS_TQ_FIRST(&cs.stats_tq)
-    channels = list()
+    tags = list()
     while ps:
         obj = MsgChannelClientStats.from_ptr(PTR(ps))
-        channels.append(obj)
+        tags.append(obj)
         ps = __MSG_CH_CLI_STATS_NEXT(ps)
-    ret = cls(tx, drops, channels, dest, cs.is_regex, STR(cs.match), STR(cs.desc))
+    ret = cls(tx, drops, tags, dest, cs.is_regex, STR(cs.match), STR(cs.desc))
     return ret
 MsgClientStats.from_ptr = classmethod(_from_ptr)
 del _from_ptr
@@ -4537,9 +4537,9 @@ def msg_stats_level_get():
     return ldms_msg_stats_level_get()
 
 def msg_stats_get(match=None, is_regex=0, is_reset=0):
-    """Get a collection of stats of the matching channels in this process
+    """Get a collection of stats of the matching message tags in this process
 
-    match(str) - the channel name or a regular expression
+    match(str) - the message tag or a regular expression
     is_regex(int) - 1 if `match` is a regular expression; otherwise, 0
     """
     cdef const char *m = NULL
@@ -4594,10 +4594,10 @@ cdef class MsgClient(object):
     """MsgClient(match, is_regex, cb=None, cb_arg=None)
 
     Arguments:
-    - match (str): The name of the message channel, or a regular expression
+    - match (str): The name of the message tag, or a regular expression
     - is_regex (int): 1 if `match` is a regular expression;
                       0 otherwise, and the `match` is treated as an exact match
-                      to the channel name
+                      to the message tag name
     - cb (callable): an optional callback function to deliver the data
                      with the following signature
                      `def cb(MsgClient client, MsgData data, object cb_arg)`
