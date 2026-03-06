@@ -21,9 +21,9 @@ ldmsd_controller commands
 
 .. parsed-literal::
 
-   ``prdcr_subscribe`` ``regex``\ =\ `PRDCR_REGEX` ``message_channel``\ =\ `NAME_REGEX`
+   ``prdcr_subscribe`` ``regex``\ =\ `PRDCR_REGEX` ``message_tag``\ =\ `NAME_REGEX`
 
-   ``prdcr_unsubscribe`` ``regex``\ =\ `PRDCR_REGEX` ``message_channel``\ =\ `NAME_REGEX`
+   ``prdcr_unsubscribe`` ``regex``\ =\ `PRDCR_REGEX` ``message_tag``\ =\ `NAME_REGEX`
 
 
 C APIs
@@ -33,7 +33,7 @@ C APIs
 
  #include "ldms.h"
 
- int ldms_msg_publish(ldms_t x, const char *name,
+ int ldms_msg_publish(ldms_t x, const char *msg_tag,
                          ldms_msg_type_t msg_type,
                          ldms_cred_t cred,
                          uint32_t perm,
@@ -62,14 +62,14 @@ Python APIs
 
  from ovis_ldms import ldms
 
- ldms.msg_publish(name=<str>, msg_data=<str|dict>,
+ ldms.msg_publish(msg_tag=<str>, msg_data=<str|dict>,
              msg_type=<None|ldms.LDMS_MSG_STRING|ldms.LDMS_MSG_JSON>,
              perm=<int>)
 
  xprt = ldms.Xprt()
  xprt.connect(host="node0", port=411)
 
- xprt.msg_publish(name=<str>, msg_data=<str|dict>,
+ xprt.msg_publish(msg_tag=<str>, msg_data=<str|dict>,
              msg_type=<None|ldms.LDMS_MSG_STRING|ldms.LDMS_MSG_JSON>,
              perm=<int>)
 
@@ -107,18 +107,18 @@ commands in order to receive message data from its producers (``prdcr``).
 
 .. code:: sh
 
- # subscribe "s0" message channel on all producers
- prdcr_subscribe regex=.* message_channel=s0
- # subscribe "s1" message channel on all producers
- prdcr_subscribe regex=.* message_channel=s1
+ # subscribe "s0" message tag on all producers
+ prdcr_subscribe regex=.* message_tag=s0
+ # subscribe "s1" message tag on all producers
+ prdcr_subscribe regex=.* message_tag=s1
 
-The ``message_channel`` parameter can also be regular expression, e.g.
+The ``message_tag`` parameter can also be regular expression, e.g.
 
 .. code:: sh
 
- # subscribe message channels matching "app.*" or "sys.*" on all producers
- prdcr_subscribe regex=.* message_channel=app.*
- prdcr_subscribe regex=.* message_channel=sys.*
+ # subscribe message tags matching "app.*" or "sys.*" on all producers
+ prdcr_subscribe regex=.* message_tag=app.*
+ prdcr_subscribe regex=.* message_tag=sys.*
 
 This is the setup for the following figure:
 
@@ -127,23 +127,23 @@ This is the setup for the following figure:
 - ``samp``: an LDMS daemon (sampler).
 
   - A plugin in ``samp`` has an LDMS Message Client ``cli`` that subscribes to
-    all channels (regex ``.*``).
+    all tags (regex ``.*``).
 
-  - Another plugin ``plug0`` in ``samp`` publishes to ``s1`` channel.
+  - Another plugin ``plug0`` in ``samp`` publishes to ``s1`` tag.
 
 - ``agg``: another LDMS daemon (aggregator). It has an LDMS connection to
   ``samp``.
 
-  - ``agg`` subscribes ``.*`` channels on ``samp`` with the following command:
+  - ``agg`` subscribes ``.*`` tags on ``samp`` with the following command:
 
-    - ``prdcr_subscribe regex=samp message_channel=.*``
+    - ``prdcr_subscribe regex=samp message_tag=.*``
 
 - ``alice_app``: an application run by alice that LDMS-conencts to ``agg``.
 
   - ``alice_app`` subscribe for ``s0``
 
   - ``alice_app`` has an LDMS Message Client ``cli`` that subscribes to ``"my"``
-    channel.
+    tag.
 
 The ``-->`` arrows illustrate possible message data paths.
 
@@ -188,7 +188,7 @@ When ``s0`` message from ``bob_app`` arrives ``samp`` daemon, the logic in
    messages as user.
 
 2. **Client iteration**: ``ldms`` library Goes through all clients that
-   subscribe to ``s0`` channel (including the macthing clients that subscribe
+   subscribe to ``s0`` tag (including the macthing clients that subscribe
    with regular expression).
 
 3. **Authorization check**: Then, ``ldms`` library checks if the clients should
@@ -197,12 +197,12 @@ When ``s0`` message from ``bob_app`` arrives ``samp`` daemon, the logic in
 
 4. **Callbak**: clients' ``cb_fn()`` is called for the authorized clients.
    Examples of information availble in the msg callback event are message
-   channel name, message data, original publisher's ``uid``, ``gid`` and
-   address.  Currently, a user can publish data to any channel. It is up to the
+   tag name, message data, original publisher's ``uid``, ``gid`` and
+   address.  Currently, a user can publish data to any tag. It is up to the
    receiver side to decide what to do.
 
 In this particular case, we will have 2 clients on ``samp``: the ``cli`` that
-subscribes for all channels (regex ``.*``), and a *hidden* client for remote
+subscribes for all tags (regex ``.*``), and a *hidden* client for remote
 subscription (remote client for short) created when ``samp`` received a
 subscription request message from ``agg`` (by ``prdcr_subscribe`` command in
 ``agg``). The ``cb_fn()`` of the remote client is an internal function in LDMS
@@ -211,11 +211,11 @@ credential of the remote client is the credential from the LDMS transport
 authentication.
 
 Now, ``s0`` message has reached ``agg``, which has only one remote client:
-``alice_app`` subscribing to ``s0`` channel. The ``ldms`` logic in ``agg`` will
+``alice_app`` subscribing to ``s0`` tag. The ``ldms`` logic in ``agg`` will
 NOT forward this particular message to ``alice_app`` because ``bob_app``
 the original publisher set ``0400`` permission.
 
-If ``bob_app`` published another message on ``s0`` channel to ``samp`` with
+If ``bob_app`` published another message on ``s0`` tag to ``samp`` with
 ``0444`` permission, when it reached ``agg``, it will be forwarded it to
 ``alice_app``. ``cb_fn()`` on ``alice_app`` will be called once the ``s0`` data
 reached it.
@@ -224,7 +224,7 @@ On another path, let's consider ``publish(s1)`` in ``plug0`` plugin in ``samp``
 process. When ``plug0`` publishes ``s1`` with ``NULL`` transport (publishing
 locally), the ``ldms`` library in ``samp`` process does the same thing as if the
 data were received from a remote peer. The ``cli`` client in another plugin that
-subscribed for all channels will get the data (via ``cb_fn()``), and the remote
+subscribed for all tags will get the data (via ``cb_fn()``), and the remote
 client to ``agg`` will also get the data if authorized.
 
 
@@ -266,7 +266,7 @@ C publish example
                               0400, "data", 5);
 
      /* publish to our process */
-     rc = ldms_msg_publish(NULL, "json_channel", LDMS_MSG_JSON, NULL,
+     rc = ldms_msg_publish(NULL, "json_tag", LDMS_MSG_JSON, NULL,
                               0400, "{\"attr\":\"value\"}", 17);
      return rc;
  }
@@ -309,7 +309,7 @@ C subscribe example
      /* The non-zero `rc` is a synchronous error that can still be returned,
       * e.g. EIO, ENOMEM, ENAMETOOLONG. */
 
-     /* ask ldmsd to forward messages with channels matching "app.*" regex to
+     /* ask ldmsd to forward messages with tags matching "app.*" regex to
       * us.  `success_cb()` will be called once we know the result of the
       * subscription. */
      rc = ldms_msg_remote_subscribe(x, "app.*", 1, success_cb, NULL, LDMS_UNLIMITED);
@@ -318,14 +318,14 @@ C subscribe example
 
      sleep(10); /* sleep 10 sec */
 
-     /* Request an unsubscription to "s0" channel. Note that the `match` must
+     /* Request an unsubscription to "s0" tag. Note that the `match` must
       * match the subscription request. The `success_cb` is called to report
         the success/failed result of the unsubscription request. */
      rc = ldms_msg_remote_unsubscribe(x, "s0", 0, success_cb, NULL);
      if (rc)
          return rc;
 
-     /* Request an unsubscription to "app.*" channels. Note that the `match`
+     /* Request an unsubscription to "app.*" tags. Note that the `match`
       * must match the subscription request. The `success_cb` is called to
       * report the success/failed result of the unsubscription request. */
      rc = ldms_msg_remote_unsubscribe(x, "app.*", 1, success_cb, NULL);
@@ -359,7 +359,7 @@ C subscribe example
      assert(ev->type == LDMS_MSG_EVENT_RECV);
      /* we expect RECV event or CLOSE event only */
      if (ev->recv.type == LDMS_MSG_STRING) {
-         printf("channel name: %s\n", ev->recv.name);
+         printf("msg_tag: %s\n", ev->recv.msg_tag);
          printf("message data: %s\n", ev->recv.data);
      }
      if (ev->recv.type == LDMS_MSG_JSON) {
@@ -396,21 +396,21 @@ Python publish examples
  x.connect(host="localhost", port=411)
 
  # Explicitly specify STRING type.
- x.msg_publish(name="s0", data="somedata", msg_type=ldms.LDMS_MSG_STRING,
+ x.msg_publish(msg_tag="s0", data="somedata", msg_type=ldms.LDMS_MSG_STRING,
                perm=0o400)
 
  # JSON; the `dict` data will be converted to JSON
- x.msg_publish(name="s0", data={"attr": "value"}, msg_type=ldms.LDMS_MSG_JSON,
+ x.msg_publish(msg_tag="s0", data={"attr": "value"}, msg_type=ldms.LDMS_MSG_JSON,
                perm=0o400)
 
  # Assumed STRING type if data is `str` or `bytes` when `msg_type` is omitted
- x.msg_publish(name="s0", data="somedata", perm=0o400)
+ x.msg_publish(msg_tag="s0", data="somedata", perm=0o400)
 
  # Assumed JSON type if data is `dict` when `msg_type` is omitted
- x.msg_publish(name="app0", data={"attr": "value"}, perm=0o400)
+ x.msg_publish(msg_tag="app0", data={"attr": "value"}, perm=0o400)
 
  # We can publish to our process too
- ldms.msg_publish(name="s0", data="data")
+ ldms.msg_publish(msg_tag="s0", data="data")
 
 
 Python subscribe examples
@@ -427,7 +427,7 @@ Python subscribe examples
  x.connect(host="node0", port=411)
 
  def msg_recv_cb(cli, sd, cb_arg):
-     print(f"[{sd.name}]: {sd.data}")
+     print(f"[{sd.msg_tag}]: {sd.data}")
 
  def msg_sub_status_cb(ev, cb_arg):
      print(f"'{ev.match}' subscription status: {ev.status}")
@@ -435,21 +435,21 @@ Python subscribe examples
  def msg_unsub_status_cb(ev, cb_arg):
      print(f"'{ev.match}' unsubscription status: {ev.status}")
 
- # Subscribe to messages that reaches our process on "s0" channel.
+ # Subscribe to messages that reaches our process on "s0" tag.
  # `msg_recv_cb()` will be called when "s0" message reached our process.
  cli0 = ldms.MsgClient(match="s0", is_regex=False, cb=msg_recv_cb, cb_arg=None)
 
- # Subscribe to messages that reaches our process on channels matching "app.*".
+ # Subscribe to messages that reaches our process on tags matching "app.*".
  # Since no `cb` is given, "app.*" data that reaches our process will be
  # stored in cli1.
  cli1 = ldms.MsgClient(match="app.*", is_regex=True)
 
- # Request peer for message forwarding to us only on channel "s0".
+ # Request peer for message forwarding to us only on tag "s0".
  # The status result of the subscription will be notified via
  #  `msg_sub_status_cb`.
  x.msg_subscribe("s0", is_regex=False, cb=msg_sub_status_cb, cb_arg=None)
 
- # Request peer for message forwarding to us on channels matching "app.*".
+ # Request peer for message forwarding to us on tags matching "app.*".
  # Since no `cb` is given, this call becomes blocking, waiting for the status
  # event. An exception is raised if the subscription request resulted in an
  # error.
@@ -463,7 +463,7 @@ Python subscribe examples
  # Data of "app.*" messges are stored in `cli1` since no `cb` was given.
  sd = cli1.get_data()
  while sd is not None:
-     print(f"[{sd.name}]: {sd.data}")
+     print(f"[{sd.msg_tag}]: {sd.data}")
      sd = cli1.get_data()
 
  # Request "s0" subscription cancellation to peer; notify result via `cb`

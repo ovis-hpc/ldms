@@ -29,7 +29,7 @@ connection for all the messages by default.
 COMMAND LINE SYNTAX
 ===================
 
-ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_channel-name> -a <auth> -A <auth-opt> -t <data-format> [-v] [-f <file> [-l] [-r <N> [-i <M>] [-R]]]
+ldms_msg_publish -x <xprt> -h <host> -p <port> -m <message_tag> -a <auth> -A <auth-opt> -t <data-format> [-v] [-f <file> [-l] [-r <N> [-i <M>] [-R]]]
    |
 
    **-x|--xprt** <xprt>
@@ -138,7 +138,7 @@ Within ldmsd_controller or a configuration file:
 ::
 
    load name=hello_sampler
-   config name=hello_sampler producer=host1 instance=host1/hello_sampler message_channel=foo component_id=1
+   config name=hello_sampler producer=host1 instance=host1/hello_sampler message_tag=foo component_id=1
    start name=hello_sampler interval=1000000 offset=0
 
 ::

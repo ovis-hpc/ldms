@@ -103,7 +103,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_subscribe': {'req_attr':['regex'],
                                           'opt_attr': [
                                               'rx_rate', 'stream',
-                                              'message_channel'
+                                              'message_tag'
                                           ]
                                          },
                       'prdcr_unsubscribe': {'req_attr':['regex', 'stream'], 'opt_attr': []},
@@ -356,7 +356,7 @@ class LDMSD_Req_Attr(object):
     ASK_AMOUNT = 46
     RESET_INTERVAL = 47
     XTHREAD = 48
-    MSG_CHAN = 49
+    MSG_TAG = 49
     STATE = 50
     LAST = 51
 
@@ -416,7 +416,7 @@ class LDMSD_Req_Attr(object):
                    'ask_amount': ASK_AMOUNT,
                    'reset_interval': RESET_INTERVAL,
                    'exclusive_thread': XTHREAD,
-                   'message_channel': MSG_CHAN,
+                   'message_tag': MSG_TAG,
                    'state' : STATE,
                    'TERMINATING': LAST
         }
@@ -468,7 +468,7 @@ class LDMSD_Req_Attr(object):
                    ASK_AMOUNT : 'ask_amount',
                    RESET_INTERVAL : 'reset_interval',
                    XTHREAD : 'exclusive_thread',
-                   MSG_CHAN : 'message_channel',
+                   MSG_TAG : 'message_tag',
                    STATE : 'state',
                    LAST : 'TERMINATING'
         }
@@ -1644,7 +1644,7 @@ class Communicator(object):
         except Exception as e:
             return errno.ENOTCONN, str(e)
 
-    def msg_stats(self, regex=None, stream=None, reset=None):
+    def msg_stats(self, regex=None, stream=None, msg_tag=None, reset=None):
         """
         Dump stream stats
 
@@ -1663,6 +1663,8 @@ class Communicator(object):
             attr_list.append(LDMSD_Req_Attr(attr_name='regex', value=regex))
         if stream:
             attr_list.append(LDMSD_Req_Attr(attr_name='stream', value=stream))
+        if msg_tag:
+            attr_list.append(LDMSD_Req_Attr(attr_name='message_tag', value=msg_tag))
         if reset:
             attr_list.append(LDMSD_Req_Attr(attr_name='reset', value=reset))
         req = LDMSD_Request(command_id=LDMSD_Request.MSG_STATS, attrs = attr_list)
@@ -2415,8 +2417,8 @@ class Communicator(object):
           a list of dictionaries in json format containing the producer status
         """
         attrs = None
-        if name:
-            attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
+        #if name:
+        #    attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name) ]
         try:
             req = LDMSD_Request(command_id=LDMSD_Request.PLUGN_STATUS, attrs=attrs)
             req.send(self)
@@ -2692,7 +2694,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_subscribe(self, regex, stream=None, msg_chan=None, rx_rate='-1'):
+    def prdcr_subscribe(self, regex, stream=None, msg_tag=None, rx_rate='-1'):
         """
         Subscribe to stream data from matching producers
 
@@ -2701,10 +2703,7 @@ class Communicator(object):
 
         Keyword Parameters:
         [stream]   - The name of the stream.
-        [msg_chan] - True, uses a ldms message channel rather than streams.
-                     Defaults to False.
-                     If stream name is specified, as well as msg_chan set to True,
-                     will return an error message.
+        [msg_tag]  - The name of the message_tag
         [rx_rate]  - The recv rate limit
 
         Returns:
@@ -2715,8 +2714,8 @@ class Communicator(object):
         attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex) ]
         if stream is not None:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream))
-        if msg_chan is not None:
-            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.MSG_CHAN, value=msg_chan))
+        if msg_tag is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.MSG_TAG, value=msg_tag))
         if rx_rate is not None:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(int(rx_rate))))
         req = LDMSD_Request(command_id = LDMSD_Request.PRDCR_SUBSCRIBE, attrs = attrs)
@@ -2728,24 +2727,28 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_unsubscribe(self, regex, stream):
+    def prdcr_unsubscribe(self, regex, stream=None, msg_tag=None):
         """
         Unsubscribe from stream data from matching producers
 
         Parameters:
-        - A regular expression matching producer names
-        - The name of the stream
+        regex     - A regular expression matching producer names
+        [stream]  - The name of the stream
+        [msg_tag] - The name of the message_tag
 
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
         - data is an error message is status !=0 or None
         """
-        req = LDMSD_Request(command_id = LDMSD_Request.PRDCR_UNSUBSCRIBE,
-                attrs = [
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex),
-                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream)
-                ])
+        attrs = [
+            LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex)
+        ]
+        if stream:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream))
+        if msg_tag:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.MSG_TAG, value=msg_tag))
+        req = LDMSD_Request(command_id = LDMSD_Request.PRDCR_UNSUBSCRIBE, attrs = attrs)
         try:
             req.send(self)
             resp = req.receive(self)

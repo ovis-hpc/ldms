@@ -69,13 +69,13 @@ struct ldms_msg_ch_s {
 	struct rbn rbn;
 	pthread_rwlock_t rwlock; /* protects cli_tq */
 	TAILQ_HEAD(, ldms_msg_ch_cli_entry_s) cli_tq;
-	int name_len;
+	int tag_len;
 	struct ldms_msg_counters_s rx; /* total rx regardless of src */
 	struct rbt src_stats_rbt; /* tree of statistics by src; the nodes are `struct ldms_msg_src_stats_s` */
-	char name[OVIS_FLEX];
+	char msg_tag[OVIS_FLEX];
 };
 
-/* channel-client relation */
+/* tag-client relation */
 struct ldms_msg_ch_cli_entry_s {
 	struct ref_s ref;
 	struct ldms_msg_ch_s *ch;
@@ -87,9 +87,9 @@ struct ldms_msg_ch_cli_entry_s {
 	/* For ch->cli_tq */
 	TAILQ_ENTRY(ldms_msg_ch_cli_entry_s) ch_cli_entry;
 
-	/* transmission-to-client counters for this channel */
+	/* transmission-to-client counters for this tag */
 	struct ldms_msg_counters_s tx;
-	/* client drops counters for this channel */
+	/* client drops counters for this tag */
 	struct ldms_msg_counters_s drops;
 };
 
@@ -100,13 +100,13 @@ struct ldms_msg_client_s {
 
 	struct ldms_msg_client_coll_s *coll;
 
-	/* transmission-to-client counters regradless of channel */
+	/* transmission-to-client counters regradless of tag */
 	struct ldms_msg_counters_s tx;
-	/* drops counters regradless of channel */
+	/* drops counters regradless of tag */
 	struct ldms_msg_counters_s drops;
 
 	pthread_rwlock_t rwlock;
-	/* channels that this client subscribed for */
+	/* tags that this client subscribed for */
 	TAILQ_HEAD(, ldms_msg_ch_cli_entry_s) ch_tq;
 
 	struct ldms_addr dest;
@@ -136,7 +136,7 @@ struct ldms_msg_full_s {
 	uint32_t msg_type;
 	struct ldms_cred cred; /* credential of the originator */
 	uint32_t perm; /* 0777 style permission */
-	uint32_t name_hash;
+	uint32_t tag_hash;
 	/* Allocate space to collect profile data for 8 hops */
 	uint32_t hop_cnt;
 	uint32_t pad1;
@@ -163,9 +163,9 @@ struct __msg_buf_s {
 	struct ldms_rail_ep_s *rep;
 	size_t full_msg_len;
 	off_t  off;
-	const char *name;
+	const char *msg_tag;
 	const char *data;
-	uint32_t name_len;
+	uint32_t tag_len;
 	uint32_t data_len;
 	union {
 		struct ldms_msg_full_s msg[0];

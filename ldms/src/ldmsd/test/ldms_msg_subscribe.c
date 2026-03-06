@@ -20,7 +20,7 @@ static FILE *file;
 static struct option long_opts[] = {
 	{"port",     required_argument, 0,  'p' },
 	{"file",     required_argument, 0,  'f' },
-	{"msg_name", required_argument, 0,  'm' },
+	{"msg_tag",  required_argument, 0,  'm' },
 	{"xprt",     required_argument, 0,  'x' },
 	{"auth",     required_argument, 0,  'a' },
 	{"auth_arg", required_argument, 0,  'A' },
@@ -31,7 +31,7 @@ static struct option long_opts[] = {
 void usage(int argc, char **argv)
 {
 	printf("usage: %s -x <xprt> -p <port> -h <host> "
-	       "-m <msg-name> "
+	       "-m <msg-tag> "
 	       "-f <file> -a <auth> -A <auth-opt>\n",
 	       argv[0]);
 	exit(1);
@@ -50,7 +50,7 @@ static int msg_cb_fn(ldms_msg_event_t ev, void *cb_arg)
 			fputs(ev->recv.data, file);
 		} else {
 			/* See `struct ldms_msg_event_s` for more information. */
-			fprintf(file, "name: %s\n", ev->recv.name);
+			fprintf(file, "msg_tag: %s\n", ev->recv.msg_tag);
 			fprintf(file, "hop : %d\n", ev->hop_num);
 			fprintf(file, "type: %s\n", ldms_msg_type_sym(ev->recv.type));
 			fprintf(file, "data: %s\n", ev->recv.data);

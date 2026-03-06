@@ -1442,7 +1442,7 @@ const char *ldms_msg_type_sym(ldms_msg_type_t t);
  * to the peer of \c x.
  *
  * \param x            NULL for loopback, or a valid rail handle.
- * \param name         The name of the channel.
+ * \param name         The name of the tag.
  * \param msg_type     The type of the message (STRING or JSON).
  * \param cred         The credential of the publisher. This can be \c NULL, and
  *                       the \c euid and \c egid are used.
@@ -1454,7 +1454,7 @@ const char *ldms_msg_type_sym(ldms_msg_type_t t);
  * \retval EAGAIN   If there is not enough send quota.
  * \retval ENOSTR   If the the handle not valid for publishing.
  */
-int ldms_msg_publish(ldms_t x, const char *name,
+int ldms_msg_publish(ldms_t x, const char *msg_tag,
                         ldms_msg_type_t msg_type,
 			ldms_cred_t cred,
 			uint32_t perm,
@@ -1464,7 +1464,7 @@ int ldms_msg_publish(ldms_t x, const char *name,
  * Like \c ldms_msg_publsh(), but publish the content of a file.
  *
  * \param x            NULL for loopback, or a valid rail handle.
- * \param name         The name of the channel.
+ * \param msg_tag      The name of the tag.
  * \param msg_type     The type of the message (STRING or JSON).
  * \param cred         The credential of the publisher. This can be \c NULL, and
  *                       the \c euid and \c egid are used.
@@ -1475,7 +1475,7 @@ int ldms_msg_publish(ldms_t x, const char *name,
  * \retval EAGAIN   If there is not enough send quota.
  * \retval ENOSTR   If the the handle not valid for publishing.
  */
-int ldms_msg_publish_file(ldms_t x, const char *name,
+int ldms_msg_publish_file(ldms_t x, const char *msg_tag,
                         ldms_msg_type_t msg_type,
 			ldms_cred_t cred,
 			uint32_t perm,
@@ -1506,14 +1506,14 @@ struct ldms_msg_recv_data_s {
 	struct ldms_addr src;
 	uint64_t msg_gn;
 	ldms_msg_type_t type;
-	uint32_t name_len;
+	uint32_t tag_len;
 	uint32_t data_len;
-	const char *name; /* message channel name */
+	const char *msg_tag; /* message tag name */
 	const char *data; /* message data */
 	json_entity_t json; /* json entity */
 	struct ldms_cred cred; /* credential */
 	uint32_t perm; /* permission */
-	uint32_t name_hash; /* message name hash */
+	uint32_t tag_hash; /* message tag hash */
 };
 
 /* To report subscrube / unsubscribe return status */
@@ -1543,9 +1543,9 @@ typedef struct ldms_msg_event_s {
 typedef int (*ldms_msg_event_cb_t)(ldms_msg_event_t ev, void *cb_arg);
 
 /**
- * \brief Subscribe to message channel(s).
+ * \brief Subscribe to message tag(s).
  *
- * Subscribe to get messages (via \c cb_fn) with the matching channel \c match
+ * Subscribe to get messages (via \c cb_fn) with the matching tag \c match
  * (could be regex)  when they reache our process.  The \c cb_fn must not
  * be \c NULL.
  *
@@ -1555,7 +1555,7 @@ typedef int (*ldms_msg_event_cb_t)(ldms_msg_event_t ev, void *cb_arg);
  * function (after this, LDMS promise not to deliver any more events to this
  * client).
  *
- * \param match    The channel name or regular expression.
+ * \param match    The tag name or regular expression.
  * \param is_regex 1 if `name` is a regular expression. Otherwise, 0.
  * \param cb_fn    The callback function for message data delivery.
  * \param cb_arg   The application context to the `cb_fn`.
@@ -1624,8 +1624,8 @@ void ldms_msg_client_close(ldms_msg_client_t cli);
  * (from \c ldms_msg_subscribe()) to receive the message.
  *
  * \param x        The rail handle.
- * \param match    The message channel name or regular expression.
- * \param is_regex 1 if `name` is a regular expression. Otherwise, 0.
+ * \param match    The message tag name or regular expression.
+ * \param is_regex 1 if `msg_tag' is a regular expression. Otherwise, 0.
  * \param cb_fn    The callback function for return status notification (could
  *                 be \c NULL).
  * \param cb_arg   The application context to the `cb_fn`.
@@ -1686,30 +1686,30 @@ struct ldms_msg_src_stats_s {
 	struct ldms_msg_profile_list profiles;
 };
 
-/* stats of channel-client pair */
+/* stats of tag-client pair */
 struct ldms_msg_ch_cli_stats_s {
 	TAILQ_ENTRY(ldms_msg_ch_cli_stats_s) entry;
 
-	const char *name; /* allocated with the structure, don't free */
+	const char *msg_tag; /* allocated with the structure, don't free */
 	const char *client_match; /* allocated with the structure, don't free */
 	const char *client_desc; /* allocated with the structure, don't free */
 	int is_regex; /* client is a regular expression */
 
-	/* client transmission counters for the channel */
+	/* client transmission counters for the tag */
 	struct ldms_msg_counters_s tx;
-	/* client drop counters for the channel */
+	/* client drop counters for the tag */
 	struct ldms_msg_counters_s drops;
 };
 TAILQ_HEAD(ldms_msg_ch_cli_stats_tq_s, ldms_msg_ch_cli_stats_s);
 
-/* stats of a message channel */
+/* stats of a message tag */
 struct ldms_msg_ch_stats_s {
 	TAILQ_ENTRY(ldms_msg_ch_stats_s) entry;
 	struct ldms_msg_counters_s rx; /* total rx regardless of src */
 	struct rbt src_stats_rbt; /* tree of statistics by src; the nodes are `struct ldms_msg_src_stats_s` */
 
 	struct ldms_msg_ch_cli_stats_tq_s stats_tq; /* stats by client */
-	const char *name; /* allocated with the structure, don't free it */
+	const char *msg_tag; /* allocated with the structure, don't free it */
 };
 TAILQ_HEAD(ldms_msg_ch_stats_tq_s, ldms_msg_ch_stats_s);
 
@@ -1718,7 +1718,7 @@ struct ldms_msg_client_stats_s {
 	TAILQ_ENTRY(ldms_msg_client_stats_s) entry;
 	struct ldms_msg_counters_s tx;
 	struct ldms_msg_counters_s drops;
-	struct ldms_msg_ch_cli_stats_tq_s stats_tq; /* stats by channel */
+	struct ldms_msg_ch_cli_stats_tq_s stats_tq; /* stats by tag */
 	struct ldms_addr dest;
 	int is_regex;
 	const char *match; /* the matching string; allocated with the structure */
@@ -1738,7 +1738,7 @@ TAILQ_HEAD(ldms_msg_client_stats_tq_s, ldms_msg_client_stats_s);
  * - 1: shallow collection; only collect "cumulative" stats.
  * - 2: deep collection; collects message stats by `src`, also collects
  *      delivery stats by client. For each client stat, this also
- *      collects the client rx stats by channel name.
+ *      collects the client rx stats by tag name.
  *
  * \param level The level of stats collection.
  *
@@ -1753,11 +1753,11 @@ int ldms_msg_stats_level_set(int level);
 int ldms_msg_stats_level_get();
 
 /**
- * \brief Get the statuses/statistics of the matching message channel in this process.
+ * \brief Get the statuses/statistics of the matching message tag in this process.
  *
- * \param match    The channel name or a regular expression.
+ * \param match    The tag name or a regular expression.
  * \param is_regex 1 if \c match is a regular expression; otherwise, 0.
- * \param is_reset 1 means to reset the channel' statistics
+ * \param is_reset 1 means to reset the tag' statistics
  *
  * \retval tq   The collection (tailq) of statistics of the matching entries, or
  * \retval NULL if there is an error. \c errno is also set to describe the error.
@@ -1776,16 +1776,16 @@ ldms_msg_ch_stats_tq_get(const char *match, int is_regex, int is_reset);
 void ldms_msg_ch_stats_tq_free(struct ldms_msg_ch_stats_tq_s *tq);
 
 /**
- * Returns the JSON-formatted text of the channel stats in \c tq.
+ * Returns the JSON-formatted text of the tag stats in \c tq.
  *
  * \remarks The caller is responsible for freeing the returned string.
  */
 char *ldms_msg_ch_stats_tq_to_str(struct ldms_msg_ch_stats_tq_s *tq);
 
 /**
- * \brief Returns a JSON-formatted text describing statuses/statistics of the matching channels in this process.
+ * \brief Returns a JSON-formatted text describing statuses/statistics of the matching tags in this process.
  *
- * \param  match    The channel name or a regular expression.
+ * \param  match    The tag name or a regular expression.
  * \param  is_regex 1 if \c match is a regular expression; otherwise, 0.
  * \param  is_reset 0 means not to reset the statistics.
  *                  A non-zero value means to reset the statistics.
@@ -1838,7 +1838,7 @@ char *ldms_msg_client_stats_tq_to_str(struct ldms_msg_client_stats_tq_s *tq);
 char *ldms_msg_client_stats_str(int is_reset);
 
 /**
- * \brief Reset the statistics of all channels and clients in this process.
+ * \brief Reset the statistics of all tags and clients in this process.
  */
 void ldms_msg_stats_reset();
 
