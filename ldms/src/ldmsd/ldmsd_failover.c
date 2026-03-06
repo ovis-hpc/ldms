@@ -495,7 +495,7 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 		}
 		if (s->msg) {
 			rc = ldmsd_req_cmd_attr_append_str(rcmd,
-					LDMSD_ATTR_MSG_CHAN, s->msg);
+					LDMSD_ATTR_MSG_TAG, s->msg);
 			if (rc)
 				goto cleanup;
 			snprintf(buff, sizeof(buff), "%ld", s->rate);
@@ -2071,7 +2071,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	char *quota_s = __req_attr_gets(req, LDMSD_ATTR_QUOTA);
 	char *rx_rate_s = __req_attr_gets(req, LDMSD_ATTR_RX_RATE);
 	char *cache_ip = __req_attr_gets(req, LDMSD_ATTR_IP);
-	char *msg = __req_attr_gets(req, LDMSD_ATTR_MSG_CHAN);
+	char *msg = __req_attr_gets(req, LDMSD_ATTR_MSG_TAG);
 
 	uid_t _uid;
 	gid_t _gid;
