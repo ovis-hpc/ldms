@@ -545,14 +545,14 @@ class LdmsdCmdParser(Cmd.Cmd):
 
     def do_prdcr_subscribe(self, arg):
         """
-        Subscribe for stream data and/or message channels from all matching producers
+        Subscribe for stream data and/or message tags from all matching producers
 
         Parameters:
         regex=     A regular expression matching PRODUCER names
         [stream=]  The stream name. This attribute cannot be specified at the
-                   same time with `message_channel`.
-        [message_channel=]
-                   The message channel name or regular expression. This
+                   same time with `message_tag`.
+        [message_tag=]
+                   The message tag name or regular expression. This
                    attribute cannot be specified at the same time with `stream`.
         [rx_rate=] The recv rate (bytes/sec) limit for the matching streams. The
                    default is -1 (unlimited).
@@ -561,8 +561,10 @@ class LdmsdCmdParser(Cmd.Cmd):
         if arg:
             if arg.get('rx_rate') is None:
                 arg['rx_rate'] = -1
+            if arg.get('message_tag') is None:
+                arg['message_tag'] = arg.get('message_channel')
             rc, msg = self.comm.prdcr_subscribe(arg['regex'], arg['stream'],
-                                                arg['message_channel'],
+                                                arg['message_tag'],
                                                 arg['rx_rate'])
             if rc:
                 print(f'Error subscribing to stream {arg["stream"]}: {msg}')
@@ -576,9 +578,9 @@ class LdmsdCmdParser(Cmd.Cmd):
         Parameters:
         regex=     A regular expression matching producer names
         [stream=]  The stream name. This attribute cannot be specified at the
-                   same time with `message_channel`.
-        [message_channel=]
-                   The message channel name or regular expression previously
+                   same time with `message_tag`.
+        [message_tag=]
+                   The message_tag name or regular expression previously
                    specified in the `prdcr_subscribe` command. This attribute
                    cannot be specified at the same time with `stream`.
         """
@@ -2826,7 +2828,7 @@ class LdmsdCmdParser(Cmd.Cmd):
             first_channel = True
             for s in cli['channels']:
                 if first_channel:
-                    print(" - message_channels:")
+                    print(" - message_tags:")
                     first_channel = False
                 name = s['name']
                 tx = s['tx']

@@ -2180,7 +2180,7 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
-	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_CHAN);
+	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_TAG);
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
 
 	if (!stream_name && !msg) {
@@ -2207,7 +2207,7 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	/* on error, reqc->line_buf will be filled */
 	if (reqc->line_buf[0] == '\0' || reqc->line_buf[0] == '0')
 		__dlog(DLOG_CFGOK, "prdcr_subscribe_regex prdcr_regex=%s %s=%s\n",
-			prdcr_regex, (msg ? ldmsd_req_attr_id2str(LDMSD_ATTR_MSG_CHAN, 0)
+			prdcr_regex, (msg ? ldmsd_req_attr_id2str(LDMSD_ATTR_MSG_TAG, 0)
 				: ldmsd_req_attr_id2str(LDMSD_ATTR_STREAM, 0)),
 			( msg ? msg : stream_name));
 
@@ -2239,7 +2239,7 @@ static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
-	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_CHAN);
+	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_TAG);
 
 	if (!stream_name && !msg) {
 		reqc->errcode = EINVAL;

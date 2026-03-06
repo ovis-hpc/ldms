@@ -103,7 +103,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_subscribe': {'req_attr':['regex'],
                                           'opt_attr': [
                                               'rx_rate', 'stream',
-                                              'message_channel'
+                                              'message_tag'
                                           ]
                                          },
                       'prdcr_unsubscribe': {'req_attr':['regex', 'stream'], 'opt_attr': []},
@@ -356,7 +356,7 @@ class LDMSD_Req_Attr(object):
     ASK_AMOUNT = 46
     RESET_INTERVAL = 47
     XTHREAD = 48
-    MSG_CHAN = 49
+    MSG_TAG = 49
     STATE = 50
     LAST = 51
 
@@ -416,7 +416,7 @@ class LDMSD_Req_Attr(object):
                    'ask_amount': ASK_AMOUNT,
                    'reset_interval': RESET_INTERVAL,
                    'exclusive_thread': XTHREAD,
-                   'message_channel': MSG_CHAN,
+                   'message_tag': MSG_TAG,
                    'state' : STATE,
                    'TERMINATING': LAST
         }
@@ -468,7 +468,7 @@ class LDMSD_Req_Attr(object):
                    ASK_AMOUNT : 'ask_amount',
                    RESET_INTERVAL : 'reset_interval',
                    XTHREAD : 'exclusive_thread',
-                   MSG_CHAN : 'message_channel',
+                   MSG_TAG : 'message_tag',
                    STATE : 'state',
                    LAST : 'TERMINATING'
         }
@@ -2692,7 +2692,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def prdcr_subscribe(self, regex, stream=None, msg_chan=None, rx_rate='-1'):
+    def prdcr_subscribe(self, regex, stream=None, msg_tag=None, rx_rate='-1'):
         """
         Subscribe to stream data from matching producers
 
@@ -2715,8 +2715,8 @@ class Communicator(object):
         attrs = [ LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex) ]
         if stream is not None:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream))
-        if msg_chan is not None:
-            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.MSG_CHAN, value=msg_chan))
+        if msg_tag is not None:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.MSG_TAG, value=msg_tag))
         if rx_rate is not None:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RX_RATE, value=str(int(rx_rate))))
         req = LDMSD_Request(command_id = LDMSD_Request.PRDCR_SUBSCRIBE, attrs = attrs)
