@@ -189,7 +189,17 @@ void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt)
 	sctxt->crd.uid = geteuid();
 }
 
-void ldmsd_version_get(struct ldmsd_version *v)
+const char *ldmsd_version_get()
+{
+	return PACKAGE_VERSION;
+}
+
+const char *ldmsd_git_sha_get()
+{
+	return OVIS_GIT_LONG;
+}
+
+void ldmsd_plgn_int_version_get(struct ldmsd_version *v)
 {
 	v->major = LDMSD_VERSION_MAJOR;
 	v->minor = LDMSD_VERSION_MINOR;
@@ -1963,7 +1973,7 @@ int main(int argc, char *argv[])
 	struct ldms_version ldms_version;
 	struct ldmsd_version ldmsd_version;
 	ldms_version_get(&ldms_version);
-	ldmsd_version_get(&ldmsd_version);
+	ldmsd_plgn_int_version_get(&ldmsd_version);
 	int ret;
 	int op, op_idx;
 	struct sigaction action;

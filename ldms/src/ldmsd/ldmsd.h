@@ -95,8 +95,14 @@ struct ldmsd_version {
 	uint8_t flags;
 };
 
-/** Get the ldmsd version  */
-void ldmsd_version_get(struct ldmsd_version *v);
+/** get the ldmsd version */
+const char *ldmsd_version_get();
+
+/** Get the ldmsd plugin interface version  */
+void ldmsd_plgn_int_version_get(struct ldmsd_version *v);
+
+/** Get the ldmsd git sha */
+const char *ldmsd_git_sha_get();
 
 #define LDMSD_STR_WRAP(NAME) #NAME
 
