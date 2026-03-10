@@ -6262,23 +6262,31 @@ static int daemon_status_handler(ldmsd_req_ctxt_t reqc)
 
 static int version_handler(ldmsd_req_ctxt_t reqc)
 {
+	int rc;
 	struct ldms_version ldms_version;
-	struct ldmsd_version ldmsd_version;
+	struct ldmsd_version ldmsd_plugn_version;
 
 	__dlog(DLOG_QUERY, "version\n");
-	ldms_version_get(&ldms_version);
-	size_t cnt = snprintf(reqc->line_buf, reqc->line_len,
-			"LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
-			ldms_version.major, ldms_version.minor,
-			ldms_version.patch, ldms_version.flags);
 
-	ldmsd_version_get(&ldmsd_version);
-	cnt += snprintf(&reqc->line_buf[cnt], reqc->line_len-cnt,
-			"LDMSD Version: %hhu.%hhu.%hhu.%hhu",
-			ldmsd_version.major, ldmsd_version.minor,
-			ldmsd_version.patch, ldmsd_version.flags);
+	ldms_version_get(&ldms_version);
+	ldmsd_plgn_int_version_get(&ldmsd_plugn_version);
+	rc = linebuf_printf(reqc, "{ \"LDMSD Version\":\"%s\"," \
+				  "  \"LDMS Protocol Version\": \"%hhu.%hhu.%hhu.%hhu\"," \
+				  "  \"LDMSD Plugin Interface Version\": \"%hhu.%hhu.%hhu.%hhu\"," \
+				  "  \"git-SHA\": \"%s\"" \
+				  "}",
+				  ldmsd_version_get(),
+				  ldms_version.major, ldms_version.minor,
+				  ldms_version.patch, ldms_version.flags,
+				  ldmsd_plugn_version.major, ldmsd_plugn_version.minor,
+				  ldmsd_plugn_version.patch, ldmsd_plugn_version.flags,
+				  ldmsd_git_sha_get());
+	if (rc) {
+		(void)snprintf(reqc->line_buf, reqc->line_len,
+			"ldmsd had memory allocation failure");
+	}
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	return 0;
+	return rc;
 }
 
 static int env_handler(ldmsd_req_ctxt_t reqc)

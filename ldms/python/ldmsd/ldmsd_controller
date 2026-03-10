@@ -1957,8 +1957,14 @@ class LdmsdCmdParser(Cmd.Cmd):
         Get the LDMS version the running LDMSD bases on.
         """
         rc, msg = self.comm.version()
-        if rc == 0:
-            print(f'{msg}')
+        if rc != 0:
+            print(f"Error {rc}: {msg}")
+            return
+        versions = fmt_status(msg)
+        print(f"LDMSD Version: {versions['LDMSD Version']}")
+        print(f"LDMS Protocol Version: {versions['LDMS Protocol Version']}")
+        print(f"LDMSD Plugin Interface Version: {versions['LDMSD Plugin Interface Version']}")
+        print(f"git-SHA: {versions['git-SHA']}")
 
     def do_include(self, arg):
         """
