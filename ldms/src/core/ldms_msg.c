@@ -1246,6 +1246,29 @@ __remote_sub(ldms_t x, enum ldms_request_cmd cmd,
 		return EIO;
 	}
 
+	if (!is_regex && cmd == LDMS_CMD_MSG_SUB) {
+		/* NOTE
+		 * ----
+		 *
+		 * Requesting a remote subscription does not automatically
+		 * create the internal handlers for the targeted messages. The
+		 * internal object handling the targeted messages are created
+		 * as-needed when the matching messages arrived. As such, when
+		 * an application calls `ldms_msg_stats_str()`, the stats of the
+		 * matching messages can be missing as the actual messages
+		 * haven't arrived yet.
+		 *
+		 * To avoid such confusion, `__ch_get()` is called here to
+		 * trigger the internal targeted message handler as we expect
+		 * the matching messages to arrive in the future.
+		 *
+		 * This can only applies to exact name matching, and cannot be
+		 * applied to regex matching ... since we do not yet know the
+		 * name.
+		 */
+		__ch_get(match, NULL);
+	}
+
 	return 0;
 }
 
