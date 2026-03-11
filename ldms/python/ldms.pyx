@@ -1531,16 +1531,10 @@ cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
                 _xprt = x.xprt
                 x.xprt = NULL
                 ldms_xprt_put(_xprt, "rail_ref")
-    if x._conn_cb:
-        # Call the callback
-        x._conn_cb(x, XprtEvent(PTR(e)), x._conn_cb_arg)
-        return
-    # Else, No callback, this must be blocking connect. Post the semaphore to
-    # unblock the connect-calling thread.
+    # Handle the __conn_rc first
     if e.type == EVENT_CONNECTED:
         x._conn_rc = 0
         x._conn_rc_msg = "CONNECTED"
-        Py_INCREF(x)
     elif e.type == EVENT_REJECTED:
         x._conn_rc = ECONNREFUSED
         x._conn_rc_msg = "REJECTED"
@@ -1550,6 +1544,21 @@ cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
     elif e.type == EVENT_DISCONNECTED:
         x._conn_rc = ENOTCONN
         x._conn_rc_msg = "DISCONNECTED"
+
+    # Call callback if `cb` is specified
+    if x._conn_cb:
+        # Call the callback
+        x._conn_cb(x, XprtEvent(PTR(e)), x._conn_cb_arg)
+        return
+    # Else, No callback, this must be blocking connect. Post the semaphore to
+    # unblock the connect-calling thread.
+    if e.type == EVENT_CONNECTED:
+        Py_INCREF(x)
+    elif e.type == EVENT_REJECTED:
+        pass
+    elif e.type == EVENT_ERROR:
+        pass
+    elif e.type == EVENT_DISCONNECTED:
         x._recv_queue.put(None)
     elif e.type == EVENT_RECV:
         b = PyBytes_FromStringAndSize(e.data, e.data_len)
