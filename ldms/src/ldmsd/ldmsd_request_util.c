@@ -146,6 +146,8 @@ struct req_str_id req_str_id_table[] = {
 	{  "setgroup_rm",        LDMSD_SETGROUP_RM_REQ  },
 	{  "start",              LDMSD_PLUGN_START_REQ  },
 	{  "stop",               LDMSD_PLUGN_STOP_REQ  },
+	{  "storage_threads",    LDMSD_STORAGE_THR_SET_REQ  },
+	{  "storage_queue_depth",   LDMSD_STORAGE_MAX_Q_DEPTH_SET_REQ  },
 	{  "stream_client_dump", LDMSD_STREAM_CLIENT_DUMP_REQ  },
 	{  "stream_disable",     LDMSD_STREAM_DISABLE_REQ  },
 	{  "stream_enable",      LDMSD_STREAM_ENABLE_REQ  },
@@ -304,6 +306,8 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_STRGP_PRDCR_DEL_REQ  : return "STRGP_PRDCR_DEL_REQ";
 	case LDMSD_STRGP_METRIC_ADD_REQ : return "STRGP_METRIC_ADD_REQ";
 	case LDMSD_STRGP_METRIC_DEL_REQ : return "STRGP_METRIC_DEL_REQ";
+	case LDMSD_STORAGE_THR_SET_REQ  : return "STORAGE_THR_SET_REQ";
+	case LDMSD_STORAGE_MAX_Q_DEPTH_SET_REQ : return "STORAGE_MAX_Q_DEPTH_SET_REQ";
 
 	case LDMSD_UPDTR_ADD_REQ        : return "UPDTR_ADD_REQ";
 	case LDMSD_UPDTR_DEL_REQ        : return "UPDTR_DEL_REQ";
