@@ -33,7 +33,7 @@ CONFIGURATION ATTRIBUTE SYNTAX
 
 **config**
    | name=blob_msg_writer path=<path> container=<container>
-     message_tag=<message_tag> debug=1
+     message_tag=<tag> debug=N
    | configuration line
 
    name=<plugin_name>
@@ -53,9 +53,10 @@ CONFIGURATION ATTRIBUTE SYNTAX
       | Message tag to which to subscribe. This argument may be repeated.
         Messages from each tag will be written in a separate file pair.
 
-   debug=1
+   debug=N
       |
-      | Enable logging of messages stored to the log file.
+      | N==1: Enable logging of messages stored to the log file.
+      | N==2: Enable debugging of config options.
 
    timing=1
       |

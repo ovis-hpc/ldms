@@ -316,7 +316,7 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		ovis_log(mylog, OVIS_LERROR, "error writing offset to %s\n",
 			sd->offsetfile_name);
 	}
-	if (debug)
+	if (debug == 1)
 		ovis_log(mylog, OVIS_LDEBUG, "offset=%ld ...\n", sd->offset);
 
 	if (sd->timingfile) {
@@ -350,8 +350,10 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		ovis_log(mylog, OVIS_LERROR, "short write starting at %s:%ld: %s\n",
 			sd->streamfile_name, sd->offset, STRERROR(ferr));
 	}
-	if (debug)
-		ovis_log(mylog, OVIS_LDEBUG, "msg=%.50s ...\n", msg);
+	if (debug == 1) {
+		int mlen = msg_len <= 50 ? msg_len : 50;
+		ovis_log(mylog, OVIS_LDEBUG, "msg=%.*s ...\n", mlen, msg);
+	}
 
 out:
 	pthread_mutex_unlock(&sd->write_lock);
@@ -579,19 +581,24 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 
 	pa = ldmsd_plugattr_create(NULL, PNAME, avl, kwl,
                         NULL, NULL, NULL, KEY_PLUG_ATTR);
+	int cvt;
+	cvt = ldmsd_plugattr_s32(pa, "debug", NULL, &debug);
+	if (cvt) {
+		debug = 0;
+	}
 
 	rc = ldmsd_plugattr_config_check(attributes, keywords, avl, kwl, NULL, PNAME);
 	if (rc != 0) {
 		int warnon = (ovis_log_get_level(mylog) > OVIS_LWARNING);
 		ovis_log(mylog, OVIS_LERROR, PNAME " config arguments unexpected.%s\n",
 			(warnon ? " Enable log level WARNING for details." : ""));
-		return EINVAL;
+		if (debug != 2)
+			return EINVAL;
 	}
 
 	if (rolltype == -1) {
 		int ragain = 0;
 		int roll = -1;
-		int cvt;
 		cvt = ldmsd_plugattr_s32(pa, "rollagain", NULL, &ragain);
 		if (!cvt) {
 			if (ragain < 0) {
@@ -695,11 +702,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		goto out;
 	}
 
-
-	s = av_value(avl, "debug");
-	if (s) {
-		debug = 1;
-	}
 
 	timing = 0;
 	s = av_value(avl, "timing");
@@ -920,7 +922,7 @@ static void* rolloverThreadInit(void* m){
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "    config name=blob_stream_writer path=<path> container=<container> stream=<stream> \n"
-                "           timing=1 types=1 debug=1 spool=1\n"
+                "           timing=1 types=1 debug=N spool=1\n"
                 "         [rollover=<num> rolltype=<num> rollempty=<num> rollagain=<num>\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - path       The path to the root of the csv directory\n"
@@ -930,11 +932,11 @@ static const char *usage(ldmsd_plug_handle_t handle)
 		"         - timing=1   Enabling TIMING output file\n"
 		"         - types=1    Enabling TYPES output file\n"
 		"         - spool=1    Roll output to <path>/<container>/spool/\n"
-		"         - debug=1    Enabling certain debug statements.\n"
-		"         - rollover  Greater than or equal to zero; enables file rollover and sets interval\n"
-		"         - rollempty 0/1; 0 suppresses rollover of empty files, 1 allows (default)\n"
-		"         - rollagain Repeat interval for rolltype == 5.\n"
-		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
+		"         - debug=N    Enabling certain debug behaviors.\n"
+		"         - rollover   Greater than or equal to zero; enables file rollover and sets interval\n"
+		"         - rollempty  0/1; 0 suppresses rollover of empty files, 1 allows (default)\n"
+		"         - rollagain  Repeat interval for rolltype == 5.\n"
+		"         - rolltype   [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
 		;
 }
