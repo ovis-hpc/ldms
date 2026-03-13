@@ -138,6 +138,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'strgp_stop': {'req_attr': ['name']},
                       'strgp_status': {'req_attr': [], 'opt_attr': ['name']},
                       'store_time_stats': {'req_attr': [], 'opt_attr':['name', 'reset']},
+		      'strgp_pi_stats': {'req_attr': ['name'], 'opt_attr':[]},
                       ##### Plugin #####
                       'plugn_sets': {'req_attr': [], 'opt_attr': ['name']},
                       'plugn_status': {'req_attr': [], 'opt_attr': ['name']},
@@ -603,6 +604,7 @@ class LDMSD_Request(object):
     STRGP_METRIC_ADD = 0X200 + 7
     STRGP_METRIC_DEL = 0X200 + 8
     STORE_TIME_STATS = 0x200 + 9
+    STRGP_PI_STATS = 0x200 + 10
 
     UPDTR_ADD = 0X300
     UPDTR_DEL = 0X300 + 1
@@ -3819,6 +3821,28 @@ class Communicator(object):
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name),
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.METRIC, value=metric_name)
                 ])
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def strgp_pi_stats(self, name):
+        """
+        Query the statistics of the storage plugin instance associated with the storage policy
+
+        Keyword Parameters:
+        name  - Storage policy name
+
+        Returns:
+        A tuple of status, data
+        - status is an errno returned by ldmsd
+        - data is a json formatted string of statistics or an error message if status != 0
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.STRGP_PI_STATS,
+                             attrs=[LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name)])
         try:
             req.send(self)
             resp = req.receive(self)

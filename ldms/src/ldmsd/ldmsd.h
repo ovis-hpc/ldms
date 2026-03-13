@@ -1011,6 +1011,7 @@ struct ldmsd_store {
 		     ldms_set_t set, int *, size_t count);
 	int (*commit)(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set,
 		      ldmsd_row_list_t row_list, int row_count);
+	char *(*stats_get)(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp);
 };
 
 
