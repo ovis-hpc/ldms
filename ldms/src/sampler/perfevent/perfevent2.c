@@ -150,8 +150,8 @@ struct perf_s {
 	int n_events;  /* events with unscaled counter */
 	int n_sevents; /* events with scaled counter */
 	TAILQ_HEAD(, counter_s) counters;
-	json_entity_t perfdb; /* object from perfdb file */
-	json_entity_t config; /* config object from config file */
+	json_doc_t perfdb; /* object from perfdb file */
+	json_doc_t config; /* config object from config file */
 
 	json_entity_t model; /* the matching model (micro arch); part of perfdb */
 	json_entity_t model_events; /* model['events'] */
@@ -301,10 +301,7 @@ static void perf_free(struct perf_s *p)
 	}
 
 	/* p->model and p->model_events are part of p->perfdb */
-	json_entity_free(p->perfdb);
-
-	json_entity_free(p->config);
-
+	json_doc_free(p->perfdb);
 	free(p);
 }
 
@@ -493,29 +490,25 @@ static int xread_double(struct perf_s *p, const char *path, double *out)
 }
 
 /* need perf_s p for logging */
-static json_entity_t xread_json(struct perf_s *p, const char *path)
+static json_doc_t xread_json(struct perf_s *p, const char *path)
 {
-	json_parser_t parser = NULL;
-	json_entity_t jobj = NULL;
+	json_doc_t jdoc;
 	char *buff = NULL;
 	int rc;
 	int slen;
 
 	buff = xread_str(p, path, &slen);
 	if (!buff)
-		goto out;
+		return NULL;
 
-	parser = json_parser_new(0);
-	rc = json_parse_buffer(parser, buff, slen, &jobj);
+	rc = json_parse_buffer(buff, slen, &jdoc);
 	if (rc) {
-		_ERROR(p, "json parse error: %d\n", rc);
-		goto out;
+		_ERROR(p, "json parse error: %s\n", json_doc_errstr(jdoc));
+		json_doc_free(jdoc);
+		return NULL;
 	}
-
- out:
-	if (buff)
-		free(buff);
-	return jobj;
+	free(buff);
+	return jdoc;
 }
 
 static int load_perfdb(struct perf_s *p, const char *perfdb)
@@ -529,7 +522,7 @@ static int load_perfdb(struct perf_s *p, const char *perfdb)
 	_INFO(p, "Loading perfdb: %s\n", perfdb);
 	p->perfdb = xread_json(p, perfdb);
 	if (!p->perfdb)
-		return errno;
+		return EINVAL;
 
 	/* Check Linux version and give a warning if a mismatch is detected. */
 	rc = uname(&u);
@@ -538,7 +531,8 @@ static int load_perfdb(struct perf_s *p, const char *perfdb)
 		goto out;
 	}
 
-	src_ver = json_value_find_cstr(p, p->perfdb, "linux_src_ver");
+	src_ver = json_value_find_cstr(p, json_doc_root(p->perfdb),
+				       "linux_src_ver");
 	if (!src_ver) {
 		_WARN(p, "'linux_src_ver' attribute not found in perfdb.\n");
 		goto out;
@@ -1749,15 +1743,16 @@ static int make_events(struct perf_s *p)
 	json_entity_t e_events;
 	json_entity_t e;
 	int len, rc;
+	json_entity_t config = json_doc_root(p->config);
 	enum json_value_e etype;
 
-	etype = json_entity_type(p->config);
+	etype = json_entity_type(config);
 	if (etype != JSON_DICT_VALUE) {
 		_ERROR(p, "Expectig a dictionary, but got: %s\n", json_type_name(etype));
 		return EINVAL;
 	}
 
-	e_events = json_value_find(p->config, "events");
+	e_events = json_value_find(config, "events");
 	if (!e_events) {
 		_ERROR(p, "Missing 'events' attribute in config dict.\n");
 		return ENOENT;
@@ -2009,14 +2004,15 @@ static int setup_model_events(struct perf_s *p)
 	int rc = 0;
 	json_entity_t m, pmu_table;
 	const char *m_model_str;
-
+	json_entity_t perfdb;
 	if (!p->perfdb)
 		return ENOENT;
+	perfdb = json_doc_root(p->perfdb);
 
 	if (p->model_events)
 		return 0;
 
-	pmu_table = json_value_find(p->perfdb, "pmu_table");
+	pmu_table = json_value_find(perfdb, "pmu_table");
 	if (!pmu_table) {
 		_ERROR(p, "'pmu_table' not found in perfdb\n");
 		return ENOENT;
@@ -2060,6 +2056,7 @@ static int config(ldmsd_plug_handle_t handle,
 	char *av_perfdb;
 	json_entity_t e_schema;
 	json_entity_t e_conf_perfdb;
+	json_entity_t e_config;
 	const char *c_schema;
 
 	struct perf_s *p = ldmsd_plug_ctxt_get(handle);
@@ -2093,7 +2090,8 @@ static int config(ldmsd_plug_handle_t handle,
 		rc = errno;
 		goto err;
 	}
-	e_schema = json_value_find(p->config, "schema");
+	e_config = json_doc_root(p->config);
+	e_schema = json_value_find(e_config, "schema");
 	if (e_schema) {
 		c_schema = json_value_cstr(e_schema);
 	} else {
@@ -2106,7 +2104,7 @@ static int config(ldmsd_plug_handle_t handle,
 		goto err;
 	}
 
-	e_conf_perfdb = json_value_find(p->config, "perfdb");
+	e_conf_perfdb = json_value_find(e_config, "perfdb");
 
 	if (av_perfdb) {
 		rc = load_perfdb(p, av_perfdb);
@@ -2152,15 +2150,12 @@ static int config(ldmsd_plug_handle_t handle,
 	goto out;
 
  err:
-	if (p->config) {
-		json_entity_free(p->config);
-		p->config = NULL;
-	}
-	if (p->perfdb) {
-		json_entity_free(p->perfdb);
-		p->perfdb = NULL;
-	}
-
+	json_doc_free(p->config);
+	p->config = NULL;
+	json_doc_free(p->perfdb);
+	p->perfdb = NULL;
+	base_del(p->base);
+	p->base = NULL;
  out:
 	return rc;
 }

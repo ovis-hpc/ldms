@@ -72,7 +72,7 @@ into its binary. ``ldms-perfdb-gen`` is the script that aggregates the events
 from the Linux kernel source tree and reformatted it into *PERFDB_JSON* suitable
 for perfevent2 to consume. We opt for generating the database instead of baking
 the events into the plugin because when the kernel (and perf) is updated, we
-would renerate the database instead of recompiling the plugin. Here are a few
+would regenerate the database instead of recompiling the plugin. Here are a few
 examples:
 
 .. code:: sh
@@ -141,17 +141,17 @@ The *PERF_CONF_JSON* file format is described as follows:
     "perfdb": "/PATH/TO/PERFDB" /* optional */
   }
 
-The name of the ``event`` is the same name used in ``perf`` program. To see a
+The name of the ``event`` is the same name used in the ``perf`` program. To see a
 list of supported events, run ``perf list hw cache pmu``, which lists hardware,
 cache, and vendor-specific events. The other kinds of events (e.g.
-``software``) are not supported by perfevent2 plugin.
+``software``) are not supported by the perfevent2 plugin.
 
-The optional ``cpu`` attribute in each event is a string that contain ranges of
+The optional ``cpu`` attribute in each event is a string that contains ranges of
 numbers specifying the CPUs to get the event. For example, "cpu": "0-3,8-10"
 limits the events to just CPU0, CPU1, CPU2, CPU3, CPU8, CPU9, and CPU10. Uncore
-events (e.g. from ``amd_l3`` PMU) usually applied to certain CPUs. For example,
+events (e.g. from ``amd_l3`` PMU) are usually applied to certain CPUs. For example,
 ``l3_lookup_state.l3_miss`` (``amd_l3`` PMU) on AMD Ryzen 9 7950X3D 16 core
-processor only applies to "cpu":"0,8" (representing 8 cores on one die and other
+processor only applies to "cpu":"0,8" (representing 8 cores on one die and another
 8 cores on another die). When ``cpu`` is not specified, all *applicable* CPUs
 are included.
 
@@ -204,9 +204,9 @@ In this example:
 
    {
      "events": [
-       { "event": "power/energy-pkg/", },
+       { "event": "power/energy-pkg/" },
        { "event": "instructions" },
-       { "event": "cpu/L1-dcache-loads/" }
+       { "event": "cpu/L1-dcache-loads/" },
        { "event": "l3_lookup_state.l3_miss" }
      ],
      "perfdb": "/opt/ovis/lib/ovis-ldms/ldms-perfdb.json"
@@ -239,7 +239,7 @@ instead.
      "events": [
        { "event": "power/energy-pkg/", "cpu": 0 },
        { "event": "instructions", "cpu": "0-31" },
-       { "event": "cpu/L1-dcache-loads/", "cpu": "0-31" }
+       { "event": "cpu/L1-dcache-loads/", "cpu": "0-31" },
        { "event": "l3_lookup_state.l3_miss", "cpu": "0,8" }
      ]
    }
