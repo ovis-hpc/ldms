@@ -1302,6 +1302,25 @@ class LdmsdCmdParser(Cmd.Cmd):
     def complete_strgp_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_status', text)
 
+    def do_strgp_plugin_stats(self, arg):
+        """
+        Get the statistics of the storage plugin correspond to a storage policy
+        Parameters:
+            name=    a storage policy name
+        """
+        arg = self.handle_args('strgp_pi_stats', arg)
+        if not arg:
+            return
+        rc, msg = self.comm.strgp_pi_stats(arg['name'])
+        if rc != 0:
+            print(f"Error {rc}: {msg}")
+            return
+        stats = fmt_status(msg)
+        print(stats)
+
+    def complete_strgp_plugin_stats(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('strgp_pi_stats', text)
+
     def __datatbl_new(self):
         return {'set_name' : [],
                 'min' : math.inf,

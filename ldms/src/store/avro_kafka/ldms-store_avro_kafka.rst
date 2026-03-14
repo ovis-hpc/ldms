@@ -275,6 +275,129 @@ schema-id to query the Schema registry for a schema. Once found, the
 client will construct a serdes from the schema definition and use this
 serdes to decode the message into Avro values.
 
+STATISTICS
+==========
+
+**store_avro_kafka** supports reporting producer health statistics via
+the librdkafka stats callback mechanism. Statistics are reported per
+storage policy, reflecting the health of that policy's Kafka producer
+instance.
+
+To enable statistics, set ``statistics.interval.ms`` to a value greater
+than 0 in the ``kafka_conf`` file. If ``statistics.interval.ms`` is not
+set, no statistics are available.
+
+.. code-block:: none
+
+   # Enable librdkafka statistics every 10 seconds
+   statistics.interval.ms=10000
+
+Statistics are returned as a JSON-formatted string and can be queried
+using the ``strgp_plugin_stats`` command. See
+:ref:`ldmsd_controller(8) <ldmsd_controller>` for details.
+
+The following statistics are reported:
+
+Producer
+--------
+
+Aggregate statistics across all broker connections for this producer.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 15 65
+
+   * - Field
+     - Type
+     - Description
+   * - ``ts``
+     - int
+     - librdkafka's internal monotonic clock at the time of this snapshot
+       (microseconds)
+   * - ``age``
+     - int
+     - Time since this producer instance was created (microseconds)
+   * - ``msg_cnt``
+     - int gauge
+     - Current number of messages in producer queues
+   * - ``msg_size``
+     - int gauge
+     - Current total size of messages in producer queues (bytes)
+   * - ``msg_max``
+     - int
+     - Maximum number of messages allowed on the producer queues
+   * - ``tx``
+     - int
+     - Cumulative number of requests sent to all brokers
+   * - ``tx_bytes``
+     - int
+     - Cumulative bytes sent to all brokers
+   * - ``txmsgs``
+     - int
+     - Cumulative messages transmitted to all brokers
+   * - ``txmsg_bytes``
+     - int
+     - Cumulative message bytes transmitted to all brokers (including framing)
+   * - ``rx``
+     - int
+     - Cumulative responses received from all brokers
+   * - ``rx_bytes``
+     - int
+     - Cumulative bytes received from all brokers
+   * - ``brokers``
+     - object
+     - Dictionary of per-broker statistics. Each entry's key is the broker name provided by librdkafka
+
+Brokers
+-------
+
+Per-broker statistics, reported for each broker connection this producer
+maintains. A single producer may connect to multiple brokers if
+`strgp->container` specifies a comma-separated list of broker address. Each
+entry in the brokers dictionary is keyed by the broker name.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 15 65
+
+   * - Field
+     - Type
+     - Description
+   * - ``state``
+     - string
+     - Broker connection state (``INIT``, ``DOWN``, ``CONNECT``, ``AUTH``,
+       ``UP``, etc.)
+   * - ``stateage``
+     - int gauge
+     - Time since last broker state change (microseconds)
+   * - ``tx``
+     - int
+     - Cumulative requests sent to this broker
+   * - ``txbytes``
+     - int
+     - Cumulative bytes sent to this broker
+   * - ``txerrs``
+     - int
+     - Cumulative transmission errors to this broker
+   * - ``req_timeouts``
+     - int
+     - Cumulative requests timed out waiting for a response from this broker
+   * - ``rx``
+     - int
+     - Cumulative responses received from this broker
+   * - ``rxbytes``
+     - int
+     - Cumulative bytes received from this broker
+   * - ``disconnects``
+     - int
+     - Cumulative disconnections from this broker
+   * - ``outbuf_msg_cnt``
+     - int gauge
+     - Messages pending transmission to this broker
+   * - ``waitresp_msg_cnt``
+     - int gauge
+     - Messages in-flight to this broker awaiting a response
+
 EXAMPLES
 ========
 

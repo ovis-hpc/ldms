@@ -29,17 +29,24 @@
 #include <avro.h>
 #include <libserdes/serdes.h>
 #include <libserdes/serdes-avro.h>
+#include "ovis_json/ovis_json.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
 #include "ovis_log.h"
 
+#ifndef ARRAY_LEN
+#define ARRAY_LEN(arr) (sizeof(arr) / sizeof((arr)[0]))
+#endif
+
 #define STORE_AVRO_KAFKA "store_avro_kafka"
+#define KAFKA_STATS_CONF "statistics.interval.ms"
 
 typedef struct store_kafka_s {
         ovis_log_t log;
 	pthread_mutex_t sk_lock;
 	rd_kafka_conf_t *g_rd_conf;
+	uint8_t kafka_enabled_stats;
 	serdes_conf_t *g_serdes_conf;
 	int g_serdes_encoding;
 	char *g_topic_fmt;
@@ -60,6 +67,11 @@ typedef struct aks_handle_s
 	store_kafka_t sf;
 
 	struct rbt schema_tree;
+
+	/* cached librdkafka stats JSON string and its lock */
+	uint8_t kafka_enabled_stats;
+	pthread_mutex_t stats_lock;
+	char *stats_json; /* Last JSON string from stats_cb, or NULL */
 } *aks_handle_t;
 
 static const char *_help_str =
@@ -352,6 +364,16 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 		if (rc) {
 			ovis_log(sk->log, OVIS_LERROR, "Error %d parsing the Kafka configuration file '%s'", rc, path);
 		}
+		/* Check if "statistics.interval.ms" is given. */
+		char v[16];
+		size_t len = sizeof(v);
+		rd_kafka_conf_res_t res;
+
+		res = rd_kafka_conf_get(sk->g_rd_conf, KAFKA_STATS_CONF, v, &len);
+		if ((res == RD_KAFKA_CONF_OK) && (0 < atoi(v)))
+			sk->kafka_enabled_stats = 1;
+		else
+			sk->kafka_enabled_stats = 0;
 	}
 	path = av_value(avl, "serdes_conf");
 	if (path) {
@@ -400,12 +422,28 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 	/* This is called when strgp is stopped to clean up resources */
 	aks_handle_t sh = _sh;
 	if (sh->rd) {
+		rd_kafka_flush(sh->rd, -1); /* Wait until all queued events have been flushed. */
 		rd_kafka_destroy(sh->rd);
 	}
 	if (sh->rd_conf) {
 		rd_kafka_conf_destroy(sh->rd_conf);
 	}
+	pthread_mutex_destroy(&sh->stats_lock);
+	free(sh->stats_json);
+
 	free(sh);
+}
+
+static int __kafka_stats_cb(rd_kafka_t *rk, char *json, size_t json_len, void *opaque)
+{
+	aks_handle_t sh = opaque;
+
+	pthread_mutex_lock(&sh->stats_lock);
+	free(sh->stats_json);
+	sh->stats_json = strdup(json); /* TODO: cache the latest snapshot */
+	pthread_mutex_unlock(&sh->stats_lock);
+
+	return 0;
 }
 
 static aks_handle_t __handle_new(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp)
@@ -452,6 +490,15 @@ static aks_handle_t __handle_new(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp
 			ovis_log(sk->log, OVIS_LERROR, "rd_kafka_conf_set() error: %s\n", err_str);
 			goto err_2;
 		}
+	}
+
+	sh->kafka_enabled_stats = sk->kafka_enabled_stats;
+	if (sk->kafka_enabled_stats) {
+		/* Register the stats callback on the conf */
+		rd_kafka_conf_set_stats_cb(sh->rd_conf, __kafka_stats_cb);
+
+		/* Make sure the callback can reach sh */
+		rd_kafka_conf_set_opaque(sh->rd_conf, sh);
 	}
 
 	sh->rd = rd_kafka_new(RD_KAFKA_PRODUCER, sh->rd_conf, err_str, sizeof(err_str));
@@ -1009,7 +1056,273 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp, ldms_set_t set, ldm
 		free(topic_name);
 	}
 
+	if (sh->kafka_enabled_stats) {
+		rd_kafka_poll(sh->rd, 0); /* Poll Kafka queued events, non-blocking */
+	}
+
 	return 0;
+}
+
+typedef struct avro_kafka_stats {
+	const char *name;
+	enum json_value_e type;
+} *avro_kafka_stats_t;
+
+static struct avro_kafka_stats top_level_list[] = {
+	{"ts",        JSON_INT_VALUE},
+	{"age",       JSON_INT_VALUE},
+	{"msg_cnt",   JSON_INT_VALUE},
+	{"msg_size",  JSON_INT_VALUE},
+	{"msg_max",   JSON_INT_VALUE},
+	{"tx",        JSON_INT_VALUE},
+	{"tx_bytes",  JSON_INT_VALUE},
+	{"txmsgs",    JSON_INT_VALUE},
+	{"txmsg_bytes", JSON_INT_VALUE},
+	{"rx",        JSON_INT_VALUE},
+	{"rx_bytes",  JSON_INT_VALUE},
+	{"brokers",   JSON_DICT_VALUE},
+	{0}
+};
+
+static struct avro_kafka_stats broker_list[] = {
+	{"state",    JSON_STRING_VALUE},
+	{"stateage", JSON_INT_VALUE},
+	{"tx",       JSON_INT_VALUE},
+	{"txbytes",  JSON_INT_VALUE},
+	{"txerrs",   JSON_INT_VALUE},
+	{"req_timeouts", JSON_INT_VALUE},
+	{"rx",       JSON_INT_VALUE},
+	{"rxbytes",  JSON_INT_VALUE},
+	{"disconnects", JSON_INT_VALUE},
+	{"outbuf_msg_cnt", JSON_INT_VALUE},
+	{"waitresp_msg_cnt", JSON_INT_VALUE},
+	{0}
+};
+
+/*
+ * Copy fields listed in `field_list` from source dict `src` into dest dict `dst`.
+ * Fields missing from `src` or with unexpected types are skipped with a log warning.
+ *
+ * Returns 0 on success, ENOMEM on allocation failure.
+ */
+static int __copy_fields(aks_handle_t sh, json_entity_t src, json_entity_t dst,
+			 avro_kafka_stats_t field_list)
+{
+	int rc;
+	avro_kafka_stats_t m;
+	json_entity_t kv, pv;
+
+	for (m = field_list; m->name; m++) {
+		kv = json_value_find(src, m->name);
+		if (!kv) {
+			ovis_log(sh->sf->log, OVIS_LINFO,
+				"librdkafka metric '%s' doesn't exist.\n",
+				m->name);
+			continue;
+		}
+
+		if (json_entity_type(kv) != m->type) {
+			ovis_log(sh->sf->log, OVIS_LINFO,
+				"librdkafka metric '%s' has type '%s', "
+				"but the expected type is '%s'\n",
+				m->name,
+				json_type_name(json_entity_type(kv)),
+				json_type_name(m->type));
+			continue;
+		}
+
+		pv = json_entity_copy(kv);
+		if (!pv) {
+			ovis_log(sh->sf->log, OVIS_LCRIT,
+				"Memory allocation failure\n");
+			return ENOMEM;
+		}
+
+		rc = json_attr_add(dst, m->name, pv);
+		if (rc) {
+			json_entity_free(pv);
+			ovis_log(sh->sf->log, OVIS_LCRIT,
+				"Failed to add attribute '%s': %d\n",
+				m->name, rc);
+			return rc;
+		}
+	}
+
+	return 0;
+}
+
+/*
+ * Populate the "brokers" sub-dict in `pd` from `kd["brokers"]`.
+ *
+ * `kd["brokers"]` is a dict of named broker dicts:
+ *   { "broker1": { <broker fields>, "toppars": {...} }, ... }
+ *
+ * For each broker entry, we create a new dict containing only the fields
+ * listed in broker_list, and add it to pd["brokers"] under the same key.
+ *
+ * Returns 0 on success, ENOMEM on allocation failure.
+ */
+static int __copy_brokers(aks_handle_t sh, json_entity_t kd, json_entity_t pd)
+{
+	int rc;
+	json_entity_t kbrokers, pbrokers;
+	json_entity_t broker_attr;
+	json_entity_t kbroker_dict, pbroker_dict;
+	const char *broker_name;
+
+	kbrokers = json_value_find(kd, "brokers");
+	if (!kbrokers) {
+		/* No brokers in source; leave pd["brokers"] empty. */
+		ovis_log(sh->sf->log, OVIS_LINFO,
+			"librdkafka stats: 'brokers' dict not found.\n");
+		return 0;
+	}
+
+	pbrokers = json_value_find(pd, "brokers");
+	/* pd was built with an empty "brokers" dict; this must exist. */
+	assert(pbrokers);
+
+	for (broker_attr = json_attr_first(kbrokers);
+	     broker_attr;
+	     broker_attr = json_attr_next(broker_attr)) {
+
+		broker_name = json_attr_name(broker_attr)->str;
+		kbroker_dict = json_attr_value(broker_attr);
+
+		/*
+		 * Each broker value must be a dict. Skip anything unexpected
+		 * (e.g., stray scalar fields at the brokers level).
+		 */
+		if (json_entity_type(kbroker_dict) != JSON_DICT_VALUE) {
+			ovis_log(sh->sf->log, OVIS_LINFO,
+				"librdkafka broker entry '%s' is not a dict; skipping.\n",
+				broker_name);
+			continue;
+		}
+
+		pbroker_dict = json_entity_new(JSON_DICT_VALUE);
+		if (!pbroker_dict) {
+			ovis_log(sh->sf->log, OVIS_LCRIT,
+				"Memory allocation failure\n");
+			return ENOMEM;
+		}
+
+		rc = __copy_fields(sh, kbroker_dict, pbroker_dict, broker_list);
+		if (rc) {
+			json_entity_free(pbroker_dict);
+			return rc;
+		}
+
+		rc = json_attr_add(pbrokers, broker_name, pbroker_dict);
+		if (rc) {
+			json_entity_free(pbroker_dict);
+			ovis_log(sh->sf->log, OVIS_LCRIT,
+				"Failed to add broker '%s': %d\n",
+				broker_name, rc);
+			return rc;
+		}
+	}
+
+	return 0;
+}
+
+static int __create_stats(aks_handle_t sh, const char *kstats, json_entity_t *out)
+{
+	int rc;
+	json_entity_t kd, pd;
+	json_parser_t p;
+	avro_kafka_stats_t m;
+
+	p = json_parser_new(0);
+	if (!p)
+		return ENOMEM;
+
+	rc = json_parse_buffer(p, (char *)kstats, strlen(kstats), &kd);
+	json_parser_free(p);
+	if (rc)
+		return rc;
+
+	pd = json_dict_build(NULL,
+			JSON_DICT_VALUE, "brokers", -2,
+			-1);
+	if (!pd) {
+		json_entity_free(kd);
+		return ENOMEM;
+	}
+
+	/*
+	 * Copy scalar top-level fields from kd into pd.
+	 * The "brokers" entry (JSON_DICT_VALUE) is skipped here and
+	 * handled separately by __copy_brokers(), because each broker
+	 * dict must be filtered down to broker_list fields rather than
+	 * copied wholesale.
+	 */
+	for (m = top_level_list; m->name; m++) {
+		if (m->type == JSON_DICT_VALUE)
+			continue;
+
+		rc = __copy_fields(sh, kd, pd, m);
+		if (rc)
+			goto err;
+	}
+
+	rc = __copy_brokers(sh, kd, pd);
+	if (rc)
+		goto err;
+
+	json_entity_free(kd);
+	*out = pd;
+	return 0;
+err:
+	json_entity_free(kd);
+	json_entity_free(pd);
+	return rc;
+}
+
+static char *stats_get(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp)
+{
+	int rc;
+	aks_handle_t sh;
+	json_entity_t pstats_json;
+	jbuf_t pstats_buffer;
+	char *out_s;
+
+	sh = strgp->store_handle;
+	if (!sh)
+		return NULL;
+
+	if (!sh->kafka_enabled_stats) {
+		/* The Kafka stats was disabled. */
+		return NULL;
+	}
+
+	/*
+	 * Block until all queued events have been delivered.
+	 * Currently, we have only the statistics events.
+	 */
+	rd_kafka_poll(sh->rd, -1);
+
+	/* All stats events have been delivered. Return the latest one. */
+	pthread_mutex_lock(&sh->stats_lock);
+	if (sh->stats_json) {
+		rc = __create_stats(sh, sh->stats_json, &pstats_json);
+		if (rc) {
+			errno = rc;
+			pthread_mutex_unlock(&sh->stats_lock);
+			return NULL;
+		}
+	}
+	pthread_mutex_unlock(&sh->stats_lock);
+	pstats_buffer = json_entity_dump(NULL, pstats_json);
+	json_entity_free(pstats_json);
+	if (!pstats_buffer) {
+		errno = ENOMEM;
+		ovis_log(sh->sf->log, OVIS_LCRIT, "Memory allocation failure.\n");
+		return NULL;
+	}
+	out_s = strdup(pstats_buffer->buf);
+	jbuf_free(pstats_buffer);
+	return out_s;
 }
 
 static int constructor(ldmsd_plug_handle_t handle) {
@@ -1049,4 +1362,5 @@ struct ldmsd_store ldmsd_plugin_interface = {
         .base.destructor = destructor,
 	.close       = close_store,
 	.commit      = commit_rows,
+	.stats_get   = stats_get,
 };
