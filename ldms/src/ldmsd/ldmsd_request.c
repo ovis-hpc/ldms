@@ -9753,6 +9753,7 @@ err:
 out:
 	free(name);
 	json_doc_free(jdoc);
+	jbuf_free(jbuf);
 	return rc;
 }
 

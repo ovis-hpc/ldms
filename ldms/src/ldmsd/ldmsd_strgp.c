@@ -243,8 +243,7 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms
 free:
 	if (set_snapshot)
 		ldms_set_snapshot_delete(set_snapshot);
-	if (row_list)
-		free(row_list);
+	free(row_list);
 }
 
 ldmsd_strgp_t
