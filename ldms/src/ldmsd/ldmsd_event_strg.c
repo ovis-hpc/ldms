@@ -456,6 +456,8 @@ void storage_worker_actor(struct ovis_event_s *ev)
 			&queue_stat->end, &prdset->store_stat.end);
 	ldmsd_stat_update(&prdset->store_stat, &event_ctxt->start_ts, &prdset->store_stat.end);
 	store_event_ctxt_free(event_ctxt);
+	free(row_list);
+	free(ev);
 }
 
 /*
