@@ -998,13 +998,13 @@ int ldmsd_sampler_xthread_create(ldmsd_cfgobj_sampler_t samp)
 {
 	/* Create exclusive thread and scheduler */
 	int rc;
-	char xname[512];
+	char xname[16];
 	samp->os = ovis_scheduler_new();
 	if (!samp->os) {
 		rc = errno;
 		goto out;
 	}
-	snprintf(xname, sizeof(xname), "xthread_%s", samp->cfg.name);
+	snprintf(xname, sizeof(xname), "x:%s", samp->cfg.name);
 	ovis_scheduler_name_set(samp->os, xname);
 	rc = pthread_create(&samp->xthread, NULL, event_proc, samp->os);
 	if (rc)

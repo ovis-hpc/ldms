@@ -8136,6 +8136,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	*json_sz = s - buff + 1;
 	ldms_thrstat_result_free(lres);
 	ldmsd_worker_thrstat_free(wres);
+	ldmsd_worker_thrstat_free(sres);
 	while ((rbn = rbt_min(&store_time_tree))) {
 		rbt_del(&store_time_tree, rbn);
 		stime_ent = container_of(rbn, struct store_time_thread, rbn);
@@ -8145,6 +8146,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 __APPEND_ERR:
 	ldms_thrstat_result_free(lres);
 	ldmsd_worker_thrstat_free(wres);
+	ldmsd_worker_thrstat_free(sres);
 	if (xres)
 		ldmsd_worker_thrstat_free(xres);
 	while ((rbn = rbt_min(&store_time_tree))) {
@@ -10179,7 +10181,7 @@ static int storage_threads_set_handler(ldmsd_req_ctxt_t reqc)
 	if (!value_s) {
 		reqc->errcode = EINVAL;
 		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-					  "The attribute 'num' is missing.");
+					  "The attribute 'count' is missing.");
 		goto send_reply;
 	}
 

@@ -516,7 +516,7 @@ static aks_handle_t __handle_new(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp
 	sh->rd = rd_kafka_new(RD_KAFKA_PRODUCER, sh->rd_conf, err_str, sizeof(err_str));
 	if (!sh->rd) {
 		ovis_log(sk->log, OVIS_LERROR, "rd_kafka_new() error: %s\n", err_str);
-		goto err_2;
+		goto err_3;
 	}
 	sh->rd_conf = NULL; /* rd_kafka_new consumed and freed the conf */
 

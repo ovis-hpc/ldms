@@ -94,7 +94,6 @@
 
 extern ovis_log_t store_log;
 
-
 /*
  * Storage event context passed to worker threads.
  *
@@ -123,6 +122,7 @@ struct store_event_ctxt {
 		STORE_T_LEGACY = 1,
 		STORE_T_DECOMP = 2
 	} type;
+	struct strg_worker *w;
 };
 
 struct strg_worker {
@@ -449,6 +449,7 @@ void storage_worker_actor(struct ovis_event_s *ev)
 		}
 		strgp->decomp->release_rows(strgp, row_list);
 	}
+	strg_worker_release(event_ctxt->w);
 
 	clock_gettime(CLOCK_REALTIME, &prdset->store_stat.end);
 	prdset->store_stages_stat.commit_stat.end = prdset->store_stat.end;
@@ -482,6 +483,7 @@ int store_event_post(struct store_event_ctxt *ctxt)
 	clock_gettime(CLOCK_REALTIME, &wait_start);
 	/* strg_worker_get() block when all storage workers are at full capacity. */
 	w = strg_worker_acquire();
+	ctxt->w = w;
 	clock_gettime(CLOCK_REALTIME, &wait_end);
 	ldmsd_stat_update(&prdset->store_stages_stat.worker_wait_stat, &wait_start, &wait_end);
 	if (!w) {
@@ -524,7 +526,6 @@ void *strg_worker_proc(void *v)
 {
 	struct strg_worker *w = v;
 	ovis_scheduler_loop(w->worker, 0);
-	strg_worker_release(w);
 	return NULL;
 }
 
@@ -557,7 +558,7 @@ int strg_worker_init(struct strg_worker *w, const char *name)
 int strg_pool_init(unsigned int num_workers, int max_q_depth)
 {
 	int rc;
-	int i;
+	short i;
 	char wname[21];
 
 	ldmsd_strg_worker_pool.num_workers = num_workers;
@@ -570,13 +571,12 @@ int strg_pool_init(unsigned int num_workers, int max_q_depth)
 	}
 
 	for (i = 0; i < ldmsd_strg_worker_pool.num_workers; i++) {
-		snprintf(wname, 21, "storage_w_%d", i);
+		snprintf(wname, sizeof(wname), "str:wrk:%hu", (uint16_t)i);
 		rc = strg_worker_init(&ldmsd_strg_worker_pool.workers[i], wname);
 		if (rc) {
 			return rc;
 		}
 	}
-
 
 	return 0;
 }
