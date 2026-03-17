@@ -67,6 +67,7 @@
 #include <ovis_util/util.h>
 #include "ovis_log/ovis_log.h"
 #include "ovis_ref/ref.h"
+#include "ovis_json/ovis_json.h"
 #include "ldms.h"
 #include "ldmsd_plug_api.h"
 
@@ -1789,27 +1790,4 @@ int linebuf_printf(struct ldmsd_req_ctxt *reqc, char *fmt, ...);
 void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct timespec *end);
 void ldmsd_stat_reset(struct ldmsd_stat *stats, struct timespec *now);
 
-/*
- * \brief Create a jSON dictionary from \c struct ldmsd_stat
- *
- * The timestamp statistics are seconds from epoc <sec>.<millisecond>
- * The time duration statistics are in microseconds.
- *
- * The returned json is
- *
- * { 'min'      : <minimum duration>,
- *   'min_ts'   : <timestamp of the minimum value>,
- *   'max'      : <maximum duration>,
- *   'max_ts'   : <timestamp of the maximum value>,
- *   'avg'      : <the mean of durations>,
- *   'count'    : <number of samples used in the calculation>,
- *   'start_ts' : <timestamp when the data has been first collected>,
- *   'end_ts'   : <timestamp of the last sample>
- * }
- *
- * \param stat   Statistics data
- *
- * \return a json dictionary
- */
-json_entity_t ldmsd_stat2dict(json_doc_t jdoc, struct ldmsd_stat *stat);
 #endif

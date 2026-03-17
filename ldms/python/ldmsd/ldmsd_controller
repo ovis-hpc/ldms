@@ -1316,7 +1316,7 @@ class LdmsdCmdParser(Cmd.Cmd):
             print(f"Error {rc}: {msg}")
             return
         stats = fmt_status(msg)
-        print(stats)
+        print(json.dumps(stats, indent=2))
 
     def complete_strgp_plugin_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_pi_stats', text)
