@@ -36,6 +36,15 @@ make maintainer-clean
 echo "[>>] Clean isn't clean. Remove any file with an .in file"
 find ./ -name "*.in" |(while read FOO; do base="$(echo $FOO |sed 's/\.in$//g')"; echo "Remove $base"; rm -rf  "$base"; done; )
 find ./ -name "*.cache" -delete
+echo "[>>] uninstall ovis-ldms"
+rpm -qa |grep ovis-ldms
+if [ $? -eq 0 ]; then
+  rpm -qa |grep nerscjson_client
+  if [ $? -eq 0 ]; then
+    rpm -e nerscjson_client
+  fi
+  rpm -e ovis-ldms
+fi
 #--------------------------------
 # BUILD 
 #--------------------------------
@@ -43,7 +52,8 @@ echo "[>>] Get in source dir"
 pushd /builds/nersc/csg/ovis/
 #rpm -i datacenter-gpu-manager-2.2.3-1-x86_64.rpm 
 set -xe
-echo "#define DCGM_PUBLIC_API" >> "/usr/include/dcgm_api_export.h"
+echo "[>>] Patch: Add DCGM_PUBLIC_API"
+echo "#define DCGM_PUBLIC_API" >> "/usr/include/datacenter-gpu-manager-4/dcgm_api_export.h" #"/usr/include/dcgm_api_export.h"
 echo "[--] Build ldms"
 echo "[>>] autoreconf"
 autoreconf --install
@@ -83,6 +93,7 @@ mkdir -p \
   /app/etc/profile.d \
   /app/etc/sysconfig \
   /app/opt \
+  /app/lib/systemd/system \
   /app/usr/lib/systemd/system \
   /app/usr/lib/python3.6/site-packages \
   /app/usr/share
