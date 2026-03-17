@@ -190,7 +190,8 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl,
 	/* json parse */
 	rc = json_parse_buffer(buff, buff_len+1, &jdoc);
 	if (rc) {
-		LOG_ERROR("json_parse_buffer() failed: %s\n", json_doc_errstr(jdoc));
+		LOG_ERROR("json_parse_buffer() failed: %s\n",
+			  json_doc_errstr(jdoc));
 		goto out;
 	}
 	root = json_doc_root(jdoc);

@@ -3665,6 +3665,7 @@ out:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (strgp)
 		ldmsd_cfgobj_find_put(&strgp->obj);
+	free(stats_res);
 	free(strgp_name);
 	return rc;
 }
@@ -9575,6 +9576,47 @@ err:
 out:
 	free(name);
 	return rc;
+}
+
+/*
+ * \brief Create a jSON dictionary from \c struct ldmsd_stat
+ *
+ * The timestamp statistics are seconds from epoc <sec>.<millisecond>
+ * The time duration statistics are in microseconds.
+ *
+ * The returned json is
+ *
+ * { 'min'      : <minimum duration>,
+ *   'min_ts'   : <timestamp of the minimum value>,
+ *   'max'      : <maximum duration>,
+ *   'max_ts'   : <timestamp of the maximum value>,
+ *   'avg'      : <the mean of durations>,
+ *   'count'    : <number of samples used in the calculation>,
+ *   'start_ts' : <timestamp when the data has been first collected>,
+ *   'end_ts'   : <timestamp of the last sample>
+ * }
+ *
+ * \param stat   Statistics data
+ *
+ * \return a json dictionary
+ */
+static json_entity_t ldmsd_stat2dict(json_doc_t jdoc, struct ldmsd_stat *stat)
+{
+	double start_ts = stat->start.tv_sec + stat->start.tv_nsec/1000000.0;
+	double end_ts = stat->end.tv_sec + stat->end.tv_nsec/1000000.0;
+	double min_ts = stat->min_ts.tv_sec + stat->min_ts.tv_nsec/1000000.0;
+	double max_ts = stat->max_ts.tv_sec + stat->max_ts.tv_nsec/1000000.0;
+	json_entity_t d = json_dict_build(jdoc,
+				"min",     JSON_FLOAT_VALUE, stat->min,
+				"min_ts",  JSON_FLOAT_VALUE, min_ts,
+				"max",     JSON_FLOAT_VALUE, stat->max,
+				"max_ts",  JSON_FLOAT_VALUE, max_ts,
+				"avg",     JSON_FLOAT_VALUE, stat->avg,
+				"count",   JSON_INT_VALUE, (int64_t)stat->count,
+				"start_ts",JSON_FLOAT_VALUE, start_ts,
+				"end_ts",  JSON_FLOAT_VALUE, end_ts,
+				NULL);
+	return d;
 }
 
 static json_entity_t __prdset_store_time_json_get(json_doc_t jdoc, struct prdset_store_stages_stats *stats)
