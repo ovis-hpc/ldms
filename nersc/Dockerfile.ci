@@ -9,6 +9,9 @@ RUN echo "Zypper Refresh and install Deps" \
 RUN echo "Zypper Update" \
     zypper -q --non-interactive --no-gpg-checks update
 
+RUN echo "Remove any ovis-ldms in the image" \
+    rpm -e nerscjson_client ovis-ldms 2> /dev/null || echo "OK"
+
 RUN echo "Zypper Install" \
     && zypper -q --non-interactive install -y \
     libpfm4 \
@@ -18,7 +21,11 @@ RUN echo "Zypper Install" \
     papi-devel \
     papi-devel \
     libpfm-devel \
-    libnl3-devel
+    libnl3-devel \
+    datacenter-gpu-manager-4-devel \
+    datacenter-gpu-manager-4-core \
+    datacenter-gpu-manager-4-cuda13 \
+    datacenter-gpu-manager-4-proprietary
 
 LABEL maintainer="John Stile <jstile@lbl.gov>"
 CMD /bin/bash
