@@ -1,4 +1,4 @@
-# Image based slurm contatiner image
+# Image based slurm container image
 
 
 ## Update the FROM in nersc/Dockerfile.ci
@@ -28,17 +28,17 @@ vi nersc/start_build_container.bash
 export LDMS_REPO=$(pwd)
 export NERSC_ZYPPER_REPO=~/software/git/nersc-zypper
 nersc/start_build_container.bash
-alvarez-mgr:/ # /builds/nersc/csg/ovis/ && ./nersc/test_build.bash
+alvarez-mgr:/ # pushd /builds/nersc/csg/ovis/ && ./nersc/test_build.bash
 ```
 
-## Push to registry
+## Push to NERSC registry
 
 ```
 TMPDIR=~/tmp/ podman push registry.nersc.gov/csg/ldms_build_cos_3.3.4:20251211
 TMPDIR=~/tmp/ podman search --list-tags --limit 999 registry.nersc.gov/csg/ldms_build_cos_3.3.4
 ```
 
-## Update image in ci/cd
+## Update image in Gitlab CI config
 
 ```
 vi .gitlab-ci.yml
