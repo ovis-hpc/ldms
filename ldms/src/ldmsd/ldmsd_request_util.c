@@ -213,7 +213,7 @@ struct req_str_id attr_str_id_table[] = {
 	{  "ip",                LDMSD_ATTR_IP  },
 	{  "level",             LDMSD_ATTR_LEVEL  },
 	{  "match",             LDMSD_ATTR_MATCH  },
-	{  "message_channel",   LDMSD_ATTR_MSG_CHAN  },
+	{  "message_tag",       LDMSD_ATTR_MSG_TAG  },
 	{  "metric",            LDMSD_ATTR_METRIC  },
 	{  "mode",              LDMSD_ATTR_LEVEL  },
 	{  "name",              LDMSD_ATTR_NAME  },
@@ -504,7 +504,7 @@ const char *ldmsd_req_attr_id2str(uint32_t attr_id, int fuzzy)
 	*/
 	case LDMSD_ATTR_LEVEL:	return "level";
 	case LDMSD_ATTR_MATCH:	return "match";
-	case LDMSD_ATTR_MSG_CHAN:	return "message_channel";
+	case LDMSD_ATTR_MSG_TAG:	return "message_tag";
 	case LDMSD_ATTR_METRIC:	return "metric";
 	case LDMSD_ATTR_NAME:	return "name";
 	/* known ambiguity
