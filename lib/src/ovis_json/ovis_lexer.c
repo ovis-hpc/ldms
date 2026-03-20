@@ -254,8 +254,8 @@ keyword:
 		}
 		break;
 	default:
-		assert(0);
-		break;
+		/* Invalid token, e.g. ""b123" */
+		return OVIS_JSON_EOF;
 	}
 	return OVIS_JSON_EOF;
 }
