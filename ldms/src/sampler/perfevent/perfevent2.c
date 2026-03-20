@@ -217,7 +217,6 @@ struct pmu_s {
 	uint8_t cpu_mask[1024]; /* should be enough ... */
 };
 
-
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return "config name={INSTANCE} conf={EVENT_CONFIG_JSON_FILE} [perfdb={PERF_DB_FILE}]\n";
@@ -505,6 +504,7 @@ static json_doc_t xread_json(struct perf_s *p, const char *path)
 	if (rc) {
 		_ERROR(p, "json parse error: %s\n", json_doc_errstr(jdoc));
 		json_doc_free(jdoc);
+		errno = EINVAL;
 		return NULL;
 	}
 	free(buff);
@@ -1563,7 +1563,7 @@ static struct pmu_event_s *event_lookup(struct perf_s *p, const char *name)
 
 	n = snprintf(event_value, sizeof(event_value), "%s", c_event);
 	if (unlikely(n >= sizeof(event_value))) {
-		_ERROR(p, "perfdb event 'event' attribte value too long.\n");
+		_ERROR(p, "perfdb event 'event' attribute value too long.\n");
 		errno = ENOBUFS;
 		goto out;
 	}
@@ -1873,6 +1873,7 @@ static int make_set(struct perf_s *p)
 
 	ldms_transaction_begin(p->set);
 	/* populate the list of counters and/or list of scaled counters */
+	prev_c = NULL;
 	TAILQ_FOREACH(c, &p->counters, entry) {
 		if (prev_c && c->conf_event == prev_c->conf_event)
 			goto fill; /* same event, different cpu */
@@ -2165,6 +2166,8 @@ static int sample(ldmsd_plug_handle_t handle)
 	struct perf_s *p = ldmsd_plug_ctxt_get(handle);
 	struct counter_s *c;
 	int len;
+	if (!p)
+		return ENOENT;
 	ldms_transaction_begin(p->set);
 	TAILQ_FOREACH(c, &p->counters, entry) {
 		#if 1

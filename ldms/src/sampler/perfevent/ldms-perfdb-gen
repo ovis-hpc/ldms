@@ -316,7 +316,7 @@ def get_jevents(pmu_events_dir):
                     return int(val, 16) == 0
                 else:
                     return int(val) == 0
-            except e:
+            except Exception as e:
                 return False
 
         def canonicalize_value(val: str) -> str:
