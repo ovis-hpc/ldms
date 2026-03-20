@@ -50,6 +50,7 @@
 #define _OVIS_LOG_H_
 
 #include <stdio.h>
+#include <inttypes.h>
 #include "coll/rbt.h"
 
 #define OVIS_DEFAULT_FILE_PERM 0600
@@ -88,6 +89,7 @@
 typedef struct ovis_log_s {
 	const char *name;
 	const char *desc;
+	uint8_t registered;
 	int level;
 	struct rbn rbn;
 	int ref_count;
@@ -248,7 +250,8 @@ void ovis_log_deregister(ovis_log_t log);
  * The returned string is a JSON-formatted string.
  * [{"name": "<subsystem's name>",
  *   "desc": "<subsystem's description>",
- *   "level": "<subsystem's enabled level string>"
+ *   "level": "<subsystem's enabled level string>",
+ *   "registered": "<true|false>"
  *  },
  *  ...
  * ]
@@ -290,8 +293,12 @@ int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap);
  * \brief Set the log level of a subsystem.
  *
  * If \c level is OVIS_LDEFAULT, the subsystem is set to the default level.
- *  If \c subsys_name or \c mylog is NULL, and \c level is OVIS_LDEFAULT,
- *  \c level is ignored and 0 is returned.
+ * If \c subsys_name or \c mylog is NULL, and \c level is OVIS_LDEFAULT,
+ * \c level is ignored and 0 is returned.
+ *
+ * \c ovis_log_set_level_by_name() will automatically register a log handle
+ * if the specified subsystem does not exist. This allows log levels to
+ * be pre-configured before the subsystem formally registers itself.
  *
  * \param regex_s         A regular expression string to match subsystem names
  * \param subsys_name     The name of the subsystem to set the log level.
