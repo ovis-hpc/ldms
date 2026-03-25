@@ -794,6 +794,12 @@ int ldms_msg_chan_publish(ldms_msg_chan_t chan, const char *tag,
 			 "%s:%d Channel '%s' blocked wakeup rc is %d.\n",
 			 __func__, __LINE__,
 			 chan->app_name_s, rc);
+
+		if (chan->stats.closing) {
+			/* Channel is clossing while waiting for availability */
+			errno = ENOTCONN;
+			goto err_0;
+		}
 	}
 
 	msg_entry = calloc(1, sizeof(*msg_entry));
