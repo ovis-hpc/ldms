@@ -1,5 +1,4 @@
 {
-  "perfdb": "perfdb.json",
   "events": [
     { "event": "l3_lookup_state.l3_miss", "cpu": "0,8-16,30" },
     { "event": "power/energy-pkg/", "cpu": 0 },

@@ -8,7 +8,7 @@ perfevent2
 ldmsd plugin for perf events (core and uncore)
 ----------------------------------------------
 
-:Date: 5 Jan 2026
+:Date: 25 Mar 2026
 :Manual section: 7
 :Manual group: LDMS sampler
 
@@ -77,6 +77,9 @@ examples:
 
 .. code:: sh
 
+   # Generate from the output of `perf list --details hw cache pmu`
+   $ ldms-perfdb-gen -P -o ldms-perfdb.json
+
    # Generate from a local Linux source
    $ ldms-perfdb-gen -L /PATH/TO/LINUX/SRC -o ldms-perfdb.json
 
@@ -84,6 +87,14 @@ examples:
    $ ldms-perfdb-gen -o ldms-perfdb.json
 
 For more information, please see ``"ldms-perfdb-gen --help"``.
+
+The ``perfdb.json`` can then be used for ``perfdb=...`` option in ``config``
+command or ``"perfdb":...`` attribute in ``perfconf.json``.
+
+Note that if ``perfdb`` is not given in ``config`` command nor in
+``perfconf.json``, ``perfevent2`` plugin will use the default perfdb
+automatically obtained from ``perf list --details hw cache pmu`` command at the
+plugin load time.
 
 
 SET FORMAT
@@ -158,6 +169,9 @@ are included.
 The ``perfdb`` attribute (at the top level) is an optional attribute containing
 the path to the *PERFDB_JSON* file. Users have an option to specify ``perfdb``
 here or at the ``config`` command (``config`` command has more precedence).
+If ``perfdb`` is not given at all (in both ``config`` command and
+*PERF_CONF_JSON`* file), the default perfdb which automatically derived from
+``perf list --details hw cache pmu`` at plugin load time will be used.
 
 
 NOTES
@@ -178,6 +192,37 @@ No known bugs.
 
 EXAMPLES
 ========
+
+Example0
+--------
+
+Minimal examle:
+
+- Use default ``perfdb``,
+- Specify only events (no CPU ranges).
+
+``ldms.conf``
+
+.. code::
+
+   load name=p0 plugin=perfevent2
+   config name=p0 producer=node1 instance=node1/perf conf=/etc/ldms/perfconf.json
+   start name=p0 interval=1s
+
+
+``/etc/ldms/perfconf.json``
+
+.. code:: json
+
+   {
+     "events": [
+       { "event": "power/energy-pkg/" },
+       { "event": "instructions" },
+       { "event": "cpu/L1-dcache-loads/" },
+       { "event": "l3_lookup_state.l3_miss" }
+     ]
+   }
+
 
 Example1
 --------
