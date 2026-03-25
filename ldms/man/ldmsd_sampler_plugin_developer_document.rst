@@ -234,7 +234,175 @@ which operations are permitted in that state.
      - ``destructor()``
      - Worker or IO (whoever drops last reference)
 
-Section 6: LDMSD Internal Implementation Details (For Maintainers Only)
+Section 6: Using the LDMS Message Service in Sampler Plugins
+=============================================================
+
+Terminology
+-----------
+
+**LDMS Message Bus** (declared in ``ldms_msg.h``, API prefix ``ldms_msg_``)
+   The pub/sub routing layer in LDMS. Each message is published with a tag name;
+   subscribers register callbacks against a tag name or regex pattern to receive
+   matching messages. The Message Bus manages the routing and delivery of messages
+   to authorized subscribers. See ``ldms_msg``\(7).
+
+**Message channel** (declared in ``ldms_msg_chan.h``, API prefix ``ldms_msg_chan_``)
+   A resilient mechanism that sits on top of the LDMS Message Bus. A message
+   channel manages multiple message buses, reconnects if a peer disconnects,
+   and queues data while the peer is down. See ``ldms_msg_chan``\(7).
+
+Checking Whether the Message Service Is Enabled
+------------------------------------------------
+
+Both APIs require the message service to be enabled. Check with
+``ldms_msg_is_enabled()`` before using either API:
+
+.. code-block:: c
+
+   if (!ldms_msg_is_enabled()) {
+       /* handle disabled case */
+   }
+
+How to handle a disabled message service depends on the plugin:
+
+- If the plugin requires the message service to function at all, return an error
+  from ``constructor()`` to prevent the plugin from loading.
+- If the plugin has modes that do not use the message service, return an error
+  from ``config()`` only when the user configures a mode that requires it.
+
+Plugins must not call ``ldms_msg_enable()`` to enable the service themselves.
+Whether the message service is enabled is an ldmsd instance-level decision, not a
+per-plugin one.
+
+Which API to Use
+-----------------
+
+The choice depends on whether the plugin needs to own a connection to a peer.
+
+A plugin that relies on connections already managed by ldmsd uses the LDMS Message
+Bus API (``ldms_msg_``) directly — no connection management required.
+
+A plugin that needs its own dedicated and reliable connection to a peer — whether
+connecting out to a remote peer or listening for incoming connections — uses the
+message channel API (``ldms_msg_chan_``).
+
+.. list-table::
+   :widths: 50 50
+   :header-rows: 1
+
+   * - Use case
+     - API to use
+   * - Plugin does not need to own a connection
+     - ``ldms_msg_subscribe()`` and/or ``ldms_msg_publish(NULL, ...)``
+   * - Plugin needs to own a connection to a peer
+     - ``ldms_msg_chan``
+
+Key points:
+
+- Within each case, the plugin can subscribe, publish, or both as needed.
+- A single message channel can publish on any number of different tag names.
+  A plugin needs at most one channel per peer.
+- Without a message channel, if the peer the plugin depends on disconnects,
+  there is no reconnect logic and the plugin will not recover.
+- A plugin that needs to own a connection only for subscribing should be aware
+  that ``ldms_msg_chan`` in subscribe mode creates a listening transport endpoint
+  bound to a local port. This is appropriate for plugins that act as a passive
+  listener for an incoming publisher connection.
+
+Appropriateness by Plugin Interface
+-------------------------------------
+
+The following table summarizes which functions are appropriate to call from each
+plugin interface. For threading details and what is safe to call from within the
+callback, see ``ldms_msg``\(7) and ``ldms_msg_chan``\(7).
+
+.. list-table::
+   :widths: 34 13 13 13 13 14
+   :header-rows: 1
+
+   * - API
+     - ``constructor()``
+     - ``config()``
+     - ``sample()``
+     - ``destructor()``
+     - callback
+   * - ``ldms_msg_subscribe()``
+     - Yes
+     - Yes
+     - Not appropriate [#msg1]_
+     - Not appropriate [#msg1]_
+     - Yes
+   * - ``ldms_msg_client_close()``
+     - No
+     - Yes
+     - Not appropriate [#msg1]_
+     - Yes
+     - Yes
+   * - ``ldms_msg_publish(NULL,...)``
+     - Yes
+     - Yes
+     - Yes
+     - No
+     - Yes [#msg2]_
+   * - ``ldms_msg_chan_new()``
+     - Yes
+     - Yes
+     - Not appropriate [#msg1]_
+     - No
+     - No
+   * - ``ldms_msg_chan_publish()``
+     - No
+     - Yes
+     - Yes [#chan1]_
+     - No
+     - Yes
+   * - ``ldms_msg_chan_close()``
+     - No
+     - Yes
+     - Not appropriate [#msg1]_
+     - Yes
+     - Yes [#chan2]_
+   * - ``ldms_msg_chan_set_q_limit()``
+     - Yes
+     - Yes
+     - No
+     - No
+     - No
+
+.. rubric:: Notes
+
+.. [#msg1] Not a thread safety issue. These are lifecycle operations that belong
+   in ``constructor()`` and ``config()``, not in ``sample()`` or ``destructor()``
+   per call.
+
+.. [#msg2] ``ldms_msg_publish(NULL, ...)`` invokes subscriber callbacks inline
+   before returning. Avoid holding plugin-internal locks across this call inside a
+   callback — see ``ldms_msg``\(7).
+
+.. [#chan1] If adding the message would exceed the queue limit,
+   ``ldms_msg_chan_publish()`` returns ``ENOBUFS``. Adjust the queue limit with
+   ``ldms_msg_chan_set_q_limit()`` if needed.
+
+.. [#chan2] Avoid calling ``ldms_msg_chan_close()`` with ``cancel=0`` from within
+   the callback — it will block the IO thread for the duration of teardown. Use
+   ``cancel=1`` if closing from within a callback.
+
+Callback
+---------
+
+For the LDMS Message Bus API, the callback is invoked by whichever thread called
+``ldms_msg_publish()`` for messages published on the same bus, or by an IO thread
+for messages arriving from a remote peer. The ``LDMS_MSG_EVENT_CLIENT_CLOSE``
+event is delivered to signal that teardown is complete and resources may be freed.
+
+For the message channel API, the callback is always invoked by an IO thread.
+``LDMS_MSG_EVENT_CLIENT_CLOSE`` is handled internally by the channel and is not
+delivered to the application callback.
+
+For full details on callback threading, what is safe to call, and teardown
+patterns, see ``ldms_msg``\(7) and ``ldms_msg_chan``\(7).
+
+Section 7: LDMSD Internal Implementation Details (For Maintainers Only)
 =========================================================================
 
 This section documents ldmsd-internal implementation details for ldmsd
@@ -257,4 +425,4 @@ The following describes the acquisition order for the plugin cfgobj lock:
 SEE ALSO
 =========
 
-:ref:`ldmsd(8) <ldmsd>` :ref:`ldmsd_controller(8) <ldmsd_controller>`
+:ref:`ldmsd(8) <ldmsd>` :ref:`ldmsd_controller(8) <ldmsd_controller>` :ref:`ldms_msg(7) <ldms_msg>` :ref:`ldms_msg_chan(7) <ldms_msg_chan>`
