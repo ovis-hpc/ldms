@@ -6,6 +6,7 @@
 
 import os
 import re
+import pdb
 import sys
 import csv
 import json
@@ -19,16 +20,21 @@ import subprocess
 
 long_description = """
 
-This script generates a list of pmu events for ldmsd perfevent plugin from a
-Linux source tree specified by -L LINUX_SRC argument. The script uses
-`jevents.py` module (if available) and events data from
-LINUX_SRC/tools/perf/pmu-events/ to produce JSON event objects suitable for
-perfevent LDMS sampler to consume.
+This script generates a list of pmu events for ldmsd perfevent2 plugin from
+various sources ordered by their precedences (highest first) as follows:
 
-If `-L` option is omitted and '-D' option is given, the script will try to get
-the Linux source tarball matching the running kernel from kernel.org. The
-tarball will be downloaded to a temporary directory, and extracted. The
-temporary directory will be deleted after the script exited.
+1) If `-P` is given, the script uses `perf list --details hw cache pmu` as
+   sources to geenrate perfdb. `-P` has the highest precedence.
+
+2) If Linux source tree specified by -L LINUX_SRC argument is given. The script
+   uses `jevents.py` module (if available) and events data from
+   LINUX_SRC/tools/perf/pmu-events/ to produce JSON event objects suitable for
+   perfevent LDMS sampler to consume.
+
+3) If `-L` option is omitted and '-D' option is given, the script will try to
+   get the Linux source tarball matching the running kernel from kernel.org. The
+   tarball will be downloaded to a temporary directory, and extracted. The
+   temporary directory will be deleted after the script exited.
 
 The `-a ARCH` argument specifies the architecture to be collected to perfdb. If
 the option is omitted, the script will use the architecture of the running
@@ -188,6 +194,7 @@ def _atexit():
 # ====== jevents ============================================================= #
 
 def get_jevents(pmu_events_dir):
+    global jevents
     try:
         sys.path.insert(0, pmu_events_dir)
         import jevents
@@ -470,40 +477,60 @@ def get_jevents(pmu_events_dir):
 # ----- jevents (end) -------------------------------------------------------- #
 
 
-if __name__ == "__main__":
-    atexit.register(_atexit)
+PERF_LIST_RE = re.compile(r"""
+  (\S.*?)(?:\s*\[(?:.|\n)+?\])?
+   +(\S+)\/(\S+)\/""")
 
-    ap = argparse.ArgumentParser(epilog=long_description,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--linux-src", "-L", required=False,
-                    help="Location of Linux source directory.")
-    ap.add_argument("--download-linux-src", "-D", required=False, action="store_true",
-                    help="Try downloading a tarball with matching MAJOR.MINOR.PATCH release (uname -r) from kernel.org. If '--linux-src' is specified, this option is ignored.")
-    ap.add_argument("--arch", "-a", help="Architecture (e.g. x86). The script will try to determine the system arch if not specified.",
-                    default=get_arch())
-    ap.add_argument("--output", "-o", help="Output file (default: stdout)",
-                    default=sys.stdout, type=( lambda f: open(f, "w") ) )
-    ap.add_argument("--debug", "-d", help="Turn on DEBUG mode", action="store_true" )
-    args = ap.parse_args()
+CPU_RE = re.compile( r"""
+vendor_id\s+:\s+(.+)
+cpu family\s+:\s+(.+)
+model\s+:\s+(.+)
+""")
 
-    DEBUG = args.debug
-    if DEBUG:
-        log.setLevel(logging.DEBUG)
+def get_cpu_family_model():
+    f = open("/proc/cpuinfo")
+    text = f.read()
+    m = CPU_RE.search(text)
+    return '-'.join(m.groups())
 
-    TMPDIR = tempfile.mkdtemp(prefix="ldms-perfdb-gen-")
-
-    if not args.arch:
-        log.error("CPU architecture cannot be determined")
-
-    linux_ver = get_running_linux_ver()
-    if args.linux_src:
-        linux_src = args.linux_src
-    elif args.download_linux_src:
-        linux_src = get_linux_tar(linux_ver)
-    else:
-        log.error(f"'-L <LINUX_SRC_DIR>' or '-D' (download linux-src tarball) is needed.")
+def do_perf_list():
+    global args
+    perf_ver = subprocess.getoutput("perf --version")
+    perf_ver = perf_ver.split(' ')[-1]
+    try:
+        txt = subprocess.check_output("perf list --details hw cache pmu",
+                                      stderr=subprocess.STDOUT,
+                                      shell=True)
+        txt = txt.decode()
+    except subprocess.CalledProcessError as e:
+        log.error(f"`perf list` command error: {e.output.decode()}")
         sys.exit(-1)
+    _events = PERF_LIST_RE.findall(txt)
+    cpu = get_cpu_family_model()
+    events = {}
+    for names, pmu, event in _events:
+        a = names.split(" OR ")
+        for name in a:
+            events[name] = {
+                    "name": name,
+                    "pmu": pmu,
+                    "event": event,
+            }
+    pmu_table = [{
+        "family-model": cpu,
+        "microarch": "",
+        "events": events,
+        }]
 
+    perfdb = {
+        "linux_src_ver": perf_ver,
+        "pmu_table": pmu_table,
+    }
+
+    return perfdb
+
+def do_process_linux_src(linux_src):
+    global args
     pmu_events_dir = f"{linux_src}/tools/perf/pmu-events"
     pmu_events_dir = os.path.abspath(pmu_events_dir)
 
@@ -531,10 +558,55 @@ if __name__ == "__main__":
         entry = { "family-model": fm, "microarch": f,
                   "events": events, "metrics": metrics }
         pmu_table.append( entry )
-    log.info(f"Writing output to {args.output.name}")
     perfdb = {
             "linux_src_ver": linux_src_ver,
             "pmu_table": pmu_table,
         }
+    return perfdb
+
+def do_output(perfdb):
+    global args
+    log.info(f"Writing output to {args.output.name}")
     print(json.dumps(perfdb, indent=1), file=args.output)
+
+if __name__ == "__main__":
+    atexit.register(_atexit)
+
+    ap = argparse.ArgumentParser(epilog=long_description,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--perf-list", "-P", required=False, action="store_true",
+                    help="Use `perf list --details hw cache pmu` to generate perfdb.")
+    ap.add_argument("--linux-src", "-L", required=False,
+                    help="Location of Linux source directory.")
+    ap.add_argument("--download-linux-src", "-D", required=False, action="store_true",
+                    help="Try downloading a tarball with matching MAJOR.MINOR.PATCH release (uname -r) from kernel.org. If '--linux-src' is specified, this option is ignored.")
+    ap.add_argument("--arch", "-a", help="Architecture (e.g. x86). The script will try to determine the system arch if not specified.",
+                    default=get_arch())
+    ap.add_argument("--output", "-o", help="Output file (default: stdout)",
+                    default=sys.stdout, type=( lambda f: open(f, "w") ) )
+    ap.add_argument("--debug", "-d", help="Turn on DEBUG mode", action="store_true" )
+    args = ap.parse_args()
+
+    DEBUG = args.debug
+    if DEBUG:
+        log.setLevel(logging.DEBUG)
+
+    TMPDIR = tempfile.mkdtemp(prefix="ldms-perfdb-gen-")
+
+    if not args.arch:
+        log.error("CPU architecture cannot be determined")
+
+    linux_ver = get_running_linux_ver()
+    if args.perf_list:
+        perfdb = do_perf_list()
+    elif args.linux_src:
+        linux_src = args.linux_src
+        perfdb = do_process_linux_src(linux_src)
+    elif args.download_linux_src:
+        linux_src = get_linux_tar(linux_ver)
+        perfdb = do_process_linux_src(linux_src)
+    else:
+        log.error(f"'-L <LINUX_SRC_DIR>' or '-D' (download linux-src tarball) is needed.")
+        sys.exit(-1)
+    do_output(perfdb)
     log.info("DONE")

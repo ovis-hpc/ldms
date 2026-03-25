@@ -222,6 +222,8 @@ static const char *usage(ldmsd_plug_handle_t handle)
 	return "config name={INSTANCE} conf={EVENT_CONFIG_JSON_FILE} [perfdb={PERF_DB_FILE}]\n";
 }
 
+static json_doc_t default_perfdb; /* perfdb from `perf list --details hw cache pmu` */
+
 static int perf_event_open(struct perf_event_attr *attr,
 			   pid_t pid, int cpu, int group_fd,
 			   unsigned long flags);
@@ -300,7 +302,8 @@ static void perf_free(struct perf_s *p)
 	}
 
 	/* p->model and p->model_events are part of p->perfdb */
-	json_doc_free(p->perfdb);
+	if (p->perfdb != default_perfdb)
+		json_doc_free(p->perfdb);
 	free(p);
 }
 
@@ -1956,7 +1959,9 @@ static int perf_open(struct perf_s *p)
 		assert(c->fd < 0);
 		c->fd = perf_event_open(&c->attr, c->pid, c->cpu, -1, 0);
 		if (c->fd < 0) {
-			_ERROR(p, "perf_event_open() failed, errno: %d\n", errno);
+			_ERROR(p, "perf_event_open() failed for event '%s', errno: %d\n",
+					json_value_find_cstr(p, c->conf_event, "event"),
+					errno);
 			rc = errno;
 			goto err;
 		}
@@ -2120,8 +2125,12 @@ static int config(ldmsd_plug_handle_t handle,
 		rc = load_perfdb(p, json_value_cstr(e_conf_perfdb));
 		if (rc)
 			goto err;
+	} else if (default_perfdb) {
+		/* no-op */
+		p->perfdb = default_perfdb;
+		_INFO(p, "Using default perfdb derived from `perf list hw cache pmu`.\n");
 	} else {
-		/* perfdb not given, just give a warning */
+		/* perfdb not given, and no global perfdb; give a warning */
 		_WARN(p, "'perfdb' option not given. A lot of vendor-specific"
 			 " events are defined in perfdb derived from pmu-events"
 			 " from Linux kernel source tree. To generate a perfdb"
@@ -2153,7 +2162,8 @@ static int config(ldmsd_plug_handle_t handle,
  err:
 	json_doc_free(p->config);
 	p->config = NULL;
-	json_doc_free(p->perfdb);
+	if (p->perfdb != default_perfdb)
+		json_doc_free(p->perfdb);
 	p->perfdb = NULL;
 	base_del(p->base);
 	p->base = NULL;
@@ -2393,3 +2403,65 @@ struct ldmsd_sampler ldmsd_plugin_interface = {
 
 	.sample = sample,
 };
+
+__attribute__((constructor))
+static void init_once()
+{
+	char buf[PATH_MAX + 128];
+	char *c, *out;
+	ssize_t sz;
+	FILE *pf;
+	struct ovis_buff_s obuf;
+	int rc;
+
+	ovis_buff_init(&obuf, 1024*1024);
+
+	sz = readlink("/proc/self/exe", buf, sizeof(buf));
+	if (sz < 0) {
+		ovis_log(NULL, OVIS_LERROR, "readlink(\"/proc/self/exe\") error: %d\n", errno);
+		return;
+	}
+	c = strrchr(buf, '/');
+	if (c)
+		*c = 0;
+	c = strrchr(buf, '/');
+	if (c)
+		*c = 0;
+	sz = strlen(buf);
+	snprintf(buf + sz, sizeof(buf)-sz, "/bin/ldms-perfdb-gen -P");
+	pf = popen(buf, "re");
+	if (!pf) {
+		ovis_log(NULL, OVIS_LERROR, "popen(\"%s\") error: %d\n", buf, errno);
+		return;
+	}
+	while ((sz = fread(buf, 1, sizeof(buf)-1, pf)) > 0) {
+		buf[sz] = 0;
+		rc = ovis_buff_appendf(&obuf, "%s", buf);
+		if (rc) {
+			ovis_log(NULL, OVIS_LERROR, "perfevent2.c:%d Not enough memory\n", __LINE__);
+			return;
+		}
+	}
+	if (sz < 0) {
+		ovis_log(NULL, OVIS_LERROR, "pipe read error: %d\n", errno);
+		return;
+
+	}
+	out = ovis_buff_str(&obuf);
+	if (!out) {
+		ovis_log(NULL, OVIS_LERROR, "perfevent2.c:%d, ovis_buf_str() error: Not enough memory\n", __LINE__);
+		return;
+	}
+	ovis_buff_purge(&obuf);
+	/* out contains perfdb in json format */
+	rc = json_parse_buffer(out, strlen(out)+1, &default_perfdb);
+	free(out);
+	if (rc) {
+		if (default_perfdb) {
+			json_doc_free(default_perfdb);
+			default_perfdb = NULL;
+		}
+		ovis_log(NULL, OVIS_LERROR, "perfevent2.c:%d, json_parse_buffer() error: %d\n", __LINE__, rc);
+		return;
+	}
+}
