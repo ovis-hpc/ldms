@@ -82,7 +82,7 @@ typedef struct jbuf_s {
 } *jbuf_t;
 
 /**
- * Max attribute name length not including the terminating '\0'
+ * Max attribute name length that does not require malloc '\0'
  */
 #define JSON_ATTR_NAME_MAX	(192 - 112)
 

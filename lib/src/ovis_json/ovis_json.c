@@ -306,11 +306,20 @@ int json_item_rem(json_entity_t l, json_entity_t item)
 json_entity_t json_attr_new(json_doc_t doc, const char *name, json_entity_t value)
 {
 	json_entity_t e;
-	if (strlen(name) >= JSON_ATTR_NAME_MAX) {
-		errno = ENAMETOOLONG;
-		return NULL;
-	}
+	size_t len = strlen(name);
 	e = __entity_alloc(doc);
+	if (!e)
+		return NULL;
+	if (len >= JSON_ATTR_NAME_MAX) {
+		e->value.attr_.name = malloc(len+1);
+		if (!e->value.attr_.name) {
+			__entity_free(e);
+			errno = ENOMEM;
+			return NULL;
+		}
+	} else {
+		e->value.attr_.name = e->value.attr_.name_;
+	}
 	e->type = JSON_ATTR_VALUE;
 	strcpy(e->value.attr_.name, name);
 	e->value.attr_.value = value;
@@ -646,6 +655,8 @@ int json_attr_add(json_entity_t d, const char *name, json_entity_t v)
 	json_entity_t a;
 	assert(d->type == JSON_DICT_VALUE);
 	a = json_attr_new(d->doc, name, v);
+	if (!a)
+		return E2BIG;
 	__attr_add(d, a);
 	return 0;
 }
@@ -712,6 +723,8 @@ void json_entity_free(json_entity_t e)
 		break;
 	case JSON_ATTR_VALUE:
 		json_entity_free(e->value.attr_.value);
+		if (e->value.attr_.name_ != e->value.attr_.name)
+			free(e->value.attr_.name);
 		__entity_free(e);
 		break;
 	case JSON_LIST_VALUE:
@@ -879,7 +892,10 @@ static json_entity_t __dict_new(json_doc_t doc, va_list *ap)
 			v = __attr_value_new(doc, type, ap);
 			if (!v)
 				goto err;
-			json_attr_add(d, name, v);
+			if (json_attr_add(d, name, v)) {
+				json_entity_free(v);
+				goto err;
+			}
 			break;
 		default:
 			assert(0 || NULL == "unhandled type in ovis_json:__dict_new.");
