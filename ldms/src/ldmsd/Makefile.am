@@ -36,7 +36,7 @@ LOVIS_LOG = $(top_builddir)/lib/src/ovis_log/libovis_log.la
 AM_CFLAGS += -DPLUGINDIR='"$(pkglibdir)"'
 
 ldms_ls_SOURCES = ldms_ls.c
-ldms_ls_LDADD = ../core/libldms.la $(LZAP) $(LMMALLOC) $(LOVIS_UTIL) $(LCOLL) \
+ldms_ls_LDADD = ../core/libldms.la $(LZAP) $(LMMALLOC) $(LOVIS_UTIL) $(LCOLL) $(LJSON_UTIL) \
         -lpthread \
         @LDFLAGS_GETTIME@
 

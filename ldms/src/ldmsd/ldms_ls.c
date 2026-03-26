@@ -46,6 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#define _GNU_SOURCE
 #include <getopt.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -211,138 +212,155 @@ void server_timeout(void)
 	exit(1);
 }
 
-#define BUF_LEN 128
 size_t prim_value_format(enum ldms_value_type type, ldms_mval_t val, size_t n, int width, int print)
 {
 	int i;
-	char buf[BUF_LEN];
+	jbuf_t buf = jbuf_new();
 	size_t cnt;
 
 	switch (type) {
 	case LDMS_V_CHAR_ARRAY:
-		cnt = snprintf(buf, BUF_LEN, "\"%s\"", val->a_char);
+		buf = jbuf_append_str(buf, "\"%s\"", val->a_char);
 		break;
 	case LDMS_V_CHAR:
-		cnt = snprintf(buf, BUF_LEN, "'%c'", val->v_char);
+		buf = jbuf_append_str(buf, "'%c'", val->v_char);
 		break;
 	case LDMS_V_U8:
-		cnt = snprintf(buf, BUF_LEN, "%hhu", val->v_u8);
+		buf = jbuf_append_str(buf, "%hhu", val->v_u8);
 		break;
 	case LDMS_V_U8_ARRAY:
-		cnt = 0;
 		for (i = 0; i < n; i++) {
-			if (i)
-				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
-			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "0x%02hhx", val->a_u8[i]);
+			if (i) {
+				buf = jbuf_append_str(buf, ",");
+				if (!buf)
+					break;
+			}
+			buf = jbuf_append_str(buf, "0x%02hhx", val->a_u8[i]);
 		}
 		break;
 	case LDMS_V_S8:
-		cnt = snprintf(buf, BUF_LEN, "%hhd", val->v_s8);
+		buf = jbuf_append_str(buf, "%hhd", val->v_s8);
 		break;
 	case LDMS_V_S8_ARRAY:
-		cnt = 0;
 		for (i = 0; i < n; i++) {
 			if (i)
-				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
-			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%hhd", val->a_s8[i]);
+				buf = jbuf_append_str(buf, ",");
+			if (!buf)
+				break;
+			buf = jbuf_append_str(buf, "%hhd", val->a_s8[i]);
 		}
 		break;
 	case LDMS_V_U16:
-		cnt = snprintf(buf, BUF_LEN, "%hu", val->v_u16);
+		buf = jbuf_append_str(buf, "%hu", val->v_u16);
 		break;
 	case LDMS_V_U16_ARRAY:
-		cnt = 0;
 		for (i = 0; i < n; i++) {
 			if (i)
-				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
-			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%hu", val->a_u16[i]);
+				buf = jbuf_append_str(buf, ",");
+			if (!buf)
+				break;
+			buf = jbuf_append_str(buf, "%hu", val->a_u16[i]);
 		}
 		break;
 	case LDMS_V_S16:
-		cnt = snprintf(buf, BUF_LEN, "%hd", val->v_s16);
+		buf = jbuf_append_str(buf, "%hd", val->v_s16);
 		break;
 	case LDMS_V_S16_ARRAY:
-		cnt = 0;
 		for (i = 0; i < n; i++) {
 			if (i)
-				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
-			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%hd", val->a_s16[i]);
+				buf = jbuf_append_str(buf, ",");
+			if (!buf)
+				break;
+			buf = jbuf_append_str(buf, "%hd", val->a_s16[i]);
 		}
 		break;
 	case LDMS_V_U32:
-		cnt = snprintf(buf, BUF_LEN, "%u", val->v_u32);
+		buf = jbuf_append_str(buf, "%u", val->v_u32);
 		break;
 	case LDMS_V_U32_ARRAY:
-		cnt = 0;
 		for (i = 0; i < n; i++) {
 			if (i)
-				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
-			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%u", val->a_u32[i]);
+				buf = jbuf_append_str(buf, ",");
+			if (!buf)
+				break;
+			buf = jbuf_append_str(buf, "%u", val->a_u32[i]);
 		}
 		break;
 	case LDMS_V_S32:
-		cnt = snprintf(buf, BUF_LEN, "%d", val->v_s32);
+		buf = jbuf_append_str(buf, "%d", val->v_s32);
 		break;
 	case LDMS_V_S32_ARRAY:
-		cnt = 0;
 		for (i = 0; i < n; i++) {
 			if (i)
-				cnt += snprintf(&buf[cnt], BUF_LEN-cnt, ",");
-			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%d", val->a_s32[i]);
+				buf = jbuf_append_str(buf, ",");
+			if (!buf)
+				break;
+			buf = jbuf_append_str(buf, "%d", val->a_s32[i]);
 		}
 		break;
 	case LDMS_V_U64:
-		cnt = snprintf(buf, BUF_LEN, "%"PRIu64, val->v_u64);
+		buf = jbuf_append_str(buf, "%"PRIu64, val->v_u64);
 		break;
 	case LDMS_V_U64_ARRAY:
-		cnt = 0;
 		for (i = 0; i < n; i++) {
 			if (i)
-				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
-			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%"PRIu64, val->a_u64[i]);
+				buf = jbuf_append_str(buf, ",");
+			if (!buf)
+				break;
+			buf = jbuf_append_str(buf, "%"PRIu64, val->a_u64[i]);
 		}
 		break;
 	case LDMS_V_S64:
-		cnt = snprintf(buf, BUF_LEN, "%"PRId64, val->v_s64);
+		buf = jbuf_append_str(buf, "%"PRId64, val->v_s64);
 		break;
 	case LDMS_V_S64_ARRAY:
-		cnt = 0;
 		for (i = 0; i < n; i++) {
 			if (i)
-				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
-			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%"PRId64, val->a_s64[i]);
+				buf = jbuf_append_str(buf, ",");
+			if (!buf)
+				break;
+			buf = jbuf_append_str(buf, "%"PRId64, val->a_s64[i]);
 		}
 		break;
 	case LDMS_V_F32:
-		cnt = snprintf(buf, BUF_LEN, "%f", val->v_f);
+		buf = jbuf_append_str(buf, "%f", val->v_f);
 		break;
 	case LDMS_V_F32_ARRAY:
-		cnt = 0;
 		for (i = 0; i < n; i++) {
 			if (i)
-				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
-			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%f", val->a_f[i]);
+				buf = jbuf_append_str(buf, ",");
+			if (!buf)
+				break;
+			buf = jbuf_append_str(buf, "%f", val->a_f[i]);
 		}
 		break;
 	case LDMS_V_D64:
-		cnt = snprintf(buf, BUF_LEN, "%f", val->v_d);
+		buf = jbuf_append_str(buf, "%f", val->v_d);
 		break;
 	case LDMS_V_D64_ARRAY:
-		cnt = 0;
 		for (i = 0; i < n; i++) {
 			if (i)
-				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
-			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%f", val->a_d[i]);
+				buf = jbuf_append_str(buf, ",");
+			if (!buf)
+				break;
+			buf = jbuf_append_str(buf, "%f", val->a_d[i]);
 		}
 		break;
 	case LDMS_V_TIMESTAMP:
-		cnt = snprintf(buf, BUF_LEN, "%u.%06u", val->v_ts.sec, val->v_ts.usec);
+		buf = jbuf_append_str(buf, "%u.%06u", val->v_ts.sec, val->v_ts.usec);
 		break;
 	default:
+		jbuf_free(buf);
 		return 0;
 	}
+	if (!buf) {
+		printf("%s:%d: Memory allocation failure.\n", __FILE__, __LINE__);
+		exit(ENOMEM);
+	}
 	if (print)
-		printf("%*s", width, buf);
+		printf("%-*s", width, buf->buf);
+	cnt = buf->cursor;
+	jbuf_free(buf);
 	return cnt;
 }
 
@@ -374,23 +392,28 @@ void rec_col_width(ldms_mval_t rec, size_t card, int *col)
 
 void record_header_format(ldms_mval_t rec, size_t card, int *col)
 {
-	int i;
+	int i, rc;
 	char *unit;
-	char buf[128];
-	size_t len = 128;
+	char *buf;
 
 	for (i = 0; i < card; i++) {
 		if (i)
 			printf(" ");
 		unit = (char*)ldms_record_metric_unit_get(rec, i);
 		if (unit && strlen(unit)) {
-			snprintf(buf, len, "%s (%s)",
+
+			rc = asprintf(&buf, "%s (%s)",
 				ldms_record_metric_name_get(rec, i), unit);
 		} else {
-			snprintf(buf, len, "%s",
+			rc = asprintf(&buf, "%s",
 				ldms_record_metric_name_get(rec, i));
 		}
-		printf("%*s", col[i], buf);
+		if (rc < 0) {
+			printf("%s:%d:Memory allocation failure.\n", __FILE__, __LINE__);
+			exit(ENOMEM);
+		}
+		printf("%-*s", col[i], buf);
+		free(buf);
 	}
 }
 
@@ -416,7 +439,7 @@ void list_record_format(ldms_set_t s, ldms_mval_t lh)
 	size_t count;
 	enum ldms_value_type prev_ltype, ltype;
 	int rec_type_id, prev_rec_type_id;
-	int *cw;
+	int *cw = NULL;
 	int card;
 	prev_rec_type_id = -1;
 	int i;
@@ -425,7 +448,10 @@ void list_record_format(ldms_set_t s, ldms_mval_t lh)
 	if (card < 0)
 		return;
 	cw = calloc(card, sizeof(int));
-
+	if (!cw) {
+		printf("%s:%d: Memory allocation failure.\n", __FILE__, __LINE__);
+		exit(ENOMEM);
+	}
 	/* Determine the column widths */
 	for (lval = ldms_list_first(s, lh, &ltype, &count), i = 0; lval;
 			lval = ldms_list_next(s, lval, &ltype, &count), i++) {
@@ -459,6 +485,7 @@ void list_record_format(ldms_set_t s, ldms_mval_t lh)
 		printf("  ");
 		record_format(lval, card, cw);
 	}
+	free(cw);
 }
 
 void record_array_format(ldms_set_t s, ldms_mval_t rh)
@@ -623,6 +650,7 @@ void value_format(ldms_set_t s, enum ldms_value_type type, ldms_mval_t val, size
 		break;
 	case LDMS_V_LIST:
 		prev_type = 0;
+		ltype = LDMS_V_NONE;
 		lval = ldms_list_first(s, val, &ltype, &count);
 		if (LDMS_V_RECORD_INST == ltype) {
 			printf("\n");
@@ -1542,17 +1570,6 @@ void ldms_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		assert(0 == "Unknown event.");
 		break;
 	}
-}
-
-const char *repeat(char c, size_t count)
-{
-	int i;
-	static char buf[1024];
-	count = count >= 1024 ? 1023 : count;
-	for (i = 0; i < count; i++)
-		buf[i] = c;
-	buf[i] = '\0';
-	return buf;
 }
 
 int main(int argc, char *argv[])
