@@ -76,7 +76,8 @@ struct json_entity_s {
 		struct json_attr_s {
 			json_entity_t value;
 			struct rbn attr_rbn;
-			char name[JSON_ATTR_NAME_MAX+1];
+			char *name;
+			char name_[JSON_ATTR_NAME_MAX+1];
 		} attr_;
 	} value;
 };
