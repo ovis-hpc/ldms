@@ -9794,6 +9794,7 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_strgp_t strgp;
 	int reset = 0;
 	json_entity_t strgp_dict;
+	jbuf_t jbuf = NULL;
 
 	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
 	if (reset_s) {
@@ -9844,7 +9845,7 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 	}
 
-	jbuf_t jbuf = json_entity_dump(NULL, strgp_dict);
+	jbuf = json_entity_dump(NULL, strgp_dict);
 	ldmsd_send_req_response(reqc, jbuf->buf);
 	goto out;
 err:
