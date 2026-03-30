@@ -167,6 +167,7 @@ def check_plugin_config(plugn, plugin_spec):
 
 def dist_list(list_, n):
     q, r = divmod(len(list_), n)
+    list_ = hostlist.numerically_sorted(list_)
     dist_list = []
     idx = 0
     for i in range(1, n + 1):
