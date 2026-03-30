@@ -3460,6 +3460,50 @@ class LdmsdCmdParser(Cmd.Cmd):
             obj = json.loads(msg)
             print(json.dumps(obj, indent=1))
 
+    def do_smplrp_add(self, arg):
+        """
+        Add a new Sampler Policy
+        """
+        arg = self.handle_args('smplrp_add', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.smplrp_add(**arg)
+        if rc:
+            print(f"smplrp_add error: {msg}")
+
+    def do_smplrp_start(self, arg):
+        """
+        Start the Sampler Policy
+        """
+        arg = self.handle_args('smplrp_start', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.smplrp_start(**arg)
+        if rc:
+            print(f"smplrp_start error: {msg}")
+
+    def do_smplrp_stop(self, arg):
+        """
+        Stop the Sampler Policy
+        """
+        arg = self.handle_args('smplrp_stop', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.smplrp_stop(**arg)
+        if rc:
+            print(f"smplrp_stop error: {msg}")
+
+    def do_smplrp_del(self, arg):
+        """
+        Delete the Sampler Policy
+        """
+        arg = self.handle_args('smplrp_del', arg)
+        if arg is None:
+            return
+        rc, msg = self.comm.smplrp_del(**arg)
+        if rc:
+            print(f"smplrp_del error: {msg}")
+
     def parseline(self, line):
         """Parse the line into a command name and a string containing
         the arguments.  Returns a tuple containing (command, args, line).

@@ -152,6 +152,10 @@ struct req_str_id req_str_id_table[] = {
 	{  "stream_disable",     LDMSD_STREAM_DISABLE_REQ  },
 	{  "stream_enable",      LDMSD_STREAM_ENABLE_REQ  },
 	{  "stream_status",      LDMSD_STREAM_STATUS_REQ  },
+	{  "smplrp_add",         LDMSD_SMPLRP_ADD_REQ  },
+	{  "smplrp_del",         LDMSD_SMPLRP_DEL_REQ  },
+	{  "smplrp_start",       LDMSD_SMPLRP_START_REQ  },
+	{  "smplrp_stop",        LDMSD_SMPLRP_STOP_REQ  },
 	{  "strgp_add",          LDMSD_STRGP_ADD_REQ  },
 	{  "strgp_del",          LDMSD_STRGP_DEL_REQ  },
 	{  "strgp_metric_add",   LDMSD_STRGP_METRIC_ADD_REQ  },
@@ -441,6 +445,11 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_NOTSUPPORT_REQ:      return "LDMSD_NOTSUPPORT_REQ";
 	case LDMSD_SET_ROUTE_REQ:       return "LDMSD_SET_ROUTE_REQ";
 	case LDMSD_CFG_CNTR_REQ:	return "cfg_cntr";
+
+	case LDMSD_SMPLRP_ADD_REQ: return "LDMSD_SMPLR_ADD_REQ";
+	case LDMSD_SMPLRP_DEL_REQ: return "LDMSD_SMPLR_DEL_REQ";
+	case LDMSD_SMPLRP_START_REQ: return "LDMSD_SMPLR_START_REQ";
+	case LDMSD_SMPLRP_STOP_REQ: return "LDMSD_SMPLR_STOP_REQ";
 	}
 	return "UNKNOWN_REQ";
 }
