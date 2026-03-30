@@ -76,6 +76,10 @@
 #include "ldmsd_request.h"
 #include "ldmsd_stream.h"
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 /*
  * This file implements an LDMSD control protocol. The protocol is
@@ -344,6 +348,12 @@ static int qgroup_member_del_handler(ldmsd_req_ctxt_t reqc);
 static int qgroup_start_handler(ldmsd_req_ctxt_t reqc);
 static int qgroup_stop_handler(ldmsd_req_ctxt_t reqc);
 static int qgroup_info_handler(ldmsd_req_ctxt_t reqc);
+
+/* smplrp - Sampler Policy */
+static int smplrp_add_handler(ldmsd_req_ctxt_t reqc);
+static int smplrp_del_handler(ldmsd_req_ctxt_t reqc);
+static int smplrp_start_handler(ldmsd_req_ctxt_t reqc);
+static int smplrp_stop_handler(ldmsd_req_ctxt_t reqc);
 
 /* executable for all */
 #define XALL 0111
@@ -800,6 +810,20 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_QGROUP_INFO_REQ] = {
 		LDMSD_QGROUP_INFO_REQ, qgroup_info_handler, XUG
+	},
+
+	/* smplrp - Sampler Policy */
+	[LDMSD_SMPLRP_ADD_REQ] = {
+		LDMSD_SMPLRP_ADD_REQ, smplrp_add_handler, XUG
+	},
+	[LDMSD_SMPLRP_DEL_REQ] = {
+		LDMSD_SMPLRP_DEL_REQ, smplrp_del_handler, XUG
+	},
+	[LDMSD_SMPLRP_START_REQ] = {
+		LDMSD_SMPLRP_START_REQ, smplrp_start_handler, XUG
+	},
+	[LDMSD_SMPLRP_STOP_REQ] = {
+		LDMSD_SMPLRP_STOP_REQ, smplrp_stop_handler, XUG
 	},
 };
 
@@ -11788,5 +11812,177 @@ static int qgroup_info_handler(ldmsd_req_ctxt_t reqc)
 	} else {
 		ldmsd_send_req_response(reqc, reqc->line_buf);
 	}
+	return rc;
+}
+
+static int smplrp_add_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = ENOSYS;
+	const char *name;
+	const char *path;
+	const char *json;
+	void *p;
+	char *buf = NULL;
+	int fd = -1;
+	ssize_t off, len, rd_len;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_add error: Missing 'name' parameter.\n");
+		goto out;
+	}
+	path = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PATH);
+	json = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_JSON);
+	if (!path && !json) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_add error: Missing 'path' parameter.\n");
+		goto out;
+	}
+
+	if (path && json) {
+		ovis_log(config_log, OVIS_LWARNING,
+			 "smplrp_add received both json object and 'path'. "
+			 "The 'path' takes predence, json object is ignored.");
+	}
+
+	if (json)
+		goto smplrp_new;
+
+	fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_add error %d when open file %s\n", errno, path);
+		goto out;
+	}
+
+	len = lseek(fd, 0, SEEK_END);
+	off = lseek(fd, 0, SEEK_SET);
+	if (len < 0 || off < 0) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_add: lseek() error: %d\n", errno);
+		goto out;
+	}
+
+	buf = malloc(len);
+	if (!buf) {
+		rc = ENOMEM;
+		linebuf_printf(reqc, "smplrp_add error: Not enough memory\n");
+		goto out;
+	}
+
+	while (off < len) {
+		rd_len = read(fd, buf + off, len - off);
+		if (rd_len < 0) {
+			rc = errno;
+			linebuf_printf(reqc, "smplrp_add: read() error: %d\n", errno);
+			goto out;
+		}
+		if (rd_len == 0) {
+			rc = ENODATA;
+			linebuf_printf(reqc, "smplrp_add: read() ended prematurely\n");
+			goto out;
+		}
+		off += rd_len;
+	}
+	json = buf;
+
+ smplrp_new:
+	p = ldmsd_smplrp_new(name, json);
+	if (!p) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_add, ldmsd_smplrp_new() error: %d\n", errno);
+		goto out;
+	}
+	rc = 0;
+
+ out:
+	if (fd >= 0)
+		close(fd);
+	if (buf)
+		free(buf);
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int smplrp_del_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = ENOSYS;
+	const char *name;
+
+	struct ldmsd_sec_ctxt sctxt;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_del error: Missing 'name' parameter.\n");
+		goto out;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	rc = ldmsd_smplrp_del(name, &sctxt);
+	if (rc) {
+		linebuf_printf(reqc, "smplrp_del error: %d\n", rc);
+	}
+
+ out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int smplrp_start_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = ENOSYS;
+	const char *name;
+
+	struct ldmsd_sec_ctxt sctxt;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_start error: Missing 'name' parameter.\n");
+		goto out;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	rc = ldmsd_smplrp_start(name, &sctxt);
+	if (rc) {
+		linebuf_printf(reqc, "smplrp_start error: %d\n", rc);
+	}
+
+ out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int smplrp_stop_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = ENOSYS;
+	const char *name;
+
+	struct ldmsd_sec_ctxt sctxt;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_stop error: Missing 'name' parameter.\n");
+		goto out;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	rc = ldmsd_smplrp_stop(name, &sctxt);
+	if (rc) {
+		linebuf_printf(reqc, "smplrp_stop error: %d\n", rc);
+	}
+
+ out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
 }

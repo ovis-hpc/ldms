@@ -10,7 +10,9 @@ dist_man8_MANS = ldmsd.man \
 		 ldms_ldmsctl.man
 
 dist_man7_MANS = ldmsd_failover.man \
-		 ldmsd_setgroup.man
+		 ldmsd_setgroup.man \
+		 ldmsd_smplrp.man
+
 CLEANFILES = $(dist_man7_MANS) $(dist_man8_MANS)
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
@@ -57,7 +59,9 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_plug_api.c \
 	ldmsd_plug_api.h \
 	ldmsd_plug_api_internal.h \
-	ldmsd_event_strg.c
+	ldmsd_event_strg.c \
+	ldmsd_smplrp.c
+
 ldmsd_LDADD = ../core/libldms.la libldmsd_request.la libldmsd_stream.la \
 	$(LZAP) $(LMMALLOC) $(LOVIS_UTIL) $(LCOLL) $(LJSON_UTIL) $(LTLIBJANSSON) \
 	$(LOVIS_EVENT) $(LOVIS_EV) -lpthread $(LOVIS_CTRL) -lm -ldl \
@@ -111,4 +115,6 @@ check-local:
 EXTRA_DIST += $(srcdir)/input/test_plugattr.txt
 EXTRA_DIST += $(srcdir)/input/bad_test_plugattr.txt
 
-EXTRA_DIST+=ldmsd_failover.rst ldmsd.rst ldmsd_setgroup.rst ldms_ldmsctl.rst ldms_ls.rst
+EXTRA_DIST+=ldmsd_failover.rst ldmsd.rst ldmsd_setgroup.rst ldms_ldmsctl.rst \
+            ldms_ls.rst \
+	    ldmsd_smplrp.rst

@@ -258,6 +258,12 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'qgroup_start': {'req_attr': [], 'opt_attr': []},
                       'qgroup_stop': {'req_attr': [], 'opt_attr': []},
                       'qgroup_info': {'req_attr': [], 'opt_attr': []},
+
+                      ##### Sampler Policy (smplrp) #####
+                      'smplrp_add':   {'req_attr': ['name', 'path'], 'opt_attr': []},
+                      'smplrp_del':   {'req_attr': ['name'], 'opt_attr': []},
+                      'smplrp_start': {'req_attr': ['name'], 'opt_attr': []},
+                      'smplrp_stop':  {'req_attr': ['name'], 'opt_attr': []},
                       }
 
 def get_cmd_attr_list(cmd_verb):
@@ -699,6 +705,11 @@ class LDMSD_Request(object):
     MSG_DISABLE = MSG_STATS + 2
     MSG_ENABLE = MSG_STATS + 3
 
+    SMPLRP_ADD   = 0xd00
+    SMPLRP_DEL   = SMPLRP_ADD + 1
+    SMPLRP_START = SMPLRP_ADD + 2
+    SMPLRP_STOP  = SMPLRP_ADD + 3
+
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
             'greeting': {'id': GREETING},
@@ -814,6 +825,11 @@ class LDMSD_Request(object):
             'qgroup_start'      : {'id' : QGROUP_START      },
             'qgroup_stop'       : {'id' : QGROUP_STOP       },
             'qgroup_info'       : {'id' : QGROUP_INFO       },
+
+            'smplrp_add'   : { 'id' : SMPLRP_ADD   },
+            'smplrp_del'   : { 'id' : SMPLRP_DEL   },
+            'smplrp_start' : { 'id' : SMPLRP_START },
+            'smplrp_stop'  : { 'id' : SMPLRP_STOP  },
     }
 
     TYPE_CONFIG_CMD = 1
@@ -4223,6 +4239,68 @@ class Communicator(object):
         - data is the daemon's set statistics, or an error msg if status !=0 or None
         """
         return self.__comm_routine(LDMSD_Request.QGROUP_INFO)
+
+    def smplrp_add(self, name:str, path:str):
+        """
+        Add a new Sampler Policy
+
+        Parameters:
+        name - The name of the policy (e.g. 'sp0').
+        path - The path to the policy's JSON config file.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        params = [ (LDMSD_Req_Attr.NAME, name),
+                   (LDMSD_Req_Attr.PATH, path) ]
+        return self.__comm_routine(LDMSD_Request.SMPLRP_ADD, params)
+
+    def smplrp_del(self, name:str):
+        """
+        Delete the Sampler Policy
+
+        Parameters:
+        name - The name of the policy (e.g. 'sp0').
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        params = [ (LDMSD_Req_Attr.NAME, name) ]
+        return self.__comm_routine(LDMSD_Request.SMPLRP_DEL, params)
+
+    def smplrp_start(self, name:str):
+        """
+        Start the Sampler Policy
+
+        Parameters:
+        name - The name of the policy (e.g. 'sp0').
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        params = [ (LDMSD_Req_Attr.NAME, name) ]
+        return self.__comm_routine(LDMSD_Request.SMPLRP_START, params)
+
+    def smplrp_stop(self, name:str):
+        """
+        Stop the Sampler Policy
+
+        Parameters:
+        name - The name of the policy (e.g. 'sp0').
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is the daemon's set statistics, or an error msg if status !=0 or None
+        """
+        params = [ (LDMSD_Req_Attr.NAME, name) ]
+        return self.__comm_routine(LDMSD_Request.SMPLRP_STOP, params)
 
     def close(self):
         self.state = self.CLOSED
