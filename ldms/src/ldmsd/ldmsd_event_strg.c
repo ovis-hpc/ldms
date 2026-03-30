@@ -112,8 +112,8 @@ extern ovis_log_t store_log;
  */
 struct store_event_ctxt {
 	ldms_set_t snapshot; /* Set Snapshot */
-	ldmsd_strgp_t strgp;
-	ldmsd_prdcr_set_t prd_set;
+	ldmsd_strgp_t strgp; /* TODO: Remove this */
+	ldmsd_strgp_ref_t strgp_ref;
 	ldmsd_row_list_t row_list;
 	int row_count;
 	struct timespec start_ts;
@@ -145,7 +145,7 @@ struct strg_worker_pool {
 	struct strg_worker *workers;
 } ldmsd_strg_worker_pool;
 
-struct store_event_ctxt *store_event_ctxt_new(ldmsd_strgp_t strgp, ldms_set_t snapshot,
+struct store_event_ctxt *store_event_ctxt_new(ldmsd_strgp_ref_t strgp_ref, ldms_set_t snapshot,
                                               ldmsd_prdcr_set_t prd_set,
                                               ldmsd_row_list_t row_list, int row_count,
                                               struct timespec start)
@@ -162,10 +162,9 @@ struct store_event_ctxt *store_event_ctxt_new(ldmsd_strgp_t strgp, ldms_set_t sn
 	 */
 	ldms_set_snapshot_get(snapshot, "store_event_ctxt_new");
 	ctxt->snapshot = snapshot;
-	ldmsd_prdcr_set_ref_get(prd_set);
-	ctxt->prd_set = prd_set;
-	ctxt->strgp = ldmsd_strgp_get(strgp, "store_event_ctxt_new");
-	if (strgp->decomp) {
+	ctxt->strgp = ldmsd_strgp_get(strgp_ref->strgp, "store_event_ctxt_new"); /* TODO: I need to carefully thing about this. It isn't clear to me that taking strgp reference is correct here. */
+	ctxt->strgp_ref = strgp_ref;
+	if (strgp_ref->strgp->decomp) {
 		ctxt->type = STORE_T_DECOMP;
 		ctxt->row_list = row_list;
 		ctxt->row_count = row_count;
@@ -182,10 +181,9 @@ void store_event_ctxt_free(struct store_event_ctxt *ctxt)
 {
 	ovis_log(store_log, OVIS_LDEBUG, "store_ctxt_delete(%p, %p)\n", ctxt, ctxt->snapshot);
 	if (ctxt->row_list) {
-		ctxt->strgp->decomp->release_rows(ctxt->strgp, ctxt->row_list);
+		ctxt->strgp_ref->strgp->decomp->release_rows(ctxt->strgp_ref->strgp, ctxt->row_list);
 	}
-	ldmsd_strgp_put(ctxt->strgp, "store_event_ctxt_new");
-	ldmsd_prdcr_set_ref_put(ctxt->prd_set);
+	ldmsd_strgp_put(ctxt->strgp_ref->strgp, "store_event_ctxt_new");
 	ldms_set_snapshot_put(ctxt->snapshot, "store_event_ctxt_new");
 	free(ctxt);
 }
@@ -417,12 +415,12 @@ void storage_worker_actor(struct ovis_event_s *ev)
 {
 	int rc;
 	struct store_event_ctxt *event_ctxt = ev->param.ctxt;
-	ldmsd_strgp_t strgp = event_ctxt->strgp;
+	ldmsd_strgp_ref_t strgp_ref = event_ctxt->strgp_ref;
+	ldmsd_strgp_t strgp = strgp_ref->strgp;
 	ldms_set_t set = event_ctxt->snapshot;
-	ldmsd_prdcr_set_t prdset = event_ctxt->prd_set;
 	ldmsd_row_list_t row_list = event_ctxt->row_list;
 	int row_count = event_ctxt->row_count;
-	struct ldmsd_stat *queue_stat = &(prdset->store_stages_stat.queue_stat);
+	struct ldmsd_stat *queue_stat = &(strgp_ref->store_stages_stat.queue_stat);
 
 	clock_gettime(CLOCK_REALTIME, &queue_stat->end); /* start is the end timestamp of the event being queued */
 	ldmsd_stat_update(queue_stat, &event_ctxt->post_ts, &queue_stat->end);
@@ -451,11 +449,11 @@ void storage_worker_actor(struct ovis_event_s *ev)
 	}
 	strg_worker_release(event_ctxt->w);
 
-	clock_gettime(CLOCK_REALTIME, &prdset->store_stat.end);
-	prdset->store_stages_stat.commit_stat.end = prdset->store_stat.end;
-	ldmsd_stat_update(&prdset->store_stages_stat.commit_stat,
-			&queue_stat->end, &prdset->store_stat.end);
-	ldmsd_stat_update(&prdset->store_stat, &event_ctxt->start_ts, &prdset->store_stat.end);
+	clock_gettime(CLOCK_REALTIME, &strgp_ref->store_stat.end);
+	strgp_ref->store_stages_stat.commit_stat.end = strgp_ref->store_stat.end;
+	ldmsd_stat_update(&strgp_ref->store_stages_stat.commit_stat,
+			&queue_stat->end, &strgp_ref->store_stat.end);
+	ldmsd_stat_update(&strgp_ref->store_stat, &event_ctxt->start_ts, &strgp_ref->store_stat.end);
 	store_event_ctxt_free(event_ctxt);
 	free(row_list);
 	free(ev);
@@ -475,7 +473,7 @@ int store_event_post(struct store_event_ctxt *ctxt)
 	int rc;
 	struct ovis_event_s *ev;
 	struct strg_worker *w;
-	ldmsd_prdcr_set_t prdset = ctxt->prd_set;
+	ldmsd_strgp_ref_t strgp_ref = ctxt->strgp_ref;
 	struct timespec wait_start, wait_end;
 
 	ovis_log(store_log, OVIS_LDEBUG, "store_post(%p, %p).\n", ctxt, ctxt->snapshot);
@@ -485,7 +483,7 @@ int store_event_post(struct store_event_ctxt *ctxt)
 	w = strg_worker_acquire();
 	ctxt->w = w;
 	clock_gettime(CLOCK_REALTIME, &wait_end);
-	ldmsd_stat_update(&prdset->store_stages_stat.worker_wait_stat, &wait_start, &wait_end);
+	ldmsd_stat_update(&strgp_ref->store_stages_stat.worker_wait_stat, &wait_start, &wait_end);
 	if (!w) {
 		rc = errno;
 		return rc;
@@ -511,9 +509,9 @@ int store_event_post(struct store_event_ctxt *ctxt)
 	ovis_log(store_log, OVIS_LDEBUG, "Post store_event %p to worker %p\n", ev, w);
 	clock_gettime(CLOCK_REALTIME, &ctxt->post_ts);
 
-	ldmsd_stat_update(&prdset->store_stages_stat.io_thread_stat,
+	ldmsd_stat_update(&strgp_ref->store_stages_stat.io_thread_stat,
 				  &ctxt->start_ts, &ctxt->post_ts);
-	prdset->store_stages_stat.io_thread_stat.end = ctxt->post_ts;
+	strgp_ref->store_stages_stat.io_thread_stat.end = ctxt->post_ts;
 	rc = ovis_scheduler_event_add(w->worker, ev);
 	if (rc) {
 		ovis_log(store_log, OVIS_LERROR, "Failed to post a store event " \

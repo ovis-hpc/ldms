@@ -353,9 +353,30 @@ typedef struct ldmsd_prdcr {
 struct ldmsd_strgp;
 typedef struct ldmsd_strgp *ldmsd_strgp_t;
 
+struct ldmsd_stat {
+	struct timespec start;
+	struct timespec end;
+	double min; /* Min value in micro-second */
+	struct timespec min_ts; /* Timestamp the min value belongs to */
+	double max; /* Min value in micro-second */
+	struct timespec max_ts; /* Timestamp the max value belongs to */
+	double avg; /* Mean in micro-second */
+	int count;
+};
+
+struct store_stages_stats {
+	struct ldmsd_stat io_thread_stat; /* Time spent on Zap IO Thread */
+	struct ldmsd_stat decomp_stat; /* Time spent to decompose the set, spent Zap IO thread time */
+	struct ldmsd_stat worker_wait_stat; /* Time to wait for an available worker, block Zap IO thread */
+	struct ldmsd_stat queue_stat; /* Time in the worker queue */
+	struct ldmsd_stat commit_stat; /* Time spent in writing, sending, committing to storage */
+};
+
 typedef struct ldmsd_strgp_ref {
 	ldmsd_strgp_t strgp;
 	void *decomp_ctxt;
+	struct ldmsd_stat store_stat; /* Statistics of total store duration */
+	struct store_stages_stats store_stages_stat; /* Statistics of store stages */
 	LIST_ENTRY(ldmsd_strgp_ref) entry;
 } *ldmsd_strgp_ref_t;
 
@@ -371,25 +392,6 @@ struct ldmsd_updtr_schedule {
 	long offset_us;
 };
 typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
-
-struct ldmsd_stat {
-	struct timespec start;
-	struct timespec end;
-	double min; /* Min value in micro-second */
-	struct timespec min_ts; /* Timestamp the min value belongs to */
-	double max; /* Min value in micro-second */
-	struct timespec max_ts; /* Timestamp the max value belongs to */
-	double avg; /* Mean in micro-second */
-	int count;
-};
-
-struct prdset_store_stages_stats {
-	struct ldmsd_stat io_thread_stat; /* Time spent on Zap IO Thread */
-	struct ldmsd_stat decomp_stat; /* Time spent to decompose the set, spent Zap IO thread time */
-	struct ldmsd_stat worker_wait_stat; /* Time to wait for an available worker, block Zap IO thread */
-	struct ldmsd_stat queue_stat; /* Time in the worker queue */
-	struct ldmsd_stat commit_stat; /* Time spent in writing, sending, committing to storage */
-};
 
 #define LDMSD_PRDSET_STATS_F_UPD 1
 #define LDMSD_PRDSET_STATS_F_STORE 2
@@ -421,8 +423,6 @@ typedef struct ldmsd_prdcr_set {
 	uint8_t updt_sync;
 
 	struct ldmsd_stat updt_stat;
-	struct ldmsd_stat store_stat; /* Statistics of total store duration */
-	struct prdset_store_stages_stats store_stages_stat; /* Statistics of store stages */
 	int skipped_upd_cnt;
 	int oversampled_cnt;
 	uint64_t zap_thread_id; /* A thread handling the update completion event. */
@@ -662,7 +662,7 @@ int ldmsd_row_cache_make_list(ldmsd_row_list_t row_list, int row_count,
 	ldmsd_row_cache_t cache, ldmsd_row_cache_idx_t group_key);
 
 typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set,
-	                          ldms_set_t set_snapshot, void **ctxt);
+	                          ldms_set_t set_snapshot, void *ctxt);
 typedef struct ldmsd_cfgobj_store *ldmsd_cfgobj_store_t;
 
 struct ldmsd_strgp {
