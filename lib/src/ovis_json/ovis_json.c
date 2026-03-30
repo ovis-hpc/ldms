@@ -820,6 +820,9 @@ static json_entity_t __attr_value_new(json_doc_t doc, int type, va_list *ap)
 {
 	json_entity_t v = NULL;
 	json_entity_t item;
+	char *s;
+	size_t sz;
+
 	switch (type) {
 	case JSON_BOOL_VALUE:
 		v = json_entity_new(doc, type, va_arg(*ap, int32_t));
@@ -831,8 +834,9 @@ static json_entity_t __attr_value_new(json_doc_t doc, int type, va_list *ap)
 		v = json_entity_new(doc, type, va_arg(*ap, int64_t));
 		break;
 	case JSON_STRING_VALUE:
-		v = json_entity_new(doc, type,
-				    va_arg(*ap, char *), va_arg(*ap, size_t));
+		s = va_arg(*ap, char *);
+		sz = va_arg(*ap, size_t);
+		v = json_entity_new(doc, type, s, sz);
 		break;
 	case JSON_DICT_VALUE:
 		v = __dict_new(doc, ap);
