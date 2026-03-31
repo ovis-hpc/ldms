@@ -245,8 +245,6 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms
 	return;
 
 free:
-	if (set_snapshot)
-		ldms_set_snapshot_delete(set_snapshot);
 	free(row_list);
 	clock_gettime(CLOCK_REALTIME, &end);
 	strgp_ref->store_stat.end = end;
