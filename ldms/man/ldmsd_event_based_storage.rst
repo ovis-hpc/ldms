@@ -40,11 +40,11 @@ Syntax:
 
 ::
 
-        storage_threads num=<NUM>
+        storage_threads count=<COUNT>
 
 Parameters:
 
-   num=NUM
+   count=COUNT
       Number of dedicated storage worker threads. Must be a positive integer.
       Default: 1
 
@@ -56,7 +56,7 @@ Example:
 
 ::
 
-        storage_threads num=4
+        storage_threads count=4
 
 Setting four storage threads allows up to four storage operations to proceed in
 parallel
@@ -65,18 +65,18 @@ parallel
 Storage Queue Depth
 -------------------
 
-The **storage_queue_depth** command sets the maximum number of events that can
+The **storage_queue** command sets the maximum number of events that can
 be queued on a single storage worker thread.
 
 Syntax:
 
 ::
 
-        storage_queue_depth num=<MAX_DEPTH>
+        storage_queue depth=<MAX_DEPTH>
 
 Parameters:
 
-   num=MAX_DEPTH
+   depth=MAX_DEPTH
       Maximum queue depth per worker thread. Use -1 for unlimited queue depth.
       Default: -1 (unlimited)
 
@@ -93,14 +93,14 @@ Example:
 
 ::
 
-        storage_queue_depth num=1000
+        storage_queue depth=1000
 
 This limits each worker to a maximum of 1000 queued events.
 
 Configuration Ordering
 ^^^^^^^^^^^^^^^^^^^^^^
 
-Both **storage_threads** and **storage_queue_depth** are initialization
+Both **storage_threads** and **storage_queue** are initialization
 commands and are processed early in the configuration sequence, before
 operational commands like **strgp_add** or **updtr_add**.
 
