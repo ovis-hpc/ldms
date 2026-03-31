@@ -26,8 +26,8 @@ set values.
 ENVIRONMENT
 ===========
 
-The following environment variables must be set:
-------------------------------------------------
+The following environment variables are only needed for a **developer build**; they are not required for a system-installed LDMS.
+---------------------------------------------------------------------------------------------------------------------------------
 
 LD_LIBRARY_PATH
    include the path to ovis/lib and libevent2. On some system, lib64
