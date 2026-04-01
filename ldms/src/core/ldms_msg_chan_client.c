@@ -11,7 +11,7 @@ static char *verbose_s;
 
 void usage(int argc, char *argv[])
 {
-	printf("usage: ldms_msg_chan_publish "
+	printf("usage: ldms_msg_chan_client "
 	       "[-h REM_HOST] -p REM_PORT "
 	       "[-f PATH] "
 	       "[-H LCL_HOST] -L LCL_PORT "
@@ -33,8 +33,6 @@ void usage(int argc, char *argv[])
 	printf("    -a AUTH_NAME    The authentication plugin name (default is \"none\").\n");
 	printf("    -A AUTH_OPTS    An optional comma separated list of authencation\n");
 	printf("                        plugin otions\n");
-	printf("    -A AUTH_OPTS    An optional comma separated list of authencation\n");
-	printf("                    plugin otions\n");
 	printf("    -P PERM         The permission bits in the message header to\n");
 	printf("                        authorize remote peers. (default is 0660)\n");
 	printf("    -t MSG_TYPE     The published message type. One of \"json\",\n");
