@@ -15,15 +15,15 @@ List directory contents with UTC timestamp suffix translation
 SYNOPSIS
 ========
 
-**lsdate** [*OPTION*]... [*FILE*]...
+**lsdate** [*LSOPTION*]... [*FILE*]...
 
 DESCRIPTION
 ===========
 
-Execute :ref:`ls(1) <ldms_ls>` and apply an output filter to reveal the calendar date of
-timestamp suffixed files, such as produced by LDMS CVS stores.
+Execute :ref:`ls(1)` and apply an output filter to reveal the calendar date of
+timestamp prefix, infix, or suffixed files, such as produced by LDMS stores.
 Timestamps are assumed to be seconds since the epoch. Fractional seconds
-are not supported.
+are ignored in computing the date.
 
 SEE ALSO
 ========
@@ -34,3 +34,9 @@ NOTES
 =====
 
 The output of lsdate -s and the output of lsdate -l may be surprising.
+
+If more than one epoch timestamp appears in the file name, only the first
+one is converted and appended in the output.
+
+Dates after year 2285 are not supported, as these contain 11 or more
+digits instead of 10.
