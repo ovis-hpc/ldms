@@ -480,7 +480,104 @@ Python subscribe examples
  x.close()
 
 
+
+THREADING
+=========
+
+This section describes the threading model of the LDMS Message Bus API and what
+is safe to call from each context.
+
+Thread Safety of the API
+------------------------
+
+``ldms_msg_subscribe()``, ``ldms_msg_client_close()``, and
+``ldms_msg_publish()`` are all thread-safe. They use internal locks
+(``__msg_rwlock`` and per-tag rwlocks) that are independent of any application
+or ldmsd thread. No caller-held lock is acquired by these functions.
+
+Callback Invocation Thread
+--------------------------
+
+The thread that invokes ``cb_fn()`` depends on the origin of the message:
+
+- For messages published within the same process (``ldms_msg_publish()`` with
+  ``x=NULL``), the callback is invoked by whichever thread called
+  ``ldms_msg_publish()`` — inline, before ``ldms_msg_publish()`` returns.
+- For messages arriving from a remote peer, the callback is invoked by the IO
+  thread handling the incoming transport data.
+
+No LDMS Message Bus locks are held when ``cb_fn()`` is invoked. This means all
+``ldms_msg_*`` functions are safe to call from within the callback.
+
+What Is Safe to Call from the Callback
+---------------------------------------
+
+Because no Message Bus locks are held during callback invocation, the following
+are safe to call from within ``cb_fn()``:
+
+- ``ldms_msg_publish()`` — to forward or re-publish a message
+- ``ldms_msg_subscribe()`` — to register a new subscription
+- ``ldms_msg_client_close()`` — to close the current or another subscription
+
+**Lock discipline when publishing from the callback:**
+``ldms_msg_publish(NULL, ...)`` invokes subscriber callbacks inline before
+returning. If the caller holds an application-level lock when calling
+``ldms_msg_publish()`` from within a callback, and any subscriber of the
+published tag also tries to acquire the same lock, a deadlock results. Avoid
+holding application-level locks across a ``ldms_msg_publish()`` call inside a
+callback.
+
+Subscription Teardown and the CLIENT_CLOSE Event
+-------------------------------------------------
+
+``ldms_msg_client_close()`` begins teardown but returns before it is complete.
+After it returns:
+
+- No new ``LDMS_MSG_EVENT_RECV`` callbacks will be dispatched for this client.
+- The ``LDMS_MSG_EVENT_CLIENT_CLOSE`` event will be delivered asynchronously by
+  an internal thread (``ldms_strm_cls``). The application must not free resources
+  used by the callback until this event arrives.
+- The client handle must not be used after ``ldms_msg_client_close()`` is called.
+
+``LDMS_MSG_EVENT_CLIENT_CLOSE`` is the last event guaranteed to be delivered to
+the client. It is safe to free all resources associated with the subscription at
+this point.
+
+A typical teardown pattern using a condition variable:
+
+.. code:: c
+
+   static int cb_fn(ldms_msg_event_t ev, void *cb_arg)
+   {
+       struct my_ctxt_s *ctxt = cb_arg;
+       switch (ev->type) {
+       case LDMS_MSG_EVENT_RECV:
+           /* process message */
+           break;
+       case LDMS_MSG_EVENT_CLIENT_CLOSE:
+           pthread_mutex_lock(&ctxt->lock);
+           ctxt->client = NULL;
+           pthread_cond_signal(&ctxt->close_cond);
+           pthread_mutex_unlock(&ctxt->lock);
+           /* Free resources associated with this subscription here */
+           break;
+       }
+       return 0;
+   }
+
+   static void close_client(struct my_ctxt_s *ctxt)
+   {
+       if (!ctxt->client)
+           return;
+       ldms_msg_client_close(ctxt->client);
+       pthread_mutex_lock(&ctxt->lock);
+       while (ctxt->client != NULL)
+           pthread_cond_wait(&ctxt->close_cond, &ctxt->lock);
+       pthread_mutex_unlock(&ctxt->lock);
+       /* Safe: no more callbacks will be invoked */
+   }
+
 SEE ALSO
 ========
 
-**ldmsd_controller**\ (8)
+**ldmsd_controller**\ (8) **ldms_msg_chan**\ (7)
