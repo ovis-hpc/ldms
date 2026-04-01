@@ -1,21 +1,10 @@
 #!/bin/bash
-# show trailing utc sec with readable dates.
-# files without trailing 10 digit seconds are listed plain.
+# show embeeded  utc sec with readable date after.
 # allows usual ls options, but may annoy a bit with ls -l.
+# awk notes:
+    # Regex: Look for first 10 digits that are either at the start/end
+    # of the string or separated by non-digit characters.
+# append date formatted to line, separated by a tab
 
-raw=`mktemp`
-/usr/bin/ls -1 $*  > $raw
-if test -f $raw; then
-        while read -r f; do
-                g=`echo $f | sed -e 's/.[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$//'`
-                if test "x$g" = "x$f"; then
-                        echo $f
-                else
-			epoch=`echo $f | sed -e 's/.*\([0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$\)/\1/'`
-                        cdate=`date +%F:%H-%M-%S:%z --date=@$epoch`
-			echo "$f  ($g.$cdate)"
-                fi
-        done < $raw
-	/usr/bin/rm $raw
-fi
-
+/usr/bin/ls -1 $* | \
+awk '{ regex = "(^|[^0-9])([0-9]{10})($|[^0-9])"; if (match($0, regex, groups)) { iso_date = strftime("\t%Y-%m-%d:%H:%M:%S:%z", groups[2]); all = $0; $0 = all iso_date;};print $0;}'
