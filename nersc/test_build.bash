@@ -52,6 +52,8 @@ echo "[>>] Get in source dir"
 pushd /builds/nersc/csg/ovis/
 #rpm -i datacenter-gpu-manager-2.2.3-1-x86_64.rpm 
 set -xe
+echo "[>>] Hack cxi_prov_hw.h for HPE Case: 5402129743"
+./nersc/fix_headers.cxi_prov_hw.hpe_case_5402129743.bash
 echo "[>>] Patch: Add DCGM_PUBLIC_API"
 echo "#define DCGM_PUBLIC_API" >> "/usr/include/datacenter-gpu-manager-4/dcgm_api_export.h" #"/usr/include/dcgm_api_export.h"
 echo "[--] Build ldms"
