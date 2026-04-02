@@ -22,4 +22,5 @@ CFLAGS="-g -O" \
  --enable-swig \
  --enable-sysclassib \
  --enable-tsampler \
- --enable-cxi_sampler
+ --enable-cxi_sampler \
+ --enable-slingshot

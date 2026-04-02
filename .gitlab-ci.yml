@@ -17,6 +17,8 @@ build:
     - pwd
     - ls -laF
     - nersc/clean.bash
+    - echo "[>>] Hack cxi_prov_hw.h Header"
+    - nersc/fix_headers.cxi_prov_hw.hpe_case_5402129743.bash
     - echo "[>>] Hack DCGM Header"
     - echo "#define DCGM_PUBLIC_API" >> "/usr/include/datacenter-gpu-manager-4/dcgm_api_export.h"
     - echo "[>>] Remove .version"
