@@ -213,6 +213,7 @@ struct req_str_id attr_str_id_table[] = {
 	{  "ip",                LDMSD_ATTR_IP  },
 	{  "level",             LDMSD_ATTR_LEVEL  },
 	{  "match",             LDMSD_ATTR_MATCH  },
+	{  "message_channel",   LDMSD_ATTR_MSG_TAG  },
 	{  "message_tag",       LDMSD_ATTR_MSG_TAG  },
 	{  "metric",            LDMSD_ATTR_METRIC  },
 	{  "mode",              LDMSD_ATTR_LEVEL  },
