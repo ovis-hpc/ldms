@@ -114,7 +114,10 @@ typedef struct store_sos_s {
 	ovis_log_t log;
 	LIST_HEAD(sos_inst_list, sos_instance) inst_list;
 	char root_path[PATH_MAX]; /**< store root path */
-	time_t timeout;		  /* Default is forever */
+	time_t timeout;		/* Default is forever */
+	int mode;		/* mode mask for files in the container */
+	sos_perm_t backend;	/* backend storage strategy (MMAP | LSOS) */
+
 } *store_sos_t;
 
 /*
@@ -126,22 +129,22 @@ struct sos_instance {
 	char *container;
 	char *schema_name;
 	char *path; /**< <root_path>/<container> */
+	int mode;	/* mode mask for files in the container */
+	sos_perm_t backend;	/* backend storage strategy (MMAP | LSOS) */
 	sos_handle_t sos_handle; /**< sos handle */
 	sos_schema_t sos_schema;
-	int store_flags;
 	enum store_sos_mode {
 		STORE_SOS_M_NOT_SUPPORTED = -1,
 		STORE_SOS_M_BASIC = 0,
 		STORE_SOS_M_LISTS,
 		STORE_SOS_M_LAST
-	} mode;
+	} decomp_mode;
 	union {
 		struct sos_single_list_records slist;
 		struct sos_lists_of_records lrec;
 		struct sos_list_ctxt lists;
 	} ctxt;
 	pthread_mutex_t lock; /**< lock at metric store level */
-
 	int job_id_idx;
 	int comp_id_idx;
 	sos_attr_t ts_attr;
@@ -417,66 +420,6 @@ static sos_handle_t __create_handle(const char *path, sos_t sos)
 	return h;
 }
 
-/* caller must hold cfg_lock */
-static sos_handle_t __create_container(struct sos_instance *si)
-{
-	int rc = 0;
-	sos_t sos;
-	time_t t;
-	char part_name[16];	/* Unix timestamp as string */
-	sos_part_t part;
-	sos_handle_t h;
-	const char *path = si->path;
-
-	rc = sos_container_new(path, 0660);
-	if (rc) {
-		LOG_(si, OVIS_LERROR, "Error %d creating the container at '%s'\n",
-		       rc, path);
-		goto err_0;
-	}
-	sos = sos_container_open(path, SOS_PERM_RW);
-	if (!sos) {
-		LOG_(si, OVIS_LERROR, "Error %d opening the container at '%s'\n",
-		       errno, path);
-		goto err_0;
-	}
-	/*
-	 * Create the first partition. All other partitions and
-	 * rollover are handled with the SOS partition commands
-	 */
-	t = time(NULL);
-	sprintf(part_name, "%d", (unsigned int)t);
-	rc = sos_part_create(sos, part_name, path);
-	if (rc) {
-		LOG_(si, OVIS_LERROR, "Error %d creating the partition '%s' in '%s'\n",
-		       rc, part_name, path);
-		goto err_1;
-	}
-	part = sos_part_find(sos, part_name);
-	if (!part) {
-		LOG_(si, OVIS_LERROR, "Newly created partition was not found\n");
-		goto err_1;
-	}
-	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
-	if (rc) {
-		LOG_(si, OVIS_LERROR, "New partition could not be made primary\n");
-		goto err_2;
-	}
-	sos_part_put(part);
-	h = __create_handle(path, sos);
-	if (!h)
-		goto err_1;
-	return h;
- err_2:
-	sos_part_put(part);
- err_1:
-	sos_container_close(sos, SOS_COMMIT_ASYNC);
- err_0:
-	if (rc)
-		errno = rc;
-	return NULL;
-}
-
 static void close_container(sos_handle_t h)
 {
 	assert(h->ref_count == 0);
@@ -519,27 +462,85 @@ static sos_handle_t __find_container(const char *path)
 static sos_handle_t get_container(struct sos_instance *si)
 {
 	sos_handle_t h = NULL;
-	const char *path = si->path;
 	sos_t sos;
+	sos_part_t part;
+	sos_part_iter_t iter = NULL;
+	time_t t;
+	int rc;
+	char part_name[32];	/* Unix timestamp as string */
+	const char *path = si->path;
 
 	pthread_mutex_lock(&cfg_lock);
 	h = __find_container(path);
 	if (h)
-		goto out;
-	/* See if the container exists, but has not been opened yet. */
-	sos = sos_container_open(path, SOS_PERM_RW);
-	if (sos) {
-		/* Create a new handle and add it for this SOS */
-		h = __create_handle(path, sos);
-		if (!h) {
-			sos_container_close(sos, SOS_COMMIT_ASYNC);
-			errno = ENOMEM;
-		}
-		goto out;
+		goto err_0;
+	/* Open/create the container */
+	sos = sos_container_open(path,
+		SOS_PERM_CREAT | SOS_PERM_RW | si->backend,
+		si->mode);
+	if (!sos) {
+		LOG_(si, OVIS_LERROR,
+			"Error %d opening the container at '%s'\n",
+			errno, path);
+		goto err_0;
 	}
-	/* the container does not exist, must create it */
-	h = __create_container(si);
- out:
+	/* Make certain the primary partion exists and is a timestamp */
+	iter = sos_part_iter_new(sos);
+	if (!iter) {
+		LOG_(si, OVIS_LERROR,
+			"Error %d creating partition iterator for container at '%s'\n",
+			errno, path);
+		goto err_0;
+	}
+	for (part = sos_part_first(iter); part; part = sos_part_next(iter)) {
+		/* Skip non-primary partitions*/
+		sos_part_state_t state = sos_part_state(part);
+		if (state != SOS_PART_STATE_PRIMARY)
+			continue;
+
+		const char *name = sos_part_name(part);
+		/* If the primary is the 'default' partition, create another
+		 * one with a 'timestamp' like name. */
+		if (0 != strcmp(name, "default"))
+			break;
+	}
+	if (part)
+		goto out;
+	/*
+	 * Create the first partition. All other partitions and
+	 * rollover are handled with the SOS partition commands
+	 */
+	t = time(NULL);
+	sprintf(part_name, "%u", (unsigned int)t);
+	rc = sos_part_create(sos, part_name, path);
+	if (rc) {
+		LOG_(si, OVIS_LERROR,
+			"Error %d creating the partition '%s' in '%s'\n",
+			rc, part_name, path);
+		goto err_0;
+	}
+	part = sos_part_find(sos, part_name);
+	if (!part) {
+		LOG_(si, OVIS_LERROR,
+			"Newly created partition was not found\n");
+		goto err_0;
+	}
+	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
+	if (rc) {
+		LOG_(si, OVIS_LERROR,
+			"New partition could not be made primary\n");
+		goto err_0;
+	}
+out:
+	h = __create_handle(path, sos);
+	if (!h) {
+		LOG_(si, OVIS_LERROR,
+			"Memory allocation failure for path '%s'.\n",
+			path);
+	}
+	sos_part_put(part);
+	sos_part_iter_free(iter);
+err_0:
 	pthread_mutex_unlock(&cfg_lock);
 	return h;
 }
@@ -555,6 +556,8 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	int len;
 	char *value;
 
+	pthread_mutex_lock(&ss->cfg_lock);
+
 	value = av_value(avl, "timeout");
 	if (value)
 		ss->timeout = strtol(value, NULL, 0);
@@ -564,12 +567,10 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		LOG_(ss, OVIS_LERROR,
 		     "%s[%d]: The 'path' configuration option is required.\n",
 		     __func__, __LINE__);
-		return EINVAL;
-	}
-	pthread_mutex_lock(&ss->cfg_lock);
-	if (0 == strcmp(value, ss->root_path))
-		/* Ignore the call if the root_path is unchanged */
+		rc = EINVAL;
 		goto out;
+	}
+
 	len = strlen(value);
 	if (len >= PATH_MAX) {
 		LOG_(ss, OVIS_LERROR,
@@ -578,10 +579,40 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		rc = ENAMETOOLONG;
 		goto out;
 	}
-	strcpy(ss->root_path, value);
+	strcpy(ss->root_path, strdup(value));
+
+	value = av_value(avl, "mode");
+	if (value) {
+		ss->mode = strtol(value, NULL, 0);
+		if (!ss->mode || ss->mode < 0 || ss->mode > 0777) {
+			LOG_(ss, OVIS_LERROR,
+			     "%s[%d]: Invalid permissions '%s'. Must be an octal value between 0600 and 777.\n",
+			     __func__, __LINE__, value);
+			rc = EINVAL;
+			goto out;
+		}
+	} else {
+		ss->mode = 0660;
+	}
+	value = av_value(avl, "backend");
+	if (value) {
+		if (0 == strcasecmp(value, "mmos")) {
+			ss->backend = SOS_BE_MMOS;
+		} else if (0 == strcasecmp(value, "lsos")) {
+			ss->backend = SOS_BE_LSOS;
+		} else {
+			LOG_(ss, OVIS_LERROR,
+			     "%s[%d]: Invalid backend '%s'. Valid values are 'mmos' and 'lsos'.\n",
+			     __func__, __LINE__, value);
+			rc = EINVAL;
+			goto out;
+		}
+	} else {
+		ss->backend = SOS_BE_MMOS;
+	}
 
 	/* Run through all open containers and close them. They will
-	 * get re-opened when store() is next called
+	 * get re-opened when store()/commit() is next called.
 	 */
 	rc = ENOMEM;
 	LIST_FOREACH(si, &ss->inst_list, entry) {
@@ -636,6 +667,8 @@ open_store(ldmsd_plug_handle_t handle, const char *container, const char *schema
 		goto out;
 	si->log = ss->log;
 	rbt_init(&si->schema_rbt, row_schema_rbn_cmp);
+	si->mode = ss->mode;
+	si->backend = ss->backend;
 	si->container = strdup(container);
 	if (!si->container)
 		goto err1;
@@ -915,7 +948,7 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 	if (rc)
 		return rc;
 
-	/* Check if the container is already open */
+	/* Open/create the container */
 	si->sos_handle = get_container(si);
 	if (!si->sos_handle)
 		return errno;
@@ -1246,7 +1279,7 @@ __store_lists(struct sos_instance *si, ldms_set_t set,
 		goto err;
 	}
 	/*
-	 * store_sos doesn't store the data if one of the list is empty.
+	 * store_sos doesn't store the data if one of the lists is empty.
 	 */
 	for (i = 0; i < si->ctxt.lists.num_lists; i++) {
 		mid = si->ctxt.lists.list[i].list_mid;
@@ -1502,7 +1535,10 @@ static int init_store_instance(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp)
 		rc = errno;
 		goto err_0;
 	}
+	si->log = ss->log;
 	rbt_init(&si->schema_rbt, row_schema_rbn_cmp);
+	si->mode = ss->mode;
+	si->backend = ss->backend;
 	len = asprintf(&si->path, "%s/%s", ss->root_path, strgp->container);
 	if (len < 0) {
 		rc = errno;
@@ -1662,7 +1698,7 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp,
 	sos_attr_t sos_attr;
 	int i, esz, array_len, count;
 
-	if (!strgp->store_handle) {
+	if (!strgp->store_handle) { /* protected by strgp->lock */
 		rc = init_store_instance(handle, strgp);
 		if (rc)
 			goto out;
