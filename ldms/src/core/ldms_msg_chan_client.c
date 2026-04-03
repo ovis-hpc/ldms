@@ -5,7 +5,7 @@
 #include "ldms_msg_chan.h"
 #include "ovis_util/util.h"
 
-#define OPT_FMT "h:p:a:A:c:C:t:r:H:P:m:L:I:v:f:u"
+#define OPT_FMT "h:p:a:A:c:C:t:r:H:P:m:L:I:v:f:o:u"
 
 static char *verbose_s;
 
@@ -13,7 +13,7 @@ void usage(int argc, char *argv[])
 {
 	printf("usage: ldms_msg_chan_client "
 	       "[-h REM_HOST] -p REM_PORT "
-	       "[-f PATH] "
+	       "[-f INPUT_FILE] [-o OUTPUT_FILE] "
 	       "[-H LCL_HOST] -L LCL_PORT "
 	       "[-P PERM -a AUTH -A AUTH_OPTS -r RECONNECT_SECS]]"
 	       "-c PUB_CHAN_NAME -C SUB_CHAN_REGEX "
@@ -25,8 +25,10 @@ void usage(int argc, char *argv[])
 	printf("    -h REM_HOST     The remote host name (publish), default is\n");
 	printf("                        \"localhost\".\n");
 	printf("    -p REM_PORT     The remote port number (publish).\n");
-	printf("    -f PATH         A file from which data will be published.\n");
+	printf("    -f INPUT_FILE   A file from which data will be published.\n");
 	printf("                        (default is stdin)\n");
+	printf("    -o OUTPUT_FILE  A file to which data will be written.\n");
+	printf("                        (default is stdout)\n");
 	printf("    -H LCL_HOST     The local host name (subscribe), default is\n");
 	printf("                        \"localhost\".\n");
 	printf("    -L LCL_PORT     The local port number (subscribe)\n");
@@ -47,6 +49,8 @@ void usage(int argc, char *argv[])
 	exit(1);
 }
 
+FILE *ofile = NULL;
+
 int subs_msg_cb(ldms_msg_event_t ev, void *cb_arg)
 {
 	/* cb_arg is the pointer supplied to ldms_msg_subscribe() */
@@ -58,8 +62,8 @@ int subs_msg_cb(ldms_msg_event_t ev, void *cb_arg)
 			printf("%s type: %s\n", verbose_s,
 			       ldms_msg_type_sym(ev->recv.type));
 		}
-		printf("%s\n", ev->recv.data);
-		fflush(stdout);
+		fprintf(ofile, "%s", ev->recv.data);
+		fflush(ofile);
 		/* See `struct ldms_msg_event_s` for more information. */
 		break;
 	case LDMS_MSG_EVENT_CLIENT_CLOSE:
@@ -199,9 +203,18 @@ int main(int argc, char *argv[])
 	char *log_lvl_s = NULL;
 	uint32_t perm = 0660;
 	int unsubscribe = 0;
+	ofile = stdout;
 
 	while ((op = getopt(argc, argv, OPT_FMT)) != -1) {
 		switch (op) {
+		case 'o':
+			ofile = fopen(optarg, "w");
+			if (!ofile) {
+				printf("Error %d opening the output file '%s'.\n",
+				       errno, optarg);
+				exit(1);
+			}
+			break;
 		case 'f':
 			file = fopen(optarg, "r");
 			if (!file) {
@@ -281,15 +294,23 @@ int main(int argc, char *argv[])
 	}
 
 	if (mode & LDMS_MSG_CHAN_MODE_PUBLISH) {
-		if (rem_port < 0 || !pub_name_s) {
-			printf("The remote port and publish channel name are required.\n");
+		if (rem_port < 1 || rem_port > 65535) {
+			printf("The remote port number must be between 1 and 65535.\n");
+			usage(argc, argv);
+		}
+		if (!pub_name_s) {
+			printf("The publish message tag must be specified.\n");
 			usage(argc, argv);
 		}
 	}
 
 	if (mode & LDMS_MSG_CHAN_MODE_SUBSCRIBE) {
-		if (lcl_port < 0 || !sub_regex_s) {
-			printf("The local port and subscriber regex are required.\n");
+		if (lcl_port < 1 || lcl_port > 65535) {
+			printf("The local port number must be between 1 and 65535.\n");
+			usage(argc, argv);
+		}
+		if (!sub_regex_s) {
+			printf("The subscriber regex are required.\n");
 			usage(argc, argv);
 		}
 	}
@@ -374,9 +395,8 @@ int main(int argc, char *argv[])
 	if (mode & LDMS_MSG_CHAN_MODE_SUBSCRIBE) {
 		do {
 			sleep(6);
-			if (!verbose_s)
-				verbose_s = "%%";
-			stats_fn(chan, "");
+			if (verbose_s)
+				stats_fn(chan, "");
 		} while (1);
 	}
 	ldms_msg_chan_close(NULL, 0);
