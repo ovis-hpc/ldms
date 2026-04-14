@@ -1,5 +1,5 @@
 #!/bin/bash
-# show embeeded  utc sec with readable date after.
+# show embedded utc sec with readable date after.
 # allows usual ls options, but may annoy a bit with ls -l.
 # awk notes:
     # Regex: Look for first 10 digits that are either at the start/end
