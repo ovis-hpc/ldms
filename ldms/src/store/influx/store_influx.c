@@ -369,8 +369,7 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set, int 
 			       ",component_id=%lui", ldms_metric_get_u64(set, is->comp_mid));
 		off += cnt;
 	}
-	cnt = snprintf(&measurement[off], is->measurement_limit - off,
-		       " ", is->schema);
+	cnt = snprintf(&measurement[off], is->measurement_limit - off, " ");
 	off += cnt;
 
 	enum ldms_value_type metric_type;
