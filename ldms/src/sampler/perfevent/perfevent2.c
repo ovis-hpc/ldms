@@ -569,6 +569,8 @@ struct ranges_s {
 void ranges_free(struct ranges_s *rs)
 {
 	struct range_s *r;
+	if (!rs)
+		return;
 	while ((r = TAILQ_FIRST(&rs->ranges))) {
 		TAILQ_REMOVE(&rs->ranges, r, entry);
 		free(r);
@@ -1639,7 +1641,7 @@ static int process_conf_event(struct perf_s *p, json_entity_t e)
 	json_entity_t e_cpu, e_pid, e_event;
 	enum json_value_e e_type;
 	int pid = -1, rc;
-	struct ranges_s *rs_cpu;
+	struct ranges_s *rs_cpu = NULL;
 	char buff[128];
 	const char *e_event_str;
 	struct pmu_event_s *pmu_event;
@@ -1710,7 +1712,7 @@ static int process_conf_event(struct perf_s *p, json_entity_t e)
 
 	pmu_event = event_lookup(p, e_event_str);
 	if (!pmu_event)
-		return errno;
+		goto err;
 
 	rc = ranges_first(rs_cpu, &cpu);
 	while (0 == rc) {
@@ -1724,7 +1726,7 @@ static int process_conf_event(struct perf_s *p, json_entity_t e)
 		}
 		counter = counter_new(p, pmu_event, cpu, pid, e);
 		if (!counter)
-			return errno;
+			goto err;
 		TAILQ_INSERT_TAIL(&p->counters, counter, entry);
 		p->n_counters++;
 	next:
@@ -1736,7 +1738,12 @@ static int process_conf_event(struct perf_s *p, json_entity_t e)
 	else
 		p->n_events++;
 
+	ranges_free(rs_cpu);
 	return 0;
+err:
+	ranges_free(rs_cpu);
+	_ERROR(p, "Failed to process event '%s': %s\n", e_event_str, strerror(errno));
+	return errno;
 }
 
 static int make_events(struct perf_s *p)
@@ -2407,61 +2414,80 @@ struct ldmsd_sampler ldmsd_plugin_interface = {
 __attribute__((constructor))
 static void init_once()
 {
-	char buf[PATH_MAX + 128];
-	char *c, *out;
+	char dir[PATH_MAX];
+	char *cmd = NULL;
+	char *c = NULL;
 	ssize_t sz;
-	FILE *pf;
-	struct ovis_buff_s obuf;
+	FILE *pf = NULL;
 	int rc;
+	char *line = NULL;
+	size_t line_sz;
+	jbuf_t jbuf = NULL;
 
-	ovis_buff_init(&obuf, 1024*1024);
-
-	sz = readlink("/proc/self/exe", buf, sizeof(buf));
+	sz = readlink("/proc/self/exe", dir, sizeof(dir)-1);
+	dir[sz] = '\0';
 	if (sz < 0) {
-		ovis_log(NULL, OVIS_LERROR, "readlink(\"/proc/self/exe\") error: %d\n", errno);
+		ovis_log(NULL, OVIS_LERROR,
+			"readlink(\"/proc/self/exe\") error: %d\n", errno);
 		return;
 	}
-	c = strrchr(buf, '/');
+	/* Determine path of ldms-perfdb-gen. Assume it is at the same --prefix as ldmsd */
+	/* Remove may application name */
+	c = strrchr(dir, '/');
 	if (c)
 		*c = 0;
-	c = strrchr(buf, '/');
+	/* Remove my application directory */
+	c = strrchr(dir, '/');
 	if (c)
 		*c = 0;
-	sz = strlen(buf);
-	snprintf(buf + sz, sizeof(buf)-sz, "/bin/ldms-perfdb-gen -P");
-	pf = popen(buf, "re");
-	if (!pf) {
-		ovis_log(NULL, OVIS_LERROR, "popen(\"%s\") error: %d\n", buf, errno);
-		return;
+	char *perfdb = tempnam(NULL, NULL);
+	if (!perfdb) {
+		ovis_log(NULL, OVIS_LERROR,
+			"tempnam() error: %d\n", errno);
+		goto out;
 	}
-	while ((sz = fread(buf, 1, sizeof(buf)-1, pf)) > 0) {
-		buf[sz] = 0;
-		rc = ovis_buff_appendf(&obuf, "%s", buf);
-		if (rc) {
-			ovis_log(NULL, OVIS_LERROR, "perfevent2.c:%d Not enough memory\n", __LINE__);
-			return;
-		}
-	}
-	if (sz < 0) {
-		ovis_log(NULL, OVIS_LERROR, "pipe read error: %d\n", errno);
-		return;
-
-	}
-	out = ovis_buff_str(&obuf);
-	if (!out) {
-		ovis_log(NULL, OVIS_LERROR, "perfevent2.c:%d, ovis_buf_str() error: Not enough memory\n", __LINE__);
-		return;
-	}
-	ovis_buff_purge(&obuf);
-	/* out contains perfdb in json format */
-	rc = json_parse_buffer(out, strlen(out)+1, &default_perfdb);
-	free(out);
+	rc = asprintf(&cmd, "%s/%s -o %s", dir, "bin/ldms-perfdb-gen -P", perfdb);
+	ovis_log(NULL, OVIS_LERROR,
+		"Generating perfdb using command: %s\n", cmd);
+	rc = system(cmd);
 	if (rc) {
-		if (default_perfdb) {
-			json_doc_free(default_perfdb);
-			default_perfdb = NULL;
-		}
-		ovis_log(NULL, OVIS_LERROR, "perfevent2.c:%d, json_parse_buffer() error: %d\n", __LINE__, rc);
-		return;
+		ovis_log(NULL, OVIS_LERROR,
+			"system(\"%s\") error: %d\n", cmd, rc);
+		goto out;
 	}
+	pf = fopen(perfdb, "r");
+	if (!pf) {
+		ovis_log(NULL, OVIS_LERROR,
+			"Cannot open perfdb file '%s': %d\n", perfdb, errno);
+		goto out;
+	}
+	jbuf = jbuf_new();
+	while ((sz = getline(&line, &line_sz, pf)) > 0) {
+		jbuf = jbuf_append_str(jbuf, line);
+		if (!jbuf) {
+			ovis_log(NULL, OVIS_LERROR,
+				"%s:%d Memory allocation failure\n", __func__, __LINE__);
+			goto out;
+		}
+	}
+	/* out contains perfdb in json format */
+	rc = json_parse_buffer(jbuf->buf, jbuf->cursor, &default_perfdb);
+	if (rc) {
+		ovis_log(NULL, OVIS_LERROR,
+			"%s:%d perfdb parsing error: : %s\n",
+			__func__, __LINE__,
+			json_doc_errstr(default_perfdb));
+		json_doc_free(default_perfdb);
+		default_perfdb = NULL;
+	}
+out:
+	free(jbuf);
+	free(line);
+	free(cmd);
+	if (pf)
+		fclose(pf);
+	if (perfdb)
+		unlink(perfdb);
+	free(perfdb);
+	return;
 }
