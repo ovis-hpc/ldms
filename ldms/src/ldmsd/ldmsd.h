@@ -397,19 +397,20 @@ typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
 #define LDMSD_PRDSET_STATS_F_UPD 1
 #define LDMSD_PRDSET_STATS_F_STORE 2
 
+enum ldmsd_prdcr_set_state {
+	LDMSD_PRDCR_SET_STATE_START,
+	LDMSD_PRDCR_SET_STATE_LOOKUP,
+	LDMSD_PRDCR_SET_STATE_READY,
+	LDMSD_PRDCR_SET_STATE_UPDATING,
+	LDMSD_PRDCR_SET_STATE_DELETED
+};
 typedef struct ldmsd_prdcr_set {
 	char *inst_name;
 	char *schema_name;
 	ldmsd_prdcr_t prdcr;
 	ldms_set_t set;
 	int push_flags;
-	enum ldmsd_prdcr_set_state {
-		LDMSD_PRDCR_SET_STATE_START,
-		LDMSD_PRDCR_SET_STATE_LOOKUP,
-		LDMSD_PRDCR_SET_STATE_READY,
-		LDMSD_PRDCR_SET_STATE_UPDATING,
-		LDMSD_PRDCR_SET_STATE_DELETED
-	} state;
+	enum ldmsd_prdcr_set_state state;
 	uint64_t last_gn;
 	pthread_mutex_t lock;
 	LIST_HEAD(ldmsd_strgp_ref_list, ldmsd_strgp_ref) strgp_list;
@@ -579,6 +580,11 @@ typedef struct ldmsd_updtr {
 	LIST_HEAD(updtr_match_list, ldmsd_name_match) match_list;
 } *ldmsd_updtr_t;
 
+enum ldmsd_name_match_sel {
+	LDMSD_NAME_MATCH_INST_NAME,
+	LDMSD_NAME_MATCH_SCHEMA_NAME,
+};
+
 typedef struct ldmsd_name_match {
 	/** Regular expresion matching schema or instance name */
 	char *regex_str;
@@ -587,10 +593,7 @@ typedef struct ldmsd_name_match {
 	/** see man recomp */
 	int regex_flags;
 
-	enum ldmsd_name_match_sel {
-		LDMSD_NAME_MATCH_INST_NAME,
-		LDMSD_NAME_MATCH_SCHEMA_NAME,
-	} selector;
+	enum ldmsd_name_match_sel selector;
 
 	LIST_ENTRY(ldmsd_name_match) entry;
 } *ldmsd_name_match_t;
