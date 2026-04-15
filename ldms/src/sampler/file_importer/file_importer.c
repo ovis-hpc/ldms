@@ -513,6 +513,8 @@ static int update_record(dir_exp_t e, set_t set, mdef_t mdef)
 		 "s64, timestamp, u16, u32, u64, and u8\n");
  err:
 	/* Cleanup ... */
+	ovis_log(e->log, OVIS_LERROR,
+		 "%s:%d Error %d recdef %p\n", __func__, __LINE__, rc, recdef);
 	if (recdef) {
 		free(recdef->name);
 		free(recdef->key_name);
