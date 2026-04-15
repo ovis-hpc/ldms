@@ -8567,6 +8567,7 @@ static int stream_disable_handler(ldmsd_req_ctxt_t reqc)
 static int stream_enable_handler(ldmsd_req_ctxt_t reqc)
 {
 	stream_enabled = 1;
+	__dlog(DLOG_CFGOK, "stream_enable\n");
 	reqc->errcode = 0;
 	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len, "OK");
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -8757,6 +8758,7 @@ static int msg_disable_handler(ldmsd_req_ctxt_t reqc)
 static int msg_enable_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldms_msg_enable();
+	__dlog(DLOG_CFGOK, "msg_enable\n");
 	reqc->errcode = 0;
 	(void)Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
 	ldmsd_send_req_response(reqc, reqc->line_buf);
