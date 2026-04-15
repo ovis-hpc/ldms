@@ -2846,7 +2846,7 @@ class LdmsdCmdParser(Cmd.Cmd):
             msg_tag = f'[{cli["match"]}] {cli["dest"]} {cli["desc"]}'
             tx = cli['tx']
             drops = cli['drops']
-            print(f'{message_tag}')
+            print(f'{msg_tag}')
             print(f' - {"tx":27} {tx["bytes"]:>12} {tx["count"]:>12} '\
                   f'{self.__floatts2human(tx["first_ts"]):26} ' \
                   f'{self.__floatts2human(tx["last_ts"]):26}')
