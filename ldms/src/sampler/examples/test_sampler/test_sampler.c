@@ -1484,7 +1484,7 @@ static int config_add_lists(test_sampler_t ts, struct attr_value_list *avl)
 		temp[i].unit = "";
 		i++;
 
-		snprintf(n, 16, "list_%d", j + 1);
+		snprintf(n, sizeof(n), "list_%d", j + 1);
 		temp[i].name = strdup(n);
 		temp[i].type = LDMS_V_LIST;
 		if (LDMS_V_RECORD_INST == linfo[j].type) {
