@@ -6787,6 +6787,11 @@ static int dump_cfg_handler(ldmsd_req_ctxt_t reqc)
 	}
 	fprintf(fp, "\n");
 
+	if (ldms_msg_is_enabled())
+		fprintf(fp, "msg_enable\n");
+	if (stream_enabled)
+		fprintf(fp, "stream_enable\n");
+
 	/* Daemon name */
 	const char *_name = ldmsd_myname_get();
 	if (_name[0] != '\0') {
