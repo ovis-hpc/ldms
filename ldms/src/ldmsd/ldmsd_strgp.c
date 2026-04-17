@@ -239,9 +239,6 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms
 		goto free;
 	}
 	(void) store_event_post(event_ctxt);
-	clock_gettime(CLOCK_REALTIME, &end);
-	strgp_ref->store_stat.end = end;
-	ldmsd_stat_update(&strgp_ref->store_stat, &start, &end);
 	return;
 
 free:
