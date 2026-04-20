@@ -46,7 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
+#define _GNU_SOURCE
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -260,18 +260,9 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 			return;
 		}
 		LIST_FOREACH(str_ref, &prd_set->strgp_list, entry) {
-			struct timespec start, end;
 			ldmsd_strgp_t strgp = str_ref->strgp;
 			ldmsd_strgp_lock(strgp);
-			clock_gettime(CLOCK_REALTIME, &start);
-			strgp->update_fn(strgp, prd_set, set_snapshot, &str_ref->decomp_ctxt);
-			clock_gettime(CLOCK_REALTIME, &end);
-			if (prd_set->store_stat.start.tv_sec == 0) {
-				prd_set->store_stat.start = start;
-				prd_set->store_stat.count = 0;
-			}
-			prd_set->store_stat.end = end;
-			ldmsd_stat_update(&prd_set->store_stat, &start, &end);
+			strgp->update_fn(strgp, prd_set, set_snapshot, str_ref);
 			ldmsd_strgp_unlock(strgp);
 		}
 		/*

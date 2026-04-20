@@ -26,14 +26,14 @@ With LDMS (Lightweight Distributed Metric Service), plugins for the
 ldmsd (ldms daemon) are configured via ldmsd_controller or a
 configuration file. The blob_msg_writer plugin writes out raw ``ldms_msg``
 messages and offsets of the messages in separate files. Messages are not
-appended with ' or ' '. Multiple message channels may be specified.
+appended with ' or ' '. Multiple message tags may be specified.
 
 CONFIGURATION ATTRIBUTE SYNTAX
 ==============================
 
 **config**
    | name=blob_msg_writer path=<path> container=<container>
-     message_channel=<message_channel> debug=1
+     message_tag=<tag> debug=N
    | configuration line
 
    name=<plugin_name>
@@ -48,14 +48,15 @@ CONFIGURATION ATTRIBUTE SYNTAX
       |
       | directory of the output file
 
-   message_channel=<message_channel>
+   message_tag=<message_tag>
       |
-      | Message channel to which to subscribe. This argument may be repeated.
-        Messages from each channel will be written in a separate file pair.
+      | Message tag to which to subscribe. This argument may be repeated.
+        Messages from each tag will be written in a separate file pair.
 
-   debug=1
+   debug=N
       |
-      | Enable logging of messages stored to the log file.
+      | N==1: Enable logging of messages stored to the log file.
+      | N==2: Enable debugging of config options.
 
    timing=1
       |
@@ -120,7 +121,7 @@ other.
 The writer writes all messages received to a file pair:
 $path/$container/$ch_name.OFFSET.$create_time
 $path/$container/$ch_name.DAT.$create_time where OFFSET is the byte
-offsets into the corresponding .DAT of the messages seen on the channel.
+offsets into the corresponding .DAT of the messages seen on the tag.
 
 Each byte offset is written as a little-endian 64 bit number. Data read
 from .OFFSET should be converted to host order with le64toh.
@@ -147,12 +148,12 @@ NOTES
 
 This writer is in development and may be changed at any time.
 
-Cannot support message_channel=.\* for now.
+Cannot support message_tag=.\* for now.
 
 The config operation may called at any time or repeated, though the use
 of rollover policies is recommended instead. Repeated configuration of
 rollover is silently ignored. The start and stop operations will start
-and stop storage of all channels.
+and stop storage of all tags.
 
 The plugin appears in C code as a sampler plugin, since the storage
 policy and store plugin interfaces are set-oriented and no sets are
@@ -166,7 +167,7 @@ Within ldmsd_controller or a configuration file:
 ::
 
    load name=blob_msg_writer
-   config name=blob_msg_writer path=/writer/channels container=${CLUSTER} message_channel=foo message_channel=slurm message_channel=kokkos
+   config name=blob_msg_writer path=/writer/tags container=${CLUSTER} message_tag=foo message_tag=slurm message_tag=kokkos
    start name=name=blob_msg_writer
 
 Examining offsets in a shell:

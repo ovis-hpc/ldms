@@ -1431,12 +1431,13 @@ static int sample_file(dir_exp_t e, set_t set)
 	} while (1);
  out:
 	if (e->publish) {
-		char *json = ldms_set_as_json_string(set->set, NULL);
+		size_t buf_len;
+		char *json = ldms_set_as_json_string(set->set, &buf_len);
 		rc = ldms_msg_chan_publish(e->data_chan,
 					   e->data_tag,
 					   e->data_cred.uid, e->data_cred.gid, e->data_perm,
 					   LDMS_MSG_JSON,
-					   json, strlen(json)+1);
+					   json, buf_len+1);
 		free(json);
 	}
 	return 0;

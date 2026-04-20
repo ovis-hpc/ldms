@@ -569,7 +569,84 @@ Python subscribe examples
  x.close()
 
 
+
+THREADING
+=========
+
+This section describes the threading model of the Message Channel API and what
+is safe to call from each context.
+
+Thread Safety of the API
+------------------------
+
+All ``ldms_msg_chan_*`` functions are thread-safe. They use a per-channel mutex
+and the global channel lock, neither of which conflict with application or
+ldmsd threads.
+
+Internal Threads
+----------------
+
+Creating the first message channel in a process launches a scheduler thread
+shared across all channels process-wide. Each channel also gets its own I/O
+thread. These threads manage connection attempts, reconnection, and flushing
+the outbound message queue to the peer.
+
+Blocking Behavior of ldms_msg_chan_publish()
+--------------------------------------------
+
+``ldms_msg_chan_publish()`` copies the message into the outbound queue and
+returns immediately. If the peer is not yet connected, messages accumulate in the
+queue and are sent once the connection is established. If adding the message would
+exceed the queue limit, ``ldms_msg_chan_publish()`` returns ``ENOBUFS`` and the
+message is not queued. The default queue limit is 1 MB and can be adjusted with
+``ldms_msg_chan_set_q_limit()``.
+
+Blocking Behavior of ldms_msg_chan_close()
+------------------------------------------
+
+With ``cancel=0``, ``ldms_msg_chan_close()`` blocks until all queued messages
+have been delivered to the peer and the channel is fully closed. With
+``cancel=1``, queued messages are abandoned and the channel closes immediately.
+
+Callback Invocation Thread
+--------------------------
+
+The callback registered with ``ldms_msg_chan_subscribe()`` is always invoked by
+an IO thread. A message channel only receives messages from a remote peer over a
+transport connection — there is no local in-process delivery path in
+``ldms_msg_chan``.
+
+No LDMS Message Bus locks are held when the callback is invoked.
+
+What Is Safe to Call from the Callback
+---------------------------------------
+
+Because no Message Bus locks are held during callback invocation, the following
+``ldms_msg_chan_*`` functions are safe to call from within the callback:
+
+- ``ldms_msg_chan_publish()`` — to publish a message to the remote peer.
+  ``ldms_msg_chan_publish()`` always delivers to the remote peer over the
+  transport and never triggers inline local callback invocation, so there is no
+  deadlock risk from calling it within a callback.
+- ``ldms_msg_chan_subscribe()`` — to register a new subscription on a channel,
+  provided the channel was created in subscribe or bidir mode.
+- ``ldms_msg_chan_new()`` — to create a new channel.
+- ``ldms_msg_chan_set_q_limit()`` — to adjust the queue limit.
+- ``ldms_msg_chan_close()`` — safe from a locking standpoint, but calling it
+  with ``cancel=0`` from within the callback will block the IO thread for the
+  duration of waiting for all queued messages to be delivered and all
+  subscriptions to be torn down. Use ``cancel=1`` if closing from within a
+  callback.
+
+Note on CLIENT_CLOSE
+---------------------
+
+The ``LDMS_MSG_EVENT_CLIENT_CLOSE`` event is not delivered to the application
+callback when using ``ldms_msg_chan_subscribe()`` — it is handled internally by
+the channel. No teardown action is needed in the callback for subscription
+cleanup.
+
 SEE ALSO
 ========
 
-**ldmsd_controller**\ (8)
+**ldmsd_controller**\ (8) **ldms_msg**\ (7)

@@ -152,6 +152,10 @@ struct req_str_id req_str_id_table[] = {
 	{  "stream_disable",     LDMSD_STREAM_DISABLE_REQ  },
 	{  "stream_enable",      LDMSD_STREAM_ENABLE_REQ  },
 	{  "stream_status",      LDMSD_STREAM_STATUS_REQ  },
+	{  "smplrp_add",         LDMSD_SMPLRP_ADD_REQ  },
+	{  "smplrp_del",         LDMSD_SMPLRP_DEL_REQ  },
+	{  "smplrp_start",       LDMSD_SMPLRP_START_REQ  },
+	{  "smplrp_stop",        LDMSD_SMPLRP_STOP_REQ  },
 	{  "strgp_add",          LDMSD_STRGP_ADD_REQ  },
 	{  "strgp_del",          LDMSD_STRGP_DEL_REQ  },
 	{  "strgp_metric_add",   LDMSD_STRGP_METRIC_ADD_REQ  },
@@ -213,7 +217,8 @@ struct req_str_id attr_str_id_table[] = {
 	{  "ip",                LDMSD_ATTR_IP  },
 	{  "level",             LDMSD_ATTR_LEVEL  },
 	{  "match",             LDMSD_ATTR_MATCH  },
-	{  "message_channel",   LDMSD_ATTR_MSG_CHAN  },
+	{  "message_channel",   LDMSD_ATTR_MSG_TAG  },
+	{  "message_tag",       LDMSD_ATTR_MSG_TAG  },
 	{  "metric",            LDMSD_ATTR_METRIC  },
 	{  "mode",              LDMSD_ATTR_LEVEL  },
 	{  "name",              LDMSD_ATTR_NAME  },
@@ -440,6 +445,11 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_NOTSUPPORT_REQ:      return "LDMSD_NOTSUPPORT_REQ";
 	case LDMSD_SET_ROUTE_REQ:       return "LDMSD_SET_ROUTE_REQ";
 	case LDMSD_CFG_CNTR_REQ:	return "cfg_cntr";
+
+	case LDMSD_SMPLRP_ADD_REQ: return "LDMSD_SMPLR_ADD_REQ";
+	case LDMSD_SMPLRP_DEL_REQ: return "LDMSD_SMPLR_DEL_REQ";
+	case LDMSD_SMPLRP_START_REQ: return "LDMSD_SMPLR_START_REQ";
+	case LDMSD_SMPLRP_STOP_REQ: return "LDMSD_SMPLR_STOP_REQ";
 	}
 	return "UNKNOWN_REQ";
 }
@@ -504,7 +514,7 @@ const char *ldmsd_req_attr_id2str(uint32_t attr_id, int fuzzy)
 	*/
 	case LDMSD_ATTR_LEVEL:	return "level";
 	case LDMSD_ATTR_MATCH:	return "match";
-	case LDMSD_ATTR_MSG_CHAN:	return "message_channel";
+	case LDMSD_ATTR_MSG_TAG:	return "message_tag";
 	case LDMSD_ATTR_METRIC:	return "metric";
 	case LDMSD_ATTR_NAME:	return "name";
 	/* known ambiguity

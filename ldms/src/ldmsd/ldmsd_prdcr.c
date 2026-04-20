@@ -1719,12 +1719,12 @@ void ldmsd_prdcr_update(ldmsd_strgp_t strgp)
  * they were received. Preserving this order is critical for correct behavior.
  *
  * Example scenario:
- * 1. User configures all producers (.*) to subscribe to msg_channel 'my_data'
+ * 1. User configures all producers (.*) to subscribe to message_tag 'my_data'
  * 2. User then creates an exception for producers matching the regex pattern (node-[11-20])
  *    with: `producer_unsubscribe regex=node-[11-20] msg=my_data`
  *
  * If prdcr_subun_list does not preserve the arrival order of these requests,
- * an advertised producer might incorrectly subscribe to a msg_channel that
+ * an advertised producer might incorrectly subscribe to a message_tag that
  * the user intended to unsubscribe it from.
  */
 static struct ldmsd_prdcr_sub_unsub_list prdcr_subun_list = TAILQ_HEAD_INITIALIZER(prdcr_subun_list);
@@ -1900,8 +1900,14 @@ err:
 
 void ldmsd_prdcr_set_stats_reset(ldmsd_prdcr_set_t prdset, struct timespec *now, int flags)
 {
+	ldmsd_strgp_ref_t strgp_ref;
 	if (flags & LDMSD_PRDSET_STATS_F_STORE) {
-		ldmsd_stat_reset(&prdset->store_stat, now);
+		LIST_FOREACH(strgp_ref, &prdset->strgp_list, entry) {
+			ldmsd_stat_reset(&strgp_ref->store_stat, now);
+			/* TODO: why don't we reset the store_stages_stat???
+			 * If we should do this, call ldmsd_strgp_ref_stats_init().
+			 */
+		}
 	}
 
 	if (flags & LDMSD_PRDSET_STATS_F_UPD) {
@@ -1910,7 +1916,7 @@ void ldmsd_prdcr_set_stats_reset(ldmsd_prdcr_set_t prdset, struct timespec *now,
 	}
 }
 
-void ldmsd_prdcr_set_store_stats_init(ldmsd_prdcr_set_t prdset, struct timespec *ts)
+void ldmsd_strgp_ref_stats_init(ldmsd_strgp_ref_t strgp_ref, struct timespec *ts)
 {
 	struct timespec start;
 
@@ -1919,11 +1925,11 @@ void ldmsd_prdcr_set_store_stats_init(ldmsd_prdcr_set_t prdset, struct timespec 
 	} else {
 		start = *ts;
 	}
-	prdset->store_stat.start = start;
+	strgp_ref->store_stat.start = start;
 
-	prdset->store_stages_stat.io_thread_stat.start = start;
-	prdset->store_stages_stat.decomp_stat.start = start;
-	prdset->store_stages_stat.worker_wait_stat.start = start;
-	prdset->store_stages_stat.queue_stat.start = start;
-	prdset->store_stages_stat.commit_stat.start = start;
+	strgp_ref->store_stages_stat.io_thread_stat.start = start;
+	strgp_ref->store_stages_stat.decomp_stat.start = start;
+	strgp_ref->store_stages_stat.worker_wait_stat.start = start;
+	strgp_ref->store_stages_stat.queue_stat.start = start;
+	strgp_ref->store_stages_stat.commit_stat.start = start;
 }

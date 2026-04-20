@@ -495,17 +495,17 @@ Subscribe to a stream or LDMS message service on matching producers
    **stream** *STREAM_NAME*
       |
       | For ldmsd stream subscription, this is the ldmsd stream name. This is
-      | mutually exclusive to **message_channel** attribute.
+      | mutually exclusive to **message_tag** attribute.
 
-   **message_channel** *CHANNEL_NAME_OR_REGEX*
+   **message_tag** *TAG_NAME_OR_REGEX*
       |
-      | For LDMS message subscription, this is the message channel name or
-      | a regular expression matching the message channel name. This is
+      | For LDMS message subscription, this is the message tag name or
+      | a regular expression matching the message tag name. This is
       | mutually exclusive to **stream** attribute.
 
    **[rx_rate** *BYTES_PER_SECOND*\ **]**
       |
-      | The recv rate (bytes/sec) limit for the matching message channels. The
+      | The recv rate (bytes/sec) limit for the matching message tags. The
       | default is -1 (unlimited).
 
 
@@ -521,12 +521,12 @@ Unsubscribe a stream or message service
    **stream** *STREAM_NAME*
       |
       | For ldmsd stream unsubscription, this is the ldmsd stream name. This is
-      | mutually exclusive to **message_channel** attribute.
+      | mutually exclusive to **message_tag** attribute.
 
-   **message_channel** *CHANNEL_NAME_OR_REGEX*
+   **message_tag** *TAG_NAME_OR_REGEX*
       |
-      | For LDMS message unsubscription, this is the message channel name or
-      | a regular expression matching the message channel name previously
+      | For LDMS message unsubscription, this is the message tag name or
+      | a regular expression matching the message tag name previously
       | specified in the **prdcr_subscription** command. This is mutually
       | exclusive to **stream** attribute.
 
@@ -891,17 +891,17 @@ Subscribe to a stream or LDMS message service on matching producers
    **stream** *STREAM_NAME*
       |
       | For ldmsd stream subscription, this is the ldmsd stream name. This is
-      | mutually exclusive to **message_channel** attribute.
+      | mutually exclusive to **message_tag** attribute.
 
-   **message_channel** *CHANNEL_NAME_OR_REGEX*
+   **message_tag** *TAG_NAME_OR_REGEX*
       |
-      | For LDMS message subscription, this is the message channel name or
-      | a regular expression matching the message channel name. This is
+      | For LDMS message subscription, this is the message tag name or
+      | a regular expression matching the message tag name. This is
       | mutually exclusive to **stream** attribute.
 
    **[rx_rate** *BYTES_PER_SECOND*\ **]**
       |
-      | The recv rate (bytes/sec) limit for the matching message channels. The
+      | The recv rate (bytes/sec) limit for the matching message tags. The
       | default is -1 (unlimited).
 
 Unsubscribe a stream or message service
@@ -916,12 +916,12 @@ Unsubscribe a stream or message service
    **stream** *STREAM_NAME*
       |
       | For ldmsd stream unsubscription, this is the ldmsd stream name. This is
-      | mutually exclusive to **message_channel** attribute.
+      | mutually exclusive to **message_tag** attribute.
 
-   **message_channel** *CHANNEL_NAME_OR_REGEX*
+   **message_tag** *TAG_NAME_OR_REGEX*
       |
-      | For LDMS message unsubscription, this is the message channel name or
-      | a regular expression matching the message channel name previously
+      | For LDMS message unsubscription, this is the message tag name or
+      | a regular expression matching the message tag name previously
       | specified in the **prdcr_subscription** command. This is mutually
       | exclusive to **stream** attribute.
 

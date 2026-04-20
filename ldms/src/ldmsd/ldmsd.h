@@ -2,7 +2,7 @@
  * Copyright (c) 2010-2018,2023 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2010-2018,2023 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2026 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2025 Lawrence Livermore National Security, LLC
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
@@ -167,7 +167,8 @@ typedef enum ldmsd_cfgobj_type {
 	LDMSD_CFGOBJ_PRDCR_LISTEN,
 	LDMSD_CFGOBJ_SAMPLER,
 	LDMSD_CFGOBJ_STORE,
-	LDMSD_CFGOBJ_LAST = LDMSD_CFGOBJ_STORE,
+	LDMSD_CFGOBJ_SMPLRP,
+	LDMSD_CFGOBJ_LAST = LDMSD_CFGOBJ_SMPLRP,
 } ldmsd_cfgobj_type_t;
 
 struct ldmsd_cfgobj;
@@ -353,9 +354,30 @@ typedef struct ldmsd_prdcr {
 struct ldmsd_strgp;
 typedef struct ldmsd_strgp *ldmsd_strgp_t;
 
+struct ldmsd_stat {
+	struct timespec start;
+	struct timespec end;
+	double min; /* Min value in micro-second */
+	struct timespec min_ts; /* Timestamp the min value belongs to */
+	double max; /* Min value in micro-second */
+	struct timespec max_ts; /* Timestamp the max value belongs to */
+	double avg; /* Mean in micro-second */
+	int count;
+};
+
+struct store_stages_stats {
+	struct ldmsd_stat io_thread_stat; /* Time spent on Zap IO Thread */
+	struct ldmsd_stat decomp_stat; /* Time spent to decompose the set, spent Zap IO thread time */
+	struct ldmsd_stat worker_wait_stat; /* Time to wait for an available worker, block Zap IO thread */
+	struct ldmsd_stat queue_stat; /* Time in the worker queue */
+	struct ldmsd_stat commit_stat; /* Time spent in writing, sending, committing to storage */
+};
+
 typedef struct ldmsd_strgp_ref {
 	ldmsd_strgp_t strgp;
 	void *decomp_ctxt;
+	struct ldmsd_stat store_stat; /* Statistics of total store duration */
+	struct store_stages_stats store_stages_stat; /* Statistics of store stages */
 	LIST_ENTRY(ldmsd_strgp_ref) entry;
 } *ldmsd_strgp_ref_t;
 
@@ -371,25 +393,6 @@ struct ldmsd_updtr_schedule {
 	long offset_us;
 };
 typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
-
-struct ldmsd_stat {
-	struct timespec start;
-	struct timespec end;
-	double min; /* Min value in micro-second */
-	struct timespec min_ts; /* Timestamp the min value belongs to */
-	double max; /* Min value in micro-second */
-	struct timespec max_ts; /* Timestamp the max value belongs to */
-	double avg; /* Mean in micro-second */
-	int count;
-};
-
-struct prdset_store_stages_stats {
-	struct ldmsd_stat io_thread_stat; /* Time spent on Zap IO Thread */
-	struct ldmsd_stat decomp_stat; /* Time spent to decompose the set, spent Zap IO thread time */
-	struct ldmsd_stat worker_wait_stat; /* Time to wait for an available worker, block Zap IO thread */
-	struct ldmsd_stat queue_stat; /* Time in the worker queue */
-	struct ldmsd_stat commit_stat; /* Time spent in writing, sending, committing to storage */
-};
 
 #define LDMSD_PRDSET_STATS_F_UPD 1
 #define LDMSD_PRDSET_STATS_F_STORE 2
@@ -421,8 +424,6 @@ typedef struct ldmsd_prdcr_set {
 	uint8_t updt_sync;
 
 	struct ldmsd_stat updt_stat;
-	struct ldmsd_stat store_stat; /* Statistics of total store duration */
-	struct prdset_store_stages_stats store_stages_stat; /* Statistics of store stages */
 	int skipped_upd_cnt;
 	int oversampled_cnt;
 	uint64_t zap_thread_id; /* A thread handling the update completion event. */
@@ -662,7 +663,7 @@ int ldmsd_row_cache_make_list(ldmsd_row_list_t row_list, int row_count,
 	ldmsd_row_cache_t cache, ldmsd_row_cache_idx_t group_key);
 
 typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set,
-	                          ldms_set_t set_snapshot, void **ctxt);
+	                          ldms_set_t set_snapshot, void *ctxt);
 typedef struct ldmsd_cfgobj_store *ldmsd_cfgobj_store_t;
 
 struct ldmsd_strgp {
@@ -1339,9 +1340,9 @@ ldmsd_cfgobj_sampler_t ldmsd_sampler_first();
 ldmsd_cfgobj_sampler_t ldmsd_sampler_next(ldmsd_cfgobj_sampler_t);
 void ldmsd_sampler_lock(ldmsd_cfgobj_sampler_t samp);
 void ldmsd_sampler_unlock(ldmsd_cfgobj_sampler_t samp);
-extern int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset,
+extern int ldmsd_sampler_start(const char *cfg_name, const char *interval, const char *offset,
 			char *exclusive_thread);
-extern int ldmsd_sampler_stop(char *name);
+extern int ldmsd_sampler_stop(const char *name);
 
 /* NOTE: Caller must call ldms_store_find_put() to drop reference in returned object. */
 ldmsd_cfgobj_store_t ldmsd_store_find_get(const char *name);
@@ -1790,4 +1791,42 @@ int linebuf_printf(struct ldmsd_req_ctxt *reqc, char *fmt, ...);
 void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct timespec *end);
 void ldmsd_stat_reset(struct ldmsd_stat *stats, struct timespec *now);
 
+/* smplrp - Sampler Policy */
+typedef struct ldmsd_smplrp_s {
+	struct ldmsd_cfgobj obj;
+	enum ldmsd_smplrp_state_e {
+		LDMSD_SMPLRP_STOPPED,
+		LDMSD_SMPLRP_STOPPING,
+		LDMSD_SMPLRP_STARTED,
+	} state;
+	pthread_mutex_t mutex;
+	struct rbt job_rbt;
+	json_doc_t json_doc;
+	json_entity_t json_cfg;
+	const char *msg_tag; /* points to str in json_cfg */
+	char component_id[128];
+	ldms_msg_client_t msg_client;
+	TAILQ_HEAD(, ldmsd_smplrp_action_s) actions;
+}*ldmsd_smplrp_t;
+ldmsd_smplrp_t ldmsd_smplrp_new(const char *name, const char *json_cfg);
+ldmsd_smplrp_t ldmsd_smplrp_new_with_auth(const char *name, const char *json_cfg, uid_t uid, gid_t gid, int perm);
+int ldmsd_smplrp_del(const char *name, ldmsd_sec_ctxt_t ctxt);
+int ldmsd_smplrp_start(const char *name, ldmsd_sec_ctxt_t ctxt);
+int ldmsd_smplrp_stop(const char *name, ldmsd_sec_ctxt_t ctxt);
+static inline ldmsd_smplrp_t ldmsd_smplrp_get(ldmsd_smplrp_t smplrp, char *name) {
+	ldmsd_cfgobj_get(&smplrp->obj, name);
+	return smplrp;
+}
+static inline void ldmsd_smplrp_put(ldmsd_smplrp_t smplrp, char* name) {
+	ldmsd_cfgobj_put(&smplrp->obj, name);
+}
+static inline void ldmsd_smplrp_lock(ldmsd_smplrp_t smplrp) {
+	ldmsd_cfgobj_lock(&smplrp->obj);
+}
+static inline void ldmsd_smplrp_unlock(ldmsd_smplrp_t smplrp) {
+	ldmsd_cfgobj_unlock(&smplrp->obj);
+}
+static inline ldmsd_smplrp_t ldmsd_smplrp_find(const char *name) {
+	return (ldmsd_smplrp_t)ldmsd_cfgobj_find_get(name, LDMSD_CFGOBJ_SMPLRP);
+}
 #endif

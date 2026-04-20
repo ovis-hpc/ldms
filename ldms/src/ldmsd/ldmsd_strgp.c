@@ -176,16 +176,16 @@ out:
 	return rc;
 }
 
-extern struct store_event_ctxt *store_event_ctxt_new(ldmsd_strgp_t strgp, ldms_set_t snapshot,
+extern struct store_event_ctxt *store_event_ctxt_new(ldmsd_strgp_ref_t strgp_ref, ldms_set_t snapshot,
                                                      ldmsd_prdcr_set_t prd_set,
                                                      ldmsd_row_list_t row_list, int row_count,
                                                      struct timespec start
 );
 extern int store_event_post(struct store_event_ctxt *ctxt);
-extern void ldmsd_prdcr_set_store_stats_init(ldmsd_prdcr_set_t prdset, struct timespec *ts);
+extern void ldmsd_strgp_ref_stats_init(ldmsd_strgp_ref_t strgp_ref, struct timespec *ts);
 
 /* protected by strgp lock */
-static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms_set_t set_snapshot, void **ctxt)
+static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms_set_t set_snapshot, void *ctxt)
 {
 	if (strgp->state != LDMSD_STRGP_STATE_RUNNING)
 		return;
@@ -194,13 +194,14 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms
 	struct store_event_ctxt *event_ctxt;
 	int row_count;
 	int rc;
-	struct timespec start;
+	struct timespec start, end;
 	struct ldmsd_stat *decomp_stat;
+	ldmsd_strgp_ref_t strgp_ref = (ldmsd_strgp_ref_t)ctxt;
 
 	clock_gettime(CLOCK_REALTIME, &start);
-	if (prd_set->store_stat.start.tv_sec == 0) {
-		/* Initialize the starting time of the store statistics */
-		ldmsd_prdcr_set_store_stats_init(prd_set, &start);
+	if (strgp_ref->store_stat.start.tv_sec == 0) {
+		/* Initialize the store statistics */
+		ldmsd_strgp_ref_stats_init(strgp_ref, &start);
 	}
 
 	if (strgp->decomp_path) {
@@ -214,14 +215,14 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms
 			goto free;
 		}
 		TAILQ_INIT(row_list);
-		rc = strgp->decomp->decompose(strgp, set_snapshot, row_list, &row_count, ctxt);
+		rc = strgp->decomp->decompose(strgp, set_snapshot, row_list, &row_count, &strgp_ref->decomp_ctxt);
 		if (rc) {
 			ovis_log(store_log, OVIS_LERROR, "strgp decompose error: %d\n", rc);
 			goto free;
 		}
-		decomp_stat = &(prd_set->store_stages_stat.decomp_stat);
+		decomp_stat = &(strgp_ref->store_stages_stat.decomp_stat);
 		clock_gettime(CLOCK_REALTIME, &decomp_stat->end);
-		ldmsd_stat_update(&prd_set->store_stages_stat.decomp_stat, &start, &decomp_stat->end);
+		ldmsd_stat_update(&strgp_ref->store_stages_stat.decomp_stat, &start, &decomp_stat->end);
 		if (TAILQ_EMPTY(row_list)) {
 			goto free;
 		}
@@ -232,7 +233,7 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms
 		}
 	}
 
-	event_ctxt = store_event_ctxt_new(strgp, set_snapshot, prd_set, row_list, row_count, start);
+	event_ctxt = store_event_ctxt_new(strgp_ref, set_snapshot, prd_set, row_list, row_count, start);
 	if (!event_ctxt) {
 		ovis_log(store_log, OVIS_LCRIT, "Memory allocation failure.\n");
 		goto free;
@@ -241,9 +242,11 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms
 	return;
 
 free:
-	if (set_snapshot)
-		ldms_set_snapshot_delete(set_snapshot);
 	free(row_list);
+	clock_gettime(CLOCK_REALTIME, &end);
+	strgp_ref->store_stat.end = end;
+	ldmsd_stat_update(&strgp_ref->store_stat, &start, &end);
+	return;
 }
 
 ldmsd_strgp_t

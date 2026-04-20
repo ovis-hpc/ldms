@@ -1033,7 +1033,7 @@ int ldmsd_sampler_xthread_delete(ldmsd_cfgobj_sampler_t samp)
 /*
  * Start the sampler
  */
-int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset,
+int ldmsd_sampler_start(const char *cfg_name, const char *interval, const char *offset,
 			char *exclusive_thread)
 {
 	int rc = 0;
@@ -1209,7 +1209,7 @@ put:
 /*
  * Stop the sampler
  */
-int ldmsd_sampler_stop(char *cfg_name)
+int ldmsd_sampler_stop(const char *cfg_name)
 {
 	int rc = 0;
 	ldmsd_cfgobj_sampler_t samp;

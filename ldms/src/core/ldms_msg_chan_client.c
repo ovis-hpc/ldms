@@ -11,7 +11,7 @@ static char *verbose_s;
 
 void usage(int argc, char *argv[])
 {
-	printf("usage: ldms_msg_chan_publish "
+	printf("usage: ldms_msg_chan_client "
 	       "[-h REM_HOST] -p REM_PORT "
 	       "[-f PATH] "
 	       "[-H LCL_HOST] -L LCL_PORT "
@@ -33,8 +33,6 @@ void usage(int argc, char *argv[])
 	printf("    -a AUTH_NAME    The authentication plugin name (default is \"none\").\n");
 	printf("    -A AUTH_OPTS    An optional comma separated list of authencation\n");
 	printf("                        plugin otions\n");
-	printf("    -A AUTH_OPTS    An optional comma separated list of authencation\n");
-	printf("                    plugin otions\n");
 	printf("    -P PERM         The permission bits in the message header to\n");
 	printf("                        authorize remote peers. (default is 0660)\n");
 	printf("    -t MSG_TYPE     The published message type. One of \"json\",\n");
@@ -55,7 +53,7 @@ int subs_msg_cb(ldms_msg_event_t ev, void *cb_arg)
 	switch (ev->type) {
 	case LDMS_MSG_EVENT_RECV:
 		if (verbose_s) {
-			printf("%s name: %s\n", verbose_s, ev->recv.name);
+			printf("%s msg_tag: %s\n", verbose_s, ev->recv.msg_tag);
 			printf("%s hop : %d\n", verbose_s, ev->hop_num);
 			printf("%s type: %s\n", verbose_s,
 			       ldms_msg_type_sym(ev->recv.type));

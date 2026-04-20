@@ -167,6 +167,7 @@ def check_plugin_config(plugn, plugin_spec):
 
 def dist_list(list_, n):
     q, r = divmod(len(list_), n)
+    list_ = hostlist.numerically_sorted(list_)
     dist_list = []
     idx = 0
     for i in range(1, n + 1):
@@ -377,16 +378,16 @@ class YamlCfg(object):
                     port = ep_port.pop(0)
                     ep_name = ep_.pop(0)
                     xprt = check_opt('xprt', ep)
-                    auth_name = check_opt('auth', ep)
-                    auth_conf = check_opt('conf', ep)
-                    plugin = check_opt('plugin', ep['auth'])
+                    auth_name, plugin, auth_opt = check_auth(ep)
+                    if auth_opt:
+                        auth_opt = auth_opt['conf']
                     maestro_comm = parse_yaml_bool(check_opt('maestro_comm', ep))
                     h = {
                         'name' : ep_name,
                         'port' : port,
                         'xprt' : xprt,
                         'maestro_comm' : maestro_comm,
-                        'auth' : { 'name' : auth_name, 'conf' : auth_conf, 'plugin' : plugin }
+                        'auth' : { 'name' : auth_name, 'conf' : auth_opt, 'plugin' : plugin }
                     }
                     if check_opt('bind_all', ep):
                         h['bind_all'] = ep['bind_all']
@@ -498,11 +499,13 @@ class YamlCfg(object):
             if subscribe:
                 for sub in subscribe:
                     check_required([ 'regex' ], sub, '"aggregators" stream specification')
-                    msg = check_opt('msg_tag', sub)
+                    msg = check_opt('message_tag', sub)
                     stream = check_opt('stream', sub)
                     if not msg and not stream:
-                        raise ValueError(f'"subscribe" for hostlist {group} must contain '\
-                                         f'either a "stream" or "msg_tag" attribute\n')
+                        msg = check_opt('message_channel', sub)
+                        if not msg:
+                            raise ValueError(f'"subscribe" for hostlist {group} must contain '\
+                                             f'either a "stream" or "message_tag" attribute\n')
             for name in names:
                 aggregators[group][name] = { 'state' : 'stopped' } # 'running', 'error'
                 self.build_advertisers(agg_spec)

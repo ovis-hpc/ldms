@@ -76,6 +76,10 @@
 #include "ldmsd_request.h"
 #include "ldmsd_stream.h"
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 /*
  * This file implements an LDMSD control protocol. The protocol is
@@ -344,6 +348,12 @@ static int qgroup_member_del_handler(ldmsd_req_ctxt_t reqc);
 static int qgroup_start_handler(ldmsd_req_ctxt_t reqc);
 static int qgroup_stop_handler(ldmsd_req_ctxt_t reqc);
 static int qgroup_info_handler(ldmsd_req_ctxt_t reqc);
+
+/* smplrp - Sampler Policy */
+static int smplrp_add_handler(ldmsd_req_ctxt_t reqc);
+static int smplrp_del_handler(ldmsd_req_ctxt_t reqc);
+static int smplrp_start_handler(ldmsd_req_ctxt_t reqc);
+static int smplrp_stop_handler(ldmsd_req_ctxt_t reqc);
 
 /* executable for all */
 #define XALL 0111
@@ -800,6 +810,20 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_QGROUP_INFO_REQ] = {
 		LDMSD_QGROUP_INFO_REQ, qgroup_info_handler, XUG
+	},
+
+	/* smplrp - Sampler Policy */
+	[LDMSD_SMPLRP_ADD_REQ] = {
+		LDMSD_SMPLRP_ADD_REQ, smplrp_add_handler, XUG
+	},
+	[LDMSD_SMPLRP_DEL_REQ] = {
+		LDMSD_SMPLRP_DEL_REQ, smplrp_del_handler, XUG
+	},
+	[LDMSD_SMPLRP_START_REQ] = {
+		LDMSD_SMPLRP_START_REQ, smplrp_start_handler, XUG
+	},
+	[LDMSD_SMPLRP_STOP_REQ] = {
+		LDMSD_SMPLRP_STOP_REQ, smplrp_stop_handler, XUG
 	},
 };
 
@@ -2195,7 +2219,7 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
-	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_CHAN);
+	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_TAG);
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
 
 	if (!stream_name && !msg) {
@@ -2222,7 +2246,7 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	/* on error, reqc->line_buf will be filled */
 	if (reqc->line_buf[0] == '\0' || reqc->line_buf[0] == '0')
 		__dlog(DLOG_CFGOK, "prdcr_subscribe_regex prdcr_regex=%s %s=%s\n",
-			prdcr_regex, (msg ? ldmsd_req_attr_id2str(LDMSD_ATTR_MSG_CHAN, 0)
+			prdcr_regex, (msg ? ldmsd_req_attr_id2str(LDMSD_ATTR_MSG_TAG, 0)
 				: ldmsd_req_attr_id2str(LDMSD_ATTR_STREAM, 0)),
 			( msg ? msg : stream_name));
 
@@ -2254,7 +2278,7 @@ static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
-	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_CHAN);
+	msg = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MSG_TAG);
 
 	if (!stream_name && !msg) {
 		reqc->errcode = EINVAL;
@@ -7613,7 +7637,7 @@ int __stream_profiling_as_json(json_t **_jobj, int is_reset) {
 			}
 			json_object_set_new(strm_jobj, addr_buf, src_jobj);
 		}
-		json_object_set_new(jobj, ss->name, strm_jobj);
+		json_object_set_new(jobj, ss->msg_tag, strm_jobj);
 	}
  out:
 	*_jobj = jobj;
@@ -7776,6 +7800,7 @@ static int __store_time_thread_tree(struct rbt *tree)
 	struct rbn *prdset_rbn, *rbn;
 	ldmsd_prdcr_set_t prdset;
 	struct store_time_thread *ent;
+	ldmsd_strgp_ref_t strgp_ref;
 	pid_t tid;
 	struct ldmsd_stat *store_io_thr_stat; /* Statistics of time duration used on IO thread int he storing process */
 	int rc = 0;
@@ -7801,8 +7826,10 @@ static int __store_time_thread_tree(struct rbt *tree)
 				ent = container_of(rbn, struct store_time_thread, rbn);
 			}
 
-			store_io_thr_stat = &prdset->store_stages_stat.io_thread_stat;
-			ent->store_time += (uint64_t)(store_io_thr_stat->avg * store_io_thr_stat->count);
+			LIST_FOREACH(strgp_ref, &prdset->strgp_list, entry) {
+				store_io_thr_stat = &strgp_ref->store_stages_stat.io_thread_stat;
+				ent->store_time += (uint64_t)(store_io_thr_stat->avg * store_io_thr_stat->count);
+			}
 		}
 	}
 out:
@@ -8743,6 +8770,7 @@ static int stream_disable_handler(ldmsd_req_ctxt_t reqc)
 static int stream_enable_handler(ldmsd_req_ctxt_t reqc)
 {
 	stream_enabled = 1;
+	__dlog(DLOG_CFGOK, "stream_enable\n");
 	reqc->errcode = 0;
 	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len, "OK");
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -8933,6 +8961,7 @@ static int msg_disable_handler(ldmsd_req_ctxt_t reqc)
 static int msg_enable_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldms_msg_enable();
+	__dlog(DLOG_CFGOK, "msg_enable\n");
 	reqc->errcode = 0;
 	(void)Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -9621,169 +9650,199 @@ static json_entity_t ldmsd_stat2dict(json_doc_t jdoc, struct ldmsd_stat *stat)
 	return d;
 }
 
-static json_entity_t __prdset_store_time_json_get(json_doc_t jdoc, struct prdset_store_stages_stats *stats)
+static json_entity_t __prdset_store_time_json_get(json_doc_t jdoc, struct store_stages_stats *stats)
 {
 	json_entity_t d;
 	d = json_dict_new(jdoc);
 	json_attr_add(d, "io_thread", ldmsd_stat2dict(jdoc, &stats->io_thread_stat));
 	json_attr_add(d, "decomp", ldmsd_stat2dict(jdoc, &stats->decomp_stat));
 	json_attr_add(d, "wait", ldmsd_stat2dict(jdoc, &stats->worker_wait_stat));
-	json_attr_add(d, "queue", ldmsd_stat2dict(jdoc, &stats->worker_wait_stat));
+	json_attr_add(d, "queue", ldmsd_stat2dict(jdoc, &stats->queue_stat));
 	json_attr_add(d, "commit", ldmsd_stat2dict(jdoc, &stats->commit_stat));
 	return d;
 }
 
 void ldmsd_prdcr_set_store_stats_init(ldmsd_prdcr_set_t prdset, struct timespec *ts);
 static int
-__store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int reset)
+__store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prdset, int reset)
 {
 	int rc = 0;
-	ldmsd_prdcr_t prdcr;
-	ldmsd_prdcr_set_t prdset;
-	ldmsd_name_match_t match;
-	struct rbn *rbn;
-	pid_t tid;
-	char tid_s[128];
-	json_entity_t strgp_stats, set_stats, stage_stats;
+	ldmsd_strgp_ref_t strgp_ref;
 	json_entity_t producers, threads, schemas, sets;
 	json_entity_t prdcr_json, thr_json, sch_json, set_json;
+	json_entity_t strgp_stats, set_stats, stage_stats;
 	json_doc_t jdoc = json_entity_doc(strgp_dict);
-	strgp_stats = json_dict_build(jdoc,
-				      "producers", JSON_DICT_VALUE, NULL,
-				      "threads",   JSON_DICT_VALUE, NULL,
-				      "schemas",   JSON_DICT_VALUE, NULL,
-				      "sets",      JSON_DICT_VALUE, NULL,
-				      NULL);
-	if (!strgp_stats) {
-		ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
-		rc = ENOMEM;
-		goto out;
-	}
-	producers = json_attr_value(json_attr_find(strgp_stats, "producers"));
-	threads = json_attr_value(json_attr_find(strgp_stats, "threads"));
-	schemas = json_attr_value(json_attr_find(strgp_stats, "schemas"));
-	sets = json_attr_value(json_attr_find(strgp_stats, "sets"));
+	pid_t tid;
+	char tid_s[128];
 
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		match = ldmsd_strgp_prdcr_first(strgp);
-		for (rc = 0; match; match = ldmsd_strgp_prdcr_next(match)) {
-			rc = regexec(&match->regex, prdcr->obj.name, 0, NULL, 0);
-			if (!rc)
-				break;
+	LIST_FOREACH(strgp_ref, &prdset->strgp_list, entry) {
+		if (strgp && (strgp_ref->strgp != strgp)) {
+			/*
+			 * A storage policy name is specified, so only aggregate
+			 * the statistics for the specified storage policy.
+			 *
+			 * Skip all storage reference of the other storage policies.
+			 */
+			continue;
 		}
-		for (rbn = rbt_min(&prdcr->set_tree); rbn; rbn = rbn_succ(rbn)) {
-
-			prdset = container_of(rbn, struct ldmsd_prdcr_set, rbn);
-			if (strgp->schema) {
-				if (0 != strcmp(strgp->schema, prdset->schema_name))
-					continue;
-			} else {
-				rc = regexec(&strgp->schema_regex, prdset->schema_name, 0, NULL, 0);
-				if (rc)
-					continue;
+		strgp_stats = json_value_find(strgp_dict, strgp_ref->strgp->obj.name);
+		if (!strgp_stats) {
+			strgp_stats = json_dict_build(jdoc,
+						"producers", JSON_DICT_VALUE, NULL,
+						"threads",   JSON_DICT_VALUE, NULL,
+						"schemas",   JSON_DICT_VALUE, NULL,
+						"sets",      JSON_DICT_VALUE, NULL,
+						NULL);
+			if (!strgp_stats) {
+				ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
+				rc = ENOMEM;
+				goto out;
 			}
-
-			if ((prdset->state != LDMSD_PRDCR_SET_STATE_READY) &&
-				(prdset->state != LDMSD_PRDCR_SET_STATE_UPDATING)) {
-				continue;
+			rc = json_attr_add(strgp_dict, strgp_ref->strgp->obj.name, strgp_stats);
+			if (rc) {
+				json_entity_free(strgp_stats);
+				ovis_log(config_log, OVIS_LERROR,
+						"Error creating the JSON response "
+						"of a store_time request. Error %d\n", rc);
+				goto out;
 			}
+		}
 
-			prdcr_json = json_attr_find(producers, prdcr->obj.name);
+		producers = json_attr_value(json_attr_find(strgp_stats, "producers"));
+		threads = json_attr_value(json_attr_find(strgp_stats, "threads"));
+		schemas = json_attr_value(json_attr_find(strgp_stats, "schemas"));
+		sets = json_attr_value(json_attr_find(strgp_stats, "sets"));
+
+		prdcr_json = json_value_find(producers, prdset->prdcr->obj.name);
+		if (!prdcr_json) {
+			/*
+			 * The dictionary may be extended to contain
+			 * producer's statistics in the future.
+			 */
+			prdcr_json = json_entity_new(jdoc, JSON_DICT_VALUE);
 			if (!prdcr_json) {
-				/*
-				 * The dictionary may be extended to contain
-				 * producer's statistics in the future.
-				 */
-				prdcr_json = json_entity_new(jdoc, JSON_DICT_VALUE);
-				if (!prdcr_json)
-					goto oom;
-				rc = json_attr_add(producers, prdcr->obj.name, prdcr_json);
-				if (rc)
-					goto json_error;
+				ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
+				rc = ENOMEM;
+				goto out;
 			}
-
-			tid = ldms_set_thread_id_get(prdset->set);
-			snprintf(tid_s, 127, "%d", tid);
-			thr_json = json_attr_find(threads, tid_s);
-			if (!thr_json) {
-				/*
-				 * The dictionary may be extended to contain
-				 * thread's statistics in the future.
-				 */
-				thr_json = json_entity_new(jdoc, JSON_DICT_VALUE);
-				if (!thr_json)
-					goto oom;
-				rc = json_attr_add(threads, tid_s, thr_json);
-				if (rc)
-					goto json_error;
-			}
-
-			sch_json = json_attr_find(schemas, prdset->schema_name);
-			if (!sch_json) {
-				/*
-				 * The dictionary may be extended to contain
-				 * schema's statistics in the future.
-				 */
-				sch_json = json_entity_new(jdoc, JSON_DICT_VALUE);
-				if (!sch_json)
-					goto oom;
-				rc = json_attr_add(schemas, prdset->schema_name, sch_json);
-				if (rc)
-					goto json_error;
-			}
-
-			set_json = json_dict_build(jdoc,
-					"producer",
-						   JSON_STRING_VALUE,
-						   prdcr->obj.name,
-						   strlen(prdcr->obj.name),
-					"schema",
-						   JSON_STRING_VALUE,
-						   prdset->schema_name,
-						   strlen(prdset->schema_name),
-					"thread_id",
-						   JSON_STRING_VALUE,
-						   tid_s,
-						   strlen(tid_s),
-					NULL);
-			set_stats = ldmsd_stat2dict(jdoc, &prdset->store_stat);
-			if (!set_json || !set_stats)
-				goto oom;
-			rc = json_attr_add(set_json, "stats", set_stats);
-			if (rc)
-				goto json_error;
-			stage_stats = __prdset_store_time_json_get(jdoc, &prdset->store_stages_stat);
-			if (!set_json || !set_stats)
-				goto oom;
-			rc = json_attr_add(set_json, "stage_stats", stage_stats);
-			if (rc)
-				goto json_error;
-			rc = json_attr_add(sets, prdset->inst_name, set_json);
-			if (rc)
-				goto json_error;
-			if (reset) {
-				struct timespec now;
-				clock_gettime(CLOCK_REALTIME, &now);
-				ldmsd_prdcr_set_stats_reset(prdset, &now, LDMSD_PRDSET_STATS_F_STORE);
+			rc = json_attr_add(producers, prdset->prdcr->obj.name, prdcr_json);
+			if (rc) {
+				json_entity_free(prdcr_json);
+				ovis_log(config_log, OVIS_LERROR,
+						"Error creating the JSON response "
+						"of a store_time request. Error %d\n", rc);
+				goto out;
 			}
 		}
+
+		tid = ldms_set_thread_id_get(prdset->set);
+		snprintf(tid_s, 127, "%d", tid);
+		thr_json = json_value_find(threads, tid_s);
+		if (!thr_json) {
+			/*
+			 * The dictionary may be extended to contain
+			 * thread's statistics in the future.
+			 */
+			thr_json = json_entity_new(jdoc, JSON_DICT_VALUE);
+			if (!thr_json) {
+				ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
+				rc = ENOMEM;
+				goto out;
+			}
+			rc = json_attr_add(threads, tid_s, thr_json);
+			if (rc) {
+				json_entity_free(thr_json);
+				ovis_log(config_log, OVIS_LERROR,
+						"Error creating the JSON response "
+						"of a store_time request. Error %d\n", rc);
+				goto out;
+			}
+		}
+
+		sch_json = json_value_find(schemas, prdset->schema_name);
+		if (!sch_json) {
+			/*
+			 * The dictionary may be extended to contain
+			 * schema's statistics in the future.
+			 */
+			sch_json = json_entity_new(jdoc, JSON_DICT_VALUE);
+			if (!sch_json) {
+				ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
+				rc = ENOMEM;
+				goto out;
+			}
+			rc = json_attr_add(schemas, prdset->schema_name, sch_json);
+			if (rc) {
+				json_entity_free(sch_json);
+				ovis_log(config_log, OVIS_LERROR,
+						"Error creating the JSON response "
+						"of a store_time request. Error %d\n", rc);
+				goto out;
+			}
+		}
+
+		set_json = json_dict_build(jdoc,
+				"producer",
+						JSON_STRING_VALUE,
+						prdset->prdcr->obj.name,
+						strlen(prdset->prdcr->obj.name),
+				"schema",
+						JSON_STRING_VALUE,
+						prdset->schema_name,
+						strlen(prdset->schema_name),
+				"thread_id",
+						JSON_STRING_VALUE,
+						tid_s,
+						strlen(tid_s),
+				NULL);
+
+		set_stats = ldmsd_stat2dict(jdoc, &strgp_ref->store_stat);
+		if (!set_json || !set_stats) {
+			ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
+			rc = ENOMEM;
+			goto out;
+		}
+		rc = json_attr_add(set_json, "stats", set_stats);
+		if (rc) {
+			json_entity_free(set_stats);
+			json_entity_free(set_json);
+			ovis_log(config_log, OVIS_LERROR,
+					"Error creating the JSON response "
+					"of a store_time request. Error %d\n", rc);
+			goto out;
+		}
+
+		stage_stats = __prdset_store_time_json_get(jdoc, &strgp_ref->store_stages_stat);
+		if (!stage_stats) {
+			ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
+			rc = ENOMEM;
+			goto out;
+		}
+		rc = json_attr_add(set_json, "stage_stats", stage_stats);
+		if (rc) {
+			json_entity_free(stage_stats);
+			ovis_log(config_log, OVIS_LERROR,
+					"Error creating the JSON response "
+					"of a store_time request. Error %d\n", rc);
+			goto out;
+		}
+
+		rc = json_attr_add(sets, prdset->inst_name, set_json);
+		if (rc) {
+			json_entity_free(set_json);
+			ovis_log(config_log, OVIS_LERROR,
+					"Error creating the JSON response "
+					"of a store_time request. Error %d\n", rc);
+			goto out;
+		}
 	}
-	rc = json_attr_add(strgp_dict, strgp->obj.name, strgp_stats);
-	if (rc)
-		goto json_error;
-	return 0;
-free_stats:
-	json_entity_free(strgp_stats);
-out:
+	if (reset) {
+		struct timespec now;
+		clock_gettime(CLOCK_REALTIME, &now);
+		ldmsd_prdcr_set_stats_reset(prdset, &now, LDMSD_PRDSET_STATS_F_STORE);
+	}
+ out:
 	return rc;
-oom:
-	ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
-	rc = ENOMEM;
-	goto free_stats;
-json_error:
-	ovis_log(config_log, OVIS_LERROR, "Error creating the response "
-				"of a store_time request. Error %d\n", rc);
-	goto free_stats;
 }
 
 static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
@@ -9796,11 +9855,30 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 	json_entity_t strgp_dict;
 	jbuf_t jbuf = NULL;
 
+	ldmsd_prdcr_t prdcr;
+	ldmsd_prdcr_set_t prdset;
+
+
 	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
 	if (reset_s) {
 		if (0 != strcasecmp(reset_s, "false"))
 			reset = 1;
 		free(reset_s);
+	}
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (name) {
+		strgp = ldmsd_strgp_find(name);
+		if (!strgp) {
+			/* Not report any status */
+			snprintf(reqc->line_buf, reqc->line_len,
+				"strgp '%s' doesn't exist.", name);
+			reqc->errcode = ENOENT;
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+			return 0;
+		}
+	} else {
+		strgp = NULL;
 	}
 
 	json_doc_t jdoc = json_doc_new();
@@ -9815,35 +9893,22 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 		goto out;
 	}
 
-	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (name) {
-		strgp = ldmsd_strgp_find(name);
-		if (!strgp) {
-			/* Not report any status */
-			snprintf(reqc->line_buf, reqc->line_len,
-				"strgp '%s' doesn't exist.", name);
-			reqc->errcode = ENOENT;
-			ldmsd_send_req_response(reqc, reqc->line_buf);
-			return 0;
-		}
-		rc = __store_time_stats_strgp(strgp_dict, strgp, reset);
-		if (rc)
-			goto err;
-	} else {
-		ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
-		for (strgp = ldmsd_strgp_first(); strgp;
-				strgp = ldmsd_strgp_next(strgp)) {
-			ldmsd_strgp_lock(strgp);
-			rc = __store_time_stats_strgp(strgp_dict, strgp, reset);
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		ldmsd_prdcr_lock(prdcr);
+		for (prdset = ldmsd_prdcr_set_first(prdcr); prdset; prdset = ldmsd_prdcr_set_next(prdset)) {
+			pthread_mutex_lock(&prdset->lock);
+			rc = __store_time_stats_prdset(strgp_dict, strgp, prdset, reset);
+			pthread_mutex_unlock(&prdset->lock);
 			if (rc) {
-				ldmsd_strgp_unlock(strgp);
-				ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+				ldmsd_prdcr_unlock(prdcr);
+				ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 				goto err;
 			}
-			ldmsd_strgp_unlock(strgp);
 		}
-		ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+		ldmsd_prdcr_unlock(prdcr);
 	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 
 	jbuf = json_entity_dump(NULL, strgp_dict);
 	ldmsd_send_req_response(reqc, jbuf->buf);
@@ -9852,6 +9917,8 @@ err:
 	snprintf(reqc->line_buf, reqc->line_len, "Failed to query the store "
 						 "time stats. Error %d.", rc);
 	reqc->errcode = rc;
+	if (rc != ENOMEM)
+		rc = 0;
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 out:
 	free(name);
@@ -11216,7 +11283,7 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 
 	/*
-	 * Make sure that advertised producers subscribe and unsubscribe stream and msg_channel correctly
+	 * Make sure that advertised producers subscribe and unsubscribe stream and msg_tag correctly
 	 */
 	struct ldmsd_prdcr_sub_unsub *psun;
 	ldmsd_prdcr_sub_unsub_list_lock();
@@ -11227,12 +11294,12 @@ static int __process_advertisement(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_listen_t p
 		if (psun->is_sub) {
 			if (psun->stream_name)
 				ldmsd_prdcr_stream_subscribe(prdcr, psun->stream_name);
-			else /* msg_channel */
+			else /* msg_tag */
 				ldmsd_prdcr_msg_subscribe(prdcr, psun->msg, psun->rate);
 		} else {
 			if (psun->stream_name)
 				ldmsd_prdcr_stream_unsubscribe(prdcr, psun->stream_name);
-			else /* msg_channel */
+			else /* msg_tag */
 				ldmsd_prdcr_msg_unsubscribe(prdcr, psun->msg);
 		}
 	}
@@ -11747,5 +11814,177 @@ static int qgroup_info_handler(ldmsd_req_ctxt_t reqc)
 	} else {
 		ldmsd_send_req_response(reqc, reqc->line_buf);
 	}
+	return rc;
+}
+
+static int smplrp_add_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = ENOSYS;
+	const char *name;
+	const char *path;
+	const char *json;
+	void *p;
+	char *buf = NULL;
+	int fd = -1;
+	ssize_t off, len, rd_len;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_add error: Missing 'name' parameter.\n");
+		goto out;
+	}
+	path = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PATH);
+	json = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_JSON);
+	if (!path && !json) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_add error: Missing 'path' parameter.\n");
+		goto out;
+	}
+
+	if (path && json) {
+		ovis_log(config_log, OVIS_LWARNING,
+			 "smplrp_add received both json object and 'path'. "
+			 "The 'path' takes predence, json object is ignored.");
+	}
+
+	if (json)
+		goto smplrp_new;
+
+	fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_add error %d when open file %s\n", errno, path);
+		goto out;
+	}
+
+	len = lseek(fd, 0, SEEK_END);
+	off = lseek(fd, 0, SEEK_SET);
+	if (len < 0 || off < 0) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_add: lseek() error: %d\n", errno);
+		goto out;
+	}
+
+	buf = malloc(len);
+	if (!buf) {
+		rc = ENOMEM;
+		linebuf_printf(reqc, "smplrp_add error: Not enough memory\n");
+		goto out;
+	}
+
+	while (off < len) {
+		rd_len = read(fd, buf + off, len - off);
+		if (rd_len < 0) {
+			rc = errno;
+			linebuf_printf(reqc, "smplrp_add: read() error: %d\n", errno);
+			goto out;
+		}
+		if (rd_len == 0) {
+			rc = ENODATA;
+			linebuf_printf(reqc, "smplrp_add: read() ended prematurely\n");
+			goto out;
+		}
+		off += rd_len;
+	}
+	json = buf;
+
+ smplrp_new:
+	p = ldmsd_smplrp_new(name, json);
+	if (!p) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_add, ldmsd_smplrp_new() error: %d\n", errno);
+		goto out;
+	}
+	rc = 0;
+
+ out:
+	if (fd >= 0)
+		close(fd);
+	if (buf)
+		free(buf);
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int smplrp_del_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = ENOSYS;
+	const char *name;
+
+	struct ldmsd_sec_ctxt sctxt;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_del error: Missing 'name' parameter.\n");
+		goto out;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	rc = ldmsd_smplrp_del(name, &sctxt);
+	if (rc) {
+		linebuf_printf(reqc, "smplrp_del error: %d\n", rc);
+	}
+
+ out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int smplrp_start_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = ENOSYS;
+	const char *name;
+
+	struct ldmsd_sec_ctxt sctxt;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_start error: Missing 'name' parameter.\n");
+		goto out;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	rc = ldmsd_smplrp_start(name, &sctxt);
+	if (rc) {
+		linebuf_printf(reqc, "smplrp_start error: %d\n", rc);
+	}
+
+ out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}
+
+static int smplrp_stop_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = ENOSYS;
+	const char *name;
+
+	struct ldmsd_sec_ctxt sctxt;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		rc = errno;
+		linebuf_printf(reqc, "smplrp_stop error: Missing 'name' parameter.\n");
+		goto out;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	rc = ldmsd_smplrp_stop(name, &sctxt);
+	if (rc) {
+		linebuf_printf(reqc, "smplrp_stop error: %d\n", rc);
+	}
+
+ out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
 }

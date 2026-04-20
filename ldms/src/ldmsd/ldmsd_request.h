@@ -227,6 +227,12 @@ enum ldmsd_request {
 	LDMSD_MSG_CLIENT_STATS_REQ,  /* Query message client stats of this process */
 	LDMSD_MSG_DISABLE_REQ,       /* Disable message service */
 	LDMSD_MSG_ENABLE_REQ,	     /* Enable message service */
+
+	/* smplrp - Sampler Policy */
+	LDMSD_SMPLRP_ADD_REQ = 0xd00, /* Add */
+	LDMSD_SMPLRP_DEL_REQ,         /* Del */
+	LDMSD_SMPLRP_START_REQ,       /* Start */
+	LDMSD_SMPLRP_STOP_REQ,        /* Stop */
 };
 
 enum ldmsd_request_attr {
@@ -280,7 +286,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_ASK_AMOUNT,
 	LDMSD_ATTR_RESET_INTERVAL,
 	LDMSD_ATTR_XTHREAD,
-	LDMSD_ATTR_MSG_CHAN,
+	LDMSD_ATTR_MSG_TAG,
 	LDMSD_ATTR_STATE,
 	LDMSD_ATTR_LAST,
 };
