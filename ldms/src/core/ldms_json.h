@@ -38,6 +38,10 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#ifndef __LDMS_JSON_H__
+#define __LDMS_JSON_H__
+
+#include "ldms.h"
 
 /**
  * \brief Format an LDMS metric set as a JSON string
@@ -80,3 +84,4 @@ char *ldms_set_as_json_string(ldms_set_t s, size_t *len);
  *         consult \c errno for the reason.
  */
 size_t ldms_fprint_set_as_json(FILE *fp, ldms_set_t s);
+#endif
