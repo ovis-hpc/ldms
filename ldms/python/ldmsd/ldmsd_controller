@@ -1426,13 +1426,14 @@ class LdmsdCmdParser(Cmd.Cmd):
                     stage_stats['stages'][stage] = prdset['stage_stats'][stage]['avg']
                 else:
                     stage_stats['stages']['prep'] = prep
+            stage_stats['count'] = 1
         else:
             stage_stats['count'] += 1
-            for stage in stage_stats['stage']:
+            for stage in stage_stats['stages']:
                 if stage != "prep":
-                    stage_stats[stage] += (prdset['stage_stats'][stage]['avg'] - stage_stats[stage]) * (weight / stage_stats['count'])
+                    stage_stats['stages'][stage] += (prdset['stage_stats'][stage]['avg'] - stage_stats['stages'][stage]) * (weight / stage_stats['count'])
                 else:
-                    stage_stats['prep'] += (prep - stage_stats['prep']) * (weight / stage_stats['count'])
+                    stage_stats['stages']['prep'] += (prep - stage_stats['stages']['prep']) * (weight / stage_stats['count'])
 
         return stage_stats
 
@@ -1636,20 +1637,30 @@ class LdmsdCmdParser(Cmd.Cmd):
             raise
 
         # Schema Table
-        print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
-        print("   <   Minimum Value          -   Minimum Average value")
-        print("   >   Maximum Value          +   Maximum Average value")
-        print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
-        print(f"{' '*4} {'Schema':^20} {'Min (us)':^15} {'Avg (us)':^15} {'Max (us)':^15} {'Min Timestamp':^20} {'Max Timestamp':^20} {'# of Sets':^10} {'Count':^10}")
-        print(f"{'-'*4}-{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
-        schema_names = sorted(list(schema_tbl['schema'].keys()))
-        for schema in schema_names:
-            stats = schema_tbl['schema'][schema]['stats']
-            if len(stats['set_name']) == 0:
-                continue
-            print(f"{self.__symbols(schema, schema_tbl['stats']):>4}   {schema:>18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {int(stats['min_ts']):20d} {int(stats['max_ts']):20d} {len(set(stats['set_name'])):10} {stats['count']:10}")
+        if arg['name'] is None:
+            # If 'name' is given, the schema table will report the same number
+            # as the numbers in the storage policy table for each schema.
+            # Thus, omit the table
+            print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
+            print("   <   Minimum Value          -   Minimum Average value")
+            print("   >   Maximum Value          +   Maximum Average value")
+            print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
+            print()
+            print(f"{'Statistics per Set Schema':^137}")
+            print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
+            print(f"{' '*4} {'Schema':^20} {'Min (us)':^15} {'Avg (us)':^15} {'Max (us)':^15} {'Min Timestamp':^20} {'Max Timestamp':^20} {'# of Sets':^10} {'Count':^10}")
+            print(f"{'-'*4}-{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
+            schema_names = sorted(list(schema_tbl['schema'].keys()))
+            for schema in schema_names:
+                stats = schema_tbl['schema'][schema]['stats']
+                if len(stats['set_name']) == 0:
+                    continue
+                print(f"{self.__symbols(schema, schema_tbl['stats']):>4}   {schema:>18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {int(stats['min_ts']):20d} {int(stats['max_ts']):20d} {len(set(stats['set_name'])):10} {stats['count']:10}")
+                print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
 
         # Storage policy Table
+        print()
+        print(f"{'Statistics per Storage Policies and Set Schema':^137}")
         print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
         print(f"{' '*4} {'Storage Policy':^20} {'Min (us)':^15} {'Avg (us)':^15} {'Max (us)':^15} {'Min Timestamp':^20} {'Max Timestamp':^20} {'# of Sets':^10} {'Count':^10}")
         print(f"{'-'*4}-{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
@@ -1659,30 +1670,47 @@ class LdmsdCmdParser(Cmd.Cmd):
             if 0 == len(stats['set_name']):
                 continue
             print(f"{self.__symbols(strgp, strgp_tbl['stats']):>5}  {strgp:18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {int(stats['min_ts']):20d} {int(stats['max_ts']):20d} {len(set(stats['set_name'])):10} {stats['count']:10}")
+            print(f"   {' '*2}{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
             schemas = sorted(list(strgp_tbl['strgp'][strgp]['schema'].keys()))
             for schema in schemas:
                 sch_stats = strgp_tbl['strgp'][strgp]['schema'][schema]['stats']
-                if sch_stats['start_ts'] is None:
+                if sch_stats['count'] == 0:
                     continue
-                print(f"   {' '*2}{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
-                print(f"   {self.__symbols(schema, strgp_tbl['strgp'][strgp]['stats']):>5} {schema:16} {sch_stats['min']:15.4f} {sch_stats['avg']:15.4f} " \
+                print(f"   {self.__symbols(schema, strgp_tbl['strgp'][strgp]['stats']):>5} {schema:>16} {sch_stats['min']:15.4f} {sch_stats['avg']:15.4f} " \
                       f"{sch_stats['max']:15.4f} {int(sch_stats['min_ts']):20d} {int(sch_stats['max_ts']):20d} " \
                       f"{len(set(sch_stats['set_name'])):10} {sch_stats['count']:10}")
-            print(f"{' '*5}  {'-'*18} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
+            print(f"{' '*5}{'='*20} {'='*15} {'='*15} {'='*15} {'='*20} {'='*20} {'='*10} {'='*10}")
 
         print()
-        print(f"Number of store operations per second: {num_op_per_sec:0.4f}")
-
-        print("Percentages of each stage:", end = "")
+        print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
+        print(f"Number of store operations per second:              {num_op_per_sec:7.2f}")
+        print(f"The averaged duration of each store operation (us): {stage_tbl['total_time']:7.2f}")
+        print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
+        print()
+        print("Breakdown of Storage Operation (Percentage and Average)", end = "")
         if stage_tbl['total_time'] == 0:
             print(" N/A")
             print(" -- No sets have been stored")
         else:
+            def __get_stage_name(n):
+                if n == "queue":
+                    return "in_worker_queue"
+                elif n == "wait":
+                    return "wait_for_worker"
+                elif n == "prep":
+                    return "misc"
+                elif n == "commit":
+                    return "store/commit"
+                elif n == "decomp":
+                    return "decomposition"
+                else:
+                    return n
             print()
             sorted_stages = sorted(stage_tbl['stages'].items(), key=lambda x: x[1], reverse=True)
             for stage, value in sorted_stages:
                 pct = value/stage_tbl['total_time']*100
-                print(f"   {stage:15}: {pct:>7.2f}%")
+                print(f"   {__get_stage_name(stage):16}: {pct:>7.2f}%          {value:>7.2f} us")
+
 
     def complete_store_time_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('store_time_stats', text)
