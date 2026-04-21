@@ -112,7 +112,6 @@ extern ovis_log_t store_log;
  */
 struct store_event_ctxt {
 	ldms_set_t snapshot; /* Set Snapshot */
-	ldmsd_strgp_t strgp; /* TODO: Remove this */
 	ldmsd_strgp_ref_t strgp_ref;
 	ldmsd_row_list_t row_list;
 	int row_count;
@@ -162,7 +161,7 @@ struct store_event_ctxt *store_event_ctxt_new(ldmsd_strgp_ref_t strgp_ref, ldms_
 	 */
 	ldms_set_snapshot_get(snapshot, "store_event_ctxt_new");
 	ctxt->snapshot = snapshot;
-	ctxt->strgp = ldmsd_strgp_get(strgp_ref->strgp, "store_event_ctxt_new"); /* TODO: I need to carefully thing about this. It isn't clear to me that taking strgp reference is correct here. */
+	ldmsd_strgp_get(strgp_ref->strgp, "store_event_ctxt_new");
 	ctxt->strgp_ref = strgp_ref;
 	if (strgp_ref->strgp->decomp) {
 		ctxt->type = STORE_T_DECOMP;
@@ -414,6 +413,7 @@ void strg_worker_release(struct strg_worker *w)
 void storage_worker_actor(struct ovis_event_s *ev)
 {
 	int rc;
+	struct timespec start, end;
 	struct store_event_ctxt *event_ctxt = ev->param.ctxt;
 	ldmsd_strgp_ref_t strgp_ref = event_ctxt->strgp_ref;
 	ldmsd_strgp_t strgp = strgp_ref->strgp;
@@ -421,9 +421,12 @@ void storage_worker_actor(struct ovis_event_s *ev)
 	ldmsd_row_list_t row_list = event_ctxt->row_list;
 	int row_count = event_ctxt->row_count;
 	struct ldmsd_stat *queue_stat = &(strgp_ref->store_stages_stat.queue_stat);
+	struct ldmsd_stat *commit_stat = &(strgp_ref->store_stages_stat.commit_stat);
 
-	clock_gettime(CLOCK_REALTIME, &queue_stat->end); /* start is the end timestamp of the event being queued */
+	clock_gettime(CLOCK_REALTIME, &start); /* start is the end timestamp of the event being queued */
+	queue_stat->end = start;
 	ldmsd_stat_update(queue_stat, &event_ctxt->post_ts, &queue_stat->end);
+
 	if (event_ctxt->type == STORE_T_LEGACY) {
 		strgp->store->api->store((ldmsd_plug_handle_t)strgp->store,
 					 strgp->store_handle, set,
@@ -449,11 +452,14 @@ void storage_worker_actor(struct ovis_event_s *ev)
 	}
 	strg_worker_release(event_ctxt->w);
 
-	clock_gettime(CLOCK_REALTIME, &strgp_ref->store_stat.end);
-	strgp_ref->store_stages_stat.commit_stat.end = strgp_ref->store_stat.end;
+	clock_gettime(CLOCK_REALTIME, &end);
+	strgp_ref->store_stat.end = commit_stat->end = end;
 	ldmsd_stat_update(&strgp_ref->store_stages_stat.commit_stat,
-			&queue_stat->end, &strgp_ref->store_stat.end);
-	ldmsd_stat_update(&strgp_ref->store_stat, &event_ctxt->start_ts, &strgp_ref->store_stat.end);
+				&start, &end);
+	/* event_ctxt->start_ts is the very begining in strgp_update_fn() */
+	ldmsd_stat_update(&strgp_ref->store_stat,
+				&event_ctxt->start_ts, &end);
+
 	store_event_ctxt_free(event_ctxt);
 	free(row_list);
 	free(ev);
@@ -475,6 +481,7 @@ int store_event_post(struct store_event_ctxt *ctxt)
 	struct strg_worker *w;
 	ldmsd_strgp_ref_t strgp_ref = ctxt->strgp_ref;
 	struct timespec wait_start, wait_end;
+	struct ldmsd_stat *worker_wait_stat = &(strgp_ref->store_stages_stat.worker_wait_stat);
 
 	ovis_log(store_log, OVIS_LDEBUG, "store_post(%p, %p).\n", ctxt, ctxt->snapshot);
 
@@ -483,7 +490,8 @@ int store_event_post(struct store_event_ctxt *ctxt)
 	w = strg_worker_acquire();
 	ctxt->w = w;
 	clock_gettime(CLOCK_REALTIME, &wait_end);
-	ldmsd_stat_update(&strgp_ref->store_stages_stat.worker_wait_stat, &wait_start, &wait_end);
+	ldmsd_stat_update(worker_wait_stat, &wait_start, &wait_end);
+
 	if (!w) {
 		rc = errno;
 		return rc;
@@ -507,13 +515,15 @@ int store_event_post(struct store_event_ctxt *ctxt)
 	 * Therefore, the order of events posted on a worker is preserved.
 	 */
 	ovis_log(store_log, OVIS_LDEBUG, "Post store_event %p to worker %p\n", ev, w);
-	clock_gettime(CLOCK_REALTIME, &ctxt->post_ts);
 
+	clock_gettime(CLOCK_REALTIME, &ctxt->post_ts);
 	ldmsd_stat_update(&strgp_ref->store_stages_stat.io_thread_stat,
 				  &ctxt->start_ts, &ctxt->post_ts);
-	strgp_ref->store_stages_stat.io_thread_stat.end = ctxt->post_ts;
+
+	/* Enqueue the store event to the storage worker */
 	rc = ovis_scheduler_event_add(w->worker, ev);
 	if (rc) {
+		free(ev);
 		ovis_log(store_log, OVIS_LERROR, "Failed to post a store event " \
 						 "on a storage worker. Error %d\n", rc);
 	}
