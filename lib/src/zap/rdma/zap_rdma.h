@@ -58,8 +58,8 @@
 #define SQ_DEPTH 4
 #define RQ_DEPTH 4
 #define RQ_BUF_SZ 2048
-#define SQ_SGE 1
-#define RQ_SGE 1
+#define SQ_SGE 2
+#define RQ_SGE 2
 
 /* number of buffers in a pool */
 #define Z_RDMA_POOL_SZ 256
@@ -167,10 +167,22 @@ struct z_rdma_conn_data {
 };
 #pragma pack(pop)
 
-#define RDMA_CONN_DATA_MAX (196)
+/* RDMA_CONN_DATA_MAX being 56 is limited by RDMA_PS_TCP on IB. IWarp don't have
+ * this limit. `rdma_connect(3)` man page also mentioned this limitation on IB.
+ *
+ * linux/drivers/infiniband/core/cm.c:cm_validate_req_param() was the one
+ * invaliding the private_data_len (from the rdma_connect() > cma_connect_ib() >
+ * ib_send_cm_req() > cm_validate_req_param() call chain).
+ *
+ * The IB_CM_REQ_PRIVATE_DATA_SIZE is actually 92 bytes, but since we use TCP
+ * addressing, the private data was offset by 36 bytes for `struct cma_hdr`
+ * containing cma version, src and dst addresses; hence the 92 - 36 = 56 usable
+ * private data length.
+ */
+#define RDMA_CONN_DATA_MAX (56)
 #define ZAP_RDMA_CONN_DATA_MAX (RDMA_CONN_DATA_MAX - sizeof(struct z_rdma_conn_data))
 
-#define RDMA_ACCEPT_DATA_MAX (196)
+#define RDMA_ACCEPT_DATA_MAX (56)
 #define ZAP_RDMA_ACCEPT_DATA_MAX RDMA_ACCEPT_DATA_MAX
 
 struct z_rdma_epoll_ctxt {
