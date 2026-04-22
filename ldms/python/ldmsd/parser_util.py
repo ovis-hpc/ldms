@@ -379,8 +379,6 @@ class YamlCfg(object):
                     ep_name = ep_.pop(0)
                     xprt = check_opt('xprt', ep)
                     auth_name, plugin, auth_opt = check_auth(ep)
-                    if auth_opt:
-                        auth_opt = auth_opt['conf']
                     maestro_comm = parse_yaml_bool(check_opt('maestro_comm', ep))
                     h = {
                         'name' : ep_name,
