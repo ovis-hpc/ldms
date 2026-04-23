@@ -1,0 +1,15 @@
+plugins:
+  ${plugname}:
+    name: ${plugname}
+    interval: "1s"
+    config:
+    - producer: "localhost@i@"
+      instance: localhost@i@/${dschema}
+      schema: ${dschema}
+      component_id: "${i}"
+      metrics: ${METRICS}
+      perm: "0644"
+
+samplers:
+- daemons: "localhost@i@"
+  plugins: [ "${plugname}" ]
