@@ -222,6 +222,7 @@ and they are mutually exclusive of the raw configuration options.
    | Append the named variable to the list of those that
      will be substituted in generated yaml. @variable@ is
      replaced with the current value. May be repeated.
+     By default "-S i" is assumed and @i@ is substituted.
 
 -z
    |
@@ -307,7 +308,8 @@ i
    |
    | Daemon configuration files and commands can refer to ${i} where i
      is the integer daemon number supplied via LDMSD for the specific
-     daemon using the script.
+     daemon using the script. Daemon yaml files can refer to @i@ instead
+     of ${i}.
 
 portN
    |

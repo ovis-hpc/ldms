@@ -1,27 +1,34 @@
 export plugname=rdc_sampler
-portbase=61060
+portbase=10000
 export METRICS=RDC_FI_GPU_CLOCK,RDC_FI_MEM_CLOCK,RDC_FI_MEMORY_TEMP,RDC_FI_GPU_TEMP,RDC_FI_POWER_USAGE,RDC_FI_GPU_UTIL,RDC_FI_GPU_MEMORY_USAGE,RDC_FI_GPU_MEMORY_TOTAL
 
 dschema=$(ldms_rdc_schema_name metrics=$METRICS |grep -v ERR)
+if test -z "$dschema"; then
+	MESSAGE "Failure using 'ldms_rdc_schema_name metrics=$METRICS'"
+	MESSAGE "ROCM support missing from LDMS build?"
+	exit 1
+fi
+dschema=rdc_sampler_1
 export dschema
 DAEMONS $(seq 3)
-LDMSD 3
 
 VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite"
-#vgon
-LDMSD 2
-vgoff
-SLEEP 2
+
+LDMSD -y -R yepilog.daemons3 -R yepilog.store3 3
+SLEEP 1
+LDMSD -y -R yepilog.daemons3 2
+SLEEP 1
+LDMSD -y -R yepilog.daemons3 1
+
+SLEEP 4
 MESSAGE ldms_ls on host 2:
 LDMS_LS 2 -v
-SLEEP 2
-
-#vgon
-LDMSD 1
-vgoff
-SLEEP 6
+SLEEP 1
 MESSAGE ldms_ls on host 1:
-LDMS_LS 1 -vl
+LDMS_LS 1 -l
+SLEEP 6
+MESSAGE ldms_ls on host 3:
+LDMS_LS 3 -vl
 SLEEP 2
 KILL_LDMSD 1
 KILL_LDMSD 2
