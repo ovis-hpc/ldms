@@ -212,7 +212,7 @@ function LDMSD {
 	startwait=2000000
 	use_yaml=0
 	use_conf=0
-	sed_vars=""
+	sed_vars="i"
 	while getopts ":p:P:s:cyzQ:R:S:" opt; do
 		case $opt in
 		p)
@@ -484,33 +484,32 @@ function LDMSD {
 			/bin/rm -f $LDMSD_RUN/conf.$i
 			if test -n "$sed_vars"; then
 				sf=$LDMSD_RUN/.sed.$i
-				echo $sf
+				/bin/rm -f $sf
 				for sv in $sed_vars; do
 					svv=${!sv}
-					echo $svv
 					echo "s%@"${sv}"@%"$svv"%g" >> $sf
 				done
 				sed -f $sf -i.pre-sed $LDMSD_RUN/yaml.$i
 			fi
-			ldmsd_yaml_parser --ldms_config $LDMSD_RUN/yaml.$i --daemon_name localhost$i > $LDMSD_RUN/conf.$i
+			ldmsd_yaml_parser -y $LDMSD_RUN/yaml.$i -n localhost$i > $LDMSD_RUN/conf.$i
 			stat=$?
 			if test "$stat" = "0"; then
 				ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
 				env > $LDMSD_RUN/env.$i
 				if test -n "$GDB"; then
-					echo "run -x ${XPRT}:${ports[$i]}:${XPRTHOST} -y $LDMSD_RUN/yaml.$i --daemon_name $HOST:${ports[$i]} ${XLOGOPT} -v $LOG_LEVEL $LDMSD_EXTRA -r $LDMSD_PIDFILE.$i"
+					echo "run -x ${XPRT}:${ports[$i]}:${XPRTHOST} -y $LDMSD_RUN/yaml.$i -n $HOST:${ports[$i]} ${XLOGOPT} -v $LOG_LEVEL $LDMSD_EXTRA -r $LDMSD_PIDFILE.$i"
 					gdb ldmsd.${ports[$i]}
 				else
 					echo $wrap ldmsd.${ports[$i]} \
 						-y $LDMSD_RUN/yaml.$i \
-						--daemon_name localhost$i \
+						-n localhost$i \
 						${XLOGOPT} \
 						-v $LOG_LEVEL $LDMSD_EXTRA \
 						-r $LDMSD_PIDFILE.$i \
 					"2>&1 > ${LOGDIR}/$i.stdio &" > $LDMSD_RUN/start.$i
 					$wrap ldmsd.${ports[$i]} \
 						-y $LDMSD_RUN/yaml.$i \
-						--daemon_name localhost$i \
+						-n localhost$i \
 						${XLOGOPT} \
 						-v $LOG_LEVEL $LDMSD_EXTRA \
 						-r $LDMSD_PIDFILE.$i \

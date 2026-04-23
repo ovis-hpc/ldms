@@ -1,0 +1,14 @@
+plugins:
+  meminfo:
+    name: meminfo
+    interval: "1s"
+    config:
+    - producer: "localhost@i@"
+      schema: meminfo
+      instance: localhost@i@/meminfo
+      component_id: "${i}"
+      perm: "0644"
+
+samplers:
+- daemons: "localhost@i@"
+  plugins: [ meminfo ]

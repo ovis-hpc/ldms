@@ -1,3 +1,3 @@
-load name=${plugname}
-config name=${plugname} producer=localhost${i} instance=localhost${i}/${testname} component_id=${i}
-start name=${plugname} interval=1000000 offset=0
+load name=meminfo
+config name=meminfo producer=localhost${i} instance=localhost${i}/meminfo component_id=${i}
+start name=meminfo interval=1000000 offset=0
