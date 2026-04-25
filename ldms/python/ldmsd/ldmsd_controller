@@ -1640,14 +1640,18 @@ class LdmsdCmdParser(Cmd.Cmd):
         print("   <   Minimum Value          -   Minimum Average value")
         print("   >   Maximum Value          +   Maximum Average value")
         print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
-        print(f"{' '*4} {'Schema':^20} {'Min (us)':^15} {'Avg (us)':^15} {'Max (us)':^15} {'Min Timestamp':^20} {'Max Timestamp':^20} {'# of Sets':^10} {'Count':^10}")
-        print(f"{'-'*4}-{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
+        print(f"{' '*4} {'Schema':^32} {'Min (us)':^15} {'Avg (us)':^15} {'Max (us)':^15} "
+              f"{'Min Timestamp':^14} {'Max Timestamp':^14} {'Sets':^8} {'Count':^10}")
+        print(f"{'-'*4}-{'-'*32} {'-'*15} {'-'*15} {'-'*15} {'-'*14} {'-'*14} {'-'*8} {'-'*10}")
         schema_names = sorted(list(schema_tbl['schema'].keys()))
         for schema in schema_names:
             stats = schema_tbl['schema'][schema]['stats']
             if len(stats['set_name']) == 0:
                 continue
-            print(f"{self.__symbols(schema, schema_tbl['stats']):>4}   {schema:>18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {int(stats['min_ts']):20d} {int(stats['max_ts']):20d} {len(set(stats['set_name'])):10} {stats['count']:10}")
+            print(f"{self.__symbols(schema, schema_tbl['stats']):>4} {schema:32} "
+                  f"{stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} "
+                  f"{int(stats['min_ts']):14d} {int(stats['max_ts']):14d} "
+                  f"{len(set(stats['set_name'])):8} {stats['count']:10}")
 
         # Storage policy Table
         print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
@@ -2846,7 +2850,7 @@ class LdmsdCmdParser(Cmd.Cmd):
             msg_tag = f'[{cli["match"]}] {cli["dest"]} {cli["desc"]}'
             tx = cli['tx']
             drops = cli['drops']
-            print(f'{message_tag}')
+            print(f'{msg_tag}')
             print(f' - {"tx":27} {tx["bytes"]:>12} {tx["count"]:>12} '\
                   f'{self.__floatts2human(tx["first_ts"]):26} ' \
                   f'{self.__floatts2human(tx["last_ts"]):26}')

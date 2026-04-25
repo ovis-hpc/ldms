@@ -1331,13 +1331,9 @@ int ldms_schema_fprint(ldms_schema_t schema, FILE *fp)
 	return 0;
 }
 
-void ldms_record_delete(ldms_record_t rec_def)
+static void __ldms_record_delete(ldms_record_t rec_def)
 {
 	ldms_mdef_t m;
-	if (!rec_def)
-		return;
-	if (rec_def->metric_id >= 0)
-		return; /* This already belonged to a schema */
 	while ((m = STAILQ_FIRST(&rec_def->rec_metric_list))) {
 		STAILQ_REMOVE_HEAD(&rec_def->rec_metric_list, entry);
 		free(m->name);
@@ -1347,6 +1343,18 @@ void ldms_record_delete(ldms_record_t rec_def)
 	free(rec_def->mdef.name);
 	free(rec_def->mdef.unit);
 	free(rec_def);
+}
+
+void ldms_record_delete(ldms_record_t rec_def)
+{
+	if (!rec_def)
+		return;
+	if (rec_def->metric_id >= 0) {
+		ovis_log(xlog, OVIS_LERROR,
+			"Ignoring record deletion %s\n", rec_def->mdef.name);
+		return; /* This already belonged to a schema */
+	}
+	__ldms_record_delete(rec_def);
 }
 
 void ldms_schema_delete(ldms_schema_t schema)
@@ -1360,7 +1368,7 @@ void ldms_schema_delete(ldms_schema_t schema)
 		m = STAILQ_FIRST(&schema->metric_list);
 		STAILQ_REMOVE_HEAD(&schema->metric_list, entry);
 		if (m->type == LDMS_V_RECORD_TYPE) {
-			ldms_record_delete((ldms_record_t)m);
+			__ldms_record_delete((ldms_record_t)m);
 			continue;
 		}
 		free(m->name);
