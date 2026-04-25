@@ -984,13 +984,13 @@ int __process_config_str(char *cfg_str, int *lno, int trust,
 	int rc = 0;
 	int lineno = 0;
 	char *buff = NULL;
+	char *saveptr = NULL;
 	char *line = NULL;
 	char *tmp;
 	size_t line_sz = 0;
 	char *comment;
 	ssize_t off = 0;
 	ssize_t cnt;
-	size_t buf_len = 0;
 	struct ldmsd_cfg_xprt_s xprt;
 	ldmsd_req_hdr_t request = NULL;
 	struct ldmsd_req_array *req_array = NULL;
@@ -1012,15 +1012,14 @@ int __process_config_str(char *cfg_str, int *lno, int trust,
 
 next_line:
 	errno = 0;
-	if (buff) {
-		memset(buff, 0, buf_len);
-		buff = strtok(NULL, "\n");
-	} else
-		buff = strtok(cfg_str, "\n");
+	if (buff)
+		buff = strtok_r(NULL, "\n", &saveptr);
+	else
+		buff = strtok_r(cfg_str, "\n", &saveptr);
 	if (!buff)
 		goto cleanup;
-	buf_len = sizeof(buff);
 	cnt = strlen(buff);
+
 	lineno++;
 	tmp = buff;
 	comment = find_comment(tmp);
@@ -1028,10 +1027,11 @@ next_line:
 	if (comment)
 		*comment = '\0';
 
+	/* Get rid of trailing spaces */
 	while (cnt && isspace(tmp[cnt-1]))
-		cnt --;
+		cnt--;
 
-	if (!buff) {
+	if (!cnt) {
 		/* empty string */
 		goto parse;
 	}
