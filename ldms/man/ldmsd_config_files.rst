@@ -1,14 +1,14 @@
 .. _ldmsd_config_files:
 
-==================
-ldmsd_config_files
-==================
+==================================
+ldmsd Configuration File Reference
+==================================
 
 ------------------------------------
 Manual for LDMSD Configuration Files
 ------------------------------------
 
-:Date: 08 October 2025
+:Date: 27 April 2026
 :Manual section: 7
 :Manual group: LDMSD
 
@@ -135,7 +135,16 @@ update events.
 
    num=NUM
       Number of threads that are responsible for scheduling sample, dir,
-      lookup, and update events.
+      lookup, and update events. Default: 1
+
+   The value can be set only once and cannot be changed after ldmsd
+   initialization.
+
+   Example:
+
+   ::
+
+      worker_threads num=4
 
 **storage_threads** sets the number of dedicated worker threads for storage operations.
 
@@ -236,6 +245,35 @@ the kernel metric file.
 
    No Parameters
 
+IO Thread Pool
+~~~~~~~~~~~~~~
+
+The IO thread pool is managed by the Zap transport library and is controlled
+through environment variables that must be set in the shell environment before
+starting ldmsd.
+
+``ZAP_IO_MAX`` sets the maximum total number of IO threads. The default is
+half the number of online processors (``get_nprocs() / 2``), with a minimum
+of 1. IO threads are created lazily as endpoints are assigned; this variable
+caps how many can exist at once.
+
+``ZAP_POOLS`` sets the number of pool buckets across which endpoints are
+distributed in round-robin order. The default is the number of configured
+processors (``_SC_NPROCESSORS_CONF``). Each pool grows its threads
+independently up to the ``ZAP_IO_MAX`` global cap.
+
+``ZAP_IO_BUSY`` sets the utilization threshold (0.0–1.0) above which an
+IO thread is considered too busy to accept another endpoint, prompting Zap
+to create a new thread if the cap permits. The default is 0.8.
+
+Example:
+
+::
+
+   export ZAP_IO_MAX=16
+   export ZAP_POOLS=4
+   ldmsd -c /path/to/config
+
 'option' configuration command to set the command-line options
 --------------------------------------------------------------
 
@@ -244,19 +282,18 @@ Apart from the configuration commands above, the configuration command
 
    option <COMMAND-LINE OPTIONS>
 
-   **-a,**\ *--default_auth*
-   **-A,**\ *--default_auth_args*
-   **-B,**\ *--banner*
-   **-k,**\ *--publish_kernel*
-   **-l,**\ *--log_file* **PATH**
-   **-m,**\ *--set_memory*
-   **-n,**\ *--daemon_name*
-   **-P,**\ *--worker_threads*
-   **-r,**\ *--pid_file*
-   **-s,**\ *--kernel_set_path*
-   **-v,**\ *--log_level*
-   **-L,**\ *--log_config* **<CINT[:PATH]>**
-
+   * **-a,--default_auth**
+   * **-A,--default_auih_args**
+   * **-B,--banner**
+   * **-k,--publish_kernel**
+   * **-l,--log_file**
+   * **-m,--set_memory**
+   * **-n,--daemon_name**
+   * **-P,--worker_threads**
+   * **-r,--pid_file**
+   * **-s,--kernel_set_path**
+   * **-v,--log_level**
+   * **-L,--log_config**
 
 COMMAND PROCESSING ORDER
 ========================
