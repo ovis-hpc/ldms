@@ -72,28 +72,25 @@ struct ldms_rail_id_s {
 	uint64_t rail_gn;
 };
 
-/*
- * NOTE: Keep this under 51 bytes due to ZAP_RDMA_CONN_DATA_MAX limit.
- */
 struct ldms_rail_conn_msg_s {
 	/* Compatible to existing LDMS connect message */
 	struct ldms_version ver;
 	char auth_name[LDMS_AUTH_NAME_MAX + 1];
 	/* -------- */
 
+	enum ldms_conn_type conn_type;
+
 	/* The rail part */
 
-	uint32_t conn_type:3;
-	uint32_t msg_enabled:1; /* 0 if peer does not enable message service */
-	uint32_t n_eps:12; /* number of endpoints */
-	uint32_t idx:12; /* endpoint index in the rail */
-	uint32_t pad:4;
-
-	int32_t rate_limit;  /* send/recv rate limits in bytes/sec */
+	int64_t rate_limit;  /* send/recv rate limits in bytes/sec */
 	int64_t recv_quota; /* receive limits in bytes */
 
+	int n_eps; /* number of endpoints */
+	uint32_t idx; /* endpoint index in the rail */
 	int pid;
 	uint64_t rail_gn;
+
+	int msg_enabled; /* 0 if peer does not enable message service */
 
 };
 #pragma pack(pop)
