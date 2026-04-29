@@ -102,6 +102,19 @@ enum zap_type {
 	ZAP_LAST,
 };
 
+enum zap_link_type {
+	ZAP_LINK_ERROR = 0x0,
+
+	ZAP_LINK_SOCK = 0x1,
+
+	ZAP_LINK_RDMA_IB = 0x10000,
+	ZAP_LINK_RDMA_IW,
+
+	ZAP_LINK_UGNI = 0x20000,
+
+	ZAP_LINK_FABRIC = 0x30000,
+};
+
 typedef enum zap_event_type {
 	/*! An incoming connect request is ready to be accepted or rejected. */
 	ZAP_EVENT_CONNECT_REQUEST = 1,
@@ -995,5 +1008,16 @@ pid_t zap_ep_thread_id_get(zap_ep_t ep);
  * \return The send queue depth
  */
 uint64_t zap_ep_sq_sz(zap_ep_t ep);
+
+/**
+ * Given \c ep and destination address \c sa_dst, determine the link type.
+ *
+ * \param ep zap endpoint handle
+ * \param sa_dst Address of the destination
+ * \param sa_len The length of \c sa_dst
+ *
+ * \return link_type
+ */
+enum zap_link_type zap_ep_link_type(zap_ep_t ep, struct sockaddr *sa_dst, size_t sa_len);
 
 #endif

@@ -655,6 +655,8 @@ void __rail_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 /* These are implemented in ldms_xprt.c */
 void __ldms_xprt_resource_free(struct ldms_xprt *x);
 void __ldms_xprt_conn_msg_init(ldms_t _x, struct ldms_conn_msg *msg);
+void __ldms_rail_ib_conn_msg_init(struct ldms_rail_s *r, int idx,
+		struct ldms_rail_ib_conn_msg_s *m);
 void __ldms_xprt_init(struct ldms_xprt *x, const char *name, int is_active);
 void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev);
 
@@ -662,15 +664,31 @@ void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev);
 
 static void __ldms_rail_conn_msg_init(struct ldms_rail_s *r, int idx, struct ldms_rail_conn_msg_s *m);
 
-void __rail_conn_msg_ntoh(struct ldms_rail_conn_msg_s *m)
+static int
+__rail_conn_ib_msg_check(zap_ep_t zep, struct ldms_rail_ib_conn_msg_s *mib, int *is_ib)
 {
-	m->conn_type = ntohl(m->conn_type);
-	m->idx = ntohl(m->idx);
-	m->n_eps = ntohl(m->n_eps);
-	m->pid = ntohl(m->pid);
-	m->rail_gn = be64toh(m->rail_gn);
-	m->rate_limit = be64toh(m->rate_limit);
-	m->recv_quota = be64toh(m->recv_quota);
+	if (LDMS_RAIL_IB_CONN_MSG_CONN_TYPE(mib) != LDMS_CONN_TYPE_RAIL)
+		return EINVAL;
+	*is_ib = 1;
+	return 0;
+}
+
+static int
+__rail_conn_msg_check(zap_ep_t zep, void *msg, int msg_len, int *is_ib)
+{
+	struct ldms_rail_conn_msg_s *m = msg;
+	struct ldms_rail_ib_conn_msg_s *mib = msg;
+
+	if (msg_len == sizeof(*mib)) {
+		return __rail_conn_ib_msg_check(zep, mib, is_ib);
+	}
+
+	if (msg_len != sizeof(*m))
+		return EINVAL;
+	if (ntohl(m->conn_type) != LDMS_CONN_TYPE_RAIL)
+		return EINVAL;
+	*is_ib = 0;
+	return 0;
 }
 
 void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
@@ -680,6 +698,8 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	 * context is the LDMS endpoint in the rail.
 	 */
 	struct ldms_rail_conn_msg_s *m = (void*)ev->data;
+	struct ldms_rail_ib_conn_msg_s *mib = (void*)ev->data;
+	int is_ib;
 	static char rej_msg[64] = "Insufficient resources";
 	struct ldms_rail_conn_msg_s msg;
 	int rc;
@@ -693,6 +713,22 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	struct ldms_rail_s *r, *lr = NULL;
 	struct ldms_rail_ep_s *rep;
 	struct rbn *rbn;
+
+	int m_n_eps;
+	uint32_t m_idx;
+	int m_pid;
+	uint64_t m_rail_gn;
+	int m_msg_enabled;
+	int64_t m_rate_limit;
+	int64_t m_recv_quota;
+
+	/* some sanity check */
+	rc = __rail_conn_msg_check(zep, ev->data, ev->data_len, &is_ib);
+	if (rc) {
+		/* bad msg */
+		snprintf(rej_msg, sizeof(rej_msg), "Bad msg");
+		goto err_0;
+	}
 
 	rep = ldms_xprt_ctxt_get(lx);
 	if (rep)
@@ -716,11 +752,28 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 		break;
 	}
 
-	__rail_conn_msg_ntoh(m);
+	if (is_ib) {
+		m_n_eps = LDMS_RAIL_IB_CONN_MSG_N_EPS(mib);
+		m_idx = LDMS_RAIL_IB_CONN_MSG_IDX(mib);
+		m_pid = ntohl(mib->pid);
+		m_rail_gn = be64toh(mib->rail_gn);
+		m_msg_enabled = LDMS_RAIL_IB_CONN_MSG_MSG_ENABLED(mib);
+		m_recv_quota = be64toh(mib->recv_quota);
+		m_rate_limit = be64toh(mib->rate_limit);
+	} else {
+		m_n_eps = ntohl(m->n_eps);
+		m_idx = ntohl(m->idx);
+		m_pid = ntohl(m->pid);
+		m_rail_gn = be64toh(m->rail_gn);
+		m_msg_enabled = !!m->msg_enabled;
+		m_recv_quota = be64toh(m->recv_quota);
+		m_rate_limit = be64toh(m->rate_limit);
+	}
+
 
 	rail_id.ip4_addr = peer_addr.sin.sin_addr.s_addr;
-	rail_id.pid = m->pid;
-	rail_id.rail_gn = m->rail_gn;
+	rail_id.pid = m_pid;
+	rail_id.rail_gn = m_rail_gn;
 	pthread_mutex_lock(&__rail_mutex);
 	rbn = rbt_find(&__passive_rail_rbt, &rail_id);
 	if (!rbn) {
@@ -747,7 +800,7 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 			cb = lx->event_cb;
 			cb_arg = lx->event_cb_arg;
 		}
-		r = (void*)ldms_xprt_rail_new(xprt_name, m->n_eps,
+		r = (void*)ldms_xprt_rail_new(xprt_name, m_n_eps,
 				recv_quota, rate_limit, auth_name, auth_av_list);
 		if (!r) {
 			snprintf(rej_msg, sizeof(rej_msg), "passive rail create error: %d", errno);
@@ -757,12 +810,12 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 
 		r->xtype = LDMS_XTYPE_PASSIVE_RAIL;
 		r->state = LDMS_RAIL_EP_ACCEPTING;
-		r->send_quota = m->recv_quota;
-		r->send_rate_limit = m->rate_limit;
+		r->send_quota = m_recv_quota;
+		r->send_rate_limit = m_rate_limit;
 		r->event_cb = cb;
 		r->event_cb_arg = cb_arg;
 		r->rail_id = rail_id;
-		r->peer_msg_enabled = m->msg_enabled;
+		r->peer_msg_enabled = m_msg_enabled;
 		rbn_init(&r->rbn, &r->rail_id);
 		rbt_ins(&__passive_rail_rbt, &r->rbn);
 		ref_get(&r->ref, "__passive_rail_rbt");
@@ -773,23 +826,23 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	pthread_mutex_unlock(&__rail_mutex);
 
 	/* some sanity check */
-	if (m->n_eps != r->n_eps) {
+	if (m_n_eps != r->n_eps) {
 		snprintf(rej_msg, sizeof(rej_msg),
 			"bad request, expecting rail of %d eps, but got %d",
-			r->n_eps, m->n_eps);
+			r->n_eps, m_n_eps);
 		goto err_0;
 	}
-	if (m->idx >= r->n_eps) {
+	if (m_idx >= r->n_eps) {
 		snprintf(rej_msg, sizeof(rej_msg),
 			"bad ep_idx %d (should be in 0..%d range)",
-			m->idx, r->n_eps-1);
+			m_idx, r->n_eps-1);
 		goto err_0;
 	}
 	pthread_mutex_lock(&r->mutex);
-	if (r->eps[m->idx].ep) {
+	if (r->eps[m_idx].ep) {
 		snprintf(rej_msg, sizeof(rej_msg),
 			"bad ep_idx %d, the endpoint already existed",
-			m->idx);
+			m_idx);
 		pthread_mutex_unlock(&r->mutex);
 		goto err_0;
 	}
@@ -824,16 +877,16 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 
 	/* interpose */
 	_x->event_cb = __rail_cb;
-	_x->event_cb_arg = &r->eps[m->idx];
-	r->eps[m->idx].ep = _x;
-	r->eps[m->idx].state = LDMS_RAIL_EP_ACCEPTING;
-	r->eps[m->idx].send_quota = r->send_quota;
-	r->eps[m->idx].rate_quota.quota = r->send_rate_limit;
-	r->eps[m->idx].rate_quota.rate   = r->send_rate_limit;
-	r->eps[m->idx].rate_quota.ts.tv_sec  = 0;
-	r->eps[m->idx].rate_quota.ts.tv_nsec = 0;
-	r->eps[m->idx].remote_is_rail = 1;
-	ldms_xprt_ctxt_set(_x, &r->eps[m->idx], NULL);
+	_x->event_cb_arg = &r->eps[m_idx];
+	r->eps[m_idx].ep = _x;
+	r->eps[m_idx].state = LDMS_RAIL_EP_ACCEPTING;
+	r->eps[m_idx].send_quota = r->send_quota;
+	r->eps[m_idx].rate_quota.quota = r->send_rate_limit;
+	r->eps[m_idx].rate_quota.rate   = r->send_rate_limit;
+	r->eps[m_idx].rate_quota.ts.tv_sec  = 0;
+	r->eps[m_idx].rate_quota.ts.tv_nsec = 0;
+	r->eps[m_idx].remote_is_rail = 1;
+	ldms_xprt_ctxt_set(_x, &r->eps[m_idx], NULL);
 	pthread_mutex_unlock(&r->mutex);
 
 	ldms_xprt_get(_x, "zap_uctxt");
@@ -848,13 +901,15 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
 	rc = ldms_xprt_auth_bind(_x, auth);
 	if (rc)
 		goto err_2;
-	__ldms_rail_conn_msg_init(r, m->idx, &msg);
+	__ldms_rail_conn_msg_init(r, m_idx, &msg);
 
 	/* Take a 'connect' reference. Dropped in ldms_xprt_close() */
 	ldms_xprt_get(_x, "connect");
 
+	/* Unlike rdma_connect(), rdma_accept() can take 196 bytes.
+	 * Our `msg` is a lot less than that. */
 	ref_get(&r->ref, "ldms_accepting");
-	zerr = zap_accept2(zep, ldms_zap_auto_cb, (void*)&msg, sizeof(msg), m->idx);
+	zerr = zap_accept2(zep, ldms_zap_auto_cb, (void*)&msg, sizeof(msg), m_idx);
 	if (zerr) {
 		RAIL_LOG("ERROR: %d accepting connection from %s.\n", zerr, name);
 		goto err_3;
@@ -869,8 +924,8 @@ void __rail_zap_handle_conn_req(zap_ep_t zep, zap_event_t ev)
  err_1:
 	pthread_mutex_lock(&r->mutex);
 	r->connecting_eps--;
-	r->eps[m->idx].ep = NULL;
-	r->eps[m->idx].state = LDMS_RAIL_EP_ERROR;
+	r->eps[m_idx].ep = NULL;
+	r->eps[m_idx].state = LDMS_RAIL_EP_ERROR;
 	pthread_mutex_unlock(&r->mutex);
 	zap_set_ucontext(_x->zap_ep, NULL);
 	ldms_xprt_put(_x, "zap_uctxt");	/* context reference */
@@ -893,20 +948,54 @@ static void __ldms_rail_conn_msg_init(struct ldms_rail_s *r, int idx, struct ldm
 	m->msg_enabled = htonl(ldms_msg_enabled);
 }
 
+void __ldms_rail_ib_conn_msg_init(struct ldms_rail_s *r, int idx,
+				  struct ldms_rail_ib_conn_msg_s *m)
+{
+	/* a convenient routine to construct conn_msg for rail */
+	assert(r->eps[idx].ep);
+	__ldms_xprt_conn_msg_init(r->eps[idx].ep, (void*)m);
+
+	LDMS_RAIL_IB_CONN_MSG_SET_CONN_TYPE(m, LDMS_CONN_TYPE_RAIL);
+	LDMS_RAIL_IB_CONN_MSG_SET_MSG_ENABLED(m, !!ldms_msg_enabled);
+
+	m->rate_limit = htobe64(r->recv_rate_limit);
+	m->recv_quota = htobe64(r->recv_quota);
+
+	LDMS_RAIL_IB_CONN_MSG_SET_N_EPS(m, r->n_eps);
+	LDMS_RAIL_IB_CONN_MSG_SET_IDX(m, idx);
+
+	m->pid = htonl(getpid());
+	m->rail_gn = htobe64(r->rail_id.rail_gn);
+}
+
 static int __rail_ep_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 			ldms_event_cb_t cb, void *cb_arg)
 {
 	int rc;
-	struct ldms_rail_conn_msg_s msg;
+	union {
+		struct ldms_rail_conn_msg_s msg;
+		struct ldms_rail_ib_conn_msg_s ib_msg;
+	} data;
+	int data_len;
 	struct ldms_rail_ep_s *rep = cb_arg;
+
+	enum zap_link_type lt;
+
 	ldms_rail_t r = rep->rail;
 
-	__ldms_rail_conn_msg_init(r, rep->idx, &msg);
+	lt = zap_ep_link_type(x->zap_ep, sa, sa_len);
+	if (lt == ZAP_LINK_RDMA_IB) {
+		__ldms_rail_ib_conn_msg_init(r, rep->idx, &data.ib_msg);
+		data_len = sizeof(data.ib_msg);
+	} else {
+		__ldms_rail_conn_msg_init(r, rep->idx, &data.msg);
+		data_len = sizeof(data.msg);
+	}
 
 	x->event_cb = cb;
 	x->event_cb_arg = cb_arg;
 	ldms_xprt_get(x, "connect");
-	rc = zap_connect2(x->zap_ep, sa, sa_len, (void*)&msg, sizeof(msg), rep->idx);
+	rc = zap_connect2(x->zap_ep, sa, sa_len, (void*)&data, data_len, rep->idx);
 	return rc;
 }
 

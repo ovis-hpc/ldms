@@ -95,6 +95,60 @@ struct ldms_rail_conn_msg_s {
 };
 #pragma pack(pop)
 
+/* For IB link */
+#pragma pack(push,1)
+#define LDMS_RAIL_IB_BITS_MSG_ENABLED_MASK 0x01 /* 0b00000001 */
+#define LDMS_RAIL_IB_BITS_CONN_TYPE_MASK   0x0e /* 0b00001110*/
+#define LDMS_RAIL_IB_BITS_HI_N_EPS_MASK    0x30 /* 0b00110000*/
+#define LDMS_RAIL_IB_BITS_HI_IDX_MASK      0xc0 /* 0b11000000*/
+struct ldms_rail_ib_conn_msg_s {
+	/* Compatible to existing LDMS connect message */
+	struct ldms_version ver; /* 4 */
+	char auth_name[LDMS_AUTH_NAME_MAX + 1]; /* 16 */
+	/* -------- */
+	uint64_t rail_gn;
+	int64_t recv_quota; /* receive limits in bytes */
+	int64_t rate_limit;  /* send/recv rate limits in bytes/sec */
+	int pid;
+	uint8_t n_eps_low; /* low byte of n_eps */
+	uint8_t idx_low;   /* low byte of idx */
+	uint8_t bits; /* bits[(low) msg_enabled[1], conn_type[3], n_eps[2], idx[2] (high)] */
+};
+
+#define LDMS_RAIL_IB_CONN_MSG_CONN_TYPE(m) \
+	(((m)->bits&LDMS_RAIL_IB_BITS_CONN_TYPE_MASK) >> 1)
+
+#define LDMS_RAIL_IB_CONN_MSG_SET_CONN_TYPE(m, v) \
+	(m)->bits = ((m)->bits & ~LDMS_RAIL_IB_BITS_CONN_TYPE_MASK) \
+	| (((v)<<1)&LDMS_RAIL_IB_BITS_CONN_TYPE_MASK)
+
+#define LDMS_RAIL_IB_CONN_MSG_MSG_ENABLED(m) \
+	(((m)->bits&LDMS_RAIL_IB_BITS_MSG_ENABLED_MASK))
+
+#define LDMS_RAIL_IB_CONN_MSG_SET_MSG_ENABLED(m, v) \
+	(m)->bits = ((m)->bits & ~LDMS_RAIL_IB_BITS_MSG_ENABLED_MASK) \
+	| (((v))&LDMS_RAIL_IB_BITS_MSG_ENABLED_MASK)
+
+#define LDMS_RAIL_IB_CONN_MSG_N_EPS(m) \
+	( (m)->n_eps_low + ( ((m)->bits & LDMS_RAIL_IB_BITS_HI_N_EPS_MASK) << 4 ) )
+
+#define LDMS_RAIL_IB_CONN_MSG_SET_N_EPS(m, v) do { \
+	(m)->n_eps_low = (v)&0xff; \
+	(m)->bits = ((m)->bits & ~LDMS_RAIL_IB_BITS_HI_N_EPS_MASK) \
+	| (((v)>>4)&LDMS_RAIL_IB_BITS_HI_N_EPS_MASK); \
+} while(0)
+
+#define LDMS_RAIL_IB_CONN_MSG_IDX(m) \
+	( (m)->idx_low + ( ((m)->bits & LDMS_RAIL_IB_BITS_HI_IDX_MASK) << 2 ) )
+
+#define LDMS_RAIL_IB_CONN_MSG_SET_IDX(m, v) do { \
+	(m)->idx_low = (v)&0xff; \
+	(m)->bits = ((m)->bits & ~LDMS_RAIL_IB_BITS_HI_IDX_MASK) \
+	| (((v)>>2)&LDMS_RAIL_IB_BITS_HI_IDX_MASK); \
+} while(0)
+
+#pragma pack(pop)
+
 typedef enum ldms_rail_ep_state_e {
 	LDMS_RAIL_EP_INIT = 0,
 	LDMS_RAIL_EP_LISTENING,

@@ -356,6 +356,7 @@ zap_t zap_get(const char *name, zap_mem_info_fn_t mem_info_fn)
 
 	pthread_mutex_lock(&zap_list_lock);
 	zent->zap = z;
+	z->type = zent->type;
 	LIST_INSERT_HEAD(&zap_list, z, zap_link);
 	pthread_mutex_unlock(&zap_list_lock);
 
@@ -1127,6 +1128,37 @@ void zap_ep_thread_id_set(zap_ep_t ep, pid_t tid)
 uint64_t zap_ep_sq_sz(zap_ep_t ep)
 {
 	return ep->sq_sz;
+}
+
+static enum zap_link_type
+zap_ep_link_type_default(zap_ep_t ep, struct sockaddr *sa_dst, size_t sa_len)
+{
+	switch (ep->z->type) {
+	case ZAP_SOCK:
+		return ZAP_LINK_SOCK;
+	case ZAP_UGNI:
+		return ZAP_LINK_UGNI;
+	case ZAP_FABRIC:
+		return ZAP_LINK_FABRIC;
+	/* ZAP_RDMA implements ep_link_type() interface */
+	default:
+		errno = EINVAL;
+		return ZAP_LINK_ERROR;
+	}
+}
+
+enum zap_link_type
+zap_ep_link_type(zap_ep_t ep, struct sockaddr *sa_dst, size_t sa_len)
+{
+	/* Note: add zap.ep_link_type() interface in the future if needed. */
+	zap_t z = ep->z;
+	if (!z) {
+		errno = EINVAL;
+		return ZAP_LINK_ERROR;
+	}
+	if (z->ep_link_type)
+		return z->ep_link_type(ep, sa_dst, sa_len);
+	return zap_ep_link_type_default(ep, sa_dst, sa_len);
 }
 
 static int zap_initialized = 0;
