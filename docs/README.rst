@@ -1,5 +1,5 @@
-Documentation For RST Generation
-==================================
+RST Documentation 
+==================
 
 Any new documentation will be formatted in ``.rst`` and added to this directory (with the exception of "man pages" explained below).
 
