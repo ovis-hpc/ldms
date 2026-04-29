@@ -3259,10 +3259,9 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 			zap_reject(zep, rej_msg, strlen(rej_msg)+1);
 			break;
 		}
-		struct ldms_conn_msg2 *m = (void*)ev->data;
 		if (x->event_cb == __rail_cb &&
-				ev->data_len >= sizeof(struct ldms_conn_msg2) &&
-				m->conn_type == htonl(LDMS_CONN_TYPE_RAIL)) { /* rail ep */
+				ev->data_len >= sizeof(struct ldms_conn_msg2)) {
+			/* rail ep */
 			__rail_zap_handle_conn_req(zep, ev);
 		} else {
 			ldms_zap_handle_conn_req(zep);

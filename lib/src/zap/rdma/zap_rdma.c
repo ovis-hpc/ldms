@@ -2797,6 +2797,217 @@ zap_err_t z_rdma_io_thread_ep_release(zap_io_thread_t t, zap_ep_t ep)
 	return 0;
 }
 
+#if 0
+
+/* get link type using rdma_resolve_addr() */
+static enum zap_link_type
+z_rdma_ep_link_type(zap_ep_t ep, struct sockaddr *sa_dst, size_t sa_len)
+{
+	int rc;
+	struct rdma_event_channel *ch;
+	struct rdma_cm_id *cm_id;
+	struct rdma_cm_event *ev;
+	enum zap_link_type lt = ZAP_LINK_ERROR;
+
+	ch = rdma_create_event_channel();
+	if (!ch)
+		goto out;
+	rc = rdma_create_id(ch, &cm_id, NULL, RDMA_PS_TCP);
+	if (rc)
+		goto err_1; /* errno has been set */
+	rc = rdma_resolve_addr(cm_id, NULL, sa_dst, 2000);
+	if (rc)
+		goto err_2;
+	rc = rdma_get_cm_event(ch, &ev); /* blocking */
+	if (rc)
+		goto err_2;
+	if (ev->event == RDMA_CM_EVENT_ADDR_RESOLVED) {
+		switch (ev->id->verbs->device->transport_type) {
+		case IBV_TRANSPORT_IB:
+			lt = ZAP_LINK_RDMA_IB;
+			break;
+		case IBV_TRANSPORT_IWARP:
+			lt = ZAP_LINK_RDMA_IW;
+			break;
+		default:
+			errno = ENOTSUP;
+			break;
+		}
+	} else {
+		errno = ev->status;
+	}
+	rdma_ack_cm_event(ev);
+
+	/* let through for cleaning up */
+ err_2:
+	rdma_destroy_id(cm_id);
+ err_1:
+	rdma_destroy_event_channel(ch);
+ out:
+	return lt;
+}
+
+#else
+/* get link type using Linux rtnetlink (same as `ip route get`)
+ * and /sys/class/infiniband/... */
+
+/* from <net/if.h> */
+extern char *if_indextoname (unsigned int __ifindex, char *__ifname) __THROW;
+
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+
+#include <linux/if_arp.h>
+
+static int z_rdma_ep_iface(zap_ep_t ep,
+			   struct sockaddr *sa_dst, size_t sa_len,
+			   char *out, int out_len)
+{
+	int sd;
+	struct {
+		struct nlmsghdr nl;
+		struct rtmsg    rt;
+		char            buf[512];
+	} req;
+	char reply[4096];
+	int len;
+
+	struct rtattr *rta;
+	union {
+		struct sockaddr sa;
+		struct sockaddr_in sin;
+		struct sockaddr_in6 sin6;
+	} *dst;
+	struct nlmsghdr *nh;
+	int addr_len;
+	char *addr;
+	int rc;
+
+	dst = (void*)sa_dst;
+
+	/* only support AF_INET	and AF_INET6 for now */
+	switch (dst->sa.sa_family) {
+	case AF_INET:
+		addr_len = sizeof(dst->sin.sin_addr.s_addr);
+		addr = (char*)&dst->sin.sin_addr.s_addr;
+		break;
+	case AF_INET6:
+		addr_len = sizeof(dst->sin6.sin6_addr);
+		addr = (char*)&dst->sin6.sin6_addr;
+		break;
+	default:
+		rc = errno = ENOTSUP;
+		goto out;
+	}
+
+	sd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+	if (sd < 0) {
+		rc = errno;
+		goto out;
+	}
+
+	/* make netlink route request */
+	memset(&req, 0, sizeof(req));
+	req.nl.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+	req.nl.nlmsg_flags = NLM_F_REQUEST;
+	req.nl.nlmsg_type = RTM_GETROUTE;
+	req.rt.rtm_family = sa_dst->sa_family;
+	req.rt.rtm_table = RT_TABLE_MAIN;
+	req.rt.rtm_dst_len = addr_len;
+
+	rta = ((void*)&req) + NLMSG_ALIGN(req.nl.nlmsg_len);
+	rta->rta_type = RTA_DST;
+	rta->rta_len = RTA_LENGTH(addr_len);
+	memcpy(RTA_DATA(rta), addr, addr_len);
+	req.nl.nlmsg_len = NLMSG_ALIGN(req.nl.nlmsg_len) + RTA_ALIGN(rta->rta_len);
+
+	/* submit the request to Linux kernel */
+	len = send(sd, &req, req.nl.nlmsg_len, 0);
+	if (len < req.nl.nlmsg_len) {
+		rc = errno;
+		goto err_1;
+	}
+
+	/* Get the answer back */
+	len = recv(sd, reply, sizeof(reply), 0);
+
+	if (len < 0) {
+		rc = errno;
+		goto err_1;
+	}
+
+	nh = (struct nlmsghdr *)reply;
+
+	rc = ENOENT;
+
+	/* Go through attributes to get the interface */
+	for (; NLMSG_OK(nh, len); nh = NLMSG_NEXT(nh, len)) {
+		struct rtmsg *rt = (struct rtmsg *)NLMSG_DATA(nh);
+		struct rtattr *attr = (struct rtattr *)RTM_RTA(rt);
+		int attr_len = RTM_PAYLOAD(nh);
+
+		for (; RTA_OK(attr, attr_len); attr = RTA_NEXT(attr, attr_len)) {
+			if (attr->rta_type != RTA_OIF)
+				continue;
+			int if_idx = *(int *)RTA_DATA(attr);
+			char if_name[512];
+			if_indextoname(if_idx, if_name);
+			len = snprintf(out, out_len, "%s", if_name);
+			if (len >= out_len) {
+				rc = ENOSPC;
+			} else {
+				rc = 0;
+			}
+			break;
+		}
+	}
+
+	if (rc)
+		errno = rc;
+
+ err_1:
+	close(sd);
+ out:
+	return rc;
+}
+
+static enum zap_link_type
+z_rdma_ep_link_type(zap_ep_t ep, struct sockaddr *sa_dst, size_t sa_len)
+{
+	enum zap_link_type lt = ZAP_LINK_ERROR;
+	int rc, len;
+	int fd;
+	int arp_type;
+	char iface[128];
+	char buf[4096];
+
+	rc = z_rdma_ep_iface(ep, sa_dst, sa_len, iface, sizeof(iface));
+	if (rc)
+		goto out;
+	snprintf(buf, sizeof(buf), "/sys/class/net/%s/type", iface);
+	fd = open(buf, O_RDONLY);
+	if (fd < 0)
+		goto out;
+	len = read(fd, buf, sizeof(buf));
+	close(fd);
+	if (len < 0)
+		goto out;
+	arp_type = atoi(buf);
+	switch (arp_type) {
+	case ARPHRD_INFINIBAND:
+		lt = ZAP_LINK_RDMA_IB;
+		break;
+	case ARPHRD_ETHER:
+		lt = ZAP_LINK_RDMA_IW;
+		break;
+	default:
+		errno = ENOTSUP;
+	}
+ out:
+	return lt;
+}
+#endif
+
 static int init_complete = 0;
 
 static int init_once()
@@ -2865,6 +3076,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_mem_info_fn_t mem_info_fn)
 	z->io_thread_cancel = z_rdma_io_thread_cancel;
 	z->io_thread_ep_assign = z_rdma_io_thread_ep_assign;
 	z->io_thread_ep_release = z_rdma_io_thread_ep_release;
+	z->ep_link_type = z_rdma_ep_link_type;
 
 	*pz = z;
 	return ZAP_ERR_OK;
