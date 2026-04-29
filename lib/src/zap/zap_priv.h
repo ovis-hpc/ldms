@@ -195,6 +195,7 @@ struct zap_io_thread_pool_s {
 };
 
 struct zap {
+	enum zap_type type;
 	char name[ZAP_MAX_TRANSPORT_NAME_LEN];
 	int max_msg;		/* max send message size */
 
@@ -350,9 +351,16 @@ struct zap {
 	/** Thread pool handles. */
 	struct zap_io_thread_pool_s _thr_pool[ZAP_IO_THREAD_POOL_MAX];
 
-	/** Number of threads */
-	//int _n_threads;
-
+	/**
+	 * Given \c ep and destination address \c sa_dst, determine the link type.
+	 *
+	 * \param ep zap endpoint handle
+	 * \param sa_dst Address of the destination
+	 * \param sa_len The length of \c sa_dst
+	 *
+	 * \return link_type
+	 */
+	enum zap_link_type (*ep_link_type)(zap_ep_t ep, struct sockaddr *sa_dst, size_t sa_len);
 };
 
 static inline zap_err_t
