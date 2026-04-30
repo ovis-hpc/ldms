@@ -674,9 +674,93 @@ char *__context_str(spank_t sh, const char *func)
 }
 #define context_str(_sh_) __context_str(_sh_, __func__)
 
-jbuf_t make_job_init_data(spank_t sh)
+static int __get_job_tag(const char *script, char *buf, int buf_sz)
+{
+	int rc, child_rc;
+	int pd[2]; /* [ rd, wr ] */
+	int off = 0, len;
+	char *nl;
+	time_t t0, t1;
+
+	pid_t pid;
+
+	rc = pipe(pd);
+	if (rc)
+		return errno;
+	pid = fork();
+	if (pid < 0) {
+		close(pd[0]);
+		close(pd[1]);
+		return errno;
+	}
+	if (0 == pid) {
+		/* child process */
+		close (pd[0]);
+		rc = dup2(pd[1], 1);
+		if (rc < 0)
+			exit(errno);
+		rc = execlp(script, script, NULL);
+		if (rc)
+			exit(errno);
+	}
+
+	/* parent process (slurm_notifier) */
+	close(pd[1]);
+
+	while (off < buf_sz && (len = read(pd[0], buf + off, buf_sz - off))) {
+		if (len < 0) /* error */
+			break;
+		off += len;
+	}
+	if (off < buf_sz)
+		buf[off] = 0;
+	nl = strchr(buf, '\n');
+	if (nl)
+		*nl = 0;
+	close(pd[0]);
+	t0 = time(NULL);
+	while ((rc = waitpid(pid, &child_rc, WNOHANG)) <= 0) {
+		t1 = time(NULL);
+		if (t1 - t0 > 1)
+			break;
+		if (rc < 0) {
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+		sleep(1);
+	}
+	killpg(pid, SIGKILL);
+	return 0;
+}
+
+static int get_job_tag(int argc, char *argv[], char *buf, int buf_sz)
+{
+	const char *job_tag_script = NULL;
+	const char attr[] = "job_tag_script=";
+	int i;
+	for (i = 0; i < argc; i++) {
+		if (0 != strncasecmp(attr, argv[i], sizeof(attr)-1))
+			continue;
+		/* found */
+		job_tag_script = strchr(argv[i], '=');
+		job_tag_script++;
+		break;
+	}
+	if (!job_tag_script) {
+		DEBUG2("job_tag_script not specified");
+		buf[0] = 0;
+		return ENOENT;
+	}
+	DEBUG2("job_tag_script: %s", job_tag_script);
+	return __get_job_tag(job_tag_script, buf, buf_sz);
+}
+
+jbuf_t make_job_init_data(spank_t sh, int argc, char *argv[])
 {
 	jbuf_t jb;
+	int rc;
+	char job_tag[128] = "";
 
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
@@ -692,15 +776,23 @@ jbuf_t make_job_init_data(spank_t sh)
 	jb = _append_item_u16(sh, jb, "ncpus", S_JOB_NCPUS, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nnodes", S_JOB_NNODES, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "local_tasks", S_JOB_LOCAL_TASK_COUNT, ','); if (!jb) goto out_1;
-	jb = _append_item_u32(sh, jb, "total_tasks", S_JOB_TOTAL_TASK_COUNT, ' '); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "total_tasks", S_JOB_TOTAL_TASK_COUNT, ','); if (!jb) goto out_1;
+	rc = get_job_tag(argc, argv, job_tag, sizeof(job_tag));
+	if (rc) {
+		job_tag[0] = 0;
+	}
+	jb = jbuf_append_attr(jb, "job_tag", "\"%s\"", job_tag); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "}}");
  out_1:
 	return jb;
 }
 
-jbuf_t make_job_exit_data(spank_t sh)
+jbuf_t make_job_exit_data(spank_t sh, int argc, char *argv[])
 {
 	jbuf_t jb;
+	int rc;
+	char job_tag[128] = "";
+
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "schema", "\"slurm_job_data\","); if (!jb) goto out_1;
@@ -709,7 +801,12 @@ jbuf_t make_job_exit_data(spank_t sh)
 	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
-	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ' '); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
+	rc = get_job_tag(argc, argv, job_tag, sizeof(job_tag));
+	if (rc) {
+		snprintf(job_tag, sizeof(job_tag), "errno: %d", errno);
+	}
+	jb = jbuf_append_attr(jb, "job_tag", "\"%s\"", job_tag); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "}}");
  out_1:
 	return jb;
@@ -881,7 +978,7 @@ int slurm_spank_init(spank_t sh, int argc, char *argv[])
 int slurm_spank_job_prolog(spank_t sh, int argc, char *argv[])
 {
 	stepd_event = "job_init";
-	jbuf_t jb = make_job_init_data(sh);
+	jbuf_t jb = make_job_init_data(sh, argc, argv);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
@@ -944,7 +1041,7 @@ int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 int slurm_spank_job_epilog(spank_t sh, int argc, char *argv[])
 {
 	stepd_event = "job_exit";
-	jbuf_t jb = make_job_exit_data(sh);
+	jbuf_t jb = make_job_exit_data(sh, argc, argv);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);

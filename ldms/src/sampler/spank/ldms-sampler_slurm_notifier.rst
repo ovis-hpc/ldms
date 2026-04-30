@@ -18,7 +18,8 @@ SYNOPSIS
 Within plugstack.conf: **required**
 *OVIS_PREFIX*/*LIBDIR*/ovis-ldms/libslurm_notifier.so
 **stream=**\ *STREAM_NAME* **timeout=**\ *TIMEOUT_SEC* **[user_debug]**
-**client=**\ *XPRT*\ **:**\ *HOST*\ **:**\ *PORT*\ **:**\ *AUTH* ...
+**client=**\ *XPRT*\ **:**\ *HOST*\ **:**\ *PORT*\ **:**\ *AUTH*
+**job_tag_script=**\ *JOB_TAG_SCRIPT_PATH*\ ...
 
 DESCRIPTION
 ===========
@@ -47,6 +48,12 @@ address that **ldmsd** resides. The *PORT* is the listening port of the
 **ldmsd**. The *AUTH* is the LDMS authentication method that the
 **ldmsd** uses, which are **munge**, or **none**. The **client** option
 can be repeated to specify multiple **ldmsd**'s.
+
+**job_tag_script=**\ *JOB_TAG_SCRIPT_PATH*, if present, specifies the path to
+the ``job_tag`` script. The ``job_tag`` script shall print a single line output
+less than 127 bytes describing the ``job_tag`` for the job. The script is
+executed at ``job_init`` and at ``job_exit``. ``SLURM_*`` environment variables
+that exist in prolog and epilog are also available to the script.
 
 SUBSCRIBERS
 ===========
