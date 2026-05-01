@@ -28,7 +28,7 @@ The secret is a text file containing the line:
 where X is a string at least 8 characters long. Lines starting with # in
 the file are ignored.
 
-Four locations are checked in order for the secret:
+The locations are checked in order for the secret:
 
 1) the full file path given on the command line via ``-A conf=authfile``,
 
@@ -36,7 +36,11 @@ Four locations are checked in order for the secret:
 
 3) $HOME/.ldmsauth.conf, and
 
-4) $SYSCONFDIR/ldmsauth.conf (e.g. /etc/ldmsauth.conf).
+4) $SYSCONFDIR/ldmsauth.conf (e.g. $installprefix/etc/ldmsauth.conf).
+
+5) /etc/ldmsd/ldmsauth.conf (the recommended location for production)
+
+6) /etc/ldmsauth.conf
 
 where $HOME is taken from */etc/password* and $SYSCONFDIR is determined
 at ldms compile time. If one of these is not set, the search continues
