@@ -150,8 +150,8 @@ ldms_auth_t __auth_ovis_new(ldms_auth_plugin_t plugin,
 		len = snprintf(a->conf, sizeof(a->conf), "%s", val);
 		if (len >= sizeof(a->conf)) {
 			/* name too long */
-			LOG_ERROR("The file path is too long. "
-				  "It must be at most %zd.\n", sizeof(a->conf));
+			LOG_ERROR("The file path %s is too long. "
+				  "It must be at most %zd.\n", val, sizeof(a->conf));
 			errno = ENAMETOOLONG;
 			goto err1;
 		}
@@ -167,7 +167,7 @@ ldms_auth_t __auth_ovis_new(ldms_auth_plugin_t plugin,
 		len = snprintf(a->conf, sizeof(a->conf), "%s/" USRCONFNAME,
 							 pwd->pw_dir);
 		if (len >= sizeof(a->conf)) {
-			LOG_ERROR("The secret word is too long. "
+			LOG_ERROR("The secret word in ~/"USRCONFNAME " is too long. "
 				  "It must be at most %zd.\n", sizeof(a->conf));
 			errno = ENAMETOOLONG;
 			goto err1;
@@ -177,10 +177,33 @@ ldms_auth_t __auth_ovis_new(ldms_auth_plugin_t plugin,
 		/* else, try another location */
 	}
 
-	/* try SYSCONFDIR/ldmsauth.conf */
+	/* try SYSCONFDIR/ldmsauth.conf. this varies with build prefix */
 	len = snprintf(a->conf, sizeof(a->conf), SYSCONFDIR "/" SYSCONFNAME);
 	if (len >= sizeof(a->conf)) {
-		LOG_ERROR("The secret word is too long. "
+		LOG_ERROR("The secret word in "  SYSCONFDIR "/" SYSCONFNAME
+			" is too long. It must be at most %zd.\n",
+			sizeof(a->conf));
+		errno = ENAMETOOLONG;
+		goto err1;
+	}
+	if (f_file_exists(a->conf))
+		goto load_conf;
+
+	/* try /etc/ldmsd/ldmsauth.conf. this works for admins doing testing as root */
+	len = snprintf(a->conf, sizeof(a->conf), "/etc/ldmsd/" SYSCONFNAME);
+	if (len >= sizeof(a->conf)) {
+		LOG_ERROR("The secret word in /etc/ldmsd/" SYSCONFNAME " is too long. "
+			  "It must be at most %zd.\n", sizeof(a->conf));
+		errno = ENAMETOOLONG;
+		goto err1;
+	}
+	if (f_file_exists(a->conf))
+		goto load_conf;
+
+	/* try /etc/ldmsauth.conf. this works for admins doing testing as root */
+	len = snprintf(a->conf, sizeof(a->conf), "/etc/" SYSCONFNAME);
+	if (len >= sizeof(a->conf)) {
+		LOG_ERROR("The secret word in /etc/" SYSCONFNAME " is too long. "
 			  "It must be at most %zd.\n", sizeof(a->conf));
 		errno = ENAMETOOLONG;
 		goto err1;
@@ -189,6 +212,7 @@ ldms_auth_t __auth_ovis_new(ldms_auth_plugin_t plugin,
 		goto load_conf;
 	/* else error */
 	LOG_ERROR("Cannot find any files that contains a secret word.\n");
+	LOG_ERROR("See 'man ldms_auth_ovis' for all the checked locations.\n");
 	errno = ENOENT;
 	goto err1;
 
@@ -196,7 +220,7 @@ load_conf:
 	/* a->conf should contain the path */
 	a->secret = ovis_auth_get_secretword(a->conf, aolog);
 	if (!a->secret) {
-		LOG_ERROR("Failed to read the secret word.\n")
+		LOG_ERROR("Failed to read the secret word from %s.\n", a->conf);
 		goto err1;
 	}
 	return &a->base;
