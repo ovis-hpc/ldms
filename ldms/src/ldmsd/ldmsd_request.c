@@ -7799,47 +7799,47 @@ int __store_time_thread_cmp(void *tree_key, const void *key)
 	return a - b;
 }
 
-static int __store_time_thread_tree(struct rbt *tree)
-{
-	ldmsd_prdcr_t prdcr;
-	struct rbn *prdset_rbn, *rbn;
-	ldmsd_prdcr_set_t prdset;
-	struct store_time_thread *ent;
-	ldmsd_strgp_ref_t strgp_ref;
-	pid_t tid;
-	struct ldmsd_stat *store_io_thr_stat; /* Statistics of time duration used on IO thread int he storing process */
-	int rc = 0;
+// static int __store_time_thread_tree(struct rbt *tree)
+// {
+// 	ldmsd_prdcr_t prdcr;
+// 	struct rbn *prdset_rbn, *rbn;
+// 	ldmsd_prdcr_set_t prdset;
+// 	struct store_time_thread *ent;
+// 	ldmsd_strgp_ref_t strgp_ref;
+// 	pid_t tid;
+// 	struct ldmsd_stat *store_io_thr_stat; /* Statistics of time duration used on IO thread int he storing process */
+// 	int rc = 0;
 
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		RBT_FOREACH(prdset_rbn, &prdcr->set_tree) {
-			prdset = container_of(prdset_rbn, struct ldmsd_prdcr_set, rbn);
-			if (!prdset->set)
-				continue;
-			tid = ldms_set_thread_id_get(prdset->set);
-			rbn = rbt_find(tree, (void*)(uint64_t)tid);
-			if (!rbn) {
-				ent = calloc(1, sizeof(*ent));
-				if (!ent) {
-					ovis_log(config_log, OVIS_LCRITICAL,
-							"Memory Allocation Failure.");
-					rc = ENOMEM;
-					goto out;
-				}
-				rbn_init(&ent->rbn, (void*)(uint64_t)tid);
-				rbt_ins(tree, &ent->rbn);
-			} else {
-				ent = container_of(rbn, struct store_time_thread, rbn);
-			}
+// 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+// 		RBT_FOREACH(prdset_rbn, &prdcr->set_tree) {
+// 			prdset = container_of(prdset_rbn, struct ldmsd_prdcr_set, rbn);
+// 			if (!prdset->set)
+// 				continue;
+// 			tid = ldms_set_thread_id_get(prdset->set);
+// 			rbn = rbt_find(tree, (void*)(uint64_t)tid);
+// 			if (!rbn) {
+// 				ent = calloc(1, sizeof(*ent));
+// 				if (!ent) {
+// 					ovis_log(config_log, OVIS_LCRITICAL,
+// 							"Memory Allocation Failure.");
+// 					rc = ENOMEM;
+// 					goto out;
+// 				}
+// 				rbn_init(&ent->rbn, (void*)(uint64_t)tid);
+// 				rbt_ins(tree, &ent->rbn);
+// 			} else {
+// 				ent = container_of(rbn, struct store_time_thread, rbn);
+// 			}
 
-			LIST_FOREACH(strgp_ref, &prdset->strgp_list, entry) {
-				store_io_thr_stat = &strgp_ref->store_stages_stat.io_thread_stat;
-				ent->store_time += (uint64_t)(store_io_thr_stat->avg * store_io_thr_stat->count);
-			}
-		}
-	}
-out:
-	return rc;
-}
+// 			LIST_FOREACH(strgp_ref, &prdset->strgp_list, entry) {
+// 				store_io_thr_stat = &strgp_ref->store_stages_stat.io_thread_stat;
+// 				ent->store_time += (uint64_t)(store_io_thr_stat->avg * store_io_thr_stat->count);
+// 			}
+// 		}
+// 	}
+// out:
+// 	return rc;
+// }
 
 void ldmsd_prdcr_set_stats_reset(ldmsd_prdcr_set_t prdset, struct timespec *now, int flags);
 static void __prdset_stats_reset(struct timespec *now, int reset_flags)
@@ -7969,7 +7969,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	char *buff, *s;
 	size_t sz = __APPEND_SZ;
 	int i, j;
-	int rc;
+	// int rc;
 	struct timespec start, end;
 	struct ldms_thrstat_result *lres = NULL;
 	struct zap_thrstat_result_entry *zthr;
@@ -7978,9 +7978,6 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	 * each IO thread for the storing process, e.g., decomposition and
 	 * waiting for a storage worker
 	 */
-	struct rbt store_time_tree;
-	struct rbn *rbn;
-	struct store_time_thread *stime_ent;
 	struct ldmsd_worker_thrstat_result *wres = NULL;
 	struct ldmsd_worker_thrstat_result *xres = NULL;
 	struct ldmsd_worker_thrstat_result *sres = NULL; /* storage workers */
@@ -7998,12 +7995,6 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	s = buff = NULL;
 
 	(void)clock_gettime(CLOCK_REALTIME, &start);
-
-	rbt_init(&store_time_tree, __store_time_thread_cmp);
-	rc = __store_time_thread_tree(&store_time_tree);
-	if (rc) {
-		goto __APPEND_ERR;
-	}
 
 	lres = ldms_thrstat_result_get(interval_s);
 	if (!lres)
@@ -8056,24 +8047,8 @@ static char * __thread_stats_as_json(size_t *json_sz)
 		for (j = 0; j < LDMS_THRSTAT_OP_COUNT; j++) {
 			if (j > 0)
 				__APPEND(",\n");
-			if (j == LDMS_THRSTAT_OP_UPDATE_REPLY) {
-				/* Substract the store_time from the total update time */
-				rbn = rbt_find(&store_time_tree, (void*)(uint64_t)res->tid);
-				if (rbn) {
-					stime_ent = container_of(rbn, struct store_time_thread, rbn);
-					__APPEND("     \"%s\": %ld,\n", ldms_thrstat_op_str(j),
-								lres->entries[i].ops[j] - stime_ent->store_time);
-					__APPEND("     \"Store Prep\": %ld",
-							stime_ent->store_time);
-				} else {
-					__APPEND("     \"%s\": %ld,\n", ldms_thrstat_op_str(j),
-								lres->entries[i].ops[j]);
-					__APPEND("     \"Store Prep\": 0");
-				}
-			} else {
-				__APPEND("     \"%s\": %ld", ldms_thrstat_op_str(j),
-							lres->entries[i].ops[j]);
-			}
+			__APPEND("     \"%s\": %ld", ldms_thrstat_op_str(j),
+						lres->entries[i].ops[j]);
 		}
 		__APPEND("      }");
 		__APPEND("   ");
@@ -8169,11 +8144,11 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	ldms_thrstat_result_free(lres);
 	ldmsd_worker_thrstat_free(wres);
 	ldmsd_worker_thrstat_free(sres);
-	while ((rbn = rbt_min(&store_time_tree))) {
-		rbt_del(&store_time_tree, rbn);
-		stime_ent = container_of(rbn, struct store_time_thread, rbn);
-		free(stime_ent);
-	}
+	// while ((rbn = rbt_min(&store_time_tree))) {
+	// 	rbt_del(&store_time_tree, rbn);
+	// 	stime_ent = container_of(rbn, struct store_time_thread, rbn);
+	// 	free(stime_ent);
+	// }
 	return buff;
 __APPEND_ERR:
 	ldms_thrstat_result_free(lres);
@@ -8181,11 +8156,11 @@ __APPEND_ERR:
 	ldmsd_worker_thrstat_free(sres);
 	if (xres)
 		ldmsd_worker_thrstat_free(xres);
-	while ((rbn = rbt_min(&store_time_tree))) {
-		rbt_del(&store_time_tree, rbn);
-		stime_ent = container_of(rbn, struct store_time_thread, rbn);
-		free(stime_ent);
-	}
+	// while ((rbn = rbt_min(&store_time_tree))) {
+	// 	rbt_del(&store_time_tree, rbn);
+	// 	stime_ent = container_of(rbn, struct store_time_thread, rbn);
+	// 	free(stime_ent);
+	// }
 	free(buff);
 	return NULL;
 }
