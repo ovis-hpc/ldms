@@ -69,6 +69,52 @@ This command tells the build system to treat ``rst2man`` as a do-nothing placeho
 
    This is a temporary workaround. In the future, a ``--disable-docs`` or similar flag may be added to provide more control over documentation generation.
 
+Including Man Pages in Installs and RPM Packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Creating a new ``.rst`` file is sufficient for it to appear on Read the Docs.
+However, to have the resulting ``.man`` file included in system installs and
+RPM packages, you must also update the ``Makefile.am`` located in the **same
+directory as your** ``.rst`` **file**.
+
+Make the following two additions:
+
+1. Add the ``.rst`` filename to ``EXTRA_DIST``::
+
+      EXTRA_DIST+=<filename>.rst
+
+   If no ``EXTRA_DIST`` assignment exists yet in the file, initialize it instead::
+
+      EXTRA_DIST=<filename>.rst
+
+2. Add the ``.man`` filename to the appropriate ``dist_man*_MANS`` variable,
+   choosing the section that matches your content type.
+
+   If the variable already exists, append to it::
+
+      dist_man8_MANS= \
+      ... \
+      <filename>.man
+
+   If the variable does not yet exist in the file, initialize it::
+
+      dist_man8_MANS= \
+      <filename>.man
+
+   Man page section guide:
+
+   - ``dist_man1_MANS`` — user commands
+   - ``dist_man7_MANS`` — concepts, overviews, and miscellaneous
+   - ``dist_man8_MANS`` — system administration daemons and tools
+
+.. note::
+
+   The ``Makefile.am`` in your directory must include ``rules.mk`` for the
+   automatic ``.rst`` to ``.man`` conversion to work. Verify that the following
+   line is present at the top of the file::
+
+      include $(top_srcdir)/ldms/rules.mk
+
 Test Your Changes
 -----------------
 
