@@ -778,7 +778,7 @@ AS_IF([test "x$want_python" != xno], [
 		 pkgpythondir="${pythondir}/ovis_ldms"
 		 pkgpyexecdir="${pkgpythondir}"
 		 python_found=true
-		 CYTHON_CHECK([0.25], [$PYTHON_VERSION],
+		 CYTHON_CHECK([3.0.0], [$PYTHON_VERSION],
 		 	[cython_found=true], [cython_found=false])],
 		[python_found=false
 		 cython_found=false])
@@ -789,8 +789,8 @@ AS_IF([test "x$want_python" != xno], [
 			[AC_MSG_WARN([python not found])])])
 	AS_IF([test "$cython_found" = false],
 		[AS_IF([test "x$want_python" = xyes],
-			[AC_MSG_ERROR([cython not found])],
-			[AC_MSG_WARN([cython not found])])])
+			[AC_MSG_ERROR([valid cython not found])],
+			[AC_MSG_WARN([valid cython not found])])])
 ])
 AM_CONDITIONAL([ENABLE_PYTHON], [test "$python_found" = true -a "$cython_found" = true])
 
