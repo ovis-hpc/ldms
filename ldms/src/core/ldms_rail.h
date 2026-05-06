@@ -109,7 +109,7 @@ struct ldms_rail_ib_conn_msg_s {
 	uint64_t rail_gn;
 	int64_t recv_quota; /* receive limits in bytes */
 	int64_t rate_limit;  /* send/recv rate limits in bytes/sec */
-	int pid;
+	int32_t pid;
 	uint8_t n_eps_low; /* low byte of n_eps */
 	uint8_t idx_low;   /* low byte of idx */
 	uint8_t bits; /* bits[(low) msg_enabled[1], conn_type[3], n_eps[2], idx[2] (high)] */
