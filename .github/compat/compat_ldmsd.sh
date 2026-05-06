@@ -31,4 +31,4 @@ export ZAP_LIBPATH=${PREFIX}/lib/ovis-ldms
 # for Python
 _add PYTHONPATH ${PREFIX}/lib/python3.6/site-packages
 
-python3 list_samp.py
+python3 compat_ldmsd.py
