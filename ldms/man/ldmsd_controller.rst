@@ -58,6 +58,9 @@ LDMSD_CONTROLLER OPTIONS
    information, and consult the plugin manual page for plugin-specific
    options.
 
+**-f, --format_json**
+   Returns output in JSON format
+
 **--source** *SOURCE*
    |
    | Path to the config file
