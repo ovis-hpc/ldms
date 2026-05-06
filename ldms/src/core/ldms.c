@@ -3654,6 +3654,19 @@ ldms_mval_t ldms_list_append_item(ldms_set_t s, ldms_mval_t lh,
 {
 	ldms_mval_t le;
 	size_t value_sz = __ldms_value_size_get(typ, count);
+	enum ldms_value_type typ_;
+	size_t count_;
+
+	ldms_mval_t mval = ldms_list_first(s, lh, &typ_, &count_);
+	if (mval) {
+		/* Make certain the type of the first element matches the typ
+		 * parameter */
+		if (typ != typ_) {
+			errno = EINVAL;
+			return NULL;
+		}
+	}
+
 	if (!ldms_type_is_array(typ))
 		count = 1;
 	le = ldms_heap_alloc(s->heap, value_sz + sizeof(struct ldms_list_entry));

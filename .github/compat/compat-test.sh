@@ -29,8 +29,8 @@ cd /test
 # samp
 echo "starting samp-4.3.3"
 ldmsd-4.3.3.sh -c samp-4.3.3.conf -l logs/samp-4.3.3.log -v INFO -x sock:10000
-echo "starting Python-based ovis-4 sampler with ldms_list"
-./list_samp.sh &
+echo "starting Python-based ovis-4 sampler with compat_test"
+./compat_ldmsd.sh &
 sleep 10
 # agg1
 echo "starting agg-4.3.3"
@@ -44,14 +44,14 @@ sleep 10
 SAMP_433_PID=$(pgrep -f samp-4.3.3.conf)
 AGG_433_PID=$(pgrep -f agg-4.3.3.conf)
 AGG_4_PID=$(pgrep -f agg-4.conf)
-LIST_SAMP_4_PID=$(pgrep -f list_samp.py)
+COMPAT_4_PID=$(pgrep -f compat_ldmsd.py)
 echo "--- ldmsd's ---"
 pgrep -a ldmsd
 echo "---------------"
 [[ -n "${SAMP_433_PID}" ]] || error "samp-4.3.3 is not running"
 [[ -n "${AGG_433_PID}" ]] || error "agg-4.3.3 is not running"
 [[ -n "${AGG_4_PID}" ]] || error "agg-4 is not running"
-[[ -n "${LIST_SAMP_4_PID}" ]] || error "list_samp.py is not running"
+[[ -n "${COMPAT_4_PID}" ]] || error "compat_ldmsd.py is not running"
 # ldms_ls-4 to agg-4.3.3
 echo -n "ldms_ls agg-4.3.3 ... "
 D0=$( ldms_ls-4.sh -x sock -p 10001 -h 127.0.0.1 )
@@ -85,13 +85,13 @@ echo "${D2}"
 # check if they're the same
 [[ "${D0}" == "${D1}" ]] || error "agg-4.3.3 MemTotal != agg-4 MemTotal"
 [[ "${D1}" == "${D2}" ]] || error "ldms_ls-4 MemTotal != ldms_ls-4.3.3 MemTotal"
-# ldms_ls-4.3.3 to list_samp.py
+# ldms_ls-4.3.3 to compat_ldmsd.py
 echo -n "ldms_ls-4.3.3 -l ..."
-ldms_ls-4.3.3.sh -x sock -p 10003 -l | tee list.txt
+ldms_ls-4.3.3.sh -x sock -p 10003 -l | tee compat.txt
 RC=$?
 echo "Checking results ..."
 [[ ${RC} == 0 ]] || error "ldms_ls-4.3.3 crashed"
-D3=$( grep "ovis4/list: consistent" list.txt )
+D3=$( grep "ovis4/compat: consistent" compat.txt )
 [[ -n "${D3}" ]] || error "bad ldms_ls result"
 echo "OK"
 # kill samp-4.3.3 so that the set disappeared from agg-4.3.3
@@ -117,5 +117,5 @@ D1=$(ldms_ls-4.sh -x sock -p 10002)
 [[ -z "${D1}" ]] && echo "dir(agg-4) is empty (good)" || error "ERROR: dir(agg-4) is not empty"
 kill ${AGG_433_PID}
 kill ${AGG_4_PID}
-kill ${LIST_SAMP_4_PID}
+kill ${COMPAT_4_PID}
 echo "DONE!"

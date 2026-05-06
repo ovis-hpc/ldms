@@ -8,8 +8,8 @@ SRCDIR=$( realpath ${D}/../../ )
 
 mkdir -p /test/logs
 pushd /test/
-ln -fs ${SRCDIR}/.github/compat/list_samp.py
-ln -fs ${SRCDIR}/.github/compat/list_samp.sh
+ln -fs ${SRCDIR}/.github/compat/compat_ldmsd.py
+ln -fs ${SRCDIR}/.github/compat/compat_ldmsd.sh
 
 ln -fs /opt/ovis-4/sbin/ldmsd /opt/ovis-4/sbin/ldmsd-4
 

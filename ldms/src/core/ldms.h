@@ -4113,14 +4113,14 @@ struct ldms_timestamp ldms_mval_as_timestamp(ldms_mval_t mv, enum ldms_value_typ
  * \brief Append a new value to a list
  *
  * Append a new value entry to a list metric. The list handle \c lh must be
- * - the metric handle obtained by calling \c ldms_metric_get(s, i) where the ith
+ * - the metric handle obtained by calling \c ldms_metric_get(s, i) where the i-th
  *   metric is a list, or
  * - the metric handle returned by \c ldms_list_append_item(s, some_lh, LDMS_V_LIST, 1) or
  * - the metric handle returned by \c ldms_list_first(s, some_lh, &otyp, &c)
  *   where the returned \c otyp must be \c LDMS_V_LIST, or
  * - the metric handle returned by \c ldms_list_next(s, some_lh, &otyp, &c) where
  *   the returned \c otyp must be \c LDMS_V_LIST.
- * Basically, please make sure that \c lh is the metric handle to the type
+ * Basically, please make certain that \c lh is the metric handle to the type
  * \c LDMS_V_LIST. If \c lh is not a list, the function call will corrupt the
  * memory.
  *
@@ -4128,8 +4128,12 @@ struct ldms_timestamp ldms_mval_as_timestamp(ldms_mval_t mv, enum ldms_value_typ
  * ignored and the handle to the new list inside the list \c lh is returned.
  *
  * If the requested element type \c typ is an array type, the \c count is
- * the array length (number of elements). Otherwise, if \c typ is a regular
- * type, \c count is also ignored.
+ * the array length (number of elements). If \c typ is a primitive
+ * type, \c count is ignored.
+ *
+ * If the list already contains at least one element, then the \c typ
+ * parameter must be the same as the first element type. All list elements must
+ * have the same type.
  *
  * \param s	The set handle.
  * \param lh	The metric handle of the list.
