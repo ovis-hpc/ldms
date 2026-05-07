@@ -116,7 +116,6 @@ static inline int _ref_put(ref_t r, const char *name, const char *func, int line
 	int count;
 #ifdef _REF_TRACK_
 	ref_inst_t inst;
-	assert(r->ref_count);
 	pthread_mutex_lock(&r->lock);
 	LIST_FOREACH(inst, &r->head, entry) {
 		if (0 == strcmp(inst->name, name)) {
