@@ -205,7 +205,7 @@ tmp_expand(ldmsd_smplrp_t p, ldmsd_smplrp_action_t _a, const char *job_id,
 	int len;
 	const char *_p;
 	char c;
-	const char *job_tag;
+	const char *workflow_id;
 	json_entity_t job_data;
 	struct ovis_buff_s obuf;
 
@@ -213,7 +213,7 @@ tmp_expand(ldmsd_smplrp_t p, ldmsd_smplrp_action_t _a, const char *job_id,
 
 	/*
 	 * Pattern Exapnsion:
-	 * - "%T" - job tag
+	 * - "%W" - WORKFLOW_ID
 	 * - "%J" - Job ID
 	 * - "%C" - Component ID
 	 * - "%N" - Sampler Policy Name
@@ -260,11 +260,11 @@ tmp_expand(ldmsd_smplrp_t p, ldmsd_smplrp_action_t _a, const char *job_id,
 				rc = ovis_buff_appendf(&obuf, "(null)");
 			}
 			break;
-		case 'T': case 't': /* job_tag */
+		case 'W': case 'w': /* workflow_id */
 			job_data = json_value_find(job_msg, "data");
-			rc = jdict_get_cstr(job_data, "job_tag", &job_tag);
+			rc = jdict_get_cstr(job_data, "workflow_id", &workflow_id);
 			if (rc == 0) {
-				rc = ovis_buff_appendf(&obuf, "%s", job_tag);
+				rc = ovis_buff_appendf(&obuf, "%s", workflow_id);
 			}
 			rc = 0;
 			break;
