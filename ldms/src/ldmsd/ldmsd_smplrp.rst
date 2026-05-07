@@ -248,7 +248,7 @@ expansion. The special ``%<CHAR>`` placeholders will be replaced as follows:
 - ``%P`` : ``load_term["producer"]``.
 - ``%L`` : ``load_term["plugin"]``.
 - ``%N`` : the policy name (from ``smplrp_add`` command).
-- ``%T`` : the ``job_tag`` (from ``slurm_notifier``; see ``ldms-sampler_slurm_notifier(7)`` for more info).
+- ``%W`` : the ``WORKFLOW_ID`` (from job env).
 - ``%%`` : literal ``%``.
 
 
