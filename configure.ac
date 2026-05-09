@@ -327,6 +327,7 @@ OPTION_DEFAULT_ENABLE([lnet_stats], [ENABLE_LNET_STATS])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
 OPTION_DEFAULT_ENABLE([file_importer], [ENABLE_FILE_IMPORTER])
 OPTION_DEFAULT_ENABLE([cxi_sampler], [ENABLE_CXI_SAMPLER])
+OPTION_DEFAULT_ENABLE([curated_metrics], [ENABLE_CURATED_METRICS])
 OPTION_DEFAULT_ENABLE([coretemp], [ENABLE_CORETEMP])
 OPTION_DEFAULT_ENABLE([filesingle], [ENABLE_FILESINGLE])
 OPTION_DEFAULT_DISABLE([msr_interlagos], [ENABLE_MSR_INTERLAGOS])
@@ -1102,6 +1103,7 @@ ldms/src/sampler/msr_interlagos/Makefile
 ldms/src/sampler/meminfo/Makefile
 ldms/src/sampler/file_importer/Makefile
 ldms/src/sampler/cxi_sampler/Makefile
+ldms/src/sampler/curated_metrics/Makefile
 ldms/src/sampler/procinterrupts/Makefile
 ldms/src/sampler/procnetdev2/Makefile
 ldms/src/sampler/variable/Makefile
