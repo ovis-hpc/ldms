@@ -111,6 +111,7 @@ math_procs=$((4 * $core_count))
 # start publisher loops after ldmsd chain is up
 n_repeats=10
 n_clones=$core_count
+n_clones=10
 MESSAGE "starting $((4 * $n_clones)) publishers each with $n_repeats repetitions of its input file."
 REPLAY_PIDS=$(REPLAY_JSON 1 $n_repeats $n_clones linux_proc_sampler_argv-1.json  linux_proc_sampler_env-1.json  linux_proc_sampler_files-1.json  slurm-1.json)
 
