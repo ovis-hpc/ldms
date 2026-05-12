@@ -2973,9 +2973,9 @@ cdef class Set(object):
                 self._getter.append(METRIC_GETTER_TBL[t])
                 self._setter.append(METRIC_SETTER_TBL[t])
 
-    def __del__(self):
+    def __dealloc__(self):
         if self.rbd:
-            ldms_set_put(self.rbd)
+            ldms_set_delete(self.rbd)
 
     def __iter__(self):
         """iter(self) - iterates over keys (metric names) of the set"""
@@ -2997,7 +2997,10 @@ cdef class Set(object):
 
     def delete(self):
         """S.delete() - delete the set"""
-        ldms_set_delete(self.rbd)
+        cdef ldms_set_t s = self.rbd
+        self.rbd = NULL
+        if s:
+            ldms_set_delete(s)
 
     def transaction_begin(self):
         """S.transaction_begin() - begin data transaction
