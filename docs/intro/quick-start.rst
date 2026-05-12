@@ -104,7 +104,7 @@ LDMS Source Installation Instructions
 =====================================
 
 Getting the Source
-***********************
+-------------------
 
 * This example shows cloning into $HOME/Source/ovis-4 and installing into $HOME/ovis/4.4.2
 
@@ -116,7 +116,7 @@ Getting the Source
  git clone -b OVIS-4.4.2 https://github.com/ovis-hpc/ovis.git ovis-4
 
 Building the Source
-********************
+-------------------
 
 * Run autogen.sh
 .. code-block:: RST
@@ -148,7 +148,7 @@ Basic Configuration and Running
  export PYTHONPATH=$OVIS/lib/python3.8/site-packages
 
 Sampler
-********
+--------
 * Edit a new configuration file, named `sampler.conf`, to load the `meminfo` and `vmstat` samplers.  For this example, it can be saved anywhere, but it will be used later to start the LDMS Daemon (`ldmsd`)
 
 The following configuration employs generic hostname, uid, gid, component id, and permissions octal set values.
@@ -309,10 +309,10 @@ Output:
 
 
 Aggregator Using Data Pull
-***************************
+---------------------------
 
 All schemas
-------------
+^^^^^^^^^^^
 
 This section covers how to aggregate all schemas from multiple ldmsd samplers.
 
@@ -375,7 +375,7 @@ Output:
   `ldms_ls -l` shows the detailed output, including timestamps. This can be used to verify that the aggregator is aggregating the two hosts' sets at different intervals.
 
 Single Schema
---------------
+^^^^^^^^^^^^^^
 
 This section covers how to define and aggregate a specific schema, defined in the configuration file, from an ldmsd sampler.
 In the agg_11.conf file from section `ref:All schemas` file you’ll need to add the following line in the updater section(s) and start/restart the aggregator:
@@ -409,7 +409,7 @@ Once added, to aggregate only vmstat, the configuration file should be as follow
  The updtr_match_add line can be added anywhere in the updater section (i.e. before or after updtr_start, updtr_prdcr_add, etc.)
 
 Aggregator Using Data Push
-***************************
+---------------------------
 
 * Use same sampler configurations as above.
 * Make a configuration file (called agg11_push.conf) to cause the two samplers to push their data to the aggregator as they update.
@@ -452,7 +452,7 @@ Output:
 
 
 Two Aggregators Configured as Failover Pairs
-**********************************************
+---------------------------------------------
 * Use same sampler configurations as above
 * Make a configuration file (called agg11.conf) to aggregate from one sampler with the following contents:
 
@@ -507,13 +507,13 @@ Output:
  host2/vmstat
 
 Set Groups
-**********
+------------
 A set group is an LDMS set with special information to represent a group of sets inside ldmsd. A set group would appear as a regular LDMS set to other LDMS applications, but ldmsd and `ldms_ls` will treat it as a collection of LDMS sets. If ldmsd updtr updates a set group, it also subsequently updates all the member sets. Performing ldms_ls -l on a set group will also subsequently perform a long-query all the sets in the group.
 
 To illustrate how a set group works, we will configure 2 sampler daemons with set groups and 1 aggregator daemon that updates and stores the groups in the following subsections.
 
 Creating a set group and inserting sets into it
-************************************************
+------------------------------------------------
 The following is a configuration file for our s0 LDMS daemon (sampler #0) that collects sda disk stats in the s0/sda set and lo network usage in the s0/lo set. The s0/grp set group is created to contain both s0/sda and s0/lo.
 
 .. code-block:: RST
@@ -549,7 +549,7 @@ The following is the same for s1 sampler daemon, but with different devices (sdb
 The s0 LDMS daemon is listening on port 10000 and the s1 LDMS daemon is listening on port 10001.
 
 Perform `ldms_ls` on a group
-*****************************
+-----------------------------
 Performing `ldms_ls -v` or `ldms_ls -l` on a LDMS daemon hosting a group will perform the query on the set representing the group itself as well as iteratively querying the group's members.
 
 Example:
@@ -580,7 +580,7 @@ Output:
   The update time of the group set is the time that the last set was inserted into the group.
 
 Update / store with set group
-*****************************
+-----------------------------
 The following is an example of an aggregator configuration to match-update only the set groups, and their members, with storage policies:
 
 .. code-block:: RST
