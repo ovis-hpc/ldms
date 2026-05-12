@@ -3657,14 +3657,14 @@ cdef class Xprt(object):
             rc = self._conn_rc
             raise ConnectionError(rc, "Connect error: {}".format(ERRNO_SYM(rc)))
 
-    def listen(self, host="*", port=411, cb=None, cb_arg=None):
-        """X.listen(host="*", port=411, cb=None, cb_arg=None)
+    def listen(self, host=None, port=411, cb=None, cb_arg=None):
+        """X.listen(host=None, port=411, cb=None, cb_arg=None)
 
         Listen on `host:port` for LDMS connections
 
         Arguments:
         - host (str): The hostname (or IP address in string) to listen to.
-                      "*" (default) means no specific address.
+                      `None` (default) means no specific address.
         - port (int): The listening port number.
         - cb (callable): The callback function.
         - cb_arg (object): The application argument to `cb()`.
@@ -3683,9 +3683,17 @@ cdef class Xprt(object):
         - arg (object): The `cb_arg` supplied to the `listen()` function.
         """
         cdef int rc
+        cdef const char *h = NULL
+        cdef const char *p = NULL
+        host = BYTES(host)
+        port = BYTES(port)
+        if host:
+            h = host
+        if port:
+            p = port
         self._conn_cb = cb
         self._conn_cb_arg = cb_arg
-        rc = ldms_xprt_listen_by_name(self.xprt, BYTES(host), BYTES(port),
+        rc = ldms_xprt_listen_by_name(self.xprt, h, p,
                                       passive_xprt_cb, <void*>self)
         if rc:
             # synchronously failed, self.xprt is no good. Need to "put" it down.
