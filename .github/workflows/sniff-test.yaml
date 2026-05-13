@@ -1,0 +1,67 @@
+name: Sniff Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'b[0-9]+.[0-9]+'
+  pull_request:
+    branches:
+      - main
+      - 'b[0-9]+.[0-9]+'
+
+# Github run jobs in their own VMs/Containers. Hence, we run sniff tests in
+# steps after build/install. We build/install again in this workflow instead of
+# using Github artifacts because Github artifacts have 1 GB limit that may be a
+# choke point to PRs. Public repositories has unlimited compute minutes.
+
+jobs:
+  sniff-test-46:
+    name: Sniff Test in IPv4+6 environment
+    defaults:
+      run:
+        shell: /bin/bash -l -e {0} # Use login shell
+    runs-on: ubuntu-latest # Github runner VM
+    container:
+      image: ovishpc/ldms-dev-alma-9:latest-amd64
+    steps:
+    # build + install
+    - uses: actions/checkout@v4
+    - run: git config --global --add safe.directory ${PWD}
+    - run: sh autogen.sh
+    - run: ./configure --prefix=/opt/ovis --enable-etc CFLAGS="-Wall -Werror"
+    - run: make && make install
+    - run: ln -s /opt/ovis/etc/profile.d/set-ovis-variables.sh /etc/profile.d/
+    - run: ln -s /opt/ovis/etc/ld.so.conf.d/ovis-ld-so.conf /etc/ld.so.conf.d/
+    - run: ldconfig
+    # sniff-tests
+    - name: Python interface - IPv4+6
+      run: .github/sniff-tests/py-conn-46.sh
+    - name: ldmsd - IPv4+6
+      run: .github/sniff-tests/ldmsd-46.sh
+
+  sniff-test-4: # For IPv4-only environment
+    name: Sniff Test in IPv4-only environment
+    defaults:
+      run:
+        shell: /bin/bash -l -e {0} # Use login shell
+    runs-on: ubuntu-latest # Github runner VM
+    container:
+      image: ovishpc/ldms-dev-alma-9:latest-amd64
+      # Disable IPv6
+      options: --sysctl net.ipv6.conf.all.disable_ipv6=1 --sysctl net.ipv6.conf.default.disable_ipv6=1
+    steps:
+    # build + install
+    - uses: actions/checkout@v4
+    - run: git config --global --add safe.directory ${PWD}
+    - run: sh autogen.sh
+    - run: ./configure --prefix=/opt/ovis --enable-etc CFLAGS="-Wall -Werror"
+    - run: make && make install
+    - run: ln -s /opt/ovis/etc/profile.d/set-ovis-variables.sh /etc/profile.d/
+    - run: ln -s /opt/ovis/etc/ld.so.conf.d/ovis-ld-so.conf /etc/ld.so.conf.d/
+    - run: ldconfig
+    # sniff-tests
+    - name: Python interface - IPv4 only
+      run: .github/sniff-tests/py-conn-4.sh
+    - name: ldmsd - IPv4 only
+      run: .github/sniff-tests/ldmsd-4.sh
