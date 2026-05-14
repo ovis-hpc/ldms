@@ -2300,35 +2300,45 @@ class LdmsdCmdParser(Cmd.Cmd):
 
     def display_worker_thread_stats(self, worker_threads, hdr):
         if len(worker_threads) == 0:
-            print(f"{hdr}: None")
-            print(f"{'='*60}")
+            title = f"{hdr}: None"
+            print(title)
+            print(f"{'='*len(title)}")
+            print()
             return
 
-        print(hdr)
-        print(f"{'='*60}")
-        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Utilization':12} {'Window (s)':12} {'Event Counts':12}")
-        print(f"{'-'*15} {'-'*20} {'-'*20} {'-'*12} {'-'*12} {'-'*12}")
+        utilization_interval = int(worker_threads[0]['refresh_us']/1000000)
+        title = f"{hdr} (Utilization of the last {utilization_interval} sec)"
+        print(title)
+        print(f"{'='*len(title)}")
+        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Utilization':12} {'Event Counts':12}")
+        print(f"{'-'*15} {'-'*20} {'-'*20} {'-'*12} {'-'*12}")
         for e in worker_threads:
             print(f"{e['tid']:^15} {e['thread_id']:20} {e['name']:20} ", end="")
             if e['utilization'] == -1:
-                print(f"{'-':>12} {'-':>12} ", end="")
+                print(f"{'-':>12} ", end="")
             else:
-                print(f"{e['utilization'] * 100:11.4f}% {int(e['refresh_us']/1000000):12} ", end="")
+                print(f"{e['utilization'] * 100:11.4f}% ", end="")
             print(f"{e['ev_cnt']:12}")
+        print(f"{'='*len(title)}")
+        print()
 
     def display_io_thread_stats(self, io_threads):
-        print("IO Thread Statistics")
-        print(f"{'='*60}")
-        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Utilization':12} {'Window (s)':12} " \
+        utilization_interval = int(io_threads[0]['refresh_us']/1000000)
+        title = f"IO Thread Statistics (Utilization of the last {utilization_interval} sec)"
+        print(title)
+        print(f"{'='*len(title)}")
+        print(f"{'Thread ID':15} {'Linux Thread ID':20} {'Name':20} {'Utilization':12} " \
               f"{'Send Queue Size':16} {'Num of EPs':12}")
-        print(f"{'-'*15} {'-'*20} {'-'*20} {'-'*12} {'-'*12} {'-'*16} {'-'*12}")
+        print(f"{'-'*15} {'-'*20} {'-'*20} {'-'*12} {'-'*16} {'-'*12}")
         for e in io_threads:
             print(f"{e['tid']:^15} {e['thread_id']:20} {e['name']:20} ", end = "")
             if e['utilization'] == -1:
-                print(f"{'-':>12} {'-':>12} ", end="")
+                print(f"{'-':>12} ", end="")
             else:
-                print(f"{e['utilization'] * 100:11.4f}% {int(e['refresh_us']/1000000):12} ", end="")
+                print(f"{e['utilization'] * 100:11.4f}% ", end="")
             print(f"{e['sq_sz']:16} {e['n_eps']:12}")
+        print(f"{'='*len(title)}")
+        print()
 
     def do_thread_stats(self, arg):
         """
@@ -2364,11 +2374,13 @@ class LdmsdCmdParser(Cmd.Cmd):
                                          "Exclusive Worker Thread Statistics")
         self.display_worker_thread_stats(msg['storage threads'],
                                          "LDMSD Storage Worker Thread Statistics")
-        print(f"{'='*60}")
+
         self.display_io_thread_stats(msg['io_threads'])
-        print(f"{'='*60}")
-        print("IO Thread Usages of LDMS Operations")
-        print(f"{'='*60}")
+        print()
+        title = "IO Thread Usages of LDMS Operations (Percentages and Absolute Time in microseconds)"
+        print(f"{'='*len(title)}")
+        print(title)
+        print(f"{'='*len(title)}")
         for thr in msg['io_threads']:
             thr['ldms_xprt'] = dict(sorted(thr['ldms_xprt'].items(), key = lambda item: item[1], reverse = True))
             total = sum(v for v in thr['ldms_xprt'].values())
