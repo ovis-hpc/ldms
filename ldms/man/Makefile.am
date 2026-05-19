@@ -28,7 +28,8 @@ ldmsd_communicator.man \
 ldmsd_config_files.man \
 ldmsd_event_based_storage.man \
 ldmsd_storage_plugin_developer_document.man \
-ldms_xprt_threading_model.man
+ldms_xprt_threading_model.man \
+ldms_python_threading_model.man
 
 
 ldmsd-exits.man: $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c
@@ -56,3 +57,4 @@ EXTRA_DIST+=ldmsd_config_files.rst
 EXTRA_DIST+=ldmsd_event_based_storage.rst
 EXTRA_DIST+=ldmsd_storage_plugin_developer_document.rst
 EXTRA_DIST+=ldms_xprt_threading_model.rst
+EXTRA_DIST+=ldms_python_threading_model.rst
