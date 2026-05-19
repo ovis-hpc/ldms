@@ -953,6 +953,8 @@ cdef extern from "ldms.h" nogil:
     char *ldms_msg_client_stats_tq_to_str(ldms_msg_client_stats_tq_s *tq)
     char *ldms_msg_client_stats_str()
 
+    void ldms_set_ref_dump(ldms_set_t set, const char *name, FILE *f)
+
 cdef extern from "ldms_msg_chan.h":
     cdef enum ldms_msg_chan_state_e:
         LDMS_MSG_CHAN_DISCONNECTED

@@ -66,6 +66,12 @@
 #define HEAP_OFFSET(grained_ref) ( (grained_ref) * LDMS_LIST_GRAIN )
 #define HEAP_REF(offset) ( (offset) / LDMS_LIST_GRAIN )
 
+#ifdef LDMS_SET_DEBUG
+#define SETDEBUG(FMT, ... ) \
+	ovis_log(NULL, OVIS_LALWAYS, "%s():%d " FMT ,  __func__, __LINE__, ## __VA_ARGS__)
+#else
+#define SETDEBUG(FMT, ... )  /* no-op */
+#endif
 
 typedef struct ldms_mdef_s {
 	char *name;
