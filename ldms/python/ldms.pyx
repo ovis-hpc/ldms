@@ -51,6 +51,7 @@ from cpython cimport PyObject, Py_INCREF, Py_DECREF, PyGILState_Ensure, \
 
 from libc.stdint cimport *
 from libc.stdlib cimport calloc, malloc, free, realloc
+from libc.stdio cimport *
 from posix.unistd cimport geteuid, getegid
 from collections import namedtuple
 import datetime as dt
@@ -3461,6 +3462,11 @@ cdef class Set(object):
         rc = ldms_xprt_cancel_push(self.rbd)
         if rc: # synchronous error
             raise RuntimeError(f"ldms_xprt_cancel_push() error: {rc}")
+
+    def ref_dump(self):
+        b = BYTES(self.name)
+        cdef char *name = b
+        ldms_set_ref_dump(self.rbd, name, stdout)
 
 cdef void __xprt_free_cb(void* p) with gil:
     cdef Xprt x = <Xprt>p

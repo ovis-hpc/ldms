@@ -4718,6 +4718,8 @@ static inline double ldms_timespec_diff_s(struct timespec *start, struct timespe
 #include <netdb.h>
 void dump_addrinfo_list(struct addrinfo *ai_list, const char *fn_name, int line);
 
+void ldms_set_ref_dump(ldms_set_t set, const char *name, FILE *f);
+
 #ifdef __cplusplus
 }
 #endif

@@ -927,6 +927,9 @@ static void __destroy_set_no_lock(void *v)
 	struct ldms_set *set = v;
 	struct ldms_xprt *x = set->xprt;
 	struct ldms_context *ctxt;
+
+	SETDEBUG("set: %p\n", set);
+
 	if (x) {
 		/*
 		 * Check if there any transports referencing this set
@@ -971,6 +974,7 @@ static void __destroy_set_no_lock(void *v)
 
 static void __destroy_set(void *v)
 {
+	SETDEBUG("set: %p\n", v);
 	pthread_mutex_lock(&__del_tree_lock);
 	__destroy_set_no_lock(v);
 	pthread_mutex_unlock(&__del_tree_lock);
@@ -980,6 +984,8 @@ void __ldms_set_delete(ldms_set_t s, int notify)
 {
 	ldms_t x;
 	struct ldms_set *__set;
+
+	SETDEBUG("set: %p\n", s);
 
 	__ldms_set_tree_lock();
 	__set = __ldms_set_by_id(s->set_id);
@@ -994,6 +1000,8 @@ void __ldms_set_delete(ldms_set_t s, int notify)
 	rbt_del(&__set_tree, &s->rb_node);
 	rbt_del(&__id_tree, &s->id_node);
 	__ldms_set_tree_unlock();
+
+	SETDEBUG("set: %p proceed ...\n", s);
 
 	/* NOTE: We will clean up the push and lookup collections
 	 *       when we destroy the set. While we wait for the
@@ -1011,6 +1019,7 @@ void __ldms_set_delete(ldms_set_t s, int notify)
 	if (x)
 		ldms_xprt_put(x, "lu_set");
 
+	SETDEBUG("set: %p inserting into __del_tree\n", s);
 	/* Add the set to the delete tree with the current timestamp */
 	s->del_time = time(NULL);
 	rbn_init(&s->del_node, &s->del_time);
@@ -1907,6 +1916,8 @@ ldms_set_t ldms_set_create(const char *instance_name,
 				&((uint8_t *)set->data)[schema->data_sz]);
 	}
 	__init_rec_array(set, schema);
+	SETDEBUG("set: %p\n", set);
+	SETDEBUG("set->ref.free_fn: %p\n", set->ref.free_fn);
 	return set;
 }
 
@@ -6283,4 +6294,9 @@ const char *ldms_msg_event_type_sym(enum ldms_msg_event_type t)
 	if (t < sizeof(tbl) / sizeof(tbl[0]))
 		return tbl[t];
 	assert(NULL=="Invalid ldms_msg_event type");
+}
+
+void ldms_set_ref_dump(ldms_set_t set, const char *name, FILE *f)
+{
+	ref_dump(&set->ref, name, f);
 }
