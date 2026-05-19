@@ -68,6 +68,7 @@
 #include <stdarg.h>
 #include <mmalloc/mmalloc.h>
 #include <ovis_json/ovis_json.h>
+#include <arpa/inet.h>
 #include "ovis_util/os_util.h"
 #include "ldms.h"
 #include "ldms_xprt.h"
@@ -4615,47 +4616,152 @@ int ldms_xprt_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 	return x->ops.listen(x, sa, sa_len, cb, cb_arg);
 }
 
+/* DEBUG */
+void dump_addrinfo(struct addrinfo *ai, const char *fn_name, int line)
+{
+	char buff[4096];
+	const char *s;
+	struct sockaddr_in *sin;
+	struct sockaddr_in6 *sin6;
+	switch (ai->ai_family) {
+	case AF_INET:
+		sin = (void*)ai->ai_addr;
+		s = inet_ntop(ai->ai_family, &sin->sin_addr, buff, sizeof(buff));
+		break;
+	case AF_INET6:
+		sin6 = (void*)ai->ai_addr;
+		s = inet_ntop(ai->ai_family, &sin6->sin6_addr, buff, sizeof(buff));
+		break;
+	default:
+		ovis_log(NULL, OVIS_LALWAYS, "Unsupported family: %d\n", ai->ai_family);
+		return;
+	}
+	if (!s) {
+		ovis_log(NULL, OVIS_LALWAYS, "inet_ntop() error: %d\n", errno);
+		return;
+	}
+	ovis_log(NULL, OVIS_LALWAYS, "addr: %s\n", buff);
+	ovis_log(NULL, OVIS_LALWAYS, "  family: %d\n", ai->ai_family);
+	ovis_log(NULL, OVIS_LALWAYS, "  protocol: %d\n", ai->ai_protocol);
+	ovis_log(NULL, OVIS_LALWAYS, "  socktype: %d\n", ai->ai_socktype);
+	ovis_log(NULL, OVIS_LALWAYS, "  canonname: %s\n", ai->ai_canonname);
+}
+
+void dump_addrinfo_list(struct addrinfo *ai_list, const char *fn_name, int line)
+{
+	struct addrinfo *ai;
+	ovis_log(NULL, OVIS_LALWAYS,
+			"==== dump_addrinfo_list, %s():%d BEGIN ====\n",
+			fn_name, line);
+	for (ai = ai_list; ai; ai = ai->ai_next) {
+		dump_addrinfo(ai, fn_name, line);
+	}
+	ovis_log(NULL, OVIS_LALWAYS,
+			"==== dump_addrinfo_list, %s():%d END ====\n",
+			fn_name, line);
+}
+
+int by_name_ai_flags()
+{
+	static int once = 0;
+	static int ai_flags = 0;
+	const char *ai_addrconfig;
+	const char *ai_v4mapped;
+
+	if (once)
+		goto out;
+
+	/* These ENV vars are not meant for controlling the behavior of
+	 * ldms_xprt_listen_by_name() and ldms_xprt_connect_by_name() in each of
+	 * their multiple calls. They are for testing purposes; set it once
+	 * and don't expect them to change in the lifetime of the program.
+	 */
+
+	ai_addrconfig = getenv("LDMS_AI_ADDRCONFIG");
+	ai_v4mapped = getenv("LDMS_AI_V4MAPPED");
+
+	/* AI_V4MAPPED on by default; user can set it to 0 */
+	if (ai_v4mapped) {
+		if (atoi(ai_v4mapped))
+			ai_flags |= AI_V4MAPPED;
+	} else {
+		ai_flags |= AI_V4MAPPED;
+	}
+
+	/* AI_ADDRCONFIG off by default */
+	if (ai_addrconfig) {
+		if (atoi(ai_addrconfig))
+			ai_flags |= AI_ADDRCONFIG;
+	} /* else do nothing */
+
+	once = 1;
+ out:
+	return ai_flags;
+}
+
 int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 		ldms_event_cb_t cb, void *cb_arg)
 {
 	int rc;
 	struct addrinfo *ai_list;
-	struct addrinfo *ai;
-	struct addrinfo *aitr;
+	struct addrinfo *ai, *_ai;
 	struct addrinfo hints = {0};
 
 	hints.ai_socktype = SOCK_STREAM;
-	if (host != NULL) {
-		/* AI_V4MAPPED | AI_ADDRCONFIG are the Linux default flags */
-		hints.ai_flags = AI_PASSIVE | AI_V4MAPPED | AI_ADDRCONFIG;
-	} else {
-		/* When host is NULL, we allow binding to the
-		   IPv6 wildcard address IN6ADDR_ANY_INIT, even if there are
-		   no non-loopback devices with IPv6 networking configured.
-		   In this case the IPv6 wildcard address would also allow IPv4
-		   wildcard traffic. If we set AI_ADDRCONFIG, this would force
-		   IPv4 wildcard address usage when no non-loopback devices have
-		   IPv6 networking enabled. */
-		hints.ai_flags = AI_PASSIVE;
-	}
+	hints.ai_flags = AI_PASSIVE | by_name_ai_flags();
+
+	/*
+	 * NOTE
+	 *
+	 * - AI_PASSIVE|AI_ADDRCONFIG, with or without AI_V4MAPPED, cannot
+	 *   resolve "::1". It returns -9 (EAI_ADDRFAMILY). In addition, on
+	 *   IPv6-enabled host "ip6-loopback", which is "::1", in /etc/hosts is
+	 *   resolved to "127.0.0.1" (IPv4 loopback). `getaddrinfo(3)` mentioned
+	 *   that the "loopback" is not considered in `AI_ADDRCONFIG`
+	 *   explanation.
+	 *
+	 * - `getaddrinfo()` preference looks fine when `host` is not ANY. For
+	 *   example, on the host with disabled IPv6, "localhost" results are
+	 *   "127.0.0.1" (first) and "::1" (second), while the result list is
+	 *   "::1" (first) then "127.0.0.1" (second) on the host with IPv6
+	 *   enabled.
+	 *
+	 * - The "ANY" address is an odd one that `getaddrinfo()` always prefer
+	 *   "0.0.0.0" (IPv4) before "::" (IPv6).
+	 */
 
 	rc = getaddrinfo(host, port_no, &hints, &ai_list);
-	if (rc)
+	if (rc) {
+		/* If `host` is IPv6 (e.g. "::1") */
 		return EHOSTUNREACH;
-	ai = NULL;
-	/* FIXME - We should not prefer IPv6 unless explicitly configured by
-	   the user. We should just let the caller set the ai_family.
-	   We should really also try each address returned by getaddrinfo()
-	   until we get one that works, not only try the first one. */
-	/* Prefer the first IPv6 address */
-	for (aitr = ai_list; aitr; aitr = aitr->ai_next) {
-		if (aitr->ai_family == AF_INET6) {
-			ai = aitr;
-			break;
+	}
+#if DUMP_ADDRINFO
+	dump_addrinfo_list(ai_list, __func__, __LINE__);
+#endif
+	ai = ai_list;
+	if (ai->ai_family == AF_INET) {
+		struct sockaddr_in *sin = (void*)ai->ai_addr;
+		if (sin->sin_addr.s_addr == INADDR_ANY) {
+			/*
+			 * Special ANY address case. `getaddrinfo()` returned
+			 * IPv4 before IPv6. We prefer IP6 for ANY address as it
+			 * serves both IP4 and IP6. If user specifies "0.0.0.0",
+			 * the only ANY for IP4 is returned from
+			 * `getaddrinfo()`.
+			 */
+			_ai = ai; /* save it */
+			for(; ai; ai = ai->ai_next) {
+				if (ai->ai_family == AF_INET6)
+					break;
+			}
+			if (!ai)
+				ai = _ai;
 		}
 	}
-	if (!ai)
-		ai = ai_list;
+#if DUMP_ADDRINFO
+	ovis_log(NULL, OVIS_LALWAYS, "Listening on:\n");
+	dump_addrinfo(ai, __func__, __LINE__);
+#endif
 	rc = ldms_xprt_listen(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
 	freeaddrinfo(ai_list);
 	return rc;

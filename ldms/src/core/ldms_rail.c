@@ -2283,17 +2283,31 @@ void sync_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	}
 }
 
+int by_name_ai_flags(); /* see ldms_xprt.c */
+
 int ldms_rail_connect_by_name(ldms_t x, const char *host, const char *port,
 			      ldms_event_cb_t cb, void *cb_arg)
 {
 	ldms_rail_t r = (ldms_rail_t)x;
 	struct addrinfo *ai;
 	struct addrinfo hints = {
-		.ai_socktype = SOCK_STREAM
+		.ai_socktype = SOCK_STREAM,
+		.ai_flags = by_name_ai_flags(),
 	};
+	/*
+	 * NOTE on AI_ADDRCONFIG on the active side.
+	 *
+	 * AI_ADDRCONFIG does not work with "::1" (returned -9 EAI_ADDRFAMILY).
+	 * - "localhost" got only "127.0.0.1" back.
+	 * - "ip6-localhost" and "ip6-loopback" also got "127.0.0.1" (v4)
+	 *   instead of "::1" (v6) result on IPv6-enabled environment.
+	 */
 	int rc = getaddrinfo(host, port, &hints, &ai);
 	if (rc)
 		return EHOSTUNREACH;
+#if DUMP_ADDRINFO
+	dump_addrinfo_list(ai, __func__, __LINE__);
+#endif
 	if (!cb) {
 		rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen, sync_connect_cb, cb_arg);
 		if (rc)
