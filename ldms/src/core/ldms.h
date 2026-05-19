@@ -4714,6 +4714,10 @@ static inline double ldms_timespec_diff_s(struct timespec *start, struct timespe
 	return (double)ldms_timespec_diff_us(start, end) / (double)1000000.0;
 }
 
+/* for debugging */
+#include <netdb.h>
+void dump_addrinfo_list(struct addrinfo *ai_list, const char *fn_name, int line);
+
 #ifdef __cplusplus
 }
 #endif
