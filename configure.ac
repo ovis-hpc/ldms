@@ -770,14 +770,29 @@ dnl We make the assumption that if AM_PATH_PYTHON succeeds, that AX_PYTHON_DEVEL
 dnl is very likely to succeed as well.
 python_found=false
 cython_found=false
+required_cython_version=0.25
+
 AS_IF([test "x$want_python" != xno], [
 	AM_PATH_PYTHON([3.6],
 		[AX_PYTHON_DEVEL([>='3.6'])
-		 pkgpythondir="${pythondir}/ovis_ldms"
-		 pkgpyexecdir="${pkgpythondir}"
-		 python_found=true
-		 CYTHON_CHECK([0.25], [$PYTHON_VERSION],
-		 	[cython_found=true], [cython_found=false])],
+			dnl Cython < 3 expects Python's imp module, which is absent on
+			dnl newer interpreters. If importing imp fails, require Cython >= 3.0.
+			AC_MSG_CHECKING([what minimum Cython version is required])
+			AS_IF([$PYTHON -c 'import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+try:
+    import imp
+except ImportError:
+    raise SystemExit(0)
+raise SystemExit(1)'],
+				[required_cython_version=3.0],
+				[required_cython_version=0.25])
+			AC_MSG_RESULT([$required_cython_version])
+			pkgpythondir="${pythondir}/ovis_ldms"
+			pkgpyexecdir="${pkgpythondir}"
+			python_found=true
+			CYTHON_CHECK([$required_cython_version], [$PYTHON_VERSION],
+				[cython_found=true], [cython_found=false])],
 		[python_found=false
 		 cython_found=false])
 
@@ -787,8 +802,8 @@ AS_IF([test "x$want_python" != xno], [
 			[AC_MSG_WARN([python not found])])])
 	AS_IF([test "$cython_found" = false],
 		[AS_IF([test "x$want_python" = xyes],
-			[AC_MSG_ERROR([cython not found])],
-			[AC_MSG_WARN([cython not found])])])
+			[AC_MSG_ERROR([cython >= $required_cython_version not found])],
+			[AC_MSG_WARN([cython >= $required_cython_version not found])])])
 ])
 AM_CONDITIONAL([ENABLE_PYTHON], [test "$python_found" = true -a "$cython_found" = true])
 
