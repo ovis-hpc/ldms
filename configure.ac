@@ -97,6 +97,7 @@ OPTION_INCLUDE_FLAGS([OVIS],[ \
 	lib/src/ovis_ev \
 	lib/src/ovis_event \
 	lib/src/ovis_json \
+	lib/src/omq \
 	lib/src/ovis_log \
 	lib/src/ovis_thrstats \
 	lib/src/zap \
@@ -119,6 +120,7 @@ OPTION_LIB_FLAGS([OVIS],[ \
 	lib/src/ovis_ev \
 	lib/src/ovis_event \
 	lib/src/ovis_json \
+	lib/src/omq \
 	lib/src/ovis_log \
 	lib/src/ovis_thrstats \
 	lib/src/zap \
@@ -1007,6 +1009,7 @@ lib/Doxyfile
 lib/Makefile
 lib/src/Makefile
 lib/src/ovis_json/Makefile
+lib/src/omq/Makefile
 lib/src/third/Makefile
 lib/src/coll/Makefile
 lib/src/mmalloc/Makefile

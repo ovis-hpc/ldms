@@ -1252,7 +1252,8 @@ double ts_diff_usec(struct timespec *a, struct timespec *b)
 	return (aa - bb)/1e3; /* make it usec */
 }
 
-void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct timespec *end)
+void ldmsd_stat_update(struct ldmsd_stat *stat,
+		       struct timespec *start, struct timespec *end)
 {
 	if (start->tv_sec == 0) {
 		/*
@@ -1269,7 +1270,8 @@ void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct t
 		stat->min_ts.tv_sec = stat->max_ts.tv_sec = end->tv_sec;
 		stat->min_ts.tv_nsec = stat->max_ts.tv_nsec = end->tv_nsec;
 	} else {
-		stat->avg = (stat->avg * ((stat->count - 1.0)/stat->count)) + (dur/stat->count);
+		stat->avg = (stat->avg * ((stat->count - 1.0)/stat->count))
+			+ (dur/stat->count);
 		if (stat->min > dur) {
 			stat->min = dur;
 			stat->min_ts.tv_sec = end->tv_sec;
@@ -1285,8 +1287,8 @@ void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct t
 void ldmsd_stat_reset(struct ldmsd_stat *stats, struct timespec *now)
 {
 	memset(stats, 0, sizeof(*stats));
-	stats->start = *now;
-	stats->end = *now;
+	// stats->start = *now;
+	// stats->end = *now;
 	stats->min_ts = *now;
 	stats->max_ts = *now;
 	stats->min = DBL_MAX;

@@ -219,31 +219,35 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 
 	pthread_mutex_lock(&prd_set->lock);
 	clock_gettime(CLOCK_REALTIME, &prd_set->updt_stat.end);
-	ldmsd_stat_update(&prd_set->updt_stat, &prd_set->updt_stat.start, &prd_set->updt_stat.end);
+	ldmsd_stat_update(&prd_set->updt_stat,
+			  &prd_set->updt_stat.start, &prd_set->updt_stat.end);
 
 	errcode = LDMS_UPD_ERROR(status);
-	ovis_log(updtr_log, OVIS_LDEBUG, "Update complete for Set %s with status %#x\n",
-					prd_set->inst_name, status);
+	ovis_log(updtr_log, OVIS_LDEBUG,
+		 "Update complete for Set %s with status %#x\n",
+		 prd_set->inst_name, status);
 	if (errcode) {
 		char *op_s;
 		if (0 == (status & LDMS_UPD_F_PUSH))
 			op_s = "update";
 		else
 			op_s = "push";
-		ovis_log(updtr_log, OVIS_LINFO, "Set %s: %s completing with "
-					"bad status %d\n",
-					prd_set->inst_name, op_s,errcode);
+		ovis_log(updtr_log, OVIS_LINFO,
+			 "Set %s: %s completing with bad status %d\n",
+			 prd_set->inst_name, op_s,errcode);
 		goto out;
 	}
 
 	if (!ldms_set_is_consistent(set)) {
-		ovis_log(updtr_log, OVIS_LINFO, "Set %s is inconsistent.\n", prd_set->inst_name);
+		ovis_log(updtr_log, OVIS_LINFO,
+			 "Set %s is inconsistent.\n", prd_set->inst_name);
 		goto set_ready;
 	}
 
 	gn = ldms_set_data_gn_get(set);
 	if (prd_set->last_gn == gn) {
-		ovis_log(updtr_log, OVIS_LINFO, "Set %s oversampled %"PRIu64" == %"PRIu64".\n",
+		ovis_log(updtr_log, OVIS_LINFO,
+			 "Set %s oversampled %"PRIu64" == %"PRIu64".\n",
 			  prd_set->inst_name, prd_set->last_gn, gn);
 		__atomic_fetch_add(&prd_set->oversampled_cnt, 1, __ATOMIC_SEQ_CST);
 		goto set_ready;

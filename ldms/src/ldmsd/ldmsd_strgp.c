@@ -176,13 +176,14 @@ out:
 	return rc;
 }
 
-extern struct store_event_ctxt *store_event_ctxt_new(ldmsd_strgp_ref_t strgp_ref, ldms_set_t snapshot,
-                                                     ldmsd_prdcr_set_t prd_set,
-                                                     ldmsd_row_list_t row_list, int row_count,
-                                                     struct timespec start
-);
+extern struct store_event_ctxt *
+store_event_ctxt_new(ldmsd_strgp_ref_t strgp_ref, ldms_set_t snapshot,
+		     ldmsd_prdcr_set_t prd_set,
+		     ldmsd_row_list_t row_list, int row_count,
+		     struct timespec start);
 
 extern int store_event_post(struct store_event_ctxt *ctxt);
+extern int store_omq_post(struct store_event_ctxt *ctxt);
 
 void ldmsd_strgp_ref_stats_init(ldmsd_strgp_ref_t strgp_ref, struct timespec *ts)
 {
@@ -203,7 +204,9 @@ void ldmsd_strgp_ref_stats_init(ldmsd_strgp_ref_t strgp_ref, struct timespec *ts
 }
 
 /* protected by strgp lock */
-static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms_set_t set_snapshot, void *ctxt)
+static void strgp_update_fn(ldmsd_strgp_t strgp,
+			    ldmsd_prdcr_set_t prd_set, ldms_set_t set_snapshot,
+			    void *ctxt)
 {
 	if (strgp->state != LDMSD_STRGP_STATE_RUNNING)
 		return;
@@ -237,9 +240,12 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms
 			goto end_decomp;
 		}
 		TAILQ_INIT(row_list);
-		rc = strgp->decomp->decompose(strgp, set_snapshot, row_list, &row_count, &strgp_ref->decomp_ctxt);
+		rc = strgp->decomp->decompose(strgp, set_snapshot,
+					      row_list, &row_count,
+					      &strgp_ref->decomp_ctxt);
 		if (rc) {
-			ovis_log(store_log, OVIS_LERROR, "strgp decompose error: %d\n", rc);
+			ovis_log(store_log, OVIS_LERROR,
+				 "strgp decompose error: %d\n", rc);
 			goto end_decomp;
 		}
 
@@ -262,13 +268,17 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set, ldms
 		}
 	}
 
-	event_ctxt = store_event_ctxt_new(strgp_ref, set_snapshot, prd_set, row_list, row_count, start);
+	event_ctxt = store_event_ctxt_new(strgp_ref, set_snapshot, prd_set,
+					  row_list, row_count, start);
 	if (!event_ctxt) {
 		ovis_log(store_log, OVIS_LCRIT, "Memory allocation failure.\n");
 		goto err;
 	}
-
+#if 0
 	rc = store_event_post(event_ctxt);
+#else
+	rc = store_omq_post(event_ctxt);
+#endif
 	if (rc)
 		goto err;
 	return;

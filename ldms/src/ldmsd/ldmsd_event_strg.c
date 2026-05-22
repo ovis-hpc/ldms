@@ -91,6 +91,7 @@
 
 #include "ldms.h"
 #include "ldmsd.h"
+#include "omq/omq.h"
 
 extern ovis_log_t store_log;
 
@@ -126,6 +127,7 @@ struct store_event_ctxt {
 
 struct strg_worker {
 	ovis_scheduler_t worker;
+	omq_t mq;
 	pthread_t thr;
 	int q_depth;
 };
@@ -483,10 +485,12 @@ int store_event_post(struct store_event_ctxt *ctxt)
 	struct timespec wait_start, wait_end;
 	struct ldmsd_stat *worker_wait_stat = &(strgp_ref->store_stages_stat.worker_wait_stat);
 
-	ovis_log(store_log, OVIS_LDEBUG, "store_post(%p, %p).\n", ctxt, ctxt->snapshot);
+	ovis_log(store_log, OVIS_LDEBUG,
+		 "store_post(%p, %p).\n", ctxt, ctxt->snapshot);
 
 	clock_gettime(CLOCK_REALTIME, &wait_start);
-	/* strg_worker_get() block when all storage workers are at full capacity. */
+	/* strg_worker_get() block when all storage workers are at full
+	 * capacity. */
 	w = strg_worker_acquire();
 	ctxt->w = w;
 	clock_gettime(CLOCK_REALTIME, &wait_end);
@@ -530,11 +534,108 @@ int store_event_post(struct store_event_ctxt *ctxt)
 	return rc;
 }
 
+int store_omq_post(struct store_event_ctxt *ctxt)
+{
+	int rc;
+	omq_msg_t msg;
+	struct strg_worker *w;
+	ldmsd_strgp_ref_t strgp_ref = ctxt->strgp_ref;
+	struct timespec wait_start, wait_end;
+	struct ldmsd_stat *worker_wait_stat =
+		&(strgp_ref->store_stages_stat.worker_wait_stat);
+
+	ovis_log(store_log, OVIS_LDEBUG,
+		 "store_post(%p, %p).\n", ctxt, ctxt->snapshot);
+
+	clock_gettime(CLOCK_REALTIME, &wait_start);
+	/*
+	 * strg_worker_get() block when all storage workers are at full
+	 * capacity.
+	 */
+	w = strg_worker_acquire();
+	ctxt->w = w;
+	clock_gettime(CLOCK_REALTIME, &wait_end);
+	ldmsd_stat_update(worker_wait_stat, &wait_start, &wait_end);
+
+	if (!w) {
+		rc = errno;
+		return rc;
+	}
+
+	clock_gettime(CLOCK_REALTIME, &ctxt->post_ts);
+	ldmsd_stat_update(&strgp_ref->store_stages_stat.io_thread_stat,
+				  &ctxt->start_ts, &ctxt->post_ts);
+
+	msg = omq_msg_alloc(w->mq, 0, ctxt);
+
+	ovis_log(store_log, OVIS_LDEBUG,
+		 "Post store_event %p to worker %p\n", msg, w);
+	omq_msg_publish(msg);
+
+	return 0;
+}
+
 void *strg_worker_proc(void *v)
 {
 	struct strg_worker *w = v;
 	ovis_scheduler_loop(w->worker, 0);
 	return NULL;
+}
+
+int strg_worker_fn(omq_t q, omq_msg_t msg)
+{
+	int rc;
+	struct timespec start, end;
+	struct store_event_ctxt *event_ctxt = msg->context;
+	ldmsd_strgp_ref_t strgp_ref = event_ctxt->strgp_ref;
+	ldmsd_strgp_t strgp = strgp_ref->strgp;
+	ldms_set_t set = event_ctxt->snapshot;
+	ldmsd_row_list_t row_list = event_ctxt->row_list;
+	int row_count = event_ctxt->row_count;
+	struct ldmsd_stat *queue_stat = &(strgp_ref->store_stages_stat.queue_stat);
+	struct ldmsd_stat *commit_stat = &(strgp_ref->store_stages_stat.commit_stat);
+	clock_gettime(CLOCK_REALTIME, &start);
+	queue_stat->end = start;
+	ldmsd_stat_update(queue_stat, &event_ctxt->post_ts, &queue_stat->end);
+
+	if (event_ctxt->type == STORE_T_LEGACY) {
+		strgp->store->api->store((ldmsd_plug_handle_t)strgp->store,
+					 strgp->store_handle, set,
+					 strgp->metric_arry, strgp->metric_count);
+		if (strgp->flush_interval.tv_sec || strgp->flush_interval.tv_nsec) {
+			struct timespec expiry;
+			struct timespec now;
+			ldmsd_timespec_add(&strgp->last_flush, &strgp->flush_interval, &expiry);
+			clock_gettime(CLOCK_REALTIME, &now);
+			if (ldmsd_timespec_cmp(&now, &expiry) >= 0) {
+				clock_gettime(CLOCK_REALTIME, &strgp->last_flush);
+				strgp->store->api->flush((ldmsd_plug_handle_t)strgp->store,
+							  strgp->store_handle);
+			}
+		}
+	} else {
+		rc = strgp->store->api->commit((ldmsd_plug_handle_t)strgp->store,
+						strgp, set, row_list, row_count);
+		if (rc) {
+			ovis_log(store_log, OVIS_LERROR,
+				 "strgp row commit error: %d\n", rc);
+		}
+		strgp->decomp->release_rows(strgp, row_list);
+	}
+	strg_worker_release(event_ctxt->w);
+
+	clock_gettime(CLOCK_REALTIME, &end);
+	strgp_ref->store_stat.end = commit_stat->end = end;
+	ldmsd_stat_update(&strgp_ref->store_stages_stat.commit_stat,
+			  &start, &end);
+	/* event_ctxt->start_ts is the very begining in strgp_update_fn() */
+	ldmsd_stat_update(&strgp_ref->store_stat,
+			  &event_ctxt->start_ts, &end);
+
+	store_event_ctxt_free(event_ctxt);
+	free(row_list);
+	omq_msg_free(msg);
+	return 0;
 }
 
 /*
@@ -551,6 +652,7 @@ void *strg_worker_proc(void *v)
  */
 int strg_worker_init(struct strg_worker *w, const char *name)
 {
+#if 0
 	w->worker = ovis_scheduler_new();
 	if (!w->worker) {
 		ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
@@ -559,7 +661,10 @@ int strg_worker_init(struct strg_worker *w, const char *name)
 	ovis_scheduler_name_set(w->worker, name);
 	pthread_create(&w->thr, NULL, strg_worker_proc, w);
 	pthread_setname_np(w->thr, name);
+#else
 	w->q_depth = 0;
+	w->mq = omq_new((char *)name, NULL, NULL, strg_worker_fn);
+#endif
 	return 0;
 }
 
@@ -572,7 +677,8 @@ int strg_pool_init(unsigned int num_workers, int max_q_depth)
 	ldmsd_strg_worker_pool.num_workers = num_workers;
 	ldmsd_strg_worker_pool.max_q_depth = max_q_depth;
 
-	ldmsd_strg_worker_pool.workers = malloc(num_workers * sizeof(struct strg_worker));
+	ldmsd_strg_worker_pool.workers =
+		malloc(num_workers * sizeof(struct strg_worker));
 	if (!ldmsd_strg_worker_pool.workers) {
 		ovis_log(NULL, OVIS_LCRIT, "Memory allocation failure.\n");
 		return ENOMEM;

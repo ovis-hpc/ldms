@@ -355,6 +355,7 @@ struct ldmsd_strgp;
 typedef struct ldmsd_strgp *ldmsd_strgp_t;
 
 struct ldmsd_stat {
+	/* The time window over which the statistics were gathered */
 	struct timespec start;
 	struct timespec end;
 	double min; /* Min value in micro-second */

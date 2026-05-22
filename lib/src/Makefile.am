@@ -15,6 +15,7 @@ SUBDIRS += coll
 SUBDIRS += ovis_ev
 SUBDIRS += ovis_log
 SUBDIRS += ovis_thrstats
+SUBDIRS += omq
 
 if ENABLE_MMALLOC
 SUBDIRS += mmalloc
@@ -39,7 +40,6 @@ SUBDIRS += ovis_ctrl
 endif
 
 SUBDIRS += ovis_json
-
 
 # override libdir sanity checks
 mylibdir = $(libdir)
