@@ -3,6 +3,9 @@ name: Dispatch Container Bake
 on:
   release:
     types: [ released ]
+  workflow_run:
+    workflows: [ "Create Release" ]
+    types: [ completed ]
 
 jobs:
   dispatch-container-bake:
