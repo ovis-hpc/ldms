@@ -336,15 +336,24 @@ def get_var_from_file(module_name, filepath):
 
     @see: importlib.util
     """
-    import importlib.util
-    import importlib.machinery
-    import sys
-    loader = importlib.machinery.SourceFileLoader(module_name, filepath)
-    spec = importlib.util.spec_from_file_location(module_name, filepath, loader=loader)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    loader.exec_module(module)
-    return module
+    try:
+        # Cython < 3 will emit "import imp" and we need to support that
+        import imp
+        f = open(filepath)
+        data = imp.load_source(module_name, '', f)
+        f.close()
+        return data
+    except ImportError:
+        # Cython >= 3 will emit "import importlib" and we need to support that, too
+        import importlib.util
+        import importlib.machinery
+        import sys
+        loader = importlib.machinery.SourceFileLoader(module_name, filepath)
+        spec = importlib.util.spec_from_file_location(module_name, filepath, loader=loader)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        loader.exec_module(module)
+        return module
 
 class LDMSD(object):
     """A utility class to handle an LDMS Daemon subprocess"""
