@@ -49,6 +49,27 @@ address that **ldmsd** resides. The *PORT* is the listening port of the
 **ldmsd** uses, which are **munge**, or **none**. The **client** option
 can be repeated to specify multiple **ldmsd**'s.
 
+
+``WORKFLOW_ID``
+===============
+
+The ``WORKFLOW_ID`` environment variable from users' job submission environment
+is used to identify jobs that belong to the same "workflow". The ``WORKFLOW_ID``
+is now a part of job evet messages (``job_init``, ``step_init``, ``task_init``,
+``task_exit``, ``step_exit`` and ``job_exit``), and the value can be accessed by
+``msg["data"]["workflow_id"]``.  Please note that ``libslurm_notifier.so`` needs
+to be in ``/etc/slurm/plugstack.conf`` on the job-submission node (e.g. head
+node) so that ``sbatch``/``salloc`` can pass ``WORKFLOW_ID`` to ``slurmctld``
+(and subsequently ``slurmd``).
+
+Example job submission:
+
+.. code:: sh
+
+   $ export WORKFLOW_ID=mywork_01
+   $ sbatch myjob.sh
+
+
 SUBSCRIBERS
 ===========
 
