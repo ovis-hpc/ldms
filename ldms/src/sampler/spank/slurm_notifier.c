@@ -161,6 +161,7 @@ else \
  *        "alloc_mb"    : <integer>	// S_JOB_ALLOC_MEM
  *        "local_tasks" : <integer>	// S_JOB_LOCAL_TASK_COUNT
  *        "total_tasks" : <integer>	// S_JOB_TOTAL_TASK_COUNT
+ *        "workflow_id" : <string>	// WORKFLOW_ID, see get_workflow_id()
  *   }
  *
  * Step Init Event ("step_init") - Start of Job Step
@@ -178,6 +179,7 @@ else \
  *        "alloc_mb"    : <integer>	// S_JOB_ALLOC_MEM
  *        "local_tasks" : <integer>	// S_JOB_LOCAL_TASK_COUNT
  *        "total_tasks" : <integer>	// S_JOB_TOTAL_TASK_COUNT
+ *        "workflow_id" : <string>	// WORKFLOW_ID, see get_workflow_id()
  *   }
  *
  * Step Exit Event ("step_exit") - End of Job Step
@@ -186,6 +188,7 @@ else \
  *        "job_id" : <integer>		// S_JOB_ID
  *        "nodeid" : <integer>		// S_JOB_NODEID
  *        "step_id" : <integer>		// S_JOB_STEPID
+ *        "workflow_id" : <string>	// WORKFLOW_ID, see get_workflow_id()
  *   }
  *
  * Task Init ("task_init") - Start of each process (task) for the job on the node
@@ -195,6 +198,7 @@ else \
  *        "task_id"     : <integer>	// S_TASK_ID
  *        "global_id"   : <integer>	// S_TASK_GLOBAL_ID
  *        "task_pid"    : <integer>	// S_TASK_PID
+ *        "workflow_id" : <string>	// WORKFLOW_ID, see get_workflow_id()
  *   }
  *
  * Task Exit ("task_exit") - End of each process (task) for the job
@@ -205,6 +209,7 @@ else \
  *        "global_id"   : <integer>	// S_TASK_GLOBAL_ID
  *        "task_pid"    : <integer>	// S_TASK_PID
  *        "task_exit_status" : <integer>// S_TASK_EXIT_STATUS
+ *        "workflow_id" : <string>	// WORKFLOW_ID, see get_workflow_id()
  *   }
  *
  * Exit Event("exit") - called after all tasks have exited
@@ -212,10 +217,22 @@ else \
  *   "data" : {
  *        "id"              : <integer>	// S_JOB_ID
  * 	  "job_exit_status" : <integer>	// S_TASK_EXIT_STATUS
+ *        "workflow_id"     : <string>	// WORKFLOW_ID, see get_workflow_id()
  *   }
  */
 
 #include <ovis_json/ovis_json.h>
+
+extern char **environ;
+
+__attribute__((unused)) /* for debugging */
+static void dump_env(const char *env_name, char **env)
+{
+	char **var;
+	for (var = env; *var; var++) {
+		DEBUG2("(%s) var %s", env_name, *var);
+	}
+}
 
 SPANK_PLUGIN(slurm_notifier, 1)
 
@@ -674,9 +691,50 @@ char *__context_str(spank_t sh, const char *func)
 }
 #define context_str(_sh_) __context_str(_sh_, __func__)
 
-jbuf_t make_job_init_data(spank_t sh)
+static const char *get_workflow_id(spank_t sh)
+{
+	static char buf[1024];
+	static const char *workflow_id = NULL;
+	static const char KEY[] = "WORKFLOW_ID"; /* for job context */
+	static const char SPANK_KEY[] = "SPANK_WORKFLOW_ID"; /* for prolog/epilog context */
+	spank_err_t serr;
+
+	if (workflow_id) {
+		DEBUG2("cached workflow_id: %s", workflow_id);
+		goto out;
+	}
+	workflow_id = getenv(KEY);
+	if (workflow_id) {
+		DEBUG2("workflow_id: environ[%s]: %s", KEY, workflow_id);
+		goto out;
+	}
+
+	serr = spank_getenv(sh, KEY, buf, sizeof(buf));
+	if (0 == serr) {
+		workflow_id = buf;
+		DEBUG2("workflow_id: spank_getenv(%s): %s", KEY, buf);
+		goto out;
+	}
+	DEBUG2("spank_getenv() error: %d\n", serr);
+
+	workflow_id = getenv(SPANK_KEY);
+	if (workflow_id) {
+		DEBUG2("workflow_id: environ[%s]: %s", SPANK_KEY, workflow_id);
+		goto out;
+	}
+
+ out:
+	return workflow_id;
+}
+
+jbuf_t make_job_init_data(spank_t sh, int argc, char *argv[])
 {
 	jbuf_t jb;
+	const char *workflow_id = get_workflow_id(sh);
+
+#ifdef SLURM_NOTIFIER_ENV_DEBUG
+	dump_env("environ", environ);
+#endif
 
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
@@ -692,15 +750,26 @@ jbuf_t make_job_init_data(spank_t sh)
 	jb = _append_item_u16(sh, jb, "ncpus", S_JOB_NCPUS, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nnodes", S_JOB_NNODES, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "local_tasks", S_JOB_LOCAL_TASK_COUNT, ','); if (!jb) goto out_1;
-	jb = _append_item_u32(sh, jb, "total_tasks", S_JOB_TOTAL_TASK_COUNT, ' '); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "total_tasks", S_JOB_TOTAL_TASK_COUNT, ','); if (!jb) goto out_1;
+	if (workflow_id) {
+		jb = jbuf_append_attr(jb, "workflow_id", "\"%s\"", workflow_id); if (!jb) goto out_1;
+	} else {
+		jb = jbuf_append_attr(jb, "workflow_id", "null"); if (!jb) goto out_1;
+	}
 	jb = jbuf_append_str(jb, "}}");
  out_1:
 	return jb;
 }
 
-jbuf_t make_job_exit_data(spank_t sh)
+jbuf_t make_job_exit_data(spank_t sh, int argc, char *argv[])
 {
 	jbuf_t jb;
+	const char *workflow_id = get_workflow_id(sh);
+
+#ifdef SLURM_NOTIFIER_ENV_DEBUG
+	dump_env("environ", environ);
+#endif
+
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "schema", "\"slurm_job_data\","); if (!jb) goto out_1;
@@ -709,7 +778,12 @@ jbuf_t make_job_exit_data(spank_t sh)
 	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
-	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ' '); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
+	if (workflow_id) {
+		jb = jbuf_append_attr(jb, "workflow_id", "\"%s\"", workflow_id); if (!jb) goto out_1;
+	} else {
+		jb = jbuf_append_attr(jb, "workflow_id", "null"); if (!jb) goto out_1;
+	}
 	jb = jbuf_append_str(jb, "}}");
  out_1:
 	return jb;
@@ -720,6 +794,11 @@ jbuf_t make_step_init_data(spank_t sh)
 	jbuf_t jb;
 	char env[PATH_MAX];
 	spank_err_t err;
+	const char *workflow_id = get_workflow_id(sh);
+
+#ifdef SLURM_NOTIFIER_ENV_DEBUG
+	dump_env("environ", environ);
+#endif
 
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
@@ -758,7 +837,12 @@ jbuf_t make_step_init_data(spank_t sh)
 	jb = _append_item_u16(sh, jb, "ncpus", S_JOB_NCPUS, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nnodes", S_JOB_NNODES, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "local_tasks", S_JOB_LOCAL_TASK_COUNT, ','); if (!jb) goto out_1;
-	jb = _append_item_u32(sh, jb, "total_tasks", S_JOB_TOTAL_TASK_COUNT, ' '); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "total_tasks", S_JOB_TOTAL_TASK_COUNT, ','); if (!jb) goto out_1;
+	if (workflow_id) {
+		jb = jbuf_append_attr(jb, "workflow_id", "\"%s\"", workflow_id); if (!jb) goto out_1;
+	} else {
+		jb = jbuf_append_attr(jb, "workflow_id", "null"); if (!jb) goto out_1;
+	}
 	jb = jbuf_append_str(jb, "}}");
  out_1:
 	return jb;
@@ -767,6 +851,11 @@ jbuf_t make_step_init_data(spank_t sh)
 jbuf_t make_step_exit_data(spank_t sh)
 {
 	jbuf_t jb;
+	const char *workflow_id = get_workflow_id(sh);
+
+#ifdef SLURM_NOTIFIER_ENV_DEBUG
+	dump_env("environ", environ);
+#endif
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "schema", "\"slurm_step_data\","); if (!jb) goto out_1;
@@ -776,7 +865,12 @@ jbuf_t make_step_exit_data(spank_t sh)
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
-	jb = _append_item_u32(sh, jb, "step_id", S_JOB_STEPID, ' '); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "step_id", S_JOB_STEPID, ','); if (!jb) goto out_1;
+	if (workflow_id) {
+		jb = jbuf_append_attr(jb, "workflow_id", "\"%s\"", workflow_id); if (!jb) goto out_1;
+	} else {
+		jb = jbuf_append_attr(jb, "workflow_id", "null"); if (!jb) goto out_1;
+	}
 	jb = jbuf_append_str(jb, "}}");
  out_1:
 	return jb;
@@ -786,6 +880,11 @@ jbuf_t make_task_init_data(spank_t sh)
 {
 	jbuf_t jb;
 	pid_t pid = -1;
+	const char *workflow_id = get_workflow_id(sh);
+
+#ifdef SLURM_NOTIFIER_ENV_DEBUG
+	dump_env("environ", environ);
+#endif
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "schema", "\"slurm_task_data\","); if (!jb) goto out_1;
@@ -808,7 +907,12 @@ jbuf_t make_task_init_data(spank_t sh)
 	jb = _append_item_u16(sh, jb, "ncpus", S_JOB_NCPUS, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nnodes", S_JOB_NNODES, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "local_tasks", S_JOB_LOCAL_TASK_COUNT, ','); if (!jb) goto out_1;
-	jb = _append_item_u32(sh, jb, "total_tasks", S_JOB_TOTAL_TASK_COUNT, ' '); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "total_tasks", S_JOB_TOTAL_TASK_COUNT, ','); if (!jb) goto out_1;
+	if (workflow_id) {
+		jb = jbuf_append_attr(jb, "workflow_id", "\"%s\"", workflow_id); if (!jb) goto out_1;
+	} else {
+		jb = jbuf_append_attr(jb, "workflow_id", "null"); if (!jb) goto out_1;
+	}
 	jb = jbuf_append_str(jb, "}}");
  out_1:
 	return jb;
@@ -817,6 +921,11 @@ jbuf_t make_task_init_data(spank_t sh)
 jbuf_t make_task_exit_data(spank_t sh)
 {
 	jbuf_t jb;
+	const char *workflow_id = get_workflow_id(sh);
+
+#ifdef SLURM_NOTIFIER_ENV_DEBUG
+	dump_env("environ", environ);
+#endif
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "schema", "\"slurm_task_data\","); if (!jb) goto out_1;
@@ -830,7 +939,12 @@ jbuf_t make_task_exit_data(spank_t sh)
 	jb = _append_item_u32(sh, jb, "task_global_id", S_TASK_GLOBAL_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_pid", S_TASK_PID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
-	jb = _append_item_u32(sh, jb, "task_exit_status", S_TASK_EXIT_STATUS, ' '); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "task_exit_status", S_TASK_EXIT_STATUS, ','); if (!jb) goto out_1;
+	if (workflow_id) {
+		jb = jbuf_append_attr(jb, "workflow_id", "\"%s\"", workflow_id); if (!jb) goto out_1;
+	} else {
+		jb = jbuf_append_attr(jb, "workflow_id", "null"); if (!jb) goto out_1;
+	}
 	jb = jbuf_append_str(jb, "}}");
  out_1:
 	return jb;
@@ -852,6 +966,59 @@ static int _step_is_valid(spank_t sh, const char *func, int line)
 	return 1;
 }
 #define step_is_valid(_sh_) _step_is_valid(_sh_, __func__, __LINE__)
+
+/* Available in sbatch, srun, salloc */
+extern int spank_set_job_env(const char *name, const char *value, int overwrite);
+static void export_workflow_id(spank_t sh)
+{
+	/*
+	 * NOTE:
+	 *
+	 * When `slurmd` fork `slurmstepd` in prolog or epilog mode, `slurmd`
+	 * prepare slurmstepd environment from scratch. The `job->environment`
+	 * was totally discarded. However, when `slurmd` prepare `env` for
+	 * `slurmstepd` prolog/epilog, it merges `job->spank_job_env` into
+	 * `slurmstepd` prolog/epilog env before fork/execve.
+	 * `job->spank_job_env` is our way to export user-defined WORKFLOW_ID to
+	 * prolog/epilog environment.
+	 *
+	 * `export_workflow_id()` works by putting `WORKFLOW_ID` environment
+	 * variable into spank_job_env. When spank_job_env is set in `sbatch` or
+	 * `salloc`, the request message sent to `slurmctld` will also contain
+	 * spank_job_env which will also be in the request from slurmctld to
+	 * slurmd. The same goes for when spank_job_env is set in srun, slurmd
+	 * will receive spank_job_env as part of the request (launch_tasks).
+	 */
+
+	int rc;
+	const char *wfid = getenv("WORKFLOW_ID");
+
+	if (!wfid) {
+		DEBUG2("WORKFLOW_ID not found");
+		return;
+	}
+
+	DEBUG2("exporting environ['WORKFLOW_ID']: %s", wfid);
+
+	rc = spank_set_job_env("WORKFLOW_ID", wfid, 1);
+	if (rc) {
+		slurm_error("spank_set_job_env() error: %d", rc);
+	}
+}
+
+int slurm_spank_init_post_opt(spank_t sh, int argc, char *argv[])
+{
+	enum spank_context ctx = spank_context();
+	switch (ctx) {
+	case S_CTX_LOCAL:     /* srun */
+	case S_CTX_ALLOCATOR: /* salloc, sbatch */
+		export_workflow_id(sh);
+		break;
+	default:
+		/* no-op */;
+	}
+	return SLURM_SUCCESS;
+}
 
 int slurm_spank_init(spank_t sh, int argc, char *argv[])
 {
@@ -881,7 +1048,7 @@ int slurm_spank_init(spank_t sh, int argc, char *argv[])
 int slurm_spank_job_prolog(spank_t sh, int argc, char *argv[])
 {
 	stepd_event = "job_init";
-	jbuf_t jb = make_job_init_data(sh);
+	jbuf_t jb = make_job_init_data(sh, argc, argv);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
@@ -944,7 +1111,7 @@ int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 int slurm_spank_job_epilog(spank_t sh, int argc, char *argv[])
 {
 	stepd_event = "job_exit";
-	jbuf_t jb = make_job_exit_data(sh);
+	jbuf_t jb = make_job_exit_data(sh, argc, argv);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
@@ -956,6 +1123,11 @@ int slurm_spank_job_epilog(spank_t sh, int argc, char *argv[])
 __attribute__((constructor))
 void __init__()
 {
+#if SLURM_VERSION_NUMBER >= SLURM_VERSION_NUM(20,11,0)
+        /* as of Slurm 20.11.1 slurm_init is required before a call to
+         * libslurm, e.g. slurm_debug2 */
+	slurm_init(NULL);
+#endif
 	DEBUG2("Loading slurm_notifier\n");
 }
 
