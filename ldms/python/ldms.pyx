@@ -1783,13 +1783,13 @@ cdef void dir_cb(ldms_t _x, int status, ldms_dir_t d, void *arg) with gil:
 cdef void lookup_cb(ldms_t _x, ldms_lookup_status status, int more,
                     ldms_set_t s, void *arg) with gil:
     (px, cb, cb_arg, slist) = <tuple>arg
+    if not more:
+        Py_DECREF(<tuple>arg)
     x = <Xprt>px
     lset = Set(None, None, set_ptr=PTR(s)) if s else None
     if cb:
         # Call the callback
         cb(x, status, more, lset, cb_arg)
-        if not more:
-            Py_DECREF(<tuple>arg)
         return
     if status:
         x._lookup_rc = status
@@ -1805,11 +1805,11 @@ cdef void lookup_cb(ldms_t _x, ldms_lookup_status status, int more,
 cdef void update_cb(ldms_t _t, ldms_set_t _s, int flags, void *arg) with gil:
     cdef int rc = LDMS_UPD_ERROR(flags)
     (ps, cb, cb_arg) = <tuple>arg
+    if 0 == (flags & LDMS_UPD_F_MORE):
+        Py_DECREF(<tuple>arg)
     s = <Set>ps
     if cb:
         cb(s, flags, cb_arg)
-        if 0 == (flags & LDMS_UPD_F_MORE):
-            Py_DECREF(<tuple>arg)
         return
     s._update_rc = rc
     if 0 == (flags & LDMS_UPD_F_MORE):
@@ -3830,6 +3830,7 @@ cdef class Xprt(object):
                               lookup_cb, <void*>tpl)
         if rc:
             # synchronous error
+            Py_DECREF(tpl)
             raise ConnectionError(rc, "ldms_xprt_lookup() error: {}" \
                                       .format(ERRNO_SYM(rc)))
         if cb:
@@ -4146,6 +4147,7 @@ cdef class Xprt(object):
                 rc = ldms_msg_remote_subscribe(self.xprt, c_match, c_is_regex,
                         __msg_wrap_cb, <void*>ctxt, c_rx_rate)
             if rc:
+                Py_DECREF(ctxt) # synchronous error
                 raise MsgSubscribeError(f"ldms_msg_remote_subscribe() error, rc: {rc}")
 
     def msg_unsubscribe(self, match, is_regex, cb=None, cb_arg=None):
@@ -4181,6 +4183,7 @@ cdef class Xprt(object):
                         __msg_wrap_cb, <void*>ctxt)
                 if rc:
                     with gil:
+                        Py_DECREF(ctxt) # synchronous error
                         raise MsgSubscribeError(f"ldms_msg_remote_unsubscribe() error, rc: {rc}")
 
     def get_addr(self):
