@@ -29,7 +29,7 @@ CONFIGURATION ATTRIBUTE SYNTAX
 
 **config**
    | name=<plugin_name> component_id=<comp_id> [io=<bool>] [stat=<bool>]
-     [statm=<bool>] [mmalloc=<bool>] [fd=<bool>] [fdtypes=<bool>]
+     [sc_clk_tck=<bool>] [statm=<bool>] [mmalloc=<bool>] [fd=<bool>] [fdtypes=<bool>]
      set=<set_name>
    | configuration line
 
@@ -72,7 +72,7 @@ CONFIGURATION ATTRIBUTE SYNTAX
       |
       | Include the metrics from /proc/self/stat.
 
-   tick=<bool>
+   sc_clk_tck=<bool>
       |
       | Include the sc_clk_tck from :ref:`sysconf(3) <sysconf>` as a metric.
 
