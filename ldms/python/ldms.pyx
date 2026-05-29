@@ -1545,7 +1545,7 @@ cdef class XprtEvent(object):
             self.quota = QuotaEventData(e.quota.quota, e.quota.ep_idx, e.quota.rc)
         elif self.type == ldms.LDMS_XPRT_EVENT_SET_DELETE:
             cset = <ldms_set_t>e.set_delete.set
-            lset = Set(None, None, set_ptr=PTR(cset)) if cset else None
+            lset = set_coll.get( ldms_set_id(cset), None )
             self.set_delete = SetDeleteEventData(lset, STR(e.set_delete.name))
         else:
             self.data = e.data[:e.data_len]
@@ -1784,7 +1784,7 @@ cdef void lookup_cb(ldms_t _x, ldms_lookup_status status, int more,
                     ldms_set_t s, void *arg) with gil:
     (px, cb, cb_arg, slist) = <tuple>arg
     x = <Xprt>px
-    lset = Set(None, None, set_ptr=PTR(s)) if s else None
+    lset = Set._from_lookup(PTR(s)) if s else None
     if cb:
         # Call the callback
         cb(x, status, more, lset, cb_arg)
@@ -2926,6 +2926,11 @@ cdef class RecordType(MVal):
             return [ self.get_metric_info(k) for k in key ]
         raise TypeError("Unsupported `key` type; {}".format(type(key)))
 
+set_coll = dict() # [ _set_id ] -> Set()
+                  #
+                  # Global set collection for ease of access and maintenance
+                  # This conveniently maps Set <--> ldms_set. No more multiple
+                  # Set objects referring to one ldms_set.
 
 cdef class Set(object):
     """The metric set
@@ -2947,6 +2952,8 @@ cdef class Set(object):
 
     To delete the set, simply:
     >>> s.delete()
+
+    The application *must* call `s.delete()` to delete the set.
 
     To obtain a set from a remote peer:
     >>> s = x.lookup("my_set") # x is the Xprt object
@@ -3003,6 +3010,8 @@ cdef class Set(object):
             if not self.rbd:
                 raise RuntimeError("Set creation error: {}"\
                                    .format(ERRNO_SYM(errno)))
+            # put into set_coll
+            set_coll[ self._id() ] = self
         else:
             raise AttributeError("Requires `name` and `schema`")
         cdef ldms_value_type t
@@ -3015,6 +3024,17 @@ cdef class Set(object):
             else:
                 self._getter.append(METRIC_GETTER_TBL[t])
                 self._setter.append(METRIC_SETTER_TBL[t])
+
+    @classmethod
+    def _from_lookup(cls, Ptr set_ptr):
+        s = Set(None, None, set_ptr=set_ptr)
+        set_coll[ s._id() ] = s
+        return s
+
+    def _id(self):
+        if not self.rbd:
+            raise ValueError("Set is invalid")
+        return ldms_set_id(self.rbd)
 
     def __dealloc__(self):
         if self.rbd:
@@ -3043,6 +3063,7 @@ cdef class Set(object):
         cdef ldms_set_t s = self.rbd
         self.rbd = NULL
         if s:
+            set_coll.pop( ldms_set_id(s), None )
             ldms_set_delete(s)
 
     def transaction_begin(self):
