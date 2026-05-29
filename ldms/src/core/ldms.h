@@ -4719,6 +4719,7 @@ static inline double ldms_timespec_diff_s(struct timespec *start, struct timespe
 void dump_addrinfo_list(struct addrinfo *ai_list, const char *fn_name, int line);
 
 void ldms_set_ref_dump(ldms_set_t set, const char *name, FILE *f);
+void ldms_set_deleting_dump(FILE *f);
 
 #ifdef __cplusplus
 }

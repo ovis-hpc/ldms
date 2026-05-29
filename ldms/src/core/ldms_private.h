@@ -131,14 +131,14 @@ struct ldms_set {
 	struct ref_s ref;
 	unsigned long flags;
 	uint64_t set_id;	/* unique identifier for a set in this daemon */
-	uint64_t del_time;	/* Unix timestamp when set was deleted */
+	uint64_t del_time;      /* Unix timestamp when set was deleted */
 	struct ldms_set_hdr *meta;
 	struct ldms_data_hdr *data; /* points to current entry of data array */
 	struct ldms_set_info_list local_info;
 	struct ldms_set_info_list remote_info; /*set info from the lookup operation */
 	struct rbn rb_node;	/* Indexed by instance name */
 	struct rbn id_node;	/* Indexed by set_id */
-	struct rbn del_node;	/* Indexed by timestamp */
+	LIST_ENTRY(ldms_set) del_entry; /* for del_set_list */
 	pthread_mutex_t lock;
 	int curr_idx;
 	struct ldms_data_hdr *data_array;
@@ -237,6 +237,7 @@ struct ldms_data_hdr *__ldms_set_array_get(struct ldms_set *s, int idx)
 	return __set_array_get(s, idx);
 }
 
+typedef enum ldms_context_type ldms_context_type_t;
 struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz, ldms_context_type_t type, ...);
 void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt);
 
@@ -257,4 +258,16 @@ void __ldms_set_delete(ldms_set_t s, int notify);
 ldms_t __ldms_xprt_new_with_auth(const char *xprt_name,
 			       const char *auth_name,
 			       struct attr_value_list *auth_av_list);
+
+typedef struct __del_tree_ent_s {
+	struct rbn rbn;
+	struct ldms_set_del_key del;
+	ldms_set_t set;
+	int in_tree; /* for debugging */
+} * __del_tree_ent_t;
+
+__del_tree_ent_t __del_tree_ent_alloc(ldms_set_t set, uint64_t del_time);
+void __del_tree_ent_free(__del_tree_ent_t ent);
+void __del_tree_ent_ins(__del_tree_ent_t ent);
+__del_tree_ent_t __del_tree_ent_rm(struct ldms_set_del_key *key);
 #endif
