@@ -488,7 +488,6 @@ cdef extern from "ldms.h" nogil:
 
     # --- set related --- #
     ldms_set_t ldms_set_by_name(const char *set_name)
-    void ldms_set_put(ldms_set_t s)
     const char *ldms_set_schema_name_get(ldms_set_t s)
     const char *ldms_set_instance_name_get(ldms_set_t s)
     const char *ldms_set_producer_name_get(ldms_set_t s)
@@ -503,6 +502,7 @@ cdef extern from "ldms.h" nogil:
     uint64_t ldms_set_meta_gn_get(ldms_set_t s)
     uint64_t ldms_set_data_gn_get(ldms_set_t s)
     uint64_t ldms_set_heap_gn_get(ldms_set_t s)
+    uint64_t ldms_set_id(ldms_set_t set)
 
     int ldms_set_is_consistent(ldms_set_t s)
 
@@ -724,7 +724,6 @@ cdef extern from "ldms.h" nogil:
     int ldms_set_publish(ldms_set_t set)
     int ldms_set_unpublish(ldms_set_t set)
     void ldms_set_delete(ldms_set_t s)
-    void ldms_set_put(ldms_set_t s)
     void ldms_metric_set_char(ldms_set_t s, int i, char v)
     void ldms_metric_set_u8(ldms_set_t s, int i, uint8_t v)
     void ldms_metric_set_u16(ldms_set_t s, int i, uint16_t v)
