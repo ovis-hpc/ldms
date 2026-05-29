@@ -5141,3 +5141,7 @@ def msg_enable():
 def msg_is_enabled():
     """Return True if the LDMS Message Service is enabled"""
     return ldms_msg_is_enabled()
+
+def set_deleting_dump():
+    """(DEBUG) Dump sets in the set deleting list to stdout"""
+    ldms_set_deleting_dump(stdout)

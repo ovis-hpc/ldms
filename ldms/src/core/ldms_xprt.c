@@ -418,8 +418,7 @@ struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 		ctxt->dir.cb_arg = va_arg(ap, void *);
 		break;
 	case LDMS_CONTEXT_SET_DELETE:
-		ctxt->set_delete.s = va_arg(ap, ldms_set_t);
-		ref_get(&ctxt->set_delete.s->ref, "__ldms_alloc_ctxt");
+		/* ctxt->set_delete.del_key will be set later by caller */
 		ctxt->set_delete.cb = va_arg(ap, ldms_set_delete_cb_t);
 		ctxt->set_delete.cb_arg = ctxt;
 		break;
@@ -464,8 +463,6 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 		break;
 	case LDMS_CONTEXT_SET_DELETE:
 		e = &x->stats.ops[LDMS_XPRT_OP_SET_DELETE];
-		if (ctxt->set_delete.s)
-			ref_put(&ctxt->set_delete.s->ref, "__ldms_alloc_ctxt");
 		break;
 	case LDMS_CONTEXT_DIR:
 		break;
@@ -644,12 +641,26 @@ void __ldms_dir_add_set(struct ldms_set *set)
 	dir_update(set, LDMS_DIR_ADD);
 }
 
-static void __set_delete_cb(ldms_t xprt, int status, ldms_set_t rbd, void *cb_arg)
+static void __set_delete_cb(ldms_t xprt, int status, void *cb_arg)
 {
 	struct ldms_context *ctxt = cb_arg;
-	struct ldms_set *set = ctxt->set_delete.s;
+	struct ldms_set *set;
 	struct rbn *rbn;
 	struct ldms_lookup_peer *lp;
+	__del_tree_ent_t del_ent;
+
+	SETDEBUG("peer reply, del_ent: (%lu, %lu)\n", ctxt->set_delete.del_key.time, ctxt->set_delete.del_key.gn);
+	if (0 == ctxt->set_delete.lookup) {
+		SETDEBUG("lookup is 0\n");
+		return;
+	}
+
+	del_ent = __del_tree_ent_rm(&ctxt->set_delete.del_key);
+	if (!del_ent) {
+		/* DEL TIMEOUT occur before we get this reply */
+		return;
+	}
+	set = del_ent->set;
 
 	pthread_mutex_lock(&set->lock);
 	rbn = rbt_find(&set->lookup_coll, xprt);
@@ -666,14 +677,8 @@ static void __set_delete_cb(ldms_t xprt, int status, ldms_set_t rbd, void *cb_ar
 		pthread_mutex_unlock(&set->lock);
 	}
 
-	/* If the set was successfully looked up, it will be be put into
-	 * `x->set_coll` and a reference taken. So, we have to put back the
-	 * reference only in this case. If the set was not in the `x->set_coll`,
-	 * the `ctxt->set_delete.lookup` will be 0 and we must not put the
-	 * reference we have not taken. */
-	if (ctxt->set_delete.lookup) {
-		ref_put(&set->ref, "xprt_set_coll");
-	}
+	SETDEBUG("freeing del_ent: (%lu, %lu)\n", del_ent->del.time, del_ent->del.gn);
+	__del_tree_ent_free(del_ent);
 }
 
 /* implementation in ldms_rail.c */
@@ -865,7 +870,7 @@ void process_set_delete_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		timespec_ntoh(&reply->set_del.recv_ts);
 		memcpy(&ctxt->op_ctxt->set_del_profile.recv_ts, &reply->set_del.recv_ts, sizeof(struct timespec));
 	}
-	ctxt->set_delete.cb(x, reply->hdr.rc, ctxt->set_delete.s, ctxt->set_delete.cb_arg);
+	ctxt->set_delete.cb(x, reply->hdr.rc, ctxt->set_delete.cb_arg);
 	pthread_mutex_lock(&x->lock);
 	__ldms_free_ctxt(x, ctxt);
 	pthread_mutex_unlock(&x->lock);

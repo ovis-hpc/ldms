@@ -1974,6 +1974,7 @@ void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
 	size_t len;
 	struct rbn *rbn;
 	struct xprt_set_coll_entry *ent;
+	__del_tree_ent_t del_ent;
 	int i;
 	ldms_t x;
 	struct ldms_rail_ep_s *rep = NULL;
@@ -1999,12 +2000,9 @@ void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
 
 	pthread_mutex_lock(&x->lock);
  found:
-	ctxt = __ldms_alloc_ctxt
-		(x,
+	ctxt = __ldms_alloc_ctxt(x,
 		 sizeof(struct ldms_request) + sizeof(struct ldms_context),
-		 LDMS_CONTEXT_SET_DELETE,
-		 s,
-		 cb_fn);
+		 LDMS_CONTEXT_SET_DELETE, cb_fn);
 	if (!ctxt) {
 		ovis_log(xlog, OVIS_LCRIT, "%s:%s:%d Memory allocation failure\n",
 				__FILE__, __func__, __LINE__);
@@ -2017,6 +2015,23 @@ void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
 		rbt_del(&x->set_coll, rbn);
 		ent = container_of(rbn, struct xprt_set_coll_entry, rbn);
 		free(ent);
+		ref_put(&s->ref, "xprt_set_coll");
+
+		assert(s->del_time);
+		del_ent = __del_tree_ent_alloc(s, s->del_time);
+		if (del_ent) {
+			/* del_ent took set reference. The reference is put in
+			 * __del_tree_ent_free(), which is guaranteed to happen
+			 * only once on either DEL TIMEOUT or when peer replied
+			 * the DEL event.
+			 */
+			__del_tree_ent_ins(del_ent);
+			ctxt->set_delete.del_key = del_ent->del;
+		} else {
+			ctxt->set_delete.del_key.time = 0;
+			ctxt->set_delete.del_key.gn = 0;
+			ovis_log(xlog, OVIS_LERROR, "__del_tree_ent_alloc() failed: ENOMEM\n");
+		}
 	} else {
 		/* We won't put ref on receiving reply. */
 		ctxt->set_delete.lookup = 0;
