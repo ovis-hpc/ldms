@@ -462,6 +462,7 @@ static void metrics_tree_refresh()
 			if (ca.ports[j]->link_layer == NULL || ca.ports[j]->link_layer[0] != 'I') {
 				ovis_log(mylog, OVIS_LDEBUG, " metric_tree_refresh() skipping non-InfiniBand link-layer ca %s port %d\n", 
 					ca.ports[j]->ca_name, ca.ports[j]->portnum);
+				continue;
 			}
 
 			snprintf(instance, sizeof(instance), "%s/%s.%d",
