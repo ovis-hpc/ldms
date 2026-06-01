@@ -326,10 +326,10 @@ If running the sampler periodically with the *start* command, there is
 no synchronization with an application writing to the configured
 directory path.
 
-If the application writing to the configured *dir_path* wishes to
+If the application writing to the configured *sample_path* wishes to
 achieve synchronization, it should use the *file_importer* LDMS
 Message channel to do so. Specifically, write all file updates to
-files in *dir_path* and then trigger a sample as described above.
+files in *sample_path* and then trigger a sample as described above.
 
 
 SEE ALSO
