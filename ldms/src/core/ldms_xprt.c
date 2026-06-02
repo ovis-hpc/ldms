@@ -157,6 +157,38 @@ int ldms_xprt_connected(struct ldms_xprt *x)
 	return x->ops.is_connected(x);
 }
 
+
+LIST_HEAD(, ldms_xprt) xprt_rdir_list;
+pthread_mutex_t xprt_rdir_list_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static inline void xprt_rdir_list_lock()
+{
+	pthread_mutex_lock(&xprt_rdir_list_mutex);
+}
+
+static inline void xprt_rdir_list_unlock()
+{
+	pthread_mutex_unlock(&xprt_rdir_list_mutex);
+}
+
+static inline void xprt_rdir_list_add(struct ldms_xprt *x)
+{
+	assert(0 == x->remote_dir_xid);
+	ldms_xprt_get(x, "xprt_rdir_list");
+	xprt_rdir_list_lock();
+	LIST_INSERT_HEAD(&xprt_rdir_list, x, xprt_rdir_ent);
+	xprt_rdir_list_unlock();
+}
+
+static inline void xprt_rdir_list_rm(struct ldms_xprt *x)
+{
+	assert(x->remote_dir_xid);
+	xprt_rdir_list_lock();
+	LIST_REMOVE(x, xprt_rdir_ent);
+	xprt_rdir_list_unlock();
+	ldms_xprt_put(x, "xprt_rdir_list");
+}
+
 LIST_HEAD(xprt_list, ldms_xprt) xprt_list;
 ldms_t ldms_xprt_first()
 {
@@ -616,24 +648,23 @@ static void dir_update(struct ldms_set *set, enum ldms_dir_type t)
 	size_t json_cnt;
 	struct ldms_xprt *x;
 
-	pthread_mutex_lock(&xprt_list_lock);
-	LIST_FOREACH(x, &xprt_list, xprt_link) {
-		if (x->remote_dir_xid) {
+	xprt_rdir_list_lock();
+	LIST_FOREACH(x, &xprt_rdir_list, xprt_rdir_ent) {
+		assert(x->remote_dir_xid);
+		if (!json_buf) {
+			/* Only build the JSON resonse if there is a
+			 * transport that has registered for updates */
+			json_buf = __ldms_format_set_for_dir(set, &json_cnt);
 			if (!json_buf) {
-				/* Only build the JSON resonse if there is a
-				 * transport that has registered for updates */
-				json_buf = __ldms_format_set_for_dir(set, &json_cnt);
-				if (!json_buf) {
-					XPRT_LOG(x, OVIS_LCRIT, "%s: memory allocation error\n", __func__);
-					goto out;
-				}
+				XPRT_LOG(x, OVIS_LCRIT, "%s: memory allocation error\n", __func__);
+				goto out;
 			}
-			send_dir_update(x, t, json_buf, json_cnt);
 		}
+		send_dir_update(x, t, json_buf, json_cnt);
 	}
 	free(json_buf);
 out:
-	pthread_mutex_unlock(&xprt_list_lock);
+	xprt_rdir_list_unlock();
 }
 
 void __ldms_dir_add_set(struct ldms_set *set)
@@ -928,12 +959,21 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 
 	(void)clock_gettime(CLOCK_REALTIME, &start);
 
-	if (req->dir.flags)
+	if (req->dir.flags) {
+		if (!x->remote_dir_xid) {
+			/* not in the xprt_rdir_list yet */
+			xprt_rdir_list_add(x);
+		}
 		/* Register for directory updates */
 		x->remote_dir_xid = req->hdr.xid;
-	else
+	} else {
+		if (x->remote_dir_xid) {
+			/* in the xprt_rdir_list; remove it */
+			xprt_rdir_list_rm(x);
+		}
 		/* Cancel any previous dir update */
 		x->remote_dir_xid = 0;
+	}
 
 	hdrlen = sizeof(struct ldms_reply_hdr)
 		+ sizeof(struct ldms_dir_reply);
@@ -3383,6 +3423,10 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		thrstat->last_op = LDMS_THRSTAT_OP_DISCONNECTED;
 		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
 		event.type = LDMS_XPRT_EVENT_ERROR;
+		if (x->remote_dir_xid) {
+			xprt_rdir_list_rm(x);
+			x->remote_dir_xid = 0;
+		}
 		if (x->event_cb)
 			x->event_cb(x, &event, x->event_cb_arg);
 		__ldms_xprt_resource_free(x);
@@ -3412,6 +3456,10 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 			break;
 		}
 		__sync_fetch_and_or(&x->term, 1);
+		if (x->remote_dir_xid) {
+			xprt_rdir_list_rm(x);
+			x->remote_dir_xid = 0;
+		}
 		pthread_mutex_lock(&x->lock);
 		struct ldms_context *dir_ctxt = NULL;
 		if (x->local_dir_xid) {
