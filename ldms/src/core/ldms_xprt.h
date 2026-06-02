@@ -569,6 +569,7 @@ struct ldms_xprt {
 	ldms_app_ctxt_free_fn app_ctxt_free_fn;
 
 	LIST_ENTRY(ldms_xprt) xprt_link;
+	LIST_ENTRY(ldms_xprt) xprt_rdir_ent; /* in xprt_rdir_list */
 };
 
 void __ldms_xprt_term(struct ldms_xprt *x);
