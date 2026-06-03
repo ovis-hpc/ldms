@@ -1776,6 +1776,12 @@ struct ldms_msg_ch_stats_s * __msg_get_stats(struct ldms_msg_ch_s *s, int is_res
 		goto err_1;
 
 	TAILQ_FOREACH(sce, &s->cli_tq, ch_cli_entry) {
+		if (!sce->cli) /* skip unbound client */
+			continue;
+		/* NOTE: sce is removed when a new message with the same tag
+		 *       arrived. See `__msg_deliver()` "cleanup:" label.
+		 */
+
 		/* match_len already includes '\0' */
 		ps = malloc(sizeof(*ps) + sce->cli->match_len + sce->cli->desc_len);
 		if (!ps)
