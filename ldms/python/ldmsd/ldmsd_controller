@@ -2949,7 +2949,7 @@ class LdmsdCmdParser(Cmd.Cmd):
         print(f'{"name":30} {"bytes":12} {"count":12} {"first":26} {"last":26}')
         print("-" * 30, "-" * 12, "-" * 12, "-" * 26, "-" * 26)
         for s in streams:
-            name    = s["name"]
+            name    = s["msg_tag"]
             rx      = s["rx"]
             sources = s.get("sources", dict())
             clients = s.get("clients", list())
@@ -3024,7 +3024,7 @@ class LdmsdCmdParser(Cmd.Cmd):
                 if first_channel:
                     print(" - message_tags:")
                     first_channel = False
-                name = s['name']
+                name = s['msg_tag']
                 tx = s['tx']
                 drops = s['drops']
                 print(f'   - {name+":":25}')
