@@ -682,8 +682,9 @@ static void __set_delete_cb(ldms_t xprt, int status, void *cb_arg)
 }
 
 /* implementation in ldms_rail.c */
-void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
-			      ldms_set_delete_cb_t cb_fn);
+void __xrail_on_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_fn);
+
+size_t format_set_delete_req(struct ldms_request *req, uint64_t xid, const char *inst_name);
 
 void __ldms_dir_del_set(struct ldms_set *set)
 {
@@ -699,20 +700,39 @@ void __ldms_dir_del_set(struct ldms_set *set)
 	 *
 	 * dir_update(set, LDMS_DIR_DEL);
 	 */
-	struct ldms_xprt *x;
-	ldms_t r;
-	pthread_mutex_lock(&xprt_list_lock);
-	LIST_FOREACH(x, &xprt_list, xprt_link) {
-		if (x->remote_dir_xid) {
-			/* NOTE:
-			 * There will be only one `x` in `r` that has
-			 * `x->remote_dir_xid != 0`.
-			 */
-			r = __ldms_xprt_to_rail(x);
-			__rail_on_set_delete(r, set, __set_delete_cb);
-		}
+	struct rbn *rbn;
+	struct ldms_lookup_peer *np;
+	ldms_t *xs;
+	int i, n;
+
+	pthread_mutex_lock(&set->lock);
+	if (rbt_empty(&set->lookup_coll)) {
+		pthread_mutex_unlock(&set->lock);
+		return;
 	}
-	pthread_mutex_unlock(&xprt_list_lock);
+	/*
+	 * Copy-out to avoid set->lock, xprt->lock sequence. This should be
+	 * inexpensive as the size of lookup collection is small.
+	 */
+	xs = malloc(rbt_card(&set->lookup_coll) * sizeof(*xs));
+	if (!xs) {
+		pthread_mutex_unlock(&set->lock);
+		return;
+	}
+	n = 0;
+	RBT_FOREACH(rbn, &set->lookup_coll) {
+		np = container_of(rbn, struct ldms_lookup_peer, rbn);
+		xs[n++] = np->xprt;
+		ldms_xprt_get(np->xprt, "__ldms_dir_del_set:xs");
+	}
+	pthread_mutex_unlock(&set->lock);
+
+	for (i = 0; i < n; i++) {
+		/* NOTE xs[i] is a part of rail, not rail itself */
+		__xrail_on_set_delete(xs[i], set, __set_delete_cb);
+		ldms_xprt_put(np->xprt, "__ldms_dir_del_set:xs");
+	}
+	free(xs);
 }
 
 void __ldms_dir_upd_set(struct ldms_set *set)
