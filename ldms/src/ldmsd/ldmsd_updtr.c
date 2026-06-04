@@ -538,11 +538,15 @@ out:
 	return rc;
 }
 
+/* implementation in ldmsd_prdcr.c */
+void __prdcr_reset_set(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set);
+
 void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 					int more, ldms_set_t set, void *arg)
 {
 	ldmsd_prdcr_set_t prd_set = arg;
 	int ready = 0;
+	int delete = 0;
 	int flags;
 	pthread_mutex_lock(&prd_set->lock);
 	if (status != LDMS_LOOKUP_OK) {
@@ -562,11 +566,17 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 				  "It is likely that there are multiple "
 				  "producers providing a set with the same instance name.\n",
 				  prd_set->prdcr->obj.name, prd_set->inst_name, set);
+		} else if (status == ENOENT) {
+			ovis_log(updtr_log, OVIS_LERROR,
+				  "prdcr %s: The set '%s' (%p) no longer exists.\n",
+				  prd_set->prdcr->obj.name, prd_set->inst_name, set);
+			delete = 1;
 		} else {
 			ovis_log(updtr_log, OVIS_LERROR,
 				  "prdcr %s: Error %d in lookup callback of set '%s' (%p)\n",
 				  prd_set->prdcr->obj.name,
 				  status, prd_set->inst_name, set);
+			delete = 1;
 		}
 		prd_set->state = LDMSD_PRDCR_SET_STATE_START;
 		goto out;
@@ -596,6 +606,8 @@ out:
 	pthread_mutex_unlock(&prd_set->lock);
 	if (ready)
 		ldmsd_prd_set_updtr_task_update(prd_set);
+	if (delete)
+		__prdcr_reset_set(prd_set->prdcr, prd_set);
 	ldmsd_prdcr_set_ref_put(prd_set); /* The ref is taken before calling lookup */
 	return;
 }
