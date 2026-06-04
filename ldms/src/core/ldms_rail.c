@@ -1963,43 +1963,24 @@ size_t format_set_delete_req(struct ldms_request *req, uint64_t xid,
  * Tell the peer that have an RBD for this set that it is being
  * deleted. When they all reply, we can delete the set.
  */
-void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
+void __xrail_on_set_delete(ldms_t x, struct ldms_set *s,
 			      ldms_set_delete_cb_t cb_fn)
 {
-	assert(XTYPE_IS_RAIL(_r->xtype));
+	/* x is part of rail, not rail itself; This function is implemented here
+	 * instead of ldms_xprt.c because of ldms_rail_ep_s structure access for
+	 * PROFILING feature in rail. */
 
-	ldms_rail_t r = (ldms_rail_t)_r;
 	struct ldms_request *req;
 	struct ldms_context *ctxt;
 	size_t len;
 	struct rbn *rbn;
 	struct xprt_set_coll_entry *ent;
 	__del_tree_ent_t del_ent;
-	int i;
-	ldms_t x;
 	struct ldms_rail_ep_s *rep = NULL;
 	struct ldms_op_ctxt *op_ctxt = NULL;
 
-	x = NULL;
-
-	/* for each x in r */
-	for (i = 0; i < r->n_eps; i++) {
-		x = r->eps[i].ep;
-		pthread_mutex_lock(&x->lock);
-		rbn = rbt_find(&x->set_coll, s);
-		if (rbn)
-			goto found;
-		pthread_mutex_unlock(&x->lock);
-	}
-
-	/* No rbn found in any x in r. Just use the first x to notify with
-	 * ctxt->set_delete.lookup being 0. */
-	x = r->eps[0].ep;
-
-	/* let through */
-
 	pthread_mutex_lock(&x->lock);
- found:
+	rbn = rbt_find(&x->set_coll, s);
 	ctxt = __ldms_alloc_ctxt(x,
 		 sizeof(struct ldms_request) + sizeof(struct ldms_context),
 		 LDMS_CONTEXT_SET_DELETE, cb_fn);
