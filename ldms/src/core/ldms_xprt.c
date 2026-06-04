@@ -839,6 +839,7 @@ static void process_set_delete_request(struct ldms_xprt *x, struct ldms_request 
 	struct ldms_reply reply;
 	struct ldms_set *set;
 	size_t len;
+	int set_io = 0;
 
 	/*
 	 * Always notify the application about peer set delete. If we happened
@@ -848,12 +849,19 @@ static void process_set_delete_request(struct ldms_xprt *x, struct ldms_request 
 	set = __ldms_find_local_set(req->set_delete.inst_name);
 	__ldms_set_tree_unlock();
 	if (set) {
+		pthread_mutex_lock(&set->lock);
+		set->flags |= LDMS_SET_F_PDEL;
+		set_io = set->flags & LDMS_SET_F_IO;
+		pthread_mutex_unlock(&set->lock);
 		if (set->xprt != x) {
 			assert(set->xprt != x);
 			goto reply_1;
 		}
 	}
-	if (x->event_cb) {
+	if (x->event_cb && 0 == set_io) {
+		/*
+		 * Deliver SET_DELETE event if there is no outstanding IO.
+		 */
 		struct ldms_xprt_event event;
 		event.type = LDMS_XPRT_EVENT_SET_DELETE;
 		event.set_delete.set = set;
@@ -2687,9 +2695,19 @@ static void __handle_lookup(ldms_t x, struct ldms_context *ctxt,
 			    zap_event_t ev)
 {
 	int status = 0;
-	if (!ctxt->lu_read.cb)
-		goto ctxt_cleanup;
-	if (ev->status != ZAP_ERR_OK) {
+	int pdel = 0;
+	ldms_set_t set = ctxt->lu_read.s;
+
+	pthread_mutex_lock(&set->lock);
+	set->flags &= ~LDMS_SET_F_IO;
+	pdel = set->flags & LDMS_SET_F_PDEL;
+	pthread_mutex_unlock(&set->lock);
+
+	assert(ctxt->lu_read.cb);
+
+	if (pdel) {
+		status = ENOENT;
+	} else if (ev->status != ZAP_ERR_OK) {
 		status = EREMOTEIO;
 #ifdef DEBUG
 		XPRT_LOG(x, OVIS_LALWAYS, "%s: lookup read error: zap error %d. "
@@ -2697,18 +2715,20 @@ static void __handle_lookup(ldms_t x, struct ldms_context *ctxt,
 			ldms_set_instance_name_get(ctxt->lu_read.s),
 			ev->status, status);
 #endif /* DEBUG */
+	}
+
+	if (status) {
 		/*
 		 * Destroy the set, the ctxt still has a reference on
 		 * it, but that will be dropped when the ctxt is
 		 * freed.
 		 */
-		__ldms_set_delete(ctxt->lu_read.s, 0);
+		__ldms_set_delete(set, 0);
+		set = NULL;
 	} else {
-		ldms_set_publish(ctxt->lu_read.s);
+		ldms_set_publish(set);
 	}
-	ctxt->lu_read.cb((ldms_t)x, status, ctxt->lu_read.more,
-			 ev->status ? NULL : ctxt->lu_read.s,
-			 ctxt->lu_read.cb_arg);
+	ctxt->lu_read.cb((ldms_t)x, status, ctxt->lu_read.more, set, ctxt->lu_read.cb_arg);
 	if (!ctxt->lu_read.more) {
 #ifdef DEBUG
 		assert(x->active_lookup > 0);
@@ -2718,7 +2738,6 @@ static void __handle_lookup(ldms_t x, struct ldms_context *ctxt,
 #endif /* DEBUG */
 	}
 
-ctxt_cleanup:
 	/* each `read` for lookup has its own context */
 	pthread_mutex_lock(&x->lock);
 	__ldms_free_ctxt(x, ctxt);
@@ -2919,7 +2938,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	lset = __ldms_create_set(inst_name->name, schema_name->name,
 				 ntohl(lu->meta_len), ntohl(lu->data_len),
 				 ntohl(lu->card), ntohl(lu->array_card),
-				 LDMS_SET_F_REMOTE);
+				 LDMS_SET_F_REMOTE|LDMS_SET_F_IO);
 	if (!lset) {
 		rc = errno;
 		goto callback;
