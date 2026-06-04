@@ -1845,9 +1845,10 @@ def graph_all(ca, sw, lk, fbase):
                 format_lk(f, l)
         endgraph(f)
     lo = "circo"
-    os.system(lo +" -Tpng -o " + pname + " " + dname)
-    os.system(lo + " -Tpdf -o " + aname + " " + dname)
-    os.system(lo + " -o " + lname + " " + dname)
+    import subprocess
+    subprocess.call([lo, "-Tpng", "-o", pname, dname])
+    subprocess.call([lo, "-Tpdf", "-o", aname, dname])
+    subprocess.call([lo, "-o", lname, dname])
     # os.system("unflatten -o " + uname + " " + lname)
     # os.system(lo + " -Tpdf -o " + uaname + " " + uname)
 
