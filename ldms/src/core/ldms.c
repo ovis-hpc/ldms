@@ -855,6 +855,18 @@ int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb,
 	if (!xprt)
 		return EINVAL;
 
+	pthread_mutex_lock(&set->lock);
+	if (set->flags & LDMS_SET_F_IO) {
+		pthread_mutex_unlock(&set->lock);
+		return EBUSY;
+	}
+	if (set->flags & LDMS_SET_F_PDEL) {
+		pthread_mutex_unlock(&set->lock);
+		return ENOENT;
+	}
+	set->flags |= LDMS_SET_F_IO;
+	pthread_mutex_unlock(&set->lock);
+
 	pthread_mutex_lock(&xprt->lock);
 	if (!cb) {
 		rc = __ldms_remote_update(xprt, set, sync_update_cb, arg);

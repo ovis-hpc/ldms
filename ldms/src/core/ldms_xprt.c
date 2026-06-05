@@ -2597,9 +2597,30 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 	struct ldms_data_hdr *data, *prev_data;
 	int flags = 0, upd_curr_idx;
 	void *base;
+	int pdel;
+
+	if (set) {
+		ldms_set_ref_get(set, "__handle_update_data");
+		pthread_mutex_lock(&set->lock);
+		pdel = set->flags & LDMS_SET_F_PDEL;
+		pthread_mutex_unlock(&set->lock);
+	}
 
 	assert(x == ctxt->x);
 	assert(ctxt->update.cb);
+	if (pdel) {
+		/* Deliver update error then deliver SET_DELETE */
+		rc = ENOENT;
+		ctxt->update.cb(x, set, rc, ctxt->update.cb_arg);
+
+		struct ldms_xprt_event event;
+		event.type = LDMS_XPRT_EVENT_SET_DELETE;
+		event.set_delete.set = set;
+		event.set_delete.name = ldms_set_instance_name_get(set);
+		event.data_len = sizeof(ldms_set_t);
+		x->event_cb(x, &event, x->event_cb_arg);
+		goto cleanup;
+	}
 	rc = LDMS_UPD_ERROR(ev->status);
 	if (rc || (set == NULL)) {
 		x->zerrno = rc;
@@ -2607,6 +2628,9 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 		/* READ ERROR */
 		if (!rc)
 			rc = ENOENT;
+		pthread_mutex_lock(&set->lock);
+		set->flags &= ~LDMS_SET_F_IO;
+		pthread_mutex_unlock(&set->lock);
 		ctxt->update.cb(x, set, rc, ctxt->update.cb_arg);
 		goto cleanup;
 	}
@@ -2618,6 +2642,9 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 	if (data != prev_data &&
 			__ldms_data_ts_cmp(prev_data, data) >= 0) {
 		/* special case, no new data */
+		pthread_mutex_lock(&set->lock);
+		set->flags &= ~LDMS_SET_F_IO;
+		pthread_mutex_unlock(&set->lock);
 		ctxt->update.cb(x, set, flags, ctxt->update.cb_arg);
 		goto cleanup;
 	}
@@ -2643,6 +2670,9 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 				&& i == __le32_to_cpu(data->curr_idx)) {
 			/* our update is current. */
 			flags = 0;
+			pthread_mutex_lock(&set->lock);
+			set->flags &= ~LDMS_SET_F_IO;
+			pthread_mutex_unlock(&set->lock);
 		} else {
 			flags = LDMS_UPD_F_MORE;
 		}
@@ -2663,10 +2693,18 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 	/* the updated set is not current */
 	rc = __ldms_remote_update(x, set, ctxt->update.cb,
 			ctxt->update.cb_arg);
-	if (rc)
+	if (rc) {
+		pthread_mutex_lock(&set->lock);
+		set->flags &= ~LDMS_SET_F_IO;
+		pthread_mutex_unlock(&set->lock);
 		ctxt->update.cb(x, set, LDMS_UPD_ERROR(rc), ctxt->update.cb_arg);
+	}
 
 cleanup:
+	if (set) {
+		ldms_set_ref_put(set, "__handle_update_data");
+	}
+
 	zap_put_ep(x->zap_ep, "ldms_xprt:set_update", __func__, __LINE__); /* from __ldms_remote_update() */
 	pthread_mutex_lock(&x->lock);
 	__ldms_free_ctxt(x, ctxt);
