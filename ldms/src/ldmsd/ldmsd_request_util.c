@@ -638,9 +638,16 @@ void __get_attr_name_value(char *av, char **name, char **value)
 	char *delim;
 	delim = strchr(av, '=');
 	if (delim) {
-		*value = delim;
-		**value = '\0';
-		(*value)++;
+		*delim = '\0';	/* Terminate name */
+		delim ++;	/* Skip '=' */
+		if (*delim == '"') {
+			/* Strip enclosing quotes if present */
+			delim ++;
+			size_t cnt = strlen(delim) - 1;
+			if (cnt >= 0)
+				delim[cnt] = '\0';
+		}
+		*value = delim; /* Set the value */
 	} else {
 		*value = NULL;
 	}
