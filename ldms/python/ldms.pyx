@@ -1787,7 +1787,7 @@ cdef void lookup_cb(ldms_t _x, ldms_lookup_status status, int more,
     if not more:
         Py_DECREF(<tuple>arg)
     x = <Xprt>px
-    lset = Set._from_lookup(PTR(s)) if s else None
+    lset = Set._from_lookup(PTR(s), x) if s else None
     if cb:
         # Call the callback
         cb(x, status, more, lset, cb_arg)
@@ -2988,6 +2988,7 @@ cdef class Set(object):
     cdef Schema schema
     cdef object _push_cb
     cdef object _push_cb_arg
+    cdef Xprt _xprt
 
     def __cinit__(self, *args, **kwargs):
         self.rbd = NULL
@@ -2995,12 +2996,14 @@ cdef class Set(object):
 
     def __init__(self, str name, Schema schema,
                        int uid=0, int gid=0,
-                       int perm=0o777, Ptr set_ptr=None):
+                       int perm=0o777, Ptr set_ptr=None, Xprt xprt=None):
         self._getter = list()
         self._setter = list()
         self.schema = schema
         if set_ptr:
             self.rbd = <ldms_set_t>set_ptr.c_ptr
+            Py_INCREF(xprt)
+            self._xprt = xprt
         elif schema:
             if not name:
                 raise AttributeError("Missing `name` parameter")
@@ -3027,8 +3030,8 @@ cdef class Set(object):
                 self._setter.append(METRIC_SETTER_TBL[t])
 
     @classmethod
-    def _from_lookup(cls, Ptr set_ptr):
-        s = Set(None, None, set_ptr=set_ptr)
+    def _from_lookup(cls, Ptr set_ptr, Xprt x):
+        s = Set(None, None, set_ptr=set_ptr, xprt=x)
         set_coll[ s._id() ] = s
         return s
 
@@ -3040,6 +3043,8 @@ cdef class Set(object):
     def __dealloc__(self):
         if self.rbd:
             ldms_set_delete(self.rbd)
+        if self._xprt:
+            Py_DECREF(self._xprt)
 
     def __iter__(self):
         """iter(self) - iterates over keys (metric names) of the set"""
@@ -3146,6 +3151,8 @@ cdef class Set(object):
         - `arg` is the `cb_arg` supplied to `update()`.
         """
         cdef int rc
+        if not cb:
+            self._xprt._check_blocked_cb()
         tpl = (self, cb, cb_arg)
         Py_INCREF(tpl)
         rc = ldms_xprt_update(self.rbd, update_cb, <void*>tpl)
@@ -3565,6 +3572,8 @@ cdef class Xprt(object):
 
     cdef int rail_eps
 
+    cdef list _threads # cached threads associated to xprt
+
     def __init__(self, name="sock", auth="none", auth_opts=None,
                        rail_eps = 1, rail_recv_quota = ldms.RAIL_UNLIMITED,
                        rail_rate_limit = ldms.RAIL_UNLIMITED,
@@ -3580,6 +3589,7 @@ cdef class Xprt(object):
         self.ctxt = None
         if rail_recv_limit: # alias
             rail_recv_quota = rail_recv_limit
+        self._threads = None
         # conn
         sem_init(&self._conn_sem, 0, 0)
         self._conn_rc = ENOTCONN
@@ -3789,12 +3799,13 @@ cdef class Xprt(object):
         DIR_UPD) will also be delivered to `cb()`.
         """
         cdef int rc
+        if not cb:
+            flags = 0
+            self._check_blocked_cb()
         self._dir_rc = EPIPE
         self._dir_cb = cb
         self._dir_cb_arg = cb_arg
         self._dir_list = list()
-        if not cb:
-            flags = 0
         rc = ldms_xprt_dir(self.xprt, dir_cb, <void*>self, flags)
         if rc:
             raise ConnectionError(rc, "ldms_xprt_dir() error: {}" \
@@ -3850,6 +3861,8 @@ cdef class Xprt(object):
                         application.
         """
         cdef int rc
+        if not cb:
+            self._check_blocked_cb()
         slist = list()
         tpl = (self, cb, cb_arg, slist)
         Py_INCREF(tpl)
@@ -3921,6 +3934,8 @@ cdef class Xprt(object):
 
     def get_threads(self):
         """Get the threads associated to the endpoint"""
+        if self._threads:
+            return self._threads
         cdef pthread_t *out
         cdef int n, rc
         assert(self.rail_eps > 0)
@@ -3932,10 +3947,16 @@ cdef class Xprt(object):
         if rc < 0:
             free(out)
             raise RuntimeError(f"ldms_xprt_get_threads() error: {rc}")
+        do_cache = True
         lst = list()
         for i in range(0, n):
-            lst.append(int(out[i]))
+            tid = int(out[i])
+            lst.append(tid)
+            if not tid:
+                do_cache = False
         free(out)
+        if do_cache:
+            self._threads = lst
         return lst
 
     def set_xprt_free_cb(self, cb = None):
@@ -4140,6 +4161,10 @@ cdef class Xprt(object):
         None; This method does not return any value.
 
         """
+
+        if not cb:
+            self._check_blocked_cb()
+
         cdef int rc
         cdef sem_t sem
         cdef ldms_msg_event_cb_t _cb
@@ -4179,6 +4204,10 @@ cdef class Xprt(object):
 
     def msg_unsubscribe(self, match, is_regex, cb=None, cb_arg=None):
         """Send an unsubscription request to the remote peer"""
+
+        if not cb:
+            self._check_blocked_cb()
+
         cdef int rc
         cdef sem_t sem
         cdef ldms_msg_event_cb_t _cb
@@ -4241,6 +4270,15 @@ cdef class Xprt(object):
     @property
     def peer_msg_is_enabled(self):
         return ldms_xprt_peer_msg_is_enabled(self.xprt)
+
+    def _check_blocked_cb(self):
+        """(Internal) Check if this would block the callback"""
+        _tid = threading.get_ident()
+        _threads = self.get_threads()
+        # NOTE: _threads is a list of pthread ID (not Linux TID), hence we need
+        #       to use `threading.get_ident()`, not `threading.get_native_id()`
+        if _tid in _threads:
+            raise RuntimeError("Calling a method in a blocking mode in callback function would block the thread indefinitely.")
 
 
 cdef class _MsgSubCtxt(object):
