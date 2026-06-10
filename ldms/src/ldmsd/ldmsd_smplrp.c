@@ -364,7 +364,7 @@ static int p_attr_time_assign(ldmsd_smplrp_t p,
 		SMPLRP_ERROR("%s: attribute '%s' must be a string or a number\n", p->obj.name, name);
 		return EINVAL;
 	}
-	rc = ovis_time_str2us(json_value_cstr(jval), out);
+	{ long _tmp_us; rc = ovis_time_str2us(json_value_cstr(jval), &_tmp_us); *out = _tmp_us; }
 	if (rc) {
 		SMPLRP_ERROR("%s: attribute '%s' has bad time format.\n", p->obj.name, name);
 		return rc;
