@@ -6,17 +6,6 @@ LDMS
 Lightweight Distributed Metric Service
 --------------------------------------
 
-|main status|
-
-.. |main status| image:: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ldms-test/weekly-report/master/status.json
-   :target: https://github.com/ldms-test/weekly-report/blob/master/summary.md
-
-
-|b44 status|
-
-.. |b44 status| image:: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ldms-test/weekly-report/b4.4/status.json
-   :target: https://github.com/ldms-test/weekly-report/blob/b4.4/summary.md
-
 For more information on installing and using LDMS: https://ovis-hpc.readthedocs.io/en/latest/
 
 To join the LDMS Users Group: https://github.com/ovis-hpc/ovis-wiki/wiki/Mailing-Lists
