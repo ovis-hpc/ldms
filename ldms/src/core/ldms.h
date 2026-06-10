@@ -586,6 +586,8 @@ typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
 #define LDMS_SET_F_REMOTE	0x0008
 #define LDMS_SET_F_PUSH_CHANGE	0x0010
 #define LDMS_SET_F_DATA_COPY	0x0020 /* set array data copy on transaction begin */
+#define LDMS_SET_F_IO		0x0040 /* 'on' when there is an outstanding IO: lookup, update */
+#define LDMS_SET_F_PDEL		0x0080 /* 'on' when producer has deleted the set */
 #define LDMS_SET_F_SNAPSHOT	0x10000 /* A read-only light copy of a set, which must not be published or shared with remote clients. */
 #define LDMS_SET_F_PUBLISHED	0x100000 /* Set is in the set tree. */
 #define LDMS_SET_ID_DATA	0x1000000

@@ -682,8 +682,9 @@ static void __set_delete_cb(ldms_t xprt, int status, void *cb_arg)
 }
 
 /* implementation in ldms_rail.c */
-void __rail_on_set_delete(ldms_t _r, struct ldms_set *s,
-			      ldms_set_delete_cb_t cb_fn);
+void __xrail_on_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_fn);
+
+size_t format_set_delete_req(struct ldms_request *req, uint64_t xid, const char *inst_name);
 
 void __ldms_dir_del_set(struct ldms_set *set)
 {
@@ -699,20 +700,39 @@ void __ldms_dir_del_set(struct ldms_set *set)
 	 *
 	 * dir_update(set, LDMS_DIR_DEL);
 	 */
-	struct ldms_xprt *x;
-	ldms_t r;
-	pthread_mutex_lock(&xprt_list_lock);
-	LIST_FOREACH(x, &xprt_list, xprt_link) {
-		if (x->remote_dir_xid) {
-			/* NOTE:
-			 * There will be only one `x` in `r` that has
-			 * `x->remote_dir_xid != 0`.
-			 */
-			r = __ldms_xprt_to_rail(x);
-			__rail_on_set_delete(r, set, __set_delete_cb);
-		}
+	struct rbn *rbn;
+	struct ldms_lookup_peer *np;
+	ldms_t *xs;
+	int i, n;
+
+	pthread_mutex_lock(&set->lock);
+	if (rbt_empty(&set->lookup_coll)) {
+		pthread_mutex_unlock(&set->lock);
+		return;
 	}
-	pthread_mutex_unlock(&xprt_list_lock);
+	/*
+	 * Copy-out to avoid set->lock, xprt->lock sequence. This should be
+	 * inexpensive as the size of lookup collection is small.
+	 */
+	xs = malloc(rbt_card(&set->lookup_coll) * sizeof(*xs));
+	if (!xs) {
+		pthread_mutex_unlock(&set->lock);
+		return;
+	}
+	n = 0;
+	RBT_FOREACH(rbn, &set->lookup_coll) {
+		np = container_of(rbn, struct ldms_lookup_peer, rbn);
+		xs[n++] = np->xprt;
+		ldms_xprt_get(np->xprt, "__ldms_dir_del_set:xs");
+	}
+	pthread_mutex_unlock(&set->lock);
+
+	for (i = 0; i < n; i++) {
+		/* NOTE xs[i] is a part of rail, not rail itself */
+		__xrail_on_set_delete(xs[i], set, __set_delete_cb);
+		ldms_xprt_put(np->xprt, "__ldms_dir_del_set:xs");
+	}
+	free(xs);
 }
 
 void __ldms_dir_upd_set(struct ldms_set *set)
@@ -819,6 +839,7 @@ static void process_set_delete_request(struct ldms_xprt *x, struct ldms_request 
 	struct ldms_reply reply;
 	struct ldms_set *set;
 	size_t len;
+	int set_io = 0;
 
 	/*
 	 * Always notify the application about peer set delete. If we happened
@@ -828,12 +849,19 @@ static void process_set_delete_request(struct ldms_xprt *x, struct ldms_request 
 	set = __ldms_find_local_set(req->set_delete.inst_name);
 	__ldms_set_tree_unlock();
 	if (set) {
+		pthread_mutex_lock(&set->lock);
+		set->flags |= LDMS_SET_F_PDEL;
+		set_io = set->flags & LDMS_SET_F_IO;
+		pthread_mutex_unlock(&set->lock);
 		if (set->xprt != x) {
 			assert(set->xprt != x);
 			goto reply_1;
 		}
 	}
-	if (x->event_cb) {
+	if (x->event_cb && 0 == set_io) {
+		/*
+		 * Deliver SET_DELETE event if there is no outstanding IO.
+		 */
 		struct ldms_xprt_event event;
 		event.type = LDMS_XPRT_EVENT_SET_DELETE;
 		event.set_delete.set = set;
@@ -2569,9 +2597,30 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 	struct ldms_data_hdr *data, *prev_data;
 	int flags = 0, upd_curr_idx;
 	void *base;
+	int pdel;
+
+	if (set) {
+		ldms_set_ref_get(set, "__handle_update_data");
+		pthread_mutex_lock(&set->lock);
+		pdel = set->flags & LDMS_SET_F_PDEL;
+		pthread_mutex_unlock(&set->lock);
+	}
 
 	assert(x == ctxt->x);
 	assert(ctxt->update.cb);
+	if (pdel) {
+		/* Deliver update error then deliver SET_DELETE */
+		rc = ENOENT;
+		ctxt->update.cb(x, set, rc, ctxt->update.cb_arg);
+
+		struct ldms_xprt_event event;
+		event.type = LDMS_XPRT_EVENT_SET_DELETE;
+		event.set_delete.set = set;
+		event.set_delete.name = ldms_set_instance_name_get(set);
+		event.data_len = sizeof(ldms_set_t);
+		x->event_cb(x, &event, x->event_cb_arg);
+		goto cleanup;
+	}
 	rc = LDMS_UPD_ERROR(ev->status);
 	if (rc || (set == NULL)) {
 		x->zerrno = rc;
@@ -2579,6 +2628,9 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 		/* READ ERROR */
 		if (!rc)
 			rc = ENOENT;
+		pthread_mutex_lock(&set->lock);
+		set->flags &= ~LDMS_SET_F_IO;
+		pthread_mutex_unlock(&set->lock);
 		ctxt->update.cb(x, set, rc, ctxt->update.cb_arg);
 		goto cleanup;
 	}
@@ -2590,6 +2642,9 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 	if (data != prev_data &&
 			__ldms_data_ts_cmp(prev_data, data) >= 0) {
 		/* special case, no new data */
+		pthread_mutex_lock(&set->lock);
+		set->flags &= ~LDMS_SET_F_IO;
+		pthread_mutex_unlock(&set->lock);
 		ctxt->update.cb(x, set, flags, ctxt->update.cb_arg);
 		goto cleanup;
 	}
@@ -2615,6 +2670,9 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 				&& i == __le32_to_cpu(data->curr_idx)) {
 			/* our update is current. */
 			flags = 0;
+			pthread_mutex_lock(&set->lock);
+			set->flags &= ~LDMS_SET_F_IO;
+			pthread_mutex_unlock(&set->lock);
 		} else {
 			flags = LDMS_UPD_F_MORE;
 		}
@@ -2635,10 +2693,18 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 	/* the updated set is not current */
 	rc = __ldms_remote_update(x, set, ctxt->update.cb,
 			ctxt->update.cb_arg);
-	if (rc)
+	if (rc) {
+		pthread_mutex_lock(&set->lock);
+		set->flags &= ~LDMS_SET_F_IO;
+		pthread_mutex_unlock(&set->lock);
 		ctxt->update.cb(x, set, LDMS_UPD_ERROR(rc), ctxt->update.cb_arg);
+	}
 
 cleanup:
+	if (set) {
+		ldms_set_ref_put(set, "__handle_update_data");
+	}
+
 	zap_put_ep(x->zap_ep, "ldms_xprt:set_update", __func__, __LINE__); /* from __ldms_remote_update() */
 	pthread_mutex_lock(&x->lock);
 	__ldms_free_ctxt(x, ctxt);
@@ -2667,9 +2733,19 @@ static void __handle_lookup(ldms_t x, struct ldms_context *ctxt,
 			    zap_event_t ev)
 {
 	int status = 0;
-	if (!ctxt->lu_read.cb)
-		goto ctxt_cleanup;
-	if (ev->status != ZAP_ERR_OK) {
+	int pdel = 0;
+	ldms_set_t set = ctxt->lu_read.s;
+
+	pthread_mutex_lock(&set->lock);
+	set->flags &= ~LDMS_SET_F_IO;
+	pdel = set->flags & LDMS_SET_F_PDEL;
+	pthread_mutex_unlock(&set->lock);
+
+	assert(ctxt->lu_read.cb);
+
+	if (pdel) {
+		status = ENOENT;
+	} else if (ev->status != ZAP_ERR_OK) {
 		status = EREMOTEIO;
 #ifdef DEBUG
 		XPRT_LOG(x, OVIS_LALWAYS, "%s: lookup read error: zap error %d. "
@@ -2677,18 +2753,20 @@ static void __handle_lookup(ldms_t x, struct ldms_context *ctxt,
 			ldms_set_instance_name_get(ctxt->lu_read.s),
 			ev->status, status);
 #endif /* DEBUG */
+	}
+
+	if (status) {
 		/*
 		 * Destroy the set, the ctxt still has a reference on
 		 * it, but that will be dropped when the ctxt is
 		 * freed.
 		 */
-		__ldms_set_delete(ctxt->lu_read.s, 0);
+		__ldms_set_delete(set, 0);
+		set = NULL;
 	} else {
-		ldms_set_publish(ctxt->lu_read.s);
+		ldms_set_publish(set);
 	}
-	ctxt->lu_read.cb((ldms_t)x, status, ctxt->lu_read.more,
-			 ev->status ? NULL : ctxt->lu_read.s,
-			 ctxt->lu_read.cb_arg);
+	ctxt->lu_read.cb((ldms_t)x, status, ctxt->lu_read.more, set, ctxt->lu_read.cb_arg);
 	if (!ctxt->lu_read.more) {
 #ifdef DEBUG
 		assert(x->active_lookup > 0);
@@ -2698,7 +2776,6 @@ static void __handle_lookup(ldms_t x, struct ldms_context *ctxt,
 #endif /* DEBUG */
 	}
 
-ctxt_cleanup:
 	/* each `read` for lookup has its own context */
 	pthread_mutex_lock(&x->lock);
 	__ldms_free_ctxt(x, ctxt);
@@ -2899,7 +2976,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	lset = __ldms_create_set(inst_name->name, schema_name->name,
 				 ntohl(lu->meta_len), ntohl(lu->data_len),
 				 ntohl(lu->card), ntohl(lu->array_card),
-				 LDMS_SET_F_REMOTE);
+				 LDMS_SET_F_REMOTE|LDMS_SET_F_IO);
 	if (!lset) {
 		rc = errno;
 		goto callback;
