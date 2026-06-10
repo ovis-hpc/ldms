@@ -401,7 +401,7 @@ uint64_t ldms_set_heap_gn_get(ldms_set_t s)
 	return s->heap->data->gn;
 }
 
-size_t ldms_set_heap_size_get(ldms_set_t s)
+uint64_t ldms_set_heap_size_get(ldms_set_t s)
 {
 	return s->data->heap.size;
 }
