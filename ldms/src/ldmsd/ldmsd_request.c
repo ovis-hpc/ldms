@@ -11506,7 +11506,7 @@ static int qgroup_config_handler(ldmsd_req_ctxt_t reqc)
 						LDMSD_ATTR_ASK_MARK);
 	int rc = 0;
 	uint64_t u64;
-	int64_t s64;
+	long s64;
 
 	if (quota) {
 		u64 = ovis_get_mem_size(quota);
