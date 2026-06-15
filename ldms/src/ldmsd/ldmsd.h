@@ -365,6 +365,47 @@ struct ldmsd_stat {
 	int count;
 };
 
+#define LDMSD_HISTOGRAM_DEFAULT_BINS 12
+#define LDMSD_HISTOGRAM_DEFAULT_WARMUP 10
+/*
+ * counts layout:
+ *   counts[0]          = underflow
+ *   counts[1..n_bins]  = bins
+ *   counts[n_bins+1]   = overflow
+ *
+ * Locking model:
+ *   - `lock` protects the warmup phase only: appending to warmup_buf,
+ *     incrementing warmup_count, and the one-time boundary-fixing
+ *     transition in histogram_fix_bins().
+ *   - `bins_ready` is the transition flag, updated with __atomic builtins
+ *     (matching the convention used elsewhere in ldmsd, e.g.
+ *     oversampled_cnt / prdset_cnt). It is written exactly once, with
+ *     __ATOMIC_RELEASE, as the last step of histogram_fix_bins() (after
+ *     boundaries[] is fully populated). Readers/writers check it with
+ *     __ATOMIC_ACQUIRE. Once true, it never becomes false again for the
+ *     lifetime of the struct (reset() does not touch it).
+ *   - Once bins_ready is observed true, counts[] is updated/read with
+ *     __atomic_fetch_add / __atomic_load_n only -- no lock needed.
+ *   - The caller no longer needs to take an external lock around calls
+ *     into this struct; locking is internal to ldmsd_histogram_*().
+ */
+struct ldmsd_histogram {
+	pthread_mutex_t lock;    /* protects warmup_buf/warmup_count and the
+	                            warmup->ready transition only */
+	int bins_ready;          /* 0 = still warming up, 1 = boundaries fixed;
+	                             accessed only via __atomic builtins */
+
+	int n_warmup;            /* number of samples before fixing bins */
+	int warmup_count;        /* samples seen during warmup (under lock) */
+	double *warmup_buf;      /* n_warmup samples; freed after warmup (under lock) */
+
+	int n_bins;
+	double *boundaries;      /* n_bins + 1 values; written once, then read-only */
+	uint64_t *counts;        /* n_bins + 2 entries (underflow + bins + overflow);
+	                             accessed only via __atomic builtins once bins_ready */
+};
+
+
 struct store_stages_stats {
 	struct ldmsd_stat io_thread_stat; /* Time spent on Zap IO Thread */
 	struct ldmsd_stat decomp_stat; /* Time spent to decompose the set, spent Zap IO thread time */
@@ -1790,6 +1831,28 @@ int linebuf_printf(struct ldmsd_req_ctxt *reqc, char *fmt, ...);
 /* All duration statistics are in micro-seconds */
 void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct timespec *end);
 void ldmsd_stat_reset(struct ldmsd_stat *stats, struct timespec *now);
+
+int ldmsd_histogram_init(struct ldmsd_histogram *h, int n_bins, int n_warmup);
+void ldmsd_histogram_update(struct ldmsd_histogram *h, struct timespec *start, struct timespec *end);
+void ldmsd_histogram_reset(struct ldmsd_histogram *h);
+
+/*
+ * \brief Create a JSON dictionary from struct ldmsd_histogram.
+ *
+ * During warmup (bins not yet fixed), returns NULL.
+ *
+ * The returned JSON object is:
+ * {
+ *   "n_bins"     : <int>,           -- number of bins (excludes underflow/overflow)
+ *   "boundaries" : [ <float>, ... ] -- n_bins+1 boundary values
+ *   "underflow"  : <int>,           -- count of samples below boundaries[0]
+ *   "bins"       : [ <int>, ... ]   -- n_bins counts; bins[i] covers [boundaries[i], boundaries[i+1])
+ *   "overflow"   : <int>            -- count of samples >= boundaries[n_bins]
+ * }
+ *
+ * Caller is responsible for locking.
+ */
+json_entity_t ldmsd_histogram2dict(json_doc_t jdoc, struct ldmsd_histogram *h);
 
 /* smplrp - Sampler Policy */
 typedef struct ldmsd_smplrp_s {

@@ -1252,6 +1252,369 @@ double ts_diff_usec(struct timespec *a, struct timespec *b)
 	return (aa - bb)/1e3; /* make it usec */
 }
 
+/*
+ * Initialize a histogram struct.
+ * n_bins   : number of bins; pass 0 for default (LDMSD_HISTOGRAM_DEFAULT_BINS)
+ * n_warmup : number of warmup samples; pass 0 for default (LDMSD_HISTOGRAM_DEFAULT_WARMUP)
+ *
+ * Returns 0 on success, errno on failure.
+ */
+int ldmsd_histogram_init(struct ldmsd_histogram *h, int n_bins, int n_warmup)
+{
+	if (!h)
+		return EINVAL;
+
+	memset(h, 0, sizeof(*h));
+
+	pthread_mutex_init(&h->lock, NULL);
+	h->bins_ready = 0;
+
+	h->n_bins   = n_bins   > 0 ? n_bins   : LDMSD_HISTOGRAM_DEFAULT_BINS;
+	h->n_warmup = n_warmup > 0 ? n_warmup : LDMSD_HISTOGRAM_DEFAULT_WARMUP;
+
+	h->warmup_buf = calloc(h->n_warmup, sizeof(double));
+	if (!h->warmup_buf)
+		return ENOMEM;
+
+	h->boundaries = calloc(h->n_bins + 1, sizeof(double));
+	if (!h->boundaries) {
+		free(h->warmup_buf);
+		h->warmup_buf = NULL;
+		return ENOMEM;
+	}
+
+	/* underflow + n_bins + overflow */
+	h->counts = calloc(h->n_bins + 2, sizeof(uint64_t));
+	if (!h->counts) {
+		free(h->warmup_buf);
+		free(h->boundaries);
+		h->warmup_buf = NULL;
+		h->boundaries = NULL;
+		return ENOMEM;
+	}
+
+	return 0;
+}
+
+void ldmsd_histogram_destroy(struct ldmsd_histogram *h)
+{
+	if (!h)
+		return;
+	pthread_mutex_destroy(&h->lock);
+	free(h->warmup_buf);
+	free(h->boundaries);
+	free(h->counts);
+	h->warmup_buf = NULL;
+	h->boundaries = NULL;
+	h->counts = NULL;
+}
+
+/* qsort comparator for doubles */
+static int __cmp_double(const void *a, const void *b)
+{
+	double da = *(const double *)a;
+	double db = *(const double *)b;
+	return (da > db) - (da < db);
+}
+
+static void histogram_bin_value(struct ldmsd_histogram *h, double value);
+
+/*
+ * Fix bin boundaries using the Freedman-Diaconis rule on warmup samples.
+ *
+ * Bounds are set to [Q1 - 1.5*IQR, Q3 + 1.5*IQR] (Tukey's fences),
+ * which captures ~99.3% of a normal distribution and is robust against
+ * outliers in the warmup window.
+ *
+ * MUST be called while holding h->lock. Frees warmup_buf and,
+ * publishes bins_ready=1 with __ATOMIC_RELEASE so that other
+ * threads observing bins_ready==1 (via __ATOMIC_ACQUIRE) are guaranteed
+ * to see a fully written boundaries[] array without needing the lock, and
+ * then bins the sample values.
+ */
+static void histogram_fix_bins(struct ldmsd_histogram *h)
+{
+	double min, max, q1, q3, iqr, width;
+	int n, lo_mid, hi_mid, m, i;
+
+	n = h->n_warmup;
+
+	qsort(h->warmup_buf, n, sizeof(double), __cmp_double);
+
+	/*
+	 * Median of lower half for Q1, median of upper half for Q3.
+	 * Use the average of the two middle elements for even-sized halves.
+	 */
+	lo_mid = (n - 1) / 2;  /* last index of lower half */
+	hi_mid = n / 2;        /* first index of upper half */
+
+	if (lo_mid % 2 == 0) {
+		q1 = h->warmup_buf[lo_mid / 2];
+	} else {
+		q1 = (h->warmup_buf[lo_mid / 2] + h->warmup_buf[lo_mid / 2 + 1]) / 2.0;
+	}
+
+	if ((n - hi_mid) % 2 == 1) {
+		q3 = h->warmup_buf[hi_mid + (n - hi_mid) / 2];
+	} else {
+		m = hi_mid + (n - hi_mid) / 2;
+		q3 = (h->warmup_buf[m - 1] + h->warmup_buf[m]) / 2.0;
+	}
+
+	iqr = q3 - q1;
+
+	if (iqr == 0.0) {
+		/*
+		 * All warmup samples identical or IQR degenerate --
+		 * fall back to unit-width range centered on Q1.
+		 */
+		min = q1 - 0.5;
+		max = q3 + 0.5;
+	} else {
+		/* Tukey's fences: covers ~99.3% of a normal distribution */
+		min = q1 - 1.5 * iqr;
+		max = q3 + 1.5 * iqr;
+	}
+
+	width = (max - min) / h->n_bins;
+	for (i = 0; i <= h->n_bins; i++)
+		h->boundaries[i] = min + i * width;
+
+	for (i = 0; i < h->n_bins + 2; i++)
+		h->counts[i] = 0;
+
+	/* Publish -- boundaries[] is fully written above this point. */
+	__atomic_store_n(&h->bins_ready, 1, __ATOMIC_RELEASE);
+
+	/* Bin the warmup samples themselves, so they are not silently dropped from the histogram.
+	 * Safe to call histogram_bin_value here since boundaries[] is already
+	 * fixed and bins_ready is already published --
+	 * concurrent updates from other threads via the lock-free
+	 * fast path are safe since counts[] is only ever touched with atomic
+	 * fetch-add, regardless of caller.
+	 */
+	for (i = 0; i < n; i++)
+		histogram_bin_value(h, h->warmup_buf[i]);
+
+	free(h->warmup_buf);
+	h->warmup_buf = NULL;
+}
+
+/*
+ * Bin a single value into counts[] using boundaries[].
+ * Only safe to call once bins_ready has been observed true.
+ * Lock-free: counts[] is updated via __atomic_fetch_add.
+ */
+static void histogram_bin_value(struct ldmsd_histogram *h, double value)
+{
+	int lo, hi, mid;
+
+	/* Underflow */
+	if (value < h->boundaries[0]) {
+		__atomic_fetch_add(&h->counts[0], 1, __ATOMIC_SEQ_CST);
+		return;
+	}
+
+	/* Overflow */
+	if (value >= h->boundaries[h->n_bins]) {
+		__atomic_fetch_add(&h->counts[h->n_bins + 1], 1, __ATOMIC_SEQ_CST);
+		return;
+	}
+
+	/* Binary search for the bin */
+	lo = 0;
+	hi = h->n_bins - 1;
+	while (lo < hi) {
+		mid = (lo + hi + 1) / 2;
+		if (value < h->boundaries[mid])
+			hi = mid - 1;
+		else
+			lo = mid;
+	}
+	__atomic_fetch_add(&h->counts[lo + 1], 1, __ATOMIC_SEQ_CST);
+}
+
+/*
+ * Update a histogram with a new data point.
+ *
+ * No external locking required -- locking is handled internally and only
+ * taken during the warmup phase (and the rare transition moment). Once
+ * bins are fixed, this path is fully lock-free.
+ */
+void ldmsd_histogram_update(struct ldmsd_histogram *h, struct timespec *start, struct timespec *end)
+{
+	double value = ts_diff_usec(end, start);
+	/*
+	 * Bins already fixed. __ATOMIC_ACQUIRE pairs with the
+	 * __ATOMIC_RELEASE in histogram_fix_bins(), guaranteeing boundaries[]
+	 * is visible here.
+	 */
+	if (__atomic_load_n(&h->bins_ready, __ATOMIC_ACQUIRE)) {
+		histogram_bin_value(h, value);
+		return;
+	}
+
+	/* Still warming up (or racing the transition). */
+	pthread_mutex_lock(&h->lock);
+
+	/*
+	 * Re-check under the lock --
+	 * another thread may have just completed
+	 * the transition between our fast-path check and acquiring the lock.
+	 */
+	if (h->bins_ready) {
+		pthread_mutex_unlock(&h->lock);
+		histogram_bin_value(h, value);
+		return;
+	}
+
+	h->warmup_buf[h->warmup_count++] = value;
+	if (h->warmup_count == h->n_warmup)
+		histogram_fix_bins(h);  /* publishes bins_ready=1 internally */
+
+	pthread_mutex_unlock(&h->lock);
+}
+
+/*
+ * Reset histogram counts. Boundaries are preserved. bins_ready is
+ * unaffected -- a histogram that has finished warmup stays in the
+ * "ready" state across resets.
+ *
+ * No external locking required. If bins are not yet ready (still in
+ * warmup), this is a no-op since counts[] is not in use yet.
+ */
+void ldmsd_histogram_reset(struct ldmsd_histogram *h)
+{
+	int i;
+
+	if (!__atomic_load_n(&h->bins_ready, __ATOMIC_ACQUIRE))
+		return;
+
+	for (i = 0; i < h->n_bins + 2; i++)
+		__atomic_store_n(&h->counts[i], 0, __ATOMIC_SEQ_CST);
+}
+
+/*
+ * \brief Create a JSON dictionary from struct ldmsd_histogram.
+ *
+ * During warmup (bins not yet fixed), returns NULL.
+ *
+ * \param jdoc Caller-owned json_doc_t. Must not be NULL -- the caller is
+ *             responsible for allocating it (e.g. via json_doc_new())
+ *             before calling this function, and for freeing it afterward.
+ *             This function never allocates or frees jdoc.
+ * \param h    The histogram to serialize.
+ *
+ * Returns the JSON dict entity on success. Returns NULL if jdoc is NULL,
+ * if the histogram is still in warmup, or on allocation failure.
+ *
+ * The returned JSON object is:
+ * {
+ *   "n_bins"     : <int>,           -- number of bins (excludes underflow/overflow)
+ *   "boundaries" : [ <float>, ... ] -- n_bins+1 boundary values
+ *   "underflow"  : <int>,           -- count of samples below boundaries[0]
+ *   "bins"       : [ <int>, ... ]   -- n_bins counts; bins[i] covers [boundaries[i], boundaries[i+1])
+ *   "overflow"   : <int>            -- count of samples >= boundaries[n_bins]
+ * }
+ *
+ * No external locking required.
+ *
+ * \return json_entity_t dict on success. Otherwise, NULL is returned and errno is set.
+ */
+json_entity_t ldmsd_histogram2dict(json_doc_t jdoc, struct ldmsd_histogram *h)
+{
+	int i, rc;
+	json_entity_t v, d, boundaries, bins;
+	uint64_t c, underflow, overflow;
+
+	errno = 0;
+	if (!jdoc) {
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* Still in warmup -- no bins fixed yet */
+	if (!__atomic_load_n(&h->bins_ready, __ATOMIC_ACQUIRE))
+		return NULL;
+
+	/* Build boundaries list */
+	boundaries = json_list_new(jdoc);
+	if (!boundaries) {
+		errno = ENOMEM;
+		return NULL;
+	}
+	for (i = 0; i <= h->n_bins; i++) {
+		v = json_float_new(jdoc, h->boundaries[i]);
+		if (!v) {
+			errno = ENOMEM;
+			goto err_boundaries;
+		}
+		json_item_add(boundaries, v);
+	}
+
+	/*
+	 * Build bins list. Each count is read atomically; the overall
+	 * snapshot is not perfectly consistent across bins if updates are
+	 * landing concurrently, which is an acceptable tradeoff for
+	 * monitoring data.
+	 */
+	bins = json_list_new(jdoc);
+	if (!bins) {
+		errno = ENOMEM;
+		goto err_boundaries;
+	}
+	for (i = 0; i < h->n_bins; i++) {
+		c = __atomic_load_n(&h->counts[i + 1], __ATOMIC_SEQ_CST);
+		v = json_int_new(jdoc, (int64_t)c);
+		if (!v) {
+			errno = ENOMEM;
+			goto err_bins;
+		}
+		json_item_add(bins, v);
+	}
+
+	underflow = __atomic_load_n(&h->counts[0], __ATOMIC_SEQ_CST);
+	overflow  = __atomic_load_n(&h->counts[h->n_bins + 1], __ATOMIC_SEQ_CST);
+
+	/*
+	 * Build the dict and attach the pre-built lists via json_attr_add.
+	 * json_dict_build() with JSON_LIST_VALUE expects inline elements
+	 * terminated by JSON_EOL_VALUE, not a pre-built entity, so we use
+	 * json_attr_add() for the list fields instead.
+	 */
+	d = json_dict_build(jdoc,
+			"n_bins",    JSON_INT_VALUE, (int64_t)h->n_bins,
+			"underflow", JSON_INT_VALUE, (int64_t)underflow,
+			"overflow",  JSON_INT_VALUE, (int64_t)overflow,
+			NULL);
+	if (!d) {
+		errno = ENOMEM;
+		goto err_bins;
+	}
+
+	rc = json_attr_add(d, "boundaries", boundaries);
+	if (rc) {
+		errno = rc;
+		goto err_dict;
+	}
+
+	rc = json_attr_add(d, "bins", bins);
+	if (rc) {
+		errno = rc;
+		goto err_dict;
+	}
+
+	return d;
+
+err_dict:
+	json_entity_free(d);
+err_bins:
+	json_entity_free(bins);
+err_boundaries:
+	json_entity_free(boundaries);
+	return NULL;
+}
+
 void ldmsd_stat_update(struct ldmsd_stat *stat, struct timespec *start, struct timespec *end)
 {
 	if (start->tv_sec == 0) {
