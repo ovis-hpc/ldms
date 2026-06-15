@@ -9476,11 +9476,45 @@ unlock:
 	return rc;
 }
 
+/*
+ * The JSON object returned by update_time_stats_handler() is:
+ *
+ * {
+ *   "<updtr_name>": {
+ *     "histogram": {
+ *       "n_bins"     : <int>,
+ *       "boundaries" : [ <float>, ... ],   // n_bins + 1 values
+ *       "underflow"  : <int>,
+ *       "bins"       : [ <int>, ... ],     // n_bins counts
+ *       "overflow"   : <int>
+ *     },
+ *     "<prdcr_name>": {
+ *       "<prdset_name>": {
+ *         "min"             : <float>,     // usec
+ *         "max"             : <float>,     // usec
+ *         "avg"             : <float>,     // usec
+ *         "count"           : <int>,
+ *         "skipped_cnt"     : <int>,
+ *         "oversampled_cnt" : <int>
+ *       },
+ *       ...
+ *     },
+ *     ...
+ *   },
+ *   ...
+ * }
+ *
+ * Notes:
+ * - "histogram" is omitted if the updtr histogram is still in warmup.
+ * - Multiple updaters appear as sibling keys at the top level.
+ * - Multiple producers appear as sibling keys under each updater.
+ * - Multiple producer sets appear as sibling keys under each producer.
+ */
 extern ldmsd_prdcr_ref_t updtr_prdcr_ref_first(ldmsd_updtr_t updtr);
 extern ldmsd_prdcr_ref_t updtr_prdcr_ref_next(ldmsd_prdcr_ref_t ref);
 static int
 __upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
-			int reset, struct timespec *now)
+			int reset, struct timespec *now, int summary)
 {
 	int rc;
 	ldmsd_name_match_t match;
@@ -9489,6 +9523,26 @@ __upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 	rc = linebuf_printf(reqc, "\"%s\":{", updtr->obj.name);
 	if (rc)
 		return rc;
+
+	if (!summary) {
+		/* Histogram -- only emit if warmup is complete */
+		json_doc_t jdoc = json_doc_new();
+		if (!jdoc)
+			return ENOMEM;
+		json_entity_t hist_dict = ldmsd_histogram2dict(jdoc, &updtr->hist);
+		if (hist_dict) {
+			jbuf_t jbuf = json_entity_dump(NULL, hist_dict);
+			json_doc_free(jdoc);
+			if (!jbuf)
+				return ENOMEM;
+			rc = linebuf_printf(reqc, "\"histogram\":%s,", jbuf->buf);
+			jbuf_free(jbuf);
+			if (rc)
+				return rc;
+		} else {
+			json_doc_free(jdoc);
+		}
+	}
 
 	if (!LIST_EMPTY(&updtr->match_list)) {
 		LIST_FOREACH(match, &updtr->match_list, entry) {
@@ -9515,7 +9569,14 @@ __upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 				cnt++;
 		}
 	}
+
+	if (reset) {
+		/* Reset the histogram data */
+		ldmsd_histogram_reset(&updtr->hist);
+	}
+
 	rc = linebuf_printf(reqc, "}");
+
 out:
 	return rc;
 }
@@ -9526,8 +9587,10 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_updtr_t updtr;
 	char *name = NULL;
 	char *reset_s = NULL;
+	char *summary_s = NULL;
 	int cnt = 0;
 	int reset = 0;
+	int summary = 0;
 	struct timespec now;
 
 	clock_gettime(CLOCK_REALTIME, &now);
@@ -9535,9 +9598,11 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 	if (reset_s) {
 		if (0 != strcasecmp(reset_s, "false"))
 			reset = 1;
-		free(reset_s);
 	}
 
+	summary_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SUMMARY);
+	if (summary_s && (0 != strcasecmp(summary_s, "false")))
+		summary = 1;
 
 	rc = linebuf_printf(reqc, "{");
 	if (rc)
@@ -9554,7 +9619,7 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 			ldmsd_send_req_response(reqc, reqc->line_buf);
 			goto out;
 		}
-		rc = __upd_time_stats_json_obj(reqc, updtr, reset, &now);
+		rc = __upd_time_stats_json_obj(reqc, updtr, reset, &now, summary);
 	} else {
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 		for (updtr = ldmsd_updtr_first(); updtr;
@@ -9566,7 +9631,7 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 					goto err;
 				}
 			}
-			rc = __upd_time_stats_json_obj(reqc, updtr, reset, &now);
+			rc = __upd_time_stats_json_obj(reqc, updtr, reset, &now, summary);
 			if (rc) {
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 				goto err;
@@ -9586,6 +9651,8 @@ err:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 out:
 	free(name);
+	free(reset_s);
+	free(summary_s);
 	return rc;
 }
 
@@ -9907,6 +9974,15 @@ out:
 	return rc;
 }
 
+static void __updtr_stats_reset()
+{
+	ldmsd_updtr_t updtr;
+	for (updtr = ldmsd_updtr_first(); updtr;
+		updtr = ldmsd_updtr_next(updtr)) {
+		ldmsd_histogram_reset(&updtr->hist);
+	}
+}
+
 static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 {
 	struct timespec now;
@@ -9952,16 +10028,19 @@ static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 		zap_thrstat_reset_all(&now);
 		ldmsd_worker_thrstats_reset(&now);
 		ldmsd_xthrstat_reset(&now);
-		__prdset_stats_reset(&now, prdset_reset_flags);
 	}
 
 	if (is_xprt) {
 		ldms_xprt_rate_data(NULL, 1);
-		__prdset_stats_reset(&now, prdset_reset_flags);
 	}
 
 	if (is_stream)
 		ldms_msg_stats_reset();
+
+	if (is_update)
+		__updtr_stats_reset();
+
+	__prdset_stats_reset(&now, prdset_reset_flags);
 
 	free(s);
 	ldmsd_send_req_response(reqc, reqc->line_buf);

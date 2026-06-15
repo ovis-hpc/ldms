@@ -1156,6 +1156,10 @@ Display the statistics of updaters' update time per set
       | An updater name. Only the statistics of the given updater will
         be reported and reset if reset is true.
 
+   **[summary** *true|false*\ **]**
+      |
+      | If true, histogram will not be reported.
+
 Display the statistics of storage policy's store time per set
 -------------------------------------------------------------
 

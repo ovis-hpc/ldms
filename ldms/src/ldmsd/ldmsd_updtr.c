@@ -211,15 +211,22 @@ static void updtr_task_set_reset(ldmsd_updtr_task_t task)
 	task->set_count = 0;
 }
 
+typedef struct prdset_update_ctxt {
+	ldmsd_prdcr_set_t prdset;
+	ldmsd_updtr_t updtr;
+} *prdset_update_ctxt_t;
+
 static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 {
 	uint64_t gn, push_it = 0;
-	ldmsd_prdcr_set_t prd_set = arg;
+	prdset_update_ctxt_t updt_ctxt = arg;
+	ldmsd_prdcr_set_t prd_set = updt_ctxt->prdset;
 	int errcode;
 
 	pthread_mutex_lock(&prd_set->lock);
 	clock_gettime(CLOCK_REALTIME, &prd_set->updt_stat.end);
 	ldmsd_stat_update(&prd_set->updt_stat, &prd_set->updt_stat.start, &prd_set->updt_stat.end);
+	ldmsd_histogram_update(&updt_ctxt->updtr->hist, &prd_set->updt_stat.start, &prd_set->updt_stat.end);
 
 	errcode = LDMS_UPD_ERROR(status);
 	ovis_log(updtr_log, OVIS_LDEBUG, "Update complete for Set %s with status %#x\n",
@@ -287,9 +294,16 @@ out:
 						prd_set->inst_name);
 		}
 	}
-	if (0 == (status & (LDMS_UPD_F_PUSH|LDMS_UPD_F_MORE)))
+	if (0 == (status & (LDMS_UPD_F_PUSH|LDMS_UPD_F_MORE))) {
 		/* Put reference taken before calling ldms_xprt_update. */
 		ldmsd_prdcr_set_ref_put(prd_set);
+
+		/* Cleanup prdcr_update_ctxt */
+		ldmsd_prdcr_set_ref_put(updt_ctxt->prdset);
+		ldmsd_updtr_put(updt_ctxt->updtr, "update_ctxt");
+		free(updt_ctxt);
+	}
+
 	return;
 }
 
@@ -385,7 +399,19 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 			 * do not update the setgroup.
 			 */
 		} else {
-			rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
+			prdset_update_ctxt_t upd_ctxt;
+			upd_ctxt = malloc(sizeof(*upd_ctxt));
+			if (!upd_ctxt) {
+				ovis_log(updtr_log, OVIS_LCRIT, "Out of memory.\n");
+				rc = ENOMEM;
+				goto out;
+			}
+			ldmsd_prdcr_set_ref_get(prd_set);
+			upd_ctxt->prdset = prd_set;
+			upd_ctxt->updtr = ldmsd_updtr_get(updtr, "update_ctxt");
+			rc = ldms_xprt_update(prd_set->set, updtr_update_cb, upd_ctxt);
+			if (rc)
+				free(upd_ctxt);
 		}
 	} else if (0 == (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG)) {
 		op_s = "Registering push for";
@@ -962,6 +988,7 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 	LIST_INIT(&updtr->match_list);
 	rbt_init(&updtr->task_tree, ldmsd_updtr_schedule_cmp);
 	updtr->push_flags = push_flags;
+	ldmsd_histogram_init(&updtr->hist, 0, 0); /* Use the default number of warmup samples and number of bins */
 	ldmsd_cfgobj_unlock(&updtr->obj);
 #ifdef _CFG_REF_DUMP_
 	ref_dump(&updtr->obj.ref, updtr->obj.name, stderr);
