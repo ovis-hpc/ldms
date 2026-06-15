@@ -249,6 +249,41 @@ class LdmsdCmdParser(Cmd.Cmd):
         for cmd in fin:
             self.onecmd(cmd)
 
+    def __print_histogram(self, hist):
+        """Print a histogram dict as an ASCII bar chart."""
+        if hist is None:
+            print("  Histogram: (warmup in progress)")
+            return
+
+        boundaries = hist['boundaries']
+        bins       = hist['bins']
+        underflow  = hist['underflow']
+        overflow   = hist['overflow']
+
+        all_counts = [underflow] + bins + [overflow]
+        max_count  = max(all_counts) if max(all_counts) > 0 else 1
+        bar_width  = 40
+
+        print(f"  {'Range (usec)':>28}  {'Count':>10}  Bar")
+        print(f"  {'-'*28}  {'-'*10}  {'-'*bar_width}")
+
+        # Underflow
+        bar = '#' * int(underflow / max_count * bar_width)
+        print(f"  {'(-inf, ' + f'{boundaries[0]:.2f})':>28}  {underflow:>10}  {bar}")
+
+        # Bins
+        n_bins = hist['n_bins']
+        for i in range(n_bins):
+            lo  = boundaries[i]
+            hi  = boundaries[i + 1]
+            cnt = bins[i]
+            bar = '#' * int(cnt / max_count * bar_width)
+            print(f"  {f'[{lo:.2f}, {hi:.2f})':>28}  {cnt:>10}  {bar}")
+
+        # Overflow
+        bar = '#' * int(overflow / max_count * bar_width)
+        print(f"  {f'[{boundaries[-1]:.2f}, +inf)':>28}  {overflow:>10}  {bar}")
+
     def do_dump_cfg(self, arg):
         """
         Dump the current running configuration to a file specified in the path
