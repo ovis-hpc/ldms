@@ -1276,10 +1276,16 @@ class LdmsdCmdParser(Cmd.Cmd):
                  'max_prdcr' : None,
                  'producers' : {},
                  'skipped_cnt': 0,
-                 'oversampled_cnt': 0
+                 'oversampled_cnt': 0,
+                 'histogram': None
                }
 
         for p, prdcr in updtr.items():
+            # it is not a producer entry so skip it when iterating producers.
+            if p == 'histogram':
+                stats['histogram'] = prdcr
+                continue
+
             pstats = { 'min' : float("inf"),
                        'max' : 0,
                        'sum' : 0,
@@ -1332,11 +1338,13 @@ class LdmsdCmdParser(Cmd.Cmd):
         - Max(usec) is the maximum time the updater spent to update a set.
         - Average(usec) is the average time the updater spent to update a set.
         - Count is the number of samples used to calculate the minimum, maximum, and average values.
+        - Histogram of update time of each updater
 
         Parameters:
         [name=]        updater name
         [reset=]       If 'true', reset the statistics after returning the values.
                        The default is false.
+        [summary=].    If 'true', histogram won't be reported
         """
         arg = self.handle_args('update_time_stats', arg)
         if not arg:
@@ -1357,6 +1365,10 @@ class LdmsdCmdParser(Cmd.Cmd):
             print(f"{n:15} {stats['min']:15.4f} {stats['max']:15.4f} " \
                   f"{stats['avg']:15.4f} {stats['cnt']:10} " \
                   f"{stats['skipped_cnt']:15} {stats['oversampled_cnt']:15}")
+            if not arg['summary']:
+                # Print histogram
+                print()
+                self.__print_histogram(stats['histogram'])
 
     def complete_update_time_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('update_time_stats', text)

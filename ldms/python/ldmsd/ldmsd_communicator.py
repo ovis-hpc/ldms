@@ -125,7 +125,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'updtr_stop': {'req_attr': ['name']},
                       'updtr_status': {'req_attr': [], 'opt_attr': ['name', 'summary', 'reset']},
                       'updtr_task': {'req_attr': ['name'], 'opt_attr': []},
-                      'update_time_stats' : {'req_attr': [], 'opt_attr' : ['name', 'reset']},
+                      'update_time_stats' : {'req_attr': [], 'opt_attr' : ['name', 'reset', 'summary']},
                       ##### Storage Policy #####
                       'strgp_add': {'req_attr': ['name', 'plugin', 'container'],
                                     'opt_attr' : ['schema', 'regex', 'flush', 'decomposition', 'perm' ] },
@@ -2130,7 +2130,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def update_time_stats(self, name=None, reset = False):
+    def update_time_stats(self, name=None, reset = False, summary = False):
         """
         Get the update time statistics of updaters
 
@@ -2144,11 +2144,14 @@ class Communicator(object):
         - Max(usec) is the maximum time the updater spent to update a set.
         - Average(usec) is the average time the updater spent to update a set.
         - Count is the number of samples used to calculate the minimum, maximum, and average values.
+        - Histogram of update times of each updater
 
         Keyword Parameters:
         [name] - updater name
         [reset] - If 'true' reset the statistics after returning the values.
                   Default is false
+        [summary] = If 'true', histogram is excluded from the output
+
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
@@ -2158,7 +2161,10 @@ class Communicator(object):
         attr_list = None
         if reset is None:
             reset = False
-        attr_list = [ LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.RESET, value = str(reset))]
+        if summary is None:
+            summary = False
+        attr_list = [ LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.RESET, value = str(reset)),
+                      LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.SUMMARY, value = str(summary))]
         if name:
             attr_list.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name))
         req = LDMSD_Request(command_id=LDMSD_Request.UPDATE_TIME_STATS,

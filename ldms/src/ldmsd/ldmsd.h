@@ -618,6 +618,11 @@ typedef struct ldmsd_updtr {
 	 */
 	struct rbt prdcr_tree;
 	LIST_HEAD(updtr_match_list, ldmsd_name_match) match_list;
+
+	/*
+	 * Update time histogram
+	 */
+	struct ldmsd_histogram hist;
 } *ldmsd_updtr_t;
 
 typedef struct ldmsd_name_match {
