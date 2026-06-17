@@ -9718,6 +9718,7 @@ __store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_p
 	json_entity_t producers, threads, schemas, sets;
 	json_entity_t prdcr_json, thr_json, sch_json, set_json;
 	json_entity_t strgp_stats, set_stats, stage_stats;
+	json_entity_t hist;
 	json_doc_t jdoc = json_entity_doc(strgp_dict);
 	pid_t tid;
 	char tid_s[128];
@@ -9745,9 +9746,23 @@ __store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_p
 				rc = ENOMEM;
 				goto out;
 			}
+			/* histogram */
+			hist = ldmsd_histogram2dict(json_entity_doc(strgp_stats), &strgp_ref->strgp->hist_store_time);
+			if (!hist) {
+				ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
+				rc = ENOMEM;
+				goto out;
+			}
+			rc = json_attr_add(strgp_stats, "hist_store_time", hist);
+			if (rc) {
+				ovis_log(config_log, OVIS_LERROR,
+						"Error creating the JSON response "
+						"of a store_time request. Error %d\n", rc);
+				goto out;
+			}
+
 			rc = json_attr_add(strgp_dict, strgp_ref->strgp->obj.name, strgp_stats);
 			if (rc) {
-				json_entity_free(strgp_stats);
 				ovis_log(config_log, OVIS_LERROR,
 						"Error creating the JSON response "
 						"of a store_time request. Error %d\n", rc);

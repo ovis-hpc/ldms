@@ -1562,6 +1562,8 @@ class LdmsdCmdParser(Cmd.Cmd):
         #    }
         # Assume that the returned jSON object is
         # { <strgp_name> :{
+        #     "hist_store_time" : <histogram dict, or absent/None while warmup
+        #                          calibration is still in progress>,
         #     "producers" : { <producer_name> : { EMPTY } },
         #     "threads"   : { <producer set's thread ID> : { EMPTY }},
         #     "schemas"   : { <set schema name> : { EMPTY }},
@@ -1580,6 +1582,15 @@ class LdmsdCmdParser(Cmd.Cmd):
         #        }
         #     }
         # }
+        #
+        # The histogram dict, when present, has the form:
+        #   {
+        #     "n_bins"     : <int>,            # number of bins (excludes underflow/overflow)
+        #     "boundaries" : [ <float>, ... ],  # n_bins+1 boundary values, in microseconds
+        #     "underflow"  : <int>,             # count of samples below boundaries[0]
+        #     "bins"       : [ <int>, ... ],    # n_bins counts
+        #     "overflow"   : <int>              # count of samples >= boundaries[n_bins]
+        #   }
         #
         # -----------------------------------------------
         # RESULT TABLES FROM __store_time_process()
@@ -1612,6 +1623,8 @@ class LdmsdCmdParser(Cmd.Cmd):
         #   'strgp': {
         #     '<strgp_name>': {          # Per storage policy entry
         #       'stats': stats_dict,     # Stats for this storage policy
+        #       'histogram': dict/None,  # The strgp's hist_store_time histogram,
+        #                                # or None if still in warmup calibration
         #       'schema' : {
         #         '<schema_name>': {       # Per schema within this storage policy
         #           'stats': stats_dict,   # Stats for this schema within this storage policy
@@ -1667,6 +1680,10 @@ class LdmsdCmdParser(Cmd.Cmd):
         for strgp_name, strgp in d.items():
             strgp_tbl['strgp'][strgp_name] = {'stats' : self.__datatbl_new(), 'schema': {}}
 
+            # The strgp-level store-time histogram, if calibration is complete;
+            # None while the histogram is still in its warmup phase.
+            strgp_tbl['strgp'][strgp_name]['histogram'] = strgp.get('hist_store_time')
+
             for set_name, prdset in strgp['sets'].items():
                 prdset['name'] = set_name
                 schema_name = prdset['schema']
@@ -1721,6 +1738,10 @@ class LdmsdCmdParser(Cmd.Cmd):
          - Count is the number of samples used to calculate the minimum, maximum,
            and average values.
          - Number of Sets is the number of sets the storage policy is responsible to store.
+         - Histogram shows the distribution of store times across all sets handled
+           by the storage policy. Bins are calibrated automatically from the first
+           samples observed and are omitted (shown as "warmup in progress") until
+           calibration completes.
 
         Parameters:
             [name=]    a storage policy name
@@ -1790,6 +1811,8 @@ class LdmsdCmdParser(Cmd.Cmd):
                       f"{sch_stats['max']:15.4f} {int(sch_stats['min_ts']):20d} {int(sch_stats['max_ts']):20d} " \
                       f"{len(set(sch_stats['set_name'])):10} {sch_stats['count']:10}")
             print(f"{' '*5}{'='*20} {'='*15} {'='*15} {'='*15} {'='*20} {'='*20} {'='*10} {'='*10}")
+            print(f"\n   Store Time Histogram for '{strgp}':")
+            self.__print_histogram(strgp_tbl['strgp'][strgp].get('histogram'))
 
         print()
         print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
@@ -1820,7 +1843,6 @@ class LdmsdCmdParser(Cmd.Cmd):
             for stage, value in sorted_stages:
                 pct = value/stage_tbl['total_time']*100
                 print(f"   {__get_stage_name(stage):16}: {pct:>7.2f}%          {value:>7.2f} us")
-
 
     def complete_store_time_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('store_time_stats', text)

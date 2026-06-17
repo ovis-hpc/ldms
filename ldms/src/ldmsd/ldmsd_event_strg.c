@@ -459,6 +459,7 @@ void storage_worker_actor(struct ovis_event_s *ev)
 	/* event_ctxt->start_ts is the very begining in strgp_update_fn() */
 	ldmsd_stat_update(&strgp_ref->store_stat,
 				&event_ctxt->start_ts, &end);
+	ldmsd_histogram_update(&strgp->hist_store_time, &event_ctxt->start_ts, &end);
 
 	store_event_ctxt_free(event_ctxt);
 	free(row_list);
