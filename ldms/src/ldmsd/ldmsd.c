@@ -1326,11 +1326,12 @@ static void histogram_bin_value(struct ldmsd_histogram *h, double value);
  * which captures ~99.3% of a normal distribution and is robust against
  * outliers in the warmup window.
  *
- * MUST be called while holding h->lock. Frees warmup_buf and,
- * publishes bins_ready=1 with __ATOMIC_RELEASE so that other
- * threads observing bins_ready==1 (via __ATOMIC_ACQUIRE) are guaranteed
- * to see a fully written boundaries[] array without needing the lock, and
- * then bins the sample values.
+ * MUST be called while holding h->lock. As its last act before binning
+ * the warmup samples retroactively, publishes bins_ready=1 with
+ * __ATOMIC_RELEASE so that other threads observing bins_ready==1 (via
+ * __ATOMIC_ACQUIRE) are guaranteed to see a fully written boundaries[]
+ * array without needing the lock. Does not free warmup_buf -- see the
+ * comment at the end of this function.
  */
 static void histogram_fix_bins(struct ldmsd_histogram *h)
 {
@@ -1341,10 +1342,8 @@ static void histogram_fix_bins(struct ldmsd_histogram *h)
 
 	qsort(h->warmup_buf, n, sizeof(double), __cmp_double);
 
-	/*
-	 * Median of lower half for Q1, median of upper half for Q3.
-	 * Use the average of the two middle elements for even-sized halves.
-	 */
+	/* Median of lower half for Q1, median of upper half for Q3.
+	 * Use the average of the two middle elements for even-sized halves. */
 	lo_mid = (n - 1) / 2;  /* last index of lower half */
 	hi_mid = n / 2;        /* first index of upper half */
 
@@ -1364,10 +1363,8 @@ static void histogram_fix_bins(struct ldmsd_histogram *h)
 	iqr = q3 - q1;
 
 	if (iqr == 0.0) {
-		/*
-		 * All warmup samples identical or IQR degenerate --
-		 * fall back to unit-width range centered on Q1.
-		 */
+		/* All warmup samples identical or IQR degenerate --
+		 * fall back to unit-width range centered on Q1. */
 		min = q1 - 0.5;
 		max = q3 + 0.5;
 	} else {
@@ -1383,21 +1380,122 @@ static void histogram_fix_bins(struct ldmsd_histogram *h)
 	for (i = 0; i < h->n_bins + 2; i++)
 		h->counts[i] = 0;
 
-	/* Publish -- boundaries[] is fully written above this point. */
+	/* Publish: boundaries[] is fully written above this point. */
 	__atomic_store_n(&h->bins_ready, 1, __ATOMIC_RELEASE);
 
-	/* Bin the warmup samples themselves, so they are not silently dropped from the histogram.
-	 * Safe to call histogram_bin_value here since boundaries[] is already
-	 * fixed and bins_ready is already published --
-	 * concurrent updates from other threads via the lock-free
+	/* Retroactively bin the warmup samples themselves, so they are not
+	 * silently dropped from the histogram. Safe to call histogram_bin_value
+	 * here since boundaries[] is already fixed and bins_ready is already
+	 * published -- concurrent updates from other threads via the lock-free
 	 * fast path are safe since counts[] is only ever touched with atomic
-	 * fetch-add, regardless of caller.
-	 */
+	 * fetch-add, regardless of caller. */
 	for (i = 0; i < n; i++)
 		histogram_bin_value(h, h->warmup_buf[i]);
 
-	free(h->warmup_buf);
-	h->warmup_buf = NULL;
+	/* warmup_buf is intentionally NOT freed here -- it is kept allocated
+	 * for the lifetime of the histogram so that ldmsd_histogram_recalibrate()
+	 * can reuse it without reallocating. It is only freed in
+	 * ldmsd_histogram_destroy(). */
+}
+
+/*
+ * Discard the current boundaries and counts, and re-enter the warmup
+ * phase to recalibrate boundaries from fresh samples.
+ *
+ * Unlike ldmsd_histogram_reset(), which only zeroes counts and preserves
+ * existing boundaries, this function throws away the calibration itself.
+ * This is useful when the existing boundaries no longer fit the metric's
+ * current behavior -- for example, a metric (such as store_time) whose
+ * boundaries were calibrated during an atypical startup phase (opening
+ * database connections, etc.) and no longer reflect steady-state values.
+ *
+ * \param new_n_bins    If > 0, change the number of bins. If 0, keep the
+ *                      existing n_bins.
+ * \param new_n_warmup  If > 0, change the number of warmup samples used
+ *                      for recalibration. If 0, keep the existing n_warmup.
+ *
+ * Returns 0 on success, errno on failure (e.g. ENOMEM if a requested size
+ * change requires reallocation and that allocation fails).
+ *
+ * On failure, the histogram is left completely untouched -- still
+ * bins_ready with its prior boundaries/counts/n_bins/n_warmup intact --
+ * rather than partially transitioned. All necessary reallocations are
+ * performed and verified to succeed before any live state (bins_ready,
+ * warmup_count, counts, n_bins, n_warmup, or the buffer pointers
+ * themselves) is modified.
+ *
+ * No external locking required.
+ */
+int ldmsd_histogram_recalibrate(struct ldmsd_histogram *h, int new_n_bins, int new_n_warmup)
+{
+	double *new_warmup_buf = NULL;
+	double *new_boundaries = NULL;
+	uint64_t *new_counts = NULL;
+	int want_n_bins, want_n_warmup;
+	int i;
+
+	pthread_mutex_lock(&h->lock);
+
+	want_n_bins   = (new_n_bins   > 0) ? new_n_bins   : h->n_bins;
+	want_n_warmup = (new_n_warmup > 0) ? new_n_warmup : h->n_warmup;
+
+	/* Allocate everything needed up front. Nothing below this point
+	 * touches h's live state until all allocations have succeeded, so
+	 * a failure here leaves the histogram fully intact and usable. */
+
+	if (want_n_warmup != h->n_warmup) {
+		new_warmup_buf = calloc(want_n_warmup, sizeof(double));
+		if (!new_warmup_buf)
+			goto err_nomem;
+	}
+
+	if (want_n_bins != h->n_bins) {
+		new_boundaries = calloc(want_n_bins + 1, sizeof(double));
+		if (!new_boundaries)
+			goto err_nomem;
+
+		new_counts = calloc(want_n_bins + 2, sizeof(uint64_t));
+		if (!new_counts)
+			goto err_nomem;
+	}
+
+	/* All allocations succeeded (or were not needed). Now commit. */
+
+	if (new_warmup_buf) {
+		free(h->warmup_buf);
+		h->warmup_buf = new_warmup_buf;
+		h->n_warmup = want_n_warmup;
+	}
+
+	if (new_boundaries) {
+		free(h->boundaries);
+		h->boundaries = new_boundaries;
+	}
+	if (new_counts) {
+		free(h->counts);
+		h->counts = new_counts;
+		h->n_bins = want_n_bins;
+	} else {
+		for (i = 0; i < h->n_bins + 2; i++)
+			h->counts[i] = 0;
+	}
+
+	h->warmup_count = 0;
+
+	/* Flip back into warmup state. histogram_bin_value() must not run
+	 * again (via the lock-free fast path) until histogram_fix_bins()
+	 * republishes bins_ready=1 with a freshly computed boundaries[]. */
+	__atomic_store_n(&h->bins_ready, 0, __ATOMIC_RELEASE);
+
+	pthread_mutex_unlock(&h->lock);
+	return 0;
+
+err_nomem:
+	free(new_warmup_buf);
+	free(new_boundaries);
+	free(new_counts);
+	pthread_mutex_unlock(&h->lock);
+	return ENOMEM;
 }
 
 /*
