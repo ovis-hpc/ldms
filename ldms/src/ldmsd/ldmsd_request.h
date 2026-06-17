@@ -288,6 +288,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_XTHREAD,
 	LDMSD_ATTR_MSG_TAG,
 	LDMSD_ATTR_STATE,
+	LDMSD_ATTR_HIST_RECAL, /* Histogram recalibrate */
 	LDMSD_ATTR_LAST,
 };
 

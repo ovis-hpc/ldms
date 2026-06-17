@@ -9711,13 +9711,14 @@ static json_entity_t __prdset_store_time_json_get(json_doc_t jdoc, struct store_
 
 void ldmsd_prdcr_set_store_stats_init(ldmsd_prdcr_set_t prdset, struct timespec *ts);
 static int
-__store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prdset, int reset)
+__store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prdset, int reset, int recal_hist)
 {
 	int rc = 0;
 	ldmsd_strgp_ref_t strgp_ref;
 	json_entity_t producers, threads, schemas, sets;
 	json_entity_t prdcr_json, thr_json, sch_json, set_json;
 	json_entity_t strgp_stats, set_stats, stage_stats;
+	json_entity_t hist;
 	json_doc_t jdoc = json_entity_doc(strgp_dict);
 	pid_t tid;
 	char tid_s[128];
@@ -9745,13 +9746,39 @@ __store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_p
 				rc = ENOMEM;
 				goto out;
 			}
+			/* histogram */
+			hist = ldmsd_histogram2dict(json_entity_doc(strgp_stats),
+						    &strgp_ref->strgp->hist_store_time);
+			if (!hist) {
+				if (errno != 0) {
+					ovis_log(config_log, OVIS_LERROR,
+						"Failed to get a store_time histogram of strgp '%s'\n",
+						strgp_ref->strgp->obj.name);
+					rc = errno;
+					goto out;
+				}
+			} else {
+				rc = json_attr_add(strgp_stats, "hist_store_time", hist);
+				if (rc) {
+					ovis_log(config_log, OVIS_LERROR,
+							"Error creating the JSON response "
+							"of a store_time request. Error %d\n", rc);
+					goto out;
+				}
+			}
+
 			rc = json_attr_add(strgp_dict, strgp_ref->strgp->obj.name, strgp_stats);
 			if (rc) {
-				json_entity_free(strgp_stats);
 				ovis_log(config_log, OVIS_LERROR,
 						"Error creating the JSON response "
 						"of a store_time request. Error %d\n", rc);
 				goto out;
+			}
+			if (recal_hist) {
+				/* Recalibrate also resets the histogram data, no need to call reset again. */
+				ldmsd_histogram_recalibrate(&strgp_ref->strgp->hist_store_time, 0, 0, 0);
+			} else if (reset) {
+				ldmsd_histogram_reset(&strgp_ref->strgp->hist_store_time);
 			}
 		}
 
@@ -9895,22 +9922,32 @@ __store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_p
 static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc = 0;
-	char *name, *reset_s;
-	name = reset_s = NULL;
+	char *name, *reset_s, *recal_hist_s;
+	name = reset_s = recal_hist_s = NULL;
 	ldmsd_strgp_t strgp;
 	int reset = 0;
+	int recal_hist = 0;
 	json_entity_t strgp_dict;
 	jbuf_t jbuf = NULL;
 
 	ldmsd_prdcr_t prdcr;
 	ldmsd_prdcr_set_t prdset;
 
-
 	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
 	if (reset_s) {
 		if (0 != strcasecmp(reset_s, "false"))
 			reset = 1;
 		free(reset_s);
+	}
+
+	/*
+	 * If hist_recalibrate is true, all statistics data and the histogram bins and boundaries will be reset and re-calibrated.
+	 * This is to ensure that the shown data is consistent throughout (min, max, average, and the histogram).
+	 */
+	recal_hist_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HIST_RECAL);
+	if (recal_hist_s && (0 != strcasecmp(recal_hist_s, "false"))) {
+		recal_hist = 1;
+		reset = 1;
 	}
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -9945,7 +9982,7 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_prdcr_lock(prdcr);
 		for (prdset = ldmsd_prdcr_set_first(prdcr); prdset; prdset = ldmsd_prdcr_set_next(prdset)) {
 			pthread_mutex_lock(&prdset->lock);
-			rc = __store_time_stats_prdset(strgp_dict, strgp, prdset, reset);
+			rc = __store_time_stats_prdset(strgp_dict, strgp, prdset, reset, recal_hist);
 			pthread_mutex_unlock(&prdset->lock);
 			if (rc) {
 				ldmsd_prdcr_unlock(prdcr);
@@ -9969,6 +10006,7 @@ err:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 out:
 	free(name);
+	free(recal_hist_s);
 	json_doc_free(jdoc);
 	jbuf_free(jbuf);
 	return rc;

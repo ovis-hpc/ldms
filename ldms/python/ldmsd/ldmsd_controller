@@ -1590,6 +1590,8 @@ class LdmsdCmdParser(Cmd.Cmd):
         #    }
         # Assume that the returned jSON object is
         # { <strgp_name> :{
+        #     "hist_store_time" : <histogram dict, or absent/None while warmup
+        #                          calibration is still in progress>,
         #     "producers" : { <producer_name> : { EMPTY } },
         #     "threads"   : { <producer set's thread ID> : { EMPTY }},
         #     "schemas"   : { <set schema name> : { EMPTY }},
@@ -1608,6 +1610,15 @@ class LdmsdCmdParser(Cmd.Cmd):
         #        }
         #     }
         # }
+        #
+        # The histogram dict, when present, has the form:
+        #   {
+        #     "n_bins"     : <int>,            # number of bins (excludes underflow/overflow)
+        #     "boundaries" : [ <float>, ... ],  # n_bins+1 boundary values, in microseconds
+        #     "underflow"  : <int>,             # count of samples below boundaries[0]
+        #     "bins"       : [ <int>, ... ],    # n_bins counts
+        #     "overflow"   : <int>              # count of samples >= boundaries[n_bins]
+        #   }
         #
         # -----------------------------------------------
         # RESULT TABLES FROM __store_time_process()
@@ -1640,6 +1651,8 @@ class LdmsdCmdParser(Cmd.Cmd):
         #   'strgp': {
         #     '<strgp_name>': {          # Per storage policy entry
         #       'stats': stats_dict,     # Stats for this storage policy
+        #       'histogram': dict/None,  # The strgp's hist_store_time histogram,
+        #                                # or None if still in warmup calibration
         #       'schema' : {
         #         '<schema_name>': {       # Per schema within this storage policy
         #           'stats': stats_dict,   # Stats for this schema within this storage policy
@@ -1695,6 +1708,10 @@ class LdmsdCmdParser(Cmd.Cmd):
         for strgp_name, strgp in d.items():
             strgp_tbl['strgp'][strgp_name] = {'stats' : self.__datatbl_new(), 'schema': {}}
 
+            # The strgp-level store-time histogram, if calibration is complete;
+            # None while the histogram is still in its warmup phase.
+            strgp_tbl['strgp'][strgp_name]['histogram'] = strgp.get('hist_store_time')
+
             for set_name, prdset in strgp['sets'].items():
                 prdset['name'] = set_name
                 schema_name = prdset['schema']
@@ -1749,17 +1766,49 @@ class LdmsdCmdParser(Cmd.Cmd):
          - Count is the number of samples used to calculate the minimum, maximum,
            and average values.
          - Number of Sets is the number of sets the storage policy is responsible to store.
+         - Histogram shows the distribution of store times across all sets handled
+           by the storage policy. Bins are calibrated automatically from the first
+           samples observed and are omitted (shown as "warmup in progress") until
+           calibration completes.
 
         Parameters:
             [name=]    a storage policy name
             [reset=]   If 'true', reset the statistics after returning the values.
                        The default is false.
+            [hist_recalibrate=]  If 'true', recalibrate the bins and boundaries of storage policy's histogram.
+                       The default is false.
+            [view=]    Comma-separated list of sections to display. Choices are:
+                         schema_summary - the global "Statistics per Set Schema" table
+                         strgp_detail   - the per-storage-policy / per-schema table
+                         histogram      - the per-storage-policy store-time histogram
+                         rate_summary   - operations/sec and the stage-time breakdown
+                       If omitted, all sections are shown (current default behavior).
         """
         arg = self.handle_args('store_time_stats', arg)
         if not arg:
             return
         if arg['reset'] is None:
             arg['reset'] = False
+        if arg['hist_recalibrate'] is None:
+            arg['hist_recalibrate'] = False
+
+        valid_views = {'schema_summary', 'strgp_detail', 'histogram', 'rate_summary'}
+        if arg['view'] is None:
+            views = valid_views
+        else:
+            views = {v.strip() for v in arg['view'].split(',') if v.strip()}
+            bad = views - valid_views
+            if bad:
+                self.fmt_resp("EINVAL",
+                               f"Error: invalid view(s) {', '.join(sorted(bad))}. "
+                               f"Valid choices are: {', '.join(sorted(valid_views))}")
+                return
+
+        # 'view' is a display-only toggle handled entirely in this method;
+        # it is not a request attribute ldmsd understands, so it must not
+        # be forwarded in the **arg call below.
+        del arg['view']
+
         rc, msg = self.comm.store_time_stats(**arg)
         if self.output_format:
             return self.fmt_resp(rc, msg)
@@ -1775,7 +1824,7 @@ class LdmsdCmdParser(Cmd.Cmd):
             raise
 
         # Schema Table
-        if arg['name'] is None:
+        if arg['name'] is None and 'schema_summary' in views:
             # If 'name' is given, the schema table will report the same number
             # as the numbers in the storage policy table for each schema.
             # Thus, omit the table
@@ -1797,58 +1846,77 @@ class LdmsdCmdParser(Cmd.Cmd):
                 print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
 
         # Storage policy Table
-        print()
-        print(f"{'Statistics per Storage Policies and Set Schema':^137}")
-        print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
-        print(f"{' '*4} {'Storage Policy':^20} {'Min (us)':^15} {'Avg (us)':^15} {'Max (us)':^15} {'Min Timestamp':^20} {'Max Timestamp':^20} {'# of Sets':^10} {'Count':^10}")
-        print(f"{'-'*4}-{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
-        strgps = sorted(list(strgp_tbl['strgp'].keys()))
-        for strgp in strgps:
-            stats = strgp_tbl['strgp'][strgp]['stats']
-            if 0 == len(stats['set_name']):
-                continue
-            print(f"{self.__symbols(strgp, strgp_tbl['stats']):>5}  {strgp:18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {int(stats['min_ts']):20d} {int(stats['max_ts']):20d} {len(set(stats['set_name'])):10} {stats['count']:10}")
-            print(f"   {' '*2}{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
-            schemas = sorted(list(strgp_tbl['strgp'][strgp]['schema'].keys()))
-            for schema in schemas:
-                sch_stats = strgp_tbl['strgp'][strgp]['schema'][schema]['stats']
-                if sch_stats['count'] == 0:
-                    continue
-                print(f"   {self.__symbols(schema, strgp_tbl['strgp'][strgp]['stats']):>5} {schema:>16} {sch_stats['min']:15.4f} {sch_stats['avg']:15.4f} " \
-                      f"{sch_stats['max']:15.4f} {int(sch_stats['min_ts']):20d} {int(sch_stats['max_ts']):20d} " \
-                      f"{len(set(sch_stats['set_name'])):10} {sch_stats['count']:10}")
-            print(f"{' '*5}{'='*20} {'='*15} {'='*15} {'='*15} {'='*20} {'='*20} {'='*10} {'='*10}")
+        if 'strgp_detail' in views or 'histogram' in views:
+            if 'strgp_detail' in views:
+                print()
+                print(f"{'Statistics per Storage Policies and Set Schema':^137}")
+                print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
+                print(f"{' '*4} {'Storage Policy':^20} {'Min (us)':^15} {'Avg (us)':^15} {'Max (us)':^15} {'Min Timestamp':^20} {'Max Timestamp':^20} {'# of Sets':^10} {'Count':^10}")
+                print(f"{'-'*4}-{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
+            strgps = sorted(list(strgp_tbl['strgp'].keys()))
 
-        print()
-        print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
-        print(f"Number of store operations per second:              {num_op_per_sec:7.2f}")
-        print(f"The averaged duration of each store operation (us): {stage_tbl['total_time']:7.2f}")
-        print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
-        print()
-        print("Breakdown of Storage Operation (Percentage and Average)", end = "")
-        if stage_tbl['total_time'] == 0:
-            print(" N/A")
-            print(" -- No sets have been stored")
-        else:
-            def __get_stage_name(n):
-                if n == "queue":
-                    return "in_worker_queue"
-                elif n == "wait":
-                    return "wait_for_worker"
-                elif n == "prep":
-                    return "misc"
-                elif n == "commit":
-                    return "store/commit"
-                elif n == "decomp":
-                    return "decomposition"
-                else:
-                    return n
+            if 'strgp_detail' in views:
+                for strgp in strgps:
+                    stats = strgp_tbl['strgp'][strgp]['stats']
+                    if 0 == len(stats['set_name']):
+                        continue
+                    print(f"{self.__symbols(strgp, strgp_tbl['stats']):>5}  {strgp:18} {stats['min']:15.4f} {stats['avg']:15.4f} {stats['max']:15.4f} {int(stats['min_ts']):20d} {int(stats['max_ts']):20d} {len(set(stats['set_name'])):10} {stats['count']:10}")
+                    print(f"   {' '*2}{'-'*20} {'-'*15} {'-'*15} {'-'*15} {'-'*20} {'-'*20} {'-'*10} {'-'*10}")
+                    schemas = sorted(list(strgp_tbl['strgp'][strgp]['schema'].keys()))
+                    for schema in schemas:
+                        sch_stats = strgp_tbl['strgp'][strgp]['schema'][schema]['stats']
+                        if sch_stats['count'] == 0:
+                            continue
+                        print(f"   {self.__symbols(schema, strgp_tbl['strgp'][strgp]['stats']):>5} {schema:>16} {sch_stats['min']:15.4f} {sch_stats['avg']:15.4f} " \
+                            f"{sch_stats['max']:15.4f} {int(sch_stats['min_ts']):20d} {int(sch_stats['max_ts']):20d} " \
+                            f"{len(set(sch_stats['set_name'])):10} {sch_stats['count']:10}")
+                    print(f"{' '*5}{'='*20} {'='*15} {'='*15} {'='*15} {'='*20} {'='*20} {'='*10} {'='*10}")
+
+            if 'histogram' in views:
+                print()
+                for strgp in strgps:
+                    print(f"\n   Store Time Histogram for '{strgp}':")
+                    self.__print_histogram(strgp_tbl['strgp'][strgp].get('histogram'))
+                    print()
+
+        if 'rate_summary' in views:
             print()
-            sorted_stages = sorted(stage_tbl['stages'].items(), key=lambda x: x[1], reverse=True)
-            for stage, value in sorted_stages:
-                pct = value/stage_tbl['total_time']*100
-                print(f"   {__get_stage_name(stage):16}: {pct:>7.2f}%          {value:>7.2f} us")
-
+            print(f"{'='*(4+21+16+16+16+21+21+11+11)}")
+            if arg['name'] is not None:
+                print(f"Scope: storage policy '{arg['name']}'")
+            else:
+                print("Scope: all storage policies")
+            print()
+            print(f"Number of store operations per second:              {num_op_per_sec:7.2f}")
+            print(f"The averaged duration of each store operation (us): {stage_tbl['total_time']:7.2f}")
+            # print(f"{'-'*(4+21+16+16+16+21+21+11+11)}")
+            print()
+            if arg['name'] is not None:
+                print(f"Breakdown of Storage Operation for '{arg['name']}' (Percentage and Average)", end = "")
+            else:
+                print("Breakdown of Storage Operation (Percentage and Average)", end = "")
+            if stage_tbl['total_time'] == 0:
+                print(" N/A")
+                print(" -- No sets have been stored")
+            else:
+                def __get_stage_name(n):
+                    if n == "queue":
+                        return "in_worker_queue"
+                    elif n == "wait":
+                        return "wait_for_worker"
+                    elif n == "prep":
+                        return "misc"
+                    elif n == "commit":
+                        return "store/commit"
+                    elif n == "decomp":
+                        return "decomposition"
+                    else:
+                        return n
+                print()
+                sorted_stages = sorted(stage_tbl['stages'].items(), key=lambda x: x[1], reverse=True)
+                for stage, value in sorted_stages:
+                    pct = value/stage_tbl['total_time']*100
+                    print(f"   {__get_stage_name(stage):16}: {pct:>7.2f}%          {value:>7.2f} us")
 
     def complete_store_time_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('store_time_stats', text)

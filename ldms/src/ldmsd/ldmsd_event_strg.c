@@ -422,6 +422,7 @@ void storage_worker_actor(struct ovis_event_s *ev)
 	int row_count = event_ctxt->row_count;
 	struct ldmsd_stat *queue_stat = &(strgp_ref->store_stages_stat.queue_stat);
 	struct ldmsd_stat *commit_stat = &(strgp_ref->store_stages_stat.commit_stat);
+	double store_time_us;
 
 	clock_gettime(CLOCK_REALTIME, &start); /* start is the end timestamp of the event being queued */
 	queue_stat->end = start;
@@ -459,6 +460,8 @@ void storage_worker_actor(struct ovis_event_s *ev)
 	/* event_ctxt->start_ts is the very begining in strgp_update_fn() */
 	ldmsd_stat_update(&strgp_ref->store_stat,
 				&event_ctxt->start_ts, &end);
+	store_time_us = ldmsd_ts_diff_usec(&end, &event_ctxt->start_ts);
+	ldmsd_histogram_update(&strgp->hist_store_time, store_time_us);
 
 	store_event_ctxt_free(event_ctxt);
 	free(row_list);

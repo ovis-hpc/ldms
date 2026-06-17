@@ -297,6 +297,7 @@ ldmsd_strgp_new_with_auth(const char *name, uid_t uid, gid_t gid, int perm)
 	if (!strgp)
 		return NULL;
 
+	ldmsd_histogram_init(&strgp->hist_store_time, 0, 200, LDMSD_HISTOGRAM_SCALE_LOG);
 	strgp->state = LDMSD_STRGP_STATE_STOPPED;
 	strgp->flush_interval.tv_sec = 0;
 	strgp->flush_interval.tv_nsec = 0;
