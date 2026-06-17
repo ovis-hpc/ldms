@@ -137,7 +137,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'strgp_start': {'req_attr': ['name']},
                       'strgp_stop': {'req_attr': ['name']},
                       'strgp_status': {'req_attr': [], 'opt_attr': ['name']},
-                      'store_time_stats': {'req_attr': [], 'opt_attr':['name', 'reset']},
+                      'store_time_stats': {'req_attr': [], 'opt_attr':['name', 'reset', 'hist_recalibrate', 'view']}, # 'view' is for display-only mode, not sending to ldmsd
 		      'strgp_pi_stats': {'req_attr': ['name'], 'opt_attr':[]},
                       ##### Plugin #####
                       'plugn_sets': {'req_attr': [], 'opt_attr': ['name']},
@@ -365,7 +365,8 @@ class LDMSD_Req_Attr(object):
     XTHREAD = 48
     MSG_TAG = 49
     STATE = 50
-    LAST = 51
+    HIST_RECAL = 51
+    LAST = 52
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -425,6 +426,7 @@ class LDMSD_Req_Attr(object):
                    'exclusive_thread': XTHREAD,
                    'message_tag': MSG_TAG,
                    'state' : STATE,
+                   'hist_recalibrate' : HIST_RECAL,
                    'TERMINATING': LAST
         }
 
@@ -477,6 +479,7 @@ class LDMSD_Req_Attr(object):
                    XTHREAD : 'exclusive_thread',
                    MSG_TAG : 'message_tag',
                    STATE : 'state',
+                   HIST_RECAL : 'hist_recalibrate',
                    LAST : 'TERMINATING'
         }
 
@@ -1880,7 +1883,7 @@ class Communicator(object):
         except Exception as r:
             return errno.ENOTCONN, str(e)
 
-    def store_time_stats(self, name=None, reset=False):
+    def store_time_stats(self, name=None, reset=False, hist_recalibrate=False):
         """
         Return the time statistics of a LDMSD storage policy.
 
@@ -1890,6 +1893,8 @@ class Communicator(object):
         [name]  - The storage policy name
         [reset] - Boolean that indicates whether to reset statistics after returning values.
                   The default to False
+        [hist_recalibrate] - Boolean that indicates whether to recalibrate the bins and boundaries of histogram.
+                             The default to False
 
         Returns:
         A tuple of status, data
@@ -1897,7 +1902,9 @@ class Communicator(object):
         - data is a string in json format of storage policy statistics, or an error message
         """
         attr_list = [LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.RESET,
-                                    value = str(reset))]
+                                    value = str(reset)),
+                     LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.HIST_RECAL,
+                                    value = str(hist_recalibrate))]
         if name:
             attr_list.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.NAME, value=name))
         req = LDMSD_Request(command_id=LDMSD_Request.STORE_TIME_STATS,

@@ -803,6 +803,9 @@ struct ldmsd_strgp {
 
 	int row_cache_init;
 	ldmsd_row_cache_t row_cache;
+
+	/** Histogram of store_time */
+	struct ldmsd_histogram hist_store_time;
 };
 
 
