@@ -222,11 +222,13 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	prdset_update_ctxt_t updt_ctxt = arg;
 	ldmsd_prdcr_set_t prd_set = updt_ctxt->prdset;
 	int errcode;
+	double update_time_us;
 
 	pthread_mutex_lock(&prd_set->lock);
 	clock_gettime(CLOCK_REALTIME, &prd_set->updt_stat.end);
 	ldmsd_stat_update(&prd_set->updt_stat, &prd_set->updt_stat.start, &prd_set->updt_stat.end);
-	ldmsd_histogram_update(&updt_ctxt->updtr->hist, &prd_set->updt_stat.start, &prd_set->updt_stat.end);
+	update_time_us = ldmsd_ts_diff_usec(&prd_set->updt_stat.end, &prd_set->updt_stat.start);
+	ldmsd_histogram_update(&updt_ctxt->updtr->hist, update_time_us);
 
 	errcode = LDMS_UPD_ERROR(status);
 	ovis_log(updtr_log, OVIS_LDEBUG, "Update complete for Set %s with status %#x\n",
@@ -598,8 +600,6 @@ out:
 	return;
 }
 
-/* Implemented in ldmsd.c */
-extern double ts_diff_usec(struct timespec *a, struct timespec *b);
 static void schedule_prdset_updates(ldmsd_updtr_task_t task,
 				    ldmsd_prdcr_set_t prd_set,
 				    ldmsd_name_match_t match)
@@ -625,7 +625,7 @@ static void schedule_prdset_updates(ldmsd_updtr_task_t task,
 	switch (prd_set->state) {
 	case LDMSD_PRDCR_SET_STATE_READY:
 		clock_gettime(CLOCK_REALTIME, &ts);
-		if (ts_diff_usec(&ts, &prd_set->lookup_complete_ts) < 1000000) {
+		if (ldmsd_ts_diff_usec(&ts, &prd_set->lookup_complete_ts) < 1000000) {
 			return;
 		}
 		break;
@@ -988,7 +988,7 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 	LIST_INIT(&updtr->match_list);
 	rbt_init(&updtr->task_tree, ldmsd_updtr_schedule_cmp);
 	updtr->push_flags = push_flags;
-	ldmsd_histogram_init(&updtr->hist, 0, 0); /* Use the default number of warmup samples and number of bins */
+	ldmsd_histogram_init(&updtr->hist, 0, 0, LDMSD_HISTOGRAM_SCALE_LINEAR); /* Use the default number of warmup samples and number of bins */
 	ldmsd_cfgobj_unlock(&updtr->obj);
 #ifdef _CFG_REF_DUMP_
 	ref_dump(&updtr->obj.ref, updtr->obj.name, stderr);
