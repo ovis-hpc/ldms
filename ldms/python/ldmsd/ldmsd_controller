@@ -250,28 +250,57 @@ class LdmsdCmdParser(Cmd.Cmd):
             self.onecmd(cmd)
 
     def __print_histogram(self, hist):
-        """Print a histogram dict as an ASCII bar chart."""
+        """
+        Print a histogram dict as an ASCII bar chart, or a warmup-progress
+        indicator if calibration hasn't completed yet.
+
+        hist is the histogram dict produced by ldmsd_histogram2dict(),
+        which has one of two shapes:
+
+          While calibrating:
+            { "warmup_in_progress": True, "warmup_count": <int>, "n_warmup": <int> }
+
+          Once calibrated:
+            { "warmup_in_progress": False, "n_bins": <int>, "scale": <str>,
+              "boundaries": [...], "underflow": <int>, "bins": [...],
+              "overflow": <int> }
+
+        hist may also be None if the attribute was entirely absent from
+        the server response (e.g. an older ldmsd that doesn't report
+        histograms at all) -- treated the same as "no information available".
+        """
         if hist is None:
-            print("  Histogram: (warmup in progress)")
+            print("  Histogram: (not available)")
+            return
+
+        if hist.get('warmup_in_progress', False):
+            warmup_count = hist['warmup_count']
+            n_warmup = hist['n_warmup']
+            pct = (warmup_count / n_warmup * 100) if n_warmup > 0 else 0
+            bar_width = 40
+            filled = int(pct / 100 * bar_width)
+            bar = '#' * filled + '-' * (bar_width - filled)
+            print(f"  Histogram: calibrating ({warmup_count}/{n_warmup} samples, {pct:5.1f}%)")
+            print(f"  [{bar}]")
             return
 
         boundaries = hist['boundaries']
         bins       = hist['bins']
         underflow  = hist['underflow']
         overflow   = hist['overflow']
+        scale      = hist.get('scale', 'linear')
 
         all_counts = [underflow] + bins + [overflow]
         max_count  = max(all_counts) if max(all_counts) > 0 else 1
         bar_width  = 40
 
+        print(f"  Scale: {scale}")
         print(f"  {'Range (usec)':>28}  {'Count':>10}  Bar")
         print(f"  {'-'*28}  {'-'*10}  {'-'*bar_width}")
 
-        # Underflow
         bar = '#' * int(underflow / max_count * bar_width)
         print(f"  {'(-inf, ' + f'{boundaries[0]:.2f})':>28}  {underflow:>10}  {bar}")
 
-        # Bins
         n_bins = hist['n_bins']
         for i in range(n_bins):
             lo  = boundaries[i]
@@ -280,7 +309,6 @@ class LdmsdCmdParser(Cmd.Cmd):
             bar = '#' * int(cnt / max_count * bar_width)
             print(f"  {f'[{lo:.2f}, {hi:.2f})':>28}  {cnt:>10}  {bar}")
 
-        # Overflow
         bar = '#' * int(overflow / max_count * bar_width)
         print(f"  {f'[{boundaries[-1]:.2f}, +inf)':>28}  {overflow:>10}  {bar}")
 
