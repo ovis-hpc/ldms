@@ -99,6 +99,7 @@ OPTION_INCLUDE_FLAGS([OVIS],[ \
 	lib/src/ovis_json \
 	lib/src/ovis_log \
 	lib/src/ovis_thrstats \
+	lib/src/ovis_histogram \
 	lib/src/zap \
 	lib/src/mmalloc \
 	ldms/src \
@@ -121,6 +122,7 @@ OPTION_LIB_FLAGS([OVIS],[ \
 	lib/src/ovis_json \
 	lib/src/ovis_log \
 	lib/src/ovis_thrstats \
+	lib/src/ovis_histogram \
 	lib/src/zap \
 	lib/src/mmalloc \
 	ldms/src/core \
@@ -1034,6 +1036,7 @@ lib/src/ovis_auth/Makefile
 lib/src/ovis_ref/Makefile
 lib/src/ovis_log/Makefile
 lib/src/ovis_thrstats/Makefile
+lib/src/ovis_histogram/Makefile
 lib/src/zap/Makefile
 lib/src/zap/rdma/Makefile
 lib/src/zap/fabric/Makefile

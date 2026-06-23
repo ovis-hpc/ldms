@@ -39,7 +39,7 @@ SUBDIRS += ovis_ctrl
 endif
 
 SUBDIRS += ovis_json
-
+SUBDIRS += ovis_histogram
 
 # override libdir sanity checks
 mylibdir = $(libdir)

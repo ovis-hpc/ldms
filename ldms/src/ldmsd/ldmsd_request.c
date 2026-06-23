@@ -9529,7 +9529,7 @@ __upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 		json_doc_t jdoc = json_doc_new();
 		if (!jdoc)
 			return ENOMEM;
-		json_entity_t hist_dict = ldmsd_histogram2dict(jdoc, &updtr->hist);
+		json_entity_t hist_dict = ovis_histogram2dict(jdoc, &updtr->hist);
 		if (hist_dict) {
 			jbuf_t jbuf = json_entity_dump(NULL, hist_dict);
 			json_doc_free(jdoc);
@@ -9572,7 +9572,7 @@ __upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 
 	if (reset) {
 		/* Reset the histogram data */
-		ldmsd_histogram_reset(&updtr->hist);
+		ovis_histogram_reset(&updtr->hist);
 	}
 
 	rc = linebuf_printf(reqc, "}");
@@ -9747,7 +9747,7 @@ __store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_p
 				goto out;
 			}
 			/* histogram */
-			hist = ldmsd_histogram2dict(json_entity_doc(strgp_stats),
+			hist = ovis_histogram2dict(json_entity_doc(strgp_stats),
 						    &strgp_ref->strgp->hist_store_time);
 			if (!hist) {
 				if (errno != 0) {
@@ -9776,9 +9776,9 @@ __store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_p
 			}
 			if (recal_hist) {
 				/* Recalibrate also resets the histogram data, no need to call reset again. */
-				ldmsd_histogram_recalibrate(&strgp_ref->strgp->hist_store_time, 0, 0, 0);
+				ovis_histogram_recalibrate(&strgp_ref->strgp->hist_store_time, 0, 0, 0);
 			} else if (reset) {
-				ldmsd_histogram_reset(&strgp_ref->strgp->hist_store_time);
+				ovis_histogram_reset(&strgp_ref->strgp->hist_store_time);
 			}
 		}
 
@@ -10017,7 +10017,7 @@ static void __updtr_stats_reset()
 	ldmsd_updtr_t updtr;
 	for (updtr = ldmsd_updtr_first(); updtr;
 		updtr = ldmsd_updtr_next(updtr)) {
-		ldmsd_histogram_reset(&updtr->hist);
+		ovis_histogram_reset(&updtr->hist);
 	}
 }
 
