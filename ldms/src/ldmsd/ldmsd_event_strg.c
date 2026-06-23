@@ -461,7 +461,7 @@ void storage_worker_actor(struct ovis_event_s *ev)
 	ldmsd_stat_update(&strgp_ref->store_stat,
 				&event_ctxt->start_ts, &end);
 	store_time_us = ldmsd_ts_diff_usec(&end, &event_ctxt->start_ts);
-	ldmsd_histogram_update(&strgp->hist_store_time, store_time_us);
+	ovis_histogram_update(&strgp->hist_store_time, store_time_us);
 
 	store_event_ctxt_free(event_ctxt);
 	free(row_list);

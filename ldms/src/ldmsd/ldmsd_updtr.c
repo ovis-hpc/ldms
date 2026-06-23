@@ -228,7 +228,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	clock_gettime(CLOCK_REALTIME, &prd_set->updt_stat.end);
 	ldmsd_stat_update(&prd_set->updt_stat, &prd_set->updt_stat.start, &prd_set->updt_stat.end);
 	update_time_us = ldmsd_ts_diff_usec(&prd_set->updt_stat.end, &prd_set->updt_stat.start);
-	ldmsd_histogram_update(&updt_ctxt->updtr->hist, update_time_us);
+	ovis_histogram_update(&updt_ctxt->updtr->hist, update_time_us);
 
 	errcode = LDMS_UPD_ERROR(status);
 	ovis_log(updtr_log, OVIS_LDEBUG, "Update complete for Set %s with status %#x\n",
@@ -1000,7 +1000,7 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 	LIST_INIT(&updtr->match_list);
 	rbt_init(&updtr->task_tree, ldmsd_updtr_schedule_cmp);
 	updtr->push_flags = push_flags;
-	ldmsd_histogram_init(&updtr->hist, 0, 0, LDMSD_HISTOGRAM_SCALE_LINEAR); /* Use the default number of warmup samples and number of bins */
+	ovis_histogram_init(&updtr->hist, 0, 0, OVIS_HISTOGRAM_SCALE_LINEAR); /* Use the default number of warmup samples and number of bins */
 	ldmsd_cfgobj_unlock(&updtr->obj);
 #ifdef _CFG_REF_DUMP_
 	ref_dump(&updtr->obj.ref, updtr->obj.name, stderr);
