@@ -160,7 +160,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'example': {'req_attr': [], 'opt_attr': []},
                       'dump_cfg': {'req_attr':['path'], 'opt_attr': []},
                       'set_info': {'req_attr': ['instance'], 'opt_attr': []},
-                      'xprt_stats': {'req_attr':[], 'opt_attr': ['reset', 'sq_depth']},
+                      'xprt_stats': {'req_attr':[], 'opt_attr': ['reset', 'sq_depth', 'histogram', 'hist_recalibrate']},
                       'thread_stats': {'req_attr':[], 'opt_attr': ['reset']},
                       'prdcr_stats': {'req_attr':[], 'opt_attr': []},
                       'set_stats': {'req_attr':[], 'opt_attr': ['summary']},
@@ -3883,7 +3883,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def xprt_stats(self, reset=False, level=0):
+    def xprt_stats(self, reset=False, level=0, hist_recal=False):
         """
         Query the daemon's telemetry data
 
@@ -3894,6 +3894,8 @@ class Communicator(object):
         [level] - [True/False]
                   If True, the send-queue depth of each endpoint will be reported.
                   Default is False.
+        [hist_recal] - [True/False]
+                       If true, recalibrate the histogram bin boundaries.
 
         Returns:
         A tuple of status, data
@@ -3909,7 +3911,9 @@ class Communicator(object):
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RESET,
                                    value=str(reset)),
                     LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.LEVEL,
-                                   value=str(level))
+                                   value=str(level)),
+                    LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.HIST_RECAL,
+                                   value=str(hist_recal))
                 ])
         try:
             req.send(self)

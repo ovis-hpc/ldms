@@ -2731,7 +2731,7 @@ class LdmsdCmdParser(Cmd.Cmd):
     def complete_set_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('set_stats', text)
 
-    def display_xprt_stats(self, stats):
+    def display_xprt_stats(self, stats, show_histogram=False):
         def sort_rails_stats(rails_stats):
             for rail in rails_stats:
                 if 'endpoints' in rail and len(rail['endpoints']) > 0:
@@ -2772,6 +2772,14 @@ class LdmsdCmdParser(Cmd.Cmd):
             print(f"{op_name:20} {s['count']:12} {s['min_us']:12} {s['mean_us']:12} {s['max_us']:12}")
         print(f"{'-'*40}")
 
+        print()
+        if show_histogram:
+            for op_name in op_stats:
+                s = op_stats[op_name]
+                print(f"\n   Histogram for '{op_name}':")
+                self.__print_histogram(s.get('hist'))
+        print()
+
         # Calculate the total send-queue depth
         print(f"Total send-queue depth: {sum(endpoint.get('sq_sz', 0) for rail in stats['rails'] for endpoint in rail.get('endpoints', {}).values())}")
 
@@ -2797,8 +2805,10 @@ class LdmsdCmdParser(Cmd.Cmd):
         Query the daemon's transport telemetry data
 
         Parameters:
-        [reset=]  If true, reset the statistics after returning them.
-        [sq_depth=] If true, the send-queue depth of each endpoint will be reported.
+        [reset=]      If true, reset the statistics after returning them.
+        [sq_depth=]   If true, the send-queue depth of each endpoint will be reported.
+        [histogram=]  If true, print the per-operation histograms.
+        [hist_recalibrate=] If true, recalibrate the histogram bin boundaries.
         """
         arg = self.handle_args('xprt_stats', arg)
         if not arg:
@@ -2806,7 +2816,11 @@ class LdmsdCmdParser(Cmd.Cmd):
         level = 0
         if arg['sq_depth'] is not None:
             level = 1
-        rc, msg = self.comm.xprt_stats(reset=arg['reset'], level=level)
+        if arg['hist_recalibrate'] is None:
+            hist_recal = False
+        else:
+            hist_recal = True
+        rc, msg = self.comm.xprt_stats(reset=arg['reset'], level=level, hist_recal=hist_recal)
         if self.output_format:
             return self.fmt_resp(rc, msg)
         if rc != 0:
@@ -2816,7 +2830,8 @@ class LdmsdCmdParser(Cmd.Cmd):
             print("No data")
             return
         stats = fmt_status(msg)
-        self.display_xprt_stats(stats)
+        show_histogram = arg.get('histogram', False)
+        self.display_xprt_stats(stats, show_histogram=show_histogram)
 
     def complete_xprt_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('xprt_stats', text)

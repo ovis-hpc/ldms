@@ -1140,6 +1140,26 @@ Display the transport operation statistics
       | If true, reset the statistics after returning the values. The
         default is false.
 
+   **[sq_depth** *true|false*\ **]**
+      |
+      | If true, report the send-queue depth of each endpoint. The
+        default is false.
+
+   **[histogram** *true|false*\ **]**
+      |
+      | If true, print the per-operation histograms. The default is
+        false.
+
+   **[hist_recalibrate** *true|false*\ **]**
+      |
+      | If true, discard the existing histogram bin boundaries after
+        returning the values, so the histograms re-enter their warmup
+        phase and recalibrate the bins and boundaries from the next
+        samples observed. Use this when the per-operation latency
+        distribution has shifted enough that the original calibration
+        no longer represents current behavior well. The default is
+        false.
+
 Display the statistics of updaters' update time per set
 -------------------------------------------------------
 
