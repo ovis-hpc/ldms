@@ -70,6 +70,7 @@
 #include "ovis_log/ovis_log.h"
 #include "ovis_ref/ref.h"
 #include "ovis_json/ovis_json.h"
+#include "ovis_histogram/ovis_histogram.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -2482,6 +2483,28 @@ extern struct ldms_xprt_stats_result *ldms_xprt_stats_result_get(int mask, int r
  * \param result A handle of the list of the statistics of all transports
  */
 extern void ldms_xprt_stats_result_free(struct ldms_xprt_stats_result *result);
+
+typedef struct ldms_xprt_op_histogram {
+	struct ovis_histogram hist;
+} *ldms_xprt_op_histogram_t;
+
+/**
+ * \brief Get the histogram of LDMS transport operations
+ *
+ */
+extern ldms_xprt_op_histogram_t ldms_xprt_histogram_get();
+
+/**
+ * \brief Reset the operation histograms
+ *
+ * \param recal   Recalibrate the operation histograms beside resetting them
+ */
+extern void ldms_xprt_histogram_reset(int recal);
+
+/**
+ * \brief Free ldms_xprt_op_histogram object returned by \c ldms_xprt_histogram_get()
+ */
+extern void ldms_xprt_histogram_free(ldms_xprt_op_histogram_t hist);
 
 /*
  * Metric template for:

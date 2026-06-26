@@ -31,6 +31,7 @@ libldms_la_LIBADD = -ldl -lpthread $(top_builddir)/lib/src/coll/libcoll.la \
 		    $(top_builddir)/lib/src/mmalloc/libmmalloc.la \
 		    $(top_builddir)/lib/src/zap/libzap.la \
 		    $(top_builddir)/lib/src/ovis_log/libovis_log.la \
+	            $(top_builddir)/lib/src/ovis_histogram/libovis_histogram.la \
 		    @OPENSSL_LIBS@
 
 lib_LTLIBRARIES += libldms.la
@@ -42,6 +43,7 @@ ldms_msg_chan_client_LDADD = \
 	 $(top_builddir)/lib/src/ovis_log/libovis_log.la \
 	 $(top_builddir)/lib/src/ovis_event/libovis_event.la \
 	 $(top_builddir)/lib/src/ovis_json/libovis_json.la \
+	 $(top_builddir)/lib/src/ovis_histogram/libovis_histogram.la \
 	 $(LOVIS_UTIL) \
 	-lpthread \
 	@LDFLAGS_GETTIME@

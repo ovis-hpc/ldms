@@ -70,6 +70,7 @@
 #include <ovis_json/ovis_json.h>
 #include <arpa/inet.h>
 #include "ovis_util/os_util.h"
+#include "ovis_histogram/ovis_histogram.h"
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_private.h"
@@ -83,6 +84,8 @@ extern ovis_log_t xlog;
 #define XPRT_LOG(x, level, fmt, ...) do { \
 	ovis_log(xlog, level, fmt, ## __VA_ARGS__); \
 } while (0);
+
+static struct ldms_xprt_op_histogram xprt_op_hist[LDMS_XPRT_OP_COUNT];
 
 /* The definition is in ldms_xprt.c. */
 extern int __enable_profiling[LDMS_XPRT_OP_COUNT];
@@ -395,6 +398,18 @@ void __ldms_op_ctxt_dequeue(struct ldms_op_ctxt_list *list, struct ldms_op_ctxt 
 	ref_put(&op_ctxt->ref, "enqueue");
 }
 
+void __xprt_stats_update(ldms_stats_entry_t e, double dur_us)
+{
+	if (e->min_us > dur_us)
+		e->min_us = dur_us;
+	if (e->max_us < dur_us)
+		e->max_us = dur_us;
+	e->total_us += dur_us;
+	e->mean_us = (e->count * e->mean_us) + dur_us;
+	e->count += 1;
+	e->mean_us /= e->count;
+}
+
 /* Must be called with the xprt lock held.
  * Keeps, rather than copies, string and other pointers in varargs. */
 struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
@@ -471,6 +486,7 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 	int64_t dur_us;
 	struct timespec end;
 	ldms_stats_entry_t e = NULL;
+	enum ldms_xprt_ops_e op_e;
 
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	dur_us = ldms_timespec_diff_us(&ctxt->start, &end);
@@ -482,12 +498,14 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 		break;
 	case LDMS_CONTEXT_LOOKUP_READ:
 		e = &x->stats.ops[LDMS_XPRT_OP_LOOKUP];
+		op_e = LDMS_XPRT_OP_LOOKUP;
 		if (ctxt->lu_read.s)
 			ref_put(&ctxt->lu_read.s->ref, "__ldms_alloc_ctxt");
 		break;
 	case LDMS_CONTEXT_UPDATE:
 	case LDMS_CONTEXT_UPDATE_META:
 		e = &x->stats.ops[LDMS_XPRT_OP_UPDATE];
+		op_e = LDMS_XPRT_OP_UPDATE;
 		if (ctxt->update.s)
 			ref_put(&ctxt->update.s->ref, "__ldms_alloc_ctxt");
 		break;
@@ -497,11 +515,13 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 		break;
 	case LDMS_CONTEXT_SET_DELETE:
 		e = &x->stats.ops[LDMS_XPRT_OP_SET_DELETE];
+		op_e = LDMS_XPRT_OP_SET_DELETE;
 		break;
 	case LDMS_CONTEXT_DIR:
 		break;
 	case LDMS_CONTEXT_SEND:
 		e = &x->stats.ops[LDMS_XPRT_OP_SEND];
+		op_e = LDMS_XPRT_OP_SEND;
 		break;
 	case LDMS_CONTEXT_PUSH:
 	case LDMS_CONTEXT_DIR_CANCEL:
@@ -509,14 +529,8 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 	}
 	(void)clock_gettime(CLOCK_REALTIME, &x->stats.last_op);
 	if (e) {
-		if (e->min_us > dur_us)
-			e->min_us = dur_us;
-		if (e->max_us < dur_us)
-			e->max_us = dur_us;
-		e->total_us += dur_us;
-		e->mean_us = (e->count * e->mean_us) + dur_us;
-		e->count += 1;
-		e->mean_us /= e->count;
+		__xprt_stats_update(e, dur_us);
+		ovis_histogram_update(&xprt_op_hist[op_e].hist, dur_us);
 	}
 	ldms_xprt_put(ctxt->x, "alloc_ctxt");
 	if (ctxt->op_ctxt) {
@@ -1114,14 +1128,8 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	__ldms_empty_name_list(&name_list);
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	dur_us = ldms_timespec_diff_us(&start, &end);
-	if (e->min_us > dur_us)
-		e->min_us = dur_us;
-	if (e->max_us < dur_us)
-		e->max_us = dur_us;
-	e->total_us += dur_us;
-	e->mean_us = (e->count * e->mean_us) + dur_us;
-	e->count += 1;
-	e->mean_us /= e->count;
+	__xprt_stats_update(e, dur_us);
+	ovis_histogram_update(&xprt_op_hist[LDMS_XPRT_OP_DIR_REP].hist, dur_us);
 	return;
 out:
 	if (reply)
@@ -2256,14 +2264,8 @@ out:
 		ldms_xprt_dir_free(x, dir);
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	dur_us = ldms_timespec_diff_us(&start, &end);
-	if (e->min_us > dur_us)
-		e->min_us = dur_us;
-	if (e->max_us < dur_us)
-		e->max_us = dur_us;
-	e->total_us += dur_us;
-	e->mean_us = (e->count * e->mean_us) + dur_us;
-	e->count += 1;
-	e->mean_us /= e->count;
+	__xprt_stats_update(e, dur_us);
+	ovis_histogram_update(&xprt_op_hist[LDMS_XPRT_OP_DIR_REQ].hist, dur_us);
 }
 
 static
@@ -2454,14 +2456,8 @@ static int recv_cb(struct ldms_xprt *x, void *r)
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	dur_us = ldms_timespec_diff_us(&start, &end);
 	(void)clock_gettime(CLOCK_REALTIME, &x->stats.last_op);
-	if (e->min_us > dur_us)
-		e->min_us = dur_us;
-	if (e->max_us < dur_us)
-		e->max_us = dur_us;
-	e->total_us += dur_us;
-	e->mean_us = (e->count * e->mean_us) + dur_us;
-	e->count += 1;
-	e->mean_us /= e->count;
+	__xprt_stats_update(e, dur_us);
+	ovis_histogram_update(&xprt_op_hist[LDMS_XPRT_OP_RECV].hist, dur_us);
 	return rc;
 }
 
@@ -5119,8 +5115,44 @@ void ldms_thrstat_result_free(struct ldms_thrstat_result *res)
 	free(res);
 }
 
+ldms_xprt_op_histogram_t ldms_xprt_histogram_get()
+{
+	ldms_xprt_op_histogram_t hres;
+	int i;
+
+	errno = 0;
+	hres = malloc(LDMS_XPRT_OP_COUNT * sizeof(struct ldms_xprt_op_histogram));
+	if (!hres) {
+		errno = ENOMEM;
+		return NULL;
+	}
+	for (i = 0; i < LDMS_XPRT_OP_COUNT; i++) {
+		memcpy(&hres[i].hist, &xprt_op_hist[i], sizeof(struct ovis_histogram));
+	}
+	return hres;
+}
+
+void ldms_xprt_histogram_reset(int recal)
+{
+	int op_e;
+
+	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
+		if (recal) {
+			ovis_histogram_recalibrate(&xprt_op_hist[op_e].hist, 0, 0, 0);
+		} else {
+			ovis_histogram_reset(&xprt_op_hist[op_e].hist);
+		}
+	}
+}
+
+void ldms_xprt_histogram_free(ldms_xprt_op_histogram_t op_hist)
+{
+	free(op_hist);
+}
+
 static void __attribute__ ((constructor)) cs_init(void)
 {
+	enum ldms_xprt_ops_e op_e;
 	pthread_mutex_init(&xprt_list_lock, 0);
 	pthread_mutex_init(&ldms_zap_list_lock, 0);
 	(void)clock_gettime(CLOCK_REALTIME, &xprt_start);
@@ -5133,6 +5165,11 @@ static void __attribute__ ((constructor)) cs_init(void)
 		ipv6_enabled = 1;
 	} else {
 		ipv6_enabled = 0;
+	}
+
+	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
+		ovis_histogram_init(&xprt_op_hist[op_e].hist, 0, 0,
+					OVIS_HISTOGRAM_SCALE_LINEAR);
 	}
 }
 
