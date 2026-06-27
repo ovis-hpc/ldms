@@ -299,7 +299,7 @@ void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_ty
 				break;
 			need_free = 1;
 		}
-		c->c_cb_fn(c, c->c_ctxt, stream_type, data, data_len, json_doc_root(jdoc));
+		c->c_cb_fn(c, c->c_ctxt, stream_type, data, data_len, (jdoc?json_doc_root(jdoc):NULL));
 	}
 
 	if (p_name) {
