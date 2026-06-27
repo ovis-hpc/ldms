@@ -1492,8 +1492,8 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 
 	updtr = ldmsd_updtr_find(updtr_name);
 	if (!updtr) {
-		sprintf(rep_buf, "%dThe updater specified does not "
-						"exist\n", ENOENT);
+		sprintf(rep_buf, "The updater specified does not "
+						"exist\n");
 		return ENOENT;
 	}
 
@@ -1502,8 +1502,8 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 	if (rc)
 		goto out_1;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-		sprintf(rep_buf, "%dConfiguration changes cannot be made "
-				"while the updater is running\n", EBUSY);
+		sprintf(rep_buf, "Configuration changes cannot be made "
+				"while the updater is running\n");
 		rc = EBUSY;
 		goto out_1;
 	}
@@ -1542,7 +1542,7 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 		ref = prdcr_ref_new(prdcr);
 		if (!ref) {
 			rc = ENOMEM;
-			sprintf(rep_buf, "%dMemory allocation failure.\n", ENOMEM);
+			sprintf(rep_buf, "Memory allocation failure.\n");
 			ldmsd_prdcr_put(prdcr, "iter");
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 			goto out_1;
@@ -1550,7 +1550,6 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 		rbt_ins(&updtr->prdcr_tree, &ref->rbn);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	sprintf(rep_buf, "0\n");
 out_1:
 unlock:
 	ldmsd_updtr_unlock(updtr);
