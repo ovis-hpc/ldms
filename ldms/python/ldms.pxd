@@ -308,7 +308,7 @@ cdef extern from "ldms.h" nogil:
         gid_t gid
 
     # --- xprt connection related --- #
-    cpdef enum ldms_xprt_event_type:
+    cdef enum ldms_xprt_event_type:
         EVENT_CONNECTED     "LDMS_XPRT_EVENT_CONNECTED"
         EVENT_REJECTED      "LDMS_XPRT_EVENT_REJECTED"
         EVENT_ERROR         "LDMS_XPRT_EVENT_ERROR"
