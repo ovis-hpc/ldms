@@ -1,4 +1,7 @@
 #!/bin/bash
+echo "[>>] patch"
+patch -p1 < nersc/ldms_xprt_ipv4_fallback.patch
+
 echo "[>>] configure"
 CFLAGS="-g -O" \
 ./configure \
