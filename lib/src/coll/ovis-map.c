@@ -51,6 +51,7 @@
 #include "ovis-map.h"
 #include "third/city.h"
 #include <inttypes.h>
+#include <stdio.h>
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
@@ -61,10 +62,11 @@
 
 /** approximately "OVISMAP" on the right endianness cast to char. */
 #define OVISMAP_MAGIC 0xa50414d5349564f
-#define MAP_OK(m) ((m)->magic == OVISMAP_MAGIC)
-#ifdef NOISYMAGIC
+#define MAP_OK(m) (m && (m)->magic == OVISMAP_MAGIC)
+#ifdef NOISY_MAGIC
 #undef MAP_OK
-#define MAP_OK(m) ((m)->magic == OVISMAP_MAGIC || 0 == printf("bad magic at %d\n",__LINE__))
+#define MAP_OK(m) (m && (m)->magic == OVISMAP_MAGIC || \
+	0 == printf("bad map %s at %d\n", (m ? "magic" : "pointer"), __LINE__))
 #endif
 
 /* Compare map element to user-defined element */
@@ -138,7 +140,7 @@ static int visitor(struct rbn *n, void *udata, int level)
 
 void ovis_map_visit(struct ovis_map *m, ovis_map_visitor v, void *userdata)
 {
-	if (!m || !MAP_OK(m) || !v) {
+	if (!MAP_OK(m) || !v) {
 		return;
 	}
 	struct visit_data vd = { v, userdata };
@@ -259,7 +261,7 @@ static struct rbn *create_node(struct ovis_map_element *user)
 
 int ovis_map_insert_fast(struct ovis_map *m, struct ovis_map_element el)
 {
-	if (!m || !MAP_OK(m) || !el.key || !el.value || !el.keyhash) {
+	if (!MAP_OK(m) || !el.key || !el.value || !el.keyhash) {
 		return EINVAL;
 	}
 	int rc = 0;
@@ -277,7 +279,7 @@ int ovis_map_insert_fast(struct ovis_map *m, struct ovis_map_element el)
 
 int ovis_map_insert(struct ovis_map *map, const char *key, void *value)
 {
-	if (!map || !MAP_OK(map) || !key || !value) {
+	if (!MAP_OK(map) || !key || !value) {
 		return EINVAL;
 	}
 
@@ -304,7 +306,7 @@ out:
 
 int ovis_map_insert_new(struct ovis_map *map, const char *key, void *value)
 {
-	if (!map || !MAP_OK(map) || !key || !value) {
+	if (!MAP_OK(map) || !key || !value) {
 		return EINVAL;
 	}
 
@@ -325,7 +327,7 @@ int ovis_map_insert_new(struct ovis_map *map, const char *key, void *value)
 int64_t ovis_map_snapshot(struct ovis_map *map, struct ovis_map_element **snap, size_t snap_len)
 {
 	int64_t rc = 0;
-	if (!map || !MAP_OK(map)) {
+	if (!MAP_OK(map)) {
 		return -1;
 	}
 	if (!snap) {
