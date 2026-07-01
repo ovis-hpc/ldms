@@ -63,9 +63,9 @@ CONFIG OPTIONS
 
         An integer identifying the component (default: *0*).
 
--  **stream**
+-  **message_tag**
 
-        The name of the **``ldmsd_stream``** to listen for SLURM job events.
+        The name of the message_tag to listen for netlink or SLURM process events.
         (default: slurm).
 
 -  **metrics**
