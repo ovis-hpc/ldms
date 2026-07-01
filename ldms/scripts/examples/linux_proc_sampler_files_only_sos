@@ -1,0 +1,109 @@
+root_required
+export plugname=linux_proc_sampler
+export dsname=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 stat=1 auto-schema=1)
+export dstat_schema=$dsname
+#export LDMSD_LOG_LEVEL=ERROR
+export LDMSD_LOG_TIME_SEC=1
+export LDMSD_EXTRA="-m 128m"
+
+# to clear stuck daemon 1
+# ss -altnp
+# check for zombies
+# ss --tcp state CLOSE-WAIT --kill
+#
+
+SET_LOG_LEVEL DEBUG
+
+portbase=26040
+DAEMONS 3
+#
+# in spite of config field aliases not updated, everything operates on the new message buss tag
+# pub/sub api. Use store plugins accordingly
+# for testing w/python, allow in usr/lib
+#        "^/usr/lib",
+cat << EOF > $LDMSD_RUN/files.input
+{ "message_tag" : "slurm",
+  "metric_sets" : 0,
+  "log_send": 1,
+  "argv_msg": 0,
+  "env_msg": 0,
+  "fd_threads": 0,
+  "fd_msg": 1,
+  "fd_exclude": [
+        "^/clean",
+        "^/dev/",
+        "^/etc/",
+        "^/net/",
+        "^/mem",
+        "^/run/",
+        "^/sys/",
+        "^/tmp/",
+        "^/var/",
+        "^/proc/",
+        "^/proc$",
+        "^/ram/tmp/",
+        "^/root/",
+        "^/usr/share/",
+        "^/opt/Crowd",
+        "^/opt/IBM",
+        "^/opt/ness",
+        "^/opt/splunk",
+        "^/ram/opt/ness",
+        "^/ram/opt/splunk",
+        "^/ram/var/",
+	"/.nfs0"
+    ],
+  "published_pid_dir" : "${LDMSD_RUN}/ldms-netlink-tracked",
+  "metrics" : [
+	"stat_pid",
+	"stat_rss",
+	"stat_utime",
+	"stat_stime"
+  ]
+}
+EOF
+rm -f $LOGDIR/json*.log
+for pi in $(seq 80 100); do
+	touch ${LDMSD_RUN}/ldms-netlink-tracked/$pi
+done
+rm -f $LOGDIR/nl.log
+
+drd="valgrind -v --tool=drd --log-file=$LOGDIR/vg.netlink.drd.txt --trace-cond=yes --trace-fork-join=yes"
+memcheck="valgrind -v --leak-check=full --track-origins=yes --trace-children=yes  --log-file=$LOGDIR/vg.netlink.memcheck.txt --keep-debuginfo=yes --malloc-fill=3b"
+#${BUILDDIR}/sbin/ldms-netlink-notifier --port=$port1 --auth=none --reconnect=1 -D 30 -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked --purge-track-dir &
+
+${BUILDDIR}/sbin/ldms-netlink-notifier --port=$port1 --auth=none --reconnect=1 -D 30 -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs --track-dir=${LDMSD_RUN}/ldms-netlink-tracked -x -e exec,clone,exit  -L $LOGDIR/nl.log --heartbeat 1 -v 3 --ProducerName=$(hostname) --purge-track-dir --format 3 &
+
+mkdir -p ${STOREDIR}/sos
+# uncomment next one to test duplicate handling
+#${BUILDDIR}/sbin/ldms-netlink-notifier --port=$port1 --auth=none --reconnect=1 -D 30 -j $LOGDIR/json2.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
+VGARGS="--tool=drd --trace-cond=yes --trace-fork-join=yes"
+VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite --time-stamp=yes --keep-debuginfo=yes --malloc-fill=3b"
+#vgon
+LDMSD 2 # L1
+vgoff
+LDMSD 3 # L2
+SLEEP 1
+#vgon
+LDMSD 1 # L0
+vgoff
+SLEEP 2
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -v
+MESSAGE ldms_ls on host 2:
+SLEEP 1
+LDMS_LS 2 -v
+MESSAGE ldms_ls on host 3:
+SLEEP 1
+LDMS_LS 3 -v
+SLEEP 5
+SLEEP 5
+for lc in $(seq 1); do
+	LDMS_LS 1 -v
+	SLEEP 2
+done
+SLEEP 5
+KILL_LDMSD 3 2 1
+file_created $STOREDIR/node/$dsname
+rollover_created $STOREDIR/blobs/linux_proc_sampler_files.DAT
+rollover_created $STOREDIR/blobs/slurm.DAT
