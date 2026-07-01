@@ -1384,6 +1384,7 @@ static int load_syscall_names(linux_proc_sampler_inst_t inst)
 			}
 			inst->name_syscall[call] = s;
 #pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpragmas"
 #pragma GCC diagnostic ignored "-Wstringop-truncation"
 /* to truncate here, the user has to be deliberately
 fouling the input. they get what they deserver (which
@@ -3364,6 +3365,7 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 		}
 		buf[0] = '\0';
 #pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpragmas"
 #pragma GCC diagnostic ignored "-Wformat-truncation"
 		/* format is /proc/$pid_int/$fd_int, so ignore size warnings */
 		snprintf(dname, sizeof(dname), "%s/%s", path, dent->d_name);
