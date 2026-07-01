@@ -428,7 +428,9 @@ json_entity_t json_entity_new(json_doc_t doc, enum json_value_e type, ...)
 	case JSON_ATTR_VALUE:
 		name = va_arg(ap, char *);
 		value = va_arg(ap, json_entity_t);
-		if (strlen(name) >= sizeof(e->value.attr_.name)) {
+		if (strlen(name) < sizeof(e->value.attr_.name_)) {
+			e->value.attr_.name = e->value.attr_.name_;
+		} else {
 			errno = ENAMETOOLONG;
 			__entity_free(e);
 			return NULL;
@@ -571,8 +573,10 @@ json_entity_t json_entity_copy(json_doc_t doc, json_entity_t e)
 
 	switch (type) {
 	case JSON_INT_VALUE:
+		new = json_entity_new(doc, type, e->value.int_);
+		break;
 	case JSON_BOOL_VALUE:
-		new = json_entity_new(doc, type, e->value);
+		new = json_entity_new(doc, type, e->value.bool_);
 		break;
 	case JSON_FLOAT_VALUE:
 		new = json_entity_new(doc, type, e->value.double_);
@@ -612,7 +616,7 @@ json_entity_t json_entity_copy(json_doc_t doc, json_entity_t e)
 		for (n = json_attr_first(e); n; n = json_attr_next(n))
 		{
 			/* Copy the attribute value */
-			v = json_entity_copy(doc, n);
+			v = json_entity_copy(doc, json_attr_value(n));
 			if (!v)
 			{
 				json_entity_free(new);
@@ -652,8 +656,14 @@ void __attr_add(json_entity_t d, json_entity_t a)
 
 int json_attr_add(json_entity_t d, const char *name, json_entity_t v)
 {
-	json_entity_t a;
+	json_entity_t a, existing;
 	assert(d->type == JSON_DICT_VALUE);
+	existing = json_attr_find(d, name);
+	if (existing) {
+		json_entity_free(existing->value.attr_.value);
+		existing->value.attr_.value = v;
+		return 0;
+	}
 	a = json_attr_new(d->doc, name, v);
 	if (!a)
 		return E2BIG;
@@ -845,13 +855,10 @@ static json_entity_t __attr_value_new(json_doc_t doc, int type, va_list *ap)
 		v = json_entity_new(doc, type);
 		if (!v)
 			return NULL;
-		type = va_arg(*ap, int);
 		for (type = va_arg(*ap, int); type != JSON_EOL_VALUE;
-		     type = va_arg(*ap, int))
-		{
+			type = va_arg(*ap, int)) {
 			item = __attr_value_new(doc, type, ap);
 			json_item_add(v, item);
-			type = va_arg(*ap, int);
 		}
 		break;
 	case JSON_NULL_VALUE:
