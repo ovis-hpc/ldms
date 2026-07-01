@@ -1383,7 +1383,13 @@ static int load_syscall_names(linux_proc_sampler_inst_t inst)
 				goto err;
 			}
 			inst->name_syscall[call] = s;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+/* to truncate here, the user has to be deliberately
+fouling the input. they get what they deserver (which
+may be mislabeled data only. */
 			strncpy(s, buf2, SYSCALL_MAX);
+#pragma GCC diagnostic push
 		}
 	}
 	fclose(f);
@@ -2689,7 +2695,7 @@ static void get_user(pid_t pid, username_t u)
 		pwsz = 1024;
 	}
 	char pw[pwsz];
-	int err = getpwuid_r(statb.st_uid, &p, pw, pwsz, &result);
+	getpwuid_r(statb.st_uid, &p, pw, pwsz, &result);
 	if (!result) {
 		snprintf(u, UN_SIZE, "<unknown-%d>",(int)pid);
 	}
@@ -3129,7 +3135,7 @@ static int fentry_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 
 static int mapped_file_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set, struct stat *s, const char *fname)
 {
-	if (!inst || !app_set || !stat || !fname)
+	if (!inst || !app_set || !s || !fname)
 		return EINVAL;
 	return string_send_state(inst, app_set, s, fname, strlen(fname)+1, "mapped", -1);
 }
@@ -3167,7 +3173,7 @@ static int parse_maps(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_
 	if (!mapped_files)
 		return ENOMEM;
 
-	snprintf(maps_path, sizeof(maps_path), "/proc/%d/maps", app_set->key.os_pid);
+	snprintf(maps_path, sizeof(maps_path), "/proc/%" PRId64 "/maps", app_set->key.os_pid);
 
 	file = fopen(maps_path, "r");
 		if (file == NULL) {
@@ -3303,7 +3309,7 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 		goto close_check;
 	}
 
-	char path[PROCPID_SZ];
+	char path[NAME_MAX];
 	char dname[PATH_MAX];
 	int blen;
 	char buf[BUFMAX];
@@ -3357,7 +3363,11 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 			fe->name = NULL;
 		}
 		buf[0] = '\0';
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+		/* format is /proc/$pid_int/$fd_int, so ignore size warnings */
 		snprintf(dname, sizeof(dname), "%s/%s", path, dent->d_name);
+#pragma GCC diagnostic pop
 		blen = readlink(dname, buf, BUFMAX);
 		if (blen < 0 || blen == BUFMAX) /* file closed or too big */
 			continue;
@@ -3540,7 +3550,7 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data, int *
 	 * are both active. */
 	struct linux_proc_sampler_set *app_set;
 	int rc;
-	ldms_set_t set;
+	ldms_set_t set = NULL;
 	int len;
 	jbuf_t bjb = NULL;
 	json_entity_t os_pid;
