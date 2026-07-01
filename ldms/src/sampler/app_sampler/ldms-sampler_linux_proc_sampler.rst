@@ -17,10 +17,11 @@ SYNOPSIS
 ========
 
 | Within ldmsd_controller or a configuration file:
-| config name=linux_proc_sampler [common attributes] [stream=STREAM]
+| config name=linux_proc_sampler [common attributes] [message_tag=STREAM]
   [metrics=METRICS] [cfg_file=FILE] [instance_prefix=PREFIX]
   [exe_suffix=1] [argv_sep=<char>] [argv_msg=1] [argv_fmt=<1,2>]
   [env_msg=1] [env_exclude=EFILE] [fd_msg=1] [fd_exclude=EFILE]
+  [metric_sets=0] [fd_threads=1]
 
 DESCRIPTION
 ===========
@@ -29,10 +30,10 @@ With LDMS (Lightweight Distributed Metric Service), plugins for the
 ldmsd (ldms daemon) are configured via ldmsd_controller or a
 configuration file. The linux_proc_sampler plugin provides data from
 /proc/, creating a different set for each process identified in the
-named stream. The stream can come from the ldms-netlink-notifier daemon
+named message_tag flow. The messages can come from the ldms-netlink-notifier daemon
 or the spank plugin slurm_notifier. The per-process data from
 /proc/self/environ and /proc/self/cmdline can optionally be published to
-streams.
+message tags.
 
 CONFIGURATION ATTRIBUTE SYNTAX
 ==============================
@@ -69,10 +70,11 @@ attributes of the base class.
         the ticks per second from sysconf(_SC_CLK_TCK). (default: not
         included).
 
-   stream=STREAM
+   message_tag=TAG
       |
-      | The name of the \`ldmsd_stream\` to listen for SLURM job events.
-        (default: slurm).
+      | The name of the ldms message_tag to listen for process id events.
+        (default: slurm). 'stream' is a deprecated alias for this option.
+        Listening on ldmsd_stream objects is not supported.
 
    argv_sep=<char>
       |
@@ -85,23 +87,28 @@ attributes of the base class.
         unless syscall_name is included in the metrics. See FILES for
         details.
 
+   metric_sets=0
+      |
+      | Disable metric set per pid. The default is sets are enabled.
+
    metrics
       |
       | The comma-separated list of metrics to monitor. The default is
         (empty), which is equivalent to monitor ALL metrics.
+        Ignored if metric_sets == 0.
 
    cfg_file=CFILE
       |
       | The alternative configuration file in JSON format. The file is
         expected to have an object that contains the following
-        attributes: { "stream": "STREAM_NAME", "syscalls" : "/file",
+        attributes: { "message_tag": "TAG", "syscalls" : "/file",
         "metrics": [ comma-separated-quoted-strings ] }. If the
         \`cfg_file\` is given, all other sampler-specific options given
         on the key=value line are ignored.
 
    argv_msg=1
       |
-      | Publish the argv items to a stream named <SCHEMA>_argv, where if
+      | Publish the argv items to a message_tag named <SCHEMA>_argv, where if
         the schema is not specified, the default schema is
         linux_proc_sampler. (Default: argv_msg=0; no publication of
         argv). E.g. a downstream daemon will need to subscribe to
@@ -114,15 +121,25 @@ attributes of the base class.
         ['argv0', 'argv1'] or (2) a json list of key/value tuples, e.g.
         [ {"k":0, "v":"argv[0]"}, {"k":1, "v":"argv[1]"}].
 
+   argv_include_fd=<0,1>
+      |
+      | Publish the argv of programs found in the fd_exclude list
+        if this is not 0. The default is 0.
+
    env_msg=1
       |
-      | Publish the environment items to a stream named <SCHEMA>_env,
+      | Publish the environment items to a message_tag named <SCHEMA>_env,
         where if the schema is not specified, the default SCHEMA is
         linux_proc_sampler. (Default: env_msg=0; no publication of the
         environment). Environment data is published as a list in the
         style of argv_fmt=2. E.g. a downstream daemon will need to
         subscribe to linux_proc_sampler_env to receive the published
         messages and store them.
+
+   env_include_fd=<0,1>
+      |
+      | Publish the env of programs found in the fd_exclude list
+        if this is not 0. The default is 0.
 
    env_exclude=ELIST
       |
@@ -134,6 +151,14 @@ attributes of the base class.
         the env_exclude value may be either the string name of the
         regular expression file or a JSON array of expression strings as
         shown in EXAMPLES.
+
+   env_threads=1
+      |
+      | Publish env messages for threads as well as parents.
+        While changing the environment of child threads is possible,
+        this is off by default as hpc environments are usually
+        highly redundant with the parent process.
+        The default is 0.
 
    fd_exclude=ELIST
       |
@@ -163,6 +188,16 @@ attributes of the base class.
         files. If a close-reopen of the same file occurs between scans,
         no corresponding events are generated.
 
+   fd_threads=1
+      |
+      | Publish file messages for threads as well as parents. Most
+        forked/cloned threads share the file descriptor table with the parent
+        making all their file events redundant. The default is 0.
+
+   fd_map_files=1
+      |
+      | Publish file messages for /proc/pid/maps as well as /proc/pid/fd.
+
    published_pid_dir=<path>
       |
       | Name of the directory where netlink-notifier or other notifier
@@ -176,10 +211,10 @@ attributes of the base class.
         stale pid references found in this directory. Any pid not
         appearing in this directory is not being tracked.
 
-INPUT STREAM FORMAT
-===================
+INPUT MESSAGE FORMAT
+====================
 
-The named ldmsd stream should deliver messages with a JSON format which
+The named ldms message_tag should deliver messages with a JSON format which
 includes the following. Messages which do not contain event, data,
 job_id, and some form of PID will be ignored. Extra fields will be
 ignored.
@@ -207,8 +242,8 @@ value from another resource management environment. The value of start,
 if provided, should be approximately the epoch time ("%lu.%06lu") when
 the PID to be monitored started.
 
-OUTPUT STREAM FORMAT
-====================
+OUTPUT MESSAGES FORMAT
+======================
 
 The json formatted output for argv and environment values includes a
 common header:
@@ -216,10 +251,12 @@ common header:
 ::
 
    {
+      "schema":"ITEM_FORMAT"
       "producerName":"localhost1",
       "component_id":1,
       "pid":8991,
       "job_id":0,
+      "user":"nobody",
       "timestamp":"1663086686.947600",
       "task_rank":-1,
       "parent":1,
@@ -228,6 +265,9 @@ common header:
       "data":[LIST]
 
 where LIST is formatted as described for argv_fmt option.
+ITEM_FORMAT will be one of linux_proc_sampler_argv_1, linux_proc_sampler_argv_2, linux_proc_sampler_env_2
+linux_proc_sampler_fd_1. ITEM_FORMAT is independent of the schema name used
+to configure the sampler and the message_tag the output is published on.
 
 EXAMPLES
 ========
@@ -245,22 +285,23 @@ An example metrics configuration file is:
 ::
 
    {
-     "stream": "slurm",
+     "message_tag": "slurm",
      "instance_prefix" : "cluster2",
      "syscalls": "/etc/sysconfig/ldms.d/plugins-conf/syscalls.map",
      "env_msg": 1,
      "argv_msg": 1,
      "fd_msg" : 1,
      "fd_exclude": [
-           "/dev/",
-           "/run/",
-           "/var/",
-           "/etc/",
-           "/sys/",
-           "/tmp/",
-           "/proc/",
-           "/ram/tmp/",
-           "/usr/lib"
+           "^/dev/",
+           "^/net/",
+           "^/run/",
+           "^/var/",
+           "^/etc/",
+           "^/sys/",
+           "^/tmp/",
+           "^/proc/",
+           "^/ram/tmp/",
+           "^/usr/lib"
        ],
      "env_exclude": [
     "COLORTERM",
@@ -397,13 +438,17 @@ Plugin configuration will fail with ENOTSUP unless the daemon is configured with
 NOTES
 =====
 
+The overheads of collecting and transporting a metric set per pid
+may be high on high core-count processors; benchmarking performance
+impact on applications is recommended when metric sets are enabled.
+
 The value strings given to the options sc_clk_tck and exe_suffix are
 ignored; the presence of the option is sufficient to enable the
 respective features.
 
 Some of the optionally collected data might be security sensitive.
 
-The publication of environment and cmdline (argv) stream data is done
+The publication of environment and cmdline (argv) message data is done
 once at the start of metric collection for the process. The message will
 not be reemitted unless the sampler is restarted. Also, changes to the
 environment and argv lists made within a running process are NOT
@@ -422,6 +467,10 @@ The status_uid and status_gid values can alternatively be collected as
 "status_sav_group", "status_fs_group". These string values are most
 efficiently collected if both the string value and the numeric values
 are collected.
+
+The "user" field is taken from the ownership of /proc/pid at the time
+of process discovery; processes which subsequently change owners will
+only see that reflected in the status\_ fields, not user.
 
 SEE ALSO
 ========

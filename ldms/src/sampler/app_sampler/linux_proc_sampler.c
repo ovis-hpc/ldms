@@ -65,8 +65,10 @@
 #include <glob.h>
 #include <sys/sysmacros.h>
 #include <sys/sysinfo.h>
+#include <limits.h>
 
 #include <coll/rbt.h>
+#include <ovis-map.h>
 
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
@@ -88,7 +90,10 @@
 #define ARRAY_LEN(a) (sizeof((a))/sizeof((a)[0]))
 #endif
 
-/*#define LPDEBUG */
+/* #define LPS_PUB_TYPE LDMS_MSG_STRING */
+#define LPS_PUB_TYPE LDMS_MSG_JSON
+
+/* #define LPDEBUG */
 
 typedef enum linux_proc_sampler_metric linux_proc_sampler_metric_e;
 enum linux_proc_sampler_metric {
@@ -262,7 +267,7 @@ struct linux_proc_sampler_metric_info_s {
 /* CMDLINE_SZ is used for loading /proc/pid/[status,cmdline,syscall,stat] */
 #define CMDLINE_SZ 4096
 /* space for a /proc/$pid/<leaf> name */
-#define PROCPID_SZ 64
+#define PROCPID_SZ 4096
 /* #define MOUNTINFO_SZ 8192 */
 #define ROOT_SZ 4096
 #define STAT_USR_SZ 256 /* from sysconf */
@@ -456,9 +461,11 @@ struct linux_proc_sampler_set {
 	struct rbn rbn; /* hook for app_set list */
 	int dead;
 	int fd_skip;
+	int is_thread;
 	char *fd_ident; /* json prefix for all file messages */
 	size_t fd_ident_sz; /* json prefix for all file messages */
 	struct rbt fn_rbt; /* tree for fd numbers of this process */
+	struct ovis_map *mapped_files; /* mmap unique path data */
 	LIST_ENTRY(linux_proc_sampler_set) del;
 };
 LIST_HEAD(set_del_list, linux_proc_sampler_set);
@@ -474,14 +481,20 @@ struct linux_proc_sampler_inst_s {
 	ovis_log_t mylog;
 	base_data_t base_data;
 	char *instance_prefix;
-	bool exe_suffix;
 	int argv_fmt;
+	bool exe_suffix;
+	bool metric_sets; /* no metrics if config'd to false */
 	bool argv_msg;
+	bool argv_include_fd;
 	bool env_msg;
+	bool env_include_fd;
 	bool env_use_regex; /* match object is ready */
+	bool fd_use_regex; /* match object is ready */
+	bool fd_map_files; /* include map_files link targets in fd data */
+	bool fd_threads; /* 0 no, otherwise yes */
+	bool env_threads;
 	regex_t env_regex; /* match object for env_exclude */
 	int fd_msg; /* N for rescan fd every n-th sample */
-	bool fd_use_regex; /* match object is ready */
 	regex_t fd_regex; /* match object for fd_exclude */
 	long sc_clk_tck;
 	struct timeval sample_start;
@@ -497,13 +510,13 @@ struct linux_proc_sampler_inst_s {
 	char *recycle_buf;
 	size_t recycle_buf_sz;
 	ldms_msg_client_t stream;
-	int log_send;
 	char *argv_sep;
 	char *syscalls; /* file of 'int name' lines with # comments */
 	int n_syscalls; /* maximum number of syscalls aliased/mapped */
 	char **name_syscall; /* syscall names index by call's int id */
 
 	struct handler_info fn[17];
+	int log_send;
 	int n_fn;
 
 	int task_rank_idx;
@@ -1370,7 +1383,14 @@ static int load_syscall_names(linux_proc_sampler_inst_t inst)
 				goto err;
 			}
 			inst->name_syscall[call] = s;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpragmas"
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+/* to truncate here, the user has to be deliberately
+fouling the input. they get what they deserver (which
+may be mislabeled data only. */
 			strncpy(s, buf2, SYSCALL_MAX);
+#pragma GCC diagnostic push
 		}
 	}
 	fclose(f);
@@ -1589,13 +1609,16 @@ linux_proc_sampler_update_schema(linux_proc_sampler_inst_t inst, ldms_schema_t s
 	return 0;
 }
 
-void fn_rbt_destroy(linux_proc_sampler_inst_t inst, struct rbt *t);
+static void fn_rbt_destroy(linux_proc_sampler_inst_t inst, struct rbt *t);
+static void map_file_kill(struct ovis_map_element *e, void *user);
 
 void app_set_destroy(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *a)
 {
 #ifdef LPDEBUG
-	INST_LOG(inst, OVIS_LDEBUG, "Removing set %s\n",
-		ldms_set_instance_name_get(a->set));
+	if (inst->metric_sets) {
+		INST_LOG(inst, OVIS_LDEBUG, "Removing set %s\n",
+			ldms_set_instance_name_get(a->set));
+	}
 	INST_LOG(inst, OVIS_LDEBUG,"Uncreating key at %p: %" PRIu64 " , %" PRId64 "\n",
 		&a->key, a->key.start_tick, a->key.os_pid);
 #else
@@ -1604,21 +1627,25 @@ void app_set_destroy(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_s
 	if (!a)
 		return;
 	a->dead = 0xDEADBEEF;
-	if (a->set) {
-		ldmsd_set_deregister(ldms_set_instance_name_get(a->set), SAMP);
-		ldms_set_unpublish(a->set);
-		ldms_set_delete(a->set);
-		a->set = NULL;
+	if (inst->metric_sets) {
+		if (a->set) {
+			ldmsd_set_deregister(ldms_set_instance_name_get(a->set), SAMP);
+			ldms_set_unpublish(a->set);
+			ldms_set_delete(a->set);
+			a->set = NULL;
+		}
 	}
 	a->key.start_tick = 0;
 	a->key.os_pid = 0;
 	free(a->fd_ident);
 	fn_rbt_destroy(inst, &a->fn_rbt);
+	ovis_map_destroy(a->mapped_files, map_file_kill, NULL);
 	free(a);
 }
 
 static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set);
 
+/* this handles both metric set updates and fd/maps periodic rescans in /proc/pid */
 static int linux_proc_sampler_sample(ldmsd_plug_handle_t handle)
 {
 	linux_proc_sampler_inst_t inst = ldmsd_plug_ctxt_get(handle);
@@ -1637,38 +1664,40 @@ static int linux_proc_sampler_sample(ldmsd_plug_handle_t handle)
 			LIST_INSERT_HEAD(&del_list, app_set, del);
 			continue;
 		}
-		ldms_transaction_begin(app_set->set);
-		gettimeofday(&inst->sample_start, NULL);
-		for (i = 0; i < inst->n_fn; i++) {
-			rc = inst->fn[i].fn(inst, app_set->key.os_pid, app_set->set);
-			if (rc) {
+		if (inst->metric_sets) {
+			ldms_transaction_begin(app_set->set);
+			gettimeofday(&inst->sample_start, NULL);
+			for (i = 0; i < inst->n_fn; i++) {
+				rc = inst->fn[i].fn(inst, app_set->key.os_pid, app_set->set);
+				if (rc) {
 #ifdef LPDEBUG
-				if (rc != ENOENT) {
-					INST_LOG(inst, OVIS_LDEBUG,
-						"Removing set %s. Error %d(%s)"
-						" from %s\n",
-						ldms_set_instance_name_get(
-							app_set->set),
-						rc, STRERROR(rc),
-						inst->fn[i].fn_name);
-				}
+					if (rc != ENOENT) {
+						INST_LOG(inst, OVIS_LDEBUG,
+							"Removing set %s. Error %d(%s)"
+							" from %s\n",
+							ldms_set_instance_name_get(
+								app_set->set),
+							rc, STRERROR(rc),
+							inst->fn[i].fn_name);
+					}
 #endif
-				LIST_INSERT_HEAD(&del_list, app_set, del);
-				app_set->dead = rc;
-				break;
+					LIST_INSERT_HEAD(&del_list, app_set, del);
+					app_set->dead = rc;
+					break;
+				}
 			}
 		}
 		app_set->fd_skip++;
 		if (!app_set->dead && inst->fd_msg &&
-			(app_set->fd_skip % inst->fd_msg == 0)) {
+			((app_set->fd_skip - 1) % inst->fd_msg == 0)) {
 			rc = publish_fd_pid(inst, app_set);
 			if (rc) {
 				if (rc != ENOENT) {
 					INST_LOG(inst, OVIS_LDEBUG,
-						"Removing set %s. Error %d(%s)"
+						"Removing set for pid %" PRId64
+						". Error %d(%s)"
 						" from publish_fd_pid\n",
-						ldms_set_instance_name_get(
-							app_set->set),
+							app_set->key.os_pid,
 						rc, STRERROR(rc));
 				}
 				LIST_INSERT_HEAD(&del_list, app_set, del);
@@ -1677,10 +1706,12 @@ static int linux_proc_sampler_sample(ldmsd_plug_handle_t handle)
 			}
 		}
 #ifdef LPDEBUG
-		INST_LOG(inst, OVIS_LDEBUG, "Got data for %s\n",
-			ldms_set_instance_name_get(app_set->set));
+		INST_LOG(inst, OVIS_LDEBUG, "Got data for pid %" PRId64 "\n",
+			app_set->key.os_pid);
 #endif
-		ldms_transaction_end(app_set->set);
+		if (inst->metric_sets) {
+			ldms_transaction_end(app_set->set);
+		}
 	}
 	while (!LIST_EMPTY(&del_list)) {
                 app_set = LIST_FIRST(&del_list);
@@ -1700,18 +1731,22 @@ static int linux_proc_sampler_sample(ldmsd_plug_handle_t handle)
 static
 char *_help = "\
 linux_proc_sampler config synopsis: \n\
-    config name=linux_proc_sampler [COMMON_OPTIONS] [stream=STREAM]\n\
+    config name=linux_proc_sampler [COMMON_OPTIONS] [message_tag=TAG]\n\
 	    [sc_clk_tck=1] [metrics=METRICS] [cfg_file=FILE] [exe_suffix=1]\n\
             [env_msg=1] [argv_msg=1] [argv_fmt=<1,2>] [env_exclude=EFILE]\n\
+            [env_include_fd=1] [argv_include_fd=1]\n\
             [fd_msg=N] [fd_exclude=EFILE] [published_pid_dir=PDIR]\n\
+            [env_threads=<0,1>] [fd_threads=<0,1>] [metric_sets=<0,1>]\n\
 \n\
 Option descriptions:\n\
+    metrics_sets Produce metric sets per pid or not (default 1, yes).\n\
+                 When 0, option 'metrics' is ignored.\n\
     instance_prefix    The prefix for generated instance names. Typically a cluster name\n\
 		when needed to disambiguate producer names that appear in multiple clusters.\n\
 	      (default: no prefix).\n\
     exe_suffix  Append executable path to set instance names.\n\
-    stream    The name of the `ldms_msg` to listen for SLURM job events.\n\
-	      (default: slurm).\n\
+    message_tag The name of the `ldms_msg` to listen for process id events.\n\
+	      (default: slurm). Alias 'stream' is deprecated.\n\
     sc_clk_tck=1 Include sc_clk_tck, the ticks per second, in the set.\n\
               The default is to exclude sc_clk_tck.\n\
     metrics   The comma-separated list of metrics to monitor.\n\
@@ -1721,28 +1756,34 @@ Option descriptions:\n\
               Special specifiers \n,\t,\b etc are also supported.\n\
     env_msg   Enable streaming the environment of each process out.\n\
     env_exclude Name of a file with 1 regular expression per line.\n\
+    env_include_fd Publish env of programs found in fd_exclude list\n\
     argv_msg  Enable streaming the argv of each process out.\n\
+    argv_include_fd Publish argv of programs found in fd_exclude list\n\
     argv_fmt  Select format of argv elements.\n\
     fd_msg=N  Enable /proc/$pid/fd detail reporting every N-th sample\n\
+    fd_threads=N  Report thread file names (usually highly redundant)\n\
+    env_threads=N  Report thread environment variables (often highly redundant)\n\
     fd_exclude Name of a file with 1 regular expression per line.\n\
+               Use of files in this path is ignored by default for\n\
+               env, argv, and file messages.\n\
     published_pid_dir Name of a directory of interesting pids\n\
     cfg_file  The alternative config file in JSON format. The file is\n\
 	      expected to have an object that contains the following \n\
 	      attributes:\n\
-	      - \"stream\": \"STREAM_NAME\"\n\
+	      - \"message_tag\": \"MESSAGE_TAG\"\n\
 	      - \"metrics\": [ METRICS ]\n\
 	      If the `cfg_file` is given, most other options are ignored.\n\
 	      Other options listed here may also be given in the cfg_file.\n\
 \n\
-The sampler creates and destroys sets according to events received from \n\
-LDMSD stream. The sets share the same schema which is contructed according \n\
+The sampler creates and destroys messages and sets according to events received from \n\
+LDMS messages. The sets share the same schema which is contructed according \n\
 to the given `metrics` option or \"metrics\" in the JSON `cfg_file`.\n\
 The sampling frequency is controlled by LDMSD `smplr` object.\n\
 \n\
 The following is an example of cfg_file:\n\
 ```\n\
 {\n\
-  \"stream\": \"slurm\",\n\
+  \"message_tag\": \"slurm\",\n\
   \"instance_prefix\": \"cluster2\",\n\
   \"metrics\": [\n\
     \"stat_comm\",\n\
@@ -1752,7 +1793,7 @@ The following is an example of cfg_file:\n\
 }\n\
 ```\n\
 \n\
-The following metadata metrics are always reported:\n\
+The following metadata metrics are always reported in sets:\n\
 name\ttype\tnotes\n\
 task_rank u64 The PID or if slurm present the SLURM_TASK_RANK\n\
               (inherited by child processes). \n\
@@ -1766,7 +1807,7 @@ exe char[] The full path of the executable.\n\
 \n\
 The config file, but not the command line, allow the option\n\
   \"log_send\":1\n\
-which adds logging of stream message events (less the json).\n\
+which adds logging of message events (less the json).\n\
 ";
 
 static char *help_all;
@@ -1785,7 +1826,7 @@ static void compute_help() {
 			mi->name);
 		dscat(ds, name_buf);
 	}
-	dscat(ds, "\nThe following metrics are not optional:\n");
+	dscat(ds, "\nThe following metrics are not optional when sets created:\n");
 	for (i = 0; i < ARRAY_LEN(metrics_always); i++) {
 		dscat(ds, "\t");
 		dscat(ds, metrics_always[i]);
@@ -1963,7 +2004,7 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 	char *buff = NULL;
 	json_parser_t jp = NULL;
 	json_entity_t jdoc = NULL;
-	json_entity_t list, ent;
+	json_entity_t list, ent, ent2;
 	linux_proc_sampler_metric_info_t minfo;
 
 	fd = open(val, O_RDONLY);
@@ -2014,6 +2055,16 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 		goto out;
 	}
 
+	ent = json_value_find(jdoc, "metric_sets");
+	if (ent) {
+		if (ent->type != JSON_INT_VALUE) {
+			rc = EINVAL;
+			INST_LOG(inst, OVIS_LERROR,
+				"Error: `metric_sets` must be integer.\n");
+			goto out;
+		}
+		inst->metric_sets = json_value_int(ent);
+	}
 	ent = json_value_find(jdoc, "argv_sep");
 	if (ent) {
 		if (ent->type != JSON_STRING_VALUE) {
@@ -2037,39 +2088,28 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			goto out;
 		}
 	}
-	ent = json_value_find(jdoc, "instance_prefix");
+	ent = json_value_find(jdoc, "argv_include_fd");
 	if (ent) {
-		if (ent->type != JSON_STRING_VALUE) {
+		if (ent->type != JSON_INT_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
-				"Error: `instance_prefix` must be a string.\n");
+				"Error: argv_include_fd must be 1 or 0.\n");
 			goto out;
 		}
-		inst->instance_prefix = strdup(json_value_cstr(ent));
-		if (!inst->instance_prefix) {
-			rc = ENOMEM;
+		inst->argv_include_fd = (json_value_int(ent) != 0);
+	}
+	ent = json_value_find(jdoc, "env_include_fd");
+	if (ent) {
+		if (ent->type != JSON_INT_VALUE) {
+			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
-				"Out of memory while configuring.\n");
+				"Error: env_include_fd must be 1 or 0.\n");
 			goto out;
 		}
-	}
-	ent = json_value_find(jdoc, "exe_suffix");
-	if (ent) {
-		inst->exe_suffix = 1;
-	}
-	ent = json_value_find(jdoc, "sc_clk_tck");
-	if (ent) {
-		inst->sc_clk_tck = sysconf(_SC_CLK_TCK);
-		if (!inst->sc_clk_tck) {
-			INST_LOG(inst, OVIS_LERROR,
-				"sysconf(_SC_CLK_TCK) returned 0.\n");
-		} else {
-			INST_LOG(inst, OVIS_LINFO,
-				"sysconf(_SC_CLK_TCK) = %ld.\n",
-				inst->sc_clk_tck);
-		}
+		inst->env_include_fd = (json_value_int(ent) != 0);
 	}
 	ent = json_value_find(jdoc, "stream");
+	ent2 = json_value_find(jdoc, "message_tag");
 	if (ent) {
 		if (ent->type != JSON_STRING_VALUE) {
 			rc = EINVAL;
@@ -2077,6 +2117,9 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 				"Error: `stream` must be a string.\n");
 			goto out;
 		}
+		INST_LOG(inst, OVIS_LWARNING,
+			": `stream` is deprecated. Use 'message_tag' "
+			"in configuration instead.\n");
 		inst->stream_name = strdup(json_value_cstr(ent));
 		if (!inst->stream_name) {
 			rc = ENOMEM;
@@ -2084,21 +2127,75 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 				"Out of memory while configuring.\n");
 			goto out;
 		}
-	} /* else, caller will later set default stream_name */
-	ent = json_value_find(jdoc, "syscalls");
-	if (ent) {
-		if (ent->type != JSON_STRING_VALUE) {
+	}
+	if (ent2) {
+		if (ent) {
+			INST_LOG(inst, OVIS_LWARNING,
+				": `stream` is deprecated. Using only 'message_tag' "
+				"in configuration. Ignoring 'stream'\n");
+		}
+		if (ent2->type != JSON_STRING_VALUE) {
 			rc = EINVAL;
 			INST_LOG(inst, OVIS_LERROR,
-				"Error: `syscalls` must be a path.\n");
+				"Error: `message_tag` must be a string.\n");
 			goto out;
 		}
-		inst->syscalls = strdup(json_value_cstr(ent));
-		if (!inst->syscalls) {
+		inst->stream_name = strdup(json_value_cstr(ent2));
+		if (!inst->stream_name) {
 			rc = ENOMEM;
 			INST_LOG(inst, OVIS_LERROR,
 				"Out of memory while configuring.\n");
 			goto out;
+		}
+	} /* else, caller will later set default stream_name */
+	if (inst->metric_sets) {
+		ent = json_value_find(jdoc, "instance_prefix");
+		if (ent) {
+			if (ent->type != JSON_STRING_VALUE) {
+				rc = EINVAL;
+				INST_LOG(inst, OVIS_LERROR,
+					"Error: `instance_prefix` must be a string.\n");
+				goto out;
+			}
+			inst->instance_prefix = strdup(json_value_cstr(ent));
+			if (!inst->instance_prefix) {
+				rc = ENOMEM;
+				INST_LOG(inst, OVIS_LERROR,
+					"Out of memory while configuring.\n");
+				goto out;
+			}
+		}
+		ent = json_value_find(jdoc, "exe_suffix");
+		if (ent) {
+			inst->exe_suffix = 1;
+		}
+		ent = json_value_find(jdoc, "sc_clk_tck");
+		if (ent) {
+			inst->sc_clk_tck = sysconf(_SC_CLK_TCK);
+			if (!inst->sc_clk_tck) {
+				INST_LOG(inst, OVIS_LERROR,
+					"sysconf(_SC_CLK_TCK) returned 0.\n");
+			} else {
+				INST_LOG(inst, OVIS_LINFO,
+					"sysconf(_SC_CLK_TCK) = %ld.\n",
+					inst->sc_clk_tck);
+			}
+		}
+		ent = json_value_find(jdoc, "syscalls");
+		if (ent) {
+			if (ent->type != JSON_STRING_VALUE) {
+				rc = EINVAL;
+				INST_LOG(inst, OVIS_LERROR,
+					"Error: `syscalls` must be a path.\n");
+				goto out;
+			}
+			inst->syscalls = strdup(json_value_cstr(ent));
+			if (!inst->syscalls) {
+				rc = ENOMEM;
+				INST_LOG(inst, OVIS_LERROR,
+					"Out of memory while configuring.\n");
+				goto out;
+			}
 		}
 	}
 	ent = json_value_find(jdoc, "argv_fmt");
@@ -2136,24 +2233,52 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 				"Error: `fd_msg` must be positive/0 integer.\n");
 			goto out;
 		}
-		if (inst->fd_msg) {
-			ent = json_value_find(jdoc, "fd_exclude");
-			if (ent) {
-				char *fregex = json_to_regex(inst, ent);
-				if (!fregex) {
-					INST_LOG(inst, OVIS_LERROR,
-						"fd_exclude failed.\n");
-					goto out;
-				}
-				rc = init_regex_filter(inst, fregex, "fd",
-					&inst->fd_use_regex, &inst->fd_regex);
-				free(fregex);
-				if (rc)
-					goto out;
-				INST_LOG(inst, OVIS_LDEBUG,
-					"fd_exclude parsed.\n");
-			}
+	}
+	ent = json_value_find(jdoc, "fd_exclude");
+	if (ent) {
+		char *fregex = json_to_regex(inst, ent);
+		if (!fregex) {
+			INST_LOG(inst, OVIS_LERROR,
+				"fd_exclude failed.\n");
+			goto out;
 		}
+		rc = init_regex_filter(inst, fregex, "fd",
+			&inst->fd_use_regex, &inst->fd_regex);
+		free(fregex);
+		if (rc)
+			goto out;
+		INST_LOG(inst, OVIS_LDEBUG,
+			"fd_exclude parsed.\n");
+	}
+	ent = json_value_find(jdoc, "fd_map_files");
+	if (ent) {
+		if (ent->type != JSON_INT_VALUE) {
+			rc = EINVAL;
+			INST_LOG(inst, OVIS_LERROR,
+				"Error: fd_map_files must be integer.\n");
+			goto out;
+		}
+		inst->fd_map_files = (0 != json_value_int(ent));
+	}
+	ent = json_value_find(jdoc, "fd_threads");
+	if (ent) {
+		if (ent->type != JSON_INT_VALUE) {
+			rc = EINVAL;
+			INST_LOG(inst, OVIS_LERROR,
+				"Error: fd_threads must be integer.\n");
+			goto out;
+		}
+		inst->fd_threads = ( 0 != json_value_int(ent));
+	}
+	ent = json_value_find(jdoc, "env_threads");
+	if (ent) {
+		if (ent->type != JSON_INT_VALUE) {
+			rc = EINVAL;
+			INST_LOG(inst, OVIS_LERROR,
+				"Error: env_threads must be integer.\n");
+			goto out;
+		}
+		inst->env_threads = ( 0 != json_value_int(ent));
 	}
 	ent = json_value_find(jdoc, "published_pid_dir");
 	inst->published_pid_dir = strdup(PID_DIR_DEFAULT);
@@ -2212,29 +2337,31 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 		}
 		inst->log_send = (json_value_int(ent) != 0);
 	}
-	list = json_value_find(jdoc, "metrics");
-	if (list) {
-		for (ent = json_item_first(list); ent;
-					ent = json_item_next(ent)) {
-			if (ent->type != JSON_STRING_VALUE) {
-				rc = EINVAL;
-				INST_LOG(inst, OVIS_LERROR,
-					 "Error: metric must be a string.\n");
-				goto out;
+	if (inst->metric_sets) {
+		list = json_value_find(jdoc, "metrics");
+		if (list) {
+			for (ent = json_item_first(list); ent;
+						ent = json_item_next(ent)) {
+				if (ent->type != JSON_STRING_VALUE) {
+					rc = EINVAL;
+					INST_LOG(inst, OVIS_LERROR,
+						 "Error: metric must be a string.\n");
+					goto out;
+				}
+				minfo = find_metric_info_by_name(json_value_cstr(ent));
+				if (!minfo) {
+					rc = ENOENT;
+					missing_metric(inst, json_value_cstr(ent));
+					goto out;
+				}
+				inst->metric_idx[minfo->code] = -1;
+				/* Non-zero to enable. This will be replaced with the
+				 * actual metric index later. */
 			}
-			minfo = find_metric_info_by_name(json_value_cstr(ent));
-			if (!minfo) {
-				rc = ENOENT;
-				missing_metric(inst, json_value_cstr(ent));
-				goto out;
+		} else {
+			for (i = _APP_FIRST; i <= _APP_LAST; i++) {
+				inst->metric_idx[i] = -1;
 			}
-			inst->metric_idx[minfo->code] = -1;
-			/* Non-zero to enable. This will be replaced with the
-			 * actual metric index later. */
-		}
-	} else {
-		for (i = _APP_FIRST; i <= _APP_LAST; i++) {
-			inst->metric_idx[i] = -1;
 		}
 	}
 	rc = 0;
@@ -2535,10 +2662,12 @@ static char *get_buf(linux_proc_sampler_inst_t inst, size_t n)
 
 /* common message header */
 static const char id_format[] = "{"
-	"\"producerName\":\"%s\""
+	"\"schema\":\"%s\""
+	",\"producerName\":\"%s\""
 	",\"component_id\":%" PRIu64
 	",\"pid\":%d"
-	",\"job_id\":%" PRIu64
+	",\"job_id\":\"%" PRIu64 "\""
+	",\"user\":\"%s\""
 	",\"timestamp\":\"%s\""
 	",\"task_rank\":%" PRId64
 	",\"parent\":%d"
@@ -2549,6 +2678,31 @@ static size_t id_format_sz = sizeof(id_format);
 static const char env_element_format[] = "{\"k\":\"%s\",\"v\":\"%s\"}";
 static size_t env_element_format_sz = sizeof(env_element_format);
 
+#define UN_SIZE 33
+typedef char username_t[UN_SIZE];
+static void get_user(pid_t pid, username_t u)
+{
+	char pdirname[20];
+	struct stat statb;
+	struct passwd p;
+	struct passwd *result = NULL;
+	snprintf(pdirname, sizeof(pdirname), "/proc/%d", (int)pid);
+	if (stat(pdirname, &statb) != 0) {
+		snprintf(u, UN_SIZE, "<gone-%d>",(int)pid);
+		return;
+	}
+	long pwsz = sysconf(_SC_GETPW_R_SIZE_MAX);
+	if (pwsz == -1) {
+		pwsz = 1024;
+	}
+	char pw[pwsz];
+	getpwuid_r(statb.st_uid, &p, pw, pwsz, &result);
+	if (!result) {
+		snprintf(u, UN_SIZE, "<unknown-%d>",(int)pid);
+	}
+	snprintf(u, UN_SIZE, "%s",p.pw_name);
+}
+
 /* the env/argv data to be published can disappear under us, so there's
  * no "fail" for these publication. Best-effort only.
  */
@@ -2556,6 +2710,15 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 {
 	if (!app_set || app_set->dead)
 		return EINVAL;
+	if (! inst->env_include_fd) {
+		if (exe[0] != '/' || (inst->fd_use_regex &&
+			0 == regexec(&(inst->fd_regex), exe, 0, NULL, 0))) {
+			return 0;
+		}
+	}
+	if (! inst->env_threads && is_thread)
+		return 0;
+	/* done for all threads, since parallel launchers do all sorts of cloning */
 	int rc = 0;
 	int64_t task_rank = app_set->task_rank;
 	uint64_t compid = inst->base_data->component_id;
@@ -2570,8 +2733,8 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 	if (!envp) {
 		return EBADF;
 	}
-	/* maxlensum: prod compid pid jobid time rank parent thread */
-	size_t buf_sz = 64 + 20 + 20 + 20 + 26 + 20 + 20 + 6;
+	/* maxlensum: schema_name prod compid pid jobid time rank parent thread */
+	size_t buf_sz = 32 + 64 + 20 + 20 + 20 + 26 + 20 + 20 + 6;
 	buf_sz += strlen(exe) + 1;
 	/* protocol 1: { idlist, "data":[{"k":"val","v":"val"},...]} */
 	buf_sz += strlen("[]") + argc*(1 + env_element_format_sz) +
@@ -2582,11 +2745,15 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 		rc = ENOMEM;
 		goto out;
 	}
+	username_t user;
+	get_user(pid, user);
 	size_t off = snprintf(buf, buf_sz, id_format,
+			"linux_proc_sampler_env_2",
 			producer,
 			compid,
 			pid,
 			jobid,
+			user,
 			start,
 			task_rank,
 			parent,
@@ -2660,17 +2827,26 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 			app_set->key.os_pid, argc, off, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldms_msg_publish(NULL, inst->env_stream, LDMS_MSG_JSON, NULL, 0440, buf, off+1);
+	ldms_msg_publish(NULL, inst->env_stream, LPS_PUB_TYPE, NULL, 0440, buf, off+1);
 out:
 	free(vsub);
 	release_proc_strings(envp, argc);
 	return rc;
 }
 
+/* publish kernel version of argv for lead processes, but not threads within */
 static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set, const char *start, const char *exe, bool is_thread, pid_t parent, uint64_t jobid)
 {
 	if (!app_set || app_set->dead)
 		return EINVAL;
+	if (is_thread)
+		return 0;
+	if (! inst->argv_include_fd) {
+		if (exe[0] != '/' || (inst->fd_use_regex &&
+			0 == regexec(&(inst->fd_regex), exe, 0, NULL, 0))) {
+			return 0;
+		}
+	}
 	int64_t task_rank = app_set->task_rank;
 	uint64_t compid = inst->base_data->component_id;
 	pid_t pid = app_set->key.os_pid;
@@ -2685,8 +2861,8 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 		return EBADF;
 	}
 
-	/* lensum: prod compid pid jobid time rank parent thread */
-	size_t buf_sz = 64 + 20 + 20 + 20 + 26 + 20 + 20 + 6;
+	/* lensum: schema_name prod compid pid jobid username time rank parent thread */
+	size_t buf_sz = 32 + 64 + 20 + 20 + 20 + 42 + 26 + 20 + 20 + 6;
 	buf_sz += strlen(exe) + 1;
 	buf_sz += bytes; /* strings, excluding protocol formatting. */
 	const char *element_format1 = "\"%s\",";
@@ -2726,11 +2902,15 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 		goto out;
 	}
 
+	username_t user;
+	get_user(pid, user);
 	size_t off = snprintf(buf, buf_sz, id_format,
+			(inst->argv_fmt == 1 ? "linux_proc_sampler_argv_1" : "linux_proc_sampler_argv_2"),
 			producer,
 			compid,
 			pid,
 			jobid,
+			user,
 			start,
 			task_rank,
 			parent,
@@ -2800,7 +2980,7 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 			app_set->key.os_pid, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldms_msg_publish(NULL, inst->argv_stream, LDMS_MSG_JSON, NULL, 0440, buf, off+1);
+	ldms_msg_publish(NULL, inst->argv_stream, LPS_PUB_TYPE, NULL, 0440, buf, off+1);
 out:
 	release_proc_strings(argv, argc);
 	free(vbuf);
@@ -2809,8 +2989,8 @@ out:
 
 static int fn_rbn_cmp(void *tree_key, void *key)
 {
-	int *tk = tree_key;
-	int *k = key;
+	int64_t *tk = tree_key;
+	int64_t *k = key;
 	if (!tree_key || !key) {
 		return -1;
 	}
@@ -2820,8 +3000,8 @@ static int fn_rbn_cmp(void *tree_key, void *key)
 /* info about file linked in fd/ */
 struct fentry {
 	pid_t pid;
-	int l_fd; /* link fd number */
-	struct rbn fn_rbn; /* l_fd-indexed tree */
+	int64_t l_fd; /* link fd or map file number */
+	struct rbn fn_rbn; /* l_fd-indexed tree. assume sizeof(int64_t) == sizeof(long long) */
 	ino_t l_ino;  /* link inode */
 	int ignore; /* ignore this fe until l_ino changes */
 	char *name; /* name of file linked to */
@@ -2829,7 +3009,7 @@ struct fentry {
 	int seen; /* visited during dir scan */
 };
 
-void fentry_destroy(linux_proc_sampler_inst_t inst, struct fentry *f)
+static void fentry_destroy(linux_proc_sampler_inst_t inst, struct fentry *f)
 {
 	if (!f)
 		return;
@@ -2838,7 +3018,7 @@ void fentry_destroy(linux_proc_sampler_inst_t inst, struct fentry *f)
 	free(f);
 }
 
-void fn_rbt_destroy(linux_proc_sampler_inst_t inst, struct rbt *t)
+static void fn_rbt_destroy(linux_proc_sampler_inst_t inst, struct rbt *t)
 {
 	struct fentry *fe;
 	struct rbn *rbn;
@@ -2870,6 +3050,9 @@ static size_t stat_format_sz = sizeof(stat_format);
 
 /*
  * send state and stat info to stream.
+ * @param state is opened, closed, mmap (there is no munmap).
+ * @param fd used only for logging; -1 for mmap filenames
+ * @return the result of ldms_msg_publish (useful values are 0, EAGAIN, other failures)
  */
 static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set, struct stat *s, const char *str, size_t nlen, const char *state, int fd)
 {
@@ -2888,8 +3071,10 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 	size_t slen = app_set->fd_ident_sz + stat_format_sz + nlen + 6*20 + 10;
 	size_t ssize;
 	char *buf = get_buf(inst, slen);
-	if (!buf)
+	if (!buf) {
+		INST_LOG(inst, OVIS_LDEBUG, "!buf string_send_state\n");
 		return ENOMEM;
+	}
 	if (s)
 		ssize = snprintf(buf, slen, stat_format,
 			app_set->fd_ident,
@@ -2923,14 +3108,14 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 			app_set->key.os_pid, fd, str, state, pname ? " on" : "",
 			pname ? pname : "");
 	}
-	ldms_msg_publish(NULL, inst->fd_stream, LDMS_MSG_JSON, NULL, 0440, buf, ssize+1);
+	ldms_msg_publish(NULL, inst->fd_stream, LPS_PUB_TYPE, NULL, 0440, buf, ssize+1);
 	return 0;
 }
 
 /*
  * send state and stat info to stream.
  */
-static int fentry_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set, struct stat *s, struct fentry *fe, const char *state)
+static int fentry_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set, struct stat *s, struct fentry *fe, const char *state, int force)
 {
 	if (!fe ) {
 		INST_LOG(inst, OVIS_LDEBUG, "null fe, pid %ld\n", app_set->key.os_pid);
@@ -2940,26 +3125,145 @@ static int fentry_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 		INST_LOG(inst, OVIS_LDEBUG, "null fe>name, pid %ld, state %s\n", app_set->key.os_pid, state);
 		return 0;
 	}
-	if (fe->seen) {
+	if (fe->seen && !force) {
 		INST_LOG(inst, OVIS_LDEBUG, "fe>seen, pid %ld\n", app_set->key.os_pid);
 		return 0;
 	}
+	/* not seen or coming from map_files summary */
 	return string_send_state(inst, app_set, s, fe->name, fe->nlen,
 				state, fe->l_fd);
+}
+
+static int mapped_file_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set, struct stat *s, const char *fname)
+{
+	if (!inst || !app_set || !s || !fname)
+		return EINVAL;
+	return string_send_state(inst, app_set, s, fname, strlen(fname)+1, "mapped", -1);
+}
+
+static void map_file_kill(struct ovis_map_element *e, void *user)
+{
+	(void)user;
+	if (e) {
+		free((char *)(e->key));
+		e->key = e->value = NULL;
+	}
+}
+
+/* read unique filenames from /proc/pid/maps.
+ * me.value 0: not in map yet
+ * me.value 1: not sent yet
+ * me.value 2: sent
+ * me.value 3: excluded
+ */
+enum map_name_state {
+	map_new = 0,
+	map_unchecked,
+	map_sent,
+	map_excluded,
+	map_err
+};
+
+static int parse_maps(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set)
+{
+	char maps_path[NAME_MAX];
+	char line[FILENAME_MAX];
+	FILE *file;
+	int rc = 0;
+	struct ovis_map *mapped_files = app_set->mapped_files;
+	if (!mapped_files)
+		return ENOMEM;
+
+	snprintf(maps_path, sizeof(maps_path), "/proc/%" PRId64 "/maps", app_set->key.os_pid);
+
+	file = fopen(maps_path, "r");
+		if (file == NULL) {
+			perror("Error opening maps file");
+		return ENOENT;
+	}
+	while (fgets(line, sizeof(line), file) != NULL) {
+		size_t len = strlen(line);
+
+		// If the buffer is full and there is no newline, the line was truncated
+		if (len == sizeof(line) - 1 && line[len - 1] != '\n') {
+			/* quietly skip paths over FILENAME_MAX */
+			int ch;
+			while ((ch = fgetc(file)) != '\n' && ch != EOF);
+			continue;
+		}
+
+		char *filename = strchr(line, '/');
+		if (!filename)
+			continue;
+		// Strip the trailing newline character
+		len = strlen(filename);
+		if (len > 0 && filename[len - 1] == '\n')
+			filename[len - 1] = '\0';
+		char *name = strdup(filename);
+		if (!name) {
+			rc =  ENOMEM;
+			goto out;
+		}
+
+		struct ovis_map_element me = ovis_map_find(mapped_files, name);
+		if (me.value == (void*)map_new) {
+			me.value = (void*)map_unchecked;
+			ovis_map_insert_fast(mapped_files, me);
+		} else {
+			free(name);
+		}
+	}
+out:
+	fclose(file);
+	return rc;
 }
 
 struct dfentry {
 	char *name;
 	size_t nlen;
-	int fd;
+	int64_t fd;
 	struct fentry *fe;
 	LIST_ENTRY(dfentry) del;
 };
 
 LIST_HEAD(dfentry_del_list, dfentry);
 
-#define BUFMAX 4096
+#define BUFMAX PATH_MAX
+
+struct fe_map_visit_data {
+	linux_proc_sampler_inst_t inst;
+	struct linux_proc_sampler_set *app_set;
+	int err;
+};
+
+/* send (or not) once and mark.  */
+void map_files_visitor_opened(struct ovis_map_element *e, void *user)
+{
+	struct fe_map_visit_data *mvd = user;
+	if (!mvd)
+		return;
+	if (e->value != (void *)map_unchecked) {
+		return;
+	}
+	if (e->key[0] != '/' || (mvd->inst->fd_use_regex &&
+		0 == regexec(&(mvd->inst->fd_regex), e->key, 0, NULL, 0))) {
+		e->value = (void *)map_excluded;
+		return;
+	}
+	struct stat statb;
+	if (stat(e->key, &statb)) {
+		e->value = (void *)map_err;
+		return;
+	}
+	int err = mapped_file_send_state(mvd->inst, mvd->app_set, &statb, e->key);
+	if (err != EAGAIN)
+		e->value = (void *)map_sent;
+	/* succeeded or failed permanently. */
+	/* if err != 0, maybe log something in debug mode. */
+}
+
 /* update file tree and emit open/close messages for changes.
+ * Ignore all fd for threads unless fd_threads give in config.
  * shadow all fd/ entries with fentries.
  * mark ignore any of the wrong type.
  * track change of fd:inode pairs
@@ -2982,11 +3286,18 @@ LIST_HEAD(dfentry_del_list, dfentry);
  *     if unseen
  *       add fe to dellist
  *   clear dellist
+ *  scan /proc/pid/maps and add publish new items.
  */
 static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set)
 {
+#ifdef LPDEBUG
+	INST_LOG(inst, OVIS_LDEBUG, "publish_fd_pid: "
+		"for pid %" PRId64 "\n", app_set->key.os_pid);
+#endif
 	if (!app_set)
 		return EINVAL;
+	if (! inst->fd_threads && app_set->is_thread)
+		return 0;
 	int erc = 0;
 
 	struct rbn *rbn;
@@ -2999,12 +3310,14 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 		goto close_check;
 	}
 
-	char path[PROCPID_SZ];
+	char path[NAME_MAX];
 	char dname[PATH_MAX];
 	int blen;
 	char buf[BUFMAX];
 	DIR *dir;
 	struct dirent *dent;
+
+	/** scan /proc/pid/fd and add to fn_rbt */
 	snprintf(path, sizeof(path), "/proc/%" PRId64 "/fd",
 		app_set->key.os_pid);
 	dir = opendir(path);
@@ -3051,7 +3364,12 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 			fe->name = NULL;
 		}
 		buf[0] = '\0';
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpragmas"
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+		/* format is /proc/$pid_int/$fd_int, so ignore size warnings */
 		snprintf(dname, sizeof(dname), "%s/%s", path, dent->d_name);
+#pragma GCC diagnostic pop
 		blen = readlink(dname, buf, BUFMAX);
 		if (blen < 0 || blen == BUFMAX) /* file closed or too big */
 			continue;
@@ -3086,12 +3404,27 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 			memset(&statb, 0, sizeof(statb));
 			if (stat(buf, &statb))
 				continue;
-			fentry_send_state(inst, app_set, &statb, fe, "opened");
+			fentry_send_state(inst, app_set, &statb, fe, "opened", 0);
 		}
 		fe->seen = 1;
 	}
-
 	closedir(dir);
+
+	/** scan /proc/pid/maps and add publish new items.  */
+	if (inst->fd_map_files) {
+		int prc = parse_maps(inst, app_set);
+		if (prc) {
+			erc = prc;
+			goto close_check;
+		}
+		errno = 0;
+		/* mapped_files are never published with a closed state.
+		too messy to find when last reference disappears. */
+		struct fe_map_visit_data mvd = { inst, app_set };
+		/* send anything that's new */
+		ovis_map_visit(app_set->mapped_files, map_files_visitor_opened, &mvd);
+	}
+
 	const char *msg;
 	/* scan tree for unseen, send close/deleted, and free */
 close_check:
@@ -3108,7 +3441,7 @@ close_check:
 				msg = "deleted";
 				statp = NULL;
 			}
-			fentry_send_state(inst, app_set, statp, fe, msg);
+			fentry_send_state(inst, app_set, statp, fe, msg, 0);
 		}
 		dfe = calloc(1, sizeof(*dfe));
 		if (!dfe) {
@@ -3151,8 +3484,20 @@ close_check:
 /* create identifier string, and then move on to publish_fd_pid */
 static int publish_fd_pid_first(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *app_set, const char *start, const char *exe, bool is_thread, pid_t parent, uint64_t jobid)
 {
+#ifdef LPDEBUG
+	INST_LOG(inst, OVIS_LDEBUG, "publish_fd_pid_first: "
+		"set for pid %" PRId64 "\n",
+		app_set->key.os_pid);
+#endif
 	if (!app_set || app_set->dead)
 		return EINVAL;
+	if (is_thread)
+		app_set->is_thread = 1;
+	else
+		app_set->is_thread = 0;
+	if (!inst->fd_threads && is_thread) {
+		return 0;
+	}
 	rbt_init(&(app_set->fn_rbt), (rbn_comparator_t) fn_rbn_cmp);
 
 	int64_t task_rank = app_set->task_rank;
@@ -3160,8 +3505,8 @@ static int publish_fd_pid_first(linux_proc_sampler_inst_t inst, struct linux_pro
 	pid_t pid = app_set->key.os_pid;
 	const char *producer = inst->base_data->producer_name;
 
-	/* numeric field sum: prod compid pid jobid time rank parent thread */
-	size_t buf_sz = 64 + 20 + 20 + 20 + 26 + 20 + 20 + 6;
+	/* numeric field sum: schema_name prod compid pid jobid user time rank parent thread */
+	size_t buf_sz = 32 + 64 + 20 + 20 + 20 + 42 + 26 + 20 + 20 + 6;
 	buf_sz += strlen(exe) + 1;
 	/* json overhead space */
 	buf_sz += id_format_sz;
@@ -3170,11 +3515,15 @@ static int publish_fd_pid_first(linux_proc_sampler_inst_t inst, struct linux_pro
 		return ENOMEM;
 	}
 
+	username_t user;
+	get_user(pid, user);
 	size_t off = snprintf(buf, buf_sz, id_format,
+			"linux_proc_sampler_fd_1",
 			producer,
 			compid,
 			pid,
 			jobid,
+			user,
 			start,
 			task_rank,
 			parent,
@@ -3182,6 +3531,9 @@ static int publish_fd_pid_first(linux_proc_sampler_inst_t inst, struct linux_pro
 			exe);
 	app_set->fd_ident = buf;
 	app_set->fd_ident_sz = off + 1;
+	if (inst->fd_map_files) {
+		app_set->mapped_files = ovis_map_create();
+	}
 	return publish_fd_pid(inst, app_set);
 }
 
@@ -3200,7 +3552,7 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data, int *
 	 * are both active. */
 	struct linux_proc_sampler_set *app_set;
 	int rc;
-	ldms_set_t set;
+	ldms_set_t set = NULL;
 	int len;
 	jbuf_t bjb = NULL;
 	json_entity_t os_pid;
@@ -3286,111 +3638,118 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data, int *
 		esep = "/";
 		esuffix = exe_string;
 	}
-	if (task_rank_val < 0) {
-		/* we haven't seen the pid as a slurm item yet. */
-		/* set instance is $iprefix/$producer/$jobid/$start_time/$os_pid */
-		len = snprintf(setname, sizeof(setname), "%s%s%s/%" PRIu64
-							"/%s/%" PRId64 "%s%s" ,
-				(inst->instance_prefix ? inst->instance_prefix : ""),
-				(inst->instance_prefix ? "/" : ""),
-				inst->base_data->producer_name,
-				job_id_val,
-				start_string,
-				(int64_t)pid, esep, esuffix);
-		if (len >= sizeof(setname)) {
-			if (pid_bad)
-				*pid_bad = 1;
-			INST_LOG(inst, OVIS_LERROR, "set name too big: %s%s%s/%" PRIu64
-							"/%s/%" PRId64 "%s%s\n",
-				(inst->instance_prefix ? inst->instance_prefix : ""),
-				(inst->instance_prefix ? "/" : ""),
-				inst->base_data->producer_name,
-				job_id_val,
-				start_string,
-				(int64_t)pid, esep, esuffix);
-			return ENAMETOOLONG;
-		}
-	} else {
-		/* set instance is $iprefix/$producer/$jobid/$start_time/rank/$task_rank */
-		len = snprintf(setname, sizeof(setname), "%s%s%s/%" PRIu64
-							"/%s/rank/%" PRId64 "%s%s",
-				(inst->instance_prefix ? inst->instance_prefix : ""),
-				(inst->instance_prefix ? "/" : ""),
-				inst->base_data->producer_name,
-				job_id_val,
-				start_string,
-				task_rank_val, esep, esuffix);
-		if (len >= sizeof(setname)) {
-			if (pid_bad)
-				*pid_bad = 1;
-			INST_LOG(inst, OVIS_LERROR, "set name too big: %s%s%s/%" PRIu64
-							"/%s/rank/%" PRId64 "%s%s\n",
-				(inst->instance_prefix ? inst->instance_prefix : ""),
-				(inst->instance_prefix ? "/" : ""),
-				inst->base_data->producer_name,
-				job_id_val,
-				start_string,
-				task_rank_val, esep, esuffix);
-			return ENAMETOOLONG;
+	if (inst->metric_sets) {
+		if (task_rank_val < 0) {
+			/* we haven't seen the pid as a slurm item yet. */
+			/* set instance is $iprefix/$producer/$jobid/$start_time/$os_pid */
+			len = snprintf(setname, sizeof(setname), "%s%s%s/%" PRIu64
+								"/%s/%" PRId64 "%s%s" ,
+					(inst->instance_prefix ? inst->instance_prefix : ""),
+					(inst->instance_prefix ? "/" : ""),
+					inst->base_data->producer_name,
+					job_id_val,
+					start_string,
+					(int64_t)pid, esep, esuffix);
+			if (len >= sizeof(setname)) {
+				if (pid_bad)
+					*pid_bad = 1;
+				INST_LOG(inst, OVIS_LERROR, "set name too big: %s%s%s/%" PRIu64
+								"/%s/%" PRId64 "%s%s\n",
+					(inst->instance_prefix ? inst->instance_prefix : ""),
+					(inst->instance_prefix ? "/" : ""),
+					inst->base_data->producer_name,
+					job_id_val,
+					start_string,
+					(int64_t)pid, esep, esuffix);
+				return ENAMETOOLONG;
+			}
+		} else {
+			/* set instance is $iprefix/$producer/$jobid/$start_time/rank/$task_rank */
+			len = snprintf(setname, sizeof(setname), "%s%s%s/%" PRIu64
+								"/%s/rank/%" PRId64 "%s%s",
+					(inst->instance_prefix ? inst->instance_prefix : ""),
+					(inst->instance_prefix ? "/" : ""),
+					inst->base_data->producer_name,
+					job_id_val,
+					start_string,
+					task_rank_val, esep, esuffix);
+			if (len >= sizeof(setname)) {
+				if (pid_bad)
+					*pid_bad = 1;
+				INST_LOG(inst, OVIS_LERROR, "set name too big: %s%s%s/%" PRIu64
+								"/%s/rank/%" PRId64 "%s%s\n",
+					(inst->instance_prefix ? inst->instance_prefix : ""),
+					(inst->instance_prefix ? "/" : ""),
+					inst->base_data->producer_name,
+					job_id_val,
+					start_string,
+					task_rank_val, esep, esuffix);
+				return ENAMETOOLONG;
+			}
 		}
 	}
 	app_set = calloc(1, sizeof(*app_set));
-	if (!app_set)
+	if (!app_set) {
+		INST_LOG(inst, OVIS_LERROR, "app_set alloc failed for pid %"
+			PRId32 "\n", pid);
 		return ENOMEM;
+	}
 	app_set->task_rank = task_rank_val;
 	data_set_key(inst, app_set, start_tick, pid);
 
-	set = ldms_set_new(setname, inst->base_data->schema);
-	static int warn_once;
-	static int warn_once_dup;
-	if (!set) {
-		int ec = errno;
-		if (ec != EEXIST && !warn_once) {
-			warn_once = 1;
-			INST_LOG(inst, OVIS_LWARNING, "Out of set memory. Consider bigger -m.\n");
-			struct mm_stat ms;
-			mm_stats(&ms);
-			INST_LOG(inst, OVIS_LWARNING, "mm_stat: size=%zu grain=%zu "
-				"chunks_free=%zu grains_free=%zu grains_largest=%zu "
-				"grains_smallest=%zu bytes_free=%zu bytes_largest=%zu "
-				"bytes_smallest=%zu\n",
-				ms.size, ms.grain, ms.chunks, ms.bytes, ms.largest,
-				ms.smallest, ms.grain*ms.bytes, ms.grain*ms.largest,
-				ms.grain*ms.smallest);
-		}
-		if (ec == EEXIST) {
-			if (!warn_once_dup) {
-				warn_once_dup = 1;
-				INST_LOG(inst, OVIS_LERROR, "Duplicate set name %s. "
-					"Check for redundant notifiers running.\n",
-					setname);
+	if (inst->metric_sets) {
+		set = ldms_set_new(setname, inst->base_data->schema);
+		static int warn_once;
+		static int warn_once_dup;
+		if (!set) {
+			int ec = errno;
+			if (ec != EEXIST && !warn_once) {
+				warn_once = 1;
+				INST_LOG(inst, OVIS_LWARNING, "Out of set memory. Consider bigger -m.\n");
+				struct mm_stat ms;
+				mm_stats(&ms);
+				INST_LOG(inst, OVIS_LWARNING, "mm_stat: size=%zu grain=%zu "
+					"chunks_free=%zu grains_free=%zu grains_largest=%zu "
+					"grains_smallest=%zu bytes_free=%zu bytes_largest=%zu "
+					"bytes_smallest=%zu\n",
+					ms.size, ms.grain, ms.chunks, ms.bytes, ms.largest,
+					ms.smallest, ms.grain*ms.bytes, ms.grain*ms.largest,
+					ms.grain*ms.smallest);
 			}
-			ec = 0; /* expected case for misconfigured notifiers */
+			if (ec == EEXIST) {
+				if (!warn_once_dup) {
+					warn_once_dup = 1;
+					INST_LOG(inst, OVIS_LERROR, "Duplicate set name %s. "
+						"Check for redundant notifiers running.\n",
+						setname);
+				}
+				ec = 0; /* expected case for misconfigured notifiers */
+			}
+			app_set_destroy(inst, app_set);
+			return ec;
 		}
-		app_set_destroy(inst, app_set);
-		return ec;
+		ldms_set_producer_name_set(set, inst->base_data->producer_name);
+		base_auth_set(&inst->base_data->auth, set);
+		ldms_metric_set_u64(set, BASE_JOB_ID, job_id_val);
+		ldms_metric_set_u64(set, BASE_COMPONENT_ID, inst->base_data->component_id);
+		ldms_metric_set_s64(set, inst->task_rank_idx, task_rank_val);
+		ldms_metric_array_set_str(set, inst->start_time_idx, start_string);
+		ldms_metric_set_u64(set, inst->start_tick_idx, start_tick);
+		ldms_metric_set_s64(set, inst->parent_pid_idx, parent);
+		ldms_metric_set_u8(set, inst->is_thread_idx, is_thread_val ? 1 : 0);
+		ldms_metric_array_set_str(set, inst->exe_idx, exe_string);
+		if (inst->sc_clk_tck)
+			ldms_metric_set_s64(set, inst->sc_clk_tck_idx, inst->sc_clk_tck);
+		if (inst->metric_idx[APP_STATUS_UID] > 0)
+			for (len = 0; len < 4; len++)
+				ldms_metric_array_set_u64(set,
+					inst->metric_idx[APP_STATUS_UID], len, UID_UNSET);
+		if (inst->metric_idx[APP_STATUS_GID] > 0)
+			for (len = 0; len < 4; len++)
+				ldms_metric_array_set_u64(set,
+					inst->metric_idx[APP_STATUS_GID], len, GID_UNSET);
+		app_set->set = set;
 	}
-	ldms_set_producer_name_set(set, inst->base_data->producer_name);
-	base_auth_set(&inst->base_data->auth, set);
-	ldms_metric_set_u64(set, BASE_JOB_ID, job_id_val);
-	ldms_metric_set_u64(set, BASE_COMPONENT_ID, inst->base_data->component_id);
-	ldms_metric_set_s64(set, inst->task_rank_idx, task_rank_val);
-	ldms_metric_array_set_str(set, inst->start_time_idx, start_string);
-	ldms_metric_set_u64(set, inst->start_tick_idx, start_tick);
-	ldms_metric_set_s64(set, inst->parent_pid_idx, parent);
-	ldms_metric_set_u8(set, inst->is_thread_idx, is_thread_val ? 1 : 0);
-	ldms_metric_array_set_str(set, inst->exe_idx, exe_string);
-	if (inst->sc_clk_tck)
-		ldms_metric_set_s64(set, inst->sc_clk_tck_idx, inst->sc_clk_tck);
-	if (inst->metric_idx[APP_STATUS_UID] > 0)
-		for (len = 0; len < 4; len++)
-			ldms_metric_array_set_u64(set,
-				inst->metric_idx[APP_STATUS_UID], len, UID_UNSET);
-	if (inst->metric_idx[APP_STATUS_GID] > 0)
-		for (len = 0; len < 4; len++)
-			ldms_metric_array_set_u64(set,
-				inst->metric_idx[APP_STATUS_GID], len, GID_UNSET);
-	app_set->set = set;
 	rbn_init(&app_set->rbn, (void*)&app_set->key);
 
 	pthread_mutex_lock(&inst->mutex);
@@ -3403,35 +3762,36 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data, int *
 			if (old_app_set->task_rank == app_set->task_rank) {
 				/*skip spank duplicate */
 #ifdef LPDEBUG
-				INST_LOG(inst, OVIS_LDEBUG, "Keeping slurm "
-					"set %s, dropping duplicate %s\n",
-					ldms_set_instance_name_get(old_app_set->set),
-					ldms_set_instance_name_get(app_set->set));
+				INST_LOG(inst, OVIS_LDEBUG, "Keeping "
+					"set for pid %" PRId64" , dropping duplicate\n",
+					app_set->key.os_pid);
 #endif
 				app_set_destroy(inst, app_set);
 			} else {
 				/* remove/replace set pointer in app_set with newly named set instance */
+				if (inst->metric_sets) {
 #ifdef LPDEBUG
-				INST_LOG(inst, OVIS_LDEBUG,
-					"Converting set %s to %s\n",
-					ldms_set_instance_name_get(old_app_set->set),
-					ldms_set_instance_name_get(set));
+					INST_LOG(inst, OVIS_LDEBUG,
+						"Converting set %s to %s\n",
+						ldms_set_instance_name_get(old_app_set->set),
+						ldms_set_instance_name_get(set));
 #endif
-				ldmsd_set_deregister(ldms_set_instance_name_get(old_app_set->set), SAMP);
-				ldms_set_unpublish(old_app_set->set);
-				ldms_set_delete(old_app_set->set);
-				old_app_set->set = set;
+					ldmsd_set_deregister(ldms_set_instance_name_get(old_app_set->set), SAMP);
+					ldms_set_unpublish(old_app_set->set);
+					ldms_set_delete(old_app_set->set);
+					old_app_set->set = set;
+					ldms_set_publish(set);
+					ldmsd_set_register(set, SAMP);
+				}
 				old_app_set->task_rank = task_rank_val;
-				ldms_set_publish(set);
-				ldmsd_set_register(set, SAMP);
 			}
 		} else {
 			/* keep existing set whether slurm or not. */
 			/* unreachable in principle if set_create maintains uniqueness */
 #ifdef LPDEBUG
-			INST_LOG(inst, OVIS_LDEBUG, "Keeping existing set %s, dropping %s\n",
-				ldms_set_instance_name_get(old_app_set->set),
-				ldms_set_instance_name_get(app_set->set));
+			INST_LOG(inst, OVIS_LDEBUG, "Keeping existing set for pid %"
+				PRId64 ", dropping duplicate.\n",
+				old_app_set->key.os_pid);
 #endif
 			app_set_destroy(inst, app_set);
 		}
@@ -3440,11 +3800,18 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data, int *
 	}
 	rbt_ins(&inst->set_rbt, &app_set->rbn);
 #ifdef LPDEBUG
-	INST_LOG(inst, OVIS_LDEBUG, "Adding set %s\n",
-		ldms_set_instance_name_get(app_set->set));
+	if (inst->metric_sets) {
+		INST_LOG(inst, OVIS_LDEBUG, "Adding set %s\n",
+			ldms_set_instance_name_get(app_set->set));
+	} else {
+		INST_LOG(inst, OVIS_LDEBUG, "Adding set for pid %" PRId64 "\n",
+			app_set->key.os_pid);
+	}
 #endif
-	ldms_set_publish(set);
-	ldmsd_set_register(set, SAMP);
+	if (inst->metric_sets) {
+		ldms_set_publish(set);
+		ldmsd_set_register(set, SAMP);
+	}
 	if (inst->argv_msg) {
 		rc = publish_argv_pid(inst, app_set, start_string, exe_string,
 			is_thread_val, parent, job_id_val);
@@ -3459,7 +3826,7 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data, int *
 				*pid_bad = 1;
 		}
 #ifdef LPDEBUG
-else {
+		else {
 			INST_LOG(inst, OVIS_LDEBUG,
 				"publish_argv_pid OK for %d\n",
 				app_set->key.os_pid);
@@ -3472,7 +3839,7 @@ else {
 		if (rc) {
 #ifdef LPDEBUG
 			INST_LOG(inst, OVIS_LDEBUG,
-				"publish_env_pid failed for %d %s\n",
+				"publish_env_pid failed for %" PRId64 " %s\n",
 				app_set->key.os_pid, STRERROR(rc) );
 #endif
 			app_set->dead = rc;
@@ -3480,9 +3847,9 @@ else {
 				*pid_bad = 1;
 		}
 #ifdef LPDEBUG
-else {
+		else {
 			INST_LOG(inst, OVIS_LDEBUG,
-				"publish_env_pid OK for %d\n",
+				"publish_env_pid OK for %" PRId64 "\n",
 				app_set->key.os_pid);
 		}
 #endif
@@ -3497,6 +3864,12 @@ else {
 				*pid_bad = 1;
 		}
 	}
+#ifdef LPDEBUG
+	else {
+		INST_LOG(inst, OVIS_LDEBUG, "__handle_task_init skip pfp_first: fdmsg %d dead %d\n",
+			inst->fd_msg, app_set->dead);
+	}
+#endif
 	pthread_mutex_unlock(&inst->mutex);
 	return 0;
 dump:
@@ -3611,18 +3984,40 @@ static int __stream_cb(ldms_msg_event_t ev, void *ctxt)
 	json_entity_t event, data;
 	const char *event_name;
 
-	if (ev->type != LDMS_MSG_EVENT_RECV)
+	if (!inst) {
+		ovis_log(NULL, OVIS_LERROR,
+			 "linux_proc_sampler got message with NULL context.\n");
+		return EINVAL; /* called without valid context */
+	}
+	if (! inst->stream) {
+		ovis_log(NULL, OVIS_LERROR,
+			 "linux_proc_sampler got message after destructor.\n");
+		return EBADMSG; /* __stream_cb called after destructor; bad framework */
+	}
+
+	if (ev->type != LDMS_MSG_EVENT_RECV) {
+#ifdef LPDEBUG
+		INST_LOG(inst, OVIS_LDEBUG, "__stream_cb stray event %d\n",
+			(int)ev->type);
+#endif
 		return 0;
+	}
 
 	if (ev->recv.type != LDMS_MSG_JSON) {
-		INST_LOG(inst, OVIS_LDEBUG, "Unexpected stream type data...ignoring\n");
+		INST_LOG(inst, OVIS_LDEBUG, "Unexpected stream type data = %d "
+			"...ignoring\n", ev->recv.type);
 		INST_LOG(inst, OVIS_LDEBUG, "%s\n", ev->recv.data);
 		rc = EINVAL;
 		goto err;
 	}
 
+	if (!inst->stream)
+		return 0; /* not possible unless cb thread doesn't yet know
+			destructor has been called. */
+
 	event = get_field(inst, ev->recv.json, JSON_STRING_VALUE, "event");
 	if (!event) {
+		INST_LOG(inst, OVIS_LERROR, "__stream_cb json missing field event\n");
 		rc = ENOENT;
 		goto err;
 	}
@@ -3656,8 +4051,8 @@ static int __stream_cb(ldms_msg_event_t ev, void *ctxt)
 	goto out;
  err:
 #ifdef LPDEBUG
-	INST_LOG(inst, OVIS_LDEBUG, "Doing nothing with msg %s.\n",
-		msg);
+	INST_LOG(inst, OVIS_LDEBUG, "Doing nothing with msg %.*s\n",
+		ev->recv.data_len, ev->recv.data);
 #endif
  out:
 	return rc;
@@ -3686,6 +4081,7 @@ linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kw
 		return errno;
 	}
 	INST_LOG(inst, OVIS_LDEBUG, "configuring.\n");
+	int cnt;
 
 	/* Plugin-specific config here */
 	val = av_value(avl, "cfg_file");
@@ -3724,7 +4120,6 @@ linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kw
 		val = av_value(avl, "argv_fmt");
 		if (val) {
 			int dval = 2;
-			int cnt;
 			cnt = sscanf(val, "%d", &dval);
 			if (cnt != 1) {
 				INST_LOG(inst, OVIS_LERROR,
@@ -3738,7 +4133,6 @@ linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kw
 		val = av_value(avl, "fd_msg");
 		if (val) {
 			int dval = 1;
-			int cnt;
 			cnt = sscanf(val, "%d", &dval);
 			if (cnt != 1) {
 				INST_LOG(inst, OVIS_LERROR,
@@ -3747,26 +4141,91 @@ linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kw
 				goto err;
 			} else {
 				inst->fd_msg = dval;
-				val = av_value(avl, "fd_exclude");
-				if (val) {
-					char *fregex = file_to_regex(inst, val);
-					if (!fregex) {
-						INST_LOG(inst, OVIS_LERROR,
-							"fd_exclude= failed.\n");
-						rc = ENOMEM;
-						goto err;
-					}
-					rc = init_regex_filter(inst, fregex,
-						"fd", &inst->fd_use_regex, &inst->fd_regex);
-					free(fregex);
-					if (rc)
-						goto err;
-				}
+			}
+		}
+		val = av_value(avl, "fd_map_files");
+		if (val) {
+			int dval = 1;
+			cnt = sscanf(val, "%d", &dval);
+			if (cnt != 1) {
+				INST_LOG(inst, OVIS_LERROR,
+					"fd_map_files='%s' not integer.\n", val);
+				rc = EINVAL;
+				goto err;
+			} else {
+				inst->fd_map_files = (dval != 0);
+			}
+		}
+		val = av_value(avl, "fd_exclude");
+		if (val) {
+			char *fregex = file_to_regex(inst, val);
+			if (!fregex) {
+				INST_LOG(inst, OVIS_LERROR,
+					"fd_exclude= failed.\n");
+				rc = ENOMEM;
+				goto err;
+			}
+			rc = init_regex_filter(inst, fregex,
+				"fd", &inst->fd_use_regex, &inst->fd_regex);
+			free(fregex);
+			if (rc)
+				goto err;
+		}
+		val = av_value(avl, "env_threads");
+		if (val) {
+			int dval = 0;
+			cnt = sscanf(val, "%d", &dval);
+			if (cnt != 1) {
+				INST_LOG(inst, OVIS_LERROR,
+					"env_threads='%s' not integer.\n", val);
+				rc = EINVAL;
+				goto err;
+			} else {
+				inst->env_threads = dval;
+			}
+		}
+		val = av_value(avl, "fd_threads");
+		if (val) {
+			int dval = 0;
+			cnt = sscanf(val, "%d", &dval);
+			if (cnt != 1) {
+				INST_LOG(inst, OVIS_LERROR,
+					"fd_threads='%s' not integer.\n", val);
+				rc = EINVAL;
+				goto err;
+			} else {
+				inst->fd_threads = dval;
+			}
+		}
+		val = av_value(avl, "metric_sets");
+		if (val) {
+			int dval = 0;
+			cnt = sscanf(val, "%d", &dval);
+			if (cnt != 1) {
+				INST_LOG(inst, OVIS_LERROR,
+					"metric_sets='%s' not integer.\n", val);
+				rc = EINVAL;
+				goto err;
+			} else {
+				inst->metric_sets = dval;
 			}
 		}
 		val = av_value(avl, "argv_msg");
 		if (val) {
 			inst->argv_msg = true;
+			val = av_value(avl, "argv_include_fd");
+			if (val) {
+				int dval = 0;
+				cnt = sscanf(val, "%d", &dval);
+				if (cnt != 1) {
+					INST_LOG(inst, OVIS_LERROR,
+						"argv_include_fd='%s' not integer.\n", val);
+					rc = EINVAL;
+					goto err;
+				} else {
+					inst->argv_include_fd = dval;
+				}
+			}
 		}
 		val = av_value(avl, "env_msg");
 		if (val) {
@@ -3786,14 +4245,19 @@ linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kw
 				if (rc)
 					goto err;
 			}
-		}
-		val = av_value(avl, "exe_suffix");
-		if (val) {
-			inst->exe_suffix = true;
-		}
-		val = av_value(avl, "sc_clk_tck");
-		if (val) {
-			inst->sc_clk_tck = sysconf(_SC_CLK_TCK);
+			val = av_value(avl, "env_include_fd");
+			if (val) {
+				int dval = 0;
+				cnt = sscanf(val, "%d", &dval);
+				if (cnt != 1) {
+					INST_LOG(inst, OVIS_LERROR,
+						"env_include_fd='%s' not integer.\n", val);
+					rc = EINVAL;
+					goto err;
+				} else {
+					inst->env_include_fd = dval;
+				}
+			}
 		}
 		val = av_value(avl, "stream");
 		if (val) {
@@ -3801,6 +4265,24 @@ linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kw
 			if (!inst->stream_name) {
 				INST_LOG(inst, OVIS_LERROR,
 					"Config out of memory for stream\n");
+				rc = ENOMEM;
+				goto err;
+			} else {
+				INST_LOG(inst, OVIS_LWARNING,
+					"Config message_tag should be used instead of deprecated stream option.\n");
+			}
+		}
+		val = av_value(avl, "message_tag");
+		if (val) {
+			if ( inst->stream_name ) {
+				INST_LOG(inst, OVIS_LWARNING,
+					"Config message_tag applied and stream option ignored.\n");
+				free(inst->stream_name);
+			}
+			inst->stream_name = strdup(val);
+			if (!inst->stream_name) {
+				INST_LOG(inst, OVIS_LERROR,
+					"Config out of memory for message_tag\n");
 				rc = ENOMEM;
 				goto err;
 			}
@@ -3815,33 +4297,43 @@ linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kw
 				goto err;
 			}
 		}
-		val = av_value(avl, "syscalls");
-		if (val) {
-			inst->syscalls = strdup(val);
-			if (!inst->syscalls) {
-				INST_LOG(inst, OVIS_LERROR,
-					"Config out of memory for stream\n");
-				rc = ENOMEM;
-				goto err;
+		if (inst->metric_sets) {
+			val = av_value(avl, "exe_suffix");
+			if (val) {
+				inst->exe_suffix = true;
 			}
-		}
-		val = av_value(avl, "metrics");
-		if (val) {
-			char *tkn, *ptr;
-			tkn = strtok_r(val, ",", &ptr);
-			while (tkn) {
-				minfo = find_metric_info_by_name(tkn);
-				if (!minfo) {
-					rc = ENOENT;
-					missing_metric(inst, tkn);
+			val = av_value(avl, "sc_clk_tck");
+			if (val) {
+				inst->sc_clk_tck = sysconf(_SC_CLK_TCK);
+			}
+			val = av_value(avl, "syscalls");
+			if (val) {
+				inst->syscalls = strdup(val);
+				if (!inst->syscalls) {
+					INST_LOG(inst, OVIS_LERROR,
+						"Config out of memory for stream\n");
+					rc = ENOMEM;
 					goto err;
 				}
-				inst->metric_idx[minfo->code] = -1;
-				tkn = strtok_r(NULL, ",", &ptr);
 			}
-		} else {
-			for (i = _APP_FIRST; i <= _APP_LAST; i++) {
-				inst->metric_idx[i] = -1;
+			val = av_value(avl, "metrics");
+			if (val) {
+				char *tkn, *ptr;
+				tkn = strtok_r(val, ",", &ptr);
+				while (tkn) {
+					minfo = find_metric_info_by_name(tkn);
+					if (!minfo) {
+						rc = ENOENT;
+						missing_metric(inst, tkn);
+						goto err;
+					}
+					inst->metric_idx[minfo->code] = -1;
+					tkn = strtok_r(NULL, ",", &ptr);
+				}
+			} else {
+				for (i = _APP_FIRST; i <= _APP_LAST; i++) {
+					inst->metric_idx[i] = -1;
+				}
 			}
 		}
 	}
@@ -3853,9 +4345,11 @@ linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kw
 		goto err;
 	}
 
-	rc = load_syscall_names(inst);
-	if (rc) {
-		goto err;
+	if (inst->metric_sets) {
+		rc = load_syscall_names(inst);
+		if (rc) {
+			goto err;
+		}
 	}
 	/* default stream */
 	if (!inst->stream_name) {
@@ -3904,27 +4398,29 @@ linux_proc_sampler_config(ldmsd_plug_handle_t handle, struct attr_value_list *kw
 			inst->fd_stream, inst->fd_msg);
 	}
 
-	inst->n_fn = 0;
-	for (i = _APP_FIRST; i <= _APP_LAST; i++) {
-		if (inst->metric_idx[i] == 0)
-			continue;
-		if (inst->n_fn && inst->fn[inst->n_fn-1].fn == handler_info_tbl[i].fn)
-			continue; /* already added */
-		/* add the handler */
-		inst->fn[inst->n_fn] = handler_info_tbl[i];
-		inst->n_fn++;
-	}
+	if (inst->metric_sets) {
+		inst->n_fn = 0;
+		for (i = _APP_FIRST; i <= _APP_LAST; i++) {
+			if (inst->metric_idx[i] == 0)
+				continue;
+			if (inst->n_fn && inst->fn[inst->n_fn-1].fn == handler_info_tbl[i].fn)
+				continue; /* already added */
+			/* add the handler */
+			inst->fn[inst->n_fn] = handler_info_tbl[i];
+			inst->n_fn++;
+		}
 
-	/* create schema */
-	if (!base_schema_new(inst->base_data)) {
-		INST_LOG(inst, OVIS_LERROR, "Out of memory making schema\n");
-		rc = errno;
-		goto err;
-	}
-	rc = linux_proc_sampler_update_schema(inst, inst->base_data->schema);
-	if (rc)
-		goto err;
+		/* create schema */
+		if (!base_schema_new(inst->base_data)) {
+			INST_LOG(inst, OVIS_LERROR, "Out of memory making schema\n");
+			rc = errno;
+			goto err;
+		}
+		rc = linux_proc_sampler_update_schema(inst, inst->base_data->schema);
+		if (rc)
+			goto err;
 
+	}
 	/* scan published_pid_dir if exists */
 	if (inst->published_pid_dir) {
 		size_t g_pat_sz = strlen(inst->published_pid_dir) + 10;
@@ -3973,8 +4469,10 @@ void linux_proc_sampler_cleanup(linux_proc_sampler_inst_t inst)
 	struct linux_proc_sampler_set *app_set;
 
 	ovis_log(inst->mylog, OVIS_LDEBUG, "terminating plugin linux_proc_sampler\n");
-	if (inst->stream)
+	if (inst->stream) {
 		ldms_msg_client_close(inst->stream);
+		inst->stream = NULL;
+	}
 	pthread_mutex_lock(&inst->mutex);
 	while ((rbn = rbt_min(&inst->set_rbt))) {
 		rbt_del(&inst->set_rbt, rbn);
@@ -4092,6 +4590,7 @@ static int constructor(ldmsd_plug_handle_t handle)
                 return errno;
 	}
 
+	inst->metric_sets = true;
 	inst->argv_sep = NULL;
 	inst->n_syscalls = -1;
 	inst->argv_fmt = 2;
