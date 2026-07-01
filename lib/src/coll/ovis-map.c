@@ -166,6 +166,8 @@ int gathernodes(struct rbn *n, void *data, int level)
 void ovis_map_destroy(struct ovis_map *map, ovis_map_visitor destroy, void *udata)
 {
 
+	if (!map)
+		return;
 	if (!MAP_OK(map)) {
 		return;
 	}
