@@ -194,6 +194,10 @@ attributes of the base class.
         forked/cloned threads share the file descriptor table with the parent
         making all their file events redundant. The default is 0.
 
+   fd_map_files=1
+      |
+      | Publish file messages for /proc/pid/maps as well as /proc/pid/fd.
+
    published_pid_dir=<path>
       |
       | Name of the directory where netlink-notifier or other notifier
