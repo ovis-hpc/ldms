@@ -111,6 +111,8 @@ static struct {
 } ldms_zap_tbl[16] = {{0}};
 static int ldms_zap_tbl_n = 0;
 
+static int ipv6_enabled;
+
 static char *xprt_event_type_names[] = {
 	[LDMS_XPRT_EVENT_CONNECTED] = "CONNECTED",
 	[LDMS_XPRT_EVENT_REJECTED] = "REJECTED",
@@ -4741,7 +4743,7 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 	ai = ai_list;
 	if (ai->ai_family == AF_INET) {
 		struct sockaddr_in *sin = (void*)ai->ai_addr;
-		if (sin->sin_addr.s_addr == INADDR_ANY) {
+		if (sin->sin_addr.s_addr == INADDR_ANY && ipv6_enabled) {
 			/*
 			 * Special ANY address case. `getaddrinfo()` returned
 			 * IPv4 before IPv6. We prefer IP6 for ANY address as it
@@ -4993,6 +4995,16 @@ static void __attribute__ ((constructor)) cs_init(void)
 	pthread_mutex_init(&xprt_list_lock, 0);
 	pthread_mutex_init(&ldms_zap_list_lock, 0);
 	(void)clock_gettime(CLOCK_REALTIME, &xprt_start);
+
+	/* check if IPv6 is supported */
+	int sd;
+	sd = socket(AF_INET6, SOCK_STREAM, 0);
+	if (sd >= 0) {
+		close(sd);
+		ipv6_enabled = 1;
+	} else {
+		ipv6_enabled = 0;
+	}
 }
 
 static void __attribute__ ((destructor)) cs_term(void)

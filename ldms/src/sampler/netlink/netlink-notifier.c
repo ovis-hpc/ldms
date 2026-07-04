@@ -4668,7 +4668,7 @@ int main(int argc, char * argv[])
 	forkstat_t *ft = NULL;
 	struct dump_args thread_args;
 	memset(&thread_args, 0, sizeof(thread_args));
-	ft = forkstat_create(printf, printf);
+	ft = forkstat_create();
 	if (!ft) {
 		fprintf(stderr, "%s: out of memory.\n", argv[0]);
 		return ENOMEM;
