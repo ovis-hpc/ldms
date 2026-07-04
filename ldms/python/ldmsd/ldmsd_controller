@@ -1704,6 +1704,7 @@ class LdmsdCmdParser(Cmd.Cmd):
         begin_time = sys.maxsize
         end_time = 0
         num_op = 0
+        have_sample = False
 
         for strgp_name, strgp in d.items():
             strgp_tbl['strgp'][strgp_name] = {'stats' : self.__datatbl_new(), 'schema': {}}
@@ -1716,13 +1717,19 @@ class LdmsdCmdParser(Cmd.Cmd):
                 prdset['name'] = set_name
                 schema_name = prdset['schema']
 
-                stage_tbl = self.__store_stage_update(stage_tbl, prdset)
-
                 # Calculate the operation
                 bt = prdset['stats']['start_ts']
+                et = prdset['stats']['end_ts']
+                if et - bt <= 0:
+                    # This set hasn't been stored since start or reset
+                    continue
+                have_sample = True
+
+                stage_tbl = self.__store_stage_update(stage_tbl, prdset)
+
                 if bt != 0 and bt < begin_time:
                     begin_time = bt
-                et = prdset['stats']['end_ts']
+
                 if et > end_time:
                     end_time = et
                 num_op += prdset['stats']['count']
@@ -1741,8 +1748,19 @@ class LdmsdCmdParser(Cmd.Cmd):
 
         self.__bounds(schema_tbl['stats'], schema_tbl['schema'])
 
-        num_op_per_sec = num_op/(end_time - begin_time) if  (end_time - begin_time > 0) else 0
-        return (strgp_tbl, schema_tbl, stage_tbl, num_op_per_sec)
+        MIN_RATE_WINDOW_SEC = 1.0 # 1 sec
+        rate_note = None
+        elapsed = end_time - begin_time
+        num_op_per_sec = None
+        if have_sample is False:
+            rate_note = f"No sets have been stored since start or reset"
+        else:
+            if elapsed < MIN_RATE_WINDOW_SEC:
+                rate_note = f"Insufficient time window to compute rate ({elapsed:.3f}s collected, {MIN_RATE_WINDOW_SEC:.0f}s minimum)"
+            else:
+                num_op_per_sec = num_op / elapsed
+
+        return (strgp_tbl, schema_tbl, stage_tbl, num_op_per_sec, rate_note)
 
     def __symbols(self, key, stats):
         symbol = list()
@@ -1818,7 +1836,7 @@ class LdmsdCmdParser(Cmd.Cmd):
         j = fmt_status(msg)
 
         try:
-            strgp_tbl, schema_tbl, stage_tbl, num_op_per_sec = self.__store_time_process(j)
+            strgp_tbl, schema_tbl, stage_tbl, num_op_per_sec, rate_note = self.__store_time_process(j)
             stage_tbl['total_time'] = sum(stage_tbl['stages'].values())
         except Exception as e:
             raise
@@ -1887,7 +1905,10 @@ class LdmsdCmdParser(Cmd.Cmd):
             else:
                 print("Scope: all storage policies")
             print()
-            print(f"Number of store operations per second:              {num_op_per_sec:7.2f}")
+            if num_op_per_sec is None:
+                print(f"Number of store operations per second:              N/A ({rate_note})")
+            else:
+                print(f"Number of store operations per second:              {num_op_per_sec:7.2f}")
             print(f"The averaged duration of each store operation (us): {stage_tbl['total_time']:7.2f}")
             # print(f"{'-'*(4+21+16+16+16+21+21+11+11)}")
             print()
