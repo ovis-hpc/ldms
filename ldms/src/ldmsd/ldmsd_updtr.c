@@ -567,9 +567,9 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 				  "producers providing a set with the same instance name.\n",
 				  prd_set->prdcr->obj.name, prd_set->inst_name, set);
 		} else if (status == ENOENT) {
-			ovis_log(updtr_log, OVIS_LERROR,
-				  "prdcr %s: The set '%s' (%p) no longer exists.\n",
-				  prd_set->prdcr->obj.name, prd_set->inst_name, set);
+			ovis_log(updtr_log, OVIS_LWARN,
+				  "prdcr %s: The set '%s' no longer exists on the server.\n",
+				  prd_set->prdcr->obj.name, prd_set->inst_name);
 			delete = 1;
 		} else {
 			ovis_log(updtr_log, OVIS_LERROR,
