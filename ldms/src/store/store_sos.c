@@ -1256,6 +1256,10 @@ __store_list_row(struct sos_instance *si, ldms_set_t s,
 	}
 	rc = sos_obj_index(obj);
 	sos_obj_put(obj);
+	if (rc)
+		LOG_(si, OVIS_LERROR,
+		     "Error %d indexing object '%s' in '%s'\n",
+		     errno, si->schema_name, si->path);
 	return rc;
 err:
 	sos_obj_delete(obj);
@@ -1365,7 +1369,11 @@ __store_basic(struct sos_instance *si, ldms_set_t s,
 	}
 	rc = sos_obj_index(obj);
 	sos_obj_put(obj);
-	return 0;
+	if (rc)
+		LOG_(si, OVIS_LERROR,
+		     "Error %d indexing object '%s' in '%s'\n",
+		     errno, si->schema_name, si->path);
+	return rc;
 err:
 	sos_obj_delete(obj);
 	return rc;
@@ -1776,7 +1784,8 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp,
 				array_value = sos_array_new(array_value,
 						sos_attr, sos_obj, array_len);
 				if (!array_value) {
-					LOG_(ss, OVIS_LERROR, "Error %d allocating '%s' array of size %d\n",
+					LOG_(ss, OVIS_LERROR,
+					     "Error %d allocating '%s' array of size %d\n",
 					     errno,
 					     sos_attr_name(sos_attr),
 					     array_len);
@@ -1790,9 +1799,15 @@ commit_rows(ldmsd_plug_handle_t handle, ldmsd_strgp_t strgp,
 			}
 			sos_attr = sos_schema_attr_next(sos_attr);
 		}
-		sos_obj_index(sos_obj);
+		rc = sos_obj_index(sos_obj);
+		if (rc)
+			LOG_(si, OVIS_LERROR,
+			     "Error %d indexing object '%s' in '%s'\n",
+			     errno, si->schema_name, si->path);
 		sos_obj_put(sos_obj);
 		sos_obj = NULL;
+		if (rc)
+			goto out;
 		goto row_next;
 
 	row_err:
