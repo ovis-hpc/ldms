@@ -17,6 +17,7 @@
 
 #include <ldms/ldms.h>
 #include <ldms/ldmsd_stream.h>
+#include <ldms/ldms_xprt.h>
 #include <ovis_util/util.h>
 
 using namespace KokkosTools;
@@ -81,7 +82,7 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		ldms_publish = true;
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "rail_ref");
 		x->sem_rc = 200;
 		ldms_publish = false;
 
@@ -90,7 +91,7 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
-		ldms_xprt_put(x);
+		ldms_xprt_put(x, "rail_ref");
 		x->sem_rc = 300;
 		ldms_publish = false;
 
@@ -159,7 +160,7 @@ extern "C" void kokkosp_init_library(const int loadSeq,
 		tool_verbosity = std::atoi(tool_verbose_str);
 	}
 
-	ldms = ldms_xprt_new_with_auth(xprt, NULL, auth, NULL);
+	ldms = ldms_xprt_new_with_auth(xprt,auth, NULL);
 	int ldms_rc = ldms_xprt_connect_by_name(ldms, ldms_host, ldms_port, event_cb, NULL);
 	struct timespec ts;
 	ts.tv_sec = time(NULL) + 1;
