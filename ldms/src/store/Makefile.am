@@ -101,6 +101,13 @@ pkglib_LTLIBRARIES += libstore_function_csv.la
 dist_man7_MANS += ldms-store_csv.man ldms-store_function_csv.man
 endif
 
+if ENABLE_LDMS_TEST
+libstore_test_la_SOURCES = store_test.c
+libstore_test_ls_LIBADD = $(STORE_LIBADD) @OVIS_AUTH_LIBS@
+pkglib_LTLIBRARIES += libstore_test.la
+dist_man7_MANS += ldms-store_test.man
+endif
+
 if ENABLE_HELLO_STREAM
 SUBDIRS += stream
 endif
@@ -115,6 +122,7 @@ endif
 
 SUBDIRS += stream_dump
 
+
 CLEANFILES = $(dist_man7_MANS)
 
-EXTRA_DIST=ldms-store_csv.rst ldms-store_function_csv.rst ldms-store_rabbitkw.rst ldms-store_rabbitv3.rst ldms-store_sos.rst
+EXTRA_DIST=ldms-store_csv.rst ldms-store_function_csv.rst ldms-store_rabbitkw.rst ldms-store_rabbitv3.rst ldms-store_sos.rst ldms-store_test.rst
