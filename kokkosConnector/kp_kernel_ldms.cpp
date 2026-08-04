@@ -160,7 +160,7 @@ extern "C" void kokkosp_init_library(const int loadSeq,
 		tool_verbosity = std::atoi(tool_verbose_str);
 	}
 
-	ldms = ldms_xprt_new_with_auth(xprt,auth, NULL);
+	ldms = ldms_xprt_new_with_auth(xprt, auth, NULL);
 	int ldms_rc = ldms_xprt_connect_by_name(ldms, ldms_host, ldms_port, event_cb, NULL);
 	struct timespec ts;
 	ts.tv_sec = time(NULL) + 1;
