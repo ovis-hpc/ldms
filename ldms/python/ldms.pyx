@@ -480,20 +480,20 @@ def _msg_publish(Ptr x_ptr, name, data, msg_type=None,
     if msg_type is None:
         if _t is dict:
             # JSON
-            msg_type = ldms.LDMS_MSG_JSON
+            msg_type = LDMS_MSG_JSON
         elif _t in (str, bytes):
-            msg_type = ldms.LDMS_MSG_STRING
+            msg_type = LDMS_MSG_STRING
         else:
             raise TypeError(f"Cannot infer msg_type from the type of data ({type(data)})")
     # Avro/Serdes
-    if msg_type == ldms.LDMS_MSG_AVRO_SER:
+    if msg_type == LDMS_MSG_AVRO_SER:
         if not sr_client:
             raise ValueError(f"LDMS_MSG_AVRO_SER requires `sr_client`")
         if not schema_def:
             raise ValueError(f"LDMS_MSG_AVRO_SER requires `schema_def`")
         data = __avro_msg_data(sr_client, schema_def, data)
     # Json
-    if msg_type == ldms.LDMS_MSG_JSON and _t is dict:
+    if msg_type == LDMS_MSG_JSON and _t is dict:
         data = json.dumps(data)
 
     # uid
@@ -1506,10 +1506,10 @@ cdef class XprtEvent(object):
     def __cinit__(self, Ptr ptr):
         cdef ldms_xprt_event_t e = <ldms_xprt_event_t>ptr.c_ptr
         cdef ldms_set_t cset
-        self.type = ldms_xprt_event_type(e.type)
-        if self.type == ldms.LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
+        self.type = e.type
+        if self.type == LDMS_XPRT_EVENT_SEND_QUOTA_DEPOSITED:
             self.quota = QuotaEventData(e.quota.quota, e.quota.ep_idx, e.quota.rc)
-        elif self.type == ldms.LDMS_XPRT_EVENT_SET_DELETE:
+        elif self.type == LDMS_XPRT_EVENT_SET_DELETE:
             cset = <ldms_set_t>e.set_delete.set
             lset = Set(None, None, set_ptr=PTR(cset)) if cset else None
             self.set_delete = SetDeleteEventData(lset, STR(e.set_delete.name))
@@ -3497,8 +3497,8 @@ cdef class Xprt(object):
     cdef int rail_eps
 
     def __init__(self, name="sock", auth="none", auth_opts=None,
-                       rail_eps = 1, rail_recv_quota = ldms.RAIL_UNLIMITED,
-                       rail_rate_limit = ldms.RAIL_UNLIMITED,
+                       rail_eps = 1, rail_recv_quota = RAIL_UNLIMITED,
+                       rail_rate_limit = RAIL_UNLIMITED,
                        Ptr xprt_ptr=None,
                        rail_recv_limit = None # alias of rail_recv_quota
                        ):
@@ -3924,8 +3924,8 @@ cdef class Xprt(object):
         cdef int64_t q
         q = ldms_xprt_rail_recv_quota_get(self.xprt)
         if q < 0:
-            if q == ldms.LDMS_UNLIMITED:
-                return ldms.LDMS_UNLIMITED
+            if q == LDMS_UNLIMITED:
+                return LDMS_UNLIMITED
             else:
                 err = -q
                 raise RuntimeError(f"ldms_xprt_rail_recv_quota_set() error: {-err}")
@@ -3947,8 +3947,8 @@ cdef class Xprt(object):
 
     def get_send_rate_limit(self):
         cdef int64_t rate = ldms_xprt_rail_send_rate_limit_get(self.xprt)
-        if rate == ldms.LDMS_UNLIMITED:
-            return ldms.LDMS_UNLIMITED
+        if rate == LDMS_UNLIMITED:
+            return LDMS_UNLIMITED
         if rate < 0:
             raise RuntimeError(f"ldms_xprt_rail_send_rate_limit_get() error: {-rate}")
         return rate
@@ -3959,8 +3959,8 @@ cdef class Xprt(object):
 
     def get_recv_rate_limit(self):
         cdef int64_t rate = ldms_xprt_rail_recv_rate_limit_get(self.xprt)
-        if rate == ldms.LDMS_UNLIMITED:
-            return ldms.LDMS_UNLIMITED
+        if rate == LDMS_UNLIMITED:
+            return LDMS_UNLIMITED
         if rate < 0:
             raise RuntimeError(f"ldms_xprt_rail_recv_rate_limit_get() error: {-rate}")
         return rate
@@ -4391,7 +4391,7 @@ cdef class MsgData(object):
             tid = threading.get_ident()
         obj = MsgData(name, src, tid, uid, gid, perm, is_json, data,
                          raw_data,
-                         ldms.ldms_msg_type_e(ev.recv.type))
+                         ldms_msg_type_e(ev.recv.type))
         return obj
 
 cdef int __msg_client_cb(ldms_msg_event_t ev, void *arg) with gil:

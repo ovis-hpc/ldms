@@ -335,7 +335,7 @@ cdef extern from "ldms.h" nogil:
         void * set
         const char *name
     cdef struct ldms_xprt_event:
-        int type
+        ldms_xprt_event_type type
         size_t data_len
         # data, and quota are in union. Cython doesn't care. It just want to
         # know the names of the "fields" it can access in C code.
