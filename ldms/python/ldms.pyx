@@ -43,6 +43,8 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# cython: show_performance_hints=False
+
 from __future__ import print_function
 from cpython cimport PyObject, Py_INCREF, Py_DECREF, PyGILState_Ensure, \
                      PyGILState_Release, PyGILState_STATE, \
