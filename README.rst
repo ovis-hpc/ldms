@@ -10,11 +10,11 @@ For more information on installing and using LDMS: https://ovis-hpc.readthedocs.
 
 To join the LDMS Users Group: https://github.com/ovis-hpc/ovis-wiki/wiki/Mailing-Lists
 
-Besides the Users Group, there have been three sub-workgroups: Best Practices,
-Multi-tenancy, and Stream Security. To request access to the discussion
-documents, create an Overleaf account and email Tom Tucker (tom@ogc.us) your
-email address corresponding to your Overleaf account with the subject "LDMS-UG:
-Request access to Workgroup Documents."
+Besides the Users Group, there have been several sub-workgroups covering
+topics such as security, multi-tenancy, and configuration. Active, paused,
+and completed workgroups — along with links to their materials — are
+tracked on the `LDMS Sub-Workgroups wiki page
+<https://github.com/ovis-hpc/ovis-wiki/wiki/LDMS-Workgroups>`_.
 
 OVIS is a modular system for HPC data collection, transport, storage,
 -log message exploration, and visualization as well as analysis.
