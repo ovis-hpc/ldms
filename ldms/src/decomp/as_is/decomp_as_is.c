@@ -53,6 +53,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <string.h>
 #include <assert.h>
 #include <errno.h>
 
@@ -73,6 +74,11 @@ static ovis_log_t as_is_log;
 		Snprintf(&(reqc)->line_buf, &(reqc)->line_len, fmt, ##__VA_ARGS__); \
 	} \
 } while (0)
+
+/* Macro to log a message to the ldmsd log only, for use on the decompose
+ * (sampling/store) path where there is no `reqc` to report back to. */
+#define AS_IS_LOG(level, fmt, ...) \
+	ovis_log(as_is_log, level, fmt, ##__VA_ARGS__)
 
 
 static ldmsd_decomp_t as_is_config(ldmsd_strgp_t strgp,
@@ -132,6 +138,12 @@ typedef struct as_is_row_cfg_s {
 	as_is_col_cfg_t cols; /* array of struct */
 	as_is_index_t idxs; /* array of struct */
 	size_t row_sz;
+	/* Non-zero if this entry is a cached record of a *permanent*,
+	 * schema-deterministic build failure (unsupported metric type,
+	 * missing index column) rather than a usable row config. Caching
+	 * the failure avoids rebuilding -- and re-logging -- the same
+	 * failure on every sample for a schema that can never succeed. */
+	int build_errno;
 } *as_is_row_cfg_t;
 
 static int row_cfg_cmp(void *tree_key, const void *key)
@@ -305,11 +317,24 @@ get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 			ldms_digest->digest[1],
 			ldms_digest->digest[2],
 			(unsigned char)(ldms_digest->digest[3] >> 4));
-	if (name_len < 0)
+	if (name_len < 0) {
+		AS_IS_LOG(OVIS_LCRIT,
+			"set '%s': memory allocation failure while "
+			"building the row config key.\n", ss_name);
 		return NULL;
+	}
 	drow = (void*)rbt_find(&dcfg->row_cfg_rbt, name);
-	if (drow)
+	if (drow) {
+		if (drow->build_errno) {
+			/* Cached permanent failure: same error as the first
+			 * time, without rebuilding the row config or
+			 * re-logging the same message every sample. */
+			errno = drow->build_errno;
+			free(name);
+			return NULL;
+		}
 		goto out;
+	}
 
 	/* first time seeing this set schema; create decomp row config */
 
@@ -352,6 +377,12 @@ get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 			le = ldms_list_first(set, lh, &mtype, &marray_len);
 			if (!le) {
 				/* List empty .. set is not ready */
+				AS_IS_LOG(OVIS_LWARN,
+					"set '%s': metric '%s' (list) is "
+					"empty; the set may not be fully "
+					"populated yet.\n",
+					ldms_set_schema_name_get(set),
+					ldms_metric_name_get(set, i));
 				errno = EINVAL;
 				goto out;
 			}
@@ -371,14 +402,25 @@ get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 			break;
 		default:
 			/* unsupported type */
+			AS_IS_LOG(OVIS_LERROR,
+				"set '%s': metric '%s' has an unsupported "
+				"value type (%d); the as_is decomposition "
+				"cannot build a row config for this set. "
+				"This condition is permanent for this "
+				"schema and will not be re-logged.\n",
+				ss_name, ldms_metric_name_get(set, i), mtype);
 			errno = ENOTSUP;
-			goto out;
+			goto err_cache;
 		}
 	}
 
 	drow = calloc(1, sizeof(*drow));
-	if (!drow)
+	if (!drow) {
+		AS_IS_LOG(OVIS_LCRIT,
+			"set '%s': memory allocation failure while "
+			"allocating row configuration.\n", ss_name);
 		goto out;
+	}
 	drow->schema_name = name; /* give `name` to decomp row config */
 	drow->idx_count = dcfg->idx_count;
 	drow->col_count = col_count;
@@ -507,8 +549,15 @@ get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 			break;
 		default:
 			/* unsupported type */
+			AS_IS_LOG(OVIS_LERROR,
+				"set '%s': metric '%s' has an unsupported "
+				"value type (%d) while building row '%s'. "
+				"This condition is permanent for this "
+				"schema and will not be re-logged.\n",
+				ss_name, ldms_metric_name_get(set, i), mtype,
+				drow->schema_name);
 			errno = ENOTSUP;
-			goto out;
+			goto err_cache;
 		}
 	}
 
@@ -531,8 +580,16 @@ get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 			}
 			if (k == drow->col_count) {
 				/* column not found */
+				AS_IS_LOG(OVIS_LERROR,
+					"set '%s': index '%s' references "
+					"column '%s' which does not exist "
+					"in row '%s'. This condition is "
+					"permanent for this schema and will "
+					"not be re-logged.\n",
+					ss_name, ridx->name,
+					ridx->col_names[j], drow->schema_name);
 				errno = ENOENT;
-				goto err;
+				goto err_cache;
 			}
 			ridx->col_idx[j] = k;
 		}
@@ -547,6 +604,20 @@ get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 	return drow;
 
  err:
+	/* All remaining `goto err` sites are allocation failures; the
+	 * errno check is kept as a defensive fallback in case a future
+	 * change adds a non-ENOMEM path here. */
+	if (errno == ENOMEM) {
+		AS_IS_LOG(OVIS_LCRIT,
+			"set '%s': memory allocation failure while "
+			"building row '%s' configuration.\n",
+			ss_name, drow->schema_name);
+	} else {
+		AS_IS_LOG(OVIS_LERROR,
+			"set '%s': failed to build row '%s' "
+			"configuration: %s.\n",
+			ss_name, drow->schema_name, strerror(errno));
+	}
 	if (name)
 		free(name);
 	if (drow->cols) {
@@ -565,6 +636,74 @@ get_row_cfg(as_is_cfg_t dcfg, ldms_set_t set)
 	}
 	free(drow->schema_name);
 	free(drow);
+	return NULL;
+
+ err_cache:
+	/* Only two call sites jump here, both schema-deterministic
+	 * (permanent) failures -- same outcome on every future sample of
+	 * this schema+digest, so there is no point rebuilding or
+	 * re-detecting them:
+	 *   1. unsupported metric type (either pass over the schema)
+	 *   2. a strgp index names a column that doesn't exist
+	 * Both already logged the error at the point of detection, above;
+	 * this label's only job is to record that failure in the cache
+	 * (dcfg->row_cfg_rbt) under the same key a successful row config
+	 * would use, so the next call finds it via the `drow->build_errno`
+	 * check at the top of this function and returns immediately
+	 * instead of repeating the failed build. */
+	if (!drow) {
+		/* Scenario: unsupported type found on the FIRST pass over
+		 * the schema (sizing columns), before any row config
+		 * struct existed yet. `name` is the schema+digest key that
+		 * would have been used for a real row config -- reuse it
+		 * for this cached failure entry instead. */
+		drow = calloc(1, sizeof(*drow));
+		if (!drow) {
+			/* Can't even allocate the marker; give up caching
+			 * and fall back to retrying (and re-logging) on the
+			 * next call. */
+			free(name);
+			return NULL;
+		}
+		drow->schema_name = name;
+		name = NULL;
+		rbn_init(&drow->rbn, drow->schema_name);
+		drow->build_errno = errno;
+	} else {
+		/* Scenario: unsupported type found on the SECOND pass
+		 * (building columns), or a missing index column found
+		 * while resolving indices -- either way, a row config was
+		 * already allocated and partially filled in. Strip it down
+		 * to a bare marker under its existing key rather than
+		 * throwing it away and allocating a fresh one.
+		 * Note: only `col_idx` is owned by drow->idxs[] -- the
+		 * `name`/`col_names` fields are borrowed from dcfg->idxs
+		 * and must not be freed here, matching the cleanup in
+		 * `err:` above. */
+		if (drow->cols) {
+			for (i = 0; i < drow->col_count; i++)
+				free(drow->cols[i].name);
+			free(drow->cols);
+			drow->cols = NULL;
+		}
+		if (drow->idxs) {
+			for (i = 0; i < drow->idx_count; i++) {
+				if (drow->idxs[i].col_idx)
+					free(drow->idxs[i].col_idx);
+			}
+			free(drow->idxs);
+			drow->idxs = NULL;
+		}
+		drow->build_errno = errno;
+	}
+	/* Both scenarios converge here: `drow` is now a cached failure entry
+	 * (build_errno != 0, no cols/idxs) inserted under the schema's
+	 * lookup key, so the next get_row_cfg() call for this schema hits
+	 * the cache and returns this same errno without rebuilding. */
+	rbt_ins(&dcfg->row_cfg_rbt, &drow->rbn);
+	if (name)
+		free(name);
+	errno = drow->build_errno;
 	return NULL;
 }
 
@@ -607,8 +746,13 @@ static int as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	struct ldms_timestamp ts;
 	ldms_mval_t meta;
 
-	if (!TAILQ_EMPTY(row_list))
+	if (!TAILQ_EMPTY(row_list)) {
+		AS_IS_LOG(OVIS_LERROR,
+			"set '%s': decompose() called with a non-empty "
+			"row_list; this is a caller error.\n",
+			ldms_set_schema_name_get(set));
 		return EINVAL;
+	}
 
 	ts = ldms_transaction_timestamp_get(set);
 
@@ -825,6 +969,9 @@ static int as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	return 0;
  err_0:
 	/* clean up stuff here */
+	AS_IS_LOG(OVIS_LCRIT,
+		"set '%s': memory allocation failure while decomposing "
+		"a sample into rows.\n", ldms_set_schema_name_get(set));
 	if (col_mvals)
 		free(col_mvals);
 	as_is_release_rows(strgp, row_list);
