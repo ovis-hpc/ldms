@@ -579,7 +579,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		rc = ENAMETOOLONG;
 		goto out;
 	}
-	strcpy(ss->root_path, strdup(value));
+	strcpy(ss->root_path, value);
 
 	value = av_value(avl, "mode");
 	if (value) {
