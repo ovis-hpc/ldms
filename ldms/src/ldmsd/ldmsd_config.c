@@ -1278,13 +1278,16 @@ out:
  */
 int __req_filter_failover(ldmsd_req_ctxt_t reqc, void *ctxt)
 {
-	int *use_failover = ctxt;
 	int rc;
 
 	switch (reqc->req_id) {
 	case LDMSD_FAILOVER_START_REQ:
-		*use_failover = 1;
-		rc = 0;
+		/*
+		 * Return a negative value to deliver the request to failover_over_handler(),
+		 * where the error message is reported and deliver the logic to
+		 * the configuration error path.
+		 */
+		rc = -ENOTSUP;
 		break;
 	case LDMSD_PRDCR_START_REGEX_REQ:
 		rc = __req_deferred_start_regex(reqc, LDMSD_CFGOBJ_PRDCR);
