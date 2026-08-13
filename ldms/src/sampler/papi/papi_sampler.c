@@ -60,7 +60,6 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
-#include "ldmsd_stream.h"
 #include "../sampler_base.h"
 #include "papi_sampler.h"
 #include "papi_hook.h"
@@ -68,7 +67,7 @@
 #define SAMP "papi_sampler"
 
 static ovis_log_t mylog;
-static char *papi_stream_name;
+static char *papi_msg_name;
 base_data_t papi_base;
 
 pthread_mutex_t job_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -186,7 +185,7 @@ static void *cleanup_proc(void *arg)
 		LIST_FOREACH(job, &job_expiry_list, expiry_entry) {
 			assert(job->job_end);
 			if ((now - job->job_end) > papi_job_expiry) {
-				fprintf(stderr,
+				ovis_log(mylog, OVIS_LDEBUG,
 					"now %ld job_end %ld dur %ld\n",
 					now, job->job_end, now - job->job_end);
 				LIST_INSERT_HEAD(&delete_list, job, delete_entry);
@@ -321,12 +320,12 @@ static int create_metric_set(job_data_t job)
 static const char *usage(ldmsd_plug_handle_t handle)
 {
 	return  "config name=papi_sampler producer=<producer_name> instance=<instance_name>\n"
-		"         [stream=<stream_name>] [component_id=<component_id>] [perm=<permissions>]\n"
+		"         [msg_tag=<tag_name>] [component_id=<component_id>] [perm=<permissions>]\n"
                 "         [uid=<user_name>] [gid=<group_name>]\n"
                 "         [job_expiry=<seconds>]\n"
 		"     producer      A unique name for the host providing the data\n"
 		"     instance      A unique name for the metric set\n"
-		"     stream        A stream name to subscribe to. Defaults to 'slurm'\n"
+		"     msg_tag       A message tag to subscribe to. Defaults to 'slurm'\n"
 		"     component_id  A unique number for the component being monitored. Defaults to zero.\n"
 		"     job_expiry    Number of seconds to retain sets for completed jobs. Defaults to 60s\n";
 }
@@ -417,7 +416,7 @@ static int sample(ldmsd_plug_handle_t handle)
 	return 0;
 }
 
-static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt);
+static int msg_recv_cb(ldms_msg_event_t ev, void *ctxt);
 
 static int handle_step_init(job_data_t job, uint64_t job_id, uint64_t app_id, json_entity_t e)
 {
@@ -607,7 +606,7 @@ static void handle_papi_error(job_data_t job)
 	}
 	job->job_state = JOB_PAPI_ERROR;
 	job->job_state_time = time(NULL);
-	/* job_lock is held, call chain: stream_recv_cb
+	/* job_lock is held, call chain: msg_recv_cb
 	 *                               -> handle_task_init
 	 *                               -> handle_papi_error */
 	ldms_transaction_begin(job->set);
@@ -740,7 +739,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 	}
 	job->job_state = JOB_PAPI_RUNNING;
 	job->job_state_time = time(NULL);
-	/* job_lock is held, call chain: stream_recv_cb
+	/* job_lock is held, call chain: msg_recv_cb
 	 *                               -> handle_task_init */
 	ldms_transaction_begin(job->set);
 	ldms_metric_set_u8(job->set, job->job_state_mid, job->job_state);
@@ -770,7 +769,7 @@ static void handle_task_exit(job_data_t job, json_entity_t e)
 	/* Tell sampler to stop sampling */
 	job->job_state = JOB_PAPI_STOPPING;
 	job->job_state_time = time(NULL);
-	/* job_lock is held, call chain: stream_recv_cb
+	/* job_lock is held, call chain: msg_recv_cb
 	 *                               -> handle_task_exit */
 	ldms_transaction_begin(job->set);
 	ldms_metric_set_u8(job->set, job->job_state_mid, job->job_state);
@@ -809,21 +808,22 @@ static void handle_job_exit(job_data_t job, json_entity_t e)
 	uint64_t timestamp = json_value_int(json_attr_value(attr));
 
 	job->job_state = JOB_PAPI_COMPLETE;
-	/* job_lock is held, call chain: stream_recv_cb
+	job->job_state_time = time(NULL);
+	job->job_end = timestamp;
+	/* job_lock is held, call chain: msg_recv_cb
 	 *                               -> handle_job_exit */
 	if (job->set) {
 		/* set is not guaranteed to exist, e.g. init may failed or job
 		 * exited (canceled) even before the task_init_priv event */
 		ldms_transaction_begin(job->set);
 		ldms_metric_set_u8(job->set, job->job_state_mid, job->job_state);
+		ldms_metric_set_u64(job->set, job->job_end_mid, job->job_end);
 		ldms_transaction_end(job->set);
 	}
-	job->job_state_time = time(NULL);
-	job->job_end = timestamp;
 	release_job_data(job);
 }
 
-static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt)
+static int msg_recv_cb(ldms_msg_event_t ev, void *ctxt)
 {
 	int rc = 0;
 	json_entity_t event, data, dict, attr;
@@ -831,11 +831,11 @@ static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt)
 	if (ev->type != LDMS_MSG_EVENT_RECV)
 		return 0;
 	if (ev->recv.type != LDMS_MSG_JSON) {
-		ovis_log(mylog, OVIS_LDEBUG, "papi_sampler: Unexpected stream type data...ignoring\n");
+		ovis_log(mylog, OVIS_LDEBUG, "papi_sampler: Unexpected message type data...ignoring\n");
 		ovis_log(mylog, OVIS_LDEBUG, "papi_sampler:" "%s\n", ev->recv.data);
 		return EINVAL;
 	}
-
+	PAPI_register_thread();
 	event = json_attr_find(ev->recv.json, "event");
 	if (!event) {
 		ovis_log(mylog, OVIS_LERROR, "'event' attribute missing\n");
@@ -899,21 +899,23 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	if (!papi_base)
 		return errno;
 	value = av_value(avl, "stream");
+	if (!value)
+		av_value(avl, "msg_tag");
 	if (!value) {
-		papi_stream_name = "slurm";
+		papi_msg_name = "slurm";
 	} else {
-		papi_stream_name = strdup(value);
-		if (!papi_stream_name) {
+		papi_msg_name = strdup(value);
+		if (!papi_msg_name) {
 			ovis_log(mylog, OVIS_LERROR, "papi_sampler[%d]: Memory allocation failure.\n", __LINE__);
 			base_del(papi_base);
 			papi_base = NULL;
 			return EINVAL;
 		}
 	}
-	if (!ldms_msg_subscribe(papi_stream_name, 0, stream_recv_cb, handle, "papi_sampler")) {
+	if (!ldms_msg_subscribe(papi_msg_name, 0, msg_recv_cb, handle, "papi_sampler")) {
 		ovis_log(mylog, OVIS_LERROR, "papi_sampler[%d]: Error %d attempting "
-		       "subscribe to the '%s' stream.\n",
-		       __LINE__, errno, papi_stream_name);
+		       "subscribe to the '%s' message tag.\n",
+		       __LINE__, errno, papi_msg_name);
 	}
 	return errno;
 }

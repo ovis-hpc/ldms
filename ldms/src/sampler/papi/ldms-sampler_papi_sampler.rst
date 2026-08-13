@@ -18,7 +18,7 @@ SYNOPSIS
 Within ldmsd_controller or a configuration file:
 **config** **name=papi_sampler** **producer=**\ *PRODUCER*
 **instance=**\ *INSTANCE* [ **component_id=\ COMP_ID** ] [
-**stream=\ STREAM** ] [ **job_expiry=\ EXPIRY_SEC** ]
+**msg_tag=\ TAG** ] [ **job_expiry=\ EXPIRY_SEC** ]
 
 DESCRIPTION
 ===========
@@ -47,7 +47,7 @@ events of interest, e.g.
       }
 
 **papi_sampler** relies on **slurm_notfifier** SPANK plugin to notify it
-about the starting/stopping of jobs on the node over ldmsd_stream.
+about the starting/stopping of jobs on the node over the message bus.
 Please consult **:ref:`slurm_notifier(7) <slurm_notifier>`** for more information on how
 to deploy and configure it. The value of SUBSCRIBER_DATA from the job
 script is carried over to **papi_sampler** when the job started, and an
@@ -75,8 +75,8 @@ CONFIG OPTIONS
 **component_id=**\ *COMPONENT_ID*
    An integer identifying the component (default: *0*).
 
-**stream=**\ *STREAM*
-   The name of the stream that **slurm_notifier** SPANK plugin uses to
+**msg_tag=**\ *TAG*
+   The name of the message tag that **slurm_notifier** SPANK plugin uses to
    notify the job events. This attribute is optional with the default
    being *slurm*.
 
