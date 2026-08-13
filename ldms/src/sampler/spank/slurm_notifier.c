@@ -696,6 +696,44 @@ char *__context_str(spank_t sh, const char *func)
 }
 #define context_str(_sh_) __context_str(_sh_, __func__)
 
+static const char *get_subscriber_data(spank_t sh)
+{
+	static char buf[1024];
+	static const char *subscriber_data = NULL;
+	static const char KEY[] = "SUBSCRIBER_DATA"; /* for job context */
+	static const char SPANK_KEY[] = "SUBSCRIBER_DATA"; /* for prolog/epilog context */
+	spank_err_t serr;
+
+	if (subscriber_data) {
+		DEBUG2("cached subscriber_data: %s", subscriber_data);
+		goto out;
+	}
+	subscriber_data = getenv(KEY);
+	if (subscriber_data) {
+		DEBUG2("subscriber_data: environ[%s]: %s", KEY, subscriber_data);
+		goto out;
+	}
+
+	serr = spank_getenv(sh, KEY, buf, sizeof(buf));
+	if (0 == serr) {
+		subscriber_data = buf;
+		DEBUG2("subscriber_data: spank_getenv(%s): %s", KEY, buf);
+		goto out;
+	}
+	DEBUG2("spank_getenv() error: %d\n", serr);
+
+	subscriber_data = getenv(SPANK_KEY);
+	if (subscriber_data) {
+		DEBUG2("subscriber_data: environ[%s]: %s", SPANK_KEY, subscriber_data);
+		goto out;
+	}
+
+ out:
+	if (!subscriber_data)
+		return "{}";
+	return subscriber_data;
+}
+
 static const char *get_workflow_id(spank_t sh)
 {
 	static char buf[1024];
@@ -807,13 +845,10 @@ jbuf_t make_job_exit_data(spank_t sh, int argc, char *argv[])
 jbuf_t make_step_init_data(spank_t sh)
 {
 	jbuf_t jb;
-	char env[PATH_MAX];
 	spank_err_t err;
+	static char env[PATH_MAX];
 	const char *workflow_id = get_workflow_id(sh);
-
-#if 0
-	dump_env("environ", environ);
-#endif
+	const char *subscriber_data = get_subscriber_data(sh);
 
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
@@ -822,17 +857,13 @@ jbuf_t make_step_init_data(spank_t sh)
 	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
-	env[0] = '\0';
-	err = spank_getenv(sh, "SUBSCRIBER_DATA", env, sizeof(env));
-	if (err)
-		strcpy(env, "{}");
-	DEBUG2("SUBSCRIBER_DATA '%s'.\n", env);
-	if (json_verify_string(env)) {
+	DEBUG2("SUBSCRIBER_DATA '%s'.\n", subscriber_data);
+	if (json_verify_string((char *)subscriber_data)) {
 		DEBUG2("subscriber_data '%s' is not valid JSON and is being "
-			"ignored.\n", env);
-		strcpy(env, "{}");
+			"ignored.\n", subscriber_data);
+		subscriber_data = "{}";
 	}
-	jb = jbuf_append_attr(jb, "subscriber_data", "%s,", env); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "subscriber_data", "%s,", subscriber_data); if (!jb) goto out_1;
 	env[0] = '\0';
 	err = spank_getenv(sh, "SLURM_JOB_NAME", env, sizeof(env));
 	if (err)
