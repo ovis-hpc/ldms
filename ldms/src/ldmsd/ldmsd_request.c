@@ -2345,7 +2345,7 @@ static int __process_stream_status(struct prdcr_stream_status_ctxt *ctxt, char *
 		pthread_mutex_lock(&ctxt->base->lock);
 		ss = json_value_find(json_doc_root(ctxt->base->stream_doc), stream_name);
 		if (!ss) {
-			ss = json_entity_new(doc, JSON_DICT_VALUE);
+			ss = json_dict_new(doc);
 			json_attr_add(json_doc_root(ctxt->base->stream_doc),
 				      stream_name, ss);
 		}
@@ -9839,7 +9839,7 @@ __store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_p
 			 * The dictionary may be extended to contain
 			 * producer's statistics in the future.
 			 */
-			prdcr_json = json_entity_new(jdoc, JSON_DICT_VALUE);
+			prdcr_json = json_dict_new(jdoc);
 			if (!prdcr_json) {
 				ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
 				rc = ENOMEM;
@@ -9863,7 +9863,7 @@ __store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_p
 			 * The dictionary may be extended to contain
 			 * thread's statistics in the future.
 			 */
-			thr_json = json_entity_new(jdoc, JSON_DICT_VALUE);
+			thr_json = json_dict_new(jdoc);
 			if (!thr_json) {
 				ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
 				rc = ENOMEM;
@@ -9885,7 +9885,7 @@ __store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_p
 			 * The dictionary may be extended to contain
 			 * schema's statistics in the future.
 			 */
-			sch_json = json_entity_new(jdoc, JSON_DICT_VALUE);
+			sch_json = json_dict_new(jdoc);
 			if (!sch_json) {
 				ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
 				rc = ENOMEM;
@@ -10016,7 +10016,7 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 		ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
 		rc = ENOMEM;
 	}
-	strgp_dict = json_entity_new(jdoc, JSON_DICT_VALUE);
+	strgp_dict = json_dict_new(jdoc);
 	if (!strgp_dict) {
 		ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
 		rc = ENOMEM;
