@@ -303,29 +303,6 @@ int json_item_rem(json_entity_t l, json_entity_t item)
 	return 0;
 }
 
-json_entity_t json_attr_new(json_doc_t doc, const char *name, json_entity_t value)
-{
-	json_entity_t e;
-	size_t len = strlen(name);
-	e = __entity_alloc(doc);
-	if (!e)
-		return NULL;
-	if (len >= JSON_ATTR_NAME_MAX) {
-		e->value.attr_.name = malloc(len+1);
-		if (!e->value.attr_.name) {
-			__entity_free(e);
-			errno = ENOMEM;
-			return NULL;
-		}
-	} else {
-		e->value.attr_.name = e->value.attr_.name_;
-	}
-	e->type = JSON_ATTR_VALUE;
-	strcpy(e->value.attr_.name, name);
-	e->value.attr_.value = value;
-	return e;
-}
-
 json_entity_t json_string_new(json_doc_t doc, const char *str, size_t len)
 {
 	json_entity_t e = __entity_alloc(doc);
@@ -379,6 +356,12 @@ json_entity_t json_dict_new(json_doc_t doc)
 	return e;
 }
 
+size_t json_dict_card(json_entity_t e)
+{
+	assert(e->type == JSON_DICT_VALUE);
+	return rbt_card(&e->value.dict_.attr_tree);
+}
+
 json_entity_t json_list_new(json_doc_t doc)
 {
 	json_entity_t e = __entity_alloc(doc);
@@ -394,9 +377,9 @@ json_entity_t json_entity_new(json_doc_t doc, enum json_value_e type, ...)
 {
 	uint64_t i;
 	double d;
-	char *s, *name;
+	char *s;
 	va_list ap;
-	json_entity_t e, value;
+	json_entity_t e;
 
 	e = __entity_alloc(doc);
 	if (!e)
@@ -426,15 +409,7 @@ json_entity_t json_entity_new(json_doc_t doc, enum json_value_e type, ...)
 		rbt_init(&e->value.dict_.attr_tree, attr_cmp);
 		break;
 	case JSON_ATTR_VALUE:
-		name = va_arg(ap, char *);
-		value = va_arg(ap, json_entity_t);
-		if (strlen(name) >= sizeof(e->value.attr_.name)) {
-			errno = ENAMETOOLONG;
-			__entity_free(e);
-			return NULL;
-		}
-		strcpy(e->value.attr_.name, name);
-		e->value.attr_.value = value;
+		assert(NULL == "An attribute can only be a member of a dictionary");
 		break;
 	case JSON_LIST_VALUE:
 		e->value.list_.item_count = 0;
@@ -563,6 +538,25 @@ jbuf_t json_entity_dump(jbuf_t jb, json_entity_t e)
 	return jb;
 }
 
+json_entity_t json_bool_new(json_doc_t doc, int tnf)
+{
+	json_entity_t e = __entity_alloc(doc);
+	if (!e)
+		return NULL;
+	e->type = JSON_BOOL_VALUE;
+	e->value.bool_ = tnf;
+	return e;
+}
+
+json_entity_t json_null_new(json_doc_t doc)
+{
+	json_entity_t e = __entity_alloc(doc);
+	if (!e)
+		return NULL;
+	e->type = JSON_NULL_VALUE;
+	return e;
+}
+
 json_entity_t json_entity_copy(json_doc_t doc, json_entity_t e)
 {
 	int rc;
@@ -571,34 +565,27 @@ json_entity_t json_entity_copy(json_doc_t doc, json_entity_t e)
 
 	switch (type) {
 	case JSON_INT_VALUE:
+		new = json_int_new(doc, e->value.int_);
+		break;
 	case JSON_BOOL_VALUE:
-		new = json_entity_new(doc, type, e->value);
+		new = json_bool_new(doc, e->value.bool_);
 		break;
 	case JSON_FLOAT_VALUE:
-		new = json_entity_new(doc, type, e->value.double_);
+		new = json_float_new(doc, e->value.double_);
 		break;
 	case JSON_STRING_VALUE:
-		new = json_entity_new(doc, type, json_value_cstr(e),
-				      json_value_strlen(e));
+		new = json_string_new(doc, json_value_cstr(e), json_value_strlen(e));
 		break;
 	case JSON_ATTR_VALUE:
-		v = json_entity_copy(doc, json_attr_value(e));
-		if (!v)
-			return NULL;
-		new = json_entity_new(doc, type, json_attr_name(e), v);
-		if (!new) {
-			json_entity_free(v);
-			return NULL;
-		}
+		assert(NULL == "Attributes cannot be copied");
 		break;
 	case JSON_LIST_VALUE:
-		new = json_entity_new(doc, type);
+		new = json_list_new(doc);
 		if (!new)
 			return NULL;
 		for (n = json_item_first(e); n; n = json_item_next(n)) {
 			v = json_entity_copy(doc, n);
-			if (!v)
-			{
+			if (!v) {
 				json_entity_free(new);
 				return NULL;
 			}
@@ -606,21 +593,16 @@ json_entity_t json_entity_copy(json_doc_t doc, json_entity_t e)
 		}
 		break;
 	case JSON_DICT_VALUE:
-		new = json_entity_new(doc, type);
+		new = json_dict_new(doc);
 		if (!new)
 			return NULL;
-		for (n = json_attr_first(e); n; n = json_attr_next(n))
-		{
-			/* Copy the attribute value */
-			v = json_entity_copy(doc, n);
+		for (n = json_attr_first(e); n; n = json_attr_next(n)) {
+			v = json_attr_value(n);
+			v = json_entity_copy(doc, v);
 			if (!v)
-			{
-				json_entity_free(new);
 				return NULL;
-			}
 			rc = json_attr_add(new, json_attr_name(n), v);
-			if (rc)
-			{
+			if (rc) {
 				json_entity_free(v);
 				json_entity_free(new);
 				return NULL;
@@ -628,7 +610,7 @@ json_entity_t json_entity_copy(json_doc_t doc, json_entity_t e)
 		}
 		break;
 	case JSON_NULL_VALUE:
-		new = json_entity_new(doc, JSON_NULL_VALUE);
+		new = json_null_new(doc);
 		break;
 	default:
 		assert(0 == "Invalid entity type");
@@ -646,15 +628,45 @@ static inline void __attr_rem(json_entity_t d, json_entity_t a)
 void __attr_add(json_entity_t d, json_entity_t a)
 {
 	const char *name = json_attr_name(a);
+	struct rbn *rbn = rbt_find(&d->value.dict_.attr_tree, json_attr_name(a));
+	if (rbn) {
+		rbt_del(&d->value.dict_.attr_tree, rbn);
+		json_entity_t old_a = container_of(rbn, struct json_entity_s,
+						   value.attr_.attr_rbn);
+		__entity_free(old_a);
+	}
 	rbn_init(&a->value.attr_.attr_rbn, (void *)name);
 	rbt_ins(&d->value.dict_.attr_tree, &a->value.attr_.attr_rbn);
+}
+
+static json_entity_t __attr_new(json_doc_t doc, const char *name, json_entity_t value)
+{
+	json_entity_t e;
+	size_t len = strlen(name);
+	e = __entity_alloc(doc);
+	if (!e)
+		return NULL;
+	if (len >= JSON_ATTR_NAME_MAX) {
+		e->value.attr_.name = malloc(len+1);
+		if (!e->value.attr_.name) {
+			__entity_free(e);
+			errno = ENOMEM;
+			return NULL;
+		}
+	} else {
+		e->value.attr_.name = e->value.attr_.name_;
+	}
+	e->type = JSON_ATTR_VALUE;
+	strcpy(e->value.attr_.name, name);
+	e->value.attr_.value = value;
+	return e;
 }
 
 int json_attr_add(json_entity_t d, const char *name, json_entity_t v)
 {
 	json_entity_t a;
 	assert(d->type == JSON_DICT_VALUE);
-	a = json_attr_new(d->doc, name, v);
+	a = __attr_new(d->doc, name, v);
 	if (!a)
 		return E2BIG;
 	__attr_add(d, a);
@@ -788,6 +800,18 @@ json_attr_t json_value_attr(json_entity_t e)
 	return &e->value.attr_;
 }
 
+json_list_t json_value_list(json_entity_t e)
+{
+	assert(e->type == JSON_LIST_VALUE);
+	return &e->value.list_;
+}
+
+int json_list_empty(json_entity_t e)
+{
+	assert(e->type == JSON_LIST_VALUE);
+	return TAILQ_EMPTY(&e->value.list_.item_list);
+}
+
 char *json_attr_name(json_entity_t attr)
 {
 	assert(attr->type == JSON_ATTR_VALUE);
@@ -825,37 +849,35 @@ static json_entity_t __attr_value_new(json_doc_t doc, int type, va_list *ap)
 
 	switch (type) {
 	case JSON_BOOL_VALUE:
-		v = json_entity_new(doc, type, va_arg(*ap, int32_t));
+		v = json_bool_new(doc, va_arg(*ap, int32_t));
 		break;
 	case JSON_FLOAT_VALUE:
-		v = json_entity_new(doc, type, va_arg(*ap, double));
+		v = json_float_new(doc, va_arg(*ap, double));
 		break;
 	case JSON_INT_VALUE:
-		v = json_entity_new(doc, type, va_arg(*ap, int64_t));
+		v = json_int_new(doc, va_arg(*ap, int64_t));
 		break;
 	case JSON_STRING_VALUE:
 		s = va_arg(*ap, char *);
 		sz = va_arg(*ap, size_t);
-		v = json_entity_new(doc, type, s, sz);
+		v = json_string_new(doc, s, sz);
 		break;
 	case JSON_DICT_VALUE:
 		v = __dict_new(doc, ap);
 		break;
 	case JSON_LIST_VALUE:
-		v = json_entity_new(doc, type);
+		v = json_list_new(doc);
 		if (!v)
 			return NULL;
-		type = va_arg(*ap, int);
 		for (type = va_arg(*ap, int); type != JSON_EOL_VALUE;
 		     type = va_arg(*ap, int))
 		{
 			item = __attr_value_new(doc, type, ap);
 			json_item_add(v, item);
-			type = va_arg(*ap, int);
 		}
 		break;
 	case JSON_NULL_VALUE:
-		v = json_entity_new(doc, type);
+		v = json_null_new(doc);
 		break;
 	default:
 		assert(0 == "Unexpected json value type.");

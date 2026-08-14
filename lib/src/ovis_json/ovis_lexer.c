@@ -230,7 +230,7 @@ keyword:
 		if (0 == strncmp(&input[st->buf_pos], "true", 4)) {
 			st->buf_pos += 4;
 			st->line_loc += 4;
-			*p_entity = json_entity_new(doc, JSON_BOOL_VALUE, 1);
+			*p_entity = json_bool_new(doc, 1);
 			st->stats.bool_count++;
 			return OVIS_JSON_BOOL_T;
 		}
@@ -239,7 +239,7 @@ keyword:
 		if (0 == strncmp(&input[st->buf_pos], "false", 5)) {
 			st->buf_pos += 5;
 			st->line_loc += 5;
-			*p_entity = json_entity_new(doc, JSON_BOOL_VALUE, 0);
+			*p_entity = json_bool_new(doc, 0);
 			st->stats.bool_count++;
 			return OVIS_JSON_BOOL_T;
 		}
@@ -248,7 +248,7 @@ keyword:
 		if (0 == strncmp(&input[st->buf_pos], "null", 4)) {
 			st->buf_pos += 4;
 			st->line_loc += 4;
-			*p_entity = json_entity_new(doc, JSON_NULL_VALUE);
+			*p_entity = json_null_new(doc);
 			st->stats.null_count++;
 			return OVIS_JSON_NULL_T;
 		}

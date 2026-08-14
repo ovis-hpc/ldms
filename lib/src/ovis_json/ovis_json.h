@@ -301,10 +301,10 @@ json_stats_t json_doc_stats(json_doc_t doc);
 /**
  * \brief Build or append a dictionary with the given list of its attribute value pairs.
  *
- * \param d	The dictionary handle to modify, or NULL if starting a new dictionary.
+ * \param doc	The document handle, or NULL to create a new document
  *
- * If \c d is NULL, a new dictionary with the given attribute value list.
- * If \c d is not NULL, the given attribute value list will be added to \c d.
+ * If \c doc is NULL, a new document is created.
+ * If \c doc is not NULL, the diciontary is created in the specified document.
  *
  * The format of the argument list is as follows:
  *
@@ -333,7 +333,7 @@ json_stats_t json_doc_stats(json_doc_t doc);
  * \example
  *
  * char *str = "this is a string, but only 'string' is being used.";
- * json_entity_t *e = json_dict_build(
+ * json_entity_t *e = json_dict_build(doc,
  *                        "my-string", JSON_STRING_VALUE, &str[27], (size_t)8,
  *                        NULL);
  *
@@ -348,6 +348,7 @@ json_stats_t json_doc_stats(json_doc_t doc);
  *
  * json_entity_t d =
  *     json_dict_build(
+ *        NULL,
  *        "int",    JSON_INT_VALUE,    (int64_t)1,
  *        "bool",   JSON_BOOL_VALUE,   (int32_t)1,
  *        "float",  JSON_FLOAT_VALUE,  1.1,
@@ -380,6 +381,15 @@ json_stats_t json_doc_stats(json_doc_t doc);
  *
  */
 json_entity_t json_dict_build(json_doc_t doc, ...);
+
+/**
+ * \brief Number of entries in dictinoary
+ *
+ * \param d The dictionary
+ *
+ * \return The number of attributes in the dictionary
+ */
+size_t json_dict_card(json_entity_t d);
 
 /**
  * \brief Return the ATTR entity of the given name \c name
@@ -465,6 +475,11 @@ int json_attr_rem(json_entity_t d, char *name);
  * \brief Return the number of elements in the list \c l
  */
 size_t json_list_len(json_entity_t l);
+
+/**
+ * \brief Return true if the list is empty
+ */
+int json_list_empty(json_entity_t l);
 
 /**
  * \brief Add the entity \c e to the list \c l

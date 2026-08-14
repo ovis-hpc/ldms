@@ -87,6 +87,11 @@ static json_entity_t add_list_item(json_entity_t e, json_entity_t v,
 
 json :  dict { doc->root = $$ = $1; YYACCEPT; }
 	| array { doc->root = $$ = $1; YYACCEPT; }
+	| string { doc->root = $$ = $1; YYACCEPT; }
+	| OVIS_JSON_FLOAT_T { doc->root = $$ = $1; YYACCEPT; }
+	| OVIS_JSON_INTEGER_T { doc->root = $$ = $1; YYACCEPT; }
+	| OVIS_JSON_BOOL_T { doc->root = $$ = $1; YYACCEPT; }
+	| OVIS_JSON_NULL_T { doc->root = $$ = $1; YYACCEPT; }
 	;
 
 dict : '{' attr_list '}' { $$ = $2; } ;
