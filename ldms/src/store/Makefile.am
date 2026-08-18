@@ -103,7 +103,7 @@ endif
 
 if ENABLE_LDMS_TEST
 libstore_test_la_SOURCES = store_test.c
-libstore_test_ls_LIBADD = $(STORE_LIBADD) @OVIS_AUTH_LIBS@
+libstore_test_la_LIBADD = $(STORE_LIBADD) @OVIS_AUTH_LIBS@
 pkglib_LTLIBRARIES += libstore_test.la
 dist_man7_MANS += ldms-store_test.man
 endif
