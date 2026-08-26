@@ -530,6 +530,8 @@ class LDMSD_Controller(object):
                           close_fds = True,
                           shell = True
                           )
+        # close the slave fd
+        os.close(_sfd)
         if self.term_immediately:
             return
         time.sleep(0.5)
