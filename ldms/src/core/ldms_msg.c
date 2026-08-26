@@ -2456,10 +2456,12 @@ static void *__cli_close_proc(void *arg)
 
 static void ldms_msg_atfork()
 {
-	void *dontcare;
-	/* clean up thread at fork b/c setns() does not support multi-threading */
-	(void)pthread_cancel(__client_close_thread);
-	(void)pthread_join(__client_close_thread, &dontcare);
+	/* Cancel thread at fork even though it does not exist in the child
+	 * process to clean up the thread information. If we don't do this,
+	 * `setns()` returns EINVAL -- breaking applications using LDMS, fork
+	 * and setns() (e.g. slurm + libslurm_notifier).
+	 */
+	pthread_cancel(__client_close_thread);
 	__atomic_store_n(&__ldms_msg_initialized, 0, __ATOMIC_SEQ_CST);
 	/* we will reinitialize again at the first client subscription */
 }
