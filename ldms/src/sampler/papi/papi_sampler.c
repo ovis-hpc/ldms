@@ -836,6 +836,8 @@ static int stream_recv_cb(ldms_msg_event_t ev, void *ctxt)
 		return EINVAL;
 	}
 
+	PAPI_register_thread();
+
 	event = json_attr_find(ev->recv.json, "event");
 	if (!event) {
 		ovis_log(mylog, OVIS_LERROR, "'event' attribute missing\n");
