@@ -5618,7 +5618,6 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfgobj_t cfg;
 	char *attr_copy = NULL;
 	size_t cnt = 0;
-	int multi_config;
 	ldmsd_cfgobj_sampler_t sampler;
 	ldmsd_cfgobj_store_t store;
 
@@ -5640,27 +5639,9 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 					instance_name);
 			goto send_reply;
 		}
-		multi_config = store->api->base.flags & LDMSD_PLUGIN_MULTI_INSTANCE;
-		if (!multi_config && store->configured) {
-			reqc->errcode = EINVAL;
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				       "The store '%s' does not support multiple "
-				       "configurations.\n",
-				       instance_name);
-			goto send_reply;
-		}
 		cfg = &store->cfg;
 		ldmsd_store_find_put(store);
 	} else {
-		multi_config = sampler->api->base.flags & LDMSD_PLUGIN_MULTI_INSTANCE;
-		if (!multi_config && sampler->configured) {
-			reqc->errcode = EINVAL;
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				       "The sampler '%s' does not support multiple "
-				       "configurations.\n",
-				       instance_name);
-			goto send_reply;
-		}
 		cfg = &sampler->cfg;
 		ldmsd_sampler_find_put(sampler);
 	}
