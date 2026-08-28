@@ -137,6 +137,10 @@ on your deployment characteristics:
   the update path when the queue reaches capacity for all workers. A smaller
   depth limit reduces memory usage but may increase latency in the update path.
 
+When a thread blocks waiting for a worker, it is guaranteed to be handed a
+worker slot as soon as one becomes available; a blocked thread will not
+stall indefinitely while a worker sits idle.
+
 To determine an appropriate queue depth, monitor the storage performance
 statistics reported by store_time_stats and thread_stats.
 
@@ -265,7 +269,10 @@ Blocked Update Path
 
 If the update callback takes longer than expected:
 
-1. Check log messages for backpressure on worker acquisition
+1. Check thread_stats for storage worker utilization and idle time, and
+   store_time_stats for high 'wait' time, low operations per second, and a
+   growing count of outstanding store events -- these indicate the worker
+   pool is saturated (see `Using Statistics for Tuning`_).
 2. Increase the number of storage threads
 3. Increase queue depth to buffer more events
 4. Profile the storage backend for performance issues

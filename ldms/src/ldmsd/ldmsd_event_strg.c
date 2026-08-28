@@ -191,80 +191,80 @@ void store_event_ctxt_free(struct store_event_ctxt *ctxt)
  * Wait condition for threads blocked waiting for an available worker.
  *
  * When all workers are at capacity, threads block on a condition variable
- * and are queued in FIFO order. When a worker completes an event and drops
- * below capacity, it signals the first waiting thread and assigns itself
- * to that thread. This maintains fairness (FIFO).
+ * and are queued in FIFO order. When a worker completes an event, it hands
+ * its slot directly to the first waiting thread. This maintains fairness
+ * (FIFO).
+ *
+ * Locking model
+ * -------------
+ * `strgw_wait_list_lock` is the single mutex for the whole handoff
+ * protocol. It protects the wait list AND serialises the capacity
+ * decision, and it is the mutex each waiter blocks on. That is what makes
+ * the following two operations atomic with respect to each other:
+ *
+ *   acquire:  observe "no capacity"  ->  enqueue self
+ *   release:  observe "no waiter"    ->  give the slot back
+ *
+ * If those are not atomic, a release that lands between an acquirer's
+ * failed capacity check and its enqueue is lost: the releaser sees an
+ * empty wait list and returns the slot silently, the acquirer then parks
+ * on an empty condvar, and -- if no further store events are posted --
+ * nothing ever signals it again. That is the deadlock this protocol had.
+ *
+ * Slot ownership
+ * --------------
+ * w->q_depth counts *granted* slots: events in flight plus slots already
+ * promised to a blocked waiter. strg_worker_release() therefore either
+ *   (a) transfers its slot to the first waiter, leaving q_depth unchanged
+ *       -- the grant is a real reservation nobody can steal from the
+ *       waiter, so a woken waiter never has to re-try and never fails; or
+ *   (b) gives the slot back with q_depth--.
+ * Both branches run under strgw_wait_list_lock.
  */
 struct strg_worker_wait_cond {
 	pthread_cond_t cond;
-	pthread_mutex_t lock;
-	int status;
-	struct strg_worker *w;
+	struct strg_worker *w;		/* set by the releaser; NULL = keep waiting */
 	TAILQ_ENTRY(strg_worker_wait_cond) entry;
 };
-
-#define STRG_WORKER_WAIT	0
-#define STRG_WORKER_SIGNAL	1
 
 TAILQ_HEAD(strg_worker_wait_list, strg_worker_wait_cond);
 /* FIFO wait queue - ensures fairness (first blocked thread gets first available worker) */
 struct strg_worker_wait_list strgw_wait_list = TAILQ_HEAD_INITIALIZER(strgw_wait_list);
 pthread_mutex_t strgw_wait_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
-/* Helper function to create and initialize a wait condition */
-static struct strg_worker_wait_cond *strg_worker_wait_cond_new(void)
+/*
+ * Block until a worker slot is handed to us.
+ *
+ * MUST be called with strgw_wait_list_lock held; returns with it released.
+ *
+ * The wait cond lives on the caller's stack: it is removed from the list
+ * by the releaser before this function can return, and the releaser only
+ * touches it while holding strgw_wait_list_lock, which this function does
+ * not drop until it is done with it.
+ *
+ * Always succeeds -- the slot is reserved for us by the releaser, so
+ * there is nothing left to fail at.
+ */
+static struct strg_worker *__strg_worker_wait_for_available(void)
 {
-	struct strg_worker_wait_cond *wait_cond;
-
-	wait_cond = malloc(sizeof(*wait_cond));
-	if (!wait_cond) {
-		ovis_log(store_log, OVIS_LCRIT, "Memory allocation failure.\n");
-		errno = ENOMEM;
-		return NULL;
-	}
-
-	pthread_mutex_init(&wait_cond->lock, NULL);
-	pthread_cond_init(&wait_cond->cond, NULL);
-	wait_cond->w = NULL;
-
-	return wait_cond;
-}
-
-/* Helper function to clean up a wait condition */
-static void strg_worker_wait_cond_free(struct strg_worker_wait_cond *wait_cond)
-{
-	pthread_mutex_destroy(&wait_cond->lock);
-	pthread_cond_destroy(&wait_cond->cond);
-	free(wait_cond);
-}
-
-/* Helper function to wait for an available worker */
-static struct strg_worker *strg_worker_wait_for_available(void)
-{
-	struct strg_worker_wait_cond *wait_cond;
+	struct strg_worker_wait_cond wait_cond;
 	struct strg_worker *w;
 
-	wait_cond = strg_worker_wait_cond_new();
-	if (!wait_cond) {
-		return NULL;
-	}
+	pthread_cond_init(&wait_cond.cond, NULL);
+	wait_cond.w = NULL;
 
-	pthread_mutex_lock(&strgw_wait_list_lock);
-	ovis_log(store_log, OVIS_LINFO, "store_event_block.enqueue(%p).\n", wait_cond);
-	TAILQ_INSERT_TAIL(&strgw_wait_list, wait_cond, entry);
+	ovis_log(store_log, OVIS_LDEBUG, "store_event_block.enqueue(%p).\n", &wait_cond);
+	TAILQ_INSERT_TAIL(&strgw_wait_list, &wait_cond, entry);
+
+	while (wait_cond.w == NULL)
+		pthread_cond_wait(&wait_cond.cond, &strgw_wait_list_lock);
+
+	w = wait_cond.w;
 	pthread_mutex_unlock(&strgw_wait_list_lock);
 
-	/* Wait for a worker to become available */
-	pthread_mutex_lock(&wait_cond->lock);
-	while (wait_cond->w == NULL) {
-		pthread_cond_wait(&wait_cond->cond, &wait_cond->lock);
-		ovis_log(store_log, OVIS_LINFO, "store_event_block.cond_wake(%p) " \
-		                                "with worker %p.\n", wait_cond, wait_cond->w);
-	}
-	w = wait_cond->w;
-	pthread_mutex_unlock(&wait_cond->lock);
-
-	strg_worker_wait_cond_free(wait_cond);
+	ovis_log(store_log, OVIS_LDEBUG, "store_event_block.cond_wake(%p) "
+					 "with worker %p.\n", &wait_cond, w);
+	pthread_cond_destroy(&wait_cond.cond);
 	return w;
 }
 
@@ -280,19 +280,13 @@ static struct strg_worker *strg_worker_try_acquire(struct strg_worker *w)
 		return w;
 	}
 
-	/* Check if this worker is at the max capacity */
 	/*
+	 * Check if this worker is at the max capacity.
+	 *
 	 * Multiple threads may race and get this worker, so
 	 * the worker's queue depth may exceed max_strg_q_depth, but
 	 * the worker's queue depth will be bounded by max_strg_q_depth +
 	 * number of rails * rail size.
-	 *
-	 * We can modify the code to guarantee that w->q_depth won't exceed
-	 * max_strg_q_depth by using __atomic_compare_exchange() and retry
-	 * until no other threads acquire the worker since getting
-	 * the w->q_depth value. However, this reduces the performance
-	 * by repeatedly retrying. The current approach was favored over
-	 * the latter because the possible w->q_depth value is bounded.
 	 */
 	if (w->q_depth <= ldmsd_strg_worker_pool.max_q_depth) {
 		ovis_log(store_log, OVIS_LDEBUG, "Acquire store worker %p having q_depth %d.\n",
@@ -309,11 +303,13 @@ static struct strg_worker *strg_worker_try_acquire(struct strg_worker *w)
  * Acquire an available storage worker. Blocks if all workers are at capacity.
  *
  * Selection strategy:
- *   1. Check if threads are waiting - if so, join the wait queue
- *   2. Try round-robin across all workers
- *   3. If all full, block until a worker signals availability
+ *   1. Under strgw_wait_list_lock, and only if nobody is already queued
+ *      (FIFO fairness), try round-robin across all workers.
+ *   2. Otherwise enqueue on the wait list -- still under the same lock
+ *      hold that observed "no capacity" -- and block until a releaser
+ *      hands us its slot.
  *
- * Returns: worker pointer on success, NULL on error (errno set)
+ * Returns: worker pointer. Never returns NULL.
  */
 struct strg_worker *strg_worker_acquire(void)
 {
@@ -321,81 +317,59 @@ struct strg_worker *strg_worker_acquire(void)
 	struct strg_worker *w = NULL;
 	int attempts;
 	int current_idx;
-	int should_wait;
 
 	errno = 0;
 
-	/*
-	 * Check if there are already threads waiting,
-	 * and join the wait queue if other threads are already waiting.
-	 * This maintains FIFO fairness
-	 */
 	pthread_mutex_lock(&strgw_wait_list_lock);
-	should_wait = !TAILQ_EMPTY(&strgw_wait_list);
-	pthread_mutex_unlock(&strgw_wait_list_lock);
-	if (should_wait) {
-		/* Other threads are waiting, join the queue */
-		w = strg_worker_wait_for_available();
-		if (!w) {
-			return NULL;
+
+	/*
+	 * Only jump the queue when no one is waiting; otherwise we would
+	 * starve the threads already parked below.
+	 */
+	if (TAILQ_EMPTY(&strgw_wait_list)) {
+		for (attempts = 0; attempts < ldmsd_strg_worker_pool.num_workers; attempts++) {
+			/* Round-robin selection for load distribution */
+			current_idx = __atomic_fetch_add(&worker_idx, 1, __ATOMIC_SEQ_CST) %
+			              ldmsd_strg_worker_pool.num_workers;
+			w = strg_worker_try_acquire(&ldmsd_strg_worker_pool.workers[current_idx]);
+			if (w) {
+				pthread_mutex_unlock(&strgw_wait_list_lock);
+				return w;
+			}
 		}
-		/* Retry acquiring this worker since it was just released */
-		w = strg_worker_try_acquire(w);
-		if (w) {
-			return w;
-		}
-		/* If acquisition failed, fall through to search all workers */
 	}
 
-	/* Try to find an available worker */
-	attempts = 0;
-	while (attempts < ldmsd_strg_worker_pool.num_workers) {
-		/* Round-robin selection using atomic counter for lock-free load distribution */
-		current_idx = __atomic_fetch_add(&worker_idx, 1, __ATOMIC_SEQ_CST) %
-		              ldmsd_strg_worker_pool.num_workers;
-		w = &ldmsd_strg_worker_pool.workers[current_idx];
-
-		w = strg_worker_try_acquire(w);
-		if (w) {
-			return w;
-		}
-
-		attempts++;
-	}
-
-	/* All workers are at full capacity, wait for one to become available */
-	w = strg_worker_wait_for_available();
-	if (!w) {
-		return NULL;
-	}
-
-	/* Retry acquiring the worker that was just released */
-	w = strg_worker_try_acquire(w);
-	return w;
+	/*
+	 * All workers are at full capacity (or others are queued ahead of
+	 * us). Enqueue without dropping the lock: any release that has
+	 * already decremented is visible to the loop above, and any release
+	 * that has not yet taken this lock will find us on the list.
+	 */
+	return __strg_worker_wait_for_available();
 }
 
 /*
  * Release a worker after processing an event.
  *
- * If threads are waiting, wake the first one and assign it this worker.
- * This minimizes latency and maintains FIFO fairness.
+ * If threads are waiting, hand this worker's slot to the first one
+ * (FIFO) without decrementing q_depth -- the slot is transferred, not
+ * freed, so the waiter cannot lose it to a racing acquirer. Otherwise
+ * return the slot to the pool.
  */
 void strg_worker_release(struct strg_worker *w)
 {
 	struct strg_worker_wait_cond *store_wait_ev;
 
-	__atomic_fetch_sub(&w->q_depth, 1, __ATOMIC_SEQ_CST);
-
 	pthread_mutex_lock(&strgw_wait_list_lock);
-	/* Wake the first waiting thread and assign it this worker (FIFO ordering) */
 	if (!TAILQ_EMPTY(&strgw_wait_list)) {
 		store_wait_ev = TAILQ_FIRST(&strgw_wait_list);
-		ovis_log(store_log, OVIS_LINFO, "store_event.dequeue(%p).\n", store_wait_ev);
+		ovis_log(store_log, OVIS_LDEBUG, "store_event.dequeue(%p).\n", store_wait_ev);
 		TAILQ_REMOVE(&strgw_wait_list, store_wait_ev, entry);
-		pthread_mutex_lock(&store_wait_ev->lock);
+		/* Transfer the slot: q_depth is intentionally NOT decremented. */
 		store_wait_ev->w = w;
 		pthread_cond_signal(&store_wait_ev->cond);
-		pthread_mutex_unlock(&store_wait_ev->lock);
+	} else {
+		__atomic_fetch_sub(&w->q_depth, 1, __ATOMIC_SEQ_CST);
 	}
 	pthread_mutex_unlock(&strgw_wait_list_lock);
 }
@@ -489,15 +463,24 @@ int store_event_post(struct store_event_ctxt *ctxt)
 	ovis_log(store_log, OVIS_LDEBUG, "store_post(%p, %p).\n", ctxt, ctxt->snapshot);
 
 	clock_gettime(CLOCK_REALTIME, &wait_start);
-	/* strg_worker_get() block when all storage workers are at full capacity. */
+	/* strg_worker_acquire() blocks when all storage workers are at full capacity. */
 	w = strg_worker_acquire();
 	ctxt->w = w;
 	clock_gettime(CLOCK_REALTIME, &wait_end);
 	ldmsd_stat_update(worker_wait_stat, &wait_start, &wait_end);
 
 	if (!w) {
-		rc = errno;
-		return rc;
+		/*
+		 * Defensive only -- strg_worker_acquire() no longer fails.
+		 * Report a real error code: errno is cleared on entry to
+		 * strg_worker_acquire() and clobbered by the calls above, so
+		 * reading it here used to yield 0, i.e. "success", and the
+		 * caller silently leaked ctxt (snapshot ref + strgp ref +
+		 * row_list) and dropped the store.
+		 */
+		ovis_log(store_log, OVIS_LERROR,
+			 "Failed to acquire a storage worker.\n");
+		return EBUSY;
 	}
 
 	ev = calloc(1, sizeof(*ev));
@@ -526,6 +509,14 @@ int store_event_post(struct store_event_ctxt *ctxt)
 	/* Enqueue the store event to the storage worker */
 	rc = ovis_scheduler_event_add(w->worker, ev);
 	if (rc) {
+		/*
+		 * The event was never queued, so storage_worker_actor() will
+		 * never run for it and will never release this worker. Give
+		 * the slot back here -- otherwise q_depth leaks by one, and
+		 * with a small max_q_depth (e.g. 1) a single failure wedges
+		 * the pool permanently.
+		 */
+		strg_worker_release(w);
 		free(ev);
 		ovis_log(store_log, OVIS_LERROR, "Failed to post a store event " \
 						 "on a storage worker. Error %d\n", rc);
