@@ -96,6 +96,24 @@ What Sampler Plugin Authors CAN Assume
   (``config name=<plugin instance name> ...``) before ``sample()`` is called
 - All plugin interfaces are protected by mutex, except ``usage()``, which may be called
   concurrently with ``config()`` and ``sample()``
+- ``config()`` is never called while the plugin instance is in the ``RUNNING`` state
+  (see `Section 5: Plugin Lifecycle`_) — only ``sample()`` and ``usage()`` are called
+  in that state
+
+Guarding Against Unsupported Reconfiguration
+----------------------------------------------
+
+Some plugins do not support changing their configuration once they have already
+been successfully configured. ldmsd does not enforce this on the plugin's
+behalf. The ``config()`` interface may be called again after an instance
+reaches the ``CONFIGURED`` state.
+
+Plugin authors are responsible for detecting and rejecting reconfiguration
+attempts their plugin does not support. If ``config()`` is called on an
+instance that is already configured and the plugin does not support
+reconfiguration, ``config()`` must return ``EINVAL``. Because all plugin
+operations are serialized by ldmsd (see `Section 3: Concurrency Scenarios`_),
+this check does not require additional locking.
 
 Section 3: Concurrency Scenarios
 ==================================

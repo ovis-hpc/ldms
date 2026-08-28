@@ -290,6 +290,21 @@ The plugin instance has a ``configured`` flag set after the first successful ``c
 call. There is no plugin-level RUNNING or STOPPED state — those belong to the storage
 policy, not the plugin instance.
 
+Guarding Against Unsupported Reconfiguration
+----------------------------------------------
+
+Whether a storage plugin instance supports being reconfigured after it is
+already configured is plugin-specific. Some plugins (e.g. ``store_sos`` and
+``store_csv``) support it. ldmsd does not decide this on the plugin's
+behalf. ``config()`` may be called again on an already-configured instance
+regardless of whether the plugin supports that.
+
+Plugin authors are responsible for detecting and rejecting reconfiguration
+attempts their plugin does not support (``store_avro_kafka`` does this by
+checking its own ``configured`` state). If ``config()`` is called on an
+instance that is already configured and the plugin does not support
+reconfiguration, ``config()`` must return ``EINVAL``.
+
 Storage Policy Sequence (per storage policy)
 ----------------------------------------------
 
