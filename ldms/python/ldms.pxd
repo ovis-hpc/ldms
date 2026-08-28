@@ -848,7 +848,7 @@ cdef extern from "ldms.h" nogil:
         LDMS_MSG_STRING
         LDMS_MSG_JSON
         LDMS_MSG_AVRO_SER
-    enum ldms_msg_event_type:
+    cpdef enum ldms_msg_event_type:
         LDMS_MSG_EVENT_RECV
         LDMS_MSG_EVENT_SUBSCRIBE_STATUS
         LDMS_MSG_EVENT_UNSUBSCRIBE_STATUS
