@@ -27,11 +27,6 @@ libstore_amqp_la_LIBADD = -lrabbitmq $(STORE_LIBADD)
 pkglib_LTLIBRARIES += libstore_amqp.la
 endif
 
-if ENABLE_KOKKOS
-MAYBE_KOKKOS = kokkos kokkos_appmon
-endif
-SUBDIRS += $(MAYBE_KOKKOS)
-
 if ENABLE_SOS
 libstore_sos_la_SOURCES = store_sos.c
 libstore_sos_la_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
@@ -40,25 +35,33 @@ pkglib_LTLIBRARIES += libstore_sos.la
 dist_man7_MANS += ldms-store_sos.man
 
 MAYBE_SLURM = slurm
-MAYBE_PAPI = papi
-MAYBE_STORE_APP = store_app
-MAYBE_DARSHAN = darshan
-MAYBE_PROC_STORE = proc_store
 endif
 SUBDIRS += $(MAYBE_SLURM)
+
+if ENABLE_KOKKOS
+MAYBE_KOKKOS = kokkos kokkos_appmon
+endif
+SUBDIRS += $(MAYBE_KOKKOS)
+
+if ENABLE_DARSHAN
+MAYBE_DARSHAN = darshan
+endif
+SUBDIRS += $(MAYBE_DARSHAN)
+
+if ENABLE_PAPI
+MAYBE_PAPI = papi
+endif
 SUBDIRS += $(MAYBE_PAPI)
 
 if ENABLE_STORE_APP
+MAYBE_STORE_APP = store_app
+endif
 SUBDIRS += $(MAYBE_STORE_APP)
-endif
-
-if ENABLE_DARSHAN
-SUBDIRS += $(MAYBE_DARSHAN)
-endif
 
 if ENABLE_PROC_STREAMS
-SUBDIRS += $(MAYBE_PROC_STORE)
+MAYBE_PROC_STORE = proc_store
 endif
+SUBDIRS += $(MAYBE_PROC_STORE)
 
 if ENABLE_INFLUX
 MAYBE_INFLUX = influx
