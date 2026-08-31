@@ -108,11 +108,77 @@ as command-line options but in a more readable and maintainable format.
    path=PATH
       The log file path
 
-**log_level** sets the log verbosity. The default is ERROR.
+**log_level** sets the log verbosity.
 
    level=LEVEL
       The log level ordered from the most to the least severity:
-      CRITICAL, ERROR, WARNING, INFO, and DEBUG.
+      CRITICAL, ERROR, WARNING, INFO, and DEBUG. The default is ERROR.
+
+Setting the Default Log Level
+------------------------------
+
+When the **log_level** command is used without the 'name' parameter, it sets the
+default log level that applies globally to all log subsystems:
+
+**log_level** level=*LEVEL*
+
+   level=*LEVEL*
+      |
+      | The default log level ordered from the most to the least severity:
+        CRITICAL, ERROR, WARNING, INFO, and DEBUG.
+
+The default log level is used by all log subsystems that have not been explicitly
+configured with a different level. When the default log level changes, all
+subsystems using the default level are affected.
+
+Example:
+
+::
+
+   log_level level=WARNING
+
+Setting Log Levels for Specific Subsystems
+-------------------------------------------
+
+The **log_level** command can be used to set the log level for specific subsystems,
+including plugin subsystems before the plugin is loaded:
+
+**log_level** name=*SUBSYSTEM_NAME* level=*LEVEL*
+
+   name=*SUBSYSTEM_NAME*
+      |
+      | The name of a logger subsystem. If the subsystem does not yet exist,
+        it will be created and registered with the specified log level. This
+        allows configuring log levels for subsystems before they are created.
+
+   level=*LEVEL*
+      |
+      | The log level as described above.
+
+For plugin subsystems, the subsystem name follows the format:
+
+   *<plugin_type>.<plugin_name>.<plugin_instance_name>*
+
+Examples:
+
+::
+
+   log_level name=sampler.meminfo.mem1 level=DEBUG
+   log_level name=sampler.vmstat.vm1 level=INFO
+   log_level name=store.csv.csv1 level=WARNING
+
+This is particularly useful in configuration files to configure plugin log levels
+before the plugins are loaded:
+
+::
+
+   log_level level=WARNING                     # Set default
+   log_level name=sampler.meminfo.mem1 level=DEBUG
+   load name=mem1 plugin=meminfo
+   config name=mem1 producer=node1 instance=node1/meminfo
+
+**Note:** The regex parameter for **log_level** is not supported in configuration
+files. Use the 'name' parameter to configure specific subsystems.
 
 **set_memory** sets the total set memory. The default is 512 MB.
 
