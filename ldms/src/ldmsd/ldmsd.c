@@ -1040,6 +1040,11 @@ int ldmsd_sampler_start(char *cfg_name, char *interval, char *offset,
 	if (rc)
 		goto out;
 
+	if (sample_interval <= 0) {
+		rc = EINVAL;
+		goto out;
+	}
+
 	samp->sample_interval_us = sample_interval;
 	if (offset) {
 		rc = ovis_time_str2us(offset, &sample_offset);
