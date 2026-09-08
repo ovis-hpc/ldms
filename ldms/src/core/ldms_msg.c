@@ -1019,7 +1019,7 @@ static void __client_ref_cleanup(void *arg)
 	pthread_mutex_unlock(&__client_close_mutex);
 }
 
-/* subscribe the client to the channels */
+/* subscribe the client to the tags */
 static int
 __client_subscribe(struct ldms_msg_client_s *c)
 {
@@ -1058,7 +1058,7 @@ __client_subscribe(struct ldms_msg_client_s *c)
 	goto out;
 
  err_1:
-	/* unbind client from channels */
+	/* unbind client from tags */
 	TAILQ_FOREACH(sce, &c->ch_tq, cli_ch_entry) {
 		__cli_ch_unbind(sce);
 	}
@@ -1170,7 +1170,7 @@ void ldms_msg_client_close(ldms_msg_client_t c)
 	struct ldms_msg_ch_cli_entry_s *sce;
 
 	__MSG_WRLOCK();
-	/* unbind from all channels it subscried to */
+	/* unbind from all tags it subscried to */
 	TAILQ_FOREACH(sce, &c->ch_tq, cli_ch_entry) {
 		__cli_ch_unbind(sce);
 	}
@@ -2273,7 +2273,7 @@ int __client_stats_buff_append(struct ldms_msg_client_stats_s *cs,
 	     __counters_buff_append(&cs->tx, buff) ||
 	     ovis_buff_appendf(buff, ",\"drops\":") ||
 	     __counters_buff_append(&cs->drops, buff) ||
-	     ovis_buff_appendf(buff, ",\"channels\":") ||
+	     ovis_buff_appendf(buff, ",\"tags\":") ||
 	     __pair_tq_buff_append(&cs->stats_tq, buff);
 	if (rc)
 		goto out;

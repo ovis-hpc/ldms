@@ -3201,7 +3201,7 @@ class LdmsdCmdParser(Cmd.Cmd):
                   f'{self.__floatts2human(drops["first_ts"]):26} ' \
                   f'{self.__floatts2human(drops["last_ts"]):26}')
             first_channel = True
-            for s in cli['channels']:
+            for s in cli['tags']:
                 if first_channel:
                     print(" - message_tags:")
                     first_channel = False
