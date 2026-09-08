@@ -1836,7 +1836,7 @@ class LdmsdCmdParser(Cmd.Cmd):
         j = fmt_status(msg)
 
         try:
-            strgp_tbl, schema_tbl, stage_tbl, num_op_per_sec, rate_note = self.__store_time_process(j)
+            strgp_tbl, schema_tbl, stage_tbl, num_op_per_sec, rate_note = self.__store_time_process(j['strgp'])
             stage_tbl['total_time'] = sum(stage_tbl['stages'].values())
         except Exception as e:
             raise
@@ -1940,6 +1940,20 @@ class LdmsdCmdParser(Cmd.Cmd):
                 for stage, value in sorted_stages:
                     pct = value/stage_tbl['total_time']*100
                     print(f"   {__get_stage_name(stage):16}: {pct:>7.2f}%          {value:>7.2f} us")
+
+            # Storage workers' queue depth
+            print()
+            pool = j.get('worker_pool')
+            if pool:
+                nw       = pool['num_workers']
+                max_qd   = pool['max_q_depth']
+                total_qd = pool['total_q_depth']
+                workers  = pool['workers']
+                max_s = str(max_qd) if max_qd >= 0 else 'unlimited'
+                print(f"Worker pool queue depth (max={max_s}):              "
+                      f"{total_qd} / {nw * max_qd if max_qd >= 0 else '∞'}")
+                for idx, w in enumerate(workers):
+                    print(f"   worker[{idx}]: {w['q_depth']}")
 
     def complete_store_time_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('store_time_stats', text)
