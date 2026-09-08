@@ -4468,7 +4468,7 @@ cdef class MsgData(object):
     def __repr__(self):
         return f"MsgData('{self.name}', {repr(self.src)}, " \
                f"{self.tid}, {self.uid}, {self.gid}, {oct(self.perm)}, " \
-               f"{self.is_json}, {repr(self.data)}, {self.type})"
+               f"{self.is_json}, {repr(self.data)}, {repr(self.raw_data)}, {self.type})"
 
     def __eq__(self, other):
         if type(other) != MsgData:
