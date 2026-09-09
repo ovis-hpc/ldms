@@ -9474,20 +9474,25 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 					goto json_error;
 			}
 
-			tid = ldms_set_thread_id_get(prdset->set);
-			snprintf(tid_s, 127, "%d", tid);
-			thr_json = json_attr_find(threads, tid_s);
-			if (!thr_json) {
-				/*
-				 * The dictionary may be extended to contain
-				 * thread's statistics in the future.
-				 */
-				thr_json = json_entity_new(JSON_DICT_VALUE);
-				if (!thr_json)
-					goto oom;
-				rc = json_attr_add(threads, tid_s, thr_json);
-				if (rc)
-					goto json_error;
+			if (prdset->set) {
+				tid = ldms_set_thread_id_get(prdset->set);
+				snprintf(tid_s, 127, "%d", tid);
+				thr_json = json_attr_find(threads, tid_s);
+				if (!thr_json) {
+					/*
+					* The dictionary may be extended to contain
+					* thread's statistics in the future.
+					*/
+					thr_json = json_entity_new(JSON_DICT_VALUE);
+					if (!thr_json)
+						goto oom;
+					rc = json_attr_add(threads, tid_s, thr_json);
+					if (rc)
+						goto json_error;
+				}
+			} else {
+				/* prdset's lookup hasn't been completed yet. */
+				snprintf(tid_s, 127, "-");
 			}
 
 			sch_json = json_attr_find(schemas, prdset->schema_name);
