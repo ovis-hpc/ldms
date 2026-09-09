@@ -99,8 +99,8 @@ extern ovis_log_t store_log;
  *
  * Contains all information needed to perform a storage operation asynchronously:
  * - snapshot: Point-in-time copy of the metric set (preserves data integrity)
- * - strgp: Storage policy defining how and where to store the data
- * - prd_set: Producer set reference (tracks data source for statistics)
+ * - strgp_ref: Storage policy reference (tracks data source for statistics)
+ * - prdset: Producer set reference
  * - row_list: For decomposed storage, the rows extracted from the snapshot
  * - type: Whether to use legacy store() API or decomposed commit() API
  *
@@ -113,6 +113,7 @@ extern ovis_log_t store_log;
 struct store_event_ctxt {
 	ldms_set_t snapshot; /* Set Snapshot */
 	ldmsd_strgp_ref_t strgp_ref;
+	ldmsd_prdcr_set_t prdset;
 	ldmsd_row_list_t row_list;
 	int row_count;
 	struct timespec start_ts;
@@ -161,6 +162,14 @@ struct store_event_ctxt *store_event_ctxt_new(ldmsd_strgp_ref_t strgp_ref, ldms_
 	 */
 	ldms_set_snapshot_get(snapshot, "store_event_ctxt_new");
 	ctxt->snapshot = snapshot;
+	/*
+	 * Take a producer set's reference to prevent the producer set from
+	 * being deleted while there is an outstanding store event.
+	 * In turn, this will prevent a use-after-free of strgp_ref corresponding
+	 * to the producer set.
+	 */
+	ldmsd_prdcr_set_ref_get(prd_set);
+	ctxt->prdset = prd_set;
 	ldmsd_strgp_get(strgp_ref->strgp, "store_event_ctxt_new");
 	ctxt->strgp_ref = strgp_ref;
 	if (strgp_ref->strgp->decomp) {
@@ -183,6 +192,7 @@ void store_event_ctxt_free(struct store_event_ctxt *ctxt)
 		ctxt->strgp_ref->strgp->decomp->release_rows(ctxt->strgp_ref->strgp, ctxt->row_list);
 	}
 	ldmsd_strgp_put(ctxt->strgp_ref->strgp, "store_event_ctxt_new");
+	ldmsd_prdcr_set_ref_put(ctxt->prdset);
 	ldms_set_snapshot_put(ctxt->snapshot, "store_event_ctxt_new");
 	free(ctxt);
 }
