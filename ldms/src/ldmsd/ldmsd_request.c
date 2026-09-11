@@ -8195,11 +8195,8 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	ldms_thrstat_result_free(lres);
 	ldmsd_worker_thrstat_free(wres);
 	ldmsd_worker_thrstat_free(sres);
-	// while ((rbn = rbt_min(&store_time_tree))) {
-	// 	rbt_del(&store_time_tree, rbn);
-	// 	stime_ent = container_of(rbn, struct store_time_thread, rbn);
-	// 	free(stime_ent);
-	// }
+	if (xres)
+		ldmsd_worker_thrstat_free(xres);
 	return buff;
 __APPEND_ERR:
 	ldms_thrstat_result_free(lres);
@@ -8207,11 +8204,6 @@ __APPEND_ERR:
 	ldmsd_worker_thrstat_free(sres);
 	if (xres)
 		ldmsd_worker_thrstat_free(xres);
-	// while ((rbn = rbt_min(&store_time_tree))) {
-	// 	rbt_del(&store_time_tree, rbn);
-	// 	stime_ent = container_of(rbn, struct store_time_thread, rbn);
-	// 	free(stime_ent);
-	// }
 	free(buff);
 	return NULL;
 }
