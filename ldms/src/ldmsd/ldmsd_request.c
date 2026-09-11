@@ -7907,37 +7907,41 @@ static void __prdset_stats_reset(struct timespec *now, int reset_flags)
 /**
  * Thread Statistics Handler
  *
- * The thread_stats handler provides information about LDMSD thread performance
- * and utilization metrics. This includes worker threads, I/O threads, and
- * sampling threads (xthreads).
+ * The thread_stats handler reports the utilization of the ldmsd threads:
+ * the Zap I/O threads, the ldmsd worker threads, the sampler exclusive
+ * threads (xthreads), and the storage worker threads.
  *
- * Thread statistics are collected using the ovis_thrstats library, which provides
- * both overall and time-window based utilization metrics.
+ * The statistics come from ovis_thrstats, which accumulates idle and active
+ * time since the thread started or since the last reset, and also keeps a
+ * short circular time-bucket history used for the recent-window values.
  *
  * Request Format:
  * {
- *   "command": "thread_stats"
+ *   "command": "thread_stats",
+ *   "reset": "true" | "false"      (optional)
  * }
  *
  * Response Format:
  * {
- *   "count": <total thread count>,
+ *   "count": <number of I/O threads>,
  *   "io_threads": [
  *     {
  *       "name": "<thread name>",
  *       "tid": <Linux thread ID>,
  *       "thread_id": "<pthread ID as hex string>",
- *       "type": "io_thread",
- *       "utilization": <utilization ratio 0.0-1.0>,
+ *       "idle_tot": <usec>,
+ *       "active_tot": <usec>,
+ *       "total_us": <usec>,
+ *       "idle_us": <usec>,
+ *       "active_us": <usec>,
+ *       "refresh_us": <usec>,
+ *       "utilization": <ratio 0.0-1.0, or -1>,
  *       "sq_sz": <send queue size>,
  *       "n_eps": <number of endpoints>,
- *       "idle": <idle ratio 0.0-1.0>,
- *       "active": <active ratio 0.0-1.0>,
- *       "interval": <analysis interval in microseconds>,
  *       "ldms_xprt": {
- *         "Idle": <idle time in microseconds>,
- *         "Zap": <zap time in microseconds>,
- *         "<operation name>": <time in microseconds>,
+ *         "Idle": <usec>,
+ *         "Zap": <usec>,
+ *         "<operation name>": <usec>,
  *         ...
  *       }
  *     },
@@ -7948,63 +7952,58 @@ static void __prdset_stats_reset(struct timespec *now, int reset_flags)
  *       "name": "<thread name>",
  *       "tid": <Linux thread ID>,
  *       "thread_id": "<pthread ID as hex string>",
- *       "idle_pc": <idle percentage over total runtime>,
- *       "active_pc": <active percentage over total runtime>,
- *       "total_us": <total runtime in microseconds>,
- *       "utilization": <utilization ratio 0.0-1.0>,
- *       "interval_us": <analysis interval in microseconds>,
- *       "ev_cnt": <event count>
+ *       "idle_tot": <usec>,
+ *       "active_tot": <usec>,
+ *       "total_us": <usec>,
+ *       "utilization": <ratio 0.0-1.0, or -1>,
+ *       "idle_us": <usec>,
+ *       "active_us": <usec>,
+ *       "refresh_us": <usec>,
+ *       "ev_cnt": <number of events>
  *     },
  *     ...
  *   ],
- *   "xthreads": [
- *     {
- *       "name": "<thread name>",
- *       "tid": <Linux thread ID>,
- *       "thread_id": "<pthread ID as hex string>",
- *       "idle_pc": <idle percentage over total runtime>,
- *       "active_pc": <active percentage over total runtime>,
- *       "total_us": <total runtime in microseconds>,
- *       "ev_cnt": <event count>
- *     },
- *     ...
- *   ],
- *   "duration": <statistics collection duration in microseconds>
+ *   "xthreads": [ <same fields as worker_threads> ],
+ *   "storage threads": [ <same fields as worker_threads> ],
+ *   "compute_time": <usec spent building this response>
  * }
  *
  * Field Descriptions:
  * -------------------
- * count           - Total number of threads reported
- * duration        - Duration of the statistics collection in microseconds
- * name            - Thread name
- * tid             - Linux thread ID (from gettid() system call)
- * thread_id       - Thread ID from pthread_self() as hex string
- *
- * utilization     - Thread utilization ratio (0.0-1.0) within the analysis interval
- *                   A value of -1 indicates insufficient data for calculation
- * sq_sz           - Send queue size (number of pending send operations)
- * n_eps           - Number of endpoints handled by this thread
- * idle            - Idle ratio within the last 3 seconds
- * active          - Active ratio within the last 3 seconds
- * interval        - Duration of the analysis interval in microseconds (3 seconds)
- * ldms_xprt       - LDMS transport operation statistics
- * ldms_xprt.Idle  - Total time spent idle in microseconds since last reset
- * Zap             - Time spent in Zap transport layer in microseconds
- * <operation>     - Time spent in specific operations (Lookup, Update, etc.)
- * idle_pc         - Idle percentage over since last reset (0-100)
- * active_pc       - Active percentage over since last reset (0-100)
- * total_us        - Total runtime in microseconds since start/reset
- * ev_cnt          - Number of events processed by the thread
- * interval_us     - Duration of the analysis interval in microseconds
+ * count        - Number of I/O threads, i.e., entries in "io_threads" only
+ * name         - Thread name
+ * tid          - Linux thread ID (from the gettid() system call)
+ * thread_id    - Thread ID from pthread_self() as a hex string
+ * idle_tot     - Time spent waiting since the thread started or the last reset
+ * active_tot   - Time spent processing since the thread started or the last
+ *                reset
+ * total_us     - idle_tot + active_tot
+ * idle_us      - Idle time within the recent window
+ * active_us    - Active time within the recent window
+ * refresh_us   - Length of the recent window; 0 when less than a full
+ *                window of data has been collected since start or reset
+ * utilization  - active_us / refresh_us; -1 when refresh_us is 0
+ * sq_sz        - Send queue size of the I/O thread
+ * n_eps        - Number of endpoints handled by the I/O thread
+ * ldms_xprt.Idle - Same value as idle_tot
+ * ldms_xprt.Zap  - Active time not attributed to any LDMS operation below
+ * ldms_xprt.<operation> - Cumulative time spent in that LDMS operation
+ * ev_cnt       - Number of events registered with or queued on the
+ *                thread's scheduler at the time of the query; this is not
+ *                a cumulative count of processed events
+ * compute_time - Time spent building this response
  *
  * Notes:
  * ------
- * - The reported utilization is typically based on a 3-second window by default
- * - idle_pc and active_pc are based on the entire runtime since thread start/reset
- * - idle and active ratios are based on the analysis interval (typically 3 seconds)
- * - The "worker_threads" represent LDMSD event processing threads
- * - The "io_threads" represent Zap network I/O threads
- * - The "xthreads" represent sampler execution threads
+ * - The recent window is 3 seconds, the default refresh rate of `top`.
+ * - The *_tot values cover the time since the thread started or the last
+ *   reset; the *_us window values cover only the recent window.
+ * - "worker_threads" are the ldmsd event processing threads, "io_threads"
+ *   are the Zap network I/O threads, "xthreads" are sampler exclusive
+ *   threads, and "storage threads" are the storage worker threads.
+ * - The key "storage threads" contains a space.
+ * - reset=true resets the I/O thread, worker thread, and xthread statistics,
+ *   and also the update and store statistics of all producer sets.
  */
 extern void ldmsd_worker_thrstat_free(struct ldmsd_worker_thrstat_result *res);
 extern struct ldmsd_worker_thrstat_result *ldmsd_worker_thrstat_get(uint64_t interval_s);
@@ -9527,7 +9526,9 @@ unlock:
  * {
  *   "<updtr_name>": {
  *     "histogram": {
+ *       "warmup_in_progress" : false,
  *       "n_bins"     : <int>,
+ *       "scale"      : "linear" | "log",
  *       "boundaries" : [ <float>, ... ],   // n_bins + 1 values
  *       "underflow"  : <int>,
  *       "bins"       : [ <int>, ... ],     // n_bins counts
@@ -9538,7 +9539,7 @@ unlock:
  *         "min"             : <float>,     // usec
  *         "max"             : <float>,     // usec
  *         "avg"             : <float>,     // usec
- *         "count"           : <int>,
+ *         "cnt"             : <int>,
  *         "skipped_cnt"     : <int>,
  *         "oversampled_cnt" : <int>
  *       },
@@ -9550,7 +9551,10 @@ unlock:
  * }
  *
  * Notes:
- * - "histogram" is omitted if the updtr histogram is still in warmup.
+ * - While the updtr histogram is still in warmup, "histogram" is
+ *   { "warmup_in_progress": true, "warmup_count": <int>, "n_warmup": <int> }.
+ * - "histogram" is omitted when summary=true.
+ * - Producers that are not connected are omitted.
  * - Multiple updaters appear as sibling keys at the top level.
  * - Multiple producers appear as sibling keys under each updater.
  * - Multiple producer sets appear as sibling keys under each producer.

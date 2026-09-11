@@ -87,13 +87,13 @@ static void histogram_bin_value(struct ovis_histogram *h, double value);
  * appearing in the warmup window.
  *
  * Scale modes:
- *   LDMSD_HISTOGRAM_SCALE_LINEAR -- Q1/Q3/IQR and fences are computed
+ *   OVIS_HISTOGRAM_SCALE_LINEAR -- Q1/Q3/IQR and fences are computed
  *     directly on the warmup sample values. Bin boundaries are spaced
  *     evenly (equal width) across [min, max]. The lower fence is clamped
  *     to 0 since measured durations cannot be negative.
  *
- *   LDMSD_HISTOGRAM_SCALE_LOG -- warmup samples are first transformed to
- *     log(x + LDMSD_HISTOGRAM_LOG_EPSILON) space. Q1/Q3/IQR and fences are
+ *   OVIS_HISTOGRAM_SCALE_LOG -- warmup samples are first transformed to
+ *     log(x + HISTOGRAM_LOG_EPSILON) space. Q1/Q3/IQR and fences are
  *     computed entirely in that log space (quantiles are invariant under
  *     monotonic transforms, but IQR and the fence width are not, so the
  *     transform must happen before computing IQR, not after). The
@@ -111,7 +111,7 @@ static void histogram_bin_value(struct ovis_histogram *h, double value);
  * __ATOMIC_ACQUIRE) are guaranteed to see a fully written boundaries[]
  * array without needing the lock. Does not free warmup_buf -- it is kept
  * allocated for the histogram's lifetime so that
- * ldmsd_histogram_recalibrate() can reuse it without reallocating.
+ * ovis_histogram_recalibrate() can reuse it without reallocating.
  */
 static void histogram_fix_bins(struct ovis_histogram *h)
 {
@@ -402,8 +402,8 @@ json_entity_t ovis_histogram2dict(json_doc_t jdoc, struct ovis_histogram *h)
 
 	/* Still in warmup -- report progress instead of bins/boundaries.
 	 * warmup_count and n_warmup are only otherwise touched under h->lock
-	 * (by ldmsd_histogram_update()'s slow path, histogram_fix_bins(), and
-	 * ldmsd_histogram_recalibrate()), so take the lock briefly here too
+	 * (by ovis_histogram_update()'s slow path, histogram_fix_bins(), and
+	 * ovis_histogram_recalibrate()), so take the lock briefly here too
 	 * to read a consistent pair of values. */
 	if (!__atomic_load_n(&h->bins_ready, __ATOMIC_ACQUIRE)) {
 		pthread_mutex_lock(&h->lock);
