@@ -623,3 +623,13 @@ err:
 	ldmsd_worker_thrstat_free(res);
 	return NULL;
 }
+
+void ldmsd_storage_worker_thrstat_reset(struct timespec *now)
+{	int i;
+	struct strg_worker *w;
+
+	for (i = 0; i < ldmsd_strg_worker_pool.num_workers; i++) {
+		w = &ldmsd_strg_worker_pool.workers[i];
+		ovis_scheduler_thrstats_reset(w->worker, now);
+	}
+}
