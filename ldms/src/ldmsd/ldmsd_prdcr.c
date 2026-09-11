@@ -1910,6 +1910,8 @@ void ldmsd_prdcr_set_stats_reset(ldmsd_prdcr_set_t prdset, struct timespec *now,
 			ldmsd_stat_reset(&strgp_ref->store_stages_stat.io_thread_stat, now);
 			ldmsd_stat_reset(&strgp_ref->store_stages_stat.queue_stat, now);
 			ldmsd_stat_reset(&strgp_ref->store_stages_stat.worker_wait_stat, now);
+			/* Reset the store time histogram. The histogram is not re-calibrated. */
+			ovis_histogram_reset(&strgp_ref->strgp->hist_store_time);
 		}
 	}
 

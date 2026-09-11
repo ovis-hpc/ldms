@@ -8210,6 +8210,7 @@ __APPEND_ERR:
 
 extern void ldmsd_worker_thrstats_reset(struct timespec *now);
 extern void ldmsd_xthrstat_reset(struct timespec *now);
+extern void ldmsd_storage_worker_thrstat_reset(struct timespec *now);
 static int thread_stats_handler(ldmsd_req_ctxt_t req)
 {
 	char *json_s, *s;
@@ -8248,6 +8249,7 @@ static int thread_stats_handler(ldmsd_req_ctxt_t req)
 		zap_thrstat_reset_all(&now);
 		ldmsd_worker_thrstats_reset(&now);
 		ldmsd_xthrstat_reset(&now);
+		ldmsd_storage_worker_thrstat_reset(&now);
 		__prdset_stats_reset(&now, LDMSD_PRDSET_STATS_F_UPD | LDMSD_PRDSET_STATS_F_STORE);
 	}
 
@@ -10109,10 +10111,12 @@ static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 		zap_thrstat_reset_all(&now);
 		ldmsd_worker_thrstats_reset(&now);
 		ldmsd_xthrstat_reset(&now);
+		ldmsd_storage_worker_thrstat_reset(&now);
 	}
 
 	if (is_xprt) {
 		ldms_xprt_rate_data(NULL, 1);
+		ldms_xprt_histogram_reset(0);
 	}
 
 	if (is_stream)
