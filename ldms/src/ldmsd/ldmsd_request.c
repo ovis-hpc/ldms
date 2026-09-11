@@ -8162,6 +8162,11 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	for (i = 0; sres && i < sres->count; i++) {
 		wthr = sres->entries[i];
 		res = &wthr->stats;
+		if (res->interval_us == 0) {
+			utilization = -1;
+		} else {
+			utilization = (double)res->active_us / (double)res->interval_us;
+		}
 		__APPEND("  {\n");
 		__APPEND("   \"name\": \"%s\",\n", res->name);
 		__APPEND("   \"tid\": %d,\n", res->tid);
