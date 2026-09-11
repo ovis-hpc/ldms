@@ -16,7 +16,7 @@ SYNOPSIS
 ========
 
 | Within ldmsd_controller or a configuration file:
-| config name=dcgm_sampler [ <attr>=<value> ] [use_base=<\*>]
+| config name=dcgm_sampler [ <attr>=<value> ] [use_base=<\*>] [embedded=<\*>]
 
 DESCRIPTION
 ===========
@@ -27,8 +27,12 @@ configuration file. The dcgm_sampler plugin provides a metric set for
 each DCGM-compatible Nvidia GPU on the system. The schema is named
 "dcgm" by default.
 
-NOTE: This sampler requires the NVidia DCGM daemon "nv-hostengine"
-running before it can be configured in ldmsd.
+By default, this sampler uses the DCGM library's Standaline mode.
+Standalone mode requires the nv-hostenvine daemon to be running.
+If dcgm access is need by more application than just LDMS, standalone
+mode is required. If you are sure that only LDMS will be using the
+DCGM library, you can run in Embedded mode and not use run the
+nv-hostengine daemon.
 
 CONFIGURATION ATTRIBUTE SYNTAX
 ==============================
@@ -49,6 +53,11 @@ CONFIGURATION ATTRIBUTE SYNTAX
       | Any value given enables the sampler_base configuration option
         processing (see :ref:`ldms_sampler_base(7) <ldms_sampler_base>`). If not given, the options
         not listed below are ignored.
+
+   embedded=<\*>
+      |
+      | Any value given enables the NVidia DCGM library's embedded mode, which
+        elimintates the dependence on an external nv-hostengine daemon.
 
    interval=<interval(us)>
       |

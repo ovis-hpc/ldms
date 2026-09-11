@@ -599,6 +599,12 @@ static int config(ldmsd_plug_handle_t handle,
                 conf.fields_len = sizeof(default_fields)/sizeof(default_fields[0]);
         }
 
+        value = av_value(avl, "embedded");
+        if (value != NULL) {
+		standalone = 0;
+		log_fn(LDMSD_LDEBUG, SAMP": Using dcgm library's embedded mode\n");
+	}
+
         rc = dcgm_init();
         if (rc != 0)
                 goto err2;
