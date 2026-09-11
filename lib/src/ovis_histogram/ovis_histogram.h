@@ -15,7 +15,7 @@
  * Scale mode for bin spacing.
  *
  * Values intentionally start at 1, not 0, so that 0 can be used as a
- * sentinel meaning "no change" in ldmsd_histogram_recalibrate(), matching
+ * sentinel meaning "no change" in ovis_histogram_recalibrate(), matching
  * the same 0-means-unchanged convention used for that function's
  * new_n_bins and new_n_warmup parameters.
  */
@@ -36,28 +36,28 @@ enum ovis_histogram_scale {
  *   - `lock` protects the warmup phase: appending to warmup_buf,
  *     incrementing warmup_count, the one-time boundary-fixing transition
  *     in histogram_fix_bins(), and any reallocation of warmup_buf /
- *     boundaries / counts performed by ldmsd_histogram_recalibrate().
+ *     boundaries / counts performed by ovis_histogram_recalibrate().
  *   - `bins_ready` is the transition flag, updated with __atomic builtins
  *     (matching the convention used elsewhere in ldmsd, e.g.
  *     oversampled_cnt / prdset_cnt). It is written with __ATOMIC_RELEASE
  *     as the last step of histogram_fix_bins() (after boundaries[] is
  *     fully populated), and is read with __ATOMIC_ACQUIRE. Once set to 1,
- *     it stays 1 across calls to ldmsd_histogram_reset() (reset only
+ *     it stays 1 across calls to ovis_histogram_reset() (reset only
  *     touches counts[]). It can be explicitly flipped back to 0 by
- *     ldmsd_histogram_recalibrate(), which re-enters the warmup phase to
+ *     ovis_histogram_recalibrate(), which re-enters the warmup phase to
  *     compute fresh boundaries (optionally with a different n_bins,
  *     n_warmup, and/or scale) -- see that function's comment for details.
  *   - Once bins_ready is observed true, counts[] is updated/read with
  *     __atomic_fetch_add / __atomic_load_n only -- no lock needed.
  *     boundaries[]/counts[]/n_bins are only reallocated or changed by
- *     ldmsd_histogram_recalibrate() while holding `lock`, and bins_ready
+ *     ovis_histogram_recalibrate() while holding `lock`, and bins_ready
  *     is flipped to 0 before any such change and only flipped back to 1
  *     (by the next histogram_fix_bins()) once the new arrays are fully
  *     in place -- so a fast-path caller either sees the complete old
  *     arrays (bins_ready still 1) or is routed into the locked slow path
  *     (bins_ready now 0).
  *   - The caller doesn't needs to take an external lock around calls
- *     into this struct; locking is internal to ldmsd_histogram_*().
+ *     into this struct; locking is internal to ovis_histogram_*().
  */
 typedef struct ovis_histogram {
 	pthread_mutex_t lock;     /* protects warmup_buf/warmup_count, the
@@ -68,14 +68,14 @@ typedef struct ovis_histogram {
 	enum ovis_histogram_scale scale;  /* bin spacing mode (under lock) */
 
 	int n_warmup;             /* number of samples before fixing bins;
-	                              may change via ldmsd_histogram_recalibrate() */
+	                              may change via ovis_histogram_recalibrate() */
 	int warmup_count;         /* samples seen during warmup (under lock) */
 	double *warmup_buf;       /* n_warmup samples; allocated in init(), and
 	                              reallocated by recalibrate() only if a new
 	                              n_warmup is requested (under lock) */
 
 	int n_bins;               /* number of bins; may change via
-	                              ldmsd_histogram_recalibrate() */
+	                              ovis_histogram_recalibrate() */
 	double *boundaries;       /* n_bins + 1 values; written by histogram_fix_bins(),
 	                              then read-only until/unless recalibrate()
 	                              reallocates it (under lock) */
@@ -87,12 +87,12 @@ typedef struct ovis_histogram {
 /*
  * Initialize a histogram struct.
  *
- * Caller must call \c ldmsd_histogram_destroy() when the histogram isn't used anymore.
+ * Caller must call \c ovis_histogram_destroy() when the histogram isn't used anymore.
  *
- * \param n_bins    number of bins; pass 0 for default (LDMSD_HISTOGRAM_DEFAULT_BINS)
- * \param n_warmup  number of warmup samples; pass 0 for default (LDMSD_HISTOGRAM_DEFAULT_WARMUP)
- * \param scale     LDMSD_HISTOGRAM_SCALE_LINEAR or LDMSD_HISTOGRAM_SCALE_LOG;
- *                  pass 0 for default (LDMSD_HISTOGRAM_SCALE_LINEAR)
+ * \param n_bins    number of bins; pass 0 for default (OVIS_HISTOGRAM_DEFAULT_BINS)
+ * \param n_warmup  number of warmup samples; pass 0 for default (OVIS_HISTOGRAM_DEFAULT_WARMUP)
+ * \param scale     OVIS_HISTOGRAM_SCALE_LINEAR or OVIS_HISTOGRAM_SCALE_LOG;
+ *                  pass 0 for default (OVIS_HISTOGRAM_SCALE_LINEAR)
  *
  * Returns 0 on success, errno on failure.
  */
@@ -124,7 +124,7 @@ void ovis_histogram_update(struct ovis_histogram *h, double value);
  * Discard the current boundaries and counts, and re-enter the warmup
  * phase to recalibrate boundaries from fresh samples.
  *
- * Unlike ldmsd_histogram_reset(), which only zeroes counts and preserves
+ * Unlike ovis_histogram_reset(), which only zeroes counts and preserves
  * existing boundaries, this function throws away the calibration itself.
  * This is useful when the existing boundaries no longer fit the metric's
  * current behavior -- for example, a metric (such as store_time) whose
@@ -135,8 +135,8 @@ void ovis_histogram_update(struct ovis_histogram *h, double value);
  *                      existing n_bins.
  * \param new_n_warmup  If > 0, change the number of warmup samples used
  *                      for recalibration. If 0, keep the existing n_warmup.
- * \param new_scale     If non-zero (LDMSD_HISTOGRAM_SCALE_LINEAR or
- *                      LDMSD_HISTOGRAM_SCALE_LOG), change the bin scale
+ * \param new_scale     If non-zero (OVIS_HISTOGRAM_SCALE_LINEAR or
+ *                      OVIS_HISTOGRAM_SCALE_LOG), change the bin scale
  *                      mode. If 0, keep the existing scale.
  *
  * Returns 0 on success, errno on failure (e.g. ENOMEM if a requested size
@@ -155,7 +155,7 @@ int ovis_histogram_recalibrate(struct ovis_histogram *h, int new_n_bins,
                                  int new_n_warmup, enum ovis_histogram_scale new_scale);
 
 /*
- * \brief Create a JSON dictionary from struct ldmsd_histogram.
+ * \brief Create a JSON dictionary from struct ovis_histogram.
  *
  * Reports warmup progress while still calibrating, and bins/boundaries
  * once calibration is complete -- see the two JSON shapes below.
