@@ -967,7 +967,7 @@ static int cpu_handler(curated_metrics_t mi, int *metric_no)
 			}
 			break;
 		case STAT_INTR:
-			if (mi->skip_first) {
+			if (!mi->skip_first) {
 				n = fscanf(mi->sf, " %"PRIu64, &intr);
 				if (n != 1) {
 					rc = EINVAL;
