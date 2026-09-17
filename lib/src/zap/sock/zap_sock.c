@@ -279,7 +279,7 @@ static zap_err_t z_sock_close(zap_ep_t ep)
 	pthread_mutex_lock(&sep->ep.lock);
 	if (ep->thread && self != ep->thread->thread) {
 		/* If we are NOT in app callback path, we can block-wait sq */
-		while (!TAILQ_EMPTY(&sep->sq)) {
+		while (!TAILQ_EMPTY(&sep->sq) && sep->sock_connected) {
 			pthread_cond_wait(&sep->sq_cond, &sep->ep.lock);
 		}
 	}
@@ -1687,6 +1687,9 @@ static void sock_disc_err_event(struct epoll_event *ev)
 		do_cb = 0;
 		break;
 	}
+
+	sep->sock_connected = 0;
+	pthread_cond_signal(&sep->sq_cond);
 
 	pthread_mutex_unlock(&sep->ep.lock);
 	if (do_cb) {
