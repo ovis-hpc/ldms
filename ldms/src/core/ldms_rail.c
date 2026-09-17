@@ -1223,9 +1223,12 @@ int __rail_rep_send_raw(struct ldms_rail_ep_s *rep, void *data, int len)
 	int rc;
 	/* mimicking ldms_xprt_send */
 	pthread_mutex_lock(&x->lock);
-	if (!ldms_xprt_connected(x))
-		return ENOTCONN;
+	if (!ldms_xprt_connected(x)) {
+		rc = ENOTCONN;
+		goto out;
+	}
 	rc = zap_send(x->zap_ep, data, len);
+ out:
 	pthread_mutex_unlock(&x->lock);
 	return rc;
 }
