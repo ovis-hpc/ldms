@@ -1045,8 +1045,11 @@ int ldmsd_sampler_start(const char *cfg_name, const char *interval, const char *
 		return ENOENT;
 
 	ldmsd_sampler_lock(samp);
-	if (samp->state != LDMSD_SAMP_STATE_CONFIGURED) {
+	if (samp->state == LDMSD_SAMP_STATE_RUNNING) {
 		rc = EBUSY;
+		goto out;
+	} else if (samp->state != LDMSD_SAMP_STATE_CONFIGURED) {
+		rc = ENOTSUP;
 		goto out;
 	}
 

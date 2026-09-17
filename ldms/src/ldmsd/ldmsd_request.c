@@ -5356,6 +5356,9 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 	} else if (reqc->errcode == EBUSY) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Sampler instance '%s' is already running.", instance_name);
+	} else if (reqc->errcode == ENOTSUP) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Sampler instance '%s' has not been configured yet.", instance_name);
 	} else if (reqc->errcode == EDOM) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
