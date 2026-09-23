@@ -9739,7 +9739,10 @@ static json_entity_t __prdset_store_time_json_get(json_doc_t jdoc, struct store_
 	return d;
 }
 
-void ldmsd_prdcr_set_store_stats_init(ldmsd_prdcr_set_t prdset, struct timespec *ts);
+extern void ldmsd_prdcr_set_store_stats_init(ldmsd_prdcr_set_t prdset, struct timespec *ts);
+extern int ldmsd_strg_worker_pool_q_depth_get(int *num_workers_out,
+						int *max_q_depth_out,
+						int **q_depths_out);
 static int
 __store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prdset, int reset, int recal_hist)
 {
@@ -9957,7 +9960,7 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_strgp_t strgp;
 	int reset = 0;
 	int recal_hist = 0;
-	json_entity_t strgp_dict;
+	json_entity_t strgp_dict, rd;
 	jbuf_t jbuf = NULL;
 
 	ldmsd_prdcr_t prdcr;
@@ -10000,8 +10003,10 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 		ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
 		rc = ENOMEM;
 	}
+
+	rd = json_dict_new(jdoc);
 	strgp_dict = json_dict_new(jdoc);
-	if (!strgp_dict) {
+	if (!rd || !strgp_dict) {
 		ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
 		rc = ENOMEM;
 		goto out;
@@ -10024,7 +10029,42 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 
-	jbuf = json_entity_dump(NULL, strgp_dict);
+	/* --- worker pool queue depth --- */
+	int nw, max_qd, i, total = 0;
+	int *depths = NULL;
+	json_entity_t pool, workers, w;
+
+	rc = ldmsd_strg_worker_pool_q_depth_get(&nw, &max_qd, &depths);
+	if (rc)
+		goto err;
+
+	workers = json_list_new(jdoc);
+	if (!workers) {
+		free(depths);
+		rc = ENOMEM;
+		goto err;
+	}
+	for (i = 0; i < nw; i++) {
+		total += depths[i];
+		w = json_dict_build(jdoc, "q_depth", JSON_INT_VALUE, (int64_t)depths[i], NULL);
+		if (!w) {
+			free(depths);
+			rc = ENOMEM; goto err;
+		}
+		json_item_add(workers, w);
+	}
+
+	pool = json_dict_build(jdoc,
+				"num_workers", JSON_INT_VALUE, (int64_t)nw,
+				"max_q_depth", JSON_INT_VALUE, (int64_t)max_qd,
+				"total_q_depth", JSON_INT_VALUE, (int64_t)total,
+				NULL);
+	json_attr_add(pool, "workers", workers);
+	free(depths);
+
+	json_attr_add(rd, "worker_pool", pool);
+	json_attr_add(rd, "strgp", strgp_dict);
+	jbuf = json_entity_dump(NULL, rd);
 	ldmsd_send_req_response(reqc, jbuf->buf);
 	goto out;
 err:
