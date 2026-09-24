@@ -7802,11 +7802,11 @@ static int profiling_handler(ldmsd_req_ctxt_t req)
 	if (ldmsd_append_reply(req, (const char *)&attr.discrim, sizeof(attr.discrim), LDMSD_REQ_EOM_F))
 		goto err;
 
-	free(obj);
+	json_decref(obj);
 	free(json_as_str);
 	return 0;
 err:
-	free(obj);
+	json_decref(obj);
 	free(json_as_str);
 	req->errcode = rc;
 	ldmsd_send_req_response(req, "Failed to get ldms_xprt's probe data");
