@@ -534,60 +534,60 @@ class YamlCfg(object):
                 check_required([ 'endpoints', 'reconnect', 'type', ],
                                prod, f'"peers" entry of {prod}')
                 # Use endpoints for producer names and remove names attribute?
-                if prod['daemons'] not in self.daemons:
-                    dmn_grps = prod['daemons'].split(',')
-                    eps = prod['endpoints'].split(',')
-                else:
-                    dmn_grps = [ prod['daemons'] ]
-                    eps = [ prod['endpoints'] ]
-                for daemons, endpoints in zip(dmn_grps, eps):
-                    names = expand_names(endpoints)
-                    endpoints = expand_names(endpoints)
-                    group = agg['daemons']
-                    smplr_dmns = expand_names(daemons)
-                    if group not in producers:
-                        producers[group] = {}
+                daemons = expand_names(prod['daemons'])
+                names = expand_names(prod['endpoints'])
+                if len(daemons) < len(names) or len(names) % len(daemons) != 0:
+                    raise ValueError(f'Configuration error:\n'\
+                                     f'The number of endpoints specified for '\
+                                     f'aggregator hostlist expression {agg["daemons"]} '\
+                                     f'is less than the number of daemons specified, or '\
+                                     f'is not evenly divisible')
+                endpoints = names.copy()
+                group = agg['daemons']
+                smplr_dmns = expand_names(daemons)
+                if group not in producers:
+                    producers[group] = {}
 
-                    upd_spec = check_opt('updaters', prod)
-                    # Expand and generate all the producers
-                    typ = prod['type']
-                    reconnect = check_intrvl_str(prod['reconnect'])
-                    perm = check_opt('perm', prod)
-                    perm = perm_handler(perm)
-                    rail = check_opt('rail', prod)
-                    quota = check_opt('quota', prod)
-                    rx_rate = check_opt('rx_rate', prod)
-                    cache_ip = check_opt('cache_ip', prod)
-                    ports_per_dmn = len(endpoints) / len(smplr_dmns)
-                    ppd = ports_per_dmn
-                    try:
-                        for name in names:
-                            if ppd > 1:
-                                smplr_dmn = smplr_dmns[0]
-                                ppd -= 1
-                            else:
-                                smplr_dmn = smplr_dmns.pop(0)
-                                ppd = ports_per_dmn
-                            endpoint = endpoints.pop(0)
-                            prod = {
-                                'daemon'    : smplr_dmn,
-                                'dmn_grp'   : daemons,
-                                'name'      : name,
-                                'endpoint'  : endpoint,
-                                'type'      : typ,
-                                'group'     : group,
-                                'reconnect' : reconnect,
-                                'perm'      : perm,
-                                'rail'      : rail,
-                                'quota'     : quota,
-                                'rx_rate'   : rx_rate,
-                                'cache_ip'  : cache_ip,
-                                'updaters'  : upd_spec
-                            }
-                            producers[group][endpoint] = prod
-                    except:
-                        raise ValueError(f'Mismatch in producer config:\n'
-                                         f'Please ensure "endpoints" is configured to the correct number of ports specified.\n')
+                upd_spec = check_opt('updaters', prod)
+                # Expand and generate all the producers
+                typ = prod['type']
+                reconnect = check_intrvl_str(prod['reconnect'])
+                perm = check_opt('perm', prod)
+                perm = perm_handler(perm)
+                rail = check_opt('rail', prod)
+                quota = check_opt('quota', prod)
+                rx_rate = check_opt('rx_rate', prod)
+                cache_ip = check_opt('cache_ip', prod)
+                ports_per_dmn = len(endpoints) / len(smplr_dmns)
+                ppd = ports_per_dmn
+                try:
+                    for name in names:
+                        if ppd > 1:
+                            smplr_dmn = smplr_dmns[0]
+                            ppd -= 1
+                        else:
+                            smplr_dmn = smplr_dmns.pop(0)
+                            ppd = ports_per_dmn
+                        endpoint = endpoints.pop(0)
+                        prod = {
+                            'daemon'    : smplr_dmn,
+                            'dmn_grp'   : daemons,
+                            'name'      : name,
+                            'endpoint'  : endpoint,
+                            'type'      : typ,
+                            'group'     : group,
+                            'reconnect' : reconnect,
+                            'perm'      : perm,
+                            'rail'      : rail,
+                            'quota'     : quota,
+                            'rx_rate'   : rx_rate,
+                            'cache_ip'  : cache_ip,
+                            'updaters'  : upd_spec
+                        }
+                        producers[group][endpoint] = prod
+                except:
+                    raise ValueError(f'Mismatch in producer config:\n'
+                                     f'Please ensure "endpoints" is configured to the correct number of ports specified.\n')
         return producers
 
     def build_updaters(self, config):
@@ -932,6 +932,8 @@ class YamlCfg(object):
             auth = None
             for ep in prod_group:
                 producer = self.producers[group_name][ep]
+                if ep not in self.daemons[producer['daemon']]['endpoints']:
+                    raise ValueError(f'{ep} not defined in YAML daemon transport configuration')
                 auth = check_opt('auth', self.daemons[producer['daemon']]['endpoints'][ep])
                 auth_opt = check_opt('conf', self.daemons[producer['daemon']]['endpoints'][ep])
                 if auth not in auth_listen:
@@ -1077,7 +1079,6 @@ class YamlCfg(object):
                     dstr = self.write_stores(dstr, dmn)
             return dstr
         except Exception as e:
-            traceback.print_exc()
             ea, eb, ec = sys.exc_info()
             raise Exception('Agg config Error: '+str(e)+' Python Line:'+str(ec.tb_lineno)) from e
 
@@ -1208,6 +1209,5 @@ class YamlCfg(object):
                     fd.write(dstr)
                     fd.close()
             except Exception as e:
-                traceback.print_exc()
                 raise Exception(f'Error generating configuration file for {dmn}:') from e
         return 0
