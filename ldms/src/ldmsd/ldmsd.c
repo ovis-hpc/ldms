@@ -1075,7 +1075,7 @@ int ldmsd_sampler_start(const char *cfg_name, const char *interval, const char *
 		}
 		if ( !((sample_interval >= 10) &&
 		       (sample_interval >= labs(sample_offset)*2)) ){
-			rc = -EDOM;
+			rc = ERANGE;
 			goto out;
 		}
 	}
