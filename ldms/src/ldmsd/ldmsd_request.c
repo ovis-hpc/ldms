@@ -5337,41 +5337,41 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = ldmsd_sampler_start(instance_name, interval_us, offset,
 					    exclusive_thread);
 	free(exclusive_thread);
-	if (reqc->errcode == 0) {
+	switch (reqc->errcode) {
+	case 0:
 		__dlog(DLOG_CFGOK, "start name=%s%s%s%s%s\n", instance_name,
 			" interval=", interval_us,
 			offset ? " offset=" : "", offset ? offset : "");
-
-		goto send_reply;
-	} else if (reqc->errcode == EINVAL) {
+		break;
+	case EINVAL:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"interval '%s' invalid", interval_us);
-	} else if (reqc->errcode == -EINVAL) {
-		reqc->errcode = EINVAL;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The specified plugin is not a sampler.");
-	} else if (reqc->errcode == ENOENT) {
+				"Interval '%s' invalid", interval_us);
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Sampler instance '%s' not found.", instance_name);
-	} else if (reqc->errcode == EBUSY) {
+		break;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Sampler instance '%s' is already running.", instance_name);
-	} else if (reqc->errcode == ENOTSUP) {
+		break;
+	case ENOTSUP:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Sampler instance '%s' has not been configured yet.", instance_name);
-	} else if (reqc->errcode == EDOM) {
-		reqc->errcode = EINVAL;
+		break;
+	case EDOM:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The given 'offset' (%s) is invalid.", offset);
-	} else if (reqc->errcode == -EDOM) {
-		reqc->errcode = EINVAL;
+		break;
+	case ERANGE:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Sampler parameters interval and offset are "
-				"incompatible.");
-	} else {
-		reqc->errcode = EINVAL;
+				"Sampler parameters interval (%s) and offset (%s) are "
+				"incompatible.", interval_us, offset);
+		break;
+	default:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Failed to start the sampler instance '%s'.", instance_name);
+		break;
 	}
 	goto send_reply;
 
