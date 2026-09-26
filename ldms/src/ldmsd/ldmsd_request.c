@@ -9839,29 +9839,34 @@ __store_time_stats_prdset(json_entity_t strgp_dict, ldmsd_strgp_t strgp, ldmsd_p
 			}
 		}
 
-		tid = ldms_set_thread_id_get(prdset->set);
-		snprintf(tid_s, 127, "%d", tid);
-		thr_json = json_value_find(threads, tid_s);
-		if (!thr_json) {
-			/*
-			 * The dictionary may be extended to contain
-			 * thread's statistics in the future.
-			 */
-			thr_json = json_dict_new(jdoc);
+		if (prdset->set) {
+			tid = ldms_set_thread_id_get(prdset->set);
+			snprintf(tid_s, 127, "%d", tid);
+			thr_json = json_value_find(threads, tid_s);
 			if (!thr_json) {
-				ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
-				rc = ENOMEM;
-				goto out;
+				/*
+				* The dictionary may be extended to contain
+				* thread's statistics in the future.
+				*/
+				thr_json = json_dict_new(jdoc);
+				if (!thr_json) {
+					ovis_log(config_log, OVIS_LCRIT, "Out of memory.\n");
+					rc = ENOMEM;
+					goto out;
+				}
+				rc = json_attr_add(threads, tid_s, thr_json);
+				if (rc) {
+					json_entity_free(thr_json);
+					ovis_log(config_log, OVIS_LERROR,
+							"Error creating the JSON response "
+							"of a store_time request. Error %d\n", rc);
+					goto out;
+				}
 			}
-			rc = json_attr_add(threads, tid_s, thr_json);
-			if (rc) {
-				json_entity_free(thr_json);
-				ovis_log(config_log, OVIS_LERROR,
-						"Error creating the JSON response "
-						"of a store_time request. Error %d\n", rc);
-				goto out;
-			}
+		} else {
+			snprintf(tid_s, 127, "-");
 		}
+
 
 		sch_json = json_value_find(schemas, prdset->schema_name);
 		if (!sch_json) {
