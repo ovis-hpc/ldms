@@ -7692,6 +7692,7 @@ int __xprt_profiling_as_json(json_t **_obj, int is_reset)
 		ovis_log(config_log, OVIS_LCRIT, "Memory allocation failure\n");
 		return ENOMEM;
 	}
+	*_obj = obj;
 
 	res = ldms_xprt_stats_result_get(LDMS_PERF_M_PROFILNG, is_reset);
 	if (!res) {
@@ -7718,7 +7719,6 @@ int __xprt_profiling_as_json(json_t **_obj, int is_reset)
 		}
 		json_object_set_new(obj, name, ep_prf);
 	}
-	*_obj = obj;
 	ldms_xprt_stats_result_free(res);
 	return 0;
 }
@@ -7743,7 +7743,9 @@ static int profiling_disable_handler(ldmsd_req_ctxt_t reqc)
 
 static int profiling_handler(ldmsd_req_ctxt_t req)
 {
-	json_t *obj, *xprt_prf, *strm_prf;
+	json_t *obj;
+	json_t *xprt_prf = NULL;
+	json_t *strm_prf = NULL;
 	char *json_as_str;
 	int rc = 0;
 	struct ldmsd_req_attr_s attr;
@@ -7802,11 +7804,11 @@ static int profiling_handler(ldmsd_req_ctxt_t req)
 	if (ldmsd_append_reply(req, (const char *)&attr.discrim, sizeof(attr.discrim), LDMSD_REQ_EOM_F))
 		goto err;
 
-	free(obj);
+	json_decref(obj);
 	free(json_as_str);
 	return 0;
 err:
-	free(obj);
+	json_decref(obj);
 	free(json_as_str);
 	req->errcode = rc;
 	ldmsd_send_req_response(req, "Failed to get ldms_xprt's probe data");
