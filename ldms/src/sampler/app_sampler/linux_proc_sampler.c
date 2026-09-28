@@ -2385,7 +2385,7 @@ uint64_t get_field_value_u64(linux_proc_sampler_inst_t inst, json_entity_t src, 
 		return 0;
 	}
 	uint64_t u64;
-	switch (et) {
+	switch (json_entity_type(e)) {
 	case JSON_STRING_VALUE:
 		if (sscanf(json_value_cstr(e),"%" SCNu64, &u64) == 1) {
 			return u64;
