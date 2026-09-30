@@ -283,6 +283,7 @@ static int task_list_len; /* Aggregated number of tasks per job */
 static int wait_time;
 
 static ldms_set_t set;
+static ldms_msg_client_t mc;
 static ldms_schema_t schema;
 static ldms_record_t job_rec_def;
 static ldms_record_t task_rec_def;
@@ -443,7 +444,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		ovis_log(mylog, OVIS_LCRITICAL, "memory allocation error.\n");
 		return ENOMEM;
 	}
-	ldms_msg_subscribe(stream, 0, slurm_recv_cb, handle, "slurm_sampler2");
 
 	/* producer */
 	value = av_value(avl, "producer");
@@ -560,6 +560,16 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	if (rc) {
 		ovis_log(mylog, OVIS_LERROR, "slurm-sampler: error %d creating "
 		       "the slurm job data metric set\n", rc);
+		goto err;
+	}
+
+	mc = ldms_msg_subscribe(stream, 0, slurm_recv_cb, handle, "slurm_sampler2");
+	if (!mc) {
+		ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
+		ldms_set_unpublish(set);
+		ldms_set_delete(set);
+		set = NULL;
+		rc = errno;
 		goto err;
 	}
 
@@ -1113,6 +1123,13 @@ static int slurm_recv_cb(ldms_msg_event_t ev, void *ctxt)
 
 	job_data_t job;
 	pthread_mutex_lock(&job_tree_lock);
+	if (!set) {
+		rc = EINVAL;
+		ovis_log(mylog, OVIS_LERROR, "On '%s' event,"
+				" job_id %lu, set is NULL\n",
+				event_name->str, job_id);
+		goto unlock_tree;
+	}
 	if (0 == strncmp(event_name->str, "init", 4)) {
 		job = job_data_find(job_id);
 		if (!job) {
@@ -1216,6 +1233,8 @@ static void destructor(ldmsd_plug_handle_t handle)
 		ldms_set_delete(set);
 	}
 	set = NULL;
+	if (mc)
+		ldms_msg_client_close(mc);
 }
 
 struct ldmsd_sampler ldmsd_plugin_interface = {
