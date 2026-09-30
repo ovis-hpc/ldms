@@ -773,7 +773,7 @@ dnl We make the assumption that if AM_PATH_PYTHON succeeds, that AX_PYTHON_DEVEL
 dnl is very likely to succeed as well.
 python_found=false
 cython_found=false
-required_cython_version=0.25
+required_cython_version=0.29
 
 AS_IF([test "x$want_python" != xno], [
 	AM_PATH_PYTHON([3.6],
@@ -789,7 +789,7 @@ except ImportError:
     raise SystemExit(0)
 raise SystemExit(1)'],
 				[required_cython_version=3.0],
-				[required_cython_version=0.25])
+				[required_cython_version=0.29])
 			AC_MSG_RESULT([$required_cython_version])
 			pkgpythondir="${pythondir}/ovis_ldms"
 			pkgpyexecdir="${pkgpythondir}"
