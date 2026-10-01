@@ -912,7 +912,7 @@ static int cpu_handler(curated_metrics_t mi, int *metric_no)
 				   &curr_cpu.steal,
 				   &curr_cpu.guest,
 				   &curr_cpu.guest_nice);
-			if (mi->skip_first) {
+			if (!mi->skip_first) {
 				if (n != 10) {
 					rc = EINVAL;
 					goto out;
