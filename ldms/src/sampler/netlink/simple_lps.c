@@ -229,9 +229,9 @@ out:
 #endif
 }
 
-static char *get_arg_value(const char *arg)
+static const char *get_arg_value(const char *arg)
 {
-	char *s = strstr(arg, "=");
+	const char *s = strstr(arg, "=");
 	if (s) {
 		s++;
 		return s;
@@ -419,8 +419,8 @@ struct slps *slps_create_from_argv(int argc, const char *argv[], slps_msg_log_f 
 {
 	const char *timeout = NULL;
 	const char *delivery = NULL;
-	char *stream = NULL;
-	char *send_log = NULL;
+	const char *stream = NULL;
+	const char *send_log = NULL;
 	int rc, i;
 	struct slps *l = calloc(1, sizeof(*l));
 	if (!l) {

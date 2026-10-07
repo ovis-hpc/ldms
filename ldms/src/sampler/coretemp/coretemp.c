@@ -153,8 +153,7 @@ int create_sensors_cb(const char *fpath, const struct stat *sb, int typeflag, st
 	int rc;
 	regmatch_t match[16];
 	char path[PATH_MAX];
-	char *coretemp = strstr(fpath, "coretemp");
-	if (!coretemp)
+	if (!strstr(fpath, "coretemp"))
 		return 0;
 	switch (typeflag) {
 	case FTW_F:  /* fpath is a regular file. */

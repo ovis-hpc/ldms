@@ -148,9 +148,9 @@ static void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...)
 	va_end(ap);
 }
 
-static char *get_arg_value(const char *arg)
+static const char *get_arg_value(const char *arg)
 {
-        char *s = strstr(arg, "=");
+        const char *s = strstr(arg, "=");
         if (s) {
                 s++;
                 return s;
@@ -292,7 +292,7 @@ int main(int argc, const char * argv[])
 	int i, rc = 0, rc_env = 0, rc_argv = 0;
 	for (i = 1; i < argc; i++) {
 		if (0 == strncasecmp(argv[i], "debug_level", 11)) {
-			char *ll = get_arg_value(argv[i]);
+			const char *ll = get_arg_value(argv[i]);
 			if (ll) {
 				log_level_thr = atoi(ll);
 			}
