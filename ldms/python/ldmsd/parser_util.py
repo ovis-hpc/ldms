@@ -451,7 +451,6 @@ class YamlCfg(object):
             reconnect = check_opt('reconnect', pl)
             adv_xprt = check_opt('advertiser_xprt', pl)
             adv_port = check_opt('advertiser_port', pl)
-            # adv_auth = check_opt('advertiser_auth', pl)
             auth_name, plugin, auth_opt = check_auth(pl)
             node_listen[pl['name']] = { 'reconnect'     : reconnect,
                                         'disable_start' : dstart,
