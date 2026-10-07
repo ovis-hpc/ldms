@@ -303,14 +303,14 @@ void rename_output(const char *name,
 			break;
 		case 's':
 			head = end + 2;
-			char *dot = strrchr(name,'.');
+			const char *dot = strrchr(name, '.');
 			if (!dot) {
 				ovis_log(cps->mylog, OVIS_LERROR,"%s: rename_output: no timestamp\n", cps->pname);
 				dstr_free(&ds);
 				return;
 			}
 			dot = dot + 1;
-			char *num = dot;
+			const char *num = dot;
 			while (isdigit(*num)) {
 				num++;
 			}
