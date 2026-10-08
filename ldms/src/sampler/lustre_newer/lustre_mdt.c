@@ -10,6 +10,7 @@
 #include <coll/rbt.h>
 #include <sys/queue.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
@@ -30,6 +31,8 @@ static const char * const possible_osd_base_paths[] = {
 };
 
 struct mdt_data {
+	bool general_stats_enabled;
+	bool job_stats_enabled;
         char *fs_name;
         char *name;
         char *path;
@@ -80,9 +83,11 @@ static struct mdt_data *mdt_create(lm_context_t ctxt, const char *mdt_name, cons
                        mdt->fs_name);
                 goto out7;
         }
-        mdt->general_metric_set = mdt_general_create(ctxt, mdt->fs_name, mdt->name);
-        if (mdt->general_metric_set == NULL)
-                goto out7;
+	if (ctxt->general_stats_enabled) {
+		mdt->general_metric_set = mdt_general_create(ctxt, mdt->fs_name, mdt->name);
+		if (mdt->general_metric_set == NULL)
+			goto out7;
+	}
         mdt->osd_path = lustre_osd_dir_find(possible_osd_base_paths,
 					    mdt->name,
 					    ctxt->log);
@@ -109,8 +114,12 @@ out1:
 static void mdt_destroy(lm_context_t ctxt, struct mdt_data *mdt)
 {
         ovis_log(ctxt->log, OVIS_LDEBUG, "mdt_destroy() %s\n", mdt->name);
-        mdt_general_destroy(ctxt, mdt->general_metric_set);
-        mdt_job_stats_destroy(ctxt, &mdt->job_stats);
+	if (ctxt->general_stats_enabled) {
+		mdt_general_destroy(ctxt, mdt->general_metric_set);
+	}
+	if (ctxt->job_stats_enabled) {
+		mdt_job_stats_destroy(ctxt, &mdt->job_stats);
+	}
         free(mdt->osd_path);
         free(mdt->fs_name);
         free(mdt->job_stats_path);
@@ -197,11 +206,15 @@ static void mdts_sample(lm_context_t ctxt)
         RBT_FOREACH(rbn, &ctxt->mdt_tree) {
                 struct mdt_data *mdt;
                 mdt = container_of(rbn, struct mdt_data, mdt_tree_node);
-                mdt_general_sample(ctxt, mdt->name, mdt->md_stats_path, mdt->osd_path,
-                                   mdt->general_metric_set);
-                mdt_job_stats_sample(ctxt,
-				     mdt->fs_name, mdt->name,
-                                     mdt->job_stats_path, &mdt->job_stats);
+		if (ctxt->general_stats_enabled) {
+			mdt_general_sample(ctxt, mdt->name, mdt->md_stats_path, mdt->osd_path,
+					   mdt->general_metric_set);
+		}
+		if (ctxt->job_stats_enabled) {
+			mdt_job_stats_sample(ctxt,
+					     mdt->fs_name, mdt->name,
+					     mdt->job_stats_path, &mdt->job_stats);
+		}
         }
 }
 
@@ -221,6 +234,13 @@ static int config(ldmsd_plug_handle_t handle,
 		}
 	}
 	comp_id_helper_config(avl, &ctxt->cid);
+	if (av_idx_of(kwl, "general_stats_disable") != -1) {
+		ctxt->general_stats_enabled = false;
+	}
+	if (av_idx_of(kwl, "job_stats_disable") != -1) {
+		ctxt->job_stats_enabled = false;
+	}
+
         return 0;
 }
 
@@ -229,13 +249,15 @@ static int sample(ldmsd_plug_handle_t handle)
 	lm_context_t ctxt = ldmsd_plug_ctxt_get(handle);
 
         ovis_log(ctxt->log, OVIS_LDEBUG, "sample() called\n");
-        if (mdt_general_schema_is_initialized() < 0) {
+        if (ctxt->general_stats_enabled
+	    && mdt_general_schema_is_initialized() < 0) {
                 if (mdt_general_schema_init(ctxt) < 0) {
                         ovis_log(ctxt->log, OVIS_LERROR, "general schema create failed\n");
                         return ENOMEM;
                 }
         }
-        if (mdt_job_stats_schema_is_initialized() < 0) {
+        if (ctxt->job_stats_enabled
+	    && mdt_job_stats_schema_is_initialized() < 0) {
                 if (mdt_job_stats_schema_init(ctxt) < 0) {
                         ovis_log(ctxt->log, OVIS_LERROR, "job stats schema create failed\n");
                         return ENOMEM;
@@ -264,6 +286,8 @@ static int constructor(ldmsd_plug_handle_t handle)
 			 "Failed to allocate context\n");
 		return ENOMEM;
 	}
+	ctxt->general_stats_enabled = true;
+	ctxt->job_stats_enabled = true;
 	ctxt->log = ldmsd_plug_log_get(handle);
 	ctxt->plug_name = strdup(ldmsd_plug_name_get(handle));
 	ctxt->cfg_name = strdup(ldmsd_plug_cfg_name_get(handle));
