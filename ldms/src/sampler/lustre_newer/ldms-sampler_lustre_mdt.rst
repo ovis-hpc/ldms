@@ -51,7 +51,7 @@ CONFIGURATION ATTRIBUTE SYNTAX
 ==============================
 
 **config**
-   | name=<plugin_name> [producer=<name>] [component_id=<u64>]
+   | name=<plugin_name> [producer=<name>] [component_id=<u64>] [general_stats_disable] [job_stats_disable]
    | configuration line
 
    name=<plugin_name>
@@ -68,6 +68,14 @@ CONFIGURATION ATTRIBUTE SYNTAX
       |
       | Optional (defaults to 0) number of the host where the sampler is
         running. All sets on a host will have the same value.
+
+   general_stats_disable
+      |
+      | If specified, disables the collection of mdt general stats
+
+   job_stats_disable
+      |
+      | If specified, disables the collection of mdt job stats
 
 BUGS
 ====
