@@ -10,6 +10,7 @@
 #include <coll/rbt.h>
 #include <sys/queue.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plug_api.h"
@@ -80,9 +81,11 @@ static struct ost_data *ost_create(lo_context_t ctxt, const char *ost_name, cons
                        ost->fs_name);
                 goto out7;
         }
-        ost->general_metric_set = ost_general_create(ctxt, ost->fs_name, ost->name);
-        if (ost->general_metric_set == NULL)
-                goto out7;
+	if (ctxt->general_stats_enabled) {
+		ost->general_metric_set = ost_general_create(ctxt, ost->fs_name, ost->name);
+		if (ost->general_metric_set == NULL)
+			goto out7;
+	}
         ost->osd_path = lustre_osd_dir_find(possible_osd_base_paths,
 					    ost->name,
 					    ctxt->log);
@@ -109,8 +112,12 @@ out1:
 static void ost_destroy(lo_context_t ctxt, struct ost_data *ost)
 {
         ovis_log(ctxt->log, OVIS_LDEBUG, "ost_destroy() %s\n", ost->name);
-        ost_general_destroy(ctxt, ost->general_metric_set);
-        ost_job_stats_destroy(ctxt, &ost->job_stats);
+	if (ctxt->general_stats_enabled) {
+		ost_general_destroy(ctxt, ost->general_metric_set);
+	}
+	if (ctxt->job_stats_enabled) {
+		ost_job_stats_destroy(ctxt, &ost->job_stats);
+	}
         free(ost->osd_path);
         free(ost->fs_name);
         free(ost->job_stats_path);
@@ -197,10 +204,14 @@ static void osts_sample(lo_context_t ctxt)
         RBT_FOREACH(rbn, &ctxt->ost_tree) {
                 struct ost_data *ost;
                 ost = container_of(rbn, struct ost_data, ost_tree_node);
-                ost_general_sample(ctxt, ost->name, ost->stats_path, ost->osd_path,
-                                   ost->general_metric_set);
-                ost_job_stats_sample(ctxt, ost->fs_name, ost->name,
-                                     ost->job_stats_path, &ost->job_stats);
+		if (ctxt->general_stats_enabled) {
+			ost_general_sample(ctxt, ost->name, ost->stats_path, ost->osd_path,
+					   ost->general_metric_set);
+		}
+		if (ctxt->job_stats_enabled) {
+			ost_job_stats_sample(ctxt, ost->fs_name, ost->name,
+					     ost->job_stats_path, &ost->job_stats);
+		}
         }
 }
 
@@ -220,6 +231,13 @@ static int config(ldmsd_plug_handle_t handle,
 		}
 	}
 	comp_id_helper_config(avl, &ctxt->cid);
+	if (av_idx_of(kwl, "general_stats_disable") != -1) {
+		ctxt->general_stats_enabled = false;
+	}
+	if (av_idx_of(kwl, "job_stats_disable") != -1) {
+		ctxt->job_stats_enabled = false;
+	}
+
         return 0;
 }
 
@@ -228,13 +246,15 @@ static int sample(ldmsd_plug_handle_t handle)
 	lo_context_t ctxt = ldmsd_plug_ctxt_get(handle);
 
 	ovis_log(ctxt->log, OVIS_LDEBUG, "sample() called\n");
-        if (ost_general_schema_is_initialized() < 0) {
+        if (ctxt->general_stats_enabled
+	    && ost_general_schema_is_initialized() < 0) {
                 if (ost_general_schema_init(ctxt) < 0) {
                         ovis_log(ctxt->log, OVIS_LERROR, "general schema create failed\n");
                         return ENOMEM;
                 }
         }
-        if (ost_job_stats_schema_is_initialized() < 0) {
+        if (ctxt->job_stats_enabled
+	    && ost_job_stats_schema_is_initialized() < 0) {
                 if (ost_job_stats_schema_init(ctxt) < 0) {
                         ovis_log(ctxt->log, OVIS_LERROR, "job stats schema create failed\n");
                         return ENOMEM;
@@ -263,6 +283,8 @@ static int constructor(ldmsd_plug_handle_t handle)
 			 "Failed to allocate context\n");
 		return ENOMEM;
 	}
+	ctxt->general_stats_enabled = true;
+	ctxt->job_stats_enabled = true;
 	ctxt->log = ldmsd_plug_log_get(handle);
 	ctxt->plug_name = strdup(ldmsd_plug_name_get(handle));
 	ctxt->cfg_name = strdup(ldmsd_plug_cfg_name_get(handle));
