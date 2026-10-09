@@ -13,6 +13,8 @@
 #include "comp_id_helper.h"
 
 typedef struct {
+	bool general_stats_enabled;
+	bool job_stats_enabled;
 	ovis_log_t log; /* owned by ldmsd, we do not free the log */
 	char *plug_name;
 	char *cfg_name;
