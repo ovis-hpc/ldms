@@ -66,6 +66,7 @@
 #include <pwd.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <mmalloc/mmalloc.h>
 #include <ovis_json/ovis_json.h>
 #include <arpa/inet.h>
@@ -128,6 +129,16 @@ static char *xprt_event_type_names[] = {
 	[LDMS_XPRT_EVENT_QGROUP_DONATE_BACK] = "QGROUP_DONATE_BACK"
 
 };
+
+static bool ipv6_is_enabled()
+{
+	int sd;
+	sd = socket(AF_INET6, SOCK_STREAM, 0);
+	if (sd == -1)
+		return false;
+	close(sd);
+	return true;
+}
 
 const char *ldms_xprt_event_type_to_str(enum ldms_xprt_event_type t)
 {
@@ -4865,7 +4876,7 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 	ai = ai_list;
 	if (ai->ai_family == AF_INET) {
 		struct sockaddr_in *sin = (void*)ai->ai_addr;
-		if (sin->sin_addr.s_addr == INADDR_ANY) {
+		if (sin->sin_addr.s_addr == INADDR_ANY && ipv6_is_enabled()) {
 			/*
 			 * Special ANY address case. `getaddrinfo()` returned
 			 * IPv4 before IPv6. We prefer IP6 for ANY address as it
@@ -4875,13 +4886,8 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 			 */
 			_ai = ai; /* save it */
 			for(; ai; ai = ai->ai_next) {
-				if (ai->ai_family == AF_INET6) {
-					int test_sock = socket(AF_INET6, SOCK_STREAM, 0);
-					if (test_sock < 0)
-						continue;
-					close(test_sock);
+				if (ai->ai_family == AF_INET6)
 					break;
-				}
 			}
 			if (!ai)
 				ai = _ai;
