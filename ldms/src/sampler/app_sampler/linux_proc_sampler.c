@@ -3042,7 +3042,7 @@ static const char stat_format[] = "%s"
 	"\"st_dev\":\"[%lx,%lx]\","
 	"\"st_ino\":%ld,"
 	"\"st_mode\":%o,"
-	"\"st_size\":%zu,"
+	"\"st_size\":%lu,"
 	"\"mtime\":\"%ld.%09ld\","
 	"\"state\":\"%s\"}]}";
 static size_t stat_format_sz = sizeof(stat_format);
