@@ -185,22 +185,31 @@ static inline void xprt_rdir_list_unlock()
 	pthread_mutex_unlock(&xprt_rdir_list_mutex);
 }
 
-static inline void xprt_rdir_list_add(struct ldms_xprt *x)
+static inline void xprt_rdir_list_add(struct ldms_xprt *x, uint64_t xid)
 {
-	assert(0 == x->remote_dir_xid);
-	ldms_xprt_get(x, "xprt_rdir_list");
+	if (!xid)
+		return;
 	xprt_rdir_list_lock();
-	LIST_INSERT_HEAD(&xprt_rdir_list, x, xprt_rdir_ent);
+	if (!x->remote_dir_xid) {
+		ldms_xprt_get(x, "xprt_rdir_list");
+		LIST_INSERT_HEAD(&xprt_rdir_list, x, xprt_rdir_ent);
+	}
+	x->remote_dir_xid = xid;
 	xprt_rdir_list_unlock();
 }
 
 static inline void xprt_rdir_list_rm(struct ldms_xprt *x)
 {
-	assert(x->remote_dir_xid);
+	int on_list = 0;
 	xprt_rdir_list_lock();
-	LIST_REMOVE(x, xprt_rdir_ent);
+	if (x->remote_dir_xid) {
+		on_list = 1;
+		LIST_REMOVE(x, xprt_rdir_ent);
+	}
+	x->remote_dir_xid = 0;
 	xprt_rdir_list_unlock();
-	ldms_xprt_put(x, "xprt_rdir_list");
+	if (on_list)
+		ldms_xprt_put(x, "xprt_rdir_list");
 }
 
 LIST_HEAD(xprt_list, ldms_xprt) xprt_list;
@@ -556,7 +565,14 @@ static void send_dir_update(struct ldms_xprt *x,
 	size_t buf_len;
 	size_t json_data_len;
 	struct ldms_reply *reply = NULL;
-
+	/*
+	 * Called without xprt_rdir_list_mutex held (see dir_update()), so
+	 * the peer may cancel concurrently. Read the xid once and skip the
+	 * update if the registration is already gone.
+	 */
+	uint64_t xid = x->remote_dir_xid;
+	if (!xid)
+		return;
 	if (!ldms_xprt_connected(x))
 		return;
 	assert(t != LDMS_DIR_LIST);
@@ -579,7 +595,7 @@ static void send_dir_update(struct ldms_xprt *x,
 		return;
 	}
 
-	reply->hdr.xid = x->remote_dir_xid;
+	reply->hdr.xid = xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_UPDATE_REPLY);
 	reply->hdr.rc = 0;
 	reply->dir.more = 0;
@@ -590,7 +606,7 @@ static void send_dir_update(struct ldms_xprt *x,
 				"{ \"directory\" : [ %s ]}", json);
 
 	XPRT_LOG(x, OVIS_LDEBUG, "%s(): x %p: remote dir ctxt %p\n",
-				__func__, x, (void *)x->remote_dir_xid);
+				__func__, x, (void *)xid);
 
 	zap_err_t zerr;
 	zerr = zap_send(x->zap_ep, reply, buf_len);
@@ -667,29 +683,56 @@ char *__ldms_format_set_for_dir(struct ldms_set *set, size_t *buf_sz)
 	return json_buf;
 }
 
+/*
+ * Send a directory update to every transport on the xprt_rdir_list.
+ *
+ * To avoid holding the xprt_rdir_list_mutex across send, create a copy of
+ * the transport list.
+ *
+ * send_dir_update() may call ldms_xprt_close() on a send error, which calls
+ * xprt_rdir_list_rm() and takes the xprt_rdir_list_mutex which would deadlock.
+ */
 static void dir_update(struct ldms_set *set, enum ldms_dir_type t)
 {
 	char *json_buf = NULL;
 	size_t json_cnt;
 	struct ldms_xprt *x;
+	struct ldms_xprt **xs;
+	int i, n, count = 0;
 
 	xprt_rdir_list_lock();
+	LIST_FOREACH(x, &xprt_rdir_list, xprt_rdir_ent)
+		count++;
+	if (!count) {
+		xprt_rdir_list_unlock();
+		return;
+	}
+	xs = malloc(count * sizeof(*xs));
+	if (!xs) {
+		xprt_rdir_list_unlock();
+		ovis_log(xlog, OVIS_LCRIT, "%s: memory allocation error\n", __func__);
+		return;
+	}
+	n = 0;
 	LIST_FOREACH(x, &xprt_rdir_list, xprt_rdir_ent) {
 		assert(x->remote_dir_xid);
-		if (!json_buf) {
-			/* Only build the JSON resonse if there is a
-			 * transport that has registered for updates */
-			json_buf = __ldms_format_set_for_dir(set, &json_cnt);
-			if (!json_buf) {
-				XPRT_LOG(x, OVIS_LCRIT, "%s: memory allocation error\n", __func__);
-				goto out;
-			}
-		}
-		send_dir_update(x, t, json_buf, json_cnt);
+		ldms_xprt_get(x, "dir_update");
+		xs[n++] = x;
 	}
-	free(json_buf);
-out:
 	xprt_rdir_list_unlock();
+
+	json_buf = __ldms_format_set_for_dir(set, &json_cnt);
+	if (!json_buf) {
+		ovis_log(xlog, OVIS_LCRIT, "%s: memory allocation error\n", __func__);
+	} else {
+		for (i = 0; i < n; i++)
+			send_dir_update(xs[i], t, json_buf, json_cnt);
+		free(json_buf);
+	}
+
+	for (i = 0; i < n; i++)
+		ldms_xprt_put(xs[i], "dir_update");
+	free(xs);
 }
 
 void __ldms_dir_add_set(struct ldms_set *set)
@@ -799,7 +842,7 @@ void __ldms_dir_upd_set(struct ldms_set *set)
 static void __ldms_xprt_close(ldms_t x)
 {
 	XPRT_LOG(x, OVIS_LDEBUG, "%s(): closing x %p\n", __func__, x);
-	x->remote_dir_xid = 0;
+	xprt_rdir_list_rm(x);
 	__ldms_xprt_term(x);
 }
 
@@ -969,8 +1012,33 @@ struct make_dir_arg {
 	ssize_t set_list_len;	/* current length of this buffer */
 };
 
+static void send_empty_dir(struct ldms_xprt *x, struct ldms_reply *reply, size_t json_len)
+{
+	size_t cnt;
+	zap_err_t zerr;
+	size_t hdrlen = sizeof(struct ldms_reply_hdr)
+		+ sizeof(struct ldms_dir_reply);
+
+	cnt = snprintf(reply->dir.json_data,
+		       json_len,
+		       "{ \"directory\" : []}");
+	assert(cnt < json_len);
+	reply->hdr.len = htonl(cnt + hdrlen);
+	reply->dir.json_data_len = htonl(cnt);
+	reply->dir.more = 0;
+	zerr = zap_send(x->zap_ep, reply, cnt + hdrlen);
+	if (zerr != ZAP_ERR_OK) {
+		x->zerrno = zerr;
+		XPRT_LOG(x, OVIS_LERROR,
+			 "%s: x %p: zap_send synchronous error. '%s'\n",
+			 __FUNCTION__, x, zap_err_str(zerr));
+	}
+	return;
+}
+
 static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 {
+	int need_comma = 0;
 	size_t len;
 	size_t hdrlen;
 	int rc;
@@ -985,19 +1053,11 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	(void)clock_gettime(CLOCK_REALTIME, &start);
 
 	if (req->dir.flags) {
-		if (!x->remote_dir_xid) {
-			/* not in the xprt_rdir_list yet */
-			xprt_rdir_list_add(x);
-		}
 		/* Register for directory updates */
-		x->remote_dir_xid = req->hdr.xid;
+		xprt_rdir_list_add(x, req->hdr.xid);
 	} else {
-		if (x->remote_dir_xid) {
-			/* in the xprt_rdir_list; remove it */
-			xprt_rdir_list_rm(x);
-		}
-		/* Cancel any previous dir update */
-		x->remote_dir_xid = 0;
+		/* If on the xprt_rdir_list; remove it */
+		xprt_rdir_list_rm(x);
 	}
 
 	hdrlen = sizeof(struct ldms_reply_hdr)
@@ -1009,7 +1069,8 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	if (rc)
 		goto out;
 
-	/* NB: To test overflowing the record length, set len = 512 */
+	/* NB: To test overflowing the record length, set len to a 512
+	 */
 	len = ldms_xprt_msg_max(x);
 	reply = malloc(len);
 	if (!reply) {
@@ -1033,37 +1094,24 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 
 	/* Empty name list */
 	if (LIST_EMPTY(&name_list)) {
-		cnt = snprintf(reply->dir.json_data,
-			       json_len,
-			       "{ \"directory\" : []}");
-		if (cnt >= len) {
-			rc = ENOMEM;
-			goto out;
-		}
-		reply->hdr.len = htonl(cnt + hdrlen);
-		reply->dir.json_data_len = htonl(cnt);
-		reply->dir.more = 0;
-		zerr = zap_send(x->zap_ep, reply, cnt + hdrlen);
-		if (zerr != ZAP_ERR_OK) {
-			x->zerrno = zerr;
-			XPRT_LOG(x, OVIS_LERROR,
-				 "%s: x %p: zap_send synchronous error. '%s'\n",
-				 __FUNCTION__, x, zap_err_str(zerr));
-		}
+		send_empty_dir(x, reply, json_len);
 		free(reply);
 		return;
 	}
 	struct ldms_set *set;
 	LIST_FOREACH(name, &name_list, entry) {
+		last_set = (LIST_NEXT(name, entry) == 0);
 		__ldms_set_tree_lock();
 		set = __ldms_find_local_set(name->name);
 		__ldms_set_tree_unlock();
-		if (!set)
+		if (!set) {
+			if (last_set)
+				goto send_last_set;
 			continue;
+		}
 		uid = __le32_to_cpu(set->meta->uid);
 		gid = __le32_to_cpu(set->meta->gid);
 		perm = __le32_to_cpu(set->meta->perm);
-		last_set = (LIST_NEXT(name, entry) == 0);
 	restart:
 		last_cnt = cnt;	/* save current end of json */
 		if (cnt == 0) {
@@ -1075,10 +1123,10 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 				ref_put(&set->ref, "__ldms_find_local_set");
 				goto out;
 			}
+			need_comma = 0;
 		}
 
 		if (0 == ldms_access_check(x, LDMS_ACCESS_READ, uid, gid, perm)) {
-			/* no access, skip it */
 			pthread_mutex_lock(&set->lock);
 			/*
 			 * The extra -3 will skip the set if there's not
@@ -1086,11 +1134,13 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 			 * get sent through the restart label above.
 			 */
 			cnt += __ldms_format_set_meta_as_json(set,
-							      last_cnt /* indicates need_comma */,
+							      need_comma,
 							      &reply->dir.json_data[cnt],
 							      json_len - cnt - 3);
+			need_comma = 1;
 			pthread_mutex_unlock(&set->lock);
 		} else {
+			/* no access, skip it */
 			ovis_log(xlog, OVIS_LINFO,
 				"Access %o denied to user %d:%d for set '%s'.\n",
 				perm, uid, gid, name->name);
@@ -1098,6 +1148,16 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 
 		if (/* Too big to fit in transport message, send what we have */
 		    (cnt >= json_len - 3)) {
+			if (!last_cnt) {
+				/* Special case where the record size is too small to support dir */
+				if (set)
+					ref_put(&set->ref, "__ldms_find_local_set");
+				send_empty_dir(x, reply, json_len);
+				ovis_log(xlog, OVIS_LERROR,
+					 "Transport size is %zu; insufficient to support "
+					 "a directory entry of %zu bytes.\n", len, cnt);
+				goto out_1;
+			}
 			last_cnt += snprintf(&reply->dir.json_data[last_cnt],
 					     json_len - last_cnt,
 					     "]}");
@@ -1119,29 +1179,36 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 			goto restart;
 		}
 
+	send_last_set:
 		if (last_set) {
-			/* If this is the last set, send the message */
-			cnt += snprintf(&reply->dir.json_data[cnt],
-					json_len - cnt,
-				       "]}");
-			if (cnt >= json_len) {
-				rc = ENOMEM;
-				ref_put(&set->ref, "__ldms_find_local_set");
-				goto out;
-			}
-			reply->hdr.len = htonl(cnt + hdrlen);
-			reply->dir.json_data_len = htonl(cnt);
-			reply->dir.more = 0;
-			zerr = zap_send(x->zap_ep, reply, cnt + hdrlen);
-			if (zerr != ZAP_ERR_OK) {
-				x->zerrno = zerr;
-				XPRT_LOG(x, OVIS_LERROR, "%s: x %p: "
-					"zap_send synchronous error. '%s'\n",
-				       __FUNCTION__, x, zap_err_str(zerr));
+			if (!cnt) {
+				send_empty_dir(x, reply, json_len);
+			} else {
+				/* If this is the last set, send the message */
+				cnt += snprintf(&reply->dir.json_data[cnt],
+						json_len - cnt,
+						"]}");
+				if (cnt >= json_len) {
+					rc = ENOMEM;
+					ref_put(&set->ref, "__ldms_find_local_set");
+					goto out;
+				}
+				reply->hdr.len = htonl(cnt + hdrlen);
+				reply->dir.json_data_len = htonl(cnt);
+				reply->dir.more = 0;
+				zerr = zap_send(x->zap_ep, reply, cnt + hdrlen);
+				if (zerr != ZAP_ERR_OK) {
+					x->zerrno = zerr;
+					XPRT_LOG(x, OVIS_LERROR, "%s: x %p: "
+						 "zap_send synchronous error. '%s'\n",
+						 __FUNCTION__, x, zap_err_str(zerr));
+				}
 			}
 		}
-		ref_put(&set->ref, "__ldms_find_local_set");
+		if (set)
+			ref_put(&set->ref, "__ldms_find_local_set");
 	}
+ out_1:
 	free(reply);
 	__ldms_empty_name_list(&name_list);
 	(void)clock_gettime(CLOCK_REALTIME, &end);
@@ -1175,8 +1242,8 @@ out:
 static void
 process_dir_cancel_request(struct ldms_xprt *x, struct ldms_request *req)
 {
-	x->remote_dir_xid = 0;
 	struct ldms_reply_hdr hdr;
+	xprt_rdir_list_rm(x);
 	hdr.rc = 0;
 	hdr.xid = req->hdr.xid;
 	hdr.cmd = htonl(LDMS_CMD_DIR_CANCEL_REPLY);
@@ -3501,10 +3568,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		thrstat->last_op = LDMS_THRSTAT_OP_DISCONNECTED;
 		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
 		event.type = LDMS_XPRT_EVENT_ERROR;
-		if (x->remote_dir_xid) {
-			xprt_rdir_list_rm(x);
-			x->remote_dir_xid = 0;
-		}
+		xprt_rdir_list_rm(x);
 		if (x->event_cb)
 			x->event_cb(x, &event, x->event_cb_arg);
 		__ldms_xprt_resource_free(x);
@@ -3534,10 +3598,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 			break;
 		}
 		__sync_fetch_and_or(&x->term, 1);
-		if (x->remote_dir_xid) {
-			xprt_rdir_list_rm(x);
-			x->remote_dir_xid = 0;
-		}
+		xprt_rdir_list_rm(x);
 		pthread_mutex_lock(&x->lock);
 		struct ldms_context *dir_ctxt = NULL;
 		if (x->local_dir_xid) {

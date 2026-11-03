@@ -1859,8 +1859,16 @@ ldms_set_t ldms_set_create(const char *instance_name,
 	struct ldms_set *set;
 
 	if (!instance_name || !schema) {
-		ovis_log(NULL, OVIS_LERROR, "NULL instance_name or schema "
-				"passed to ldms_set_create\n");
+		ovis_log(NULL, OVIS_LERROR,
+			 "NULL instance name or schema "
+			 "passed to ldms_set_create\n");
+		errno = EINVAL;
+		return NULL;
+	}
+
+	if (instance_name[0] == '\0') {
+		ovis_log(NULL, OVIS_LERROR,
+			 "Empty instance name passed to ldms_set_create\n");
 		errno = EINVAL;
 		return NULL;
 	}
