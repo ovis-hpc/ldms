@@ -969,6 +969,30 @@ struct make_dir_arg {
 	ssize_t set_list_len;	/* current length of this buffer */
 };
 
+static void send_empty_dir(struct ldms_xprt *x, struct ldms_reply *reply, size_t json_len)
+{
+	size_t cnt;
+	zap_err_t zerr;
+	size_t hdrlen = sizeof(struct ldms_reply_hdr)
+		+ sizeof(struct ldms_dir_reply);
+
+	cnt = snprintf(reply->dir.json_data,
+		       json_len,
+		       "{ \"directory\" : []}");
+	assert(cnt < json_len);
+	reply->hdr.len = htonl(cnt + hdrlen);
+	reply->dir.json_data_len = htonl(cnt);
+	reply->dir.more = 0;
+	zerr = zap_send(x->zap_ep, reply, cnt + hdrlen);
+	if (zerr != ZAP_ERR_OK) {
+		x->zerrno = zerr;
+		XPRT_LOG(x, OVIS_LERROR,
+			 "%s: x %p: zap_send synchronous error. '%s'\n",
+			 __FUNCTION__, x, zap_err_str(zerr));
+	}
+	return;
+}
+
 static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 	size_t len;
@@ -1009,6 +1033,9 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	if (rc)
 		goto out;
 
+	/* NB: To test overflowing the record length, set
+	 *     len = 512;
+	 */
 	len = ldms_xprt_msg_max(x);
 	reply = malloc(len);
 	if (!reply) {
@@ -1028,25 +1055,11 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	gid_t gid;
 	uint32_t perm;
 	struct ldms_name_entry *name;
+	size_t json_len = len - hdrlen;
 
+	/* Empty name list */
 	if (LIST_EMPTY(&name_list)) {
-		cnt = snprintf(reply->dir.json_data,
-			       len - hdrlen,
-			       "{ \"directory\" : []}");
-		if (cnt >= len) {
-			rc = ENOMEM;
-			goto out;
-		}
-		reply->hdr.len = htonl(cnt + hdrlen);
-		reply->dir.json_data_len = htonl(cnt);
-		reply->dir.more = 0;
-		zerr = zap_send(x->zap_ep, reply, cnt + hdrlen);
-		if (zerr != ZAP_ERR_OK) {
-			x->zerrno = zerr;
-			XPRT_LOG(x, OVIS_LERROR,
-				 "%s: x %p: zap_send synchronous error. '%s'\n",
-				 __FUNCTION__, x, zap_err_str(zerr));
-		}
+		send_empty_dir(x, reply, json_len);
 		free(reply);
 		return;
 	}
@@ -1065,9 +1078,9 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 		last_cnt = cnt;	/* save current end of json */
 		if (cnt == 0) {
 			/* Start new dir message */
-			cnt = snprintf(reply->dir.json_data, len - hdrlen,
+			cnt = snprintf(reply->dir.json_data, json_len,
 				       "{ \"directory\" : [");
-			if (cnt >= len - hdrlen) {
+			if (cnt >= json_len) {
 				rc = ENOMEM;
 				ref_put(&set->ref, "__ldms_find_local_set");
 				goto out;
@@ -1075,24 +1088,40 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 		}
 
 		if (0 == ldms_access_check(x, LDMS_ACCESS_READ, uid, gid, perm)) {
-			/* no access, skip it */
 			pthread_mutex_lock(&set->lock);
-			cnt += __ldms_format_set_meta_as_json(set, last_cnt,
-						      &reply->dir.json_data[cnt],
-						      len - hdrlen - cnt - 3 /* ]}\0 */);
+			/*
+			 * The extra -3 will skip the set if there's not
+			 * enough room to include the closing ']}\0'. It will
+			 * get sent through the restart label above.
+			 */
+			cnt += __ldms_format_set_meta_as_json(set,
+							      last_cnt /* indicates need_comma */,
+							      &reply->dir.json_data[cnt],
+							      json_len - cnt - 3);
 			pthread_mutex_unlock(&set->lock);
 		} else {
+			/* no access, skip it */
 			ovis_log(xlog, OVIS_LINFO,
 				"Access %o denied to user %d:%d for set '%s'.\n",
 				perm, uid, gid, name->name);
 		}
 
 		if (/* Too big to fit in transport message, send what we have */
-		    (cnt >= len - hdrlen - 3)) {
+		    (cnt >= json_len - 3)) {
+			if (!last_cnt) {
+				/* Special case where the record size is too small to support dir */
+				send_empty_dir(x, reply, json_len);
+				__ldms_empty_name_list(&name_list);
+				free(reply);
+				ovis_log(xlog, OVIS_LERROR,
+					 "Transport size is %zu; insufficient to support "
+					 "a directory entry of %zu bytes.\n", len, cnt);
+				return;
+			}
 			last_cnt += snprintf(&reply->dir.json_data[last_cnt],
-					     len - hdrlen - last_cnt,
+					     json_len - last_cnt,
 					     "]}");
-			if (last_cnt >= len - hdrlen) {
+			if (last_cnt >= json_len) {
 				ref_put(&set->ref, "__ldms_find_local_set");
 				goto out;
 			}
@@ -1113,9 +1142,9 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 		if (last_set) {
 			/* If this is the last set, send the message */
 			cnt += snprintf(&reply->dir.json_data[cnt],
-				       len - hdrlen - cnt,
+					json_len - cnt,
 				       "]}");
-			if (cnt >= len - hdrlen - 3) {
+			if (cnt >= json_len) {
 				rc = ENOMEM;
 				ref_put(&set->ref, "__ldms_find_local_set");
 				goto out;
@@ -2145,8 +2174,11 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		goto out;
 
 	rc = json_parse_buffer(reply->dir.json_data, json_data_len, &doc);
-	if (rc)
+	if (rc) {
+		/* message format syntax error */
+		rc = EINVAL;
 		goto out;
+	}
 
 	dir_entity = json_doc_root(doc);
 	dir_attr = json_attr_find(dir_entity, "directory");
