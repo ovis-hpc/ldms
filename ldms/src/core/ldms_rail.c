@@ -1276,7 +1276,8 @@ void __rail_dir_cb(ldms_t x, int status, ldms_dir_t dir, void *cb_arg)
 {
 	ldms_rail_dir_ctxt_t dc = cb_arg;
 	int free_dc = 0;
-	if (!(dc->flags & LDMS_DIR_F_NOTIFY) && !dir->more) {
+
+	if (!(dc->flags & LDMS_DIR_F_NOTIFY) && (!dir || !dir->more)) {
 		free_dc = 1;
 	}
 	/* the application owns `dir` after the callback */
