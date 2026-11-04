@@ -1,0 +1,39 @@
+export plugname=filesingle
+portbase=31060
+DAEMONS 2
+export FSCONF=$TESTDIR_FAST/filesingle.conf
+FSDATA=$TESTDIR_FAST/filesingle.data
+mkdir -p $FSDATA
+# define one of every metric type; sampled value should always be 1; if 2 appears, there is a bug
+echo "# filesingle sampler type and size test" > $FSCONF
+for i in S8 S16 S32 S64 U8 U16 U32 U64 F32 D64 CHAR; do
+	echo 1 > $FSDATA/$i.in
+	echo "test_metric_$i $FSDATA/$i.in $i 2" >> $FSCONF
+done
+# now append a tunable number of strings to get to arbitrary data and metadata sizes.
+# enough for a MB of metric data
+NREPEAT=100000 ; # test fails (seg fault) under rhel8 default gcc
+# enough for a MB of set metadata
+#NREPEAT=10000
+echo "1.0213456789" > $FSDATA/test_metric.in
+MESSAGE Writing conf file for $NREPEAT
+for i in $(seq $NREPEAT); do
+	echo "test_metric_$i $FSDATA/test_metric.in D64 3.14" >> $FSCONF
+done
+MESSAGE done
+# expand default memory size
+export LDMSD_EXTRA="-m 100m"
+#vgon
+LDMSD 1 2
+vgoff
+SLEEP 3
+MESSAGE ldms_ls on host 1 and 2:
+LDMS_LS 1 -v
+LDMS_LS 2 -v
+MESSAGE long ldms_ls on host 1 and 2:
+LDMS_LS 1 -l
+LDMS_LS 2 -l
+SLEEP 5
+KILL_LDMSD 1 2
+file_created $STOREDIR/node/$testname
+echo see $FSDATA and $TESTDIR
