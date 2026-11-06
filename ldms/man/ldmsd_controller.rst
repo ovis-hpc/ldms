@@ -710,8 +710,8 @@ Query the updater status
 
    **[reset** *value*\ **]**
       |
-      | If true, reset the updater's counters after returning the
-        values. The default is false.
+      | Deprecated. ldmsd ignores it, and logs a message, as there are
+        no statistics to reset.
 
 Query the updaters' list of regular expressions to match set names or set schemas
 ---------------------------------------------------------------------------------
@@ -1091,8 +1091,8 @@ Display the IO thread statistics
 
    **[reset** *true|false*\ **]**
       |
-      | If true, reset the thread statistics after returning the values.
-        The default is false.
+      | Deprecated. ldmsd ignores it and logs a message. Use
+        **thread_stats_reset** instead.
 
 Query the IO thread, worker thread, and sampling thread utilization statistics. The statistics include both overall utilization (since start/reset) and recent utilization over a time window.
 
@@ -1137,8 +1137,8 @@ Display the transport operation statistics
 
    **[reset** *true|false*\ **]**
       |
-      | If true, reset the statistics after returning the values. The
-        default is false.
+      | Deprecated. ldmsd ignores it and logs a message. Use
+        **xprt_stats_reset** instead.
 
    **[sq_depth** *true|false*\ **]**
       |
@@ -1152,13 +1152,8 @@ Display the transport operation statistics
 
    **[hist_recalibrate** *true|false*\ **]**
       |
-      | If true, discard the existing histogram bin boundaries after
-        returning the values, so the histograms re-enter their warmup
-        phase and recalibrate the bins and boundaries from the next
-        samples observed. Use this when the per-operation latency
-        distribution has shifted enough that the original calibration
-        no longer represents current behavior well. The default is
-        false.
+      | Deprecated. ldmsd ignores it and logs a message. Use
+        **xprt_stats_reset hist_recalibrate=true** instead.
 
 Display the statistics of updaters' update time per set
 -------------------------------------------------------
@@ -1168,13 +1163,13 @@ Display the statistics of updaters' update time per set
 
    **[reset** *true|false*\ **]**
       |
-      | If true, reset the update time statistics after returning the
-        values. The default is false.
+      | Deprecated. ldmsd ignores it and logs a message. Use
+        **update_time_stats_reset** instead.
 
    **[name** *name*\ **]**
       |
       | An updater name. Only the statistics of the given updater will
-        be reported and reset if reset is true.
+        be reported.
 
    **[summary** *true|false*\ **]**
       |
@@ -1188,21 +1183,13 @@ Display the statistics of storage policy's store time per set
 
    **[reset** *true|false*\ **]**
       |
-      | If true, reset the store time statistics and histogram bin counts after
-        returning the values. The histogram bin boundaries are left unchanged, so
-        the existing calibration continues to apply to subsequently collected
-        samples. The default is false.
+      | Deprecated. ldmsd ignores it and logs a message. Use
+        **store_time_stats_reset** instead.
 
    **[hist_recalibrate** *true|false*\ **]**
       |
-      | If true, reset the statistics and discard the existing histogram bin
-        boundaries after returning the values, so the histogram re-enters its
-        warmup phase and recalibrates the bins and boundaries from the next
-        samples observed. Use this when the store-time distribution has shifted
-        enough that the original calibration no longer represents current
-        behavior well. ``hist_recalibrate=true`` already includes everything
-        ``reset=true`` does; if both are given together, the result is the same
-        as giving ``hist_recalibrate=true`` alone. The default is false.
+      | Deprecated. ldmsd ignores it and logs a message. Use
+        **store_time_stats_reset hist_recalibrate=true** instead.
 
    **[name** *name*\ **]**
       |
@@ -1212,9 +1199,7 @@ Display the statistics of storage policy's store time per set
         scoped to that one policy, including the operations-per-second
         figure and the stage-time breakdown under ``rate_summary`` -- these
         are not daemon-wide aggregates when ``name`` is given, they are
-        recomputed over just that policy's sets. ``reset`` and
-        ``hist_recalibrate``, if also given, likewise apply only to the
-        named policy. When ``name`` is given, the global "Statistics per Set
+        recomputed over just that policy's sets. When ``name`` is given, the global "Statistics per Set
         Schema" table is omitted from the output, since its per-schema
         numbers would be identical to the per-schema rows already shown for
         that one storage policy.
@@ -1246,6 +1231,82 @@ Display the statistics of storage policy's store time per set
         produced before this attribute was introduced. An unrecognized
         section name is rejected with an error listing the valid choices;
         it is not silently ignored.
+
+Reset the statistics
+--------------------
+
+Each statistics or status command that keeps statistics has a reset-only
+counterpart named **<command>_reset**. A reset command clears the statistics
+reported by the corresponding command, but it does not return any
+statistics. The statistics and status commands themselves never reset the
+statistics. The optional **reset** and **hist_recalibrate** attributes of
+those commands are deprecated. ldmsd accepts them for backward
+compatibility, but it ignores them and logs a message that suggests the
+reset command to use. Reset commands require the same permission as the
+configuration commands, which is more restrictive than the permission
+required by the commands that query the statistics.
+
+|
+| **xprt_stats_reset** attr=<value>
+
+   **[hist_recalibrate** *true|false*\ **]**
+      |
+      | If true, also discard the existing histogram bin boundaries so
+        that the histograms recalibrate. The default is false.
+
+|
+| **thread_stats_reset**
+
+   - This command has no attributes. -
+
+|
+| **profiling_reset**
+
+   - This command has no attributes. -
+
+|
+| **update_time_stats_reset** attr=<value>
+
+   **[name** *name*\ **]**
+      |
+      | An updater name. Only the statistics of the given updater are
+        reset. If not given, the statistics of all updaters are reset.
+
+|
+| **store_time_stats_reset** attr=<value>
+
+   **[hist_recalibrate** *true|false*\ **]**
+      |
+      | If true, also discard the existing histogram bin boundaries so
+        that the histograms recalibrate. The default is false.
+
+   The store time statistics are kept per producer set, so they are reset for
+   all storage policies.
+
+|
+| **stream_client_dump_reset**
+| **stream_status_reset**
+
+   - These commands have no attributes. Both reset the statistics of all
+     streams. -
+
+|
+| **msg_stats_reset** attr=<value>
+
+   **[regex** *regex*\ **]**
+      |
+      | Reset only the message channels whose names match the regular
+        expression. This attribute takes precedence over **stream**.
+
+   **[stream** *name*\ **]**
+      |
+      | Reset only the message channel with the given name. If neither
+        **regex** nor **stream** is given, all message channels are reset.
+
+|
+| **msg_client_stats_reset**
+
+   - This command has no attributes. -
 
 QGROUP COMMAND SYNTAX
 =====================

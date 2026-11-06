@@ -329,7 +329,7 @@ Get current stream status.
 
 :Parameters:
     **reset** (bool)
-        Whether to reset statistics.
+        Deprecated. ldmsd ignores it. Use ``stream_status_reset()``.
 
 :Returns:
     Tuple ``(status, status_data)``.
@@ -371,7 +371,7 @@ Gather message stats.
         Stream name to filter.
 
     **reset** (bool)
-        Reset stats if True.
+        Deprecated. ldmsd ignores it. Use ``msg_stats_reset()``.
 
 :Returns:
     Tuple ``(status, stats_data)``.
@@ -383,10 +383,101 @@ Retrieve client message stats.
 
 :Parameters:
     **reset** (bool)
-        Whether to reset statistics.
+        Deprecated. ldmsd ignores it. Use ``msg_client_stats_reset()``.
 
 :Returns:
     Tuple ``(status, data)``.
+
+msg_stats_reset(regex=None, stream=None)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Reset the message channel statistics without returning them.
+
+:Parameters:
+    **regex** (str, optional)
+        Reset the channels whose names match this regex.
+
+    **stream** (str, optional)
+        Reset only the channel with this name.
+
+:Returns:
+    Tuple ``(status, message)``.
+
+msg_client_stats_reset()
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Reset the message client statistics without returning them.
+
+:Returns:
+    Tuple ``(status, message)``.
+
+stream_client_dump_reset()
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Reset the statistics of all streams without returning them.
+
+:Returns:
+    Tuple ``(status, message)``.
+
+stream_status_reset()
+^^^^^^^^^^^^^^^^^^^^^
+
+Reset the statistics of all streams without returning them.
+
+:Returns:
+    Tuple ``(status, message)``.
+
+xprt_stats_reset(hist_recalibrate=False)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Reset the transport statistics without returning them.
+
+:Parameters:
+    **hist_recalibrate** (bool)
+        Also recalibrate the operation histograms if True.
+
+:Returns:
+    Tuple ``(status, message)``.
+
+thread_stats_reset()
+^^^^^^^^^^^^^^^^^^^^
+
+Reset the thread statistics without returning them.
+
+:Returns:
+    Tuple ``(status, message)``.
+
+profiling_reset()
+^^^^^^^^^^^^^^^^^
+
+Reset and free the cached profiling data.
+
+:Returns:
+    Tuple ``(status, message)``.
+
+update_time_stats_reset(name=None)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Reset the update time statistics without returning them.
+
+:Parameters:
+    **name** (str, optional)
+        Reset only the statistics of this updater.
+
+:Returns:
+    Tuple ``(status, message)``.
+
+store_time_stats_reset(hist_recalibrate=False)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Reset the store time statistics without returning them.
+
+:Parameters:
+    **hist_recalibrate** (bool)
+        Also recalibrate the store time histograms if True.
+
+:Returns:
+    Tuple ``(status, message)``.
 
 msg_disable()
 ^^^^^^^^^^^^^
@@ -460,14 +551,14 @@ Retrieve a directory listing from the daemon.
 store_time_stats(name=None, reset=False)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Retrieve or reset store timing statistics.
+Retrieve store timing statistics.
 
 :Parameters:
     **name** (str, optional)
         Store name to filter.
 
     **reset** (bool)
-        Reset stats if True.
+        Deprecated. ldmsd ignores it. Use ``store_time_stats_reset()``.
 
 :Returns:
     Tuple ``(status, stats)``.
