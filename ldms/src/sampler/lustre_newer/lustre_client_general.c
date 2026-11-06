@@ -103,7 +103,7 @@ int llite_general_schema_init(lc_context_t ctxt)
         int i;
 
         ovis_log(ctxt->log, OVIS_LDEBUG, "llite_general_schema_init()\n");
-	char schema_name[LDMS_SET_NAME_MAX];
+	char schema_name[LDMS_SCHEMA_NAME_MAX];
 	if (ctxt->schema_extras)
 		sprintf(schema_name,"lustre_client_%d", ctxt->schema_extras);
 	else
