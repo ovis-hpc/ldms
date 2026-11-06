@@ -839,7 +839,7 @@ static void sync_update_cb(ldms_t x, ldms_set_t s, int status, void *arg)
 }
 
 int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb,
-                                   void *arg, struct ldms_op_ctxt *op_ctxt)
+				   void *arg, struct ldms_op_ctxt *op_ctxt)
 {
 	ldms_t xprt = ldms_xprt_get(x, "update");
 	int rc;
@@ -1322,6 +1322,12 @@ ldms_schema_t ldms_schema_new(const char *schema_name)
 	ldms_schema_t s = calloc(1, sizeof *s);
 	if (!s)
 		goto err_0;
+
+	if (strlen(schema_name) >= LDMS_SCHEMA_NAME_MAX) {
+		errno = E2BIG;
+		goto err_0;
+	}
+
 	s->name = strdup(schema_name);
 	if (!s->name)
 		goto err_1;
@@ -1856,6 +1862,12 @@ ldms_set_t ldms_set_create(const char *instance_name,
 		ovis_log(NULL, OVIS_LERROR, "NULL instance_name or schema "
 				"passed to ldms_set_create\n");
 		errno = EINVAL;
+		return NULL;
+	}
+
+	/* Ensure tht the set name does not exceed the encoded max length */
+	if (strlen(instance_name) >= LDMS_SET_NAME_MAX) {
+		errno = E2BIG;
 		return NULL;
 	}
 
@@ -2617,7 +2629,7 @@ static struct _ldms_type_name_map {
 	{ "u64_array",	LDMS_V_U64_ARRAY },
 	{ "u8",		LDMS_V_U8 },
 	{ "u8[]",	LDMS_V_U8_ARRAY },
-	{ "u8_array",  	LDMS_V_U8_ARRAY },
+	{ "u8_array",	LDMS_V_U8_ARRAY },
 };
 
 int comparator(const void *a, const void *b)
