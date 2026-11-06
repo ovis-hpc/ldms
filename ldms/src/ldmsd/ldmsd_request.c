@@ -564,7 +564,7 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_LOG_STATUS_REQ, log_status_handler, XUG
 	},
 	[LDMSD_STATS_RESET_REQ] = {
-		LDMSD_STATS_RESET_REQ, stats_reset_handler, XALL
+		LDMSD_STATS_RESET_REQ, stats_reset_handler, XUG
 	},
 
 	/* Transport Stats Request */
@@ -586,7 +586,7 @@ static struct request_handler_entry request_handler[] = {
 	},
 
 	[LDMSD_PROFILING_REQ] = {
-		LDMSD_PROFILING_REQ, profiling_handler, XALL
+		LDMSD_PROFILING_REQ, profiling_handler, XUG
 	},
 	[LDMSD_PROFILING_DISABLE_REQ] = {
 		LDMSD_PROFILING_DISABLE_REQ, profiling_disable_handler, XUG | MOD
