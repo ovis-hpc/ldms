@@ -1256,7 +1256,6 @@ class LdmsdCmdParser(Cmd.Cmd):
         Parameters:
         [name=]        Updater name
         [summary]      Show a summary report for updater status
-        [reset=]       If true, reset the counter values
 
         Counter descriptions:
           Skipped      The number of times there exists an outstanding update request
@@ -1370,8 +1369,7 @@ class LdmsdCmdParser(Cmd.Cmd):
 
         Parameters:
         [name=]        updater name
-        [reset=]       If 'true', reset the statistics after returning the values.
-                       The default is false.
+        [reset=]       Deprecated. ldmsd ignores it. Use update_time_stats_reset instead.
         [summary=].    If 'true', histogram won't be reported
         """
         arg = self.handle_args('update_time_stats', arg)
@@ -1791,10 +1789,9 @@ class LdmsdCmdParser(Cmd.Cmd):
 
         Parameters:
             [name=]    a storage policy name
-            [reset=]   If 'true', reset the statistics after returning the values.
-                       The default is false.
-            [hist_recalibrate=]  If 'true', recalibrate the bins and boundaries of storage policy's histogram.
-                       The default is false.
+            [reset=]   Deprecated. ldmsd ignores it. Use store_time_stats_reset instead.
+            [hist_recalibrate=]  Deprecated. ldmsd ignores it. Use
+                       'store_time_stats_reset hist_recalibrate=true' instead.
             [view=]    Comma-separated list of sections to display. Choices are:
                          schema_summary - the global "Statistics per Set Schema" table
                          strgp_detail   - the per-storage-policy / per-schema table
@@ -2631,7 +2628,7 @@ class LdmsdCmdParser(Cmd.Cmd):
         * Num of EPs - Number of endpoints handled by this thread
 
         Parameters:
-           [reset=]    If 'true', reset the statistics after returning the value. The default is false.
+           [reset=]    Deprecated. ldmsd ignores it. Use thread_stats_reset instead.
         """
         arg = self.handle_args('thread_stats', arg)
         if not arg:
@@ -2821,10 +2818,11 @@ class LdmsdCmdParser(Cmd.Cmd):
         Query the daemon's transport telemetry data
 
         Parameters:
-        [reset=]      If true, reset the statistics after returning them.
+        [reset=]      Deprecated. ldmsd ignores it. Use xprt_stats_reset instead.
         [sq_depth=]   If true, the send-queue depth of each endpoint will be reported.
         [histogram=]  If true, print the per-operation histograms.
-        [hist_recalibrate=] If true, recalibrate the histogram bin boundaries.
+        [hist_recalibrate=] Deprecated. ldmsd ignores it. Use
+                      'xprt_stats_reset hist_recalibrate=true' instead.
         """
         arg = self.handle_args('xprt_stats', arg)
         if not arg:
@@ -2851,6 +2849,132 @@ class LdmsdCmdParser(Cmd.Cmd):
 
     def complete_xprt_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('xprt_stats', text)
+
+    def __do_reset_cmd(self, verb, arg, fn):
+        """
+        Common handler of the <stats|status command>_reset commands
+        """
+        arg = self.handle_args(verb, arg)
+        if arg is None:
+            return
+        rc, msg = fn(arg)
+        if self.output_format:
+            return self.fmt_resp(rc, msg)
+        if rc != 0:
+            print(f'Error {rc}: {msg}')
+
+    def do_xprt_stats_reset(self, arg):
+        """
+        Reset the transport statistics. This is the reset-only counterpart of xprt_stats.
+
+        Parameters:
+           [hist_recalibrate=]  If 'true', also recalibrate the bins and boundaries of
+                                the operation histograms. The default is false.
+        """
+        return self.__do_reset_cmd('xprt_stats_reset', arg, lambda arg: self.comm.xprt_stats_reset(hist_recalibrate=(arg['hist_recalibrate'] is not None and arg['hist_recalibrate'].lower() != 'false')))
+
+    def complete_xprt_stats_reset(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('xprt_stats_reset', text)
+
+    def do_thread_stats_reset(self, arg):
+        """
+        Reset the thread utilization statistics. This is the reset-only counterpart of thread_stats.
+
+        Parameters:
+           NONE
+        """
+        return self.__do_reset_cmd('thread_stats_reset', arg, lambda arg: self.comm.thread_stats_reset())
+
+    def complete_thread_stats_reset(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('thread_stats_reset', text)
+
+    def do_profiling_reset(self, arg):
+        """
+        Reset and free the cached profiling data. This is the reset-only counterpart of profiling.
+
+        Parameters:
+           NONE
+        """
+        return self.__do_reset_cmd('profiling_reset', arg, lambda arg: self.comm.profiling_reset())
+
+    def complete_profiling_reset(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('profiling_reset', text)
+
+    def do_update_time_stats_reset(self, arg):
+        """
+        Reset the update time statistics. This is the reset-only counterpart of update_time_stats.
+
+        Parameters:
+           [name=]    The updater policy name. If not given, the statistics of all
+                      updater policies are reset.
+        """
+        return self.__do_reset_cmd('update_time_stats_reset', arg, lambda arg: self.comm.update_time_stats_reset(name=arg['name']))
+
+    def complete_update_time_stats_reset(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('update_time_stats_reset', text)
+
+    def do_store_time_stats_reset(self, arg):
+        """
+        Reset the store time statistics of all storage policies. This is the reset-only counterpart of store_time_stats.
+
+        Parameters:
+           [hist_recalibrate=]  If 'true', also recalibrate the bins and boundaries of
+                                the store time histograms. The default is false.
+        """
+        return self.__do_reset_cmd('store_time_stats_reset', arg, lambda arg: self.comm.store_time_stats_reset(hist_recalibrate=(arg['hist_recalibrate'] is not None and arg['hist_recalibrate'].lower() != 'false')))
+
+    def complete_store_time_stats_reset(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('store_time_stats_reset', text)
+
+    def do_stream_client_dump_reset(self, arg):
+        """
+        Reset the statistics of all streams. This is the reset-only counterpart of stream_client_dump.
+
+        Parameters:
+           NONE
+        """
+        return self.__do_reset_cmd('stream_client_dump_reset', arg, lambda arg: self.comm.stream_client_dump_reset())
+
+    def complete_stream_client_dump_reset(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('stream_client_dump_reset', text)
+
+    def do_stream_status_reset(self, arg):
+        """
+        Reset the statistics of all streams. This is the reset-only counterpart of stream_status.
+
+        Parameters:
+           NONE
+        """
+        return self.__do_reset_cmd('stream_status_reset', arg, lambda arg: self.comm.stream_status_reset())
+
+    def complete_stream_status_reset(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('stream_status_reset', text)
+
+    def do_msg_stats_reset(self, arg):
+        """
+        Reset the statistics of the message channels. This is the reset-only counterpart of msg_stats.
+
+        Parameters:
+           [regex=]   Reset the channels whose names match this regular expression.
+           [stream=]  Reset only the channel with this name. 'regex' takes precedence.
+           If neither is given, all message channels are reset.
+        """
+        return self.__do_reset_cmd('msg_stats_reset', arg, lambda arg: self.comm.msg_stats_reset(regex=arg['regex'], stream=arg['stream']))
+
+    def complete_msg_stats_reset(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('msg_stats_reset', text)
+
+    def do_msg_client_stats_reset(self, arg):
+        """
+        Reset the statistics of the message clients. This is the reset-only counterpart of msg_client_stats.
+
+        Parameters:
+           NONE
+        """
+        return self.__do_reset_cmd('msg_client_stats_reset', arg, lambda arg: self.comm.msg_client_stats_reset())
+
+    def complete_msg_client_stats_reset(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('msg_client_stats_reset', text)
 
     def do_profiling_disable(self, arg):
         """
@@ -2897,7 +3021,7 @@ class LdmsdCmdParser(Cmd.Cmd):
         The command always reports the cached profiling data if exists.
 
         Parameters:
-          [reset=]     True to reset and free cached profiling data after the report
+          [reset=]     Deprecated. ldmsd ignores it. Use profiling_reset instead.
         """
         arg = self.handle_args('profiling', arg)
         if not arg:
@@ -3004,8 +3128,7 @@ class LdmsdCmdParser(Cmd.Cmd):
         Report stream status information for each stream known to the daemon
 
         Parameters:
-        [reset=]     If true, reset the statistics of all streams after returning the values.
-                     The default is false.
+        [reset=]     Deprecated. ldmsd ignores it. Use stream_status_reset instead.
         """
         rate_key = "bytes/sec"
         freq_key = "count/sec"
