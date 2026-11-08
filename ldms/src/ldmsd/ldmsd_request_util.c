@@ -102,9 +102,11 @@ struct req_str_id req_str_id_table[] = {
 	{  "memory",             LDMSD_MEMORY_REQ  },
 	{  "metric_sets_default_authz", LDMSD_SET_DEFAULT_AUTHZ_REQ  },
 	{  "msg_client_stats",   LDMSD_MSG_CLIENT_STATS_REQ  },
+	{  "msg_client_stats_reset", LDMSD_MSG_CLIENT_STATS_RESET_REQ },
 	{  "msg_disable",        LDMSD_MSG_DISABLE_REQ  },
 	{  "msg_enable",	 LDMSD_MSG_ENABLE_REQ  },
 	{  "msg_stats",          LDMSD_MSG_STATS_REQ  },
+	{  "msg_stats_reset", LDMSD_MSG_STATS_RESET_REQ },
 	{  "oneshot",            LDMSD_ONESHOT_REQ  },
 	{  "option",             LDMSD_CMDLINE_OPTIONS_SET_REQ  },
 	{  "pid_file",           LDMSD_PID_FILE_REQ  },
@@ -128,6 +130,7 @@ struct req_str_id req_str_id_table[] = {
 	{  "prdcr_subscribe",    LDMSD_PRDCR_SUBSCRIBE_REQ },
 	{  "prdcr_unsubscribe",  LDMSD_PRDCR_UNSUBSCRIBE_REQ },
 	{  "profiling",          LDMSD_PROFILING_REQ },
+	{  "profiling_reset", LDMSD_PROFILING_RESET_REQ },
 	{  "publish_kernel",     LDMSD_PUBLISH_KERNEL_REQ  },
 	{  "qgroup_config",      LDMSD_QGROUP_CONFIG_REQ },
 	{  "qgroup_info",        LDMSD_QGROUP_INFO_REQ },
@@ -145,9 +148,11 @@ struct req_str_id req_str_id_table[] = {
 	{  "start",              LDMSD_PLUGN_START_REQ  },
 	{  "stop",               LDMSD_PLUGN_STOP_REQ  },
 	{  "stream_client_dump", LDMSD_STREAM_CLIENT_DUMP_REQ  },
+	{  "stream_client_dump_reset", LDMSD_STREAM_CLIENT_DUMP_RESET_REQ },
 	{  "stream_disable",     LDMSD_STREAM_DISABLE_REQ  },
 	{  "stream_enable",      LDMSD_STREAM_ENABLE_REQ  },
 	{  "stream_status",      LDMSD_STREAM_STATUS_REQ  },
+	{  "stream_status_reset", LDMSD_STREAM_STATUS_RESET_REQ },
 	{  "strgp_add",          LDMSD_STRGP_ADD_REQ  },
 	{  "strgp_del",          LDMSD_STRGP_DEL_REQ  },
 	{  "strgp_metric_add",   LDMSD_STRGP_METRIC_ADD_REQ  },
@@ -160,9 +165,11 @@ struct req_str_id req_str_id_table[] = {
 	{  "subscribe",          LDMSD_STREAM_SUBSCRIBE_REQ  },
 	{  "term",               LDMSD_PLUGN_TERM_REQ  },
 	{  "thread_stats",       LDMSD_THREAD_STATS_REQ  },
+	{  "thread_stats_reset", LDMSD_THREAD_STATS_RESET_REQ },
 	{  "udata",              LDMSD_SET_UDATA_REQ  },
 	{  "udata_regex",        LDMSD_SET_UDATA_REGEX_REQ  },
 	{  "update_time_stats",  LDMSD_UPDATE_TIME_STATS_REQ  },
+	{  "update_time_stats_reset", LDMSD_UPDATE_TIME_STATS_RESET_REQ },
 	{  "updtr_add",          LDMSD_UPDTR_ADD_REQ  },
 	{  "updtr_del",          LDMSD_UPDTR_DEL_REQ  },
 	{  "updtr_match_add",    LDMSD_UPDTR_MATCH_ADD_REQ  },
@@ -178,6 +185,7 @@ struct req_str_id req_str_id_table[] = {
 	{  "version",            LDMSD_VERSION_REQ  },
 	{  "worker_threads",     LDMSD_WORKER_THR_SET_REQ  },
 	{  "xprt_stats",         LDMSD_XPRT_STATS_REQ  },
+	{  "xprt_stats_reset", LDMSD_XPRT_STATS_RESET_REQ },
 };
 
 /* This table need to be sorted by keyword for bsearch() */
@@ -403,6 +411,15 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_STATS_RESET_REQ:     return "stats_reset";
 	case LDMSD_MSG_STATS_REQ:	return "msg_stats";
 	case LDMSD_MSG_CLIENT_STATS_REQ:	return "msg_client_stats";
+	case LDMSD_MSG_STATS_RESET_REQ:	return "msg_stats_reset";
+	case LDMSD_MSG_CLIENT_STATS_RESET_REQ:	return "msg_client_stats_reset";
+	case LDMSD_XPRT_STATS_RESET_REQ:	return "xprt_stats_reset";
+	case LDMSD_THREAD_STATS_RESET_REQ:	return "thread_stats_reset";
+	case LDMSD_PROFILING_RESET_REQ:	return "profiling_reset";
+	case LDMSD_UPDATE_TIME_STATS_RESET_REQ:	return "update_time_stats_reset";
+	case LDMSD_STORE_TIME_STATS_RESET_REQ:	return "store_time_stats_reset";
+	case LDMSD_STREAM_CLIENT_DUMP_RESET_REQ:	return "stream_client_dump_reset";
+	case LDMSD_STREAM_STATUS_RESET_REQ:	return "stream_status_reset";
 
         case LDMSD_STORE_TIME_STATS_REQ:        return "store_time_stats";
 	case LDMSD_LISTEN_REQ:	return "listen";
