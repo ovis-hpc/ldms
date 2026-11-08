@@ -696,11 +696,6 @@ Query the updater status
       | The updater name. If none is given, the statuses of all updaters
         are reported.
 
-   **[reset** *value*\ **]**
-      |
-      | If true, reset the updater's counters after returning the
-        values. The default is false.
-
 Query the updaters' list of regular expressions to match set names or set schemas
 ---------------------------------------------------------------------------------
 
@@ -1071,8 +1066,8 @@ Display the IO thread statistics
 
    **[reset** *true|false*\ **]**
       |
-      | If true, reset the thread statistics after returning the values.
-        The default is false.
+      | Deprecated. ldmsd ignores it and logs a message. Use
+        **thread_stats_reset** instead.
 
 Query the IO thread, worker thread, and sampling thread utilization statistics. The statistics include both overall utilization (since start/reset) and recent utilization over a time window.
 
@@ -1119,8 +1114,8 @@ Display the transport operation statistics
 
    **[reset** *true|false*\ **]**
       |
-      | If true, reset the statistics after returning the values. The
-        default is false.
+      | Deprecated. ldmsd ignores it and logs a message. Use
+        **xprt_stats_reset** instead.
 
 Display the statistics of updaters' update time per set
 -------------------------------------------------------
@@ -1130,13 +1125,13 @@ Display the statistics of updaters' update time per set
 
    **[reset** *true|false*\ **]**
       |
-      | If true, reset the update time statistics after returning the
-        values. The default is false.
+      | Deprecated. ldmsd ignores it and logs a message. Use
+        **update_time_stats_reset** instead.
 
    **[name** *name*\ **]**
       |
       | An updater name. Only the statistics of the given updater will
-        be reported and reset if reset is true.
+        be reported.
 
 Display the statistics of storage policy's store time per set
 -------------------------------------------------------------
@@ -1146,13 +1141,77 @@ Display the statistics of storage policy's store time per set
 
    **[reset** *true|false*\ **]**
       |
-      | If true, reset the store time statistics after returning the
-        values. The default is false.
+      | Deprecated. ldmsd ignores it and logs a message. Use
+        **store_time_stats_reset** instead.
 
    **[name** *name*\ **]**
       |
       | A storage policy name. Only the statistics of the given storage
-        policy will be reported and reset if reset is true.
+        policy will be reported.
+
+Reset the statistics
+--------------------
+
+Each statistics or status command that its statistics can be reset has a
+reset-only command counterpart named **<command>_reset**. A reset command
+clears the statistics, but it does not return any statistics.
+
+|
+| **xprt_stats_reset**
+
+   - This command has no attributes. -
+
+|
+| **thread_stats_reset**
+
+   - This command has no attributes. -
+
+|
+| **profiling_reset**
+
+   - This command has no attributes. -
+
+|
+| **update_time_stats_reset** attr=<value>
+
+   **[name** *name*\ **]**
+      |
+      | An updater name. Only the statistics of the given updater are
+        reset. If not given, the statistics of all updaters are reset.
+
+|
+| **store_time_stats_reset** attr=<value>
+
+   **[name** *name*\ **]**
+      |
+      | A storage policy name. Only the statistics of the producer sets
+        that the given storage policy stores are reset. If not given,
+        the statistics of all storage policies are reset.
+
+|
+| **stream_client_dump_reset**
+| **stream_status_reset**
+
+   - These commands have no attributes. Both reset the statistics of all
+     streams. -
+
+|
+| **msg_stats_reset** attr=<value>
+
+   **[regex** *regex*\ **]**
+      |
+      | Reset only the message channels whose names match the regular
+        expression. This attribute takes precedence over **stream**.
+
+   **[stream** *name*\ **]**
+      |
+      | Reset only the message channel with the given name. If neither
+        **regex** nor **stream** is given, all message channels are reset.
+
+|
+| **msg_client_stats_reset**
+
+   - This command has no attributes. -
 
 QGROUP COMMAND SYNTAX
 =====================

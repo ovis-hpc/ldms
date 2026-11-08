@@ -108,6 +108,8 @@ enum ldmsd_request {
 	LDMSD_STRGP_METRIC_ADD_REQ,
 	LDMSD_STRGP_METRIC_DEL_REQ,
 	LDMSD_STORE_TIME_STATS_REQ,
+	LDMSD_STORE_TIME_STATS_RESET_REQ,
+
 	LDMSD_UPDTR_ADD_REQ = 0x300,
 	LDMSD_UPDTR_DEL_REQ,
 	LDMSD_UPDTR_START_REQ,
@@ -120,6 +122,7 @@ enum ldmsd_request {
 	LDMSD_UPDTR_TASK_REQ,
 	LDMSD_UPDTR_MATCH_LIST_REQ,
 	LDMSD_UPDATE_TIME_STATS_REQ,
+	LDMSD_UPDATE_TIME_STATS_RESET_REQ,
 	LDMSD_SMPLR_ADD_REQ = 0X400,
 	LDMSD_SMPLR_DEL_REQ,
 	LDMSD_SMPLR_START_REQ,
@@ -166,6 +169,9 @@ enum ldmsd_request {
 	LDMSD_PID_FILE_REQ,
 	LDMSD_BANNER_MODE_REQ,
 	LDMSD_PROFILING_REQ,
+	LDMSD_XPRT_STATS_RESET_REQ = 0x600,
+	LDMSD_THREAD_STATS_RESET_REQ,
+	LDMSD_PROFILING_RESET_REQ,
 
 	/* failover requests by user */
 	LDMSD_FAILOVER_CONFIG_REQ = 0x700, /* "failover_config" user command */
@@ -203,6 +209,8 @@ enum ldmsd_request {
 	LDMSD_STREAM_STATUS_REQ,	/* Query stream information */
 	LDMSD_STREAM_DISABLE_REQ,	/* Disable streams in this daemon */
 	LDMSD_STREAM_ENABLE_REQ,	/* Enable streams in this daemon */
+	LDMSD_STREAM_CLIENT_DUMP_RESET_REQ,	/* Reset stream client stats */
+	LDMSD_STREAM_STATUS_RESET_REQ,	/* Reset stream stats */
 
 	/* Auth */
 	LDMSD_AUTH_ADD_REQ = 0xa00, /* Add auth domain */
@@ -222,6 +230,8 @@ enum ldmsd_request {
 	LDMSD_MSG_CLIENT_STATS_REQ,  /* Query message client stats of this process */
 	LDMSD_MSG_DISABLE_REQ,       /* Disable message service */
 	LDMSD_MSG_ENABLE_REQ,	     /* Enable message service */
+	LDMSD_MSG_STATS_RESET_REQ,   /* Reset stats of message service of this process */
+	LDMSD_MSG_CLIENT_STATS_RESET_REQ, /* Reset message client stats of this process */
 };
 
 enum ldmsd_request_attr {

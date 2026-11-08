@@ -123,9 +123,10 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'updtr_start': {'req_attr': ['name'],
                                       'opt_attr': ['interval', 'offset', 'auto_interval']},
                       'updtr_stop': {'req_attr': ['name']},
-                      'updtr_status': {'req_attr': [], 'opt_attr': ['name', 'summary', 'reset']},
+                      'updtr_status': {'req_attr': [], 'opt_attr': ['name', 'summary']},
                       'updtr_task': {'req_attr': ['name'], 'opt_attr': []},
                       'update_time_stats' : {'req_attr': [], 'opt_attr' : ['name', 'reset']},
+                      'update_time_stats_reset' : {'req_attr': [], 'opt_attr' : ['name']},
                       ##### Storage Policy #####
                       'strgp_add': {'req_attr': ['name', 'plugin', 'container'],
                                     'opt_attr' : ['schema', 'regex', 'flush', 'decomposition', 'perm' ] },
@@ -138,6 +139,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'strgp_stop': {'req_attr': ['name']},
                       'strgp_status': {'req_attr': [], 'opt_attr': ['name']},
                       'store_time_stats': {'req_attr': [], 'opt_attr':['name', 'reset']},
+                      'store_time_stats_reset': {'req_attr': [], 'opt_attr':['name']},
                       ##### Plugin #####
                       'plugn_sets': {'req_attr': [], 'opt_attr': ['name']},
                       'plugn_status': {'req_attr': [], 'opt_attr': ['name']},
@@ -146,10 +148,14 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'subscribe': {'req_attr': ['name'], 'opt_attr': []},
                       'stream_client_dump': {'req_attr': [], 'opt_attr': []},
                       'stream_status' : {'req_attr': [], 'opt_attr': ['reset']},
+                      'stream_client_dump_reset' : {'req_attr': [], 'opt_attr': []},
+                      'stream_status_reset' : {'req_attr': [], 'opt_attr': []},
                       'stream_disable' : {'req_attr': [], 'opt_attr':[]},
                       'stream_enable' : {'req_attr': [], 'opt_attr':[]},
                       'msg_stats' : {'req_attr': [], 'opt_attr': ['regex', 'stream', 'json', 'reset']},
                       'msg_client_stats' : {'req_attr': [], 'opt_attr': ['json', 'reset']},
+                      'msg_stats_reset' : {'req_attr': [], 'opt_attr': ['regex', 'stream']},
+                      'msg_client_stats_reset' : {'req_attr': [], 'opt_attr': []},
                       'msg_disable' : {'req_attr': [], 'opt_attr':[]},
                       'msg_enable' : {'req_attr': [], 'opt_attr':[]},
                       ##### Daemon #####
@@ -161,6 +167,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'set_info': {'req_attr': ['instance'], 'opt_attr': []},
                       'xprt_stats': {'req_attr':[], 'opt_attr': ['reset', 'sq_depth']},
                       'thread_stats': {'req_attr':[], 'opt_attr': ['reset']},
+                      'xprt_stats_reset': {'req_attr':[], 'opt_attr': []},
+                      'thread_stats_reset': {'req_attr':[], 'opt_attr': []},
                       'prdcr_stats': {'req_attr':[], 'opt_attr': []},
                       'set_stats': {'req_attr':[], 'opt_attr': ['summary']},
                       'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth', 'quota', 'rx_rate']},
@@ -169,6 +177,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'log_status' : {'req_attr' : [], 'opt_attr' : ['name']},
                       'stats_reset' : {'req_attr' : [], 'opt_attr' : ['list']},
                       'profiling' : {'req_attr' : [], 'opt_attr' : ['enable', 'reset']},
+                      'profiling_reset' : {'req_attr' : [], 'opt_attr' : []},
                       ##### Failover. #####
                       'failover_config': {
                                 'req_attr': [
@@ -588,6 +597,7 @@ class LDMSD_Request(object):
     STRGP_METRIC_ADD = 0X200 + 7
     STRGP_METRIC_DEL = 0X200 + 8
     STORE_TIME_STATS = 0x200 + 9
+    STORE_TIME_STATS_RESET = 0x200 + 10
 
     UPDTR_ADD = 0X300
     UPDTR_DEL = 0X300 + 1
@@ -601,6 +611,7 @@ class LDMSD_Request(object):
     UPDTR_TASK = 0x300 + 9
     UPDTR_MATCH_LIST = 0x300 + 10
     UPDATE_TIME_STATS = 0x300 + 11
+    UPDATE_TIME_STATS_RESET = 0x300 + 12
 
     SMPLR_ADD = 0X400
     SMPLR_DEL = 0X400 + 1
@@ -641,6 +652,9 @@ class LDMSD_Request(object):
     # IDs 0x600 + 22 to 0x600 + 30 are reserved to match command-line options handlers
     # defined in ldmsd_request.h. These must stay in sync with the C implementation.
     PROFILING = 0x600 + 31
+    XPRT_STATS_RESET = 0x600 + 32
+    THREAD_STATS_RESET = 0x600 + 33
+    PROFILING_RESET = 0x600 + 34
 
     FAILOVER_CONFIG        = 0x700
     FAILOVER_PEERCFG_START = 0x700  +  1
@@ -665,6 +679,8 @@ class LDMSD_Request(object):
     STREAM_STATUS = STREAM_PUBLISH + 5
     STREAM_DISABLE = STREAM_PUBLISH + 6
     STREAM_ENABLE = STREAM_PUBLISH + 7
+    STREAM_CLIENT_DUMP_RESET = STREAM_PUBLISH + 8
+    STREAM_STATUS_RESET = STREAM_PUBLISH + 9
 
     AUTH_ADD = 0xa00
 
@@ -679,6 +695,8 @@ class LDMSD_Request(object):
     MSG_CLIENT_STATS = MSG_STATS + 1
     MSG_DISABLE = MSG_STATS + 2
     MSG_ENABLE = MSG_STATS + 3
+    MSG_STATS_RESET = MSG_STATS + 4
+    MSG_CLIENT_STATS_RESET = MSG_STATS + 5
 
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
@@ -719,6 +737,7 @@ class LDMSD_Request(object):
             'strgp_metric_add': {'id': STRGP_METRIC_ADD},
             'strgp_metric_del': {'id': STRGP_METRIC_DEL},
             'store_time_stats': {'id': STORE_TIME_STATS},
+            'store_time_stats_reset': {'id': STORE_TIME_STATS_RESET},
 
             'updtr_add': {'id': UPDTR_ADD},
             'updtr_del': {'id': UPDTR_DEL},
@@ -732,6 +751,7 @@ class LDMSD_Request(object):
             'updtr_match_list' : {'id' : UPDTR_MATCH_LIST},
             'updtr_task': {'id': UPDTR_TASK},
             'update_time_stats' : {'id': UPDATE_TIME_STATS},
+            'update_time_stats_reset' : {'id': UPDATE_TIME_STATS_RESET},
 
             'start': {'id': PLUGN_START},
             'stop': {'id': PLUGN_STOP},
@@ -760,8 +780,11 @@ class LDMSD_Request(object):
             'failover_start'         : {'id' : FAILOVER_START},
             'failover_stop'          : {'id' : FAILOVER_STOP},
             'xprt_stats'    :  {'id' : XPRT_STATS},
+            'xprt_stats_reset'    :  {'id' : XPRT_STATS_RESET},
             'profiling'    :  {'id' : PROFILING},
+            'profiling_reset'    :  {'id' : PROFILING_RESET},
             'thread_stats'  :  {'id' : THREAD_STATS},
+            'thread_stats_reset'  :  {'id' : THREAD_STATS_RESET},
             'prdcr_stats'   :  {'id' : PRDCR_STATS},
             'set_stats'     :  {'id' : SET_STATS},
             'setgroup_add'  :  {'id':  SETGROUP_ADD},
@@ -776,10 +799,14 @@ class LDMSD_Request(object):
 
             'stream_client_dump'   :  {'id' : STREAM_CLIENT_DUMP },
             'stream_status'    :  {'id' : STREAM_STATUS },
+            'stream_client_dump_reset'   :  {'id' : STREAM_CLIENT_DUMP_RESET },
+            'stream_status_reset'    :  {'id' : STREAM_STATUS_RESET },
             'stream_disable'   :  {'id' : STREAM_DISABLE },
             'stream_enable'   :  {'id' : STREAM_ENABLE },
             'msg_stats'    :  {'id' : MSG_STATS },
             'msg_client_stats'    :  {'id' : MSG_CLIENT_STATS },
+            'msg_stats_reset'    :  {'id' : MSG_STATS_RESET },
+            'msg_client_stats_reset'    :  {'id' : MSG_CLIENT_STATS_RESET },
             'msg_disable'   :  {'id' : MSG_DISABLE },
 
             'listen'        :  {'id' : LISTEN },
@@ -1495,7 +1522,8 @@ class Communicator(object):
         """
         Dump stream info
 
-        No parameters
+        Parameters:
+        reset - Deprecated. ldmsd ignores it. Use stream_status_reset().
         """
         if reset is None:
             reset = False
@@ -1515,7 +1543,7 @@ class Communicator(object):
         Parameters:
         regex - The regular expression matching the stream names
         stream - The exact match of the stearm name
-        reset - Reset the statistics
+        reset - Deprecated. ldmsd ignores it. Use msg_stats_reset().
         """
         attr_list = []
         if regex:
@@ -1565,8 +1593,7 @@ class Communicator(object):
         Dump stream stats
 
         Parameters:
-        regex - The regular expression matching the stream names
-        stream - The exact match of the stearm name
+        reset - Deprecated. ldmsd ignores it. Use msg_client_stats_reset().
         """
         attr_list = []
         if reset is not None:
@@ -1680,6 +1707,7 @@ class Communicator(object):
 
         Parameters:
         name - The storage policy name
+        reset - Deprecated. ldmsd ignores it. Use store_time_stats_reset().
         Returns:
         A tuple of status, data
         - status is an errno from the errno module
@@ -1911,6 +1939,13 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def update_time_stats(self, name=None, reset = False):
+        """
+        Return the time statistics of the updater policies.
+
+        Parameters:
+        name - The updater name
+        reset - Deprecated. ldmsd ignores it. Use update_time_stats_reset().
+        """
         attr_list = None
         if reset is None:
             reset = False
@@ -2943,7 +2978,7 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
-    def updtr_status(self, name=None, summary=None, reset=None):
+    def updtr_status(self, name=None, summary=None):
         """
         Get the status of all updaters on a producer.
 
@@ -2960,8 +2995,6 @@ class Communicator(object):
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name))
         if summary:
             attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STRING, value=summary))
-        if reset:
-            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.RESET, value=reset))
         req = LDMSD_Request(command_id=LDMSD_Request.UPDTR_STATUS, attrs=attrs)
         try:
             req.send(self)
@@ -3488,7 +3521,13 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def xprt_stats(self, reset=False, level=0):
-        """Query the daemon's telemetry data"""
+        """
+        Query the daemon's telemetry data
+
+        Parameters:
+        reset - Deprecated. ldmsd ignores it. Use xprt_stats_reset().
+        level - If non-zero, the send-queue depth of each endpoint is reported.
+        """
         if reset is None:
             reset = False
         req = LDMSD_Request(
@@ -3507,7 +3546,201 @@ class Communicator(object):
             self.close()
             return errno.ENOTCONN, str(e)
 
+    def xprt_stats_reset(self):
+        """
+        Reset the daemon's transport statistics
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.XPRT_STATS_RESET)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def thread_stats_reset(self):
+        """
+        Reset the daemon's thread statistics
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.THREAD_STATS_RESET)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def profiling_reset(self):
+        """
+        Reset and free the cached LDMS operation profiling data
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.PROFILING_RESET)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def update_time_stats_reset(self, name=None):
+        """
+        Reset the update time statistics of the updater policies
+
+        Keyword Parameters:
+        [name] - The updater policy name. If not given, the statistics
+                 of all updater policies are reset.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
+        attrs = []
+        if name:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name))
+        req = LDMSD_Request(command_id=LDMSD_Request.UPDATE_TIME_STATS_RESET, attrs=attrs)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def store_time_stats_reset(self, name=None):
+        """
+        Reset the store time statistics of the storage policies
+
+        Keyword Parameters:
+        [name] - The storage policy name. If None, the statistics of all
+                 storage policies are reset.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
+        attrs = []
+        if name:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.NAME, value=name))
+        req = LDMSD_Request(command_id=LDMSD_Request.STORE_TIME_STATS_RESET, attrs=attrs)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def stream_client_dump_reset(self):
+        """
+        Reset the statistics of all streams
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_CLIENT_DUMP_RESET)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def stream_status_reset(self):
+        """
+        Reset the statistics of all streams
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.STREAM_STATUS_RESET)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def msg_stats_reset(self, regex=None, stream=None):
+        """
+        Reset the statistics of the message channels
+
+        Keyword Parameters:
+        [regex]  - Reset the channels whose names match this regular expression.
+        [stream] - Reset only the channel with this name.
+                   [regex] takes precedence over [stream]. If neither is
+                   given, all message channels are reset.
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
+        attrs = []
+        if regex:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.REGEX, value=regex))
+        if stream:
+            attrs.append(LDMSD_Req_Attr(attr_id=LDMSD_Req_Attr.STREAM, value=stream))
+        req = LDMSD_Request(command_id=LDMSD_Request.MSG_STATS_RESET, attrs=attrs)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
+    def msg_client_stats_reset(self):
+        """
+        Reset the statistics of the message clients
+
+        Returns:
+        A tuple of status, data
+        - status is an errno from the errno module
+        - data is an error message if status != 0 or None
+        """
+        req = LDMSD_Request(command_id=LDMSD_Request.MSG_CLIENT_STATS_RESET)
+        try:
+            req.send(self)
+            resp = req.receive(self)
+            return resp['errcode'], resp['msg']
+        except Exception as e:
+            self.close()
+            return errno.ENOTCONN, str(e)
+
     def profiling(self, enable = None, reset = None):
+        """
+        Query the daemon's LDMS operation profiling data
+
+        Parameters:
+        enable - If True/False, enable/disable LDMS profiling.
+        reset  - Deprecated. ldmsd ignores it. Use profiling_reset().
+        """
         attrs = []
         if enable is not None:
             attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.TYPE,
@@ -3526,7 +3759,12 @@ class Communicator(object):
             return errno.ENOTCONN, str(e)
 
     def thread_stats(self, reset=False):
-        """Query the daemon's I/O thread utilization data"""
+        """
+        Query the daemon's I/O thread utilization data
+
+        Parameters:
+        reset - Deprecated. ldmsd ignores it. Use thread_stats_reset().
+        """
         if reset is None:
             reset = False
         req = LDMSD_Request(

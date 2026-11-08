@@ -113,7 +113,7 @@ static int stream_enabled = 0;
 static int cleanup_requested = 0;
 
 static char * __thread_stats_as_json(size_t *json_sz);
-static char * __xprt_stats_as_json(size_t *json_sz, int reset, int level);
+static char * __xprt_stats_as_json(size_t *json_sz, int level);
 extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 
 extern int ldmsd_quota; /* defined in ldmsd.c */
@@ -262,6 +262,14 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc);
 static int set_sec_mod_handler(ldmsd_req_ctxt_t reqc);
 static int log_status_handler(ldmsd_req_ctxt_t reqc);
 static int stats_reset_handler(ldmsd_req_ctxt_t reqc);
+static int xprt_stats_reset_handler(ldmsd_req_ctxt_t reqc);
+static int thread_stats_reset_handler(ldmsd_req_ctxt_t reqc);
+static int profiling_reset_handler(ldmsd_req_ctxt_t reqc);
+static int update_time_stats_reset_handler(ldmsd_req_ctxt_t reqc);
+static int store_time_stats_reset_handler(ldmsd_req_ctxt_t reqc);
+static int stream_stats_reset_handler(ldmsd_req_ctxt_t reqc);
+static int msg_stats_reset_handler(ldmsd_req_ctxt_t reqc);
+static int msg_client_stats_reset_handler(ldmsd_req_ctxt_t reqc);
 static int profiling_handler(ldmsd_req_ctxt_t req);
 
 /* these are implemented in ldmsd_failover.c */
@@ -546,6 +554,35 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_STATS_RESET_REQ] = {
 		LDMSD_STATS_RESET_REQ, stats_reset_handler, XALL
+	},
+
+	/* Reset requests of the stats|status requests */
+	[LDMSD_XPRT_STATS_RESET_REQ] = {
+		LDMSD_XPRT_STATS_RESET_REQ, xprt_stats_reset_handler, XUG
+	},
+	[LDMSD_THREAD_STATS_RESET_REQ] = {
+		LDMSD_THREAD_STATS_RESET_REQ, thread_stats_reset_handler, XUG
+	},
+	[LDMSD_PROFILING_RESET_REQ] = {
+		LDMSD_PROFILING_RESET_REQ, profiling_reset_handler, XUG
+	},
+	[LDMSD_UPDATE_TIME_STATS_RESET_REQ] = {
+		LDMSD_UPDATE_TIME_STATS_RESET_REQ, update_time_stats_reset_handler, XUG
+	},
+	[LDMSD_STORE_TIME_STATS_RESET_REQ] = {
+		LDMSD_STORE_TIME_STATS_RESET_REQ, store_time_stats_reset_handler, XUG
+	},
+	[LDMSD_STREAM_CLIENT_DUMP_RESET_REQ] = {
+		LDMSD_STREAM_CLIENT_DUMP_RESET_REQ, stream_stats_reset_handler, XUG
+	},
+	[LDMSD_STREAM_STATUS_RESET_REQ] = {
+		LDMSD_STREAM_STATUS_RESET_REQ, stream_stats_reset_handler, XUG
+	},
+	[LDMSD_MSG_STATS_RESET_REQ] = {
+		LDMSD_MSG_STATS_RESET_REQ, msg_stats_reset_handler, XUG
+	},
+	[LDMSD_MSG_CLIENT_STATS_RESET_REQ] = {
+		LDMSD_MSG_CLIENT_STATS_RESET_REQ, msg_client_stats_reset_handler, XUG
 	},
 
 	/* Transport Stats Request */
@@ -4371,7 +4408,7 @@ void __updtr_stats(ldmsd_prdcr_set_t prdset, int *skipped_cnt,
 }
 
 int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
-						int updtr_cnt, int reset)
+						int updtr_cnt)
 {
 	int rc;
 	ldmsd_prdcr_ref_t ref;
@@ -4437,15 +4474,33 @@ out:
 	return rc;
 }
 
+static void __deprecated_reset_attr_log(ldmsd_req_ctxt_t reqc, const char *cmd)
+{
+	char *s;
+
+	s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
+	if (!s)
+		return;
+	if (0 != strcasecmp(s, "false")) {
+		if (reset_cmd) {
+			ovis_log(config_log, OVIS_LERROR,
+				 "%s: the 'reset' attribute is deprecated and ignored. "
+				 "The statistics are not reset. "
+				 "Use '%s_reset' to reset the statistics.\n",
+				 cmd, cmd);
+		}
+	}
+	free(s);
+}
+
 static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
-	char *name, *reset_s;
-	int updtr_cnt, reset;
+	char *name;
+	int updtr_cnt;
 	ldmsd_updtr_t updtr = NULL;
-	reset = 0;
 	reqc->errcode = 0;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -4464,16 +4519,9 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 		}
 	}
 
-	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
-	if (reset_s) {
-		if (0 != strcasecmp(reset_s, "false"))
-			reset = 1;
-		free(reset_s);
-	}
-
 	/* Construct the json object of the updater(s) */
 	if (updtr) {
-		rc = __updtr_status_json_obj(reqc, updtr, 0, reset);
+		rc = __updtr_status_json_obj(reqc, updtr, 0);
 		if (rc)
 			goto out;
 	} else {
@@ -4481,7 +4529,7 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 		for (updtr = ldmsd_updtr_first(); updtr;
 				updtr = ldmsd_updtr_next(updtr)) {
-			rc = __updtr_status_json_obj(reqc, updtr, updtr_cnt, reset);
+			rc = __updtr_status_json_obj(reqc, updtr, updtr_cnt);
 			if (rc) {
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 				goto out;
@@ -7112,7 +7160,7 @@ struct op_summary {
  *      }
  */
 
-static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
+static char *__xprt_stats_as_json(size_t *json_sz, int level)
 {
 	char *buff;
 	char *s;
@@ -7153,7 +7201,7 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 	__APPEND(" \"rails\":[");
 
 	/* Compute summary statistics across all of the transports */
-	res = ldms_xprt_stats_result_get(LDMS_PERF_M_STATS, reset);
+	res = ldms_xprt_stats_result_get(LDMS_PERF_M_STATS, 0);
 	if (!res) {
 		rc = errno;
 		ovis_log(config_log, OVIS_LERROR, "Failed to obtain transport statistics. Error %d.\n", rc);
@@ -7226,7 +7274,7 @@ static char *__xprt_stats_as_json(size_t *json_sz, int reset, int level)
 				op_sum[op_e].op_total_us / op_sum[op_e].op_count;
 		}
 	}
-	ldms_xprt_rate_data(&rate_data, reset);
+	ldms_xprt_rate_data(&rate_data, 0);
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	uint64_t compute_time = ldms_timespec_diff_us(&start, &end);
 
@@ -7297,19 +7345,13 @@ __APPEND_ERR:
 
 static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 {
+	__deprecated_reset_attr_log(req, "xprt_stats");
 	char *s, *json_s;
 	size_t json_sz;
-	int reset = 0;
 	int level = 0;
 	struct ldmsd_req_attr_s attr;
 
-	s = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
-	__dlog(DLOG_QUERY, "xprt_stats%s%s\n", s ? " reset=" : "", s? s : "");
-	if (s) {
-		if (0 != strcasecmp(s, "false"))
-			reset = 1;
-		free(s);
-	}
+	__dlog(DLOG_QUERY, "xprt_stats\n");
 
 	s = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_LEVEL);
 	if (s) {
@@ -7317,7 +7359,7 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 		free(s);
 	}
 
-	json_s = __xprt_stats_as_json(&json_sz, reset, level);
+	json_s = __xprt_stats_as_json(&json_sz, level);
 	if (!json_s)
 		goto err;
 
@@ -7416,7 +7458,7 @@ json_t *__ldms_op_profiling_as_json(struct ldms_op_ctxt *xc, enum ldms_xprt_ops_
 	return stat;
 }
 
-int __stream_profiling_as_json(json_t **_jobj, int is_reset) {
+int __stream_profiling_as_json(json_t **_jobj) {
 	json_t *jobj, *strm_jobj, *src_jobj, *hop_jobj, *prf_array, *prf_jobj;
 	struct ldms_msg_ch_stats_tq_s *tq;
 	struct ldms_msg_ch_stats_s *ss;
@@ -7428,7 +7470,7 @@ int __stream_profiling_as_json(json_t **_jobj, int is_reset) {
 	int i, rc = 0;
 
 	jobj = json_object();
-	tq = ldms_msg_ch_stats_tq_get(NULL, 0, is_reset);
+	tq = ldms_msg_ch_stats_tq_get(NULL, 0, 0);
 	if (!tq) {
 		/* no stream ... nothing to do here. */
 		goto out;
@@ -7466,7 +7508,7 @@ int __stream_profiling_as_json(json_t **_jobj, int is_reset) {
 	return rc;
 }
 
-int __xprt_profiling_as_json(json_t **_obj, int is_reset)
+int __xprt_profiling_as_json(json_t **_obj)
 {
 	json_t *obj, *ep_prf, *op_prf;
 	struct ldms_op_ctxt *xc;
@@ -7484,7 +7526,7 @@ int __xprt_profiling_as_json(json_t **_obj, int is_reset)
 	}
 	*_obj = obj;
 
-	res = ldms_xprt_stats_result_get(LDMS_PERF_M_PROFILNG, is_reset);
+	res = ldms_xprt_stats_result_get(LDMS_PERF_M_PROFILNG, 0);
 	if (!res) {
 		rc = errno;
 		ovis_log(config_log, OVIS_LERROR, "Failed to get transport statistics. Error %d.\n", rc);
@@ -7515,6 +7557,7 @@ int __xprt_profiling_as_json(json_t **_obj, int is_reset)
 
 static int profiling_handler(ldmsd_req_ctxt_t req)
 {
+	__deprecated_reset_attr_log(req, "profiling");
 	json_t *obj;
 	json_t *xprt_prf = NULL;
 	json_t *strm_prf = NULL;
@@ -7522,9 +7565,8 @@ static int profiling_handler(ldmsd_req_ctxt_t req)
 	int rc = 0;
 	struct ldmsd_req_attr_s attr;
 	size_t str_len;
-	char *enable_str, *reset_str;
+	char *enable_str;
 	int is_enable = -1; /* -1 means only getting the profile data, don't enable/disable */
-	int is_reset = 0;
 
 	enable_str = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_TYPE);
 	if (enable_str) {
@@ -7533,13 +7575,6 @@ static int profiling_handler(ldmsd_req_ctxt_t req)
 			is_enable = 0; /* disable */
 		free(enable_str);
 	}
-	reset_str = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
-	if (reset_str) {
-		is_reset = 1;
-		if (0 == strcasecmp(reset_str, "false"))
-			is_reset = 0;
-	}
-	free(reset_str);
 
 	if (is_enable == 1) {
 		ldms_profiling_enable(-1, NULL, NULL);
@@ -7566,10 +7601,10 @@ static int profiling_handler(ldmsd_req_ctxt_t req)
 	 * }
 	 */
 	obj = json_object();
-	(void)__xprt_profiling_as_json(&xprt_prf, is_reset);
+	(void)__xprt_profiling_as_json(&xprt_prf);
 	json_object_set_new(obj, "xprt", xprt_prf);
 
-	(void)__stream_profiling_as_json(&strm_prf, is_reset);
+	(void)__stream_profiling_as_json(&strm_prf);
 	json_object_set_new(obj, "stream", strm_prf);
 
 	json_as_str = json_dumps(obj, JSON_INDENT(0));
@@ -7974,18 +8009,12 @@ extern void ldmsd_worker_thrstats_reset(struct timespec *now);
 extern void ldmsd_xthrstat_reset(struct timespec *now);
 static int thread_stats_handler(ldmsd_req_ctxt_t req)
 {
-	char *json_s, *s;
+	__deprecated_reset_attr_log(req, "thread_stats");
+	char *json_s;
 	size_t json_sz;
-	int reset = 0;
 	struct ldmsd_req_attr_s attr;
 
-	s = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
-	__dlog(DLOG_QUERY, "thread_stats%s%s\n", s ? " reset=" : "", s? s : "");
-	if (s) {
-		if (0 != strcasecmp(s, "false"))
-			reset = 1;
-		free(s);
-	}
+	__dlog(DLOG_QUERY, "thread_stats\n");
 
 	json_s = __thread_stats_as_json(&json_sz);
 	if (!json_s)
@@ -8004,15 +8033,6 @@ static int thread_stats_handler(ldmsd_req_ctxt_t req)
 		goto err;
 
 	free(json_s);
-	if (reset) {
-		struct timespec now;
-		clock_gettime(CLOCK_REALTIME, &now);
-		zap_thrstat_reset_all(&now);
-		ldmsd_worker_thrstats_reset(&now);
-		ldmsd_xthrstat_reset(&now);
-		__prdset_stats_reset(&now, 1, 1);
-	}
-
 	return 0;
 err:
 	free(json_s);
@@ -8475,19 +8495,11 @@ send_reply:
 
 static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc)
 {
+	__deprecated_reset_attr_log(reqc, "stream_client_dump");
 	int rc;
-	char *s, *reset_s;
+	char *s;
 	size_t len;
 	struct ldmsd_req_attr_s attr;
-	int reset = 0;
-
-	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
-	if (reset_s) {
-		if (0 != strcasecmp(reset_s, "false")) {
-			reset = 1;
-		}
-		free(reset_s);
-	}
 
 	s = ldmsd_stream_client_dump();
 	if (!s) {
@@ -8516,8 +8528,6 @@ static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc)
 	if (rc)
 		goto out;
 
-	if (reset)
-		ldmsd_stream_stats_reset_all();
 out:
 	free(s);
 	return rc;
@@ -8564,17 +8574,11 @@ static int stream_enable_handler(ldmsd_req_ctxt_t reqc)
 
 static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 {
+	__deprecated_reset_attr_log(reqc, "stream_status");
 	int rc;
-	char *s, *reset_s;
+	char *s;
 	size_t len;
 	struct ldmsd_req_attr_s attr;
-	int reset = 0;
-
-	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
-	if (reset_s && (0 != strcasecmp(reset_s, "false"))) {
-		reset = 1;
-	}
-	free(reset_s);
 
 	s = ldmsd_stream_dir_dump();
 	if (!s) {
@@ -8603,8 +8607,6 @@ static int stream_status_handler(ldmsd_req_ctxt_t reqc)
 	if (rc)
 		goto out;
 
-	if (reset)
-		ldmsd_stream_stats_reset_all();
 out:
 	free(s);
 	return rc;
@@ -8619,6 +8621,7 @@ out:
  */
 static int msg_stats_handler(ldmsd_req_ctxt_t reqc)
 {
+	__deprecated_reset_attr_log(reqc, "msg_stats");
 	char *regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	char *stream = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
 	const char *match = NULL;
@@ -8626,7 +8629,6 @@ static int msg_stats_handler(ldmsd_req_ctxt_t reqc)
 	char buff[128];
 	char *s = NULL;
 	int rc = 0;
-	int is_reset = 0;
 	size_t len;
 	struct ldmsd_req_attr_s attr;
 
@@ -8644,12 +8646,7 @@ static int msg_stats_handler(ldmsd_req_ctxt_t reqc)
 		match = stream;
 	}
 
-	char *reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
-	if (reset_s && (0 == strcasecmp(reset_s, "true")))
-		is_reset = 1;
-	free(reset_s);
-
-	s = ldms_msg_stats_str(match, is_regex, is_reset);
+	s = ldms_msg_stats_str(match, is_regex, 0);
 	if (!s) {
 		reqc->errcode = errno;
 		snprintf(buff, sizeof(buff), "ldms_msg_stats_str() error: %d",
@@ -8688,6 +8685,7 @@ out:
  */
 static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc)
 {
+	__deprecated_reset_attr_log(reqc, "msg_client_stats");
 	char *s;
 	char buff[128];
 	int rc = 0;
@@ -8700,13 +8698,7 @@ static int msg_client_stats_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_send_req_response(reqc, buff);
 		return 0;
 	}
-	char *reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
-	int is_reset = 0;
-	if (reset_s && (0 == strcasecmp(reset_s, "true")))
-		is_reset = 1;
-	free(reset_s);
-
-	s = ldms_msg_client_stats_str(is_reset);
+	s = ldms_msg_client_stats_str(0);
 	if (!s) {
 		reqc->errcode = errno;
 		snprintf(buff, sizeof(buff), "ldms_msg_client_stats_str() error: %d",
@@ -9217,7 +9209,7 @@ enomem:
 static int
 __prdset_upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 				ldmsd_prdcr_t prdcr, ldmsd_name_match_t match,
-				int prd_cnt, int reset, struct timespec *now)
+				int prd_cnt)
 {
 	int rc;
 	ldmsd_prdcr_set_t prdset;
@@ -9265,8 +9257,6 @@ __prdset_upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 				prdset->updt_stat.count,
 				prdset->skipped_upd_cnt,
 				prdset->oversampled_cnt);
-		if (reset)
-			ldmsd_prdcr_set_stats_reset(prdset, now, LDMSD_PRDSET_STATS_F_UPD);
 		pthread_mutex_unlock(&prdset->lock);
 		if (rc)
 			goto unlock;
@@ -9284,8 +9274,7 @@ unlock:
 extern ldmsd_prdcr_ref_t updtr_prdcr_ref_first(ldmsd_updtr_t updtr);
 extern ldmsd_prdcr_ref_t updtr_prdcr_ref_next(ldmsd_prdcr_ref_t ref);
 static int
-__upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
-					int reset, struct timespec *now)
+__upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr)
 {
 	int rc;
 	ldmsd_name_match_t match;
@@ -9301,7 +9290,7 @@ __upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 			for (ref = updtr_prdcr_ref_first(updtr); ref;
 					ref = updtr_prdcr_ref_next(ref)) {
 				rc = __prdset_upd_time_stats_json_obj(reqc, updtr,
-						ref->prdcr, match, cnt, reset, now);
+						ref->prdcr, match, cnt);
 				if (rc && rc != ENOTCONN)
 					goto out;
 				else if (!rc)
@@ -9313,7 +9302,7 @@ __upd_time_stats_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 		for (ref = updtr_prdcr_ref_first(updtr); ref;
 				ref = updtr_prdcr_ref_next(ref)) {
 			rc = __prdset_upd_time_stats_json_obj(reqc, updtr,
-						   ref->prdcr, NULL, cnt, reset, now);
+						   ref->prdcr, NULL, cnt);
 			if (rc && rc != ENOTCONN)
 				goto out;
 			else if (!rc)
@@ -9327,22 +9316,11 @@ out:
 
 static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 {
+	__deprecated_reset_attr_log(reqc, "update_time_stats");
 	int rc = 0;
 	ldmsd_updtr_t updtr;
 	char *name = NULL;
-	char *reset_s = NULL;
 	int cnt = 0;
-	int reset = 0;
-	struct timespec now;
-
-	clock_gettime(CLOCK_REALTIME, &now);
-	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
-	if (reset_s) {
-		if (0 != strcasecmp(reset_s, "false"))
-			reset = 1;
-		free(reset_s);
-	}
-
 
 	rc = linebuf_printf(reqc, "{");
 	if (rc)
@@ -9359,7 +9337,7 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 			ldmsd_send_req_response(reqc, reqc->line_buf);
 			goto out;
 		}
-		rc = __upd_time_stats_json_obj(reqc, updtr, reset, &now);
+		rc = __upd_time_stats_json_obj(reqc, updtr);
 	} else {
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 		for (updtr = ldmsd_updtr_first(); updtr;
@@ -9371,7 +9349,7 @@ static int update_time_stats_handler(ldmsd_req_ctxt_t reqc)
 					goto err;
 				}
 			}
-			rc = __upd_time_stats_json_obj(reqc, updtr, reset, &now);
+			rc = __upd_time_stats_json_obj(reqc, updtr);
 			if (rc) {
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 				goto err;
@@ -9414,7 +9392,7 @@ static json_entity_t __ldmsd_stat2dict(struct ldmsd_stat *stat)
 }
 
 static int
-__store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int reset)
+__store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp)
 {
 	int rc = 0;
 	ldmsd_prdcr_t prdcr;
@@ -9525,10 +9503,6 @@ __store_time_stats_strgp(json_entity_t strgp_dict, ldmsd_strgp_t strgp, int rese
 			rc = json_attr_add(sets, prdset->inst_name, set_json);
 			if (rc)
 				goto json_error;
-			if (reset) {
-				memset(&prdset->store_stat, 0, sizeof(prdset->store_stat));
-				clock_gettime(CLOCK_REALTIME, &prdset->store_stat.start);
-			}
 		}
 	}
 	rc = json_attr_add(strgp_dict, strgp->obj.name, strgp_stats);
@@ -9551,19 +9525,11 @@ json_error:
 
 static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 {
+	__deprecated_reset_attr_log(reqc, "store_time_stats");
 	int rc;
 	char *name = NULL;
-	char *reset_s = NULL;
 	ldmsd_strgp_t strgp;
-	int reset = 0;
 	json_entity_t strgp_dict;
-
-	reset_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_RESET);
-	if (reset_s) {
-		if (0 != strcasecmp(reset_s, "false"))
-			reset = 1;
-		free(reset_s);
-	}
 
 	strgp_dict = json_entity_new(JSON_DICT_VALUE);
 	if (!strgp_dict) {
@@ -9583,7 +9549,7 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 			ldmsd_send_req_response(reqc, reqc->line_buf);
 			return 0;
 		}
-		rc = __store_time_stats_strgp(strgp_dict, strgp, reset);
+		rc = __store_time_stats_strgp(strgp_dict, strgp);
 		if (rc)
 			goto err;
 	} else {
@@ -9591,7 +9557,7 @@ static int store_time_stats_handler(ldmsd_req_ctxt_t reqc)
 		for (strgp = ldmsd_strgp_first(); strgp;
 				strgp = ldmsd_strgp_next(strgp)) {
 			ldmsd_strgp_lock(strgp);
-			rc = __store_time_stats_strgp(strgp_dict, strgp, reset);
+			rc = __store_time_stats_strgp(strgp_dict, strgp);
 			if (rc) {
 				ldmsd_strgp_unlock(strgp);
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
@@ -9669,6 +9635,265 @@ static int stats_reset_handler(ldmsd_req_ctxt_t reqc)
 	free(s);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
+}
+
+static int __reset_reply(ldmsd_req_ctxt_t reqc, const char *cmd, int rc)
+{
+	reqc->errcode = rc;
+	if (rc)
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					  "%s failed. Error %d.", cmd, rc);
+	else
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len, "OK");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
+static int xprt_stats_reset_handler(ldmsd_req_ctxt_t reqc)
+{
+	struct ldms_xprt_stats_result *res;
+	int rc = 0;
+
+	__dlog(DLOG_QUERY, "xprt_stats_reset\n");
+	res = ldms_xprt_stats_result_get(LDMS_PERF_M_STATS, 1);
+	if (!res) {
+		rc = errno ? errno : ENOMEM;
+		goto out;
+	}
+	ldms_xprt_stats_result_free(res);
+	ldms_xprt_rate_data(NULL, 1);
+out:
+	return __reset_reply(reqc, "xprt_stats_reset", rc);
+}
+
+static int thread_stats_reset_handler(ldmsd_req_ctxt_t reqc)
+{
+	struct timespec now;
+
+	__dlog(DLOG_QUERY, "thread_stats_reset\n");
+	clock_gettime(CLOCK_REALTIME, &now);
+	zap_thrstat_reset_all(&now);
+	ldmsd_worker_thrstats_reset(&now);
+	ldmsd_xthrstat_reset(&now);
+	__prdset_stats_reset(&now, 1, 1);
+	return __reset_reply(reqc, "thread_stats_reset", 0);
+}
+
+static int profiling_reset_handler(ldmsd_req_ctxt_t reqc)
+{
+	struct ldms_xprt_stats_result *res;
+	struct ldms_msg_ch_stats_tq_s *tq;
+	int rc = 0;
+
+	__dlog(DLOG_QUERY, "profiling_reset\n");
+	res = ldms_xprt_stats_result_get(LDMS_PERF_M_PROFILNG, 1);
+	if (!res) {
+		rc = errno ? errno : ENOMEM;
+		goto out;
+	}
+	ldms_xprt_stats_result_free(res);
+
+	errno = 0;
+	tq = ldms_msg_ch_stats_tq_get(NULL, 0, 1);
+	if (tq)
+		ldms_msg_ch_stats_tq_free(tq);
+	else if (errno && errno != ENOENT)
+		rc = errno; /* ENOENT: no message channel; nothing to reset */
+out:
+	return __reset_reply(reqc, "profiling_reset", rc);
+}
+
+static void __updtr_time_stats_reset(ldmsd_updtr_t updtr, struct timespec *now)
+{
+	ldmsd_name_match_t match;
+	ldmsd_prdcr_ref_t ref;
+	ldmsd_prdcr_t prdcr;
+	ldmsd_prdcr_set_t prdset;
+	const char *str;
+	int have_match = !LIST_EMPTY(&updtr->match_list);
+
+	/* A NULL match means that all sets of the producers are reset. */
+	match = have_match ? LIST_FIRST(&updtr->match_list) : NULL;
+	do {
+		for (ref = updtr_prdcr_ref_first(updtr); ref;
+		     ref = updtr_prdcr_ref_next(ref)) {
+			prdcr = ref->prdcr;
+			ldmsd_prdcr_lock(prdcr);
+			if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED ||
+			    prdcr->xprt->disconnected) {
+				ldmsd_prdcr_unlock(prdcr);
+				continue;
+			}
+			for (prdset = ldmsd_prdcr_set_first(prdcr); prdset;
+			     prdset = ldmsd_prdcr_set_next(prdset)) {
+				if (match) {
+					str = (match->selector == LDMSD_NAME_MATCH_INST_NAME) ?
+						prdset->inst_name : prdset->schema_name;
+					if (regexec(&match->regex, str, 0, NULL, 0))
+						continue;
+				}
+				pthread_mutex_lock(&prdset->lock);
+				ldmsd_prdcr_set_stats_reset(prdset, now, LDMSD_PRDSET_STATS_F_UPD);
+				pthread_mutex_unlock(&prdset->lock);
+			}
+			ldmsd_prdcr_unlock(prdcr);
+		}
+		if (match)
+			match = LIST_NEXT(match, entry);
+	} while (match);
+}
+
+static int update_time_stats_reset_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldmsd_updtr_t updtr;
+	struct timespec now;
+	char *name;
+
+	clock_gettime(CLOCK_REALTIME, &now);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	__dlog(DLOG_QUERY, "update_time_stats_reset%s%s\n",
+		name ? " name=" : "", name ? name : "");
+	if (name) {
+		updtr = ldmsd_updtr_find(name);
+		if (!updtr) {
+			reqc->errcode = ENOENT;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					"updtr '%s' doesn't exist.", name);
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+			free(name);
+			return 0;
+		}
+		__updtr_time_stats_reset(updtr, &now);
+		ldmsd_updtr_put(updtr, "find");
+		free(name);
+	} else {
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
+		for (updtr = ldmsd_updtr_first(); updtr;
+		     updtr = ldmsd_updtr_next(updtr))
+			__updtr_time_stats_reset(updtr, &now);
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+	}
+	return __reset_reply(reqc, "update_time_stats_reset", 0);
+}
+
+/*
+ * Reset the store statistics of the producer sets that the storage policy
+ * stores, i.e., the sets that store_time_stats reports for the storage policy.
+ */
+static void __strgp_store_time_stats_reset(ldmsd_strgp_t strgp, struct timespec *now)
+{
+	ldmsd_prdcr_t prdcr;
+	ldmsd_prdcr_set_t prdset;
+	struct rbn *rbn;
+
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		RBT_FOREACH(rbn, &prdcr->set_tree) {
+			prdset = container_of(rbn, struct ldmsd_prdcr_set, rbn);
+			if (strgp->schema) {
+				if (0 != strcmp(strgp->schema, prdset->schema_name))
+					continue;
+			} else {
+				if (regexec(&strgp->schema_regex, prdset->schema_name, 0, NULL, 0))
+					continue;
+			}
+			ldmsd_prdcr_set_stats_reset(prdset, now, LDMSD_PRDSET_STATS_F_STORE);
+		}
+	}
+}
+
+static int store_time_stats_reset_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldmsd_strgp_t strgp;
+	struct timespec now;
+	char *name;
+
+	clock_gettime(CLOCK_REALTIME, &now);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	__dlog(DLOG_QUERY, "store_time_stats_reset%s%s\n",
+		name ? " name=" : "", name ? name : "");
+	if (name) {
+		strgp = ldmsd_strgp_find(name);
+		if (!strgp) {
+			reqc->errcode = ENOENT;
+			reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					"strgp '%s' doesn't exist.", name);
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+			free(name);
+			return 0;
+		}
+		__strgp_store_time_stats_reset(strgp, &now);
+		ldmsd_strgp_put(strgp, "find");
+		free(name);
+	} else {
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
+		for (strgp = ldmsd_strgp_first(); strgp;
+		     strgp = ldmsd_strgp_next(strgp)) {
+			ldmsd_strgp_lock(strgp);
+			__strgp_store_time_stats_reset(strgp, &now);
+			ldmsd_strgp_unlock(strgp);
+		}
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+	}
+	return __reset_reply(reqc, "store_time_stats_reset", 0);
+}
+
+/* Shared by stream_client_dump_reset and stream_status_reset */
+static int stream_stats_reset_handler(ldmsd_req_ctxt_t reqc)
+{
+	__dlog(DLOG_QUERY, "%s\n", ldmsd_req_id2str(reqc->req_id));
+	ldmsd_stream_stats_reset_all();
+	return __reset_reply(reqc, ldmsd_req_id2str(reqc->req_id), 0);
+}
+
+static int msg_stats_reset_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
+	char *stream = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
+	struct ldms_msg_ch_stats_tq_s *tq;
+	const char *match = NULL;
+	int is_regex = 0;
+	int rc = 0;
+
+	if (!ldms_msg_is_enabled()) {
+		rc = ENOTSUP;
+		goto out;
+	}
+	if (regex) {
+		match = regex;
+		is_regex = 1;
+	} else if (stream) {
+		match = stream;
+	}
+	__dlog(DLOG_QUERY, "msg_stats_reset%s%s\n", match ? (is_regex ? " regex=" : " stream=") : "",
+		match ? match : "");
+
+	errno = 0;
+	tq = ldms_msg_ch_stats_tq_get(match, is_regex, 1);
+	if (tq)
+		ldms_msg_ch_stats_tq_free(tq);
+	else if (errno && errno != ENOENT)
+		rc = errno; /* ENOENT: no matching channel; nothing to reset */
+out:
+	free(regex);
+	free(stream);
+	return __reset_reply(reqc, "msg_stats_reset", rc);
+}
+
+static int msg_client_stats_reset_handler(ldmsd_req_ctxt_t reqc)
+{
+	struct ldms_msg_client_stats_tq_s *tq;
+	int rc = 0;
+
+	if (!ldms_msg_is_enabled())
+		return __reset_reply(reqc, "msg_client_stats_reset", ENOTSUP);
+	__dlog(DLOG_QUERY, "msg_client_stats_reset\n");
+	errno = 0;
+	tq = ldms_msg_client_stats_tq_get(1);
+	if (tq)
+		ldms_msg_client_stats_tq_free(tq);
+	else if (errno && errno != ENOENT)
+		rc = errno; /* ENOENT: no client; nothing to reset */
+	return __reset_reply(reqc, "msg_client_stats_reset", rc);
 }
 
 static int default_auth_handler(ldmsd_req_ctxt_t reqc)
