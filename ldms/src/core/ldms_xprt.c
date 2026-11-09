@@ -621,7 +621,7 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 	reply = malloc(len);
 	if (!reply) {
 		XPRT_LOG(x, OVIS_LCRITICAL, "Memory allocation failure "
-					          "in notify of peer.\n");
+						  "in notify of peer.\n");
 		return;
 	}
 	reply->hdr.xid = xid;
@@ -2071,15 +2071,17 @@ static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type
 	for (j = 0, info_entity = json_item_first(info_list); info_entity;
 	     info_entity = json_item_next(info_entity), j++) {
 		k = json_value_find(info_entity, "key");
+		if (!k || json_entity_type(k) != JSON_STRING_VALUE)
+			goto err;
 		v = json_value_find(info_entity, "value");
+		if (!k || json_entity_type(k) != JSON_STRING_VALUE)
+			goto err;
 		char *nkey = strdup(json_value_cstr(k));
+		if (!nkey)
+			goto err;
 		char *nvalue = strdup(json_value_cstr(v));
-		if (!nkey || !nvalue) {
-			free(nkey);
-			free(nvalue);
-			rc = ENOMEM;
-			goto out;
-		}
+		if (!nvalue)
+			goto err;
 		dset->info[j].key = nkey;
 		dset->info[j].value = nvalue;
 
@@ -2124,6 +2126,9 @@ out:
 		}
 	}
 	return rc;
+ err:
+	rc = EINVAL;
+	goto out;
 }
 
 static
@@ -2174,12 +2179,12 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	}
 	count = json_list_len(dir_list);
 
-	dir = malloc(sizeof (*dir) +
+	dir = calloc(1, sizeof (*dir) +
 		     (count * sizeof(void *)) +
 		     (count * sizeof(struct ldms_dir_set_s)));
-	rc = ENOMEM;
 	if (!dir)
-		goto out;
+		goto enomem;
+
 	rc = 0;
 	dir->type = type;
 	dir->more = more;
@@ -2188,24 +2193,43 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	for (i = 0, set_entity = json_item_first(dir_list); set_entity;
 	     set_entity = json_item_next(set_entity), i++) {
 		json_entity_t e = json_value_find(set_entity, "name");
+		if (!e || json_entity_type(e) != JSON_STRING_VALUE)
+			goto syntax_error;
+
 		dir->set_data[i].inst_name = strdup(json_value_cstr(e));
+		if (!dir->set_data[i].inst_name)
+			goto enomem;
 
 		e = json_value_find(set_entity, "schema");
+		if (!e || json_entity_type(e) != JSON_STRING_VALUE)
+			goto syntax_error;
 		dir->set_data[i].schema_name = strdup(json_value_cstr(e));
+		if (!dir->set_data[i].schema_name)
+			goto enomem;
 
 		e = json_value_find(set_entity, "digest");
 		if (e)
 			dir->set_data[i].digest_str = strdup(json_value_cstr(e));
 		else
 			dir->set_data[i].digest_str = strdup("");
+		if (!dir->set_data[i].digest_str)
+			goto enomem;
 
 		e = json_value_find(set_entity, "flags");
+		if (!e || json_entity_type(e) != JSON_STRING_VALUE)
+			goto syntax_error;
 		dir->set_data[i].flags = strdup(json_value_cstr(e));
+		if (!dir->set_data[i].flags)
+			goto enomem;
 
 		e = json_value_find(set_entity, "meta_size");
+		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+			goto syntax_error;
 		dir->set_data[i].meta_size = json_value_int(e);
 
 		e = json_value_find(set_entity, "data_size");
+		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+			goto syntax_error;
 		dir->set_data[i].data_size = json_value_int(e);
 
 		e = json_value_find(set_entity, "heap_size");
@@ -2215,51 +2239,81 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 			dir->set_data[i].heap_size = 0;
 
 		e = json_value_find(set_entity, "uid");
+		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+			goto syntax_error;
 		dir->set_data[i].uid = json_value_int(e);
 
 		e = json_value_find(set_entity, "gid");
+		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+			goto syntax_error;
 		dir->set_data[i].gid = json_value_int(e);
 
 		e = json_value_find(set_entity, "perm");
+		if (!e || json_entity_type(e) != JSON_STRING_VALUE)
+			goto syntax_error;
 		dir->set_data[i].perm = strdup(json_value_cstr(e));
+		if (!dir->set_data[i].perm)
+			goto enomem;;
 
 		e = json_value_find(set_entity, "card");
+		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+			goto syntax_error;
 		dir->set_data[i].card = json_value_int(e);
 
 		e = json_value_find(set_entity, "array_card");
+		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+			goto syntax_error;
 		dir->set_data[i].array_card = json_value_int(e);
 
 		e = json_value_find(set_entity, "meta_gn");
+		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+			goto syntax_error;
 		dir->set_data[i].meta_gn = json_value_int(e);
 
 		e = json_value_find(set_entity, "data_gn");
+		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+			goto syntax_error;
 		dir->set_data[i].data_gn = json_value_int(e);
 
 		e = json_value_find(set_entity, "timestamp");
+		if (!e)
+			goto syntax_error;
 		json_entity_t s, u;
 		s = json_value_find(e, "sec");
+		if (!s || json_entity_type(s) != JSON_INT_VALUE)
+			goto syntax_error;
 		u = json_value_find(e, "usec");
+		if (!u || json_entity_type(u) != JSON_INT_VALUE)
+			goto syntax_error;
 		dir->set_data[i].timestamp.sec = json_value_int(s);
 		dir->set_data[i].timestamp.usec = json_value_int(u);
 
 		e = json_value_find(set_entity, "duration");
+		if (!e)
+			goto syntax_error;
 		s = json_value_find(e, "sec");
+		if (!s || json_entity_type(s) != JSON_INT_VALUE)
+			goto syntax_error;
 		u = json_value_find(e, "usec");
+		if (!u || json_entity_type(u) != JSON_INT_VALUE)
+			goto syntax_error;
 		dir->set_data[i].duration.sec = json_value_int(s);
 		dir->set_data[i].duration.usec = json_value_int(u);
 
 		info_list = json_value_find(set_entity, "info");
-		size_t info_count = json_list_len(info_list);
+		if (info_list && json_entity_type(info_list) != JSON_LIST_VALUE)
+			goto syntax_error;
+		size_t info_count = 0;
+		if (info_list)
+			info_count = json_list_len(info_list);
 		if (!info_count) {
 			dir->set_data[i].info_count = 0;
 			dir->set_data[i].info = NULL;
 			continue;
 		}
-		dir->set_data[i].info = malloc(sizeof(struct ldms_key_value_s) * info_count);
-		if (!dir->set_data[i].info) {
-			rc = ENOMEM;
-			goto out;
-		}
+		dir->set_data[i].info = calloc(info_count, sizeof(struct ldms_key_value_s));
+		if (!dir->set_data[i].info)
+			goto enomem;
 
 		/* If this set is in our local set tree, update it's set info */
 		__ldms_set_tree_lock();
@@ -2274,9 +2328,6 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	}
 
 out:
-	/* The callback could trigger a process exit. Free this memory
-	 * to avoid attempting to free this data while exiting
-	 */
 	json_doc_free(doc);
 
 	/* Callback owns dir memory. */
@@ -2287,6 +2338,14 @@ out:
 	dur_us = ldms_timespec_diff_us(&start, &end);
 	__xprt_stats_update(e, dur_us);
 	ovis_histogram_update(&xprt_op_hist[LDMS_XPRT_OP_DIR_REQ].hist, dur_us);
+	return;
+ syntax_error:
+	/* Malformed dir reply */
+	rc = EINVAL;
+	goto out;
+ enomem:
+	rc = ENOMEM;
+	goto out;
 }
 
 static
@@ -2500,7 +2559,7 @@ void __ldms_passive_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
- 		__ldms_xprt_resource_free(x);
+		__ldms_xprt_resource_free(x);
 		ldms_xprt_put(x, "connect");
 		break;
 	case LDMS_XPRT_EVENT_RECV:
@@ -2859,8 +2918,8 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 			 * the timestamp of the completion of the last read.
 			 */
 			memcpy(&ctxt->op_ctxt->update_profile.read_complete_ts,
-			                                &thrstat->last_op_start,
-			                                sizeof(struct timespec));
+							&thrstat->last_op_start,
+							sizeof(struct timespec));
 		}
 		__handle_update_data(x, ctxt, ev);
 		break;
@@ -2871,8 +2930,8 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 			 * we set or reset the read complete timestamp.
 			 */
 			memcpy(&ctxt->op_ctxt->update_profile.read_complete_ts,
-			                                &thrstat->last_op_start,
-			                                sizeof(struct timespec));
+							&thrstat->last_op_start,
+							sizeof(struct timespec));
 		}
 		__handle_update_meta(x, ctxt, ev);
 		break;
@@ -2880,8 +2939,8 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 		thrstat->last_op = LDMS_THRSTAT_OP_LOOKUP_REPLY;
 		if (ENABLED_PROFILING(LDMS_XPRT_OP_LOOKUP) && ctxt->op_ctxt) {
 			memcpy(&ctxt->op_ctxt->lookup_profile.complete_ts,
-			                          &thrstat->last_op_start,
-			                          sizeof(struct timespec));
+						  &thrstat->last_op_start,
+						  sizeof(struct timespec));
 		}
 
 		__handle_lookup(x, ctxt, ev);
@@ -3526,7 +3585,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 				if (ENABLED_PROFILING(LDMS_XPRT_OP_SEND) && ev->context) {
 					op_ctxt = (struct ldms_op_ctxt *)ev->context;
 					memcpy(&op_ctxt->send_profile.complete_ts, &thrstat->last_op_start,
-					                                          sizeof(struct timespec));
+										  sizeof(struct timespec));
 					(void)clock_gettime(CLOCK_REALTIME, &op_ctxt->send_profile.deliver_ts);
 				}
 				event.type = LDMS_XPRT_EVENT_SEND_COMPLETE;
@@ -3679,7 +3738,7 @@ static void __ldms_xprt_priority_set(ldms_t x, int prio);
 static void __ldms_xprt_cred_get(ldms_t x, ldms_cred_t lcl, ldms_cred_t rmt);
 static void __ldms_xprt_event_cb_set(ldms_t x, ldms_event_cb_t cb, void *cb_arg);
 int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void *arg,
-                                                         struct ldms_op_ctxt *op_ctxt);
+							 struct ldms_op_ctxt *op_ctxt);
 int __ldms_xprt_get_threads(ldms_t x, pthread_t *out, int n);
 zap_ep_t __ldms_xprt_get_zap_ep(ldms_t x);
 static ldms_set_t __ldms_xprt_set_by_name(ldms_t x, const char *set_name);
@@ -4221,7 +4280,7 @@ static  void sync_lookup_cb(ldms_t x, enum ldms_lookup_status status, int more,
 }
 
 static int __ldms_xprt_lookup(ldms_t x, const char *path, enum ldms_lookup_flags flags,
-		               ldms_lookup_cb_t cb, void *cb_arg, struct ldms_op_ctxt *op_ctxt)
+			       ldms_lookup_cb_t cb, void *cb_arg, struct ldms_op_ctxt *op_ctxt)
 {
 	int rc;
 	if ((flags & !cb)
@@ -4715,7 +4774,7 @@ static int __ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 			ldms_event_cb_t cb, void *cb_arg)
 {
 	int rc;
- 	struct ldms_xprt *_x = x;
+	struct ldms_xprt *_x = x;
 	struct ldms_conn_msg msg;
 	__ldms_xprt_conn_msg_init(x, &msg);
 	_x->event_cb = cb;
