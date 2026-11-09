@@ -1254,11 +1254,11 @@ static int sample(ldmsd_plug_handle_t handle)
 				 "loadavg metrics not initialized\n");
 			return rc;
 		}
-	}
-	rc = cpu_handler(mi, metric_no);
-	if (rc) {
-		ovis_log(mi->log, OVIS_LERROR, "Error %d in cpu handler\n", rc);
-		return rc;
+		rc = cpu_handler(mi, metric_no);
+		if (rc) {
+			ovis_log(mi->log, OVIS_LERROR, "Error %d in cpu handler\n", rc);
+			return rc;
+		}
 	}
 	rc = netdev_handler(mi, metric_no);
 	if (rc) {
