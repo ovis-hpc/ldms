@@ -553,7 +553,7 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_LOG_STATUS_REQ, log_status_handler, XUG
 	},
 	[LDMSD_STATS_RESET_REQ] = {
-		LDMSD_STATS_RESET_REQ, stats_reset_handler, XALL
+		LDMSD_STATS_RESET_REQ, stats_reset_handler, XUG
 	},
 
 	/* Reset requests of the stats|status requests */
@@ -604,7 +604,7 @@ static struct request_handler_entry request_handler[] = {
 	},
 
 	[LDMSD_PROFILING_REQ] = {
-		LDMSD_PROFILING_REQ, profiling_handler, XALL
+		LDMSD_PROFILING_REQ, profiling_handler, XUG
 	},
 
 	/* FAILOVER user commands */
