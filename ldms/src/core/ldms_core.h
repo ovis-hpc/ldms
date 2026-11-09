@@ -82,10 +82,9 @@
 #define LDMS_SETH_F_LCLBYTEORDER	LDMS_SETH_F_LE
 #endif
 
-/* Includes the terminating null byte */
-#define LDMS_LNAME_MAX		256 /* len is encoded as uin8_t */
-#define LDMS_SET_NAME_MAX	LDMS_LNAME_MAX
-#define LDMS_SCHEMA_NAME_MAX	LDMS_LNAME_MAX
+#define LDMS_NAME_MAX		255 /* len is encoded as uin8_t */
+#define LDMS_SET_NAME_MAX	LDMS_NAME_MAX
+#define LDMS_SCHEMA_NAME_MAX	LDMS_NAME_MAX
 #define LDMS_PRODUCER_NAME_MAX 64
 
 #pragma pack(4)
