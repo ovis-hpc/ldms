@@ -711,16 +711,17 @@ __record_set(const char *instance_name,
 	return NULL;
 }
 
-/**
- * Callers must hold the set_tree lock
- */
 extern struct ldms_set *__ldms_set_by_id(uint64_t id)
 {
 	struct ldms_set *set = NULL;
 	struct rbn *rbn;
+	__ldms_set_tree_lock();
 	rbn = rbt_find(&__id_tree, (void *)id);
-	if (rbn)
+	if (rbn) {
 		set = container_of(rbn, struct ldms_set, id_node);
+		ref_get(&set->ref, "set_by_id");
+	}
+	__ldms_set_tree_unlock();
 	return set;
 }
 
@@ -1094,18 +1095,18 @@ void __ldms_set_delete(ldms_set_t s, int notify)
 
 	SETDEBUG("set: %p\n", s);
 
-	__ldms_set_tree_lock();
 	__set = __ldms_set_by_id(s->set_id);
 	if (!__set) {
-		__ldms_set_tree_unlock();
 		/*
 		 * This is impossible since RBDs are removed.
 		 */
 		assert(0);
 		return;
 	}
+	__ldms_set_tree_lock();
 	rbt_del(&__set_tree, &s->rb_node);
 	rbt_del(&__id_tree, &s->id_node);
+	ref_put(&__set->ref, "set_by_id");
 	__ldms_set_tree_unlock();
 
 	SETDEBUG("set: %p proceed ...\n", s);

@@ -11797,6 +11797,7 @@ static int advertise_handler(ldmsd_req_ctxt_t reqc)
 			"Stop the advertisement, update its configuration, and then restart.\n",
 			hostname);
 send_reply:
+	free(hostname);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
 }
