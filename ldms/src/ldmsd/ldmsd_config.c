@@ -259,6 +259,8 @@ ldmsd_sampler_add(const char *cfg_name,
 		return NULL;
 	}
 	sampler->state = LDMSD_SAMP_STATE_INIT;
+	pthread_mutex_init(&sampler->set_list_lock, NULL);
+	LIST_INIT(&sampler->set_list);
 	sprintf(log_name, "sampler.%s.%s", plugin->name, cfg_name);
 	sampler->log = ovis_log_register(log_name, "Sampler plugin log file.");
 	if (!sampler->log)
@@ -521,20 +523,27 @@ int ldmsd_term_plugin(char *cfg_name)
 			return EBUSY;
 		}
 		sampler->state = LDMSD_SAMP_STATE_TERMINATING;
-		/* Deregister all sets for this plugin */
+		ldmsd_cfgobj_unlock(&sampler->cfg);
+		/* Deregister all sets for this plugin. Detach the whole
+		 * list under set_list_lock and close it so that a plugin
+		 * thread racing with us cannot re-register; then drop the
+		 * registry's set references outside the lock.
+		 */
+		LIST_HEAD(, ldmsd_sampler_set) drain;
 		struct ldmsd_sampler_set *_set;
-		while (( _set = LIST_FIRST(&sampler->set_list))) {
+		LIST_INIT(&drain);
+		pthread_mutex_lock(&sampler->set_list_lock);
+		sampler->set_list_closed = 1;
+		while ((_set = LIST_FIRST(&sampler->set_list))) {
 			LIST_REMOVE(_set, entry);
-			ldmsd_cfgobj_unlock(&sampler->cfg);
-			/* The ldms_set must be deregistered here while
-			 * the cfgobj is still around or
-			 * ldmsd_set_deregister will fail
-			 */
-			ldmsd_set_deregister(ldms_set_name_get(_set->set), sampler->cfg.name);
-			ldmsd_cfgobj_lock(&sampler->cfg);
+			LIST_INSERT_HEAD(&drain, _set, entry);
+		}
+		pthread_mutex_unlock(&sampler->set_list_lock);
+		while ((_set = LIST_FIRST(&drain))) {
+			LIST_REMOVE(_set, entry);
+			ldms_set_ref_put(_set->set, "ldmsd_set_register");
 			free(_set);
 		}
-		ldmsd_cfgobj_unlock(&sampler->cfg);
 		ldmsd_cfgobj_rm(&sampler->cfg);
 		ldmsd_sampler_put(sampler, "load");
 		ldmsd_sampler_put(sampler, "init");

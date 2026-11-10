@@ -671,7 +671,7 @@ int ldmsd_row_cache_make_list(ldmsd_row_list_t row_list, int row_count,
 	ldmsd_row_cache_t cache, ldmsd_row_cache_idx_t group_key);
 
 typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set,
-	                          ldms_set_t set_snapshot, void *ctxt);
+				  ldms_set_t set_snapshot, void *ctxt);
 typedef struct ldmsd_cfgobj_store *ldmsd_cfgobj_store_t;
 
 struct ldmsd_strgp {
@@ -1046,10 +1046,10 @@ struct ldmsd_store {
  *       Not to be used from inside plugins.
  */
 struct ldmsd_plugin_generic {
-        struct ldmsd_plugin *api;
-        char *name;
-        char *libpath;
-        void *dl_handle; /* handle that was returned by dlopen() */
+	struct ldmsd_plugin *api;
+	char *name;
+	char *libpath;
+	void *dl_handle; /* handle that was returned by dlopen() */
 };
 
 typedef struct ldmsd_cfgobj_sampler *ldmsd_cfgobj_sampler_t;
@@ -1107,11 +1107,16 @@ struct ldmsd_cfgobj_sampler {
 	struct ovis_event_s oev;
 
 	/* List of all sets associated with this configuration. See
-	 * ldmsd_set_register
+	 * ldmsd_set_register. Protected by set_list_lock, which is a
+	 * leaf lock: it is independent of cfg.lock so that plugins may
+	 * register/deregister from config(), sample() (both run with
+	 * cfg.lock held) and from their own threads.
 	 */
+	pthread_mutex_t set_list_lock;
 	LIST_HEAD(, ldmsd_sampler_set) set_list;
-	int use_xthread; /* !0 if use exclusitve thread */
-	pthread_t xthread; /* the exclusive thread */
+	int set_list_closed;	/* !0 once termination drained set_list */
+	int use_xthread;	/* !0 if use exclusitve thread */
+	pthread_t xthread;	/* the exclusive thread */
 };
 
 static inline const char *
@@ -1144,16 +1149,23 @@ ldmsd_cfgobj_sampler_t ldmsd_sampler_add(const char *name,
  * \brief ldmsd_set_register
  *
  * Register the metric set \c set with the ldmsd and associate the set
- * with the plugin \c plugin_name. After registration, the plugin_sets
- * configuration request will report the set as being provided by \c
- * plugin_name.
+ * with the sampler configuration \c plugin_name. After registration,
+ * the plugin_sets configuration request will report the set as being
+ * provided by \c plugin_name. If the sampler is already running, the
+ * set is given the sampler's update hint.
  *
- * This function is typically called by a plugin after creating a
- * metric set.
+ * The registry takes its own reference on \c set, so the set memory
+ * stays valid until ldmsd_set_deregister() (or sampler termination)
+ * even if the plugin calls ldms_set_delete() first. Plugins should
+ * still deregister before deleting.
+ *
+ * Thread safe; may be called from config(), sample() or a plugin thread.
  *
  * \param set The set to register for the plugin
- * \param plugin_name The name of the plugin to associate with the set
+ * \param plugin_name The sampler configuration name
  * \returns 0 on success
+ * \returns EINVAL, ENOENT, EEXIST (already registered),
+ *          EBUSY (sampler is terminating) or ENOMEM.
  */
 int ldmsd_set_register(ldms_set_t set, const char *plugin_name);
 
@@ -1166,13 +1178,11 @@ int ldmsd_set_register(ldms_set_t set, const char *plugin_name);
  * the sampler.
  *
  * This function is typically called by a sampler prior to calling
- * ldms_set_delete. This function is not thread safe and the caller
- * should ensure the sampler's set list isn't concurrently updated in
- * another thread.
+ * ldms_set_delete. It is thread safe, and a no-op if the set is not
+ * registered (e.g. sampler termination already deregistered it).
  *
  * \param inst_name The set-name to de-register for the plugin configuration
  * \param cfg_name The name of the plugin configuration
- * \returns 0 on success
  */
 void ldmsd_set_deregister(const char *inst_name, const char *cfg_name);
 
@@ -1217,8 +1227,8 @@ ldmsd_store_open(ldmsd_cfgobj_store_t store,
 static inline void
 ldmsd_store_flush(ldmsd_cfgobj_store_t store, ldmsd_store_handle_t sh)
 {
-        if (store->api->flush)
-                store->api->flush((ldmsd_plug_handle_t)store, sh);
+	if (store->api->flush)
+		store->api->flush((ldmsd_plug_handle_t)store, sh);
 }
 
 static inline void

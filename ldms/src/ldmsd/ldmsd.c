@@ -698,7 +698,8 @@ void plugin_sampler_cb(ovis_event_t oev)
 int ldmsd_set_register(ldms_set_t set, const char *cfg_name)
 {
 	ldmsd_cfgobj_sampler_t samp = NULL;
-	ldmsd_sampler_set_t s = NULL;
+	ldmsd_sampler_set_t s = NULL, e;
+	long interval_us = 0, offset_us = 0;
 	int rc = 0;
 
 	if (!set || ! cfg_name)
@@ -710,22 +711,44 @@ int ldmsd_set_register(ldms_set_t set, const char *cfg_name)
 		ovis_log(NULL, OVIS_LERROR,
 			"The specified sampler configuration '%s' does not exist.\n",
 			cfg_name);
-			return ENOENT;
+		return ENOENT;
 	}
 
 	s = calloc(1, sizeof(*s));
 	if (!s) {
 		rc = ENOMEM;
-		goto err_0;
+		goto out;
 	}
-
 	s->set = set;
 	s->sampler = samp;
 
+	pthread_mutex_lock(&samp->set_list_lock);
+	if (samp->set_list_closed) {
+		rc = EBUSY;
+		goto unlock;
+	}
+	LIST_FOREACH(e, &samp->set_list, entry) {
+		if (e->set == set) {
+			rc = EEXIST;
+			goto unlock;
+		}
+	}
+	ldms_set_ref_get(set, "ldmsd_set_register");
 	LIST_INSERT_HEAD(&samp->set_list, s, entry);
-	ldmsd_sampler_find_put(samp);
-	return 0;
-err_0:
+	s = NULL;
+	/* Sets created after 'start' (dynamic/job sets) need the hint too */
+	interval_us = samp->sample_interval_us;
+	offset_us = samp->sample_offset_us;
+ unlock:
+	pthread_mutex_unlock(&samp->set_list_lock);
+	if (!rc && interval_us > 0) {
+		int hrc = ldmsd_set_update_hint_set(set, interval_us, offset_us);
+		if (hrc)
+			ovis_log(sampler_log, OVIS_LWARN,
+				"Error %d setting the update hint on set '%s'\n",
+				hrc, ldms_set_instance_name_get(set));
+	}
+ out:
 	ldmsd_sampler_find_put(samp);
 	free(s);
 	return rc;
@@ -734,23 +757,31 @@ err_0:
 void ldmsd_set_deregister(const char *inst_name, const char *cfg_name)
 {
 	ldmsd_sampler_set_t s;
-	ldmsd_cfgobj_sampler_t samp = ldmsd_sampler_find_get(cfg_name);
-	const char *set_name;
+	ldmsd_cfgobj_sampler_t samp;
 
+	if (!inst_name || !cfg_name)
+		return;
+	samp = ldmsd_sampler_find_get(cfg_name);
 	if (!samp) {
 		ovis_log(NULL, OVIS_LINFO,
-			"Dregistering set name '%s' failed because the "
+			"Deregistering set name '%s' failed because the "
 			"sampler config '%s' does not exist.\n",
 			inst_name, cfg_name);
 		return;
 	}
+	pthread_mutex_lock(&samp->set_list_lock);
 	LIST_FOREACH(s, &samp->set_list, entry) {
-		set_name = ldms_set_instance_name_get(s->set);
-		if (0 == strcmp(set_name, inst_name)) {
+		/* s->set is pinned by the registry ref, so this is safe
+		 * even if the plugin already called ldms_set_delete(). */
+		if (0 == strcmp(ldms_set_instance_name_get(s->set), inst_name)) {
 			LIST_REMOVE(s, entry);
-			free(s);
 			break;
 		}
+	}
+	pthread_mutex_unlock(&samp->set_list_lock);
+	if (s) {
+		ldms_set_ref_put(s->set, "ldmsd_set_register");
+		free(s);
 	}
 	ldmsd_sampler_find_put(samp);
 }
@@ -953,33 +984,12 @@ void __transaction_end_time_get(struct timespec *start, struct timespec *dur,
 	}
 }
 
-ldmsd_sampler_set_t ldmsd_sampler_set_find(const char *inst_name)
-{
-	ldmsd_cfgobj_sampler_t samp;
-	ldmsd_sampler_set_t sset = NULL;
-	ldmsd_cfgobj_t cfg_obj;
-
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_SAMPLER);
-	for (cfg_obj = ldmsd_cfgobj_first(LDMSD_CFGOBJ_SAMPLER);
-		cfg_obj;
-		cfg_obj = ldmsd_cfgobj_next(cfg_obj)) {
-
-		samp = (ldmsd_cfgobj_sampler_t)cfg_obj;
-		LIST_FOREACH(sset, &samp->set_list, entry) {
-			if (0 == strcmp(ldms_set_instance_name_get(sset->set), inst_name)) {
-				break;
-			}
-		}
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
-	return sset;
-}
-
 int __sampler_set_info_add(ldmsd_cfgobj_sampler_t samp, long interval_us, long offset_us)
 {
 	ldmsd_sampler_set_t sset;
-	int rc;
+	int rc = 0;
 
+	pthread_mutex_lock(&samp->set_list_lock);
 	LIST_FOREACH(sset, &samp->set_list, entry) {
 		rc = ldmsd_set_update_hint_set(sset->set, interval_us, offset_us);
 		if (rc) {
@@ -987,10 +997,11 @@ int __sampler_set_info_add(ldmsd_cfgobj_sampler_t samp, long interval_us, long o
 				"Error %d: Failed to add "
 				"the update hint to set '%s'\n",
 				rc, ldms_set_instance_name_get(sset->set));
-			return rc;
+			break;
 		}
 	}
-	return 0;
+	pthread_mutex_unlock(&samp->set_list_lock);
+	return rc;
 }
 
 void *event_proc(void *v);
