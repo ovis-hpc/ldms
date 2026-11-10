@@ -1316,9 +1316,12 @@ process_req_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 	struct rbn *rbn;
 	struct ldms_lookup_peer *np;
 	struct xprt_set_coll_entry *ent;
-	ldms_set_t set = __ldms_set_by_id(req->req_notify.set_id);
+	ldms_set_t set;
+
+	set = __ldms_set_by_id(req->req_notify.set_id);
 	if (!set)
 		return;
+
 	/* enlist or update the peer */
 	pthread_mutex_lock(&set->lock);
 	rbn = rbt_find(&set->lookup_coll, x);
@@ -1335,6 +1338,7 @@ process_req_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 		XPRT_LOG(x, OVIS_LCRITICAL, "%s:%s:%d Not enough memory\n",
 				__FILE__, __func__, __LINE__);
 		pthread_mutex_unlock(&set->lock);
+		ref_put(&set->ref, "set_by_id");
 		return;
 	}
 	rbn_init(&np->rbn, x);
@@ -1354,6 +1358,7 @@ process_req_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 					"%s:%s:%d Not enough memory\n",
 					__FILE__, __func__, __LINE__);
 			pthread_mutex_unlock(&x->lock);
+			ref_put(&set->ref, "set_by_id");
 			return;
 		}
 		rbn_init(&ent->rbn, set);
@@ -1361,6 +1366,7 @@ process_req_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 		ref_get(&set->ref, "xprt_set_coll");
 		rbt_ins(&x->set_coll, &ent->rbn);
 	}
+	ref_put(&set->ref, "set_by_id");
 	pthread_mutex_unlock(&x->lock);
 }
 
@@ -1381,6 +1387,7 @@ process_cancel_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 		np = NULL;
 	}
 	pthread_mutex_unlock(&set->lock);
+	ref_put(&set->ref, "set_by_id");
 	if (np) {
 		ldms_xprt_put(np->xprt, "notify_peer");
 		free(np);
@@ -1407,8 +1414,10 @@ process_cancel_push_request(struct ldms_xprt *x, struct ldms_request *req)
 		pp = NULL;
 	}
 	pthread_mutex_unlock(&set->lock);
-	if (!pp)
+	if (!pp) {
+		ref_put(&set->ref, "set_by_id");
 		return; /* nothing to do */
+	}
 	len = sizeof(struct ldms_reply_hdr) + sizeof(struct ldms_push_reply);
 	reply.hdr.xid = 0;
 	reply.hdr.cmd = htonl(LDMS_CMD_PUSH_REPLY);
@@ -1422,7 +1431,7 @@ process_cancel_push_request(struct ldms_xprt *x, struct ldms_request *req)
 
 	ldms_xprt_put(pp->xprt, "push_set");
 	free(pp);
-
+	ref_put(&set->ref, "set_by_id");
 	return;
 }
 
@@ -2556,11 +2565,14 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		XPRT_LOG(x, OVIS_LERROR, "%s: x %p: push to set_id %ld, which "
 			 "is not a remote set; dropped\n", __func__, x,
 			 reply->push.set_id);
+		ref_put(&set->ref, "set_by_id");
 		return;
 	}
 	rc = __xprt_set_access_check(x, set, LDMS_ACCESS_WRITE);
-	if (rc)
+	if (rc) {
+		ref_put(&set->ref, "set_by_id");
 		return; /* NOTE should we terminate the xprt? */
+	}
 
 	/*
 	 * Use the length of the local mapping, fixed when the set was
@@ -2574,6 +2586,7 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 			 "%u is outside set '%s' (%zu bytes); dropped\n",
 			 __func__, x, data_len, data_off,
 			 ldms_set_instance_name_get(set), set_len);
+		ref_put(&set->ref, "set_by_id");
 		return;
 	}
 
@@ -2585,9 +2598,10 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 
 	push_flags = ntohl(reply->push.flags);
 
-	if (push_flags & LDMS_CMD_PUSH_REPLY_F_MORE)
+	if (push_flags & LDMS_CMD_PUSH_REPLY_F_MORE) {
+		ref_put(&set->ref, "set_by_id");
 		return; /* expecting more push data; do not proceed */
-
+	}
 	if (set->meta->heap_sz) {
 		void *base = ((void*)set->data) + set->data->size - set->meta->heap_sz;
 		if (ldms_set_is_consistent(set))
@@ -2599,6 +2613,7 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	if (set->push_cb) {
 		set->push_cb(x, set, push_flags, set->push_cb_arg);
 	}
+	ref_put(&set->ref, "set_by_id");
 }
 
 void ldms_xprt_dir_free(ldms_t t, ldms_dir_t dir)
@@ -3461,6 +3476,7 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 		pp->push_flags = ntohl(push->flags);
 		pp->remote_set_id = push->push_set_id;
 		pthread_mutex_unlock(&set->lock);
+		ref_put(&set->ref, "set_by_id");
 		return;
 	}
 	pp = calloc(1, sizeof(*pp));
@@ -3468,6 +3484,7 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 		pthread_mutex_unlock(&set->lock);
 		XPRT_LOG(X, OVIS_LCRIT, "%s:%s:%d Not enough memory\n",
 				__FILE__, __func__, __LINE__);
+		ref_put(&set->ref, "set_by_id");
 		return;
 	}
 	rbn_init(&pp->rbn, x);
@@ -3482,6 +3499,7 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 	rbn = rbt_find(&x->set_coll, set);
 	if (rbn) {
 		pthread_mutex_unlock(&x->lock);
+		ref_put(&set->ref, "set_by_id");
 		return;
 	}
 	ent = calloc(1, sizeof(*ent));
@@ -3489,6 +3507,7 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 		pthread_mutex_unlock(&x->lock);
 		XPRT_LOG(x, OVIS_LCRIT, "%s:%s:%d Not enough memory\n",
 				__FILE__, __func__, __LINE__);
+		ref_put(&set->ref, "set_by_id");
 		return;
 	}
 	rbn_init(&ent->rbn, set);
@@ -3496,6 +3515,7 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 	ref_get(&set->ref, "xprt_set_coll");
 	rbt_ins(&x->set_coll, &ent->rbn);
 	pthread_mutex_unlock(&x->lock);
+	ref_put(&set->ref, "set_by_id");
 
 	return;
 }
