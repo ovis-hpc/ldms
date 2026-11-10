@@ -2523,14 +2523,59 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	int rc;
 	ldms_set_t set;
 
+	size_t msg_len = ntohl(reply->hdr.len);	/* <= bytes received; see recv_cb() */
+	const size_t push_hdr_len = sizeof(struct ldms_reply_hdr)
+				  + sizeof(struct ldms_push_reply);
+	size_t set_len;
+
+	/*
+	 * Everything below is peer-controlled: set_id, data_off and
+	 * data_len. Bound the copy by what was actually received and by the
+	 * size of the local set mapping before touching set memory.
+	 */
+	if (msg_len < push_hdr_len) {
+		XPRT_LOG(x, OVIS_LERROR, "%s: x %p: push reply length %zu is "
+			 "shorter than the push header (%zu); dropped\n",
+			 __func__, x, msg_len, push_hdr_len);
+		return;
+	}
+	if (data_len > msg_len - push_hdr_len) {
+		XPRT_LOG(x, OVIS_LERROR, "%s: x %p: push data_len %u exceeds "
+			 "the %zu bytes of payload received; dropped\n",
+			 __func__, x, data_len, msg_len - push_hdr_len);
+		return;
+	}
+
 	set = __ldms_set_by_id(reply->push.set_id);
 	if (!set) {
 		XPRT_LOG(x, OVIS_LERROR, "%s: set_id %ld not found\n", __func__, reply->push.set_id);
 		return;
 	}
+	/* Only a mirror of a remote set can receive pushed data */
+	if (!(set->flags & LDMS_SET_F_REMOTE) || !set->lmap) {
+		XPRT_LOG(x, OVIS_LERROR, "%s: x %p: push to set_id %ld, which "
+			 "is not a remote set; dropped\n", __func__, x,
+			 reply->push.set_id);
+		return;
+	}
 	rc = __xprt_set_access_check(x, set, LDMS_ACCESS_WRITE);
 	if (rc)
 		return; /* NOTE should we terminate the xprt? */
+
+	/*
+	 * Use the length of the local mapping, fixed when the set was
+	 * created, not meta_sz/data_sz/array_card from set->meta: a meta
+	 * push rewrites those, so the peer controls them.
+	 */
+	set_len = zap_map_len(set->lmap);
+	if ((size_t)data_off > set_len ||
+	    (size_t)data_len > set_len - (size_t)data_off) {
+		XPRT_LOG(x, OVIS_LERROR, "%s: x %p: push of %u bytes at offset "
+			 "%u is outside set '%s' (%zu bytes); dropped\n",
+			 __func__, x, data_len, data_off,
+			 ldms_set_instance_name_get(set), set_len);
+		return;
+	}
 
 	/* Copy the data to the metric set */
 	if (data_len) {
