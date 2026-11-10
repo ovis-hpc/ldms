@@ -353,7 +353,7 @@ void rdcinfo_reset(rdcinfo_inst_t inst)
 		ldms_set_t set = inst->devset[i];
 		if (set) {
 			const char *tmp = ldms_set_instance_name_get(set);
-			ldmsd_set_deregister(tmp, inst->base->instance_name);
+			ldmsd_set_deregister(tmp, inst->base->cfg_name);
 			ldms_set_unpublish(set);
 			ldms_set_delete(set);
 			inst->devset[i] = NULL;

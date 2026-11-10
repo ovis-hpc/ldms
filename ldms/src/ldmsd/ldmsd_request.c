@@ -5900,7 +5900,7 @@ static int plugn_usage_handler(ldmsd_req_ctxt_t reqc)
 	return rc;
 }
 
-/* Caller must hold the set tree lock. */
+/* Caller must hold a reference on samp. Takes samp->set_list_lock. */
 static int sampler_sets_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_cfgobj_sampler_t samp)
 {
 	ldmsd_sampler_set_t set;
@@ -5913,19 +5913,22 @@ static int sampler_sets_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_cfgobj_sampler_t s
 	if (rc)
 		return rc;
 	set_count = 0;
+	pthread_mutex_lock(&samp->set_list_lock);
 	LIST_FOREACH(set, &samp->set_list, entry) {
 		if (set_count) {
 			rc = linebuf_printf(reqc, ",");
 			if (rc)
-				return rc;
+				goto out;
 		}
 		rc = linebuf_printf(reqc, "\"%s\"",
 			ldms_set_instance_name_get(set->set));
 		if (rc)
-			return rc;
+			goto out;
 		set_count++;
 	}
 	rc = linebuf_printf(reqc, "]}");
+ out:
+	pthread_mutex_unlock(&samp->set_list_lock);
 	return rc;
 }
 
@@ -5939,25 +5942,35 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 	int comma = 0;
 
 	cfg_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (cfg_name)
+	if (cfg_name) {
 		samp = ldmsd_sampler_find_get(cfg_name);
-	else
-		samp = ldmsd_sampler_first();
-	free(cfg_name);
-	while (samp) {
-		if (comma) {
-			rc = linebuf_printf(reqc, ",");
+		free(cfg_name);
+		if (samp) {
+			rc = sampler_sets_json_obj(reqc, samp);
+			ldmsd_sampler_find_put(samp);
 			if (rc)
 				goto err;
 		}
-		rc = sampler_sets_json_obj(reqc, samp);
-		if (rc) {
-			goto err;
+	} else {
+		/* ldmsd_sampler_first/next require the sampler tree lock */
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_SAMPLER);
+		for (samp = ldmsd_sampler_first(); samp;
+				samp = ldmsd_sampler_next(samp)) {
+			if (comma) {
+				rc = linebuf_printf(reqc, ",");
+				if (rc)
+					break;
+			}
+			rc = sampler_sets_json_obj(reqc, samp);
+			if (rc)
+				break;
+			comma = 1;
 		}
-		comma = 1;
-		if (cfg_name)
-			break;
-		samp = ldmsd_sampler_next(samp);
+		if (samp) /* broke out early: drop the 'iter' reference */
+			ldmsd_sampler_put(samp, "iter");
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_SAMPLER);
+		if (rc)
+			goto err;
 	}
 	cnt = reqc->line_off + 2; /* +2 for '[' and ']'*/
 
