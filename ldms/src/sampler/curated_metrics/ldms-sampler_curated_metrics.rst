@@ -23,8 +23,15 @@ DESCRIPTION
 
 With LDMS (Lightweight Distributed Metric Service), plugins for the
 ldmsd (ldms daemon) are configured via ldmsd_controller or a
-configuration file. The curated_metrics plugin provides memory info from
-/proc/curated_metrics.
+configuration file. The curated_metrics plugin provides a curated set of
+metrics from /proc/meminfo, /proc/loadavg, /proc/stat and /proc/net/dev.
+Memory and CPU values are reported as percentages, and event counters
+(interrupts, context switches, forks and interface traffic) as per-second
+rates over the last sample interval. Per-CPU and per-interface values are
+reported as records in the cpu_list and netdev_list metrics.
+
+The first sample after configuration only primes the counters; the set is
+updated starting with the second sample.
 
 This plugin is multi-instance capable.
 
@@ -37,7 +44,7 @@ specific to the this plugin; see :ref:`ldms_sampler_base(7) <ldms_sampler_base>`
 attributes of the base class.
 
 **config**
-   | name=<plugin_instance_name> [plugin=<plugin_name>] [schema=<sname>] [path=<config_file_path>]
+   | name=<plugin_instance_name> [plugin=<plugin_name>] [schema=<sname>] [path=<config_file_path>] [max_ifaces=<count>]
    | configuration line
 
    name=<plugin_instance_name>
@@ -73,34 +80,50 @@ attributes of the base class.
         runnable - Currently runnable kernel scheduling entities
         scheduling_entities - Number of kernel scheduling entities that exist on the system
         newest_pid - PID of the process that was most recently created
-        cpu_name - Name of the cpu core
-        idle - Percentage of idle
-        sys - Percentage of sys processes out of cpu total
-        user - Percentage of cpu dedicated to user processes
-        iowait - Percentage of processes in iowait
-        interrupts - Number of interrupts in the time between samples
-        context_sw - Number of context switches between samples
-        fork - Number of forks between samples
+        cpu_name - Name of the cpu ("cpu" is the aggregate of all cpus).
+                   Added automatically when any per-cpu metric is selected.
+        idle - Percentage of idle time over the last interval
+        sys - Percentage of system time over the last interval
+        user - Percentage of user time over the last interval
+        iowait - Percentage of iowait time over the last interval
+        interrupts - Interrupts per second over the last interval
+        context_sw - Context switches per second over the last interval
+        fork - Forks per second over the last interval
         procs_blocked - Number of processes currently blocked
         procs_running - Number of processes currently running on CPUs
-        iface_name - The name of a interface. May not be specified in metric config file
-        rx_bytes - Number of receive bytes for the iface_name between samples
-        rx_packets - Number of receive packets for the iface_name between samples
-        rx_errs - Number of receive errors for the iface_name between samples
-        rx_drop - Number of network packets dropped for the iface_name between samples
-        tx_bytes - Number of transfer bytes for the iface_name between samples
-        tx_packets - Number of transfer packets for the iface_name between samples
-        tx_errs - Number of transer erros for the iface_name between samples
+        iface_name - The name of an interface. Added automatically when any
+                     per-interface metric is selected.
+        rx_bytes - Bytes received per second for the interface
+        rx_packets - Packets received per second for the interface
+        rx_errs - Receive errors per second for the interface
+        rx_drop - Received packets dropped per second for the interface
+        tx_bytes - Bytes transmitted per second for the interface
+        tx_packets - Packets transmitted per second for the interface
+        tx_errs - Transmit errors per second for the interface
+
+   max_ifaces=<count>
+      |
+      | Optional number of interface records to reserve in the set. The
+        default is the number of entries in "ifaces" when the config file
+        has one, otherwise twice the number of interfaces present at
+        configuration time plus 8. Interfaces beyond this are not
+        reported and a warning is logged once.
 
 CONFIG FILE
 ===========
-Metrics may be selectively specified in a json file passed in the confiration.
+Metrics may be selectively specified in a json file passed in the
+configuration. Unknown metric names are a configuration error. The
+optional "ifaces" list restricts per-interface records to the named
+interfaces.
 
 Syntax of file below:
 
-{
-        "metrics" : [ "free", "buff", "cached" ]
-}
+::
+
+   {
+           "metrics" : [ "free", "buff", "cached", "rx_bytes" ],
+           "ifaces"  : [ "eth0", "ib0" ]
+   }
 
 
 BUGS

@@ -48,20 +48,20 @@
  */
 /**
  * \file curated_metrics.c
- * \brief /proc/meminfo data provider
- * \brief /proc/loadavg data provider
- * \brief /proc/stat data provider
- * \brief /proc/net/dev data provider
+ * \brief Curated subset of /proc/meminfo, /proc/loadavg, /proc/stat and
+ *        /proc/net/dev, reported as percentages and per-second rates.
  */
 #define _GNU_SOURCE
 #include <inttypes.h>
 #include <unistd.h>
-#include <sys/errno.h>
+#include <errno.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/queue.h>
 #include <time.h>
 #include <pthread.h>
 #include <net/if.h>
@@ -77,7 +77,24 @@
 #define PROC_STAT "/proc/stat"
 #define NET_DEV "/proc/net/dev"
 
-#define MAXIFACE 256
+#ifndef ARRAY_LEN
+#define ARRAY_LEN(a) (sizeof((a))/sizeof((a)[0]))
+#endif
+
+enum cm_src {
+	SRC_MEMINFO,
+	SRC_LOADAVG,
+	SRC_STAT,
+	SRC_NETDEV,
+	SRC_COUNT
+};
+
+static const char *src_path[SRC_COUNT] = {
+	[SRC_MEMINFO] = PROC_MEMINFO,
+	[SRC_LOADAVG] = PROC_LOADAVG,
+	[SRC_STAT]    = PROC_STAT,
+	[SRC_NETDEV]  = NET_DEV,
+};
 
 /* meminfo vars */
 typedef struct meminfo_data {
@@ -101,7 +118,7 @@ typedef struct loadavg_data {
 	uint64_t new_pid;
 } load_t;
 
-/* stat vars */
+/* per-cpu jiffies */
 typedef struct cpu_data {
 	uint64_t user;
 	uint64_t nice;
@@ -116,7 +133,11 @@ typedef struct cpu_data {
 	uint64_t cpu_sum;
 } cpu_t;
 
-/* procstat vars */
+/*
+ * /proc/stat values handed to the metric callbacks. cpu_data holds the
+ * per-interval delta of the CPU currently being written; intr, ctxt_sw and
+ * fork hold per-interval deltas.
+ */
 typedef struct stat_data {
 	cpu_t cpu_data;
 	uint64_t ctxt_sw;
@@ -146,109 +167,126 @@ typedef struct netdev_data {
 	uint64_t tx_cmprsd;
 } netdev_t;
 
-typedef struct iface_ent {
+/*
+ * One CPU or one interface: its previous raw counters and its record
+ * instance in the set (NULL until the first interval is written).
+ */
+typedef struct cm_ent {
+	TAILQ_ENTRY(cm_ent) entry;
 	char name[IFNAMSIZ];
-	netdev_t data;
-	TAILQ_ENTRY(iface_ent) entry;
-} iface_ent_t;
+	uint64_t gen;		/* last sample generation it was seen in */
+	int primed;		/* prev holds a valid reading */
+	ldms_mval_t rec;
+	union {
+		cpu_t cpu;
+		netdev_t net;
+	} prev;
+} *cm_ent_t;
+TAILQ_HEAD(cm_ent_list, cm_ent);
 
-#define LBUFSZ 256
-#define PROCBUFSZ 65536
+/* A selected metric: its metric_list index and its set/record metric id */
+struct cm_sel {
+	int midx;
+	int id;
+};
 
-#ifndef ARRAY_LEN
-#define ARRAY_LEN(a) (sizeof((a))/sizeof((a)[0]))
-#endif
-
-typedef struct collect_metrics_s  {
-	int collect;
-} *col_m_t;
+#define NUM_METRICS 32
 
 typedef struct curated_metrics_s {
-	/* meminfo */
-	FILE *mf;
-	/* load avg */
-	FILE *lf;
-	/* proc stat */
-	FILE *sf;
-	/* netdev */
-	FILE *nf;
+	FILE *fp[SRC_COUNT];
+	int sample_src[SRC_COUNT];
+	int collect[NUM_METRICS];
 
-	/* True/False boolean to open file or not */
-	int sample_meminfo;
-	int sample_stat;
-	int sample_loadavg;
-	int sample_netdev;
+	/* Selected scalar metrics, per source, in schema order */
+	struct cm_sel scalar[SRC_COUNT][NUM_METRICS];
+	int n_scalar[SRC_COUNT];
 
-	struct collect_metrics_s collect_list[32];
+	/* Selected record fields (name excluded), per source */
+	struct cm_sel field[SRC_COUNT][NUM_METRICS];
+	int n_field[SRC_COUNT];
+	int name_id[SRC_COUNT];		/* record index of the name field */
+	int rec_idx[SRC_COUNT];		/* record definition metric id */
+	int list_mid[SRC_COUNT];	/* list metric id, -1 if none */
+	int heap_full_logged[SRC_COUNT];
 
-	/* proc stat */
-	int stat_rec_idx;
-	int stat_metric_len;
-	size_t stat_rec_heap_sz;
-	size_t stat_heap_sz;
-	int stat_list_mid;
+	/* Known CPUs / interfaces, in /proc order */
+	struct cm_ent_list ents[SRC_COUNT];
+	cm_ent_t hint[SRC_COUNT];
+	uint64_t gen;
 
-	/* netdev */
-	int rec_def_idx;
-	int rec_metric_len;
-	size_t rec_heap_sz;
-	size_t heap_sz;
-	int netdev_list_mid;
+	/* Optional interface filter and set heap sizing */
+	char **ifaces;
+	int n_ifaces;
+	int max_ifaces;
+
+	char *lbuf;
+	size_t lbuf_sz;
 
 	ovis_log_t log;
-	int metric_offset;
 	base_data_t base;
 	int skip_first;
 
-	stat_t stat;
 	mem_t minfo;
 	load_t loadavg;
-	TAILQ_HEAD(iface_list, iface_ent) netdevq;
-	struct iface_ent *cur_iface;
+	stat_t stat;
+	netdev_t net;		/* delta of the interface being written */
+	uint64_t prev_intr;
+	uint64_t prev_ctxt;
+	uint64_t prev_fork;
 
-	time_t prev_time;
-	time_t curr_time;
-	time_t dtime;
+	struct timespec prev_ts;
+	double dtime;		/* seconds since the previous sample */
 } *curated_metrics_t;
 
 typedef void (*metric_cb)(curated_metrics_t mi, ldms_mval_t v);
 
 /* available metrics */
 typedef struct cm_s {
-	char *name;
+	const char *name;
 	int not_rec;
-	char *file_path;
+	enum cm_src src;
 	enum ldms_value_type vtype;
 	metric_cb cb;
 	const char unit[16];
 } *cm_t;
 
-static double safe_div(double x, double y) {
-	if (y == 0)
-		return x;
-	return x / y;
+static inline uint64_t dlt(uint64_t cur, uint64_t prev)
+{
+	/* Treat a counter that went backwards (reset, 32-bit wrap,
+	 * iowait jitter) as zero instead of a huge unsigned value. */
+	return cur >= prev ? cur - prev : 0;
+}
+
+static inline double pct(uint64_t part, uint64_t whole)
+{
+	return whole ? ((double)part / (double)whole) * 100.0 : 0.0;
+}
+
+static inline double rate(curated_metrics_t mi, uint64_t count)
+{
+	return mi->dtime > 0 ? (double)count / mi->dtime : 0.0;
 }
 
 static void free_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = ((double)mi->minfo.memfree / (double)mi->minfo.memtotal) * 100.0;
+	v->v_d = pct(mi->minfo.memfree, mi->minfo.memtotal);
 }
 static void buff_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = ((double)mi->minfo.buffers / (double)mi->minfo.memtotal) * 100.0;
+	v->v_d = pct(mi->minfo.buffers, mi->minfo.memtotal);
 }
 static void cached_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = ((double)mi->minfo.cached / (double)mi->minfo.memtotal) * 100.0;
+	v->v_d = pct(mi->minfo.cached, mi->minfo.memtotal);
 }
 static void active_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = ((double)mi->minfo.active / (double)mi->minfo.memtotal) * 100.0;
+	v->v_d = pct(mi->minfo.active, mi->minfo.memtotal);
 }
 static void inactive_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = ((double)mi->minfo.inactive / (double)mi->minfo.memtotal) * 100.0;
+	v->v_d = pct(mi->minfo.inactive, mi->minfo.memtotal);
 }
 static void dirty_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = ((double)mi->minfo.dirty / (double)mi->minfo.memtotal) * 100.0;
+	v->v_d = pct(mi->minfo.dirty, mi->minfo.memtotal);
 }
 static void writeback_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = ((double)mi->minfo.writeback / (double)mi->minfo.memtotal) * 100.0;
+	v->v_d = pct(mi->minfo.writeback, mi->minfo.memtotal);
 }
 static void memtotal_cb(curated_metrics_t mi, ldms_mval_t v) {
 	v->v_u64 = mi->minfo.memtotal;
@@ -272,414 +310,497 @@ static void new_pid_cb(curated_metrics_t mi, ldms_mval_t v) {
 	v->v_u64 = mi->loadavg.new_pid;
 }
 static void idle_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = ((double)mi->stat.cpu_data.idle / (double)mi->stat.cpu_data.cpu_sum) * 100.0;
+	v->v_d = pct(mi->stat.cpu_data.idle, mi->stat.cpu_data.cpu_sum);
 }
 static void sys_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = ((double)mi->stat.cpu_data.sys / (double)mi->stat.cpu_data.cpu_sum) * 100.0;
+	v->v_d = pct(mi->stat.cpu_data.sys, mi->stat.cpu_data.cpu_sum);
 }
 static void user_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = ((double)mi->stat.cpu_data.user / (double)mi->stat.cpu_data.cpu_sum) * 100.0;
+	v->v_d = pct(mi->stat.cpu_data.user, mi->stat.cpu_data.cpu_sum);
 }
 static void iowait_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = ((double)mi->stat.cpu_data.iowait / (double)mi->stat.cpu_data.cpu_sum) * 100.0;
+	v->v_d = pct(mi->stat.cpu_data.iowait, mi->stat.cpu_data.cpu_sum);
 }
 static void intr_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = safe_div((double)mi->stat.intr, (double)mi->dtime);
+	v->v_d = rate(mi, mi->stat.intr);
 }
 static void ctxt_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = safe_div((double)mi->stat.ctxt_sw, (double)mi->dtime);
+	v->v_d = rate(mi, mi->stat.ctxt_sw);
 }
 static void fork_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = safe_div((double)mi->stat.fork, (double)mi->dtime);
+	v->v_d = rate(mi, mi->stat.fork);
 }
 static void procs_run_cb(curated_metrics_t mi, ldms_mval_t v) {
 	v->v_u64 = mi->stat.procs_running;
 }
-static void  procs_block_cb(curated_metrics_t mi, ldms_mval_t v) {
+static void procs_block_cb(curated_metrics_t mi, ldms_mval_t v) {
 	v->v_u64 = mi->stat.procs_blocked;
 }
 static void rxb_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = safe_div((double)mi->cur_iface->data.rx_bytes, (double)mi->dtime);
+	v->v_d = rate(mi, mi->net.rx_bytes);
 }
 static void rx_packets_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = safe_div((double)mi->cur_iface->data.rx_packets, (double)mi->dtime);
+	v->v_d = rate(mi, mi->net.rx_packets);
 }
 static void rx_errs_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = safe_div((double)mi->cur_iface->data.rx_errs, (double)mi->dtime);
+	v->v_d = rate(mi, mi->net.rx_errs);
 }
 static void rx_drop_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = safe_div((double)mi->cur_iface->data.rx_drop, (double)mi->dtime);
+	v->v_d = rate(mi, mi->net.rx_drop);
 }
 static void txb_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = safe_div((double)mi->cur_iface->data.tx_bytes, (double)mi->dtime);
+	v->v_d = rate(mi, mi->net.tx_bytes);
 }
 static void txp_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = safe_div((double)mi->cur_iface->data.tx_packets, (double)mi->dtime);
+	v->v_d = rate(mi, mi->net.tx_packets);
 }
 static void tx_errs_cb(curated_metrics_t mi, ldms_mval_t v) {
-	v->v_d = safe_div((double)mi->cur_iface->data.tx_errs, (double)mi->dtime);
+	v->v_d = rate(mi, mi->net.tx_errs);
 }
 
-struct cm_s metric_list[] = {
-	{ "free",     1, PROC_MEMINFO, LDMS_V_D64, free_cb, "%" },
-	{ "buff",     1, PROC_MEMINFO, LDMS_V_D64, buff_cb, "%" },
-	{ "cached",   1, PROC_MEMINFO, LDMS_V_D64, cached_cb, "%" },
-	{ "inactive", 1, PROC_MEMINFO, LDMS_V_D64, inactive_cb, "%" },
-	{ "active",   1, PROC_MEMINFO, LDMS_V_D64, active_cb, "%" },
-	{ "dirty",    1, PROC_MEMINFO, LDMS_V_D64, dirty_cb, "%" },
-	{ "writeback", 1, PROC_MEMINFO, LDMS_V_D64, writeback_cb, "%" },
-	{ "MemTotal", 1, PROC_MEMINFO, LDMS_V_U64, memtotal_cb, "kB" },
-	{ "load1min", 1, PROC_LOADAVG, LDMS_V_D64, load1_cb, "avg/1min" },
-	{ "load5min", 1, PROC_LOADAVG, LDMS_V_D64, load5_cb, "avg/5min" },
-	{ "load15min", 1, PROC_LOADAVG, LDMS_V_D64, load15_cb, "avg/15min" },
-	{ "runnable", 1, PROC_LOADAVG, LDMS_V_U64, run_cb, "count" },
-	{ "scheduling_entities", 1, PROC_LOADAVG, LDMS_V_U64, sched_ent_cb, "count" },
-	{ "newest_pid", 1, PROC_LOADAVG, LDMS_V_U64, new_pid_cb, "pid" },
-	{ "cpu_name", 0, PROC_STAT, LDMS_V_CHAR_ARRAY, NULL, "" },
-	{ "idle", 0, PROC_STAT, LDMS_V_D64, idle_cb, "%" },
-	{ "sys", 0, PROC_STAT, LDMS_V_D64, sys_cb, "%" },
-	{ "user", 0, PROC_STAT, LDMS_V_D64, user_cb, "%" },
-	{ "iowait", 0, PROC_STAT, LDMS_V_D64, iowait_cb, "%" },
-	{ "interrupts", 1, PROC_STAT, LDMS_V_D64, intr_cb, "intr/sec" },
-	{ "context_sw", 1, PROC_STAT, LDMS_V_D64, ctxt_cb, "ctxt_sw/sec" },
-	{ "fork", 1, PROC_STAT, LDMS_V_D64, fork_cb, "forks/sec" },
-	{ "procs_running", 1, PROC_STAT, LDMS_V_U64, procs_run_cb, "count" },
-	{ "procs_blocked", 1, PROC_STAT, LDMS_V_U64, procs_block_cb, "count" },
-	{ "iface_name", 0, NET_DEV, LDMS_V_CHAR_ARRAY, NULL, "" },
-	{ "rx_bytes", 0, NET_DEV, LDMS_V_D64, rxb_cb, "rx_bytes/sec" },
-	{ "rx_packets", 0, NET_DEV, LDMS_V_D64, rx_packets_cb, "rx_packets/sec" },
-	{ "rx_errs", 0, NET_DEV, LDMS_V_D64, rx_errs_cb, "rx_errs/sec" },
-	{ "rx_drop", 0, NET_DEV, LDMS_V_D64, rx_drop_cb, "rx_drop/sec" },
-	{ "tx_bytes", 0, NET_DEV, LDMS_V_D64, txb_cb, "tx_bytes/sec" },
-	{ "tx_packets", 0, NET_DEV, LDMS_V_D64, txp_cb, "tx_packets/sec" },
-	{ "tx_errs", 0, NET_DEV, LDMS_V_D64, tx_errs_cb, "tx_errs/sec" }
+/*
+ * Schema order follows this table. Within a record source, the name field
+ * (LDMS_V_CHAR_ARRAY) must come first; it is added automatically whenever
+ * any other field of that record is selected.
+ */
+static const struct cm_s metric_list[] = {
+	{ "free",     1, SRC_MEMINFO, LDMS_V_D64, free_cb, "%" },
+	{ "buff",     1, SRC_MEMINFO, LDMS_V_D64, buff_cb, "%" },
+	{ "cached",   1, SRC_MEMINFO, LDMS_V_D64, cached_cb, "%" },
+	{ "inactive", 1, SRC_MEMINFO, LDMS_V_D64, inactive_cb, "%" },
+	{ "active",   1, SRC_MEMINFO, LDMS_V_D64, active_cb, "%" },
+	{ "dirty",    1, SRC_MEMINFO, LDMS_V_D64, dirty_cb, "%" },
+	{ "writeback", 1, SRC_MEMINFO, LDMS_V_D64, writeback_cb, "%" },
+	{ "MemTotal", 1, SRC_MEMINFO, LDMS_V_U64, memtotal_cb, "kB" },
+	{ "load1min", 1, SRC_LOADAVG, LDMS_V_D64, load1_cb, "avg/1min" },
+	{ "load5min", 1, SRC_LOADAVG, LDMS_V_D64, load5_cb, "avg/5min" },
+	{ "load15min", 1, SRC_LOADAVG, LDMS_V_D64, load15_cb, "avg/15min" },
+	{ "runnable", 1, SRC_LOADAVG, LDMS_V_U64, run_cb, "count" },
+	{ "scheduling_entities", 1, SRC_LOADAVG, LDMS_V_U64, sched_ent_cb, "count" },
+	{ "newest_pid", 1, SRC_LOADAVG, LDMS_V_U64, new_pid_cb, "pid" },
+	{ "cpu_name", 0, SRC_STAT, LDMS_V_CHAR_ARRAY, NULL, "" },
+	{ "idle", 0, SRC_STAT, LDMS_V_D64, idle_cb, "%" },
+	{ "sys", 0, SRC_STAT, LDMS_V_D64, sys_cb, "%" },
+	{ "user", 0, SRC_STAT, LDMS_V_D64, user_cb, "%" },
+	{ "iowait", 0, SRC_STAT, LDMS_V_D64, iowait_cb, "%" },
+	{ "interrupts", 1, SRC_STAT, LDMS_V_D64, intr_cb, "intr/sec" },
+	{ "context_sw", 1, SRC_STAT, LDMS_V_D64, ctxt_cb, "ctxt_sw/sec" },
+	{ "fork", 1, SRC_STAT, LDMS_V_D64, fork_cb, "forks/sec" },
+	{ "procs_running", 1, SRC_STAT, LDMS_V_U64, procs_run_cb, "count" },
+	{ "procs_blocked", 1, SRC_STAT, LDMS_V_U64, procs_block_cb, "count" },
+	{ "iface_name", 0, SRC_NETDEV, LDMS_V_CHAR_ARRAY, NULL, "" },
+	{ "rx_bytes", 0, SRC_NETDEV, LDMS_V_D64, rxb_cb, "rx_bytes/sec" },
+	{ "rx_packets", 0, SRC_NETDEV, LDMS_V_D64, rx_packets_cb, "rx_packets/sec" },
+	{ "rx_errs", 0, SRC_NETDEV, LDMS_V_D64, rx_errs_cb, "rx_errs/sec" },
+	{ "rx_drop", 0, SRC_NETDEV, LDMS_V_D64, rx_drop_cb, "rx_drop/sec" },
+	{ "tx_bytes", 0, SRC_NETDEV, LDMS_V_D64, txb_cb, "tx_bytes/sec" },
+	{ "tx_packets", 0, SRC_NETDEV, LDMS_V_D64, txp_cb, "tx_packets/sec" },
+	{ "tx_errs", 0, SRC_NETDEV, LDMS_V_D64, tx_errs_cb, "tx_errs/sec" }
 };
 
-enum stat_row {
-	STAT_BTIME = 1,
-	STAT_CPU,
-	STAT_CTXT,
-	STAT_INTR,
-	STAT_PROCESSES,
-	STAT_PROCS_BLOCKED,
-	STAT_PROCS_RUNNING,
-	STAT_SOFTIRQ,
-};
+_Static_assert(ARRAY_LEN(metric_list) == NUM_METRICS,
+	       "NUM_METRICS must match the size of metric_list");
 
-struct stat_row_ent {
-	const char *prefix;
-	enum stat_row type;
-};
-
-struct stat_row_ent stat_row_ents[] = {
-	/* sorted by prefix for bsearch */
-	{ "btime",	   STAT_BTIME	      },
-	{ "cpu",           STAT_CPU           },
-	{ "ctxt",          STAT_CTXT          },
-	{ "intr",          STAT_INTR          },
-	{ "processes",     STAT_PROCESSES     },
-	{ "procs_blocked", STAT_PROCS_BLOCKED },
-	{ "procs_running", STAT_PROCS_RUNNING },
-	{ "softirq",       STAT_SOFTIRQ       },
-};
-
-int stat_row_cmp(const void *key, const void *_ent)
+static int metric_find(const char *name)
 {
-	const struct stat_row_ent *ent = _ent;
-	return strncmp(key, ent->prefix, strlen(ent->prefix));
+	int i;
+	for (i = 0; i < NUM_METRICS; i++) {
+		if (0 == strcmp(name, metric_list[i].name))
+			return i;
+	}
+	return -1;
 }
 
-static int parse_cmetrics(curated_metrics_t mi, char *path) {
+static void free_ifaces(curated_metrics_t mi)
+{
 	int i;
-	int rc = 0;
-	json_t *cfp, *cfg_metrics;
+	if (!mi->ifaces)
+		return;
+	for (i = 0; i < mi->n_ifaces; i++)
+		free(mi->ifaces[i]);
+	free(mi->ifaces);
+	mi->ifaces = NULL;
+	mi->n_ifaces = 0;
+}
+
+static int iface_wanted(curated_metrics_t mi, const char *name)
+{
+	int i;
+	if (!mi->ifaces)
+		return 1;
+	for (i = 0; i < mi->n_ifaces; i++) {
+		if (0 == strcmp(mi->ifaces[i], name))
+			return 1;
+	}
+	return 0;
+}
+
+static int parse_cmetrics(curated_metrics_t mi, const char *path)
+{
+	json_t *cfp, *jm, *ji, *v;
 	json_error_t jerr;
+	size_t j;
+	int i, rc = 0;
 
 	cfp = json_load_file(path, 0, &jerr);
 	if (!cfp) {
 		ovis_log(mi->log, OVIS_LERROR,
-			 "Error parsing '%s' configuration file.\n",
-			 path);
+			 "Error parsing '%s' configuration file.\n", path);
 		ovis_log(mi->log, OVIS_LERROR,
 			 "%s: Line: %d, Column: %d, %s\n",
 			 path, jerr.line, jerr.column, jerr.text);
-		errno = EINVAL;
-		goto err_1;
+		return EINVAL;
 	}
-	cfg_metrics = json_object_get(cfp, "metrics");
-	if (!cfg_metrics) {
+
+	jm = json_object_get(cfp, "metrics");
+	if (!jm || !json_is_array(jm)) {
 		ovis_log(mi->log, OVIS_LERROR,
-			 "Key 'metrics' is not present in json file %s\n",
-			 path);
-		errno = ENOENT;
-		goto err_1;
+			 "%s: 'metrics' must be present and be a list of "
+			 "metric names.\n", path);
+		rc = EINVAL;
+		goto out;
 	}
-	mi->sample_meminfo = 0;
-	mi->sample_stat = 0;
-	mi->sample_loadavg = 0;
-	mi->sample_netdev = 0;
-	for (i = 0; i < ARRAY_LEN(metric_list); i++) {
-		mi->collect_list[i].collect = 0;
+	memset(mi->collect, 0, sizeof(mi->collect));
+	json_array_foreach(jm, j, v) {
+		const char *mname = json_string_value(v);
+		if (!mname) {
+			ovis_log(mi->log, OVIS_LERROR,
+				 "%s: metrics[%zu] is not a string.\n", path, j);
+			rc = EINVAL;
+			goto out;
+		}
+		i = metric_find(mname);
+		if (i < 0) {
+			ovis_log(mi->log, OVIS_LERROR,
+				 "%s: unknown metric '%s'.\n", path, mname);
+			rc = EINVAL;
+			goto out;
+		}
+		mi->collect[i] = 1;
 	}
-	if (cfg_metrics && json_is_array(cfg_metrics)) {
-		int num_metrics = 0;
-		int j;
-		num_metrics = json_array_size(cfg_metrics);
-		for (j = 0; j < num_metrics; j++) {
-			const char *mname;
-			mname = json_string_value(json_array_get(cfg_metrics, j));
-			for (i = 0; i < ARRAY_LEN(metric_list); i++) {
-				rc = strcmp(mname, metric_list[i].name);
-				if (!rc) {
-					mi->collect_list[i].collect = 1;
-					if (!strcmp(metric_list[i].file_path, PROC_STAT)) {
-						mi->sample_stat = 1;
-						continue;
-					}
-					if (!strcmp(metric_list[i].file_path, PROC_MEMINFO)) {
-						mi->sample_meminfo = 1;
-						continue;
-					}
-					if (!strcmp(metric_list[i].file_path, PROC_LOADAVG)) {
-						mi->sample_loadavg = 1;
-						continue;
-					}
-					if (!strcmp(metric_list[i].file_path, NET_DEV)) {
-						mi->sample_netdev = 1;
-						continue;
-					}
-				}
+
+	ji = json_object_get(cfp, "ifaces");
+	if (ji) {
+		if (!json_is_array(ji)) {
+			ovis_log(mi->log, OVIS_LERROR,
+				 "%s: 'ifaces' must be a list of interface "
+				 "names.\n", path);
+			rc = EINVAL;
+			goto out;
+		}
+		mi->ifaces = calloc(json_array_size(ji) + 1, sizeof(char *));
+		if (!mi->ifaces) {
+			rc = ENOMEM;
+			goto out;
+		}
+		json_array_foreach(ji, j, v) {
+			const char *iname = json_string_value(v);
+			if (!iname || strlen(iname) >= IFNAMSIZ) {
+				ovis_log(mi->log, OVIS_LERROR,
+					 "%s: ifaces[%zu] must be an interface "
+					 "name shorter than %d characters.\n",
+					 path, j, IFNAMSIZ);
+				rc = EINVAL;
+				goto out;
 			}
+			mi->ifaces[mi->n_ifaces] = strdup(iname);
+			if (!mi->ifaces[mi->n_ifaces]) {
+				rc = ENOMEM;
+				goto out;
+			}
+			mi->n_ifaces++;
 		}
 	}
-	return 0;
-err_1:
+out:
 	json_decref(cfp);
 	return rc;
+}
+
+/*
+ * Decide which sources are sampled, and add the name field to any record
+ * that has other fields selected (record code relies on it).
+ */
+static int select_sources(curated_metrics_t mi)
+{
+	int i, any = 0;
+	int has_field[SRC_COUNT] = {0};
+
+	for (i = 0; i < NUM_METRICS; i++) {
+		if (mi->collect[i] && !metric_list[i].not_rec &&
+		    metric_list[i].vtype != LDMS_V_CHAR_ARRAY)
+			has_field[metric_list[i].src] = 1;
+	}
+	for (i = 0; i < NUM_METRICS; i++) {
+		if (metric_list[i].vtype == LDMS_V_CHAR_ARRAY &&
+		    has_field[metric_list[i].src])
+			mi->collect[i] = 1;
+	}
+	memset(mi->sample_src, 0, sizeof(mi->sample_src));
+	for (i = 0; i < NUM_METRICS; i++) {
+		if (mi->collect[i]) {
+			mi->sample_src[metric_list[i].src] = 1;
+			any = 1;
+		}
+	}
+	return any ? 0 : EINVAL;
+}
+
+static void close_files(curated_metrics_t mi)
+{
+	int src;
+	for (src = 0; src < SRC_COUNT; src++) {
+		if (mi->fp[src]) {
+			fclose(mi->fp[src]);
+			mi->fp[src] = NULL;
+		}
+	}
+}
+
+static void free_ents(curated_metrics_t mi)
+{
+	int src;
+	cm_ent_t e;
+	for (src = 0; src < SRC_COUNT; src++) {
+		while ((e = TAILQ_FIRST(&mi->ents[src]))) {
+			TAILQ_REMOVE(&mi->ents[src], e, entry);
+			free(e);
+		}
+		mi->hint[src] = NULL;
+	}
+}
+
+static void reset_selection(curated_metrics_t mi)
+{
+	int src;
+	close_files(mi);
+	free_ents(mi);
+	free_ifaces(mi);
+	memset(mi->collect, 0, sizeof(mi->collect));
+	memset(mi->sample_src, 0, sizeof(mi->sample_src));
+	memset(mi->n_scalar, 0, sizeof(mi->n_scalar));
+	memset(mi->n_field, 0, sizeof(mi->n_field));
+	for (src = 0; src < SRC_COUNT; src++) {
+		mi->list_mid[src] = -1;
+		mi->rec_idx[src] = -1;
+		mi->name_id[src] = -1;
+	}
+}
+
+/* Rewind (or open) the file for src. */
+static FILE *src_file(curated_metrics_t mi, enum cm_src src, int *rc)
+{
+	if (mi->fp[src]) {
+		rewind(mi->fp[src]);
+		return mi->fp[src];
+	}
+	mi->fp[src] = fopen(src_path[src], "r");
+	if (!mi->fp[src]) {
+		*rc = errno;
+		ovis_log(mi->log, OVIS_LERROR, "Error %d opening '%s'.\n",
+			 *rc, src_path[src]);
+	}
+	return mi->fp[src];
+}
+
+/* Record slots for CPUs: every configured CPU plus the aggregate line. */
+static size_t cpu_capacity(void)
+{
+	long n = sysconf(_SC_NPROCESSORS_CONF);
+	if (n < 1)
+		n = 1;
+	return (size_t)n + 1;
+}
+
+/* Record slots for interfaces. */
+static size_t netdev_capacity(curated_metrics_t mi)
+{
+	FILE *f;
+	char *line = NULL;
+	size_t sz = 0, n = 0;
+
+	if (mi->max_ifaces)
+		return mi->max_ifaces;
+	if (mi->ifaces)
+		return mi->n_ifaces;
+	f = fopen(NET_DEV, "r");
+	if (f) {
+		while (getline(&line, &sz, f) > 0) {
+			if (strchr(line, ':'))
+				n++;
+		}
+		free(line);
+		fclose(f);
+	}
+	/* Leave room for interfaces created after config */
+	return 2 * n + 8;
 }
 
 static int create_metric_set(curated_metrics_t mi)
 {
 	ldms_schema_t schema;
-	int rc, i, n_cpu;
-	rc = 0;
-	n_cpu = 0;
+	ldms_record_t rec[SRC_COUNT] = { NULL };
+	size_t heap_sz = 0;
+	int i, rc, src, id;
+	FILE *f;
 
 	schema = base_schema_new(mi->base);
 	if (!schema) {
+		rc = errno ? errno : ENOMEM;
 		ovis_log(mi->log, OVIS_LERROR,
-		       "%s: The schema '%s' could not be created, errno=%d.\n",
-		       __FILE__, mi->base->schema_name, errno);
-		rc = errno;
+			 "The schema '%s' could not be created, errno=%d.\n",
+			 mi->base->schema_name, rc);
+		return rc;
+	}
+
+	for (i = 0; i < NUM_METRICS; i++) {
+		const struct cm_s *m = &metric_list[i];
+		if (!mi->collect[i])
+			continue;
+		src = m->src;
+		if (m->not_rec) {
+			id = ldms_schema_metric_add_with_unit(schema, m->name,
+							      m->unit, m->vtype);
+			if (id < 0) {
+				rc = -id;
+				goto err;
+			}
+			mi->scalar[src][mi->n_scalar[src]++] =
+				(struct cm_sel){ .midx = i, .id = id };
+			continue;
+		}
+		if (!rec[src]) {
+			rec[src] = ldms_record_create(src == SRC_STAT ?
+						      "cpu" : "netdev");
+			if (!rec[src]) {
+				rc = errno ? errno : ENOMEM;
+				goto err;
+			}
+		}
+		if (m->vtype == LDMS_V_CHAR_ARRAY) {
+			id = ldms_record_metric_add(rec[src], m->name, m->name,
+						    m->vtype, IFNAMSIZ);
+			if (id >= 0)
+				mi->name_id[src] = id;
+		} else {
+			id = ldms_record_metric_add(rec[src], m->name, m->unit,
+						    m->vtype, 0);
+			if (id >= 0)
+				mi->field[src][mi->n_field[src]++] =
+					(struct cm_sel){ .midx = i, .id = id };
+		}
+		if (id < 0) {
+			rc = -id;
+			goto err;
+		}
+	}
+
+	for (src = SRC_STAT; src <= SRC_NETDEV; src++) {
+		size_t sz;
+		if (!rec[src])
+			continue;
+		sz = (src == SRC_STAT ? cpu_capacity() : netdev_capacity(mi))
+			* ldms_record_heap_size_get(rec[src]);
+		mi->rec_idx[src] = ldms_schema_record_add(schema, rec[src]);
+		if (mi->rec_idx[src] < 0) {
+			rc = -mi->rec_idx[src];
+			goto err;
+		}
+		rec[src] = NULL; /* owned by the schema now */
+		mi->list_mid[src] = ldms_schema_metric_list_add(schema,
+				src == SRC_STAT ? "cpu_list" : "netdev_list",
+				NULL, sz);
+		if (mi->list_mid[src] < 0) {
+			rc = -mi->list_mid[src];
+			goto err;
+		}
+		heap_sz += sz;
+	}
+
+	rc = 0;
+	for (src = 0; src < SRC_COUNT; src++) {
+		if (!mi->sample_src[src])
+			continue;
+		f = src_file(mi, src, &rc);
+		if (!f)
+			goto err;
+	}
+
+	if (!base_set_new_heap(mi->base, heap_sz)) {
+		rc = errno ? errno : ENOMEM;
+		ovis_log(mi->log, OVIS_LERROR,
+			 "Failed to create set, error %d.\n", rc);
 		goto err;
-	}
-
-	mi->mf = fopen(PROC_MEMINFO, "r");
-	if (!mi->mf) {
-		ovis_log(mi->log, OVIS_LERROR,
-			 "Could not open the file '%s'...exiting sampler: %s\n",
-			 PROC_MEMINFO, strerror(errno));
-		return ENOENT;
-	}
-
-	/* Location of first metric from the schema */
-	mi->metric_offset = ldms_schema_metric_count_get(schema);
-
-	int metric_list_sz = sizeof(metric_list) / sizeof(metric_list[0]);
-	ldms_record_t rec_def;
-	ldms_record_t stat_rec;
-	mi->rec_metric_len = 0;
-	for (i = 0; i < metric_list_sz; i++) {
-		if (mi->collect_list[i].collect) {
-			if (metric_list[i].not_rec) {
-				rc = ldms_schema_metric_add_with_unit(schema,
-								      metric_list[i].name,
-								      metric_list[i].unit,
-								      metric_list[i].vtype);
-				if (rc < 0)
-					goto err2;
-			} else {
-				if (!strcmp(metric_list[i].file_path, PROC_STAT)) {
-					if (!mi->stat_metric_len) {
-						stat_rec = ldms_record_create("cpu");
-						if (!stat_rec) {
-							rc = errno;
-							goto err2;
-						}
-					}
-					if (metric_list[i].vtype == LDMS_V_CHAR_ARRAY) {
-						rc = ldms_record_metric_add(stat_rec, metric_list[i].name,
-							"cpu_name", metric_list[i].vtype, IFNAMSIZ);
-					} else {
-						rc = ldms_record_metric_add(stat_rec, metric_list[i].name,
-							metric_list[i].unit, metric_list[i].vtype, 0);
-					}
-					mi->stat_metric_len++;
-				} else {
-					if (!mi->rec_metric_len) {
-						rec_def = ldms_record_create("netdev");
-						if (!rec_def) {
-							rc = errno;
-							goto err2;
-						}
-					}
-					if (metric_list[i].vtype == LDMS_V_CHAR_ARRAY) {
-						rc = ldms_record_metric_add(rec_def, metric_list[i].name,
-							"iface_name", metric_list[i].vtype, IFNAMSIZ);
-					} else {
-						rc = ldms_record_metric_add(rec_def, metric_list[i].name,
-							metric_list[i].unit, metric_list[i].vtype, 0);
-					}
-					mi->rec_metric_len++;
-				}
-			}
-		}
-	}
-	if (mi->sample_loadavg) {
-		mi->lf = fopen(PROC_LOADAVG, "r");
-		if (!mi->lf) {
-			ovis_log(mi->log, OVIS_LERROR, "Could not open " PROC_LOADAVG
-					" : continuing\n");
-			rc = errno;
-			goto err;
-		}
-	}
-	if (mi->sample_stat) {
-		mi->sf = fopen(PROC_STAT, "r");
-		if (!mi->sf) {
-			ovis_log(mi->log, OVIS_LERROR,
-				 "Error %d opening the '%s' file.",
-				 errno, PROC_STAT);
-			rc = errno;
-			goto err;
-		}
-		char *s;
-		char lbuf[IFNAMSIZ];
-		do {
-			s = fgets(lbuf, sizeof(lbuf), mi->sf);
-			if (!s)
-				break;
-			if (0 == strncmp(s, "cpu", 3)) {
-				n_cpu++;
-			}
-		} while(s);
-
-		mi->stat_rec_heap_sz = ldms_record_heap_size_get(stat_rec);
-		mi->stat_heap_sz = n_cpu * ldms_record_heap_size_get(stat_rec);
-		mi->stat_rec_idx = ldms_schema_record_add(schema, stat_rec);
-		if (mi->stat_rec_idx < 0) {
-			rc = -mi->stat_rec_idx;
-			goto err3;
-		}
-		mi->stat_list_mid = ldms_schema_metric_list_add(schema,
-								"cpu_list",
-								NULL, mi->stat_heap_sz);
-		if (mi->stat_list_mid < 0) {
-			rc = -mi->stat_list_mid;
-			goto err3;
-		}
-	}
-	if (mi->sample_netdev) {
-		mi->nf = fopen(NET_DEV, "r");
-		if (!mi->nf) {
-			ovis_log(mi->log, OVIS_LERROR,
-				 "Error %d opening '%s'\n",
-				 errno, NET_DEV);
-			rc = errno;
-			goto err;
-		}
-		mi->rec_heap_sz = ldms_record_heap_size_get(rec_def);
-		mi->heap_sz = MAXIFACE * ldms_record_heap_size_get(rec_def);
-		mi->rec_def_idx = ldms_schema_record_add(schema, rec_def);
-		if (mi->rec_def_idx < 0) {
-			rc = -mi->rec_def_idx;
-			goto err3;
-		}
-		mi->netdev_list_mid =
-			ldms_schema_metric_list_add(schema,
-						    "netdev_list",
-						    NULL, mi->heap_sz);
-		if (mi->netdev_list_mid < 0) {
-			rc = -mi->netdev_list_mid;
-			goto err3;
-		}
-	}
-	mi->heap_sz = mi->stat_heap_sz + mi->heap_sz;
-	base_set_new_heap(mi->base, mi->heap_sz);
-	if (!mi->base->set) {
-		rc = errno;
-		ovis_log(mi->log, OVIS_LERROR, "curated_metrics : Failed to create set. Error %d\n", rc);
-		goto err2;
 	}
 	return 0;
 
-err3:
-	if (stat_rec)
-		ldms_record_delete(stat_rec);
-	if (rec_def)
-		ldms_record_delete(rec_def);
-err2:
-	base_schema_delete(mi->base);
-	mi->base = NULL;
 err:
-	if (mi->mf) {
-		fclose(mi->mf);
-		mi->mf = NULL;
-	}
-	if (mi->lf) {
-		fclose(mi->lf);
-		mi->lf = NULL;
-	}
-	if (mi->sf) {
-		fclose(mi->sf);
-		mi->sf = NULL;
-	}
-	if (mi->nf) {
-		fclose(mi->nf);
-		mi->nf = NULL;
-	}
+	for (src = 0; src < SRC_COUNT; src++)
+		ldms_record_delete(rec[src]);
+	close_files(mi);
+	/* The schema itself is released with mi->base by the caller */
 	return rc;
 }
 
 static const char *usage(ldmsd_plug_handle_t handle)
 {
-	return  "config name=CFG-NAME plugin=curated_metrics path=PATH\n"
+	return  "config name=CFG-NAME plugin=curated_metrics [path=PATH] [max_ifaces=N]\n"
 		"    PATH to a JSON configuration file containing a dictionary\n"
 		"         as follows:\n"
 		"              {\n"
 		"                  \"metrics\" : [ <name>, <name>, ... ],\n"
 		"                  \"ifaces\"  : [ <iface>, <iface>, ... ]\n"
 		"              }\n"
+		"         \"ifaces\" is optional; when present only those\n"
+		"         interfaces are reported.\n"
+		"    max_ifaces Number of interface records to reserve in the\n"
+		"         set (default: the configured ifaces, or twice the\n"
+		"         interfaces present at config time plus 8).\n"
 		BASE_CONFIG_USAGE;
-	 }
+}
 
 static int config(ldmsd_plug_handle_t handle,
 		  struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	curated_metrics_t mi = ldmsd_plug_ctxt_get(handle);
-	int rc;
+	char *path, *value;
+	int rc, i;
 
-	/*
-	 * load name=ci1 plugin=curated_metrics
-	 * configure name=ci1 ...
-	 * load name=ci2 plugin=curated_metrics
-	 * configure name=ci1 ...
-	 */
 	if (mi->base) {
 		ovis_log(mi->log, OVIS_LERROR,
 			 "'%s' has already been created.\n",
 			 ldmsd_plug_cfg_name_get(handle));
 		return EINVAL;
 	}
+	reset_selection(mi);
 
-	char *path = av_value(avl, "path");
+	path = av_value(avl, "path");
 	if (path) {
 		rc = parse_cmetrics(mi, path);
+		if (rc)
+			goto err;
 	} else {
-		int i;
-		for (i = 0; i < ARRAY_LEN(metric_list); i++) {
-			mi->collect_list[i].collect = 1;
+		for (i = 0; i < NUM_METRICS; i++)
+			mi->collect[i] = 1;
+	}
+
+	value = av_value(avl, "max_ifaces");
+	if (value) {
+		char *end;
+		long n = strtol(value, &end, 0);
+		if (*end || n < 1 || n > 65536) {
+			ovis_log(mi->log, OVIS_LERROR,
+				 "max_ifaces '%s' is not a valid count.\n",
+				 value);
+			rc = EINVAL;
+			goto err;
 		}
+		mi->max_ifaces = n;
+	}
+
+	rc = select_sources(mi);
+	if (rc) {
+		ovis_log(mi->log, OVIS_LERROR, "No metrics selected.\n");
+		goto err;
 	}
 
 	mi->base = base_config(avl,
@@ -687,7 +808,7 @@ static int config(ldmsd_plug_handle_t handle,
 			       ldmsd_plug_cfg_name_get(handle),
 			       mi->log);
 	if (!mi->base) {
-		rc = errno;
+		rc = errno ? errno : EINVAL;
 		goto err;
 	}
 	rc = create_metric_set(mi);
@@ -695,623 +816,434 @@ static int config(ldmsd_plug_handle_t handle,
 		ovis_log(mi->log, OVIS_LERROR, "failed to create a metric set.\n");
 		goto err;
 	}
+	mi->skip_first = 1;
 	return 0;
 err:
-	if (mi->base)
-		base_del(mi->base);
+	base_del(mi->base);
+	mi->base = NULL;
+	reset_selection(mi);
 	return rc;
 }
 
-static int minfo_handler(curated_metrics_t mi, int *metric_no) {
-	if (!mi->sample_meminfo)
-		return 0;
-	int rc, i;
-	char lbuf[256];
-	char metric_name[128];
-	char *s;
-
-	if (!mi->mf) {
-		mi->mf = fopen(PROC_MEMINFO, "r");
-		ovis_log(mi->log, OVIS_LDEBUG,
-				"Error %d opening file '%s'.",
-				errno, PROC_MEMINFO);
-		return errno;
-	}
-	rewind(mi->mf);
-	do {
-		s = fgets(lbuf, sizeof(lbuf), mi->mf);
-		if (!s)
-			break;
-		rc = sscanf(lbuf, "%s", metric_name);
-		if (rc !=1) {
-			rc = EINVAL;
-			goto out;
-		}
-		rc = 0;
-		/* Strip the colon from metric name if present */
-		i = strlen(metric_name);
-		if (i && metric_name[i-1] == ':')
-			metric_name[i-1] = '\0';
-
-		if (strcmp(metric_name, "Active") == 0) {
-			rc = sscanf(lbuf, "%s %"PRIu64,
-				    metric_name, &(mi->minfo.active));
-			if (rc != 2) {
-				rc = EINVAL;
-				goto out;
-			}
-			continue;
-		}
-		if (strcmp(metric_name, "MemFree") == 0) {
-			rc = sscanf(lbuf, "%s %"PRIu64,
-				    metric_name, &(mi->minfo.memfree));
-			if (rc != 2) {
-				rc = EINVAL;
-				goto out;
-			}
-			continue;
-		}
-		if (strcmp(metric_name, "MemTotal") == 0) {
-			rc = sscanf(lbuf, "%s %"PRIu64,
-				    metric_name, &(mi->minfo.memtotal));
-			if (rc != 2) {
-				rc = EINVAL;
-				goto out;
-			}
-			continue;
-		}
-		if (strcmp(metric_name, "Dirty") == 0) {
-			rc = sscanf(lbuf, "%s %"PRIu64, metric_name, &(mi->minfo.dirty));
-			if (rc != 2) {
-				rc = EINVAL;
-				goto out;
-			}
-			continue;
-		}
-		if (strcmp(metric_name, "Inactive") == 0) {
-			rc = sscanf(lbuf, "%s %"PRIu64, metric_name, &(mi->minfo.inactive));
-			if (rc != 2) {
-				rc = EINVAL;
-				goto out;
-			}
-			continue;
-		}
-		if (strcmp(metric_name, "Cached") == 0) {
-			rc = sscanf(lbuf, "%s %"PRIu64, metric_name, &(mi->minfo.cached));
-			if (rc != 2) {
-				rc = EINVAL;
-				goto out;
-			}
-			continue;
-		}
-		if (strcmp(metric_name, "Buffers") == 0) {
-			rc = sscanf(lbuf, "%s %"PRIu64, metric_name, &(mi->minfo.buffers));
-			if (rc != 2) {
-				rc = EINVAL;
-				goto out;
-			}
-			continue;
-		}
-		if (strcmp(metric_name, "Writeback") == 0) {
-			rc = sscanf(lbuf, "%s %"PRIu64, metric_name, &(mi->minfo.writeback));
-			if (rc != 2) {
-				rc = EINVAL;
-				goto out;
-			}
-		}
-	} while (s);
-	for (i = 0; i < ARRAY_LEN(metric_list); i++) {
-		if (mi->collect_list[i].collect && strcmp(metric_list[i].file_path,
-							  PROC_MEMINFO) == 0) {
-			union ldms_value val;
-			metric_list[i].cb(mi, &val);
-			ldms_metric_set(mi->base->set, *metric_no, &val);
-			(*metric_no)++;
-		}
-	}
-out:
-	return rc;
-}
-
-int loadavg_handler(curated_metrics_t mi, int *metric_no)
+static void write_scalars(curated_metrics_t mi, enum cm_src src)
 {
-	if (!mi->sample_loadavg)
+	union ldms_value val;
+	int k;
+
+	for (k = 0; k < mi->n_scalar[src]; k++) {
+		metric_list[mi->scalar[src][k].midx].cb(mi, &val);
+		ldms_metric_set(mi->base->set, mi->scalar[src][k].id, &val);
+	}
+}
+
+/* Find the entry for name; /proc order is stable, so try the hint first. */
+static cm_ent_t ent_lookup(curated_metrics_t mi, enum cm_src src,
+			   const char *name)
+{
+	cm_ent_t e = mi->hint[src];
+
+	if (!e || strcmp(e->name, name)) {
+		TAILQ_FOREACH(e, &mi->ents[src], entry) {
+			if (0 == strcmp(e->name, name))
+				break;
+		}
+	}
+	if (!e) {
+		e = calloc(1, sizeof(*e));
+		if (!e)
+			return NULL;
+		snprintf(e->name, sizeof(e->name), "%s", name);
+		TAILQ_INSERT_TAIL(&mi->ents[src], e, entry);
+	}
+	mi->hint[src] = TAILQ_NEXT(e, entry);
+	e->gen = mi->gen;
+	return e;
+}
+
+/* Drop CPUs / interfaces that were not in this sample. */
+static void ent_sweep(curated_metrics_t mi, enum cm_src src, ldms_mval_t lh)
+{
+	cm_ent_t e, next;
+
+	for (e = TAILQ_FIRST(&mi->ents[src]); e; e = next) {
+		next = TAILQ_NEXT(e, entry);
+		if (e->gen == mi->gen)
+			continue;
+		if (e->rec)
+			ldms_list_remove_item(mi->base->set, lh, e->rec);
+		TAILQ_REMOVE(&mi->ents[src], e, entry);
+		free(e);
+	}
+	mi->hint[src] = TAILQ_FIRST(&mi->ents[src]);
+}
+
+/* Write the selected fields for e, allocating its record on first use. */
+static void write_record(curated_metrics_t mi, enum cm_src src,
+			 ldms_mval_t lh, cm_ent_t e)
+{
+	union ldms_value val;
+	int k;
+
+	if (!e->rec) {
+		ldms_mval_t name;
+		e->rec = ldms_record_alloc(mi->base->set, mi->rec_idx[src]);
+		if (!e->rec) {
+			if (!mi->heap_full_logged[src]) {
+				ovis_log(mi->log, OVIS_LWARNING,
+					 "No room in the set for '%s'%s.\n",
+					 e->name, src == SRC_NETDEV ?
+					 "; increase max_ifaces" : "");
+				mi->heap_full_logged[src] = 1;
+			}
+			return;
+		}
+		name = ldms_record_metric_get(e->rec, mi->name_id[src]);
+		snprintf(name->a_char, IFNAMSIZ, "%s", e->name);
+		ldms_list_append_record(mi->base->set, lh, e->rec);
+	}
+	for (k = 0; k < mi->n_field[src]; k++) {
+		const struct cm_s *m = &metric_list[mi->field[src][k].midx];
+		m->cb(mi, &val);
+		if (m->vtype == LDMS_V_D64)
+			ldms_record_set_double(e->rec, mi->field[src][k].id, val.v_d);
+		else
+			ldms_record_set_u64(e->rec, mi->field[src][k].id, val.v_u64);
+	}
+}
+
+static const struct {
+	const char *key;
+	size_t off;
+} minfo_keys[] = {
+	{ "MemTotal",  offsetof(mem_t, memtotal) },
+	{ "MemFree",   offsetof(mem_t, memfree) },
+	{ "Buffers",   offsetof(mem_t, buffers) },
+	{ "Cached",    offsetof(mem_t, cached) },
+	{ "Active",    offsetof(mem_t, active) },
+	{ "Inactive",  offsetof(mem_t, inactive) },
+	{ "Dirty",     offsetof(mem_t, dirty) },
+	{ "Writeback", offsetof(mem_t, writeback) },
+};
+
+static int minfo_handler(curated_metrics_t mi, int prime)
+{
+	FILE *f;
+	int rc = 0, k, found = 0;
+	char key[64];
+	uint64_t val;
+
+	if (!mi->sample_src[SRC_MEMINFO] || prime)
 		return 0;
-	int rc, i;
-	char lbuf[256];
-	char *s;
-
-	if (!mi->lf) {
-		mi->lf = fopen(PROC_LOADAVG, "r");
-		ovis_log(mi->log, OVIS_LERROR,
-				"Error %d opening file '%s'.",
-				errno, PROC_LOADAVG);
-		return errno;
+	f = src_file(mi, SRC_MEMINFO, &rc);
+	if (!f)
+		return rc;
+	memset(&mi->minfo, 0, sizeof(mi->minfo));
+	while (found < (int)ARRAY_LEN(minfo_keys) &&
+	       getline(&mi->lbuf, &mi->lbuf_sz, f) > 0) {
+		if (2 != sscanf(mi->lbuf, "%63[^:]: %" SCNu64, key, &val))
+			continue;
+		for (k = 0; k < (int)ARRAY_LEN(minfo_keys); k++) {
+			if (0 == strcmp(key, minfo_keys[k].key)) {
+				*(uint64_t *)((char *)&mi->minfo +
+					      minfo_keys[k].off) = val;
+				found++;
+				break;
+			}
+		}
 	}
-	rewind(mi->lf);
-	s = fgets(lbuf, sizeof(lbuf), mi->lf);
-	if (!s) {
+	if (!mi->minfo.memtotal) {
 		ovis_log(mi->log, OVIS_LERROR,
-			 "Error %d reading '%s' file.\n",
-			 errno, PROC_LOADAVG);
-		return errno;
+			 "MemTotal not found in %s.\n", PROC_MEMINFO);
+		return ENODATA;
 	}
+	write_scalars(mi, SRC_MEMINFO);
+	return 0;
+}
 
-	rc = sscanf(lbuf, "%lf %lf %lf %"PRIu64"/%"PRIu64 " %"PRIu64 "\n",
+static int loadavg_handler(curated_metrics_t mi, int prime)
+{
+	FILE *f;
+	int rc = 0;
+
+	if (!mi->sample_src[SRC_LOADAVG] || prime)
+		return 0;
+	f = src_file(mi, SRC_LOADAVG, &rc);
+	if (!f)
+		return rc;
+	if (getline(&mi->lbuf, &mi->lbuf_sz, f) <= 0) {
+		ovis_log(mi->log, OVIS_LERROR,
+			 "Error %d reading '%s'.\n", errno, PROC_LOADAVG);
+		return EIO;
+	}
+	rc = sscanf(mi->lbuf, "%lf %lf %lf %" SCNu64 "/%" SCNu64 " %" SCNu64,
 		    &mi->loadavg.load1,
 		    &mi->loadavg.load5,
 		    &mi->loadavg.load15,
 		    &mi->loadavg.runnable,
 		    &mi->loadavg.scheduling_entities,
 		    &mi->loadavg.new_pid);
-	if (rc < 6) {
+	if (rc != 6) {
 		ovis_log(mi->log, OVIS_LERROR,
-			 "Error %d scanning input line '%s'.\n",
-			 rc, lbuf);
+			 "Error scanning '%s' line '%s'.\n",
+			 PROC_LOADAVG, mi->lbuf);
 		return EINVAL;
 	}
-	for (i = 0; i < ARRAY_LEN(mi->collect_list); i++) {
-		if (!mi->collect_list[i].collect)
-			continue;
-		if (0 == strcmp(metric_list[i].file_path, PROC_LOADAVG)) {
-			union ldms_value val;
-			metric_list[i].cb(mi, &val);
-			ldms_metric_set(mi->base->set, *metric_no, &val);
-			(*metric_no)++;
-		}
-	}
+	write_scalars(mi, SRC_LOADAVG);
 	return 0;
 }
 
-static int cpu_handler(curated_metrics_t mi, int *metric_no)
+static int stat_handler(curated_metrics_t mi, int prime)
 {
-	if (!mi->sample_stat)
+	FILE *f;
+	int rc = 0, n;
+	int have_list = mi->list_mid[SRC_STAT] >= 0;
+	ldms_mval_t lh = NULL;
+	uint64_t intr = 0, ctxt = 0, forks = 0;
+	int got_intr = 0, got_ctxt = 0, got_fork = 0;
+	char name[IFNAMSIZ];
+	char *line;
+
+	if (!mi->sample_src[SRC_STAT])
 		return 0;
-	int i, rc;
-	char tok[128];
-	int n;
-	struct stat_row_ent *ent;
-	cpu_t curr_cpu;
-	ldms_mval_t lh, rec_inst, name_mval;
-	uint64_t u64;
-	uint64_t intr;
-	uint64_t ctxt_sw;
-	uint64_t fork;
+	f = src_file(mi, SRC_STAT, &rc);
+	if (!f)
+		return rc;
+	if (have_list) {
+		lh = ldms_metric_get(mi->base->set, mi->list_mid[SRC_STAT]);
+		mi->hint[SRC_STAT] = TAILQ_FIRST(&mi->ents[SRC_STAT]);
+	}
 
-	if (!mi->sf) {
-		mi->sf = fopen(PROC_STAT, "r");
+	while (getline(&mi->lbuf, &mi->lbuf_sz, f) > 0) {
+		line = mi->lbuf;
+		if (0 == strncmp(line, "cpu", 3)) {
+			cpu_t cur = { 0 }, *prev;
+			cm_ent_t e;
+
+			if (!have_list)
+				continue;
+			n = sscanf(line, "%15s %" SCNu64 " %" SCNu64 " %" SCNu64
+				   " %" SCNu64 " %" SCNu64 " %" SCNu64
+				   " %" SCNu64 " %" SCNu64 " %" SCNu64
+				   " %" SCNu64,
+				   name, &cur.user, &cur.nice, &cur.sys,
+				   &cur.idle, &cur.iowait, &cur.irq,
+				   &cur.softirq, &cur.steal, &cur.guest,
+				   &cur.guest_nice);
+			if (n < 5) {
+				ovis_log(mi->log, OVIS_LERROR,
+					 "Bad cpu line in %s: '%s'\n",
+					 PROC_STAT, line);
+				rc = EINVAL;
+				continue;
+			}
+			/* guest/guest_nice are already included in user/nice */
+			cur.cpu_sum = cur.user + cur.nice + cur.sys + cur.idle
+				+ cur.iowait + cur.irq + cur.softirq + cur.steal;
+			e = ent_lookup(mi, SRC_STAT, name);
+			if (!e) {
+				rc = ENOMEM;
+				break;
+			}
+			prev = &e->prev.cpu;
+			if (!prime && e->primed) {
+				cpu_t *d = &mi->stat.cpu_data;
+				d->user = dlt(cur.user, prev->user);
+				d->nice = dlt(cur.nice, prev->nice);
+				d->sys = dlt(cur.sys, prev->sys);
+				d->idle = dlt(cur.idle, prev->idle);
+				d->iowait = dlt(cur.iowait, prev->iowait);
+				d->irq = dlt(cur.irq, prev->irq);
+				d->softirq = dlt(cur.softirq, prev->softirq);
+				d->steal = dlt(cur.steal, prev->steal);
+				d->guest = dlt(cur.guest, prev->guest);
+				d->guest_nice = dlt(cur.guest_nice, prev->guest_nice);
+				d->cpu_sum = d->user + d->nice + d->sys + d->idle
+					+ d->iowait + d->irq + d->softirq + d->steal;
+				write_record(mi, SRC_STAT, lh, e);
+			}
+			*prev = cur;
+			e->primed = 1;
+		} else if (0 == strncmp(line, "intr ", 5)) {
+			got_intr = (1 == sscanf(line + 5, "%" SCNu64, &intr));
+		} else if (0 == strncmp(line, "ctxt ", 5)) {
+			got_ctxt = (1 == sscanf(line + 5, "%" SCNu64, &ctxt));
+		} else if (0 == strncmp(line, "processes ", 10)) {
+			got_fork = (1 == sscanf(line + 10, "%" SCNu64, &forks));
+		} else if (0 == strncmp(line, "procs_running ", 14)) {
+			sscanf(line + 14, "%" SCNu64, &mi->stat.procs_running);
+		} else if (0 == strncmp(line, "procs_blocked ", 14)) {
+			sscanf(line + 14, "%" SCNu64, &mi->stat.procs_blocked);
+		}
+	}
+	if (have_list && !rc)
+		ent_sweep(mi, SRC_STAT, lh);
+	if (!got_intr || !got_ctxt || !got_fork) {
 		ovis_log(mi->log, OVIS_LERROR,
-				"Error %d opening file '%s'.",
-				errno, PROC_STAT);
-		return errno;
+			 "intr/ctxt/processes missing from %s.\n", PROC_STAT);
+		rc = ENODATA;
 	}
-	lh = ldms_metric_get(mi->base->set, mi->stat_list_mid);
-	rewind(mi->sf);
-	rec_inst = ldms_list_first(mi->base->set, lh, NULL, NULL);
-	while (1 == fscanf(mi->sf, "%s", tok)) {
-		ent = bsearch(tok, stat_row_ents, ARRAY_LEN(stat_row_ents),
-			      sizeof(stat_row_ents[0]), stat_row_cmp);
-		if (!ent) {
-			ovis_log(mi->log, OVIS_LDEBUG, "ignored cpu value: %s\n", tok);
-			continue;
-		}
-		switch(ent->type) {
-		case STAT_CPU:
-			n = fscanf(mi->sf,
-				   " %"PRIu64 " %"PRIu64 " %"PRIu64
-				   " %"PRIu64 " %"PRIu64 " %"PRIu64
-				   " %"PRIu64 " %"PRIu64 " %"PRIu64
-				   " %"PRIu64,
-				   &curr_cpu.user,
-				   &curr_cpu.nice,
-				   &curr_cpu.sys,
-				   &curr_cpu.idle,
-				   &curr_cpu.iowait,
-				   &curr_cpu.irq,
-				   &curr_cpu.softirq,
-				   &curr_cpu.steal,
-				   &curr_cpu.guest,
-				   &curr_cpu.guest_nice);
-			if (!mi->skip_first) {
-				if (n != 10) {
-					rc = EINVAL;
-					goto out;
-				}
-				curr_cpu.cpu_sum = curr_cpu.user + curr_cpu.nice
-					+ curr_cpu.sys + curr_cpu.idle
-					+ curr_cpu.iowait + curr_cpu.irq
-					+ curr_cpu.softirq + curr_cpu.steal;
-				mi->stat.cpu_data = curr_cpu;
-				if (rec_inst == NULL) {
-					rec_inst = ldms_record_alloc(mi->base->set, mi->stat_rec_idx);
-					if (rec_inst == NULL)
-						continue;
-					name_mval = ldms_record_metric_get(rec_inst, 0);
-					int j = 0;
-					j = snprintf(name_mval->a_char, IFNAMSIZ, "%.7s", tok);
-					if (j < 0) {
-						ovis_log(mi->log, OVIS_LERROR,
-							 "String %s exceeds buffer size\n",
-							 tok);
-					}
-				}
-				ldms_list_append_record(mi->base->set, lh, rec_inst);
-				int rec_metric_id = 0;
-				for (i = 0; i < ARRAY_LEN(metric_list); i++) {
-					if (mi->collect_list[i].collect
-					    && strcmp(metric_list[i].file_path, PROC_STAT) == 0 && !metric_list[i].not_rec) {
-						if (!strcmp(metric_list[i].name, "cpu_name")) {
-							rec_metric_id++;
-							continue;
-						}
-						union ldms_value val;
-						ldms_mval_t v = &val;
-						metric_list[i].cb(mi, v);
-						switch(metric_list[i].vtype) {
-						case LDMS_V_D64:
-							ldms_record_set_double(rec_inst, rec_metric_id, val.v_d);
-							break;
-						case LDMS_V_U64:
-							ldms_record_set_u64(rec_inst, rec_metric_id, val.v_u64);
-							break;
-						default:
-							ovis_log(mi->log, OVIS_LCRITICAL,
-								 "sample() memory corruption detected.\n");
-							rc = EINVAL;
-							return rc;
-						}
-						rec_metric_id++;
-					}
-				}
-				rec_inst = ldms_list_next(mi->base->set, rec_inst, NULL, NULL);
-			}
-			break;
-		case STAT_INTR:
-			if (!mi->skip_first) {
-				n = fscanf(mi->sf, " %"PRIu64, &intr);
-				if (n != 1) {
-					rc = EINVAL;
-					goto out;
-				}
-				mi->stat.intr = intr - mi->stat.intr;
-			} else {
-				n = fscanf(mi->sf, " %"PRIu64, &(mi->stat.intr));
-				if (n != 1) {
-					ovis_log(mi->log, OVIS_LERROR,
-						 "No data reading intr from %s\n", PROC_STAT);
-					rc = EINVAL;
-					goto out;
-				}
-			}
-			while (1 == fscanf(mi->sf, " %"PRIu64, &u64))
-				continue;
-			break;
-		case STAT_CTXT:
-			if (!mi->skip_first) {
-				n = fscanf(mi->sf, " %"PRIu64, &ctxt_sw);
-				if (n != 1) {
-					rc = EINVAL;
-					goto out;
-				}
-				mi->stat.ctxt_sw = ctxt_sw - mi->stat.ctxt_sw;
-			} else {
-				n = fscanf(mi->sf, " %"PRIu64, &(mi->stat.ctxt_sw));
-				if (n != 1) {
-					rc = EINVAL;
-					goto out;
-				}
-			}
-			break;
-		case STAT_PROCESSES:
-			if (!mi->skip_first) {
-				n = fscanf(mi->sf, " %"PRIu64, &fork);
-				if (n != 1) {
-					rc = EINVAL;
-					goto out;
-				}
-				mi->stat.fork = fork - mi->stat.fork;
-			} else {
-				n = fscanf(mi->sf, " %"PRIu64, &(mi->stat.fork));
-				if (n != 1) {
-					rc = EINVAL;
-					goto out;
-				}
-			}
-			break;
-		case STAT_PROCS_RUNNING:
-			n = fscanf(mi->sf, "%"PRIu64, &mi->stat.procs_running);
-			if (n != 1) {
-				rc = ENODATA;
-				ovis_log(mi->log, OVIS_LERROR,
-					 "No data reading procs_running from %s\n", PROC_STAT);
-				goto out;
-			}
-			break;
-		case STAT_PROCS_BLOCKED:
-			n = fscanf(mi->sf, "%"PRIu64, &mi->stat.procs_blocked);
-			if (n != 1) {
-				rc = ENODATA;
-				ovis_log(mi->log, OVIS_LERROR,
-					 "No data reading procs_blocked from %s\n", PROC_STAT);
-				goto out;
-			}
-			break;
-		case STAT_SOFTIRQ:
-			while (1 == fscanf(mi->sf, " %"PRIu64, &u64))
-				continue;
-			break;
-		case STAT_BTIME:
-			n = fscanf(mi->sf, " %"PRIu64, &u64);
-			break;
-		default:
-			rc = 0;
-		}
-	}
-	if (!mi->skip_first) {
-		for (i = 0; i < ARRAY_LEN(metric_list); i++) {
-			if (mi->collect_list[i].collect
-			    && strcmp(metric_list[i].file_path, PROC_STAT) == 0 && metric_list[i].not_rec) {
-				union ldms_value val;
-				metric_list[i].cb(mi, &val);
-				ldms_metric_set(mi->base->set, *metric_no, &val);
-				(*metric_no)++;
-			}
-		}
-	}
-	mi->stat.intr = intr;
-	mi->stat.fork = fork;
-	mi->stat.ctxt_sw = ctxt_sw;
-	rc = 0;
-out:
-	return rc;
 
+	if (!prime) {
+		mi->stat.intr = got_intr ? dlt(intr, mi->prev_intr) : 0;
+		mi->stat.ctxt_sw = got_ctxt ? dlt(ctxt, mi->prev_ctxt) : 0;
+		mi->stat.fork = got_fork ? dlt(forks, mi->prev_fork) : 0;
+		write_scalars(mi, SRC_STAT);
+	}
+	if (got_intr)
+		mi->prev_intr = intr;
+	if (got_ctxt)
+		mi->prev_ctxt = ctxt;
+	if (got_fork)
+		mi->prev_fork = forks;
+	return rc;
 }
 
-static int netdev_handler(curated_metrics_t mi, int *metric_no)
+static int netdev_handler(curated_metrics_t mi, int prime)
 {
-	if (!mi->sample_netdev)
+	FILE *f;
+	int rc = 0, n;
+	ldms_mval_t lh;
+	char name[IFNAMSIZ];
+	char *line, *colon;
+	netdev_t cur;
+	cm_ent_t e;
+
+	if (!mi->sample_src[SRC_NETDEV])
 		return 0;
-	int rc = 0;
-	char lbuf[256];
-	char *s;
-	char curriface[IFNAMSIZ + 1];
-	netdev_t curr_netdev;
-	ldms_mval_t lh, rec_inst, name_mval;
+	f = src_file(mi, SRC_NETDEV, &rc);
+	if (!f)
+		return rc;
+	lh = ldms_metric_get(mi->base->set, mi->list_mid[SRC_NETDEV]);
+	mi->hint[SRC_NETDEV] = TAILQ_FIRST(&mi->ents[SRC_NETDEV]);
 
-	if (!mi->nf) {
-		mi->nf = fopen(NET_DEV, "r");
-		if (!mi->nf) {
+	while (getline(&mi->lbuf, &mi->lbuf_sz, f) > 0) {
+		line = mi->lbuf;
+		/* Skips the two header lines too: they have no ':' */
+		colon = strchr(line, ':');
+		if (!colon)
+			continue;
+		*colon = ' ';
+		n = sscanf(line, " %15s %" SCNu64 " %" SCNu64 " %" SCNu64
+			   " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64
+			   " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64
+			   " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64
+			   " %" SCNu64,
+			   name,
+			   &cur.rx_bytes, &cur.rx_packets, &cur.rx_errs,
+			   &cur.rx_drop, &cur.rx_fifo, &cur.rx_frame,
+			   &cur.rx_cmprsd, &cur.rx_multicast,
+			   &cur.tx_bytes, &cur.tx_packets, &cur.tx_errs,
+			   &cur.tx_drop, &cur.tx_fifo, &cur.tx_colls,
+			   &cur.tx_carrier, &cur.tx_cmprsd);
+		if (n != 17) {
 			ovis_log(mi->log, OVIS_LDEBUG,
-				 "Error %d opening file '%s'.",
-				 errno, NET_DEV);
-			return errno;
-		}
-	}
-	lh = ldms_metric_get(mi->base->set, mi->netdev_list_mid);
-
-	rewind(mi->nf);
-	/* Iterate over first two header lines in /proc/net/dev */
-	fgets(lbuf, sizeof(lbuf), mi->nf);
-	fgets(lbuf, sizeof(lbuf), mi->nf);
-
-	do {
-		s = fgets(lbuf, sizeof(lbuf), mi->nf);
-		if (!s)
-			break;
-
-		char *pch = strchr(lbuf, ':');
-		if (pch != NULL) {
-			*pch = ' ';
-		}
-
-		int rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 " %" PRIu64
-				" %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
-				" %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
-				" %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
-				" %" PRIu64 "\n",
-				curriface,
-				&curr_netdev.rx_bytes,
-				&curr_netdev.rx_packets,
-				&curr_netdev.rx_errs,
-				&curr_netdev.rx_drop,
-				&curr_netdev.rx_fifo,
-				&curr_netdev.rx_frame,
-				&curr_netdev.rx_cmprsd,
-				&curr_netdev.rx_multicast,
-				&curr_netdev.tx_bytes,
-				&curr_netdev.tx_packets,
-				&curr_netdev.tx_errs,
-				&curr_netdev.tx_drop,
-				&curr_netdev.tx_fifo,
-				&curr_netdev.tx_colls,
-				&curr_netdev.tx_carrier,
-				&curr_netdev.tx_cmprsd);
-		if (rc != 17) {
-			ovis_log(mi->log, OVIS_LINFO,
-				"wrong number of fields in /proc/net/dev sscanf\n");
+				 "wrong number of fields in %s line '%s'\n",
+				 NET_DEV, line);
 			continue;
 		}
-
-		/* Find the mi->cur_iface in the mi->netdevq that matches the curiface name */
-		struct iface_ent *ci = NULL;
-		TAILQ_FOREACH(ci, &mi->netdevq, entry) {
-			if (0 == strcmp(ci->name, curriface))
-				break;
+		if (!iface_wanted(mi, name))
+			continue;
+		e = ent_lookup(mi, SRC_NETDEV, name);
+		if (!e) {
+			rc = ENOMEM;
+			break;
 		}
-		if (ci == NULL) {
-			struct iface_ent *cur_iface = malloc(sizeof(struct iface_ent));
-			if (cur_iface == NULL) {
-				rc = ENOMEM;
-				goto out;
-			}
-			strcpy(cur_iface->name, curriface);
-			cur_iface->data = curr_netdev;
-			TAILQ_INSERT_TAIL(&mi->netdevq, cur_iface, entry);
-		} else {
-			if (ci == NULL)
-				break;
-			mi->cur_iface = ci;
-			mi->cur_iface->data.rx_bytes =
-				curr_netdev.rx_bytes - mi->cur_iface->data.rx_bytes;
-			mi->cur_iface->data.rx_packets =
-				curr_netdev.rx_packets - mi->cur_iface->data.rx_packets;
-			mi->cur_iface->data.rx_errs =
-				curr_netdev.rx_errs - mi->cur_iface->data.rx_errs;
-			mi->cur_iface->data.rx_drop =
-				curr_netdev.rx_drop - mi->cur_iface->data.rx_drop;
-			mi->cur_iface->data.tx_bytes =
-				curr_netdev.tx_bytes - mi->cur_iface->data.tx_bytes;
-			mi->cur_iface->data.tx_packets =
-				curr_netdev.tx_packets - mi->cur_iface->data.tx_packets;
-			mi->cur_iface->data.tx_errs =
-				curr_netdev.tx_errs - mi->cur_iface->data.tx_errs;
-
-			enum ldms_value_type typ;
-			size_t cnt;
-			for (rec_inst = ldms_list_first(mi->base->set, lh, &typ, &cnt);
-					rec_inst;
-					rec_inst = ldms_list_next(mi->base->set, rec_inst, &typ, &cnt)) {
-				name_mval = ldms_record_metric_get(rec_inst, 0);
-				if (0 == strcmp(name_mval->a_char, curriface))
-					break;
-			}
-			/* Add an instance for this iface if it does not exist */
-			if (rec_inst == NULL) {
-				rec_inst = ldms_record_alloc(mi->base->set, mi->rec_def_idx);
-				if (rec_inst == NULL)
-					continue;
-				name_mval = ldms_record_metric_get(rec_inst, 0);
-				int j = 0;
-				j = snprintf(name_mval->a_char, IFNAMSIZ, "%s", curriface);
-				if (j < 0) {
-					ovis_log(mi->log, OVIS_LERROR,
-						 "interface name %s exceeds buffer size\n",
-						 curriface);
-				}
-				ldms_list_append_record(mi->base->set, lh, rec_inst);
-			}
-
-			int rec_metric_id = 0;
-			int i = 0;
-			for (i = 0; i < ARRAY_LEN(mi->collect_list); i++) {
-				if (metric_list[i].not_rec)
-					continue;
-				if (strcmp(metric_list[i].file_path, NET_DEV) != 0)
-					continue;
-				if (!mi->collect_list[i].collect)
-					continue;
-				if (!strcmp(metric_list[i].name, "iface_name")) {
-					rec_metric_id++;
-					continue;
-				}
-				union ldms_value val;
-				metric_list[i].cb(mi, &val);
-				switch(metric_list[i].vtype) {
-				case LDMS_V_D64:
-					ldms_record_set_double(rec_inst, rec_metric_id, val.v_d);
-					break;
-				case LDMS_V_U64:
-					ldms_record_set_u64(rec_inst, rec_metric_id, val.v_u64);
-					break;
-				default:
-					ovis_log(mi->log, OVIS_LCRITICAL,
-						 "sample() memory corruption detected.\n");
-					rc = EINVAL;
-					return rc;
-				}
-				rec_metric_id++;
-			}
-			strcpy(mi->cur_iface->name, curriface);
-			mi->cur_iface->data = curr_netdev;
+		if (!prime && e->primed) {
+			netdev_t *p = &e->prev.net;
+			mi->net.rx_bytes = dlt(cur.rx_bytes, p->rx_bytes);
+			mi->net.rx_packets = dlt(cur.rx_packets, p->rx_packets);
+			mi->net.rx_errs = dlt(cur.rx_errs, p->rx_errs);
+			mi->net.rx_drop = dlt(cur.rx_drop, p->rx_drop);
+			mi->net.tx_bytes = dlt(cur.tx_bytes, p->tx_bytes);
+			mi->net.tx_packets = dlt(cur.tx_packets, p->tx_packets);
+			mi->net.tx_errs = dlt(cur.tx_errs, p->tx_errs);
+			write_record(mi, SRC_NETDEV, lh, e);
 		}
-	} while(s);
-	return rc;
-out:
+		e->prev.net = cur;
+		e->primed = 1;
+	}
+	if (!rc)
+		ent_sweep(mi, SRC_NETDEV, lh);
 	return rc;
 }
 
 static int sample(ldmsd_plug_handle_t handle)
 {
-	int rc;
-	int metric_cnt;
-	int *metric_no = &metric_cnt;
-
 	curated_metrics_t mi = ldmsd_plug_ctxt_get(handle);
-	base_sample_begin(mi->base);
-	mi->curr_time = time(NULL);
-	metric_cnt = mi->metric_offset;
-	if (!mi->skip_first) {
-		mi->dtime = mi->curr_time - mi->prev_time;
-		rc = minfo_handler(mi, metric_no);
-		if (rc) {
-			ovis_log(mi->log, OVIS_LERROR,
-				 "meminfo metrics not initialized\n");
-			return rc;
-		}
-		rc = loadavg_handler(mi, metric_no);
-		if (rc) {
-			ovis_log(mi->log, OVIS_LERROR,
-				 "loadavg metrics not initialized\n");
-			return rc;
-		}
+	struct timespec now;
+	int rc, first_rc = 0, prime;
+
+	if (!mi->base || !mi->base->set)
+		return EINVAL;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	prime = mi->skip_first;
+	if (!prime) {
+		mi->dtime = (double)(now.tv_sec - mi->prev_ts.tv_sec)
+			+ (double)(now.tv_nsec - mi->prev_ts.tv_nsec) / 1e9;
+		base_sample_begin(mi->base);
 	}
-	rc = cpu_handler(mi, metric_no);
+	mi->gen++;
+
+	rc = minfo_handler(mi, prime);
+	if (rc) {
+		ovis_log(mi->log, OVIS_LERROR, "Error %d in meminfo handler\n", rc);
+		first_rc = first_rc ? first_rc : rc;
+	}
+	rc = loadavg_handler(mi, prime);
+	if (rc) {
+		ovis_log(mi->log, OVIS_LERROR, "Error %d in loadavg handler\n", rc);
+		first_rc = first_rc ? first_rc : rc;
+	}
+	rc = stat_handler(mi, prime);
 	if (rc) {
 		ovis_log(mi->log, OVIS_LERROR, "Error %d in cpu handler\n", rc);
-		return rc;
+		first_rc = first_rc ? first_rc : rc;
 	}
-	rc = netdev_handler(mi, metric_no);
+	rc = netdev_handler(mi, prime);
 	if (rc) {
 		ovis_log(mi->log, OVIS_LERROR, "Error %d in netdev handler\n", rc);
-		return rc;
+		first_rc = first_rc ? first_rc : rc;
 	}
-	mi->prev_time = mi->curr_time;
-	base_sample_end(mi->base);
+
+	if (!prime)
+		base_sample_end(mi->base);	/* always close the transaction */
 	mi->skip_first = 0;
-	return 0;
+	mi->prev_ts = now;
+	return first_rc;
 }
 
 static int constructor(ldmsd_plug_handle_t handle)
 {
+	int src;
 	curated_metrics_t mi = calloc(1, sizeof(*mi));
-	if (mi) {
-		ldmsd_plug_ctxt_set(handle, mi);
-		TAILQ_INIT(&mi->netdevq);
-		mi->log = ldmsd_plug_log_get(handle);
-		mi->skip_first = 1;
-		/* Omit storing the first iteration of data */
-		mi->dtime = 1;
-		mi->sample_meminfo = 1;
-		mi->sample_stat = 1;
-		mi->sample_loadavg = 1;
-		mi->sample_netdev = 1;
-		return 0;
+	if (!mi)
+		return ENOMEM;
+	ldmsd_plug_ctxt_set(handle, mi);
+	for (src = 0; src < SRC_COUNT; src++) {
+		TAILQ_INIT(&mi->ents[src]);
+		mi->list_mid[src] = -1;
+		mi->rec_idx[src] = -1;
+		mi->name_id[src] = -1;
 	}
-	return ENOMEM;
+	mi->log = ldmsd_plug_log_get(handle);
+	/* The first sample only primes the delta counters */
+	mi->skip_first = 1;
+	return 0;
 }
 
 static void destructor(ldmsd_plug_handle_t handle)
 {
 	curated_metrics_t mi = ldmsd_plug_ctxt_get(handle);
-	struct iface_ent *e1, *e2;
-	e1 = TAILQ_FIRST(&mi->netdevq);
-	while (e1 != NULL) {
-		e2 = TAILQ_NEXT(e1, entry);
-		free(e1);
-		e1 = e2;
-	}
-	if (mi->mf)
-		fclose(mi->mf);
-	if (mi->lf)
-		fclose(mi->lf);
-	if (mi->sf)
-		fclose(mi->sf);
-	if (mi->nf)
-		fclose(mi->nf);
-	if (mi->base->set)
+	if (!mi)
+		return;
+	if (mi->base) {
 		base_set_delete(mi->base);
-	if (mi->base)
 		base_del(mi->base);
+		mi->base = NULL;
+	}
+	reset_selection(mi);
+	free(mi->lbuf);
 	free(mi);
 }
 
