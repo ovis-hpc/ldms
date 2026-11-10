@@ -2022,7 +2022,7 @@ void __xrail_on_set_delete(ldms_t x, struct ldms_set *s,
 		ctxt->set_delete.lookup = 0;
 	}
 	req = (struct ldms_request *)(ctxt + 1);
-	len = format_set_delete_req(req, (uint64_t)(unsigned long)ctxt,
+	len = format_set_delete_req(req, ctxt->xid,
 					ldms_set_instance_name_get(s));
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_SET_DELETE)) {
 		rep = (struct ldms_rail_ep_s *)ldms_xprt_ctxt_get(x);

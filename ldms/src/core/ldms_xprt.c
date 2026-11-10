@@ -428,8 +428,8 @@ void __xprt_stats_update(ldms_stats_entry_t e, double dur_us)
 	e->mean_us /= e->count;
 }
 
-/* Must be called with the xprt lock held.
- * Keeps, rather than copies, string and other pointers in varargs. */
+/* Must be called with the xprt lock held.  Keeps, rather than copies, string
+ * and other pointers in varargs. */
 struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 		ldms_context_type_t type, ...)
 {
@@ -450,6 +450,12 @@ struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 #endif /* CTXT_DEBUG */
 	ctxt->type = type;
 	TAILQ_INSERT_TAIL(&x->ctxt_list, ctxt, link);
+	/* 0 means "no context" on the wire; never hand it out */
+	do {
+		ctxt->xid = ++x->next_xid;
+	} while (ctxt->xid == 0);
+	rbn_init(&ctxt->xid_rbn, (void *)(uintptr_t)ctxt->xid);
+	rbt_ins(&x->ctxt_xid_tree, &ctxt->xid_rbn);
 	switch (type) {
 	case LDMS_CONTEXT_LOOKUP_REQ:
 		ctxt->lu_req.cb = va_arg(ap, ldms_lookup_cb_t);
@@ -498,6 +504,30 @@ struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 	return ctxt;
 }
 
+/*
+ * Resolve a transaction id received from the peer to an outstanding context
+ * of the expected type. Returns NULL if no such context exists, so a forged,
+ * stale or corrupted xid is dropped instead of being used as a pointer. Must
+ * be called with the ldms xprt lock held.
+ */
+static struct ldms_context *
+__ldms_ctxt_find(struct ldms_xprt *x, uint64_t xid,
+		 ldms_context_type_t type)
+{
+	struct rbn *rbn;
+	struct ldms_context *ctxt;
+
+	if (!xid)
+		return NULL;
+	rbn = rbt_find(&x->ctxt_xid_tree, (void *)(uintptr_t)xid);
+	if (!rbn)
+		return NULL;
+	ctxt = container_of(rbn, struct ldms_context, xid_rbn);
+	if (ctxt->type != type)
+		return NULL;
+	return ctxt;
+}
+
 /* Must be called with the ldms xprt lock held */
 void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 {
@@ -510,6 +540,7 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 	dur_us = ldms_timespec_diff_us(&ctxt->start, &end);
 
 	TAILQ_REMOVE(&x->ctxt_list, ctxt, link);
+	rbt_del(&x->ctxt_xid_tree, &ctxt->xid_rbn);
 	switch (ctxt->type) {
 	case LDMS_CONTEXT_LOOKUP_REQ:
 		free(ctxt->lu_req.path);
@@ -2114,11 +2145,10 @@ void process_dir_cancel_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	struct ldms_context *dir_ctxt;
 
 	pthread_mutex_lock(&x->lock);
-	if (x->local_dir_xid) {
-		dir_ctxt = (struct ldms_context *)(unsigned long)x->local_dir_xid;
+	dir_ctxt = __ldms_ctxt_find(x, x->local_dir_xid, LDMS_CONTEXT_DIR);
+	if (dir_ctxt)
 		__ldms_free_ctxt(x, dir_ctxt);
-	}
-	x->local_dir_xid = 0;
+	x->local_dir_xid = 0;	/* no-context */
 #ifdef DEBUG
 	x->active_dir_cancel--;
 #endif /* DEBUG */
@@ -2202,6 +2232,9 @@ static
 void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		       struct ldms_context *ctxt, int more)
 {
+	const size_t dir_hdr_len = sizeof(struct ldms_reply_hdr)
+				 + sizeof(struct ldms_dir_reply);
+	size_t msg_len = ntohl(reply->hdr.len);	/* checked by recv_cb() */
 	enum ldms_dir_type type = ntohl(reply->dir.type);
 	int i, rc = ntohl(reply->hdr.rc);
 	size_t count, json_data_len;
@@ -2214,9 +2247,6 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	int64_t dur_us;
 	struct timespec end, start;
 
-	json_data_len = ntohl(reply->hdr.len) - sizeof(struct ldms_reply_hdr)
-				- sizeof(struct ldms_dir_reply);
-
 	if (!ctxt->dir.cb)
 		return;
 
@@ -2224,6 +2254,21 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 
 	if (rc)
 		goto out;
+
+	/*
+	 * recv_cb() guarantees hdr.len is no larger than what was received.
+	 * Make sure it also covers the dir reply header and some JSON, so the
+	 * subtraction below cannot wrap.
+	 */
+	if (msg_len <= dir_hdr_len) {
+		XPRT_LOG(x, OVIS_LERROR,
+			 "%s(): x %p: dir reply length %zu is too short "
+			 "(minimum %zu)\n",
+			 __func__, x, msg_len, dir_hdr_len + 1);
+		rc = EPROTO;
+		goto out;
+	}
+	json_data_len = msg_len - dir_hdr_len;
 
 	rc = json_parse_buffer(reply->dir.json_data, json_data_len, &doc);
 	if (rc) {
@@ -2543,15 +2588,58 @@ void ldms_event_release(ldms_t t, ldms_notify_event_t e)
 /* implementation is in ldms_msg.c */
 int __msg_reply_recv(ldms_t x, int cmd, struct ldms_reply *reply);
 
+/*
+ * The context type a reply's xid must resolve to, or -1 if the reply does
+ * not refer to a local context.
+ */
+static int __reply_ctxt_type(int cmd)
+{
+	switch (cmd) {
+	case LDMS_CMD_LOOKUP_REPLY:
+		return LDMS_CONTEXT_LOOKUP_REQ;
+	case LDMS_CMD_DIR_REPLY:
+	case LDMS_CMD_DIR_UPDATE_REPLY:
+		return LDMS_CONTEXT_DIR;
+	case LDMS_CMD_REQ_NOTIFY_REPLY:
+		return LDMS_CONTEXT_REQ_NOTIFY;
+	case LDMS_CMD_SET_DELETE_REPLY:
+		return LDMS_CONTEXT_SET_DELETE;
+	default:
+		/* PUSH_REPLY and DIR_CANCEL_REPLY carry xid 0 and do not
+		 * use a context; MSG_(UN)SUB_REPLY are handled in ldms_msg.c */
+		return -1;
+	}
+}
+
 static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 {
 	int cmd = ntohl(reply->hdr.cmd);
 	uint64_t xid = reply->hdr.xid;
-	struct ldms_context *ctxt;
+	struct ldms_context *ctxt = NULL;
 	struct ldms_thrstat *thrstat;
-	ctxt = (struct ldms_context *)(unsigned long)xid;
+	int ctxt_type;
+
 	thrstat = zap_thrstat_ctxt_get(x->zap_ep);
 	thrstat->last_op = req2thrstat_op_tbl[cmd];
+
+	ctxt_type = __reply_ctxt_type(cmd);
+	if (ctxt_type >= 0) {
+		/*
+		 * Never trust the xid as a pointer: it must name a context
+		 * this endpoint handed out and still owns, of the type this
+		 * reply expects.
+		 */
+		pthread_mutex_lock(&x->lock);
+		ctxt = __ldms_ctxt_find(x, xid, ctxt_type);
+		pthread_mutex_unlock(&x->lock);
+		if (!ctxt) {
+			XPRT_LOG(x, OVIS_LERROR, "%s(): x %p: reply %d with "
+				 "unknown xid %#" PRIx64 "; dropped\n",
+				 __func__, x, cmd, xid);
+			return EPROTO;
+		}
+	}
+
 	switch (cmd) {
 	case LDMS_CMD_PUSH_REPLY:
 		process_push_reply(x, reply, ctxt);
@@ -2584,7 +2672,7 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 	return 0;
 }
 
-static int recv_cb(struct ldms_xprt *x, void *r)
+static int recv_cb(struct ldms_xprt *x, void *r, size_t data_len)
 {
 	int rc;
 	struct ldms_request_hdr *h = r;
@@ -2594,11 +2682,43 @@ static int recv_cb(struct ldms_xprt *x, void *r)
 	(void)clock_gettime(CLOCK_REALTIME, &start);
 	e = &x->stats.ops[LDMS_XPRT_OP_RECV];
 
+	if (data_len < sizeof(struct ldms_request_hdr)) {
+		XPRT_LOG(x, OVIS_LERROR, "%s(): x %p: message of %zu bytes is "
+			 "shorter than the header; dropped\n", __func__, x,
+			 data_len);
+		rc = EPROTO;
+		goto out;
+	}
 	int cmd = ntohl(h->cmd);
-	if (cmd > LDMS_CMD_REPLY)
+	if (cmd > LDMS_CMD_REPLY) {
+		/*
+		 * Reply handlers size their payload from hdr.len (e.g. the
+		 * dir JSON length), so it must lie within what was actually
+		 * received. Every reply sender sets hdr.len to the number of
+		 * bytes it sends.
+		 */
+		struct ldms_reply_hdr *rh = r;
+		size_t hdr_len;
+		if (data_len < sizeof(*rh)) {
+			XPRT_LOG(x, OVIS_LERROR, "%s(): x %p: reply of %zu bytes "
+				 "is shorter than the reply header; dropped\n",
+				 __func__, x, data_len);
+			rc = EPROTO;
+			goto out;
+		}
+		hdr_len = ntohl(rh->len);
+		if (hdr_len < sizeof(*rh) || hdr_len > data_len) {
+			XPRT_LOG(x, OVIS_LERROR, "%s(): x %p: reply %d claims "
+				 "%zu bytes but %zu were received; dropped\n",
+				 __func__, x, cmd, hdr_len, data_len);
+			rc = EPROTO;
+			goto out;
+		}
 		rc = ldms_xprt_recv_reply(x, r);
-	else
+	} else {
 		rc = ldms_xprt_recv_request(x, r);
+	}
+ out:
 
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	dur_us = ldms_timespec_diff_us(&start, &end);
@@ -2876,8 +2996,11 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 		goto cleanup;
 
 	/* the updated set is not current */
+	/* __ldms_alloc_ctxt() requires x->lock, as in __ldms_xprt_update() */
+	pthread_mutex_lock(&x->lock);
 	rc = __ldms_remote_update(x, set, ctxt->update.cb,
 			ctxt->update.cb_arg);
+	pthread_mutex_unlock(&x->lock);
 	if (rc) {
 		pthread_mutex_lock(&set->lock);
 		set->flags &= ~LDMS_SET_F_IO;
@@ -3119,7 +3242,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 {
 
 	struct ldms_rendezvous_lookup_param *lu = &lm->lookup;
-	struct ldms_context *ctxt = (void*)lm->hdr.xid;
+	struct ldms_context *ctxt;
 	struct ldms_context *rd_ctxt = NULL;
 	struct ldms_set *lset;
 	int rc;
@@ -3129,7 +3252,18 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	struct timespec *share_ts;
 
 	struct ldms_thrstat *thrstat = zap_thrstat_ctxt_get(zep);
-	struct ldms_op_ctxt *op_ctxt = ctxt->op_ctxt;
+	struct ldms_op_ctxt *op_ctxt;
+
+	pthread_mutex_lock(&x->lock);
+	ctxt = __ldms_ctxt_find(x, lm->hdr.xid, LDMS_CONTEXT_LOOKUP_REQ);
+	pthread_mutex_unlock(&x->lock);
+	if (!ctxt) {
+		XPRT_LOG(x, OVIS_LERROR, "%s(): x %p: rendezvous for unknown "
+			 "lookup xid %#" PRIx64 "; dropped\n", __func__, x,
+			 lm->hdr.xid);
+		return;
+	}
+	op_ctxt = ctxt->op_ctxt;
 
 #ifdef DEBUG
 	if (!__is_lookup_name_good(x, lu, ctxt)) {
@@ -3508,7 +3642,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	(void)clock_gettime(CLOCK_REALTIME, &thrstat->last_op_start);
 	switch(ev->type) {
 	case ZAP_EVENT_RECV_COMPLETE:
-		recv_cb(x, ev->data);
+		recv_cb(x, ev->data, ev->data_len);
 		break;
 	case ZAP_EVENT_READ_COMPLETE:
 		handle_zap_read_complete(zep, ev);
@@ -3600,12 +3734,9 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		__sync_fetch_and_or(&x->term, 1);
 		xprt_rdir_list_rm(x);
 		pthread_mutex_lock(&x->lock);
-		struct ldms_context *dir_ctxt = NULL;
-		if (x->local_dir_xid) {
-			dir_ctxt = (struct ldms_context *)(unsigned long)
-				x->local_dir_xid;
-			x->local_dir_xid = 0;
-		}
+		struct ldms_context *dir_ctxt;
+		dir_ctxt = __ldms_ctxt_find(x, x->local_dir_xid, LDMS_CONTEXT_DIR);
+		x->local_dir_xid = 0;
 		if (dir_ctxt)
 			__ldms_free_ctxt(x, dir_ctxt);
 
@@ -3857,6 +3988,8 @@ void __ldms_xprt_init(struct ldms_xprt *x, const char *name, int is_active)
 		x->stats.ops[op_e].min_us = LLONG_MAX;
 
 	TAILQ_INIT(&x->ctxt_list);
+	rbt_init(&x->ctxt_xid_tree, rbn_ptr_cmp);
+	x->next_xid = 0;
 	sem_init(&x->sem, 0, 0);
 	rbt_init(&x->set_coll, rbn_ptr_cmp);
 	pthread_mutex_init(&x->lock, NULL);
@@ -4161,9 +4294,9 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 		return ENOMEM;
 	}
 	req = (struct ldms_request *)(ctxt + 1);
-	len = format_dir_req(req, (uint64_t)(unsigned long)ctxt, flags);
+	len = format_dir_req(req, ctxt->xid, flags);
 	if (flags)
-		x->local_dir_xid = (uint64_t)ctxt;
+		x->local_dir_xid = ctxt->xid;
 	pthread_mutex_unlock(&x->lock);
 
 #ifdef DEBUG
@@ -4297,7 +4430,7 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	}
 	req = (struct ldms_request *)(ctxt + 1);
 
-	len = format_lookup_req(req, flags, path, (uint64_t)(unsigned long)ctxt);
+	len = format_lookup_req(req, flags, path, ctxt->xid);
 
 #ifdef DEBUG
 	x->active_lookup++;
@@ -4582,14 +4715,19 @@ static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
 	}
 	req = (struct ldms_request *)(ctxt + 1);
 
+	struct ldms_context *old_ctxt;
 	pthread_mutex_lock(&s->lock);
-	if (s->notify_ctxt) {
-		/* Drop the old ctxt and use the new onw */
-		__ldms_free_ctxt(x, s->notify_ctxt);
-	}
+	/* Drop the old ctxt and use the new one */
+	old_ctxt = s->notify_ctxt;
 	s->notify_ctxt = ctxt;
 	pthread_mutex_unlock(&s->lock);
-	len = format_req_notify_req(req, (uint64_t)(unsigned long)ctxt,
+	if (old_ctxt) {
+		/* __ldms_free_ctxt() updates x->ctxt_list and x->ctxt_xid_tree */
+		pthread_mutex_lock(&x->lock);
+		__ldms_free_ctxt(x, old_ctxt);
+		pthread_mutex_unlock(&x->lock);
+	}
+	len = format_req_notify_req(req, ctxt->xid,
 				    s->remote_set_id, flags);
 
 	zap_err_t zerr = zap_send(x->zap_ep, req, len);
@@ -4623,7 +4761,7 @@ static int send_cancel_notify(ldms_t _x, ldms_set_t s)
 		return ENOTCONN;
 
 	len = format_cancel_notify_req(&req,
-			(uint64_t)(unsigned long)s->notify_ctxt, s->remote_set_id);
+			s->notify_ctxt->xid, s->remote_set_id);
 	s->notify_ctxt = 0;
 
 	zap_err_t zerr = zap_send(x->zap_ep, &req, len);

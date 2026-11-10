@@ -432,6 +432,14 @@ struct ldms_context {
 	};
 	struct timespec start;
 	TAILQ_ENTRY(ldms_context) link;
+	/*
+	 * Transaction id sent to the peer in place of the context address.
+	 * The peer echoes it back in replies and rendezvous messages, and it
+	 * is resolved with __ldms_ctxt_find() against x->ctxt_xid_tree, so a
+	 * value from the network is never dereferenced.
+	 */
+	uint64_t xid;
+	struct rbn xid_rbn;	/* in x->ctxt_xid_tree, keyed by xid */
 };
 
 #define LDMS_MAX_TRANSPORT_NAME_LEN 16
@@ -518,7 +526,7 @@ struct ldms_xprt {
 
 	/* Maximum size of the underlying transport send/recv message */
 	int max_msg;
-	/* Points to local ctxt expected when dir updates returned to this endpoint */
+	/* xid of the local dir ctxt expected when dir updates are returned to this endpoint */
 	uint64_t local_dir_xid;
 	/* This is the peers local_dir_xid that we provide when providing dir updates */
 	uint64_t remote_dir_xid;
@@ -530,6 +538,9 @@ struct ldms_xprt {
 	int active_push; /* Number of outstanding push ctxt */
 #endif /* DEBUG */
 	TAILQ_HEAD(, ldms_context) ctxt_list;
+	/* Outstanding contexts by xid; protected by x->lock */
+	struct rbt ctxt_xid_tree;
+	uint64_t next_xid;	/* last xid assigned; protected by x->lock */
 
 	/* Callback that receives the connection event and receive event */
 	ldms_event_cb_t event_cb;
