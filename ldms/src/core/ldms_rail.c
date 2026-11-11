@@ -207,6 +207,7 @@ uint64_t rail_gn = 1;
 /* implementation in ldms_msg.c */
 int __msg_buf_cmp(void *tree_key, const void *key);
 int __str_rbn_cmp(void *tree_key, const void *key);
+int __sub_req_ctxt_cmp(void *tree_key, const void *key);
 
 /* The implementation is in ldms_xprt.c. */
 zap_t __ldms_zap_get(const char *xprt);
@@ -278,6 +279,7 @@ ldms_t ldms_xprt_rail_new(const char *xprt_name,
 	r->recv_quota = recv_quota;
 	r->recv_rate_limit = rate_limit;
 	rbt_init(&r->ch_cli_rbt, __str_rbn_cmp);
+	rbt_init(&r->sub_req_ctxt_rbt, __sub_req_ctxt_cmp);
 
 	snprintf(r->name, sizeof(r->name), "%s", xprt_name);
 	snprintf(r->auth_name, sizeof(r->auth_name), "%s", auth_name);
