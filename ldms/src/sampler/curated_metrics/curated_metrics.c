@@ -967,6 +967,7 @@ static int cpu_handler(curated_metrics_t mi, int *metric_no)
 			}
 			break;
 		case STAT_INTR:
+			intr = 0;
 			if (!mi->skip_first) {
 				n = fscanf(mi->sf, " %"PRIu64, &intr);
 				if (n != 1) {
@@ -987,6 +988,7 @@ static int cpu_handler(curated_metrics_t mi, int *metric_no)
 				continue;
 			break;
 		case STAT_CTXT:
+			ctxt_sw = 0;
 			if (!mi->skip_first) {
 				n = fscanf(mi->sf, " %"PRIu64, &ctxt_sw);
 				if (n != 1) {
@@ -1003,6 +1005,7 @@ static int cpu_handler(curated_metrics_t mi, int *metric_no)
 			}
 			break;
 		case STAT_PROCESSES:
+			fork = 0;
 			if (!mi->skip_first) {
 				n = fscanf(mi->sf, " %"PRIu64, &fork);
 				if (n != 1) {
