@@ -70,7 +70,7 @@
 #include <ovis_json/ovis_json.h>
 #include <assert.h>
 
-static char *message_tag;
+static const char *message_tag;
 #define SLURM_NOTIFY_TIMEOUT 5
 static time_t io_timeout = SLURM_NOTIFY_TIMEOUT;
 static int user_debug = 0;
@@ -359,9 +359,9 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		event, client->xprt, client->host, client->port, client->auth);
 }
 
-static char *get_arg_value(const char *arg)
+static const char *get_arg_value(const char *arg)
 {
-	char *s = strstr(arg, "=");
+	const char *s = strstr(arg, "=");
 	if (s) {
 		s++;
 		return s;
@@ -450,11 +450,11 @@ void setup_clients(int argc, char *argv[], struct client_list *cl)
 		}
 		if (0 == strncasecmp(argv[rc], "stream", 6)) {
 			/* For backward compatibility */
-			message_tag = get_arg_value(argv[rc]);
+			message_tag = (char *)get_arg_value(argv[rc]);
 			continue;
 		}
 		if (0 == strncasecmp(argv[rc], "message_tag", 11)) {
-			message_tag = get_arg_value(argv[rc]);
+			message_tag = (char *)get_arg_value(argv[rc]);
 			continue;
 		}
 		if (0 == strncasecmp(argv[rc], "timeout", 7)) {
