@@ -24,7 +24,7 @@ librdc_sampler_la_LIBADD  = \
 bin_PROGRAMS = ldms_rdc_schema_name
 ldms_rdc_schema_name_SOURCES = rdcinfo.c
 ldms_rdc_schema_name_CFLAGS = $(AM_CFLAGS) -DMAIN
-ldms_rdc_schema_name_LDFLAGS = $(AM_LDFLAG)
+ldms_rdc_schema_name_LDFLAGS = $(AM_LDFLAGS)
 ldms_rdc_schema_name_LDADD = \
 	$(LIBRDC_BOOTSTRAP) \
 	$(LIBRDC_RAS) \
