@@ -1091,22 +1091,25 @@ static void __destroy_set(void *v)
 void __ldms_set_delete(ldms_set_t s, int notify)
 {
 	ldms_t x;
-	struct ldms_set *__set;
+	struct ldms_set *set;
+	struct rbn *rbn;
 
 	SETDEBUG("set: %p\n", s);
 
-	__set = __ldms_set_by_id(s->set_id);
-	if (!__set) {
-		/*
-		 * This is impossible since RBDs are removed.
-		 */
-		assert(0);
+	__ldms_set_tree_lock();
+	/* Cannot use __ldms_set_by_id() because it takes and releases the
+	 * set_tree lock. The find and delete must be protected by the
+	 * set_tree lock to prevent double free.
+	 */
+	rbn = rbt_find(&__id_tree, (void *)s->set_id);
+	set = rbn ? container_of(rbn, struct ldms_set, id_node) : NULL;
+	if (set != s) {
+		__ldms_set_tree_unlock();
+		/* Already deleted by another thread */
 		return;
 	}
-	__ldms_set_tree_lock();
 	rbt_del(&__set_tree, &s->rb_node);
 	rbt_del(&__id_tree, &s->id_node);
-	ref_put(&__set->ref, "set_by_id");
 	__ldms_set_tree_unlock();
 
 	SETDEBUG("set: %p proceed ...\n", s);

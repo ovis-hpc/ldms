@@ -124,6 +124,49 @@ const char *json_type_name(enum json_value_e type);
 enum json_value_e json_entity_type(json_entity_t e);
 
 /**
+ * \brief True if the entity's value is a particular type
+ *
+ * These inline convenience functions make entity type checking easier to read.
+ * It is safe to pass NULL to these functions, so the code pattern:
+ *
+ *    if (!e || json_entity_type(e) != JSON_XXXX_VALUE)
+ *        goto error;
+ *
+ * with:
+ *
+ *    if (!json_is_STR(e))
+ *        goto error;
+ *
+ * \param e Pointer to an entity
+ * \return TRUE if the entity is of the type matching the function
+ * \return FALSE if the entity is NULL or the type does not match
+ */
+static inline int json_is_STR(json_entity_t e) {
+	return (e ? (json_entity_type(e) == JSON_STRING_VALUE) : 0);
+}
+static inline int json_is_BOOL(json_entity_t e) {
+	return (e ? (json_entity_type(e) == JSON_BOOL_VALUE) : 0);
+}
+static inline int json_is_INT(json_entity_t e) {
+	return (e ? json_entity_type(e) == JSON_INT_VALUE : 0);
+}
+static inline int json_is_FLOAT(json_entity_t e) {
+	return (e ? json_entity_type(e) == JSON_FLOAT_VALUE : 0);
+}
+static inline int json_is_ATTR(json_entity_t e) {
+	return (e ? json_entity_type(e) == JSON_ATTR_VALUE : 0);
+}
+static inline int json_is_LIST(json_entity_t e) {
+	return (e ? json_entity_type(e) == JSON_LIST_VALUE : 0);
+}
+static inline int json_is_DICT(json_entity_t e) {
+	return (e ? json_entity_type(e) == JSON_DICT_VALUE : 0);
+}
+static inline int json_is_NULL(json_entity_t e) {
+	return (e ? (json_entity_type(e) == JSON_NULL_VALUE) : 0);
+}
+
+/**
  * \brief Parse a string into a JSON document
  *
  * The function returns 0 on a successful parse, and the \c pdoc
