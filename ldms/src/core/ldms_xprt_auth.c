@@ -67,14 +67,22 @@ extern ovis_log_t xlog;
 
 int ldms_xprt_auth_bind(ldms_t _x, ldms_auth_t a)
 {
+	int rc;
 	struct ldms_xprt *x = _x;
+	if (!a)
+		return EINVAL;
 	if (x->auth_flag != LDMS_XPRT_AUTH_INIT)
 		return EINVAL;
 	if (x->auth)
 		return EEXIST;
-	x->auth = a;
-	/* also notify the auth object about the binding */
-	return x->auth->plugin->auth_xprt_bind(a, _x);
+	/* Notify the auth object about the binding */
+	rc = a->plugin->auth_xprt_bind(a, _x);
+
+	/* Don't set auth in the transport if bind fails */
+	if (!rc)
+		x->auth = a;
+
+	return rc;
 }
 
 int ldms_xprt_auth_send(ldms_t _x, const char *msg_buf, size_t msg_len)

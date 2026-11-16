@@ -376,7 +376,7 @@ ldms_t ldms_xprt_by_remote_sin(struct sockaddr *sa)
 		}
 next:
 		next_l = ldms_xprt_next(l);
-		ldms_xprt_put(l, "iter_next");
+		ldms_xprt_put(l, "iter_caller"); /* next() puts the "iter_next" ref */
 		l = next_l;
 	}
 	return NULL;
@@ -559,8 +559,12 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 			ref_put(&ctxt->update.s->ref, "__ldms_alloc_ctxt");
 		break;
 	case LDMS_CONTEXT_REQ_NOTIFY:
-		if (ctxt->req_notify.s)
+		if (ctxt->req_notify.s) {
+			/* don't leave s->notify_ctxt dangling */
+			(void)__sync_bool_compare_and_swap(
+					   &ctxt->req_notify.s->notify_ctxt, ctxt, NULL);
 			ref_put(&ctxt->req_notify.s->ref, "__ldms_alloc_ctxt");
+		}
 		break;
 	case LDMS_CONTEXT_SET_DELETE:
 		e = &x->stats.ops[LDMS_XPRT_OP_SET_DELETE];
@@ -860,7 +864,7 @@ void __ldms_dir_del_set(struct ldms_set *set)
 	for (i = 0; i < n; i++) {
 		/* NOTE xs[i] is a part of rail, not rail itself */
 		__xrail_on_set_delete(xs[i], set, __set_delete_cb);
-		ldms_xprt_put(np->xprt, "__ldms_dir_del_set:xs");
+		ldms_xprt_put(xs[i], "__ldms_dir_del_set:xs");
 	}
 	free(xs);
 }
@@ -885,8 +889,10 @@ void ldms_xprt_close(ldms_t x)
 void __ldms_xprt_resource_free(struct ldms_xprt *x)
 {
 	int drop_ep_ref = 0;
+
+	xprt_rdir_list_rm(x);
 	pthread_mutex_lock(&x->lock);
-	x->remote_dir_xid = x->local_dir_xid = 0;
+	x->local_dir_xid = 0;
 
 #ifdef DEBUG
 	XPRT_LOG(x, OVIS_LALWAYS, "xprt_resource_free. zap %p: active_dir = %d.\n",
@@ -1151,7 +1157,8 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 				       "{ \"directory\" : [");
 			if (cnt >= json_len) {
 				rc = ENOMEM;
-				ref_put(&set->ref, "__ldms_find_local_set");
+				if (set)
+					ref_put(&set->ref, "__ldms_find_local_set");
 				goto out;
 			}
 			need_comma = 0;
@@ -1248,8 +1255,8 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	ovis_histogram_update(&xprt_op_hist[LDMS_XPRT_OP_DIR_REP].hist, dur_us);
 	return;
 out:
-	if (reply)
-		free(reply);
+	free(reply);
+	__ldms_empty_name_list(&name_list);
 	reply = &reply_;
 	len = hdrlen;
 	reply->hdr.xid = req->hdr.xid;
@@ -1331,6 +1338,7 @@ process_req_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 		np->remote_notify_xid = req->hdr.xid;
 		np->notify_flags = ntohl(req->req_notify.flags);
 		pthread_mutex_unlock(&set->lock);
+		ref_put(&set->ref, "set_by_id");
 		return;
 	}
 	np = calloc(1, sizeof(*np));
@@ -1355,9 +1363,26 @@ process_req_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 		ent = calloc(1, sizeof(*ent));
 		if (!ent) {
 			XPRT_LOG(x, OVIS_LCRITICAL,
-					"%s:%s:%d Not enough memory\n",
-					__FILE__, __func__, __LINE__);
-			pthread_mutex_unlock(&x->lock);
+				 "%s:%s:%d Not enough memory\n",
+				 __FILE__, __func__, __LINE__);
+			/*
+			 * This would likely never happen because the daemon
+			 * is dying, however, without the set_coll
+			 * entry, xprt teardown never finds `np` and its
+			 * "notify_peer" ref is held until the set is
+			 * deleted. Undo the insert.
+			 */
+			pthread_mutex_lock(&set->lock);
+			rbn = rbt_find(&set->lookup_coll, x);
+			if (rbn == &np->rbn)
+				rbt_del(&set->lookup_coll, rbn);
+			else
+				np = NULL; /* already removed */
+			pthread_mutex_unlock(&set->lock);
+			if (np) {
+				ldms_xprt_put(np->xprt, "notify_peer");
+				free(np);
+			}
 			ref_put(&set->ref, "set_by_id");
 			return;
 		}
@@ -1777,7 +1802,7 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 		rc = __send_lookup_reply(x, set, req->hdr.xid, 0);
 		ref_put(&set->ref, "__ldms_find_local_set");
 		if (rc)
-			goto err_1;
+			goto err_0;
 		return;
 	}
 
@@ -1857,11 +1882,9 @@ static int do_read_all(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 
 	ctxt = __ldms_alloc_ctxt(x, sizeof(*ctxt), LDMS_CONTEXT_UPDATE,
 				 s, cb, arg, 0, 0);
-	if (!ctxt) {
-		rc = ENOMEM;
-		goto out;
-	}
-	assert(x == ctxt->x);
+	if (!ctxt)
+		return ENOMEM;
+
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && s->curr_updt_ctxt) {
 		ref_get(&s->curr_updt_ctxt->ref, "xprt_ctxt");
 		ctxt->op_ctxt = s->curr_updt_ctxt;
@@ -1887,7 +1910,7 @@ static int do_read_all(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 		x->zerrno = rc;
 		__ldms_free_ctxt(x, ctxt);
 	}
-out:
+
 	return zap_zerr2errno(rc);
 }
 
@@ -1900,12 +1923,10 @@ static int do_read_meta(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	uint32_t meta_sz = __le32_to_cpu(s->meta->meta_sz);
 
 	ctxt = __ldms_alloc_ctxt(x, sizeof(*ctxt), LDMS_CONTEXT_UPDATE_META,
-							s, cb, arg, 0, 0);
-	if (!ctxt) {
-		rc = ENOMEM;
-		goto out;
-	}
-	assert(x == ctxt->x);
+				 s, cb, arg, 0, 0);
+	if (!ctxt)
+		return ENOMEM;
+
 	if (ENABLED_PROFILING(LDMS_XPRT_OP_UPDATE) && s->curr_updt_ctxt) {
 		ref_get(&s->curr_updt_ctxt->ref, "xprt_ctxt");
 		ctxt->op_ctxt = s->curr_updt_ctxt;
@@ -1927,7 +1948,7 @@ static int do_read_meta(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 		x->zerrno = rc;
 		__ldms_free_ctxt(x, ctxt);
 	}
-out:
+
 	return zap_zerr2errno(rc);
 }
 
@@ -2172,22 +2193,33 @@ static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type
 	int dir_upd = 0;
 	struct ldms_set_info_pair *pair, *nxt_pair;
 
+	if (!json_is_LIST(info_list))
+	       return EINVAL;
+
 	if (lset)
 		pthread_mutex_lock(&lset->lock);
+
 	for (j = 0, info_entity = json_item_first(info_list); info_entity;
 	     info_entity = json_item_next(info_entity), j++) {
+
+		if (!json_is_DICT(info_entity))
+			goto syntax_error;
+
+		/* 'key' */
 		k = json_value_find(info_entity, "key");
-		if (!k || json_entity_type(k) != JSON_STRING_VALUE)
-			goto err;
+		if (!json_is_STR(k))
+			goto syntax_error;
 		v = json_value_find(info_entity, "value");
-		if (!k || json_entity_type(k) != JSON_STRING_VALUE)
-			goto err;
+		if (!json_is_STR(v))
+			goto syntax_error;
 		char *nkey = strdup(json_value_cstr(k));
 		if (!nkey)
-			goto err;
+			goto enomem;
 		char *nvalue = strdup(json_value_cstr(v));
-		if (!nvalue)
-			goto err;
+		if (!nvalue) {
+			free(nkey);
+			goto enomem;
+		}
 		dset->info[j].key = nkey;
 		dset->info[j].value = nvalue;
 
@@ -2206,6 +2238,7 @@ static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type
 	if (!lset)
 		return 0;
 
+	/* Remove entries in the set info, but not present in the dir info */
 	pair = LIST_FIRST(&lset->remote_info);
 	while (pair) {
 		nxt_pair = LIST_NEXT(pair, entry);
@@ -2221,7 +2254,13 @@ static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type
 		}
 		pair = nxt_pair;
 	}
-out:
+	goto out;
+ syntax_error:
+	rc = EINVAL;
+	goto out;
+ enomem:
+	rc = ENOMEM;
+ out:
 	if (lset) {
 		pthread_mutex_unlock(&lset->lock);
 		if (!rc) {
@@ -2232,9 +2271,6 @@ out:
 		}
 	}
 	return rc;
- err:
-	rc = EINVAL;
-	goto out;
 }
 
 static
@@ -2312,115 +2348,141 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	dir->set_count = count;
 
 	for (i = 0, set_entity = json_item_first(dir_list); set_entity;
-	     set_entity = json_item_next(set_entity), i++) {
+	     set_entity = json_item_next(set_entity), i++)
+	{
+		if (!json_is_DICT(set_entity))
+			goto syntax_error;
+		/* 'name' */
 		json_entity_t e = json_value_find(set_entity, "name");
-		if (!e || json_entity_type(e) != JSON_STRING_VALUE)
+		if (!json_is_STR(e))
 			goto syntax_error;
 
 		dir->set_data[i].inst_name = strdup(json_value_cstr(e));
 		if (!dir->set_data[i].inst_name)
 			goto enomem;
 
+		/* 'schema' */
 		e = json_value_find(set_entity, "schema");
-		if (!e || json_entity_type(e) != JSON_STRING_VALUE)
+		if (!json_is_STR(e))
 			goto syntax_error;
 		dir->set_data[i].schema_name = strdup(json_value_cstr(e));
 		if (!dir->set_data[i].schema_name)
 			goto enomem;
 
+		/* 'digest' */
 		e = json_value_find(set_entity, "digest");
-		if (e)
+		if (e) {
+			if (!json_is_STR(e))
+				goto syntax_error;
 			dir->set_data[i].digest_str = strdup(json_value_cstr(e));
-		else
+		} else {
 			dir->set_data[i].digest_str = strdup("");
+		}
 		if (!dir->set_data[i].digest_str)
 			goto enomem;
 
+		/* 'flags' */
 		e = json_value_find(set_entity, "flags");
-		if (!e || json_entity_type(e) != JSON_STRING_VALUE)
+		if (!json_is_STR(e))
 			goto syntax_error;
 		dir->set_data[i].flags = strdup(json_value_cstr(e));
 		if (!dir->set_data[i].flags)
 			goto enomem;
 
+		/* 'meta_size' */
 		e = json_value_find(set_entity, "meta_size");
-		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+		if (!json_is_INT(e))
 			goto syntax_error;
 		dir->set_data[i].meta_size = json_value_int(e);
 
+		/* 'data_size' */
 		e = json_value_find(set_entity, "data_size");
-		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+		if (!json_is_INT(e))
 			goto syntax_error;
 		dir->set_data[i].data_size = json_value_int(e);
 
+		/* 'heap_size' */
 		e = json_value_find(set_entity, "heap_size");
-		if (e)
+		if (e) {
+			if (!json_is_INT(e))
+				goto syntax_error;
 			dir->set_data[i].heap_size = json_value_int(e);
-		else
+		} else {
 			dir->set_data[i].heap_size = 0;
+		}
 
+		/* 'uid' */
 		e = json_value_find(set_entity, "uid");
-		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+		if (!json_is_INT(e))
 			goto syntax_error;
 		dir->set_data[i].uid = json_value_int(e);
 
+		/* 'gid' */
 		e = json_value_find(set_entity, "gid");
-		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+		if (!json_is_INT(e))
 			goto syntax_error;
 		dir->set_data[i].gid = json_value_int(e);
 
+		/* 'perm' */
 		e = json_value_find(set_entity, "perm");
-		if (!e || json_entity_type(e) != JSON_STRING_VALUE)
+		if (!json_is_STR(e))
 			goto syntax_error;
 		dir->set_data[i].perm = strdup(json_value_cstr(e));
 		if (!dir->set_data[i].perm)
 			goto enomem;;
 
+		/* 'card' */
 		e = json_value_find(set_entity, "card");
-		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+		if (!json_is_INT(e))
 			goto syntax_error;
 		dir->set_data[i].card = json_value_int(e);
 
+		/* 'array_card' */
 		e = json_value_find(set_entity, "array_card");
-		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+		if (!json_is_INT(e))
 			goto syntax_error;
 		dir->set_data[i].array_card = json_value_int(e);
 
+		/* 'meta_gn' */
 		e = json_value_find(set_entity, "meta_gn");
-		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+		if (!json_is_INT(e))
 			goto syntax_error;
 		dir->set_data[i].meta_gn = json_value_int(e);
 
+		/* 'data_gn' */
 		e = json_value_find(set_entity, "data_gn");
-		if (!e || json_entity_type(e) != JSON_INT_VALUE)
+		if (!json_is_INT(e))
 			goto syntax_error;
 		dir->set_data[i].data_gn = json_value_int(e);
 
+		/* 'timestamp' */
 		e = json_value_find(set_entity, "timestamp");
-		if (!e)
+		if (!json_is_DICT(e))
 			goto syntax_error;
 		json_entity_t s, u;
 		s = json_value_find(e, "sec");
-		if (!s || json_entity_type(s) != JSON_INT_VALUE)
+		if (!json_is_INT(s))
 			goto syntax_error;
 		u = json_value_find(e, "usec");
-		if (!u || json_entity_type(u) != JSON_INT_VALUE)
+		if (!json_is_INT(u))
 			goto syntax_error;
 		dir->set_data[i].timestamp.sec = json_value_int(s);
 		dir->set_data[i].timestamp.usec = json_value_int(u);
 
+		/* 'duration' */
 		e = json_value_find(set_entity, "duration");
-		if (!e)
+		if (!json_is_DICT(e))
 			goto syntax_error;
 		s = json_value_find(e, "sec");
-		if (!s || json_entity_type(s) != JSON_INT_VALUE)
+		if (!json_is_INT(s))
 			goto syntax_error;
 		u = json_value_find(e, "usec");
-		if (!u || json_entity_type(u) != JSON_INT_VALUE)
+		if (!json_is_INT(u))
 			goto syntax_error;
 		dir->set_data[i].duration.sec = json_value_int(s);
 		dir->set_data[i].duration.usec = json_value_int(u);
 
+		/* 'info' */
 		info_list = json_value_find(set_entity, "info");
 		if (info_list && json_entity_type(info_list) != JSON_LIST_VALUE)
 			goto syntax_error;
@@ -2447,7 +2509,6 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		if (rc)
 			break;
 	}
-
 out:
 	json_doc_free(doc);
 
@@ -4124,25 +4185,37 @@ ldms_t __ldms_xprt_new_with_auth(const char *xprt_name, const char *auth_name,
 	__ldms_xprt_init(x, xprt_name, 1);
 
 	ret = __ldms_xprt_zap_new(x, xprt_name);
-	if (ret)
+	if (ret) {
+		ovis_log(NULL, OVIS_LERROR,
+			 "Error %d creating transport '%s'\n",
+			 ret, xprt_name);
 		goto err1;
-
+	}
 	auth_plugin = ldms_auth_plugin_get(auth_name);
 	if (!auth_plugin) {
+		ovis_log(NULL, OVIS_LERROR,
+			 "Error %d loading authentication plugin '%s'\n",
+			 errno, auth_name);
 		ret = errno;
 		goto err1;
 	}
-
 	auth = ldms_auth_new(auth_plugin, auth_av_list);
 	if (!auth) {
+		ovis_log(NULL, OVIS_LERROR,
+			 "Error %d configuring authentication plugin '%s'\n",
+			 errno, auth_name);
 		ret = errno;
 		goto err1;
 	}
 	x->auth_flag = LDMS_XPRT_AUTH_INIT;
 
 	ret = ldms_xprt_auth_bind(x, auth);
-	if (ret)
+	if (ret) {
+		ovis_log(NULL, OVIS_LERROR,
+			 "Error %d binding '%s' transport to authentication plugin '%s'\n",
+			 ret, xprt_name, auth_name);
 		goto err2;
+	}
 	return x;
 
 err2:
