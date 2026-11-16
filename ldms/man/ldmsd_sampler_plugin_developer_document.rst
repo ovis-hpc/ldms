@@ -99,6 +99,9 @@ What Sampler Plugin Authors CAN Assume
 - ``config()`` is never called while the plugin instance is in the ``RUNNING`` state
   (see `Section 5: Plugin Lifecycle`_) — only ``sample()`` and ``usage()`` are called
   in that state
+- ``ldmsd_set_register()`` and ``ldmsd_set_deregister()`` are thread safe and may be
+  called from ``config()``, ``sample()``, and any thread or callback of the plugin
+  (see `Registering Metric Sets with ldmsd`_)
 
 Guarding Against Unsupported Reconfiguration
 ----------------------------------------------
@@ -138,10 +141,11 @@ exclusive. All these operations are serialized by ldmsd — only one executes at
 Section 4: Synchronization Mechanism
 =======================================
 
-This section describes how to write thread-safe sampler plugins. It covers two
-distinct mechanisms: plugin-level locking for protecting plugin-owned data when
-the plugin manages its own threads, and the LDMS set transaction API for
-protecting metric consistency during updates.
+This section describes how to write thread-safe sampler plugins. It covers
+plugin-level locking for protecting plugin-owned data when the plugin manages its
+own threads, the LDMS set transaction API for protecting metric consistency during
+updates, and the registration of metric sets with ldmsd, which is safe from any
+thread.
 
 Guidance for Plugin Authors
 ----------------------------
@@ -162,7 +166,8 @@ Lock Order Guideline
 ~~~~~~~~~~~~~~~~~~~~~
 
 - If your plugin uses multiple locks, document your own lock acquisition order
-- Never call ldmsd APIs (like ``ldmsd_set_deregister``) while holding plugin locks
+- Never call ldmsd APIs (like ``ldmsd_set_register()`` and ``ldmsd_set_deregister()``)
+  while holding plugin locks
 - Be mindful of holding locks for unnecessary duration to optimize the sampler plugin
   performance
 - Release all plugin-specific locks before returning any interfaces
@@ -189,6 +194,75 @@ Thread Safety of LDMS Sets
 - LDMS transaction APIs are only needed to enable external set readers to verify inconsistent
   metric values. For example, an ldmsd aggregator automatically checks if the set
   is inconsistent so that it will not store a set that is in the inconsistent state
+
+Registering Metric Sets with ldmsd
+-----------------------------------
+
+A sampler plugin creates a metric set with ``ldms_set_new()`` and makes it visible
+to remote peers with ``ldms_set_publish()``. Sampler plugins typically also register
+the set with ldmsd, so that ldmsd knows which sampler plugin instance owns it. The
+registration API, ``ldmsd_set_register()`` and ``ldmsd_set_deregister()``, is
+documented in the comment block in ``ldmsd.h``. This section describes what
+registration does and when a plugin calls these functions.
+
+What Registration Does
+~~~~~~~~~~~~~~~~~~~~~~~
+
+``ldmsd_set_register()`` associates a metric set with a sampler plugin instance.
+ldmsd uses this association to:
+
+- Report the set in the ``plugn_sets`` configuration request for that plugin
+  instance.
+- Apply the update hint (sample interval and offset) to the set. A set registered
+  before the plugin instance is started receives the hint when ``start`` is
+  processed. A set registered while the plugin instance is running receives the hint
+  at registration. This includes sets created dynamically, such as per-job sets.
+- Release the set references held on behalf of the plugin instance when the instance
+  is terminated.
+
+The ``cfg_name`` argument of both functions is the name of the plugin instance, i.e.,
+the ``name`` given to the ``load`` command. It is not the name of the plugin library.
+A plugin obtains it with ``ldmsd_plug_cfg_name_get()``; plugins that use
+``sampler_base`` can use ``base->cfg_name``.
+
+The update hint is stored in the set's metadata and is read by aggregators. An
+updater configured with ``auto_interval=true`` schedules the updates of each set
+according to that set's hint, and does not update a set that has none (see
+``ldmsd_controller``\(8)).
+
+Publishing and registering are independent operations. A set that is published but
+not registered is visible to peers, but ldmsd does not apply an update hint to it,
+``plugn_sets`` does not report it, and ldmsd holds no reference on it. Whether a
+plugin registers its sets depends on whether it needs these behaviors, in particular
+whether its sets are meant to be updated by ``auto_interval`` updaters.
+
+If in doubt, register the set. A plugin that registers sets it later deletes while
+the sampler is running must deregister each of them before deleting it (see
+`When to Call Register and Deregister`_).
+
+When to Call Register and Deregister
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Call ``ldmsd_set_register()`` after the plugin creates a set. It can be called from
+``config()``, from ``sample()``, from a thread created by the plugin, and from a
+Message Service callback.
+
+Call ``ldmsd_set_deregister()`` before the plugin deletes the set. The sequence is
+deregister, unpublish, then delete, as ``base_set_delete()`` in ``sampler_base`` does:
+
+.. code-block:: c
+
+   ldmsd_set_deregister(ldms_set_instance_name_get(set), cfg_name);
+   ldms_set_unpublish(set);
+   ldms_set_delete(set);
+
+This matters most for plugins that delete sets while the sampler is running, such as
+plugins that create one set per job. ldmsd keeps a reference on every registered set,
+so the memory of a set that was deleted without being deregistered is not released
+until the plugin instance is terminated.
+
+When the plugin instance is terminated, ldmsd releases its references on the
+registered sets itself (see `Section 5: Plugin Lifecycle`_).
 
 Available Locks
 ----------------
@@ -251,6 +325,14 @@ which operations are permitted in that state.
      - Plugin being destroyed
      - ``destructor()``
      - Worker or IO (whoever drops last reference)
+
+Registered Sets and Termination
+--------------------------------
+
+When a plugin instance is terminated with the ``term`` command, ldmsd releases its
+own references on the registered sets. Plugin authors do not need to call
+``ldmsd_set_deregister()`` in ``destructor()``. The plugin is still responsible for
+deleting the sets it created.
 
 Section 6: Using the LDMS Message Service in Sampler Plugins
 =============================================================
@@ -436,9 +518,29 @@ The following describes the acquisition order for the plugin cfgobj lock:
 - Take when handling ``stop``; release before replying back
 - Take when handling ``term``:
 
-  - Release before calling ``ldmsd_set_deregister()``
-  - Re-acquire the lock
-  - Release before removing the cfgobj from the tree
+  - Set the state to ``TERMINATING``, then release the lock
+  - The registered sets are released afterwards, under ``set_list_lock`` only
+    (see below), without the cfgobj lock
+  - The cfgobj lock is not re-acquired before the cfgobj is removed from the tree
+
+The set list lock
+~~~~~~~~~~~~~~~~~~
+
+Each sampler cfgobj has a ``set_list_lock`` that protects its ``set_list`` and the
+``set_list_closed`` flag. It is independent of the cfgobj lock and of the LDMS set
+tree lock. It is taken by:
+
+- ``ldmsd_set_register()`` and ``ldmsd_set_deregister()``, which may be called with
+  or without the cfgobj lock held
+- ``start``, to apply the update hint to the registered sets (the cfgobj lock is
+  held)
+- the ``plugn_sets`` handler, to list the sets
+- ``term``, to detach the list and set ``set_list_closed``
+
+The set references are always dropped after ``set_list_lock`` is released.
+``term`` sets ``set_list_closed`` so that a plugin thread racing with ``term``
+cannot register a set after the list has been drained; ``ldmsd_set_register()``
+returns ``EBUSY`` in that case.
 
 SEE ALSO
 =========
