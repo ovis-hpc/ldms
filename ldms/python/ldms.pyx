@@ -3265,6 +3265,11 @@ cdef class Set(object):
         return ldms_set_heap_gn_get(self.rbd)
 
     @property
+    def heap_size(self):
+        """heap size in bytes"""
+        return ldms_set_heap_size_get(self.rbd)
+
+    @property
     def is_consistent(self):
         """True if the set is consistent (not in the middle of modification)"""
         return bool(ldms_set_is_consistent(self.rbd))
@@ -3282,6 +3287,22 @@ cdef class Set(object):
     def info_get(self, key):
         """S.info_get(key) - get setinfo[key]"""
         return ldms_set_info_get(self.rbd, BYTES(key)).decode()
+
+    def info_set(self, key, value):
+        """S.info_set(key, value) - set setinfo[key] to value
+
+        If the set is published, the change is sent to the peers that
+        requested directory updates (DIR_UPD).
+        """
+        cdef int rc
+        rc = ldms_set_info_set(self.rbd, BYTES(key), BYTES(value))
+        if rc:
+            raise RuntimeError("ldms_set_info_set() error: {}" \
+                               .format(ERRNO_SYM(rc)))
+
+    def info_unset(self, key):
+        """S.info_unset(key) - remove setinfo[key]"""
+        ldms_set_info_unset(self.rbd, BYTES(key))
 
     def __getitem__(self, key):
         if type(key) == int:
@@ -3824,6 +3845,21 @@ cdef class Xprt(object):
             raise ConnectionError(rc, "dir callback status: {}" \
                                       .format(ERRNO_SYM(rc)))
         return self._dir_list
+
+    def dir_cancel(self):
+        """X.dir_cancel() - cancel the directory updates requested by `dir()`
+
+        Stops the DIR_ADD, DIR_UPD and DIR_DEL notifications that were
+        requested with `dir(cb=..., flags=DIR_F_NOTIFY)`. After the cancel
+        completes, `dir()` may be called again on this transport.
+
+        ConnectionError is raised if `ldms_xprt_dir_cancel()` fails.
+        """
+        cdef int rc
+        rc = ldms_xprt_dir_cancel(self.xprt)
+        if rc:
+            raise ConnectionError(rc, "ldms_xprt_dir_cancel() error: {}" \
+                                      .format(ERRNO_SYM(rc)))
 
     def lookup(self, name, flags=0, cb=None, cb_arg=None):
         """X.lookup(name, flags=0, cb=None, cb_arg=None)

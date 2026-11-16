@@ -450,6 +450,7 @@ cdef extern from "ldms.h" nogil:
     ctypedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg) except *
     int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
     void ldms_xprt_dir_free(ldms_t t, ldms_dir_t dir)
+    int ldms_xprt_dir_cancel(ldms_t t)
 
     # --- lookup operation related --- #
     cpdef enum ldms_lookup_flags:
@@ -502,6 +503,7 @@ cdef extern from "ldms.h" nogil:
     uint64_t ldms_set_meta_gn_get(ldms_set_t s)
     uint64_t ldms_set_data_gn_get(ldms_set_t s)
     uint64_t ldms_set_heap_gn_get(ldms_set_t s)
+    uint64_t ldms_set_heap_size_get(ldms_set_t s)
     uint64_t ldms_set_id(ldms_set_t set)
 
     int ldms_set_is_consistent(ldms_set_t s)
