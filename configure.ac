@@ -128,6 +128,7 @@ OPTION_LIB_FLAGS([OVIS],[ \
 	ldms/src/core \
 	ldms/src/auth \
 	ldms/src/ldmsd \
+	ldms/src/decomp/parsers \
 	ldms/src/sampler \
 	ldms/src/sampler/lustre \
 	ldms/src/store \
@@ -249,7 +250,7 @@ OPTION_DEFAULT_DISABLE([ldms-test], [ENABLE_LDMS_TEST])
 
 OPTION_DEFAULT_ENABLE([mmap], [ENABLE_MMAP])
 OPTION_DEFAULT_ENABLE([perf], [ENABLE_PERF])
-OPTION_DEFAULT_DISABLE([yaml], [ENABLE_YAML])
+OPTION_DEFAULT_ENABLE([yaml], [ENABLE_YAML])
 
 dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
@@ -730,12 +731,28 @@ if test -z "$ENABLE_RABBITV3_TRUE" -o -z "$ENABLE_RABBITKW_TRUE"; then
 	AC_LANG_POP([C])
 fi
 
-if test -z "$ENABLE_YAML_TRUE"; then
-	AC_CHECK_LIB(yaml, yaml_parser_load, [],
-		AC_MSG_ERROR([libyaml not found. please add --disable-yaml to disable yaml support.]))
-	dnl Reset LIBS variable.
-	LIBS=""
-fi
+dnl Decomposition config parsers.  Each parser is built if its library is
+dnl found; at least one is required.  The default parser at run time is the
+dnl first available of libfyaml, libyaml, jansson (see LDMSD_DECOMP_PARSER).
+OPTION_WITH_CHECK([libfyaml], [LIBFYAML], [libfyaml.h], [fyaml],
+		  [fy_document_build_from_file])
+OPTION_WITH_CHECK([libyaml], [LIBYAML], [yaml.h], [yaml], [yaml_parser_load])
+dnl OPTION_WITH_CHECK does not fail when a PATH is given but the check fails
+AS_CASE(["x$with_libfyaml"], [x|xcheck|xno], [],
+	[AS_IF([test -n "$HAVE_LIBFYAML_TRUE"],
+	       [AC_MSG_ERROR([--with-libfyaml=$with_libfyaml given, but libfyaml was not found])])])
+AS_CASE(["x$with_libyaml"], [x|xcheck|xno], [],
+	[AS_IF([test -n "$HAVE_LIBYAML_TRUE"],
+	       [AC_MSG_ERROR([--with-libyaml=$with_libyaml given, but libyaml was not found])])])
+decomp_parsers=""
+AS_IF([test -z "$HAVE_LIBFYAML_TRUE"], [decomp_parsers="$decomp_parsers libfyaml"])
+AS_IF([test -z "$HAVE_LIBYAML_TRUE"], [decomp_parsers="$decomp_parsers libyaml"])
+AS_IF([test "x$HAVE_LIBJANSSON" = "xyes"], [decomp_parsers="$decomp_parsers jansson"])
+AS_IF([test -z "$decomp_parsers"],
+      [AC_MSG_ERROR([No decomposition config parser available. Install libfyaml, libyaml (libyaml-devel), or jansson.])])
+AC_MSG_NOTICE([decomposition config parsers:$decomp_parsers])
+dnl Reset LIBS variable.
+LIBS=""
 
 if test -z "$ENABLE_SOS_TRUE"; then
 	if test "x$WITH_SOS" != "xbuild"; then
@@ -1054,6 +1071,7 @@ ldms/src/auth/Makefile
 ldms/src/store/Makefile
 ldms/src/sampler/Makefile
 ldms/src/decomp/Makefile
+ldms/src/decomp/parsers/Makefile
 ldms/src/decomp/static/Makefile
 ldms/src/decomp/as_is/Makefile
 ldms/src/decomp/flex/Makefile

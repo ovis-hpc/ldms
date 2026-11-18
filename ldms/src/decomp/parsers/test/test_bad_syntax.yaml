@@ -1,0 +1,4 @@
+type: as_is
+indices:
+  - name: x
+    cols: [a, b

@@ -53,6 +53,11 @@ LDMSD_MEM_SZ
    are specified, the -m option takes precedence over this environment
    variable.
 
+LDMSD_DECOMP_PARSER
+   Select the parser used for decomposition configuration files:
+   libfyaml, libyaml, or jansson (JSON only). By default the first one
+   built, in that order, is used. See ldmsd_decomposition(7).
+
 LDMS_DELETE_TIMEOUT
    The timeout period (in seconds) before ldmsd forcibly frees memory of
    deleted metric sets when network problems prevent normal cleanup. Under
