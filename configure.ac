@@ -179,6 +179,33 @@ AS_IF([test "x$enable_rdc" = xyes],[
 ])
 AM_CONDITIONAL([ENABLE_RDC], [test "x$enable_rdc" != xno -a "x$HAVE_LIBRDC_BOOTSTRAP" = xyes])
 
+dnl Check for AMD SMI library
+dnl AMD SMI library detection using AC_LIB_HAVE_LINKFLAGS
+dnl Automatically handles CPPFLAGS, LDFLAGS, and RPATH
+AC_LIB_HAVE_LINKFLAGS([amd_smi], [], [#include <amd_smi/amdsmi.h>])
+
+dnl Set up legacy variable names for compatibility with Makefile.am
+if test "x$HAVE_LIBAMD_SMI" = xyes; then
+	have_amd_smi=yes
+	AMDSMI_INCS="$INCAMD_SMI"
+	LTLIBAMDSMI="$LTLIBAMD_SMI"
+	AC_SUBST([AMDSMI_INCS])
+	AC_SUBST([LTLIBAMDSMI])
+else
+	have_amd_smi=no
+fi
+
+AC_ARG_ENABLE([amdsmi],
+	[AS_HELP_STRING([--enable-amdsmi], [Include AMD SMI sampler for GPU monitoring @<:@default=check@:>@])],
+	[],
+	[enable_amdsmi="check"])
+AS_IF([test "x$enable_amdsmi" = xyes],[
+	AS_IF([test "x$have_amd_smi" = xno],[
+		AC_MSG_ERROR([AMD SMI library not found. Use --with-libamd-smi-prefix=PATH])
+	])
+])
+AM_CONDITIONAL([ENABLE_AMDSMI], [test "x$enable_amdsmi" != xno -a "x$have_amd_smi" = xyes])
+
 have_zap=0
 
 if test "$disable_zap" != "yes"; then
@@ -1109,6 +1136,7 @@ ldms/src/sampler/procnet/Makefile
 ldms/src/sampler/procnfs/Makefile
 ldms/src/sampler/procnetdev/Makefile
 ldms/src/sampler/procdiskstats/Makefile
+ldms/src/sampler/amdgpu_sampler/Makefile
 ldms/src/sampler/rdc_sampler/Makefile
 ldms/src/sampler/slurm/Makefile
 ldms/src/sampler/netlink/Makefile
