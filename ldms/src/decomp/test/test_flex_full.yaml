@@ -1,0 +1,74 @@
+# Full flex decomposition with digest map, matches, and default
+type: flex
+
+decomposition:
+  network_decomp:
+    type: static
+    rows:
+      - schema: network_stats
+        cols:
+          - src: timestamp
+            dst: timestamp
+            type: ts
+          - src: producer
+            dst: producer
+            type: char_array
+            array_len: 256
+          - src: rx_bytes
+            dst: rx_bytes
+            type: u64
+          - src: tx_bytes
+            dst: tx_bytes
+            type: u64
+
+  cpu_decomp:
+    type: as_is
+    indices:
+      - name: time_comp
+        cols:
+          - timestamp
+          - component_id
+
+  memory_decomp:
+    type: static
+    rows:
+      - schema: meminfo
+        cols:
+          - src: timestamp
+            dst: timestamp
+            type: ts
+          - src: producer
+            dst: producer
+            type: char_array
+            array_len: 256
+          - src: MemTotal
+            dst: mem_total
+            type: u64
+          - src: MemFree
+            dst: mem_free
+            type: u64
+          - src: MemAvailable
+            dst: mem_available
+            type: u64
+
+# Digest map - schema digest to decomposition mapping
+digest:
+  AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555FFFF6666000011112222333344445555: network_decomp
+  BBBB2222CCCC3333DDDD4444EEEE5555FFFF6666000011112222333344445555AAAA1111: cpu_decomp
+  CCCC3333DDDD4444EEEE5555FFFF6666000011112222333344445555AAAA1111BBBB2222: memory_decomp
+
+# Match rules - regex-based schema/instance matching
+matches:
+  - schema: "^network.*"
+    apply:
+      - network_decomp
+  - schema: "^proc.*"
+    instance: ".*cpu.*"
+    apply:
+      - cpu_decomp
+  - schema: meminfo
+    apply:
+      - memory_decomp
+
+# Default decomposition when no match found
+default: cpu_decomp

@@ -8,545 +8,741 @@ ldmsd_decomposition
 Manual for LDMSD decomposition
 ------------------------------
 
-:Date: 2022-06-02
-:Version: v4
+:Date: 2026-11-18
+:Version: v5
 :Manual section: 7
 :Manual group: LDMSD Decomposition man page
 
 DESCRIPTION
 ===========
 
-A decomposition is a routine that converts LDMS set into one or more
-rows before feeding them to the store. Currently, only **store_sos**,
-**store_csv**, and **store_kafka** support decomposition. To use
-decomposition, simply specify
-**decomposition=**\ *DECOMP_CONFIG_JSON_FILE* option in the
-**strgp_add** command. There are three types of decompositions:
-**static**, **as_is**, and \`flex`. **static** decomposition statically
-and strictly decompose LDMS set according to the definitions in the
-*DECOMP_CONFIG_JSON_FILE*. **as_is** decomposition on the other hand
-takes all metrics and converts them as-is into rows. **flex**
-decomposition applies various decompositions by LDMS schema digest
-mapping from the configuration.
+A decomposition is a routine that converts LDMS sets into one or more
+rows before feeding them to storage. Decompositions provide flexible
+data transformation and restructuring capabilities for efficient storage
+and analysis.
 
-Please see section **STATIC DECOMPOSITION**, **AS_IS DECOMPOSITION** ,
-and **FLEX DECOMPOSITION** for more information.
+**Supported Stores:** Currently, **store_sos**, **store_csv**, and
+**store_kafka** support decomposition.
 
-More decomposition types may be added in the future. The decomposition
-mechanism is pluggable. Please see **as_is**, **static**, and **flex**
-decomposition implementation in \`ldms/src/decomp/\` directory in the
-source tree for more information.
+**Usage:** Specify **decomposition=**\ *CONFIG_FILE* in the
+**strgp_add** command. The configuration file can be either YAML or JSON
+format (YAML is recommended for better readability and maintainability).
+
+Decomposition Types
+-------------------
+
+LDMS provides three decomposition types:
+
+**static**
+  Statically and strictly converts LDMS sets according to explicit
+  definitions. Use this when you need precise control over the output
+  schema, column mapping, and data transformation.
+
+**as_is**
+  Dynamically converts all metrics as-is into rows without explicit
+  definitions. Use this when you want automatic schema discovery and
+  don't need complex transformations.
+
+**flex**
+  Flexibly applies different decompositions based on schema digest
+  mapping or pattern matching. Use this when you have multiple schema
+  types that need different decomposition strategies.
+
+The decomposition mechanism is pluggable. See the implementation in
+``ldms/src/decomp/`` directory in the source tree for more information.
+
+
+CONFIGURATION FILE FORMAT
+==========================
+
+Both YAML and JSON formats are supported. YAML is recommended for its
+readability, support for comments, and multi-line strings.
+
+**YAML Configuration:**
+
+.. code-block:: yaml
+
+   type: static  # or as_is, or flex
+   # ... type-specific configuration ...
+
+**JSON Configuration (equivalent):**
+
+.. code-block:: json
+
+   {
+     "type": "static",
+     ...
+   }
+
+All examples below use YAML format. To convert to JSON, follow standard
+YAML-to-JSON mapping rules.
+
 
 STATIC DECOMPOSITION
 ====================
 
-The **static** decomposition statically and strictly converts LDMS set
-to one or more rows according to the *DECOMP_CONFIG_JSON_FILE*. The
-format of the JSON configuration file is as follows:
+The **static** decomposition provides precise control over how LDMS sets
+are converted into rows. It supports:
 
-::
+- Multiple output schemas from a single input
+- Column selection, renaming, and type specification
+- Record member access for list/array metrics
+- Fill values for optional metrics
+- Operations (diff, min, max, mean) on column values
+- Custom indices for storage optimization
+- Row grouping for aggregate operations
 
-   {
-     "type": "static",
-     "rows": [
-       {
-         "schema": "OUTPUT_ROW_SCHEMA",
-         "cols": [
-           {
-             "src":"LDMS_METRIC_NAME",
-             "dst":"DST_COL_NAME",
-             "type":"TYPE",
-             "rec_member": "REC_MEMBER_NAME_IF_SRC_IS_RECORD",
-             "fill": FILL_VALUE,
-             "op": "OPERATION"
-           },
-           ...
-         ],
-         "indices": [
-           {
-             "name": "INDEX_NAME",
-             "cols": [
-               "DST_COL_NAME", ...
-             ]
-           },
-           ...
-         ],
-         "group": {
-           "limit": ROW_LIMIT,
-           "index": [
-             "DST_COL_NAME", ...
-           ],
-           "order": [
-             "DST_COL_NAME", ...
-           ],
-           "timeout": "TIME"
-         }
-       },
-       ...
-     ]
-   }
+Configuration Structure
+-----------------------
 
-The **"rows"** is an array of row definition object, each of which
-defines an output row. Each row definition contains:
+.. code-block:: yaml
 
-**"schema"**
-  a string specifying output schema name
+   type: static
+   rows:
+     - schema: OUTPUT_SCHEMA_NAME
+       cols:
+         - src: LDMS_METRIC_NAME
+           dst: OUTPUT_COLUMN_NAME      # optional
+           type: DATA_TYPE               # optional
+           rec_member: RECORD_MEMBER     # for list/record metrics
+           fill: DEFAULT_VALUE           # optional
+           array_len: ARRAY_LENGTH       # for char_array
+           op: OPERATION                 # optional: diff, min, max, mean
+       indices:                          # optional
+         - name: INDEX_NAME
+           cols: [COL1, COL2, ...]
+       group:                            # required if using op
+         limit: ROW_LIMIT
+         index: [GROUP_COL1, ...]
+         order: [ORDER_COL1, ...]
+         timeout: TIME_STRING
 
-**"cols"**
-  a list of column definitions
+Column Attributes
+-----------------
 
-**"indices"**
-  an optional list of index definitions for
-  the storage technologies that require or support indexing
+**src** (required)
+  The source metric name from the LDMS set. Can use special syntax:
 
-**"group"**
-  a grouping definition for "op" operations ("group"
-  is not required if "op" is not specified; see "op" and "group"
-  below).
+  - Simple metric: ``"MemFree"``
+  - Record member: ``"netdev_list[rx_bytes]"``
+  - Alternative: ``"netdev_list"`` with ``rec_member: "rx_bytes"``
 
-The detail explanation of **"cols"**, **"indices"** and **"group"** are
-as follows.
+  **Special source names** for set metadata:
 
-**"cols"**
-   Each column object in **"cols"** contains the following attributes:
+  - ``timestamp`` - sampling timestamp
+  - ``producer`` - producer name
+  - ``instance`` - instance name
+  - ``component_id`` - component identifier
+  - ``M_card`` - set cardinality
+  - ``M_digest`` - schema digest string
+  - ``M_duration`` - sampling duration
+  - ``M_gid`` - owner GID
+  - ``M_perm`` - permission value
+  - ``M_schema`` - schema name
+  - ``M_uid`` - owner UID
 
-..
+**dst** (optional)
+  Output column name. If omitted, uses the ``src`` name.
 
-   **"src"** : "*LDMS_METRIC_NAME*"
-      This refers to the metric name in the LDMS set to be used as the
-      source of the decomposition. *LDMS_METRIC_NAME* can also be
-      specified in the form of "*LIST*\ [*MEMBER*]" to refer to MEMBER
-      of the record in the list NAME. For example,
+**type** (optional, required with fill)
+  Output column data type. Types include: ``ts``, ``u64``, ``s64``,
+  ``u32``, ``s32``, ``u16``, ``s16``, ``u8``, ``s8``, ``float``,
+  ``double``, ``d64``, ``char``, ``char_array``.
 
-     ::
+**rec_member** (optional)
+  For list or array metrics, specifies which record member to extract.
+  Alternative to bracket notation in ``src``.
 
-          "src" : "netdev_list[rx_bytes]"
+**fill** (optional)
+  Default value when the source metric is not found. Can be scalar or
+  array. Required metrics without fill will cause the set to be skipped.
 
-     refers to the "rx_bytes" member of records in "netdev_list".
+**array_len** (optional)
+  For ``char_array`` types, specifies the maximum string length.
 
-     special src
-       The following is a list of special metric names that can be used in "src"
-       to access set information as column data:
+**op** (optional)
+  Operation to perform on the column. Supported: ``diff`` (difference),
+  ``min`` (minimum), ``max`` (maximum), ``mean`` (average). Requires
+  ``group`` configuration.
 
-       | - **"timestamp"**: the sampling timestamp.
-       | - **"producer"**: the producer name of the set.
-       | - **"instance"**: the instance name of the set.
-       | - **"M_card"**: the cardinality of the set.
-       | - **"M_digest"**: the digest string of the set schema.
-       | - **"M_duration"**: the sampling duration of the set.
-       | - **"M_gid"**: the set's owner GID.
-       | - **"M_instance"**: the instance name of the set (same as "instance").
-       | - **"M_perm"**: the integer value of the permission of the set.
-       | - **"M_producer"**: the producer name of the set (same as "producer").
-       | - **"M_schema"**: the schema name of the set.
-       | - **"M_timestamp"**: the sampling timestamp (same as "timestamp").
-       | - **"M_uid"**: the set's owner UID.
+Index Attributes
+----------------
 
-   **"dst"** : "*DST_COL_NAME*" (optional)
-      This is the name of the output column, later consumed by storage
-      policy. If not specified, the *LDMS_METRIC_NAME* specified in
-      "src" is used.
+**name** (required)
+  Name of the index.
 
-   **"type"** : "*TYPE*" (required if "fill" is specified)
-      The type of the output column. This is required if "fill"
-      attribute if specified. If "fill" is not specified, "type" is
-      optional. In such case, the type is the first discovery from the
-      metric value in the LDMS set processed by this decomposition.
+**cols** (required)
+  List of output column names comprising the index.
 
-   **"rec_member"** : "*MEMBER_NAME*" (optional)
-      If "src" refers to a list of records or an array of records,
-      "rec_member" can be specified to access the member of the records.
-      Alternatively, you can use "*LIST*\ [*MEMBER*]" form in "src" to
-      access the member in the records.
+Group Attributes
+----------------
 
-   **"fill"** : *FILL_VALUE* (optional)
-      This is the value used to fill in place of "src" in the case that
-      the LDMS set does not contain "src" metric. The *FILL_VALUE* can
-      also be an array. If "src" is not found in the LDMS set and "fill"
-      is not specified, the LDMS set is skipped.
+Required when using ``op`` on any column.
 
-   **"op"** : "*OPERATION*" (optional)
-      If "op" is set, the decomposition performs the specified
-      *OPERATION* on the column. **"group"** must be specified in the
-      presence of "op" so that the decomposition knows how to group
-      previously produced rows and perform the operation on the column
-      of those rows. Please see **"group"** explanation below.
+**index** (required)
+  List of columns defining group identity. Rows with identical values
+  in these columns belong to the same group.
 
-   The supported *OPERATION* are "diff", "min", "max", and "mean".
+**order** (required)
+  List of columns for ordering rows within each group (descending).
 
-**"indices"**
-   The "indices" is a list of index definition objects. Each index
-   definition object contains **"name"** (the name of the index) and
-   **"cols"** which is the names of the OUTPUT columns comprising the
-   index.
+**limit** (required)
+  Maximum number of rows cached per group. Keeps the first N rows after
+  ordering.
 
-**"group"**
-   The **"group"** is an object defining how **"op"** identify rows to
-   operate on. The **REQUIRED** attributes and their descriptions for
-   the **"group"** object are as follows:
+**timeout** (optional)
+  Time string (e.g., ``"60s"``, ``"5m"``) for group inactivity before
+  cleanup. Units: ``s`` (seconds), ``ms`` (milliseconds), ``us``
+  (microseconds), ``ns`` (nanoseconds).
 
-..
+Static Decomposition Examples
+------------------------------
 
-   **"index"** : [ "*DST_COL_NAME*", ... ]
-      This is a list of columns that defines the grouping index. If two
-      rows r0 and r1 have the same value in each of the corresponding
-      columns, i.e. for k in index: r0[k] == r1[k], the rows r0 and r1
-      belong to the same group.
+**Example 1: Basic column selection with fill values**
 
-   **"order"** : [ "*DST_COL_NAME*", ... ]
-      This is a list of columns used for orering rows in each group (in
-      descending order). For example, \`[ "timestamp" ]\` orders each
-      group (in descending order) using "timestamp" column.
+This example shows filtering meminfo metrics and using fill values for
+architecture-specific metrics.
 
-   **"limit"** : *ROW_LIMIT*
-      This is an integer limiting the maximum number of rows to be
-      cached in each group. The first *ROW_LIMIT* rows in the group
-      descendingly ordered by **"order"** are cached. The rest are
-      discarded.
+.. code-block:: yaml
 
-   **"timeout"** : "*TIME*"
-      The amount of time (e.g. "30s") of group inactivity (no row added
-      to the group) to trigger row cache cleanup for the group. If this
-      value is not set, the row cache won't be cleaned up.
+   type: static
+   rows:
+     # Filter specific memory metrics
+     - schema: meminfo_filter
+       cols:
+         - src: timestamp
+           dst: ts
+           type: ts
+         - src: producer
+           dst: prdcr
+           type: char_array
+           array_len: 64
+         - src: instance
+           dst: inst
+           type: char_array
+           array_len: 64
+         - src: component_id
+           dst: comp_id
+           type: u64
+         - src: MemFree
+           dst: free
+           type: u64
+         - src: MemActive
+           dst: active
+           type: u64
+       indices:
+         - name: time_comp
+           cols: [ts, comp_id]
+         - name: time
+           cols: [ts]
 
-      The units of the time value may only be "s" (seconds),
-      "ms" (milliseconds), "us" (microseconds), or "ns" (nanoseconds).
-      A unitless number is assumed to be "us".
+     # DirectMap metrics with fill (architecture-specific)
+     - schema: meminfo_directmap
+       cols:
+         - src: timestamp
+           dst: ts
+           type: ts
+         - src: component_id
+           dst: comp_id
+           type: u64
+         - src: DirectMap4k
+           dst: directmap4k
+           type: u64
+           fill: 0  # default if not present
+         - src: DirectMap2M
+           dst: directmap2M
+           type: u64
+           fill: 0
+         - src: DirectMap4M
+           dst: directmap4M
+           type: u64
+           fill: 0
+         - src: DirectMap1G
+           dst: directmap1G
+           type: u64
+           fill: 0
+       indices:
+         - name: time_comp
+           cols: [ts, comp_id]
 
-**Static Decomposition Example 1: simple meminfo with fill**
-   The following is an example of a static decomposition definition
-   converting meminfo set into two schemas, "meminfo_filter" (select a
-   few metrics) and "meminfo_directmap" (select a few direct map metrics
-   with "fill" since DirectMap varies by CPU architecture).
+**Example 2: Record member access with operations**
 
-::
+This example demonstrates accessing list record members and computing
+difference operations.
 
-   {
-     "type": "static",
-     "rows": [
-       {
-         "schema": "meminfo_filter",
-         "cols": [
-           { "src":"timestamp",    "dst":"ts"      },
-           { "src":"producer",     "dst":"prdcr"   },
-           { "src":"instance",     "dst":"inst"    },
-           { "src":"component_id", "dst":"comp_id" },
-           { "src":"MemFree",      "dst":"free"    },
-           { "src":"MemActive",    "dst":"active"  }
-         ],
-         "indices": [
-           { "name":"time_comp", "cols":["ts", "comp_id"] },
-           { "name":"time", "cols":["ts"] }
-         ]
-       },
-       {
-         "schema": "meminfo_directmap",
-         "cols": [
-           { "src":"timestamp",    "dst":"ts"                                     },
-           { "src":"component_id", "dst":"comp_id"                                },
-           { "src":"DirectMap4k",  "dst":"directmap4k", "type":"u64",   "fill": 0 },
-           { "src":"DirectMap2M",  "dst":"directmap2M", "type":"u64",   "fill": 0 },
-           { "src":"DirectMap4M",  "dst":"directmap4M", "type":"u64",   "fill": 0 },
-           { "src":"DirectMap1G",  "dst":"directmap1G", "type":"u64",   "fill": 0 }
-         ],
-         "indices": [
-           { "name":"time_comp", "cols":["ts", "comp_id"] },
-           { "name":"time", "cols":["ts"] }
-         ]
-       }
-     ]
-   }
+.. code-block:: yaml
 
-**Static Decomposition Example 2: record with op**
-   The following is an example of a static decomposition with
-   "rec_member" usage in various forms and with "op".
+   type: static
+   rows:
+     - schema: netdev_stats
+       cols:
+         # Metadata columns
+         - src: timestamp
+           dst: ts
+           type: ts
+         - src: producer
+           dst: prdcr
+           type: char_array
+           array_len: 64
+         - src: component_id
+           dst: comp_id
+           type: u64
 
-::
+         # Record members - various notations
+         - src: netdev_list
+           rec_member: name
+           dst: device_name
+           type: char_array
+           array_len: 16
 
-   {
-     "type": "static",
-     "rows": [
-       {
-         "schema": "netdev2_small",
-         "cols": [
-           { "src":"timestamp",             "dst":"ts",             "type":"ts"         },
-           { "src":"producer",              "dst":"prdcr",          "type":"char_array" },
-           { "src":"instance",              "dst":"inst",           "type":"char_array" },
-           { "src":"component_id",          "dst":"comp_id",        "type":"u64"        },
-           { "src":"netdev_list",           "rec_member":"name",    "dst":"netdev.name" },
-           { "src":"netdev_list[rx_bytes]", "dst":"netdev.rx_bytes" },
-           { "src":"netdev_list[tx_bytes]"  },
-           { "src":"netdev_list[rx_bytes]", "op": "diff",
-             "dst":"netdev.rx_bytes_diff" },
-           { "src":"netdev_list[tx_bytes]", "op": "diff",
-             "dst":"netdev.tx_bytes_diff" }
-         ],
-         "indices": [
-           { "name":"time_comp", "cols":["ts", "comp_id"] },
-           { "name":"time", "cols":["ts"] }
-         ],
-         "group": [
-           "limit": 2,
-           "index": [ "comp_id", "netdev.name" ],
-           "order": [ "ts" ],
-           "timeout": "60s"
-         ]
-       }
-     ]
-   }
+         # Bracket notation (equivalent to above)
+         - src: netdev_list[rx_bytes]
+           dst: rx_bytes
+           type: u64
 
-The "name" record member will produce "netdev.name" column name and
-"rx_bytes" record member will produce "netdev.rx_bytes" column name as
-instructed, while "tx_bytes" will produce "netdev_list[tx_bytes]" column
-name since its "dst" is omitted.
+         - src: netdev_list[tx_bytes]
+           dst: tx_bytes
+           type: u64
 
-The "netdev.rx_bytes_diff" destination column has "op":"diff" that
-calculate the difference value from "src":"netdev_list[rx_bytes]". The
-"group" instructs "op" to group rows by ["comp_id", "netdev.name"], i.e.
-the "diff" will be among the same net device of the same node (comp_id).
-The "order":["ts"] orders the rows in the group by "ts" (the timestamp).
-The "limit":2 keeps only 2 rows in the group (current and previous row
-by timestamp). The "timeout": "60s" indicates that if a group does not
-receive any data in 60 seconds (e.g. by removing a virtual network
-device), the row cache for the group will be cleaned up.
+         # Compute rate of change (diff operation)
+         - src: netdev_list[rx_bytes]
+           dst: rx_bytes_rate
+           type: u64
+           op: diff
 
-The "netdev.tx_bytes_diff" is the same as "netdev.rx_bytes_diff" but for
-tx_bytes.
+         - src: netdev_list[tx_bytes]
+           dst: tx_bytes_rate
+           type: u64
+           op: diff
 
-Assuming that the "netdev_list" has N records in the list, the
-decomposition will expand the set into N rows.
+       indices:
+         - name: time_comp_dev
+           cols: [ts, comp_id, device_name]
+
+       # Grouping for diff operation
+       group:
+         limit: 2          # keep current + previous row
+         index: [comp_id, device_name]  # group by node and device
+         order: [ts]       # order by timestamp
+         timeout: 60s      # cleanup after 60s inactivity
+
 
 AS_IS DECOMPOSITION
 ===================
 
-The **as_is** decomposition generate rows as-is according to metrics in
-the LDMS set. To avoid schema conflict, such as meminfo collecting from
-heterogeneous CPU architectures, **as_is** decomposition appends the
-short LDMS schema digest (7 characters) to the row schema name before
-submitting the rows to the storage plugin. For example, "meminfo" LDMS
-schema may turn into "meminfo_8d2b8bd" row schema. The **as_is**
-decomposition configuration only takes "indices" attribute which defines
-indices for the output rows. When encountering a list of primitives, the
-as_is decomposition expands the set into multiple rows (the non-list
-metrics' values are repeated). When encountering a list of records, in
-addition to expanding rows, the decomposition also expand the record
-into multiple columns with the name formatted as
-"LIST_NAME.REC_MEMBER_NAME". The "timestamp" is not a metric in the set
-but it is used in all storage plugins. So, the "timestamp" column is
-prepended to each of the output rows.
+The **as_is** decomposition automatically converts all metrics in an
+LDMS set to row columns without requiring explicit definitions. This is
+useful for:
 
-The format of the JSON configuration is as follows:
+- Rapid deployment without writing configurations
+- Dynamic schemas that change over time
+- Exploratory data analysis
+- Simple pass-through storage
 
-::
+**Schema Naming:** To avoid conflicts from heterogeneous sources,
+as_is decomposition appends a 7-character schema digest to the row
+schema name. Example: ``meminfo`` becomes ``meminfo_8d2b8bd``.
 
-   {
-     "type": "as_is",
-     "indices": [
-       { "name": "INDEX_NAME", "cols": [ COLUMN_NAMES, ... ] },
-       ...
-     ]
-   }
+**List Expansion:** When encountering list metrics:
 
-The following is an **as_is** decomposition configuration example with
-two indices:
+- **List of primitives:** Expands into multiple rows (non-list metrics
+  repeated)
+- **List of records:** Expands rows and flattens record members into
+  columns named ``LIST_NAME.MEMBER_NAME``
 
-::
+**Automatic Columns:** The ``timestamp`` column is automatically
+prepended to all output rows.
 
-   {
-     "type": "as_is",
-     "indices": [
-       { "name": "time", "cols": [ "timestamp" ] },
-       { "name": "time_comp", "cols": [ "timestamp", "component_id" ] }
-     ]
-   }
+Configuration Structure
+-----------------------
+
+.. code-block:: yaml
+
+   type: as_is
+   indices:
+     - name: INDEX_NAME
+       cols: [COLUMN_NAME, ...]
+
+As_Is Decomposition Example
+----------------------------
+
+.. code-block:: yaml
+
+   type: as_is
+   indices:
+     - name: time
+       cols: [timestamp]
+     - name: time_comp
+       cols: [timestamp, component_id]
+
+This configuration will:
+
+1. Convert all metrics to columns automatically
+2. Expand any list metrics into multiple rows
+3. Flatten record members into dot-notation columns
+4. Create two indices for efficient querying
+
 
 FLEX DECOMPOSITION
 ==================
 
-The **flex** decomposition applies various decompositions by LDMS schema
-digests or `matches` specified in the configuration. The configurations of the
-applied decompositions are also specified in \`flex\` decomposition file
-as follows:
+The **flex** decomposition provides intelligent routing to apply
+different decompositions based on:
 
-::
+- Schema digest mapping (exact schema matching)
+- Regular expression patterns (schema and/or instance name)
+- Default fallback for unmatched sets
 
-   {
-     "type": "flex",
-     /* defining decompositions to be applied */
-     "decomposition": {
-       "<DECOMP_1>": {
-         "type": "<DECOMP_1_TYPE>",
-         ...
-       },
-       ...
-     },
-     /* specifying digests and the decompositions to apply */
-     "digest": {
-       "<LDMS_DIGEST_1>": "<DECOMP_A>",
-       "<LDMS_DIGEST_2>": [ "<DECOMP_B>", "<DECOMP_c>" ],
-       ...
-       "*": "<DECOMP_Z>" /* optional : the unmatched */
-     },
-     /* specifying matching conditions and decompositions to apply */
-     "matches": [
-       {
-         "schema": "<REGEX>", /* schema matching */
-         "instance": "<REGEX>", /* instance matching */
+This is essential for heterogeneous environments where different LDMS
+schemas need different handling.
 
-         /* If both "schema" and "instance" are specified, a set must
-          * satisfies both conditions.
-          */
+Configuration Structure
+-----------------------
 
-         /* specifying decompositions to apply to the matched set */
-         "apply": "<DECOMP_X>"|[ "DECOMP_A", ...]
-       },
-       ...
-     ],
-     /* Optional "default" decompositions if a set does not match any "matches"
-      * or any digest in the "digest" section. */
-     "default": "<DECOMP_X>"|[ "DECOMP_A", ...]
-   }
+.. code-block:: yaml
 
-**Example1:** In the following example, the "meminfo" LDMS sets have 2
-digests due to different metrics from different architecture. The
-configuration then maps those digests to "meminfo" static decomposition
-(producing "meminfo_filter" rows). It also showcases the ability to
-apply multiple decompositions to a matching digest. The procnetdev2 sets
-with digest
-"E8B9CC8D83FB4E5B779071E801CA351B69DCB9E9CE2601A0B127A2977F11C62A" will
-have "netdev2" static decomposition and "the_default" as-is
-decomposition applied to them. The sets that do not match any specific
-digest will match the "*" digest. In this example, "the_default" as-is
-decomposition is applied.
+   type: flex
 
-::
+   # Define all decompositions used
+   decomposition:
+     decomp_name_1:
+       type: static  # or as_is
+       # ... decomposition config ...
+     decomp_name_2:
+       type: as_is
+       # ... decomposition config ...
 
-   {
-     "type": "flex",
-     "decomposition": {
-       "meminfo": {
-         "type": "static",
-         "rows": [
-           {
-             "schema": "meminfo_filter",
-             "cols": [
-               { "src":"timestamp",    "dst":"ts",      "type":"ts"                         },
-               { "src":"producer",     "dst":"prdcr",   "type":"char_array", "array_len":64 },
-               { "src":"instance",     "dst":"inst",    "type":"char_array", "array_len":64 },
-               { "src":"component_id", "dst":"comp_id", "type":"u64"                        },
-               { "src":"MemFree",      "dst":"free",    "type":"u64"                        },
-               { "src":"MemActive",    "dst":"active",  "type":"u64"                        }
-             ],
-             "indices": [
-               { "name":"time_comp", "cols":["ts", "comp_id"] },
-               { "name":"time", "cols":["ts"] }
-             ]
-           }
-         ]
-       },
-       "netdev2" : {
-         "type" : "static",
-         "rows": [
-           {
-             "schema": "procnetdev2",
-             "cols": [
-               { "src":"timestamp", "dst":"ts","type":"ts" },
-               { "src":"component_id", "dst":"comp_id","type":"u64" },
-               { "src":"netdev_list", "rec_member":"name", "dst":"dev.name",
-                 "type":"char_array", "array_len": 16 },
-                 { "src":"netdev_list", "rec_member":"rx_bytes", "dst":"dev.rx_bytes",
-                   "type":"u64" },
-                   { "src":"netdev_list", "rec_member":"tx_bytes", "dst":"dev.tx_bytes",
-                     "type":"u64" }
-             ],
-             "indices": [
-               { "name":"time_comp", "cols":["ts", "comp_id"] }
-             ]
-           }
-         ]
-       },
-       "the_default": {
-         "type": "as_is",
-         "indices": [
-           { "name": "time", "cols": [ "timestamp" ] },
-           { "name": "time_comp", "cols": [ "timestamp", "component_id" ] }
-         ]
-       }
-     },
-     "digest": {
-       "71B03E47E7C9033E359DB5225BC6314A589D8772F4BC0866B6E79A698C8799C0": "meminfo",
-       "59DD05D768CFF8F175496848486275822A6A9795286FD9B534FDB9434EAF4D50": "meminfo",
-       "E8B9CC8D83FB4E5B779071E801CA351B69DCB9E9CE2601A0B127A2977F11C62A": [ "netdev2", "the_default" ],
-       "*": "the_default"
-     }
-   }
+   # Option 1: Map by exact schema digest
+   digest:
+     FULL_SHA256_DIGEST_1: decomp_name_1
+     FULL_SHA256_DIGEST_2: [decomp_name_1, decomp_name_2]
+     "*": default_decomp  # catch-all (optional)
+
+   # Option 2: Map by pattern matching
+   matches:
+     - schema: REGEX_PATTERN      # match schema name
+       instance: REGEX_PATTERN    # match instance name (optional)
+       apply: decomp_name          # single decomposition
+     - schema: ANOTHER_PATTERN
+       apply: [decomp_a, decomp_b]  # multiple decompositions
+
+   # Default for unmatched sets (optional)
+   default: decomp_name
+
+Notes:
+
+- Use either ``digest`` or ``matches`` or both
+- With ``digest``: checks exact SHA256 schema digest first
+- With ``matches``: checks patterns in order, first match wins
+- ``default``: applies when nothing matches
+- Multiple decompositions can be applied to a single set
+
+Flex Decomposition Examples
+----------------------------
+
+**Example 1: Digest-based routing**
+
+Map specific schemas by their digest to appropriate decompositions:
+
+.. code-block:: yaml
+
+   type: flex
+
+   decomposition:
+     # Static decomposition for meminfo
+     meminfo_filter:
+       type: static
+       rows:
+         - schema: meminfo_core
+           cols:
+             - src: timestamp
+               dst: ts
+               type: ts
+             - src: component_id
+               dst: comp_id
+               type: u64
+             - src: MemFree
+               dst: free
+               type: u64
+             - src: MemAvailable
+               dst: available
+               type: u64
+           indices:
+             - name: time_comp
+               cols: [ts, comp_id]
+
+     # Static decomposition for network stats
+     netdev_stats:
+       type: static
+       rows:
+         - schema: network_io
+           cols:
+             - src: timestamp
+               dst: ts
+               type: ts
+             - src: component_id
+               dst: comp_id
+               type: u64
+             - src: netdev_list[name]
+               dst: device
+               type: char_array
+               array_len: 16
+             - src: netdev_list[rx_bytes]
+               dst: rx_bytes
+               type: u64
+             - src: netdev_list[tx_bytes]
+               dst: tx_bytes
+               type: u64
+           indices:
+             - name: time_comp_dev
+               cols: [ts, comp_id, device]
+
+     # Catch-all as_is decomposition
+     default_asis:
+       type: as_is
+       indices:
+         - name: time
+           cols: [timestamp]
+         - name: time_comp
+           cols: [timestamp, component_id]
+
+   # Map digests to decompositions
+   digest:
+     # Two different meminfo schemas (different architectures)
+     71B03E47E7C9033E359DB5225BC6314A589D8772F4BC0866B6E79A698C8799C0: meminfo_filter
+     59DD05D768CFF8F175496848486275822A6A9795286FD9B534FDB9434EAF4D50: meminfo_filter
+
+     # Network stats with both specific and generic decomposition
+     E8B9CC8D83FB4E5B779071E801CA351B69DCB9E9CE2601A0B127A2977F11C62A: [netdev_stats, default_asis]
+
+     # Everything else uses as_is
+     "*": default_asis
+
+**Example 2: Pattern-based routing**
+
+Use regex patterns instead of digests for more flexible matching:
+
+.. code-block:: yaml
+
+   type: flex
+
+   decomposition:
+     # Same decompositions as Example 1
+     meminfo_filter:
+       type: static
+       rows:
+         - schema: meminfo_core
+           cols:
+             - {src: timestamp, dst: ts, type: ts}
+             - {src: component_id, dst: comp_id, type: u64}
+             - {src: MemFree, dst: free, type: u64}
+             - {src: MemAvailable, dst: available, type: u64}
+           indices:
+             - {name: time_comp, cols: [ts, comp_id]}
+
+     netdev_stats:
+       type: static
+       rows:
+         - schema: network_io
+           cols:
+             - {src: timestamp, dst: ts, type: ts}
+             - {src: component_id, dst: comp_id, type: u64}
+             - {src: "netdev_list[name]", dst: device, type: char_array, array_len: 16}
+             - {src: "netdev_list[rx_bytes]", dst: rx_bytes, type: u64}
+             - {src: "netdev_list[tx_bytes]", dst: tx_bytes, type: u64}
+           indices:
+             - {name: time_comp_dev, cols: [ts, comp_id, device]}
+
+     cpu_stats:
+       type: static
+       rows:
+         - schema: cpu_usage
+           cols:
+             - {src: timestamp, dst: ts, type: ts}
+             - {src: component_id, dst: comp_id, type: u64}
+             - {src: user, type: u64}
+             - {src: system, type: u64}
+             - {src: idle, type: u64}
+           indices:
+             - {name: time_comp, cols: [ts, comp_id]}
+
+     default_asis:
+       type: as_is
+       indices:
+         - {name: time, cols: [timestamp]}
+
+   # Pattern-based matching (checked in order)
+   matches:
+     # Match any schema starting with "meminfo"
+     - schema: "^meminfo"
+       apply: meminfo_filter
+
+     # Match any schema starting with "proc" AND instance containing "cpu"
+     - schema: "^proc.*"
+       instance: ".*cpu.*"
+       apply: cpu_stats
+
+     # Match exact schema name
+     - schema: procnetdev2
+       apply: [netdev_stats, default_asis]
+
+     # Match any network-related schema
+     - schema: "^(net|eth|ib).*"
+       apply: netdev_stats
+
+   # Default for non-matching schemas
+   default: default_asis
+
+**Example 3: Combined digest and pattern matching**
+
+Use both methods for maximum flexibility:
+
+.. code-block:: yaml
+
+   type: flex
+
+   decomposition:
+     specific_decomp:
+       type: static
+       rows:
+         - schema: specific_schema
+           cols:
+             - {src: timestamp, dst: ts, type: ts}
+             - {src: value, type: u64}
+
+     pattern_decomp:
+       type: static
+       rows:
+         - schema: pattern_schema
+           cols:
+             - {src: timestamp, dst: ts, type: ts}
+             - {src: data, type: char_array, array_len: 128}
+
+     fallback:
+       type: as_is
+       indices:
+         - {name: time, cols: [timestamp]}
+
+   # Digest checked first (fastest, exact match)
+   digest:
+     KNOWN_DIGEST_1234: specific_decomp
+     KNOWN_DIGEST_5678: specific_decomp
+
+   # Patterns checked second (flexible, for unknowns)
+   matches:
+     - schema: "^test_.*"
+       apply: pattern_decomp
+
+   # Default checked last
+   default: fallback
+
+Processing order: digest → matches → default
 
 
-**Example2:** This is another example with the same setup as Example1, but we
-use "matches" with "schema" instead of "digest".
+YAML vs JSON
+============
 
-::
+Both formats are supported, but YAML is recommended:
 
-   {
-     "type": "flex",
-     "decomposition": {
-       "meminfo": {
-         "type": "static",
-         "rows": [
-           {
-             "schema": "meminfo_filter",
-             "cols": [
-               { "src":"timestamp",    "dst":"ts",      "type":"ts"                         },
-               { "src":"producer",     "dst":"prdcr",   "type":"char_array", "array_len":64 },
-               { "src":"instance",     "dst":"inst",    "type":"char_array", "array_len":64 },
-               { "src":"component_id", "dst":"comp_id", "type":"u64"                        },
-               { "src":"MemFree",      "dst":"free",    "type":"u64"                        },
-               { "src":"MemActive",    "dst":"active",  "type":"u64"                        }
-             ],
-             "indices": [
-               { "name":"time_comp", "cols":["ts", "comp_id"] },
-               { "name":"time", "cols":["ts"] }
-             ]
-           }
-         ]
-       },
-       "netdev2" : {
-         "type" : "static",
-         "rows": [
-           {
-             "schema": "procnetdev2",
-             "cols": [
-               { "src":"timestamp", "dst":"ts","type":"ts" },
-               { "src":"component_id", "dst":"comp_id","type":"u64" },
-               { "src":"netdev_list", "rec_member":"name", "dst":"dev.name",
-                 "type":"char_array", "array_len": 16 },
-                 { "src":"netdev_list", "rec_member":"rx_bytes", "dst":"dev.rx_bytes",
-                   "type":"u64" },
-                   { "src":"netdev_list", "rec_member":"tx_bytes", "dst":"dev.tx_bytes",
-                     "type":"u64" }
-             ],
-             "indices": [
-               { "name":"time_comp", "cols":["ts", "comp_id"] }
-             ]
-           }
-         ]
-       },
-       "the_default": {
-         "type": "as_is",
-         "indices": [
-           { "name": "time", "cols": [ "timestamp" ] },
-           { "name": "time_comp", "cols": [ "timestamp", "component_id" ] }
-         ]
-       }
-     },
-     "matches": [
-       { "schema": "meminfo", "apply": "meminfo" },
-       { "schema": "procnetdev2", "apply": [ "netdev2", "the_default" ] }
-     ],
-     "default": "the_default"
-   }
+**YAML Advantages:**
+
+- Human-readable with less punctuation
+- Supports comments for documentation
+- Multi-line strings without escaping
+- More maintainable for complex configurations
+
+**JSON Advantages:**
+
+- Programmatically generated configurations
+- Strict parsing (catches some errors YAML doesn't)
+- Broader tool support
+
+**Converting between formats:**
+
+YAML is a superset of JSON, so valid JSON is valid YAML. To convert
+YAML to JSON, use standard conversion tools:
+
+.. code-block:: bash
+
+   # Using Python
+   python3 -c 'import yaml, json, sys; \
+     print(json.dumps(yaml.safe_load(sys.stdin), indent=2))' \
+     < config.yaml > config.json
+
+   # Using yq (YAML processor)
+   yq eval -o=json config.yaml > config.json
+
+
+BEST PRACTICES
+==============
+
+1. **Use YAML for maintainability**
+
+   - Add comments explaining non-obvious configurations
+   - Use consistent indentation (2 spaces recommended)
+   - Group related configurations together
+
+2. **Design efficient schemas**
+
+   - Create appropriate indices for common queries
+   - Use fill values for optional metrics
+   - Consider storage backend capabilities
+
+3. **Test incrementally**
+
+   - Start with simple configurations
+   - Add complexity after verifying basic functionality
+   - Use as_is for rapid prototyping
+
+4. **Handle heterogeneity**
+
+   - Use flex decomposition for multiple schema types
+   - Provide sensible defaults
+   - Use fill values for architecture-specific metrics
+
+5. **Document custom configurations**
+
+   - Add comments explaining the purpose
+   - Document expected LDMS schemas
+   - Note any special requirements or assumptions
+
+6. **Monitor performance**
+
+   - Watch for row explosion with lists
+   - Limit group cache size appropriately
+   - Set reasonable timeouts for cleanup
+
+
+TROUBLESHOOTING
+===============
+
+**Sets are skipped:**
+  Check that all required columns have either a source metric or a fill
+  value. Sets without required metrics are skipped.
+
+**Schema conflicts:**
+  Use as_is decomposition (adds digest suffix) or ensure flex
+  decomposition maps different schemas to different output names.
+
+**Memory growth:**
+  Verify group timeout settings are appropriate. Set limits on group
+  cache size. Check for list explosion creating too many rows.
+
+**Missing columns:**
+  Ensure dst names match index column names. Verify source metric names
+  are correct. Check for typos in configuration.
+
+**Performance issues:**
+  Create indices on frequently queried columns. Reduce row expansion
+  from lists. Simplify complex operations.
+
 
 SEE ALSO
 ========
 
-:ref:`store_sos(7) <store_sos>`, :ref:`store_csv(7) <store_csv>`, :ref:`store_kafka(7) <store_kafka>`
+**ldmsd(8)**, **ldmsctl(8)**, **ldmsd_strgp_add(8)**
+
+**Store plugins:** :ref:`store_sos(7) <store_sos>`,
+:ref:`store_csv(7) <store_csv>`, :ref:`store_kafka(7) <store_kafka>`
+
+**Source code:** ``ldms/src/decomp/`` in the OVIS-HPC/ovis repository

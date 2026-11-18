@@ -1,0 +1,69 @@
+# Complex static decomposition with multiple indices
+type: static
+rows:
+  - schema: network_metrics
+    cols:
+      - src: timestamp
+        dst: timestamp
+        type: ts
+      - src: cluster
+        dst: cluster
+        type: char_array
+        array_len: 32
+        fill: test_cluster
+      - src: producer
+        dst: producer
+        type: char_array
+        array_len: 256
+      - src: component_id
+        dst: component_id
+        type: u64
+      - src: job_id
+        dst: job_id
+        type: u64
+      # Device record members
+      - src: devices
+        rec_member: name
+        dst: device_name
+        type: char_array
+        array_len: 64
+      - src: devices
+        rec_member: port
+        dst: port
+        type: u32
+      - src: devices
+        rec_member: rx_bytes
+        dst: rx_bytes
+        type: u64
+      - src: devices
+        rec_member: rx_bytes.rate
+        dst: rx_bytes_rate
+        type: d64
+      - src: devices
+        rec_member: tx_bytes
+        dst: tx_bytes
+        type: u64
+      - src: devices
+        rec_member: tx_bytes.rate
+        dst: tx_bytes_rate
+        type: d64
+      - src: devices
+        rec_member: rx_packets
+        dst: rx_packets
+        type: u64
+      - src: devices
+        rec_member: tx_packets
+        dst: tx_packets
+        type: u64
+      - src: devices
+        rec_member: errors
+        dst: errors
+        type: u64
+    indices:
+      - name: device_idx
+        cols:
+          - device_name
+          - port
+      - name: time_idx
+        cols:
+          - timestamp

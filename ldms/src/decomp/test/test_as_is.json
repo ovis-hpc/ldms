@@ -1,0 +1,9 @@
+{
+        "type": "as_is",
+        "indices": [
+                {
+                        "name": "test_index",
+                        "cols": ["timestamp", "producer", "component_id"]
+                }
+        ]
+}

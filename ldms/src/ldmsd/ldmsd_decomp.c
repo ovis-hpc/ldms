@@ -3,6 +3,7 @@
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  * Copyright (c) 2022 Open Grid Computing, Inc. All rights reserved.
+ * Copyright 2026 Lawrence Livermore National Security, LLC
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -61,11 +62,11 @@
 
 #include <openssl/sha.h>
 
-#include <jansson.h>
 #include "coll/rbt.h"
 
 #include "ldmsd.h"
 #include "ldmsd_request.h"
+#include "../decomp/decomp_config_parser.h"
 
 /* Defined in ldmsd.c */
 extern ovis_log_t store_log;
@@ -219,61 +220,66 @@ const char *err_text[] = {
 #endif
 
 /* protected by strgp lock */
-int ldmsd_decomp_config(ldmsd_strgp_t strgp, const char *json_path, ldmsd_req_ctxt_t reqc)
+int ldmsd_decomp_config(ldmsd_strgp_t strgp, const char *config_path, ldmsd_req_ctxt_t reqc)
 {
 	int rc;
-	json_t *root, *type;
-	json_error_t jerr;
+	char err_buf[512];
+	ldmsd_decomp_config_t *cfg;
 	ldmsd_decomp_t decomp_api;
+	const char *type_str;
 
 	if (strgp->decomp) {
 		/* already configured */
 		rc = EALREADY;
 		DECOMP_ERR(reqc, EALREADY, "Already configured.\n");
-		goto err_0;
+		return rc;
 	}
 
-	root = json_load_file(json_path, 0, &jerr);
-	if (!root) {
+	/* Parse configuration file using new parser (handles JSON and YAML) */
+	cfg = ldmsd_decomp_config_parse_file(config_path, err_buf, sizeof(err_buf));
+	if (!cfg) {
 		rc = errno = EINVAL;
-		DECOMP_ERR(reqc, rc,
-			"json parser error: line %d column: %d %s: %s\n",
-			jerr.line, jerr.column,
-			#if JANSSON_VERSION_HEX >= 0x020b00
-			err_text[json_error_code(&jerr)],
-			#else
-			"",
-			#endif
-			jerr.text);
-		goto err_1;
+		DECOMP_ERR(reqc, rc, "Config parse error: %s\n", err_buf);
+		return rc;
 	}
 
-	/* Configure decomposer */
-	type = json_object_get(root, "type");
-	if (!type) {
+	/* Get decomposition plugin based on type */
+	switch (cfg->type) {
+	case LDMSD_DECOMP_CFG_TYPE_STATIC:
+		type_str = "static";
+		break;
+	case LDMSD_DECOMP_CFG_TYPE_AS_IS:
+		type_str = "as_is";
+		break;
+	case LDMSD_DECOMP_CFG_TYPE_FLEX:
+		type_str = "flex";
+		break;
+	default:
 		rc = errno = EINVAL;
-		DECOMP_ERR(reqc, rc,
-			"json parser error: JSON configuration is missing the "
-			"'type' attribute.\n");
-		goto err_1;
+		DECOMP_ERR(reqc, rc, "Unknown decomposition type\n");
+		ldmsd_decomp_config_free(cfg);
+		return rc;
 	}
-	decomp_api = decomp_get(json_string_value(type), reqc);
+
+	decomp_api = decomp_get(type_str, reqc);
 	if (!decomp_api) {
 		rc = errno;
-		goto err_1;
-	}
-	strgp->decomp = decomp_api->config(strgp, root, reqc);
-	if (!strgp->decomp) {
-		rc = errno;
-		goto err_1;
+		ldmsd_decomp_config_free(cfg);
+		return rc;
 	}
 
-	/* decomp config success! */
-	rc = 0;
-err_1:
-	json_decref(root);
-err_0:
-	return rc;
+	/* Configure decomposition with parsed config */
+	strgp->decomp = decomp_api->config(strgp, cfg, reqc);
+	if (!strgp->decomp) {
+		rc = errno;
+		ldmsd_decomp_config_free(cfg);
+		return rc;
+	}
+
+	/* Free parsed config (modules have copied what they need) */
+	ldmsd_decomp_config_free(cfg);
+
+	return 0;
 }
 
 typedef struct strbuf_s {
