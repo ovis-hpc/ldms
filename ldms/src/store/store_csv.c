@@ -103,6 +103,9 @@ typedef struct store_csv_s {
 	/* rolltype determines how to interpret rollover values > 0. */
 	int rolltype;
 
+	/* use_stdout determines if output should go to stdout instead of files */
+	bool use_stdout;
+
 	pthread_t rothread;
 	int rothread_used;
 
@@ -654,6 +657,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	store_csv_t sc = ldmsd_plug_ctxt_get(handle);
 	int rollmethod = DEFAULT_ROLLTYPE;
 	int rc;
+	int cvt;
 
 	static const char *attributes[] = {
 		"container",
@@ -664,6 +668,7 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		"rollover",
 		"rolltype",
 		"rollempty",
+		"use_stdout",
 		CSV_STORE_ATTR_COMMON,
 		NULL
 	};
@@ -729,11 +734,27 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 
 	ovis_log(mylog, OVIS_LDEBUG, "parsed %s\n", conf);
 
+	cvt = ldmsd_plugattr_bool(sc->pa, "use_stdout", NULL, &sc->use_stdout);
+	if (cvt == -1) {
+		ovis_log(mylog, OVIS_LERROR, "expected boole for use_stdout= input.\n");
+		rc = EINVAL;
+		goto out;
+	}
+
 	const char *s = ldmsd_plugattr_value(sc->pa, "path", NULL);
 	rc = 0;
-	if (!s) {
+	if (!s && !sc->use_stdout) {
 		ovis_log(mylog, OVIS_LERROR, PNAME
-			": config requires path=value be provided in opt_file or arguments.\n");
+			": config requires path=value be provided in opt_file or arguments (unless use_stdout=1).\n");
+		ldmsd_plugattr_destroy(sc->pa);
+		sc->pa = NULL;
+		rc = EINVAL;
+		goto out;
+	}
+
+	if (s && sc->use_stdout) {
+		ovis_log(mylog, OVIS_LERROR, PNAME
+			": path= and use_stdout=1 are incompatible.\n");
 		ldmsd_plugattr_destroy(sc->pa);
 		sc->pa = NULL;
 		rc = EINVAL;
@@ -747,7 +768,6 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 	}
 	int ragain = 0;
 	int roll = -1;
-	int cvt;
 	cvt = ldmsd_plugattr_s32(sc->pa, "rollagain", NULL, &ragain);
 	if (!cvt) {
 		if (ragain < 0) {
@@ -813,6 +833,13 @@ static int config(ldmsd_plug_handle_t handle, struct attr_value_list *kwl, struc
 		goto out;
 	}
 
+	if (sc->use_stdout && rollmethod >= MINROLLTYPE) {
+		ovis_log(mylog, OVIS_LERROR, PNAME
+			": use_stdout is incompatible with rollover.\n");
+		rc = EINVAL;
+		goto out;
+	}
+
 	if (!sc->store_idx) {
 		sc->store_idx = idx_create();
 		if (!sc->store_idx) {
@@ -838,14 +865,15 @@ out:
 
 static const char *usage(ldmsd_plug_handle_t handle)
 {
-	return  "    config name=store_csv path=<path> rollover=<num> rolltype=<num>\n"
+	return  "    config name=store_csv [path=<path>] [rollover=<num> rolltype=<num>]\n"
 		"           [altheader=<0/!0> userdata=<0/!0>]\n"
 		"           [buffer=<0/1/N> buffertype=<3/4>]\n"
 		"           [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid]\n"
 		"               rename_perm=<octal-mode>]]\n"
 		"           [create_uid=<int-uid> [create_gid=<int-gid] create_perm=<octal-mode>]\n"
+		"           [use_stdout=<0/1>]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
-		"         - path      The path to the root of the csv directory\n"
+		"         - path      The path to the root of the csv directory (required unless use_stdout=1)\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
 		"         - typeheader Type header line in extra .KIND file (optional, default 0)\n"
 		"                0- no header, 1- types 1:1 with csv columns,\n"
@@ -865,6 +893,8 @@ static const char *usage(ldmsd_plug_handle_t handle)
 		"                     N > 1 to flush after that many kb (> 4) or that many lines (>=1)\n"
 		"         - buffertype [3,4] Defines the policy used to schedule buffer flush.\n"
 		"                      Only applies for N > 1. Same as rolltypes.\n"
+		"         - use_stdout 0/1; When set to 1, output CSV data to stdout instead of files.\n"
+		"                      Incompatible with path and rollover. (optional, default 0)\n"
 		"\n"
 		;
 }
@@ -1676,7 +1706,7 @@ static int store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _s_handle, ldm
 		s_handle->lastflush = s_handle->byte_count;
 		doflush = 1;
 	}
-	if ((s_handle->buffer_sz == 0) || doflush){
+	if ((s_handle->buffer_sz == 0) || doflush || s_handle->sc->use_stdout){
 		fflush(s_handle->file);
 		fsync(fileno(s_handle->file));
 	}
@@ -1704,12 +1734,15 @@ static void __csv_handle_close(struct csv_store_handle *s_handle)
 	pthread_mutex_lock(&s_handle->lock);
 	ovis_log(mylog, OVIS_LDEBUG, "Closing with path <%s>\n",
 	       s_handle->path);
-	fflush(s_handle->file);
+	if (s_handle->file) {
+		fflush(s_handle->file);
+		/* Don't close stdout */
+		if (s_handle->file != stdout)
+			fclose(s_handle->file);
+	}
 	if (s_handle->path)
 		free(s_handle->path);
 	s_handle->path = NULL;
-	if (s_handle->file)
-		fclose(s_handle->file);
 	s_handle->file = NULL;
 	if (s_handle->headerfile && s_handle->altheader)
 		fclose(s_handle->headerfile);
@@ -1829,12 +1862,16 @@ csv_store_handle_get(store_csv_t sc, const char *container, const char *schema)
 	s_handle->type = CSV_STORE_HANDLE;
 	s_handle->store_key = store_key; /* give store_key to s_handle */
 	const char *root_path = ldmsd_plugattr_value(sc->pa, "path", store_key);
-	if (!root_path) {
+	if (!root_path && !sc->use_stdout) {
 		ERR_LOG("`path` plugin attribute is not set\n");
 		errno = EINVAL;
 		goto err_2;
 	}
-	len = asprintf(&s_handle->path, "%s/%s/%s", root_path, container, schema);
+	if (sc->use_stdout) {
+		len = asprintf(&s_handle->path, "stdout");
+	} else {
+		len = asprintf(&s_handle->path, "%s/%s/%s", root_path, container, schema);
+	}
 	if (len < 0) {
 		ERR_LOG("Not enough memory (%s:%s():%d)", __FILE__, __func__, __LINE__);
 		goto err_2;
@@ -1854,17 +1891,21 @@ csv_store_handle_get(store_csv_t sc, const char *container, const char *schema)
 	if (rc) /* error already logged */
 		goto err_5;
 
-	snprintf(path, sizeof(path), "%s/%s", root_path, container);
-	rc = create_outdir(path, CSHC(s_handle), &PG);
-	if (rc) {
-		ERR_LOG("Failure %d creating directory containing '%s'\n", errno, path);
-		goto err_5;
+	if (!sc->use_stdout) {
+		snprintf(path, sizeof(path), "%s/%s", root_path, container);
+		rc = create_outdir(path, CSHC(s_handle), &PG);
+		if (rc) {
+			ERR_LOG("Failure %d creating directory containing '%s'\n", errno, path);
+			goto err_5;
+		}
 	}
 
 	time_t appx = time(NULL);
 
 	/* csv filename */
-	if (sc->rolltype >= MINROLLTYPE){
+	if (sc->use_stdout) {
+		len = asprintf(&s_handle->filename, "stdout");
+	} else if (sc->rolltype >= MINROLLTYPE){
 		//append the files with epoch. assume wont collide to the sec.
 		len = asprintf(&s_handle->filename, "%s.%ld", s_handle->path, appx);
 	} else {
@@ -1876,13 +1917,19 @@ csv_store_handle_get(store_csv_t sc, const char *container, const char *schema)
 	}
 
 	/* the CSV FILE */
-	s_handle->file = fopen_perm(s_handle->filename, "a+", LDMSD_DEFAULT_FILE_PERM);
+	if (sc->use_stdout) {
+		s_handle->file = stdout;
+	} else {
+		s_handle->file = fopen_perm(s_handle->filename, "a+", LDMSD_DEFAULT_FILE_PERM);
+	}
 	s_handle->otime = appx;
 	if (!s_handle->file) {
 		ERR_LOG("Error %d opening the file %s.\n", errno, s_handle->path);
 		goto err_6;
 	}
-	ch_output(s_handle->file, s_handle->filename, CSHC(s_handle), &PG);
+	if (!sc->use_stdout) {
+		ch_output(s_handle->file, s_handle->filename, CSHC(s_handle), &PG);
+	}
 
 	/* header file name */
 	if (s_handle->altheader) {
@@ -2281,7 +2328,7 @@ store_row(ldmsd_strgp_t strgp, ldms_set_t set, struct csv_store_handle *s_handle
 		s_handle->lastflush = s_handle->byte_count;
 		doflush = 1;
 	}
-	if ((s_handle->buffer_sz == 0) || doflush){
+	if ((s_handle->buffer_sz == 0) || doflush || s_handle->sc->use_stdout){
 		fflush(s_handle->file);
 		fsync(fileno(s_handle->file));
 	}
