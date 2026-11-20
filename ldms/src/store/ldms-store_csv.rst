@@ -59,7 +59,7 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
 ========================================
 
 **config**
-   | name=<plugin_name> path=<path> [ altheader=<0/!0>
+   | name=<plugin_name> [path=<path>] [ altheader=<0/!0>
      typeheader=<typeformat> time_format=<0/1> ietfcsv=<0/1>
      buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype>
      rollover=<rollover> rollempty=<0/1> userdata=<0/!0>]
@@ -69,7 +69,7 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
      [create_perm=<octal-mode>] [opt_file=filename] [ietfcsv=<0/1>]
      [typeheader=<0/1/2>] [array_expand=<false/true>]
      [array_sep=<separating char>] [array_lquote=<left-quote char>]
-     [array_rquote=<right-quote char>]
+     [array_rquote=<right-quote char>] [use_stdout=<0/1>]
    | ldmsd_controller configuration line
 
    name=<plugin_name>
@@ -83,15 +83,16 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
 
    path=<path>
       |
-      | This option is required; the config line or the options file
-        must supply a default value. The output files will be put into a
-        directory whose root is specified by the path argument. This
-        directory must exist; the subdirectories and files will be
-        created. The full path to the output files will be
+      | This option is required unless use_stdout=1; the config line or
+        the options file must supply a default value. The output files
+        will be put into a directory whose root is specified by the path
+        argument. This directory must exist; the subdirectories and files
+        will be created. The full path to the output files will be
         <path>/<container>/<schema>. Container and schema are set when
         the strgp is added. If you choose a rollover option, then the
         filename will also be postpended by "." followed by the epoch
-        time e.g., XXX/meminfo_ctr/meminfo-123456789.
+        time e.g., XXX/meminfo_ctr/meminfo-123456789. This option is
+        incompatible with use_stdout=1.
 
    altheader=<0/!0>
       |
@@ -281,6 +282,14 @@ STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
       | Specify the right-quote character if expand_array is true. If
         expand_array is false, the value is ignored.
 
+   use_stdout=<0/1>
+      |
+      | When set to 1, CSV output is written to stdout instead of files.
+        This option is incompatible with path and rollover. When
+        use_stdout=1 is specified, the path parameter is not required and
+        will cause an error if provided. Rollover is also disabled in
+        stdout mode. Default value is 0 (write to files).
+
 OPTIONS FILE
 ============
 
@@ -424,6 +433,11 @@ NOTES
    script. Scripts written in the store_csv opt_file syntax cannot be
    used directly with the ldmsd include statement.
 
+-  The use_stdout option enables writing CSV data to stdout, which is
+   useful for piping output to other tools, debugging, or integration
+   with container-based logging systems. When enabled, file-based
+   features (path specification, rollover, file renaming) are disabled.
+
 BUGS
 ====
 
@@ -480,6 +494,20 @@ or use them interactively or in a script as:
 config name=store_csv container=cstore schema=meminfo <op=val >\*
 
 after the store_csv defaults have been set.
+
+Example using stdout:
+
+To write CSV output to stdout instead of files (useful for piping to
+other tools or debugging):
+
+::
+
+   load name=store_csv
+   config name=store_csv use_stdout=1
+   strgp_add name=csv_mem_policy plugin=store_csv container=mem_store schema=meminfo
+
+Note that when use_stdout=1, the path parameter should not be specified,
+and rollover options are not allowed.
 
 SEE ALSO
 ========
