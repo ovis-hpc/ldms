@@ -106,6 +106,7 @@ OPTION_INCLUDE_FLAGS([OVIS],[ \
 	ldms/src/core \
 	ldms/src/auth \
 	ldms/src/ldmsd \
+	ldms/src/decomp \
 	ldms/src/sampler \
 	ldms/src/store \
 ])
@@ -128,6 +129,7 @@ OPTION_LIB_FLAGS([OVIS],[ \
 	ldms/src/core \
 	ldms/src/auth \
 	ldms/src/ldmsd \
+	ldms/src/decomp \
 	ldms/src/sampler \
 	ldms/src/sampler/lustre \
 	ldms/src/store \
@@ -249,7 +251,7 @@ OPTION_DEFAULT_DISABLE([ldms-test], [ENABLE_LDMS_TEST])
 
 OPTION_DEFAULT_ENABLE([mmap], [ENABLE_MMAP])
 OPTION_DEFAULT_ENABLE([perf], [ENABLE_PERF])
-OPTION_DEFAULT_DISABLE([yaml], [ENABLE_YAML])
+OPTION_DEFAULT_ENABLE([yaml], [ENABLE_YAML])
 
 dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
@@ -730,12 +732,12 @@ if test -z "$ENABLE_RABBITV3_TRUE" -o -z "$ENABLE_RABBITKW_TRUE"; then
 	AC_LANG_POP([C])
 fi
 
-if test -z "$ENABLE_YAML_TRUE"; then
-	AC_CHECK_LIB(yaml, yaml_parser_load, [],
-		AC_MSG_ERROR([libyaml not found. please add --disable-yaml to disable yaml support.]))
-	dnl Reset LIBS variable.
-	LIBS=""
-fi
+dnl libyaml is now required for decomposition config parsing
+AC_CHECK_LIB(yaml, yaml_parser_load, [],
+	AC_MSG_ERROR([libyaml not found. Install libyaml-dev (Debian/Ubuntu) or libyaml-devel (RHEL/CentOS) package.]))
+AC_SUBST([LIBYAML], ["-lyaml"])
+dnl Reset LIBS variable.
+LIBS=""
 
 if test -z "$ENABLE_SOS_TRUE"; then
 	if test "x$WITH_SOS" != "xbuild"; then

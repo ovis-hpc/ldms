@@ -63,6 +63,7 @@
 #include <sys/time.h>
 #include <jansson.h>
 
+#include "decomp_config_parser.h"
 #include <ovis_event/ovis_event.h>
 #include <ovis_util/util.h>
 #include "ovis_log/ovis_log.h"
@@ -744,20 +745,20 @@ typedef struct json_entity_s *json_entity_t;
 struct ldmsd_decomp_s {
 
 	/**
-	 * Configuring the decomposition according to \c strgp and \c json_path.
+	 * Configuring the decomposition according to \c strgp and parsed config.
 	 *
-	 * \c reqc is given so that the confiıg function can describe the errors
+	 * \c reqc is given so that the config function can describe the errors
 	 * back to the user (not just log file) in details.
 	 *
 	 * \param strgp
-	 * \param json_path
+	 * \param cfg   Parsed decomposition configuration
 	 * \param reqc
 	 *
 	 * \retval decomp The decomposition resource handle.
 	 * \retval NULL   If there is an error. In this case, \c errno must also
 	 *                be set to describe the error.
 	 */
-	ldmsd_decomp_t (*config)(ldmsd_strgp_t strgp, json_t *jcfg, ldmsd_req_ctxt_t reqc);
+	ldmsd_decomp_t (*config)(ldmsd_strgp_t strgp, ldmsd_decomp_config_t *cfg, ldmsd_req_ctxt_t reqc);
 
 	/**
 	 * Decompose method.

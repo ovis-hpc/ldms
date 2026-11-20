@@ -3,6 +3,7 @@
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  * Copyright (c) 2022 Open Grid Computing, Inc. All rights reserved.
+ * Copyright 2026 Lawrence Livermore National Security, LLC
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -59,11 +60,11 @@
 
 #include <openssl/sha.h>
 
-#include <jansson.h>
 #include "coll/rbt.h"
 
 #include "ldmsd.h"
 #include "ldmsd_request.h"
+#include "../decomp_config_parser.h"
 
 static ovis_log_t as_is_log;
 /* Macro to put error message in both ldmsd log and `reqc` */
@@ -82,7 +83,7 @@ static ovis_log_t as_is_log;
 
 
 static ldmsd_decomp_t as_is_config(ldmsd_strgp_t strgp,
-			json_t *cfg, ldmsd_req_ctxt_t reqc);
+			ldmsd_decomp_config_t *cfg, ldmsd_req_ctxt_t reqc);
 static int as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				     ldmsd_row_list_t row_list, int *row_count,
 				     void **decomp_ctxt);
@@ -201,27 +202,24 @@ as_is_release_decomp(ldmsd_strgp_t strgp)
 	}
 }
 
-static ldmsd_decomp_t as_is_config(ldmsd_strgp_t strgp, json_t *jcfg,
+static ldmsd_decomp_t as_is_config(ldmsd_strgp_t strgp, ldmsd_decomp_config_t *cfg,
 					ldmsd_req_ctxt_t reqc)
 {
 	as_is_cfg_t dcfg = NULL;
 	as_is_index_t didx;
 	int j, k, n_idx;
-	json_t *jname, *jidxs, *jidx_cols, *jidx_col, *jidx;
+	ldmsd_decomp_as_is_config_t *as_is_cfg;
 
-	/* indices */
-	jidxs = json_object_get(jcfg, "indices");
-	if (!jidxs) {
-		n_idx = 0;
-	} else {
-		if (!json_is_array(jidxs)) {
-			AS_IS_ERR(reqc, EINVAL,
-				"The 'indices' key must refer to an array.\n");
-			errno = 0;
-			return NULL;
-		}
-		n_idx = json_array_size(jidxs);
+	/* Verify config type */
+	if (cfg->type != LDMSD_DECOMP_CFG_TYPE_AS_IS) {
+		AS_IS_ERR(reqc, EINVAL, "Expected as_is decomposition type\n");
+		errno = EINVAL;
+		return NULL;
 	}
+
+	as_is_cfg = cfg->as_is_cfg;
+	n_idx = as_is_cfg->index_count;
+
 	dcfg = calloc(1, sizeof(*dcfg) + n_idx * sizeof(dcfg->idxs[0]));
 	if (!dcfg)
 		goto err_enomem;
@@ -231,59 +229,35 @@ static ldmsd_decomp_t as_is_config(ldmsd_strgp_t strgp, json_t *jcfg,
 	if (!n_idx)
 		goto out;
 
-	/* foreach index */
-	json_array_foreach(jidxs, j, jidx) {
+	/* Process each index from parsed config */
+	for (j = 0; j < n_idx; j++) {
+		ldmsd_decomp_as_is_index_t *src_idx = &as_is_cfg->indices[j];
 		didx = &dcfg->idxs[j];
-		if (!json_is_object(jidx)) {
-			AS_IS_ERR(reqc, EINVAL,
-				"strgp '%s': index '%d': "
-				"an index entry must be a dictionary.\n",
-				strgp->obj.name, j);
-			goto err_0;
-		}
-		jname = json_object_get(jidx, "name");
-		if (!jname) {
+
+		if (!src_idx->name) {
 			AS_IS_ERR(reqc, EINVAL,
 				"strgp '%s': index '%d': "
 				"index['name'] is required.\n",
 				strgp->obj.name, j);
 			goto err_0;
 		}
-		if (!json_is_string(jname)) {
-			AS_IS_ERR(reqc, EINVAL,
-				"strgp '%s': index '%d': "
-				"index['name'] must be a string.\n",
-				strgp->obj.name, j);
-			goto err_0;
-		}
-		didx->name = strdup(json_string_value(jname));
+
+		didx->name = strdup(src_idx->name);
 		if (!didx->name)
 			goto err_enomem;
-		jidx_cols = json_object_get(jidx, "cols");
-		if (!jidx_cols || !json_is_array(jidx_cols)) {
-			AS_IS_ERR(reqc, EINVAL,
-				"strgp '%s': index '%d': "
-				"index['cols'] is required.\n",
-				strgp->obj.name, j);
-			goto err_0;
-		}
-		didx->col_count = json_array_size(jidx_cols);
+
+		didx->col_count = src_idx->col_count;
 		didx->col_names = calloc(1, didx->col_count * sizeof(didx->col_names[0]));
 		if (!didx->col_names)
 			goto err_enomem;
-		json_array_foreach(jidx_cols, k, jidx_col) {
-			if (!json_is_string(jidx_col)) {
-				AS_IS_ERR(reqc, EINVAL,
-					"strgp '%s': index '%d': "
-					"index['cols'][%d] must be a string.\n",
-					strgp->obj.name, j, k);
-				goto err_0;
-			}
-			didx->col_names[k] = strdup(json_string_value(jidx_col));
+
+		for (k = 0; k < src_idx->col_count; k++) {
+			didx->col_names[k] = strdup(src_idx->cols[k]);
 			if (!didx->col_names[k])
 				goto err_enomem;
 		}
-}
+	}
+
  out:
 	return &dcfg->decomp;
  err_enomem:
