@@ -488,10 +488,60 @@ model\s+:\s+(.+)
 """)
 
 def get_cpu_family_model():
-    f = open("/proc/cpuinfo")
-    text = f.read()
+    """Get the `family-model` string used by the perfevent2 plugin:
+        - x86_64: "<vendor_id>-<cpu family>-<model>" from /proc/cpuinfo.
+        - aarch64: the MIDR_EL1 value (hex string), which is what perfevent2's
+          arm64_cpu_match() compares the perfdb `family-model` against.
+    Returns an empty string when the CPU cannot be identified.
+    """
+    try:
+        f = open("/proc/cpuinfo")
+    except OSError as e:
+        log.warning(f"Cannot open /proc/cpuinfo: {e}")
+        return ""
+
+    with f:
+        text = f.read()
     m = CPU_RE.search(text)
-    return '-'.join(m.groups())
+    if m:
+        return '-'.join(m.groups())
+
+    # /proc/cpuinfo doesn't have vendor_id/cpu family/model lines. Handle
+    # aarch64, whose /proc/cpuinfo has CPU implementer/variant/part/revision.
+    machine = platform.machine().lower()
+    if machine not in ("aarch64", "arm64"):
+        log.warning(f"Unrecognized /proc/cpuinfo format on '{machine}'; "
+                    "'family-model' will be empty.")
+        return ""
+
+    # perfevent2 (arm64_set_cpu_model()) reads MIDR_EL1 from this sysfs file
+    # and matches it against the perfdb `family-model`, trying the same
+    try:
+        midr = open("/sys/devices/system/cpu/cpu0/regs/identification/midr_el1").read().strip()
+        if midr:
+            return midr
+    except OSError:
+        pass
+
+    # sysfs not readable ? reconstruct MIDR_EL1 from /proc/cpuinfo.
+    # MIDR layout: impl[31:24] var[23:20] arch[19:16] part[15:4] rev[3:0].
+    # (The arch nibble is 0xF on all known ARMv8 implementations.)
+    impl = re.search(r'CPU implementer\s*:\s*(\S+)', text)
+    var = re.search(r'CPU variant\s*:\s*(\S+)', text)
+    part = re.search(r'CPU part\s*:\s*(\S+)', text)
+    rev = re.search(r'CPU revision\s*:\s*(\S+)', text)
+    if impl and var and part and rev:
+        midr = ((int(impl.group(1), 16) << 24) |
+                (int(var.group(1), 16) << 20) |
+                (0xF << 16) |
+                (int(part.group(1), 16) << 4) |
+                int(rev.group(1), 16))
+        log.warning("MIDR_EL1 sysfs file not readable; "
+                    "reconstructed from /proc/cpuinfo.")
+        return f"0x{midr:016x}"
+    log.warning("Cannot determine the MIDR_EL1 of this CPU; "
+                "'family-model' will be empty.")
+    return ""
 
 def do_perf_list():
     global args
