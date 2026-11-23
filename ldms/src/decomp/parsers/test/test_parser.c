@@ -163,7 +163,7 @@ static void test_static_json(void)
 
         ldmsd_decomp_static_row_t *row = &cfg->static_cfg->rows[0];
         ASSERT_STR_EQUAL(row->schema, "test_schema", "Wrong schema name");
-        ASSERT_EQUAL(row->col_count, 4, "Wrong column count");
+        ASSERT_EQUAL(row->col_count, 5, "Wrong column count");
 
         /* Check first column */
         ldmsd_decomp_static_col_t *col = &row->cols[0];
@@ -175,6 +175,15 @@ static void test_static_json(void)
         col = &row->cols[1];
         ASSERT_STR_EQUAL(col->src, "producer", "Wrong col src");
         ASSERT_EQUAL(col->array_len, 256, "Wrong array_len");
+        if (col->func != NULL) {
+                TEST_FAIL("func should be NULL when absent");
+                return;
+        }
+
+        /* Check column with func */
+        col = &row->cols[4];
+        ASSERT_STR_EQUAL(col->dst, "comp_str", "Wrong col dst");
+        ASSERT_STR_EQUAL(col->func, "to_str", "Wrong col func");
 
         /* Check index */
         ASSERT_EQUAL(row->index_count, 1, "Wrong index count");
@@ -204,7 +213,8 @@ static void test_static_yaml(void)
         ASSERT_EQUAL(cfg->static_cfg->row_count, 1, "Wrong row count");
 
         ldmsd_decomp_static_row_t *row = &cfg->static_cfg->rows[0];
-        ASSERT_EQUAL(row->col_count, 4, "Wrong column count");
+        ASSERT_EQUAL(row->col_count, 5, "Wrong column count");
+        ASSERT_STR_EQUAL(row->cols[4].func, "to_str", "Wrong col func");
 
         ldmsd_decomp_config_free(cfg);
         TEST_PASS();
@@ -475,7 +485,7 @@ static void test_loc_static_yaml(void)
         ASSERT_NOT_NULL(cfg, err_buf);
 
         ldmsd_decomp_static_row_t *row = &cfg->static_cfg->rows[0];
-        ASSERT_EQUAL(row->col_count, 4, "Wrong column count");
+        ASSERT_EQUAL(row->col_count, 5, "Wrong column count");
 
         /* Root mapping starts at "type:" on line 2 */
         ASSERT_LOC(cfg->node, NULL, 0, 2, 1, "root");
@@ -493,11 +503,15 @@ static void test_loc_static_yaml(void)
         /* Missing key falls back to the enclosing node with ENOENT */
         ASSERT_LOC(row->cols[0].node, "op", ENOENT, 6, 9, "missing op");
 
-        /* Sequence item lookup: index cols[0] is "producer" on line 23 */
+        /* Column 4 ("comp_str") starts at line 20; its "func" is line 22 */
+        ASSERT_LOC(row->cols[4].node, NULL, 0, 20, 9, "col 4");
+        ASSERT_LOC(row->cols[4].node, "func", 0, 22, 15, "col 4 func");
+
+        /* Sequence item lookup: index cols[0] is "producer" on line 26 */
         ldmsd_decomp_static_index_t *idx = &row->indices[0];
         ldmsd_decomp_cfg_node_t cols = ldmsd_decomp_cfg_node_key(idx->node, "cols");
         ASSERT_NOT_NULL(cols, "index cols node");
-        ASSERT_LOC(ldmsd_decomp_cfg_node_item(cols, 0), NULL, 0, 23, 13, "index col 0");
+        ASSERT_LOC(ldmsd_decomp_cfg_node_item(cols, 0), NULL, 0, 26, 13, "index col 0");
         if (ldmsd_decomp_cfg_node_item(cols, 1) != NULL) {
                 TEST_FAIL("Out of range item should be NULL");
                 return;

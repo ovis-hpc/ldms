@@ -404,6 +404,7 @@ static ldmsd_decomp_static_col_t *parse_static_col(ldmsd_decomp_cfg_node_t col_n
         col->type = map_get_string(col_node, "type", err_buf, err_sz);
         col->rec_member = map_get_string(col_node, "rec_member", err_buf, err_sz);
         col->op = map_get_string(col_node, "op", err_buf, err_sz);
+        col->func = map_get_string(col_node, "func", err_buf, err_sz);
 
         col->node = (col_node);
         map_get_int(col_node, "array_len", &col->array_len, err_buf, err_sz);
@@ -948,6 +949,7 @@ static void free_static_config(ldmsd_decomp_static_config_t *scfg)
                         free(row->cols[j].type);
                         free(row->cols[j].rec_member);
                         free(row->cols[j].op);
+                        free(row->cols[j].func);
                         if (row->cols[j].fill) {
                                 for (int k = 0; k < row->cols[j].fill_count; k++)
                                         free(row->cols[j].fill[k]);

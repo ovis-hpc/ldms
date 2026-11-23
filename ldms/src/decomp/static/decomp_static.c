@@ -286,6 +286,268 @@ enomem:
         return ENOMEM;
 }
 
+/*
+ * Built-in column functions ("func:" column attribute).
+ *
+ * A function converts the current value of the column's src to the
+ * dst column's type.  The dst column has already been sized according
+ * to the dst type and array_len when the function is called.  A
+ * function may support more than one dst type; it then switches on
+ * dst->type, the same way it switches on src->type.
+ */
+typedef int (*decomp_func_fn_t)(ldmsd_col_t dst, ldmsd_col_t src);
+
+typedef struct decomp_func_s {
+        const char *name;
+        /* dst type used when the column has no 'type' */
+        enum ldms_value_type dst_type;
+        /* dst types the function can produce, checked against the
+         * column's 'type' at config time.  NULL means only dst_type. */
+        int (*dst_ok)(enum ldms_value_type dst);
+        /* src/dst type pairs the function can convert, checked when
+         * the src type is first known */
+        int (*types_ok)(enum ldms_value_type src, enum ldms_value_type dst);
+        /* default and minimum array_len, used when dst is an array */
+        int dst_len;
+        int min_len;
+        decomp_func_fn_t fn;
+} *decomp_func_t;
+
+static int is_int_scalar(enum ldms_value_type t)
+{
+        switch (t) {
+        case LDMS_V_U8:
+        case LDMS_V_S8:
+        case LDMS_V_U16:
+        case LDMS_V_S16:
+        case LDMS_V_U32:
+        case LDMS_V_S32:
+        case LDMS_V_U64:
+        case LDMS_V_S64:
+                return 1;
+        default:
+                return 0;
+        }
+}
+
+static int is_ts(enum ldms_value_type t)
+{
+        return t == LDMS_V_TIMESTAMP;
+}
+
+static int is_u64(enum ldms_value_type t)
+{
+        return t == LDMS_V_U64;
+}
+
+static int int_to_str_ok(enum ldms_value_type src, enum ldms_value_type dst)
+{
+        return is_int_scalar(src) && dst == LDMS_V_CHAR_ARRAY;
+}
+
+static int ts_to_str_ok(enum ldms_value_type src, enum ldms_value_type dst)
+{
+        return is_ts(src) && dst == LDMS_V_CHAR_ARRAY;
+}
+
+static int u64_to_str_ok(enum ldms_value_type src, enum ldms_value_type dst)
+{
+        return is_u64(src) && dst == LDMS_V_CHAR_ARRAY;
+}
+
+static int to_str_fn(ldmsd_col_t dst, ldmsd_col_t src)
+{
+        switch (src->type) {
+        case LDMS_V_U8:
+        case LDMS_V_U16:
+        case LDMS_V_U32:
+        case LDMS_V_U64:
+                snprintf(dst->mval->a_char, dst->array_len, "%" PRIu64,
+                         ldms_mval_as_u64(src->mval, src->type, 0));
+                return 0;
+        case LDMS_V_S8:
+        case LDMS_V_S16:
+        case LDMS_V_S32:
+        case LDMS_V_S64:
+                snprintf(dst->mval->a_char, dst->array_len, "%" PRId64,
+                         ldms_mval_as_s64(src->mval, src->type, 0));
+                return 0;
+        default:
+                return EINVAL;
+        }
+}
+
+/*
+ * Like to_str, but 0 gives an empty string.  Useful for IDs where 0
+ * means "none", e.g. a job_id of 0 when no job is running.
+ */
+static int to_str_empty_zero_fn(ldmsd_col_t dst, ldmsd_col_t src)
+{
+        if (!is_int_scalar(src->type))
+                return EINVAL;
+        if (ldms_mval_as_u64(src->mval, src->type, 0) == 0) {
+                dst->mval->a_char[0] = '\0';
+                return 0;
+        }
+        return to_str_fn(dst, src);
+}
+
+static int to_hex_fn(ldmsd_col_t dst, ldmsd_col_t src)
+{
+        uint64_t v;
+
+        /* Signed values are shown as the unsigned value of the same width */
+        switch (src->type) {
+        case LDMS_V_U8:
+        case LDMS_V_S8:
+                v = src->mval->v_u8;
+                break;
+        case LDMS_V_U16:
+        case LDMS_V_S16:
+                v = src->mval->v_u16;
+                break;
+        case LDMS_V_U32:
+        case LDMS_V_S32:
+                v = src->mval->v_u32;
+                break;
+        case LDMS_V_U64:
+        case LDMS_V_S64:
+                v = src->mval->v_u64;
+                break;
+        default:
+                return EINVAL;
+        }
+        snprintf(dst->mval->a_char, dst->array_len, "0x%" PRIx64, v);
+        return 0;
+}
+
+static int to_iso8601_fn(ldmsd_col_t dst, ldmsd_col_t src)
+{
+        struct tm tm;
+        time_t t;
+        char buf[64];
+        size_t n;
+
+        if (src->type != LDMS_V_TIMESTAMP)
+                return EINVAL;
+        t = src->mval->v_ts.sec;
+        if (!gmtime_r(&t, &tm))
+                return EINVAL;
+        n = strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
+        if (!n)
+                return EINVAL;
+        snprintf(buf + n, sizeof(buf) - n, ".%06uZ",
+                 (unsigned)src->mval->v_ts.usec);
+        snprintf(dst->mval->a_char, dst->array_len, "%s", buf);
+        return 0;
+}
+
+#define F58_PREFIX_UTF8 "\xc6\x92"      /* U+0192, LATIN SMALL LETTER F WITH HOOK */
+#define F58_PREFIX_ASCII "f"
+
+/*
+ * Encode \c v as a bitcoin-style base58 number (most significant digit
+ * first) after \c prefix, as Flux does for job IDs in f58 form (Flux
+ * RFC 19).  The result is NUL-terminated and truncated to \c len,
+ * the same as snprintf() would do, but without its overhead.
+ *
+ * A FLUID is never 0, so 0 (e.g. the "no job" job_id) is encoded as
+ * the empty string rather than as "<prefix>1".
+ */
+static void f58_encode(uint64_t v, const char *prefix, char *buf, size_t len)
+{
+        static const char alphabet[] =
+                "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+        char digits[11];        /* 58^10 < 2^64 <= 58^11 */
+        char *p = digits + sizeof(digits);
+        size_t plen, dlen, room;
+
+        if (len == 0)
+                return;
+        /* Fill digits from the end, least significant first */
+        while (v) {
+                *--p = alphabet[v % 58];
+                v /= 58;
+        }
+        if (p == digits + sizeof(digits)) {     /* v == 0 */
+                buf[0] = '\0';
+                return;
+        }
+        dlen = digits + sizeof(digits) - p;
+        room = len - 1;
+        plen = strlen(prefix);
+        if (plen > room)
+                plen = room;
+        memcpy(buf, prefix, plen);
+        room -= plen;
+        if (dlen > room)
+                dlen = room;
+        memcpy(buf + plen, p, dlen);
+        buf[plen + dlen] = '\0';
+}
+
+static int flux_f58_fn(ldmsd_col_t dst, ldmsd_col_t src)
+{
+        if (src->type != LDMS_V_U64)
+                return EINVAL;
+        f58_encode(src->mval->v_u64, F58_PREFIX_UTF8,
+                   dst->mval->a_char, dst->array_len);
+        return 0;
+}
+
+static int flux_f58_ascii_fn(ldmsd_col_t dst, ldmsd_col_t src)
+{
+        if (src->type != LDMS_V_U64)
+                return EINVAL;
+        f58_encode(src->mval->v_u64, F58_PREFIX_ASCII,
+                   dst->mval->a_char, dst->array_len);
+        return 0;
+}
+
+static const struct decomp_func_s func_table[] = {
+        { .name = "to_str",
+          .dst_type = LDMS_V_CHAR_ARRAY, .types_ok = int_to_str_ok,
+          .dst_len = 21, .min_len = 2, .fn = to_str_fn },
+        { .name = "to_str_empty_zero",
+          .dst_type = LDMS_V_CHAR_ARRAY, .types_ok = int_to_str_ok,
+          .dst_len = 21, .min_len = 2, .fn = to_str_empty_zero_fn },
+        { .name = "to_hex",
+          .dst_type = LDMS_V_CHAR_ARRAY, .types_ok = int_to_str_ok,
+          .dst_len = 19, .min_len = 2, .fn = to_hex_fn },
+        { .name = "to_iso8601",
+          .dst_type = LDMS_V_CHAR_ARRAY, .types_ok = ts_to_str_ok,
+          .dst_len = 28, .min_len = 2, .fn = to_iso8601_fn },
+        /* min_len: room for the prefix, one digit and the NUL */
+        { .name = "flux_f58",
+          .dst_type = LDMS_V_CHAR_ARRAY, .types_ok = u64_to_str_ok,
+          .dst_len = 14, .min_len = sizeof(F58_PREFIX_UTF8) + 1,
+          .fn = flux_f58_fn },
+        { .name = "flux_f58_ascii",
+          .dst_type = LDMS_V_CHAR_ARRAY, .types_ok = u64_to_str_ok,
+          .dst_len = 13, .min_len = sizeof(F58_PREFIX_ASCII) + 1,
+          .fn = flux_f58_ascii_fn },
+};
+
+/* Can \c func produce \c dst? */
+static int decomp_func_dst_ok(const struct decomp_func_s *func,
+                              enum ldms_value_type dst)
+{
+        if (func->dst_ok)
+                return func->dst_ok(dst);
+        return dst == func->dst_type;
+}
+
+static const struct decomp_func_s *decomp_func_find(const char *name)
+{
+        size_t i;
+
+        for (i = 0; i < sizeof(func_table) / sizeof(func_table[0]); i++) {
+                if (0 == strcmp(func_table[i].name, name))
+                        return &func_table[i];
+        }
+        return NULL;
+}
+
 /* common index config descriptor */
 typedef struct decomp_index_s {
 	char *name;
@@ -304,6 +566,7 @@ typedef struct decomp_static_col_cfg_s {
 	int fill_len; /* if fill is an array */
 	union ldms_value __fill; /* storing a non-array primitive fill value */
 	enum ldmsd_decomp_op op;
+        const struct decomp_func_s *func; /* built-in function, or NULL */
 	size_t mval_offset;
 	size_t mval_size;
 	ldmsd_decomp_cfg_node_t node; /* config file location of this column */
@@ -782,8 +1045,67 @@ decomp_static_config(ldmsd_strgp_t strgp, ldmsd_decomp_config_t *cfg,
 			} else {
 				cfg_col->type = LDMS_V_NONE;
 			}
-                        if (ldmsd_decomp_cfg_node_key(src_col->node, "fill")) {
+                        if (src_col->func) {
+                                cfg_col->func = decomp_func_find(src_col->func);
+                                if (!cfg_col->func) {
+                                        THISLOG(reqc, EINVAL,
+                                                "%s: strgp '%s': row '%d'--col %d : "
+                                                "unrecognized function '%s'\n",
+                                                LDMSD_DECOMP_CFG_LOC(src_col->node, "func"),
+                                                strgp->obj.name, row_no, col_no,
+                                                src_col->func);
+                                        goto err_0;
+                                }
+                                if (src_col->op) {
+                                        THISLOG(reqc, EINVAL,
+                                                "%s: strgp '%s': row '%d'--col %d : "
+                                                "'op' and 'func' cannot be combined "
+                                                "in the same column\n",
+                                                LDMSD_DECOMP_CFG_LOC(src_col->node, "func"),
+                                                strgp->obj.name, row_no, col_no);
+                                        goto err_0;
+                                }
+                                /* 'type' picks one of the function's dst
+                                 * types; without it, use the default */
                                 if (!src_col->type) {
+                                        cfg_col->type = cfg_col->func->dst_type;
+                                } else if (!decomp_func_dst_ok(cfg_col->func,
+                                                               cfg_col->type)) {
+                                        THISLOG(reqc, EINVAL,
+                                                "%s: strgp '%s': row '%d'--col %d : "
+                                                "function '%s' cannot produce "
+                                                "type '%s'\n",
+                                                LDMSD_DECOMP_CFG_LOC(src_col->node, "type"),
+                                                strgp->obj.name, row_no, col_no,
+                                                src_col->func, src_col->type);
+                                        goto err_0;
+                                }
+                                if (src_col->array_len > 0 &&
+                                    !ldms_type_is_array(cfg_col->type)) {
+                                        THISLOG(reqc, EINVAL,
+                                                "%s: strgp '%s': row '%d'--col %d : "
+                                                "'array_len' is not allowed, function "
+                                                "'%s' produces the scalar type '%s'\n",
+                                                LDMSD_DECOMP_CFG_LOC(src_col->node, "array_len"),
+                                                strgp->obj.name, row_no, col_no,
+                                                src_col->func,
+                                                ldms_metric_type_to_str(cfg_col->type));
+                                        goto err_0;
+                                }
+                                if (src_col->array_len > 0 &&
+                                    src_col->array_len < cfg_col->func->min_len) {
+                                        THISLOG(reqc, EINVAL,
+                                                "%s: strgp '%s': row '%d'--col %d : "
+                                                "function '%s' requires 'array_len' "
+                                                ">= %d\n",
+                                                LDMSD_DECOMP_CFG_LOC(src_col->node, "array_len"),
+                                                strgp->obj.name, row_no, col_no,
+                                                src_col->func, cfg_col->func->min_len);
+                                        goto err_0;
+                                }
+                        }
+                        if (ldmsd_decomp_cfg_node_key(src_col->node, "fill")) {
+                                if (!src_col->type && !cfg_col->func) {
                                         THISLOG(reqc, EINVAL,
                                                 "%s: strgp '%s': row '%d': col[dst] '%s', "
                                                 "'fill' error, 'type' is required.\n",
@@ -809,6 +1131,11 @@ decomp_static_config(ldmsd_strgp_t strgp, ldmsd_decomp_config_t *cfg,
 
 			if (src_col->array_len > 0) {
 				cfg_col->array_len = src_col->array_len;
+                        } else if (cfg_col->func) {
+                                if (ldms_type_is_array(cfg_col->type))
+                                        cfg_col->array_len = cfg_col->func->dst_len;
+                                else
+                                        cfg_col->array_len = 1;
 			}
 		}
 
@@ -867,6 +1194,7 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 	int rc = EINVAL;
 	const char *src;
 	enum ldms_value_type mtype, le_mtype, rec_mtype;
+        enum ldms_value_type src_type; /* effective src element type */
 	ldms_mval_t lh, le, rec_array, rec;
 	int special;
 	int mid, rec_mid;
@@ -896,7 +1224,8 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 	case LDMSD_META_METRIC_ID_TIMESTAMP:
 	case LDMSD_META_METRIC_ID_DURATION:
 		assert( cfg_col->type == LDMS_V_NONE ||
-			cfg_col->type == LDMS_V_TIMESTAMP );
+                        cfg_col->type == LDMS_V_TIMESTAMP ||
+                        cfg_col->func );
 		mtype = LDMS_V_TIMESTAMP;
 		mlen = 1;
 		goto commit;
@@ -905,7 +1234,8 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 	case LDMSD_META_METRIC_ID_PERM:
 	case LDMSD_META_METRIC_ID_CARD:
 		assert( cfg_col->type == LDMS_V_NONE ||
-			cfg_col->type == LDMS_V_U32 );
+                        cfg_col->type == LDMS_V_U32 ||
+                        cfg_col->func );
 		mtype = LDMS_V_U32;
 		mlen = 1;
 		goto commit;
@@ -913,6 +1243,17 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 	case LDMSD_META_METRIC_ID_SCHEMA:
 	case LDMSD_META_METRIC_ID_PRODUCER:
 	case LDMSD_META_METRIC_ID_INSTANCE:
+                if (cfg_col->func) {
+                        ovis_log(static_log, OVIS_LERROR,
+                                "%s: strgp '%s': col[src] '%s': function '%s' "
+                                "cannot convert src type %s.\n",
+                                LDMSD_DECOMP_CFG_LOC(cfg_col->node, "func"),
+                                ctxt->strgp->obj.name, cfg_col->src,
+                                cfg_col->func->name,
+                                ldms_metric_type_to_str(LDMS_V_CHAR_ARRAY));
+                        rc = EINVAL;
+                        goto err;
+                }
 		assert( cfg_col->type == LDMS_V_NONE ||
 			cfg_col->type == LDMS_V_CHAR_ARRAY );
 		col_mid->mid = mid;
@@ -952,7 +1293,7 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 			rc = EINVAL;
 			goto err;
 		}
-		/* use fill */
+                /* use fill; the fill already has the dst type */
 		mid = LDMSD_META_METRIC_ID_FILL;
 		mtype  = cfg_col->type;
 		mlen = cfg_col->fill_len;
@@ -1071,7 +1412,26 @@ commit:
 		col_mid->rec_mid = rec_mid;
 		col_mid->rec_mtype = rec_mtype;
 		ASSERT_RETURN((!ldms_type_is_array(rec_mtype)) || mlen);
-	} else {
+        }
+        if (rec_mid >= 0)
+                src_type = rec_mtype;
+        else if (mtype == LDMS_V_LIST)
+                src_type = le_mtype;
+        else
+                src_type = mtype;
+
+        if (cfg_col->func && mid != LDMSD_META_METRIC_ID_FILL &&
+            !cfg_col->func->types_ok(src_type, cfg_col->type)) {
+                ovis_log(static_log, OVIS_LERROR,
+                        "%s: strgp '%s': col[src] '%s': function '%s' "
+                        "cannot convert src type %s to %s.\n",
+                        LDMSD_DECOMP_CFG_LOC(cfg_col->node, "func"),
+                        ctxt->strgp->obj.name, cfg_col->src,
+                        cfg_col->func->name,
+                        ldms_metric_type_to_str(src_type),
+                        ldms_metric_type_to_str(cfg_col->type));
+                rc = EINVAL;
+                goto err;
 	}
 
 	/* commit to cfg_col */
@@ -1092,9 +1452,13 @@ commit:
 	}
 	if (0 == cfg_col->mval_size) {
 		cfg_col->mval_offset = ctxt->mval_offset;
-		cfg_col->mval_size = ldms_metric_value_size_get(cfg_col->type, mlen);
+                if (cfg_col->func) /* sized by the dst, not the src */
+                        cfg_col->mval_size = ldms_metric_value_size_get(
+                                        cfg_col->type, cfg_col->array_len);
+                else
+                        cfg_col->mval_size = ldms_metric_value_size_get(cfg_col->type, mlen);
 	} else {
-		ASSERT_RETURN(cfg_col->type == mtype);
+                ASSERT_RETURN(cfg_col->func || cfg_col->type == mtype);
 		ASSERT_RETURN(cfg_col->mval_offset == ctxt->mval_offset);
 	}
 
@@ -1823,6 +2187,46 @@ static ldmsd_functional_op_t op_table[] = {
 	[LDMSD_DECOMP_OP_MAX] = max_op,
 };
 
+/*
+ * Apply the column's built-in function to \c src and store the result
+ * in \c col.  On failure the dst value is left zeroed.
+ */
+static int apply_func(ldmsd_strgp_t strgp, decomp_static_col_cfg_t cfg_col,
+                      ldmsd_col_t col, ldmsd_col_t src)
+{
+        int rc;
+
+        rc = cfg_col->func->fn(col, src);
+        if (rc) {
+                memset(col->mval, 0, cfg_col->mval_size);
+                ovis_log(static_log, OVIS_LERROR,
+                         "strgp '%s': col[dst] '%s': function '%s' failed "
+                         "with error %d\n", strgp->obj.name, cfg_col->dst,
+                         cfg_col->func->name, rc);
+        }
+        return rc;
+}
+
+/*
+ * Store the scalar meta-metric value \c v of type \c type in \c col,
+ * applying the column's function if it has one.
+ */
+static void store_col(ldmsd_strgp_t strgp, decomp_static_col_cfg_t cfg_col,
+                      ldmsd_col_t col, enum ldms_value_type type,
+                      union ldms_value *v)
+{
+        struct ldmsd_col_s src = {
+                .type = type,
+                .array_len = 1,
+                .mval = (ldms_mval_t)v,
+        };
+
+        if (cfg_col->func)
+                apply_func(strgp, cfg_col, col, &src);
+        else
+                assign_value(col, &src);
+}
+
 static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				   ldmsd_row_list_t row_list, int *row_count,
 				   void **decomp_ctxt)
@@ -1850,6 +2254,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 		int rec_metric_id;
 		int rec_array_len;
 		int rec_array_idx;
+                int is_fill; /* mval is the 'fill' (or zfill), not a src value */
 	} *col_mvals = NULL, *mcol;
 	struct ldmsd_col_s _col;
 	decomp_static_mid_rbn_t mid_rbn = NULL;
@@ -1862,6 +2267,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	const char *schema;
 	int producer_len, instance_len, schema_len;
 	union ldms_value zfill = {0}; /* zero value as default "fill" */
+        union ldms_value meta_val; /* scratch value for meta metrics */
 
 	if (!TAILQ_EMPTY(row_list))
 		return EINVAL;
@@ -2072,6 +2478,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 
 		col_mvals_fill:
 			mcol->le = NULL;
+                        mcol->is_fill = 1;
 			mcol->mval = cfg_row->cols[j].fill;
 			if (mcol->mval) {
 				mcol->mtype = cfg_row->cols[j].type;
@@ -2127,22 +2534,28 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 
 			switch (mid_rbn->col_mids[j].mid) {
 			case LDMSD_META_METRIC_ID_TIMESTAMP:
-				col->mval->v_ts = ts;
+                                meta_val.v_ts = ts;
+                                store_col(strgp, cfg_col, col, LDMS_V_TIMESTAMP, &meta_val);
 				continue;
 			case LDMSD_META_METRIC_ID_DURATION:
-				col->mval->v_ts = ldms_transaction_duration_get(set);
+                                meta_val.v_ts = ldms_transaction_duration_get(set);
+                                store_col(strgp, cfg_col, col, LDMS_V_TIMESTAMP, &meta_val);
 				continue;
 			case LDMSD_META_METRIC_ID_UID:
-				col->mval->v_u32 = ldms_set_uid_get(set);
+                                meta_val.v_u32 = ldms_set_uid_get(set);
+                                store_col(strgp, cfg_col, col, LDMS_V_U32, &meta_val);
 				continue;
 			case LDMSD_META_METRIC_ID_GID:
-				col->mval->v_u32 = ldms_set_gid_get(set);
+                                meta_val.v_u32 = ldms_set_gid_get(set);
+                                store_col(strgp, cfg_col, col, LDMS_V_U32, &meta_val);
 				continue;
 			case LDMSD_META_METRIC_ID_PERM:
-				col->mval->v_u32 = ldms_set_perm_get(set);
+                                meta_val.v_u32 = ldms_set_perm_get(set);
+                                store_col(strgp, cfg_col, col, LDMS_V_U32, &meta_val);
 				continue;
 			case LDMSD_META_METRIC_ID_CARD:
-				col->mval->v_u32 = ldms_set_card_get(set);
+                                meta_val.v_u32 = ldms_set_card_get(set);
+                                store_col(strgp, cfg_col, col, LDMS_V_U32, &meta_val);
 				continue;
 			case LDMSD_META_METRIC_ID_PRODUCER:
 				col->mval = (ldms_mval_t)producer;
@@ -2168,7 +2581,10 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				_col.array_len = mcol->array_len;
 				_col.type = mcol->mtype;
 				_col.mval = mcol->mval;
-				assign_value(col, &_col);
+                                if (cfg_col->func && !mcol->is_fill)
+                                        apply_func(strgp, cfg_col, col, &_col);
+                                else
+                                        assign_value(col, &_col);
 				break;
 			}
 
@@ -2186,6 +2602,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				goto col_fill;
 
 			row_more_le = 1;
+                        mcol->is_fill = 0;
 			if (cfg_row->cols[j].rec_member) {
 				/* expect record */
 				rec_mid = mid_rbn->col_mids[j].rec_mid;
@@ -2212,15 +2629,18 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			mcol->rec = ldms_record_array_get_inst(mcol->rec_array, mcol->rec_array_idx);
 			if (!mcol->rec)
 				goto col_fill;
+                        mcol->is_fill = 0;
 			/* extract the record metric */
 			mcol->mval = ldms_record_metric_get(mcol->rec, rec_mid);
 			mcol->mtype = ldms_record_metric_type_get(mcol->le, rec_mid, &mcol->array_len);
 			continue;
 
 		col_fill:
+                        mcol->is_fill = 1;
 			mcol->mval = cfg_row->cols[j].fill;
 			if (mcol->mval) {
-				mcol->array_len = row->cols[j].array_len;
+                                /* the fill buffer holds fill_len elements */
+                                mcol->array_len = cfg_row->cols[j].fill_len;
 				mcol->mtype = cfg_row->cols[j].type;
 			} else {
 				mcol->mval = &zfill;

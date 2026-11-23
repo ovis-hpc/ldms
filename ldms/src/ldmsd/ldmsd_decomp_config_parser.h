@@ -85,6 +85,7 @@ typedef struct decomp_static_col_s {
         int array_len;          /**< Array length for char_array types (0 if not array) */
         char *rec_member;       /**< Record member name for list access (optional) */
         char *op;               /**< Operation: "diff", "min", "max", etc. (optional) */
+        char *func;             /**< Built-in function applied to the src value, e.g. "to_str" (optional) */
         /**
          * Fill value used if the metric is not found (optional), as
          * strings exactly as written in the config file.  A scalar fill

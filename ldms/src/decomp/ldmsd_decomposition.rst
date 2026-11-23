@@ -131,6 +131,7 @@ Configuration Structure
            fill: DEFAULT_VALUE           # optional
            array_len: ARRAY_LENGTH       # for char_array
            op: OPERATION                 # optional: diff, min, max, mean
+           func: FUNCTION                # optional: to_str, to_hex, ...
        indices:                          # optional
          - name: INDEX_NAME
            cols: [COL1, COL2, ...]
@@ -167,7 +168,7 @@ Column Attributes
 **dst** (optional)
   Output column name. If omitted, uses the ``src`` name.
 
-**type** (optional, required with fill)
+**type** (optional, required with fill unless func is given)
   Output column data type. Types include: ``ts``, ``u64``, ``s64``,
   ``u32``, ``s32``, ``u16``, ``s16``, ``u8``, ``s8``, ``float``,
   ``double``, ``d64``, ``char``, ``char_array``.
@@ -187,6 +188,75 @@ Column Attributes
   Operation to perform on the column. Supported: ``diff`` (difference),
   ``min`` (minimum), ``max`` (maximum), ``mean`` (average). Requires
   ``group`` configuration.
+
+**func** (optional)
+  A built-in function applied to the current value of ``src``. The
+  result is stored in ``dst`` and its type can differ from the type of
+  ``src``. Unlike ``op``, ``func`` does not use the row cache and does
+  not need a ``group`` clause. A column cannot have both ``op`` and
+  ``func``, but other columns in the same row can still use ``op``.
+
+  .. list-table::
+     :header-rows: 1
+
+     * - Function
+       - Accepted src types
+       - Output type
+       - Default array_len
+       - Result
+     * - ``to_str``
+       - u8, s8, u16, s16, u32, s32, u64, s64
+       - char_array
+       - 21
+       - Decimal string, e.g. ``"12345"`` or ``"-1"``
+     * - ``to_str_empty_zero``
+       - u8, s8, u16, s16, u32, s32, u64, s64
+       - char_array
+       - 21
+       - Same as ``to_str``, but 0 gives an empty string. Useful for a
+         ``job_id``, where 0 means no job.
+     * - ``to_hex``
+       - u8, s8, u16, s16, u32, s32, u64, s64
+       - char_array
+       - 19
+       - Hex string, e.g. ``"0x3039"``. Signed values are shown as the
+         unsigned value of the same width (-1 as s8 gives ``"0xff"``).
+     * - ``to_iso8601``
+       - ts
+       - char_array
+       - 28
+       - UTC time, e.g. ``"2026-11-23T17:04:05.123456Z"``
+     * - ``flux_f58``
+       - u64
+       - char_array
+       - 14
+       - Flux f58 job ID form: bitcoin-style base58 with the ``ƒ``
+         (U+0192, two bytes in UTF-8) prefix, e.g. ``"ƒ21"`` for 58
+     * - ``flux_f58_ascii``
+       - u64
+       - char_array
+       - 13
+       - Same as ``flux_f58`` with an ASCII ``f`` prefix, e.g. ``"f21"``
+
+  Each function has a default output type, so ``type`` can be omitted.
+  If ``type`` is given, it selects the output type and must be one the
+  function can produce. All of the current functions produce only
+  ``char_array``. ``array_len`` overrides the default length, which
+  counts bytes including the terminating NUL. Results that do not fit are truncated. The
+  ``flux_f58`` functions require an ``array_len`` with room for the
+  prefix, one digit and the NUL (4 for ``flux_f58``, 3 for
+  ``flux_f58_ascii``).
+
+  A Flux job ID (FLUID) is never 0, so the ``flux_f58`` functions turn
+  a src value of 0, such as the ``job_id`` of a set with no job, into
+  an empty string.
+
+  A ``fill`` value has the output type (for example, a string) and is
+  stored as is, without calling the function. A src type the function
+  cannot convert to the output type is reported as an error when the
+  first set is decomposed. Array sources and the char_array meta metrics
+  (``producer``, ``instance``, ``M_schema``, ``M_digest``) cannot be
+  used with ``func``.
 
 Index Attributes
 ----------------
@@ -348,6 +418,32 @@ difference operations.
          index: [comp_id, device_name]  # group by node and device
          order: [ts]       # order by timestamp
          timeout: 60s      # cleanup after 60s inactivity
+
+**Example 3: Converting values with func**
+
+This example stores the component ID and a job ID as strings and the
+timestamp in ISO 8601 form. No ``group`` clause is needed.
+
+.. code-block:: yaml
+
+   type: static
+   rows:
+     - schema: job_mem
+       cols:
+         - src: timestamp
+           dst: ts_iso
+           func: to_iso8601        # "2026-11-23T17:04:05.123456Z"
+         - src: component_id
+           dst: comp_str
+           func: to_str            # "42"
+         - src: job_id
+           dst: flux_job
+           func: flux_f58          # 1234567890123456 -> "ƒAe91HsXKd"
+           fill: "none"            # used if job_id is missing
+         - src: MemFree
+           dst: mem_free_hex
+           func: to_hex            # "0x1f3a2c"
+           array_len: 12           # override the default length
 
 
 AS_IS DECOMPOSITION

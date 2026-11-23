@@ -25,6 +25,11 @@
                                         "dst": "value",
                                         "type": "u64",
                                         "fill": 0
+                                },
+                                {
+                                        "src": "component_id",
+                                        "dst": "comp_str",
+                                        "func": "to_str"
                                 }
                         ],
                         "indices": [
