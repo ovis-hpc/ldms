@@ -563,6 +563,11 @@ int csv_row_format_types_common(int typeformat, FILE* file, const char *fpath,
 		/* Handle meta metrics. They don't have udata. */
 		switch (col->metric_id) {
 		case LDMSD_META_METRIC_ID_TIMESTAMP:
+                        /* A decomposition 'func' may convert the
+                         * timestamp to another type; treat it as a
+                         * normal column then. */
+                        if (met_type != LDMS_V_TIMESTAMP)
+                                break;
 			/* timestamp (sec or msec) and remaining usec */
 			rc = fprintf(file,"%stimestamp,%s", sep, u64str);
 			CHECKERR(rc);
@@ -707,7 +712,7 @@ int csv_format_types_common(int typeformat, FILE* file, const char *fpath, const
 		return ENOMEM;
 	row->col_count = 2 + metric_count;
 	row->cols[0].name = "timestamp";
-	row->cols[0].type = LDMS_V_U64;
+        row->cols[0].type = LDMS_V_TIMESTAMP;
 	row->cols[0].metric_id = LDMSD_META_METRIC_ID_TIMESTAMP;
 	row->cols[0].array_len = 1;
 
@@ -773,6 +778,11 @@ int csv_row_format_header(FILE *file, const char *fpath,
 		/* timestamp is a special case */
 		switch (col->metric_id) {
 		case LDMSD_META_METRIC_ID_TIMESTAMP:
+                        /* A decomposition 'func' may convert the
+                         * timestamp to another type; treat it as a
+                         * normal column then. */
+                        if (metric_type != LDMS_V_TIMESTAMP)
+                                break;
 			/* Print timestamp header fields */
 			if (time_format == TF_MILLISEC) {
 				/* Alternate time format. First field is milliseconds-since-epoch,
@@ -900,7 +910,7 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
 		return ENOMEM;
 	row->col_count = 2 + metric_count;
 	row->cols[0].name = "timestamp";
-	row->cols[0].type = LDMS_V_U64;
+        row->cols[0].type = LDMS_V_TIMESTAMP;
 	row->cols[0].metric_id = LDMSD_META_METRIC_ID_TIMESTAMP;
 	row->cols[0].array_len = 1;
 

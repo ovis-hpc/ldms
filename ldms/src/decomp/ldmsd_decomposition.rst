@@ -58,7 +58,9 @@ format of the JSON configuration file is as follows:
              "type":"TYPE",
              "rec_member": "REC_MEMBER_NAME_IF_SRC_IS_RECORD",
              "fill": FILL_VALUE,
-             "op": "OPERATION"
+             "op": "OPERATION",
+             "func": "FUNCTION",
+             "array_len": ARRAY_LENGTH
            },
            ...
          ],
@@ -152,6 +154,8 @@ as follows.
       attribute if specified. If "fill" is not specified, "type" is
       optional. In such case, the type is the first discovery from the
       metric value in the LDMS set processed by this decomposition.
+      A column with "func" gets its type from the function, so "type"
+      is not required with "fill" in that case.
 
    **"rec_member"** : "*MEMBER_NAME*" (optional)
       If "src" refers to a list of records or an array of records,
@@ -173,6 +177,59 @@ as follows.
       of those rows. Please see **"group"** explanation below.
 
    The supported *OPERATION* are "diff", "min", "max", and "mean".
+
+   **"func"** : "*FUNCTION*" (optional)
+      A built-in function applied to the current value of "src". The
+      result is stored in the output column, and its type can differ
+      from the type of "src". Unlike "op", "func" does not use the row
+      cache and does not need "group". A column cannot have both "op"
+      and "func", but other columns in the same row can still use "op".
+
+      The supported *FUNCTION* are as follows. They all produce
+      "char_array".
+
+      | - **"to_str"**: integer to a decimal string, e.g. "12345" or
+        "-1". Default length 21.
+      | - **"to_str_empty_zero"**: same as "to_str", but 0 gives an
+        empty string. Useful for a "job_id", where 0 means no job.
+        Default length 21.
+      | - **"to_hex"**: integer to a hex string, e.g. "0x3039". Signed
+        values are shown as the unsigned value of the same width (-1
+        as s8 gives "0xff"). Default length 19.
+      | - **"to_iso8601"**: timestamp to UTC time, e.g.
+        "2026-11-23T17:04:05.123456Z". Default length 28.
+      | - **"flux_f58"**: u64 to the Flux f58 job ID form
+        (bitcoin-style base58 with the U+0192 "ƒ" prefix, two bytes in
+        UTF-8), e.g. "ƒ21" for 58. Default length 14.
+      | - **"flux_f58_ascii"**: same as "flux_f58" with an ASCII "f"
+        prefix, e.g. "f21". Default length 13.
+
+      "to_str", "to_str_empty_zero" and "to_hex" accept u8, s8, u16,
+      s16, u32, s32, u64 and s64. "to_iso8601" accepts only a
+      timestamp, and the "flux_f58" functions accept only u64.
+
+      A Flux job ID (FLUID) is never 0, so the "flux_f58" functions
+      turn a "src" value of 0, such as the "job_id" of a set with no
+      job, into an empty string.
+
+      Each function has a default output type, so "type" can be
+      omitted. If "type" is given, it selects the output type and must
+      be one the function can produce. All of the current functions
+      produce only "char_array". A "fill" value has the output type and
+      is stored as is, without calling the function. A "src" type the
+      function cannot convert to the output type is reported as an
+      error when the first set is decomposed. Array metrics and the string meta
+      metrics ("producer", "instance", "M_schema", "M_digest") cannot
+      be used with "func".
+
+   **"array_len"** : *ARRAY_LENGTH* (optional, "func" only)
+      The length in bytes of a "func" column's output, including the
+      terminating NUL. It overrides the function's default length.
+      Results that do not fit are truncated. "flux_f58" requires at
+      least 4 and "flux_f58_ascii" at least 3 (room for the prefix,
+      one digit and the NUL); the other functions require at least 2.
+      "array_len" is an error on a "func" column whose output type is
+      not an array, and is ignored on columns without "func".
 
 **"indices"**
    The "indices" is a list of index definition objects. Each index
@@ -315,6 +372,36 @@ tx_bytes.
 
 Assuming that the "netdev_list" has N records in the list, the
 decomposition will expand the set into N rows.
+
+**Static Decomposition Example 3: converting values with func**
+   The following stores the timestamp in ISO 8601 form, the component
+   ID as a string, the job ID in Flux f58 form, and MemFree in hex. No
+   "group" is needed.
+
+::
+
+   {
+     "type": "static",
+     "rows": [
+       {
+         "schema": "job_mem",
+         "cols": [
+           { "src":"timestamp",    "dst":"ts_iso",   "func":"to_iso8601" },
+           { "src":"component_id", "dst":"comp_str", "func":"to_str" },
+           { "src":"job_id",       "dst":"job_str",  "func":"to_str_empty_zero" },
+           { "src":"job_id",       "dst":"flux_job", "func":"flux_f58",
+             "fill":"none" },
+           { "src":"MemFree",      "dst":"free_hex", "func":"to_hex",
+             "array_len": 12 }
+         ]
+       }
+     ]
+   }
+
+With "job_id" 1234567890123456, "job_str" is "1234567890123456" and
+"flux_job" is "ƒAe91HsXKd". With "job_id" 0 (no job), both are empty
+strings. If the set has no "job_id" metric, "flux_job" is "none".
+"free_hex" is at most 11 characters, e.g. "0x1f3a2c".
 
 AS_IS DECOMPOSITION
 ===================
