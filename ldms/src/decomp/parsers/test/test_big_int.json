@@ -1,0 +1,12 @@
+{
+    "type": "static",
+    "rows": [
+        {
+            "schema": "big_int",
+            "cols": [
+                {"src": "max_s64", "type": "s64", "fill": 9223372036854775807},
+                {"src": "max_u64", "type": "u64", "fill": 18446744073709551615}
+            ]
+        }
+    ]
+}

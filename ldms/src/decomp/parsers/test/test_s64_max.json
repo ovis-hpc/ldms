@@ -1,0 +1,11 @@
+{
+    "type": "static",
+    "rows": [
+        {
+            "schema": "s64_max",
+            "cols": [
+                {"src": "a", "type": "s64", "fill": 9223372036854775807}
+            ]
+        }
+    ]
+}

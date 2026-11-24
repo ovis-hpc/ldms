@@ -1,0 +1,12 @@
+{
+        "type": "flex",
+        "decomposition": {
+                "as_is_test": {
+                        "type": "as_is",
+                        "indices": []
+                }
+        },
+        "digest": {
+                "*": "as_is_test"
+        }
+}
