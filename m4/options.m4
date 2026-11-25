@@ -252,7 +252,9 @@ _HAVE_LIB=
 AS_IF([ test "x$check" = "xy" ], [
 	dnl check header
 	SAVED_CFLAGS="$CFLAGS"
+	SAVED_CPPFLAGS="$CPPFLAGS"
 	CFLAGS="$CFLAGS $$2_CFLAGS"
+	CPPFLAGS="$CPPFLAGS $$2_CFLAGS"
 	AC_CHECK_HEADER([$_HDR], [
 		_HAVE_HDR=y
 	], [
@@ -261,6 +263,7 @@ AS_IF([ test "x$check" = "xy" ], [
 		])
 	])
 	CFLAGS="$SAVED_CFLAGS"
+	CPPFLAGS="$SAVED_CPPFLAGS"
 
 	dnl check the library
 	SAVED_LIBS="$LIBS"

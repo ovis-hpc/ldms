@@ -3,6 +3,7 @@
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  * Copyright (c) 2022 Open Grid Computing, Inc. All rights reserved.
+ * Copyright 2026 Lawrence Livermore National Security, LLC
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -65,6 +66,7 @@
 
 #include "ldmsd.h"
 #include "ldmsd_request.h"
+#include "ldmsd_decomp_config_parser.h"
 
 /* Implementation is in ldmsd_decomp.c */
 ldmsd_decomp_t ldmsd_decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc);
@@ -115,7 +117,7 @@ typedef struct flex_cfg_s {
 } *flex_cfg_t;
 
 static ldmsd_decomp_t flex_config(ldmsd_strgp_t strgp,
-			json_t *cfg, ldmsd_req_ctxt_t reqc);
+			ldmsd_decomp_config_t *cfg, ldmsd_req_ctxt_t reqc);
 static int flex_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				     ldmsd_row_list_t row_list, int *row_count,
 				     void **ctxt);
@@ -219,53 +221,32 @@ int ptr_cmp(const void *_a, const void *_b)
 }
 
 static ldmsd_decomp_t
-flex_config(ldmsd_strgp_t strgp, json_t *jcfg,
+flex_config(ldmsd_strgp_t strgp, ldmsd_decomp_config_t *cfg,
 		      ldmsd_req_ctxt_t reqc)
 {
+	ldmsd_decomp_flex_config_t *flex_cfg_parsed;
 	flex_cfg_t dcfg = NULL;
 	flex_decomp_t decomp;
 	flex_digest_t digest;
 	struct ldmsd_decomp_s *decomp_api;
-	int n_decomp, i;
-	const char *key;
-	json_t *jdecomp, *jdigest, *jschema, *jtype;
-	json_t *jdefault;
-	json_t *jmatches, *jobj, *jinstance, *japply = NULL;
+	int n_decomp, i, j;
 	flex_match_t match;
 	int idx, rc;
 
-	/* decomposition */
-	jdecomp = json_object_get(jcfg, "decomposition");
-	if (!jdecomp) {
-		FLEX_ERR(reqc, EINVAL, "'decomposition' attribute is missing\n");
-		goto err_0;
-	}
-	if (!json_is_object(jdecomp)) {
-		FLEX_ERR(reqc, EINVAL, "'decomposition' must be a dictionary\n");
-		goto err_0;
+	/* Verify config type */
+	if (cfg->type != LDMSD_DECOMP_CFG_TYPE_FLEX) {
+		FLEX_ERR(reqc, EINVAL, "Expected flex decomposition type\n");
+		errno = EINVAL;
+		return NULL;
 	}
 
-	/* digest */
-	jdigest = json_object_get(jcfg, "digest");
-	if (jdigest && !json_is_object(jdigest)) {
-		FLEX_ERR(reqc, EINVAL, "'digest' must be a dictionary\n");
-		goto err_0;
+	flex_cfg_parsed = cfg->flex_cfg;
+	if (!flex_cfg_parsed) {
+		FLEX_ERR(reqc, EINVAL, "Flex configuration is missing\n");
+		return NULL;
 	}
 
-	/* matches */
-	jmatches = json_object_get(jcfg, "matches");
-	if (jmatches && !json_is_array(jmatches)) {
-		FLEX_ERR(reqc, EINVAL, "'matches' must be an array of match objects\n");
-		goto err_0;
-	}
-
-	/* default */
-	jdefault = json_object_get(jcfg, "default");
-	if (jdefault && !(json_is_array(jdefault) || json_is_string(jdefault))) {
-		FLEX_ERR(reqc, EINVAL, "'default' must be a string or an array "
-					"of strings.\n");
-		goto err_0;
-	}
+	/* Validation already done by parser */
 
 	dcfg = calloc(1, sizeof(*dcfg));
 	if (!dcfg)
@@ -275,40 +256,49 @@ flex_config(ldmsd_strgp_t strgp, json_t *jcfg,
 	rbt_init(&dcfg->digest_tree, flex_digest_cmp);
 	STAILQ_INIT(&dcfg->matches);
 
-	/* processing decomposition */
-	json_object_foreach(jdecomp, key, jschema) {
-		if (!json_is_object(jschema)) {
-			FLEX_ERR(reqc, EINVAL,
-				"decomposition['%s'] must be "
-				"a dictionary\n", key);
+	/* Process decompositions */
+	for (i = 0; i < flex_cfg_parsed->decomp_count; i++) {
+		ldmsd_decomp_flex_decomp_ref_t *decomp_ref = &flex_cfg_parsed->decompositions[i];
+		const char *type_str;
+
+		if (!decomp_ref->name) {
+			FLEX_ERR(reqc, EINVAL, "%s: Decomposition name is required\n",
+				 LDMSD_DECOMP_CFG_LOC(decomp_ref->node, NULL));
 			goto err_1;
 		}
-		jtype = json_object_get(jschema, "type");
-		if (!jtype) {
-			FLEX_ERR(reqc, EINVAL,
-				"decomposition['%s'] must "
-				"decomposition 'type' attribute is required: "
-				"'as_is', or 'static'.\n", key);
-			goto err_1;
-		}
-		if (!json_is_string(jtype)) {
-			FLEX_ERR(reqc, EINVAL,
-				"decomposition['%s']['type'] "
-				"must be a string\n", key);
-			goto err_1;
-		}
-		decomp_api = ldmsd_decomp_get(json_string_value(jtype), reqc);
+
+		/* Get decomposition type string */
+		type_str = ldmsd_decomp_cfg_type_str(decomp_ref->decomp_type);
+		decomp_api = ldmsd_decomp_get(type_str, reqc);
 		if (!decomp_api) {
-			/* ldmsd_decomp_get() already populate reqc error */
+			/* ldmsd_decomp_get() already populated reqc error */
 			goto err_1;
 		}
-		decomp = calloc(1, sizeof(*decomp) + strlen(key) + 1);
+
+		decomp = calloc(1, sizeof(*decomp) + strlen(decomp_ref->name) + 1);
 		if (!decomp)
 			goto enomem;
-		strcpy(decomp->name, key);
-		(void)asprintf(&decomp->strgp.obj.name, "%s.%s", strgp->obj.name, key);
+		strcpy(decomp->name, decomp_ref->name);
+		(void)asprintf(&decomp->strgp.obj.name, "%s.%s",
+			       strgp->obj.name, decomp_ref->name);
 		decomp->decomp_api = decomp_api;
-		decomp->strgp.decomp = decomp_api->config(&decomp->strgp, jschema, reqc);
+
+		/* Create a temporary ldmsd_decomp_config_t for the nested decomposition */
+		ldmsd_decomp_config_t nested_cfg = {0};
+		nested_cfg.type = decomp_ref->decomp_type;
+		nested_cfg.node = decomp_ref->node;
+		if (decomp_ref->decomp_type == LDMSD_DECOMP_CFG_TYPE_STATIC)
+			nested_cfg.static_cfg = decomp_ref->decomp_config;
+		else if (decomp_ref->decomp_type == LDMSD_DECOMP_CFG_TYPE_AS_IS)
+			nested_cfg.as_is_cfg = decomp_ref->decomp_config;
+		else {
+			FLEX_ERR(reqc, EINVAL, "%s: Invalid nested decomposition type\n",
+				 LDMSD_DECOMP_CFG_LOC(decomp_ref->node, "type"));
+			free(decomp);
+			goto err_1;
+		}
+
+		decomp->strgp.decomp = decomp_api->config(&decomp->strgp, &nested_cfg, reqc);
 		if (!decomp->strgp.decomp) {
 			free(decomp);
 			goto err_1;
@@ -317,24 +307,22 @@ flex_config(ldmsd_strgp_t strgp, json_t *jcfg,
 		rbt_ins(&dcfg->decomp_tree, &decomp->rbn);
 	}
 
-	/* Process digest */
-	json_object_foreach(jdigest, key, jschema) {
-		/* "01FC.....0102" : [ "schema_a", "schema_b" ],
-		 * "02FC.....0102" : "schema_c",
-		 * "*"             : "the_default"
-		 * ...
-		 */
-		int rc;
+	/* Process digest map */
+	for (i = 0; i < flex_cfg_parsed->digest_count; i++) {
 		struct ldms_digest_s digest_key = {};
+		const char *digest_str = flex_cfg_parsed->digest_map[i].digest;
+		const char *name_str = flex_cfg_parsed->digest_map[i].name;
 
 		/* Check for duplicate definition */
 		digest = NULL;
-		if (0 == strcmp(key, "*")) {
+		if (0 == strcmp(digest_str, "*")) {
 			digest = dcfg->default_digest;
 		} else {
-			rc = ldms_str_digest(key, &digest_key);
+			rc = ldms_str_digest(digest_str, &digest_key);
 			if (rc) {
-				FLEX_ERR(reqc, rc, "Invalid digest key '%s'.\n", key);
+				FLEX_ERR(reqc, rc, "%s: Invalid digest key '%s'.\n",
+					 LDMSD_DECOMP_CFG_LOC(flex_cfg_parsed->digest_map[i].digest_node, NULL),
+					 digest_str);
 				goto err_1;
 			}
 			struct rbn *rbn = rbt_find(&dcfg->digest_tree, &digest_key);
@@ -343,26 +331,15 @@ flex_config(ldmsd_strgp_t strgp, json_t *jcfg,
 		}
 		if (digest) {
 			FLEX_ERR(reqc, EINVAL,
-				"Ignoring duplicate definition of "
-				"digest['%s'].\n", key);
+				"%s: Ignoring duplicate definition of digest['%s'].\n",
+				LDMSD_DECOMP_CFG_LOC(flex_cfg_parsed->digest_map[i].digest_node, NULL),
+				digest_str);
 			continue;
 		}
 
-		/* Determine how many decompositions are matched to the digest */
-		if (json_is_string(jschema)) {
-			n_decomp = 1;
-		} else if (json_is_array(jschema)) {
-			n_decomp = json_array_size(jschema);
-		} else {
-			FLEX_ERR(reqc, EINVAL,
-				"Invalid value for decomposition attribute "
-				"in 'digest'.\n");
-			goto err_1;
-		}
-
-		/* Allocate a new digest */
-		digest = calloc(1, sizeof(*digest) +
-					n_decomp * sizeof(digest->decomp[0]));
+		/* Allocate a new digest (single decomposition per digest in parsed form) */
+		n_decomp = 1;
+		digest = calloc(1, sizeof(*digest) + n_decomp * sizeof(digest->decomp[0]));
 		if (!digest)
 			goto enomem;
 
@@ -370,199 +347,118 @@ flex_config(ldmsd_strgp_t strgp, json_t *jcfg,
 		memcpy(&digest->digest, &digest_key, sizeof(digest_key));
 		rbn_init(&digest->rbn, &digest->digest);
 		digest->n_decomp = n_decomp;
-		if (0 == strcmp(key, "*")) {
+		if (0 == strcmp(digest_str, "*")) {
 			dcfg->default_digest = digest;
 		} else {
 			rbt_ins(&dcfg->digest_tree, &digest->rbn);
 		}
-		/* Look up the decomposition for each decomp key */
-		if (json_is_string(jschema)) {
-			struct rbn *rbn = rbt_find(&dcfg->decomp_tree,
-					json_string_value(jschema));
-			if (!rbn) {
-				FLEX_ERR(reqc, EINVAL,
-					"The specified decomposition "
-					"schema ('%s') was not found.\n",
-					json_string_value(jschema));
-				goto err_1;
-			}
-			decomp = container_of(rbn, struct flex_decomp_s, rbn);
-			digest->decomp[0] = decomp;
-		} else {
-			json_array_foreach(jschema, i, jdecomp) {
-				struct rbn *rbn = rbt_find(&dcfg->decomp_tree,
-						json_string_value(jdecomp));
-				if (!rbn) {
-					FLEX_ERR(reqc, EINVAL,
-						"The specified decomposition "
-						"schema ('%s') was not found.\n",
-						json_string_value(jdecomp));
-					goto err_1;
-				}
-				decomp = container_of(rbn, struct flex_decomp_s, rbn);
-				digest->decomp[i] = decomp;
-			}
+
+		/* Look up the decomposition by name */
+		struct rbn *rbn = rbt_find(&dcfg->decomp_tree, name_str);
+		if (!rbn) {
+			FLEX_ERR(reqc, EINVAL,
+				"%s: The specified decomposition schema ('%s') was not found.\n",
+				LDMSD_DECOMP_CFG_LOC(flex_cfg_parsed->digest_map[i].name_node, NULL),
+				name_str);
+			goto err_1;
 		}
+		decomp = container_of(rbn, struct flex_decomp_s, rbn);
+		digest->decomp[0] = decomp;
 	}
 
 	/* Process matches */
-	json_array_foreach(jmatches, idx, jobj) {
-		/* jobj := {
-		 * 	"schema": "_SCHEMA_", "instance": "_INST_",
-		 * 	"apply": "_DECOMP_" | [ "_DECOMP_", "_DECOMP_" ]
-		 * }
-		 */
-		jschema = json_object_get(jobj, "schema");
-		jinstance = json_object_get(jobj, "instance");
-		japply = json_object_get(jobj, "apply");
-		if (!jschema && !jinstance) {
-			FLEX_ERR(reqc, EINVAL, "'schema' and/or 'instance' is "
-				 "needed in a match object.");
+	for (idx = 0; idx < flex_cfg_parsed->match_count; idx++) {
+		ldmsd_decomp_flex_match_t *match_src = &flex_cfg_parsed->matches[idx];
+		n_decomp = match_src->apply_count;
+
+		if (!match_src->schema && !match_src->instance) {
+			FLEX_ERR(reqc, EINVAL,
+				 "%s: 'schema' and/or 'instance' is needed in a match object.\n",
+				 LDMSD_DECOMP_CFG_LOC(match_src->node, NULL));
 			goto err_1;
 		}
-		if (jschema && json_typeof(jschema) != JSON_STRING) {
-			FLEX_ERR(reqc, EINVAL, "'schema' must be string");
-			goto err_1;
-		}
-		if (jinstance && json_typeof(jinstance) != JSON_STRING) {
-			FLEX_ERR(reqc, EINVAL, "'instance' must be string");
-			goto err_1;
-		}
-		if (!japply) {
-			FLEX_ERR(reqc, EINVAL, "'apply' is needed in a match object.");
+		if (n_decomp <= 0) {
+			FLEX_ERR(reqc, EINVAL,
+				 "%s: 'apply' is needed in a match object.\n",
+				 LDMSD_DECOMP_CFG_LOC(match_src->node, "apply"));
 			goto err_1;
 		}
 
-		switch (json_typeof(japply)) {
-		case JSON_STRING:
-			n_decomp = 1;
-			break;
-		case JSON_ARRAY:
-			n_decomp = json_array_size(japply);
-			if (n_decomp <= 0) {
-				FLEX_ERR(reqc, EINVAL, "Invalid 'apply' array length");
-				goto err_1;
-			}
-			break;
-		default:
-			FLEX_ERR(reqc, EINVAL, "'apply' value type must be "
-				 "string or array of strings");
-			goto err_1;
-		}
-
-		match = calloc(1, sizeof(*match) +
-				  n_decomp*sizeof(match->decomp[0]));
+		match = calloc(1, sizeof(*match) + n_decomp * sizeof(match->decomp[0]));
 		if (!match)
 			goto enomem;
 		/* Insert now; if error occurred flex_cfg_free() will clean it up. */
 		STAILQ_INSERT_TAIL(&dcfg->matches, match, entry);
 
-		if (jschema) {
-			rc = regcomp(&match->reg_sch,
-				json_string_value(jschema),
-				REG_EXTENDED|REG_NOSUB);
+		if (match_src->schema) {
+			rc = regcomp(&match->reg_sch, match_src->schema,
+				     REG_EXTENDED | REG_NOSUB);
 			if (rc) {
 				FLEX_ERR(reqc, EINVAL,
-					 "schema regex compilation error: "
-					 "%d, regex: %s",
-					 rc, json_string_value(jschema));
+					 "%s: schema regex compilation error: %d, regex: %s\n",
+					 LDMSD_DECOMP_CFG_LOC(match_src->node, "schema"),
+					 rc, match_src->schema);
 				goto err_1;
 			}
 		}
 
-		if (jinstance) {
-			rc = regcomp(&match->reg_inst,
-				json_string_value(jinstance),
-				REG_EXTENDED|REG_NOSUB);
+		if (match_src->instance) {
+			rc = regcomp(&match->reg_inst, match_src->instance,
+				     REG_EXTENDED | REG_NOSUB);
 			if (rc) {
 				FLEX_ERR(reqc, EINVAL,
-					 "instance regex compilation error: "
-					 "%d, regex: %s",
-					 rc, json_string_value(jschema));
+					 "%s: instance regex compilation error: %d, regex: %s\n",
+					 LDMSD_DECOMP_CFG_LOC(match_src->node, "instance"),
+					 rc, match_src->instance);
 				goto err_1;
 			}
 		}
-		/* Look up the decomposition for each decomp key */
-		if (json_is_string(japply)) {
+
+		/* Look up the decompositions in apply array */
+		for (j = 0; j < n_decomp; j++) {
 			struct rbn *rbn = rbt_find(&dcfg->decomp_tree,
-					json_string_value(japply));
+						   match_src->apply[j]);
 			if (!rbn) {
+				ldmsd_decomp_cfg_node_t apply_node =
+					ldmsd_decomp_cfg_node_key(match_src->node, "apply");
+				ldmsd_decomp_cfg_node_t item_node =
+					ldmsd_decomp_cfg_node_item(apply_node, j);
 				FLEX_ERR(reqc, EINVAL,
-					"The specified decomposition "
-					"'%s' was not found.\n",
-					json_string_value(japply));
+					 "%s: The specified decomposition '%s' was not found.\n",
+					 LDMSD_DECOMP_CFG_LOC(item_node ? item_node : apply_node, NULL),
+					 match_src->apply[j]);
 				goto err_1;
 			}
 			decomp = container_of(rbn, struct flex_decomp_s, rbn);
-			match->decomp[0] = decomp;
-			match->n_decomp = 1;
-		} else {
-			json_array_foreach(japply, i, jdecomp) {
-				struct rbn *rbn = rbt_find(&dcfg->decomp_tree,
-						json_string_value(jdecomp));
-				if (!rbn) {
-					FLEX_ERR(reqc, EINVAL,
-						"The specified decomposition "
-						"'%s' was not found.\n",
-						json_string_value(jdecomp));
-					goto err_1;
-				}
-				decomp = container_of(rbn, struct flex_decomp_s, rbn);
-				match->decomp[i] = decomp;
-			}
-			match->n_decomp = json_array_size(japply);
+			match->decomp[j] = decomp;
 		}
+		match->n_decomp = n_decomp;
 	}
 
-	if (jdefault) {
-		if (json_is_string(jdefault)) {
-			n_decomp = 1;
-		} else {
-			n_decomp = json_array_size(jdefault);
-		}
-		if (!n_decomp) {
-			FLEX_ERR(reqc, EINVAL, "'default' cannot be an "
-						 "empty array.");
-			goto err_1;
-		}
+	/* Process default decomposition */
+	if (flex_cfg_parsed->default_decomp) {
+		n_decomp = 1;
 		flex_decomp_array_t da;
 		da = calloc(1, sizeof(*dcfg->default_decomps) +
-			  n_decomp*sizeof(dcfg->default_decomps->decomp[0]));
+			    n_decomp * sizeof(dcfg->default_decomps->decomp[0]));
 		if (!da) {
 			FLEX_ERR(reqc, ENOMEM, "Out of memory");
 			goto err_1;
 		}
 		da->n_decomp = n_decomp;
 		dcfg->default_decomps = da;
-		struct rbn *rbn;
-		/* fill decomp references */
-		if (json_is_string(jdefault)) {
-			rbn = rbt_find(&dcfg->decomp_tree,
-					json_string_value(jdefault));
-			if (!rbn) {
-				FLEX_ERR(reqc, EINVAL,
-					"The specified decomposition "
-					"'%s' was not found.\n",
-					json_string_value(japply));
-				goto err_1;
-			}
-			da->decomp[0] = container_of(rbn, struct flex_decomp_s, rbn);
-		} else {
-			json_array_foreach(jdefault, i, jdecomp) {
-				struct rbn *rbn = rbt_find(&dcfg->decomp_tree,
-						json_string_value(jdecomp));
-				if (!rbn) {
-					FLEX_ERR(reqc, EINVAL,
-						"The specified decomposition "
-						"'%s' was not found.\n",
-						json_string_value(jdecomp));
-					goto err_1;
-				}
-				da->decomp[i] = container_of(rbn, struct flex_decomp_s, rbn);
-			}
-			da->n_decomp = qsort_uniq(da->decomp, da->n_decomp,
-					sizeof(da->decomp[0]), ptr_cmp);
+
+		/* Look up the default decomposition */
+		struct rbn *rbn = rbt_find(&dcfg->decomp_tree,
+					   flex_cfg_parsed->default_decomp);
+		if (!rbn) {
+			FLEX_ERR(reqc, EINVAL,
+				 "%s: The specified default decomposition '%s' was not found.\n",
+				 LDMSD_DECOMP_CFG_LOC(flex_cfg_parsed->node, "default"),
+				 flex_cfg_parsed->default_decomp);
+			goto err_1;
 		}
+		da->decomp[0] = container_of(rbn, struct flex_decomp_s, rbn);
 	}
 
 	return &dcfg->decomp;
@@ -570,7 +466,6 @@ enomem:
 	FLEX_ERR(reqc, ENOMEM, "Insufficient memory.\n");
 err_1:
 	flex_cfg_free(dcfg);
-err_0:
 	return NULL;
 }
 

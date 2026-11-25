@@ -1,0 +1,22 @@
+{
+    "type": "static",
+    "rows": [
+        {
+            "schema": "scalars",
+            "cols": [
+                {"src": "a", "type": "u64", "fill": 0},
+                {"src": "b", "type": "s64", "fill": -42},
+                {"src": "c", "type": "char_array", "array_len": 16, "fill": "abc"},
+                {"src": "d", "type": "u8", "fill": true},
+                {"src": "e", "type": "d64_array", "fill": [1, 2, 3.5]},
+                {"src": "f", "type": "u64"}
+            ],
+            "group": {
+                "index": ["a"],
+                "order": ["a", "b"],
+                "limit": 5,
+                "timeout": "60s"
+            }
+        }
+    ]
+}

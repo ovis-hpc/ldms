@@ -95,6 +95,7 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 	}
 	if (strgp->decomp_path)
 		free(strgp->decomp_path);
+	ldmsd_decomp_config_free(strgp->decomp_cfg);
 	free(strgp->digest);
 	ldmsd_cfgobj___del(obj);
 }

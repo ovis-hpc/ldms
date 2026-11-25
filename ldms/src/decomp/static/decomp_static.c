@@ -3,6 +3,7 @@
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  * Copyright (c) 2022 Open Grid Computing, Inc. All rights reserved.
+ * Copyright 2026 Lawrence Livermore National Security, LLC
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -58,11 +59,11 @@
 
 #include <openssl/evp.h>
 
-#include <jansson.h>
 #include "coll/rbt.h"
 
 #include "ldmsd.h"
 #include "ldmsd_request.h"
+#include "ldmsd_decomp_config_parser.h"
 
 static ovis_log_t static_log;
 /* convenient macro to put error message in both ldmsd log and `reqc` */
@@ -76,7 +77,7 @@ static ovis_log_t static_log;
 
 
 static ldmsd_decomp_t decomp_static_config(ldmsd_strgp_t strgp,
-			json_t *cfg, ldmsd_req_ctxt_t reqc);
+			ldmsd_decomp_config_t *cfg, ldmsd_req_ctxt_t reqc);
 static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				     ldmsd_row_list_t row_list, int *row_count,
 				     void **decomp_ctxt);
@@ -104,144 +105,447 @@ ldmsd_decomp_t get()
 
 static void assign_value(ldmsd_col_t dst, ldmsd_col_t src);
 
-static int
-mval_from_json(ldms_mval_t *v,
-	       enum ldms_value_type mtype, int *mlen, json_t *jent,
-	       char *err_buf, size_t err_sz)
+/*
+ * Convert one fill string to the scalar type \c stype and store it as
+ * element \c idx of \c v (or as the value itself if \c is_array is 0).
+ * The string is parsed as an integer, a float or a boolean, and then
+ * coerced to \c stype the same way metric values are.
+ */
+static int fill_elem_from_str(ldms_mval_t v, int is_array, int idx,
+                              enum ldms_value_type stype, const char *str,
+                              char *err_buf, size_t err_sz)
 {
-	json_t *item;
-	json_type type;
-	int i, rc;
-	size_t sz;
-	struct ldmsd_col_s dst = {}, src = {};
-	json_type jtype;
-	/* dst is the output, src is the value from json */
+        struct ldmsd_col_s dst = {}, src = {};
+        union ldms_value sv;
+        char *end;
+        int64_t i64;
+        uint64_t u64;
+        double d;
 
-	dst.type = mtype;
-	jtype = json_typeof(jent);
+        errno = 0;
+        if (0 == strcmp(str, "true") || 0 == strcmp(str, "false")) {
+                sv.v_u64 = (str[0] == 't');
+                src.type = LDMS_V_U64;
+        } else {
+                i64 = strtoll(str, &end, 0);
+                if (*str && !*end && !errno) {
+                        sv.v_s64 = i64;
+                        src.type = LDMS_V_S64;
+                } else {
+                        /* too large for s64, but may fit u64 */
+                        errno = 0;
+                        u64 = strtoull(str, &end, 0);
+                        if (*str && *str != '-' && !*end && !errno) {
+                                sv.v_u64 = u64;
+                                src.type = LDMS_V_U64;
+                        } else {
+                                errno = 0;
+                                d = strtod(str, &end);
+                                if (!*str || *end || errno) {
+                                        snprintf(err_buf, err_sz,
+                                                 "'%s' is not a number", str);
+                                        return EINVAL;
+                                }
+                                sv.v_d = d;
+                                src.type = LDMS_V_D64;
+                        }
+                }
+        }
+        src.mval = &sv;
+        src.array_len = 1;
 
-	if ((mtype == LDMS_V_CHAR_ARRAY && jtype != JSON_STRING)) {
-		snprintf(err_buf, err_sz, "string type must have string value");
-		return EINVAL;
-	}
+        /* Convert into a scalar, then place it in the output */
+        union ldms_value dv;
+        dst.type = stype;
+        dst.mval = &dv;
+        dst.array_len = 1;
+        assign_value(&dst, &src);
+        if (!is_array) {
+                memcpy(v, &dv, ldms_metric_value_size_get(stype, 1));
+                return 0;
+        }
+        switch (stype) {
+        case LDMS_V_CHAR: v->a_char[idx] = dv.v_char; break;
+        case LDMS_V_U8:   v->a_u8[idx] = dv.v_u8; break;
+        case LDMS_V_S8:   v->a_s8[idx] = dv.v_s8; break;
+        case LDMS_V_U16:  v->a_u16[idx] = dv.v_u16; break;
+        case LDMS_V_S16:  v->a_s16[idx] = dv.v_s16; break;
+        case LDMS_V_U32:  v->a_u32[idx] = dv.v_u32; break;
+        case LDMS_V_S32:  v->a_s32[idx] = dv.v_s32; break;
+        case LDMS_V_U64:  v->a_u64[idx] = dv.v_u64; break;
+        case LDMS_V_S64:  v->a_s64[idx] = dv.v_s64; break;
+        case LDMS_V_F32:  v->a_f[idx] = dv.v_f; break;
+        case LDMS_V_D64:  v->a_d[idx] = dv.v_d; break;
+        default:
+                snprintf(err_buf, err_sz, "unsupported array type");
+                return EINVAL;
+        }
+        return 0;
+}
 
-	/* sanity check */
-	switch (jtype) {
-	case JSON_REAL:
-	case JSON_INTEGER:
-		if (ldms_type_is_array(mtype)) {
-			snprintf(err_buf, err_sz, "array type must have array value");
-			return EINVAL;
-		}
-		break;
-	case JSON_ARRAY:
-		if (!ldms_type_is_array(mtype)) {
-			snprintf(err_buf, err_sz, "array value must have array type");
-			return EINVAL;
-		}
-		break;
-	case JSON_STRING:
-		if (mtype != LDMS_V_CHAR && mtype != LDMS_V_CHAR_ARRAY) {
-			snprintf(err_buf, err_sz,
-				 "string value must have 'char' or 'char_array' type");
-			return EINVAL;
-		}
-		break;
-	default:
-		snprintf(err_buf, err_sz, "Unsupported JSON value");
-		return EINVAL;
-	}
+/*
+ * Build the fill value of a column of type \c mtype from the strings the
+ * config parser produced.
+ *
+ * - char_array: the fill must be a single string; it is stored with its
+ *   terminating NUL.
+ * - other arrays: the fill must be a sequence of numbers.
+ * - char: the fill must be a one-character string (or a number).
+ * - scalars and ts: the fill must be a single number (or true/false).
+ *
+ * On success \c *v is a malloc'd value and \c *mlen is its array length
+ * (1 for scalars).
+ */
+static int
+mval_from_fill(ldms_mval_t *v, enum ldms_value_type mtype, int *mlen,
+               const ldmsd_decomp_static_col_t *col,
+               char *err_buf, size_t err_sz)
+{
+        enum ldms_value_type stype;
+        ldms_mval_t mv;
+        size_t len;
+        int i, n, rc;
 
-	/* Let's just coerce the value for other cases */
+        *v = NULL;
+        if (!col->fill) {
+                snprintf(err_buf, err_sz,
+                         "must be a value or a list of values");
+                return EINVAL;
+        }
 
-	/* resolve src (from json) */
-	switch (jtype) {
-	case JSON_REAL:
-		src.type = LDMS_V_D64;
-		src.mval = calloc(1, sizeof(src.mval->v_d));
-		src.mval->v_d = json_real_value(jent);
-		src.array_len = 1;
-		break;
-	case JSON_STRING:
-		src.type = LDMS_V_CHAR_ARRAY;
-		src.array_len = json_string_length(jent) + 1;
-		src.mval = malloc(src.array_len);
-		if (!src.mval)
-			goto enomem;
-		memcpy(src.mval->a_char, json_string_value(jent), src.array_len);
-		break;
-	case JSON_INTEGER:
-		src.type = LDMS_V_S64;
-		src.mval = calloc(1, sizeof(src.mval->v_s64));
-		src.mval->v_s64 = json_integer_value(jent);
-		src.array_len = 1;
-		break;
-	case JSON_ARRAY:
-		src.array_len = json_array_size(jent);
-		item = json_array_get(jent, 0);
-		if (!item) {
-			rc = ENOENT;
-			snprintf(err_buf, err_sz, "Empty array");
-			goto err;
-		}
-		type = json_typeof(item);
-		switch (type) {
-		case JSON_INTEGER:
-			src.type = LDMS_V_S64_ARRAY;
-			src.mval = calloc(src.array_len, sizeof(src.mval->v_s64));
-			if (!src.mval)
-				goto enomem;
-			break;
-		case JSON_REAL:
-			src.type = LDMS_V_D64_ARRAY;
-			src.mval = calloc(src.array_len, sizeof(src.mval->v_d));
-			if (!src.mval)
-				goto enomem;
-			break;
-		case JSON_OBJECT:
-		case JSON_ARRAY:
-		case JSON_STRING:
-		case JSON_NULL:
-		case JSON_TRUE:
-		case JSON_FALSE:
-		default:
-			rc = EINVAL;
-			snprintf(err_buf, err_sz, "Unsupported JSON array type");
-			goto err;
-		}
-		json_array_foreach(jent, i, item) {
-			if (type == JSON_INTEGER)
-				ldms_mval_array_set_s64(src.mval, i, json_integer_value(item));
-			else
-				ldms_mval_array_set_double(src.mval, i, json_real_value(item));
-		}
-		break;
-	default:
-		rc = EINVAL;
-		snprintf(err_buf, err_sz, "Unsupported JSON type");
-		goto err;
-	}
+        if (mtype == LDMS_V_CHAR_ARRAY) {
+                if (col->fill_is_array) {
+                        snprintf(err_buf, err_sz,
+                                 "char_array type must have a string value");
+                        return EINVAL;
+                }
+                len = strlen(col->fill[0]) + 1;
+                mv = malloc(len);
+                if (!mv)
+                        goto enomem;
+                memcpy(mv->a_char, col->fill[0], len);
+                *v = mv;
+                *mlen = len;
+                return 0;
+        }
 
-	dst.type = mtype;
-	dst.array_len = src.array_len;
-	sz = ldms_metric_value_size_get(dst.type, dst.array_len);
-	dst.mval = malloc(sz);
-	if (!dst.mval)
-		goto enomem;
+        if (ldms_type_is_array(mtype)) {
+                if (!col->fill_is_array) {
+                        snprintf(err_buf, err_sz,
+                                 "array type must have an array value");
+                        return EINVAL;
+                }
+                n = col->fill_count;
+                if (n < 1) {
+                        snprintf(err_buf, err_sz, "empty array");
+                        return ENOENT;
+                }
+        } else {
+                if (col->fill_is_array) {
+                        snprintf(err_buf, err_sz,
+                                 "array value must have an array type");
+                        return EINVAL;
+                }
+                n = 1;
+        }
 
-	assign_value(&dst, &src);
-	*v = dst.mval;
-	*mlen = dst.array_len;
-	free(src.mval);
+        stype = ldms_metric_type_to_scalar_type(mtype);
+        if (stype == LDMS_V_NONE) {
+                snprintf(err_buf, err_sz, "type '%s' cannot have a fill value",
+                         ldms_metric_type_to_str(mtype));
+                return EINVAL;
+        }
 
-	return 0;
+        mv = calloc(1, ldms_metric_value_size_get(mtype, n));
+        if (!mv)
+                goto enomem;
+
+        for (i = 0; i < n; i++) {
+                /* A single character is a valid fill for a 'char' */
+                if (stype == LDMS_V_CHAR && strlen(col->fill[i]) == 1 &&
+                    !(col->fill[i][0] >= '0' && col->fill[i][0] <= '9')) {
+                        if (ldms_type_is_array(mtype))
+                                mv->a_char[i] = col->fill[i][0];
+                        else
+                                mv->v_char = col->fill[i][0];
+                        continue;
+                }
+                rc = fill_elem_from_str(mv, ldms_type_is_array(mtype), i, stype,
+                                        col->fill[i], err_buf, err_sz);
+                if (rc) {
+                        free(mv);
+                        return rc;
+                }
+        }
+        *v = mv;
+        *mlen = n;
+        return 0;
+
 enomem:
-	rc = ENOMEM;
-	snprintf(err_buf, err_sz, "Not enough memory");
-err:
-	if (src.mval)
-		free(src.mval);
-	return rc;
+        snprintf(err_buf, err_sz, "Not enough memory");
+        return ENOMEM;
+}
+
+/*
+ * Built-in column functions ("func:" column attribute).
+ *
+ * A function converts the current value of the column's src to the
+ * dst column's type.  The dst column has already been sized according
+ * to the dst type and array_len when the function is called.  A
+ * function may support more than one dst type; it then switches on
+ * dst->type, the same way it switches on src->type.
+ */
+typedef int (*decomp_func_fn_t)(ldmsd_col_t dst, ldmsd_col_t src);
+
+typedef struct decomp_func_s {
+        const char *name;
+        /* dst type used when the column has no 'type' */
+        enum ldms_value_type dst_type;
+        /* dst types the function can produce, checked against the
+         * column's 'type' at config time.  NULL means only dst_type. */
+        int (*dst_ok)(enum ldms_value_type dst);
+        /* src/dst type pairs the function can convert, checked when
+         * the src type is first known */
+        int (*types_ok)(enum ldms_value_type src, enum ldms_value_type dst);
+        /* default and minimum array_len, used when dst is an array */
+        int dst_len;
+        int min_len;
+        decomp_func_fn_t fn;
+} *decomp_func_t;
+
+static int is_int_scalar(enum ldms_value_type t)
+{
+        switch (t) {
+        case LDMS_V_U8:
+        case LDMS_V_S8:
+        case LDMS_V_U16:
+        case LDMS_V_S16:
+        case LDMS_V_U32:
+        case LDMS_V_S32:
+        case LDMS_V_U64:
+        case LDMS_V_S64:
+                return 1;
+        default:
+                return 0;
+        }
+}
+
+static int is_ts(enum ldms_value_type t)
+{
+        return t == LDMS_V_TIMESTAMP;
+}
+
+static int is_u64(enum ldms_value_type t)
+{
+        return t == LDMS_V_U64;
+}
+
+static int int_to_str_ok(enum ldms_value_type src, enum ldms_value_type dst)
+{
+        return is_int_scalar(src) && dst == LDMS_V_CHAR_ARRAY;
+}
+
+static int ts_to_str_ok(enum ldms_value_type src, enum ldms_value_type dst)
+{
+        return is_ts(src) && dst == LDMS_V_CHAR_ARRAY;
+}
+
+static int u64_to_str_ok(enum ldms_value_type src, enum ldms_value_type dst)
+{
+        return is_u64(src) && dst == LDMS_V_CHAR_ARRAY;
+}
+
+static int to_str_fn(ldmsd_col_t dst, ldmsd_col_t src)
+{
+        switch (src->type) {
+        case LDMS_V_U8:
+        case LDMS_V_U16:
+        case LDMS_V_U32:
+        case LDMS_V_U64:
+                snprintf(dst->mval->a_char, dst->array_len, "%" PRIu64,
+                         ldms_mval_as_u64(src->mval, src->type, 0));
+                return 0;
+        case LDMS_V_S8:
+        case LDMS_V_S16:
+        case LDMS_V_S32:
+        case LDMS_V_S64:
+                snprintf(dst->mval->a_char, dst->array_len, "%" PRId64,
+                         ldms_mval_as_s64(src->mval, src->type, 0));
+                return 0;
+        default:
+                return EINVAL;
+        }
+}
+
+/*
+ * Like to_str, but 0 gives an empty string.  Useful for IDs where 0
+ * means "none", e.g. a job_id of 0 when no job is running.
+ */
+static int to_str_empty_zero_fn(ldmsd_col_t dst, ldmsd_col_t src)
+{
+        if (!is_int_scalar(src->type))
+                return EINVAL;
+        if (ldms_mval_as_u64(src->mval, src->type, 0) == 0) {
+                dst->mval->a_char[0] = '\0';
+                return 0;
+        }
+        return to_str_fn(dst, src);
+}
+
+static int to_hex_fn(ldmsd_col_t dst, ldmsd_col_t src)
+{
+        uint64_t v;
+
+        /* Signed values are shown as the unsigned value of the same width */
+        switch (src->type) {
+        case LDMS_V_U8:
+        case LDMS_V_S8:
+                v = src->mval->v_u8;
+                break;
+        case LDMS_V_U16:
+        case LDMS_V_S16:
+                v = src->mval->v_u16;
+                break;
+        case LDMS_V_U32:
+        case LDMS_V_S32:
+                v = src->mval->v_u32;
+                break;
+        case LDMS_V_U64:
+        case LDMS_V_S64:
+                v = src->mval->v_u64;
+                break;
+        default:
+                return EINVAL;
+        }
+        snprintf(dst->mval->a_char, dst->array_len, "0x%" PRIx64, v);
+        return 0;
+}
+
+static int to_iso8601_fn(ldmsd_col_t dst, ldmsd_col_t src)
+{
+        struct tm tm;
+        time_t t;
+        char buf[64];
+        size_t n;
+
+        if (src->type != LDMS_V_TIMESTAMP)
+                return EINVAL;
+        t = src->mval->v_ts.sec;
+        if (!gmtime_r(&t, &tm))
+                return EINVAL;
+        n = strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
+        if (!n)
+                return EINVAL;
+        snprintf(buf + n, sizeof(buf) - n, ".%06uZ",
+                 (unsigned)src->mval->v_ts.usec);
+        snprintf(dst->mval->a_char, dst->array_len, "%s", buf);
+        return 0;
+}
+
+#define F58_PREFIX_UTF8 "\xc6\x92"      /* U+0192, LATIN SMALL LETTER F WITH HOOK */
+#define F58_PREFIX_ASCII "f"
+
+/*
+ * Encode \c v as a bitcoin-style base58 number (most significant digit
+ * first) after \c prefix, as Flux does for job IDs in f58 form (Flux
+ * RFC 19).  The result is NUL-terminated and truncated to \c len,
+ * the same as snprintf() would do, but without its overhead.
+ *
+ * A FLUID is never 0, so 0 (e.g. the "no job" job_id) is encoded as
+ * the empty string rather than as "<prefix>1".
+ */
+static void f58_encode(uint64_t v, const char *prefix, char *buf, size_t len)
+{
+        static const char alphabet[] =
+                "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+        char digits[11];        /* 58^10 < 2^64 <= 58^11 */
+        char *p = digits + sizeof(digits);
+        size_t plen, dlen, room;
+
+        if (len == 0)
+                return;
+        /* Fill digits from the end, least significant first */
+        while (v) {
+                *--p = alphabet[v % 58];
+                v /= 58;
+        }
+        if (p == digits + sizeof(digits)) {     /* v == 0 */
+                buf[0] = '\0';
+                return;
+        }
+        dlen = digits + sizeof(digits) - p;
+        room = len - 1;
+        plen = strlen(prefix);
+        if (plen > room)
+                plen = room;
+        memcpy(buf, prefix, plen);
+        room -= plen;
+        if (dlen > room)
+                dlen = room;
+        memcpy(buf + plen, p, dlen);
+        buf[plen + dlen] = '\0';
+}
+
+static int flux_f58_fn(ldmsd_col_t dst, ldmsd_col_t src)
+{
+        if (src->type != LDMS_V_U64)
+                return EINVAL;
+        f58_encode(src->mval->v_u64, F58_PREFIX_UTF8,
+                   dst->mval->a_char, dst->array_len);
+        return 0;
+}
+
+static int flux_f58_ascii_fn(ldmsd_col_t dst, ldmsd_col_t src)
+{
+        if (src->type != LDMS_V_U64)
+                return EINVAL;
+        f58_encode(src->mval->v_u64, F58_PREFIX_ASCII,
+                   dst->mval->a_char, dst->array_len);
+        return 0;
+}
+
+static const struct decomp_func_s func_table[] = {
+        { .name = "to_str",
+          .dst_type = LDMS_V_CHAR_ARRAY, .types_ok = int_to_str_ok,
+          .dst_len = 21, .min_len = 2, .fn = to_str_fn },
+        { .name = "to_str_empty_zero",
+          .dst_type = LDMS_V_CHAR_ARRAY, .types_ok = int_to_str_ok,
+          .dst_len = 21, .min_len = 2, .fn = to_str_empty_zero_fn },
+        { .name = "to_hex",
+          .dst_type = LDMS_V_CHAR_ARRAY, .types_ok = int_to_str_ok,
+          .dst_len = 19, .min_len = 2, .fn = to_hex_fn },
+        { .name = "to_iso8601",
+          .dst_type = LDMS_V_CHAR_ARRAY, .types_ok = ts_to_str_ok,
+          .dst_len = 28, .min_len = 2, .fn = to_iso8601_fn },
+        /* min_len: room for the prefix, one digit and the NUL */
+        { .name = "flux_f58",
+          .dst_type = LDMS_V_CHAR_ARRAY, .types_ok = u64_to_str_ok,
+          .dst_len = 14, .min_len = sizeof(F58_PREFIX_UTF8) + 1,
+          .fn = flux_f58_fn },
+        { .name = "flux_f58_ascii",
+          .dst_type = LDMS_V_CHAR_ARRAY, .types_ok = u64_to_str_ok,
+          .dst_len = 13, .min_len = sizeof(F58_PREFIX_ASCII) + 1,
+          .fn = flux_f58_ascii_fn },
+};
+
+/* Can \c func produce \c dst? */
+static int decomp_func_dst_ok(const struct decomp_func_s *func,
+                              enum ldms_value_type dst)
+{
+        if (func->dst_ok)
+                return func->dst_ok(dst);
+        return dst == func->dst_type;
+}
+
+static const struct decomp_func_s *decomp_func_find(const char *name)
+{
+        size_t i;
+
+        for (i = 0; i < sizeof(func_table) / sizeof(func_table[0]); i++) {
+                if (0 == strcmp(func_table[i].name, name))
+                        return &func_table[i];
+        }
+        return NULL;
 }
 
 /* common index config descriptor */
@@ -262,8 +566,10 @@ typedef struct decomp_static_col_cfg_s {
 	int fill_len; /* if fill is an array */
 	union ldms_value __fill; /* storing a non-array primitive fill value */
 	enum ldmsd_decomp_op op;
+        const struct decomp_func_s *func; /* built-in function, or NULL */
 	size_t mval_offset;
 	size_t mval_size;
+	ldmsd_decomp_cfg_node_t node; /* config file location of this column */
 } *decomp_static_col_cfg_t;
 
 typedef struct decomp_static_row_cfg_s {
@@ -381,32 +687,25 @@ static int get_col_no(decomp_static_row_cfg_t cfg_row, const char *name)
 	return -1;
 }
 
-static int handle_indices(
-		ldmsd_strgp_t strgp, json_t *jidxs,
+static int handle_indices_parsed(
+		ldmsd_strgp_t strgp, ldmsd_decomp_static_index_t *indices, int index_count,
 		decomp_static_row_cfg_t cfg_row, int row_no,
 		ldmsd_req_ctxt_t reqc)
 {
 	struct str_int_tbl_s *col_id_tbl = NULL;
 	struct str_int_s key, *tbl_ent;
 	decomp_index_t didx;
-	json_t *jidx, *jidx_cols, *jcol, *jname;
 	int rc, j, k;
 
-	if (!jidxs)
+	if (!indices || index_count == 0)
 		return 0;
 
-	if (!json_is_array(jidxs)) {
-		THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-			"the 'indices' value must be an array.\n",
-			strgp->obj.name, row_no);
-		return EINVAL;
-	}
-
-	cfg_row->idx_count = json_array_size(jidxs);
+	cfg_row->idx_count = index_count;
 	cfg_row->idxs = calloc(1, cfg_row->idx_count * sizeof(cfg_row->idxs[0]));
 	if (!cfg_row->idxs)
 		goto enomem;
 	cfg_row->row_sz += cfg_row->idx_count * sizeof(ldmsd_row_index_t);
+
 	/* prep temporary col-id table */
 	col_id_tbl = calloc(1, sizeof(*col_id_tbl) +
 				(cfg_row->col_count * sizeof(col_id_tbl->ent[0])));
@@ -419,58 +718,45 @@ static int handle_indices(
 	}
 
 	qsort(col_id_tbl->ent, col_id_tbl->len, sizeof(col_id_tbl->ent[0]), str_int_cmp);
+
 	/* foreach index */
-	json_array_foreach(jidxs, j, jidx) {
+	for (j = 0; j < index_count; j++) {
+		ldmsd_decomp_static_index_t *src_idx = &indices[j];
 		didx = &cfg_row->idxs[j];
-		if (!json_is_object(jidx)) {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-				"an index must be a dictionary.\n",
-				strgp->obj.name, row_no);
-			rc = EINVAL;
-			goto err_0;
-		}
-		jname = json_object_get(jidx, "name");
-		if (!jname) {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': index '%d': "
+
+		if (!src_idx->name) {
+			THISLOG(reqc, EINVAL, "%s: strgp '%s': row '%d': index '%d': "
 				"index['name'] is required.\n",
+				LDMSD_DECOMP_CFG_LOC(src_idx->node, NULL),
 				strgp->obj.name, row_no, j);
 			rc = EINVAL;
 			goto err_0;
 		}
-		didx->name = strdup(json_string_value(jname));
+
+		didx->name = strdup(src_idx->name);
 		if (!didx->name)
 			goto enomem;
-		jidx_cols = json_object_get(jidx, "cols");
-		if (!jidx_cols) {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': index '%d':"
-				"index['cols'] is required.\n",
-				strgp->obj.name, row_no, j);
-			rc = EINVAL;
-			goto err_0;
-		}
-		didx->col_count = json_array_size(jidx_cols);
+
+		didx->col_count = src_idx->col_count;
 		didx->col_idx = calloc(1, didx->col_count * sizeof(didx->col_idx[0]));
 		if (!didx->col_idx)
 			goto enomem;
 		cfg_row->row_sz += sizeof(struct ldmsd_row_index_s) +
 				(didx->col_count * sizeof(ldmsd_col_t));
+
 		/* resolve col name to col id */
-		json_array_foreach(jidx_cols, k, jcol) {
-			if (!json_is_string(jcol)) {
-				THISLOG(reqc, EINVAL, "strgp '%s': row '%d': index '%d': col '%d': "
-					"index['cols'][x] value must be a string.\n",
-					strgp->obj.name, row_no, j, k);
-				rc = EINVAL;
-				goto err_0;
-			}
-			key.str = json_string_value(jcol);
+		for (k = 0; k < src_idx->col_count; k++) {
+			key.str = src_idx->cols[k];
 			tbl_ent = bsearch(&key, col_id_tbl->ent,
 						col_id_tbl->len,
 						sizeof(col_id_tbl->ent[0]),
 						str_int_cmp);
 			if (!tbl_ent) {
-				THISLOG(reqc, ENOENT, "strgp '%s': row '%d': index '%d': "
+				THISLOG(reqc, ENOENT, "%s: strgp '%s': row '%d': index '%d': "
 					"column '%s' not found.\n",
+					LDMSD_DECOMP_CFG_LOC(ldmsd_decomp_cfg_node_item(
+						ldmsd_decomp_cfg_node_key(src_idx->node, "cols"), k),
+						NULL),
 					strgp->obj.name, row_no, j, key.str);
 				rc = ENOENT;
 				goto err_0;
@@ -482,131 +768,94 @@ static int handle_indices(
 	return 0;
 enomem:
 	rc = ENOMEM;
-	THISLOG(reqc, ENOMEM, "%s: Insufficent memory.\n", strgp->obj.name);
+	THISLOG(reqc, ENOMEM, "%s: Insufficient memory.\n", strgp->obj.name);
 err_0:
 	free(col_id_tbl);
 	return rc;
 }
 
 static int handle_group(
-		ldmsd_strgp_t strgp, json_t *jgroup,
+		ldmsd_strgp_t strgp, ldmsd_decomp_static_group_t *group,
 		decomp_static_row_cfg_t cfg_row, int row_no,
 		ldmsd_req_ctxt_t reqc)
 {
-	json_t *jidxs, *jidx;
-	json_t *jlimit, *jtimeout;
 	int col_no;
 	int rc;
-	struct timespec *timeout, _timeout;
+	struct timespec *timeout = NULL, _timeout;
 
-	jlimit  = json_object_get(jgroup, "limit");
-	if (jlimit) {
-		if (json_is_integer(jlimit)) {
-			cfg_row->row_limit = json_integer_value(jlimit);
-		} else if (json_is_string(jlimit)) {
-			cfg_row->row_limit = strtoul(json_string_value(jlimit), NULL, 0);
-		} else {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-				"group['index'] is a required and must be an array.\n",
-				strgp->obj.name, row_no);
-			return EINVAL;
-		}
-	} else {
-		cfg_row->row_limit = 2;
-	}
+	/* Set row limit */
+	cfg_row->row_limit = (group->limit > 0) ? group->limit : 2;
 
-	/* Loop through all of the entries in the
-	 * "index" list and set the associated
-	 * column index in the group_cols array
-	 */
-	jidxs = json_object_get(jgroup, "index");
-	if (!jidxs || !json_is_array(jidxs)) {
-		THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-			"group['index'] is a required and must be an array.\n",
+	/* Process index columns */
+	if (!group->index || group->index_count == 0) {
+		THISLOG(reqc, EINVAL, "%s: strgp '%s': row '%d': "
+			"group['index'] is required and must be an array.\n",
+			LDMSD_DECOMP_CFG_LOC(group->node, "index"),
 			strgp->obj.name, row_no);
 		return EINVAL;
 	}
 
-	cfg_row->group_count = json_array_size(jidxs);
+	cfg_row->group_count = group->index_count;
 	cfg_row->group_cols = calloc(cfg_row->group_count,
 					sizeof(*cfg_row->group_cols));
 	if (!cfg_row->group_cols)
 		goto enomem;
 
-	json_array_foreach(jidxs, col_no, jidx) {
-		if (!json_is_string(jidx)) {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-				"group['index'] entries must be column "
-				"name strings.\n",
-				strgp->obj.name, row_no);
-			rc = EINVAL;
-			goto err_0;
-		}
-		cfg_row->group_cols[col_no] = get_col_no(cfg_row, json_string_value(jidx));
+	for (col_no = 0; col_no < group->index_count; col_no++) {
+		cfg_row->group_cols[col_no] = get_col_no(cfg_row, group->index[col_no]);
 		if (cfg_row->group_cols[col_no] < 0) {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-				"group['index'] the specified column '%s'"
+			THISLOG(reqc, EINVAL, "%s: strgp '%s': row '%d': "
+				"group['index'] the specified column '%s' "
 				"is not present in the column list.\n",
-				strgp->obj.name, row_no, json_string_value(jidx));
+				LDMSD_DECOMP_CFG_LOC(ldmsd_decomp_cfg_node_item(
+					ldmsd_decomp_cfg_node_key(group->node, "index"),
+					col_no), NULL),
+				strgp->obj.name, row_no, group->index[col_no]);
 			rc = EINVAL;
 			goto err_0;
 		}
 	}
 
-	jidxs = json_object_get(jgroup, "order");
-	if (!jidxs || !json_is_array(jidxs)) {
-		THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-			"group['order'] is a required and must be an array.\n",
+	/* Process order columns */
+	if (!group->order || group->order_count == 0) {
+		THISLOG(reqc, EINVAL, "%s: strgp '%s': row '%d': "
+			"group['order'] is required and must be an array.\n",
+			LDMSD_DECOMP_CFG_LOC(group->node, "order"),
 			strgp->obj.name, row_no);
 		rc = EINVAL;
 		goto err_0;
 	}
-	cfg_row->row_order_count = json_array_size(jidxs);
+
+	cfg_row->row_order_count = group->order_count;
 	cfg_row->row_order_cols = calloc(cfg_row->row_order_count,
 					sizeof(*cfg_row->row_order_cols));
 	if (!cfg_row->row_order_cols)
 		goto enomem;
 
-	json_array_foreach(jidxs, col_no, jidx) {
-		if (!json_is_string(jidx)) {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-				"group['order'] entries must be column "
-				"name strings.\n",
-				strgp->obj.name, row_no);
-			rc = EINVAL;
-			goto err_0;
-		}
+	for (col_no = 0; col_no < group->order_count; col_no++) {
 		cfg_row->row_order_cols[col_no] =
-				get_col_no(cfg_row, json_string_value(jidx));
+				get_col_no(cfg_row, group->order[col_no]);
 		if (cfg_row->row_order_cols[col_no] < 0) {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-				"group['order'] the specified column '%s'"
+			THISLOG(reqc, EINVAL, "%s: strgp '%s': row '%d': "
+				"group['order'] the specified column '%s' "
 				"is not present in the column list.\n",
-				strgp->obj.name, row_no, json_string_value(jidx));
+				LDMSD_DECOMP_CFG_LOC(ldmsd_decomp_cfg_node_item(
+					ldmsd_decomp_cfg_node_key(group->node, "order"),
+					col_no), NULL),
+				strgp->obj.name, row_no, group->order[col_no]);
 			rc = ENOENT;
 			goto err_0;
 		}
 	}
 
-	timeout = NULL;
-	jtimeout = json_object_get(jgroup, "timeout");
-	if (jtimeout) {
-		const char *timeout_string;
-		if (json_typeof(jtimeout) != JSON_STRING) {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-				"group['timeout'] must be a STRING describing "
-				"time (e.g. \"10s\").\n",
-				strgp->obj.name, row_no);
-			rc = ENOENT;
-			goto err_0;
-
-		}
-		timeout_string = json_string_value(jtimeout);
-		rc = ldmsd_timespec_from_str(&_timeout, timeout_string);
+	/* Process timeout */
+	if (group->timeout) {
+		rc = ldmsd_timespec_from_str(&_timeout, group->timeout);
 		if (rc != 0) {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
+			THISLOG(reqc, EINVAL, "%s: strgp '%s': row '%d': "
 				"group['timeout'] value \"%s\" has invalid format.\n",
-				strgp->obj.name, row_no, timeout_string);
+				LDMSD_DECOMP_CFG_LOC(group->node, "timeout"),
+				strgp->obj.name, row_no, group->timeout);
 			goto err_0;
 		}
 		timeout = &_timeout;
@@ -657,12 +906,12 @@ ldmsd_decomp_op_to_string(enum ldmsd_decomp_op operation)
 }
 
 static ldmsd_decomp_t
-decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
+decomp_static_config(ldmsd_strgp_t strgp, ldmsd_decomp_config_t *cfg,
 		     ldmsd_req_ctxt_t reqc)
 {
-	json_t *jsch, *jsrc, *jdst, *jrec_member;
-	json_t *jrows, *jcols, *jidxs;
-	json_t *jrow, *jcol, *jfill, *jop, *jtype;
+	ldmsd_decomp_static_config_t *static_cfg;
+	ldmsd_decomp_static_row_t *src_row;
+	ldmsd_decomp_static_col_t *src_col;
 	char *lb, *rb;
 	decomp_static_row_cfg_t cfg_row;
 	decomp_static_col_cfg_t cfg_col;
@@ -670,93 +919,83 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 	int row_no, col_no, rc;
 	char err_buf[256];
 
-	jrows = json_object_get(jcfg, "rows");
-	if (!jrows || !json_is_array(jrows)) {
-		THISLOG(reqc, errno,
-			"strgp '%s': The 'rows' attribute is missing, "
-			"or its value is not a list.\n",
+	/* Verify config type */
+	if (cfg->type != LDMSD_DECOMP_CFG_TYPE_STATIC) {
+		THISLOG(reqc, EINVAL, "Expected static decomposition type\n");
+		errno = EINVAL;
+		return NULL;
+	}
+
+	static_cfg = cfg->static_cfg;
+	if (!static_cfg || !static_cfg->rows || static_cfg->row_count == 0) {
+		THISLOG(reqc, EINVAL,
+			"%s: strgp '%s': The 'rows' attribute is missing or empty.\n",
+			LDMSD_DECOMP_CFG_LOC(static_cfg ? static_cfg->node : cfg->node, "rows"),
 			strgp->obj.name);
 		return NULL;
 	}
-	dcfg = calloc(1, sizeof(*dcfg) + json_array_size(jrows) * sizeof(dcfg->rows[0]));
+
+	dcfg = calloc(1, sizeof(*dcfg) + static_cfg->row_count * sizeof(dcfg->rows[0]));
 	if (!dcfg)
 		goto enomem;
 	dcfg->decomp = decomp_static;
 
 	/* for each row schema */
-	json_array_foreach(jrows, row_no, jrow) {
-		if (!json_is_object(jrow)) {
-			THISLOG(reqc, EINVAL,
-				"strgp '%s': row '%d': "
-				"The list item must be a dictionary.\n",
-				strgp->obj.name, row_no);
-			goto err_0;
-		}
+	for (row_no = 0; row_no < static_cfg->row_count; row_no++) {
+		src_row = &static_cfg->rows[row_no];
 
 		cfg_row = &dcfg->rows[row_no];
 		cfg_row->row_sz = sizeof(struct ldmsd_row_s);
 		rbt_init(&cfg_row->mid_rbt, __mid_rbn_cmp);
 
 		/* schema name */
-		jsch = json_object_get(jrow, "schema");
-		if (!jsch || !json_is_string(jsch)) {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-				"row['schema'] attribute is required and must be a string\n",
+		if (!src_row->schema) {
+			THISLOG(reqc, EINVAL, "%s: strgp '%s': row '%d': "
+				"row['schema'] attribute is required\n",
+				LDMSD_DECOMP_CFG_LOC(src_row->node, NULL),
 				strgp->obj.name, row_no);
 			goto err_0;
 		}
-		cfg_row->schema_name = strdup(json_string_value(jsch));
+		cfg_row->schema_name = strdup(src_row->schema);
 		if (!cfg_row->schema_name)
 			goto enomem;
 
 		/* columns */
-		jcols = json_object_get(jrow, "cols");
-		if (!jcols || !json_is_array(jcols)) {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-				"row['cols'] is required and must be an array.\n",
+		if (!src_row->cols || src_row->col_count == 0) {
+			THISLOG(reqc, EINVAL, "%s: strgp '%s': row '%d': "
+				"row['cols'] is required and cannot be empty.\n",
+				LDMSD_DECOMP_CFG_LOC(src_row->node, "cols"),
 				strgp->obj.name, row_no);
 			goto err_0;
 		}
 
-		cfg_row->col_count = json_array_size(jcols);
-		if (!cfg_row->col_count) {
-			THISLOG(reqc, EINVAL, "strgp '%s': row '%d': "
-				"row['cols'] list is empty\n",
-				strgp->obj.name, row_no);
-			goto err_0;
-		}
-		/* Add a configuration for the 'timestamp' column that goes in every row */
+		cfg_row->col_count = src_row->col_count;
 		cfg_row->cols = calloc(1, (cfg_row->col_count * sizeof(cfg_row->cols[0])));
 		if (!cfg_row->cols)
 			goto enomem;
 		cfg_row->row_sz += cfg_row->col_count * sizeof(struct ldmsd_col_s);
 
 		/* for each column */
-		json_array_foreach(jcols, col_no, jcol) {
-			if (!json_is_object(jcol)) {
-				THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col '%d': "
-					"a column entry must be a dictionary.\n",
-					strgp->obj.name, row_no, col_no);
-				goto err_0;
-			}
+		for (col_no = 0; col_no < src_row->col_count; col_no++) {
+			src_col = &src_row->cols[col_no];
 			cfg_col = &cfg_row->cols[col_no];
 
 			cfg_col->fill_len = -1;
+			cfg_col->node = src_col->node;
 
-			jsrc = json_object_get(jcol, "src");
-			if (!jsrc || !json_is_string(jsrc)) {
-				THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col '%d': "
-					"column['src'] is required and must be a string.\n",
+			if (!src_col->src) {
+				THISLOG(reqc, EINVAL, "%s: strgp '%s': row '%d'--col '%d': "
+					"column['src'] is required.\n",
+					LDMSD_DECOMP_CFG_LOC(src_col->node, NULL),
 					strgp->obj.name, row_no, col_no);
 				goto err_0;
 			}
-			cfg_col->src = strdup(json_string_value(jsrc));
+			cfg_col->src = strdup(src_col->src);
 			if (!cfg_col->src)
 				goto enomem;
 
-			jdst = json_object_get(jcol, "dst");
-			if (jdst && json_is_string(jdst)) {
-				cfg_col->dst = strdup(json_string_value(jdst));
+			if (src_col->dst) {
+				cfg_col->dst = strdup(src_col->dst);
 			} else {
 				/* Inherit the destination name from the source */
 				cfg_col->dst = strdup(cfg_col->src);
@@ -764,111 +1003,164 @@ decomp_static_config(ldmsd_strgp_t strgp, json_t *jcfg,
 			if (!cfg_col->dst)
 				goto enomem;
 
-			/* record member encoded in the src */
-			lb = strchr(cfg_col->src, '[');
-			rb = strchr(cfg_col->src, ']');
-			if (lb && rb) {
-				rb[0] = 0;
-				cfg_col->rec_member = strdup(lb+1);
+			/* Handle rec_member from parsed config */
+			if (src_col->rec_member) {
+				cfg_col->rec_member = strdup(src_col->rec_member);
 				if (!cfg_col->rec_member)
 					goto enomem;
-				lb[0] = 0;
-			} else if (lb || rb) {
-				/* incomplete bracket */
-				THISLOG(reqc, EINVAL,
-					"strgp '%s': row '%d'--col '%d': "
-					"incomplete brackets in column['src'].\n",
-					strgp->obj.name, row_no, col_no);
-				goto err_0;
-			}
-
-			jrec_member = json_object_get(jcol, "rec_member");
-			if (jrec_member) {
-				if (!json_is_string(jrec_member)) {
-					THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col '%d': "
-						"rec_member must be a string.\n",
-						strgp->obj.name, row_no, col_no);
-					goto err_0;
-				}
-				if (cfg_col->rec_member) {
+			} else {
+				/* Check if record member encoded in the src with brackets */
+				lb = strchr(cfg_col->src, '[');
+				rb = strchr(cfg_col->src, ']');
+				if (lb && rb) {
+					rb[0] = 0;
+					cfg_col->rec_member = strdup(lb+1);
+					if (!cfg_col->rec_member)
+						goto enomem;
+					lb[0] = 0;
+				} else if (lb || rb) {
+					/* incomplete bracket */
 					THISLOG(reqc, EINVAL,
-						"Conflicting configuration: both"
-						" 'rec_member' and '->' (in src)"
-						" are specified.");
-					goto err_0;
-				}
-				cfg_col->rec_member = strdup(json_string_value(jrec_member));
-				if (!cfg_col->rec_member)
-					goto enomem;
-			}
-
-			jop = json_object_get(jcol, "op");
-			if (jop) {
-                                cfg_col->op = string_to_ldmsd_decomp_op(json_string_value(jop));
-                                if (cfg_col->op == LDMSD_DECOMP_OP_NONE) {
-					THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col %d : "
-						"unrecognized functional operator '%s'\n",
-						strgp->obj.name, row_no, col_no, json_string_value(jop));
-					goto err_0;
-                                }
-                                cfg_row->op_present = 1; /* true */
-			}
-			jtype = json_object_get(jcol, "type");
-			if (jtype) {
-				if (jtype->type != JSON_STRING) {
-					THISLOG(reqc, EINVAL, "strgp '%s': row '%d'--col %d : "
-						"bad 'type'\n",
+						"%s: strgp '%s': row '%d'--col '%d': "
+						"incomplete brackets in column['src'].\n",
+						LDMSD_DECOMP_CFG_LOC(src_col->node, "src"),
 						strgp->obj.name, row_no, col_no);
 					goto err_0;
 				}
-				cfg_col->type = ldms_metric_str_to_type(json_string_value(jtype));
+			}
+
+			if (src_col->op) {
+				cfg_col->op = string_to_ldmsd_decomp_op(src_col->op);
+				if (cfg_col->op == LDMSD_DECOMP_OP_NONE) {
+					THISLOG(reqc, EINVAL, "%s: strgp '%s': row '%d'--col %d : "
+						"unrecognized functional operator '%s'\n",
+						LDMSD_DECOMP_CFG_LOC(src_col->node, "op"),
+						strgp->obj.name, row_no, col_no, src_col->op);
+					goto err_0;
+				}
+				cfg_row->op_present = 1;
+			}
+			if (src_col->type) {
+				cfg_col->type = ldms_metric_str_to_type(src_col->type);
 			} else {
 				cfg_col->type = LDMS_V_NONE;
 			}
-			jfill = json_object_get(jcol, "fill");
-			if (jfill) {
-				if (!jtype) {
-					THISLOG(reqc, EINVAL,
-						"strgp '%s': row '%d': col[dst] '%s',"
-						"'fill' error, 'type' is required.\n",
-						strgp->obj.name, row_no, cfg_col->dst);
-					goto err_0;
-				}
-				/* The remaining code handles 'fill' */
-				rc = mval_from_json(&cfg_col->fill, cfg_col->type,
-						&cfg_col->fill_len, jfill,
-						err_buf, sizeof(err_buf));
-				if (rc) {
-					THISLOG(reqc, rc,
-						"strgp '%s': row '%d': col[dst] '%s',"
-						"'fill' error %d: %s.\n",
-						strgp->obj.name, row_no,
-						cfg_col->dst, rc, err_buf);
-					goto err_0;
-				}
-				cfg_col->array_len = cfg_col->fill_len;
+                        if (src_col->func) {
+                                cfg_col->func = decomp_func_find(src_col->func);
+                                if (!cfg_col->func) {
+                                        THISLOG(reqc, EINVAL,
+                                                "%s: strgp '%s': row '%d'--col %d : "
+                                                "unrecognized function '%s'\n",
+                                                LDMSD_DECOMP_CFG_LOC(src_col->node, "func"),
+                                                strgp->obj.name, row_no, col_no,
+                                                src_col->func);
+                                        goto err_0;
+                                }
+                                if (src_col->op) {
+                                        THISLOG(reqc, EINVAL,
+                                                "%s: strgp '%s': row '%d'--col %d : "
+                                                "'op' and 'func' cannot be combined "
+                                                "in the same column\n",
+                                                LDMSD_DECOMP_CFG_LOC(src_col->node, "func"),
+                                                strgp->obj.name, row_no, col_no);
+                                        goto err_0;
+                                }
+                                /* 'type' picks one of the function's dst
+                                 * types; without it, use the default */
+                                if (!src_col->type) {
+                                        cfg_col->type = cfg_col->func->dst_type;
+                                } else if (!decomp_func_dst_ok(cfg_col->func,
+                                                               cfg_col->type)) {
+                                        THISLOG(reqc, EINVAL,
+                                                "%s: strgp '%s': row '%d'--col %d : "
+                                                "function '%s' cannot produce "
+                                                "type '%s'\n",
+                                                LDMSD_DECOMP_CFG_LOC(src_col->node, "type"),
+                                                strgp->obj.name, row_no, col_no,
+                                                src_col->func, src_col->type);
+                                        goto err_0;
+                                }
+                                if (src_col->array_len > 0 &&
+                                    !ldms_type_is_array(cfg_col->type)) {
+                                        THISLOG(reqc, EINVAL,
+                                                "%s: strgp '%s': row '%d'--col %d : "
+                                                "'array_len' is not allowed, function "
+                                                "'%s' produces the scalar type '%s'\n",
+                                                LDMSD_DECOMP_CFG_LOC(src_col->node, "array_len"),
+                                                strgp->obj.name, row_no, col_no,
+                                                src_col->func,
+                                                ldms_metric_type_to_str(cfg_col->type));
+                                        goto err_0;
+                                }
+                                if (src_col->array_len > 0 &&
+                                    src_col->array_len < cfg_col->func->min_len) {
+                                        THISLOG(reqc, EINVAL,
+                                                "%s: strgp '%s': row '%d'--col %d : "
+                                                "function '%s' requires 'array_len' "
+                                                ">= %d\n",
+                                                LDMSD_DECOMP_CFG_LOC(src_col->node, "array_len"),
+                                                strgp->obj.name, row_no, col_no,
+                                                src_col->func, cfg_col->func->min_len);
+                                        goto err_0;
+                                }
+                        }
+                        if (ldmsd_decomp_cfg_node_key(src_col->node, "fill")) {
+                                if (!src_col->type && !cfg_col->func) {
+                                        THISLOG(reqc, EINVAL,
+                                                "%s: strgp '%s': row '%d': col[dst] '%s', "
+                                                "'fill' error, 'type' is required.\n",
+                                                LDMSD_DECOMP_CFG_LOC(src_col->node, "fill"),
+                                                strgp->obj.name, row_no, cfg_col->dst);
+                                        goto err_0;
+                                }
+                                /* Convert the fill value to the column type */
+                                rc = mval_from_fill(&cfg_col->fill, cfg_col->type,
+                                                    &cfg_col->fill_len, src_col,
+                                                    err_buf, sizeof(err_buf));
+                                if (rc) {
+                                        THISLOG(reqc, rc,
+                                                "%s: strgp '%s': row '%d': col[dst] '%s', "
+                                                "'fill' error %d: %s.\n",
+                                                LDMSD_DECOMP_CFG_LOC(src_col->node, "fill"),
+                                                strgp->obj.name, row_no,
+                                                cfg_col->dst, rc, err_buf);
+                                        goto err_0;
+                                }
+                                cfg_col->array_len = cfg_col->fill_len;
+                        }
+
+			if (src_col->array_len > 0) {
+				cfg_col->array_len = src_col->array_len;
+                        } else if (cfg_col->func) {
+                                if (ldms_type_is_array(cfg_col->type))
+                                        cfg_col->array_len = cfg_col->func->dst_len;
+                                else
+                                        cfg_col->array_len = 1;
 			}
 		}
 
 		/* indices */
-		jidxs = json_object_get(jrow, "indices");
-		if (jidxs) {
-			rc = handle_indices(strgp, jidxs, cfg_row, row_no, reqc);
+		if (src_row->indices && src_row->index_count > 0) {
+			rc = handle_indices_parsed(strgp, src_row->indices, src_row->index_count,
+						  cfg_row, row_no, reqc);
 			if (rc)
 				goto err_0;
 		}
 
 		/* group clause */
-		json_t *jgroup = json_object_get(jrow, "group");
-		if (jgroup) {
-			rc = handle_group(strgp, jgroup, cfg_row, row_no, reqc);
-			if (rc)
-				goto err_0;
+		if (src_row->group) {
+			if (cfg_row->op_present) {
+				rc = handle_group(strgp, src_row->group, cfg_row, row_no, reqc);
+				if (rc)
+					goto err_0;
+			}
 		} else if (cfg_row->op_present) {
 			THISLOG(reqc, EINVAL,
-				"%s: row: %d, The 'group' clause is required if "
+				"%s: %s: row: %d, The 'group' clause is required if "
 				"functional operators are in use.\n",
+				LDMSD_DECOMP_CFG_LOC(src_row->node, NULL),
 				strgp->obj.name, row_no);
+			goto err_0;
 		}
 
 		dcfg->row_count++;
@@ -902,6 +1194,7 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 	int rc = EINVAL;
 	const char *src;
 	enum ldms_value_type mtype, le_mtype, rec_mtype;
+        enum ldms_value_type src_type; /* effective src element type */
 	ldms_mval_t lh, le, rec_array, rec;
 	int special;
 	int mid, rec_mid;
@@ -931,7 +1224,8 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 	case LDMSD_META_METRIC_ID_TIMESTAMP:
 	case LDMSD_META_METRIC_ID_DURATION:
 		assert( cfg_col->type == LDMS_V_NONE ||
-			cfg_col->type == LDMS_V_TIMESTAMP );
+                        cfg_col->type == LDMS_V_TIMESTAMP ||
+                        cfg_col->func );
 		mtype = LDMS_V_TIMESTAMP;
 		mlen = 1;
 		goto commit;
@@ -940,7 +1234,8 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 	case LDMSD_META_METRIC_ID_PERM:
 	case LDMSD_META_METRIC_ID_CARD:
 		assert( cfg_col->type == LDMS_V_NONE ||
-			cfg_col->type == LDMS_V_U32 );
+                        cfg_col->type == LDMS_V_U32 ||
+                        cfg_col->func );
 		mtype = LDMS_V_U32;
 		mlen = 1;
 		goto commit;
@@ -948,6 +1243,17 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 	case LDMSD_META_METRIC_ID_SCHEMA:
 	case LDMSD_META_METRIC_ID_PRODUCER:
 	case LDMSD_META_METRIC_ID_INSTANCE:
+                if (cfg_col->func) {
+                        ovis_log(static_log, OVIS_LERROR,
+                                "%s: strgp '%s': col[src] '%s': function '%s' "
+                                "cannot convert src type %s.\n",
+                                LDMSD_DECOMP_CFG_LOC(cfg_col->node, "func"),
+                                ctxt->strgp->obj.name, cfg_col->src,
+                                cfg_col->func->name,
+                                ldms_metric_type_to_str(LDMS_V_CHAR_ARRAY));
+                        rc = EINVAL;
+                        goto err;
+                }
 		assert( cfg_col->type == LDMS_V_NONE ||
 			cfg_col->type == LDMS_V_CHAR_ARRAY );
 		col_mid->mid = mid;
@@ -970,8 +1276,9 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 		 * an array a length */
 		if (!cfg_col->fill) {
 			ovis_log(static_log, OVIS_LERROR,
-				"strgp '%s': col[src] '%s' does not exist in "
+				"%s: strgp '%s': col[src] '%s' does not exist in "
 				"the set '%s' and the 'fill' is not specified.\n",
+				LDMSD_DECOMP_CFG_LOC(cfg_col->node, "src"),
 				ctxt->strgp->obj.name, cfg_col->src,
 				ldms_set_name_get(ctxt->set));
 			rc = EINVAL;
@@ -979,13 +1286,14 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 		}
 		if (ldms_type_is_array(cfg_col->type) && cfg_col->fill_len < 0) {
 			ovis_log(static_log, OVIS_LERROR,
-				"strgp '%s': col[dst] '%s' array must have a "
+				"%s: strgp '%s': col[dst] '%s' array must have a "
 				"len specified if it does not exist in the set.\n",
+				LDMSD_DECOMP_CFG_LOC(cfg_col->node, NULL),
 				ctxt->strgp->obj.name, cfg_col->dst);
 			rc = EINVAL;
 			goto err;
 		}
-		/* use fill */
+                /* use fill; the fill already has the dst type */
 		mid = LDMSD_META_METRIC_ID_FILL;
 		mtype  = cfg_col->type;
 		mlen = cfg_col->fill_len;
@@ -1012,8 +1320,9 @@ static int resolve_col(struct resolve_ctxt_s *ctxt,
 
 	/* Invalid type */
 	ovis_log(static_log, OVIS_LERROR,
-		"strgp '%s': col[src] '%s' the metric type %s(%d) "
+		"%s: strgp '%s': col[src] '%s' the metric type %s(%d) "
 		"is not supported.\n",
+		LDMSD_DECOMP_CFG_LOC(cfg_col->node, "src"),
 		ctxt->strgp->obj.name, cfg_col->src,
 		ldms_metric_type_to_str(mtype), mtype);
 	rc = EINVAL;
@@ -1039,8 +1348,9 @@ list_routine:
 		/* LIST of LIST is not supported */
 		/* Invalid type */
 		ovis_log(static_log, OVIS_LERROR,
-			"strgp '%s': row '%d': col[dst] '%s' "
+			"%s: strgp '%s': row '%d': col[dst] '%s' "
 			"LIST of LIST is not supported.\n",
+			LDMSD_DECOMP_CFG_LOC(cfg_col->node, "src"),
 			ctxt->strgp->obj.name, ctxt->col_no, cfg_col->dst
 			);
 		rc = EINVAL;
@@ -1054,8 +1364,9 @@ list_routine:
 	rec_mid = ldms_record_metric_find(le, cfg_col->rec_member);
 	if (rec_mid < 0) {
 		ovis_log(static_log, OVIS_LERROR,
-			"strgp '%s': row '%d': col[dst] '%s' "
+			"%s: strgp '%s': row '%d': col[dst] '%s' "
 			"Record member '%s' not found.\n",
+			LDMSD_DECOMP_CFG_LOC(cfg_col->node, "rec_member"),
 			ctxt->strgp->obj.name, ctxt->col_no, cfg_col->dst,
 			cfg_col->rec_member);
 		rc = ENOENT;
@@ -1070,8 +1381,9 @@ rec_array_routine:
 	rec = ldms_record_array_get_inst(rec_array, 0);
 	if (!cfg_col->rec_member) {
 		ovis_log(static_log, OVIS_LERROR,
-			"strgp '%s': row '%d': the record array '%s' "
+			"%s: strgp '%s': row '%d': the record array '%s' "
 			"is empty.\n",
+			LDMSD_DECOMP_CFG_LOC(cfg_col->node, "src"),
 			ctxt->strgp->obj.name, ctxt->col_no, cfg_col->src);
 		rc = EINVAL;
 		goto err;
@@ -1079,8 +1391,9 @@ rec_array_routine:
 	rec_mid = ldms_record_metric_find(rec, cfg_col->rec_member);
 	if (rec_mid < 0) {
 		ovis_log(static_log, OVIS_LERROR,
-			"strgp '%s': row '%d': col[dst] '%s' "
-			"Missing record member definition.n",
+			"%s: strgp '%s': row '%d': col[dst] '%s' "
+			"Missing record member definition.\n",
+			LDMSD_DECOMP_CFG_LOC(cfg_col->node, "rec_member"),
 			ctxt->strgp->obj.name, ctxt->col_no, cfg_col->dst);
 		rc = EINVAL;
 		goto err;
@@ -1099,7 +1412,26 @@ commit:
 		col_mid->rec_mid = rec_mid;
 		col_mid->rec_mtype = rec_mtype;
 		ASSERT_RETURN((!ldms_type_is_array(rec_mtype)) || mlen);
-	} else {
+        }
+        if (rec_mid >= 0)
+                src_type = rec_mtype;
+        else if (mtype == LDMS_V_LIST)
+                src_type = le_mtype;
+        else
+                src_type = mtype;
+
+        if (cfg_col->func && mid != LDMSD_META_METRIC_ID_FILL &&
+            !cfg_col->func->types_ok(src_type, cfg_col->type)) {
+                ovis_log(static_log, OVIS_LERROR,
+                        "%s: strgp '%s': col[src] '%s': function '%s' "
+                        "cannot convert src type %s to %s.\n",
+                        LDMSD_DECOMP_CFG_LOC(cfg_col->node, "func"),
+                        ctxt->strgp->obj.name, cfg_col->src,
+                        cfg_col->func->name,
+                        ldms_metric_type_to_str(src_type),
+                        ldms_metric_type_to_str(cfg_col->type));
+                rc = EINVAL;
+                goto err;
 	}
 
 	/* commit to cfg_col */
@@ -1120,9 +1452,13 @@ commit:
 	}
 	if (0 == cfg_col->mval_size) {
 		cfg_col->mval_offset = ctxt->mval_offset;
-		cfg_col->mval_size = ldms_metric_value_size_get(cfg_col->type, mlen);
+                if (cfg_col->func) /* sized by the dst, not the src */
+                        cfg_col->mval_size = ldms_metric_value_size_get(
+                                        cfg_col->type, cfg_col->array_len);
+                else
+                        cfg_col->mval_size = ldms_metric_value_size_get(cfg_col->type, mlen);
 	} else {
-		ASSERT_RETURN(cfg_col->type == mtype);
+                ASSERT_RETURN(cfg_col->func || cfg_col->type == mtype);
 		ASSERT_RETURN(cfg_col->mval_offset == ctxt->mval_offset);
 	}
 
@@ -1851,6 +2187,46 @@ static ldmsd_functional_op_t op_table[] = {
 	[LDMSD_DECOMP_OP_MAX] = max_op,
 };
 
+/*
+ * Apply the column's built-in function to \c src and store the result
+ * in \c col.  On failure the dst value is left zeroed.
+ */
+static int apply_func(ldmsd_strgp_t strgp, decomp_static_col_cfg_t cfg_col,
+                      ldmsd_col_t col, ldmsd_col_t src)
+{
+        int rc;
+
+        rc = cfg_col->func->fn(col, src);
+        if (rc) {
+                memset(col->mval, 0, cfg_col->mval_size);
+                ovis_log(static_log, OVIS_LERROR,
+                         "strgp '%s': col[dst] '%s': function '%s' failed "
+                         "with error %d\n", strgp->obj.name, cfg_col->dst,
+                         cfg_col->func->name, rc);
+        }
+        return rc;
+}
+
+/*
+ * Store the scalar meta-metric value \c v of type \c type in \c col,
+ * applying the column's function if it has one.
+ */
+static void store_col(ldmsd_strgp_t strgp, decomp_static_col_cfg_t cfg_col,
+                      ldmsd_col_t col, enum ldms_value_type type,
+                      union ldms_value *v)
+{
+        struct ldmsd_col_s src = {
+                .type = type,
+                .array_len = 1,
+                .mval = (ldms_mval_t)v,
+        };
+
+        if (cfg_col->func)
+                apply_func(strgp, cfg_col, col, &src);
+        else
+                assign_value(col, &src);
+}
+
 static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				   ldmsd_row_list_t row_list, int *row_count,
 				   void **decomp_ctxt)
@@ -1878,6 +2254,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 		int rec_metric_id;
 		int rec_array_len;
 		int rec_array_idx;
+                int is_fill; /* mval is the 'fill' (or zfill), not a src value */
 	} *col_mvals = NULL, *mcol;
 	struct ldmsd_col_s _col;
 	decomp_static_mid_rbn_t mid_rbn = NULL;
@@ -1890,6 +2267,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 	const char *schema;
 	int producer_len, instance_len, schema_len;
 	union ldms_value zfill = {0}; /* zero value as default "fill" */
+        union ldms_value meta_val; /* scratch value for meta metrics */
 
 	if (!TAILQ_EMPTY(row_list))
 		return EINVAL;
@@ -2017,9 +2395,11 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			mval = ldms_metric_get(set, mid);
 			mtype = ldms_metric_type_get(set, mid);
 			if (mtype != mid_rbn->col_mids[j].mtype) {
-				ovis_log(static_log, OVIS_LERROR, "strgp '%s': the metric type (%s) of "
+				ovis_log(static_log, OVIS_LERROR, "%s: strgp '%s': the metric type (%s) of "
 					     "row %d:col %d is different from the type (%s) of "
-					     "LDMS metric '%s'.\n", strgp->obj.name,
+					     "LDMS metric '%s'.\n",
+					     LDMSD_DECOMP_CFG_LOC(cfg_row->cols[j].node, "src"),
+					     strgp->obj.name,
 					     ldms_metric_type_to_str(mid_rbn->col_mids[j].mtype),
 					     i, j, ldms_metric_type_to_str(mtype),
 					     ldms_metric_name_get(set, mid));
@@ -2098,6 +2478,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 
 		col_mvals_fill:
 			mcol->le = NULL;
+                        mcol->is_fill = 1;
 			mcol->mval = cfg_row->cols[j].fill;
 			if (mcol->mval) {
 				mcol->mtype = cfg_row->cols[j].type;
@@ -2153,22 +2534,28 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 
 			switch (mid_rbn->col_mids[j].mid) {
 			case LDMSD_META_METRIC_ID_TIMESTAMP:
-				col->mval->v_ts = ts;
+                                meta_val.v_ts = ts;
+                                store_col(strgp, cfg_col, col, LDMS_V_TIMESTAMP, &meta_val);
 				continue;
 			case LDMSD_META_METRIC_ID_DURATION:
-				col->mval->v_ts = ldms_transaction_duration_get(set);
+                                meta_val.v_ts = ldms_transaction_duration_get(set);
+                                store_col(strgp, cfg_col, col, LDMS_V_TIMESTAMP, &meta_val);
 				continue;
 			case LDMSD_META_METRIC_ID_UID:
-				col->mval->v_u32 = ldms_set_uid_get(set);
+                                meta_val.v_u32 = ldms_set_uid_get(set);
+                                store_col(strgp, cfg_col, col, LDMS_V_U32, &meta_val);
 				continue;
 			case LDMSD_META_METRIC_ID_GID:
-				col->mval->v_u32 = ldms_set_gid_get(set);
+                                meta_val.v_u32 = ldms_set_gid_get(set);
+                                store_col(strgp, cfg_col, col, LDMS_V_U32, &meta_val);
 				continue;
 			case LDMSD_META_METRIC_ID_PERM:
-				col->mval->v_u32 = ldms_set_perm_get(set);
+                                meta_val.v_u32 = ldms_set_perm_get(set);
+                                store_col(strgp, cfg_col, col, LDMS_V_U32, &meta_val);
 				continue;
 			case LDMSD_META_METRIC_ID_CARD:
-				col->mval->v_u32 = ldms_set_card_get(set);
+                                meta_val.v_u32 = ldms_set_card_get(set);
+                                store_col(strgp, cfg_col, col, LDMS_V_U32, &meta_val);
 				continue;
 			case LDMSD_META_METRIC_ID_PRODUCER:
 				col->mval = (ldms_mval_t)producer;
@@ -2194,7 +2581,10 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				_col.array_len = mcol->array_len;
 				_col.type = mcol->mtype;
 				_col.mval = mcol->mval;
-				assign_value(col, &_col);
+                                if (cfg_col->func && !mcol->is_fill)
+                                        apply_func(strgp, cfg_col, col, &_col);
+                                else
+                                        assign_value(col, &_col);
 				break;
 			}
 
@@ -2212,6 +2602,7 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				goto col_fill;
 
 			row_more_le = 1;
+                        mcol->is_fill = 0;
 			if (cfg_row->cols[j].rec_member) {
 				/* expect record */
 				rec_mid = mid_rbn->col_mids[j].rec_mid;
@@ -2238,15 +2629,18 @@ static int decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			mcol->rec = ldms_record_array_get_inst(mcol->rec_array, mcol->rec_array_idx);
 			if (!mcol->rec)
 				goto col_fill;
+                        mcol->is_fill = 0;
 			/* extract the record metric */
 			mcol->mval = ldms_record_metric_get(mcol->rec, rec_mid);
 			mcol->mtype = ldms_record_metric_type_get(mcol->le, rec_mid, &mcol->array_len);
 			continue;
 
 		col_fill:
+                        mcol->is_fill = 1;
 			mcol->mval = cfg_row->cols[j].fill;
 			if (mcol->mval) {
-				mcol->array_len = row->cols[j].array_len;
+                                /* the fill buffer holds fill_len elements */
+                                mcol->array_len = cfg_row->cols[j].fill_len;
 				mcol->mtype = cfg_row->cols[j].type;
 			} else {
 				mcol->mval = &zfill;

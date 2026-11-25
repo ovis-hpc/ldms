@@ -1,0 +1,26 @@
+# YAML version of static decomposition config
+type: static
+rows:
+  - schema: test_schema
+    cols:
+      - src: timestamp
+        dst: timestamp
+        type: ts
+      - src: producer
+        dst: producer
+        type: char_array
+        array_len: 256
+      - src: component_id
+        dst: component_id
+        type: u64
+      - src: value
+        dst: value
+        type: u64
+        fill: 0
+      - src: component_id
+        dst: comp_str
+        func: to_str
+    indices:
+      - name: idx_producer
+        cols:
+          - producer

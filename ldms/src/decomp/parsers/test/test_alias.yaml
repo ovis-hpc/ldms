@@ -1,0 +1,11 @@
+# Anchors and aliases: both rows share the same column list
+type: static
+rows:
+  - schema: first
+    cols: &common_cols
+      - src: timestamp
+        type: ts
+      - src: component_id
+        type: u64
+  - schema: second
+    cols: *common_cols
