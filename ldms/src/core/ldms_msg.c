@@ -1194,7 +1194,19 @@ void ldms_msg_client_close(ldms_msg_client_t c)
 	 */
 }
 
+int __sub_req_ctxt_cmp(void *k, const void *tk)
+{
+	int64_t a = (int64_t)k;
+	int64_t b = (int64_t)tk;
+	if (a < b)
+		return -1;
+	if (a > b)
+		return 1;
+	return 0;
+}
+
 struct __sub_req_ctxt_s {
+	struct rbn rbn;
 	ldms_msg_event_cb_t cb_fn;
 	void *cb_arg;
 	struct ldms_request req[0];
@@ -1229,6 +1241,7 @@ __remote_sub(ldms_t x, enum ldms_request_cmd cmd,
 	/* freed in __process_msg_subunsub_reply() */
 	if (!ctxt)
 		return ENOMEM;
+	rbn_init(&ctxt->rbn, ctxt);
 	ctxt->cb_fn  = cb_fn;
 	ctxt->cb_arg = cb_arg;
 	req = ctxt->req;
@@ -1240,8 +1253,15 @@ __remote_sub(ldms_t x, enum ldms_request_cmd cmd,
 	req->msg_sub.rate = htobe64(rate);
 	memcpy(req->msg_sub.match, match, match_len);
 
+	pthread_mutex_lock(&r->mutex);
+	rbt_ins(&r->sub_req_ctxt_rbt, &ctxt->rbn);
+	pthread_mutex_unlock(&r->mutex);
+
 	zerr = __rail_rep_send_raw(&r->eps[0], req, msg_len);
 	if (zerr) {
+		pthread_mutex_lock(&r->mutex);
+		rbt_del(&r->sub_req_ctxt_rbt, &ctxt->rbn);
+		pthread_mutex_unlock(&r->mutex);
 		free(ctxt);
 		return EIO;
 	}
@@ -1615,8 +1635,17 @@ __process_msg_subunsub_reply(ldms_t x, struct ldms_reply *reply,
 {
 	struct ldms_rail_ep_s *rep = ldms_xprt_ctxt_get(x);
 	ldms_rail_t r = rep->rail;
-	struct __sub_req_ctxt_s *ctxt = (void*)reply->hdr.xid;
+	struct __sub_req_ctxt_s *ctxt = NULL;
 	struct ldms_msg_event_s sev;
+	struct rbn *rbn;
+	pthread_mutex_lock(&r->mutex);
+	rbn = rbt_find(&r->sub_req_ctxt_rbt, (void*)reply->hdr.xid);
+	if (rbn)
+		rbt_del(&r->sub_req_ctxt_rbt, rbn);
+	pthread_mutex_unlock(&r->mutex);
+	if (!rbn)
+		return;
+	ctxt = container_of(rbn, struct __sub_req_ctxt_s, rbn);
 	if (!ctxt->cb_fn)
 		goto out;
 	sev.r = (ldms_t)r;
@@ -1648,6 +1677,7 @@ void __msg_reply_recv(ldms_t x, int cmd, struct ldms_reply *reply)
 void __msg_on_rail_disconnected(struct ldms_rail_s *r)
 {
 	struct ldms_msg_client_s *c;
+	struct __sub_req_ctxt_s *sc;
 	struct rbn *rbn;
 	pthread_mutex_lock(&r->mutex);
 	while ((rbn = rbt_min(&r->ch_cli_rbt))) {
@@ -1658,6 +1688,11 @@ void __msg_on_rail_disconnected(struct ldms_rail_s *r)
 		ldms_msg_client_close(c);
 		ref_put(&r->ref, "r->ch_cli_rbt");
 		pthread_mutex_lock(&r->mutex);
+	}
+	while ((rbn = rbt_min(&r->sub_req_ctxt_rbt))) {
+		sc = container_of(rbn, struct __sub_req_ctxt_s, rbn);
+		rbt_del(&r->sub_req_ctxt_rbt, rbn);
+		free(sc);
 	}
 	pthread_mutex_unlock(&r->mutex);
 }
