@@ -241,6 +241,7 @@ struct ldms_rail_s {
 	pthread_mutex_t mutex; /* mainly for state */
 
 	struct rbt ch_cli_rbt; /* stream clients from the peer */
+	struct rbt sub_req_ctxt_rbt; /* outstanding msg subscription req to peer */
 
 	ldms_rail_ep_state_t state;
 
