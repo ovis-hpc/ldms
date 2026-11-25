@@ -65,6 +65,10 @@ if ENABLE_RDC
 SUBDIRS += rdc_sampler
 endif
 
+if ENABLE_AMDSMI
+SUBDIRS += amdgpu_sampler
+endif
+
 if ENABLE_JOBID
 AM_CFLAGS = -DENABLE_JOBID
 JOBID_LIBFLAGS = libjobid.la
